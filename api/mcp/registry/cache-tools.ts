@@ -30,7 +30,7 @@ import { FLOW_SOURCE_WIRE_VALUES, narrowFlowSource } from '../../../server/_shar
 import { selectMarketAlertScorecard, selectScorecardFields } from '../../../server/worldmonitor/forecast/v1/scorecard-fields';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { torontoSafetySourceById } from '../../../shared/toronto-safety.js';
-import { FORECAST_ACCURACY_AUDIT_OVERRIDE, forecastAccuracyAudit, type ForecastAccuracyAudit } from '../../../shared/forecast-accuracy-audit.js';
+import { accuracyAuditOverride, forecastAccuracyAudit, type ForecastAccuracyAudit } from '../../../shared/forecast-accuracy-audit.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 // @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
 import { BOOTSTRAP_CACHE_KEYS } from '../../_bootstrap-tier-keys.js';
@@ -558,17 +558,41 @@ function forecastFamilyOutcomes(data: Record<string, unknown>, ids: string[]) {
   return history;
 }
 
+// The scorecard seed's clock (#8990): the same 36-hour budget the REST handler
+// applies. An unknown clock is stale, so it cannot lift the audit.
+function scorecardClock(data: Record<string, unknown>, card: Record<string, unknown> | null) {
+  const capturedAt = Date.now();
+  const meta = data.scorecardMeta;
+  const fetchedAt = meta && typeof meta === 'object' && 'fetchedAt' in meta ? Number(meta.fetchedAt) : NaN;
+  const knownClock = Number.isFinite(fetchedAt) && fetchedAt > 0 && fetchedAt <= capturedAt;
+  return {
+    windowDays: typeof card?.rollingWindowDays === 'number' && Number.isFinite(card.rollingWindowDays) && card.rollingWindowDays > 0 ? card.rollingWindowDays : 180,
+    stale: !knownClock || capturedAt - fetchedAt > 36 * 3600000, freshnessUnknown: !knownClock,
+    asOf: knownClock ? new Date(fetchedAt).toISOString() : null, capturedAt: new Date(capturedAt).toISOString(),
+  };
+}
+
+function scorecardRecord(data: Record<string, unknown>): Record<string, unknown> | null {
+  const raw = data.scorecard;
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
+}
+
+/** The audit for the stored scorecard, held while its seed is stale (#8990). */
+export function storedScorecardAudit(data: Record<string, unknown>): ForecastAccuracyAudit | null {
+  const card = scorecardRecord(data);
+  return forecastAccuracyAudit(card, { stale: scorecardClock(data, card).stale });
+}
+
 /**
  * While an audit holds for this scorecard (#8990) no domain score leaves this
  * tool: status reads unavailable, byDomain is empty, and underAudit says why.
  * The freshness fields stay, so the badge's clock contract is unchanged.
  */
-export function forecastReliability(data: Record<string, unknown>, domains: string[], audit: ForecastAccuracyAudit | null = forecastAccuracyAudit(data.scorecard)) {
-  const raw = data.scorecard;
+export function forecastReliability(data: Record<string, unknown>, domains: string[], audit: ForecastAccuracyAudit | null = storedScorecardAudit(data)) {
   const underAudit = audit ? { underAudit: { since: audit.since, issue: audit.issue, reason: audit.reason } } : {};
   const unavailable = { status: 'unavailable', ...underAudit };
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return unavailable;
-  const card = raw as Record<string, unknown>;
+  const card = scorecardRecord(data);
+  if (!card) return unavailable;
   if (card.degraded || card.error || typeof card.schemaVersion !== 'number'
     || !Number.isFinite(card.schemaVersion) || card.schemaVersion < 2 || !Array.isArray(card.publishedByDomain)) return unavailable;
   const rows = new Map<string, Record<string, unknown>>();
@@ -577,15 +601,7 @@ export function forecastReliability(data: Record<string, unknown>, domains: stri
     const row = value as Record<string, unknown>;
     if (typeof row.domain === 'string' && row.domain !== 'bet_engine' && domains.includes(row.domain)) rows.set(row.domain, row);
   }
-  const capturedAt = Date.now();
-  const meta = data.scorecardMeta;
-  const fetchedAt = meta && typeof meta === 'object' && 'fetchedAt' in meta ? Number(meta.fetchedAt) : NaN;
-  const knownClock = Number.isFinite(fetchedAt) && fetchedAt > 0 && fetchedAt <= capturedAt;
-  const clock = {
-    windowDays: typeof card.rollingWindowDays === 'number' && Number.isFinite(card.rollingWindowDays) && card.rollingWindowDays > 0 ? card.rollingWindowDays : 180,
-    stale: !knownClock || capturedAt - fetchedAt > 36 * 3600000, freshnessUnknown: !knownClock,
-    asOf: knownClock ? new Date(fetchedAt).toISOString() : null, capturedAt: new Date(capturedAt).toISOString(),
-  };
+  const clock = scorecardClock(data, card);
   if (audit) return { status: 'unavailable', ...underAudit, ...clock, byDomain: [] };
   return {
     status: 'ready', ...clock,
@@ -609,14 +625,15 @@ const FORECAST_SCORECARD_DESCRIPTION = 'Forecast resolution scorecard with calib
  * makes it the notice. Otherwise the audit follows each scorecard, which a
  * static description cannot know, so it states the rule.
  */
-export function forecastScorecardDescription(override: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT_OVERRIDE): string {
+export function forecastScorecardDescription(configured?: ForecastAccuracyAudit | null): string {
+  const override = accuracyAuditOverride(configured);
   return override
-    ? `Under audit since ${override.since} (issue ${override.issue}): scores are unreliable and withdrawn while corrections are made. ${FORECAST_SCORECARD_DESCRIPTION}`
-    : `Check underAudit before quoting a score: while it is set (issue 8990), the scores are under audit and withdrawn. ${FORECAST_SCORECARD_DESCRIPTION}`;
+    ? `Under audit since ${override.since} (issue ${override.issue}): scores are unreliable; do not quote them as a verdict. ${FORECAST_SCORECARD_DESCRIPTION}`
+    : `Check underAudit first: while it is set (issue 8990), the scores are under audit; do not quote them as a verdict. ${FORECAST_SCORECARD_DESCRIPTION}`;
 }
 
 /** The raw scorecard stays in the result; underAudit (#8990) tells a reader not to quote it as a verdict. */
-export function projectForecastScorecard(data: Record<string, unknown>, audit: ForecastAccuracyAudit | null = forecastAccuracyAudit(data.scorecard)) {
+export function projectForecastScorecard(data: Record<string, unknown>, audit: ForecastAccuracyAudit | null = storedScorecardAudit(data)) {
   const scorecard = data.scorecard;
   const isRecord = scorecard != null && typeof scorecard === 'object' && !Array.isArray(scorecard);
   return {
@@ -3497,7 +3514,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     outputSchema: cacheEnvelope({
       underAudit: {
         type: ['object', 'null'],
-        description: 'Set while the accuracy record is under audit: the scores below are unreliable and must not be quoted as a verdict. Clears once the headline is measurable.',
+        description: 'Set while the accuracy record is under audit: the scores below are unreliable and must not be quoted as a verdict. Without a manual override, it clears once the headline is measurable and the scorecard is fresh.',
         properties: { since: { type: 'string' }, issue: { type: 'number' }, reason: { type: 'string' } },
       },
       scorecard: {
@@ -3541,8 +3558,9 @@ export const CACHE_TOOLS: ToolDef[] = [
       },
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _cacheKeys: ['forecast:scorecard:v1', 'correlation:market-alerts:scorecard:v1'],
-    _cacheLabels: { 'correlation:market-alerts:scorecard:v1': 'marketAlerts' },
+    // The seed-meta clock decides staleness, and a stale scorecard holds the audit (#8990).
+    _cacheKeys: ['forecast:scorecard:v1', 'correlation:market-alerts:scorecard:v1', 'seed-meta:forecast:scorecard'],
+    _cacheLabels: { 'correlation:market-alerts:scorecard:v1': 'marketAlerts', 'seed-meta:forecast:scorecard': 'scorecardMeta' },
     _project: (data) => projectForecastScorecard(data),
     _freshnessChecks: [{ key: 'seed-meta:forecast:scorecard', maxStaleMin: 2160 }],
     _apiPaths: [

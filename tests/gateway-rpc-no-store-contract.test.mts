@@ -192,7 +192,7 @@ const PROTECTED_HIGH_TIER_EMPTY_HANDLERS = [
 
 const HEALTHY_EMPTY_ALLOWLIST = new Set([
   "server/worldmonitor/forecast/v1/get-forecasts.ts::{ forecasts: [], generatedAt: data.generatedAt || 0, degraded: false, stale: false, error: '' }",
-  "server/worldmonitor/forecast/v1/get-forecast-scorecard.ts::{ schemaVersion: 1, generatedAt: 0, rollingWindowDays: 180, methodology: '', totals: { entries: 0, resolved: 0, pending: 0, pendingJudge: 0, scored: 0, void: 0, voidRate: 0, publicationCoverage: 0, }, byDomain: [], byGenerationOrigin: [], calibration: [], publishedByDomain: [], receipts: [], familyOutcomes: [], degraded: false, stale: false, error: '', ...overrides, ...scorecardUnderAudit(forecastAccuracyAudit(seed)), }",
+  "server/worldmonitor/forecast/v1/get-forecast-scorecard.ts::{ schemaVersion: 1, generatedAt: 0, rollingWindowDays: 180, methodology: '', totals: { entries: 0, resolved: 0, pending: 0, pendingJudge: 0, scored: 0, void: 0, voidRate: 0, publicationCoverage: 0, }, byDomain: [], byGenerationOrigin: [], calibration: [], publishedByDomain: [], receipts: [], familyOutcomes: [], degraded: false, stale: false, error: '', ...overrides, ...scorecardUnderAudit(forecastAccuracyAudit(seed, { stale: overrides.stale === true })), }",
   "server/worldmonitor/climate/v1/list-climate-disasters.ts::{ disasters: [], pagination: { nextCursor: '', totalCount: allDisasters.length }, }",
 ]);
 

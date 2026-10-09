@@ -255,6 +255,8 @@ function countryPayload() {
       degraded: false,
       stale: false,
       error: '',
+      // The live API's audit at capture time (#8990), kept so /accuracy/ can hold it.
+      underAudit: { since: '2026-10-07', reason: 'Fixture reason.', issue: 8990 },
       judgedLane: 'shadow',
       betEngine: { count: 299, brier: 0.235571 },
       ...overrides,
@@ -793,6 +795,7 @@ describe('freeze crawlable live pulse coverage gates', () => {
       'the committed snapshot must carry the declared surface and nothing else',
     );
     assert.doesNotMatch(JSON.stringify(section), /betEngine|judgedLane|internal-ledger-key|coveredFromMs/);
+    assert.deepEqual(section.scorecard.underAudit, { since: '2026-10-07', reason: 'Fixture reason.', issue: 8990 });
     assert.equal(section.scorecard.receipts[0].observedValue, 100.75);
     assert.deepEqual(section.scorecard.marketAlerts, {
       generatedAt: SCORECARD_GENERATED_AT,

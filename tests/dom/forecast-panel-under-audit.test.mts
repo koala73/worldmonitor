@@ -13,7 +13,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 
 import type { Forecast, GetForecastScorecardResponse } from '@/services/forecast';
 import { ForecastPanel } from '@/components/ForecastPanel';
-import { recordHref } from '@/components/forecast-record';
+import { recordHref, renderForecastRecord, renderReliabilityBadge, renderResolutionChips } from '@/components/forecast-record';
 
 import { initTestI18n } from './helpers/i18n.mts';
 
@@ -136,6 +136,31 @@ describe('ForecastPanel under the accuracy audit (#8990)', () => {
     }
     expect(root.querySelector('.fc-res-slot[data-unverified]')).toBeNull();
     expect(root.textContent).not.toContain('Accuracy under audit');
+  });
+
+  it('holds the audit on a stale response, measurable or not', async () => {
+    const root = await render(async () => Response.json({ ...MEASURABLE, stale: true }));
+    expect(root.querySelector<HTMLElement>('[data-fc-record]')!.dataset.fcRecord).toBe('under-audit');
+    for (const badge of root.querySelectorAll<HTMLAnchorElement>('a.fc-reliability')) expect(badge.dataset.fcReliabilityState).toBe('under-audit');
+  });
+
+  it('sets the audit before projecting, so a projection that throws leaves no score and frees the request', async () => {
+    const broken = { ...MEASURABLE, stale: true, publishedByDomain: [null] };
+    stubScorecard(async () => Response.json(broken));
+    panel.updateForecasts(['cyber', 'conflict'].map((domain, i) => forecast(`fc-${i}`, domain)));
+    const root = contentOf(panel);
+    await vi.waitFor(() => expect(root.querySelector<HTMLElement>('[data-fc-record]')?.dataset.fcRecord).toBe('under-audit'));
+    await vi.waitFor(() => expect((panel as unknown as { recordPromise: unknown }).recordPromise).toBeNull());
+    expect((panel as unknown as { record: { kind: string } }).record.kind).toBe('unavailable');
+    expect(root.textContent).not.toMatch(/0\.074|0\.111/);
+  });
+
+  it('defaults every renderer to the standing audit, never to lifted', () => {
+    const ready = { kind: 'ready', brier: 0.11, graded: 243, yesShare: 0.1, voids: null, stale: false, generatedAt: 1, windowDays: 180 } as const;
+    expect(renderForecastRecord(ready)).toContain('data-fc-record="under-audit"');
+    const table = { windowDays: 180, stale: false, byDomain: new Map([['cyber', { kind: 'measured' as const, brier: 0.074, n: 205, yesShare: 0.04, bss: 0.2 }]]) };
+    expect(renderReliabilityBadge(table, 'cyber', 'Cyber')).toContain('data-fc-reliability-state="under-audit"');
+    expect(renderResolutionChips(new Map([['fc-0', [{ outcome: 'NO' }]]]) as never, 'fc-0')).toContain('data-unverified');
   });
 
   it('holds the audit one step below the minimums', async () => {

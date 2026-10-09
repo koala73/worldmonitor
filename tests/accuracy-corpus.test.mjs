@@ -16,6 +16,7 @@ import {
   SCORECARD_STALE_AFTER_HOURS,
   accuracyAuditNotice,
   accuracyDatasetDownload,
+  accuracyStateAudit,
   classifyAccuracyState,
   proportionIntervals,
   renderAccuracyPage,
@@ -27,7 +28,7 @@ import {
 import { GO_FORWARD_SINCE_MS, SKILL_MIN_FAMILIES, SKILL_MIN_OUTCOME_FAMILIES, computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { MARKET_ALERT_BASE_RATE_RULE, MARKET_ALERT_RESOLUTION_RULE, buildScorecard } from '../scripts/_market-alert-ledger.mjs';
 import { MARKET_ALERT_TYPES } from '../scripts/shared/market-alert-core.js';
-import { FORECAST_ACCURACY_AUDIT_OVERRIDE, STANDING_ACCURACY_AUDIT, forecastAccuracyAudit } from '../shared/forecast-accuracy-audit.js';
+import { FORECAST_ACCURACY_AUDIT_OVERRIDE, STANDING_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
 import { resolveLatestLivePulseSnapshotPath } from '../scripts/build-crawlable-corpus.mjs';
 import { wilsonInterval } from '../scripts/_forecast-scorecard.mjs';
 
@@ -903,7 +904,8 @@ describe('accuracy page honesty rules', () => {
     assert.doesNotMatch(JSON.stringify(download), /betEngine|judgedLane|lane-leak-marker|coveredFromMs/);
     assert.deepEqual(
       Object.keys(download.scorecard).sort(),
-      [...SCORECARD_DECLARED_FIELDS].sort(),
+      // This capture predates the captured underAudit (#8990), so it has none.
+      SCORECARD_DECLARED_FIELDS.filter((field) => field !== 'underAudit').sort(),
       'the distribution carries the declared surface and nothing else',
     );
     assert.deepEqual(download.scorecard.marketAlerts, MARKET_ALERTS);
@@ -1290,7 +1292,10 @@ describe('accuracy page forecast receipts (#5092)', () => {
       familyOutcomes: [{ forecastId: 'fc-1', outcome: 'VOID', voidReason: 'other' }],
     });
     assert.equal(Object.hasOwn(selected, 'familyOutcomes'), false);
-    assert.deepEqual([...SCORECARD_LIVE_ONLY_FIELDS], ['familyOutcomes', 'underAudit']);
+    assert.deepEqual([...SCORECARD_LIVE_ONLY_FIELDS], ['familyOutcomes']);
+    // The live API's audit is captured member by member, so the page can hold it (#8990).
+    const flagged = selectDeclaredScorecardFields({ ...WITH_INTERVALS.scorecard, underAudit: { since: '2026-10-07', reason: 'r', issue: 8990, extra: 'x' } });
+    assert.deepEqual(flagged.underAudit, { since: '2026-10-07', reason: 'r', issue: 8990 });
   });
 
   it('renders the receipts newest first with what was forecast, when, the chance, the outcome and the source', () => {
@@ -1982,7 +1987,7 @@ describe('accuracy record under audit (#8990)', () => {
     const SMALL = sectionWith({ uncertainty: { ...UNCERTAINTY, skillBrier: { ...UNCERTAINTY.skillBrier, insufficientSample: true } } });
     for (const [label, section] of [['measurable', FULL], ['small sample', SMALL], ['nothing captured', null]]) {
       const state = classifyAccuracyState(section);
-      const derived = forecastAccuracyAudit(state.scorecard);
+      const derived = accuracyStateAudit(state);
       const page = (audit) => renderAccuracyPage({
         baseUrl: BASE_URL, tpl, state, lastmod: '2026-10-07', dataset: DATASET, dataCatalog: DATA_CATALOG, snapshotPath: SNAPSHOT_PATH, ...audit,
       });
@@ -1995,9 +2000,9 @@ describe('accuracy record under audit (#8990)', () => {
       );
     }
     if (FORECAST_ACCURACY_AUDIT_OVERRIDE) return;
-    assert.equal(forecastAccuracyAudit(classifyAccuracyState(FULL).scorecard), null, 'a measurable capture lifts the audit');
-    assert.equal(forecastAccuracyAudit(classifyAccuracyState(SMALL).scorecard), STANDING_ACCURACY_AUDIT);
-    assert.equal(forecastAccuracyAudit(classifyAccuracyState(null).scorecard), STANDING_ACCURACY_AUDIT);
+    assert.equal(accuracyStateAudit(classifyAccuracyState(FULL)), null, 'a measurable capture lifts the audit');
+    assert.equal(accuracyStateAudit(classifyAccuracyState(SMALL)), STANDING_ACCURACY_AUDIT);
+    assert.equal(accuracyStateAudit(classifyAccuracyState(null)), STANDING_ACCURACY_AUDIT);
   });
 
   it('lifts every /accuracy/ surface for a measurable capture and holds them for a small sample', () => {
@@ -2186,7 +2191,7 @@ describe('accuracy record under audit (#8990)', () => {
   it('keeps every static surface free of score claims', () => {
     // llms-full.txt is generated from the committed capture, so it is score-free exactly while that capture holds the audit.
     const capture = JSON.parse(read(relative(repoRoot, resolveLatestLivePulseSnapshotPath(repoRoot)))).forecastScorecard;
-    const surfaces = forecastAccuracyAudit(classifyAccuracyState(capture).scorecard) ? [...STATIC_SURFACES, 'public/llms-full.txt'] : STATIC_SURFACES;
+    const surfaces = accuracyStateAudit(classifyAccuracyState(capture)) ? [...STATIC_SURFACES, 'public/llms-full.txt'] : STATIC_SURFACES;
     for (const path of surfaces) assert.deepEqual(claimsIn(read(path)), [], `${path} states accuracy as a verdict`);
     const post = read(BLOG);
     const noteAt = post.indexOf(BLOG_NOTE);

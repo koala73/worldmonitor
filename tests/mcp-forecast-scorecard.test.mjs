@@ -235,10 +235,13 @@ describe('get_forecast_scorecard under the accuracy audit (#8990)', () => {
 
   it('lifts once the seeder calls the headline measurable, and holds while it does not', () => {
     const held = FORECAST_ACCURACY_AUDIT_OVERRIDE ?? STANDING_ACCURACY_AUDIT;
-    const withSkill = (measurable) => ({ ...data, scorecard: { ...data.scorecard, skill: { ...data.scorecard.skill, measurable } } });
+    const withSkill = (measurable, fetchedAt = Date.now()) => ({ ...data, scorecardMeta: { fetchedAt }, scorecard: { ...data.scorecard, skill: { ...data.scorecard.skill, measurable } } });
     assert.deepEqual(tool._project(withSkill(false)).underAudit, { since: held.since, issue: held.issue, reason: held.reason });
     assert.deepEqual(tool._project(structuredClone(data)).underAudit, { since: held.since, issue: held.issue, reason: held.reason }, 'no verdict, no lift');
     if (FORECAST_ACCURACY_AUDIT_OVERRIDE) return;
     assert.equal(tool._project(withSkill(true)).underAudit, null);
+    assert.deepEqual(tool._project(withSkill(true, Date.now() - 37 * 3_600_000)).underAudit?.issue, held.issue, 'a stale seed cannot lift it');
+    assert.deepEqual(tool._project({ ...withSkill(true), scorecardMeta: null }).underAudit?.issue, held.issue, 'nor can an unknown clock');
+    assert.ok(tool._cacheKeys.includes('seed-meta:forecast:scorecard'), 'the tool reads the seed clock');
   });
 });

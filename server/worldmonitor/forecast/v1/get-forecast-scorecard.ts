@@ -24,7 +24,8 @@ export function scorecardUnderAudit(audit: ForecastAccuracyAudit | null): Pick<G
   return audit ? { underAudit: { since: audit.since, reason: audit.reason, issue: audit.issue } } : {};
 }
 
-// seed is the stored value, which carries skill.measurable; the response does not.
+// seed is the stored value, which carries skill.measurable; the response does
+// not. A stale response keeps the audit on: an old reading cannot lift it.
 function emptyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}, seed: unknown = null): GetForecastScorecardResponse {
   return {
     schemaVersion: 1,
@@ -51,7 +52,7 @@ function emptyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}, s
     stale: false,
     error: '',
     ...overrides,
-    ...scorecardUnderAudit(forecastAccuracyAudit(seed)),
+    ...scorecardUnderAudit(forecastAccuracyAudit(seed, { stale: overrides.stale === true })),
   };
 }
 

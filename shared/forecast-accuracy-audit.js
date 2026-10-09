@@ -54,12 +54,46 @@ export function headlineFamilyGate(scorecard) {
   return interval.insufficientSample === true ? 'short' : 'unknown';
 }
 
+const AUDIT_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A notice every surface can print: a calendar date, an issue number and a reason. */
+export function isAccuracyAudit(value) {
+  return isRecord(value)
+    && typeof value.since === 'string' && AUDIT_DATE.test(value.since)
+    && Number.isInteger(value.issue) && value.issue > 0
+    && typeof value.reason === 'string' && value.reason.trim() !== '';
+}
+
 /**
- * The audit in force for this scorecard, or null when none is. The override
- * wins; otherwise the standing audit holds until the headline is measurable.
- * A missing, degraded or unreadable scorecard is not measurable.
+ * The override in force, or null. A truthy override that is not a well-formed
+ * notice still forces an audit, the standing one, so a typo never prints
+ * "Under audit since undefined" and never lifts anything.
  */
-export function forecastAccuracyAudit(scorecard, override = FORECAST_ACCURACY_AUDIT_OVERRIDE) {
-  if (override) return override;
+export function accuracyAuditOverride(override = FORECAST_ACCURACY_AUDIT_OVERRIDE) {
+  if (!override) return null;
+  return isAccuracyAudit(override) ? override : STANDING_ACCURACY_AUDIT;
+}
+
+/**
+ * The audit in force for this scorecard, or null when none is.
+ *
+ * - The override wins.
+ * - A stale scorecard holds the standing audit: an old reading cannot lift it.
+ *   stale defaults to the scorecard's own flag; a caller that measured
+ *   freshness itself (the REST handler, MCP, /accuracy/) passes its verdict.
+ * - capturedAudit is a notice the scorecard was served with (the frozen REST
+ *   capture behind /accuracy/). A well-formed one holds.
+ * - Otherwise the standing audit holds until the headline is measurable. A
+ *   missing, degraded or unreadable scorecard is not measurable.
+ */
+export function forecastAccuracyAudit(scorecard, {
+  override = FORECAST_ACCURACY_AUDIT_OVERRIDE,
+  stale = isRecord(scorecard) && scorecard.stale === true,
+  capturedAudit = null,
+} = {}) {
+  const forced = accuracyAuditOverride(override);
+  if (forced) return forced;
+  if (stale) return STANDING_ACCURACY_AUDIT;
+  if (capturedAudit) return isAccuracyAudit(capturedAudit) ? capturedAudit : STANDING_ACCURACY_AUDIT;
   return headlineFamilyGate(scorecard) === 'met' ? null : STANDING_ACCURACY_AUDIT;
 }

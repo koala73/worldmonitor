@@ -13,8 +13,7 @@ import { comparisonDiscoveryEntries } from '../scripts/build-comparison-pages.mj
 import { COMPARISONS_HEADING, buildLlmsFullText, redactInternalApiOrigins, withComparisonsSection, withCorpusNavigation } from '../scripts/build-llms-full.mjs';
 import { resolveLatestLivePulseSnapshotPath } from '../scripts/build-crawlable-corpus.mjs';
 import { parseSitemapDocument } from '../scripts/verify-sitemaps.mjs';
-import { forecastAccuracyAudit } from '../shared/forecast-accuracy-audit.js';
-import { classifyAccuracyState } from '../scripts/build-accuracy-page.mjs';
+import { accuracyStateAudit, classifyAccuracyState } from '../scripts/build-accuracy-page.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -91,7 +90,7 @@ describe('GEO residue #7463', () => {
     assert.match(generated, /^## Forecast accuracy$/m);
     assert.match(section, /https:\/\/www\.worldmonitor\.app\/accuracy\//);
     // While the capture holds the #8990 audit, the section carries the withdrawal notice in place of every score.
-    const audit = forecastAccuracyAudit(classifyAccuracyState(snapshot.forecastScorecard).scorecard);
+    const audit = accuracyStateAudit(classifyAccuracyState(snapshot.forecastScorecard));
     if (audit) {
       assert.match(section, new RegExp(`^Under audit since ${audit.since}\\.`, 'm'));
       assert.ok(section.includes(`/issues/${audit.issue}`));

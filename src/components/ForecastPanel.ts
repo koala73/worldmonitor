@@ -6,7 +6,7 @@ import { getForecastMacroRegion } from '../../shared/forecast-macro-regions.js';
 import { unsafeRawHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { mergeCachedCaseFiles, needsCaseFileRefetch, shouldFetchCaseFile } from './forecast-case-files';
-import { FORECAST_ACCURACY_AUDIT_OVERRIDE, type ForecastAccuracyAudit } from '../../shared/forecast-accuracy-audit';
+import { accuracyAuditOverride, type ForecastAccuracyAudit } from '../../shared/forecast-accuracy-audit';
 import { panelAccuracyAudit, projectFamilyHistory, projectForecastRecord, projectReliability, renderForecastRecord, renderReliabilityBadge, renderResolutionChips, type FamilyHistory, type ForecastRecord, type ReliabilityTable } from './forecast-record';
 import { bindActivationKeys } from '@/utils/activation';
 
@@ -359,7 +359,7 @@ export class ForecastPanel extends Panel {
   private reliability: ReliabilityTable | null = null;
 
   /** The accuracy audit for the last scorecard (#8990); before one answers, only a manual override is known. */
-  private audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT_OVERRIDE;
+  private audit: ForecastAccuracyAudit | null = accuracyAuditOverride();
   /** Per-card resolution chips (#5092): each family's earlier resolved windows. */
   private familyHistory: FamilyHistory | null = null;
   /** Forecast ids whose VOID disclosure the reader left open; re-renders restore them. */
@@ -537,10 +537,17 @@ export class ForecastPanel extends Panel {
     this.recordPromise = fetchForecastScorecard(this.signal)
       .then(
         (resp) => {
-          this.record = projectForecastRecord(resp);
-          this.reliability = projectReliability(resp);
-          this.familyHistory = projectFamilyHistory(resp);
+          // The audit first (#8990): a projection that throws must not leave scores showing without it.
           this.audit = panelAccuracyAudit(resp);
+          try {
+            this.record = projectForecastRecord(resp);
+            this.reliability = projectReliability(resp);
+            this.familyHistory = projectFamilyHistory(resp);
+          } catch {
+            this.record = { kind: 'unavailable' };
+            this.reliability = null;
+            this.familyHistory = null;
+          }
         },
         (err: unknown) => {
           if (this.isAbortError(err)) return;
@@ -551,7 +558,6 @@ export class ForecastPanel extends Panel {
         },
       )
       .then(() => {
-        this.recordPromise = null;
         if (this.signal.aborted) return;
         // Patch the strip in place: render() rebuilds the table and would close
         // any Analysis or Signals pane the user opened. No slot yet means the
@@ -569,6 +575,9 @@ export class ForecastPanel extends Panel {
           // Both renderers escape every interpolated value.
           setTrustedHtml(badgeSlot, trustedHtml(this.cardMeta(badgeSlot.dataset.fcForecast ?? '', domain), 'ForecastPanel resolution chips and reliability badge; escaped markup (#5092)'));
         }
+      })
+      .finally(() => {
+        this.recordPromise = null;
       });
   }
 

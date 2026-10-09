@@ -3,7 +3,7 @@ import { getLocale, t } from '@/services/i18n';
 import { isDesktopRuntime } from '@/services/runtime';
 import { CANONICAL_ORIGIN } from '@/config/schema-graph-ids';
 import { escapeHtml } from '@/utils/sanitize';
-import { FORECAST_ACCURACY_AUDIT_OVERRIDE, forecastAccuracyAudit, headlineFamilyGate, type ForecastAccuracyAudit } from '../../shared/forecast-accuracy-audit';
+import { STANDING_ACCURACY_AUDIT, forecastAccuracyAudit, headlineFamilyGate, type ForecastAccuracyAudit } from '../../shared/forecast-accuracy-audit';
 
 interface GradedRecord {
   stale: boolean;
@@ -69,13 +69,13 @@ function meetsFamilyMinimums(resp: GetForecastScorecardResponse): boolean {
 }
 
 /**
- * The audit the panel shows for this response. The server's flag wins; the
+ * The audit the panel shows for this response. The server's flag holds; the
  * local derivation backs it up, so a response from a server without the flag
- * still withholds an unmeasurable record. Without a response the record is
- * not measurable, so the standing audit holds.
+ * still withholds an unmeasurable or stale record. Without a response the
+ * record is not measurable, so the standing audit holds.
  */
 export function panelAccuracyAudit(resp: GetForecastScorecardResponse | null): ForecastAccuracyAudit | null {
-  return resp?.underAudit ?? forecastAccuracyAudit(resp);
+  return forecastAccuracyAudit(resp, { capturedAudit: resp?.underAudit ?? null });
 }
 
 /** Mirror SKILL_MIN_FAMILIES and SKILL_MIN_OUTCOME_FAMILIES in scripts/_forecast-scorecard.mjs; a test pins them together. */
@@ -133,7 +133,7 @@ export function renderReliabilityBadge(
   table: ReliabilityTable | null,
   domain: string,
   domainLabel: string,
-  audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT_OVERRIDE,
+  audit: ForecastAccuracyAudit | null = STANDING_ACCURACY_AUDIT,
 ): string {
   if (audit) {
     const text = t('components.forecast.audit.label');
@@ -204,7 +204,7 @@ export function renderResolutionChips(
   history: FamilyHistory | null,
   forecastId: string,
   open = false,
-  audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT_OVERRIDE,
+  audit: ForecastAccuracyAudit | null = STANDING_ACCURACY_AUDIT,
 ): string {
   const windows = history?.get(forecastId);
   if (!windows?.length) return `<span class="fc-res-slot">${RES_GAP}${RES_GAP}</span>`;
@@ -291,7 +291,7 @@ function wrap(kind: ForecastRecord['kind'], inner: string): string {
   return `<div class="fc-record" data-fc-record="${kind}" role="group" aria-label="${escapeHtml(t('components.forecast.record.label'))}">${inner}</div>`;
 }
 
-export function renderForecastRecord(record: ForecastRecord, audit: ForecastAccuracyAudit | null = FORECAST_ACCURACY_AUDIT_OVERRIDE): string {
+export function renderForecastRecord(record: ForecastRecord, audit: ForecastAccuracyAudit | null = STANDING_ACCURACY_AUDIT): string {
   if (audit) {
     const hint = auditHint(audit);
     return `<div class="fc-record" data-fc-record="under-audit" role="group" aria-label="${escapeHtml(t('components.forecast.record.label'))}">`

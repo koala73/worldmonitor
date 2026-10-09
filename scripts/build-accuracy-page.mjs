@@ -15,7 +15,7 @@ import {
   meetsFamilyOutcomeMinimums,
   wilsonInterval,
 } from './_forecast-scorecard.mjs';
-import { forecastAccuracyAudit, headlineFamilyGate } from '../shared/forecast-accuracy-audit.js';
+import { STANDING_ACCURACY_AUDIT, forecastAccuracyAudit, headlineFamilyGate } from '../shared/forecast-accuracy-audit.js';
 
 /** Bump when the page copy changes so its lastmod advances without touching every sibling. */
 export const ACCURACY_CONTENT_VERSION = '2026-10-09';
@@ -47,15 +47,15 @@ export const SCORECARD_DECLARED_FIELDS = Object.freeze([
   'funnel',
   'receipts',
   'marketAlerts',
+  // The live API's audit at capture time (#8990). The page holds the audit when
+  // it is set, whatever its own gate reads.
+  'underAudit',
 ]);
 
 // Proto fields the frozen page and its download deliberately leave out.
 // familyOutcomes keys the live forecast-card chips by forecast id; a weekly
 // snapshot has no live cards, and the distribution publishes no forecast ids.
-// underAudit is derived from the captured scorecard at build time, with the
-// same forecastAccuracyAudit() the API applies, so a captured copy would only
-// duplicate it.
-export const SCORECARD_LIVE_ONLY_FIELDS = Object.freeze(['familyOutcomes', 'underAudit']);
+export const SCORECARD_LIVE_ONLY_FIELDS = Object.freeze(['familyOutcomes']);
 
 // A fixed vocabulary, because the page is public: an exception message or an
 // upstream response body would publish internals and could carry attacker-
@@ -113,6 +113,7 @@ export const SCORECARD_NESTED_OBJECT_FIELDS = Object.freeze({
   uncertainty: UNCERTAINTY_FIELDS,
   funnel: FUNNEL_FIELDS,
   marketAlerts: MARKET_ALERT_FIELDS,
+  underAudit: Object.freeze(['since', 'reason', 'issue']),
 });
 // Members that are themselves objects. The producer writes null for an
 // interval it cannot compute, and null is kept: it is the not-measurable state.
@@ -699,9 +700,23 @@ function accuracyNegativeScope(gradesCaptured) {
   return `${NEGATIVE_SCOPE_LEAD}${grades}${NEGATIVE_SCOPE_TAIL}`;
 }
 
+/**
+ * The audit for a frozen capture (#8990), the one every /accuracy/ renderer
+ * defaults to. It holds while the capture is stale, failed or retained from an
+ * earlier week, while the live API had flagged it at capture time, and while
+ * its headline is not measurable.
+ */
+export function accuracyStateAudit(state) {
+  if (!isPlainObject(state)) return STANDING_ACCURACY_AUDIT;
+  return forecastAccuracyAudit(state.scorecard, {
+    stale: state.availability !== 'ok' || state.freshness !== 'current',
+    capturedAudit: state.scorecard?.underAudit ?? null,
+  });
+}
+
 export function renderAccuracyLlmsSection(section, audit) {
   const state = classifyAccuracyState(section);
-  if (audit === undefined) audit = forecastAccuracyAudit(state.scorecard);
+  if (audit === undefined) audit = accuracyStateAudit(state);
   const page = new URL(ACCURACY_PAGE_PATH, WORLD_MONITOR_ORG.url).href;
   const paragraphs = [`The standing forecast-resolution record is published at ${page}.`];
   if (audit) {
@@ -1547,7 +1562,7 @@ function accuracyDatasetLd({ baseUrl, tpl, state, dataset, audit }) {
   };
 }
 
-export function renderAccuracyPage({ baseUrl, tpl, state, lastmod, dataset, dataCatalog, snapshotPath, audit = forecastAccuracyAudit(state.scorecard) }) {
+export function renderAccuracyPage({ baseUrl, tpl, state, lastmod, dataset, dataCatalog, snapshotPath, audit = accuracyStateAudit(state) }) {
   const { breadcrumbLd, absoluteUrl, pageDocument } = tpl;
   const description = audit ? AUDIT_META_DESCRIPTION : META_DESCRIPTION;
   assertMetaDescription(description);
@@ -1644,7 +1659,7 @@ function horizonProjectionsDownload(horizonGrades) {
   };
 }
 
-export function accuracyDatasetDownload({ state, snapshotPath, audit = forecastAccuracyAudit(state.scorecard) }) {
+export function accuracyDatasetDownload({ state, snapshotPath, audit = accuracyStateAudit(state) }) {
   const skill = isPlainObject(state.scorecard?.skill) ? state.scorecard.skill : null;
   const payload = {
     dataset: DATASET_IDENTIFIER,

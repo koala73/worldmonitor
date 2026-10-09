@@ -17,7 +17,8 @@ vi.mock('../../shared/forecast-accuracy-audit', async (importOriginal) => {
   return {
     ...actual,
     FORECAST_ACCURACY_AUDIT_OVERRIDE: FORCED,
-    forecastAccuracyAudit: (scorecard: unknown) => actual.forecastAccuracyAudit(scorecard, FORCED),
+    accuracyAuditOverride: () => FORCED,
+    forecastAccuracyAudit: (scorecard: unknown, options = {}) => actual.forecastAccuracyAudit(scorecard, { ...options, override: FORCED }),
   };
 });
 

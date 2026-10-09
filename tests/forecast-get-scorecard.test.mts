@@ -35,10 +35,10 @@ import {
   selectScorecardFields,
 } from '../server/worldmonitor/forecast/v1/scorecard-fields.ts';
 import { PUBLIC_FAMILY_OUTCOME_FIELDS, PUBLIC_RECEIPT_FIELDS, SKILL_MIN_FAMILIES, SKILL_MIN_OUTCOME_FAMILIES } from '../scripts/_forecast-scorecard.mjs';
-import { FORECAST_ACCURACY_AUDIT_OVERRIDE, STANDING_ACCURACY_AUDIT, forecastAccuracyAudit } from '../shared/forecast-accuracy-audit.js';
+import { FORECAST_ACCURACY_AUDIT_OVERRIDE, STANDING_ACCURACY_AUDIT, accuracyAuditOverride, forecastAccuracyAudit, headlineFamilyGate, isAccuracyAudit } from '../shared/forecast-accuracy-audit.js';
 import { computeScorecard } from '../scripts/_forecast-scorecard.mjs';
-import { accuracyDatasetDownload, classifyAccuracyState, renderAccuracyLlmsSection } from '../scripts/build-accuracy-page.mjs';
-import { forecastReliability, projectForecastScorecard } from '../api/mcp/registry/cache-tools.ts';
+import { accuracyDatasetDownload, accuracyStateAudit, classifyAccuracyState, renderAccuracyLlmsSection } from '../scripts/build-accuracy-page.mjs';
+import { forecastReliability, forecastScorecardDescription, projectForecastScorecard } from '../api/mcp/registry/cache-tools.ts';
 
 const originalFetch = globalThis.fetch;
 const originalConsoleError = console.error;
@@ -642,8 +642,8 @@ describe('the accuracy audit lifts with the scorecard on every surface (#8990)',
     const llms = renderAccuracyLlmsSection(section);
     return {
       rest: rest.underAudit ?? null,
-      mcpScorecard: projectForecastScorecard({ scorecard: data }).underAudit,
-      mcpReliability: (forecastReliability({ scorecard: data, scorecardMeta: { fetchedAt: NOW } }, ['market']) as { underAudit?: unknown }).underAudit ?? null,
+      mcpScorecard: projectForecastScorecard({ scorecard: data, scorecardMeta: { fetchedAt: Date.now() } }).underAudit,
+      mcpReliability: (forecastReliability({ scorecard: data, scorecardMeta: { fetchedAt: Date.now() } }, ['market']) as { underAudit?: unknown }).underAudit ?? null,
       download: download.underAudit,
       llmsUnderAudit: /^Under audit since /m.test(llms),
       coverage: state.coverage,
@@ -676,13 +676,13 @@ describe('the accuracy audit lifts with the scorecard on every surface (#8990)',
 
   it('reads skill.measurable where the stored value carries it, and the interval flag on the capture', () => {
     const lifted = seed(30, 5);
-    assert.equal(forecastAccuracyAudit(lifted, null), null);
+    assert.equal(forecastAccuracyAudit(lifted, { override: null }), null);
     // The seeder's own verdict decides: flip it and the audit holds, interval notwithstanding.
-    assert.equal(forecastAccuracyAudit({ ...lifted, skill: { ...lifted.skill, measurable: false } }, null), STANDING_ACCURACY_AUDIT);
+    assert.equal(forecastAccuracyAudit({ ...lifted, skill: { ...lifted.skill, measurable: false } }, { override: null }), STANDING_ACCURACY_AUDIT);
     // The REST capture has no skill.measurable; its interval flag agrees with it.
     const capture = selectDeclaredScorecardFields(lifted);
     assert.equal(Object.hasOwn(capture.skill, 'measurable'), false);
-    assert.equal(forecastAccuracyAudit(capture, null), null);
+    assert.equal(forecastAccuracyAudit(capture, { override: null }), null);
     for (const [families, yes] of [[30, 5], [29, 5], [30, 4], [30, 26], [40, 20], [1, 1]]) {
       const data = seed(families, yes) as { skill: { measurable: boolean }; uncertainty: { skillBrier: { insufficientSample: boolean } } };
       assert.equal(data.skill.measurable, !data.uncertainty.skillBrier.insufficientSample, `${families}/${yes}`);
@@ -692,16 +692,102 @@ describe('the accuracy audit lifts with the scorecard on every surface (#8990)',
   it('holds the audit for a missing, degraded or errored scorecard', () => {
     const lifted = seed(30, 5);
     for (const card of [null, undefined, {}, [], { ...lifted, degraded: true }, { ...lifted, error: 'forecast_scorecard_backend_unavailable' }, { ...lifted, skill: { ...lifted.skill, count: 0 } }]) {
-      assert.equal(forecastAccuracyAudit(card, null), STANDING_ACCURACY_AUDIT);
+      assert.equal(forecastAccuracyAudit(card, { override: null }), STANDING_ACCURACY_AUDIT);
     }
+  });
+
+  // Fail-safe (#8990): an old reading cannot lift the audit on any surface.
+  it('holds the audit on a stale REST response even when the stale seed is measurable', async () => {
+    if (FORECAST_ACCURACY_AUDIT_OVERRIDE) return;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+    const { getForecastScorecard } = await import('../server/worldmonitor/forecast/v1/get-forecast-scorecard.ts');
+    const ageMs = (hours: number) => Date.now() - hours * 3_600_000;
+    serveRedis({ [REDIS_KEY]: { _seed: { fetchedAt: ageMs(37) }, data: seed(30, 5) } });
+    const stale = await getForecastScorecard(makeCtx() as never, {});
+    assert.equal(stale.stale, true);
+    assert.deepEqual(stale.underAudit, NOTICE);
+    serveRedis({ [REDIS_KEY]: { _seed: { fetchedAt: ageMs(35) }, data: seed(30, 5) } });
+    const fresh = await getForecastScorecard(makeCtx() as never, {});
+    assert.equal(fresh.stale, false);
+    assert.equal(fresh.underAudit, undefined);
+  });
+
+  it('holds the audit on both MCP tools when the seed clock is stale or unknown', () => {
+    if (FORECAST_ACCURACY_AUDIT_OVERRIDE) return;
+    const data = seed(30, 5);
+    const at = (hours: number | null) => (hours === null ? {} : { scorecardMeta: { fetchedAt: Date.now() - hours * 3_600_000 } });
+    for (const [label, hours, held] of [['fresh', 1, false], ['stale', 37, true], ['unknown clock', null, true]] as const) {
+      const card = projectForecastScorecard({ scorecard: data, ...at(hours) }).underAudit;
+      const reliability = forecastReliability({ scorecard: data, ...at(hours) }, ['market']) as { underAudit?: unknown; status: string };
+      assert.deepEqual(card, held ? NOTICE : null, `scorecard tool, ${label}`);
+      assert.deepEqual(reliability.underAudit ?? null, held ? NOTICE : null, `reliability, ${label}`);
+      assert.equal(reliability.status, held ? 'unavailable' : 'ready', label);
+    }
+  });
+
+  it('holds the audit on /accuracy/, scorecard.json and llms-full for a stale, failed or retained capture', async () => {
+    if (FORECAST_ACCURACY_AUDIT_OVERRIDE) return;
+    const capture = selectDeclaredScorecardFields(seed(30, 5));
+    const base = { attemptedAt: '2026-10-08', attemptedAtMs: NOW, capturedAt: '2026-10-08', generatedAt: NOW, scorecard: capture, failureCode: '' };
+    const read = (section: Record<string, unknown>) => {
+      const state = classifyAccuracyState(section);
+      return {
+        download: JSON.parse(accuracyDatasetDownload({ state, snapshotPath: 'fixture.json' })).underAudit,
+        llms: /^Under audit since /m.test(renderAccuracyLlmsSection(section)),
+        state: accuracyStateAudit(state),
+      };
+    };
+    assert.deepEqual(read(base), { download: null, llms: false, state: null }, 'a fresh measurable capture lifts');
+    const cases: Array<[string, Record<string, unknown>]> = [
+      ['older than the API stale budget', { ...base, attemptedAtMs: NOW + 37 * 3_600_000 }],
+      ['flagged stale by the API', { ...base, scorecard: { ...capture, stale: true } }],
+      ['retained after a failed capture', { ...base, failureCode: 'http-error', capturedAt: '2026-10-01' }],
+      ['flagged by the live API at capture time', { ...base, scorecard: { ...capture, underAudit: { since: '2027-01-02', reason: 'Live incident.', issue: 9999 } } }],
+      ['carrying a malformed live flag', { ...base, scorecard: { ...capture, underAudit: {} } }],
+    ];
+    for (const [label, section] of cases) {
+      const got = read(section);
+      assert.ok(got.download, label);
+      assert.equal(got.llms, true, label);
+      assert.ok(got.state, label);
+    }
+    const live = read(cases[3][1]);
+    assert.deepEqual(live.download, { since: '2027-01-02', reason: 'Live incident.', issue: 9999 }, 'the captured live notice is the one shown');
+    assert.deepEqual(read(cases[4][1]).download, NOTICE, 'a malformed live flag still holds, with the standing notice');
+  });
+
+  it('reads the interval fallback as unknown when it covers other rows than the headline', () => {
+    const capture = selectDeclaredScorecardFields(seed(30, 5)) as { skill: { count: number; brier: number }; uncertainty: { skillBrier: { count: number; mean: number } } };
+    assert.equal(headlineFamilyGate(capture), 'met');
+    const withInterval = (patch: Record<string, unknown>) => ({ ...capture, uncertainty: { ...capture.uncertainty, skillBrier: { ...capture.uncertainty.skillBrier, ...patch } } });
+    for (const [label, card] of [
+      ['count differs', withInterval({ count: capture.skill.count + 1 })],
+      ['mean differs', withInterval({ mean: capture.skill.brier + 0.001 })],
+      ['mean differs past rounding', withInterval({ mean: capture.skill.brier + 2e-6 })],
+    ] as const) {
+      assert.equal(headlineFamilyGate(card), 'unknown', label);
+      assert.equal(forecastAccuracyAudit(card, { override: null }), STANDING_ACCURACY_AUDIT, label);
+    }
+    assert.equal(headlineFamilyGate(withInterval({ mean: capture.skill.brier + 5e-7 })), 'met', 'six-decimal rounding still matches');
+  });
+
+  it('never prints a malformed override: it holds the standing notice instead', () => {
+    for (const bad of [{}, { since: 'yesterday', issue: 1, reason: 'x' }, { since: '2027-01-02', issue: 0, reason: 'x' }, { since: '2027-01-02', issue: 1, reason: ' ' }, true]) {
+      assert.equal(accuracyAuditOverride(bad as never), STANDING_ACCURACY_AUDIT, JSON.stringify(bad));
+      assert.equal(forecastAccuracyAudit(seed(30, 5), { override: bad as never }), STANDING_ACCURACY_AUDIT, JSON.stringify(bad));
+    }
+    assert.ok(!forecastScorecardDescription({} as never).includes('undefined'));
+    assert.equal(accuracyAuditOverride(null), null);
+    if (FORECAST_ACCURACY_AUDIT_OVERRIDE) assert.ok(isAccuracyAudit(FORECAST_ACCURACY_AUDIT_OVERRIDE), 'the configured override is well-formed');
   });
 
   it('lets a manual override force the audit on while measurable, and never off', () => {
     const FORCED = Object.freeze({ since: '2027-01-02', issue: 9999, reason: 'Fixture incident.' });
-    assert.equal(forecastAccuracyAudit(seed(30, 5), FORCED), FORCED);
-    assert.equal(forecastAccuracyAudit(seed(29, 5), FORCED), FORCED);
+    assert.equal(forecastAccuracyAudit(seed(30, 5), { override: FORCED }), FORCED);
+    assert.equal(forecastAccuracyAudit(seed(29, 5), { override: FORCED }), FORCED);
     for (const off of [null, undefined, false, 0, '']) {
-      assert.equal(forecastAccuracyAudit(seed(29, 5), off as never), STANDING_ACCURACY_AUDIT, `override ${String(off)} cannot lift an unmeasurable record`);
+      assert.equal(forecastAccuracyAudit(seed(29, 5), { override: off as never }), STANDING_ACCURACY_AUDIT, `override ${String(off)} cannot lift an unmeasurable record`);
     }
   });
 });
