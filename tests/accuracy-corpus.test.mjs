@@ -2326,7 +2326,7 @@ describe('accuracy page horizon grades (#9057)', () => {
       'one family short': { families: SKILL_MIN_FAMILIES - 1 },
       'one YES family short': { yesFamilies: SKILL_MIN_OUTCOME_FAMILIES - 1 },
       'one NO family short': { noFamilies: SKILL_MIN_OUTCOME_FAMILIES - 1 },
-      'interval outside the Brier': { brier: { mean: 0.142, ci95: [0.15, 0.18] } },
+      'inverted interval': { brier: { mean: 0.142, ci95: [0.18, 0.11] } },
     };
     for (const [label, override] of Object.entries(cases)) {
       const grades = { ...GRADES, rows: [{ ...MEASURABLE_D7, ...override }] };
@@ -2338,11 +2338,29 @@ describe('accuracy page horizon grades (#9057)', () => {
     }
     const exact = selectHorizonGrades({ ...GRADES, rows: [MEASURABLE_D7] }).rows[0];
     assert.equal(exact.measurable, true, 'exactly at the minimums is measurable');
+    // Rounded apart, a percentile bootstrap interval can sit off its own mean;
+    // that is no reason to hide a grade the counts allow.
+    const offMean = selectHorizonGrades({ ...GRADES, rows: [{ ...MEASURABLE_D7, brier: { mean: 0.142, ci95: [0.143, 0.18] } }] }).rows[0];
+    assert.equal(offMean.measurable, true);
   });
 
   it('recomputes the published rate and its Wilson interval from the counts', () => {
     const [row] = selectHorizonGrades({ ...GRADES, rows: [{ ...MEASURABLE_D7, realizedRate: { count: 40, successes: 39, rate: 0.975, ci95: [0.9, 1] } }] }).rows;
     assert.deepEqual(row.realizedRate, { count: 40, successes: 8, rate: 0.2, ci95: wilsonInterval(8, 40) });
+  });
+
+  it('claims grading in the limits list and llms text only when this edition carries the grades', () => {
+    const withLimits = renderState(withGrades()).html;
+    assert.match(withLimits, /Their grades are in the <a href="#horizon-grades">projection grades<\/a> section/);
+    assert.match(renderAccuracyLlmsSection(withGrades(), LIFTED), /The page grades the projections it made at each horizon/);
+    for (const section of [LIVE_SECTION, withGrades(GRADES, LIVE_SCORECARD.generatedAt - 1)]) {
+      const html = renderState(section).html;
+      assert.match(html, /This edition carries no grades for them; the <a href="#horizon-grades">projection grades<\/a> section says why\./);
+      assert.doesNotMatch(html, /Their grades are in the/);
+      const llms = renderAccuracyLlmsSection(section, LIFTED);
+      assert.match(llms, /This edition carries no grades for those projections\./);
+      assert.doesNotMatch(llms, /The page grades the projections/);
+    }
   });
 
   it('shows no grade read from a different scoring run than the record', () => {
@@ -2377,7 +2395,10 @@ describe('accuracy page horizon grades (#9057)', () => {
   });
 
   it('drops rows it cannot read and states an empty table plainly', () => {
-    const grades = selectHorizonGrades({ ...GRADES, rows: [{ ...SHORT_H24, horizon: 'd90' }, { ...SHORT_H24, curvesVersion: null }, { ...SHORT_H24, yes: 4 }, 'x'] });
+    const grades = selectHorizonGrades({ ...GRADES, rows: [
+      { ...SHORT_H24, horizon: 'd90' }, { ...SHORT_H24, curvesVersion: null }, { ...SHORT_H24, yes: 4 }, 'x',
+      { ...MEASURABLE_D7, yesFamilies: SKILL_MIN_FAMILIES + 1 }, { ...MEASURABLE_D7, noFamilies: SKILL_MIN_FAMILIES + 1 },
+    ] });
     assert.deepEqual(grades.rows, []);
     const { html } = renderState(withGrades({ ...GRADES, rows: [] }));
     assert.match(html, /data-horizon-grades-status="empty"/);

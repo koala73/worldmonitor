@@ -142,18 +142,39 @@ export const HORIZON_GRADE_FIELDS = ['semantics', 'note', 'minimums', 'unversion
 export const HORIZON_GRADE_ROW_FIELDS = [
   'curvesVersion', 'horizon', 'scored', 'yes', 'no', 'families', 'yesFamilies', 'noFamilies', 'measurable', 'brier', 'realizedRate',
 ] as const;
-// A row below the family minimums is counts only, whatever the stored row carries.
+// A row below the family minimums is counts only, whatever the stored row
+// carries: the minimums are checked again here from the row's counts. Mirrors
+// SKILL_MIN_FAMILIES and SKILL_MIN_OUTCOME_FAMILIES in
+// scripts/_forecast-scorecard.mjs, which reads node:fs through its imports and
+// cannot ride in the edge bundle (a test pins the parity).
+export const HORIZON_GRADE_MIN_FAMILIES = 30;
+export const HORIZON_GRADE_MIN_OUTCOME_FAMILIES = 5;
 const HORIZON_GRADE_SCORE_FIELDS = new Set<string>(['brier', 'realizedRate']);
+
+const isCount = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 0;
+
+function horizonRowMeasurable(row: Record<string, unknown>): boolean {
+  const { families, yesFamilies, noFamilies } = row;
+  return row.measurable === true
+    && isCount(families) && isCount(yesFamilies) && isCount(noFamilies)
+    && yesFamilies <= families && noFamilies <= families
+    && families >= HORIZON_GRADE_MIN_FAMILIES
+    && yesFamilies >= HORIZON_GRADE_MIN_OUTCOME_FAMILIES
+    && noFamilies >= HORIZON_GRADE_MIN_OUTCOME_FAMILIES;
+}
 
 export function selectHorizonGrades(value: unknown): Record<string, unknown> | undefined {
   if (!isRecord(value)) return undefined;
   const selected = pickNonNull(value, HORIZON_GRADE_FIELDS);
   selected.rows = Array.isArray(value.rows)
     ? value.rows.filter(isRecord).map((row) => {
-      const fields = row.measurable === true
+      const measurable = horizonRowMeasurable(row);
+      const fields = measurable
         ? HORIZON_GRADE_ROW_FIELDS
         : HORIZON_GRADE_ROW_FIELDS.filter((field) => !HORIZON_GRADE_SCORE_FIELDS.has(field));
-      return pickNonNull(row, fields);
+      const selected = pickNonNull(row, fields);
+      if ('measurable' in selected) selected.measurable = measurable;
+      return selected;
     })
     : [];
   return selected;

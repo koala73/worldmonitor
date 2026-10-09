@@ -19,6 +19,8 @@ import {
 import {
   FAMILY_OUTCOME_FIELDS,
   HORIZON_GRADE_FIELDS,
+  HORIZON_GRADE_MIN_FAMILIES,
+  HORIZON_GRADE_MIN_OUTCOME_FAMILIES,
   HORIZON_GRADE_ROW_FIELDS,
   MARKET_ALERT_FIELDS,
   MARKET_ALERT_MEDIAN_MIN_HITS,
@@ -32,7 +34,7 @@ import {
   selectMarketAlertScorecard,
   selectScorecardFields,
 } from '../server/worldmonitor/forecast/v1/scorecard-fields.ts';
-import { PUBLIC_FAMILY_OUTCOME_FIELDS, PUBLIC_RECEIPT_FIELDS } from '../scripts/_forecast-scorecard.mjs';
+import { PUBLIC_FAMILY_OUTCOME_FIELDS, PUBLIC_RECEIPT_FIELDS, SKILL_MIN_FAMILIES, SKILL_MIN_OUTCOME_FAMILIES } from '../scripts/_forecast-scorecard.mjs';
 import { FORECAST_ACCURACY_AUDIT } from '../shared/forecast-accuracy-audit.js';
 
 const originalFetch = globalThis.fetch;
@@ -342,6 +344,20 @@ describe('getForecastScorecard backend status', () => {
     assert.deepEqual(Object.keys(mcp.horizonGrades?.rows[0] ?? {}).sort(), [...HORIZON_GRADE_ROW_FIELDS].sort());
     assert.ok(!('brier' in (mcp.horizonGrades?.rows[1] ?? {})) && !('realizedRate' in (mcp.horizonGrades?.rows[1] ?? {})));
     assert.equal('horizonGrades' in (selectDeclaredScorecardFields(data) ?? {}), false, 'nor in the REST-shaped capture');
+  });
+
+  it('re-checks the horizon minimums from the counts, not the stored flag (#9057)', () => {
+    assert.equal(HORIZON_GRADE_MIN_FAMILIES, SKILL_MIN_FAMILIES);
+    assert.equal(HORIZON_GRADE_MIN_OUTCOME_FAMILIES, SKILL_MIN_OUTCOME_FAMILIES);
+    const graded = { curvesVersion: 1, horizon: 'd7', scored: 40, yes: 8, no: 32, families: 30, yesFamilies: 5, noFamilies: 5, measurable: true, brier: { mean: 0.1, ci95: [0.05, 0.2] }, realizedRate: { count: 40 } };
+    const served = (row: Record<string, unknown>) => (selectScorecardFields({ horizonGrades: { rows: [row] } }, { extended: true }) as { horizonGrades: { rows: Record<string, unknown>[] } }).horizonGrades.rows[0];
+    assert.equal(served(graded).measurable, true);
+    assert.ok('brier' in served(graded), 'exactly at the minimums keeps its grade');
+    for (const short of [{ families: 29 }, { yesFamilies: 4 }, { noFamilies: 4 }, { yesFamilies: 31 }, { families: '30' }]) {
+      const row = served({ ...graded, ...short });
+      assert.equal(row.measurable, false, JSON.stringify(short));
+      assert.ok(!('brier' in row) && !('realizedRate' in row), JSON.stringify(short));
+    }
   });
 
   // The corpus block is internal until the public contract has room (#7072).

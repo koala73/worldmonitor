@@ -32,6 +32,7 @@ import {
 import { GDELT_COUNTRY_INDEX_WINDOW_MS } from '../scripts/_gdelt-bulk-materializer.mjs';
 import { briefGroundingGap, COUNTRY_INDEX_ORIGIN, developmentsHasDatedItem } from '../scripts/crawlable-developments.mjs';
 import { SCORECARD_DECLARED_FIELDS, classifyAccuracyState } from '../scripts/build-accuracy-page.mjs';
+import { MCP_CANONICAL_ENDPOINT, isMcpAliasRequest } from '../shared/mcp-host-policy.ts';
 
 describe('freeze crawlable live pulse API base routing', () => {
   const originalFetch = globalThis.fetch;
@@ -322,6 +323,7 @@ function countryPayload() {
     // MCP horizon grades (#9057): 'ok' | 'fail' | 'tool-error'.
     horizonGradesStatus = 'ok',
     horizonGradesGeneratedAt = SCORECARD_GENERATED_AT,
+    scorecardGeneratedAt = SCORECARD_GENERATED_AT,
     onRequest = null,
     marketSymbols = ['^GSPC', '^IXIC', '^VIX'],
     commoditySymbols = ['CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'],
@@ -369,7 +371,7 @@ function countryPayload() {
         if (scorecardStatus === 'fail') return { ok: false, status: 503, text: async () => '{}' };
         if (scorecardStatus === 'undated') return jsonResponse(scorecardPayload({ generatedAt: 0 }));
         if (scorecardStatus === 'degraded') return jsonResponse(scorecardPayload({ degraded: true }));
-        return jsonResponse(scorecardPayload());
+        return jsonResponse(scorecardPayload({ generatedAt: scorecardGeneratedAt }));
       }
       if (href.endsWith('/mcp')) {
         if (horizonGradesStatus === 'fail') return { ok: false, status: 503, text: async () => '{}' };
@@ -817,6 +819,14 @@ describe('freeze crawlable live pulse coverage gates', () => {
     const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
     const mcp = requests.filter(({ href }) => href.endsWith('/mcp'));
     assert.equal(mcp.length, 1);
+    // Every MCP alias, the www API_BASE the weekly workflow sets included,
+    // answers 410 before auth; only the canonical host serves the tool.
+    const mcpUrl = new URL(mcp[0].href);
+    assert.equal(mcp[0].href, MCP_CANONICAL_ENDPOINT);
+    assert.equal(isMcpAliasRequest(mcpUrl.host, mcpUrl.pathname), false);
+    assert.equal(isMcpAliasRequest('www.worldmonitor.app', '/mcp'), true, 'the guard can fail');
+    assert.ok(!mcp[0].href.startsWith(STAGING_BASE), 'never the REST API base');
+    assert.equal(mcp[0].options.headers.Origin, 'https://worldmonitor.app');
     assert.equal(mcp[0].options.method, 'POST');
     assert.equal(mcp[0].options.headers['X-WorldMonitor-Key'], 'test-key');
     assert.deepEqual(JSON.parse(mcp[0].options.body).params, { name: 'get_forecast_scorecard', arguments: {} });
@@ -846,6 +856,37 @@ describe('freeze crawlable live pulse coverage gates', () => {
     stubFetch({ horizonGradesGeneratedAt: SCORECARD_GENERATED_AT + 60_000 });
     const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
     assert.equal(classifyAccuracyState(snapshot.forecastScorecard).horizonGrades.status, 'other-run', 'a seeder run between the two reads');
+  });
+
+  it('retains an earlier read of the same scoring run when the MCP read fails (#9057)', async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), 'crawlable-pulse-'));
+    try {
+      await mkdir(join(rootDir, 'docs', 'snapshots'), { recursive: true });
+      stubFetch();
+      const good = await freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0, rootDir, serviceKey: 'test-key' });
+      await writeFile(
+        join(rootDir, 'docs', 'snapshots', 'crawlable-live-pulse-2026-01-15.json'),
+        JSON.stringify({ ...good.snapshot, capturedAt: '2026-01-15' }, null, 2),
+      );
+      await rm(join(rootDir, 'docs', 'snapshots', `crawlable-live-pulse-${good.snapshot.capturedAt}.json`));
+
+      stubFetch({ horizonGradesStatus: 'fail' });
+      const { snapshot } = await freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0, rootDir, serviceKey: 'test-key' });
+      const captured = snapshot.forecastScorecard.horizonGrades;
+      assert.equal(captured.failureCode, 'http-error');
+      assert.equal(captured.retained, true);
+      assert.deepEqual(captured.grades, good.snapshot.forecastScorecard.horizonGrades.grades);
+      assert.equal(snapshot.coverage.forecastHorizonGradesRetained, true);
+      assert.equal(classifyAccuracyState(snapshot.forecastScorecard).horizonGrades.status, 'captured');
+
+      // A different scoring run's grades are never carried forward.
+      stubFetch({ horizonGradesStatus: 'fail', scorecardGeneratedAt: SCORECARD_GENERATED_AT + 1 });
+      const other = (await freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0, rootDir, serviceKey: 'test-key' })).snapshot;
+      assert.equal(other.forecastScorecard.horizonGrades.retained, false);
+      assert.equal(other.forecastScorecard.horizonGrades.grades, null);
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
   });
 
   it('records a scorecard outage as a coded failure instead of discarding the freeze', async () => {

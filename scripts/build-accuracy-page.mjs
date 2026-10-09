@@ -153,9 +153,14 @@ function selectHorizonGradeRow(row) {
   const counts = ['scored', 'yes', 'no', 'families', 'yesFamilies', 'noFamilies'];
   if (!counts.every((field) => isCount(row[field]))) return null;
   if (row.yes + row.no !== row.scored || row.families > row.scored) return null;
+  if (row.yesFamilies > row.families || row.noFamilies > row.families) return null;
   const [low, high] = Array.isArray(row.brier?.ci95) && row.brier.ci95.length === 2 ? row.brier.ci95 : [];
   const mean = row.brier?.mean;
-  const brierValid = isFiniteNumber(mean) && isFiniteNumber(low) && isFiniteNumber(high) && low >= 0 && low <= mean && mean <= high && high <= 1;
+  // The mean and the percentile bootstrap bounds are rounded apart, and a
+  // percentile interval can sit off its own point estimate, so the mean is not
+  // required to lie inside it; the counts above carry the publication rule.
+  const brierValid = isFiniteNumber(mean) && mean >= 0 && mean <= 1
+    && isFiniteNumber(low) && isFiniteNumber(high) && low >= 0 && low <= high && high <= 1;
   const measurable = row.measurable === true && brierValid && meetsFamilyOutcomeMinimums(row);
   const out = pickFields(row, HORIZON_GRADE_ROW_FIELDS.filter((field) => !HORIZON_GRADE_SCORE_FIELDS.has(field)));
   out.measurable = measurable;
@@ -687,7 +692,15 @@ function headlineResultSentence(scorecard, interval) {
   return `${windowPhrase}, ${outcome}: a skill score of ${formatSkill(reading.bss)}${skillIntervalPhrase(reading)}, where ${SKILL_SCALE}, over ${formatCount(reading.count)} scored forecasts from ${familyPhrase(reading)}. Their Brier score was ${brierPhrase}, ${against}.`;
 }
 
-const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals for the log scores or the per-domain skill scores yet. Brier scores and the headline skill score carry a 95% interval, resampled by forecast family, when the scorecard includes one, and each score is published with the number of forecasts behind it and whether they come from enough forecast families to judge. Void rates, calibration-bucket rates, the scored share of the ledger and the actual rates carry a 95% Wilson interval. World Monitor no longer publishes its 24-hour, 7-day and 30-day projections (since 2026-10-07), and removing them changed none of the scores here. The page grades the projections it made at each horizon, beside the curve version that produced them, and shows a grade only once that horizon has enough forecast families; a projection comes from a fixed, hand-set curve and is not a probability. Individual forecasts appear only as receipts for the most recently resolved published forecasts; judge reasoning, the full news archive and internal data locations are not published.';
+const NEGATIVE_SCOPE_LEAD = 'This page does not publish confidence intervals for the log scores or the per-domain skill scores yet. Brier scores and the headline skill score carry a 95% interval, resampled by forecast family, when the scorecard includes one, and each score is published with the number of forecasts behind it and whether they come from enough forecast families to judge. Void rates, calibration-bucket rates, the scored share of the ledger and the actual rates carry a 95% Wilson interval. World Monitor no longer publishes its 24-hour, 7-day and 30-day projections (since 2026-10-07), and removing them changed none of the scores here. ';
+const NEGATIVE_SCOPE_TAIL = 'Individual forecasts appear only as receipts for the most recently resolved published forecasts; judge reasoning, the full news archive and internal data locations are not published.';
+// The grading claim holds only for an edition that carries the grades (#9057).
+function accuracyNegativeScope(gradesCaptured) {
+  const grades = gradesCaptured
+    ? 'The page grades the projections it made at each horizon, beside the curve version that produced them, and shows a grade only once that horizon has enough forecast families; a projection comes from a fixed, hand-set curve and is not a probability. '
+    : 'This edition carries no grades for those projections. ';
+  return `${NEGATIVE_SCOPE_LEAD}${grades}${NEGATIVE_SCOPE_TAIL}`;
+}
 
 export function renderAccuracyLlmsSection(section, audit = FORECAST_ACCURACY_AUDIT) {
   const state = classifyAccuracyState(section);
@@ -717,7 +730,7 @@ export function renderAccuracyLlmsSection(section, audit = FORECAST_ACCURACY_AUD
   } else if (state.coverage === 'insufficient') {
     paragraphs.push('The headline cohort currently has no scored forecast in this window, so it carries no Brier score.');
   }
-  paragraphs.push(ACCURACY_NEGATIVE_SCOPE);
+  paragraphs.push(accuracyNegativeScope(state.horizonGrades.status === 'captured'));
   return `## Forecast accuracy\n\n${paragraphs.join('\n\n')}\n`;
 }
 
@@ -1370,7 +1383,7 @@ ${rows.map((row) => horizonGradeRow(row, escapeHtml)).join('\n')}
       </table></div>${unversioned}`;
 }
 
-function limitsSection(omittedBuckets, escapeHtml) {
+function limitsSection(omittedBuckets, gradesCaptured, escapeHtml) {
   const bucketSentence = omittedBuckets.length > 0
     ? `Calibration buckets that scored nothing are omitted from the table rather than drawn as a zero: ${omittedBuckets.join(', ')} are empty in this window.`
     : 'Every calibration bucket scored at least one forecast in this window, so none is omitted.';
@@ -1378,7 +1391,7 @@ function limitsSection(omittedBuckets, escapeHtml) {
       <ul>
         <li>${escapeHtml(bucketSentence)}</li>
         <li>No confidence intervals on the log scores or the per-domain skill scores, so the domain table does not say which domains beat their actual rate. An interval on a mean score needs every forecast's own score, which the public scorecard does not carry, and this page will not invent one from the averages. The Brier scores and the headline skill score carry a 95% interval when the scorecard includes one, computed by the scoring service by resampling whole forecast families. Void rates, calibration-bucket rates, the scored share of the ledger and the actual rates in the summary do carry a 95% Wilson interval, because a rate's interval needs only the two counts printed beside it. Tracking: <a href="${escapeHtml(CONFIDENCE_INTERVAL_ISSUE)}">issue #7072</a>.</li>
-        <li>No 24-hour, 7-day or 30-day projection values. World Monitor no longer publishes those projections, as of 2026-10-07, and removing them changed none of the scores on this page. Their grades are in the <a href="#horizon-grades">projection grades</a> section, each one only once its sample is large enough.</li>
+        <li>No 24-hour, 7-day or 30-day projection values. World Monitor no longer publishes those projections, as of 2026-10-07, and removing them changed none of the scores on this page. ${gradesCaptured ? 'Their grades are in the <a href="#horizon-grades">projection grades</a> section, each one only once its sample is large enough.' : 'This edition carries no grades for them; the <a href="#horizon-grades">projection grades</a> section says why.'}</li>
         <li>Individual forecasts appear only as the receipts for the most recently resolved ones. The judges' reasoning, the full news archive they read and internal data locations are not published.</li>
       </ul>`;
 }
@@ -1485,7 +1498,7 @@ ${originTable(scorecard.byGenerationOrigin, scorecard.skill, unknownOriginStatus
 ${marketSection(scorecard.vsMarketSkill, escapeHtml)}
 ${marketAlertsSection(scorecard.marketAlerts, escapeHtml)}
 ${horizonSection(state.horizonGrades, escapeHtml)}
-${limitsSection(omittedBuckets, escapeHtml)}
+${limitsSection(omittedBuckets, state.horizonGrades.status === 'captured', escapeHtml)}
 ${relatedSection(baseUrl, tpl)}
 ${provenanceLine(state, dataset, snapshotPath, escapeHtml)}`;
 }
