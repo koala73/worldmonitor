@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import us from './fixtures/country-brief-us.json' with { type: 'json' };
+import norwayFactors from './fixtures/country-factors-no.json' with { type: 'json' };
 import { readCountryView } from '../api/mcp/ui/news-dashboard-app';
 import { assembleRawSignals, failedRawSignal, validateRawSignal, RAW_SIGNAL_FAMILIES, type RawSignalsValue } from '../shared/country-raw-signals';
 import type { CountrySignalCounts } from '../src/types';
@@ -11,10 +12,17 @@ const root = process.cwd();
 test.use({ serviceWorkers: 'block' });
 
 type HostCall = { name: string; arguments: Record<string, unknown> };
-async function installCountryHost(page: Page, fullExposure = false, initialOpenError?: string, atlasFixture = false, atlasOutages: { energy?: boolean; timeline?: boolean } = {}, cachedShell?: string, rawScenario?: 'military-first' | 'raw-first', geometryUnavailable = false, defenseClockFixture = false) {
+type HostRequestIdentity = { requestId: number; name: string; section?: string; countryCode: string };
+type FactorsTimingFixture = { unavailable?: boolean; missing?: boolean };
+async function installCountryHost(page: Page, fullExposure = false, initialOpenError?: string, atlasFixture = false, atlasOutages: { energy?: boolean; timeline?: boolean } = {}, cachedShell?: string, rawScenario?: 'military-first' | 'raw-first', geometryUnavailable = false, defenseClockFixture = false, factorsTiming?: FactorsTimingFixture) {
   const calls: HostCall[] = [];
-  const requestNames = new Map<number, string>();
+  const factorTrace: Array<{ event: string; requestId?: number; section: string; countryCode: string; at: number }> = [];
+  let blocked = 0;
+  let releaseFactorsModule!: () => void;
+  const blockersStarted = new Promise<void>(resolve => { releaseFactorsModule = resolve; });
+  const requestIdentities = new Map<number, HostRequestIdentity>();
   const cancelled: string[] = [];
+  const cancelledRequests: HostRequestIdentity[] = [];
   let delayCoverage = false;
   let releaseCoverage: () => void = () => {};
   const coverageDelayed = new Promise<void>(resolve => { releaseCoverage = resolve; });
@@ -57,24 +65,31 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
   let releaseUS: () => void = () => {};
   const delayed = new Promise<void>(resolve => { releaseUS = resolve; });
   const unmanaged: string[] = [];
+  if (factorsTiming) await page.route('**/*', route => new URL(route.request().url()).origin === 'http://127.0.0.1:4173' ? route.continue() : route.abort());
   page.on('request', request => { if (request.url().includes('/api/')) unmanaged.push(request.url()); });
   await page.route('**/plugin/assets/**', async route => {
     if (route.request().url().endsWith('/country-removed.js')) return route.fulfill({ status: 404, contentType: 'text/html', body: 'Removed build asset', headers: { 'Access-Control-Allow-Origin': '*' } });
     const file = join(root, 'dist/plugin/assets', new URL(route.request().url()).pathname.split('/').at(-1)!);
+    if (factorsTiming && file.includes('/service_client-') && (await readFile(file, 'utf8')).includes('/api/scorecard/v1/get-five-factor-scorecard')) await blockersStarted;
     await route.fulfill({ path: file, headers: { 'Access-Control-Allow-Origin': '*' } });
   });
   await page.route('**/data/*.geojson', async route => geometryUnavailable ? route.fulfill({ status: 503, body: 'Controlled geometry failure', headers: { 'Access-Control-Allow-Origin': '*' } }) : route.fulfill({ path: join(root, 'public/data', new URL(route.request().url()).pathname.split('/').at(-1)!), headers: { 'Access-Control-Allow-Origin': '*' } }));
   await page.route('**/country-host-test', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><title>Country plugin acceptance — controlled fixtures</title><h1>Country plugin acceptance — controlled fixtures</h1><p>Tests the built iframe and host transport. Does not test live OAuth or source freshness.</p><iframe title="WorldMonitor country view" sandbox="allow-scripts allow-downloads" style="width:100%;height:950px;border:0"></iframe>' }));
   await page.exposeFunction('countryHost', async (method: string, params: HostCall & { content?: Array<{ text: string }>; url?: string; requestId?: number }, id?: number) => {
-    if (method === 'notifications/cancelled') { cancelled.push(requestNames.get(params.requestId!) ?? 'unknown'); return {}; }
+    if (method === 'notifications/cancelled') {
+      const identity = requestIdentities.get(params.requestId!);
+      cancelled.push(identity?.name ?? 'unknown');
+      if (identity) cancelledRequests.push(identity);
+      return {};
+    }
     if (method === 'ui/initialize') return { hostCapabilities: { serverTools: {}, openLinks: {}, updateModelContext: {} }, hostContext: { theme: 'dark' } };
     if (method === 'ui/update-model-context') { contexts.push(JSON.parse(params.content![0].text)); return {}; }
     if (method === 'ui/open-link') { links.push(params.url!); return {}; }
     if (method !== 'tools/call') return {};
     calls.push(params);
-    if (id !== undefined) requestNames.set(id, params.name);
     const args = params.arguments;
     const code = String(args.country_code ?? (args.arguments as Record<string, unknown>)?.country_code ?? (args.arguments as Record<string, unknown>)?.countryCode ?? panelCountries.get(String(args.panel_request ?? '')) ?? 'US');
+    if (id !== undefined) requestIdentities.set(id, { requestId: id, name: params.name, section: typeof args.section === 'string' ? args.section : undefined, countryCode: code });
     if (params.name === 'get_country_brief') return { structuredContent: { ...us.brief, countryCode: code, brief: `Controlled ${code} assessment. Source observations, not live acceptance.` } };
     if (params.name === 'get_country_coverage' && delayCoverage) await coverageDelayed;
     if (params.name === 'get_country_coverage') return { structuredContent: { countryCode: code, countryName: code, generatedAt: '2026-10-01T15:00:00Z', degraded: false, headlines: [{ title: `Controlled ${code} source article`, source: 'Fixture publisher', url: 'https://example.com/evidence', publishedAtMs: 1790863200000 }], events: [], sources: [{ source: 'news', state: 'ready' }, { source: 'events', state: 'unavailable' }] } };
@@ -91,6 +106,18 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
       return { structuredContent: { countryCode: code, topic: args.topic ?? 'overview', panelRequest: { token, countryCode: code, expiresAt: new Date(Date.now() + 300000).toISOString(), reused, usage: { used: admissions, limit: 50, remaining: 50 - admissions, resetsAt: '2026-10-03T00:00:00.000Z', unit: 'requests' } } } };
     }
     const section = String(args.section);
+    if (factorsTiming && params.name === 'get_country_brief_section') {
+      factorTrace.push({ event: 'dispatch', requestId: id, section, countryCode: code, at: Date.now() });
+      if (section !== 'factors' && blocked < 3) {
+        blocked++;
+        if (blocked === 3) releaseFactorsModule();
+        await new Promise(resolve => setTimeout(resolve, 11_000));
+      } else if (section === 'factors') {
+        if (factorsTiming.missing) await new Promise(() => {});
+        await new Promise(resolve => setTimeout(resolve, 1_730));
+      }
+      factorTrace.push({ event: 'response', requestId: id, section, countryCode: code, at: Date.now() });
+    }
     if (rawScenario && delayOrder && (rawScenario === 'military-first' ? section === 'signalsRaw' : ['flights', 'vessels', 'fleet'].includes(section))) await orderedCompletion;
     if (rawScenario && section === 'signalsRaw') {
       const time = rawRetrievedAt;
@@ -128,7 +155,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
       vessels: { dataAvailable: true, snapshot: { snapshotAt: Date.now(), status: { connected: true }, candidateReports: [{ mmsi: '235123456', name: 'Controlled military activity', shipType: 35, lat: code === 'FR' ? 47.3769 : 38, lon: code === 'FR' ? 8.5417 : -77, timestamp: Date.now() }] } },
       fleet: {},
       facts: { countryCode: code, countryName: code, wikipediaSummary: 'Controlled facts observed 2026-10-01.', capital: code === 'US' ? 'Washington, D.C.' : 'Kyiv', population: '340100000', areaSqKm: 9826675, languages: ['English'], currencies: ['US dollar'] },
-      factors: us.scorecard,
+      factors: factorsTiming ? (factorsTiming.unavailable || code !== 'NO' ? { unavailable: true, unavailableReason: 'Controlled factors source unavailable' } : norwayFactors) : us.scorecard,
       risk: { upstreamUnavailable: true },
       scenario: { countryCode: code, chokepointId: String((args.arguments as Record<string, unknown>).chokepoint_id), disruptionPct: Number((args.arguments as Record<string, unknown>).disruption_pct), dataAvailable: true, jodiOilCoverage: true, crudeLossKbd: 100, gulfCrudeShare: 0.3, products: [], limitations: [], coverageLevel: 'partial', gasSensitivity: { dataAvailable: true, lngImportsTj: 100000, totalDemandTj: 500000, lngDisruptionTj: Number((args.arguments as Record<string, unknown>).disruption_pct) * 300, deficitPct: Number((args.arguments as Record<string, unknown>).disruption_pct) * 0.06, dataMonth: '2026-05', dataSource: 'JODI', modelBasis: 'assumed_route_sensitivity', assessment: 'Controlled route sensitivity, not measured supplier exposure.' } },
       stock: { available: false },
@@ -179,7 +206,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
   });
   await page.goto('/country-host-test');
   const html = cachedShell ?? await readFile(join(root, 'dist/plugin/country.html'), 'utf8');
-  await page.evaluate(html => {
+  await page.evaluate(({ html, initialCountry }) => {
     const frame = document.querySelector('iframe')!;
     window.addEventListener('message', async event => {
       if (event.source !== frame.contentWindow || event.data?.jsonrpc !== '2.0') return;
@@ -188,7 +215,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
         const result = await (window as unknown as { countryHost: (method: string, params: object, id?: number) => Promise<object> }).countryHost(event.data.method, event.data.params, event.data.id);
         frame.contentWindow!.postMessage({ jsonrpc: '2.0', id: event.data.id, result }, '*');
         if (event.data.method === 'ui/initialize') {
-          const args = { country_code: 'US', topic: 'overview' };
+          const args = { country_code: initialCountry, topic: 'overview' };
           frame.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-input', params: args }, '*');
           const opened = await (window as unknown as { countryHost: (method: string, params: object) => Promise<object> }).countryHost('tools/call', { name: 'open_country_brief', arguments: args });
           frame.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: opened }, '*');
@@ -198,7 +225,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
       }
     });
     frame.srcdoc = html.replace('<head>', `<head><base href="${location.origin}/">`);
-  }, html);
+  }, { html, initialCountry: factorsTiming ? 'NO' : 'US' });
   const action = (name: string, args: object) => page.evaluate(({ name, args }) => new Promise<Record<string, unknown>>(resolve => {
     const id = -Math.random();
     const frame = document.querySelector('iframe')!;
@@ -209,7 +236,95 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
     window.addEventListener('message', receive);
     frame.contentWindow!.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, '*');
   }), { name, args });
-  return { delayRaw: () => { delayRaw = true; }, releaseRaw, get rawCompleted() { return rawCompleted; }, admissionFail: (reason: string) => { admissionFailure = reason; }, rawInfo: () => { rawAdvisoryLevel = 'info'; }, calls, contexts, links, unmanaged, cancelled, action, releaseOrder, rawFail: () => { rawMode = 'transient'; rawRetrievedAt = '2026-10-05T12:30:00.000Z'; }, rawDeny: () => { rawMode = 'denied'; rawRetrievedAt = '2026-10-05T12:40:00.000Z'; }, rawZero: () => { rawMode = 'zero'; rawRetrievedAt = '2026-10-05T12:35:00.000Z'; }, rawRecover: () => { rawMode = 'observed'; rawRetrievedAt = '2026-10-05T12:45:00.000Z'; }, releaseDisruptions, failAtlas: () => { atlasUnavailable = true; }, recoverAtlas: () => { atlasUnavailable = false; }, delayAtlasDetail: () => { delayAtlasDetail = true; }, releaseAtlasDetail, failDisruptions: () => { disruptionsFailed = true; }, failEnergy: () => { energyFailed = true; }, partialAtlas: () => { atlasPartial = true; }, denyAtlas: () => { atlasDenied = true; }, activityOutage: () => { failActivity = true; }, activityRecover: () => { failActivity = false; }, denyActivity: () => { denyActivity = true; }, partial: () => { partialBootstrap = true; }, complete: () => { partialBootstrap = false; }, quota: () => { quotaExceeded = true; }, get admissions() { return admissions; }, delayAdmission: () => { delayAdmission = true; }, releaseAdmission, delayCoverage: () => { delayCoverage = true; }, releaseCoverage, fail: () => { failFacts = true; }, denyFacts: () => { factsDenied = true; }, recover: () => { failFacts = false; factsDenied = false; }, delay: () => { delayUS = true; }, release: releaseUS };
+  return { factorTrace, cancelledRequests, delayRaw: () => { delayRaw = true; }, releaseRaw, get rawCompleted() { return rawCompleted; }, admissionFail: (reason: string) => { admissionFailure = reason; }, rawInfo: () => { rawAdvisoryLevel = 'info'; }, calls, contexts, links, unmanaged, cancelled, action, releaseOrder, rawFail: () => { rawMode = 'transient'; rawRetrievedAt = '2026-10-05T12:30:00.000Z'; }, rawDeny: () => { rawMode = 'denied'; rawRetrievedAt = '2026-10-05T12:40:00.000Z'; }, rawZero: () => { rawMode = 'zero'; rawRetrievedAt = '2026-10-05T12:35:00.000Z'; }, rawRecover: () => { rawMode = 'observed'; rawRetrievedAt = '2026-10-05T12:45:00.000Z'; }, releaseDisruptions, failAtlas: () => { atlasUnavailable = true; }, recoverAtlas: () => { atlasUnavailable = false; }, delayAtlasDetail: () => { delayAtlasDetail = true; }, releaseAtlasDetail, failDisruptions: () => { disruptionsFailed = true; }, failEnergy: () => { energyFailed = true; }, partialAtlas: () => { atlasPartial = true; }, denyAtlas: () => { atlasDenied = true; }, activityOutage: () => { failActivity = true; }, activityRecover: () => { failActivity = false; }, denyActivity: () => { denyActivity = true; }, partial: () => { partialBootstrap = true; }, complete: () => { partialBootstrap = false; }, quota: () => { quotaExceeded = true; }, get admissions() { return admissions; }, delayAdmission: () => { delayAdmission = true; }, releaseAdmission, delayCoverage: () => { delayCoverage = true; }, releaseCoverage, fail: () => { failFacts = true; }, denyFacts: () => { factsDenied = true; }, recover: () => { failFacts = false; factsDenied = false; }, delay: () => { delayUS = true; }, release: releaseUS };
+}
+
+test('native queued Norway factors render retained pillars after the website deadline', async ({ page }, info) => {
+  const host = await installCountryHost(page, false, undefined, false, {}, undefined, undefined, false, false, {});
+  const frame = page.frameLocator('iframe');
+  const factors = frame.locator('[data-brief-section=factors]');
+  await expect(frame.locator('.cdp-country-name')).toHaveText('Norway');
+  await factors.scrollIntoViewIfNeeded();
+  await factors.screenshot({ path: info.outputPath('norway-factors-loading.png') });
+  await expect(factors).toContainText('Production');
+  const text = await factors.innerText();
+  const dispatch = host.factorTrace.find(event => event.section === 'factors' && event.event === 'dispatch')!;
+  const response = host.factorTrace.find(event => event.section === 'factors' && event.event === 'response')!;
+  const first = host.factorTrace[0]!;
+  expect(dispatch.at - first.at).toBeGreaterThanOrEqual(11_000);
+  expect(response.at - dispatch.at).toBeGreaterThanOrEqual(1_730);
+  expect(response.at - first.at).toBeGreaterThan(12_000);
+  for (const label of ['Food', 'Energy', 'Technology', 'Defense']) expect(text).toContain(label);
+  await expect(factors.locator('.cdp-scorecard-score')).toHaveText(norwayFactors.scorecard.pillars.map(pillar => `${pillar.score}/5`));
+  let outstanding = 0;
+  let maximum = 0;
+  for (const event of host.factorTrace) {
+    outstanding += event.event === 'dispatch' ? 1 : -1;
+    maximum = Math.max(maximum, outstanding);
+  }
+  expect(maximum).toBe(3);
+  await factors.screenshot({ path: info.outputPath('norway-factors-ready-desktop.png') });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await factors.scrollIntoViewIfNeeded();
+  await factors.screenshot({ path: info.outputPath('norway-factors-ready-mobile.png') });
+  expect(host.unmanaged).toEqual([]);
+  await writeFile(info.outputPath('norway-factors-trace.json'), JSON.stringify({ trace: host.factorTrace, text, computedAt: norwayFactors.scorecard.computedAt, controlledModuleOrder: true, originalIncidentTimingProven: false }, null, 2));
+});
+
+test('native queued Norway factors preserve the designed unavailable card', async ({ page }, info) => {
+  const host = await installCountryHost(page, false, undefined, false, {}, undefined, undefined, false, false, { unavailable: true });
+  const factors = page.frameLocator('iframe').locator('[data-brief-section=factors]');
+  await expect(factors.locator('.cdp-five-factor-scorecard')).toHaveAttribute('data-brief-state', 'unavailable');
+  await expect(factors).not.toContainText('Production');
+  await factors.scrollIntoViewIfNeeded();
+  await factors.screenshot({ path: info.outputPath('norway-factors-unavailable.png') });
+  expect(host.unmanaged).toEqual([]);
+});
+
+test('native queued Norway factors retain the actual dispatched host timeout', async ({ page }, info) => {
+  const warnings: string[] = [];
+  page.on('console', message => { if (message.type() === 'warning') warnings.push(message.text()); });
+  const host = await installCountryHost(page, false, undefined, false, {}, undefined, undefined, false, false, { missing: true });
+  const factors = page.frameLocator('iframe').locator('[data-brief-section=factors]');
+  await expect.poll(() => host.factorTrace.find(event => event.section === 'factors' && event.event === 'dispatch')).toBeTruthy();
+  const dispatchedAt = host.factorTrace.find(event => event.section === 'factors' && event.event === 'dispatch')!.at;
+  await expect(factors).toHaveAttribute('data-load-state', 'unavailable', { timeout: 35_000 });
+  expect(Date.now() - dispatchedAt).toBeGreaterThanOrEqual(30_000);
+  expect(warnings.some(message => message.includes('WorldMonitor host request timed out.'))).toBe(true);
+  await expect(factors.locator('.cdp-scorecard-pillar')).toHaveCount(0);
+  await factors.scrollIntoViewIfNeeded();
+  await factors.screenshot({ path: info.outputPath('norway-factors-host-timeout.png') });
+  await writeFile(info.outputPath('host-timeout-trace.json'), JSON.stringify({ trace: host.factorTrace, warnings, observedAt: Date.now(), actualPluginHostTimer: true }, null, 2));
+});
+
+for (const phase of ['queued', 'active'] as const) {
+  for (const action of ['switch', 'close'] as const) {
+    test(`native queued Norway factors cancel on ${action} while ${phase}`, async ({ page }, info) => {
+      const host = await installCountryHost(page, false, undefined, false, {}, undefined, undefined, false, false, {});
+      const frame = page.frameLocator('iframe');
+      await expect(frame.locator('.cdp-country-name')).toHaveText('Norway');
+      await expect.poll(() => host.factorTrace.filter(event => event.event === 'dispatch').length).toBeGreaterThanOrEqual(3);
+      if (phase === 'active') await expect.poll(() => host.factorTrace.some(event => event.section === 'factors' && event.event === 'dispatch')).toBe(true);
+      const factorsRequest = host.factorTrace.find(event => event.section === 'factors' && event.countryCode === 'NO' && event.event === 'dispatch');
+      if (action === 'close') await frame.locator('#deep-dive-close').click();
+      else {
+        await frame.getByRole('textbox', { name: 'Country name or code' }).fill('France');
+        await frame.getByRole('button', { name: 'Open country', exact: true }).click();
+      }
+      await expect.poll(() => host.cancelled.includes('get_country_brief_section')).toBe(true);
+      if (phase === 'active') await expect.poll(() => host.cancelledRequests).toEqual(expect.arrayContaining([{ requestId: factorsRequest!.requestId, name: 'get_country_brief_section', section: 'factors', countryCode: 'NO' }]));
+      if (phase === 'queued') expect(host.calls.filter(call => call.name === 'get_country_brief_section' && call.arguments.section === 'factors' && (call.arguments.arguments as { countryCode?: string }).countryCode === 'NO')).toHaveLength(0);
+      await expect.poll(() => host.factorTrace.filter(event => event.event === 'response').length).toBeGreaterThanOrEqual(phase === 'queued' ? 3 : 4);
+      if (phase === 'active') await expect.poll(() => host.factorTrace.some(event => event.section === 'factors' && event.countryCode === 'NO' && event.event === 'response')).toBe(true);
+      if (action === 'close') await expect(frame.locator('#country-deep-dive-panel')).toBeHidden();
+      else {
+        await expect(frame.locator('.cdp-country-name')).toHaveText('France');
+        await expect(frame.locator('[data-brief-section=factors] .cdp-five-factor-scorecard')).toHaveAttribute('data-brief-state', 'unavailable');
+        await expect(frame.locator('[data-brief-section=factors] .cdp-scorecard-pillar')).toHaveCount(0);
+      }
+      await writeFile(info.outputPath('cancel-trace.json'), JSON.stringify({ phase, action, factorsRequest, trace: host.factorTrace, cancelled: host.cancelled, cancelledRequests: host.cancelledRequests, finalCountry: action === 'switch' ? 'FR' : null }, null, 2));
+    });
+  }
 }
 
 test('static country tiers match the website without adding host data readers', async ({ page }, info) => {
