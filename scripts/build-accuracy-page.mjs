@@ -1159,6 +1159,14 @@ function ledgerVerdictSentences(scorecard) {
   return `${windowPhrase}, ${formatCount(totals.resolved)} ${ledgerIsPublished(scorecard) ? 'published ' : ''}forecasts came due and were resolved. ${formatCount(totals.scored)} could be graded against what happened. ${formatCount(totals.void)} could not be graded and were set aside: ${rateOf(totals.voidRate, totals.resolved, 'resolved forecasts')}. The scorecard does not yet publish why each one was set aside, so the reasons are not broken out here. Another ${formatCount(totals.pendingJudge)} are in the queue for a judge, counted whether or not their deadline has passed.`;
 }
 
+// The bands come from the calibration buckets, which pool every origin, so the
+// paragraph names that population beside the published ledger counts (#8990).
+function bandParagraph(calibration, escapeHtml) {
+  const outcomes = bandOutcomes(calibration);
+  const graded = outcomes.reduce((sum, outcome) => sum + outcome.count, 0);
+  return `${escapeHtml(`Over all ${formatCount(graded)} graded forecasts of every origin, unpublished shadow bets included:`)} ${outcomes.map((outcome) => bandSentence(outcome, escapeHtml)).join(' ')}`;
+}
+
 function bandSentence({ band, count, yesCount }, escapeHtml) {
   const outcome = count > 0
     ? `${band.subject} came true in ${formatCount(yesCount)} of ${formatCount(count)} cases.`
@@ -1229,7 +1237,7 @@ function verdictSection(scorecard, escapeHtml) {
   const skill = skillVerdict(scorecard);
   const paragraphs = [
     escapeHtml(ledgerVerdictSentences(scorecard)),
-    bandOutcomes(scorecard.calibration).map((outcome) => bandSentence(outcome, escapeHtml)).join(' '),
+    bandParagraph(scorecard.calibration, escapeHtml),
     escapeHtml(marketVerdictSentence(scorecard.vsMarketSkill)),
     rateIntervalMarkup(escapeHtml(pooledVerdictSentences(scorecard))),
   ];

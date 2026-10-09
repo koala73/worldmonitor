@@ -2243,9 +2243,11 @@ describe('ledger population follows the capture (#8990)', () => {
     assert.match(verdictOf(html), /, 772 forecasts came due and were resolved\./);
   });
 
-  it('names the pooled population beside the all-graded count', () => {
+  it('names the pooled population beside the all-graded count and the probability bands', () => {
     for (const section of [PUBLISHED, POOLED]) {
-      assert.match(verdictOf(renderState(section).html), /Across all 490 graded forecasts of every origin, unpublished shadow bets included, /);
+      const text = verdictOf(renderState(section).html);
+      assert.match(text, /Across all 490 graded forecasts of every origin, unpublished shadow bets included, /);
+      assert.match(text, /Over all 490 graded forecasts of every origin, unpublished shadow bets included: When World Monitor put the chance/);
     }
   });
 
