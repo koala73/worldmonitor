@@ -2,14 +2,25 @@
 // The server mints a one-session token (the API key never reaches the
 // browser); the SDK is bundled locally (public/vendor/liveavatar.js).
 //
+// LiveAvatar caps a session's length by plan (120 s on the plan this was
+// built on). So a second session warms up, muted and hidden, before the cap,
+// and takes over between sentences: the audience sees one avatar.
+//
 // Failure is never fatal: if the session cannot start, drops, or a line
 // times out, the caller falls back to the globe and the voice.
 
+const WARM_AT_MS = 70_000;     // start the next session this long into the live one
+const LAST_CHUNK_MS = 100_000; // never start a sentence on a session older than this
+const STANDBY_WAIT_MS = 12_000;
+
 let sdk = null;
-let session = null;
-let videoEl = null;
+let videos = [];
+let live = null;     // { s, video, startedAt }
+let standby = null;  // { video, ok, s?, startedAt?, promise }
 let ready = false;
 let wanted = false;
+let speaking = false;
+let warmTimer = null;
 let onChange = () => {};
 let speakDone = null;
 
@@ -18,8 +29,14 @@ function setReady(value) {
   onChange({ ready, wanted });
 }
 
+// Inline !important beats the page's own "avatar on" opacity rules.
+function hide(video, hidden) {
+  if (hidden) video.style.setProperty('opacity', '0', 'important');
+  else video.style.removeProperty('opacity');
+}
+
 export function isActive() {
-  return wanted && ready;
+  return wanted && ready && Boolean(live);
 }
 
 export function isWanted() {
@@ -35,7 +52,8 @@ async function load() {
   return sdk;
 }
 
-async function connect() {
+/** Opens one session on `video`. Resolves once its opening line is done. */
+async function open(video, audible) {
   const { LiveAvatarSession, SessionEvent, AgentEventsEnum } = await load();
   const res = await fetch('/api/avatar/token', { method: 'POST' });
   const body = await res.json();
@@ -45,9 +63,9 @@ async function connect() {
     const timer = setTimeout(() => reject(new Error('avatar stream timed out')), 25_000);
     s.on(SessionEvent.SESSION_STREAM_READY, () => {
       clearTimeout(timer);
-      s.attach(videoEl);
-      videoEl.muted = false;
-      videoEl.play?.().catch(() => {});
+      s.attach(video);
+      video.muted = !audible;
+      video.play?.().catch(() => {});
       resolve();
     });
   });
@@ -55,51 +73,124 @@ async function connect() {
   // desk's own lines wait for it, so they don't end on its speak_ended.
   let openingDone;
   const opening = new Promise((resolve) => { openingDone = resolve; });
-  s.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => { openingDone(); speakDone?.(); });
-  s.on(SessionEvent.SESSION_DISCONNECTED, () => {
-    if (session !== s) return;
-    session = null;
-    setReady(false);
-    speakDone?.();
-    // Sessions can be time-capped: reconnect quietly while the avatar is wanted.
-    if (wanted) setTimeout(() => { if (wanted && !session) start(videoEl).catch(() => {}); }, 500);
+  s.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
+    openingDone();
+    if (live?.s === s) speakDone?.();
   });
-  session = s;
-  await s.start();
-  await streamReady;
+  s.on(SessionEvent.SESSION_DISCONNECTED, () => dropped(s));
+  const startedAt = Date.now();
+  try {
+    await s.start();
+    await streamReady;
+  } catch (error) {
+    s.stop().catch(() => {});
+    throw error;
+  }
   await Promise.race([opening, new Promise((r) => setTimeout(r, 5_000))]);
+  return { s, video, startedAt };
+}
+
+function otherVideo() {
+  return videos.find((v) => v !== live?.video && v !== standby?.video) ?? videos[0];
+}
+
+function scheduleWarm() {
+  clearTimeout(warmTimer);
+  if (!live) return;
+  warmTimer = setTimeout(warm, Math.max(0, WARM_AT_MS - (Date.now() - live.startedAt)));
+}
+
+/** Warms the next session, muted and hidden. */
+function warm() {
+  if (standby || !wanted || !live) return;
+  const video = otherVideo();
+  hide(video, true);
+  const slot = { video, ok: false };
+  standby = slot;
+  slot.promise = open(video, false).then((opened) => {
+    if (standby !== slot || !wanted) { opened.s.stop().catch(() => {}); return; }
+    Object.assign(slot, opened, { ok: true });
+    if (!live || !speaking) promote(); // idle: swap now; speaking: between sentences
+  }).catch((error) => {
+    console.warn('[avatar] standby failed:', error.message);
+    if (standby === slot) standby = null;
+  });
+}
+
+/** The warmed session takes over; the old one is closed. */
+function promote() {
+  if (!standby?.ok) return false;
+  const old = live;
+  live = { s: standby.s, video: standby.video, startedAt: standby.startedAt };
+  standby = null;
+  live.video.muted = false;
+  hide(live.video, false);
+  if (old) {
+    hide(old.video, true);
+    if (old.s !== live.s) old.s.stop().catch(() => {});
+  }
   setReady(true);
+  scheduleWarm();
+  return true;
+}
+
+function dropped(s) {
+  if (standby?.s === s) { standby = null; return; }
+  if (live?.s !== s) return;
+  live = null;
+  speakDone?.();
+  if (!wanted) { setReady(false); return; }
+  if (promote()) return;
+  setReady(false);
+  // No standby ready: reconnect quietly while the avatar is wanted.
+  setTimeout(() => { if (wanted && !live) start(videos[0]).catch(() => {}); }, 500);
 }
 
 /** Starts (or restarts) the avatar. Resolves true when it is on screen. */
 export async function start(video) {
-  videoEl = video;
+  if (!videos.includes(video)) {
+    const twin = video.cloneNode(false);
+    twin.removeAttribute('id');
+    hide(twin, true);
+    video.after(twin);
+    videos = [video, twin];
+  }
   wanted = true;
   onChange({ ready, wanted, connecting: true });
   try {
-    if (!session) await connect();
+    if (!live) {
+      const target = otherVideo();
+      const opened = await open(target, true);
+      if (!wanted) { opened.s.stop().catch(() => {}); return false; }
+      live = opened;
+      for (const v of videos) hide(v, v !== target);
+      setReady(true);
+      scheduleWarm();
+    }
     return true;
   } catch (error) {
     console.warn('[avatar] could not start:', error.message);
-    session = null;
-    wanted = false; // back on the globe; A tries again
+    live = null;
+    wanted = false; // back on the globe; the switch key tries again
     setReady(false);
     onChange({ ready: false, wanted, error: error.message });
     return false;
   }
 }
 
-/** Switches back to the globe. The session is closed so it stops costing credits. */
+/** Switches back to the globe. Sessions are closed so they stop costing credits. */
 export async function stop() {
   wanted = false;
-  const s = session;
-  session = null;
+  clearTimeout(warmTimer);
+  const sessions = [live?.s, standby?.s].filter(Boolean);
+  live = null;
+  standby = null;
   setReady(false);
-  try { await s?.stop(); } catch { /* already gone */ }
+  await Promise.all(sessions.map((s) => s.stop().catch(() => {})));
 }
 
 export function interrupt() {
-  try { session?.interrupt(); } catch { /* not connected */ }
+  try { live?.s.interrupt(); } catch { /* not connected */ }
   speakDone?.();
 }
 
@@ -116,6 +207,16 @@ function chunks(text) {
   return out;
 }
 
+/** Before a sentence: hand over to the warmed session, or wait for it near the cap. */
+async function freshSession() {
+  if (standby?.ok) { promote(); return; }
+  if (live && Date.now() - live.startedAt > LAST_CHUNK_MS) {
+    warm();
+    await Promise.race([standby?.promise, new Promise((r) => setTimeout(r, STANDBY_WAIT_MS))]);
+    promote();
+  }
+}
+
 /**
  * Speaks `text` exactly (LiveAvatar `repeat`). Progress is reported per chunk.
  * Throws if the avatar is not connected, so the caller can fall back.
@@ -124,16 +225,22 @@ export async function speak(text, onProgress, cancelled) {
   if (!isActive()) throw new Error('avatar not connected');
   const parts = chunks(text);
   let spoken = 0;
-  for (const part of parts) {
-    if (cancelled()) return;
-    if (!isActive()) throw new Error('avatar dropped');
-    await new Promise((resolve) => {
-      // Generous ceiling: ~65 ms per character, plus start-up slack.
-      const timer = setTimeout(resolve, part.length * 65 + 6000);
-      speakDone = () => { clearTimeout(timer); speakDone = null; resolve(); };
-      session.repeat(part);
-    });
-    spoken += part.length + 1;
-    onProgress(Math.min(1, spoken / text.length));
+  speaking = true;
+  try {
+    for (const part of parts) {
+      if (cancelled()) return;
+      await freshSession();
+      if (!isActive()) throw new Error('avatar dropped');
+      await new Promise((resolve) => {
+        // Generous ceiling: ~65 ms per character, plus start-up slack.
+        const timer = setTimeout(resolve, part.length * 65 + 6000);
+        speakDone = () => { clearTimeout(timer); speakDone = null; resolve(); };
+        live.s.repeat(part);
+      });
+      spoken += part.length + 1;
+      onProgress(Math.min(1, spoken / text.length));
+    }
+  } finally {
+    speaking = false;
   }
 }
