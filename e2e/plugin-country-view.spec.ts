@@ -15,7 +15,7 @@ type HostCall = { name: string; arguments: Record<string, unknown> };
 type FactorsTimingFixture = { unavailable?: boolean; missing?: boolean };
 async function installCountryHost(page: Page, fullExposure = false, initialOpenError?: string, atlasFixture = false, atlasOutages: { energy?: boolean; timeline?: boolean } = {}, cachedShell?: string, rawScenario?: 'military-first' | 'raw-first', geometryUnavailable = false, defenseClockFixture = false, factorsTiming?: FactorsTimingFixture) {
   const calls: HostCall[] = [];
-  const factorTrace: Array<{ event: string; section: string; at: number }> = [];
+  const factorTrace: Array<{ event: string; section: string; countryCode: string; at: number }> = [];
   let blocked = 0;
   let releaseFactorsModule!: () => void;
   const blockersStarted = new Promise<void>(resolve => { releaseFactorsModule = resolve; });
@@ -63,6 +63,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
   let releaseUS: () => void = () => {};
   const delayed = new Promise<void>(resolve => { releaseUS = resolve; });
   const unmanaged: string[] = [];
+  if (factorsTiming) await page.route('**/*', route => new URL(route.request().url()).origin === 'http://127.0.0.1:4173' ? route.continue() : route.abort());
   page.on('request', request => { if (request.url().includes('/api/')) unmanaged.push(request.url()); });
   await page.route('**/plugin/assets/**', async route => {
     if (route.request().url().endsWith('/country-removed.js')) return route.fulfill({ status: 404, contentType: 'text/html', body: 'Removed build asset', headers: { 'Access-Control-Allow-Origin': '*' } });
@@ -99,7 +100,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
     }
     const section = String(args.section);
     if (factorsTiming && params.name === 'get_country_brief_section') {
-      factorTrace.push({ event: 'dispatch', section, at: Date.now() });
+      factorTrace.push({ event: 'dispatch', section, countryCode: code, at: Date.now() });
       if (section !== 'factors' && blocked < 3) {
         blocked++;
         if (blocked === 3) releaseFactorsModule();
@@ -108,7 +109,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
         if (factorsTiming.missing) await new Promise(() => {});
         await new Promise(resolve => setTimeout(resolve, 1_730));
       }
-      factorTrace.push({ event: 'response', section, at: Date.now() });
+      factorTrace.push({ event: 'response', section, countryCode: code, at: Date.now() });
     }
     if (rawScenario && delayOrder && (rawScenario === 'military-first' ? section === 'signalsRaw' : ['flights', 'vessels', 'fleet'].includes(section))) await orderedCompletion;
     if (rawScenario && section === 'signalsRaw') {
@@ -274,16 +275,19 @@ test('native queued Norway factors preserve the designed unavailable card', asyn
 });
 
 test('native queued Norway factors retain the actual dispatched host timeout', async ({ page }, info) => {
+  const warnings: string[] = [];
+  page.on('console', message => { if (message.type() === 'warning') warnings.push(message.text()); });
   const host = await installCountryHost(page, false, undefined, false, {}, undefined, undefined, false, false, { missing: true });
   const factors = page.frameLocator('iframe').locator('[data-brief-section=factors]');
   await expect.poll(() => host.factorTrace.find(event => event.section === 'factors' && event.event === 'dispatch')).toBeTruthy();
   const dispatchedAt = host.factorTrace.find(event => event.section === 'factors' && event.event === 'dispatch')!.at;
-  await expect(factors).toContainText('WorldMonitor host request timed out.', { timeout: 35_000 });
+  await expect(factors).toHaveAttribute('data-load-state', 'unavailable', { timeout: 35_000 });
   expect(Date.now() - dispatchedAt).toBeGreaterThanOrEqual(30_000);
+  expect(warnings.some(message => message.includes('WorldMonitor host request timed out.'))).toBe(true);
   await expect(factors.locator('.cdp-scorecard-pillar')).toHaveCount(0);
   await factors.scrollIntoViewIfNeeded();
   await factors.screenshot({ path: info.outputPath('norway-factors-host-timeout.png') });
-  await writeFile(info.outputPath('host-timeout-trace.json'), JSON.stringify({ trace: host.factorTrace, observedAt: Date.now(), actualPluginHostTimer: true }, null, 2));
+  await writeFile(info.outputPath('host-timeout-trace.json'), JSON.stringify({ trace: host.factorTrace, warnings, observedAt: Date.now(), actualPluginHostTimer: true }, null, 2));
 });
 
 for (const phase of ['queued', 'active'] as const) {
@@ -295,10 +299,14 @@ for (const phase of ['queued', 'active'] as const) {
       await expect.poll(() => host.factorTrace.filter(event => event.event === 'dispatch').length).toBeGreaterThanOrEqual(3);
       if (phase === 'active') await expect.poll(() => host.factorTrace.some(event => event.section === 'factors' && event.event === 'dispatch')).toBe(true);
       if (action === 'close') await frame.locator('#deep-dive-close').click();
-      else await host.action('open_country_brief', { country_code: 'FR', topic: 'overview' });
+      else {
+        await frame.getByRole('textbox', { name: 'Country name or code' }).fill('France');
+        await frame.getByRole('button', { name: 'Open country', exact: true }).click();
+      }
       await expect.poll(() => host.cancelled.includes('get_country_brief_section')).toBe(true);
       if (phase === 'queued') expect(host.calls.filter(call => call.name === 'get_country_brief_section' && call.arguments.section === 'factors' && (call.arguments.arguments as { countryCode?: string }).countryCode === 'NO')).toHaveLength(0);
       await expect.poll(() => host.factorTrace.filter(event => event.event === 'response').length).toBeGreaterThanOrEqual(phase === 'queued' ? 3 : 4);
+      if (phase === 'active') await expect.poll(() => host.factorTrace.some(event => event.section === 'factors' && event.countryCode === 'NO' && event.event === 'response')).toBe(true);
       if (action === 'close') await expect(frame.locator('#country-deep-dive-panel')).toBeHidden();
       else {
         await expect(frame.locator('.cdp-country-name')).toHaveText('France');

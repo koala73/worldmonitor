@@ -58,19 +58,19 @@ describe('native factors queue and dispatched response budgets', () => {
   });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('returns all five pillars after 11 seconds queued and 1.73 seconds dispatched', async () => {
-    const hostHarness = await harness();
-    const blockers = hostHarness.occupy();
+  it.each([0, 9_000, 11_000])('returns all five pillars after %i ms queued and 1.73 seconds dispatched', async queueMs => {
+    const hostHarness = await harness(queueMs);
+    const blockers = queueMs ? hostHarness.occupy() : [];
     const factors = hostHarness.source.factors('NO', new AbortController().signal);
     const outcome = observe(factors);
     await vi.dynamicImportSettled();
-    await vi.advanceTimersByTimeAsync(11_000);
-    expect(hostHarness.events.filter(event => event.section === 'factors').map(event => event.at)).toEqual([11_000]);
+    await vi.advanceTimersByTimeAsync(queueMs);
+    expect(hostHarness.events.filter(event => event.section === 'factors').map(event => event.at)).toEqual([queueMs]);
     await vi.advanceTimersByTimeAsync(1_730);
     expect(outcome.error).toBeUndefined();
     expect(await factors).toEqual(value);
     await Promise.all(blockers);
-    expect(hostHarness.maximum()).toBe(3);
+    expect(hostHarness.maximum()).toBe(queueMs ? 3 : 1);
   });
 
   it('dispatches queued factors when preceding host requests hit their existing bound', async () => {
