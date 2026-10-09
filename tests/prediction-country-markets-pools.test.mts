@@ -123,13 +123,19 @@ after(() => {
   delete globalThis.__wmCountryMarketsTestState;
 });
 
+async function fetchWithMetadata(service: Awaited<ReturnType<typeof loadPredictionService>>, country = 'China', code = 'CN') {
+  let metadata: { fetchedAt?: number } | undefined;
+  const markets = await service.fetchCountryMarkets(country, code, (value: { fetchedAt?: number }) => { metadata = value; });
+  return { markets, ...metadata };
+}
+
 describe('original country contract metadata', () => {
   it('preserves the original website RPC list clock while keeping legacy array results', async () => {
     const originalClock = Date.parse('2026-10-09T07:41:45.410Z');
     const rows = Array.from({ length: 6 }, (_, index) => ({ ...protoMarket(`China contract ${index}`, 500 - index), id: `original-${index}` }));
     globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: { 'country:CN': rows }, rpcDataAvailable: true, rpcFetchedAt: originalClock };
     const service = await loadPredictionService();
-    const result = await service.fetchCountryMarketsWithMetadata('China', 'CN');
+    const result = await fetchWithMetadata(service);
     assert.equal(result.fetchedAt, originalClock);
     assert.deepEqual(result.markets.map((row: { id: string }) => row.id), rows.slice(0, 5).map(row => row.id));
     assert.deepEqual(await service.fetchCountryMarkets('China', 'CN'), result.markets);
@@ -140,7 +146,7 @@ describe('original country contract metadata', () => {
     const originalClock = Date.parse('2026-10-09T07:41:45.410Z');
     globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: {}, rpcDataAvailable: true, rpcFetchedAt: originalClock, hydrated: { geopolitical: [bootstrapMarket('Will China host the meeting?', 500)], tech: [], fetchedAt: originalClock + 1 } };
     const service = await loadPredictionService();
-    assert.deepEqual(await service.fetchCountryMarketsWithMetadata('China', 'CN'), { markets: [], fetchedAt: originalClock });
+    assert.deepEqual(await fetchWithMetadata(service), { markets: [], fetchedAt: originalClock });
   });
 
   it('keeps fallback clocks unknown after unavailable and failed RPC replies', async () => {
@@ -148,7 +154,7 @@ describe('original country contract metadata', () => {
     const service = await loadPredictionService();
     for (const rpcFailure of [false, true]) {
       globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: {}, rpcDataAvailable: false, rpcFetchedAt: 1791531705410, rpcFailure, hydrated: { geopolitical: [fallback], tech: [], fetchedAt: 1791531705420 } };
-      assert.deepEqual(await service.fetchCountryMarketsWithMetadata('China', 'CN'), { markets: [fallback] });
+      assert.deepEqual(await fetchWithMetadata(service), { markets: [fallback] });
     }
   });
 
@@ -156,11 +162,11 @@ describe('original country contract metadata', () => {
     const service = await loadPredictionService();
     const row = protoMarket('China contract', 500);
     globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: { 'country:CN': [row] }, rpcDataAvailable: true };
-    const result = await service.fetchCountryMarketsWithMetadata('China', 'CN');
+    const result = await fetchWithMetadata(service);
     assert.equal(result.fetchedAt, undefined);
     assert.equal(result.markets[0].id, row.id);
     globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: {}, rpcDataAvailable: false, rpcFetchedAt: 1791531705410 };
-    assert.deepEqual(await service.fetchCountryMarketsWithMetadata('China', 'CN'), { markets: [] });
+    assert.deepEqual(await fetchWithMetadata(service), { markets: [] });
   });
 
   it('retains distinct original RPC identifiers sharing one display link and exact probability', async () => {
