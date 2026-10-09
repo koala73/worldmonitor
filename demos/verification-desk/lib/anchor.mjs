@@ -98,6 +98,20 @@ export class Anchor {
     );
   }
 
+  narrateBoard(board) {
+    const facts = {
+      totals: board.totals,
+      wellSupported: board.supported.slice(0, 3).map((x) => ({ title: x.title, publishers: x.publishers, credibility: x.credibility, stateAffiliated: x.stateAffiliated })),
+      thin: board.thin.slice(0, 3).map((x) => ({ title: x.title, verdict: x.state, publisher: x.top[0]?.name ?? null, stateAffiliated: x.stateAffiliated })),
+    };
+    return this.grounded(
+      `Open the show from WorldMonitor's board of today's news:\n${JSON.stringify(facts)}\n\nWrite about 110 words, spoken. One-line welcome. Say how many stories WorldMonitor is tracking and how many are corroborated by two or more independent publishers. Name the best-supported story with its publisher count. Then name the thin ones and why (one publisher; state-affiliated if so). Close by inviting the room to pick a story, or name their own.`,
+      facts,
+      templateBoard(board),
+      1500,
+    );
+  }
+
   narrateRecap(stories, scope) {
     return this.grounded(
       `Open the segment with a recap of ${scope}. Each story carries WorldMonitor's coverage state, publisher count and credibility score:\n${JSON.stringify(stories)}\n\nWrite about 200 words (90 seconds spoken). Lead with a one-line welcome. For each story say the headline in your own words, then tag it out loud with WorldMonitor's numbers, e.g. "six publishers, credibility seventy-nine" or "one publisher so far". Close by inviting the audience to name a headline from the week for the desk to check.`,
@@ -172,6 +186,22 @@ export function templateGrade(r) {
   parts.push(`Verdict: ${v?.word ?? 'Unverifiable'}.`);
   if (v?.key === 'not-found' || v?.key === 'unknown') parts.push(`That is not a dodge. It is the most honest thing a system can say.`);
   else if (v?.key !== 'unreachable') parts.push(`As WorldMonitor puts it, this describes coverage, not accuracy.`);
+  return parts.join(' ');
+}
+
+export function templateBoard(b) {
+  const t = b.totals;
+  const parts = [
+    `Good evening, and welcome to the Verification Desk.`,
+    `Right now WorldMonitor is tracking ${t.stories} stories. ${cap(say(t.corroborated))} are corroborated by two or more independent publishers. ${cap(say(t.singlePublisher))} rest on a single publisher.`,
+  ];
+  const best = b.supported[0];
+  if (best) parts.push(`The best supported: ${best.title}. ${cap(say(best.publishers))} publishers, credibility ${best.credibility}.`);
+  const thin = b.thin.slice(0, 2);
+  if (thin.length) {
+    parts.push(`And the thin end: ${thin.map((x) => `${x.title}, from ${x.top[0]?.name ?? 'one publisher'} alone`).join('; and ')}.`);
+  }
+  parts.push(`Pick any story on this board, or name your own, and the desk will check it, live.`);
   return parts.join(' ');
 }
 

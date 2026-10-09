@@ -4,7 +4,7 @@
 // Every line is PASS / WARN / FAIL with what to do about it.
 
 import { existsSync, readdirSync } from 'node:fs';
-import { ARCHIVE_DIR, DATA_DIR, loadEnv } from '../lib/config.mjs';
+import { ARCHIVE_DIR, DATA_DIR, loadEnv, ROOT } from '../lib/config.mjs';
 import { Anchor } from '../lib/anchor.mjs';
 import { WorldMonitorMcp } from '../lib/mcp-client.mjs';
 import path from 'node:path';
@@ -26,6 +26,12 @@ if (!process.env.WORLDMONITOR_API_KEY && !process.env.WORLDMONITOR_MCP_TOKEN) {
     const missing = REQUIRED_TOOLS.filter((t) => !tools.has(t));
     if (missing.length) fail(`MCP is up but these tools are not available to this key: ${missing.join(', ')}`);
     else pass(`WorldMonitor MCP: ${tools.size} tools, all required tools present`);
+    const allowance = await mcp.callTool('get_mcp_allowance', {}).catch(() => null);
+    if (allowance?.limit) {
+      const line = `WorldMonitor allowance: ${allowance.used}/${allowance.limit} used today, ${allowance.remaining} left, resets ${allowance.resetsAt}`;
+      if (allowance.remaining < 15) warn(`${line}. A show needs ~25 (board refreshes + 3 per checked headline).`);
+      else pass(line);
+    }
     const clusters = await mcp.callTool('get_news_clusters', { limit: 3 });
     const n = clusters.clusters?.length ?? 0;
     if (n) pass(`get_news_clusters live: ${clusters.headlineCount} headlines in the digest, generated ${clusters.generatedAt}`);
@@ -64,11 +70,35 @@ if (process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID) {
   warn('ElevenLabs not configured: the browser voice will speak (use Chrome or Edge for the best voice).');
 }
 
+const avatarKey = process.env.LIVEAVATAR_API_KEY || process.env.HEYGEN_API_KEY;
+if (avatarKey && process.env.LIVEAVATAR_AVATAR_ID) {
+  // Creates a session token without starting a session: proves the key, avatar and body are accepted.
+  try {
+    const res = await fetch(`${process.env.LIVEAVATAR_API_URL || 'https://api.liveavatar.com'}/v1/sessions/token`, {
+      method: 'POST',
+      headers: { 'X-Api-Key': avatarKey, 'Content-Type': 'application/json' },
+      body: process.env.LIVEAVATAR_TOKEN_BODY || JSON.stringify({
+        mode: process.env.LIVEAVATAR_MODE || 'FULL',
+        avatar_id: process.env.LIVEAVATAR_AVATAR_ID,
+        ...(process.env.LIVEAVATAR_VOICE_ID ? { avatar_persona: { voice_id: process.env.LIVEAVATAR_VOICE_ID, ...(process.env.LIVEAVATAR_CONTEXT_ID ? { context_id: process.env.LIVEAVATAR_CONTEXT_ID } : {}), language: process.env.LIVEAVATAR_LANGUAGE || 'en' } } : {}),
+      }),
+    });
+    const text = await res.text();
+    if (res.ok && /token/.test(text)) pass('HeyGen LiveAvatar accepted the session request');
+    else fail(`HeyGen LiveAvatar HTTP ${res.status}: ${text.slice(0, 300)}. Fix the .env values or set LIVEAVATAR_TOKEN_BODY from their docs.`);
+  } catch (error) {
+    fail(`HeyGen LiveAvatar: ${error.message}`);
+  }
+} else {
+  warn('No LiveAvatar key/avatar: the globe + voice will present (press A does nothing).');
+}
+
 const snaps = existsSync(ARCHIVE_DIR) ? readdirSync(ARCHIVE_DIR).filter((f) => f.endsWith('.json')).sort() : [];
 if (snaps.length) pass(`Archive: ${snaps.length} snapshots, oldest ${snaps[0].slice(0, 16)}, newest ${snaps.at(-1).slice(0, 16)}`);
 else warn('No archive snapshots: only headlines in the live digest window can be matched. Run npm run snapshot:loop.');
 
 if (existsSync(path.join(DATA_DIR, 'reveal.json'))) pass('Reveal story pinned (data/reveal.json)');
+else if (existsSync(path.join(ROOT, 'snapshots', 'reveal.json'))) pass('Reveal story pinned (committed snapshots/reveal.json: the iHeart story)');
 else warn('No reveal pinned: run npm run find-reveal, read the links, then npm run find-reveal -- --pick N');
 
 if (existsSync(path.join(DATA_DIR, 'cache', 'recap.json'))) pass('Recap cached for offline fallback');

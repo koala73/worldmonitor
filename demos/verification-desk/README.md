@@ -1,68 +1,64 @@
 # The Verification Desk
 
-A live stage piece for the *Verified Truth & Trust* panel. An AI anchor recaps the week, grades headlines the audience shouts out, and reveals a story that "everyone saw" but that traces back to one newsroom.
+A live stage piece for the *Verified Truth & Trust* panel. It opens on **today's news as WorldMonitor sees it**, split into what is corroborated and what is thin, read out by an AI anchor (a HeyGen talking head, or a glowing globe with a voice). Then the room picks stories, or shouts their own, and the desk checks each one live. It ends on a reveal: a headline that ran in six places but traces to one source.
 
-The desk does not have its own idea of truth. It finds which WorldMonitor story the audience means, then every judgment on screen is a call into WorldMonitor's own code: the same modules the dashboard, the MCP tools and the brief seeders use (`lib/wm.mjs`). Claude only extracts search terms and writes the spoken lines, and a line is spoken only if it passes WorldMonitor's own brief hallucination validators. Every model call has a template fallback built only from WorldMonitor's data.
+The desk has no idea of truth of its own. Every judgment on screen is WorldMonitor's own code, the same modules the dashboard, MCP tools and brief seeders use (`lib/wm.mjs`). Claude only finds search terms and writes the spoken lines, and a line is spoken only if it passes WorldMonitor's brief hallucination validators.
 
-> We don't ask the model if it's true. We ask the data where it came from.
+> We don't tell you what's true. We show you what stands behind it.
 
-## Already in the repo: real data from 2026-10-09
+## What happens on stage
 
-`snapshots/` holds real WorldMonitor data, captured through the MCP connector on 2026-10-09 around 21:10 UTC, and a **pinned reveal**: "Trump Announces Diesel Deal With Russia", the same headline on six iHeart radio station sites, so one source. `npm start` works on this data with no keys at all. See [snapshots/README.md](snapshots/README.md) for the headlines to try and what each one shows. Open the six links in `snapshots/reveal.json` before the panel.
-
-## Prepare tonight (about 20 minutes, then it runs by itself)
-
-```bash
-cd demos/verification-desk
-npm install          # also installs tsx, which loads WorldMonitor's TypeScript modules
-cp .env.example .env          # add WORLDMONITOR_API_KEY, ANTHROPIC_API_KEY (+ ElevenLabs if you have it)
-npm run check                 # every line should be PASS, or a WARN you accept
-npm run snapshot:loop         # leave running overnight: archives the digest every 30 min
-```
-
-**Why snapshots matter.** WorldMonitor's news tools only see the live digest window. That window is not a 7-day history. Each snapshot adds the current clusters, member headlines and world brief to `data/archive/`. The desk then matches headlines against live data plus the archive, and the recap switches to "the last seven days" once at least 5 archived stories exist. Start the loop as early as you can.
-
-**Pick the reveal story (do this in the morning, once the archive has some depth):**
-
-```bash
-npm run find-reveal                 # ranked candidates, with every member headline and link
-npm run find-reveal -- --pick 2     # pin #2 to data/reveal.json and draft the anchor script
-```
-
-The finder looks for four patterns, all read straight from WorldMonitor's data:
-
-| Pattern | What it means | How it's detected |
-|---|---|---|
-| `cascade` | Several outlets ran it, and their headlines all credit the same origin ("…, Reuters reports") | At least 3 headlines and 60% or more of attributed headlines name one origin |
-| `echo` | One publisher filed it under many feeds or regional editions, and no one else carried it | `corroboration.state === "single-publisher"` and 3 or more headlines |
-| `syndication` | The same headline on several sites that share one owner (iHeart stations, one content network's mastheads) | GDELT articles in `get_news_intelligence`: 3 or more hosts with one owner domain, or the same article id |
-| `ungated` | Many outlets carried it, but the insights seeder's independent entity-corroboration gate never fired | `uniqueSourceCount >= 4`, `entityCorroboration === false` |
-
-**Open every link before you pin a story.** The data says "one publisher family in what WorldMonitor monitors." On stage, you are the one telling a room that a newsroom was the only source. If you want different wording, edit `script` in `data/reveal.json`.
-
-## Practise without any keys
-
-```bash
-npm run offline      # http://localhost:4317, the committed real snapshots, no network
-```
-
-Try the headlines in the table below, then press **S** for the iHeart reveal.
-
-## On stage
-
-```bash
-npm start            # http://localhost:4317 → press F for fullscreen, H to hide the console
-```
+1. **Open the laptop page.** Today's board is already on screen, blurred behind "Press Space to go live". It is built from live WorldMonitor data, or the committed snapshot offline.
+2. **Space: go live.** The avatar connects (if configured) and the anchor narrates the board by itself: how many stories WorldMonitor is tracking, how many are corroborated, the best-supported one, the thinnest ones.
+3. **Click any story** on the board, or type or speak an audience headline. The checks fill in one by one: who reported it and how credible each source is, when it appeared, whether its figures are grounded, what prediction markets say. Then the verdict, in WorldMonitor's words.
+4. **S: the reveal.** "Trump Announces Diesel Deal With Russia": six radio station sites, one publisher (iHeart).
+5. **B** brings the board back at any time. It refreshes itself every 15 minutes while it is on screen.
 
 | Key | Action |
 |---|---|
-| R | Recap: the anchor reads the week, and every story is tagged with its source count |
-| / | Type a headline (Enter grades it) |
-| M | Microphone: speak the shouted headline (Chrome or Edge). Speak it yourself; don't point the mic at the room. |
-| S | Reveal: the pinned single-source story with the cascade animation |
-| Esc | Stop speaking and reset |
+| Space | Go live (first press), then re-read the board |
+| B | Board |
+| / or M | Type or speak a headline (mic: Chrome or Edge; speak it yourself, don't point it at the room) |
+| S | Reveal |
+| R | Recap of the week |
+| **A** | **Switch between the HeyGen avatar and the globe + voice** |
+| U | Refresh the board now |
+| Esc | Stop talking, back to the board |
+| F / H | Fullscreen / hide the console |
 
-Each grade streams the checks one at a time: **who** (publisher families, with collapsed feed labels struck through), **when** (first seen, spread, stated origin), **numbers** (every figure in the headline looked up in the article text and member headlines), **money** (Polymarket and Kalshi odds that match), then the **verdict** card, and then the anchor speaks. Every live grade is logged to `data/grades/` for your write-up after the panel.
+## Setup
+
+```bash
+cd demos/verification-desk
+npm install          # installs tsx (loads WorldMonitor's TypeScript) and bundles the LiveAvatar SDK
+npm run offline      # no keys: http://localhost:4317 on the committed real snapshot
+```
+
+For the live show, `cp .env.example .env`, fill in what you have, then:
+
+```bash
+npm run check        # every line PASS, or a WARN you accept
+npm start            # live WorldMonitor data
+```
+
+| Key in `.env` | What it adds | Without it |
+|---|---|---|
+| `WORLDMONITOR_API_KEY` | Live data | The committed 2026-10-09 snapshot |
+| `ANTHROPIC_API_KEY` | Natural spoken lines (still gated by WorldMonitor's validators) | Template sentences from WorldMonitor's data |
+| `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` | Human voice for the globe | The browser's built-in voice |
+| `LIVEAVATAR_API_KEY` + `LIVEAVATAR_AVATAR_ID` + `LIVEAVATAR_VOICE_ID` | HeyGen talking head that says the anchor's exact lines | The globe |
+
+**HeyGen LiveAvatar.** HeyGen's real-time avatars are a separate product, [LiveAvatar](https://www.liveavatar.com), with its own key and credits, separate from a HeyGen video API plan. Create an avatar and pick a voice there, copy the avatar id and voice id into `.env`, and run `npm run check`: it sends a real session request and prints LiveAvatar's exact answer. If their API wants a different body, paste it into `LIVEAVATAR_TOKEN_BODY`. The avatar uses FULL mode and `repeat`, so it says the desk's lines word for word. The microphone stays muted, so the avatar never improvises. If the session drops (LiveAvatar may cap sessions at a few minutes), it reconnects by itself. If it can't, the desk falls back to the globe and says so on screen. Press **A** to switch by hand at any time; switching to the globe closes the session so it stops using credits.
+
+**WorldMonitor allowance.** The plan this was built on has 50 MCP calls a day. A show uses roughly 2 per board refresh and up to 3 per checked headline. `npm run check` prints what's left. `npm run snapshot:loop` takes a snapshot every 2 hours (3 calls each); stop it before the show if the allowance is tight.
+
+**The reveal.** `snapshots/reveal.json` is pinned (the iHeart story, real data from 2026-10-09). Open its six links before the panel. `npm run find-reveal` lists fresher candidates; `npm run find-reveal -- --pick N` pins one to `data/reveal.json`, which takes priority. The finder groups candidates, and WorldMonitor counts the publishers behind each one:
+
+| Pattern | WorldMonitor function |
+|---|---|
+| `syndication`: one headline on several open-web sites | `briefGroundingPublisherCount` = 1 |
+| `echo`: many headlines, one publisher | `assessCorroboration` = single-publisher |
+| `ungated`: several outlets, entity gate did not fire | the insights seeder's `entityCorroboration` |
 
 ### How a headline is graded: WorldMonitor's chain, end to end
 
@@ -103,22 +99,21 @@ WorldMonitor's corroboration states describe coverage, not accuracy. The anchor 
 
 ### If things break
 
-- **Venue Wi-Fi drops:** the recap and reveal replay from `data/cache/` (last good copy), and the reveal is pinned on disk. Grading a new headline needs the network. The fallback line is "the desk can't reach its sources, so the honest answer is: unverifiable."
+- **Venue Wi-Fi drops:** the board, recap and reveal replay from `data/cache/` (last good copy) and the snapshot. A new headline needs the network; the desk then says *Sources unreachable*, never "nobody carried it".
+- **HeyGen fails or freezes:** press **A**. The globe and voice take over mid-sentence.
 - **No Anthropic key, or the API is slow:** the template voice speaks the same facts.
-- **No ElevenLabs:** the browser voice speaks. Chrome on macOS has the best built-in voices.
-- **The live map backdrop is slow:** set `DESK_BACKDROP_URL=` (empty) in `.env` for a plain dark background.
-- **Talking-head avatar:** set `DESK_AVATAR_EMBED_URL` to a HeyGen or Tavus conversation page and it replaces the animated globe. Faces fail on conference Wi-Fi; voices don't. Keep the globe unless you've tested the avatar at the venue.
-- **Safest fallback:** screen-record the recap and the reveal tonight, and run only the audience grading live.
+- **The live map backdrop is slow:** set `DESK_BACKDROP_URL=` (empty) in `.env`.
+- **Safest fallback:** screen-record a full run tonight.
 
 ## Stage script (~7 minutes)
 
-**Open.** "We don't tell you what's true. We show you what stands behind it: how many independent sources, how credible each one is, and whether the facts hold up. I'm going to let an AI anchor re-read this week's news with you, claim by claim."
+**Open (Space).** "We don't tell you what's true. We show you what stands behind it: how many independent sources, how credible each one is, and whether the facts hold up." The anchor reads today's board.
 
-Say *validates the evidence*, never *validates the truth*. WorldMonitor's own wording is "This describes coverage, not accuracy." Several credible outlets can repeat the same wrong official statement; the desk shows the evidence, it does not rule on reality.
+Say *validates the evidence*, never *validates the truth*. WorldMonitor's own wording is "This describes coverage, not accuracy."
 
-1. **Recap (90 s, press R).** The anchor reads the week, and every story carries its count. *Message: verification can be the default, not an afterthought.*
-2. **Grade a headline (3 min, two or three from the room).** Each check lands on screen as the anchor reaches it. If someone names something that isn't in the data, let it land on **Unverifiable**. That's the most powerful answer to show. *Message: trust is auditable, step by step.*
-3. **The reveal (90 s, press S).** One story, the headlines flying in, all lines converging on one newsroom. Pause. *Message: virality is not corroboration.*
+1. **The board (90 s).** Point at the two columns. WorldMonitor's #1 story of 2026-10-09, Ukraine striking Yandex's data centres, sat in the thin column: one publisher. *Message: verification can be the default, not an afterthought.*
+2. **Check stories (3 min).** Click one from each column, then take one from the room. If it isn't in the data, let it land on *Not in WorldMonitor's sources*. *Message: trust is auditable, step by step.*
+3. **The reveal (90 s, S).** Six station sites, one publisher. Pause. *Message: virality is not corroboration.*
 
 Soundbites:
 - "A headline in 40 outlets with one source is still one source."
@@ -131,6 +126,7 @@ Soundbites:
 ```
 server.mjs            HTTP + SSE server, last-good cache, ElevenLabs proxy
 lib/wm.mjs            the only bridge to WorldMonitor's grading code (see the table above)
+lib/board.mjs         today's board: groups one event's clusters, WorldMonitor grades them
 lib/grade.mjs         retrieval + the checks, emitted one at a time
 lib/verdict.mjs       arranges WorldMonitor's judgments into the verdict card
 lib/reveal.mjs        single-publisher reveal finder, counted by WorldMonitor
@@ -140,7 +136,8 @@ lib/mcp-client.mjs    streamable-HTTP MCP client (X-WorldMonitor-Key or bearer)
 lib/sources.mjs       live MCP and archive snapshots
 scripts/              snapshot, find-reveal, grade (CLI), check
 snapshots/            real WorldMonitor data, committed
-public/               the stage UI (no build step)
+public/               the stage UI (no build step); public/avatar.js drives HeyGen LiveAvatar
+scripts/build-avatar.mjs  bundles the LiveAvatar SDK locally on npm install (public/vendor/)
 ```
 
 `npm test` checks that the bridge matches WorldMonitor's functions and runs the pipeline against the real snapshot. Everything runs under `node --import tsx`; the npm scripts already do this.

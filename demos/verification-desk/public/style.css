@@ -200,3 +200,53 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
 }
+
+/* ---------- today's board ---------- */
+.board-top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+.board-updated { margin: 0; font: 12px var(--mono); color: var(--muted); }
+.board-totals { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; margin: 4px 0 18px; font-size: clamp(16px, 1.3vw, 20px); color: var(--muted); }
+.board-totals .num { font: 800 clamp(30px, 3vw, 48px) var(--mono); color: var(--text); margin-left: 14px; }
+.board-totals .num:first-child { margin-left: 0; }
+.board-totals .num.ok { color: var(--ok); }
+.board-totals .num.thin { color: var(--single); }
+.board-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.col-head { margin: 0 0 10px; font: 700 15px var(--mono); letter-spacing: 0.18em; text-transform: uppercase; }
+.col-head small { display: block; margin-top: 2px; font: 12px var(--font); letter-spacing: 0; text-transform: none; color: var(--muted); }
+.col-head.ok { color: var(--ok); }
+.col-head.thin { color: var(--single); }
+.stories { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.story { padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 8px; cursor: pointer; animation: slidein 450ms ease both; transition: border-color 200ms, transform 200ms; }
+.story:hover, .story:focus { border-color: var(--accent); transform: translateX(4px); outline: none; }
+.story.state-corroborated { border-left-color: var(--ok); }
+.story.state-single-publisher { border-left-color: var(--single); }
+.story.state-tier4-only, .story.state-unknown { border-left-color: #ff8a4c; }
+.story-title { font-size: clamp(14px, 1.15vw, 18px); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.story-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
+.story-meta .chip { font-size: 12px; padding: 2px 8px; }
+.story-meta .src { font: 12px var(--mono); color: var(--muted); }
+.stories li:nth-child(2) { animation-delay: 80ms; } .stories li:nth-child(3) { animation-delay: 160ms; }
+.stories li:nth-child(4) { animation-delay: 240ms; } .stories li:nth-child(5) { animation-delay: 320ms; } .stories li:nth-child(6) { animation-delay: 400ms; }
+.board-hint { margin: 14px 0 0; font-size: 12px; color: var(--muted); }
+
+/* ---------- avatar ---------- */
+.avatar-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; opacity: 0; transition: opacity 600ms; background: #000; box-shadow: 0 0 60px rgba(79, 209, 255, 0.3); }
+.anchor.avatar-on .avatar-video { opacity: 1; }
+.anchor.avatar-on .face { opacity: 0; }
+.anchor.avatar-connecting .face { animation: pulse 1s infinite; }
+.face { transition: opacity 600ms; }
+.avatar-badge { margin-left: 8px; font: 700 11px var(--mono); padding: 2px 6px; border-radius: 3px; border: 1px solid var(--line); color: var(--muted); }
+
+/* ---------- go live + toast ---------- */
+.golive { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(5, 8, 13, 0.55); backdrop-filter: blur(3px); cursor: pointer; }
+.golive[hidden] { display: none; }
+.golive-card { text-align: center; padding: 32px 40px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
+.golive h2 { margin: 6px 0; font-size: clamp(28px, 3vw, 48px); }
+.golive kbd { font: 700 0.8em var(--mono); padding: 2px 10px; border: 1px solid var(--accent); border-radius: 6px; color: var(--accent); }
+.toast { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 25; padding: 8px 16px; border-radius: 8px; background: var(--panel); border: 1px solid var(--accent); font: 600 13px var(--mono); letter-spacing: 0.1em; }
+.toast[hidden] { display: none; }
+
+@media (max-width: 900px) {
+  .board-cols { grid-template-columns: 1fr; }
+}
+
+.verdict strong.long { font-size: clamp(26px, 2.3vw, 40px); }

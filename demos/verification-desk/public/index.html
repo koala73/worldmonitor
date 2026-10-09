@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>The Verification Desk</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%227%22 fill=%22%234fd1ff%22/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -36,9 +37,9 @@
           </svg>
           <div id="bars" class="bars"></div>
         </div>
-        <iframe id="avatar-frame" title="Anchor avatar" allow="camera; microphone; autoplay" hidden></iframe>
+        <video id="avatar-video" class="avatar-video" autoplay playsinline></video>
       </div>
-      <div class="anchor-name">WM ANCHOR <span id="anchor-state">standing by</span></div>
+      <div class="anchor-name">WM ANCHOR <span id="anchor-state">standing by</span> <b id="avatar-badge" class="avatar-badge">GLOBE</b></div>
       <div id="caption" class="caption" aria-live="polite"></div>
     </section>
 
@@ -47,6 +48,25 @@
         <p class="kicker">Don't trust the headline.</p>
         <h1>Check what's behind it.</h1>
         <p class="sub">Independent sources. How credible each one is. Whether the facts hold up. Name a headline from this week.</p>
+      </div>
+
+      <div id="view-board" class="view">
+        <div class="board-top">
+          <p class="kicker">Today on WorldMonitor</p>
+          <p id="board-updated" class="board-updated"></p>
+        </div>
+        <div id="board-totals" class="board-totals"></div>
+        <div class="board-cols">
+          <section>
+            <h2 class="col-head ok">Corroborated <small>2+ independent publishers</small></h2>
+            <ol id="board-supported" class="stories"></ol>
+          </section>
+          <section>
+            <h2 class="col-head thin">Thin <small>single publisher or low-tier only</small></h2>
+            <ol id="board-thin" class="stories"></ol>
+          </section>
+        </div>
+        <p class="board-hint">Click a story to check it · tiers rank sources; they do not judge the claim</p>
       </div>
 
       <div id="view-recap" class="view">
@@ -100,12 +120,23 @@
       <button type="submit">Check it</button>
     </form>
     <div class="actions">
+      <button type="button" id="btn-board" title="B">Board</button>
       <button type="button" id="btn-recap" title="R">Recap</button>
       <button type="button" id="btn-reveal" title="S">Reveal</button>
+      <button type="button" id="btn-avatar" title="A">Avatar / Globe</button>
       <button type="button" id="btn-stop" title="Esc">Reset</button>
     </div>
-    <p class="hint">R recap · / headline · M mic · S reveal · Esc reset · F fullscreen · H hide console</p>
+    <p class="hint">Space go live · B board · / headline · M mic · S reveal · R recap · A avatar/globe · U refresh · Esc back · F fullscreen · H hide console</p>
   </footer>
+
+  <div id="golive" class="golive">
+    <div class="golive-card">
+      <p class="kicker">The Verification Desk</p>
+      <h2>Press <kbd>Space</kbd> to go live</h2>
+      <p id="golive-sub" class="sub"></p>
+    </div>
+  </div>
+  <div id="toast" class="toast" hidden></div>
 
   <script src="app.js" type="module"></script>
 </body>

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // Archives the live digest so the desk can grade headlines from days ago.
-// The MCP news tools only see the current window; run this every 30 minutes
-// (npm run snapshot:loop, or cron) from now until the panel.
+// The MCP news tools only see the current window; npm run snapshot:loop takes
+// one every 2 hours (3 MCP calls each) so the daily allowance lasts the show.
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ARCHIVE_DIR, loadEnv } from '../lib/config.mjs';
 import { dig, WorldMonitorMcp } from '../lib/mcp-client.mjs';
-import { FULL_CATEGORIES, gdeltArticlesFrom } from '../lib/sources.mjs';
+import { gdeltArticlesFrom } from '../lib/sources.mjs';
 
 loadEnv();
 
@@ -18,19 +18,15 @@ async function snapshot() {
     bearerToken: process.env.WORLDMONITOR_MCP_TOKEN,
   });
   const takenAt = new Date().toISOString();
-  const calls = [
-    ['all', () => mcp.callTool('get_news_clusters', { limit: 25 })],
-    ...FULL_CATEGORIES.map((category) => [category, () => mcp.callTool('get_news_clusters', { category, limit: 25 })]),
-  ];
+  // Three MCP calls per snapshot: WorldMonitor accounts have a daily allowance
+  // (50 calls on the plan this was built against), shared with the live show.
   const clusters = new Map();
   const errors = [];
-  for (const [label, call] of calls) {
-    try {
-      const out = await call();
-      for (const c of out.clusters ?? []) clusters.set(c.id, { ...c, category: label });
-    } catch (error) {
-      errors.push(`${label}: ${error.message}`);
-    }
+  try {
+    const out = await mcp.callTool('get_news_clusters', { limit: 25 });
+    for (const c of out.clusters ?? []) clusters.set(c.id, c);
+  } catch (error) {
+    errors.push(`clusters: ${error.message}`);
   }
   let intelligenceStories = [];
   let gdeltArticles = [];

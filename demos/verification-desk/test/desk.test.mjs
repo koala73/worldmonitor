@@ -126,3 +126,17 @@ test('MCP client: initialize, session header, SSE tool result', async () => {
   assert.equal(calls.at(-1).headers['Mcp-Session-Id'], 'sess-1');
   assert.equal(calls.at(-1).headers['X-WorldMonitor-Key'], 'k');
 });
+
+test('today\'s board: one event across clusters is one story, graded by WorldMonitor', async () => {
+  const { buildBoard } = await import('../lib/board.mjs');
+  const { clusters, from } = await snapshotDesk().source.boardClusters();
+  assert.equal(from, 'archive');
+  const b = buildBoard(clusters);
+  const diesel = b.supported.find((s) => /diesel/i.test(s.title));
+  assert.ok(diesel && diesel.clusters >= 5 && diesel.publishers >= 5, 'the split diesel clusters are one corroborated story');
+  assert.ok(b.thin.some((s) => /Yandex/.test(s.title) && s.state === 'single-publisher'));
+  assert.equal(b.totals.corroborated + b.totals.singlePublisher + b.totals.lowTierOnly + b.totals.unknown, b.totals.stories);
+  // Every board story can be checked: it is findable by the grader.
+  const r = await gradeToResult(b.thin[0].title, snapshotDesk());
+  assert.notEqual(r.verdict.key, 'not-found');
+});

@@ -37,6 +37,26 @@ export function normalizeCluster(c, extra = {}) {
   };
 }
 
+/** A get_news_intelligence top story in the cluster shape the desk grades. */
+export function storyAsCluster(st) {
+  return normalizeCluster({
+    id: `story:${st.primaryTitle}`,
+    title: st.primaryTitle,
+    link: st.primaryLink ?? null,
+    primarySource: st.primarySource ?? null,
+    memberCount: st.sourceCount ?? null,
+    distinctSourceCount: st.uniqueSourceCount ?? null,
+    sources: st.sources ?? [],
+    publishers: st.publishers ?? [],
+    publishersUnlisted: st.publishersUnlisted ?? 0,
+    corroboration: st.corroboration ?? (st.corroborationCount ? { state: 'unknown', publishers: st.corroborationCount } : undefined),
+    firstSeen: typeof st.pubDate === 'number' ? new Date(st.pubDate).toISOString() : st.pubDate ?? null,
+    lastUpdated: st.lastUpdated ?? null,
+    credibilityScore: st.credibilityScore,
+    memberTitles: st.memberTitles ?? null,
+  }, { seenIn: 'story', credibilityScore: st.credibilityScore ?? null, entityCorroboration: st.entityCorroboration ?? null, corroborationSourceCount: st.corroborationSourceCount ?? null });
+}
+
 /** GDELT article rows ({title, url}) from a get_news_intelligence payload. */
 export function gdeltArticlesFrom(payload) {
   const topics = dig(payload, 'topics');
@@ -88,7 +108,7 @@ export async function fetchArticleText(url, { timeoutMs = 5000, fetchImpl = (...
 }
 
 export class LiveSource {
-  constructor(mcp, { ttlMs = 10 * 60_000 } = {}) {
+  constructor(mcp, { ttlMs = 15 * 60_000 } = {}) {
     this.mcp = mcp;
     this.kind = 'live';
     this.ttlMs = ttlMs;
@@ -97,7 +117,8 @@ export class LiveSource {
 
   async searchClusters(terms) {
     const results = await Promise.allSettled(
-      terms.map((query) => this.mcp.callTool('get_news_clusters', { query, limit: 25 })),
+      // At most three search calls per headline: the daily MCP allowance is shared with the whole show.
+      terms.slice(0, 3).map((query) => this.mcp.callTool('get_news_clusters', { query, limit: 25 })),
     );
     const byId = new Map();
     let generatedAt = null;
@@ -163,7 +184,7 @@ export class LiveSource {
   async allClusters() {
     const results = await Promise.allSettled([
       this.mcp.callTool('get_news_clusters', { limit: 25 }),
-      ...FULL_CATEGORIES.map((category) => this.mcp.callTool('get_news_clusters', { category, limit: 25 })),
+
     ]);
     const byId = new Map();
     for (const r of results) {
@@ -194,6 +215,15 @@ export class LiveSource {
     } catch {
       return [];
     }
+  }
+
+  /** Today's board: WorldMonitor's top stories plus the newest clusters. Two calls, cached for the TTL. */
+  async boardClusters() {
+    const [stories, newest] = await Promise.all([
+      this.intelligenceStories(),
+      this.snapshot('board-clusters', async () => (await this.mcp.callTool('get_news_clusters', { limit: 25 })).clusters ?? []),
+    ]);
+    return [...stories.map(storyAsCluster), ...newest.map((c) => normalizeCluster(c, { seenIn: 'live' }))];
   }
 
   /** Fetch both snapshots before the show so the first grade is instant. */
@@ -291,6 +321,12 @@ export class ArchiveSource {
   async gdeltArticles() {
     return (await this.load()).articles;
   }
+
+  /** The board from the archive: its top stories, then its clusters. */
+  async boardClusters() {
+    const { clusters, stories } = await this.load();
+    return [...stories.map(storyAsCluster), ...clusters];
+  }
 }
 
 /** Live first, archive behind it: a headline from five days ago is still findable. */
@@ -302,10 +338,17 @@ export class CombinedSource {
   }
 
   async searchClusters(terms) {
-    const [l, a] = await Promise.all([
+    const [l, a, stories] = await Promise.all([
       this.live ? this.live.searchClusters(terms) : { clusters: [], failures: [] },
       this.archive ? this.archive.searchClusters(terms) : { clusters: [], failures: [] },
+      // WorldMonitor's top stories are on the board too, so they must be findable.
+      this.intelligenceStories().catch(() => []),
     ]);
+    const lower = terms.map((t) => t.toLowerCase());
+    for (const st of stories) {
+      const hay = `${st.primaryTitle} ${(st.memberTitles ?? []).join(' ')}`.toLowerCase();
+      if (lower.some((t) => hay.includes(t))) a.clusters.push(storyAsCluster(st));
+    }
     const byId = new Map(a.clusters.map((c) => [c.id, c]));
     for (const c of l.clusters) {
       const old = byId.get(c.id);
@@ -315,7 +358,7 @@ export class CombinedSource {
   }
 
   async storyDetail(cluster, term) {
-    if (cluster.memberTitles?.length) return { memberTitles: cluster.memberTitles };
+    if (cluster.memberTitles?.length) return { memberTitles: cluster.memberTitles, entityCorroboration: cluster.entityCorroboration ?? null, corroborationSourceCount: cluster.corroborationSourceCount ?? null };
     return (this.live && cluster.seenIn === 'live' ? await this.live.storyDetail(cluster, term) : null)
       ?? (this.archive ? await this.archive.storyDetail(cluster, term) : null);
   }
@@ -350,6 +393,19 @@ export class CombinedSource {
 
   async weekClusters() {
     return this.archive ? (await this.archive.load()).clusters : [];
+  }
+
+  /** Live when connected; the archive only when WorldMonitor cannot be reached or there is no key. */
+  async boardClusters() {
+    if (this.live) {
+      try {
+        const live = await this.live.boardClusters();
+        if (live.length) return { clusters: live, from: 'live' };
+      } catch {
+        // fall through to the archive
+      }
+    }
+    return { clusters: this.archive ? await this.archive.boardClusters() : [], from: 'archive' };
   }
 
   async gdeltArticles() {

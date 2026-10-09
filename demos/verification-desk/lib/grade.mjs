@@ -155,7 +155,7 @@ export async function* gradeHeadline(headline, { source, anchor }) {
   yield { step: 'money', data: result.money };
 
   // 5. The card: WorldMonitor's judgments, arranged.
-  const sourcesUnreachable = !story && (search.failures?.length ?? 0) > 0 && search.failures.length >= terms.length;
+  const sourcesUnreachable = !story && (search.failures?.length ?? 0) > 0 && search.failures.length >= Math.min(terms.length, 3);
   result.verdict = computeVerdict({
     found: Boolean(story),
     sourcesUnreachable,

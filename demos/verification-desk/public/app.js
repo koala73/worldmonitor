@@ -1,6 +1,8 @@
 // Stage client. Every piece of data from the server goes in with textContent,
 // never innerHTML: headlines are untrusted text.
 
+import * as avatar from './avatar.js';
+
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
   const node = document.createElement(tag);
@@ -61,6 +63,7 @@ let audioEl = null;
 let audioCtx = null;
 
 function stopVoice() {
+  avatar.interrupt();
   if (audioEl) { audioEl.pause(); audioEl = null; }
   if ('speechSynthesis' in window) speechSynthesis.cancel();
   level = () => 0;
@@ -110,10 +113,14 @@ async function speak(text, { onProgress = () => {} } = {}) {
   renderCaption(text, 0);
   setAnchorState('on air', true);
   try {
-    if (config.tts === 'elevenlabs') await speakElevenLabs(text, progress, myRun);
+    // HeyGen avatar when it is on and connected; otherwise the globe's voice.
+    if (avatar.isActive()) await avatar.speak(text, progress, () => myRun !== runId);
+    else if (config.tts === 'elevenlabs') await speakElevenLabs(text, progress, myRun);
     else await speakBrowser(text, progress);
   } catch {
-    await speakBrowser(text, progress);
+    if (myRun !== runId) return;
+    if (config.tts === 'elevenlabs') await speakElevenLabs(text, progress, myRun).catch(() => speakBrowser(text, progress));
+    else await speakBrowser(text, progress);
   }
   if (myRun === runId) { progress(1); setAnchorState('standing by', false); level = () => 0; }
 }
@@ -125,7 +132,121 @@ function resetAll() {
   if (currentSource) { currentSource.close(); currentSource = null; }
   stopVoice();
   $('#caption').replaceChildren();
-  show('idle');
+  show(lastBoard ? 'board' : 'idle');
+}
+
+/* ---------- today's board ---------- */
+
+let lastBoard = null;
+
+function fmtClock(iso) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function storyCard(s) {
+  const li = el('li', `story state-${s.state}`);
+  li.tabIndex = 0;
+  const head = el('div', 'story-head');
+  head.append(el('span', 'story-title', s.title));
+  li.append(head);
+  const meta = el('div', 'story-meta');
+  meta.append(el('span', `chip ${s.state}`, s.publishers <= 1 ? (s.state === 'tier4-only' ? 'low-tier only' : '1 publisher') : `${s.publishers} publishers`));
+  if (s.credibility != null) meta.append(el('span', `chip cred band-${s.band}`, `CRED ${s.credibility}`));
+  for (const x of s.top.slice(0, 2)) meta.append(el('span', 'src', `${x.tier ? `T${x.tier}` : 'T?'} ${x.name}`));
+  for (const c of s.stateAffiliated) meta.append(el('span', 'tag bad', `state: ${c}`));
+  li.append(meta);
+  const check = () => runGrade(s.title);
+  li.onclick = check;
+  li.onkeydown = (e) => { if (e.key === 'Enter') check(); };
+  return li;
+}
+
+function renderBoard(b) {
+  lastBoard = b;
+  const t = b.totals;
+  $('#board-totals').replaceChildren(
+    el('span', 'num', t.stories), el('span', '', 'stories tracked'),
+    el('span', 'num ok', t.corroborated), el('span', '', 'corroborated'),
+    el('span', 'num thin', t.singlePublisher + t.lowTierOnly + t.unknown), el('span', '', 'single-publisher or thin'),
+  );
+  $('#board-updated').textContent = `${b.from === 'live' ? 'Live' : 'Snapshot'} · updated ${fmtClock(b.asOf)}${b.fromCache ? ' · last good copy' : ''}`;
+  $('#board-supported').replaceChildren(...b.supported.map(storyCard));
+  $('#board-thin').replaceChildren(...b.thin.map(storyCard));
+}
+
+async function runBoard({ narrate = true, refresh = false } = {}) {
+  resetAll();
+  const myRun = runId;
+  setAnchorState('reading WorldMonitor…');
+  let b;
+  try {
+    b = await fetch(`/api/board${refresh ? '?refresh=1' : ''}`).then((r) => r.json());
+  } catch {
+    b = null;
+  }
+  if (myRun !== runId) return;
+  if (!b || b.error) { setAnchorState('standing by'); $('#caption').textContent = b?.error ?? 'Board unavailable.'; return; }
+  renderBoard(b);
+  show('board');
+  setAnchorState('standing by');
+  if (narrate) await speak(b.script);
+}
+
+// Quiet refresh: only while the board is on screen and nobody is talking.
+function scheduleBoardRefresh() {
+  setInterval(async () => {
+    const onBoard = $('#view-board').classList.contains('active');
+    if (!onBoard || $('#anchor').classList.contains('speaking')) return;
+    try {
+      const b = await fetch('/api/board').then((r) => r.json());
+      if (!b.error && $('#view-board').classList.contains('active')) renderBoard(b);
+    } catch { /* keep the last board */ }
+  }, Math.max(1, config.boardRefreshMin ?? 10) * 60_000);
+}
+
+/* ---------- going live + the avatar switch ---------- */
+
+let live = false;
+
+async function goLive() {
+  if (live) return runBoard();
+  live = true;
+  $('#golive').hidden = true;
+  // A key press unlocks audio in the browser; warm both voices now.
+  try { (audioCtx ??= new AudioContext()).resume(); } catch { /* no audio context */ }
+  if (config.avatar) await useAvatar(true);
+  await runBoard();
+}
+
+async function useAvatar(on) {
+  const anchorBox = $('#anchor');
+  if (!on) {
+    await avatar.stop();
+    anchorBox.classList.remove('avatar-on');
+    toast('Globe + voice');
+    return;
+  }
+  if (!config.avatar) { toast('No LiveAvatar key: staying on the globe'); return; }
+  anchorBox.classList.add('avatar-connecting');
+  const ok = await avatar.start($('#avatar-video'));
+  anchorBox.classList.remove('avatar-connecting');
+  anchorBox.classList.toggle('avatar-on', ok);
+  toast(ok ? 'HeyGen avatar on air' : 'Avatar unavailable: globe + voice');
+}
+
+avatar.onStatus(({ ready, wanted }) => {
+  $('#anchor').classList.toggle('avatar-on', ready && wanted);
+  $('#avatar-badge').textContent = wanted ? (ready ? 'AVATAR' : 'AVATAR…') : 'GLOBE';
+});
+
+let toastTimer = null;
+function toast(text) {
+  const t = $('#toast');
+  t.textContent = text;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 2500);
 }
 
 /* ---------- recap ---------- */
@@ -201,7 +322,7 @@ const renderers = {
   when(d) {
     const out = el('div');
     if (!d) { out.append(el('span', 'warn', 'No timeline: nothing to trace.')); return out; }
-    out.append(el('div', 'mono', `First seen ${fmtTime(d.firstSeen)} · spread over ${d.spreadHours ?? '?'}h`));
+    out.append(el('div', 'mono', `First seen ${fmtTime(d.firstSeen)}${d.spreadHours != null ? ` · spread over ${d.spreadHours}h` : ''}`));
     if (d.mergedClusters > 1) out.append(el('div', '', `Found across ${d.mergedClusters} WorldMonitor clusters`));
     if (d.primarySource) out.append(el('div', '', `Lead source: ${d.primarySource}`));
     return out;
@@ -285,6 +406,7 @@ function runGrade(headline) {
         // Colour: WorldMonitor's coverage state; a corroborated story takes its credibility band.
         v.className = `verdict v-${ev.data.key}${ev.data.key === 'corroborated' && ev.data.band ? ` cred-${ev.data.band}` : ''}`;
         $('#verdict-word').textContent = ev.data.word;
+        $('#verdict-word').classList.toggle('long', ev.data.word.length > 16);
         const ul = $('#verdict-reasons');
         ul.replaceChildren(...ev.data.reasons.map((r) => el('li', '', r)));
         $('#verdict-hint').textContent = ev.data.hint ?? '';
@@ -388,12 +510,20 @@ $('#ask').addEventListener('submit', (e) => {
 $('#btn-recap').onclick = () => runRecap();
 $('#btn-reveal').onclick = () => runReveal();
 $('#btn-stop').onclick = () => resetAll();
+$('#btn-board').onclick = () => (live ? runBoard() : goLive());
+$('#btn-avatar').onclick = () => useAvatar(!avatar.isWanted());
+$('#golive').onclick = () => goLive();
 $('#mic').onclick = () => listen();
 
 document.addEventListener('keydown', (e) => {
   if (e.target === $('#headline')) { if (e.key === 'Escape') $('#headline').blur(); return; }
   const k = e.key.toLowerCase();
-  if (k === 'r') runRecap();
+  if (k === ' ') { e.preventDefault(); goLive(); return; }
+  if (!live && k !== 'f') { goLive(); return; }
+  if (k === 'b') runBoard();
+  else if (k === 'a') useAvatar(!avatar.isWanted());
+  else if (k === 'u') runBoard({ narrate: false, refresh: true });
+  else if (k === 'r') runRecap();
   else if (k === 's') runReveal();
   else if (k === 'm') listen();
   else if (k === '/') { e.preventDefault(); $('#headline').focus(); }
@@ -416,11 +546,14 @@ if ('speechSynthesis' in window) speechSynthesis.getVoices();
     f.setAttribute('tabindex', '-1');
     $('#backdrop').append(f);
   }
-  if (config.avatarEmbedUrl) {
-    const f = $('#avatar-frame');
-    f.src = config.avatarEmbedUrl;
-    f.hidden = false;
-    document.querySelector('.face').hidden = true;
-    document.querySelector('.rings').hidden = true;
-  }
+  $('#avatar-badge').textContent = 'GLOBE';
+  $('#golive-sub').textContent = config.avatar
+    ? 'HeyGen avatar ready · press A any time to switch to the globe'
+    : 'Globe + voice · add a LiveAvatar key for the HeyGen avatar';
+  scheduleBoardRefresh();
+  // Show the board silently behind the go-live overlay so the room sees today's news.
+  try {
+    const b = await fetch('/api/board').then((r) => r.json());
+    if (!b.error) { renderBoard(b); show('board'); }
+  } catch { /* stay on the title screen */ }
 })();
