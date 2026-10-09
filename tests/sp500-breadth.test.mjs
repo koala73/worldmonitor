@@ -9,8 +9,11 @@ import {
   mergeBreadthHistory,
   MIN_VALID_CONSTITUENTS,
   readBreadthHistory,
+  MAX_SAVED_CONSTITUENTS_AGE_MS,
   readPublishedPctAbove200d,
+  readSavedConstituents,
   requireCompleteReadings,
+  SP500_CONSTITUENTS_KEY,
 } from '../scripts/_sp500-breadth.mjs';
 
 // Scanner row shape: d = [name, close, SMA20, SMA50, SMA200, time].
@@ -145,6 +148,22 @@ describe('readBreadthHistory', () => {
   });
 });
 
+describe('readSavedConstituents', () => {
+  it('reads the saved list from its seed envelope', async () => {
+    const saved = { savedAt: Date.parse('2026-10-07T02:00:00Z'), symbols: ['NYSE:A', 'NASDAQ:B'] };
+    const fetchImpl = async (url) => {
+      assert.match(url, new RegExp(`/get/${encodeURIComponent(SP500_CONSTITUENTS_KEY)}$`));
+      return Response.json({ result: JSON.stringify({ _seed: { fetchedAt: 1, recordCount: 2 }, data: saved }) });
+    };
+    assert.deepEqual(await readSavedConstituents({ fetchImpl, url: 'https://upstash.example', token: 't' }), saved);
+  });
+
+  it('returns null when no list has been saved', async () => {
+    const fetchImpl = async () => Response.json({ result: null });
+    assert.equal(await readSavedConstituents({ fetchImpl, url: 'https://upstash.example', token: 't' }), null);
+  });
+});
+
 describe('readPublishedPctAbove200d', () => {
   it('returns the published current 200d reading', async () => {
     const payload = { current: { pctAbove20d: 20, pctAbove50d: 50, pctAbove200d: 64.07 }, history: [] };
@@ -218,6 +237,69 @@ describe('fetchSp500Breadth', () => {
     assert.equal(result.constituents, 503);
     assert.equal(result.otherSessions, 1);
     assert.deepEqual(result.readings, { pctAbove20d: 100, pctAbove50d: 100, pctAbove200d: 49.9 });
+  });
+
+  it('returns the index symbols so the next run can fall back to them', async () => {
+    const data = universe(503, (i) => row(`T${i}`, 100, 90, 90, 90));
+    const result = await fetchSp500Breadth({
+      now: Date.parse('2026-09-06T02:00:00Z'),
+      fetchImpl: async () => Response.json({ totalCount: 503, data }),
+      loadSavedConstituents: async () => { throw new Error('a full index scan must not read the saved list'); },
+    });
+    assert.equal(result.membership, 'index');
+    assert.deepEqual(result.symbols, data.map((r) => r.s));
+  });
+
+  // On 2026-10-09 TradingView's S&P 500 symbol set returned 408 of 503 names
+  // (TSLA, V, WMT, UNH and most of S-W were gone) while the same tickers still
+  // quoted normally. The other index sets were intact.
+  describe('when the index symbol set comes back short', () => {
+    const now = Date.parse('2026-09-06T02:00:00Z');
+    const full = universe(503, (i) => row(`T${i}`, 100, 90, 90, i < 252 ? 90 : 110));
+    const saved = { savedAt: Date.parse('2026-09-01T02:00:00Z'), symbols: full.map((r) => r.s) };
+
+    function scanner(requests) {
+      return async (_url, init) => {
+        const body = JSON.parse(init.body);
+        requests.push(body.symbols);
+        const data = body.symbols.symbolset ? full.slice(0, 408) : full.filter((r) => body.symbols.tickers.includes(r.s));
+        return Response.json({ totalCount: data.length, data });
+      };
+    }
+
+    it('scores the saved constituent list instead', async () => {
+      const requests = [];
+      const result = await fetchSp500Breadth({ now, fetchImpl: scanner(requests), loadSavedConstituents: async () => saved });
+      assert.deepEqual(requests, [{ symbolset: ['SYML:SP;SPX'] }, { tickers: saved.symbols }]);
+      assert.equal(result.membership, 'saved');
+      assert.equal(result.constituents, 503);
+      assert.equal(result.indexConstituents, 408);
+      assert.deepEqual(result.readings, { pctAbove20d: 100, pctAbove50d: 100, pctAbove200d: 50.1 });
+      assert.equal(result.symbols, undefined);
+    });
+
+    it('fails when no list has been saved', async () => {
+      await assert.rejects(
+        fetchSp500Breadth({ now, fetchImpl: scanner([]), loadSavedConstituents: async () => null }),
+        /S&P 500 symbol set returned 408 rows/,
+      );
+    });
+
+    it('fails when the saved list is too old to stand in for the index', async () => {
+      const stale = { ...saved, savedAt: now - MAX_SAVED_CONSTITUENTS_AGE_MS - 1 };
+      await assert.rejects(
+        fetchSp500Breadth({ now, fetchImpl: scanner([]), loadSavedConstituents: async () => stale }),
+        /S&P 500 symbol set returned 408 rows/,
+      );
+    });
+
+    it('fails when the saved list is itself below the constituent floor', async () => {
+      const short = { ...saved, symbols: saved.symbols.slice(0, MIN_VALID_CONSTITUENTS - 1) };
+      await assert.rejects(
+        fetchSp500Breadth({ now, fetchImpl: scanner([]), loadSavedConstituents: async () => short }),
+        /S&P 500 symbol set returned 408 rows/,
+      );
+    });
   });
 
   it('rejects a scan split across sessions below the constituent floor', async () => {
