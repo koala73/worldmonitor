@@ -2317,6 +2317,7 @@ describe('accuracy page horizon grades (#9057)', () => {
       assert.doesNotMatch(row, /95% interval/);
     }
     assert.match(rowHtml(html, 'h24'), /12 graded windows from 9 forecast families: 3 with the event, 7 without/);
+    assert.match(rowHtml(html, 'd30'), /<td>No graded windows yet<\/td>/);
     assert.match(html, /once its graded windows come from at least 30 forecast families, with at least 5 where the projected event happened and 5 where it did not/);
   });
 

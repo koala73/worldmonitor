@@ -1324,6 +1324,7 @@ ${paragraphs.map((paragraph) => `        <p>${paragraph}</p>`).join('\n')}
 const HORIZON_GRADE_RULE = `at least ${SKILL_MIN_FAMILIES} forecast families, with at least ${SKILL_MIN_OUTCOME_FAMILIES} where the projected event happened and ${SKILL_MIN_OUTCOME_FAMILIES} where it did not`;
 
 function horizonSampleText(row) {
+  if (row.scored === 0) return 'No graded windows yet';
   const families = `${formatCount(row.families)} forecast ${row.families === 1 ? 'family' : 'families'}`;
   return `${formatCount(row.scored)} graded ${row.scored === 1 ? 'window' : 'windows'} from ${families}: ${formatCount(row.yesFamilies)} with the event, ${formatCount(row.noFamilies)} without`;
 }
