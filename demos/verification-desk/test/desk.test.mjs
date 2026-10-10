@@ -208,3 +208,69 @@ test('committed snapshots never age out; rolling archives do', async () => {
   const { clusters } = await buildDesk({ offline: true }).source.boardClusters();
   assert.ok(clusters.length > 0, 'the offline board has data whatever the date');
 });
+
+test('a failed snapshot load is remembered for a minute, then WorldMonitor is asked again', async () => {
+  const { FAILURE_TTL_MS } = await import('../lib/sources.mjs');
+  let calls = 0;
+  const mcp = { async callTool() { calls += 1; throw new Error('fetch failed'); } };
+  const live = new LiveSource(mcp);
+  assert.deepEqual(await live.markets(['x']).catch(() => 'threw'), 'threw', 'a failed markets load throws to the caller');
+  await live.markets(['x']).catch(() => {});
+  await live.markets(['x']).catch(() => {});
+  assert.equal(calls, 1, 'the failure is cached: no second timeout on the next check');
+  live.snapshots.get('markets').at -= FAILURE_TTL_MS + 1;
+  await live.markets(['x']).catch(() => {});
+  assert.equal(calls, 2, 'after the failure TTL WorldMonitor is asked again');
+  // A refresh that fails keeps the last good value instead of throwing.
+  let ok = true;
+  const flaky = { async callTool() { if (!ok) throw new Error('fetch failed'); return { topStories: [{ primaryTitle: 'A' }] }; } };
+  const src = new LiveSource(flaky);
+  assert.equal((await src.intelligenceStories()).length, 1);
+  ok = false;
+  assert.equal((await src.intelligencePayload({ force: true })).stories.length, 1, 'the last good snapshot stands in');
+});
+
+test('an over-budget tool result is an error, never an empty board', async () => {
+  const envelope = { _budget_exceeded: true, budget_bytes: 131072, actual_bytes: 200000, hint: 'use jmespath' };
+  const fetchImpl = async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (body.method === 'initialize') return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: {} }), { headers: { 'content-type': 'application/json', 'mcp-session-id': 's' } });
+    if (body.method === 'notifications/initialized') return new Response('', { status: 202 });
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text: JSON.stringify(envelope) }], structuredContent: envelope } }), { headers: { 'content-type': 'application/json' } });
+  };
+  const mcp = new WorldMonitorMcp({ apiKey: 'k', fetchImpl });
+  await assert.rejects(() => mcp.callTool('get_news_intelligence', { limit: 0 }), /exceeds WorldMonitor's tool output budget/);
+  // The whole-snapshot tools are capped so the budget is not reached in the first place.
+  const seen = [];
+  const capped = { async callTool(name, args) { seen.push([name, args.limit]); return name === 'get_news_intelligence' ? { topStories: [] } : { clusters: [] }; } };
+  const live = new LiveSource(capped);
+  await live.intelligenceStories();
+  await live.markets([]);
+  assert.equal(seen.length, 2);
+  for (const [name, limit] of seen) assert.ok(limit > 0, `${name} is called with a cap, got ${limit}`);
+});
+
+test('a board that is not live is narrated as a dated snapshot, never as "right now"', async () => {
+  const { templateBoard } = await import('../lib/anchor.mjs');
+  const b = { totals: { stories: 12, corroborated: 6, singlePublisher: 6 }, supported: [], thin: [], asOf: '2026-10-09T21:10:10.756Z' };
+  assert.match(templateBoard({ ...b, from: 'live' }), /^Good evening.*Right now WorldMonitor is tracking 12 stories/);
+  const archived = templateBoard({ ...b, from: 'archive' });
+  assert.doesNotMatch(archived, /right now|today/i);
+  assert.match(archived, /last snapshot, from Saturday 10 October at 01:10/);
+  assert.doesNotMatch(templateBoard({ ...b, from: 'live', fromCache: true, cacheSavedAt: '2026-10-09T21:10:10.756Z' }), /right now/i);
+});
+
+test('the grade stream stops at the next step once the browser is gone', async () => {
+  // server.mjs breaks out of gradeHeadline when `res` closes; the generator's
+  // early return must not continue to later (paid) steps.
+  const calls = [];
+  const mcp = { async callTool(name) { calls.push(name); return { clusters: [{ id: 'c1', title: 'Trump strikes diesel deal with Putin', sources: ['BBC', 'CNBC'], link: 'https://www.bbc.com/x' }], topStories: [] }; } };
+  const { gradeHeadline } = await import('../lib/grade.mjs');
+  const it = gradeHeadline('Trump strikes diesel deal with Putin', { source: new CombinedSource(new LiveSource(mcp), null), anchor });
+  const first = await it.next();
+  assert.equal(first.value.step, 'match');
+  await it.return();
+  const after = calls.length;
+  assert.equal((await it.next()).done, true);
+  assert.equal(calls.length, after, 'no further WorldMonitor calls after the stream is abandoned');
+});

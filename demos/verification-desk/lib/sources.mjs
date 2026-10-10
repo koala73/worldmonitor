@@ -13,6 +13,12 @@ export const FULL_CATEGORIES = [
 ];
 
 const USER_AGENT = 'Mozilla/5.0 (compatible; WorldMonitor-VerificationDesk/1.0; +https://worldmonitor.app)';
+/** How long a failed snapshot load is remembered before WorldMonitor is asked again. */
+export const FAILURE_TTL_MS = 60_000;
+/** Per-list caps for the two whole-snapshot tools. `0` (no cap) can exceed the
+ *  tool output budget, which comes back as a successful empty-looking envelope. */
+const INTELLIGENCE_LIMIT = 30;
+const MARKETS_LIMIT = 30;
 
 /** Normalises a get_news_clusters row into the shape the desk uses. */
 export function normalizeCluster(c, extra = {}) {
@@ -138,10 +144,28 @@ export class LiveSource {
   // on stage costs no extra round trip.
   async snapshot(name, load, { force = false } = {}) {
     const hit = this.snapshots.get(name);
-    if (!force && hit && Date.now() - hit.at < this.ttlMs) return hit.value;
-    const value = await load();
-    this.snapshots.set(name, { at: Date.now(), value });
-    return value;
+    if (!force && hit) {
+      if (hit.error) {
+        // A failed load is remembered briefly: with the venue network down,
+        // every check would otherwise wait out the same timeout again.
+        if (Date.now() - hit.at < FAILURE_TTL_MS) throw hit.error;
+      } else if (Date.now() - hit.at < this.ttlMs) {
+        return hit.value;
+      }
+    }
+    try {
+      const value = await load();
+      this.snapshots.set(name, { at: Date.now(), value });
+      return value;
+    } catch (error) {
+      if (hit && !hit.error) {
+        // The last good snapshot stands in; the next attempt is after FAILURE_TTL_MS.
+        this.snapshots.set(name, { value: hit.value, at: Date.now() - this.ttlMs + FAILURE_TTL_MS });
+        return hit.value;
+      }
+      this.snapshots.set(name, { at: Date.now(), error });
+      throw error;
+    }
   }
 
   /** Member headlines and seeder corroboration for one story, from get_news_intelligence. */
@@ -168,7 +192,7 @@ export class LiveSource {
   }
 
   async markets(terms) {
-    const all = await this.snapshot('markets', async () => collectMarkets(await this.mcp.callTool('get_prediction_markets', { limit: 0 })));
+    const all = await this.snapshot('markets', async () => collectMarkets(await this.mcp.callTool('get_prediction_markets', { limit: MARKETS_LIMIT })));
     const lower = terms.map((t) => t.toLowerCase());
     return all.filter((m) => lower.some((t) => m.title.toLowerCase().includes(t)));
   }
@@ -205,7 +229,7 @@ export class LiveSource {
 
   intelligencePayload({ force = false } = {}) {
     return this.snapshot('intelligence', async () => {
-      const payload = await this.mcp.callTool('get_news_intelligence', { limit: 0 });
+      const payload = await this.mcp.callTool('get_news_intelligence', { limit: INTELLIGENCE_LIMIT });
       return { stories: dig(payload, 'topStories') ?? [], articles: gdeltArticlesFrom(payload) };
     }, { force });
   }

@@ -116,13 +116,30 @@ async function loadBoard(force = false) {
   return LIVE.board;
 }
 
+/**
+ * Streams one check. Resolves as soon as WorldMonitor's verdict is in, so the
+ * scene starts playing while the anchor's line is still being written; the
+ * line arrives through `result.script` (a promise, null if it never comes).
+ * Only one check streams at a time: opening a new one closes the last, and
+ * the server stops that check at its next step.
+ */
 function grade(headline) {
+  LIVE.es?.close();
   return new Promise((resolve) => {
     const es = new EventSource(`/api/grade?headline=${encodeURIComponent(headline)}`);
-    const done = (value) => { es.close(); resolve(value); };
-    es.addEventListener('done', (e) => done(JSON.parse(e.data)));
-    es.addEventListener('failure', (e) => done({ failure: JSON.parse(e.data).message }));
-    es.onerror = () => done({ failure: 'The desk server stopped answering.' });
+    LIVE.es = es;
+    const acc = { headline };
+    let settled = false;
+    let scriptResolve;
+    const script = new Promise((r) => { scriptResolve = r; });
+    const settle = (value) => { if (settled) return; settled = true; resolve({ ...value, script }); };
+    const close = (text) => { if (LIVE.es === es) LIVE.es = null; es.close(); scriptResolve(text); };
+    es.addEventListener('match', (e) => { const d = JSON.parse(e.data); Object.assign(acc, { terms: d.terms, match: d.match, closest: d.closest }); });
+    for (const step of ['who', 'when', 'numbers', 'money', 'verdict']) es.addEventListener(step, (e) => { acc[step] = JSON.parse(e.data); });
+    es.addEventListener('verdict', () => settle(acc));
+    es.addEventListener('done', (e) => { const d = JSON.parse(e.data); settle(d); close(d.script ?? null); });
+    es.addEventListener('failure', (e) => { settle({ headline, failure: JSON.parse(e.data).message }); close(null); });
+    es.onerror = () => { settle({ headline, failure: 'The desk server stopped answering.' }); close(null); };
   });
 }
 
@@ -151,7 +168,15 @@ addScene({
       body.innerHTML = `<div class="glass offline"><b>Live desk not reachable.</b> ${esc(LIVE.boardError ?? '')}<br>Start it with <code>npm start</code> in demos/verification-desk and open this deck from http://localhost:4317.</div>`;
       return;
     }
-    root.querySelector('.when').textContent = `WORLDMONITOR · ${b.from === 'live' ? 'LIVE' : 'SNAPSHOT'} · ${new Date(b.asOf).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    // A board that is not live must say when it is from, with the date: the
+    // committed snapshot is from the day before the show.
+    const live = b.from === 'live' && !b.fromCache;
+    const when = new Date(b.fromCache && b.cacheSavedAt ? b.cacheSavedAt : b.asOf);
+    root.querySelector('.when').textContent = live
+      ? `WORLDMONITOR · LIVE · ${when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+      : `WORLDMONITOR · LAST SNAPSHOT · ${when.toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
+    root.querySelector('.h1').textContent = live ? 'That was last week, by hand. This is today, live.' : 'That was last week, by hand. This is WorldMonitor\'s last snapshot.';
+    root.querySelector('.live').textContent = live ? 'LIVE' : 'SNAPSHOT';
     const picks = boardPicks(b);
     LIVE.picks = picks; // story numbers on the board are live before the check scene is opened
     const t = b.totals;
@@ -291,6 +316,9 @@ function checkPick(i) {
 }
 
 async function runCheck(headline) {
+  headline = String(headline ?? '').trim();
+  if (!headline) return;
+  LIVE.lastHeadline = headline;
   closeType();
   const root = $('#s-livecheck');
   Voice.stop(true);
@@ -323,10 +351,10 @@ async function runCheck(headline) {
   if (run !== LIVE.run || !LIVE.running || root !== $('#s-livecheck')) return;
   const wait = Math.max(0, 1600 - (performance.now() - t0));
   LIVE.result = r;
-  at(wait, () => play(root, r, { setSt, parsed, lanes, vd, cl }));
+  at(wait, () => play(root, r, { setSt, parsed, lanes, vd, cl, run }));
 }
 
-function play(root, r, { setSt, parsed, lanes, vd, cl }) {
+function play(root, r, { setSt, parsed, lanes, vd, cl, run }) {
   lanes.classList.remove('searching');
   if (r.failure) {
     setSt(5);
@@ -411,7 +439,12 @@ function play(root, r, { setSt, parsed, lanes, vd, cl }) {
     vd.classList.add('in');
     SFX.thud();
     at(600, () => { pipeDone(root); LIVE.running = false; });
-    LIVE.checkVoice = await prepareNarration('live_check', r.script);
+    // The anchor's line may still be on its way; a replaced check must not
+    // speak over the one that replaced it.
+    const text = typeof r.script === 'string' ? r.script : await r.script;
+    if (run !== LIVE.run || !text) return;
+    LIVE.checkVoice = await prepareNarration('live_check', text);
+    if (run !== LIVE.run) return;
     updateHud();
     if (S.autoNarrate) Voice.play(LIVE.checkVoice);
   });
@@ -427,7 +460,7 @@ if (ei >= 0) CONFIG.storyOrder.splice(ei, 1, 'liveboard', 'livecheck');
 else CONFIG.storyOrder.splice(CONFIG.storyOrder.length - 1, 0, 'liveboard', 'livecheck');
 S.order = CONFIG.storyOrder.filter((id) => SC[id]);
 
-HELP.push(['#', 'LIVE WORLDMONITOR'], ['1–7', 'live board: check that story'], ['T', 'live check: type a headline'], ['⌫', 'live check: back to the picks'], ['U', 'live board: refresh now'], ['G', 'HeyGen avatar ↔ animated avatar']);
+HELP.push(['#', 'LIVE WORLDMONITOR'], ['1–7', 'live board: check that story'], ['T', 'live check: type a headline'], ['⌫', 'live check: back to the picks'], ['⇧U', 'live board: refresh now'], ['G', 'HeyGen avatar ↔ animated avatar']);
 
 const deckKey = window.onKey;
 window.onKey = function onKeyLive(e) {
@@ -438,7 +471,8 @@ window.onKey = function onKeyLive(e) {
   const d = cur();
   if (k === 'g' || k === 'G') { $('#start')?.classList.add('gone'); toggleHeygen(); return; }
   if (d.id === 'liveboard' && /^Digit[1-9]$/.test(code)) { checkPick(+code[5] - 1); return; }
-  if (d.id === 'liveboard' && (k === 'u' || k === 'U')) {
+  // Shift+U: plain U is the deck's mute key, and a reflex mute must not spend WorldMonitor calls.
+  if (d.id === 'liveboard' && k === 'U' && e.shiftKey) {
     toast('Refreshing from WorldMonitor…');
     loadBoard(true).then(async () => {
       if (cur().id !== 'liveboard') return;
@@ -451,7 +485,8 @@ window.onKey = function onKeyLive(e) {
   if (d.id === 'livecheck' && /^Digit[1-9]$/.test(code)) { checkPick(+code[5] - 1); return; }
   if (d.id === 'livecheck' && (k === 't' || k === 'T')) { e.preventDefault?.(); resetCheck(); S.step = 0; updateHud(); openType(); return; }
   if (d.id === 'livecheck' && k === 'Backspace') { e.preventDefault?.(); resetCheck(); S.step = 0; updateHud(); highlightPick(); return; }
-  if (d.id === 'livecheck' && k === 'Enter' && LIVE.result) { runCheck(LIVE.result.headline); return; }
+  // Enter re-runs the last headline, including after a failed check (whose result has no headline).
+  if (d.id === 'livecheck' && k === 'Enter' && LIVE.lastHeadline) { runCheck(LIVE.lastHeadline); return; }
   return deckKey(e);
 };
 

@@ -37,7 +37,10 @@ function parseSseBody(text) {
 }
 
 export class WorldMonitorMcp {
-  constructor({ url = 'https://worldmonitor.app/mcp', apiKey, bearerToken, timeoutMs = 20_000, fetchImpl } = {}) {
+  // 10 s: on stage a slow answer is as bad as no answer, and every grade step
+  // has a fallback. The board and markets snapshots are cached, so one slow
+  // call never blocks the next check.
+  constructor({ url = 'https://worldmonitor.app/mcp', apiKey, bearerToken, timeoutMs = 10_000, fetchImpl } = {}) {
     if (!apiKey && !bearerToken) {
       throw new McpError('WorldMonitor MCP needs WORLDMONITOR_API_KEY (or WORLDMONITOR_MCP_TOKEN).');
     }
@@ -122,14 +125,25 @@ export class WorldMonitorMcp {
       const msg = result.content?.find((c) => c.type === 'text')?.text || `${name} failed`;
       throw new McpError(msg, { data: result });
     }
-    if (result?.structuredContent && typeof result.structuredContent === 'object') return result.structuredContent;
-    const text = result?.content?.find((c) => c.type === 'text')?.text;
-    if (!text) return {};
-    try {
-      return JSON.parse(text);
-    } catch {
-      return { text };
+    let payload;
+    if (result?.structuredContent && typeof result.structuredContent === 'object') {
+      payload = result.structuredContent;
+    } else {
+      const text = result?.content?.find((c) => c.type === 'text')?.text;
+      if (!text) return {};
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        return { text };
+      }
     }
+    // A payload over the tool's output budget comes back as a SUCCESSFUL,
+    // charged result holding only this envelope. Read as data it is an empty
+    // board; surfaced as an error it falls back to the archive.
+    if (payload?._budget_exceeded) {
+      throw new McpError(`${name}: response exceeds WorldMonitor's tool output budget (${payload.actual_bytes} > ${payload.budget_bytes} bytes); lower the limit`, { data: payload });
+    }
+    return payload;
   }
 }
 

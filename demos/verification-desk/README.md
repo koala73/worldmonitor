@@ -13,7 +13,7 @@ The desk has no idea of truth of its own. Every judgment on screen is WorldMonit
 - **Live board** (after the Nobel slide): today's stories as WorldMonitor grades them. The left column is corroborated stories, with publisher count, CRED and best-tier sources. The right column is in-circulation, single-publisher stories, each with a stamp. Press **1–7**, or click a story, to check it live.
 - **Live check**: the deck's pipeline, lanes, dial and stamp, filled by WorldMonitor's grading. Press **T** to type an audience headline and **Enter** to run it, **Backspace** to go back to the picker.
 - **G** switches the HeyGen avatar on and off in the deck's avatar slot. When it is off, the deck's recorded voice plays (ElevenLabs for the live lines when the key is set).
-- **U** refreshes the board. Every other key is the deck's own; press **?** for the full list.
+- **Shift+U** refreshes the board (plain U stays the deck's mute key). **Enter** re-runs the last headline, including after a failed check. Every other key is the deck's own; press **?** for the full list.
 
 The deck's own slides are frozen as of Fri 9 Oct 19:30 GST. Its "How WorldMonitor does it" slide shows WorldMonitor's source tiers 1–4, the propaganda-risk rating and the CRED bands; the live scenes compute them on today's news.
 
@@ -118,7 +118,7 @@ WorldMonitor's corroboration states describe coverage, not accuracy. The anchor 
 
 ### If things break
 
-- **Venue Wi-Fi drops:** the board, recap and reveal replay from `data/cache/` (last good copy) and the snapshot. A new headline needs the network; the desk then says *Sources unreachable*, never "nobody carried it".
+- **Venue Wi-Fi drops:** the board, recap and reveal replay from `data/cache/` (last good copy) and the snapshot, labelled *LAST SNAPSHOT* with its date, and the anchor says so instead of "right now". A new headline needs the network; the desk then says *Sources unreachable*, never "nobody carried it". Every WorldMonitor call gives up after 10 s and every Claude call after 12 s with no retry, a failed snapshot is not retried for a minute, and the scene starts playing at WorldMonitor's verdict while the anchor's line is still being written, so a slow network costs seconds, not minutes.
 - **HeyGen fails or freezes:** press **G** in the deck (**A** on `/desk`). The globe and voice take over mid-sentence.
 - **No Anthropic key, or the API is slow:** the template voice speaks the same facts.
 - **The live map backdrop is slow:** set `DESK_BACKDROP_URL=` (empty) in `.env`.

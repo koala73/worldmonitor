@@ -10,6 +10,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { buildDesk, DATA_DIR, loadEnv, ROOT } from './lib/config.mjs';
 import { gradeHeadline } from './lib/grade.mjs';
+import { templateBoard } from './lib/anchor.mjs';
 import { buildBoard } from './lib/board.mjs';
 import { findRevealCandidates } from './lib/reveal.mjs';
 import { coverage, credibilityBand, sourceCredibility } from './lib/wm.mjs';
@@ -88,8 +89,11 @@ async function board({ force = false } = {}) {
   const value = await cached('board', async () => {
     const { clusters, from, asOf } = await desk.source.boardClusters({ force });
     const b = buildBoard(clusters, { asOf: asOf ?? new Date().toISOString() });
-    return { ...b, from, refreshMinutes: BOARD_REFRESH_MS / 60_000, script: await desk.anchor.narrateBoard(b) };
+    return { ...b, from, refreshMinutes: BOARD_REFRESH_MS / 60_000, script: await desk.anchor.narrateBoard({ ...b, from }) };
   });
+  // A board replayed from disk was narrated as live when it was saved; the
+  // anchor must not say "right now" about it.
+  if (value.fromCache) value.script = templateBoard(value);
   boardMemo = { at: Date.now(), value };
   return value;
 }
@@ -134,8 +138,9 @@ async function readBody(req) {
 }
 
 const server = createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
   try {
+    // Inside the try: a malformed Host header must answer 500, not exit the process.
+    const url = new URL(req.url, `http://${req.headers.host}`);
     if (url.pathname === '/api/config') {
       return sendJson(res, 200, {
         offline: desk.offline,
@@ -154,15 +159,21 @@ const server = createServer(async (req, res) => {
       if (!headline) return sendJson(res, 400, { error: 'headline required' });
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
       const log = [];
+      // When the deck replaces this check, stop at the next step instead of
+      // spending the rest of its WorldMonitor and Claude calls on a closed socket.
+      let gone = false;
+      res.on('close', () => { gone = true; });
       try {
         for await (const ev of gradeHeadline(headline, desk)) {
+          if (gone) break;
           log.push(ev);
           res.write(`event: ${ev.step}\ndata: ${JSON.stringify(ev.data)}\n\n`);
         }
       } catch (error) {
-        res.write(`event: failure\ndata: ${JSON.stringify({ message: error.message })}\n\n`);
+        if (!gone) res.write(`event: failure\ndata: ${JSON.stringify({ message: error.message })}\n\n`);
       }
       res.end();
+      if (gone) return;
       // Keep a record of every live grade for the post-panel write-up.
       mkdir(path.join(DATA_DIR, 'grades'), { recursive: true })
         .then(() => writeFile(path.join(DATA_DIR, 'grades', `${Date.now()}.json`), JSON.stringify(log, null, 2)))

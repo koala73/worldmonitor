@@ -26,7 +26,9 @@ export class Anchor {
     this.enabled = Boolean(apiKey);
     this.model = model;
     this.effort = effort;
-    this.client = this.enabled ? new Anthropic({ apiKey, timeout: 30_000, maxRetries: 1 }) : null;
+    // 12 s and no retry: every call here has a template fallback, and on stage
+    // a late line is worse than a plain one. Two calls per check at worst.
+    this.client = this.enabled ? new Anthropic({ apiKey, timeout: 12_000, maxRetries: 0 }) : null;
   }
 
   async complete({ system, prompt, schema, maxTokens = 2000 }) {
@@ -100,12 +102,13 @@ export class Anchor {
 
   narrateBoard(board) {
     const facts = {
+      asOf: boardAsOf(board),
       totals: board.totals,
       wellSupported: board.supported.slice(0, 3).map((x) => ({ title: x.title, publishers: x.publishers, credibility: x.credibility, stateAffiliated: x.stateAffiliated })),
       thin: board.thin.slice(0, 3).map((x) => ({ title: x.title, verdict: x.state, publisher: x.top[0]?.name ?? null, stateAffiliated: x.stateAffiliated })),
     };
     return this.grounded(
-      `Open the show from WorldMonitor's board of today's news:\n${JSON.stringify(facts)}\n\nWrite about 110 words, spoken. One-line welcome. Say how many stories WorldMonitor is tracking and how many are corroborated by two or more independent publishers. Name the best-supported story with its publisher count. Then name the thin ones and why (one publisher; state-affiliated if so). Close by inviting the room to pick a story, or name their own.`,
+      `Open the show from WorldMonitor's board of today's news:\n${JSON.stringify(facts)}\n\nWrite about 110 words, spoken. One-line welcome. ${facts.asOf.live ? 'Say how many stories WorldMonitor is tracking right now' : `This board is WorldMonitor's last snapshot, taken ${facts.asOf.when}, not live: say so once, plainly, and never call it "today" or "right now". Say how many stories WorldMonitor was tracking`} and how many are corroborated by two or more independent publishers. Name the best-supported story with its publisher count. Then name the thin ones and why (one publisher; state-affiliated if so). Close by inviting the room to pick a story, or name their own.`,
       facts,
       templateBoard(board),
       1500,
@@ -189,11 +192,22 @@ export function templateGrade(r) {
   return parts.join(' ');
 }
 
+/** Whether a board is live, and the spoken form of its timestamp when it is not. */
+export function boardAsOf(b) {
+  const live = b.from === 'live' && !b.fromCache;
+  const when = b.asOf ? new Date(b.asOf).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: process.env.DESK_TZ || 'Asia/Dubai' }) : 'earlier';
+  return { live, when };
+}
+
 export function templateBoard(b) {
   const t = b.totals;
+  const { live, when } = boardAsOf(b);
   const parts = [
     `Good evening, and welcome to the Verification Desk.`,
-    `Right now WorldMonitor is tracking ${t.stories} stories. ${cap(say(t.corroborated))} are corroborated by two or more independent publishers. ${cap(say(t.singlePublisher))} rest on a single publisher.`,
+    live
+      ? `Right now WorldMonitor is tracking ${t.stories} stories.`
+      : `WorldMonitor is not reachable from this stage, so this is its last snapshot, from ${when}. Then it was tracking ${t.stories} stories.`,
+    `${cap(say(t.corroborated))} are corroborated by two or more independent publishers. ${cap(say(t.singlePublisher))} rest on a single publisher.`,
   ];
   const best = b.supported[0];
   if (best) parts.push(`The best supported: ${best.title}. ${cap(say(best.publishers))} publishers, credibility ${best.credibility}.`);
