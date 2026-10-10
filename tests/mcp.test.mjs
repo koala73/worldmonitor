@@ -1574,6 +1574,8 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const limited = await callTool('get_tariff_trends', { dataset: ['tariffs'], limit: 5 });
     assert.deepEqual(limited.data.all.datapoints.map((d) => d.year), [2021, 2022, 2023, 2024, 2025]);
     assert.deepEqual(limited.data.all.effectiveTariffRate, effectiveTariffRate);
+    assert.equal(limited.data.all.coverageStartYear, 1991, 'coverage describes the full seeded window, not the capped rows');
+    assert.equal(limited.data.all.coverageEndYear, 2025);
 
     seeded();
     const byDefault = await callTool('get_tariff_trends', { dataset: ['tariffs'] });
