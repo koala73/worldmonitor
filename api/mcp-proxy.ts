@@ -1,21 +1,22 @@
 // @ts-nocheck — Migrated from .js to .ts to import server-side auth helpers
 // (PR #3768 review). Most of the body remains JS-shaped; types can be added
 // incrementally.
+import { Agent } from 'undici';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
-import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check';
-import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification';
-import { buildUsageIdentity } from '../server/_shared/usage-identity';
+import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check.js';
+import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification.js';
+import { buildUsageIdentity } from '../server/_shared/usage-identity.js';
 import {
   readBoundedRequestBody,
   readBoundedResponseBody,
   RequestBodyTooLargeError,
   ResponseBodyTooLargeError,
-} from './mcp/bounded-body';
-import { MAX_JSON_RPC_BODY_BYTES, MAX_MCP_PROXY_RESPONSE_BYTES } from './mcp/body-limits';
-import { McpProxyJsonDepthError, parseMcpProxyJson } from './mcp/bounded-json';
-import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp } from '../server/_shared/rate-limit';
-import { captureSilentError } from './_sentry-edge.js';
+} from './mcp/bounded-body.js';
+import { MAX_JSON_RPC_BODY_BYTES, MAX_MCP_PROXY_RESPONSE_BYTES } from './mcp/body-limits.js';
+import { McpProxyJsonDepthError, parseMcpProxyJson } from './mcp/bounded-json.js';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp } from '../server/_shared/rate-limit.js';
+import { captureSilentError } from './_sentry-node.js';
 import {
   buildRequestEvent,
   deriveAcceptLanguage,
@@ -31,9 +32,17 @@ import {
   deriveSentryTraceId,
   deriveUserAgent,
   emitUsageEvents,
-} from '../server/_shared/usage';
+} from '../server/_shared/usage.js';
 
-export const config = { runtime: 'edge' };
+// Node, not Edge (GHSA-887j): only Node lets the upstream socket be pinned to
+// the DoH-vetted address. Two earlier moves were reverted after production
+// 500s. #4749 exported a Web handler as `default`, which Vercel's Node runtime
+// calls as (req, res). #7578 shipped extensionless relative imports, which
+// native ESM cannot load once Vercel compiles each file separately
+// (ERR_MODULE_NOT_FOUND on every request). So this route exports per-method
+// Web handlers and NO default (a default export makes Vercel ignore them),
+// and every relative import in its graph names its `.js` file.
+export const config = { runtime: 'nodejs' };
 
 // Per-IP rate limit for the MCP proxy (issue #3805 defense-in-depth).
 // 30/min/IP is generous for normal MCP polling (most clients refresh every
@@ -43,7 +52,7 @@ export const config = { runtime: 'edge' };
 //
 // PR #3821 r2: source the limit from ENDPOINT_RATE_POLICIES so the
 // `enforce-rate-limit-policies` audit can see this endpoint. mcp-proxy is a
-// top-level Vercel Edge Function (not gateway-routed), so it can't use
+// top-level Vercel function (not gateway-routed), so it can't use
 // `checkEndpointRateLimit`; we keep `checkScopedRateLimit` for in-handler
 // enforcement but the *policy* lives in the registry. Single source of
 // truth — tweak the limit there, this handler picks it up.
@@ -278,13 +287,48 @@ export function proxyFailureFor(error) {
   };
 }
 
+// Resolve-then-connect in one step (GHSA-887j). The host is resolved through
+// DoH and vetted here, and the socket is pinned to that vetted address through
+// the dispatcher's lookup hook, so no later DNS answer can redirect it. The URL
+// hostname still drives TLS SNI, certificate validation and Host; only the
+// address is pinned. Every upstream request goes through this function.
 async function fetchMcpUpstream(input, init) {
+  const url = new URL(input);
+  const { resolvedAddresses } = await assertServerUrlSafe(url, init?.signal);
+  const dispatcher = pinnedDispatcher(resolvedAddresses);
   try {
-    return await fetch(input, init);
+    return await fetch(url.toString(), { ...init, dispatcher });
   } catch (error) {
     if (proxyFailureFor(error).isTimeout) throw error;
     throw new McpProxyUpstreamError('MCP server request failed', { cause: error });
+  } finally {
+    // Graceful: an in-flight response body (an SSE stream) finishes first.
+    // One dispatcher per request, so a pooled socket can never be handed to a
+    // request whose own lookup it did not go through.
+    dispatcher.close().catch(() => {});
   }
+}
+
+function pinnedDispatcher(resolvedAddresses) {
+  // Prefer an A answer (Vercel Node functions egress over IPv4). Every
+  // candidate was classified by assertServerUrlSafe; re-checking the one we
+  // connect to keeps the pin self-contained.
+  const address = resolvedAddresses.find((candidate) => !candidate.includes(':')) ?? resolvedAddresses[0];
+  if (!address) throw new McpProxySsrfError('serverUrl DNS resolution returned no addresses');
+  if (isBlockedResolvedAddress(address)) throwBlockedAddress(address);
+  const family = address.includes(':') ? 6 : 4;
+  return new Agent({ connect: { lookup: pinnedLookup(address, family) } });
+}
+
+// net.connect calls lookup with `{ all: true }` when autoSelectFamily is on (the
+// Node default) and with the single-address callback otherwise. Answer both, so
+// a change of Node default cannot silently unpin the socket.
+function pinnedLookup(address, family) {
+  return (_hostname, options, callback) => {
+    const done = typeof options === 'function' ? options : callback;
+    if (options && typeof options === 'object' && options.all) done(null, [{ address, family }]);
+    else done(null, address, family);
+  };
 }
 
 // Generic message surfaced to the caller when a serverUrl resolves to a
@@ -372,18 +416,6 @@ async function assertServerUrlSafe(url, signal) {
   return { url, resolvedAddresses };
 }
 
-// Vercel Edge fetch does not expose a Node-style lookup/socket hook, so this
-// proxy CANNOT pin the TLS connection to a previously vetted address. There is
-// no way to guarantee that the IP we validated is the IP fetch() ultimately
-// connects to; a DNS answer can change between our resolve and fetch's own
-// resolve. This re-resolve-and-recheck immediately before every outbound
-// dispatch NARROWS that DNS-rebinding window but does not close it. The
-// residual rebind window is an ACCEPTED limitation of the Edge runtime (no
-// socket-level pin available) — documented, not fixed here (P2, issue #5061).
-async function revalidateBeforeFetch(url, signal) {
-  await assertServerUrlSafe(url, signal);
-}
-
 function buildInitPayload() {
   return {
     jsonrpc: '2.0',
@@ -408,20 +440,43 @@ async function validateServerUrl(raw) {
   }
 }
 
-// Cloud-metadata gate headers (GHSA-887j, Edge-safe defence-in-depth): GCP
+// Cloud-metadata gate headers (GHSA-887j defence in depth): GCP
 // `Metadata-Flavor: Google`, Azure `Metadata: true`, AWS IMDSv2
-// `X-aws-ec2-metadata-token[-ttl-seconds]`. The proxy never forwards them, so
-// even if a DNS rebind slipped a fetch onto 169.254.169.254 the credential-less
-// request is refused by the metadata service. Matched case-insensitively. (The
-// full socket-pin fix that closes resolve!=connect is a Node-runtime follow-up;
-// this Edge mitigation kills the demonstrated PoC without a runtime switch;
-// the accepted residual and migration trade-off are tracked in issue #5061.)
+// `X-aws-ec2-metadata-token[-ttl-seconds]`. The socket pin already keeps a
+// rebind off 169.254.169.254; never forwarding these means a credentialed
+// metadata request cannot be assembled even if the pin were bypassed. Matched
+// case-insensitively.
 const DENIED_FORWARD_HEADERS = new Set([
   'metadata-flavor',
   'metadata',
   'x-aws-ec2-metadata-token',
   'x-aws-ec2-metadata-token-ttl-seconds',
 ]);
+
+// Hop-by-hop, authority and transport headers a caller must never set on the
+// upstream request. Edge's fetch() dropped them silently as forbidden header
+// names. Node's fetch forwards TE, Trailer and Proxy-* as given and throws on
+// Transfer-Encoding, Keep-Alive, Upgrade, Expect and a mismatched
+// Content-Length, so without this filter a caller header could smuggle
+// transport semantics or fail an otherwise valid request.
+const HOP_BY_HOP_FORWARD_HEADERS = new Set([
+  'host',
+  'content-length',
+  'transfer-encoding',
+  'connection',
+  'keep-alive',
+  'te',
+  'trailer',
+  'upgrade',
+  'expect',
+  'accept-encoding',
+]);
+
+function isForbiddenForwardHeader(lowerName) {
+  return DENIED_FORWARD_HEADERS.has(lowerName)
+    || HOP_BY_HOP_FORWARD_HEADERS.has(lowerName)
+    || lowerName.startsWith('proxy-');
+}
 
 function buildHeaders(customHeaders) {
   const h = {
@@ -435,14 +490,7 @@ function buildHeaders(customHeaders) {
         // Strip CRLF to prevent header injection
         const safeKey = k.replace(/[\r\n]/g, '');
         const safeVal = v.replace(/[\r\n]/g, '');
-        // Hop-by-hop / authority headers (Host, Content-Length, Connection, TE,
-        // Trailer, Upgrade, Keep-Alive, Transfer-Encoding, Proxy-*) are NOT
-        // filtered here: on the Edge runtime the spec-compliant `fetch()` treats
-        // them as forbidden header names and silently drops them, so they never
-        // reach the upstream. (The Node-runtime socket-pin follow-up uses raw
-        // `http.request`, which does NOT auto-drop them, so that PR must add an
-        // explicit hop-by-hop filter — see #5061.)
-        if (safeKey && !DENIED_FORWARD_HEADERS.has(safeKey.toLowerCase())) {
+        if (safeKey && !isForbiddenForwardHeader(safeKey.trim().toLowerCase())) {
           h[safeKey] = safeVal;
         }
       }
@@ -453,13 +501,11 @@ function buildHeaders(customHeaders) {
 
 // --- Streamable HTTP transport (MCP 2025-03-26) ---
 
-// Bounded redirect follow. `redirect: 'manual'` below stays load-bearing: the
-// Edge runtime cannot pin a TLS connection to a vetted address, so every
-// dispatch re-resolves the host through assertServerUrlSafe. Letting `fetch()`
-// follow a redirect on its own would hand an upstream a way to bounce this
-// proxy onto an internal address without that re-check. So we follow at most
-// ONE hop by hand, and only after the Location clears the same guard the
-// original serverUrl did.
+// Bounded redirect follow. `redirect: 'manual'` below stays load-bearing: each
+// dispatch vets and pins only the host it was given, so letting `fetch()`
+// follow a redirect on its own would let an upstream bounce this proxy onto an
+// unvetted address. So we follow at most ONE hop by hand, and the next
+// dispatch vets and pins the Location's host the same way.
 //
 // Vendors do move a published MCP endpoint and leave a permanent redirect
 // behind (a shipped preset went dark this way — every call died on the 308
@@ -516,7 +562,6 @@ async function postJson(url, body, headers, sessionId) {
   // dispatch gets.
   const signal = AbortSignal.timeout(TIMEOUT_MS);
   for (let hop = 0; ; hop++) {
-    await revalidateBeforeFetch(target, signal);
     signal.throwIfAborted();
     const resp = await fetchMcpUpstream(target.toString(), {
       method: 'POST',
@@ -655,7 +700,6 @@ class SseSession {
   }
 
   async connect() {
-    await revalidateBeforeFetch(new URL(this._sseUrl));
     const resp = await fetchMcpUpstream(this._sseUrl, {
       headers: { ...this._headers, Accept: 'text/event-stream', 'Cache-Control': 'no-cache' },
       redirect: 'manual',
@@ -769,7 +813,6 @@ class SseSession {
       }
     }, SSE_RPC_TIMEOUT_MS);
     try {
-      await revalidateBeforeFetch(new URL(this._endpointUrl));
       const postResp = await fetchMcpUpstream(this._endpointUrl, {
         method: 'POST',
         headers: { ...this._headers, 'Content-Type': 'application/json' },
@@ -789,8 +832,7 @@ class SseSession {
   }
 
   async notify(method, params) {
-    await revalidateBeforeFetch(new URL(this._endpointUrl));
-    const response = await fetch(this._endpointUrl, {
+    const response = await fetchMcpUpstream(this._endpointUrl, {
       method: 'POST',
       headers: { ...this._headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', method, params }),
@@ -911,7 +953,7 @@ async function handleCallTool(req: Request, cors: Record<string, string>, meta: 
   return jsonResponse({ result }, 200, cors);
 }
 
-export default async function handler(req, ctx) {
+export async function handler(req, ctx) {
   const startedAt = Date.now();
   if (isDisallowedOrigin(req)) {
     emitProxyUsage(req, 403, Date.now() - startedAt, ctx);
@@ -1060,3 +1102,9 @@ export default async function handler(req, ctx) {
 
   return response;
 }
+
+// The pinned-transport building blocks, for tests that prove on real sockets
+// that the dispatcher connects to the vetted address and nowhere else.
+export const __testing__ = { pinnedLookup, pinnedDispatcher };
+
+export { handler as GET, handler as POST, handler as OPTIONS };

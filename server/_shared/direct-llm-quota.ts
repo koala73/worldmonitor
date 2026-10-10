@@ -1,5 +1,5 @@
-import { getKeyPrefix } from './redis';
-import { PRO_DAILY_QUOTA_TTL_SECONDS, secondsUntilUtcMidnight } from './pro-mcp-token';
+import { getKeyPrefix } from './redis.js';
+import { PRO_DAILY_QUOTA_TTL_SECONDS, secondsUntilUtcMidnight } from './pro-mcp-token.js';
 
 // Dashboard/API LLM work is a separate budget from MCP calls. The old value of
 // 50 was copied from the MCP allowance and caused normal dashboard hydration to

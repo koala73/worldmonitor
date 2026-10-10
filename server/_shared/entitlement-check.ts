@@ -1,4 +1,4 @@
-import { hasCurrentEntitlementCoverage } from './entitlement-coverage';
+import { hasCurrentEntitlementCoverage } from './entitlement-coverage.js';
 /**
  * Entitlement enforcement middleware for the Vercel API gateway.
  *
@@ -28,7 +28,7 @@ import { hasCurrentEntitlementCoverage } from './entitlement-coverage';
  * a backend outage costs one lookup per user per window, not one per request.
  */
 
-import { getCachedJson, setCachedJson } from './redis';
+import { getCachedJson, setCachedJson } from './redis.js';
 
 // ---------------------------------------------------------------------------
 // Types

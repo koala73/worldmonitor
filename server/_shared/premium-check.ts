@@ -1,9 +1,9 @@
-import { hasCurrentEntitlementCoverage } from './entitlement-coverage';
+import { hasCurrentEntitlementCoverage } from './entitlement-coverage.js';
 // @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../../api/_api-key.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from '../../api/_crypto.js';
-import { validateBearerToken } from '../auth-session';
+import { validateBearerToken } from '../auth-session.js';
 import {
   classifyBillingVerification,
   getEntitlements,
@@ -11,17 +11,17 @@ import {
   unverifiableEntitlementDenial,
   type BillingVerificationDenial,
   type BillingVerificationInput,
-} from './entitlement-check';
+} from './entitlement-check.js';
 import {
   INTERNAL_MCP_VERIFIED_HEADER,
   TRUSTED_USER_ID_HEADER,
   getInternalMcpVerifiedNonce,
-} from './mcp-internal-hmac';
-import { validateUserApiKey } from './user-api-key';
+} from './mcp-internal-hmac.js';
+import { validateUserApiKey } from './user-api-key.js';
 import {
   DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
   resolveActiveDirectLlmLimit,
-} from './direct-llm-quota';
+} from './direct-llm-quota.js';
 
 export type PremiumCallerIdentity =
   | { isPremium: true; userId: string; kind: 'internal-mcp'; quotaExempt: true }
