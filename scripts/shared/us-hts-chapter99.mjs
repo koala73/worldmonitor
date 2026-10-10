@@ -534,7 +534,7 @@ export function buildUsDutyIndex({ notesHtml, headingRows, release, resolveCount
     measures[spec.id] = {
       id: spec.id, kind: 'exemption', heading: spec.heading, appliesTo: spec.appliesTo, partners: spec.partners || null,
       note: `U.S. note ${spec.note}`, condition: spec.conditional || '',
-      effectiveThrough: window.effectiveThrough,
+      effectiveFrom: window.effectiveFrom, effectiveThrough: window.effectiveThrough,
     };
     for (const code of entries.full) addCoverage(coverage, code, [spec.id, ROLE_EXEMPT]);
     for (const code of entries.partial) addCoverage(coverage, code, [spec.id, ROLE_EXEMPT, 1]);

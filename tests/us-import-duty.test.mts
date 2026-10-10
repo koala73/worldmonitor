@@ -368,6 +368,24 @@ describe('chapter 99 duties on real lines', () => {
     assert.deepEqual(at('2026-11-10'), [['9903.91.98', 'APPLIES']]);
   });
 
+  test('an exemption counts only inside its effective window', () => {
+    const catalog = {
+      schema: 1,
+      release: 'r',
+      chapters: ['85'],
+      measures: {
+        fl: { id: 'fl', kind: 'duty', heading: '9903.05.31', authority: 'SECTION_301', partners: ['156'], scope: 'ALL_PRODUCTS', addPct: 12.5, topUpTo: null, note: 'U.S. note 52(a)', condition: '' },
+        ended: { id: 'ended', kind: 'exemption', heading: '9903.05.86', appliesTo: 'fl', partners: null, effectiveThrough: '2026-11-09', note: 'U.S. note 52(b)', condition: '' },
+        later: { id: 'later', kind: 'exemption', heading: '9903.05.87', appliesTo: 'fl', partners: null, effectiveFrom: '2026-11-20', note: 'U.S. note 52(c)', condition: '' },
+      },
+    } as unknown as UsDutyCatalog;
+    const shard = { '8542.31.00': [['ended', 'x'], ['later', 'x']] };
+    const at = (day: string) => resolveAdditionalDuties(catalog, shard, '8542.31.00', '156', 0, day).map((d) => [d.heading, status(d), d.condition]);
+    assert.deepEqual(at('2026-11-09'), [['9903.05.31', 'EXEMPT', 'Exempt under 9903.05.86 (U.S. note 52(b)).']]);
+    assert.deepEqual(at('2026-11-10'), [['9903.05.31', 'APPLIES', '']]);
+    assert.deepEqual(at('2026-11-20'), [['9903.05.31', 'EXEMPT', 'Exempt under 9903.05.87 (U.S. note 52(c)).']]);
+  });
+
   test('a top-up raises the base to the floor instead of adding to it', () => {
     const topUp = { status: 'US_ADDITIONAL_DUTY_STATUS_APPLIES', addedRate: 0, topUpTo: 15 } as UsAdditionalDuty;
     assert.deepEqual(estimateRate(2.5, [topUp]), { rate: 15, complete: true });

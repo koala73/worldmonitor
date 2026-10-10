@@ -376,6 +376,11 @@ function dutyFrom(m: UsDutyMeasure, status: UsAdditionalDutyStatus, condition: s
 }
 
 /** Chapter 99 duties on one line for one partner, given its applied base rate. */
+/** Past its end date. The catalog is up to a day old, so the seed may not have dropped it yet. */
+function lapsed(m: UsDutyMeasure, today: string): boolean {
+  return !!m.effectiveThrough && m.effectiveThrough < today;
+}
+
 export function resolveAdditionalDuties(
   catalog: UsDutyCatalog,
   shard: UsCoverageShard | null,
@@ -429,7 +434,7 @@ export function resolveAdditionalDuties(
     }
     // The catalog can be up to a day old, so a start or end date may have
     // passed since the seed classified the measure.
-    if (m.effectiveThrough && m.effectiveThrough < today) continue;
+    if (lapsed(m, today)) continue;
     if (m.effectiveFrom ? m.effectiveFrom > today : m.state === 'SCHEDULED') {
       duties.push(dutyFrom(m, STATUS.scheduled, ''));
       continue;
@@ -453,7 +458,7 @@ export function resolveAdditionalDuties(
     for (const h of hits) {
       const x = measures[h.id];
       if (!x || x.kind !== 'exemption' || h.role !== 'x' || !x.appliesTo || !m.id.startsWith(x.appliesTo)) continue;
-      if (!covers(x, partner)) continue;
+      if (!covers(x, partner) || lapsed(x, today) || (x.effectiveFrom && x.effectiveFrom > today)) continue;
       if (!h.partial && !x.condition) {
         status = STATUS.exempt;
         condition = `Exempt under ${x.heading} (${x.note}).`;
