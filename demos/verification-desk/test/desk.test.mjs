@@ -418,7 +418,7 @@ test('article fetch never reaches private, loopback or metadata addresses, even 
     return { ok: true, status: 200, text: async () => page };
   };
   assert.equal(await fetchArticleText('https://news.example/moved', { fetchImpl, lookupImpl }), null, 'redirect to a private address is refused');
-  assert.ok(!fetched.includes('http://evil.example/secret'), 'the private hop is never requested');
+  assert.deepEqual(fetched.map((u) => new URL(u).hostname), ['news.example'], 'the private hop is never requested');
   assert.equal(await fetchArticleText('https://news.example/loop', { fetchImpl, lookupImpl }), null, 'redirect loops stop');
   assert.ok((await fetchArticleText('https://news.example/hop', { fetchImpl, lookupImpl }))?.includes('31 people died'), 'a public redirect is followed');
 });
