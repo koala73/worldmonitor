@@ -12,6 +12,7 @@ import { UPSTREAM_TIMEOUT_MS, TIER1_COUNTRIES, sha256Hex } from './_shared';
 import { callLlm } from '../../../_shared/llm';
 import { verifyCitationIndexes, checkLeadGrounding, validateNoHallucinatedProperNouns, validateNoHallucinatedFacts, validateNoHallucinatedStatusQualifiers } from '../../../../shared/brief-llm-core.js';
 import { isCallerPremium } from '../../../_shared/premium-check';
+import { markUnservedLlmResponse } from '../../../_shared/response-headers';
 import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
 import { ENERGY_SPINE_KEY_PREFIX } from '../../../_shared/cache-keys';
 import { deriveCountryIntelCacheKey, fetchSharedCountryContext } from './_country-brief-context';
@@ -286,7 +287,14 @@ export async function getCountryIntelBrief(
     evidence: [],
   };
 
-  if (!req.countryCode || !COUNTRY_CODE_RE.test(req.countryCode)) return empty;
+  // Every empty return below serves no brief: the gateway reserved a
+  // daily-quota slot for this call and releases it on this marker.
+  const unserved = (): GetCountryIntelBriefResponse => {
+    markUnservedLlmResponse(ctx.request);
+    return empty;
+  };
+
+  if (!req.countryCode || !COUNTRY_CODE_RE.test(req.countryCode)) return unserved();
 
   const isPremium = await isCallerPremium(ctx.request);
 
@@ -552,12 +560,15 @@ Rules:
       };
     });
   } catch {
-    return empty;
+    return unserved();
   }
 
   // A known country with nothing to ground a brief still carries its name,
   // unlike an invalid country code.
-  if (!result) return { ...empty, countryName };
+  if (!result) {
+    markUnservedLlmResponse(ctx.request);
+    return { ...empty, countryName };
+  }
   if (!isPremium) {
     // Shared entries carry server-derived sources; never backfill them with
     // this caller's parsed context (the brief text didn't see it).
