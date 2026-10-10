@@ -2,7 +2,9 @@
 // ArchiveSource replays snapshots taken by scripts/snapshot.mjs (the MCP news
 // tools only see the live digest window, so "last week" needs an archive).
 
+import { lookup } from 'node:dns/promises';
 import { readdir, readFile } from 'node:fs/promises';
+import { isIP } from 'node:net';
 import path from 'node:path';
 import { dig } from './mcp-client.mjs';
 import { overlapScore } from './text.mjs';
@@ -102,13 +104,70 @@ function stripHtml(html) {
     .trim();
 }
 
-export async function fetchArticleText(url, { timeoutMs = 5000, fetchImpl = (...a) => globalThis.fetch(...a) } = {}) {
+// Article links come from WorldMonitor's clusters, but a link (or a redirect
+// it answers with) must never reach this host's own network: loopback, private
+// ranges, link-local and cloud metadata addresses are refused at every hop.
+function ipv4Private(ip) {
+  const [a, b] = ip.split('.').map(Number);
+  return a === 0 || a === 10 || a === 127 || a >= 224
+    || (a === 100 && b >= 64 && b <= 127)
+    || (a === 169 && b === 254)
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && (b === 168 || (b === 0 && ip.split('.')[2] === '0')))
+    || (a === 198 && (b === 18 || b === 19));
+}
+
+export function isPrivateAddress(ip) {
+  const addr = String(ip).toLowerCase().replace(/^\[|\]$/g, '');
+  if (isIP(addr) === 4) return ipv4Private(addr);
+  if (isIP(addr) !== 6) return true; // not an address: refuse
+  const mapped = addr.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (mapped) return ipv4Private(mapped[1]);
+  return addr === '::' || addr === '::1'
+    || /^f[cd]/.test(addr)            // fc00::/7 unique local
+    || /^fe[89ab]/.test(addr)         // fe80::/10 link-local
+    || /^ff/.test(addr)               // multicast
+    || /^::ffff:/.test(addr)          // other mapped forms
+    || /^64:ff9b:/.test(addr);        // NAT64 to IPv4
+}
+
+/** http(s) only, no credentials, and every address the host resolves to is public. */
+export async function isPublicHttpUrl(raw, lookupImpl = (host) => lookup(host, { all: true, verbatim: true })) {
+  let url;
+  try { url = new URL(raw); } catch { return false; }
+  if (!/^https?:$/.test(url.protocol) || url.username || url.password) return false;
+  const host = url.hostname.replace(/^\[|\]$/g, '');
+  if (!host || /^localhost$|\.localhost$|\.internal$|\.local$/i.test(host)) return false;
+  if (isIP(host)) return !isPrivateAddress(host);
+  try {
+    const addrs = await lookupImpl(host);
+    return addrs.length > 0 && addrs.every((a) => !isPrivateAddress(a.address));
+  } catch {
+    return false;
+  }
+}
+
+const MAX_REDIRECTS = 5;
+
+export async function fetchArticleText(url, { timeoutMs = 5000, fetchImpl = (...a) => globalThis.fetch(...a), lookupImpl } = {}) {
   if (!url || !/^https?:\/\//.test(url)) return null;
   try {
-    const res = await fetchImpl(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' }, signal: AbortSignal.timeout(timeoutMs), redirect: 'follow' });
-    if (!res.ok) return null;
-    const text = stripHtml(await res.text());
-    return text.length > 200 ? text.slice(0, 60_000) : null;
+    const signal = AbortSignal.timeout(timeoutMs);
+    let current = url;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      if (!(await isPublicHttpUrl(current, lookupImpl))) return null;
+      const res = await fetchImpl(current, { headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' }, signal, redirect: 'manual' });
+      if (res.status >= 300 && res.status < 400) {
+        const next = res.headers?.get?.('location');
+        if (!next) return null;
+        current = new URL(next, current).href;
+        continue;
+      }
+      if (!res.ok) return null;
+      const text = stripHtml(await res.text());
+      return text.length > 200 ? text.slice(0, 60_000) : null;
+    }
+    return null; // too many redirects
   } catch {
     return null;
   }

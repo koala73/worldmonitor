@@ -193,7 +193,7 @@ test('article text: scripts with spaced end tags are dropped, entities decode on
   const { fetchArticleText } = await import('../lib/sources.mjs');
   const body = `<p>Officials said 31 people died.</p><script>var x = "200 dead";</script ><style>.a{}</style >
     <p>Tom &amp;lt;Jerry&amp;gt; &quot;quoted&quot; &amp; more ${'filler text '.repeat(30)}</p>`;
-  const text = await fetchArticleText('https://example.com/a', { fetchImpl: async () => ({ ok: true, text: async () => body }) });
+  const text = await fetchArticleText('https://example.com/a', { fetchImpl: async () => ({ ok: true, status: 200, text: async () => body }), lookupImpl: async () => [{ address: '93.184.215.14' }] });
   assert.ok(text.includes('31 people died'));
   assert.ok(!text.includes('200'), 'script content is not article text');
   assert.ok(text.includes('Tom &lt;Jerry&gt; "quoted" & more'), text.slice(0, 120));
@@ -389,4 +389,36 @@ test('hosted login: password gate signs and checks the session cookie', async ()
     if (saved === undefined) delete process.env.DESK_PASSWORD;
     else process.env.DESK_PASSWORD = saved;
   }
+});
+
+test('article fetch never reaches private, loopback or metadata addresses, even via redirects', async () => {
+  const { fetchArticleText, isPrivateAddress, isPublicHttpUrl } = await import('../lib/sources.mjs');
+  for (const ip of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1']) {
+    assert.equal(isPrivateAddress(ip), true, ip);
+  }
+  for (const ip of ['93.184.215.14', '8.8.8.8', '2606:4700::1111']) assert.equal(isPrivateAddress(ip), false, ip);
+
+  const dns = { 'news.example': '93.184.215.14', 'evil.example': '169.254.169.254' };
+  const lookupImpl = async (host) => [{ address: dns[host] ?? '93.184.215.14' }];
+  assert.equal(await isPublicHttpUrl('http://169.254.169.254/latest/meta-data/', lookupImpl), false);
+  assert.equal(await isPublicHttpUrl('http://evil.example/a', lookupImpl), false, 'a public name resolving to a private address');
+  assert.equal(await isPublicHttpUrl('http://user:pw@news.example/', lookupImpl), false);
+  assert.equal(await isPublicHttpUrl('file:///etc/passwd', lookupImpl), false);
+  assert.equal(await isPublicHttpUrl('http://localhost:4317/api/config', lookupImpl), false);
+  assert.equal(await isPublicHttpUrl('https://news.example/story', lookupImpl), true);
+
+  const page = `<p>${'Officials said 31 people died. '.repeat(20)}</p>`;
+  const fetched = [];
+  const fetchImpl = async (url, init) => {
+    fetched.push(url);
+    assert.equal(init.redirect, 'manual');
+    if (url === 'https://news.example/moved') return { ok: false, status: 302, headers: new Headers({ location: 'http://evil.example/secret' }) };
+    if (url === 'https://news.example/loop') return { ok: false, status: 301, headers: new Headers({ location: '/loop' }) };
+    if (url === 'https://news.example/hop') return { ok: false, status: 302, headers: new Headers({ location: '/story' }) };
+    return { ok: true, status: 200, text: async () => page };
+  };
+  assert.equal(await fetchArticleText('https://news.example/moved', { fetchImpl, lookupImpl }), null, 'redirect to a private address is refused');
+  assert.ok(!fetched.includes('http://evil.example/secret'), 'the private hop is never requested');
+  assert.equal(await fetchArticleText('https://news.example/loop', { fetchImpl, lookupImpl }), null, 'redirect loops stop');
+  assert.ok((await fetchArticleText('https://news.example/hop', { fetchImpl, lookupImpl }))?.includes('31 people died'), 'a public redirect is followed');
 });
