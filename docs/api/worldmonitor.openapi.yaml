@@ -32907,8 +32907,9 @@ paths:
                 - TradeService
             summary: GetTariffTrends
             description: |-
-                Get the MFN applied tariff-rate timeseries (All-products average) for one
-                 reporting economy. Not a bilateral or product-level rate. PRO-gated. Requires entitlement tier >= 1.
+                Average applied tariff timeseries for one reporting economy: the MFN rate
+                 over all products, or with a partner and/or product group the effectively
+                 applied rate on those imports. Not an HS-line rate. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetTariffTrends
             security:
                 - WorldMonitorKey: []
@@ -32928,10 +32929,8 @@ paths:
                 - name: partner_country
                   in: query
                   description: |-
-                    Partner country as a 3-digit UN M49 code. Accepted for forward
-                     compatibility; TP_A_0010 is an MFN applied average for the reporting
-                     economy and has no partner dimension, so this field never changes the
-                     answer. Empty is the documented default.
+                    Exporting partner, 3-digit UN M49 code ("000" = World). Empty or "000"
+                     with no product_sector selects the MFN series.
                   required: false
                   example: "156"
                   schema:
@@ -32940,12 +32939,10 @@ paths:
                 - name: product_sector
                   in: query
                   description: |-
-                    Product sector filter. Empty or "all" selects the All-products aggregate,
-                     which is the only sector currently covered. Any other value is accepted by
-                     validation and answered with unavailable_reason
-                     TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED so sector coverage can widen
-                     without a contract change. Max 16 characters, alphanumeric / underscore /
-                     hyphen.
+                    WITS product group: an HS section such as "84-85_MachElec" or "50-63_TextCloth",
+                     or "AgrRaw", "Chemical", "Food", "Fuels", "manuf", "OresMtls", "Textiles",
+                     "Transp" (case-insensitive). Empty or "all" means all products. Other values
+                     are answered NOT_COVERED.
                   required: false
                   example: "all"
                   schema:
@@ -58306,20 +58303,16 @@ components:
                     type: string
                     pattern: ^([0-9]{3})?$
                     description: |-
-                        Partner country as a 3-digit UN M49 code. Accepted for forward
-                         compatibility; TP_A_0010 is an MFN applied average for the reporting
-                         economy and has no partner dimension, so this field never changes the
-                         answer. Empty is the documented default.
+                        Exporting partner, 3-digit UN M49 code ("000" = World). Empty or "000"
+                         with no product_sector selects the MFN series.
                 productSector:
                     type: string
                     pattern: ^([a-zA-Z0-9_-]{0,16})?$
                     description: |-
-                        Product sector filter. Empty or "all" selects the All-products aggregate,
-                         which is the only sector currently covered. Any other value is accepted by
-                         validation and answered with unavailable_reason
-                         TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED so sector coverage can widen
-                         without a contract change. Max 16 characters, alphanumeric / underscore /
-                         hyphen.
+                        WITS product group: an HS section such as "84-85_MachElec" or "50-63_TextCloth",
+                         or "AgrRaw", "Chemical", "Food", "Fuels", "manuf", "OresMtls", "Textiles",
+                         "Transp" (case-insensitive). Empty or "all" means all products. Other values
+                         are answered NOT_COVERED.
                 years:
                     type: integer
                     maximum: 30
@@ -58332,17 +58325,15 @@ components:
             description: |-
                 Request for tariff timeseries data.
 
-                 Coverage is seed-backed: Railway pre-fetches WTO MFN applied tariff rates
-                 (indicator TP_A_0010) for every reporter and this API serves slices of that
-                 history. It never calls WTO per request, so a well-formed combination outside
-                 the seeded set is reported as uncovered (see GetTariffTrendsResponse.
-                 unavailable_reason) rather than fetched on demand.
+                 Without partner_country or product_sector, this serves the reporter's WTO MFN
+                 applied average over all products (indicator TP_A_0010), seeded on Railway; a
+                 reporter outside the seed is reported as uncovered, not fetched.
 
-                 TP_A_0010 is a reporting-economy MFN applied average — it has no partner
-                 dimension and no product-sector split beyond the All-products aggregate.
-                 product_sector empty (or "all") is the only sector currently covered;
-                 partner_country is accepted for forward compatibility and does not filter
-                 the series.
+                 With either set, it serves the reporter's effectively applied tariff
+                 (preferences included) on goods from that partner and/or in that product
+                 group, from World Bank WITS (UNCTAD TRAINS), fetched on demand and cached.
+                 Both are schedule rates: neither includes unilateral duties such as Section
+                 301 (see get-us-import-duty).
         worldmonitor_trade_v1_GetTariffTrendsResponse:
             type: object
             properties:
@@ -58352,7 +58343,7 @@ components:
                         $ref: '#/components/schemas/worldmonitor_trade_v1_TariffDataPoint'
                 fetchedAt:
                     type: string
-                    description: ISO 8601 timestamp when data was fetched from WTO.
+                    description: ISO 8601 time the data was fetched from WTO or WITS.
                 upstreamUnavailable:
                     type: boolean
                     description: |-
@@ -58372,6 +58363,7 @@ components:
                         - TARIFF_TREND_UNAVAILABLE_REASON_SEED_MISSING
                         - TARIFF_TREND_UNAVAILABLE_REASON_COVERAGE_UNKNOWN
                         - TARIFF_TREND_UNAVAILABLE_REASON_CACHE_UNAVAILABLE
+                        - TARIFF_TREND_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE
                     description: |-
                         TariffTrendUnavailableReason says why no datapoints were returned. The
                          distinction that matters is NOT_COVERED — a contract answer, nothing is
@@ -58397,10 +58389,10 @@ components:
                     description: WTO member code of reporting country.
                 partnerCountry:
                     type: string
-                    description: 'Partner label. Always "World": the indicator has no partner dimension.'
+                    description: 'Partner: "World", or the requested 3-digit code.'
                 productSector:
                     type: string
-                    description: Product sector label. Always "All products" on the served indicator.
+                    description: '"All products", or the requested WITS product group.'
                 year:
                     type: integer
                     format: int32
@@ -58408,14 +58400,20 @@ components:
                 tariffRate:
                     type: number
                     format: double
-                    description: Applied MFN tariff rate (percentage).
+                    description: |-
+                        Simple average applied tariff (percentage): MFN on TP_A_0010, effectively
+                         applied on AHS-SMPL-AVRG.
                 boundRate:
                     type: number
                     format: double
-                    description: 'WTO bound tariff rate (percentage). Reserved: 0 on the served indicator.'
+                    description: 'WTO bound tariff rate (percentage). Reserved: always 0.'
                 indicatorCode:
                     type: string
-                    description: WTO indicator code used for this datapoint.
+                    description: 'Indicator: TP_A_0010 (WTO) or AHS-SMPL-AVRG (WITS).'
+                weightedRate:
+                    type: number
+                    format: double
+                    description: Import-weighted average (percentage). WITS series only; 0 on TP_A_0010.
             description: |-
                 Single tariff data point. GetTariffTrends serves the WTO MFN applied
                  All-products average (TP_A_0010) for one reporting economy, so every point

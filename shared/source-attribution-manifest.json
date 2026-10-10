@@ -10437,6 +10437,9 @@
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
+          "path": "server/worldmonitor/trade/v1/_tradestats-tariff.ts"
+        },
+        {
           "path": "server/worldmonitor/trade/v1/get-bilateral-tariff.ts"
         }
       ]

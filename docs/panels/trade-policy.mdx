@@ -34,7 +34,7 @@ Six response shapes from `@/services/trade`, each backed by a generated sebuf RE
 | Tab | Method + route | Feeds |
 |---|---|---|
 | `restrictions` | `GET /api/trade/v1/get-trade-restrictions` | WTO restrictions list with country filters and upstream-unavailable state. |
-| `tariffs` | `GET /api/trade/v1/get-tariff-trends` | Premium MFN applied tariff-rate timeseries for a reporting country (WTO `TP_A_0010`). |
+| `tariffs` | `GET /api/trade/v1/get-tariff-trends` | Premium MFN applied tariff-rate timeseries for a reporting country (WTO `TP_A_0010`). The tab requests no partner, so it always shows this MFN baseline. |
 | `flows` | `GET /api/trade/v1/get-trade-flows` | Merchandise trade-flow rows and year-over-year context, reporter versus World. |
 | `barriers` | `GET /api/trade/v1/get-trade-barriers` | SPS/TBT barrier notifications filtered by country or measure type. |
 | `revenue` | `GET /api/trade/v1/get-customs-revenue` | US Treasury customs duties revenue; bootstrap-first via `customsRevenue`. |
@@ -61,17 +61,18 @@ A malformed code or an out-of-range `years` is rejected with HTTP 400 rather tha
 | `SEED_MISSING` | `true` | The pair is inside coverage but its cache entry is gone. |
 | `COVERAGE_UNKNOWN` | `true` | The coverage manifest could not be read, so neither of the above can be ruled out. |
 | `CACHE_UNAVAILABLE` | `true` | The cache read itself failed. |
+| `UPSTREAM_UNAVAILABLE` | `true` | World Bank WITS could not be reached for a partner or product-group request. |
 | `INVALID_REQUEST` | `false` | Codes were malformed (only reachable where request validation is bypassed). |
 
 Fleet-level coverage is published as the `tradeFlows` entry in `/api/health`, whose `records` count is the number of reporter/World pairs actually seeded; a shortfall reads `COVERAGE_PARTIAL`, while a stopped seeder reads `STALE_SEED`.
 
 ### Tariff-trend coverage
 
-`get-tariff-trends` is also seed-backed (premium path). The Railway seeder pre-fetches WTO MFN applied averages (`TP_A_0010`) and this API serves slices of that history — it never calls WTO per request.
+Without a partner or product group, `get-tariff-trends` is seed-backed (premium path). The Railway seeder pre-fetches WTO MFN applied averages (`TP_A_0010`) and this API serves slices of that history — it never calls WTO per request. A partner or product group selects a different series, described in [Partner and product-group averages](#partner-and-product-group-averages).
 
 - **Reporter** — any 3-digit UN M49 code the WTO `/reporters` endpoint advertises. Empty defaults to `840` (United States).
-- **Partner** — accepted for forward compatibility; `TP_A_0010` is an MFN applied average for the reporting economy and has **no partner dimension**, so this field never changes the answer.
-- **Product sector** — empty or `all` selects the All-products aggregate, which is the only sector currently covered. Any other value is answered `NOT_COVERED`.
+- **Partner** — empty or `000` (World) selects the MFN series. Any other code selects the partner series.
+- **Product sector** — empty or `all` selects the All-products aggregate. A WITS product group selects the partner series; any other value is answered `NOT_COVERED`.
 - **Years** — `1`–`30`, inclusive of both endpoints (`years=10` returns 11 calendar years). The seed holds the full 30-year window per reporter and the handler slices it. `0` selects the default of `10`.
 
 A malformed code or an out-of-range `years` is rejected with HTTP 400 rather than silently replaced by `840` / `10`. A well-formed request the seed cannot answer returns empty `datapoints` plus an `unavailableReason` from the `TariffTrendUnavailableReason` enum (prefixed `TARIFF_TREND_UNAVAILABLE_REASON_`):
@@ -86,6 +87,20 @@ A malformed code or an out-of-range `years` is rejected with HTTP 400 rather tha
 | `INVALID_REQUEST` | `false` | Codes were malformed (only reachable where request validation is bypassed). |
 
 Fleet-level coverage is published as the `tariffTrendsUs` entry in `/api/health` (the series name is historical; the probe is the fleet `seed-meta:trade:tariffs` record). A shortfall against the min-record floor reads `COVERAGE_PARTIAL`; a stopped seeder reads `STALE_SEED`.
+
+### Partner and product-group averages
+
+With `partner_country` (other than `000`) or `product_sector` set, `get-tariff-trends` answers what the reporter applies on goods from that partner, in that product group, or both. It reads the World Bank WITS `tradestats-tariff` dataset (UNCTAD TRAINS) live and caches each reporter, partner and group for seven days.
+
+- `tariffRate` is the effectively applied simple average (`AHS-SMPL-AVRG`): preferential rates count where the partner qualifies, otherwise MFN.
+- `weightedRate` is the import-weighted average (`AHS-WGHTD-AVRG`). It is `0` where the reporter imported nothing in that group from that partner, and always `0` on the MFN series.
+- `partnerCountry` echoes the requested code (`World` for `000` or empty), and `productSector` names the group.
+- Product groups are WITS's: the HS sections (`01-05_Animal`, `06-15_Vegetable`, `16-24_FoodProd`, `25-26_Minerals`, `27-27_Fuels`, `28-38_Chemicals`, `39-40_PlastiRub`, `41-43_HidesSkin`, `44-49_Wood`, `50-63_TextCloth`, `64-67_Footwear`, `68-71_StoneGlas`, `72-83_Metals`, `84-85_MachElec`, `86-89_Transport`, `90-99_Miscellan`) and the aggregates `AgrRaw`, `Chemical`, `Food`, `Fuels`, `manuf`, `OresMtls`, `Textiles` and `Transp`. Matching is case-insensitive.
+- Codes are 3-digit UN M49. WTO's own codes for France (`251`), Norway (`579`), India (`699`) and Switzerland (`757`) are accepted too. The EU (`918`) is a reporter but not a partner; name a member state instead.
+
+US imports from China, all products, 2023: 3.6% simple, 2.8% weighted. Textiles: 8.8% and 9.9%. EU imports from the United States: 5.0% and 1.6%.
+
+The limits are TRAINS's. Series start around 1990 (2000 for the EU as reporter) and end in 2023 for most reporters. For the United States, TRAINS carries preferential rates only through 2021, so a US partner series after 2021 is MFN on that partner's goods. These are schedule rates. They leave out Section 301, Section 232 and other unilateral duties: US imports from China average far above 3.6% once those are added. For the US case, use the [US import duty lookup](#us-import-duty-lookup-api-only). A combination WITS has no data for, Taiwan among them, is answered `NOT_COVERED`; an unreachable WITS is `UPSTREAM_UNAVAILABLE`.
 
 ### Bilateral tariff lookup (API only)
 

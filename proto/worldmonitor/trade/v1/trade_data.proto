@@ -30,18 +30,21 @@ message TradeRestriction {
 message TariffDataPoint {
   // WTO member code of reporting country.
   string reporting_country = 1;
-  // Partner label. Always "World": the indicator has no partner dimension.
+  // Partner: "World", or the requested 3-digit code.
   string partner_country = 2;
-  // Product sector label. Always "All products" on the served indicator.
+  // "All products", or the requested WITS product group.
   string product_sector = 3;
   // Year of observation.
   int32 year = 4;
-  // Applied MFN tariff rate (percentage).
+  // Simple average applied tariff (percentage): MFN on TP_A_0010, effectively
+  // applied on AHS-SMPL-AVRG.
   double tariff_rate = 5;
-  // WTO bound tariff rate (percentage). Reserved: 0 on the served indicator.
+  // WTO bound tariff rate (percentage). Reserved: always 0.
   double bound_rate = 6;
-  // WTO indicator code used for this datapoint.
+  // Indicator: TP_A_0010 (WTO) or AHS-SMPL-AVRG (WITS).
   string indicator_code = 7;
+  // Import-weighted average (percentage). WITS series only; 0 on TP_A_0010.
+  double weighted_rate = 8;
 }
 
 // Current effective tariff estimate for countries with coverage beyond WTO MFN baselines.

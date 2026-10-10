@@ -4406,7 +4406,10 @@ export class DataLoaderManager implements AppModule {
       } = await import('@/services/trade');
       const [restrictions, tariffs, flows, barriers, revenue, comtrade] = await Promise.allSettled([
         fetchTradeRestrictions([], 50),
-        fetchTariffTrends('840', '156', '', 10),
+        // No partner: the tab shows the US MFN baseline against the US-wide
+        // effective rate. A partner selects the WITS bilateral average, which
+        // the tab does not label as such.
+        fetchTariffTrends('840', '', '', 10),
         // Partner '000' is World. This asked for '156' (China) until #6309:
         // WTO's ITS_MTV_AX/AM indicators publish a World total only and answer
         // 204 for any other partner, so the flows tab requested a combination

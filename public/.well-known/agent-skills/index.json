@@ -187,9 +187,9 @@
     {
       "name": "track-tariff-trends",
       "type": "skill-md",
-      "description": "Retrieve the MFN applied tariff-rate timeseries (All-products average) for a reporting country, plus the optional US effective tariff rate. Use when the user asks how a country's MFN tariffs have changed over time. For one product between two countries, use lookup-bilateral-tariff.",
+      "description": "Retrieve a country's average applied tariff over time — the MFN rate on all products, or the rate it applies on goods from one partner and/or in one product group — plus the optional US effective tariff rate. Use when the user asks how a country's tariffs have changed, or what it charges another country on average. For one product between two countries, use lookup-bilateral-tariff.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/track-tariff-trends/SKILL.md",
-      "digest": "sha256:8a88a3af911943a42c967c3dc4867a8c5b20b5bd36514042196d054c4f8e2e69"
+      "digest": "sha256:0133f5a4f1f4af6762fe4b72b4baf645a9645442b9c86a26b3de608799d2c8a1"
     },
     {
       "name": "track-unrest-events",

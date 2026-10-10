@@ -26,21 +26,21 @@ enum TariffTrendUnavailableReason {
   TARIFF_TREND_UNAVAILABLE_REASON_COVERAGE_UNKNOWN = 4;
   // The cache read itself failed.
   TARIFF_TREND_UNAVAILABLE_REASON_CACHE_UNAVAILABLE = 5;
+  // World Bank WITS could not be reached for a partner or sector request.
+  TARIFF_TREND_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE = 6;
 }
 
 // Request for tariff timeseries data.
 //
-// Coverage is seed-backed: Railway pre-fetches WTO MFN applied tariff rates
-// (indicator TP_A_0010) for every reporter and this API serves slices of that
-// history. It never calls WTO per request, so a well-formed combination outside
-// the seeded set is reported as uncovered (see GetTariffTrendsResponse.
-// unavailable_reason) rather than fetched on demand.
+// Without partner_country or product_sector, this serves the reporter's WTO MFN
+// applied average over all products (indicator TP_A_0010), seeded on Railway; a
+// reporter outside the seed is reported as uncovered, not fetched.
 //
-// TP_A_0010 is a reporting-economy MFN applied average — it has no partner
-// dimension and no product-sector split beyond the All-products aggregate.
-// product_sector empty (or "all") is the only sector currently covered;
-// partner_country is accepted for forward compatibility and does not filter
-// the series.
+// With either set, it serves the reporter's effectively applied tariff
+// (preferences included) on goods from that partner and/or in that product
+// group, from World Bank WITS (UNCTAD TRAINS), fetched on demand and cached.
+// Both are schedule rates: neither includes unilateral duties such as Section
+// 301 (see get-us-import-duty).
 message GetTariffTrendsRequest {
   // WTO member code of reporting country, as a 3-digit UN M49 code
   // (for example "840" = United States). Empty selects the "840" default.
@@ -48,20 +48,16 @@ message GetTariffTrendsRequest {
     (buf.validate.field).string.pattern = "^([0-9]{3})?$",
     (sebuf.http.query) = { name: "reporting_country" }
   ];
-  // Partner country as a 3-digit UN M49 code. Accepted for forward
-  // compatibility; TP_A_0010 is an MFN applied average for the reporting
-  // economy and has no partner dimension, so this field never changes the
-  // answer. Empty is the documented default.
+  // Exporting partner, 3-digit UN M49 code ("000" = World). Empty or "000"
+  // with no product_sector selects the MFN series.
   string partner_country = 2 [
     (buf.validate.field).string.pattern = "^([0-9]{3})?$",
     (sebuf.http.query) = { name: "partner_country" }
   ];
-  // Product sector filter. Empty or "all" selects the All-products aggregate,
-  // which is the only sector currently covered. Any other value is accepted by
-  // validation and answered with unavailable_reason
-  // TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED so sector coverage can widen
-  // without a contract change. Max 16 characters, alphanumeric / underscore /
-  // hyphen.
+  // WITS product group: an HS section such as "84-85_MachElec" or "50-63_TextCloth",
+  // or "AgrRaw", "Chemical", "Food", "Fuels", "manuf", "OresMtls", "Textiles",
+  // "Transp" (case-insensitive). Empty or "all" means all products. Other values
+  // are answered NOT_COVERED.
   string product_sector = 3 [
     (buf.validate.field).string.pattern = "^([a-zA-Z0-9_-]{0,16})?$",
     (sebuf.http.query) = { name: "product_sector" }
@@ -80,7 +76,7 @@ message GetTariffTrendsRequest {
 message GetTariffTrendsResponse {
   // Tariff data points ordered by year ascending.
   repeated TariffDataPoint datapoints = 1;
-  // ISO 8601 timestamp when data was fetched from WTO.
+  // ISO 8601 time the data was fetched from WTO or WITS.
   string fetched_at = 2;
   // True when datapoints could not be served because of a fault — a seeded
   // reporter whose cache entry is gone, or a cache read that failed. False when
