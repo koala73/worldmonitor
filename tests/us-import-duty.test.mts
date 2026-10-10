@@ -502,6 +502,7 @@ describe('US HTS seeder branch', () => {
     assert.ok(catalogAt > 0, 'catalog written');
     for (const key of shardKeys) assert.ok(redisSets.indexOf(key) >= 0 && redisSets.indexOf(key) < catalogAt, key);
     assert.ok(redisSets.includes('seed-meta:trade:us-hts:catalog'), 'seed-meta written');
+    assert.ok(redisSets.indexOf('seed-activated:trade:us-hts') > catalogAt, 'activation marker set after the catalog');
     assert.equal(US_HTS_TTL, 86400);
     const catalog = JSON.parse(redisStore.get(US_HTS_CATALOG_KEY)!);
     assert.equal(catalog.release, '2026HTSRev21');

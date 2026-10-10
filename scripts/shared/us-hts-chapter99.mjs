@@ -560,6 +560,8 @@ export function makeCountryResolver(nameToIso2, unToIso2) {
 
 /** Redis keys. Coverage shards are versioned by release so a reader never mixes two. */
 export const US_HTS_CATALOG_KEY = 'trade:us-hts:catalog:v1';
+/** Durable (no TTL) marker set after the first catalog publish; api/health.js binds it. */
+export const US_HTS_ACTIVATION_KEY = 'seed-activated:trade:us-hts';
 export const US_HTS_COVERAGE_PREFIX = 'trade:us-hts:coverage:v1';
 export function usHtsCoverageKey(release, chapter) {
   return `${US_HTS_COVERAGE_PREFIX}:${release}:${chapter}`;

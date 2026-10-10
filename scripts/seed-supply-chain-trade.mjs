@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKey, writeExtraKeyWithMeta, writeSeedMeta, sleep, verifySeedKey, resolveProxyForConnect, fredFetchJson } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKey, writeExtraKeyWithMeta, writeSeedMeta, sleep, verifySeedKey, resolveProxyForConnect, fredFetchJson, getRedisCredentials, redisCommand } from './_seed-utils.mjs';
 import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 import { createRequire as _createRequire } from 'node:module';
 import {
   buildUsDutyIndex,
   makeCountryResolver,
+  US_HTS_ACTIVATION_KEY,
   US_HTS_CATALOG_KEY,
   usHtsCoverageKey,
 } from './shared/us-hts-chapter99.mjs';
@@ -1407,6 +1408,10 @@ export async function publishUsHtsIndex(index) {
     measures: index.measures,
   };
   await writeExtraKeyWithMeta(US_HTS_CATALOG_KEY, catalog, US_HTS_TTL, Object.keys(index.measures).length);
+  // No TTL: once a catalog has published, health treats a missing or stale
+  // one as a failure rather than as pending activation.
+  const { url, token } = getRedisCredentials();
+  await redisCommand(url, token, ['SET', US_HTS_ACTIVATION_KEY, '1']);
 }
 
 function parseCustomsRows(rows) {

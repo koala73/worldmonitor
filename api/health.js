@@ -1338,7 +1338,20 @@ const SEED_META = {
   secCikMap:           { key: 'seed-meta:intelligence:sec-cik-map',          maxStaleMin: 2880, minRecordCount: 5000 }, // daily bundle section; 2880min = 48h = 2x interval. minRecordCount mirrors MIN_CIK_ENTRIES in scripts/seed-sec-cik-map.mjs.
   sec8kStream:         { key: 'seed-meta:intelligence:sec-8k-stream',        maxStaleMin: 120, minRecordCount: 50 }, // 30min bundle section; 120min = 4x interval. minRecordCount mirrors MIN_STREAM_EVENTS in scripts/seed-sec-8k-stream.mjs — a drained window means Atom-parse decay, not a quiet market.
   customsRevenue:      { key: 'seed-meta:trade:customs-revenue',              maxStaleMin: 1440 },
-  usHtsDuties:         { key: 'seed-meta:trade:us-hts:catalog',               maxStaleMin: 1440, minRecordCount: 100 }, // 6h cron, 24h data TTL (US_HTS_TTL); 132 measures in HTS 2026 Rev 21
+  // 6h cron, 24h data TTL (US_HTS_TTL); 132 measures in HTS 2026 Rev 21.
+  // seed-supply-chain-trade sets the marker after its first catalog publish.
+  usHtsDuties: {
+    key: 'seed-meta:trade:us-hts:catalog',
+    maxStaleMin: 1440,
+    minRecordCount: 100,
+    activationKey: 'seed-activated:trade:us-hts',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 9086,
+      activationKey: 'seed-activated:trade:us-hts',
+    },
+  },
   comtradeFlows:       { key: 'seed-meta:trade:comtrade-flows',               maxStaleMin: 2880 }, // 24h cron; 2880min = 48h = 2x interval
   comtradeBilateralHs4: { key: 'seed-meta:comtrade:bilateral-hs4',             maxStaleMin: 50400, minRecordCount: 110 }, // 35d health budget for monthly seed; 40d payload/meta TTL leaves a 5d stale-but-queryable warning window. minRecordCount mirrors MIN_COUNTRY_COVERAGE in scripts/seed-comtrade-bilateral-hs4.mjs (110 of 197 clusters) so a shrunken run reads COVERAGE_PARTIAL, not OK — without it 3-of-197 and 197-of-197 were indistinguishable for the full 35d window.
   supplyVulnerability: {
@@ -2076,6 +2089,9 @@ const ON_DEMAND_KEYS = new Set([
   // pending activation; after it, missing or stale data is strict.
   'physicalPremiums',
   'physicalDivergence',
+  // US HTS chapter 99 duty index: pending until seed-supply-chain-trade's
+  // first catalog publish writes the marker, strict afterward.
+  'usHtsDuties',
   // Five-factor scorecard (#6441). Vercel can ship this probe before the
   // Railway resilience bundle publishes the first daily cohort. The seeder
   // writes a permanent marker in the same EVAL as that first successful
@@ -2194,6 +2210,8 @@ const ACTIVATION_MARKERS = {
   gdeltCountryArticles: SEED_META.gdeltCountryArticles.activationKey,
   gdeltDyadTension: SEED_META.gdeltDyadTension.activationKey,
   physicalPremiums: SEED_META.physicalPremiums.activationKey,
+  // Written by publishUsHtsIndex in scripts/seed-supply-chain-trade.mjs.
+  usHtsDuties: SEED_META.usHtsDuties.activationKey,
   physicalDivergence: SEED_META.physicalDivergence.activationKey,
   scorecardFiveFactor: SEED_META.scorecardFiveFactor.activationKey,
   imdCycloneMarine: SEED_META.imdCycloneMarine.activationKey,
