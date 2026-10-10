@@ -12,13 +12,26 @@ import path from 'node:path';
 import { DATA_DIR } from './config.mjs';
 
 const CONTEXT_CACHE = path.join(DATA_DIR, 'liveavatar-context.json');
+const SILENT_CONTEXT_CACHE = path.join(DATA_DIR, 'liveavatar-context-silent.json');
 export const SANDBOX_AVATAR_ID = 'dd73ea75-1218-4ef3-92ce-606d5f7fbc0a';
 export const OPENING_TEXT = 'WorldMonitor desk. Live.';
+/** 1080p avatars freeze on a weak venue link while the audio carries on; medium is the stage default. */
+export const DEFAULT_VIDEO_QUALITY = 'MEDIUM';
+
+const PROMPT = 'You are the on-stage anchor of the WorldMonitor Verification Desk. You only say the exact lines the desk sends you. Never improvise, never answer questions, never call a claim true or false.';
 
 const CONTEXT = {
   name: 'WorldMonitor Verification Desk',
-  prompt: 'You are the on-stage anchor of the WorldMonitor Verification Desk. You only say the exact lines the desk sends you. Never improvise, never answer questions, never call a claim true or false.',
+  prompt: PROMPT,
   opening_text: OPENING_TEXT,
+};
+
+// The warm standby session must not greet: it is promoted between sentences,
+// and a greeting still in flight would be heard twice.
+const SILENT_CONTEXT = {
+  name: 'WorldMonitor Verification Desk (standby, no opening line)',
+  prompt: PROMPT,
+  opening_text: '', // the field is required; an empty line is accepted and says nothing
 };
 
 const base = () => process.env.LIVEAVATAR_API_URL || 'https://api.liveavatar.com';
@@ -41,18 +54,24 @@ async function call(method, route, body) {
   return json ?? {};
 }
 
-/** The context id: .env, else the cached one, else a new one (created once). */
-export async function ensureContext() {
-  if (process.env.LIVEAVATAR_CONTEXT_ID) return { id: process.env.LIVEAVATAR_CONTEXT_ID, from: 'env' };
-  if (existsSync(CONTEXT_CACHE)) {
-    const cached = JSON.parse(await readFile(CONTEXT_CACHE, 'utf8'));
+/**
+ * The context id: .env, else the cached one, else a new one (created once).
+ * `silent` selects the standby context, which has no opening line
+ * (LIVEAVATAR_SILENT_CONTEXT_ID overrides it).
+ */
+export async function ensureContext({ silent = false } = {}) {
+  const envId = silent ? process.env.LIVEAVATAR_SILENT_CONTEXT_ID : process.env.LIVEAVATAR_CONTEXT_ID;
+  if (envId) return { id: envId, from: 'env' };
+  const cacheFile = silent ? SILENT_CONTEXT_CACHE : CONTEXT_CACHE;
+  if (existsSync(cacheFile)) {
+    const cached = JSON.parse(await readFile(cacheFile, 'utf8'));
     if (cached.id) return { id: cached.id, from: 'cache' };
   }
-  const json = await call('POST', '/v1/contexts', CONTEXT);
+  const json = await call('POST', '/v1/contexts', silent ? SILENT_CONTEXT : CONTEXT);
   const id = json?.data?.id ?? json?.id;
   if (!id) throw new Error(`LiveAvatar context: no id in ${JSON.stringify(json).slice(0, 200)}`);
   await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(CONTEXT_CACHE, JSON.stringify({ id, created: new Date().toISOString() }, null, 2));
+  await writeFile(cacheFile, JSON.stringify({ id, created: new Date().toISOString() }, null, 2));
   return { id, from: 'created' };
 }
 
@@ -88,14 +107,15 @@ export async function voiceIdFor(type) {
   return type === 'VIDEO' ? null : voice;
 }
 
-export async function tokenBody() {
+export async function tokenBody({ silent = false } = {}) {
   if (process.env.LIVEAVATAR_TOKEN_BODY) return JSON.parse(process.env.LIVEAVATAR_TOKEN_BODY);
-  const context = await ensureContext();
+  const context = await ensureContext({ silent });
   const voice = await voiceIdFor(sandbox() ? null : await avatarType());
   return {
     mode: 'FULL',
     ...(sandbox() ? { is_sandbox: true } : {}),
     avatar_id: avatarId(),
+    video_quality: process.env.LIVEAVATAR_VIDEO_QUALITY || DEFAULT_VIDEO_QUALITY,
     avatar_persona: {
       ...(voice ? { voice_id: voice } : {}),
       context_id: context.id,
@@ -105,9 +125,9 @@ export async function tokenBody() {
 }
 
 /** A one-session token for the browser SDK (which starts the session itself). */
-export async function createToken() {
+export async function createToken({ silent = false } = {}) {
   if (!configured()) throw new Error('Set LIVEAVATAR_API_KEY and LIVEAVATAR_AVATAR_ID (or LIVEAVATAR_SANDBOX=1) in .env');
-  const json = await call('POST', '/v1/sessions/token', await tokenBody());
+  const json = await call('POST', '/v1/sessions/token', await tokenBody({ silent }));
   const token = json?.data?.session_token ?? json?.session_token;
   if (!token) throw new Error(`LiveAvatar token: no session_token in ${JSON.stringify(json).slice(0, 200)}`);
   return { session_token: token, session_id: json?.data?.session_id ?? null };

@@ -56,7 +56,9 @@ async function load() {
 /** Opens one session on `video`. Resolves once its opening line is done. */
 async function open(video, audible) {
   const { LiveAvatarSession, SessionEvent, AgentEventsEnum } = await load();
-  const res = await fetch('/api/avatar/token', { method: 'POST' });
+  // The audible (first) session greets; a standby session gets the silent
+  // context so a promotion between sentences never replays a greeting.
+  const res = await fetch(`/api/avatar/token${audible ? '' : '?silent=1'}`, { method: 'POST' });
   const body = await res.json();
   if (!res.ok) throw new Error(body.error || `token HTTP ${res.status}`);
   const s = new LiveAvatarSession(body.session_token, { autoKeepAlive: true, voiceChat: { defaultMuted: true } });
@@ -92,7 +94,10 @@ async function open(video, audible) {
     s.stop().catch(() => {});
     throw error;
   }
-  await Promise.race([opening, new Promise((r) => setTimeout(r, 5_000))]);
+  // Only the greeting session has an opening line to wait out (up to 12 s:
+  // TTS can take a moment to start, and promoting mid-greeting is what the
+  // wait prevents). A silent standby is ready as soon as its stream is.
+  if (audible) await Promise.race([opening, new Promise((r) => setTimeout(r, 12_000))]);
   return { s, video, startedAt };
 }
 

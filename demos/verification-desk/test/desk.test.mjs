@@ -348,6 +348,11 @@ test('LiveAvatar: a VIDEO avatar keeps its own voice; an image avatar gets the c
       assert.ok(calls.some((u) => u.endsWith('/v1/avatars/av-1')), 'the avatar record is read');
       assert.deepEqual(body.avatar_persona, { context_id: 'ctx-1', language: 'en' });
       assert.equal(body.mode, 'FULL');
+      assert.equal(body.video_quality, 'MEDIUM', '1080p froze on a weak link; medium is the stage default');
+      // The warm standby session uses the context without an opening line.
+      process.env.LIVEAVATAR_SILENT_CONTEXT_ID = 'ctx-silent';
+      assert.equal((await tokenBody({ silent: true })).avatar_persona.context_id, 'ctx-silent');
+      assert.equal((await tokenBody()).avatar_persona.context_id, 'ctx-1');
     } finally {
       globalThis.fetch = realFetch;
     }

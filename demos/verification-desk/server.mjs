@@ -188,7 +188,9 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/board') return sendJson(res, 200, await board({ force: url.searchParams.get('refresh') === '1' }));
     if (url.pathname === '/api/avatar/token' && req.method === 'POST') {
       try {
-        return sendJson(res, 200, await liveavatar.createToken());
+        // ?silent=1: the warm standby session, whose context has no opening line.
+        const silent = url.searchParams.get('silent') === '1';
+        return sendJson(res, 200, await liveavatar.createToken({ silent }));
       } catch (error) {
         return sendJson(res, 502, { error: error.message });
       }
