@@ -2953,7 +2953,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_tariff_trends',
     _outputBudgetBytes: 131072,
-    description: 'Global trade and pricing indicators: US tariff trends (HTS-coded), BigMac index, FAO Food Price Index, and per-country national debt levels.',
+    description: 'Global trade and pricing indicators: US MFN applied tariff trend (All-products average, not bilateral or HS-level), BigMac index, FAO Food Price Index, and per-country national debt levels.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -32906,7 +32906,9 @@ paths:
             tags:
                 - TradeService
             summary: GetTariffTrends
-            description: Get tariff rate timeseries for a country pair. PRO-gated. Requires entitlement tier >= 1.
+            description: |-
+                Get the MFN applied tariff-rate timeseries (All-products average) for one
+                 reporting economy. Not a bilateral or product-level rate. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetTariffTrends
             security:
                 - WorldMonitorKey: []
@@ -58046,10 +58048,10 @@ components:
                     description: WTO member code of reporting country.
                 partnerCountry:
                     type: string
-                    description: WTO member code of partner country.
+                    description: 'Partner label. Always "World": the indicator has no partner dimension.'
                 productSector:
                     type: string
-                    description: Product sector or HS chapter.
+                    description: Product sector label. Always "All products" on the served indicator.
                 year:
                     type: integer
                     format: int32
@@ -58061,11 +58063,14 @@ components:
                 boundRate:
                     type: number
                     format: double
-                    description: WTO bound tariff rate (percentage).
+                    description: 'WTO bound tariff rate (percentage). Reserved: 0 on the served indicator.'
                 indicatorCode:
                     type: string
                     description: WTO indicator code used for this datapoint.
-            description: Single tariff data point for a reporter-partner-product combination.
+            description: |-
+                Single tariff data point. GetTariffTrends serves the WTO MFN applied
+                 All-products average (TP_A_0010) for one reporting economy, so every point
+                 is reporter-level: no partner dimension and no product split.
         worldmonitor_trade_v1_EffectiveTariffRate:
             type: object
             properties:

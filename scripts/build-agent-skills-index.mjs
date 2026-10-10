@@ -75,7 +75,7 @@ const INSTRUCTIONS = [
   '- Use `monitor-internet-outages` when the user asks whether a country’s internet is down, shut down, or throttled.',
   '- Use `track-earthquakes` when the user asks about recent seismic activity, including test-site proximity concern scoring.',
   '- Use `get-prediction-markets` when the user asks what the market odds are on a geopolitical, economic, or election outcome.',
-  '- Use `track-tariff-trends` when the user asks how tariffs between two countries changed or what rate a sector faces (Pro-gated).',
+  '- Use `track-tariff-trends` when the user asks how a country\'s average MFN applied tariff changed over time (Pro-gated). It does not return bilateral or product-level (HS) rates.',
   '- Use `track-vessel-traffic` when the user asks what ships are in an area or whether maritime traffic is disrupted (AIS snapshot).',
   '- Use `assess-energy-shock` when the user asks how a chokepoint disruption could affect a country\'s oil, gas, fuel products, or strategic cover.',
   '- Use `monitor-energy-disruptions` when the user asks which pipelines, storage facilities, LNG terminals, or fuel assets are disrupted, sanctioned, offline, or under watch.',
