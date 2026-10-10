@@ -102,13 +102,13 @@ async function toggleHeygen() {
       toast('WM Analyst: animated avatar');
       return;
     }
-    if (!LIVE.config.avatar) { toast('No LiveAvatar key in .env: staying on the animated avatar'); return; }
+    if (!LIVE.config.avatar) { toast('Live avatar not configured: staying on the animated avatar'); return; }
     console.debug('[avatar] switch on requested');
     a.classList.add('heygen-wait');
     const ok = await heygen.start($('#avatar video'));
     a.classList.remove('heygen-wait');
     a.classList.toggle('heygen', ok);
-    toast(ok ? 'HeyGen avatar on (G to switch back)' : 'HeyGen unavailable: animated avatar');
+    toast(ok ? 'Live avatar on (G to switch back)' : 'Live avatar unavailable: animated avatar');
   } finally {
     heygenBusy = false;
   }
@@ -473,7 +473,7 @@ if (ei >= 0) CONFIG.storyOrder.splice(ei, 1, 'liveboard', 'livecheck');
 else CONFIG.storyOrder.splice(CONFIG.storyOrder.length - 1, 0, 'liveboard', 'livecheck');
 S.order = CONFIG.storyOrder.filter((id) => SC[id]);
 
-HELP.push(['#', 'LIVE WORLDMONITOR'], ['1–7', 'live board: check that story'], ['T', 'live check: type a headline'], ['⌫', 'live check: back to the picks'], ['⇧U', 'live board: refresh now'], ['G', 'HeyGen avatar ↔ animated avatar']);
+HELP.push(['#', 'LIVE WORLDMONITOR'], ['1–7', 'live board: check that story'], ['T', 'live check: type a headline'], ['⌫', 'live check: back to the picks'], ['⇧U', 'live board: refresh now'], ['G', 'live avatar ↔ animated avatar']);
 
 const deckKey = window.onKey;
 window.onKey = function onKeyLive(e) {
@@ -508,7 +508,7 @@ window.onKey = function onKeyLive(e) {
 // Each button fires the same key the keyboard would, so there is one code
 // path. Scene-bound buttons appear only on their scene; toggles show state.
 const LIVE_BUTTONS = [
-  { key: 'g', label: '👤 G AVATAR', title: 'G: HeyGen avatar on / off (costs credits while on)', always: true, on: () => heygen.isWanted() },
+  { key: 'g', label: '👤 G AVATAR', title: 'G: live avatar on / off (metered while on)', always: true, on: () => heygen.isWanted() },
   { key: 'l', label: '▶ L AUTO', title: 'L: speak each beat on arrival', always: true, on: () => S.autoNarrate },
   { key: 'U', shift: true, label: '⟳ ⇧U REFRESH', title: 'Shift+U: refresh the board from WorldMonitor (2 calls)', scene: 'liveboard' },
   { key: 't', label: '⌨ T TYPE', title: 'T: type a headline from the room', scene: 'livecheck' },

@@ -227,12 +227,12 @@ async function useAvatar(on) {
     toast('Globe + voice');
     return;
   }
-  if (!config.avatar) { toast('No LiveAvatar key: staying on the globe'); return; }
+  if (!config.avatar) { toast('Live avatar not configured: staying on the globe'); return; }
   anchorBox.classList.add('avatar-connecting');
   const ok = await avatar.start($('#avatar-video'));
   anchorBox.classList.remove('avatar-connecting');
   anchorBox.classList.toggle('avatar-on', ok);
-  toast(ok ? 'HeyGen avatar on air' : 'Avatar unavailable: globe + voice');
+  toast(ok ? 'Live avatar on air' : 'Avatar unavailable: globe + voice');
 }
 
 avatar.onStatus(({ ready, wanted }) => {
@@ -548,8 +548,8 @@ if ('speechSynthesis' in window) speechSynthesis.getVoices();
   }
   $('#avatar-badge').textContent = 'GLOBE';
   $('#golive-sub').textContent = config.avatar
-    ? 'HeyGen avatar ready · press A any time to switch to the globe'
-    : 'Globe + voice · add a LiveAvatar key for the HeyGen avatar';
+    ? 'Live avatar ready · press A any time to switch to the globe'
+    : 'Globe + voice · configure the live avatar to switch';
   scheduleBoardRefresh();
   // Show the board silently behind the go-live overlay so the room sees today's news.
   try {
