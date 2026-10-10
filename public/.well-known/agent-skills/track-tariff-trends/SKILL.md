@@ -1,7 +1,7 @@
 ---
 name: track-tariff-trends
 version: 2
-description: Retrieve the MFN applied tariff-rate timeseries (All-products average) for a reporting country, plus the optional US effective tariff rate. Use when the user asks how a country's MFN tariffs have changed over time. It does not return bilateral or product-level (HS) rates.
+description: Retrieve the MFN applied tariff-rate timeseries (All-products average) for a reporting country, plus the optional US effective tariff rate. Use when the user asks how a country's MFN tariffs have changed over time. For one product between two countries, use lookup-bilateral-tariff.
 ---
 
 # track-tariff-trends

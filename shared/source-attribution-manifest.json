@@ -10405,6 +10405,23 @@
       ]
     },
     {
+      "host": "wits.worldbank.org",
+      "provider": "wits.worldbank.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "UNCTAD TRAINS tariff data served through the World Bank WITS API; redistribution to paying API customers confirmed by the owner on 2026-10-10",
+      "attribution": "Credit UNCTAD TRAINS and World Bank WITS, and link to the WITS query behind each rate.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
+          "path": "server/worldmonitor/trade/v1/get-bilateral-tariff.ts"
+        }
+      ]
+    },
+    {
       "host": "workos.com",
       "provider": "workos.com",
       "kind": "structured",

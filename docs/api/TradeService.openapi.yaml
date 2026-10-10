@@ -223,7 +223,7 @@ paths:
                                 "coverageEndYear": 1
                                 "coverageStartYear": 1
                                 "datapoints":
-                                    - "boundRate": 75.25
+                                    - "boundRate": 0
                                       "indicatorCode": "example"
                                       "partnerCountry": "World"
                                       "productSector": "All products"
@@ -237,6 +237,186 @@ paths:
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/GetTariffTrendsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/trade/v1/get-bilateral-tariff:
+        get:
+            tags:
+                - TradeService
+            summary: GetBilateralTariff
+            description: Applied tariff on one HS6 product between two countries (UNCTAD TRAINS). PRO-gated. Requires entitlement tier >= 1.
+            operationId: GetBilateralTariff
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: reporting_country
+                  in: query
+                  description: Importer, 3-digit UN M49 ("840"). EU members use the EU schedule.
+                  required: true
+                  example: "840"
+                  schema:
+                    type: string
+                    pattern: '^[0-9]{3}$'
+                - name: partner_country
+                  in: query
+                  description: Exporter, 3-digit UN M49 ("484"). "000" returns MFN only.
+                  required: true
+                  example: "484"
+                  schema:
+                    type: string
+                    pattern: '^[0-9]{3}$'
+                - name: hs_code
+                  in: query
+                  description: Six-digit HS subheading ("870323").
+                  required: true
+                  example: "870323"
+                  schema:
+                    type: string
+                    pattern: '^[0-9]{6}$'
+                - name: year
+                  in: query
+                  description: Tariff year; 0 = latest year TRAINS lists for the importer.
+                  required: false
+                  example: 1
+                  schema:
+                    type: integer
+                    format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "appliedRate":
+                                    "maxRate": 0
+                                    "minRate": 0
+                                    "nonAdValoremLines": 0
+                                    "rate": 0
+                                    "tariffLines": 1
+                                "basis": "APPLIED_TARIFF_BASIS_PREFERENTIAL"
+                                "filingReporter": "840"
+                                "groupPreferences":
+                                    - "groupCode": "P22"
+                                      "groupName": "North American Free Trade Agreement (NAFTA)"
+                                      "rate":
+                                          "maxRate": 0
+                                          "minRate": 0
+                                          "nonAdValoremLines": 0
+                                          "rate": 0
+                                          "tariffLines": 1
+                                "hsCode": "870323"
+                                "mfnRate":
+                                    "maxRate": 2.5
+                                    "minRate": 2.5
+                                    "nonAdValoremLines": 0
+                                    "rate": 2.5
+                                    "tariffLines": 1
+                                "nomenclature": "H5"
+                                "partnerCountry": "484"
+                                "preferentialRate":
+                                    "maxRate": 0
+                                    "minRate": 0
+                                    "nonAdValoremLines": 0
+                                    "rate": 0
+                                    "tariffLines": 1
+                                "reportingCountry": "840"
+                                "source": "UNCTAD TRAINS via World Bank WITS"
+                                "sourceUrl": "https://wits.worldbank.org/API/V1/SDMX/V21/datasource/TRN/reporter/840/partner/all/product/870323/year/2021/datatype/reported"
+                                "upstreamUnavailable": false
+                                "year": 2021
+                            schema:
+                                $ref: '#/components/schemas/GetBilateralTariffResponse'
                 "400":
                     description: Validation error
                     content:
@@ -1230,6 +1410,131 @@ components:
                     format: double
                     description: Effective tariff rate (percentage).
             description: Current effective tariff estimate for countries with coverage beyond WTO MFN baselines.
+        GetBilateralTariffRequest:
+            type: object
+            properties:
+                reportingCountry:
+                    type: string
+                    pattern: ^[0-9]{3}$
+                    description: Importer, 3-digit UN M49 ("840"). EU members use the EU schedule.
+                partnerCountry:
+                    type: string
+                    pattern: ^[0-9]{3}$
+                    description: Exporter, 3-digit UN M49 ("484"). "000" returns MFN only.
+                hsCode:
+                    type: string
+                    pattern: ^[0-9]{6}$
+                    description: Six-digit HS subheading ("870323").
+                year:
+                    type: integer
+                    maximum: 2100
+                    minimum: 0
+                    format: int32
+                    description: Tariff year; 0 = latest year TRAINS lists for the importer.
+            required:
+                - reportingCountry
+                - partnerCountry
+                - hsCode
+            description: |-
+                Applied tariff on one HS6 product between two countries, from UNCTAD TRAINS
+                 via World Bank WITS. Excludes unilateral duties (Section 301/232, IEEPA,
+                 AD/CVD, safeguards).
+        GetBilateralTariffResponse:
+            type: object
+            properties:
+                reportingCountry:
+                    type: string
+                    description: Importer code, as requested.
+                partnerCountry:
+                    type: string
+                    description: Exporter code, as requested.
+                hsCode:
+                    type: string
+                    description: HS6 code, as requested.
+                year:
+                    type: integer
+                    format: int32
+                    description: Year served; 0 when none.
+                nomenclature:
+                    type: string
+                    description: HS edition the importer filed in ("H5" = HS 2017).
+                basis:
+                    type: string
+                    enum:
+                        - APPLIED_TARIFF_BASIS_UNSPECIFIED
+                        - APPLIED_TARIFF_BASIS_PREFERENTIAL
+                        - APPLIED_TARIFF_BASIS_MFN
+                        - APPLIED_TARIFF_BASIS_MFN_PREFERENCES_NOT_REPORTED
+                    description: Source of applied_rate.
+                appliedRate:
+                    $ref: '#/components/schemas/TariffRateDetail'
+                mfnRate:
+                    $ref: '#/components/schemas/TariffRateDetail'
+                preferentialRate:
+                    $ref: '#/components/schemas/TariffRateDetail'
+                groupPreferences:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GroupTariffPreference'
+                source:
+                    type: string
+                    description: Data source.
+                sourceUrl:
+                    type: string
+                    description: WITS query behind the rows.
+                upstreamUnavailable:
+                    type: boolean
+                    description: True on a fault, false on a coverage answer.
+                unavailableReason:
+                    type: string
+                    enum:
+                        - BILATERAL_TARIFF_UNAVAILABLE_REASON_UNSPECIFIED
+                        - BILATERAL_TARIFF_UNAVAILABLE_REASON_INVALID_REQUEST
+                        - BILATERAL_TARIFF_UNAVAILABLE_REASON_NOT_COVERED
+                        - BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE
+                    description: Why no rate was served. NOT_COVERED is final; UPSTREAM_UNAVAILABLE is a fault.
+                filingReporter:
+                    type: string
+                    description: 'Reporter code queried: "918" for EU members.'
+                mfnAveRate:
+                    $ref: '#/components/schemas/TariffRateDetail'
+            description: Applied tariff on one HS6 product between two countries.
+        TariffRateDetail:
+            type: object
+            properties:
+                rate:
+                    type: number
+                    format: double
+                    description: Average ad valorem rate.
+                minRate:
+                    type: number
+                    format: double
+                    description: Lowest line rate.
+                maxRate:
+                    type: number
+                    format: double
+                    description: Highest line rate.
+                tariffLines:
+                    type: integer
+                    format: int32
+                    description: National tariff lines.
+                nonAdValoremLines:
+                    type: integer
+                    format: int32
+                    description: Specific or compound lines, excluded from the average.
+            description: Simple average across the importer's national tariff lines, in percent.
+        GroupTariffPreference:
+            type: object
+            properties:
+                groupCode:
+                    type: string
+                    description: WITS group code ("A41").
+                groupName:
+                    type: string
+                    description: WITS group name; empty when WITS has none.
+                rate:
+                    $ref: '#/components/schemas/TariffRateDetail'
+            description: Preference granted to a partner group. Membership is not resolved.
         GetTradeFlowsRequest:
             type: object
             properties:

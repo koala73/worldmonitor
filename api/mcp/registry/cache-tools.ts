@@ -2953,7 +2953,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_tariff_trends',
     _outputBudgetBytes: 131072,
-    description: 'Global trade and pricing indicators: US MFN applied tariff trend (All-products average, not bilateral or HS-level), BigMac index, FAO Food Price Index, and per-country national debt levels.',
+    description: 'Global trade and pricing indicators: US MFN applied tariff trend (All-products average, not bilateral or HS-level), Big Mac index, FAO Food Price Index, and per-country national debt levels.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2978,7 +2978,10 @@ export const CACHE_TOOLS: ToolDef[] = [
       all: {
         type: ['object', 'null'],
         properties: { datapoints: { type: 'array', items: { type: 'object', properties: {
-          hsCode: { type: 'string' }, rate: { type: ['number', 'null'] }, country: { type: 'string' },
+          reportingCountry: { type: 'string' }, partnerCountry: { type: 'string' },
+          productSector: { type: 'string' }, year: { type: 'number' },
+          tariffRate: { type: ['number', 'null'] }, boundRate: { type: ['number', 'null'] },
+          indicatorCode: { type: 'string' },
         } } } },
       },
       bigmac: {

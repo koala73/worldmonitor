@@ -59,6 +59,46 @@ export interface EffectiveTariffRate {
   tariffRate: number;
 }
 
+export interface GetBilateralTariffRequest {
+  reportingCountry: string;
+  partnerCountry: string;
+  hsCode: string;
+  year: number;
+}
+
+export interface GetBilateralTariffResponse {
+  reportingCountry: string;
+  partnerCountry: string;
+  hsCode: string;
+  year: number;
+  nomenclature: string;
+  basis: AppliedTariffBasis;
+  appliedRate?: TariffRateDetail;
+  mfnRate?: TariffRateDetail;
+  preferentialRate?: TariffRateDetail;
+  groupPreferences: GroupTariffPreference[];
+  source: string;
+  sourceUrl: string;
+  upstreamUnavailable: boolean;
+  unavailableReason: BilateralTariffUnavailableReason;
+  filingReporter: string;
+  mfnAveRate?: TariffRateDetail;
+}
+
+export interface TariffRateDetail {
+  rate: number;
+  minRate: number;
+  maxRate: number;
+  tariffLines: number;
+  nonAdValoremLines: number;
+}
+
+export interface GroupTariffPreference {
+  groupCode: string;
+  groupName: string;
+  rate?: TariffRateDetail;
+}
+
 export interface GetTradeFlowsRequest {
   reportingCountry: string;
   partnerCountry: string;
@@ -152,6 +192,10 @@ export interface ComtradeFlowRecord {
   yoyChange: number;
   isAnomaly: boolean;
 }
+
+export type AppliedTariffBasis = "APPLIED_TARIFF_BASIS_UNSPECIFIED" | "APPLIED_TARIFF_BASIS_PREFERENTIAL" | "APPLIED_TARIFF_BASIS_MFN" | "APPLIED_TARIFF_BASIS_MFN_PREFERENCES_NOT_REPORTED";
+
+export type BilateralTariffUnavailableReason = "BILATERAL_TARIFF_UNAVAILABLE_REASON_UNSPECIFIED" | "BILATERAL_TARIFF_UNAVAILABLE_REASON_INVALID_REQUEST" | "BILATERAL_TARIFF_UNAVAILABLE_REASON_NOT_COVERED" | "BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE";
 
 export type TariffTrendUnavailableReason = "TARIFF_TREND_UNAVAILABLE_REASON_UNSPECIFIED" | "TARIFF_TREND_UNAVAILABLE_REASON_INVALID_REQUEST" | "TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED" | "TARIFF_TREND_UNAVAILABLE_REASON_SEED_MISSING" | "TARIFF_TREND_UNAVAILABLE_REASON_COVERAGE_UNKNOWN" | "TARIFF_TREND_UNAVAILABLE_REASON_CACHE_UNAVAILABLE";
 
@@ -257,6 +301,34 @@ export class TradeServiceClient {
     }
 
     return await resp.json() as GetTariffTrendsResponse;
+  }
+
+  async getBilateralTariff(req: GetBilateralTariffRequest, options?: TradeServiceCallOptions): Promise<GetBilateralTariffResponse> {
+    let path = "/api/trade/v1/get-bilateral-tariff";
+    const params = new URLSearchParams();
+    if (req.reportingCountry != null && req.reportingCountry !== "") params.set("reporting_country", String(req.reportingCountry));
+    if (req.partnerCountry != null && req.partnerCountry !== "") params.set("partner_country", String(req.partnerCountry));
+    if (req.hsCode != null && req.hsCode !== "") params.set("hs_code", String(req.hsCode));
+    if (req.year != null && req.year !== 0) params.set("year", String(req.year));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetBilateralTariffResponse;
   }
 
   async getTradeFlows(req: GetTradeFlowsRequest, options?: TradeServiceCallOptions): Promise<GetTradeFlowsResponse> {

@@ -82,6 +82,73 @@ export function withOpenApiByteSize(text, yamlBytes) {
   return text.replace(annotation, (_, prefix) => `${prefix}${yamlBytes.toLocaleString('en-US')} bytes`);
 }
 
+/**
+ * protoc-gen-openapiv3 copies wrapped proto comments verbatim, so every wrap
+ * point lands in a description as "\n " — three bytes in the minified JSON for
+ * what Markdown renders as one space. Collapsing a soft break to a space is
+ * lossless for rendering. A break is kept when the next line starts a block
+ * that a newline delimits: a list item, quote, heading, table row, code fence,
+ * or a further-indented line.
+ *
+ * JSON only. The YAML is the human copy Mintlify renders, and it keeps the
+ * proto line structure. Mutates `spec` in place; returns { collapsed }.
+ */
+const SOFT_BREAK = /\n (?![ \t\-*+>#|`]|\d+[.)]\s)/g;
+
+export function collapseSoftLineBreaks(spec) {
+  const stats = { collapsed: 0 };
+  const visit = (node) => {
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+    if (!node || typeof node !== 'object') return;
+    for (const [key, value] of Object.entries(node)) {
+      if (key === 'description' && typeof value === 'string') {
+        node[key] = value.replace(SOFT_BREAK, () => {
+          stats.collapsed += 1;
+          return ' ';
+        });
+      } else if (value && typeof value === 'object') {
+        visit(value);
+      }
+    }
+  };
+  visit(spec);
+  return stats;
+}
+
+/**
+ * `required: false` is the OpenAPI default for every non-path Parameter Object
+ * (path parameters must say `true`), so stating it is pure bytes: 316 copies in
+ * the served artifact. ensureInlineTypedInput already drops it from restored
+ * jmespath copies on the same reasoning. JSON only; the YAML keeps it for the
+ * human reader and for the per-spec contract tests that assert it.
+ *
+ * Mutates `spec` in place; returns { dropped }.
+ */
+export function dropDefaultParameterRequired(spec) {
+  const stats = { dropped: 0 };
+  const strip = (param) => {
+    if (!param || typeof param !== 'object' || param.$ref) return;
+    if (param.in !== 'path' && param.required === false) {
+      delete param.required;
+      stats.dropped += 1;
+    }
+  };
+  for (const param of Object.values(spec.components?.parameters ?? {})) strip(param);
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    if (!pathItem || typeof pathItem !== 'object') continue;
+    (pathItem.parameters ?? []).forEach(strip);
+    for (const operation of Object.values(pathItem)) {
+      if (operation && typeof operation === 'object' && Array.isArray(operation.parameters)) {
+        operation.parameters.forEach(strip);
+      }
+    }
+  }
+  return stats;
+}
+
 export const DEPRECATION_POLICY_URL = 'https://www.worldmonitor.app/api-versioning.md';
 const DEPRECATION_POLICY_HTML_URL = 'https://www.worldmonitor.app/docs/api-versioning';
 
@@ -161,6 +228,10 @@ export function buildBundle({ spec: provided } = {}) {
   // schema targets alive wherever it runs — that unconditional seeding, not
   // this ordering, is the invariant a future edit must preserve.
   const unreachableStats = dropUnreachableSchemas(spec);
+  // Runs on the finished document so every surviving description, hoisted
+  // component or inline copy alike, is compacted exactly once.
+  const softBreakStats = collapseSoftLineBreaks(spec);
+  const defaultRequiredStats = dropDefaultParameterRequired(spec);
 
   // Minified: this artifact is machine-consumed (scanners/agents), and the
   // smaller payload dodges fetch-size caps. The YAML remains the human copy.
@@ -180,6 +251,8 @@ export function buildBundle({ spec: provided } = {}) {
     paramStats,
     inlineTypedStats,
     unreachableStats,
+    softBreakStats,
+    defaultRequiredStats,
   };
 }
 
