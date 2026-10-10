@@ -61,7 +61,6 @@ description: "六标签页贸易政策综合面板，涵盖出口限制措施、
 | `SEED_MISSING` | `true` | 该组合在覆盖范围内，但其缓存条目已丢失。 |
 | `COVERAGE_UNKNOWN` | `true` | 无法读取覆盖清单，因此无法排除上述两种情况。 |
 | `CACHE_UNAVAILABLE` | `true` | 缓存读取本身失败。 |
-| `UPSTREAM_UNAVAILABLE` | `true` | 伙伴国或产品组请求无法连接 World Bank WITS。 |
 | `INVALID_REQUEST` | `false` | 代码格式错误（仅在绕过请求校验时可达）。 |
 
 整体覆盖情况通过 `/api/health` 中的 `tradeFlows` 条目发布，其 `records` 计数为实际种子化的申报国/世界组合数量；数量不足时读作 `COVERAGE_PARTIAL`，而种子器停止运行时读作 `STALE_SEED`。
@@ -84,6 +83,7 @@ description: "六标签页贸易政策综合面板，涵盖出口限制措施、
 | `SEED_MISSING` | `true` | 该申报国在覆盖范围内，但其缓存条目已丢失。 |
 | `COVERAGE_UNKNOWN` | `true` | 无法读取覆盖清单。 |
 | `CACHE_UNAVAILABLE` | `true` | 缓存读取本身失败。 |
+| `UPSTREAM_UNAVAILABLE` | `true` | 伙伴国或产品组请求无法连接 World Bank WITS。 |
 | `INVALID_REQUEST` | `false` | 代码格式错误（仅在绕过请求校验时可达）。 |
 
 整体覆盖情况通过 `/api/health` 中的 `tariffTrendsUs` 条目发布（系列名沿用历史命名；探测目标为舰队级 `seed-meta:trade:tariffs` 记录）。低于最小记录数时读作 `COVERAGE_PARTIAL`，种子器停止运行时读作 `STALE_SEED`。

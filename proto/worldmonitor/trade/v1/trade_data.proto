@@ -24,9 +24,8 @@ message TradeRestriction {
   string source_url = 9;
 }
 
-// Single tariff data point. GetTariffTrends serves the WTO MFN applied
-// All-products average (TP_A_0010) for one reporting economy, so every point
-// is reporter-level: no partner dimension and no product split.
+// One year of a reporter's average tariff: the WTO MFN all-products average
+// (TP_A_0010), or a WITS applied average for a partner and/or product group.
 message TariffDataPoint {
   // WTO member code of reporting country.
   string reporting_country = 1;

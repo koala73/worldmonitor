@@ -61,7 +61,6 @@ A malformed code or an out-of-range `years` is rejected with HTTP 400 rather tha
 | `SEED_MISSING` | `true` | The pair is inside coverage but its cache entry is gone. |
 | `COVERAGE_UNKNOWN` | `true` | The coverage manifest could not be read, so neither of the above can be ruled out. |
 | `CACHE_UNAVAILABLE` | `true` | The cache read itself failed. |
-| `UPSTREAM_UNAVAILABLE` | `true` | World Bank WITS could not be reached for a partner or product-group request. |
 | `INVALID_REQUEST` | `false` | Codes were malformed (only reachable where request validation is bypassed). |
 
 Fleet-level coverage is published as the `tradeFlows` entry in `/api/health`, whose `records` count is the number of reporter/World pairs actually seeded; a shortfall reads `COVERAGE_PARTIAL`, while a stopped seeder reads `STALE_SEED`.
@@ -84,6 +83,7 @@ A malformed code or an out-of-range `years` is rejected with HTTP 400 rather tha
 | `SEED_MISSING` | `true` | The reporter is inside coverage but its cache entry is gone. |
 | `COVERAGE_UNKNOWN` | `true` | The coverage manifest could not be read. |
 | `CACHE_UNAVAILABLE` | `true` | The cache read itself failed. |
+| `UPSTREAM_UNAVAILABLE` | `true` | World Bank WITS could not be reached for a partner or product-group request. |
 | `INVALID_REQUEST` | `false` | Codes were malformed (only reachable where request validation is bypassed). |
 
 Fleet-level coverage is published as the `tariffTrendsUs` entry in `/api/health` (the series name is historical; the probe is the fleet `seed-meta:trade:tariffs` record). A shortfall against the min-record floor reads `COVERAGE_PARTIAL`; a stopped seeder reads `STALE_SEED`.

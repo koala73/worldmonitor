@@ -58329,9 +58329,9 @@ components:
                  applied average over all products (indicator TP_A_0010), seeded on Railway; a
                  reporter outside the seed is reported as uncovered, not fetched.
 
-                 With either set, it serves the reporter's effectively applied tariff
-                 (preferences included) on goods from that partner and/or in that product
-                 group, from World Bank WITS (UNCTAD TRAINS), fetched on demand and cached.
+                 With a partner other than World, or a product group other than all, it serves
+                 the reporter's effectively applied tariff (preferences included) on those
+                 goods, from World Bank WITS (UNCTAD TRAINS), fetched on demand and cached.
                  Both are schedule rates: neither includes unilateral duties such as Section
                  301 (see get-us-import-duty).
         worldmonitor_trade_v1_GetTariffTrendsResponse:
@@ -58415,9 +58415,8 @@ components:
                     format: double
                     description: Import-weighted average (percentage). WITS series only; 0 on TP_A_0010.
             description: |-
-                Single tariff data point. GetTariffTrends serves the WTO MFN applied
-                 All-products average (TP_A_0010) for one reporting economy, so every point
-                 is reporter-level: no partner dimension and no product split.
+                One year of a reporter's average tariff: the WTO MFN all-products average
+                 (TP_A_0010), or a WITS applied average for a partner and/or product group.
         worldmonitor_trade_v1_EffectiveTariffRate:
             type: object
             properties:

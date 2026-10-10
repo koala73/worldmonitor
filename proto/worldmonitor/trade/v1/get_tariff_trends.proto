@@ -36,9 +36,9 @@ enum TariffTrendUnavailableReason {
 // applied average over all products (indicator TP_A_0010), seeded on Railway; a
 // reporter outside the seed is reported as uncovered, not fetched.
 //
-// With either set, it serves the reporter's effectively applied tariff
-// (preferences included) on goods from that partner and/or in that product
-// group, from World Bank WITS (UNCTAD TRAINS), fetched on demand and cached.
+// With a partner other than World, or a product group other than all, it serves
+// the reporter's effectively applied tariff (preferences included) on those
+// goods, from World Bank WITS (UNCTAD TRAINS), fetched on demand and cached.
 // Both are schedule rates: neither includes unilateral duties such as Section
 // 301 (see get-us-import-duty).
 message GetTariffTrendsRequest {
