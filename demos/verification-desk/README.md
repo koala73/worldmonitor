@@ -14,6 +14,7 @@ The desk has no idea of truth of its own. Every judgment on screen is WorldMonit
 - **Live check**: the deck's pipeline, lanes, dial and stamp, filled by WorldMonitor's grading. Press **T** to type an audience headline and **Enter** to run it, **Backspace** to go back to the picker.
 - **G** switches the HeyGen avatar on and off in the deck's avatar slot. When it is off, the deck's recorded voice plays (ElevenLabs for the live lines when the key is set).
 - **Shift+U** refreshes the board (plain U stays the deck's mute key). **Enter** re-runs the last headline, including after a failed check. Every other key is the deck's own; press **?** for the full list.
+- **Show defaults:** auto-narrate is on, and the live avatar switches on at the first click or key (the gesture browsers need before audio can play). `?auto=0` and `?avatar=0` on the URL opt out, for a rehearsal that must not spend credits.
 - **The control bar has the live keys as buttons** (after a divider, right of ⛶): **G AVATAR** and **L AUTO** are always there and light up when on; **⇧U REFRESH** appears on the live board; **T TYPE**, **RE-RUN** and **PICKS** appear on the live check. A button fires exactly the key it names.
 
 The deck's own slides are frozen as of Fri 9 Oct 19:30 GST. Its "How WorldMonitor does it" slide shows WorldMonitor's source tiers 1–4, the propaganda-risk rating and the CRED bands; the live scenes compute them on today's news.

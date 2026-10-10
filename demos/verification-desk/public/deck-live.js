@@ -563,4 +563,23 @@ addEventListener('load', async () => {
   installLiveButtons();
   try { LIVE.config = await fetch('/api/config').then((r) => r.json()); } catch { LIVE.config = {}; }
   loadBoard(); // warm, so the live board is instant when the show reaches it
+
+  // Show defaults: auto-narrate on, and the live avatar on at the first
+  // gesture (browsers need a click or key before audio may play, and that
+  // first gesture is also what dismisses the deck's start overlay).
+  // ?auto=0 and ?avatar=0 opt out, e.g. a rehearsal that must not spend credits.
+  const q = new URLSearchParams(location.search);
+  if (q.get('auto') !== '0') { S.autoNarrate = true; updateHud(); }
+  if (q.get('avatar') !== '0' && LIVE.config.avatar) {
+    let armed = true;
+    const onFirstGesture = () => {
+      if (!armed) return;
+      armed = false;
+      removeEventListener('keydown', onFirstGesture, true);
+      removeEventListener('pointerdown', onFirstGesture, true);
+      if (!heygen.isWanted()) toggleHeygen();
+    };
+    addEventListener('keydown', onFirstGesture, true);
+    addEventListener('pointerdown', onFirstGesture, true);
+  }
 });
