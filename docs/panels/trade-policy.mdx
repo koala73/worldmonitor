@@ -140,8 +140,8 @@ Programs whose beneficiaries are designated by list or by end use (AGOA, CBERA, 
 
 The duties covered are:
 
-- **Section 301 China:** Lists 1–4A, and the 2024 four-year-review increases. Those increases moved products off the lists, so the two never stack on one line.
-- **Section 301 forced-labor action:** in force since 2026-07-24. It adds 10% or 12.5% on 60 economies. For the EU, Japan, South Korea, Switzerland and Taiwan, it raises the combined rate to a 10% or 12.5% floor instead (`topUpTo`). It carries product, country and USMCA exemptions.
+- **Section 301 China:** Lists 1–4A, and the 2024 four-year-review increases. Most products with a review increase were taken off the lists, so the review rate replaces the list duty. Where the HTS still lists a line under both, the route reports both as printed. For example, intermodal chassis lines `8716.39.00` and `8716.90.30` stay on List 3 while their review increase (`9903.91.12`) is scheduled for 2026-11-10.
+- **Section 301 forced-labor action:** in force since 2026-07-24. It adds 10% or 12.5% on 60 trading partners, counting the EU as one. For the EU, Japan, South Korea, Switzerland and Taiwan, it raises the combined rate to a 10% or 12.5% floor instead (`topUpTo`). It carries product, country and USMCA exemptions.
 - **Section 301 Brazil:** 25%.
 - **Section 232:** steel, aluminum and copper; vehicles and parts; trucks and buses; lumber, furniture and cabinets; semiconductors; patented pharmaceuticals; and drones.
 
@@ -151,7 +151,7 @@ The route does not report three things:
 - The Section 122 surcharge, which expired on 2026-07-23.
 - Anti-dumping and countervailing duties.
 
-`estimatedRate` is the base rate plus the `APPLIES` duties. `estimateComplete` is `false` when the base rate is specific or compound, or when any duty is `CONDITIONAL` or `SCHEDULED`.
+`estimatedRate` is the base rate plus the `APPLIES` duties. `estimateComplete` is `false` when the base rate is specific or compound, when any duty is `CONDITIONAL` or `SCHEDULED`, or when the chapter 99 index could not be read (`additionalDutiesLoaded: false`).
 
 Product coverage for these duties lives in the chapter 99 U.S. notes, which run to about 5 MB, not in the product lines. `seed-supply-chain-trade` therefore parses the notes from the current HTS release every six hours. It publishes a catalog of measures, `trade:us-hts:catalog:v1`, plus one coverage shard per HS chapter, keyed by release. Each measure is located by an anchor phrase and validated. If any measure fails to resolve, the publish is skipped and the previous release stays in place. The route reads the product's lines live from the HTS `exportList` service and caches them for a day under the catalog's release, so a new release reads fresh lines. If the catalog is missing, it still serves the rates with `additionalDutiesLoaded: false`. Health is the `usHtsDuties` entry in `/api/health`.
 

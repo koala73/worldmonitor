@@ -12,7 +12,7 @@ Use this skill when the user asks what duty the United States charges **today** 
 
 **What is and is not included.**
 
-- Included: the HTS column 1 General, Special (trade agreements) and column 2 rates of the current release, and the chapter 99 duties in force: Section 301 China (Lists 1–4A and the 2024 four-year review), the 2026 Section 301 forced-labor action on 60 economies, Section 301 Brazil, and Section 232 actions (steel, aluminum and copper, vehicles and parts, trucks and buses, lumber and furniture, semiconductors, pharmaceuticals, drones).
+- Included: the HTS column 1 General, Special (trade agreements) and column 2 rates of the current release, and the chapter 99 duties in force: Section 301 China (Lists 1–4A and the 2024 four-year review), the 2026 Section 301 forced-labor action on 60 trading partners (the EU counted as one), Section 301 Brazil, and Section 232 actions (steel, aluminum and copper, vehicles and parts, trucks and buses, lumber and furniture, semiconductors, pharmaceuticals, drones).
 - Not included: IEEPA duties (struck down; not collected since 2026-02-24), anti-dumping and countervailing duties, quotas, and merchandise processing fees.
 
 ## Authentication
@@ -82,7 +82,7 @@ Read each duty's `status` before adding it up:
 
 `basis` says which column the base rate comes from: `MFN` (column 1 General), `PREFERENTIAL` (column 1 Special under a trade agreement the country is party to; `preferenceProgram` names it, e.g. `S` for USMCA), or `COLUMN_2` (Belarus, Cuba, North Korea, Russia). Russian goods on the U.S. note 30 lists take 35% or 70% in lieu of column 2; `baseRate` then names the heading, e.g. `35% (9903.90.08)`. `unresolvedPrograms` lists programs on the line whose beneficiary list or end-use condition is not checked (AGOA `D`, CBERA `E`, CBTPA `R`, Nepal `NP`, civil aircraft `C`, pharmaceuticals `K`, dyes `L`). GSP (`A`, `A*`, `A+`) is ignored because it has been lapsed since 2021.
 
-`estimatedRate` is the base rate plus every `APPLIES` duty, in percent. A forced-labor duty for the EU, Japan, South Korea, Switzerland or Taiwan can be a floor (`topUpTo`): it raises the combined rate to 10% or 12.5% rather than adding to it. `estimateComplete` is `false` when the base is a specific or compound rate (`baseNonAdValorem`) or when any duty is `CONDITIONAL` or `SCHEDULED`. In that case, quote the duties separately rather than a single total.
+`estimatedRate` is the base rate plus every `APPLIES` duty, in percent. A forced-labor duty for the EU, Japan, South Korea, Switzerland or Taiwan can be a floor (`topUpTo`): it raises the combined rate to 10% or 12.5% rather than adding to it. `estimateComplete` is `false` when the base is a specific or compound rate (`baseNonAdValorem`), when any duty is `CONDITIONAL` or `SCHEDULED`, or when `additionalDutiesLoaded` is `false`. In that case, quote the duties separately rather than a single total.
 
 `additionalDutiesLoaded: false` means the chapter 99 index was unavailable. The lines still carry the HTS column rates, but no duties, so say that the additional duties could not be checked.
 
