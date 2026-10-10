@@ -52,12 +52,6 @@ export function normalizeCode(code) {
   return m ? `${m[1]}.${m[2]}.${m[3]}` : code;
 }
 
-/** HTS provisions in a text run, chapter 99 excluded (those are headings, not products). */
-export function extractCodes(text) {
-  const out = [];
-  return classifyCodes(text).fullCodes.concat(classifyCodes(text).partialCodes);
-}
-
 /** The marker that follows `value` in its sequence: (b)->(c), (z)->(aa), (ii)->(iii), (3)->(4). */
 export function nextMarker(value) {
   const inner = String(value || '').replace(/^\(|\)$/g, '');
