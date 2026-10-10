@@ -87,13 +87,38 @@ A malformed code or an out-of-range `years` is rejected with HTTP 400 rather tha
 
 Fleet-level coverage is published as the `tariffTrendsUs` entry in `/api/health` (the series name is historical; the probe is the fleet `seed-meta:trade:tariffs` record). A shortfall against the min-record floor reads `COVERAGE_PARTIAL`; a stopped seeder reads `STALE_SEED`.
 
+### Bilateral tariff lookup (API only)
+
+`GET /api/trade/v1/get-bilateral-tariff` answers a question `get-tariff-trends` cannot: the applied tariff on one 6-digit HS product when one country imports it from another. It has no panel tab. It reads UNCTAD TRAINS live through the World Bank WITS API and caches each answer for seven days. One cached read per importer, product and year serves every partner.
+
+| Parameter | Required | Meaning |
+|---|---|---|
+| `reporting_country` | yes | Importer, 3-digit UN M49. EU member states are answered from the EU schedule (`918`), named in `filingReporter`. |
+| `partner_country` | yes | Exporter, 3-digit UN M49. `000` returns MFN only. |
+| `hs_code` | yes | 6-digit HS subheading. |
+| `year` | no | `0` selects the latest year TRAINS lists for the importer. |
+
+The response returns `mfnRate`, a partner-specific `preferentialRate` when one is on file, and `appliedRate`. Read `basis` before quoting `appliedRate`:
+
+| `basis` suffix | Meaning |
+|---|---|
+| `PREFERENTIAL` | A partner-specific preferential rate is on file and is lower than MFN. |
+| `MFN` | The importer filed preferential schedules that year and none names this partner for this product. Preferences granted to partner groups are listed in `groupPreferences`; their membership is not resolved. |
+| `MFN_PREFERENCES_NOT_REPORTED` | The importer filed no preferential schedules for that year, so only MFN is known and the applied rate may be lower. Recent years are often MFN-only; the US, for example, has preferences on file through 2021. |
+
+Rates are simple averages across the importer's national tariff lines. When the MFN schedule has specific or compound duties, the reported average leaves them out (US wine, HS `220421`, reads 0%); `mfnAveRate` then carries the WITS ad valorem equivalent and `appliedRate` uses it when MFN applies.
+
+TRAINS does not record unilateral additional duties (US Section 301, 232 or IEEPA tariffs), anti-dumping or countervailing duties, or safeguards. For pairs subject to them, the applied rate here understates what importers pay.
+
+`unavailableReason` is `NOT_COVERED` (`upstreamUnavailable: false`) when TRAINS has no row for that importer, product and year, and `UPSTREAM_UNAVAILABLE` (`upstreamUnavailable: true`) when WITS fails. The route is tier 1, so Pro and the API plans can call it. It is REST-only; there is no MCP tool yet.
+
 ## Refresh cadence
 
 Per-tab fetches on mount and on tab switch; no polling. Upstream seeders run on varying cadences per dataset (tariffs daily, Comtrade monthly).
 
 ## Tier & gating
 
-**Panel shell is free.** No `premium` flag in variant registrations. The generated REST service is mixed: restrictions, flows, barriers, and [customs revenue](/api-reference/tradeservice/getcustomsrevenue) are public; `get-tariff-trends` and `list-comtrade-flows` are premium RPC paths and degrade to empty data without an entitled session or API key.
+**Panel shell is free.** No `premium` flag in variant registrations. The generated REST service is mixed: restrictions, flows, barriers, and [customs revenue](/api-reference/tradeservice/getcustomsrevenue) are public; `get-tariff-trends`, `list-comtrade-flows`, and the API-only `get-bilateral-tariff` are premium RPC paths and degrade to empty data without an entitled session or API key.
 
 ## API reference
 

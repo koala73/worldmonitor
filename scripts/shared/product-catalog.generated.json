@@ -165,13 +165,13 @@
     "heroProofStats": {
       "mapLayers": 57,
       "feeds": 460,
-      "providers": 759,
+      "providers": 760,
       "alertOrigins": 5
     },
     "depthProofStats": {
       "mapLayers": 57,
       "feeds": 460,
-      "providers": 759,
+      "providers": 760,
       "alertOrigins": 5,
       "chokepoints": 13,
       "instabilityCountries": 31,

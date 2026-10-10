@@ -59,6 +59,46 @@ export interface EffectiveTariffRate {
   tariffRate: number;
 }
 
+export interface GetBilateralTariffRequest {
+  reportingCountry: string;
+  partnerCountry: string;
+  hsCode: string;
+  year: number;
+}
+
+export interface GetBilateralTariffResponse {
+  reportingCountry: string;
+  partnerCountry: string;
+  hsCode: string;
+  year: number;
+  nomenclature: string;
+  basis: AppliedTariffBasis;
+  appliedRate?: TariffRateDetail;
+  mfnRate?: TariffRateDetail;
+  preferentialRate?: TariffRateDetail;
+  groupPreferences: GroupTariffPreference[];
+  source: string;
+  sourceUrl: string;
+  upstreamUnavailable: boolean;
+  unavailableReason: BilateralTariffUnavailableReason;
+  filingReporter: string;
+  mfnAveRate?: TariffRateDetail;
+}
+
+export interface TariffRateDetail {
+  rate: number;
+  minRate: number;
+  maxRate: number;
+  tariffLines: number;
+  nonAdValoremLines: number;
+}
+
+export interface GroupTariffPreference {
+  groupCode: string;
+  groupName: string;
+  rate?: TariffRateDetail;
+}
+
 export interface GetTradeFlowsRequest {
   reportingCountry: string;
   partnerCountry: string;
@@ -153,6 +193,10 @@ export interface ComtradeFlowRecord {
   isAnomaly: boolean;
 }
 
+export type AppliedTariffBasis = "APPLIED_TARIFF_BASIS_UNSPECIFIED" | "APPLIED_TARIFF_BASIS_PREFERENTIAL" | "APPLIED_TARIFF_BASIS_MFN" | "APPLIED_TARIFF_BASIS_MFN_PREFERENCES_NOT_REPORTED";
+
+export type BilateralTariffUnavailableReason = "BILATERAL_TARIFF_UNAVAILABLE_REASON_UNSPECIFIED" | "BILATERAL_TARIFF_UNAVAILABLE_REASON_INVALID_REQUEST" | "BILATERAL_TARIFF_UNAVAILABLE_REASON_NOT_COVERED" | "BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE";
+
 export type TariffTrendUnavailableReason = "TARIFF_TREND_UNAVAILABLE_REASON_UNSPECIFIED" | "TARIFF_TREND_UNAVAILABLE_REASON_INVALID_REQUEST" | "TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED" | "TARIFF_TREND_UNAVAILABLE_REASON_SEED_MISSING" | "TARIFF_TREND_UNAVAILABLE_REASON_COVERAGE_UNKNOWN" | "TARIFF_TREND_UNAVAILABLE_REASON_CACHE_UNAVAILABLE";
 
 export type TradeFlowUnavailableReason = "TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED" | "TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST" | "TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED" | "TRADE_FLOW_UNAVAILABLE_REASON_SEED_MISSING" | "TRADE_FLOW_UNAVAILABLE_REASON_COVERAGE_UNKNOWN" | "TRADE_FLOW_UNAVAILABLE_REASON_CACHE_UNAVAILABLE";
@@ -204,6 +248,7 @@ export interface RouteDescriptor {
 export interface TradeServiceHandler {
   getTradeRestrictions(ctx: ServerContext, req: GetTradeRestrictionsRequest): Promise<GetTradeRestrictionsResponse>;
   getTariffTrends(ctx: ServerContext, req: GetTariffTrendsRequest): Promise<GetTariffTrendsResponse>;
+  getBilateralTariff(ctx: ServerContext, req: GetBilateralTariffRequest): Promise<GetBilateralTariffResponse>;
   getTradeFlows(ctx: ServerContext, req: GetTradeFlowsRequest): Promise<GetTradeFlowsResponse>;
   getTradeBarriers(ctx: ServerContext, req: GetTradeBarriersRequest): Promise<GetTradeBarriersResponse>;
   getCustomsRevenue(ctx: ServerContext, req: GetCustomsRevenueRequest): Promise<GetCustomsRevenueResponse>;
@@ -292,6 +337,56 @@ export function createTradeServiceRoutes(
 
           const result = await handler.getTariffTrends(ctx, body);
           return new Response(JSON.stringify(result as GetTariffTrendsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/trade/v1/get-bilateral-tariff",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetBilateralTariffRequest = {
+            reportingCountry: params.get("reporting_country") ?? "",
+            partnerCountry: params.get("partner_country") ?? "",
+            hsCode: params.get("hs_code") ?? "",
+            year: Number(params.get("year") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getBilateralTariff", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getBilateralTariff(ctx, body);
+          return new Response(JSON.stringify(result as GetBilateralTariffResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

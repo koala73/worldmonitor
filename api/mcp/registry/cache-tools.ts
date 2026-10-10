@@ -2953,7 +2953,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_tariff_trends',
     _outputBudgetBytes: 131072,
-    description: 'Global trade and pricing indicators: US tariff trends (HTS-coded), BigMac index, FAO Food Price Index, and per-country national debt levels.',
+    description: 'Global trade and pricing indicators: US MFN applied tariff trend (All-products average, not bilateral or HS-level), Big Mac index, FAO Food Price Index, and per-country national debt levels.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2987,8 +2987,8 @@ export const CACHE_TOOLS: ToolDef[] = [
             partnerCountry: { type: 'string' },
             productSector: { type: 'string' },
             year: { type: 'number' },
-            tariffRate: { type: 'number' },
-            boundRate: { type: 'number', description: 'Always 0: a placeholder, not an observed bound rate. Bound rates are not seeded.' },
+            tariffRate: { type: ['number', 'null'] },
+            boundRate: { type: ['number', 'null'], description: 'Always 0: a placeholder, not an observed bound rate. Bound rates are not seeded.' },
             indicatorCode: { type: 'string' },
           } } },
           // Customs duties / goods imports from FRED (BEA), when available.

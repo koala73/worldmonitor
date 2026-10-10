@@ -22,7 +22,7 @@ import {
   dedupeSharedSubtreeComponents,
   SHARED_SUBTREE_COMPONENT_PREFIX,
 } from '../scripts/openapi-dedup-schemas.mjs';
-import { buildBundle } from '../scripts/build-openapi-json.mjs';
+import { buildBundle, collapseSoftLineBreaks, dropDefaultParameterRequired } from '../scripts/build-openapi-json.mjs';
 import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
 
 // Guards the served public/openapi.json against the ~1 MB scanner body cap.
@@ -803,11 +803,11 @@ describe('ensureInlineTypedInput (fixture)', () => {
     // The copy exists so a JSON-only scanner sees a typed, described input —
     // not so the component's full caveats are repeated on every operation.
     assert.equal(restored.schema.type, 'string');
-    // Jmespath carries a curated summary: the lead sentence plus the two
-    // limits the API contract states on every operation.
+    // Jmespath carries a curated summary: the name plus the two limits the
+    // API contract states on every operation.
     assert.equal(
       restored.description,
-      'JMESPath JSON response. 1024 UTF-8 bytes. 256 KB output cap. HTTP 400.',
+      'JMESPath; 1024 UTF-8 bytes; 256 KB output cap.',
     );
     assert.ok(
       Buffer.byteLength(restored.description, 'utf8') <= INLINE_DESCRIPTION_MAX_BYTES,
@@ -1166,5 +1166,83 @@ describe('build-openapi-json wiring', () => {
       `shared schema-subtree dedup: ${schemaSubtreeStats.replacedRefs} refs`,
     );
     assert.ok(unreachableStats.dropped >= 150, `unreachable drop: ${unreachableStats.dropped} schemas`);
+  });
+});
+
+describe('JSON-only description and parameter compaction', () => {
+  it('collapses proto wrap points to spaces but keeps block-level line breaks', () => {
+    const spec = {
+      paths: { '/x': { get: { description: 'Applied tariff on one\n product between\n two countries.' } } },
+      components: {
+        schemas: {
+          S: {
+            description: 'Values:\n - first\n * second\n 1. third\n   indented\n | a | b |\n ```\n # heading\n > quote',
+            properties: { f: { type: 'string', description: 'Lead\n continues here.' } },
+          },
+        },
+      },
+    };
+    const stats = collapseSoftLineBreaks(spec);
+    assert.equal(spec.paths['/x'].get.description, 'Applied tariff on one product between two countries.');
+    assert.equal(spec.components.schemas.S.properties.f.description, 'Lead continues here.');
+    assert.equal(
+      spec.components.schemas.S.description,
+      'Values:\n - first\n * second\n 1. third\n   indented\n | a | b |\n ```\n # heading\n > quote',
+      'list, quote, heading, table, fence and indented lines keep their break',
+    );
+    assert.equal(stats.collapsed, 3);
+  });
+
+  it('never joins lines inside a fenced code block', () => {
+    const fenced = 'Run:\n ```sh\n curl -s https://x\n echo done\n ```\n then\n read it.';
+    const spec = { paths: { '/x': { get: { description: fenced } } } };
+    collapseSoftLineBreaks(spec);
+    assert.equal(
+      spec.paths['/x'].get.description,
+      'Run:\n ```sh\n curl -s https://x\n echo done\n ``` then read it.',
+    );
+  });
+
+  it('protects tilde fences and longer backtick fences the same way', () => {
+    const spec = {
+      paths: {
+        '/t': { get: { description: 'A\n ~~~\n one\n two\n ~~~\n b\n c.' } },
+        '/q': { get: { description: 'A\n ````md\n one\n ```\n two\n ````\n b\n c.' } },
+      },
+    };
+    collapseSoftLineBreaks(spec);
+    assert.equal(spec.paths['/t'].get.description, 'A\n ~~~\n one\n two\n ~~~ b c.');
+    assert.equal(spec.paths['/q'].get.description, 'A\n ````md\n one\n ```\n two\n ```` b c.');
+  });
+
+  it('drops only the default required:false, never from path parameters', () => {
+    const spec = {
+      paths: {
+        '/a/{id}': {
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          get: {
+            parameters: [
+              { name: 'q', in: 'query', required: false, schema: { type: 'string' } },
+              { name: 'must', in: 'query', required: true, schema: { type: 'string' } },
+              { $ref: '#/components/parameters/P' },
+            ],
+          },
+        },
+      },
+      components: { parameters: { P: { name: 'h', in: 'header', required: false, schema: { type: 'string' } } } },
+    };
+    const stats = dropDefaultParameterRequired(spec);
+    const [q, must] = spec.paths['/a/{id}'].get.parameters;
+    assert.equal('required' in q, false);
+    assert.equal(must.required, true);
+    assert.equal(spec.paths['/a/{id}'].parameters[0].required, true);
+    assert.equal('required' in spec.components.parameters.P, false);
+    assert.equal(stats.dropped, 2);
+  });
+
+  it('both passes engage on the real bundle', () => {
+    const { softBreakStats, defaultRequiredStats } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
+    assert.ok(softBreakStats.collapsed >= 500, `soft breaks collapsed: ${softBreakStats.collapsed}`);
+    assert.ok(defaultRequiredStats.dropped >= 200, `default required dropped: ${defaultRequiredStats.dropped}`);
   });
 });

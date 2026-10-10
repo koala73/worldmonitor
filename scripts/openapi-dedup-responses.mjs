@@ -286,7 +286,7 @@ export const INLINE_DESCRIPTION_MAX_BYTES = 300;
 export const INLINE_SUMMARY_OVERRIDES = Object.freeze({
   // Paid once per otherwise-untyped GET. Keep the phrases the JSON contract
   // checks and nothing else. The component holds the caveats and the doc link.
-  Jmespath: 'JMESPath JSON response. 1024 UTF-8 bytes. 256 KB output cap. HTTP 400.',
+  Jmespath: 'JMESPath; 1024 UTF-8 bytes; 256 KB output cap.',
 });
 
 /** UTF-8 bytes, not UTF-16 code units: the budget this serves is a byte cap. */

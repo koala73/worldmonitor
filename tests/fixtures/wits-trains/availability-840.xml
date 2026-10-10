@@ -1,0 +1,325 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<wits:datasource datasourcecode="TRN" datasourcename="WITS - UNTCTAD TRAINS" language="en" total="32" xmlns:wits="http://wits.worldbank.org">
+  <wits:dataavailability>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>1989</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H0">Harmonized System 1988/92</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>7</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;124;376;G40;N97;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>1990</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H0">Harmonized System 1988/92</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>7</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;124;376;G40;N97;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>1991</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H0">Harmonized System 1988/92</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>6</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;124;376;G40;N97;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>1992</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H0">Harmonized System 1988/92</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>6</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;124;376;G40;N97;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>1993</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H0">Harmonized System 1988/92</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>7</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;124;376;G40;N33;N97;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>1995</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H0">Harmonized System 1988/92</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>11</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;124;376;484;G41;N33;N97;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>1996</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H1">Harmonized System 1996</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>11</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;032;044;052;076;084;124;152;170;188;191;203;212;214;218;222;308;320;328;332;340;348;356;360;376;388;422;458;484;504;512;533;558;586;591;604;608;643;705;764;780;792;807;862;G42;N33;N97;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>1997</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H1">Harmonized System 1996</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>11</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;032;076;124;152;170;191;214;320;356;360;376;484;504;586;604;608;643;705;710;764;792;862;G43;L43;N33;N97;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>1998</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H1">Harmonized System 1996</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>4</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;032;076;084;124;152;170;188;191;214;218;233;320;340;356;360;586;604;608;643;705;764;792;862;G44;L44;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>1999</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H1">Harmonized System 1996</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>12</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;028;032;076;084;124;152;170;188;214;218;320;340;348;356;360;376;388;484;500;532;586;604;608;643;662;670;710;764;780;792;862;G45;L45;N33;N97;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2000</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H1">Harmonized System 1996</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>12</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;028;032;076;084;124;152;170;188;214;218;222;320;328;340;348;356;360;376;388;484;500;530;586;604;608;616;643;662;670;710;764;780;792;862;G46;L46;N33;N97;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2001</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H1">Harmonized System 1996</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>13</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;032;076;084;152;170;188;214;218;222;320;328;340;348;356;360;388;586;604;608;616;643;764;780;792;862;G46;L46;N39;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2002</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H2">Harmonized System 2002</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>15</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;032;076;084;124;144;152;170;188;214;218;222;320;328;340;348;356;360;376;388;400;484;586;604;608;616;643;764;780;792;862;G47;L47;N33;N49;N51;N97;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2003</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H2">Harmonized System 2002</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>16</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;032;076;084;124;144;152;170;188;214;218;222;320;328;340;348;356;360;376;388;400;484;586;604;608;616;643;764;780;792;862;G48;L48;N33;N49;N51;N97;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2004</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H2">Harmonized System 2002</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>18</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;032;076;084;124;152;170;188;214;218;222;320;328;340;356;360;376;388;400;484;586;591;604;643;702;764;780;792;862;G49;L48;N33;N51;N54;N97;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2005</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H2">Harmonized System 2002</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>18</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;032;036;076;084;124;152;170;188;214;218;222;320;328;340;356;360;376;388;400;484;586;591;604;643;702;764;780;792;862;G50;L48;N33;N51;N60;N97;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2006</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H2">Harmonized System 2002</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>19</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;032;036;076;084;124;152;170;188;214;218;222;320;328;340;356;360;376;388;400;484;504;591;604;608;643;702;780;792;862;G80;L48;N33;N73;N78;N97;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2007</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H3">Harmonized System 2007</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>17</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;032;036;048;076;084;124;152;170;188;218;328;356;360;376;388;400;484;504;591;604;608;643;702;764;780;792;862;G80;L48;N33;N73;N75;N78;N97;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2018/09/10</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2008</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H3">Harmonized System 2007</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>21</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;036;048;124;152;376;400;484;504;702;A02;B01;G81;L50;N33;N75;O02;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2018/09/10</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2009</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H3">Harmonized System 2007</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>24</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;032;036;048;070;076;084;124;152;170;218;328;356;360;376;384;388;398;400;484;504;512;591;604;608;643;702;764;780;792;862;A03;B02;C01;G82;L50;N75;O03;OT3;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2010</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H3">Harmonized System 2007</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>24</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;032;036;048;070;076;084;124;152;170;218;328;356;360;376;384;388;398;400;484;504;512;591;604;608;643;702;764;792;804;862;A03;B02;C04;G83;L91;N75;O03;OT3;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2011</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H3">Harmonized System 2007</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>22</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;036;048;124;152;376;400;484;504;512;604;608;702;A03;B02;C04;L91;N33;O04;OT3;P26;P27;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2018/09/10</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2012</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H4">Harmonized System 2012</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>22</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;036;048;124;152;376;400;484;504;512;604;608;702;A03;B02;C04;L91;N33;O04;OT3;P26;P27;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2018/09/10</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2013</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H4">Harmonized System 2012</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>25</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;036;048;124;152;170;376;400;410;484;504;512;591;604;608;702;A03;B02;C04;L91;N33;O04;OT3;P26;P27;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2018/09/10</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2014</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H4">Harmonized System 2012</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>24</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;036;048;084;124;152;170;376;400;410;484;504;512;591;604;608;702;A22;A29;A40;A41;A42;OT3;P26;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2018/09/10</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2015</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H4">Harmonized System 2012</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>27</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;036;048;124;152;170;376;400;410;484;504;512;591;604;702;A22;A40;A41;A42;A69;P26;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2018/11/21</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2016</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H4">Harmonized System 2012</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>27</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;036;048;124;152;170;376;400;410;484;504;512;591;604;702;A22;A40;A41;A42;A69;P26;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2018/11/21</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2017</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H5">Harmonized System 2017</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>24</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;036;048;084;124;152;170;376;400;410;484;504;512;591;604;608;702;A41;B02;B11;B15;N75;O04;OT4;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2018/08/06</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2018</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H5">Harmonized System 2017</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>25</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;036;048;084;124;152;170;376;400;410;484;504;512;524;591;604;608;702;A41;B15;C06;C08;C09;C10;N75;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2019/07/03</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2019</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H5">Harmonized System 2017</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>25</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;036;048;084;124;152;170;376;400;410;484;504;512;524;591;604;608;702;A41;B15;C08;C09;C10;C53;N75;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2020/10/12</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2020</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H5">Harmonized System 2017</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>24</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;036;048;124;152;170;376;392;400;410;484;504;512;524;591;604;702;A41;B15;C08;C09;C67;N75;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2021/08/30</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="840" iso3Code="USA" isgroup="No" grouptype="N/A">
+      <wits:name>United States</wits:name>
+      <wits:year>2021</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H5">Harmonized System 2017</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>25</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;036;048;124;152;170;376;392;400;410;484;504;512;524;591;604;702;A41;B15;C08;C09;C53;N75;P22;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2025/08/11</wits:lastupdateddate>
+    </wits:reporter>
+  </wits:dataavailability>
+</wits:datasource>
