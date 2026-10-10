@@ -58688,6 +58688,7 @@ components:
                         - US_DUTY_AUTHORITY_UNSPECIFIED
                         - US_DUTY_AUTHORITY_SECTION_301
                         - US_DUTY_AUTHORITY_SECTION_232
+                        - US_DUTY_AUTHORITY_COLUMN_2
                     description: Legal authority of a chapter 99 duty.
                 program:
                     type: string

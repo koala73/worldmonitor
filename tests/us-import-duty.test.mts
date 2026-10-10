@@ -45,6 +45,7 @@ import {
 import {
   US_HTS_CATALOG_KEY,
   US_HTS_COVERAGE_PREFIX,
+  columnTwoOverride,
   coverageFor,
   estimateRate,
   exportListRange,
@@ -89,8 +90,8 @@ function entries(code: string): string[] {
 function duties(hs6: string, partner: string, line?: string) {
   const lines = parseHtsLines(exportList(hs6), hs6);
   const target = line ? lines.find((l) => l.htsCode === line)! : lines[0]!;
-  const base = resolveBaseRate(target, partner);
   const shard = INDEX.coverage[hs6.slice(0, 2)] ?? {};
+  const base = resolveBaseRate(target, partner, columnTwoOverride(CATALOG, shard, target.htsCode, partner));
   const list = resolveAdditionalDuties(CATALOG, shard, target.htsCode, partner, base.adValorem);
   return { line: target, base, list, estimate: estimateRate(base.adValorem, list) };
 }
@@ -159,7 +160,7 @@ describe('chapter 99 index built from HTS 2026 Rev 21', () => {
       if (spec.heading === '9903.91.04') continue;
       assert.ok(ids.has(spec.id), `${spec.id} missing`);
     }
-    assert.equal(Object.keys(INDEX.measures).length, 132);
+    assert.equal(Object.keys(INDEX.measures).length, 134);
     assert.ok(INDEX.provisions > 11_000, `provisions: ${INDEX.provisions}`);
   });
 
@@ -172,7 +173,7 @@ describe('chapter 99 index built from HTS 2026 Rev 21', () => {
 
   test('the four-year review moved EVs out of List 3 into note 31', () => {
     assert.deepEqual(entries('8703.80.00'), ['s301-cn-r3/a', 's232-autos/a']);
-    assert.deepEqual(entries('8703.23.01'), ['s301-cn-l1/a', 's232-autos/a']);
+    assert.deepEqual(entries('8703.23.01'), ['s301-cn-l1/a', 's232-autos/a', 'c2-ru-35/a']);
     assert.deepEqual(entries('8541.42.00'), ['s301-cn-r2/a']);
     assert.deepEqual(entries('4015.12.10'), ['s301-cn-r8/a']);
   });
@@ -318,6 +319,32 @@ describe('chapter 99 duties on real lines', () => {
     assert.equal(estimate.complete, false);
   });
 
+  test('Russian goods on the note 30 lists take the flat rate in lieu of column 2', () => {
+    const car = duties('870323', '643');
+    assert.deepEqual([car.base.basis, car.base.text, car.base.adValorem], ['US_DUTY_BASIS_COLUMN_2', '35% (9903.90.08)', 35]);
+    const steel = duties('720810', '643', '7208.10.30');
+    assert.deepEqual([steel.base.text, steel.base.adValorem], ['70% (9903.90.09)', 70]);
+    // Belarus is column 2 as well, but note 30 names only Russia.
+    assert.equal(duties('870323', '112').base.text, '10%');
+  });
+
+  test('a product exemption lifts a floor duty even when the base is a specific duty', () => {
+    const catalog: UsDutyCatalog = {
+      schema: 1,
+      release: 'r',
+      chapters: ['22'],
+      measures: {
+        'fl-lt': { id: 'fl-lt', kind: 'duty', heading: '9903.05.39', authority: 'SECTION_301', partners: ['250'], scope: 'ALL_PRODUCTS', addPct: null, topUpTo: 10, mfnBand: { below: true, pct: 10 }, note: 'U.S. note 52(a)', condition: '' },
+        'fl-ge': { id: 'fl-ge', kind: 'duty', heading: '9903.05.38', authority: 'SECTION_301', partners: ['250'], scope: 'ALL_PRODUCTS', addPct: 0, topUpTo: null, mfnBand: { below: false, pct: 10 }, note: 'U.S. note 52(a)', condition: '' },
+        x: { id: 'x', kind: 'exemption', heading: '9903.05.86', appliesTo: 'fl-', partners: null, note: 'U.S. note 52(b)', condition: '' },
+      },
+    };
+    const list = resolveAdditionalDuties(catalog, { '2204.21.50': [['x', 'x']] }, '2204.21.50', '250', null);
+    assert.deepEqual(list.map((d) => [d.heading, status(d)]), [['9903.05.39', 'EXEMPT']]);
+    const unlisted = resolveAdditionalDuties(catalog, {}, '2204.21.50', '250', null);
+    assert.deepEqual(unlisted.map((d) => [d.heading, status(d)]), [['9903.05.39', 'CONDITIONAL']]);
+  });
+
   test('a top-up raises the base to the floor instead of adding to it', () => {
     const topUp = { status: 'US_ADDITIONAL_DUTY_STATUS_APPLIES', addedRate: 0, topUpTo: 15 } as UsAdditionalDuty;
     assert.deepEqual(estimateRate(2.5, [topUp]), { rate: 15, complete: true });
@@ -421,8 +448,20 @@ describe('GetUsImportDuty handler', () => {
     assert.equal(res.lines[0]!.estimatedRate, 102.5);
     assert.equal(res.sourceUrl, 'https://hts.usitc.gov/search?query=8703.80');
     assert.deepEqual(htsCalls, ['https://hts.usitc.gov/reststop/exportList?from=8703.80&to=8703.80.99.99&format=JSON&styles=false']);
+    assert.ok(redisStore.has('trade:us-hts:lines:v1:2026HTSRev21:870380'), 'lines are cached under the index release');
     await getUsImportDuty(premiumCtx(), { hsCode: '870380', partnerCountry: '392' });
     assert.equal(htsCalls.length, 1, 'every partner shares one cached HTS read');
+  });
+
+  test('a new release reads fresh lines instead of the previous release\'s cache', async () => {
+    seedIndex();
+    await getUsImportDuty(premiumCtx(), { hsCode: '870380', partnerCountry: '156' });
+    const next = { ...CATALOG, release: '2026HTSRev22' };
+    for (const [ch, shard] of Object.entries(INDEX.coverage)) redisStore.set(usHtsCoverageKey(next.release, ch), JSON.stringify(shard));
+    redisStore.set(US_HTS_CATALOG_KEY, JSON.stringify(next));
+    const res = await getUsImportDuty(premiumCtx(), { hsCode: '870380', partnerCountry: '156' });
+    assert.equal(res.htsRelease, '2026HTSRev22');
+    assert.equal(htsCalls.length, 2);
   });
 
   test('a missing index still serves the base rates, flagged', async () => {

@@ -294,6 +294,16 @@ export const LIST_DUTIES = Object.freeze([
 ]);
 
 /**
+ * Column 2 replacements: for Russian goods on these lists, a flat rate applies
+ * "in lieu of" the column 2 rate (U.S. note 30). The rate is printed in the
+ * heading's column 2 cell.
+ */
+export const COLUMN_2_REPLACEMENTS = Object.freeze([
+  { id: 'c2-ru-35', heading: '9903.90.08', partners: ['643'], note: '30(b)', list: { anchor: 'For the purposes of heading 9903.90.08, articles that are the product of the Russian Federation', next: '(b)', expect: 'Heading 9903.90.08 applies' }, minCodes: 300 },
+  { id: 'c2-ru-70', heading: '9903.90.09', partners: ['643'], note: '30(d)', list: { anchor: 'For the purposes of heading 9903.90.09, articles that are the product of the Russian Federation', step: 1, expect: 'Heading 9903.90.09 applies' }, minCodes: 50 },
+]);
+
+/**
  * Country-wide duties. One measure per heading row in `range`; the country is
  * read from the description and resolved with `resolveCountry`.
  */
@@ -402,6 +412,15 @@ function resolveList(notes, spec) {
     return { value: spec.list.marker, text, ...classifyCodes(text) };
   }
   const anchor = spec.list.anchor;
+  if (spec.list.next) {
+    // Note 30 folds subdivision (a) into the note's own list item, so its
+    // list (b) is the first "(b)" after the anchor rather than a sibling.
+    const i = notes.itemAt(anchor, spec.list.occurrence ?? 0);
+    const j = i < 0 ? -1 : notes.items.findIndex((it, k) => k > i && it.value === spec.list.next);
+    if (j < 0) return null;
+    const text = htmlToText(notes.segment(j));
+    return { value: spec.list.next, text, ...classifyCodes(text) };
+  }
   return notes.list({ anchor, occurrence: spec.list.occurrence ?? 0, step: spec.list.step ?? 0 });
 }
 
@@ -465,6 +484,21 @@ export function buildUsDutyIndex({ notesHtml, headingRows, release, resolveCount
       partners: spec.partners, scope: 'LISTED_PRODUCTS', rateText: info.row.general, addPct: rate.addPct, topUpTo: rate.topUpTo,
       effectiveFrom: info.effectiveFrom, effectiveThrough: info.effectiveThrough, state,
       note: `U.S. note ${spec.note}`, condition: spec.conditional || '',
+    };
+    for (const code of entries.full) addCoverage(coverage, code, [spec.id, ROLE_APPLY]);
+    for (const code of entries.partial) addCoverage(coverage, code, [spec.id, ROLE_APPLY, 1]);
+  }
+
+  for (const spec of COLUMN_2_REPLACEMENTS) {
+    const info = headingInfo(spec);
+    if (!info) continue;
+    const rate = parseAdditionalRate(info.row.other);
+    if (!rate || rate.topUpTo === null) { problems.push(`${spec.id}: column 2 rate not parsed from "${info.row.other}"`); continue; }
+    const entries = listEntries(spec);
+    if (!entries) continue;
+    measures[spec.id] = {
+      id: spec.id, kind: 'base', heading: spec.heading, partners: spec.partners, rate: rate.topUpTo,
+      note: `U.S. note ${spec.note}`, condition: '',
     };
     for (const code of entries.full) addCoverage(coverage, code, [spec.id, ROLE_APPLY]);
     for (const code of entries.partial) addCoverage(coverage, code, [spec.id, ROLE_APPLY, 1]);

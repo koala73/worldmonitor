@@ -125,7 +125,7 @@ Each 8-digit line carries the three HTS rate columns and a `basis`:
 
 - `MFN` (column 1 General).
 - `PREFERENTIAL`: column 1 Special, under a trade agreement the exporter is party to. `preferenceProgram` names it, for example `S` for USMCA.
-- `COLUMN_2`: Belarus, Cuba, North Korea and Russia.
+- `COLUMN_2`: Belarus, Cuba, North Korea and Russia. Russian goods on the U.S. note 30 lists take 35% or 70% instead of the printed column 2 rate, and `baseRate` names the heading (`35% (9903.90.08)`).
 
 Programs whose beneficiaries are designated by list or by end use (AGOA, CBERA, CBTPA, Nepal, civil aircraft, pharmaceuticals, dyes) are returned in `unresolvedPrograms`. GSP is ignored, because it has been lapsed since 2021.
 
@@ -153,7 +153,7 @@ The route does not report three things:
 
 `estimatedRate` is the base rate plus the `APPLIES` duties. `estimateComplete` is `false` when the base rate is specific or compound, or when any duty is `CONDITIONAL` or `SCHEDULED`.
 
-Product coverage for these duties lives in the chapter 99 U.S. notes, which run to about 5 MB, not in the product lines. `seed-supply-chain-trade` therefore parses the notes from the current HTS release every six hours. It publishes a catalog of measures, `trade:us-hts:catalog:v1`, plus one coverage shard per HS chapter, keyed by release. Each measure is located by an anchor phrase and validated. If any measure fails to resolve, the publish is skipped and the previous release stays in place. The route reads the product's lines live from the HTS `exportList` service and caches them for a day. If the catalog is missing, it still serves the rates with `additionalDutiesLoaded: false`. Health is the `usHtsDuties` entry in `/api/health`.
+Product coverage for these duties lives in the chapter 99 U.S. notes, which run to about 5 MB, not in the product lines. `seed-supply-chain-trade` therefore parses the notes from the current HTS release every six hours. It publishes a catalog of measures, `trade:us-hts:catalog:v1`, plus one coverage shard per HS chapter, keyed by release. Each measure is located by an anchor phrase and validated. If any measure fails to resolve, the publish is skipped and the previous release stays in place. The route reads the product's lines live from the HTS `exportList` service and caches them for a day under the catalog's release, so a new release reads fresh lines. If the catalog is missing, it still serves the rates with `additionalDutiesLoaded: false`. Health is the `usHtsDuties` entry in `/api/health`.
 
 `unavailableReason` is `NOT_COVERED` when the HTS has no line under the code, and `UPSTREAM_UNAVAILABLE` (`upstreamUnavailable: true`) when the HTS service fails. The route is tier 1 and REST-only.
 

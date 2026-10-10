@@ -108,6 +108,7 @@ const STATUS = {
 const AUTHORITY: Record<string, UsDutyAuthority> = {
   SECTION_301: 'US_DUTY_AUTHORITY_SECTION_301',
   SECTION_232: 'US_DUTY_AUTHORITY_SECTION_232',
+  COLUMN_2: 'US_DUTY_AUTHORITY_COLUMN_2',
 };
 
 const REASON = {
@@ -123,7 +124,7 @@ const REASON = {
 
 export interface UsDutyMeasure {
   id: string;
-  kind: 'duty' | 'exemption' | 'condition';
+  kind: 'duty' | 'exemption' | 'condition' | 'base';
   heading: string;
   authority?: string;
   program?: string;
@@ -132,6 +133,8 @@ export interface UsDutyMeasure {
   rateText?: string;
   addPct?: number | null;
   topUpTo?: number | null;
+  /** kind 'base': the rate that replaces column 2. */
+  rate?: number;
   mfnBand?: { below: boolean; pct: number } | null;
   effectiveFrom?: string;
   state?: 'IN_FORCE' | 'SCHEDULED';
@@ -278,10 +281,21 @@ interface BaseRate {
   unresolved: string[];
 }
 
-export function resolveBaseRate(line: HtsLine, partner: string): BaseRate {
+/**
+ * `column2Override` is a note 30 rate that applies to the whole line "in lieu
+ * of" its column 2 rate (see columnTwoOverride).
+ */
+export function resolveBaseRate(
+  line: HtsLine,
+  partner: string,
+  column2Override?: { rate: number; heading: string } | null,
+): BaseRate {
   const groups = parseSpecialRates(line.special);
   const unresolved = [...new Set(groups.flatMap((g) => g.programs).filter((p) => UNRESOLVED_PROGRAMS.has(p)))];
   if (COLUMN_2_PARTNERS.has(partner)) {
+    if (column2Override) {
+      return { basis: BASIS.column2, text: `${column2Override.rate}% (${column2Override.heading})`, adValorem: column2Override.rate, program: '', unresolved: [] };
+    }
     return { basis: BASIS.column2, text: line.other, adValorem: parseAdValorem(line.other), program: '', unresolved: [] };
   }
   const mine = new Set(PARTNER_PROGRAMS[partner] ?? []);
@@ -324,6 +338,23 @@ export function coverageFor(shard: UsCoverageShard | null, htsCode: string): Cov
 
 const covers = (m: UsDutyMeasure, partner: string) => !m.partners || m.partners.includes(partner);
 
+/** A note 30 rate listed for the whole line, which replaces its column 2 rate. */
+export function columnTwoOverride(
+  catalog: UsDutyCatalog | null,
+  shard: UsCoverageShard | null,
+  htsCode: string,
+  partner: string,
+): { rate: number; heading: string } | null {
+  if (!catalog) return null;
+  for (const h of coverageFor(shard, htsCode)) {
+    const m = catalog.measures[h.id];
+    if (m?.kind === 'base' && !h.partial && covers(m, partner) && typeof m.rate === 'number') {
+      return { rate: m.rate, heading: m.heading };
+    }
+  }
+  return null;
+}
+
 function dutyFrom(m: UsDutyMeasure, status: UsAdditionalDutyStatus, condition: string): UsAdditionalDuty {
   return {
     heading: m.heading,
@@ -365,15 +396,29 @@ export function resolveAdditionalDuties(
   const has232 = [...candidates.values()].some(({ m }) => m.authority === 'SECTION_232');
 
   const duties: UsAdditionalDuty[] = [];
+  // A note 30 rate listed only for particular articles under the line: the
+  // base stays column 2 and the replacement is reported as conditional.
+  for (const h of hits) {
+    const m = measures[h.id];
+    if (m?.kind !== 'base' || !h.partial || !covers(m, partner) || typeof m.rate !== 'number') continue;
+    if (duties.some((d) => d.heading === m.heading)) continue;
+    duties.push(dutyFrom(
+      { ...m, authority: 'COLUMN_2', program: 'Russia column 2 rate', addPct: 0, topUpTo: m.rate },
+      STATUS.conditional,
+      `Particular articles under this line take ${m.rate}% in lieu of column 2 (${m.note}).`,
+    ));
+  }
   for (const { m, partial } of candidates.values()) {
     // Paired headings split on the column 1 rate: keep the half that matches.
+    // With a specific or compound base the split needs an ad valorem
+    // equivalent, so only the floor half is kept, as CONDITIONAL unless an
+    // exemption below lifts it.
+    let bandUnknown = false;
     if (m.mfnBand) {
       if (baseAdValorem === null) {
         if (!m.mfnBand.below) continue;
-        duties.push(dutyFrom(m, STATUS.conditional, `Depends on the ad valorem equivalent of the column 1 rate (${m.note.replace(/\(.*$/, '')}(k)).`));
-        continue;
-      }
-      if (m.mfnBand.below !== baseAdValorem < m.mfnBand.pct) continue;
+        bandUnknown = true;
+      } else if (m.mfnBand.below !== baseAdValorem < m.mfnBand.pct) continue;
     }
     if (m.state === 'SCHEDULED') {
       duties.push(dutyFrom(m, STATUS.scheduled, ''));
@@ -381,7 +426,10 @@ export function resolveAdditionalDuties(
     }
     let status: UsAdditionalDutyStatus = STATUS.applies;
     let condition = m.condition || '';
-    if (partial) {
+    if (bandUnknown) {
+      status = STATUS.conditional;
+      condition = `Depends on the ad valorem equivalent of the column 1 rate (${m.note.replace(/\(.*$/, '')}(k)).`;
+    } else if (partial) {
       status = STATUS.conditional;
       condition = `Covers only particular articles under this line (${m.note}).`;
     } else if (m.condition) {
@@ -502,22 +550,24 @@ export async function getUsImportDuty(
   if (!HS.test(hsCode) || !CODE3.test(partner)) return emptyResponse(hsCode, partner, REASON.invalidRequest, false);
 
   const chapter = hsCode.slice(0, 2);
-  const [index, fetched] = await Promise.all([
-    readCatalogAndShard(chapter),
-    (async () => {
-      try {
-        return await cachedFetchJson(
-          `${US_HTS_LINES_KEY_PREFIX}:${hsCode.length > 6 ? hsCode.slice(0, 8) : hsCode}`,
-          LINES_TTL_SECONDS,
-          () => fetchHtsLines(hsCode),
-          FAULT_TTL_SECONDS,
-        );
-      } catch (error) {
-        console.warn(`[hts] lines read failed: ${error instanceof Error ? error.message : String(error)}`);
-        return null;
-      }
-    })(),
-  ]);
+  // The index is read first so the cached lines are keyed by its release:
+  // a new release reads fresh lines instead of serving the previous
+  // release's rates under the new duties for up to a day. exportList always
+  // serves the current release, so the two can differ only until the next
+  // seeder run (6 h).
+  const index = await readCatalogAndShard(chapter);
+  const linesRelease = index.catalog?.release ?? 'unindexed';
+  let fetched: { rows: HtsRow[] } | null = null;
+  try {
+    fetched = await cachedFetchJson(
+      `${US_HTS_LINES_KEY_PREFIX}:${linesRelease}:${hsCode.length > 6 ? hsCode.slice(0, 8) : hsCode}`,
+      LINES_TTL_SECONDS,
+      () => fetchHtsLines(hsCode),
+      FAULT_TTL_SECONDS,
+    );
+  } catch (error) {
+    console.warn(`[hts] lines read failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
   if (!fetched) return emptyResponse(hsCode, partner, REASON.upstreamUnavailable, true);
 
   const htsLines = parseHtsLines(fetched.rows, hsCode);
@@ -525,7 +575,7 @@ export async function getUsImportDuty(
 
   const { catalog, shard } = index;
   const lines: UsTariffLine[] = htsLines.map((line) => {
-    const base = resolveBaseRate(line, partner);
+    const base = resolveBaseRate(line, partner, columnTwoOverride(catalog, shard, line.htsCode, partner));
     const duties = catalog ? resolveAdditionalDuties(catalog, shard, line.htsCode, partner, base.adValorem) : [];
     const estimate = estimateRate(base.adValorem, duties);
     return {

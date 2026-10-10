@@ -98,7 +98,7 @@
       "type": "skill-md",
       "description": "Look up the current US import duty on one HTS product from one country — the HTS column rate (MFN, trade-agreement or column 2) plus the Section 301 and 232 duties in chapter 99 — from the live USITC Harmonized Tariff Schedule. Use when the user asks what the US charges today on a product from a specific country, including China tariffs and other additional duties.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/lookup-us-import-duty/SKILL.md",
-      "digest": "sha256:80eddba09151f17bd6348eae51e873af9df24f9c6b5464a29ec584ec85d55166"
+      "digest": "sha256:5ced3037688a40224708e4cc682aa64f53242f2d5df0c0401b96b0dbfdaebaae"
     },
     {
       "name": "monitor-energy-disruptions",
