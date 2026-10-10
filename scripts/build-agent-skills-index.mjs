@@ -77,6 +77,7 @@ const INSTRUCTIONS = [
   '- Use `get-prediction-markets` when the user asks what the market odds are on a geopolitical, economic, or election outcome.',
   '- Use `track-tariff-trends` when the user asks how a country\'s average MFN applied tariff changed over time (Pro-gated). It is not bilateral or product-level.',
   '- Use `lookup-bilateral-tariff` when the user asks what tariff one HS6 product pays between two specific countries, or whether a trade agreement lowers it (Pro-gated).',
+  '- Use `lookup-us-import-duty` when the user asks what the US charges today on a product from a specific country, including Section 301 China tariffs and other additional duties (Pro-gated).',
   '- Use `track-vessel-traffic` when the user asks what ships are in an area or whether maritime traffic is disrupted (AIS snapshot).',
   '- Use `assess-energy-shock` when the user asks how a chokepoint disruption could affect a country\'s oil, gas, fuel products, or strategic cover.',
   '- Use `monitor-energy-disruptions` when the user asks which pipelines, storage facilities, LNG terminals, or fuel assets are disrupted, sanctioned, offline, or under watch.',

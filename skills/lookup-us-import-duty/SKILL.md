@@ -11,6 +11,7 @@ Use this skill when the user asks what duty the United States charges **today** 
 **Entitlement:** this operation is Pro-gated (entitlement tier ≥ 1). API Starter and API Business keys qualify. A free caller receives empty data with `upstreamUnavailable: true`, or `403` when the gateway enforces the premium RPC.
 
 **What is and is not included.**
+
 - Included: the HTS column 1 General, Special (trade agreements) and column 2 rates of the current release, and the chapter 99 duties in force: Section 301 China (Lists 1–4A and the 2024 four-year review), the 2026 Section 301 forced-labor action on 60 economies, Section 301 Brazil, and Section 232 actions (steel, aluminum and copper, vehicles and parts, trucks and buses, lumber and furniture, semiconductors, pharmaceuticals, drones).
 - Not included: IEEPA duties (struck down; not collected since 2026-02-24), anti-dumping and countervailing duties, quotas, and merchandise processing fees.
 
