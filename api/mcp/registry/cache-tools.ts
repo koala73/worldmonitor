@@ -2966,7 +2966,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           type: 'string',
           description: 'Filter the per-country datasets to one ISO 3166-1 alpha-2 country code (e.g. "US"). It is translated to alpha-3 internally for the national-debt dataset; passing an alpha-3 code directly also works. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
         },
-        limit: { type: 'number', description: 'Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap).' },
+        limit: { type: 'number', description: 'Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap). Tariff datapoints keep the most recent years; coverageStartYear/coverageEndYear describe the full seeded window.' },
       },
       required: [],
     },
@@ -2975,11 +2975,33 @@ export const CACHE_TOOLS: ToolDef[] = [
     // on `tariffs`. Pin the historical `all` label via `_cacheLabels` so the
     // dataset enum and postFilter map stay stable for callers.
     outputSchema: cacheEnvelope({
+      // WTO TP_A_0010: the US simple-average MFN applied rate across all
+      // products, one row per year, oldest first. There is no partner or
+      // HS-level breakdown: partnerCountry is always "World", productSector
+      // "All products", and boundRate 0 (not seeded).
       all: {
         type: ['object', 'null'],
-        properties: { datapoints: { type: 'array', items: { type: 'object', properties: {
-          hsCode: { type: 'string' }, rate: { type: ['number', 'null'] }, country: { type: 'string' },
-        } } } },
+        properties: {
+          datapoints: { type: 'array', items: { type: 'object', properties: {
+            reportingCountry: { type: 'string' },
+            partnerCountry: { type: 'string' },
+            productSector: { type: 'string' },
+            year: { type: 'number' },
+            tariffRate: { type: 'number' },
+            boundRate: { type: 'number' },
+            indicatorCode: { type: 'string' },
+          } } },
+          // Customs duties / goods imports from FRED (BEA), when available.
+          effectiveTariffRate: { type: 'object', properties: {
+            sourceName: { type: 'string' },
+            sourceUrl: { type: 'string' },
+            observationPeriod: { type: 'string' },
+            updatedAt: { type: 'string' },
+            tariffRate: { type: 'number' },
+          } },
+          coverageStartYear: { type: 'number' },
+          coverageEndYear: { type: 'number' },
+        },
       },
       bigmac: {
         type: ['object', 'null'],
@@ -3009,7 +3031,8 @@ export const CACHE_TOOLS: ToolDef[] = [
         ];
         narrowNested(data, 'national-debt', 'entries', (e) => matchesCode(e.iso3, debtCodes));
       }
-      capNested(data, 'all', 'datapoints', limit);
+      // Tariff datapoints are oldest-first; keep the most recent years.
+      if (limit > 0) mapNested(data, 'all', 'datapoints', (d) => (Array.isArray(d) ? d.slice(-limit) : d));
       capNested(data, 'bigmac', 'countries', limit);
       capNested(data, 'national-debt', 'entries', limit);
       const ds = argStrList(params.dataset);

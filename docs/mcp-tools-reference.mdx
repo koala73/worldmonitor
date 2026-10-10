@@ -497,7 +497,7 @@ Global trade and pricing indicators: US tariff trends (HTS-coded), BigMac index,
 |------|------|-------------|
 | `dataset` | `array<string: tariffs / bigmac / fao-ffpi / national-debt>` | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
 | `country` | string | Filter the per-country datasets to one ISO 3166-1 alpha-2 country code (e.g. "US"). It is translated to alpha-3 internally for the national-debt dataset; passing an alpha-3 code directly also works. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
-| `limit` | number | Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap). |
+| `limit` | number | Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap). Tariff datapoints keep the most recent years; coverageStartYear/coverageEndYear describe the full seeded window. |
 
 - **API endpoints:** `GET /api/economic/v1/get-fao-food-price-index`, `GET /api/economic/v1/get-national-debt`, `GET /api/economic/v1/list-bigmac-prices`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.

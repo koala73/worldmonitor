@@ -15,6 +15,7 @@ import { buildOfficialChinaMacroFixture } from './helpers/china-macro-fixture.mj
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { documentedOutputSchema } from './helpers/mcp-output-schema.mjs';
+import { buildTariffDatapoints } from '../scripts/seed-supply-chain-trade.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -1542,6 +1543,48 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(out.data['national-debt'].entries[0].iso3, 'USA');
   });
 
+  it('get_tariff_trends: outputSchema documents the seeded datapoint shape and limit keeps the newest years', async () => {
+    // The seeder stores datapoints oldest-first over a 30-year window. A head
+    // cap would hand `limit: 5` callers 1991-1995 and let the default cap drop
+    // the latest year once the window fills.
+    const rows = Array.from({ length: 35 }, (_, i) => ({ Year: String(1991 + i), Value: String(3 + i / 100) }));
+    const datapoints = buildTariffDatapoints('United States of America', rows);
+    const effectiveTariffRate = {
+      sourceName: 'FRED (BEA)', sourceUrl: 'https://fred.stlouisfed.org/series/B235RC1Q027SBEA',
+      observationPeriod: '2026-04-01', updatedAt: '2026-04-01', tariffRate: 8.22,
+    };
+    const seeded = () => mockCacheKeys(
+      { 'trade:tariffs:v2:840': { datapoints, effectiveTariffRate, coverageStartYear: 1991, coverageEndYear: 2025 } },
+      { 'seed-meta:trade:tariffs': { fetchedAt: Date.now() - 60_000, recordCount: 1 } },
+    );
+
+    const tool = TOOL_REGISTRY.find((t) => t.name === 'get_tariff_trends');
+    const allSchema = tool.outputSchema.properties.data.properties.all;
+    assert.deepEqual(
+      Object.keys(allSchema.properties.datapoints.items.properties).sort(),
+      Object.keys(datapoints[0]).sort(),
+      'datapoint schema must list exactly the fields buildTariffDatapoints writes',
+    );
+    assert.deepEqual(
+      Object.keys(allSchema.properties.effectiveTariffRate.properties).sort(),
+      Object.keys(effectiveTariffRate).sort(),
+    );
+
+    seeded();
+    const limited = await callTool('get_tariff_trends', { dataset: ['tariffs'], limit: 5 });
+    assert.deepEqual(limited.data.all.datapoints.map((d) => d.year), [2021, 2022, 2023, 2024, 2025]);
+    assert.deepEqual(limited.data.all.effectiveTariffRate, effectiveTariffRate);
+
+    seeded();
+    const byDefault = await callTool('get_tariff_trends', { dataset: ['tariffs'] });
+    assert.equal(byDefault.data.all.datapoints.length, 30);
+    assert.equal(byDefault.data.all.datapoints.at(-1).year, 2025, 'default cap must keep the latest year');
+
+    seeded();
+    const uncapped = await callTool('get_tariff_trends', { dataset: ['tariffs'], limit: 0 });
+    assert.equal(uncapped.data.all.datapoints.length, 35);
+  });
+
   it('executeTool: a throwing _postFilter falls back to the PRISTINE unfiltered data', async () => {
     // P1 (Greptile): the helpers narrow `data` in place. executeTool hands the
     // filter a structuredClone, so a mid-filter throw — even one that has
@@ -2462,7 +2505,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
 
-    const tariffsPayload = { items: [{ hts: '8501.10.40', ratePct: 25 }] };
+    const tariffsPayload = { datapoints: [{ reportingCountry: 'United States of America', partnerCountry: 'World', productSector: 'All products', year: 2025, tariffRate: 3.3, boundRate: 0, indicatorCode: 'TP_A_0010' }] };
     const bigmacPayload = { countries: [{ iso: 'CHE', priceUsd: 7.04 }] };
     const faoPayload = { months: [{ month: '2026-04', index: 119.2 }] };
     const debtPayload = { countries: [{ iso: 'JPN', debtPctGdp: 263.1 }] };
@@ -2530,7 +2573,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
 
-    const tariffsPayload = { items: [{ hts: '8501.10.40' }] };
+    const tariffsPayload = { datapoints: [{ reportingCountry: 'United States of America', partnerCountry: 'World', productSector: 'All products', year: 2025, tariffRate: 3.3, boundRate: 0, indicatorCode: 'TP_A_0010' }] };
     const bigmacPayload = { countries: [{ iso: 'CHE' }] };
     const faoPayload = { months: [{ month: '2025-12' }] };
     const debtPayload = { countries: [{ iso: 'JPN' }] };
@@ -2593,7 +2636,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
 
-    const tariffsPayload = { items: [{ hts: '8501.10.40' }] };
+    const tariffsPayload = { datapoints: [{ reportingCountry: 'United States of America', partnerCountry: 'World', productSector: 'All products', year: 2025, tariffRate: 3.3, boundRate: 0, indicatorCode: 'TP_A_0010' }] };
     const tariffsFetchedAt = Date.now() - 60 * 60_000;
 
     globalThis.fetch = async (url) => {
