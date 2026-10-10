@@ -1193,6 +1193,16 @@ describe('JSON-only description and parameter compaction', () => {
     assert.equal(stats.collapsed, 3);
   });
 
+  it('never joins lines inside a fenced code block', () => {
+    const fenced = 'Run:\n ```sh\n curl -s https://x\n echo done\n ```\n then\n read it.';
+    const spec = { paths: { '/x': { get: { description: fenced } } } };
+    collapseSoftLineBreaks(spec);
+    assert.equal(
+      spec.paths['/x'].get.description,
+      'Run:\n ```sh\n curl -s https://x\n echo done\n ``` then read it.',
+    );
+  });
+
   it('drops only the default required:false, never from path parameters', () => {
     const spec = {
       paths: {

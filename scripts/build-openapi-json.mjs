@@ -88,12 +88,12 @@ export function withOpenApiByteSize(text, yamlBytes) {
  * what Markdown renders as one space. Collapsing a soft break to a space is
  * lossless for rendering. A break is kept when the next line starts a block
  * that a newline delimits: a list item, quote, heading, table row, code fence,
- * or a further-indented line.
+ * or a further-indented line. Lines inside a ``` fence are never joined.
  *
  * JSON only. The YAML is the human copy Mintlify renders, and it keeps the
  * proto line structure. Mutates `spec` in place; returns { collapsed }.
  */
-const SOFT_BREAK = /\n (?![ \t\-*+>#|`]|\d+[.)]\s)/g;
+const SOFT_BREAK = /\n (?![ \t\-*+>#|`]|\d+[.)]\s)(?=\S)/g;
 
 export function collapseSoftLineBreaks(spec) {
   const stats = { collapsed: 0 };
@@ -105,10 +105,16 @@ export function collapseSoftLineBreaks(spec) {
     if (!node || typeof node !== 'object') return;
     for (const [key, value] of Object.entries(node)) {
       if (key === 'description' && typeof value === 'string') {
-        node[key] = value.replace(SOFT_BREAK, () => {
-          stats.collapsed += 1;
-          return ' ';
-        });
+        // Odd segments are fenced code blocks: their line breaks are content.
+        node[key] = value
+          .split(/(```[\s\S]*?```)/)
+          .map((segment, index) => (index % 2 === 1
+            ? segment
+            : segment.replace(SOFT_BREAK, () => {
+              stats.collapsed += 1;
+              return ' ';
+            })))
+          .join('');
       } else if (value && typeof value === 'object') {
         visit(value);
       }
