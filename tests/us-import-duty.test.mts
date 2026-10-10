@@ -352,6 +352,22 @@ describe('chapter 99 duties on real lines', () => {
     assert.deepEqual(unlisted.map((d) => [d.heading, status(d)]), [['9903.05.39', 'CONDITIONAL']]);
   });
 
+  test('effective dates are re-checked at request time, not taken from the seed', () => {
+    const duty = { kind: 'duty', heading: '9903.91.99', authority: 'SECTION_301', partners: ['156'], scope: 'ALL_PRODUCTS', addPct: 25, topUpTo: null, note: 'U.S. note 31', condition: '' };
+    const catalog = {
+      schema: 1,
+      release: 'r',
+      chapters: ['85'],
+      measures: {
+        starts: { ...duty, id: 'starts', heading: '9903.91.98', effectiveFrom: '2026-11-10', state: 'SCHEDULED' },
+        ends: { ...duty, id: 'ends', effectiveThrough: '2026-11-09', state: 'IN_FORCE' },
+      },
+    } as unknown as UsDutyCatalog;
+    const at = (day: string) => resolveAdditionalDuties(catalog, {}, '8542.31.00', '156', 0, day).map((d) => [d.heading, status(d)]);
+    assert.deepEqual(at('2026-11-09'), [['9903.91.98', 'SCHEDULED'], ['9903.91.99', 'APPLIES']]);
+    assert.deepEqual(at('2026-11-10'), [['9903.91.98', 'APPLIES']]);
+  });
+
   test('a top-up raises the base to the floor instead of adding to it', () => {
     const topUp = { status: 'US_ADDITIONAL_DUTY_STATUS_APPLIES', addedRate: 0, topUpTo: 15 } as UsAdditionalDuty;
     assert.deepEqual(estimateRate(2.5, [topUp]), { rate: 15, complete: true });

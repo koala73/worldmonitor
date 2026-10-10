@@ -137,6 +137,8 @@ export interface UsDutyMeasure {
   rate?: number;
   mfnBand?: { below: boolean; pct: number } | null;
   effectiveFrom?: string;
+  effectiveThrough?: string;
+  /** Seed-time state; the dates above are re-checked per request. */
   state?: 'IN_FORCE' | 'SCHEDULED';
   appliesTo?: string;
   chapters?: [number, number] | null;
@@ -380,6 +382,7 @@ export function resolveAdditionalDuties(
   htsCode: string,
   partner: string,
   baseAdValorem: number | null,
+  today: string = new Date().toISOString().slice(0, 10),
 ): UsAdditionalDuty[] {
   const measures = catalog.measures;
   const hits = coverageFor(shard, htsCode);
@@ -424,7 +427,10 @@ export function resolveAdditionalDuties(
         bandUnknown = true;
       } else if (m.mfnBand.below !== baseAdValorem < m.mfnBand.pct) continue;
     }
-    if (m.state === 'SCHEDULED') {
+    // The catalog can be up to a day old, so a start or end date may have
+    // passed since the seed classified the measure.
+    if (m.effectiveThrough && m.effectiveThrough < today) continue;
+    if (m.effectiveFrom ? m.effectiveFrom > today : m.state === 'SCHEDULED') {
       duties.push(dutyFrom(m, STATUS.scheduled, ''));
       continue;
     }
