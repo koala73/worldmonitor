@@ -120,6 +120,7 @@ export class LiveSource {
     this.kind = 'live';
     this.ttlMs = ttlMs;
     this.snapshots = new Map();
+    this.loading = new Map(); // one in-flight load per snapshot name
   }
 
   async searchClusters(terms) {
@@ -149,23 +150,33 @@ export class LiveSource {
         // A failed load is remembered briefly: with the venue network down,
         // every check would otherwise wait out the same timeout again.
         if (Date.now() - hit.at < FAILURE_TTL_MS) throw hit.error;
-      } else if (Date.now() - hit.at < this.ttlMs) {
+      } else if (hit.retryAt ? Date.now() < hit.retryAt : Date.now() - hit.at < this.ttlMs) {
         return hit.value;
       }
     }
-    try {
-      const value = await load();
-      this.snapshots.set(name, { at: Date.now(), value });
-      return value;
-    } catch (error) {
-      if (hit && !hit.error) {
-        // The last good snapshot stands in; the next attempt is after FAILURE_TTL_MS.
-        this.snapshots.set(name, { value: hit.value, at: Date.now() - this.ttlMs + FAILURE_TTL_MS });
-        return hit.value;
+    // Concurrent callers share one load, so a late failure never overwrites
+    // a fresh success and a refresh costs one MCP call, not one per caller.
+    if (this.loading.has(name)) return this.loading.get(name);
+    const pending = (async () => {
+      try {
+        const value = await load();
+        this.snapshots.set(name, { at: Date.now(), value });
+        return value;
+      } catch (error) {
+        if (hit && !hit.error) {
+          // The last good snapshot stands in, keeping its own time and marked
+          // stale; the next attempt is after FAILURE_TTL_MS.
+          this.snapshots.set(name, { ...hit, stale: true, retryAt: Date.now() + FAILURE_TTL_MS });
+          return hit.value;
+        }
+        this.snapshots.set(name, { at: Date.now(), error });
+        throw error;
+      } finally {
+        this.loading.delete(name);
       }
-      this.snapshots.set(name, { at: Date.now(), error });
-      throw error;
-    }
+    })();
+    this.loading.set(name, pending);
+    return pending;
   }
 
   /** Member headlines and seeder corroboration for one story, from get_news_intelligence. */
@@ -252,7 +263,8 @@ export class LiveSource {
       this.snapshot('board-clusters', async () => (await this.mcp.callTool('get_news_clusters', { limit: 25 })).clusters ?? [], { force }),
     ]);
     const clusters = [...payload.stories.map(storyAsCluster), ...newest.map((c) => normalizeCluster(c, { seenIn: 'live' }))];
-    return { clusters, asOf: new Date(this.snapshots.get('board-clusters')?.at ?? Date.now()).toISOString() };
+    const snap = this.snapshots.get('board-clusters');
+    return { clusters, asOf: new Date(snap?.at ?? Date.now()).toISOString(), stale: Boolean(snap?.stale) };
   }
 
   /** Fetch both snapshots before the show so the first grade is instant. */
@@ -440,7 +452,8 @@ export class CombinedSource {
     if (this.live) {
       try {
         const live = await this.live.boardClusters({ force });
-        if (live.clusters.length) return { ...live, from: 'live' };
+        // A retained last-good board is a snapshot, never "live".
+        if (live.clusters.length) return { ...live, from: live.stale ? 'last-good' : 'live' };
       } catch {
         // fall through to the archive
       }

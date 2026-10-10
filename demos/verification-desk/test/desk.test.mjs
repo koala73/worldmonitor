@@ -294,4 +294,26 @@ test('the repo .env.local backs the demo .env, and an empty assignment never blo
   assert.equal(process.env.DESK_T_D, 'shell', 'the shell wins over every file');
   assert.deepEqual(envFiles().map((f) => path.basename(f)), ['.env', '.env.local', '.env']);
   assert.equal(path.dirname(envFiles()[1]), path.resolve(path.dirname(envFiles()[0]), '..', '..'), 'the repo files are two levels above the demo');
+
+test('a failed refresh keeps the last board as a dated snapshot, never "live"', async () => {
+  let fail = false;
+  let calls = 0;
+  const mcp = { async callTool(name) {
+    calls += 1;
+    if (fail) throw new Error('venue wifi');
+    return name === 'get_news_intelligence' ? { topStories: [] } : { clusters: [{ id: 'c1', title: 'A', sources: ['BBC'] }] };
+  } };
+  const live = new CombinedSource(new LiveSource(mcp), null);
+  const first = await live.boardClusters();
+  assert.equal(first.from, 'live');
+  fail = true;
+  const after = await live.boardClusters({ force: true });
+  assert.equal(after.from, 'last-good', 'the retained board is labelled a snapshot');
+  assert.equal(after.asOf, first.asOf, 'it keeps its own time');
+  assert.equal(after.clusters.length, first.clusters.length);
+  // Concurrent callers share one load: one MCP call per snapshot, not one per caller.
+  const shared = new LiveSource({ async callTool() { calls += 1; await new Promise((r) => setTimeout(r, 20)); return { topStories: [] }; } });
+  const before = calls;
+  await Promise.all([shared.intelligencePayload(), shared.intelligencePayload(), shared.intelligencePayload()]);
+  assert.equal(calls - before, 1);
 });

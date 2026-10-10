@@ -206,7 +206,7 @@ export function templateBoard(b) {
     `Good evening, and welcome to the Verification Desk.`,
     live
       ? `Right now WorldMonitor is tracking ${t.stories} stories.`
-      : `WorldMonitor is not reachable from this stage, so this is its last snapshot, from ${when}. Then it was tracking ${t.stories} stories.`,
+      : `This is WorldMonitor's last snapshot, from ${when}. Then it was tracking ${t.stories} stories.`,
     `${cap(say(t.corroborated))} are corroborated by two or more independent publishers. ${cap(say(t.singlePublisher))} rest on a single publisher.`,
   ];
   const best = b.supported[0];
@@ -215,7 +215,9 @@ export function templateBoard(b) {
   if (thin.length) {
     parts.push(`And the thin end: ${thin.map((x) => `${x.title}, from ${x.top[0]?.name ?? 'one publisher'} alone`).join('; and ')}.`);
   }
-  parts.push(`Pick any story on this board, or name your own, and the desk will check it, live.`);
+  parts.push(live
+    ? `Pick any story on this board, or name your own, and the desk will check it, live.`
+    : `Pick any story on this board, or name your own, and the desk will check it against WorldMonitor's data.`);
   return parts.join(' ');
 }
 
