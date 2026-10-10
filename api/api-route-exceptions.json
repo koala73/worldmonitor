@@ -220,6 +220,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/tariff-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP tariff tool definitions and fixed TradeService dispatch to get-tariff-trends, get-bilateral-tariff and get-us-import-duty. Exports no standalone JSON data route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/index.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY merge + buildPublicTool + SUMMARY_SCHEMA + TOOL_LIST_RESPONSE precompute + collision guard. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
