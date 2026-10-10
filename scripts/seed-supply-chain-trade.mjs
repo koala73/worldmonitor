@@ -2,6 +2,13 @@
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKey, writeExtraKeyWithMeta, writeSeedMeta, sleep, verifySeedKey, resolveProxyForConnect, fredFetchJson } from './_seed-utils.mjs';
 import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
+import { createRequire as _createRequire } from 'node:module';
+import {
+  buildUsDutyIndex,
+  makeCountryResolver,
+  US_HTS_CATALOG_KEY,
+  usHtsCoverageKey,
+} from './shared/us-hts-chapter99.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -1337,6 +1344,71 @@ async function fetchCustomsRevenue() {
   throw new Error(`Treasury MTS exhausted 3 attempts: ${lastErr?.message || lastErr}`);
 }
 
+// ─── US HTS additional duties (USITC HTS REST) ───
+//
+// Section 301 and 232 coverage lives in the chapter 99 U.S. notes. The index
+// is rebuilt from the current HTS release every run (the notes are ~5 MB,
+// the heading rows ~3 MB) and published as one catalog plus one coverage
+// shard per HS chapter, versioned by release. See shared/us-hts-chapter99.mjs.
+// 24h, matching maxStaleMin 1440 on usHtsDuties in api/health.js. HTS
+// revisions land every two weeks or so; the 6h cron keeps the key alive.
+export const US_HTS_TTL = 86400;
+const HTS_REST = 'https://hts.usitc.gov/reststop';
+const _require = _createRequire(import.meta.url);
+
+async function htsFetch(path, timeoutMs) {
+  const resp = await fetch(`${HTS_REST}/${path}`, {
+    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json, text/html' },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!resp.ok) throw new Error(`HTS ${path.split('?')[0]}: HTTP ${resp.status}`);
+  return resp;
+}
+
+/** Name and start date of the HTS release USITC marks current. */
+export function currentHtsRelease(releases) {
+  const current = (Array.isArray(releases) ? releases : []).find((r) => r?.status === 'current');
+  if (!current?.name) throw new Error('HTS releaseList has no current release');
+  return { name: String(current.name), startDate: String(current.releaseStartDate || '') };
+}
+
+export async function fetchUsHtsIndex() {
+  const release = currentHtsRelease(await (await htsFetch('releaseList', 20_000)).json());
+  const [notesHtml, headingRows] = await Promise.all([
+    htsFetch('getChapterNotes?doc=99', 90_000).then((r) => r.text()),
+    htsFetch('exportList?from=9903.01.00&to=9903.99.99&format=JSON&styles=false', 90_000).then((r) => r.json()),
+  ]);
+  const { countryNameToIso2 } = _require('./shared/country-name-to-iso2.cjs');
+  const index = buildUsDutyIndex({
+    notesHtml,
+    headingRows,
+    release,
+    resolveCountry: makeCountryResolver(countryNameToIso2, _un2iso2),
+  });
+  console.log(`  US HTS ${index.release}: ${Object.keys(index.measures).length} measures, ${index.provisions} provisions`);
+  return index;
+}
+
+/**
+ * Shards first, catalog last: the catalog names the release whose shards are
+ * complete, so a reader never follows it to a half-written set.
+ */
+export async function publishUsHtsIndex(index) {
+  const chapters = Object.keys(index.coverage).sort();
+  for (const ch of chapters) {
+    await writeExtraKey(usHtsCoverageKey(index.release, ch), index.coverage[ch], US_HTS_TTL);
+  }
+  const catalog = {
+    schema: index.schema,
+    release: index.release,
+    releaseStartDate: index.releaseStartDate,
+    fetchedAt: new Date().toISOString(),
+    chapters,
+    measures: index.measures,
+  };
+  await writeExtraKeyWithMeta(US_HTS_CATALOG_KEY, catalog, US_HTS_TTL, Object.keys(index.measures).length);
+}
+
 function parseCustomsRows(rows) {
 
   const months = rows
@@ -1364,7 +1436,7 @@ function parseCustomsRows(rows) {
 
 async function fetchAll() {
   await fetchWtoReporters();
-  const [shipping, scfi, ccfi, bdi, barriers, restrictions, flows, tariffs, customs] = await Promise.allSettled([
+  const [shipping, scfi, ccfi, bdi, barriers, restrictions, flows, tariffs, customs, usHts] = await Promise.allSettled([
     fetchShippingRates(),
     fetchSCFI(),
     fetchCCFI(),
@@ -1374,6 +1446,7 @@ async function fetchAll() {
     fetchTradeFlows(),
     fetchTariffTrends(),
     fetchCustomsRevenue(),
+    fetchUsHtsIndex(),
   ]);
 
   const sh = shipping.status === 'fulfilled' ? shipping.value : null;
@@ -1385,6 +1458,7 @@ async function fetchAll() {
   const fl = flows.status === 'fulfilled' ? flows.value : null;
   const ta = tariffs.status === 'fulfilled' ? tariffs.value : null;
   const cu = customs.status === 'fulfilled' ? customs.value : null;
+  const hts = usHts.status === 'fulfilled' ? usHts.value : null;
 
   if (shipping.status === 'rejected') console.warn(`  Shipping failed: ${shipping.reason?.message || shipping.reason}`);
   if (scfi.status === 'rejected') console.warn(`  SCFI failed: ${scfi.reason?.message || scfi.reason}`);
@@ -1395,6 +1469,7 @@ async function fetchAll() {
   if (flows.status === 'rejected') console.warn(`  Flows failed: ${flows.reason?.message || flows.reason}`);
   if (tariffs.status === 'rejected') console.warn(`  Tariffs failed: ${tariffs.reason?.message || tariffs.reason}`);
   if (customs.status === 'rejected') console.warn(`  Treasury customs failed: ${customs.reason?.message || customs.reason}`);
+  if (usHts.status === 'rejected') console.warn(`  US HTS duties failed: ${usHts.reason?.message || usHts.reason}`);
 
   const allIndices = [
     ...(sh?.indices || []),
@@ -1417,6 +1492,11 @@ async function fetchAll() {
   if (fl) await publishTradeFlows(fl);
   if (ta) await publishTariffTrends(ta);
   if (cu) await writeExtraKeyWithMeta(KEYS.customsRevenue, cu, CUSTOMS_TTL, cu.months?.length ?? 0);
+  // Isolated like the others: a failed US HTS publish leaves the previous
+  // release's catalog and shards to age out instead of failing the run.
+  if (hts) {
+    try { await publishUsHtsIndex(hts); } catch (err) { console.warn(`  US HTS publish failed: ${err?.message || err}`); }
+  }
 
   return mergedIndices.length > 0
     ? { indices: mergedIndices, fetchedAt: new Date().toISOString(), upstreamUnavailable: false }

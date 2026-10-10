@@ -33256,6 +33256,175 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/trade/v1/get-us-import-duty:
+        get:
+            tags:
+                - TradeService
+            summary: GetUsImportDuty
+            description: Current US duty on one product from one country (USITC HTS). PRO-gated. Requires entitlement tier >= 1.
+            operationId: GetUsImportDuty
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: hs_code
+                  in: query
+                  description: 'HTS code: 6, 8 or 10 digits, no dots ("870323").'
+                  required: true
+                  example: "870380"
+                  schema:
+                    type: string
+                    pattern: '^[0-9]{6}([0-9]{2}){0,2}$'
+                - name: partner_country
+                  in: query
+                  description: Exporter, 3-digit UN M49 ("156").
+                  required: true
+                  example: "156"
+                  schema:
+                    type: string
+                    pattern: '^[0-9]{3}$'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "additionalDutiesLoaded": true
+                                "hsCode": "870380"
+                                "htsRelease": "2026HTSRev21"
+                                "lines":
+                                    - "additionalDuties":
+                                        - "addedRate": 100
+                                          "authority": "US_DUTY_AUTHORITY_SECTION_301"
+                                          "condition": ""
+                                          "effectiveFrom": "2024-09-27"
+                                          "heading": "9903.91.03"
+                                          "legalNote": "U.S. note 31(d)"
+                                          "program": "China four-year review"
+                                          "status": "US_ADDITIONAL_DUTY_STATUS_APPLIES"
+                                          "topUpTo": 0
+                                        - "addedRate": 25
+                                          "authority": "US_DUTY_AUTHORITY_SECTION_232"
+                                          "condition": "Section 232 rates vary by origin deal and, for some derivatives, apply to metal content only."
+                                          "effectiveFrom": ""
+                                          "heading": "9903.94.01"
+                                          "legalNote": "U.S. note 33(b)"
+                                          "program": "Passenger vehicles and light trucks"
+                                          "status": "US_ADDITIONAL_DUTY_STATUS_CONDITIONAL"
+                                          "topUpTo": 0
+                                      "baseAdValorem": 2.5
+                                      "baseNonAdValorem": false
+                                      "baseRate": "2.5%"
+                                      "basis": "US_DUTY_BASIS_MFN"
+                                      "column2Rate": "10%"
+                                      "description": "Other vehicles, with only electric motors for propulsion"
+                                      "estimateComplete": false
+                                      "estimatedRate": 102.5
+                                      "generalRate": "2.5%"
+                                      "htsCode": "8703.80.00"
+                                      "preferenceProgram": ""
+                                      "specialRate": "Free (A+,AU,B,BH,CL,CO,D,E,IL,JO,KR,MA,OM,P,PA,PE,S,SG)"
+                                      "unresolvedPrograms":
+                                          - "D"
+                                          - "E"
+                                "partnerCountry": "156"
+                                "source": "USITC Harmonized Tariff Schedule"
+                                "sourceUrl": "https://hts.usitc.gov/search?query=8703.80"
+                                "upstreamUnavailable": false
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_trade_v1_GetUsImportDutyResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/trade/v1/get-trade-flows:
         get:
             tags:
@@ -58396,6 +58565,160 @@ components:
                 rate:
                     $ref: '#/components/schemas/worldmonitor_trade_v1_TariffRateDetail'
             description: Preference granted to a partner group. Membership is not resolved.
+        worldmonitor_trade_v1_GetUsImportDutyRequest:
+            type: object
+            properties:
+                hsCode:
+                    type: string
+                    pattern: ^[0-9]{6}([0-9]{2}){0,2}$
+                    description: 'HTS code: 6, 8 or 10 digits, no dots ("870323").'
+                partnerCountry:
+                    type: string
+                    pattern: ^[0-9]{3}$
+                    description: Exporter, 3-digit UN M49 ("156").
+            required:
+                - hsCode
+                - partnerCountry
+            description: |-
+                Current US duty on a product from one country: HTS columns plus the
+                 chapter 99 Section 301 and 232 duties. IEEPA duties are not collected
+                 since 2026-02-24 and are not reported. Excludes AD/CVD.
+        worldmonitor_trade_v1_GetUsImportDutyResponse:
+            type: object
+            properties:
+                hsCode:
+                    type: string
+                    description: HTS code, as requested.
+                partnerCountry:
+                    type: string
+                    description: Exporter code, as requested.
+                htsRelease:
+                    type: string
+                    description: HTS release of the chapter 99 index ("2026HTSRev21").
+                lines:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_trade_v1_UsTariffLine'
+                additionalDutiesLoaded:
+                    type: boolean
+                    description: False when the chapter 99 index was unavailable.
+                source:
+                    type: string
+                    description: Data source.
+                sourceUrl:
+                    type: string
+                    description: HTS search page for the code.
+                upstreamUnavailable:
+                    type: boolean
+                    description: True on a fault, false on a coverage answer.
+                unavailableReason:
+                    type: string
+                    enum:
+                        - US_IMPORT_DUTY_UNAVAILABLE_REASON_UNSPECIFIED
+                        - US_IMPORT_DUTY_UNAVAILABLE_REASON_INVALID_REQUEST
+                        - US_IMPORT_DUTY_UNAVAILABLE_REASON_NOT_COVERED
+                        - US_IMPORT_DUTY_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE
+                    description: Why no line was served. NOT_COVERED is final; UPSTREAM_UNAVAILABLE is a fault.
+            description: Current US duty on a product from one country.
+        worldmonitor_trade_v1_UsTariffLine:
+            type: object
+            properties:
+                htsCode:
+                    type: string
+                    description: 8-digit HTS line ("8703.23.01").
+                description:
+                    type: string
+                    description: Article description.
+                generalRate:
+                    type: string
+                    description: Column 1 General.
+                specialRate:
+                    type: string
+                    description: Column 1 Special, with program codes.
+                column2Rate:
+                    type: string
+                    description: Column 2.
+                basis:
+                    type: string
+                    enum:
+                        - US_DUTY_BASIS_UNSPECIFIED
+                        - US_DUTY_BASIS_MFN
+                        - US_DUTY_BASIS_PREFERENTIAL
+                        - US_DUTY_BASIS_COLUMN_2
+                    description: Column the base rate comes from.
+                baseRate:
+                    type: string
+                    description: Base rate text.
+                baseAdValorem:
+                    type: number
+                    format: double
+                    description: Base rate in percent; 0 when not ad valorem.
+                baseNonAdValorem:
+                    type: boolean
+                    description: True when the base rate is specific or compound.
+                preferenceProgram:
+                    type: string
+                    description: Special program applied ("S" = USMCA).
+                unresolvedPrograms:
+                    type: array
+                    items:
+                        type: string
+                        description: Special programs whose partner eligibility is not resolved.
+                additionalDuties:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_trade_v1_UsAdditionalDuty'
+                estimatedRate:
+                    type: number
+                    format: double
+                    description: Base plus APPLIES duties, in percent.
+                estimateComplete:
+                    type: boolean
+                    description: False when the base is not ad valorem or a duty is not APPLIES/EXEMPT.
+            description: One 8-digit HTS line.
+        worldmonitor_trade_v1_UsAdditionalDuty:
+            type: object
+            properties:
+                heading:
+                    type: string
+                    description: Chapter 99 heading ("9903.88.03").
+                authority:
+                    type: string
+                    enum:
+                        - US_DUTY_AUTHORITY_UNSPECIFIED
+                        - US_DUTY_AUTHORITY_SECTION_301
+                        - US_DUTY_AUTHORITY_SECTION_232
+                    description: Legal authority of a chapter 99 duty.
+                program:
+                    type: string
+                    description: Action name ("China List 3").
+                addedRate:
+                    type: number
+                    format: double
+                    description: Percentage points added to the base rate.
+                topUpTo:
+                    type: number
+                    format: double
+                    description: Combined rate the base is raised to; 0 when none.
+                status:
+                    type: string
+                    enum:
+                        - US_ADDITIONAL_DUTY_STATUS_UNSPECIFIED
+                        - US_ADDITIONAL_DUTY_STATUS_APPLIES
+                        - US_ADDITIONAL_DUTY_STATUS_CONDITIONAL
+                        - US_ADDITIONAL_DUTY_STATUS_EXEMPT
+                        - US_ADDITIONAL_DUTY_STATUS_SCHEDULED
+                    description: Whether a chapter 99 duty applies to this line and partner.
+                condition:
+                    type: string
+                    description: What decides the status.
+                legalNote:
+                    type: string
+                    description: Chapter 99 U.S. note listing the products.
+                effectiveFrom:
+                    type: string
+                    description: First day in force, when dated.
+            description: A chapter 99 duty on one line.
         worldmonitor_trade_v1_GetTradeFlowsRequest:
             type: object
             properties:

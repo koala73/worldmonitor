@@ -5114,6 +5114,26 @@
       ]
     },
     {
+      "host": "hts.usitc.gov",
+      "provider": "hts.usitc.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Harmonized Tariff Schedule of the United States, published by the US International Trade Commission; a US federal government work, not subject to copyright (17 U.S.C. 105)",
+      "attribution": "Credit the USITC Harmonized Tariff Schedule and name the HTS release the rates come from.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
+          "path": "scripts/seed-supply-chain-trade.mjs"
+        },
+        {
+          "path": "server/worldmonitor/trade/v1/get-us-import-duty.ts"
+        }
+      ]
+    },
+    {
       "host": "humanprogress.org",
       "provider": "humanprogress.org",
       "kind": "feed",

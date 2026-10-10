@@ -350,6 +350,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/get-bis-credit': 'daily',
   '/api/trade/v1/get-tariff-trends': 'daily',
   '/api/trade/v1/get-bilateral-tariff': 'daily',
+  '/api/trade/v1/get-us-import-duty': 'daily',
   '/api/trade/v1/get-trade-flows': 'daily',
   '/api/trade/v1/get-trade-barriers': 'daily',
   '/api/trade/v1/get-trade-restrictions': 'daily',

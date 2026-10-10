@@ -409,6 +409,9 @@ const BOOTSTRAP_KEYS = {
 // sweep so the canadaAlerts probe grades the data clients actually receive.
 const STANDALONE_KEYS = {
   predictionCountryMarkets: 'prediction:markets-country-index:v1',
+  // US HTS chapter 99 duty index (catalog; coverage shards are versioned by
+  // release under trade:us-hts:coverage:v1). Read only by get-us-import-duty.
+  usHtsDuties: 'trade:us-hts:catalog:v1',
   // Per-country GDELT article index (#7748): read only by the search route's
   // country form and the weekly crawlable freeze, never by the dashboard, so
   // it is monitored here rather than bootstrap-tiered. Without this gate an
@@ -1335,6 +1338,7 @@ const SEED_META = {
   secCikMap:           { key: 'seed-meta:intelligence:sec-cik-map',          maxStaleMin: 2880, minRecordCount: 5000 }, // daily bundle section; 2880min = 48h = 2x interval. minRecordCount mirrors MIN_CIK_ENTRIES in scripts/seed-sec-cik-map.mjs.
   sec8kStream:         { key: 'seed-meta:intelligence:sec-8k-stream',        maxStaleMin: 120, minRecordCount: 50 }, // 30min bundle section; 120min = 4x interval. minRecordCount mirrors MIN_STREAM_EVENTS in scripts/seed-sec-8k-stream.mjs — a drained window means Atom-parse decay, not a quiet market.
   customsRevenue:      { key: 'seed-meta:trade:customs-revenue',              maxStaleMin: 1440 },
+  usHtsDuties:         { key: 'seed-meta:trade:us-hts:catalog',               maxStaleMin: 1440, minRecordCount: 100 }, // 6h cron, 24h data TTL (US_HTS_TTL); 132 measures in HTS 2026 Rev 21
   comtradeFlows:       { key: 'seed-meta:trade:comtrade-flows',               maxStaleMin: 2880 }, // 24h cron; 2880min = 48h = 2x interval
   comtradeBilateralHs4: { key: 'seed-meta:comtrade:bilateral-hs4',             maxStaleMin: 50400, minRecordCount: 110 }, // 35d health budget for monthly seed; 40d payload/meta TTL leaves a 5d stale-but-queryable warning window. minRecordCount mirrors MIN_COUNTRY_COVERAGE in scripts/seed-comtrade-bilateral-hs4.mjs (110 of 197 clusters) so a shrunken run reads COVERAGE_PARTIAL, not OK — without it 3-of-197 and 197-of-197 were indistinguishable for the full 35d window.
   supplyVulnerability: {

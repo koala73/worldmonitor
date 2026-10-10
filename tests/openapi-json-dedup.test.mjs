@@ -22,7 +22,12 @@ import {
   dedupeSharedSubtreeComponents,
   SHARED_SUBTREE_COMPONENT_PREFIX,
 } from '../scripts/openapi-dedup-schemas.mjs';
-import { buildBundle, collapseSoftLineBreaks, dropDefaultParameterRequired } from '../scripts/build-openapi-json.mjs';
+import {
+  buildBundle,
+  collapseSoftLineBreaks,
+  dropDefaultParameterRequired,
+  shortenGeneratedSuccessDescriptions,
+} from '../scripts/build-openapi-json.mjs';
 import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
 
 // Guards the served public/openapi.json against the ~1 MB scanner body cap.
@@ -1240,9 +1245,32 @@ describe('JSON-only description and parameter compaction', () => {
     assert.equal(stats.dropped, 2);
   });
 
-  it('both passes engage on the real bundle', () => {
-    const { softBreakStats, defaultRequiredStats } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
+  it('shortens only the generated 2xx description, and keeps every 2xx response inline', () => {
+    const ok = { description: 'Successful response', content: { 'application/json': { schema: { type: 'object' } } } };
+    const spec = {
+      paths: {
+        '/a': {
+          get: { responses: { 200: structuredClone(ok), 400: { description: 'Successful response' } } },
+          post: { responses: { 201: { description: 'Created with a hand-written note' }, 202: { $ref: '#/components/responses/R' } } },
+        },
+      },
+      components: { responses: { R: { description: 'Successful response' } } },
+    };
+    const stats = shortenGeneratedSuccessDescriptions(spec);
+    const get = spec.paths['/a'].get.responses;
+    assert.equal(get[200].description, 'OK');
+    assert.deepEqual(get[200].content, ok.content);
+    assert.equal(get[400].description, 'Successful response', 'non-2xx left alone');
+    assert.equal(spec.paths['/a'].post.responses[201].description, 'Created with a hand-written note');
+    assert.equal(spec.components.responses.R.description, 'Successful response', 'components left alone');
+    assert.equal(stats.shortened, 1);
+  });
+
+  it('all three passes engage on the real bundle', () => {
+    const { json, softBreakStats, defaultRequiredStats, successDescriptionStats } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
     assert.ok(softBreakStats.collapsed >= 500, `soft breaks collapsed: ${softBreakStats.collapsed}`);
     assert.ok(defaultRequiredStats.dropped >= 200, `default required dropped: ${defaultRequiredStats.dropped}`);
+    assert.ok(successDescriptionStats.shortened >= 200, `success descriptions shortened: ${successDescriptionStats.shortened}`);
+    assert.equal(json.includes('"Successful response"'), false, 'no generated success description survives');
   });
 });

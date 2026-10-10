@@ -1,0 +1,444 @@
+[
+{
+"htsno": "",
+"indent": "1",
+"description": "Other wine; grape must with fermentation prevented or arrested by the addition of alcohol:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21",
+"indent": "2",
+"description": "In containers holding 2 liters or less:",
+"superior": null,
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": "",
+"additionalDuties": "",
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21.20.00",
+"indent": "3",
+"description": "Effervescent wine",
+"superior": null,
+"units": [
+"liters"
+],
+"general": "19.8¢/liter",
+"special": "Free (A+,AU,BH,CL,CO,D,E,IL,KR,MA,OM,P,PA,PE,S,SG) 8.8¢/liter (JO)",
+"other": "$1.59/liter",
+"footnotes": [
+{
+"columns": [
+"general",
+"special",
+"other"
+],
+"value": "Imports under this subheading may be subject to Federal Excise Tax (26 U.S.C. 5041). ",
+"type": "endnote"
+}
+],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "3",
+"description": "Other:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "4",
+"description": "Of an alcoholic strength by volume not over 14 percent vol.:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21.30.00",
+"indent": "5",
+"description": "If entitled under regulations of the United States Internal Revenue Service to a type designation which includes the name \"Tokay\" and if so designated on the approved label",
+"superior": null,
+"units": [
+"liters"
+],
+"general": "6.3¢/liter",
+"special": "Free (A,AU,BH,CL,CO,D,E,IL,KR,MA,OM,P,PA,PE,S,SG)2.8¢/liter(JO)",
+"other": "33¢/liter",
+"footnotes": [
+{
+"columns": [
+"general",
+"special",
+"other"
+],
+"value": "Imports under this subheading may be subject to Federal Excise Tax (26 U.S.C. 5041). ",
+"type": "endnote"
+}
+],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21.50",
+"indent": "5",
+"description": "Other",
+"superior": null,
+"units": [],
+"general": "6.3¢/liter",
+"special": "Free (A+,AU,BH,CL,CO,D,E,IL,KR,MA,OM,P,PA,PE,S,SG) 2.8¢/liter (JO)",
+"other": "33¢/liter",
+"footnotes": [
+{
+"columns": [
+"general",
+"special",
+"other"
+],
+"value": "Imports under this subheading may be subject to Federal Excise Tax (26 U.S.C. 5041). ",
+"type": "endnote"
+}
+],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "6",
+"description": "Valued not over $1.05/liter:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21.50.05",
+"indent": "7",
+"description": "Red",
+"superior": null,
+"units": [
+"liters"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21.50.15",
+"indent": "7",
+"description": "White",
+"superior": null,
+"units": [
+"liters"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21.50.25",
+"indent": "7",
+"description": "Other",
+"superior": null,
+"units": [
+"liters"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "6",
+"description": "Valued over $1.05/liter:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21.50.28",
+"indent": "7",
+"description": "Icewine",
+"superior": null,
+"units": [
+"liters"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "7",
+"description": "Other:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "8",
+"description": "Red:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21.50.35",
+"indent": "9",
+"description": "Certified organic",
+"superior": null,
+"units": [
+"liters"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21.50.40",
+"indent": "9",
+"description": "Not certified organic",
+"superior": null,
+"units": [
+"liters"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "8",
+"description": "White:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21.50.50",
+"indent": "9",
+"description": "Certified organic",
+"superior": null,
+"units": [
+"liters"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21.50.55",
+"indent": "9",
+"description": "Not certified organic",
+"superior": null,
+"units": [
+"liters"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21.50.60",
+"indent": "8",
+"description": "Other",
+"superior": null,
+"units": [
+"liters"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": "",
+"additionalDuties": "",
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "4",
+"description": "Of an alcoholic strength by volume over 14 percent vol.:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21.60.00",
+"indent": "5",
+"description": "If entitled under regulations of the United States Internal Revenue Service to a type designation which includes the name \"Marsala\" and if so designated on the approved label",
+"superior": null,
+"units": [
+"liters"
+],
+"general": "5.3¢/liter",
+"special": "Free (A,AU,BH,CL,CO,D,E,IL,KR,MA,OM,P,PA,PE,S,SG)2.3¢/liter(JO)",
+"other": "33¢/liter",
+"footnotes": [
+{
+"columns": [
+"general",
+"special",
+"other"
+],
+"value": "Imports under this subheading may be subject to Federal Excise Tax (26 U.S.C. 5041). ",
+"type": "endnote"
+}
+],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21.80",
+"indent": "5",
+"description": "Other",
+"superior": null,
+"units": [],
+"general": "16.9¢/liter",
+"special": "Free (A,AU,BH,CL,CO,D,E,IL,KR,MA,OM,P,PA,PE,S,SG)7.5¢/liter(JO)",
+"other": "33¢/liter",
+"footnotes": [
+{
+"columns": [
+"general",
+"special",
+"other"
+],
+"value": "Imports under this subheading may be subject to Federal Excise Tax (26 U.S.C. 5041). ",
+"type": "endnote"
+}
+],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21.80.30",
+"indent": "6",
+"description": "Sherry",
+"superior": null,
+"units": [
+"liters"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "2204.21.80.60",
+"indent": "6",
+"description": "Other",
+"superior": null,
+"units": [
+"liters"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+}
+]

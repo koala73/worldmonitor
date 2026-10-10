@@ -83,6 +83,7 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/trade/v1/list-comtrade-flows',
   '/api/trade/v1/get-tariff-trends',
   '/api/trade/v1/get-bilateral-tariff',
+  '/api/trade/v1/get-us-import-duty',
   '/api/scenario/v1/run-scenario',
   '/api/scenario/v1/get-scenario-status',
   // #3734: PRO-gated mutation that enqueues a simulation task. Companion

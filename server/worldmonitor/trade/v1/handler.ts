@@ -3,6 +3,7 @@ import type { TradeServiceHandler } from '../../../../src/generated/server/world
 import { getTradeRestrictions } from './get-trade-restrictions';
 import { getTariffTrends } from './get-tariff-trends';
 import { getBilateralTariff } from './get-bilateral-tariff';
+import { getUsImportDuty } from './get-us-import-duty';
 import { getTradeFlows } from './get-trade-flows';
 import { getTradeBarriers } from './get-trade-barriers';
 import { getCustomsRevenue } from './get-customs-revenue';
@@ -12,6 +13,7 @@ export const tradeHandler: TradeServiceHandler = {
   getTradeRestrictions,
   getTariffTrends,
   getBilateralTariff,
+  getUsImportDuty,
   getTradeFlows,
   getTradeBarriers,
   getCustomsRevenue,

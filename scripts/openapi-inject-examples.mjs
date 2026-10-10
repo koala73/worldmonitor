@@ -275,6 +275,12 @@ function overrideStringExample(key, context = {}) {
     if (key === 'partnercountry') return '484';
     if (key === 'hscode') return '870323';
   }
+  // GetUsImportDuty request codes must stay inside their buf.validate
+  // patterns. The response example is curated below.
+  if (where.includes('getusimportduty') || where.includes('get-us-import-duty')) {
+    if (key === 'hscode') return '870380';
+    if (key === 'partnercountry') return '156';
+  }
   // GetFoodStocks' commodity is a closed slug set enforced by
   // normalizeFoodStocksCommodity; the heuristic's empty-string -> "example"
   // fallback published a value the handler rejects with 400, so anyone running
@@ -934,6 +940,40 @@ function getBilateralTariffExample() {
   };
 }
 
+// The served China -> US electric-vehicle answer against HTS 2026 Rev 21
+// (tests/fixtures/us-hts/), trimmed to two of its three duties. Enum
+// sentinels are left out, as above.
+function getUsImportDutyExample() {
+  return {
+    hsCode: '870380',
+    partnerCountry: '156',
+    htsRelease: '2026HTSRev21',
+    lines: [{
+      htsCode: '8703.80.00',
+      description: 'Other vehicles, with only electric motors for propulsion',
+      generalRate: '2.5%',
+      specialRate: 'Free (A+,AU,B,BH,CL,CO,D,E,IL,JO,KR,MA,OM,P,PA,PE,S,SG)',
+      column2Rate: '10%',
+      basis: 'US_DUTY_BASIS_MFN',
+      baseRate: '2.5%',
+      baseAdValorem: 2.5,
+      baseNonAdValorem: false,
+      preferenceProgram: '',
+      unresolvedPrograms: ['D', 'E'],
+      additionalDuties: [
+        { heading: '9903.91.03', authority: 'US_DUTY_AUTHORITY_SECTION_301', program: 'China four-year review', addedRate: 100, topUpTo: 0, status: 'US_ADDITIONAL_DUTY_STATUS_APPLIES', condition: '', legalNote: 'U.S. note 31(d)', effectiveFrom: '2024-09-27' },
+        { heading: '9903.94.01', authority: 'US_DUTY_AUTHORITY_SECTION_232', program: 'Passenger vehicles and light trucks', addedRate: 25, topUpTo: 0, status: 'US_ADDITIONAL_DUTY_STATUS_CONDITIONAL', condition: 'Section 232 rates vary by origin deal and, for some derivatives, apply to metal content only.', legalNote: 'U.S. note 33(b)', effectiveFrom: '' },
+      ],
+      estimatedRate: 102.5,
+      estimateComplete: false,
+    }],
+    additionalDutiesLoaded: true,
+    source: 'USITC Harmonized Tariff Schedule',
+    sourceUrl: 'https://hts.usitc.gov/search?query=8703.80',
+    upstreamUnavailable: false,
+  };
+}
+
 function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set()) {
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
@@ -965,6 +1005,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getBilateralTariffExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getusimportduty'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getUsImportDutyExample();
   }
   if (
     depth === 0

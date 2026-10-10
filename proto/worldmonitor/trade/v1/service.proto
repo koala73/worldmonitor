@@ -5,6 +5,7 @@ package worldmonitor.trade.v1;
 import "sebuf/http/annotations.proto";
 import "worldmonitor/trade/v1/get_trade_restrictions.proto";
 import "worldmonitor/trade/v1/get_bilateral_tariff.proto";
+import "worldmonitor/trade/v1/get_us_import_duty.proto";
 import "worldmonitor/trade/v1/get_tariff_trends.proto";
 import "worldmonitor/trade/v1/get_trade_flows.proto";
 import "worldmonitor/trade/v1/get_trade_barriers.proto";
@@ -29,6 +30,11 @@ service TradeService {
   // Applied tariff on one HS6 product between two countries (UNCTAD TRAINS).
   rpc GetBilateralTariff(GetBilateralTariffRequest) returns (GetBilateralTariffResponse) {
     option (sebuf.http.config) = {path: "/get-bilateral-tariff", method: HTTP_METHOD_GET};
+  }
+
+  // Current US duty on one product from one country (USITC HTS).
+  rpc GetUsImportDuty(GetUsImportDutyRequest) returns (GetUsImportDutyResponse) {
+    option (sebuf.http.config) = {path: "/get-us-import-duty", method: HTTP_METHOD_GET};
   }
 
   // Get bilateral merchandise trade flows.

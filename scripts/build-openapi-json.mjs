@@ -159,6 +159,37 @@ export function dropDefaultParameterRequired(spec) {
   return stats;
 }
 
+/**
+ * The generator describes every 2xx response as "Successful response". The
+ * description is required, but the status code already says it: 240 verbatim
+ * copies, 8.6 KB of the served artifact. "OK" is the status code's own reason
+ * phrase, so it says the same. The responses themselves stay inline, the rule
+ * scanners credit. Only that exact generated string is replaced; a hand-written
+ * description is left alone. JSON only; the YAML keeps the generated text.
+ *
+ * Mutates `spec` in place; returns { shortened }.
+ */
+export const GENERATED_SUCCESS_DESCRIPTION = 'Successful response';
+
+export function shortenGeneratedSuccessDescriptions(spec) {
+  const stats = { shortened: 0 };
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    if (!pathItem || typeof pathItem !== 'object') continue;
+    for (const operation of Object.values(pathItem)) {
+      const responses = operation && typeof operation === 'object' ? operation.responses : null;
+      if (!responses || typeof responses !== 'object') continue;
+      for (const [code, response] of Object.entries(responses)) {
+        if (!/^2\d\d$/.test(code) || !response || typeof response !== 'object' || response.$ref) continue;
+        if (response.description === GENERATED_SUCCESS_DESCRIPTION) {
+          response.description = 'OK';
+          stats.shortened += 1;
+        }
+      }
+    }
+  }
+  return stats;
+}
+
 export const DEPRECATION_POLICY_URL = 'https://www.worldmonitor.app/api-versioning.md';
 const DEPRECATION_POLICY_HTML_URL = 'https://www.worldmonitor.app/docs/api-versioning';
 
@@ -242,6 +273,7 @@ export function buildBundle({ spec: provided } = {}) {
   // component or inline copy alike, is compacted exactly once.
   const softBreakStats = collapseSoftLineBreaks(spec);
   const defaultRequiredStats = dropDefaultParameterRequired(spec);
+  const successDescriptionStats = shortenGeneratedSuccessDescriptions(spec);
 
   // Minified: this artifact is machine-consumed (scanners/agents), and the
   // smaller payload dodges fetch-size caps. The YAML remains the human copy.
@@ -263,6 +295,7 @@ export function buildBundle({ spec: provided } = {}) {
     unreachableStats,
     softBreakStats,
     defaultRequiredStats,
+    successDescriptionStats,
   };
 }
 

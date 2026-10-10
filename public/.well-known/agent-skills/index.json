@@ -91,7 +91,14 @@
       "type": "skill-md",
       "description": "Look up the applied tariff on one HS6 product imported by one country from another (MFN, partner-specific preferential, and the best available applied rate), from UNCTAD TRAINS via World Bank WITS. Use when the user asks what duty a specific product pays between two specific countries.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/lookup-bilateral-tariff/SKILL.md",
-      "digest": "sha256:255875f107efe8b5cbe43a9550f5ab28de121adb248aeb73eda44def7d4bf4a5"
+      "digest": "sha256:fd8bdc6d1e20782f4ac9cb99689e47372fe182b50cf7f15be9e488effb03ad81"
+    },
+    {
+      "name": "lookup-us-import-duty",
+      "type": "skill-md",
+      "description": "Look up the current US import duty on one HTS product from one country — the HTS column rate (MFN, trade-agreement or column 2) plus the Section 301 and 232 duties in chapter 99 — from the live USITC Harmonized Tariff Schedule. Use when the user asks what the US charges today on a product from a specific country, including China tariffs and other additional duties.",
+      "url": "https://worldmonitor.app/.well-known/agent-skills/lookup-us-import-duty/SKILL.md",
+      "digest": "sha256:58bac27d6e3c95e4f9d01f6e5b0e5a833888b628f7b9cc5dd8dad40934c7b33c"
     },
     {
       "name": "monitor-energy-disruptions",

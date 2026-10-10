@@ -186,6 +186,7 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/trade/v1/list-comtrade-flows': 1,
   '/api/trade/v1/get-tariff-trends': 1,
   '/api/trade/v1/get-bilateral-tariff': 1,
+  '/api/trade/v1/get-us-import-duty': 1,
   '/api/resilience/v1/get-food-stocks': 1,
   '/api/resilience/v1/get-demographics-capability': 1,
   '/api/resilience/v1/get-resilience-indicators': 1,

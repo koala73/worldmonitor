@@ -99,6 +99,52 @@ export interface GroupTariffPreference {
   rate?: TariffRateDetail;
 }
 
+export interface GetUsImportDutyRequest {
+  hsCode: string;
+  partnerCountry: string;
+}
+
+export interface GetUsImportDutyResponse {
+  hsCode: string;
+  partnerCountry: string;
+  htsRelease: string;
+  lines: UsTariffLine[];
+  additionalDutiesLoaded: boolean;
+  source: string;
+  sourceUrl: string;
+  upstreamUnavailable: boolean;
+  unavailableReason: UsImportDutyUnavailableReason;
+}
+
+export interface UsTariffLine {
+  htsCode: string;
+  description: string;
+  generalRate: string;
+  specialRate: string;
+  column2Rate: string;
+  basis: UsDutyBasis;
+  baseRate: string;
+  baseAdValorem: number;
+  baseNonAdValorem: boolean;
+  preferenceProgram: string;
+  unresolvedPrograms: string[];
+  additionalDuties: UsAdditionalDuty[];
+  estimatedRate: number;
+  estimateComplete: boolean;
+}
+
+export interface UsAdditionalDuty {
+  heading: string;
+  authority: UsDutyAuthority;
+  program: string;
+  addedRate: number;
+  topUpTo: number;
+  status: UsAdditionalDutyStatus;
+  condition: string;
+  legalNote: string;
+  effectiveFrom: string;
+}
+
 export interface GetTradeFlowsRequest {
   reportingCountry: string;
   partnerCountry: string;
@@ -201,6 +247,14 @@ export type TariffTrendUnavailableReason = "TARIFF_TREND_UNAVAILABLE_REASON_UNSP
 
 export type TradeFlowUnavailableReason = "TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED" | "TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST" | "TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED" | "TRADE_FLOW_UNAVAILABLE_REASON_SEED_MISSING" | "TRADE_FLOW_UNAVAILABLE_REASON_COVERAGE_UNKNOWN" | "TRADE_FLOW_UNAVAILABLE_REASON_CACHE_UNAVAILABLE";
 
+export type UsAdditionalDutyStatus = "US_ADDITIONAL_DUTY_STATUS_UNSPECIFIED" | "US_ADDITIONAL_DUTY_STATUS_APPLIES" | "US_ADDITIONAL_DUTY_STATUS_CONDITIONAL" | "US_ADDITIONAL_DUTY_STATUS_EXEMPT" | "US_ADDITIONAL_DUTY_STATUS_SCHEDULED";
+
+export type UsDutyAuthority = "US_DUTY_AUTHORITY_UNSPECIFIED" | "US_DUTY_AUTHORITY_SECTION_301" | "US_DUTY_AUTHORITY_SECTION_232";
+
+export type UsDutyBasis = "US_DUTY_BASIS_UNSPECIFIED" | "US_DUTY_BASIS_MFN" | "US_DUTY_BASIS_PREFERENTIAL" | "US_DUTY_BASIS_COLUMN_2";
+
+export type UsImportDutyUnavailableReason = "US_IMPORT_DUTY_UNAVAILABLE_REASON_UNSPECIFIED" | "US_IMPORT_DUTY_UNAVAILABLE_REASON_INVALID_REQUEST" | "US_IMPORT_DUTY_UNAVAILABLE_REASON_NOT_COVERED" | "US_IMPORT_DUTY_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE";
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -249,6 +303,7 @@ export interface TradeServiceHandler {
   getTradeRestrictions(ctx: ServerContext, req: GetTradeRestrictionsRequest): Promise<GetTradeRestrictionsResponse>;
   getTariffTrends(ctx: ServerContext, req: GetTariffTrendsRequest): Promise<GetTariffTrendsResponse>;
   getBilateralTariff(ctx: ServerContext, req: GetBilateralTariffRequest): Promise<GetBilateralTariffResponse>;
+  getUsImportDuty(ctx: ServerContext, req: GetUsImportDutyRequest): Promise<GetUsImportDutyResponse>;
   getTradeFlows(ctx: ServerContext, req: GetTradeFlowsRequest): Promise<GetTradeFlowsResponse>;
   getTradeBarriers(ctx: ServerContext, req: GetTradeBarriersRequest): Promise<GetTradeBarriersResponse>;
   getCustomsRevenue(ctx: ServerContext, req: GetCustomsRevenueRequest): Promise<GetCustomsRevenueResponse>;
@@ -387,6 +442,54 @@ export function createTradeServiceRoutes(
 
           const result = await handler.getBilateralTariff(ctx, body);
           return new Response(JSON.stringify(result as GetBilateralTariffResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/trade/v1/get-us-import-duty",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetUsImportDutyRequest = {
+            hsCode: params.get("hs_code") ?? "",
+            partnerCountry: params.get("partner_country") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getUsImportDuty", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getUsImportDuty(ctx, body);
+          return new Response(JSON.stringify(result as GetUsImportDutyResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

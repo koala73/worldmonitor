@@ -10,7 +10,7 @@ Use this skill when the user asks what tariff a specific product (a 6-digit HS s
 
 **Entitlement:** this operation is Pro-gated (entitlement tier ≥ 1). API Starter and API Business keys qualify. A free caller receives empty data with `upstreamUnavailable: true`, or `403` when the gateway enforces the premium RPC.
 
-**What the rate does not include.** TRAINS records the MFN schedule and the preferential schedules each importer files. It does not record unilateral additional duties (US Section 301, 232 or IEEPA tariffs), anti-dumping or countervailing duties, or safeguards. For pairs subject to those measures, say that the rate understates what importers pay.
+**What the rate does not include.** TRAINS records the MFN schedule and the preferential schedules each importer files. It does not record unilateral additional duties (US Section 301, 232 or IEEPA tariffs), anti-dumping or countervailing duties, or safeguards. For pairs subject to those measures, say that the rate understates what importers pay. For the **current US** duty on a product, including Section 301 and 232 duties, use `lookup-us-import-duty` instead; TRAINS has no US preferences after 2021.
 
 ## Authentication
 

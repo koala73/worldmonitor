@@ -1,0 +1,352 @@
+[
+{
+"htsno": "6109.10.00",
+"indent": "1",
+"description": "Of cotton",
+"superior": null,
+"units": [],
+"general": "16.5%",
+"special": "Free (AU,BH,CL,CO,IL,JO,KR,MA,OM,P,PA,PE,S,SG)",
+"other": "90%",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "2",
+"description": "Men's or boys':",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "6109.10.00.04",
+"indent": "3",
+"description": "T-shirts, all white, short hemmed sleeves, hemmed bottom, crew or round neckline, or V-neck with a mitered seam at the center of the V, without pockets, trim or embroidery (352)",
+"superior": null,
+"units": [
+"doz.",
+"kg"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "6109.10.00.07",
+"indent": "3",
+"description": "Singlets, all white, without pockets, trim or embroidery (352)",
+"superior": null,
+"units": [
+"doz.",
+"kg"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "6109.10.00.11",
+"indent": "3",
+"description": "Thermal undershirts (352)",
+"superior": null,
+"units": [
+"doz.",
+"kg"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "3",
+"description": "Other T-shirts:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "6109.10.00.12",
+"indent": "4",
+"description": "Men's (338)",
+"superior": null,
+"units": [
+"doz.",
+"kg"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "6109.10.00.14",
+"indent": "4",
+"description": "Boys' (338)",
+"superior": null,
+"units": [
+"doz.",
+"kg"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "3",
+"description": "Tank tops and other singlets:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "6109.10.00.18",
+"indent": "4",
+"description": "Men's (338)",
+"superior": null,
+"units": [
+"doz.",
+"kg"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "6109.10.00.23",
+"indent": "4",
+"description": "Boys' (338)",
+"superior": null,
+"units": [
+"doz.",
+"kg"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "6109.10.00.27",
+"indent": "3",
+"description": "Other (338)",
+"superior": null,
+"units": [
+"doz.",
+"kg"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "2",
+"description": "Women's or girls':",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "6109.10.00.37",
+"indent": "3",
+"description": "Underwear (352)",
+"superior": null,
+"units": [
+"doz.",
+"kg"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "3",
+"description": "Other:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "4",
+"description": "T-shirts:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "6109.10.00.40",
+"indent": "5",
+"description": "Women's (339)",
+"superior": null,
+"units": [
+"doz.",
+"kg"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "6109.10.00.45",
+"indent": "5",
+"description": "Girls' (339)",
+"superior": null,
+"units": [
+"doz.",
+"kg"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "4",
+"description": "Tank tops:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "6109.10.00.60",
+"indent": "5",
+"description": "Women's (339)",
+"superior": null,
+"units": [
+"doz.",
+"kg"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "6109.10.00.65",
+"indent": "5",
+"description": "Girls' (339)",
+"superior": null,
+"units": [
+"doz.",
+"kg"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "6109.10.00.70",
+"indent": "4",
+"description": "Other (339)",
+"superior": null,
+"units": [
+"doz.",
+"kg"
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+}
+]
