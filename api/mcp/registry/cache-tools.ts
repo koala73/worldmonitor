@@ -2988,7 +2988,7 @@ export const CACHE_TOOLS: ToolDef[] = [
             productSector: { type: 'string' },
             year: { type: 'number' },
             tariffRate: { type: 'number' },
-            boundRate: { type: 'number' },
+            boundRate: { type: 'number', description: 'Always 0: a placeholder, not an observed bound rate. Bound rates are not seeded.' },
             indicatorCode: { type: 'string' },
           } } },
           // Customs duties / goods imports from FRED (BEA), when available.
@@ -3032,7 +3032,12 @@ export const CACHE_TOOLS: ToolDef[] = [
         narrowNested(data, 'national-debt', 'entries', (e) => matchesCode(e.iso3, debtCodes));
       }
       // Tariff datapoints are oldest-first; keep the most recent years.
-      if (limit > 0) mapNested(data, 'all', 'datapoints', (d) => (Array.isArray(d) ? d.slice(-limit) : d));
+      // Truncate like capNested so a fractional limit below 1 keeps none
+      // (slice(-0) would keep all).
+      if (limit > 0) {
+        const n = Math.floor(limit);
+        mapNested(data, 'all', 'datapoints', (d) => (Array.isArray(d) ? (n > 0 ? d.slice(-n) : []) : d));
+      }
       capNested(data, 'bigmac', 'countries', limit);
       capNested(data, 'national-debt', 'entries', limit);
       const ds = argStrList(params.dataset);

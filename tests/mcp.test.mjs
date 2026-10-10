@@ -1583,6 +1583,15 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     seeded();
     const uncapped = await callTool('get_tariff_trends', { dataset: ['tariffs'], limit: 0 });
     assert.equal(uncapped.data.all.datapoints.length, 35);
+
+    // Fractional limits truncate like the head-capped lists (slice(0, 0.5) is
+    // empty); slice(-0.5) would return the whole history.
+    seeded();
+    const belowOne = await callTool('get_tariff_trends', { dataset: ['tariffs', 'bigmac'], limit: 0.5 });
+    assert.deepEqual(belowOne.data.all.datapoints, []);
+    seeded();
+    const fractional = await callTool('get_tariff_trends', { dataset: ['tariffs'], limit: 2.7 });
+    assert.deepEqual(fractional.data.all.datapoints.map((d) => d.year), [2024, 2025]);
   });
 
   it('executeTool: a throwing _postFilter falls back to the PRISTINE unfiltered data', async () => {
