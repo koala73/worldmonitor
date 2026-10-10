@@ -284,14 +284,16 @@ test('the repo .env.local backs the demo .env, and an empty assignment never blo
   const demo = path.join(dir, '.env');
   const repo = path.join(dir, '.env.local');
   await writeFile(demo, 'DESK_T_A=\nDESK_T_B=demo\n');
-  await writeFile(repo, 'DESK_T_A=repo\nDESK_T_B=repo\nDESK_T_C=repo\n');
-  for (const k of ['DESK_T_A', 'DESK_T_B', 'DESK_T_C', 'DESK_T_D']) delete process.env[k];
+  await writeFile(repo, 'DESK_T_A=repo\nDESK_T_B=repo\nDESK_T_C=repo\nDESK_T_E=repo\n');
+  for (const k of ['DESK_T_A', 'DESK_T_B', 'DESK_T_C', 'DESK_T_D', 'DESK_T_E']) delete process.env[k];
   process.env.DESK_T_D = 'shell';
+  process.env.DESK_T_E = '';
   loadEnv([demo, repo, path.join(dir, 'missing')]);
   assert.equal(process.env.DESK_T_A, 'repo', 'an empty line in the demo .env (as in .env.example) does not block the repo value');
   assert.equal(process.env.DESK_T_B, 'demo', 'the demo .env wins over the repo file');
   assert.equal(process.env.DESK_T_C, 'repo', 'a key only in the repo file is picked up');
   assert.equal(process.env.DESK_T_D, 'shell', 'the shell wins over every file');
+  assert.equal(process.env.DESK_T_E, '', 'an empty value set in the shell is kept, too');
   assert.deepEqual(envFiles().map((f) => path.basename(f)), ['.env', '.env.local', '.env']);
   assert.equal(path.dirname(envFiles()[1]), path.resolve(path.dirname(envFiles()[0]), '..', '..'), 'the repo files are two levels above the demo');
 });

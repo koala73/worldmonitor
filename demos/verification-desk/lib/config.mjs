@@ -24,7 +24,7 @@ export function loadEnv(files = envFiles()) {
   for (const file of files) {
     if (!existsSync(file)) continue;
     for (const [key, value] of Object.entries(parseEnv(readFileSync(file, 'utf8')))) {
-      if (value !== '' && !process.env[key]) process.env[key] = value;
+      if (value !== '' && process.env[key] === undefined) process.env[key] = value;
     }
   }
 }
