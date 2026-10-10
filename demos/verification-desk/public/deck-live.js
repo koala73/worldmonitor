@@ -60,9 +60,13 @@ function showCaption(text) {
   el.innerHTML = `<span class="who">${esc(CONFIG.voiceName)} · AI AVATAR</span>${esc(text)}<span class="bar"><i></i></span>`;
   el.classList.add('on');
 }
+// The deck's recorded lines introduce "an AI voice"; with the face on screen
+// the same line is said by an avatar. Only the self-description changes.
+const avatarWording = (t) => t.replace(/\ban AI voice\b/g, 'an AI avatar').replace(/\bAI voice\b/g, 'AI avatar');
+
 Voice.play = async (id) => {
-  const text = DATA.say[id];
-  if (!heygen.isActive() || !text) return deckPlay(id);
+  if (!heygen.isActive() || !DATA.say[id]) return deckPlay(id);
+  const text = avatarWording(DATA.say[id]);
   deckStop(true);
   const run = ++heygenRun;
   const sentences = text.match(/[^.!?]+[.!?]+["”’]?|[^.!?]+$/g) || [text];
