@@ -61,3 +61,10 @@
 #avatar.heygen canvas{opacity:0}
 #avatar.heygen:not(.feature){width:300px;height:300px}
 #avatar.heygen-wait canvas{animation:pulse 1s infinite}
+
+/* ---------- control bar: live buttons ---------- */
+#ctrl .live-sep{width:1px;align-self:stretch;margin:0 4px;background:var(--line)}
+#ctrl button.live-btn[hidden]{display:none}
+#ctrl button.live-btn:disabled{opacity:.35;cursor:default}
+#ctrl button.live-btn:disabled:hover{border-color:var(--line);color:var(--txt)}
+#ctrl button.live-btn.on{border-color:var(--acc);color:var(--acc);background:rgba(66,255,170,.1);box-shadow:inset 0 0 0 1px rgba(66,255,170,.25)}

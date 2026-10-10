@@ -98,8 +98,6 @@ async function toggleHeygen() {
   a.classList.toggle('heygen', ok);
   toast(ok ? 'HeyGen avatar on (G to switch back)' : 'HeyGen unavailable: animated avatar');
 }
-heygen.onStatus(({ ready, wanted }) => $('#avatar')?.classList.toggle('heygen', ready && wanted));
-
 /* ---------- data ---------- */
 
 async function loadBoard(force = false) {
@@ -490,11 +488,64 @@ window.onKey = function onKeyLive(e) {
   return deckKey(e);
 };
 
+/* ---------- control bar: the live keys as buttons ---------- */
+
+// Each button fires the same key the keyboard would, so there is one code
+// path. Scene-bound buttons appear only on their scene; toggles show state.
+const LIVE_BUTTONS = [
+  { key: 'g', label: '👤 G AVATAR', title: 'G: HeyGen avatar on / off (costs credits while on)', always: true, on: () => heygen.isWanted() },
+  { key: 'l', label: '▶ L AUTO', title: 'L: speak each beat on arrival', always: true, on: () => S.autoNarrate },
+  { key: 'U', shift: true, label: '⟳ ⇧U REFRESH', title: 'Shift+U: refresh the board from WorldMonitor (2 calls)', scene: 'liveboard' },
+  { key: 't', label: '⌨ T TYPE', title: 'T: type a headline from the room', scene: 'livecheck' },
+  { key: 'Enter', label: '↵ RE-RUN', title: 'Enter: run the last headline again', scene: 'livecheck', enabled: () => Boolean(LIVE.lastHeadline) },
+  { key: 'Backspace', label: '⌫ PICKS', title: 'Backspace: back to the story picks', scene: 'livecheck' },
+];
+
+function installLiveButtons() {
+  const ctrl = $('#ctrl');
+  if (!ctrl || ctrl.querySelector('.live-sep')) return;
+  ctrl.insertAdjacentHTML('beforeend', '<span class="live-sep"></span>');
+  for (const b of LIVE_BUTTONS) {
+    const el = h('button', 'live-btn', esc(b.label));
+    el.title = b.title;
+    el.onclick = (e) => {
+      e.stopPropagation();
+      const code = b.key.length === 1 ? `Key${b.key.toUpperCase()}` : b.key;
+      window.onKey({ key: b.key, code, target: null, preventDefault() {}, shiftKey: Boolean(b.shift) });
+      refreshLiveButtons();
+    };
+    ctrl.appendChild(el);
+    b.el = el;
+  }
+  refreshLiveButtons();
+}
+
+function refreshLiveButtons() {
+  const id = cur()?.id;
+  for (const b of LIVE_BUTTONS) {
+    if (!b.el) continue;
+    const show = Boolean(b.always) || b.scene === id;
+    b.el.hidden = !show;
+    b.el.disabled = show && b.enabled ? !b.enabled() : false;
+    b.el.classList.toggle('on', Boolean(b.on?.()));
+  }
+}
+
+// The deck redraws its HUD on every scene and step change; the buttons follow.
+const deckUpdateHud = window.updateHud;
+window.updateHud = function updateHudLive(...args) {
+  const out = deckUpdateHud(...args);
+  refreshLiveButtons();
+  return out;
+};
+heygen.onStatus(({ ready, wanted }) => { $('#avatar')?.classList.toggle('heygen', ready && wanted); refreshLiveButtons(); });
+
 /* ---------- boot ---------- */
 
 addEventListener('load', async () => {
   const av = $('#avatar');
   if (av && !av.querySelector('video')) av.insertAdjacentHTML('afterbegin', '<video autoplay playsinline></video>');
+  installLiveButtons();
   try { LIVE.config = await fetch('/api/config').then((r) => r.json()); } catch { LIVE.config = {}; }
   loadBoard(); // warm, so the live board is instant when the show reaches it
 });
