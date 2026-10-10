@@ -64,6 +64,18 @@ const WTO_CODE_ISO3: Readonly<Record<string, string>> = {
   '757': 'che',
 };
 
+/**
+ * The same four economies keyed the other way: UN M49 to the WTO code the MFN
+ * seed (`trade:tariffs:v2:<code>`) is stored under. A caller that resolved a
+ * name to M49 must translate before reading that series.
+ */
+export const M49_TO_WTO_CODE: Readonly<Record<string, string>> = {
+  '250': '251',
+  '578': '579',
+  '356': '699',
+  '756': '757',
+};
+
 const UN_ISO2 = UN_TO_ISO2 as Record<string, string>;
 const ISO3 = ISO2_TO_ISO3 as Record<string, string>;
 const own = (map: object, key: string): boolean => Object.prototype.hasOwnProperty.call(map, key);

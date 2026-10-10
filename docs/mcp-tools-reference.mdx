@@ -489,7 +489,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_tariff_trends`
 
-Global trade and pricing indicators: US MFN applied tariff trend (All-products average, not bilateral or HS-level), Big Mac index, FAO Food Price Index, and per-country national debt levels.
+Global trade and pricing indicators: US MFN applied tariff trend (all-products average; for another reporter, a partner or a product group use get_tariff_averages), Big Mac index, FAO Food Price Index, and per-country national debt levels.
 
 **Parameters (tool-specific):**
 
@@ -547,6 +547,118 @@ curl -s https://worldmonitor.app/mcp \
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
     "params":{"name":"get_wto_trade_flows","arguments":{"reporter":"840","years":20}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_tariff_averages`
+
+Average tariff one country applies, by year. With no partner and no product group it returns the WTO MFN average over all products (`TP_A_0010`) for any reporter, not only the US series in `get_tariff_trends`. With a partner other than World, or a product group, it returns the effectively applied average from UNCTAD TRAINS via World Bank WITS:
+
+- `tariffRate` is the simple average (`AHS-SMPL-AVRG`), counting preferences the partner qualifies for.
+- `weightedRate` is the import-weighted average (`AHS-WGHTD-AVRG`).
+
+Series run from about 1990 to 2023 for most reporters. US preferences are reported only through 2021. These are schedule rates: Section 301, 232 and other unilateral duties are not included. For the US, use `get_us_import_duty`.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `reporter` | string | Importing country. Defaults to the United States (`840`). A 3-digit code is passed through, so WTO codes (`699` India) and the EU (`918`, or `"EU"`) work. ISO alpha-2, alpha-3 and English names are also accepted; France, Norway, India and Switzerland are sent as their WTO codes (`251`, `579`, `699`, `757`), which key the MFN series. |
+| `partner` | string | Exporting country whose goods are averaged. Omit, or pass `"World"` (`000`), for all partners. The EU is not a partner in this dataset. |
+| `product_group` | string (enum) | A WITS product group: an HS section range such as `84-85_MachElec` or `50-63_TextCloth`, or an aggregate such as `Textiles`, `Food`, `Fuels`, `manuf`. `all` or omitted means every product. |
+| `years` | integer | Years to return, newest kept (0–30). 0 or omitted means the route default (10). |
+
+**Response distinctions:** `indicatorCode`, `partnerCountry` and `productSector` on each datapoint say which series answered. `TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED` is a coverage answer (WITS has no such series). `TARIFF_TREND_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` is a fault, with `upstreamUnavailable: true`; retry later.
+
+- **API endpoint:** `GET /api/trade/v1/get-tariff-trends`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC proxy over the canonical route. Partner and product-group series are read from WITS on a cache miss and cached for 7 days.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_tariff_averages","arguments":{"reporter":"US","partner":"China","product_group":"Textiles","years":5}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_bilateral_tariff`
+
+Tariff one country applies to one 6-digit HS product from one partner, for one year, from UNCTAD TRAINS via World Bank WITS. `appliedRate` is what the partner pays: the best preferential rate it qualifies for, else MFN. `basis` says which. `mfnRate`, `preferentialRate` and the per-agreement `groupPreferences` are reported separately. `mfnAveRate` is an ad valorem equivalent where the MFN duty is specific. EU members answer from the EU schedule (`filingReporter` `918`).
+
+Schedule rates only: Section 301, 232, anti-dumping and other unilateral duties are not included. TRAINS has no US preferences after 2021 and no US data after 2023, so for the US use `get_us_import_duty`.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `reporter` | string | Importing country (required). 3-digit code, ISO alpha-2 or alpha-3, or English name. |
+| `partner` | string | Exporting country (required). Same forms. |
+| `hs_code` | string | 6-digit HS code (required), e.g. `870380`. Dots are ignored. |
+| `year` | integer | Tariff year. 0 or omitted means the latest year with data. |
+
+**Response distinctions:** `BILATERAL_TARIFF_UNAVAILABLE_REASON_NOT_COVERED` is a coverage answer. `BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` is a fault, with `upstreamUnavailable: true`.
+
+- **API endpoint:** `GET /api/trade/v1/get-bilateral-tariff`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC proxy over the canonical route, which reads WITS on a cache miss. A cold read can take several seconds.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_bilateral_tariff","arguments":{"reporter":"India","partner":"US","hs_code":"870380"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_us_import_duty`
+
+Current US duty on one product from one country. For each 8-digit line under `hs_code` it returns the live USITC Harmonized Tariff Schedule rates and a `basis` (`MFN`, `PREFERENTIAL` with `preferenceProgram`, or `COLUMN_2`). It also returns the chapter 99 Section 301 and 232 duties in force, each with a `status`:
+
+- `APPLIES`
+- `CONDITIONAL`, with a `condition` saying what decides it
+- `EXEMPT`
+- `SCHEDULED`
+
+`estimatedRate` adds only `APPLIES` duties to the base rate. `estimateComplete` is false when a specific duty, a condition or an unresolved preference program leaves it open. IEEPA duties are not collected and not reported. Anti-dumping and countervailing duties are not included. `additionalDutiesLoaded: false` means only the base rates were available.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `hs_code` | string | HTS code of 6, 8 or 10 digits (required), e.g. `870380` or `8703.80.00`. Dots are ignored. |
+| `partner` | string | Country of origin (required). 3-digit code, ISO alpha-2 or alpha-3, or English name. |
+
+- **API endpoint:** `GET /api/trade/v1/get-us-import-duty`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC proxy over the canonical route: a live HTS line read joined with the seeded chapter 99 catalog (`trade:us-hts:catalog:v1`).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_us_import_duty","arguments":{"hs_code":"870380","partner":"CN"}}
   }'
 ```
 

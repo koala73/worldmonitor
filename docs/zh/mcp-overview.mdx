@@ -36,7 +36,7 @@ Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / c
 | `https://worldmonitor.app/.well-known/oauth-protected-resource/mcp` | MCP 端点的资源服务器元数据（RFC 9728），其 `resource` 为 `https://worldmonitor.app/mcp`；`401` 质询即指向此文档 |
 | `https://worldmonitor.app/.well-known/oauth-protected-resource` | 源站的资源服务器元数据（RFC 9728），保留给在路径限定文档出现之前已完成发现的客户端 |
 
-服务器标识：`worldmonitor` v1.31.0。
+服务器标识：`worldmonitor` v1.32.0。
 
 注册表登记：该服务器以 `app.worldmonitor/mcp` 之名发布于[官方 MCP 注册表](https://registry.modelcontextprotocol.io/v0/servers?search=worldmonitor) —— 这是一个经过域名验证的命名空间，因此通过注册表解析服务器的客户端获得的端点和元数据与上方的服务器卡片一致 —— 并在 [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp) 和 [mcp.so](https://mcp.so/server/world-monitor) 上列出。
 
@@ -245,8 +245,11 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_eu_industrial_production` | Eurostat 月度工业生产指数，12 个月迷你图。 |
 | `get_prediction_markets` | 含当前概率的预测市场：`geopolitical`（地缘政治/选举）、`tech`（有标签的科技：人工智能/加密货币/科学）以及 `finance`（金融/经济或未分类回退）。 |
 | `get_supply_chain_data` | 干散货航运压力指数、海关流量、COMTRADE 双边贸易。 |
-| `get_tariff_trends` | 全球贸易和定价指标：美国关税趋势（HTS 编码）、巨无霸指数、FAO 食品价格指数以及各国国债水平。 |
+| `get_tariff_trends` | 全球贸易和定价指标：美国 MFN 适用关税趋势（全部产品平均；其他报告国、伙伴或产品组请使用 `get_tariff_averages`）、巨无霸指数、FAO 食品价格指数以及各国国债水平。 |
 | `get_wto_trade_flows` | 一个报告国与世界之间的 WTO 商品贸易流量（报告国使用 3 位 UN M49 代码，时间窗口为 1–30 年）。区分 `not_covered` 与故障。 |
+| `get_tariff_averages` | 一个国家按年份适用的平均关税：WTO MFN 平均，或传入伙伴和/或 WITS 产品组时的实际适用简单平均和进口加权平均（UNCTAD TRAINS）。仅为税则税率。 |
+| `get_bilateral_tariff` | 两国之间某一 HS6 产品在某一年的适用、MFN 和优惠关税（UNCTAD TRAINS，经 WITS）。仅为税则税率。 |
+| `get_us_import_duty` | 美国当前对来自某国的某一 HTS 产品征收的关税：实时 HTS 基础税率，加上现行 301 和 232 条款关税，每项带状态。 |
 | `get_chokepoint_status` | 实时海上咽喉要道状态：每个咽喉要道的船舶过境计数（10 分钟节奏）、滚动过境摘要、每个港口的活动，以及静态参考数据和流量汇总。覆盖苏伊士、霍尔木兹、马六甲、曼德海峡、巴拿马等。 |
 | `get_consumer_prices` | 各国消费者价格情报：30 天概览、品类级通胀、零售商价差（必需品篮子）、热门变动以及来源新鲜度。需要 `country_code`（目前仅填充了 `ae`）。 |
 | `get_procurement_opportunities` | 仅限 Pro 的规范全球采购搜索；紧凑输出默认 10 条、最多 25 条。关键词相关性绝不表示投标资格。 |
@@ -369,6 +372,9 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_economic_data` | `GET /api/economic/v1/get-ecb-fx-rates`<br/>`GET /api/economic/v1/get-economic-calendar`<br/>`GET /api/economic/v1/get-eu-yield-curve`<br/>`GET /api/economic/v1/list-fuel-prices`<br/>`GET /api/market/v1/get-cot-positioning`<br/>`GET /api/market/v1/list-earnings-calendar` |
 | `get_tariff_trends` | `GET /api/economic/v1/get-fao-food-price-index`<br/>`GET /api/economic/v1/get-national-debt`<br/>`GET /api/economic/v1/list-bigmac-prices` |
 | `get_wto_trade_flows` | `GET /api/trade/v1/get-trade-flows` |
+| `get_tariff_averages` | `GET /api/trade/v1/get-tariff-trends` |
+| `get_bilateral_tariff` | `GET /api/trade/v1/get-bilateral-tariff` |
+| `get_us_import_duty` | `GET /api/trade/v1/get-us-import-duty` |
 | `get_energy_intelligence` | `GET /api/economic/v1/get-energy-crisis-policies`<br/>`GET /api/supply-chain/v1/get-fuel-shortage-detail`<br/>`GET /api/supply-chain/v1/list-energy-disruptions`<br/>`GET /api/supply-chain/v1/list-fuel-shortages` |
 | `get_consumer_prices` | `GET /api/consumer-prices/v1/get-consumer-price-freshness`<br/>`GET /api/consumer-prices/v1/get-consumer-price-overview`<br/>`GET /api/consumer-prices/v1/list-consumer-price-categories`<br/>`GET /api/consumer-prices/v1/list-consumer-price-movers`<br/>`GET /api/consumer-prices/v1/list-retailer-price-spreads` |
 | `get_supply_chain_data` | `GET /api/supply-chain/v1/get-shipping-stress`<br/>`GET /api/trade/v1/get-customs-revenue` |
