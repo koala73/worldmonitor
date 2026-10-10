@@ -294,6 +294,7 @@ test('the repo .env.local backs the demo .env, and an empty assignment never blo
   assert.equal(process.env.DESK_T_D, 'shell', 'the shell wins over every file');
   assert.deepEqual(envFiles().map((f) => path.basename(f)), ['.env', '.env.local', '.env']);
   assert.equal(path.dirname(envFiles()[1]), path.resolve(path.dirname(envFiles()[0]), '..', '..'), 'the repo files are two levels above the demo');
+});
 
 test('a failed refresh keeps the last board as a dated snapshot, never "live"', async () => {
   let fail = false;
