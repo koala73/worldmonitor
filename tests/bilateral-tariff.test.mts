@@ -89,11 +89,14 @@ beforeEach(() => {
 
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const href = input instanceof Request ? input.url : String(input);
-    if (href.startsWith(`${REDIS_HOST}/get/`)) {
-      const key = decodeURIComponent(href.slice(`${REDIS_HOST}/get/`.length));
+    const url = new URL(href);
+    // Route on the parsed origin, not a string prefix, so a host such as
+    // redis.test.example cannot be mistaken for the fake Redis.
+    if (url.origin === REDIS_HOST && url.pathname.startsWith('/get/')) {
+      const key = decodeURIComponent(url.pathname.slice('/get/'.length));
       return new Response(JSON.stringify({ result: redisStore.get(key) ?? null }), { status: 200 });
     }
-    if (href.startsWith(REDIS_HOST)) {
+    if (url.origin === REDIS_HOST) {
       const body = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
       const commands: unknown[][] = Array.isArray(body?.[0]) ? body : [body];
       for (const cmd of commands) {
@@ -102,7 +105,7 @@ beforeEach(() => {
       const reply = Array.isArray(body?.[0]) ? commands.map(() => ({ result: 'OK' })) : { result: 'OK' };
       return new Response(JSON.stringify(reply), { status: 200 });
     }
-    if (href.startsWith('https://wits.worldbank.org/')) {
+    if (url.origin === 'https://wits.worldbank.org') {
       witsCalls.push(href);
       if (witsFaults.has(href)) return new Response('Service Unavailable', { status: 503 });
       const route = WITS_ROUTES[href];
