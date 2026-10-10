@@ -87,20 +87,31 @@ Voice.play = async (id) => {
 };
 Voice.stop = (silent) => { heygenRun += 1; heygen.interrupt(); $('#caps')?.classList.remove('on'); return deckStop(silent); };
 
+// A toggle while the avatar is still connecting (about eight seconds) would
+// close the session the moment it opens; presses during that window are ignored.
+let heygenBusy = false;
 async function toggleHeygen() {
   const a = $('#avatar');
-  if (heygen.isWanted()) {
-    await heygen.stop();
-    a.classList.remove('heygen');
-    toast('WM Analyst: animated avatar');
-    return;
+  if (heygenBusy) { toast('Avatar still connecting…'); return; }
+  heygenBusy = true;
+  try {
+    if (heygen.isWanted()) {
+      console.debug('[avatar] switch off requested');
+      await heygen.stop();
+      a.classList.remove('heygen');
+      toast('WM Analyst: animated avatar');
+      return;
+    }
+    if (!LIVE.config.avatar) { toast('No LiveAvatar key in .env: staying on the animated avatar'); return; }
+    console.debug('[avatar] switch on requested');
+    a.classList.add('heygen-wait');
+    const ok = await heygen.start($('#avatar video'));
+    a.classList.remove('heygen-wait');
+    a.classList.toggle('heygen', ok);
+    toast(ok ? 'HeyGen avatar on (G to switch back)' : 'HeyGen unavailable: animated avatar');
+  } finally {
+    heygenBusy = false;
   }
-  if (!LIVE.config.avatar) { toast('No LiveAvatar key in .env: staying on the animated avatar'); return; }
-  a.classList.add('heygen-wait');
-  const ok = await heygen.start($('#avatar video'));
-  a.classList.remove('heygen-wait');
-  a.classList.toggle('heygen', ok);
-  toast(ok ? 'HeyGen avatar on (G to switch back)' : 'HeyGen unavailable: animated avatar');
 }
 /* ---------- data ---------- */
 
