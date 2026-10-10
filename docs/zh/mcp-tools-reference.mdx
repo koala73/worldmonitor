@@ -556,7 +556,7 @@ curl -s https://worldmonitor.app/mcp \
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `reporter` | string | 进口国。默认为美国（`840`）。3 位 UN M49 代码原样传递，因此 WTO 代码（`699` 印度）和欧盟（`918` 或 `"EU"`）均可用。也接受 ISO alpha-2、alpha-3 和英文名称。 |
+| `reporter` | string | 进口国。默认为美国（`840`）。3 位 UN M49 代码原样传递，因此 WTO 代码（`699` 印度）和欧盟（`918` 或 `"EU"`）均可用。也接受 ISO alpha-2、alpha-3 和英文名称；法国、挪威、印度和瑞士会以其 WTO 代码（`251`、`579`、`699`、`757`）发送，MFN 序列以这些代码为键。 |
 | `partner` | string | 被计算平均税率的出口国。省略或传 `"World"`（`000`）表示所有伙伴。该数据集中欧盟不能作为伙伴。 |
 | `product_group` | string（枚举） | WITS 产品组：HS 章节范围如 `84-85_MachElec`、`50-63_TextCloth`，或汇总组如 `Textiles`、`Food`、`Fuels`、`manuf`。`all` 或省略表示全部产品。 |
 | `years` | integer | 返回的年数，保留最新年份（0–30）。0 或省略表示路由默认值（10）。 |

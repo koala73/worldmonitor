@@ -565,7 +565,7 @@ Series run from about 1990 to 2023 for most reporters. US preferences are report
 
 | Name | Type | Description |
 |------|------|-------------|
-| `reporter` | string | Importing country. Defaults to the United States (`840`). A 3-digit UN M49 code is passed through, so WTO codes (`699` India) and the EU (`918`, or `"EU"`) work. ISO alpha-2, alpha-3 and English names are also accepted. |
+| `reporter` | string | Importing country. Defaults to the United States (`840`). A 3-digit code is passed through, so WTO codes (`699` India) and the EU (`918`, or `"EU"`) work. ISO alpha-2, alpha-3 and English names are also accepted; France, Norway, India and Switzerland are sent as their WTO codes (`251`, `579`, `699`, `757`), which key the MFN series. |
 | `partner` | string | Exporting country whose goods are averaged. Omit, or pass `"World"` (`000`), for all partners. The EU is not a partner in this dataset. |
 | `product_group` | string (enum) | A WITS product group: an HS section range such as `84-85_MachElec` or `50-63_TextCloth`, or an aggregate such as `Textiles`, `Food`, `Fuels`, `manuf`. `all` or omitted means every product. |
 | `years` | integer | Years to return, newest kept (0–30). 0 or omitted means the route default (10). |

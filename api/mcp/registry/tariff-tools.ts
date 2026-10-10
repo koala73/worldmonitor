@@ -17,7 +17,7 @@
  */
 import { resolveCountryCode } from '../../../shared/country-code-resolve';
 import UN_TO_ISO2 from '../../../shared/un-to-iso2.json';
-import { PRODUCT_GROUPS } from '../../../server/worldmonitor/trade/v1/_tradestats-tariff';
+import { M49_TO_WTO_CODE, PRODUCT_GROUPS } from '../../../server/worldmonitor/trade/v1/_tradestats-tariff';
 import { COUNTRY_ARG_HINT, echoCountryInput } from '../_country-args';
 import { buildAuthHeaders } from '../auth';
 import { RpcValidationError } from '../billing-denial';
@@ -92,6 +92,35 @@ const RATE_DETAIL_SCHEMA = {
 };
 
 const PRODUCT_GROUP_VALUES = ['all', ...PRODUCT_GROUPS];
+const PRODUCT_GROUP_BY_LOWER = new Map(PRODUCT_GROUP_VALUES.map((g) => [g.toLowerCase(), g]));
+
+/**
+ * get-tariff-trends serves the MFN series from a seed keyed by WTO codes, which
+ * differ from UN M49 for France, Norway, India and Switzerland. The WITS path
+ * accepts both, so the WTO code is safe on either series.
+ */
+function tariffTrendsCountryCode(
+  raw: unknown,
+  operation: string,
+  field: string,
+  opts: { allowWorld?: boolean; allowEu?: boolean },
+): string {
+  const code = tradeCountryCode(raw, operation, field, opts);
+  return M49_TO_WTO_CODE[code] ?? code;
+}
+
+/** WITS's spelling of a product group, '' for every product, or Invalid params. */
+function productGroupParam(raw: unknown, operation: string): string {
+  if (raw === undefined || raw === null || raw === '') return '';
+  const group = typeof raw === 'string' ? PRODUCT_GROUP_BY_LOWER.get(raw.trim().toLowerCase()) : undefined;
+  if (group === undefined) {
+    throw new RpcValidationError(operation, [{
+      field: 'product_group',
+      description: `product_group must be "all" or a WITS product group such as "84-85_MachElec" or "Textiles"; got ${JSON.stringify(echoCountryInput(raw))}.`,
+    }]);
+  }
+  return group === 'all' ? '' : group;
+}
 
 export const TARIFF_TOOLS: ToolDef[] = [
   {
@@ -101,7 +130,7 @@ export const TARIFF_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        reporter: { type: 'string', description: `Importing country. Defaults to the United States (840). The EU ("EU" or 918) is accepted. ${COUNTRY_CODE_HINT}` },
+        reporter: { type: 'string', description: `Importing country. Defaults to the United States (840). The EU ("EU" or 918) is accepted. France, Norway, India and Switzerland are sent as their WTO codes (251, 579, 699, 757), which key the MFN series. ${COUNTRY_CODE_HINT}` },
         partner: { type: 'string', description: `Exporting country whose goods are averaged. Omit, or pass "World" (000), for all partners. The EU is not a partner in this dataset. ${COUNTRY_CODE_HINT}` },
         product_group: {
           type: 'string',
@@ -146,14 +175,13 @@ export const TARIFF_TOOLS: ToolDef[] = [
       const query = new URLSearchParams({
         reporting_country: params.reporter === undefined || params.reporter === ''
           ? '840'
-          : tradeCountryCode(params.reporter, operation, 'reporter', { allowEu: true }),
+          : tariffTrendsCountryCode(params.reporter, operation, 'reporter', { allowEu: true }),
       });
       if (params.partner !== undefined && params.partner !== '') {
-        query.set('partner_country', tradeCountryCode(params.partner, operation, 'partner', { allowWorld: true }));
+        query.set('partner_country', tariffTrendsCountryCode(params.partner, operation, 'partner', { allowWorld: true }));
       }
-      if (typeof params.product_group === 'string' && params.product_group.trim() !== '') {
-        query.set('product_sector', params.product_group.trim());
-      }
+      const group = productGroupParam(params.product_group, operation);
+      if (group) query.set('product_sector', group);
       const years = optionalInt(params.years, operation, 'years', 0, 30);
       if (years) query.set('years', String(years));
 

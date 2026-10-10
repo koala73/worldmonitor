@@ -8,7 +8,8 @@ import assert from 'node:assert/strict';
 import { TOOL_REGISTRY, toolAccess, toolWeight } from '../api/mcp/registry/index.ts';
 import { RpcValidationError } from '../api/mcp/billing-denial.ts';
 import { tradeCountryCode } from '../api/mcp/registry/tariff-tools.ts';
-import { PRODUCT_GROUPS } from '../server/worldmonitor/trade/v1/_tradestats-tariff.ts';
+import { M49_TO_WTO_CODE, PRODUCT_GROUPS, witsCountry } from '../server/worldmonitor/trade/v1/_tradestats-tariff.ts';
+import { tariffTrendSeedKey } from '../scripts/seed-supply-chain-trade.mjs';
 
 const originalFetch = globalThis.fetch;
 const BASE = 'https://api.worldmonitor.app';
@@ -133,6 +134,40 @@ describe('get_tariff_averages', () => {
     }
   });
 
+  it('sends the WTO code the MFN seed is keyed by for France, Norway, India and Switzerland', async () => {
+    for (const [name, wto] of [['India', '699'], ['France', '251'], ['NO', '579'], ['CHE', '757']]) {
+      requested = [];
+      await averages._execute({ reporter: name }, BASE, CTX, {});
+      const reporter = requested[0]!.searchParams.get('reporting_country')!;
+      assert.equal(reporter, wto, name);
+      assert.equal(tariffTrendSeedKey(reporter), `trade:tariffs:v2:${wto}`);
+    }
+    requested = [];
+    await averages._execute({ reporter: 'US', partner: 'India' }, BASE, CTX, {});
+    assert.equal(requested[0]!.searchParams.get('partner_country'), '699');
+  });
+
+  it('maps each M49 code to a WTO code that WITS reads as the same economy', () => {
+    for (const [m49, wto] of Object.entries(M49_TO_WTO_CODE)) {
+      assert.ok(witsCountry(m49, 'reporter'), m49);
+      assert.equal(witsCountry(wto, 'reporter'), witsCountry(m49, 'reporter'), `${m49} -> ${wto}`);
+      assert.equal(witsCountry(wto, 'partner'), witsCountry(m49, 'partner'), `${m49} -> ${wto}`);
+    }
+  });
+
+  it('matches product groups case-insensitively and sends WITS spelling; "all" sends none', async () => {
+    await averages._execute({ product_group: '84-85_machelec' }, BASE, CTX, {});
+    assert.equal(requested[0]!.searchParams.get('product_sector'), '84-85_MachElec');
+    requested = [];
+    await averages._execute({ product_group: 'ALL' }, BASE, CTX, {});
+    assert.equal(requested[0]!.searchParams.has('product_sector'), false);
+  });
+
+  it('rejects an unknown or non-string product group without a fetch', async () => {
+    await rejectsWith(averages._execute({ product_group: 'MadeUpGroup' }, BASE, CTX, {}), 'product_group');
+    await rejectsWith(averages._execute({ product_group: 123 }, BASE, CTX, {}), 'product_group');
+  });
+
   it('accepts the EU as reporter and World as partner', async () => {
     await averages._execute({ reporter: 'European Union', partner: 'World' }, BASE, CTX, {});
     assert.equal(requested[0]!.searchParams.get('reporting_country'), '918');
@@ -152,8 +187,8 @@ describe('get_tariff_averages', () => {
   });
 
   it('turns a gateway 400 with violations into Invalid params', async () => {
-    reply = () => json({ violations: [{ field: 'product_sector', description: 'value does not match regex pattern' }] }, 400);
-    await assert.rejects(averages._execute({ product_group: 'all' }, BASE, CTX, {}), RpcValidationError);
+    reply = () => json({ violations: [{ field: 'reporting_country', description: 'value does not match regex pattern' }] }, 400);
+    await assert.rejects(averages._execute({}, BASE, CTX, {}), RpcValidationError);
   });
 
   it('turns a gateway 5xx into a tool error, not a served answer', async () => {
@@ -167,7 +202,7 @@ describe('get_bilateral_tariff', () => {
     await bilateral._execute({ reporter: 'India', partner: 'US', hs_code: '8703.80', year: 2022 }, BASE, CTX, {});
     const url = requested[0]!;
     assert.equal(url.pathname, '/api/trade/v1/get-bilateral-tariff');
-    assert.equal(url.searchParams.get('reporting_country'), '356');
+    assert.equal(url.searchParams.get('reporting_country'), '356', 'only the MFN seed needs WTO codes');
     assert.equal(url.searchParams.get('partner_country'), '840');
     assert.equal(url.searchParams.get('hs_code'), '870380');
     assert.equal(url.searchParams.get('year'), '2022');
