@@ -1,0 +1,29 @@
+{
+  "name": "worldmonitor-verification-desk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Live stage demo: an AI anchor grades headlines with WorldMonitor's own corroboration, source-tier, provenance, credibility and grounding code.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --import tsx server.mjs",
+    "offline": "DESK_OFFLINE=1 node --import tsx server.mjs",
+    "grade": "node --import tsx scripts/grade.mjs",
+    "snapshot": "node --import tsx scripts/snapshot.mjs",
+    "snapshot:loop": "node --import tsx scripts/snapshot.mjs --every=120",
+    "find-reveal": "node --import tsx scripts/find-reveal.mjs",
+    "check": "node --import tsx scripts/check.mjs",
+    "test": "node --import tsx --test test/*.test.mjs",
+    "postinstall": "node scripts/build-avatar.mjs && node scripts/install-deck.mjs",
+    "build:avatar": "node scripts/build-avatar.mjs",
+    "deck": "node scripts/install-deck.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.1",
+    "@heygen/liveavatar-web-sdk": "^0.0.19",
+    "esbuild": "^0.25.10",
+    "tsx": "^4.21.0"
+  }
+}

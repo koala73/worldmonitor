@@ -1,0 +1,5 @@
+node_modules/
+.env
+data/
+public/vendor/
+public/deck.html
