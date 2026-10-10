@@ -62,7 +62,7 @@ Coverage reconciled: 2026-10-10. Every figure below is generated from this repos
 - 40 named live data streams whose staleness is tracked and surfaced individually — a different axis from the 10 signal domains above, which group the source catalog by subject
 - 58 map layer types in the shared registry, 57 of them reachable in the full variant — the homepage publishes the full-variant figure; the remaining 1 is sunset or build-flag gated
 - 114 concrete panel implementations across 6 product variants
-- 90 MCP tools; use `tools/list` for the live inventory
+- 93 MCP tools; use `tools/list` for the live inventory
 - 28 supported interface languages
 - 31 countries scored by the Country Instability Index (CII v8)
 - 196-country rankable universe for the Country Resilience Index, of which 170 are ranked in the published snapshot captured 2026-08-29

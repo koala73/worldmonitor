@@ -97,6 +97,7 @@ With `partner_country` (other than `000`) or `product_sector` set, `get-tariff-t
 - `partnerCountry` echoes the requested code (`World` for `000` or empty), and `productSector` names the group.
 - Product groups are WITS's: the HS sections (`01-05_Animal`, `06-15_Vegetable`, `16-24_FoodProd`, `25-26_Minerals`, `27-27_Fuels`, `28-38_Chemicals`, `39-40_PlastiRub`, `41-43_HidesSkin`, `44-49_Wood`, `50-63_TextCloth`, `64-67_Footwear`, `68-71_StoneGlas`, `72-83_Metals`, `84-85_MachElec`, `86-89_Transport`, `90-99_Miscellan`) and the aggregates `AgrRaw`, `Chemical`, `Food`, `Fuels`, `manuf`, `OresMtls`, `Textiles` and `Transp`. Matching is case-insensitive.
 - Codes are 3-digit UN M49. WTO's own codes for France (`251`), Norway (`579`), India (`699`) and Switzerland (`757`) are accepted too. The EU (`918`) is a reporter but not a partner; name a member state instead.
+- MCP agents read these series, and the MFN series of any reporter, with `get_tariff_averages`.
 
 US imports from China, all products, 2023: 3.6% simple, 2.8% weighted. Textiles: 8.8% and 9.9%. EU imports from the United States: 5.0% and 1.6%.
 
@@ -125,7 +126,7 @@ Rates are simple averages across the importer's national tariff lines. When the 
 
 TRAINS does not record unilateral additional duties (US Section 301, 232 or IEEPA tariffs), anti-dumping or countervailing duties, or safeguards. For pairs subject to them, the applied rate here understates what importers pay.
 
-`unavailableReason` is `NOT_COVERED` (`upstreamUnavailable: false`) when TRAINS has no row for that importer, product and year, and `UPSTREAM_UNAVAILABLE` (`upstreamUnavailable: true`) when WITS fails. The route is tier 1, so Pro and the API plans can call it. It is REST-only; there is no MCP tool yet.
+`unavailableReason` is `NOT_COVERED` (`upstreamUnavailable: false`) when TRAINS has no row for that importer, product and year, and `UPSTREAM_UNAVAILABLE` (`upstreamUnavailable: true`) when WITS fails. The route is tier 1, so Pro and the API plans can call it. MCP agents call it as `get_bilateral_tariff`.
 
 ### US import duty lookup (API only)
 
@@ -171,7 +172,7 @@ The route does not report three things:
 
 Product coverage for these duties lives in the chapter 99 U.S. notes, which run to about 5 MB, not in the product lines. `seed-supply-chain-trade` therefore parses the notes from the current HTS release every six hours. It publishes a catalog of measures, `trade:us-hts:catalog:v1`, plus one coverage shard per HS chapter, keyed by release. Each measure is located by an anchor phrase and validated. If any measure fails to resolve, the publish is skipped and the previous release stays in place. The route reads the product's lines live from the HTS `exportList` service and caches them for a day under the catalog's release, so a new release reads fresh lines. If the catalog is missing, it still serves the rates with `additionalDutiesLoaded: false`. Health is the `usHtsDuties` entry in `/api/health`.
 
-`unavailableReason` is `NOT_COVERED` when the HTS has no line under the code, and `UPSTREAM_UNAVAILABLE` (`upstreamUnavailable: true`) when the HTS service fails. The route is tier 1 and REST-only.
+`unavailableReason` is `NOT_COVERED` when the HTS has no line under the code, and `UPSTREAM_UNAVAILABLE` (`upstreamUnavailable: true`) when the HTS service fails. The route is tier 1. MCP agents call it as `get_us_import_duty`.
 
 ## Refresh cadence
 

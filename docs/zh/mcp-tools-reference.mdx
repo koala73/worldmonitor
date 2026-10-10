@@ -482,7 +482,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_tariff_trends`
 
-全球贸易和价格指标：美国关税趋势（HTS 编码）、巨无霸指数、FAO 食品价格指数和各国国家债务水平。
+全球贸易和价格指标：美国 MFN 适用关税趋势（全部产品平均；其他报告国、伙伴或产品组请使用 `get_tariff_averages`）、巨无霸指数、FAO 食品价格指数和各国国家债务水平。
 
 **参数（工具特定）：**
 
@@ -538,6 +538,118 @@ curl -s https://worldmonitor.app/mcp \
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
     "params":{"name":"get_wto_trade_flows","arguments":{"reporter":"840","years":20}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_tariff_averages`
+
+一个国家按年份适用的平均关税。不传伙伴和产品组时，返回任一报告国的 WTO 全部产品 MFN 平均税率（`TP_A_0010`），不限于 `get_tariff_trends` 中的美国序列。传入非“世界”的伙伴或产品组时，返回来自 UNCTAD TRAINS（经 World Bank WITS）的实际适用平均税率：
+
+- `tariffRate` 为简单平均（`AHS-SMPL-AVRG`），计入该伙伴可享受的优惠。
+- `weightedRate` 为进口加权平均（`AHS-WGHTD-AVRG`）。
+
+多数报告国的序列约从 1990 年至 2023 年。美国的优惠税率仅报告到 2021 年。这些是税则税率：不包含 301 条款、232 条款及其他单边关税。美国请使用 `get_us_import_duty`。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `reporter` | string | 进口国。默认为美国（`840`）。3 位 UN M49 代码原样传递，因此 WTO 代码（`699` 印度）和欧盟（`918` 或 `"EU"`）均可用。也接受 ISO alpha-2、alpha-3 和英文名称。 |
+| `partner` | string | 被计算平均税率的出口国。省略或传 `"World"`（`000`）表示所有伙伴。该数据集中欧盟不能作为伙伴。 |
+| `product_group` | string（枚举） | WITS 产品组：HS 章节范围如 `84-85_MachElec`、`50-63_TextCloth`，或汇总组如 `Textiles`、`Food`、`Fuels`、`manuf`。`all` 或省略表示全部产品。 |
+| `years` | integer | 返回的年数，保留最新年份（0–30）。0 或省略表示路由默认值（10）。 |
+
+**响应区分：** 每个数据点的 `indicatorCode`、`partnerCountry` 和 `productSector` 说明由哪个序列作答。`TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED` 是覆盖范围答案（WITS 没有该序列）。`TARIFF_TREND_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` 是故障，并带有 `upstreamUnavailable: true`；请稍后重试。
+
+- **API 端点：** `GET /api/trade/v1/get-tariff-trends`
+- **访问：** `subscription` — 需要 Pro 订阅。RPC 工具：无 `summary` 参数（使用 `jmespath` 精简响应）。
+- **类型：** 规范路由的 RPC 代理。伙伴和产品组序列在缓存未命中时从 WITS 读取，并缓存 7 天。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_tariff_averages","arguments":{"reporter":"US","partner":"China","product_group":"Textiles","years":5}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_bilateral_tariff`
+
+一个国家在某一年对来自某一伙伴的某个 6 位 HS 产品适用的关税，来自 UNCTAD TRAINS（经 World Bank WITS）。`appliedRate` 是该伙伴实际支付的税率：其可享受的最优优惠税率，否则为 MFN。`basis` 说明是哪一种。`mfnRate`、`preferentialRate` 和按协定列出的 `groupPreferences` 分别报告。MFN 为从量税时，`mfnAveRate` 给出从价等值。欧盟成员国按欧盟税则作答（`filingReporter` 为 `918`）。
+
+仅为税则税率：不包含 301 条款、232 条款、反倾销及其他单边关税。TRAINS 没有 2021 年以后的美国优惠数据，也没有 2023 年以后的美国数据，因此美国请使用 `get_us_import_duty`。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `reporter` | string | 进口国（必填）。3 位代码、ISO alpha-2 或 alpha-3，或英文名称。 |
+| `partner` | string | 出口国（必填）。格式同上。 |
+| `hs_code` | string | 6 位 HS 编码（必填），如 `870380`。点号会被忽略。 |
+| `year` | integer | 关税年份。0 或省略表示有数据的最新年份。 |
+
+**响应区分：** `BILATERAL_TARIFF_UNAVAILABLE_REASON_NOT_COVERED` 是覆盖范围答案。`BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` 是故障，并带有 `upstreamUnavailable: true`。
+
+- **API 端点：** `GET /api/trade/v1/get-bilateral-tariff`
+- **访问：** `subscription` — 需要 Pro 订阅。RPC 工具：无 `summary` 参数（使用 `jmespath` 精简响应）。
+- **类型：** 规范路由的 RPC 代理，缓存未命中时读取 WITS。冷读取可能需要数秒。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_bilateral_tariff","arguments":{"reporter":"India","partner":"US","hs_code":"870380"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_us_import_duty`
+
+美国当前对来自某国的某一产品征收的关税。对 `hs_code` 下的每个 8 位税目，返回 USITC 协调关税表（HTS）的实时税率和 `basis`（`MFN`、带 `preferenceProgram` 的 `PREFERENTIAL`，或 `COLUMN_2`）。同时返回现行有效的第 99 章 301 条款和 232 条款关税，每项带有 `status`：
+
+- `APPLIES`
+- `CONDITIONAL`，并以 `condition` 说明取决于什么
+- `EXEMPT`
+- `SCHEDULED`
+
+`estimatedRate` 只把 `APPLIES` 关税加到基础税率上。当从量税、条件或未解析的优惠项目使结果不确定时，`estimateComplete` 为 false。IEEPA 关税已停止征收，不予报告。不包含反倾销税和反补贴税。`additionalDutiesLoaded: false` 表示只有基础税率可用。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `hs_code` | string | 6、8 或 10 位 HTS 编码（必填），如 `870380` 或 `8703.80.00`。点号会被忽略。 |
+| `partner` | string | 原产国（必填）。3 位代码、ISO alpha-2 或 alpha-3，或英文名称。 |
+
+- **API 端点：** `GET /api/trade/v1/get-us-import-duty`
+- **访问：** `subscription` — 需要 Pro 订阅。RPC 工具：无 `summary` 参数（使用 `jmespath` 精简响应）。
+- **类型：** 规范路由的 RPC 代理：实时读取 HTS 税目，并与播种的第 99 章目录（`trade:us-hts:catalog:v1`）合并。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_us_import_duty","arguments":{"hs_code":"870380","partner":"CN"}}
   }'
 ```
 

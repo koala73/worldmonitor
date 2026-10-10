@@ -96,6 +96,7 @@ description: "六标签页贸易政策综合面板，涵盖出口限制措施、
 - `weightedRate` 为进口加权平均税率（`AHS-WGHTD-AVRG`）；该产品组无来自该伙伴国的进口时为 `0`，MFN 序列上始终为 `0`。
 - 产品组使用 WITS 的代码：HS 类（如 `84-85_MachElec`、`50-63_TextCloth`）以及 `AgrRaw`、`Chemical`、`Food`、`Fuels`、`manuf`、`OresMtls`、`Textiles`、`Transp`，不区分大小写。完整列表见英文页面。
 - 代码为 3 位 UN M49；也接受 WTO 自有代码 `251`、`579`、`699`、`757`（法国、挪威、印度、瑞士）。欧盟（`918`）可作申报国，但不能作伙伴国。
+- MCP 智能体使用 `get_tariff_averages` 读取这些序列，以及任一申报国的 MFN 序列。
 
 这些是关税表税率，不含 301 条款、232 条款等单边关税；美国的情况请使用美国进口关税查询。序列约自 1990 年开始，大多数申报国截至 2023 年；美国的优惠税率仅报告至 2021 年。WITS 无数据的组合（包括台湾）返回 `NOT_COVERED`，WITS 无法连接时返回 `UPSTREAM_UNAVAILABLE`。
 

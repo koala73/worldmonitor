@@ -5,12 +5,12 @@
   "description": "Live markets, conflicts, country risk, chokepoints, energy, and China decision signals.",
   "kind": "product",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.31.0",
+  "version": "1.32.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.31.0",
+    "version": "1.32.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
@@ -211,7 +211,7 @@
     },
     {
       "name": "get_tariff_trends",
-      "description": "Global trade and pricing indicators: US MFN applied tariff trend (All-products average, not bilateral or HS-level), Big Mac index, FAO Food Price Index, and per-country national debt levels.",
+      "description": "Global trade and pricing indicators: US MFN applied tariff trend (all-products average; for another reporter, a partner or a product group use get_tariff_averages), Big Mac index, FAO Food Price Index, and per-country national debt levels.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }
@@ -660,6 +660,27 @@
     {
       "name": "get_country_brief_section",
       "description": "Read a fixed country-view dataset for the embedded country brief. Reviewed readers include military flights, AIS, fleet reports and Atlas assets. signalsRaw requires a verified same-country paid panel receipt and returns attributed earthquake, Internet outage, travel advisory and thermal samples through four fixed authorized GETs. Unavailable evidence is unknown, not zero; sample scope and unknown clocks remain explicit. Flight coverage follows provider redistribution permissions. Returns a ready, locked or unavailable state. Native dates remain in value; retrievedAt records retrieval. Does not accept URLs, headers or arbitrary RPC paths.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
+      "name": "get_tariff_averages",
+      "description": "Average tariff one country applies, by year, optionally to one partner's goods and/or one product group. With no partner and no product group it is the WTO MFN average over all products (TP_A_0010) for any reporter. With a partner other than World, or a product group, it is the effectively applied average from UNCTAD TRAINS via World Bank WITS: tariffRate is the simple average (AHS-SMPL-AVRG, preferences counted), weightedRate the import-weighted one. Series run from about 1990 to 2023 for most reporters; US preferences are reported only through 2021. These are schedule rates: Section 301, 232 and other unilateral duties are NOT included (use get_us_import_duty for the US). unavailableReason NOT_COVERED is a coverage answer; UPSTREAM_UNAVAILABLE is a fault worth retrying later.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
+      "name": "get_bilateral_tariff",
+      "description": "Tariff one country applies to one 6-digit HS product from one partner, for one year, from UNCTAD TRAINS via World Bank WITS. appliedRate is what the partner pays: the best preferential rate it qualifies for, else MFN (basis says which). mfnRate and preferentialRate are reported separately, with mfnAveRate an ad valorem equivalent where the MFN duty is specific. EU members answer from the EU schedule (filingReporter 918). Year 0 means the latest year with data. Schedule rates only: Section 301, 232, anti-dumping and other unilateral duties are NOT included, and TRAINS has no US preferences after 2021 and no US data after 2023 (use get_us_import_duty for the US). NOT_COVERED is a coverage answer; UPSTREAM_UNAVAILABLE is a fault.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
+      "name": "get_us_import_duty",
+      "description": "Current US duty on one product from one country: the live USITC Harmonized Tariff Schedule rates for each 8-digit line under hs_code, plus the chapter 99 Section 301 and 232 duties in force. Each additional duty has a status: APPLIES, CONDITIONAL (condition says what decides it), EXEMPT or SCHEDULED. estimatedRate adds only APPLIES duties to the base rate; estimateComplete is false when a specific duty, a condition or an unresolved preference program leaves it open. IEEPA duties are not collected and not reported; anti-dumping and countervailing duties are not included. additionalDutiesLoaded false means only base rates were available.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }

@@ -38,7 +38,7 @@ Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pas
 | `https://worldmonitor.app/.well-known/oauth-protected-resource/mcp` | Resource server metadata for the MCP endpoint (RFC 9728), naming `https://worldmonitor.app/mcp`. This is where the `401` challenge points |
 | `https://worldmonitor.app/.well-known/oauth-protected-resource` | Resource server metadata for the origin (RFC 9728), kept for clients that discovered it before the path-scoped document existed |
 
-Server identifier: `worldmonitor` v1.31.0.
+Server identifier: `worldmonitor` v1.32.0.
 
 Registry listings: the server is published in the [official MCP registry](https://registry.modelcontextprotocol.io/v0/servers?search=worldmonitor) as `app.worldmonitor/mcp` — a domain-verified namespace, so clients that resolve servers through the registry get the same endpoint and metadata as the server card above — and listed on [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp) and [mcp.so](https://mcp.so/server/world-monitor).
 
@@ -247,8 +247,11 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 | `get_eu_industrial_production` | Eurostat monthly industrial production index, 12-month sparkline. |
 | `get_prediction_markets` | Prediction markets with current probabilities: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. |
 | `get_supply_chain_data` | Dry bulk shipping stress index, customs flows, COMTRADE bilateral trade. |
-| `get_tariff_trends` | Global trade and pricing indicators: US MFN applied tariff trend (All-products average, not bilateral or HS-level), Big Mac index, FAO Food Price Index, and per-country national debt levels. |
+| `get_tariff_trends` | Global trade and pricing indicators: US MFN applied tariff trend (all-products average; for another reporter, a partner or a product group use get_tariff_averages), Big Mac index, FAO Food Price Index, and per-country national debt levels. |
 | `get_wto_trade_flows` | WTO merchandise trade flows for one reporting country versus the World (reporter 3-digit UN M49, window 1–30 years). Distinguishes `not_covered` from faults. |
+| `get_tariff_averages` | Average tariff a country applies by year: the WTO MFN average, or with a partner and/or WITS product group the effectively applied simple and import-weighted averages (UNCTAD TRAINS). Schedule rates only. |
+| `get_bilateral_tariff` | Applied, MFN and preferential tariff for one HS6 product between two countries in one year (UNCTAD TRAINS via WITS). Schedule rates only. |
+| `get_us_import_duty` | Current US duty on one HTS product from one country: live HTS base rates plus the Section 301 and 232 duties in force, each with a status. |
 | `get_chokepoint_status` | Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc. |
 | `get_consumer_prices` | Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires `country_code` (currently only `ae` is seeded). |
 | `get_procurement_opportunities` | Pro-gated canonical global procurement search; compact output defaults to 10 records and caps at 25. Keyword relevance is never bidding eligibility. |
@@ -394,6 +397,9 @@ Reverse lookup workflow:
 | `get_economic_data` | `GET /api/economic/v1/get-ecb-fx-rates`<br/>`GET /api/economic/v1/get-economic-calendar`<br/>`GET /api/economic/v1/get-eu-yield-curve`<br/>`GET /api/economic/v1/list-fuel-prices`<br/>`GET /api/market/v1/get-cot-positioning`<br/>`GET /api/market/v1/list-earnings-calendar` |
 | `get_tariff_trends` | `GET /api/economic/v1/get-fao-food-price-index`<br/>`GET /api/economic/v1/get-national-debt`<br/>`GET /api/economic/v1/list-bigmac-prices` |
 | `get_wto_trade_flows` | `GET /api/trade/v1/get-trade-flows` |
+| `get_tariff_averages` | `GET /api/trade/v1/get-tariff-trends` |
+| `get_bilateral_tariff` | `GET /api/trade/v1/get-bilateral-tariff` |
+| `get_us_import_duty` | `GET /api/trade/v1/get-us-import-duty` |
 | `get_energy_intelligence` | `GET /api/economic/v1/get-energy-crisis-policies`<br/>`GET /api/supply-chain/v1/get-fuel-shortage-detail`<br/>`GET /api/supply-chain/v1/list-energy-disruptions`<br/>`GET /api/supply-chain/v1/list-fuel-shortages` |
 | `get_consumer_prices` | `GET /api/consumer-prices/v1/get-consumer-price-freshness`<br/>`GET /api/consumer-prices/v1/get-consumer-price-overview`<br/>`GET /api/consumer-prices/v1/list-consumer-price-categories`<br/>`GET /api/consumer-prices/v1/list-consumer-price-movers`<br/>`GET /api/consumer-prices/v1/list-retailer-price-spreads` |
 | `get_supply_chain_data` | `GET /api/supply-chain/v1/get-shipping-stress`<br/>`GET /api/trade/v1/get-customs-revenue` |

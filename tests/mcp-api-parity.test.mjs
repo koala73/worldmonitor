@@ -131,17 +131,13 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // only (see docs/mcp-tools-reference.mdx). Do not restate this as "the daily
   // quota bounds it" without qualifying the env-key path.
 
-  // === fetch-on-miss (30) ===
+  // === fetch-on-miss (28) ===
   ["GET /api/intelligence/v1/get-risk-scores",
     "fetch-on-miss: paid-upstream — cachedFetchJsonWithMeta + ACLED API on cache miss. Cross-domain composite spans conflict plus auxiliary infra outages, climate anomalies, cyber threats, wildfires, GPS jamming, OREF history, advisories, displacement, news insights/threats, aviation, earthquakes, sanctions, temporal anomalies, and military CII; intended for a future expanded_risk_scores composite tool because the current shape doesn't fit any single existing tool."],
   ["GET /api/aviation/v1/get-carrier-ops",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["GET /api/aviation/v1/get-flight-status",
     "fetch-on-miss: high-cardinality-input — arbitrary query/symbol/identifier params, not enumerable"],
-  ["GET /api/trade/v1/get-bilateral-tariff",
-    "fetch-on-miss: high-cardinality-input — live WITS/TRAINS read per reporter x HS6 x year (about 5,000 HS6 codes per reporter-year), plus a ~7 s AVE read for specific-duty products; tier-1 REST only until an MCP wrapper has a per-principal upstream budget"],
-  ["GET /api/trade/v1/get-us-import-duty",
-    "fetch-on-miss: high-cardinality-input — live USITC HTS read per HTS code (about 19,000 8-digit lines) joined with the seeded chapter 99 index; tier-1 REST only until an MCP wrapper has a per-principal upstream budget"],
   ["GET /api/aviation/v1/get-youtube-live-stream-info",
     "fetch-on-miss: paid-upstream — YouTube oEmbed call per cache miss; channel live detection is retired"],
   ["GET /api/aviation/v1/list-airport-flights",
