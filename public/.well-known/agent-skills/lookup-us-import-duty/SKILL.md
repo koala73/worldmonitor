@@ -12,7 +12,7 @@ Use this skill when the user asks what duty the United States charges **today** 
 
 **What is and is not included.**
 
-- Included: the HTS column 1 General, Special (trade agreements) and column 2 rates of the current release, and the chapter 99 duties in force: Section 301 China (Lists 1–4A and the 2024 four-year review), the 2026 Section 301 forced-labor action on 60 trading partners (the EU counted as one), Section 301 Brazil, and Section 232 actions (steel, aluminum and copper, vehicles and parts, trucks and buses, lumber and furniture, semiconductors, pharmaceuticals, drones).
+- Included: the HTS column 1 General, Special (trade agreements) and column 2 rates of the current release, and the chapter 99 duties in force: Section 301 China (Lists 1–4A, the 2024 four-year review, and the 2025 maritime and shipbuilding action on intermodal chassis and ship-to-shore cranes, scheduled for 2026-11-10), the 2026 Section 301 forced-labor action on 60 trading partners (the EU counted as one), Section 301 Brazil, and Section 232 actions (steel, aluminum and copper, vehicles and parts, trucks and buses, lumber and furniture, semiconductors, pharmaceuticals, drones).
 - Not included: IEEPA duties (struck down; not collected since 2026-02-24), anti-dumping and countervailing duties, quotas, and merchandise processing fees.
 
 ## Authentication

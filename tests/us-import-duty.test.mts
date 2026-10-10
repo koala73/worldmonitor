@@ -194,6 +194,13 @@ describe('chapter 99 index built from HTS 2026 Rev 21', () => {
     assert.equal(INDEX.measures['s301-cn-r12'].effectiveFrom, '2026-11-10');
   });
 
+  test('the 2025 maritime action is labelled apart from the four-year review', () => {
+    for (const id of ['s301-cn-r12', 's301-cn-r14']) {
+      assert.equal(INDEX.measures[id].program, 'China maritime and shipbuilding (Section 301)');
+    }
+    assert.equal(INDEX.measures['s301-cn-r3'].program, 'China four-year review');
+  });
+
   test('a moved anchor fails the whole build instead of publishing a partial index', () => {
     const broken = NOTES_HTML.replace('As provided in heading 9903.05.86', 'As provided in heading 9903.05.8X');
     assert.throws(

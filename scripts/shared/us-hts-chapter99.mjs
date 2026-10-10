@@ -268,8 +268,10 @@ export const LIST_DUTIES = Object.freeze([
   { id: 's301-cn-r7', heading: '9903.91.07', authority: 'SECTION_301', program: 'China four-year review', partners: CHINA, note: '31(h)', list: { anchor: 'Heading 9903.91.07 applies to products of China', expect: 'Heading 9903.91.07 applies' }, minCodes: 1, partialAll: true },
   { id: 's301-cn-r8', heading: '9903.91.08', authority: 'SECTION_301', program: 'China four-year review', partners: CHINA, note: '31(i)', list: { anchor: 'Heading 9903.91.08 applies to products of China', expect: 'Heading 9903.91.08 applies' }, minCodes: 1 },
   { id: 's301-cn-r11', heading: '9903.91.11', authority: 'SECTION_301', program: 'China four-year review', partners: CHINA, note: '31(j)', list: { anchor: 'Heading 9903.91.11 applies to products of China', expect: 'Heading 9903.91.11 applies' }, minCodes: 1 },
-  { id: 's301-cn-r12', heading: '9903.91.12', authority: 'SECTION_301', program: 'China four-year review', partners: CHINA, note: '31(k)', list: { anchor: 'Heading 9903.91.12 applies to intermodal chassis', expect: 'Heading 9903.91.12 applies' }, minCodes: 1, partialAll: true },
-  { id: 's301-cn-r14', heading: '9903.91.14', authority: 'SECTION_301', program: 'China four-year review', partners: CHINA, note: '31(l)', list: { anchor: 'Heading 9903.91.14 applies to ship-to-shore gantry cranes', expect: 'Heading 9903.91.14 applies' }, minCodes: 1, partialAll: true },
+  // 9903.91.12 and .14 sit in note 31 but carry USTR's separate 2025
+  // maritime, logistics and shipbuilding action, not the four-year review.
+  { id: 's301-cn-r12', heading: '9903.91.12', authority: 'SECTION_301', program: 'China maritime and shipbuilding (Section 301)', partners: CHINA, note: '31(k)', list: { anchor: 'Heading 9903.91.12 applies to intermodal chassis', expect: 'Heading 9903.91.12 applies' }, minCodes: 1, partialAll: true },
+  { id: 's301-cn-r14', heading: '9903.91.14', authority: 'SECTION_301', program: 'China maritime and shipbuilding (Section 301)', partners: CHINA, note: '31(l)', list: { anchor: 'Heading 9903.91.14 applies to ship-to-shore gantry cranes', expect: 'Heading 9903.91.14 applies' }, minCodes: 1, partialAll: true },
 
   // Section 232. Flagged, not summed: the applicable rate depends on origin
   // deals, certification and metal content.
