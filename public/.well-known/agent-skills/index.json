@@ -91,7 +91,7 @@
       "type": "skill-md",
       "description": "Look up the applied tariff on one HS6 product imported by one country from another (MFN, partner-specific preferential, and the best available applied rate), from UNCTAD TRAINS via World Bank WITS. Use when the user asks what duty a specific product pays between two specific countries.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/lookup-bilateral-tariff/SKILL.md",
-      "digest": "sha256:09813a12df189f56f095930a6b1c356fbd22dfaa0452cbe65a73f1417fd9a260"
+      "digest": "sha256:255875f107efe8b5cbe43a9550f5ab28de121adb248aeb73eda44def7d4bf4a5"
     },
     {
       "name": "monitor-energy-disruptions",

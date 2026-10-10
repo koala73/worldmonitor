@@ -1103,6 +1103,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   // TP_A_0010 carries no bound rate, so the seeder writes boundRate 0 and the
   // contract documents it as reserved. The generic `rate` heuristic published
   // 75.25, an example the API cannot return.
+  // GetBilateralTariff's year is a calendar year; the generic integer `1`
+  // asks TRAINS for a year it does not hold. 2021 matches the curated
+  // response example.
+  if (type === 'integer' && String(name ?? '').toLowerCase() === 'year') {
+    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
+    if (where.includes('getbilateraltariff') || where.includes('get-bilateral-tariff')) return 2021;
+  }
   if (type === 'number' && String(name ?? '').toLowerCase() === 'boundrate') {
     const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
     if (where.includes('gettarifftrends') || where.includes('get-tariff-trends')) return 0;

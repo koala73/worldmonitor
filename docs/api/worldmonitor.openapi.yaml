@@ -33116,7 +33116,7 @@ paths:
                   in: query
                   description: Tariff year; 0 = latest year TRAINS lists for the importer.
                   required: false
-                  example: 1
+                  example: 2021
                   schema:
                     type: integer
                     format: int32

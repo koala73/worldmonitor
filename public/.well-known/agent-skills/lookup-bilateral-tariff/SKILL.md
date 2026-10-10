@@ -66,7 +66,7 @@ Read `basis` before quoting `appliedRate`:
 
 - `PREFERENTIAL` — a partner-specific preferential rate is on file and is lower than MFN.
 - `MFN` — the importer filed preferential schedules that year and none names this partner for this product, so MFN applies. `groupPreferences` lists preferences granted to partner groups (GSP lists, regional agreements); membership is not resolved, so check whether the partner belongs before relying on one.
-- `MFN_PREFERENCES_NOT_REPORTED` — the importer filed no preferential schedules for that year. Only the MFN rate is known; the rate actually applied may be lower. Retry with `year=0` for the latest year that has preferences on file.
+- `MFN_PREFERENCES_NOT_REPORTED` — the importer filed no preferential schedules for that year. Only the MFN rate is known; the rate actually applied may be lower. `year=0` picks the latest year TRAINS lists, which can itself be MFN-only, so retry with an explicit earlier `year` that has preferences on file (for the US, 2021 or earlier).
 
 Rates are simple averages, in percent, across the importer's national tariff lines under the HS6 code. When `mfnRate.nonAdValoremLines` is above 0, specific duties are left out of that average; `mfnAveRate` then carries the ad valorem equivalent and `appliedRate` uses it when MFN applies.
 
