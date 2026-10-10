@@ -518,6 +518,9 @@ describe('the dashboard asks for the series its tab labels', () => {
     assert.equal(resp.unavailableReason, R.served);
     assert.ok(resp.datapoints.length > 0);
     assert.equal(resp.datapoints[0]!.indicatorCode, 'TP_A_0010');
+    // Seeded points predate weightedRate; the documented 0 must still be on the wire.
+    assert.ok(resp.datapoints.every((p) => p.weightedRate === 0));
+    assert.equal(JSON.parse(JSON.stringify(resp)).datapoints[0].weightedRate, 0);
   });
 
   test('data-loader call site passes no partner and no sector', () => {

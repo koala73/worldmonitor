@@ -44,6 +44,9 @@ const WITS_ROUTES: Record<string, [number, string]> = {
   [tradestatsUrl('twn', 'usa', 'Total')]: [404, 'no-records.txt'],
 };
 const REDIRECTED = tradestatsUrl('usa', 'afg', 'Total');
+// A 200 body cut short mid-document: the simple series is complete, the
+// weighted one is not.
+const TRUNCATED = tradestatsUrl('usa', 'mex', 'Total');
 
 // ── Harness ────────────────────────────────────────────────────────────────
 
@@ -93,6 +96,10 @@ beforeEach(() => {
       witsCalls.push(href);
       assert.equal(init?.redirect, 'manual', 'WITS error redirects must stay visible');
       if (witsFaults.has(href)) return new Response('Service Unavailable', { status: 503 });
+      if (href === TRUNCATED) {
+        const full = fixture('usa-chn-total.xml');
+        return new Response(full.slice(0, full.indexOf('INDICATOR="AHS-WGHTD-AVRG"') + 400), { status: 200 });
+      }
       if (href === REDIRECTED) {
         return new Response('', {
           status: 307,
@@ -289,6 +296,14 @@ describe('get-tariff-trends partner and sector answers', () => {
     // At most the short negative sentinel (FAULT_TTL), never an empty series
     // that would later read as NOT_COVERED.
     const stored = redisStore.get(tradestatsKey('usa', 'chn', 'Total'));
+    assert.ok(stored === undefined || JSON.parse(stored) === '__WM_NEG__', String(stored));
+  });
+
+  test('a truncated WITS body is a fault, not a partial series cached for a week', async () => {
+    const resp = await getTariffTrends(premiumCtx(), request({ partnerCountry: '484' }));
+    assert.equal(resp.unavailableReason, R.upstreamUnavailable);
+    assert.equal(resp.datapoints.length, 0);
+    const stored = redisStore.get(tradestatsKey('usa', 'mex', 'Total'));
     assert.ok(stored === undefined || JSON.parse(stored) === '__WM_NEG__', String(stored));
   });
 

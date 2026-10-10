@@ -156,8 +156,11 @@ async function fetchSeries(reporter: string, partner: string, group: string): Pr
       console.warn(`[wits] tradestats-tariff HTTP ${res.status} ${reporter}/${partner}/${group}`);
       return null;
     }
-    if (!/<message:StructureSpecificData\b/.test(body)) {
-      console.warn(`[wits] tradestats-tariff unexpected body ${reporter}/${partner}/${group}`);
+    // A body cut short would parse into a partial series (missing years, or
+    // weighted rates read as 0) and be cached for a week; require the whole
+    // document.
+    if (!/<message:StructureSpecificData\b/.test(body) || !/<\/message:StructureSpecificData>\s*$/.test(body)) {
+      console.warn(`[wits] tradestats-tariff unexpected or truncated body ${reporter}/${partner}/${group}`);
       return null;
     }
     return { points: parseTradestatsTariff(body), fetchedAt };

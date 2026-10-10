@@ -295,7 +295,9 @@ function served(
   const first = datapoints[0];
   const last = datapoints[datapoints.length - 1];
   return {
-    datapoints,
+    // Seeded MFN points predate weightedRate, and JSON drops an absent field,
+    // so a client would read undefined instead of the documented 0.
+    datapoints: datapoints.map((p) => (typeof p.weightedRate === 'number' ? p : { ...p, weightedRate: 0 })),
     fetchedAt: typeof fetchedAt === 'string' ? fetchedAt : '',
     upstreamUnavailable: false,
     unavailableReason: REASON.served,
