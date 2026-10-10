@@ -38,6 +38,9 @@ const { TOOL_REGISTRY } = mcpTesting;
 // -----------------------------------------------------------------------------
 const EXCLUDED_FROM_MCP = new Map([
 
+  ['trade:us-hts:catalog:v1',
+    'intermediate: US HTS chapter 99 measure catalog joined per request with a live HTS line read by GET /api/trade/v1/get-us-import-duty; the catalog alone answers no product question, and the route is REST-only (tier 1) until an MCP wrapper has a per-principal upstream budget.'],
+
   ['live-video:resolved:v1',
     'dashboard-internal: channel id to current live YouTube video id, read by the Live News and Live Webcams players to try a fresh embed before the channel entry (#8545); a playback hint with no analytical content, not a queryable MCP slice.'],
 
@@ -179,7 +182,7 @@ const EXCLUDED_FROM_MCP = new Map([
     'on-demand: RPC cache for military bases — deferred to a future expanded military tool.'],
   ['news:threat:summary:v1',
     'on-demand: relay-classify-only, written only when classify produces country matches (matches api/health.js:468 ON_DEMAND_KEYS rationale). Underlying news inputs already exposed via get_news_intelligence.'],
-  ['resilience:ranking:v28',
+  ['resilience:ranking:v29',
     'on-demand: RPC cache populated after Pro ranking requests (matches api/health.js:469 ON_DEMAND_KEYS rationale). Deferred to a future resilience tool.'],
   ['forecast:simulation-package:latest',
     'on-demand: written by writeSimulationPackage after deep forecast runs (matches api/health.js:466 ON_DEMAND_KEYS rationale). Internal pipeline artifact, not a queryable slice.'],
@@ -187,10 +190,14 @@ const EXCLUDED_FROM_MCP = new Map([
     'on-demand: written by writeSimulationOutcome after simulation runs (matches api/health.js:467 ON_DEMAND_KEYS rationale). Internal pipeline artifact, not a queryable slice.'],
   ['forecast:resolutions:v1',
     'operational: persistent forecast resolution working ledger with raw per-forecast evidence and audit receipt state. Exposed through health and summarized by get_forecast_scorecard; raw ledger MCP access deferred until a filtered/sliced tool exists.'],
+  ['forecast:calibration-map:v1',
+    'operational: calibration map (#7070) written by seed-forecast-resolutions and read by seed-forecasts while its activation gate is eligible; the published probabilities reach MCP through the forecast tools, and its forward evaluation is internal to the scorecard, so no MCP tool.'],
+  ['correlation:market-alerts:ledger:v1',
+    'operational: raw per-alert working ledger (#8867) written by seed-market-alert-ledger, surfaced through health and summarized by correlation:market-alerts:scorecard:v1; the row-level evidence is not a queryable MCP slice.'],
   ['forecast:bets:history:v1',
     'operational: shadow bet-engine stream (#5233) written by seed-forecast-bets and ingested by the resolver into the get_forecast_scorecard bet_engine slice. Not a user-facing queryable slice (shadow, never in forecast:predictions:v2), so no MCP tool.'],
   ['forecast:funnel:health:v1',
-    'operational: funnel-diversity guardrail signal (#5233) written by seed-forecasts afterPublish. Internal health/ops metric surfaced via /api/health (collapse → SEED_ERROR); not a queryable user-facing slice, so no MCP tool.'],
+    'operational: funnel-diversity guardrail signal (#5233) written by seed-forecasts afterPublish. Internal health/ops metric surfaced via /api/health (freshness only; a collapse is informational); not a queryable user-facing slice, so no MCP tool.'],
 
   // Recovery and active resilience-indicator scorer inputs are covered by
   // get_resilience_indicators. Ranking, interval, and health-only aggregate
@@ -217,6 +224,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: meta-only health probe for the sharded CPI history. GetUsCpiMonthly serves the series; the history is too large for the composite economic cache tool (#8480).'],
   ['seed-meta:economic:us-treasury-par-yield',
     'operational: meta-only health probe for the sharded Treasury par curve. GetUsTreasuryParYieldCurve serves the series; the history is too large for the composite economic cache tool (#8480).'],
+  ['displacement:dtm:v1',
+    'deferred: IOM DTM region-level displacement served by GetInternalDisplacement. A follow-up adds it to get_displacement_data, whose output is shaped around UNHCR country totals.'],
   ['seed-meta:economic:us-interest-rates',
     'operational: meta-only health probe for the sharded Fed funds, Treasury yield, and SOFR history. GetUsInterestRates serves the series; the history is too large for the composite economic cache tool (#8485).'],
   ['seed-meta:economic:world-cpi-imf',
@@ -280,11 +289,11 @@ const EXCLUDED_FROM_MCP = new Map([
   ['supply_chain:hormuz_tracker:v1',
     'deferred: specialized Strait-of-Hormuz tracker; broader chokepoint coverage via get_chokepoint_status. Hormuz-specific tool deferred.'],
   ['resilience:static:index:v1',
-    'deferred to a future resilience tool (paired with resilience:ranking:v28).'],
+    'deferred to a future resilience tool (paired with resilience:ranking:v29).'],
   ['resilience:static:fao',
     'deferred to a future resilience tool (FAO Phase 3+ aggregate, paired with resilience:static:index:v1).'],
-  ['resilience:intervals:v11:US',
-    'deferred to a future resilience tool (formula-tagged sensitivity bands on top of resilience:ranking:v28).'],
+  ['resilience:intervals:v12:US',
+    'deferred to a future resilience tool (formula-tagged sensitivity bands on top of resilience:ranking:v29).'],
   ['product-catalog:v3',
     'deferred to a future product-catalog tool. Used by the dashboard to render product metadata, not a queryable data slice.'],
   ['climate:zone-normals:v1',

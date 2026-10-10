@@ -72,9 +72,11 @@ test('country shortcut keeps the dashboard canonical and shares a working dashbo
 });
 
 test('country brief renders exact RPC records and preserves the country after reload', async ({ page, countryBrief }, testInfo) => {
+  countryBrief.response.fetchedAt = Date.parse('2026-10-09T07:41:45.410Z');
   await page.goto('/dashboard?country=UA');
   await expectCountry(page);
   await expectMarkets(page);
+  await expect(marketsCard(page).locator('.cdp-section-source')).toHaveText('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
   expect(countryBrief.requests).toContainEqual({ method: 'GET', category: 'country:UA', pageSize: '5', status: 200 });
   await screenshot(page, testInfo, 'rpc-before-reload');
 
@@ -89,14 +91,17 @@ test('country brief renders exact RPC records and preserves the country after re
   await page.reload();
   await expectCountry(page);
   await expectMarkets(page);
+  await expect(marketsCard(page).locator('.cdp-section-source')).toHaveText('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
   expect(countryBrief.requests.length).toBeGreaterThan(requestsBeforeReload);
   expect(countryBrief.requests.every(request => request.category === 'country:UA' && request.status === 200)).toBe(true);
   await screenshot(page, testInfo, 'rpc-after-reload');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await screenshot(page, testInfo, 'website-clock-known-mobile');
 });
 
 test('country brief uses bootstrap fallback when the country index is unavailable', async ({ page, countryBrief }, testInfo) => {
   countryBrief.hydrate = true;
-  countryBrief.response = { markets: [], dataAvailable: false, fetchedAt: 0 };
+  countryBrief.response = { markets: [], dataAvailable: false, fetchedAt: Date.parse('2026-10-09T07:41:45.410Z') };
   await page.goto('/dashboard?country=UA');
   await expectCountry(page);
   const card = marketsCard(page);
@@ -105,19 +110,25 @@ test('country brief uses bootstrap fallback when the country index is unavailabl
   await expect(card.locator('.prediction-source')).toHaveText(['Polymarket']);
   await expect(card.locator('.cdp-market-link')).toHaveAttribute('href', HYDRATED_MARKET.url);
   await expect(card.locator('.cdp-market-item')).toBeVisible();
+  await expect(card.locator('.cdp-section-source')).toHaveText('Snapshot time unavailable. Quote times are not supplied.');
   expect(countryBrief.requests).toContainEqual({ method: 'GET', category: 'country:UA', pageSize: '5', status: 200 });
   await screenshot(page, testInfo, 'bootstrap-fallback');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await screenshot(page, testInfo, 'website-clock-fallback-mobile');
 });
 
 test('country brief honors an authoritative empty index over bootstrap fallback', async ({ page, countryBrief }, testInfo) => {
   countryBrief.hydrate = true;
-  countryBrief.response = { markets: [], dataAvailable: true, fetchedAt: 0 };
+  countryBrief.response = { markets: [], dataAvailable: true, fetchedAt: Date.parse('2026-10-09T07:41:45.410Z') };
   await page.goto('/dashboard?country=UA');
   await expectCountry(page);
   await expect(marketsCard(page).locator('.cdp-empty')).toHaveText('No active markets for this country.');
   await expect(marketsCard(page).locator('.cdp-market-item, .cdp-loading-inline')).toHaveCount(0);
+  await expect(marketsCard(page).locator('.cdp-section-source')).toHaveText('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
   expect(countryBrief.requests).toContainEqual({ method: 'GET', category: 'country:UA', pageSize: '5', status: 200 });
   await screenshot(page, testInfo, 'authoritative-empty');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await screenshot(page, testInfo, 'website-clock-empty-mobile');
 });
 
 test('country brief recovers from a failed RPC when the user reloads', async ({ page, countryBrief }, testInfo) => {
@@ -815,3 +826,103 @@ test('country brief shows unavailable temporal evidence after a failed feed read
   await expect(signals).toContainText('Temporal observations unavailable');
   await page.screenshot({ path: testInfo.outputPath('country-temporal-unavailable.png') });
 });
+
+for (const mobile of [false, true]) {
+  test(`China activity labels use plain language on ${mobile ? 'mobile' : 'desktop'}`, async ({ page, countryBrief }, testInfo) => {
+    void countryBrief;
+    await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
+    const snapshot = JSON.parse(await readFile(new URL('./fixtures/china-activity-labels.json', import.meta.url), 'utf8'));
+    await page.route('**/api/intelligence/v1/get-china-decision-signals*', route => route.fulfill({ json: { payloadJson: JSON.stringify(snapshot) } }));
+    await page.goto(`/dashboard?country=CN${mobile ? '' : '&expanded=1'}`);
+    const panel = page.locator('#country-deep-dive-panel');
+    await expect(panel.locator('.cdp-country-name')).toHaveText('China');
+    await panel.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'All sections', exact: true }).click();
+    const activity = panel.locator('.cdp-china-summary-group').filter({ has: page.getByRole('heading', { name: 'Cross-Strait Activity', exact: true }) });
+    await activity.scrollIntoViewIfNeeded();
+    await expect(activity).toContainText('Taiwan Ministry of National Defense activity');
+    await expect(activity).toContainText('Chinese military aircraft flights: 3');
+    await expect(activity).toContainText('Chinese navy ships: 6');
+    await expect(activity).toContainText('Other official vessels: 1');
+    await expect(activity).toContainText('Air defense identification zone entries: 1');
+    await expect(activity).not.toContainText(/plaAircraftSorties|planShips|adizEntries|taiwan-mnd/);
+    await expect(activity.locator('.cdp-china-summary-source-link')).toHaveCount(1);
+    expect(await activity.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+    const path = testInfo.outputPath(`china-plain-language-${mobile ? 'mobile' : 'desktop'}.png`);
+    await page.screenshot({ path });
+    await testInfo.attach('China activity with controlled source data', { path, contentType: 'image/png' });
+  });
+}
+
+test('English panel picker names financial and regional topics in plain language', async ({ page, countryBrief }, testInfo) => {
+  void countryBrief;
+  await page.goto('/dashboard');
+  await page.locator('#unifiedSettingsBtn').click();
+  await page.locator('#us-tab-panels').click();
+  const panels = page.locator('#usPanelToggles');
+  await expect(panels).toBeVisible();
+  await expect(panels).toContainText('Bitcoin fund flows');
+  await expect(panels).toContainText('Venture capital insights');
+  await expect(panels).toContainText('Gulf Cooperation Council investments');
+  await expect(panels).not.toContainText(/BTC ETF Tracker|Funding & VC/);
+  await page.getByPlaceholder('Filter panels...').fill('Bitcoin');
+  await expect(panels.getByText('Bitcoin fund flows', { exact: true })).toBeVisible();
+  const path = testInfo.outputPath('english-panel-labels.png');
+  await page.screenshot({ path });
+  await testInfo.attach('English panel names', { path, contentType: 'image/png' });
+});
+
+for (const mobile of [false, true]) {
+  test(`market breadth labels preserve percentage meaning on ${mobile ? 'mobile' : 'desktop'}`, async ({ page, countryBrief }, testInfo) => {
+    void countryBrief;
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.route('**/api/market/v1/get-market-breadth-history', route => route.fulfill({ json: {
+      currentPctAbove20d: 0, currentPctAbove50d: 52, currentPctAbove200d: 68,
+      history: [{ date: '2026-10-07', pctAbove20d: 0, pctAbove50d: 52, pctAbove200d: 68 }],
+      updatedAt: '2026-10-08T00:00:00Z',
+    } }));
+    await page.goto('/dashboard');
+    await page.evaluate(async () => {
+      const { MarketBreadthPanel } = await import('/src/components/MarketBreadthPanel.ts');
+      const panel = new MarketBreadthPanel();
+      await panel.fetchData();
+      const preview = document.createElement('div');
+      preview.id = 'breadth-copy-preview';
+      preview.style.cssText = 'position:fixed;z-index:99999;inset:20px auto auto 20px;width:min(420px,calc(100vw - 40px));background:var(--bg);';
+      preview.appendChild(panel.getElement());
+      document.body.appendChild(preview);
+    });
+    const panel = page.locator('#breadth-copy-preview');
+    await expect(panel).toContainText('Stocks above 20-day moving average (%)');
+    await expect(panel).toContainText('Stocks above 50-day moving average (%)');
+    await expect(panel).toContainText('Stocks above 200-day moving average (%)');
+    await expect(panel.getByText('0.0%', { exact: true })).toBeVisible();
+    await expect(panel).not.toContainText('% Above Stocks');
+    const path = testInfo.outputPath(`market-breadth-${mobile ? 'mobile' : 'desktop'}.png`);
+    await panel.screenshot({ path });
+    await testInfo.attach('Controlled market breadth component preview', { path, contentType: 'image/png' });
+  });
+}
+
+for (const mobile of [false, true]) {
+  test(`reviewed Swahili panel names render on ${mobile ? 'mobile' : 'desktop'}`, async ({ page, countryBrief }, testInfo) => {
+    void countryBrief;
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/dashboard?lang=sw');
+    if (mobile) {
+      await page.locator('[data-mobile-tab="more"]').click();
+      await page.locator('#mobileMenuSettings').click();
+    } else {
+      await page.locator('#unifiedSettingsBtn').click();
+    }
+    await page.locator('#us-tab-panels').click();
+    const panels = page.locator('#usPanelToggles');
+    await expect(panels).toContainText('mtaji wa kufadhili biashara changa');
+    const gulf = panels.getByText('Uwekezaji wa Baraza la Ushirikiano la Ghuba', { exact: true });
+    await gulf.scrollIntoViewIfNeeded();
+    await expect(gulf).toBeVisible();
+    await expect(panels).not.toContainText('mtaji wa uhamiaji');
+    const path = testInfo.outputPath(`swahili-panel-labels-${mobile ? 'mobile' : 'desktop'}.png`);
+    await page.screenshot({ path });
+    await testInfo.attach('Reviewed Swahili investment labels', { path, contentType: 'image/png' });
+  });
+}

@@ -60,9 +60,9 @@ export const COST_SHOCK_TOOLS: ToolDef[] = [{
     if (typeof hs2 !== 'string' || !/^\d{1,2}$/.test(hs2)) invalid('hs2', 'Expected a one- or two-digit HS2 code.');
     const days = params.closure_days ?? 30;
     if (typeof days !== 'number' || !Number.isInteger(days) || days < 1 || days > 365) invalid('closure_days', 'Expected an integer from 1 through 365.');
-    const query = new URLSearchParams({ iso2: country, chokepoint_id: chokepoint as string });
+    const query = new URLSearchParams({ iso2: country, chokepointId: chokepoint as string });
     if (selected === 'energy') query.set('hs2', hs2 as string);
-    else query.set('closure_days', String(days));
+    else query.set('closureDays', String(days));
     const url = `${base}${MODES[selected]}?${query}`;
     const auth = await buildAuthHeaders(context, 'GET', url, null);
     const response = await fetchMcpDownstream(url, {

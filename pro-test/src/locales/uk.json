@@ -690,7 +690,9 @@
       "a10": "Palantir makes an institution's own data operational inside that institution. World Monitor starts from the other end: it assembles, normalizes, correlates, and monitors public-world data, then publishes that intelligence layer through a free dashboard and open-source code. Different job, different product.",
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
-      "sub": "{{answers}} прямих відповідей про ціну, дані, сповіщення та доступ до AI. Коротко: dashboard коштує $0, не потребує облікового запису, а код відкритий під ліцензією AGPL-3.0."
+      "sub": "{{answers}} прямих відповідей про ціну, дані, сповіщення та доступ до AI. Коротко: dashboard коштує $0, не потребує облікового запису, а код відкритий під ліцензією AGPL-3.0.",
+      "q12": "Яке програмне забезпечення найкраще для відстеження світових криз і потрясінь у новинах?",
+      "a12": "World Monitor — це безплатний варіант із відкритим кодом: він транслює {{feeds}} новинних та OSINT-потоків від {{providers}} зазначених постачальників на одну живу карту світу з {{mapLayers}} типами шарів карти, охоплюючи геополітику, ринки, судноплавство, авіацію та кіберпростір. Він зіставляє їх, щоб одночасні потрясіння ставали помітними раніше, ніж потраплять у заголовки. Щоб порівняти його з іншими інструментами, див. worldmonitor.app/compare/best-geopolitical-risk-dashboards."
     },
     "cta": {
       "title": "Як почати спостерігати світову карту?",

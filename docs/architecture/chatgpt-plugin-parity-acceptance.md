@@ -203,3 +203,54 @@ The bounded account/time telemetry window records 64 successful and 64 denied co
 The repair separates server-confirmed cached replay and uncached reads after paid admission validation. Each retains a 64-per-minute bound. Durable actual uncached work remains capped at 64 per admission; one opening still charges one daily allocation. Client input cannot select the bucket. Owner, scope, expiry, account revocation and ordinary operator/API limits remain enforced. Simultaneous cold duplicates are not claimed coalesced. Local proof and a ready PR do not establish deployed native recovery.
 
 A later native World News filter changed the expanded map and panel locally. The loaded-only follow-up answered `Politics` while the UI showed `World News`. Configuration maps the selected internal key `politics` to that visible label, so this is a label mismatch, not evidence that category selection or context ownership failed. The receipt currently includes the ID without its display label. The follow-up also reported no marker identity, but the popup had been closed, so active-selection persistence is not established. The shared website news popup also renders only a headline; absent rich marker details are not a demonstrated website regression. These label and selected-item context limits are separate from the replay-budget repair.
+
+## October 4 native validation and injected-document recovery
+
+After the approved replay and desktop-renderer repairs deployed at production commit `87e675115ff8bad45650016acb37642e696ceaee`, the actual signed-in Chrome Acceptance connection was refreshed. A fresh ordinary USA/all request rendered one interactive card with 21 ready sections and two unavailable. Resilience loaded on its first attempt (58, coverage87%, seed August17). Five-Factor Scorecard and National Debt remain unavailable. A fresh news request rendered the desktop WebGL map with current headline dots, a 3D globe with rings, and a WebGL return; expanded workspace keeps the composer adjacent. Inline composer obstruction, exact viewport settlement, all source/tier/date comparisons and independent accounting remain unaccepted. Visible opening notices decreased46→45→44 for market, country and news; this is not a server-ledger proof of every internal read or refresh.
+
+| Surface | Native result | Remaining difference |
+|---|---|---|
+| USA/all | 21 ready, two unavailable; Resilience58/87% loads first attempt | Scorecard and National Debt unavailable; full same-tier/source comparisons incomplete |
+| Desktop news map | WebGL markers in inline and narrow workspace; globe rings;2D return | Inline composer overlap, coordinate settlement, selection context and mobile remain open |
+| Market Radar | Refreshed connection renders94quotes and48-point BTC full chart | Ordinary initial response misreported available UI; cached failed card Retry became blank; matching observations/mobile/watchlist/lookup incomplete |
+| Prediction Markets | One ordinary prompt opens linked contracts, volume, closes, conviction and Yes/No bars; local geopolitical expansion reaches25of25 | Same-observation website/mobile/all-category comparison and independent ledger remain unaccepted; opening notice43 remains during expansion |
+| Forecasts | One ordinary prompt produces two output-budget error cards, then an empty filtered panel | Notices decrease43→42→41→40 across automatic attempts; model claims14loaded cases but UI reports unavailable. Native transport/projection and meaningful-request accounting fail |
+| Signals | Loaded military counts available |24otherfields plus aggregate severity/recent evidence remain unknown |
+
+The cached-card failure is reproduced with a shell injected into an opaque `about:blank` iframe: `location.reload()` replaces the host-injected document with an empty page. The bootstrap now retries in place. Each import uses a loader-owned numeric attempt directory, and each entrypoint listens for that import's one-shot mount event. A constrained static rewrite serves the original JavaScript files at those paths. Relative shared imports inherit the attempt directory, so retry does not wait on an abandoned graph. Both fragment-only and entry-query controls failed shared-load recovery. Manifest queries and foreign assets are still rejected, and existing document/style/module10-second bounds remain. Late imports do not receive later attempts' mount events or start host/data reads. Original cached shells retain the legacy mount event; remove that compatibility only after those cached resource versions are retired. Direct documents retain normal startup.
+
+Permanent browser proof includes real compiled Market Radar recovery in injected desktop/mobile documents, existing compiled country/news startup, same-filename document/style/module retries, failed and stalled shared chunks, and a stalled import completed after the recovered attempt. This is controlled proof, not deployed native acceptance of this recovery repair. Metadata refresh restored a new market card; it did not recover the older instance. Overall plugin acceptance remains incomplete.
+
+The repaired bootstrap is advertised under country-view-v3.html, news-dashboard-v3.html and market-radar-v3.html so hosts can fetch new shell code rather than reuse cached v2 reload handlers. V2 and older read aliases still return the current shell; remove these aliases only when saved installed connections and resource links are retired. Existing cached result documents cannot be patched retroactively. Refresh installed tool metadata after deployment, then validate a new native result.
+
+## Forecast transport and current acceptance, October 4
+
+The human merged the injected-document repair as `da33e7a0196006a5608ca268dd45f154b1dbbce7`. Exact Vercel Production `dpl_DnpSSvZ3c1znj9wGnNp8GdrDYkfk` reached READY at 13:09:28 UTC, and the production alias was independently confirmed. The actual signed-in Chrome Acceptance connection refreshed its metadata afterward. One fresh market request rendered 94 quotes and the original 48-point BTC chart. Its opening notice changed from 40 to 39 remaining. This proves fresh native startup and local chart inspection for that connection; it does not prove forced native Retry recovery or independent quota accounting. The right chart label clips, and the inline composer still covers the lower view.
+
+| Website or user expectation | Verified result | Remaining acceptance |
+|---|---|---|
+| Forecast list fits transport and exposes original cases | Controlled canonical dossiers exceed 128 KB; paid opening projects the original compact list, preserving IDs, generation and unknown odds | New repair must be merged, deployed and tested in the installed host |
+| One allocation includes original detail reads | Signed forecast admission limits reads to a closed list/case scope; exact-generation case returns an unchanged original row | Native automatic retries and actual ledger need a fresh deployed test |
+| Filters and reopening reuse original evidence | Exported HTML in desktop/mobile opaque iframes loads original analysis, supporting/counter evidence and branches, then reuses it | Native original evidence, host capability and same source observation remain unaccepted |
+| Failed detail can recover | Manual Retry repeats a failed read; unavailable source results are not cached as successful cases | Deployed source recovery remains unaccepted |
+| Host uses the renderer that supports compact results | Advertised forecast resource is versioned; old URI remains a read alias | Refresh installed metadata after deployment |
+| World News follow-up uses displayed label | Separate PR #8826 adds World News label alongside stable politics ID; compiled receipt tests and CI pass | PR remains unmerged; native follow-up remains unaccepted |
+
+The controlled actual dispatcher fixture measures a 254,903-byte canonical feed and a 5,782-byte serialized opening result including receipts and usage. These are synthetic transport measurements, not production costs. A single case that exceeds the unchanged output budget reports an explicit error; no allowance refund or budget increase is used. API-key full-result contracts remain unchanged. Local proof, remote CI, merge, deployment and native acceptance remain separate. Overall acceptance remains incomplete.
+
+## Original forecast theaters: controlled transport and interface proof
+
+This unit depends on the signed forecast admission in PR #8827. The website reads latest simulation theaters separately from the prediction list. The plugin now exposes a closed `get_forecast_theaters` reader and a **Load active theaters** action. Both use the original forecast admission, one daily opening allocation and the existing 64 uncached-read budget. Source run/time remains independent of the forecast generation.
+
+| Website expectation | Controlled proof | Remaining acceptance |
+|---|---|---|
+| Original active theater evidence | All published paths, actors, optional roles, reactions, stabilizers and invalidators are transported unchanged and expand locally | Merge, exact production deployment, installed metadata refresh and matching native observation |
+| Genuine partial, missing and failed coverage | Distinct source states; partial evidence survives failed retry, then manual recovery succeeds | Native source recovery and same-tier source comparison |
+| One allocation includes internal evidence | Actual dispatcher fixture verifies opening plus latest theater read and successful replay under one daily allocation and the shared 64-read bound | Independent native ledger and explicit refresh accounting |
+| Current renderer discovers the reader | Forecasts v3 resource; v2 and original URI remain private read aliases | Native host capability and metadata refresh after deployment |
+
+Focused transport, original handler, metering, resource and exported-HTML checks pass locally. Eight inspected desktop/mobile fixtures show before, partial evidence, failed retry and completed recovery. Local proof is not CI readiness, deployment or native acceptance. Overall acceptance remains incomplete.
+
+### Bounded observed Signals checkpoint
+
+One closed country-section execution composes earthquake, Internet outage, sampled travel advisory count, native advisory level and thermal escalation values from four fixed authorized source reads. Counts describe returned samples; unknown clocks, partial coverage and retained observations stay explicit in the UI, model context and evidence export. Independent military results preserve their own four fields and static classification. The other 18 typed Signals and aggregate severity/recent evidence remain unknown. Current-main local proof, remote CI, deployment and native acceptance must be recorded separately; these source changes alone establish none of the latter claims.

@@ -31,7 +31,7 @@ test('dashboard entry opens the actual feed panels with empty arguments', () => 
   assert.ok(tool, 'news dashboard entry must exist separately from the intelligence summary');
   assert.deepEqual(tool.inputSchema.required, []);
   const publicTool = buildPublicTool(tool, { compressDescriptions: false });
-  assert.equal(publicTool._meta?.ui?.resourceUri, 'ui://worldmonitor/news-dashboard-v2.html');
+  assert.equal(publicTool._meta?.ui?.resourceUri, 'ui://worldmonitor/news-dashboard-v3.html');
   assert.deepEqual(publicTool._meta?.['openai/ui']?.entrypoints, [{type: 'global'}, {type: 'thread'}]);
 });
 
@@ -42,8 +42,8 @@ const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
 
 test('legacy installed resource links remain public aliases that return the cache-safe shell', async () => {
-  globalThis.fetch = async input => new Response(`<html><head></head><body><main id="${String(input).endsWith('country.html') ? 'countryRoot' : 'pluginRoot'}"></main></body></html>`, { headers: { 'Content-Type': 'text/html' } });
-  for (const uri of ['ui://worldmonitor/country-view-v1.html', 'ui://worldmonitor/news-dashboard.html']) {
+  globalThis.fetch = async input => new Response(`<html><head></head><body><main id="${String(input).endsWith('country.html') ? 'countryRoot' : String(input).endsWith('market.html') ? 'marketRoot' : 'pluginRoot'}"></main></body></html>`, { headers: { 'Content-Type': 'text/html' } });
+  for (const uri of ['ui://worldmonitor/country-view-v1.html', 'ui://worldmonitor/news-dashboard.html', 'ui://worldmonitor/country-view-v2.html', 'ui://worldmonitor/news-dashboard-v2.html', 'ui://worldmonitor/market-radar-v2.html']) {
     assert.equal(isUiResourceUri(uri), true);
     const body = await (await buildUiResourceRead(1, uri, {})).json();
     assert.equal(body.result.contents[0].uri, uri);
@@ -149,6 +149,7 @@ test('brief analysis retains the full dashboard variant and requested summary la
   const tool = TOOL_REGISTRY.find(t => t.name === 'analyze_news_headlines')!;
   globalThis.fetch = async (_input, init) => {
     const request = JSON.parse(String(init?.body));
+    assert.equal(request.provider, 'openrouter');
     assert.equal(request.mode, 'brief');
     assert.equal(request.variant, 'full');
     assert.equal(request.lang, 'fr');

@@ -1,10 +1,10 @@
 
-import type { Forecast, GetForecastsResponse } from '@/generated/client/worldmonitor/forecast/v1/service_client';
+import type { Forecast, GetForecastScorecardResponse, GetForecastsResponse } from '@/generated/client/worldmonitor/forecast/v1/service_client';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { publicRpcFetch } from '@/services/public-rpc-fetch';
 import { ForecastServiceClient } from '@/services/generated-rpc-clients';
 
-export type { Forecast };
+export type { Forecast, GetForecastScorecardResponse };
 
 export interface ForecastFeed {
   forecasts: Forecast[];
@@ -56,6 +56,12 @@ function normalizeForecastFeed(resp: GetForecastsResponse): ForecastFeed {
     stale: resp.stale === true,
     error: resp.error || '',
   };
+}
+
+// The scorecard is session-gated and not on the public shared allowlist (#7074),
+// so it takes the credentialed client like the filtered feed does.
+export async function fetchForecastScorecard(signal?: AbortSignal): Promise<GetForecastScorecardResponse> {
+  return getClient().getForecastScorecard({}, { signal });
 }
 
 export async function fetchSimulationOutcome(): Promise<string> {

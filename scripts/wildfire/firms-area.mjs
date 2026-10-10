@@ -54,10 +54,31 @@ function parseDetectedAt(acqDate, acqTime) {
   return new Date(`${acqDate}T${hours}:${minutes}:00Z`).getTime();
 }
 
-function safeFailureReason(error) {
+const SAFE_FAILURE_CODES = new Set([
+  'ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN',
+  'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET', 'CERT_HAS_EXPIRED',
+  'DEPTH_ZERO_SELF_SIGNED_CERT', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'ERR_TLS_CERT_ALTNAME_INVALID',
+]);
+
+function safeFailureReason(error, phase) {
   if (Number.isInteger(error?.status)) return `HTTP ${error.status}`;
   if (error?.name === 'TimeoutError' || error?.name === 'AbortError') return 'timeout';
-  return 'request error';
+  const codes = new Set();
+  const seen = new Set();
+  const pending = [error];
+  // Fetch wraps transport errors in causes, sometimes with aggregate connection errors.
+  // Only fixed codes may escape: messages and arbitrary codes can contain the MAP_KEY URL.
+  for (let index = 0; index < pending.length && index < 16; index++) {
+    const current = pending[index];
+    if (!current || typeof current !== 'object' || seen.has(current)) continue;
+    seen.add(current);
+    if (SAFE_FAILURE_CODES.has(current.code)) codes.add(current.code);
+    if (current.cause) pending.push(current.cause);
+    if (Array.isArray(current.errors)) pending.push(...current.errors.slice(0, 8));
+  }
+  return `${phase} error${codes.size ? ` [${[...codes].join(', ')}]` : ''}`;
 }
 
 function buildAreaUrl(baseUrl, apiKey, source, bbox) {
@@ -73,6 +94,7 @@ export async function fetchFirmsRegionSource(apiKey, regionName, bbox, source, {
   const failures = [];
   const labels = ['primary', 'primary retry'];
   for (let index = 0; index < labels.length; index++) {
+    let phase = 'request';
     try {
       const response = await fetchFn(buildAreaUrl(FIRMS_API_BASE_URL, apiKey, source, bbox), {
         headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA },
@@ -83,10 +105,11 @@ export async function fetchFirmsRegionSource(apiKey, regionName, bbox, source, {
         error.status = response.status;
         throw error;
       }
+      phase = 'body';
       return parseCsv(await response.text());
     } catch (error) {
       const endpoint = labels[index];
-      failures.push(`${endpoint} ${safeFailureReason(error)}`);
+      failures.push(`${endpoint} ${safeFailureReason(error, phase)}`);
       const retryable = !Number.isInteger(error?.status) || error.status === 408
         || error.status === 429 || (error.status >= 500 && error.status <= 599);
       if (!retryable) break;

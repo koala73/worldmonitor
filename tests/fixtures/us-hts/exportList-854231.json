@@ -1,0 +1,280 @@
+[
+{
+"htsno": "",
+"indent": "1",
+"description": "Electronic integrated circuits:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8542.31.00",
+"indent": "2",
+"description": "Processors and controllers, whether or not combined with memories, converters, logic circuits, amplifiers, clock and timing circuits, or other circuits",
+"superior": null,
+"units": [],
+"general": "Free",
+"special": "",
+"other": "35%",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "3",
+"description": "Controllers (including microcontrollers):",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8542.31.00.15",
+"indent": "4",
+"description": "8-bit",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8542.31.00.20",
+"indent": "4",
+"description": "16-bit",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8542.31.00.25",
+"indent": "4",
+"description": "32-bit",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8542.31.00.30",
+"indent": "4",
+"description": "Other",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "3",
+"description": "Processors (including microprocessors):",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8542.31.00.35",
+"indent": "4",
+"description": "Digital signal processors (DSPs)",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8542.31.00.40",
+"indent": "4",
+"description": "Graphics processing units (GPUs)",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8542.31.00.45",
+"indent": "4",
+"description": "Central processing units (CPUs)",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8542.31.00.50",
+"indent": "4",
+"description": "Other",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "3",
+"description": "Programmable logic devices (PLDs):",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8542.31.00.55",
+"indent": "4",
+"description": "Complex programmable logic devices (CPLDs)",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8542.31.00.60",
+"indent": "4",
+"description": "Field programmable gate arrays (FPGAs)",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8542.31.00.65",
+"indent": "4",
+"description": "Other",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8542.31.00.70",
+"indent": "3",
+"description": "System on chip (SoCs)",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8542.31.00.75",
+"indent": "3",
+"description": "Other",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+}
+]

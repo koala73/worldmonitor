@@ -103,7 +103,7 @@ const SOURCE_DOMAIN_MATCHERS = [
   ['infrastructure', /infrastructure|cyber|cable|cloudflare|service-status|pipeline|internet-outage|portwatch|chokepoint|maritime|navigational-warning|abuseipdb|abuse\.ch/],
   ['finance', /econom|market|finance|stock|crypto|coin|exchange-rate|\bfx\b|yield|central-bank|trade|supply-chain|grocery|bigmac|debt|bis-|ecb-|eurostat|world-bank|comtrade|fao-food|treasury|fiscaldata|world-cpi|oecd|e-stat|abs\.gov\.au/],
   ['technology', /research|company|github|agentskills|technology|regulatory|tender|patent|startup|product-hunt|ossinsight|exa\.ai|firecrawl/],
-  ['geopolitics', /conflict|unrest|acled|ucdp|gdelt|security-advisor|sanction|travel-advisor|displacement|resilience|country-fact|prediction-market|forecast-market|hapi/],
+  ['geopolitics', /conflict|unrest|acled|ucdp|gdelt|security-advisor|sanction|travel-advisor|displacement|cross-border|resilience|country-fact|prediction-market|forecast-market|hapi/],
 ];
 
 // The manifest records providers and code references, not a marketing domain.
@@ -220,6 +220,7 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['api.ted.europa.eu', 'Tenders Electronic Daily (TED)'],
   ['api.tzevaadom.co.il', 'Tzeva Adom'],
   ['api.unhcr.org', 'UNHCR'],
+  ['data.unhcr.org', 'UNHCR Operational Data Portal'],
   ['api.usaspending.gov', 'USAspending.gov'],
   ['api.weather.gc.ca', 'Environment and Climate Change Canada (ECCC)'],
   ['api.weather.gov', 'U.S. National Weather Service'],
@@ -394,6 +395,7 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['www.stats.gov.cn', 'National Bureau of Statistics of China'],
   ['www.szse.cn', 'Shenzhen Stock Exchange'],
   ['www.unep.org', 'UN Environment Programme (UNEP)'],
+  ['www.unognewsroom.org', 'UN Geneva Newsroom'],
   ['www.war.gov', 'Pentagon'],
   ['www.weather.gov.hk', 'Hong Kong Observatory'],
   ['www.whitehouse.gov', 'The White House'],

@@ -2,14 +2,14 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import {
-  buildBetsSnapshot, computeNextSeries, attachEnsembleProbabilities, collectOpenEnsembleIds,
+  buildBetsSnapshot, computeNextSeries, attachEnsembleProbabilities, collectOpenQuestions, stampCodeVersion,
   ENSEMBLE_TOP_K_DEFAULT,
 } from '../scripts/seed-forecast-bets.mjs';
-import { ingestHistory, resolveDueEntries, shapeResolutionFeed } from '../scripts/seed-forecast-resolutions.mjs';
+import { ingestHistory, resolveDueEntries, windowQuestionKey } from '../scripts/seed-forecast-resolutions.mjs';
 import { EIA_PETROLEUM_FEED } from '../scripts/_bet-templates-energy.mjs';
 import { MARKET_SLOT_COUNT } from '../scripts/_bet-templates-markets.mjs';
 import { MARKET_GEO_SLOT_COUNT } from '../scripts/_bet-templates-markets-geo.mjs';
-import { resolveHardSpec } from '../scripts/_forecast-resolution-eval.mjs';
+import { resolveHardSpec, shapeResolutionFeed } from '../scripts/_forecast-resolution-eval.mjs';
 import { createEnsembleCache } from '../scripts/_forecast-ensemble.mjs';
 
 const NOW = Date.parse('2026-07-12T00:00:00Z');
@@ -24,6 +24,13 @@ function eiaFixture(overrides = {}) {
     brent: { current: 82.1, previous: 82.1, date: '2026-07-11', unit: 'USD/bbl' },
     ...overrides,
   };
+}
+
+// Only a bet carrying a model forecast opens a ledger window (#8990), so the
+// ingest tests tag the snapshot as the ensemble stage would.
+function ensembledSnapshot(snap) {
+  for (const bet of snap.predictions) bet.probabilitySource = 'ensemble';
+  return snap;
 }
 
 describe('buildBetsSnapshot base rate', () => {
@@ -97,7 +104,7 @@ describe('shapeResolutionFeed (eia-petroleum loader)', () => {
 
 describe('bet-engine shadow bets flow through ingest → resolve', () => {
   function betEntry(metricSubstr) {
-    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, {});
+    const snap = ensembledSnapshot(buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, {}));
     const ledger = ingestHistory({}, [snap], NOW);
     return Object.values(ledger).find((e) => e.spec?.metricKey?.includes(metricSubstr));
   }
@@ -134,7 +141,7 @@ describe('bet-engine shadow bets flow through ingest → resolve', () => {
 
 describe('value settlement gate (#2 — no false NO on a stale pre-release read)', () => {
   function inventoryEntry() {
-    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, {});
+    const snap = ensembledSnapshot(buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, {}));
     const ledger = ingestHistory({}, [snap], NOW);
     return Object.values(ledger).find((e) => e.spec?.metricKey?.includes('inventory'));
   }
@@ -151,7 +158,7 @@ describe('value settlement gate (#2 — no false NO on a stale pre-release read)
   });
 
   it('keeps EIA pending through the default grace and resolves from the covering weekly report', () => {
-    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, {});
+    const snap = ensembledSnapshot(buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, {}));
     const ledger = ingestHistory({}, [snap], NOW);
     const key = Object.keys(ledger).find((k) => ledger[k].spec?.metricKey?.includes('inventory'));
     const staleFeed = shapeResolutionFeed(EIA_PETROLEUM_FEED, eiaFixture({
@@ -234,16 +241,18 @@ describe('Phase-2: baselines + ensemble stage (#5525 U13)', () => {
     for (const bet of snap.predictions) assert.equal(bet.probabilitySource, 'base_rate');
   });
 
-  it('skips open-ensemble ids without consuming a top-K slot (backfills lower ranks)', async () => {
+  it('skips open questions without consuming a top-K slot (backfills lower ranks)', async () => {
     const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: { _seed: { fetchedAt: NOW }, data: eiaFixture() } }, NOW, {});
     const ranked = [...snap.predictions].sort((a, b) => (b.userValueScore || 0) - (a.userValueScore || 0));
     const first = ranked[0];
     const second = ranked[1];
     assert.ok(first && second && first.id !== second.id);
     const callLLM = llmDouble(0.7);
+    const openWindow = { id: first.id, region: first.region, generationOrigin: first.generationOrigin, status: 'pending', probabilitySource: 'ensemble', spec: first.resolution };
     const stats = await attachEnsembleProbabilities(snap, {
       callLLM, topK: 1, deadlineMs: Date.now() + 60_000, cache: createEnsembleCache(),
-      openEnsembleIds: new Set([first.id]),
+      openQuestions: collectOpenQuestions({ a: { ...openWindow, deadline: first.resolution.deadline } }, windowQuestionKey, NOW),
+      questionKeyOf: windowQuestionKey,
     });
     // Open-ensemble skip frees the slot so the next-ranked bet is ensembled.
     assert.equal(stats.skipped, 1);
@@ -299,17 +308,41 @@ describe('Phase-2: baselines + ensemble stage (#5525 U13)', () => {
     assert.equal(energy.probabilitySource, 'ensemble');
   });
 
-  it('collectOpenEnsembleIds indexes only pending FULL-ensemble entries — partials retry (review #3)', () => {
-    const ids = collectOpenEnsembleIds({
-      a: { id: 'x', status: 'pending', probabilitySource: 'ensemble' },
-      b: { id: 'y', status: 'pending', probabilitySource: 'base_rate' },
-      c: { id: 'z', status: 'resolved', probabilitySource: 'ensemble' },
-      d: { id: 'w', status: 'pending', probabilitySource: 'ensemble_partial' },
-    });
-    assert.deepEqual([...ids], ['x']);
+  it('collectOpenQuestions indexes every pending window, whatever probability it opened with (#8990)', () => {
+    const spec = { kind: 'hard', metricKey: 'market:commodities-bootstrap:v1|price(symbol==BZ=F)', operator: 'crosses', threshold: 87, baselineValue: 85, window: 'at-deadline' };
+    const questions = collectOpenQuestions({
+      a: { id: 'x', status: 'pending', probabilitySource: 'ensemble', deadline: NOW + 1, spec },
+      b: { id: 'y', status: 'pending', probabilitySource: 'base_rate', deadline: NOW + 1, spec },
+      c: { id: 'z', status: 'resolved', probabilitySource: 'ensemble', deadline: NOW + 1, spec },
+      d: { id: 'w', status: 'pending', probabilitySource: 'ensemble_partial', deadline: NOW + 1, spec },
+    }, windowQuestionKey, NOW);
+    assert.deepEqual([...questions].map((token) => token.split('\n')[0]).sort(), ['w', 'x', 'y']);
   });
 
-  it('a partial round attaches as ensemble_partial so the open window is not frozen (review #3)', async () => {
+  it('does not count a pending window past its deadline as open (#8990)', () => {
+    const spec = { kind: 'hard', metricKey: 'energy:eia-petroleum:v1|value(series==WCESTUS1)', operator: 'crosses', threshold: 87, baselineValue: 85, window: 'at-deadline' };
+    const questions = collectOpenQuestions({
+      overdue: { id: 'x', status: 'pending', generatedAt: NOW - 8 * 864e5, deadline: NOW - 864e5, spec },
+      open: { id: 'y', status: 'pending', generatedAt: NOW - 864e5, deadline: NOW + 864e5, spec },
+    }, windowQuestionKey, NOW);
+    assert.deepEqual([...questions].map((token) => token.split('\n')[0]), ['y']);
+  });
+
+  it('ensembles a new question on an id whose earlier question is still open (#8990)', async () => {
+    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: { _seed: { fetchedAt: NOW }, data: eiaFixture() } }, NOW, {});
+    const [first] = [...snap.predictions].sort((a, b) => (b.userValueScore || 0) - (a.userValueScore || 0));
+    const earlierQuestion = { ...first.resolution, threshold: first.resolution.threshold + 1 };
+    const openWindow = { id: first.id, region: first.region, generationOrigin: first.generationOrigin, status: 'pending', probabilitySource: 'ensemble', spec: earlierQuestion };
+    const stats = await attachEnsembleProbabilities(snap, {
+      callLLM: llmDouble(0.7), topK: 1, deadlineMs: Date.now() + 60_000, cache: createEnsembleCache(),
+      openQuestions: collectOpenQuestions({ a: { ...openWindow, deadline: first.resolution.deadline } }, windowQuestionKey, NOW),
+      questionKeyOf: windowQuestionKey,
+    });
+    assert.equal(stats.skipped, 0);
+    assert.equal(first.probabilitySource, 'ensemble');
+  });
+
+  it('a partial round attaches under its own provenance (review #3)', async () => {
     const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: { _seed: { fetchedAt: NOW }, data: eiaFixture() } }, NOW, {});
     let call = 0;
     const partialLLM = async (_system, _user, options = {}) => {
@@ -329,7 +362,7 @@ describe('Phase-2: baselines + ensemble stage (#5525 U13)', () => {
   });
 });
 
-describe('Phase-2: resolver ingest pass-through + no-downgrade guard (#5525 KTD5)', () => {
+describe('Phase-2: resolver ingest pass-through + first-emission scoring (#5525 KTD5, #8990)', () => {
   function betSnapshot(extra = {}) {
     const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: { _seed: { fetchedAt: NOW }, data: eiaFixture() } }, NOW, {});
     for (const bet of snap.predictions) Object.assign(bet, extra);
@@ -346,7 +379,7 @@ describe('Phase-2: resolver ingest pass-through + no-downgrade guard (#5525 KTD5
     assert.equal(entry.passes.length, 1);
   });
 
-  it('updateOpenWindow never downgrades an ensemble probability to a later base-rate', () => {
+  it('a later base-rate sighting never replaces the ensemble probability a window opened with', () => {
     const ensembled = betSnapshot({ probabilitySource: 'ensemble', probability: 0.7 });
     const ledger = ingestHistory({}, [ensembled], NOW);
     // Next run: same bets fall out of top-K → re-ingested with base-rate 0.4.
@@ -359,14 +392,19 @@ describe('Phase-2: resolver ingest pass-through + no-downgrade guard (#5525 KTD5
     assert.equal(entry.probabilitySource, 'ensemble');
   });
 
-  it('updateOpenWindow still updates base-rate→base-rate and ensemble→ensemble', () => {
-    const first = betSnapshot(); // base_rate 0.4
+  it('opens no window on a base-rate placeholder (#8990)', () => {
+    assert.deepEqual(ingestHistory({}, [betSnapshot()], NOW), {});
+  });
+
+  it('a later sighting of the same question is recorded for audit, never scored (#8990)', () => {
+    const first = betSnapshot({ probabilitySource: 'ensemble' }); // 0.4
     const ledger = ingestHistory({}, [first], NOW);
     const second = betSnapshot({ probability: 0.45 });
     for (const bet of second.predictions) bet.generatedAt = NOW + 60_000;
     second.generatedAt = NOW + 60_000;
     const after = ingestHistory(ledger, [second], NOW + 60_000);
-    assert.equal(Object.values(after)[0].probability, 0.45); // base→base updates
+    assert.equal(Object.values(after)[0].probability, 0.4);
+    assert.equal(Object.values(after)[0].lastSeenProbability, 0.45);
   });
 
   it('a later base_rate re-ingest never clobbers an ensemble_partial window (review R2 #1)', () => {
@@ -384,13 +422,9 @@ describe('Phase-2: resolver ingest pass-through + no-downgrade guard (#5525 KTD5
     assert.equal(entry.probabilitySource, 'ensemble_partial');
   });
 
-  it('open-window updates refresh calibration so market comparisons stay contemporaneous (review R2 #3)', () => {
-    const first = betSnapshot({ calibration: { marketPrice: 62, source: 'polymarket' } });
+  it('the market anchor stays paired with the probability the window opened with (#8990)', () => {
+    const first = betSnapshot({ probabilitySource: 'ensemble_partial', calibration: { marketPrice: 62, source: 'polymarket' } });
     let ledger = ingestHistory({}, [first], NOW);
-    assert.equal(Object.values(ledger)[0].calibration.marketPrice, 62);
-    // Ensemble upgrade arrives with the market having moved: vsMarketSkill /
-    // deviationSkill compare entry.probability to calibration.marketPrice, so
-    // the graded probability must be paired with the contemporaneous price.
     const upgraded = betSnapshot({
       probabilitySource: 'ensemble', probability: 0.7,
       calibration: { marketPrice: 71, source: 'polymarket' },
@@ -398,56 +432,67 @@ describe('Phase-2: resolver ingest pass-through + no-downgrade guard (#5525 KTD5
     for (const bet of upgraded.predictions) bet.generatedAt = NOW + 60_000;
     upgraded.generatedAt = NOW + 60_000;
     ledger = ingestHistory(ledger, [upgraded], NOW + 60_000);
-    let entry = Object.values(ledger)[0];
-    assert.equal(entry.probability, 0.7);
-    assert.equal(entry.calibration.marketPrice, 71);
-    // ensemble→ensemble same-rank refresh keeps working too.
-    const refreshed = betSnapshot({
-      probabilitySource: 'ensemble', probability: 0.75,
-      calibration: { marketPrice: 74, source: 'polymarket' },
-    });
-    for (const bet of refreshed.predictions) bet.generatedAt = NOW + 120_000;
-    refreshed.generatedAt = NOW + 120_000;
-    ledger = ingestHistory(ledger, [refreshed], NOW + 120_000);
-    entry = Object.values(ledger)[0];
-    assert.equal(entry.probability, 0.75);
-    assert.equal(entry.calibration.marketPrice, 74);
+    const entry = Object.values(ledger)[0];
+    assert.equal(entry.probability, 0.4);
+    assert.equal(entry.probabilitySource, 'ensemble_partial');
+    assert.equal(entry.calibration.marketPrice, 62);
   });
 
-  it('a later FULL ensemble upgrades a partial entry; a later partial never downgrades a full (review #3)', () => {
-    // partial → full: upgrade allowed, passes carried through the merge.
+  it('a window keeps the partial ensemble it opened with; a later full round is audit only (#8990)', () => {
     const partial = betSnapshot({ probabilitySource: 'ensemble_partial', probability: 0.6, passes: [{ name: 'p', probability: 0.6 }, { name: 'q', probability: null }] });
     let ledger = ingestHistory({}, [partial], NOW);
     const full = betSnapshot({ probabilitySource: 'ensemble', probability: 0.7, passes: [{ name: 'a', probability: 0.7 }] });
     for (const bet of full.predictions) bet.generatedAt = NOW + 60_000;
     full.generatedAt = NOW + 60_000;
     ledger = ingestHistory(ledger, [full], NOW + 60_000);
-    let entry = Object.values(ledger)[0];
-    assert.equal(entry.probability, 0.7);
-    assert.equal(entry.probabilitySource, 'ensemble');
-    assert.equal(entry.passes.length, 1); // merged forecast's passes copied
-
-    // full → partial: the no-downgrade guard holds.
-    const laterPartial = betSnapshot({ probabilitySource: 'ensemble_partial', probability: 0.5 });
-    for (const bet of laterPartial.predictions) bet.generatedAt = NOW + 120_000;
-    laterPartial.generatedAt = NOW + 120_000;
-    ledger = ingestHistory(ledger, [laterPartial], NOW + 120_000);
-    entry = Object.values(ledger)[0];
-    assert.equal(entry.probability, 0.7);
-    assert.equal(entry.probabilitySource, 'ensemble');
+    const entry = Object.values(ledger)[0];
+    assert.equal(entry.probability, 0.6);
+    assert.equal(entry.probabilitySource, 'ensemble_partial');
+    assert.equal(entry.passes.length, 2);
+    assert.equal(entry.lastSeenProbability, 0.7);
   });
 
   it('non-market deadlines never creep on re-ingest (guard for review #4 scope)', () => {
     // Energy horizons are wall-clock derived: a next-day run generates a later
     // deadline for the same id. The merge must NOT advance the open window's
     // deadline or daily reruns would keep the bet open forever.
-    const first = betSnapshot();
+    const first = betSnapshot({ probabilitySource: 'ensemble' });
     const ledger = ingestHistory({}, [first], NOW);
     const entryBefore = Object.values(ledger)[0];
-    const nextDay = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: { _seed: { fetchedAt: NOW + DAY_MS }, data: eiaFixture() } }, NOW + DAY_MS, {});
+    const nextDay = ensembledSnapshot(buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: { _seed: { fetchedAt: NOW + DAY_MS }, data: eiaFixture() } }, NOW + DAY_MS, {}));
     const after = ingestHistory(ledger, [nextDay], NOW + DAY_MS);
     const entryAfter = Object.values(after).find((e) => e.key === entryBefore.key);
     assert.equal(entryAfter.deadline, entryBefore.deadline);
     assert.equal(entryAfter.spec.deadline, entryBefore.spec.deadline);
+  });
+});
+
+describe('bet history code version (#7072)', () => {
+  it('stamps the deploy revision in the forecast seeder order, and nothing without one', () => {
+    assert.equal(stampCodeVersion({ predictions: [] }, { VERCEL_GIT_COMMIT_SHA: 'vercel', GITHUB_SHA: 'gh' }).codeVersion, 'vercel');
+    assert.equal(stampCodeVersion({ predictions: [] }, { RAILWAY_GIT_COMMIT_SHA: 'railway', VERCEL_GIT_COMMIT_SHA: 'vercel' }).codeVersion, 'railway');
+    assert.equal('codeVersion' in stampCodeVersion({ predictions: [] }, {}), false);
+  });
+});
+
+describe('market bets after the venue close (#8990)', () => {
+  const SETTLEMENT = 'prediction:markets-resolution:v1';
+  const SLUG = 'israel-x-iran-ceasefire-continues-through';
+  const marketBet = (question) => ({
+    id: `market:${SLUG}`,
+    title: question,
+    generationOrigin: 'bet_engine',
+    marketSlug: SLUG,
+    marketSource: 'polymarket',
+    resolution: { kind: 'hard', metricKey: `${SETTLEMENT}|yesPrice(slug==${SLUG})`, operator: 'crosses', threshold: 50, window: 'at-deadline', deadline: NOW + 30 * DAY_MS, sourceFeed: SETTLEMENT, question },
+  });
+
+  it('ensembles the slug\'s next market, which the resolver keys as its own question, and skips the open one', () => {
+    const july = 'Israel x Iran ceasefire continues through July 31?';
+    const open = { ...marketBet(july), spec: marketBet(july).resolution, status: 'pending', deadline: NOW + 30 * DAY_MS };
+    const questions = collectOpenQuestions({ a: open }, windowQuestionKey, NOW);
+    const token = (bet) => `${bet.id}\n${windowQuestionKey({ ...bet, spec: bet.resolution })}`;
+    assert.equal(questions.has(token(marketBet('israel x iran ceasefire continues through july 31'))), true);
+    assert.equal(questions.has(token(marketBet('Israel x Iran ceasefire continues through August 31?'))), false);
   });
 });

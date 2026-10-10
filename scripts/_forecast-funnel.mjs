@@ -3,12 +3,18 @@
 // The verification pipeline can only measure real skill if the PUBLISHED funnel
 // is diverse and not dominated by synthetic count-padding. This assesses a
 // published prediction set and flags a "collapsed" funnel — too few distinct
-// domains, or too high a synthetic share — so the generator can WARN and a
-// health check can surface it. Pure + injected: no wall-clock, no I/O.
+// domains, or too high a synthetic share — so the generator can WARN and the
+// health payload can report it. Pure + injected: no wall-clock, no I/O.
 
 import { SYNTHETIC_GENERATION_ORIGINS, SHADOW_GENERATION_ORIGINS } from './_forecast-scorecard.mjs';
 
-export const DEFAULT_MIN_DISTINCT_DOMAINS = 4;
+// Cyber and prediction-market forecasts are withheld from publication (#8990).
+// Every published political forecast came from prediction markets, so the
+// published set lost 2 domains: in the 200 runs read on 2026-10-08, 61% would
+// publish 3 domains and none fewer. 3 keeps the warning for a real collapse
+// without firing on that expected state. Return it to 4 when both families are
+// published again (WITHHELD_PUBLISH_FAMILIES in seed-forecasts.mjs).
+export const DEFAULT_MIN_DISTINCT_DOMAINS = 3;
 export const DEFAULT_MAX_SYNTHETIC_SHARE = 0.5;
 // Origins that are NOT real user-facing coverage: synthetic count-padding
 // (state_derived) AND unpromoted shadow bets (bet_engine). Kept in lock-step
@@ -55,6 +61,22 @@ export function assessFunnelDiversity(predictions, options = {}) {
     maxSyntheticShare,
     collapsed,
     reasons,
+  };
+}
+
+// The companion seed-meta for /api/health. A run that reached this point ran,
+// so status stays 'ok'; a narrow or synthetic-heavy funnel is an output-quality
+// reading, carried in collapsed/reasons and the generator's WARN log. Health
+// degrades only when the generator stops writing, which seed-meta freshness
+// catches.
+export function buildFunnelHealthMeta(assessment, nowMs) {
+  return {
+    fetchedAt: nowMs,
+    recordCount: assessment.domainCount,
+    sourceVersion: 'funnel-guardrail:v1',
+    status: 'ok',
+    collapsed: assessment.collapsed,
+    reasons: assessment.reasons,
   };
 }
 

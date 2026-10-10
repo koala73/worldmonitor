@@ -217,6 +217,8 @@ if ('_budget_exceeded' in parsed) {
 
 来自 WorldMonitor 精选引导缓存的实时股票报价、大宗商品价格、SGE 实物金银相对 COMEX 的溢价与背离状态、加密货币价格、外汇汇率（USD/EUR、USD/JPY 等）、板块表现及估值覆盖、ETF 资金流和海湾市场报价。
 
+`symbols` 仅筛选已发布的精选快照。未收录的代码不会触发任意代码查询。
+
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
@@ -224,9 +226,14 @@ if ('_budget_exceeded' in parsed) {
 | `symbols` | `array<string>` | 要保留的代码，例如 ["AAPL","GC=F","BTC"]。不区分大小写；匹配股票/大宗商品/加密货币/海湾报价、实物溢价与背离别名、板块 ETF 和 ETF 资金流代码。省略则返回完整快照。 |
 | `asset_class` | `array<string: equity / commodity / crypto / sectors / etf / gulf / sentiment>` | 将响应限制为一个或多个资产类别。省略则返回全部。 |
 | `limit` | number | 将每个类别的报价列表（股票/大宗商品/加密货币/海湾/板块/ETF 资金流）限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `refresh` | boolean | 默认为 false，复用付费市场面板。true 开始一次新的额度分配，必须提供 `request_id`。刷新时省略 `panel_request`。 |
+| `request_id` | string (UUID) | 固定的刷新 ID。同一 UUID 的重试复用额度与原始到期时间。UUID 字母大小写不改变其身份。 |
+| `panel_request` | string | 服务器签发的市场凭据，用于有界的精选数据读取。API 套餐不接受付费面板凭据。 |
 
 - **API 端点：** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-physical-divergence-index`, `GET /api/market/v1/get-physical-premiums`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **付费面板计量：** Pro 与 Pro Business 首次打开市场面板扣一次额度。五分钟复用窗口内的精选筛选和重复打开复用同一份分配。响应中的 `panelRequest.token` 可作为 `panel_request` 用于到期前的授权读取。新的刷新 UUID 扣一次新额度。API 套餐仍按工具权重计费，免费账户仍使用每日免费额度。
+- **数据范围：** 筛选仅选择已有的种子报价。面板凭据和刷新均不会读取任意代码、账户自选列表或新提供方数据。有效凭据允许重试不可用或陈旧的结果。上游故障不会退还首次分配的额度。
 - **新鲜度预算：** `stale` 仅追踪市场和板块快照（各 **30 分钟**）。每日 `physicalPremiums` 与 `physicalDivergence` 由 `/api/health` 监控。需要判断年龄时，请读取时间戳和背离状态。详见[实物贵金属背离指数方法](/zh/methodology/physical-divergence-index)。
 - 板块 `valuationCoverage` 将写入年龄（`stale`）与完整度（`sourceStatus`：`ok`、`partial` 或 `degraded`）分开。`stale` 描述的是种子写入本身，而非单条记录——刚写入的负载中仍可能包含较旧的估值。提供 `symbols` 筛选时，`valuationCount` 与 `expectedValuationCount` 会按筛选结果计算。`valuationCount` 同时统计实时获取与回放的记录；`currentValuationCount` 给出本轮真正实时获取的子集，当所有记录均为最新时会省略该字段。`staleValuationSymbols` 列出来自旧快照的代码——这些代码在 `valuations` 中**确实**有数值，其年龄由 `lastGood.fetchedAt` 给出（上限为 7 天快照 TTL）。`unavailableSymbols` 列出完全没有发布估值的代码，与 `staleValuationSymbols` 互不相交。`lastGood` 同时涵盖整条记录与借用的收益指标，并包含该快照时间戳。当没有任何记录是最新时 `sourceStatus` 为 `degraded`，当部分记录陈旧或缺失时为 `partial`。`valuationDiagnostics` 是按代码限制的路由元数据，覆盖 `v7Quote`、`v7QuoteBatch` 与 `quoteSummary` 路由，展示独立的 direct/proxy 结果、响应类别和缺失字段，绝不包含凭据。
 
@@ -718,7 +725,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_prediction_markets`
 
-预测市场：`geopolitical`（地缘政治/选举）、`tech`（有标签的科技，包括人工智能、加密货币和科学）、`finance`（金融/经济或未分类回退）。合约包含当前概率。Kalshi 目前不提供分类器标签，因此 `source=kalshi` 与 `category=tech` 组合不会返回记录；其他非地缘政治 Kalshi 记录会回退到 `finance`。
+预测市场：`geopolitical`（地缘政治/选举）、`tech`（有标签的科技，包括人工智能、加密货币和科学）、`finance`（金融/经济或未分类回退）。合约包含当前概率。Kalshi 目前不提供分类器标签，因此 `source=kalshi` 与 `category=tech` 组合不会返回记录；其他非地缘政治 Kalshi 记录会回退到 `finance`。专属付费连接的打开和筛选共用一次面板分配。附带 `request_id` 的显式刷新开始一次新分配，同一 ID 的重试复用该分配。API 套餐仍按工具权重计费。
 
 **参数（工具特定）：**
 
@@ -727,10 +734,18 @@ curl -s https://worldmonitor.app/mcp \
 | `category` | string: geopolitical / tech / finance | 限制为一个市场类别桶。省略则返回全部三类。`finance` 也接收未分类的非地缘政治记录。 |
 | `query` | string | 仅保留标题包含此文本的市场（不区分大小写）。 |
 | `source` | string: kalshi / polymarket | 筛选为一个预测市场来源。Kalshi 目前不提供分类器标签，因此与 `category=tech` 组合不会返回记录。 |
-| `limit` | number | 将每个类别桶限制为最多这么多市场（默认 30，传 0 表示不限）。 |
+| `limit` | number | 限制每个类别的记录数，默认 30。零或负数表示不限。正小数使用整数部分。 |
+| `refresh` | boolean | 仅限付费面板。默认 false 复用预测分配。true 必须附带 UUID request_id，并开始一次新分配。刷新时省略 panel_request。 |
+| `request_id` | string | 付费刷新 UUID。同一 UUID 的重试复用分配及原始到期时间，字母大小写不改变身份。 |
+| `panel_request` | string | 服务器签发的预测凭据，用于到期前的授权精选读取。API 和免费账户调用不接受该凭据。 |
 
 - **API 端点：** `GET /api/prediction/v1/list-prediction-markets`
-- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **访问：** `free-account`，任意已登录账户均可调用。免费账户消耗每日免费额度，API 套餐仍按工具权重计费。接受通用 `summary` 参数。
+- **付费面板计量：** Pro 与 Pro Business 打开面板扣一次额度。规范化筛选与重复打开在五分钟内复用预测分配。返回的 `panelRequest.token` 在到期前授权精选预测读取。本地类别展开只读取已加载数据，不发起新的工具调用。每份分配最多允许 64 次未缓存工具执行，未缓存执行与已确认缓存回放分别限制为每分钟 64 次。工具执行次数不等于单条 Redis 命令数。
+- **付费参数校验：** 类别和来源去除两端空白并忽略大小写。标题查询忽略大小写和两端空白。付费调用在预留额度前拒绝未知参数、无效类别或来源，以及非有限数值或非数字的 limit。普通 API 和免费账户调用保留既有筛选转换行为，不接受刷新控制或付费凭据。
+- **复用与恢复：** 相同规范化筛选在 summary 或 JMESPath 投影前复用成功的原始结果。新的未缓存筛选读取既有引导数据与新鲜度元数据。新鲜且有效的筛选空结果可以复用。陈旧、不可用、格式错误或未知观察仍可在同一凭据下重试。上游故障不退还已分配额度。
+- **用量通知：** 显式授权凭据读取同时查询当前每日额度，不再预留单位。计数器不可用或未确认时，保留合约数据而不显示数值通知。旧的打开通知不能证明后续计数。
+- **类型：** Redis 引导缓存读取。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **1.5 小时**（由 seeder cron 的预期间隔设定）。
 
 <CodeGroup>
@@ -794,10 +809,16 @@ curl -s https://worldmonitor.app/mcp \
 | `country` | string | 筛选为一个国家 — 在冲突/动荡事件上匹配国家名称，在风险评分上匹配 ISO 3166-1 alpha-2 地区代码（不区分大小写）。 |
 | `min_fatalities` | number | 丢弃低于此死亡数的事件（UCDP deathsBest / 动荡死亡数）。 |
 | `limit` | number | 将每个事件列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `panel_request` | string | 付费冲突事件凭据，在到期前复用受限内部筛选读取。API 和免费账户不接受。 |
+| `refresh` | boolean | 仅限付费面板。true 需附带 UUID request_id，并省略 panel_request，以开始一次新分配。 |
+| `request_id` | string | 显式付费刷新的 UUID。同一 UUID 的重试复用分配及原始到期时间，字母大小写不改变身份。 |
 
 - **API 端点：** `GET /api/conflict/v1/list-iran-events`, `GET /api/conflict/v1/list-ucdp-events`, `GET /api/unrest/v1/list-unrest-events`
+- **访问与计量：** `free-account`。免费账户使用免费额度，API 套餐保留按工具权重计费。Pro 与 Pro Business 首次打开扣一次额度，规范化筛选与重复打开在五分钟内复用冲突事件分配。每份分配最多允许 64 次未缓存工具执行，未缓存执行与成功缓存回放分别限制为每分钟 64 次。每次执行读取五个固定 Redis 键，启用伊朗事件时为六个，不分别扣额度。
+- **复用与刷新：** 相同筛选的成功原始结果在摘要或 JMESPath 呈现之前回放。显式刷新使用新的 UUID 扣一次新额度；同一 UUID 的重试复用该分配。授权凭据读取查询当前额度，不另行预留；计数器未知时保留数据并省略数字通知。付费参数在预留前拒绝未知字段及非有限数值。普通 API 和免费调用保留既有筛选转换，不接受付费凭据或刷新控制。
+- **来源观察与恢复：** 可选 `conflict_source.ucdp` 仅保留已读取元数据中类型正确的 `fetchedAt`、`candidateVersion`、`candidateComplete` 和 `annualFailedPages`，缺失字段保持缺失。已知不完整、缺失、格式错误、过期或不兼容的数据保持可重试；可用列表仍按请求筛选。元数据与数据不是原子快照，该观察不能证明所有动荡提供方的完整覆盖或 CII/伊朗的独立新鲜度。
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** UCDP 冲突事件为 **30 分钟**，动荡事件为 **2 小时**。任一来源超过预算都会设置 `stale: true`。
 
 <CodeGroup>
 
@@ -822,10 +843,13 @@ curl -s https://worldmonitor.app/mcp \
 
 | 名称 | 类型 | 必填 | 描述 |
 |------|------|---------:|-------------|
-| `country_code` | string | **是** | ISO 3166-1 alpha-2 国家代码，例如 "RU"、"IR"、"CN"、"UA" |
+| `country_code` | string | **是** | ISO2、ISO3 或英文国家名称，例如 "RU"、"RUS"、"Russia" |
+| `panel_request` | string | 否 | 服务端签发的同一国家凭据，用于已授权付费读取 |
+| `refresh` | boolean | 否 | 仅付费账户可用，分配一次新国家额度；需要 UUID 且不附带凭据 |
+| `request_id` | string (UUID) | 否 | 刷新时必需；同一 UUID 的重试复用该额度 |
 
 - **API 端点：** `GET /api/intelligence/v1/get-country-risk`
-- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**8.0s**。
+- **类型：** 未缓存执行使用实时 RPC。已接受的付费原始结果在同一国家授权期间复用。Edge 运行时超时为 **8.0s**。CII 时间不能证明旅行建议或制裁数据的新鲜度。
 
 <CodeGroup>
 
@@ -914,6 +938,16 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_country_brief_section`
+
+为嵌入式国家视图读取一个固定数据集。需要 Pro 连接。章节选择经过审查的有界读取器，并保留现有授权和额度规则；不能传入任意 URL、请求头、方法或 RPC 路径。
+
+`signalsRaw` 仅接受 `arguments: {"country_code":"US"}`。必须提供经过验证的专用付费国家凭据，且国家必须与该凭据匹配。普通 API 或操作员调用不能执行这个组合读取。返回四类固定来源结果，可提供地震数量、互联网中断数量、返回样本中的旅行建议数量、建议的最高原生级别和热活动升级数量。地震使用全球每周 USGS/NRCan 返回样本，最多 500 条。互联网中断使用 28 天、最多 50 条注释的精选档案，并包含已结束的中断。旅行建议使用按新近度排序的返回样本，每个发布者最多 15 条，不统计完整国家索引。热活动先取全球前 12 个聚类，再按国家筛选，并保留报告的计算时间和窗口。归属信息包括 USGS/NRCan、Cloudflare Radar、各建议发布者，以及 FIRMS/CWFIS/BC 热活动输入。
+
+这些值描述返回样本，不证明提供商的完整覆盖。未知快照时间不能用检索时间替代。全球地震或热活动样本为空时，国家数量仍为未知；有效非空样本中没有国家匹配时，只能报告该样本中的零。有效的中断或建议空列表表示返回列表中的零，不证明生产程序成功完成全面采集。格式错误或缺失证据使该来源的精确数量未知。同一国家的暂时故障可保留先前已验证的观测，并明确标记未更新；授权拒绝清除该来源，已观测的零替换旧活动，切换国家清除动态状态。
+
+在专用付费国家授权中，一次原始信号读取是一次未缓存的章节执行，沿用 64 次执行上限及一次每日面板额度。普通 API 和操作员读取保留现有访问与计费规则。它执行四个固定签名 GET，最多三个同时活动，共享一个 15 秒期限。每个来源正文最多 512 KiB，组装后的领域封装最多 128 KiB；这不是完整 JSON-RPC 响应统一小于 128 KiB 的承诺。完整已接受样本可复用；缺失、被拒绝或部分结果可重试，不作为正向原始结果缓存。其他动态 Signals 以及严重度和近期高严重度证据仍不可用。
+
 ### `get_country_brief`
 
 AI 生成的逐国情报简报。为给定国家生成 LLM 分析的地缘政治和经济评估。支持分析框架以提供结构化视角。
@@ -923,10 +957,14 @@ AI 生成的逐国情报简报。为给定国家生成 LLM 分析的地缘政治
 | 名称 | 类型 | 必填 | 描述 |
 |------|------|---------:|-------------|
 | `country_code` | string | **是** | ISO 3166-1 alpha-2 国家代码，例如 "US"、"DE"、"CN"、"IR" |
-| `framework` | string | 否 | 可选的分析框架指令，用于塑造分析视角（例如 Ray Dalio 债务周期、PMESII-PT） |
+| `framework` | string | 否 | 可选分析视角，实际使用前 2,000 个字符，不去除首尾空格 |
+| `allow_stale` | boolean | 否 | 仅精确的 true 选择保留的陈旧依据；默认 false 丢弃该依据 |
+| `panel_request` | string | 否 | 服务端签发的同一国家凭据，用于已授权付费读取 |
+| `refresh` | boolean | 否 | 仅付费账户可用，分配一次新国家额度；需要 UUID 且不附带凭据；不会强制 AI 生成 |
+| `request_id` | string (UUID) | 否 | 刷新时必需；同一 UUID 的重试复用该额度 |
 
 - **API 端点：** `GET /api/intelligence/v1/get-country-intel-brief`
-- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。最坏情况总预算 **~24s**（2s 上下文摘要抓取 + 22s 简报生成，顺序执行）。
+- **类型：** 未缓存执行使用实时 RPC。已接受的付费原始结果按国家和实际分析在共享国家授权内复用。不完整或保留的依据可以重试。最坏情况总预算为 **~24s**（2s 上下文摘要抓取加 22s 简报生成，顺序执行）。显式刷新不会绕过后端六小时简报缓存。API 权重及免费账户拒绝行为不变。
 - **来源：** 返回有界的 `sources` 数组，含来自用于为国家上下文提供依据的摘要条目的原始文章链接。URL 从订阅源数据复制，而非由 LLM 生成。
 - **交叉印证：** 为用作依据的摘要文章额外返回一个 `groundingStories` 数组，每项包含 `corroborationCount`（摘要生成时报道该故事的不同媒体数）、`mentionCount` 和生命周期 `storyPhase`。它独立于 `sources`（后者可能改为承载服务端依据集），并在摘要读取失败时为空。引用请使用 `sources`；使用 `groundingStories` 判断底层报道的充分程度。
 
@@ -953,6 +991,9 @@ curl -s https://worldmonitor.app/mcp \
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
+| `panel_request` | string | 服务端签发的专用 News Intelligence 凭据。 |
+| `refresh` | boolean | 付费刷新；省略凭据并提供 UUID。 |
+| `request_id` | string (UUID) | 同一 UUID 重试同一刷新额度。 |
 | `topic` | string: conflict / economy / cyber / nuclear / intelligence / maritime | 将 GDELT 情报筛选为单个主题。 |
 | `category` | string | 将顶级新闻故事筛选为一个类别（例如 "conflict"、"economy"；回退为 "general"）。 |
 | `country` | string | 将顶级故事和旅行警示筛选为一个 ISO 3166-1 alpha-2 国家代码（不区分大小写）。 |
@@ -963,6 +1004,10 @@ curl -s https://worldmonitor.app/mcp \
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
 - **交叉印证：** 每个顶级故事都包含 `uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`、`sources` 中参与报道的媒体名称，以及 `memberTitles` 中该聚类的全部标题，另有 `lastUpdated`、`upstreamImportanceScore`、`effectiveImportanceScore` 和 `credibilityScore`（0-100 来源可靠性，与重要性不同；国家控制媒体上限为 40）。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+
+在 Pro 和 Pro Business 中，`get_news_intelligence` 打开一次 News Intelligence 面板只消耗一个额度。重复打开、筛选、`summary` 和 JMESPath 视图在授权窗口内复用同一完整原始快照。返回的 `panelRequest.token` 作为 `panel_request` 仅授权此工具；新闻和国家面板凭据不能授权它。显式刷新需设置 `refresh: true`，提供 UUID `request_id`，并省略读取凭据。重试同一 UUID 复用该额度。已授权凭据读取会查询当前用量，不再分配额度；用量未知时不显示数字。API 和免费账户保持逐工具计费，并拒绝这些付费控制参数。
+
+复用仍使用现有四个数据 GET 和三个元数据 GET。有效期取 30/45/60 分钟元数据期限、共享的 60 分钟 Insights 生成期限、已评估的 GDELT 内容年龄期限及面板授权期限的最早值。公告发布时间会验证，但此读取图没有独立的公告新鲜度评估。缺失、降级、格式错误、过期、未来或未评估的来源可以重试。付费读取通过 `stale` 表示已证实的生成时间过期，通过 `freshnessUnknown` 表示未评估的时钟；原始来源值保持不变。跨源生产程序允许已观察的空信号列表；空 Insights 和公告引导列表不可复用。64 次读取上限计算未缓存的工具执行次数，不是单个 Redis GET 次数。这不证明所有提供方的完整覆盖。
 
 <CodeGroup>
 
@@ -1436,6 +1481,9 @@ curl -s https://worldmonitor.app/mcp \
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
+| `panel_request` | string | 来自付费面板的签名用户绑定咽喉读取凭据。仅授权此工具及其现有筛选；不能与刷新同时使用。 |
+| `refresh` | boolean | 仅适用于付费额度：显式请求一次新面板分配。提供 request_id UUID。 |
+| `request_id` | string | 显式付费刷新的 UUID；重试同一 UUID 会复用该分配。 |
 | `chokepoint` | string | 筛选为一个咽喉要道 — 在各数据集使用的不同标识符间按不区分大小写的子串匹配（例如 "hormuz" 匹配 "hormuz_strait"、"Strait of Hormuz"）。 |
 | `dataset` | `array<string: transit-summaries / chokepoint_transits / _countries / chokepoint-baselines / ref / chokepoint-flows>` | 将响应限制为一个或多个子数据集。省略则返回完整捆绑包。 |
 | `limit` | number | 将 chokepoint-baselines 列表和 _countries ISO2 索引限制为最多这么多项（默认 30，传 0 表示不限）。键控对象映射（transit-summaries、chokepoint_transits、ref、chokepoint-flows）有意不做限制 — 请改用 `chokepoint` 筛选。 |
@@ -1443,7 +1491,7 @@ curl -s https://worldmonitor.app/mcp \
 - **API 端点：** `GET /api/intelligence/v1/get-country-port-activity`, `GET /api/supply-chain/v1/get-chokepoint-status`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
 - **新鲜度预算（按切片）：** 当任意贡献切片超过其单独预算时标记 `stale: true` — 实时通行汇总（中继）**30 分钟**、PortWatch 港口活动 **36 小时**、咽喉流量 **12 小时**、PortWatch 咽喉参考 **14 天**，静态咽喉注册表/地理基准线最多 **~400 天**。捆绑包的 `cached_at` 反映最旧的贡献种子；`stale: true` 并不意味着所有数据都过时。
-- **按国家的内容新鲜度（PortWatch 切片）：** 当决策关键国家（`CN`/`HK`）自身的观测超过 **72 小时**时，`stale: true` 同样会被标记 —— 即使该次运行的心跳是新鲜的、且全部 174 个国家均已发布。只要上游 `max(date)` 未推进，seeder 就会复用缓存的国家载荷，因此传输时效与记录数都显示健康，而某个国家的数据已过时数日。这与 `/api/health` 对同一 seed 键给出的 `STALE_CONTENT` 判定一致 —— 参见[健康检查端点](/zh/health-endpoints)。`stale` 仍是单一布尔值，不会说明是哪个维度触发；指名过时国家的是 `/api/health`。
+- **按国家的内容新鲜度（PortWatch 切片）：** 当决策关键国家（`CN`/`HK`）自身的观测超过 **10 天**时，`stale: true` 同样会被标记 —— 即使该次运行的心跳是新鲜的、且全部 174 个国家均已发布。只要上游 `max(date)` 未推进，seeder 就会复用缓存的国家载荷，因此传输时效与记录数都显示健康，而某个国家的数据已过时数日。这与 `/api/health` 对同一 seed 键给出的 `STALE_CONTENT` 判定一致 —— 参见[健康检查端点](/zh/health-endpoints)。`stale` 仍是单一布尔值，不会说明是哪个维度触发；指名过时国家的是 `/api/health`。
 
 <CodeGroup>
 
@@ -1459,6 +1507,14 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+**咽喉要道面板额度。**
+
+在 Pro 和 Pro Business 中，`get_chokepoint_status` 打开一次签名的 `chokepoints` 面板只消耗一个额度。重复筛选、`summary` 和 JMESPath 视图共享该额度。实际请求的来源子集完整时复用未截断的原始数据；规范化数据集子集或咽喉筛选变化时，可在同一额度内重新获取来源。仅含未知名称的数据集选择器使用完整数据包。键控筛选未匹配时保留原映射，不能制造完整空覆盖。稀疏 AIS、不可用的今日计数和部分建模流量保持可见且可重试。
+
+返回的 `panelRequest.token` 作为 `panel_request` 仅授权此工具。显式 `refresh: true` 需要 UUID `request_id`，并省略读取凭据；同一 UUID 的重试复用该额度。已授权凭据读取会查询当前用量，不再分配额度；用量未知时不显示数字。API 和免费账户保持逐工具计费，并拒绝这些付费控制参数。
+
+每次未缓存执行仍使用六个数据 GET、六个元数据 GET 和一个激活 EXISTS 命令。64 次读取限制按工具执行计数，不按这 13 个 Redis 命令计数。复用在缓存查询后和保存前验证所选来源形状、可用性、发布时间以及 CN/HK 关键内容时效。部分、格式错误、未经评估或过期的原始数据不会作为完整数据缓存。基准参考年份和建模流量发布时间不能证明当前实测油流或底层历史的新鲜度。私有封装缓存仍为 512 KiB，工具输出仍为 128 KiB。此额度修改不增加网站详情、历史、警告或提供商读取。
 
 ### `get_supply_vulnerabilities`
 
@@ -1909,6 +1965,9 @@ curl -s https://worldmonitor.app/mcp \
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
+| `panel_request` | string | 服务器签发的自然灾害面板凭据，或已有新闻凭据的固定受限地图读取。普通付费打开时省略；新闻凭据不能扩大地图读取范围。 |
+| `refresh` | boolean | 仅限付费独立面板。显式开始一次新分配，省略 panel_request 并提供 UUID 格式的 request_id。 |
+| `request_id` | string | 付费独立面板的刷新标识。同一 UUID 的重试复用该分配。 |
 | `dataset` | `array<string: earthquakes / wildfires / other>` | 限制为一个或多个灾害数据集（地震 / 野火 / 其他自然事件）。省略则返回全部。 |
 | `min_magnitude` | number | 丢弃低于此震级的地震和自然事件。 |
 | `active_only` | boolean | 仅保留仍处于活跃状态（未关闭）的自然事件。 |
@@ -1932,6 +1991,10 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+在 Pro 与 Pro Business 上，`get_natural_disasters` 首次打开扣一次自然灾害面板额度。重复打开及数据集、震级、活动状态和数量筛选在五分钟内复用该分配。使用返回的 `panelRequest.token` 作为 `panel_request` 进行受限读取。显式刷新需提供 `refresh: true` 和 UUID 格式的 `request_id`，且不携带读取凭据；同一 UUID 的重试复用刷新额度。API 与免费账户调用保留普通按工具计费及现有参数转换，不接受付费刷新控制。
+
+每次未缓存执行读取三个固定数据键及已存在的地震元数据键，作为 64 次读取预算中的一次工具执行。相同筛选的成功原始结果在摘要或 JMESPath 呈现之前回放，但不得超过最早可观察的来源时效或 EONET 保留期限。新筛选或不可用、格式错误、已知降级、时间未知的数据可在同一分配内重新读取。区域来源的阻止决策保持可读但不缓存，包括未发出请求的预检决策。该策略不证明所有提供方覆盖完整。已有新闻凭据仍仅允许其固定灾害数据集列表及数量 100、20 或 1，不能使用独立面板的震级或活动筛选。内部来源时间和复用期限不会添加公开元数据字段。授权读取返回已确认的当前使用量；计数未知时省略数字通知。
 
 ### `get_radiation_data`
 
@@ -2073,9 +2136,12 @@ curl -s https://worldmonitor.app/mcp \
 | 名称 | 类型 | 必填 | 描述 |
 |------|------|---------:|-------------|
 | `geo_context` | string | 否 | 已弃用的兼容字段；预计算的全球快照不会按请求重新生成或聚焦。 |
+| `refresh` | boolean | 否 | Paid MCP panel only. Explicit refresh starts one new request allocation; requires request_id. |
+| `request_id` | string | 否 | UUID for a paid explicit refresh. Retrying the same UUID reuses its allocation. |
+| `panel_request` | string | 否 | Signed paid World Brief receipt for loaded reads. Do not combine with refresh. |
 
 - **API 端点：** `GET /api/infrastructure/v1/get-bootstrap-data?keys=insights` —— 通过已认证网关读取仪表板使用的同一 `news:insights:v1` payload。
-- **类型：** 缓存支撑的 RPC —— 返回最新的种子程序已接受快照，在缺失、过期或降级时 fail closed。不在请求时调用 LLM。
+- **类型：** 缓存支撑的 RPC。付费打开消耗一个世界简报面板额度；有效期内的健康重复读取和 JMESPath 视图复用已接受的原始快照。有效且不足三小时的最近可用内容仍可返回，并显示过期提示，但过期内容允许重试，不会作为新鲜快照缓存。缺失、损坏或超过期限的内容不可用。不在请求时调用 LLM。API 保持普通逐工具计费，免费账户保持订阅拒绝行为。
 - **来源：** 按生产者顺序返回种子 payload 发布的有界 `worldBriefSources` 数组。URL 从显式来源记录复制，而不是在 MCP 执行时生成；保留空 URL 回退项，避免引用编号错位。
 - **交叉印证：** `headlines` 中的每一项在 `topStories` 中都有一个按下标对齐的条目（`topStories[i]` 描述 `headlines[i]`），包含 `sourceCount`、`uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`，以及 `sources` 中参与报道的媒体名称（上限 12 个）。这些全部由洞察种子程序发布，因此不在请求时计算。注意这里每个故事的 `sources` 是媒体名称列表，与该工具顶层的 `sources`（承载引用记录）不同。`memberTitles` 在此处刻意不返回 —— 它可在输出预算更大的 `get_news_intelligence` 上获取。
 
@@ -2163,7 +2229,10 @@ curl -s https://worldmonitor.app/mcp \
 |------|------|-------------|
 | `domain` | string | 筛选为一个预测领域（精确、不区分大小写 — 例如 "shipping"、"energy"、"macro"）。 |
 | `region` | string | 筛选为一个地区/战区（不区分大小写的子串）。 |
-| `limit` | number | 将预测列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `limit` | number | 付费面板接受 1–30 的整数。普通 API 调用保留现有的上限规则。 |
+| `refresh` | boolean | 付费面板打开请求：设为 `true` 时启动新的准入，需要新的 `request_id`。 |
+| `request_id` | string | 可选 UUID，用于复用显式的付费面板打开请求。 |
+| `panel_request` | string | 签名的预测准入凭证，用于有界的已加载列表重放。 |
 
 - **API 端点：** `GET /api/forecast/v1/get-forecasts`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
@@ -2183,6 +2252,39 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `get_forecast_case`
+
+读取已加载列表中指定 ID 和 generation 对应的原始预测案例，保留案例内容。此操作需要有效的付费预测面板准入。现有的 64 次读取额度包含此内部读取，不会额外扣减每日面板配额。缺少数据源、ID 不存在、generation 已更改或单个案例超出大小限制时，都会明确报告。数据源恢复后可重试失败的案例；成功的案例会被复用。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `forecast_id` | string | 已加载列表中的精确原始预测 ID。 |
+| `generated_at` | string | 已加载列表中的精确 `String(generatedAt)` 值。 |
+| `panel_request` | string | 签名的预测面板凭证。 |
+
+- **API 端点：** `GET /api/forecast/v1/get-forecasts`
+- **访问权限：** `subscription` — 需要通过所有者、范围、有效期和权益检查的有效付费预测面板准入。
+- **类型：** 读取固定规范预测数据集的缓存；不会访问任意缓存键，也不会运行模型生成。
+- **输出上限：** 单个完整原始案例为 128 KB；不会静默截断案例内容。
+- **新鲜度预算：** 1.5 小时；原始案例的数据源通知与打开面板时的快照分开处理。
+
+### `get_forecast_theaters`
+
+使用有效的付费预测准入读取最新原始模拟战区摘要。保留原始路径、参与者及可选角色、反应、稳定因素、失效条件、独立来源运行 ID 和时间以及完成计数。来源时间不能证明新鲜度；部分和未知覆盖不会被视为完整覆盖或空结果。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `panel_request` | string | `get_forecast_predictions` 返回的签名预测凭证。不接受其他参数。 |
+
+- **API 端点：** `GET /api/forecast/v1/get-simulation-outcome`，只读取最新摘要。
+- **访问权限：** `subscription`，检查所有者、范围、有效期和权益。
+- **配额：** 共享打开面板时的每日分配和 64 次未缓存读取上限。完整且通过验证的快照及明确无符合条件的空快照可以复用；部分、失败、缺失、处理中及未知结果可以手动重试。
+- **输出上限：** 原始证据为 128 KB。无效或过大的来源报告不可用，不会静默截断，不支持任意运行选择、模拟触发或私有产物读取。
 
 ### `get_forecast_scorecard`
 
@@ -2210,6 +2312,19 @@ curl -s https://worldmonitor.app/mcp \
 </CodeGroup>
 
 ## 元工具
+
+### `get_mcp_allowance`
+
+读取当前已验证账户的现有额度快照。客户端不支持 `worldmonitor://account/mcp-allowance` 资源读取时，请调用此工具。
+
+**工具专用参数：** 无。只接受通用可选的 `jmespath` 投影，在分配前拒绝账户选择器、`summary` 及 `panel_request`。
+
+**响应：** `{ access, used, limit, remaining, resetsAt, requestWindows, sharedWithRestApi }`。免费账户还获得请求窗口的使用量、上限、剩余数、空闲间隔、活动状态和到期时间。无限额度的 `limit` 与 `remaining` 为 `null`。计数器不可读取或格式错误时返回错误，而不是成功的零使用量快照。文本和 `structuredContent` 沿用普通工具的投影协议。
+
+- **访问：** `free-account`。要求已验证、绑定用户的 OAuth 或 `wm_…` 凭据，并保留现有权益检查。匿名和运营方凭据无法读取账户快照。
+- **配额：** 不预留每日额度、免费账户调用或窗口、面板分配或内部读取次数。每日额度耗尽后仍可读取；两种凭据共享账户每分钟 192 次的协议限流。
+- **API 共享：** `sharedWithRestApi` 表示计数器是否包含 REST 请求。影子模式的 API 计数器仍使用已售 API 上限。账户总数不能识别具体调用者。
+- **API 端点：** 无。工具与账户资源共用一个强制执行计数器读取器。响应为 `no-store`。
 
 ### `describe_tool`
 

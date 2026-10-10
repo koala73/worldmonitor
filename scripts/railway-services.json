@@ -99,6 +99,8 @@
       "shared/ai-tokens.json",
       "shared/ais-watchdog.js",
       "shared/ais-vessel-type.js",
+      "shared/chokepoint-transit-tracker.js",
+      "shared/chokepoint-transit-window.js",
       "shared/chokepoint-threat-levels.js",
       "shared/chokepoint-traffic-anomaly.js",
       "shared/commodities.json",
@@ -116,7 +118,8 @@
       "shared/x-account-source-tiers.json",
       "shared/stablecoin-classifier.cjs",
       "shared/stablecoins.json",
-      "shared/stocks.json"
+      "shared/stocks.json",
+      "scripts/shared/pizzint-location.cjs"
     ],
     "documentedAt": "Dockerfile.relay"
   },
@@ -165,13 +168,19 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "deep-forecast-worker",
     "watchPatterns": [
+      "scripts/_bet-templates-macro.mjs",
       "scripts/_bet-templates-markets-classify.mjs",
       "scripts/_cii-risk-cache-keys.mjs",
       "scripts/_ema-threat-engine.mjs",
+      "scripts/_forecast-calibration.mjs",
       "scripts/_forecast-dashboard.mjs",
       "scripts/_forecast-funnel.mjs",
+      "scripts/_forecast-resolution-eval.mjs",
       "scripts/_forecast-resolution.mjs",
       "scripts/_forecast-scorecard.mjs",
+      "scripts/_forecast-subject.mjs",
+      "scripts/_fred-series.mjs",
+      "scripts/_gps-maritime-regions.mjs",
       "scripts/_llm-json.mjs",
       "scripts/_llm-model-timeouts.mjs",
       "scripts/lib/llm-model-policy.cjs",
@@ -194,7 +203,10 @@
       "scripts/package.json",
       "scripts/process-deep-forecast-tasks.mjs",
       "scripts/seed-forecasts.mjs",
-      "scripts/shared/compare-and-delete-script.cjs"
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/judged-subject-terms.json",
+      "shared/country-names.json"
     ],
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
   },
@@ -509,7 +521,9 @@
       "scripts/shared/iso3-to-iso2.json",
       "shared/country-bboxes.json",
       "shared/country-names.json",
-      "shared/iso3-to-iso2.json"
+      "shared/iso3-to-iso2.json",
+      "scripts/data/country-centroids.json",
+      "scripts/lib/country-centroid.mjs"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-6-seed-bundle-climate"
   },
@@ -530,6 +544,7 @@
       "scripts/_country-resolver.mjs",
       "scripts/_llm-json.mjs",
       "scripts/_llm-model-timeouts.mjs",
+      "scripts/_market-alert-ledger.mjs",
       "scripts/lib/llm-model-policy.cjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
@@ -544,6 +559,7 @@
       "scripts/lib/brief-embedding.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/physical-divergence.mjs",
+      "scripts/lib/story-track-batch-reader.mjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
@@ -571,16 +587,24 @@
       "scripts/seed-correlation.mjs",
       "scripts/seed-cross-source-signals.mjs",
       "scripts/seed-cross-strait-activity.mjs",
+      "scripts/seed-market-alert-ledger.mjs",
       "scripts/seed-regional-snapshots.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/correlation-runtime-mode.js",
       "scripts/shared/country-names.json",
+      "scripts/shared/entity-extraction-core.js",
+      "scripts/shared/entity-registry.js",
       "scripts/shared/geography.js",
       "scripts/shared/iso2-to-region.json",
       "scripts/shared/iso3-to-iso2.json",
+      "scripts/shared/market-alert-core.js",
+      "scripts/shared/news-clustering-core.js",
       "scripts/shared/notification-dedup.cjs",
       "scripts/shared/physical-divergence-contract.js",
       "scripts/shared/physical-divergence-staleness.js",
+      "scripts/shared/publisher-families.js",
+      "scripts/shared/source-tiers.json",
+      "scripts/shared/text-analysis-core.js",
       "shared/country-names.json",
       "shared/iso3-to-iso2.json"
     ],
@@ -672,6 +696,7 @@
       "scripts/_bundle-runner.mjs",
       "scripts/_china-macro-contract.mjs",
       "scripts/_china-news-coverage.mjs",
+      "scripts/_content-age-helpers.mjs",
       "scripts/_disease-outbreaks-helpers.mjs",
       "scripts/_html-entities.mjs",
       "scripts/_proxy-utils.cjs",
@@ -681,6 +706,10 @@
       "scripts/_upstash-rest.mjs",
       "scripts/china-coverage-health.mjs",
       "scripts/china-coverage-manifest.mjs",
+      "scripts/data/country-centroids.json",
+      "scripts/data/dtm-admin1-points.json",
+      "scripts/data/outbreak-places.json",
+      "scripts/lib/country-centroid.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/main-module.mjs",
       "scripts/nixpacks.toml",
@@ -688,13 +717,17 @@
       "scripts/package.json",
       "scripts/seed-bundle-health.mjs",
       "scripts/seed-china-coverage-health.mjs",
+      "scripts/seed-cross-border-arrivals.mjs",
       "scripts/seed-disease-outbreaks.mjs",
       "scripts/seed-displacement-summary.mjs",
+      "scripts/seed-dtm-displacement.mjs",
       "scripts/seed-health-air-quality.mjs",
       "scripts/seed-vpd-tracker.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-name-to-iso2.cjs",
       "scripts/shared/country-names.json",
-      "scripts/shared/geo-extract.mjs"
+      "scripts/shared/geo-extract.mjs",
+      "scripts/shared/iso3-to-iso2.json"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-9-seed-bundle-health"
   },
@@ -1255,6 +1288,54 @@
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
   {
+    "entry": "scripts/seed-radiation-watch.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-radiation-watch",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN"
+    ],
+    "watchPatterns": [
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/seed-radiation-watch.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/package.json",
+      "scripts/package-lock.json",
+      "scripts/nixpacks.toml"
+    ],
+    "cronSchedule": "*/15 * * * *",
+    "documentedAt": "scripts/seed-radiation-watch.mjs"
+  },
+  {
+    "entry": "scripts/seed-trade-flows.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-trade-flows",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN"
+    ],
+    "watchPatterns": [
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/seed-trade-flows.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/comtrade-period.mjs",
+      "scripts/shared/comtrade-strategic-products.json",
+      "scripts/package.json",
+      "scripts/package-lock.json",
+      "scripts/nixpacks.toml"
+    ],
+    "cronSchedule": "0 5 * * *",
+    "documentedAt": "scripts/seed-trade-flows.mjs"
+  },
+  {
     "entry": "scripts/seed-comtrade-bilateral-hs4.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-comtrade-bilateral-hs4",
@@ -1323,6 +1404,7 @@
       "scripts/shared/hapi-app-identifier.json",
       "scripts/shared/iso2-to-iso3.json",
       "scripts/shared/iso3-to-iso2.json",
+      "scripts/shared/pizzint-location.cjs",
       "shared/country-names.json",
       "shared/crawlable-crises.json",
       "shared/hapi-app-identifier.json",
@@ -1421,6 +1503,7 @@
       "scripts/_cii-risk-cache-keys.mjs",
       "scripts/_ema-threat-engine.mjs",
       "scripts/_forecast-bets-keys.mjs",
+      "scripts/_forecast-calibration.mjs",
       "scripts/_forecast-dashboard.mjs",
       "scripts/_forecast-evidence-archive.mjs",
       "scripts/_forecast-funnel.mjs",
@@ -1428,7 +1511,9 @@
       "scripts/_forecast-resolution-eval.mjs",
       "scripts/_forecast-resolution.mjs",
       "scripts/_forecast-scorecard.mjs",
+      "scripts/_forecast-subject.mjs",
       "scripts/_fred-series.mjs",
+      "scripts/_gps-maritime-regions.mjs",
       "scripts/_llm-json.mjs",
       "scripts/_llm-model-timeouts.mjs",
       "scripts/_prediction-classify.mjs",
@@ -1454,6 +1539,7 @@
       "scripts/seed-forecasts.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
+      "scripts/shared/judged-subject-terms.json",
       "shared/country-names.json"
     ],
     "documentedAt": "scripts/seed-forecast-resolutions.mjs (header docblock declares daily cron)"
@@ -1463,13 +1549,19 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-forecasts",
     "watchPatterns": [
+      "scripts/_bet-templates-macro.mjs",
       "scripts/_bet-templates-markets-classify.mjs",
       "scripts/_cii-risk-cache-keys.mjs",
       "scripts/_ema-threat-engine.mjs",
+      "scripts/_forecast-calibration.mjs",
       "scripts/_forecast-dashboard.mjs",
       "scripts/_forecast-funnel.mjs",
+      "scripts/_forecast-resolution-eval.mjs",
       "scripts/_forecast-resolution.mjs",
       "scripts/_forecast-scorecard.mjs",
+      "scripts/_forecast-subject.mjs",
+      "scripts/_fred-series.mjs",
+      "scripts/_gps-maritime-regions.mjs",
       "scripts/_llm-json.mjs",
       "scripts/_llm-model-timeouts.mjs",
       "scripts/lib/llm-model-policy.cjs",
@@ -1491,7 +1583,10 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-forecasts.mjs",
-      "scripts/shared/compare-and-delete-script.cjs"
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/judged-subject-terms.json",
+      "shared/country-names.json"
     ],
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
   },
@@ -1706,7 +1801,8 @@
       "scripts/seed-sanctions-pressure.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-name-to-iso2.cjs",
-      "scripts/shared/country-names.json"
+      "scripts/shared/country-names.json",
+      "scripts/shared/country-sanctions-signals.mjs"
     ],
     "cronSchedule": "0 */6 * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
@@ -1762,7 +1858,10 @@
       "scripts/package.json",
       "scripts/seed-supply-chain-trade.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-name-to-iso2.cjs",
+      "scripts/shared/country-names.json",
       "scripts/shared/un-to-iso2.json",
+      "scripts/shared/us-hts-chapter99.mjs",
       "shared/un-to-iso2.json"
     ],
     "cronSchedule": "0 */6 * * *",
@@ -1810,13 +1909,19 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "simulation-worker",
     "watchPatterns": [
+      "scripts/_bet-templates-macro.mjs",
       "scripts/_bet-templates-markets-classify.mjs",
       "scripts/_cii-risk-cache-keys.mjs",
       "scripts/_ema-threat-engine.mjs",
+      "scripts/_forecast-calibration.mjs",
       "scripts/_forecast-dashboard.mjs",
       "scripts/_forecast-funnel.mjs",
+      "scripts/_forecast-resolution-eval.mjs",
       "scripts/_forecast-resolution.mjs",
       "scripts/_forecast-scorecard.mjs",
+      "scripts/_forecast-subject.mjs",
+      "scripts/_fred-series.mjs",
+      "scripts/_gps-maritime-regions.mjs",
       "scripts/_llm-json.mjs",
       "scripts/_llm-model-timeouts.mjs",
       "scripts/lib/llm-model-policy.cjs",
@@ -1839,7 +1944,10 @@
       "scripts/package.json",
       "scripts/process-simulation-tasks.mjs",
       "scripts/seed-forecasts.mjs",
-      "scripts/shared/compare-and-delete-script.cjs"
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/judged-subject-terms.json",
+      "shared/country-names.json"
     ],
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
   },

@@ -932,7 +932,7 @@ export class SupplyChainPanel extends Panel {
             <tr>
               <th scope="col">${t('components.supplyChain.mineral')}</th>
               <th scope="col">${t('components.supplyChain.topProducers')}</th>
-              <th scope="col">HHI</th>
+              <th scope="col" title="Herfindahl-Hirschman Index measures producer concentration, from 0 to 10,000. Higher values mean fewer producers dominate supply.">Concentration index</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -975,7 +975,7 @@ export class SupplyChainPanel extends Panel {
           <tr>
             <th scope="col">${t('components.supplyChain.mineral')}</th>
             <th scope="col">${t('components.supplyChain.topProducers')}</th>
-            <th scope="col">HHI</th>
+            <th scope="col" title="Herfindahl-Hirschman Index measures producer concentration, from 0 to 10,000. Higher values mean fewer producers dominate supply.">Concentration index</th>
             <th scope="col">${t('components.supplyChain.risk')}</th>
           </tr>
         </thead>

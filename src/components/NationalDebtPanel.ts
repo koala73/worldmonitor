@@ -364,7 +364,7 @@ export class NationalDebtPanel extends Panel {
           <div class="debt-name">${name}</div>
           <div class="debt-meta">
             <span class="debt-ratio">${ratioStr} of GDP</span>
-            <span class="debt-growth ${growthClass}">${growthStr} YoY</span>
+            <span class="debt-growth ${growthClass}">${growthStr} year over year</span>
           </div>
         </div>
         <div class="debt-ticker" data-iso3="${escapeHtml(entry.iso3)}">${escapeHtml(debtStr)}</div>

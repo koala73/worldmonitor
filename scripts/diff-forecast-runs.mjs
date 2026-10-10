@@ -37,6 +37,18 @@ function extractStateLabels(artifacts = {}) {
   return [...new Set(labels)].sort();
 }
 
+// A candidate's Brier can be compared with a baseline's only when both runs
+// forecast from one frozen emission snapshot and are scored on the same
+// id@deadline windows (#7072). No run archives the inputs it forecast from
+// (#7073), and the ledger's recorded Brier scores the code that emitted each
+// forecast, not the candidate, so the diff states the comparison is
+// unavailable instead of reporting a number.
+const CANDIDATE_BRIER_DELTA = Object.freeze({
+  status: 'unavailable',
+  reason: 'emission_snapshot_required',
+  detail: 'Both runs must forecast from one frozen emission snapshot and be scored on the same id@deadline resolution windows; no run archives its emission inputs yet.',
+});
+
 function diffForecastRuns(baselineArtifacts = {}, candidateArtifacts = {}) {
   const baselineSummary = baselineArtifacts.summary || {};
   const candidateSummary = candidateArtifacts.summary || {};
@@ -72,6 +84,7 @@ function diffForecastRuns(baselineArtifacts = {}, candidateArtifacts = {}) {
     removedTopForecastTitles: [...baselineTopTitles].filter((title) => !candidateTopTitles.has(title)).sort(),
     addedStateLabels: [...candidateLabels].filter((label) => !baselineLabels.has(label)).sort(),
     removedStateLabels: [...baselineLabels].filter((label) => !candidateLabels.has(label)).sort(),
+    candidateBrierDelta: { ...CANDIDATE_BRIER_DELTA },
   };
 }
 
@@ -91,6 +104,7 @@ if (_isDirectRun) {
 }
 
 export {
+  CANDIDATE_BRIER_DELTA,
   parseArgs,
   diffNumberMap,
   diffForecastRuns,

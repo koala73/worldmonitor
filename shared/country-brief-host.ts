@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { BRIEF_TOPICS } from './country-brief-sections';
 import { panelReceiptSchema } from './panel-admission';
+import { resolveCountryCode } from './country-code-resolve';
+import { RAW_SIGNAL_PATH } from './country-raw-signals';
+
+const signalCountryNames = new Intl.DisplayNames(['en'], { type: 'region', fallback: 'none' });
+// Intl includes named organizations, statistical regions and test locales as well as countries/territories.
+const nonCountrySignalRegions = new Set(['EU', 'UN', 'EZ', 'QO', 'XA', 'XB', 'XX', 'ZZ']);
+const signalCountryCode = z.string().regex(/^[A-Z]{2}$/).refine(code => resolveCountryCode(code) === code && !nonCountrySignalRegions.has(code) && signalCountryNames.of(code) !== undefined, 'Unrecognized country');
 
 export const panelAdmissionSchema = panelReceiptSchema.extend({ countryCode: z.string().regex(/^[A-Z]{2}$/) });
 export type PanelAdmission = z.infer<typeof panelAdmissionSchema>;
@@ -12,6 +19,32 @@ export const countryViewSchema = z.object({
   topic: z.enum(Object.keys(BRIEF_TOPICS) as [keyof typeof BRIEF_TOPICS, ...Array<keyof typeof BRIEF_TOPICS>]).default('overview'),
 }).strict();
 
+const countryDirectControls = {
+  country_code: z.string().min(2).max(100),
+  refresh: z.boolean().default(false),
+  request_id: z.string().uuid().optional(),
+};
+export const countryBriefDirectViewSchema = z.object({
+  ...countryDirectControls, framework: z.unknown().optional(), allow_stale: z.unknown().optional(),
+}).strict().refine(value => !value.refresh || value.request_id !== undefined);
+export const countryRiskDirectViewSchema = z.object(countryDirectControls).strict()
+  .refine(value => !value.refresh || value.request_id !== undefined);
+const countryBriefDirectReadSchema = z.object({
+  country_code: z.string().min(2).max(100), framework: z.unknown().optional(), allow_stale: z.unknown().optional(),
+}).strict();
+const countryRiskDirectReadSchema = z.object({ country_code: z.string().min(2).max(100) }).strict();
+
+export function normalizeCountryDirectRead(name: 'get_country_brief' | 'get_country_risk', args: Record<string, unknown>): Record<string, unknown> | null {
+  const parsed = (name === 'get_country_brief' ? countryBriefDirectReadSchema : countryRiskDirectReadSchema).safeParse(args);
+  if (!parsed.success) return null;
+  const country = resolveCountryCode(parsed.data.country_code);
+  if (!country) return null;
+  const original = parsed.data as { framework?: unknown; allow_stale?: unknown };
+  let framework = '';
+  try { if (name === 'get_country_brief') framework = String(original.framework ?? '').slice(0, 2000); } catch { return null; }
+  return { country_code: country, ...(framework ? { framework } : {}), ...(original.allow_stale === true ? { allow_stale: true } : {}) };
+}
+
 const activityBoundsSchema = {
   ne_lat: z.coerce.number().min(-90).max(90).default(0),
   ne_lon: z.coerce.number().min(-180).max(180).default(0),
@@ -20,6 +53,7 @@ const activityBoundsSchema = {
 };
 
 export const COUNTRY_READERS = {
+  signalsRaw: { path: RAW_SIGNAL_PATH, args: z.object({ country_code: signalCountryCode }).strict() },
   flights: { path: '/api/military/v1/list-military-flights', args: z.object({ ...activityBoundsSchema, page_size: z.coerce.number().int().min(100).max(100).default(100), operator: z.literal('MILITARY_OPERATOR_UNSPECIFIED').default('MILITARY_OPERATOR_UNSPECIFIED'), aircraft_type: z.literal('MILITARY_AIRCRAFT_TYPE_UNSPECIFIED').default('MILITARY_AIRCRAFT_TYPE_UNSPECIFIED'), cursor: z.string().max(200).default('') }).strict() },
   vessels: { path: '/api/maritime/v1/get-vessel-snapshot', args: z.object({ ne_lat: z.coerce.number().pipe(z.literal(0)).default(0), ne_lon: z.coerce.number().pipe(z.literal(0)).default(0), sw_lat: z.coerce.number().pipe(z.literal(0)).default(0), sw_lon: z.coerce.number().pipe(z.literal(0)).default(0), include_candidates: z.literal('true').default('true') }).strict() },
   fleet: { path: '/api/military/v1/get-usni-fleet-report', args: z.object({ }).strict() },

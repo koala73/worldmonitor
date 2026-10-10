@@ -2,8 +2,10 @@ import { rpcError, rpcOk } from '../rpc';
 import { UI_RESOURCE_MIME_TYPE } from './shell';
 import { buildPluginShell } from './_plugin-loader';
 
-export const COUNTRY_VIEW_UI_URI = 'ui://worldmonitor/country-view-v2.html';
-export const NEWS_DASHBOARD_UI_URI = 'ui://worldmonitor/news-dashboard-v2.html';
+export const COUNTRY_VIEW_UI_URI = 'ui://worldmonitor/country-view-v3.html';
+export const NEWS_DASHBOARD_UI_URI = 'ui://worldmonitor/news-dashboard-v3.html';
+export const PREVIOUS_COUNTRY_VIEW_UI_URI = 'ui://worldmonitor/country-view-v2.html';
+export const PREVIOUS_NEWS_DASHBOARD_UI_URI = 'ui://worldmonitor/news-dashboard-v2.html';
 export const LEGACY_COUNTRY_VIEW_UI_URI = 'ui://worldmonitor/country-view-v1.html';
 export const LEGACY_NEWS_DASHBOARD_UI_URI = 'ui://worldmonitor/news-dashboard.html';
 const previewHost = process.env.VERCEL_ENV === 'preview' ? process.env.VERCEL_URL : undefined;

@@ -853,15 +853,10 @@
       "host": "api.groq.com",
       "provider": "api.groq.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "shared/llm-health-providers.js"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "api.hyperliquid.xyz",
@@ -1493,6 +1488,9 @@
         },
         {
           "path": "scripts/seed-service-statuses.mjs"
+        },
+        {
+          "path": "scripts/validate-rss-feeds.mjs"
         },
         {
           "path": "scripts/validate-seed-migration.mjs"
@@ -2973,6 +2971,20 @@
       ]
     },
     {
+      "host": "data.unhcr.org",
+      "provider": "data.unhcr.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit data.unhcr.org and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-cross-border-arrivals.mjs"
+        }
+      ]
+    },
+    {
       "host": "data.uspto.gov",
       "provider": "USPTO Open Data Portal",
       "kind": "structured",
@@ -3309,6 +3321,20 @@
       "references": [
         {
           "path": "scripts/benchmark-resilience-external.mjs"
+        }
+      ]
+    },
+    {
+      "host": "dtmapi.iom.int",
+      "provider": "dtmapi.iom.int",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit dtmapi.iom.int and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-dtm-displacement.mjs"
         }
       ]
     },
@@ -5084,6 +5110,26 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "hts.usitc.gov",
+      "provider": "hts.usitc.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Harmonized Tariff Schedule of the United States, published by the US International Trade Commission; a US federal government work, not subject to copyright (17 U.S.C. 105)",
+      "attribution": "Credit the USITC Harmonized Tariff Schedule and name the HTS release the rates come from.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
+          "path": "scripts/seed-supply-chain-trade.mjs"
+        },
+        {
+          "path": "server/worldmonitor/trade/v1/get-us-import-duty.ts"
         }
       ]
     },
@@ -10379,6 +10425,23 @@
       ]
     },
     {
+      "host": "wits.worldbank.org",
+      "provider": "wits.worldbank.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "UNCTAD TRAINS tariff data served through the World Bank WITS API; redistribution to paying API customers confirmed by the owner on 2026-10-10",
+      "attribution": "Credit UNCTAD TRAINS and World Bank WITS, and link to the WITS query behind each rate.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
+          "path": "server/worldmonitor/trade/v1/get-bilateral-tariff.ts"
+        }
+      ]
+    },
+    {
       "host": "workos.com",
       "provider": "workos.com",
       "kind": "structured",
@@ -14361,6 +14424,20 @@
       "references": [
         {
           "path": "scripts/seed-climate-news.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.unognewsroom.org",
+      "provider": "www.unognewsroom.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.unognewsroom.org and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-disease-outbreaks.mjs"
         }
       ]
     },

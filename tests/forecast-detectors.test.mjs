@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { subjectMatcherForRegion } from '../scripts/_forecast-subject.mjs';
 
 import {
   forecastId,
@@ -39,6 +42,7 @@ import {
   buildForecastCase,
   buildForecastCases,
   buildPriorForecastSnapshot,
+  buildHistoryForecastEntry,
   buildPublishedForecastPayload,
   buildPublishedSeedPayload,
   buildChangeItems,
@@ -77,10 +81,12 @@ import {
   loadCascadeRules,
   evaluateRuleConditions,
   summarizePublishFiltering,
+  WITHHELD_PUBLISH_FAMILIES,
   SIGNAL_TO_SOURCE,
   PREDICATE_EVALUATORS,
   DEFAULT_CASCADE_RULES,
   PROJECTION_CURVES,
+  PROJECTION_CURVES_VERSION,
   __setForecastLlmCallOverrideForTests,
   __setForecastLlmTransportForTests,
   __setForecastLlmRunDeadlineForTests,
@@ -88,13 +94,15 @@ import {
 import { OPENROUTER_PROVIDER_ROUTING } from '../scripts/_llm-model-timeouts.mjs';
 import { CONFLICT_COUNT_SOURCE_FEED } from '../scripts/_forecast-resolution.mjs';
 import { assessFunnelDiversity } from '../scripts/_forecast-funnel.mjs';
+import { ingestHistory } from '../scripts/seed-forecast-resolutions.mjs';
+
+const IN_HORIZON_MARKET_END = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
 
 const originalForecastEnv = {
   FORECAST_LLM_PROVIDER_ORDER: process.env.FORECAST_LLM_PROVIDER_ORDER,
   FORECAST_LLM_COMBINED_PROVIDER_ORDER: process.env.FORECAST_LLM_COMBINED_PROVIDER_ORDER,
   FORECAST_LLM_MODEL_OPENROUTER: process.env.FORECAST_LLM_MODEL_OPENROUTER,
   FORECAST_LLM_COMBINED_MODEL_OPENROUTER: process.env.FORECAST_LLM_COMBINED_MODEL_OPENROUTER,
-  GROQ_API_KEY: process.env.GROQ_API_KEY,
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
@@ -233,12 +241,11 @@ describe('resolveCascades', () => {
 describe('calibrateWithMarkets', () => {
   it('matching market adjusts probability with 40/60 blend', () => {
     const pred = makePrediction(
-      'conflict', 'Middle East', 'Escalation',
+      'conflict', 'Iran', 'Escalation',
       0.7, 0.6, '7d', [],
     );
-    pred.region = 'Middle East';
     const markets = {
-      geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', yesPrice: 30, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', yesPrice: 30, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     };
     calibrateWithMarkets([pred], markets);
     const expected = +(0.4 * 0.3 + 0.6 * 0.7).toFixed(3);
@@ -254,7 +261,7 @@ describe('calibrateWithMarkets', () => {
     );
     const originalProb = pred.probability;
     const markets = {
-      geopolitical: [{ title: 'Will EU inflation drop?', yesPrice: 50, volume: 50000 }],
+      geopolitical: [{ title: 'Will EU inflation drop?', yesPrice: 50, volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     };
     calibrateWithMarkets([pred], markets);
     assert.equal(pred.probability, originalProb);
@@ -263,11 +270,11 @@ describe('calibrateWithMarkets', () => {
 
   it('drift calculated correctly', () => {
     const pred = makePrediction(
-      'conflict', 'Middle East', 'Escalation',
+      'conflict', 'Iran', 'Escalation',
       0.7, 0.6, '7d', [],
     );
     const markets = {
-      geopolitical: [{ title: 'Iran MENA conflict?', yesPrice: 40, volume: 50000 }],
+      geopolitical: [{ title: 'Will Israel strike Iran in MENA?', yesPrice: 40, volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     };
     calibrateWithMarkets([pred], markets);
     assert.equal(pred.calibration.drift, +(0.7 - 0.4).toFixed(3));
@@ -279,7 +286,7 @@ describe('calibrateWithMarkets', () => {
       0.45, 0.6, '30d', [],
     );
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will the Sudan conflict reach a ceasefire by Q3?', yesPrice: 85, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will the Sudan conflict reach a ceasefire by Q3?', yesPrice: 85, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.equal(pred.calibration, null);
     assert.equal(pred.probability, 0.45);
@@ -291,7 +298,7 @@ describe('calibrateWithMarkets', () => {
       0.45, 0.6, '30d', [],
     );
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will there be a ceasefire in Sudan by the end of 2026?', yesPrice: 85, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will there be a ceasefire in Sudan by the end of 2026?', yesPrice: 85, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.equal(pred.calibration, null);
     assert.equal(pred.probability, 0.45);
@@ -305,14 +312,14 @@ describe('calibrateWithMarkets', () => {
   // fixture, so without these the regression ships green.
   it('calibrates from an anchor that lives in the finance pool, not geopolitical', () => {
     const pred = makePrediction(
-      'economic', 'United States', 'US recession',
+      'market', 'United States', 'US recession',
       0.7, 0.6, '7d', [],
     );
     pred.region = 'United States';
     calibrateWithMarkets([pred], {
       geopolitical: [],
       tech: [],
-      finance: [{ title: 'US recession by end of 2026?', yesPrice: 30, source: 'polymarket', volume: 50000 }],
+      finance: [{ title: 'United States recession by end of 2026?', yesPrice: 30, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.ok(pred.calibration !== null, 'a finance-pool market must still calibrate');
     assert.equal(pred.probability, +(0.4 * 0.3 + 0.6 * 0.7).toFixed(3));
@@ -320,13 +327,13 @@ describe('calibrateWithMarkets', () => {
 
   it('calibrates from an anchor that lives in the tech pool', () => {
     const pred = makePrediction(
-      'economic', 'United States', 'US AI market correction',
+      'market', 'United States', 'US AI market correction',
       0.7, 0.6, '7d', [],
     );
     pred.region = 'United States';
     calibrateWithMarkets([pred], {
       geopolitical: [],
-      tech: [{ title: 'US AI market correction in 2026?', yesPrice: 30, source: 'polymarket', volume: 50000 }],
+      tech: [{ title: 'United States AI market correction in 2026?', yesPrice: 30, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
       finance: [],
     });
     assert.ok(pred.calibration !== null, 'a tech-pool market must still calibrate');
@@ -347,7 +354,7 @@ describe('calibrateWithMarkets', () => {
       0.6, 0.5, '7d', [{ type: 'ceasefire', value: 'ceasefire holds', weight: 0.4 }],
     );
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will the Sudan ceasefire fail by Q3?', yesPrice: 85, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will the Sudan ceasefire fail by Q3?', yesPrice: 85, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.equal(pred.calibration, null);
     assert.equal(pred.probability, 0.6);
@@ -359,7 +366,7 @@ describe('calibrateWithMarkets', () => {
       0.55, 0.5, '7d', [{ type: 'de-escalation', value: 'Sudan de-escalate ceasefire diplomacy', weight: 0.4 }],
     );
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will Sudan de-escalate into a ceasefire by 2026?', yesPrice: 80, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will Sudan de-escalate into a ceasefire by 2026?', yesPrice: 80, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.ok(pred.calibration !== null);
     assert.equal(pred.probability, +(0.4 * 0.8 + 0.6 * 0.55).toFixed(3));
@@ -371,7 +378,7 @@ describe('calibrateWithMarkets', () => {
       0.45, 0.6, '30d', [],
     );
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will Sudan destabilize further amid conflict?', yesPrice: 80, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will Sudan destabilize further amid renewed war?', yesPrice: 80, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.ok(pred.calibration !== null);
     assert.equal(pred.probability, +(0.4 * 0.8 + 0.6 * 0.45).toFixed(3));
@@ -388,7 +395,7 @@ describe('calibrateWithMarkets', () => {
         0.55, 0.5, '7d', [{ type: 'agreement', value: 'nuclear deal restored', weight: 0.4 }],
       );
       calibrateWithMarkets([pred], {
-        geopolitical: [{ title, yesPrice: 85, source: 'polymarket', volume: 50000 }],
+        geopolitical: [{ title, yesPrice: 85, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
       });
       assert.equal(pred.calibration, null, title);
       assert.equal(pred.probability, 0.55, title);
@@ -401,7 +408,7 @@ describe('calibrateWithMarkets', () => {
       0.3, 0.6, '30d', [],
     );
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will the Sudan war end in 2026?', yesPrice: 70, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will the Sudan war end in 2026?', yesPrice: 70, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.equal(pred.calibration, null);
     assert.equal(pred.probability, 0.3);
@@ -409,11 +416,11 @@ describe('calibrateWithMarkets', () => {
 
   it('does not calibrate from a low-liquidity market', () => {
     const pred = makePrediction(
-      'conflict', 'Middle East', 'Escalation risk: Iran',
+      'conflict', 'Iran', 'Escalation risk: Iran',
       0.5, 0.6, '7d', [],
     );
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', yesPrice: 95, source: 'polymarket', volume: 20 }],
+      geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', yesPrice: 95, source: 'polymarket', volume: 20, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.equal(pred.calibration, null);
     assert.equal(pred.probability, 0.5);
@@ -421,11 +428,11 @@ describe('calibrateWithMarkets', () => {
 
   it('re-applies the domain cap after market calibration', () => {
     const pred = makePrediction(
-      'conflict', 'Middle East', 'Escalation risk: Iran',
+      'conflict', 'Iran', 'Escalation risk: Iran',
       0.85, 0.6, '7d', [],
     );
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', yesPrice: 99, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', yesPrice: 99, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.ok(pred.calibration !== null);
     assert.equal(pred.probability, 0.9);
@@ -433,11 +440,11 @@ describe('calibrateWithMarkets', () => {
 
   it('does not record calibration metadata when a cap makes the blend a no-op', () => {
     const pred = makePrediction(
-      'conflict', 'Middle East', 'Escalation risk: Iran',
+      'conflict', 'Iran', 'Escalation risk: Iran',
       0.9, 0.6, '7d', [],
     );
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', yesPrice: 96, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', yesPrice: 96, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.equal(pred.calibration, null);
     assert.equal(pred.probability, 0.9);
@@ -449,7 +456,7 @@ describe('calibrateWithMarkets', () => {
       0.78, 0.6, '7d', [],
     );
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will Iran political unrest escalate in 2026?', yesPrice: 99, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will Iran political unrest escalate in 2026?', yesPrice: 99, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.ok(pred.calibration !== null);
     assert.equal(pred.probability, 0.8);
@@ -475,11 +482,11 @@ describe('calibrateWithMarkets', () => {
 
   it('does not calibrate from unrelated same-region macro market', () => {
     const pred = makePrediction(
-      'conflict', 'Middle East', 'Escalation risk: Iran',
+      'conflict', 'Israel', 'Escalation risk: Israel',
       0.7, 0.6, '7d', [],
     );
     const markets = {
-      geopolitical: [{ title: 'Will Netanyahu remain prime minister through 2026?', yesPrice: 20, source: 'polymarket', volume: 100000 }],
+      geopolitical: [{ title: 'Will Netanyahu remain prime minister through 2026?', yesPrice: 20, source: 'polymarket', volume: 100000, endDate: IN_HORIZON_MARKET_END }],
     };
     calibrateWithMarkets([pred], markets);
     assert.equal(pred.calibration, null);
@@ -488,11 +495,11 @@ describe('calibrateWithMarkets', () => {
 
   it('does not calibrate commodity forecasts from loosely related regional conflict markets', () => {
     const pred = makePrediction(
-      'market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption',
+      'market', 'Lebanon', 'Oil price impact from Lebanon disruption',
       0.668, 0.58, '30d', [],
     );
     const markets = {
-      geopolitical: [{ title: 'Will Israel launch a major ground offensive in Lebanon by March 31?', yesPrice: 57, source: 'polymarket', volume: 100000 }],
+      geopolitical: [{ title: 'Will Israel launch a major ground offensive in Lebanon by March 31?', yesPrice: 57, source: 'polymarket', volume: 100000, endDate: IN_HORIZON_MARKET_END }],
     };
     calibrateWithMarkets([pred], markets);
     assert.equal(pred.calibration, null);
@@ -500,11 +507,332 @@ describe('calibrateWithMarkets', () => {
   });
 });
 
+describe('market anchor event-class equivalence (#7071)', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const EMITTED_AT = Date.UTC(2026, 9, 6);
+  const anchorFor = (domain, region, title, marketTitle, {
+    probability = 0.35, signals = [], yesPrice = 15, timeHorizon = '7d', endDate = new Date(EMITTED_AT + 7 * DAY).toISOString(),
+  } = {}) => {
+    const pred = makePrediction(domain, region, title, probability, 0.5, timeHorizon, signals);
+    pred.createdAt = EMITTED_AT;
+    calibrateWithMarkets([pred], {
+      geopolitical: [{ title: marketTitle, yesPrice, source: 'polymarket', volume: 100000, ...(endDate && { endDate }) }],
+    });
+    return pred;
+  };
+
+  for (const [domain, region, title, marketTitle, timeHorizon, endDate] of [
+    ['conflict', 'Colombia', 'Active armed conflict: Colombia', 'US strike on Colombia by December 31?', '30d', '2027-01-01T04:59:00Z'],
+    ['conflict', 'China', 'Escalation risk: China', 'Will China invade Taiwan by December 31, 2027?', '7d', '2028-01-01T04:59:00Z'],
+    ['conflict', 'Iran', 'Escalation risk: Iran', 'Will the U.S. invade Iran before 2027?', '7d', '2027-01-01T04:59:00Z'],
+  ]) {
+    it(`does not anchor ${timeHorizon} "${title}" to "${marketTitle}" settling ${endDate.slice(0, 10)}`, () => {
+      const pred = anchorFor(domain, region, title, marketTitle, { timeHorizon, endDate });
+      assert.equal(pred.calibration, null);
+      assert.equal(pred.probability, 0.35);
+    });
+  }
+
+  it('anchors an in-horizon equivalent market and blends 40/60', () => {
+    const marketTitle = 'Will the U.S. strike Iran by October 20?';
+    const pred = anchorFor('conflict', 'Iran', 'Escalation risk: Iran', marketTitle, { yesPrice: 30, endDate: new Date(EMITTED_AT + 14 * DAY).toISOString() });
+    assert.equal(pred.calibration?.marketTitle, marketTitle);
+    assert.equal(pred.probability, +(0.4 * 0.3 + 0.6 * 0.35).toFixed(3));
+  });
+
+  it('does not anchor a market that settles past the horizon window or before emission', () => {
+    const late = anchorFor('conflict', 'Iran', 'Escalation risk: Iran', 'Will the U.S. strike Iran by October 21?', { endDate: new Date(EMITTED_AT + 14 * DAY + 1).toISOString() });
+    assert.equal(late.calibration, null);
+    const settled = anchorFor('conflict', 'Iran', 'Escalation risk: Iran', 'Will the U.S. strike Iran by October 1?', { endDate: new Date(EMITTED_AT - DAY).toISOString() });
+    assert.equal(settled.calibration, null);
+  });
+
+  it('allows a 30d forecast a market settling within twice its horizon', () => {
+    const pred = anchorFor('conflict', 'Iran', 'Escalation risk: Iran', 'Will the U.S. strike Iran by December 1?', { timeHorizon: '30d', endDate: new Date(EMITTED_AT + 56 * DAY).toISOString() });
+    assert.ok(pred.calibration !== null);
+  });
+
+  it('does not anchor a market with no settlement date', () => {
+    const pred = anchorFor('conflict', 'Iran', 'Escalation risk: Iran', 'Will the U.S. strike Iran?', { endDate: null });
+    assert.equal(pred.calibration, null);
+  });
+
+  for (const [domain, region, title, marketTitle] of [
+    ['cyber', 'United States', 'Cyber threat concentration: United States', 'Will Nick Fuentes become President of the United States before 2045?'],
+    ['cyber', 'China', 'Cyber threat concentration: China', 'Will China invade Taiwan by December 31, 2027?'],
+    ['cyber', 'Russia', 'Cyber threat concentration: Russia', 'Will Ukraine agree to cede territory to Russia before 2027?'],
+    ['conflict', 'Ukraine', 'Escalation risk: Ukraine', 'Will Ukraine agree to cede territory to Russia before 2027?'],
+    ['military', 'Israel/Gaza', 'Military posture escalation: Israel/Gaza', 'Will Benjamin Netanyahu be the next Prime Minister of Israel?'],
+  ]) {
+    it(`does not anchor "${title}" to "${marketTitle}"`, () => {
+      const pred = anchorFor(domain, region, title, marketTitle);
+      assert.equal(pred.calibration, null);
+      assert.equal(pred.probability, 0.35);
+    });
+  }
+
+  it('does not anchor a leadership-identity market to a political instability forecast', () => {
+    const pred = anchorFor('political', 'United States', 'Political instability: United States', 'Will Nick Fuentes become President of the United States before 2045?');
+    assert.equal(pred.calibration, null);
+  });
+
+  it('gives forecast families with no registry entry no anchor', () => {
+    const gps = anchorFor('supply_chain', 'Middle East', 'GPS interference in Middle East shipping zone', 'Will Iran close the Strait of Hormuz in 2026?');
+    assert.equal(gps.calibration, null);
+    const unknownDomain = anchorFor('economic', 'United States', 'US recession', 'US recession by end of 2026?');
+    assert.equal(unknownDomain.calibration, null);
+  });
+
+  it('anchors "Escalation risk: Ukraine" to a Russia offensive market', () => {
+    const marketTitle = 'Will Russia launch a new offensive on Kharkiv in Ukraine by June 30?';
+    const pred = anchorFor('conflict', 'Ukraine', 'Escalation risk: Ukraine', marketTitle, { yesPrice: 40 });
+    assert.equal(pred.calibration?.marketTitle, marketTitle);
+    assert.equal(pred.probability, +(0.4 * 0.4 + 0.6 * 0.35).toFixed(3));
+  });
+
+  it('does not anchor a cyber threat-count forecast to a cyberattack event market', () => {
+    const pred = anchorFor('cyber', 'Russia', 'Cyber threat concentration: Russia', 'Will Russia carry out a major cyberattack on a NATO member in 2026?', { yesPrice: 30 });
+    assert.equal(pred.calibration, null);
+  });
+
+  it('anchors a political instability forecast to a resignation market', () => {
+    const marketTitle = 'Will Benjamin Netanyahu resign as Prime Minister of Israel in 2026?';
+    const pred = anchorFor('political', 'Israel', 'Political instability: Israel', marketTitle, { yesPrice: 20 });
+    assert.equal(pred.calibration?.marketTitle, marketTitle);
+  });
+
+  it('anchors a chokepoint disruption forecast to a strait closure market', () => {
+    const marketTitle = 'Will Iran close the Strait of Hormuz in 2026?';
+    const pred = anchorFor('supply_chain', 'Strait of Hormuz', 'Supply chain disruption: Strait of Hormuz', marketTitle, { yesPrice: 20 });
+    assert.equal(pred.calibration?.marketTitle, marketTitle);
+  });
+
+  for (const marketTitle of [
+    'Strait of Hormuz traffic returns to normal by December 31?',
+    'Will the Strait of Hormuz remain open through October?',
+  ]) {
+    it(`does not anchor a disruption forecast to "${marketTitle}"`, () => {
+      const pred = anchorFor('supply_chain', 'Strait of Hormuz', 'Supply chain disruption: Strait of Hormuz', marketTitle, { yesPrice: 20 });
+      assert.equal(pred.calibration, null);
+    });
+  }
+
+  it('does not anchor through an entity-graph neighbour or a shared macro-region tag', () => {
+    const neighbour = anchorFor('conflict', 'Syria', 'Escalation risk: Syria', 'Will the U.S. invade Iran before 2027?', { yesPrice: 20 });
+    assert.equal(neighbour.calibration, null);
+    const macroTag = anchorFor('military', 'Korean Peninsula', 'Military posture escalation: Korean Peninsula', 'US strike on Cuba by December 31?', { yesPrice: 20 });
+    assert.equal(macroTag.calibration, null);
+  });
+
+  for (const marketTitle of ['Will the US-China trade war escalate in 2026?', 'Will the China trade-war escalate by October 20?']) {
+    it(`does not treat "${marketTitle}" as an armed escalation market`, () => {
+      const pred = anchorFor('conflict', 'China', 'Escalation risk: China', marketTitle, { yesPrice: 40 });
+      assert.equal(pred.calibration, null);
+    });
+  }
+
+  it('does not anchor political instability to a ceasefire collapse market', () => {
+    const pred = anchorFor('political', 'Iran', 'Political instability: Iran', 'Will the Israel-Iran ceasefire collapse by December 31?', { yesPrice: 30 });
+    assert.equal(pred.calibration, null);
+  });
+
+  const ceasefireSignals = [{ type: 'ceasefire', value: 'ceasefire talks progressing', weight: 0.4 }];
+
+  it('anchors a de-escalation forecast to a ceasefire market', () => {
+    const marketTitle = 'Will Sudan agree to a ceasefire by September 30?';
+    const pred = anchorFor('conflict', 'Sudan', 'Ceasefire holds in Sudan', marketTitle, { probability: 0.4, yesPrice: 60, signals: ceasefireSignals });
+    assert.equal(pred.calibration?.marketTitle, marketTitle);
+  });
+
+  it('does not anchor a de-escalation forecast to a same-direction market on another event', () => {
+    const pred = anchorFor('conflict', 'Sudan', 'Ceasefire holds in Sudan', 'Will Sudan hold a peaceful presidential election in 2026?', { probability: 0.4, yesPrice: 60, signals: ceasefireSignals });
+    assert.equal(pred.calibration, null);
+  });
+
+  it('records pre-blend and post-blend lineage beside the unchanged drift', () => {
+    const pred = anchorFor('conflict', 'Ukraine', 'Escalation risk: Ukraine', 'Will Russia launch a new offensive on Kharkiv in Ukraine by June 30?', { yesPrice: 40 });
+    assert.equal(pred.calibration.internalProbability, 0.35);
+    assert.equal(pred.calibration.marketBlendedProbability, pred.probability);
+    assert.equal(pred.calibration.drift, +(0.35 - 0.4).toFixed(3));
+  });
+
+  it('records the post-cap value as marketBlendedProbability', () => {
+    const pred = anchorFor('conflict', 'Iran', 'Escalation risk: Iran', 'Will Israel strike Iran by June 30?', { probability: 0.85, yesPrice: 99 });
+    assert.equal(pred.probability, 0.9);
+    assert.equal(pred.calibration.internalProbability, 0.85);
+    assert.equal(pred.calibration.marketBlendedProbability, 0.9);
+  });
+
+  it('carries lineage into the history entry and the published payload', () => {
+    const pred = anchorFor('conflict', 'Ukraine', 'Escalation risk: Ukraine', 'Will Russia launch a new offensive on Kharkiv in Ukraine by June 30?', { yesPrice: 40 });
+    for (const projected of [buildHistoryForecastEntry(pred).calibration, buildPublishedForecastPayload(pred).calibration]) {
+      assert.equal(projected.internalProbability, 0.35);
+      assert.equal(projected.marketBlendedProbability, pred.probability);
+      assert.equal(projected.drift, pred.calibration.drift);
+    }
+  });
+
+  it('carries lineage from the history snapshot into the resolution ledger entry', () => {
+    const pred = anchorFor('conflict', 'Ukraine', 'Escalation risk: Ukraine', 'Will Russia launch a new offensive on Kharkiv in Ukraine by June 30?', { yesPrice: 40 });
+    const generatedAt = Date.UTC(2026, 9, 6);
+    const deadline = generatedAt + 7 * 24 * 60 * 60 * 1000;
+    pred.resolution = { kind: 'judged', deadline, question: 'Does Ukraine see a major escalation within 7 days?' };
+    const ledger = ingestHistory({}, [{ generatedAt, predictions: [buildHistoryForecastEntry(pred)] }], generatedAt);
+    const entry = ledger[`${pred.id}@${deadline}`];
+    assert.equal(entry.calibration.internalProbability, 0.35);
+    assert.equal(entry.calibration.marketBlendedProbability, pred.probability);
+    assert.equal(entry.calibration.drift, pred.calibration.drift);
+  });
+
+  // Labelled on 2026-10-07 (#8990). Forecast side: production forecast titles,
+  // regions, and horizons. Market side: every market the pre-#7071 matcher
+  // attached to them, each settling inside the forecast window so only the
+  // subject and event-class gates can reject it. Six are market-copy forecasts
+  // paired with their own source market, where a 40/60 blend is the identity.
+  for (const [domain, region, title, timeHorizon, marketTitle] of [
+    ['market', 'Europe', 'Will UK annual GDP growth in 2026 be between 1% and 2%?', '30d', 'Will UK annual GDP growth in 2026 be between 1% and 2%?'],
+    ['political', 'Middle East', 'Israel x Iran ceasefire continues through October 31?', '30d', 'Israel x Iran ceasefire continues through October 31?'],
+    ['political', 'Middle East', 'Will Mojtaba Khamenei be head of state in Iran end of 2026?', '30d', 'Will Mojtaba Khamenei be head of state in Iran end of 2026?'],
+    ['political', 'Americas', 'How much will the US acquire Greenland for?: $0 / No Acquisition', '30d', 'How much will the US acquire Greenland for?: $0 / No Acquisition'],
+    ['political', 'Europe', 'Will the ECB announce no change at the October 2026 meeting?', '30d', 'Will the ECB announce no change at the October 2026 meeting?'],
+    ['political', 'Americas', 'Will Utah use a new congressional map for the 2026 United States midterm elections?', '30d', 'Will Utah use a new congressional map for the 2026 United States midterm elections?'],
+    ['cyber', 'China', 'Cyber threat concentration: China', '7d', 'Will China invade Taiwan by December 31, 2027?'],
+    ['cyber', 'United States', 'Cyber threat concentration: United States', '7d', 'Will Utah use a new congressional map for the 2026 United States midterm elections?'],
+    ['market', 'Iran', 'Sovereign risk repricing from Iran security escalation state', '30d', 'Will Mojtaba Khamenei be head of state in Iran end of 2026?'],
+    ['market', 'Iran', 'Energy repricing risk from Iran security escalation state', '30d', 'Will Mojtaba Khamenei be head of state in Iran end of 2026?'],
+    ['market', 'Iran', 'FX stress from Iran security escalation state', '30d', 'Will Mojtaba Khamenei be head of state in Iran end of 2026?'],
+    ['conflict', 'Iran', 'Escalation risk: Iran', '7d', 'Will Mojtaba Khamenei be head of state in Iran end of 2026?'],
+    ['supply_chain', 'Persian Gulf', 'GPS interference in Persian Gulf shipping zone', '7d', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
+    ['military', 'Middle East', 'USA-linked airlift surge near Iran Theater', '7d', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
+    ['military', 'Middle East', 'Military posture escalation: Middle East', '7d', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
+    ['military', 'Middle East', 'Unknown-linked airlift surge near Iran Theater', '7d', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
+    ['military', 'Middle East', 'Elevated military air activity near Iran Theater', '7d', 'Will Israel launch a ground operation in Iran by December 31, 2026?'],
+  ]) {
+    it(`rejects the pre-#7071 anchor "${title}" <= "${marketTitle}" even when it settles in window`, () => {
+      const pred = anchorFor(domain, region, title, marketTitle, { timeHorizon, yesPrice: 20 });
+      assert.equal(pred.calibration, null);
+      assert.equal(pred.probability, 0.35);
+    });
+  }
+
+  // Event-class pins: the market names the forecast's subject and resolves on
+  // the same class of event inside its window. That is the matcher's whole
+  // definition of a match; none of these markets asks the forecast's own
+  // question, and a strike market is a sub-event of an escalation forecast.
+  for (const [domain, region, title, marketTitle] of [
+    ['conflict', 'Iran', 'Escalation risk: Iran', 'Will Israel strike Iran by October 13?'],
+    ['conflict', 'Ukraine', 'Escalation risk: Ukraine', 'Will Russia launch a major new offensive in Ukraine by October 13?'],
+    ['supply_chain', 'Strait of Hormuz', 'Supply chain disruption: Strait of Hormuz', 'Strait of Hormuz closed to shipping by October 13?'],
+    ['supply_chain', 'Kerch Strait', 'Supply chain disruption: Kerch Strait', 'Kerch Strait shipping halted by October 13?'],
+  ]) {
+    it(`pins the event-class anchor "${title}" <= "${marketTitle}"`, () => {
+      const pred = anchorFor(domain, region, title, marketTitle, { yesPrice: 20 });
+      assert.equal(pred.calibration?.marketTitle, marketTitle);
+      assert.equal(pred.probability, +(0.4 * 0.2 + 0.6 * 0.35).toFixed(3));
+    });
+  }
+
+  // Region forecasts share the judged lane's subject table (#9010), with the
+  // same word boundaries, exclusions and ambiguous-name co-terms. In the market
+  // lane a region matches its own terms and only the member countries its
+  // label names: a market about one Middle East state asks a narrower question
+  // than a Middle East forecast.
+  for (const [domain, region, title, marketTitle] of [
+    ['conflict', 'Korean Peninsula', 'Escalation risk: Korean Peninsula', 'Will North Korea launch a missile strike on South Korea by October 13?'],
+    ['conflict', 'Northern Europe', 'Escalation risk: Northern Europe', 'Will Russia attack a Baltic state by October 13?'],
+    ['conflict', 'Israel/Gaza', 'Escalation risk: Israel/Gaza', 'Will Israel strike Gaza City by October 13?'],
+    ['supply_chain', 'Red Sea', 'Supply chain disruption: Red Sea', 'Bab el-Mandeb Strait effectively closed by October 13?'],
+    ['supply_chain', 'Persian Gulf', 'Supply chain disruption: Persian Gulf', 'Strait of Hormuz closed to shipping by October 13?'],
+  ]) {
+    it(`anchors the region forecast "${title}" to the member-subject market "${marketTitle}"`, () => {
+      const pred = anchorFor(domain, region, title, marketTitle, { yesPrice: 20 });
+      assert.equal(pred.calibration?.marketTitle, marketTitle);
+      assert.equal(pred.probability, +(0.4 * 0.2 + 0.6 * 0.35).toFixed(3));
+    });
+  }
+
+  for (const [domain, region, title, marketTitle, why] of [
+    ['conflict', 'Korean Peninsula', 'Escalation risk: Korean Peninsula', 'Will China invade Taiwan by October 13?', 'another subject'],
+    ['conflict', 'Middle East', 'Escalation risk: Middle East', 'Will Israel strike Iran by October 13?', 'a market about unnamed members'],
+    ['conflict', 'Middle East', 'Escalation risk: Middle East', 'Will Turkey strike Syria by October 13?', 'a market about an unnamed member'],
+    ['military', 'Middle East', 'Qatar-linked airlift surge near Iran Theater', 'Will Turkey strike Syria by October 13?', 'an observed-posture forecast'],
+    ['military', 'Israel/Gaza', 'Military posture escalation: Israel/Gaza', 'Will Israel strike Gaza City by October 13?', 'an observed-posture forecast'],
+    ['military', 'Northern Europe', 'Elevated military air activity near Baltic Theater', 'Will Russia attack a Baltic state by October 13?', 'an observed-posture forecast'],
+    ['political', 'Americas', 'Political instability: Americas', 'Will Nick Fuentes become President of the United States before 2045?', 'another subject and a succession market'],
+    ['political', 'Middle East', 'Political instability: Middle East', 'Will Mojtaba Khamenei be head of state in Iran end of 2026?', 'a succession market'],
+    ['conflict', 'Korean Peninsula', 'Escalation risk: Korean Peninsula', 'Will Koreatown protesters clash with police by October 13?', 'a word that only starts with a region term'],
+    ['conflict', 'Middle East', 'Escalation risk: Middle East', 'Will Jordan Chiles clash with gymnastics judges by October 13?', 'an ambiguous member name with no co-term'],
+    ['conflict', 'Black Sea', 'Escalation risk: Black Sea', 'Will Odessa, Texas see a bombing by October 13?', 'an excluded place name'],
+    ['conflict', 'Syria', 'Escalation risk: Syria', 'Will the U.S. invade Iran by October 13?', 'an entity-graph neighbour'],
+  ]) {
+    it(`does not anchor the region forecast "${title}" to "${marketTitle}" (${why})`, () => {
+      const pred = anchorFor(domain, region, title, marketTitle, { yesPrice: 20 });
+      assert.equal(pred.calibration, null);
+      assert.equal(pred.probability, 0.35);
+    });
+  }
+
+  it('matches the reviewed anchor set on the frozen production replay', () => {
+    const fixture = JSON.parse(readFileSync(new URL('./fixtures/forecast-market-anchor-replay.json', import.meta.url), 'utf8'));
+    const emittedAt = Date.parse(fixture.capturedAt);
+    const anchorsFor = (markets) => {
+      const anchors = {};
+      for (const f of fixture.forecasts) {
+        const pred = makePrediction(f.domain, f.region, f.title, f.internalProbability, 0.5, f.timeHorizon, f.signals);
+        pred.createdAt = emittedAt;
+        calibrateWithMarkets([pred], markets);
+        if (pred.calibration) anchors[`${f.domain}|${f.region}|${f.title}`] = pred.calibration.marketTitle;
+      }
+      return anchors;
+    };
+    // Every same-subject, same-event-class market in the 2026-10-06 universe
+    // settles at end-2026 or later, past every 7d/30d forecast's window.
+    assert.deepEqual(anchorsFor(fixture.markets), {});
+    const inWindowEnd = new Date(emittedAt + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const inWindowMarkets = Object.fromEntries(Object.entries(fixture.markets)
+      .map(([pool, rows]) => [pool, rows.map((m) => ({ ...m, endDate: inWindowEnd }))]));
+    assert.deepEqual(anchorsFor(inWindowMarkets), {
+      'conflict|Colombia|Active armed conflict: Colombia': 'US strike on Colombia by December 31?',
+      'conflict|China|Escalation risk: China': 'Will China invade Taiwan by December 31, 2027?',
+      'conflict|Iran|Escalation risk: Iran': 'Will the U.S. invade Iran before 2027?',
+    }, 'only the settlement window separates these same-subject, same-event-class pairs');
+  });
+
+  // A country now matches its places and demonyms too (#9010). Intended: a
+  // strike on Odesa is a Ukraine conflict sub-event, like the pins above.
+  it('intentionally anchors a country forecast to a market that names one of its cities', () => {
+    const marketTitle = 'Will Russia strike Odesa by October 13?';
+    const pred = anchorFor('conflict', 'Ukraine', 'Escalation risk: Ukraine', marketTitle, { yesPrice: 20 });
+    assert.equal(pred.calibration?.marketTitle, marketTitle);
+  });
+
+  it('does not anchor a market-copy forecast to another market on its subject', () => {
+    const marketSignal = [{ type: 'prediction_market', value: 'Polymarket: 78%', weight: 0.8 }];
+    const pred = anchorFor('conflict', 'Iran', 'Will Israel strike Iran by October 13?', 'Will the U.S. invade Iran by October 13?', { signals: marketSignal, yesPrice: 20 });
+    assert.equal(pred.calibration, null);
+    assert.equal(pred.probability, 0.35);
+    const control = anchorFor('conflict', 'Iran', 'Escalation risk: Iran', 'Will the U.S. invade Iran by October 13?', { yesPrice: 20 });
+    assert.equal(control.calibration?.marketTitle, 'Will the U.S. invade Iran by October 13?');
+  });
+});
+
+describe('shared subject matcher (#9010)', () => {
+  it('keeps region members for news evidence and only label-named members for markets', () => {
+    assert.ok(subjectMatcherForRegion('Middle East').matches('Israel strikes Iran'));
+    assert.ok(!subjectMatcherForRegion('Middle East', { regionMembers: false }).matches('Israel strikes Iran'));
+    assert.ok(subjectMatcherForRegion('Middle East', { regionMembers: false }).matches('Houthis fire on Middle East shipping'));
+    assert.ok(subjectMatcherForRegion('Iran Theater', { regionMembers: false }).matches('Will Israel strike Iran?'));
+    assert.ok(subjectMatcherForRegion('Israel/Gaza', { regionMembers: false }).matches('Will Israel strike Gaza City?'));
+    assert.ok(!subjectMatcherForRegion('Northern Europe', { regionMembers: false }).matches('Will Russia attack Finland?'));
+    assert.ok(subjectMatcherForRegion('Ukraine', { regionMembers: false }).matches('Will Russia strike Odesa?'), 'country subjects are unchanged');
+  });
+});
+
 describe('word-boundary term matching: no substring false positives (#4933)', () => {
   it('calibrateWithMarkets: Mali forecast is not calibrated by a Somalia market', () => {
     const pred = makePrediction('political', 'Mali', 'Political instability: Mali', 0.7, 0.6, '30d', []);
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: "Will Somalia's government collapse in 2026?", yesPrice: 30, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: "Will Somalia's government collapse in 2026?", yesPrice: 30, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.equal(pred.calibration, null);
     assert.equal(pred.probability, 0.7);
@@ -513,7 +841,7 @@ describe('word-boundary term matching: no substring false positives (#4933)', ()
   it('calibrateWithMarkets: Niger forecast is not calibrated by a Nigeria market', () => {
     const pred = makePrediction('political', 'Niger', 'Political instability: Niger', 0.7, 0.6, '30d', []);
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will Nigeria hold peaceful elections in 2026?', yesPrice: 80, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will Nigeria hold peaceful elections in 2026?', yesPrice: 80, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.equal(pred.calibration, null);
     assert.equal(pred.probability, 0.7);
@@ -623,7 +951,7 @@ describe('word-boundary term matching: no substring false positives (#4933)', ()
   it('calibrateWithMarkets: Nigeria forecast is not calibrated by a Niger market (reverse-lookup poisoning)', () => {
     const pred = makePrediction('political', 'Nigeria', 'Political instability: Nigeria', 0.7, 0.6, '30d', []);
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: "Will Niger's junta lose power in 2026?", yesPrice: 30, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: "Will Niger's junta lose power in 2026?", yesPrice: 30, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.equal(pred.calibration, null);
     assert.equal(pred.probability, 0.7);
@@ -656,7 +984,7 @@ describe('word-boundary term matching: no substring false positives (#4933)', ()
     const pred = makePrediction('political', 'Nigeria', 'Political instability: Nigeria', 0.7, 0.6, '30d', []);
     calibrateWithMarkets([pred], {
       // Keep this title adverse-aligned; a peaceful-election market is now rejected by the direction guard.
-      geopolitical: [{ title: 'Will Nigeria elections trigger unrest in 2026?', yesPrice: 80, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will Nigeria elections trigger unrest in 2026?', yesPrice: 80, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.ok(pred.calibration !== null);
     assert.equal(pred.probability, +(0.4 * 0.8 + 0.6 * 0.7).toFixed(3));
@@ -686,9 +1014,9 @@ describe('word-boundary term matching: no substring false positives (#4933)', ()
   });
 
   it('calibrateWithMarkets: Iran conflict forecast not calibrated by an unrelated wares market', () => {
-    const pred = makePrediction('conflict', 'Middle East', 'Escalation risk: Iran', 0.7, 0.6, '7d', []);
+    const pred = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.7, 0.6, '7d', []);
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will Iran export more wares in 2026?', yesPrice: 30, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will Iran export more wares in 2026?', yesPrice: 30, source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.equal(pred.calibration, null);
     assert.equal(pred.probability, 0.7);
@@ -734,9 +1062,9 @@ describe('non-finite probability guards (#4933)', () => {
   });
 
   it('calibrateWithMarkets: matching market with a non-finite price is skipped, not anchored at 50%', () => {
-    const pred = makePrediction('conflict', 'Middle East', 'Escalation', 0.7, 0.6, '7d', []);
+    const pred = makePrediction('conflict', 'Iran', 'Escalation', 0.7, 0.6, '7d', []);
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', source: 'polymarket', volume: 50000, endDate: IN_HORIZON_MARKET_END }],
     });
     assert.equal(pred.calibration, null);
     assert.equal(pred.probability, 0.7);
@@ -1424,7 +1752,7 @@ describe('forecast evaluation and ranking', () => {
     conflictC.trend = 'stable';
     buildForecastCase(conflictC);
 
-    const cyberA = makePrediction('cyber', 'China', 'Cyber A', 0.69, 0.58, '7d', [
+    const cyberA = makePrediction('infrastructure', 'China', 'Cyber A', 0.69, 0.58, '7d', [
       { type: 'cyber', value: 'Hostile malware hosting remains elevated', weight: 0.4 },
       { type: 'news_corroboration', value: 'Security firms warn of sustained activity', weight: 0.2 },
     ]);
@@ -1432,7 +1760,7 @@ describe('forecast evaluation and ranking', () => {
     cyberA.trend = 'rising';
     buildForecastCase(cyberA);
 
-    const cyberB = makePrediction('cyber', 'Russia', 'Cyber B', 0.67, 0.56, '7d', [
+    const cyberB = makePrediction('infrastructure', 'Russia', 'Cyber B', 0.67, 0.56, '7d', [
       { type: 'cyber', value: 'C2 server concentration remains high', weight: 0.35 },
       { type: 'news_corroboration', value: 'Government agencies issue new advisories', weight: 0.2 },
     ]);
@@ -1450,7 +1778,7 @@ describe('forecast evaluation and ranking', () => {
 
     const market = makePrediction('market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption', 0.73, 0.58, '30d', [
       { type: 'chokepoint', value: 'Hormuz transit risk rises', weight: 0.5 },
-      { type: 'prediction_market', value: 'Oil breakout chatter increases', weight: 0.2 },
+      { type: 'market_transmission', value: 'Oil breakout chatter increases', weight: 0.2 },
     ]);
     market.newsContext = ['Analysts warn of renewed stress in the Strait of Hormuz'];
     market.calibration = { marketTitle: 'Will oil close above $90?', marketPrice: 0.65, drift: 0.05, source: 'polymarket' };
@@ -1472,7 +1800,7 @@ describe('forecast evaluation and ranking', () => {
     assert.ok(enriched.some(pred => pred.domain === 'supply_chain'));
     assert.ok(enriched.some(pred => pred.domain === 'market'));
     assert.ok(enriched.filter(pred => pred.domain === 'conflict').length <= 2);
-    assert.ok(enriched.filter(pred => pred.domain === 'cyber').length <= 2);
+    assert.ok(enriched.filter(pred => pred.domain === 'infrastructure').length <= 2);
   });
 });
 
@@ -1587,7 +1915,8 @@ describe('forecast change tracking', () => {
 describe('forecast llm overrides', () => {
   it('parses provider order safely', () => {
     assert.equal(parseForecastProviderOrder(''), null);
-    assert.deepEqual(parseForecastProviderOrder('openrouter, groq, openrouter, invalid'), ['openrouter', 'groq']);
+    assert.deepEqual(parseForecastProviderOrder('openrouter, openrouter-free, openrouter, invalid'), ['openrouter', 'openrouter-free']);
+    assert.equal(parseForecastProviderOrder('groq'), null, 'a removed provider name is ignored, never a chain');
   });
 
   it('keeps default provider order when no override is set', () => {
@@ -1599,7 +1928,7 @@ describe('forecast llm overrides', () => {
     const options = getForecastLlmCallOptions('combined');
     const providers = resolveForecastLlmProviders(options);
 
-    assert.deepEqual(options.providerOrder, ['openrouter', 'openrouter-free', 'openrouter-free-backup', 'groq']);
+    assert.deepEqual(options.providerOrder, ['openrouter', 'openrouter-free', 'openrouter-free-backup']);
     assert.equal(providers[0]?.name, 'openrouter');
     assert.equal(providers[0]?.model, 'deepseek/deepseek-v4-flash');
     // Was 15_000: a 'stall cutoff' that treated the SYMPTOM of unrouted OpenRouter
@@ -1614,12 +1943,10 @@ describe('forecast llm overrides', () => {
     assert.equal(providers[1]?.model, 'google/gemma-4-26b-a4b-it:free');
     assert.equal(providers[2]?.name, 'openrouter-free-backup');
     assert.equal(providers[2]?.model, 'nvidia/nemotron-3-super-120b-a12b:free');
-    assert.equal(providers[3]?.name, 'groq');
-    assert.equal(providers[3]?.model, 'openai/gpt-oss-20b');
-    assert.equal(providers[3]?.timeout, 20_000, 'the fallback keeps its provider-specific window');
+    assert.equal(providers.length, 3);
   });
 
-  it('pins critical_signals to the pre-#4944 chain (probability-coupled stage)', () => {
+  it('pins critical_signals to paid OpenRouter Gemini (probability-coupled stage)', () => {
     delete process.env.FORECAST_LLM_PROVIDER_ORDER;
     delete process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER;
     delete process.env.FORECAST_LLM_MODEL_OPENROUTER;
@@ -1631,16 +1958,15 @@ describe('forecast llm overrides', () => {
     const options = getForecastLlmCallOptions('critical_signals');
     const providers = resolveForecastLlmProviders(options);
 
-    assert.deepEqual(options.providerOrder, ['groq', 'openrouter']);
-    assert.equal(providers[0]?.name, 'groq');
-    assert.equal(providers[0]?.model, 'openai/gpt-oss-20b');
-    assert.equal(providers[1]?.name, 'openrouter');
-    assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
-    assert.equal(providers[1]?.timeout, 25_000, 'the DeepSeek stall cutoff must not change the pinned Gemini fallback');
+    assert.deepEqual(options.providerOrder, ['openrouter']);
+    assert.equal(providers.length, 1);
+    assert.equal(providers[0]?.name, 'openrouter');
+    assert.equal(providers[0]?.model, 'google/gemini-2.5-flash');
+    assert.equal(providers[0]?.timeout, 25_000, 'the DeepSeek stall cutoff must not change the pinned Gemini model');
     assert.deepEqual(
-      providers[1]?.extraBody,
+      providers[0]?.extraBody,
       { provider: OPENROUTER_PROVIDER_ROUTING },
-      'pinned OpenRouter fallback keeps the mandatory provider policy without adding a reasoning override',
+      'pinned OpenRouter entry keeps the mandatory provider policy without adding a reasoning override',
     );
   });
 
@@ -1668,16 +1994,15 @@ describe('forecast llm overrides', () => {
     const options = getForecastLlmCallOptions('critical_signals');
     const providers = resolveForecastLlmProviders(options);
 
-    assert.deepEqual(options.providerOrder, ['groq', 'openrouter']);
-    assert.equal(providers[0]?.model, 'openai/gpt-oss-20b');
-    assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
+    assert.deepEqual(options.providerOrder, ['openrouter']);
+    assert.equal(providers[0]?.model, 'google/gemini-2.5-flash');
 
     delete process.env.FORECAST_LLM_PROVIDER_ORDER;
   });
 
-  it('keeps the pinned critical_signals fallback model against a GLOBAL model override', () => {
+  it('keeps the pinned critical_signals model against a GLOBAL model override', () => {
     // A global FORECAST_LLM_MODEL_OPENROUTER must not move the
-    // probability-coupled stage's fallback either (review finding on
+    // probability-coupled stage's model either (review finding on
     // #4965) — only FORECAST_LLM_CRITICAL_MODEL_OPENROUTER may.
     process.env.FORECAST_LLM_MODEL_OPENROUTER = 'deepseek/deepseek-v4-flash';
     delete process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER;
@@ -1686,14 +2011,13 @@ describe('forecast llm overrides', () => {
     const options = getForecastLlmCallOptions('critical_signals');
     const providers = resolveForecastLlmProviders(options);
 
-    assert.equal(providers[0]?.model, 'openai/gpt-oss-20b');
-    assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
-    assert.deepEqual(providers[1]?.extraBody, { provider: OPENROUTER_PROVIDER_ROUTING });
+    assert.equal(providers[0]?.model, 'google/gemini-2.5-flash');
+    assert.deepEqual(providers[0]?.extraBody, { provider: OPENROUTER_PROVIDER_ROUTING });
 
-    // The stage-scoped model env DOES reach the pinned fallback slot.
+    // The stage-scoped model env DOES reach the pinned slot.
     process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER = 'google/gemini-2.5-pro';
     const scoped = resolveForecastLlmProviders(getForecastLlmCallOptions('critical_signals'));
-    assert.equal(scoped[1]?.model, 'google/gemini-2.5-pro');
+    assert.equal(scoped[0]?.model, 'google/gemini-2.5-pro');
 
     delete process.env.FORECAST_LLM_MODEL_OPENROUTER;
     delete process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER;
@@ -1714,13 +2038,13 @@ describe('forecast llm overrides', () => {
     assert.equal(combinedProviders[0]?.model, 'google/gemini-2.5-pro');
     assert.equal(combinedProviders[0]?.timeout, 25_000, 'model overrides outside DeepSeek Flash keep the original timeout');
 
-    assert.deepEqual(scenarioOptions.providerOrder, ['openrouter', 'openrouter-free', 'openrouter-free-backup', 'groq']);
+    assert.deepEqual(scenarioOptions.providerOrder, ['openrouter', 'openrouter-free', 'openrouter-free-backup']);
     assert.equal(scenarioProviders[0]?.name, 'openrouter');
     assert.equal(scenarioProviders[0]?.model, 'deepseek/deepseek-v4-flash');
     assert.equal(scenarioProviders[0]?.timeout, 40_000, 'Flash completion deadline (see above); non-Flash overrides keep 25s');
     assert.equal(scenarioProviders[1]?.model, 'google/gemma-4-26b-a4b-it:free');
     assert.equal(scenarioProviders[2]?.model, 'nvidia/nemotron-3-super-120b-a12b:free');
-    assert.equal(scenarioProviders[3]?.model, 'openai/gpt-oss-20b');
+    assert.equal(scenarioProviders.length, 3);
   });
 
   it('lets a global provider order and openrouter model apply to non-combined stages', () => {
@@ -1736,18 +2060,23 @@ describe('forecast llm overrides', () => {
     assert.equal(providers[0]?.model, 'google/gemini-2.5-flash-lite-preview');
   });
 
-  it('migrates the production openrouter,groq order through both fixed free fallbacks', () => {
+  it('maps the production openrouter,groq order to the OpenRouter-only chain', () => {
     process.env.FORECAST_LLM_PROVIDER_ORDER = 'openrouter,groq';
     delete process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER;
     delete process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER;
 
+    const scenarioOptions = getForecastLlmCallOptions('scenario');
     assert.deepEqual(
-      getForecastLlmCallOptions('scenario').providerOrder,
-      ['openrouter', 'openrouter-free', 'openrouter-free-backup', 'groq'],
+      scenarioOptions.providerOrder,
+      ['openrouter', 'openrouter-free', 'openrouter-free-backup'],
+    );
+    assert.deepEqual(
+      resolveForecastLlmProviders(scenarioOptions).map(provider => provider.apiUrl),
+      Array(3).fill('https://openrouter.ai/api/v1/chat/completions'),
     );
     assert.deepEqual(
       getForecastLlmCallOptions('critical_signals').providerOrder,
-      ['groq', 'openrouter'],
+      ['openrouter'],
       'probability-coupled critical signals keep their pinned chain',
     );
     assert.deepEqual(
@@ -1759,24 +2088,38 @@ describe('forecast llm overrides', () => {
 
   it('keeps stage-scoped provider orders exact', () => {
     process.env.FORECAST_LLM_PROVIDER_ORDER = 'openrouter,groq';
-    process.env.FORECAST_LLM_COMBINED_PROVIDER_ORDER = 'openrouter,groq';
+    process.env.FORECAST_LLM_COMBINED_PROVIDER_ORDER = 'openrouter,openrouter-free-backup';
 
     assert.deepEqual(
       getForecastLlmCallOptions('combined').providerOrder,
-      ['openrouter', 'groq'],
+      ['openrouter', 'openrouter-free-backup'],
       'a stage-scoped operator override must not receive implicit providers',
     );
   });
 
+  it('drops a removed provider from a stage-scoped order without emptying it', () => {
+    process.env.FORECAST_LLM_COMBINED_PROVIDER_ORDER = 'openrouter,groq';
+    assert.deepEqual(getForecastLlmCallOptions('combined').providerOrder, ['openrouter']);
+
+    process.env.FORECAST_LLM_COMBINED_PROVIDER_ORDER = 'groq';
+    delete process.env.FORECAST_LLM_PROVIDER_ORDER;
+    assert.deepEqual(
+      getForecastLlmCallOptions('combined').providerOrder,
+      ['openrouter', 'openrouter-free', 'openrouter-free-backup'],
+      'an order naming only removed providers falls back to the default chain',
+    );
+    delete process.env.FORECAST_LLM_COMBINED_PROVIDER_ORDER;
+  });
+
   it('falls through immediately after a DeepSeek Flash stall instead of retrying the hung provider', async () => {
-    process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    const calls = [];
+    const models = [];
 
     __setForecastLlmTransportForTests({
-      fetch: async (url) => {
-        calls.push(String(url));
-        if (String(url).includes('openrouter.ai')) {
+      fetch: async (_url, init) => {
+        const { model } = JSON.parse(init.body);
+        models.push(model);
+        if (model === 'deepseek/deepseek-v4-flash') {
           const error = new Error('The operation was aborted due to timeout');
           error.name = 'TimeoutError';
           throw error;
@@ -1786,8 +2129,8 @@ describe('forecast llm overrides', () => {
           status: 200,
           headers: { get: () => null },
           json: async () => ({
-            model: 'openai/gpt-oss-20b',
-            choices: [{ message: { content: 'Groq fallback returned a complete narrative.' } }],
+            model,
+            choices: [{ message: { content: 'Free fallback returned a complete narrative.' } }],
           }),
         };
       },
@@ -1795,13 +2138,11 @@ describe('forecast llm overrides', () => {
 
     const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
 
-    assert.equal(result?.provider, 'groq');
-    assert.equal(calls.filter((url) => url.includes('openrouter.ai')).length, 3);
-    assert.equal(calls.filter((url) => url.includes('api.groq.com')).length, 1);
+    assert.equal(result?.provider, 'openrouter-free');
+    assert.deepEqual(models, ['deepseek/deepseek-v4-flash', 'google/gemma-4-26b-a4b-it:free']);
   });
 
-  it('retries a 429 Retry-After response on the same provider and returns groq', async () => {
-    process.env.GROQ_API_KEY = 'groq-test-key';
+  it('retries a 429 Retry-After response on the same provider', async () => {
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
     const originalSetTimeout = globalThis.setTimeout;
     const calls = [];
@@ -1851,7 +2192,6 @@ describe('forecast llm overrides', () => {
   });
 
   it('caps oversized Retry-After hints before retrying a forecast LLM provider', async () => {
-    process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
     const originalSetTimeout = globalThis.setTimeout;
     const waits = [];
@@ -1896,7 +2236,6 @@ describe('forecast llm overrides', () => {
   });
 
   it('bounds Retry-After sleeps by the forecast LLM stage budget', async () => {
-    process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
     const originalDateNow = Date.now;
     const originalSetTimeout = globalThis.setTimeout;
@@ -1913,9 +2252,9 @@ describe('forecast llm overrides', () => {
 
     try {
       __setForecastLlmTransportForTests({
-        fetch: async (url) => {
+        fetch: async (_url, init) => {
           calls += 1;
-          assert.ok(String(url).includes('api.groq.com'), 'budget exhaustion should not fall through to the next provider');
+          assert.equal(JSON.parse(init.body).model, 'deepseek/deepseek-v4-flash', 'budget exhaustion should not fall through to the next provider');
           return {
             ok: false,
             status: 429,
@@ -1926,7 +2265,7 @@ describe('forecast llm overrides', () => {
 
       const result = await __callForecastLlmForTests('system', 'user', {
         stage: 'scenario',
-        providerOrder: ['groq', 'openrouter'],
+        providerOrder: ['openrouter', 'openrouter-free'],
         retryDelayMs: 0,
         stageBudgetMs: 17_000,
       });
@@ -1941,7 +2280,6 @@ describe('forecast llm overrides', () => {
   });
 
   it('caps cumulative LLM time by the run budget even when the stage budget is generous', async () => {
-    process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
     const originalDateNow = Date.now;
     const originalSetTimeout = globalThis.setTimeout;
@@ -1962,9 +2300,9 @@ describe('forecast llm overrides', () => {
       // to the remaining RUN budget — not the (generous) per-stage budget.
       __setForecastLlmRunDeadlineForTests(now + 12_000);
       __setForecastLlmTransportForTests({
-        fetch: async (url) => {
+        fetch: async (_url, init) => {
           calls += 1;
-          assert.ok(String(url).includes('api.groq.com'), 'run-budget stop should not fall through to the next provider');
+          assert.equal(JSON.parse(init.body).model, 'deepseek/deepseek-v4-flash', 'run-budget stop should not fall through to the next provider');
           return {
             ok: false,
             status: 429,
@@ -1975,7 +2313,7 @@ describe('forecast llm overrides', () => {
 
       const result = await __callForecastLlmForTests('system', 'user', {
         stage: 'scenario',
-        providerOrder: ['groq', 'openrouter'],
+        providerOrder: ['openrouter', 'openrouter-free'],
         retryDelayMs: 0,
         stageBudgetMs: 120_000,
       });
@@ -1989,16 +2327,15 @@ describe('forecast llm overrides', () => {
     }
   });
 
-  it('falls back to groq after exhausting openrouter retries and preserves provider/model', async () => {
-    process.env.GROQ_API_KEY = 'groq-test-key';
+  it('falls back through the free rungs after exhausting paid retries and preserves provider/model', async () => {
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    const providers = [];
+    const models = [];
 
     __setForecastLlmTransportForTests({
-      fetch: async (url) => {
-        const href = String(url);
-        providers.push(href.includes('api.groq.com') ? 'groq' : 'openrouter');
-        if (href.includes('openrouter.ai')) {
+      fetch: async (_url, init) => {
+        const { model } = JSON.parse(init.body);
+        models.push(model);
+        if (model !== 'nvidia/nemotron-3-super-120b-a12b:free') {
           return {
             ok: false,
             status: 503,
@@ -2010,8 +2347,8 @@ describe('forecast llm overrides', () => {
           status: 200,
           headers: { get: () => null },
           json: async () => ({
-            model: 'groq/llama-test',
-            choices: [{ message: { content: 'Groq fallback succeeded with enough narrative content.' } }],
+            model: 'fixture/backup-model',
+            choices: [{ message: { content: 'Backup fallback succeeded with enough narrative content.' } }],
           }),
         };
       },
@@ -2019,24 +2356,27 @@ describe('forecast llm overrides', () => {
 
     const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
 
-    assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'openrouter', 'openrouter', 'openrouter', 'groq']);
+    assert.deepEqual(models, [
+      ...Array(4).fill('deepseek/deepseek-v4-flash'),
+      'google/gemma-4-26b-a4b-it:free',
+      'nvidia/nemotron-3-super-120b-a12b:free',
+    ]);
     assert.deepEqual(result, {
-      text: 'Groq fallback succeeded with enough narrative content.',
-      model: 'groq/llama-test',
-      provider: 'groq',
+      text: 'Backup fallback succeeded with enough narrative content.',
+      model: 'fixture/backup-model',
+      provider: 'openrouter-free-backup',
     });
   });
 
   it('does not retry non-retryable 402 before falling back', async () => {
-    process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
-    const providers = [];
+    const models = [];
 
     __setForecastLlmTransportForTests({
-      fetch: async (url) => {
-        const href = String(url);
-        providers.push(href.includes('api.groq.com') ? 'groq' : 'openrouter');
-        if (href.includes('openrouter.ai')) {
+      fetch: async (_url, init) => {
+        const { model } = JSON.parse(init.body);
+        models.push(model);
+        if (model === 'deepseek/deepseek-v4-flash') {
           return {
             ok: false,
             status: 402,
@@ -2048,8 +2388,8 @@ describe('forecast llm overrides', () => {
           status: 200,
           headers: { get: () => null },
           json: async () => ({
-            model: 'groq/no-retry-test',
-            choices: [{ message: { content: 'Groq fallback after non retryable status has enough content.' } }],
+            model: 'fixture/no-retry-test',
+            choices: [{ message: { content: 'Free fallback after non retryable status has enough content.' } }],
           }),
         };
       },
@@ -2057,11 +2397,11 @@ describe('forecast llm overrides', () => {
 
     const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
 
-    assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'groq']);
+    assert.deepEqual(models, ['deepseek/deepseek-v4-flash', 'google/gemma-4-26b-a4b-it:free']);
     assert.deepEqual(result, {
-      text: 'Groq fallback after non retryable status has enough content.',
-      model: 'groq/no-retry-test',
-      provider: 'groq',
+      text: 'Free fallback after non retryable status has enough content.',
+      model: 'fixture/no-retry-test',
+      provider: 'openrouter-free',
     });
   });
 
@@ -2189,6 +2529,20 @@ describe('forecast narrative fallbacks', () => {
     assert.match(prompt, /\[ACTORS\]/);
     assert.match(prompt, /\[WORLD_STATE\]/);
     assert.match(prompt, /\[SIMULATED_BRANCHES\]/);
+  });
+
+  it('buildUserPrompt does not feed unscored horizon projections to the narrative model (#7075)', () => {
+    const a = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.7, 0.6, '7d', [
+      { type: 'cii', value: 'Iran CII 87', weight: 0.4 },
+    ]);
+    a.projections = { h24: 0.37, d7: 0.7, d30: 0.53 };
+    buildForecastCase(a);
+
+    const prompt = buildUserPrompt([a]);
+    assert.match(prompt, /Probability: 70%/);
+    assert.ok(!prompt.includes('[PROJECTIONS]'), 'projection block must not reach the prompt');
+    assert.ok(!prompt.includes('37%'), '24h projection must not reach the prompt');
+    assert.ok(!prompt.includes('53%'), '30d projection must not reach the prompt');
   });
 
   it('populateFallbackNarratives fills missing scenario, perspectives, and case narratives', () => {
@@ -2587,6 +2941,53 @@ describe('computeProjections', () => {
     assert.equal(p.projections.d30, p.probability);
     assert.equal(p.projections.h24, 0.408);
     assert.equal(p.projections.d7, 0.449);
+  });
+
+  it('stamps the curve version on every projected forecast and keeps it in history (#7075)', () => {
+    const p = makePrediction('conflict', 'Sudan', 'test', 0.35, 0.5, '30d', []);
+    computeProjections([p]);
+    assert.equal(p.projectionCurvesVersion, PROJECTION_CURVES_VERSION);
+    assert.equal(buildHistoryForecastEntry(p).projectionCurvesVersion, PROJECTION_CURVES_VERSION);
+    const unprojected = makePrediction('conflict', 'Sudan', 'test', 0.35, 0.5, '30d', []);
+    assert.equal('projectionCurvesVersion' in buildHistoryForecastEntry(unprojected), false);
+  });
+
+  it('pins the curves to their version: change a multiplier, bump PROJECTION_CURVES_VERSION (#7075)', () => {
+    // Horizon windows are reported per curve version. Edit this fixture and
+    // the version together, or new windows pool with the old curves' results.
+    assert.equal(PROJECTION_CURVES_VERSION, 1);
+    assert.deepEqual(PROJECTION_CURVES, {
+      conflict:       { h24: 0.91, d7: 1.0, d30: 0.78 },
+      market:         { h24: 1.0, d7: 0.58, d30: 0.42 },
+      supply_chain:   { h24: 0.91, d7: 1.0, d30: 0.64 },
+      political:      { h24: 0.83, d7: 0.87, d30: 1.0 },
+      military:       { h24: 1.0, d7: 0.91, d30: 0.65 },
+      cyber:          { h24: 1.0, d7: 0.78, d30: 0.4 },
+      infrastructure: { h24: 1.0, d7: 0.5, d30: 0.25 },
+    });
+  });
+
+  it('pins the whole projection mapping to its version: anchor rule, peak anchoring, floor and cap (#7075)', () => {
+    // A fingerprint of computeProjections over every domain, emitted horizon
+    // and a probability at the floor, mid-range and the cap. If it changes,
+    // bump PROJECTION_CURVES_VERSION and then update this hash.
+    const rows = [];
+    for (const domain of ['conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure', 'unknown_domain']) {
+      for (const timeHorizon of ['24h', '7d', '14d', '30d']) {
+        for (const probability of [0.02, 0.35, 0.5, 0.9]) {
+          const pred = makePrediction(domain, 'R', 't', probability, 0.5, timeHorizon, []);
+          pred.probability = probability;
+          computeProjections([pred]);
+          rows.push([domain, timeHorizon, probability, pred.projections.h24, pred.projections.d7, pred.projections.d30]);
+        }
+      }
+    }
+    const fingerprint = createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+    assert.deepEqual(
+      [PROJECTION_CURVES_VERSION, fingerprint],
+      [1, '77a8e30669eef158301224614076c84f57b1b20d5d70682cffdea53676844086'],
+      'computeProjections changed: bump PROJECTION_CURVES_VERSION, then update the fingerprint',
+    );
   });
 });
 
@@ -2990,8 +3391,8 @@ describe('forecast quality gating', () => {
 
   it('reserves scenario enrichment slots for scarce market and military forecasts', () => {
     const predictions = [
-      makePrediction('cyber', 'A', 'Cyber A', 0.7, 0.55, '7d', [{ type: 'cyber', value: '8 threats', weight: 0.5 }]),
-      makePrediction('cyber', 'B', 'Cyber B', 0.68, 0.55, '7d', [{ type: 'cyber', value: '7 threats', weight: 0.5 }]),
+      makePrediction('infrastructure', 'A', 'Cyber A', 0.7, 0.55, '7d', [{ type: 'cyber', value: '8 threats', weight: 0.5 }]),
+      makePrediction('infrastructure', 'B', 'Cyber B', 0.68, 0.55, '7d', [{ type: 'cyber', value: '7 threats', weight: 0.5 }]),
       makePrediction('conflict', 'C', 'Conflict C', 0.66, 0.6, '7d', [{ type: 'ucdp', value: '12 events', weight: 0.5 }]),
       makePrediction('market', 'Middle East', 'Oil price impact', 0.4, 0.5, '30d', [{ type: 'news_corroboration', value: 'Oil traders react', weight: 0.3 }]),
       makePrediction('military', 'Korean Peninsula', 'Elevated military air activity', 0.34, 0.5, '7d', [{ type: 'mil_surge', value: 'fighter surge', weight: 0.4 }]),
@@ -3003,6 +3404,19 @@ describe('forecast quality gating', () => {
     assert.ok(selected.scenarioOnly.some(item => item.domain === 'market'));
     assert.ok(selected.scenarioOnly.some(item => item.domain === 'military'));
     assert.deepEqual(selected.telemetry.reservedScenarioDomains.sort(), ['market', 'military']);
+  });
+
+  it('spends no enrichment slot on a forecast withheld from publication (#8990)', () => {
+    const predictions = [
+      makePrediction('cyber', 'A', 'Cyber A', 0.9, 0.8, '7d', [{ type: 'cyber', value: '80 threats', weight: 0.5 }]),
+      makePrediction('political', 'B', 'Will B hold an election?', 0.88, 0.8, '30d', [{ type: 'prediction_market', value: 'Polymarket: 88%', weight: 0.8 }]),
+      makePrediction('conflict', 'C', 'Conflict C', 0.5, 0.5, '7d', [{ type: 'ucdp', value: '12 events', weight: 0.5 }]),
+      makePrediction('market', 'Middle East', 'Oil price impact', 0.4, 0.5, '30d', [{ type: 'news_corroboration', value: 'Oil traders react', weight: 0.3 }]),
+    ];
+    buildForecastCases(predictions);
+    const selected = selectForecastsForEnrichment(predictions, { maxCombined: 2, maxScenario: 2, maxPerDomain: 2, minReadiness: 0 });
+    const enriched = [...selected.combined, ...selected.scenarioOnly].map(pred => pred.title).sort();
+    assert.deepEqual(enriched, ['Conflict C', 'Oil price impact']);
   });
 
   it('filters only the weakest fallback forecasts from publish output', () => {
@@ -3209,10 +3623,10 @@ describe('forecast quality gating', () => {
     const preds = [
       makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.72, 0.65, '7d', [{ type: 'ucdp', value: 'Iran events elevated', weight: 0.4 }]),
       makePrediction('political', 'Iran', 'Political instability: Iran', 0.58, 0.59, '14d', [{ type: 'news_corroboration', value: 'Emergency meetings continue', weight: 0.35 }]),
-      makePrediction('market', 'Middle East', 'Oil repricing risk: Gulf', 0.55, 0.57, '30d', [{ type: 'prediction_market', value: 'Oil reprices higher', weight: 0.3 }]),
+      makePrediction('market', 'Middle East', 'Oil repricing risk: Gulf', 0.55, 0.57, '30d', [{ type: 'market_transmission', value: 'Oil reprices higher', weight: 0.3 }]),
       makePrediction('supply_chain', 'Persian Gulf', 'Shipping disruption: Persian Gulf', 0.53, 0.56, '14d', [{ type: 'chokepoint', value: 'Routing delays persist', weight: 0.35 }]),
       makePrediction('conflict', 'Ukraine', 'Escalation risk: Ukraine', 0.64, 0.61, '7d', [{ type: 'ucdp', value: 'Ukraine conflict remains active', weight: 0.42 }]),
-      makePrediction('market', 'Black Sea', 'Grain pricing pressure: Black Sea', 0.5, 0.54, '30d', [{ type: 'prediction_market', value: 'Grain risk premium widens', weight: 0.28 }]),
+      makePrediction('market', 'Black Sea', 'Grain pricing pressure: Black Sea', 0.5, 0.54, '30d', [{ type: 'market_transmission', value: 'Grain risk premium widens', weight: 0.28 }]),
     ];
 
     buildForecastCases(preds);
@@ -3349,7 +3763,7 @@ describe('forecast quality gating', () => {
 
   it('boosts market-confirmed situations during publish selection', () => {
     const confirmed = makePrediction('market', 'Middle East', 'Oil repricing: Strait of Hormuz', 0.51, 0.48, '30d', [
-      { type: 'prediction_market', value: 'Oil contracts reprice on Hormuz stress', weight: 0.3 },
+      { type: 'market_transmission', value: 'Oil contracts reprice on Hormuz stress', weight: 0.3 },
     ]);
     const unconfirmed = makePrediction('political', 'India', 'Political pressure: India', 0.54, 0.49, '14d', [
       { type: 'news_corroboration', value: 'Coalition bargaining remains active', weight: 0.32 },
@@ -3432,6 +3846,47 @@ describe('forecast quality gating', () => {
     assert.ok(hard.publishSelectionScore > judged.publishSelectionScore);
   });
 
+  it('gives a hard-resolvable state-derived forecast no selection lift (#5234)', () => {
+    const make = (generationOrigin) => {
+      const pred = makePrediction('market', 'Black Sea', 'Energy repricing risk from Black Sea maritime disruption state', 0.5, 0.58, '30d', [
+        { type: 'market_transmission', value: 'energy transmission', weight: 0.24 },
+      ]);
+      buildForecastCases([pred]);
+      pred.traceMeta = { narrativeSource: 'fallback' };
+      pred.readiness = { overall: 0.6 };
+      pred.analysisPriority = 0.12;
+      pred.generationOrigin = generationOrigin;
+      return pred;
+    };
+    const judged = make('state_derived');
+    judged.resolution = { kind: 'judged', deadline: Date.parse('2026-08-01T00:00:00Z'), question: 'q' };
+    const hard = make('state_derived');
+    hard.resolution = { kind: 'hard', metricKey: 'market:commodities-bootstrap:v1|price(symbol==CL=F)', operator: 'crosses', threshold: 88, baselineValue: 80, window: 'within-horizon', deadline: Date.parse('2026-08-01T00:00:00Z'), sourceFeed: 'market:commodities-bootstrap:v1' };
+    selectPublishedForecastPool([judged, hard], { targetCount: 2 });
+    assert.equal(hard.publishSelectionScore, judged.publishSelectionScore);
+  });
+
+  it('does not let a hard state-derived forecast displace a real judged one in rebalance or backfill (#5234)', () => {
+    const candidates = [
+      ['market', 'judged', 0.9, undefined], ['market', 'judged', 0.8, undefined], ['supply_chain', 'hard', 0.01, 'state_derived'],
+    ].map(([domain, kind, priority, generationOrigin], index) => {
+      const pred = makePrediction(domain, `Region ${index}`, `Outlook ${index}`, 0.6, 0.6, '7d', []);
+      pred.id = `synthetic-hard-${index}`;
+      pred.resolution = { kind };
+      if (generationOrigin) pred.generationOrigin = generationOrigin;
+      return attachPublishSelectionContext(pred, { priority });
+    });
+    const pool = selectPublishedForecastPool(candidates, { targetCount: 2 });
+    assert.deepEqual(pool.map(pred => pred.id).sort(), ['synthetic-hard-0', 'synthetic-hard-1']);
+
+    const syntheticHard = { id: 'synthetic-hard', domain: 'supply_chain', probability: 0.7, generationOrigin: 'state_derived', resolution: { kind: 'hard' } };
+    const realJudged = { id: 'real-judged', domain: 'market', probability: 0.5, resolution: { kind: 'judged' } };
+    const selected = selectDeferredForecastForPublishBackfill([realJudged, syntheticHard], [
+      { id: 'published-market', domain: 'market', resolution: { kind: 'judged' } },
+    ], 3);
+    assert.equal(selected.id, 'real-judged');
+  });
+
   it('preserves five real domains through selection, hard rebalance, and publication', () => {
     const candidates = [];
     function add(domain, index, kind, priority) {
@@ -3449,36 +3904,78 @@ describe('forecast quality gating', () => {
     for (let i = 0; i < 6; i++) add('political', i, 'hard', 0.5 - i * 0.01);
     add('market', 6, 'hard', 0.2);
     const conflict = add('conflict', 0, 'judged', 0.3);
-    const cyber = add('cyber', 0, 'hard', 0.01);
+    const infra = add('infrastructure', 0, 'hard', 0.01);
     const run = input => {
       const pool = selectPublishedForecastPool(structuredClone(input));
       const artifacts = buildPublishedForecastArtifacts(pool, []);
       const published = artifacts.publishedPredictions;
       assert.equal(published.length, 14);
-      assert.deepEqual(assessFunnelDiversity(published).domains, ['conflict', 'cyber', 'market', 'political', 'supply_chain']);
+      assert.deepEqual(assessFunnelDiversity(published).domains, ['conflict', 'infrastructure', 'market', 'political', 'supply_chain']);
       assert.equal(assessFunnelDiversity(published).collapsed, false);
       assert.ok(published.some(pred => pred.id === conflict.id));
-      assert.ok(published.some(pred => pred.id === cyber.id));
+      assert.ok(published.some(pred => pred.id === infra.id));
       assert.ok(published.filter(pred => pred.resolution.kind === 'hard').length >= 12);
       return published.map(pred => pred.id);
     };
     assert.deepEqual(run(candidates), run([...candidates].reverse()));
   });
 
+  it('withholds cyber and prediction-market forecasts from publication and publishes the other domains (#8990)', () => {
+    const candidates = [];
+    function add(domain, index, priority, signals = [{ type: 'news_corroboration', value: `${domain} evidence ${index}`, weight: 0.4 }]) {
+      const pred = makePrediction(domain, `${domain} region ${index}`, `${domain} outlook ${index}`, 0.6, 0.6, '7d', signals);
+      pred.id = `${domain}-${index}`;
+      pred.resolution = { kind: 'hard' };
+      attachPublishSelectionContext(pred, { priority });
+      candidates.push(pred);
+      return pred;
+    }
+    // Ranked first, so selection would take them on score alone.
+    const cyber = add('cyber', 0, 0.95);
+    const marketBacked = add('political', 'pm', 0.9, [{ type: 'prediction_market', value: 'Polymarket: 70%', weight: 0.8 }]);
+    for (const domain of ['conflict', 'market', 'supply_chain', 'political', 'military']) add(domain, 0, 0.5);
+    const withheldIds = [cyber.id, marketBacked.id];
+
+    for (const options of [{}, { targetCount: candidates.length }]) {
+      const pool = selectPublishedForecastPool(candidates, options);
+      const published = buildPublishedForecastArtifacts(pool, []).publishedPredictions;
+      const publishedIds = published.map(pred => pred.id);
+      for (const id of withheldIds) {
+        assert.ok(!publishedIds.includes(id), `${id} must not be published`);
+        assert.ok(!pool.deferredCandidates.some(pred => pred.id === id), `${id} must not wait for backfill`);
+      }
+      assert.deepEqual(publishedIds.sort(), ['conflict-0', 'market-0', 'military-0', 'political-0', 'supply_chain-0']);
+      assert.deepEqual(summarizePublishFiltering(candidates, pool, published).domainCoverage.eligible,
+        ['conflict', 'market', 'military', 'political', 'supply_chain']);
+      markDeferredFamilySelection(candidates, pool);
+      assert.equal(cyber.publishDiagnostics.reason, 'withheld_family');
+      assert.equal(cyber.publishDiagnostics.family, 'cyber');
+      assert.equal(marketBacked.publishDiagnostics.family, 'prediction_market');
+      for (const pred of candidates) pred.publishDiagnostics = null;
+    }
+    assert.deepEqual([...WITHHELD_PUBLISH_FAMILIES].sort(), ['cyber', 'prediction_market']);
+    for (const path of ['docs/panels/forecast.mdx', 'docs/zh/panels/forecast.mdx']) {
+      const doc = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+      for (const term of ['WITHHELD_PUBLISH_FAMILIES', 'DEFAULT_MIN_DISTINCT_DOMAINS', '`Political`', '`withheld_family`', '`judged_evidence_unreliable`', '`market_price_not_outcome`']) {
+        assert.ok(doc.includes(term), `${path} documents ${term}`);
+      }
+    }
+  });
+
   it('backfills an absent real domain before adding another represented hard forecast', () => {
     const supply = { id: 'supply', domain: 'supply_chain', probability: 0.7, resolution: { kind: 'hard' } };
-    const cyber = { id: 'cyber', domain: 'cyber', probability: 0.5, resolution: { kind: 'hard' } };
-    const deferred = [supply, cyber];
+    const infra = { id: 'infrastructure', domain: 'infrastructure', probability: 0.5, resolution: { kind: 'hard' } };
+    const deferred = [supply, infra];
     const selected = selectDeferredForecastForPublishBackfill(deferred, [
       { id: 'published-supply', domain: 'supply_chain', resolution: { kind: 'hard' } },
     ], 3);
-    assert.equal(selected.id, 'cyber');
+    assert.equal(selected.id, 'infrastructure');
     assert.deepEqual(deferred.map(pred => pred.id), ['supply']);
   });
 
   it('breaks equal selection scores by ID, independent of input order', () => {
     const candidates = ['b', 'a'].map(id => {
-      const pred = makePrediction('cyber', id, 'Cyber concentration', 0.6, 0.6, '7d', []);
+      const pred = makePrediction('infrastructure', id, 'Infra concentration', 0.6, 0.6, '7d', []);
       pred.id = id;
       return attachPublishSelectionContext(pred);
     });
@@ -3489,8 +3986,8 @@ describe('forecast quality gating', () => {
 
   it('continues past a protected cross-domain swap to allow a same-domain hard upgrade', () => {
     const candidates = [
-      ['cyber', 'judged', 0.9], ['market', 'hard', 0.8],
-      ['political', 'hard', 0.2], ['cyber', 'hard', 0.01],
+      ['infrastructure', 'judged', 0.9], ['market', 'hard', 0.8],
+      ['political', 'hard', 0.2], ['infrastructure', 'hard', 0.01],
     ].map(([domain, kind, priority], index) => {
       const pred = makePrediction(domain, `Region ${index}`, `Outlook ${index}`, 0.6, 0.6, '7d', []);
       pred.id = `upgrade-${index}`;
@@ -3500,13 +3997,13 @@ describe('forecast quality gating', () => {
     const pool = selectPublishedForecastPool(candidates, { targetCount: 2 });
     assert.deepEqual(pool.map(pred => pred.id), ['upgrade-1', 'upgrade-3']);
     assert.deepEqual(summarizePublishFiltering(candidates, pool, pool).domainCoverage, {
-      eligible: ['cyber', 'market', 'political'], selected: ['cyber', 'market'],
-      published: ['cyber', 'market'], missing: ['political'],
+      eligible: ['infrastructure', 'market', 'political'], selected: ['infrastructure', 'market'],
+      published: ['infrastructure', 'market'], missing: ['political'],
     });
   });
 
   it('reserves real domains without using weak or synthetic-only candidates as coverage', () => {
-    const real = ['market', 'cyber'].map(domain => attachPublishSelectionContext(
+    const real = ['market', 'infrastructure'].map(domain => attachPublishSelectionContext(
       makePrediction(domain, domain, `${domain} outlook`, 0.6, 0.6, '7d', []), { priority: 0.3 },
     ));
     const synthetic = attachPublishSelectionContext(
@@ -3526,31 +4023,31 @@ describe('forecast quality gating', () => {
     assert.equal(weak.publishDiagnostics.reason, 'weak_fallback');
     const telemetry = summarizePublishFiltering(candidates, pool, published);
     assert.deepEqual(telemetry.domainCoverage, {
-      eligible: ['cyber', 'market'], selected: ['cyber', 'market'], published: ['cyber', 'market'], missing: [],
+      eligible: ['infrastructure', 'market'], selected: ['infrastructure', 'market'], published: ['infrastructure', 'market'], missing: [],
     });
     assert.equal(telemetry.suppressedWeakFallback, 1);
     assert.equal(assessFunnelDiversity(published).collapsed, true);
   });
 
   it('preserves real domain breadth under final situation and family caps without raising those caps', () => {
-    const candidates = ['market', 'market', 'political', 'political', 'cyber'].map((domain, index) => {
+    const candidates = ['market', 'market', 'political', 'political', 'infrastructure'].map((domain, index) => {
       const pred = makePrediction(domain, `Region ${index}`, `Distinct outlook ${index}`, 0.6, 0.6, '7d', []);
       return attachPublishSelectionContext(pred, { stateId: 'shared-state', familyId: 'shared-family' });
     });
     const situationPublished = filterPublishedForecasts(candidates);
     assert.equal(situationPublished.length, 3);
-    assert.deepEqual(situationPublished.map(pred => pred.domain), ['market', 'political', 'cyber']);
+    assert.deepEqual(situationPublished.map(pred => pred.domain), ['market', 'political', 'infrastructure']);
     const familyPublished = applySituationFamilyCaps(candidates, [{
       id: 'shared-family', situationIds: candidates.map(pred => pred.situationContext.id),
     }]);
     assert.equal(familyPublished.length, 4);
-    assert.deepEqual(familyPublished.map(pred => pred.domain), ['market', 'market', 'political', 'cyber']);
+    assert.deepEqual(familyPublished.map(pred => pred.domain), ['market', 'market', 'political', 'infrastructure']);
   });
 
   it('does not let a higher-ranked synthetic or shadow duplicate erase real coverage', () => {
     for (const generationOrigin of ['state_derived', 'bet_engine']) {
       const real = attachPublishSelectionContext(
-        makePrediction('cyber', 'United States', 'Cyber concentration', 0.5, 0.6, '7d', []), { priority: 0.3 },
+        makePrediction('infrastructure', 'United States', 'Infra concentration', 0.5, 0.6, '7d', []), { priority: 0.3 },
       );
       buildForecastCases([real]);
       const synthetic = { ...structuredClone(real), id: 'synthetic-duplicate', generationOrigin, analysisPriority: 0.9 };
@@ -3569,7 +4066,7 @@ describe('forecast quality gating', () => {
     const candidates = [
       ['market', 'Gulf', 0.95, 'S1'], ['supply_chain', 'Gulf', 0.94, 'S1'],
       ['political', 'France', 0.6, 'S2'], ['conflict', 'Sahel', 0.55, 'S3'],
-      ['cyber', 'US', 0.5, 'S4'], ['political', 'Germany', 0.45, 'S5'],
+      ['infrastructure', 'US', 0.5, 'S4'], ['political', 'Germany', 0.45, 'S5'],
       ['political', 'Italy', 0.44, 'S6'], ['political', 'Rome', 0.3, 'S7'],
       ['market', 'Paris', 0.2, 'S2'],
     ].map(([domain, region, priority, stateId]) => {
@@ -3584,24 +4081,24 @@ describe('forecast quality gating', () => {
     const pool = selectPublishedForecastPool(candidates, { targetCount: 8 });
     assert.equal(pool.length, 8);
     assert.deepEqual([...new Set(pool.map(pred => pred.stateContext.id))].sort(), ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7']);
-    assert.deepEqual([...new Set(pool.map(pred => pred.domain))].sort(), ['conflict', 'cyber', 'market', 'political', 'supply_chain']);
+    assert.deepEqual([...new Set(pool.map(pred => pred.domain))].sort(), ['conflict', 'infrastructure', 'market', 'political', 'supply_chain']);
   });
 
   it('backfills an absent real judged domain before a represented hard forecast, ignoring synthetic absent domains', () => {
     const supply = { id: 'supply', domain: 'supply_chain', probability: 0.7, resolution: { kind: 'hard' } };
-    const syntheticCyber = { id: 'synthetic-cyber', domain: 'cyber', probability: 0.7, generationOrigin: 'state_derived', resolution: { kind: 'judged' } };
-    const cyber = { id: 'cyber', domain: 'cyber', probability: 0.5, resolution: { kind: 'judged' } };
-    const deferred = [supply, syntheticCyber, cyber];
+    const syntheticInfra = { id: 'synthetic-infra', domain: 'infrastructure', probability: 0.7, generationOrigin: 'state_derived', resolution: { kind: 'judged' } };
+    const infra = { id: 'infrastructure', domain: 'infrastructure', probability: 0.5, resolution: { kind: 'judged' } };
+    const deferred = [supply, syntheticInfra, infra];
     const selected = selectDeferredForecastForPublishBackfill(deferred, [
       { id: 'published-supply', domain: 'supply_chain', resolution: { kind: 'judged' } },
     ], 3);
-    assert.equal(selected.id, 'cyber');
-    assert.deepEqual(deferred.map(pred => pred.id), ['supply', 'synthetic-cyber']);
+    assert.equal(selected.id, 'infrastructure');
+    assert.deepEqual(deferred.map(pred => pred.id), ['supply', 'synthetic-infra']);
   });
 
   it('does not let a synthetic same-domain hard forecast replace a sole real representative', () => {
     const candidates = [
-      ['cyber', 'judged', 0.9, undefined], ['market', 'hard', 0.8, undefined], ['cyber', 'hard', 0.01, 'state_derived'],
+      ['infrastructure', 'judged', 0.9, undefined], ['market', 'hard', 0.8, undefined], ['infrastructure', 'hard', 0.01, 'state_derived'],
     ].map(([domain, kind, priority, generationOrigin], index) => {
       const pred = makePrediction(domain, `Region ${index}`, `Outlook ${index}`, 0.6, 0.6, '7d', []);
       pred.id = `swap-${index}`;

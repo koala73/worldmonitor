@@ -1,0 +1,50 @@
+name: Install browser fonts
+description: Install the fonts the browser checks need for the shipped locales, from a package cache when one exists.
+# `playwright install-deps chromium` adds no shared library on the hosted
+# Ubuntu image. It downloads ~32 MB of fonts and Mesa upgrades, plus an
+# `apt-get update`, and a slow mirror once stretched that to 158s. The image
+# already has DejaVu, Liberation and Noto Color Emoji, which cover Latin,
+# Cyrillic, Greek, Arabic, Persian and Vietnamese. These packages add the
+# scripts the shipped locales still need: CJK with kana and Hangul (zh, ja, ko),
+# Thai (th) and Devanagari (hi). Text in those scripts renders as glyphs
+# instead of empty boxes in the evidence screenshots.
+runs:
+  using: composite
+  steps:
+    - name: Resolve browser font cache key
+      id: font-key
+      shell: bash
+      run: |
+        . /etc/os-release
+        echo "key=browser-fonts-v1-${VERSION_CODENAME}-${{ runner.arch }}-fonts-wqy-zenhei-fonts-tlwg-loma-otf-fonts-lohit-deva" >> "$GITHUB_OUTPUT"
+    - name: Restore browser font packages
+      id: font-debs
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ~/.cache/wm-browser-fonts
+        key: ${{ steps.font-key.outputs.key }}
+    - name: Download browser font packages on cache miss
+      if: steps.font-debs.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p ~/.cache/wm-browser-fonts
+        cd ~/.cache/wm-browser-fonts
+        packages=(fonts-wqy-zenhei fonts-tlwg-loma-otf fonts-lohit-deva)
+        # The image ships package lists. Refresh them only when they are too
+        # old to resolve these packages.
+        if ! apt-get download "${packages[@]}"; then
+          sudo apt-get update
+          apt-get download "${packages[@]}"
+        fi
+    - name: Install browser font packages
+      shell: bash
+      # Local .deb paths: apt resolves dependencies but downloads nothing that
+      # the image already has.
+      run: sudo apt-get install -y --no-install-recommends ~/.cache/wm-browser-fonts/*.deb
+    - name: Save browser font packages
+      if: steps.font-debs.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ~/.cache/wm-browser-fonts
+        key: ${{ steps.font-key.outputs.key }}

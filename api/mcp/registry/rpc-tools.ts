@@ -27,6 +27,9 @@ import {
 } from '../downstream';
 import { evaluateFreshness } from '../freshness';
 import { McpSourceUnavailableError } from '../source-unavailable';
+import { FORECAST_THEATER_STATUSES, forecastTheaterReadSchema, parseForecastTheaterResult, unavailableForecastTheaters } from '../../../shared/forecast-theaters';
+import { readBoundedResponseBody, ResponseBodyTooLargeError } from '../bounded-body';
+import { utf8ByteLength } from '../utils';
 import { normalizeCountry } from '../../../server/_shared/intel-history-client';
 import { normalizePassengerCount } from '../../../server/_shared/passenger-count';
 import {
@@ -1389,11 +1392,14 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_world_brief',
     _outputBudgetBytes: 65536,
-    description: 'Citation-grounded world intelligence brief from the same precomputed news:insights:v1 snapshot used by the dashboard. The insights seeder applies corroboration, citation, and hallucination gates before publishing; this tool reads that accepted result without a request-time LLM call. The optional geo_context field is retained for client compatibility and does not alter the seeded global snapshot. Each headline is paired with an index-aligned topStories entry carrying the story corroboration evidence published by its snapshot: uniqueSourceCount (distinct outlets), corroborationSourceCount, entityCorroboration, sourceTier, the outlet names themselves, corroboration, and the publishers roster with each publisher\'s declared tier, both derived from those outlet names; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Legacy snapshots omit corroboration fields they did not publish. When the seeder has not published inside the 60-minute freshness window the last-known-good snapshot is served rather than failing, flagged by stale:true with ageMinutes — the content is unchanged and still fully gated, so weigh its age rather than discarding it. Serving is capped at 3h old; past that, and for a snapshot that is absent or broken rather than merely old, the source is reported unavailable.',
+    description: 'Citation-grounded world intelligence brief from the same precomputed news:insights:v1 snapshot used by the dashboard. The insights seeder applies corroboration, citation, and hallucination gates before publishing; this tool reads that accepted result without a request-time LLM call. The optional geo_context field is retained for client compatibility and does not alter the seeded global snapshot. Each headline is paired with an index-aligned topStories entry carrying the story corroboration evidence published by its snapshot: uniqueSourceCount (distinct outlets), corroborationSourceCount, entityCorroboration, sourceTier, the outlet names themselves, corroboration, and the publishers roster with each publisher\'s declared tier, both derived from those outlet names; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Legacy snapshots omit corroboration fields they did not publish. When the seeder has not published inside the 60-minute freshness window the last-known-good snapshot is served rather than failing, flagged by stale:true with ageMinutes — the content is unchanged and still fully gated, so weigh its age rather than discarding it. Serving is capped at 3h old; past that, and for a snapshot that is absent or broken rather than merely old, the source is reported unavailable. Paid MCP openings consume one request allocation; healthy loaded reuse and ignored geo_context changes reuse it. API allowances retain ordinary per-tool billing.',
     inputSchema: {
       type: 'object',
       properties: {
         geo_context: { type: 'string', description: 'Deprecated compatibility field; the precomputed global snapshot is not regenerated or refocused per request.' },
+        refresh: { type: 'boolean', description: 'Paid MCP panel only. Explicit refresh starts one new request allocation; requires request_id.' },
+        request_id: { type: 'string', description: 'UUID for a paid explicit refresh. Retrying the same UUID reuses its allocation.' },
+        panel_request: { type: 'string', description: 'Signed paid World Brief receipt for loaded reads. Do not combine with refresh.' },
       },
       required: [],
     },
@@ -1504,11 +1510,13 @@ export const RPC_TOOLS: ToolDef[] = [
     // Two downstream fetches (brief + news digest for grounding).
     _weight: 3,
     _outputBudgetBytes: 65536,
-    description: 'Text-only AI assessment, one section of the country brief. Use open_country_brief for ordinary country brief requests, the embedded country interface and topic navigation. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, corroboration, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. When the news digest is serving retained (stale) content, that grounding is DROPPED and the brief is generated without it; pass allow_stale=true to ground on the retained snapshot instead. Either way the digestCoverage block reports what the grounding was.',
+    description: 'Text-only AI assessment, one section of the country brief. Use open_country_brief for ordinary country brief requests, the embedded country interface and topic navigation. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, corroboration, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. When the news digest is serving retained (stale) content, that grounding is DROPPED and the brief is generated without it; pass allow_stale=true to ground on the retained snapshot instead. Either way the digestCoverage block reports what the grounding was. A paid opening shares the existing country allocation with brief, risk and full-panel reads. Healthy originals replay before presentation; incomplete or retained sources remain retryable under the same allocation.',
     inputSchema: {
       type: 'object',
       properties: {
         panel_request: { type: 'string', maxLength: 160, description: 'Server-issued country-panel request token, supplied by the embedded view.' },
+        refresh: { type: 'boolean', description: 'For a paid MCP allowance, start a new country allocation and reread loaded sources. Requires request_id and no panel_request. Does not force AI generation.' },
+        request_id: { type: 'string', format: 'uuid', description: 'Required UUID for an explicit paid refresh. Retrying the same UUID reuses that allocation.' },
         country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or English country name ("Iraq")' },
         framework: { type: 'string', description: 'Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT)' },
         allow_stale: { type: 'boolean', description: 'Ground the brief on a retained (stale) news digest when the live rebuild has failed. Defaults to false, which drops the stale grounding and returns an ungrounded brief rather than failing; time-sensitive automated decisions should leave this disabled. Retained content is at most six hours old.' },
@@ -1745,10 +1753,13 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_country_risk',
     _outputBudgetBytes: 262144,
-    description: 'Structured risk intelligence for a specific country: the Composite Instability Index at cii.combinedScore (0-100), its four contributing components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive plus sanctionsCount. Fast Redis read — no LLM. Use for quantitative risk screening or to answer "how risky is X right now?" Check upstreamUnavailable first: when it is true at least one required upstream read failed, the whole response was withheld, and the zeroed fields mean UNKNOWN, not calm.',
+    description: 'Structured risk intelligence for a specific country: the Composite Instability Index at cii.combinedScore (0-100), its four contributing components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive plus sanctionsCount. Fast Redis read — no LLM. Use for quantitative risk screening or to answer "how risky is X right now?" Check upstreamUnavailable first: when it is true at least one required upstream read failed, the whole response was withheld, and the zeroed fields mean UNKNOWN, not calm. A paid opening shares the existing country allocation with brief and full-panel reads. Healthy route-specific loaded originals replay before presentation; upstream failures remain retryable. Loaded reuse does not attest current advisory or sanctions freshness.',
     inputSchema: {
       type: 'object',
       properties: {
+        panel_request: { type: 'string', maxLength: 160, description: 'Server-issued same-country panel request token for loaded reads.' },
+        refresh: { type: 'boolean', description: 'For a paid MCP allowance, start a new country allocation and reread loaded sources. Requires request_id and no panel_request. Does not force AI generation.' },
+        request_id: { type: 'string', format: 'uuid', description: 'Required UUID for an explicit paid refresh. Retrying the same UUID reuses that allocation.' },
         country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or English country name ("Iraq")' },
       },
       required: ['country_code'],
@@ -2839,6 +2850,41 @@ export const RPC_TOOLS: ToolDef[] = [
     ],
   },
   {
+    name: 'get_forecast_theaters',
+    _subscriptionOnly: true,
+    _outputBudgetBytes: 131072,
+    description: 'Read the latest original forecast simulation theater summaries using a signed forecasts panel_request. Shares the panel allocation and its 64 uncached-read limit. Preserves original paths, actors and optional roles, reactions, stabilizers, invalidators, source run/time and completion counts. No run selector or simulation trigger. Partial, unknown and unavailable results can be retried manually; source time is separate from forecast generation and does not establish freshness.',
+    inputSchema: { type: 'object', properties: { panel_request: { type: 'string', maxLength: 160, description: 'Signed receipt from get_forecast_predictions.' } }, required: ['panel_request'],
+      oneOf: [{ type: 'object', properties: { panel_request: { type: 'string', maxLength: 160 } }, required: ['panel_request'], additionalProperties: false }] },
+    outputSchema: { type: 'object', required: ['data'], properties: { data: { type: 'object', required: ['forecastTheaters'], properties: { forecastTheaters: {
+      type: 'object', required: ['status', 'found', 'runId', 'schemaVersion', 'theaterCount', 'generatedAt', 'note', 'error', 'theaterSummariesJson', 'processing', 'eligibleTheaterCount', 'failedTheaterCount', 'allTheatersFailed', 'completionStatus'],
+      properties: { status: { type: 'string', enum: [...FORECAST_THEATER_STATUSES] }, found: { type: 'boolean' }, runId: { type: 'string' }, schemaVersion: { type: 'string' },
+        theaterCount: { type: 'integer' }, generatedAt: { type: 'integer' }, note: { type: 'string' }, error: { type: 'string' }, theaterSummariesJson: { type: 'string' },
+        processing: { type: 'boolean' }, eligibleTheaterCount: { type: 'integer' }, failedTheaterCount: { type: 'integer' }, allTheatersFailed: { type: 'boolean' }, completionStatus: { type: 'string' } },
+    } } } } },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _execute: async (params, base, context, execution) => {
+      if (execution?.panelScope !== 'forecasts' || !forecastTheaterReadSchema.safeParse(params).success) throw new RpcValidationError('get-forecast-theaters', [{ field: 'panel_request', description: 'A signed forecasts panel request is required.' }]);
+      const url = `${base}/api/forecast/v1/get-simulation-outcome`;
+      const auth = await buildAuthHeaders(context, 'GET', url, undefined);
+      const res = await fetchMcpDownstream(url, { method: 'GET', headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' }, signal: AbortSignal.timeout(15_000) }, execution);
+      await assertToolFetchOk(res, 'get-simulation-outcome');
+      let result;
+      try {
+        const bytes = await readBoundedResponseBody(res, 131072);
+        result = parseForecastTheaterResult(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))) ?? unavailableForecastTheaters('invalid_theater_response');
+      } catch (error) {
+        result = unavailableForecastTheaters(error instanceof ResponseBodyTooLargeError ? 'theater_response_too_large' : 'invalid_theater_response');
+      }
+      const output = { data: { forecastTheaters: result } };
+      if (utf8ByteLength(JSON.stringify(output)) > 131072) {
+        return { data: { forecastTheaters: unavailableForecastTheaters('theater_response_too_large') } };
+      }
+      return output;
+    },
+    _apiPaths: ['GET /api/forecast/v1/get-simulation-outcome'],
+  },
+  {
     name: 'generate_forecasts',
     _outputBudgetBytes: 65536,
     description: 'Generate live AI geopolitical and economic forecasts. Unlike get_forecast_predictions (pre-computed cache), this calls the forecasting model directly for fresh probability estimates. Note: slower than cache tools.',
@@ -3376,6 +3422,42 @@ export const RPC_TOOLS: ToolDef[] = [
     ],
   },
   COMPANY_INTEL_TOOL,
+  {
+    name: 'get_mcp_allowance',
+    _outputBudgetBytes: 4096,
+    description: 'Read the authenticated account remaining MCP allowance and UTC reset time without spending a daily allocation. Includes free-account request-window status and whether REST shares the budget. No account selector or provider-data calls. Unavailable counter state returns an error.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        access: { type: 'string', enum: ['subscription', 'free-account'] },
+        used: { type: 'integer', minimum: 0 },
+        limit: { type: ['integer', 'null'], minimum: 0 },
+        remaining: { type: ['integer', 'null'], minimum: 0 },
+        resetsAt: { type: 'string', format: 'date-time' },
+        requestWindows: {
+          type: ['object', 'null'],
+          properties: {
+            used: { type: 'integer', minimum: 0 },
+            limit: { type: 'integer', minimum: 0 },
+            remaining: { type: 'integer', minimum: 0 },
+            idleGapMs: { type: 'integer', minimum: 0 },
+            active: { type: 'boolean' },
+            expiresAt: { type: ['string', 'null'], format: 'date-time' },
+          },
+          required: ['used', 'limit', 'remaining', 'idleGapMs', 'active', 'expiresAt'],
+        },
+        sharedWithRestApi: { type: 'boolean' },
+      },
+      required: ['access', 'used', 'limit', 'remaining', 'resetsAt', 'requestWindows', 'sharedWithRestApi'],
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _execute: async (_params, _base, _context, execution) => {
+      if (!execution?.readAccountAllowance) throw new Error('Account allowance reader is unavailable.');
+      return execution.readAccountAllowance();
+    },
+    _apiPaths: [],
+  },
   {
     // describe_tool (v1.5.0) — on-demand escape hatch for the full
     // uncompressed tool definition. tools/list (default) emits each tool's

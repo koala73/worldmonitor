@@ -10,7 +10,7 @@ import './styles/plugin.css';
 import { SearchModal } from '@/components/SearchModal';
 import type { NewsItem } from '@/types';
 import { NewsPanel } from '@/components/NewsPanel';
-import { MapContainer } from '@/components/MapContainer';
+import { MapContainer, ViewportTransitionError } from '@/components/MapContainer';
 import { DEFAULT_MAP_LAYERS, DEFAULT_PANELS } from '@/config';
 import type { MapLayers } from '@/types';
 import type { ListFeedDigestResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
@@ -22,9 +22,22 @@ import { LAYER_REGISTRY } from '@/config/map-layer-definitions';
 import { loadPluginHazardSnapshot, type PluginHazardSnapshot } from '@/services/plugin-map-snapshot';
 import { newsPanelAdmissionSchema, type NewsPanelAdmission } from '../shared/panel-admission';
 
+function resolveNewsCategory(requested: string, keys: string[]): { category: string } | { reason: 'unknown_category' | 'ambiguous_category' } {
+  if (keys.includes(requested)) return { category: requested };
+  const normalized = requested.trim().toLowerCase();
+  const matches = keys.filter(key => key.trim().toLowerCase() === normalized || (DEFAULT_PANELS[key]?.name ?? key).trim().toLowerCase() === normalized);
+  return matches.length === 1 ? { category: matches[0]! } : { reason: matches.length ? 'ambiguous_category' : 'unknown_category' };
+}
+
 function mountPlugin(): void {
   const panels = new Map<string, NewsPanel>();
   const status = document.getElementById('pluginStatus')!;
+  const categoryNotice = document.createElement('div');
+  categoryNotice.id = 'pluginCategoryNotice';
+  categoryNotice.setAttribute('role', 'status');
+  categoryNotice.style.padding = '8px';
+  categoryNotice.hidden = true;
+  status.after(categoryNotice);
   const usageNotice = document.getElementById('pluginUsage')!;
   let admission: NewsPanelAdmission | undefined;
   let hostView: unknown;
@@ -36,6 +49,10 @@ function mountPlugin(): void {
   let map: MapContainer;
   let search: SearchModal;
   let news: NewsItem[] = [];
+  const visibleNews: NewsItem[] = [];
+  let visibleMarkers: Parameters<MapContainer['setNewsLocations']>[0] = [];
+  // Latest loaded article interaction, independent of popup visibility.
+  let latestInteraction: { kind: 'news-article'; link: string; title: string; source: string; displayLabel: string } | null = null;
   let digest: ListFeedDigestResponse | undefined;
   let view: PluginNewsView = { time_range: 'all' };
   let viewQueue: Promise<unknown> = Promise.resolve();
@@ -92,7 +109,9 @@ function mountPlugin(): void {
     admission = nextAdmission;
     showUsage();
     digest = data;
+    latestInteraction = null;
     renderDigest();
+    publishContext({ view, categoryLabel: visibleCategoryLabel(), latestInteraction, center: map.getCenter(), map: map.getState() });
     if (keepCurrentView || admissionChanged || requestedView) {
       await applyView(requestedView ?? {}, { keepCurrentView, reloadLayers: admissionChanged, generation }).catch(error => {
         if (generation !== renderGeneration) return;
@@ -122,13 +141,24 @@ function mountPlugin(): void {
     return refreshing;
   }
 
+  function loadedCategoryKeys(): string[] {
+    return Object.entries(digest?.categories ?? {}).filter(([, bucket]) => bucket && Array.isArray(bucket.items)).map(([key]) => key);
+  }
+
   function renderDigest(): void {
     if (!digest) return;
+    const categories = loadedCategoryKeys();
+    if (view.category && !categories.includes(view.category)) {
+      categoryNotice.textContent = `The selected news category "${visibleCategoryLabel()}" is no longer loaded. Showing All news panels.`;
+      categoryNotice.hidden = false;
+      view = { ...view, category: undefined };
+    }
     for (const [category, panel] of panels) {
-      if (!(category in digest.categories)) { panel.destroy(); panel.getElement().remove(); panels.delete(category); }
+      if (!categories.includes(category)) { panel.destroy(); panel.getElement().remove(); panels.delete(category); }
     }
     const locations: Parameters<MapContainer['setNewsLocations']>[0] = [];
     news = [];
+    visibleNews.length = 0;
     for (const [category, bucket] of Object.entries(digest.categories)) {
       if (!bucket || !Array.isArray(bucket.items)) continue;
       let panel = panels.get(category);
@@ -137,7 +167,7 @@ function mountPlugin(): void {
           clusterNews: async items => clusterNews(items),
           generateSummary: async (headlines, _progress, geoContext, lang, options) => {
             const result = await analyze({ headlines, bodies: options?.bodies, geoContext, lang, mode: 'brief' });
-            return { summary: result.summary, provider: 'groq', model: result.model, cached: false };
+            return { summary: result.summary, provider: 'openrouter', model: result.model, cached: false };
           },
           translateText: async (text, lang) => (await analyze({ headlines: [text], lang, mode: 'translate' })).summary,
         });
@@ -158,6 +188,7 @@ function mountPlugin(): void {
       if (items.length || !allItems.length) panel.renderNews(items);
       else panel.renderFilteredEmpty('No news matches these filters.');
       for (const item of view.category && view.category !== category ? [] : items) {
+        visibleNews.push(item);
         const matches = Number.isFinite(item.lat) && Number.isFinite(item.lon)
           ? [] : inferGeoHubsFromTitle(item.title).filter(match => match.hub.type !== 'organization');
         const tokens = tokenizeForMatch(item.title);
@@ -168,13 +199,16 @@ function mountPlugin(): void {
         const lon = hub?.lon ?? item.lon;
         if (Number.isFinite(lat) && Number.isFinite(lon)) {
           const title = hub ? `${item.title} (approximate location: ${hub.name})` : item.title;
-          locations.push({ lat: lat!, lon: lon!, title, threatLevel: item.threat?.level ?? 'info', timestamp: item.pubDate });
+          locations.push({ lat: lat!, lon: lon!, title, article: { link: item.link, title: item.title, source: item.source }, threatLevel: item.threat?.level ?? 'info', timestamp: item.pubDate });
         }
       }
     }
+    const interaction = latestInteraction;
+    if (interaction && !visibleNews.some(item => item.link === interaction.link && item.title === interaction.title && item.source === interaction.source)) latestInteraction = null;
+    visibleMarkers = locations;
     map.setNewsLocations(locations);
     updateSelect(sourceSelect, [...new Set(news.map(item => item.source))].sort(), view.source ?? '', 'All sources');
-    updateSelect(categorySelect, Object.keys(digest.categories), view.category ?? '', 'All news panels');
+    updateSelect(categorySelect, categories, view.category ?? '', 'All news panels');
     search.registerSource('news', news.map(item => ({ id: item.link, title: item.title, subtitle: item.source, data: item })));
     status.textContent = !Object.keys(digest.categories).length ? 'No news is available.' : digest.coverage?.servedStale ? 'Showing cached news.' : digest.coverage?.state === 'partial' ? 'Some news sources are unavailable.' : '';
   }
@@ -184,20 +218,36 @@ function mountPlugin(): void {
     select.value = value;
   }
 
+  function refuseNewsCategory(requestedCategory: string, reason: 'unknown_category' | 'ambiguous_category'): object {
+    categoryNotice.textContent = reason === 'ambiguous_category'
+      ? `The news category "${requestedCategory}" matches more than one loaded panel. Select a news category from the list. The current view has been kept.`
+      : `The news category "${requestedCategory}" is not loaded. Select a news category from the list. The current view has been kept.`;
+    categoryNotice.hidden = false;
+    const receipt = { applied: false, reason, requestedCategory, view, categoryLabel: visibleCategoryLabel(), latestInteraction, center: map.getCenter(), map: map.getState() };
+    publishContext(receipt);
+    return receipt;
+  }
+
   async function applyView(input: unknown, options: { reset?: boolean; keepCurrentView?: boolean; reloadLayers?: boolean; generation?: number } = {}): Promise<object> {
     const next = pluginNewsViewSchema.parse(input);
     const operation = viewQueue.then(() => {
       const desired = options.keepCurrentView ? { ...view } : { ...next };
       if (options.reloadLayers && desired.map_layers === undefined) desired.map_layers = view.map_layers ?? [];
-      return updateView(desired, options.reset ?? false, options.generation);
+      return updateView(desired, options.reset ?? false, options.generation, Boolean(options.reset || (!options.keepCurrentView && next.category !== undefined)));
     });
     viewQueue = operation.catch(() => {});
     return operation;
   }
 
-  async function updateView(next: PluginNewsView, reset: boolean, generation?: number): Promise<object> {
+  async function updateView(next: PluginNewsView, reset: boolean, generation?: number, clearCategoryNotice = false): Promise<object> {
     const superseded = () => generation !== undefined && generation !== renderGeneration;
     if (superseded()) return { applied: false, superseded: true };
+    const requestedCategory = next.category;
+    if (requestedCategory) {
+      const resolution = resolveNewsCategory(requestedCategory, loadedCategoryKeys());
+      if ('reason' in resolution) return refuseNewsCategory(requestedCategory, resolution.reason);
+      next = { ...next, category: resolution.category };
+    }
     const intended = { ...(reset ? { map_layers: view.map_layers } : view), ...next };
     const selectedLayers = intended.map_layers ?? [];
     let snapshot: PluginHazardSnapshot | undefined;
@@ -213,15 +263,41 @@ function mountPlugin(): void {
       }
       snapshot = await loaded;
       if (superseded()) return { applied: false, superseded: true };
+      if (requestedCategory) {
+        const resolution = resolveNewsCategory(requestedCategory, loadedCategoryKeys());
+        if ('reason' in resolution) return refuseNewsCategory(requestedCategory, resolution.reason);
+        intended.category = resolution.category;
+      }
     }
     let renderer: object | undefined;
     if (next.renderer) {
+      const authority = map.getViewportAuthorityToken();
       const result = next.renderer === 'globe' ? await map.switchToGlobe() : await map.switchToFlat();
+      let interruptedByHuman = false;
+      try { await map.whenViewportSettled(); }
+      catch (error) {
+        if (!(error instanceof ViewportTransitionError) || error.reason !== 'viewport_interrupted') throw error;
+        // OrbitControls can settle inside the wheel listener, before the same
+        // event bubbles to MapContainer's human-authority listener.
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        if (superseded()) return { applied: false, superseded: true };
+        await map.whenRendererReady();
+        const effectiveRenderer = map.isGlobeMode() ? 'globe' : map.isDeckGLActive() ? 'deck' : 'svg';
+        if (effectiveRenderer !== result.renderer) throw new ViewportTransitionError('renderer_changed');
+        if (authority === map.getViewportAuthorityToken()) throw error;
+        interruptedByHuman = true;
+      }
       if (superseded()) return { applied: false, superseded: true };
       renderer = result;
       intended.renderer = result.mode;
       for (const control of document.querySelectorAll<HTMLButtonElement>('#mapDimensionToggle button')) {
         control.classList.toggle('active', control.dataset.mode === result.mode);
+      }
+      if (interruptedByHuman) {
+        view = { ...view, renderer: result.mode };
+        const receipt = { applied: false, view, categoryLabel: visibleCategoryLabel(), latestInteraction, renderer: result, center: map.getCenter(), map: map.getState(), viewport: { settled: false, interruptedBy: 'human' } };
+        publishContext(receipt);
+        return receipt;
       }
     }
     if (next.time_range) {
@@ -272,23 +348,44 @@ function mountPlugin(): void {
       ? `Global hazard snapshot (up to ${hazardSnapshot?.limitPerSource ?? 100}/source): ${Object.entries(coverage).map(([key, value]) => `${key}: ${value.accepted} valid, ${value.skipped} skipped`).join('; ')}. Country filters apply to news; time controls apply to the map.`
       : effectiveLayers.length ? 'Landmarks from WorldMonitor reference data; these do not show live activity.' : '';
     if (reset && !next.country) map.clearCountryHighlight();
+    if (clearCategoryNotice) { categoryNotice.hidden = true; categoryNotice.textContent = ''; }
     renderDigest();
     if (next.query !== undefined) { search.open(); search.applyQuery(next.query); }
     countryBriefButton.disabled = !view.country;
     countryBriefButton.textContent = view.country ? `${view.country} country brief` : 'Select a country for its brief';
-    const receipt = { applied: true, view, center: map.getCenter(), map: map.getState(), ...(hazardSnapshot && activeSources.length ? { hazardSnapshot: { coverage, loadedAt: hazardSnapshot.loadedAt, scope: 'global', limitPerSource: hazardSnapshot.limitPerSource } } : {}), ...(renderer ? { renderer } : {}) };
-    if (modelContext) void request('ui/update-model-context', { content: [{ type: 'text', text: JSON.stringify(receipt) }] }).catch(() => {});
+    const receipt = { applied: true, view, categoryLabel: visibleCategoryLabel(), latestInteraction, center: map.getCenter(), map: map.getState(), ...(hazardSnapshot && activeSources.length ? { hazardSnapshot: { coverage, loadedAt: hazardSnapshot.loadedAt, scope: 'global', limitPerSource: hazardSnapshot.limitPerSource } } : {}), ...(renderer ? { renderer } : {}) };
+    publishContext(receipt);
     return receipt;
   }
 
-  async function focusNews(link: string): Promise<object> {
-    const item = news.find(item => item.link === link);
+  function visibleCategoryLabel(): string {
+    return view.category ? DEFAULT_PANELS[view.category]?.name ?? view.category : 'All news panels';
+  }
+
+  function publishContext(receipt: object): void {
+    if (modelContext) void request('ui/update-model-context', { content: [{ type: 'text', text: JSON.stringify(receipt) }] }).catch(() => {});
+  }
+
+  function recordNewsInteraction(article: Pick<NewsItem, 'link' | 'title' | 'source'>, displayLabel: string): boolean {
+    const item = visibleNews.find(item => item.link === article.link && item.title === article.title && item.source === article.source);
+    if (!item || !item.link) return false;
+    latestInteraction = { kind: 'news-article', link: item.link, title: item.title, source: item.source, displayLabel };
+    return true;
+  }
+
+  async function focusNews(link: string, selectedItem?: NewsItem): Promise<object> {
+    const generation = renderGeneration;
+    const item = news.find(item => item.link === link && (!selectedItem || item === selectedItem));
     if (!item || !digest) throw new Error('This article is not in the current news snapshot.');
-    const category = Object.entries(digest.categories).find(([, bucket]) => bucket.items.some(candidate => candidate.link === link))?.[0];
+    const category = Object.entries(digest.categories).find(([, bucket]) => bucket.items.some(candidate => candidate.link === link && candidate.title === item.title && candidate.source === item.source))?.[0];
     const mapFocused = Number.isFinite(item.lat) && Number.isFinite(item.lon);
     await applyView({ category, time_range: 'all', ...(mapFocused ? { map_latitude: item.lat, map_longitude: item.lon, map_zoom: 4 } : {}) }, { reset: true });
+    if (generation !== renderGeneration) throw new Error('The news snapshot changed. Select the article again.');
+    if (!recordNewsInteraction(item, item.title)) throw new Error('This article is no longer in the current news view.');
     for (const panel of panels.values()) if (panel.hasNewsItem(item.link)) panel.scrollToNewsItem(item.link);
-    return { applied: true, link, title: item.title, source: item.source, mapFocused, center: map.getCenter(), view };
+    const receipt = { applied: true, link, title: item.title, source: item.source, mapFocused, center: map.getCenter(), view, categoryLabel: visibleCategoryLabel(), latestInteraction };
+    publishContext(receipt);
+    return receipt;
   }
 
   async function start(): Promise<void> {
@@ -350,6 +447,11 @@ function mountPlugin(): void {
       } catch { status.textContent = 'The requested map renderer is unavailable.'; }
     });
     map.onCountryClicked(country => { if (country.code) void applyView({ country: country.code }).catch(() => { status.textContent = 'Country view could not be applied.'; }); });
+    map.onNewsClicked(item => {
+      const article = item.article;
+      if (!article || !visibleMarkers.some(marker => marker.title === item.title && marker.article?.link === article.link && marker.article.title === article.title && marker.article.source === article.source) || !recordNewsInteraction(article, item.title)) return;
+      publishContext({ view, categoryLabel: visibleCategoryLabel(), latestInteraction, center: map.getCenter(), map: map.getState() });
+    });
     map.onTimeRangeChanged(time_range => {
       if (applyingTimeRange) return;
       void applyView({ time_range }).catch(() => { status.textContent = 'Time range could not be applied.'; });
@@ -357,7 +459,7 @@ function mountPlugin(): void {
     search = new SearchModal(document.body, { placeholder: 'Search news', scopes: ['all', 'signals'] });
     search.setCommandVisibleFn(() => false);
     search.setResultVisibleFn(result => result.type === 'news');
-    search.setOnSelect(result => { void focusNews(result.id).catch(() => { status.textContent = 'The article location could not be applied.'; }); });
+    search.setOnSelect(result => { void focusNews(result.id, result.data as NewsItem).catch(() => { status.textContent = 'The article location could not be applied.'; }); });
 
     for (const key of ['source', 'category'] as const) {
       const select = document.createElement('select');
@@ -468,7 +570,9 @@ function mountPlugin(): void {
 }
 
 if (document.documentElement.dataset.wmPluginManagedBoot === 'true') {
-  document.addEventListener('wm-plugin-mount', mountPlugin, { once: true });
+  const attempt = new URL(import.meta.url).pathname.match(/\/plugin\/assets\/boot-(\d+)\//)?.[1];
+  const mountEvent = attempt ? 'wm-plugin-boot-' + attempt : 'wm-plugin-mount';
+  document.addEventListener(mountEvent, mountPlugin, { once: true });
 } else {
   mountPlugin();
 }

@@ -32,12 +32,14 @@ export interface Forecast {
   createdAt: number;
   updatedAt: number;
   perspectives?: Perspectives;
+  /** @deprecated */
   projections?: Projections;
   caseFile?: ForecastCase;
   simulationAdjustment: number;
   simPathConfidence: number;
   demotedBySimulation: boolean;
   resolution?: ResolutionSpec;
+  scoredHorizons: string[];
 }
 
 export interface ForecastSignal {
@@ -57,6 +59,8 @@ export interface CalibrationInfo {
   marketPrice: number;
   drift: number;
   source: string;
+  internalProbability?: number;
+  marketBlendedProbability?: number;
 }
 
 export interface Perspectives {
@@ -157,6 +161,13 @@ export interface GetForecastScorecardResponse {
   stale: boolean;
   error: string;
   skill?: ScorecardSkill;
+  publishedByDomain: ScorecardPublishedDomain[];
+  uncertainty?: ScorecardUncertainty;
+  funnel?: ScorecardFunnel;
+  receipts: ScorecardReceipt[];
+  marketAlerts?: MarketAlertScorecard;
+  familyOutcomes: ScorecardFamilyOutcome[];
+  underAudit?: ScorecardUnderAudit;
 }
 
 export interface ScorecardTotals {
@@ -167,6 +178,7 @@ export interface ScorecardTotals {
   scored: number;
   void: number;
   voidRate: number;
+  /** @deprecated */
   publicationCoverage: number;
 }
 
@@ -219,6 +231,91 @@ export interface ScorecardSkill {
   logScore?: number;
   excludedScored: number;
   excludedOrigins: string[];
+  yesCount: number;
+  bssCi95: number[];
+}
+
+export interface ScorecardPublishedDomain {
+  domain: string;
+  count: number;
+  brier: number;
+  yesCount: number;
+  bss?: number;
+}
+
+export interface ScorecardUncertainty {
+  method: string;
+  overallBrier?: ScorecardInterval;
+  skillBrier?: ScorecardInterval;
+}
+
+export interface ScorecardInterval {
+  count: number;
+  mean: number;
+  ci95: number[];
+  insufficientSample: boolean;
+}
+
+export interface ScorecardFunnel {
+  matured: number;
+  immature: number;
+  maturityUnknown: number;
+  resolved: number;
+  scored: number;
+  pendingHardMatured: number;
+  pendingJudgeMatured: number;
+  resolvedOfMatured?: ScorecardProportion;
+  scoredOfMatured?: ScorecardProportion;
+}
+
+export interface ScorecardProportion {
+  count: number;
+  successes: number;
+  rate: number;
+  ci95: number[];
+}
+
+export interface ScorecardReceipt {
+  question: string;
+  forecastAt: number;
+  probability: number;
+  outcome: string;
+  resolvedAt: number;
+  voidReason: string;
+  sourceFeed: string;
+  observedValue?: number;
+  citationTitle: string;
+  citationUrl: string;
+}
+
+export interface MarketAlertScorecard {
+  generatedAt: number;
+  windowHours: number;
+  rollingWindowDays: number;
+  methodology: string;
+  byType: MarketAlertRow[];
+}
+
+export interface MarketAlertRow {
+  type: string;
+  scored: number;
+  hitRate?: number;
+  baseN: number;
+  baseHitRate?: number;
+  pairedHitRate?: number;
+  medianLeadTimeMs?: number;
+}
+
+export interface ScorecardFamilyOutcome {
+  forecastId: string;
+  outcome: string;
+  voidReason: string;
+}
+
+export interface ScorecardUnderAudit {
+  since: string;
+  reason: string;
+  issue: number;
 }
 
 export interface GetSimulationPackageRequest {

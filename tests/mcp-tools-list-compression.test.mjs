@@ -1,6 +1,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
+import Ajv2020 from 'ajv/dist/2020.js';
 
 import { SERVER_VERSION } from '../api/mcp/constants.ts';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
@@ -293,9 +294,9 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       const t = tools.find(t => t.name === 'get_country_risk');
       assert.ok(t, 'get_country_risk must be registered');
       assert.ok(t._meta && typeof t._meta === 'object', 'UI-linked tool must carry a _meta object');
-      assert.equal(t._meta.ui?.resourceUri, 'ui://worldmonitor/country-risk.html',
+      assert.equal(t._meta.ui?.resourceUri, 'ui://worldmonitor/country-risk-v3.html',
         'nested _meta.ui.resourceUri must point at the registered ui:// resource');
-      assert.equal(t._meta['ui/resourceUri'], 'ui://worldmonitor/country-risk.html',
+      assert.equal(t._meta['ui/resourceUri'], 'ui://worldmonitor/country-risk-v3.html',
         'the deprecated flat ui/resourceUri alias must mirror the nested form');
     });
 
@@ -320,8 +321,8 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       }));
       const body = await res.json();
       const full = JSON.parse(body.result.content[0].text);
-      assert.equal(full._meta?.ui?.resourceUri, 'ui://worldmonitor/country-risk.html');
-      assert.equal(full._meta?.['ui/resourceUri'], 'ui://worldmonitor/country-risk.html');
+      assert.equal(full._meta?.ui?.resourceUri, 'ui://worldmonitor/country-risk-v3.html');
+      assert.equal(full._meta?.['ui/resourceUri'], 'ui://worldmonitor/country-risk-v3.html');
     });
   });
 
@@ -405,6 +406,36 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       const fromList = tools.find(t => t.name === 'get_market_data');
       const fromDescribe = await callDescribeTool('get_market_data');
       assert.deepEqual(Object.keys(fromList).sort(), Object.keys(fromDescribe).sort());
+    });
+
+    it('describe_tool returns the complete country section definition within its existing budget', async () => {
+      const tools = await getToolsList();
+      const listed = tools.find(tool => tool.name === 'get_country_brief_section');
+      const definition = await callDescribeTool('get_country_brief_section');
+      const registered = TOOL_REGISTRY.find(tool => tool.name === 'get_country_brief_section');
+      assert.equal(definition._budget_exceeded, undefined);
+      assert.equal(definition.description, registered.description);
+      assert.deepEqual({ ...definition, description: listed.description }, listed);
+    });
+
+    it('country output schema requires raw evidence only for the raw Signals section', async () => {
+      const { assembleRawSignals, failedRawSignal, RAW_SIGNAL_FAMILIES } = await import('../shared/country-raw-signals.ts');
+      const time = '2026-10-05T12:00:00Z';
+      const sources = Object.fromEntries(RAW_SIGNAL_FAMILIES.map(family => [family, failedRawSignal(family, 'unavailable', time, 'Controlled failure')]));
+      const result = assembleRawSignals('US', sources, time);
+      const schema = TOOL_REGISTRY.find(tool => tool.name === 'get_country_brief_section').outputSchema;
+      const validate = new Ajv2020({ strict: false }).compile(schema);
+      assert.equal(validate(result), true);
+      for (const state of ['ready', 'locked', 'unavailable']) {
+        assert.equal(validate({ state, section: 'signalsRaw' }), false,
+          `raw Signals ${state} output must include source evidence`);
+      }
+      const missingFamily = structuredClone(result);
+      delete missingFamily.value.sources.thermal;
+      assert.equal(validate(missingFamily), false);
+      assert.equal(validate({ ...result, value: { countryCode: 'US' } }), false);
+      assert.equal(validate({ state: 'ready', section: 'facts', value: { capital: 'Washington' } }), true);
+      assert.equal(validate({ state: 'ready', value: {} }), false);
     });
 
     it('describe_tool result has inputSchema.properties.jmespath structurally equal to JMESPATH_SCHEMA (R7)', async () => {

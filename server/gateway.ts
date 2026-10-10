@@ -343,11 +343,14 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/conflict/v1/get-humanitarian-summary': 'daily',
   '/api/conflict/v1/list-iran-events': 'slow',
   '/api/displacement/v1/get-displacement-summary': 'daily',
+  '/api/displacement/v1/get-internal-displacement': 'daily',
   '/api/displacement/v1/get-population-exposure': 'daily',
   '/api/economic/v1/get-bis-policy-rates': 'daily',
   '/api/economic/v1/get-bis-exchange-rates': 'daily',
   '/api/economic/v1/get-bis-credit': 'daily',
   '/api/trade/v1/get-tariff-trends': 'daily',
+  '/api/trade/v1/get-bilateral-tariff': 'daily',
+  '/api/trade/v1/get-us-import-duty': 'daily',
   '/api/trade/v1/get-trade-flows': 'daily',
   '/api/trade/v1/get-trade-barriers': 'daily',
   '/api/trade/v1/get-trade-restrictions': 'daily',
@@ -2444,19 +2447,24 @@ export function createDomainGateway(
       });
     }
 
-    // Merge CORS + handler side-channel headers into response
+    // Merge CORS + handler side-channel headers into response.
+    // Every side channel below is keyed by the Request object the handler
+    // wrote it on, which is requestForHandler: a stamped principal makes it
+    // a clone, so draining the pre-stamp request would silently drop every
+    // header, retryable marker and status override set by an authenticated
+    // caller's handler.
     const mergedHeaders = new Headers(response.headers);
     for (const [key, value] of Object.entries(corsHeaders)) {
       mergedHeaders.set(key, value);
     }
-    const extraHeaders = drainResponseHeaders(request);
+    const extraHeaders = drainResponseHeaders(requestForHandler);
     if (extraHeaders) {
       for (const [key, value] of Object.entries(extraHeaders)) {
         mergedHeaders.set(key, value);
       }
     }
     appendDeprecationPolicyLink(mergedHeaders);
-    const retryableResponse = drainRetryableResponse(request);
+    const retryableResponse = drainRetryableResponse(requestForHandler);
     attachRequiredBboxDiagnosticHeaders(mergedHeaders, pathname, requiredBboxDiagnostic);
 
     // Handler side-channel status override (setSuccessStatusOverride): applied
@@ -2465,7 +2473,7 @@ export function createDomainGateway(
     // thrown ApiError statuses always win. GET success flows are excluded:
     // the ETag/304 + CDN-cache path below assumes 200. Always drained so a
     // set-but-unapplied override can't leak state.
-    const statusOverride = drainSuccessStatusOverride(request);
+    const statusOverride = drainSuccessStatusOverride(requestForHandler);
     const finalStatus =
       statusOverride !== undefined && request.method === 'POST' && response.status === 200
         ? statusOverride

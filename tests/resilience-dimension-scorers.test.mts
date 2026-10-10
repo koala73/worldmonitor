@@ -1968,6 +1968,43 @@ describe('resilience source-failure aggregation (T1.7)', () => {
       assert.equal(score.score, 50);
     });
 
+    for (const reason of ['missing WB imports', 'no fund AUM matched']) {
+      it(`Qatar remains imputed when an expected fund has ${reason}`, async () => {
+        const reader = async (_key: string) => ({
+          countries: {},
+          summary: { countryStatuses: [{ country: 'QA', status: 'missing', expected: 1, matched: 0, reason }] },
+        });
+        const score = await scoreSovereignFiscalBuffer('qa', reader);
+        assert.equal(score.score, IMPUTE.recoverySovereignFiscalBuffer.score);
+        assert.equal(score.coverage, IMPUTE.recoverySovereignFiscalBuffer.certaintyCoverage);
+        assert.equal(score.observedWeight, 0);
+        assert.equal(score.imputedWeight, 1);
+        assert.equal(score.imputationClass, 'unmonitored');
+        const outsideScope = await scoreSovereignFiscalBuffer('US', reader);
+        assert.equal(outsideScope.imputationClass, 'not-applicable');
+        assert.equal(outsideScope.imputedWeight, 0);
+      });
+    }
+
+    for (const { label, expected } of [
+      { label: 'fractional', expected: 0.5 },
+      { label: 'JSON overflow', expected: JSON.parse('1e400') },
+      { label: 'unsafe integer', expected: Number.MAX_SAFE_INTEGER + 1 },
+    ]) {
+      it(`invalid ${label} expected count retains the not-applicable fallback`, async () => {
+        const reader = async (_key: string) => ({
+          countries: {},
+          summary: { countryStatuses: [{ country: 'QA', expected }] },
+        });
+        const score = await scoreSovereignFiscalBuffer('QA', reader);
+        assert.equal(score.score, 0);
+        assert.equal(score.coverage, 0);
+        assert.equal(score.observedWeight, 0);
+        assert.equal(score.imputedWeight, 0);
+        assert.equal(score.imputationClass, 'not-applicable');
+      });
+    }
+
     it('path 3: country not in manifest → score=0, coverage=0 (dim-not-applicable, plan 2026-04-26-001 §U3)', async () => {
       // Plan 2026-04-26-001 §U3 reframed Path 3 from "substantive
       // absence (score 0, full coverage 1.0)" to "dim-not-applicable

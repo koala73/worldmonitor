@@ -25,6 +25,7 @@ import { buildAppHtml } from './shell';
 const STYLES = `
   .lens { display: inline-block; margin: 4px 0 0; font-size: 11px; color: var(--muted); }
   .lens b { color: var(--fg); font-weight: 600; }
+  .grounding-notice { margin: 12px 0 0; padding: 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
   .brief { margin: 14px 0 4px; }
   .brief .para { margin: 0 0 10px; font-size: 14px; line-height: 1.6; }
   .section { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
@@ -48,6 +49,7 @@ const BODY = `
   <div class="lens" id="lens" style="display:none"></div>
   <div class="empty" id="empty">Waiting for country-brief data…</div>
   <div id="card" style="display:none">
+    <div class="grounding-notice" id="grounding-notice" role="note" style="display:none"></div>
     <div class="brief" id="brief"></div>
     <div class="section" id="src-sec" style="display:none">
       <div class="sec-label">Sources</div>
@@ -62,9 +64,39 @@ const BODY = `
 `;
 
 const RENDER = `
-    if (!data || typeof data !== "object") return;
+    if (data && typeof data === "object" && Object.prototype.hasOwnProperty.call(data, "projection")) data = data.projection;
+    if (!data || typeof data !== "object" || Array.isArray(data)) data = {};
     q("empty").style.display = "none";
     q("card").style.display = "block";
+
+    var groundingNotice = q("grounding-notice");
+    groundingNotice.textContent = "";
+    groundingNotice.style.display = "none";
+    var coverage = data.digestCoverage;
+    if (coverage && typeof coverage === "object" && !Array.isArray(coverage) &&
+        (coverage.servedStale === true || coverage.state === "stale")) {
+      var notice = "The news digest is retained, not live. Current news grounding is not confirmed.";
+      var age = coverage.staleAgeSeconds;
+      if (typeof age === "number" && Number.isFinite(age) && age > 0) {
+        var amount = age < 60 ? Math.max(1, Math.round(age)) : Math.round(age / 60);
+        var unit = age < 60 ? "second" : "minute";
+        notice += " Reported snapshot age: " + amount + " " + unit + (amount === 1 ? "" : "s") + ".";
+      } else {
+        notice += " Snapshot age is unknown.";
+      }
+      var attempt = typeof coverage.attemptedAt === "string" ? coverage.attemptedAt.slice(0, 80) : "";
+      var attemptDate = attempt ? new Date(attempt) : null;
+      if (attemptDate && !isNaN(attemptDate.getTime())) {
+        var utcAttempt = attemptDate.toISOString();
+        if (attempt === utcAttempt || attempt === utcAttempt.replace(".000Z", "Z")) {
+          notice += " Last refresh attempt: " + utcAttempt + ".";
+        }
+      }
+      var reason = typeof coverage.staleReason === "string" ? coverage.staleReason.slice(0, 240) : "";
+      if (reason) notice += " Reason: " + reason;
+      groundingNotice.textContent = notice;
+      groundingNotice.style.display = "block";
+    }
 
     var name = collapseWs(data.countryName) || countryName(data.countryCode || data.country_code);
     setText("title", name ? name + " Brief" : "Country Brief");

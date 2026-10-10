@@ -111,6 +111,7 @@
     { "source": "/stocks/:symbol/", "destination": "/stocks/:symbol", "permanent": true }
   ],
   "rewrites": [
+    { "source": "/plugin/assets/boot-:attempt([0-9]+)/:asset([a-zA-Z0-9_.-]+\\.js)", "destination": "/plugin/assets/:asset" },
     { "source": "/robots.txt", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$" }], "destination": "/robots.variant.txt" },
     { "source": "/robots.txt", "has": [{ "type": "host", "value": "^api\\.worldmonitor\\.app$" }], "destination": "/robots.api.txt" },
     { "source": "/robots.txt", "destination": "/robots.www.txt" },

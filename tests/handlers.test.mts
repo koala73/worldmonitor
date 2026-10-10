@@ -42,7 +42,7 @@ import type { USNIFleetReport } from '../src/generated/server/worldmonitor/milit
 // ---------------------------------------------------------------------------
 import { deduplicateHeadlines } from '../server/worldmonitor/news/v1/dedup.mjs';
 import { buildArticlePrompts, hashString, selectUniqueHeadlinePairs } from '../server/worldmonitor/news/v1/_shared.ts';
-import { MAX_BODY_LEN } from '../src/utils/summary-cache-key.ts';
+import { MAX_BODY_LEN, buildSummaryCacheKey } from '../src/utils/summary-cache-key.ts';
 
 // ---------------------------------------------------------------------------
 // Infrastructure / cable health helpers
@@ -410,6 +410,22 @@ describe('buildArticlePrompts', () => {
     const result = buildArticlePrompts(headlines, unique, baseOpts);
     assert.ok(result.userPrompt.includes('1. Earthquake hits Tokyo'));
     assert.ok(result.userPrompt.includes('2. SpaceX launch delayed'));
+  });
+
+  // GHSA-28jv-ccf2-w27h: the cache key folds variant case, so the prompt must
+  // too. Otherwise a 'TECH' request wrote a generic-prompt summary into the
+  // row every 'tech' caller reads.
+  it('selects one prompt for every variant spelling that shares a cache key', async () => {
+    for (const mode of ['brief', 'analysis', 'other']) {
+      const spellings = ['tech', 'TECH', 'Tech'];
+      const keys = await Promise.all(spellings.map((variant) =>
+        buildSummaryCacheKey(headlines, mode, '', variant, 'en', undefined, [])));
+      assert.equal(new Set(keys).size, 1, `${mode}: spellings should share a key`);
+      const prompts = spellings.map((variant) =>
+        JSON.stringify(buildArticlePrompts(headlines, unique, { ...baseOpts, mode, variant })));
+      assert.equal(new Set(prompts).size, 1, `${mode}: one key must mean one prompt`);
+      assert.match(prompts[0]!, /tech/i);
+    }
   });
 
   it('brief tech variant focuses on technology', () => {

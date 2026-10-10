@@ -59,6 +59,92 @@ export interface EffectiveTariffRate {
   tariffRate: number;
 }
 
+export interface GetBilateralTariffRequest {
+  reportingCountry: string;
+  partnerCountry: string;
+  hsCode: string;
+  year: number;
+}
+
+export interface GetBilateralTariffResponse {
+  reportingCountry: string;
+  partnerCountry: string;
+  hsCode: string;
+  year: number;
+  nomenclature: string;
+  basis: AppliedTariffBasis;
+  appliedRate?: TariffRateDetail;
+  mfnRate?: TariffRateDetail;
+  preferentialRate?: TariffRateDetail;
+  groupPreferences: GroupTariffPreference[];
+  source: string;
+  sourceUrl: string;
+  upstreamUnavailable: boolean;
+  unavailableReason: BilateralTariffUnavailableReason;
+  filingReporter: string;
+  mfnAveRate?: TariffRateDetail;
+}
+
+export interface TariffRateDetail {
+  rate: number;
+  minRate: number;
+  maxRate: number;
+  tariffLines: number;
+  nonAdValoremLines: number;
+}
+
+export interface GroupTariffPreference {
+  groupCode: string;
+  groupName: string;
+  rate?: TariffRateDetail;
+}
+
+export interface GetUsImportDutyRequest {
+  hsCode: string;
+  partnerCountry: string;
+}
+
+export interface GetUsImportDutyResponse {
+  hsCode: string;
+  partnerCountry: string;
+  htsRelease: string;
+  lines: UsTariffLine[];
+  additionalDutiesLoaded: boolean;
+  source: string;
+  sourceUrl: string;
+  upstreamUnavailable: boolean;
+  unavailableReason: UsImportDutyUnavailableReason;
+}
+
+export interface UsTariffLine {
+  htsCode: string;
+  description: string;
+  generalRate: string;
+  specialRate: string;
+  column2Rate: string;
+  basis: UsDutyBasis;
+  baseRate: string;
+  baseAdValorem: number;
+  baseNonAdValorem: boolean;
+  preferenceProgram: string;
+  unresolvedPrograms: string[];
+  additionalDuties: UsAdditionalDuty[];
+  estimatedRate: number;
+  estimateComplete: boolean;
+}
+
+export interface UsAdditionalDuty {
+  heading: string;
+  authority: UsDutyAuthority;
+  program: string;
+  addedRate: number;
+  topUpTo: number;
+  status: UsAdditionalDutyStatus;
+  condition: string;
+  legalNote: string;
+  effectiveFrom: string;
+}
+
 export interface GetTradeFlowsRequest {
   reportingCountry: string;
   partnerCountry: string;
@@ -153,9 +239,21 @@ export interface ComtradeFlowRecord {
   isAnomaly: boolean;
 }
 
+export type AppliedTariffBasis = "APPLIED_TARIFF_BASIS_UNSPECIFIED" | "APPLIED_TARIFF_BASIS_PREFERENTIAL" | "APPLIED_TARIFF_BASIS_MFN" | "APPLIED_TARIFF_BASIS_MFN_PREFERENCES_NOT_REPORTED";
+
+export type BilateralTariffUnavailableReason = "BILATERAL_TARIFF_UNAVAILABLE_REASON_UNSPECIFIED" | "BILATERAL_TARIFF_UNAVAILABLE_REASON_INVALID_REQUEST" | "BILATERAL_TARIFF_UNAVAILABLE_REASON_NOT_COVERED" | "BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE";
+
 export type TariffTrendUnavailableReason = "TARIFF_TREND_UNAVAILABLE_REASON_UNSPECIFIED" | "TARIFF_TREND_UNAVAILABLE_REASON_INVALID_REQUEST" | "TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED" | "TARIFF_TREND_UNAVAILABLE_REASON_SEED_MISSING" | "TARIFF_TREND_UNAVAILABLE_REASON_COVERAGE_UNKNOWN" | "TARIFF_TREND_UNAVAILABLE_REASON_CACHE_UNAVAILABLE";
 
 export type TradeFlowUnavailableReason = "TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED" | "TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST" | "TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED" | "TRADE_FLOW_UNAVAILABLE_REASON_SEED_MISSING" | "TRADE_FLOW_UNAVAILABLE_REASON_COVERAGE_UNKNOWN" | "TRADE_FLOW_UNAVAILABLE_REASON_CACHE_UNAVAILABLE";
+
+export type UsAdditionalDutyStatus = "US_ADDITIONAL_DUTY_STATUS_UNSPECIFIED" | "US_ADDITIONAL_DUTY_STATUS_APPLIES" | "US_ADDITIONAL_DUTY_STATUS_CONDITIONAL" | "US_ADDITIONAL_DUTY_STATUS_EXEMPT" | "US_ADDITIONAL_DUTY_STATUS_SCHEDULED";
+
+export type UsDutyAuthority = "US_DUTY_AUTHORITY_UNSPECIFIED" | "US_DUTY_AUTHORITY_SECTION_301" | "US_DUTY_AUTHORITY_SECTION_232" | "US_DUTY_AUTHORITY_COLUMN_2";
+
+export type UsDutyBasis = "US_DUTY_BASIS_UNSPECIFIED" | "US_DUTY_BASIS_MFN" | "US_DUTY_BASIS_PREFERENTIAL" | "US_DUTY_BASIS_COLUMN_2";
+
+export type UsImportDutyUnavailableReason = "US_IMPORT_DUTY_UNAVAILABLE_REASON_UNSPECIFIED" | "US_IMPORT_DUTY_UNAVAILABLE_REASON_INVALID_REQUEST" | "US_IMPORT_DUTY_UNAVAILABLE_REASON_NOT_COVERED" | "US_IMPORT_DUTY_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE";
 
 export interface FieldViolation {
   field: string;
@@ -257,6 +355,60 @@ export class TradeServiceClient {
     }
 
     return await resp.json() as GetTariffTrendsResponse;
+  }
+
+  async getBilateralTariff(req: GetBilateralTariffRequest, options?: TradeServiceCallOptions): Promise<GetBilateralTariffResponse> {
+    let path = "/api/trade/v1/get-bilateral-tariff";
+    const params = new URLSearchParams();
+    if (req.reportingCountry != null && req.reportingCountry !== "") params.set("reporting_country", String(req.reportingCountry));
+    if (req.partnerCountry != null && req.partnerCountry !== "") params.set("partner_country", String(req.partnerCountry));
+    if (req.hsCode != null && req.hsCode !== "") params.set("hs_code", String(req.hsCode));
+    if (req.year != null && req.year !== 0) params.set("year", String(req.year));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetBilateralTariffResponse;
+  }
+
+  async getUsImportDuty(req: GetUsImportDutyRequest, options?: TradeServiceCallOptions): Promise<GetUsImportDutyResponse> {
+    let path = "/api/trade/v1/get-us-import-duty";
+    const params = new URLSearchParams();
+    if (req.hsCode != null && req.hsCode !== "") params.set("hs_code", String(req.hsCode));
+    if (req.partnerCountry != null && req.partnerCountry !== "") params.set("partner_country", String(req.partnerCountry));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetUsImportDutyResponse;
   }
 
   async getTradeFlows(req: GetTradeFlowsRequest, options?: TradeServiceCallOptions): Promise<GetTradeFlowsResponse> {

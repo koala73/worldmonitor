@@ -50,7 +50,7 @@ const ADVISORIES_KEY = 'intelligence:advisories:v1';
 // it would pull the resilience scoring engine into the intelligence edge
 // bundle; tests/resilience-cache-keys-health-sync.test.mts fails this file on
 // the next prefix bump instead.
-const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v28:';
+const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v29:';
 const SANCTIONS_COUNTS_KEY = 'sanctions:country-counts:v1';
 // The counts map carries no timestamp of its own; the seeder writes this meta
 // record beside it in the same publish.

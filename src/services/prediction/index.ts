@@ -5,10 +5,12 @@ import { SITE_VARIANT } from '@/config';
 import { getHydratedData } from '@/services/bootstrap';
 
 export interface PredictionMarket {
+  id?: string;
   title: string;
   yesPrice: number;     // 0-100 scale (legacy compat)
   volume?: number;
   url?: string;
+  displayUrl?: string;
   endDate?: string;
   source?: 'polymarket' | 'kalshi';
   regions?: string[];
@@ -78,8 +80,9 @@ export function reprioritizeMarketsForRegion<T extends { regions?: string[] }>(
   return ranked.slice(0, limit);
 }
 
-export function protoToMarket(m: { title: string; yesPrice: number; volume: number; url: string; closesAt: number; category: string; source?: string }): PredictionMarket {
+export function protoToMarket(m: { id?: string; title: string; yesPrice: number; volume: number; url: string; closesAt: number; category: string; source?: string }): PredictionMarket {
   return {
+    id: m.id,
     title: m.title,
     yesPrice: m.yesPrice * 100,
     volume: m.volume,
@@ -351,7 +354,7 @@ function matchesCountryTerms(
   return associatedCountryCodes(title, matchers, shadows).has(countryCode);
 }
 
-export async function fetchCountryMarkets(country: string, countryCode: string): Promise<PredictionMarket[]> {
+export async function fetchCountryMarkets(country: string, countryCode: string, onMetadata?: (metadata: { fetchedAt?: number }) => void): Promise<PredictionMarket[]> {
   const normalizedCode = countryCode.trim().toUpperCase();
   if (/^[A-Z]{2}$/.test(normalizedCode)) {
     const response = await client.listPredictionMarkets({
@@ -361,9 +364,13 @@ export async function fetchCountryMarkets(country: string, countryCode: string):
       cursor: '',
     }).catch(() => null);
     if (response?.markets?.length) {
+      if (response.dataAvailable === true) onMetadata?.({ fetchedAt: response.fetchedAt });
       return response.markets.map(protoToMarket).filter(m => !isExpired(m.endDate)).slice(0, 5);
     }
-    if (response?.dataAvailable) return [];
+    if (response?.dataAvailable) {
+      if (response.dataAvailable === true) onMetadata?.({ fetchedAt: response.fetchedAt });
+      return [];
+    }
   }
 
   // Fallback: search bootstrap data across all buckets. `tech` must be included

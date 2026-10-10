@@ -9,6 +9,19 @@ import { compareRules, MAX_STORIES_PER_USER } from './brief-compose.mjs';
 import { generateDigestProse } from './brief-llm.mjs';
 
 /**
+ * Whether an entitlement tier may receive the Pro digest. Unknown (`null`,
+ * relay unreachable on a cache miss) fails closed like notification-relay's
+ * isUserPro: a skipped rule keeps its last-sent stamp, so it is retried on
+ * the next run rather than delivered to a free user (GHSA-8j6q-8cjh-c9r8).
+ *
+ * @param {number | null} tier
+ * @returns {boolean}
+ */
+export function isDigestDeliveryTier(tier) {
+  return tier !== null && tier >= 1;
+}
+
+/**
  * Derive the three Telegram carousel image URLs from a signed magazine URL.
  * The HMAC token binds the user and issue slot, so the carousel routes reuse
  * the same token. Invalid magazine URLs return null so delivery can fall back

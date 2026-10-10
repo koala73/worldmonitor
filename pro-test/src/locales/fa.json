@@ -690,7 +690,9 @@
       "a10": "Palantir داده‌های داخلی یک مؤسسه را در آن مؤسسه عملیاتی می‌کند. World Monitor از سوی دیگر شروع می‌کند: داده‌های عمومی را جمع‌آوری، نرمال‌سازی، مرتبط‌سازی و نظارت می‌کند، سپس این لایه اطلاعاتی را از طریق یک داشبورد رایگان و کد متن‌باز منتشر می‌کند. کار متفاوت، محصول متفاوت.",
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
-      "sub": "{{answers}} پاسخ مستقیم درباره قیمت، داده‌ها، هشدارها و دسترسی به هوش مصنوعی. خلاصه: داشبورد $0 هزینه دارد، نیاز به حساب ندارد، و کد تحت مجوز AGPL-3.0 متن‌باز است."
+      "sub": "{{answers}} پاسخ مستقیم درباره قیمت، داده‌ها، هشدارها و دسترسی به هوش مصنوعی. خلاصه: داشبورد $0 هزینه دارد، نیاز به حساب ندارد، و کد تحت مجوز AGPL-3.0 متن‌باز است.",
+      "q12": "بهترین نرم‌افزار برای پیگیری بحران‌ها و اختلالات جهانی در اخبار کدام است؟",
+      "a12": "World Monitor یک گزینه رایگان و متن‌باز است: {{feeds}} فید خبری و OSINT را از {{providers}} ارائه‌دهنده با منبع مشخص روی یک نقشه زنده جهانی با {{mapLayers}} نوع لایه نقشه پخش می‌کند که ژئوپلیتیک، بازارها، کشتیرانی، هوانوردی و سایبر را پوشش می‌دهد. آن‌ها را به هم مرتبط می‌کند تا اختلالات هم‌زمان پیش از آنکه به تیتر خبرها برسند آشکار شوند. برای مقایسه آن با ابزارهای دیگر، به worldmonitor.app/compare/best-geopolitical-risk-dashboards مراجعه کنید."
     },
     "cta": {
       "title": "چگونه شروع به رصد نقشه جهانی کنم؟",

@@ -3650,13 +3650,9 @@ components:
                         - MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED
                         - MARKET_QUOTE_UNAVAILABLE_REASON_SEED_UNAVAILABLE
                     description: |-
-                        MarketQuoteUnavailableReason explains why a requested symbol produced no quote.
-
-                         Requested symbols are resolved seed-first: the fixed Railway seed snapshot
-                         answers without any upstream call, and only the remaining symbols are looked
-                         up through the bounded, Redis-cached quote provider. Every symbol that
-                         survives normalization is accounted for by either a quote or one of these
-                         reasons — a requested symbol is never silently dropped.
+                        MarketQuoteUnavailableReason explains why a requested symbol produced no
+                         quote. Every symbol that survives normalization gets either a quote or one
+                         of these reasons.
             required:
                 - symbol
             description: MarketQuoteUnavailable reports a requested symbol that produced no quote.

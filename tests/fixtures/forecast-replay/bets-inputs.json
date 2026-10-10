@@ -1,0 +1,29 @@
+{
+  "_note": "Synthetic bet-engine inputs for tests/forecast-emission-manifest.test.mjs (#9058). Not production data. The commodities envelope is stale on purpose, so the freshness filter drops it.",
+  "generatedAt": 1789473600000,
+  "feedsByKey": {
+    "energy:eia-petroleum:v1": {
+      "_seed": { "fetchedAt": 1789387200000 },
+      "data": {
+        "inventory": { "current": 390, "previous": 388, "date": "2026-09-10", "unit": "Mbbl" },
+        "production": { "current": 13.2, "previous": 13.3, "date": "2026-09-10", "unit": "Mbbl/d" },
+        "wti": { "current": 78.5, "previous": 76.0, "date": "2026-09-14", "unit": "USD/bbl" },
+        "brent": { "current": 82.1, "previous": 82.1, "date": "2026-09-14", "unit": "USD/bbl" }
+      }
+    },
+    "market:commodities-bootstrap:v1": {
+      "_seed": { "fetchedAt": 1788436800000 },
+      "data": { "quotes": [{ "symbol": "CL=F", "price": 77.9 }] }
+    }
+  },
+  "priorSeries": {
+    "inventory": [
+      { "d": "2026-08-06", "v": 380 }, { "d": "2026-08-13", "v": 383 },
+      { "d": "2026-08-20", "v": 381 }, { "d": "2026-08-27", "v": 386 },
+      { "d": "2026-09-03", "v": 384 }
+    ],
+    "wti": [
+      { "d": "2026-09-07", "v": 75.2 }, { "d": "2026-09-08", "v": 76.9 }, { "d": "2026-09-11", "v": 76.0 }
+    ]
+  }
+}

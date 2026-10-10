@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
+import { GPS_ZONE_MAX_UNCERTAIN_HEXES, GPS_ZONE_MIN_HEXES, GPS_ZONE_PERSISTENCE_PROBABILITY } from '../scripts/_gps-maritime-regions.mjs';
 
 import { fileURLToPath } from 'node:url';
 
@@ -67,9 +68,8 @@ describe('forecast integrity and provenance surfaces', () => {
 
   it('documents market calibration limits and projection clamp heuristics', () => {
     const docs = read('docs/panels/forecast.mdx');
+    const zhDocs = read('docs/zh/panels/forecast.mdx');
     const seeder = read('scripts/seed-forecasts.mjs');
-    const forecastProto = read('proto/worldmonitor/forecast/v1/forecast.proto');
-    const forecastOpenapi = read('docs/api/ForecastService.openapi.yaml');
     const cyberProbMax = parseNumericConst(seeder, 'CYBER_PROB_MAX');
     const conflictBaseMax = parseNumericConst(seeder, 'CONFLICT_BASE_DETECTOR_PROB_MAX');
     const ucdpConflictZoneMax = parseNumericConst(seeder, 'UCDP_CONFLICT_ZONE_PROB_MAX');
@@ -84,7 +84,8 @@ describe('forecast integrity and provenance surfaces', () => {
     assert.match(docs, /deterministic, rule-based signal detectors/);
     assert.match(docs, /LLM calls do not set the numeric probability/);
     assert.match(docs, /OpenRouter `deepseek\/deepseek-v4-flash`/);
-    assert.match(docs, /Groq `openai\/gpt-oss-20b`/);
+    assert.match(docs, /OpenRouter `google\/gemini-2\.5-flash`/);
+    assert.doesNotMatch(docs, /Groq/);
     assert.match(docs, /market-calibrated only when/);
     assert.match(docs, /calibration: null/);
     assert.doesNotMatch(docs, /Conflict base detector probability ceiling \| 0\.90/);
@@ -110,10 +111,18 @@ describe('forecast integrity and provenance surfaces', () => {
     );
     assert.match(docs, /Market probability ceiling \| 0\.85/);
     assert.match(docs, /Supply-chain \/ maritime probability ceiling \| 0\.85/);
-    assert.match(docs, /GPS supply-chain detector probability ceiling \| 0\.60/);
+    assert.ok(
+      docs.includes(`| GPS supply-chain detector probability (zones holding ${GPS_ZONE_MIN_HEXES} to ${GPS_ZONE_MAX_UNCERTAIN_HEXES} hexes) | ${formatProbabilityFixed(GPS_ZONE_PERSISTENCE_PROBABILITY)} |`),
+      'forecast panel doc must disclose the GPS emission range and probability from _gps-maritime-regions.mjs',
+    );
+    assert.ok(
+      zhDocs.includes(`| GPS 供应链检测器概率（区域内 ${GPS_ZONE_MIN_HEXES} 至 ${GPS_ZONE_MAX_UNCERTAIN_HEXES} 个六边形） | ${formatProbabilityFixed(GPS_ZONE_PERSISTENCE_PROBABILITY)} |`),
+      'Chinese forecast panel doc must disclose the same GPS emission range and probability',
+    );
     assert.match(docs, /Political probability ceiling \| 0\.80/);
     assert.match(docs, /Military probability ceiling \| 0\.90/);
-    assert.match(docs, /Infrastructure probability ceiling \| 0\.85/);
+    assert.doesNotMatch(docs, /Infrastructure probability ceiling/, 'the infrastructure cap was retired in #5334');
+    assert.doesNotMatch(seeder, /INFRASTRUCTURE_DETECTOR_PROB_MAX/);
     assert.match(seeder, /Math\.min\(CYBER_PROB_MAX,/);
     assert.match(seeder, /Math\.min\(CONFLICT_BASE_DETECTOR_PROB_MAX,/);
     assert.equal(
@@ -135,10 +144,9 @@ describe('forecast integrity and provenance surfaces', () => {
     assert.match(docs, /1% floor and 95% cap/);
     assert.match(docs, /Market projections use the curve's peak multiplier as the anchor/);
     assert.match(docs, /other domains use the forecast's emitted horizon/);
-    assert.match(forecastProto, /Market forecasts are peak-anchored/);
-    assert.match(forecastProto, /non-market forecasts preserve their emitted horizon as anchor/);
-    assert.match(forecastOpenapi, /Market forecasts are peak-anchored/);
-    assert.match(forecastOpenapi, /non-market forecasts preserve their emitted horizon as anchor/);
+    const curvesVersion = parseNumericConst(seeder, 'PROJECTION_CURVES_VERSION');
+    assert.ok(docs.includes(`\`PROJECTION_CURVES_VERSION\` (currently \`${curvesVersion}\`)`), 'forecast panel doc must name the current projection-curve version');
+    assert.ok(zhDocs.includes(`\`PROJECTION_CURVES_VERSION\`（当前为 \`${curvesVersion}\`）`), 'Chinese forecast panel doc must name the same projection-curve version');
     assert.match(seeder, /const PROJECTION_PROBABILITY_FLOOR = 0\.01;/);
     assert.match(seeder, /const PROJECTION_PROBABILITY_CAP = 0\.95;/);
     assert.match(seeder, /const PROJECTION_PEAK_ANCHORED_DOMAINS = new Set\(\['market'\]\);/);

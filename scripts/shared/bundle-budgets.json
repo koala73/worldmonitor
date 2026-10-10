@@ -7,15 +7,15 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 450109
+    "raw": 446046
   },
   "chunks": {
     "analytics": {
-      "raw": 47062,
+      "raw": 47581,
       "files": 1
     },
     "clerk": {
-      "raw": 18338,
+      "raw": 18736,
       "files": 1
     },
     "convex-client": {
@@ -23,7 +23,7 @@
       "files": 1
     },
     "debugbear-rum": {
-      "raw": 28906,
+      "raw": 2929,
       "files": 1
     },
     "dom-utils": {
@@ -39,7 +39,7 @@
       "files": 1
     },
     "geo-convergence": {
-      "raw": 10200,
+      "raw": 5044,
       "files": 1
     },
     "geo-distance": {
@@ -55,7 +55,11 @@
       "files": 1
     },
     "main": {
-      "raw": 130368,
+      "raw": 130708,
+      "files": 1
+    },
+    "map-layer-definitions": {
+      "raw": 26085,
       "files": 1
     },
     "panels": {
@@ -63,7 +67,7 @@
       "files": 1
     },
     "runtime-config": {
-      "raw": 10346,
+      "raw": 10121,
       "files": 1
     },
     "tauri-bridge": {
@@ -71,7 +75,7 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 72995,
+      "raw": 72948,
       "files": 1
     },
     "theme-manager": {
@@ -81,11 +85,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1395243
+      "raw": 1403769
     },
     "chunks": {
       "App": {
-        "raw": 897143,
+        "raw": 904635,
         "files": 1
       },
       "ai-flow-settings": {
@@ -93,7 +97,7 @@
         "files": 1
       },
       "analysis-framework-store": {
-        "raw": 9563,
+        "raw": 9607,
         "files": 1
       },
       "base": {
@@ -101,11 +105,11 @@
         "files": 1
       },
       "cached-risk-scores": {
-        "raw": 15029,
+        "raw": 15073,
         "files": 1
       },
       "checkout": {
-        "raw": 13469,
+        "raw": 13513,
         "files": 1
       },
       "cloud-prefs-sync": {
@@ -121,15 +125,15 @@
         "files": 1
       },
       "feeds": {
-        "raw": 102673,
+        "raw": 102826,
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 120181,
+        "raw": 120755,
         "files": 1
       },
       "index": {
-        "raw": 38634,
+        "raw": 38809,
         "files": 2
       },
       "layout-batch": {

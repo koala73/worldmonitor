@@ -690,7 +690,9 @@
       "a10": "Palantir gör en institutions egna data operationell inom den institutionen. World Monitor börjar från andra änden: det samlar, normaliserar, korrelerar och övervakar offentlig världsdata, och publicerar sedan det intelligensskiktet genom en gratis instrumentpanel och öppen källkod. Olika uppgift, olika produkt.",
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
-      "sub": "{{answers}} raka svar om pris, data, aviseringar och AI-åtkomst. Den korta versionen: dashboarden kostar $0, kräver inget konto och koden är öppen källkod under AGPL-3.0."
+      "sub": "{{answers}} raka svar om pris, data, aviseringar och AI-åtkomst. Den korta versionen: dashboarden kostar $0, kräver inget konto och koden är öppen källkod under AGPL-3.0.",
+      "q12": "Vilken är den bästa programvaran för att följa globala kriser och störningar i nyheterna?",
+      "a12": "World Monitor är ett kostnadsfritt alternativ med öppen källkod: det strömmar {{feeds}} nyhets- och OSINT-flöden från {{providers}} namngivna leverantörer till en enda live-världskarta med {{mapLayers}} typer av kartlager, som täcker geopolitik, marknader, sjöfart, luftfart och cyber. Det korrelerar dem så att samtidiga störningar syns innan de når rubrikerna. För att jämföra det med andra verktyg, se worldmonitor.app/compare/best-geopolitical-risk-dashboards."
     },
     "cta": {
       "title": "Hur kommer jag igång med att övervaka världskartan?",

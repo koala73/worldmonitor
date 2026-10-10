@@ -37,14 +37,14 @@ export class CountryTimeline {
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null;
   private tooltip: HTMLDivElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
-  private currentEvents: TimelineEvent[] = [];
+  private currentEvents: TimelineEvent[] | null = null;
   private handleThemeChange: () => void;
 
   constructor(container: HTMLElement) {
     this.container = container;
     this.createTooltip();
     this.resizeObserver = new ResizeObserver(() => {
-      if (this.currentEvents.length > 0) this.render(this.currentEvents);
+      if (this.currentEvents !== null) this.render(this.currentEvents);
     });
     this.resizeObserver.observe(this.container);
 
@@ -56,7 +56,7 @@ export class CountryTimeline {
       }
       this.createTooltip();
       // Re-render chart with new colors
-      if (this.currentEvents.length > 0) this.render(this.currentEvents);
+      if (this.currentEvents !== null) this.render(this.currentEvents);
     };
     window.addEventListener('theme-changed', this.handleThemeChange);
   }
@@ -294,6 +294,6 @@ export class CountryTimeline {
       this.tooltip.remove();
       this.tooltip = null;
     }
-    this.currentEvents = [];
+    this.currentEvents = null;
   }
 }

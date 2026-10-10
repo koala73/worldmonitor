@@ -11,6 +11,26 @@
 export const JEV_MODEL = 'jev-1.13.0';
 export const JEV_ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
 
+// TYPESAFE_BASE_URL is the variable TypeSafe's own SDK reads: the host only, no
+// path. Set, the calls go to another System One host (a proxy, or a self-hosted
+// Jev-compatible model) instead of api.typesafe.ai.
+export function jevEndpoint(env) {
+  const base = typeof env?.TYPESAFE_BASE_URL === 'string' ? env.TYPESAFE_BASE_URL.trim() : '';
+  return base ? checkJevEndpoint(`${base.replace(/\/+$/, '')}/v1/systemone`) : JEV_ENDPOINT;
+}
+
+// Every call carries the API key as a bearer token, so plain http is only
+// accepted when the server is on this machine.
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+export function checkJevEndpoint(endpoint) {
+  const url = new URL(endpoint);
+  if (url.protocol === 'https:' || (url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname))) {
+    return endpoint;
+  }
+  throw new Error(`Jev endpoint must use https (plain http only for localhost): ${url.origin}`);
+}
+
 export const THREAT_LEVELS = ['critical', 'high', 'medium', 'low', 'info'];
 export const THREAT_CATEGORIES = [
   'conflict', 'protest', 'disaster', 'diplomatic', 'economic',

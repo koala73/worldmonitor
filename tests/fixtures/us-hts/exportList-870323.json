@@ -1,0 +1,192 @@
+[
+{
+"htsno": "8703.23.01",
+"indent": "2",
+"description": "Of a cylinder capacity exceeding 1,500 cc but not exceeding 3,000 cc",
+"superior": null,
+"units": [],
+"general": "2.5%",
+"special": "Free (A+,AU,B,BH,CL,CO,D,E,IL,JO,KR,MA,OM, P,PA,PE,S,SG)",
+"other": "10%",
+"footnotes": [
+{
+"columns": [
+"other"
+],
+"value": "See 9903.90.08. ",
+"type": "endnote"
+}
+],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8703.23.01.10",
+"indent": "3",
+"description": "Motor homes",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "3",
+"description": "Other:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "4",
+"description": "New:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "5",
+"description": "Having engines with not more than 4 cylinders:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "6",
+"description": "Station wagons and passenger vans:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8703.23.01.20",
+"indent": "7",
+"description": "Station wagons under 160 cm in height",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8703.23.01.30",
+"indent": "7",
+"description": "Other",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8703.23.01.40",
+"indent": "6",
+"description": "Other",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8703.23.01.60",
+"indent": "5",
+"description": "Having engines with more than 4 cylinders but not more than 6 cylinders",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8703.23.01.70",
+"indent": "5",
+"description": "Having engines with more than 6 cylinders",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8703.23.01.90",
+"indent": "4",
+"description": "Used",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+}
+]

@@ -49,6 +49,13 @@ export function parsePredictionMarketVolume(market) {
   return Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
+export function kalshiMarketUrl(seriesTicker) {
+  const ticker = String(seriesTicker ?? '').trim();
+  return /^[A-Za-z0-9_-]+$/.test(ticker)
+    ? `https://kalshi.com/markets/${ticker.toLowerCase()}`
+    : '';
+}
+
 // Kalshi mirror of parseYesPrice: null for unreadable prices — a fabricated
 // default (e.g. 50) would flow downstream as a finite anchor and calibrate
 // forecasts against invented data. Whole-string validation: parseFloat would

@@ -174,6 +174,7 @@ function publicMarket(market) {
     url: market.url,
     ...(market.endDate ? { endDate: market.endDate } : {}),
     source: market.source,
+    ...(market.source === 'kalshi' && market.displayUrl !== undefined ? { displayUrl: market.displayUrl } : {}),
   };
 }
 

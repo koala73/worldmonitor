@@ -122,6 +122,48 @@ describe('api/mcp — user API keys on /mcp (#4859) + pre-check hardening (#4860
     assert.equal(pipe.count, 1, 'user_key tools/call must consume the daily quota (no unmetered cache-tool loophole)');
   });
 
+  it('serves the archived ordinary market response within budget and preserves API-key panel allowance reuse', async () => {
+    const { readFileSync } = await import('node:fs');
+    const fixture = JSON.parse(readFileSync(new URL('./fixtures/jmespath-samples/fat-get-market-data.response.json', import.meta.url), 'utf8'));
+    const original = structuredClone(fixture);
+    const keyToSection = {
+      'market:stocks-bootstrap:v1': 'stocks-bootstrap', 'market:commodities-bootstrap:v1': 'commodities-bootstrap',
+      'market:physical-premium:v1': 'physical-premium', 'market:physical-divergence:v1': 'physical-divergence',
+      'market:crypto:v1': 'crypto', 'market:sectors:v2': 'sectors', 'market:etf-flows:v1': 'etf-flows',
+      'market:gulf-quotes:v1': 'gulf-quotes', 'market:fear-greed:v1': 'fear-greed',
+    };
+    process.env.UPSTASH_REDIS_REST_URL = 'https://api-market-fixture.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    const reads = [];
+    globalThis.fetch = async input => {
+      const url = new URL(String(input));
+      assert.equal(url.origin, 'https://api-market-fixture.invalid');
+      assert.ok(url.pathname.startsWith('/get/'));
+      const key = decodeURIComponent(url.pathname.slice(5));
+      assert.ok(Object.hasOwn(keyToSection, key) || ['seed-meta:market:stocks', 'seed-meta:market:sectors'].includes(key));
+      reads.push(key);
+      return Response.json({ result: JSON.stringify(Object.hasOwn(keyToSection, key) ? fixture.data[keyToSection[key]] : { fetchedAt: Date.now() }) });
+    };
+    const { deps, pipe } = makeUserKeyDeps();
+    for (const reused of [false, true]) {
+      const response = await mcpHandler(userKeyReq(callBody('get_market_data')), deps);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      const value = body.result.structuredContent;
+      assert.equal(value._budget_exceeded, undefined);
+      assert.ok(Buffer.byteLength(body.result.content[0].text) <= 131072);
+      assert.ok(value.data['stocks-bootstrap'].quotes.length > 0);
+      assert.ok(value.data['commodities-bootstrap'].quotes.length > 0);
+      assert.equal(value.transportCoverage.count_scope, 'post_filter_snapshot');
+      assert.equal(value.panelRequest.panel, 'markets');
+      assert.equal(value.panelRequest.reused, reused);
+      assert.equal(pipe.count, 1);
+    }
+    assert.equal(reads.length, 22);
+    assert.equal(pipe.ops.flat().filter(operation => operation[0] === 'SET' && String(operation[1]).includes(':markets:')).length, 0);
+    assert.deepEqual(fixture, original);
+  });
+
   it('cap: user key with 50 calls today → 51st rejected 429 -32029, counter back at 50', async () => {
     const { deps, pipe } = makeUserKeyDeps({ pipelineOpts: { initialCount: 50 } });
     const res = await mcpHandler(userKeyReq(callBody('get_market_data')), deps);

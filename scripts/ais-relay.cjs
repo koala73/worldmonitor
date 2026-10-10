@@ -44,8 +44,6 @@ const {
 const OPENSKY_ACCOUNT_FINGERPRINT = openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID);
 const OPENSKY_COOLDOWN_KEY = cooldownKeyForAccount(OPENSKY_ACCOUNT_FINGERPRINT);
 const {
-  GROQ_DEFAULT_MODEL,
-  GROQ_REASONING_EXTRA_BODY,
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
@@ -91,6 +89,7 @@ const {
 } = require('./_ingestion-coverage.cjs');
 const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps } = require('./shared/closed-market-equity-maintenance.cjs');
 const { recordPizzintHistory } = require('./shared/pizzint-history.cjs');
+const { pizzintVenuePoint } = require('./shared/pizzint-location.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
@@ -99,6 +98,8 @@ const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = requi
 const { detectTrafficAnomaly } = require('../shared/chokepoint-traffic-anomaly.js');
 const { CHOKEPOINT_THREAT_LEVELS } = require('../shared/chokepoint-threat-levels.js');
 const { classifyVesselType } = require('../shared/ais-vessel-type.js');
+const { readTransitWindow } = require('../shared/chokepoint-transit-window.js');
+const { createTransitTracker } = require('../shared/chokepoint-transit-tracker.js');
 const { CORRIDOR_RISK_NAME_MAP, deriveCorridorRiskLevel } = require('../shared/corridor-risk.js');
 // AIS upstream reconnect policy: failure classification (transport | auth |
 // rate-limit), the throttle ceiling escalation, and the silence verdict. Pure and
@@ -4892,8 +4893,8 @@ function classifyCacheKey(title) {
 }
 
 // LLM provider fallback chain — mirrors seed-insights.mjs LLM_PROVIDERS
-// Order mirrors server/_shared/llm.ts: paid OpenRouter, two fixed free
-// OpenRouter variants, then Groq.
+// Order mirrors server/_shared/llm.ts: paid OpenRouter, then two fixed free
+// OpenRouter variants.
 const CLASSIFY_LLM_PROVIDERS = [
   {
     name: 'ollama',
@@ -4941,15 +4942,6 @@ const CLASSIFY_LLM_PROVIDERS = [
     model: OPENROUTER_FREE_BACKUP_MODEL,
     headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
     extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
-    timeout: 30000,
-  },
-  {
-    name: 'groq',
-    envKey: 'GROQ_API_KEY',
-    apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    model: GROQ_DEFAULT_MODEL,
-    extraBody: GROQ_REASONING_EXTRA_BODY,
-    headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA }),
     timeout: 30000,
   },
 ];
@@ -8355,7 +8347,11 @@ async function seedPizzint() {
       console.warn(`[PizzINT] Seed failed: ${e?.name || 'Error'}`);
       raw = null;
     }
-    const hasPrimaryReading = raw?.data.some(d => Number.isFinite(d.current_popularity) && d.current_popularity >= 0);
+    // Stale numbers and open zero/zero rows cannot supply a usable primary signal.
+    // Keep fresh closed zeros valid, as in the existing scorer/publication contract.
+    const hasPrimaryReading = raw?.data.some(d => d.data_freshness === 'fresh'
+      && Number.isFinite(d.current_popularity) && d.current_popularity >= 0
+      && (d.current_popularity > 0 || d.is_closed_now));
     const besttimeKey = hasPrimaryReading ? '' : (process.env.BESTTIME_API_KEY_PRIVATE || '');
     const fallback = besttimeKey ? await fetchPizzintBestTimeLocations(besttimeKey) : null;
     if (!raw && !fallback) return;
@@ -8375,8 +8371,7 @@ async function seedPizzint() {
       recordedAt: d.recorded_at || '',
       dataFreshness: d.data_freshness === 'fresh' ? 'DATA_FRESHNESS_FRESH' : 'DATA_FRESHNESS_STALE',
       isClosedNow: !!d.is_closed_now,
-      lat: d.lat ?? 0,
-      lng: d.lng ?? 0,
+      ...(pizzintVenuePoint(d) ?? { lat: 0, lng: 0 }),
     }));
 
     const previous = await envelopeRead(PIZZINT_REDIS_KEY);
@@ -9321,13 +9316,22 @@ const CHOKEPOINTS = [
 ];
 
 const chokepointCrossings = new Map();
-const transitCooldowns = new Map();
-const transitPendingEntry = new Map();
 const TRANSIT_COOLDOWN_MS = 30 * 60 * 1000;
 const TRANSIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MIN_DWELL_MS = 5 * 60 * 1000;
+// How long zone membership outlives a vessel's last report inside the zone.
+// It must exceed DENSITY_WINDOW: the vessel table drops a vessel after 30
+// silent minutes, and an exit reported after that gap is still an exit.
+const TRANSIT_MAX_EXIT_GAP_MS = 6 * 60 * 60 * 1000;
 const CHOKEPOINT_TRANSIT_KEY = 'supply_chain:chokepoint_transits:v1';
 const CHOKEPOINT_TRANSIT_TTL = 3600; // 1h — 6x interval; survives ~5 consecutive missed pings
+const transitTracker = createTransitTracker({
+  zones: CHOKEPOINTS,
+  minDwellMs: MIN_DWELL_MS,
+  cooldownMs: TRANSIT_COOLDOWN_MS,
+  maxExitGapMs: TRANSIT_MAX_EXIT_GAP_MS,
+  crossings: chokepointCrossings,
+});
 
 // Dark-ship (AIS gap) count envelope — the trusted producer behind the
 // temporal anomalies `ais_gaps` count source (#7574). Written on its own
@@ -9439,7 +9443,6 @@ function updateVesselChokepoints(mmsi, lat, lon) {
   }
 
   const previous = vesselChokepoints.get(mmsi) || new Set();
-  const now = Date.now();
 
   for (const cpName of previous) {
     if (next.has(cpName)) continue;
@@ -9447,28 +9450,9 @@ function updateVesselChokepoints(mmsi, lat, lon) {
     if (!bucket) continue;
     bucket.delete(mmsi);
     if (bucket.size === 0) chokepointBuckets.delete(cpName);
-
-    const pendingKey = mmsi + ':' + cpName;
-    const entryTs = transitPendingEntry.get(pendingKey);
-    if (entryTs !== undefined && now - entryTs >= MIN_DWELL_MS) {
-      const cooldownKey = mmsi + ':' + cpName;
-      const lastCrossing = transitCooldowns.get(cooldownKey);
-      if (!lastCrossing || now - lastCrossing >= TRANSIT_COOLDOWN_MS) {
-        const vessel = vessels.get(mmsi);
-        const vType = classifyVesselType(vessel?.shipType);
-        let crossings = chokepointCrossings.get(cpName);
-        if (!crossings) { crossings = []; chokepointCrossings.set(cpName, crossings); }
-        crossings.push({ mmsi, type: vType, ts: now });
-        transitCooldowns.set(cooldownKey, now);
-      }
-    }
-    transitPendingEntry.delete(pendingKey);
   }
 
   for (const cpName of next) {
-    if (!previous.has(cpName)) {
-      transitPendingEntry.set(mmsi + ':' + cpName, now);
-    }
     let bucket = chokepointBuckets.get(cpName);
     if (!bucket) {
       bucket = new Set();
@@ -9631,6 +9615,7 @@ function processPositionReportForSnapshot(data) {
 
   // Maintain exact chokepoint membership so moving vessels don't get "stuck" in old buckets.
   updateVesselChokepoints(mmsi, lat, lon);
+  transitTracker.observe(mmsi, lat, lon, classifyVesselType(effectiveShipType), now);
 
   if (isLikelyMilitaryCandidate(meta, effectiveShipType)) {
     candidateReports.set(mmsi, {
@@ -9777,19 +9762,7 @@ function cleanupAggregates() {
     if (filtered.length === 0) chokepointCrossings.delete(cpName);
     else chokepointCrossings.set(cpName, filtered);
   }
-  for (const [key, ts] of transitCooldowns) {
-    if (now - ts > TRANSIT_COOLDOWN_MS) transitCooldowns.delete(key);
-  }
-  const pendingCutoff = 48 * 60 * 60 * 1000;
-  for (const [key, ts] of transitPendingEntry) {
-    if (now - ts > pendingCutoff) {
-      const sep = key.indexOf(':');
-      const pmsi = key.substring(0, sep);
-      const cpN = key.substring(sep + 1);
-      const memberships = vesselChokepoints.get(pmsi);
-      if (!memberships || !memberships.has(cpN)) transitPendingEntry.delete(key);
-    }
-  }
+  transitTracker.prune(now);
 }
 
 // Vessels seen again after extended AIS silence: mmsi → the return-seen
@@ -10054,18 +10027,11 @@ setInterval(() => {
 
 async function seedChokepointTransits() {
   const now = Date.now();
+  const window = await readTransitWindow(chokepointCrossings, now, upstashEval);
   const transits = {};
   for (const cp of CHOKEPOINTS) {
-    const crossings = chokepointCrossings.get(cp.name) || [];
-    const recent = crossings.filter(c => now - c.ts < TRANSIT_WINDOW_MS);
-    chokepointCrossings.set(cp.name, recent);
-    // `available` is the same signal seedTransitSummaries encodes by leaving
-    // todayTotal null. Both writers read this one in-memory map and both ship
-    // in a single get-chokepoint-status bundle, so without it one response
-    // carried summaries.suez.todayTotal === null next to
-    // transits["Suez Canal"].total === 0 and an agent's answer depended on
-    // which half it read. The counts stay numeric here because the documented
-    // shape of this key is {tanker, cargo, other, total}.
+    const recent = window.get(cp.name) || [];
+    // An empty observed window cannot establish zero traffic.
     transits[cp.name] = {
       tanker: recent.filter(c => c.type === 'tanker').length,
       cargo: recent.filter(c => c.type === 'cargo').length,
@@ -10074,10 +10040,15 @@ async function seedChokepointTransits() {
       available: recent.length > 0,
     };
   }
-  const payload = { transits, fetchedAt: now };
-  await envelopeWrite(CHOKEPOINT_TRANSIT_KEY, payload, CHOKEPOINT_TRANSIT_TTL, { recordCount: Object.keys(transits).length, sourceVersion: 'chokepoint-transits' });
-  await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: Object.keys(transits).length }, 604800);
-  console.log(`[Transit] Seeded ${Object.keys(transits).length} chokepoint transit counts`);
+  const canonical = Object.entries(RELAY_NAME_TO_ID).filter(([, id]) => id);
+  const missing = canonical.filter(([name]) => !transits[name].available).map(([, id]) => id);
+  const covered = canonical.length - missing.length;
+  const transitCoverage = { covered, total: canonical.length, missing };
+  const payload = { transits, transitCoverage, fetchedAt: now };
+  const ok = await envelopeWrite(CHOKEPOINT_TRANSIT_KEY, payload, CHOKEPOINT_TRANSIT_TTL, { recordCount: covered, sourceVersion: 'chokepoint-transits' });
+  if (!ok) throw new Error('Transit count publication failed');
+  await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: covered, transitCoverage }, 604800);
+  console.log(`[Transit] Seeded ${covered}/${canonical.length} measured chokepoints (missing: ${missing.join(', ')})`);
 }
 
 /**
@@ -10163,6 +10134,7 @@ async function seedTransitSummaries() {
 
   const now = Date.now();
   const summaries = {};
+  const window = await readTransitWindow(chokepointCrossings, now, upstashEval);
   // Iterate the canonical chokepoint ID set rather than whatever pw happens to
   // carry today. If seed-portwatch dropped 3 of 13 (flaky ArcGIS), those 3
   // would otherwise vanish from summaries and the RPC would render zero-state
@@ -10191,8 +10163,7 @@ async function seedTransitSummaries() {
     let relayTransit = null;
     for (const [relayName, canonicalId] of Object.entries(RELAY_NAME_TO_ID)) {
       if (canonicalId === cpId) {
-        const crossings = chokepointCrossings.get(relayName) || [];
-        const recent = crossings.filter(c => now - c.ts < TRANSIT_WINDOW_MS);
+        const recent = window.get(relayName) || [];
         if (recent.length > 0) {
           relayTransit = {
             tanker: recent.filter(c => c.type === 'tanker').length,
@@ -10210,7 +10181,7 @@ async function seedTransitSummaries() {
     // Compact summary: no history field. Consumed by get-chokepoint-status on
     // every request, so keep it small.
     // dataAvailable is PortWatch history presence, not AIS today-counts.
-    // todayTotal comes from the in-memory 24h AIS window; an empty window is
+    // todayTotal comes from the durable 24h AIS window; an empty window is
     // unsupplied, not a published zero-traffic measurement (#7457). Leave the
     // count absent so PortWatch WoW cannot sit next to a fake 0.
     summaries[cpId] = {
@@ -11257,7 +11228,8 @@ function handleWorldBankRequest(req, res) {
       'GB.XPD.RSDV.GD.ZS': 'R&D Expenditure (% of GDP)',
       'IP.PAT.RESD': 'Patent Applications (residents)',
       'IP.PAT.NRES': 'Patent Applications (non-residents)',
-      'IP.TMK.TOTL': 'Trademark Applications',
+      'IP.TMK.RSCT': 'Trademark Applications (resident, by count)',
+      'IP.TMK.NRCT': 'Trademark Applications (nonresident, by count)',
       'TX.VAL.TECH.MF.ZS': 'High-Tech Exports (% of manufactured exports)',
       'BX.GSR.CCIS.ZS': 'ICT Service Exports (% of service exports)',
       'TM.VAL.ICTG.ZS.UN': 'ICT Goods Imports (% of total goods imports)',
@@ -11297,7 +11269,8 @@ function handleWorldBankRequest(req, res) {
     'GB.XPD.RSDV.GD.ZS': 'R&D Expenditure (% of GDP)',
     'IP.PAT.RESD': 'Patent Applications (residents)',
     'IP.PAT.NRES': 'Patent Applications (non-residents)',
-    'IP.TMK.TOTL': 'Trademark Applications',
+    'IP.TMK.RSCT': 'Trademark Applications (resident, by count)',
+    'IP.TMK.NRCT': 'Trademark Applications (nonresident, by count)',
     'TX.VAL.TECH.MF.ZS': 'High-Tech Exports (% of manufactured exports)',
     'BX.GSR.CCIS.ZS': 'ICT Service Exports (% of service exports)',
     'TM.VAL.ICTG.ZS.UN': 'ICT Goods Imports (% of total goods imports)',
@@ -14159,8 +14132,6 @@ async function handleWidgetAgentRequest(req, res) {
     return safeEnd(res, 503, { 'Content-Type': 'application/json' }, JSON.stringify({ ...status, error: 'AI backend unavailable' }));
   }
 
-  const clientIp = req.headers['cf-connecting-ip'] || req.headers['x-real-ip'] || req.socket?.remoteAddress || 'unknown';
-
   // Allow up to 163840 bytes (160KB) for PRO requests (basic is smaller but we parse tier first)
   const rawContentLength = parseInt(req.headers['content-length'] || '0', 10);
   if (rawContentLength > 163840) {
@@ -14203,8 +14174,9 @@ async function handleWidgetAgentRequest(req, res) {
   const spendId = typeof spendHeader === 'string' ? spendHeader.trim() : '';
   // Widget keys also belong to legacy callers. Only the separate server relay
   // credential can attest to an identity that passed the edge spend checks.
+  // Others bucket on their key: IP headers are caller-set (GHSA-rcgv).
   const rateBucket = /^[A-Za-z0-9:_-]{8,128}$/.test(spendId)
-    && RELAY_SHARED_SECRET && isAuthorizedRequest(req) ? `id:${spendId}` : clientIp;
+    && RELAY_SHARED_SECRET && isAuthorizedRequest(req) ? `id:${spendId}` : `key:${status.admittedAs}`;
 
   // Rate limiting (separate buckets)
   const rateLimited = isPro ? checkProWidgetRateLimit(rateBucket) : checkWidgetRateLimit(rateBucket);

@@ -651,16 +651,9 @@ components:
                          may key off this field.
             description: |-
                 RunScenarioResponse carries the enqueued job id. Clients poll
-                 GetScenarioStatus with this id until status != "pending".
-
-                 NOTE: a successful enqueue returns HTTP 202 Accepted with a Location
-                 header pointing at GetScenarioStatus — the legacy (pre-sebuf) contract,
-                 restored. The sebuf-generated server still emits 200 for every success
-                 (no per-RPC status-code annotation exists), so the gateway upgrades the
-                 status via the setSuccessStatusOverride side-channel
-                 (server/_shared/response-headers.ts). Treat any 2xx as success; the
-                 interim guidance to branch on response body shape instead of the status
-                 code remains valid.
+                 GetScenarioStatus with this id until status is "done" or "failed". A successful
+                 enqueue returns HTTP 202 Accepted with a Location header pointing at
+                 GetScenarioStatus; treat any 2xx as success.
         GetScenarioStatusRequest:
             type: object
             properties:

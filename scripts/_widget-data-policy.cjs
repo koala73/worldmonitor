@@ -126,6 +126,7 @@ const BOOTSTRAP = [
   { key: "progressData", group: "Science, Health & Society", holds: "World Bank global life expectancy, literacy, child mortality, poverty: annual points (up to 64)" },
   { key: "techEvents", group: "Science, Health & Society", holds: "125 upcoming tech conferences and events: title, location, start/end date, url" },
   { key: "positiveGeoEvents", group: "Science, Health & Society", holds: "~230 positive-news counts by country and category (e.g. humanity-kindness) with lat/lon" },
+  { key: "crossBorderArrivals", group: "Science, Health & Society", holds: "16 UNHCR refugee situations: refugees by host country, returns, Mediterranean monthly arrivals, latest change" },
   { key: "giving", group: "Science, Health & Society", holds: "Global giving summary: estimated daily flow USD, platforms, categories, OECD aid" },
 ];
 
@@ -187,6 +188,7 @@ const RPCS = [
   { path: "/api/aviation/v1/search-google-dates", group: "Travel & Aviation", params: "origin, destination (3-letter IATA, required), start_date, end_date (YYYY-MM-DD), trip_duration, is_round_trip, cabin_class", holds: "Cheapest Google Flights fare per departure date across a date range" },
   { path: "/api/intelligence/v1/get-country-facts", group: "Science, Health & Society", params: "country_code (ISO2, required)", holds: "Country facts: capital, population, area, languages, currencies, head of state, Wikipedia summary" },
   { path: "/api/displacement/v1/get-displacement-summary", group: "Science, Health & Society", params: "year (default latest), country_limit, flow_limit", holds: "UNHCR displacement (2025): global refugees, asylum seekers, IDPs, stateless; per country; top flows" },
+  { path: "/api/displacement/v1/get-internal-displacement", group: "Science, Health & Society", params: "country_code (ISO3, e.g. SDN; omit for all)", holds: "IOM DTM internally displaced people by region and region-to-region routes, latest survey round per operation" },
   { path: "/api/displacement/v1/get-population-exposure", group: "Science, Health & Society", params: "mode (countries|exposure), lat, lon, radius (km, default 50) for exposure", holds: "Population within a radius of a point, or population and density of 20 priority countries" },
   { path: "/api/research/v1/list-arxiv-papers", group: "Science, Health & Society", params: "category (e.g. cs.AI), page_size (set it, e.g. 20)", holds: "Recent arXiv papers: title, summary, authors, categories, published date, url" },
   { path: "/api/research/v1/list-trending-repos", group: "Science, Health & Society", params: "language, period (daily|weekly), page_size (set it, e.g. 20)", holds: "Trending GitHub repositories: name, description, language, stars" },
@@ -365,6 +367,8 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/thermal/v1/list-thermal-escalations": "Same data as bootstrap key thermalEscalation",
   "/api/trade/v1/get-customs-revenue": "Same data as bootstrap key customsRevenue",
   "/api/trade/v1/get-tariff-trends": "Pro-only (401 for the anonymous widget session)",
+  "/api/trade/v1/get-bilateral-tariff": "Pro-only (401 for the anonymous widget session)",
+  "/api/trade/v1/get-us-import-duty": "Pro-only (401 for the anonymous widget session)",
   "/api/trade/v1/list-comtrade-flows": "Pro-only (401 for the anonymous widget session)",
   "/api/unrest/v1/list-unrest-events": "Same data as bootstrap key unrestEvents",
   "/api/v2/shipping/route-intelligence": "Pro-only (401 for the anonymous widget session)",

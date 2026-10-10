@@ -236,9 +236,11 @@ service IntelligenceService {
     option (sebuf.http.config) = {path: "/get-china-decision-signals", method: HTTP_METHOD_GET};
   }
 
-  // GetRegionalSnapshot returns the latest persisted RegionalSnapshot for a
-  // region. The snapshot is written every 6h by scripts/seed-regional-snapshots.mjs;
-  // this handler only reads canonical state. Premium-gated.
+  // Written every 6h by scripts/seed-regional-snapshots.mjs; the handler only
+  // reads canonical state. (Detached: kept out of the public spec.)
+
+  // GetRegionalSnapshot returns the latest RegionalSnapshot for a region,
+  // refreshed every 6h. Premium-gated.
   rpc GetRegionalSnapshot(GetRegionalSnapshotRequest) returns (GetRegionalSnapshotResponse) {
     option (sebuf.http.config) = {path: "/get-regional-snapshot", method: HTTP_METHOD_GET};
   }
@@ -256,10 +258,12 @@ service IntelligenceService {
     option (sebuf.http.config) = {path: "/get-regional-brief", method: HTTP_METHOD_GET};
   }
 
-  // SearchIntelHistory searches the durable historical intelligence store
-  // (convex/intelHistory.ts) by semantic similarity to a free-text query.
-  // The handler embeds the query, so each cache miss costs one embeddings
-  // call — the route carries its own fail-closed rate policy. Premium-gated.
+  // Store: convex/intelHistory.ts. (Detached: kept out of the public spec.)
+
+  // SearchIntelHistory searches stored historical intelligence events by
+  // semantic similarity to a free-text query. Each cache miss costs one
+  // embeddings call, so the route has its own fail-closed rate policy.
+  // Premium-gated.
   rpc SearchIntelHistory(SearchIntelHistoryRequest) returns (SearchIntelHistoryResponse) {
     option (sebuf.http.config) = {path: "/search-intel-history", method: HTTP_METHOD_POST};
   }

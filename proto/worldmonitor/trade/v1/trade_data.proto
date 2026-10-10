@@ -24,19 +24,21 @@ message TradeRestriction {
   string source_url = 9;
 }
 
-// Single tariff data point for a reporter-partner-product combination.
+// Single tariff data point. GetTariffTrends serves the WTO MFN applied
+// All-products average (TP_A_0010) for one reporting economy, so every point
+// is reporter-level: no partner dimension and no product split.
 message TariffDataPoint {
   // WTO member code of reporting country.
   string reporting_country = 1;
-  // WTO member code of partner country.
+  // Partner label. Always "World": the indicator has no partner dimension.
   string partner_country = 2;
-  // Product sector or HS chapter.
+  // Product sector label. Always "All products" on the served indicator.
   string product_sector = 3;
   // Year of observation.
   int32 year = 4;
   // Applied MFN tariff rate (percentage).
   double tariff_rate = 5;
-  // WTO bound tariff rate (percentage).
+  // WTO bound tariff rate (percentage). Reserved: 0 on the served indicator.
   double bound_rate = 6;
   // WTO indicator code used for this datapoint.
   string indicator_code = 7;

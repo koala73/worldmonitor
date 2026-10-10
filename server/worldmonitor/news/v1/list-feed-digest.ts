@@ -66,13 +66,13 @@ import {
 import {
   FORECAST_EVIDENCE_KEY,
   FORECAST_EVIDENCE_COVERAGE_KEY,
-  FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
   FORECAST_EVIDENCE_TTL_S,
   accumulatorPruneBounds,
   advanceForecastEvidenceCoverage,
   buildForecastEvidenceMember,
+  buildForecastEvidenceRecordWrite,
+  forecastEvidenceLinkHost,
   evidencePruneBounds,
-  forecastEvidenceCoversWindow,
   forecastEvidenceRecordKey,
   isEligibleForecastEvidence,
   parseForecastEvidenceCoverage,
@@ -518,6 +518,9 @@ export interface ParsedItem {
   originPublisherTrusted: boolean;
   title: string;
   link: string;
+  // Host of a link the ingest publisher gate blanked (#8990). Internal: lets
+  // the evidence writer drop a stored link on a host the gate now rejects.
+  blankedLinkHost?: string;
   publishedAt: number;
   isAlert: boolean;
   level: ThreatLevel;
@@ -1089,6 +1092,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     if (forDigest) parsedTotal++;
 
     let link: string;
+    let blankedLinkHost = '';
     if (isAtom) {
       const hrefMatch = block.match(/<link[^>]+href=["']([^"']+)["']/);
       link = hrefMatch?.[1] ?? '';
@@ -1192,6 +1196,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
         `[digest] publisher-link-gate blank feed="${feed.name}" variant=${variant} ` +
           `host="${linkHostnameForLog(link)}"`,
       );
+      blankedLinkHost = forecastEvidenceLinkHost(link);
       link = '';
     }
 
@@ -1201,6 +1206,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       originPublisherTrusted,
       title,
       link,
+      ...(blankedLinkHost ? { blankedLinkHost } : {}),
       publishedAt,
       isAlert,
       level: threat.level,
@@ -2323,37 +2329,26 @@ function redisPipelineConfirmed(
 }
 
 /**
- * The prune is destructive, so this gate takes no staleness budget: the marker
- * handed in was written by THIS publication and must already reach `nowMs`.
- * (The read path in seed-forecast-resolutions.mjs is the only caller that opts
- * into FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS.)
+ * Member pruning bounds every accumulator at ACCUMULATOR_RETENTION_MS, the
+ * widest live reader's lookback (inventory on that constant). A scope is pruned
+ * only when this cycle's tracking writes and the key-TTL refresh were confirmed.
  *
- * `evidenceDropped` is deliberately separate from `evidenceWritesConfirmed`:
- * a story whose member could not be built never reached Redis, so it says
- * nothing about whether the writes that DID happen were confirmed. It still
- * blocks the marker advance (and therefore this gate, via coverageAdvanced),
- * but it must not be laundered into a write-failure signal.
+ * `full:en` additionally waits for FORECAST_EVIDENCE_CUTOVER_ENABLED, the
+ * operator's switch for the one-time drop from ~183 days to 8. It no longer
+ * waits for a backfill-certified coverage marker: that marker protected the
+ * resolver's accumulator fallback, which #8995 deleted. Judging reads only the
+ * evidence archive, which this prune never touches, so archive write and
+ * coverage outcomes say nothing about whether the accumulator tail is still
+ * needed (#7082, owner decision 2026-10-08).
  */
 function shouldPruneAccumulator(options: {
   evidenceEligible: boolean;
   cutoverEnabled: boolean;
-  coverage: unknown;
-  nowMs: number;
   trackingWritesConfirmed: boolean;
-  evidenceWritesConfirmed: boolean;
-  coverageAdvanced: boolean;
   accumulatorTtlConfirmed: boolean;
 }): boolean {
   if (!options.trackingWritesConfirmed || !options.accumulatorTtlConfirmed) return false;
-  if (!options.evidenceEligible) return true;
-  return options.cutoverEnabled
-    && options.evidenceWritesConfirmed
-    && options.coverageAdvanced
-    && forecastEvidenceCoversWindow(
-      options.coverage,
-      options.nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
-      options.nowMs,
-    );
+  return !options.evidenceEligible || options.cutoverEnabled;
 }
 
 /**
@@ -2564,9 +2559,9 @@ async function writeStoryTracking(
   // The archive/coverage keys are written raw (see the pipeline call below), so
   // getKeyPrefix() does NOT isolate them per deployment the way the accumulator
   // ZADD on the adjacent line is isolated. Preview and dev deployments share
-  // this Upstash instance, and the marker they would rewrite is the artefact
-  // that authorises destructive accumulator pruning — so production is the only
-  // deployment allowed to publish evidence at all.
+  // this Upstash instance, and the archive and marker they would rewrite are
+  // what forecast judging reads — so production is the only deployment allowed
+  // to publish evidence at all.
   const productionDeployment = (process.env.VERCEL_ENV ?? 'production') === 'production';
   const evidenceEligible = isEligibleForecastEvidence(variant, lang) && productionDeployment;
   const cutoverEnabled = process.env.FORECAST_EVIDENCE_CUTOVER_ENABLED === '1';
@@ -2682,11 +2677,12 @@ async function writeStoryTracking(
         // story:track — the member is a second stored copy of the link, so
         // it must not carry a hostile URL the track row blanks.
         if (evidenceEligible) {
+          const evidenceLink = storyTrackLinkForPersist(representative);
           const evidenceMember = buildForecastEvidenceMember(
             {
               hash,
               title: representative.title,
-              link: storyTrackLinkForPersist(representative),
+              link: evidenceLink,
               description: representative.description,
               publishedAt: representative.publishedAt,
             },
@@ -2697,7 +2693,11 @@ async function writeStoryTracking(
             // representative fields live in a self-contained, independently
             // retained record key, so refreshing one story cannot create a
             // second index member or crowd unique evidence out of the cap.
-            evidenceBatchCommands.push(['SET', forecastEvidenceRecordKey(hash), evidenceMember, 'EX', FORECAST_EVIDENCE_TTL_S]);
+            // A blanked link never replaces a stored link for the same story (#8990).
+            evidenceBatchCommands.push(buildForecastEvidenceRecordWrite(
+              forecastEvidenceRecordKey(hash), evidenceMember, evidenceLink, FORECAST_EVIDENCE_TTL_S, now,
+              evidenceLink ? '' : (representative.blankedLinkHost || forecastEvidenceLinkHost(representative.link)),
+            ));
             evidenceBatchCommands.push(['ZADD', FORECAST_EVIDENCE_KEY, nowStr, hash]);
             evidenceAttempted += 1;
           } else {
@@ -2883,18 +2883,10 @@ async function writeStoryTracking(
     coverageAdvanced = canAdvance && redisPipelineConfirmed(coverageResults, coverageCommands.length);
   }
 
-  // For the judged full/en accumulator, pruning is destructive migration:
-  // retain legacy evidence until backfill has installed a verified coverage
-  // marker AND this cycle's archive writes and coverage update are confirmed.
-  // Other accumulator scopes are not used by forecast judging.
   const pruneAllowed = shouldPruneAccumulator({
     evidenceEligible,
     cutoverEnabled,
-    coverage: coverageAfter,
-    nowMs: now,
     trackingWritesConfirmed,
-    evidenceWritesConfirmed,
-    coverageAdvanced,
     accumulatorTtlConfirmed,
   });
   let pruneConfirmed = true;
@@ -2926,7 +2918,7 @@ async function writeStoryTracking(
       `writes_confirmed=${evidenceWritesConfirmed} coverage_advanced=${coverageAdvanced} ` +
       `accumulator_ttl_confirmed=${accumulatorTtlConfirmed} maintenance_confirmed=${maintenanceConfirmed} ` +
       `accumulator_pruned=${pruneAllowed} accumulator_prune_confirmed=${pruneConfirmed} ` +
-      `cutover_enabled=${cutoverEnabled} cutover_verified=${pruneAllowed} ` +
+      `cutover_enabled=${cutoverEnabled} ` +
       `key=${FORECAST_EVIDENCE_KEY} ttl_s=${FORECAST_EVIDENCE_TTL_S}`;
     if (evidenceWritesConfirmed && coverageAdvanced && maintenanceConfirmed && pruneConfirmed) console.info(message);
     else console.warn(message);

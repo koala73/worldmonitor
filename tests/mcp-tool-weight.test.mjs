@@ -18,6 +18,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { TOOL_REGISTRY, toolWeight } from '../api/mcp/registry/index.ts';
+import { COUNTRY_READERS } from '../shared/country-brief-host.ts';
 import COUNTRY_BBOXES from '../shared/country-bboxes.js';
 
 const REGISTRY_DIR = fileURLToPath(new URL('../api/mcp/registry/', import.meta.url));
@@ -131,6 +132,43 @@ function authenticatedFanOut(execute, helpers = SIGNING_HELPERS) {
 
 /** A source call-site count cannot measure the airspace helper's URL loop. */
 async function registryFanOut(tool, helpers = SIGNING_HELPERS) {
+  if (tool.name === 'get_country_brief_section') {
+    // Raw Signals has four paid-panel-only reads. Measure the ordinary API arm,
+    // rather than adding mutually exclusive, authorization-gated call sites.
+    const originalFetch = globalThis.fetch;
+    const required = { country_code: 'US', countryCode: 'US', iso2: 'US', reporter_code: '840', reporting_country: '840', chokepointId: 'hormuz', chokepoint_id: 'hormuz', pipelineId: 'fixture', facilityId: 'fixture', shortageId: 'fixture', commodity: 'copper', hs2: '27' };
+    let maximum = 0;
+    try {
+      for (const [section, reader] of Object.entries(COUNTRY_READERS)) {
+        const values = { ...required, ...({ housing: { keys: 'bisDsr,bisPropertyResidential,bisPropertyCommercial' }, imf: { keys: 'imfMacro,imfGrowth,imfLabor,imfExternal' } }[section] ?? {}) };
+        const args = Object.fromEntries(Object.entries(reader.args.shape).filter(([, schema]) => !schema.safeParse(undefined).success).map(([field]) => {
+          assert.ok(field in values, `${section}.${field} needs a valid runtime fan-out fixture`);
+          return [field, values[field]];
+        }));
+        assert.equal(reader.args.safeParse(args).success, true, section);
+        let signed = 0; let calls = 0;
+        globalThis.fetch = async (url, init) => {
+          calls++;
+          if (new Headers(init.headers).has('X-WorldMonitor-Key')) {
+            assert.equal(new Headers(init.headers).get('X-WorldMonitor-Key'), 'weight-test'); signed++;
+          }
+          const key = new URL(url).searchParams.get('keys');
+          return Response.json(key ? { data: { [key]: {} }, missing: [] } : {});
+        };
+        const pending = tool._execute({ section, arguments: args }, 'https://example.test', { kind: 'env_key', apiKey: 'weight-test' });
+        if (section === 'signalsRaw') {
+          await assert.rejects(pending, error => error.name === 'RpcValidationError' && error.violations.some(value => value.field === 'panel_request' && /verified paid country panel/i.test(value.description)));
+          assert.equal(calls, 0, 'ordinary API cannot enter the four-read collector');
+        } else {
+          await pending;
+          assert.equal(signed, reader.path === '/api/bootstrap' ? 0 : 1, section);
+        }
+        maximum = Math.max(maximum, signed);
+      }
+    } finally { globalThis.fetch = originalFetch; }
+    assert.equal(maximum, 1, 'ordinary country sections retain exactly one signed downstream maximum');
+    return maximum;
+  }
   if (tool.name !== 'get_airspace') return authenticatedFanOut(tool._execute, helpers);
   const originalFetch = globalThis.fetch;
   let maximum = 0;

@@ -1,4 +1,5 @@
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
+import { ZodError } from 'zod';
 import type { ChinaDecisionSignalSnapshot } from '../../shared/china-decision-signals';
 import type { ChinaCountrySummaryData, CountryBriefPanel, StockIndexData } from './CountryBriefPanel';
 import type { BriefSectionId } from '../../shared/country-brief-sections';
@@ -49,9 +50,11 @@ export class CountryBriefController {
     const current = () => !signal.aborted && revision === this.snapshot.revision && this.panel.getCode() === this.snapshot.countryCode;
     this.snapshot.sections[id] = { state: 'loading' };
     this.changed(this.snapshot);
+    let phase: 'load' | 'apply' = 'load';
     try {
       const value = await load(signal);
       if (!current()) return null;
+      phase = 'apply';
       apply(value);
       this.snapshot.sections[id] = { state: 'ready', value };
       return value;
@@ -59,6 +62,18 @@ export class CountryBriefController {
       if (!current()) return null;
       const state = error instanceof CountrySectionError ? error.state : 'unavailable';
       const reason = state === 'locked' ? 'This section is not authorized by the current connection.' : 'This section could not be loaded. Retry to refresh it.';
+      let category: 'display_failure' | 'locked' | 'unavailable_response' | 'timeout' | 'invalid_response' | 'unknown_load_failure' = phase === 'apply' ? 'display_failure' : 'unknown_load_failure';
+      try {
+        category = phase === 'apply' ? 'display_failure'
+          : state === 'locked' ? 'locked'
+          : error instanceof CountrySectionError ? 'unavailable_response'
+          : error instanceof DOMException && error.name === 'TimeoutError' ? 'timeout'
+          : error instanceof SyntaxError || error instanceof ZodError ? 'invalid_response'
+          : 'unknown_load_failure';
+      } catch {}
+      try {
+        console.warn('[CountryBriefController] section failed', { section: id, phase, category });
+      } catch {}
       this.snapshot.sections[id] = { state, reason };
       if (id !== 'stock') this.panel.setSectionFailure?.(id, state, reason);
       if (id === 'trade') this.panel.setSectionFailure?.('scenario', state, 'Trade exposure is unavailable, so this calculator cannot be loaded.');
@@ -88,11 +103,15 @@ export class CountryBriefController {
     void this.read('energy', signal => this.source.intelligence.getCountryEnergyProfile({ countryCode: code }, { signal }), energy => this.panel.updateEnergyProfile?.(energy));
     void this.read('maritime', signal => this.source.intelligence.getCountryPortActivity({ countryCode: code }, { signal }), maritime => this.panel.updateMaritimeActivity?.(maritime));
     void this.read('markets', async signal => {
-      if (this.source.mode === 'website') return fetchCountryMarkets(countryName, code);
+      if (this.source.mode === 'website') {
+        let fetchedAt: number | undefined;
+        const markets = await fetchCountryMarkets(countryName, code, metadata => { fetchedAt = metadata.fetchedAt; });
+        return { markets, fetchedAt };
+      }
       const response = await this.source.prediction.listPredictionMarkets({ category: `country:${code}`, query: '', pageSize: 5, cursor: '' }, { signal });
       if (!response.dataAvailable) throw new Error('Country markets unavailable');
-      return response.markets.map(protoToMarket).filter(m => !m.endDate || Date.parse(m.endDate) > Date.now()).slice(0, 5);
-    }, markets => this.panel.updateMarkets(markets));
+      return { markets: response.markets.map(protoToMarket).filter(m => !m.endDate || Date.parse(m.endDate) > Date.now()).slice(0, 5), fetchedAt: response.fetchedAt };
+    }, result => this.panel.updateMarkets(result.markets, { fetchedAt: result.fetchedAt }));
     if (this.source.mode === 'host' || !IS_EMBEDDED_PREVIEW) void this.read('housing', async signal => {
       const url = this.source.mode === 'host' ? 'https://www.worldmonitor.app/api/bootstrap?keys=bisDsr,bisPropertyResidential,bisPropertyCommercial' : toApiUrl('/api/bootstrap?keys=bisDsr,bisPropertyResidential,bisPropertyCommercial');
       const response = await this.source.fetch(url, { signal });
@@ -115,7 +134,7 @@ export class CountryBriefController {
     if (!code) return;
     void this.read('military', signal => getCountryDefenseIndustrialBase(code, this.source.military, signal), value => this.panel.updateDefenseIndustrialBase?.(value.available ? value : null), true);
     void this.read('commodities', signal => this.source.supply.getCountryVulnerabilities({ iso2: code }, { signal }), value => this.panel.updateCommodityVulnerabilities?.(value), true);
-    void this.read('products', signal => this.source.supply.getCountryProducts({ iso2: code }, { signal }), value => this.panel.updateProductImports?.(value.products.length ? value : null), true);
+    void this.read('products', signal => this.source.supply.getCountryProducts({ iso2: code }, { signal }), value => this.panel.updateProductImports?.(value), true);
     void this.read('trade', signal => this.source.exposure(code, signal), sectors => {
       const top = sectors[0];
       this.panel.updateTradeExposure?.(top ? { iso2: code, hs2: top.hs2, exposures: sectors.slice(0, 3).map(s => ({ chokepointId: s.primaryChokepointId, chokepointName: s.primaryChokepointName, exposureScore: s.exposureScore, coastSide: '', shockSupported: s.hs2 === '27' })), primaryChokepointId: top.primaryChokepointId, vulnerabilityIndex: top.vulnerabilityIndex, fetchedAt: top.fetchedAt ?? '' } : null, sectors);
@@ -136,7 +155,7 @@ export class CountryBriefController {
       const points = response.datapoints;
       const latest = points[points.length - 1];
       const previous = points[points.length - 2];
-      this.panel.updateTariffTrends?.(latest ? { currentRate: response.effectiveTariffRate?.tariffRate ?? latest.tariffRate, trend: !previous ? 'unknown' : latest.tariffRate > previous.tariffRate ? 'rising' : latest.tariffRate < previous.tariffRate ? 'falling' : 'stable', datapoints: points.map(p => ({ year: p.year, tariffRate: p.tariffRate })) } : null);
+      this.panel.updateTariffTrends?.(latest ? { currentRate: response.effectiveTariffRate?.tariffRate ?? latest.tariffRate, effectiveTariffRate: response.effectiveTariffRate, trend: !previous ? 'unknown' : latest.tariffRate > previous.tariffRate ? 'rising' : latest.tariffRate < previous.tariffRate ? 'falling' : 'stable', datapoints: points.map(p => ({ year: p.year, tariffRate: p.tariffRate })) } : null);
     }, true);
     else this.panel.updateTariffTrends?.(null);
   }

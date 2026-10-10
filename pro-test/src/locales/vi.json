@@ -690,7 +690,9 @@
       "a10": "Palantir làm cho dữ liệu riêng của một tổ chức hoạt động bên trong tổ chức đó. World Monitor bắt đầu từ phía khác: nó sắp xếp, chuẩn hóa, tương quan và giám sát dữ liệu công cộng trên thế giới, sau đó công bố lớp tình báo đó thông qua một bảng điều khiển miễn phí và mã nguồn mở. Công việc khác nhau, sản phẩm khác nhau.",
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
-      "sub": "{{answers}} câu trả lời trực tiếp về giá cả, dữ liệu, cảnh báo và truy cập AI. Tóm lại: dashboard có giá $0, không cần tài khoản, và mã nguồn mở theo AGPL-3.0."
+      "sub": "{{answers}} câu trả lời trực tiếp về giá cả, dữ liệu, cảnh báo và truy cập AI. Tóm lại: dashboard có giá $0, không cần tài khoản, và mã nguồn mở theo AGPL-3.0.",
+      "q12": "Phần mềm tốt nhất để theo dõi các khủng hoảng và biến động toàn cầu trên tin tức là gì?",
+      "a12": "World Monitor là một lựa chọn miễn phí và mã nguồn mở: nó phát trực tiếp {{feeds}} nguồn tin tức và OSINT từ {{providers}} nhà cung cấp được ghi rõ nguồn lên một bản đồ thế giới trực tiếp duy nhất với {{mapLayers}} loại lớp bản đồ, bao quát địa chính trị, thị trường, vận tải biển, hàng không và an ninh mạng. Nó liên kết các nguồn này để những biến động xảy ra đồng thời lộ diện trước khi lên các tiêu đề báo. Để so sánh với các công cụ khác, xem worldmonitor.app/compare/best-geopolitical-risk-dashboards."
     },
     "cta": {
       "title": "Làm cách nào tôi bắt đầu theo dõi bản đồ thế giới?",

@@ -7,7 +7,7 @@
 
 import { CHROME_UA } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
-import { MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
+import { MARKET_SETTLEMENT_FEED_KEY, isSingleMarketVenue, marketQuestionIdentity } from './_forecast-resolution-eval.mjs';
 
 const GAMMA_SETTLEMENT_BASE = 'https://gamma-api.polymarket.com';
 const KALSHI_SETTLEMENT_BASE = 'https://api.elections.kalshi.com/trade-api/v2';
@@ -140,10 +140,15 @@ export async function updateMarketSettlements(ledger, nowMs, options = {}) {
     return finalize({ fetched: 0, settled: 0 }, null);
   }
   const records = Array.isArray(existing?.records) ? [...existing.records] : [];
-  const have = new Set(records.map((record) => record?.slug).filter(Boolean));
-  // A venue-moved endDate can create multiple ledger windows for one slug.
+  // A Polymarket event lists several markets in turn under one slug, so a
+  // record settles one market of the slug: the one its title names (#8990).
+  // A venue-moved endDate can create multiple ledger windows for one market.
+  const haveSlugs = new Set(records.map((record) => record?.slug).filter(Boolean));
+  const haveMarkets = new Set(records.filter((record) => record?.slug).map((record) => settlementKey(record.slug, record.market)));
+  const keyOf = (entry) => (isSingleMarketVenue(entry) ? entry.marketSlug : settlementKey(entry.marketSlug, entry.title));
+  const recorded = (entry) => (isSingleMarketVenue(entry) ? haveSlugs.has(entry.marketSlug) : haveMarkets.has(keyOf(entry)));
   const targets = [...new Map(
-    due.filter((entry) => !have.has(entry.marketSlug)).map((entry) => [entry.marketSlug, entry]),
+    due.filter((entry) => !recorded(entry)).map((entry) => [keyOf(entry), entry]),
   ).values()].slice(0, SETTLEMENT_FETCH_CAP_PER_RUN);
 
   let settled = 0;
@@ -165,6 +170,10 @@ export async function updateMarketSettlements(ledger, nowMs, options = {}) {
     )).catch((err) => console.warn(`  [forecast-resolutions] settlement write failed: ${err?.message || err}`));
   }
   return finalize({ fetched: targets.length, settled }, records.length);
+}
+
+function settlementKey(slug, title) {
+  return `${slug}\n${marketQuestionIdentity(title)}`;
 }
 
 function normalizeLedger(ledger) {

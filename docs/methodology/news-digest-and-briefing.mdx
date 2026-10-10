@@ -263,7 +263,7 @@ briefs can read the same story pool.
 | `story:track:v1:{titleHash}` | Hash | Current story metadata and classifier stamps. | 7 days |
 | `story:sources:v1:{titleHash}` | Set | Feed names that mentioned the story. | 7 days |
 | `story:peak:v1:{titleHash}` | ZSet | Single `peak` member holding the highest score seen. | 7 days |
-| `digest:accumulator:v1:{variant}:{lang}` | ZSet | Story hashes by last-seen time for digest windows. | 48 hours |
+| `digest:accumulator:v1:{variant}:{lang}` | ZSet | Story hashes by last-seen time for digest windows. | 48 hours for the key; each publication removes members last seen more than 8 days ago. In production, `full:en` is pruned only once `FORECAST_EVIDENCE_CUTOVER_ENABLED` is enabled |
 
 The story-track hash fields written today are:
 
@@ -464,7 +464,7 @@ feed data. Cached briefs preserve their structured sources with the cached
 summary; older source-free cache entries are discarded before reuse.
 
 The canonical digest prose and direct fallback `whyMatters` paths pin the
-provider chain to OpenRouter by skipping Ollama and Groq, so the live brief
+provider chain to OpenRouter by skipping Ollama, so the live brief
 uses Gemini 3.5 Flash-Lite (`google/gemini-3.5-flash-lite`) for those surfaces when the
 LLM layer is enabled. Digest prose and
 story-description calls use temperature `0.4`. Regional weekly briefs
@@ -472,7 +472,7 @@ intentionally differ from those digest prose and `whyMatters` surfaces:
 `scripts/regional-snapshot/weekly-brief.mjs`
 tries OpenRouter first with `deepseek/deepseek-v4-flash`, then the fixed free
 OpenRouter models `google/gemma-4-26b-a4b-it:free` and
-`nvidia/nemotron-3-super-120b-a12b:free`, then Groq `openai/gpt-oss-20b`. It sends every
+`nvidia/nemotron-3-super-120b-a12b:free`. It sends every
 provider temperature `0.3` because the output is structured weekly JSON for regional snapshots
 rather than per-user digest prose. The digest prompt requires a named
 actor/event lead, bans generic editorial phrases such as "the global stage"

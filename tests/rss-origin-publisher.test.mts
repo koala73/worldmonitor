@@ -99,6 +99,8 @@ describe('parseRssXml publisher-link gate (#8398)', () => {
     assert.equal(parsed.items[0]!.link, '');
     // Title signal survives: corroboration/brief still see the story.
     assert.equal(parsed.items[0]!.title, 'Oil prices climb as supply concerns mount');
+    // The blanked host lets the evidence writer drop a stored link on it (#8990).
+    assert.equal(parsed.items[0]!.blankedLinkHost, 'evil.example');
   });
 
   it('keeps a digest link on the trusted origin publisher domain', () => {
