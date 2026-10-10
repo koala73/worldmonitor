@@ -56,15 +56,48 @@ export async function ensureContext() {
   return { id, from: 'created' };
 }
 
+let avatarTypeCache = null;
+
+/**
+ * The avatar's type from GET /v1/avatars/{id}, fetched once. Unknown (network
+ * error, sandbox) reads as null, which keeps the configured voice.
+ */
+export async function avatarType() {
+  const id = avatarId();
+  if (avatarTypeCache?.id === id) return avatarTypeCache.type;
+  let type = null;
+  try {
+    const json = await call('GET', `/v1/avatars/${encodeURIComponent(id)}`);
+    type = json?.data?.type ?? null;
+  } catch { /* unknown */ }
+  avatarTypeCache = { id, type };
+  return type;
+}
+
+/**
+ * A VIDEO avatar carries its own voice agent; passing an explicit voice_id
+ * for one makes the FULL-mode agent silent (video streams, every line is
+ * ignored, no error, no speak_started: found on stage 2026-10-10 with
+ * "Graham Sitting" + its own preset voice). Image avatars have no voice of
+ * their own and need one. LIVEAVATAR_FORCE_VOICE=1 sends it regardless.
+ */
+export async function voiceIdFor(type) {
+  const voice = process.env.LIVEAVATAR_VOICE_ID;
+  if (!voice) return null;
+  if (process.env.LIVEAVATAR_FORCE_VOICE === '1') return voice;
+  return type === 'VIDEO' ? null : voice;
+}
+
 export async function tokenBody() {
   if (process.env.LIVEAVATAR_TOKEN_BODY) return JSON.parse(process.env.LIVEAVATAR_TOKEN_BODY);
   const context = await ensureContext();
+  const voice = await voiceIdFor(sandbox() ? null : await avatarType());
   return {
     mode: 'FULL',
     ...(sandbox() ? { is_sandbox: true } : {}),
     avatar_id: avatarId(),
     avatar_persona: {
-      ...(process.env.LIVEAVATAR_VOICE_ID ? { voice_id: process.env.LIVEAVATAR_VOICE_ID } : {}),
+      ...(voice ? { voice_id: voice } : {}),
       context_id: context.id,
       language: process.env.LIVEAVATAR_LANGUAGE || 'en',
     },

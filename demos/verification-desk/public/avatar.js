@@ -79,6 +79,11 @@ async function open(video, audible) {
     if (live?.s === s) speakDone?.();
   });
   s.on(SessionEvent.SESSION_DISCONNECTED, () => dropped(s));
+  // Every agent and session event, for the console at the venue: a sent line
+  // that never produces speak_started is the server declining it.
+  for (const name of [...Object.values(AgentEventsEnum), ...Object.values(SessionEvent)]) {
+    s.on(name, (payload) => console.debug(`[avatar:${audible ? 'live' : 'standby'}] ${name}`, payload?.text ?? payload?.state ?? payload ?? ''));
+  }
   const startedAt = Date.now();
   try {
     await s.start();

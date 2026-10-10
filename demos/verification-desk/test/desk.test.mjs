@@ -320,3 +320,39 @@ test('a failed refresh keeps the last board as a dated snapshot, never "live"', 
   await Promise.all([shared.intelligencePayload(), shared.intelligencePayload(), shared.intelligencePayload()]);
   assert.equal(calls - before, 1);
 });
+
+test('LiveAvatar: a VIDEO avatar keeps its own voice; an image avatar gets the configured one', async () => {
+  const { voiceIdFor, tokenBody } = await import('../lib/liveavatar.mjs');
+  const saved = { ...process.env };
+  try {
+    process.env.LIVEAVATAR_API_KEY = 'k';
+    process.env.LIVEAVATAR_AVATAR_ID = 'av-1';
+    process.env.LIVEAVATAR_VOICE_ID = 'voice-1';
+    process.env.LIVEAVATAR_CONTEXT_ID = 'ctx-1';
+    delete process.env.LIVEAVATAR_SANDBOX;
+    delete process.env.LIVEAVATAR_FORCE_VOICE;
+    delete process.env.LIVEAVATAR_TOKEN_BODY;
+    // An explicit voice on a VIDEO avatar made the FULL-mode agent silent on stage (2026-10-10).
+    assert.equal(await voiceIdFor('VIDEO'), null);
+    assert.equal(await voiceIdFor('IMAGE'), 'voice-1');
+    assert.equal(await voiceIdFor(null), 'voice-1', 'unknown type keeps the configured voice');
+    process.env.LIVEAVATAR_FORCE_VOICE = '1';
+    assert.equal(await voiceIdFor('VIDEO'), 'voice-1', 'the override sends it regardless');
+    delete process.env.LIVEAVATAR_FORCE_VOICE;
+    // tokenBody asks the API for the avatar's type and omits the voice for VIDEO.
+    const realFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (url) => { calls.push(String(url)); return new Response(JSON.stringify({ code: 1000, data: { id: 'av-1', type: 'VIDEO' } }), { status: 200, headers: { 'content-type': 'application/json' } }); };
+    try {
+      const body = await tokenBody();
+      assert.ok(calls.some((u) => u.endsWith('/v1/avatars/av-1')), 'the avatar record is read');
+      assert.deepEqual(body.avatar_persona, { context_id: 'ctx-1', language: 'en' });
+      assert.equal(body.mode, 'FULL');
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  } finally {
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved);
+  }
+});
