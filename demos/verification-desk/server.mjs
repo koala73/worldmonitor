@@ -15,6 +15,7 @@ import { buildBoard } from './lib/board.mjs';
 import { findRevealCandidates } from './lib/reveal.mjs';
 import { coverage, credibilityBand, sourceCredibility } from './lib/wm.mjs';
 import * as liveavatar from './lib/liveavatar.mjs';
+import * as access from './lib/access.mjs';
 
 loadEnv();
 const PORT = Number(process.env.PORT || 4317);
@@ -131,16 +132,46 @@ async function tts(text) {
   return Buffer.from(await res.arrayBuffer());
 }
 
-async function readBody(req) {
+async function readRaw(req) {
   const chunks = [];
-  for await (const c of req) chunks.push(c);
-  return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+  let size = 0;
+  for await (const c of req) {
+    size += c.length;
+    if (size > 64_000) throw new Error('body too large');
+    chunks.push(c);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+async function readBody(req) {
+  return JSON.parse((await readRaw(req)) || '{}');
 }
 
 const server = createServer(async (req, res) => {
   try {
     // Inside the try: a malformed Host header must answer 500, not exit the process.
     const url = new URL(req.url, `http://${req.headers.host}`);
+
+    // Hosted desk: everything sits behind DESK_PASSWORD (see lib/access.mjs).
+    if (access.enabled()) {
+      if (url.pathname === '/login' && req.method === 'POST') {
+        const given = new URLSearchParams(await readRaw(req)).get('password');
+        if (!access.passwordMatches(given)) {
+          await new Promise((r) => setTimeout(r, 800)); // slow down guessing
+          res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+          return res.end(access.LOGIN_PAGE(true));
+        }
+        const secure = req.headers['x-forwarded-proto'] === 'https';
+        res.writeHead(303, { 'Set-Cookie': access.sessionCookie(Date.now(), secure), Location: '/' });
+        return res.end();
+      }
+      if (!access.authorized(req)) {
+        if (url.pathname.startsWith('/api/')) return sendJson(res, 401, { error: 'login required' });
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        return res.end(access.LOGIN_PAGE(false));
+      }
+    }
+
     if (url.pathname === '/api/config') {
       return sendJson(res, 200, {
         offline: desk.offline,
@@ -224,11 +255,17 @@ desk.source.live?.warm?.();
 
 // Localhost only by default: the paid routes (TTS, avatar tokens, grading) use
 // the presenter's keys and allowance. DESK_HOST=0.0.0.0 opens it to the network.
+// Opened to the network, it must have a password: its routes spend the keys.
 const HOST = process.env.DESK_HOST || '127.0.0.1';
+if (!/^(127\.0\.0\.1|localhost|::1)$/.test(HOST) && !access.enabled() && process.env.DESK_ALLOW_OPEN !== '1') {
+  console.error(`Refusing to listen on ${HOST} without DESK_PASSWORD (set DESK_ALLOW_OPEN=1 to override on a private network).`);
+  process.exit(1);
+}
 server.listen(PORT, HOST, () => {
   console.log(`Verification Desk on http://localhost:${PORT}`);
   console.log(`  source: ${desk.source.kind}${desk.offline ? ' (committed snapshots, offline)' : ''}`);
   console.log(`  anchor: ${desk.anchor.enabled ? desk.anchor.model : 'template voice (no ANTHROPIC_API_KEY)'}`);
   console.log(`  voice:  ${process.env.ELEVENLABS_API_KEY ? 'ElevenLabs' : 'browser speech synthesis'}`);
+  console.log(`  login:  ${access.enabled() ? 'password required (DESK_PASSWORD)' : 'none (localhost only)'}`);
   console.log(`  avatar: ${liveavatar.configured() ? 'HeyGen LiveAvatar (press A to switch with the globe)' : 'globe only (no LiveAvatar key)'}`);
 });

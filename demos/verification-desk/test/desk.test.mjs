@@ -361,3 +361,32 @@ test('LiveAvatar: a VIDEO avatar keeps its own voice; an image avatar gets the c
     Object.assign(process.env, saved);
   }
 });
+
+test('hosted login: password gate signs and checks the session cookie', async () => {
+  const access = await import('../lib/access.mjs');
+  const saved = process.env.DESK_PASSWORD;
+  try {
+    delete process.env.DESK_PASSWORD;
+    assert.equal(access.authorized({ headers: {} }), true, 'no password: localhost desk stays open');
+    assert.equal(access.passwordMatches(''), false, 'no password: nothing logs in');
+
+    process.env.DESK_PASSWORD = 'stage-pass';
+    assert.equal(access.passwordMatches('stage-pass'), true);
+    assert.equal(access.passwordMatches('stage-pas'), false);
+    assert.equal(access.authorized({ headers: {} }), false);
+
+    const now = 1_000_000;
+    const cookie = access.sessionCookie(now).split(';')[0];
+    assert.equal(access.authorized({ headers: { cookie } }, now + 1000), true);
+    assert.equal(access.authorized({ headers: { cookie } }, now + 13 * 3600_000), false, 'expires after 12 h');
+    const [, value] = cookie.split('=');
+    const [exp, mac] = value.split('.');
+    assert.equal(access.authorized({ headers: { cookie: `desk_session=${Number(exp) + 999999}.${mac}` } }, now), false, 'extended expiry is rejected');
+
+    process.env.DESK_PASSWORD = 'new-pass';
+    assert.equal(access.authorized({ headers: { cookie } }, now + 1000), false, 'a new password signs everyone out');
+  } finally {
+    if (saved === undefined) delete process.env.DESK_PASSWORD;
+    else process.env.DESK_PASSWORD = saved;
+  }
+});

@@ -46,7 +46,17 @@ npm install          # installs tsx (loads WorldMonitor's TypeScript) and bundle
 npm run offline      # no keys, no network: http://localhost:4317 on the committed real snapshot
 ```
 
-The desk listens on localhost only, because its routes spend your keys and WorldMonitor allowance (`DESK_HOST` changes that). Offline mode makes no network calls at all: no Claude, no article fetches, no live backdrop.
+The desk listens on localhost only, because its routes spend your keys and WorldMonitor allowance (`DESK_HOST` changes that, and then it requires `DESK_PASSWORD`). Offline mode makes no network calls at all: no Claude, no article fetches, no live backdrop.
+
+### Run it from any computer (hosted, with a login)
+
+No laptop at the venue: host the desk and open its URL on the venue computer.
+
+1. Create a service from this repository with the Dockerfile `demos/verification-desk/Dockerfile` (on Railway: set the variable `RAILWAY_DOCKERFILE_PATH=demos/verification-desk/Dockerfile`). The image already listens on `0.0.0.0` and the host's `PORT`.
+2. Set the variables on the service, never in the repo: `DESK_PASSWORD` (required), `WORLDMONITOR_API_KEY`, `ANTHROPIC_API_KEY`, `LIVEAVATAR_API_KEY`, `LIVEAVATAR_AVATAR_ID`, and ElevenLabs if used. Leave `LIVEAVATAR_VOICE_ID` unset for a video avatar such as Graham. Set `LIVEAVATAR_CONTEXT_ID` and `LIVEAVATAR_SILENT_CONTEXT_ID` to the ids in your local `data/liveavatar-context*.json` so redeploys reuse them.
+3. At the venue: open the URL in Chrome, enter the password, click once anywhere (browsers need a click before audio plays), press **F** for fullscreen.
+
+Every page and route sits behind the login, which lasts 12 hours. Without `DESK_PASSWORD` the server refuses to listen beyond localhost (`DESK_ALLOW_OPEN=1` overrides, for a private network only).
 
 The desk reads `demos/verification-desk/.env` first, then the repository's own `.env.local` and `.env` two levels up, so keys that already live there (WorldMonitor, Anthropic, LiveAvatar) need no copying; an empty line in the demo `.env` never hides them. The shell wins over every file. For the live show, `cp .env.example .env`, fill in what you have (or nothing, if the repo's `.env.local` already has it), then:
 
