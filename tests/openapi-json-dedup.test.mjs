@@ -1203,6 +1203,18 @@ describe('JSON-only description and parameter compaction', () => {
     );
   });
 
+  it('protects tilde fences and longer backtick fences the same way', () => {
+    const spec = {
+      paths: {
+        '/t': { get: { description: 'A\n ~~~\n one\n two\n ~~~\n b\n c.' } },
+        '/q': { get: { description: 'A\n ````md\n one\n ```\n two\n ````\n b\n c.' } },
+      },
+    };
+    collapseSoftLineBreaks(spec);
+    assert.equal(spec.paths['/t'].get.description, 'A\n ~~~\n one\n two\n ~~~ b c.');
+    assert.equal(spec.paths['/q'].get.description, 'A\n ````md\n one\n ```\n two\n ```` b c.');
+  });
+
   it('drops only the default required:false, never from path parameters', () => {
     const spec = {
       paths: {
