@@ -10,9 +10,27 @@ vi.mock("../payments/subscriptionHelpers", async (original) => ({
   recomputeEntitlementFromAllSubs: recompute,
 }));
 
+// Throws inside the personal walk: erasePersonal calls mergeUniqueStrings when
+// it reaches userApiKeys, so arming this fails that page mid-walk.
+const { mergeFailures } = vi.hoisted(() => ({ mergeFailures: { remaining: 0 } }));
+vi.mock("../accountDeletion/registry", async (original) => {
+  const real = await original<typeof import("../accountDeletion/registry")>();
+  return {
+    ...real,
+    mergeUniqueStrings: (...args: Parameters<typeof real.mergeUniqueStrings>) => {
+      if (mergeFailures.remaining > 0) {
+        mergeFailures.remaining -= 1;
+        throw new Error("injected write conflict");
+      }
+      return real.mergeUniqueStrings(...args);
+    },
+  };
+});
+
 beforeEach(() => {
   vi.useFakeTimers();
   recompute.mockReset().mockRejectedValue(new Error("temporary write failure"));
+  mergeFailures.remaining = 0;
 });
 afterEach(() => {
   vi.clearAllTimers();
@@ -124,4 +142,76 @@ test("same-step pages stamp distinct progress even in the same millisecond", asy
     expect((await ctx.db.get(deletionId))?.status).toBe("pending");
     expect(await ctx.db.query("userPreferences").collect()).toHaveLength(1);
   });
+});
+
+test("a failure mid personal walk retries from the recorded table cursor", async () => {
+  // PERSONAL_DELETE_TABLES order: userPreferences(0), userPreferenceWriteRateLimits(1),
+  // notificationChannels(2), alertRules(3), telegramPairingTokens(4), userApiKeys(5).
+  const userId = "walker";
+  const t = convexTest(schema, modules);
+  const deletionId = await t.run(async (ctx) => {
+    for (let i = 0; i < 2; i++) {
+      await ctx.db.insert("userPreferences", {
+        userId, variant: `variant-${i}`, data: {}, schemaVersion: 1, syncVersion: 1, updatedAt: 1,
+      });
+    }
+    await ctx.db.insert("userPreferenceWriteRateLimits", { userId, windowStart: 1, count: 1, updatedAt: 1 });
+    await ctx.db.insert("notificationChannels", {
+      userId, channelType: "email", email: "w@example.test", verified: true, linkedAt: 1,
+    });
+    // 4 writes above + 60 of these fill the 64-write budget inside alertRules,
+    // so the first page commits with the cursor parked at table 3.
+    for (let i = 0; i < 70; i++) {
+      await ctx.db.insert("alertRules", {
+        userId, variant: `variant-${i}`, enabled: true, eventTypes: [], sensitivity: "all",
+        channels: [], updatedAt: 1,
+      });
+    }
+    await ctx.db.insert("userApiKeys", {
+      userId, name: "key", keyPrefix: "wm_walk0", keyHash: "hash_walker", createdAt: 1,
+    });
+    return ctx.db.insert("accountDeletions", {
+      userId, userIdHash: "e".repeat(64), source: "self", status: "pending",
+      step: "personal", personalTableIndex: 0, startedAt: 1, updatedAt: 1,
+    });
+  });
+  const count = (table: "alertRules" | "userApiKeys" | "userPreferences") =>
+    t.run(async (ctx) => (await ctx.db.query(table).collect()).length);
+
+  await t.mutation(internal.accountDeletion.batches.advanceErase, { deletionId });
+  expect(await t.run((ctx) => ctx.db.get(deletionId))).toMatchObject({
+    step: "personal", personalTableIndex: 3,
+  });
+  expect(await count("alertRules")).toBe(10);
+
+  // A row the retry must NOT reach if it honours the cursor. The write fence
+  // keeps real rows out of already-walked tables; this is a probe that tells
+  // "resumed at table 3" apart from "restarted at table 0".
+  await t.run((ctx) => ctx.db.insert("userPreferences", {
+    userId, variant: "probe", data: {}, schemaVersion: 1, syncVersion: 1, updatedAt: 1,
+  }));
+
+  // The second page deletes the last alertRules, then throws at userApiKeys.
+  mergeFailures.remaining = 1;
+  await t.action(internal.accountDeletion.batches.advanceEraseSafely, { deletionId });
+  const failed = await t.run((ctx) => ctx.db.get(deletionId));
+  expect(failed).toMatchObject({
+    status: "pending", step: "personal", personalTableIndex: 3,
+    batchAttempts: 1, lastError: "ERASE_BATCH_RETRY",
+  });
+  expect(failed?.keyHashes).toBeUndefined();
+  // Rolled back, not half-applied.
+  expect(await count("alertRules")).toBe(10);
+  expect(await count("userApiKeys")).toBe(1);
+
+  // The retry resumes at table 3: it finishes alertRules and userApiKeys (no
+  // skip past the failed table) and never revisits table 0 (no reset).
+  await t.action(internal.accountDeletion.batches.advanceEraseSafely, { deletionId });
+  const resumed = await t.run((ctx) => ctx.db.get(deletionId));
+  expect(resumed?.step).not.toBe("personal");
+  expect(resumed?.batchAttempts).toBeUndefined();
+  expect(resumed?.keyHashes).toEqual(["hash_walker"]);
+  expect(await count("alertRules")).toBe(0);
+  expect(await count("userApiKeys")).toBe(0);
+  expect(await count("userPreferences")).toBe(1);
 });
