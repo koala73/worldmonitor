@@ -38,6 +38,9 @@ const { TOOL_REGISTRY } = mcpTesting;
 // -----------------------------------------------------------------------------
 const EXCLUDED_FROM_MCP = new Map([
 
+  ['trade:us-hts:catalog:v1',
+    'intermediate: US HTS chapter 99 measure catalog joined per request with a live HTS line read by GET /api/trade/v1/get-us-import-duty; the catalog alone answers no product question, and the route is REST-only (tier 1) until an MCP wrapper has a per-principal upstream budget.'],
+
   ['live-video:resolved:v1',
     'dashboard-internal: channel id to current live YouTube video id, read by the Live News and Live Webcams players to try a fresh embed before the channel entry (#8545); a playback hint with no analytical content, not a queryable MCP slice.'],
 

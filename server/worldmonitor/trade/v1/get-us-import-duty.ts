@@ -198,8 +198,12 @@ export function exportListRange(code: string): { from: string; to: string } {
   return { from: dotted, to: code.length === 6 ? `${dotted}.99.99` : `${dotted}.99` };
 }
 
+/**
+ * Plain text of an HTS cell. Tags become spaces and any stray angle bracket
+ * left over (e.g. from "<scr<script>ipt>") is removed, so no markup survives.
+ */
 function clean(text: unknown): string {
-  return String(text ?? '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+  return String(text ?? '').replace(/<[^>]*>/g, ' ').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim();
 }
 
 /**

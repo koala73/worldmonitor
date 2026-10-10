@@ -238,6 +238,13 @@ describe('HTS lines and base rates', () => {
     assert.equal(lines[0]!.general, 'Free');
   });
 
+  test('cells come back as plain text with no markup left', () => {
+    const [line] = parseHtsLines([{ htsno: '0101.21.00', indent: 1, description: 'Pure<b>bred</b> <scr<script>ipt>x', general: '<i>Free</i>', special: '', other: '' }], '010121');
+    assert.equal(line!.description, 'Pure bred iptx');
+    assert.equal(/[<>]/.test(line!.description), false);
+    assert.equal(line!.general, 'Free');
+  });
+
   test('special-rate groups split per program list', () => {
     assert.deepEqual(parseSpecialRates('Free (A+,AU,BH) 3.6% (KR)'), [
       { rate: 'Free', programs: ['A+', 'AU', 'BH'] },
