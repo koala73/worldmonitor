@@ -47,7 +47,7 @@ npm run offline      # no keys, no network: http://localhost:4317 on the committ
 
 The desk listens on localhost only, because its routes spend your keys and WorldMonitor allowance (`DESK_HOST` changes that). Offline mode makes no network calls at all: no Claude, no article fetches, no live backdrop.
 
-For the live show, `cp .env.example .env`, fill in what you have, then:
+The desk reads `demos/verification-desk/.env` first, then the repository's own `.env.local` and `.env` two levels up, so keys that already live there (WorldMonitor, Anthropic, LiveAvatar) need no copying; an empty line in the demo `.env` never hides them. The shell wins over every file. For the live show, `cp .env.example .env`, fill in what you have (or nothing, if the repo's `.env.local` already has it), then:
 
 ```bash
 npm run check        # every line PASS, or a WARN you accept

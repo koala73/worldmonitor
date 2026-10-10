@@ -1,5 +1,6 @@
 // Run with: npm test (node --import tsx, so WorldMonitor's TypeScript modules load).
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { test } from 'node:test';
 import { Anchor } from '../lib/anchor.mjs';
 import { gradeToResult } from '../lib/grade.mjs';
@@ -273,4 +274,24 @@ test('the grade stream stops at the next step once the browser is gone', async (
   const after = calls.length;
   assert.equal((await it.next()).done, true);
   assert.equal(calls.length, after, 'no further WorldMonitor calls after the stream is abandoned');
+});
+
+test('the repo .env.local backs the demo .env, and an empty assignment never blocks it', async () => {
+  const { loadEnv, envFiles } = await import('../lib/config.mjs');
+  const { mkdtemp, writeFile } = await import('node:fs/promises');
+  const os = await import('node:os');
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'desk-env-'));
+  const demo = path.join(dir, '.env');
+  const repo = path.join(dir, '.env.local');
+  await writeFile(demo, 'DESK_T_A=\nDESK_T_B=demo\n');
+  await writeFile(repo, 'DESK_T_A=repo\nDESK_T_B=repo\nDESK_T_C=repo\n');
+  for (const k of ['DESK_T_A', 'DESK_T_B', 'DESK_T_C', 'DESK_T_D']) delete process.env[k];
+  process.env.DESK_T_D = 'shell';
+  loadEnv([demo, repo, path.join(dir, 'missing')]);
+  assert.equal(process.env.DESK_T_A, 'repo', 'an empty line in the demo .env (as in .env.example) does not block the repo value');
+  assert.equal(process.env.DESK_T_B, 'demo', 'the demo .env wins over the repo file');
+  assert.equal(process.env.DESK_T_C, 'repo', 'a key only in the repo file is picked up');
+  assert.equal(process.env.DESK_T_D, 'shell', 'the shell wins over every file');
+  assert.deepEqual(envFiles().map((f) => path.basename(f)), ['.env', '.env.local', '.env']);
+  assert.equal(path.dirname(envFiles()[1]), path.resolve(path.dirname(envFiles()[0]), '..', '..'), 'the repo files are two levels above the demo');
 });

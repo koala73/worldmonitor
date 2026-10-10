@@ -1,6 +1,7 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseEnv } from 'node:util';
 import { Anchor } from './anchor.mjs';
 import { WorldMonitorMcp } from './mcp-client.mjs';
 import { ArchiveSource, CombinedSource, LiveSource } from './sources.mjs';
@@ -11,9 +12,26 @@ export const ARCHIVE_DIR = path.join(DATA_DIR, 'archive');
 // Committed, dated snapshots of real WorldMonitor data (see snapshots/README.md).
 export const SNAPSHOT_DIR = path.join(ROOT, 'snapshots');
 
-export function loadEnv() {
-  const envPath = path.join(ROOT, '.env');
-  if (existsSync(envPath)) process.loadEnvFile(envPath);
+/**
+ * Precedence, highest first: the shell, demos/verification-desk/.env, then
+ * the repository's own .env.local and .env two levels up. A variable that is
+ * already set, or set to an empty value, is never overwritten, and an empty
+ * assignment (every line of .env.example) never blocks a later file. The
+ * presenter's keys (WorldMonitor, Anthropic, LiveAvatar) already live in the
+ * repo's .env.local; they need not be copied here.
+ */
+export function loadEnv(files = envFiles()) {
+  for (const file of files) {
+    if (!existsSync(file)) continue;
+    for (const [key, value] of Object.entries(parseEnv(readFileSync(file, 'utf8')))) {
+      if (value !== '' && !process.env[key]) process.env[key] = value;
+    }
+  }
+}
+
+export function envFiles() {
+  const repoRoot = path.resolve(ROOT, '..', '..');
+  return [path.join(ROOT, '.env'), path.join(repoRoot, '.env.local'), path.join(repoRoot, '.env')];
 }
 
 /**
