@@ -29,7 +29,8 @@ export function buildDesk({ offline = process.env.DESK_OFFLINE === '1' } = {}) {
   const live = !offline && (apiKey || bearerToken)
     ? new LiveSource(new WorldMonitorMcp({ url: process.env.WORLDMONITOR_MCP_URL || 'https://worldmonitor.app/mcp', apiKey, bearerToken }))
     : null;
-  const archiveDirs = [ARCHIVE_DIR, SNAPSHOT_DIR].filter((d) => existsSync(d));
+  // Rolling snapshots age out; the committed ones are the offline fallback and never do.
+  const archiveDirs = [{ dir: ARCHIVE_DIR }, { dir: SNAPSHOT_DIR, days: Infinity }].filter((d) => existsSync(d.dir));
   const archive = archiveDirs.length ? new ArchiveSource(archiveDirs, { days: Number(process.env.DESK_ARCHIVE_DAYS || 7) }) : null;
   if (!live && !archive) {
     throw new Error('No data source: set WORLDMONITOR_API_KEY in demos/verification-desk/.env, or keep the committed snapshots/.');

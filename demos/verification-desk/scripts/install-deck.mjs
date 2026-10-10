@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 const src = process.argv[2] ?? fileURLToPath(new URL('../deck/verified-truth-stage.html', import.meta.url));
 const out = fileURLToPath(new URL('../public/deck.html', import.meta.url));
 let html = readFileSync(src, 'utf8');
-if (!html.includes('</head>') || !html.lastIndexOf('</body>')) throw new Error('deck has no </head> or </body>');
+if (!html.includes('</head>') || !html.includes('</body>')) throw new Error('deck has no </head> or </body>');
 html = html.replace('</head>', '<link rel="stylesheet" href="deck-live.css">\n</head>');
 const at = html.lastIndexOf('</body>');
 html = `${html.slice(0, at)}<script type="module" src="deck-live.js"></script>\n${html.slice(at)}`;

@@ -15,7 +15,7 @@ The desk has no idea of truth of its own. Every judgment on screen is WorldMonit
 - **G** switches the HeyGen avatar on and off in the deck's avatar slot. When it is off, the deck's recorded voice plays (ElevenLabs for the live lines when the key is set).
 - **U** refreshes the board. Every other key is the deck's own; press **?** for the full list.
 
-The deck's own slides are frozen as of Fri 9 Oct 19:30 GST. Its "How WorldMonitor does it" slide shows HIGH/MED/LOW labels and an evidence ladder that WorldMonitor doesn't compute; the live scenes show what WorldMonitor actually computes.
+The deck's own slides are frozen as of Fri 9 Oct 19:30 GST. Its "How WorldMonitor does it" slide shows WorldMonitor's source tiers 1–4, the propaganda-risk rating and the CRED bands; the live scenes compute them on today's news.
 
 ## What happens on stage (standalone desk, `/desk`)
 

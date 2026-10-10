@@ -237,10 +237,14 @@ export class LiveSource {
   }
 }
 
-/** Snapshots written by scripts/snapshot.mjs, newest wins per cluster id. */
+/**
+ * Snapshots written by scripts/snapshot.mjs, newest wins per cluster id.
+ * `dirs` entries are paths (kept for `days`) or { dir, days } for a
+ * directory with its own window, e.g. committed snapshots that never expire.
+ */
 export class ArchiveSource {
   constructor(dirs, { days = 7 } = {}) {
-    this.dirs = Array.isArray(dirs) ? dirs : [dirs];
+    this.dirs = (Array.isArray(dirs) ? dirs : [dirs]).map((d) => (typeof d === 'string' ? { dir: d, days } : { days, ...d }));
     this.days = days;
     this.kind = 'archive';
     this.cache = null;
@@ -250,26 +254,26 @@ export class ArchiveSource {
   // seven-day window moves on while the desk runs.
   async load() {
     let files = [];
-    for (const dir of this.dirs) {
+    for (const { dir, days } of this.dirs) {
       try {
-        files.push(...(await readdir(dir)).filter((f) => /^\d{4}-\d{2}-\d{2}T.*\.json$/.test(f)).map((f) => path.join(dir, f)));
+        const cutoff = Date.now() - days * 86_400_000;
+        files.push(...(await readdir(dir)).filter((f) => /^\d{4}-\d{2}-\d{2}T.*\.json$/.test(f)).map((f) => ({ file: path.join(dir, f), cutoff })));
       } catch {
         // directory not created yet
       }
     }
-    files.sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
-    const signature = files.join('|');
+    files.sort((a, b) => path.basename(a.file).localeCompare(path.basename(b.file)));
+    const signature = files.map((f) => f.file).join('|');
     if (this.cache && this.cache.signature === signature && Date.now() - this.cache.loadedAt < 10 * 60_000) return this.cache;
-    const cutoff = Date.now() - this.days * 86_400_000;
     let latest = null;
     const clusters = new Map();
     const stories = new Map();
     const briefs = [];
     const articles = new Map();
-    for (const f of files) {
+    for (const { file, cutoff } of files) {
       let snap;
       try {
-        snap = JSON.parse(await readFile(f, 'utf8'));
+        snap = JSON.parse(await readFile(file, 'utf8'));
       } catch {
         continue;
       }

@@ -197,3 +197,14 @@ test('article text: scripts with spaced end tags are dropped, entities decode on
   assert.ok(!text.includes('200'), 'script content is not article text');
   assert.ok(text.includes('Tom &lt;Jerry&gt; "quoted" & more'), text.slice(0, 120));
 });
+
+test('committed snapshots never age out; rolling archives do', async () => {
+  const dir = new URL('../snapshots', import.meta.url).pathname;
+  const expired = await new ArchiveSource([dir], { days: 0.001 }).load();
+  assert.equal(expired.clusters.length, 0, 'a short window drops the snapshot');
+  const kept = await new ArchiveSource([{ dir, days: Infinity }], { days: 0.001 }).load();
+  assert.ok(kept.clusters.length > 0, 'a directory with no cutoff keeps it');
+  const { buildDesk } = await import('../lib/config.mjs');
+  const { clusters } = await buildDesk({ offline: true }).source.boardClusters();
+  assert.ok(clusters.length > 0, 'the offline board has data whatever the date');
+});
