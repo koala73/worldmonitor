@@ -104,15 +104,20 @@ export async function persistRefreshFamilyPointer(
   refreshToken: string,
   familyId: string,
 ): Promise<boolean> {
-  return pipelineOk(await deps.redisPipeline([
-    [
-      'SET',
-      refreshFamilyPointerKey(refreshToken),
-      serializeRefreshFamilyPointer(familyId),
-      'EX',
-      REFRESH_TTL_SECONDS,
-    ],
-  ]));
+  // The pointer's TTL is the presented token's remaining lifetime, and a
+  // failed refresh restores the token with it. Keep an existing pointer's TTL
+  // (XX KEEPTTL) so the claim does not reset it; only a legacy token that has
+  // no pointer yet gets one with the full TTL (NX).
+  const key = refreshFamilyPointerKey(refreshToken);
+  const value = serializeRefreshFamilyPointer(familyId);
+  const results = await deps.redisPipeline([
+    ['SET', key, value, 'EX', REFRESH_TTL_SECONDS, 'NX'],
+    ['SET', key, value, 'XX', 'KEEPTTL'],
+  ]);
+  return Array.isArray(results)
+    && results.length === 2
+    && results.every((result) => result != null && !result.error)
+    && results[1]?.result === 'OK';
 }
 
 export async function markRefreshFamilyRevoked(

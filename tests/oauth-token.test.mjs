@@ -35,6 +35,7 @@ import {
   rawRedisFinalizeRefreshAttempt,
   rawRedisProtectFailedRefreshAttempt,
   rawRedisRestoreRefreshAttempt,
+  persistRefreshFamilyPointer,
 } from '../api/oauth/_refresh-recovery.ts';
 import {
   resolveBearerToContext,
@@ -431,6 +432,34 @@ describe('OAuth Redis refresh-attempt production contract', () => {
       if (savedToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
       else process.env.UPSTASH_REDIS_REST_TOKEN = savedToken;
     }
+  });
+});
+
+describe('persistRefreshFamilyPointer keeps the presented token lifetime', () => {
+  it('creates a missing pointer with the full TTL and never resets an existing TTL', async () => {
+    const seen = [];
+    const ok = await persistRefreshFamilyPointer({
+      // Real Redis answers null to SET NX when the pointer already exists.
+      redisPipeline: async (commands) => {
+        seen.push(...commands);
+        return [{ result: null }, { result: 'OK' }];
+      },
+    }, 'rt-aged', 'fam-aged');
+    assert.equal(ok, true);
+    assert.deepEqual(seen, [
+      ['SET', 'oauth:famptr:rt-aged', JSON.stringify('fam-aged'), 'EX', REFRESH_TTL_SECONDS, 'NX'],
+      ['SET', 'oauth:famptr:rt-aged', JSON.stringify('fam-aged'), 'XX', 'KEEPTTL'],
+    ]);
+  });
+
+  it('fails closed when the overwrite does not land', async () => {
+    assert.equal(await persistRefreshFamilyPointer({
+      redisPipeline: async () => [{ result: 'OK' }, { result: null }],
+    }, 'rt-x', 'fam-x'), false);
+    assert.equal(await persistRefreshFamilyPointer({
+      redisPipeline: async () => [{ result: null }, { error: 'ERR' }],
+    }, 'rt-x', 'fam-x'), false);
+    assert.equal(await persistRefreshFamilyPointer({ redisPipeline: async () => null }, 'rt-x', 'fam-x'), false);
   });
 });
 
