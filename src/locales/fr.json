@@ -2958,6 +2958,7 @@
       "tier4OnlyHint": "Chaque média qui rapporte cela est une source de niveau 4 (agrégateurs et blogs). Cela décrit la couverture, pas l'exactitude.",
       "rosterListed": "({{listed}} listés)",
       "rosterFeeds": "Flux détectés : {{labels}}",
+      "rosterSameCopy": "Même texte, compté une fois",
       "rosterLegend": "Les niveaux classent les sources ; ils ne jugent pas cette affirmation.",
       "tierDocsLink": "Comment les niveaux sont attribués",
       "tierChip": "N{{tier}}",

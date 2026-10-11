@@ -1,0 +1,159 @@
+// #9095: same copy under several mastheads counts as one publisher. Fixtures are
+// real items from the live digest of 2026-10-11 (title + lead as served).
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  SYNDICATION_MIN_CONTAINMENT,
+  copyContainment,
+  copyShingles,
+  detectSyndication,
+} from '../shared/syndication.js';
+import { publisherFamilyFor } from '../shared/publisher-families.js';
+import { clusterNewsCore } from '../shared/news-clustering-core.js';
+import { assignStoryIdentity } from '../server/worldmonitor/news/v1/dedup.mjs';
+import { assessCorroboration, evidenceFromCluster, publisherRoster } from '../server/_shared/corroboration.ts';
+import { getSourceTier } from '../server/_shared/source-tiers.ts';
+
+const ZAP_TITLE = 'Zaporizhzhia airstrikes kill 17 as Russia intensifies attacks across Ukraine';
+const ZAP_LEAD = 'Zaporizhzhia was hit by deadly Russian airstrikes on Saturday, 10 October, killing at least 17 people, including three children, Ukrainian officials said. Rescuers searched rubble for survivors as the city faced renewed strikes on residential areas.';
+const RAY_TITLE = 'Pentagon, Raytheon sign $6.3B deal to replenish US missile interceptor supply';
+const RAY_LEAD = 'The Pentagon inked a five-year contract with Raytheon for the steady production of ballistic missile interceptors that use force to destroy targets, rather than explosives. The $6.3 billion contract, which provides two additional option years, will see Raytheon produce';
+
+const euronews = { source: 'EuroNews', title: ZAP_TITLE, snippet: ZAP_LEAD };
+const africanews = { source: 'Africanews', title: ZAP_TITLE, snippet: ZAP_LEAD };
+const militaryTimes = { source: 'Military Times', title: RAY_TITLE, snippet: RAY_LEAD };
+// Feeds truncate one lead at different lengths: containment, not equality.
+const defenseNews = { source: 'Defense News', title: RAY_TITLE, snippet: `${RAY_LEAD} the SM-6 interceptor at full rate for the Navy.` };
+
+// Independently written reports of one event (same cluster, different copy).
+const cbcPanama = {
+  source: 'CBC News',
+  title: 'Panama declares state of emergency as powerful quake aftershocks rattle communities',
+  snippet: 'The government of Panama declared a state of emergency Saturday as the aftershocks of two powerful earthquakes that roiled the country shook communities for hours. Officials did not attribute any deaths to the quakes but reported damages in all 10 of Panama\'s provinces.',
+};
+const guardianPanama = {
+  source: 'Guardian Americas',
+  title: '‘It was a terrible thing’: Panama declares state of emergency as quake aftershocks rattle communities',
+  snippet: 'More than 100 aftershocks as high as magnitude-5.8 recorded after two quakes toppled buildings and prompted evacuations Panama’s government has declared a state of emergency on Saturday as the aftershocks of two powerful earthquakes',
+};
+const apFlood = {
+  source: 'AP News',
+  title: 'Villages evacuated as flash flood from Budhi Gandaki river hits northern Nepal - AP News',
+  snippet: 'Villages evacuated as flash flood from Budhi Gandaki river hits northern Nepal &nbsp;&nbsp; AP News',
+};
+const cbcFlood = {
+  source: 'CBC News',
+  title: 'Villages evacuated as flash flood from Budhi Gandaki river hits northern Nepal',
+  snippet: 'Residents along the Budhi Gandaki river in north central Nepal evacuated on Sunday as flash flooding destroyed homes and other structures in the area.',
+};
+
+describe('copy fingerprint', () => {
+  it('a headline alone is not a lead: short or title-repeating descriptions do not compare', () => {
+    assert.equal(copyShingles({ title: ZAP_TITLE, snippet: 'Short lead.' }), null);
+    assert.equal(copyShingles(apFlood), null, 'Google News repeats the headline plus the outlet name');
+    assert.ok(copyShingles(euronews));
+  });
+
+  it('identical and truncated copy contain each other; independent reports do not', () => {
+    assert.equal(copyContainment(copyShingles(euronews)!, copyShingles(africanews)!), 1);
+    assert.ok(copyContainment(copyShingles(militaryTimes)!, copyShingles(defenseNews)!) >= SYNDICATION_MIN_CONTAINMENT);
+    assert.ok(copyContainment(copyShingles(cbcPanama)!, copyShingles(guardianPanama)!) < SYNDICATION_MIN_CONTAINMENT);
+  });
+
+  it('reads a parsed feed item\'s description when there is no snippet', () => {
+    const parsed = { source: 'EuroNews', title: ZAP_TITLE, description: ZAP_LEAD };
+    assert.deepEqual(copyShingles(parsed), copyShingles(euronews));
+  });
+});
+
+describe('detectSyndication', () => {
+  const byLabel = (item: { source: string }) => publisherFamilyFor(item.source);
+
+  it('same copy under two unlisted mastheads counts once, and the group is listed for review', () => {
+    const result = detectSyndication([euronews, africanews], byLabel);
+    assert.equal(result.publishers, 1);
+    assert.deepEqual(result.groups, [{ families: ['label:africanews', 'label:euronews'], labels: ['EuroNews', 'Africanews'] }]);
+    assert.equal(result.familyOf(euronews), result.familyOf(africanews));
+  });
+
+  it('independently written reports of one event are not merged', () => {
+    for (const pair of [[cbcPanama, guardianPanama], [apFlood, cbcFlood]]) {
+      const result = detectSyndication(pair, byLabel);
+      assert.equal(result.publishers, 2, pair.map((item) => item.source).join(' + '));
+      assert.deepEqual(result.groups, []);
+    }
+  });
+
+  it('identical headlines without a real lead are not merged', () => {
+    const a = { source: 'Outlet One', title: ZAP_TITLE, snippet: '' };
+    const b = { source: 'Outlet Two', title: ZAP_TITLE, snippet: `${ZAP_TITLE} Outlet Two` };
+    assert.equal(detectSyndication([a, b], byLabel).publishers, 2);
+  });
+
+  it('never merges two curated families, even with identical copy', () => {
+    const reuters = { source: 'Reuters World', title: ZAP_TITLE, snippet: ZAP_LEAD };
+    const bbc = { source: 'BBC World', title: ZAP_TITLE, snippet: ZAP_LEAD };
+    assert.notEqual(publisherFamilyFor('Reuters World'), publisherFamilyFor('BBC World'));
+    assert.ok(!publisherFamilyFor('BBC World').startsWith('label:'));
+    const result = detectSyndication([reuters, bbc], byLabel);
+    assert.equal(result.publishers, 2);
+    assert.deepEqual(result.groups, []);
+  });
+
+  it('an unlisted reprint joins the curated publisher it copied, named after it', () => {
+    const reuters = { source: 'Reuters World', title: ZAP_TITLE, snippet: ZAP_LEAD };
+    const reprint = { source: 'Small Town Gazette', title: ZAP_TITLE, snippet: ZAP_LEAD };
+    const bbc = { source: 'BBC World', title: ZAP_TITLE, snippet: ZAP_LEAD };
+    const result = detectSyndication([reuters, reprint, bbc], byLabel);
+    assert.equal(result.publishers, 2, 'the reprint joins one curated family; the two curated families stay apart');
+    assert.equal(result.familyOf(reprint), publisherFamilyFor('Reuters World'));
+  });
+
+  it('the count can only go down', () => {
+    const pool = [euronews, africanews, militaryTimes, defenseNews, cbcPanama, guardianPanama, apFlood, cbcFlood,
+      { source: 'Reuters World', title: ZAP_TITLE, snippet: ZAP_LEAD }, { source: 'BBC World', title: ZAP_TITLE, snippet: ZAP_LEAD }];
+    for (let mask = 1; mask < 1 << pool.length; mask += 37) {
+      const subset = pool.filter((_, i) => mask & (1 << i));
+      const families = new Set(subset.map(byLabel)).size;
+      const { publishers } = detectSyndication(subset, byLabel);
+      assert.ok(publishers <= families && publishers >= 1, `${publishers} vs ${families}`);
+    }
+  });
+});
+
+describe('every surface that counts publishers applies it', () => {
+  const at = new Date('2026-10-11T09:00:00Z');
+  const asNewsItems = (items: typeof euronews[]) => items.map((item, i) => ({ ...item, link: `https://example.test/${i}`, pubDate: at, isAlert: false }));
+
+  it('server story identity: corroborationCount counts the copy once', async () => {
+    const items = [
+      { source: 'EuroNews', title: ZAP_TITLE, description: ZAP_LEAD, publishedAt: at.getTime() },
+      { source: 'Africanews', title: ZAP_TITLE, description: ZAP_LEAD, publishedAt: at.getTime() },
+    ];
+    const identities = await assignStoryIdentity(items, (t) => t.toLowerCase(), async (t) => `h:${t}`);
+    for (const item of items) assert.equal(identities.get(item)?.corroborationCount, 1);
+  });
+
+  it('clusterNewsCore: uniquePublisherCount counts the copy once', () => {
+    const [cluster] = clusterNewsCore(asNewsItems([euronews, africanews]), getSourceTier);
+    assert.equal(cluster!.allItems.length, 2);
+    assert.equal(cluster!.uniquePublisherCount, 1);
+  });
+
+  it('evidenceFromCluster, verdict and roster: one publisher, shown as the same copy', () => {
+    const evidence = evidenceFromCluster({ allItems: asNewsItems([euronews, africanews]) });
+    assert.deepEqual(assessCorroboration(evidence), { state: 'single-publisher', publishers: 1 });
+    const roster = publisherRoster(evidence);
+    assert.equal(roster.length, 1);
+    assert.deepEqual(roster[0]!.labels, ['EuroNews', 'Africanews']);
+    assert.equal(roster[0]!.sameCopy, true);
+  });
+
+  it('independent reports still corroborate, with no same-copy marker', () => {
+    const evidence = evidenceFromCluster({ allItems: asNewsItems([cbcPanama, guardianPanama]) });
+    assert.deepEqual(assessCorroboration(evidence), { state: 'corroborated', publishers: 2 });
+    assert.ok(publisherRoster(evidence).every((publisher) => publisher.sameCopy === undefined));
+    assert.equal('sameCopy' in evidence, false);
+  });
+});

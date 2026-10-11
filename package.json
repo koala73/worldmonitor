@@ -84,6 +84,7 @@
     "teasers:welcome:check": "node scripts/build-welcome-teasers.mjs --check",
     "sources:generate": "node scripts/source-attribution.mjs --write",
     "sources:check": "node scripts/source-attribution.mjs --check",
+    "syndication:candidates": "node scripts/syndication-candidates.mjs",
     "dev": "vite",
     "dev:tech": "cross-env VITE_VARIANT=tech vite",
     "dev:finance": "cross-env VITE_VARIANT=finance vite",

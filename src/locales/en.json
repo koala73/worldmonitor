@@ -1944,6 +1944,7 @@
       "rosterSummaryTier1": "Reported by {{publishers}}, including {{tier1}} tier-1",
       "rosterListed": "({{listed}} listed)",
       "rosterFeeds": "Feeds seen: {{labels}}",
+      "rosterSameCopy": "Same copy, counted once",
       "rosterLegend": "Tiers rank sources; they do not judge this claim.",
       "tierDocsLink": "How tiers are assigned",
       "tierChip": "T{{tier}}",

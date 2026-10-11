@@ -29,6 +29,8 @@ export interface NewsItemCore {
   credibilityScore?: number;
   /** Server digest's origin-aware publisher-family count for the item's story. */
   corroborationCount?: number;
+  /** Lead text; with the title, it is what same-copy detection compares (#9095). */
+  snippet?: string;
 }
 
 export type NewsItemWithTier = NewsItemCore & { tier: number };

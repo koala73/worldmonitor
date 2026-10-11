@@ -2920,6 +2920,7 @@
       "tier4OnlyHint": "이를 보도하는 모든 매체가 4등급 출처(수집처 및 블로그)입니다. 이는 보도 범위를 나타내며 정확성을 나타내지 않습니다.",
       "rosterListed": "({{listed}}곳 표시)",
       "rosterFeeds": "확인된 피드: {{labels}}",
+      "rosterSameCopy": "동일한 본문, 한 번만 집계",
       "rosterLegend": "등급은 출처의 순위를 매길 뿐, 이 주장을 판단하지 않습니다.",
       "tierDocsLink": "등급 부여 방식",
       "tierChip": "T{{tier}}",

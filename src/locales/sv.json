@@ -2556,6 +2556,7 @@
       "tier4OnlyHint": "Alla medier som rapporterar om detta är tier-4-källor (aggregatorer och bloggar). Detta beskriver bevakningen, inte korrektheten.",
       "rosterListed": "({{listed}} listade)",
       "rosterFeeds": "Sedda flöden: {{labels}}",
+      "rosterSameCopy": "Samma text, räknas en gång",
       "rosterLegend": "Nivåerna rangordnar källor; de bedömer inte detta påstående.",
       "tierDocsLink": "Hur nivåerna tilldelas",
       "tierChip": "N{{tier}}",

@@ -3008,6 +3008,7 @@
       "tier4OnlyHint": "Minden erről beszámoló médium 4. szintű forrás (aggregátorok és blogok). Ez a lefedettséget jellemzi, nem a pontosságot.",
       "rosterListed": "({{listed}} felsorolva)",
       "rosterFeeds": "Látott hírcsatornák: {{labels}}",
+      "rosterSameCopy": "Azonos szöveg, egyszer számítva",
       "rosterLegend": "A szintek a forrásokat rangsorolják; nem ítélik meg ezt az állítást.",
       "tierDocsLink": "Hogyan történik a szintek meghatározása",
       "tierChip": "T{{tier}}",

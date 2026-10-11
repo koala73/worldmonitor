@@ -2958,6 +2958,7 @@
       "tier4OnlyHint": "Fiecare publicație care raportează aceasta este o sursă de nivel 4 (site-uri agregatoare și bloguri). Aceasta descrie acoperirea de presă, nu acuratețea.",
       "rosterListed": "({{listed}} listați)",
       "rosterFeeds": "Fluxuri văzute: {{labels}}",
+      "rosterSameCopy": "Același text, numărat o singură dată",
       "rosterLegend": "Nivelurile clasifică sursele; ele nu judecă această afirmație.",
       "tierDocsLink": "Cum sunt atribuite nivelurile",
       "tierChip": "T{{tier}}",

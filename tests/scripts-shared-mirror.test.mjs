@@ -44,6 +44,8 @@ const MIRRORED_FILES = [
   'entity-registry.js',
   'entity-extraction-core.js',
   'news-clustering-core.js',
+  // #9095: news-clustering-core.js imports it for same-copy detection.
+  'syndication.js',
 ];
 
 describe('scripts/shared/ mirrors shared/', () => {

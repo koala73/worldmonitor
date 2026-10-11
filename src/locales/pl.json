@@ -2977,6 +2977,7 @@
       "tier4OnlyHint": "Wszystkie portale relacjonujące to są źródłami poziomu 4 (agregatory i blogi). To opisuje zasięg relacji, nie dokładność.",
       "rosterListed": "({{listed}} wymienionych)",
       "rosterFeeds": "Widoczne kanały: {{labels}}",
+      "rosterSameCopy": "Ten sam tekst, liczony raz",
       "rosterLegend": "Poziomy szeregują źródła; nie oceniają tego twierdzenia.",
       "tierDocsLink": "Jak przydzielane są poziomy",
       "tierChip": "T{{tier}}",

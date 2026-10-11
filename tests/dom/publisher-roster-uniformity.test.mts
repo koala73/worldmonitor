@@ -261,3 +261,23 @@ describe('publisher roster renders identically on every surface (#6419 step 3)',
     expect(body.querySelector('.cdp-news-item .publisher-roster')).toBeNull();
   });
 });
+
+describe('same copy under several mastheads (#9095)', () => {
+  const LEAD = 'Dockworkers walked out at dawn on Monday, halting container traffic at Europe\'s largest port, union officials said, as talks over pay and automation broke down overnight without agreement.';
+
+  it('NewsPanel counts two unlisted outlets carrying one copy as one publisher, and says so', () => {
+    const row = newsPanelRow(['Harbour Wire Daily', 'Harbour Wire Weekly'], { snippet: LEAD });
+    const roster = readRoster(row);
+    expect(roster?.rows).toHaveLength(1);
+    expect(roster?.rows[0]?.feeds).toContain('Harbour Wire Daily');
+    expect(roster?.rows[0]?.feeds).toContain('Harbour Wire Weekly');
+    expect(row.querySelector('.publisher-same-copy')?.textContent).toBe('Same copy, counted once');
+    expect(row.querySelector('.corroboration-flag')?.textContent).toBe('Single publisher');
+  });
+
+  it('the same outlets without a shared lead stay two publishers, with no same-copy note', () => {
+    const row = newsPanelRow(['Harbour Wire Daily', 'Harbour Wire Weekly']);
+    expect(row.querySelector('.publisher-same-copy')).toBeNull();
+    expect(row.querySelector('.corroboration-flag')).toBeNull();
+  });
+});

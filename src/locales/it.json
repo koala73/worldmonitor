@@ -2958,6 +2958,7 @@
       "tier4OnlyHint": "Ogni testata che riporta questa notizia è una fonte di livello 4 (aggregatori e blog). Questo descrive la copertura, non l'accuratezza.",
       "rosterListed": "({{listed}} elencati)",
       "rosterFeeds": "Feed visualizzati: {{labels}}",
+      "rosterSameCopy": "Stesso testo, contato una volta",
       "rosterLegend": "I livelli classificano le fonti; non giudicano questa affermazione.",
       "tierDocsLink": "Come vengono assegnati i livelli",
       "tierChip": "L{{tier}}",

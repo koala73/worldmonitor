@@ -3008,6 +3008,7 @@
       "tier4OnlyHint": "Kila chombo cha habari kinachoripoti hili ni chanzo cha kiwango cha 4 (tovuti za kukusanya habari na blogu). Hii inaeleza kiwango cha uripoti, si usahihi.",
       "rosterListed": "({{listed}} wameorodheshwa)",
       "rosterFeeds": "Milisho iliyoonekana: {{labels}}",
+      "rosterSameCopy": "Maandishi yaleyale, yamehesabiwa mara moja",
       "rosterLegend": "Viwango vinapanga vyanzo; havihukumu dai hili.",
       "tierDocsLink": "Jinsi viwango vinavyogawanywa",
       "tierChip": "T{{tier}}",

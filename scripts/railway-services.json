@@ -604,6 +604,7 @@
       "scripts/shared/physical-divergence-staleness.js",
       "scripts/shared/publisher-families.js",
       "scripts/shared/source-tiers.json",
+      "scripts/shared/syndication.js",
       "scripts/shared/text-analysis-core.js",
       "shared/country-names.json",
       "shared/iso3-to-iso2.json"
