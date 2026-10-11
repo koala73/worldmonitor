@@ -399,6 +399,11 @@ describe('OAuth Redis refresh-attempt production contract', () => {
         'oauth:famattempt:rt-contract',
       ]);
       assert.equal(restore[8], JSON.stringify('fam-contract'));
+      // The restore keeps the token's remaining lifetime (read from the family
+      // pointer) instead of granting a fresh full TTL.
+      assert.match(restore[1], /redis\.call\('TTL', KEYS\[2\]\)/);
+      assert.match(restore[1], /'EX', ttl\)/);
+      assert.doesNotMatch(restore[1], /'EX', ARGV\[4\]\)/);
 
       const finalize = JSON.parse(calls[1].init.body);
       assert.deepEqual(finalize.slice(2, 5), [

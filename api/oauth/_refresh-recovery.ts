@@ -269,10 +269,17 @@ export async function rawRedisRestoreRefreshAttempt(
   refreshData: unknown,
   familyId: string | null,
 ): Promise<boolean> {
+  // The family pointer was written with the refresh token and survives its
+  // GETDEL, so its remaining TTL is the token's remaining lifetime. Restoring
+  // with a fresh full TTL would let repeated transient failures stretch a
+  // refresh token past its intended expiry. Legacy tokens without a pointer
+  // fall back to the full TTL.
   const script = [
     "if redis.call('GET', KEYS[3]) ~= ARGV[1] then return 0 end",
-    "redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[4])",
-    "if ARGV[3] ~= '' then redis.call('SET', KEYS[2], ARGV[3], 'EX', ARGV[4]) end",
+    "local ttl = redis.call('TTL', KEYS[2])",
+    "if ttl <= 0 then ttl = tonumber(ARGV[4]) end",
+    "redis.call('SET', KEYS[1], ARGV[2], 'EX', ttl)",
+    "if ARGV[3] ~= '' then redis.call('SET', KEYS[2], ARGV[3], 'EX', ttl) end",
     "redis.call('DEL', KEYS[3])",
     'return 1',
   ].join('\n');
