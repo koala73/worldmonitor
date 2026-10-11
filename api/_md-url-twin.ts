@@ -40,9 +40,15 @@ const FORWARDED_RESPONSE_HEADERS = [
   'x-ratelimit-reset',
 ] as const;
 
+// Control characters and whitespace are rejected outright: the URL parser
+// strips tab/CR/LF, so a path like "/<TAB>/host/x" would otherwise resolve to
+// the protocol-relative "//host/x" and leave the origin.
+const UNSAFE_PATH_CHARS = /[\x00-\x20\x7f]/;
+
 export function isMarkdownTwinPath(pathname: string): boolean {
   return (
     pathname.startsWith('/') &&
+    !UNSAFE_PATH_CHARS.test(pathname) &&
     pathname.endsWith('.md') &&
     pathname.length > 4 &&
     !pathname.includes('..') &&
@@ -352,6 +358,14 @@ export async function buildMarkdownTwinResponse(
   const heading = headingFromPath(sibling);
   const requestUrl = new URL(req.url);
   let siblingUrl = new URL(sibling, requestUrl);
+  // The sibling is always a page on this site. Checked on the resolved URL,
+  // not the path string, so no parser quirk can turn it into another host.
+  if (siblingUrl.origin !== requestUrl.origin) {
+    return new Response('# Not found\n', {
+      status: 404,
+      headers: markdownHeaders(null, { ...NOT_A_DOCUMENT }),
+    });
+  }
   siblingUrl.search = requestUrl.search;
   if (requestUrl.pathname === '/api/md-twin' || requestUrl.pathname === '/api/md-twin/') {
     // `path`/`mdPath` belong to the afterFiles rewrite, not to the caller.
