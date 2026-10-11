@@ -34,13 +34,20 @@ const LEAD_WORD_LIMIT = 60;
 
 const CURATED_FAMILY = (family) => typeof family === 'string' && family !== '' && !family.startsWith('label:');
 
+/**
+ * Lower-case words in any script that separates words with spaces (Latin,
+ * Greek, Cyrillic, Arabic, Hebrew, Devanagari...), accents and other combining
+ * marks dropped. Scripts written without spaces (Chinese, Japanese, Thai) come
+ * out as a few long runs, fail the lead-length rule and are never merged: the
+ * count stays as curated, it does not go up.
+ */
 function words(text) {
   return String(text || '')
     .replace(/&(?:[a-z]+|#\d+|#x[0-9a-f]+);/gi, ' ')
     .toLowerCase()
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .split(/[^a-z0-9]+/)
+    .replace(/\p{M}/gu, '')
+    .split(/[^\p{L}\p{N}]+/u)
     .filter(Boolean);
 }
 

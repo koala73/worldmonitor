@@ -245,7 +245,7 @@ export function clusterNewsCore(items, getSourceTier) {
         ? { credibilityScore: primary.credibilityScore }
         : {}),
       sourceCount: cluster.length,
-      uniquePublisherCount: detectSyndication(cluster, (i) => publisherFamilyFor(i.source)).publishers,
+      uniquePublisherCount: clusterPublisherCount(cluster),
       topSources,
       allItems: cluster,
       firstSeen: new Date(dates.reduce((min, d) => d < min ? d : min)),
@@ -276,4 +276,17 @@ export function topClusterKeywords(cluster, limit = 5) {
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, limit)
     .map(([token]) => token);
+}
+
+/**
+ * Publishers behind one story's items: publisher families by feed label, with
+ * families that carried the same copy counted once (#9095). Every path that
+ * builds or rebuilds a cluster's uniquePublisherCount must use this, so a
+ * merged cluster cannot add reprints back.
+ *
+ * @param {readonly { source: string; title?: string; snippet?: string }[]} items
+ * @returns {number}
+ */
+export function clusterPublisherCount(items) {
+  return detectSyndication(items, (i) => publisherFamilyFor(i.source)).publishers;
 }

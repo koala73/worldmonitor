@@ -50,17 +50,21 @@ function claimLabels(evidence: ClaimEvidence): string[] {
     .filter((label) => publisherFamilyFor(label) !== '');
 }
 
+const isCuratedFamily = (family: string) => Object.prototype.hasOwnProperty.call(PUBLISHER_FAMILIES, family);
+
 /**
- * The publisher a label counts as: its family, or the first family of a
- * same-copy group the family belongs to (#9095). Merging only ever joins
- * families, so this can lower the count and never raise it.
+ * The publisher a label counts as: its family, or the family a same-copy group
+ * it belongs to is named after (#9095): the group's curated publisher when it
+ * has one, so a reprint is listed under the publisher it copied. Merging only
+ * ever joins families, so this can lower the count and never raise it.
  */
 function publisherKeyFor(evidence: ClaimEvidence): (label: string) => string {
   const merged = new Map<string, string>();
   if (evidence.kind === 'grouped') {
     for (const group of evidence.sameCopy ?? []) {
       const families = group.filter((family) => typeof family === 'string' && family !== '');
-      for (const family of families) if (!merged.has(family)) merged.set(family, families[0]!);
+      const key = families.find(isCuratedFamily) ?? families[0]!;
+      for (const family of families) if (!merged.has(family)) merged.set(family, key);
     }
   }
   return (label) => {
@@ -131,7 +135,7 @@ export function publisherRoster(evidence: ClaimEvidence): PublisherRoster {
   }
   return [...byKey].map(([family, { labels, tier, families }]): Publisher => ({
     family,
-    name: Object.prototype.hasOwnProperty.call(PUBLISHER_FAMILIES, family) ? publisherNameForFamily(family) : labels[0]!.trim(),
+    name: isCuratedFamily(family) ? publisherNameForFamily(family) : labels[0]!.trim(),
     tier,
     labels,
     ...(families.size > 1 ? { sameCopy: true as const } : {}),

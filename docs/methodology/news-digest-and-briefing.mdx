@@ -292,8 +292,10 @@ containment of at least 0.85, with at least 12 lead words that are not the
 headline's) are one copy, and their families count once. It only lowers the
 count. It never merges two curated families, and a headline without a real lead
 never merges, because two outlets can write the same short headline
-independently. The merged outlets show as "Same copy, counted once" in the
-publisher list. `npm run syndication:candidates` lists the groups found in the
+independently. Words are compared in any script that separates them with
+spaces; Chinese, Japanese and Thai text is not compared, so those counts stay as
+curated. A merged group is listed under its curated publisher when it has one,
+and the outlets show as "Same copy, counted once" in the publisher list. `npm run syndication:candidates` lists the groups found in the
 live digest for review; nothing is added to the curated map automatically.
 
 `sourceCount` is not stored in the story-track hash for current rows.

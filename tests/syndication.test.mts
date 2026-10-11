@@ -10,7 +10,9 @@ import {
   detectSyndication,
 } from '../shared/syndication.js';
 import { publisherFamilyFor } from '../shared/publisher-families.js';
-import { clusterNewsCore } from '../shared/news-clustering-core.js';
+import { readFileSync } from 'node:fs';
+
+import { clusterNewsCore, clusterPublisherCount } from '../shared/news-clustering-core.js';
 import { assignStoryIdentity } from '../server/worldmonitor/news/v1/dedup.mjs';
 import { assessCorroboration, evidenceFromCluster, publisherRoster } from '../server/_shared/corroboration.ts';
 import { getSourceTier } from '../server/_shared/source-tiers.ts';
@@ -59,6 +61,27 @@ describe('copy fingerprint', () => {
     assert.equal(copyContainment(copyShingles(euronews)!, copyShingles(africanews)!), 1);
     assert.ok(copyContainment(copyShingles(militaryTimes)!, copyShingles(defenseNews)!) >= SYNDICATION_MIN_CONTAINMENT);
     assert.ok(copyContainment(copyShingles(cbcPanama)!, copyShingles(guardianPanama)!) < SYNDICATION_MIN_CONTAINMENT);
+  });
+
+  // Written for this test in the shape of a shared agency copy; not digest items.
+  it('compares copy in non-Latin scripts that separate words with spaces', () => {
+    const title = 'Взрывы прогремели в Запорожье после ночной атаки беспилотников';
+    const lead = 'Серия взрывов прогремела в Запорожье в ночь на воскресенье, сообщили местные власти. По предварительным данным, повреждены жилые дома и объекты энергетики, на месте работают спасатели и пожарные расчёты.';
+    const a = copyShingles({ title, snippet: lead });
+    const b = copyShingles({ title, snippet: `${lead} Информация о пострадавших уточняется.` });
+    assert.ok(a && b);
+    assert.ok(copyContainment(a, b) >= SYNDICATION_MIN_CONTAINMENT);
+    const greek = copyShingles({
+      title: 'Σεισμός 5,2 Ρίχτερ στην Κρήτη',
+      snippet: 'Σεισμική δόνηση μεγέθους 5,2 βαθμών της κλίμακας Ρίχτερ σημειώθηκε το πρωί της Κυριακής νότια του Ηρακλείου, σύμφωνα με το Γεωδυναμικό Ινστιτούτο, χωρίς αναφορές για ζημιές.',
+    });
+    assert.ok(greek, 'Greek leads are long enough to compare');
+  });
+
+  it('scripts written without spaces never compare, so they never merge', () => {
+    const title = '台风登陆浙江沿海地区';
+    const lead = '第十八号台风于周日凌晨在浙江沿海登陆，中心附近最大风力达到十四级，当地已紧急转移数万名群众，多条高铁线路暂停运营，部分航班取消。';
+    assert.equal(copyShingles({ title, snippet: lead }), null);
   });
 
   it('reads a parsed feed item\'s description when there is no snippet', () => {
@@ -110,6 +133,19 @@ describe('detectSyndication', () => {
     assert.equal(result.familyOf(reprint), publisherFamilyFor('Reuters World'));
   });
 
+  it('the roster names a reprint group after the curated publisher it copied', () => {
+    const at = new Date('2026-10-11T09:00:00Z');
+    const allItems = [
+      { source: 'Small Town Gazette', title: ZAP_TITLE, snippet: ZAP_LEAD, link: 'https://example.test/a', pubDate: at, isAlert: false },
+      { source: 'Reuters World', title: ZAP_TITLE, snippet: ZAP_LEAD, link: 'https://example.test/b', pubDate: at, isAlert: false },
+    ];
+    const roster = publisherRoster(evidenceFromCluster({ allItems }));
+    assert.equal(roster.length, 1);
+    assert.equal(roster[0]!.family, publisherFamilyFor('Reuters World'));
+    assert.equal(roster[0]!.name, 'Reuters');
+    assert.equal(roster[0]!.sameCopy, true);
+  });
+
   it('the count can only go down', () => {
     const pool = [euronews, africanews, militaryTimes, defenseNews, cbcPanama, guardianPanama, apFlood, cbcFlood,
       { source: 'Reuters World', title: ZAP_TITLE, snippet: ZAP_LEAD }, { source: 'BBC World', title: ZAP_TITLE, snippet: ZAP_LEAD }];
@@ -139,6 +175,13 @@ describe('every surface that counts publishers applies it', () => {
     const [cluster] = clusterNewsCore(asNewsItems([euronews, africanews]), getSourceTier);
     assert.equal(cluster!.allItems.length, 2);
     assert.equal(cluster!.uniquePublisherCount, 1);
+  });
+
+  it('the dashboard\'s semantic merge rebuilds the count with the same detector', () => {
+    assert.equal(clusterPublisherCount(asNewsItems([euronews, africanews, cbcPanama])), 2);
+    const source = readFileSync(new URL('../src/services/clustering.ts', import.meta.url), 'utf8');
+    assert.match(source, /uniquePublisherCount: clusterPublisherCount\(allItems\)/);
+    assert.doesNotMatch(source, /countPublisherFamilies/);
   });
 
   it('evidenceFromCluster, verdict and roster: one publisher, shown as the same copy', () => {
