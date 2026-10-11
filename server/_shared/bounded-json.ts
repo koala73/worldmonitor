@@ -41,6 +41,11 @@ function measure(value: unknown, budget: number, used: number, inArray: boolean)
     default:
       break;
   }
+  const toJSON = (value as { toJSON?: unknown }).toJSON;
+  if (typeof toJSON === 'function') {
+    // Mirror JSON.stringify: measure what toJSON returns, still within budget.
+    return measure(toJSON.call(value), budget, used, inArray);
+  }
   if (Array.isArray(value)) {
     used += 2;
     for (let i = 0; i < value.length; i += 1) {
@@ -51,11 +56,6 @@ function measure(value: unknown, budget: number, used: number, inArray: boolean)
     return used;
   }
   const record = value as Record<string, unknown>;
-  if (typeof (record as { toJSON?: unknown }).toJSON === 'function') {
-    // Not produced by JSON.parse/jmespath; fall back to the exact serializer.
-    const text = JSON.stringify(record);
-    return text === undefined ? used : used + text.length;
-  }
   used += 2;
   let first = true;
   for (const key of Object.keys(record)) {

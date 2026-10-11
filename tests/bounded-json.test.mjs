@@ -42,4 +42,16 @@ describe('stringifyWithinBudget', () => {
     assert.ok(r.minBytes > 256 * 1024);
     assert.ok(Date.now() - started < 1000);
   });
+  it('measures toJSON results within the budget, matching JSON.stringify', () => {
+    const date = new Date(0);
+    assert.deepEqual(stringifyWithinBudget([date, { at: date }], 1024), {
+      ok: true,
+      text: JSON.stringify([date, { at: date }]),
+    });
+    let calls = 0;
+    const huge = { toJSON: () => { calls += 1; return 'x'.repeat(1_000_000); } };
+    const r = stringifyWithinBudget([huge], 1024);
+    assert.equal(r.ok, false);
+    assert.equal(calls, 1, 'an over-budget toJSON result is never serialized');
+  });
 });
