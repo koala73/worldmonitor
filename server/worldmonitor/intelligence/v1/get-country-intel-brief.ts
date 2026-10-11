@@ -355,7 +355,9 @@ export async function getCountryIntelBrief(
     lang,
     isPremium,
     contextHash: contextSnapshot ? contextHashFull.slice(0, 16) : 'base',
-    frameworkHash: frameworkRaw ? frameworkHashFull.slice(0, 8) : '',
+    // Full digest: the framework is caller-supplied text, and a truncated hash
+    // would let a crafted framework collide with another user's cache entry.
+    frameworkHash: frameworkRaw ? frameworkHashFull : '',
     energyYear,
     energyImportYear,
   });
