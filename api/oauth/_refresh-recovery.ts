@@ -33,6 +33,8 @@ export interface RefreshConsumeSuccess {
   kind: 'consumed';
   refreshData: unknown;
   attemptValue: string;
+  /** When the claimed token would have expired (epoch ms), if it had a TTL. */
+  expiresAtMs?: number | null;
 }
 
 export interface RefreshConsumeMiss {
@@ -50,6 +52,7 @@ export interface RefreshRecoveryDeps {
     attemptValue: string,
     refreshData: unknown,
     familyId: string | null,
+    ttlSeconds?: number,
   ) => Promise<boolean>;
   redisFinalizeRefreshAttempt: (refreshToken: string, attemptValue: string) => Promise<boolean>;
   redisProtectFailedRefreshAttempt: (refreshToken: string, attemptValue: string) => Promise<boolean>;
@@ -136,7 +139,13 @@ export async function restoreRefreshAttempt(
   refreshData: unknown,
   familyId: string | null,
   stage: RefreshRestoreStage,
+  expiresAtMs?: number | null,
 ): Promise<boolean> {
+  // Restore with the lifetime the token had when it was claimed, never a
+  // fresh one. A token whose expiry passed mid-request gets one second.
+  const ttlSeconds = typeof expiresAtMs === 'number'
+    ? Math.max(1, Math.ceil((expiresAtMs - Date.now()) / 1000))
+    : undefined;
   try {
     if (
       await deps.redisRestoreRefreshAttempt(
@@ -144,6 +153,7 @@ export async function restoreRefreshAttempt(
         attemptValue,
         refreshData,
         familyId,
+        ttlSeconds,
       )
     ) {
       return true;
@@ -243,9 +253,10 @@ export async function rawRedisBeginRefreshAttempt(
     "  if ok and type(decoded) == 'table' and decoded.kind == 'refresh_attempt' then",
     "    return {0, redis.call('EXISTS', KEYS[2]), redis.call('GET', KEYS[3]) or false}",
     '  end',
+    "  local ttl = redis.call('TTL', KEYS[1])",
     "  redis.call('SET', KEYS[2], ARGV[1], 'EX', ARGV[3])",
     "  redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])",
-    '  return {1, value}',
+    '  return {1, value, ttl}',
     'end',
     "return {0, redis.call('EXISTS', KEYS[2]), redis.call('GET', KEYS[3]) or false}",
   ].join('\n');
@@ -259,7 +270,14 @@ export async function rawRedisBeginRefreshAttempt(
     throw new Error('Redis refresh-attempt consume returned an invalid response');
   }
   if (result[0] === 1) {
-    return { kind: 'consumed', refreshData: parseStoredJson(result[1]), attemptValue };
+    // TTL of the claimed token, read in the same script that claimed it.
+    const ttl = typeof result[2] === 'number' && result[2] > 0 ? result[2] : null;
+    return {
+      kind: 'consumed',
+      refreshData: parseStoredJson(result[1]),
+      attemptValue,
+      expiresAtMs: ttl === null ? null : Date.now() + ttl * 1000,
+    };
   }
   return {
     kind: 'miss',
@@ -273,15 +291,16 @@ export async function rawRedisRestoreRefreshAttempt(
   attemptValue: string,
   refreshData: unknown,
   familyId: string | null,
+  ttlSeconds?: number,
 ): Promise<boolean> {
-  // The family pointer was written with the refresh token and survives its
-  // GETDEL, so its remaining TTL is the token's remaining lifetime. Restoring
-  // with a fresh full TTL would let repeated transient failures stretch a
-  // refresh token past its intended expiry. Legacy tokens without a pointer
-  // fall back to the full TTL.
+  // Restoring with a fresh full TTL would let repeated transient failures
+  // stretch a refresh token past its intended expiry. Prefer the lifetime
+  // captured when the token was claimed (ARGV[5]); otherwise the family
+  // pointer's remaining TTL; only a token with neither gets the full TTL.
   const script = [
     "if redis.call('GET', KEYS[3]) ~= ARGV[1] then return 0 end",
-    "local ttl = redis.call('TTL', KEYS[2])",
+    "local ttl = tonumber(ARGV[5]) or 0",
+    "if ttl <= 0 then ttl = redis.call('TTL', KEYS[2]) end",
     "if ttl <= 0 then ttl = tonumber(ARGV[4]) end",
     "redis.call('SET', KEYS[1], ARGV[2], 'EX', ttl)",
     "if ARGV[3] ~= '' then redis.call('SET', KEYS[2], ARGV[3], 'EX', ttl) end",
@@ -300,6 +319,7 @@ export async function rawRedisRestoreRefreshAttempt(
       JSON.stringify(refreshData),
       familyId ? serializeRefreshFamilyPointer(familyId) : '',
       REFRESH_TTL_SECONDS,
+      ttlSeconds && ttlSeconds > 0 ? Math.ceil(ttlSeconds) : 0,
     ],
   );
   if (result !== 0 && result !== 1) throw new Error('Redis refresh-attempt restore returned an invalid response');

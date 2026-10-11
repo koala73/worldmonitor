@@ -622,6 +622,7 @@ async function handleRefreshToken(
 
   const refreshData = consume.refreshData as RefreshDataPro | RefreshDataLegacy;
   const attemptValue = consume.attemptValue;
+  const expiresAtMs = consume.expiresAtMs ?? null;
   if (!refreshData || typeof refreshData !== 'object') {
     return temporaryAuthFailure();
   }
@@ -650,6 +651,7 @@ async function handleRefreshToken(
       refreshData,
       refreshData.family_id,
       'persist-family-pointer',
+      expiresAtMs,
     );
     return temporaryAuthFailure();
   }
@@ -672,6 +674,7 @@ async function handleRefreshToken(
         refreshData,
         refreshData.family_id,
         'read-family-revocation',
+        expiresAtMs,
       );
       return temporaryAuthFailure();
     }
@@ -690,6 +693,7 @@ async function handleRefreshToken(
       refreshData,
       refreshData.family_id,
       'client-validation',
+      expiresAtMs,
     );
     return restored ? clientCheck : temporaryAuthFailure();
   }
@@ -726,6 +730,7 @@ async function handleRefreshToken(
         refreshData,
         refreshData.family_id,
         'convex-transient',
+        expiresAtMs,
       );
       return temporaryAuthFailure();
     }
@@ -758,6 +763,7 @@ async function handleRefreshToken(
         refreshData,
         refreshData.family_id,
         'store-rotated-token',
+        expiresAtMs,
       );
       return temporaryAuthFailure();
     }
@@ -791,6 +797,7 @@ async function handleRefreshToken(
       refreshData,
       refreshData.family_id,
       'store-rotated-token',
+      expiresAtMs,
     );
     return temporaryAuthFailure();
   }

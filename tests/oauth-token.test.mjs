@@ -104,6 +104,8 @@ async function ensureFixtures() {
 function makeRedis() {
   const store = new Map();
   const ops = [];
+  // Remaining refresh-token lifetimes (ms) a test can seed; the claim reports them.
+  const refreshTtlMs = new Map();
   const parseStored = (value) => {
     if (typeof value !== 'string') return value;
     try { return JSON.parse(value); } catch { return null; }
@@ -111,6 +113,7 @@ function makeRedis() {
   return {
     store,
     ops,
+    refreshTtlMs,
     redisGetDel: async (key) => {
       ops.push({ kind: 'getdel', key });
       const v = store.get(key);
@@ -153,7 +156,13 @@ function makeRedis() {
         }
         store.set(attemptKey, attemptValue);
         store.set(refreshKey, attemptMarker);
-        return { kind: 'consumed', refreshData, attemptValue };
+        const ttlMs = refreshTtlMs.get(refreshToken);
+        return {
+          kind: 'consumed',
+          refreshData,
+          attemptValue,
+          expiresAtMs: ttlMs === undefined ? null : Date.now() + ttlMs,
+        };
       }
       return {
         kind: 'miss',
@@ -161,9 +170,9 @@ function makeRedis() {
         familyId: parseStored(store.get(pointerKey))?.family_id ?? parseStored(store.get(pointerKey)) ?? null,
       };
     },
-    redisRestoreRefreshAttempt: async (refreshToken, attemptValue, refreshData, familyId) => {
+    redisRestoreRefreshAttempt: async (refreshToken, attemptValue, refreshData, familyId, ttlSeconds) => {
       const attemptKey = `oauth:famattempt:${refreshToken}`;
-      ops.push({ kind: 'restore-refresh-attempt', refreshToken, attemptValue });
+      ops.push({ kind: 'restore-refresh-attempt', refreshToken, attemptValue, ttlSeconds });
       if (store.get(attemptKey) !== attemptValue) return false;
       store.set(`oauth:refresh:${refreshToken}`, JSON.stringify(refreshData));
       if (familyId) store.set(`oauth:famptr:${refreshToken}`, JSON.stringify(familyId));
@@ -327,19 +336,23 @@ describe('OAuth Redis refresh-attempt production contract', () => {
     const calls = [];
     globalThis.fetch = async (url, init) => {
       calls.push({ url: String(url), init });
-      return new Response(JSON.stringify({ result: [1, JSON.stringify({ family_id: 'fam-contract' })] }), {
+      return new Response(JSON.stringify({ result: [1, JSON.stringify({ family_id: 'fam-contract' }), 3600] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
     };
 
     try {
+      const before = Date.now();
       const result = await rawRedisBeginRefreshAttempt('rt-contract', 'attempt-contract');
-      assert.deepEqual(result, {
+      const { expiresAtMs, ...rest } = result;
+      assert.deepEqual(rest, {
         kind: 'consumed',
         refreshData: { family_id: 'fam-contract' },
         attemptValue: JSON.stringify({ attempt_id: 'attempt-contract' }),
       });
+      // The claim reports the token's remaining TTL, read in the same script.
+      assert.ok(expiresAtMs >= before + 3600_000 && expiresAtMs <= Date.now() + 3600_000);
       assert.equal(calls[0].url, 'https://test.upstash.io/');
       assert.equal(calls[0].init.method, 'POST');
       assert.equal(calls[0].init.headers.Authorization, 'Bearer test-token');
@@ -354,6 +367,8 @@ describe('OAuth Redis refresh-attempt production contract', () => {
       assert.equal(command[6], JSON.stringify({ attempt_id: 'attempt-contract' }));
       assert.deepEqual(JSON.parse(command[7]), { kind: 'refresh_attempt', attempt_id: 'attempt-contract' });
       assert.equal(command[8], REFRESH_ATTEMPT_TTL_SECONDS);
+      assert.match(command[1], /local ttl = redis\.call\('TTL', KEYS\[1\]\)/);
+      assert.match(command[1], /return \{1, value, ttl\}/);
     } finally {
       globalThis.fetch = realFetch;
       if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
@@ -386,6 +401,7 @@ describe('OAuth Redis refresh-attempt production contract', () => {
           attemptValue,
           { family_id: 'fam-contract' },
           'fam-contract',
+          42,
         ),
         true,
       );
@@ -400,8 +416,10 @@ describe('OAuth Redis refresh-attempt production contract', () => {
         'oauth:famattempt:rt-contract',
       ]);
       assert.equal(restore[8], JSON.stringify('fam-contract'));
-      // The restore keeps the token's remaining lifetime (read from the family
-      // pointer) instead of granting a fresh full TTL.
+      // The restore keeps the lifetime captured at claim (ARGV[5]), falling
+      // back to the family pointer's TTL, instead of granting a fresh full TTL.
+      assert.equal(restore[10], 42);
+      assert.match(restore[1], /local ttl = tonumber\(ARGV\[5\]\) or 0/);
       assert.match(restore[1], /redis\.call\('TTL', KEYS\[2\]\)/);
       assert.match(restore[1], /'EX', ttl\)/);
       assert.doesNotMatch(restore[1], /'EX', ARGV\[4\]\)/);
@@ -1162,6 +1180,30 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     assert.equal(resp.headers.get('Retry-After'), '5');
     assert.ok(redis.store.has('oauth:refresh:rt-transient'));
     assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-transient', FAMILY, REFRESH_TTL_SECONDS);
+  });
+
+  it('a transient failure restores the token with its remaining lifetime, not a fresh one', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps({ validateProMcpToken: async () => ({ ok: 'transient' }) });
+    redis.store.set('oauth:refresh:rt-aged', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: 'fam_aged',
+    });
+    redis.refreshTtlMs.set('rt-aged', 90_000);
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    const resp = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-aged', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(resp.status, 503);
+    const restore = redis.ops.find((op) => op.kind === 'restore-refresh-attempt');
+    assert.ok(restore, 'the token must be restored');
+    assert.ok(restore.ttlSeconds > 0 && restore.ttlSeconds <= 90, `restored TTL ${restore.ttlSeconds}`);
   });
 
   it('a failed transient restore protects the attempt so retry cannot revoke sibling sessions', async () => {
