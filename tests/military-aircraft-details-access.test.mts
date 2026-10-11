@@ -259,7 +259,11 @@ describe('Wingbits aircraft-details batch spend boundary', () => {
 
     assert.deepEqual(urls, ['https://customer-api.wingbits.com/v1/flights/details/aa0001']);
     assert.deepEqual(Object.keys(response.results), ['aa0001']);
-    assert.equal(response.requested, 3);
+    // The client negative-caches `batchKeys.slice(0, requested)` for an hour.
+    // A skipped address is not a negative result (the aircraft may have joined
+    // the snapshot after the tracked set was read), so the prefix stops before
+    // the first one and the client retries it on its next refresh.
+    assert.equal(response.requested, 1);
   });
 
   it('keeps looking up misses when no snapshot exists to check against', async () => {

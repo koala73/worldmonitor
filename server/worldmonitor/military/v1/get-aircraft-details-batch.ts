@@ -62,11 +62,21 @@ export async function getAircraftDetailsBatch(
     // Wingbits credential. This route stays anonymous for the map, so a miss is
     // only fetched for an aircraft in the published flight snapshot; otherwise
     // any caller could look up arbitrary addresses on the server's key.
+    //
+    // A skipped address is not a negative result: an aircraft that entered the
+    // snapshot after the tracked set was read is looked up on a later refresh.
+    // So `requested` stops before the first skipped address (see below).
+    let requested = limitedList.length;
     if (toFetch.length > 0) {
       const tracked = await getTrackedAircraftIcao24s();
       if (tracked) {
-        for (let i = toFetch.length - 1; i >= 0; i--) {
-          if (!tracked.has(toFetch[i]!)) toFetch.splice(i, 1);
+        const skipped = toFetch.filter((id) => !tracked.has(id));
+        if (skipped.length > 0) {
+          const skippedSet = new Set(skipped);
+          requested = limitedList.findIndex((id) => skippedSet.has(id));
+          for (let i = toFetch.length - 1; i >= 0; i--) {
+            if (skippedSet.has(toFetch[i]!)) toFetch.splice(i, 1);
+          }
         }
       }
     }
@@ -92,7 +102,7 @@ export async function getAircraftDetailsBatch(
     return {
       results,
       fetched: Object.keys(results).length,
-      requested: limitedList.length,
+      requested,
       configured: true,
     };
   } catch {
