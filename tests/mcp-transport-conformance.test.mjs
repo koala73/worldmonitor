@@ -1006,3 +1006,30 @@ describe('api/mcp.ts — rate-limit denials stay correlatable over the wire (#78
     );
   });
 });
+
+describe('api/mcp/handler.ts — SSE replay byte budget', () => {
+  it('one principal at its session cap cannot evict another principal\'s replay', async () => {
+    const { __sseReplayStoreForTest: store } = await import('../api/mcp/handler.ts');
+    store.reset();
+    try {
+      const big = 'x'.repeat(120 * 1024);
+      assert.equal(store.store('victim-session', 'victim-stream', big, 'victim'), true);
+      const victimBytes = store.ownerBytes('victim');
+
+      // Twenty sessions of two large responses each is ~4.8 MiB, above the
+      // shared 4 MiB budget. Before the per-owner byte budget, storing them
+      // evicted the victim's stream from the shared LRU.
+      for (let s = 0; s < 20; s++) {
+        for (let r = 0; r < 2; r++) {
+          assert.equal(store.store(`attacker-${s}`, `stream-${r}`, big, 'attacker'), true);
+        }
+      }
+
+      assert.equal(store.ownerBytes('victim'), victimBytes, 'the victim\'s replay must survive');
+      assert.ok(store.ownerBytes('attacker') <= 1024 * 1024, 'the attacker stays within its own budget');
+      assert.ok(store.totalBytes() <= 4 * 1024 * 1024);
+    } finally {
+      store.reset();
+    }
+  });
+});
