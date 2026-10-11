@@ -247,7 +247,6 @@ export function rateLimitKeyForIp(ip: string): string {
   let addr = (ip.split('%')[0] ?? ip).toLowerCase();
   const v4Tail = addr.match(/^(.*:)(\d{1,3}(?:\.\d{1,3}){3})$/);
   if (v4Tail) {
-    if (v4Tail[1] === '::ffff:' || v4Tail[1] === '0:0:0:0:0:ffff:') return v4Tail[2]!;
     const octets = v4Tail[2]!.split('.').map(Number);
     if (octets.some((n) => n > 255)) return ip;
     const [a = 0, b = 0, c = 0, d = 0] = octets;
@@ -261,6 +260,13 @@ export function rateLimitKeyForIp(ip: string): string {
   if (halves.length === 1 ? missing !== 0 : missing < 1) return ip;
   const groups = [...head, ...new Array(halves.length === 2 ? missing : 0).fill('0'), ...tail];
   if (!groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return ip;
+  // IPv4-mapped (::ffff:a.b.c.d), in dotted or hex form, is one IPv4 client.
+  const nums = groups.map((g) => parseInt(g, 16));
+  if (nums.slice(0, 5).every((n) => n === 0) && nums[5] === 0xffff) {
+    const hi = nums[6]!;
+    const lo = nums[7]!;
+    return `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`;
+  }
   return `${groups.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(':')}::/64`;
 }
 

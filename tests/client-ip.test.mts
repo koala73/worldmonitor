@@ -192,6 +192,11 @@ describe('rateLimitKeyForIp groups IPv6 clients by /64', () => {
       assert.notEqual(fn('2001:db8:1:3::1'), fn('2001:db8:1:2::1'));
       assert.equal(fn('fe80::1%eth0'), 'fe80:0:0:0::/64');
       assert.equal(fn('::ffff:192.0.2.1'), '192.0.2.1');
+      assert.equal(fn('0:0:0:0:0:ffff:192.0.2.1'), '192.0.2.1');
+      assert.equal(fn('::ffff:c000:201'), '192.0.2.1');
+      assert.equal(fn('::FFFF:CB00:7107'), '203.0.113.7');
+      assert.notEqual(fn('::ffff:c000:201'), fn('::ffff:cb00:7107'));
+      assert.equal(fn('::ffff:999.0.2.1'), '::ffff:999.0.2.1');
       assert.equal(fn('203.0.113.7'), '203.0.113.7');
       assert.equal(fn('unknown'), 'unknown');
       assert.equal(fn('1::2::3'), '1::2::3');
