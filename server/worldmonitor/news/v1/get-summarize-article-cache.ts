@@ -8,6 +8,7 @@ import filterParamContracts from '../../../../shared/openapi-filter-param-contra
 import { CACHE_VERSION } from '../../../../src/utils/summary-cache-key';
 import { getCachedJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
+import { isExplicitGenericLlmSelected } from '../../../../scripts/shared/generic-llm-provider.mjs';
 
 const CACHE_KEY_PATTERN = new RegExp(filterParamContracts.newsSummarizeArticleCacheKeyPattern);
 // #5969: the shared pattern is version-agnostic (`summary:v\d+:`), so a stale
@@ -53,7 +54,7 @@ export async function getSummarizeArticleCache(
   // The browser only knows the shared fallback key. An operator-selected
   // backend has its own endpoint/model partition, read by the authenticated
   // summarize RPC. Do not let an older shared cloud result bypass that path.
-  if (process.env.LLM_PROVIDER?.trim()) {
+  if (process.env.LLM_PROVIDER?.trim() || isExplicitGenericLlmSelected()) {
     markNoCacheResponse(ctx.request);
     return EMPTY_MISS;
   }

@@ -153,7 +153,7 @@ for (const [name, run, verifyResult] of runs) {
     const unexpectedOrigins: string[] = [];
     // Prevent any unrelated configured service from receiving the test prompt.
     // Redirect handling still happens inside real fetch and reaches the sink
-    // if the production request fails to set redirect:error.
+    // if the production request follows the redirect instead of rejecting it.
     globalThis.fetch = async (input, init) => {
       const origin = new URL(input instanceof Request ? input.url : String(input)).origin;
       if (![fixture.sourceOrigin, fixture.destinationOrigin].includes(origin)) {

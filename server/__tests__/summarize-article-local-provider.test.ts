@@ -64,6 +64,8 @@ function installUpstream({ fail = false, allowCloud = false } = {}) {
 beforeEach(() => {
   llmHealth.reset();
   vi.stubEnv('LLM_PROVIDER', 'generic');
+  vi.stubEnv('LLM_TOOL_PROVIDER', '');
+  vi.stubEnv('LLM_REASONING_PROVIDER', '');
   vi.stubEnv('LLM_API_URL', localUrl);
   vi.stubEnv('LLM_API_KEY', 'bifrost-fixture-key');
   vi.stubEnv('LLM_API_AUTH_TYPE', 'x-bf-vk');
@@ -118,7 +120,7 @@ describe('article summaries with an operator-selected provider', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  test('partitions local summaries by backend and model while sharing browser fallback requests', async () => {
+  test.each(['LLM_PROVIDER', 'LLM_TOOL_PROVIDER', 'LLM_REASONING_PROVIDER'])('partitions %s local summaries by backend and model while sharing browser fallback requests', async selector => {
     const { completions, reads } = installUpstream({ allowCloud: true });
     vi.stubEnv('LLM_PROVIDER', '');
     const cloud = await summarizeArticle(context(), request('openrouter'));
@@ -127,7 +129,7 @@ describe('article summaries with an operator-selected provider', () => {
     const shared = await getSummarizeArticleCache(context(false), { cacheKey: sharedCacheKey });
     expect(shared).toMatchObject({ provider: 'cache', summary: cloud.summary });
 
-    vi.stubEnv('LLM_PROVIDER', 'generic');
+    vi.stubEnv(selector, 'generic');
     const beforeCacheShortcut = vi.mocked(globalThis.fetch).mock.calls.length;
     const bypassed = await getSummarizeArticleCache(context(false), { cacheKey: sharedCacheKey });
     expect(bypassed).toMatchObject({ summary: '', fallback: true });

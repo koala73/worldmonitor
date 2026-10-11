@@ -5,6 +5,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
 
 import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
+import { isExplicitGenericLlmSelected } from '../../../../scripts/shared/generic-llm-provider.mjs';
 import {
   CACHE_TTL_SECONDS,
   MAX_BODY_LEN,
@@ -79,7 +80,7 @@ export async function summarizeArticle(
   const { mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
   // The operator's explicit provider also governs this direct-fetch handler.
   // A browser fallback request must not escape to its requested cloud backend.
-  const configuredProvider = process.env.LLM_PROVIDER?.trim();
+  const configuredProvider = isExplicitGenericLlmSelected() ? 'generic' : process.env.LLM_PROVIDER?.trim();
   const provider = configuredProvider || req.provider;
   const systemAppend = isPremium && typeof req.systemAppend === 'string' ? req.systemAppend : '';
   const requiresPremium = mode !== 'translate';
@@ -288,7 +289,7 @@ export async function summarizeArticle(
         const llmPromptChars = effectiveSystemPrompt.length + userPrompt.length;
         const response = await fetch(apiUrl, {
           method: 'POST',
-          redirect: provider === 'generic' ? 'error' : 'follow',
+          redirect: provider === 'generic' ? 'manual' : 'follow',
           headers: { ...providerHeaders, 'User-Agent': CHROME_UA },
           body: JSON.stringify({
             model,
@@ -304,6 +305,10 @@ export async function summarizeArticle(
           signal: AbortSignal.timeout(25_000),
         });
 
+        if (provider === 'generic' && response.status >= 300 && response.status < 400) {
+          void response.body?.cancel().catch(() => {});
+          throw new Error('Generic model redirect rejected');
+        }
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`[SummarizeArticle:${provider}] API error:`, response.status, errorText);

@@ -3,6 +3,7 @@ import { isModelUsable, isProviderAvailable, recordModelFailure, recordModelSucc
 import { sanitizeForPrompt } from './llm-sanitize.js';
 import { buildLlmCallEvent, deliverUsageEvents, type LlmCallEvent } from './usage';
 import { getGenericLlmAuthHeaders } from '../../scripts/shared/generic-llm-auth.mjs';
+import { isExplicitGenericLlmSelected } from '../../scripts/shared/generic-llm-provider.mjs';
 import {
   DEEPSEEK_V4_FLASH_MODEL_PREFIX,
   getLlmAttemptTimeoutMs,
@@ -287,6 +288,7 @@ function resolveProviderChain(opts: {
 }): string[] {
   // An operator's explicit provider is an isolation boundary, including when
   // a caller requests its own provider/order. Failure must stay on that backend.
+  if (isExplicitGenericLlmSelected()) return ['generic'];
   const configured = process.env.LLM_PROVIDER?.trim();
   if (configured) return PROVIDER_SET.has(configured) ? [configured] : [];
   if (opts.forcedProvider) return [opts.forcedProvider];
@@ -322,7 +324,7 @@ function callLlmProfile(
   defaultProvider: LlmProviderName,
   excluded: readonly LlmProviderName[] = [],
 ): Promise<LlmCallResult | null> {
-  const envProvider = process.env.LLM_PROVIDER?.trim() || process.env[providerEnv];
+  const envProvider = process.env.LLM_PROVIDER?.trim() || process.env[providerEnv]?.trim();
   const provider = (envProvider && PROVIDER_SET.has(envProvider) ? envProvider : (() => {
     if (envProvider) console.warn(`[llm] ${providerEnv}="${envProvider}" is not a known provider; falling back to "${defaultProvider}"`);
     return defaultProvider;
@@ -373,7 +375,7 @@ export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'valid
  * Returns null if no provider is available.
  */
 export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<Uint8Array> {
-  const envProvider = process.env.LLM_PROVIDER?.trim() || process.env.LLM_REASONING_PROVIDER;
+  const envProvider = process.env.LLM_PROVIDER?.trim() || process.env.LLM_REASONING_PROVIDER?.trim();
   const provider = (envProvider && PROVIDER_SET.has(envProvider) ? envProvider : 'openrouter') as LlmProviderName;
   const model = !process.env.LLM_PROVIDER || !process.env.LLM_REASONING_PROVIDER || process.env.LLM_PROVIDER === process.env.LLM_REASONING_PROVIDER
     ? process.env.LLM_REASONING_MODEL : undefined;
@@ -479,7 +481,7 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
         try {
           const resp = await fetch(creds.apiUrl, {
             method: 'POST',
-            redirect: providerName === 'generic' ? 'error' : 'follow',
+            redirect: providerName === 'generic' ? 'manual' : 'follow',
             headers: { ...creds.headers, 'User-Agent': CHROME_UA },
             body: JSON.stringify({
               ...creds.extraBody,
@@ -492,6 +494,10 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
             signal: activeController.signal,
           });
           // Timeout stays active — it must bound the streaming body read, not just the connection
+          if (providerName === 'generic' && resp.status >= 300 && resp.status < 400) {
+            void resp.body?.cancel().catch(() => {});
+            throw new Error('Generic model redirect rejected');
+          }
 
           if (resp.ok) {
             // HTTP success proves the provider accepted this model even if the
@@ -694,7 +700,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
       try {
         const resp = await fetch(creds.apiUrl, {
           method: 'POST',
-          redirect: providerName === 'generic' ? 'error' : 'follow',
+          redirect: providerName === 'generic' ? 'manual' : 'follow',
           headers: { ...creds.headers, 'User-Agent': CHROME_UA },
           body: JSON.stringify({
             ...creds.extraBody,
@@ -709,6 +715,10 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
           signal: AbortSignal.timeout(attemptTimeoutMs),
         });
 
+        if (providerName === 'generic' && resp.status >= 300 && resp.status < 400) {
+          void resp.body?.cancel().catch(() => {});
+          throw new Error('Generic model redirect rejected');
+        }
         if (!resp.ok) {
           // Log a bounded body slice (like the stream path already does) —
           // region-403s and provider errors are undiagnosable from the

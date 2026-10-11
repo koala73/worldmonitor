@@ -80,6 +80,7 @@ function installFetch(behaviour: RelayBehaviour): { envelopeHits: () => number }
       return new Response('', { status: 200 });
     }
     if (url === RELAY_POST_URL || url === RELAY_HEALTH_URL) {
+      if (init?.redirect !== 'manual') throw new TypeError('Relay requests must use an Edge-supported non-following redirect mode');
       if (behaviour.kind === 'reject') throw behaviour.error;
       if (behaviour.kind === 'unresponsive') {
         // Settles only if the route wired an abort signal. If it did not, this

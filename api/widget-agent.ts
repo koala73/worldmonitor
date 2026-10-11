@@ -450,11 +450,15 @@ async function proxyWidgetAgent(
     // small JSON body) rather than just the headers.
     const healthRes = await fetch(`${RELAY_BASE}/widget-agent/health`, {
       ...LOCAL_RELAY_FETCH_MARKER,
-      redirect: 'error',
+      redirect: 'manual',
       method: 'GET',
       headers: relayHeaders,
       signal: AbortSignal.timeout(WIDGET_AGENT_HEALTH_TIMEOUT_MS),
     });
+    if (healthRes.status >= 300 && healthRes.status < 400) {
+      void healthRes.body?.cancel().catch(() => {});
+      throw new Error('Widget relay redirect rejected');
+    }
     const body = await healthRes.text();
     return new Response(body, {
       status: healthRes.status,
@@ -541,13 +545,17 @@ async function proxyWidgetAgent(
   try {
     const relayRes = await fetch(`${RELAY_BASE}/widget-agent`, {
       ...LOCAL_RELAY_FETCH_MARKER,
-      redirect: 'error',
+      redirect: 'manual',
       method: 'POST',
       headers: relayHeaders,
       body: rawBody,
       signal: connectAbort.signal,
     });
     clearTimeout(connectTimer);
+    if (relayRes.status >= 300 && relayRes.status < 400) {
+      void relayRes.body?.cancel().catch(() => {});
+      throw new Error('Widget relay redirect rejected');
+    }
     if (!relayRes.ok) await releaseUnservedQuota();
     return new Response(relayRes.body, {
       status: relayRes.status,

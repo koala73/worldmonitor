@@ -265,6 +265,8 @@ Tauri 2.x (Rust) manages the app lifecycle, system tray, and IPC commands:
 
 `src-tauri/sidecar/local-api-server.mjs` runs on a dynamic port. It dynamically loads Edge Function handler modules from `api/`, injects secrets from the keyring via environment variables, and monkey-patches `globalThis.fetch` to force IPv4 (Node.js tries IPv6 first, but many government APIs have broken IPv6).
 
+Desktop startup forwards an explicit `LOCAL_API_CLOUD_FALLBACK` value to the sidecar and defaults it to `true` only when unset. Setting it to `false` disables the sidecar's cloud fallback; it does not change the renderer's separate routing policy below.
+
 ### Fetch Patching
 
 `installRuntimeFetchPatch()` in `src/services/runtime.ts` replaces `window.fetch` on the desktop renderer. All `/api/*` requests route to the sidecar with `Authorization: Bearer <token>` (5-min TTL from Tauri IPC). If the sidecar fails, requests fall back to the cloud API.
