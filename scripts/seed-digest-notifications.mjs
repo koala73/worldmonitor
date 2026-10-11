@@ -19,6 +19,8 @@ import {
   markdownToTelegramHtml,
   markdownToSlackMrkdwn,
   markdownToDiscord,
+  escapeDiscordText,
+  truncateDiscordContent,
 } from './_digest-markdown.mjs';
 
 const require = createRequire(import.meta.url);
@@ -1377,11 +1379,13 @@ async function sendDiscord(userId, webhookEnvelope, text) {
     console.warn(`[digest] Discord URL rejected for ${userId}:`, err.message);
     return false;
   }
-  const content = text.length > 2000 ? text.slice(0, 1999) + '\u2026' : text;
+  const content = truncateDiscordContent(text);
   try {
     const res = await postJsonWithPinnedAddress(
       safeUrl,
-      JSON.stringify({ content }),
+      // Headlines can carry @everyone/@here or role mentions; never let a
+      // digest ping anyone. Matches the real-time relay's payload.
+      JSON.stringify({ content, allowed_mentions: { parse: [] } }),
       { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
       resolvedAddresses,
     );
@@ -1545,14 +1549,14 @@ function buildChannelBodies(storyListPlain, aiSummary, magazineUrl) {
       text: `${storyListPlain}${briefFooterPlain}`,
       telegramText: `${escapeTelegramHtml(storyListPlain)}${briefFooterTelegram}`,
       slackText: `${escapeSlackMrkdwn(storyListPlain)}${briefFooterSlack}`,
-      discordText: `${storyListPlain}${briefFooterDiscord}`,
+      discordText: `${escapeDiscordText(storyListPlain)}${briefFooterDiscord}`,
     };
   }
   return {
     text: `EXECUTIVE SUMMARY\n\n${aiSummary}\n\n${DIVIDER}\n\n${storyListPlain}${briefFooterPlain}`,
     telegramText: `<b>EXECUTIVE SUMMARY</b>\n\n${markdownToTelegramHtml(aiSummary)}\n\n${DIVIDER}\n\n${escapeTelegramHtml(storyListPlain)}${briefFooterTelegram}`,
     slackText: `*EXECUTIVE SUMMARY*\n\n${markdownToSlackMrkdwn(aiSummary)}\n\n${DIVIDER}\n\n${escapeSlackMrkdwn(storyListPlain)}${briefFooterSlack}`,
-    discordText: `**EXECUTIVE SUMMARY**\n\n${markdownToDiscord(aiSummary)}\n\n${DIVIDER}\n\n${storyListPlain}${briefFooterDiscord}`,
+    discordText: `**EXECUTIVE SUMMARY**\n\n${markdownToDiscord(aiSummary)}\n\n${DIVIDER}\n\n${escapeDiscordText(storyListPlain)}${briefFooterDiscord}`,
   };
 }
 
