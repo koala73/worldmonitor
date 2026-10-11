@@ -167,6 +167,14 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       assert.ok(mod.utf8ByteLength(r.text) < 8 * 1024, `envelope size ${r.text.length} should be << 256 KB`);
     });
 
+    it('output gate runs before serializing: shared-reference expansion is rejected quickly', () => {
+      const expr = Array.from({ length: 30 }, () => '[@,@]').join('|');
+      const started = Date.now();
+      const r = mod.applyJmespath({ name: 'x' }, expr);
+      assert.equal(r.failed, 'projection_too_large');
+      assert.ok(Date.now() - started < 2000, 'must stop at the cap, not after expanding');
+    });
+
     it('output gate UTF-8: 4-byte chars push utf8 over cap even when JS string .length is under', () => {
       // Build a payload whose JS-string .length is well below 256 KB but whose
       // UTF-8 byte length exceeds the cap. Each "🌍" is 2 UTF-16 code units

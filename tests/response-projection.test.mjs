@@ -70,4 +70,15 @@ describe('projectJsonResponse', () => {
     assert.equal(r.ok, false);
     assert.deepEqual(r.envelope.original_keys, ['<array length=3>']);
   });
+
+  it('rejects a projection whose shared sub-objects would expand past the cap, before serializing', () => {
+    // Each `[@,@]` stage references the previous result twice, so the value
+    // graph stays tiny while its serialized size doubles per stage.
+    const expr = Array.from({ length: 30 }, () => '[@,@]').join('|');
+    const started = Date.now();
+    const r = projectJsonResponse(BODY, expr);
+    assert.equal(r.ok, false);
+    assert.match(r.envelope._jmespath_error, /^projection_too_large:/);
+    assert.ok(Date.now() - started < 2000, 'must stop at the cap, not after expanding');
+  });
 });

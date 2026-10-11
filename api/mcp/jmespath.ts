@@ -2,6 +2,7 @@ import jmespath from 'jmespath';
 import { JMESPATH_MAX_EXPR_BYTES, JMESPATH_MAX_OUTPUT_BYTES } from './constants';
 import type { ApplyJmespathResult } from './types';
 import { utf8ByteLength } from './utils';
+import { stringifyWithinBudget } from '../../server/_shared/bounded-json';
 
 // ---------------------------------------------------------------------------
 // JMESPath projection helpers (v1.4.0)
@@ -75,21 +76,18 @@ export function applyJmespath(value: unknown, exprArg: unknown): ApplyJmespathRe
     return { text: JSON.stringify(envelope), value: envelope, failed: 'invalid_expression' };
   }
 
-  const text = JSON.stringify(projected);
-  // `JSON.stringify(undefined)` returns the string "undefined" in legacy
-  // contexts but actually returns `undefined` in JS — guard so the wire
-  // payload is always a valid JSON document.
-  const safeText = text === undefined ? 'null' : text;
-
-  // Output gate — reject after stringify (single serialization).
-  const outputBytes = utf8ByteLength(safeText);
-  if (outputBytes > JMESPATH_MAX_OUTPUT_BYTES) {
+  // Output gate — measured before serializing. Projections can share
+  // sub-objects, so the serialized form can be exponentially larger than the
+  // value graph; a post-stringify check would already have paid for it.
+  const bounded = stringifyWithinBudget(projected, JMESPATH_MAX_OUTPUT_BYTES);
+  if (!bounded.ok) {
     const envelope = {
-      _jmespath_error: `projection_too_large: ${outputBytes} > ${JMESPATH_MAX_OUTPUT_BYTES}`,
+      _jmespath_error: `projection_too_large: ${bounded.minBytes} > ${JMESPATH_MAX_OUTPUT_BYTES}`,
       original_keys: jmespathOriginalKeys(value),
     };
     return { text: JSON.stringify(envelope), value: envelope, failed: 'projection_too_large' };
   }
+  const safeText = bounded.text;
 
   return { text: safeText, value: projected };
 }
