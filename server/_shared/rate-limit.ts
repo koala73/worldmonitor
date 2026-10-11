@@ -1109,6 +1109,7 @@ export function hasEndpointRatePolicy(pathname: string): boolean {
 let nativeGoogleDatesAdmissions: number[] = [];
 let nativeGoogleFlightsAdmissions: number[] = [];
 let nativeAviationNewsAdmissions: number[] = [];
+let nativeFeedDigestAdmissions: number[] = [];
 
 export async function checkEndpointRateLimit(request: Request, pathname: string, corsHeaders: Record<string, string>, opts: EndpointRateLimitOptions = {}): Promise<Response | null> {
   if (!hasEndpointRatePolicy(pathname)) return null;
@@ -1132,16 +1133,22 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
     else nativeGoogleFlightsAdmissions = activeAdmissions;
     return null;
   }
-  if (pathname === '/api/aviation/v1/list-aviation-news'
+  if ((pathname === '/api/aviation/v1/list-aviation-news'
+    || pathname === '/api/news/v1/list-feed-digest')
     && process.env.LOCAL_API_MODE === 'tauri-sidecar') {
     const policy = ENDPOINT_RATE_POLICIES[pathname]!;
     const windowSeconds = durationToSeconds(policy.window);
     const now = Date.now();
-    nativeAviationNewsAdmissions = nativeAviationNewsAdmissions.filter(time => time > now - windowSeconds * 1000);
-    if (nativeAviationNewsAdmissions.length >= policy.limit) {
-      return tooManyRequestsResponse(policy.limit, nativeAviationNewsAdmissions[0]! + windowSeconds * 1000, corsHeaders, windowSeconds);
+    const admissions = pathname === '/api/aviation/v1/list-aviation-news'
+      ? nativeAviationNewsAdmissions
+      : nativeFeedDigestAdmissions;
+    const activeAdmissions = admissions.filter(time => time > now - windowSeconds * 1000);
+    if (activeAdmissions.length >= policy.limit) {
+      return tooManyRequestsResponse(policy.limit, activeAdmissions[0]! + windowSeconds * 1000, corsHeaders, windowSeconds);
     }
-    nativeAviationNewsAdmissions.push(now);
+    activeAdmissions.push(now);
+    if (pathname === '/api/aviation/v1/list-aviation-news') nativeAviationNewsAdmissions = activeAdmissions;
+    else nativeFeedDigestAdmissions = activeAdmissions;
     return null;
   }
 
@@ -1327,6 +1334,7 @@ export function __resetRateLimitForTest(): void {
   nativeGoogleDatesAdmissions = [];
   nativeGoogleFlightsAdmissions = [];
   nativeAviationNewsAdmissions = [];
+  nativeFeedDigestAdmissions = [];
   ratelimit = null;
   endpointLimiters.clear();
   scopedLimiters.clear();
