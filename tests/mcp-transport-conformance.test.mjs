@@ -333,6 +333,21 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     assert.equal((await readAllSseEvents(reconnect)).length, 0);
   });
 
+  it('caps replay sessions per principal so one caller cannot flush the shared store', async () => {
+    admitTwoPrincipals();
+    const other = await openBufferedStream(SECOND_BEARER);
+    const first = await openBufferedStream(PRO_BEARER);
+    for (let i = 0; i < 20; i++) await openBufferedStream(PRO_BEARER);
+
+    const evicted = await replayAs(PRO_BEARER, first);
+    assert.equal(evicted.status, 404, 'past the per-owner cap the owner\'s oldest session is dropped');
+    await evicted.text();
+
+    const untouched = await replayAs(SECOND_BEARER, other);
+    assert.equal(untouched.status, 200, 'another principal\'s session must survive');
+    assert.equal((await readAllSseEvents(untouched)).length, 0);
+  });
+
   it('binds a JSON-initialized session before the first SSE write', async () => {
     admitTwoPrincipals();
     const initialize = await fetch(server.url, {
