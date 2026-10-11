@@ -1283,9 +1283,16 @@ export async function handleSubscriptionActive(
     return;
   }
 
+  // A deleted account's customer mapping is billing evidence, not an owner a
+  // new (possibly anonymous) checkout should be folded into.
+  const liveCustomerOwner = existingCustomer
+    && !existingCustomer.userId.startsWith("deleted:")
+    && !(await billingDeletionForUser(ctx, existingCustomer.userId))
+    ? existingCustomer.userId
+    : undefined;
   const userId = existing
     ? existing.userId
-    : preferExistingCustomerOwner(existingCustomer?.userId, resolvedUserId);
+    : preferExistingCustomerOwner(liveCustomerOwner, resolvedUserId);
   // A returning checkout receives a NEW Dodo subscription id, so matching only
   // `existing` would misclassify the user as a first-time subscriber and send
   // the generic welcome + admin alert. Snapshot the user's prior rows before

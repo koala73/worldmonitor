@@ -205,6 +205,28 @@ describe("late billing events during account deletion", () => {
     expect(state.customers[0]?.userId).toBe(REPLACEMENT);
   });
 
+  test("an anonymous checkout reusing a deleted account's customer id keeps its anonymous owner", async () => {
+    const { t } = await setup();
+    const ANON = "3f2b8c1e-4d5a-4b6c-9e7f-1a2b3c4d5e6f";
+    const data = {
+      ...payload(), subscription_id: "sub_returning_anon",
+      metadata: { wm_user_id: ANON, wm_user_id_sig: await signUserId(ANON) },
+    };
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "returning_anon_activation", eventType: "subscription.active", timestamp: NOW + 1,
+      rawPayload: { data },
+    });
+    const state = await t.run(async (ctx) => ({
+      sub: await ctx.db.query("subscriptions").withIndex("by_dodoSubscriptionId", (q) =>
+        q.eq("dodoSubscriptionId", data.subscription_id)).unique(),
+      entitlements: await ctx.db.query("entitlements").collect(),
+      customers: await ctx.db.query("customers").collect(),
+    }));
+    expect(state.sub?.userId).toBe(ANON);
+    expect(state.entitlements.map((row) => row.userId)).toEqual([ANON]);
+    expect(state.customers.map((row) => row.userId)).toEqual([REPLACEMENT]);
+  });
+
   test("a deleting account's own signature does not pull a subscription out of its deletion", async () => {
     const { t, ids } = await setup(false);
     const data = {
