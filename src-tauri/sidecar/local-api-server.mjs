@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import http, { createServer } from 'node:http';
 import https from 'node:https';
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import dns from 'node:dns/promises';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
@@ -69,13 +69,13 @@ function buildSafeResponse(statusCode, statusText, headers, bodyBuffer) {
   return new Response(body, { status, statusText, headers });
 }
 
-// Constant-time token check: compare fixed-length digests so neither the
-// content nor the length of LOCAL_API_TOKEN leaks through response timing.
+// Constant-time token check. Only the length can differ in timing, and the
+// token length is not secret; the content is compared with timingSafeEqual.
 function tokenMatches(candidate, expected) {
   if (typeof candidate !== 'string' || !candidate) return false;
-  const a = createHash('sha256').update(candidate).digest();
-  const b = createHash('sha256').update(expected).digest();
-  return timingSafeEqual(a, b);
+  const a = Buffer.from(candidate, 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 function canonicalizeDesktopAuthPayload(payload) {
