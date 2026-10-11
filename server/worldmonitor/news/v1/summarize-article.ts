@@ -26,6 +26,7 @@ import {
 } from '../../../_shared/response-headers';
 import { stripThinkingTags } from '../../../_shared/llm';
 import { buildLlmCallEvent, deliverUsageEvents } from '../../../_shared/usage';
+import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
 
 // Best-effort llm_call telemetry (#4895). This handler bypasses callLlm (the
 // client picks the provider), so it emits its own events.
@@ -63,6 +64,13 @@ export function hasReasoningPreamble(text: string): boolean {
   const trimmed = text.trim();
   return TASK_NARRATION.test(trimmed) || PROMPT_ECHO.test(trimmed);
 }
+
+// Translate mode is free and skips the gateway's direct-LLM quota, and its
+// `variant` is the target language interpolated into the prompt. Accept only
+// the dashboard's UI languages (the digest set plus Traditional Chinese, which
+// the digest folds into `zh`) so an anonymous caller cannot turn translate into
+// an unmetered general-purpose prompt with a cache-busting key.
+export const TRANSLATE_TARGET_LANGUAGES: ReadonlySet<string> = new Set([...NEWS_LANGUAGES, 'zh-TW']);
 
 // ======================================================================
 // SummarizeArticle: Multi-provider LLM summarization with Redis caching
@@ -149,6 +157,20 @@ export async function summarizeArticle(
       errorType: 'AuthError',
       status: 'SUMMARIZE_STATUS_ERROR',
       statusDetail: 'Pro subscription required',
+    };
+  }
+
+  if (mode === 'translate' && !TRANSLATE_TARGET_LANGUAGES.has(variant)) {
+    return {
+      summary: '',
+      model: '',
+      provider,
+      tokens: 0,
+      fallback: false,
+      error: 'Unsupported translation language',
+      errorType: 'ValidationError',
+      status: 'SUMMARIZE_STATUS_ERROR',
+      statusDetail: 'Unsupported translation language',
     };
   }
 

@@ -14,6 +14,7 @@ import {
   type CachedAircraftDetails,
   fetchWingbitsAircraftDetails,
 } from './_wingbits-aircraft-details';
+import { getTrackedAircraftIcao24s } from './_tracked-aircraft';
 
 export async function getAircraftDetailsBatch(
   _ctx: ServerContext,
@@ -54,6 +55,19 @@ export async function getAircraftDetailsBatch(
         // details === null means cached negative lookup; skip refetch.
       } else {
         toFetch.push(icao24);
+      }
+    }
+
+    // The single-aircraft route is Pro-gated because a cache miss spends the
+    // Wingbits credential. This route stays anonymous for the map, so a miss is
+    // only fetched for an aircraft in the published flight snapshot; otherwise
+    // any caller could look up arbitrary addresses on the server's key.
+    if (toFetch.length > 0) {
+      const tracked = await getTrackedAircraftIcao24s();
+      if (tracked) {
+        for (let i = toFetch.length - 1; i >= 0; i--) {
+          if (!tracked.has(toFetch[i]!)) toFetch.splice(i, 1);
+        }
       }
     }
 
