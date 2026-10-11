@@ -1645,7 +1645,10 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         .env("LOCAL_API_RESOURCE_DIR", &resource_for_node)
         .env("LOCAL_API_DATA_DIR", &data_dir)
         .env("LOCAL_API_MODE", "tauri-sidecar")
-        .env("LOCAL_API_CLOUD_FALLBACK", "true")
+        .env(
+            "LOCAL_API_CLOUD_FALLBACK",
+            env::var("LOCAL_API_CLOUD_FALLBACK").unwrap_or_else(|_| "true".into()),
+        )
         .env("LOCAL_API_TOKEN", &local_api_token)
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_file_err));

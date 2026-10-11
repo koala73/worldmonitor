@@ -27,6 +27,9 @@ const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString, resolveProxyStringForAttempt } = require('./_proxy-utils.cjs');
 const { parseWidgetAgentResponse } = require('./_widget-response-parser.cjs');
 const { WIDGET_DATA_CATALOG, buildWidgetDataUrl } = require('./_widget-data-policy.cjs');
+const { createGenericWidgetClient, getWidgetModelStatus } = require('./lib/widget-llm-client.cjs');
+const { getWidgetDataConfig } = require('./lib/widget-data-config.cjs');
+const { buildGenericLlmProvider, isGenericLlmSelected } = require('./shared/generic-llm-provider.mjs');
 const {
   cooldownKeyForAccount,
   OPENSKY_LEGACY_COOLDOWN_KEY,
@@ -4991,8 +4994,14 @@ function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBo
   });
 }
 
+function getClassifyLlmProviders() {
+  return isGenericLlmSelected()
+    ? [buildGenericLlmProvider()].filter(Boolean)
+    : CLASSIFY_LLM_PROVIDERS;
+}
+
 async function classifyFetchLlm(titles, maxTextChars = 200) {
-  for (const provider of CLASSIFY_LLM_PROVIDERS) {
+  for (const provider of getClassifyLlmProviders()) {
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;
 
@@ -5240,7 +5249,7 @@ async function seedClassify() {
   classifyInFlight = true;
   const t0 = Date.now();
   try {
-    const hasAnyProvider = CLASSIFY_LLM_PROVIDERS.some((p) => !!process.env[p.envKey]);
+    const hasAnyProvider = getClassifyLlmProviders().some((p) => !!process.env[p.envKey]);
     if (!hasAnyProvider) {
       console.log('[Classify] Skipped — no LLM provider keys configured');
       return;
@@ -5318,7 +5327,7 @@ async function startClassifySeedLoop() {
     console.log('[Classify] Disabled (no Upstash Redis)');
     return;
   }
-  const activeProviders = CLASSIFY_LLM_PROVIDERS.filter((p) => !!process.env[p.envKey]).map((p) => p.name);
+  const activeProviders = getClassifyLlmProviders().filter((p) => !!process.env[p.envKey]).map((p) => p.name);
   console.log(`[Classify] Seed loop starting (interval ${CLASSIFY_SEED_INTERVAL_MS / 1000 / 60}min, providers:${activeProviders.length ? activeProviders.join(',') : 'none'})`);
   startBootSeedLoop('Classify', 'seed-meta:classify', CLASSIFY_SEED_INTERVAL_MS, seedClassify, (e) => console.warn('[Classify] Initial seed error:', e?.message || e), (e) => console.warn('[Classify] Seed error:', e?.message || e));
 }
@@ -13810,19 +13819,23 @@ const WIDGET_BRAVE_KEY = (process.env.BRAVE_API_KEYS || '').split(/[\n,]+/).map(
 const WIDGET_FIRECRAWL_KEY = (process.env.FIRECRAWL_API_KEY || '').trim();
 
 // Widget data reads need a credential since #3541 removed Origin trust. The
-// agent's endpoints are model-chosen, so it gets exactly a browser visitor's
-// authority: an anonymous wms_ session, which forceKey routes reject. Never
+// Hosted model-chosen endpoints get an anonymous wms_ session, which forceKey
+// routes reject. Explicit local installations use their own operator key only
+// against the configured API origin and the same read-only catalog. Never use
 // WORLDMONITOR_RELAY_KEY — in production that is an enterprise key.
 let widgetDataSession = null;
 let widgetDataSessionPending = null;
 
 async function getWidgetDataSessionToken() {
+  const dataConfig = getWidgetDataConfig();
+  if (dataConfig.operatorKey) return dataConfig.operatorKey;
   if (widgetDataSession && widgetDataSession.exp - Date.now() > 5 * 60_000) return widgetDataSession.token;
   widgetDataSessionPending ??= (async () => {
     try {
-      const res = await fetch('https://api.worldmonitor.app/api/wm-session', {
+      const res = await fetch(`${dataConfig.origin}/api/wm-session`, {
         method: 'POST',
         headers: { 'User-Agent': 'WorldMonitor-WidgetAgent/1.0' },
+        redirect: 'error',
         signal: AbortSignal.timeout(10_000),
       });
       const body = res.ok ? await res.json() : null;
@@ -14050,12 +14063,17 @@ function checkProWidgetRateLimit(ip) {
 }
 
 function getWidgetAgentStatus() {
+  const modelStatus = getWidgetModelStatus();
+  let dataConfigured = true;
+  try { getWidgetDataConfig(); } catch { dataConfigured = false; }
   return {
-    ok: Boolean(WIDGET_AGENT_KEY && WIDGET_ANTHROPIC_KEY),
+    ok: Boolean((WIDGET_AGENT_KEY || PRO_WIDGET_KEY) && modelStatus.modelConfigured && dataConfigured),
     agentEnabled: true,
     widgetKeyConfigured: Boolean(WIDGET_AGENT_KEY),
     anthropicConfigured: Boolean(WIDGET_ANTHROPIC_KEY),
     proKeyConfigured: Boolean(PRO_WIDGET_KEY),
+    ...modelStatus,
+    dataConfigured,
   };
 }
 
@@ -14116,7 +14134,7 @@ function handleWidgetAgentHealthRequest(req, res) {
   const status = requireWidgetAgentAccess(req, res);
   if (!status) return;
 
-  if (!status.anthropicConfigured) {
+  if (!(status.modelConfigured ?? status.anthropicConfigured) || status.dataConfigured === false) {
     return safeEnd(res, 503, { 'Content-Type': 'application/json' }, JSON.stringify({ ...status, error: 'AI backend unavailable' }));
   }
 
@@ -14128,7 +14146,7 @@ const WIDGET_MAX_TOOL_CALLS = 3;
 async function handleWidgetAgentRequest(req, res) {
   const status = requireWidgetAgentAccess(req, res);
   if (!status) return;
-  if (!status.anthropicConfigured) {
+  if (!(status.modelConfigured ?? status.anthropicConfigured) || status.dataConfigured === false) {
     return safeEnd(res, 503, { 'Content-Type': 'application/json' }, JSON.stringify({ ...status, error: 'AI backend unavailable' }));
   }
 
@@ -14195,7 +14213,8 @@ async function handleWidgetAgentRequest(req, res) {
   }
 
   // Tier-specific settings
-  const model = isPro ? WIDGET_SONNET_PARAMS.model : 'claude-haiku-4-5-20251001';
+  const model = status.provider === 'generic' ? status.model
+    : isPro ? WIDGET_SONNET_PARAMS.model : 'claude-haiku-4-5-20251001';
   const maxTokens = isPro ? 8192 : 4096;
   let maxTurns = isPro ? 10 : 6;
   const maxHtml = isPro ? WIDGET_PRO_MAX_HTML : WIDGET_MAX_HTML;
@@ -14260,8 +14279,13 @@ async function handleWidgetAgentRequest(req, res) {
   };
 
   try {
-    const { default: Anthropic } = await import('@anthropic-ai/sdk');
-    const client = new Anthropic({ apiKey: WIDGET_ANTHROPIC_KEY });
+    let client;
+    if (status.provider === 'generic') {
+      client = createGenericWidgetClient();
+    } else {
+      const { default: Anthropic } = await import('@anthropic-ai/sdk');
+      client = new Anthropic({ apiKey: WIDGET_ANTHROPIC_KEY });
+    }
 
     const messages = [
       ...conversationHistory
@@ -14443,7 +14467,7 @@ async function handleWidgetAgentRequest(req, res) {
           const { symbols: symbolFilter, ...query } = params && typeof params === 'object' ? params : {};
           const isBootstrap = typeof endpoint === 'string' && endpoint.split('?')[0] === '/api/bootstrap';
           const symbols = isBootstrap && typeof symbolFilter === 'string' ? symbolFilter.split(',') : [];
-          const url = buildWidgetDataUrl(endpoint, isBootstrap ? query : params);
+          const url = buildWidgetDataUrl(endpoint, isBootstrap ? query : params, getWidgetDataConfig().origin);
           if (!url) {
             rejectTool('Endpoint not allowed.');
             continue;
@@ -14579,8 +14603,7 @@ function classifyWidgetAgentError(err, model) {
   // fallback) so a future SDK change can't leak the key in a single round.
   const scrub = (s) => String(s || '').replace(/sk-(?:ant-)?[A-Za-z0-9_-]{20,}/g, '[REDACTED]');
   if (status === 401 || type === 'authentication_error') {
-    // Operator hint without revealing which env var or its value.
-    return 'AI backend rejected the API key. Operator: check ANTHROPIC_API_KEY on the relay.';
+    return 'AI backend rejected the API key. Operator: check the configured model credential on the relay.';
   }
   if (status === 403 || type === 'permission_error') {
     return 'AI backend denied access (permission_error).';

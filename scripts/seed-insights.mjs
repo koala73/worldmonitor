@@ -51,6 +51,7 @@ export {
   resolveInsightsSynthesis,
 };
 import { buildLlmCallEvent, emitLlmEvents, flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
+import { buildGenericLlmProvider, isGenericLlmSelected } from './shared/generic-llm-provider.mjs';
 import {
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
@@ -549,7 +550,9 @@ async function callLLM(headline, options = {}) {
   // exactly as before. Transport failures still advance immediately — withRetry
   // already covers transient ones, and a provider that is genuinely down should
   // not be asked twice.
-  const queue = [...LLM_PROVIDERS];
+  const queue = isGenericLlmSelected()
+    ? [buildGenericLlmProvider()].filter(Boolean)
+    : [...LLM_PROVIDERS];
   const resampled = new Set();
   while (queue.length > 0) {
     const provider = queue.shift();
@@ -582,6 +585,7 @@ async function callLLM(headline, options = {}) {
         if (usable <= 0) throw createLlmBudgetError('insights llm budget exhausted');
         const response = await insightsFetch(apiUrl, {
           method: 'POST',
+          redirect: provider.name === 'generic' ? 'error' : 'follow',
           headers: provider.headers(envVal),
           body: JSON.stringify({
             model,

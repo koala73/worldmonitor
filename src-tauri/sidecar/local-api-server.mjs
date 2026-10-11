@@ -16,6 +16,9 @@ const sharedResourceRoot = process.env.LOCAL_API_RESOURCE_DIR
 const { getConfiguredLlmHealthProviders } = await import(
   pathToFileURL(path.join(sharedResourceRoot, 'shared/llm-health-providers.js')).href
 );
+const { getLocalMcpOrigins, LOCAL_MCP_FETCH } = await import(
+  pathToFileURL(path.join(sharedResourceRoot, 'scripts/shared/local-mcp-config.mjs')).href
+);
 
 const brotliCompressAsync = promisify(brotliCompress);
 const DESKTOP_AUTH_SECRET_ENV = 'WM_DESKTOP_SHARED_SECRET';
@@ -31,6 +34,9 @@ const LOCAL_API_TRANSPORT_HEADER = 'x-worldmonitor-local-token';
 const _originalFetch = globalThis.fetch;
 const ALLOW_PRIVATE_NETWORK_FETCH = Symbol('worldmonitor.allowPrivateNetworkFetch');
 const sidecarAllowedPrivateFetchOrigins = new Set();
+const sidecarLocalMcpOrigins = new Set();
+const sidecarLocalRelayOrigins = new Set();
+const LOCAL_WIDGET_RELAY_FETCH = Symbol.for('worldmonitor.localWidgetRelayFetch');
 // The sidecar's own listen origins. A fetch to one of these is a nested call
 // into this same process (MCP registry tools call sibling /api routes this
 // way), not an upstream request, so it must not hold an upstream slot: the
@@ -236,6 +242,16 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
   let url;
   try { url = new URL(isRequest ? input.url : input); } catch { return _originalFetch(input, init); }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return _originalFetch(input, init);
+  // Only the operator-authenticated MCP handler sets this in-process marker.
+  // Keep its configured destinations out of the general SSRF allowlist. Native
+  // fetch also preserves long-lived SSE bodies, unlike the buffered API shim.
+  if (init?.[LOCAL_MCP_FETCH] === true && sidecarLocalMcpOrigins.has(url.origin)) {
+    return _originalFetch(input, { ...init, redirect: 'manual' });
+  }
+  if (init?.[LOCAL_WIDGET_RELAY_FETCH] === true && sidecarLocalRelayOrigins.has(url.origin)
+    && ['/widget-agent', '/widget-agent/health'].includes(url.pathname)) {
+    return _originalFetch(input, { ...init, redirect: 'manual' });
+  }
   const allowPrivateNetwork = init?.[ALLOW_PRIVATE_NETWORK_FETCH] === true;
   const safety = allowPrivateNetwork
     ? { safe: true, resolvedAddresses: [url.hostname] }
@@ -1648,10 +1664,10 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  // YouTube video naming for channel management (oEmbed). The cloud edge handler owns the
-  // rate limit and the retired channel-detection answer, so always proxy to cloud,
-  // bypassing the cloudFallback flag.
-  if (requestUrl.pathname === '/api/youtube/live') {
+  // Prefer the cloud's shared rate limit for YouTube video naming when cloud
+  // fallback is enabled. Otherwise use the local oEmbed handler below, including
+  // Docker mode, which explicitly disables WorldMonitor cloud fallback.
+  if (context.cloudFallback && requestUrl.pathname === '/api/youtube/live') {
     const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'youtube video names come from the cloud');
     if (cloudResponse) return cloudResponse;
     return json({ error: 'YouTube video lookup unavailable' }, 503);
@@ -1964,7 +1980,9 @@ export async function createLocalApiServer(options = {}) {
       const boundPort = typeof address === 'object' && address?.port ? address.port : context.port;
       context.port = boundPort;
       const extraAllowedPrivateOrigins = [];
-      if (context.mode === 'docker') {
+      const localMcpOrigins = getLocalMcpOrigins({ ...process.env, LOCAL_API_MODE: context.mode });
+      const localRelayOrigins = [];
+      if (['docker', 'desktop-sidecar', 'tauri-sidecar'].includes(context.mode)) {
         const addConfiguredPrivateOrigin = (envKey, blockedService) => {
           const rawUrl = process.env[envKey];
           if (!rawUrl) return;
@@ -1983,14 +2001,24 @@ export async function createLocalApiServer(options = {}) {
         // call and all /api/* return 503 REDIS_DOWN. On desktop,
         // UPSTASH_REDIS_REST_URL is a public Upstash https origin that already
         // passes the SSRF check, so this path is docker-only.
-        addConfiguredPrivateOrigin('UPSTASH_REDIS_REST_URL', 'Redis calls will be SSRF-blocked');
+        if (context.mode === 'docker') {
+          addConfiguredPrivateOrigin('UPSTASH_REDIS_REST_URL', 'Redis calls will be SSRF-blocked');
+        }
 
-        // SELF_HOSTING.md documents LLM_API_URL for compose-network or LAN
-        // endpoints; OLLAMA_API_URL is the supported desktop runtime setting.
+        // Operator-configured model endpoints can live on loopback or a LAN.
         // Without trusting their exact configured origins, the global SSRF
         // guard blocks every private LLM probe and silently skips the provider.
         for (const envKey of ['LLM_API_URL', 'OLLAMA_API_URL']) {
           addConfiguredPrivateOrigin(envKey, 'LLM calls will be SSRF-blocked');
+        }
+        if (process.env.WS_RELAY_URL) {
+          try {
+            const relayOrigin = new URL(relayToHttpUrl(process.env.WS_RELAY_URL)).origin;
+            extraAllowedPrivateOrigins.push(relayOrigin);
+            localRelayOrigins.push(relayOrigin);
+          } catch {
+            context.logger.warn('[local-api] WS_RELAY_URL is invalid; private relay access remains blocked');
+          }
         }
       }
       if (context.allowPrivateRemoteBase) {
@@ -1999,7 +2027,14 @@ export async function createLocalApiServer(options = {}) {
       for (const origin of context.allowPrivateFetchOrigins) {
         try { extraAllowedPrivateOrigins.push(new URL(origin).origin); } catch {}
       }
-      unregisterSelfFetchOrigins = registerSidecarAllowedPrivateFetchOrigins(boundPort, extraAllowedPrivateOrigins);
+      const unregisterOrigins = registerSidecarAllowedPrivateFetchOrigins(boundPort, extraAllowedPrivateOrigins);
+      for (const origin of localMcpOrigins) sidecarLocalMcpOrigins.add(origin);
+      for (const origin of localRelayOrigins) sidecarLocalRelayOrigins.add(origin);
+      unregisterSelfFetchOrigins = () => {
+        unregisterOrigins();
+        for (const origin of localMcpOrigins) sidecarLocalMcpOrigins.delete(origin);
+        for (const origin of localRelayOrigins) sidecarLocalRelayOrigins.delete(origin);
+      };
 
       const portFile = process.env.LOCAL_API_PORT_FILE;
       if (portFile) {

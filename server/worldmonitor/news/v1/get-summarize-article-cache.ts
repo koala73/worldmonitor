@@ -50,6 +50,14 @@ export async function getSummarizeArticleCache(
     return EMPTY_MISS;
   }
 
+  // The browser only knows the shared fallback key. An operator-selected
+  // backend has its own endpoint/model partition, read by the authenticated
+  // summarize RPC. Do not let an older shared cloud result bypass that path.
+  if (process.env.LLM_PROVIDER?.trim()) {
+    markNoCacheResponse(ctx.request);
+    return EMPTY_MISS;
+  }
+
   try {
     const cached = await getCachedJson(cacheKey);
 

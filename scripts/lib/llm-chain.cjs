@@ -98,12 +98,16 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
   } = opts;
   const allowedSet = allowedProviders ? new Set(allowedProviders) : null;
   const skipSet = skipProviders ? new Set(skipProviders) : null;
+  const { buildGenericLlmProvider, isGenericLlmSelected } = await import('../shared/generic-llm-provider.mjs');
+  const providers = isGenericLlmSelected()
+    ? [buildGenericLlmProvider()].filter(Boolean)
+    : LLM_PROVIDERS;
 
   const promptChars = (systemPrompt?.length ?? 0) + (userPrompt?.length ?? 0);
   const events = [];
   let attemptIndex = 0;
 
-  for (const provider of LLM_PROVIDERS) {
+  for (const provider of providers) {
     if (allowedSet && !allowedSet.has(provider.name)) continue;
     if (skipSet?.has(provider.name)) continue;
     const envVal = process.env[provider.envKey];
@@ -129,6 +133,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
     try {
       const resp = await fetch(apiUrl, {
         method: 'POST',
+        redirect: provider.name === 'generic' ? 'error' : 'follow',
         headers: provider.headers(envVal),
         body: JSON.stringify({
           model,

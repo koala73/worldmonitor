@@ -84,6 +84,7 @@ WORKDIR /app
 COPY --from=builder /app/src-tauri/sidecar/local-api-server.mjs ./local-api-server.mjs
 COPY --from=builder /app/src-tauri/sidecar/package.json ./package.json
 COPY --from=builder /app/shared/llm-health-providers.js ./shared/llm-health-providers.js
+COPY --from=builder /app/scripts/shared/local-mcp-config.mjs ./scripts/shared/local-mcp-config.mjs
 ENV LOCAL_API_RESOURCE_DIR=/app
 
 # Minimal runtime node_modules — required by raw .js handlers that aren't

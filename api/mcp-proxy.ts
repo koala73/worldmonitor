@@ -5,6 +5,7 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check';
 import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification';
+import { getLocalMcpServer, isLocalMcpUrlAllowed, localMcpServerName, LOCAL_MCP_FETCH } from '../scripts/shared/local-mcp-config.mjs';
 import { buildUsageIdentity } from '../server/_shared/usage-identity';
 import {
   readBoundedRequestBody,
@@ -278,9 +279,9 @@ export function proxyFailureFor(error) {
   };
 }
 
-async function fetchMcpUpstream(input, init) {
+async function fetchMcpUpstream(input, init, localServer = null) {
   try {
-    return await fetch(input, init);
+    return await fetch(input, localServer ? { ...init, [LOCAL_MCP_FETCH]: true } : init);
   } catch (error) {
     if (proxyFailureFor(error).isTimeout) throw error;
     throw new McpProxyUpstreamError('MCP server request failed', { cause: error });
@@ -380,7 +381,14 @@ async function assertServerUrlSafe(url, signal) {
 // dispatch NARROWS that DNS-rebinding window but does not close it. The
 // residual rebind window is an ACCEPTED limitation of the Edge runtime (no
 // socket-level pin available) — documented, not fixed here (P2, issue #5061).
-async function revalidateBeforeFetch(url, signal) {
+async function revalidateBeforeFetch(url, signal, localServer = null, sseEndpoint = false) {
+  if (localServer) {
+    signal?.throwIfAborted();
+    if (!isLocalMcpUrlAllowed(url, localServer, { sseEndpoint })) {
+      throw new McpProxySsrfError(SSRF_BLOCKED_PUBLIC_MESSAGE);
+    }
+    return;
+  }
   await assertServerUrlSafe(url, signal);
 }
 
@@ -505,7 +513,7 @@ function stripToCrossOriginSafeHeaders(headers) {
   return out;
 }
 
-async function postJson(url, body, headers, sessionId) {
+async function postJson(url, body, headers, sessionId, localServer = null) {
   const h = { ...headers };
   if (sessionId) h['Mcp-Session-Id'] = sessionId;
   const payload = JSON.stringify(body);
@@ -516,7 +524,7 @@ async function postJson(url, body, headers, sessionId) {
   // dispatch gets.
   const signal = AbortSignal.timeout(TIMEOUT_MS);
   for (let hop = 0; ; hop++) {
-    await revalidateBeforeFetch(target, signal);
+    await revalidateBeforeFetch(target, signal, localServer);
     signal.throwIfAborted();
     const resp = await fetchMcpUpstream(target.toString(), {
       method: 'POST',
@@ -524,8 +532,9 @@ async function postJson(url, body, headers, sessionId) {
       body: payload,
       redirect: 'manual',
       signal,
-    });
-    if (hop >= MAX_REDIRECT_HOPS || !METHOD_PRESERVING_REDIRECTS.has(resp.status)) {
+    }, localServer);
+    // A configured local service cannot redirect its server-held credentials.
+    if (localServer || hop >= MAX_REDIRECT_HOPS || !METHOD_PRESERVING_REDIRECTS.has(resp.status)) {
       return { response: resp, url: target, headers: outboundHeaders };
     }
     const next = redirectTargetFor(resp, target);
@@ -572,13 +581,13 @@ async function parseJsonRpcResponse(resp) {
   }
 }
 
-async function sendInitialized(serverUrl, headers, sessionId) {
+async function sendInitialized(serverUrl, headers, sessionId, localServer = null) {
   try {
     const { response } = await postJson(serverUrl, {
       jsonrpc: '2.0',
       method: 'notifications/initialized',
       params: {},
-    }, headers, sessionId);
+    }, headers, sessionId, localServer);
     await cancelResponseBody(response);
   } catch (error) {
     if (error instanceof McpProxySsrfError) throw error;
@@ -586,37 +595,37 @@ async function sendInitialized(serverUrl, headers, sessionId) {
   }
 }
 
-async function mcpListTools(serverUrl, customHeaders) {
+async function mcpListTools(serverUrl, customHeaders, localServer = null) {
   const { response: initResp, url: sessionUrl, headers } = await postJson(
-    serverUrl, buildInitPayload(), buildHeaders(customHeaders), null,
+    serverUrl, buildInitPayload(), buildHeaders(customHeaders), null, localServer,
   );
   if (!initResp.ok) throw new McpProxyUpstreamError(`Initialize failed: HTTP ${initResp.status}`, { upstreamStatus: initResp.status });
   const sessionId = initResp.headers.get('Mcp-Session-Id') || initResp.headers.get('mcp-session-id');
   const initData = await parseJsonRpcResponse(initResp);
   if (initData.error) throw new McpProxyUpstreamError('Initialize error: MCP server rejected request');
-  await sendInitialized(sessionUrl, headers, sessionId);
+  await sendInitialized(sessionUrl, headers, sessionId, localServer);
   const { response: listResp } = await postJson(sessionUrl, {
     jsonrpc: '2.0', id: 2, method: 'tools/list', params: {},
-  }, headers, sessionId);
+  }, headers, sessionId, localServer);
   if (!listResp.ok) throw new McpProxyUpstreamError(`tools/list failed: HTTP ${listResp.status}`, { upstreamStatus: listResp.status });
   const listData = await parseJsonRpcResponse(listResp);
   if (listData.error) throw new McpProxyUpstreamError('tools/list error: MCP server rejected request');
   return listData.result?.tools || [];
 }
 
-async function mcpCallTool(serverUrl, toolName, toolArgs, customHeaders) {
+async function mcpCallTool(serverUrl, toolName, toolArgs, customHeaders, localServer = null) {
   const { response: initResp, url: sessionUrl, headers } = await postJson(
-    serverUrl, buildInitPayload(), buildHeaders(customHeaders), null,
+    serverUrl, buildInitPayload(), buildHeaders(customHeaders), null, localServer,
   );
   if (!initResp.ok) throw new McpProxyUpstreamError(`Initialize failed: HTTP ${initResp.status}`, { upstreamStatus: initResp.status });
   const sessionId = initResp.headers.get('Mcp-Session-Id') || initResp.headers.get('mcp-session-id');
   const initData = await parseJsonRpcResponse(initResp);
   if (initData.error) throw new McpProxyUpstreamError('Initialize error: MCP server rejected request');
-  await sendInitialized(sessionUrl, headers, sessionId);
+  await sendInitialized(sessionUrl, headers, sessionId, localServer);
   const { response: callResp } = await postJson(sessionUrl, {
     jsonrpc: '2.0', id: 3, method: 'tools/call',
     params: { name: toolName, arguments: toolArgs || {} },
-  }, headers, sessionId);
+  }, headers, sessionId, localServer);
   if (!callResp.ok) throw new McpProxyUpstreamError(`tools/call failed: HTTP ${callResp.status}`, { upstreamStatus: callResp.status });
   const callData = await parseJsonRpcResponse(callResp);
   if (callData.error) throw new McpProxyUpstreamError('tools/call error: MCP server rejected request');
@@ -642,7 +651,8 @@ function makeDeferred() {
 }
 
 class SseSession {
-  constructor(sseUrl, headers) {
+  constructor(sseUrl, headers, localServer = null) {
+    this._localServer = localServer;
     this._sseUrl = sseUrl;
     this._originHost = new URL(sseUrl).host;
     this._originProtocol = new URL(sseUrl).protocol;
@@ -655,12 +665,12 @@ class SseSession {
   }
 
   async connect() {
-    await revalidateBeforeFetch(new URL(this._sseUrl));
+    await revalidateBeforeFetch(new URL(this._sseUrl), undefined, this._localServer);
     const resp = await fetchMcpUpstream(this._sseUrl, {
       headers: { ...this._headers, Accept: 'text/event-stream', 'Cache-Control': 'no-cache' },
       redirect: 'manual',
       signal: AbortSignal.timeout(SSE_CONNECT_TIMEOUT_MS),
-    });
+    }, this._localServer);
     if (!resp.ok) throw new McpProxyUpstreamError(`SSE connect HTTP ${resp.status}`, { upstreamStatus: resp.status });
     this._reader = resp.body.getReader();
     this._startReadLoop();
@@ -722,7 +732,7 @@ class SseSession {
                   this._endpointDeferred.reject(new McpProxyUpstreamError('SSE endpoint protocol not allowed'));
                   return;
                 }
-                if (BLOCKED_HOSTNAMES.has(resolved.hostname.toLowerCase()) || isBlockedResolvedAddress(resolved.hostname)) {
+                if (!this._localServer && (BLOCKED_HOSTNAMES.has(resolved.hostname.toLowerCase()) || isBlockedResolvedAddress(resolved.hostname))) {
                   this._endpointDeferred.reject(new McpProxyUpstreamError('SSE endpoint host is blocked'));
                   return;
                 }
@@ -733,6 +743,10 @@ class SseSession {
                   this._endpointDeferred.reject(
                     new McpProxyUpstreamError('SSE endpoint host or protocol does not match origin server'),
                   );
+                  return;
+                }
+                if (this._localServer && !isLocalMcpUrlAllowed(resolved, this._localServer, { sseEndpoint: true })) {
+                  this._endpointDeferred.reject(new McpProxyUpstreamError('SSE endpoint is not allowed'));
                   return;
                 }
                 this._endpointUrl = resolved.toString();
@@ -769,14 +783,14 @@ class SseSession {
       }
     }, SSE_RPC_TIMEOUT_MS);
     try {
-      await revalidateBeforeFetch(new URL(this._endpointUrl));
+      await revalidateBeforeFetch(new URL(this._endpointUrl), undefined, this._localServer, true);
       const postResp = await fetchMcpUpstream(this._endpointUrl, {
         method: 'POST',
         headers: { ...this._headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
         redirect: 'manual',
         signal: AbortSignal.timeout(SSE_RPC_TIMEOUT_MS),
-      });
+      }, this._localServer);
       await cancelResponseBody(postResp);
       if (!postResp.ok) {
         this._pending.delete(id);
@@ -789,14 +803,14 @@ class SseSession {
   }
 
   async notify(method, params) {
-    await revalidateBeforeFetch(new URL(this._endpointUrl));
-    const response = await fetch(this._endpointUrl, {
+    await revalidateBeforeFetch(new URL(this._endpointUrl), undefined, this._localServer, true);
+    const response = await fetchMcpUpstream(this._endpointUrl, {
       method: 'POST',
       headers: { ...this._headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', method, params }),
       redirect: 'manual',
       signal: AbortSignal.timeout(5_000),
-    }).catch(() => null);
+    }, this._localServer).catch(() => null);
     if (response) await cancelResponseBody(response);
   }
 
@@ -805,9 +819,9 @@ class SseSession {
   }
 }
 
-async function mcpListToolsSse(serverUrl, customHeaders) {
+async function mcpListToolsSse(serverUrl, customHeaders, localServer = null) {
   const headers = buildHeaders(customHeaders);
-  const session = new SseSession(serverUrl.toString(), headers);
+  const session = new SseSession(serverUrl.toString(), headers, localServer);
   try {
     await session.connect();
     const initResp = await session.send(1, 'initialize', {
@@ -825,9 +839,9 @@ async function mcpListToolsSse(serverUrl, customHeaders) {
   }
 }
 
-async function mcpCallToolSse(serverUrl, toolName, toolArgs, customHeaders) {
+async function mcpCallToolSse(serverUrl, toolName, toolArgs, customHeaders, localServer = null) {
   const headers = buildHeaders(customHeaders);
-  const session = new SseSession(serverUrl.toString(), headers);
+  const session = new SseSession(serverUrl.toString(), headers, localServer);
   try {
     await session.connect();
     const initResp = await session.send(1, 'initialize', {
@@ -861,24 +875,48 @@ function captureMeta(serverUrl: URL, customHeaders: unknown, meta: ProxyMeta): v
     .sort();
 }
 
-async function handleListTools(req: Request, cors: Record<string, string>, meta: ProxyMeta): Promise<Response> {
+async function resolveProxyTarget(rawServer, customHeaders, callerIdentity, cors) {
+  const name = localMcpServerName(rawServer);
+  if (name) {
+    // Premium user/API-key and internal MCP identities cannot use an operator's
+    // private services. Only the installation's validated operator key/session
+    // resolves as enterprise, and the parser also requires a local runtime.
+    if (callerIdentity.kind !== 'enterprise') {
+      return { denied: jsonResponse({ error: 'Operator authentication required for local MCP' }, 403, cors) };
+    }
+    if (customHeaders && (typeof customHeaders !== 'object' || Array.isArray(customHeaders)
+      || Object.keys(customHeaders).length > 0)) {
+      return { denied: jsonResponse({ error: 'Local MCP credentials must be configured on the server' }, 400, cors) };
+    }
+    const localServer = getLocalMcpServer(name);
+    if (!localServer) {
+      return { denied: jsonResponse({ error: 'Unknown or unavailable local MCP server' }, 400, cors) };
+    }
+    return { serverUrl: localServer.url, headers: localServer.headers, localServer };
+  }
+  const serverUrl = await validateServerUrl(rawServer);
+  if (!serverUrl) return { denied: jsonResponse({ error: 'Invalid serverUrl' }, 400, cors) };
+  return { serverUrl, headers: customHeaders || {}, localServer: null };
+}
+
+async function handleListTools(req: Request, cors: Record<string, string>, meta: ProxyMeta, callerIdentity): Promise<Response> {
   const url = new URL(req.url);
   const rawServer = url.searchParams.get('serverUrl');
   if (url.searchParams.has('headers')) {
     return jsonResponse({ error: 'Use POST tools/list with customHeaders in the JSON body' }, 400, cors);
   }
   if (!rawServer) return jsonResponse({ error: 'Missing serverUrl' }, 400, cors);
-  const serverUrl = await validateServerUrl(rawServer);
-  if (!serverUrl) return jsonResponse({ error: 'Invalid serverUrl' }, 400, cors);
-  const customHeaders = {};
-  captureMeta(serverUrl, customHeaders, meta);
+  const target = await resolveProxyTarget(rawServer, {}, callerIdentity, cors);
+  if (target.denied) return target.denied;
+  const { serverUrl, headers, localServer } = target;
+  captureMeta(serverUrl, headers, meta);
   const tools = isSseTransport(serverUrl)
-    ? await mcpListToolsSse(serverUrl, customHeaders)
-    : await mcpListTools(serverUrl, customHeaders);
+    ? await mcpListToolsSse(serverUrl, headers, localServer)
+    : await mcpListTools(serverUrl, headers, localServer);
   return jsonResponse({ tools }, 200, cors);
 }
 
-async function handleCallTool(req: Request, cors: Record<string, string>, meta: ProxyMeta): Promise<Response> {
+async function handleCallTool(req: Request, cors: Record<string, string>, meta: ProxyMeta, callerIdentity): Promise<Response> {
   let body;
   try {
     const bodyBytes = await readBoundedRequestBody(req, MAX_JSON_RPC_BODY_BYTES);
@@ -896,18 +934,19 @@ async function handleCallTool(req: Request, cors: Record<string, string>, meta: 
   if (!rawServer) return jsonResponse({ error: 'Missing serverUrl' }, 400, cors);
   if (action !== undefined && action !== 'tools/list') return jsonResponse({ error: 'Invalid action' }, 400, cors);
   if (action !== 'tools/list' && !toolName) return jsonResponse({ error: 'Missing toolName' }, 400, cors);
-  const serverUrl = await validateServerUrl(rawServer);
-  if (!serverUrl) return jsonResponse({ error: 'Invalid serverUrl' }, 400, cors);
-  captureMeta(serverUrl, customHeaders, meta);
+  const target = await resolveProxyTarget(rawServer, customHeaders, callerIdentity, cors);
+  if (target.denied) return target.denied;
+  const { serverUrl, headers, localServer } = target;
+  captureMeta(serverUrl, headers, meta);
   if (action === 'tools/list') {
     const tools = isSseTransport(serverUrl)
-      ? await mcpListToolsSse(serverUrl, customHeaders || {})
-      : await mcpListTools(serverUrl, customHeaders || {});
+      ? await mcpListToolsSse(serverUrl, headers, localServer)
+      : await mcpListTools(serverUrl, headers, localServer);
     return jsonResponse({ tools }, 200, cors);
   }
   const result = isSseTransport(serverUrl)
-    ? await mcpCallToolSse(serverUrl, toolName, toolArgs || {}, customHeaders || {})
-    : await mcpCallTool(serverUrl, toolName, toolArgs || {}, customHeaders || {});
+    ? await mcpCallToolSse(serverUrl, toolName, toolArgs || {}, headers, localServer)
+    : await mcpCallTool(serverUrl, toolName, toolArgs || {}, headers, localServer);
   return jsonResponse({ result }, 200, cors);
 }
 
@@ -1005,9 +1044,9 @@ export default async function handler(req, ctx) {
   let upstreamStatus: number | null = null;
   try {
     if (req.method === 'GET') {
-      response = await handleListTools(req, cors, meta);
+      response = await handleListTools(req, cors, meta, callerIdentity);
     } else if (req.method === 'POST') {
-      response = await handleCallTool(req, cors, meta);
+      response = await handleCallTool(req, cors, meta, callerIdentity);
     } else {
       response = jsonResponse({ error: 'Method not allowed' }, 405, cors);
     }

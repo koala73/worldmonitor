@@ -20,6 +20,7 @@ import crypto from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import widgetResponseParser from '../scripts/_widget-response-parser.cjs';
 import { WIDGET_DATA_CATALOG, buildWidgetDataUrl } from '../scripts/_widget-data-policy.cjs';
+import { createGenericWidgetClient } from '../scripts/lib/widget-llm-client.cjs';
 
 const { parseWidgetAgentResponse } = widgetResponseParser;
 
@@ -81,7 +82,7 @@ const widgetSonnetConstants = () => {
 
 // Execute the production handler without the relay's unconditional server startup.
 // Only the SDK import is substituted; requests, tool results and SSE use real code.
-async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, failSearch = false, sdkTransport = false, expireDuringFetch = false, sessionToken = 'wms_fixture', fetchStatus = 200, fetchBody = '{"value":42}', searchResults = [{ title: 'Fixture' }], pageText = 'page fixture', verdicts = [], hangOn = null, clock = null, request = {} } = {}) {
+async function runWidgetAgent(responses, { tier = 'basic', generic = false, failFetch = false, failSearch = false, sdkTransport = false, expireDuringFetch = false, sessionToken = 'wms_fixture', fetchStatus = 200, fetchBody = '{"value":42}', searchResults = [{ title: 'Fixture' }], pageText = 'page fixture', verdicts = [], hangOn = null, clock = null, request = {} } = {}) {
   const relay = src('scripts/ais-relay.cjs');
   const extract = name => {
     const match = relay.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`));
@@ -109,7 +110,7 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     ...(clock ? { Date: class extends Date { static now() { return clock(); } } } : {}),
     setTimeout: (callback, ms) => { expire = callback; return setTimeout(callback, ms); },
     console: { error: (...args) => logs.push(args), log: (...args) => logs.push(args) },
-    requireWidgetAgentAccess: () => ({ anthropicConfigured: true, admittedAs: tier }),
+    requireWidgetAgentAccess: () => ({ anthropicConfigured: !generic, modelConfigured: true, provider: generic ? 'generic' : 'anthropic', model: 'local/widget-model', admittedAs: tier }),
     readRequestBody: async () => JSON.stringify({ prompt: 'Show earthquake data', tier, ...request }),
     checkProWidgetRateLimit: () => false, checkWidgetRateLimit: () => false,
     isWidgetInjectionAttempt: () => false,
@@ -117,6 +118,19 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     WIDGET_PRO_MAX_HTML: 100000, WIDGET_MAX_HTML: 50000,
     WIDGET_PRO_SYSTEM_PROMPT: 'test', WIDGET_SYSTEM_PROMPT: 'test',
     buildWidgetDataUrl,
+    getWidgetDataConfig: () => ({ origin: generic ? 'http://127.0.0.1:4100' : 'https://api.worldmonitor.app' }),
+    createGenericWidgetClient: () => createGenericWidgetClient({
+      env: { LLM_API_URL: 'http://127.0.0.1:4043/openai/v1/chat/completions', LLM_API_KEY: 'virtual-test-key', LLM_API_AUTH_TYPE: 'x-bf-vk', LLM_MODEL: 'local/widget-model' },
+      fetchImpl: async (url, init) => {
+        assert.equal(url, 'http://127.0.0.1:4043/openai/v1/chat/completions');
+        assert.equal(init.headers['x-bf-vk'], 'virtual-test-key');
+        assert.equal(init.headers.Authorization, undefined);
+        const request = JSON.parse(init.body);
+        modelSignals.push(init.signal);
+        if (hangOn && requests.length === responses.length) { requests.push(request); return hang(init.signal); }
+        return Response.json(nextResponse(request));
+      },
+    }),
     performWidgetWebSearch: async query => {
       effects.push(`search:${query}`);
       if (failSearch) throw new Error('Search fixture failure');
@@ -196,6 +210,35 @@ const widgetText = '<!-- title: Quakes --><!-- widget-html --><div>42</div><!-- 
 const widgetResponse = (stop_reason, content = [{ type: 'text', text: widgetText }]) => ({ stop_reason, content });
 const widgetTool = (id, name = 'fetch_worldmonitor_data', input = { endpoint: '/api/news/v1/list-feed-digest' }) => ({ type: 'tool_use', id, name, input });
 const toolResultsFor = request => request.messages.flatMap(m => Array.isArray(m.content) ? m.content.filter(b => b.type === 'tool_result') : []);
+
+describe('self-host widget model transport', () => {
+  it('runs a local tool turn and emits final HTML with OpenAI-compatible messages', async () => {
+    const result = await runWidgetAgent([
+      { choices: [{ finish_reason: 'tool_calls', message: { tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'fetch_worldmonitor_data', arguments: JSON.stringify({ endpoint: '/api/bootstrap', params: { keys: 'earthquakes' } }) } }] } }] },
+      { choices: [{ finish_reason: 'stop', message: { content: widgetText } }] },
+    ], { generic: true, tier: 'pro', sessionToken: 'own-operator-key' });
+    assertWidgetSuccess(result);
+    assert.equal(result.requests[0].model, 'local/widget-model');
+    assert.ok(result.requests[0].tools.some(tool => tool.function.name === 'fetch_worldmonitor_data'));
+    assert.equal(result.requests[0].thinking, undefined);
+    assert.equal(result.requests[0].fallbacks, undefined);
+    assert.equal(result.requests[0].cache_control, undefined);
+    const toolResult = result.requests[1].messages.find(message => message.role === 'tool');
+    assert.equal(toolResult.tool_call_id, 'call_1');
+    assert.match(toolResult.content, /42/);
+    assert.equal(new URL(result.effects[0]).origin, 'http://127.0.0.1:4100');
+    assert.equal(result.fetchInits[0].headers['X-WorldMonitor-Key'], 'own-operator-key');
+    assert.equal(result.fetchInits[0].redirect, 'error');
+  });
+
+  it('propagates cancellation into a pending generic model request', async () => {
+    const result = await runWidgetAgent([], { generic: true, hangOn: 'disconnect' });
+    assert.equal(result.requests.length, 1);
+    assert.ok(result.modelSignals[0].aborted);
+    assert.equal(result.events.some(event => event.type === 'html_complete'), false);
+    assert.equal(result.ended, 0, 'A disconnected response must not receive another write');
+  });
+});
 function assertWidgetSuccess(result) {
   assert.deepEqual(result.events.filter(e => ['html_complete', 'done', 'error'].includes(e.type)).map(e => e.type), ['html_complete', 'done']);
   assert.equal(result.ended, 1);
@@ -589,6 +632,7 @@ describe('widget data-tool contracts', () => {
     const helpers = relay.slice(relay.indexOf('function filterWidgetToolInjection('), relay.indexOf('const WIDGET_FETCH_TOOL'));
     const context = vm.createContext({
       URL, AbortSignal, fetch, buildWidgetDataUrl, response: { stop_reason: 'tool_use', content: [block] }, messages: [], res: {},
+      getWidgetDataConfig: () => ({ origin: 'https://api.worldmonitor.app' }),
       cancelled: false, finalizing: false, toolCallCount: 0, toolExecutionCount: 0,
       WIDGET_MAX_TOOL_CALLS: 3, toolLimit: 3, searchedUrls: new Set(), sources: [], usedWeb: false,
       getWidgetDataSessionToken: async () => 'wms_contract', invalidateWidgetDataSession() {},
@@ -1163,6 +1207,7 @@ describe('widget-agent relay — anonymous data session', () => {
       console: { warn() {} },
       Date: { now: () => now },
       AbortSignal,
+      getWidgetDataConfig: () => ({ origin: 'https://api.worldmonitor.app', operatorKey: '' }),
       fetch: async (url, init) => { calls.push({ url, init }); return mint(calls.length); },
     });
     assert.ok(start > 0 && end > start, 'Missing widget data session helpers');
@@ -1259,8 +1304,7 @@ describe('widget-agent relay — security', () => {
   it('auth 403 response is sent before any processing on bad key', () => {
     const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
     assert.ok(handlerStart !== -1, 'handleWidgetAgentRequest not found');
-    // Use 4000 chars to cover the full auth/setup section including SSE headers
-    const handlerBody = relay.slice(handlerStart, handlerStart + 4000);
+    const handlerBody = relay.slice(handlerStart, relay.indexOf('// Map a thrown error from the agent loop', handlerStart));
     const authCheckIdx = handlerBody.indexOf('requireWidgetAgentAccess(req, res)');
     const sseHeaderIdx = handlerBody.indexOf("text/event-stream");
     assert.ok(authCheckIdx !== -1, 'Auth helper call not found in handler start');
@@ -2267,7 +2311,7 @@ describe('PRO widget — relay auth and configuration', () => {
   it('health endpoint includes proKeyConfigured boolean', () => {
     const healthIdx = relay.indexOf('getWidgetAgentStatus');
     assert.ok(healthIdx !== -1, 'getWidgetAgentStatus not found');
-    const region = relay.slice(healthIdx, healthIdx + 400);
+    const region = relay.slice(healthIdx, relay.indexOf('\n}', healthIdx));
     assert.ok(
       region.includes('proKeyConfigured'),
       'Health/status response must include proKeyConfigured field',
@@ -3357,10 +3401,10 @@ describe('widget-agent relay — error classifier', () => {
     const declIdx = region.indexOf('let toolCallCount');
     assert.ok(declIdx !== -1, 'toolCallCount declaration not found');
 
-    // The outer agent-loop try is the one whose first statement imports the
-    // Anthropic SDK. Anchor on that specific shape so we ignore unrelated
+    // The outer agent-loop try starts by selecting the model client. Anchor
+    // on that declaration so we ignore unrelated
     // try/catch blocks (request-body parse, search-tool fetch, log-fallback).
-    const outerTryMatch = region.match(/try\s*\{\s*\n\s*const\s*\{\s*default:\s*Anthropic/);
+    const outerTryMatch = region.match(/try\s*\{\s*\n\s*let client;/);
     assert.ok(outerTryMatch, 'Outer agent-loop try block not found by anchor');
     const outerTryIdx = outerTryMatch.index;
 

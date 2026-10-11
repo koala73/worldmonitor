@@ -30,7 +30,8 @@ import { getBillingVerificationDenial, getEntitlements } from '../server/_shared
 // @ts-expect-error — JS module, no declaration file
 import { checkRateLimit } from './_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
-import { getRelayHeaders } from './_relay.js';
+import { getRelayBaseUrl, getRelayHeaders } from './_relay.js';
+import { isGenericLlmSelected } from '../scripts/shared/generic-llm-provider.mjs';
 import { ENDPOINT_RATE_POLICIES } from '../server/_shared/rate-limit';
 import { runRedisPipeline } from '../server/_shared/redis';
 import {
@@ -40,7 +41,13 @@ import {
   resolveActiveDirectLlmLimit,
 } from '../server/_shared/direct-llm-quota';
 
-const RELAY_BASE = 'https://proxy.worldmonitor.app';
+const GENERIC_WIDGET_MODE = isGenericLlmSelected();
+const CONFIGURED_RELAY_BASE = getRelayBaseUrl();
+const RELAY_BASE = CONFIGURED_RELAY_BASE || (GENERIC_WIDGET_MODE ? null : 'https://proxy.worldmonitor.app');
+const LOCAL_RELAY_FETCH_MARKER = CONFIGURED_RELAY_BASE
+  && ['docker', 'desktop-sidecar', 'tauri-sidecar'].includes(process.env.LOCAL_API_MODE || '')
+  ? { [Symbol.for('worldmonitor.localWidgetRelayFetch')]: true }
+  : {};
 const WIDGET_AGENT_KEY = process.env.WIDGET_AGENT_KEY ?? '';
 const PRO_WIDGET_KEY = process.env.PRO_WIDGET_KEY ?? '';
 const WORLDMONITOR_VALID_KEYS = (process.env.WORLDMONITOR_VALID_KEYS ?? '')
@@ -247,6 +254,8 @@ export default async function handler(
     });
   }
 
+  if (!RELAY_BASE) return json({ error: 'Local widget relay requires WS_RELAY_URL' }, 503, corsHeaders);
+
   // Top-level error boundary (#7204). Every other exit on this route carries
   // `corsHeaders`; an uncaught throw does not — it becomes an opaque Vercel
   // platform 5xx with no CORS headers at all, so the browser reports a CORS
@@ -440,6 +449,8 @@ async function proxyWidgetAgent(
     // No stream to protect here, so bound the whole exchange (headers AND the
     // small JSON body) rather than just the headers.
     const healthRes = await fetch(`${RELAY_BASE}/widget-agent/health`, {
+      ...LOCAL_RELAY_FETCH_MARKER,
+      redirect: 'error',
       method: 'GET',
       headers: relayHeaders,
       signal: AbortSignal.timeout(WIDGET_AGENT_HEALTH_TIMEOUT_MS),
@@ -529,6 +540,8 @@ async function proxyWidgetAgent(
   const connectTimer = setTimeout(() => connectAbort.abort(), WIDGET_AGENT_CONNECT_TIMEOUT_MS);
   try {
     const relayRes = await fetch(`${RELAY_BASE}/widget-agent`, {
+      ...LOCAL_RELAY_FETCH_MARKER,
+      redirect: 'error',
       method: 'POST',
       headers: relayHeaders,
       body: rawBody,

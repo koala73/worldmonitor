@@ -16,11 +16,13 @@
 //     are silently filtered so a halluci­nated ID never leaks through.
 //   - Provider chain mirrors seed-insights.mjs / seed-forecasts.mjs:
 //     paid OpenRouter → two fixed free OpenRouter models. Ollama skipped: the narrative call
-//     runs on Railway which has no local model.
+//     runs on Railway which has no local model. Generic deployments select
+//     only the operator's endpoint, including on local configuration failure.
 //   - `callLlm` is dependency-injected so unit tests can exercise the full
 //     prompt + parser without network.
 
 import { createHash } from 'node:crypto';
+import { buildGenericLlmProvider, genericLlmCacheIdentity, isGenericLlmSelected } from '../shared/generic-llm-provider.mjs';
 
 import { extractFirstJsonObject, cleanJsonText } from '../_llm-json.mjs';
 import { withRetry, httpRetryError, createLlmBudgetError, isLlmBudgetError } from '../_seed-utils.mjs';
@@ -354,7 +356,10 @@ export async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
   const events = [];
   let attemptIndex = 0;
 
-  for (const provider of DEFAULT_PROVIDERS) {
+  const providers = isGenericLlmSelected()
+    ? [buildGenericLlmProvider()].filter(Boolean)
+    : DEFAULT_PROVIDERS;
+  for (const provider of providers) {
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;
     const t0 = Date.now();
@@ -372,6 +377,7 @@ export async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
         if (usable <= 0) throw createLlmBudgetError('narrative llm budget exhausted');
         const response = await narrativeFetch(provider.apiUrl, {
           method: 'POST',
+          redirect: provider.name === 'generic' ? 'error' : 'follow',
           headers: provider.headers(envVal),
           body: JSON.stringify({
             model: provider.model,
@@ -489,7 +495,7 @@ export async function generateRegionalNarrative(region, snapshot, evidence, opts
   // prompt's only volatile input is a day-granular date, so identical world
   // state within a day hashes to the same key.
   const promptText = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
-  const cacheKey = `${NARRATIVE_CACHE_PREFIX}${region.id}:${createHash('sha256').update(promptText).digest('hex').slice(0, 16)}`;
+  const cacheKey = `${NARRATIVE_CACHE_PREFIX}${region.id}:${createHash('sha256').update(promptText + genericLlmCacheIdentity()).digest('hex').slice(0, 16)}`;
   try {
     const hit = await cache.get(cacheKey);
     if (hit && typeof hit === 'object' && hit.narrative && typeof hit.narrative === 'object') {

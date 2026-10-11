@@ -1,4 +1,4 @@
-// PER-79 (upstream PR 3/3): the generic OpenAI-compatible provider branch in
+// Without an explicit generic selector, preserve PER-79's last-resort branch:
 // scripts/seed-forecasts.mjs must activate ONLY when LLM_API_URL, LLM_API_KEY,
 // and LLM_MODEL are all set, AND none of the existing named providers
 // (the OpenRouter rungs — ollama belongs to seed-insights, never to this table)
@@ -24,8 +24,12 @@ import {
 } from '../scripts/seed-forecasts.mjs';
 
 const ENV_KEYS = [
+  'LLM_PROVIDER',
+  'LLM_TOOL_PROVIDER',
+  'LLM_REASONING_PROVIDER',
   'LLM_API_URL',
   'LLM_API_KEY',
+  'LLM_API_AUTH_TYPE',
   'LLM_MODEL',
   'OPENROUTER_API_KEY',
   'GROQ_API_KEY',
@@ -81,6 +85,33 @@ test('without the three env vars set, the resolved chain has no generic entry', 
     ['openrouter', 'openrouter-free', 'openrouter-free-backup'],
     'pre-existing default chain must remain bit-for-bit identical',
   );
+});
+
+test('explicit generic mode overrides cloud credentials and hosted stage pins', async () => {
+  setGenericEnv();
+  process.env.LLM_PROVIDER = 'generic';
+  process.env.LLM_API_AUTH_TYPE = 'x-bf-vk';
+  process.env.OPENROUTER_API_KEY = 'cloud-test-key';
+  const options = getForecastLlmCallOptions('critical_signals');
+  assert.deepEqual(names(resolveForecastLlmProviders(options)), ['generic']);
+  const calls = [];
+  __setForecastLlmTransportForTests({ fetch: async (url, init) => {
+    calls.push({ url, init });
+    return jsonResponse({}, 401);
+  } });
+  assert.equal(await callForecastLLM('system', 'evidence', { ...options, maxRetries: 0 }), null);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, process.env.LLM_API_URL);
+  assert.equal(calls[0].init.headers['x-bf-vk'], process.env.LLM_API_KEY);
+  assert.equal(calls[0].init.headers.Authorization, undefined);
+});
+
+test('explicit generic mode with incomplete settings never selects a cloud fallback', async () => {
+  process.env.LLM_PROVIDER = 'generic';
+  process.env.OPENROUTER_API_KEY = 'cloud-test-key';
+  assert.deepEqual(resolveForecastLlmProviders(), []);
+  __setForecastLlmTransportForTests({ fetch: () => assert.fail('Incomplete local setup must not send prompts') });
+  assert.equal(await callForecastLLM('system', 'evidence'), null);
 });
 
 test('generic enters at the tail only when ALL three envs are set AND no named-provider key is set', () => {
@@ -276,6 +307,28 @@ test('generic branch POSTs to LLM_API_URL verbatim with the chat/completions bod
   assert.equal(result?.text, 'ok-response-payload-with-enough-characters', 'parse returns the choice content');
   assert.equal(result?.model, GENERIC_MODEL, 'parse returns the response-model when provided');
   assert.equal(result?.provider, 'generic', 'parse returns the resolver-set provider name');
+});
+
+test('generic forecast dispatch uses a Bifrost virtual key without a Bearer header', async () => {
+  process.env.LLM_API_AUTH_TYPE = 'x-bf-vk';
+  const { captured, result } = await captureGenericFetch();
+  assert.ok(captured);
+  const headers = new Headers(captured.init.headers);
+  assert.equal(headers.get('x-bf-vk'), GENERIC_TOKEN);
+  assert.equal(headers.get('Authorization'), null);
+  assert.equal(headers.get('Content-Type'), 'application/json');
+  assert.ok(headers.get('User-Agent'));
+  assert.equal(result?.provider, 'generic');
+});
+
+test('unknown generic auth type excludes the provider and sends no credential', async () => {
+  setGenericEnv();
+  process.env.LLM_API_AUTH_TYPE = 'unsupported';
+  assert.equal(resolveForecastLlmProviders().some((provider) => provider.name === 'generic'), false);
+  let requests = 0;
+  __setForecastLlmTransportForTests({ fetch: async () => { requests += 1; throw new Error('Unexpected request'); } });
+  await callForecastLLM('system-prompt-body', 'user-prompt-body', { stage: 'default' });
+  assert.equal(requests, 0);
 });
 
 test('generic branch never carries openrouter-only headers (HTTP-Referer / X-Title)', async () => {
