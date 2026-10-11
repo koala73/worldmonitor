@@ -42,16 +42,32 @@ describe('stringifyWithinBudget', () => {
     assert.ok(r.minBytes > 256 * 1024);
     assert.ok(Date.now() - started < 1000);
   });
-  it('measures toJSON results within the budget, matching JSON.stringify', () => {
+  it('calls each toJSON once, with its key, and writes exactly that result', () => {
     const date = new Date(0);
-    assert.deepEqual(stringifyWithinBudget([date, { at: date }], 1024), {
-      ok: true,
-      text: JSON.stringify([date, { at: date }]),
-    });
+    const v = [date, { at: date }];
+    assert.deepEqual(stringifyWithinBudget(v, 1024), { ok: true, text: JSON.stringify(v) });
+
+    const keys = [];
+    const spy = { toJSON: (key) => { keys.push(key); return key === 'skip' ? undefined : 1; } };
+    const r = stringifyWithinBudget({ a: spy, skip: spy, b: [spy] }, 1024);
+    assert.deepEqual(r, { ok: true, text: '{"a":1,"b":[1]}' });
+    assert.deepEqual(keys, ['a', 'skip', '0']);
+
+    // A toJSON that is small on its first call and huge on its second must
+    // not slip a large result past the budget.
     let calls = 0;
-    const huge = { toJSON: () => { calls += 1; return 'x'.repeat(1_000_000); } };
-    const r = stringifyWithinBudget([huge], 1024);
-    assert.equal(r.ok, false);
-    assert.equal(calls, 1, 'an over-budget toJSON result is never serialized');
+    const flip = { toJSON: () => (calls++ === 0 ? 'ok' : 'x'.repeat(1_000_000)) };
+    assert.deepEqual(stringifyWithinBudget([flip], 1024), { ok: true, text: '["ok"]' });
+    assert.equal(calls, 1);
+  });
+
+  it('throws on cycles and BigInt like JSON.stringify', () => {
+    const cyclic = { a: 1 };
+    cyclic.self = cyclic;
+    assert.throws(() => stringifyWithinBudget(cyclic, 1024), TypeError);
+    assert.throws(() => stringifyWithinBudget({ n: 1n }, 1024), TypeError);
+    // Shared (non-cyclic) references are fine.
+    const leaf = { x: 1 };
+    assert.equal(stringifyWithinBudget([leaf, leaf], 1024).ok, true);
   });
 });

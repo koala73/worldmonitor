@@ -4,79 +4,124 @@
 // (multiselect and pipe stages reuse the same sub-object), so a tiny result
 // graph can serialize to an exponentially large string. Checking the byte cap
 // after `JSON.stringify` is too late: the expansion has already cost the CPU and
-// memory. `stringifyWithinBudget` walks the value first with a running character
-// budget and gives up as soon as the serialized form would exceed it, so the
-// walk itself is bounded by the cap rather than by the expanded size.
+// memory. `stringifyWithinBudget` serializes in a single pass with a running
+// character budget and gives up as soon as the output would exceed it, so the
+// work is bounded by the cap rather than by the expanded size. Each `toJSON` is
+// called once and its result is what gets written, so a value cannot pass the
+// budget and then serialize to something larger.
 
 export type BoundedStringifyResult =
   | { ok: true; text: string }
   | { ok: false; reason: 'too_large'; minBytes: number };
-// `minBytes` is a lower bound on the serialized size when the walk stopped
+// `minBytes` is a lower bound on the serialized size when serialization stopped
 // early, or the exact UTF-8 size when the full string was built.
 
-// Returns the serialized length (UTF-16 code units, a lower bound on UTF-8
-// bytes), stopping early with a partial count above `budget` once the budget is
-// exceeded. Mirrors JSON.stringify for the plain JSON values that JSON.parse
-// and jmespath produce.
-function measure(value: unknown, budget: number, used: number, inArray: boolean): number {
-  if (used > budget) return used;
-  if (value === null) return used + 4;
+class BudgetExceeded extends Error {}
+
+class BoundedWriter {
+  parts: string[] = [];
+  length = 0;
+  constructor(readonly budget: number) {}
+
+  // `length` is UTF-16 code units, a lower bound on UTF-8 bytes.
+  write(text: string): void {
+    this.length += text.length;
+    if (this.length > this.budget) throw new BudgetExceeded();
+    this.parts.push(text);
+  }
+
+  mark(): [number, number] {
+    return [this.parts.length, this.length];
+  }
+
+  rollback([parts, length]: [number, number]): void {
+    this.parts.length = parts;
+    this.length = length;
+  }
+}
+
+// Mirrors JSON.stringify's SerializeJSONProperty for one holder[key] value.
+// Returns false when the value is omitted (undefined, function, symbol).
+function writeValue(out: BoundedWriter, key: string, input: unknown, ancestors: Set<object>): boolean {
+  let value = input;
+  if (value !== null && (typeof value === 'object' || typeof value === 'bigint')) {
+    const toJSON = (value as { toJSON?: unknown }).toJSON;
+    if (typeof toJSON === 'function') value = toJSON.call(value, key);
+  }
+  if (value instanceof Number) value = Number(value);
+  else if (value instanceof String) value = String(value);
+  else if (value instanceof Boolean) value = value.valueOf();
+
+  if (value === null) {
+    out.write('null');
+    return true;
+  }
   switch (typeof value) {
     case 'string':
-      // Fast lower bound first so a huge string never gets re-encoded.
-      if (used + value.length + 2 > budget) return used + value.length + 2;
-      return used + JSON.stringify(value).length;
+      // Lower bound first so a huge string is never re-encoded.
+      if (out.length + value.length + 2 > out.budget) {
+        out.length += value.length + 2;
+        throw new BudgetExceeded();
+      }
+      out.write(JSON.stringify(value));
+      return true;
     case 'number':
-      return used + (Number.isFinite(value) ? String(value).length : 4);
+      out.write(Number.isFinite(value) ? String(value) : 'null');
+      return true;
     case 'boolean':
-      return used + (value ? 4 : 5);
+      out.write(value ? 'true' : 'false');
+      return true;
+    case 'bigint':
+      throw new TypeError('Do not know how to serialize a BigInt');
     case 'undefined':
     case 'function':
     case 'symbol':
-      // Omitted from objects by the caller; serialized as null inside arrays.
-      return inArray ? used + 4 : used;
-    case 'bigint':
-      // JSON.stringify throws on bigint; let the real serializer surface it.
-      return used;
+      return false;
     default:
       break;
   }
-  const toJSON = (value as { toJSON?: unknown }).toJSON;
-  if (typeof toJSON === 'function') {
-    // Mirror JSON.stringify: measure what toJSON returns, still within budget.
-    return measure(toJSON.call(value), budget, used, inArray);
-  }
-  if (Array.isArray(value)) {
-    used += 2;
-    for (let i = 0; i < value.length; i += 1) {
-      if (i > 0) used += 1;
-      used = measure(value[i], budget, used, true);
-      if (used > budget) return used;
+
+  const object = value as object;
+  if (ancestors.has(object)) throw new TypeError('Converting circular structure to JSON');
+  ancestors.add(object);
+  try {
+    if (Array.isArray(object)) {
+      out.write('[');
+      for (let i = 0; i < object.length; i += 1) {
+        if (i > 0) out.write(',');
+        if (!writeValue(out, String(i), object[i], ancestors)) out.write('null');
+      }
+      out.write(']');
+      return true;
     }
-    return used;
+    const record = object as Record<string, unknown>;
+    out.write('{');
+    let first = true;
+    for (const name of Object.keys(record)) {
+      // The key is written before the value; an omitted value rolls it back.
+      const before = out.mark();
+      out.write(`${first ? '' : ','}${JSON.stringify(name)}:`);
+      if (writeValue(out, name, record[name], ancestors)) first = false;
+      else out.rollback(before);
+    }
+    out.write('}');
+    return true;
+  } finally {
+    ancestors.delete(object);
   }
-  const record = value as Record<string, unknown>;
-  used += 2;
-  let first = true;
-  for (const key of Object.keys(record)) {
-    const child = record[key];
-    const t = typeof child;
-    if (t === 'undefined' || t === 'function' || t === 'symbol') continue;
-    if (!first) used += 1;
-    first = false;
-    used += JSON.stringify(key).length + 1;
-    used = measure(child, budget, used, false);
-    if (used > budget) return used;
-  }
-  return used;
 }
 
 export function stringifyWithinBudget(value: unknown, maxBytes: number): BoundedStringifyResult {
-  const measured = measure(value, maxBytes, 0, false);
-  if (measured > maxBytes) return { ok: false, reason: 'too_large', minBytes: measured };
-  // The walk counted UTF-16 code units, so the real UTF-8 size can still be up
-  // to 3x the cap; build the string (now bounded) and check the exact bytes.
-  const text = JSON.stringify(value) ?? 'null';
+  const out = new BoundedWriter(maxBytes);
+  try {
+    if (!writeValue(out, '', value, new Set())) return { ok: true, text: 'null' };
+  } catch (err) {
+    if (err instanceof BudgetExceeded) return { ok: false, reason: 'too_large', minBytes: out.length };
+    throw err;
+  }
+  // The budget counted UTF-16 code units, so the UTF-8 size can still be up to
+  // 3x the cap; the string is already bounded, so check the exact bytes.
+  const text = out.parts.join('');
   const bytes = new TextEncoder().encode(text).length;
   if (bytes > maxBytes) return { ok: false, reason: 'too_large', minBytes: bytes };
   return { ok: true, text };
