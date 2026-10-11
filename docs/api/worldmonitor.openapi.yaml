@@ -15372,7 +15372,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: DeductSituation
-            description: DeductSituation performs broad situational analysis using LLMs. PRO-gated. Requires an active Pro subscription. Requires entitlement tier >= 1.
+            description: DeductSituation performs broad situational analysis using LLMs. PRO-gated. Requires entitlement tier >= 1.
             operationId: DeductSituation
             security:
                 - WorldMonitorKey: []
