@@ -184,8 +184,15 @@ export default async function handler(
   if (parts.length !== 4 || root !== 'api' || route !== 'brief' || !rawUserId || !rawIssueDate) {
     return htmlResponse(req, 404, EXPIRED_PAGE);
   }
-  const userId = decodeURIComponent(rawUserId);
-  const issueDate = decodeURIComponent(rawIssueDate);
+  // A malformed percent-escape is a bad link, not a server fault.
+  let userId: string;
+  let issueDate: string;
+  try {
+    userId = decodeURIComponent(rawUserId);
+    issueDate = decodeURIComponent(rawIssueDate);
+  } catch {
+    return htmlResponse(req, 404, EXPIRED_PAGE);
+  }
   const token = url.searchParams.get('t') ?? '';
 
   let verified: boolean;

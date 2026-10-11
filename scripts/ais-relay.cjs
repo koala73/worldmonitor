@@ -12605,7 +12605,8 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(410, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: 'Feed deprecated' }));
       }
-      if (!RSS_ALLOWED_DOMAINS.has(parsed.hostname)) {
+      // The allowlist names hosts, not services: only their default ports.
+      if (!RSS_ALLOWED_DOMAINS.has(parsed.hostname) || parsed.port !== '') {
         recordRelayOutcome('rss', 'terminalFailure');
         res.writeHead(403, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: 'Domain not allowed on Railway proxy' }));
@@ -12787,8 +12788,9 @@ const server = http.createServer(async (req, res) => {
             const redirectUrl = response.headers.location.startsWith('http')
               ? response.headers.location
               : new URL(response.headers.location, url).href;
-            const redirectHost = new URL(redirectUrl).hostname;
-            if (!RSS_ALLOWED_DOMAINS.has(redirectHost)) {
+            const redirectTarget = new URL(redirectUrl);
+            const redirectHost = redirectTarget.hostname;
+            if (!RSS_ALLOWED_DOMAINS.has(redirectHost) || redirectTarget.port !== '') {
               return sendError(403, 'Redirect to disallowed domain');
             }
             logThrottled('log', `rss-redirect:${feedUrl}:${redirectUrl}`, `[Relay] Following redirect to: ${redirectUrl}`);
