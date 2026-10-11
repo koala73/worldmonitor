@@ -28,7 +28,8 @@ function request(mode = "brief", provider = "openrouter") {
     headlines: ["Headline one", "Headline two"],
     mode,
     geoContext: "",
-    variant: "full",
+    // Translate mode carries its target language in `variant`.
+    variant: mode === "translate" ? "fr" : "full",
     lang: "en",
     systemAppend: "",
     bodies: [],
