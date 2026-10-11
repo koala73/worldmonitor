@@ -6,6 +6,13 @@ import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { checkBootstrapUserApiKeyRateLimit, validateBootstrapUserApiKey } from '../_user-api-key.js';
 import { redirectDisplayHost } from './_redirect-uri.js';
+import { isHostedAppOrigin } from '../_cors.js';
+import {
+  hashOAuthBindValue,
+  oauthBindCookieHeader,
+  requestMatchesOAuthBinding,
+  resolveOAuthBindValue,
+} from './_browser-binding.js';
 
 export const config = { runtime: 'edge' };
 
@@ -234,13 +241,15 @@ export default async function handler(req) {
   }
 
   if (method === 'POST') {
-    // Origin validation: allow any first-party worldmonitor.app host (the consent
+    // Origin validation: allow the hosts that actually serve the app (the consent
     // page is served host-derived — apex/www/api/variant — so a same-origin JS
     // fetch or the native form POST to api.worldmonitor.app arrives with any of
     // those Origins), plus absent origin (server/CLI) and 'null' (WebView with
-    // opaque/sandboxed origin). CSRF nonce provides the actual protection.
+    // opaque/sandboxed origin). The enumerated list, not WM_ORIGIN's any-label
+    // wildcard: vendor CNAMEs such as clerk.* are not ours to trust. CSRF nonce
+    // and the browser binding provide the actual protection.
     const origin = req.headers.get('origin');
-    if (origin && origin !== 'null' && !WM_ORIGIN.test(origin)) {
+    if (origin && origin !== 'null' && !isHostedAppOrigin(origin)) {
       return new Response('Forbidden', { status: 403 });
     }
   }
@@ -293,15 +302,22 @@ export default async function handler(req) {
 
     const nonce = crypto.randomUUID();
     const iss = resolveAuthorizationIssuer(req);
-    const nonceStored = await redisSet(`oauth:nonce:${nonce}`, { client_id, redirect_uri, code_challenge, state, iss, created_at: Date.now() }, 600);
+    // Bind the nonce to this browser (see _browser-binding.js): only a request
+    // carrying the same cookie can redeem it, so a forwarded consent link is
+    // inert in someone else's browser.
+    const bindValue = resolveOAuthBindValue(req);
+    const bind_hash = await hashOAuthBindValue(bindValue);
+    const nonceStored = await redisSet(`oauth:nonce:${nonce}`, { client_id, redirect_uri, code_challenge, state, iss, bind_hash, created_at: Date.now() }, 600);
     if (!nonceStored) {
       return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.');
     }
 
-    return consentPage({
+    const page = consentPage({
       client_name: client.client_name ?? 'Unknown Client',
       redirect_uri, client_id, response_type: 'code', code_challenge, code_challenge_method: 'S256', state,
     }, nonce);
+    page.headers.append('Set-Cookie', oauthBindCookieHeader(bindValue, req));
+    return page;
   }
 
   if (method === 'POST') {
@@ -333,6 +349,10 @@ export default async function handler(req) {
     }
     if (!nonceData) {
       return htmlError('Session Expired', 'Authorization session expired or is invalid. Please start over.');
+    }
+    // The nonce is already consumed, so a mismatched browser cannot retry it.
+    if (!(await requestMatchesOAuthBinding(req, nonceData))) {
+      return htmlError('Session Mismatch', 'This authorization was started in a different browser. Please start over from your MCP client in this browser.');
     }
 
     // Authoritative values come exclusively from server-stored nonce.

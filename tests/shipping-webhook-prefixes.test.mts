@@ -7,6 +7,10 @@ import { assertWebhookDeliveryUrlSafe } from '../server/worldmonitor/shipping/v2
 const blocked = [
   '64:ff9b:1::', '64:ff9b:1:ffff:ffff:ffff:ffff:ffff', '0064:FF9B:0001:0000:0000:0000:0808:0808',
   '100::', '100::ffff:ffff:ffff:ffff', '0100:0000:0000:0000:0000:0000:0000:0001',
+  // Teredo (2001::/32) and the rest of the 2001::/23 IETF block
+  '2001::1', '2001:0:4136:e378:8000:63bf:3fff:fdd2', '2001:1ff:ffff::1',
+  // IPv4-translated (SIIT) wrapping loopback and metadata
+  '::ffff:0:7f00:1', '::ffff:0:a9fe:a9fe',
 ];
 for (const address of blocked) {
   test(`non-public prefix rejected as literal and DNS answer: ${address}`, async () => {
@@ -20,7 +24,7 @@ for (const address of blocked) {
 }
 test('prefix boundaries do not broaden the existing classifier', () => {
   // Neighbours are unchanged, not a claim that they are globally assigned.
-  for (const address of ['64:ff9b:0:ffff:ffff:ffff:ffff:ffff', '64:ff9b:2::', 'ff:ffff:ffff:ffff:ffff:ffff:ffff:ffff', '100:0:0:1::', '64:ff9b::808:808', '2606:4700:4700::1111']) {
+  for (const address of ['64:ff9b:0:ffff:ffff:ffff:ffff:ffff', '64:ff9b:2::', 'ff:ffff:ffff:ffff:ffff:ffff:ffff:ffff', '100:0:0:1::', '64:ff9b::808:808', '2606:4700:4700::1111', '2001:200::1', '::ffff:0:808:808']) {
     assert.equal(isBlockedResolvedAddress(address), false, address);
   }
   assert.equal(isBlockedResolvedAddress('64:ff9b::7f00:1'), true);

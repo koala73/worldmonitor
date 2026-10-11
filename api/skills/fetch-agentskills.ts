@@ -104,7 +104,10 @@ export default async function handler(
     return Response.json({ error: 'Invalid URL' }, { status: 400, headers: corsHeaders });
   }
 
-  if (!ALLOWED_AGENTSKILLS_HOSTS.has(skillUrl.hostname)) {
+  // https on the default port only. The cache key below is host + path, so an
+  // http:// or :port variant of an allowlisted host would otherwise share the
+  // https entry and could seed it with a response fetched over plaintext.
+  if (!ALLOWED_AGENTSKILLS_HOSTS.has(skillUrl.hostname) || skillUrl.protocol !== 'https:' || skillUrl.port !== '') {
     return Response.json({ error: 'Only agentskills.io URLs are supported.' }, { status: 400, headers: corsHeaders });
   }
 

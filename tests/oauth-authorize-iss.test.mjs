@@ -34,6 +34,9 @@ const ENV_KEYS = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'WORLDMO
 const originalEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 
 let store;
+// Browser-binding cookie from the latest GET; consent POSTs replay it the way
+// the same browser would.
+let flowCookie = '';
 
 function installRedisStub() {
   store = new Map();
@@ -97,16 +100,17 @@ async function startFlow(host) {
   }).toString();
   const res = await authorizeHandler(new Request(url, { headers: { host } }));
   assert.equal(res.status, 200, 'consent page renders');
+  flowCookie = (res.headers.get('Set-Cookie') ?? '').split(';')[0];
   const nonceKey = [...store.keys()].find((k) => k.startsWith('oauth:nonce:'));
   assert.ok(nonceKey, 'GET stores the nonce');
   return { nonce: nonceKey.slice('oauth:nonce:'.length), nonceData: JSON.parse(store.get(nonceKey)) };
 }
 
-function submitConsent(nonce, { host = 'api.worldmonitor.app', xhr = false, apiKey = ENTERPRISE_KEY } = {}) {
+function submitConsent(nonce, { host = 'api.worldmonitor.app', xhr = false, apiKey = ENTERPRISE_KEY, cookie = flowCookie } = {}) {
   const body = new URLSearchParams({ api_key: apiKey, _nonce: nonce, ...(xhr ? { _js: '1' } : {}) });
   return authorizeHandler(new Request(`https://${host}/oauth/authorize`, {
     method: 'POST',
-    headers: { host, origin: `https://${host}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: { host, origin: `https://${host}`, 'Content-Type': 'application/x-www-form-urlencoded', ...(cookie ? { cookie } : {}) },
     body: body.toString(),
   }));
 }

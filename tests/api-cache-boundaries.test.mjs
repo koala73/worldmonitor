@@ -6,6 +6,7 @@ import ts from 'typescript';
 import oref from '../api/oref-alerts.js';
 import { checkRateLimit } from '../api/_rate-limit.js';
 import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin } from '../api/_cors.js';
+import * as channelOAuthState from '../server/_shared/channel-oauth-state.ts';
 
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
@@ -46,6 +47,7 @@ function slack({ admission = null, pipeline = [{ result: 'OK' }], token = 'redis
       if (name.endsWith('_rate-limit.js')) return { checkRateLimit: async (...args) => { calls.limit.push(args); return realAdmission ? checkRateLimit(...args) : admission; } };
       if (name.endsWith('auth-session')) return { validateBearerToken: async () => { calls.auth++; return { valid: true, userId: 'user-1' }; } };
       if (name.endsWith('pro-entitlement')) return { checkTierProEntitlement: async () => ({ allowed: true }) };
+      if (name.endsWith('channel-oauth-state')) return channelOAuthState;
       throw new Error(name);
     },
     fetch: async (_url, init) => { calls.writes.push(JSON.parse(init.body)); assert.equal(init.headers['User-Agent'], 'worldmonitor-edge/1.0'); return typeof pipeline === 'string' ? new Response(pipeline) : Response.json(pipeline); },
@@ -91,6 +93,8 @@ test('Slack requires confirmed SET success before returning an authorization URL
   const url = new URL((await response.json()).oauthUrl);
   assert.equal(url.hostname, 'slack.com');
   assert.equal(app.calls.writes[0][0][1], `wm:slack:oauth:${url.searchParams.get('state')}`);
+  assert.equal(JSON.parse(app.calls.writes[0][0][2]).userId, 'user-1');
+  assert.match(response.headers.get('Set-Cookie'), /^__Secure-wm_slack_oauth=/);
 });
 
 test('canonical OREF responses retain aggregation and caller admission', async () => {

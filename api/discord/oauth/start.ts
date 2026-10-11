@@ -15,6 +15,7 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders } from '../../_cors.js';
 import { validateBearerToken } from '../../../server/auth-session';
 import { checkTierProEntitlement } from '../../../server/_shared/pro-entitlement';
+import { createChannelOAuthState } from '../../../server/_shared/channel-oauth-state';
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID ?? '';
 const DISCORD_REDIRECT_URI = process.env.DISCORD_REDIRECT_URI ?? '';
@@ -66,11 +67,14 @@ export default async function handler(req: Request): Promise<Response> {
   const state = btoa(String.fromCharCode(...stateBytes))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-  // Store userId in Upstash with 10-min TTL
+  // Bind the state to this browser and opener origin (see channel-oauth-state).
+  const oauthState = await createChannelOAuthState('discord', req, session.userId);
+
+  // Store the state record in Upstash with 10-min TTL
   const pipelineRes = await fetch(`${UPSTASH_URL}/pipeline`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify([['SET', `wm:discord:oauth:${state}`, session.userId, 'EX', '600']]),
+    body: JSON.stringify([['SET', `wm:discord:oauth:${state}`, oauthState.record, 'EX', '600']]),
     signal: AbortSignal.timeout(5000),
   }).catch(() => null);
 
@@ -91,6 +95,6 @@ export default async function handler(req: Request): Promise<Response> {
 
   return new Response(JSON.stringify({ oauthUrl: oauthUrl.toString() }), {
     status: 200,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    headers: { 'Content-Type': 'application/json', 'Set-Cookie': oauthState.setCookie, ...corsHeaders },
   });
 }

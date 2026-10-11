@@ -102,6 +102,10 @@ function embeddedIpv4FromIpv6(hextets) {
   if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0xffff) {
     return toDotted(h6, h7);
   }
+  // IPv4-translated (SIIT) ::ffff:0:0:0/96
+  if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0xffff && h5 === 0) {
+    return toDotted(h6, h7);
+  }
   // NAT64 64:ff9b::/96
   if (h0 === 0x0064 && h1 === 0xff9b && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0) {
     return toDotted(h6, h7);
@@ -139,6 +143,9 @@ function isBlockedResolvedAddress(address) {
     if (h0 === 0x0064 && h1 === 0xff9b && h2 === 0x0001) return true;
     // RFC 6666 discard-only prefix 100::/64.
     if (h0 === 0x0100 && h1 === 0 && h2 === 0 && h3 === 0) return true;
+    // 2001::/23 IETF protocol assignments (Teredo 2001::/32 tunnels to an
+    // arbitrary IPv4; benchmarking; ORCHID).
+    if (h0 === 0x2001 && h1 < 0x0200) return true;
   }
 
   if (addr === '::' || addr === '::1') return true;

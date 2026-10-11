@@ -10591,6 +10591,9 @@
           "path": "server/_shared/brief-url.ts"
         },
         {
+          "path": "server/_shared/channel-oauth-state.ts"
+        },
+        {
           "path": "server/_shared/intel-history-embed.ts"
         },
         {

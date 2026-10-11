@@ -115,6 +115,10 @@ export function isBlockedResolvedAddress(address: string): boolean {
   if ((g0 & 0xffc0) === 0xfec0) return true; // fec0::/10 site local (deprecated)
   if ((g0 & 0xff00) === 0xff00) return true; // ff00::/8 multicast
   if (g0 === 0x2001 && g1 === 0x0db8) return true; // 2001:db8::/32 documentation
+  // 2001::/23 IETF protocol assignments: Teredo (2001::/32, which tunnels to an
+  // arbitrary IPv4), benchmarking, ORCHID. None is a legitimate webhook or MCP
+  // server address.
+  if (g0 === 0x2001 && g1 < 0x0200) return true;
 
   // Non-globally-reachable destinations: local-use translation (RFC 8215)
   // and discard-only (RFC 6666), per the IANA IPv6 special-purpose registry.
@@ -124,6 +128,9 @@ export function isBlockedResolvedAddress(address: string): boolean {
   // Embedded-IPv4 forms — decode the embedded IPv4 and run the v4 blocklist.
   if (groups.slice(0, 5).every(part => part === 0) && g5 === 0xffff) {
     return isBlockedEmbeddedIpv4(g6, g7); // ::ffff:0:0/96 v4-mapped (dotted + hex)
+  }
+  if (groups.slice(0, 4).every(part => part === 0) && groups[4] === 0xffff && g5 === 0) {
+    return isBlockedEmbeddedIpv4(g6, g7); // ::ffff:0:0:0/96 IPv4-translated (SIIT)
   }
   if (g0 === 0x64 && g1 === 0xff9b && groups.slice(2, 6).every(part => part === 0)) {
     return isBlockedEmbeddedIpv4(g6, g7); // 64:ff9b::/96 NAT64

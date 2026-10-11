@@ -70,6 +70,8 @@ describe('OAuth authorize — consent POST origin gate (P1)', () => {
     'https://evilworldmonitor.app',          // prefix attack — no subdomain dot
     'http://worldmonitor.app',               // non-https
     'https://worldmonitor.app:8443',         // port smuggling
+    'https://clerk.worldmonitor.app',        // vendor CNAME, not an app host
+    'https://abacus.worldmonitor.app',       // vendor CNAME, not an app host
   ];
 
   for (const origin of foreignOrigins) {

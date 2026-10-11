@@ -63,6 +63,8 @@ const MESSAGES: Record<string, string> = {
   INSUFFICIENT_TIER: 'A WorldMonitor Pro subscription is required to authorize MCP clients.',
   NONCE_CLAIMED_BY_OTHER_USER:
     'This authorization request has already been claimed by another account. Start over from your MCP client.',
+  BROWSER_MISMATCH:
+    'This authorization was started in a different browser. Start over from your MCP client in this browser. If someone sent you this link, do not approve it.',
   CONFIGURATION_ERROR: 'MCP authorization is temporarily unavailable. Please try again later.',
   SERVICE_UNAVAILABLE: 'The authorization service is temporarily unavailable. Please try again in a moment.',
   TIER_VERIFICATION_UNAVAILABLE:
@@ -82,6 +84,7 @@ const TITLES: Record<string, string> = {
   INVALID_REDIRECT_URI: 'Redirect destination not allowed',
   INSUFFICIENT_TIER: 'Pro subscription required',
   NONCE_CLAIMED_BY_OTHER_USER: 'Claimed by another account',
+  BROWSER_MISMATCH: 'Started in a different browser',
   CONFIGURATION_ERROR: 'Authorization temporarily unavailable',
   SERVICE_UNAVAILABLE: 'Authorization temporarily unavailable',
   TIER_VERIFICATION_UNAVAILABLE: 'Verifying your subscription',
