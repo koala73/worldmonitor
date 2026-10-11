@@ -150,6 +150,24 @@ describe('API-key consent POST requires the binding', () => {
     assert.ok(new URL(res.headers.get('Location')).searchParams.get('code'));
   });
 
+  it('renews the binding cookie with a retry nonce so the retry outlives the original cookie', async () => {
+    installRedisStub();
+    const { nonce, cookie } = await startFlow();
+    const host = 'api.worldmonitor.app';
+    const res = await authorizeHandler(new Request(`https://${host}/oauth/authorize`, {
+      method: 'POST',
+      headers: { host, origin: `https://${host}`, 'Content-Type': 'application/x-www-form-urlencoded', cookie },
+      body: new URLSearchParams({ api_key: 'wrong-key', _nonce: nonce }).toString(),
+    }));
+    assert.equal(res.status, 200);
+    const renewed = res.headers.get('Set-Cookie') ?? '';
+    assert.equal(renewed.split(';')[0], cookie, 'same binding value is re-sent');
+    assert.ok(renewed.split('; ').includes('Max-Age=600'));
+    const retryNonce = [...store.keys()].find((k) => k.startsWith('oauth:nonce:'))?.slice('oauth:nonce:'.length);
+    assert.ok(retryNonce && retryNonce !== nonce);
+    assert.equal((await submitConsent(retryNonce, cookie)).status, 302);
+  });
+
   it('refuses a forwarded nonce submitted without the cookie, and burns it', async () => {
     installRedisStub();
     const { nonce } = await startFlow();

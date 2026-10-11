@@ -11,6 +11,7 @@ import {
   hashOAuthBindValue,
   oauthBindCookieHeader,
   requestMatchesOAuthBinding,
+  readOAuthBindCookie,
   resolveOAuthBindValue,
 } from './_browser-binding.js';
 
@@ -217,16 +218,21 @@ button:disabled{opacity:.5;cursor:default}
 </body></html>`, { status: 200, headers: PAGE_HEADERS });
 }
 
-async function retryConsent(nonceData, client, isXHR, failure) {
+async function retryConsent(req, nonceData, client, isXHR, failure) {
   const retryNonce = crypto.randomUUID();
   // A consumed nonce stays consumed. Only server-held request values are copied.
   const stored = await redisSet(`oauth:nonce:${retryNonce}`, { ...nonceData, created_at: Date.now() }, 600);
   if (!stored) return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please start over shortly.');
-  const headers = { ...PAGE_HEADERS, ...failure.headers };
+  const headers = new Headers({ ...PAGE_HEADERS, ...failure.headers });
+  // The retry nonce gets a fresh 10-minute TTL, so renew the binding cookie
+  // with it; otherwise the cookie set by the original GET could expire first.
+  const bindValue = readOAuthBindCookie(req);
+  if (bindValue) headers.append('Set-Cookie', oauthBindCookieHeader(bindValue, req));
   if (isXHR) {
+    headers.set('Content-Type', 'application/json');
     return new Response(JSON.stringify({ error: failure.error, message: failure.message, nonce: retryNonce }), {
       status: failure.status,
-      headers: { ...headers, 'Content-Type': 'application/json' },
+      headers,
     });
   }
   const page = consentPage({ ...nonceData, client_name: client.client_name ?? 'Unknown Client' }, retryNonce, failure.message);
@@ -379,18 +385,18 @@ export default async function handler(req) {
     let userKey = null;
     if (!enterpriseKey && api_key.startsWith('wm_')) {
       const guard = await checkBootstrapUserApiKeyRateLimit(req);
-      if (!guard.ok) return retryConsent(nonceData, client, isXHR, {
+      if (!guard.ok) return retryConsent(req, nonceData, client, isXHR, {
         error: 'temporarily_unavailable', message: guard.error, status: guard.status, headers: guard.headers,
       });
       userKey = await validateBootstrapUserApiKey(api_key);
       if (!userKey.ok && userKey.status === 503) {
-        return retryConsent(nonceData, client, isXHR, {
+        return retryConsent(req, nonceData, client, isXHR, {
           error: 'temporarily_unavailable', message: userKey.error, status: 503, headers: userKey.headers,
         });
       }
     }
     if (!enterpriseKey && !userKey?.ok) {
-      return retryConsent(nonceData, client, isXHR, {
+      return retryConsent(req, nonceData, client, isXHR, {
         error: 'invalid_key', message: 'Invalid API key. Please check and try again.', status: 400,
       });
     }

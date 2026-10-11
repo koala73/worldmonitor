@@ -22,11 +22,11 @@ const originalFetch = globalThis.fetch;
 
 // The state record and binding cookie `start` would have produced for this
 // browser (server/_shared/channel-oauth-state.ts).
-async function makeState(provider) {
+async function makeState(provider, existingCookie) {
   const { createChannelOAuthState } = await import('../server/_shared/channel-oauth-state.ts');
   const startReq = new Request(`${CALLBACK_ORIGIN}/api/${provider}/oauth/start`, {
     method: 'POST',
-    headers: { origin: OPENER_ORIGIN },
+    headers: { origin: OPENER_ORIGIN, ...(existingCookie ? { cookie: existingCookie } : {}) },
   });
   const { record, setCookie } = await createChannelOAuthState(provider, startReq, 'user-123');
   return { record, cookie: setCookie.split(';')[0] };
@@ -214,6 +214,26 @@ describe('OAuth callback state consumption', () => {
         assert.match(body, /browser_mismatch/, `${provider}: forwarded link must not complete`);
         assert.equal(calls.tokenExchanges, 0, `${provider}: no provider token exchange`);
         assert.equal(calls.relayWrites, 0, `${provider}: no channel attached to the starter's account`);
+      }
+    }
+  });
+
+  it('lets two flows started in one browser both finish', async () => {
+    setTestEnv();
+
+    for (const provider of Object.keys(providers)) {
+      const first = await makeState(provider);
+      const second = await makeState(provider, first.cookie);
+      assert.equal(second.cookie, first.cookie, `${provider}: a second start must keep the browser's binding`);
+      for (const { record } of [first, second]) {
+        const { calls, fetchStub } = makeFetchStub(provider, { stateRecord: record });
+        globalThis.fetch = fetchStub;
+        const handler = await loadHandler(provider);
+
+        const body = await (await handler(callbackRequest(provider, second.cookie), { waitUntil() {} })).text();
+
+        assert.ok(body.includes(providers[provider].successType), `${provider}: both popups must complete`);
+        assert.equal(calls.tokenExchanges, 1);
       }
     }
   });

@@ -64,14 +64,17 @@ function resolveOpenerOrigin(req: Request): string {
 
 /**
  * Builds the record `start` stores and the Set-Cookie header it returns.
- * A fresh binding per flow: only the browser that called `start` can finish it.
+ * Only the browser that called `start` can finish the flow. An existing
+ * binding cookie is reused, so a second start in another tab does not break
+ * the first popup; the cookie is refreshed so it outlives the newest state.
  */
 export async function createChannelOAuthState(
   provider: ChannelOAuthProvider,
   req: Request,
   userId: string,
 ): Promise<{ record: string; setCookie: string }> {
-  const bindValue = base64url(crypto.getRandomValues(new Uint8Array(32)));
+  const bindValue = readCookie(req, channelOAuthCookieName(provider))
+    ?? base64url(crypto.getRandomValues(new Uint8Array(32)));
   const state: ChannelOAuthState = {
     userId,
     bindHash: await hashBindValue(provider, bindValue),
