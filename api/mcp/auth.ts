@@ -7,7 +7,7 @@ import { resolveBearerToContext } from '../_oauth-token.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from '../_crypto.js';
 // @ts-expect-error — JS module, no declaration file
-import { getClientIp, hasCloudflareTransitProof } from '../_client-ip.js';
+import { getClientRateLimitKey, hasCloudflareTransitProof } from '../_client-ip.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { redisPipeline as rawRedisPipeline } from '../_upstash-json.js';
@@ -919,7 +919,7 @@ export async function applyAnonDiscoveryLimit(
   if (!rl) return null;
   let denied = false;
   try {
-    const { success } = await rl.limit(`ip:${getClientIp(req)}`);
+    const { success } = await rl.limit(`ip:${getClientRateLimitKey(req)}`);
     denied = !success;
   } catch { /* graceful degradation */ }
   // Outside the fail-open catch — see `applyPerMinuteLimit`'s env_key branch.
@@ -1042,7 +1042,7 @@ export async function applyFreeTierLimit(
     return freeTierRateLimitDegradedResponse(id, headers);
   }
   try {
-    const result = await rl.limit(`ip:${getClientIp(req)}`);
+    const result = await rl.limit(`ip:${getClientRateLimitKey(req)}`);
     // @upstash/ratelimit can resolve a timeout as success:true rather than
     // rejecting. Treat that as unavailable, not as verified headroom.
     if (result.reason === 'timeout') {

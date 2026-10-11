@@ -2,7 +2,7 @@ import { sha256Hex } from './_crypto.js';
 import { redisPipeline } from './_upstash-json.js';
 import {
   RATE_LIMIT_DEGRADED_HEADERS,
-  getClientIp,
+  getClientRateLimitKey,
 } from './_client-ip.js';
 
 const USER_API_KEY_RE = /^wm_[a-f0-9]{40}$/;
@@ -169,7 +169,7 @@ export function isCanonicalUserApiKey(key) {
 }
 
 export async function checkBootstrapUserApiKeyRateLimit(req) {
-  const identifier = getClientIp(req);
+  const identifier = getClientRateLimitKey(req);
   const cacheKey = `${RATE_LIMIT_PREFIX}${identifier}`;
   // App-owned rate-limit counter (#7674): rides the deployment-prefixed
   // default, matching the server layer's own prefixed rate-limit keys

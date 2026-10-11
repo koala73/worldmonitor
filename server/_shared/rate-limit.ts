@@ -1,7 +1,7 @@
 import { SUB_REQUEST_MARKER_HEADER } from './sub-request-admission';
 import { Ratelimit, type Duration } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
-import { getClientIp, hasUnprovenCloudflareClientIp, UNKNOWN_CLIENT_IP } from './client-ip';
+import { getClientIp, getClientRateLimitKey, hasUnprovenCloudflareClientIp, UNKNOWN_CLIENT_IP } from './client-ip';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../api/_sentry-edge.js';
 // @ts-expect-error — JS module, no declaration file
@@ -13,7 +13,7 @@ import { durationToSeconds, limitWithFallback, resetRateLimitFallbackForTest } f
 // the helpers' original home and existing callers import them from this
 // module (getClientIp: api/ask.ts, api/a2a.ts, api/mcp-proxy.ts;
 // UNKNOWN_CLIENT_IP: turnstile.ts; plus the rate-limit test suites).
-export { getClientIp, hasCloudflareTransitProof, hasUnprovenCloudflareClientIp, UNKNOWN_CLIENT_IP } from './client-ip';
+export { getClientIp, getClientRateLimitKey, hasCloudflareTransitProof, hasUnprovenCloudflareClientIp, rateLimitKeyForIp, UNKNOWN_CLIENT_IP } from './client-ip';
 
 // @upstash/redis defaults to 5 retries with exponential backoff (~4.3s total)
 // before surfacing an unreachable-Redis error. The node test runner sets
@@ -568,7 +568,7 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
   // principals use a separate namespace.
   const identifier =
     getPrincipalRateLimitIdentifier(opts.principalUserId, opts.principalScope) ??
-    getClientIp(request);
+    getClientRateLimitKey(request);
 
   try {
     const { success, limit, reset } = await limitWithFallback(
@@ -1167,7 +1167,7 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
 
   const identifier =
     getPrincipalRateLimitIdentifier(opts.principalUserId, opts.principalScope) ??
-    `ip:${getClientIp(request)}`;
+    `ip:${getClientRateLimitKey(request)}`;
   const policy = ENDPOINT_RATE_POLICIES[pathname];
   // hasEndpointRatePolicy(pathname) above already guarantees this — the
   // extra check exists only to satisfy noUncheckedIndexedAccess, since TS
@@ -1315,7 +1315,7 @@ export async function checkFailClosedScopedIpRateLimit(
 ): Promise<Response | null> {
   const proofDenied = checkIpScopedEdgeProof(request, corsHeaders);
   if (proofDenied) return proofDenied;
-  const result = await checkScopedRateLimit(scope, limit, window, getClientIp(request));
+  const result = await checkScopedRateLimit(scope, limit, window, getClientRateLimitKey(request));
   if (result.degraded) return rateLimitDegradedResponse(corsHeaders);
   if (!result.allowed) {
     return tooManyRequestsResponse(result.limit, result.reset, corsHeaders, durationToSeconds(window));

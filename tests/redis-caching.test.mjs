@@ -2753,6 +2753,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     const stubDir = createTempDir('wm-aircraft-rate-');
     const rateStub = join(stubDir, 'rate.mjs');
     writeFileSync(rateStub, `export const getClientIp = () => 'test';
+export const getClientRateLimitKey = () => 'test';
 export const checkScopedRateLimit = async () => ({ allowed: true, degraded: false });
 export const RATE_LIMIT_DEGRADED_HEADERS = { 'X-RateLimit-Mode': 'degraded', 'Retry-After': '5' };`);
     const imported = await importPatchedTsModule('server/worldmonitor/aviation/v1/track-aircraft.ts', {
