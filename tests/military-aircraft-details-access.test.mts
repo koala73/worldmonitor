@@ -266,6 +266,25 @@ describe('Wingbits aircraft-details batch spend boundary', () => {
     assert.equal(response.requested, 1);
   });
 
+  it('makes no paid lookups when the snapshot cannot be read', async () => {
+    const urls: string[] = [];
+    installFetch({ flights: [{ hexCode: 'AA0001', lat: 1, lon: 2 }] }, urls);
+    const redisAndWingbits = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input).startsWith(`${REDIS_URL}/get/military%3Aflights`)) {
+        return new Response('unavailable', { status: 503 });
+      }
+      return redisAndWingbits(input, init);
+    };
+
+    // An unknown boundary must not fall back to looking up whatever the
+    // caller sends.
+    const response = await getAircraftDetailsBatch(ctx(), { icao24s: ['aa0001', 'bb0002'] });
+
+    assert.deepEqual(urls, []);
+    assert.equal(response.requested, 0);
+  });
+
   it('keeps looking up misses when no snapshot exists to check against', async () => {
     const urls: string[] = [];
     installFetch(null, urls);
