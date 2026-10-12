@@ -4455,19 +4455,28 @@ describe('crawlable corpus generator', () => {
       assert.match(hormuz, /data-live-chokepoint data-chokepoint-id="hormuz_strait"/);
       assert.match(hormuz, /data-published-pulse/);
       // #7613: keep the open/closed query while answering only from the
-      // evidence this snapshot can support.
+      // evidence this snapshot can support. Read the score and band from the
+      // committed pulse rather than pinning one capture's wording: the
+      // 2026-10-12 refresh moved Hormuz from a partial pulse with no transit
+      // count to a full one, and the pinned sentences failed the refresh
+      // (#9115). The exact narrative of every chokepoint page is checked
+      // against chokepointEvidenceNarrative further down.
       assert.match(hormuz, /<h2>Is Strait of Hormuz open right now\?<\/h2>/);
+      const hormuzPulse = clock.livePulse.chokepoints.hormuz_strait;
+      const hormuzPassage = hormuz.match(/data-chokepoint-open-status>([^<]*)</)?.[1] ?? '';
       assert.match(
-        hormuz,
-        /data-chokepoint-open-status>As of [^<]*source coverage for the Strait of Hormuz is partial\. No transit count is published for this snapshot\. World Monitor cannot verify operational passage status from this snapshot\.</,
+        hormuzPassage,
+        /^As of .+ (?:World Monitor cannot verify operational passage status from this snapshot|The (?:Green|Yellow|Red) disruption score is a risk signal; it does not verify unrestricted passage or operational closure)\.$/,
+        'the passage answers from source coverage, never with a closure verdict',
+      );
+      const hormuzDriver = hormuz.match(/data-chokepoint-score-driver>([^<]*)</)?.[1] ?? '';
+      assert.match(
+        hormuzDriver,
+        new RegExp(`^The score of ${hormuzPulse.disruptionScore} \\(${hormuzPulse.status}\\) has this evidence basis\\. Configured geopolitical baseline: `),
       );
       assert.match(
-        hormuz,
-        /data-chokepoint-score-driver>The score of 70 \(Red\) has this evidence basis\. Configured geopolitical baseline: Active conflict — Iran-Israel war/,
-      );
-      assert.match(
-        hormuz,
-        /Observed score inputs: 0 warnings; maximum AIS congestion severity Normal\. Context only \(not score inputs\): AIS event count \(0 AIS disruptions\); transit count unavailable\./,
+        hormuzDriver,
+        /Observed score inputs: .+\. Context only \(not score inputs\): AIS event count (?:\(.+\)|unavailable); transit count (?:\(.+\)|unavailable)\.$/,
       );
       assert.doesNotMatch(hormuz, /data-chokepoint-status-mapping/);
       assert.ok(hormuz.includes(liveScriptTag), 'chokepoint live script must match the production CSP nonce');
@@ -4477,24 +4486,34 @@ describe('crawlable corpus generator', () => {
       assert.doesNotMatch(hormuz, /data-chokepoint-band>Loading/);
       assert.match(hormuz, /<time data-live-updated datetime="20\d{2}-\d{2}-\d{2}T/);
       assert.match(hormuz, /data-chokepoint-score>\d/);
-      // #7457: the frozen pulse stores todayTransits "0" with a non-zero WoW
-      // for Hormuz. That 0 is an AIS-window zero-fill, not a measurement.
-      assert.match(hormuz, /data-chokepoint-transits>—/);
-      assert.doesNotMatch(
-        hormuz,
-        /data-chokepoint-transits>0</,
-        'absent-feed chokepoint must not render a numeric 0 transit count',
-      );
-      assert.match(
-        hormuz,
-        /World Monitor is not currently publishing a transit count for Strait of Hormuz for this period/,
-      );
+      // #7457: a frozen pulse once stored todayTransits "0" with a non-zero
+      // WoW for Hormuz. That 0 is an AIS-window zero-fill, not a measurement,
+      // so the page withholds the count. Which branch Hormuz is on follows the
+      // committed pulse (#9115); the per-chokepoint loop below holds every
+      // page to its own flags.
       const hormuzDocument = htmlDocument(
         hormuz,
         'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/',
       );
-      assert.match(hormuzDocument.querySelector('[data-chokepoint-transits-note]').textContent,
-        /Not measured here in this snapshot.*matched AIS entry and exit reports/);
+      const hormuzTransitsNote = hormuzDocument.querySelector('[data-chokepoint-transits-note]');
+      if (hormuzPulse.todayCountsAvailable === true && hormuzPulse.todayTransits != null) {
+        assert.match(hormuz, new RegExp(`data-chokepoint-transits>${hormuzPulse.todayTransits}<`));
+        assert.doesNotMatch(hormuz, /World Monitor is not currently publishing a transit count for Strait of Hormuz/);
+        assert.equal(hormuzTransitsNote.hidden, true, 'a published count carries no withhold note');
+      } else {
+        assert.match(hormuz, /data-chokepoint-transits>—/);
+        assert.doesNotMatch(
+          hormuz,
+          /data-chokepoint-transits>0</,
+          'absent-feed chokepoint must not render a numeric 0 transit count',
+        );
+        assert.match(
+          hormuz,
+          /World Monitor is not currently publishing a transit count for Strait of Hormuz for this period/,
+        );
+        assert.match(hormuzTransitsNote.textContent,
+          /Not measured here in this snapshot.*matched AIS entry and exit reports/);
+      }
       assert.match(hormuzDocument.querySelector('[data-live-chokepoint]').dataset.transitMeasurementNote,
         /Historical PortWatch totals/);
       // Visibility follows the pulse's availability flags, not a fixed
@@ -4503,7 +4522,6 @@ describe('crawlable corpus generator', () => {
       // first refresh that carried them inverted it (#7530, same class as
       // #7533). The contract is that a tile is present in SSR for hydration and
       // hidden exactly when its own source is unavailable.
-      const hormuzPulse = clock.livePulse.chokepoints.hormuz_strait;
       for (const [selector, available] of [
         ['[data-chokepoint-warnings]', hormuzPulse.navigationalWarningsAvailable === true],
         ['[data-chokepoint-ais-disruptions]', hormuzPulse.aisSnapshotAvailable === true],
