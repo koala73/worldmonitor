@@ -776,7 +776,10 @@ export function getWmSessionToken(): string | null {
 
 export type KeySessionOutcome =
   | { ok: true }
-  /** `rejected` is true when the server refused the key itself (4xx other than 429). */
+  /**
+   * `rejected` is true only when the server answered 401 "Invalid session
+   * key". A 403 (origin refused), 429 or 5xx says nothing about the key.
+   */
   | { ok: false; rejected: boolean };
 
 export async function establishWmKeySession(keys: { widgetKey?: string; proKey?: string }): Promise<boolean> {
@@ -786,8 +789,7 @@ export async function establishWmKeySession(keys: { widgetKey?: string; proKey?:
 export async function establishWmKeySessionOutcome(keys: { widgetKey?: string; proKey?: string }): Promise<KeySessionOutcome> {
   const outcome = await mintSession(keys);
   if (!outcome.ok) {
-    const rejected = outcome.cause === 'refused'
-      && outcome.status >= 400 && outcome.status < 500 && outcome.status !== 429;
+    const rejected = outcome.cause === 'refused' && outcome.status === 401;
     return { ok: false, rejected };
   }
   const fresh = outcome.session;

@@ -53,22 +53,25 @@ export async function migrateLegacyKeysToHttpOnlySession(keys: {
 }): Promise<boolean> {
   const widgetKey = keys.widgetKey?.trim() ?? '';
   const proKey = keys.proKey?.trim() ?? '';
-  if (!widgetKey && !proKey) return false;
+  const exchanges: Array<[BrowserSessionKeyName, { widgetKey?: string; proKey?: string }]> = [];
+  if (widgetKey) exchanges.push(['wm-widget-key', { widgetKey }]);
+  if (proKey) exchanges.push(['wm-pro-key', { proKey }]);
+  if (!exchanges.length) return false;
 
-  const outcome = await changeKeySession({
-    ...(widgetKey ? { widgetKey } : {}),
-    ...(proKey ? { proKey } : {}),
-  });
-  // A key the server rejected is revoked or invalid. Keeping it in
-  // localStorage would retry it on every boot and leave a JS-readable
-  // credential behind forever. A transport or server failure keeps it for
-  // the next attempt.
-  const clearLegacy = outcome.ok || outcome.rejected;
-  if (clearLegacy) {
-    if (widgetKey) clearLegacyKeyStorage('wm-widget-key');
-    if (proKey) clearLegacyKeyStorage('wm-pro-key');
+  // One exchange per key. The server answers a single 401 for the whole body
+  // and an omitted field preserves that key's cookie, so exchanging them
+  // separately is what makes the verdict per key.
+  let allOk = true;
+  for (const [name, body] of exchanges) {
+    const outcome = await changeKeySession(body);
+    // A key the server rejected is revoked or invalid. Keeping it in
+    // localStorage would retry it on every boot and leave a JS-readable
+    // credential behind forever. A transport or server failure keeps it for
+    // the next attempt.
+    if (outcome.ok || outcome.rejected) clearLegacyKeyStorage(name);
+    if (!outcome.ok) allOk = false;
   }
-  return outcome.ok;
+  return allOk;
 }
 
 /** Delete an HttpOnly tester credential at the same API host that issued it. */

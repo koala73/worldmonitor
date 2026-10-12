@@ -16,6 +16,7 @@ async function loadSession() {
         export async function establishWmKeySessionOutcome(keys) {
           calls.push(keys);
           if (pending) await pending;
+          if (typeof result === 'function') return result(keys);
           if (typeof result === 'object') return result;
           return result ? { ok: true } : { ok: false, rejected: false };
         }
@@ -71,6 +72,30 @@ test('a legacy key the server rejects is cleared; a transport failure keeps it f
     mod.configure({ ok: false, rejected: true });
     assert.equal(await mod.migrateLegacyKeysToHttpOnlySession({ proKey: 'stale-key', widgetKey: 'stale-widget' }), false);
     assert.deepEqual(removed, ['wm-widget-key', 'wm-pro-key']);
+  } finally {
+    if (original) Object.defineProperty(globalThis, 'localStorage', original);
+    else delete (globalThis as Record<string, unknown>).localStorage;
+  }
+});
+
+test('keys are exchanged one at a time so a stale widget key cannot delete a valid pro key', async () => {
+  const mod = await loadSession();
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const removed: string[] = [];
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { removeItem: (k: string) => { removed.push(k); } } });
+  try {
+    mod.configure((keys: { widgetKey?: string; proKey?: string }) =>
+      keys.widgetKey ? { ok: false, rejected: true } : { ok: true });
+    assert.equal(await mod.migrateLegacyKeysToHttpOnlySession({ widgetKey: 'revoked-widget', proKey: 'valid-pro' }), false);
+    assert.deepEqual(mod.calls, [{ widgetKey: 'revoked-widget' }, { proKey: 'valid-pro' }]);
+    assert.deepEqual(removed, ['wm-widget-key', 'wm-pro-key']);
+
+    removed.length = 0;
+    mod.calls.length = 0;
+    mod.configure((keys: { widgetKey?: string; proKey?: string }) =>
+      keys.proKey ? { ok: false, rejected: false } : { ok: true });
+    assert.equal(await mod.migrateLegacyKeysToHttpOnlySession({ widgetKey: 'valid-widget', proKey: 'unreachable-pro' }), false);
+    assert.deepEqual(removed, ['wm-widget-key'], 'the pro key stays for retry after a transport failure');
   } finally {
     if (original) Object.defineProperty(globalThis, 'localStorage', original);
     else delete (globalThis as Record<string, unknown>).localStorage;
