@@ -555,7 +555,8 @@ type MintFailureCause = 'refused' | 'malformed' | 'timeout' | 'network' | 'abort
 type MintCauseTag = MintFailureCause | 'none';
 type MintOutcome =
   | { ok: true; session: StoredSession }
-  | { ok: false; cause: MintFailureCause };
+  | { ok: false; cause: 'refused'; status: number }
+  | { ok: false; cause: Exclude<MintFailureCause, 'refused'> };
 
 /**
  * A transport cause is evidence about this ATTEMPT, not about the session.
@@ -630,7 +631,7 @@ async function mintSession(body?: { widgetKey?: string; proKey?: string }): Prom
       signal: timeoutController.signal,
     });
     // The server answered and said no. That IS a session-wide verdict.
-    if (!resp.ok) return { ok: false, cause: 'refused' };
+    if (!resp.ok) return { ok: false, cause: 'refused', status: resp.status };
     // A body we cannot parse or that carries no usable expiry is the server
     // answering with something unusable — also session-wide, and NOT a
     // transport failure, so it must not inherit the retry below.
@@ -773,9 +774,22 @@ export function getWmSessionToken(): string | null {
   return null;
 }
 
+export type KeySessionOutcome =
+  | { ok: true }
+  /** `rejected` is true when the server refused the key itself (4xx other than 429). */
+  | { ok: false; rejected: boolean };
+
 export async function establishWmKeySession(keys: { widgetKey?: string; proKey?: string }): Promise<boolean> {
+  return (await establishWmKeySessionOutcome(keys)).ok;
+}
+
+export async function establishWmKeySessionOutcome(keys: { widgetKey?: string; proKey?: string }): Promise<KeySessionOutcome> {
   const outcome = await mintSession(keys);
-  if (!outcome.ok) return false;
+  if (!outcome.ok) {
+    const rejected = outcome.cause === 'refused'
+      && outcome.status >= 400 && outcome.status < 500 && outcome.status !== 429;
+    return { ok: false, rejected };
+  }
   const fresh = outcome.session;
   cached = fresh;
   sessionGeneration += 1;
@@ -793,7 +807,7 @@ export async function establishWmKeySession(keys: { widgetKey?: string; proKey?:
   cookiePersistenceBroken = false;
   anonymousSessionHeaderToken = null;
   saveToStorage(fresh);
-  return true;
+  return { ok: true };
 }
 
 function withCredentials(init?: RequestInit): RequestInit {

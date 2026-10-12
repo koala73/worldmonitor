@@ -1,13 +1,13 @@
-import { establishWmKeySession } from '@/services/wm-session';
+import { establishWmKeySessionOutcome, type KeySessionOutcome } from '@/services/wm-session';
 
 export type BrowserSessionKeyName = 'wm-widget-key' | 'wm-pro-key';
 
 // Finish a pending exchange before clearing, so its later Set-Cookie cannot
 // restore a credential after the caller's clear has completed.
-let keySessionChange: Promise<boolean> = Promise.resolve(true);
-function changeKeySession(keys: { widgetKey?: string; proKey?: string }): Promise<boolean> {
-  const next = keySessionChange.then(() => establishWmKeySession(keys));
-  keySessionChange = next.catch(() => false);
+let keySessionChange: Promise<unknown> = Promise.resolve();
+function changeKeySession(keys: { widgetKey?: string; proKey?: string }): Promise<KeySessionOutcome> {
+  const next = keySessionChange.then(() => establishWmKeySessionOutcome(keys));
+  keySessionChange = next.catch(() => undefined);
   return next;
 }
 
@@ -55,20 +55,25 @@ export async function migrateLegacyKeysToHttpOnlySession(keys: {
   const proKey = keys.proKey?.trim() ?? '';
   if (!widgetKey && !proKey) return false;
 
-  const ok = await changeKeySession({
+  const outcome = await changeKeySession({
     ...(widgetKey ? { widgetKey } : {}),
     ...(proKey ? { proKey } : {}),
   });
-  if (!ok) return false;
-
-  if (widgetKey) clearLegacyKeyStorage('wm-widget-key');
-  if (proKey) clearLegacyKeyStorage('wm-pro-key');
-  return true;
+  // A key the server rejected is revoked or invalid. Keeping it in
+  // localStorage would retry it on every boot and leave a JS-readable
+  // credential behind forever. A transport or server failure keeps it for
+  // the next attempt.
+  const clearLegacy = outcome.ok || outcome.rejected;
+  if (clearLegacy) {
+    if (widgetKey) clearLegacyKeyStorage('wm-widget-key');
+    if (proKey) clearLegacyKeyStorage('wm-pro-key');
+  }
+  return outcome.ok;
 }
 
 /** Delete an HttpOnly tester credential at the same API host that issued it. */
 export async function clearBrowserKeySession(name: BrowserSessionKeyName): Promise<boolean> {
-  const ok = await changeKeySession(name === 'wm-widget-key' ? { widgetKey: '' } : { proKey: '' });
-  if (ok) clearLegacyKeyStorage(name);
-  return ok;
+  const outcome = await changeKeySession(name === 'wm-widget-key' ? { widgetKey: '' } : { proKey: '' });
+  if (outcome.ok) clearLegacyKeyStorage(name);
+  return outcome.ok;
 }
