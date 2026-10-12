@@ -363,10 +363,11 @@ const COMPARISON_PAGE_SEEDS = [
     h1: 'MCP Servers for Geopolitical Data',
     competitors: ['world-intel-mcp', 'Satellite MCP', 'OSINT MCP', 'war-dashboard-data', 'GDELT Cloud MCP', 'Off-Nadir Delta', 'IMF PortWatch MCP'],
     claim: 'Hosted agent-native access',
+    metaDescription: 'Compare hosted World Monitor MCP with self-hosted geopolitical MCP servers on OAuth, quotas, country risk, tariffs, and multi-domain coverage.',
     summary: 'Hosted versus self-hosted MCP access to geopolitical data: World Monitor against world-intel-mcp, Satellite MCP, OSINT MCP, GDELT Cloud MCP and IMF PortWatch MCP on entitlements, quotas, OAuth and hosting burden.',
     heading: 'MCP servers for geopolitical data',
     matrixRows: [
-      ['World Monitor (hosted)', 'Free dashboard; MCP from $39.99/mo (Pro)', WORLD_MONITOR_UPDATE_CADENCE, 'Conflict, maritime AIS, aviation, markets, cyber, climate', 'No', 'From $99.99/mo (API Starter)', 'Yes (hosted, entitlements + quotas + OAuth)', 'AGPL-3.0', WORLD_MONITOR_SOURCE_COUNT_CELL, 'Live + rolling published snapshots', 'Hosted, governed multi-domain access for agents'],
+      ['World Monitor (hosted)', 'Free dashboard; MCP from $39.99/mo (Pro)', WORLD_MONITOR_UPDATE_CADENCE, 'Conflict, maritime AIS, aviation, markets, tariffs, cyber, climate', 'No', 'From $99.99/mo (API Starter)', 'Yes (hosted, entitlements + quotas + OAuth)', 'AGPL-3.0', WORLD_MONITOR_SOURCE_COUNT_CELL, 'Live + rolling published snapshots', 'Hosted, governed multi-domain access for agents'],
       ['world-intel-mcp', 'Free (MIT, self-hosted)', 'Upstream dependent', 'GDELT-derived event data', 'Self-host', 'GDELT-based', MCP_VERIFIED_SELF_HOSTED, 'MIT', 'Upstream public feeds', 'As retained', 'Self-hosted GDELT event surface'],
       ['Satellite MCP', 'Free (open source, self-hosted)', 'Pass-schedule dependent', 'Satellite imagery and passes', 'Self-host', 'Upstream dependent', MCP_VERIFIED_SELF_HOSTED, 'Open source', 'Public satellite catalogs', 'As retained', 'Satellite pass scheduling for self-hosters'],
       ['OSINT MCP', 'Free (open source, self-hosted)', 'Upstream dependent', 'OSINT tooling surface', 'Self-host', 'Upstream dependent', MCP_VERIFIED_SELF_HOSTED, 'Open source', 'Public OSINT sources', 'As retained', 'Broad OSINT tool surface for self-hosters'],
