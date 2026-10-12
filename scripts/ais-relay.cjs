@@ -12860,11 +12860,15 @@ const server = http.createServer(async (req, res) => {
           stream.on('data', (chunk) => {
             bodyBytes += chunk.length;
             if (bodyBytes > RSS_MAX_BODY_BYTES) {
+              sendError(502, 'Feed too large');
+              if (stream !== response) stream.destroy();
               request.destroy();
-              return sendError(502, 'Feed too large');
             }
             chunks.push(chunk);
           });
+          // Aborting mid-body surfaces as an error on the response as well as
+          // on the decompression stream; both are already answered above.
+          response.on('error', () => {});
           stream.on('end', () => {
             if (responseHandled || res.headersSent) return;
             responseHandled = true;

@@ -140,8 +140,10 @@ describe('ais-relay /rss wiring', () => {
     assert.match(body, /'Cache-Control': 'no-store'/);
   });
 
-  test('caps the buffered upstream body', () => {
+  test('caps the buffered upstream body and answers before aborting the socket', () => {
     assert.match(RELAY_SRC, /const RSS_MAX_BODY_BYTES = 5 \* 1024 \* 1024/);
-    assert.match(handler, /bodyBytes > RSS_MAX_BODY_BYTES[\s\S]{0,120}request\.destroy\(\)/);
+    assert.match(handler, /bodyBytes > RSS_MAX_BODY_BYTES[\s\S]{0,60}sendError\(502, 'Feed too large'\)[\s\S]{0,120}request\.destroy\(\)/);
+    assert.match(handler, /if \(stream !== response\) stream\.destroy\(\)/);
+    assert.match(handler, /response\.on\('error'/);
   });
 });
