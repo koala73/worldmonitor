@@ -9,7 +9,11 @@ beforeAll(async () => {
   await initTestI18n();
 });
 
+let panel: NewsPanel | null = null;
+
 afterEach(() => {
+  panel?.destroy();
+  panel = null;
   vi.useRealTimers();
   document.body.innerHTML = '';
 });
@@ -27,7 +31,7 @@ function newsItem(source: string, title: string): NewsItem {
 describe('NewsPanel category badge escapes the classification category', () => {
   it('renders a hostile category as text, not markup', () => {
     vi.useFakeTimers();
-    const panel = new NewsPanel('category-escape-test', 'Category');
+    panel = new NewsPanel('category-escape-test', 'Category');
     document.body.appendChild(panel.getElement());
 
     const clusters = clusterNews([newsItem('Reuters World', 'Vessel grounding closes port approach')]) as ClusteredEvent[];
