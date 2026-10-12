@@ -426,7 +426,7 @@ export class AirlineIntelPanel extends Panel {
           <div class="flight-route">${escapeHtml(f.origin.iata)} → ${escapeHtml(f.destination.iata)}</div>
           <div class="flight-time">${fmtTime(when)}</div>
           <div class="flight-delay" style="color:${f.delayMinutes > 0 ? '#f97316' : '#aaa'}">${f.delayMinutes > 0 ? `+${f.delayMinutes}m` : ''}</div>
-          <div class="flight-status" style="color:${color}">${f.status}</div>
+          <div class="flight-status" style="color:${color}">${escapeHtml(f.status)}</div>
         </div>`;
         }).join('');
         this.setTrustedContent(trustedHtml(`<div class="flights-list">${rows}</div>`, "legacy direct innerHTML migration"));

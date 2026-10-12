@@ -199,6 +199,14 @@ describe('parseClassifyCacheHit — call-site wiring (mutation lock)', () => {
     );
   });
 
+  it('enrichWithAiCache drops a hit whose level or category is outside the classify enum', () => {
+    assert.ok(
+      /isValidClassifyHit\(hit\)/.test(digestSrc),
+      'enrichWithAiCache must reject out-of-enum hits — item.category is rendered as a NewsPanel badge ' +
+        'and the cache row is shared Redis JSON (security audit 2026-10-12, F9)',
+    );
+  });
+
   it('the unchecked cache-result type assertion is not reintroduced', () => {
     assert.ok(
       !/cached\.get\(key\)\s+as\s/.test(digestSrc),
