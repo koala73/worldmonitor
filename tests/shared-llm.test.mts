@@ -14,6 +14,7 @@ const originalLlmApiKey = process.env.LLM_API_KEY;
 const originalLlmApiAuthType = process.env.LLM_API_AUTH_TYPE;
 const originalLlmModel = process.env.LLM_MODEL;
 const originalLlmToolProvider = process.env.LLM_TOOL_PROVIDER;
+const originalLlmToolModel = process.env.LLM_TOOL_MODEL;
 const originalLlmProvider = process.env.LLM_PROVIDER;
 
 const GENERIC_URL = 'https://llm.example.test/v1/chat/completions';
@@ -40,6 +41,9 @@ afterEach(() => {
 
   if (originalLlmModel === undefined) delete process.env.LLM_MODEL;
   else process.env.LLM_MODEL = originalLlmModel;
+
+  if (originalLlmToolModel === undefined) delete process.env.LLM_TOOL_MODEL;
+  else process.env.LLM_TOOL_MODEL = originalLlmToolModel;
 
   if (originalLlmToolProvider === undefined) delete process.env.LLM_TOOL_PROVIDER;
   else process.env.LLM_TOOL_PROVIDER = originalLlmToolProvider;
@@ -117,6 +121,32 @@ describe('operator provider isolation', () => {
         assert.equal(result?.provider, 'generic');
       }
     });
+  }
+
+  for (const [primary, tier] of [[' generic ', 'generic'], ['generic', ' generic '], ['   ', 'generic']]) {
+    for (const kind of ['tool', 'reasoning', 'stream'] as const) {
+      it(`${kind} preserves its profile model with normalized selectors (${JSON.stringify([primary, tier])})`, async () => {
+        process.env.LLM_PROVIDER = primary;
+        process.env.LLM_TOOL_PROVIDER = tier;
+        process.env.LLM_REASONING_PROVIDER = tier;
+        process.env.LLM_TOOL_MODEL = 'profile-model-fixture';
+        process.env.LLM_REASONING_MODEL = 'profile-model-fixture';
+        let posts = 0;
+        globalThis.fetch = async (input, init) => {
+          assert.equal(new URL(String(input)).origin, new URL(GENERIC_URL).origin);
+          if ((init?.method || 'GET') === 'GET') return new Response('');
+          posts++;
+          assert.equal(JSON.parse(String(init?.body)).model, 'profile-model-fixture');
+          return kind === 'stream'
+            ? new Response('data: {"choices":[{"delta":{"content":"Profile answer"}}]}\n\ndata: [DONE]\n\n')
+            : Response.json({ choices: [{ message: { content: 'Profile answer' } }] });
+        };
+        const opts = { messages: [{ role: 'user' as const, content: 'Synthetic prompt' }] };
+        if (kind === 'stream') assert.match(await new Response(callLlmReasoningStream(opts)).text(), /Profile answer/);
+        else assert.equal((await (kind === 'tool' ? callLlmTool(opts) : callLlmReasoning(opts)))?.content, 'Profile answer');
+        assert.equal(posts, 1);
+      });
+    }
   }
 
   it('rejects an invalid explicit provider without falling back', async () => {

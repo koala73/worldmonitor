@@ -324,12 +324,14 @@ function callLlmProfile(
   defaultProvider: LlmProviderName,
   excluded: readonly LlmProviderName[] = [],
 ): Promise<LlmCallResult | null> {
-  const envProvider = process.env.LLM_PROVIDER?.trim() || process.env[providerEnv]?.trim();
+  const primaryProvider = process.env.LLM_PROVIDER?.trim();
+  const profileProvider = process.env[providerEnv]?.trim();
+  const envProvider = primaryProvider || profileProvider;
   const provider = (envProvider && PROVIDER_SET.has(envProvider) ? envProvider : (() => {
     if (envProvider) console.warn(`[llm] ${providerEnv}="${envProvider}" is not a known provider; falling back to "${defaultProvider}"`);
     return defaultProvider;
   })()) as LlmProviderName;
-  const model = !process.env.LLM_PROVIDER || !process.env[providerEnv] || process.env.LLM_PROVIDER === process.env[providerEnv]
+  const model = !primaryProvider || !profileProvider || primaryProvider === profileProvider
     ? process.env[modelEnv] : undefined;
   const remaining = fallbackProviders(provider, excluded);
   return callLlm({
@@ -375,9 +377,11 @@ export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'valid
  * Returns null if no provider is available.
  */
 export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<Uint8Array> {
-  const envProvider = process.env.LLM_PROVIDER?.trim() || process.env.LLM_REASONING_PROVIDER?.trim();
+  const primaryProvider = process.env.LLM_PROVIDER?.trim();
+  const profileProvider = process.env.LLM_REASONING_PROVIDER?.trim();
+  const envProvider = primaryProvider || profileProvider;
   const provider = (envProvider && PROVIDER_SET.has(envProvider) ? envProvider : 'openrouter') as LlmProviderName;
-  const model = !process.env.LLM_PROVIDER || !process.env.LLM_REASONING_PROVIDER || process.env.LLM_PROVIDER === process.env.LLM_REASONING_PROVIDER
+  const model = !primaryProvider || !profileProvider || primaryProvider === profileProvider
     ? process.env.LLM_REASONING_MODEL : undefined;
   const remaining = fallbackProviders(provider, USER_TEXT_EXCLUDED_PROVIDERS);
   const providerOrder = resolveProviderChain({ providerOrder: [provider, ...remaining] });
