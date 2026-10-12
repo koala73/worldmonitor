@@ -73,6 +73,7 @@ import {
   withSchemaContext,
 } from '../scripts/build-crawlable-corpus.mjs';
 import {
+  chokepointCoverageMetrics,
   chokepointEvidenceNarrative,
   MAX_FUTURE_SKEW_MS,
   MAX_LIVE_SNAPSHOT_AGE_MS,
@@ -4467,7 +4468,12 @@ describe('crawlable corpus generator', () => {
       assert.match(
         hormuzPassage,
         /^As of .+ (?:World Monitor cannot verify operational passage status from this snapshot|The (?:Green|Yellow|Red) disruption score is a risk signal; it does not verify unrestricted passage or operational closure)\.$/,
-        'the passage answers from source coverage, never with a closure verdict',
+        'the passage answers from source coverage',
+      );
+      assert.doesNotMatch(
+        hormuzPassage,
+        /\b(?:is|remains)\s+(?:open|closed|reopened)\b/i,
+        'the passage must never state a closure verdict',
       );
       const hormuzDriver = hormuz.match(/data-chokepoint-score-driver>([^<]*)</)?.[1] ?? '';
       assert.match(
@@ -4496,8 +4502,13 @@ describe('crawlable corpus generator', () => {
         'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/',
       );
       const hormuzTransitsNote = hormuzDocument.querySelector('[data-chokepoint-transits-note]');
-      if (hormuzPulse.todayCountsAvailable === true && hormuzPulse.todayTransits != null) {
-        assert.match(hormuz, new RegExp(`data-chokepoint-transits>${hormuzPulse.todayTransits}<`));
+      // The generator's own publish-or-withhold rule and label formatting.
+      const hormuzTransitsLabel = chokepointCoverageMetrics({
+        todayTransits: hormuzPulse.todayTransits,
+        todayCountsAvailable: hormuzPulse.todayCountsAvailable,
+      }).todayTransits;
+      if (hormuzTransitsLabel != null) {
+        assert.ok(hormuz.includes(`data-chokepoint-transits>${hormuzTransitsLabel}<`), `Hormuz must publish its count ${hormuzTransitsLabel}`);
         assert.doesNotMatch(hormuz, /World Monitor is not currently publishing a transit count for Strait of Hormuz/);
         assert.equal(hormuzTransitsNote.hidden, true, 'a published count carries no withhold note');
       } else {

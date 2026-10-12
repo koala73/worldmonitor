@@ -1921,7 +1921,7 @@ describe('accuracy page after the #5233 correction', () => {
     // The committed capture rolls forward every week, so resolve the newest
     // one and read the expectation from its own methodology. Naming the
     // 2026-10-05 file broke the first refresh that deleted it (#9115).
-    const capture = JSON.parse(read(relative(repoRoot, resolveLatestLivePulseSnapshotPath(repoRoot)))).forecastScorecard;
+    const capture = JSON.parse(read(resolveLatestLivePulseSnapshotPath(repoRoot))).forecastScorecard;
     const captured = new RegExp(CORRECTION).test(capture.scorecard?.methodology ?? '');
     const { html } = renderState(capture);
     assert.equal(new RegExp(CORRECTION).test(stripTags(html)), captured, 'the page follows the captured methodology');
