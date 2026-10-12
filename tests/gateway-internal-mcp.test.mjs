@@ -989,7 +989,6 @@ describe('gateway internal-MCP — usage telemetry reasons', () => {
     assert.equal(res.status, 500);
     assert.deepEqual(await res.json(), {
       error: 'CONFIGURATION',
-      detail: 'MCP_INTERNAL_HMAC_SECRET not configured',
     });
     await recorder.settled();
     assert.equal(axiomEvents.length, 1, 'exactly one request event');

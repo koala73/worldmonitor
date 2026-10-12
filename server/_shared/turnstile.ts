@@ -28,10 +28,12 @@ export async function verifyTurnstile({
   if (!secret) {
     if (missingSecretPolicy === 'allow') return true;
 
-    const isDevelopment = (process.env.VERCEL_ENV ?? 'development') === 'development';
-    if (isDevelopment) return true;
+    // Only an explicit development deployment may skip the challenge. An
+    // unset VERCEL_ENV is not development: the Docker self-host and any other
+    // non-Vercel runtime never set it, and they must fail closed.
+    if (process.env.VERCEL_ENV === 'development') return true;
 
-    console.error(`${logPrefix} TURNSTILE_SECRET_KEY not set in production, rejecting`);
+    console.error(`${logPrefix} TURNSTILE_SECRET_KEY not set and VERCEL_ENV is not 'development', rejecting`);
     return false;
   }
 
