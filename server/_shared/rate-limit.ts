@@ -1110,6 +1110,7 @@ let nativeGoogleDatesAdmissions: number[] = [];
 let nativeGoogleFlightsAdmissions: number[] = [];
 let nativeAviationNewsAdmissions: number[] = [];
 let nativeFeedDigestAdmissions: number[] = [];
+let nativeSummaryAdmissions: number[] = [];
 
 export async function checkEndpointRateLimit(request: Request, pathname: string, corsHeaders: Record<string, string>, opts: EndpointRateLimitOptions = {}): Promise<Response | null> {
   if (!hasEndpointRatePolicy(pathname)) return null;
@@ -1134,20 +1135,24 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
     return null;
   }
   if ((pathname === '/api/aviation/v1/list-aviation-news'
-    || pathname === '/api/news/v1/list-feed-digest')
+    || pathname === '/api/news/v1/list-feed-digest'
+    || pathname === '/api/news/v1/summarize-article')
     && process.env.LOCAL_API_MODE === 'tauri-sidecar') {
     const policy = ENDPOINT_RATE_POLICIES[pathname]!;
     const windowSeconds = durationToSeconds(policy.window);
     const now = Date.now();
     const admissions = pathname === '/api/aviation/v1/list-aviation-news'
       ? nativeAviationNewsAdmissions
-      : nativeFeedDigestAdmissions;
+      : pathname === '/api/news/v1/summarize-article'
+        ? nativeSummaryAdmissions
+        : nativeFeedDigestAdmissions;
     const activeAdmissions = admissions.filter(time => time > now - windowSeconds * 1000);
     if (activeAdmissions.length >= policy.limit) {
       return tooManyRequestsResponse(policy.limit, activeAdmissions[0]! + windowSeconds * 1000, corsHeaders, windowSeconds);
     }
     activeAdmissions.push(now);
     if (pathname === '/api/aviation/v1/list-aviation-news') nativeAviationNewsAdmissions = activeAdmissions;
+    else if (pathname === '/api/news/v1/summarize-article') nativeSummaryAdmissions = activeAdmissions;
     else nativeFeedDigestAdmissions = activeAdmissions;
     return null;
   }
@@ -1335,6 +1340,7 @@ export function __resetRateLimitForTest(): void {
   nativeGoogleFlightsAdmissions = [];
   nativeAviationNewsAdmissions = [];
   nativeFeedDigestAdmissions = [];
+  nativeSummaryAdmissions = [];
   ratelimit = null;
   endpointLimiters.clear();
   scopedLimiters.clear();

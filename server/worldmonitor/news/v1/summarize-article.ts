@@ -342,7 +342,10 @@ export async function summarizeArticle(
         }
 
         await emitSummarizeLlmEvent({ provider, model, ok: Boolean(rawContent), durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, usage, reason: rawContent ? '' : 'empty' });
-        return rawContent ? { summary: rawContent, model, tokens } : null;
+        // Cache under the requested route, retaining which model produced the
+        // cached answer when a router selects a different model per request.
+        const servedModel = typeof data.model === 'string' && data.model.trim() ? data.model.trim() : model;
+        return rawContent ? { summary: rawContent, model: servedModel, tokens } : null;
       },
       undefined,
       {

@@ -102,6 +102,23 @@ describe('operator provider isolation', () => {
     }
   }
 
+  for (const reportedModel of ['routed/free-model-fixture', undefined, '', '   ', 42]) {
+    it(`preserves a valid provider-reported model while keeping the requested route (${String(reportedModel)})`, async () => {
+      globalThis.fetch = async (input, init) => {
+        assert.equal(new URL(String(input)).origin, new URL(GENERIC_URL).origin);
+        if ((init?.method || 'GET') === 'GET') return new Response('');
+        assert.equal(JSON.parse(String(init?.body)).model, GENERIC_MODEL);
+        return Response.json({ model: reportedModel, choices: [{ message: { content: 'Routed answer' } }] });
+      };
+      const opts = { messages: [{ role: 'user' as const, content: 'Synthetic prompt' }] };
+      for (const run of [callLlm, callLlmTool, callLlmReasoning]) {
+        const result = await run(opts);
+        assert.equal(result?.model, typeof reportedModel === 'string' && reportedModel.trim() ? reportedModel : GENERIC_MODEL);
+        assert.equal(result?.provider, 'generic');
+      }
+    });
+  }
+
   it('rejects an invalid explicit provider without falling back', async () => {
     process.env.LLM_PROVIDER = 'typo';
     globalThis.fetch = async () => { assert.fail('must not send a request'); };

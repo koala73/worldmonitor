@@ -23,7 +23,7 @@ function request(provider: string, headline = 'Synthetic transport observation f
   return { provider, headlines: [headline], mode: 'brief', geoContext: '', variant: 'full', lang: 'en', systemAppend: '', bodies: [] };
 }
 
-function installUpstream({ fail = false, allowCloud = false } = {}) {
+function installUpstream({ fail = false, allowCloud = false, responseModel }: { fail?: boolean; allowCloud?: boolean; responseModel?: unknown } = {}) {
   const redis = new Map<string, string>();
   const completions: Array<{ url: string; model: string }> = [];
   const reads: string[] = [];
@@ -54,6 +54,7 @@ function installUpstream({ fail = false, allowCloud = false } = {}) {
       expect(headers.has('Authorization')).toBe(false);
     }
     return fail ? new Response('Synthetic local outage', { status: 503 }) : Response.json({
+      model: responseModel,
       choices: [{ message: { content: `Transport observation summarized by ${body.model} for this synthetic fixture.` } }],
       usage: { total_tokens: 8 },
     });
@@ -93,6 +94,31 @@ describe('article summaries with an operator-selected provider', () => {
       expect(completions).toEqual([{ url: localUrl, model: localModel }]);
     });
   }
+
+  test('returns the routed model for fresh and cached summaries while partitioning by the requested route', async () => {
+    const responseModel = 'routed/free-summary-fixture';
+    const { completions, reads } = installUpstream({ responseModel });
+    const result = await summarizeArticle(context(), request('openrouter'));
+    expect(result).toMatchObject({ provider: 'generic', model: responseModel, status: 'SUMMARIZE_STATUS_SUCCESS' });
+    const cached = await summarizeArticle(context(), request('ollama'));
+    expect(cached).toMatchObject({ provider: 'cache', model: responseModel });
+    expect(completions).toEqual([{ url: localUrl, model: localModel }]);
+
+    vi.stubEnv('LLM_MODEL', 'local/another-route-fixture');
+    const changedRoute = await summarizeArticle(context(), request('openrouter'));
+    expect(changedRoute).toMatchObject({ provider: 'generic', model: responseModel });
+    expect(completions).toEqual([
+      { url: localUrl, model: localModel },
+      { url: localUrl, model: 'local/another-route-fixture' },
+    ]);
+    expect(new Set(reads).size).toBe(2);
+  });
+
+  test.each([undefined, '', '   ', 42])('falls back to the requested model for unusable response metadata (%s)', async responseModel => {
+    installUpstream({ responseModel });
+    const result = await summarizeArticle(context(), request('openrouter'));
+    expect(result).toMatchObject({ provider: 'generic', model: localModel, status: 'SUMMARIZE_STATUS_SUCCESS' });
+  });
 
   for (const [name, value] of [
     ['LLM_API_URL', ''], ['LLM_API_KEY', ''], ['LLM_API_AUTH_TYPE', 'invalid'], ['LLM_PROVIDER', 'unknown'],

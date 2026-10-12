@@ -476,6 +476,23 @@ exclusive generic inference. Failed local requests return unavailable instead
 of sending prompts to a fallback cloud provider. Leave unused cloud keys unset
 as well. Model quality and tool-calling support depend on the selected local model.
 
+A loopback Bifrost endpoint can also use a deliberately configured remote
+upstream. For OpenRouter's free router, the Bifrost-qualified model is
+`openrouter/openrouter/free`; its upstream model ID is exactly `openrouter/free`.
+Restrict the provider key and virtual key to that model, keep direct cloud keys
+out of the app, and disable alternate-model fallbacks. Set `LLM_TOOL_MODEL` and
+`LLM_REASONING_MODEL` to the same route when inherited tier overrides exist.
+The shared completion and article-summary responses report the actual upstream
+model when provided; routing and summary caches retain the requested route as
+their identity. Free models can vary between calls and can be unavailable or
+rate limited. This text route does not supply embeddings, speech or image input.
+
+In the authenticated native sidecar profile, article summaries use the existing
+30-per-minute endpoint budget in memory without requiring Redis. The budget is
+shared across callers in that process and resets on restart. Hosted and Docker
+profiles still fail closed when their Redis rate-limit store is unavailable.
+This native budget does not replace a shared daily quota for remote deployment.
+
 For semantic brief deduplication, optionally set `LLM_EMBEDDING_API_URL` to a full
 OpenAI-compatible embeddings URL and `LLM_EMBEDDING_MODEL` to a model that returns
 512-dimensional vectors. Authentication uses the same key and header setting.

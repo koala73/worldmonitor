@@ -104,3 +104,61 @@ it('authenticated native sidecar admits digest reads without Redis, limits burst
     await rm(root, { recursive: true, force: true });
   }
 });
+
+
+it('authenticated native summaries use a bounded shared budget without Redis; cloud and Docker still fail closed', async () => {
+  const pathname = '/api/news/v1/summarize-article';
+  const { createLocalApiServer } = await import('../src-tauri/sidecar/local-api-server.mjs');
+  const root = await mkdtemp(join(tmpdir(), 'summary-admission-sidecar-'));
+  await mkdir(join(root, 'news/v1'), { recursive: true });
+  const serviceUrl = new URL('../src/generated/server/worldmonitor/news/v1/service_server.ts', import.meta.url).href;
+  const gatewayUrl = new URL('../server/gateway.ts', import.meta.url).href;
+  const result = { summary: 'Synthetic summary', model: 'fixture/free-model', provider: 'generic', tokens: 4, fallback: false, error: '', errorType: '', status: 'SUMMARIZE_STATUS_SUCCESS', statusDetail: '' };
+  await writeFile(join(root, 'news/v1/summarize-article.js'), `import {createNewsServiceRoutes} from ${JSON.stringify(serviceUrl)}; import {createDomainGateway,serverOptions} from ${JSON.stringify(gatewayUrl)}; export default createDomainGateway(createNewsServiceRoutes({summarizeArticle:async()=>(${JSON.stringify(result)})},serverOptions));`);
+  process.env.WORLDMONITOR_VALID_KEYS = operatorKey;
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  let generated = 0;
+  const gateway = createDomainGateway(createNewsServiceRoutes({ summarizeArticle: async () => { generated++; return result; } } as never, serverOptions));
+  const body = JSON.stringify({ provider: 'generic', headlines: ['Synthetic fixture'], mode: 'brief', lang: 'en' });
+  const operatorHeaders = { 'X-WorldMonitor-Key': operatorKey, 'Content-Type': 'application/json' };
+  for (const mode of ['', 'docker']) {
+    process.env.LOCAL_API_MODE = mode;
+    __resetRateLimitForTest();
+    const response = await gateway(new Request(`https://worldmonitor.app${pathname}`, { method: 'POST', headers: operatorHeaders, body }));
+    assert.equal(response.status, 503, `${mode || 'cloud'} remains fail closed`);
+  }
+  assert.equal(generated, 0);
+  process.env.LOCAL_API_MODE = 'tauri-sidecar';
+  process.env.LOCAL_API_TOKEN = 'synthetic-summary-transport';
+  __resetRateLimitForTest();
+  const app = await createLocalApiServer({ port: 0, apiDir: root, dataDir: root, mode: 'tauri-sidecar', cloudFallback: false, logger: { log() {}, warn() {}, error() {} } });
+  const originalNow = Date.now;
+  let now = originalNow();
+  Date.now = () => now;
+  try {
+    const { port } = await app.start();
+    const url = `http://127.0.0.1:${port}${pathname}`;
+    const headers = { ...operatorHeaders, 'x-worldmonitor-local-token': process.env.LOCAL_API_TOKEN };
+    const send = (extra = {}) => originalFetch(url, { method: 'POST', headers: { ...headers, ...extra }, body });
+    assert.equal((await send({ 'x-worldmonitor-local-token': 'invalid' })).status, 401);
+    assert.equal((await send({ 'X-WorldMonitor-Key': 'invalid' })).status, 401);
+    assert.deepEqual(ENDPOINT_RATE_POLICIES[pathname], { limit: 30, window: '60 s' });
+    for (let i = 0; i < 30; i++) {
+      const response = await send();
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).model, 'fixture/free-model');
+    }
+    const denied = await send({ 'x-forwarded-for': '203.0.113.99' });
+    assert.equal(denied.status, 429, 'different caller headers cannot reset the native budget');
+    assert.equal(Number(denied.headers.get('Retry-After')), 60);
+    now += 59_999;
+    assert.equal((await send()).status, 429);
+    now += 1;
+    assert.equal((await send()).status, 200);
+  } finally {
+    Date.now = originalNow;
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

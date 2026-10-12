@@ -739,6 +739,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         recordModelSuccess(creds.apiUrl, creds.model);
 
         const data = (await resp.json()) as {
+          model?: unknown;
           choices?: Array<{ message?: { content?: string }; finish_reason?: string | null }>;
           usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number };
         };
@@ -790,7 +791,10 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         }
 
         record(true, tokensExtra);
-        return { content, model: creds.model, provider: providerName, tokens, finishReason };
+        // Routers may serve a different model on each request. Keep the requested
+        // model for request/health identity, but report the model that answered.
+        const servedModel = typeof data.model === 'string' && data.model.trim() ? data.model.trim() : creds.model;
+        return { content, model: servedModel, provider: providerName, tokens, finishReason };
       } catch (err) {
         // sentry-coverage-ok: provider failures are expected fallback signals;
         // record() emits the bounded per-attempt telemetry before the chain continues.
