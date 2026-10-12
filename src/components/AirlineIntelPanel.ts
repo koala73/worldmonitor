@@ -479,7 +479,7 @@ export class AirlineIntelPanel extends Panel {
             <div style="display:flex;gap:8px;align-items:baseline">
               <strong>${escapeHtml(f.flightNumber)}</strong>
               <span style="color:#9ca3af;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">${escapeHtml(f.carrier.name || f.carrier.iata)}</span>
-              <span style="color:${color};font-size:calc(11px * var(--wm-panel-effective-scale, 1));margin-left:auto">${f.status}</span>
+              <span style="color:${color};font-size:calc(11px * var(--wm-panel-effective-scale, 1));margin-left:auto">${escapeHtml(f.status)}</span>
             </div>
             <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(f.origin.iata)} → ${escapeHtml(f.destination.iata)}${depStr ? ` · ${depStr}` : ''}${arrStr}</div>
             ${f.aircraftType ? `<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:#6b7280">${escapeHtml(f.aircraftType)}</div>` : ''}
