@@ -86,11 +86,10 @@ describe('gateway HMAC configuration telemetry (#7277)', () => {
     const res = await gateway(makeSignedShapeRequest(), ctx);
     await settle();
 
-    // Response contract unchanged: 500 CONFIGURATION with the detail intact.
+    // Response contract: 500 CONFIGURATION. The body names no env var; the
+    // telemetry reason below carries the cause for operators.
     assert.equal(res.status, 500);
-    const body = (await res.json()) as { error: string; detail: string };
-    assert.equal(body.error, 'CONFIGURATION');
-    assert.match(body.detail, /MCP_INTERNAL_HMAC_SECRET/);
+    assert.deepEqual(await res.json(), { error: 'CONFIGURATION' });
 
     const event = events.find((e) => e.route === PATH);
     assert.ok(event, 'the gateway must emit a usage event for the 500');
