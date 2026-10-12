@@ -53,6 +53,8 @@ COPY scripts/lib/usni-fleet-parser.cjs ./scripts/lib/usni-fleet-parser.cjs
 COPY scripts/lib/llm-telemetry.cjs ./scripts/lib/llm-telemetry.cjs
 # Canonical CommonJS model policy required directly by ais-relay.cjs.
 COPY scripts/lib/llm-model-policy.cjs ./scripts/lib/llm-model-policy.cjs
+# DNS-vetted, address-pinned lookup for the public /rss proxy.
+COPY scripts/lib/notification-webhook-ssrf.cjs ./scripts/lib/notification-webhook-ssrf.cjs
 # Curated X news-account helpers required by ais-relay.cjs (#6654).
 COPY scripts/lib/x-news-accounts.cjs ./scripts/lib/x-news-accounts.cjs
 COPY scripts/lib/poll-generation-guard.cjs ./scripts/lib/poll-generation-guard.cjs
