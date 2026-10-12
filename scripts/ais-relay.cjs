@@ -12767,6 +12767,30 @@ const server = http.createServer(async (req, res) => {
         rejectInFlight(new Error(message));
       };
 
+      // A blocked DNS answer is a verdict on the feed, not an upstream outage.
+      // No backoff (backoff would serve the stale body with a 200), the last
+      // good body is evicted so nothing can be served from it, and a 403
+      // negative entry answers in-flight followers and the next minute of
+      // callers without another lookup.
+      const sendBlocked = (message) => {
+        if (responseHandled || res.headersSent) return;
+        responseHandled = true;
+        recordAttemptOutcome(403, new Error(message));
+        rssResponseCache.delete(feedUrl);
+        rssResetFailure(feedUrl);
+        const data = Buffer.from(JSON.stringify({ error: message }));
+        setBoundedCacheEntry(rssNegativeCache, feedUrl, {
+          data, contentType: 'application/json', statusCode: 403, timestamp: Date.now(),
+        }, RSS_NEGATIVE_CACHE_MAX_ENTRIES);
+        res.writeHead(403, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'CDN-Cache-Control': 'no-store',
+        });
+        res.end(data);
+        resolveInFlight({ outcome: 'terminalFailure' });
+      };
+
       const fetchWithRedirects = (url, redirectCount = 0) => {
         if (redirectCount > 3) {
           return sendError(502, 'Too many redirects');
@@ -12895,7 +12919,7 @@ const server = http.createServer(async (req, res) => {
         request.on('error', (err) => {
           if (err.code === SSRF_BLOCKED_ERROR_CODE) {
             logThrottled('warn', `rss-ssrf-blocked:${feedUrl}`, `[Relay] RSS blocked: ${err.message}`);
-            return sendError(403, 'Feed resolves to a blocked address');
+            return sendBlocked('Feed resolves to a blocked address');
           }
           const outcome = recordAttemptOutcome(0, err);
           const { failures, backoffSec } = recordFailure();

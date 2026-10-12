@@ -128,7 +128,16 @@ describe('ais-relay /rss wiring', () => {
   });
 
   test('a blocked answer is a terminal 403, never served stale or retried', () => {
-    assert.match(handler, /err\.code === SSRF_BLOCKED_ERROR_CODE[\s\S]{0,200}sendError\(403/);
+    assert.match(handler, /err\.code === SSRF_BLOCKED_ERROR_CODE[\s\S]{0,200}sendBlocked\(/);
+    const start = handler.indexOf('const sendBlocked = ');
+    assert.notEqual(start, -1, 'sendBlocked not found');
+    const body = handler.slice(start, handler.indexOf('const fetchWithRedirects', start));
+    assert.match(body, /rssResponseCache\.delete\(feedUrl\)/, 'the last good body must be evicted');
+    assert.match(body, /rssResetFailure\(feedUrl\)/, 'a block must not enter backoff');
+    assert.doesNotMatch(body, /recordFailure\(\)/, 'a block must not count as an upstream failure');
+    assert.match(body, /statusCode: 403/, 'in-flight followers and the negative cache answer 403');
+    assert.match(body, /resolveInFlight\(/, 'followers resolve to the negative entry, not a 502');
+    assert.match(body, /'Cache-Control': 'no-store'/);
   });
 
   test('caps the buffered upstream body', () => {
