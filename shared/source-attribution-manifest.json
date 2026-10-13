@@ -3235,6 +3235,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "api/channel-oauth-bind.ts"
+        },
+        {
           "path": "api/discord/oauth/callback.ts"
         },
         {
@@ -8728,6 +8731,9 @@
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
       "status": "excluded",
       "references": [
+        {
+          "path": "api/channel-oauth-bind.ts"
+        },
         {
           "path": "api/slack/oauth/callback.ts"
         },
