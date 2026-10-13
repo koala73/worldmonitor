@@ -748,6 +748,11 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       expected: /limiter outage here should NOT fail open/,
       reason: 'notify publishes create relay-side delivery obligations on the shared event queue, so Redis degradation fails closed instead of allowing unbounded fan-out',
     },
+    {
+      path: 'api/notification-channels.ts',
+      expected: /if\s*\(\s*scoped\.degraded\s*\)\s*\{/,
+      reason: 'channel mutations write through the Convex relay and can trigger welcome mail, so Redis degradation fails closed instead of allowing unbounded writes',
+    },
   ];
 
   it('keeps every checkScopedRateLimit caller audited for degraded handling', async () => {

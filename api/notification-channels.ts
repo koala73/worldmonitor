@@ -24,6 +24,11 @@ import {
 import { assertNotificationWebhookRegistrationUrlSafe } from './_notification-webhook-ssrf';
 import { validateBearerToken } from '../server/auth-session';
 import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
+import {
+  RATE_LIMIT_DEGRADED_HEADERS,
+  checkScopedRateLimit,
+  scopedTooManyRequestsResponse,
+} from '../server/_shared/rate-limit';
 
 // Prefer explicit CONVEX_SITE_URL; fall back to deriving from CONVEX_URL (same pattern as notification-relay.cjs).
 const CONVEX_SITE_URL =
@@ -33,9 +38,17 @@ const CONVEX_TENANT_RELAY_SECRET = process.env.CONVEX_TENANT_RELAY_SECRET ?? '';
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL ?? '';
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 
+// Per-user write budget for the POST mutations. 30/min is far above any
+// settings-UI cadence (one action per click) and well under what a scripted
+// caller needs to turn the relay or the welcome mailer into a spend lever.
+export const NOTIFICATION_CHANNELS_WRITE_RATE_LIMIT = 30;
+export const NOTIFICATION_CHANNELS_WRITE_RATE_SCOPE = 'notification-channels-write';
+export const NOTIFICATION_CHANNELS_WRITE_RATE_WINDOW = '60 s' as const;
+
 type NotificationChannelsDeps = {
   validateBearerToken: typeof validateBearerToken;
   getEntitlements: typeof getEntitlements;
+  checkScopedRateLimit: typeof checkScopedRateLimit;
   fetch: typeof fetch;
   // Injected so the billing-denial capture is observable in tests. It cannot be
   // asserted through the real transport: api/_sentry-common.js's parseDsn()
@@ -49,6 +62,7 @@ function createDefaultNotificationChannelsDeps(): NotificationChannelsDeps {
   return {
     validateBearerToken,
     getEntitlements,
+    checkScopedRateLimit,
     fetch: (...args) => globalThis.fetch(...args),
     captureSilentError,
   };
@@ -488,6 +502,32 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         message: 'Real-time alerts are available on the Pro plan.',
         upgradeUrl: 'https://worldmonitor.app/pro',
       }, 403, corsHeaders);
+    }
+
+    // Every accepted POST writes through the Convex relay and the durable
+    // welcome path can send mail, so a signed-in Pro user must not be able to
+    // drive either without bound. Per-user, after the Pro gate so the limiter
+    // is not spent on callers the upsell already turns away. A limiter outage
+    // fails closed like api/notify.ts: a retryable 503, never an open door.
+    const scoped = await notificationChannelsDeps.checkScopedRateLimit(
+      NOTIFICATION_CHANNELS_WRITE_RATE_SCOPE,
+      NOTIFICATION_CHANNELS_WRITE_RATE_LIMIT,
+      NOTIFICATION_CHANNELS_WRITE_RATE_WINDOW,
+      session.userId,
+    );
+    if (scoped.degraded) {
+      return json(
+        { error: 'Rate-limit service temporarily unavailable' },
+        503,
+        { ...corsHeaders, ...RATE_LIMIT_DEGRADED_HEADERS },
+      );
+    }
+    if (!scoped.allowed) {
+      const shared = scopedTooManyRequestsResponse(scoped, NOTIFICATION_CHANNELS_WRITE_RATE_WINDOW, corsHeaders);
+      return new Response(JSON.stringify({ error: 'RATE_LIMITED' }), {
+        status: shared.status,
+        headers: shared.headers,
+      });
     }
 
     let body: PostBody;

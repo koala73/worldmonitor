@@ -26,6 +26,7 @@ test('notification GET and POST relay failures deliver distinct Sentry fingerpri
     notification = await import('../api/notification-channels.ts');
     const relayFailure = new Error('relay requestId=dynamic-123');
     notification.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-123' }),
       getEntitlements: async () => ({ features: { tier: 1 } }),
       fetch: async () => { throw relayFailure; },
@@ -100,6 +101,7 @@ test('notification GET and POST timeout captures are downgraded to warning', asy
           envelopes.length = 0;
           waits.length = 0;
           notification.__setNotificationChannelsDepsForTests({
+            checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
             validateBearerToken: async () => ({ valid: true, userId: 'user-timeout' }),
             getEntitlements: async () => ({ features: { tier: 1 } }),
             fetch: async () => {
