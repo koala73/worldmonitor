@@ -101,8 +101,9 @@ export function ensureNoopenerRel(rel: string | null): string {
 }
 
 // Resolve against a sentinel origin: a genuine path keeps it, anything the
-// parser reads as scheme-relative or host-bearing leaves it.
-const SAME_ORIGIN_SENTINEL = 'https://safe-html.invalid';
+// parser reads as scheme-relative or host-bearing leaves it. Same test-only
+// origin as src/shared/public-rpc-cache.ts (source-attribution manifest).
+const SAME_ORIGIN_SENTINEL = 'https://worldmonitor.invalid';
 function isSameOriginPath(href: string): boolean {
   if (!href.startsWith('/')) return false;
   try {
