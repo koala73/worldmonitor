@@ -34,7 +34,7 @@ test('OREF keeps origin and method checks ahead of canonical redirects', async (
   assert.equal((await oref(new Request(url, { method: 'OPTIONS' }))).status, 204);
 });
 
-function slack({ admission = null, pipeline = [{ result: 'OK' }], token = 'redis-token', realAdmission = false } = {}) {
+function slack({ admission = null, pipeline = [{ result: 'OK' }, { result: 'OK' }], token = 'redis-token', realAdmission = false } = {}) {
   const source = readFileSync(new URL('../api/slack/oauth/start.ts', import.meta.url), 'utf8');
   const javascript = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const calls = { auth: 0, limit: [], writes: [] };
@@ -94,7 +94,7 @@ test('Slack requires confirmed SET success before returning an authorization URL
   assert.equal(url.hostname, 'slack.com');
   assert.equal(app.calls.writes[0][0][1], `wm:slack:oauth:${url.searchParams.get('state')}`);
   assert.equal(JSON.parse(app.calls.writes[0][0][2]).userId, 'user-1');
-  assert.match(response.headers.get('Set-Cookie'), /^__Secure-wm_slack_oauth=/);
+  assert.match(response.headers.get('Set-Cookie'), /^__Secure-wm_slack_oauth_[a-f0-9-]{36}=/);
 });
 
 test('canonical OREF responses retain aggregation and caller admission', async () => {

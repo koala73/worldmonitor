@@ -12,7 +12,7 @@
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
-import { getCorsHeaders } from '../../_cors.js';
+import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
 import { validateBearerToken } from '../../../server/auth-session';
 import { checkTierProEntitlement } from '../../../server/_shared/pro-entitlement';
 import { createChannelOAuthState } from '../../../server/_shared/channel-oauth-state';
@@ -24,6 +24,10 @@ const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 
 export default async function handler(req: Request): Promise<Response> {
   const corsHeaders = getCorsHeaders(req) as Record<string, string>;
+
+  if (isDisallowedOrigin(req)) {
+    return new Response(JSON.stringify({ error: 'Origin not allowed' }), { status: 403, headers: { 'Content-Type': 'application/json', ...getOriginDeniedCorsHeaders(req, 'POST, OPTIONS') } });
+  }
 
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -70,22 +74,6 @@ export default async function handler(req: Request): Promise<Response> {
   // Bind the state to this browser and opener origin (see channel-oauth-state).
   const oauthState = await createChannelOAuthState('discord', req, session.userId);
 
-  // Store the state record in Upstash with 10-min TTL
-  const pipelineRes = await fetch(`${UPSTASH_URL}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify([['SET', `wm:discord:oauth:${state}`, oauthState.record, 'EX', '600']]),
-    signal: AbortSignal.timeout(5000),
-  }).catch(() => null);
-
-  if (!pipelineRes?.ok) {
-    return new Response(JSON.stringify({ error: 'Failed to create OAuth state' }), { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-  }
-  const pipelineBody = await pipelineRes.json().catch(() => null);
-  if (!Array.isArray(pipelineBody) || pipelineBody[0]?.result !== 'OK') {
-    return new Response(JSON.stringify({ error: 'Failed to create OAuth state' }), { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-  }
-
   const oauthUrl = new URL('https://discord.com/oauth2/authorize');
   oauthUrl.searchParams.set('client_id', DISCORD_CLIENT_ID);
   oauthUrl.searchParams.set('redirect_uri', DISCORD_REDIRECT_URI);
@@ -93,8 +81,30 @@ export default async function handler(req: Request): Promise<Response> {
   oauthUrl.searchParams.set('scope', 'webhook.incoming');
   oauthUrl.searchParams.set('state', state);
 
-  return new Response(JSON.stringify({ oauthUrl: oauthUrl.toString() }), {
+  // Store the state record in Upstash with 10-min TTL
+  const pipelineRes = await fetch(`${UPSTASH_URL}/pipeline`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-edge/1.0' },
+    body: JSON.stringify([
+      ['SET', `wm:discord:oauth:${state}`, oauthState.record, 'EX', '600'],
+      ['SET', `wm:discord:oauth:launch:${state}`, JSON.stringify({ ...JSON.parse(oauthState.record), oauthUrl: oauthUrl.toString() }), 'EX', '600'],
+    ]),
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => null);
+
+  if (!pipelineRes?.ok) {
+    return new Response(JSON.stringify({ error: 'Failed to create OAuth state' }), { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+  const pipelineBody = await pipelineRes.json().catch(() => null);
+  if (!Array.isArray(pipelineBody) || pipelineBody.length !== 2 || pipelineBody.some((entry) => entry?.result !== 'OK')) {
+    return new Response(JSON.stringify({ error: 'Failed to create OAuth state' }), { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  return new Response(JSON.stringify({ oauthUrl: oauthUrl.toString(), browserBinding: {
+    url: new URL(`/api/channel-oauth-bind?provider=discord&state=${state}`, req.url).toString(),
+    token: oauthState.bindValue,
+  } }), {
     status: 200,
-    headers: { 'Content-Type': 'application/json', 'Set-Cookie': oauthState.setCookie, ...corsHeaders },
+    headers: { 'Content-Type': 'application/json', 'Set-Cookie': oauthState.setCookie, 'Cache-Control': 'no-store', ...corsHeaders },
   });
 }

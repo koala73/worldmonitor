@@ -294,18 +294,23 @@ export async function setWebhookChannel(
   if (!res.ok) throw new Error(`set webhook channel: ${res.status}`);
 }
 
-export async function startSlackOAuth(signal?: AbortSignal): Promise<string> {
-  const res = await authFetch('/api/slack/oauth/start', { method: 'POST', signal });
-  if (!res.ok) throw new Error(`slack oauth start: ${res.status}`);
-  const data = await res.json() as { oauthUrl: string };
-  return data.oauthUrl;
+export interface ChannelOAuthLaunch {
+  oauthUrl: string;
+  browserBinding: { url: string; token: string };
 }
 
-export async function startDiscordOAuth(signal?: AbortSignal): Promise<string> {
+export async function startSlackOAuth(signal?: AbortSignal): Promise<ChannelOAuthLaunch> {
+  const res = await authFetch('/api/slack/oauth/start', { method: 'POST', signal });
+  if (!res.ok) throw new Error(`slack oauth start: ${res.status}`);
+  const data = await res.json() as ChannelOAuthLaunch;
+  return data;
+}
+
+export async function startDiscordOAuth(signal?: AbortSignal): Promise<ChannelOAuthLaunch> {
   const res = await authFetch('/api/discord/oauth/start', { method: 'POST', signal });
   if (!res.ok) throw new Error(`discord oauth start: ${res.status}`);
-  const data = await res.json() as { oauthUrl: string };
-  return data.oauthUrl;
+  const data = await res.json() as ChannelOAuthLaunch;
+  return data;
 }
 
 export async function deleteChannel(

@@ -9,6 +9,7 @@ import { redirectDisplayHost } from './_redirect-uri.js';
 import { isHostedAppOrigin } from '../_cors.js';
 import {
   hashOAuthBindValue,
+  OAUTH_BIND_COOKIE,
   oauthBindCookieHeader,
   requestMatchesOAuthBinding,
   readOAuthBindCookie,
@@ -226,8 +227,8 @@ async function retryConsent(req, nonceData, client, isXHR, failure) {
   const headers = new Headers({ ...PAGE_HEADERS, ...failure.headers });
   // The retry nonce gets a fresh 10-minute TTL, so renew the binding cookie
   // with it; otherwise the cookie set by the original GET could expire first.
-  const bindValue = readOAuthBindCookie(req);
-  if (bindValue) headers.append('Set-Cookie', oauthBindCookieHeader(bindValue, req));
+  const bindValue = readOAuthBindCookie(req, nonceData.bind_cookie);
+  if (bindValue) headers.append('Set-Cookie', oauthBindCookieHeader(bindValue, req, nonceData.bind_cookie));
   if (isXHR) {
     headers.set('Content-Type', 'application/json');
     return new Response(JSON.stringify({ error: failure.error, message: failure.message, nonce: retryNonce }), {
@@ -311,9 +312,10 @@ export default async function handler(req) {
     // Bind the nonce to this browser (see _browser-binding.js): only a request
     // carrying the same cookie can redeem it, so a forwarded consent link is
     // inert in someone else's browser.
-    const bindValue = resolveOAuthBindValue(req);
+    const bind_cookie = `${OAUTH_BIND_COOKIE}_${nonce}`;
+    const bindValue = resolveOAuthBindValue(req, bind_cookie);
     const bind_hash = await hashOAuthBindValue(bindValue);
-    const nonceStored = await redisSet(`oauth:nonce:${nonce}`, { client_id, redirect_uri, code_challenge, state, iss, bind_hash, created_at: Date.now() }, 600);
+    const nonceStored = await redisSet(`oauth:nonce:${nonce}`, { client_id, redirect_uri, code_challenge, state, iss, bind_cookie, bind_hash, created_at: Date.now() }, 600);
     if (!nonceStored) {
       return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.');
     }
@@ -322,7 +324,7 @@ export default async function handler(req) {
       client_name: client.client_name ?? 'Unknown Client',
       redirect_uri, client_id, response_type: 'code', code_challenge, code_challenge_method: 'S256', state,
     }, nonce);
-    page.headers.append('Set-Cookie', oauthBindCookieHeader(bindValue, req));
+    page.headers.append('Set-Cookie', oauthBindCookieHeader(bindValue, req, bind_cookie));
     return page;
   }
 

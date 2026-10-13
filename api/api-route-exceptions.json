@@ -507,6 +507,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/channel-oauth-bind.ts",
+      "category": "external-protocol",
+      "reason": "OAuth popup form target. Sets the browser binding after a one-time secret check and returns an HTML navigation to Slack or Discord.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/discord/oauth/callback.ts",
       "category": "external-protocol",
       "reason": "Discord OAuth redirect target — response is an HTML popup-closer page, query-param shape fixed by Discord.",

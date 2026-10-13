@@ -8,6 +8,7 @@ import {
   createPairingToken,
   setEmailChannel,
   setWebhookChannel,
+  type ChannelOAuthLaunch,
   startSlackOAuth,
   startDiscordOAuth,
   deleteChannel,
@@ -69,6 +70,19 @@ function normalizePreselectCountry(input: string | undefined): string | null {
   const trimmed = input.trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(trimmed)) return null;
   return trimmed;
+}
+
+function submitChannelOAuthForm(popup: Window, launch: ChannelOAuthLaunch): void {
+  const form = popup.document.createElement('form');
+  form.method = 'POST';
+  form.action = launch.browserBinding.url;
+  const input = popup.document.createElement('input');
+  input.type = 'hidden';
+  input.name = 'token';
+  input.value = launch.browserBinding.token;
+  form.appendChild(input);
+  popup.document.body.appendChild(form);
+  form.submit();
 }
 
 function appendNotificationError(rowEl: HTMLElement, message: string): void {
@@ -1134,20 +1148,19 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             slackOAuthPopup.focus();
             return;
           }
+          const popup = window.open('', 'slack-oauth', 'width=600,height=700,menubar=no,toolbar=no');
+          if (!popup) {
+            const rowEl = btn?.closest<HTMLElement>('[data-channel-type="slack"]');
+            if (rowEl) appendNotificationError(rowEl, 'Popup blocked. Allow popups for this site, then try again.');
+            return;
+          }
+          slackOAuthPopup = popup;
           if (btn) btn.textContent = 'Connecting…';
-          startSlackOAuth(signal).then((oauthUrl) => {
-            if (signal.aborted) return;
-            const popup = window.open(oauthUrl, 'slack-oauth', 'width=600,height=700,menubar=no,toolbar=no');
-            if (!popup) {
-              if (btn) btn.textContent = 'Add to Slack';
-              const rowEl = btn?.closest<HTMLElement>('[data-channel-type="slack"]');
-              if (rowEl) {
-                appendNotificationError(rowEl, 'Popup blocked — please allow popups for this site, then try again.');
-              }
-            } else {
-              slackOAuthPopup = popup;
-            }
+          startSlackOAuth(signal).then((launch) => {
+            if (signal.aborted || popup.closed) { popup.close(); return; }
+            submitChannelOAuthForm(popup, launch);
           }).catch(() => {
+            popup.close();
             if (btn && !signal.aborted) btn.textContent = 'Add to Slack';
           });
           return;
@@ -1159,20 +1172,19 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             discordOAuthPopup.focus();
             return;
           }
+          const popup = window.open('', 'discord-oauth', 'width=600,height=700,menubar=no,toolbar=no');
+          if (!popup) {
+            const rowEl = btn?.closest<HTMLElement>('[data-channel-type="discord"]');
+            if (rowEl) appendNotificationError(rowEl, 'Popup blocked. Allow popups for this site, then try again.');
+            return;
+          }
+          discordOAuthPopup = popup;
           if (btn) btn.textContent = 'Connecting…';
-          startDiscordOAuth(signal).then((oauthUrl) => {
-            if (signal.aborted) return;
-            const popup = window.open(oauthUrl, 'discord-oauth', 'width=600,height=700,menubar=no,toolbar=no');
-            if (!popup) {
-              if (btn) btn.textContent = 'Connect Discord';
-              const rowEl = btn?.closest<HTMLElement>('[data-channel-type="discord"]');
-              if (rowEl) {
-                appendNotificationError(rowEl, 'Popup blocked — please allow popups for this site, then try again.');
-              }
-            } else {
-              discordOAuthPopup = popup;
-            }
+          startDiscordOAuth(signal).then((launch) => {
+            if (signal.aborted || popup.closed) { popup.close(); return; }
+            submitChannelOAuthForm(popup, launch);
           }).catch(() => {
+            popup.close();
             if (btn && !signal.aborted) btn.textContent = 'Connect Discord';
           });
           return;

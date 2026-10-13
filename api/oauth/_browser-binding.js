@@ -9,8 +9,8 @@
 // the attacker's redirect_uri and state.
 //
 // The GET sets a random first-party cookie and stores only its SHA-256 in the
-// nonce record. Redemption requires the same cookie. One cookie value is reused
-// across concurrent flows in a browser, so parallel tabs keep working.
+// nonce record. Each flow has its own cookie name, so first-time parallel tabs
+// cannot overwrite each other before either cookie reaches the browser.
 //
 // The cookie is scoped to Domain=worldmonitor.app because the flow crosses
 // hosts (authorize can be served on apex/www/api, the native consent POST
@@ -29,27 +29,28 @@ function base64url(bytes) {
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-export function readOAuthBindCookie(req) {
+export function readOAuthBindCookie(req, name = OAUTH_BIND_COOKIE) {
+  if (name !== OAUTH_BIND_COOKIE && (typeof name !== 'string' || !/^__Secure-wm_oauth_bind_[a-f0-9-]{36}$/.test(name))) return null;
   const header = req.headers.get('cookie') ?? '';
   for (const part of header.split(';')) {
     const eq = part.indexOf('=');
     if (eq === -1) continue;
-    if (part.slice(0, eq).trim() !== OAUTH_BIND_COOKIE) continue;
+    if (part.slice(0, eq).trim() !== name) continue;
     const value = part.slice(eq + 1).trim();
     return BIND_VALUE_RE.test(value) ? value : null;
   }
   return null;
 }
 
-/** Reuses the browser's existing binding value, or mints a fresh one. */
-export function resolveOAuthBindValue(req) {
-  return readOAuthBindCookie(req) ?? base64url(crypto.getRandomValues(new Uint8Array(32)));
+/** A fresh flow name cannot collide with another tab's first request. */
+export function resolveOAuthBindValue(req, name = OAUTH_BIND_COOKIE) {
+  return readOAuthBindCookie(req, name) ?? base64url(crypto.getRandomValues(new Uint8Array(32)));
 }
 
-export function oauthBindCookieHeader(value, req) {
+export function oauthBindCookieHeader(value, req, name = OAUTH_BIND_COOKIE) {
   const host = (req.headers.get('host') ?? new URL(req.url).host).toLowerCase().replace(/:\d+$/, '');
   const domain = host === 'worldmonitor.app' || host.endsWith('.worldmonitor.app') ? '; Domain=worldmonitor.app' : '';
-  return `${OAUTH_BIND_COOKIE}=${value}; Max-Age=${BIND_MAX_AGE_SECONDS}; Path=/${domain}; Secure; HttpOnly; SameSite=Lax`;
+  return `${name}=${value}; Max-Age=${BIND_MAX_AGE_SECONDS}; Path=/${domain}; Secure; HttpOnly; SameSite=Lax`;
 }
 
 export function hashOAuthBindValue(value) {
@@ -66,7 +67,7 @@ export async function requestMatchesOAuthBinding(req, nonceData) {
   const expected = nonceData?.bind_hash;
   if (expected === undefined) return true;
   if (typeof expected !== 'string' || expected.length !== 64) return false;
-  const value = readOAuthBindCookie(req);
+  const value = readOAuthBindCookie(req, nonceData.bind_cookie === undefined ? OAUTH_BIND_COOKIE : nonceData.bind_cookie);
   if (!value) return false;
   const actual = await hashOAuthBindValue(value);
   let diff = 0;

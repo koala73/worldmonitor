@@ -8,15 +8,14 @@
  * Discord channel to the sender's account (and its alert rules).
  *
  * The record now also carries:
- * - `bindHash`: SHA-256 of a random value held in an HttpOnly cookie set by
- *   `start`. The callback refuses a request that does not present it.
+ * - `bindHash`: SHA-256 of a random value held in a flow-specific HttpOnly cookie. The callback refuses a request that does not present it.
  * - `openerOrigin`: the app origin that called `start`. The callback posts its
  *   result only to that origin instead of `'*'`, so a page that opened the
  *   popup itself cannot read the channel and workspace names.
  */
 
 // @ts-expect-error — JS module, no declaration file
-import { isHostedAppOrigin } from '../../api/_cors.js';
+import { isDisallowedOrigin } from '../../api/_cors.js';
 
 export type ChannelOAuthProvider = 'slack' | 'discord';
 
@@ -24,6 +23,7 @@ export interface ChannelOAuthState {
   userId: string;
   bindHash: string;
   openerOrigin: string;
+  cookieName?: string;
 }
 
 const COOKIE_MAX_AGE_SECONDS = 600; // matches the state TTL
@@ -54,34 +54,35 @@ function cookieDomainAttr(req: Request): string {
   return host === 'worldmonitor.app' || host.endsWith('.worldmonitor.app') ? '; Domain=worldmonitor.app' : '';
 }
 
-/** The opener is the same-origin app page that called `start`. */
+/** The trusted app origin that called `start`. */
 function resolveOpenerOrigin(req: Request): string {
   const origin = req.headers.get('origin');
   if (!origin) return DEFAULT_OPENER_ORIGIN;
-  if (isHostedAppOrigin(origin) || origin === new URL(req.url).origin) return origin;
+  if (!isDisallowedOrigin(req) || origin === new URL(req.url).origin) return origin;
   return DEFAULT_OPENER_ORIGIN;
 }
 
 /**
  * Builds the record `start` stores and the Set-Cookie header it returns.
- * Only the browser that called `start` can finish the flow. An existing
- * binding cookie is reused, so a second start in another tab does not break
- * the first popup; the cookie is refreshed so it outlives the newest state.
+ * Each flow owns a separate cookie, including simultaneous first requests.
+ * The binding value also goes to the authenticated caller for a top-level
+ * popup POST, where browsers can store it without third-party cookies.
  */
 export async function createChannelOAuthState(
   provider: ChannelOAuthProvider,
   req: Request,
   userId: string,
-): Promise<{ record: string; setCookie: string }> {
-  const bindValue = readCookie(req, channelOAuthCookieName(provider))
-    ?? base64url(crypto.getRandomValues(new Uint8Array(32)));
+): Promise<{ record: string; setCookie: string; bindValue: string }> {
+  const bindValue = base64url(crypto.getRandomValues(new Uint8Array(32)));
+  const cookieName = `${channelOAuthCookieName(provider)}_${crypto.randomUUID()}`;
   const state: ChannelOAuthState = {
     userId,
+    cookieName,
     bindHash: await hashBindValue(provider, bindValue),
     openerOrigin: resolveOpenerOrigin(req),
   };
-  const setCookie = `${channelOAuthCookieName(provider)}=${bindValue}; Max-Age=${COOKIE_MAX_AGE_SECONDS}; Path=/${cookieDomainAttr(req)}; Secure; HttpOnly; SameSite=Lax`;
-  return { record: JSON.stringify(state), setCookie };
+  const setCookie = channelOAuthCookieHeader(req, state, bindValue);
+  return { record: JSON.stringify(state), setCookie, bindValue };
 }
 
 export function parseChannelOAuthState(raw: string | null): ChannelOAuthState | null {
@@ -89,11 +90,12 @@ export function parseChannelOAuthState(raw: string | null): ChannelOAuthState | 
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { return null; }
   if (!parsed || typeof parsed !== 'object') return null;
-  const { userId, bindHash, openerOrigin } = parsed as Record<string, unknown>;
+  const { userId, bindHash, openerOrigin, cookieName } = parsed as Record<string, unknown>;
   if (typeof userId !== 'string' || !userId) return null;
   if (typeof bindHash !== 'string' || !/^[0-9a-f]{64}$/.test(bindHash)) return null;
   if (typeof openerOrigin !== 'string' || !/^https?:\/\/[^/]+$/.test(openerOrigin)) return null;
-  return { userId, bindHash, openerOrigin };
+  if (cookieName !== undefined && (typeof cookieName !== 'string' || !/^__Secure-wm_(slack|discord)_oauth_[a-f0-9-]{36}$/.test(cookieName))) return null;
+  return { userId, bindHash, openerOrigin, ...(typeof cookieName === 'string' ? { cookieName } : {}) };
 }
 
 function readCookie(req: Request, name: string): string | null {
@@ -112,8 +114,22 @@ export async function callbackMatchesBrowser(
   req: Request,
   state: ChannelOAuthState,
 ): Promise<boolean> {
-  const value = readCookie(req, channelOAuthCookieName(provider));
-  if (!value) return false;
+  const name = state.cookieName ?? channelOAuthCookieName(provider);
+  if (!name.startsWith(channelOAuthCookieName(provider))) return false;
+  const value = readCookie(req, name);
+  return channelOAuthBindingMatches(provider, value, state);
+}
+
+export function channelOAuthCookieHeader(req: Request, state: ChannelOAuthState, value: string): string {
+  return `${state.cookieName}=${value}; Max-Age=${COOKIE_MAX_AGE_SECONDS}; Path=/${cookieDomainAttr(req)}; Secure; HttpOnly; SameSite=Lax`;
+}
+
+export async function channelOAuthBindingMatches(
+  provider: ChannelOAuthProvider,
+  value: string | null,
+  state: ChannelOAuthState,
+): Promise<boolean> {
+  if (!value || !BIND_VALUE_RE.test(value)) return false;
   const actual = await hashBindValue(provider, value);
   let diff = 0;
   for (let i = 0; i < 64; i++) diff |= actual.charCodeAt(i) ^ state.bindHash.charCodeAt(i);
