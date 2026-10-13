@@ -1,6 +1,6 @@
 ---
 title: "World Monitor MCP server"
-description: "Connect Claude or Cursor to World Monitor MCP for live country risk, tariffs, markets, and chokepoints — OAuth or API key, published tool catalog."
+description: "World Monitor MCP offers country risk, markets, chokepoints, current US duties, and historical tariff schedules. Connect with OAuth or an API key."
 canonical: "https://www.worldmonitor.app/mcp-server.md"
 ---
 
