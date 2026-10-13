@@ -52,7 +52,7 @@ export interface RefreshRecoveryDeps {
     attemptValue: string,
     refreshData: unknown,
     familyId: string | null,
-    ttlSeconds?: number,
+    expiresAtMs?: number,
   ) => Promise<boolean>;
   redisFinalizeRefreshAttempt: (refreshToken: string, attemptValue: string) => Promise<boolean>;
   redisProtectFailedRefreshAttempt: (refreshToken: string, attemptValue: string) => Promise<boolean>;
@@ -107,10 +107,8 @@ export async function persistRefreshFamilyPointer(
   refreshToken: string,
   familyId: string,
 ): Promise<boolean> {
-  // The pointer's TTL is the presented token's remaining lifetime, and a
-  // failed refresh restores the token with it. Keep an existing pointer's TTL
-  // (XX KEEPTTL) so the claim does not reset it; only a legacy token that has
-  // no pointer yet gets one with the full TTL (NX).
+  // Preserve replay evidence for the existing lifetime. Only a legacy token
+  // without a pointer gets one with the full TTL.
   const key = refreshFamilyPointerKey(refreshToken);
   const value = serializeRefreshFamilyPointer(familyId);
   const results = await deps.redisPipeline([
@@ -141,11 +139,6 @@ export async function restoreRefreshAttempt(
   stage: RefreshRestoreStage,
   expiresAtMs?: number | null,
 ): Promise<boolean> {
-  // Restore with the lifetime the token had when it was claimed, never a
-  // fresh one. A token whose expiry passed mid-request gets one second.
-  const ttlSeconds = typeof expiresAtMs === 'number'
-    ? Math.max(1, Math.ceil((expiresAtMs - Date.now()) / 1000))
-    : undefined;
   try {
     if (
       await deps.redisRestoreRefreshAttempt(
@@ -153,7 +146,7 @@ export async function restoreRefreshAttempt(
         attemptValue,
         refreshData,
         familyId,
-        ttlSeconds,
+        expiresAtMs ?? undefined,
       )
     ) {
       return true;
@@ -253,10 +246,15 @@ export async function rawRedisBeginRefreshAttempt(
     "  if ok and type(decoded) == 'table' and decoded.kind == 'refresh_attempt' then",
     "    return {0, redis.call('EXISTS', KEYS[2]), redis.call('GET', KEYS[3]) or false}",
     '  end',
-    "  local ttl = redis.call('TTL', KEYS[1])",
+    "  local ttl = redis.call('PTTL', KEYS[1])",
+    '  local expiresAt = -1',
+    '  if ttl >= 0 then',
+    "    local now = redis.call('TIME')",
+    '    expiresAt = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000) + ttl',
+    '  end',
     "  redis.call('SET', KEYS[2], ARGV[1], 'EX', ARGV[3])",
     "  redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])",
-    '  return {1, value, ttl}',
+    '  return {1, value, expiresAt}',
     'end',
     "return {0, redis.call('EXISTS', KEYS[2]), redis.call('GET', KEYS[3]) or false}",
   ].join('\n');
@@ -270,13 +268,14 @@ export async function rawRedisBeginRefreshAttempt(
     throw new Error('Redis refresh-attempt consume returned an invalid response');
   }
   if (result[0] === 1) {
-    // TTL of the claimed token, read in the same script that claimed it.
-    const ttl = typeof result[2] === 'number' && result[2] > 0 ? result[2] : null;
+    if (!Number.isSafeInteger(result[2]) || result[2] < -1) {
+      throw new Error('Redis refresh-attempt consume returned an invalid expiry');
+    }
     return {
       kind: 'consumed',
       refreshData: parseStoredJson(result[1]),
       attemptValue,
-      expiresAtMs: ttl === null ? null : Date.now() + ttl * 1000,
+      expiresAtMs: result[2] === -1 ? null : result[2],
     };
   }
   return {
@@ -291,19 +290,27 @@ export async function rawRedisRestoreRefreshAttempt(
   attemptValue: string,
   refreshData: unknown,
   familyId: string | null,
-  ttlSeconds?: number,
+  expiresAtMs?: number,
 ): Promise<boolean> {
-  // Restoring with a fresh full TTL would let repeated transient failures
-  // stretch a refresh token past its intended expiry. Prefer the lifetime
-  // captured when the token was claimed (ARGV[5]); otherwise the family
-  // pointer's remaining TTL; only a token with neither gets the full TTL.
+  // Redis owns the deadline so HTTP latency and application clock skew cannot
+  // extend it. Legacy persistent records fall back to the pointer's lifetime.
   const script = [
     "if redis.call('GET', KEYS[3]) ~= ARGV[1] then return 0 end",
-    "local ttl = tonumber(ARGV[5]) or 0",
-    "if ttl <= 0 then ttl = redis.call('TTL', KEYS[2]) end",
-    "if ttl <= 0 then ttl = tonumber(ARGV[4]) end",
-    "redis.call('SET', KEYS[1], ARGV[2], 'EX', ttl)",
-    "if ARGV[3] ~= '' then redis.call('SET', KEYS[2], ARGV[3], 'EX', ttl) end",
+    'local expiresAt = tonumber(ARGV[5])',
+    'local ttl',
+    'if expiresAt then',
+    "  local now = redis.call('TIME')",
+    '  ttl = expiresAt - (tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000))',
+    'else',
+    "  ttl = redis.call('PTTL', KEYS[2])",
+    '  if ttl < 0 then ttl = tonumber(ARGV[4]) * 1000 end',
+    'end',
+    'if ttl <= 0 then',
+    "  redis.call('DEL', KEYS[1], KEYS[3])",
+    '  return 1',
+    'end',
+    "redis.call('SET', KEYS[1], ARGV[2], 'PX', ttl)",
+    "if ARGV[3] ~= '' then redis.call('SET', KEYS[2], ARGV[3], 'PX', ttl) end",
     "redis.call('DEL', KEYS[3])",
     'return 1',
   ].join('\n');
@@ -319,7 +326,7 @@ export async function rawRedisRestoreRefreshAttempt(
       JSON.stringify(refreshData),
       familyId ? serializeRefreshFamilyPointer(familyId) : '',
       REFRESH_TTL_SECONDS,
-      ttlSeconds && ttlSeconds > 0 ? Math.ceil(ttlSeconds) : 0,
+      expiresAtMs ?? '',
     ],
   );
   if (result !== 0 && result !== 1) throw new Error('Redis refresh-attempt restore returned an invalid response');

@@ -171,9 +171,9 @@ function makeRedis() {
         familyId: parseStored(store.get(pointerKey))?.family_id ?? parseStored(store.get(pointerKey)) ?? null,
       };
     },
-    redisRestoreRefreshAttempt: async (refreshToken, attemptValue, refreshData, familyId, ttlSeconds) => {
+    redisRestoreRefreshAttempt: async (refreshToken, attemptValue, refreshData, familyId, expiresAtMs) => {
       const attemptKey = `oauth:famattempt:${refreshToken}`;
-      ops.push({ kind: 'restore-refresh-attempt', refreshToken, attemptValue, ttlSeconds });
+      ops.push({ kind: 'restore-refresh-attempt', refreshToken, attemptValue, expiresAtMs });
       if (store.get(attemptKey) !== attemptValue) return false;
       store.set(`oauth:refresh:${refreshToken}`, JSON.stringify(refreshData));
       if (familyId) store.set(`oauth:famptr:${refreshToken}`, JSON.stringify(familyId));
@@ -334,13 +334,14 @@ describe('OAuth Redis refresh-attempt production contract', () => {
     const savedToken = process.env.UPSTASH_REDIS_REST_TOKEN;
     process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-    const expiry = Date.now() + 400;
-    globalThis.fetch = async () => new Response(JSON.stringify({
-      result: [1, JSON.stringify({ family_id: 'fam-subsecond' }), expiry],
-    }));
     try {
-      const result = await rawRedisBeginRefreshAttempt('rt-subsecond', 'attempt-subsecond');
-      assert.equal(result.expiresAtMs, expiry);
+      for (const expiry of [Date.now() + 400, 0, -1]) {
+        globalThis.fetch = async () => new Response(JSON.stringify({
+          result: [1, JSON.stringify({ family_id: 'fam-subsecond' }), expiry],
+        }));
+        const result = await rawRedisBeginRefreshAttempt('rt-subsecond', 'attempt-subsecond');
+        assert.equal(result.expiresAtMs, expiry === -1 ? null : expiry);
+      }
     } finally {
       globalThis.fetch = realFetch;
       if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
@@ -375,14 +376,13 @@ describe('OAuth Redis refresh-attempt production contract', () => {
     const calls = [];
     globalThis.fetch = async (url, init) => {
       calls.push({ url: String(url), init });
-      return new Response(JSON.stringify({ result: [1, JSON.stringify({ family_id: 'fam-contract' }), 3600] }), {
+      return new Response(JSON.stringify({ result: [1, JSON.stringify({ family_id: 'fam-contract' }), 1700000000400] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
     };
 
     try {
-      const before = Date.now();
       const result = await rawRedisBeginRefreshAttempt('rt-contract', 'attempt-contract');
       const { expiresAtMs, ...rest } = result;
       assert.deepEqual(rest, {
@@ -390,8 +390,7 @@ describe('OAuth Redis refresh-attempt production contract', () => {
         refreshData: { family_id: 'fam-contract' },
         attemptValue: JSON.stringify({ attempt_id: 'attempt-contract' }),
       });
-      // The claim reports the token's remaining TTL, read in the same script.
-      assert.ok(expiresAtMs >= before + 3600_000 && expiresAtMs <= Date.now() + 3600_000);
+      assert.equal(expiresAtMs, 1700000000400);
       assert.equal(calls[0].url, 'https://test.upstash.io/');
       assert.equal(calls[0].init.method, 'POST');
       assert.equal(calls[0].init.headers.Authorization, 'Bearer test-token');
@@ -406,8 +405,8 @@ describe('OAuth Redis refresh-attempt production contract', () => {
       assert.equal(command[6], JSON.stringify({ attempt_id: 'attempt-contract' }));
       assert.deepEqual(JSON.parse(command[7]), { kind: 'refresh_attempt', attempt_id: 'attempt-contract' });
       assert.equal(command[8], REFRESH_ATTEMPT_TTL_SECONDS);
-      assert.match(command[1], /local ttl = redis\.call\('TTL', KEYS\[1\]\)/);
-      assert.match(command[1], /return \{1, value, ttl\}/);
+      assert.match(command[1], /local ttl = redis\.call\('PTTL', KEYS\[1\]\)/);
+      assert.match(command[1], /return \{1, value, expiresAt\}/);
     } finally {
       globalThis.fetch = realFetch;
       if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
@@ -440,7 +439,7 @@ describe('OAuth Redis refresh-attempt production contract', () => {
           attemptValue,
           { family_id: 'fam-contract' },
           'fam-contract',
-          42,
+          1700000000400,
         ),
         true,
       );
@@ -455,12 +454,10 @@ describe('OAuth Redis refresh-attempt production contract', () => {
         'oauth:famattempt:rt-contract',
       ]);
       assert.equal(restore[8], JSON.stringify('fam-contract'));
-      // The restore keeps the lifetime captured at claim (ARGV[5]), falling
-      // back to the family pointer's TTL, instead of granting a fresh full TTL.
-      assert.equal(restore[10], 42);
-      assert.match(restore[1], /local ttl = tonumber\(ARGV\[5\]\) or 0/);
-      assert.match(restore[1], /redis\.call\('TTL', KEYS\[2\]\)/);
-      assert.match(restore[1], /'EX', ttl\)/);
+      assert.equal(restore[10], 1700000000400);
+      assert.match(restore[1], /local expiresAt = tonumber\(ARGV\[5\]\)/);
+      assert.match(restore[1], /redis\.call\('PTTL', KEYS\[2\]\)/);
+      assert.match(restore[1], /'PX', ttl\)/);
       assert.doesNotMatch(restore[1], /'EX', ARGV\[4\]\)/);
 
       const finalize = JSON.parse(calls[1].init.body);
@@ -1233,6 +1230,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
       family_id: 'fam_aged',
     });
     redis.refreshTtlMs.set('rt-aged', 90_000);
+    const before = Date.now();
     redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
 
     const resp = await tokenHandler(
@@ -1242,7 +1240,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     assert.equal(resp.status, 503);
     const restore = redis.ops.find((op) => op.kind === 'restore-refresh-attempt');
     assert.ok(restore, 'the token must be restored');
-    assert.ok(restore.ttlSeconds > 0 && restore.ttlSeconds <= 90, `restored TTL ${restore.ttlSeconds}`);
+    assert.ok(restore.expiresAtMs >= before + 90_000 && restore.expiresAtMs <= Date.now() + 90_000);
   });
 
   it('a failed transient restore protects the attempt so retry cannot revoke sibling sessions', async () => {
