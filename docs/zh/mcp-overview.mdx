@@ -444,16 +444,18 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ### Prompt
 
-`prompts/list` 返回六个工作流模板。`prompts/get` 会将所选模板渲染为一条用户消息，其中包含正确的 `tools/call` 序列和预置的 JMESPath 投影。
+`prompts/list` 返回下列工作流模板。`prompts/get` 会将所选模板渲染为一条用户消息，其中包含正确的 `tools/call` 序列和预置的 JMESPath 投影。
 
 | Prompt | 用途 |
 |--------|---------|
+| `country-view` | 打开嵌入式国家面板，逐步进行需身份验证的分节读取。 |
 | `country-briefing` | 针对一个 ISO 3166-1 alpha-2 国家的国家风险、AI 情报简报和宏观指标。 |
 | `energy-shock-watch` | 活跃能源中断、燃料短缺和政府危机政策；可选按国家聚焦。 |
 | `market-open-prep` | 用于开盘扫描的轻量级股票、大宗商品和加密货币异动简报。 |
 | `conflict-pulse` | 活跃的 UCDP 冲突事件以及带警报标记的热门新闻，可全球或针对一个国家。 |
 | `route-risk-check` | 针对一个咽喉要道的海上过境摘要与风险态势。 |
 | `freshness-audit` | 跨市场、能源和咽喉要道 bootstrap 信封的缓存新鲜度检查。 |
+| `trade-exposure-check` | 某一伙伴国的某一 HS6 产品的美国进口风险敞口：先查当前生效的关税（已加载时包含 301 条款和 232 条款关税），再查截至 2023 年的关税表税率和实施税率平均值走势。 |
 
 `prompts/list` 和 `prompts/get` 是元数据/工作流发现方法。它们不计入 Pro 每日配额，但仍计入你所在套餐的每分钟突发额度。
 

@@ -219,6 +219,45 @@ export const PROMPT_REGISTRY: McpPromptDef[] = [
     intro:
       'Audit the bootstrap pipeline freshness across markets, energy, and maritime chokepoints. For each step below, project ONLY the envelope (cached_at + stale) — the summary: true flag collapses the payload so this stays cheap. Then report a one-line freshness verdict per tool.',
   },
+  {
+    name: 'trade-exposure-check',
+    description:
+      'US import exposure for one product from one partner: the US duty in force today (live HTS plus any Section 301 and 232 duties), then the bilateral schedule rate and the five-year applied-average trend for context. The schedule steps end around 2023 and exclude unilateral duties.',
+    arguments: [
+      {
+        name: 'partner',
+        description: 'Exporting country: a name ("China"), an ISO alpha-2 or alpha-3 code ("CN", "CHN"), or a 3-digit UN M49 code ("156").',
+        required: true,
+      },
+      {
+        name: 'hs_code',
+        description: '6-digit HS product code, e.g. "870380" (dots are ignored: "8703.80").',
+        required: true,
+      },
+    ],
+    steps: [
+      {
+        tool: 'get_us_import_duty',
+        args: { hs_code: '${hs_code}', partner: '${partner}' },
+        jmespath: '{htsRelease: htsRelease, additionalDutiesLoaded: additionalDutiesLoaded, rateBasis: coverage.rateBasis, includesUnilateralDuties: coverage.includesUnilateralDuties, lines: lines[*].{htsCode: htsCode, baseRate: baseRate, estimatedRate: estimatedRate, estimateComplete: estimateComplete, additionalDuties: additionalDuties[*].{heading: heading, program: program, addedRate: addedRate, topUpTo: topUpTo, status: status, condition: condition}}}',
+        purpose: 'The US duty in force today for each 8-digit line under ${hs_code} from ${partner}: base rate, estimated total rate, whether that estimate is complete, and each Section 301 or 232 duty with its status (APPLIES, CONDITIONAL, EXEMPT, SCHEDULED).',
+      },
+      {
+        tool: 'get_bilateral_tariff',
+        args: { reporter: '840', partner: '${partner}', hs_code: '${hs_code}' },
+        jmespath: '{year: year, basis: basis, appliedRate: appliedRate.rate, mfnRate: mfnRate.rate, unavailableReason: unavailableReason, rateBasis: coverage.rateBasis, latestYear: coverage.latestYear}',
+        purpose: 'The US schedule rate on ${hs_code} from ${partner} in the latest year with data: applied rate, MFN rate and which one applied. Schedule history only, with no Section 301 or 232 duties.',
+      },
+      {
+        tool: 'get_tariff_averages',
+        args: { reporter: '840', partner: '${partner}', years: 5 },
+        jmespath: '{datapoints: datapoints[*].{year: year, tariffRate: tariffRate, weightedRate: weightedRate}, unavailableReason: unavailableReason, rateBasis: coverage.rateBasis, latestYear: coverage.latestYear}',
+        purpose: 'Five years of the average US applied tariff on all goods from ${partner}, simple and import-weighted. Schedule history only, with no Section 301 or 232 duties.',
+      },
+    ],
+    intro:
+      'Check US import exposure for HS ${hs_code} from ${partner}. Step 1 is the duty in force today; it includes Section 301 and 232 duties only when additionalDutiesLoaded is true, so say so when it is false. Steps 2 and 3 are schedule history through about 2023 that excludes unilateral duties: use them for context and trend, never as the current rate. Lead with the step 1 estimated rate and whether the estimate is complete, list each additional duty with its status, then compare with the schedule rate and the average trend. If a step returns unavailableReason NOT_COVERED, say the data does not cover it rather than reporting a zero rate.',
+  },
 ];
 
 // ---------------------------------------------------------------------------

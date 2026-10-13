@@ -469,7 +469,7 @@ In addition to the live tool registry, WorldMonitor exposes MCP prompts and reso
 
 ### Prompts
 
-`prompts/list` returns six workflow templates. `prompts/get` renders the selected template into a user message with the right `tools/call` sequence and pre-baked JMESPath projections.
+`prompts/list` returns the workflow templates below. `prompts/get` renders the selected template into a user message with the right `tools/call` sequence and pre-baked JMESPath projections.
 
 | Prompt | Purpose |
 |--------|---------|
@@ -480,6 +480,7 @@ In addition to the live tool registry, WorldMonitor exposes MCP prompts and reso
 | `conflict-pulse` | Active UCDP conflict events plus alert-flagged top news, globally or for one country. |
 | `route-risk-check` | Maritime chokepoint transit summary and risk posture for one chokepoint. |
 | `freshness-audit` | Cache freshness check across market, energy, and chokepoint bootstrap envelopes. |
+| `trade-exposure-check` | US import exposure for one HS6 product from one partner: the duty in force today, including Section 301 and 232 duties when loaded, then the schedule rate and applied-average trend through 2023. |
 
 `prompts/list` and `prompts/get` are metadata/workflow discovery methods. They are exempt from the Pro daily quota, though they still count toward your plan's per-minute burst.
 

@@ -1,7 +1,7 @@
 // MCP prompts wire-contract + JMESPath-vs-schema parity.
 //
 // Three concerns:
-//   1. prompts/list returns the documented six entries with the spec-shaped
+//   1. prompts/list returns the documented entries with the spec-shaped
 //      {name, description, arguments} fields. Detects accidental registry
 //      truncation or schema-shape drift.
 //   2. prompts/get interpolates ${arg} tokens, surfaces -32602 for unknown
@@ -102,17 +102,16 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
   // -------------------------------------------------------------------------
   // prompts/list shape
   // -------------------------------------------------------------------------
-  it('prompts/list returns the six documented entries with name/description/arguments', async () => {
+  it('prompts/list returns the documented entries in order with name/description/arguments', async () => {
     const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method: 'prompts/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.prompts), 'result.prompts must be an array');
-    assert.equal(body.result.prompts.length, 7, `Expected 7 prompts, got ${body.result.prompts.length}`);
-
     const expectedNames = [
       'country-view', 'country-briefing', 'energy-shock-watch', 'market-open-prep',
-      'conflict-pulse', 'route-risk-check', 'freshness-audit',
+      'conflict-pulse', 'route-risk-check', 'freshness-audit', 'trade-exposure-check',
     ];
+    assert.equal(body.result.prompts.length, expectedNames.length, `Expected ${expectedNames.length} prompts, got ${body.result.prompts.length}`);
     const actualNames = body.result.prompts.map((p) => p.name);
     assert.deepEqual(actualNames, expectedNames, 'prompt names and order must match the documented set');
 
@@ -215,6 +214,84 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
       !text.includes('"country":""'),
       `omitted optional arg must NOT render as {"country":""} — got: ${text.slice(0, 400)}…`,
     );
+  });
+
+  it('prompts/get(trade-exposure-check) sequences the US duty, the bilateral schedule rate and the average trend', async () => {
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 12, method: 'prompts/get',
+      params: { name: 'trade-exposure-check', arguments: { partner: 'China', hs_code: '870380' } },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const text = body.result?.messages?.[0]?.content?.text ?? '';
+    const stepHeaders = [...text.matchAll(/^Step \d+ \u2014 (\S+)$/gm)].map((m) => m[1]);
+    assert.deepEqual(stepHeaders, ['get_us_import_duty', 'get_bilateral_tariff', 'get_tariff_averages']);
+    const argLines = [...text.matchAll(/^ {2}arguments: (.*)$/gm)].map((m) => JSON.parse(m[1]));
+    assert.deepEqual(argLines, [
+      { hs_code: '870380', partner: 'China' },
+      { reporter: '840', partner: 'China', hs_code: '870380' },
+      { reporter: '840', partner: 'China', years: 5 },
+    ], 'step 1 has no reporter; steps 2 and 3 pin the US (840) as reporter');
+  });
+
+  it('prompts/get(trade-exposure-check) without hs_code returns -32602 naming it', async () => {
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 13, method: 'prompts/get',
+      params: { name: 'trade-exposure-check', arguments: { partner: 'China' } },
+    }));
+    const body = await res.json();
+    assert.equal(body.error?.code, -32602);
+    assert.match(body.error?.message ?? '', /hs_code/);
+  });
+
+  it('ANONYMOUS prompts/list still answers and includes trade-exposure-check', async () => {
+    const res = await handler(new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 14, method: 'prompts/list', params: {} }),
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.prompts?.some((p) => p.name === 'trade-exposure-check'));
+  });
+
+  // Every rendered step must be a call the tool accepts: a prompt that omits
+  // a required argument hands the agent a guaranteed -32602.
+  it('every rendered prompt step supplies its tool\'s inputSchema.required arguments', async () => {
+    const toolByName = new Map(TOOL_REGISTRY.map((t) => [t.name, t]));
+    for (const prompt of PROMPT_REGISTRY) {
+      const args = Object.fromEntries(prompt.arguments.map((a) => [a.name, `sample-${a.name}`]));
+      const res = await handler(makeReq('POST', {
+        jsonrpc: '2.0', id: 15, method: 'prompts/get',
+        params: { name: prompt.name, arguments: args },
+      }));
+      const body = await res.json();
+      const text = body.result?.messages?.[0]?.content?.text ?? '';
+      const rendered = [...text.matchAll(/^ {2}arguments: (.*)$/gm)].map((m) => JSON.parse(m[1]));
+      assert.equal(rendered.length, prompt.steps.length, `prompt "${prompt.name}": one arguments line per step`);
+      for (const [i, step] of prompt.steps.entries()) {
+        const required = toolByName.get(step.tool)?.inputSchema?.required ?? [];
+        for (const key of required) {
+          assert.ok(
+            rendered[i][key] !== undefined && rendered[i][key] !== '',
+            `prompt "${prompt.name}" step ${i + 1} (${step.tool}) omits required argument "${key}": ${JSON.stringify(rendered[i])}`,
+          );
+        }
+      }
+    }
+  });
+
+  // The initialize instructions list prompt names by hand; pin them to the
+  // registry so a new prompt cannot ship undiscoverable there.
+  it('the initialize instructions name every registered prompt', () => {
+    const constantsSrc = readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'api', 'mcp', 'constants.ts'),
+      'utf8',
+    );
+    const line = constantsSrc.split('\n').find((l) => l.includes('Issue prompts/list to discover'));
+    assert.ok(line, 'instructions must keep the prompts/list stanza');
+    const missing = PROMPT_REGISTRY.map((p) => p.name).filter((name) => !new RegExp(`[(, ]${name}[,)]`).test(line));
+    assert.deepEqual(missing, [], `instructions prompts/list stanza is missing: ${missing.join(', ')}`);
   });
 
   // -------------------------------------------------------------------------
@@ -414,6 +491,74 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
         disruptions: { events: [{ id: 'disruption-1', countries: ['DE'], severity: 'medium' }] },
         'fuel-shortages': { shortages: [{ country: 'DE', product: 'diesel', status: 'watch' }] },
         'crisis-policies': { policies: [{ country: 'DE', policy: 'reserve release' }] },
+      },
+    }),
+    // Tariff fixtures mirror the route bodies plus the MCP-layer `coverage`
+    // object (tests/mcp-tariff-tools.test.mts, buildCoverage in
+    // api/mcp/registry/tariff-tools.ts).
+    get_us_import_duty: () => ({
+      hsCode: '870380',
+      partnerCountry: '156',
+      htsRelease: '2026 Revision 21',
+      lines: [{
+        htsCode: '87038001',
+        description: 'Passenger motor vehicles, electric',
+        baseRate: '2.5%',
+        baseAdValorem: 2.5,
+        estimatedRate: 102.5,
+        estimateComplete: false,
+        additionalDuties: [
+          { heading: '9903.91.03', program: 'SECTION_301', addedRate: 100, status: 'APPLIES' },
+          { heading: '9903.94.01', program: 'SECTION_232', topUpTo: 25, status: 'CONDITIONAL', condition: 'Applies unless the importer certifies US content.' },
+        ],
+      }],
+      additionalDutiesLoaded: true,
+      upstreamUnavailable: false,
+      unavailableReason: '',
+      coverage: {
+        dataset: 'USITC_HTS',
+        rateBasis: 'CURRENT_DUTY',
+        includesUnilateralDuties: true,
+        excludedDutyTypes: ['IEEPA', 'ANTI_DUMPING', 'COUNTERVAILING'],
+        asOf: '2026 Revision 21',
+      },
+    }),
+    get_bilateral_tariff: () => ({
+      reportingCountry: '840',
+      partnerCountry: '156',
+      hsCode: '870380',
+      year: 2023,
+      basis: 'APPLIED_TARIFF_BASIS_MFN',
+      appliedRate: { rate: 2.5, minRate: 2.5, maxRate: 2.5, tariffLines: 1, nonAdValoremLines: 0 },
+      mfnRate: { rate: 2.5, minRate: 2.5, maxRate: 2.5, tariffLines: 1, nonAdValoremLines: 0 },
+      upstreamUnavailable: false,
+      unavailableReason: '',
+      coverage: {
+        dataset: 'WITS_TRAINS',
+        rateBasis: 'SCHEDULE',
+        includesUnilateralDuties: false,
+        excludedDutyTypes: ['SECTION_301', 'SECTION_232', 'IEEPA', 'ANTI_DUMPING', 'COUNTERVAILING'],
+        latestYear: 2023,
+        seeAlso: { tool: 'get_us_import_duty', reason: 'Schedule rates leave out Section 301 and 232 duties.' },
+      },
+    }),
+    get_tariff_averages: () => ({
+      datapoints: [
+        { reportingCountry: '840', partnerCountry: '156', productSector: 'All products', year: 2022, tariffRate: 3.1, boundRate: 0, indicatorCode: 'AHS-SMPL-AVRG', weightedRate: 2.9 },
+        { reportingCountry: '840', partnerCountry: '156', productSector: 'All products', year: 2023, tariffRate: 3.2, boundRate: 0, indicatorCode: 'AHS-SMPL-AVRG', weightedRate: 3.0 },
+      ],
+      fetchedAt: '2026-10-13T00:00:00.000Z',
+      upstreamUnavailable: false,
+      unavailableReason: '',
+      coverageStartYear: 2022,
+      coverageEndYear: 2023,
+      coverage: {
+        dataset: 'WITS_TRAINS',
+        rateBasis: 'SCHEDULE',
+        includesUnilateralDuties: false,
+        excludedDutyTypes: ['SECTION_301', 'SECTION_232', 'IEEPA', 'ANTI_DUMPING', 'COUNTERVAILING'],
+        latestYear: 2023,
+        seeAlso: { tool: 'get_us_import_duty', reason: 'Schedule rates leave out Section 301 and 232 duties.' },
       },
     }),
     get_news_intelligence: () => ({
