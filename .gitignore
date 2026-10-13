@@ -30,6 +30,10 @@ docs/generated/entitlement-crosswalk.json
 *.log
 .env
 .env.local
+# Any other dotenv variant (.env.production, .env.staging, ...) is a credential
+# file by default; only the committed examples are tracked.
+.env.*
+!.env.example
 # Local plaintext env exports/backups (including tool-specific suffixes).
 .env*.bak*
 .env*-bak*

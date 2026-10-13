@@ -42,7 +42,7 @@ jobs:
         with:
           node-version: '24'
       - name: Install
-        run: npm install --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Run unit tests
         run: npm test
 
@@ -59,7 +59,7 @@ jobs:
         with:
           node-version: '24'
       - name: Install
-        run: npm install --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
       # The KV shadow (BOOTSTRAP_KV_SHADOW=1) emits to Axiom; the Worker reads AXIOM_API_TOKEN
       # as a secret. Set it before deploy. Absent secret => the shadow no-ops silently
       # (warnDeliveryFailure 'missing_token'), never an error — so a missing secret can't

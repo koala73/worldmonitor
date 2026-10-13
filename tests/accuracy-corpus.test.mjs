@@ -1913,10 +1913,18 @@ describe('go-forward VOID share on the page (#4930)', () => {
 describe('accuracy page after the #5233 correction', () => {
   const CORRECTION = 'could not read';
 
-  it('the committed pre-correction snapshot carries no correction note', () => {
-    const snapshot = JSON.parse(read('docs/snapshots/crawlable-live-pulse-2026-10-05.json'));
-    const { html } = renderState(snapshot.forecastScorecard);
-    assert.doesNotMatch(stripTags(html), new RegExp(CORRECTION));
+  it('prints the correction note only when the captured methodology carries it', () => {
+    // The renderer must not supply the note itself: the pre-correction
+    // methodology, captured the day the page shipped, renders without it.
+    const before = renderState(sectionWith({ methodology: LIVE_SCORECARD.methodology }));
+    assert.doesNotMatch(stripTags(before.html), new RegExp(CORRECTION));
+    // The committed capture rolls forward every week, so resolve the newest
+    // one and read the expectation from its own methodology. Naming the
+    // 2026-10-05 file broke the first refresh that deleted it (#9115).
+    const capture = JSON.parse(read(resolveLatestLivePulseSnapshotPath(repoRoot))).forecastScorecard;
+    const captured = new RegExp(CORRECTION).test(capture.scorecard?.methodology ?? '');
+    const { html } = renderState(capture);
+    assert.equal(new RegExp(CORRECTION).test(stripTags(html)), captured, 'the page follows the captured methodology');
   });
 
   it('shows the note when the captured scorecard reports the voids', () => {

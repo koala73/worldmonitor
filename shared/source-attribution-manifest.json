@@ -8397,15 +8397,10 @@
       "host": "search.seznam.cz",
       "provider": "search.seznam.cz",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "scripts/seo-indexnow-submit.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "search.worldbank.org",
@@ -8439,15 +8434,10 @@
       "host": "searchadvisor.naver.com",
       "provider": "searchadvisor.naver.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "scripts/seo-indexnow-submit.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "searchconsole.googleapis.com",
@@ -11157,15 +11147,10 @@
       "host": "www.bing.com",
       "provider": "www.bing.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "scripts/seo-indexnow-submit.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.brasilparalelo.com.br",
@@ -15059,15 +15044,10 @@
       "host": "yandex.com",
       "provider": "yandex.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "scripts/seo-indexnow-submit.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "yemenonline.info",
