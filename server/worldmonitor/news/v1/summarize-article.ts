@@ -366,6 +366,7 @@ export async function summarizeArticle(
     };
 
   } catch (err: unknown) {
+    // sentry-coverage-ok Provider failures return SUMMARIZE_STATUS_ERROR for the client fallback chain.
     const error = err instanceof Error ? err : new Error(String(err));
     console.error(`[SummarizeArticle:${provider}] Error:`, error.name, error.message);
     return {
