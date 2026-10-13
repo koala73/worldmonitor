@@ -174,3 +174,21 @@ export function decodePublicPointer(raw: unknown): { userId: string; issueDate: 
 }
 
 export const BRIEF_PUBLIC_POINTER_PREFIX = 'brief:public:';
+
+/**
+ * Public base URL for the share links we mint. Preview and development
+ * pointers live in their deployment namespace, so their URLs must stay on
+ * that deployment. Production remains pinned to the configured canonical
+ * origin to prevent host-header reflection: the request origin is attacker
+ * influenced, and a share URL minted from it would point readers at a
+ * non-canonical host.
+ */
+export function publicBaseUrl(req: Request): string {
+  const requestOrigin = new URL(req.url).origin;
+  if (process.env.VERCEL_ENV === 'preview' || process.env.VERCEL_ENV === 'development') {
+    return requestOrigin;
+  }
+  const pinned = process.env.WORLDMONITOR_PUBLIC_BASE_URL;
+  if (pinned) return pinned.replace(/\/+$/, '');
+  return requestOrigin;
+}

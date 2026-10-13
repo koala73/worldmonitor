@@ -31,6 +31,7 @@ import {
   BRIEF_PUBLIC_POINTER_PREFIX,
   buildPublicBriefUrl,
   encodePublicPointer,
+  publicBaseUrl,
 } from '../../../server/_shared/brief-share-url';
 
 const HTML_HEADERS = {
@@ -252,7 +253,7 @@ export default async function handler(
       const built = await buildPublicBriefUrl({
         userId,
         issueDate,
-        baseUrl: new URL(req.url).origin,
+        baseUrl: publicBaseUrl(req),
         secret: shareSecret,
       });
       // Idempotent pointer write: same hash every call, so SET just
