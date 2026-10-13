@@ -2,6 +2,8 @@ import { CHROME_UA } from './constants';
 import { isModelUsable, isProviderAvailable, recordModelFailure, recordModelSuccess } from './llm-health';
 import { sanitizeForPrompt } from './llm-sanitize.js';
 import { buildLlmCallEvent, deliverUsageEvents, type LlmCallEvent } from './usage';
+import { getGenericLlmAuthHeaders } from '../../scripts/shared/generic-llm-auth.mjs';
+import { isExplicitGenericLlmSelected } from '../../scripts/shared/generic-llm-provider.mjs';
 import {
   DEEPSEEK_V4_FLASH_MODEL_PREFIX,
   getLlmAttemptTimeoutMs,
@@ -132,13 +134,13 @@ export function getProviderCredentials(
   // Generic OpenAI-compatible endpoint via LLM_API_URL/LLM_API_KEY/LLM_MODEL
   if (provider === 'generic') {
     const apiUrl = process.env.LLM_API_URL;
-    const apiKey = process.env.LLM_API_KEY;
-    if (!apiUrl || !apiKey) return null;
+    const authHeaders = getGenericLlmAuthHeaders(process.env.LLM_API_KEY, process.env.LLM_API_AUTH_TYPE);
+    if (!apiUrl || !authHeaders) return null;
     return {
       apiUrl,
       model: overrides.model || process.env.LLM_MODEL || 'gpt-3.5-turbo',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        ...authHeaders,
         'Content-Type': 'application/json',
       },
     };
@@ -284,6 +286,11 @@ function resolveProviderChain(opts: {
   forcedProvider?: string;
   providerOrder?: string[];
 }): string[] {
+  // An operator's explicit provider is an isolation boundary, including when
+  // a caller requests its own provider/order. Failure must stay on that backend.
+  if (isExplicitGenericLlmSelected()) return ['generic'];
+  const configured = process.env.LLM_PROVIDER?.trim();
+  if (configured) return PROVIDER_SET.has(configured) ? [configured] : [];
   if (opts.forcedProvider) return [opts.forcedProvider];
   if (!Array.isArray(opts.providerOrder) || opts.providerOrder.length === 0) {
     return [...PROVIDER_CHAIN];
@@ -317,12 +324,15 @@ function callLlmProfile(
   defaultProvider: LlmProviderName,
   excluded: readonly LlmProviderName[] = [],
 ): Promise<LlmCallResult | null> {
-  const envProvider = process.env[providerEnv];
+  const primaryProvider = process.env.LLM_PROVIDER?.trim();
+  const profileProvider = process.env[providerEnv]?.trim();
+  const envProvider = primaryProvider || profileProvider;
   const provider = (envProvider && PROVIDER_SET.has(envProvider) ? envProvider : (() => {
     if (envProvider) console.warn(`[llm] ${providerEnv}="${envProvider}" is not a known provider; falling back to "${defaultProvider}"`);
     return defaultProvider;
   })()) as LlmProviderName;
-  const model = process.env[modelEnv];
+  const model = !primaryProvider || !profileProvider || primaryProvider === profileProvider
+    ? process.env[modelEnv] : undefined;
   const remaining = fallbackProviders(provider, excluded);
   return callLlm({
     ...opts,
@@ -367,11 +377,14 @@ export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'valid
  * Returns null if no provider is available.
  */
 export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<Uint8Array> {
-  const envProvider = process.env.LLM_REASONING_PROVIDER;
+  const primaryProvider = process.env.LLM_PROVIDER?.trim();
+  const profileProvider = process.env.LLM_REASONING_PROVIDER?.trim();
+  const envProvider = primaryProvider || profileProvider;
   const provider = (envProvider && PROVIDER_SET.has(envProvider) ? envProvider : 'openrouter') as LlmProviderName;
-  const model = process.env.LLM_REASONING_MODEL;
+  const model = !primaryProvider || !profileProvider || primaryProvider === profileProvider
+    ? process.env.LLM_REASONING_MODEL : undefined;
   const remaining = fallbackProviders(provider, USER_TEXT_EXCLUDED_PROVIDERS);
-  const providerOrder = [provider, ...remaining];
+  const providerOrder = resolveProviderChain({ providerOrder: [provider, ...remaining] });
   const modelOverrides = model ? { [provider]: model } as Partial<Record<LlmProviderName, string>> : undefined;
 
   const {
@@ -472,6 +485,7 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
         try {
           const resp = await fetch(creds.apiUrl, {
             method: 'POST',
+            redirect: providerName === 'generic' ? 'manual' : 'follow',
             headers: { ...creds.headers, 'User-Agent': CHROME_UA },
             body: JSON.stringify({
               ...creds.extraBody,
@@ -484,6 +498,10 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
             signal: activeController.signal,
           });
           // Timeout stays active — it must bound the streaming body read, not just the connection
+          if (providerName === 'generic' && resp.status >= 300 && resp.status < 400) {
+            void resp.body?.cancel().catch(() => {});
+            throw new Error('Generic model redirect rejected');
+          }
 
           if (resp.ok) {
             // HTTP success proves the provider accepted this model even if the
@@ -686,6 +704,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
       try {
         const resp = await fetch(creds.apiUrl, {
           method: 'POST',
+          redirect: providerName === 'generic' ? 'manual' : 'follow',
           headers: { ...creds.headers, 'User-Agent': CHROME_UA },
           body: JSON.stringify({
             ...creds.extraBody,
@@ -700,6 +719,10 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
           signal: AbortSignal.timeout(attemptTimeoutMs),
         });
 
+        if (providerName === 'generic' && resp.status >= 300 && resp.status < 400) {
+          void resp.body?.cancel().catch(() => {});
+          throw new Error('Generic model redirect rejected');
+        }
         if (!resp.ok) {
           // Log a bounded body slice (like the stream path already does) —
           // region-403s and provider errors are undiagnosable from the
@@ -720,6 +743,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         recordModelSuccess(creds.apiUrl, creds.model);
 
         const data = (await resp.json()) as {
+          model?: unknown;
           choices?: Array<{ message?: { content?: string }; finish_reason?: string | null }>;
           usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number };
         };
@@ -771,7 +795,10 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         }
 
         record(true, tokensExtra);
-        return { content, model: creds.model, provider: providerName, tokens, finishReason };
+        // Routers may serve a different model on each request. Keep the requested
+        // model for request/health identity, but report the model that answered.
+        const servedModel = typeof data.model === 'string' && data.model.trim() ? data.model.trim() : creds.model;
+        return { content, model: servedModel, provider: providerName, tokens, finishReason };
       } catch (err) {
         // sentry-coverage-ok: provider failures are expected fallback signals;
         // record() emits the bounded per-attempt telemetry before the chain continues.

@@ -5,6 +5,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
 
 import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
+import { isExplicitGenericLlmSelected } from '../../../../scripts/shared/generic-llm-provider.mjs';
 import {
   CACHE_TTL_SECONDS,
   MAX_BODY_LEN,
@@ -26,9 +27,10 @@ import {
 } from '../../../_shared/response-headers';
 import { stripThinkingTags } from '../../../_shared/llm';
 import { buildLlmCallEvent, deliverUsageEvents } from '../../../_shared/usage';
+import { sha256Hex } from '../../../_shared/hash';
 
 // Best-effort llm_call telemetry (#4895). This handler bypasses callLlm (the
-// client picks the provider), so it emits its own events.
+// client picks the provider unless an operator fixes it), so it emits its own events.
 async function emitSummarizeLlmEvent(p: {
   provider: string; model: string; ok: boolean; durationMs: number;
   promptChars: number; usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number };
@@ -75,7 +77,11 @@ export async function summarizeArticle(
 ): Promise<SummarizeArticleResponse> {
   const premiumIdentity = await resolvePremiumCallerIdentity(ctx.request);
   const isPremium = premiumIdentity.isPremium;
-  const { provider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
+  const { mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
+  // The operator's explicit provider also governs this direct-fetch handler.
+  // A browser fallback request must not escape to its requested cloud backend.
+  const configuredProvider = isExplicitGenericLlmSelected() ? 'generic' : process.env.LLM_PROVIDER?.trim();
+  const provider = configuredProvider || req.provider;
   const systemAppend = isPremium && typeof req.systemAppend === 'string' ? req.systemAppend : '';
   const requiresPremium = mode !== 'translate';
 
@@ -156,6 +162,7 @@ export async function summarizeArticle(
   const skipReasons: Record<string, string> = {
     ollama: 'OLLAMA_API_URL not configured',
     openrouter: 'OPENROUTER_API_KEY not configured',
+    generic: 'Generic LLM endpoint or authentication not configured',
   };
 
   const credentials = getProviderCredentials(provider);
@@ -191,7 +198,12 @@ export async function summarizeArticle(
   }
 
   try {
-    const cacheKey = await getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang, systemAppend || undefined, bodies);
+    const sharedCacheKey = await getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang, systemAppend || undefined, bodies);
+    // Preserve the hosted client fallback cache, but isolate an operator's
+    // selected backend/model from older cloud results and other local models.
+    const cacheKey = configuredProvider
+      ? `${sharedCacheKey}:operator:${await sha256Hex(JSON.stringify([provider, apiUrl, model]))}`
+      : sharedCacheKey;
 
     // Single atomic call — source tracking happens inside cachedFetchJsonWithMeta,
     // eliminating the TOCTOU race between a separate getCachedJson and cachedFetchJson.
@@ -277,6 +289,7 @@ export async function summarizeArticle(
         const llmPromptChars = effectiveSystemPrompt.length + userPrompt.length;
         const response = await fetch(apiUrl, {
           method: 'POST',
+          redirect: provider === 'generic' ? 'manual' : 'follow',
           headers: { ...providerHeaders, 'User-Agent': CHROME_UA },
           body: JSON.stringify({
             model,
@@ -292,6 +305,10 @@ export async function summarizeArticle(
           signal: AbortSignal.timeout(25_000),
         });
 
+        if (provider === 'generic' && response.status >= 300 && response.status < 400) {
+          void response.body?.cancel().catch(() => {});
+          throw new Error('Generic model redirect rejected');
+        }
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`[SummarizeArticle:${provider}] API error:`, response.status, errorText);
@@ -325,13 +342,15 @@ export async function summarizeArticle(
         }
 
         await emitSummarizeLlmEvent({ provider, model, ok: Boolean(rawContent), durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, usage, reason: rawContent ? '' : 'empty' });
-        return rawContent ? { summary: rawContent, model, tokens } : null;
+        // Cache under the requested route, retaining which model produced the
+        // cached answer when a router selects a different model per request.
+        const servedModel = typeof data.model === 'string' && data.model.trim() ? data.model.trim() : model;
+        return rawContent ? { summary: rawContent, model: servedModel, tokens } : null;
       },
       undefined,
       {
-        // This cache key is intentionally provider-independent so a successful
-        // summary can be reused across the client fallback chain. Provider-
-        // local failures and in-flight work must not suppress another provider.
+        // Hosted fallback requests share summaries. Operator-selected backends
+        // use the partition above; failed attempts never poison either cache.
         shouldFetch: () => isModelUsable(apiUrl, model),
         cacheFailures: false,
         inflightKey: `${cacheKey}:${provider}:${model}`,

@@ -38,6 +38,10 @@ RUN npm ci --prefix scripts --omit=dev --omit=optional --ignore-scripts
 COPY scripts/ais-relay.cjs ./scripts/ais-relay.cjs
 COPY scripts/_widget-response-parser.cjs ./scripts/_widget-response-parser.cjs
 COPY scripts/_widget-data-policy.cjs ./scripts/_widget-data-policy.cjs
+COPY scripts/lib/widget-llm-client.cjs ./scripts/lib/widget-llm-client.cjs
+COPY scripts/lib/widget-data-config.cjs ./scripts/lib/widget-data-config.cjs
+COPY scripts/shared/generic-llm-auth.mjs ./scripts/shared/generic-llm-auth.mjs
+COPY scripts/shared/generic-llm-provider.mjs ./scripts/shared/generic-llm-provider.mjs
 COPY scripts/_opensky-account-cooldown.cjs ./scripts/_opensky-account-cooldown.cjs
 # Shared ingestion outcome/cooldown helpers imported by ais-relay.cjs.
 COPY scripts/_ingestion-coverage.cjs ./scripts/_ingestion-coverage.cjs

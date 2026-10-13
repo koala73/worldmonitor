@@ -35,8 +35,19 @@ services:
       WORLDMONITOR_RELAY_KEY: "${WORLDMONITOR_RELAY_KEY:-}"
       # LLM provider (any OpenAI-compatible endpoint)
       LLM_API_URL: "${LLM_API_URL:-}"
+      LLM_PROVIDER: "${LLM_PROVIDER:-}"
       LLM_API_KEY: "${LLM_API_KEY:-}"
+      LLM_API_AUTH_TYPE: "${LLM_API_AUTH_TYPE:-bearer}"
       LLM_MODEL: "${LLM_MODEL:-}"
+      LLM_TOOL_PROVIDER: "${LLM_TOOL_PROVIDER:-}"
+      LLM_TOOL_MODEL: "${LLM_TOOL_MODEL:-}"
+      LLM_REASONING_PROVIDER: "${LLM_REASONING_PROVIDER:-}"
+      LLM_REASONING_MODEL: "${LLM_REASONING_MODEL:-}"
+      LLM_EMBEDDING_API_URL: "${LLM_EMBEDDING_API_URL:-}"
+      LLM_EMBEDDING_MODEL: "${LLM_EMBEDDING_MODEL:-}"
+      MCP_LOCAL_SERVERS: "${MCP_LOCAL_SERVERS:-}"
+      WIDGET_AGENT_KEY: "${WIDGET_AGENT_KEY:-}"
+      PRO_WIDGET_KEY: "${PRO_WIDGET_KEY:-}"
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       # Data source API keys (optional — features degrade gracefully)
       AISSTREAM_API_KEY: "${AISSTREAM_API_KEY:-}"
@@ -50,6 +61,11 @@ services:
       CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN:-}"
       AVIATIONSTACK_API: "${AVIATIONSTACK_API:-}"
       TRAVELPAYOUTS_API_TOKEN: "${TRAVELPAYOUTS_API_TOKEN:-}"
+      WINGBITS_API_KEY: "${WINGBITS_API_KEY:-}"
+      OPENSKY_CLIENT_ID: "${OPENSKY_CLIENT_ID:-}"
+      OPENSKY_CLIENT_SECRET: "${OPENSKY_CLIENT_SECRET:-}"
+      ICAO_API_KEY: "${ICAO_API_KEY:-}"
+      WINDY_API_KEY: "${WINDY_API_KEY:-}"
     # Docker secrets (recommended for API keys — keeps them out of docker inspect).
     # Create secrets/ dir with one file per key, then uncomment below.
     # See SELF_HOSTING.md or docker-compose.override.yml for details.
@@ -74,8 +90,23 @@ services:
     image: worldmonitor-ais-relay:latest
     container_name: worldmonitor-ais-relay
     environment:
+      LOCAL_API_MODE: "docker"
       RELAY_SHARED_SECRET: "${RELAY_SHARED_SECRET:?RELAY_SHARED_SECRET required — generate with: openssl rand -hex 32}"
+      LLM_PROVIDER: "${LLM_PROVIDER:-}"
+      LLM_API_URL: "${LLM_API_URL:-}"
+      LLM_API_KEY: "${LLM_API_KEY:-}"
+      LLM_API_AUTH_TYPE: "${LLM_API_AUTH_TYPE:-bearer}"
+      LLM_MODEL: "${LLM_MODEL:-}"
+      WIDGET_AGENT_KEY: "${WIDGET_AGENT_KEY:-}"
+      PRO_WIDGET_KEY: "${PRO_WIDGET_KEY:-}"
+      WORLDMONITOR_API_KEY: "${WORLDMONITOR_API_KEY:-}"
       AISSTREAM_API_KEY: "${AISSTREAM_API_KEY:-}"
+      # These live aviation routes run in the relay, not only the app.
+      AVIATIONSTACK_API: "${AVIATIONSTACK_API:-}"
+      WINGBITS_API_KEY: "${WINGBITS_API_KEY:-}"
+      OPENSKY_CLIENT_ID: "${OPENSKY_CLIENT_ID:-}"
+      OPENSKY_CLIENT_SECRET: "${OPENSKY_CLIENT_SECRET:-}"
+      ICAO_API_KEY: "${ICAO_API_KEY:-}"
       FINNHUB_API_KEY: "${FINNHUB_API_KEY:-}"
       MARKET_YAHOO_REFRESH_INTERVAL_MS: "${MARKET_YAHOO_REFRESH_INTERVAL_MS:-900000}"
       UPSTASH_REDIS_REST_URL: "http://redis-rest:80"

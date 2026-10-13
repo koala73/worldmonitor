@@ -1,5 +1,5 @@
 /**
- * Compiles per-domain RPC handlers (api/{domain}/v1/[rpc].ts) into bundled
+ * Compiles domain RPC handlers and local MCP/widget entry points into bundled
  * ESM .js files so the Tauri sidecar's buildRouteTable() can load them.
  *
  * Run: node scripts/build-sidecar-handlers.mjs
@@ -27,6 +27,12 @@ for (const d of dirs) {
   if (existsSync(tsFile)) {
     entries.push(tsFile);
   }
+}
+
+// These routes are root TypeScript entry points, so the domain scan does not
+// discover them. The desktop sidecar loads JavaScript handlers only.
+for (const name of ['mcp.ts', 'mcp-proxy.ts', 'widget-agent.ts']) {
+  entries.push(path.join(apiDir, name));
 }
 
 if (entries.length === 0) {
@@ -57,7 +63,7 @@ try {
       totalKB += size / 1024;
     }
   }
-  console.log(`build:sidecar-handlers  ${entries.length} domains  ${totalKB.toFixed(0)} KB total`);
+  console.log(`build:sidecar-handlers  ${entries.length} handlers  ${totalKB.toFixed(0)} KB total`);
 } catch (err) {
   console.error('build:sidecar-handlers failed:', err.message);
   process.exit(1);

@@ -19,6 +19,8 @@ test('bundles the shared LLM health provider registry with the sidecar (#7126)',
   const config = JSON.parse(readFileSync(new URL('../tauri.conf.json', import.meta.url), 'utf8'));
   const dockerfile = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8');
   assert.ok(config.bundle.resources.includes('../shared/llm-health-providers.js'));
+  assert.ok(config.bundle.resources.includes('../scripts/shared/local-mcp-config.mjs'));
+  assert.match(dockerfile, /COPY --from=builder \/app\/scripts\/shared\/local-mcp-config\.mjs/);
   assert.match(
     dockerfile,
     /COPY --from=builder \/app\/shared\/llm-health-providers\.js \.\/shared\/llm-health-providers\.js/,
@@ -1014,7 +1016,50 @@ for (const registrationStatus of ['registered', 'already_registered']) {
   });
 }
 
-test('does not forward the sidecar transport token through Docker cloud proxy routes', async () => {
+for (const scenario of [
+  { name: 'by default', options: {}, expectedSource: 'local' },
+  { name: 'when cloud fallback is disabled', options: { cloudFallback: 'false' }, expectedSource: 'local' },
+  { name: 'in Docker even when cloud fallback is requested', options: { mode: 'docker', cloudFallback: 'true' }, expectedSource: 'local' },
+  { name: 'through cloud when fallback is enabled', options: { cloudFallback: 'true' }, expectedSource: 'remote' },
+]) {
+  test(`routes YouTube video lookup ${scenario.name}`, async () => {
+    const remote = await setupRemoteServer();
+    const localApi = await setupApiDir({
+      'youtube/live.js': `export default async function handler(request) {
+        return Response.json({ source: 'local', videoId: new URL(request.url).searchParams.get('videoId') });
+      }`,
+    });
+    const app = await createLocalApiServer({
+      port: 0,
+      apiDir: localApi.apiDir,
+      remoteBase: remote.remoteBase,
+      allowPrivateRemoteBase: true,
+      logger: { log() {}, warn() {}, error() {} },
+      ...scenario.options,
+    });
+    const { port } = await app.start();
+    const endpoint = '/api/youtube/live?videoId=gCNeDWCI0vo';
+
+    try {
+      const response = await authFetch(`http://127.0.0.1:${port}${endpoint}`);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.source, scenario.expectedSource);
+      if (scenario.expectedSource === 'local') {
+        assert.equal(body.videoId, 'gCNeDWCI0vo');
+        assert.deepEqual(remote.hits, [], 'disabled fallback must not contact the cloud');
+      } else {
+        assert.deepEqual(remote.hits, ['/api/youtube/live']);
+      }
+    } finally {
+      await app.close();
+      await localApi.cleanup();
+      await remote.close();
+    }
+  });
+}
+
+test('does not forward the sidecar transport token through Docker registration proxy', async () => {
   const originalConvex = process.env.CONVEX_URL;
   delete process.env.CONVEX_URL;
 
@@ -1033,7 +1078,7 @@ test('does not forward the sidecar transport token through Docker cloud proxy ro
   try {
     const headers = { 'X-WorldMonitor-Local-Token': TEST_LOCAL_API_TOKEN };
     const youtubeResponse = await fetch(`http://127.0.0.1:${port}/api/youtube/live`, { headers });
-    assert.equal(youtubeResponse.status, 200);
+    assert.equal(youtubeResponse.status, 404);
 
     const registerResponse = await fetch(`http://127.0.0.1:${port}/api/register-interest`, {
       method: 'POST',
@@ -1042,8 +1087,8 @@ test('does not forward the sidecar transport token through Docker cloud proxy ro
     });
     assert.equal(registerResponse.status, 200);
 
-    assert.deepEqual(remote.hits, ['/api/youtube/live', '/api/leads/v1/register-interest']);
-    assert.equal(remote.headers.length, 2);
+    assert.deepEqual(remote.hits, ['/api/leads/v1/register-interest']);
+    assert.equal(remote.headers.length, 1);
     for (const upstreamHeaders of remote.headers) {
       assert.equal(upstreamHeaders['x-worldmonitor-local-token'], undefined);
     }
@@ -1291,7 +1336,7 @@ test('allows only Docker mode to fetch configured private Redis REST origin', as
   }
 });
 
-test('allows only Docker mode to fetch configured private LLM origins', async () => {
+test('allows configured private LLM origins in local modes and blocks other targets', async () => {
   const envSnapshot = {
     LLM_API_URL: process.env.LLM_API_URL,
     OLLAMA_API_URL: process.env.OLLAMA_API_URL,
@@ -1358,29 +1403,22 @@ test('allows only Docker mode to fetch configured private LLM origins', async ()
     process.env.OLLAMA_API_URL = privateOllamaUrl;
     process.env.UNCONFIGURED_PRIVATE_URL = unconfiguredPrivateUrl;
     const envKeys = ['LLM_API_URL', 'OLLAMA_API_URL', 'UNCONFIGURED_PRIVATE_URL'];
-    const dockerResponses = await runProbes('docker', envKeys);
-    for (const [index, envKey] of envKeys.entries()) {
-      const dockerResponse = dockerResponses[index];
-      if (index < 2) {
-        assert.equal(dockerResponse.status, 200, envKey);
-        assert.deepEqual(await dockerResponse.json(), { ok: true });
-      } else {
-        assert.equal(dockerResponse.status, 502, envKey);
-        const dockerBody = await dockerResponse.json();
-        assert.equal(dockerBody.error, 'Local handler error');
-        assert.match(dockerBody.reason, /SSRF blocked/);
+    for (const mode of ['docker', 'desktop-sidecar', 'tauri-sidecar', 'hosted']) {
+      const responses = await runProbes(mode, envKeys);
+      for (const [index, envKey] of envKeys.entries()) {
+        const response = responses[index];
+        if (mode !== 'hosted' && index < 2) {
+          assert.equal(response.status, 200, `${mode}: ${envKey}`);
+          assert.deepEqual(await response.json(), { ok: true });
+        } else {
+          assert.equal(response.status, 502, `${mode}: ${envKey}`);
+          const body = await response.json();
+          assert.equal(body.error, 'Local handler error');
+          assert.match(body.reason, /SSRF blocked/);
+        }
       }
     }
-
-    const desktopResponses = await runProbes('desktop-sidecar', envKeys);
-    for (const [index, envKey] of envKeys.entries()) {
-      const desktopResponse = desktopResponses[index];
-      assert.equal(desktopResponse.status, 502, envKey);
-      const desktopBody = await desktopResponse.json();
-      assert.equal(desktopBody.error, 'Local handler error');
-      assert.match(desktopBody.reason, /SSRF blocked/);
-    }
-    assert.equal(handlerHits, 2, 'only Docker handler probes should reach the upstream');
+    assert.equal(handlerHits, 6, 'only explicitly configured origins in local modes reach the upstream');
 
     process.env.LLM_API_URL = 'not-a-url';
     process.env.OLLAMA_API_URL = '://also-not-a-url';
@@ -3224,18 +3262,18 @@ test('service-status reports bound fallback port after EADDRINUSE recovery', asy
     res.writeHead(200, { 'content-type': 'text/plain' });
     res.end('occupied');
   });
-  await listen(blocker, '127.0.0.1', 46123);
+  const blockedPort = await listen(blocker);
 
   const localApi = await setupApiDir({});
   const app = await createLocalApiServer({
-    port: 46123,
+    port: blockedPort,
     apiDir: localApi.apiDir,
     logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
   try {
-    assert.notEqual(port, 46123);
+    assert.notEqual(port, blockedPort);
 
     const response = await authFetch(`http://127.0.0.1:${port}/api/service-status`);
     assert.equal(response.status, 200);
@@ -3612,5 +3650,84 @@ test('abort-signal path: an already-aborted signal rejects immediately without d
     await new Promise((resolve, reject) => {
       neverShouldConnect.close((error) => (error ? reject(error) : resolve()));
     });
+  }
+});
+
+test('local MCP capability streams only to configured origins without opening general private fetch', async () => {
+  const previous = process.env.MCP_LOCAL_SERVERS;
+  let hits = 0;
+  const upstream = createServer((_req, res) => {
+    hits++;
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.write('data: {"ready":true}\n\n'); // Intentionally leave SSE connected.
+  });
+  const port = await listen(upstream);
+  const origin = `http://127.0.0.1:${port}`;
+  process.env.MCP_LOCAL_SERVERS = JSON.stringify({ fixture: { url: `${origin}/sse` } });
+  const localApi = await setupApiDir({
+    'mcp-capability-probe.js': `
+      export default async function handler(req) {
+        const testCase = new URL(req.url).searchParams.get('case');
+        const target = testCase === 'other' ? 'http://127.0.0.1:1/sse' : '${origin}/sse';
+        const response = await fetch(target, {
+          ...(testCase === 'plain' ? {} : { [Symbol.for('worldmonitor.localMcpFetch')]: true }),
+          signal: AbortSignal.timeout(2000),
+        });
+        const reader = response.body.getReader();
+        const first = await reader.read();
+        await reader.cancel();
+        return new Response(new TextDecoder().decode(first.value));
+      }
+    `,
+  });
+  const app = await createLocalApiServer({ port: 0, apiDir: localApi.apiDir, mode: 'docker',
+    logger: { log() {}, warn() {}, error() {} } });
+  try {
+    const { port: apiPort } = await app.start();
+    for (const testCase of ['plain', 'other', 'scoped']) {
+      const response = await authFetch(`http://127.0.0.1:${apiPort}/api/mcp-capability-probe?case=${testCase}`);
+      assert.equal(response.status, testCase === 'scoped' ? 200 : 502, testCase);
+      assert.match(await response.text(), testCase === 'scoped' ? /ready/ : /SSRF blocked/);
+    }
+    assert.equal(hits, 1);
+  } finally {
+    if (previous === undefined) delete process.env.MCP_LOCAL_SERVERS;
+    else process.env.MCP_LOCAL_SERVERS = previous;
+    await app.close();
+    await localApi.cleanup();
+    upstream.closeAllConnections();
+    await new Promise(resolve => upstream.close(resolve));
+  }
+});
+
+test('configured widget relay responses stream before the SSE connection closes', async () => {
+  const saved = process.env.WS_RELAY_URL;
+  const relay = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.write('event: progress\ndata: {"status":"working"}\n\n');
+  });
+  const relayPort = await listen(relay);
+  process.env.WS_RELAY_URL = `http://127.0.0.1:${relayPort}`;
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({ port: 0, apiDir: localApi.apiDir, mode: 'docker',
+    logger: { log() {}, warn() {}, error() {} } });
+  try {
+    await app.start();
+    const response = await fetch(`${process.env.WS_RELAY_URL}/widget-agent`, {
+      [Symbol.for('worldmonitor.localWidgetRelayFetch')]: true,
+      signal: AbortSignal.timeout(2000),
+    });
+    const reader = response.body.getReader();
+    assert.match(new TextDecoder().decode((await reader.read()).value), /working/);
+    await reader.cancel();
+    await assert.rejects(fetch('http://127.0.0.1:1/widget-agent', {
+      [Symbol.for('worldmonitor.localWidgetRelayFetch')]: true,
+    }), /SSRF blocked/);
+  } finally {
+    if (saved === undefined) delete process.env.WS_RELAY_URL; else process.env.WS_RELAY_URL = saved;
+    await app.close();
+    await localApi.cleanup();
+    relay.closeAllConnections();
+    await new Promise(resolve => relay.close(resolve));
   }
 });

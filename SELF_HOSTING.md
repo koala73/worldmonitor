@@ -152,6 +152,11 @@ services:
       # ✈️ Aviation
       AVIATIONSTACK_API: ""       # https://aviationstack.com (free tier)
       TRAVELPAYOUTS_API_TOKEN: "" # https://travelpayouts.com (flight price search — optional)
+      WINGBITS_API_KEY: ""       # Aircraft positions and enrichment
+      OPENSKY_CLIENT_ID: ""      # OpenSky OAuth client credentials
+      OPENSKY_CLIENT_SECRET: ""
+      ICAO_API_KEY: ""           # NOTAMs
+      WINDY_API_KEY: ""          # Camera map previews; seed-webcams.mjs also needs this
       # 🚢 Maritime
       AISSTREAM_API_KEY: ""       # https://aisstream.io (free)
 
@@ -168,6 +173,11 @@ services:
   ais-relay:
     environment:
       AISSTREAM_API_KEY: ""       # same key as above — relay needs it too
+      AVIATIONSTACK_API: ""       # Live flight queries use the relay
+      WINGBITS_API_KEY: ""
+      OPENSKY_CLIENT_ID: ""
+      OPENSKY_CLIENT_SECRET: ""
+      ICAO_API_KEY: ""
       # Classify fetches the local digest (compose defaults API_BASE_URL to
       # http://worldmonitor:8080). Set the same WORLDMONITOR_RELAY_KEY on
       # worldmonitor so the digest GET is not a silent 401.
@@ -207,6 +217,35 @@ to `1800` (30 min); override with `SEED_TIMEOUT=<seconds>`, or `SEED_TIMEOUT=0` 
 disable. Bundle seeders (`seed-bundle-*.mjs`) are exempt — they already bound each
 section internally. Requires the `timeout` command (GNU coreutils); if it's absent
 the cap is silently skipped.
+
+### Selected local feeds
+
+For a bounded local collector set, use Node 24 and the opt-in runner:
+
+```bash
+node scripts/local-feed-runner.mjs --list
+node scripts/local-feed-runner.mjs --jobs aviation,military-flights,webcams,portwatch --once
+# Omit --once to keep these selected collectors running in the foreground.
+```
+
+No jobs run by default. `LOCAL_FEED_JOBS` can supply the same comma-separated
+selection. The runner uses the existing `.env.local` loader, or an explicitly
+selected `WM_SEED_ENV_FILE`. Set `UPSTASH_REDIS_REST_URL` to your Redis REST
+service and `UPSTASH_REDIS_REST_TOKEN` to its token. For the default host-accessible
+Compose proxy, use `http://localhost:8079` and the configured `REDIS_TOKEN` value.
+
+| Collector | Refresh | Credentials and coverage |
+| --- | --- | --- |
+| `aviation` | 30 minutes | FAA delays/news; configured AviationStack and ICAO enable their existing paths |
+| `military-flights` | 5 minutes | adsb.lol military observations; optional Wingbits; existing OpenSky seeding remains disabled |
+| `webcams` | 12 hours | Requires `WINDY_API_KEY`; camera metadata and spatial index, not recorded video |
+| `portwatch` | 6 hours | Public chokepoint transit aggregates; underlying observations are daily |
+
+Two collectors can run concurrently, with no overlapping run of the same job.
+Each child has a timeout; Ctrl-C or SIGTERM stops the runner's child processes.
+Restarting schedules the selected jobs immediately. A successful process exit
+does not independently certify upstream freshness. This runner does not install
+a background service, run every seeder, or add jurisdiction-specific 511 feeds.
 
 ### 🔧 Manual seeder invocation
 
@@ -405,6 +444,120 @@ services:
     extra_hosts:
       - "your-host:192.168.1.100"  # if not DNS-resolvable
 ```
+
+#### Bifrost and local models
+
+The generic inference provider can authenticate to Bifrost using an existing
+virtual key. Set `LLM_API_AUTH_TYPE=x-bf-vk` to send `LLM_API_KEY` in the
+`x-bf-vk` header. The default, `bearer`, preserves OpenAI-compatible Bearer
+authentication. Unknown authentication types disable the generic provider.
+
+```dotenv
+# Full completion URL, reachable from the app process/container.
+LLM_PROVIDER=generic
+LLM_API_URL=http://your-bifrost-host:4043/openai/v1/chat/completions
+LLM_API_KEY=your-existing-bifrost-virtual-key
+LLM_API_AUTH_TYPE=x-bf-vk
+LLM_MODEL=your-configured-local-model-id
+LLM_TOOL_PROVIDER=generic
+LLM_REASONING_PROVIDER=generic
+```
+
+Choose an actual model ID from your gateway's model list. Configure Bifrost's
+provider and fallback routing to use local models. `localhost` inside an app
+container refers to that container, so use a host address reachable from it.
+Match the gateway's actual HTTP or HTTPS configuration.
+
+Set `LLM_PROVIDER=generic` in both the app and its worker/relay processes.
+The shared utility, tool, reasoning and streaming calls then stay on that
+provider, even when cloud keys are present or a caller requests another provider.
+Brief prose, insights, regional/weekly narratives and forecasts also support
+exclusive generic inference. Failed local requests return unavailable instead
+of sending prompts to a fallback cloud provider. Leave unused cloud keys unset
+as well. Model quality and tool-calling support depend on the selected local model.
+
+A loopback Bifrost endpoint can also use a deliberately configured remote
+upstream. For OpenRouter's free router, the Bifrost-qualified model is
+`openrouter/openrouter/free`; its upstream model ID is exactly `openrouter/free`.
+Restrict the provider key and virtual key to that model, keep direct cloud keys
+out of the app, and disable alternate-model fallbacks. Set `LLM_TOOL_MODEL` and
+`LLM_REASONING_MODEL` to the same route when inherited tier overrides exist.
+The shared completion and article-summary responses report the actual upstream
+model when provided; routing and summary caches retain the requested route as
+their identity. Free models can vary between calls and can be unavailable or
+rate limited. This text route does not supply embeddings, speech or image input.
+
+In the authenticated native sidecar profile, article summaries use the existing
+30-per-minute endpoint budget in memory without requiring Redis. The budget is
+shared across callers in that process and resets on restart. Hosted and Docker
+profiles still fail closed when their Redis rate-limit store is unavailable.
+This native budget does not replace a shared daily quota for remote deployment.
+
+For semantic brief deduplication, optionally set `LLM_EMBEDDING_API_URL` to a full
+OpenAI-compatible embeddings URL and `LLM_EMBEDDING_MODEL` to a model that returns
+512-dimensional vectors. Authentication uses the same key and header setting.
+Vector caches are separated by endpoint and model. Without these settings,
+generic mode uses the existing local Jaccard text comparison fallback.
+
+These changes do not replace every dedicated provider integration. Company
+monitoring's classifier still has its own OpenRouter route-attestation contract.
+Hosted account storage, billing, scheduled services, and data-provider access
+are separate dependencies; configuring a model gateway does not create them.
+
+The supported Bifrost profile here is the self-hosted web app. Desktop support
+is incomplete: its settings vault does not expose generic `LLM_*` configuration,
+and its summary/translation capability checks still require Ollama or OpenRouter
+settings before dispatching a request. Passing only Bifrost environment variables
+to a rebuilt desktop app does not complete that integration. Desktop startup now
+preserves an explicit `LOCAL_API_CLOUD_FALLBACK=false`, but the capability gate
+still needs a separate change. Changing startup endpoints requires a sidecar
+restart. The installed release binary is not modified by source changes.
+
+Your Bifrost virtual key authenticates model calls. Your self-hosted
+`WORLDMONITOR_VALID_KEYS` authenticates clients to your own API and MCP server.
+External data feeds still need their own credentials where required.
+
+#### Local widget generation
+
+The relay's widget builder can use the same generic endpoint and authentication.
+It translates its existing text/tool conversation into OpenAI-compatible calls.
+Select a local model that supports tool calling; smaller models may not reliably
+produce the required HTML. Anthropic-specific thinking and caching options are
+not sent to the generic endpoint.
+
+Set `WS_RELAY_URL` on the app, and `API_BASE_URL` on the relay to your own app's
+origin. Compose supplies these internal addresses. Set matching, independently
+generated `WIDGET_AGENT_KEY` and `PRO_WIDGET_KEY` on both services. The relay's
+`WORLDMONITOR_API_KEY` must be one of the app's `WORLDMONITOR_VALID_KEYS`; it is
+sent only to the configured installation through the existing data-route allowlist.
+Local generic mode refuses a missing or hosted World Monitor data origin. Search
+tools still require whichever external search-provider credentials you choose.
+
+#### Connecting your local MCP server
+
+Configure named HTTP/SSE servers in the app's `MCP_LOCAL_SERVERS` environment
+variable. For example:
+
+```dotenv
+MCP_LOCAL_SERVERS='{"osint":{"url":"http://127.0.0.1:8080/mcp","headers":{"Authorization":{"env":"OSINT_MCP_TOKEN","prefix":"Bearer "}}}}'
+OSINT_MCP_TOKEN=your-existing-server-token
+```
+
+For Compose, forward `OSINT_MCP_TOKEN` explicitly through an override; arbitrary
+environment variables are not automatically passed into containers. Use a
+hostname reachable from the container instead of loopback for a host service.
+
+Authenticate the dashboard with your own operator key, open **Connect MCP**, and
+enter `mcp-local://osint`. Leave the dialog's custom headers empty. The backend
+resolves the alias and injects the configured credential. Local aliases require
+an operator identity and local deployment mode; they do not unlock private
+network access for hosted users. Redirects are refused. Legacy SSE may advertise
+a message endpoint only on the configured origin. This supports Streamable HTTP
+and SSE, not launching stdio commands from a desktop MCP configuration file.
+
+Restart the sidecar after changing local MCP configuration. Missing referenced
+credentials disable that target. Plain private URLs remain blocked, and ordinary
+API fetches cannot use the MCP-specific private-network capability.
 
 ## 🐛 Troubleshooting
 

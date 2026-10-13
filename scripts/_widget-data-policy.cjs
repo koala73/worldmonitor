@@ -415,7 +415,7 @@ function approvedBootstrapQuery(searchParams, requireKeys) {
 
 // Validate both supplied queries and the final URL. Never let URL normalization
 // turn a denied spelling into an approved path, or params hide a denied key.
-function buildWidgetDataUrl(endpoint, params = {}) {
+function buildWidgetDataUrl(endpoint, params = {}, apiOrigin = API_ORIGIN) {
   if (typeof endpoint !== 'string' || !endpoint.startsWith('/api/')
       || /[\\#\s\u0000-\u001f\u007f]/u.test(endpoint)
       || /%(?![0-9a-f]{2})/i.test(endpoint)
@@ -426,13 +426,13 @@ function buildWidgetDataUrl(endpoint, params = {}) {
   if (entries.some(([, value]) => !['string', 'number', 'boolean'].includes(typeof value))) return null;
   const query = entries.map(([key, value]) => [key, String(value)]);
 
-  const url = new URL(endpoint, API_ORIGIN);
-  if (url.origin !== API_ORIGIN || url.pathname !== rawPath || url.username || url.password || url.hash) return null;
+  const url = new URL(endpoint, apiOrigin);
+  if (url.origin !== apiOrigin || url.pathname !== rawPath || url.username || url.password || url.hash) return null;
   if (rawPath === '/api/bootstrap'
       && (!approvedBootstrapQuery(url.searchParams, false)
           || !approvedBootstrapQuery(new URLSearchParams(query), false))) return null;
   for (const [key, value] of query) url.searchParams.set(key, value);
-  if (url.origin !== API_ORIGIN || url.pathname !== rawPath
+  if (url.origin !== apiOrigin || url.pathname !== rawPath
       || (rawPath === '/api/bootstrap' && !approvedBootstrapQuery(url.searchParams, true))) return null;
   return url;
 }

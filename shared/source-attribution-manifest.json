@@ -1463,6 +1463,9 @@
           "path": "scripts/freeze-resilience-ranking.mjs"
         },
         {
+          "path": "scripts/lib/widget-data-config.cjs"
+        },
+        {
           "path": "scripts/openapi-inject-servers.mjs"
         },
         {
@@ -10522,9 +10525,6 @@
         },
         {
           "path": "scripts/eval-classify-labels.mjs"
-        },
-        {
-          "path": "scripts/lib/brief-embedding.mjs"
         },
         {
           "path": "scripts/lib/company-monitoring-classifier-client.mjs"

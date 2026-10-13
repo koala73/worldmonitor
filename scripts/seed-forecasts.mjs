@@ -6,6 +6,8 @@ import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { loadEnvFile, runSeed, CHROME_UA, withRetry, parseRetryAfterMs, getResponseHeader, isRetryableHttpStatus, getDeployRevision } from './_seed-utils.mjs';
 import { compactForecastDashboardPayload } from './_forecast-dashboard.mjs';
+import { getGenericLlmAuthHeaders } from './shared/generic-llm-auth.mjs';
+import { isExplicitGenericLlmSelected } from './shared/generic-llm-provider.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { allBootstrapMarkets } from './_prediction-classify.mjs';
 import { subjectMatcherForRegion } from './_forecast-subject.mjs';
@@ -15199,9 +15201,9 @@ const FORECAST_LLM_PROVIDERS = [
 ];
 
 // PER-79 (upstream PR 3/3): generic OpenAI-compatible provider for the
-// forecast seeder. Activated ONLY when LLM_API_URL, LLM_API_KEY, and
-// LLM_MODEL are all set AND none of the named providers above (openrouter,
-// openrouter-free, openrouter-free-backup) have a key. Resolved-time
+// forecast seeder. Requires LLM_API_URL, LLM_API_KEY, and LLM_MODEL. Explicit
+// generic mode selects this provider alone. Otherwise it is appended only
+// when none of the named OpenRouter providers have a key. Resolved-time
 // append keeps the existing FORECAST_LLM_PROVIDERS table (and its
 // array-shape tests) intact. LLM_API_URL is the FULL chat/completions
 // endpoint verbatim (see SELF_HOSTING.md) and LLM_MODEL is required — the
@@ -15209,9 +15211,8 @@ const FORECAST_LLM_PROVIDERS = [
 // echo the env values.
 const FORECAST_GENERIC_LLM_PROVIDER_SPEC = Object.freeze({
   name: 'generic',
-  // envKey points at the BEARER credential, not the URL: the loop body and
-  // the runnable filter both read process.env[provider.envKey] as the
-  // Authorization token. The URL is captured separately in apiUrl below.
+  // envKey points at the credential, not the URL. The runnable filter reads
+  // it here; the shared auth helper selects Bearer or Bifrost headers below.
   envKey: 'LLM_API_KEY',
   envUrlKey: 'LLM_API_URL',
   envModelKey: 'LLM_MODEL',
@@ -15219,11 +15220,11 @@ const FORECAST_GENERIC_LLM_PROVIDER_SPEC = Object.freeze({
 });
 
 function isForecastGenericLlmReady() {
-  // All three envs must be present AND non-empty; the contract names only the
-  // names of the variables in any debug output, never their values.
+  // All three envs must be present AND non-empty, with a supported auth mode.
+  // Debug output names only the variables, never their values.
   return Boolean(
     process.env.LLM_API_URL
-    && process.env.LLM_API_KEY
+    && getGenericLlmAuthHeaders(process.env.LLM_API_KEY, process.env.LLM_API_AUTH_TYPE)
     && process.env.LLM_MODEL,
   );
 }
@@ -15235,9 +15236,11 @@ function buildForecastGenericLlmProvider() {
   // gate forbids partial coverage.
   const apiUrl = process.env.LLM_API_URL;
   const model = process.env.LLM_MODEL;
-  const headers = { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA };
-  const apiKey = process.env.LLM_API_KEY;
-  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+  const headers = {
+    ...getGenericLlmAuthHeaders(process.env.LLM_API_KEY, process.env.LLM_API_AUTH_TYPE),
+    'Content-Type': 'application/json',
+    'User-Agent': CHROME_UA,
+  };
   return {
     name: FORECAST_GENERIC_LLM_PROVIDER_SPEC.name,
     envKey: FORECAST_GENERIC_LLM_PROVIDER_SPEC.envKey,
@@ -15382,6 +15385,18 @@ function getForecastLlmCallOptions(stage = 'default') {
 }
 
 function resolveForecastLlmProviders(options = {}) {
+  // An operator's explicit local choice overrides hosted per-stage pins and
+  // remains exclusive on configuration or transport failure.
+  if (isExplicitGenericLlmSelected()) {
+    if (!isForecastGenericLlmReady()) return [];
+    const generic = buildForecastGenericLlmProvider();
+    return [{
+      ...generic,
+      timeout: getLlmAttemptTimeoutMs(generic.model, generic.timeout, DEEPSEEK_V4_FLASH_LONG_COMPLETION_TIMEOUT_MS),
+      failFastOnTimeout: isDeepseekV4FlashModel(generic.model),
+      extraBody: undefined,
+    }];
+  }
   const requestedOrder = Array.isArray(options.providerOrder) && options.providerOrder.length > 0
     ? options.providerOrder
     : FORECAST_LLM_PROVIDERS.map(provider => provider.name);
@@ -15881,7 +15896,8 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
           try {
             const response = await forecastFetch(provider.apiUrl, {
               method: 'POST',
-              headers: {
+              redirect: provider.name === 'generic' ? 'error' : 'follow',
+              headers: provider.name === 'generic' ? provider.headers : {
                 Authorization: `Bearer ${apiKey}`,
                 'Content-Type': 'application/json',
                 'User-Agent': CHROME_UA,

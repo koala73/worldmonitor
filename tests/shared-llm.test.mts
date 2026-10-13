@@ -11,13 +11,18 @@ const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
 const originalOllamaApiUrl = process.env.OLLAMA_API_URL;
 const originalLlmApiUrl = process.env.LLM_API_URL;
 const originalLlmApiKey = process.env.LLM_API_KEY;
+const originalLlmApiAuthType = process.env.LLM_API_AUTH_TYPE;
 const originalLlmModel = process.env.LLM_MODEL;
 const originalLlmToolProvider = process.env.LLM_TOOL_PROVIDER;
+const originalLlmToolModel = process.env.LLM_TOOL_MODEL;
+const originalLlmProvider = process.env.LLM_PROVIDER;
 
 const GENERIC_URL = 'https://llm.example.test/v1/chat/completions';
 const GENERIC_MODEL = 'generic-test-model';
 const originalLlmReasoningProvider = process.env.LLM_REASONING_PROVIDER;
 const originalLlmReasoningModel = process.env.LLM_REASONING_MODEL;
+
+beforeEach(() => { delete process.env.LLM_API_AUTH_TYPE; delete process.env.LLM_PROVIDER; });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -25,6 +30,8 @@ afterEach(() => {
   Date.now = originalDateNow;
   // The health gate's caches are module-level and outlive a single test.
   llmHealth.reset();
+  if (originalLlmProvider === undefined) delete process.env.LLM_PROVIDER;
+  else process.env.LLM_PROVIDER = originalLlmProvider;
 
   if (originalLlmReasoningProvider === undefined) delete process.env.LLM_REASONING_PROVIDER;
   else process.env.LLM_REASONING_PROVIDER = originalLlmReasoningProvider;
@@ -34,6 +41,9 @@ afterEach(() => {
 
   if (originalLlmModel === undefined) delete process.env.LLM_MODEL;
   else process.env.LLM_MODEL = originalLlmModel;
+
+  if (originalLlmToolModel === undefined) delete process.env.LLM_TOOL_MODEL;
+  else process.env.LLM_TOOL_MODEL = originalLlmToolModel;
 
   if (originalLlmToolProvider === undefined) delete process.env.LLM_TOOL_PROVIDER;
   else process.env.LLM_TOOL_PROVIDER = originalLlmToolProvider;
@@ -49,6 +59,157 @@ afterEach(() => {
 
   if (originalLlmApiKey === undefined) delete process.env.LLM_API_KEY;
   else process.env.LLM_API_KEY = originalLlmApiKey;
+
+  if (originalLlmApiAuthType === undefined) delete process.env.LLM_API_AUTH_TYPE;
+  else process.env.LLM_API_AUTH_TYPE = originalLlmApiAuthType;
+});
+
+describe('operator provider isolation', () => {
+  beforeEach(() => {
+    process.env.LLM_PROVIDER = 'generic';
+    process.env.LLM_API_URL = GENERIC_URL;
+    process.env.LLM_API_KEY = 'local-test-key';
+    process.env.LLM_MODEL = GENERIC_MODEL;
+    process.env.OPENROUTER_API_KEY = 'cloud-key-must-not-be-used';
+    process.env.OLLAMA_API_URL = 'http://localhost:11434';
+    process.env.LLM_TOOL_PROVIDER = 'openrouter';
+    process.env.LLM_REASONING_PROVIDER = 'openrouter';
+    process.env.LLM_REASONING_MODEL = 'cloud-model-must-not-be-used';
+  });
+
+  for (const kind of ['utility', 'tool', 'reasoning', 'stream', 'forced-cloud'] as const) {
+    for (const success of [true, false]) {
+      it(`${kind} stays on the configured backend when it ${success ? 'succeeds' : 'fails'}`, async () => {
+        let posts = 0;
+        globalThis.fetch = async (input, init) => {
+          assert.equal(new URL(String(input)).origin, new URL(GENERIC_URL).origin);
+          if ((init?.method || 'GET') === 'GET') return new Response('');
+          posts++;
+          assert.equal(JSON.parse(String(init?.body)).model, GENERIC_MODEL);
+          if (!success) return new Response('offline', { status: 503 });
+          return kind === 'stream'
+            ? new Response('data: {"choices":[{"delta":{"content":"Local answer"}}]}\n\ndata: [DONE]\n\n')
+            : Response.json({ choices: [{ message: { content: 'Local answer' } }] });
+        };
+        const opts = { messages: [{ role: 'user' as const, content: 'Synthetic prompt' }] };
+        if (kind === 'stream') {
+          const text = await new Response(callLlmReasoningStream(opts)).text();
+          if (success) assert.match(text, /Local answer/);
+        } else {
+          const result = kind === 'tool' ? await callLlmTool(opts)
+            : kind === 'reasoning' ? await callLlmReasoning(opts)
+              : await callLlm({ ...opts, ...(kind === 'forced-cloud' ? { provider: 'openrouter' } : {}) });
+          assert.equal(result?.content ?? null, success ? 'Local answer' : null);
+        }
+        assert.equal(posts, 1);
+      });
+    }
+  }
+
+  for (const reportedModel of ['routed/free-model-fixture', undefined, '', '   ', 42]) {
+    it(`preserves a valid provider-reported model while keeping the requested route (${String(reportedModel)})`, async () => {
+      globalThis.fetch = async (input, init) => {
+        assert.equal(new URL(String(input)).origin, new URL(GENERIC_URL).origin);
+        if ((init?.method || 'GET') === 'GET') return new Response('');
+        assert.equal(JSON.parse(String(init?.body)).model, GENERIC_MODEL);
+        return Response.json({ model: reportedModel, choices: [{ message: { content: 'Routed answer' } }] });
+      };
+      const opts = { messages: [{ role: 'user' as const, content: 'Synthetic prompt' }] };
+      for (const run of [callLlm, callLlmTool, callLlmReasoning]) {
+        const result = await run(opts);
+        assert.equal(result?.model, typeof reportedModel === 'string' && reportedModel.trim() ? reportedModel : GENERIC_MODEL);
+        assert.equal(result?.provider, 'generic');
+      }
+    });
+  }
+
+  for (const [primary, tier] of [[' generic ', 'generic'], ['generic', ' generic '], ['   ', 'generic']]) {
+    for (const kind of ['tool', 'reasoning', 'stream'] as const) {
+      it(`${kind} preserves its profile model with normalized selectors (${JSON.stringify([primary, tier])})`, async () => {
+        process.env.LLM_PROVIDER = primary;
+        process.env.LLM_TOOL_PROVIDER = tier;
+        process.env.LLM_REASONING_PROVIDER = tier;
+        process.env.LLM_TOOL_MODEL = 'profile-model-fixture';
+        process.env.LLM_REASONING_MODEL = 'profile-model-fixture';
+        let posts = 0;
+        globalThis.fetch = async (input, init) => {
+          assert.equal(new URL(String(input)).origin, new URL(GENERIC_URL).origin);
+          if ((init?.method || 'GET') === 'GET') return new Response('');
+          posts++;
+          assert.equal(JSON.parse(String(init?.body)).model, 'profile-model-fixture');
+          return kind === 'stream'
+            ? new Response('data: {"choices":[{"delta":{"content":"Profile answer"}}]}\n\ndata: [DONE]\n\n')
+            : Response.json({ choices: [{ message: { content: 'Profile answer' } }] });
+        };
+        const opts = { messages: [{ role: 'user' as const, content: 'Synthetic prompt' }] };
+        if (kind === 'stream') assert.match(await new Response(callLlmReasoningStream(opts)).text(), /Profile answer/);
+        else assert.equal((await (kind === 'tool' ? callLlmTool(opts) : callLlmReasoning(opts)))?.content, 'Profile answer');
+        assert.equal(posts, 1);
+      });
+    }
+  }
+
+  it('rejects an invalid explicit provider without falling back', async () => {
+    process.env.LLM_PROVIDER = 'typo';
+    globalThis.fetch = async () => { assert.fail('must not send a request'); };
+    assert.equal(await callLlm({ messages: [{ role: 'user', content: 'private prompt' }] }), null);
+    await new Response(callLlmReasoningStream({ messages: [{ role: 'user', content: 'private prompt' }] })).text();
+  });
+});
+
+describe('generic endpoint authentication', () => {
+  beforeEach(() => {
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    process.env.LLM_API_URL = GENERIC_URL;
+    process.env.LLM_API_KEY = 'generic-test-key';
+    process.env.LLM_MODEL = GENERIC_MODEL;
+    process.env.LLM_REASONING_PROVIDER = 'generic';
+    delete process.env.LLM_REASONING_MODEL;
+  });
+
+  for (const authType of [undefined, 'bearer', 'x-bf-vk']) {
+    for (const streaming of [false, true]) {
+      it(`uses ${authType ?? 'default bearer'} auth for ${streaming ? 'streaming' : 'completion'} requests`, async () => {
+        if (authType) process.env.LLM_API_AUTH_TYPE = authType;
+        let posts = 0;
+        globalThis.fetch = async (input, init) => {
+          if ((init?.method || 'GET') === 'GET') return new Response('');
+          posts += 1;
+          assert.equal(String(input), GENERIC_URL);
+          const headers = new Headers(init?.headers);
+          assert.equal(headers.get('Authorization'), authType === 'x-bf-vk' ? null : 'Bearer generic-test-key');
+          assert.equal(headers.get('x-bf-vk'), authType === 'x-bf-vk' ? 'generic-test-key' : null);
+          assert.equal(headers.get('Content-Type'), 'application/json');
+          assert.ok(headers.get('User-Agent'));
+          const body = JSON.parse(String(init?.body));
+          assert.equal(body.model, GENERIC_MODEL);
+          assert.equal(body.provider, undefined);
+          return streaming
+            ? new Response('data: {"choices":[{"delta":{"content":"Local answer"}}]}\n\ndata: [DONE]\n\n')
+            : new Response(JSON.stringify({ choices: [{ message: { content: 'Local answer' } }] }));
+        };
+        if (streaming) {
+          const output = await new Response(callLlmReasoningStream({ messages: [{ role: 'user', content: 'Synthetic prompt' }] })).text();
+          assert.match(output, /"delta":"Local answer"/);
+          assert.match(output, /"done":true/);
+        } else {
+          const result = await callLlm({ provider: 'generic', messages: [{ role: 'user', content: 'Synthetic prompt' }] });
+          assert.equal(result?.content, 'Local answer');
+        }
+        assert.equal(posts, 1);
+      });
+    }
+  }
+
+  it('does not probe or send a key when the generic authentication type is unknown', async () => {
+    process.env.LLM_API_AUTH_TYPE = 'unsupported';
+    let requests = 0;
+    globalThis.fetch = async () => { requests += 1; throw new Error('Unexpected request'); };
+    assert.equal(await callLlm({ provider: 'generic', messages: [{ role: 'user', content: 'Synthetic prompt' }] }), null);
+    await new Response(callLlmReasoningStream({ messages: [{ role: 'user', content: 'Synthetic prompt' }] })).text();
+    assert.equal(requests, 0);
+  });
 });
 
 describe('callLlmReasoningStream error bodies', () => {

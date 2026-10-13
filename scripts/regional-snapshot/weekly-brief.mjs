@@ -14,6 +14,7 @@
 
 import { extractFirstJsonObject, cleanJsonText } from '../_llm-json.mjs';
 import { buildLlmCallEvent, emitLlmEvents } from '../lib/llm-telemetry.cjs';
+import { buildGenericLlmProvider, isGenericLlmSelected } from '../shared/generic-llm-provider.mjs';
 import {
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
@@ -248,7 +249,10 @@ export async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
   const promptChars = (systemPrompt?.length ?? 0) + (userPrompt?.length ?? 0);
   const events = [];
   let attemptIndex = 0;
-  for (const provider of DEFAULT_PROVIDERS) {
+  const providers = isGenericLlmSelected()
+    ? [buildGenericLlmProvider()].filter(Boolean)
+    : DEFAULT_PROVIDERS;
+  for (const provider of providers) {
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;
     const t0 = Date.now();
@@ -263,6 +267,7 @@ export async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
     try {
       const resp = await briefFetch(provider.apiUrl, {
         method: 'POST',
+        redirect: provider.name === 'generic' ? 'error' : 'follow',
         headers: provider.headers(envVal),
         body: JSON.stringify({
           model: provider.model,

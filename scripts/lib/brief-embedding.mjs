@@ -30,6 +30,8 @@ import {
 } from './brief-dedup-consts.mjs';
 import { stripSourceSuffix } from './brief-dedup-jaccard.mjs';
 import { defaultRedisPipeline } from './_upstash-pipeline.mjs';
+import { getGenericLlmAuthHeaders } from '../shared/generic-llm-auth.mjs';
+import { isGenericLlmSelected } from '../shared/generic-llm-provider.mjs';
 
 export class EmbeddingProviderError extends Error {
   constructor(message, { status, cause } = {}) {
@@ -64,9 +66,33 @@ export function normalizeForEmbedding(title) {
   return stripSourceSuffix(title).trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
-export function cacheKeyFor(normalizedTitle) {
+export function cacheKeyFor(normalizedTitle, cachePrefix = CACHE_KEY_PREFIX) {
   const hash = createHash('sha256').update(normalizedTitle).digest('hex');
-  return `${CACHE_KEY_PREFIX}:${hash}`;
+  return `${cachePrefix}:${hash}`;
+}
+
+function embeddingProfile(apiKeyOverride) {
+  if (isGenericLlmSelected() || process.env.LLM_EMBEDDING_API_URL || process.env.LLM_EMBEDDING_MODEL) {
+    const apiUrl = process.env.LLM_EMBEDDING_API_URL;
+    const model = process.env.LLM_EMBEDDING_MODEL;
+    const headers = getGenericLlmAuthHeaders(process.env.LLM_API_KEY, process.env.LLM_API_AUTH_TYPE);
+    if (!apiUrl || !model || !headers) {
+      throw new EmbeddingProviderError('Generic embeddings require LLM_EMBEDDING_API_URL, LLM_EMBEDDING_MODEL and valid generic authentication');
+    }
+    // Models and endpoints define different vector spaces. Never compare their
+    // cached vectors, even when they return the same number of dimensions.
+    const identity = createHash('sha256').update(JSON.stringify([apiUrl, model, EMBED_DIMS])).digest('hex').slice(0, 16);
+    return { apiUrl, model, headers, redirect: 'error', cachePrefix: `brief:emb:generic:${identity}` };
+  }
+  const apiKey = apiKeyOverride ?? process.env.OPENROUTER_API_KEY ?? '';
+  if (!apiKey) throw new EmbeddingProviderError('OPENROUTER_API_KEY not configured');
+  return {
+    apiUrl: OPENROUTER_EMBEDDINGS_URL,
+    model: EMBED_MODEL,
+    headers: { Authorization: `Bearer ${apiKey}`, 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor' },
+    cachePrefix: CACHE_KEY_PREFIX,
+    redirect: 'follow',
+  };
 }
 
 // Default (production) deps wiring lives in ./_upstash-pipeline.mjs so
@@ -143,7 +169,7 @@ async function cacheGetBatched(uniqueKeys, pipelineImpl, deadline = Infinity, no
  * EmbeddingTimeoutError on abort/timeout, EmbeddingProviderError on
  * any other upstream failure. NEVER returns a partial result.
  */
-async function callEmbeddingsApi({ fetchImpl, apiKey, missingTitles, timeoutMs }) {
+async function callEmbeddingsApi({ fetchImpl, profile, missingTitles, timeoutMs }) {
   // Negative / zero remaining-budget means the deadline is already past.
   // Bail to the orchestrator's all-or-nothing fallback rather than open a
   // doomed HTTP connection that blows the wall-clock cap by the floor.
@@ -152,17 +178,16 @@ async function callEmbeddingsApi({ fetchImpl, apiKey, missingTitles, timeoutMs }
   }
   let resp;
   try {
-    resp = await fetchImpl(OPENROUTER_EMBEDDINGS_URL, {
+    resp = await fetchImpl(profile.apiUrl, {
       method: 'POST',
+      redirect: profile.redirect,
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        ...profile.headers,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://worldmonitor.app',
-        'X-Title': 'World Monitor',
         'User-Agent': 'worldmonitor-digest/1.0',
       },
       body: JSON.stringify({
-        model: EMBED_MODEL,
+        model: profile.model,
         input: missingTitles,
         dimensions: EMBED_DIMS,
       }),
@@ -179,7 +204,7 @@ async function callEmbeddingsApi({ fetchImpl, apiKey, missingTitles, timeoutMs }
   }
   if (!resp.ok) {
     throw new EmbeddingProviderError(
-      `embedBatch: OpenRouter returned HTTP ${resp.status}`,
+      `embedBatch: embedding provider returned HTTP ${resp.status}`,
       { status: resp.status },
     );
   }
@@ -246,18 +271,14 @@ export async function embedBatch(normalizedTitles, deps = {}) {
   const pipelineImpl = deps.redisPipeline ?? defaultRedisPipeline;
   const nowImpl = deps.now ?? (() => Date.now());
   const wallClockMs = deps.wallClockMs ?? 45_000;
-  const apiKey = deps._apiKey ?? process.env.OPENROUTER_API_KEY ?? '';
-
-  if (!apiKey) {
-    // Provider failure so the orchestrator falls back to Jaccard rather
-    // than silently embedding with no auth.
-    throw new EmbeddingProviderError('OPENROUTER_API_KEY not configured');
-  }
+  // A missing generic embedding setup deliberately throws here. The caller
+  // falls back to local Jaccard deduplication without calling a cloud model.
+  const profile = embeddingProfile(deps._apiKey);
 
   const deadline = nowImpl() + wallClockMs;
 
   // Deduped cache-key table. Same normalised title → same cache cell.
-  const keyByIndex = normalizedTitles.map((t) => cacheKeyFor(t));
+  const keyByIndex = normalizedTitles.map((t) => cacheKeyFor(t, profile.cachePrefix));
   const uniqueKeys = [...new Set(keyByIndex)];
 
   const vectorByKey = await cacheGetBatched(uniqueKeys, pipelineImpl, deadline, nowImpl);
@@ -276,7 +297,7 @@ export async function embedBatch(normalizedTitles, deps = {}) {
     const missingTitles = missingKeys.map((k) => missingTitleByKey.get(k) ?? '');
     const freshVectors = await callEmbeddingsApi({
       fetchImpl,
-      apiKey,
+      profile,
       missingTitles,
       timeoutMs: deadline - nowImpl(),
     });
