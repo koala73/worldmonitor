@@ -234,7 +234,6 @@ export async function getPublishedBatches({ fetchImpl = globalThis.fetch } = {})
 
 export const INDEXNOW_ENDPOINTS = Object.freeze([
   // IndexNow shares accepted URLs with all participants.
-  // https://www.indexnow.org/documentation
   'https://api.indexnow.org/IndexNow',
 ]);
 
