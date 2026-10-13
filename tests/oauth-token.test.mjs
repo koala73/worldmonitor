@@ -36,6 +36,7 @@ import {
   rawRedisProtectFailedRefreshAttempt,
   rawRedisRestoreRefreshAttempt,
   persistRefreshFamilyPointer,
+  restoreRefreshAttempt,
 } from '../api/oauth/_refresh-recovery.ts';
 import {
   resolveBearerToContext,
@@ -327,6 +328,44 @@ it('preserves dashboard key identity through code exchange and refresh', async (
 });
 
 describe('OAuth Redis refresh-attempt production contract', () => {
+  it('preserves the Redis expiry of a subsecond token without adding response latency', async () => {
+    const realFetch = globalThis.fetch;
+    const savedUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const savedToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    const expiry = Date.now() + 400;
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      result: [1, JSON.stringify({ family_id: 'fam-subsecond' }), expiry],
+    }));
+    try {
+      const result = await rawRedisBeginRefreshAttempt('rt-subsecond', 'attempt-subsecond');
+      assert.equal(result.expiresAtMs, expiry);
+    } finally {
+      globalThis.fetch = realFetch;
+      if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = savedUrl;
+      if (savedToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = savedToken;
+    }
+  });
+
+  it('passes the original expiry to Redis even when recovery runs after it', async () => {
+    for (const expiry of [Date.now() + 400, Date.now() - 1, 0]) {
+      let receivedExpiry;
+      const deps = {
+        redisRestoreRefreshAttempt: async (_token, _attempt, _data, _family, deadline) => {
+          receivedExpiry = deadline;
+          return true;
+        },
+      };
+      assert.equal(await restoreRefreshAttempt(
+        deps, 'rt-expiry', '{}', {}, 'fam-expiry', 'client-validation', expiry,
+      ), true);
+      assert.equal(receivedExpiry, expiry);
+    }
+  });
+
   it('atomically consumes a refresh token and creates a short-lived attempt', async () => {
     const realFetch = globalThis.fetch;
     const savedUrl = process.env.UPSTASH_REDIS_REST_URL;
