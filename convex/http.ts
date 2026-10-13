@@ -722,11 +722,27 @@ http.route({
       });
     }
 
-    const channels = await ctx.runQuery((internal as any).notificationChannels.getChannelsByUserId, {
-      userId: body.userId,
-    });
+    const channels: Array<{ channelType?: string; email?: string }> =
+      await ctx.runQuery((internal as any).notificationChannels.getChannelsByUserId, {
+        userId: body.userId,
+      }) ?? [];
 
-    return new Response(JSON.stringify(channels ?? []), {
+    // Delivery workers send alert and digest mail to whatever this returns.
+    // Drop email channels whose address bounced, complained or was suppressed
+    // by an operator, so those sends stop like every other Resend sender.
+    const deliverable = [];
+    for (const channel of channels) {
+      if (channel.channelType === "email" && typeof channel.email === "string" && channel.email
+        && await ctx.runQuery(internal.emailSuppressions.isEmailSuppressed, {
+          email: channel.email,
+          purpose: "transactional",
+        })) {
+        continue;
+      }
+      deliverable.push(channel);
+    }
+
+    return new Response(JSON.stringify(deliverable), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });

@@ -12,7 +12,7 @@ import type {
 import { ApiError, ValidationError } from '../../../../src/generated/server/worldmonitor/leads/v1/service_server';
 import { getClientIp, verifyTurnstile } from '../../../_shared/turnstile';
 import { validateEmail } from '../../../_shared/email-validation';
-import { checkScopedRateLimit } from '../../../_shared/rate-limit';
+import { checkScopedRateLimit, rateLimitKeyForIp } from '../../../_shared/rate-limit';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_EMAIL_LENGTH = 320;
@@ -321,7 +321,7 @@ export async function registerInterest(
       DESKTOP_RATE_SCOPE,
       DESKTOP_RATE_LIMIT,
       DESKTOP_RATE_WINDOW,
-      ip,
+      rateLimitKeyForIp(ip),
     );
     if (scoped.degraded) {
       throw new ApiError(503, 'Rate-limit service temporarily unavailable', '');

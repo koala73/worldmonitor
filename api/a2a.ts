@@ -18,7 +18,7 @@ import { PUBLIC_RESOURCE_REGISTRY } from './mcp/resources/index';
 import { readBoundedRequestBody, RequestBodyTooLargeError } from './mcp/bounded-body';
 import { MAX_JSON_RPC_BODY_BYTES } from './mcp/body-limits';
 import { safeJsonRpcId } from './mcp/utils';
-import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp } from '../server/_shared/rate-limit';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp, rateLimitKeyForIp } from '../server/_shared/rate-limit';
 
 // Re-exported so existing consumers (tests, api/ask.ts historically) keep a
 // stable import surface; the implementation lives in the route-less helper.
@@ -261,7 +261,7 @@ export default async function handler(req: Request): Promise<Response> {
   // over the public tool catalog; the freshness read itself degrades to a
   // null envelope when Redis is down, so there is no amplification to
   // protect). checkScopedRateLimit logs/Sentry-captures the degraded path.
-  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, ip);
+  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, rateLimitKeyForIp(ip));
   if (!scoped.allowed) {
     const retryAfter = Math.max(1, Math.ceil((scoped.reset - Date.now()) / 1000));
     return rpcError(

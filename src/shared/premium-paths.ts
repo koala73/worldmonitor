@@ -106,7 +106,8 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/chat-analyst',
   // Single-aircraft Wingbits enrichment is a caller-controlled paid-provider
   // lookup. Keep the batch sibling outside this registry because the map uses
-  // that route as its existing anonymous, rate-limited enrichment path.
+  // that route as its existing anonymous, rate-limited enrichment path; it
+  // only spends the credential on aircraft in the published flight snapshot.
   '/api/military/v1/get-aircraft-details',
   // Arms-supplier dependency + World Bank military capacity (#6438). This one
   // also left PUBLIC_SHARED_RPC_PATHS: it had an anonymous `public=1` CDN

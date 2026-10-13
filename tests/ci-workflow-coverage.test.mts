@@ -73,7 +73,8 @@ describe('root dependency cache (#8710)', () => {
   });
 
   for (const [workflowText, jobIds] of [
-    [testWorkflow, ['unit-shards', 'unit-built-output', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'variant-smoke-pro-webmcp', 'resilience-validation-smoke']],
+    [testWorkflow, ['docs-stats', 'unit-shards', 'unit-built-output', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'variant-smoke-pro-webmcp', 'resilience-validation-smoke']],
+    [read(resolve(workflowsDir, 'perf-style-layout-budget.yml')), ['measure']],
     [lintCodeWorkflow, ['biome', 'markdown']],
     [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck']],
   ] as const) {

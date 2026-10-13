@@ -110,19 +110,31 @@ async function resolveEventOwnerId(
       .unique();
     if (subscription) return subscription.userId;
   }
+  const metadata = data.metadata as Record<string, unknown> | undefined;
+  const signedOwner = typeof metadata?.wm_user_id === "string" && typeof metadata.wm_user_id_sig === "string"
+    && await verifyUserId(metadata.wm_user_id, metadata.wm_user_id_sig)
+    ? metadata.wm_user_id
+    : null;
   const customer = data.customer as DodoCustomer | undefined;
   if (typeof customer?.customer_id === "string") {
     const existing = await ctx.db.query("customers")
       .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", customer.customer_id!))
       .first();
-    if (existing) return existing.userId;
+    if (existing) {
+      // Dodo keeps one customer id per email, so a person who deleted their
+      // account and signs up again reuses the deleted account's customer id.
+      // A subscription we have not seen before, signed at checkout for a live
+      // account, belongs to that account; filing it under the deletion would
+      // withhold access and cancel the new subscription.
+      if (signedOwner && signedOwner !== existing.userId
+        && await billingDeletionForUser(ctx, existing.userId)
+        && !(await billingDeletionForUser(ctx, signedOwner))) {
+        return signedOwner;
+      }
+      return existing.userId;
+    }
   }
-  const metadata = data.metadata as Record<string, unknown> | undefined;
-  if (typeof metadata?.wm_user_id === "string" && typeof metadata.wm_user_id_sig === "string"
-    && await verifyUserId(metadata.wm_user_id, metadata.wm_user_id_sig)) {
-    return metadata.wm_user_id;
-  }
-  return null;
+  return signedOwner;
 }
 
 export async function billingDeletionForEvent(
@@ -1271,9 +1283,16 @@ export async function handleSubscriptionActive(
     return;
   }
 
+  // A deleted account's customer mapping is billing evidence, not an owner a
+  // new (possibly anonymous) checkout should be folded into.
+  const liveCustomerOwner = existingCustomer
+    && !existingCustomer.userId.startsWith("deleted:")
+    && !(await billingDeletionForUser(ctx, existingCustomer.userId))
+    ? existingCustomer.userId
+    : undefined;
   const userId = existing
     ? existing.userId
-    : preferExistingCustomerOwner(existingCustomer?.userId, resolvedUserId);
+    : preferExistingCustomerOwner(liveCustomerOwner, resolvedUserId);
   // A returning checkout receives a NEW Dodo subscription id, so matching only
   // `existing` would misclassify the user as a first-time subscriber and send
   // the generic welcome + admin alert. Snapshot the user's prior rows before
@@ -1403,6 +1422,11 @@ export async function handleSubscriptionActive(
       if (userId.startsWith("deleted:")) {
         return;
       }
+      // The reverse case: a live account reusing a deleted account's Dodo
+      // customer id. Keep the tombstoned mapping as the deletion's billing
+      // evidence; the new subscription row carries the customer id itself.
+      const keepDeletedOwner = existingCustomer.userId !== userId
+        && await billingDeletionForUser(ctx, existingCustomer.userId) != null;
       // Skip the rewrite when nothing changes. Dodo delivers related events
       // for one purchase in a burst (subscription.active + payment.succeeded
       // + subscription.updated within milliseconds), and re-patching the same
@@ -1414,7 +1438,7 @@ export async function handleSubscriptionActive(
         existingCustomer.userId === userId &&
         existingCustomer.email === email &&
         existingCustomer.normalizedEmail === normalizedEmail;
-      if (!customerUnchanged) {
+      if (!customerUnchanged && !keepDeletedOwner) {
         await ctx.db.patch(existingCustomer._id, {
           userId,
           email,

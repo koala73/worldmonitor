@@ -120,7 +120,9 @@ export async function deductSituation(
         framework ? sha256Hex(framework) : Promise.resolve(''),
         getCachedJson(PREDICTION_BOOTSTRAP_KEY, true).catch(() => null),
     ]);
-    const frameworkHash = framework ? frameworkHashFull.slice(0, 8) : '';
+    // Full digest: the framework is caller-supplied text, and a truncated hash
+    // would let a crafted framework collide with another user's cache entry.
+    const frameworkHash = framework ? frameworkHashFull : '';
 
     const predictionContext = predictionBootstrap
         ? buildPredictionContext(query, predictionBootstrap as PredictionBootstrap)

@@ -41,6 +41,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: workers/api-cors-preflight/package-lock.json
       - name: Install
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Run unit tests
@@ -58,6 +60,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: workers/api-cors-preflight/package-lock.json
       - name: Install
         run: npm ci --ignore-scripts --no-audit --no-fund
       # The KV shadow (BOOTSTRAP_KV_SHADOW=1) emits to Axiom; the Worker reads AXIOM_API_TOKEN
