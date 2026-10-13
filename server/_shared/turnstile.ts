@@ -27,6 +27,7 @@ export async function verifyTurnstile({
   const secret = process.env.TURNSTILE_SECRET_KEY;
   if (!secret) {
     if (missingSecretPolicy === 'allow') return true;
+    if (missingSecretPolicy === 'deny') return false;
 
     // Only an explicit development deployment may skip the challenge. An
     // unset VERCEL_ENV is not development: the Docker self-host and any other

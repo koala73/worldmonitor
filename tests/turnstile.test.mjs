@@ -103,6 +103,15 @@ test('verifyTurnstile rejects missing secret when VERCEL_ENV is unset (non-Verce
   assert.equal(ok, false);
 });
 
+test('verifyTurnstile rejects missing secret everywhere when policy is deny, even in development', async () => {
+  delete process.env.TURNSTILE_SECRET_KEY;
+  process.env.VERCEL_ENV = 'development';
+
+  const ok = await verifyTurnstile({ token: 'token', ip: '192.0.2.1', missingSecretPolicy: 'deny' });
+
+  assert.equal(ok, false);
+});
+
 test('verifyTurnstile allows missing secret only on an explicit development deployment', async () => {
   delete process.env.TURNSTILE_SECRET_KEY;
   process.env.VERCEL_ENV = 'development';
