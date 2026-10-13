@@ -2383,8 +2383,23 @@ function stripBom(text) {
   return text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
 }
 
+// Strip `//user:pass@` from a proxy URL. Greedy up to the LAST `@` before the
+// next `/` or whitespace, so a password that itself contains `@` does not
+// leave its tail behind.
 function redactOrefError(msg) {
-  return String(msg || '').replace(/\/\/[^@]+@/g, '//<redacted>@');
+  return String(msg || '').replace(/\/\/[^\s/]*@/g, '//<redacted>@');
+}
+
+// What `/oref/alerts` may say about a failed poll. The curl failure text is
+// the whole command line, which embeds the proxy URL; no amount of regex
+// redaction should be the only thing between that and an unauthenticated
+// public route. The redacted detail goes to the server log, the public state
+// gets a fixed summary.
+const OREF_PUBLIC_POLL_ERROR = 'OREF upstream fetch failed';
+function orefPollFailure(context, err) {
+  const stderr = err?.stderr ? err.stderr.toString().trim() : '';
+  console.warn(`[Relay] ${context}:`, redactOrefError(stderr || err?.message || String(err)));
+  return OREF_PUBLIC_POLL_ERROR;
 }
 
 function orefDateToUTC(dateStr) {
@@ -2523,9 +2538,7 @@ async function orefFetchAlerts() {
         } catch { alerts = []; }
       }
     } catch (err) {
-      const stderr = err.stderr ? err.stderr.toString().trim() : '';
-      orefState.lastError = redactOrefError(stderr || err.message);
-      console.warn('[Relay] OREF fallback poll error:', orefState.lastError);
+      orefState.lastError = orefPollFailure('OREF fallback poll error', err);
     }
   }
   if (source === 'none') {
@@ -2585,9 +2598,7 @@ async function orefFetchAlerts() {
     orefPreSerializeResponses();
     orefPersistHistory().catch(() => {});
   } catch (err) {
-    const stderr = err.stderr ? err.stderr.toString().trim() : '';
-    orefState.lastError = redactOrefError(stderr || err.message);
-    console.warn('[Relay] OREF poll error:', orefState.lastError);
+    orefState.lastError = orefPollFailure('OREF poll error', err);
     orefPreSerializeResponses();
   }
 }
