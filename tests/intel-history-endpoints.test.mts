@@ -812,3 +812,22 @@ describe('generated OpenAPI', () => {
     });
   }
 });
+
+// captureSilentError is a no-op under NODE_TEST_CONTEXT, so pin the timeout
+// warning gate in source the same way api/miit-news.test.mjs does. Envelope
+// delivery for this gate is covered by tests/intel-history-sentry.test.mjs.
+describe('Sentry TimeoutError warning gate', () => {
+  it('downgrades AbortSignal.timeout captures on the Convex read path', () => {
+    const src = readFileSync(resolve(root, 'server/_shared/intel-history-client.ts'), 'utf8');
+    assert.match(src, /errName === 'AbortError' \|\| errName === 'TimeoutError'/);
+    assert.match(src, /isTransientTimeout \? \{ level: 'warning' \} : \{\}/);
+    assert.match(src, /stage: 'convex-read'/);
+  });
+
+  it('downgrades AbortSignal.timeout captures on the embeddings path', () => {
+    const src = readFileSync(resolve(root, 'server/_shared/intel-history-embed.ts'), 'utf8');
+    assert.match(src, /errName === 'AbortError' \|\| errName === 'TimeoutError'/);
+    assert.match(src, /isTransientTimeout \? \{ level: 'warning' \} : \{\}/);
+    assert.match(src, /stage: 'embed'/);
+  });
+});
