@@ -1299,7 +1299,7 @@ export function createDomainGateway(
         // configuration incident (#7277).
         emitRequest(500, 'hmac_secret_unconfigured', null);
         return new Response(
-          JSON.stringify({ error: 'CONFIGURATION', detail: 'MCP_INTERNAL_HMAC_SECRET not configured' }),
+          JSON.stringify({ error: 'CONFIGURATION' }),
           { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
         );
       }

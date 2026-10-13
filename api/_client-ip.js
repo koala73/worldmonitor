@@ -216,3 +216,40 @@ export function getClientIp(request) {
   if (cf && isCloudflareProxyIp(xr)) warnEdgeProofNotProving();
   return xr || UNKNOWN_CLIENT_IP;
 }
+
+// Per-IP rate-limit buckets group IPv6 clients by their /64. One subscriber
+// line or VPS normally owns a whole /64, so keying on the full address would
+// hand that client 2^64 separate buckets. IPv4 (and IPv4-mapped IPv6) stays a
+// single address; anything unparseable is returned unchanged.
+export function rateLimitKeyForIp(ip) {
+  if (typeof ip !== 'string' || !ip.includes(':')) return ip;
+  let addr = ip.split('%')[0].toLowerCase();
+  const v4Tail = addr.match(/^(.*:)(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (v4Tail) {
+    const octets = v4Tail[2].split('.').map(Number);
+    if (octets.some((n) => n > 255)) return ip;
+    const [a, b, c, d] = octets;
+    addr = `${v4Tail[1]}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const halves = addr.split('::');
+  if (halves.length > 2) return ip;
+  const head = halves[0] ? halves[0].split(':') : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const missing = 8 - head.length - tail.length;
+  if (halves.length === 1 ? missing !== 0 : missing < 1) return ip;
+  const groups = [...head, ...new Array(halves.length === 2 ? missing : 0).fill('0'), ...tail];
+  if (!groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return ip;
+  // IPv4-mapped (::ffff:a.b.c.d), in dotted or hex form, is one IPv4 client.
+  const nums = groups.map((g) => parseInt(g, 16));
+  if (nums.slice(0, 5).every((n) => n === 0) && nums[5] === 0xffff) {
+    const hi = nums[6];
+    const lo = nums[7];
+    return `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`;
+  }
+  return `${groups.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(':')}::/64`;
+}
+
+// The caller identity for per-IP rate limits: getClientIp, with IPv6 grouped.
+export function getClientRateLimitKey(request) {
+  return rateLimitKeyForIp(getClientIp(request));
+}

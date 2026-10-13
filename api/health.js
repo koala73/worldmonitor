@@ -5193,9 +5193,11 @@ export async function handleHealth(req, ctx, options = {}) {
     // A read cut short by the request deadline is not a Redis outage.
     if (budget.exhausted()) return deadlineFallback();
     if (ownsSnapshotRefreshLock) await releaseHealthVerdictRefreshLock(refreshLockToken);
+    // sentry-coverage-ok Redis read failures return HTTP 503 for health monitors.
+    console.error('[health] Redis read failed:', err?.message ?? err);
     return jsonResponse({
       status: 'REDIS_DOWN',
-      error: err.message,
+      error: 'Redis unavailable',
       checkedAt: new Date(now).toISOString(),
     }, 503, headers);
   }
@@ -5254,9 +5256,11 @@ export async function handleHealth(req, ctx, options = {}) {
     // monitor (UptimeRobot, k8s probe, LB) must see a failure. DEGRADED/
     // UNHEALTHY/WARNING stay 200 (verdict in body) so warn-level seed jitter
     // doesn't flap HTTP monitors — see #2699 and the always-200 main response.
+    // sentry-coverage-ok Redis read failures return HTTP 503 for health monitors.
+    console.error('[health] Redis read failed:', err?.message ?? err);
     return jsonResponse({
       status: 'REDIS_DOWN',
-      error: err.message,
+      error: 'Redis unavailable',
       checkedAt: new Date(now).toISOString(),
     }, 503, headers);
   }

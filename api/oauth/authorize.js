@@ -1,5 +1,5 @@
 // @ts-expect-error — JS module, no declaration file
-import { getClientIp } from '../_rate-limit.js';
+import { getClientRateLimitKey } from '../_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes, sha256Hex } from '../_crypto.js';
 import { Ratelimit } from '@upstash/ratelimit';
@@ -249,7 +249,7 @@ export default async function handler(req) {
     const rl = getRatelimit();
     if (rl) {
       try {
-        const { success } = await rl.limit(`ip:${getClientIp(req)}`);
+        const { success } = await rl.limit(`ip:${getClientRateLimitKey(req)}`);
         if (!success) {
           return new Response('Too Many Requests', { status: 429 });
         }

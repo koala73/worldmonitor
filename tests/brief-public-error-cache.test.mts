@@ -57,6 +57,25 @@ describe('api/brief/public/[hash] cache policy', () => {
     assert.equal(res.headers.get('Cache-Control'), 'private, no-store');
   });
 
+  it('answers a malformed percent-escape with 404, not an unhandled error', async () => {
+    const { default: handler } = await import('../api/brief/public/[hash].ts');
+    const res = await handler(new Request('https://worldmonitor.app/api/brief/public/%E0abc'));
+    assert.equal(res.status, 404);
+  });
+
+  it('the signed brief route answers a malformed percent-escape with 404', async () => {
+    const prev = process.env.BRIEF_URL_SIGNING_SECRET;
+    process.env.BRIEF_URL_SIGNING_SECRET = 'test-secret-for-malformed-escape';
+    try {
+      const { default: handler } = await import('../api/brief/[userId]/[issueDate].ts');
+      const res = await handler(new Request('https://worldmonitor.app/api/brief/%E0/2026-04-18-0800?t=x'));
+      assert.equal(res.status, 404);
+    } finally {
+      if (prev === undefined) delete process.env.BRIEF_URL_SIGNING_SECRET;
+      else process.env.BRIEF_URL_SIGNING_SECRET = prev;
+    }
+  });
+
   it('keeps the 5-minute CDN cache on a rendered 200', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.invalid';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'tok';

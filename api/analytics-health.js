@@ -87,11 +87,16 @@ const MIN_BASELINE_WINDOWS = 20;
 const MAX_BASELINE_FAILURE_RATE = 0.7;
 
 const MAX_BODY_BYTES = 1_024;
-const MAX_COUNTER_DELTA = 10_000;
+// One report covers one tab's 60-second window, and collector writes drain one
+// at a time, so a real tab stays far below this. The cap bounds how far a
+// single anonymous report can move the aggregate that drives outage alerts.
+const MAX_COUNTER_DELTA = 600;
 /** Allow a delayed browser report to land in its real or one of the prior two windows. */
 const MAX_HEALTH_BUCKET_LAG = 2;
 const RATE_LIMIT_SCOPE = 'analytics-health';
-const RATE_LIMIT_PER_MINUTE = 60;
+// About three cohort reports per tab per minute; 30 covers several tabs behind
+// one address while keeping one client's share of the aggregate small.
+const RATE_LIMIT_PER_MINUTE = 30;
 const ALLOWED_COHORTS = new Set(['event', 'critical-event', 'identify']);
 const ALLOWED_FAILURE_KINDS = new Set(['network', 'timeout', 'missing-receipt', 'none']);
 

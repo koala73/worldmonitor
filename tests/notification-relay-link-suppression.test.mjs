@@ -350,3 +350,20 @@ describe('notification-relay link suppression (#8401)', () => {
   });
 });
 
+describe('quiet-hours held queue is bounded', () => {
+  it('trims the held list to the newest QUIET_HELD_MAX events on every push', async () => {
+    const origFetch = globalThis.fetch;
+    const commands = [];
+    globalThis.fetch = async (u) => {
+      commands.push(new URL(String(u)).pathname.split('/').filter(Boolean).map(decodeURIComponent));
+      return { ok: true, json: async () => ({ result: 1 }) };
+    };
+    try {
+      await relay.holdEvent('user-1', 'full', '{"title":"x"}');
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+    assert.deepEqual(commands.map((c) => c[0]), ['RPUSH', 'LTRIM', 'EXPIRE']);
+    assert.deepEqual(commands[1], ['LTRIM', 'digest:quiet-held:user-1:full', String(-relay.QUIET_HELD_MAX), '-1']);
+  });
+});

@@ -14,7 +14,7 @@ import {
 } from './mcp/bounded-body';
 import { MAX_JSON_RPC_BODY_BYTES, MAX_MCP_PROXY_RESPONSE_BYTES } from './mcp/body-limits';
 import { McpProxyJsonDepthError, parseMcpProxyJson } from './mcp/bounded-json';
-import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp } from '../server/_shared/rate-limit';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp, rateLimitKeyForIp } from '../server/_shared/rate-limit';
 import { captureSilentError } from './_sentry-edge.js';
 import {
   buildRequestEvent,
@@ -966,7 +966,7 @@ export default async function handler(req, ctx) {
   // without a Redis round-trip). This endpoint is already premium-auth gated,
   // so Redis-degraded scoped limits intentionally stay availability-first;
   // checkScopedRateLimit logs/Sentry-captures the degraded path.
-  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, ip);
+  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, rateLimitKeyForIp(ip));
   if (!scoped.allowed) {
     const retryAfter = Math.max(1, Math.ceil((scoped.reset - Date.now()) / 1000));
     logProxyCall({
