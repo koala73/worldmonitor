@@ -35,6 +35,14 @@ open http://localhost:3000
 
 The dashboard works out of the box with public data sources (earthquakes, weather, conflicts, etc.). API keys unlock additional data feeds.
 
+The Docker dashboard uses `VITE_SELF_HOSTED=1` at build time: new browser profiles
+enable all public RSS sources, and source selection has no hosted free-tier count
+limit. Existing source preferences are preserved; use Settings → Sources → Select
+all to enable additional sources in an existing profile. Sign-in and account
+creation controls are hidden when Clerk is not configured. These settings do not
+grant premium API access or replace upstream credentials. Data-backed layers still
+require their seeders and any provider keys listed below.
+
 ## Documentation indexing
 
 The bundled documentation identifies `https://www.worldmonitor.app/docs` as its
