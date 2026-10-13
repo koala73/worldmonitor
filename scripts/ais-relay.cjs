@@ -12821,10 +12821,15 @@ const server = http.createServer(async (req, res) => {
           lookup: rssGuardedLookup,
         }, (response) => {
           if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
-            const redirectUrl = response.headers.location.startsWith('http')
-              ? response.headers.location
-              : new URL(response.headers.location, url).href;
-            const redirectTarget = new URL(redirectUrl);
+            // A malformed Location from an allowlisted upstream must be a 502
+            // for this feed, not an uncaught TypeError that exits the relay.
+            let redirectTarget;
+            try {
+              redirectTarget = new URL(response.headers.location, url);
+            } catch {
+              return sendError(502, 'Malformed redirect');
+            }
+            const redirectUrl = redirectTarget.href;
             if (!RSS_ALLOWED_DOMAINS.has(redirectTarget.hostname) || !RSS_ALLOWED_PROTOCOLS.has(redirectTarget.protocol)) {
               return sendError(403, 'Redirect to disallowed domain');
             }
