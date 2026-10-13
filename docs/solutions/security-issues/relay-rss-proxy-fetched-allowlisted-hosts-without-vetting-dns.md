@@ -35,6 +35,8 @@ The Railway relay proxies RSS feeds that block Vercel's egress. The route is pub
 
 The general lesson for this route: every failure path in `/rss` falls through to stale-serve and backoff unless it opts out. A verdict about the feed (blocked, disallowed) is not an upstream outage and must take its own exit.
 
+**Trusting the route's own source greps as proof.** The first test file pinned the wiring with regexes over `ais-relay.cjs`. A reviewer who spawned the real relay found that the exact redirect line being edited still parsed `Location` with a bare `new URL()`, so one malformed header from any allowlisted upstream exited the whole process (`TypeError: Invalid URL`, no `uncaughtException` handler). Pre-existing on main, invisible to a grep. The route now has an end-to-end test that drives the real process.
+
 ## Solution
 
 `scripts/lib/notification-webhook-ssrf.cjs` gained `createGuardedLookup()`. It is a `lookup` option for `http.request`: it resolves with `dns.lookup({ all: true })`, rejects if ANY answer fails the existing `isBlockedResolvedAddress` classifier, and otherwise hands Node a single vetted address (IPv4 first, or the full vetted list when Node asks with `options.all` for happy-eyeballs). Connecting only to the vetted address closes the rebinding window between check and connect. Errors carry `code: 'ERR_SSRF_BLOCKED'`.
@@ -50,7 +52,9 @@ The lib is COPY'd into `Dockerfile.relay` and listed in the relay's `watchPatter
 
 ## Verification
 
-`tests/ais-relay-rss-ssrf.test.mjs`. The relay is a non-exported monolith that executes on import, so the coverage is a behavioural test of the lookup helper plus a source guard on the route:
+`tests/ais-relay-rss-ssrf-e2e.test.mjs` spawns the real relay with `tests/_lib/ais-relay-rss-ssrf-preload.cjs`, a shim that reroutes one allowlisted host to a local upstream and flips its DNS answer between requests. It proves the first caller, the in-flight follower and a later caller all get 403 after a cached body, nothing stale leaks, the upstream is never contacted, a mixed answer set blocks, the body cap sends one 502 with the relay alive, every bad redirect target is refused, a relative `Location` is followed, and a malformed `Location` is a 502 with the relay alive. It runs in under a second.
+
+`tests/ais-relay-rss-ssrf.test.mjs` covers the lookup helper behaviourally plus a source guard on the route:
 
 - The lookup blocks private, link-local, metadata, IPv6 ULA and IPv4-mapped answers, blocks a mixed public/private answer set, pins IPv4 first and honours `options.all`.
 - A real `http.get` with the guarded lookup against a loopback server opens zero connections and fails with `ERR_SSRF_BLOCKED`.
