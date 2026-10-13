@@ -100,6 +100,18 @@ export function ensureNoopenerRel(rel: string | null): string {
   return Array.from(tokens).join(' ');
 }
 
+// Resolve against a sentinel origin: a genuine path keeps it, anything the
+// parser reads as scheme-relative or host-bearing leaves it.
+const SAME_ORIGIN_SENTINEL = 'https://safe-html.invalid';
+function isSameOriginPath(href: string): boolean {
+  if (!href.startsWith('/')) return false;
+  try {
+    return new URL(href, `${SAME_ORIGIN_SENTINEL}/`).origin === SAME_ORIGIN_SENTINEL;
+  } catch {
+    return false;
+  }
+}
+
 /** Like rawHtml() but strips tags and attributes not in the allowlist. */
 export function safeHtml(html: string): DocumentFragment {
   const tpl = document.createElement('template');
@@ -125,12 +137,12 @@ export function safeHtml(html: string): DocumentFragment {
             el.removeAttribute(attr.name);
           }
         }
-        // Sanitize href to prevent javascript: URIs. A protocol-relative
-        // "//host" is not a same-origin path: it resolves to another origin.
+        // Sanitize href to prevent javascript: URIs. A leading "/" is only a
+        // same-origin path if the URL parser agrees: "//host", "/\host" and
+        // "/\t/host" all resolve to another origin.
         if (el.hasAttribute('href')) {
           const href = el.getAttribute('href') || '';
-          const sameOriginPath = href.startsWith('/') && !href.startsWith('//');
-          if (!/^https?:\/\//i.test(href) && !sameOriginPath && !href.startsWith('#')) {
+          if (!/^https?:\/\//i.test(href) && !isSameOriginPath(href) && !href.startsWith('#')) {
             el.removeAttribute('href');
           }
         }

@@ -27,8 +27,9 @@ describe('DEDUCTION_PURIFY_CONFIG', () => {
     }
   });
 
-  it('allows only the class attribute and no data- attributes', () => {
+  it('allows only the class attribute, no data- and no aria- attributes', () => {
     expect(DEDUCTION_PURIFY_CONFIG.ALLOWED_ATTR).toEqual(['class']);
     expect(DEDUCTION_PURIFY_CONFIG.ALLOW_DATA_ATTR).toBe(false);
+    expect(DEDUCTION_PURIFY_CONFIG.ALLOW_ARIA_ATTR).toBe(false);
   });
 });

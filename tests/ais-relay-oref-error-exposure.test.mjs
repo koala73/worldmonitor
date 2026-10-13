@@ -44,26 +44,55 @@ test('orefPollFailure returns the public constant and logs the redacted detail',
        return orefPollFailure;`,
     );
     const orefPollFailure = factory(redactOrefError);
-    const err = Object.assign(new Error('Command failed: curl -sS -x http://user:p@ss@proxy.example:9000 https://www.oref.org.il/x'), {
+    const credential = 'user:pa/ss wd';
+    const err = Object.assign(new Error(`Command failed: curl -sS -x http://${credential}@proxy.example:9000 https://www.oref.org.il/x`), {
       stderr: Buffer.from(''),
     });
 
-    const publicText = orefPollFailure('OREF poll error', err);
+    const publicText = orefPollFailure('OREF poll error', err, credential);
     assert.equal(publicText, 'OREF upstream fetch failed');
     assert.equal(warned.length, 1);
-    assert.doesNotMatch(warned[0], /p@ss|user:/);
-    assert.match(warned[0], /\/\/<redacted>@proxy\.example:9000/);
+    assert.doesNotMatch(warned[0], /pa\/ss|ss wd|user:/);
+    assert.match(warned[0], /<redacted>@proxy\.example:9000/);
   } finally {
     console.warn = original;
   }
 });
 
-test('redactOrefError strips credentials whose password contains @', () => {
+test('every relay call site passes the configured credential to the redactor', () => {
+  const calls = [...src.matchAll(/(?<!function )(?:orefPollFailure|redactOrefError)\(([^;]*)\);/g)]
+    .map((m) => m[1])
+    .filter((args) => !args.startsWith('stderr || err?.message')); // the helper's own inner call forwards its parameter
+  assert.ok(calls.length >= 3, `expected the three call sites, found ${calls.length}`);
+  for (const args of calls) {
+    assert.match(args, /,\s*OREF_PROXY_CREDENTIAL$/, `call must pass OREF_PROXY_CREDENTIAL: ${args}`);
+  }
+});
+
+test('redactOrefError drops the literal configured credential, whatever characters it holds', () => {
   const redactOrefError = extractFunction('redactOrefError');
+  const credential = 'user:pa/ss;il;;;@wd';
   assert.equal(
-    redactOrefError('curl: (7) via http://user:p@ss;il;;;@proxy.example:9000/ failed'),
+    redactOrefError(`curl: (7) via http://${credential}@proxy.example:9000/ failed`, credential),
     'curl: (7) via http://<redacted>@proxy.example:9000/ failed',
   );
-  assert.equal(redactOrefError('plain message without a proxy'), 'plain message without a proxy');
-  assert.equal(redactOrefError(undefined), '');
+});
+
+test('redactOrefError still strips a pattern-shaped credential it was not configured with', () => {
+  const redactOrefError = extractFunction('redactOrefError');
+  assert.equal(
+    redactOrefError('curl: (7) via http://user:p@ss;il;;;@proxy.example:9000/ failed', ''),
+    'curl: (7) via http://<redacted>@proxy.example:9000/ failed',
+  );
+  assert.equal(redactOrefError('plain message without a proxy', ''), 'plain message without a proxy');
+  assert.equal(redactOrefError(undefined, ''), '');
+});
+
+test('OREF_PROXY_CREDENTIAL is the user:pass part of OREF_PROXY_AUTH in either accepted form', () => {
+  const block = src.slice(src.indexOf('const OREF_PROXY_CREDENTIAL = '), src.indexOf('})();', src.indexOf('const OREF_PROXY_CREDENTIAL = ')) + 5);
+  const derive = (auth) => new Function('OREF_PROXY_AUTH', `${block}; return OREF_PROXY_CREDENTIAL;`)(auth);
+  assert.equal(derive('user:pa/ss@wd@proxy.example:9000'), 'user:pa/ss@wd');
+  assert.equal(derive('http://user:pass@proxy.example:9000'), 'user:pass');
+  assert.equal(derive(''), '');
+  assert.equal(derive('proxy.example:9000'), '');
 });

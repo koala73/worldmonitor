@@ -2383,11 +2383,22 @@ function stripBom(text) {
   return text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
 }
 
-// Strip `//user:pass@` from a proxy URL. Greedy up to the LAST `@` before the
-// next `/` or whitespace, so a password that itself contains `@` does not
-// leave its tail behind.
-function redactOrefError(msg) {
-  return String(msg || '').replace(/\/\/[^\s/]*@/g, '//<redacted>@');
+// The configured `user:pass` of the OREF proxy, so log lines can drop the
+// exact secret rather than guess its shape with a pattern.
+const OREF_PROXY_CREDENTIAL = (() => {
+  const raw = OREF_PROXY_AUTH.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+  const at = raw.lastIndexOf('@');
+  return at > 0 ? raw.slice(0, at) : '';
+})();
+
+// Strip proxy credentials from an error message. The literal credential goes
+// first (it may contain `/`, `@` or whitespace, which no URL pattern can
+// anticipate); the `//user:pass@` pattern then covers any credential that
+// did not come from our own config.
+function redactOrefError(msg, credential) {
+  let text = String(msg || '');
+  if (credential) text = text.split(credential).join('<redacted>');
+  return text.replace(/\/\/[^\s/]*@/g, '//<redacted>@');
 }
 
 // What `/oref/alerts` may say about a failed poll. The curl failure text is
@@ -2396,9 +2407,9 @@ function redactOrefError(msg) {
 // public route. The redacted detail goes to the server log, the public state
 // gets a fixed summary.
 const OREF_PUBLIC_POLL_ERROR = 'OREF upstream fetch failed';
-function orefPollFailure(context, err) {
+function orefPollFailure(context, err, credential) {
   const stderr = err?.stderr ? err.stderr.toString().trim() : '';
-  console.warn(`[Relay] ${context}:`, redactOrefError(stderr || err?.message || String(err)));
+  console.warn(`[Relay] ${context}:`, redactOrefError(stderr || err?.message || String(err), credential));
   return OREF_PUBLIC_POLL_ERROR;
 }
 
@@ -2538,7 +2549,7 @@ async function orefFetchAlerts() {
         } catch { alerts = []; }
       }
     } catch (err) {
-      orefState.lastError = orefPollFailure('OREF fallback poll error', err);
+      orefState.lastError = orefPollFailure('OREF fallback poll error', err, OREF_PROXY_CREDENTIAL);
     }
   }
   if (source === 'none') {
@@ -2598,7 +2609,7 @@ async function orefFetchAlerts() {
     orefPreSerializeResponses();
     orefPersistHistory().catch(() => {});
   } catch (err) {
-    orefState.lastError = orefPollFailure('OREF poll error', err);
+    orefState.lastError = orefPollFailure('OREF poll error', err, OREF_PROXY_CREDENTIAL);
     orefPreSerializeResponses();
   }
 }
@@ -2849,7 +2860,7 @@ async function orefBootstrapHistoryWithRetry() {
       console.log(`[Relay] OREF upstream bootstrap succeeded on attempt ${attempt}`);
       return;
     } catch (err) {
-      const msg = redactOrefError(err?.message || String(err));
+      const msg = redactOrefError(err?.message || String(err), OREF_PROXY_CREDENTIAL);
       console.warn(`[Relay] OREF upstream bootstrap attempt ${attempt}/${MAX_ATTEMPTS} failed: ${msg}`);
       if (attempt < MAX_ATTEMPTS) {
         const delay = BASE_DELAY_MS * 2 ** (attempt - 1) + Math.random() * 1000;

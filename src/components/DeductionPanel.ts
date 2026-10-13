@@ -31,6 +31,9 @@ export const DEDUCTION_PURIFY_CONFIG = {
     'div', 'span'],
   ALLOWED_ATTR: ['class'],
   ALLOW_DATA_ATTR: false,
+  // DOMPurify keeps aria-* even when ALLOWED_ATTR omits them; an injected
+  // aria-hidden would hide the analysis from screen readers.
+  ALLOW_ARIA_ATTR: false,
 };
 
 export class DeductionPanel extends Panel {
