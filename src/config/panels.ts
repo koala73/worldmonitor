@@ -1,5 +1,6 @@
 import type { PanelConfig, MapLayers, DataSourceId } from '@/types';
 import { SITE_VARIANT } from './variant';
+import { IS_SELF_HOSTED } from './deployment';
 // boundary-ignore: isDesktopRuntime is a pure env probe with no service dependencies
 import { isDesktopRuntime } from '@/services/runtime';
 // boundary-ignore: getSecretState is a pure env/keychain probe with no service dependencies
@@ -1267,7 +1268,7 @@ export function isPanelInVariantDefaults(key: string): boolean {
 }
 
 export const FREE_MAX_PANELS = 40;
-export const FREE_MAX_SOURCES = 80;
+export const FREE_MAX_SOURCES = IS_SELF_HOSTED ? Number.MAX_SAFE_INTEGER : 80;
 
 export function isFreePanelCapCounted(key: string): boolean {
   return key !== 'map' && !key.startsWith('cw-');

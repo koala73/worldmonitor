@@ -1,5 +1,6 @@
 import type { Feed } from '@/types';
 import { SITE_VARIANT } from './variant';
+import { IS_SELF_HOSTED } from './deployment';
 import { rssProxyUrl } from '@/utils';
 import { mergeCanonicalFeeds } from './feed-resolution';
 import {
@@ -1690,6 +1691,7 @@ export function getLocaleBoostedSources(locale: string): Set<string> {
 }
 
 export function computeDefaultDisabledSources(locale?: string): string[] {
+  if (IS_SELF_HOSTED) return [];
   const enabled = getAllDefaultEnabledSources();
   if (locale) {
     for (const name of getLocaleBoostedSources(locale)) enabled.add(name);

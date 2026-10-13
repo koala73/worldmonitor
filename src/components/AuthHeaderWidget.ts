@@ -1,5 +1,5 @@
 import { subscribeAuthState, type AuthSession } from '@/services/auth-state';
-import { mountUserButton, openSignIn, openSignUp } from '@/services/clerk';
+import { isClerkAuthEnabled, mountUserButton, openSignIn, openSignUp } from '@/services/clerk';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
@@ -77,6 +77,8 @@ export class AuthHeaderWidget {
   }
 
   private renderSignedOut(): void {
+    if (!isClerkAuthEnabled()) return;
+
     const signInBtn = document.createElement('button');
     signInBtn.className = 'auth-signin-btn';
     signInBtn.textContent = t('auth.signIn');
