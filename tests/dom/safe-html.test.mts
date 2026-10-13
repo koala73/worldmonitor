@@ -31,4 +31,21 @@ describe('safeHtml', () => {
     expect(links[1]?.getAttribute('style')).toBe('color: blue');
     expect(links[1]?.getAttribute('rel')).toBe('noopener noreferrer');
   });
+
+  it('drops protocol-relative hrefs but keeps same-origin paths and fragments', () => {
+    const fragment = safeHtml(
+      '<a href="//evil.example/x">cross</a>'
+      + '<a href="/dashboard">path</a>'
+      + '<a href="#top">frag</a>'
+      + '<a href="\\\\evil.example">backslash</a>',
+    );
+    const host = document.createElement('div');
+    host.append(fragment);
+
+    const [cross, path, frag, backslash] = Array.from(host.querySelectorAll('a'));
+    expect(cross?.hasAttribute('href')).toBe(false);
+    expect(path?.getAttribute('href')).toBe('/dashboard');
+    expect(frag?.getAttribute('href')).toBe('#top');
+    expect(backslash?.hasAttribute('href')).toBe(false);
+  });
 });

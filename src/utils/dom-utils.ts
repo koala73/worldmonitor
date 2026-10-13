@@ -125,10 +125,12 @@ export function safeHtml(html: string): DocumentFragment {
             el.removeAttribute(attr.name);
           }
         }
-        // Sanitize href to prevent javascript: URIs
+        // Sanitize href to prevent javascript: URIs. A protocol-relative
+        // "//host" is not a same-origin path: it resolves to another origin.
         if (el.hasAttribute('href')) {
           const href = el.getAttribute('href') || '';
-          if (!/^https?:\/\//i.test(href) && !href.startsWith('/') && !href.startsWith('#')) {
+          const sameOriginPath = href.startsWith('/') && !href.startsWith('//');
+          if (!/^https?:\/\//i.test(href) && !sameOriginPath && !href.startsWith('#')) {
             el.removeAttribute('href');
           }
         }
