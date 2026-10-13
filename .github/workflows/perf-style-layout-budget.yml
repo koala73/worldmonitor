@@ -46,8 +46,7 @@ jobs:
           node-version: '24'
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/install-root-deps
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
