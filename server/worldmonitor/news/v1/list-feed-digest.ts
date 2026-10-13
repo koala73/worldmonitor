@@ -91,7 +91,7 @@ import { classifyEphemeralLiveCoverage } from '../../../../shared/ephemeral-live
 import { deriveCoreStoryPhase } from '../../../../shared/story-phase.js';
 import { buildTickerDictionary, extractTickers } from '../../../../shared/ticker-extract.js';
 import stocksData from '../../../../shared/stocks.json';
-import { buildClassifyCacheKey } from '../../intelligence/v1/_shared';
+import { buildClassifyCacheKey, isValidClassifyHit } from '../../intelligence/v1/_shared';
 import { declaredSourceTier, getSourceTier } from '../../../_shared/source-tiers';
 import {
   getSourcePropagandaRisk,
@@ -1436,6 +1436,10 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
     // operative skip check today. Locked by the `_skip` cases in
     // tests/news-classify-cache-hit-validation.test.mts.
     if (!hit || hit.level === '_skip' || !hit.level || !hit.category) continue;
+    // Shape is the parser's job; the value policy is ours. A level or category
+    // outside the classify enum never reaches item.category, which the
+    // dashboard renders as a badge.
+    if (!isValidClassifyHit(hit)) continue;
 
     for (const item of relatedItems) {
       // L3 defense-in-depth runs FIRST, BEFORE capLlmUpgrade. If the
@@ -3445,6 +3449,7 @@ export const __testing__ = {
   resolveMaxAgeMs,
   capLlmUpgrade,
   parseClassifyCacheHit,
+  enrichWithAiCache,
   VERCEL_INITIAL_RESPONSE_LIMIT_MS,
   DIGEST_RESPONSE_TIMEOUT_MS,
   POST_FETCH_HEADROOM_MS,

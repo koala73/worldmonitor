@@ -52,6 +52,7 @@ const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { SAUDI_CIVIL_DEFENSE, MAX_POST_CHARS, publishSaudiCivilDefenseAlerts } = require('./lib/saudi-civil-defense-alerts.cjs');
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle, xPollSlot } = require('./lib/x-poll-cycle.cjs');
+const { createGuardedLookup, SSRF_BLOCKED_ERROR_CODE } = require('./lib/notification-webhook-ssrf.cjs');
 const {
   createXPostBudget,
   DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
@@ -131,6 +132,12 @@ function requireShared(name) {
   throw new Error(`Cannot find shared/${name}`);
 }
 const RSS_ALLOWED_DOMAINS = new Set(requireShared('rss-allowed-domains.cjs'));
+// /rss is public and the allowlisted hosts' DNS belongs to 428 third parties.
+// Vet every answer and connect only to a vetted address, so a dangling or
+// rebound feed hostname cannot read Railway-internal endpoints through us.
+const rssGuardedLookup = createGuardedLookup();
+const RSS_ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
+const RSS_MAX_BODY_BYTES = 5 * 1024 * 1024;
 const { COMPARE_AND_DELETE_SCRIPT } = requireShared('compare-and-delete-script.cjs');
 
 // Log effective heap limit at startup (verifies NODE_OPTIONS=--max-old-space-size is active)
@@ -12611,6 +12618,11 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(403, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: 'Domain not allowed on Railway proxy' }));
       }
+      if (!RSS_ALLOWED_PROTOCOLS.has(parsed.protocol)) {
+        recordRelayOutcome('rss', 'terminalFailure');
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Protocol not allowed on Railway proxy' }));
+      }
 
       const sendRssStale = (cacheEntry, cacheLabel = 'STALE', extraHeaders = {}) => sendCompressed(req, res, 200, {
         'Content-Type': cacheEntry.contentType || 'application/xml',
@@ -12756,6 +12768,30 @@ const server = http.createServer(async (req, res) => {
         rejectInFlight(new Error(message));
       };
 
+      // A blocked DNS answer is a verdict on the feed, not an upstream outage.
+      // No backoff (backoff would serve the stale body with a 200), the last
+      // good body is evicted so nothing can be served from it, and a 403
+      // negative entry answers in-flight followers and the next minute of
+      // callers without another lookup.
+      const sendBlocked = (message) => {
+        if (responseHandled || res.headersSent) return;
+        responseHandled = true;
+        recordAttemptOutcome(403, new Error(message));
+        rssResponseCache.delete(feedUrl);
+        rssResetFailure(feedUrl);
+        const data = Buffer.from(JSON.stringify({ error: message }));
+        setBoundedCacheEntry(rssNegativeCache, feedUrl, {
+          data, contentType: 'application/json', statusCode: 403, timestamp: Date.now(),
+        }, RSS_NEGATIVE_CACHE_MAX_ENTRIES);
+        res.writeHead(403, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'CDN-Cache-Control': 'no-store',
+        });
+        res.end(data);
+        resolveInFlight({ outcome: 'terminalFailure' });
+      };
+
       const fetchWithRedirects = (url, redirectCount = 0) => {
         if (redirectCount > 3) {
           return sendError(502, 'Too many redirects');
@@ -12783,14 +12819,19 @@ const server = http.createServer(async (req, res) => {
           // surface immediately. 64KB is well above any legitimate header set,
           // and is per-request (no process-level Node flag needed).
           maxHeaderSize: 65536,
+          lookup: rssGuardedLookup,
         }, (response) => {
           if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
-            const redirectUrl = response.headers.location.startsWith('http')
-              ? response.headers.location
-              : new URL(response.headers.location, url).href;
-            const redirectTarget = new URL(redirectUrl);
-            const redirectHost = redirectTarget.hostname;
-            if (!RSS_ALLOWED_DOMAINS.has(redirectHost) || redirectTarget.port !== '') {
+            // A malformed Location from an allowlisted upstream must be a 502
+            // for this feed, not an uncaught TypeError that exits the relay.
+            let redirectTarget;
+            try {
+              redirectTarget = new URL(response.headers.location, url);
+            } catch {
+              return sendError(502, 'Malformed redirect');
+            }
+            const redirectUrl = redirectTarget.href;
+            if (!RSS_ALLOWED_DOMAINS.has(redirectTarget.hostname) || !RSS_ALLOWED_PROTOCOLS.has(redirectTarget.protocol) || redirectTarget.port !== '') {
               return sendError(403, 'Redirect to disallowed domain');
             }
             logThrottled('log', `rss-redirect:${feedUrl}:${redirectUrl}`, `[Relay] Following redirect to: ${redirectUrl}`);
@@ -12821,7 +12862,19 @@ const server = http.createServer(async (req, res) => {
           }
 
           const chunks = [];
-          stream.on('data', chunk => chunks.push(chunk));
+          let bodyBytes = 0;
+          stream.on('data', (chunk) => {
+            bodyBytes += chunk.length;
+            if (bodyBytes > RSS_MAX_BODY_BYTES) {
+              sendError(502, 'Feed too large');
+              if (stream !== response) stream.destroy();
+              request.destroy();
+            }
+            chunks.push(chunk);
+          });
+          // Aborting mid-body surfaces as an error on the response as well as
+          // on the decompression stream; both are already answered above.
+          response.on('error', () => {});
           stream.on('end', () => {
             if (responseHandled || res.headersSent) return;
             responseHandled = true;
@@ -12874,6 +12927,10 @@ const server = http.createServer(async (req, res) => {
         });
 
         request.on('error', (err) => {
+          if (err.code === SSRF_BLOCKED_ERROR_CODE) {
+            logThrottled('warn', `rss-ssrf-blocked:${feedUrl}`, `[Relay] RSS blocked: ${err.message}`);
+            return sendBlocked('Feed resolves to a blocked address');
+          }
           const outcome = recordAttemptOutcome(0, err);
           const { failures, backoffSec } = recordFailure();
           logThrottled('error', `rss-error:${feedUrl}:${err.code || err.message}`, `[Relay] RSS error: ${err.message} (backoff ${backoffSec}s, failures=${failures})`);

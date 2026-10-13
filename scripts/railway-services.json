@@ -39,6 +39,7 @@
       "scripts/lib/jev-classify-relay.cjs",
       "scripts/lib/llm-model-policy.cjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/notification-webhook-ssrf.cjs",
       "scripts/lib/poll-generation-guard.cjs",
       "scripts/lib/publisher-link-relay-gate.cjs",
       "scripts/lib/saudi-civil-defense-alerts.cjs",
