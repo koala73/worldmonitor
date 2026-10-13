@@ -116,7 +116,7 @@ describe('GET /oauth/authorize sets the browser binding', () => {
   it('sets a Secure HttpOnly Lax cookie scoped to worldmonitor.app and stores only its hash', async () => {
     installRedisStub();
     const { setCookie, cookie, nonceData } = await startFlow({ host: 'www.worldmonitor.app' });
-    assert.match(setCookie, /^__Secure-wm_oauth_bind=[A-Za-z0-9_-]{43};/);
+    assert.match(setCookie, /^__Secure-wm_oauth_bind_[a-f0-9-]{36}=[A-Za-z0-9_-]{43};/);
     for (const attr of ['Max-Age=600', 'Path=/', 'Domain=worldmonitor.app', 'Secure', 'HttpOnly', 'SameSite=Lax']) {
       assert.ok(setCookie.split('; ').includes(attr), `missing ${attr}`);
     }
@@ -124,14 +124,14 @@ describe('GET /oauth/authorize sets the browser binding', () => {
     assert.ok(!JSON.stringify(nonceData).includes(cookie.split('=')[1]), 'raw cookie value never stored');
   });
 
-  it('reuses an existing binding so concurrent flows in one browser keep working', async () => {
+  it('keeps simultaneous first starts independent before either cookie is stored', async () => {
     installRedisStub();
     const first = await startFlow();
-    const second = await startFlow({ cookie: first.cookie });
-    assert.equal(second.cookie, first.cookie);
-    assert.equal(second.nonceData.bind_hash, first.nonceData.bind_hash);
-    assert.equal((await submitConsent(first.nonce, first.cookie)).status, 302);
-    assert.equal((await submitConsent(second.nonce, first.cookie)).status, 302);
+    const second = await startFlow();
+    assert.notEqual(second.cookie.split('=')[0], first.cookie.split('=')[0]);
+    const cookies = `${first.cookie}; ${second.cookie}`;
+    assert.equal((await submitConsent(first.nonce, cookies)).status, 302);
+    assert.equal((await submitConsent(second.nonce, cookies)).status, 302);
   });
 
   it('omits Domain off worldmonitor.app hosts (preview deployments)', async () => {

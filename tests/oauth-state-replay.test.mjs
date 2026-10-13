@@ -223,14 +223,15 @@ describe('OAuth callback state consumption', () => {
 
     for (const provider of Object.keys(providers)) {
       const first = await makeState(provider);
-      const second = await makeState(provider, first.cookie);
-      assert.equal(second.cookie, first.cookie, `${provider}: a second start must keep the browser's binding`);
+      const second = await makeState(provider);
+      assert.notEqual(second.cookie.split('=')[0], first.cookie.split('=')[0], `${provider}: simultaneous first starts need separate cookies`);
+      const cookies = `${first.cookie}; ${second.cookie}`;
       for (const { record } of [first, second]) {
         const { calls, fetchStub } = makeFetchStub(provider, { stateRecord: record });
         globalThis.fetch = fetchStub;
         const handler = await loadHandler(provider);
 
-        const body = await (await handler(callbackRequest(provider, second.cookie), { waitUntil() {} })).text();
+        const body = await (await handler(callbackRequest(provider, cookies), { waitUntil() {} })).text();
 
         assert.ok(body.includes(providers[provider].successType), `${provider}: both popups must complete`);
         assert.equal(calls.tokenExchanges, 1);
