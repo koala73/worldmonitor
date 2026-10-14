@@ -259,6 +259,10 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
   // a required argument hands the agent a guaranteed -32602.
   it('every rendered prompt step supplies its tool\'s inputSchema.required arguments', async () => {
     const toolByName = new Map(TOOL_REGISTRY.map((t) => [t.name, t]));
+    // Argument names are checked against the advertised tools/list schema,
+    // which adds the dispatch-level `summary` and `jmespath` arguments.
+    const listRes = await handler(makeReq('POST', { jsonrpc: '2.0', id: 14, method: 'tools/list', params: {} }));
+    const advertised = new Map(((await listRes.json()).result?.tools ?? []).map((t) => [t.name, t]));
     for (const prompt of PROMPT_REGISTRY) {
       const args = Object.fromEntries(prompt.arguments.map((a) => [a.name, `sample-${a.name}`]));
       const res = await handler(makeReq('POST', {
@@ -270,6 +274,12 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
       const rendered = [...text.matchAll(/^ {2}arguments: (.*)$/gm)].map((m) => JSON.parse(m[1]));
       assert.equal(rendered.length, prompt.steps.length, `prompt "${prompt.name}": one arguments line per step`);
       for (const [i, step] of prompt.steps.entries()) {
+        const declared = Object.keys(advertised.get(step.tool)?.inputSchema?.properties ?? {});
+        const unknown = Object.keys(rendered[i]).filter((key) => !declared.includes(key));
+        assert.deepEqual(
+          unknown, [],
+          `prompt "${prompt.name}" step ${i + 1} (${step.tool}) passes arguments the tool does not declare: ${unknown.join(', ')}`,
+        );
         const required = toolByName.get(step.tool)?.inputSchema?.required ?? [];
         for (const key of required) {
           assert.ok(
@@ -283,15 +293,16 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
 
   // The initialize instructions list prompt names by hand; pin them to the
   // registry so a new prompt cannot ship undiscoverable there.
-  it('the initialize instructions name every registered prompt', () => {
+  it('the initialize instructions name exactly the registered prompts, in order', () => {
     const constantsSrc = readFileSync(
       path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'api', 'mcp', 'constants.ts'),
       'utf8',
     );
     const line = constantsSrc.split('\n').find((l) => l.includes('Issue prompts/list to discover'));
     assert.ok(line, 'instructions must keep the prompts/list stanza');
-    const missing = PROMPT_REGISTRY.map((p) => p.name).filter((name) => !new RegExp(`[(, ]${name}[,)]`).test(line));
-    assert.deepEqual(missing, [], `instructions prompts/list stanza is missing: ${missing.join(', ')}`);
+    const listed = line.match(/workflow templates \(([^)]*)\)/)?.[1];
+    assert.ok(listed, 'instructions prompts/list stanza must keep its parenthesised prompt list');
+    assert.deepEqual(listed.split(', '), PROMPT_REGISTRY.map((p) => p.name));
   });
 
   // -------------------------------------------------------------------------
@@ -505,6 +516,8 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
         description: 'Passenger motor vehicles, electric',
         baseRate: '2.5%',
         baseAdValorem: 2.5,
+        preferenceProgram: '',
+        unresolvedPrograms: [],
         estimatedRate: 102.5,
         estimateComplete: false,
         additionalDuties: [
@@ -531,6 +544,7 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
       basis: 'APPLIED_TARIFF_BASIS_MFN',
       appliedRate: { rate: 2.5, minRate: 2.5, maxRate: 2.5, tariffLines: 1, nonAdValoremLines: 0 },
       mfnRate: { rate: 2.5, minRate: 2.5, maxRate: 2.5, tariffLines: 1, nonAdValoremLines: 0 },
+      mfnAveRate: { rate: 2.5, minRate: 2.5, maxRate: 2.5, tariffLines: 1, nonAdValoremLines: 0 },
       upstreamUnavailable: false,
       unavailableReason: '',
       coverage: {
@@ -652,6 +666,39 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
 
     assert.deepEqual(uncovered, [], `prompt steps without a fixture or producer-backed builder:\n  ${uncovered.join('\n  ')}`);
     assert.equal(covered, totalSteps, 'every prompt step must be exercised by a fixture or producer-backed builder');
+  });
+
+  // A schedule rate with tariffLines 0 is absent, not 0%; one with
+  // nonAdValoremLines > 0 leaves specific duties out of the average. The
+  // projection must carry both counts so the agent can tell.
+  it('trade-exposure-check step 2 carries the line counts that qualify each rate', () => {
+    const step = PROMPT_REGISTRY.find((p) => p.name === 'trade-exposure-check').steps[1];
+    const body = FIXTURE_BUILDERS.get_bilateral_tariff();
+    body.mfnAveRate = { rate: 0, minRate: 0, maxRate: 0, tariffLines: 0, nonAdValoremLines: 0 };
+    body.mfnRate = { ...body.mfnRate, nonAdValoremLines: 1 };
+    const projected = jmespath.search(body, step.jmespath);
+    assert.equal(projected.mfnAveRate?.tariffLines, 0, `absent rate must project tariffLines 0: ${JSON.stringify(projected)}`);
+    assert.equal(projected.mfnRate?.nonAdValoremLines, 1, `mfnRate must project nonAdValoremLines: ${JSON.stringify(projected)}`);
+    assert.equal(typeof projected.appliedRate?.tariffLines, 'number', `appliedRate must project tariffLines: ${JSON.stringify(projected)}`);
+  });
+
+  // On an outage the US duty route returns an empty body with no `coverage`
+  // (the MCP layer adds it only to served answers). The projection must still
+  // carry upstreamUnavailable so the agent reports a retryable outage, not a
+  // zero rate.
+  it('trade-exposure-check projections flag an upstream outage on every step', () => {
+    const outageBodies = {
+      get_us_import_duty: { additionalDutiesLoaded: false, lines: [], upstreamUnavailable: true, unavailableReason: 'US_IMPORT_DUTY_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE' },
+      get_bilateral_tariff: { upstreamUnavailable: true, unavailableReason: 'BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE' },
+      get_tariff_averages: { datapoints: [], upstreamUnavailable: true, unavailableReason: 'TARIFF_TREND_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE' },
+    };
+    const prompt = PROMPT_REGISTRY.find((p) => p.name === 'trade-exposure-check');
+    for (const [i, step] of prompt.steps.entries()) {
+      const projected = jmespath.search(outageBodies[step.tool], step.jmespath);
+      assert.ok(projected != null, `step ${i + 1} (${step.tool}) projected null from an outage body`);
+      assert.equal(projected.upstreamUnavailable, true, `step ${i + 1} (${step.tool}) must project upstreamUnavailable: ${JSON.stringify(projected)}`);
+      assert.match(projected.unavailableReason, /_UPSTREAM_UNAVAILABLE$/, `step ${i + 1} (${step.tool}) must project unavailableReason`);
+    }
   });
 });
 
