@@ -42,6 +42,8 @@ npm test
 
 Do not run `npm install` from the repo root for this app. Root CI lint, typecheck, and tests do not enter this folder.
 
+Do not commit `package-lock.json` here. Root `security-audit.yml` must list every tracked lockfile, and a stray lockfile fails `tests/ci-workflow-coverage.test.mts`. `cli/` follows the same pattern. `npm install` still creates a local lockfile.
+
 ## Validate and push
 
 The Zapier CLI binary is `zapier-platform` on platform v19. Older docs still say `zapier`.
