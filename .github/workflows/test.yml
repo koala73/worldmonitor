@@ -172,6 +172,11 @@ jobs:
             /^\.husky\// { next }
             /\.md$/ || /^LICENSE$/ { next }
             /^src-tauri\// { next }
+            # Zapier Platform CLI does not import browser, Edge, or dashboard
+            # code. Without this skip an integrations-only PR fail-opens the
+            # required WebMCP smoke.
+            /^integrations\// { next }
+            /^\.markdownlint/ { next }
             { count++ }
             END { print count + 0 }
           ')

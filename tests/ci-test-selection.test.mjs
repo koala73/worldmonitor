@@ -45,6 +45,22 @@ esac
   }
 }
 
+test('Zapier CLI folder and markdownlint config skip the browser', () => {
+  const files = [
+    'integrations/zapier/index.js',
+    'integrations/zapier/package.json',
+    'integrations/zapier/README.md',
+    '.markdownlint-cli2.jsonc',
+  ];
+  for (const event of ['pull_request', 'push']) {
+    const result = classify(files, { event });
+    assert.equal(result.browser, 'false', event);
+  }
+  for (const file of files) {
+    assert.equal(classify([file]).browser, 'false', file);
+  }
+});
+
 test('Railway-only changes retain unit proof and intentionally skip the browser', () => {
   const files = [
     '.github/workflows/railway-registry-sync.yml', 'scripts/audit-railway-watch-paths.mjs',
