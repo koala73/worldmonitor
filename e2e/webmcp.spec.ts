@@ -937,23 +937,27 @@ test.describe('top-level WebMCP dashboard contract', () => {
       return (await provider.getTools()).map((tool) => tool.name).sort();
     }), { timeout: 60_000 }).toEqual(DASHBOARD_TOOL_NAMES);
 
-    const discoveredContracts = await page.evaluate(async () => {
+    const discoveredContracts = (await page.evaluate(async () => {
       const tools = await document.modelContext!.getTools();
       return tools.map((tool) => ({
         annotations: tool.annotations ?? {},
         description: tool.description,
         name: tool.name,
-        // Chrome now returns inputSchema as an object. Older hosts still
-        // serialize it as a JSON string.
-        schema: (() => {
-          const raw = tool.inputSchema as unknown;
-          if (raw && typeof raw === 'object') return raw;
-          if (typeof raw === 'string' && raw.length > 0) return JSON.parse(raw);
-          return null;
-        })(),
+        schema: tool.inputSchema ?? null,
         title: tool.title,
       }));
-    });
+    })).map((tool) => ({
+      ...tool,
+      // Chrome now returns inputSchema as an object. Older hosts still
+      // serialize it as a JSON string. Parse on the Node side so the
+      // browser function stays plain JS.
+      schema: (() => {
+        const raw = tool.schema as unknown;
+        if (raw && typeof raw === 'object') return raw;
+        if (typeof raw === 'string' && raw.length > 0) return JSON.parse(raw);
+        return null;
+      })(),
+    }));
     for (const tool of discoveredContracts) {
       expect(tool.title, `${tool.name} title`).toBeTruthy();
       expect(tool.description.length, `${tool.name} description budget`).toBeLessThanOrEqual(500);
