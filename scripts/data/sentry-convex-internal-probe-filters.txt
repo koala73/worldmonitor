@@ -165,6 +165,7 @@
 *Could not find public function for 'mcpProTokens:touchProMcpTokenLastUsed'*
 *Could not find public function for 'mcpProTokens:validateProMcpToken'*
 *Could not find public function for 'notificationChannels:claimPairingToken'*
+*Could not find public function for 'notificationChannels:createPairingToken'*
 *Could not find public function for 'notificationChannels:createPairingTokenForUser'*
 *Could not find public function for 'notificationChannels:deactivateChannel'*
 *Could not find public function for 'notificationChannels:deactivateChannelForUser'*
@@ -172,6 +173,7 @@
 *Could not find public function for 'notificationChannels:deleteChannelForUser'*
 *Could not find public function for 'notificationChannels:getChannelsByUserId'*
 *Could not find public function for 'notificationChannels:queueChannelWelcome'*
+*Could not find public function for 'notificationChannels:setChannel'*
 *Could not find public function for 'notificationChannels:setChannelForUser'*
 *Could not find public function for 'notificationChannels:setDiscordOAuthChannelForUser'*
 *Could not find public function for 'notificationChannels:setSlackOAuthChannelForUser'*
