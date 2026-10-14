@@ -629,6 +629,59 @@ test('falls back to cloud when cloudFallback is enabled and local handler return
   }
 });
 
+test('sends a browser User-Agent on cloud fallback when the native proxy sent none (#9135)', async () => {
+  // The desktop renderer reaches the sidecar through the native reqwest proxy,
+  // which sends no User-Agent, so the forwarded cloud request had none either
+  // and the cloud /api/* gate answered 403 agent_request_blocked.
+  const remote = await setupRemoteServer();
+  const localApi = await setupApiDir({
+    'fred-data.js': `
+      export default async function handler() {
+        return new Response(JSON.stringify({ source: 'local-error' }), {
+          status: 500,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase,
+    cloudFallback: 'true',
+    allowPrivateRemoteBase: true,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const status = await new Promise((resolve, reject) => {
+      const req = httpRequest({
+        host: '127.0.0.1',
+        port,
+        path: '/api/fred-data',
+        method: 'GET',
+        headers: { Authorization: `Bearer ${TEST_LOCAL_API_TOKEN}` },
+      }, (res) => {
+        res.resume();
+        res.on('end', () => resolve(res.statusCode));
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(status, 200);
+    assert.equal(remote.hits.includes('/api/fred-data'), true);
+    const userAgent = remote.headers.at(-1)['user-agent'] || '';
+    assert.ok(userAgent.length >= 10, `cloud saw User-Agent ${JSON.stringify(userAgent)}`);
+    assert.match(userAgent, /^Mozilla\/5\.0 /);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+  }
+});
+
 test('preserves POST body when cloud fallback is triggered after local non-OK response', async () => {
   const remoteBodies = [];
   const remote = createServer((req, res) => {
