@@ -2429,6 +2429,16 @@ describe('security header guardrails', () => {
     assert.match(webMcpE2eSource, /document\.modelContext/);
     assert.match(webMcpE2eSource, /\.getTools\(\)/);
     assert.match(webMcpE2eSource, /provider\.executeTool/);
+    assert.doesNotMatch(
+      webMcpE2eSource,
+      /executeTool\([^;]{0,240}JSON\.stringify/,
+      'Chrome native executeTool rejects JSON strings; pass objects',
+    );
+    assert.doesNotMatch(
+      webMcpCancellationE2eSource,
+      /executeTool\([^;]{0,240}JSON\.stringify/,
+      'Chrome native executeTool rejects JSON strings; pass objects',
+    );
     assert.match(webMcpCancellationE2eSource, /new AbortController\(\)/);
     assert.match(webMcpCancellationE2eSource, /page\.on\('pageerror'/);
     assert.match(webMcpCancellationE2eSource, /window\.addEventListener\('unhandledrejection'/);
