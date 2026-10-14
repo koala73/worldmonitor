@@ -90,7 +90,7 @@ export const COMPARE_HUB_NARRATIVE = {
     heading: 'How to choose a comparison',
     paragraphs: [
       'Start with the task you need to complete. Compare tools with the same criteria, then consult the named vendor\'s current documentation for the capabilities that matter to you.',
-      'For global multi-domain monitoring, open Best Real-Time Geopolitical Risk Dashboards. For structured historical conflict research, open World Monitor vs ACLED. For Ukraine frontline detail, open World Monitor vs Deep State Map.',
+      "For global multi-domain monitoring, open Best Geopolitical Risk Intelligence Platforms in 2026: The Buyer's Shortlist. For structured historical conflict research, open World Monitor vs ACLED. For Ukraine frontline detail, open World Monitor vs Deep State Map.",
       'For programmatic API or MCP access, open MCP Servers for Geopolitical Data. For monitoring versus travel assistance, open Travel Risk Intelligence vs Assistance. Check the detailed comparison\'s dated methodology, then confirm the current price or capability with the vendor because both can change.',
     ],
   },
@@ -208,92 +208,6 @@ export const COMPARISON_NARRATIVES = {
       ['Do any of these alternatives include maritime and aviation data?', 'World Monitor does, on the free dashboard. Liveuamap, ConflictZone.io, ISW, CrisisWatch, and UNOSAT do not fuse those domains into the same product.'],
       ['Is there an open-source Liveuamap alternative?', 'World Monitor is AGPL-3.0. ACLED is a licensed dataset, not open source. Liveuamap is proprietary. Open source is the wrong axis if what you need is Liveuamap\'s headline map specifically.'],
       ['How often should I re-check these prices?', 'Whenever you buy. This page was checked on 5 September 2026. Liveuamap and World Monitor publish list prices; those can move. Enterprise rows stay undisclosed until the vendor publishes a number.'],
-    ],
-  },
-
-  'best-geopolitical-risk-dashboards': {
-    heading: 'Who these geopolitical risk dashboards are for',
-    headingProse: [
-      'Best-of lists fail when they score an asset-allocation memo and a live map as if they were the same product. BlackRock GRD and IISS are analyst publications. World Monitor is a real-time dashboard. OrreryX is a priced consultative ladder. Statista is an index series. The blocks below keep those jobs separate so the ranking is a ranking of fit, not of brand weight.',
-      'A useful ranking also says who should not be on it. Bloomberg Terminal is a market professional product, not a geopolitical-risk dashboard in this sense, so it is not a row here. Palantir is an enterprise platform without list pricing, so it is not a row here either. This page is the public, checkable set: live maps, analyst publications with a public description, a priced consultative ladder, an index series, and an AI briefing vendor that still has not filled its public cells. If a vendor cannot fill Price, latency, and access from a public page, it does not get a trophy on this list; it gets a missing cell.',
-    ],
-    competitorProfiles: [
-      {
-        name: 'BlackRock Geopolitical Risk Dashboard',
-        paragraphs: [
-          'BlackRock GRD is a client research product. Updates are monthly or quarterly analyst cycles. Access is client-only. There is no public REST or MCP cell. The output is thematic risk for asset allocation, written for people who already have a BlackRock relationship.',
-          'Pick it if you are that client and you need the memo in the allocation process. Do not pick it if you need a no-signup live map; it is not built to be one, and treating it as a dashboard alternative is how these lists go wrong.',
-        ],
-      },
-      {
-        name: 'IISS Six Analytic',
-        paragraphs: [
-          'IISS Six Analytic sits on top of the Military Balance franchise: measured military-capability datasets and expert review. Cadence is periodic analyst updates. Pricing is an undisclosed subscription. There is no public API we can quote.',
-          'Pick IISS when the question is force structure, inventory, and military balance. Pick a live dashboard when the question is what moved in the last hour across conflict, maritime, and aviation feeds.',
-        ],
-      },
-      {
-        name: 'OrreryX',
-        paragraphs: [
-          'OrreryX is the rare competitor that publishes a price ladder: from $1.99/month to $34.99/month. That undercuts World Monitor Pro on list price. The product is consultative geopolitical risk analysis with periodic updates, not a multi-domain live map, and MCP status is unverified.',
-          'Pick OrreryX when you want a cheap, published-price analyst product and you do not need live AIS or aviation. The published ladder is a genuine win and this page says so in the concession list.',
-        ],
-      },
-      {
-        name: 'the-world-now.com',
-        paragraphs: [
-          'the-world-now.com is a free global event browser with no signup. It is near-real-time for events, not a scored index and not a programmatic platform. No API cell is verified.',
-          'Pick it for casual event browsing. It is in the free-without-signup set with World Monitor; it is not in the fusion or API set.',
-        ],
-      },
-      {
-        name: 'Statista GPR Index',
-        paragraphs: [
-          'Statista\'s geopolitical risk index is a quantitative series with monthly updates and a long history. Access is a Statista account. Export exists; a live dashboard and MCP server do not. The job is time-series work in a spreadsheet or a model, not situational awareness.',
-          'Pick Statista when you need a GPR index history. Do not pick it as a real-time dashboard; the cadence and the output format are the tell.',
-        ],
-      },
-      {
-        name: 'Earthian AI',
-        paragraphs: [
-          'Earthian AI markets AI-assisted geopolitical risk briefings. Pricing is undisclosed. Cadence is periodic. Source inventory and MCP status are unverified from public pages, so those cells stay unknown rather than guessed.',
-          'If you already evaluate it, demand the same cells this matrix requires. Until those pages exist, it cannot win a comparison that is built on public evidence.',
-        ],
-      },
-    ],
-    evaluationHeading: 'What to look for in a geopolitical risk dashboard',
-    evaluationProse: [
-      'Separate publications from dashboards before you rank anything. A monthly analyst note can be excellent and still lose a real-time query. A live map can be excellent and still lose an asset-allocation query. The "best" dashboard is the one whose update latency, access model, and output format match the decision you have to make this week.',
-      'Weight five criteria. Latency: live and minute-level versus monthly or quarterly. Price transparency: a public catalog versus client-only or undisclosed. Access friction: signup, contract, or none. Coverage: a single index or theme versus multiple live domains. Programmatic path: REST, MCP, export, or a PDF.',
-      'Then require evidence. If a vendor will not publish a price, do not invent one. If a vendor will not show a live canvas, do not score it as a dashboard. If a vendor\'s advantage is expert review, concede that cell and stop trying to beat it with a map. The matrix is the rubric; the concession list is the sanity check.',
-    ],
-    switchHeading: 'Why teams shop for a new geopolitical risk dashboard',
-    switchProse: [
-      'The trigger is usually latency or access. Institutional products update on analyst cycles and sit behind client contracts. Teams that need to see a strait, an airspace, and a market move in the same hour cannot wait for the next memo. Teams that do not have a BlackRock or IISS seat cannot log in at all.',
-      'A second trigger is price opacity. When the incumbent will not publish a number, procurement stalls or a cheaper published ladder (OrreryX) or a free live map (World Monitor, the-world-now.com) enters the bake-off. The search query is "best dashboards" because the current tool failed a cycle-time or access test, not because a logo went stale.',
-    ],
-    methodologyProse: methodology(
-      'BlackRock GRD and IISS cells were taken from public product descriptions, not from client portals we cannot cite. OrreryX prices were read from its published tier list. Statista was scored as an index product, not as a live map.',
-    ),
-    usageHeading: 'How to use this best-dashboards ranking',
-    usageProse: [
-      'Treat "best" as best for a named output. If the output is an asset-allocation memo, BlackRock GRD is the product and a live map is a side feed. If the output is military-balance context, IISS is the product. If the output is a GPR time series, Statista is the product. If the output is a cheap analyst subscription with a public price ladder, OrreryX is the product. If the output is a canvas a stranger can open during an incident, World Monitor is the product and the-world-now.com is the lightweight cousin.',
-      'Do not average those jobs into a single score. Averaging is how a monthly memo "loses" to a live map on latency and a live map "loses" to IISS on the Military Balance, and everyone walks away thinking the comparison was biased. Use the concession list as the jobs we are not ranking first. Use the matrix to verify access and price. Use this section to pick the job before you pick the row.',
-      'If you are in procurement, write two requirements: one for analyst publications, one for real-time monitoring. Vendors that blur them should be asked which module they are bidding. Earthian AI, in particular, should be asked to fill the same public cells as everyone else before it gets a score. Unknown source mix and undisclosed price are not a mysterious advantage; they are missing evidence.',
-      'Latency numbers on this page are not a single SLA. World Monitor is source-dependent: live and minute-level feeds sit next to daily, weekly, and monthly datasets. BlackRock GRD and IISS publish on analyst cycles. Statista is monthly by design. Ranking them on one "speed" trophy is a category error. Rank them on whether their cycle matches the decision you have to make this afternoon versus this quarter.',
-    ],
-    whyWeWinBody: [
-      'World Monitor is the live, no-signup end of this list. It is not the analyst-review end. The dashboard is free, the cadence is source-dependent from live feeds to monthly datasets, and the programmatic path is published: Pro from $39.99/month with MCP, API Starter from $99.99/month. That is the product you can actually open without a relationship manager.',
-      'BlackRock and IISS still win institutional review. Statista still wins index history. OrreryX still wins a cheaper published analyst ladder. The ranking puts World Monitor first for real-time monitoring at zero cost because that is the axis the page is about, not because those other products are worse at their own jobs.',
-    ],
-    extraFaqs: [
-      ['Is BlackRock GRD free?', 'No. It is a client-only research product. World Monitor\'s public dashboard is free without signup.'],
-      ['Does IISS replace a live dashboard?', 'No. IISS wins military-balance depth. It does not replace live conflict, maritime, or aviation monitoring.'],
-      ['Why is OrreryX cheaper than World Monitor Pro?', 'OrreryX publishes tiers from $1.99/month. That is a real concession. World Monitor Pro is $39.99/month because it includes hosted MCP access and the live multi-domain dashboard, not because the list price is the lowest on the page.'],
-      ['Which dashboard is best for quantitative backtests?', 'Statista\'s GPR index, for a long monthly series. World Monitor is a live watch with rolling snapshots, not a decades-long single index.'],
-      ['Can I use these dashboards without a credit card?', 'World Monitor and the-world-now.com yes. BlackRock GRD, IISS, Statista, and Earthian AI no, on the public evidence we have.'],
-      ['Do any of these publish an MCP server?', 'World Monitor does, from Pro. The others are unverified or not applicable. Do not assume an "AI briefing" product speaks MCP.'],
-      ['How is "best" decided on this page?', 'Fit to a real-time, no-signup, multi-domain watch with published prices. Analyst publications can outrank us on review depth and still lose this query.'],
     ],
   },
 

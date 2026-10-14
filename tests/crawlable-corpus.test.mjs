@@ -5067,7 +5067,7 @@ describe('crawlable corpus generator', () => {
       for (const page of COMPARISON_PAGES) {
         const html = read(outDir, 'compare/' + page.slug + '/index.html');
         const ld = jsonLdObjects(html);
-        const h1 = html.match(/<h1>([^<]+)<\/h1>/)?.[1] ?? '';
+        const h1 = (html.match(/<h1>([^<]+)<\/h1>/)?.[1] ?? '').replaceAll('&#39;', "'").replaceAll('&amp;', '&');
         assert.ok(
           h1.toLowerCase().includes(page.h1.toLowerCase()),
           page.slug + ' H1 must contain its own h1 string',

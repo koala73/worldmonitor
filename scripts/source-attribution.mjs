@@ -1057,6 +1057,15 @@ const EXCLUDED_HOSTS = new Set([
   // Provider landing-page link in MapPopup; the ingested Wingbits endpoints
   // are tracked as customer-api.wingbits.com and ecs-api.wingbits.com.
   'wingbits.com',
+  // Vendor pricing, marketplace, and procurement pages cited as price sources
+  // in /compare/ copy. Nothing fetches them.
+  'aws.amazon.com',
+  'liveuamap.com',
+  'me.liveuamap.com',
+  'offnadir-delta.com',
+  'www.applytosupply.digitalmarketplace.service.gov.uk',
+  'www.factal.com',
+  'www.vendr.com',
 ]);
 
 function read(rootDir, path) {

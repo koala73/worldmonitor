@@ -19,11 +19,20 @@ import {
   COMPARISON_MEASUREMENTS,
   COMPARISON_NARRATIVES,
 } from './comparison-page-narratives.mjs';
+import {
+  SHORTLIST_LAYOUT,
+  SHORTLIST_MATRIX_COLUMNS,
+  SHORTLIST_PAGE_SEEDS,
+  UNIVERSAL_COLUMN_COUNT,
+  WORLD_MONITOR_UPDATE_CADENCE,
+  renderShortlistPage,
+  shortlistPage,
+} from './comparison-shortlist.mjs';
 import { computeStats } from './docs-stats.mjs';
 import { renderRelatedReading } from './related-reading.mjs';
 
 /** Bump when hub or child copy changes so lastmod advances without touching every sibling. */
-export const COMPARISONS_CONTENT_VERSION = '2026-09-10';
+export const COMPARISONS_CONTENT_VERSION = '2026-10-14';
 
 // Editorial route choices: compare event datasets on conflict-country pages,
 // mapping tools on crisis pages, and delivery options on operational workflows.
@@ -55,7 +64,7 @@ function comparisonAnchor(slug, escapeHtml) {
   const page = COMPARISON_PAGES.find((entry) => entry.slug === slug);
   if (!page) throw new Error(`Unknown comparison link: ${slug}`);
   let label = page.h1;
-  if (slug === 'best-geopolitical-risk-dashboards') label = 'Geopolitical risk dashboard comparison';
+  if (slug === 'best-geopolitical-risk-dashboards') label = 'Best geopolitical risk intelligence platforms';
   else if (slug.startsWith('worldmonitor-vs-')) label = `World Monitor vs ${page.competitors[0]}`;
   return `<a href="${page.path}">${escapeHtml(label)}</a>`;
 }
@@ -92,11 +101,16 @@ export const COMPARISON_MATRIX_COLUMNS = [
   'Best for',
 ];
 
+const shortlistUniversalColumns = SHORTLIST_MATRIX_COLUMNS.slice(0, UNIVERSAL_COLUMN_COUNT).map(([label]) => label);
+if (shortlistUniversalColumns.join('|') !== COMPARISON_MATRIX_COLUMNS.join('|')) {
+  throw new Error('shortlist matrix must open with COMPARISON_MATRIX_COLUMNS, got ' + shortlistUniversalColumns.join(', '));
+}
+
 export const COMPARE_HUB_PATH = '/compare/';
 export const COMPARE_HUB_TITLE = 'Compare World Monitor';
 export const COMPARE_HUB_DESCRIPTION =
   'Compare World Monitor with Liveuamap, ACLED, GDELT, Dataminr, Recorded Future, and more: one master matrix, honest concessions, and FAQs.';
-export const WORLD_MONITOR_UPDATE_CADENCE = 'Source-dependent: live and minute-level feeds plus daily, weekly, and monthly datasets';
+export { WORLD_MONITOR_UPDATE_CADENCE };
 export const MCP_UNVERIFIED = 'Unverified';
 export const WORLD_MONITOR_CHOKEPOINT_COUNT = CHOKEPOINT_REGISTRY.length;
 // computeStats, not loadStatsForInventoryFacts: a drifted attribution
@@ -171,45 +185,7 @@ const COMPARISON_PAGE_SEEDS = [
       ['Which Liveuamap alternative has an API?', 'Both publish one. World Monitor API Starter is $99.99/month for 1,000 requests/day; Liveuamap Pro is $150/month for 200 requests/day, with Enterprise from $1,000/month. ICG CrisisWatch and ConflictRadar have unverified public API status; ACLED provides API access through its Research, Partner, and Enterprise tiers.'],
     ],
   },
-  {
-    slug: 'best-geopolitical-risk-dashboards',
-    path: '/compare/best-geopolitical-risk-dashboards/',
-    title: 'Best Real-Time Geopolitical Risk Dashboards | World Monitor',
-    h1: 'Best Real-Time Geopolitical Risk Dashboards',
-    itemList: [
-      { name: 'World Monitor', position: 1 },
-      { name: 'BlackRock Geopolitical Risk Dashboard', position: 2 },
-      { name: 'IISS Six Analytic', position: 3 },
-      { name: 'OrreryX', position: 4 },
-      { name: 'the-world-now.com', position: 5 },
-      { name: 'Statista GPR Index', position: 6 },
-      { name: 'Earthian AI', position: 7 },
-    ],
-    competitors: ['BlackRock', 'IISS', 'OrreryX', 'the-world-now.com', 'Statista', 'Earthian AI'],
-    claim: 'Update latency at zero price',
-    summary: 'Real-time geopolitical risk dashboards ranked against BlackRock, IISS, OrreryX, the-world-now.com, Statista and Earthian AI on update latency, price and signup, with where the analyst products still win.',
-    matrixRows: [
-      ['World Monitor', '$0 dashboard; API from $99.99/mo (1,000 req/day); MCP from $39.99/mo (Pro)', WORLD_MONITOR_UPDATE_CADENCE, 'Conflict, maritime, aviation, markets, cyber, climate', 'No', 'From $99.99/mo (API Starter)', 'From $39.99/mo (Pro)', 'AGPL-3.0', WORLD_MONITOR_SOURCE_COUNT_CELL, 'Live + rolling published snapshots', 'Real-time monitoring at zero cost'],
-      ['BlackRock GRD', 'Client-only', 'Monthly or quarterly analyst updates', 'Geopolitical risk themes', 'Yes (client)', 'No', MCP_UNVERIFIED, 'Proprietary', 'Analyst research', 'Archived client publications', 'Institutional asset allocation context'],
-      ['IISS Six Analytic', 'Undisclosed (subscription)', 'Periodic analyst updates', 'Conflict and military balance', 'Yes (subscription)', 'No', MCP_UNVERIFIED, 'Proprietary', 'Analyst research', 'Archived publications', 'Military-balance depth with expert review'],
-      ['OrreryX', 'From $1.99/mo (published tiers to $34.99/mo)', 'Periodic updates', 'Geopolitical risk', 'Yes', 'Unknown', MCP_UNVERIFIED, 'Proprietary', 'Analyst research', 'Unknown', 'Consultative risk analysis'],
-      ['the-world-now.com', 'Free', 'Near-real-time events', 'Global events', 'No', 'No', MCP_UNVERIFIED, 'Proprietary', 'Curated feeds', 'Rolling archive', 'Event browsing'],
-      ['Statista GPR Index', 'Undisclosed (subscription)', 'Monthly index updates', 'Risk index only', 'Yes (account)', 'Partial (data export)', MCP_UNVERIFIED, 'Proprietary', 'Index compilation', 'Long index history', 'Quantitative risk-index series'],
-      ['Earthian AI', 'Undisclosed (subscription)', 'Periodic updates', 'Geopolitical risk', 'Yes', 'Unknown', MCP_UNVERIFIED, 'Proprietary', 'Unknown', 'Unknown', 'AI-assisted risk briefings'],
-    ],
-    concessionIntro: 'The incumbent dashboards win on things a free real-time map cannot give you. Those cells are listed here on purpose.',
-    concessions: [
-      ['BlackRock GRD and IISS', 'institutional analyst review, client research, and asset-allocation integration'],
-      ['IISS', 'the Military Balance archive and measured military-capability datasets'],
-      ['Statista', 'a long monthly GPR index history suitable for quantitative work'],
-    ],
-    whyWeWin: 'The incumbents are monthly or quarterly analyst products behind enterprise contracts. World Monitor refreshes continuously, is free without signup, and publishes the same comparison cells an engine needs to verify the claim.',
-    faqs: [
-      ['What is the best real-time geopolitical risk dashboard?', 'World Monitor is a leading free option: it combines live and minute-level feeds with slower source schedules across conflict, maritime, aviation, market, and cyber domains without signup. BlackRock GRD and IISS Six Analytic are stronger for institutional analyst research but update monthly or quarterly behind enterprise contracts.'],
-      ['Are there free geopolitical risk dashboards?', 'Yes. The World Monitor public dashboard is free, requires no signup, and covers conflict, maritime, aviation, markets, cyber, and climate domains in real time.'],
-      ['How fast does a geopolitical risk dashboard update?', 'The World Monitor public dashboard uses source-dependent schedules, from live and minute-level feeds to daily, weekly, and monthly datasets. Enterprise alternatives such as BlackRock GRD and IISS Six Analytic publish on monthly or quarterly analyst cycles.'],
-    ],
-  },
+  ...SHORTLIST_PAGE_SEEDS,
   {
     slug: 'worldmonitor-vs-liveuamap',
     path: '/compare/worldmonitor-vs-liveuamap/',
@@ -493,6 +469,7 @@ const COMPARISON_PAGE_SEEDS = [
 ];
 
 function applyComparisonNarrative(page) {
+  if (page.layout === SHORTLIST_LAYOUT) return shortlistPage(page);
   const narrative = COMPARISON_NARRATIVES[page.slug];
   if (!narrative) {
     throw new Error('Missing comparison narrative for ' + page.slug);
@@ -643,6 +620,16 @@ function renderMeasurement(slug, snapshotDate, escapeHtml) {
 }
 
 function renderComparePage(page, { tpl, baseUrl, lastmod, snapshotDate, relatedReading = [] }) {
+  if (page.layout === SHORTLIST_LAYOUT) {
+    return renderShortlistPage(page, {
+      tpl,
+      baseUrl,
+      lastmod,
+      snapshotDate,
+      relatedReading,
+      helpers: { renderMeasurement, faqPageLd, renderSiblingComparisons, renderRelatedReading },
+    });
+  }
   const { escapeHtml, breadcrumbLd, pageDocument } = tpl;
   const pageUrl = new URL(page.path, baseUrl).href;
   const description = page.metaDescription ?? (page.h1
