@@ -41,7 +41,7 @@ test('intel-history Convex read TimeoutError / AbortError captures are downgrade
         envelopes.length = 0;
         globalThis.fetch = async (input, init) => {
           const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-          if (url.includes('example.ingest.sentry.io')) {
+          if (new URL(url).hostname === 'example.ingest.sentry.io') {
             envelopes.push({ init });
             return new Response(null, { status: 200 });
           }
@@ -74,7 +74,7 @@ test('intel-history Convex read TimeoutError / AbortError captures are downgrade
       envelopes.length = 0;
       globalThis.fetch = async (input, init) => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-        if (url.includes('example.ingest.sentry.io')) {
+        if (new URL(url).hostname === 'example.ingest.sentry.io') {
           envelopes.push({ init });
           return new Response(null, { status: 200 });
         }
