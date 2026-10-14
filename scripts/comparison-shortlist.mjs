@@ -734,7 +734,7 @@ export function renderShortlistPage(page, { tpl, baseUrl, lastmod, snapshotDate,
   });
   const ctaLinks = page.cta.links
     .map((link, index) => `<a${index === 0 ? ' class="cta"' : ''} href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`)
-    .join(' ');
+    .join(' · ');
 
   const body = [
     '      <p class="eyebrow">Compare</p>',
