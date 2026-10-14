@@ -943,7 +943,14 @@ test.describe('top-level WebMCP dashboard contract', () => {
         annotations: tool.annotations ?? {},
         description: tool.description,
         name: tool.name,
-        schema: tool.inputSchema ? JSON.parse(tool.inputSchema) : null,
+        // Chrome now returns inputSchema as an object. Older hosts still
+        // serialize it as a JSON string.
+        schema: (() => {
+          const raw = tool.inputSchema as unknown;
+          if (raw && typeof raw === 'object') return raw;
+          if (typeof raw === 'string' && raw.length > 0) return JSON.parse(raw);
+          return null;
+        })(),
         title: tool.title,
       }));
     });
