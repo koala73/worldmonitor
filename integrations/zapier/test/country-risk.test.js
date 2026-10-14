@@ -34,6 +34,7 @@ describe('search country_risk', () => {
     });
 
     assert.equal(results.length, 1);
+    assert.equal(results[0].id, 'SD');
     assert.equal(results[0].countryName, 'Sudan');
     assert.equal(results[0].countryCode, 'SD');
     assert.equal(results[0].advisoryLevel, 'do-not-travel');

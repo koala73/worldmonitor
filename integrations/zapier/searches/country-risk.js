@@ -8,7 +8,13 @@ const perform = async (z, bundle) => {
     url: `${BASE_URL}${PATHS.countryRisk}`,
     params: { country_code: countryCode },
   });
-  return [response.data];
+  const data = response.data && typeof response.data === 'object' ? response.data : {};
+  return [
+    {
+      ...data,
+      id: data.countryCode || countryCode,
+    },
+  ];
 };
 
 module.exports = {
@@ -31,6 +37,7 @@ module.exports = {
     ],
     perform,
     sample: {
+      id: 'SD',
       countryCode: 'SD',
       countryName: 'Sudan',
       advisoryLevel: 'do-not-travel',
