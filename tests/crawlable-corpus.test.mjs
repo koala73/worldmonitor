@@ -1668,6 +1668,8 @@ describe('crawlable corpus generator', () => {
     assert.deepEqual(COMPARISON_PAGE_LASTMOD_PATHS, [
       'scripts/build-comparison-pages.mjs',
       'scripts/comparison-page-narratives.mjs',
+      'scripts/comparison-shortlist.mjs',
+      'shared/product-facts.generated.json',
       'shared/source-attribution-manifest.json',
       'src/config/chokepoint-registry.ts',
       'scripts/data/related-reading.json',
@@ -5112,7 +5114,13 @@ describe('crawlable corpus generator', () => {
       assert.match(liveuamapPage, /Multi-domain fusion/i);
       assert.match(liveuamapPage, /maritime/i);
       const riskDashboards = read(outDir, 'compare/best-geopolitical-risk-dashboards/index.html');
-      assert.match(riskDashboards, /Update latency at zero price/i);
+      assert.match(riskDashboards, /Self-serve real-time monitoring with an API and MCP server/i);
+      assert.match(riskDashboards, /<a href="\/blog\/authors\/elie-habib\/" rel="author">Elie Habib<\/a>/);
+      assert.match(riskDashboards, /<h3 data-rank="1">1\. World Monitor, best for /);
+      assert.ok(
+        jsonLdObjects(riskDashboards).some((entry) => entry['@type'] === 'BlogPosting'),
+        'the buyer\'s shortlist must emit BlogPosting JSON-LD',
+      );
       const acledPage = read(outDir, 'compare/worldmonitor-vs-acled/index.html');
       assert.match(acledPage, /wins on historical depth/i);
       assert.match(acledPage, /complement/i);
