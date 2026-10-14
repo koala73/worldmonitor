@@ -8,6 +8,7 @@ import {
   parseChannelOAuthState,
 } from '../server/_shared/channel-oauth-state';
 import { compareAndDeleteRedisKey } from '../server/_shared/redis';
+import { checkFailClosedScopedIpRateLimit } from '../server/_shared/rate-limit';
 
 const HEADERS = { 'Cache-Control': 'no-store', 'Content-Type': 'text/html; charset=utf-8', 'Referrer-Policy': 'no-referrer' };
 
@@ -18,6 +19,11 @@ function errorResponse(message: string, status: number): Response {
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return errorResponse('Start this connection from notification settings.', 405);
   if (isDisallowedOrigin(req)) return errorResponse('Origin not allowed.', 403);
+  // Unauthenticated by design (the binding token is the credential), so bound
+  // the Redis reads a stranger can trigger per IP before any lookup runs.
+  // Fail closed: a limiter outage must not become an unmetered Redis probe.
+  const admission = await checkFailClosedScopedIpRateLimit(req, 'channel-oauth-bind', 30, '60 s', {});
+  if (admission) return admission;
   const url = new URL(req.url);
   const provider = url.searchParams.get('provider');
   const stateToken = url.searchParams.get('state') ?? '';
