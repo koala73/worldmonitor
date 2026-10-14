@@ -16,7 +16,10 @@ describe('authentication', () => {
 
   it('accepts a key when country risk for US returns 200', async () => {
     nock(BASE_URL, {
-      reqheaders: { [AUTH_HEADER]: 'wm_0123456789abcdef0123456789abcdef01234567' },
+      reqheaders: {
+        [AUTH_HEADER]: 'wm_0123456789abcdef0123456789abcdef01234567',
+        'user-agent': 'worldmonitor-zapier/1.0',
+      },
     })
       .get(PATHS.countryRisk)
       .query({ country_code: 'US' })
@@ -28,6 +31,7 @@ describe('authentication', () => {
 
     assert.equal(result.countryName, 'United States');
     assert.equal(result.countryCode, 'US');
+    assert.equal(App.authentication.connectionLabel, undefined);
   });
 
   it('rejects an invalid key with 401', async () => {

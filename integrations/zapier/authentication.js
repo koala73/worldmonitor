@@ -23,5 +23,4 @@ module.exports = {
     },
   ],
   test: testAuth,
-  connectionLabel: '{{countryName}}',
 };
