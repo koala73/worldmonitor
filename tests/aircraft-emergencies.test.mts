@@ -201,6 +201,20 @@ describe('explicitly synthetic signal and freshness cases', () => {
     assert.deepEqual(reconcileEmergencies(records, empty, now + 10_000 + EMERGENCY_RETENTION_MS + 1), []);
   });
 
+  it('retains an undated code change as conflicting evidence until a newer timestamp orders it', () => {
+    let records = reconcileEmergencies([], parse([synthetic.ac[0]]), now);
+    const undated = parseEmergencyResponse({ now: now + 1000, ac: [{ hex: synthetic.ac[0].hex, squawk: '7600' }] }, '7600', now + 1000);
+    records = reconcileEmergencies(records, undated, now + 1000);
+    assert.equal(records[0]?.state, 'conflict');
+    assert.deepEqual(new Set(records[0]?.observations.map(report => report.squawk)), new Set(['7500', '7600']));
+    assert.equal(emergencyMarkerPosition(records[0]!, now + 1000), undefined);
+    const ordered = parseEmergencyResponse({ now: now + 2000, ac: [{ ...synthetic.ac[0], squawk: '7600', seen: 0 }] }, '7600', now + 2000);
+    records = reconcileEmergencies(records, ordered, now + 2000);
+    assert.equal(records[0]?.state, 'current');
+    assert.equal(records[0]?.observations.length, 1);
+    assert.equal(records[0]?.observations[0]?.squawk, '7600');
+  });
+
   it('rejects malformed and future-clock responses; stale responses are not successful current empties', () => {
     for (const body of [null, {}, { now, aircraft: [] }, { ac: [] }, { now: now + 1, ac: [] }, { now, ac: [null] }, { now, ac: [{ hex: 'unknown', squawk: '7500' }] }]) {
       assert.throws(() => parseEmergencyResponse(body, '7500', now));

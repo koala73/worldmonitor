@@ -73,13 +73,25 @@ export default async function ({ page, base, shot, log }) {
     await page.waitForFunction(() => document.querySelectorAll('.aircraft-emergency-marker').length === 6);
   }
 
+  body = { observations: [{ ...observations[0], squawk: '7600', observedAt: 0 }], feeds: feeds.map(feed => ({ ...feed, fetchedAt: now + 60_000 })) };
+  await page.clock.runFor(65_000);
+  await layer.locator('[data-aircraft-emergency="a00001"]').click();
+  await layer.getByText('Conflicting code reports. Current condition unknown.', { exact: true }).waitFor();
+  await layer.getByText('7500 · Unlawful interference signal', { exact: true }).waitFor();
+  await layer.getByText('7600 · Radio communication failure signal', { exact: true }).waitFor();
+  await shot('undated-code-conflict');
+
   const changed = { ...observations[0], squawk: '7600', observedAt: now + 60_000, position: undefined };
   body = { observations: [changed, observations[1], { ...observations[1], squawk: '7700', source: 'synthetic-conflict' }], feeds: feeds.map(feed => ({ ...feed, fetchedAt: now + 60_000 })) };
   const initialRequests = requests;
   await page.clock.fastForward(65_000);
-  await page.waitForFunction(() => document.querySelector('[data-aircraft-emergency="a00001"]')?.textContent?.startsWith('7600'));
+  await page.waitForFunction(() => {
+    const label = document.querySelector('[data-aircraft-emergency="a00001"]')?.textContent ?? '';
+    return label.startsWith('7600') && label.includes('current');
+  });
   assert.ok(requests > initialRequests);
-  await layer.locator('[data-aircraft-emergency="a00001"]').click();
+  const changedButton = layer.locator('[data-aircraft-emergency="a00001"]');
+  if (await changedButton.getAttribute('aria-expanded') !== 'true') await changedButton.click();
   await layer.getByText('Position time', { exact: true }).waitFor();
   assert.match(await layer.innerText(), /stale or unknown/);
   await layer.locator('[data-aircraft-emergency="a00002"]').click();

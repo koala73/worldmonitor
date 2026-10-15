@@ -55,7 +55,7 @@ Equal position clocks with differing coordinates also remain a conflict. Conflic
 The details retain each conflicting observation and its source. The implementation currently queries one provider, so cross-provider cases are synthetic tests only.
 For agreeing codes, the newest message time determines the representative report; details and coordinates are never combined across observations.
 
-A later response with a new code replaces the prior code for that address. An older response cannot overwrite a newer observation.
+A later dated response with a new code replaces the prior code for that address. An older dated response cannot overwrite a newer observation. An undated code change cannot be ordered against a retained dated report; both remain inspectable as conflicting evidence until an unexpired newer timestamp orders them.
 Conflicting reports at the same observation clock remain conflicting when one disappears; a newer observation is required to replace that evidence.
 If an aircraft disappears, including after an ordinary code change, its current condition becomes unknown.
 The squawk queries cannot distinguish a code change from reception loss.
@@ -120,6 +120,9 @@ All positive emergency examples are labeled synthetic. None describes an observe
 | Synthetic missing or stale position | Aircraft details remain; no current-position marker. |
 | Synthetic duplicate address or conflicting code/position | One row; conflicting evidence remains unknown and unmarked. |
 | Synthetic later 7600, then older 7500 | Later 7600 remains. No cause or resolution claim. |
+| Synthetic undated 7600 after dated 7500 | Both codes remain conflicting and unmarked until a newer dated observation orders them. |
+| Synthetic expired code alongside a fresh source, including undated conflicts | Each expired observation leaves the payload and cannot withhold the fresh marker. |
+| Synthetic repeated unknown clocks through 45 minutes; complete absence then reappearance | Continuous reports do not renew expiry. Reappearance after confirmed absence starts a new receipt period. |
 | Synthetic empty response, failure, or reception loss | Distinct availability; previous aircraft become unknown and expire. |
 
 The relay subprocess tests inject all three emergency codes into adsb.lol, Wingbits, and OpenSky fixtures.
@@ -137,15 +140,15 @@ It does not exercise the deployed gateway, production Redis, or provider ingesti
 | --- | --- |
 | 18:16:39 and 18:46:09, mobile 390×844, SVG | Full controlled replay passed, including six markers and their removal. The later run includes the final CSS integration. |
 | 18:19:04, desktop 1440×1000, DeckGL | Full controlled replay passed for details and layer state. |
-| 18:24:29, 18:43:51, 19:06:07 and 19:22:20, desktop, native animation timers | Loaded map displayed synthetic markers; selecting Washington opened `RCH7500`. The final run includes the retention repair. |
-| 19:05:30 and 19:21:47, mobile 390×844, SVG | Full replay passed. Repeated unknown-clock reports expired and stayed absent while the feed remained available. The final run includes per-observation expiry. |
+| 18:24:29, 18:43:51, 19:06:07, 19:22:20 and 19:27:28, desktop, native animation timers | Loaded map displayed synthetic markers; selecting Washington opened `RCH7500`. The final run includes the retention repair. |
+| 19:05:30, 19:21:47 and 19:26:56, mobile 390×844, SVG | Full replay passed. Repeated unknown-clock reports expired and stayed absent while the feed remained available. The final run also shows an undated code change as conflicting evidence before a newer dated report replaces it. |
 
 The native-frame check uses `WM_VERIFY_HEADED=1 WM_VERIFY_CURRENT_ONLY=1` with the same step.
 The full timer replay can advance before the WebGL base map finishes loading, so it is not the desktop marker proof. A final mobile attempt at 18:44:23 timed out after a clock jump raced asynchronous polling; synchronizing the recovery response passed at 18:46:09.
 [Desktop screenshot](evidence/aircraft-emergencies/desktop.png), [mobile screenshot](evidence/aircraft-emergencies/mobile.png), and [expired observation screenshot](evidence/aircraft-emergencies/expired.png) show synthetic data.
 The local dashboard also logs missing session/legacy route errors and unavailable unrelated feeds; the replay deliberately induces emergency RPC HTTP 503 responses. These runs are not a clean live dashboard health check.
 
-Local verification passed with Node 24: 45 focused capture/freshness/military tests, 558 sidecar/API tests, 77 map contract tests, 25 MCP parity tests, route-cache tests, both TypeScript checks, import boundaries, API/rate-limit contracts, safe HTML, source attribution, focused Biome, Markdown lint, and `git diff --check`.
+Local verification passed with Node 24: 46 focused capture/freshness/military tests, 558 sidecar/API tests, 77 map contract tests, 25 MCP parity tests, route-cache tests, both TypeScript checks, import boundaries, API/rate-limit contracts, safe HTML, source attribution, focused Biome, Markdown lint, and `git diff --check`.
 The CI integration repairs also passed 91 layer/widget/OpenAPI-example tests, 28 DOM tests, 17 map lifecycle tests, 19 AI-search fact tests, and 45 product-fact/catalog tests. Existing cache identity checks pass while emergency records remain excluded.
 Run the focused tests with `node --import tsx --test tests/aircraft-emergencies.test.mts tests/seed-military-flights-adsb.test.mjs tests/military-surges.test.mjs tests/military-flight-pagination.test.mts tests/military-flights-bounds.test.mts`.
 Run relay/API verification with `npm run test:sidecar`. Generated clients and OpenAPI were regenerated with pinned `make generate`.

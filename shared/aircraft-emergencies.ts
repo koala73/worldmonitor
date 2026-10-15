@@ -99,9 +99,9 @@ export function reconcileEmergencies(previous: EmergencyRecord[], snapshot: Emer
     const latest = observations[0]!;
     const prior = records.get(address);
     const priorTime = Math.max(...(prior?.observations.map(item => item.observedAt) ?? [0]));
-    if (latest.observedAt < priorTime) continue;
-    if (latest.observedAt === priorTime && prior?.observations.length
-      && (latest.observedAt > 0 || prior.retainedAt === unknownReceipts.get(address))) {
+    if (latest.observedAt > 0 && latest.observedAt < priorTime) continue;
+    if (prior?.observations.length && ((!latest.observedAt && priorTime > 0)
+      || (latest.observedAt === priorTime && (latest.observedAt > 0 || prior.retainedAt === unknownReceipts.get(address))))) {
       for (const report of prior.observations) {
         if (!observations.some(item => JSON.stringify(item) === JSON.stringify(report))) observations.push(report);
       }
