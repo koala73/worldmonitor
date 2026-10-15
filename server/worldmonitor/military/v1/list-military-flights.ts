@@ -70,6 +70,7 @@ function filterFlightsToBounds(
   bounds: RequestBounds,
 ): ListMilitaryFlightsResponse['flights'] {
   return flights.filter((flight) => {
+    if (['7500', '7600', '7700'].includes(flight.squawk)) return false;
     const lat = flight.location?.latitude;
     const lon = flight.location?.longitude;
     if (lat == null || lon == null) return false;
@@ -592,6 +593,7 @@ export async function listMilitaryFlights(
 
         const flights: ListMilitaryFlightsResponse['flights'] = [];
         for (const state of data.states) {
+          if (['7500', '7600', '7700'].includes(state[14] as string)) continue;
           const [icao24, callsign, , , , lon, lat, altitude, onGround, velocity, heading, verticalRate] = state as [
             string, string, unknown, unknown, unknown, number | null, number | null, number | null, boolean,
             number | null, number | null, number | null,

@@ -232,6 +232,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
 
   // === deferred-to-future-tool (53) ===
+  ["GET /api/aviation/v1/list-aircraft-emergencies",
+    "deferred-to-future-tool: reported transponder observations belong in a future aircraft-signals tool with explicit reception and freshness limits. This change adds only the dashboard layer and details."],
   ["GET /api/news/v1/list-country-headlines",
     "deferred-to-future-tool: country snapshot capture reads existing full RSS caches; a future country_headlines tool can expose this uncapped country pool"],
   ["GET /api/consumer-prices/v1/get-consumer-price-basket-series",

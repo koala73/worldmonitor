@@ -5744,6 +5744,7 @@ async function fetchTheaterFlightsFromOpenSky() {
   if (!data.states) return allFlights;
   for (const state of data.states) {
     const [icao24, callsign, , , , lon, lat, altitude, onGround, velocity, heading] = state;
+    if (['7500', '7600', '7700'].includes(state[14])) continue;
     if (lat == null || lon == null || onGround) continue;
     if (!theaterIsMilCallsign(callsign)) continue;
     // Filter to theater bounds, matching fetchTheaterFlightsFromAdsbLol. The
@@ -5791,6 +5792,7 @@ async function fetchTheaterFlightsFromAdsbLol() {
     const flights = [];
     const seenIds = new Set();
     for (const a of aircraft) {
+      if (['7500', '7600', '7700'].includes(a.squawk)) continue;
       const lat = a.lat; const lon = a.lon;
       if (lat == null || lon == null) continue;
       if (a.alt_baro === 'ground') continue;
@@ -5856,6 +5858,7 @@ async function fetchTheaterFlightsFromWingbits() {
         : Array.isArray(areaResult) ? areaResult : [];
       for (const f of flightList) {
         const icao24 = f.h || f.icao24 || f.id;
+        if (['7500', '7600', '7700'].includes(f.sq ?? f.squawk)) continue;
         if (!icao24 || seenIds.has(icao24)) continue;
         const callsign = (f.f || f.callsign || f.flight || '').trim();
         if (!theaterIsMilCallsign(callsign)) continue;

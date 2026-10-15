@@ -1,0 +1,50 @@
+.aircraft-emergency-layer {
+  position: absolute;
+  top: 58px;
+  right: 8px;
+  z-index: 12;
+  width: min(340px, calc(100% - 16px));
+  max-height: calc(100% - 120px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  background: var(--panel-bg, #121820);
+  color: var(--text-primary, #eef2f7);
+  font-size: 12px;
+  line-height: 1.4;
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+.aircraft-emergency-layer[hidden] { display: none; }
+.aircraft-emergency-layer h3, .aircraft-emergency-layer h4 { margin: 0 0 8px; }
+.aircraft-emergency-layer p { margin: 6px 0; }
+.aircraft-emergency-layer button {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 8px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid #64748b;
+  border-radius: 4px;
+  text-align: left;
+  cursor: pointer;
+}
+.aircraft-emergency-details { padding: 8px 0; overflow-wrap: anywhere; }
+.aircraft-emergency-details dl { margin: 0; }
+.aircraft-emergency-details dt { color: #9ca3af; margin-top: 6px; }
+.aircraft-emergency-details dd { margin: 0; }
+.aircraft-emergency-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  cursor: pointer;
+  padding: 3px 5px;
+  color: #111827;
+  background: #fbbf24;
+  border: 1px solid #111827;
+  border-radius: 4px;
+  font-size: 11px;
+}

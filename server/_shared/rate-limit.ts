@@ -604,6 +604,7 @@ interface EndpointRatePolicy {
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/aviation/v1/track-aircraft': { limit: 30, window: '60 s' },
+  '/api/aviation/v1/list-aircraft-emergencies': { limit: 20, window: '60 s' },
   '/api/aviation/v1/search-google-flights': { limit: 30, window: '60 s' },
   '/api/aviation/v1/search-google-dates': { limit: 10, window: '60 s' },
   '/api/aviation/v1/list-aviation-news': { limit: 30, window: '60 s' },
@@ -890,6 +891,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   '/api/news/v1/list-feed-digest': { reason: 'Cold digest builds fan out to RSS providers and require a fail-closed caller budget.' },
   '/api/aviation/v1/track-aircraft': {
     reason: 'Distinct aircraft viewports call Wingbits on cache misses and can fall back to authenticated OpenSky quota.',
+  },
+  '/api/aviation/v1/list-aircraft-emergencies': {
+    reason: 'Public emergency aircraft reads fan out to three provider queries on shared cache misses.',
   },
   '/api/aviation/v1/search-google-flights': { reason: 'Public flight searches perform a live Google shopping request on each cache miss.' },
   '/api/aviation/v1/search-google-dates': { reason: 'Public date searches can trigger up to six Google calendar requests per cache miss.' },

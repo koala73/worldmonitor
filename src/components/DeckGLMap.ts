@@ -624,6 +624,7 @@ export class DeckGLMap {
   private healthByCableId: Record<string, CableHealthRecord> = {};
   private protests: SocialUnrestEvent[] = [];
   private militaryFlights: MilitaryFlight[] = [];
+  private emergencyMarkers: import('../../shared/aircraft-emergencies').EmergencyMapMarker[] = [];
   private militaryFlightClusters: MilitaryFlightCluster[] = [];
   private activeFlightTrails = new Set<string>();
   private clearTrailsBtn: HTMLButtonElement | null = null;
@@ -2230,7 +2231,21 @@ export class DeckGLMap {
       layers.push(this.createMilitaryFlightTrailsLayer(filteredMilitaryFlights));
     }
 
-    // Military flights layer
+    if (mapLayers.aircraftEmergencies && this.emergencyMarkers.length > 0) {
+      layers.push(new ScatterplotLayer<import('../../shared/aircraft-emergencies').EmergencyMapMarker>({
+        id: 'aircraft-emergencies', data: this.emergencyMarkers,
+        getPosition: aircraft => [aircraft.lon, aircraft.lat],
+        getFillColor: [251, 191, 36], getLineColor: [17, 24, 39],
+        getRadius: 7, radiusUnits: 'pixels', stroked: true, lineWidthMinPixels: 1,
+        pickable: true,
+        onClick: info => {
+          if (!info.object) return false;
+          this.container.dispatchEvent(new CustomEvent('aircraft-emergency-select', { detail: info.object.address }));
+          return true;
+        },
+      }));
+    }
+
     if (mapLayers.military && filteredMilitaryFlights.length > 0) {
       layers.push(this.createMilitaryFlightsLayer(filteredMilitaryFlights));
     }
@@ -7220,6 +7235,11 @@ export class DeckGLMap {
       }
       this.updateClearTrailsBtn();
     }
+    this.render();
+  }
+
+  public setAircraftEmergencies(markers: import('../../shared/aircraft-emergencies').EmergencyMapMarker[]): void {
+    this.emergencyMarkers = markers;
     this.render();
   }
 

@@ -1724,6 +1724,7 @@ function filterMilitaryFlights(allStates) {
   const stageCounters = createClassificationStageCounters();
 
   for (const state of allStates) {
+    if (['7500', '7600', '7700'].includes(state[14])) continue;
     const icao24 = state[0];
     const callsign = (state[1] || '').trim();
     const lat = state[6];

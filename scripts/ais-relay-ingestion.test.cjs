@@ -1057,6 +1057,31 @@ test('theater-posture Wingbits fallback publication is attributed to Wingbits, n
   }
 });
 
+for (const source of ['adsb.lol', 'wingbits', 'opensky']) {
+  test(`theater-posture excludes synthetic 7500/7600/7700 records from ${source}`, async () => {
+    const upstash = await createUpstashMock();
+    const { child, ready } = spawnRelay({
+      ...upstash.env,
+      RELAY_TEST_EMERGENCY_ROWS: '1',
+      RELAY_TEST_ADSB_MODE_SEQUENCE: source === 'adsb.lol' ? 'flight' : 'error',
+      WINGBITS_API_KEY: source === 'wingbits' ? 'test-wingbits-key' : '',
+      RELAY_TEST_OPENSKY_STATUS_SEQUENCE: source === 'opensky' ? '200' : '429',
+    });
+    try {
+      const { port } = await ready;
+      const response = await get(port, '/__test/seed-theater-posture');
+      assert.equal(response.status, 200);
+      assert.equal(JSON.parse(response.body).ok, true);
+      const metrics = JSON.parse((await get(port, '/metrics')).body);
+      assert.equal(metrics.theaterPosture.lastRun.flightCount, 1);
+      assert.equal(upstash.setsFor('theater-posture:sebuf:v1').length, 1);
+    } finally {
+      await stop(child);
+      await upstash.close();
+    }
+  });
+}
+
 test('theater-posture rejects Wingbits rows without usable theater coordinates', async () => {
   const upstash = await createUpstashMock();
   const { child, ready } = spawnRelay({

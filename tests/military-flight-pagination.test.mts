@@ -140,7 +140,7 @@ async function loadMilitaryService(
 
   try {
     const module = await import(dataUrl) as {
-      fetchMilitaryFlights(): Promise<{ flights: Array<{ hexCode: string }>; clusters: unknown[] }>;
+      fetchMilitaryFlights(): Promise<{ flights: Array<{ hexCode: string }>; clusters: Array<{ flights: Array<{ hexCode: string }> }> }>;
     };
     return {
       module,
@@ -186,6 +186,19 @@ function regionName(req: PageRequest): 'alpha' | 'bravo' {
 }
 
 describe('military flight application-service pagination', { concurrency: 1 }, () => {
+  it('excludes all three reported emergency codes from application flights and clusters', async () => {
+    const { module, cleanup } = await loadMilitaryService(() => ({
+      flights: [protoFlight('ORD001'), ...['7500', '7600', '7700'].map((squawk, index) => ({ ...protoFlight(`EMG00${index}`), squawk }))],
+    }));
+    try {
+      const result = await module.fetchMilitaryFlights();
+      assert.deepEqual(result.flights.map(flight => flight.hexCode), ['ORD001']);
+      assert.ok(result.clusters.every(cluster => cluster.flights.every(flight => flight.hexCode === 'ORD001')));
+    } finally {
+      cleanup();
+    }
+  });
+
   it('requests one global region and renders North American flights after bounded pagination', async () => {
     const calls: PageRequest[] = [];
     const queryRegions = await loadMilitaryQueryRegions();

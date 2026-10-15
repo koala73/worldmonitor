@@ -693,6 +693,7 @@ export interface MapLayers {
   protests: boolean;
   flights: boolean;
   military: boolean;
+  aircraftEmergencies?: boolean;
   natural: boolean;
   spaceports: boolean;
   minerals: boolean;
