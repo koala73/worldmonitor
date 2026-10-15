@@ -114,7 +114,6 @@ const breaker = createCircuitBreaker<{ flights: MilitaryFlight[]; clusters: Mili
 });
 
 function mapProtoFlight(pf: ProtoMilitaryFlight, nowDate: Date): MilitaryFlight | null {
-  if (['7500', '7600', '7700'].includes(pf.squawk)) return null;
   const lat = pf.location?.latitude;
   const lon = pf.location?.longitude;
   if (lat == null || lon == null) return null;
@@ -293,7 +292,6 @@ function determineAircraftInfo(
 }
 
 function isMilitaryFlight(state: OpenSkyStateArray): boolean {
-  if (['7500', '7600', '7700'].includes(state[14] ?? '')) return false;
   const callsign = (state[1] || '').trim();
   if (callsign && identifyByCallsign(callsign, state[2])) return true;
   if (isKnownMilitaryHex(state[0])) return true;
@@ -604,9 +602,7 @@ export async function fetchMilitaryFlights(): Promise<{
   const dataState: BreakerDataState = result === fallback ? unavailable
     : result === completed && completedState ? completedState
       : { mode: 'cached', timestamp: null, offline: breaker.getDataState().offline };
-  const filteredFlights = result.flights.filter(flight => !['7500', '7600', '7700'].includes(flight.squawk ?? ''));
-  const flights = filteredFlights.length === result.flights.length ? result.flights : filteredFlights;
-  return { flights, clusters: flights === result.flights ? result.clusters : clusterFlights(flights), dataState };
+  return { ...result, dataState };
 }
 
 /**

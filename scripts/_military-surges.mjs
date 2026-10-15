@@ -46,7 +46,6 @@ export function summarizeMilitaryTheaters(flights, theaters, assessedAt = Date.n
   return theaters.map((theater) => {
     const theaterFlights = flights.filter(
       (flight) =>
-        !['7500', '7600', '7700'].includes(flight.squawk) &&
         flight.lat >= theater.bounds.south &&
         flight.lat <= theater.bounds.north &&
         flight.lon >= theater.bounds.west &&

@@ -22,6 +22,7 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sortRec, serialize, eq, normalizeKey } from './lib/openapi-codegen.mjs';
+import { EMERGENCY_CODES } from '../shared/aircraft-emergencies.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
@@ -981,7 +982,7 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (depth === 0 && context.operationId === 'ListAircraftEmergencies'
     && String(context.name ?? '').endsWith('Response')) {
     return {
-      feeds: ['7500', '7600', '7700'].map(squawk => ({
+      feeds: EMERGENCY_CODES.map(squawk => ({
         source: 'adsb.lol', squawk, status: 'available', fetchedAt: 1717200000000, message: 'Synthetic example.',
       })),
       observations: [{ address: 'a00001', squawk: '7500', source: 'adsb.lol', observedAt: 0,

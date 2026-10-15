@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { EMERGENCY_CODES } from '../../../../shared/aircraft-emergencies.ts';
 import { seedProfile, waitForBoot, waitForMap } from './_profile.mjs';
 
 export default async function ({ page, base, shot, log }) {
@@ -16,7 +17,7 @@ export default async function ({ page, base, shot, log }) {
     callsign: row.flight, registration: row.r || '', aircraftType: row.t || '', description: '',
     militaryFlag: row.dbFlags ? 'set' : 'not_set', altitudeFt: row.alt_baro, groundSpeedKts: row.gs,
   }));
-  const feeds = ['7500', '7600', '7700'].map(squawk => ({ source: 'adsb.lol', squawk, status: 'available', fetchedAt: now, message: '' }));
+  const feeds = EMERGENCY_CODES.map(squawk => ({ source: 'adsb.lol', squawk, status: 'available', fetchedAt: now, message: '' }));
   let body = { observations, feeds };
   let failed = false;
   let refreshFeedClocks = false;
@@ -133,5 +134,5 @@ export default async function ({ page, base, shot, log }) {
   await page.reload({ waitUntil: 'domcontentloaded' });
   await waitForBoot(page);
   assert.equal(await page.locator('.aircraft-emergency-layer:visible').count(), 0);
-  log('Assertions passed', { requests, renderer, mobile, codes: ['7500', '7600', '7700'], urlAndStorage: true, conflict: true, missingPosition: true, failure: true, expiry: true, empty: true });
+  log('Assertions passed', { requests, renderer, mobile, codes: [...EMERGENCY_CODES], urlAndStorage: true, conflict: true, missingPosition: true, failure: true, expiry: true, empty: true });
 }

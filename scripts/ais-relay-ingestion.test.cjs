@@ -7,6 +7,9 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { setTimeout: sleep } = require('node:timers/promises');
 const test = require('node:test');
+// Node 24 loads the shared TypeScript module directly (type stripping), so the
+// emergency codes have one source of truth across TS, ESM and CommonJS.
+const { EMERGENCY_CODES } = require('../shared/aircraft-emergencies.ts');
 
 function get(port, requestPath, headers) {
   return new Promise((resolve, reject) => {
@@ -1058,7 +1061,9 @@ test('theater-posture Wingbits fallback publication is attributed to Wingbits, n
 });
 
 for (const source of ['adsb.lol', 'wingbits', 'opensky']) {
-  test(`theater-posture excludes synthetic 7500/7600/7700 records from ${source}`, async () => {
+  // Emergency squawks stay in theater posture (Elie's decision); the
+  // emergency layer reads its own feed and shows them as well.
+  test(`theater-posture keeps synthetic 7500/7600/7700 military records from ${source}`, async () => {
     const upstash = await createUpstashMock();
     const { child, ready } = spawnRelay({
       ...upstash.env,
@@ -1073,7 +1078,7 @@ for (const source of ['adsb.lol', 'wingbits', 'opensky']) {
       assert.equal(response.status, 200);
       assert.equal(JSON.parse(response.body).ok, true);
       const metrics = JSON.parse((await get(port, '/metrics')).body);
-      assert.equal(metrics.theaterPosture.lastRun.flightCount, 1);
+      assert.equal(metrics.theaterPosture.lastRun.flightCount, 1 + EMERGENCY_CODES.length);
       assert.equal(upstash.setsFor('theater-posture:sebuf:v1').length, 1);
     } finally {
       await stop(child);

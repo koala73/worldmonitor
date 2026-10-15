@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, it } from 'node:test';
 import { parseEmergencyResponse } from '../server/worldmonitor/aviation/v1/aircraft-emergency-source';
 import { fetchEmergencySnapshot } from '../server/worldmonitor/aviation/v1/list-aircraft-emergencies';
@@ -248,21 +251,68 @@ describe('feed success, partial results, and failures', () => {
   });
 });
 
-describe('military admission and posture', () => {
-  it('excludes all emergency codes before military classification and totals', () => {
+// Elie's decision: a military aircraft squawking 7500/7600/7700 stays on the
+// military layer, in clusters, theater posture and surge counts, and also
+// appears on the emergency layer. Neither surface may drop it for the other.
+describe('emergency-squawking military aircraft on both layers', () => {
+  const militaryHexes = synthetic.ac.filter((row: { dbFlags: number }) => row.dbFlags === 1).map((row: { hex: string }) => row.hex);
+
+  it('admits them to the military layer and also marks them on the emergency layer', () => {
     const states: unknown[][] = [];
     convertToStates(synthetic.ac, 'adsb.lol', new Set(), states, now);
-    assert.equal(states.length, 6);
     const result = filterMilitaryFlights(states);
-    assert.deepEqual(result.flights, []);
-    assert.deepEqual(result.byType, {});
+    const admitted = new Map(result.flights.map((flight: { hexCode: string; squawk: string }) => [flight.hexCode.toLowerCase(), flight.squawk]));
+    assert.deepEqual(militaryHexes.map((hex: string) => admitted.get(hex)), [...EMERGENCY_CODES]);
+    assert.ok((result.byType.transport ?? 0) >= militaryHexes.length, 'emergency-squawking aircraft count toward the military totals');
+
+    const records = reconcileEmergencies([], parse(), now);
+    for (const hex of militaryHexes) {
+      const record = records.find(row => row.address === hex);
+      assert.equal(record?.observations[0]?.militaryFlag, 'set', hex);
+      assert.ok(emergencyMarkerPosition(record!, now), `${hex} must also be on the emergency layer`);
+    }
   });
 
-  it('does not add emergency aircraft to theater posture counts', () => {
+  it('admits an aircraft seen only in an OpenSky state vector', () => {
+    for (const squawk of EMERGENCY_CODES) {
+      const state = ['ae0042', 'RCH042  ', 'United States', 0, 0, 45, 30, 10000, false, 400, 90, 0, null, 10000, squawk, false, 0];
+      const { flights } = filterMilitaryFlights([state]);
+      assert.deepEqual(flights.map((flight: { hexCode: string; squawk: string }) => [flight.hexCode, flight.squawk]), [['AE0042', squawk]]);
+    }
+  });
+
+  it('counts them in theater posture and surge totals', () => {
     const flights = [...EMERGENCY_CODES, '1200'].map((squawk, index) => ({ id: String(index), squawk, lat: 1, lon: 1, aircraftType: 'fighter' }));
     const theaters = [{ id: 'test', name: 'Test', bounds: { south: 0, north: 2, west: 0, east: 2 }, thresholds: { elevated: 2, critical: 4 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 2 } }];
     const result = summarizeMilitaryTheaters(flights, theaters, now);
-    assert.equal(result[0].totalFlights, 1);
-    assert.equal(result[0].fighters, 1);
+    assert.equal(result[0].totalFlights, 4);
+    assert.equal(result[0].fighters, 4);
+  });
+});
+
+// One definition of the emergency codes. TS, ESM and CommonJS consumers all
+// import shared/aircraft-emergencies.ts (Node 24 strips the types), so a copy
+// of the list anywhere else is drift waiting to happen.
+describe('EMERGENCY_CODES single source', () => {
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const triple = /['"]7500['"]\s*,\s*['"]7600['"]\s*,\s*['"]7700['"]/;
+
+  it('loads the same codes from CommonJS', () => {
+    const required = createRequire(import.meta.url)('../shared/aircraft-emergencies.ts') as { EMERGENCY_CODES: readonly string[] };
+    assert.deepEqual([...required.EMERGENCY_CODES], [...EMERGENCY_CODES]);
+  });
+
+  it('is not duplicated as a literal list in code', () => {
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        if (name === 'node_modules' || name === 'generated' || name === 'fixtures' || name.startsWith('.git')) continue;
+        const path = join(dir, name);
+        if (statSync(path).isDirectory()) walk(path);
+        else if (/\.(?:[cm]?[jt]s|tsx)$/.test(name) && triple.test(readFileSync(path, 'utf8'))) offenders.push(relative(root, path));
+      }
+    };
+    for (const dir of ['shared', 'server', 'src', 'scripts', 'api', 'tests', '.agents']) walk(join(root, dir));
+    assert.deepEqual(offenders, ['shared/aircraft-emergencies.ts']);
   });
 });

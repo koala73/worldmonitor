@@ -5,6 +5,9 @@
 // load it.
 const { EventEmitter } = require('node:events');
 const https = require('node:https');
+// Node 24 loads the shared TypeScript module directly (type stripping), so the
+// emergency codes have one source of truth across TS, ESM and CommonJS.
+const { EMERGENCY_CODES } = require('../shared/aircraft-emergencies.ts');
 
 const googleStatuses = (process.env.RELAY_TEST_GOOGLE_STATUS_SEQUENCE || '429')
   .split(',')
@@ -33,7 +36,7 @@ const adsbModes = (process.env.RELAY_TEST_ADSB_MODE_SEQUENCE || '')
   .filter(Boolean);
 // OpenSky /states/all row: [icao24, callsign, country, t_pos, t_contact, lon, lat, alt, onGround, velocity, heading]
 const OPENSKY_MIL_STATE = ['ae9999', 'RCH999  ', '', 0, 0, 45, 30, 10000, false, 400, 90];
-const emergencyCodes = process.env.RELAY_TEST_EMERGENCY_ROWS === '1' ? ['7500', '7600', '7700'] : [];
+const emergencyCodes = process.env.RELAY_TEST_EMERGENCY_ROWS === '1' ? [...EMERGENCY_CODES] : [];
 const rssCalls = new Map();
 
 function nextValue(values, fallback) {
