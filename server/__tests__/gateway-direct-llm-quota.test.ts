@@ -989,15 +989,22 @@ describe("direct LLM quota release on unserved requests", () => {
     expect(rollback).toHaveBeenCalledTimes(1);
   });
 
-  test("a failed jmespath projection releases the reservation with the 400", async () => {
-    const res = await stubGateway(async () => json({ classification: { category: "conflict" } }))(
-      req(`${CLASSIFY_PATH}?title=Novel%20headline&jmespath=%5B%5B%5B`, { headers: { Authorization: "Bearer pro" } }),
+  test.each([
+    ["invalid syntax", "[[[", "invalid_expression"],
+    ["invalid input type", "length(classification.confidence)", "invalid_expression"],
+    ["oversized output", `classification${" | [@,@,@,@,@,@,@,@]".repeat(5)}`, "projection_too_large"],
+  ])("a failed projection (%s) keeps completed model work charged", async (_name, expression, error) => {
+    const gateway = createDomainGateway(createIntelligenceServiceRoutes(intelligenceHandler));
+    const res = await gateway(
+      req(`${CLASSIFY_PATH}?title=Novel%20headline&jmespath=${encodeURIComponent(expression)}`, { headers: { Authorization: "Bearer pro" } }),
       { waitUntil: () => {} },
     );
 
     expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ _jmespath_error: expect.stringContaining(error) });
+    expect(callLlm).toHaveBeenCalledTimes(1);
     expect(reserveDirectLlmQuota).toHaveBeenCalledTimes(1);
-    expect(rollback).toHaveBeenCalledTimes(1);
+    expect(rollback).not.toHaveBeenCalled();
   });
 
   test("a successful jmespath projection keeps the reservation", async () => {
