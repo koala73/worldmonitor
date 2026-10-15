@@ -1,3 +1,7 @@
+---
+noindex: true
+---
+
 # Aircraft emergency signals
 
 The opt-in Aircraft emergencies layer shows reported squawks 7500, 7600, and 7700 on the desktop and SVG/mobile maps.
@@ -143,6 +147,7 @@ The local dashboard also logs missing session/legacy route errors and unavailabl
 Local verification passed with Node 24: 40 focused capture/freshness/military tests, 558 sidecar/API tests, 77 map contract tests, 25 MCP parity tests, route-cache tests, both TypeScript checks, import boundaries, API/rate-limit contracts, safe HTML, source attribution, focused Biome, Markdown lint, and `git diff --check`.
 Run the focused tests with `node --import tsx --test tests/aircraft-emergencies.test.mts tests/seed-military-flights-adsb.test.mjs tests/military-surges.test.mjs tests/military-flight-pagination.test.mts tests/military-flights-bounds.test.mts`.
 Run relay/API verification with `npm run test:sidecar`. Generated clients and OpenAPI were regenerated with pinned `make generate`.
+The shared OpenAPI emitter also hoists byte-identical reference schemas with sibling descriptions. Its 44 round-trip tests and 43 capacity/projection checks pass. The emitted JSON is 948,631 bytes under the fixed 950,000-byte limit; the 1,369-byte reserve remains tight.
 
 The initial raw captures are bounded live provider observations. Replay proof is separate from browser proof.
 The local unmocked dashboard displays unavailable data when required gateway dependencies are absent.

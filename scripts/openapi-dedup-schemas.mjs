@@ -296,7 +296,7 @@ export function dedupeSharedSubtreeComponents(spec) {
   // only difference is the replacement strategy (named component ref instead of
   // ref-to-shortest-inline-copy) and therefore the profitability arithmetic.
   const visit = (schema, parent, key) => {
-    if (!schema || typeof schema !== 'object' || Array.isArray(schema) || schema.$ref) return;
+    if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return;
     parentOf.set(schema, parent);
     const serialized = canonical(schema);
     const unitBytes = Buffer.byteLength(serialized, 'utf8');
