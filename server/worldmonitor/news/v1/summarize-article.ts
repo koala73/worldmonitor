@@ -170,7 +170,7 @@ export async function summarizeArticle(
   }
 
   if (mode === 'translate' && !TRANSLATE_TARGET_LANGUAGES.has(variant)) {
-    return {
+    return unserved({
       summary: '',
       model: '',
       provider,
@@ -180,7 +180,7 @@ export async function summarizeArticle(
       errorType: 'ValidationError',
       status: 'SUMMARIZE_STATUS_ERROR',
       statusDetail: 'Unsupported translation language',
-    };
+    });
   }
 
   // Provider credential check

@@ -1054,6 +1054,18 @@ describe("direct LLM quota release on unserved requests", () => {
     expect(rollback).not.toHaveBeenCalled();
   });
 
+  test("real classification releases the reservation for a cache hit that fails validation", async () => {
+    cachedFetchJson.mockResolvedValue({ level: "high", category: "<img src=x>", timestamp: Date.now() });
+    const gateway = createDomainGateway(createIntelligenceServiceRoutes(intelligenceHandler));
+    const res = await gateway(classifyRequest(), { waitUntil: () => {} });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({});
+    expect(callLlm).not.toHaveBeenCalled();
+    expect(reserveDirectLlmQuota).toHaveBeenCalledTimes(1);
+    expect(rollback).toHaveBeenCalledTimes(1);
+  });
+
   test("real classification releases the reservation when the LLM returns nothing", async () => {
     callLlm.mockResolvedValue(null);
     const gateway = createDomainGateway(createIntelligenceServiceRoutes(intelligenceHandler));
@@ -1167,10 +1179,27 @@ describe("unserved-LLM marker on the remaining metered handlers", () => {
   });
 
   test("summarize-article marks a rejected headline set as unserved", async () => {
+    // A configured provider and a supported target language, so the call gets
+    // past the credential and language checks to the headline validation.
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    try {
+      const { ctx, request } = handlerCtx("https://www.worldmonitor.app/api/news/v1/summarize-article", { method: "POST" });
+      const res = await summarizeArticle(ctx, { provider: "openrouter", mode: "translate", variant: "fr", headlines: [] } as never);
+
+      expect(res.summary).toBe("");
+      expect(res.statusDetail).toBe("Headlines array required");
+      expect(drainUnservedLlmResponse(request)).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test("summarize-article marks an unsupported translation language as unserved", async () => {
     const { ctx, request } = handlerCtx("https://www.worldmonitor.app/api/news/v1/summarize-article", { method: "POST" });
-    const res = await summarizeArticle(ctx, { provider: "groq", mode: "translate", headlines: [] } as never);
+    const res = await summarizeArticle(ctx, { provider: "openrouter", mode: "translate", variant: "xx", headlines: ["A headline"] } as never);
 
     expect(res.summary).toBe("");
+    expect(res.statusDetail).toBe("Unsupported translation language");
     expect(drainUnservedLlmResponse(request)).toBe(true);
   });
 });
