@@ -6,9 +6,10 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, it } from 'node:test';
 import { parseEmergencyResponse } from '../server/worldmonitor/aviation/v1/aircraft-emergency-source';
-import { fetchEmergencySnapshot } from '../server/worldmonitor/aviation/v1/list-aircraft-emergencies';
+import { fetchCacheableEmergencySnapshot, fetchEmergencySnapshot, listAircraftEmergencies } from '../server/worldmonitor/aviation/v1/list-aircraft-emergencies';
+import { drainResponseHeaders } from '../server/_shared/response-headers';
 import {
-  EMERGENCY_CODES, EMERGENCY_RETENTION_MS, emergencyMarkerPosition, isEmergencySquawk,
+  CLOCK_SKEW_TOLERANCE_MS, EMERGENCY_CODES, EMERGENCY_RETENTION_MS, OBSERVATION_MAX_AGE_MS, emergencyMarkerPosition, isEmergencySquawk, isFresh,
   reconcileEmergencies as reconcileRecords, type EmergencyRecord, type EmergencySnapshot,
 } from '../shared/aircraft-emergencies';
 import { convertToStates, filterMilitaryFlights } from '../scripts/seed-military-flights.mjs';
@@ -219,10 +220,29 @@ describe('explicitly synthetic signal and freshness cases', () => {
   });
 
   it('rejects malformed and future-clock responses; stale responses are not successful current empties', () => {
-    for (const body of [null, {}, { now, aircraft: [] }, { ac: [] }, { now: now + 1, ac: [] }, { now, ac: [null] }, { now, ac: [{ hex: 'unknown', squawk: '7500' }] }]) {
+    for (const body of [null, {}, { now, aircraft: [] }, { ac: [] }, { now: now + CLOCK_SKEW_TOLERANCE_MS + 1, ac: [] }]) {
       assert.throws(() => parseEmergencyResponse(body, '7500', now));
     }
     assert.equal(parseEmergencyResponse({ now: (now - 121_000) / 1000, ac: [] }, '7500', now).feeds[0]?.status, 'stale');
+  });
+
+  it('skips malformed rows and keeps the valid emergency reports beside them', () => {
+    const rows = [null, 'row', { hex: 'unknown', squawk: '7500', seen: 0 }, { hex: '', squawk: '7500' }, { hex: 'not-hex-at-all', squawk: '1200' }, { hex: 'a00001', squawk: '7500', seen: 0 }];
+    const snapshot = parseEmergencyResponse({ now, ac: rows }, '7500', now);
+    assert.deepEqual(snapshot.observations.map(item => item.address), ['a00001']);
+    assert.equal(snapshot.feeds[0]?.status, 'available');
+  });
+
+  it('tolerates small clock drift between provider, server, and browser', () => {
+    // Provider 200 ms ahead of the server: accepted, and no report is dated after retrieval.
+    const ahead = parseEmergencyResponse({ now: now + 200, ac: [{ hex: 'a00001', squawk: '7700', seen: 0.1, seen_pos: 0.1, lat: 1, lon: 1 }] }, '7700', now);
+    assert.equal(ahead.feeds[0]?.status, 'available');
+    assert.ok(ahead.observations[0]!.observedAt <= now);
+    // Browser clock 5 s behind the server: the report is still current and on the map.
+    const records = reconcileEmergencies([], ahead, now - 5_000);
+    assert.equal(records[0]?.state, 'current');
+    assert.ok(emergencyMarkerPosition(records[0]!, now - 5_000));
+    assert.ok(!isFresh(now + CLOCK_SKEW_TOLERANCE_MS + 1, now, OBSERVATION_MAX_AGE_MS));
   });
 });
 
@@ -239,6 +259,17 @@ describe('feed success, partial results, and failures', () => {
     assert.deepEqual(result.observations, []);
     globalThis.fetch = async () => Response.json({ aircraft: [] });
     assert.ok((await fetchEmergencySnapshot()).feeds.every(feed => feed.status === 'unavailable'));
+  });
+
+  it('keeps a full outage out of the positive cache and serves it uncached', async () => {
+    globalThis.fetch = async () => new Response('', { status: 503 });
+    assert.equal(await fetchCacheableEmergencySnapshot(), null);
+    const request = new Request('https://wm.test/api/aviation/v1/list-aircraft-emergencies');
+    const result = await listAircraftEmergencies({ request } as Parameters<typeof listAircraftEmergencies>[0], {});
+    assert.deepEqual(result.feeds.map(feed => feed.status), ['unavailable', 'unavailable', 'unavailable']);
+    assert.equal(drainResponseHeaders(request)?.['X-No-Cache'], '1');
+    globalThis.fetch = async input => String(input).endsWith('/7500') ? Response.json({ now: Date.now(), ac: [] }) : new Response('', { status: 503 });
+    assert.ok(await fetchCacheableEmergencySnapshot(), 'a partial result is still data');
   });
 
   it('keeps a fresh positive slice when another code query fails', async () => {

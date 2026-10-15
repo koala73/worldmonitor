@@ -1592,10 +1592,6 @@ export class MapContainer {
     if (layer === 'resilienceScore' && !this.useDeckGL) return;
     // #6045 — don't stamp initialState or enable locked premium layers for free users.
     if (!isLayerEntitled(layer, hasPremiumAccess(getAuthState()))) return;
-    if (layer === 'aircraftEmergencies') {
-      this.setLayers({ ...this.getState().layers, aircraftEmergencies: true });
-      return;
-    }
     this.initialState = {
       ...this.initialState,
       layers: { ...this.initialState.layers, [layer]: true },
@@ -1607,6 +1603,9 @@ export class MapContainer {
     } else {
       this.svgMap?.enableLayer(layer);
     }
+    // The renderer reports the change through onLayerChange, which also starts
+    // the emergency feed. Start it here too in case no listener is attached yet.
+    if (layer === 'aircraftEmergencies') this.emergencyLayer.setEnabled(this.getState().layers.aircraftEmergencies === true);
   }
 
   public triggerHotspotClick(id: string): void {

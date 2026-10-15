@@ -20,8 +20,16 @@ export async function fetchEmergencySnapshot(): Promise<EmergencySnapshot> {
   return { observations: slices.flatMap(slice => slice.observations), feeds: slices.flatMap(slice => slice.feeds) };
 }
 
+// A snapshot in which every code query failed is an outage, not data. Returning
+// null keeps it out of the positive cache and sends the no-store response below.
+export async function fetchCacheableEmergencySnapshot(): Promise<EmergencySnapshot | null> {
+  const snapshot = await fetchEmergencySnapshot();
+  return snapshot.feeds.some(feed => feed.status !== 'unavailable') ? snapshot : null;
+}
+
 export const listAircraftEmergencies: AviationServiceHandler['listAircraftEmergencies'] = async ctx => {
-  const snapshot = await cachedFetchJson<EmergencySnapshot>('aviation:emergency-squawks:v1', 30, fetchEmergencySnapshot);
+  const snapshot = await cachedFetchJson<EmergencySnapshot>('aviation:emergency-squawks:v1', 30, fetchCacheableEmergencySnapshot, 15)
+    .catch(() => null);
   if (snapshot) return snapshot;
   markNoCacheResponse(ctx.request);
   // Failures must remain visible. Do not replace them with an empty success or last-good data.

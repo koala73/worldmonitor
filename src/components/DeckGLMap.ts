@@ -2231,6 +2231,18 @@ export class DeckGLMap {
       layers.push(this.createMilitaryFlightTrailsLayer(filteredMilitaryFlights));
     }
 
+    // Military flights layer
+    if (mapLayers.military && filteredMilitaryFlights.length > 0) {
+      layers.push(this.createMilitaryFlightsLayer(filteredMilitaryFlights));
+    }
+
+    // Military flight clusters layer
+    if (mapLayers.military && filteredMilitaryFlightClusters.length > 0) {
+      layers.push(this.createMilitaryFlightClustersLayer(filteredMilitaryFlightClusters));
+    }
+
+    // Above military flights: an emergency-squawking military aircraft is drawn
+    // in both layers, and its emergency marker must stay visible and clickable.
     if (mapLayers.aircraftEmergencies && this.emergencyMarkers.length > 0) {
       layers.push(new ScatterplotLayer<import('../../shared/aircraft-emergencies').EmergencyMapMarker>({
         id: 'aircraft-emergencies', data: this.emergencyMarkers,
@@ -2244,15 +2256,6 @@ export class DeckGLMap {
           return true;
         },
       }));
-    }
-
-    if (mapLayers.military && filteredMilitaryFlights.length > 0) {
-      layers.push(this.createMilitaryFlightsLayer(filteredMilitaryFlights));
-    }
-
-    // Military flight clusters layer
-    if (mapLayers.military && filteredMilitaryFlightClusters.length > 0) {
-      layers.push(this.createMilitaryFlightClustersLayer(filteredMilitaryFlightClusters));
     }
 
     // Strategic waterways layer

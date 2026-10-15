@@ -8,6 +8,9 @@ export const EMERGENCY_CONDITIONS: Record<EmergencyCode, string> = {
 export const OBSERVATION_MAX_AGE_MS = 120_000;
 export const POSITION_MAX_AGE_MS = 90_000;
 export const EMERGENCY_RETENTION_MS = 15 * 60_000;
+// Provider, server and browser clocks drift. A report up to this far ahead of
+// the local clock is still current; anything further is a bad clock.
+export const CLOCK_SKEW_TOLERANCE_MS = 30_000;
 
 export interface EmergencyPosition {
   lat: number;
@@ -57,7 +60,7 @@ export function isEmergencySquawk(value: unknown): value is EmergencyCode {
 }
 
 export function isFresh(time: number, now: number, maxAge: number): boolean {
-  return Number.isFinite(time) && time > 0 && time <= now && now - time <= maxAge;
+  return Number.isFinite(time) && time > 0 && time <= now + CLOCK_SKEW_TOLERANCE_MS && now - time <= maxAge;
 }
 
 export function emergencyMarkerPosition(record: EmergencyRecord, now: number): EmergencyPosition | undefined {

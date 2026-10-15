@@ -1,4 +1,4 @@
-import { isEmergencySquawk, isFresh, OBSERVATION_MAX_AGE_MS, type EmergencySnapshot } from '../../../../shared/aircraft-emergencies';
+import { CLOCK_SKEW_TOLERANCE_MS, isEmergencySquawk, isFresh, OBSERVATION_MAX_AGE_MS, type EmergencySnapshot } from '../../../../shared/aircraft-emergencies';
 
 const text = (value: unknown): string => typeof value === 'string' ? value.trim().slice(0, 160) : '';
 const numeric = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
@@ -7,15 +7,18 @@ export function parseEmergencyResponse(data: unknown, requestedCode: string, fet
   if (!data || typeof data !== 'object') throw new Error('Invalid aircraft response');
   const body = data as Record<string, unknown>;
   if (!Array.isArray(body.ac) || !numeric(body.now) || body.now <= 0) throw new Error('Missing aircraft array or provider clock');
-  const responseAt = body.now < 1_000_000_000_000 ? body.now * 1000 : body.now;
-  if (responseAt > fetchedAt) throw new Error('Provider clock is in the future');
+  const providerAt = body.now < 1_000_000_000_000 ? body.now * 1000 : body.now;
+  if (providerAt > fetchedAt + CLOCK_SKEW_TOLERANCE_MS) throw new Error('Provider clock is in the future');
+  // Small clock drift is normal. Never date a report after its own retrieval.
+  const responseAt = Math.min(providerAt, fetchedAt);
   const observations: EmergencySnapshot['observations'] = [];
   for (const row of body.ac) {
-    if (!row || typeof row !== 'object') throw new Error('Invalid aircraft row');
+    // Skip a malformed row instead of discarding every report in the response.
+    if (!row || typeof row !== 'object') continue;
     const a = row as Record<string, unknown>;
-    const address = text(a.hex).toLowerCase();
-    if (!/^~?[0-9a-f]{6}$/.test(address)) throw new Error('Invalid aircraft address');
     if (!isEmergencySquawk(a.squawk)) continue;
+    const address = text(a.hex).toLowerCase();
+    if (!/^~?[0-9a-f]{6}$/.test(address)) continue;
     const observedAt = numeric(a.seen) && a.seen >= 0 ? responseAt - a.seen * 1000 : 0;
     const positionAt = numeric(a.seen_pos) && a.seen_pos >= 0 ? responseAt - a.seen_pos * 1000 : 0;
     const position = numeric(a.lat) && Math.abs(a.lat) <= 90 && numeric(a.lon) && Math.abs(a.lon) <= 180

@@ -41,7 +41,7 @@ Neither field establishes when the squawk itself was selected.
 | `alt_baro`, `gs` | Optional feet and knots. Missing values remain unknown. `ground` does not become altitude zero or a landing claim. |
 
 Captured adsb.lol response clocks are epoch milliseconds. The parser also accepts epoch seconds, as documented for readsb.
-A missing or future response clock, malformed array, or invalid address makes that query unavailable.
+A missing response clock, a clock more than 30 seconds ahead of retrieval, or a malformed array makes that query unavailable. Smaller clock drift is accepted, and no report is dated after its retrieval; the browser applies the same 30-second tolerance. A malformed row, or an emergency row with an invalid address, is skipped without discarding the rest of the response.
 Missing, negative, or nonnumeric age fields remain unknown. Invalid coordinates do not receive a marker.
 
 Observation freshness is at most 120 seconds. Position freshness is at most 90 seconds.
@@ -62,7 +62,7 @@ The squawk queries cannot distinguish a code change from reception loss.
 No disappearance means resolved, landed, or safe.
 Unknown observations expire 15 minutes after their source observation time. With no source observation clock, retention starts at first receipt and does not extend on repeated unknown data. After payload expiry, only address/first-receipt bookkeeping remains while those reports continue. An unexpired timestamped report with no undated reports, or a fresh successful absence across all three queries, clears that bookkeeping. Reappearance after that absence starts a new receipt period and does not merge the previous undated code into the new period. Unavailable or partial data cannot clear it.
 
-Each code query reports availability separately. HTTP failure, timeout, invalid JSON, and schema failure are unavailable.
+Each code query reports availability separately. HTTP failure, timeout, invalid JSON, and schema failure are unavailable. When all three queries are unavailable, the response is not cached as data and is served with no-store.
 Fresh successful empty arrays mean no matching squawks reported by that provider, within its reception coverage.
 A stale provider response is not a fresh empty result. Matching reports whose payloads expired show an expired-observation message, not an empty-feed message. Partial successes retain their observations alongside failed query statuses.
 

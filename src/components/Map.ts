@@ -3398,25 +3398,6 @@ export class MapComponent {
       });
     }
 
-    if (this.state.layers.aircraftEmergencies) {
-      for (const aircraft of this.emergencyMarkers) {
-        const point = projection([aircraft.lon, aircraft.lat]);
-        if (!point) continue;
-        const marker = document.createElement('button');
-        marker.type = 'button';
-        marker.className = 'aircraft-emergency-marker';
-        marker.textContent = `✈ ${aircraft.squawk}`;
-        marker.setAttribute('aria-label', `Reported squawk ${aircraft.squawk}, aircraft ${aircraft.address}`);
-        marker.style.left = `${point[0]}px`;
-        marker.style.top = `${point[1]}px`;
-        marker.onclick = event => {
-          event.stopPropagation();
-          this.container.dispatchEvent(new CustomEvent('aircraft-emergency-select', { detail: aircraft.address }));
-        };
-        this.appendOverlay(marker);
-      }
-    }
-
     // Military Tracking (flights and vessels)
     if (this.state.layers.military) {
       // Render individual flights
@@ -3626,6 +3607,27 @@ export class MapComponent {
 
         this.appendOverlay(div);
       });
+    }
+
+    // After military markers so an emergency-squawking military aircraft keeps
+    // its emergency marker on top and clickable.
+    if (this.state.layers.aircraftEmergencies) {
+      for (const aircraft of this.emergencyMarkers) {
+        const point = projection([aircraft.lon, aircraft.lat]);
+        if (!point) continue;
+        const marker = document.createElement('button');
+        marker.type = 'button';
+        marker.className = 'aircraft-emergency-marker';
+        marker.textContent = `✈ ${aircraft.squawk}`;
+        marker.setAttribute('aria-label', `Reported squawk ${aircraft.squawk}, aircraft ${aircraft.address}`);
+        marker.style.left = `${point[0]}px`;
+        marker.style.top = `${point[1]}px`;
+        marker.onclick = event => {
+          event.stopPropagation();
+          this.container.dispatchEvent(new CustomEvent('aircraft-emergency-select', { detail: aircraft.address }));
+        };
+        this.appendOverlay(marker);
+      }
     }
 
     // Natural Events (NASA EONET) - part of NATURAL layer
