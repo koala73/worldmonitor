@@ -1,6 +1,7 @@
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireEnv } from "./lib/env";
+import { verifySvixSignature } from "./lib/svixVerify";
 import { BROADCAST_TRACKED_EVENT_TYPES } from "./broadcast/metrics";
 
 const BROADCAST_TRACKED_SET: ReadonlySet<string> = new Set(
@@ -52,75 +53,12 @@ function getSuppressionDetails(
   return { recipients: [email], reason: "unsubscribe" };
 }
 
-async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.generateKey(
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const [sigA, sigB] = await Promise.all([
-    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(a)),
-    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(b)),
-  ]);
-  const aArr = new Uint8Array(sigA);
-  const bArr = new Uint8Array(sigB);
-  let diff = 0;
-  for (let i = 0; i < aArr.length; i++) diff |= aArr[i]! ^ bArr[i]!;
-  return diff === 0;
-}
-
-async function verifySignature(
-  payload: string,
-  headers: Headers,
-  secret: string,
-): Promise<boolean> {
-  const msgId = headers.get("svix-id");
-  const timestamp = headers.get("svix-timestamp");
-  const signature = headers.get("svix-signature");
-
-  if (!msgId || !timestamp || !signature) return false;
-
-  const ts = Number(timestamp);
-  if (!Number.isFinite(ts)) return false;
-  if (Math.abs(Date.now() / 1000 - ts) > 300) return false;
-
-  const toSign = `${msgId}.${timestamp}.${payload}`;
-  const secretBytes = Uint8Array.from(atob(secret.replace("whsec_", "")), (c) =>
-    c.charCodeAt(0),
-  );
-
-  const key = await crypto.subtle.importKey(
-    "raw",
-    secretBytes,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(toSign),
-  );
-  const expected = btoa(String.fromCharCode(...new Uint8Array(sig)));
-
-  const signatures = signature.split(" ");
-  for (const s of signatures) {
-    const parts = s.split(",");
-    if (parts.length !== 2) continue;
-    const [version, val] = parts;
-    if (version !== "v1" || !val) continue;
-    if (await timingSafeEqualStrings(val, expected)) return true;
-  }
-  return false;
-}
-
 export const resendWebhookHandler = httpAction(async (ctx, request) => {
   const secret = requireEnv("RESEND_WEBHOOK_SECRET");
 
   const rawBody = await request.text();
 
-  const valid = await verifySignature(rawBody, request.headers, secret);
+  const valid = (await verifySvixSignature(rawBody, request.headers, secret)).ok;
   if (!valid) {
     console.warn("[resend-webhook] Invalid signature");
     return new Response("Invalid signature", { status: 401 });
@@ -139,7 +77,7 @@ export const resendWebhookHandler = httpAction(async (ctx, request) => {
   // delivery as at-most-once).
   const broadcastId = event.data?.broadcast_id;
   if (broadcastId && BROADCAST_TRACKED_SET.has(event.type)) {
-    // svix-id is guaranteed non-null here: verifySignature returns false
+    // svix-id is guaranteed non-null here: verifySvixSignature fails
     // (and we 401'd above) if any of svix-id / svix-timestamp /
     // svix-signature were absent. Non-null assert rather than re-guard.
     const svixId = request.headers.get("svix-id") as string;
