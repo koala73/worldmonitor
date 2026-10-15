@@ -3,10 +3,12 @@
 // can render without dragging maplibre+deck.gl into the entry bundle.
 // maplibre-using helpers live in `./basemap-styles.ts` and are loaded
 // lazily alongside MapContainer/DeckGLMap when the map panel mounts.
+import { isDesktopRuntime } from '@/services/desktop-runtime';
 
 const R2_PROXY = import.meta.env.VITE_PMTILES_URL ?? '';
 const R2_PUBLIC = import.meta.env.VITE_PMTILES_URL_PUBLIC ?? '';
-const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
+// isDesktopRuntime() already answers false without a window (#5912).
+const isTauri = isDesktopRuntime();
 export const R2_BASE = isTauri && R2_PUBLIC ? R2_PUBLIC : R2_PROXY;
 
 const hasTilesUrl = !!R2_BASE;
