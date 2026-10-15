@@ -19,10 +19,13 @@ export default async function ({ page, base, shot, log }) {
   const feeds = ['7500', '7600', '7700'].map(squawk => ({ source: 'adsb.lol', squawk, status: 'available', fetchedAt: now, message: '' }));
   let body = { observations, feeds };
   let failed = false;
+  let refreshFeedClocks = false;
   let requests = 0;
-  await page.route('**/api/aviation/v1/list-aircraft-emergencies*', route => {
+  await page.route('**/api/aviation/v1/list-aircraft-emergencies*', async route => {
     requests += 1;
-    return failed ? route.fulfill({ status: 503, body: 'unavailable' }) : route.fulfill({ json: body });
+    if (failed) return route.fulfill({ status: 503, body: 'unavailable' });
+    const receipt = refreshFeedClocks ? await page.evaluate(() => Date.now()) : 0;
+    return route.fulfill({ json: receipt ? { ...body, feeds: body.feeds.map(feed => ({ ...feed, fetchedAt: receipt })) } : body });
   });
   await seedProfile(page);
   await page.goto(`${base}/dashboard?layers=hotspots`, { waitUntil: 'domcontentloaded' });
@@ -103,6 +106,15 @@ export default async function ({ page, base, shot, log }) {
   await emptyResponse;
   await layer.getByText('No matching squawks reported by this feed', { exact: true }).waitFor();
   await shot('successful-empty');
+  refreshFeedClocks = true;
+  body = { observations: [{ ...observations[0], observedAt: 0, position: undefined }], feeds };
+  await page.clock.runFor(65_000);
+  await layer.getByText('1 reported aircraft', { exact: true }).waitFor();
+  await page.clock.fastForward(16 * 60_000);
+  await page.clock.runFor(65_000);
+  await layer.getByText('No current aircraft reports. Stale or unknown observations have expired.', { exact: true }).waitFor();
+  assert.equal(await layer.locator('button[data-aircraft-emergency]').count(), 0, 'repeated unknown-clock reports stay expired');
+  await shot('unknown-clock-expired');
   await toggleLayer();
   await layer.waitFor({ state: 'hidden' });
   await page.waitForFunction(() => !location.search.includes('aircraftEmergencies') && JSON.parse(localStorage.getItem('worldmonitor-layers')).aircraftEmergencies === false);

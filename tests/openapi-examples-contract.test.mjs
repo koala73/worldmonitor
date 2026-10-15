@@ -715,6 +715,28 @@ describe('OpenAPI examples contract', () => {
     assert.equal(result.responseExpected, 242);
   });
 
+  it('labels aircraft emergency examples synthetic and documents projected response shapes', () => {
+    const specs = [
+      JSON.parse(readFileSync(resolve(apiDir, 'AviationService.openapi.json'), 'utf8')),
+      loadYaml(readFileSync(resolve(apiDir, 'AviationService.openapi.yaml'), 'utf8')),
+      loadUnifiedOpenApiSpec(),
+    ];
+    for (const spec of specs) {
+      const operation = spec.paths['/api/aviation/v1/list-aircraft-emergencies'].get;
+      const example = operation.responses['200'].content['application/json'].example;
+      assert.equal(example.feeds[0].squawk, '7500');
+      assert.equal(example.feeds[0].status, 'available');
+      assert.equal(example.feeds[0].source, 'adsb.lol');
+      assert.equal(example.observations[0].address, 'a00001');
+      assert.equal(example.observations[0].squawk, '7500');
+      assert.equal(example.observations[0].observedAt, 0);
+      assert.equal(example.observations[0].militaryFlag, 'unknown');
+      assert.match(example.observations[0].description, /Synthetic example/);
+      assert.match(operation.description, /200 schema describes the unprojected response/);
+      assert.match(operation.description, /array, scalar, or null/);
+    }
+  });
+
   // A honeypot field (hidden anti-bot input) is silently discarded by the
   // handlers when non-empty, so a populated request example is a fake-success
   // trap and contradicts the field's own "leave it empty" description (#4768).

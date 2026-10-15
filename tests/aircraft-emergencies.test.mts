@@ -6,7 +6,7 @@ import { parseEmergencyResponse } from '../server/worldmonitor/aviation/v1/aircr
 import { fetchEmergencySnapshot } from '../server/worldmonitor/aviation/v1/list-aircraft-emergencies';
 import {
   EMERGENCY_CODES, EMERGENCY_RETENTION_MS, emergencyMarkerPosition, isEmergencySquawk,
-  reconcileEmergencies, type EmergencySnapshot,
+  reconcileEmergencies as reconcileRecords, type EmergencyRecord, type EmergencySnapshot,
 } from '../shared/aircraft-emergencies';
 import { convertToStates, filterMilitaryFlights } from '../scripts/seed-military-flights.mjs';
 import { summarizeMilitaryTheaters } from '../scripts/_military-surges.mjs';
@@ -16,8 +16,11 @@ const synthetic = JSON.parse(readFileSync(new URL('synthetic.json', directory), 
 const now = synthetic.now;
 const parse = (rows = synthetic.ac, time = now) => parseEmergencyResponse({ now, ac: rows }, '7700', time);
 const empty: EmergencySnapshot = { observations: [], feeds: [] };
+const unknownReceipts = new Map<string, number>();
+const reconcileEmergencies = (previous: EmergencyRecord[], snapshot: EmergencySnapshot, time: number) =>
+  reconcileRecords(previous, snapshot, time, unknownReceipts);
 const realFetch = globalThis.fetch;
-afterEach(() => { globalThis.fetch = realFetch; });
+afterEach(() => { globalThis.fetch = realFetch; unknownReceipts.clear(); });
 
 describe('timestamped unaltered captures', () => {
   it('verifies capture bytes and replays actual responses without inventing emergency records', () => {
@@ -78,6 +81,37 @@ describe('explicitly synthetic signal and freshness cases', () => {
     assert.deepEqual(emergencyMarkerPosition(record, now), { lat: 0, lon: 0, observedAt: now - 90_000 });
     assert.equal(emergencyMarkerPosition(record, now + 1), undefined);
     for (const lat of [NaN, Infinity, 91, '0', null]) assert.equal(parse([{ hex: 'abcdef', squawk: '7700', lat, lon: 0 }]).observations[0]?.position, undefined);
+  });
+
+  it('does not readmit continuously reported unknown-clock aircraft after expiry', () => {
+    const row = { hex: 'abcdef', squawk: '7500' };
+    let records = reconcileEmergencies([], parse([row]), now);
+    for (const offset of [EMERGENCY_RETENTION_MS, EMERGENCY_RETENTION_MS + 1, EMERGENCY_RETENTION_MS * 2, EMERGENCY_RETENTION_MS * 3]) {
+      const time = now + offset;
+      const snapshot = parseEmergencyResponse({ now: time, ac: [row] }, '7500', time);
+      records = reconcileEmergencies(records, snapshot, time);
+      assert.equal(records.length, offset <= EMERGENCY_RETENTION_MS ? 1 : 0, `retention at ${offset}ms`);
+    }
+    assert.equal(unknownReceipts.get('abcdef'), now);
+    records = reconcileEmergencies(records, empty, now + EMERGENCY_RETENTION_MS * 4);
+    assert.equal(unknownReceipts.get('abcdef'), now, 'unavailable data cannot reset the first receipt');
+  });
+
+  it('clears only expiry bookkeeping after successful absence or a timestamped report', () => {
+    const snapshot = parse([{ hex: 'abcdef', squawk: '7500' }]);
+    let records = reconcileEmergencies([], snapshot, now);
+    const time = now + EMERGENCY_RETENTION_MS + 1;
+    const feeds = EMERGENCY_CODES.map(squawk => ({ source: 'adsb.lol', squawk, status: 'available', fetchedAt: time, message: '' }));
+    records = reconcileEmergencies(records, { observations: [], feeds: feeds.slice(0, 1) }, time);
+    assert.equal(unknownReceipts.get('abcdef'), now, 'partial success cannot establish absence');
+    records = reconcileEmergencies(records, { observations: [], feeds }, time);
+    assert.equal(unknownReceipts.size, 0);
+    records = reconcileEmergencies(records, snapshot, time + 1);
+    assert.equal(records.length, 1, 'a later unknown report after successful absence starts a new receipt period');
+    const timestamped = parseEmergencyResponse({ now: time + 2, ac: [{ hex: 'abcdef', squawk: '7500', seen: 0 }] }, '7500', time + 2);
+    records = reconcileEmergencies(records, timestamped, time + 2);
+    assert.equal(records[0]?.state, 'current');
+    assert.equal(unknownReceipts.size, 0);
   });
 
   it('expires observation freshness on a controlled clock without fresh retrieval resetting it', () => {

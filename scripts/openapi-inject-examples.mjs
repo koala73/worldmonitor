@@ -978,6 +978,16 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
   schema = resolveRef(schema, spec);
+  if (depth === 0 && context.operationId === 'ListAircraftEmergencies'
+    && String(context.name ?? '').endsWith('Response')) {
+    return {
+      feeds: ['7500', '7600', '7700'].map(squawk => ({
+        source: 'adsb.lol', squawk, status: 'available', fetchedAt: 1717200000000, message: 'Synthetic example.',
+      })),
+      observations: [{ address: 'a00001', squawk: '7500', source: 'adsb.lol', observedAt: 0,
+        callsign: 'SYNTHETIC', militaryFlag: 'unknown', description: 'Synthetic example. No observed incident.' }],
+    };
+  }
   if (
     depth === 0
     && String(context.operationId ?? '').toLowerCase() === 'getgivingsummary'

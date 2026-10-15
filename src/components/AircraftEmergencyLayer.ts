@@ -21,6 +21,7 @@ export class AircraftEmergencyLayer {
   private enabled = false;
   private snapshot: EmergencySnapshot = { observations: [], feeds: [] };
   private records: EmergencyRecord[] = [];
+  private unknownReceipts = new Map<string, number>();
   private selected = '';
   private lastMarkers = '';
 
@@ -62,7 +63,7 @@ export class AircraftEmergencyLayer {
   private render(): void {
     if (!this.enabled) return;
     const now = Date.now();
-    this.records = reconcileEmergencies(this.records, this.snapshot, now);
+    this.records = reconcileEmergencies(this.records, this.snapshot, now, this.unknownReceipts);
     const markers = this.records.flatMap(record => {
       const position = emergencyMarkerPosition(record, now);
       return position ? [{ address: record.address, squawk: record.observations[0]!.squawk, lat: position.lat, lon: position.lon }] : [];
@@ -75,7 +76,8 @@ export class AircraftEmergencyLayer {
     const freshFeeds = this.snapshot.feeds.filter(feed => feed.status === 'available' && isFresh(feed.fetchedAt, now, OBSERVATION_MAX_AGE_MS));
     const available = freshFeeds.length === 3;
     const status = this.snapshot.feeds.length === 0 ? 'Loading aircraft feeds…'
-      : available ? (this.records.length ? `${this.records.length} reported aircraft` : 'No matching squawks reported by this feed')
+      : available ? (this.records.length ? `${this.records.length} reported aircraft`
+        : this.snapshot.observations.length ? 'No current aircraft reports. Stale or unknown observations have expired.' : 'No matching squawks reported by this feed')
         : freshFeeds.length ? 'Partial data. Some squawk queries are unavailable or stale.' : 'Aircraft data unavailable or stale.';
     this.element.append(node('p', status), node('p', 'Reported transponder signals. Reception coverage is incomplete. No incident or resolution is confirmed.'));
     const feeds = node('details', '');

@@ -13,7 +13,9 @@ paths:
             tags:
                 - AviationService
             summary: ListAircraftEmergencies
-            description: ListAircraftEmergencies returns reported 7500, 7600 and 7700 signals independently of military classification.
+            description: |-
+                ListAircraftEmergencies returns reported 7500, 7600 and 7700 signals independently of military classification.
+                 The 200 schema describes the unprojected response. With jmespath, the result may instead be any JSON value, including an array, scalar, or null.
             operationId: ListAircraftEmergencies
             parameters:
                 - name: jmespath
@@ -32,16 +34,28 @@ paths:
                             example:
                                 "feeds":
                                     - "fetchedAt": 1717200000000
-                                      "message": "Example WorldMonitor observation."
-                                      "source": "example"
-                                      "squawk": "example"
-                                      "status": "example"
+                                      "message": "Synthetic example."
+                                      "source": "adsb.lol"
+                                      "squawk": "7500"
+                                      "status": "available"
+                                    - "fetchedAt": 1717200000000
+                                      "message": "Synthetic example."
+                                      "source": "adsb.lol"
+                                      "squawk": "7600"
+                                      "status": "available"
+                                    - "fetchedAt": 1717200000000
+                                      "message": "Synthetic example."
+                                      "source": "adsb.lol"
+                                      "squawk": "7700"
+                                      "status": "available"
                                 "observations":
-                                    - "address": "example"
-                                      "aircraftType": "all"
-                                      "altitudeFt": 1.5
-                                      "callsign": "example"
-                                      "description": "Example WorldMonitor observation."
+                                    - "address": "a00001"
+                                      "callsign": "SYNTHETIC"
+                                      "description": "Synthetic example. No observed incident."
+                                      "militaryFlag": "unknown"
+                                      "observedAt": 0
+                                      "source": "adsb.lol"
+                                      "squawk": "7500"
                             schema:
                                 $ref: '#/components/schemas/ListAircraftEmergenciesResponse'
                 "400":

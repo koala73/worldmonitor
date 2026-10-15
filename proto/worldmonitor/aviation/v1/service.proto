@@ -22,6 +22,7 @@ service AviationService {
   option (sebuf.http.service_config) = {base_path: "/api/aviation/v1"};
 
   // ListAircraftEmergencies returns reported 7500, 7600 and 7700 signals independently of military classification.
+  // The 200 schema describes the unprojected response. With jmespath, the result may instead be any JSON value, including an array, scalar, or null.
   rpc ListAircraftEmergencies(ListAircraftEmergenciesRequest) returns (ListAircraftEmergenciesResponse) {
     option (sebuf.http.config) = {path: "/list-aircraft-emergencies", method: HTTP_METHOD_GET};
   }

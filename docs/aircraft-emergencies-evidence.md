@@ -60,11 +60,11 @@ Conflicting reports at the same observation clock remain conflicting when one di
 If an aircraft disappears, including after an ordinary code change, its current condition becomes unknown.
 The squawk queries cannot distinguish a code change from reception loss.
 No disappearance means resolved, landed, or safe.
-Unknown observations expire 15 minutes after their source observation time. With no source observation clock, retention starts at first receipt and does not extend on repeated unknown data.
+Unknown observations expire 15 minutes after their source observation time. With no source observation clock, retention starts at first receipt and does not extend on repeated unknown data. After payload expiry, only address/first-receipt bookkeeping remains while those reports continue. A timestamped report or a fresh successful absence across all three queries clears that bookkeeping. Unavailable or partial data cannot clear it.
 
 Each code query reports availability separately. HTTP failure, timeout, invalid JSON, and schema failure are unavailable.
 Fresh successful empty arrays mean no matching squawks reported by that provider, within its reception coverage.
-A stale provider response is not a fresh empty result. Partial successes retain their observations alongside failed query statuses.
+A stale provider response is not a fresh empty result. Matching reports whose payloads expired show an expired-observation message, not an empty-feed message. Partial successes retain their observations alongside failed query statuses.
 
 ## Before-edit feed evidence
 
@@ -137,18 +137,20 @@ It does not exercise the deployed gateway, production Redis, or provider ingesti
 | --- | --- |
 | 18:16:39 and 18:46:09, mobile 390×844, SVG | Full controlled replay passed, including six markers and their removal. The later run includes the final CSS integration. |
 | 18:19:04, desktop 1440×1000, DeckGL | Full controlled replay passed for details and layer state. |
-| 18:24:29 and 18:43:51, desktop, native animation timers | Loaded map displayed synthetic markers; selecting Washington opened `RCH7500`. The later run includes the final CSS integration. |
+| 18:24:29, 18:43:51 and 19:06:07, desktop, native animation timers | Loaded map displayed synthetic markers; selecting Washington opened `RCH7500`. The final run includes the retention repair. |
+| 19:05:30, mobile 390×844, SVG | Final full replay passed. Repeated unknown-clock reports expired and stayed absent while the feed remained available. |
 
 The native-frame check uses `WM_VERIFY_HEADED=1 WM_VERIFY_CURRENT_ONLY=1` with the same step.
 The full timer replay can advance before the WebGL base map finishes loading, so it is not the desktop marker proof. A final mobile attempt at 18:44:23 timed out after a clock jump raced asynchronous polling; synchronizing the recovery response passed at 18:46:09.
-[Desktop screenshot](evidence/aircraft-emergencies/desktop.png) and [mobile screenshot](evidence/aircraft-emergencies/mobile.png) show synthetic data.
-The local dashboard also logs missing session/legacy route errors and unavailable unrelated feeds; the replay deliberately induces one emergency RPC HTTP 503. These runs are not a clean live dashboard health check.
+[Desktop screenshot](evidence/aircraft-emergencies/desktop.png), [mobile screenshot](evidence/aircraft-emergencies/mobile.png), and [expired observation screenshot](evidence/aircraft-emergencies/expired.png) show synthetic data.
+The local dashboard also logs missing session/legacy route errors and unavailable unrelated feeds; the replay deliberately induces emergency RPC HTTP 503 responses. These runs are not a clean live dashboard health check.
 
-Local verification passed with Node 24: 40 focused capture/freshness/military tests, 558 sidecar/API tests, 77 map contract tests, 25 MCP parity tests, route-cache tests, both TypeScript checks, import boundaries, API/rate-limit contracts, safe HTML, source attribution, focused Biome, Markdown lint, and `git diff --check`.
-The CI integration repairs also passed 90 layer/widget/OpenAPI-example tests, 28 DOM tests, 17 map lifecycle tests, 19 AI-search fact tests, and 45 product-fact/catalog tests. Existing cache identity checks pass while emergency records remain excluded.
+Local verification passed with Node 24: 42 focused capture/freshness/military tests, 558 sidecar/API tests, 77 map contract tests, 25 MCP parity tests, route-cache tests, both TypeScript checks, import boundaries, API/rate-limit contracts, safe HTML, source attribution, focused Biome, Markdown lint, and `git diff --check`.
+The CI integration repairs also passed 91 layer/widget/OpenAPI-example tests, 28 DOM tests, 17 map lifecycle tests, 19 AI-search fact tests, and 45 product-fact/catalog tests. Existing cache identity checks pass while emergency records remain excluded.
 Run the focused tests with `node --import tsx --test tests/aircraft-emergencies.test.mts tests/seed-military-flights-adsb.test.mjs tests/military-surges.test.mjs tests/military-flight-pagination.test.mts tests/military-flights-bounds.test.mts`.
 Run relay/API verification with `npm run test:sidecar`. Generated clients and OpenAPI were regenerated with pinned `make generate`.
-The shared OpenAPI emitter also hoists byte-identical reference schemas with sibling descriptions. Its 44 round-trip tests and 43 capacity/projection checks pass. The emitted JSON is 948,631 bytes under the fixed 950,000-byte limit; the 1,369-byte reserve remains tight.
+The final API examples label the aircraft synthetic, preserve unknown details, and use exact valid codes and availability values. The endpoint description distinguishes the unprojected response schema from an optional JMESPath result.
+The shared OpenAPI emitter also hoists byte-identical reference schemas with sibling descriptions. Its 44 round-trip tests and 43 capacity/projection checks pass. The emitted JSON is 949,039 bytes under the fixed 950,000-byte limit; the 961-byte reserve remains tight.
 
 The initial raw captures are bounded live provider observations. Replay proof is separate from browser proof.
 The local unmocked dashboard displays unavailable data when required gateway dependencies are absent.

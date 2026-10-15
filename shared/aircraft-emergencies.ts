@@ -68,13 +68,19 @@ export function emergencyMarkerPosition(record: EmergencyRecord, now: number): E
   if (position && isFresh(position.observedAt, now, POSITION_MAX_AGE_MS)) return position;
 }
 
-export function reconcileEmergencies(previous: EmergencyRecord[], snapshot: EmergencySnapshot, now: number): EmergencyRecord[] {
+export function reconcileEmergencies(previous: EmergencyRecord[], snapshot: EmergencySnapshot, now: number, unknownReceipts: Map<string, number>): EmergencyRecord[] {
   const groups = new Map<string, EmergencyObservation[]>();
   for (const observation of snapshot.observations) {
     if (!isEmergencySquawk(observation.squawk)) continue;
     const group = groups.get(observation.address) ?? [];
     if (!group.some(item => JSON.stringify(item) === JSON.stringify(observation))) group.push(observation);
     groups.set(observation.address, group);
+  }
+  const complete = EMERGENCY_CODES.every(code => snapshot.feeds.some(feed => feed.squawk === code
+    && feed.status === 'available' && isFresh(feed.fetchedAt, now, OBSERVATION_MAX_AGE_MS)));
+  for (const address of unknownReceipts.keys()) {
+    const reports = groups.get(address);
+    if (reports?.some(report => report.observedAt > 0) || (complete && !reports)) unknownReceipts.delete(address);
   }
   const records = new Map<string, EmergencyRecord>();
   for (const old of previous) {
@@ -86,13 +92,14 @@ export function reconcileEmergencies(previous: EmergencyRecord[], snapshot: Emer
     const latest = observations[0]!;
     const prior = records.get(address);
     const priorTime = Math.max(...(prior?.observations.map(item => item.observedAt) ?? [0]));
+    if (!latest.observedAt && !unknownReceipts.has(address)) unknownReceipts.set(address, prior?.retainedAt ?? now);
     if (latest.observedAt < priorTime) continue;
     if (latest.observedAt === priorTime && prior?.observations.length) {
       for (const report of prior.observations) {
         if (!observations.some(item => JSON.stringify(item) === JSON.stringify(report))) observations.push(report);
       }
     }
-    const anchor = latest.observedAt || prior?.retainedAt || now;
+    const anchor = latest.observedAt || unknownReceipts.get(address) || prior?.retainedAt || now;
     if (now - anchor > EMERGENCY_RETENTION_MS) continue;
     const conflict = new Set(observations.map(item => item.squawk)).size > 1
       || observations.some(item => item !== latest && item.position && latest.position
