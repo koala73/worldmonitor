@@ -70,8 +70,15 @@ export function emergencyMarkerPosition(record: EmergencyRecord, now: number): E
 
 export function reconcileEmergencies(previous: EmergencyRecord[], snapshot: EmergencySnapshot, now: number, unknownReceipts: Map<string, number>): EmergencyRecord[] {
   const groups = new Map<string, EmergencyObservation[]>();
+  const undated = new Set<string>();
   for (const observation of snapshot.observations) {
     if (!isEmergencySquawk(observation.squawk)) continue;
+    if (!observation.observedAt) {
+      undated.add(observation.address);
+      if (!unknownReceipts.has(observation.address)) unknownReceipts.set(observation.address, now);
+      if (now - unknownReceipts.get(observation.address)! > EMERGENCY_RETENTION_MS) continue;
+    }
+    if (observation.observedAt > 0 && now - observation.observedAt > EMERGENCY_RETENTION_MS) continue;
     const group = groups.get(observation.address) ?? [];
     if (!group.some(item => JSON.stringify(item) === JSON.stringify(observation))) group.push(observation);
     groups.set(observation.address, group);
@@ -80,33 +87,33 @@ export function reconcileEmergencies(previous: EmergencyRecord[], snapshot: Emer
     && feed.status === 'available' && isFresh(feed.fetchedAt, now, OBSERVATION_MAX_AGE_MS)));
   for (const address of unknownReceipts.keys()) {
     const reports = groups.get(address);
-    if (reports?.some(report => report.observedAt > 0) || (complete && !reports)) unknownReceipts.delete(address);
+    if (!undated.has(address) && (reports?.length || complete)) unknownReceipts.delete(address);
   }
   const records = new Map<string, EmergencyRecord>();
   for (const old of previous) {
-    const anchor = Math.max(...old.observations.map(item => item.observedAt), 0) || old.retainedAt;
-    if (now - anchor <= EMERGENCY_RETENTION_MS) records.set(old.address, { ...old, state: 'unknown' });
+    const observations = old.observations.filter(item => now - (item.observedAt || unknownReceipts.get(old.address) || old.retainedAt) <= EMERGENCY_RETENTION_MS);
+    if (observations.length) records.set(old.address, { ...old, observations, state: 'unknown' });
   }
   for (const [address, observations] of groups) {
     observations.sort((a, b) => b.observedAt - a.observedAt || a.source.localeCompare(b.source) || a.squawk.localeCompare(b.squawk));
     const latest = observations[0]!;
     const prior = records.get(address);
     const priorTime = Math.max(...(prior?.observations.map(item => item.observedAt) ?? [0]));
-    if (!latest.observedAt && !unknownReceipts.has(address)) unknownReceipts.set(address, prior?.retainedAt ?? now);
     if (latest.observedAt < priorTime) continue;
-    if (latest.observedAt === priorTime && prior?.observations.length) {
+    if (latest.observedAt === priorTime && prior?.observations.length
+      && (latest.observedAt > 0 || prior.retainedAt === unknownReceipts.get(address))) {
       for (const report of prior.observations) {
         if (!observations.some(item => JSON.stringify(item) === JSON.stringify(report))) observations.push(report);
       }
     }
-    const anchor = latest.observedAt || unknownReceipts.get(address) || prior?.retainedAt || now;
+    const anchor = latest.observedAt || unknownReceipts.get(address) || now;
     if (now - anchor > EMERGENCY_RETENTION_MS) continue;
     const conflict = new Set(observations.map(item => item.squawk)).size > 1
       || observations.some(item => item !== latest && item.position && latest.position
         && item.position.observedAt === latest.position.observedAt
         && (item.position.lat !== latest.position.lat || item.position.lon !== latest.position.lon));
     const current = isFresh(latest.observedAt, now, OBSERVATION_MAX_AGE_MS);
-    records.set(address, { address, observations, state: conflict ? 'conflict' : current ? 'current' : 'unknown', retainedAt: prior?.retainedAt ?? now });
+    records.set(address, { address, observations, state: conflict ? 'conflict' : current ? 'current' : 'unknown', retainedAt: latest.observedAt ? prior?.retainedAt ?? now : anchor });
   }
   return [...records.values()].sort((a, b) => a.address.localeCompare(b.address));
 }

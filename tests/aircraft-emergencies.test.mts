@@ -124,6 +124,48 @@ describe('explicitly synthetic signal and freshness cases', () => {
     assert.deepEqual(reconcileEmergencies(records, snapshot, now + EMERGENCY_RETENTION_MS + 1), []);
   });
 
+  it('starts a new unknown receipt period after a complete empty response', () => {
+    const snapshot = parse([{ hex: 'abcdef', squawk: '7500' }]);
+    let records = reconcileEmergencies([], snapshot, now);
+    const feeds = EMERGENCY_CODES.map(squawk => ({ source: 'adsb.lol', squawk, status: 'available', fetchedAt: now + 60_000, message: '' }));
+    records = reconcileEmergencies(records, { observations: [], feeds }, now + 60_000);
+    const reappeared = { ...snapshot, observations: snapshot.observations.map(report => ({ ...report, squawk: '7600' })) };
+    records = reconcileEmergencies(records, reappeared, now + 120_000);
+    assert.equal(records[0]?.retainedAt, now + 120_000);
+    assert.equal(records[0]?.state, 'unknown');
+    assert.equal(records[0]?.observations.length, 1);
+    assert.equal(records[0]?.observations[0]?.squawk, '7600');
+    records = reconcileEmergencies(records, reappeared, now + EMERGENCY_RETENTION_MS + 1);
+    assert.equal(records.length, 1);
+    assert.deepEqual(reconcileEmergencies(records, reappeared, now + 120_000 + EMERGENCY_RETENTION_MS + 1), []);
+  });
+
+  it('expires individual observations before deciding conflicts, including cached reports', () => {
+    const fresh = parse([synthetic.ac[0]]).observations[0]!;
+    const old = { ...fresh, source: 'synthetic-other-provider', squawk: '7700', observedAt: now - EMERGENCY_RETENTION_MS - 1 };
+    let records = reconcileEmergencies([], { observations: [fresh, old], feeds: [] }, now - 1000);
+    assert.equal(records[0]?.state, 'conflict', 'both reports are initially within retention');
+    records = reconcileEmergencies(records, { observations: [fresh], feeds: [] }, now);
+    assert.equal(records[0]?.state, 'current');
+    assert.equal(records[0]?.observations.length, 1);
+    assert.ok(emergencyMarkerPosition(records[0]!, now));
+    records = reconcileEmergencies([], { observations: [fresh, old], feeds: [] }, now);
+    assert.equal(records[0]?.state, 'current', 'an expired report arriving again cannot withhold the marker');
+    assert.equal(records[0]?.observations.length, 1);
+  });
+
+  it('expires repeated undated conflicts even when another source stays fresh', () => {
+    const fresh = parse([synthetic.ac[0]]).observations[0]!;
+    const unknown = { ...fresh, source: 'synthetic-other-provider', squawk: '7700', observedAt: 0 };
+    let records: EmergencyRecord[] = [];
+    for (const offset of [0, EMERGENCY_RETENTION_MS, EMERGENCY_RETENTION_MS + 1, EMERGENCY_RETENTION_MS * 2]) {
+      const time = now + offset;
+      records = reconcileEmergencies(records, { observations: [{ ...fresh, observedAt: time, position: { lat: 1, lon: 2, observedAt: time } }, unknown], feeds: [] }, time);
+      assert.equal(records[0]?.state, offset <= EMERGENCY_RETENTION_MS ? 'conflict' : 'current');
+      assert.equal(records[0]?.observations.length, offset <= EMERGENCY_RETENTION_MS ? 2 : 1);
+    }
+  });
+
   it('deduplicates by address, keeps non-ICAO namespaces, and retains conflicting reports', () => {
     const row = synthetic.ac[0];
     const result = parse([row, { ...row }, { ...row, hex: `~${row.hex}` }]);
