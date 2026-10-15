@@ -2635,8 +2635,8 @@ export function createDomainGateway(
           }
         }
         if (!projection.ok) {
-          // The handler answered, but the caller receives none of it.
-          await releaseDirectLlmReservation();
+          // The handler completed its work. A caller-controlled projection
+          // failure must not refund it and bypass the daily provider-spend cap.
           const errorBody = JSON.stringify(projection.envelope);
           emitRequest(400, 'malformed_request', null, errorBody.length);
           maybeAttachDevHealthHeader(mergedHeaders);
