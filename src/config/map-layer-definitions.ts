@@ -140,6 +140,7 @@ export const V1_LAYER_EXPLANATION_KEYS = [
   'weather',
   'canadaRoads', 'canadaAlerts',
   'flights',
+  'aircraftEmergencies',
   'ais',
   'waterways',
   'tradeRoutes',

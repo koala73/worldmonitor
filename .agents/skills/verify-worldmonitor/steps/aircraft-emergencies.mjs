@@ -98,7 +98,9 @@ export default async function ({ page, base, shot, log }) {
   failed = false;
   const later = await page.evaluate(() => Date.now());
   body = { observations: [], feeds: feeds.map(feed => ({ ...feed, fetchedAt: later })) };
-  await page.clock.fastForward(65_000);
+  const emptyResponse = page.waitForResponse(response => response.url().includes('/api/aviation/v1/list-aircraft-emergencies') && response.status() === 200);
+  await page.clock.runFor(65_000);
+  await emptyResponse;
   await layer.getByText('No matching squawks reported by this feed', { exact: true }).waitFor();
   await shot('successful-empty');
   await toggleLayer();

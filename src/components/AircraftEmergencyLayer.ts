@@ -5,7 +5,6 @@ import {
   emergencyMarkerPosition, isFresh, reconcileEmergencies,
   type EmergencyCode, type EmergencyMapMarker, type EmergencyRecord, type EmergencySnapshot,
 } from '../../shared/aircraft-emergencies';
-import '@/styles/aircraft-emergencies.css';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, value: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);

@@ -221,6 +221,7 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/aviation/v1/get-youtube-live-stream-info": "Blocked by relay widget endpoint policy",
   "/api/aviation/v1/list-airport-delays": "Same data as bootstrap key flightDelays",
   "/api/aviation/v1/list-airport-flights": "Pro-only (401 for the anonymous widget session)",
+  "/api/aviation/v1/list-aircraft-emergencies": "Layer-only aircraft observations; not offered as widget data",
   "/api/aviation/v1/search-flight-prices": "Pro-only (401 for the anonymous widget session)",
   "/api/aviation/v1/track-aircraft": "Blocked by relay widget endpoint policy",
   "/api/climate/v1/get-co2-monitoring": "Same data as bootstrap key co2Monitoring",

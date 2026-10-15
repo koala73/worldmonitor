@@ -604,8 +604,9 @@ export async function fetchMilitaryFlights(): Promise<{
   const dataState: BreakerDataState = result === fallback ? unavailable
     : result === completed && completedState ? completedState
       : { mode: 'cached', timestamp: null, offline: breaker.getDataState().offline };
-  const flights = result.flights.filter(flight => !['7500', '7600', '7700'].includes(flight.squawk ?? ''));
-  return { flights, clusters: flights.length === result.flights.length ? result.clusters : clusterFlights(flights), dataState };
+  const filteredFlights = result.flights.filter(flight => !['7500', '7600', '7700'].includes(flight.squawk ?? ''));
+  const flights = filteredFlights.length === result.flights.length ? result.flights : filteredFlights;
+  return { flights, clusters: flights === result.flights ? result.clusters : clusterFlights(flights), dataState };
 }
 
 /**
