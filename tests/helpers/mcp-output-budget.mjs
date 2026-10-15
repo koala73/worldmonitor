@@ -14,6 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { __testing__, utf8ByteLength } from '../../api/mcp.ts';
+import { presentDefaultMarketData } from '../../api/mcp/registry/cache-tools.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const FIXTURES_DIR = path.resolve(HERE, '..', 'fixtures', 'jmespath-samples');
@@ -35,10 +36,7 @@ export const FIXTURES = [
 // fails the check; a tool listed here without a fixture in `FIXTURES` also
 // fails. Remove an entry once the underlying tool is brought back under
 // budget.
-export const KNOWN_OVER_BUDGET = new Map([
-  ['get_market_data',
-    'commodities-bootstrap ships 30 quotes per the universal default `limit` — that single key alone is ~133 KB, more than the entire 128 KB budget. Default-args calls currently return the runtime `_budget_exceeded` envelope. Delete this entry once the per-key default cap is tightened (or the per-tool budget raised with justification) so the envelope fits under budget.'],
-]);
+export const KNOWN_OVER_BUDGET = new Map();
 
 export function readFixture(file) {
   return JSON.parse(readFileSync(path.join(FIXTURES_DIR, file), 'utf8'));
@@ -53,7 +51,10 @@ export function measure(tool, fixture) {
     ? tool._postFilter(structuredClone(fixture.data), {})
     : fixture.data;
   const envelope = { cached_at: fixture.cached_at, stale: fixture.stale, data: filtered };
-  return utf8ByteLength(JSON.stringify(envelope));
+  const presented = tool.name === 'get_market_data'
+    ? presentDefaultMarketData(envelope, tool._outputBudgetBytes)
+    : envelope;
+  return utf8ByteLength(JSON.stringify(presented));
 }
 
 // Per-fixture outcome categories. The two consumers (test + script) map

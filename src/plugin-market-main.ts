@@ -104,6 +104,27 @@ function mount(): void {
       return;
     }
     const data = Object.keys(record(payload.data)).length ? record(payload.data) : payload;
+    const transport = projected ? {} : record(payload.transportCoverage);
+    const transportCollections = transport.count_scope === 'post_filter_snapshot' && transport.default_list_limit === 30
+      ? record(transport.collections) : {};
+    const omittedByBudget = (key: string, list: string): boolean => {
+      const coverage = record(transportCollections[key + '.' + list]);
+      return coverage.state === 'available' && number(coverage.returned_count) === 0
+        && (number(coverage.omitted_count) ?? 0) > 0;
+    };
+    if (Object.keys(transportCollections).length) {
+      const notice = node('p', 'qcoverage market-transport-coverage');
+      notice.textContent = [...groups.filter(group => group.key !== 'projection'), { key: 'etf-flows', list: 'etfs', label: 'ETF flows' }]
+        .map(group => {
+          const coverage = record(transportCollections[group.key + '.' + group.list]);
+          const original = number(coverage.original_count), returned = number(coverage.returned_count), omitted = number(coverage.omitted_count);
+          return coverage.state === 'available' && original != null && returned != null && omitted != null
+            && [original, returned, omitted].every(count => Number.isInteger(count) && count >= 0) && original === returned + omitted
+            ? group.label + ': ' + returned + ' of ' + original + ' rows returned' + (omitted ? '; ' + omitted + ' omitted to fit the response budget.' : '.')
+            : group.label + ': count unavailable.';
+        }).join(' ');
+      content.append(notice);
+    }
     const fear = record(data['fear-greed']);
     const composite = record(fear.composite);
     const score = number(composite.score) ?? number(fear.composite);
@@ -143,12 +164,15 @@ function mount(): void {
           ? 'Showing ' + quotes.length + ' of ' + total + ' quotes from the response sample.'
           : quotes.length + ' loaded quotes.'));
         for (const item of quotes) { section.append(renderQuote(record(item))); count++; }
-        if (!quotes.length) section.append(node('p', 'qcoverage', 'No quotes in this response. The curated snapshot does not establish why a requested symbol is absent.'));
+        if (!quotes.length) section.append(node('p', 'qcoverage', omittedByBudget(group.key, group.list)
+          ? 'Quotes omitted to fit the response budget.'
+          : 'No quotes in this response. The curated snapshot does not establish why a requested symbol is absent.'));
       }
       content.append(section);
     }
     status.textContent = count ? count + ' loaded quotes. Select a chart row to expand its details.' :
-      projected ? 'This projection contains no quote groups. Request market data without this projection.' : 'No market quotes available in this response.';
+      projected ? 'This projection contains no quote groups. Request market data without this projection.' :
+        groups.some(group => omittedByBudget(group.key, group.list)) ? 'Quotes omitted to fit the response budget.' : 'No market quotes available in this response.';
   };
 
   window.addEventListener('message', event => {

@@ -35,7 +35,7 @@
     "@types/pg": "^8.11.10",
     "tsx": "^4.19.1",
     "typescript": "^5.6.3",
-    "vitest": "^3.2.6"
+    "vitest": "^5.0.3"
   },
   "overrides": {
     "fast-uri": "^3.1.8",

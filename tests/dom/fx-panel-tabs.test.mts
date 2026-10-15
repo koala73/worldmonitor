@@ -140,8 +140,8 @@ beforeAll(async () => {
   // The panel's own copy must resolve too — the shared probe only covers the
   // export-gate keys, so an unregistered `components.fx.*` block would leave
   // every assertion below comparing `undefined` to `undefined`.
-  expect(tt('components.fx.tabs.stress')).toBe('FX Stress');
-  expect(tt('panels.fx')).toBe('FX Rates');
+  expect(tt('components.fx.tabs.stress')).toBe('Currency stress');
+  expect(tt('panels.fx')).toBe('Foreign exchange rates');
 });
 
 beforeEach(() => {

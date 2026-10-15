@@ -16,11 +16,13 @@ const BLOCKED_METADATA_HOSTNAMES = new Set([
 
 const WEBHOOK_DELIVERY_TIMEOUT_MS = 10_000;
 const MAX_WEBHOOK_RESPONSE_BYTES = 1024 * 1024;
+const SSRF_BLOCKED_ERROR_CODE = 'ERR_SSRF_BLOCKED';
 
 class NotificationWebhookSsrfError extends Error {
   constructor(message) {
     super(message);
     this.name = 'NotificationWebhookSsrfError';
+    this.code = SSRF_BLOCKED_ERROR_CODE;
   }
 }
 
@@ -102,6 +104,10 @@ function embeddedIpv4FromIpv6(hextets) {
   if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0xffff) {
     return toDotted(h6, h7);
   }
+  // IPv4-translated (SIIT) ::ffff:0:0:0/96
+  if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0xffff && h5 === 0) {
+    return toDotted(h6, h7);
+  }
   // NAT64 64:ff9b::/96
   if (h0 === 0x0064 && h1 === 0xff9b && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0) {
     return toDotted(h6, h7);
@@ -139,6 +145,9 @@ function isBlockedResolvedAddress(address) {
     if (h0 === 0x0064 && h1 === 0xff9b && h2 === 0x0001) return true;
     // RFC 6666 discard-only prefix 100::/64.
     if (h0 === 0x0100 && h1 === 0 && h2 === 0 && h3 === 0) return true;
+    // 2001::/23 IETF protocol assignments (Teredo 2001::/32 tunnels to an
+    // arbitrary IPv4; benchmarking; ORCHID).
+    if (h0 === 0x2001 && h1 < 0x0200) return true;
   }
 
   if (addr === '::' || addr === '::1') return true;
@@ -225,6 +234,43 @@ async function assertNotificationWebhookDeliveryUrlSafe(rawUrl, resolveHostname 
   return { url, resolvedAddresses };
 }
 
+async function defaultResolveHostnameRecords(hostname) {
+  return dns.lookup(hostname, { all: true, verbatim: true });
+}
+
+/**
+ * A `lookup` option for `http.request`/`https.request` that vets every DNS
+ * answer before the socket connects, and connects only to a vetted address.
+ * Rejecting when ANY answer is blocked keeps a mixed public/private answer
+ * set from reaching the private address through happy-eyeballs.
+ */
+function createGuardedLookup(resolveHostnameRecords = defaultResolveHostnameRecords) {
+  return function guardedLookup(hostname, options, callback) {
+    if (typeof options === 'function') {
+      callback = options;
+      options = {};
+    }
+    Promise.resolve()
+      .then(() => resolveHostnameRecords(hostname))
+      .then((records) => {
+        if (!records.length) {
+          throw new NotificationWebhookSsrfError(`DNS resolution returned no addresses for ${hostname}`);
+        }
+        const blocked = records.find(record => isBlockedResolvedAddress(record.address));
+        if (blocked) {
+          throw new NotificationWebhookSsrfError(`${hostname} resolves to a private/reserved address: ${blocked.address}`);
+        }
+        if (options && options.all) {
+          callback(null, records.map(record => ({ address: record.address, family: record.family })));
+          return;
+        }
+        const picked = records.find(record => record.family === 4) || records[0];
+        callback(null, picked.address, picked.family);
+      })
+      .catch(error => callback(error));
+  };
+}
+
 function responseFromNode(statusCode, statusMessage, headers, body) {
   const status = statusCode || 502;
   const responseBody = status === 204 || status === 205 || status === 304
@@ -303,8 +349,10 @@ async function postJsonWithPinnedAddress(url, body, headers, resolvedAddresses) 
 
 module.exports = {
   NotificationWebhookSsrfError,
+  SSRF_BLOCKED_ERROR_CODE,
   assertNotificationWebhookDeliveryUrlSafe,
   blockedNotificationWebhookUrlReason,
+  createGuardedLookup,
   isBlockedResolvedAddress,
   postJsonWithPinnedAddress,
   responseFromNode,

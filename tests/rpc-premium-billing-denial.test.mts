@@ -360,7 +360,7 @@ describe('summarizeArticle transient entitlement regression (#5652)', () => {
     const result = await summarizeArticle(
       { request, pathParams: {}, headers: Object.fromEntries(request.headers.entries()) },
       {
-        provider: 'groq',
+        provider: 'openrouter',
         headlines: ['Headline one'],
         mode: 'brief',
         geoContext: '',
@@ -394,7 +394,7 @@ describe('summarizeArticle transient entitlement regression (#5652)', () => {
     const result = await summarizeArticle(
       handlerContext(request),
       {
-        provider: 'groq',
+        provider: 'openrouter',
         headlines: ['Headline one'],
         mode: 'brief',
         geoContext: '',

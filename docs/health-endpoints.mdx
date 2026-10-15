@@ -44,8 +44,8 @@ The top-level `status` describes user-visible platform availability, not perfect
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "summary": {
-    "total": 312,
-    "ok": 312,
+    "total": 318,
+    "ok": 318,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 0,
@@ -158,7 +158,7 @@ Keys are grouped into three tiers that determine alert severity:
 | `STALE_CONTENT` | Warn after grace | Seeder is fresh but the upstream content stopped advancing or has no usable timestamp. During the three-hour grace, it appears in compact `pending` and counts in `summary.staleContent` and `summary.pending`. At `staleContentGraceUntil`, it moves to `problems` and counts in `summary.warn`. |
 | `COVERAGE_PARTIAL` | Warn | Aggregate records or a required subgroup is below the key's declared coverage floor (for example, 139/174 PortWatch countries or an empty prediction-market pool) |
 | `COVERAGE_DEGRADED` | Warn | The producer's own coverage diagnostics are missing, or its completion ratio is below the key's `minSuccessRate` (for example, a consumer-price market that completed 4 of 12 retailer pages) |
-| `ROLLOUT_PENDING` | Warn | A newly deployed schema whose producer has not reached its first scheduled run yet. **Bounded**: the health runtime persists a deployment-relative `rolloutPendingUntil` deadline in Redis, and the state becomes `EMPTY` (crit) once that passes or once the producer writes its durable activation marker. Counted in `summary.rolloutPending` |
+| `ROLLOUT_PENDING` | Warn | A newly deployed schema whose producer has not reached its first scheduled run yet. **Bounded**: the health runtime persists a deployment-relative `rolloutPendingUntil` deadline in Redis, and the state becomes `EMPTY` (crit) once that passes or once the producer writes its durable activation marker. A versioned data key (`family:vN:…`) whose key is absent while a fresh `seed-meta` names an older version of the same family in `sourceVersion` is also in this state: the reader deployed a key bump before the cron writer's next run. That window is the key's `maxStaleMin`, capped at 24 hours, claimed once per data key version. Counted in `summary.rolloutPending` |
 | `SEED_ERROR` | Warn | `seed-meta` reports `status: "error"` from the last seed run, a producer that serves last-known-good has failed often enough to cross its declared failure contract (see below), **or** the resilience static index reports one or more failed source adapters |
 | `REDIS_PARTIAL` | Warn | A single per-command Redis error on this key's STRLEN/GET (not a full outage) |
 | `EMPTY_ON_DEMAND` | Warn | On-demand key has no data yet (expected until first request); counted in `summary.onDemandWarn` |
@@ -920,3 +920,64 @@ The command attributes execution from a container start near its configured cron
 Exit codes are `0` for passed, `1` for failed or unverified, and `2` for waiting or observing. An expired deadline remains failed on resume. A passed checkpoint records acceptance at that time; it is not an ongoing health guarantee. These are local report labels and do not change the public health statuses.
 
 For physical divergence, initial recovery does not complete the separate 48-hour schedule check. That check must include two 09:00 UTC ticks and the Sunday 08:00 ordering when applicable. Normal interval-gate skips do not count as successful publications. Keep the JSON checkpoint local: it contains operational identifiers, but no credentials, raw logs, or source payloads.
+
+### Forecast judged lane
+
+`forecastResolutions` monitors the resolution ledger and its existing
+`seed-meta:forecast:resolutions` metadata. After publishing the ledger and
+scorecard, the daily worker records judged-lane health through the shared
+seed-metadata writer. Missing publication becomes stale after 36 hours.
+
+Health reports whether the resolver runs and can read its inputs, not how
+well the judges score. The producer sets `status: error` and completes the run
+as `DEGRADED` only when judged entries are overdue and the run cannot read the
+evidence it needs to judge them. That happens when the evidence coverage marker
+is unverified (`coverage_unverified_with_overdue_entries`) or when the archive
+read failed (`archive_unreadable_with_overdue_entries`). The normal health
+classifier exposes either condition as `SEED_ERROR`.
+
+The metadata also records judged-lane quality, which never changes the status.
+`quality.noScoredWithinSlaRuns` (mirrored by `stalledRuns`, capped at 3) counts
+consecutive eligible runs without a new scored-within-SLA outcome. A judged
+entry is overdue, and its two-day SLA starts, at its deadline plus the 18-hour
+reporting grace, the first moment it can be judged. A run is
+eligible when judged entries remain overdue or judged outcomes were resolved
+since the preceding health observation. Old successes and VOID outcomes do not
+clear the streak. A new scored-within-SLA outcome or an idle lane resets it.
+`scoredWithinSla` and `pendingJudgePastDeadline` give the counts for the run.
+
+If the evidence coverage marker expires or either proof version becomes stale,
+the resolver attempts a bounded scan of the dedicated archive. Recovery allows
+30,000 records by default, compared with 15,000 for ordinary judging reads,
+within the same 25-second total deadline. An explicit archive hash-limit override
+still applies. Recovery requires at least 14 days of valid records,
+no gap longer than six hours (including the newest record to the read clock),
+matching index and record timestamps, and no truncation, duplicate hashes, or
+unreadable records. It installs a version-2 continuity marker with `SET NX` and
+the existing 15-day TTL. Stale markers are replaced only if their value still
+matches the value read before the scan. A concurrent publication is never
+overwritten. Publishers cannot advance version-2 proof across a gap longer
+than six hours; recovery requires a new complete continuity scan. Dry runs
+check recovery without publishing a marker.
+
+Continuity proves activity at the declared six-hour granularity; it cannot
+prove that every upstream story was captured. The marker names this proof and
+its archive source. Only judging opts into it. Accumulator pruning still
+requires the version-1 backfill proof. If the bounded scan cannot establish
+continuity, judging remains unavailable and the health signal names the stall.
+
+### Market alert ledger
+
+`marketAlertLedger` monitors `correlation:market-alerts:ledger:v1` through
+`seed-meta:correlation:market-alerts`. `marketAlertScorecard` monitors
+`correlation:market-alerts:scorecard:v1` through
+`seed-meta:correlation:market-alerts-scorecard`. The `seed-market-alert-ledger`
+section of `seed-bundle-derived-signals` rewrites both keys on every 5-minute
+tick, and each becomes stale after 30 minutes.
+
+The ledger stays empty until the first market alert fires, so an empty payload
+is a valid state for both keys and never reports `EMPTY`. Both checks bind the
+activation marker `seed-activated:correlation:market-alerts`, which the seeder
+sets after its first publish. Before the marker exists, a missing payload reads
+as the soft on-demand state. After it exists, a missing publication reports
+`STALE_SEED` once the 30-minute gate passes.

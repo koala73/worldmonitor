@@ -192,8 +192,9 @@ async function loadCountryDeepDivePanel(options = {}) {
     `],
     ['export-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
-      export function exportCountryEvidenceMarkdown(data) {
+      export function countryEvidenceMarkdownArtifact(data) {
         state.evidenceExports.push(data);
+        return { filename: 'fixture.md', mimeType: 'text/markdown;charset=utf-8', content: JSON.stringify(data) };
       }
     `],
     ['utils-stub', `
@@ -501,8 +502,8 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     throw error;
   }
 
-  function createPanel() {
-    return new CountryDeepDivePanel(null);
+  function createPanel(download = async () => ({ state: 'attempted' })) {
+    return new CountryDeepDivePanel(null, undefined, download);
   }
 
   function getPanelRoot() {

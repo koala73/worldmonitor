@@ -1,5 +1,6 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
 import { FORECASTS_APP_HTML } from '../api/mcp/ui/forecasts-app.ts';
 
@@ -52,6 +53,275 @@ function hostReply(win, id, result, source = win.eval('window.parent')) {
 }
 function enableTools(win) { hostReply(win, 1, { hostCapabilities: { serverTools: {} } }); }
 function theaterReply(win, request, source = theaterResponse) { hostReply(win, request.id, { structuredContent: { data: { forecastTheaters: source } } }); }
+
+describe('forecast public request errors', () => {
+  const publicErrors = [
+    [-32602, 'Invalid panel request.'],
+    [-32602, 'Panel request expired. Open or refresh the panel.', 'This panel request was not accepted. Open a new forecasts panel.'],
+    [-32602, 'Open a forecast panel before reading original evidence.'],
+    [-32602, 'Panel request only covers bounded forecast lists, original cases and latest theater summaries.'],
+    [-32029, 'This panel reached its read budget. Refresh to start another request.'],
+    [-32029, 'Too many requests'],
+    [-32603, 'Service temporarily unavailable, retry in a moment.'],
+    [-32603, 'Service temporarily unavailable'],
+    [-32603, 'Internal error: data fetch failed'],
+    [-32003, 'Required data inputs are unavailable'],
+  ];
+  for (const kind of ['case', 'theater']) {
+    async function start() {
+      const state = await mount({ ...payload([{ ...forecast, caseFile: undefined, hasCaseFile: true }]), panelRequest: { panel: 'forecasts', token: 'controlled-forecast-receipt' } });
+      enableTools(state.win);
+      if (kind === 'case') {
+        const details = state.doc.querySelector('#list details');
+        details.open = true; details.dispatchEvent(new state.win.Event('toggle'));
+      } else state.doc.getElementById('load-theaters').click();
+      return { ...state, target: kind === 'case' ? state.doc.querySelector('#list details') : state.doc.getElementById('theaters'), request: state.messages.find(m => m.method === 'tools/call') };
+    }
+    it('preserves allowlisted public ' + kind + ' errors without exposing response data or making another call', async () => {
+      for (const [code, message, notice = message] of publicErrors) {
+        const { win, doc, target, request, messages } = await start();
+        const error = { code, message, data: { token: 'private-token-sentinel', account: 'private-account-sentinel', message: '<img src=x onerror=alert(1)>' } };
+        const reply = id => win.dispatchEvent(new win.MessageEvent('message', { source: win.eval('window.parent'), data: { jsonrpc: '2.0', id, error } }));
+        reply('unrelated-request'); assert.match(target.textContent, /Loading/);
+        reply(request.id);
+        assert.ok(target.textContent.includes(notice), target.textContent);
+        assert.doesNotMatch(target.textContent, /Panel request expired/);
+        assert.ok(target.textContent.includes(String(code)), target.textContent);
+        assert.doesNotMatch(doc.getElementById('root').textContent, /private-token-sentinel|private-account-sentinel|onerror/);
+        assert.equal(doc.querySelector('img'), null);
+        assert.equal(messages.filter(m => m.method === 'tools/call').length, 1);
+        assert.match(target.textContent, /Retry/);
+      }
+    });
+    it('keeps the generic ' + kind + ' fallback for unclassified or mismatched errors', async () => {
+      for (const envelope of [
+        { error: { code: -32602, message: 'private-token-sentinel <img src=x>' } },
+        { error: { code: -32603, message: publicErrors[1][1] } },
+        { error: { code: '-32602', message: publicErrors[1][1] } },
+        { result: { isError: true, content: [{ type: 'text', text: 'private-token-sentinel <img src=x>' }] } },
+        { result: { isError: true, structuredContent: { error: 'private-token-sentinel' } } },
+        { result: { structuredContent: { error: 'private-token-sentinel https://private.invalid/token' } } },
+        { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'private-token-sentinel' }) }] } },
+        { result: { isError: true, structuredContent: { unknown: true }, content: [{ type: 'text', text: JSON.stringify({ _budget_exceeded: true }) }] } },
+        { result: { isError: true, structuredContent: { _budget_exceeded: 'true', _jmespath_error: {} } } },
+      ]) {
+        const { win, doc, target, request, messages } = await start();
+        win.dispatchEvent(new win.MessageEvent('message', { source: win.eval('window.parent'), data: { jsonrpc: '2.0', id: request.id, ...envelope } }));
+        assert.match(target.textContent, new RegExp('Original ' + kind + ' request failed\\.'));
+        assert.doesNotMatch(doc.getElementById('root').textContent, /private-token-sentinel|Panel request expired/);
+        assert.equal(doc.querySelector('img'), null);
+        assert.equal(messages.filter(m => m.method === 'tools/call').length, 1);
+      }
+    });
+    it('preserves safe budget and projection notices in ' + kind + ' tool errors and soft results', async () => {
+      for (const isError of [true, false]) {
+        for (const [sentinel, expected] of [[{ _budget_exceeded: true }, /too large/], [{ _jmespath_error: 'invalid_expression: private-token-sentinel' }, /projection could not be applied/]]) {
+          for (const structured of [true, false]) {
+            const { win, doc, target, request, messages } = await start();
+            const payload = { ...sentinel, error: 'private-token-sentinel', token: 'private-token-sentinel', account: 'private-account-sentinel' };
+            const result = structured ? { isError, structuredContent: payload, content: [{ type: 'text', text: 'private-token-sentinel' }] } : { isError, content: [{ type: 'text', text: JSON.stringify(payload) }] };
+            hostReply(win, request.id, result, null); assert.match(target.textContent, /Loading/);
+            hostReply(win, request.id, result);
+            assert.match(target.textContent, expected);
+            assert.doesNotMatch(doc.getElementById('root').textContent, /private-token-sentinel|private-account-sentinel/);
+            assert.equal(messages.filter(m => m.method === 'tools/call').length, 1);
+            assert.match(target.textContent, /Retry/);
+          }
+        }
+      }
+    });
+  }
+});
+
+describe('public forecast scored horizons render', () => {
+  const gradingNote = JSON.parse(readFileSync(new URL('../src/locales/en.json', import.meta.url))).components.forecast.horizons.hint;
+  const history = [{ forecastId: forecast.id, outcome: 'VOID', voidReason: 'judge_disagreement' }];
+  const compact = (rows, reliability) => {
+    const value = payload([
+      { ...forecast, caseFile: undefined, hasCaseFile: true, scoredHorizons: ['d30', 'h24'] },
+      { ...forecast, id: 'horizon-pending', title: 'Pending horizon case', caseFile: undefined, hasCaseFile: true, scoredHorizons: ['d7'] },
+    ]);
+    value.panelRequest = { panel: 'forecasts', token: 'horizon-panel' }; value.data.familyOutcomes = rows; value.data.reliability = reliability;
+    return value;
+  };
+  it('shows the public additional horizon names without changing probability or publishing projection values', async () => {
+    const { doc, messages } = await mount(payload([{ ...forecast, scoredHorizons: ['d30', 'h24'], projections: { h24: 0.91, d30: 0.77 } }]));
+    assert.equal(doc.querySelector('.fc-horizons summary')?.textContent ?? '', 'Also scored at: 24h, 30d');
+    assert.equal(doc.querySelector('.fc-prob').textContent, '65%');
+    assert.doesNotMatch(doc.querySelector('.fc-horizons').textContent, /91%|77%|0\.91|0\.77/);
+    assert.equal(messages.filter(message => message.method === 'tools/call').length, 0);
+  });
+  it('shows the exact website first-published-value grading note in a separate native disclosure', async () => {
+    const { doc, win, messages } = await mount(compact(history)); enableTools(win);
+    assert.equal(doc.querySelector('.fc-horizons-hint')?.textContent ?? '', gradingNote);
+    const disclosure = doc.querySelector('.fc-horizons'); assert.equal(disclosure.tagName, 'DETAILS');
+    disclosure.open = true; disclosure.dispatchEvent(new win.Event('toggle')); disclosure.open = false; disclosure.dispatchEvent(new win.Event('toggle'));
+    assert.equal(doc.querySelector('#list details summary').textContent, 'Analysis');
+    assert.equal(messages.filter(message => message.method === 'tools/call').length, 0);
+  });
+  it('uses fixed public key order and deduplication, hides malformed values, and keeps cards independent', async () => {
+    const { doc, send, messages } = await mount(payload([{ ...forecast, scoredHorizons: undefined }]));
+    for (const scoredHorizons of [undefined, null, {}, 'h24', [], ['unknown', '<img src=x>', null, 24]]) {
+      send(payload([{ ...forecast, scoredHorizons }])); assert.equal(doc.querySelector('.fc-horizons'), null);
+    }
+    send(payload([{ ...forecast, scoredHorizons: ['d30', 'unknown', 'h24', 'd7', 'h24', '<script>'] }, { ...forecast, id: 'second-horizon', scoredHorizons: ['d7'] }, { ...forecast, id: 'unknown-horizon', scoredHorizons: ['unknown'] }]));
+    assert.deepEqual([...doc.querySelectorAll('.fc-horizons summary')].map(summary => summary.textContent), ['Also scored at: 24h, 7d, 30d', 'Also scored at: 7d']);
+    assert.equal(doc.querySelector('#list img'), null); assert.equal(messages.filter(message => message.method === 'tools/call').length, 0);
+  });
+  it('preserves controls while updating unchanged history for audit presentation', async () => {
+    const { doc, win, messages, send } = await mount(compact(history)); enableTools(win);
+    const horizon = doc.querySelector('.fc-horizons'); assert.ok(horizon, 'valid public additional horizons must be visible');
+    const analyses = [...doc.querySelectorAll('#list .fc > details:not(.fc-horizons)')];
+    for (const analysis of analyses) { analysis.open = true; analysis.dispatchEvent(new win.Event('toggle')); }
+    const requests = messages.filter(message => message.params?.name === 'get_forecast_case');
+    hostReply(win, requests[0].id, { structuredContent: { data: { forecastCase: { status: 'ready', generatedAt: Date.parse('2026-10-03T16:55:00Z'), forecast } } } });
+    doc.getElementById('load-theaters').click(); theaterReply(win, messages.find(message => message.params?.name === 'get_forecast_theaters'));
+    const theaterNode = doc.querySelector('#theaters > details.fc'); theaterNode.open = true; theaterNode.dispatchEvent(new win.Event('toggle'));
+    const theaterEvidence = theaterNode.querySelector('.fc-section'); const caseNode = analyses[0].lastChild;
+    const originalHistory = doc.querySelector('.fc-family-history details'); originalHistory.open = true;
+    function retained() {
+      assert.strictEqual(doc.querySelector('.fc-horizons'), horizon);
+      assert.strictEqual(doc.querySelectorAll('#list .fc > details:not(.fc-horizons)')[0], analyses[0]);
+      assert.strictEqual(doc.querySelectorAll('#list .fc > details:not(.fc-horizons)')[1], analyses[1]);
+      assert.strictEqual(analyses[0].lastChild, caseNode); assert.strictEqual(doc.querySelector('#theaters > details.fc'), theaterNode);
+      assert.strictEqual(theaterNode.querySelector('.fc-section'), theaterEvidence); assert.equal(theaterNode.open, true);
+      assert.equal(analyses[0].open, true); assert.equal(analyses[1].open, true); assert.match(analyses[0].textContent, /Supporting observation/);
+      assert.match(theaterNode.textContent, /Original theater assessment/); assert.equal(doc.querySelector('.fc-family-history details').open, true);
+      assert.equal(messages.filter(message => message.method === 'tools/call').length, 3);
+    }
+    for (const open of [true, false, true]) { horizon.open = open; horizon.dispatchEvent(new win.Event('toggle')); retained(); assert.strictEqual(doc.querySelector('.fc-family-history details'), originalHistory); }
+    send(compact(history)); retained(); assert.strictEqual(doc.querySelector('.fc-family-history details'), originalHistory); assert.equal(horizon.open, true);
+    const changed = ['resolver_envelope_bug', 'market_price_not_outcome', 'judged_evidence_unreliable'].map(reason => ({ forecastId: forecast.id, outcome: 'VOID', voidReason: reason })).concat(history);
+    send(compact(changed)); retained(); const changedHistory = doc.querySelector('.fc-family-history details'); assert.notStrictEqual(changedHistory, originalHistory); assert.equal(horizon.open, true);
+    assert.match(analyses[1].textContent, /Loading original case/);
+    const audited = { status: 'unavailable', underAudit: { since: '2026-10-07' }, byDomain: [] };
+    send(compact(changed, audited)); retained();
+    const auditedHistory = doc.querySelector('.fc-family-history details');
+    assert.notStrictEqual(auditedHistory, changedHistory, 'same windows must update their audit presentation');
+    assert.equal(doc.querySelector('.fc-family-history').getAttribute('data-unverified'), 'true');
+    send(compact(changed, audited)); retained(); assert.strictEqual(doc.querySelector('.fc-family-history details'), auditedHistory);
+    send(compact(changed, { ...audited, underAudit: { since: '2026-10-08' } })); retained();
+    assert.strictEqual(doc.querySelector('.fc-family-history details'), auditedHistory, 'date-only badge update preserves unchanged history presentation');
+    assert.match(doc.querySelector('.fc-reliability').getAttribute('aria-label'), /since 2026-10-08/);
+    hostReply(win, requests[1].id, { structuredContent: { data: { forecastCase: { status: 'ready', generatedAt: Date.parse('2026-10-03T16:55:00Z'), forecast: { ...forecast, id: 'horizon-pending' } } } } });
+    retained(); assert.match(analyses[1].textContent, /Supporting observation/);
+    send(compact(changed)); retained(); const liftedHistory = doc.querySelector('.fc-family-history details');
+    assert.notStrictEqual(liftedHistory, auditedHistory); assert.equal(doc.querySelector('.fc-family-history').getAttribute('data-unverified'), null);
+    send(compact(changed)); retained(); assert.strictEqual(doc.querySelector('.fc-family-history details'), liftedHistory);
+    const labels = JSON.parse(readFileSync(new URL('../src/locales/en.json', import.meta.url))).components.forecast.resolution.void;
+    for (const row of changed) assert.ok(liftedHistory.textContent.includes(labels[row.voidReason]), `retained public label for ${row.voidReason}`);
+  });
+});
+
+describe('public forecast family history render', () => {
+  const history = [
+    { forecastId: forecast.id, outcome: 'YES' },
+    { forecastId: forecast.id, outcome: 'NO' },
+    { forecastId: forecast.id, outcome: 'VOID', voidReason: 'judge_disagreement' },
+  ];
+  const compact = rows => {
+    const value = payload([{ ...forecast, caseFile: undefined, hasCaseFile: true }, { ...forecast, id: 'pending-case', title: 'Pending original case', caseFile: undefined, hasCaseFile: true }]);
+    value.panelRequest = { panel: 'forecasts', token: 'history-panel' }; value.data.familyOutcomes = rows;
+    return value;
+  };
+  for (const [reason, label] of [
+    ['resolver_envelope_bug', 'Scored against a data feed we could not read correctly'],
+    ['market_price_not_outcome', 'The feed showed the market price, not how the market resolved'],
+    ['judged_evidence_unreliable', "Held out of scoring while the judges' evidence is being fixed"],
+  ]) {
+    it(`renders the exact label for new public VOID reason ${reason}`, async () => {
+      const { doc, win, messages } = await mount(compact([{ forecastId: forecast.id, outcome: 'VOID', voidReason: reason }]));
+      const disclosure = doc.querySelector('.fc-family-history details');
+      assert.ok(disclosure, 'public VOID disclosure must be present');
+      disclosure.open = true; disclosure.dispatchEvent(new win.Event('toggle'));
+      const sentence = disclosure.querySelector('.fc-res-reasons');
+      assert.ok(sentence, 'public VOID sentence must be present');
+      assert.equal(sentence.textContent, `Recent windows, newest first: VOID (${label})`);
+      assert.equal(messages.filter(message => message.method === 'tools/call').length, 0);
+    });
+  }
+  it('shows previous-window words and distinct newest-first marks with a local VOID disclosure', async () => {
+    const { doc, win, messages } = await mount(compact(history)); enableTools(win);
+    const slot = doc.querySelector('.fc-family-history');
+    assert.match(slot?.textContent ?? '', /Last: YES/, 'valid public history must be visible');
+    assert.match(slot.querySelector('[aria-label]').getAttribute('aria-label'), /previous window.*YES/);
+    assert.deepEqual([...slot.querySelectorAll('.fc-res-mark')].map(mark => [mark.dataset.outcome, mark.textContent]), [['YES', '✓'], ['NO', '✗'], ['VOID', '∅']]);
+    const disclosure = slot.querySelector('details'); disclosure.open = true; disclosure.dispatchEvent(new win.Event('toggle'));
+    assert.match(disclosure.textContent, /Recent windows, newest first: YES, NO, VOID \(The judges disagreed\)/);
+    assert.equal(doc.querySelector('#list details summary').textContent, 'Analysis');
+    assert.equal(messages.filter(message => message.method === 'tools/call').length, 0);
+  });
+  it('preserves loaded and pending Analysis, theaters, open history and call counts across history-only updates', async () => {
+    const { doc, win, messages, send } = await mount(compact(history)); enableTools(win);
+    const analyses = [...doc.querySelectorAll('#list .fc > details')];
+    for (const details of analyses) { details.open = true; details.dispatchEvent(new win.Event('toggle')); }
+    const requests = messages.filter(message => message.params?.name === 'get_forecast_case');
+    hostReply(win, requests[0].id, { structuredContent: { data: { forecastCase: { status: 'ready', generatedAt: Date.parse('2026-10-03T16:55:00Z'), forecast } } } });
+    doc.getElementById('load-theaters').click(); theaterReply(win, messages.find(message => message.params?.name === 'get_forecast_theaters'));
+    const caseNode = analyses[0].lastChild; const theaterNode = doc.getElementById('theaters').firstChild;
+    const disclosure = doc.querySelector('.fc-family-history details'); assert.ok(disclosure, 'valid history has a VOID disclosure'); disclosure.open = true;
+    const next = [{ forecastId: forecast.id, outcome: 'VOID', voidReason: 'all_judges_void' }, ...history]; send(compact(next));
+    const updated = doc.querySelector('.fc-family-history details'); assert.equal(updated.open, true);
+    assert.strictEqual(doc.querySelectorAll('#list .fc > details')[0], analyses[0]); assert.strictEqual(doc.querySelectorAll('#list .fc > details')[1], analyses[1]);
+    assert.strictEqual(analyses[0].lastChild, caseNode); assert.strictEqual(doc.getElementById('theaters').firstChild, theaterNode);
+    assert.equal(analyses[0].open, true); assert.equal(analyses[1].open, true); assert.match(analyses[0].textContent, /Supporting observation/); assert.match(analyses[1].textContent, /Loading original case/);
+    hostReply(win, requests[1].id, { structuredContent: { data: { forecastCase: { status: 'ready', generatedAt: Date.parse('2026-10-03T16:55:00Z'), forecast: { ...forecast, id: 'pending-case' } } } } });
+    assert.match(analyses[1].textContent, /Supporting observation/);
+    send(compact(next)); assert.strictEqual(doc.querySelector('.fc-family-history details'), updated, 'unchanged normalized history retains its node');
+    assert.equal(messages.filter(message => message.method === 'tools/call').length, 3);
+  });
+  it('hides malformed/unrelated history, recovers locally, caps five, and uses fixed safe public reasons', async () => {
+    const { doc, win, send, messages } = await mount(compact(undefined)); enableTools(win);
+    for (const rows of [undefined, null, {}, [], [{ forecastId: 'different', outcome: 'YES' }], [{ forecastId: forecast.id, outcome: 'PENDING' }]]) { send(compact(rows)); assert.equal(doc.querySelector('.fc-family-history'), null); }
+    const rows = [{ forecastId: forecast.id, outcome: 'VOID', voidReason: '<img src=x onerror=alert(1)>' }, ...Array.from({ length: 7 }, () => ({ forecastId: forecast.id, outcome: 'NO' }))];
+    send(compact(rows)); assert.ok(doc.querySelector('.fc-family-history'), 'history recovers from absence'); assert.match(doc.querySelector('.fc-family-history').textContent, /Could not be resolved/); assert.equal(doc.querySelector('#list img'), null);
+    assert.equal(doc.querySelectorAll('.fc-res-mark').length, 5);
+    const domain = doc.getElementById('domain'); domain.value = 'energy'; domain.dispatchEvent(new win.Event('change')); assert.match(doc.querySelector('.fc-family-history').textContent, /Last: VOID/);
+    send(compact(undefined)); assert.equal(doc.querySelector('.fc-family-history'), null); send(compact(history)); assert.match(doc.querySelector('.fc-family-history').textContent, /Last: YES/);
+    const labels = JSON.parse(readFileSync(new URL('../src/locales/en.json', import.meta.url))).components.forecast.resolution.void;
+    for (const [reason, label] of Object.entries(labels)) {
+      send(compact([{ forecastId: forecast.id, outcome: 'VOID', voidReason: reason }]));
+      assert.ok(doc.querySelector('.fc-family-history').textContent.includes(label), `public label for ${reason}`);
+    }
+    assert.equal(messages.filter(message => message.method === 'tools/call').length, 0);
+  });
+});
+
+describe('recorded history audit presentation', () => {
+  const warning = 'Recorded outcome, not verified while accuracy is under audit.';
+  const history = ['YES', 'NO', 'VOID'].map(outcome => ({ forecastId: forecast.id, outcome, ...(outcome === 'VOID' ? { voidReason: 'resolver_envelope_bug' } : {}) }));
+  function received(underAudit = { since: '2026-10-07' }, rows = history) {
+    const value = payload([{ ...forecast, scoredHorizons: ['h24', 'd7'] }]);
+    value.data.familyOutcomes = rows;
+    value.data.reliability = { status: 'unavailable', underAudit, byDomain: [] };
+    return value;
+  }
+  it('marks recorded history unverified only under received audit presentation', async () => {
+    const { doc, send } = await mount(received());
+    const slot = doc.querySelector('.fc-family-history'); assert.ok(slot, 'recorded history must be present');
+    assert.equal(slot.getAttribute('data-unverified'), 'true');
+    assert.equal(doc.querySelector('.fc-reliability').textContent, 'Accuracy under audit');
+    assert.match(slot.textContent, /Scored against a data feed we could not read correctly/);
+    send(received(undefined, undefined)); assert.equal(doc.querySelector('.fc-family-history').getAttribute('data-unverified'), 'true');
+    send(received(null)); assert.equal(doc.querySelector('.fc-family-history').getAttribute('data-unverified'), null);
+    for (const rows of [null, [], {}]) { send(received({ since: '2026-10-07' }, rows)); assert.equal(doc.querySelector('.fc-family-history'), null); assert.equal(doc.querySelector('.fc-reliability').textContent, 'Accuracy under audit'); }
+    send(received()); assert.equal(doc.querySelector('.fc-family-history').getAttribute('data-unverified'), 'true');
+  });
+  it('adds safe unverified tooltip and accessible text for audit presentation', async () => {
+    const { doc, send } = await mount(received());
+    const chip = doc.querySelector('.fc-res-chip'); assert.ok(chip, 'recorded chip must be present');
+    assert.ok(chip.getAttribute('aria-label').includes(warning));
+    assert.ok((chip.getAttribute('title') ?? '').includes(warning));
+    send(received(null)); const lifted = doc.querySelector('.fc-res-chip');
+    assert.doesNotMatch(lifted.getAttribute('aria-label'), /not verified/);
+    assert.equal(lifted.getAttribute('title'), null);
+    send(received({ since: '<img src=x>' })); assert.equal(doc.querySelector('#list img'), null);
+  });
+  it('defines scoped neutral outcome styling for audit presentation', () => {
+    assert.match(FORECASTS_APP_HTML, /\.fc-family-history\[data-unverified="true"\] \.fc-res-chip/);
+    assert.match(FORECASTS_APP_HTML, /\.fc-family-history\[data-unverified="true"\] \.fc-res-mark/);
+  });
+});
 
 describe('original forecast theater UI', () => {
   it('loads one closed signed request on demand and expands every original evidence field locally', async () => {
@@ -392,5 +662,91 @@ describe('forecast MCP analysis parity', () => {
     assert.match(doc.getElementById('list').textContent, /Regional actor lens/);
     assert.doesNotMatch(doc.getElementById('list').textContent, /Baseline outcome|Controlled actor/);
     assert.equal(doc.querySelector('details').open, false);
+  });
+});
+
+describe('published reliability and original evidence continuity', () => {
+  const reliability = (changes = {}) => ({ status: 'ready', windowDays: 90, stale: false, freshnessUnknown: false, capturedAt: '2026-10-07T00:00:00Z', asOf: '2026-10-06T23:00:00Z', byDomain: [{ domain: 'energy', kind: 'measured', n: 45, brier: 0.213, yesShare: 0.4 }], ...changes });
+  const compact = (reliabilityValue = reliability()) => ({ ...payload([{ ...forecast, caseFile: undefined, hasCaseFile: true }]), panelRequest: { panel: 'forecasts', token: 'reliability-panel' }, data: { ...payload([{ ...forecast, caseFile: undefined, hasCaseFile: true }]).data, reliability: reliabilityValue } });
+  const caseReply = (win, request) => hostReply(win, request.id, { structuredContent: { data: { forecastCase: { status: 'ready', generatedAt: Date.parse('2026-10-03T16:55:00Z'), forecast } } } });
+  function openCase(win, doc) { const details = doc.querySelector('#list details'); details.open = true; details.dispatchEvent(new win.Event('toggle')); return details; }
+  it('refreshes source warnings and snapshot clocks while preserving pending then loaded Analysis', async () => {
+    const { win, doc, messages, send } = await mount(compact()); enableTools(win);
+    const details = openCase(win, doc);
+    const request = messages.find(message => message.params?.name === 'get_forecast_case');
+    doc.getElementById('load-theaters').click();
+    theaterReply(win, messages.find(message => message.params?.name === 'get_forecast_theaters'));
+    const theaterNode = doc.getElementById('theaters').firstChild;
+    const changed = compact(); changed.cached_at = '2026-10-07T01:00:00Z'; changed.stale = true;
+    Object.assign(changed.data.predictions, { stale: true, degraded: true, error: 'source_failure' });
+    send(changed);
+    assert.match(doc.getElementById('foot').textContent, /Snapshot: 2026-10-07T01:00:00Z.*Forecast source degraded.*stale cache.*source failure/);
+    assert.ok(doc.querySelector('#list details') === details); assert.equal(details.open, true);
+    assert.ok(doc.getElementById('theaters').firstChild === theaterNode);
+    assert.match(details.textContent, /Loading original case/);
+    caseReply(win, request);
+    const recovered = compact(); recovered.cached_at = '2026-10-07T02:00:00Z'; send(recovered);
+    assert.match(doc.getElementById('foot').textContent, /Snapshot: 2026-10-07T02:00:00Z/);
+    assert.doesNotMatch(doc.getElementById('foot').textContent, /degraded|stale cache|source failure/);
+    assert.ok(doc.querySelector('#list details') === details); assert.equal(details.open, true);
+    assert.match(details.textContent, /Supporting observation/);
+    assert.ok(doc.getElementById('theaters').firstChild === theaterNode);
+    assert.equal(messages.filter(message => message.method === 'tools/call').length, 2);
+  });
+  it('matches website measured/stale/unmeasured text, baseline, accessible hint and accuracy destination', async () => {
+    const { doc, send } = await mount(compact()); let badge = doc.querySelector('.fc-reliability');
+    assert.equal(badge?.textContent, 'Energy n=45 · Brier 0.213 vs base rate 0.240');
+    assert.equal(badge.getAttribute('href'), 'https://www.worldmonitor.app/accuracy/#by-domain');
+    assert.match(badge.getAttribute('aria-label'), /45.*90/); assert.equal(badge.hasAttribute('title'), false);
+    send(compact(reliability({ stale: true }))); badge = doc.querySelector('.fc-reliability');
+    assert.match(badge.textContent, /^Out of date · Energy n=45/);
+    send(compact(reliability({ stale: true, byDomain: [{ domain: 'energy', kind: 'unmeasured', n: 29 }] })));
+    assert.equal(doc.querySelector('.fc-reliability').textContent, 'Out of date · Not yet measured');
+    send(compact({ status: 'unavailable' })); assert.equal(doc.querySelector('.fc-reliability'), null);
+  });
+  it('shows "Accuracy under audit" with no number while the audit switch withholds the scores (#8990)', async () => {
+    const audited = { status: 'unavailable', underAudit: { since: '2026-10-07', issue: 8990, reason: 'Scoring errors.' }, windowDays: 90, stale: false, freshnessUnknown: false, byDomain: [] };
+    const { doc } = await mount(compact(audited)); const badge = doc.querySelector('.fc-reliability');
+    assert.equal(badge?.textContent, 'Accuracy under audit');
+    assert.equal(badge.getAttribute('href'), 'https://www.worldmonitor.app/accuracy/');
+    assert.equal(badge.getAttribute('data-fc-reliability-state'), 'under-audit');
+    assert.match(badge.getAttribute('aria-label'), /since 2026-10-07/);
+    assert.doesNotMatch(badge.getAttribute('aria-label'), /Brier|\d\.\d{3}/);
+  });
+  it('preserves pending then loaded Analysis and original theaters across reliability-only updates and filters', async () => {
+    const { win, doc, messages, send } = await mount(compact()); enableTools(win);
+    const details = openCase(win, doc); const request = messages.find(message => message.params?.name === 'get_forecast_case');
+    doc.getElementById('load-theaters').click(); const theaterRequest = messages.find(message => message.params?.name === 'get_forecast_theaters');
+    send(compact(reliability({ stale: true })));
+    assert.ok(doc.querySelector('#list details') === details, 'identical list/generation/token must retain the live Analysis node'); assert.equal(details.open, true);
+    caseReply(win, request); theaterReply(win, theaterRequest);
+    assert.match(details.textContent, /Supporting observation/); assert.match(doc.getElementById('theaters').textContent, /Original theater assessment/);
+    const domain = doc.getElementById('domain'); domain.value = 'energy'; domain.dispatchEvent(new win.Event('change'));
+    const filtered = openCase(win, doc); const theaterNode = doc.getElementById('theaters').firstChild;
+    send(compact(reliability({ byDomain: [{ domain: 'energy', kind: 'measured', n: 45, brier: 0.3, yesShare: 0.4 }] })));
+    assert.ok(doc.querySelector('#list details') === filtered, 'reliability-only filter update retains Analysis node'); assert.equal(filtered.open, true); assert.match(filtered.textContent, /Supporting observation/);
+    assert.equal(doc.getElementById('domain').value, 'energy'); assert.ok(doc.getElementById('theaters').firstChild === theaterNode, 'reliability-only update retains theater node');
+    assert.match(doc.querySelector('.fc-reliability').textContent, /Brier 0.300/); assert.equal(messages.filter(message => message.method === 'tools/call').length, 2);
+  });
+  for (const change of ['list', 'generation', 'token']) it(`replaces ${change} provenance and rejects the previous pending original-case response`, async () => {
+    const { win, doc, messages, send } = await mount(compact()); enableTools(win);
+    const original = openCase(win, doc); const request = messages.find(m => m.params?.name === 'get_forecast_case');
+    const next = compact();
+    if (change === 'list') next.data.predictions.predictions[0].title = 'Changed effective list';
+    if (change === 'generation') next.data.predictions.generatedAt += 1;
+    if (change === 'token') next.panelRequest.token = 'replacement-panel';
+    send(next); const replacement = openCase(win, doc); assert.notEqual(replacement, original);
+    caseReply(win, request); assert.doesNotMatch(replacement.textContent, /Supporting observation/);
+    assert.equal(messages.filter(m => m.params?.name === 'get_forecast_case').length, 2);
+  });
+  it('does not reuse a loaded dossier after the signed token changes and keeps hostile labels as text', async () => {
+    const { win, doc, messages, send } = await mount(compact()); enableTools(win); openCase(win, doc);
+    caseReply(win, messages.find(m => m.params?.name === 'get_forecast_case'));
+    const next = compact(); next.panelRequest.token = 'replacement-panel'; send(next);
+    const details = openCase(win, doc); assert.doesNotMatch(details.textContent, /Supporting observation/);
+    assert.equal(messages.filter(m => m.params?.name === 'get_forecast_case').length, 2);
+    const hostile = compact(reliability({ byDomain: [{ domain: '<img src=x onerror=alert(1)>', kind: 'measured', n: 45, brier: 0.213, yesShare: 0.4 }] }));
+    hostile.data.predictions.predictions[0].domain = '<img src=x onerror=alert(1)>'; send(hostile);
+    assert.equal(doc.querySelector('#list img'), null); assert.match(doc.querySelector('.fc-reliability').textContent, /<img/);
   });
 });

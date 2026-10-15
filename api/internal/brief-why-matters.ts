@@ -119,10 +119,9 @@ const SHADOW_TTL_SEC = 7 * 24 * 60 * 60; // 7d
 // whyMatters is a 1–2 sentence editorial blurb — the fast utility model, not
 // the reasoning tier. Pinning it here DECOUPLES the stage from
 // LLM_REASONING_MODEL: the U3 flip to deepseek-v4-pro dragged this stage onto
-// a 6–10s reasoning model (#4983); flash serves it at ~1.6–2.4s. openrouter
-// primary, groq-70B fallback if openrouter is down. Reasoning stays off
-// (callLlm default). Both whyMatters paths share this route.
-const WHY_MATTERS_PROVIDER_ORDER = ['openrouter', 'groq'];
+// a 6–10s reasoning model (#4983); flash serves it at ~1.6–2.4s. Reasoning
+// stays off (callLlm default). Both whyMatters paths share this route.
+const WHY_MATTERS_PROVIDER_ORDER = ['openrouter'];
 const WHY_MATTERS_MODEL_OVERRIDES = { openrouter: 'deepseek/deepseek-v4-flash' } as const;
 
 // ── Validation ────────────────────────────────────────────────────────

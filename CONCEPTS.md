@@ -450,6 +450,10 @@ The refusal the MCP transport gives an opening handshake that carries no credent
 
 Hosted connectors classify a server by how this first request is answered. One that succeeds is recorded as needing no sign-in, and a refusal that arrives later, mid-session, leaves the connector with no authorization server to send the user to, so its sign-in control never works. Only the handshake is challenged. Stateless callers that never send one keep their credential-free catalog reads and the free tool, and the machine-discovery aliases still accept an anonymous handshake for scanners. A refusal without the request's identifier is as harmful as none, because a strict client cannot match it to the pending request and waits out its timeout. See also: Credential Class, Streamable HTTP Transport, MCP Server Card.
 
+### MCP Proxy
+
+The edge relay through which a browser panel talks to a **caller-chosen** remote MCP server: the panel names the server URL and supplies any credential headers, and the proxy performs the MCP handshake and tool call on its behalf so the browser never contacts the remote directly. Because the remote is the caller's choice, its answers are the caller's outcome, not the proxy's: a credential refusal, a JSON-RPC error object answered on a successful HTTP status (how MCP servers express quota, unknown tool, or invalid params), and a remote timeout are all **upstream verdicts**. An upstream verdict is relayed to the caller and recorded in the proxy's audit log, but it is not a proxy defect and does not page. What does page is a failure the proxy itself produced — a transport fault, a malformed stream, an unclassified throw. Downstream reporters cannot tell a relayed verdict from an origin failure by status code alone, so a relayed timeout is marked on the response for them. See also: Discovery Read vs. Transport Operation, Error Telemetry & Suppression.
+
 ## Structured Data & Entity Graph
 
 ### Canonical Entity Node
@@ -983,6 +987,12 @@ Sealing a judged forecast to YES or NO requires two independent judges to agree 
 The instant past which a judged forecast can never again be resolved, because the evidence window it requires reaches further back than the evidence archive is able to serve.
 
 The horizon exists because two spans are anchored to different clocks: required evidence is measured backward from the forecast's own deadline, while the archive's reach is measured backward from the present. As the present advances, the archive's reach slides forward while the requirement stays pinned — so coverage is lost at a computable instant and is never regained. That monotonicity is what makes crossing it a terminal state rather than a retry: an entry past its horizon is not waiting on anything. Crossing it is counted as a cost-control failure, never as a resolution, and the operational goal is to alert while entries are still short of it. A read that is merely unavailable proves nothing about the horizon and must not be treated as crossing it. See also: Judged Resolution.
+
+### Evidence Coverage Proof
+
+The record that states how far the forecast evidence archive can be trusted for a time window. Judged resolution reads the archive only when such a proof covers the entry's window; without one the archive counts as incomplete and no judge is called, even when the archive itself is healthy.
+
+There are two kinds, with different strength. A **capture proof** comes from a complete backfill and asserts that every story in the window was written to the archive; it is the only kind that may authorize pruning the older accumulator. A **continuity attestation** is rebuilt from the archive's own records and asserts only that the archive was being written to at a declared granularity throughout the window, not that every story was captured; only judging accepts it. A continuity attestation lapses across any publication gap longer than its granularity, which a capture proof does not. See also: Judged Resolution, Archive Horizon.
 
 ### Attempt Class
 

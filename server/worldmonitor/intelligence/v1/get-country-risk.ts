@@ -42,15 +42,15 @@ export async function getCountryRisk(
   }
 
   const [riskRaw, advisoriesRaw, sanctionsRaw] = await Promise.all([
-    getCachedJson(RISK_SCORES_KEY, true),
+    getCachedJson(RISK_SCORES_KEY),
     getCachedJson(ADVISORIES_KEY, true),
     getCachedJson(SANCTIONS_COUNTS_KEY, true),
   ]);
 
-  // Any missing upstream key: fail closed to prevent CDN-caching of partial
-  // data as if it were valid (e.g. sanctionsActive:false or cii:undefined when
-  // the Redis key itself is simply absent, not just untracked for this country).
-  if (sanctionsRaw === null || riskRaw === null || advisoriesRaw === null) {
+  // Missing keys or empty country coverage fail closed before CDN-caching partial
+  // data as valid. An empty global map does not establish a country-level zero.
+  if (sanctionsRaw === null || Object.keys(sanctionsRaw as Record<string, number>).length === 0
+    || riskRaw === null || advisoriesRaw === null) {
     return {
       countryCode: code,
       countryName: resolveCountryName(code, (advisoriesRaw as any)?.byCountryName),

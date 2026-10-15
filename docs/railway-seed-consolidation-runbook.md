@@ -1172,7 +1172,7 @@ any red check anywhere strands this service's builds.
 | **Watch paths** | See `scripts/railway-services.json` (exact runtime closure; run `node scripts/audit-railway-watch-paths.mjs`) |
 | **Replaces** | 2 services |
 | **Net savings** | 1 slot |
-| **Members** | Correlation (5min), Cross-Source Signals (15min), Cross-Strait Activity (3h), China Decision Signals (15min), Regional Snapshots (6h) |
+| **Members** | Correlation (5min), Market-Alert-Ledger (5min), Cross-Source Signals (15min), Cross-Strait Activity (3h), China Decision Signals (15min), Regional Snapshots (6h) |
 | **Required env** | `JAPAN_MOD_PROXY_URL` or `PROXY_URL` (Cross-Strait Activity's Japan MOD exit; the section declares an any-of group, so either satisfies it and only an environment with neither fails as `CONFIG_ERROR`) |
 | **Note** | Cross-Strait Activity is the only direct external-source member; it uses bounded MND/Japan MOD requests and a 3h freshness gate. China Decision Signals validates and republishes the bounded public composition after reading its domain lanes. Other members are Redis-derived. The bundle enforces a 570s wall-time admission budget so a non-fitting due section defers before Railway's 10-minute container limit. |
 

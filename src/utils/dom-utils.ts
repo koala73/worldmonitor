@@ -100,6 +100,19 @@ export function ensureNoopenerRel(rel: string | null): string {
   return Array.from(tokens).join(' ');
 }
 
+// Resolve against a sentinel origin: a genuine path keeps it, anything the
+// parser reads as scheme-relative or host-bearing leaves it. Same test-only
+// origin as src/shared/public-rpc-cache.ts (source-attribution manifest).
+const SAME_ORIGIN_SENTINEL = 'https://worldmonitor.invalid';
+function isSameOriginPath(href: string): boolean {
+  if (!href.startsWith('/')) return false;
+  try {
+    return new URL(href, `${SAME_ORIGIN_SENTINEL}/`).origin === SAME_ORIGIN_SENTINEL;
+  } catch {
+    return false;
+  }
+}
+
 /** Like rawHtml() but strips tags and attributes not in the allowlist. */
 export function safeHtml(html: string): DocumentFragment {
   const tpl = document.createElement('template');
@@ -125,10 +138,12 @@ export function safeHtml(html: string): DocumentFragment {
             el.removeAttribute(attr.name);
           }
         }
-        // Sanitize href to prevent javascript: URIs
+        // Sanitize href to prevent javascript: URIs. A leading "/" is only a
+        // same-origin path if the URL parser agrees: "//host", "/\host" and
+        // "/\t/host" all resolve to another origin.
         if (el.hasAttribute('href')) {
           const href = el.getAttribute('href') || '';
-          if (!/^https?:\/\//i.test(href) && !href.startsWith('/') && !href.startsWith('#')) {
+          if (!/^https?:\/\//i.test(href) && !isSameOriginPath(href) && !href.startsWith('#')) {
             el.removeAttribute('href');
           }
         }

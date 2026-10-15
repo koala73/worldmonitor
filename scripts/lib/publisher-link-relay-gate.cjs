@@ -60,7 +60,7 @@ const PUBLISHER_LINK_DOMAINS = {
   'nikkei': ['nikkei.com'],
   'politico': ['politico.com', 'politico.eu'],
   'reuters': ['reuters.com'],
-  'rt': ['rt.com'],
+  'rt': ['rt.com', 'rt-english.com'],
   'seeking-alpha': ['seekingalpha.com'],
   'sp-global': ['spglobal.com'],
   'techcrunch': ['techcrunch.com'],

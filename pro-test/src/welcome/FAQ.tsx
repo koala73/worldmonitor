@@ -17,6 +17,7 @@ const FAQ_LINKS: Record<number, FaqLink[]> = {
     { label: 'worldmonitor.app/compare/best-geopolitical-risk-dashboards', href: '/compare/best-geopolitical-risk-dashboards/' },
   ],
   11: [{ label: 'worldmonitor.app/docs/terms', href: '/docs/terms' }],
+  12: [{ label: 'worldmonitor.app/compare/best-geopolitical-risk-dashboards', href: '/compare/best-geopolitical-risk-dashboards/' }],
 };
 
 const renderAnswer = (answer: string, links: FaqLink[] = []) => links.reduce<ReactNode[]>(
@@ -30,7 +31,7 @@ const renderAnswer = (answer: string, links: FaqLink[] = []) => links.reduce<Rea
 );
 
 export const FAQ = () => {
-  const faqs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(n => ({
+  const faqs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => ({
     q: t(`welcome.faq.q${n}`),
     a: t(`welcome.faq.a${n}`, depthProofStats),
     link: FAQ_LINKS[n],

@@ -6,7 +6,7 @@ import { unwrapEnvelope } from '../_seed-envelope.js';
 import { chokepointCacheIdentity, chokepointSourcePolicy, type ChokepointPanelRead } from './_chokepoint-snapshot';
 import { newsIntelligenceFreshness, newsIntelligenceReuseUntil, type NewsIntelligencePanelRead } from './_news-intelligence-snapshot';
 import { resolveCountryFilter } from './_country-args';
-import { filterNaturalDisastersPanelData, naturalDisastersReuseUntil, type NaturalDisastersPanelRead } from './_natural-disasters-reuse';
+import { filterNaturalDisastersPanelData, naturalDisastersReuseUntil, presentNaturalDisastersPanel, type NaturalDisastersPanelRead } from './_natural-disasters-reuse';
 import { isAppOwnedRedisKey } from '../_redis-key-ownership.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
@@ -29,7 +29,7 @@ import { chokepointPanelViewSchema, conflictPanelViewSchema, disasterPanelViewSc
 import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
-import { filterConflictPanelEvents, presentConflictEvents, projectConflictSourceObservation } from './registry/cache-tools';
+import { filterConflictPanelEvents, isOrdinaryMarketDefault, presentConflictEvents, presentDefaultMarketData, projectConflictSourceObservation } from './registry/cache-tools';
 import { isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
@@ -186,6 +186,13 @@ async function executeCacheTool(
     activationStates,
   );
 
+  if (tool.name === 'get_forecast_predictions') {
+    const index = labels.indexOf('predictions');
+    if (index < 0 || !dataReads[index]!.ok || results[index] == null) {
+      throw new McpSourceUnavailableError('cache_read_failed', [], ['predictions']);
+    }
+  }
+
   // F6: if every cache key returned null/undefined AND the tool actually
   // had keys configured, this is a degenerate-empty result (Redis transient
   // / stampede). Throw so dispatchToolsCall reports a normal tool-execution
@@ -228,6 +235,7 @@ async function executeCacheTool(
 
   let data: Record<string, unknown> = {};
   labels.forEach((label, i) => { data[label] = results[i]; });
+  if (tool._project) data = tool._project(data);
 
   let chokepointPolicy: ReturnType<typeof chokepointSourcePolicy> | undefined;
   if (panel === 'chokepoints') {
@@ -643,6 +651,10 @@ export async function dispatchToolsCall(
           ? callArguments
           : Object.fromEntries(Object.entries(sourceArguments).filter(([key]) => key !== 'jmespath')), suppliedPanel);
     }
+    if (tool.name === 'get_country_brief_section' && callArguments.section === 'signalsRaw'
+      && (!dedicatedPanel || !panelRead || !/^[A-Z]{2}$/.test(panelRead.panel))) {
+      throw new PanelRequestError('Raw Signals require a verified paid country panel read.', 'invalid');
+    }
     if (deferredBurst && panelRead) {
       const limited = await applyPerMinuteLimit(context, corsHeaders, PANEL_READ_LIMIT, id, { kind: 'panel', key: panelRead.rateLimitKey });
       if (limited) return limited;
@@ -752,6 +764,8 @@ export async function dispatchToolsCall(
   let execution: McpToolExecutionContext | undefined;
   try {
     let result: unknown;
+    let forecastSnapshotToSave: Record<string, unknown> | undefined;
+    let forecastCompletedBytes = 0;
     let intelligenceRead: NewsIntelligencePanelRead | undefined;
     let chokepointRead: ChokepointPanelRead | undefined;
     let disasterRead: NaturalDisastersPanelRead | undefined;
@@ -769,6 +783,7 @@ export async function dispatchToolsCall(
     } else {
       execution = createMcpToolExecutionContext(req.url);
       execution.panelRequest = panelRequest;
+      if (tool.name === 'get_country_brief_section' && panelRead && /^[A-Z]{2}$/.test(panelRead.panel)) execution.countryPanelCode = panelRead.panel;
       if (tool.name === 'get_mcp_allowance' && (context.kind === 'pro' || context.kind === 'user_key')) {
         execution.readAccountAllowance = async () => {
           const allowance = await readAccountAllowance(context, deps, budget, freeAccountAllowance);
@@ -800,7 +815,8 @@ export async function dispatchToolsCall(
         await panelRead.save(snapshot);
       } else if (tool.name === 'get_forecast_predictions' && result && typeof result === 'object') {
         const { panelRequest: _receipt, ...snapshot } = result as Record<string, unknown>;
-        await panelRead.save(snapshot);
+        forecastSnapshotToSave = snapshot;
+        forecastCompletedBytes = utf8ByteLength(JSON.stringify(panelRequest ? { ...result, panelRequest } : result));
       } else await panelRead.save(result);
     }
     if (tool.name === 'get_forecast_predictions' && panelRead?.panel === 'forecasts' && tool._execute === undefined && argBool(callArguments.summary) && result && typeof result === 'object' && 'data' in result) {
@@ -819,7 +835,10 @@ export async function dispatchToolsCall(
         ? { ...original, data: filterCacheToolData(tool, original.data, callArguments) }
         : tool.name === 'get_conflict_events' ? { ...original, data: presentConflictEvents(original.data, callArguments) } : original;
       result = snapshot;
-      if (argBool(callArguments.summary)) result = { ...snapshot, data: tool._summarize ? tool._summarize(snapshot.data) : summarizeData(snapshot.data) };
+      if (argBool(callArguments.summary)) {
+        const presented = result as typeof snapshot;
+        result = { ...presented, data: tool._summarize ? tool._summarize(presented.data) : summarizeData(presented.data) };
+      }
       if (panelRequest) result = { ...result as Record<string, unknown>, panelRequest };
     }
     // Convex `internal-validate-pro-mcp-token` schedules touchProMcpTokenLastUsed
@@ -834,7 +853,20 @@ export async function dispatchToolsCall(
     // telemetry is off; one extra stringify when MCP_TELEMETRY is enabled
     // so we can report `bytes_pre_jmespath` separately from the projected
     // size.
-    const { text: projectedText, value: projectedValue, failed } = applyJmespath(result, jmespathArg);
+    if (tool.name === 'get_market_data' && tool._execute === undefined && isOrdinaryMarketDefault(p.arguments ?? {})
+      && result && typeof result === 'object') {
+      result = presentDefaultMarketData(result as Record<string, unknown>, tool._outputBudgetBytes);
+    }
+    let { text: projectedText, value: projectedValue, failed } = applyJmespath(result, jmespathArg);
+    if (tool.name === 'get_natural_disasters' && dedicatedPanel && panelRead?.panel === 'disasters'
+      && result && typeof result === 'object'
+      && (failed === 'projection_too_large' || utf8ByteLength(projectedText) > tool._outputBudgetBytes)) {
+      const presented = presentNaturalDisastersPanel(result as Record<string, unknown>, tool._outputBudgetBytes, argBool(callArguments.summary));
+      if (presented !== result) {
+        result = presented;
+        ({ text: projectedText, value: projectedValue, failed } = applyJmespath(result, jmespathArg));
+      }
+    }
     // Attribution accompaniment. A projection can detach a redistribution-
     // permitted value from the licence fields sitting beside it in the
     // unprojected payload, so a licence-bearing tool declares an extraction
@@ -863,7 +895,7 @@ export async function dispatchToolsCall(
     // Measured on the merged text, so the rider counts toward the budget: it
     // is bytes on the wire, and a projection that only fits by shedding its
     // attribution is not a projection we can serve.
-    const textBytes = utf8ByteLength(text);
+    const textBytes = Math.max(utf8ByteLength(text), forecastCompletedBytes);
     const outputBudget = tool._outputBudgetBytes;
     const budgetExceeded = textBytes > outputBudget;
     if (telemetryEnabled()) {
@@ -912,6 +944,8 @@ export async function dispatchToolsCall(
       };
       return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify(envelope) }], structuredContent: envelope, ...(panelUsage ? { _meta: { 'worldmonitor/usage': panelUsage } } : {}) }, corsHeaders);
     }
+    if (forecastSnapshotToSave && panelRead) await panelRead.save(forecastSnapshotToSave);
+
     // Every tool advertises an `outputSchema`, so a strict client rejects a
     // result without `structuredContent` before the model sees it (#8328). A
     // soft-fail envelope is already an object in its own advertised branch. A

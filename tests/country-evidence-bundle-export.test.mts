@@ -5,8 +5,11 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
+import ts from 'typescript';
+import { runInNewContext } from 'node:vm';
 import { createCountryDeepDivePanelHarness } from './helpers/country-deep-dive-panel-harness.mjs';
 import { createBrowserEnvironment } from './helpers/runtime-config-panel-harness.mjs';
+import { countrySignalsFromMilitary } from '../src/services/country-signals';
 
 type ExportUtils = typeof import('../src/utils/export.ts');
 type GlobalSnapshot = { exists: boolean; value: unknown };
@@ -178,6 +181,7 @@ async function loadCountryBriefPage(options: CountryBriefHarnessOptions = {}) {
       export function exportCountryBriefJSON(data) { state.jsonExports.push(data); }
       export function exportCountryBriefCSV(data) { state.csvExports.push(data); }
       export function exportCountryEvidenceMarkdown(data) { state.evidenceExports.push(data); }
+      export function countryEvidenceMarkdownArtifact(data) { return { filename: 'fixture.md', mimeType: 'text/markdown;charset=utf-8', content: JSON.stringify(data) }; }
     `],
     ['country-geometry-stub', `export const ME_STRIKE_BOUNDS = {};`],
     ['country-flag-stub', `export function toFlagEmoji(code, fallback = ':world:') { return code ? ':' + code + ':' : fallback; }`],
@@ -410,6 +414,114 @@ function dispatchDelegatedClick(delegateRoot: HTMLElement, target: HTMLElement):
 }
 
 describe('country evidence bundle export', () => {
+  for (const [component, methodName] of [['CountryDeepDivePanel', 'exportEvidenceBundle'], ['CountryBriefPage', 'exportBrief']]) {
+    for (const state of [
+      { name: 'no loaded brief', brief: null, original: null, cached: null },
+      { name: 'loaded brief with absent original clock', brief: 'Controlled assessment', original: undefined, cached: true },
+      { name: 'known cached original clock', brief: 'Controlled retained assessment', original: '2026-10-05T09:00:00Z', cached: true },
+      { name: 'known fresh original clock', brief: 'Controlled fresh assessment', original: '2026-10-05T09:00:00Z', cached: false },
+    ]) {
+      it(`${component} preserves original clock semantics for ${state.name}`, async () => {
+        const exports = await loadExportUtils();
+        const exportClock = '2026-10-06T12:00:00.000Z';
+        const originalUrl = 'https://www.bbc.co.uk/news/articles/crly09gz7ew4o?at_medium=RSS&at_campaign=rss';
+        const source = readFileSync(resolve(process.cwd(), `src/components/${component}.ts`), 'utf8');
+        const ast = ts.createSourceFile(`${component}.ts`, source, ts.ScriptTarget.Latest, true);
+        let method: ts.MethodDeclaration | undefined;
+        const visit = (node: ts.Node): void => {
+          if (ts.isMethodDeclaration(node) && node.name.getText(ast) === methodName) method = node;
+          ts.forEachChild(node, visit);
+        };
+        visit(ast);
+        assert.ok(method);
+        class ExportDate extends Date {
+          constructor(value?: string | number) { super(value ?? exportClock); }
+        }
+        let legacyArtifact: ReturnType<ExportUtils['countryEvidenceMarkdownArtifact']> | undefined;
+        const compiled = ts.transpileModule(`class ActualExportCaller { ${method.getText(ast)} }; ActualExportCaller.prototype.${methodName};`, {
+          compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+        }).outputText;
+        const invoke = runInNewContext(compiled, {
+          Date: ExportDate,
+          countryEvidenceMarkdownArtifact: exports.countryEvidenceMarkdownArtifact,
+          exportCountryEvidenceMarkdown: (input: Parameters<ExportUtils['countryEvidenceMarkdownArtifact']>[0]) => {
+            legacyArtifact = exports.countryEvidenceMarkdownArtifact(input);
+          },
+        });
+        const snapshot = {
+          currentName: 'Canada', currentCode: 'CA', currentBrief: state.brief,
+          currentBriefGeneratedAt: state.original, currentBriefCached: state.cached,
+          currentHeadlines: [{ title: 'Controlled BBC source', source: 'BBC', link: originalUrl, pubDate: '2026-10-06T08:00:00Z' }],
+          signalCoverageNotes: [], canExportEvidenceBundle: () => true,
+          downloadText: async (artifact: ReturnType<ExportUtils['countryEvidenceMarkdownArtifact']>) => artifact,
+        };
+        const before = JSON.stringify(snapshot);
+        const returned = await invoke.call(snapshot, component === 'CountryBriefPage' ? 'evidence-md' : new AbortController().signal);
+        const artifact = component === 'CountryBriefPage' ? legacyArtifact : returned;
+        assert.ok(artifact);
+        assert.equal(JSON.stringify(snapshot), before);
+        assert.ok(artifact.content.includes(`Bundle generated at: ${exportClock}`));
+        assert.ok(artifact.content.includes(`Exported at: ${exportClock}`));
+        assert.ok(artifact.content.includes('Published at: 2026-10-06T08:00:00.000Z'));
+        assert.ok(artifact.content.includes('Freshness: 4h old at export.'));
+        assert.ok(artifact.content.includes(originalUrl));
+        assert.equal(artifact.mimeType, 'text/markdown;charset=utf-8');
+        assert.equal(artifact.filename, 'country-evidence-CA-2026-10-06T12-00-00-000Z.md');
+        if (state.original) {
+          assert.ok(artifact.content.includes(`Brief generated at: 2026-10-05T09:00:00.000Z (${state.cached ? 'cached' : 'fresh'})`));
+          assert.ok(!artifact.content.includes('Brief generation timestamp unavailable.'));
+        } else {
+          assert.doesNotMatch(artifact.content, /Brief generated at:/, 'Unknown original brief clock must not use the export clock');
+          assert.ok(artifact.content.includes('Brief generation timestamp unavailable.'));
+        }
+        assert.equal(artifact.content.includes('## Intelligence Brief'), Boolean(state.brief));
+        if (state.brief) assert.ok(artifact.content.includes(state.brief));
+      });
+    }
+  }
+
+  it('keeps absent, null, empty and invalid original factory clocks unavailable', async () => {
+    const exports = await loadExportUtils();
+    for (const original of [{}, { briefGeneratedAt: null }, { briefGeneratedAt: '' }, { briefGeneratedAt: 'invalid' }]) {
+      const input = { country: 'Canada', code: 'CA', generatedAt: '2026-10-06T12:00:00Z', exportedAt: '2026-10-06T12:00:00Z', ...original };
+      const before = JSON.stringify(input);
+      const bundle = Reflect.apply(exports.buildCountryEvidenceBundle, undefined, [input]);
+      assert.equal(bundle.briefGeneratedAt, undefined);
+      assert.equal(bundle.generatedAt, '2026-10-06T12:00:00.000Z');
+      assert.equal(bundle.exportedAt, '2026-10-06T12:00:00.000Z');
+      assert.ok(bundle.freshnessNotes.includes('Brief generation timestamp unavailable.'));
+      assert.equal(JSON.stringify(input), before);
+    }
+  });
+
+  it('keeps cyber unknown without an admitted source and separates retained generation from export time', async () => {
+    const signals = countrySignalsFromMilitary('FR');
+    assert.equal(signals.cyberThreats, null);
+    const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+    const originalClock = '2026-10-05T01:00:00.000Z';
+    const exportedAt = '2026-10-06T01:00:00.000Z';
+    const bundle = buildCountryEvidenceBundle({ country: 'France', code: 'FR',
+      signals: { cyberThreats: signals.cyberThreats }, generatedAt: originalClock,
+      briefGeneratedAt: originalClock, briefCached: true, exportedAt });
+    assert.deepEqual(bundle.signals, [{ label: 'Cyber threats', value: 'unavailable' }]);
+    assert.equal(bundle.generatedAt, originalClock);
+    assert.equal(bundle.briefGeneratedAt, originalClock);
+    assert.equal(bundle.exportedAt, exportedAt);
+    assert.equal(bundle.briefCacheStatus, 'cached');
+    assert.ok(renderCountryEvidenceMarkdown(bundle).includes('Cyber threats: unavailable'));
+  });
+
+  it('preserves unavailable cyber counts and explicit zero separately in portable evidence', async () => {
+    const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+    for (const [count, expected] of [[null, 'unavailable'], [0, '0'], [2, '2']] as const) {
+      const bundle = buildCountryEvidenceBundle({ country: 'France', code: 'FR',
+        signals: { cyberThreats: count }, exportedAt: '2026-10-06T01:00:00Z' });
+      assert.deepEqual(bundle.signals, [{ label: 'Cyber threats', value: expected }]);
+      assert.ok(renderCountryEvidenceMarkdown(bundle).includes(`Cyber threats: ${expected}`));
+    }
+    assert.deepEqual(buildCountryEvidenceBundle({ country: 'France', code: 'FR' }).signals, []);
+  });
+
   it('builds a portable bundle with active signals, sources, freshness, and disclaimer', async () => {
     const { buildCountryEvidenceBundle, COUNTRY_EVIDENCE_PROVENANCE_DISCLAIMER } = await loadExportUtils();
 
@@ -639,12 +751,12 @@ describe('country evidence bundle export', () => {
     assert.match(legacySource, /data-format="csv"/);
     assert.match(legacySource, /trackGateHit\('evidence-export'\)/);
 
-    assert.match(dossierSource, /exportCountryEvidenceMarkdown/);
+    assert.match(dossierSource, /countryEvidenceMarkdownArtifact/);
     assert.match(dossierSource, /cdp-evidence-export-btn/);
     assert.match(dossierSource, /if \(!this\.canRequestPremium\(\)\)/);
     assert.match(dossierSource, /trackGateHit\('evidence-export'\)/);
-    assert.match(dossierSource, /this\.exportEvidenceBundle\(\)/);
-    assert.match(dossierSource, /exportCountryEvidenceMarkdown\(data\)/);
+    assert.match(dossierSource, /this\.exportEvidenceBundle\(signal\)/);
+    assert.match(dossierSource, /this\.downloadText\(countryEvidenceMarkdownArtifact\(data\), signal\)/);
   });
 
   it('blocks country brief evidence export for free users', async () => {
@@ -666,6 +778,27 @@ describe('country evidence bundle export', () => {
     } finally {
       harness.cleanup();
     }
+  });
+
+  it('uses one Evidence snapshot, disables duplicate clicks and suppresses status after country close', async () => {
+    const harness = await createCountryDeepDivePanelHarness({ premiumAccess: true });
+    try {
+      let settle!: (value: { state: 'host-accepted' }) => void;
+      const delivered: Array<{ artifact: { content: string }; signal: AbortSignal }> = [];
+      const panel = harness.createPanel((artifact: { content: string }, signal: AbortSignal) => {
+        delivered.push({ artifact, signal });
+        return new Promise(resolve => { settle = resolve; });
+      });
+      panel.show('France', 'FR', null, zeroCountryBriefSignals());
+      for (let attempt = 0; attempt < 25 && !harness.getPanelRoot()?.querySelector('.cdp-evidence-export-btn'); attempt++) await new Promise(resolve => setTimeout(resolve, 0));
+      const button = harness.getPanelRoot()!.querySelector('.cdp-evidence-export-btn') as HTMLButtonElement;
+      button.dispatchEvent(new Event('click')); button.dispatchEvent(new Event('click'));
+      assert.equal(delivered.length, 1); assert.equal(button.disabled, true);
+      assert.equal(JSON.parse(delivered[0]!.artifact.content).code, 'FR');
+      panel.hide(); assert.equal(delivered[0]!.signal.aborted, true);
+      settle({ state: 'host-accepted' }); await new Promise(resolve => setImmediate(resolve));
+      assert.deepEqual(harness.getToasts(), []);
+    } finally { harness.cleanup(); }
   });
 
   it('renders the World Monitor data footer from the brief evidence', async () => {
@@ -846,6 +979,8 @@ describe('country evidence bundle export', () => {
       assert.ok(button, 'expected evidence export button');
       button.dispatchEvent(new Event('click'));
 
+      await new Promise(resolve => setImmediate(resolve));
+
       const exports = harness.getEvidenceExports();
       assert.equal(exports.length, 1);
       assert.equal(exports[0].country, 'France');
@@ -998,4 +1133,15 @@ describe('CSV military vessel class', () => {
       URL.revokeObjectURL = originalRevoke;
     }
   });
+});
+
+
+it('preserves bounded sanitized Signals coverage notes beside counts in the existing evidence export', async () => {
+  const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+  const bundle = buildCountryEvidenceBundle({ country: 'United States', code: 'US', signals: { outages: 1 }, signalCoverageNotes: ['<script>bad()</script><SCRIPT>bad()</SCRIPT><ScRiPt>bad()</ScRiPt>Returned sample; snapshot unknown; these counts are not fresh.', ...Array.from({ length: 20 }, () => 'x'.repeat(2000))] });
+  assert.ok(bundle.freshnessNotes.some(note => note.includes('these counts are not fresh')));
+  assert.ok(bundle.freshnessNotes.every(note => note.length <= 1600));
+  assert.ok(bundle.freshnessNotes.length <= 15);
+  assert.match(renderCountryEvidenceMarkdown(bundle), /Returned sample/);
+  assert.doesNotMatch(renderCountryEvidenceMarkdown(bundle), /<script\b/i);
 });

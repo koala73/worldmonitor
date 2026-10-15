@@ -292,6 +292,7 @@ export class CountryBriefPage implements CountryBriefPanel {
         : 'military';
       const advisoryLabel = signals.travelAdvisoryMaxLevel === 'do-not-travel' ? 'Do Not Travel'
         : signals.travelAdvisoryMaxLevel === 'reconsider' ? 'Reconsider Travel'
+        : signals.travelAdvisoryMaxLevel === 'normal' ? t('countryBrief.chips.normalPrecautions')
         : 'Exercise Caution';
       chips.push(`<span class="signal-chip ${advisoryClass}">\u26A0\uFE0F ${signals.travelAdvisories} Advisory: ${advisoryLabel}</span>`);
     }

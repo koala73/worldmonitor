@@ -409,7 +409,7 @@ describe('authFetch honors a retryable billing-verification 503', () => {
 
     assert.equal(calls.length, 2, 'the retry is a property of authFetch, not of one caller');
     assert.deepEqual(slept, [5_000]);
-    assert.match(url, /^https:\/\/slack\.com\//);
+    assert.match(url.oauthUrl, /^https:\/\/slack\.com\//);
   });
 
   it('pins the identity for the retry even when the caller passed no expectedUserId', async () => {

@@ -14,7 +14,7 @@ message ScorecardTotals {
   int32 scored = 5;
   int32 void = 6;
   double void_rate = 7;
-  double publication_coverage = 8;
+  double publication_coverage = 8 [deprecated = true];
 }
 
 message ScorecardSummary {
@@ -60,16 +60,112 @@ message ScorecardMarketSkill {
   double brier_delta = 4;
 }
 
-// Headline "real skill" summary: Brier/log score over scored entries whose
-// generation origin is NOT synthetic backfill or an unpromoted shadow stream.
-// count 0 with excluded_scored > 0 means the headline is unmeasurable because
-// everything scored was synthetic — the honest signal for a collapsed funnel.
+// Headline Brier/log score over scored entries that are neither synthetic
+// backfill nor unpromoted shadow streams; count 0 with excluded_scored > 0
+// means every scored entry was excluded.
 message ScorecardSkill {
   int32 count = 1;
   optional double brier = 2;
   optional double log_score = 3;
   int32 excluded_scored = 4;
   repeated string excluded_origins = 5;
+  int32 yes_count = 6;
+  repeated double bss_ci95 = 7;
+}
+
+message ScorecardPublishedDomain {
+  string domain = 1;
+  int32 count = 2;
+  double brier = 3;
+  int32 yes_count = 4;
+  optional double bss = 5;
+}
+
+// Bootstrap interval on a mean Brier score.
+message ScorecardInterval {
+  int32 count = 1;
+  double mean = 2;
+  // [low, high] at 95%.
+  repeated double ci95 = 3;
+  // True below the family minimums.
+  bool insufficient_sample = 4;
+}
+
+message ScorecardUncertainty {
+  string method = 1;
+  ScorecardInterval overall_brier = 2;
+  ScorecardInterval skill_brier = 3;
+}
+
+// successes of count, with a Wilson interval.
+message ScorecardProportion {
+  int32 count = 1;
+  int32 successes = 2;
+  double rate = 3;
+  // [low, high] at 95%.
+  repeated double ci95 = 4;
+}
+
+// Matured means past deadline or resolved.
+message ScorecardFunnel {
+  int32 matured = 1;
+  int32 immature = 2;
+  int32 maturity_unknown = 3;
+  int32 resolved = 4;
+  int32 scored = 5;
+  int32 pending_hard_matured = 6;
+  int32 pending_judge_matured = 7;
+  // Both rates use matured as the denominator.
+  ScorecardProportion resolved_of_matured = 8;
+  ScorecardProportion scored_of_matured = 9;
+}
+
+message ScorecardReceipt {
+  string question = 1;
+  int64 forecast_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  double probability = 3;
+  string outcome = 4;
+  int64 resolved_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  string void_reason = 6;
+  string source_feed = 7;
+  optional double observed_value = 8;
+  string citation_title = 9;
+  string citation_url = 10;
+}
+
+// One market-alert type's rolling hit rate beside its base rate.
+message MarketAlertRow {
+  string type = 1;
+  // Alerts resolved HIT or MISS.
+  int32 scored = 2;
+  optional double hit_rate = 3;
+  int32 base_n = 4;
+  optional double base_hit_rate = 5;
+  // Hit rate over the rows whose control scored; compare with base_hit_rate.
+  optional double paired_hit_rate = 6;
+  // Median over hits; omitted below 30 hits.
+  optional int64 median_lead_time_ms = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// Rolling scorecard of the market-alert ledger.
+message MarketAlertScorecard {
+  int64 generated_at = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int32 window_hours = 2;
+  int32 rolling_window_days = 3;
+  string methodology = 4;
+  repeated MarketAlertRow by_type = 5;
+}
+
+message ScorecardFamilyOutcome {
+  string forecast_id = 1;
+  string outcome = 2;
+  string void_reason = 3;
+}
+
+message ScorecardUnderAudit {
+  string since = 1;
+  string reason = 2;
+  int32 issue = 3;
 }
 
 message GetForecastScorecardResponse {
@@ -77,6 +173,7 @@ message GetForecastScorecardResponse {
   int64 generated_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   int32 rolling_window_days = 3;
   string methodology = 4;
+  // Published forecasts only.
   ScorecardTotals totals = 5;
   ScorecardSummary overall = 6;
   repeated ScorecardDomainGroup by_domain = 7;
@@ -87,4 +184,13 @@ message GetForecastScorecardResponse {
   bool stale = 12;
   string error = 13;
   ScorecardSkill skill = 14;
+  // Published-origin accuracy by domain.
+  repeated ScorecardPublishedDomain published_by_domain = 15;
+  ScorecardUncertainty uncertainty = 16;
+  ScorecardFunnel funnel = 17;
+  repeated ScorecardReceipt receipts = 18;
+  MarketAlertScorecard market_alerts = 19;
+  repeated ScorecardFamilyOutcome family_outcomes = 20;
+  // Present while an audit withdraws the scores.
+  ScorecardUnderAudit under_audit = 21;
 }

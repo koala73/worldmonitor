@@ -111,4 +111,11 @@ describe('ensureHydrated public on-demand key guard (WORLDMONITOR-XP)', () => {
     assert.equal(requested.length, 1);
     assert.match(requested[0] ?? '', /\/api\/bootstrap\?keys=liveVideoResolved&public=1$/);
   });
+
+  it('serves UNHCR cross-border movements through its public key URL (#9023)', async () => {
+    assert.equal(ON_DEMAND.has('crossBorderArrivals'), true, 'crossBorderArrivals must be on-demand, never tier freight');
+    assert.deepEqual(await ensureHydrated('crossBorderArrivals'), { ok: true });
+    assert.equal(requested.length, 1);
+    assert.match(requested[0] ?? '', /\/api\/bootstrap\?keys=crossBorderArrivals&public=1$/);
+  });
 });

@@ -942,8 +942,23 @@ describe('api/mcp-proxy', () => {
       };
       const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
       assert.equal(res.status, 504);
+      // The proxy already captured the upstream timeout server-side at
+      // warning. The marker lets premium-fetch's origin-5xx canary skip this
+      // 504 instead of re-reporting it from every browser as an origin error
+      // (WORLDMONITOR-17A).
+      assert.equal(res.headers.get('X-Wm-Upstream-Timeout'), '1');
       const data = await res.json();
       assert.match(data.error, /timed out/i);
+    });
+
+    it('does not mark an upstream JSON-RPC rejection as an upstream timeout', async () => {
+      globalThis.fetch = async () => new Response(
+        JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32601, message: 'Method not found' } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 422);
+      assert.equal(res.headers.get('X-Wm-Upstream-Timeout'), null);
     });
 
     it('rejects invalid JSON in the removed query-header channel', async () => {
@@ -2045,6 +2060,53 @@ describe('api/mcp-proxy — observability', () => {
     // Only the recorded status decides; a message that merely reads like one does not.
     assert.equal(proxyFailureFor(new McpProxyUpstreamError('Initialize failed: HTTP 401')).report, true);
     assert.equal(proxyFailureFor(new Error('HTTP 401')).report, true);
+  });
+
+  // A JSON-RPC `error` object answered on HTTP 200 is the remote server's
+  // decision about the caller's own request (a keyless panel over its free
+  // quota, an unknown tool name). One search.parallel.ai panel saved without
+  // a key produced 226 such events in two weeks (WORLDMONITOR-172 regrowth).
+  // The caller still gets the 422; the audit log keeps the JSON-RPC code.
+  it('does not report a JSON-RPC rejection answered by the upstream to Sentry', async () => {
+    const { McpProxyUpstreamError, proxyFailureFor } = await import(
+      `../api/mcp-proxy.ts?rpc-rejection=${Date.now()}`
+    );
+    const rejected = new McpProxyUpstreamError('Initialize error: MCP server rejected request', {
+      upstreamRpcError: { code: -32000, message: 'Rate limit exceeded' },
+    });
+    assert.equal(rejected.upstreamRpcCode, -32000);
+    const failure = proxyFailureFor(rejected);
+    assert.equal(failure.report, false, 'the upstream answered; its JSON-RPC error is not a proxy fault');
+    assert.equal(failure.level, 'warning');
+    // A malformed error object still counts as a rejection but records no code.
+    const codeless = new McpProxyUpstreamError('tools/call error: MCP server rejected request', {
+      upstreamRpcError: { message: 'nope' },
+    });
+    assert.equal(codeless.upstreamRpcCode, null);
+    assert.equal(proxyFailureFor(codeless).report, false);
+    // The message alone does not decide.
+    assert.equal(proxyFailureFor(new McpProxyUpstreamError('Initialize error: MCP server rejected request')).report, true);
+  });
+
+  it('audits the JSON-RPC code of an upstream rejection', async () => {
+    const logs = [];
+    const originalLog = console.log;
+    console.log = (...args) => { logs.push(args); };
+    try {
+      stubAxiom(async () => new Response(
+        JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'Rate limit exceeded' } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+      const res = await obsHandler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 422);
+      assert.match((await res.json()).error, /MCP server rejected request/);
+    } finally {
+      console.log = originalLog;
+    }
+    const audit = logs.find(([tag, entry]) => tag === '[mcp-proxy]' && entry?.event === 'mcp_proxy_call');
+    assert.ok(audit, 'the proxy call is still audited');
+    assert.equal(audit[1].upstream_status, null);
+    assert.equal(audit[1].upstream_rpc_code, -32000);
   });
 
   it('answers an upstream 401 with 422, no Sentry capture, and the status in the audit log', async () => {

@@ -98,3 +98,54 @@ describe('World Brief exported HTML projections', () => {
     assert.equal(doc.getElementById('stale-note').style.display, 'none');
   });
 });
+
+describe('World Brief original citation association', () => {
+  const value = {
+    brief: 'First claim [1]. Second claim [2].', summary: 'First claim [1]. Second claim [2].',
+    headlines: ['One', 'Two'], provider: 'controlled', model: 'controlled', generatedAt: '2026-10-04T23:00:00Z', stale: false, ageMinutes: 1,
+    sources: [{ title: 'One', source: 'A', url: 'https://example.invalid/a' }, { title: 'Two', source: 'B', url: 'https://example.invalid/b' }],
+  };
+  const assertSeparate = doc => assert.deepEqual([...doc.querySelectorAll('#sources a')].map(a=>a.href), value.sources.map(s=>s.url));
+  const assertLiteral = doc => { assert.equal(doc.querySelectorAll('#brief a').length, 0); assert.equal(doc.querySelector('#brief .para').textContent, value.brief); };
+  it('distinguishes equal ordinary structured and text-only fallback notifications', async () => {
+    const ordinary = await mount(wire(value));
+    assertSeparate(ordinary.doc);
+    assert.deepEqual([...ordinary.doc.querySelectorAll('#brief a')].map(a=>a.href), value.sources.map(s=>s.url));
+    const fallback = await mount({ content: [{ type: 'text', text: JSON.stringify(value) }] });
+    assertSeparate(fallback.doc); assertLiteral(fallback.doc);
+    assert.equal(ordinary.reads()+fallback.reads(),0);
+  });
+  for (const query of ['@', '{brief:brief,summary:summary,headlines:headlines,sources:reverse(sources),provider:provider,model:model,generatedAt:generatedAt,stale:stale,ageMinutes:ageMinutes}']) {
+    it(`keeps genuine projected citations literal for ${query}`, async () => {
+      const projected=applyJmespath(value,query);assert.equal(projected.failed,undefined);
+      const view=await mount(wire(projected.value,true));assertLiteral(view.doc);
+      assert.deepEqual([...view.doc.querySelectorAll('#sources a')].map(a=>a.href),projected.value.sources.map(s=>s.url));
+      assert.equal(view.reads(),0);
+    });
+  }
+  for (const url of ['javascript:alert(1)', '']) {
+    it(`keeps rejected ordinary citations literal without shifting the later source for ${JSON.stringify(url)}`, async () => {
+      const brief = 'Zero [0]. Outside [3]. Unusable [1]. Valid later [2].';
+      const view = await mount(wire({ ...value, brief, summary: brief, sources: [{ ...value.sources[0], url }, value.sources[1]] }));
+      assert.equal(view.doc.querySelector('#brief .para').textContent, brief);
+      const links = [...view.doc.querySelectorAll('#brief a')];
+      assert.deepEqual(links.map(link => ({ text: link.textContent, href: link.href, target: link.target, rel: link.rel })), [
+        { text: '[2]', href: value.sources[1].url, target: '_blank', rel: 'noopener noreferrer' },
+      ]);
+      assert.deepEqual([...view.doc.querySelectorAll('#sources a')].map(link => link.href), [value.sources[1].url]);
+      assert.equal(view.reads(), 0);
+      assert.ok(view.messages.every(message => message.method === 'ui/notifications/size-changed'));
+    });
+  }
+  it('prefers structured content and never borrows prior origin or sources', async () => {
+    const view=await mount({ ...wire(value), content:[{type:'text',text:JSON.stringify({brief:'Conflicting'})}] });
+    assertSeparate(view.doc);assert.equal(view.doc.querySelectorAll('#brief a').length,2);
+    view.send({content:[{type:'text',text:JSON.stringify(value)}]});assertLiteral(view.doc);assertSeparate(view.doc);
+    view.send(wire({brief:'Replacement [1].'},true));assert.equal(view.doc.querySelectorAll('#brief a').length,0);assert.equal(view.doc.querySelectorAll('#sources a').length,0);
+    for(const replacement of [null,[],{},7,'unloaded',{brief:5,headlines:{count:2},sources:{count:2}}]){
+      view.send(wire(value));assert.equal(view.doc.querySelectorAll('#brief a').length,2);
+      view.send(wire(replacement,true));assert.equal(view.doc.querySelectorAll('#brief a').length,0);assert.equal(view.doc.querySelectorAll('#sources a').length,0);
+    }
+    assert.equal(view.reads(),0);assert.ok(view.messages.every(m=>m.method==='ui/notifications/size-changed'));
+  });
+});

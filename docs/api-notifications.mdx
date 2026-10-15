@@ -47,7 +47,7 @@ A caller without a billed row gets `403 pro_required` only when the entitlement 
 
 Clients should honor that `503` with at least one retry at the advertised `Retry-After` before surfacing a failure — the dashboard's own service layer (`src/services/notification-channels.ts`) makes exactly one bounded retry. For `entitlement_verification_unavailable` specifically, retrying earlier than `Retry-After` is wasted: that answer is briefly negative-cached server-side, so an early retry is served the same result. The two `renewal_verification_*` codes are not negative-cached, but their delay reflects a real provider re-check or cooldown, so retrying early is still answered from the same state.
 
-- **Idempotency**: optional `Idempotency-Key` supported on `POST /api/notification-channels`. Retrying the same key with an identical body replays the original response instead of applying the channel action again.
+- **Idempotency**: optional `Idempotency-Key` supported on `POST /api/notification-channels`. Retrying the same key with an identical body replays the original response instead of applying the channel action again. The exception is a successful webhook `set-channel`: its response carries a one-time signing secret, so it is never cached, and a retry registers the URL again with a new secret.
 
 ## Webhook delivery contract
 
@@ -56,21 +56,59 @@ When an alert fires, registered webhook URLs receive:
 - **Method**: `POST`
 - **Headers**:
   - `Content-Type: application/json`
-  - `X-WM-Signature: sha256=<HMAC-SHA256(body, channelSecret)>`
-  - `X-WM-Delivery-Id: <ulid>`
-  - `X-WM-Event: <event-name>`
-- **Body** (envelope v1):
+  - `X-WM-Delivery-Id: <uuid>`, unique per delivery attempt
+  - `X-WM-Event: <eventType>`, the same value as the body's `eventType`
+  - `X-WM-Timestamp: <unix seconds>`
+  - `X-WM-Signature: sha256=<hex HMAC-SHA256(signingSecret, timestamp + "." + deliveryId + "." + rawBody)>`
+- **Body** (envelope v1). Realtime alerts from the notification relay:
   ```json
   {
-    "envelope": 1,
-    "event": "brief_ready",
-    "deliveryId": "01HX...",
-    "occurredAt": "2026-04-19T06:00:00Z",
-    "data": { "issueDate": "2026-04-19", "magazineUrl": "..." }
+    "version": "1",
+    "eventType": "rss_alert",
+    "severity": "high",
+    "timestamp": 1776578400000,
+    "payload": { "title": "...", "source": "...", "link": "https://..." },
+    "variant": "full"
+  }
+  ```
+  Digests from the digest producer:
+  ```json
+  {
+    "version": "1",
+    "eventType": "digest",
+    "stories": [{ "title": "...", "severity": "high", "phase": "...", "sources": ["..."] }],
+    "summary": "...",
+    "storyCount": 12
   }
   ```
 
-Signature verification: `hmac_sha256(rawBody, channelSecret) == X-WM-Signature[7:]`.
+### Signing secret
+
+Each time a webhook URL is saved through `set-channel`, the response includes a new `signingSecret` (`whsec_...`). It is returned only once and stored encrypted. Saving the URL again issues a new secret and invalidates the old one, which is also how to rotate it.
+
+### Verifying a delivery
+
+1. Read the raw request body before parsing it.
+2. Compute `hex(HMAC-SHA256(signingSecret, X-WM-Timestamp + "." + X-WM-Delivery-Id + "." + rawBody))`.
+3. Reject the delivery unless `X-WM-Signature` is `sha256=` followed by exactly 64 hex characters, then compare those bytes with yours using a constant-time comparison.
+4. Reject deliveries whose `X-WM-Timestamp` is more than 5 minutes from your clock, and deduplicate on `X-WM-Delivery-Id`.
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+function verify(rawBody, headers, signingSecret) {
+  const ts = headers['x-wm-timestamp'];
+  const id = headers['x-wm-delivery-id'];
+  const sig = headers['x-wm-signature'] ?? '';
+  if (!ts || !id || Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false;
+  const match = /^sha256=([0-9a-f]{64})$/.exec(sig);
+  if (!match) return false;
+  const expected = createHmac('sha256', signingSecret).update(`${ts}.${id}.${rawBody}`).digest();
+  return timingSafeEqual(Buffer.from(match[1], 'hex'), expected);
+}
+```
+
+Webhooks registered before signing was introduced have no secret and arrive without `X-WM-Signature`. The settings page marks them **Unsigned**; remove and re-add the URL to get a secret.
 
 <Warning>
 The envelope version is **shared across two producers** (`notification-relay`, `seed-digest-notifications`). Bumping it requires coordinated updates.

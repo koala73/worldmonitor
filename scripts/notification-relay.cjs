@@ -7,6 +7,10 @@ const {
   assertNotificationWebhookDeliveryUrlSafe,
   postJsonWithPinnedAddress,
 } = require('./lib/notification-webhook-ssrf.cjs');
+const {
+  buildWebhookDeliveryHeaders,
+  resolveWebhookSigningSecret,
+} = require('./lib/notification-webhook-signing.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
@@ -378,10 +382,16 @@ function resolveQuietAction(rule, severity) {
 }
 
 const QUIET_HELD_TTL = 86400; // 24h — held events expire if never drained
+// Held queues are per user and fed by /api/notify, so they need a hard cap:
+// without one a single account could grow its list for a whole quiet window
+// and make the wake-up drain fetch and parse all of it in the shared relay.
+// The newest events win; a batch message never lists more than this anyway.
+const QUIET_HELD_MAX = 100;
 
 async function holdEvent(userId, variant, eventJson) {
   const key = `digest:quiet-held:${userId}:${variant}`;
   await upstashRest('RPUSH', key, eventJson);
+  await upstashRest('LTRIM', key, String(-QUIET_HELD_MAX), '-1');
   await upstashRest('EXPIRE', key, String(QUIET_HELD_TTL));
 }
 
@@ -393,7 +403,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
   const len = await upstashRest('LLEN', key);
   if (!len || len === 0) return;
 
-  const items = await upstashRest('LRANGE', key, '0', '-1');
+  const items = await upstashRest('LRANGE', key, String(-QUIET_HELD_MAX), '-1');
   if (!Array.isArray(items) || items.length === 0) return;
 
   const parsedEvents = items.map(i => { try { return JSON.parse(i); } catch { return null; } }).filter(Boolean);
@@ -463,7 +473,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
             link: formatEventLinkForPush(ev),
           })),
         },
-      });
+      }, ch.webhookSecret);
       else if (ch.channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
         ok = await sendWebPush(userId, ch, {
           title: `WorldMonitor · ${events.length} held alert${events.length === 1 ? '' : 's'}`,
@@ -737,10 +747,12 @@ async function sendEmail(email, subject, text) {
   }
 }
 
-async function sendWebhook(userId, webhookEnvelope, event) {
+async function sendWebhook(userId, webhookEnvelope, event, webhookSecretEnvelope) {
   let url;
+  let signingSecret;
   try {
     url = decrypt(webhookEnvelope);
+    signingSecret = resolveWebhookSigningSecret(decrypt, webhookSecretEnvelope);
   } catch (err) {
     console.warn(`[relay] Webhook decrypt failed for ${userId}:`, err.message);
     return false;
@@ -774,7 +786,11 @@ async function sendWebhook(userId, webhookEnvelope, event) {
     const resp = await postJsonWithPinnedAddress(
       safeUrl,
       payload,
-      { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
+      {
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-relay/1.0',
+        ...buildWebhookDeliveryHeaders({ body: payload, eventType: event.eventType, secret: signingSecret }),
+      },
       resolvedAddresses,
     );
     if (resp.status === 404 || resp.status === 410 || resp.status === 403) {
@@ -1718,7 +1734,7 @@ async function processEvent(event) {
         } else if (ch.channelType === 'email' && ch.email) {
           await sendEmail(ch.email, subject, deliveryText);
         } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
-          await sendWebhook(rule.userId, ch.webhookEnvelope, shapeEventForWebhook(event));
+          await sendWebhook(rule.userId, ch.webhookEnvelope, shapeEventForWebhook(event), ch.webhookSecret);
         } else if (ch.channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
           // Web push carries short payloads (Chrome caps at ~4KB and
           // auto-truncates longer ones anyway). Use title + first line
@@ -1819,6 +1835,8 @@ module.exports = {
   processEvent,
   safePushClickUrl,
   sendTelegram,
+  // Exported so the signing suite drives the real delivery path.
+  sendWebhook,
   checkDedup,
   upstashDedupSetNx,
   eventMatchesCountryScope,
@@ -1858,4 +1876,6 @@ module.exports = {
   buildDiscordMessagePayload,
   processWelcome,
   popNextEvent,
+  holdEvent,
+  QUIET_HELD_MAX,
 };

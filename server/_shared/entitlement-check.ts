@@ -162,6 +162,12 @@ export interface EntitlementCheckOptions {
 const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/forecast/v1/trigger-simulation': 1,
   '/api/intelligence/v1/classify-event': 1,
+  // deduct-situation is a Pro panel (DeductionPanel premium: 'locked') and in
+  // PREMIUM_RPC_PATHS, but it is also a direct-LLM quota route. The gateway
+  // treats a resolved Clerk session as authenticated for quota routes, which
+  // skipped the legacy Pro bearer gate and let any signed-in free account
+  // spend LLM budget here. The tier entry makes the Pro check explicit.
+  '/api/intelligence/v1/deduct-situation': 1,
   '/api/intelligence/v1/get-country-intel-brief': 1,
   '/api/intelligence/v1/search-intel-history': 1,
   '/api/intelligence/v1/get-intel-timeline': 1,
@@ -185,6 +191,8 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/supply-chain/v1/get-sector-dependency': 1,
   '/api/trade/v1/list-comtrade-flows': 1,
   '/api/trade/v1/get-tariff-trends': 1,
+  '/api/trade/v1/get-bilateral-tariff': 1,
+  '/api/trade/v1/get-us-import-duty': 1,
   '/api/resilience/v1/get-food-stocks': 1,
   '/api/resilience/v1/get-demographics-capability': 1,
   '/api/resilience/v1/get-resilience-indicators': 1,

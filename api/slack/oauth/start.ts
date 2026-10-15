@@ -17,6 +17,7 @@ import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin } from '
 import { checkRateLimit } from '../../_rate-limit.js';
 import { validateBearerToken } from '../../../server/auth-session';
 import { checkTierProEntitlement } from '../../../server/_shared/pro-entitlement';
+import { createChannelOAuthState } from '../../../server/_shared/channel-oauth-state';
 
 const SLACK_CLIENT_ID = process.env.SLACK_CLIENT_ID ?? '';
 const SLACK_REDIRECT_URI = process.env.SLACK_REDIRECT_URI ?? '';
@@ -77,18 +78,8 @@ export default async function handler(req: Request, ctx?: { waitUntil: (p: Promi
   const state = btoa(String.fromCharCode(...stateBytes))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-  // Store userId in Upstash with 10-min TTL — pipeline for atomicity
-  const pipelineRes = await fetch(`${UPSTASH_URL}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-edge/1.0' },
-    body: JSON.stringify([['SET', `wm:slack:oauth:${state}`, session.userId, 'EX', '600']]),
-    signal: AbortSignal.timeout(5000),
-  }).catch(() => null);
-
-  const results = pipelineRes?.ok ? await pipelineRes.json().catch(() => null) : null;
-  if (!Array.isArray(results) || results[0]?.result !== 'OK') {
-    return new Response(JSON.stringify({ error: 'Failed to create OAuth state' }), { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-  }
+  // Bind the state to this browser and opener origin (see channel-oauth-state).
+  const oauthState = await createChannelOAuthState('slack', req, session.userId);
 
   const oauthUrl = new URL('https://slack.com/oauth/v2/authorize');
   oauthUrl.searchParams.set('client_id', SLACK_CLIENT_ID);
@@ -96,8 +87,27 @@ export default async function handler(req: Request, ctx?: { waitUntil: (p: Promi
   oauthUrl.searchParams.set('redirect_uri', SLACK_REDIRECT_URI);
   oauthUrl.searchParams.set('state', state);
 
-  return new Response(JSON.stringify({ oauthUrl: oauthUrl.toString() }), {
+  // Store the state record in Upstash with 10-min TTL — pipeline for atomicity
+  const pipelineRes = await fetch(`${UPSTASH_URL}/pipeline`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-edge/1.0' },
+    body: JSON.stringify([
+      ['SET', `wm:slack:oauth:${state}`, oauthState.record, 'EX', '600'],
+      ['SET', `wm:slack:oauth:launch:${state}`, JSON.stringify({ ...JSON.parse(oauthState.record), oauthUrl: oauthUrl.toString() }), 'EX', '600'],
+    ]),
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => null);
+
+  const results = pipelineRes?.ok ? await pipelineRes.json().catch(() => null) : null;
+  if (!Array.isArray(results) || results.length !== 2 || results.some((entry) => entry?.result !== 'OK')) {
+    return new Response(JSON.stringify({ error: 'Failed to create OAuth state' }), { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  return new Response(JSON.stringify({ oauthUrl: oauthUrl.toString(), browserBinding: {
+    url: new URL(`/api/channel-oauth-bind?provider=slack&state=${state}`, req.url).toString(),
+    token: oauthState.bindValue,
+  } }), {
     status: 200,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    headers: { 'Content-Type': 'application/json', 'Set-Cookie': oauthState.setCookie, 'Cache-Control': 'no-store', ...corsHeaders },
   });
 }

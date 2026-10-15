@@ -1073,7 +1073,8 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params, base, context, execution) => {
-      const countryCode = argStr(params.country_code).trim().toUpperCase();
+      // Same name/alpha-3 resolution as get_supply_vulnerabilities (WORLDMONITOR-181).
+      const countryCode = requireCountryCode(params.country_code, 'get-defense-industrial-base');
       // The MCP gate has already authenticated and metered this call, and the
       // internal-MCP HMAC headers carry that verdict downstream. The `public=1`
       // CDN shape this used to request is gone (#6438): it was an anonymous
@@ -3177,7 +3178,10 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params, base, context, execution) => {
-      const countryCode = argStr(params.country_code).trim().toUpperCase();
+      // Resolve names and alpha-3 the way get_country_risk does, so an agent's
+      // `"United Arab Emirates"` reaches the RPC as `AE` instead of a 400 on
+      // `iso2` that only Sentry sees (WORLDMONITOR-181).
+      const countryCode = requireCountryCode(params.country_code, 'get-country-vulnerabilities');
       const url = `${base}/api/supply-chain/v1/get-country-vulnerabilities?iso2=${encodeURIComponent(countryCode)}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
       const response = await fetchMcpDownstream(url, {

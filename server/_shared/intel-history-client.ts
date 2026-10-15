@@ -224,11 +224,20 @@ async function readIntelHistory(
   } catch (err) {
     // Same reasoning as the embed path: a Convex outage surfaces to the caller
     // as an empty 200, so it has to reach Sentry to be distinguishable.
+    // AbortSignal.timeout(CONVEX_TIMEOUT_MS) surfaces as TimeoutError /
+    // AbortError when Convex is slow. The read already fails open as
+    // upstreamUnavailable; downgrade the Sentry capture to warning so
+    // one-shot timeouts stay queryable without drowning real bugs
+    // (unexpected throws). Same gate as api/miit-news and
+    // api/notification-channels (Sentry WORLDMONITOR-187).
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[intel-history] ${path} failed: ${msg}`);
+    const errName = err instanceof Error ? err.name : '';
+    const isTransientTimeout = errName === 'AbortError' || errName === 'TimeoutError';
     captureSilentError(err, {
       tags: { surface: 'server', component: 'intel-history', stage: 'convex-read' },
       fingerprint: ['intel-history', 'convex-read-error', path],
+      ...(isTransientTimeout ? { level: 'warning' } : {}),
     });
     return null;
   }

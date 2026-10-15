@@ -8,6 +8,7 @@ import {
   createPairingToken,
   setEmailChannel,
   setWebhookChannel,
+  type ChannelOAuthLaunch,
   startSlackOAuth,
   startDiscordOAuth,
   deleteChannel,
@@ -69,6 +70,19 @@ function normalizePreselectCountry(input: string | undefined): string | null {
   const trimmed = input.trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(trimmed)) return null;
   return trimmed;
+}
+
+function submitChannelOAuthForm(popup: Window, launch: ChannelOAuthLaunch): void {
+  const form = popup.document.createElement('form');
+  form.method = 'POST';
+  form.action = launch.browserBinding.url;
+  const input = popup.document.createElement('input');
+  input.type = 'hidden';
+  input.name = 'token';
+  input.value = launch.browserBinding.token;
+  form.appendChild(input);
+  popup.document.body.appendChild(form);
+  form.submit();
 }
 
 function appendNotificationError(rowEl: HTMLElement, message: string): void {
@@ -297,7 +311,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           } else if (type === 'discord') {
             sub = 'Connected';
           } else if (type === 'webhook') {
-            sub = channel.webhookLabel ? escapeHtml(channel.webhookLabel) : 'Connected';
+            const label = channel.webhookLabel ? escapeHtml(channel.webhookLabel) : 'Connected';
+            sub = channel.webhookSigned
+              ? `${label} · Signed`
+              : `${label} · <span class="us-notif-ch-sub-warn" title="Remove this webhook and add it again to get a signing secret.">Unsigned, re-add to sign</span>`;
           } else if (type === 'web_push') {
             sub = escapeHtml(webPushDeviceLabel(channel));
           } else {
@@ -1049,7 +1066,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               <div class="us-notif-ch-icon">${channelIcon('telegram')}</div>
               <div class="us-notif-ch-body">
                 <div class="us-notif-ch-name">Connect Telegram</div>
-                <div class="us-notif-ch-sub">Open the bot. If Telegram doesn't send the code automatically, paste this command.</div>
+                <div class="us-notif-ch-sub us-notif-ch-sub-wrap">Open the bot and tap Confirm when it asks. If Telegram doesn't send the code automatically, paste this command.</div>
                 <div class="us-notif-tg-pair-layout">
                   <div class="us-notif-tg-cmd-col">
                     <a href="${escapeHtml(deepLink)}" target="_blank" rel="noopener noreferrer" class="us-notif-tg-link">Open Telegram</a>
@@ -1134,20 +1151,19 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             slackOAuthPopup.focus();
             return;
           }
+          const popup = window.open('', 'slack-oauth', 'width=600,height=700,menubar=no,toolbar=no');
+          if (!popup) {
+            const rowEl = btn?.closest<HTMLElement>('[data-channel-type="slack"]');
+            if (rowEl) appendNotificationError(rowEl, 'Popup blocked. Allow popups for this site, then try again.');
+            return;
+          }
+          slackOAuthPopup = popup;
           if (btn) btn.textContent = 'Connecting…';
-          startSlackOAuth(signal).then((oauthUrl) => {
-            if (signal.aborted) return;
-            const popup = window.open(oauthUrl, 'slack-oauth', 'width=600,height=700,menubar=no,toolbar=no');
-            if (!popup) {
-              if (btn) btn.textContent = 'Add to Slack';
-              const rowEl = btn?.closest<HTMLElement>('[data-channel-type="slack"]');
-              if (rowEl) {
-                appendNotificationError(rowEl, 'Popup blocked — please allow popups for this site, then try again.');
-              }
-            } else {
-              slackOAuthPopup = popup;
-            }
+          startSlackOAuth(signal).then((launch) => {
+            if (signal.aborted || popup.closed) { popup.close(); return; }
+            submitChannelOAuthForm(popup, launch);
           }).catch(() => {
+            popup.close();
             if (btn && !signal.aborted) btn.textContent = 'Add to Slack';
           });
           return;
@@ -1159,20 +1175,19 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             discordOAuthPopup.focus();
             return;
           }
+          const popup = window.open('', 'discord-oauth', 'width=600,height=700,menubar=no,toolbar=no');
+          if (!popup) {
+            const rowEl = btn?.closest<HTMLElement>('[data-channel-type="discord"]');
+            if (rowEl) appendNotificationError(rowEl, 'Popup blocked. Allow popups for this site, then try again.');
+            return;
+          }
+          discordOAuthPopup = popup;
           if (btn) btn.textContent = 'Connecting…';
-          startDiscordOAuth(signal).then((oauthUrl) => {
-            if (signal.aborted) return;
-            const popup = window.open(oauthUrl, 'discord-oauth', 'width=600,height=700,menubar=no,toolbar=no');
-            if (!popup) {
-              if (btn) btn.textContent = 'Connect Discord';
-              const rowEl = btn?.closest<HTMLElement>('[data-channel-type="discord"]');
-              if (rowEl) {
-                appendNotificationError(rowEl, 'Popup blocked — please allow popups for this site, then try again.');
-              }
-            } else {
-              discordOAuthPopup = popup;
-            }
+          startDiscordOAuth(signal).then((launch) => {
+            if (signal.aborted || popup.closed) { popup.close(); return; }
+            submitChannelOAuthForm(popup, launch);
           }).catch(() => {
+            popup.close();
             if (btn && !signal.aborted) btn.textContent = 'Connect Discord';
           });
           return;
@@ -1203,12 +1218,46 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             return;
           }
           const saveBtn = target.closest<HTMLButtonElement>('#usWebhookSave');
-          if (saveBtn) saveBtn.textContent = 'Saving...';
-          setWebhookChannel(url, labelInput?.value?.trim() || undefined, signal).then(() => {
-            if (!signal.aborted) { saveRuleWithNewChannel('webhook'); reloadNotifSection(); }
+          // Each save rotates the secret, so a second in-flight save could
+          // land its response last and show a secret that no longer verifies.
+          if (saveBtn?.disabled) return;
+          if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+          }
+          setWebhookChannel(url, labelInput?.value?.trim() || undefined, signal).then(({ signingSecret }) => {
+            if (signal.aborted) return;
+            saveRuleWithNewChannel('webhook');
+            const rowEl = container.querySelector<HTMLElement>('[data-channel-type="webhook"]');
+            if (!signingSecret || !rowEl) { reloadNotifSection(); return; }
+            // Mark the row connected so a rule save made while the secret is
+            // on screen (getCurrentAlertRuleFormState) keeps the webhook.
+            rowEl.classList.add('us-notif-ch-on');
+            // The secret is shown once; the server keeps only an encrypted copy.
+            setTrustedHtml(rowEl, trustedHtml(`
+              <div class="us-notif-ch-icon">${channelIcon('webhook')}</div>
+              <div class="us-notif-ch-body">
+                <div class="us-notif-ch-name">Webhook signing secret</div>
+                <div class="us-notif-ch-sub us-notif-ch-sub-wrap">Copy it now; it won't be shown again. Verify the X-WM-Signature header on each delivery with it.</div>
+                <div class="us-notif-tg-cmd-row">
+                  <code class="us-notif-tg-cmd" id="usWebhookSecret" style="white-space:normal;word-break:break-all;user-select:all">${escapeHtml(signingSecret)}</code>
+                  <button type="button" class="us-notif-tg-copy-btn" data-cmd="${escapeHtml(signingSecret)}">Copy</button>
+                </div>
+              </div>
+              <div class="us-notif-ch-actions">
+                <button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary" id="usWebhookSecretDone">Done</button>
+              </div>
+            `, "webhook signing secret, escaped"));
           }).catch(() => {
-            if (saveBtn && !signal.aborted) saveBtn.textContent = 'Save';
+            if (saveBtn && !signal.aborted) {
+              saveBtn.disabled = false;
+              saveBtn.textContent = 'Save';
+            }
           });
+          return;
+        }
+        if (target.closest('#usWebhookSecretDone')) {
+          reloadNotifSection();
           return;
         }
         if (target.closest('#usWebhookCancel')) {

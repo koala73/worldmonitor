@@ -13,7 +13,7 @@ const enLocale = () =>
 const proofFacts = () =>
   JSON.parse(readFileSync(new URL('../pro-test/src/generated/depth-stats.json', import.meta.url), 'utf8'));
 const fillProofFacts = (text, facts) => text.replace(/\{\{(\w+)\}\}/g, (_, key) => String(facts[key]));
-const WELCOME_FAQ_COUNT = 11;
+const WELCOME_FAQ_COUNT = 12;
 const CANONICAL_ORIGIN = 'https://www.worldmonitor.app/';
 
 let cachedJsonLdBlocks;
@@ -103,6 +103,12 @@ test('welcome FAQPage JSON-LD matches every visible FAQ entry', { skip }, () => 
   // The structured answer to the Liveuamap question must carry the compare
   // destination itself, not only the DOM anchor derived from it (#7746).
   assert.match(faqPage.mainEntity[4].acceptedAnswer.text, /worldmonitor\.app\/compare\/liveuamap-alternatives/);
+  // The software-choice question opens with the answer and its measured
+  // inventory, so an answer engine can quote the first sentence alone.
+  const softwareAnswer = faqPage.mainEntity[11];
+  assert.equal(softwareAnswer.name, 'What is the best software for tracking global news disruptions?');
+  assert.match(softwareAnswer.acceptedAnswer.text, new RegExp(`^World Monitor is a free, open-source option: it streams ${facts.feeds} news and OSINT feeds from ${facts.providers} attributed providers onto one live world map with ${facts.mapLayers} map layer types`));
+  assert.match(softwareAnswer.acceptedAnswer.text, /worldmonitor\.app\/compare\/best-geopolitical-risk-dashboards\.$/);
 });
 
 // AI answers quote one passage, not the stat rail beside it, so each
@@ -245,6 +251,8 @@ test('built welcome page ships the real hero in #root before JavaScript', { skip
   const faqContent = rootContent.slice(faqStart);
   assert.match(faqContent, /href="\/compare\/best-geopolitical-risk-dashboards\/"[^>]*>worldmonitor\.app\/compare\/best-geopolitical-risk-dashboards<\/a>/);
   assert.match(faqContent, /href="\/compare\/liveuamap-alternatives\/"[^>]*>worldmonitor\.app\/compare\/liveuamap-alternatives<\/a>/);
+  // a5 and a12 both link the dashboard comparison.
+  assert.equal(faqContent.match(/href="\/compare\/best-geopolitical-risk-dashboards\/"[^>]*>worldmonitor\.app\/compare\/best-geopolitical-risk-dashboards<\/a>/g)?.length, 2);
   // Untagged since #8603: middleware 308s utm_* away, so every one of these
   // was a redirect hop. Each link is still identified individually, by the
   // Umami target or link text that replaced its utm tag as the attribution.

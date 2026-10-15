@@ -287,7 +287,7 @@ export const SERVER_NAME = 'worldmonitor';
 //     app-shell resources joining the existing fleet —
 //       * ui://worldmonitor/news-intelligence.html  (get_news_intelligence)
 //       * ui://worldmonitor/conflict-events.html     (get_conflict_events)
-//       * ui://worldmonitor/natural-disasters-v2.html   (get_natural_disasters)
+//       * ui://worldmonitor/natural-disasters-v3.html   (get_natural_disasters)
 //       * ui://worldmonitor/prediction-markets.html  (get_prediction_markets)
 //       * ui://worldmonitor/forecasts.html           (get_forecast_predictions)
 //     Each renders through the shared shell (api/mcp/ui/shell.ts) and links from
@@ -337,8 +337,8 @@ export const SERVER_NAME = 'worldmonitor';
 //     byte-identical to before. See api/mcp/structured-content.ts.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-// Bumped 1.28.0 → 1.29.0 for the protected, quota-exempt account allowance tool.
-export const SERVER_VERSION = '1.29.0';
+// Bumped 1.31.0 → 1.32.0 for live tariff lookups.
+export const SERVER_VERSION = '1.32.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not

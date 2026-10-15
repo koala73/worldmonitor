@@ -8,7 +8,7 @@ import {
 } from './_prediction-classify.mjs';
 import {
   isExcluded, parseYesPrice, parseKalshiYesPrice, parsePredictionMarketVolume,
-  selectPricedKalshiMarket, isExpired,
+  selectPricedKalshiMarket, isExpired, kalshiMarketUrl,
 } from './_prediction-scoring.mjs';
 import {
   buildCountryMarketIndex,
@@ -71,7 +71,7 @@ function kalshiTitle(marketTitle, eventTitle) {
   return `${eventTitle}: ${marketTitle}`;
 }
 
-function kalshiCountryCandidate(market, eventTitle) {
+function kalshiCountryCandidate(market, eventTitle, seriesTicker = market.series_ticker) {
   const yesPrice = parseKalshiYesPrice(market);
   if (yesPrice === null) return null;
   const marketTitle = eventTitle
@@ -82,6 +82,7 @@ function kalshiCountryCandidate(market, eventTitle) {
     yesPrice,
     volume: parseFloat(market.volume_fp) || 0,
     url: `https://kalshi.com/markets/${market.ticker}`,
+    displayUrl: kalshiMarketUrl(seriesTicker),
     endDate: market.close_time ?? undefined,
     tags: [],
     source: 'kalshi',
@@ -109,7 +110,7 @@ async function fetchKalshiMarkets() {
 
     const eventKey = `kalshi:${event.event_ticker || event.ticker || event.id || event.title}`;
     for (const market of binaryActive) {
-      const candidate = kalshiCountryCandidate(market, event.title);
+      const candidate = kalshiCountryCandidate(market, event.title, event.series_ticker);
       if (candidate) countryCandidates.push({ ...candidate, eventKey });
     }
 
@@ -124,6 +125,7 @@ async function fetchKalshiMarkets() {
       yesPrice,
       volume,
       url: `https://kalshi.com/markets/${topMarket.ticker}`,
+      displayUrl: kalshiMarketUrl(event.series_ticker),
       endDate: topMarket.close_time ?? undefined,
       tags: [],
       source: 'kalshi',

@@ -1,3 +1,4 @@
+import type { BreakerDataState } from '@/utils/circuit-breaker';
 import type { InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryFlightCluster, MilitaryVessel, MilitaryVesselCluster, USNIFleetReport, PanelConfig, MapLayers, NewsItem, MarketData, ClusteredEvent, CyberThreat, Monitor, AisDisruptionEvent } from '@/types';
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { IranEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
@@ -52,7 +53,7 @@ export interface IntelligenceCache {
   aircraftPositions?: PositionSample[];
   outages?: InternetOutage[];
   protests?: { events: SocialUnrestEvent[]; sources: { acled: number; gdelt: number } };
-  military?: { flights: MilitaryFlight[]; flightClusters: MilitaryFlightCluster[]; vessels: MilitaryVessel[]; vesselClusters: MilitaryVesselCluster[] };
+  military?: { flights: MilitaryFlight[]; flightClusters: MilitaryFlightCluster[]; vessels: MilitaryVessel[]; vesselClusters: MilitaryVesselCluster[]; flightDataState?: BreakerDataState; vesselDataState?: BreakerDataState; vesselNegativeEvidenceConfirmed?: boolean; vesselCoverageNotes?: string[] };
   earthquakes?: Earthquake[];
   usniFleet?: USNIFleetReport;
   iranEvents?: IranEvent[];

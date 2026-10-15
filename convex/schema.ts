@@ -331,6 +331,9 @@ export default defineSchema({
     expiresAt: v.number(),
     used: v.boolean(),
     variant: v.optional(v.string()),
+    // Chat that sent `/start <token>` and was asked to confirm. The token
+    // binds only when that same chat presses Confirm.
+    pendingChatId: v.optional(v.string()),
   })
     .index("by_token", ["token"])
     .index("by_expiresAt", ["expiresAt"])

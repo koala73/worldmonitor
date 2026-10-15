@@ -64,6 +64,7 @@ async function loadMilitaryService(
         try { return await fn(); } catch { return fallback; }
       },
       getStatus() { return 'closed'; },
+      getDataState() { return {mode:'unavailable',timestamp:null,offline:false}; },
     });
     const toUniqueSortedLowercase = (values: string[]) => [...new Set(values.map((value) => value.toLowerCase()))].sort();`,
     'utilities',

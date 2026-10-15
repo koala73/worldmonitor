@@ -197,9 +197,9 @@ export class MacroTilesPanel extends Panel {
       const fed = lastTwo(results['FEDFUNDS']?.observations ?? []);
 
       this._usTiles = [
-        { id: 'cpi', label: 'CPI (YoY)', ...cpi, lowerIsBetter: true, format: pctFmt, deltaFormat: (v) => v.toFixed(2) },
+        { id: 'cpi', label: 'Consumer price inflation (annual)', ...cpi, lowerIsBetter: true, format: pctFmt, deltaFormat: (v) => v.toFixed(2) },
         { id: 'unrate', label: 'Unemployment', ...unrate, lowerIsBetter: true, format: pctFmt },
-        { id: 'gdp', label: 'GDP (Billions)', ...gdp, lowerIsBetter: false, format: gdpFmt, deltaFormat: (v) => `${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}B` },
+        { id: 'gdp', label: 'Economic output (billions)', ...gdp, lowerIsBetter: false, format: gdpFmt, deltaFormat: (v) => `${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}B` },
         { id: 'fed', label: 'Fed Funds Rate', ...fed, lowerIsBetter: false, neutral: true, format: pctFmt },
       ];
 
@@ -281,10 +281,10 @@ export class MacroTilesPanel extends Panel {
     const estr = lastTwo(this._estrObs);
 
     const euTiles: MacroTile[] = [
-      { id: 'eu-cpi', label: 'HICP (YoY)', value: cpiAvg.value, prior: cpiAvg.prior, date: cpiAvg.date, lowerIsBetter: true, format: pctFmt },
+      { id: 'eu-cpi', label: 'Harmonised consumer price inflation (annual)', value: cpiAvg.value, prior: cpiAvg.prior, date: cpiAvg.date, lowerIsBetter: true, format: pctFmt },
       { id: 'eu-un', label: 'Unemployment', value: unAvg.value, prior: unAvg.prior, date: unAvg.date, lowerIsBetter: true, format: pctFmt },
-      { id: 'eu-gdp', label: 'GDP Growth (QoQ)', value: gdpAvg.value, prior: gdpAvg.prior, date: gdpAvg.date, lowerIsBetter: false, format: pctFmt },
-      { id: 'eu-estr', label: '€STR (ECB Rate)', ...estr, lowerIsBetter: false, neutral: true, format: pctFmt },
+      { id: 'eu-gdp', label: 'Economic growth (quarterly)', value: gdpAvg.value, prior: gdpAvg.prior, date: gdpAvg.date, lowerIsBetter: false, format: pctFmt },
+      { id: 'eu-estr', label: 'Euro short-term rate', ...estr, lowerIsBetter: false, neutral: true, format: pctFmt },
     ];
 
     if (!euTiles.some(t => t.value !== null)) {

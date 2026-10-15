@@ -751,7 +751,6 @@
   "tests/google-flights.test.mts": 59,
   "tests/government-yield-curves.test.mts": 549,
   "tests/gpsjam-org-restore.test.mjs": 42,
-  "tests/groq-reasoning-effort.test.mjs": 43,
   "tests/gscpi-shape-extraction.test.mjs": 13,
   "tests/gta-update.test.mjs": 51,
   "tests/gtfsrt-adapter.test.mjs": 83,

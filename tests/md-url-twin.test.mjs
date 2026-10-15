@@ -114,6 +114,25 @@ describe('markdown URL-fallback helpers', () => {
     assert.equal(resolveMarkdownTwinPath(evil), null);
   });
 
+  it('rejects control characters that the URL parser would strip into a protocol-relative path', () => {
+    for (const encoded of ['%09', '%0A', '%0D', '%20', '%00', '%7F']) {
+      const req = new Request(`https://www.worldmonitor.app/api/md-twin?path=/${encoded}/evil.example/x`);
+      assert.equal(resolveMarkdownTwinPath(req), null, encoded);
+    }
+    assert.equal(isMarkdownTwinPath('/\t/evil.example/x.md'), false);
+  });
+
+  it('answers a protocol-relative twin path with 404 and never fetches it', async () => {
+    const fetched = [];
+    const response = await buildMarkdownTwinResponse(
+      new Request('https://www.worldmonitor.app/api/md-twin'),
+      '//evil.example/x.md',
+      async (url) => { fetched.push(String(url)); return new Response('# hi'); },
+    );
+    assert.equal(fetched.length, 0);
+    assert.equal(response.status, 404);
+  });
+
   it('converts HTML to heading-led markdown', () => {
     const md = htmlToMarkdown(
       '<html><head><title>Dashboard</title></head><body><h1>Live map</h1><p>Ships and jets.</p></body></html>',

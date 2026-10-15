@@ -82,6 +82,25 @@ describe('cleanRssDescription: one pass must decode exactly one level', () => {
     assert.equal(cleanRssDescription('x'.repeat(400)).length, 300);
   });
 
+  // CIDRAP and UN Geneva escape the HTML body once more, so its typographic
+  // entities reach the text as `&amp;nbsp;`. After the tag strip only those are
+  // decoded; markup-significant entities keep the single-pass contract.
+  it('decodes typographic entities left by a double-escaped body', () => {
+    assert.equal(
+      cleanRssDescription('&lt;p&gt;&amp;nbsp;There have been 20 H9N2 cases &amp;ndash; Russia&amp;rsquo;s first.&amp;nbsp;&amp;nbsp;&lt;/p&gt;&#13;\n&lt;p&gt;Next.&lt;/p&gt;'),
+      'There have been 20 H9N2 cases – Russia’s first. Next.',
+    );
+    assert.equal(cleanRssDescription('&amp;ldquo;quoted&amp;rdquo; &amp;mdash; more&amp;hellip;'), '“quoted” — more…');
+    assert.equal(cleanRssDescription('He said &amp;quot;no&amp;quot;'), 'He said &quot;no&quot;');
+  });
+
+  // A tag regex needs the closing `>`; an unclosed tag start survives it.
+  // Descriptions are plain text, so no `<` is left after the strip.
+  it('leaves no tag start behind', () => {
+    assert.equal(cleanRssDescription('Cases rose <script src=x'), 'Cases rose script src=x');
+    assert.equal(cleanRssDescription('a<<b>script>alert(1)<</b>/script>b'), 'ascript>alert(1)/script>b');
+  });
+
   it('keeps double-escaped markup as text through the tag strip', () => {
     const raw = 'Acme patched an XSS triggered by &amp;lt;script&amp;gt; tags in bios.';
     const desc = cleanRssDescription(raw);

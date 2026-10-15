@@ -268,7 +268,7 @@ export function getResilienceOverallDisplay(data: Pick<ResilienceScoreResponse, 
       scoreLabel: 'n/a',
       visualLevel: 'unknown',
       visualLevelLabel: 'Insufficient data',
-      serverLevelLabel: `API level: ${formatResilienceServerLevel(data.level)}`,
+      serverLevelLabel: `Reported level: ${formatResilienceServerLevel(data.level)}`,
     };
   }
 
@@ -279,7 +279,7 @@ export function getResilienceOverallDisplay(data: Pick<ResilienceScoreResponse, 
     scoreLabel: formatScoredResilienceOverallLabel(clampedScore),
     visualLevel,
     visualLevelLabel: `Visual band: ${formatResilienceVisualLevel(visualLevel).toUpperCase()}`,
-    serverLevelLabel: `API level: ${formatResilienceServerLevel(data.level)}`,
+    serverLevelLabel: `Reported level: ${formatResilienceServerLevel(data.level)}`,
   };
 }
 
@@ -310,7 +310,7 @@ export function getResilienceMethodologySummary(data: ResilienceScoreResponse = 
 
 export function formatResilienceMethodologyHelpTitle(summary = getResilienceMethodologySummary()): string {
   // Keep the human-readable domain/pillar labels in sync if the methodology count parity tests change.
-  return `Composite resilience score from ${summary.activeDimensionCount} active dimensions across ${summary.domainCount} domains (economic, infrastructure, energy, social & governance, health & food, recovery). The current methodology groups scores into ${summary.pillarCount} pillars (structural readiness, live shock exposure, recovery capacity); pillar detail appears when the API response includes it. Weights sum to 1.00; recovery carries the largest single-domain weight (0.25).`;
+  return `Composite resilience score from ${summary.activeDimensionCount} active dimensions across ${summary.domainCount} domains (economic, infrastructure, energy, social & governance, health & food, recovery). The current methodology groups scores into ${summary.pillarCount} pillars (structural readiness, live shock exposure, recovery capacity); pillar detail appears when the data response includes it. Weights sum to 1.00; recovery carries the largest single-domain weight (0.25).`;
 }
 
 export function getResilienceTrendArrow(trend: string): string {

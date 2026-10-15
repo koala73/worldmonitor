@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import http, { createServer } from 'node:http';
 import https from 'node:https';
-import { createHmac } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import dns from 'node:dns/promises';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
@@ -67,6 +67,15 @@ function buildSafeResponse(statusCode, statusText, headers, bodyBuffer) {
   const status = Number.isInteger(statusCode) ? statusCode : 500;
   const body = (status === 204 || status === 205 || status === 304) ? null : bodyBuffer;
   return new Response(body, { status, statusText, headers });
+}
+
+// Constant-time token check. Only the length can differ in timing, and the
+// token length is not secret; the content is compared with timingSafeEqual.
+function tokenMatches(candidate, expected) {
+  if (typeof candidate !== 'string' || !candidate) return false;
+  const a = Buffer.from(candidate, 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 function canonicalizeDesktopAuthPayload(payload) {
@@ -324,7 +333,7 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
 };
 
 const ALLOWED_ENV_KEYS = new Set([
-  'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'EXA_API_KEYS', 'BRAVE_API_KEYS', 'SERPAPI_API_KEYS', 'FRED_API_KEY', 'EIA_API_KEY',
+  'OPENROUTER_API_KEY', 'EXA_API_KEYS', 'BRAVE_API_KEYS', 'SERPAPI_API_KEYS', 'FRED_API_KEY', 'EIA_API_KEY',
   'CLOUDFLARE_API_TOKEN', 'ACLED_ACCESS_TOKEN', 'URLHAUS_AUTH_KEY',
   'OTX_API_KEY', 'ABUSEIPDB_API_KEY', 'WINGBITS_API_KEY', 'WS_RELAY_URL',
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
@@ -375,30 +384,63 @@ const BLOCKED_IPV4_RANGES = [
   return [baseInt, mask];
 });
 
-function ipv4FromMappedIPv6(ip) {
+// Expand a valid IPv6 literal (any spelling, brackets optional) into its eight
+// 16-bit groups. WHATWG URL parsing canonicalizes first, so an embedded dotted
+// quad and a `::` run both come back as plain hextets.
+function ipv6Hextets(ip) {
   const normalized = String(ip).replace(/^\[|\]$/g, '');
   if (isIP(normalized) !== 6) return null;
 
-  let canonical = normalized;
+  let canonical;
   try {
     canonical = new URL(`http://[${normalized}]/`).hostname.slice(1, -1);
   } catch {
     return null;
   }
 
-  const match = canonical.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
-  if (!match) return null;
+  const [head, tail = ''] = canonical.split('::');
+  const headGroups = head ? head.split(':') : [];
+  const tailGroups = tail ? tail.split(':') : [];
+  const fill = canonical.includes('::') ? 8 - headGroups.length - tailGroups.length : 0;
+  if (fill < 0 || headGroups.length + tailGroups.length + fill !== 8) return null;
+  const groups = [...headGroups, ...Array(fill).fill('0'), ...tailGroups]
+    .map((group) => Number.parseInt(group, 16));
+  return groups.some((group) => !Number.isInteger(group) || group < 0 || group > 0xffff) ? null : groups;
+}
 
-  const high = Number.parseInt(match[1], 16);
-  const low = Number.parseInt(match[2], 16);
-  return [high >> 8, high & 0xff, low >> 8, low & 0xff].join('.');
+// IPv6 forms that carry an IPv4 address and are routed by a translator or a
+// tunnel: block them by the embedded IPv4, not the IPv6 prefix. Mirrors
+// api/_notification-webhook-ssrf.ts embeddedIpv4FromIpv6.
+function ipv4EmbeddedInIPv6(ip) {
+  const groups = ipv6Hextets(ip);
+  if (!groups) return null;
+  const [g0, g1, g2, g3, g4, g5, g6, g7] = groups;
+  const dotted = (hi, lo) => [hi >> 8, hi & 0xff, lo >> 8, lo & 0xff].join('.');
+  const zeroPrefix = g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0;
+
+  if (zeroPrefix && g5 === 0xffff) return dotted(g6, g7);                        // ::ffff:0:0/96 IPv4-mapped
+  if (g0 === 0x0064 && g1 === 0xff9b && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0) {
+    return dotted(g6, g7);                                                        // 64:ff9b::/96 NAT64
+  }
+  if (g0 === 0x2002) return dotted(g1, g2);                                       // 2002::/16 6to4
+  if (zeroPrefix && g5 === 0) return dotted(g6, g7);                              // ::/96 IPv4-compatible
+  return null;
+}
+
+// Teredo (2001::/32) tunnels to an arbitrary IPv4 chosen by the client, so no
+// embedded-address rule can vet it; the whole 2001::/32 block is reserved.
+function isTeredoIPv6(ip) {
+  const groups = ipv6Hextets(ip);
+  return !!groups && groups[0] === 0x2001 && groups[1] === 0;
 }
 
 function isPrivateIP(ip) {
-  // IPv4-mapped IPv6 — WHATWG URL parsing canonicalizes mapped literals to
-  // hexadecimal (for example, ::ffff:127.0.0.1 -> ::ffff:7f00:1), so
-  // normalize every valid IPv6 spelling before extracting the v4 portion.
-  const addr = ipv4FromMappedIPv6(ip) || ip;
+  // IPv6 literals that embed an IPv4 (mapped, NAT64, 6to4, compatible) are
+  // judged by that IPv4. WHATWG URL parsing canonicalizes mapped literals to
+  // hexadecimal (::ffff:127.0.0.1 -> ::ffff:7f00:1), so every valid spelling
+  // is normalized before the v4 portion is extracted.
+  if (isTeredoIPv6(ip)) return true;
+  const addr = ipv4EmbeddedInIPv6(ip) || ip;
 
   // IPv6 loopback
   if (addr === '::1' || addr === '::') return true;
@@ -1124,17 +1166,6 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
 
   try {
     switch (key) {
-    case 'GROQ_API_KEY': {
-      const response = await fetchWithTimeout('https://api.groq.com/openai/v1/models', {
-        headers: { Authorization: `Bearer ${value}`, 'User-Agent': CHROME_UA },
-      });
-      const text = await response.text();
-      if (isCloudflareChallenge403(response, text)) return ok('Groq key stored (Cloudflare blocked verification)');
-      if (isAuthFailure(response.status, text)) return fail('Groq rejected this key');
-      if (!response.ok) return fail(`Groq probe failed (${response.status})`);
-      return ok('Groq key verified');
-    }
-
     case 'OPENROUTER_API_KEY': {
       const response = await fetchWithTimeout('https://openrouter.ai/api/v1/models', {
         headers: { Authorization: `Bearer ${value}`, 'User-Agent': CHROME_UA },
@@ -1519,8 +1550,8 @@ async function dispatch(requestUrl, req, routes, context) {
   }
   const authHeader = req.headers.authorization || '';
   const transportToken = req.headers[LOCAL_API_TRANSPORT_HEADER] || '';
-  const hasTransportAuth = transportToken === expectedToken;
-  const hasLegacyAuth = authHeader === `Bearer ${expectedToken}`;
+  const hasTransportAuth = tokenMatches(transportToken, expectedToken);
+  const hasLegacyAuth = tokenMatches(authHeader, `Bearer ${expectedToken}`);
   if (!hasTransportAuth && !hasLegacyAuth) {
     context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
     return json({ error: 'Unauthorized' }, 401);

@@ -1363,6 +1363,7 @@ function normalizeChokepoints(entries) {
     .map((entry) => ({
       id: entry.id,
       displayName: entry.displayName,
+      transitMeasurementNote: entry.transitMeasurementNote,
       baselineId: entry.baselineId,
       shockModelSupported: Boolean(entry.shockModelSupported),
       routeIds: Array.isArray(entry.routeIds) ? [...entry.routeIds] : [],
@@ -2399,7 +2400,7 @@ ${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeH
       <h2>What the CII measures</h2>
       <p>CII combines a 40% structural baseline with 60% live event pressure. The event score weights conflict at 30%, unrest at 25%, information at 25%, and security at 20%. It also applies bounded boosts and conflict or advisory floors. Read the <a href="/docs/methodology/cii-risk-scores">CII ${escapeHtml(ciiRanking.methodologyVersion)} methodology</a> before using a score in an analysis.</p>
       <p>CII measures short-term stress. The separate <a href="/countries/">Country Resilience Index</a> measures longer-term structural capacity across 196 countries. Do not combine the scores.</p>
-      <p>CII is a current-conditions score, not a forecast. Where World Monitor does forecast, the graded record is published on the <a href="/accuracy/">forecast accuracy scorecard</a> with its Brier scores, calibration and sample sizes.</p>
+      <p>CII is a current-conditions score, not a forecast. Where World Monitor does forecast, the record and its methodology are published on the <a href="/accuracy/">forecast accuracy scorecard</a>.</p>
       <a class="cta" href="${escapeHtml(absoluteUrl(baseUrl, '/dashboard'))}">Open the live CII panel in World Monitor →</a>
       <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Source: World Monitor Country Instability Index snapshot, ${escapeHtml(prettyDate(capturedAt))}. Current results: <code>/api/intelligence/v1/get-risk-scores</code>.</p>`;
   const html = pageDocument({
@@ -4471,7 +4472,7 @@ function renderChokepointPage({
     ? (pulsePartial ? 'Published partial pulse' : 'Published pulse')
     : 'Waiting for live enhancement';
   const transitsNote = transitsWithheld
-    ? `        <p data-chokepoint-transits-note>${escapeHtml(withheldTransitCountSentence(chokepoint.displayName))}</p>`
+    ? `        <p data-chokepoint-transits-note>${escapeHtml(withheldTransitCountSentence(chokepoint.displayName, chokepoint.transitMeasurementNote))}</p>`
     : '        <p data-chokepoint-transits-note hidden></p>';
   const narrative = hasPulse
     ? chokepointEvidenceNarrative({
@@ -4521,7 +4522,7 @@ ${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', '', f
   const body = `      <p class="eyebrow">Chokepoint</p>
       <h1>${escapeHtml(chokepoint.displayName)}</h1>
       <p class="lede">${escapeHtml(blurb)}</p>
-      <section class="live-tool" data-live-chokepoint data-chokepoint-id="${escapeHtml(chokepoint.id)}" data-chokepoint-name="${escapeHtml(chokepoint.displayName)}" data-state="${liveState}"${hasPulse ? ' data-published-pulse' : ''}>
+      <section class="live-tool" data-live-chokepoint data-chokepoint-id="${escapeHtml(chokepoint.id)}" data-chokepoint-name="${escapeHtml(chokepoint.displayName)}" data-transit-measurement-note="${escapeHtml(chokepoint.transitMeasurementNote || '')}" data-state="${liveState}"${hasPulse ? ' data-published-pulse' : ''}>
 ${openStatusSection}
         <div class="tool-head">
           <div>
@@ -4530,7 +4531,7 @@ ${openStatusSection}
           </div>
           <span class="live-status" data-live-status role="status" aria-live="polite">${escapeHtml(liveStatus)}</span>
         </div>
-        <p class="tool-note">Transit metrics appear only when the current vessel snapshot has coverage.</p>
+        <p class="tool-note">Transit counts require observed AIS crossings in the preceding 24 hours. Missing counts do not mean zero traffic.</p>
 ${liveGrid}
         <div class="tool-meta">
           ${liveUpdatedMarkup({

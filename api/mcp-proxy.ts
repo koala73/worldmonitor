@@ -14,7 +14,7 @@ import {
 } from './mcp/bounded-body';
 import { MAX_JSON_RPC_BODY_BYTES, MAX_MCP_PROXY_RESPONSE_BYTES } from './mcp/body-limits';
 import { McpProxyJsonDepthError, parseMcpProxyJson } from './mcp/bounded-json';
-import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp } from '../server/_shared/rate-limit';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp, rateLimitKeyForIp } from '../server/_shared/rate-limit';
 import { captureSilentError } from './_sentry-edge.js';
 import {
   buildRequestEvent,
@@ -70,6 +70,11 @@ function logProxyCall(entry: {
   status: number;
   duration_ms: number;
   upstream_status?: number | null;
+  // JSON-RPC error code the remote server answered with on HTTP 200, when
+  // it did. Those rejections no longer reach Sentry (WORLDMONITOR-172), so
+  // this row is where a proxy-wide regression (every server answering
+  // -32602 to our initialize) would show.
+  upstream_rpc_code?: number | null;
 }): void {
   // Structured audit log (#3805). Mirrors the `[name] { ...fields }` shape
   // used by api/cache-purge.js so the existing log-ingest tooling parses it
@@ -249,7 +254,18 @@ export class McpProxyUpstreamError extends Error {
     this.name = 'McpProxyUpstreamError';
     // HTTP status the remote MCP server answered with, when it answered.
     this.upstreamStatus = options?.upstreamStatus ?? null;
+    // The remote server answered the request with a JSON-RPC `error` object
+    // (HTTP 200). `upstreamRpcCode` carries its numeric code for the audit
+    // log; the message is caller-chosen server output and is not retained.
+    const rpcError = options?.upstreamRpcError;
+    this.upstreamRpcRejected = rpcError !== undefined && rpcError !== null;
+    this.upstreamRpcCode = Number.isInteger(rpcError?.code) ? rpcError.code : null;
   }
+}
+
+/** The remote server answered `{ error }` for `step` — its decision, carried whole. */
+function upstreamRpcRejection(step, rpcError) {
+  return new McpProxyUpstreamError(`${step} error: MCP server rejected request`, { upstreamRpcError: rpcError });
 }
 
 // The remote server refused the credentials the CALLER supplied (a panel saved
@@ -273,8 +289,13 @@ export function proxyFailureFor(error) {
     // Sentry grouping key. Every proxy error class sets `this.name`, so this
     // separates expected upstream failures from unknown proxy defects.
     errorClass: isTimeout ? 'timeout' : (error instanceof Error ? error.name : 'Error'),
+    // A JSON-RPC `error` answered on HTTP 200 is the same class as a 401/403:
+    // the remote server's verdict on the caller's own request (a keyless panel
+    // past its free quota, an unknown tool). One search.parallel.ai panel
+    // produced 226 such events in two weeks (WORLDMONITOR-172 regrowth). The
+    // audit log keeps the JSON-RPC code instead.
     report: !(error instanceof McpProxyUpstreamError
-      && UPSTREAM_CREDENTIAL_REJECTIONS.has(error.upstreamStatus)),
+      && (UPSTREAM_CREDENTIAL_REJECTIONS.has(error.upstreamStatus) || error.upstreamRpcRejected)),
   };
 }
 
@@ -593,14 +614,14 @@ async function mcpListTools(serverUrl, customHeaders) {
   if (!initResp.ok) throw new McpProxyUpstreamError(`Initialize failed: HTTP ${initResp.status}`, { upstreamStatus: initResp.status });
   const sessionId = initResp.headers.get('Mcp-Session-Id') || initResp.headers.get('mcp-session-id');
   const initData = await parseJsonRpcResponse(initResp);
-  if (initData.error) throw new McpProxyUpstreamError('Initialize error: MCP server rejected request');
+  if (initData.error) throw upstreamRpcRejection('Initialize', initData.error);
   await sendInitialized(sessionUrl, headers, sessionId);
   const { response: listResp } = await postJson(sessionUrl, {
     jsonrpc: '2.0', id: 2, method: 'tools/list', params: {},
   }, headers, sessionId);
   if (!listResp.ok) throw new McpProxyUpstreamError(`tools/list failed: HTTP ${listResp.status}`, { upstreamStatus: listResp.status });
   const listData = await parseJsonRpcResponse(listResp);
-  if (listData.error) throw new McpProxyUpstreamError('tools/list error: MCP server rejected request');
+  if (listData.error) throw upstreamRpcRejection('tools/list', listData.error);
   return listData.result?.tools || [];
 }
 
@@ -611,7 +632,7 @@ async function mcpCallTool(serverUrl, toolName, toolArgs, customHeaders) {
   if (!initResp.ok) throw new McpProxyUpstreamError(`Initialize failed: HTTP ${initResp.status}`, { upstreamStatus: initResp.status });
   const sessionId = initResp.headers.get('Mcp-Session-Id') || initResp.headers.get('mcp-session-id');
   const initData = await parseJsonRpcResponse(initResp);
-  if (initData.error) throw new McpProxyUpstreamError('Initialize error: MCP server rejected request');
+  if (initData.error) throw upstreamRpcRejection('Initialize', initData.error);
   await sendInitialized(sessionUrl, headers, sessionId);
   const { response: callResp } = await postJson(sessionUrl, {
     jsonrpc: '2.0', id: 3, method: 'tools/call',
@@ -619,7 +640,7 @@ async function mcpCallTool(serverUrl, toolName, toolArgs, customHeaders) {
   }, headers, sessionId);
   if (!callResp.ok) throw new McpProxyUpstreamError(`tools/call failed: HTTP ${callResp.status}`, { upstreamStatus: callResp.status });
   const callData = await parseJsonRpcResponse(callResp);
-  if (callData.error) throw new McpProxyUpstreamError('tools/call error: MCP server rejected request');
+  if (callData.error) throw upstreamRpcRejection('tools/call', callData.error);
   return callData.result;
 }
 
@@ -815,10 +836,10 @@ async function mcpListToolsSse(serverUrl, customHeaders) {
       capabilities: {},
       clientInfo: { name: 'worldmonitor', version: '1.0' },
     });
-    if (initResp.error) throw new McpProxyUpstreamError('Initialize error: MCP server rejected request');
+    if (initResp.error) throw upstreamRpcRejection('Initialize', initResp.error);
     await session.notify('notifications/initialized', {});
     const listResp = await session.send(2, 'tools/list', {});
-    if (listResp.error) throw new McpProxyUpstreamError('tools/list error: MCP server rejected request');
+    if (listResp.error) throw upstreamRpcRejection('tools/list', listResp.error);
     return listResp.result?.tools || [];
   } finally {
     session.close();
@@ -835,10 +856,10 @@ async function mcpCallToolSse(serverUrl, toolName, toolArgs, customHeaders) {
       capabilities: {},
       clientInfo: { name: 'worldmonitor', version: '1.0' },
     });
-    if (initResp.error) throw new McpProxyUpstreamError('Initialize error: MCP server rejected request');
+    if (initResp.error) throw upstreamRpcRejection('Initialize', initResp.error);
     await session.notify('notifications/initialized', {});
     const callResp = await session.send(2, 'tools/call', { name: toolName, arguments: toolArgs || {} });
-    if (callResp.error) throw new McpProxyUpstreamError('tools/call error: MCP server rejected request');
+    if (callResp.error) throw upstreamRpcRejection('tools/call', callResp.error);
     return callResp.result;
   } finally {
     session.close();
@@ -966,7 +987,7 @@ export default async function handler(req, ctx) {
   // without a Redis round-trip). This endpoint is already premium-auth gated,
   // so Redis-degraded scoped limits intentionally stay availability-first;
   // checkScopedRateLimit logs/Sentry-captures the degraded path.
-  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, ip);
+  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, rateLimitKeyForIp(ip));
   if (!scoped.allowed) {
     const retryAfter = Math.max(1, Math.ceil((scoped.reset - Date.now()) / 1000));
     logProxyCall({
@@ -1003,6 +1024,7 @@ export default async function handler(req, ctx) {
 
   let response: Response;
   let upstreamStatus: number | null = null;
+  let upstreamRpcCode: number | null = null;
   try {
     if (req.method === 'GET') {
       response = await handleListTools(req, cors, meta);
@@ -1018,7 +1040,10 @@ export default async function handler(req, ctx) {
       || err instanceof McpProxyJsonDepthError
       ? err.message : 'MCP proxy request failed';
     const failure = proxyFailureFor(err);
-    if (err instanceof McpProxyUpstreamError) upstreamStatus = err.upstreamStatus;
+    if (err instanceof McpProxyUpstreamError) {
+      upstreamStatus = err.upstreamStatus;
+      upstreamRpcCode = err.upstreamRpcCode;
+    }
     // Until now this catch swallowed EVERY handler fault into a 422/422-shaped
     // JSON body with no Sentry event, so a genuine proxy defect was visible
     // only to the caller who hit it. Capture it.
@@ -1039,10 +1064,16 @@ export default async function handler(req, ctx) {
       });
     }
     // Return 422 (not 502) so Cloudflare proxy does not replace our JSON body with its own HTML error page
+    //
+    // The 504 is OUR relay of the remote MCP server's timeout, already captured
+    // above at warning. `X-Wm-Upstream-Timeout` lets premium-fetch's origin-5xx
+    // canary skip it instead of re-reporting it from every browser as an
+    // origin `API 504` error (WORLDMONITOR-17A). Exposed cross-origin via
+    // EXPOSED_HEADERS in api/_cors.js.
     response = jsonResponse(
       { error: failure.isTimeout ? 'MCP server timed out' : msg },
       failure.isTimeout ? 504 : 422,
-      cors,
+      failure.isTimeout ? { ...cors, 'X-Wm-Upstream-Timeout': '1' } : cors,
     );
   }
 
@@ -1055,6 +1086,7 @@ export default async function handler(req, ctx) {
     status: response.status,
     duration_ms: Date.now() - started,
     upstream_status: upstreamStatus,
+    upstream_rpc_code: upstreamRpcCode,
   });
   emitProxyUsage(req, response.status, Date.now() - startedAt, ctx, callerIdentity);
 

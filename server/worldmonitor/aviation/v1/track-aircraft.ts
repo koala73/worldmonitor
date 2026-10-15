@@ -5,7 +5,7 @@ import type {
     PositionSample,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { ApiError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
-import { checkScopedRateLimit, getClientIp, RATE_LIMIT_DEGRADED_HEADERS } from '../../../_shared/rate-limit';
+import { checkScopedRateLimit, getClientRateLimitKey, RATE_LIMIT_DEGRADED_HEADERS } from '../../../_shared/rate-limit';
 import { setResponseHeader } from '../../../_shared/response-headers';
 import { attachApiErrorHttpResponseMetadata } from '../../../error-mapper';
 import { getRelayBaseUrl, getRelayHeaders } from './_shared';
@@ -49,7 +49,7 @@ async function admitIdentifierLookup(request: Request): Promise<void> {
         nativeIdentifierAdmissions.push(now);
         return;
     }
-    const limit = await checkScopedRateLimit(IDENTIFIER_RATE_SCOPE, IDENTIFIER_RATE_LIMIT, '60 s', getClientIp(request));
+    const limit = await checkScopedRateLimit(IDENTIFIER_RATE_SCOPE, IDENTIFIER_RATE_LIMIT, '60 s', getClientRateLimitKey(request));
     if (limit.degraded) {
         for (const [key, value] of Object.entries(RATE_LIMIT_DEGRADED_HEADERS)) setResponseHeader(request, key, value);
         throw Object.assign(new ApiError(503, 'Rate-limit service temporarily unavailable', ''), { retryAfter: 5, exposeMessage: true });

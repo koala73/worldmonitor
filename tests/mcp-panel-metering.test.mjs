@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { Ratelimit } from '@upstash/ratelimit';
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 import { admitCountryPanel, authorizePanelRead, PANEL_READ_LIMIT } from '../api/mcp/panel-requests.ts';
 import { countryActivityQueries } from '../shared/country-activity-query.ts';
@@ -485,6 +486,121 @@ describe('paid curated market panel through the MCP handler', () => {
     globalThis.fetch = originalFetch;
     for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
     Object.assign(process.env, originalEnv);
+  });
+  it('serves usable ordinary default market data within the dispatched text budget without changing its canonical snapshot', async testContext => {
+    const now = 1787056200000;
+    testContext.mock.timers.enable({ apis: ['Date'], now });
+    const { readFileSync } = await import('node:fs');
+    const { buildProducerBackedPhysicalComparisonFixture } = await import('./helpers/mcp-producer-fixtures.mjs');
+    const { CACHE_TOOLS } = await import('../api/mcp/registry/cache-tools.ts');
+    const fixture = JSON.parse(readFileSync(new URL('./fixtures/jmespath-samples/fat-get-market-data.response.json', import.meta.url), 'utf8'));
+    const physical = buildProducerBackedPhysicalComparisonFixture('ok');
+    fixture.data['physical-premium'] = physical.premium;
+    fixture.data['physical-divergence'] = physical.divergence;
+    fixture.data.sectors.valuations = {"XLK": {"trailingPE": 20}, "XLF": {"trailingPE": 21}, "XLE": {"trailingPE": 22}, "XLV": {"trailingPE": 23}, "XLY": {"trailingPE": 24}, "XLI": {"trailingPE": 25}, "XLP": {"trailingPE": 26}, "XLU": {"trailingPE": 27}, "XLB": {"trailingPE": 28}, "XLRE": {"trailingPE": 29}, "XLC": {"trailingPE": 30}, "SMH": {"trailingPE": 31}};
+    fixture.data.sectors.valuationCoverage = {"valuationCount": 12, "expectedValuationCount": 12, "currentValuationCount": 12, "sourceStatus": "ok", "source": "controlled_fixture", "fetchedAt": 1787056200000, "stale": false};
+    const keyToSection = {"market:stocks-bootstrap:v1": "stocks-bootstrap", "market:commodities-bootstrap:v1": "commodities-bootstrap", "market:physical-premium:v1": "physical-premium", "market:physical-divergence:v1": "physical-divergence", "market:crypto:v1": "crypto", "market:sectors:v2": "sectors", "market:etf-flows:v1": "etf-flows", "market:gulf-quotes:v1": "gulf-quotes", "market:fear-greed:v1": "fear-greed"};
+    const metadataKeys = ["seed-meta:market:stocks", "seed-meta:market:sectors"];
+    const originalFetch = globalThis.fetch;
+    const fixtureBefore = JSON.stringify(fixture);
+    const reads = [];
+    testContext.after(() => { globalThis.fetch = originalFetch; testContext.mock.timers.reset(); });
+    const market = CACHE_TOOLS.find(tool => tool.name === 'get_market_data');
+    assert.equal(typeof market?._postFilter, 'function');
+    const expectedData = market._postFilter(structuredClone(fixture.data), { limit: 30 });
+    assert.ok(expectedData['physical-divergence'], 'Healthy physical cohort must survive existing normalization');
+    assert.equal(Object.hasOwn(expectedData['physical-divergence'], 'transitions'), false);
+    for (const reading of expectedData['physical-divergence'].readings) assert.equal(reading.historyKey, reading.provenance.historyKey);
+    globalThis.fetch = async (input, init) => {
+      const rawUrl = typeof input === 'string' || input instanceof URL ? String(input) : input.url;
+      const url = new URL(rawUrl);
+      assert.equal(url.origin, 'https://market-seed.invalid');
+      assert.ok(url.pathname.startsWith('/get/'));
+      assert.equal(url.search, '');
+      assert.equal((init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase(), 'GET');
+      assert.equal(init?.body, undefined);
+      const key = decodeURIComponent(url.pathname.slice('/get/'.length));
+      assert.ok(Object.hasOwn(keyToSection, key) || metadataKeys.includes(key), `Unplanned read ${key}`);
+      reads.push(key);
+      const value = metadataKeys.includes(key) ? { fetchedAt: now } : fixture.data[keyToSection[key]];
+      assert.notEqual(value, undefined, `Missing controlled fixture ${key}`);
+      return Response.json({ result: JSON.stringify(value) });
+    };
+    const { deps, pipe } = makeProDeps();
+    const response = await handler(proReq('POST', callBody('get_market_data', {}, 100)), deps);
+    const wire = await response.text();
+    const body = JSON.parse(wire);
+    assert.equal(response.status, 200);
+    assert.equal(body.jsonrpc, '2.0');
+    assert.equal(body.id, 100);
+    assert.equal(body.error, undefined);
+    assert.equal(pipe.count, 1);
+    assert.deepEqual(reads.slice().sort(), [...Object.keys(keyToSection), ...metadataKeys].sort());
+    const stored = [...pipe.store].filter(([key]) => /:markets:.*:data:[a-f0-9]{64}$/.test(key));
+    assert.equal(stored.length, 1, 'Healthy complete cohort must save its canonical original');
+    const canonical = JSON.parse(stored[0][1]);
+    assert.equal(canonical.stale, false);
+    assert.equal(canonical.freshnessUnknown, undefined);
+    assert.equal(canonical.transportCoverage, undefined);
+    assert.equal(canonical.panelRequest, undefined);
+    const lists = [['stocks-bootstrap','quotes'],['commodities-bootstrap','quotes'],['crypto','quotes'],['gulf-quotes','quotes'],['sectors','sectors'],['etf-flows','etfs']];
+    for (const [section, list] of lists) assert.deepEqual(canonical.data[section][list], fixture.data[section][list].slice(0, 30));
+    assert.deepEqual(canonical.data, expectedData);
+    const savedSets = pipe.ops.flat().filter(cmd => cmd[0] === 'SET' && cmd[1] === stored[0][0]);
+    assert.equal(savedSets.length, 1);
+    assert.equal(savedSets[0][2], stored[0][1]);
+    assert.equal(JSON.stringify(fixture), fixtureBefore);
+    const value = body.result.structuredContent;
+    const text = body.result.content[0].text;
+    if (value._budget_exceeded === true) {
+      assert.equal(value.budget_bytes, 131072);
+      assert.ok(value.actual_bytes > 131072);
+      testContext.diagnostic(JSON.stringify({ expectedCurrentFailure: 'actual dispatch budget replacement', actualBytes: value.actual_bytes, textBytes: Buffer.byteLength(text), outerWireBytes: Buffer.byteLength(wire), allocationCount: pipe.count, cacheReads: reads.length }));
+    }
+    assert.notEqual(value._budget_exceeded, true, 'Ordinary default must retain usable market data');
+    assert.ok(Buffer.byteLength(text, 'utf8') <= 131072);
+    assert.deepEqual(JSON.parse(text), value);
+    assert.equal(value.transportCoverage.count_scope, 'post_filter_snapshot');
+    for (const [section, list] of lists) {
+      const originalRows = canonical.data[section][list], returnedRows = value.data[section][list];
+      assert.ok(returnedRows.length > 0, section + ' retains useful whole rows');
+      let lastOrdinal = -1;
+      for (const row of returnedRows) {
+        const ordinal = originalRows.findIndex(original => JSON.stringify(original) === JSON.stringify(row));
+        assert.ok(ordinal > lastOrdinal, section + ' preserves whole original rows and series in source order');
+        lastOrdinal = ordinal;
+      }
+      const coverage = value.transportCoverage.collections[section + '.' + list];
+      assert.equal(coverage.original_count, originalRows.length);
+      assert.equal(coverage.returned_count, returnedRows.length);
+      assert.equal(coverage.omitted_count, originalRows.length - returnedRows.length);
+    }
+    for (const section of ['physical-premium', 'physical-divergence', 'fear-greed']) assert.deepEqual(value.data[section], canonical.data[section]);
+    const snapshotValue = stored[0][1], readCount = reads.length;
+    let reusedDefaultText;
+    for (const args of [{}, { symbols: [], asset_class: [] }, { symbols: [' '] }, { jmespath: '' }, { jmespath: null }]) {
+      const next = await (await handler(proReq('POST', callBody('get_market_data', args)), deps)).json();
+      assert.equal(next.result.structuredContent._budget_exceeded, undefined);
+      assert.equal(next.result.structuredContent.transportCoverage.count_scope, 'post_filter_snapshot');
+      if (Object.keys(args).length === 0) reusedDefaultText = next.result.content[0].text;
+      if (Object.hasOwn(args, 'jmespath')) assert.equal(next.result.content[0].text, reusedDefaultText, 'identity requests preserve fitted bytes and the reused signed receipt');
+    }
+    assert.equal(reads.length, readCount, 'normalized empty defaults reuse the saved canonical snapshot');
+    for (const args of [{ limit: 30 }, { limit: 0 }, { summary: false }, { refresh: false }, { panel_request: value.panelRequest.token }]) {
+      const beforeReads = reads.length;
+      const next = await (await handler(proReq('POST', callBody('get_market_data', args)), deps)).json();
+      assert.equal(next.result.structuredContent._budget_exceeded, true, JSON.stringify(args) + ' keeps the existing explicit response');
+      if (args.panel_request) assert.equal(reads.length, beforeReads, 'the original reader reuses its snapshot without source reads');
+    }
+    const projectedCoverage = await (await handler(proReq('POST', callBody('get_market_data', { jmespath: 'transportCoverage' })), deps)).json();
+    assert.equal(projectedCoverage.result.content[0].text, 'null', 'real projection bypasses default coverage presentation');
+    assert.deepEqual(projectedCoverage.result.structuredContent, { projection: null });
+    for (const args of [{ limit: 10 }, { limit: 1 }, { symbols: ['AAPL'] }, { asset_class: ['equity'] }, { summary: true }, { jmespath: 'data' }]) {
+      const next = await (await handler(proReq('POST', callBody('get_market_data', args)), deps)).json();
+      assert.equal(next.result.structuredContent.transportCoverage, undefined, 'explicit presentation is not fitted');
+    }
+    assert.equal(pipe.count, 1);
+    assert.equal(pipe.store.get(stored[0][0]), snapshotValue);
   });
   it('shares one allocation across opens and filters, while refresh retries share their original allocation', async () => {
     const { deps, pipe } = makeProDeps();
@@ -1289,4 +1405,372 @@ describe('paid prediction panel through the MCP handler', () => {
       assert.equal(pipe.count, 1);
     }
   });
+});
+
+describe('public forecast reliability cache and completed output', () => {
+  const now = Date.parse('2026-10-07T00:00:00Z');
+  const predictions = { generatedAt: now, predictions: [{ id: 'reliability-case', domain: 'energy', region: 'Europe', title: 'Controlled forecast', probability: 0.4 }] };
+  const familyOutcomes = [{ forecastId: 'reliability-case', outcome: 'YES' }, { forecastId: 'reliability-case', outcome: 'VOID', voidReason: 'judge_disagreement' }];
+  const scorecard = { schemaVersion: 2, rollingWindowDays: 90, publishedByDomain: [{ domain: 'energy', count: 45, brier: 0.213, yesCount: 18 }], familyOutcomes };
+  const originals = new WeakMap();
+  async function fixture(testContext, values) {
+    if (!originals.has(testContext)) originals.set(testContext, { beforeFetch: globalThis.fetch, beforeEnv: { ...process.env }, beforeNow: Date.now });
+    const { beforeFetch, beforeEnv, beforeNow } = originals.get(testContext);
+    testContext.after(() => { globalThis.fetch = beforeFetch; Date.now = beforeNow; for (const key of Object.keys(process.env)) if (!(key in beforeEnv)) delete process.env[key]; Object.assign(process.env, beforeEnv); });
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET; process.env.MCP_TELEMETRY = 'false';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://forecast-reliability-fixture.test'; process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture-token';
+    let clock = now; Date.now = () => clock;
+    const reads = [];
+    globalThis.fetch = async url => {
+      const parsed = new URL(url); assert.equal(parsed.hostname, 'forecast-reliability-fixture.test');
+      if (!parsed.pathname.startsWith('/get/')) return Response.json({ result: [9999, 10000] });
+      const key = decodeURIComponent(parsed.pathname.slice(5)); reads.push(key);
+      if (values[key] === 'unreadable') return new Response('not-json', { status: 200 });
+      return Response.json({ result: values[key] == null ? null : JSON.stringify(values[key]) });
+    };
+    const { mcpHandler } = await import('../api/mcp.ts'); const { deps, pipe } = makeProDeps();
+    const invoke = async args => { const body = await (await mcpHandler(proReq('POST', callBody('get_forecast_predictions', args)), deps)).json(); return body.result ?? { isError: true, error: body.error }; };
+    return { invoke, pipe, reads, values, advance: ms => { clock += ms; } };
+  }
+  const values = () => ({ 'forecast:predictions:v2': predictions, 'seed-meta:forecast:predictions': { fetchedAt: now }, 'forecast:scorecard:v1': scorecard, 'seed-meta:forecast:scorecard': { fetchedAt: now } });
+  it('uses four distinct production cache identities and preserves an optional outage in one signed replay', async testContext => {
+    const fixtureContext = await fixture(testContext, { ...values(), 'forecast:scorecard:v1': 'unreadable' });
+    const first = await fixtureContext.invoke({});
+    assert.deepEqual([...new Set(fixtureContext.reads)].sort(), Object.keys(values()).sort(), 'opening must read predictions and independent optional scorecard data/meta');
+    assert.equal(first.structuredContent.data.reliability.status, 'unavailable');
+    assert.equal(Object.hasOwn(first.structuredContent.data, 'familyOutcomes'), false);
+    assert.equal(first.structuredContent.stale, false, 'optional scorecard failure must not relabel fresh predictions');
+    const readCount = fixtureContext.reads.length; const writes = fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET'); const replay = await fixtureContext.invoke({ panel_request: first.structuredContent.panelRequest.token });
+    assert.deepEqual(replay.structuredContent.data.reliability, first.structuredContent.data.reliability);
+    assert.deepEqual(fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET'), writes, 'replay must not rewrite the snapshot or extend its expiry');
+    assert.equal(fixtureContext.reads.length, readCount); assert.equal(fixtureContext.pipe.count, 1);
+  });
+  it('saves public family history with the exact opening and replays without reads, allocation or expiry changes', async testContext => {
+    const context = await fixture(testContext, values()); const first = await context.invoke({});
+    assert.deepEqual(first.structuredContent.data.familyOutcomes, familyOutcomes);
+    assert.deepEqual([...new Set(context.reads)].sort(), Object.keys(values()).sort());
+    const count = context.reads.length; const writes = context.pipe.ops.flat().filter(op => op[0] === 'SET');
+    context.values['forecast:scorecard:v1'] = { ...scorecard, familyOutcomes: [{ forecastId: 'reliability-case', outcome: 'NO' }] };
+    context.values['forecast:predictions:v2'] = { ...predictions, predictions: [] }; context.advance(120000);
+    const replay = await context.invoke({ panel_request: first.structuredContent.panelRequest.token });
+    const { panelRequest, ...savedOpening } = first.structuredContent;
+    assert.equal(panelRequest.panel, 'forecasts');
+    assert.deepEqual(replay.structuredContent, savedOpening, 'saved full opening is exact; the existing replay contract omits the receipt');
+    assert.equal(context.reads.length, count); assert.equal(context.pipe.count, 1);
+    assert.deepEqual(context.pipe.ops.flat().filter(op => op[0] === 'SET'), writes, 'no snapshot rewrite or expiry extension');
+  });
+  it('admits a realistic 30-card five-window opening under the same fixed completed budget', async testContext => {
+    const rows = Array.from({ length: 30 }, (unusedValue, forecastIndex) => ({ ...predictions.predictions[0], id: `family-${forecastIndex}` }));
+    const history = rows.flatMap(row => Array.from({ length: 5 }, (unusedValue, windowIndex) => ({ forecastId: row.id, outcome: windowIndex % 2 ? 'VOID' : 'YES', ...(windowIndex % 2 ? { voidReason: 'judge_disagreement' } : {}) })));
+    const context = await fixture(testContext, { ...values(), 'forecast:predictions:v2': { ...predictions, predictions: rows }, 'forecast:scorecard:v1': { ...scorecard, familyOutcomes: history } });
+    const first = await context.invoke({}); assert.equal(first.isError, undefined); assert.equal(first.structuredContent._budget_exceeded, undefined);
+    assert.equal(first.structuredContent.data.familyOutcomes.length, 150); assert.ok(Buffer.byteLength(JSON.stringify(first.structuredContent)) < 131072);
+    assert.equal(context.pipe.count, 1); assert.deepEqual([...new Set(context.reads)].sort(), Object.keys(values()).sort());
+  });
+  it('rejects required missing/null/unreadable predictions despite healthy optional data, but accepts readable empty predictions', async testContext => {
+    for (const bad of [null, 'unreadable', { _seed: { fetchedAt: now }, data: null }]) {
+      const fixtureContext = await fixture(testContext, { ...values(), 'forecast:predictions:v2': bad }); const result = await fixtureContext.invoke({});
+      assert.equal(result.isError, true, 'required prediction source must fail closed before healthy scorecard can mask it');
+      assert.equal(fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET' && String(operation[1]).includes('snapshot')).length, 0);
+    }
+    const fixtureContext = await fixture(testContext, { ...values(), 'forecast:predictions:v2': { ...predictions, predictions: [] } });
+    assert.deepEqual((await fixtureContext.invoke({})).structuredContent.data.predictions.predictions, []);
+  });
+  it('keeps the original 36-hour capture verdict across five-minute replay and reports unknown scorecard clocks', async testContext => {
+    const fixtureContext = await fixture(testContext, { ...values(), 'seed-meta:forecast:scorecard': { fetchedAt: now - 36 * 3600000 + 60000 } });
+    const first = await fixtureContext.invoke({}); const reliability = first.structuredContent.data.reliability;
+    assert.equal(reliability?.stale, false, 'scorecard is still inside its own 36-hour clock');
+    assert.equal(reliability.asOf, new Date(now - 36 * 3600000 + 60000).toISOString());
+    assert.equal(reliability.capturedAt, new Date(now).toISOString());
+    const count = fixtureContext.reads.length; fixtureContext.advance(120000); const replay = await fixtureContext.invoke({ panel_request: first.structuredContent.panelRequest.token });
+    assert.deepEqual(replay.structuredContent.data.reliability, reliability); assert.equal(fixtureContext.reads.length, count); assert.equal(fixtureContext.pipe.count, 1);
+    for (const meta of [null, { fetchedAt: 'bad' }, { fetchedAt: now + 60000 }, 'unreadable']) {
+      const clockFixture = await fixture(testContext, { ...values(), 'seed-meta:forecast:scorecard': meta }); const next = await clockFixture.invoke({});
+      assert.equal(next.structuredContent.data.reliability.freshnessUnknown, true); assert.equal(next.structuredContent.stale, false);
+    }
+    const clockFixture = await fixture(testContext, { ...values(), 'seed-meta:forecast:scorecard': { fetchedAt: now - 36 * 3600000 - 1 } });
+    assert.equal((await clockFixture.invoke({})).structuredContent.data.reliability.stale, true);
+  });
+  it('checks completed UTF-8 public bytes including the signed receipt before saving 131072/131073 results', async testContext => {
+    const fixtureContext = await fixture(testContext, values());
+    const tool = (await import('../api/mcp/registry/index.ts')).TOOL_REGISTRY.find(entry => entry.name === 'get_forecast_predictions');
+    const old = tool._execute; testContext.after(() => { tool._execute = old; });
+    let target = 131072;
+    tool._execute = async (unusedArguments, unusedOptions, unusedContext, execution) => {
+      const value = { data: { predictions, familyOutcomes }, panelRequest: execution.panelRequest, notice: 'é', attribution: 'Fixture source', padding: '' };
+      value.padding = 'x'.repeat(target - Buffer.byteLength(JSON.stringify(value)));
+      assert.equal(Buffer.byteLength(JSON.stringify(value)), target); return value;
+    };
+    const first = await fixtureContext.invoke({}); assert.equal(first.structuredContent._budget_exceeded, undefined);
+    assert.deepEqual(first.structuredContent.data.familyOutcomes, familyOutcomes);
+    target = 131073; const before = fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET').length;
+    const second = await fixtureContext.invoke({ refresh: true, request_id: 'ee947e6a-4a49-4f7d-9c44-0dc6cdd7c041' });
+    assert.equal(second.structuredContent._budget_exceeded, true);
+    assert.equal(fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET').length, before, 'oversized completed output must not save a public snapshot');
+    const projected = await fixtureContext.invoke({ refresh: true, request_id: 'f4ef78a9-f2a6-4d45-90c5-89acd4d1aa55', jmespath: 'data.predictions' });
+    assert.equal(projected.structuredContent._budget_exceeded, true, 'a selective reply must not admit an oversized full public snapshot');
+    assert.equal(fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET').length, before, 'selective projection must not bypass the complete public snapshot limit');
+    tool._execute = undefined;
+    fixtureContext.values['forecast:predictions:v2'] = { ...predictions, predictions: [{ ...predictions.predictions[0], title: 'x'.repeat(140000) }] };
+    const summarized = await fixtureContext.invoke({ refresh: true, request_id: 'c78df96e-604c-4c23-a635-fca8dbf50daa', summary: true });
+    assert.equal(summarized.structuredContent._budget_exceeded, true, 'summary must not admit the oversized complete production cache document');
+    assert.equal(fixtureContext.pipe.ops.flat().filter(operation => operation[0] === 'SET').length, before, 'summary must not save oversized full public predictions');
+  });
+});
+
+
+describe('bounded public Natural paid panel presentation', () => {
+  let handler, sources, fetched, originalLimiter, snapshot, eventBucket;
+  const bytes = value => Buffer.byteLength(JSON.stringify(value));
+  const cyclone = id => ({ id, title: 'Controlled cyclone ' + id, category: 'severeStorms',
+    categoryTitle: 'Tropical Cyclone', lat: 20, lon: 120, date: snapshot - 30000,
+    sourceName: 'NHC', sourceUrl: 'https://www.nhc.noaa.gov/', closed: false,
+    forecastTrack: [], pastTrack: [], conePolygon: [{ points: Array.from({ length: 1900 }, (_, index) => ({
+      lon: 120 + Math.sin(index / 1900 * Math.PI * 2), lat: 20 + Math.cos(index / 1900 * Math.PI * 2),
+    })) }], });
+  const invoke = async (deps, args = {}) => {
+    const response = await handler(proReq('POST', callBody('get_natural_disasters', args)), deps);
+    const body = await response.json();
+    assert.equal(body.error, undefined);
+    return body.result;
+  };
+  beforeEach(async () => {
+    snapshot = Date.now();
+    Object.assign(process.env, { MCP_INTERNAL_HMAC_SECRET: HMAC_SECRET, MCP_TELEMETRY: 'false',
+      UPSTASH_REDIS_REST_URL: 'https://natural-presentation.invalid', UPSTASH_REDIS_REST_TOKEN: 'fixture-only' });
+    delete process.env.LOCAL_API_MODE;
+    originalLimiter = Ratelimit.slidingWindow;
+    Ratelimit.slidingWindow = () => () => ({ limit: async () => ({ success: true, limit: 100, remaining: 99,
+      reset: snapshot + 60000, pending: Promise.resolve() }) });
+    const decisions = [{ source: 'Controlled source', status: 'blocked', reason: 'FETCH_FAILED', optional: false,
+      requestCount: 1, checkedAt: snapshot - 1000 }];
+    eventBucket = { events: ['a', 'b', 'c'].map(cyclone), fetchedAt: snapshot, dataAvailable: true,
+      westernPacific: { events: [], evaluatedAt: snapshot, latestObservationAt: snapshot - 1000,
+        dataAvailable: false, sourceDecisions: decisions },
+      hkoWarnings: { warnings: [], evaluatedAt: snapshot, latestObservationAt: snapshot - 1000,
+        dataAvailable: false, sourceDecisions: decisions } };
+    const seeded = data => ({ _seed: { fetchedAt: snapshot, state: 'OK' }, data });
+    sources = new Map([
+      ['seismology:earthquakes:v1', seeded({ earthquakes: [{ id: 'quake', magnitude: 5, place: 'Controlled quake',
+        occurredAt: snapshot - 2000, sourceUrl: 'https://example.org/quake' }] })],
+      ['wildfire:fires:v1', seeded({ fireDetections: [{ id: 'fire', region: 'Controlled fire', detectedAt: snapshot - 3000 }],
+        _firmsState: 'ok', _firmsCount: 1, _firmsPartial: false, _firmsFailedCalls: 0, _firmsErrorCode: null })],
+      ['natural:events:v1', seeded(eventBucket)],
+      ['seed-meta:seismology:earthquakes', { fetchedAt: snapshot, sourceState: 'ok' }],
+    ]);
+    fetched = [];
+    globalThis.fetch = async input => {
+      const url = new URL(String(input));
+      assert.equal(url.origin, 'https://natural-presentation.invalid', 'no provider requests');
+      assert.ok(url.pathname.startsWith('/get/'));
+      const key = decodeURIComponent(url.pathname.slice(5)); fetched.push(key);
+      assert.ok(sources.has(key), key);
+      return Response.json({ result: JSON.stringify(sources.get(key)) });
+    };
+    handler = (await import('../api/mcp.ts')).mcpHandler;
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch; Ratelimit.slidingWindow = originalLimiter;
+    for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
+    Object.assign(process.env, originalEnv);
+  });
+  it('fits two producer-shaped cones in actual dispatch without changing source rows or paid usage', async () => {
+    const original = structuredClone(eventBucket);
+    const { deps, pipe } = makeProDeps();
+    const wire = await invoke(deps, { limit: 2 });
+    const payload = wire.structuredContent;
+    assert.notEqual(payload._budget_exceeded, true, 'paid Natural must present useful rows within its fixed budget');
+    assert.equal(Buffer.byteLength(wire.content[0].text), bytes(payload));
+    assert.ok(bytes(payload) <= 131072);
+    assert.equal(payload.data.events.events.length, 2);
+    assert.equal(payload.panelRequest.usage.remaining, 49); assert.equal(pipe.count, 1);
+    for (const [index, row] of payload.data.events.events.entries()) {
+      const { conePolygon, ...rest } = row;
+      const { conePolygon: originalCone, ...expected } = original.events[index];
+      assert.deepEqual(rest, expected); assert.ok(conePolygon[0].points.length <= 96);
+      const coverage = payload.transportCoverage.details.find(item => item.event_id === row.id && item.field === 'conePolygon');
+      assert.equal(coverage.original_count, 1900); assert.equal(coverage.returned_count, conePolygon[0].points.length);
+      assert.equal(coverage.original_ring_count, 1); assert.equal(coverage.geometry_simplified, true);
+    }
+    assert.deepEqual(payload.data.events.westernPacific, original.westernPacific);
+    assert.deepEqual(payload.data.events.hkoWarnings, original.hkoWarnings);
+    assert.deepEqual(eventBucket, original);
+    assert.equal(payload.data.fires._firmsCount, 1);
+  });
+  it('preserves an unclosed four-point ring without negative coverage in actual dispatch', async () => {
+    const quad = [{ points: [{ lon: 0, lat: 0 }, { lon: 1, lat: 0 }, { lon: 1, lat: 1 }, { lon: 0, lat: 1 }] }];
+    eventBucket.events[2].conePolygon = quad;
+    const original = structuredClone(eventBucket);
+    const { deps } = makeProDeps();
+    const payload = (await invoke(deps)).structuredContent;
+    assert.notEqual(payload._budget_exceeded, true);
+    assert.deepEqual(payload.data.events.events[2].conePolygon, quad);
+    assert.ok(payload.transportCoverage.details.every(item => item.returned_count <= item.original_count && item.omitted_count >= 0));
+    assert.equal(payload.transportCoverage.details.some(item => item.event_id === eventBucket.events[2].id), false);
+    assert.deepEqual(eventBucket, original);
+  });
+  for (const field of ['forecastTrack', 'pastTrack']) {
+    it(`preserves malformed ${field} coordinates and the fixed guard in actual dispatch`, async () => {
+      const malformed = [{ lat: null, lon: 'invalid', description: 'x'.repeat(140000) }];
+      eventBucket.events[0][field] = malformed;
+      const original = structuredClone(eventBucket);
+      const { presentNaturalDisastersPanel } = await import('../api/mcp/_natural-disasters-reuse.ts');
+      const shown = presentNaturalDisastersPanel({ data: { events: eventBucket } }, 131072);
+      assert.deepEqual(shown.data.events.events[0][field], malformed);
+      assert.equal(shown.transportCoverage?.details.some(item => item.field === field), false);
+      const { deps } = makeProDeps();
+      const payload = (await invoke(deps, { limit: 2 })).structuredContent;
+      assert.equal(payload._budget_exceeded, true);
+      assert.equal(payload.budget_bytes, 131072);
+      assert.deepEqual(eventBucket, original);
+    });
+  }
+  it('omits oversized tracks and samples declared regional detail with exact counts and intact health', async () => {
+    const track = Array.from({ length: 5000 }, (_, index) => ({ lat: 20, lon: 120, hour: index, windKt: 60, timestamp: snapshot - index }));
+    for (const event of eventBucket.events) { event.forecastTrack = track; event.pastTrack = track; }
+    const regional = Array.from({ length: 20 }, (_, index) => ({ id: 'regional-' + index, date: snapshot - index,
+      sourceUrl: 'https://example.org/regional/' + index, description: 'x'.repeat(10000), forecastTrack: track }));
+    eventBucket.westernPacific.events = regional;
+    eventBucket.hkoWarnings.warnings = regional.map(({ forecastTrack, ...row }) => row);
+    const original = structuredClone(eventBucket);
+    const { deps } = makeProDeps(); const wire = await invoke(deps, { limit: 2 }); const payload = wire.structuredContent;
+    assert.notEqual(payload._budget_exceeded, true); assert.ok(bytes(payload) <= 131072);
+    for (const row of payload.data.events.events) {
+      assert.equal(row.forecastTrack, undefined); assert.equal(row.pastTrack, undefined); assert.equal(row.conePolygon, undefined);
+      const coverage = payload.transportCoverage.details.find(item => item.event_id === row.id && item.field === 'forecastTrack');
+      assert.deepEqual([coverage.original_count, coverage.returned_count, coverage.omitted_count], [5000, 0, 5000]);
+    }
+    for (const [key, field] of [['westernPacific', 'events'], ['hkoWarnings', 'warnings']]) {
+      const region = payload.data.events[key]; assert.equal(Object.keys(region).length, 5);
+      assert.equal(region[field].count, 20); assert.equal(region[field].sample.length, 3);
+      const { [field]: ignored, ...health } = region;
+      const { [field]: originalList, ...originalHealth } = original[key]; assert.deepEqual(health, originalHealth);
+      for (const [index, row] of region[field].sample.entries()) {
+        assert.equal(row.id, originalList[index].id); assert.equal(row.date, originalList[index].date);
+        assert.equal(row.sourceUrl, originalList[index].sourceUrl);
+      }
+      const coverage = payload.transportCoverage.details.find(item => item.collection === 'events.' + key && item.field === field);
+      assert.deepEqual([coverage.original_count, coverage.returned_count, coverage.omitted_count], [20, 3, 17]);
+      assert.equal(coverage.event_id, null); assert.equal(coverage.event_index, null);
+    }
+    assert.deepEqual(eventBucket, original);
+  });
+  it('preserves source decisions and coverage through summary and caller projection', async () => {
+    eventBucket.westernPacific.events = Array.from({ length: 20 }, (_, id) => ({ id: String(id), description: 'x'.repeat(15000) }));
+    const { deps } = makeProDeps(); const wire = await invoke(deps, { limit: 2, summary: true, jmespath: '@' });
+    const payload = wire.structuredContent.projection;
+    assert.notEqual(wire.structuredContent._budget_exceeded, true);
+    assert.equal(payload.data.events.events.count, 2);
+    assert.equal(payload.data.events.westernPacific.events.count, 20);
+    assert.equal(payload.data.events.westernPacific.events.sample.length, 3);
+    assert.deepEqual(payload.data.events.westernPacific.sourceDecisions, eventBucket.westernPacific.sourceDecisions);
+    assert.equal(payload.data.events.westernPacific.evaluatedAt, snapshot);
+    assert.equal(payload.data.events.hkoWarnings.latestObservationAt, snapshot - 1000);
+    assert.ok(payload.transportCoverage.details.some(item => item.omitted_count > 0));
+    assert.ok(Buffer.byteLength(wire.content[0].text) <= 131072);
+  });
+  it('keeps raw snapshots in storage and re-presents cached repeats within one allocation', async () => {
+    for (const key of ['westernPacific', 'hkoWarnings']) {
+      eventBucket[key].dataAvailable = true; eventBucket[key].sourceDecisions[0].status = 'accepted';
+    }
+    const { deps, pipe } = makeProDeps(); const first = (await invoke(deps, { limit: 2 })).structuredContent;
+    const before = fetched.length; const token = first.panelRequest.token;
+    const saved = await authorizePanelRead(context, pipe.pipeline, 'get_natural_disasters', { limit: 2 }, token);
+    assert.equal(saved.cached.data.events.events[0].conePolygon[0].points.length, 1900);
+    assert.equal(saved.cached.transportCoverage, undefined);
+    const repeatedWire = await invoke(deps, { limit: 2, panel_request: token });
+    const repeat = repeatedWire.structuredContent;
+    assert.notEqual(repeat._budget_exceeded, true);
+    assert.equal(repeat.panelRequest, undefined, 'explicit reads keep the existing receipt shape');
+    assert.equal(pipe.count, 1); assert.equal(fetched.length, before);
+    assert.deepEqual(repeat.transportCoverage, first.transportCoverage);
+    assert.equal(repeat.cached_at, first.cached_at);
+  });
+  it('preserves fitting paid projections of raw cone counts and tracks', async () => {
+    const track = Array.from({ length: 120 }, (_, index) => ({ lat: 20, lon: 120, hour: index }));
+    eventBucket.events[0].forecastTrack = track;
+    eventBucket.events[1].forecastTrack = Array.from({ length: 5000 }, (_, index) => ({ lat: 20, lon: 120, hour: index }));
+    const original = structuredClone(eventBucket);
+    for (const [jmespath, expected] of [
+      ['data.events.events[0].conePolygon[0].points | length(@)', 1900],
+      ['data.events.events[0].forecastTrack', track],
+    ]) {
+      const { deps, pipe } = makeProDeps();
+      const wire = await invoke(deps, { limit: 2, jmespath });
+      assert.deepEqual(wire.structuredContent.projection, expected);
+      assert.ok(Buffer.byteLength(wire.content[0].text) <= 131072);
+      assert.equal(pipe.count, 1);
+    }
+    assert.deepEqual(eventBucket, original);
+  });
+  it('preserves raw geometry when the requested summary sample already fits', async () => {
+    eventBucket.events.push(cyclone('fourth'));
+    for (const row of eventBucket.events) row.conePolygon[0].points = row.conePolygon[0].points.slice(0, 800);
+    const original = structuredClone(eventBucket);
+    const { deps } = makeProDeps();
+    const wire = await invoke(deps, { summary: true });
+    const payload = wire.structuredContent.projection;
+    assert.equal(payload.data.events.events.count, 4);
+    assert.deepEqual(payload.data.events.events.sample, original.events.slice(0, 3));
+    assert.equal(payload.transportCoverage, undefined);
+    assert.ok(Buffer.byteLength(wire.content[0].text) <= 131072);
+    assert.deepEqual(eventBucket, original);
+  });
+  it('counts only cone detail actually returned in a four-event summary sample', async () => {
+    eventBucket.events.push(cyclone('fourth'));
+    const original = structuredClone(eventBucket);
+    const { deps } = makeProDeps();
+    const wire = await invoke(deps, { summary: true });
+    const payload = wire.structuredContent.projection;
+    assert.notEqual(payload._budget_exceeded, true);
+    const sample = payload.data.events.events.sample;
+    assert.equal(payload.data.events.events.count, 4);
+    assert.equal(sample.length, 3);
+    const coverage = payload.transportCoverage.details.filter(item => item.field === 'conePolygon');
+    assert.deepEqual(coverage.map(item => item.event_id), sample.map(row => row.id));
+    assert.equal(coverage.reduce((total, item) => total + item.returned_count, 0),
+      sample.reduce((total, row) => total + row.conePolygon.reduce((points, ring) => points + ring.points.length, 0), 0));
+    assert.deepEqual(eventBucket, original);
+  });
+  it('preserves full API geometry and news map scope without panel presentation', async () => {
+    const api = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: {
+      tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' },
+    }, validUntil: Date.now() + 86400000 }) });
+    const projected = (await invoke(api.deps, { limit: 2, jmespath: 'data.events.events[0].conePolygon[0].points | length(@)' })).structuredContent;
+    assert.equal(projected.projection, 1900);
+    const raw = (await invoke(api.deps, { limit: 2 })).structuredContent;
+    assert.equal(raw._budget_exceeded, true); assert.equal(raw.budget_bytes, 131072);
+    const { admitNewsPanel } = await import('../api/mcp/panel-requests.ts');
+    const news = makeProDeps(); const grant = await admitNewsPanel(context, budget, news.pipe.pipeline, {});
+    const mapped = (await invoke(news.deps, { dataset: ['other'], limit: 1, panel_request: grant.token })).structuredContent;
+    assert.equal(mapped.data.events.events[0].conePolygon[0].points.length, 1900);
+    assert.equal(mapped.transportCoverage, undefined); assert.equal(news.pipe.count, 1);
+  });
+  it('preserves main list limits, filters and genuine protected-content budget failures', async () => {
+    eventBucket.events.forEach((row, index) => { row.magnitude = 6; row.closed = index === 2; });
+    for (const [args, count] of [[{}, 3], [{ limit: 0 }, 3], [{ limit: 2 }, 2],
+      [{ dataset: ['other'], active_only: true, min_magnitude: 5 }, 2]]) {
+      const { deps } = makeProDeps(); const payload = (await invoke(deps, args)).structuredContent;
+      assert.notEqual(payload._budget_exceeded, true); assert.equal(payload.data.events.events.length, count);
+      if (args.dataset) assert.deepEqual(Object.keys(payload.data), ['events']);
+    }
+    eventBucket.events[0].description = 'protected'.repeat(20000);
+    const { deps } = makeProDeps(); const failed = (await invoke(deps, { limit: 2 })).structuredContent;
+    assert.equal(failed._budget_exceeded, true); assert.equal(failed.budget_bytes, 131072);
+    assert.equal(eventBucket.events[0].description.length, 180000);
+  });
+  it('keeps fitting, missing, null and malformed public detail unchanged and never mutates input', async () => {
+    const { presentNaturalDisastersPanel } = await import('../api/mcp/_natural-disasters-reuse.ts');
+    const fitting = { data: { events: { events: [{ id: 'small', conePolygon: null, forecastTrack: [], pastTrack: 'unknown' }] } } };
+    assert.equal(presentNaturalDisastersPanel(fitting, 131072), fitting);
+    const raw = { data: { events: { events: [cyclone('known'), { id: 'unknown', conePolygon: [{ points: 'invalid' }],
+      forecastTrack: null, opaque: ['retained'] }, { id: 'missing', pastTrack: [] }] } }, panelRequest: { token: 'controlled-token' } };
+    const original = structuredClone(raw); const shown = presentNaturalDisastersPanel(raw, 10000);
+    assert.deepEqual(shown.data.events.events.slice(1), original.data.events.events.slice(1));
+    assert.deepEqual(raw, original); assert.equal(shown.panelRequest.token, 'controlled-token');
+    assert.ok(shown.transportCoverage.details.every(item => item.event_id === 'known'));
+    const malformedList = { data: { events: { events: { count: 1, sample: [cyclone('unknown-list')] } } } };
+    assert.equal(presentNaturalDisastersPanel(malformedList, 10000), malformedList);
+  });
+
 });

@@ -3,6 +3,7 @@ import { before, describe, it } from 'node:test';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { MARKET_ALERT_ACTIVITY_RETENTION_MS } from '../scripts/_market-alert-ledger.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -65,6 +66,21 @@ describe('forecast evidence archive records (#7082)', () => {
     assert.equal(record.publishedAt, 1750000000000);
     assert.equal(record.lastSeen, 1750000100000);
     assert.equal(record.v, mod.FORECAST_EVIDENCE_VERSION);
+  });
+
+  it('archives a story whose link the publisher gate blanked, without the link (#8990)', () => {
+    const member = mod.buildForecastEvidenceMember({
+      hash: 'c'.repeat(64),
+      title: 'Houthis attack a tanker in the Red Sea',
+      link: '',
+      description: 'The vessel was struck off Hodeidah.',
+      publishedAt: 1750000000000,
+    }, 1750000100000);
+    assert.ok(member, 'a blanked link is a policy redaction, not a missing story');
+    const { record, malformed } = mod.parseForecastEvidenceMember(member);
+    assert.equal(malformed, false);
+    assert.equal(record.link, '');
+    assert.equal(record.title, 'Houthis attack a tanker in the Red Sea');
   });
 
   it('refuses members with missing required fields', () => {
@@ -244,6 +260,13 @@ describe('accumulator prune bounds (#7082)', () => {
     assert.ok(cutoff > now - 9 * 24 * 60 * 60 * 1000);
   });
 
+  it('retains the widest full/en read of the market-alert ledger', () => {
+    // readStories() reads back to emission - 24h for rows up to 6 days past a
+    // 6-hour deadline, and treats the oldest member as its coverage proof.
+    // full/en is pruned to this retention once the cutover flag is set (#7082).
+    assert.ok(mod.ACCUMULATOR_RETENTION_MS > MARKET_ALERT_ACTIVITY_RETENTION_MS);
+  });
+
   it('honours an explicit retention override', () => {
     const now = 1750000000000;
     assert.equal(mod.accumulatorPruneBounds(now, 3_600_000).max, `(${now - 3_600_000}`);
@@ -381,6 +404,8 @@ describe('coverage marker advance (#7082)', () => {
 
 describe('reader migration (#7082)', () => {
   const now = 1_750_000_000_000;
+  // Past the deadline and its reporting grace, so the entry is due.
+  const DUE_AGO_MS = 24 * 60 * 60 * 1000;
   const start = now - 14 * 24 * 60 * 60 * 1000;
   const coverage = JSON.stringify({
     v: 1,
@@ -400,12 +425,12 @@ describe('reader migration (#7082)', () => {
     const result = await seederMod.readForecastEvidenceArchive(start, now, {
       redisUrl: 'https://redis.example',
       redisToken: 'token',
-      fetchFn: sequenceFetch([{ result: null }], calls),
+      fetchFn: sequenceFetch([{ result: null }, { result: [] }], calls),
     });
     assert.equal(result.available, false);
     assert.equal(result.coverageComplete, false);
     assert.equal(result.incompleteReason, 'coverage_unverified');
-    assert.equal(calls.length, 1, 'an unverified archive must not be treated as an empty successful query');
+    assert.equal(calls.length, 2, 'an empty recovery scan must remain unavailable');
   });
 
   it('rejects a verified marker that covers only part of the requested window', async () => {
@@ -422,10 +447,10 @@ describe('reader migration (#7082)', () => {
       legacyOldestScoreMs: start,
     });
     const result = await seederMod.readForecastEvidenceArchive(start, now, {
-      redisUrl: 'https://redis.example', redisToken: 'token', fetchFn: sequenceFetch([{ result: partial }]),
+      redisUrl: 'https://redis.example', redisToken: 'token', fetchFn: sequenceFetch([{ result: partial }, { result: [] }]),
     });
     assert.equal(result.available, false);
-    assert.equal(result.incompleteReason, 'coverage_window_incomplete');
+    assert.equal(result.incompleteReason, 'coverage_unverified');
   });
 
   it('reads stable hashes, preserves publishedAt, and ignores lastSeen for evidence time', async () => {
@@ -508,11 +533,11 @@ describe('reader migration (#7082)', () => {
     const result = await seederMod.readForecastEvidenceArchive(markerEnd - 14 * 24 * 60 * 60 * 1000, now, {
       redisUrl: 'https://redis.example',
       redisToken: 'token',
-      fetchFn: sequenceFetch([{ result: staleCoverage }], calls),
+      fetchFn: sequenceFetch([{ result: staleCoverage }, { result: [] }], calls),
     });
     assert.equal(result.available, false);
-    assert.equal(result.incompleteReason, 'coverage_window_incomplete');
-    assert.equal(calls.length, 1, 'a stale marker must short-circuit before the ZSet read');
+    assert.equal(result.incompleteReason, 'coverage_unverified');
+    assert.equal(calls.length, 2, 'a stale marker needs a continuity scan, which must fail on an empty archive');
   });
 
   it('narrows coverage on hash-cap truncation instead of failing the whole read', async () => {
@@ -591,31 +616,25 @@ describe('reader migration (#7082)', () => {
     assert.equal(result.malformedTombstones, 1);
   });
 
-  it('falls back to the accumulator when archive coverage is unverified', async () => {
-    const hash = 'd'.repeat(64);
+  it('waits instead of reading the accumulator when archive coverage is unverified (#8990)', async () => {
     const calls = [];
     const result = await seederMod.readJudgedNewsArchiveForLedger({
       forecast: {
         status: 'pending-judge',
-        deadline: now - 1,
-        spec: { kind: 'judged', deadline: now - 1, question: 'Did the event happen?' },
+        deadline: now - DUE_AGO_MS,
+        spec: { kind: 'judged', deadline: now - DUE_AGO_MS, question: 'Did the event happen?' },
       },
     }, now, {
       redisUrl: 'https://redis.example',
       redisToken: 'token',
-      quietArchiveMigration: true,
-      fetchFn: sequenceFetch([
-        { result: null },
-        { result: [hash, String(now - 10)] },
-        [{ result: ['title', 'Event happened', 'link', 'https://example.test', 'description', 'body', 'publishedAt', String(now - 20)] }],
-      ], calls),
+      fetchFn: sequenceFetch([{ result: null }, { result: [] }], calls),
     });
-    assert.equal(result.available, true);
-    assert.equal(result.items[0].hash, hash);
-    assert.equal(calls.length, 3);
+    assert.equal(result.available, false);
+    assert.equal(result.incompleteReason, 'coverage_unverified');
+    assert.equal(calls.length, 2, 'only the evidence archive is scanned');
   });
 
-  it('waits instead of using a pruned legacy fallback when verified coverage lags', async () => {
+  it('waits instead of reading the accumulator when verified coverage lags', async () => {
     // Lag must exceed FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS. A marker one
     // millisecond behind the read clock is the NORMAL steady state (the digest
     // writer is a different process) and is accepted; only a writer that has
@@ -637,99 +656,53 @@ describe('reader migration (#7082)', () => {
     const result = await seederMod.readJudgedNewsArchiveForLedger({
       forecast: {
         status: 'pending-judge',
-        deadline: now - 1,
-        spec: { kind: 'judged', deadline: now - 1, question: 'Did the event happen?' },
+        deadline: now - DUE_AGO_MS,
+        spec: { kind: 'judged', deadline: now - DUE_AGO_MS, question: 'Did the event happen?' },
       },
     }, now, {
       redisUrl: 'https://redis.example',
       redisToken: 'token',
-      quietArchiveMigration: true,
-      cutoverEnabled: true,
-      fetchFn: sequenceFetch([{ result: laggingCoverage }], calls),
+      fetchFn: sequenceFetch([{ result: laggingCoverage }, { result: [] }], calls),
     });
     assert.equal(result.available, false);
-    assert.equal(result.cutoverVerified, true);
-    assert.equal(result.incompleteReason, 'coverage_window_incomplete');
-    assert.equal(calls.length, 1, 'the pruned accumulator must not be used after cutover');
+    assert.equal(result.coverageComplete, false);
+    assert.equal(result.incompleteReason, 'coverage_unverified');
+    assert.equal(calls.length, 2, 'only the evidence archive is scanned');
   });
 
-  it('may use the intact legacy fallback for lagging archive coverage before cutover', async () => {
-    // Was vacuous: 32-char hashes fail isForecastEvidenceHash, so the marker
-    // parsed to null and this exercised the coverage_UNVERIFIED branch that the
-    // test above already covers — never the lagging-coverage branch it names.
-    const hash = 'd'.repeat(64);
-    const staleEnd = now - mod.FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS - 1;
-    const laggingCoverage = JSON.stringify({
-      v: 1,
-      coverageStartMs: staleEnd - 14 * 24 * 60 * 60 * 1000,
-      coverageEndMs: staleEnd,
-      cutoverVerifiedAtMs: staleEnd - 10,
-      sourceDigestAtMs: staleEnd,
-      maxLookbackMs: 14 * 24 * 60 * 60 * 1000,
-      retentionSeconds: 15 * 24 * 60 * 60,
-      sourceKey: 'digest:accumulator:v1:full:en',
-      legacyOldestHash: 'f'.repeat(64),
-      legacyOldestScoreMs: staleEnd - 14 * 24 * 60 * 60 * 1000 - 1,
-    });
+  it('fails closed without reading the accumulator when the coverage GET throws', async () => {
     const calls = [];
     const result = await seederMod.readJudgedNewsArchiveForLedger({
       forecast: {
         status: 'pending-judge',
-        deadline: now - 1,
-        spec: { kind: 'judged', deadline: now - 1, question: 'Did the event happen?' },
+        deadline: now - DUE_AGO_MS,
+        spec: { kind: 'judged', deadline: now - DUE_AGO_MS, question: 'Did the event happen?' },
       },
     }, now, {
       redisUrl: 'https://redis.example',
       redisToken: 'token',
-      quietArchiveMigration: true,
-      cutoverEnabled: false,
-      fetchFn: sequenceFetch([
-        { result: laggingCoverage },
-        { result: [hash, String(now - 10)] },
-        [{ result: ['title', 'Event happened', 'link', 'https://example.test', 'description', 'body', 'publishedAt', String(now - 20)] }],
-      ], calls),
-    });
-    assert.equal(result.available, true);
-    assert.equal(result.items[0].hash, hash);
-    assert.equal(calls.length, 3);
-  });
-
-  it('fails closed without reading legacy when the coverage GET throws after cutover', async () => {
-    const calls = [];
-    const result = await seederMod.readJudgedNewsArchiveForLedger({
-      forecast: {
-        status: 'pending-judge',
-        deadline: now - 1,
-        spec: { kind: 'judged', deadline: now - 1, question: 'Did the event happen?' },
-      },
-    }, now, {
-      redisUrl: 'https://redis.example',
-      redisToken: 'token',
-      cutoverEnabled: true,
       fetchFn: async (url, init) => {
         calls.push({ url: String(url), command: JSON.parse(init.body) });
         throw new Error('coverage Redis unavailable');
       },
     });
     assert.equal(result.available, false);
-    assert.equal(result.cutoverEnabled, true);
     assert.equal(result.incompleteReason, 'archive_read_failed');
     assert.equal(calls.length, 1);
     assert.equal(calls[0].command[0], 'GET');
   });
 
-  it('fails closed without reading legacy when the archive query throws after cutover', async () => {
+  it('fails closed without reading the accumulator when the archive query throws', async () => {
     const calls = [];
     const result = await seederMod.readJudgedNewsArchiveForLedger({
       forecast: {
         status: 'pending-judge',
-        deadline: now - 1,
-        spec: { kind: 'judged', deadline: now - 1, question: 'Did the event happen?' },
+        deadline: now - DUE_AGO_MS,
+        spec: { kind: 'judged', deadline: now - DUE_AGO_MS, question: 'Did the event happen?' },
       },
     }, now, {
       redisUrl: 'https://redis.example',
       redisToken: 'token',
-      cutoverEnabled: true,
       fetchFn: async (url, init) => {
         const command = JSON.parse(init.body);
         calls.push({ url: String(url), command });
@@ -871,5 +844,169 @@ describe('bounded backfill and cutover (#7082)', () => {
       /write was not confirmed/,
     );
     assert.equal(calls.some(call => call.command[0] === 'SET' && call.command[1] === mod.FORECAST_EVIDENCE_COVERAGE_KEY), false);
+  });
+});
+
+describe('archive continuity recovery (#8877)', () => {
+  const now = 1_790_000_000_000;
+  const hour = 3_600_000;
+  const start = now - 14 * 24 * hour;
+
+  function archiveFixture() {
+    return Array.from({ length: 58 }, (_, i) => {
+      const score = now - i * 6 * hour;
+      const hash = i.toString(16).padStart(64, '0');
+      return { hash, score, member: mod.buildForecastEvidenceMember({
+        hash, title: `Story ${i}`, link: `https://news.example/${i}`, publishedAt: score,
+      }, score) };
+    });
+  }
+
+  async function read(rows, { maxHashes = 100, persist = true, writeResult = 'OK', coverageMaxLagMs, coverage = null } = {}) {
+    const calls = [];
+    const members = new Map(rows.map(row => [mod.forecastEvidenceRecordKey(row.hash), row.member]));
+    const result = await seederMod.readForecastEvidenceArchive(start, now, {
+      redisUrl: 'https://redis.example', redisToken: 'token', maxHashes,
+      persistRecoveredCoverage: persist, coverageMaxLagMs,
+      fetchFn: async (_url, init) => {
+        const cmd = JSON.parse(init.body);
+        calls.push(cmd);
+        if (Array.isArray(cmd[0])) return response(cmd.map(([, key]) => ({
+          result: members.get(key) ?? null,
+        })));
+        if (cmd[0] === 'GET') return response({ result: coverage ? JSON.stringify(coverage) : null });
+        if (cmd[0] === 'SET' || cmd[0] === 'EVAL') return response({ result: writeResult });
+        assert.equal(cmd[0], 'ZREVRANGEBYSCORE');
+        return response({ result: rows.filter(row => row.score >= Number(cmd[3]) && row.score <= Number(cmd[2]))
+          .slice(0, Number(cmd.at(-1))).flatMap(row => [row.hash, String(row.score)]) });
+      },
+    });
+    return { result, calls };
+  }
+
+  it('recovers missing coverage from a full, continuous archive without the accumulator', async () => {
+    const { result, calls } = await read(archiveFixture());
+    assert.equal(result.available, true);
+    assert.equal(result.coverageRecovered, true);
+    assert.equal(result.coverageStartMs, start);
+    const write = calls.find(cmd => cmd[0] === 'SET');
+    assert.ok(write, 'recovery must persist the marker');
+    const proof = mod.parseForecastEvidenceCoverage(write[2]);
+    assert.equal(proof.sourceKey, mod.FORECAST_EVIDENCE_KEY);
+    assert.equal(mod.forecastEvidenceCoversWindow(proof, start, now), false, 'continuity must not authorize destructive prune');
+    assert.equal(mod.forecastEvidenceCoversWindow(proof, start, now, 0, true), true);
+    assert.ok(result.items.every(item => item.publishedAt >= start), 'guard-band records are not reader evidence');
+  });
+
+  for (const scenario of ['short', 'gap', 'stale', 'missing', 'mismatched-score', 'duplicate', 'truncated']) {
+    it(`refuses ${scenario} recovery without writing a marker`, async () => {
+      let rows = archiveFixture();
+      if (scenario === 'short') rows = rows.slice(0, 56);
+      if (scenario === 'gap') rows.splice(25, 1);
+      if (scenario === 'stale') rows = rows.slice(2);
+      if (scenario === 'missing') rows[25].member = null;
+      if (scenario === 'mismatched-score') rows[25].score -= 1;
+      if (scenario === 'duplicate') rows[25] = rows[24];
+      const { result, calls } = await read(rows, { maxHashes: scenario === 'truncated' ? 40 : 100 });
+      assert.equal(result.available, false);
+      if (scenario === 'truncated') assert.equal(result.incompleteReason, 'coverage_recovery_truncated');
+      assert.equal(calls.some(cmd => cmd[0] === 'SET'), false);
+    });
+  }
+
+  it('reuses the persisted proof and preserves the observed end clock', async () => {
+    const rows = archiveFixture().map(row => ({ ...row, score: row.score - hour,
+      member: JSON.stringify({ ...JSON.parse(row.member), lastSeen: row.score - hour }),
+    }));
+    const { result, calls } = await read(rows);
+    assert.equal(result.available, true);
+    const proof = JSON.parse(calls.find(cmd => cmd[0] === 'SET')[2]);
+    assert.equal(proof.coverageEndMs, now - hour);
+    assert.equal((await read(rows, { coverageMaxLagMs: 0 })).result.available, false);
+    const selected = rows.filter(row => row.score >= start);
+    const reread = await seederMod.readForecastEvidenceArchive(start, now, {
+      redisUrl: 'https://redis.example', redisToken: 'token',
+      fetchFn: sequenceFetch([
+        { result: JSON.stringify(proof) },
+        { result: selected.flatMap(row => [row.hash, String(row.score)]) },
+        selected.map(row => ({ result: row.member })),
+      ]),
+    });
+    assert.equal(reread.available, true);
+    assert.equal(reread.coverageRecovered, false);
+    assert.equal(mod.parseForecastEvidenceCoverage({ ...proof, continuityBucketMs: 1 }), null);
+    assert.equal(mod.advanceForecastEvidenceCoverage(proof, now).sourceKey, mod.FORECAST_EVIDENCE_KEY);
+  });
+
+  it('recovers the reported 15,818-record archive and validates records beyond the normal cap', async () => {
+    const rows = Array.from({ length: 15_818 }, (_, i) => {
+      const score = now - Math.floor(i * 14.25 * 24 * hour / 15_817);
+      const hash = i.toString(16).padStart(64, '0');
+      return { hash, score, member: mod.buildForecastEvidenceMember({
+        hash, title: `Story ${i}`, link: `https://news.example/${i}`, publishedAt: score,
+      }, score) };
+    });
+    assert.equal((await read(rows, { maxHashes: null })).result.available, true);
+    rows.at(-1).member = null;
+    const { result, calls } = await read(rows, { maxHashes: null });
+    assert.equal(result.available, false);
+    assert.equal(calls.some(cmd => cmd[0] === 'SET' || cmd[0] === 'EVAL'), false);
+  });
+
+  it('does not advance a continuity proof across a later six-hour gap', () => {
+    const rows = archiveFixture();
+    const proof = mod.recoverForecastEvidenceCoverage(rows.map(row => ({ record: JSON.parse(row.member), score: row.score })), now);
+    assert.ok(mod.advanceForecastEvidenceCoverage(proof, now + 6 * hour));
+    assert.equal(mod.advanceForecastEvidenceCoverage(proof, now + 6 * hour + 1), null);
+  });
+
+  it('includes an uneven oldest boundary beyond the tail-lag bucket', async () => {
+    const rows = archiveFixture().map((row, i) => {
+      const score = now - (5 + i * 5.95) * hour;
+      return { ...row, score, member: JSON.stringify({ ...JSON.parse(row.member), lastSeen: score }) };
+    });
+    assert.equal((await read(rows)).result.available, true);
+  });
+
+  for (const version of [1, 2]) it(`rechecks stale v${version} coverage and replaces only the marker that was read`, async () => {
+    const rows = archiveFixture();
+    const original = mod.recoverForecastEvidenceCoverage(rows.map(row => ({ record: JSON.parse(row.member), score: row.score })), now);
+    const oldEnd = now - 7 * hour;
+    const coverage = { ...original, coverageEndMs: oldEnd, sourceDigestAtMs: oldEnd,
+      coverageStartMs: oldEnd - 14 * 24 * hour, cutoverVerifiedAtMs: oldEnd,
+      archiveOldestScoreMs: oldEnd - 14 * 24 * hour };
+    if (version === 1) {
+      Object.assign(coverage, { v: 1, sourceKey: 'digest:accumulator:v1:full:en',
+        legacyOldestHash: original.archiveOldestHash, legacyOldestScoreMs: oldEnd - 14 * 24 * hour });
+      delete coverage.archiveOldestHash;
+      delete coverage.archiveOldestScoreMs;
+      delete coverage.continuityBucketMs;
+    }
+    const { result, calls } = await read(rows, { coverage });
+    assert.equal(result.available, true);
+    const replace = calls.find(cmd => cmd[0] === 'EVAL');
+    assert.ok(replace);
+    const recovered = JSON.parse(replace[5]);
+    assert.equal(recovered.v, 2);
+    assert.equal(mod.forecastEvidenceCoversWindow(recovered, start, now), false, 'recovery cannot authorize pruning');
+    const dry = await read(rows, { coverage, persist: false });
+    assert.equal(dry.result.available, true);
+    assert.equal(dry.calls.some(cmd => ['SET', 'EVAL'].includes(cmd[0])), false);
+    assert.equal(replace[4], JSON.stringify(coverage), 'replacement compares the exact previous marker');
+    assert.equal((await read(rows, { coverage, writeResult: null })).result.available, false, 'a concurrent marker must win');
+    const holed = rows.filter((_, i) => i !== 25);
+    assert.equal((await read(holed, { coverage })).result.available, false);
+  });
+
+  it('checks continuity without writing during a dry run', async () => {
+    const { result, calls } = await read(archiveFixture(), { persist: false });
+    assert.equal(result.available, true);
+    assert.equal(calls.some(cmd => cmd[0] === 'SET'), false);
+  });
+
+  it('does not claim durable recovery after an unconfirmed marker write', async () => {
+    const { result } = await read(archiveFixture(), { writeResult: null });
+    assert.equal(result.available, false);
+    assert.equal(result.incompleteReason, 'coverage_recovery_write_failed');
   });
 });

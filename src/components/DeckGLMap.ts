@@ -53,7 +53,7 @@ import type { GpsJamHex } from '@/services/gps-interference';
 import { fetchImageryScenes } from '@/services/imagery';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
-import type { DisplacementFlow } from '@/services/displacement';
+import type { CrossBorderData, CrossBorderPoint, DisplacementFlow, InternalDisplacementData, InternalDisplacementRegion, InternalDisplacementRoute } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { RadiationObservation } from '@/services/radiation';
@@ -645,6 +645,8 @@ export class DeckGLMap {
   private newsLocationFirstSeen = new Map<string, number>();
   private ucdpEvents: UcdpGeoEvent[] = [];
   private displacementFlows: DisplacementFlow[] = [];
+  private internalDisplacement: InternalDisplacementData | null = null;
+  private crossBorderArrivals: CrossBorderData | null = null;
   private gpsJammingHexes: GpsJamHexWithPolygon[] = [];
   private gpsJammingLoadSeq = 0;
   private climateAnomalies: ClimateAnomaly[] = [];
@@ -2291,6 +2293,13 @@ export class DeckGLMap {
     // Displacement flows arc layer
     if (mapLayers.displacement && this.displacementFlows.length > 0) {
       layers.push(this.createDisplacementArcsLayer());
+    }
+    if (mapLayers.displacement && this.crossBorderArrivals && this.crossBorderArrivals.points.length > 0) {
+      layers.push(this.createCrossBorderPointsLayer(this.crossBorderArrivals.points));
+    }
+    if (mapLayers.displacement && this.internalDisplacement) {
+      if (this.internalDisplacement.routes.length > 0) layers.push(this.createInternalDisplacementRoutesLayer(this.internalDisplacement.routes));
+      if (this.internalDisplacement.regions.length > 0) layers.push(this.createInternalDisplacementRegionsLayer(this.internalDisplacement.regions));
     }
 
     // Climate anomalies heatmap layer
@@ -5129,6 +5138,18 @@ export class DeckGLMap {
       }
       case 'ais-disruptions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>AIS ${text(obj.type || t('components.deckgl.tooltip.disruption'))}</strong><br/>${text(obj.severity)} ${t('popups.severity')}<br/>${text(obj.description)}</div>` };
+      case 'cross-border-points-layer': {
+        const change = obj.change !== null && obj.change !== 0
+          ? `<br/>${obj.change > 0 ? '+' : ''}${numericLabel(obj.change)} ${t('components.deckgl.tooltip.sinceDate', { date: text(obj.changeSince) })}`
+          : '';
+        const lastMonth = obj.lastMonth !== null ? `<br/>${numericLabel(obj.lastMonth)} ${t('components.deckgl.tooltip.lastMonth')}` : '';
+        const accelerating = obj.accelerating ? `<br/><strong>${t('components.displacement.accelerating')}</strong>` : '';
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.country)}</strong><br/>${text(obj.label)}: ${numericLabel(obj.individuals)}${lastMonth}${change}${accelerating}<br/>${text(obj.situation)} · ${text(obj.date)}<br/>${t('components.deckgl.tooltip.sourceUnhcrOdp')}</div>` };
+      }
+      case 'internal-displacement-regions-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}, ${text(obj.countryName)}</strong><br/>${numericLabel(obj.idps)} ${t('components.deckgl.tooltip.internallyDisplaced')}<br/>${text(obj.operation)} · ${text(obj.reportingDate)}<br/>${t('components.deckgl.tooltip.sourceIomDtm')}</div>` };
+      case 'internal-displacement-routes-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.originName)} → ${text(obj.destinationName)}</strong><br/>${numericLabel(obj.idps)} ${t('components.deckgl.tooltip.internallyDisplaced')}<br/>${text(obj.operation)} · ${text(obj.reportingDate)}<br/>${t('components.deckgl.tooltip.sourceIomDtm')}</div>` };
       case 'gps-jamming-layer':
         return { html: `<div class="deckgl-tooltip"><strong>GPS Jamming</strong><br/>${text(obj.level)} · aircraft affected: ${numericLabel(obj.pct, 1)}%<br/>H3: ${text(obj.h3)}</div>` };
       case 'cable-advisories-layer': {
@@ -5195,9 +5216,9 @@ export class DeckGLMap {
         const ciiName = obj.properties?.name ?? 'Unknown';
         const ciiCode = obj.properties?.['ISO3166-1-Alpha-2'];
         const ciiEntry = ciiCode ? this.ciiScoresMap.get(ciiCode as string) : undefined;
-        if (!ciiEntry) return { html: `<div class="deckgl-tooltip"><strong>${text(ciiName)}</strong><br/><span style="opacity:.7">No CII data</span></div>` };
+        if (!ciiEntry) return { html: `<div class="deckgl-tooltip"><strong>${text(ciiName)}</strong><br/><span style="opacity:.7">No country instability data</span></div>` };
         const levelColor = DeckGLMap.CII_LEVEL_HEX[ciiEntry.level] ?? '#888';
-        return { html: `<div class="deckgl-tooltip"><strong>${text(ciiName)}</strong><br/>CII: <span style="color:${levelColor};font-weight:600">${numericLabel(ciiEntry.score)}/100</span><br/><span style="text-transform:capitalize;opacity:.7">${text(ciiEntry.level)}</span></div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(ciiName)}</strong><br/>Country instability: <span style="color:${levelColor};font-weight:600">${numericLabel(ciiEntry.score)}/100</span><br/><span style="text-transform:capitalize;opacity:.7">${text(ciiEntry.level)}</span></div>` };
       }
       case 'resilience-choropleth-layer': {
         const resilienceName = obj.properties?.name ?? 'Unknown';
@@ -6260,7 +6281,7 @@ export class DeckGLMap {
     ciiLegend.id = 'ciiChoroplethLegend';
     ciiLegend.style.display = this.state.layers.ciiChoropleth ? 'block' : 'none';
     setTrustedHtml(ciiLegend, trustedHtml(`
-      <span class="legend-label-title" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));letter-spacing:0.5px;">CII SCALE</span>
+      <span class="legend-label-title" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));letter-spacing:0.5px;">INSTABILITY SCALE</span>
       <div style="display:flex;align-items:center;gap:2px;margin-top:2px;">
         <div style="width:100%;height:8px;border-radius:3px;background:linear-gradient(to right,#28b33e,#dcc030,#e87425,#dc2626,#7f1d1d);"></div>
       </div>
@@ -6631,6 +6652,67 @@ export class DeckGLMap {
       widthMinPixels: 1,
       widthMaxPixels: 8,
       pickable: false,
+    });
+  }
+
+  // UNHCR people who crossed into each receiving country. Area scales with the
+  // count; an accelerating country gets a thicker ring.
+  private createCrossBorderPointsLayer(points: CrossBorderPoint[]): ScatterplotLayer<CrossBorderPoint> {
+    const light = getCurrentTheme() === 'light';
+    const fill = (d: CrossBorderPoint): [number, number, number, number] => {
+      if (d.kind === 'return') return light ? [30, 130, 80, 110] : [80, 210, 140, 100];
+      if (d.kind === 'arrival') return light ? [20, 110, 170, 120] : [70, 180, 240, 110];
+      return light ? [120, 60, 170, 110] : [180, 130, 255, 100];
+    };
+    return new ScatterplotLayer<CrossBorderPoint>({
+      id: 'cross-border-points-layer',
+      data: points,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => Math.sqrt(d.individuals) * 70,
+      radiusMinPixels: 4,
+      radiusMaxPixels: 46,
+      getFillColor: fill,
+      getLineColor: (d) => (d.accelerating ? [255, 70, 70, 240] : light ? [60, 60, 60, 160] : [230, 230, 240, 160]),
+      getLineWidth: (d) => (d.accelerating ? 3 : 1),
+      lineWidthUnits: 'pixels',
+      stroked: true,
+      pickable: true,
+    });
+  }
+
+  // IOM DTM internally displaced people by region. Area scales with the count.
+  private createInternalDisplacementRegionsLayer(regions: InternalDisplacementRegion[]): ScatterplotLayer<InternalDisplacementRegion> {
+    const light = getCurrentTheme() === 'light';
+    return new ScatterplotLayer<InternalDisplacementRegion>({
+      id: 'internal-displacement-regions-layer',
+      data: regions,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => Math.sqrt(d.idps) * 60,
+      radiusMinPixels: 3,
+      radiusMaxPixels: 40,
+      getFillColor: light ? [190, 90, 20, 120] : [255, 150, 60, 110],
+      getLineColor: light ? [150, 60, 10, 220] : [255, 190, 120, 200],
+      stroked: true,
+      lineWidthMinPixels: 1,
+      pickable: true,
+    });
+  }
+
+  private createInternalDisplacementRoutesLayer(routes: InternalDisplacementRoute[]): ArcLayer<InternalDisplacementRoute> {
+    const top = routes.slice(0, 150);
+    const maxCount = Math.max(1, ...top.map((d) => d.idps));
+    const light = getCurrentTheme() === 'light';
+    return new ArcLayer<InternalDisplacementRoute>({
+      id: 'internal-displacement-routes-layer',
+      data: top,
+      getSourcePosition: (d) => [d.originLon, d.originLat],
+      getTargetPosition: (d) => [d.destinationLon, d.destinationLat],
+      getSourceColor: light ? [150, 60, 10, 200] : [255, 190, 120, 170],
+      getTargetColor: light ? [190, 90, 20, 230] : [255, 120, 40, 210],
+      getWidth: (d) => Math.max(1, (d.idps / maxCount) * 6),
+      widthMinPixels: 1,
+      widthMaxPixels: 6,
+      pickable: true,
     });
   }
 
@@ -7307,6 +7389,16 @@ export class DeckGLMap {
 
   public setDisplacementFlows(flows: DisplacementFlow[]): void {
     this.displacementFlows = flows;
+    this.render();
+  }
+
+  public setCrossBorderArrivals(data: CrossBorderData): void {
+    this.crossBorderArrivals = data;
+    this.render();
+  }
+
+  public setInternalDisplacement(data: InternalDisplacementData): void {
+    this.internalDisplacement = data;
     this.render();
   }
 

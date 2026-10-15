@@ -38,7 +38,7 @@ body:
         - Live video streams
         - Desktop app (Tauri)
         - Settings / API keys
-        - Settings / LLMs (Ollama, Groq, OpenRouter)
+        - Settings / LLMs (Ollama, OpenRouter)
         - Live webcams
         - Other
     validations:

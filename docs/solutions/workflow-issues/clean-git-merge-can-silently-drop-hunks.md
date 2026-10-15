@@ -1,6 +1,7 @@
 ---
 module: git_merge_integrity
 date: 2026-09-05
+last_updated: 2026-10-06
 problem_type: workflow_issue
 component: development_workflow
 severity: high
@@ -11,7 +12,7 @@ symptoms:
 root_cause: silent_merge_mangling
 resolution_type: workflow_improvement
 related_components: [testing_framework, ci_gates]
-tags: [git-merge, auto-merge, frankenstate, ort-strategy, both-parents-verification, ci-repair, preview-namespace]
+tags: [git-merge, auto-merge, duplicate-object-key, biome, frankenstate, ort-strategy, both-parents-verification, ci-repair, preview-namespace]
 ---
 
 # A clean git merge can silently drop hunks — verify the result against BOTH parents
@@ -55,6 +56,24 @@ The two diffs bracket the merge: the first shows what the merge imported from ma
 - After EVERY merge into a PR branch, run `git diff origin/main --stat` and reconcile every file that is not part of the branch's intended change set. This one command is the whole detection.
 - When a merge-branch CI failure names a test that is green on main, before debugging the test, diff the merged file against origin/main — the failure is usually the merge, not the code.
 - Watch for the specific shape: a diff that shows an ADDED import/fixture from one parent and a MISSING sibling line from the other in the same file. That combination is the frankenstate signature; a one-sided merge cannot produce it.
+
+## Variant: both hunks kept, one silently dead (duplicate object keys)
+
+A clean merge can also keep every line and still lose behavior. On #8880, `origin/main` had just added an `afterPublish` hook to the `runSeed` options object in `scripts/seed-forecast-resolutions.mjs` (#8886, marking the calibration map activated). The branch added its own `afterPublish` hook to the same object (judged-lane health). Git placed both keys in one object literal with no conflict. JavaScript keeps the last duplicate key, so the earlier hook never ran and nothing threw.
+
+Biome's `lint/suspicious/noDuplicateObjectKeys` (on through `"recommended": true` in `biome.json`) flagged it. The fix merged both bodies into one hook, in the "run both afterPublish steps" commit on #8880:
+
+```js
+afterPublish: async (ledger) => {
+  if (runState.map) await markCalibrationMapActivated();
+  const health = await buildJudgedLaneHealthPatch(ledger, Date.now(), runState);
+  return { freshnessMetaPatch: health, completionState: health.status === 'error' ? 'DEGRADED' : 'OK' };
+},
+```
+
+Biome marks this rule FIXABLE. Do not take the auto-fix here: it deletes one key, which keeps the bug. Merge the bodies by hand.
+
+Detection: run `npm run lint` after every merge that touches a shared options object or config literal. It lints only `./src`, `./server`, `./api`, `./tests`, `./e2e`, `./scripts` and `./middleware.ts`; for a merged file elsewhere, run `npx biome lint <path>` on it directly. The both-parents diff above shows two added keys, which is easy to read as correct.
 
 Related: the deployment key-prefix write-ownership contract lives in
 `docs/solutions/logic-errors/deployment-key-prefix-is-a-write-ownership-contract.md`

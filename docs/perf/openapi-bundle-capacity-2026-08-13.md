@@ -111,6 +111,18 @@ Replace the hand-named pass with a generic one: canonicalise every schema subtre
 
 The largest single hand-written block. This is documentation, not repetition, and trimming it makes the spec worse for the agents it exists to serve. Only ever trim boilerplate prefixes that repeat verbatim across operations, and only after 1 and 2 are spent.
 
+### Spent since this baseline
+
+Later passes in `scripts/build-openapi-json.mjs`, all JSON-only (the YAML keeps the generated text):
+
+| Pass | What it removes | Landed with |
+| --- | --- | --- |
+| `collapseSoftLineBreaks` | Proto comment wrap points (`\n `) inside descriptions, outside code fences and block starts | `get-bilateral-tariff` |
+| `dropDefaultParameterRequired` | `required: false` on non-path parameters, the OpenAPI default | `get-bilateral-tariff` |
+| `shortenGeneratedSuccessDescriptions` | The generator's verbatim `"Successful response"` on every 2xx response, 240 copies, replaced by the status code's reason phrase `"OK"`. The responses stay inline. About 4.1 KB. | `get-us-import-duty` |
+
+The last one is boilerplate rather than repetition. It falls under step 3's "boilerplate that repeats verbatim", applied to response descriptions instead of operation descriptions. After it, the repeated structures the report still counts are dominated by the inline `jmespath` parameter copies, which `ensureInlineTypedInput` keeps on purpose for JSON-only scanners. Step 2 still needs scanner re-verification. The next operation will need step 2, or a scanner re-check of the budget.
+
 ### Not on the table
 
 - Raising the 950,000-byte budget.

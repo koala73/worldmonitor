@@ -35,16 +35,16 @@ Three discovery signals must stay aligned:
 
 | UI resource URI | Linked tool | App | Renders |
 |---|---|---|---|
-| `ui://worldmonitor/country-risk-v2.html` | `get_country_risk` | Country Risk (interactive) | Composite Instability Index score, component breakdown, travel advisory, and sanctions exposure. |
+| `ui://worldmonitor/country-risk-v3.html` | `get_country_risk` | Country Risk (interactive) | Composite Instability Index score, component breakdown, travel advisory, and sanctions exposure. |
 | `ui://worldmonitor/world-brief-v2.html` | `get_world_brief` | World Brief (interactive) | Precomputed citation-grounded global brief, grounding headlines, and source feed articles. |
 | `ui://worldmonitor/country-brief-v3.html` | `get_country_brief` | Country Brief (interactive) | Per-country intelligence brief, analytical framework lens, and grounding sources. |
 | `ui://worldmonitor/market-radar-v3.html` | `get_market_data` | Market Radar (interactive) | Fear & Greed plus all loaded quote rows, asset names and expandable intraday charts from the same snapshot. |
 | `ui://worldmonitor/chokepoint-monitor-v2.html` | `get_chokepoint_status` | Chokepoint Monitor (interactive) | Per-chokepoint transit summaries, week-over-week change, tanker split, and risk-level badge. |
-| `ui://worldmonitor/news-intelligence-v2.html` | `get_news_intelligence` | News Intelligence (interactive) | AI-classified top stories with category, alert flag, country, source provenance, snapshot status and explicit loaded/sample counts. |
+| `ui://worldmonitor/news-intelligence-v3.html` | `get_news_intelligence` | News Intelligence (interactive) | AI-classified top stories with category, alert flag, country, source provenance, snapshot status and explicit loaded/sample counts. |
 | `ui://worldmonitor/conflict-events-v2.html` | `get_conflict_events` | Conflict Events (interactive) | Active armed-conflict events (belligerents, violence type, country, fatalities, date) from UCDP. |
-| `ui://worldmonitor/natural-disasters-v2.html` | `get_natural_disasters` | Natural Disasters (interactive) | Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan: magnitude, place, time, source) and active wildfires (NASA FIRMS), grouped. |
+| `ui://worldmonitor/natural-disasters-v3.html` | `get_natural_disasters` | Natural Disasters (interactive) | Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan: magnitude, place, time, source) and active wildfires (NASA FIRMS), grouped. |
 | `ui://worldmonitor/prediction-markets-v3.html` | `get_prediction_markets` | Prediction Markets (interactive) | Event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. Full-envelope projections and summary samples retain the loaded contracts and snapshot metadata. Missing or malformed categories and unknown freshness remain explicit. |
-| `ui://worldmonitor/forecasts-v3.html` | `get_forecast_predictions` | Forecasts (interactive) | Forecast cards, local domain/region filters and original case analysis, evidence and scenario branches loaded under the opening admission. |
+| `ui://worldmonitor/forecasts-v4.html` | `get_forecast_predictions` | Forecasts (interactive) | Forecast cards, local domain/region filters and original case analysis, evidence and scenario branches loaded under the opening admission. |
 | `ui://worldmonitor/news-dashboard-v3.html` | `open_news_dashboard` | WorldMonitor news and maps | Dashboard news panels, current event markers, filters and country selection. |
 | `ui://worldmonitor/country-view-v3.html` | `open_country_brief` | WorldMonitor country view | Shared country sections, topics, evidence and exports with host-authorized reads. |
 
@@ -80,7 +80,7 @@ For paid OAuth users, `get_forecast_predictions` opens a compact list and return
 
 Opening a case analysis calls `get_forecast_case` through the originating host with `forecast_id`, the exact list `generated_at`, and the same `panel_request` token. The read returns one unchanged original case from that generation. It uses the existing bounded panel read allowance and consumes no additional daily allocation. Successful details are reused when filtering or reopening. The host must support server tool calls; unavailable capability or source, a changed generation, and an oversized individual case are shown explicitly. Retry is manual and source recovery is not cached as a successful case.
 
-Ordinary API-key calls to `get_forecast_predictions` retain their full-result contract and accounting. The case reader requires a valid forecast admission; it is not an arbitrary cache reader. `forecasts.html` remains a read alias for saved connections. The saved `forecasts-v2.html` resource also remains a private read alias. Refresh tool metadata to discover `forecasts-v3.html` after deployment.
+Ordinary API-key calls to `get_forecast_predictions` retain their full-result contract and accounting. The case reader requires a valid forecast admission; it is not an arbitrary cache reader. `forecasts.html` remains a read alias for saved connections. The saved `forecasts-v3.html` and `forecasts-v2.html` resources also remain public, quota-free read aliases. Refresh tool metadata to discover `forecasts-v4.html` after deployment.
 
 ## Original Active Theaters
 
@@ -185,3 +185,8 @@ On Pro and Pro Business, `get_country_brief` and `get_country_risk` share the sa
 Use the returned `panelRequest.token` as `panel_request` for authorized reads of that country. Explicit `refresh: true` requires a UUID `request_id` and no reader token. It starts one new country allocation; the same UUID retries that allocation. Refresh rereads the sources but does not force AI generation or bypass the backend's six-hour brief cache. API and free-account calls retain their ordinary behavior and reject these paid refresh controls.
 
 The brief preserves the effective first 2,000 framework characters and exact `allow_stale: true` opt-in. Incomplete, retained or malformed grounding remains retryable under the same allocation. Risk reuse preserves genuine untracked and unknown values. The CII timestamp does not attest current advisory or sanctions freshness. The 64-read bound counts uncached tool executions, including each distinct analysis. Authorized receipt reads query the current daily counter without another allocation; unknown usage omits the numeric notice.
+
+
+### Observed country Signals
+
+The country view's Signals section combines independently loaded authorized military observations with bounded `signalsRaw` samples. These samples can add earthquake, Internet outage, travel advisory and thermal values while preserving static country classification. Count labels do not establish full provider coverage. Source scope, original event/computation dates, unknown snapshot clocks, partial evidence and retained not-fresh observations appear in the view, structured model context and evidence export. Denied sources clear their counts, and changing country clears prior dynamic observations. Other dynamic Signals and aggregate severity/recent evidence remain unknown. This release does not claim deployed native acceptance or source-license clearance.

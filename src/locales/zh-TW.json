@@ -7,7 +7,7 @@
     "closeBtn": "關閉",
     "limitedCoverage": "覆蓋範圍有限",
     "instabilityIndex": "不穩定指數",
-    "notTracked": "未跟蹤 — {{country}}不在CII一級監控名單中",
+    "notTracked": "未納入監測——{{country}}不在國家不穩定指數第一等級名單中",
     "intelBrief": "情報簡報",
     "generatingBrief": "正在生成情報簡報...",
     "topNews": "頭條新聞",
@@ -16,7 +16,7 @@
     "predictionMarkets": "預測市場",
     "loadingMarkets": "正在載入預測市場...",
     "infrastructure": "基礎設施暴露",
-    "briefUnavailable": "AI簡報不可用 — 請在設定中配置GROQ_API_KEY。",
+    "briefUnavailable": "AI簡報不可用 — 請在設定中配置OPENROUTER_API_KEY。",
     "cached": "已快取",
     "fresh": "最新",
     "noMarkets": "未找到預測市場",
@@ -38,7 +38,7 @@
       "conflictEvents": "衝突事件",
       "activeStrikes": "活躍罷工",
       "aviationDisruptions": "機場中斷",
-      "gpsJammingZones": "GPS 干擾區"
+      "gpsJammingZones": "導航干擾區域"
     },
     "timeAgo": {
       "m": "{{count}}分鐘前",
@@ -72,10 +72,11 @@
       "expenditure": "軍費開支",
       "personnel": "兵力",
       "armsImports": "武器進口",
-      "concentration": "供應國 HHI",
+      "concentration": "供應商集中度指數",
       "suppliers": "武器供應國（{{start}}–{{end}}）",
-      "source": "來源：世界銀行與 SIPRI 武器轉讓資料庫。TIV 衡量轉讓量，而非金額。",
+      "source": "來源：世界銀行和SIPRI武器轉讓資料庫。轉讓量指標衡量的是相對武器轉讓量，而非財務價值。",
       "sourceWorldBank": "來源：世界銀行。",
+      "snapshotAssembled": "{{source}} 資料快照彙總時間：{{time}}",
       "unavailable": "暫無資料",
       "coverage": "已覆蓋國家",
       "supplierRetained": "供應國資料沿用上次成功重新整理的結果。"
@@ -96,14 +97,14 @@
     "nearbyPorts": "附近港口",
     "detected": "已檢測",
     "notDetected": "無",
-    "ciiUnavailable": "該國CII評分不可用。",
+    "ciiUnavailable": "該國無可用的國家不穩定指數評分。",
     "chips": {
       "criticalNews": "重要新聞",
       "protests": "抗議活動",
       "militaryAir": "軍事航空",
       "navalVessels": "海軍艦艇",
       "outages": "中斷",
-      "aisDisruptions": "AIS中斷",
+      "aisDisruptions": "船舶追蹤中斷",
       "satelliteFires": "衛星火點",
       "temporalAnomalies": "時間異常",
       "cyberThreats": "網路威脅",
@@ -115,11 +116,12 @@
       "doNotTravel": "禁止旅行",
       "reconsiderTravel": "重新考慮旅行",
       "exerciseCaution": "謹慎行事",
+      "normalPrecautions": "常規注意事項",
       "advisory": "旅行提醒",
       "activeSirens": "警報啟動中",
       "sirens24h": "警報 / 24小時",
       "aviationDisruptions": "航空中斷",
-      "gpsJammingZones": "GPS干擾區域",
+      "gpsJammingZones": "導航干擾區域",
       "temporalUnavailable": "時間序列觀測資料不可用"
     },
     "fallback": {
@@ -158,8 +160,8 @@
       "entities": "實體：",
       "translation": "翻譯：",
       "source": "來源：",
-      "imfGrowth": "IMF 增長預測",
-      "creditGdp": "信貸佔 GDP 比重",
+      "imfGrowth": "國際貨幣基金組織增長預測",
+      "creditGdp": "信貸與經濟產出比",
       "strategicTrade": "戰略貿易敞口",
       "crudeImports": "原油進口量",
       "gasDemand": "天然氣需求",
@@ -191,7 +193,7 @@
       "decisionSignalsUnavailable": "中國決策訊號快照當前不可用。"
     },
     "foodStocks": "糧食庫存",
-    "foodStocksHelp": "USDA PSD 按銷售年度統計的農產品庫存消費比，並附全球比率作對照。當 PSD 缺少完整的國家平衡表時，由 FAOSTAT 食物平衡表提供產量和國內供應量。",
+    "foodStocksHelp": "USDA生產、供應和分配商品庫存與用量比，按營銷年度計算，並附帶全球比率作為參考。FAOSTAT食物平衡表在生產、供應和分配資料不完整時提供生產和國內供應資料。",
     "loadingFoodStocks": "正在載入糧食庫存…",
     "foodStocksUnavailable": "糧食庫存不可用。",
     "foodStocksProLocked": "升級至 PRO 檢視農產品庫存消費比",
@@ -209,7 +211,7 @@
     },
     "demographicsCapability": {
       "title": "人口與勞動力",
-      "help": "來自 UN WPP、UNESCO UIS、世界銀行 WDI 和 ILOSTAT 的年齡結構、教育培養與工業勞動力資料。",
+      "help": "來自聯合國《世界人口前景》、聯合國教科文組織統計研究所和世界銀行《世界發展指標》及國際勞工組織資料庫的年齡結構、教育儲備和產業勞動力能力。",
       "loading": "正在載入人口與勞動力資料…",
       "unavailable": "人口與勞動力資料不可用。",
       "proLocked": "升級至 PRO 檢視人口與勞動力資料",
@@ -223,7 +225,7 @@
       "workingAgePopulation": "勞動年齡人口",
       "workingAgeProjection": "勞動年齡人口（+10 年）",
       "tertiaryEnrollment": "高等教育入學率",
-      "stemGraduates": "STEM 畢業生",
+      "stemGraduates": "科學、技術、工程和數學專業畢業生",
       "researchers": "研究人員",
       "craftTrades": "技工與手工業者",
       "plantOperators": "工廠與機械操作員",
@@ -277,7 +279,7 @@
         "demographics_workingAgeProjection": "勞動年齡人口預測",
         "demographics_tertiaryEnrollment": "高等教育入學率",
         "demographics_researchersPerMillion": "每百萬人口研究人員數",
-        "demographics_stemGraduateShare": "STEM畢業生佔比",
+        "demographics_stemGraduateShare": "科學、技術、工程和數學專業畢業生佔比",
         "demographics_trainedIndustrialShare": "受過培訓產業勞動力佔比",
         "demographics_manufacturingEmploymentShare": "製造業就業佔比",
         "technology_internetUse": "網際網路使用",
@@ -285,7 +287,7 @@
         "technology_fixedBroadband": "固定寬頻",
         "technology_rdSpend": "研發支出",
         "technology_researchersPerMillion": "每百萬人口研究人員數",
-        "technology_stemGraduateShare": "STEM畢業生佔比",
+        "technology_stemGraduateShare": "科學、技術、工程和數學專業畢業生佔比",
         "technology_electricityAccess": "電力普及率",
         "defense_expenditureUsd": "軍事支出",
         "defense_expenditurePctGdp": "軍費負擔",
@@ -330,8 +332,8 @@
     "sourceRegionTopical": "專題",
     "sourceRegionIntel": "情報",
     "sourceRegionTechNews": "科技新聞",
-    "sourceRegionAiMl": "AI與ML",
-    "sourceRegionStartupsVc": "創業與風投",
+    "sourceRegionAiMl": "AI與機器學習",
+    "sourceRegionStartupsVc": "初創公司與風險投資",
     "sourceRegionRegionalTech": "區域生態",
     "sourceRegionDeveloper": "開發者",
     "sourceRegionCybersecurity": "網路安全",
@@ -344,7 +346,7 @@
     "sourceRegionCentralBanks": "央行與經濟",
     "sourceRegionDeals": "交易與企業",
     "sourceRegionFinRegulation": "金融監管",
-    "sourceRegionGulfMena": "海灣與中東",
+    "sourceRegionGulfMena": "海灣與中東北非地區",
     "filterPanels": "篩選面板...",
     "resetLayout": "重置佈局",
     "resetLayoutTooltip": "恢復預設面板排列",
@@ -356,7 +358,7 @@
     "panelCatTopical": "專題",
     "panelCatDataTracking": "資料與追蹤",
     "panelCatTechAi": "科技與AI",
-    "panelCatStartupsVc": "創業與風投",
+    "panelCatStartupsVc": "初創公司與風險投資",
     "panelCatSecurityPolicy": "安全與政策",
     "panelCatMarkets": "市場",
     "panelCatFixedIncomeFx": "固定收益與外匯",
@@ -364,7 +366,7 @@
     "panelCatCryptoDigital": "加密與數字資產",
     "panelCatCentralBanks": "央行與經濟",
     "panelCatDeals": "交易與機構",
-    "panelCatGulfMena": "海灣與中東",
+    "panelCatGulfMena": "海灣與中東北非地區",
     "cached": "已快取",
     "unavailable": "不可用",
     "commodity": "商品",
@@ -411,25 +413,25 @@
     "tech": "科技",
     "crypto": "加密貨幣",
     "heatmap": "板塊熱力圖",
-    "ai": "AI/ML",
+    "ai": "AI與機器學習",
     "layoffs": "裁員追蹤",
     "monitors": "我的監控",
     "satelliteFires": "火災",
-    "macroSignals": "市場雷達",
-    "etfFlows": "BTC ETF追蹤",
+    "macroSignals": "比特幣市場狀況",
+    "etfFlows": "比特幣基金流入流出",
     "stablecoins": "穩定幣",
     "deduction": "推斷局勢",
     "ucdpEvents": "UCDP衝突事件",
     "giving": "全球捐贈",
-    "displacement": "UNHCR流離失所",
+    "displacement": "難民與流離失所人口",
     "climate": "氣候異常",
     "populationExposure": "人口暴露",
     "securityAdvisories": "安全警告",
     "orefSirens": "以色列警報",
     "telegramIntel": "Telegram 情報",
     "xIntel": "X 新聞賬號",
-    "startups": "創業公司與風投",
-    "vcblogs": "風投洞察與文章",
+    "startups": "初創公司與風險投資",
+    "vcblogs": "風險投資見解與文章",
     "regionalStartups": "全球創業新聞",
     "unicorns": "獨角獸追蹤",
     "accelerators": "加速器與演示日",
@@ -441,13 +443,13 @@
     "cloud": "雲端計算與基礎設施",
     "dev": "開發者社群",
     "github": "GitHub趨勢",
-    "ipo": "IPO與SPAC",
-    "funding": "融資與風投",
+    "ipo": "公開上市與特殊目的收購公司合併",
+    "funding": "融資與風險投資",
     "producthunt": "Product Hunt",
     "events": "科技活動",
     "serviceStatus": "服務狀態",
     "techReadiness": "科技就緒指數",
-    "gccInvestments": "GCC投資",
+    "gccInvestments": "海灣合作委員會投資",
     "geoHubs": "地緣政治樞紐",
     "gulfEconomies": "海灣經濟",
     "gulfIndices": "海灣指數",
@@ -460,7 +462,7 @@
     "oilInventories": "石油庫存",
     "energyCrisis": "能源危機追蹤器",
     "goldIntelligence": "黃金情報",
-    "wsbTickerScanner": "WSB 股票掃描器",
+    "wsbTickerScanner": "WallStreetBets股票掃描器",
     "internetDisruptions": "網際網路中斷",
     "internetDisruptionsTabs": {
       "outages": "中斷",
@@ -551,7 +553,7 @@
         "minimal": "最少圖層（衝突 + 熱點）"
       },
       "layer": {
-        "ais": "切換AIS船舶追蹤",
+        "ais": "切換船舶追蹤",
         "flights": "切換軍事航班",
         "conflicts": "切換衝突區域",
         "hotspots": "切換情報熱點",
@@ -686,8 +688,8 @@
     },
     "mobileWarning": {
       "title": "移動端檢視",
-      "description": "您正在檢視針對中東北非地區最佳化的簡化移動版本，已啟用基本圖層。",
-      "tip": "提示：使用檢視按鈕（全球/美國/中東北非）切換區域。點選標記檢視詳情。",
+      "description": "您正在檢視針對中東北非地區、啟用了必要圖層的簡化移動版本。",
+      "tip": "提示：使用檢視按鈕（全球/美國/中東北非地區）切換區域。點選標記檢視詳情。",
       "dontShowAgain": "不再顯示",
       "gotIt": "知道了"
     },
@@ -795,14 +797,14 @@
       "fresh": "最新",
       "noMarkets": "未找到預測市場",
       "predictionMarkets": "預測市場",
-      "unavailable": "AI簡報不可用 — 請在設定中配置GROQ_API_KEY。"
+      "unavailable": "AI簡報不可用 — 請在設定中配置OPENROUTER_API_KEY。"
     },
     "countryBrief": {
       "identifying": "正在識別國家...",
       "locating": "正在定位區域...",
       "limitedCoverage": "覆蓋範圍有限",
       "instabilityIndex": "不穩定指數",
-      "notTracked": "未跟蹤 — {{country}}不在CII一級監控名單中",
+      "notTracked": "未納入監測——{{country}}不在國家不穩定指數第一等級名單中",
       "intelBrief": "情報簡報",
       "generatingBrief": "正在生成情報簡報...",
       "topNews": "頭條新聞",
@@ -811,7 +813,7 @@
       "predictionMarkets": "預測市場",
       "loadingMarkets": "正在載入預測市場...",
       "infrastructure": "基礎設施暴露",
-      "briefUnavailable": "AI簡報不可用 — 請在設定中配置GROQ_API_KEY。",
+      "briefUnavailable": "AI簡報不可用 — 請在設定中配置OPENROUTER_API_KEY。",
       "cached": "已快取",
       "fresh": "最新",
       "noMarkets": "未找到預測市場",
@@ -833,7 +835,7 @@
         "conflictEvents": "衝突事件",
         "activeStrikes": "活躍罷工",
         "aviationDisruptions": "機場中斷",
-        "gpsJammingZones": "GPS 干擾區"
+        "gpsJammingZones": "導航干擾區域"
       },
       "timeAgo": {
         "m": "{{count}}分鐘前",
@@ -925,15 +927,15 @@
       "gov": "政府",
       "noSpending": "無近期政府採購",
       "awards": "筆採購",
-      "noIndicatorData": "尚無指標資料 - FRED可能正在載入",
-      "fredKeyMissing": "需要FRED API金鑰 — 請在設定中新增以啟用經濟指標",
+      "noIndicatorData": "暫無指標資料——美國聯邦儲備經濟資料可能正在載入",
+      "fredKeyMissing": "需要美國聯邦儲備經濟資料API金鑰。在設定中新增以啟用經濟指標。",
       "in": "於",
       "centralBanks": "央行",
       "laborMarket": "勞動力市場",
       "metroUnemployment": "都市區失業率",
-      "noBisData": "BIS 資料暫時不可用 - 將自動重試",
+      "noBisData": "國際清算銀行資料暫時不可用——將重試",
       "policyRate": "政策利率",
-      "creditToGdp": "信貸 / GDP",
+      "creditToGdp": "信貸與經濟產出比",
       "realEer": "實際有效匯率",
       "cut": "降息",
       "hike": "加息",
@@ -947,7 +949,7 @@
         "watchDetail": "跨市場情況需要密切監控。",
         "steadyDetail": "宏觀情況暫時穩定。"
       },
-      "infoTooltip": "<strong>宏觀壓力</strong> 宏觀指標、政府支出和央行資料：<ul><li><strong>指標</strong>：VIX、利率、收益率曲線、勞動力、通脹</li><li><strong>政府</strong>：最近美國政府合同獎勵</li><li><strong>央行</strong>：BIS 政策利率和匯率資料</li></ul>"
+      "infoTooltip": "<strong>宏觀壓力</strong> 宏觀指標、政府支出和央行資料：<ul><li><strong>指標</strong>：VIX、利率、收益率曲線、勞動力、通脹</li><li><strong>政府</strong>：近期美國政府合同授予</li><li><strong>央行</strong>：國際清算銀行政策利率和匯率資料</li></ul>"
     },
     "supplyChain": {
       "chokepoints": "咽喉要道",
@@ -959,7 +961,7 @@
       "upstreamUnavailable": "供應鏈資料暫時不可用 — 顯示快取資料",
       "spikeAlert": "檢測到異常飆升 — 費率顯著高於52周均值（周度）",
       "warnings": "條警告",
-      "aisDisruptions": "AIS中斷",
+      "aisDisruptions": "船舶追蹤中斷",
       "disruption": "中斷",
       "vessels": "船舶",
       "incidents7d": "事件（7天）",
@@ -969,7 +971,7 @@
       "mineral": "礦產",
       "topProducers": "主要生產國",
       "risk": "風險",
-      "wowChange": "周漲跌",
+      "wowChange": "周環比變化",
       "riskLevel": "風險等級",
       "flowUnavailable": "流量資料不可用",
       "containerRates": "集裝箱運費",
@@ -978,13 +980,13 @@
       "loadingHistory": "正在載入過境歷史…",
       "historyUnavailable": "過境歷史不可用",
       "transitDataUnavailable": "過境資料不可用（上游資料不完整）",
-      "infoTooltip": "<strong>供應鏈監控</strong> 全球物流與資源追蹤：<ul><li><strong>戰略要道</strong>：海上過境狀態、中斷評分和船舶數量</li><li><strong>航運</strong>：波羅的海乾散貨指數和運費趨勢</li><li><strong>礦物</strong>：關鍵礦物濃度風險(HHI)和主要生產國</li></ul>點選要道卡片可展開過境歷史圖表。",
+      "infoTooltip": "<strong>供應鏈監測</strong> 全球物流和資源跟蹤：<ul><li><strong>戰略通道</strong>：海上運輸狀態、中斷評分和船舶數量</li><li><strong>航運</strong>：波羅的海乾散貨指數和運費趨勢</li><li><strong>礦產</strong>：關鍵礦產集中風險（生產者集中指數）和主要生產國</li></ul>點選戰略通道卡片可展開運輸歷史圖表。",
       "mineStage": "開採",
       "refineryStage": "冶煉",
       "stageUnavailable": "該階段暫無公開資料",
       "withheldNote": "W 表示資料隱去",
       "productionCaption": "各國在實際產量中的份額。地圖礦藏圖層顯示資源分佈，此表顯示由誰開採或冶煉。",
-      "productionProLocked": "升級至PRO以檢視礦山和煉油廠按階段分佈的國家份額和濃度(HHI)"
+      "productionProLocked": "升級至PRO版本以獲取按階段分類的採礦和煉油廠國家份額及集中度（生產商集中度指數）。"
     },
     "tradePolicy": {
       "tariffs": "關稅",
@@ -993,8 +995,8 @@
       "noTariffData": "無可用關稅資料",
       "noFlowData": "無可用貿易流量資料",
       "noBarriers": "未報告貿易壁壘",
-      "apiKeyMissing": "需要WTO API金鑰 — 請在設定中新增",
-      "upstreamUnavailable": "WTO資料暫時不可用 — 顯示快取資料",
+      "apiKeyMissing": "需要世界貿易組織 API 金鑰 — 請在設定中新增",
+      "upstreamUnavailable": "世界貿易組織資料暫時不可用 — 顯示快取資料",
       "exports": "出口",
       "imports": "進口",
       "yoyChange": "同比變化",
@@ -1003,27 +1005,27 @@
       "lowTariff": "低",
       "overview": "概覽",
       "noOverviewData": "無關稅概覽資料",
-      "mfnAppliedRate": "最惠國稅率",
-      "baselineMfnTariff": "最惠國基準關稅",
+      "mfnAppliedRate": "最惠國關稅率",
+      "baselineMfnTariff": "最惠國關稅基準",
       "effectiveTariffRateLabel": "有效稅率",
       "gapLabel": "差值",
-      "gapVsMfnLabel": "與最惠國稅率的差值",
+      "gapVsMfnLabel": "與最惠國關稅的差距",
       "noEffectiveCoverageForCountry": "該國無有效稅率資料",
-      "effectiveMinusBaseline": "有效稅率減去世貿組織最惠國基準",
-      "wtoBaselineMeta": "世貿組織最惠國稅率 | {{year}}",
-      "overviewNoteNoEffective": "這些資料是世貿組織最惠國基準稅率，不是當前單邊關稅行為的稅收負擔。",
-      "usBaselineLabel": "美國世貿組織最惠國基準",
-      "overviewNoteTail": "這些卡片顯示世貿組織基準承諾，不是當前實際有效關稅負擔。",
+      "effectiveMinusBaseline": "有效稅率減去最惠國關稅基準",
+      "wtoBaselineMeta": "世界貿易組織最惠國關稅 | {{year}}",
+      "overviewNoteNoEffective": "這些資料是世界貿易組織最惠國基準稅率，不是單邊關稅行動造成的當前關稅負擔。",
+      "usBaselineLabel": "美國最惠國關稅基準",
+      "overviewNoteTail": "這些卡片顯示的是一般關稅基準稅率，而非即時生效的關稅負擔。",
       "revenue": "美國收入",
       "noRevenueData": "無關稅收入資料",
       "treasuryUnavailable": "財政部資料暫時不可用",
-      "fytdLabel": "財政年度{{year}}至今",
+      "fytdLabel": "財年{{year}}迄今為止",
       "vsPriorFy": "對比財政年度{{year}}",
-      "sourceWto": "世貿組織",
+      "sourceWto": "世界貿易組織",
       "sourceTreasury": "美國財政部",
       "colDate": "日期",
       "colMonthly": "月度",
-      "colFytd": "財政年度至今",
+      "colFytd": "財年迄今為止",
       "strategicFlows": "戰略流動",
       "noComtradeData": "無戰略流動資料",
       "comtradeUnavailable": "聯合國貿易資料庫資料暫時不可用",
@@ -1033,7 +1035,7 @@
       "colReporter": "國家",
       "colCommodity": "商品",
       "colTradeValue": "貿易額",
-      "infoTooltip": "<strong>貿易政策</strong> 世貿組織基準和關稅影響監控：<ul><li><strong>概覽</strong>：世貿組織最惠國基準稅率及可用時的美國有效稅率</li><li><strong>關稅</strong>：世貿組織最惠國關稅趨勢對比美國有效關稅估計</li><li><strong>貿易流動</strong>：出口/進口量及年同比變化</li><li><strong>貿易壁壘</strong>：貿易技術壁壘(TBT/SPS)通知</li><li><strong>收入</strong>：月度美國關稅收入(美國財政部MTS資料)</li></ul>"
+      "infoTooltip": "<strong>貿易政策</strong> 來自世界貿易組織的最惠國關稅基準，包括可用的美國有效稅率。包含關稅趨勢、貿易流量、技術和食品安全壁壘以及月度美國海關收入。"
     },
     "gdelt": {
       "empty": "該主題暫無近期文章"
@@ -1116,7 +1118,7 @@
       "units": {
         "fighters": "戰鬥機",
         "tankers": "加油機",
-        "awacs": "AWACS",
+        "awacs": "預警機",
         "recon": "偵察機",
         "transport": "運輸機",
         "bombers": "轟炸機",
@@ -1130,17 +1132,17 @@
         "auxiliary": "輔助艦",
         "navalVessels": "海軍艦艇"
       },
-      "infoTooltip": "<strong>方法論</strong><p>按戰區聚合軍用飛機和海軍艦艇。</p><ul><li><strong>正常：</strong>基線活動</li><li><strong>升高：</strong>超過閾值（50+架飛機）</li><li><strong>危急：</strong>高濃度集結（100+架飛機）</li></ul><p><strong>具備打擊能力：</strong>加油機 + AWACS + 戰鬥機數量足以支援持續作戰。</p>",
+      "infoTooltip": "<strong>方法論</strong><p>按作戰區域聚合軍用飛機和海軍艦艇。</p><ul><li><strong>正常：</strong> 基準活動</li><li><strong>升高：</strong> 超過閾值（50+ 架飛機）</li><li><strong>嚴重：</strong> 高度集中（100+ 架飛機）</li></ul><p><strong>具備打擊能力：</strong> 加油機 + 預警機 + 戰鬥機數量充足以維持持續作戰。</p>",
       "scanningTheaters": "掃描戰區",
       "positions": "飛機位置",
       "navalVesselsLoading": "海軍艦艇",
       "theaterAnalysis": "戰區分析",
-      "connectingStreams": "正在連線ADS-B和AIS即時資料流...",
+      "connectingStreams": "連線到即時飛機應答機和船舶追蹤資料流...",
       "initialLoadNote": "初始載入需要30-60秒以積累追蹤資料",
       "acquiringData": "正在獲取資料",
-      "acquiringDesc": "正在連線ADS-B網路獲取軍用飛行資料。首次載入可能需要30-60秒。",
-      "openSkyAdsb": "OpenSky ADS-B",
-      "aisVesselStream": "AIS船舶資料流",
+      "acquiringDesc": "連線到飛機應答機網路以獲取軍用飛行資料。首次載入可能需要 30-60 秒。",
+      "openSkyAdsb": "OpenSky 飛機應答機",
+      "aisVesselStream": "船舶追蹤 Vessel Stream",
       "retryNow": "立即重試",
       "feedRateLimited": "資料來源請求受限",
       "rateLimitedDesc": "OpenSky API有請求限制。面板將在幾分鐘後自動重試，或您可以立即重試。",
@@ -1236,7 +1238,7 @@
       "views": {
         "global": "全球",
         "americas": "美洲",
-        "mena": "中東北非",
+        "mena": "中東和北非",
         "europe": "歐洲",
         "asia": "亞洲",
         "latam": "拉丁美洲",
@@ -1278,11 +1280,11 @@
         "financialCenters": "金融中心",
         "centralBanks": "央行",
         "commodityHubs": "大宗商品樞紐",
-        "gulfInvestments": "GCC投資",
+        "gulfInvestments": "海灣合作委員會投資",
         "tradeRoutes": "貿易航線",
         "iranAttacks": "伊朗襲擊",
-        "gpsJamming": "GPS 干擾",
-        "ciiChoropleth": "CII不穩定度",
+        "gpsJamming": "導航干擾",
+        "ciiChoropleth": "國家不穩定性",
         "dayNight": "晝/夜",
         "positiveEvents": "正面事件",
         "kindness": "善舉",
@@ -1319,7 +1321,12 @@
         "medium": "中等",
         "news": "新聞",
         "undisclosed": "未披露",
-        "stake": "股份"
+        "stake": "股份",
+        "internallyDisplaced": "名國內流離失所者",
+        "sourceIomDtm": "來源：IOM DTM",
+        "sinceDate": "自{{date}}起",
+        "lastMonth": "上月",
+        "sourceUnhcrOdp": "來源：聯合國難民署業務資料門戶"
       },
       "layerHelp": {
         "title": "地圖圖層指南",
@@ -1380,7 +1387,7 @@
           "infraCablesFull": "主要海底光纖電纜（20條骨幹線路）",
           "infraPipelinesFull": "油氣管道（北溪、TAPI等）",
           "infraDatacentersFull": "僅顯示AI算力叢集 >=10,000 GPU",
-          "transportShipping": "船舶、咽喉要道、61個戰略港口",
+          "transportShipping": "來自船舶應答機的即時船舶位置",
           "transportDelays": "機場延誤和地面停航（FAA）",
           "naturalEventsFull": "地震（USGS）+ 風暴、火災、火山、洪水（NASA EONET）",
           "firesFull": "活躍野火和火災範圍（NASA FIRMS）",
@@ -1394,11 +1401,11 @@
           "techCyberThreats": "網路攻擊和安全事件",
           "techEvents": "主要科技會議和活動",
           "techFires": "科技基礎設施附近的活躍野火",
-          "financeGulfInvestments": "GCC主權基金投資和外國直接投資",
+          "financeGulfInvestments": "海灣合作委員會主權財富基金投資和外國直接投資",
           "tradeRoutes": "連線港口並經過戰略咽喉要道的全球主要航運通道",
           "dayNight": "即時太陽終結線顯示晝夜區域",
           "geoBoundaries": "非軍事區、停火線和爭議邊界",
-          "ciiChoropleth": "國家不穩定指數熱力圖 — 按CII評分為國家著色（綠色=穩定，紅色=危急）",
+          "ciiChoropleth": "國家不穩定指數熱力圖 — 按評分為各國著色（綠色=穩定，紅色=嚴重）",
           "canadaRoads": "加拿大（Canada）受支援轄區的官方道路事件、警報、路況、封閉、施工和危險資訊",
           "canadaAlerts": "來自 Alberta Emergency Alert、B.C. 疏散令與警報及 SaskAlert 的省級公共安全警報"
         },
@@ -1426,7 +1433,7 @@
       "rankingStories": "正在排序重要報道...",
       "analyzingSentiment": "正在分析情緒...",
       "generatingBrief": "正在生成全球簡報...",
-      "infoTooltip": "<strong>AI驅動分析</strong><br>• <strong>世界簡報</strong>：AI摘要（Groq/OpenRouter）<br>• <strong>情緒分析</strong>：新聞情感分析<br>• <strong>傳播速度</strong>：快速傳播的報道<br>• <strong>焦點</strong>：將新聞實體與地圖訊號（軍事、抗議、中斷）關聯<br><em>僅限桌面端 • 由Llama 3.3 + 焦點檢測驅動</em>",
+      "infoTooltip": "<strong>AI驅動分析</strong><br>• <strong>世界簡報</strong>：AI摘要（OpenRouter）<br>• <strong>情緒分析</strong>：新聞情感分析<br>• <strong>傳播速度</strong>：快速傳播的報道<br>• <strong>焦點</strong>：將新聞實體與地圖訊號（軍事、抗議、中斷）關聯<br><em>僅限桌面端 • 由Llama 3.3 + 焦點檢測驅動</em>",
       "streamQualityLabel": "影片畫質",
       "streamQualityDesc": "設定所有直播流的畫質（低畫質可節省頻寬）",
       "globeRenderScaleOptions": {
@@ -1438,7 +1445,7 @@
       },
       "mapFlashLabel": "即時事件脈衝",
       "mapFlashDesc": "突發新聞到達時在地圖上閃爍標記位置",
-      "aiFlowCloudLabel": "雲端AI（Groq & OpenRouter）",
+      "aiFlowCloudLabel": "雲端AI（OpenRouter）",
       "aiFlowCloudDesc": "將標題傳送到雲端進行AI摘要（推薦）",
       "aiFlowBrowserLabel": "瀏覽器本地模型",
       "aiFlowBrowserDesc": "在瀏覽器中本地執行AI",
@@ -1483,7 +1490,7 @@
       "briefCommodity": "商品簡報",
       "briefEnergy": "能源簡報",
       "briefWorld": "世界簡報",
-      "mlDetected": "ML 檢測",
+      "mlDetected": "機器學習 已檢測",
       "geographicConvergence": "地理匯聚",
       "focalPoints": "焦點",
       "toneMixed": "混合",
@@ -1564,7 +1571,7 @@
       "noData": "無資料",
       "enable": "啟用",
       "convergenceMetric": "匯聚度",
-      "ciiDeviation": "CII 偏離度",
+      "ciiDeviation": "國家不穩定指數偏差",
       "infraEvents": "基礎設施事件",
       "highAlerts": "高等級警報",
       "topRisks": "主要風險",
@@ -1576,7 +1583,7 @@
         "hoursAgo": "{{count}}小時前"
       },
       "infoTooltip": "<strong>方法論</strong>綜合評分（0-100）混合：<ul><li>50% 國家不穩定性（前5名加權）</li><li>30% 地理趨同區域</li><li>20% 基礎設施事故</li></ul>每5分鐘自動重新整理。",
-      "cachedCiiStatus": "快取 CII {{states}}",
+      "cachedCiiStatus": "快取的國家不穩定指數 {{states}}",
       "sourceStates": {
         "degraded": "已降級",
         "stale": "已過期"
@@ -1603,16 +1610,16 @@
     "techReadiness": {
       "internetUsers": "網際網路使用者",
       "mobileSubscriptions": "移動訂閱",
-      "rdSpending": "研發支出",
+      "rdSpending": "研究和開發支出",
       "fetchingData": "正在獲取世界銀行資料",
       "internetUsersIndicator": "網際網路使用者",
       "mobileSubscriptionsIndicator": "行動電話訂閱",
       "broadbandAccess": "寬頻接入",
-      "rdExpenditure": "研發支出",
+      "rdExpenditure": "研究和開發支出",
       "analyzingCountries": "正在分析 200 多個國家...",
       "source": "來源：世界銀行",
       "updated": "更新於：{{date}}",
-      "infoTooltip": "<strong>全球科技就緒度</strong><br>基於世界銀行資料的綜合評分（0-100）：<br><br><strong>顯示指標：</strong><br>🌐 網際網路使用者（占人口百分比）<br>📱 移動訂閱（每100人）<br>🔬 研發支出（佔GDP百分比）<br><br><strong>權重：</strong>研發（35%）、網際網路（30%）、寬頻（20%）、移動（15%）<br><br><em>— = 無近期可用資料</em><br><em>來源：世界銀行開放資料（2019-2024）</em>",
+      "infoTooltip": "<strong>技術就緒指數</strong> 世界銀行綜合評分，0–100。權重為研究和開發 35%、網際網路 30%、寬頻 20% 和移動 15%。網際網路使用者為人口百分比；移動訂閱每 100 人數量；研究支出為經濟產出份額。缺失值顯示為短劃線。資料跨度 2019–2024。",
       "dataPreparing": "重新整理技術就緒資料中——即將顯示。"
     },
     "populationExposure": {
@@ -1666,7 +1673,7 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS衛星在監控衝突區域的熱異常探測。高強度 = 亮度溫度>360K且置信度>80%。",
       "possibleExplosions": "檢測到 {{count}} 起可能爆炸",
-      "explosionTooltip": "熱特徵與爆炸一致（FRP >80 MW，亮度 >380 K）"
+      "explosionTooltip": "熱訊號與爆炸一致（火輻射功率 >80 MW，亮度 >380 K）"
     },
     "ucdpEvents": {
       "stateBased": "國家衝突",
@@ -1702,7 +1709,7 @@
       "wallets": "錢包",
       "ofTotal": "佔總計",
       "topReceivers": "主要受益方",
-      "oecdOda": "OECD 官方發展援助",
+      "oecdOda": "經濟合作與發展組織官方發展援助",
       "cafIndex": "CAF指數",
       "candidGrants": "Candid撥款",
       "dataLag": "資料延遲",
@@ -1734,6 +1741,7 @@
       "total": "總計",
       "origins": "來源國",
       "hosts": "收容國",
+      "internal": "國內",
       "badges": {
         "crisis": "危機",
         "high": "高",
@@ -1742,7 +1750,15 @@
       "country": "國家",
       "status": "狀態",
       "count": "數量",
-      "infoTooltip": "<strong>UNHCR流離失所資料</strong>來自UNHCR的全球難民、尋求庇護者和國內流離失所者統計。<ul><li><strong>來源國</strong>：人們逃離的國家</li><li><strong>收容國</strong>：接收難民的國家</li><li>危機標誌：>100萬 | 高：>50萬流離失所</li></ul>資料每年更新。CC BY 4.0許可。"
+      "latestRound": "最新一輪",
+      "internalNote": "IOM DTM：國內流離失所者，每項行動的最新一輪調查。同一國家的行動可能重疊，因此不作加總。",
+      "infoTooltip": "<strong>流離失所</strong> 難民、尋求庇護者和國內流離失所人口。原籍國和東道國檢視顯示人們逃離和流向的地方。危機徽章標記超過 100 萬流離失所者；高標記超過 50 萬。年度聯合國難民署資料，CC BY 4.0 許可證。",
+      "crossBorder": "跨境",
+      "situation": "局勢",
+      "latestChange": "最新變化",
+      "accelerating": "加速中",
+      "inDays": "{{days}}天內",
+      "crossBorderNote": "聯合國難民署運算元據門戶：各危機中越過邊境的人數，來自最新國家報告。情況重疊，因此不相加。"
     },
     "climate": {
       "noAnomalies": "未檢測到顯著異常",
@@ -1823,7 +1839,7 @@
       "infoTooltip": "<strong>新聞情報</strong>即時全球新聞監測：<ul><li>精選主題分類（衝突、網路安全等）</li><li>100+語言的文章已翻譯</li><li>每15分鐘更新</li><li>14-day media tone &amp; volume trend per topic</li></ul>來源：GDELT Project (gdeltproject.org)"
     },
     "telegramIntel": {
-      "infoTooltip": "來自監控的Telegram OSINT頻道的即時訊號",
+      "infoTooltip": "來自受監測 Telegram 開源情報頻道的即時訊號",
       "loading": "正在連線Telegram中繼...",
       "empty": "暫無訊息",
       "disabled": "Telegram中繼未啟用",
@@ -1840,7 +1856,7 @@
       "filterAll": "全部",
       "filterBreaking": "突發",
       "filterConflict": "衝突",
-      "filterOsint": "OSINT",
+      "filterOsint": "開源情報",
       "filterMiddleeast": "中東",
       "live": "直播",
       "viewSource": "檢視來源",
@@ -1855,7 +1871,7 @@
       "filterAll": "全部",
       "filterBreaking": "突發",
       "filterConflict": "衝突",
-      "filterOsint": "OSINT",
+      "filterOsint": "開源情報",
       "filterMiddleeast": "中東",
       "live": "直播",
       "viewSource": "檢視來源",
@@ -1902,12 +1918,12 @@
       "infoTooltip": "<strong>預測市場</strong>真金白銀的預測市場：<ul><li>價格反映群體機率估計</li><li>交易量越高 = 訊號越可靠</li><li>聚焦地緣政治和時事</li></ul>來源：Polymarket (polymarket.com)"
     },
     "etfFlows": {
-      "unavailable": "ETF資料暫時不可用",
-      "rateLimited": "ETF資料暫時不可用（請求受限）— 即將自動重試",
+      "unavailable": "交易所交易基金資料暫時不可用",
+      "rateLimited": "交易所交易基金資料暫時不可用（受速率限制）— 正在重試",
       "netFlow": "淨流量",
       "estFlow": "預估流量",
       "totalVol": "總成交量",
-      "etfs": "ETFs",
+      "etfs": "交易所交易基金",
       "netInflow": "淨流入",
       "netOutflow": "淨流出",
       "netNeutral": "淨中性",
@@ -1918,7 +1934,7 @@
         "volume": "成交量",
         "change": "漲跌幅"
       },
-      "infoTooltip": "<strong>BTC ETF 追蹤</strong> 追蹤美國現貨比特幣 ETF 的每日預估資金流向：<ul><li>流入/流出方向和規模</li><li>每檔基金的成交量和價格變化</li><li>所有追蹤 ETF 的淨聚合流向</li></ul>"
+      "infoTooltip": "<strong>比特幣基金流量</strong> 追蹤美國現貨比特幣交易所交易基金的日估算基金流量：<ul><li>流入/流出方向和幅度</li><li>各基金的成交量和價格變化</li><li>所有追蹤基金的淨累計流量</li></ul>"
     },
     "macroSignals": {
       "overall": "綜合",
@@ -1936,7 +1952,7 @@
         "momentum": "動量",
         "fearGreed": "恐懼 &amp; 貪婪"
       },
-      "infoTooltip": "<strong>BTC 制度</strong> 比特幣頭寸和風險偏好的複合訊號儀表板：<ul><li><strong>流動性</strong>：美聯儲淨流動性代理</li><li><strong>流向</strong>：BTC vs QQQ 5 日回報率</li><li><strong>制度</strong>：QQQ vs XLP 輪換（風險開啟/關閉）</li><li><strong>BTC 趨勢</strong>：價格 vs SMA50/200、Mayer 倍數</li><li><strong>雜湊率</strong>：30 日網路雜湊變化</li><li><strong>恐懼與貪婪</strong>：市場情緒指數</li></ul>此面板用於制度和頭寸定位，不涉及廣泛的宏觀資料。"
+      "infoTooltip": "<strong>比特幣市場狀況</strong> 比特幣定位和風險偏好的綜合訊號面板：<ul><li><strong>流動性</strong>：聯儲流動性淨值代理</li><li><strong>流量</strong>：BTC vs QQQ 5 日收益</li><li><strong>態勢</strong>：QQQ vs XLP 輪轉（風險偏好開啟/關閉）</li><li><strong>BTC 趨勢</strong>：價格 vs SMA50/200，Mayer 倍數</li><li><strong>雜湊率</strong>：30 日網路雜湊變化</li><li><strong>恐懼與貪婪</strong>：市場情緒指數</li></ul>此面板用於態勢和定位，不是廣泛宏觀資料。"
     },
     "panel": {
       "showMethodologyInfo": "顯示方法論資訊",
@@ -2079,10 +2095,10 @@
       "infoTooltip": "<strong>加密貨幣</strong> 主要加密貨幣的即時價格、24 小時漲跌和成交量。資料來自 CoinGecko。"
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>海灣經濟</strong> 預置的海灣合作委員會經濟體（沙烏地阿拉伯、阿聯酋、科威特、卡達、巴林、阿曼）股指、匯率和油價。"
+      "infoTooltip": "<strong>海灣經濟體</strong>海灣合作委員會經濟體（沙烏地阿拉伯、阿聯酋、科威特、卡達、巴林、阿曼）的股票指數、匯率和油價。"
     },
     "groceryBasket": {
-      "infoTooltip": "<strong>食品雜貨指數</strong> 全球 24 個國家的食品雜貨籃子價格對比 — 追蹤超出總體 CPI 的實體消費品通脹。"
+      "infoTooltip": "<strong>雜貨籃指數</strong>全球24個國家的雜貨籃價格對比——跟蹤超越頭條消費者價格指數的真實消費品通脹。"
     },
     "bigmac": {
       "infoTooltip": "<strong>巨無霸指數</strong> 經濟學人的巨無霸指數透過比較各國麥當勞漢堡價格衡量購買力平價。新資料釋出時更新（每季度/每年）。"
@@ -2106,7 +2122,7 @@
       "infoTooltip": "<strong>每日市場簡報</strong> AI 生成的全球市場狀況、關鍵宏觀趨勢和板塊級訊號每日摘要 — 每個交易日重新整理。"
     },
     "centralBankWatch": {
-      "infoTooltip": "<strong>央行觀察</strong> 美聯儲、歐洲央行、英國央行及全球其他主要央行的最新宣告、利率決議和溝通。"
+      "infoTooltip": "<strong>央行觀察</strong>聯邦儲備委員會、歐洲央行、英格蘭銀行和其他全球主要央行的最新宣告、利率決議和通訊。"
     },
     "airlineIntel": {
       "infoTooltip": "<strong>航空情報</strong> 即時航空公司運營資料：航線暫停、空域關閉、承運商公告和緊急改航。來源：航空當局NOTAM和承運商通報。",
@@ -2129,7 +2145,7 @@
       "infoTooltip": "<strong>WM 分析師</strong> 具有地緣政治、市場、軍事和經濟領域即時上下文的AI分析師。由Claude驅動，注入WorldMonitor活躍資料來源的即時資料。"
     },
     "cotPositioning": {
-      "infoTooltip": "<strong>CFTC COT 持倉</strong> 交易者承諾報告：商品和金融期貨中商業機構、大型投機者和小型交易者的淨持倉。每週五發布。來源：CFTC。"
+      "infoTooltip": "<strong>期貨定位</strong>商業交易者、大型投機者和小型交易者在商品及金融期貨中的周度淨頭寸。資料來源是商品期貨交易委員會交易者承諾報告，每週五發布。"
     },
     "counters": {
       "infoTooltip": "<strong>即時計數器</strong> 全球指標的即時推算計數器：軍費開支、自然災害、疾病負擔等。數字為基於年度資料率的統計估算值。"
@@ -2162,12 +2178,12 @@
       "methodologyNote": "警報 / 警告 / 監視級別來自編輯關鍵詞分類器 — 請參閱 /docs/methodology/disease-alert-level 瞭解關鍵詞表和限制。"
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>財報日曆</strong> 大型上市公司即將和近期的財報釋出。顯示EPS預期與實際對比、營收及超預期/不及預期分類。來源：金融資料提供商。",
+      "infoTooltip": "<strong>財報日曆</strong>主要上市公司即將釋出和最近釋出的財報。顯示每股收益預期值與實際值、收入和超預期/未達預期分類。資料來源：財務資料供應商。",
       "title": "財報日曆",
       "today": "今日 · {{date}}",
       "tomorrow": "明日 · {{date}}",
-      "epsActual": "每股收益 {{value}}",
-      "epsEstimate": "每股收益預期 {{value}}",
+      "epsActual": "每股收益{{value}}",
+      "epsEstimate": "每股收益預期{{value}}",
       "revenueActual": "{{value}} 收入",
       "revenueEstimate": "{{value}} 預期",
       "surprise": {
@@ -2181,12 +2197,12 @@
       }
     },
     "economicCalendar": {
-      "infoTooltip": "<strong>經濟日曆</strong> 預定的宏觀經濟資料釋出：CPI、NFP、GDP、PMI和央行決議。顯示預測值、實際值和前值。高影響事件突出顯示。來源：經濟資料提供商。"
+      "infoTooltip": "<strong>經濟日曆</strong>定期宏觀經濟資料釋出：消費者價格指數、非農就業人數、國內生產總值、採購經理指數和央行決議。顯示預期值與實際值與前值。高影響事件突出顯示。資料來源：經濟資料供應商。"
     },
     "fsi": {
-      "infoTooltip": "<strong>金融壓力指標</strong> WorldMonitor 對高收益信貸與長期美國國債的比率，並根據股票波動率和高收益利差進行調整：(HYG / TLT) / (VIX × HY spread / 100)。這不是堪薩斯城聯邦儲備銀行金融壓力指數。讀數為 1.5 或更高表示壓力較低；低於 0.3 表示壓力較高。",
+      "infoTooltip": "<strong>金融壓力指標</strong>World Monitor高收益債券與長期國債比率，根據股票波動率和高收益利差調整：（HYG / TLT）/（VIX × 高收益利差 / 100）。這不是堪薩斯城聯儲金融壓力指數。1.5或更高的讀數表示低壓力；低於0.3表示高壓力。",
       "title": "金融壓力指標",
-      "usFsiValue": "美國FSI值",
+      "usFsiValue": "美國金融壓力指標值",
       "cissTitle": "歐盟CISS（歐元區系統性壓力）",
       "notAvailable": "不適用",
       "interpretation": {
@@ -2215,15 +2231,15 @@
       },
       "metrics": {
         "vix": "VIX",
-        "hySpread": "HY 利差",
+        "hySpread": "高收益利差",
         "hygPrice": "HYG 價格",
         "tltPrice": "TLT 價格"
       },
       "errors": {
-        "unavailable": "FSI 資料不可用",
+        "unavailable": "金融壓力指標資料不可用",
         "failedToLoad": "載入失敗"
       },
-      "cissStale": "歐洲中央銀行尚未釋出新數值 — 此讀數可能已過期。"
+      "cissStale": "歐洲央行未釋出更新的數值——此讀數可能已過時。"
     },
     "supplyVulnerability": {
       "title": "大宗商品脆弱性",
@@ -2246,7 +2262,7 @@
       "proLocked": "升級至PRO以檢視商品脆弱性評分"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>霍爾木茲貿易追蹤器</strong> 透過全球最關鍵的石油咽喉要道霍爾木茲海峽的AIS船舶即時追蹤。監控油輪數量、中斷事件和每週流量變化。全球約20%的石油供應每天經此透過。",
+      "infoTooltip": "<strong>荷爾木茲海峽貿易追蹤器</strong>透過全球最關鍵油氣運輸通道荷爾木茲海峽的即時船舶追蹤。監測油輪數量、中斷事件和周度流量變化。全球約20%的日均石油供應透過此處。",
       "title": "霍爾木茲貿易追蹤",
       "noData": "無資料",
       "notAvailable": "不適用",
@@ -2265,13 +2281,13 @@
       "infoTooltip": "<strong>即時攝影機</strong> 來自全球地緣政治重要地點的直播：衝突區、首都、邊境口岸和戰略咽喉要道。流媒體來自YouTube和公共網路。"
     },
     "macroTiles": {
-      "infoTooltip": "<strong>宏觀指標</strong> 美國和歐元區關鍵宏觀經濟指標：CPI、失業率、GDP和央行利率。顯示值含與前期的差值。來源：FRED（聯邦儲備經濟資料）。"
+      "infoTooltip": "<strong>宏觀指標</strong>美國、歐元區和中國價格、活動、政策和貨幣指標。中國需要當前新聞報道。每個區塊顯示其資料來源和觀測日期。"
     },
     "monitors": {
       "infoTooltip": "<strong>關鍵詞監控</strong> 新增任何詞彙，即時追蹤WorldMonitor所有來源中的新聞提及。匹配文章被收錄時結果即時更新。"
     },
     "renewable": {
-      "infoTooltip": "<strong>可再生能源</strong> 按地區和年份顯示可再生能源在發電量中的佔比，以及美國太陽能、風能和煤炭的裝機容量（兆瓦）。來源：世界銀行（EG.ELC.RNEW.ZS）和 EIA。"
+      "infoTooltip": "<strong>可再生能源</strong>各地區和年份可再生能源發電份額，以及美國太陽能、風能和煤炭的安裝容量（兆瓦）。資料來源：世界銀行（EG.ELC.RNEW.ZS）和美國能源資訊署。"
     },
     "socialVelocity": {
       "infoTooltip": "<strong>社交傳播速度</strong> 具有地緣政治意義的熱門話題和病毒式內容。衡量社交媒體速度：一個故事相對於基線的傳播速度。幫助在新興敘事到達主流媒體之前發現它們。"
@@ -2283,7 +2299,7 @@
       "infoTooltip": "<strong>世界時鐘</strong> 主要全球金融中心的即時當地時間和市場交易時段狀態。顯示NYSE、LSE、TSE、SGX等交易所的開盤/收盤狀態。"
     },
     "yieldCurve": {
-      "infoTooltip": "<strong>收益率曲線 &amp; 利率</strong> 美國國債收益率曲線（2Y、5Y、10Y、30Y）和關鍵利率利差，包括10Y-2Y倒掛指標。還顯示歐元區利率（EURIBOR、ESTR）。倒掛曲線在歷史上通常先於經濟衰退出現。來源：FRED。"
+      "infoTooltip": "<strong>收益率曲線和利率</strong>美國國債收益率曲線（2年、5年、10年、30年）和關鍵利率差，包括10年-2年倒掛指標。還顯示歐元區利率（EURIBOR、ESTR）。倒掛曲線在歷史上先於經濟衰退。資料來源：美聯儲經濟資料。"
     },
     "pinnedWebcams": {
       "pinFromMap": "從地圖固定網路攝影機"
@@ -2292,13 +2308,13 @@
       "noData": "暫無科學突破"
     },
     "oilInventories": {
-      "infoTooltip": "<strong>石油庫存</strong> 美國原油和戰略石油儲備庫存（EIA 週報）、天然氣儲存、歐盟天然氣充氣率（GIE AGSI+）以及 OECD 石油庫存覆蓋天數（IEA 月報）。"
+      "infoTooltip": "<strong>石油庫存</strong> 美國商業原油和戰略儲備、天然氣庫存、歐洲天然氣儲存和石油庫存覆蓋。資料來源包括美國能源資訊署和國際能源署。"
     },
     "energyComplex": {
       "noData": "能源資料暫時不可用 - 將重試",
       "liveTape": "即時行情",
       "liveTapeSource": "市場報價",
-      "infoTooltip": "<strong>能源綜合體</strong> 一處檢視物理和可交易能源訊號：<ul><li><strong>EIA 指標</strong>：WTI、布倫特、美國產量和庫存</li><li><strong>即時行情</strong>：可交易能源價格，如原油和天然氣</li><li><strong>目的</strong>：將物理能源壓力與更廣泛的宏觀和商品面板分開</li></ul>"
+      "infoTooltip": "<strong>能源市場</strong> 實物和可交易能源訊號整合顯示：<ul><li><strong>美國能源資訊署指標</strong>：WTI、布倫特油價、美國產量和庫存</li><li><strong>即時行情</strong>：原油和天然氣等可交易能源價格</li><li><strong>目的</strong>：將實物能源壓力與更廣泛的宏觀和商品面板分離</li></ul>"
     },
     "consumerPrices": {
       "tabs": {
@@ -2309,23 +2325,23 @@
         "health": "資料健康度",
         "world": "全球"
       },
-      "infoTooltip": "<strong>消費者價格</strong> 即時購物籃價格跟蹤：<ul><li><strong>概覽</strong>：生活必需品指數、價值籃子及周環比變化</li><li><strong>品類</strong>：各品類價格趨勢及30天價格區間</li><li><strong>變動</strong>：本週價格漲跌最快的商品</li><li><strong>價差</strong>：同一購物籃在不同零售商之間的價格差異</li></ul>資料來自即時零售商價格爬取。",
+      "infoTooltip": "<strong>消費價格</strong> 即時食品籃子、周度變化、品類趨勢、價格波動及零售商間的差異。全球檢視使用來自國際貨幣基金組織《世界經濟展望》的年度通脹率。",
       "world": {
         "country": "國家",
-        "inflationYoY": "通脹同比",
+        "inflationYoY": "年度通脹",
         "endOfPeriod": "期末",
         "year": "年份",
         "filterPlaceholder": "篩選國家…",
         "loading": "正在載入全球通脹…",
         "empty": "通脹資料尚未可用",
         "noMatches": "沒有匹配的國家",
-        "source": "來源：IMF WEO · 年度 CPI 通脹，所有報告經濟體",
+        "source": "來源：國際貨幣基金組織《世界經濟展望》· 年度消費者價格指數通脹率，所有報告經濟體",
         "countSingular": "個國家",
         "countPlural": "個國家"
       }
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI市場影響分析</strong> LLM生成的交易訊號，基於每個預測週期後的即時地緣政治、商品和宏觀狀態。<ul><li><strong>方向</strong>：看多/看空/對沖，附帶信心評分</li><li><strong>時間框架</strong>：1周、2周、1月或3月</li><li><strong>驅動因素</strong>：訊號背後的關鍵催化劑</li><li><strong>風險</strong>：預警或失效條件</li></ul><em>僅供參考，不構成投資建議。</em>",
+      "infoTooltip": "<strong>AI市場影響分析</strong> LLM生成的交易訊號，基於每個預測週期後的即時地緣政治、商品和宏觀狀態。<ul><li><strong>方向</strong>：看多/看空/對沖</li><li><strong>時間框架</strong>：1周、2周、1月或3月</li><li><strong>驅動因素</strong>：訊號背後的關鍵催化劑</li><li><strong>風險</strong>：預警或失效條件</li></ul><em>僅供參考，不構成投資建議。</em>",
       "title": "AI市場影響",
       "directions": {
         "long": "看多",
@@ -2337,10 +2353,79 @@
       "appliesToNext": "適用於下一次AI重新生成",
       "signals_other": "{{count}}個訊號",
       "disclaimer": "AI生成的交易訊號僅供參考。非投資建議。請自行研究。",
-      "unavailable": "AI市場影響在每次預測執行後生成。請稍後檢視。"
+      "unavailable": "AI市場影響在每次預測執行後生成。請稍後檢視。",
+      "unscored": "敘事情景，未經準確性評估。"
     },
     "forecast": {
-      "infoTooltip": "<strong>AI 預測</strong> AI 生成的地緣政治和經濟事件機率估計：<ul><li>跨域覆蓋：衝突、市場、供應鏈、網路安全、政治</li><li>每個預測顯示估計機率、置信度和時間範圍</li><li>根據預測市場基線進行校準（如可用）</li></ul>預測在新情報訊號到達時更新。使用上方標籤按域篩選。"
+      "infoTooltip": "<strong>AI 預測</strong> AI 生成的地緣政治和經濟事件機率估計：<ul><li>跨域覆蓋：衝突、市場、供應鏈、網路安全、政治</li><li>每個預測顯示估計機率、置信度和時間範圍</li></ul>預測在新情報訊號到達時更新。使用上方標籤按域篩選。",
+      "record": {
+        "label": "歷史戰績",
+        "labelHint": "過去{{days}}天內，已公開的預測在結果確定後的得分情況。將滑鼠懸停在數字上可檢視其含義。",
+        "unavailable": "暫時不可用",
+        "insufficient": "獨立預測數量過少",
+        "brier": "Brier 分數 {{score}}（n={{n}}）",
+        "brierHint": "基於 {{n}} 條已評分預測的 Brier 分數：預測機率與實際結果之差的平方的平均值。0 為完美，0.25 相當於拋硬幣，越低越好。",
+        "baseRate": "實際頻率 {{score}} (n={{n}})",
+        "baseRateHint": "始終按這 {{n}} 條預測的實現率預測（{{pct}}% 已實現）的得分。該比率僅事後已知。",
+        "void": "作廢 {{pct}}%（{{resolved}} 條中 {{count}} 條）",
+        "voidHint": "已有結果但無法評分的預測，佔本期間內已有結果的 {{resolved}} 條。",
+        "stale": "資料過期",
+        "staleHint": "最近一次評分於 {{date}}。此後評分程式未再執行，因此這些數字比應有的更舊。",
+        "fullRecord": "完整記錄",
+        "skill": "技巧評分 {{score}} 對比實際頻率",
+        "skillHint": "同樣 {{n}} 條已評分預測的技巧評分，對比始終按其在該期間實際發生的頻率預測：0 表示誤差相同，1 為完美，低於 0 表示誤差更大。完整記錄會顯示差異是否明確。"
+      },
+      "reliability": {
+        "measured": "{{domain}} n={{n}} · 技巧評分 {{skill}} 對比實際頻率",
+        "measuredHint": "已釋出的 {{domain}} 預測在過去 {{days}} 天內 {{n}} 條已評分預測中的得分，與始終按該領域實現率預測的對比：0 表示誤差相同，1 為完美預測，低於 0 表示誤差更大。針對該比率的 Brier {{score}} 對比 {{base}}，數值越低越好。領域得分尚無不確定性區間。這是該領域的記錄，不是此預測的記錄。",
+        "unmeasured": "暫未測量",
+        "unmeasuredHint": "{{domain}} 預測在過去 {{days}} 天內有 {{n}} 條已評分結果。當結果來自至少 {{min}} 個預測族，且實現與未實現的結果各至少 {{outcomes}} 條時，才會顯示該領域的準確性。"
+      },
+      "resolution": {
+        "last": "上次：{{outcome}}",
+        "lastSr": "該預測的上一個時間視窗已有結果：{{outcome}}。",
+        "history": "最近的時間視窗，最新的優先：{{list}}",
+        "outcome": {
+          "yes": "是",
+          "no": "否",
+          "void": "作廢"
+        },
+        "void": {
+          "no_establishable_metric": "該資料來源對此問題沒有讀數",
+          "value_source_never_settled": "該資料來源從未釋出已結算的數值",
+          "count_source_window_not_retained": "該資料來源不再保留該問題的時間視窗",
+          "unsupported_window": "無法根據其資料來源檢查該問題",
+          "unsupported_metric_key": "無法根據其資料來源檢查該問題",
+          "not_hard_spec": "無法根據其資料來源檢查該問題",
+          "missing_threshold": "該問題缺少閾值",
+          "missing_deadline": "該問題缺少截止日期",
+          "missing_generated_at": "該預測缺少開始日期",
+          "beyond_archive_horizon": "新聞存檔不再涵蓋該問題的時間視窗",
+          "no_archive_evidence": "新聞存檔中沒有相關內容",
+          "all_judges_void": "兩位裁定者都認為證據不足",
+          "judge_disagreement": "裁定者意見不一致",
+          "judge_retry_exhausted": "裁定者未作出裁決",
+          "withheld_unpublished": "此類預測已不再發布",
+          "resolver_envelope_bug": "依據我們未能正確讀取的資料來源評分",
+          "market_price_not_outcome": "資料來源顯示的是市場價格，而不是市場的最終結果",
+          "judged_evidence_unreliable": "在修正裁判所用證據期間暫不計分",
+          "other": "無法確定結果",
+          "judged_old_selection": "依據一種後來被認定不可靠的取證方法作出裁定",
+          "late_read": "未能在足夠接近截止時間時讀取資料來源",
+          "feed_unavailable": "資料來源在截止日期後不可用",
+          "resolver_could_not_read_feed": "我們的結算系統未能正確讀取此資料來源",
+          "base_rate_placeholder": "以基礎比率佔位值開啟，而非模型預測"
+        }
+      },
+      "horizons": {
+        "label": "同時評分於：{{list}}",
+        "hint": "頭條機率按預測自身的時間範圍評分。以下各時間範圍的投射值也會評分：按該預測首次公佈的值，與其資料來源對照。由於當前值可能與評分所用的值不同，因此不顯示投射值。"
+      },
+      "audit": {
+        "label": "準確性審計中",
+        "hint": "自 {{date}} 起審計中。審計發現預測評分方式存在錯誤。評分已撤回，正在進行更正。預測仍在釋出和記錄中。",
+        "unverified": "記錄的結果，準確性審計期間未驗證。"
+      }
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>升級監測</strong> 檢測匯聚的地緣政治訊號：<ul><li>關聯軍事行動、衝突事件和新聞激增</li><li>按嚴重程度（關鍵/高/中/低）評分匯聚區域</li><li>追蹤一段時間內的升級或降級趨勢</li></ul>點選卡片可在地圖上放大到該區域。"
@@ -2376,16 +2461,16 @@
       "infoTooltip": "<strong>板塊熱力圖</strong> S&P 500 板塊表現一覽。顏色強度反映每日變化幅度。綠色 = 漲幅，紅色 = 跌幅。"
     },
     "fuelPrices": {
-      "infoTooltip": "<strong>燃料價格</strong> 30+ 個國家的汽油和柴油零售泵價格，以 USD/升 標準化進行比較。價格來自官方政府開放資料計劃，每週更新。最便宜和最昂貴的國家會被突出顯示。當前週資料可用時顯示 WoW 變化。",
+      "infoTooltip": "<strong>燃油價格</strong>30多個國家的汽油和柴油零售泵價，以美元/升為單位進行比較。價格來自官方政府開放資料計劃，每週更新。最便宜和最昂貴的國家突出顯示。當獲得上週資料時顯示周環比變化。",
       "countries": "個國家"
     },
     "faoFoodPriceIndex": {
-      "infoTooltip": "<strong>糧農組織食品價格指數</strong> 聯合國糧食及農業組織的糧價指數 (FFPI) 追蹤食品商品籃（穀物、乳製品、肉類、油類、糖）的國際出口價格，以 2014-2016=100 為基準。每月第一個星期五更新。",
-      "indexLabel": "糧價指數（2014-16=100）",
-      "mom": "環比",
-      "yoy": "同比",
+      "infoTooltip": "<strong>糧農組織食品價格指數</strong>聯合國糧食及農業組織的食品價格指數跟蹤食品商品籃（穀物、乳製品、肉類、油類、糖）的國際出口價格，基數2014-2016=100。每月第一個星期五更新。",
+      "indexLabel": "食品價格（2014–2016 = 100）",
+      "mom": "月環比",
+      "yoy": "年同比",
       "asOf": "截至",
-      "baseNote": "基準：2014-2016 = 100 | 資料來源：聯合國糧農組織",
+      "baseNote": "基數：2014–2016 = 100 | 來源：聯合國糧食及農業組織",
       "ffpi": "食品",
       "cereals": "穀物",
       "meat": "肉類",
@@ -2399,14 +2484,14 @@
     },
     "liquidityShifts": {
       "title": "流動性變化",
-      "infoTooltip": "<strong>流動性變化</strong>石油、黃金、白銀、股指期貨和美國頂級股票的高流動性頭寸和日度變化監測。資產管理人COT淨頭寸和槓桿基金淨頭寸與日價格變化對比。",
-      "cotSection": "石油/黃金/白銀 + 指數頭寸(COT)",
+      "infoTooltip": "<strong>流動性轉變</strong>石油、黃金、白銀、股票指數期貨和美國頂級股票的高流動性定位和日度轉變監測。交易者承諾資產管理人淨頭寸和槓桿基金淨頭寸與日度價格變化對比。",
+      "cotSection": "石油/黃金/白銀+指數定位（交易者承諾）",
       "stocksSection": "美國頂級股票：日度變化",
       "longShort": "多頭 {{long}} / 空頭 {{short}}",
       "lev": "槓桿",
-      "noCot": "無可用COT資料。",
+      "noCot": "沒有可用的交易者承諾資料行。",
       "noStocks": "無可用頂級股票報價。",
-      "reportDate": "COT報告日期：{{date}}",
+      "reportDate": "交易者承諾報告日期：{{date}}",
       "unavailable": "流動性資料無法獲取",
       "failed": "載入失敗"
     },
@@ -2416,14 +2501,14 @@
       "commodities": "商品",
       "crypto": "加密貨幣",
       "fx": "外匯",
-      "warmup": "正在構建基準資料。交易量和未平倉合約歷史將在下一小時內填充。",
+      "warmup": "正在建立基線。成交量和未平倉權益歷史將在下一小時內填充。",
       "footer": "5分鐘 · Hyperliquid永續合約 · 24/7"
     },
     "goldIntelligence": {
-      "infoTooltip": "<strong>黃金情報</strong>黃金現貨價格、金銀比、黃金vs鉑金溢價、交叉貨幣XAU價格(歐元、英鎊、日元、人民幣、印度盧比、瑞郎)和CFTC管理資金頭寸。來源：Yahoo Finance、CFTC COT。"
+      "infoTooltip": "<strong>黃金情報</strong>多種貨幣黃金價格、黃金/白銀和黃金/鉑金比率以及管理資金期貨頭寸。資料來源包括雅虎財經和商品期貨交易委員會。"
     },
     "wsbTickerScanner": {
-      "infoTooltip": "<strong>WSB股票程式碼掃描器</strong>來自r/wallstreetbets、r/stocks和r/investing的即時股票程式碼提及。按提及頻率和參與度排名。速度指標衡量股票程式碼在帖子中獲得動量的速度。"
+      "infoTooltip": "<strong>華爾街賭徒股票程式碼掃描器</strong>來自r/wallstreetbets、r/stocks和r/investing的即時股票程式碼提及。按提及頻率和互動排名。速度衡量股票程式碼在帖子中獲得動量的速度。"
     },
     "proBanner": {
       "badge": "PRO",
@@ -2536,7 +2621,7 @@
     },
     "sanctionsPressure": {
       "title": "制裁與指定",
-      "infoTooltip": "OFAC 的 SDN 與綜合名單，以及加拿大全球事務部 SEMA/JVCFOA 指定。 顯示哪些國家面臨最高指定壓力、驅動因素以及自上次更新以來新增的內容。",
+      "infoTooltip": "美國外交資產凍結辦公室特別指定國民和綜合清單以及加拿大全球事務部SEMA/JVCFOA名單。顯示哪些國家面臨最高列表壓力、驅動列表的計劃以及自上次更新以來新增的內容。",
       "loading": "正在載入制裁資料...",
       "unavailable": "制裁資料不可用。",
       "summary": {
@@ -2558,7 +2643,7 @@
       "footer": {
         "updated": "更新於 {{time}}",
         "dataset": "資料集 {{date}}",
-        "source": "來源：OFAC · GAC SEMA"
+        "source": "資料來源：美國外交資產凍結辦公室·加拿大全球事務部SEMA"
       },
       "pills": {
         "newCount": "+{{count}} 新增",
@@ -2612,9 +2697,9 @@
       }
     },
     "defensePatents": {
-      "title": "研發訊號",
+      "title": "研究開發訊號",
       "infoTooltip": "雷神、洛克希德、華為、DARPA 及其他戰略組織的周度國防和雙用途專利申請。分類：H04B（通訊）、H01L（半導體）、F42B（彈藥）、G06N（AI）、C12N（生物技術）。資料來源：美國專利商標局開放資料門戶。",
-      "loading": "正在載入研發申請…",
+      "loading": "正在載入研究開發檔案…",
       "error": "載入專利資料失敗。",
       "empty": "該分類中無申請。",
       "viewOnUspto": "在美國專利商標局檢視",
@@ -2675,7 +2760,7 @@
     },
     "chokepointStrip": {
       "title": "瓶頸地點狀態",
-      "infoTooltip": "全球七大油氣運輸瓶頸地點的即時狀態。流量估算基於 Portwatch DWT + AIS 觀測資料校準。詳見 /docs/methodology/chokepoints 瞭解方法論。",
+      "infoTooltip": "全球七大油氣運輸瓶頸地點的即時狀態。流量估算根據 Portwatch 的船舶載運能力和船舶跟蹤觀測資料校準。方法說明見 /docs/methodology/chokepoints 文件。",
       "unknown": "未知",
       "shortName": {
         "hormuzStrait": "霍爾木茲",
@@ -2695,9 +2780,9 @@
         "noData": "暫無瓶頸地點資料"
       },
       "attribution": {
-        "method": "Portwatch DWT + AIS 校準",
-        "sampleLabel": "AIS 中斷訊號",
-        "creditName": "EIA 世界石油運輸瓶頸"
+        "method": "Portwatch船舶運力+船舶追蹤校準",
+        "sampleLabel": "船舶追蹤中斷訊號",
+        "creditName": "美國能源資訊署世界油氣運輸通道"
       }
     },
     "mobileNav": {
@@ -2756,9 +2841,9 @@
       "unlockedAnnouncement": "儀表板標籤頁限制已解除。"
     },
     "fx": {
-      "infoTooltip": "<strong>外匯匯率</strong> 貨幣壓力測試和即期匯率：<ul><li>外匯壓力測試根據過去24個月最大跌幅對45種貨幣進行排名，同時顯示12個月漲跌幅</li><li>覆蓋範圍包括ARS、TRY、EGP、NGN、PKR和UAH——BIS和ECB參考集合中遺漏的貨幣</li><li>即期匯率分別列示美元和ECB歐元參考匯率，因為兩者的報價基礎不同</li><li>RUB — 俄羅斯央行匯率，每單位盧布</li></ul> 資料來源：Yahoo Finance、歐洲中央銀行和俄羅斯央行。",
+      "infoTooltip": "<strong>貨幣匯率</strong>壓力指數根據45種貨幣在24個月內的最大跌幅排名，包括12個月變化。現貨匯率使用單獨的美元和歐元基數。俄羅斯盧布匯率以每單位盧布計。資料來源包括雅虎財經、歐洲央行和俄羅斯央行。",
       "tabs": {
-        "stress": "外匯壓力測試",
+        "stress": "貨幣壓力",
         "spot": "即期",
         "rub": "RUB"
       },
@@ -2772,10 +2857,10 @@
       "perUsd": "每1美元",
       "usdPerUnit": "每單位美元",
       "usdBase": "兌美元",
-      "eurBase": "ECB歐元參考匯率",
+      "eurBase": "歐洲央行歐元參考匯率",
       "stressedCount": "{{total}}種貨幣中{{stressed}}種低於{{threshold}}",
       "sourceYahoo": "資料來源：Yahoo Finance",
-      "sourceEcb": "資料來源：ECB",
+      "sourceEcb": "資料來源：歐洲央行",
       "degraded": "暫時不可用：{{sources}}。即將重試。",
       "source": {
         "stress": "外匯壓力",
@@ -2893,7 +2978,7 @@
       "highSeverity": "高嚴重性"
     },
     "gpsJamming": {
-      "title": "GPS/GNSS干擾",
+      "title": "衛星導航干擾",
       "navPerformance": "受影響航空器",
       "samples": "受影響航空器數量",
       "aircraft": "觀測到的航空器總數",
@@ -3022,7 +3107,7 @@
     "operator": "運營商",
     "countries": "國家",
     "waypoints": "途經點",
-    "repairEta": "維修預計到達",
+    "repairEta": "預計修復時間",
     "timeUnits": {
       "m": "分",
       "h": "時",
@@ -3033,7 +3118,7 @@
       "baseline": "基線",
       "components": {
         "news": "新聞",
-        "cii": "CII",
+        "cii": "國家不穩定指數",
         "geo": "地理",
         "military": "軍事"
       },
@@ -3058,7 +3143,7 @@
     "time": "時間",
     "area": "區域",
     "expires": "過期時間",
-    "aisGapSpike": "AIS間隙激增",
+    "aisGapSpike": "船舶追蹤間隙激增",
     "chokepointCongestion": "咽喉要道擁堵",
     "darkening": "訊號消失",
     "density": "密度",
@@ -3083,7 +3168,7 @@
     "cableAdvisory": {
       "reported": "報告時間",
       "impact": "影響",
-      "eta": "預計到達"
+      "eta": "預計到達時間"
     },
     "outage": {
       "levels": {
@@ -3178,7 +3263,7 @@
         "bomber": "轟炸機",
         "transport": "運輸機",
         "tanker": "加油機",
-        "awacs": "AWACS/預警機",
+        "awacs": "空中預警",
         "reconnaissance": "偵察機",
         "helicopter": "直升機",
         "drone": "無人機",
@@ -3199,24 +3284,24 @@
       "builtYear": "製造年份"
     },
     "militaryVessel": {
-      "aisDark": "AIS訊號消失",
+      "aisDark": "船舶跟蹤訊號喪失",
       "vessel": "艦艇",
       "speed": "速度",
       "heading": "航向",
-      "mmsi": "MMSI",
+      "mmsi": "海上移動服務標識",
       "region": "區域",
       "strikeGroup": "打擊群",
-      "usniIntel": "USNI 情報",
-      "usniSource": "來源：USNI News 艦隊追蹤",
-      "approximatePosition": "位置為近似值 — 基於 USNI 週報，非即時 AIS。",
-      "darkDescription": "⚠ 艦艇進入暗航狀態 - AIS訊號丟失。可能表明正在執行敏感任務。",
+      "usniIntel": "美國海軍學會情報",
+      "usniSource": "來源：美國海軍學會新聞艦隊跟蹤系統",
+      "approximatePosition": "位置近似——基於美國海軍學會週報，非即時船舶跟蹤。",
+      "darkDescription": "⚠ 船舶訊號中斷——船舶跟蹤訊號已喪失。可能表明敏感軍事行動。",
       "recentTracking": "近期追蹤",
       "lastReport": "最新",
       "nearChokepoint": "接近咽喉要道",
       "nearBase": "接近基地",
       "lastSeen": "最後出現",
       "estPosition": "預計位置",
-      "aisLive": "AIS 即時"
+      "aisLive": "即時船舶跟蹤"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -3261,7 +3346,7 @@
       "types": {
         "container": "集裝箱",
         "oil": "石油碼頭",
-        "lng": "LNG碼頭",
+        "lng": "液化天然氣接收站",
         "naval": "軍港",
         "mixed": "綜合",
         "bulk": "散貨"
@@ -3334,8 +3419,8 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "預測市場通常在訊息成為新聞之前就已定價——交易者可能提前獲知事態發展。",
-        "actionableInsight": "關注未來1-6小時內可能出現的突發新聞，以解釋市場變動。",
+        "whyItMatters": "預測市場出現波動，但該話題的新聞報道仍處於低位——市場可能在對尚未報道的資訊做出反應。",
+        "actionableInsight": "監控可能解釋市場波動的突發新聞。",
         "confidenceNote": "如果多個預測市場同向變動，置信度更高。"
       },
       "news_leads_markets": {
@@ -3380,7 +3465,7 @@
       },
       "geo_convergence": {
         "whyItMatters": "多個新聞事件聚集在同一地理位置周圍——可能升級或協調活動。",
-        "actionableInsight": "提高該區域的監控優先順序；如有條件，與衛星/AIS資料關聯分析。",
+        "actionableInsight": "提高該地區的監測優先順序；如可用，關聯衛星/船舶跟蹤資料。",
         "confidenceNote": "如果事件跨越多個來源型別和時間段，置信度更高。"
       },
       "explained_market_move": {
@@ -3466,14 +3551,14 @@
     "scanningThermalData": "正在掃描熱資料",
     "calculatingExposure": "正在計算暴露量",
     "computingSignals": "正在計算訊號...",
-    "loadingEtfData": "正在載入ETF資料...",
+    "loadingEtfData": "正在載入交易型開放式指數基金資料...",
     "loadingGiving": "正在載入全球捐贈資料",
     "loadingDisplacement": "正在載入流離失所資料",
     "loadingClimateData": "正在載入氣候資料",
     "failedTechReadiness": "載入科技就緒資料失敗",
     "failedRiskOverview": "計算風險概覽失敗",
     "failedPredictions": "載入預測失敗",
-    "failedCII": "計算CII失敗",
+    "failedCII": "國家不穩定指數資料暫時不可用",
     "failedDependencyGraph": "構建依賴圖失敗",
     "failedIntelFeed": "載入情報動態失敗",
     "failedMarketData": "載入市場資料失敗",
@@ -3623,7 +3708,7 @@
     "features": {
       "orefSirens1": "即時以色列導彈和火箭警報",
       "orefSirens2": "警報區域地圖及威脅分類",
-      "telegramIntel1": "精選 Telegram 開源情報頻道",
+      "telegramIntel1": "精選Telegram開源情報頻道",
       "telegramIntel2": "近即時衝突與地緣政治更新",
       "xIntel1": "Curated public news accounts on X",
       "xIntel2": "API-fresh posts with official permalinks"

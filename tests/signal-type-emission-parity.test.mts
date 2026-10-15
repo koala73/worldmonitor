@@ -87,19 +87,33 @@ interface RuntimeProducer {
 
 const RUNTIME_PRODUCERS: readonly RuntimeProducer[] = [
   {
-    types: [
-      'prediction_leads_news',
-      'silent_divergence',
-      'velocity_spike',
-      'convergence',
-      'triangulation',
-      'flow_drop',
-      'flow_price_divergence',
-      'explained_market_move',
-    ],
+    types: ['velocity_spike', 'convergence', 'triangulation'],
     emitterFile: 'src/services/analysis-core.ts',
     emitterSymbol: /export function analyzeCorrelationsCore\(/,
     runtimePath: [{ file: 'src/services/correlation.ts', evidence: /analyzeCorrelationsCore\(/ }],
+  },
+  {
+    types: [
+      'prediction_leads_news',
+      'silent_divergence',
+      'flow_price_divergence',
+      'explained_market_move',
+    ],
+    emitterFile: 'shared/market-alert-core.js',
+    emitterSymbol: /export function detectMarketAlerts\(/,
+    runtimePath: [
+      { file: 'src/services/analysis-core.ts', evidence: /detectMarketAlerts\(/ },
+      { file: 'src/services/correlation.ts', evidence: /analyzeCorrelationsCore\(/ },
+    ],
+  },
+  {
+    types: ['flow_drop'],
+    emitterFile: 'shared/market-alert-core.js',
+    emitterSymbol: /export function detectPipelineFlowDrops\(/,
+    runtimePath: [
+      { file: 'src/services/analysis-core.ts', evidence: /detectPipelineFlowDrops\(/ },
+      { file: 'src/services/correlation.ts', evidence: /analyzeCorrelationsCore\(/ },
+    ],
   },
   {
     types: ['keyword_spike'],

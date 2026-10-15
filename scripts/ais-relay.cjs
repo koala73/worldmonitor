@@ -44,8 +44,6 @@ const {
 const OPENSKY_ACCOUNT_FINGERPRINT = openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID);
 const OPENSKY_COOLDOWN_KEY = cooldownKeyForAccount(OPENSKY_ACCOUNT_FINGERPRINT);
 const {
-  GROQ_DEFAULT_MODEL,
-  GROQ_REASONING_EXTRA_BODY,
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
@@ -54,6 +52,7 @@ const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { SAUDI_CIVIL_DEFENSE, MAX_POST_CHARS, publishSaudiCivilDefenseAlerts } = require('./lib/saudi-civil-defense-alerts.cjs');
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle, xPollSlot } = require('./lib/x-poll-cycle.cjs');
+const { createGuardedLookup, SSRF_BLOCKED_ERROR_CODE } = require('./lib/notification-webhook-ssrf.cjs');
 const {
   createXPostBudget,
   DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
@@ -100,6 +99,8 @@ const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = requi
 const { detectTrafficAnomaly } = require('../shared/chokepoint-traffic-anomaly.js');
 const { CHOKEPOINT_THREAT_LEVELS } = require('../shared/chokepoint-threat-levels.js');
 const { classifyVesselType } = require('../shared/ais-vessel-type.js');
+const { readTransitWindow } = require('../shared/chokepoint-transit-window.js');
+const { createTransitTracker } = require('../shared/chokepoint-transit-tracker.js');
 const { CORRIDOR_RISK_NAME_MAP, deriveCorridorRiskLevel } = require('../shared/corridor-risk.js');
 // AIS upstream reconnect policy: failure classification (transport | auth |
 // rate-limit), the throttle ceiling escalation, and the silence verdict. Pure and
@@ -131,6 +132,12 @@ function requireShared(name) {
   throw new Error(`Cannot find shared/${name}`);
 }
 const RSS_ALLOWED_DOMAINS = new Set(requireShared('rss-allowed-domains.cjs'));
+// /rss is public and the allowlisted hosts' DNS belongs to 428 third parties.
+// Vet every answer and connect only to a vetted address, so a dangling or
+// rebound feed hostname cannot read Railway-internal endpoints through us.
+const rssGuardedLookup = createGuardedLookup();
+const RSS_ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
+const RSS_MAX_BODY_BYTES = 5 * 1024 * 1024;
 const { COMPARE_AND_DELETE_SCRIPT } = requireShared('compare-and-delete-script.cjs');
 
 // Log effective heap limit at startup (verifies NODE_OPTIONS=--max-old-space-size is active)
@@ -2376,8 +2383,34 @@ function stripBom(text) {
   return text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
 }
 
-function redactOrefError(msg) {
-  return String(msg || '').replace(/\/\/[^@]+@/g, '//<redacted>@');
+// The configured `user:pass` of the OREF proxy, so log lines can drop the
+// exact secret rather than guess its shape with a pattern.
+const OREF_PROXY_CREDENTIAL = (() => {
+  const raw = OREF_PROXY_AUTH.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+  const at = raw.lastIndexOf('@');
+  return at > 0 ? raw.slice(0, at) : '';
+})();
+
+// Strip proxy credentials from an error message. The literal credential goes
+// first (it may contain `/`, `@` or whitespace, which no URL pattern can
+// anticipate); the `//user:pass@` pattern then covers any credential that
+// did not come from our own config.
+function redactOrefError(msg, credential) {
+  let text = String(msg || '');
+  if (credential) text = text.split(credential).join('<redacted>');
+  return text.replace(/\/\/[^\s/]*@/g, '//<redacted>@');
+}
+
+// What `/oref/alerts` may say about a failed poll. The curl failure text is
+// the whole command line, which embeds the proxy URL; no amount of regex
+// redaction should be the only thing between that and an unauthenticated
+// public route. The redacted detail goes to the server log, the public state
+// gets a fixed summary.
+const OREF_PUBLIC_POLL_ERROR = 'OREF upstream fetch failed';
+function orefPollFailure(context, err, credential) {
+  const stderr = err?.stderr ? err.stderr.toString().trim() : '';
+  console.warn(`[Relay] ${context}:`, redactOrefError(stderr || err?.message || String(err), credential));
+  return OREF_PUBLIC_POLL_ERROR;
 }
 
 function orefDateToUTC(dateStr) {
@@ -2516,9 +2549,7 @@ async function orefFetchAlerts() {
         } catch { alerts = []; }
       }
     } catch (err) {
-      const stderr = err.stderr ? err.stderr.toString().trim() : '';
-      orefState.lastError = redactOrefError(stderr || err.message);
-      console.warn('[Relay] OREF fallback poll error:', orefState.lastError);
+      orefState.lastError = orefPollFailure('OREF fallback poll error', err, OREF_PROXY_CREDENTIAL);
     }
   }
   if (source === 'none') {
@@ -2578,9 +2609,7 @@ async function orefFetchAlerts() {
     orefPreSerializeResponses();
     orefPersistHistory().catch(() => {});
   } catch (err) {
-    const stderr = err.stderr ? err.stderr.toString().trim() : '';
-    orefState.lastError = redactOrefError(stderr || err.message);
-    console.warn('[Relay] OREF poll error:', orefState.lastError);
+    orefState.lastError = orefPollFailure('OREF poll error', err, OREF_PROXY_CREDENTIAL);
     orefPreSerializeResponses();
   }
 }
@@ -2831,7 +2860,7 @@ async function orefBootstrapHistoryWithRetry() {
       console.log(`[Relay] OREF upstream bootstrap succeeded on attempt ${attempt}`);
       return;
     } catch (err) {
-      const msg = redactOrefError(err?.message || String(err));
+      const msg = redactOrefError(err?.message || String(err), OREF_PROXY_CREDENTIAL);
       console.warn(`[Relay] OREF upstream bootstrap attempt ${attempt}/${MAX_ATTEMPTS} failed: ${msg}`);
       if (attempt < MAX_ATTEMPTS) {
         const delay = BASE_DELAY_MS * 2 ** (attempt - 1) + Math.random() * 1000;
@@ -4893,8 +4922,8 @@ function classifyCacheKey(title) {
 }
 
 // LLM provider fallback chain — mirrors seed-insights.mjs LLM_PROVIDERS
-// Order mirrors server/_shared/llm.ts: paid OpenRouter, two fixed free
-// OpenRouter variants, then Groq.
+// Order mirrors server/_shared/llm.ts: paid OpenRouter, then two fixed free
+// OpenRouter variants.
 const CLASSIFY_LLM_PROVIDERS = [
   {
     name: 'ollama',
@@ -4942,15 +4971,6 @@ const CLASSIFY_LLM_PROVIDERS = [
     model: OPENROUTER_FREE_BACKUP_MODEL,
     headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
     extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
-    timeout: 30000,
-  },
-  {
-    name: 'groq',
-    envKey: 'GROQ_API_KEY',
-    apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    model: GROQ_DEFAULT_MODEL,
-    extraBody: GROQ_REASONING_EXTRA_BODY,
-    headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA }),
     timeout: 30000,
   },
 ];
@@ -9325,13 +9345,22 @@ const CHOKEPOINTS = [
 ];
 
 const chokepointCrossings = new Map();
-const transitCooldowns = new Map();
-const transitPendingEntry = new Map();
 const TRANSIT_COOLDOWN_MS = 30 * 60 * 1000;
 const TRANSIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MIN_DWELL_MS = 5 * 60 * 1000;
+// How long zone membership outlives a vessel's last report inside the zone.
+// It must exceed DENSITY_WINDOW: the vessel table drops a vessel after 30
+// silent minutes, and an exit reported after that gap is still an exit.
+const TRANSIT_MAX_EXIT_GAP_MS = 6 * 60 * 60 * 1000;
 const CHOKEPOINT_TRANSIT_KEY = 'supply_chain:chokepoint_transits:v1';
 const CHOKEPOINT_TRANSIT_TTL = 3600; // 1h — 6x interval; survives ~5 consecutive missed pings
+const transitTracker = createTransitTracker({
+  zones: CHOKEPOINTS,
+  minDwellMs: MIN_DWELL_MS,
+  cooldownMs: TRANSIT_COOLDOWN_MS,
+  maxExitGapMs: TRANSIT_MAX_EXIT_GAP_MS,
+  crossings: chokepointCrossings,
+});
 
 // Dark-ship (AIS gap) count envelope — the trusted producer behind the
 // temporal anomalies `ais_gaps` count source (#7574). Written on its own
@@ -9443,7 +9472,6 @@ function updateVesselChokepoints(mmsi, lat, lon) {
   }
 
   const previous = vesselChokepoints.get(mmsi) || new Set();
-  const now = Date.now();
 
   for (const cpName of previous) {
     if (next.has(cpName)) continue;
@@ -9451,28 +9479,9 @@ function updateVesselChokepoints(mmsi, lat, lon) {
     if (!bucket) continue;
     bucket.delete(mmsi);
     if (bucket.size === 0) chokepointBuckets.delete(cpName);
-
-    const pendingKey = mmsi + ':' + cpName;
-    const entryTs = transitPendingEntry.get(pendingKey);
-    if (entryTs !== undefined && now - entryTs >= MIN_DWELL_MS) {
-      const cooldownKey = mmsi + ':' + cpName;
-      const lastCrossing = transitCooldowns.get(cooldownKey);
-      if (!lastCrossing || now - lastCrossing >= TRANSIT_COOLDOWN_MS) {
-        const vessel = vessels.get(mmsi);
-        const vType = classifyVesselType(vessel?.shipType);
-        let crossings = chokepointCrossings.get(cpName);
-        if (!crossings) { crossings = []; chokepointCrossings.set(cpName, crossings); }
-        crossings.push({ mmsi, type: vType, ts: now });
-        transitCooldowns.set(cooldownKey, now);
-      }
-    }
-    transitPendingEntry.delete(pendingKey);
   }
 
   for (const cpName of next) {
-    if (!previous.has(cpName)) {
-      transitPendingEntry.set(mmsi + ':' + cpName, now);
-    }
     let bucket = chokepointBuckets.get(cpName);
     if (!bucket) {
       bucket = new Set();
@@ -9635,6 +9644,7 @@ function processPositionReportForSnapshot(data) {
 
   // Maintain exact chokepoint membership so moving vessels don't get "stuck" in old buckets.
   updateVesselChokepoints(mmsi, lat, lon);
+  transitTracker.observe(mmsi, lat, lon, classifyVesselType(effectiveShipType), now);
 
   if (isLikelyMilitaryCandidate(meta, effectiveShipType)) {
     candidateReports.set(mmsi, {
@@ -9781,19 +9791,7 @@ function cleanupAggregates() {
     if (filtered.length === 0) chokepointCrossings.delete(cpName);
     else chokepointCrossings.set(cpName, filtered);
   }
-  for (const [key, ts] of transitCooldowns) {
-    if (now - ts > TRANSIT_COOLDOWN_MS) transitCooldowns.delete(key);
-  }
-  const pendingCutoff = 48 * 60 * 60 * 1000;
-  for (const [key, ts] of transitPendingEntry) {
-    if (now - ts > pendingCutoff) {
-      const sep = key.indexOf(':');
-      const pmsi = key.substring(0, sep);
-      const cpN = key.substring(sep + 1);
-      const memberships = vesselChokepoints.get(pmsi);
-      if (!memberships || !memberships.has(cpN)) transitPendingEntry.delete(key);
-    }
-  }
+  transitTracker.prune(now);
 }
 
 // Vessels seen again after extended AIS silence: mmsi → the return-seen
@@ -10058,18 +10056,11 @@ setInterval(() => {
 
 async function seedChokepointTransits() {
   const now = Date.now();
+  const window = await readTransitWindow(chokepointCrossings, now, upstashEval);
   const transits = {};
   for (const cp of CHOKEPOINTS) {
-    const crossings = chokepointCrossings.get(cp.name) || [];
-    const recent = crossings.filter(c => now - c.ts < TRANSIT_WINDOW_MS);
-    chokepointCrossings.set(cp.name, recent);
-    // `available` is the same signal seedTransitSummaries encodes by leaving
-    // todayTotal null. Both writers read this one in-memory map and both ship
-    // in a single get-chokepoint-status bundle, so without it one response
-    // carried summaries.suez.todayTotal === null next to
-    // transits["Suez Canal"].total === 0 and an agent's answer depended on
-    // which half it read. The counts stay numeric here because the documented
-    // shape of this key is {tanker, cargo, other, total}.
+    const recent = window.get(cp.name) || [];
+    // An empty observed window cannot establish zero traffic.
     transits[cp.name] = {
       tanker: recent.filter(c => c.type === 'tanker').length,
       cargo: recent.filter(c => c.type === 'cargo').length,
@@ -10078,10 +10069,15 @@ async function seedChokepointTransits() {
       available: recent.length > 0,
     };
   }
-  const payload = { transits, fetchedAt: now };
-  await envelopeWrite(CHOKEPOINT_TRANSIT_KEY, payload, CHOKEPOINT_TRANSIT_TTL, { recordCount: Object.keys(transits).length, sourceVersion: 'chokepoint-transits' });
-  await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: Object.keys(transits).length }, 604800);
-  console.log(`[Transit] Seeded ${Object.keys(transits).length} chokepoint transit counts`);
+  const canonical = Object.entries(RELAY_NAME_TO_ID).filter(([, id]) => id);
+  const missing = canonical.filter(([name]) => !transits[name].available).map(([, id]) => id);
+  const covered = canonical.length - missing.length;
+  const transitCoverage = { covered, total: canonical.length, missing };
+  const payload = { transits, transitCoverage, fetchedAt: now };
+  const ok = await envelopeWrite(CHOKEPOINT_TRANSIT_KEY, payload, CHOKEPOINT_TRANSIT_TTL, { recordCount: covered, sourceVersion: 'chokepoint-transits' });
+  if (!ok) throw new Error('Transit count publication failed');
+  await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: covered, transitCoverage }, 604800);
+  console.log(`[Transit] Seeded ${covered}/${canonical.length} measured chokepoints (missing: ${missing.join(', ')})`);
 }
 
 /**
@@ -10167,6 +10163,7 @@ async function seedTransitSummaries() {
 
   const now = Date.now();
   const summaries = {};
+  const window = await readTransitWindow(chokepointCrossings, now, upstashEval);
   // Iterate the canonical chokepoint ID set rather than whatever pw happens to
   // carry today. If seed-portwatch dropped 3 of 13 (flaky ArcGIS), those 3
   // would otherwise vanish from summaries and the RPC would render zero-state
@@ -10195,8 +10192,7 @@ async function seedTransitSummaries() {
     let relayTransit = null;
     for (const [relayName, canonicalId] of Object.entries(RELAY_NAME_TO_ID)) {
       if (canonicalId === cpId) {
-        const crossings = chokepointCrossings.get(relayName) || [];
-        const recent = crossings.filter(c => now - c.ts < TRANSIT_WINDOW_MS);
+        const recent = window.get(relayName) || [];
         if (recent.length > 0) {
           relayTransit = {
             tanker: recent.filter(c => c.type === 'tanker').length,
@@ -10214,7 +10210,7 @@ async function seedTransitSummaries() {
     // Compact summary: no history field. Consumed by get-chokepoint-status on
     // every request, so keep it small.
     // dataAvailable is PortWatch history presence, not AIS today-counts.
-    // todayTotal comes from the in-memory 24h AIS window; an empty window is
+    // todayTotal comes from the durable 24h AIS window; an empty window is
     // unsupplied, not a published zero-traffic measurement (#7457). Leave the
     // count absent so PortWatch WoW cannot sit next to a fake 0.
     summaries[cpId] = {
@@ -12638,10 +12634,16 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(410, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: 'Feed deprecated' }));
       }
-      if (!RSS_ALLOWED_DOMAINS.has(parsed.hostname)) {
+      // The allowlist names hosts, not services: only their default ports.
+      if (!RSS_ALLOWED_DOMAINS.has(parsed.hostname) || parsed.port !== '') {
         recordRelayOutcome('rss', 'terminalFailure');
         res.writeHead(403, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: 'Domain not allowed on Railway proxy' }));
+      }
+      if (!RSS_ALLOWED_PROTOCOLS.has(parsed.protocol)) {
+        recordRelayOutcome('rss', 'terminalFailure');
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Protocol not allowed on Railway proxy' }));
       }
 
       const sendRssStale = (cacheEntry, cacheLabel = 'STALE', extraHeaders = {}) => sendCompressed(req, res, 200, {
@@ -12788,6 +12790,30 @@ const server = http.createServer(async (req, res) => {
         rejectInFlight(new Error(message));
       };
 
+      // A blocked DNS answer is a verdict on the feed, not an upstream outage.
+      // No backoff (backoff would serve the stale body with a 200), the last
+      // good body is evicted so nothing can be served from it, and a 403
+      // negative entry answers in-flight followers and the next minute of
+      // callers without another lookup.
+      const sendBlocked = (message) => {
+        if (responseHandled || res.headersSent) return;
+        responseHandled = true;
+        recordAttemptOutcome(403, new Error(message));
+        rssResponseCache.delete(feedUrl);
+        rssResetFailure(feedUrl);
+        const data = Buffer.from(JSON.stringify({ error: message }));
+        setBoundedCacheEntry(rssNegativeCache, feedUrl, {
+          data, contentType: 'application/json', statusCode: 403, timestamp: Date.now(),
+        }, RSS_NEGATIVE_CACHE_MAX_ENTRIES);
+        res.writeHead(403, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'CDN-Cache-Control': 'no-store',
+        });
+        res.end(data);
+        resolveInFlight({ outcome: 'terminalFailure' });
+      };
+
       const fetchWithRedirects = (url, redirectCount = 0) => {
         if (redirectCount > 3) {
           return sendError(502, 'Too many redirects');
@@ -12815,13 +12841,19 @@ const server = http.createServer(async (req, res) => {
           // surface immediately. 64KB is well above any legitimate header set,
           // and is per-request (no process-level Node flag needed).
           maxHeaderSize: 65536,
+          lookup: rssGuardedLookup,
         }, (response) => {
           if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
-            const redirectUrl = response.headers.location.startsWith('http')
-              ? response.headers.location
-              : new URL(response.headers.location, url).href;
-            const redirectHost = new URL(redirectUrl).hostname;
-            if (!RSS_ALLOWED_DOMAINS.has(redirectHost)) {
+            // A malformed Location from an allowlisted upstream must be a 502
+            // for this feed, not an uncaught TypeError that exits the relay.
+            let redirectTarget;
+            try {
+              redirectTarget = new URL(response.headers.location, url);
+            } catch {
+              return sendError(502, 'Malformed redirect');
+            }
+            const redirectUrl = redirectTarget.href;
+            if (!RSS_ALLOWED_DOMAINS.has(redirectTarget.hostname) || !RSS_ALLOWED_PROTOCOLS.has(redirectTarget.protocol) || redirectTarget.port !== '') {
               return sendError(403, 'Redirect to disallowed domain');
             }
             logThrottled('log', `rss-redirect:${feedUrl}:${redirectUrl}`, `[Relay] Following redirect to: ${redirectUrl}`);
@@ -12852,7 +12884,19 @@ const server = http.createServer(async (req, res) => {
           }
 
           const chunks = [];
-          stream.on('data', chunk => chunks.push(chunk));
+          let bodyBytes = 0;
+          stream.on('data', (chunk) => {
+            bodyBytes += chunk.length;
+            if (bodyBytes > RSS_MAX_BODY_BYTES) {
+              sendError(502, 'Feed too large');
+              if (stream !== response) stream.destroy();
+              request.destroy();
+            }
+            chunks.push(chunk);
+          });
+          // Aborting mid-body surfaces as an error on the response as well as
+          // on the decompression stream; both are already answered above.
+          response.on('error', () => {});
           stream.on('end', () => {
             if (responseHandled || res.headersSent) return;
             responseHandled = true;
@@ -12905,6 +12949,10 @@ const server = http.createServer(async (req, res) => {
         });
 
         request.on('error', (err) => {
+          if (err.code === SSRF_BLOCKED_ERROR_CODE) {
+            logThrottled('warn', `rss-ssrf-blocked:${feedUrl}`, `[Relay] RSS blocked: ${err.message}`);
+            return sendBlocked('Feed resolves to a blocked address');
+          }
           const outcome = recordAttemptOutcome(0, err);
           const { failures, backoffSec } = recordFailure();
           logThrottled('error', `rss-error:${feedUrl}:${err.code || err.message}`, `[Relay] RSS error: ${err.message} (backoff ${backoffSec}s, failures=${failures})`);
@@ -14165,8 +14213,6 @@ async function handleWidgetAgentRequest(req, res) {
     return safeEnd(res, 503, { 'Content-Type': 'application/json' }, JSON.stringify({ ...status, error: 'AI backend unavailable' }));
   }
 
-  const clientIp = req.headers['cf-connecting-ip'] || req.headers['x-real-ip'] || req.socket?.remoteAddress || 'unknown';
-
   // Allow up to 163840 bytes (160KB) for PRO requests (basic is smaller but we parse tier first)
   const rawContentLength = parseInt(req.headers['content-length'] || '0', 10);
   if (rawContentLength > 163840) {
@@ -14209,8 +14255,9 @@ async function handleWidgetAgentRequest(req, res) {
   const spendId = typeof spendHeader === 'string' ? spendHeader.trim() : '';
   // Widget keys also belong to legacy callers. Only the separate server relay
   // credential can attest to an identity that passed the edge spend checks.
+  // Others bucket on their key: IP headers are caller-set (GHSA-rcgv).
   const rateBucket = /^[A-Za-z0-9:_-]{8,128}$/.test(spendId)
-    && RELAY_SHARED_SECRET && isAuthorizedRequest(req) ? `id:${spendId}` : clientIp;
+    && RELAY_SHARED_SECRET && isAuthorizedRequest(req) ? `id:${spendId}` : `key:${status.admittedAs}`;
 
   // Rate limiting (separate buckets)
   const rateLimited = isPro ? checkProWidgetRateLimit(rateBucket) : checkWidgetRateLimit(rateBucket);

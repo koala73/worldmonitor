@@ -167,7 +167,7 @@ function mountPlugin(): void {
           clusterNews: async items => clusterNews(items),
           generateSummary: async (headlines, _progress, geoContext, lang, options) => {
             const result = await analyze({ headlines, bodies: options?.bodies, geoContext, lang, mode: 'brief' });
-            return { summary: result.summary, provider: 'groq', model: result.model, cached: false };
+            return { summary: result.summary, provider: 'openrouter', model: result.model, cached: false };
           },
           translateText: async (text, lang) => (await analyze({ headlines: [text], lang, mode: 'translate' })).summary,
         });

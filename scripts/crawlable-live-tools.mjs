@@ -97,14 +97,9 @@ export function chokepointCoverageMetrics({
   };
 }
 
-export function withheldTransitCountSentence(displayName) {
+export function withheldTransitCountSentence(displayName, measurementNote = '') {
   const name = String(displayName || '').trim() || 'this chokepoint';
-  // Do NOT attribute the gap to AIS specifically. `dataAvailable` is PortWatch
-  // history presence and the AIS window is a separate source, so a count can
-  // be withheld while AIS is healthy (PortWatch dropped 2 chokepoints for
-  // ~4.5h on 2026-08-25) and vice versa during a relay warm-up. Naming the
-  // wrong feed would be a false claim on a page whose point is not making any.
-  return `World Monitor is not currently publishing a transit count for ${name} for this period.`;
+  return [`World Monitor is not currently publishing a transit count for ${name} for this period.`, measurementNote.trim()].filter(Boolean).join(' ');
 }
 
 // Strict score coercion: only finite numbers and non-blank numeric strings
@@ -1365,6 +1360,7 @@ export async function loadChokepoint(tool) {
         transitsNote.hidden = false;
         transitsNote.textContent = withheldTransitCountSentence(
           tool.dataset.chokepointName || '',
+          tool.dataset.transitMeasurementNote || '',
         );
       } else {
         transitsNote.hidden = true;

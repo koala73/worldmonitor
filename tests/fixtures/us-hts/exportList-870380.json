@@ -1,0 +1,108 @@
+[
+{
+"htsno": "8703.80.00",
+"indent": "1",
+"description": "Other vehicles, with only electric motors for propulsion",
+"superior": null,
+"units": [],
+"general": "2.5%",
+"special": "Free (A+,AU,B,BH,CL,CO,D,E,IL,JO,KR,MA,OM,P,PA,PE,S,SG)",
+"other": "10%",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "2",
+"description": "With an EPA-rated range not exceeding 250 miles:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8703.80.00.20",
+"indent": "3",
+"description": "New",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8703.80.00.45",
+"indent": "3",
+"description": "Used",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "",
+"indent": "2",
+"description": "With an EPA-rated range exceeding 250 miles:",
+"superior": "true",
+"units": [],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": null,
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8703.80.00.60",
+"indent": "3",
+"description": "New",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+},
+{
+"htsno": "8703.80.00.80",
+"indent": "3",
+"description": "Used",
+"superior": null,
+"units": [
+"No."
+],
+"general": "",
+"special": "",
+"other": "",
+"footnotes": [],
+"quotaQuantity": null,
+"additionalDuties": null,
+"addiitionalDuties": null
+}
+]

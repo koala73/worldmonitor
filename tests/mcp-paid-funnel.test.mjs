@@ -82,6 +82,17 @@ describe('MCP upgrade attribution constants', () => {
     }
   });
 
+  it('no-account names the free paths before the paid one', () => {
+    // The first 401 a cold agent sees. Pointing only at Pro hid the free
+    // account sign-in and the credential-free get_sources tool, which agents
+    // otherwise find only in the AS metadata or auth.md.
+    const { nextStep } = buildMcpStructuredDenial({ reason: 'no-account' }).data;
+    assert.match(nextStep, /OAuth/);
+    assert.match(nextStep, /free account/);
+    assert.match(nextStep, /get_sources/);
+    assert.ok(nextStep.indexOf('get_sources') < nextStep.indexOf('Pro'), 'free paths come first');
+  });
+
   it('the four constant-copy reasons emit exactly the three original fields', () => {
     // The quota variant below adds two fields. It must not add them here: an
     // agent reading `data` on an auth denial sees the same shape it always has.

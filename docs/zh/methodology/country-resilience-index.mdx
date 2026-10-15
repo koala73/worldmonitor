@@ -650,10 +650,10 @@ CRI 设计为端到端可审计：给定任一时刻的 Redis 快照，读者应
 
 | 键 | 类型 | TTL | 写入方 | 读取方 |
 |---|---|---|---|---|
-| `resilience:score:v28:{countryCode}` | JSON | 6 小时 | `server/worldmonitor/resilience/v1/_shared.ts` 中的 `buildResilienceScore` | `getResilienceScore` 处理器 |
-| `resilience:ranking:v28` | JSON | 12 小时 | `getResilienceRanking` 暖路径，仅当至少 90% 国家已评分时（`RANKING_CACHE_MIN_COVERAGE = 0.90`） | `getResilienceRanking` 处理器 |
-| `resilience:history:v22:{countryCode}` | 有序集合 | 无限期，修剪至 30 天 | 评分期间 `appendHistory` | 趋势和 `change30d` 计算 |
-| `resilience:intervals:v11:{countryCode}` | JSON | 7 天；通过 `seed-meta`/健康频率监控新鲜度 | `scripts/seed-resilience-scores.mjs` | `getResilienceScore`（可选 `scoreInterval` 字段）和 `getResilienceRanking`（`rankStable`） |
+| `resilience:score:v29:{countryCode}` | JSON | 6 小时 | `server/worldmonitor/resilience/v1/_shared.ts` 中的 `buildResilienceScore` | `getResilienceScore` 处理器 |
+| `resilience:ranking:v29` | JSON | 12 小时 | `getResilienceRanking` 暖路径，仅当至少 90% 国家已评分时（`RANKING_CACHE_MIN_COVERAGE = 0.90`） | `getResilienceRanking` 处理器 |
+| `resilience:history:v23:{countryCode}` | 有序集合 | 无限期，修剪至 30 天 | 评分期间 `appendHistory` | 趋势和 `change30d` 计算 |
+| `resilience:intervals:v12:{countryCode}` | JSON | 7 天；通过 `seed-meta`/健康频率监控新鲜度 | `scripts/seed-resilience-scores.mjs` | `getResilienceScore`（可选 `scoreInterval` 字段）和 `getResilienceRanking`（`rankStable`） |
 | `seed-meta:resilience:static` | JSON | 400 天 | 每次成功种子运行结束时的 `scripts/seed-resilience-static.mjs` | 评分器用于 `dataVersion` 填充、健康检查 |
 | `resilience:static:{countryCode}` | JSON | 400 天 | `scripts/seed-resilience-static.mjs` | 评分器用于所有基线信号（WGI、WHO、FAO、GPI、RSF 等） |
 | `resilience:static:index:v1` | JSON | 400 天 | `scripts/seed-resilience-static.mjs` | 枚举国家的预热路径 |
@@ -836,7 +836,7 @@ v17.1 在评分时将修复扩展到 `liquidReserveAdequacy`（无种子器变�
 4. **重新锚定发布门带**：`tests/resilience-pillar-combine-activation.test.mts` 将高带锚点（NO、CH、DK）锁定在 ≥ 55（vs 6 领域公式的 ≥ 70 下限），低带锚点（YE、SO）在 ≤ 40（vs ≤ 45）。快照测试从每个快照读取 `methodologyFormula` 并应用匹配带。参考版重计算确认带在领域加权支柱聚合后有裕度成立：NO = 74.85（≥ 55 by 19.85 分），YE = 29.20（≤ 40 by 10.80 分）。
 5. **投影和权威快照**：`docs/snapshots/resilience-ranking-pillar-combined-projected-2026-04-21.json` 携带激活前使用的 52 国预览表。`docs/snapshots/resilience-ranking-2026-05-28.json` 保留为已标记的 P1-1 前历史捕获。`docs/snapshots/resilience-ranking-2026-08-29.json` 是当前全范围捕获，并在支柱聚合中应用领域设计权重。
 
-回退：设 `RESILIENCE_PILLAR_COMBINE_ENABLED=false`，刷新当前 `resilience:score:v28:*`、`resilience:ranking:v28`、`resilience:history:v22:*` 和 `resilience:intervals:v11:*` 键（或等待 TTL 过期）。6 领域公式与支柱组合在 `_shared.ts` 中并存，回退无需代码变更。
+回退：设 `RESILIENCE_PILLAR_COMBINE_ENABLED=false`，刷新当前 `resilience:score:v29:*`、`resilience:ranking:v29`、`resilience:history:v23:*` 和 `resilience:intervals:v12:*` 键（或等待 TTL 过期）。6 领域公式与支柱组合在 `_shared.ts` 中并存，回退无需代码变更。
 
 ### 评分卡（v2.0 自评）
 
@@ -891,3 +891,10 @@ v17.1 在评分时将修复扩展到 `liquidReserveAdequacy`（无种子器变�
 - **问题状态**：#6461 已由 #6515 关闭，后者落地了剩余的“缺失即强度”修复，因此不需要修改已关闭问题的优先级。
 
 操作步骤见 [`financial-system-exposure-flag-flip-runbook.md`](https://github.com/koala73/worldmonitor/blob/main/docs/methodology/financial-system-exposure-flag-flip-runbook.md)；量测结果见已提交的 [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) 快照。
+
+### v2.5（2026 年 10 月）— 主权财富输入缺失不等于“没有基金”（#9044）
+
+**状态：生效。** `sovereignFiscalBuffer` 过去把所有不在 `resilience:recovery:sovereign-wealth:v1` 的 `countries` 映射中的国家都视为没有主权财富基金（`not-applicable`：分数 0，权重 0）。但基金清单预期覆盖的国家也可能因为输入缺失而不在映射中，例如缺少世界银行进口数据或没有匹配到基金资产规模。当种子的 `summary.countryStatuses` 以正的安全整数 `expected` 基金数列出该国家时，该维度现在按插补的 `unmonitored` 计分（分数 50，确定性覆盖率 0.3）。不在清单中的国家，以及 `expected` 为小数、溢出或不安全整数的状态行，仍走 `not-applicable` 路径。
+
+- **缓存代际已轮换**：分数/排名从 `v28` 到 `v29`（`resilience:score:v29:`、`resilience:ranking:v29`），历史从 `v22` 到 `v23`，区间从 `v11` 到 `v12`。这避免旧缺失规则下的分数、趋势、排名及稳定区间与新规则混用。
+- **黄金基线（冻结的 2026-08-13 全指数夹具，17 国）**：只有挪威变化。其唯一预期基金没有匹配到资产规模，因此 `sovereignFiscalBuffer` 从 `not-applicable`（分数 0，覆盖率 0）变为插补的 `unmonitored`（分数 50，覆盖率 0.3）。整体分数从 75.67 变为 75.30，与瑞士（75.52）互换第 1 和第 2 名。这是夹具回归检查，不是全范围验收测量。

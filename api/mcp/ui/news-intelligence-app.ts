@@ -22,12 +22,13 @@ const STYLES = `
   .story { padding: 10px 0; border-bottom: 1px solid var(--border); }
   .story:last-child { border-bottom: none; }
   .story-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-  .story-title { font-size: 14px; font-weight: 600; color: var(--fg); }
+  .story-title { overflow-wrap: anywhere; font-size: 14px; font-weight: 600; color: var(--fg); }
+  a.story-title { text-decoration: underline; text-underline-offset: 3px; }
   .chip { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
     border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; }
   .chip.alert { color: #fff; background: var(--severe); border-color: var(--severe); font-weight: 600; }
   .story-country { font-size: 11px; color: var(--muted); }
-  .story-src { margin-top: 4px; font-size: 12px; color: var(--muted); }
+  .story-src { overflow-wrap: anywhere; margin-top: 4px; font-size: 12px; color: var(--muted); }
 `;
 
 const BODY = `
@@ -62,9 +63,18 @@ const RENDER = `
       if (!s || typeof s !== "object") continue;
       var row = el("div", "story");
       var head = el("div", "story-head");
-      head.appendChild(el("span", "story-title", collapseWs(s.primaryTitle) || "Untitled story"));
+      var originalUrl = httpUrl(s.primaryLink);
+      var title = el(originalUrl ? "a" : "span", "story-title", collapseWs(s.primaryTitle) || "Untitled story");
+      if (originalUrl) {
+        title.href = originalUrl;
+        title.target = "_blank";
+        title.rel = "noopener noreferrer";
+      }
+      head.appendChild(title);
       var cat = collapseWs(s.category);
       if (cat) head.appendChild(el("span", "chip", cat));
+      var threat = typeof s.threatLevel === "string" ? collapseWs(s.threatLevel) : "";
+      if (threat) head.appendChild(el("span", "chip", "Threat: " + threat));
       if (s.isAlert === true) head.appendChild(el("span", "chip alert", "Alert"));
       var cn = countryName(s.countryCode);
       if (cn) head.appendChild(el("span", "story-country", cn));
@@ -73,6 +83,56 @@ const RENDER = `
       var provenanceSummary = s.sourceProvenance && typeof s.sourceProvenance === "object"
         ? collapseWs(s.sourceProvenance.summary) : "";
       if (src) row.appendChild(el("div", "story-src", src + (provenanceSummary ? " • " + provenanceSummary : "")));
+      var hasPublicationTime = (typeof s.pubDate === "string" && s.pubDate.trim()) ||
+        (typeof s.pubDate === "number" && Number.isFinite(s.pubDate));
+      var published = hasPublicationTime ? new Date(s.pubDate) : null;
+      if (published && Number.isFinite(published.getTime())) {
+        var publication = el("time", "story-src", "Published: " + published.toISOString());
+        publication.dateTime = published.toISOString();
+        publication.style.display = "block";
+        row.appendChild(publication);
+      } else {
+        row.appendChild(el("div", "story-src", "Publication time unavailable."));
+      }
+      var publishers = Array.isArray(s.publishers) ? s.publishers : null;
+      var publisherNames = [];
+      if (publishers) {
+        for (var j = 0; j < publishers.length && publisherNames.length < 12; j++) {
+          var publisher = publishers[j];
+          if (!publisher || typeof publisher.name !== "string" || !publisher.name.trim()) continue;
+          var tier = publisher.tier;
+          var declaredTier = Number.isInteger(tier) && tier >= 1 && tier <= 4;
+          publisherNames.push(publisher.name + (declaredTier ? " (declared tier " + tier + ")" : " (tier undeclared)"));
+        }
+      }
+      var publisherText = publishers
+        ? (publisherNames.length ? "Publishers: " + publisherNames.join(", ") + "." : "No contributing publishers listed.")
+        : "Publisher roster unavailable.";
+      if (publishers && publishers.length > publisherNames.length) {
+        publisherText += " Showing " + publisherNames.length + " of " + publishers.length + " supplied publishers.";
+      }
+      var unlisted = s.publishersUnlisted;
+      if (Number.isInteger(unlisted) && unlisted >= 0) {
+        if (unlisted > 0) publisherText += " " + unlisted + " counted publishers not listed.";
+      } else {
+        publisherText += " Unlisted publisher count unavailable.";
+      }
+      row.appendChild(el("div", "story-src", publisherText));
+      var reliability = s.credibilityScore;
+      var reliabilityText = typeof reliability === "number" && Number.isFinite(reliability) && reliability >= 0 && reliability <= 100
+        ? "Source reliability: " + reliability + "/100." : "Source reliability unavailable.";
+      var sourceTier = s.sourceTier;
+      var sourceTierText = Number.isInteger(sourceTier) && sourceTier >= 1 && sourceTier <= 4
+        ? "Declared source tier: " + sourceTier + "." : "Declared source tier unavailable.";
+      row.appendChild(el("div", "story-src", reliabilityText + " " + sourceTierText));
+      var corroboration = s.corroboration && typeof s.corroboration === "object" ? s.corroboration : {};
+      var coverageState = corroboration.state;
+      var coverageText = ["unknown", "single-publisher", "tier4-only", "corroborated"].indexOf(coverageState) >= 0
+        ? "Corroboration coverage: " + coverageState + "." : "Corroboration coverage unavailable.";
+      var publisherCount = corroboration.publishers;
+      coverageText += Number.isInteger(publisherCount) && publisherCount >= 0
+        ? " Reported publishers: " + publisherCount + "." : " Reported publisher count unavailable.";
+      row.appendChild(el("div", "story-src", coverageText + " Coverage does not establish accuracy."));
       host.appendChild(row);
     }
     var shown = host.childNodes.length;
@@ -94,6 +154,15 @@ const RENDER = `
           (knownTotal ? (total > stories.length ? " Full list is not loaded." : " Sample contains all reported stories.")
             : " Full list coverage is unavailable."));
       }
+    }
+    if (storyState.available) {
+      var selectionDrops = ins && ins.provenance && ins.provenance.selectionDrops;
+      var dropParts = [];
+      for (var dropField of [["admissibility", "admissibility"], ["sourceCap", "source cap"], ["overflow", "overflow"]]) {
+        var dropped = selectionDrops && typeof selectionDrops === "object" && !Array.isArray(selectionDrops) ? selectionDrops[dropField[0]] : undefined;
+        dropParts.push(dropField[1] + " " + (Number.isInteger(dropped) && dropped >= 0 ? dropped : "unavailable"));
+      }
+      footParts.push("Selection exclusions: " + dropParts.join("; ") + ".");
     }
     if (ins && ins.status === "degraded") footParts.push("Source reports degraded news intelligence.");
     if (envelope.cached_at) footParts.push("Snapshot: " + collapseWs(envelope.cached_at) + (envelope.stale ? " (stale)" : ""));

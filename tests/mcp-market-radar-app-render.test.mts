@@ -5,6 +5,7 @@ import { buildSync } from 'esbuild';
 import { Window } from 'happy-dom';
 import { buildProducerBackedMarketFixture } from './helpers/mcp-producer-fixtures.mjs';
 import { buildUiResourceRead, MARKET_RADAR_UI_URI } from '../api/mcp/ui/registry';
+import { presentDefaultMarketData } from '../api/mcp/registry/cache-tools';
 
 const bundle = buildSync({
   entryPoints: ['src/plugin-market-main.ts'], bundle: true, write: false, format: 'iife', platform: 'browser',
@@ -45,6 +46,36 @@ async function open(payload: unknown = fixture, managed = false) {
 afterEach(async () => { await Promise.all(windows.splice(0).map(window => window.happyDOM.close())); });
 
 describe('compiled Market Radar actual entry and host result', () => {
+  it('shows transport omissions separately from source absence and clears coverage on replacement', async () => {
+    const input = { data: { 'stocks-bootstrap': { quotes: [{ symbol: 'GIANT', name: 'x'.repeat(131072) }] }, crypto: { quotes: [] }, sectors: null } };
+    const fitted = presentDefaultMarketData(input, 131072);
+    const { document, send, messages } = await open(fitted);
+    assert.match(document.querySelector('.market-transport-coverage')!.textContent, /Equities: 0 of 1 rows returned; 1 omitted to fit the response budget/);
+    assert.match(document.querySelector('.market-transport-coverage')!.textContent, /Crypto: 0 of 0 rows returned/);
+    assert.match(document.querySelector('.market-transport-coverage')!.textContent, /Sectors: count unavailable/);
+    assert.match(document.querySelector('.market-transport-coverage')!.textContent, /ETF/);
+    assert.match(document.querySelector('#marketContent')!.textContent, /Quotes omitted to fit the response budget/);
+    send({ structuredContent: { projection: [fixture.data['stocks-bootstrap'].quotes[0]], transportCoverage: fitted.transportCoverage } });
+    assert.equal(document.querySelector('.market-transport-coverage'), null);
+    send({ structuredContent: fixture });
+    assert.equal(document.querySelector('.market-transport-coverage'), null);
+    assert.equal(document.querySelectorAll('.qsym').length, 12);
+    assert.equal(messages.filter((message: any) => message.method === 'tools/call').length, 0);
+  });
+  it('renders fitted structured data with complete retained chart series and no extra host read', async () => {
+    const fitted = presentDefaultMarketData({ ...fixture, data: { ...fixture.data, 'etf-flows': { etfs: [{ symbol: 'ETF_TEST' }] } } }, 131072);
+    const { document, send, messages } = await open();
+    send({ structuredContent: fitted });
+    assert.equal(document.querySelectorAll('.qsym').length, 12);
+    const details = document.querySelector('details')!;
+    details.open = true;
+    details.dispatchEvent(new document.defaultView!.Event('toggle'));
+    assert.match(details.textContent, /HI 110.*LAST 100.*LO 90/);
+    assert.match(document.querySelector('.market-transport-coverage')!.textContent, /Equities: 12 of 12 rows returned/);
+    assert.match(document.querySelector('.market-transport-coverage')!.textContent, /ETF flows: 1 of 1 rows returned/);
+    assert.equal(document.querySelectorAll('.qsym').length, 12, 'returned ETF flow rows do not claim an added chart group');
+    assert.equal(messages.filter((message: any) => message.method === 'tools/call').length, 0);
+  });
   it('renders every loaded row and original chart/name instead of dropping rows after eight', async () => {
     const { document } = await open();
     assert.equal(document.querySelectorAll('.qsym').length, 12);

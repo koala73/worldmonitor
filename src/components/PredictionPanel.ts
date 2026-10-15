@@ -37,7 +37,7 @@ export class PredictionPanel extends Panel {
         const noPercent = 100 - yesPercent;
         const volumeStr = this.formatVolume(p.volume);
 
-        const safeUrl = sanitizeUrl(p.url || '');
+        const safeUrl = sanitizeUrl((p.source === 'kalshi' ? p.displayUrl ?? p.url : p.url) || '');
         const titleHtml = safeUrl
           ? `<a href="${safeUrl}" target="_blank" rel="noopener" class="prediction-question prediction-link">${escapeHtml(p.title)}</a>`
           : `<div class="prediction-question">${escapeHtml(p.title)}</div>`;

@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import YAML from 'yaml';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -76,18 +77,7 @@ describe('built-output guard contract', () => {
       resolve(repoRoot, 'e2e/prehydration-shell.spec.ts'),
       'utf8',
     );
-    const workflow = readFileSync(workflowPath, 'utf8').replaceAll('\r\n', '\n');
-    const expectedCiSequence = [
-      '      - name: Build /pro artifacts for prehydration browser checks',
-      '        # public/pro/ is built output since #6898. Keep this explicit and',
-      '        # immediately before the focused spec so the browser checks cannot run',
-      '        # against missing or stale bytes from another build.',
-      '        run: npm run build:pro',
-      '      - name: Run fail-closed prehydration browser checks',
-      '        id: prehydration',
-      '        run: npm run test:e2e:prehydration',
-    ].join('\n');
-
+    const proJobSteps = YAML.parse(readFileSync(workflowPath, 'utf8')).jobs['variant-smoke-pro-webmcp'].steps;
     assert.match(
       fullE2eScript,
       /^npm run build:pro && /,
@@ -103,9 +93,20 @@ describe('built-output guard contract', () => {
       /test\.skip\(!proWelcomeBuilt/,
       'the prehydration spec must fail when /pro output is absent, not silently skip',
     );
-    assert.ok(
-      workflow.includes(expectedCiSequence),
-      'PR CI must build /pro immediately before the focused prehydration browser checks',
+    // public/pro/ is built output since #6898. The build may share a parallel
+    // group with the font install, but no step may sit between that group and
+    // the focused spec. Anything there could leave the browser checks reading
+    // missing or stale bytes from another build.
+    const buildIndex = proJobSteps.findIndex((step) => (step.parallel ?? [step])
+      .some((inner) => inner.name === 'Build /pro artifacts for prehydration browser checks' && inner.run === 'npm run build:pro'));
+    const prehydrationIndex = proJobSteps.findIndex((step) => step.id === 'prehydration');
+    assert.ok(buildIndex >= 0, 'PR CI must build /pro for the prehydration browser checks');
+    assert.equal(proJobSteps[prehydrationIndex]?.run, 'npm run test:e2e:prehydration');
+    assert.ok(buildIndex < prehydrationIndex, 'the /pro build must run before the prehydration browser checks');
+    assert.deepEqual(
+      proJobSteps.slice(buildIndex + 1, prehydrationIndex).map((step) => step.name),
+      [],
+      'no step may sit between the /pro build and the prehydration browser checks',
     );
   });
 

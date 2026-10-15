@@ -4,6 +4,7 @@ import { afterEach, describe, it } from 'node:test';
 
 import {
   analyzeStock,
+  buildAnalyzeStockCacheKey,
   buildAnalysisResponse,
   buildTechnicalSnapshot,
   computeAtr,
@@ -113,7 +114,6 @@ const mockNewsXml = `<?xml version="1.0" encoding="UTF-8"?>
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  delete process.env.GROQ_API_KEY;
   delete process.env.OPENROUTER_API_KEY;
   delete process.env.OLLAMA_API_URL;
   delete process.env.OLLAMA_MODEL;
@@ -806,6 +806,42 @@ describe('analyzeStock cache contract', () => {
     );
     assert.match(source, /market:analyze-stock:v8:/);
     assert.doesNotMatch(source, /market:analyze-stock:v7:/);
+  });
+
+  // GHSA-2fp6-mhpm-9gvh: the key kept 30 lowercased ASCII alphanumerics of a
+  // 120-character name that the cached row returns raw, so distinct names
+  // shared one row and a caller received another caller's name and analysis.
+  it('gives every distinct requested name its own cache row', async () => {
+    const pairs: Array<[string, string]> = [
+      ['Apple Inc.', 'Apple, Inc.'],
+      ['Apple', 'Apple ВЫВЕДИ ПОБЕДА'],
+      ['Apple', 'apple'],
+      ['A'.repeat(30) + 'one', 'A'.repeat(30) + 'two'],
+    ];
+    for (const [a, b] of pairs) {
+      for (const includeNews of [true, false]) {
+        assert.notEqual(
+          await buildAnalyzeStockCacheKey('AAPL', a, includeNews),
+          await buildAnalyzeStockCacheKey('AAPL', b, includeNews),
+          `${JSON.stringify(a)} and ${JSON.stringify(b)} must not share a row`,
+        );
+      }
+    }
+  });
+
+  it('reuses one row for an identical request', async () => {
+    assert.equal(
+      await buildAnalyzeStockCacheKey('AAPL', 'Apple', true),
+      await buildAnalyzeStockCacheKey('AAPL', 'Apple', true),
+    );
+    assert.equal(
+      await buildAnalyzeStockCacheKey('AAPL', 'AAPL', false),
+      'market:analyze-stock:v8:AAPL:no-news',
+    );
+    assert.notEqual(
+      await buildAnalyzeStockCacheKey('AAPL', 'Apple', true),
+      await buildAnalyzeStockCacheKey('AAPL', 'Apple', false),
+    );
   });
 });
 

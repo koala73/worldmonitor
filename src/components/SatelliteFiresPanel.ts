@@ -68,7 +68,7 @@ export class SatelliteFiresPanel extends Panel {
               <th scope="col">${t('components.satelliteFires.region')}</th>
               <th scope="col">${t('components.satelliteFires.fires')}</th>
               <th scope="col">${t('components.satelliteFires.high')}</th>
-              <th scope="col">FRP</th>
+              <th scope="col" title="Fire radiative power measures heat released by the fire, in megawatts.">Fire heat (MW)</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>

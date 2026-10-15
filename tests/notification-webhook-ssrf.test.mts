@@ -97,6 +97,14 @@ describe('notification webhook SSRF guard', () => {
       'fc00::1',
       'ff02::1',
       '2001:db8::1234',
+      // Teredo 2001::/32 and the rest of the 2001::/23 IETF block
+      '2001::1',
+      '2001:0:4136:e378:8000:63bf:3fff:fdd2',
+      '2001:1ff:ffff::1',
+      // IPv4-translated (SIIT) ::ffff:0:0:0/96
+      '::ffff:0:7f00:1',
+      '::ffff:0:127.0.0.1',
+      '::ffff:0:a9fe:a9fe',
     ];
     for (const address of blockedAddresses) {
       assert.equal(isBlockedNotificationResolvedAddress(address), true, `api helper must block ${address}`);
@@ -109,6 +117,9 @@ describe('notification webhook SSRF guard', () => {
       '2002:5db8:d822::',
       // NAT64 wrapping a public IPv4 (93.184.216.34) must still be allowed
       '64:ff9b::5db8:d822',
+      // SIIT wrapping a public IPv4, and the first global unicast after 2001::/23
+      '::ffff:0:5db8:d822',
+      '2001:200::1',
     ]) {
       assert.equal(isBlockedNotificationResolvedAddress(address), false, `api helper must allow ${address}`);
       assert.equal(scriptSsrf.isBlockedResolvedAddress(address), false, `script helper must allow ${address}`);
@@ -161,7 +172,7 @@ describe('notification webhook SSRF guard', () => {
     const dotted = (o: number[]) => o.join('.');
     const hexPair = (o: number[]) => `${((o[0]! << 8) | o[1]!).toString(16)}:${((o[2]! << 8) | o[3]!).toString(16)}`;
     const ipv4Prefixes = [[0], [10], [100, 64], [100, 127], [127], [169, 254], [172, 16], [172, 31], [192, 0, 0], [192, 0, 2], [192, 88, 99], [192, 168], [198, 18], [198, 19], [198, 51, 100], [203, 0, 113], [224], [255], [93, 184]];
-    const ipv6Prefixes = ['fc00', 'fdff', 'fe80', 'febf', 'fec0', 'ffff', 'ff02', '2001:db8', '2001:0db8', '64:ff9b:1', '64:ff9b:2', '64:ff9b:0:0:0:0', '100:0:0:0', '100:0:0:1', '2002', '2606:2800', '0:0:0:0:0:ffff', '0:0:0:0:0:0'];
+    const ipv6Prefixes = ['fc00', 'fdff', 'fe80', 'febf', 'fec0', 'ffff', 'ff02', '2001:db8', '2001:0db8', '64:ff9b:1', '64:ff9b:2', '64:ff9b:0:0:0:0', '100:0:0:0', '100:0:0:1', '2002', '2606:2800', '0:0:0:0:0:ffff', '0:0:0:0:0:0', '0:0:0:0:ffff:0', '2001:0', '2001:1ff', '2001:200'];
     const specialIpv4 = () => {
       const o = octets();
       ipv4Prefixes[next(ipv4Prefixes.length)]!.forEach((value, i) => { o[i] = value; });
@@ -177,6 +188,7 @@ describe('notification webhook SSRF guard', () => {
       const candidates = [
         dotted(specialIpv4()),
         `::ffff:${embed}`,
+        `::ffff:0:${embed}`,
         `64:ff9b::${embed}`,
         `64:ff9b:1::${embed}`,
         `::${embed}`,

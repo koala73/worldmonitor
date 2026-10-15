@@ -1,11 +1,5 @@
 const HOSTED_LLM_PROVIDERS = [
   {
-    name: 'groq',
-    envKey: 'GROQ_API_KEY',
-    url: 'https://api.groq.com',
-    allowPrivateNetwork: false,
-  },
-  {
     name: 'openrouter',
     envKey: 'OPENROUTER_API_KEY',
     url: 'https://openrouter.ai',

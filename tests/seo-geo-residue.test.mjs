@@ -13,6 +13,7 @@ import { comparisonDiscoveryEntries } from '../scripts/build-comparison-pages.mj
 import { COMPARISONS_HEADING, buildLlmsFullText, redactInternalApiOrigins, withComparisonsSection, withCorpusNavigation } from '../scripts/build-llms-full.mjs';
 import { resolveLatestLivePulseSnapshotPath } from '../scripts/build-crawlable-corpus.mjs';
 import { parseSitemapDocument } from '../scripts/verify-sitemaps.mjs';
+import { accuracyStateAudit, classifyAccuracyState } from '../scripts/build-accuracy-page.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -87,8 +88,16 @@ describe('GEO residue #7463', () => {
     const skill = snapshot.forecastScorecard?.scorecard?.skill;
     const section = generated.split(/^## Forecast accuracy$/m)[1]?.split(/^## /m)[0] ?? '';
     assert.match(generated, /^## Forecast accuracy$/m);
-    assert.match(section, /does not publish/i);
     assert.match(section, /https:\/\/www\.worldmonitor\.app\/accuracy\//);
+    // While the capture holds the #8990 audit, the section carries the withdrawal notice in place of every score.
+    const audit = accuracyStateAudit(classifyAccuracyState(snapshot.forecastScorecard));
+    if (audit) {
+      assert.match(section, new RegExp(`^Under audit since ${audit.since}\\.`, 'm'));
+      assert.ok(section.includes(`/issues/${audit.issue}`));
+      assert.doesNotMatch(section, /Brier|scored forecasts|-day window/);
+      return;
+    }
+    assert.match(section, /does not publish/i);
     assert.ok(
       Number.isFinite(skill?.brier) && skill.count > 0,
       'the committed pulse snapshot must carry a measurable headline cohort so this section cannot be a hardcoded stub',

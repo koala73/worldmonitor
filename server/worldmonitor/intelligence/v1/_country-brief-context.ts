@@ -44,7 +44,7 @@ export interface CountryIntelCacheKeyOpts {
   isPremium: boolean;
   /** 16-char sha prefix of the caller context, or 'base' when absent. Premium-only input. */
   contextHash: string;
-  /** 8-char sha prefix of the premium framework, or ''. Premium-only input. */
+  /** Full 64-char SHA-256 hex of the premium framework, or ''. Premium-only input. */
   frameworkHash: string;
   /** OWID energy data-year, or '' when unavailable. */
   energyYear: string;

@@ -122,7 +122,7 @@ import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import type { CorrelationSignal } from '@/services/correlation';
 import { fetchConflictEvents, fetchUcdpEvents, fetchIranEvents } from '@/services/conflict';
-import { fetchUnhcrPopulation } from '@/services/displacement';
+import { fetchCrossBorderArrivals, fetchInternalDisplacement, fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { fetchImdCycloneMarine } from '@/services/imd-cyclone-marine';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
@@ -3491,6 +3491,10 @@ export class DataLoaderManager implements AppModule {
           flightClusters: flightData.clusters,
           vessels: vesselData.vessels,
           vesselClusters: vesselData.clusters,
+          flightDataState: flightData.dataState,
+          vesselDataState: vesselData.dataState,
+          vesselNegativeEvidenceConfirmed: vesselData.negativeEvidenceConfirmed,
+          vesselCoverageNotes: vesselData.coverageNotes,
         };
         this.callbacks.refreshOpenCountryMilitary?.();
         this.callbacks.refreshOpenCountryTimeline?.();
@@ -3580,6 +3584,35 @@ export class DataLoaderManager implements AppModule {
         dataFreshness.recordError('unhcr', String(error));
       }
     })());
+
+    tasks.push((async () => {
+      try {
+        const internal = await fetchInternalDisplacement();
+        if (internal.operations.length === 0) return;
+        this.callPanel('displacement', 'setInternalData', internal);
+        if (this.ctx.mapLayers.displacement) {
+          this.ctx.map?.setInternalDisplacement(internal);
+        }
+      } catch (error) {
+        console.error('[Intelligence] IOM DTM displacement fetch failed:', error);
+      }
+    })());
+
+    // On-demand key: only fetched when something shows it.
+    if (this.ctx.mapLayers.displacement || this.ctx.panelSettings['displacement']?.enabled) {
+      tasks.push((async () => {
+        try {
+          const crossBorder = await fetchCrossBorderArrivals();
+          if (crossBorder.situations.length === 0) return;
+          this.callPanel('displacement', 'setCrossBorderData', crossBorder);
+          if (this.ctx.mapLayers.displacement) {
+            this.ctx.map?.setCrossBorderArrivals(crossBorder);
+          }
+        } catch (error) {
+          console.error('[Intelligence] UNHCR cross-border fetch failed:', error);
+        }
+      })());
+    }
 
     tasks.push((async () => {
       try {
@@ -3996,6 +4029,10 @@ export class DataLoaderManager implements AppModule {
         flightClusters: flightData.clusters,
         vessels: vesselData.vessels,
         vesselClusters: vesselData.clusters,
+        flightDataState: flightData.dataState,
+        vesselDataState: vesselData.dataState,
+        vesselNegativeEvidenceConfirmed: vesselData.negativeEvidenceConfirmed,
+        vesselCoverageNotes: vesselData.coverageNotes,
       };
       this.callbacks.refreshOpenCountryMilitary?.();
       this.callbacks.refreshOpenCountryTimeline?.();
@@ -4369,7 +4406,10 @@ export class DataLoaderManager implements AppModule {
       } = await import('@/services/trade');
       const [restrictions, tariffs, flows, barriers, revenue, comtrade] = await Promise.allSettled([
         fetchTradeRestrictions([], 50),
-        fetchTariffTrends('840', '156', '', 10),
+        // No partner: the tab shows the US MFN baseline against the US-wide
+        // effective rate. A partner selects the WITS bilateral average, which
+        // the tab does not label as such.
+        fetchTariffTrends('840', '', '', 10),
         // Partner '000' is World. This asked for '156' (China) until #6309:
         // WTO's ITS_MTV_AX/AM indicators publish a World total only and answer
         // 204 for any other partner, so the flows tab requested a combination

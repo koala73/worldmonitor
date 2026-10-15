@@ -23,13 +23,14 @@ message MarketQuote {
   repeated double sparkline = 6;
 }
 
-// MarketQuoteUnavailableReason explains why a requested symbol produced no quote.
-//
 // Requested symbols are resolved seed-first: the fixed Railway seed snapshot
 // answers without any upstream call, and only the remaining symbols are looked
-// up through the bounded, Redis-cached quote provider. Every symbol that
-// survives normalization is accounted for by either a quote or one of these
-// reasons — a requested symbol is never silently dropped.
+// up through the bounded, Redis-cached quote provider. (Detached: kept out of
+// the public spec.)
+
+// MarketQuoteUnavailableReason explains why a requested symbol produced no
+// quote. Every symbol that survives normalization gets either a quote or one
+// of these reasons.
 enum MarketQuoteUnavailableReason {
   // Unspecified reason.
   MARKET_QUOTE_UNAVAILABLE_REASON_UNSPECIFIED = 0;

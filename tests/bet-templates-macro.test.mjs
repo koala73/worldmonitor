@@ -4,11 +4,15 @@ import { describe, it } from 'node:test';
 import { generateBets } from '../scripts/_bet-templates.mjs';
 import { MACRO_BET_TEMPLATES, FRED_FEED_KEYS, FRED_SERIES } from '../scripts/_bet-templates-macro.mjs';
 import {
-  parseMetricKey, resolveHardSpec,
+  parseMetricKey, resolveHardSpec, shapeResolutionFeed,
   FRED_MONTHLY_VALUE_SETTLEMENT_MAX_LAG_MS, FRED_DAILY_VALUE_SETTLEMENT_MAX_LAG_MS, VALUE_SETTLEMENT_MAX_LAG_MS,
 } from '../scripts/_forecast-resolution-eval.mjs';
 import { RESOLUTION_FEED_KEYS } from '../scripts/_forecast-resolution.mjs';
-import { shapeResolutionFeed, ingestHistory } from '../scripts/seed-forecast-resolutions.mjs';
+import { ingestHistory } from '../scripts/seed-forecast-resolutions.mjs';
+
+// Only a bet carrying a model forecast opens a ledger window (#8990), so
+// ingest fixtures are tagged as the ensemble stage would tag them.
+const ensembled = (bets) => bets.map((bet) => ({ ...bet, probabilitySource: 'ensemble' }));
 
 const NOW = Date.parse('2026-07-23T00:00:00Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -75,7 +79,7 @@ describe('FRED resolver enablement', () => {
 
   function unrateEntry() {
     const bets = generateBets(MACRO_BET_TEMPLATES, unrateFeed(), NOW);
-    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: bets }], NOW);
+    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: ensembled(bets) }], NOW);
     return Object.values(ledger)[0];
   }
 
@@ -120,7 +124,7 @@ describe('FRED daily (DGS10) settlement grace', () => {
   function dgs10Entry() {
     const bets = generateBets(MACRO_BET_TEMPLATES, { [DGS10_KEY]: fredFixture(DGS10_OBS) }, NOW);
     assert.equal(bets.length, 1);
-    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: bets }], NOW);
+    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: ensembled(bets) }], NOW);
     return Object.values(ledger)[0];
   }
 

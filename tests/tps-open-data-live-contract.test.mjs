@@ -12,6 +12,7 @@ import {
   TPS_CALLS_PAGE_CAP,
   TPS_CALLS_SERVICE_ITEM_ID,
   TPS_DEFAULT_CALLS_MAX_PAGES,
+  TPS_DEFAULT_MCI_LOOKBACK_DAYS,
   TPS_MCI_PAGE_CAP,
   TPS_MCI_SERVICE_ITEM_ID,
   fetchTpsCallsAttended,
@@ -29,7 +30,7 @@ describe(`TPS Open Data live contracts (${LIVE ? 'ENABLED' : 'SKIPPED - set LIVE
   it('fetches a complete multi-page MCI snapshot without an oversized GET URL', { timeout: 120_000 }, async () => {
     const result = await fetchTpsMci({
       now: FIXED_NOW,
-      lookbackDays: 90,
+      lookbackDays: TPS_DEFAULT_MCI_LOOKBACK_DAYS,
       pageSize: TPS_MCI_PAGE_CAP,
       maxPages: 3,
     });

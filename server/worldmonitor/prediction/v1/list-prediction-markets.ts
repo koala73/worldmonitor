@@ -31,6 +31,7 @@ interface BootstrapMarket {
   url: string;
   endDate?: string;
   source?: 'kalshi' | 'polymarket';
+  displayUrl?: string;
 }
 
 interface BootstrapData {
@@ -81,7 +82,7 @@ function toProtoMarket(m: BootstrapMarket, category: string): PredictionMarket {
     title: m.title,
     yesPrice: (m.yesPrice ?? 50) / 100,
     volume: m.volume ?? 0,
-    url: m.url || '',
+    url: (m.source === 'kalshi' ? m.displayUrl ?? m.url : m.url) ?? '',
     closesAt: m.endDate ? Date.parse(m.endDate) : 0,
     category,
     source: m.source === 'kalshi' ? 'MARKET_SOURCE_KALSHI' as MarketSource : 'MARKET_SOURCE_POLYMARKET' as MarketSource,

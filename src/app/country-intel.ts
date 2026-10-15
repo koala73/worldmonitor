@@ -3,6 +3,7 @@ import { CountryBriefController, projectChinaCountrySummary } from '@/components
 import { createWebsiteCountryBriefSource } from '@/services/country-brief-source';
 import { hasTemporalBaselineSnapshot } from '@/services/temporal-baseline';
 import type { AppContext, AppModule, CountryBriefSignals } from '@/app/app-context';
+import type { CountrySignalCounts } from '@/types';
 import { getSignalAggregator } from '@/app/lazy-services';
 import type { CountrySignalCluster } from '@/services/signal-aggregator';
 import { premiumFetch } from '@/services/premium-fetch';
@@ -80,6 +81,9 @@ import { vesselTypeLabel } from '@/utils/vessel-type-label';
 // country deep-dive or the AI brief. Set VITE_ENABLE_IRAN_ATTACKS=true to restore.
 // Guarded with the client-runtime check so node:test never dereferences import.meta.env.
 const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
+
+type MilitarySignalField = 'militaryFlights' | 'militaryVessels' | 'militaryFlightsInCountry' | 'militaryVesselsInCountry';
+type WebsiteCountrySignals = Omit<CountryBriefSignals, MilitarySignalField> & Pick<CountrySignalCounts, MilitarySignalField>;
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
@@ -487,7 +491,9 @@ export class CountryIntelManager implements AppModule {
         console.warn('[CountryBrief] signal details unavailable:', err);
       }
       if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
-      page.updateMilitaryActivity?.(this.buildMilitarySummary(code, country));
+      const militarySummary = this.buildMilitarySummary(code, country);
+      page.updateMilitaryActivity?.(militarySummary);
+      page.updateSignals?.(signals, militarySummary.coverageNotes);
       page.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, null));
 
       let latestStock: CountryStockSnapshot | null = null;
@@ -669,7 +675,7 @@ export class CountryIntelManager implements AppModule {
             if (lines.length > 0) {
               this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true });
             } else {
-              this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'No AI service available. Configure GROQ_API_KEY in Settings for full briefs.' });
+              this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'No AI service available. Configure OPENROUTER_API_KEY in Settings for full briefs.' });
             }
           }
         }
@@ -735,6 +741,7 @@ export class CountryIntelManager implements AppModule {
       .then((signals) => {
         if (!(page.isVisible() && page.getCode() === code)) return;
         page.updateScore?.(score, signals);
+        page.updateSignals?.(signals, this.buildMilitarySummary(code, name).coverageNotes);
         // Fallback assessments embed temporal status inline; refresh that copy
         // when chips change so unavailable/zero/global context stays consistent.
         if (page.isFallbackBrief?.()) {
@@ -808,7 +815,7 @@ export class CountryIntelManager implements AppModule {
 
   private buildFallbackSignalLines(
     score: CountryScore | null,
-    signals: CountryBriefSignals,
+    signals: WebsiteCountrySignals,
     _country: string,
     context: Record<string, unknown>,
   ): string[] {
@@ -821,8 +828,8 @@ export class CountryIntelManager implements AppModule {
       }));
     }
     if (signals.protests > 0) lines.push(t('countryBrief.fallback.protestsDetected', { count: String(signals.protests) }));
-    if (signals.militaryFlights > 0) lines.push(t('countryBrief.fallback.aircraftTracked', { count: String(signals.militaryFlights) }));
-    if (signals.militaryVessels > 0) lines.push(t('countryBrief.fallback.vesselsTracked', { count: String(signals.militaryVessels) }));
+    if ((signals.militaryFlights ?? 0) > 0) lines.push(t('countryBrief.fallback.aircraftTracked', { count: String(signals.militaryFlights) }));
+    if ((signals.militaryVessels ?? 0) > 0) lines.push(t('countryBrief.fallback.vesselsTracked', { count: String(signals.militaryVessels) }));
     if (signals.activeStrikes > 0) lines.push(t('countryBrief.fallback.activeStrikes', { count: String(signals.activeStrikes) }));
     if (signals.travelAdvisoryMaxLevel === 'do-not-travel') {
       lines.push(`⚠️ Travel advisory: Do Not Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`);
@@ -853,7 +860,7 @@ export class CountryIntelManager implements AppModule {
     country: string,
     code: string,
     score: CountryScore | null,
-    signals: CountryBriefSignals,
+    signals: WebsiteCountrySignals,
     context: Record<string, unknown>,
   ): string {
     const lines: string[] = [];
@@ -1080,7 +1087,7 @@ export class CountryIntelManager implements AppModule {
     this.ctx.countryTimeline.render(events);
   }
 
-  async getCountrySignals(code: string, country: string): Promise<CountryBriefSignals> {
+  async getCountrySignals(code: string, country: string): Promise<WebsiteCountrySignals> {
     const countryLower = country.toLowerCase();
     const hasGeoShape = hasCountryGeometry(code) || !!CountryIntelManager.COUNTRY_BOUNDS[code];
     // The signal-aggregator chunk is lazy-loaded; if it fails to load we still
@@ -1126,7 +1133,7 @@ export class CountryIntelManager implements AppModule {
       ).length;
     }
 
-    const military = projectCountryMilitarySignalCounts(code, this.ctx.intelligenceCache.military?.flights ?? [], this.ctx.intelligenceCache.military?.vessels ?? []);
+    const military = this.selectCountryMilitary(code, country).signalCounts;
 
     let outages = 0;
     if (this.ctx.intelligenceCache.outages) {
@@ -1241,8 +1248,41 @@ export class CountryIntelManager implements AppModule {
     return projectCountrySignalDetails(cluster?.signals ?? []);
   }
 
+  private selectCountryMilitary(code: string, country: string) {
+    const cached = this.ctx.intelligenceCache.military;
+    const flightState = cached?.flightDataState;
+    const vesselState = cached?.vesselDataState;
+    const flights = flightState && flightState.mode !== 'unavailable' ? cached!.flights : null;
+    const vessels = vesselState && vesselState.mode !== 'unavailable' ? cached!.vessels : null;
+    const flightConfirmed = flightState?.mode === 'live' && !flightState.offline;
+    const vesselConfirmed = vesselState?.mode === 'live' && !vesselState.offline && cached?.vesselNegativeEvidenceConfirmed === true;
+    const summary = projectCountryMilitaryActivity(code, country, flights, vessels);
+    const signalCounts = projectCountryMilitarySignalCounts(code, flights, vessels);
+    if (!flightConfirmed) {
+      if (summary.ownFlights === 0) summary.ownFlights = null;
+      if (summary.foreignFlights === 0) summary.foreignFlights = null;
+      if (signalCounts.militaryFlights === 0) signalCounts.militaryFlights = null;
+      if (signalCounts.militaryFlightsInCountry === 0) signalCounts.militaryFlightsInCountry = null;
+    }
+    if (!vesselConfirmed) {
+      if (summary.nearbyVessels === 0) summary.nearbyVessels = null;
+      if (signalCounts.militaryVessels === 0) signalCounts.militaryVessels = null;
+      if (signalCounts.militaryVesselsInCountry === 0) signalCounts.militaryVesselsInCountry = null;
+    }
+    if (summary.foreignPresence === false && (!flightConfirmed || !vesselConfirmed)) summary.foreignPresence = null;
+    const coverageNotes = [flightConfirmed
+      ? 'Flight counts use the current supplied sample. Country-empty observations are zero.'
+      : flights
+        ? 'Flight counts are previous cached observations. A previous empty sample does not confirm current absence.'
+        : 'Military flight observations unavailable or unconfirmed. This is not zero activity.',
+      ...(cached?.vesselCoverageNotes ?? []),
+      ...(vesselConfirmed ? [] : ['Military vessel coverage is partial, unavailable or cached. Positive observations remain supported; current absence is unconfirmed.']),
+    ];
+    return { signalCounts, summary: { ...summary, coverageNotes, coverage: flightConfirmed && vesselConfirmed ? 'complete' as const : 'partial' as const } };
+  }
+
   private buildMilitarySummary(code: string, country: string): CountryDeepDiveMilitarySummary {
-    return projectCountryMilitaryActivity(code, country, this.ctx.intelligenceCache.military?.flights ?? [], this.ctx.intelligenceCache.military?.vessels ?? []);
+    return this.selectCountryMilitary(code, country).summary;
   }
 
   private buildEconomicIndicators(
@@ -1281,7 +1321,7 @@ export class CountryIntelManager implements AppModule {
         label: 'Instability Regime',
         value: `${score.score}/100 (${score.level})`,
         trend,
-        source: 'CII',
+        source: 'Country Instability Index',
       });
     }
 

@@ -34,7 +34,7 @@ Six response shapes from `@/services/trade`, each backed by a generated sebuf RE
 | Tab | Method + route | Feeds |
 |---|---|---|
 | `restrictions` | `GET /api/trade/v1/get-trade-restrictions` | WTO restrictions list with country filters and upstream-unavailable state. |
-| `tariffs` | `GET /api/trade/v1/get-tariff-trends` | Premium MFN applied tariff-rate timeseries for a reporting country (WTO `TP_A_0010`). |
+| `tariffs` | `GET /api/trade/v1/get-tariff-trends` | Premium MFN applied tariff-rate timeseries for a reporting country (WTO `TP_A_0010`). The tab requests no partner, so it always shows this MFN baseline. |
 | `flows` | `GET /api/trade/v1/get-trade-flows` | Merchandise trade-flow rows and year-over-year context, reporter versus World. |
 | `barriers` | `GET /api/trade/v1/get-trade-barriers` | SPS/TBT barrier notifications filtered by country or measure type. |
 | `revenue` | `GET /api/trade/v1/get-customs-revenue` | US Treasury customs duties revenue; bootstrap-first via `customsRevenue`. |
@@ -67,11 +67,11 @@ Fleet-level coverage is published as the `tradeFlows` entry in `/api/health`, wh
 
 ### Tariff-trend coverage
 
-`get-tariff-trends` is also seed-backed (premium path). The Railway seeder pre-fetches WTO MFN applied averages (`TP_A_0010`) and this API serves slices of that history — it never calls WTO per request.
+Without a partner or product group, `get-tariff-trends` is seed-backed (premium path). The Railway seeder pre-fetches WTO MFN applied averages (`TP_A_0010`) and this API serves slices of that history — it never calls WTO per request. A partner or product group selects a different series, described in [Partner and product-group averages](#partner-and-product-group-averages).
 
 - **Reporter** — any 3-digit UN M49 code the WTO `/reporters` endpoint advertises. Empty defaults to `840` (United States).
-- **Partner** — accepted for forward compatibility; `TP_A_0010` is an MFN applied average for the reporting economy and has **no partner dimension**, so this field never changes the answer.
-- **Product sector** — empty or `all` selects the All-products aggregate, which is the only sector currently covered. Any other value is answered `NOT_COVERED`.
+- **Partner** — empty or `000` (World) selects the MFN series. Any other code selects the partner series.
+- **Product sector** — empty or `all` selects the All-products aggregate. A WITS product group selects the partner series; any other value is answered `NOT_COVERED`.
 - **Years** — `1`–`30`, inclusive of both endpoints (`years=10` returns 11 calendar years). The seed holds the full 30-year window per reporter and the handler slices it. `0` selects the default of `10`.
 
 A malformed code or an out-of-range `years` is rejected with HTTP 400 rather than silently replaced by `840` / `10`. A well-formed request the seed cannot answer returns empty `datapoints` plus an `unavailableReason` from the `TariffTrendUnavailableReason` enum (prefixed `TARIFF_TREND_UNAVAILABLE_REASON_`):
@@ -83,9 +83,96 @@ A malformed code or an out-of-range `years` is rejected with HTTP 400 rather tha
 | `SEED_MISSING` | `true` | The reporter is inside coverage but its cache entry is gone. |
 | `COVERAGE_UNKNOWN` | `true` | The coverage manifest could not be read. |
 | `CACHE_UNAVAILABLE` | `true` | The cache read itself failed. |
+| `UPSTREAM_UNAVAILABLE` | `true` | World Bank WITS could not be reached for a partner or product-group request. |
 | `INVALID_REQUEST` | `false` | Codes were malformed (only reachable where request validation is bypassed). |
 
 Fleet-level coverage is published as the `tariffTrendsUs` entry in `/api/health` (the series name is historical; the probe is the fleet `seed-meta:trade:tariffs` record). A shortfall against the min-record floor reads `COVERAGE_PARTIAL`; a stopped seeder reads `STALE_SEED`.
+
+### Partner and product-group averages
+
+With `partner_country` (other than `000`) or `product_sector` set, `get-tariff-trends` answers what the reporter applies on goods from that partner, in that product group, or both. It reads the World Bank WITS `tradestats-tariff` dataset (UNCTAD TRAINS) live and caches each reporter, partner and group for seven days.
+
+- `tariffRate` is the effectively applied simple average (`AHS-SMPL-AVRG`): preferential rates count where the partner qualifies, otherwise MFN.
+- `weightedRate` is the import-weighted average (`AHS-WGHTD-AVRG`). It is `0` where the reporter imported nothing in that group from that partner, and always `0` on the MFN series.
+- `partnerCountry` echoes the requested code (`World` for `000` or empty), and `productSector` names the group.
+- Product groups are WITS's: the HS sections (`01-05_Animal`, `06-15_Vegetable`, `16-24_FoodProd`, `25-26_Minerals`, `27-27_Fuels`, `28-38_Chemicals`, `39-40_PlastiRub`, `41-43_HidesSkin`, `44-49_Wood`, `50-63_TextCloth`, `64-67_Footwear`, `68-71_StoneGlas`, `72-83_Metals`, `84-85_MachElec`, `86-89_Transport`, `90-99_Miscellan`) and the aggregates `AgrRaw`, `Chemical`, `Food`, `Fuels`, `manuf`, `OresMtls`, `Textiles` and `Transp`. Matching is case-insensitive.
+- Codes are 3-digit UN M49. WTO's own codes for France (`251`), Norway (`579`), India (`699`) and Switzerland (`757`) are accepted too. The EU (`918`) is a reporter but not a partner; name a member state instead.
+- MCP agents read these series, and the MFN series of any reporter, with `get_tariff_averages`.
+
+US imports from China, all products, 2023: 3.6% simple, 2.8% weighted. Textiles: 8.8% and 9.9%. EU imports from the United States: 5.0% and 1.6%.
+
+The limits are TRAINS's. Series start around 1990 (2000 for the EU as reporter) and end in 2023 for most reporters. For the United States, TRAINS carries preferential rates only through 2021, so a US partner series after 2021 is MFN on that partner's goods. These are schedule rates. They leave out Section 301, Section 232 and other unilateral duties: US imports from China average far above 3.6% once those are added. For the US case, use the [US import duty lookup](#us-import-duty-lookup-api-only). A combination WITS has no data for, Taiwan among them, is answered `NOT_COVERED`; an unreachable WITS is `UPSTREAM_UNAVAILABLE`.
+
+### Bilateral tariff lookup (API only)
+
+`GET /api/trade/v1/get-bilateral-tariff` answers a question `get-tariff-trends` cannot: the applied tariff on one 6-digit HS product when one country imports it from another. It has no panel tab. It reads UNCTAD TRAINS live through the World Bank WITS API and caches each answer for seven days. One cached read per importer, product and year serves every partner.
+
+| Parameter | Required | Meaning |
+|---|---|---|
+| `reporting_country` | yes | Importer, 3-digit UN M49. EU member states are answered from the EU schedule (`918`), named in `filingReporter`. |
+| `partner_country` | yes | Exporter, 3-digit UN M49. `000` returns MFN only. |
+| `hs_code` | yes | 6-digit HS subheading. |
+| `year` | no | `0` selects the latest year TRAINS lists for the importer. |
+
+The response returns `mfnRate`, a partner-specific `preferentialRate` when one is on file, and `appliedRate`. Read `basis` before quoting `appliedRate`:
+
+| `basis` suffix | Meaning |
+|---|---|
+| `PREFERENTIAL` | A partner-specific preferential rate is on file and is lower than MFN. |
+| `MFN` | The importer filed preferential schedules that year and none names this partner for this product. Preferences granted to partner groups are listed in `groupPreferences`; their membership is not resolved. |
+| `MFN_PREFERENCES_NOT_REPORTED` | The importer filed no preferential schedules for that year, so only MFN is known and the applied rate may be lower. Recent years are often MFN-only; the US, for example, has preferences on file through 2021. |
+
+Rates are simple averages across the importer's national tariff lines. When the MFN schedule has specific or compound duties, the reported average leaves them out (US wine, HS `220421`, reads 0%); `mfnAveRate` then carries the WITS ad valorem equivalent and `appliedRate` uses it when MFN applies.
+
+TRAINS does not record unilateral additional duties (US Section 301, 232 or IEEPA tariffs), anti-dumping or countervailing duties, or safeguards. For pairs subject to them, the applied rate here understates what importers pay.
+
+`unavailableReason` is `NOT_COVERED` (`upstreamUnavailable: false`) when TRAINS has no row for that importer, product and year, and `UPSTREAM_UNAVAILABLE` (`upstreamUnavailable: true`) when WITS fails. The route is tier 1, so Pro and the API plans can call it. MCP agents call it as `get_bilateral_tariff`.
+
+### US import duty lookup (API only)
+
+`GET /api/trade/v1/get-us-import-duty` answers the US case in full and for today: the current Harmonized Tariff Schedule (HTS) rates on one product from one country, plus the chapter 99 additional duties in force. WITS cannot do this. It has no US preferences after 2021, nothing at all after 2023, and no unilateral duties. It has no panel tab.
+
+| Parameter | Required | Meaning |
+|---|---|---|
+| `hs_code` | yes | HTS code, 6, 8 or 10 digits. A 6-digit code returns every 8-digit line under it. |
+| `partner_country` | yes | Exporter, 3-digit UN M49. |
+
+Each 8-digit line carries the three HTS rate columns and a `basis`:
+
+- `MFN` (column 1 General).
+- `PREFERENTIAL`: column 1 Special, under a trade agreement the exporter is party to. `preferenceProgram` names it, for example `S` for USMCA.
+- `COLUMN_2`: Belarus, Cuba, North Korea and Russia. Russian goods on the U.S. note 30 lists take 35% or 70% instead of the printed column 2 rate, and `baseRate` names the heading (`35% (9903.90.08)`).
+
+Programs whose beneficiaries are designated by list or by end use (AGOA, CBERA, CBTPA, Nepal, civil aircraft, pharmaceuticals, dyes) are returned in `unresolvedPrograms`. GSP is ignored, because it has been lapsed since 2021.
+
+`additionalDuties` lists the chapter 99 duties for that line and exporter, each with a `status`:
+
+| `status` suffix | Meaning |
+|---|---|
+| `APPLIES` | Applies and counts toward `estimatedRate`. A `condition` names any narrow exemption, such as particular articles or an end use. |
+| `CONDITIONAL` | Depends on the goods or the entry: Section 232 origin deals and metal content, a listing of particular articles only, or exemptions for USMCA entries or for goods that pay a Section 232 duty. Not counted. |
+| `EXEMPT` | An exemption heading lists the provision for this exporter. Not counted. |
+| `SCHEDULED` | In the HTS but not yet in force. |
+
+The duties covered are:
+
+- **Section 301 China:** Lists 1–4A, and the 2024 four-year-review increases. The review took its products off the lists, so the review rate replaces the list duty rather than adding to it.
+- **Section 301 China maritime and shipbuilding action (2025):** +100% on intermodal chassis and their parts (`9903.91.12`: statistical number `8716.39.0090` and subheadings `8716.90.30` and `8716.90.50`), and on ship-to-shore gantry cranes (`9903.91.14`, subheading `8426.19.00`). It is suspended until 2026-11-10 and reported as `SCHEDULED` until then. It adds to any List duty on the same line, so chassis lines still on List 3 carry both. Because each heading covers only particular articles under its lines, the route then reports it as `CONDITIONAL`.
+- **Section 301 forced-labor action:** in force since 2026-07-24. It adds 10% or 12.5% on 60 trading partners, counting the EU as one. For the EU, Japan, South Korea, Switzerland and Taiwan, it raises the combined rate to a 10% or 12.5% floor instead (`topUpTo`). It carries product, country and USMCA exemptions.
+- **Section 301 Brazil:** 25%.
+- **Section 232:** steel, aluminum and copper; vehicles and parts; trucks and buses; lumber, furniture and cabinets; semiconductors; patented pharmaceuticals; and drones.
+
+The route does not report three things:
+
+- IEEPA duties. The HTS still prints them, but they have not been collected since 2026-02-24, after *Learning Resources v. Trump*.
+- The Section 122 surcharge, which expired on 2026-07-23.
+- Anti-dumping and countervailing duties.
+
+`estimatedRate` is the base rate plus the `APPLIES` duties. `estimateComplete` is `false` when the base rate is specific or compound, when any duty is `CONDITIONAL` or `SCHEDULED`, or when the chapter 99 index could not be read (`additionalDutiesLoaded: false`).
+
+Product coverage for these duties lives in the chapter 99 U.S. notes, which run to about 5 MB, not in the product lines. `seed-supply-chain-trade` therefore parses the notes from the current HTS release every six hours. It publishes a catalog of measures, `trade:us-hts:catalog:v1`, plus one coverage shard per HS chapter, keyed by release. Each measure is located by an anchor phrase and validated. If any measure fails to resolve, the publish is skipped and the previous release stays in place. The route reads the product's lines live from the HTS `exportList` service and caches them for a day under the catalog's release, so a new release reads fresh lines. If the catalog is missing, it still serves the rates with `additionalDutiesLoaded: false`. Health is the `usHtsDuties` entry in `/api/health`.
+
+`unavailableReason` is `NOT_COVERED` when the HTS has no line under the code, and `UPSTREAM_UNAVAILABLE` (`upstreamUnavailable: true`) when the HTS service fails. The route is tier 1. MCP agents call it as `get_us_import_duty`.
 
 ## Refresh cadence
 
@@ -93,7 +180,7 @@ Per-tab fetches on mount and on tab switch; no polling. Upstream seeders run on 
 
 ## Tier & gating
 
-**Panel shell is free.** No `premium` flag in variant registrations. The generated REST service is mixed: restrictions, flows, barriers, and [customs revenue](/api-reference/tradeservice/getcustomsrevenue) are public; `get-tariff-trends` and `list-comtrade-flows` are premium RPC paths and degrade to empty data without an entitled session or API key.
+**Panel shell is free.** No `premium` flag in variant registrations. The generated REST service is mixed: restrictions, flows, barriers, and [customs revenue](/api-reference/tradeservice/getcustomsrevenue) are public; `get-tariff-trends`, `list-comtrade-flows`, and the API-only `get-bilateral-tariff` and `get-us-import-duty` are premium RPC paths and degrade to empty data without an entitled session or API key.
 
 ## API reference
 

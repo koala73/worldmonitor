@@ -344,11 +344,14 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/conflict/v1/get-humanitarian-summary': 'daily',
   '/api/conflict/v1/list-iran-events': 'slow',
   '/api/displacement/v1/get-displacement-summary': 'daily',
+  '/api/displacement/v1/get-internal-displacement': 'daily',
   '/api/displacement/v1/get-population-exposure': 'daily',
   '/api/economic/v1/get-bis-policy-rates': 'daily',
   '/api/economic/v1/get-bis-exchange-rates': 'daily',
   '/api/economic/v1/get-bis-credit': 'daily',
   '/api/trade/v1/get-tariff-trends': 'daily',
+  '/api/trade/v1/get-bilateral-tariff': 'daily',
+  '/api/trade/v1/get-us-import-duty': 'daily',
   '/api/trade/v1/get-trade-flows': 'daily',
   '/api/trade/v1/get-trade-barriers': 'daily',
   '/api/trade/v1/get-trade-restrictions': 'daily',
@@ -1306,7 +1309,7 @@ export function createDomainGateway(
         // configuration incident (#7277).
         emitRequest(500, 'hmac_secret_unconfigured', null);
         return new Response(
-          JSON.stringify({ error: 'CONFIGURATION', detail: 'MCP_INTERNAL_HMAC_SECRET not configured' }),
+          JSON.stringify({ error: 'CONFIGURATION' }),
           { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
         );
       }
@@ -1715,8 +1718,11 @@ export function createDomainGateway(
     // validateApiKey is strict-no-trust-of-headers per #3541 and would 401 every
     // Clerk-authenticated user who hasn't also minted a wms_ session token.
     // Override: routes that deliberately resolved a sessionUserId pass this layer.
+    // Never for a legacy Pro bearer route: a session proves identity, not Pro,
+    // and skipping that gate would hand a free account the premium handler.
     if (
       (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution) &&
+      !needsLegacyProBearerGate &&
       sessionUserId &&
       keyCheck.required &&
       !keyCheck.valid

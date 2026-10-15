@@ -49,6 +49,8 @@ import {
 } from '../../server/_shared/pro-mcp-gate';
 // @ts-expect-error — JS module, no declaration file
 import { redirectDisplayHost } from '../oauth/_redirect-uri.js';
+// @ts-expect-error — JS module, no declaration file
+import { requestMatchesOAuthBinding } from '../oauth/_browser-binding.js';
 
 const NO_STORE_JSON: Record<string, string> = {
   'Content-Type': 'application/json',
@@ -62,6 +64,7 @@ function jsonError(error: string, error_description: string, status: number): Re
 interface NonceData {
   client_id: string;
   redirect_uri: string;
+  bind_hash?: string;
 }
 
 interface ClientData {
@@ -170,6 +173,11 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
   }
   if (!nonceData || typeof nonceData.client_id !== 'string' || typeof nonceData.redirect_uri !== 'string') {
     return jsonError('INVALID_NONCE', 'The authorization nonce is missing or expired.', 400);
+  }
+  // Refuse before rendering consent UI for a link forwarded from another
+  // browser; the mint enforces the same binding.
+  if (!(await requestMatchesOAuthBinding(req, nonceData))) {
+    return jsonError('BROWSER_MISMATCH', 'This authorization was started in a different browser. Start over from your MCP client in this browser.', 403);
   }
 
   let clientData: ClientData | null;

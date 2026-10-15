@@ -19,6 +19,8 @@ import {
   markdownToTelegramHtml,
   markdownToSlackMrkdwn,
   markdownToDiscord,
+  escapeDiscordText,
+  truncateDiscordContent,
 } from './_digest-markdown.mjs';
 
 const require = createRequire(import.meta.url);
@@ -33,6 +35,10 @@ const {
   assertNotificationWebhookDeliveryUrlSafe,
   postJsonWithPinnedAddress,
 } = require('./lib/notification-webhook-ssrf.cjs');
+const {
+  buildWebhookDeliveryHeaders,
+  resolveWebhookSigningSecret,
+} = require('./lib/notification-webhook-signing.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { flushPendingLlmEvents } = require('./lib/llm-telemetry.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
@@ -62,6 +68,7 @@ import {
   carouselUrlsFrom,
   digestWindowStartMs,
   getDigestScoreMin,
+  isDigestDeliveryTier,
   pickWinningCandidateWithPool,
   readTimeAgeCutoffMs,
   runSynthesisWithFallback,
@@ -1376,11 +1383,13 @@ async function sendDiscord(userId, webhookEnvelope, text) {
     console.warn(`[digest] Discord URL rejected for ${userId}:`, err.message);
     return false;
   }
-  const content = text.length > 2000 ? text.slice(0, 1999) + '\u2026' : text;
+  const content = truncateDiscordContent(text);
   try {
     const res = await postJsonWithPinnedAddress(
       safeUrl,
-      JSON.stringify({ content }),
+      // Headlines can carry @everyone/@here or role mentions; never let a
+      // digest ping anyone. Matches the real-time relay's payload.
+      JSON.stringify({ content, allowed_mentions: { parse: [] } }),
       { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
       resolvedAddresses,
     );
@@ -1414,9 +1423,13 @@ async function sendEmail(email, subject, text, html) {
   }
 }
 
-async function sendWebhook(userId, webhookEnvelope, stories, aiSummary) {
+async function sendWebhook(userId, webhookEnvelope, stories, aiSummary, webhookSecretEnvelope) {
   let url;
-  try { url = decrypt(webhookEnvelope); } catch (err) {
+  let signingSecret;
+  try {
+    url = decrypt(webhookEnvelope);
+    signingSecret = resolveWebhookSigningSecret(decrypt, webhookSecretEnvelope);
+  } catch (err) {
     console.warn(`[digest] Webhook decrypt failed for ${userId}:`, err.message);
     return false;
   }
@@ -1439,7 +1452,11 @@ async function sendWebhook(userId, webhookEnvelope, stories, aiSummary) {
     const resp = await postJsonWithPinnedAddress(
       safeUrl,
       payload,
-      { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
+      {
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-digest/1.0',
+        ...buildWebhookDeliveryHeaders({ body: payload, eventType: 'digest', secret: signingSecret }),
+      },
       resolvedAddresses,
     );
     if (resp.status === 404 || resp.status === 410 || resp.status === 403) {
@@ -1467,10 +1484,11 @@ async function sendWebhook(userId, webhookEnvelope, stories, aiSummary) {
  * usable number. Callers MUST treat null as "unknown" — never "free"
  * — so a transient relay outage doesn't accidentally clamp legitimate
  * paying users out of paywalled affordances. The digest cron's
- * `isUserPro` uses null → fail-open (true); the followed-country
- * composer clamp uses null → "skip clamp" (treat as Pro for the
- * duration of the outage). Same fail-open polarity in both call
- * sites, but explicit so future readers can audit the choice.
+ * `isUserPro` treats null as not-Pro and skips the rule until a later
+ * run can resolve the tier (fail-closed, see isDigestDeliveryTier).
+ * The followed-country composer clamp uses null → "skip clamp": it only
+ * widens a ranking bias, so a transient outage must not demote a
+ * paying user's brief.
  */
 async function getUserTier(userId) {
   const cacheKey = `relay:entitlement:${userId}`;
@@ -1499,9 +1517,7 @@ async function getUserTier(userId) {
 }
 
 async function isUserPro(userId) {
-  const tier = await getUserTier(userId);
-  if (tier === null) return true; // fail-open — preserve historic polarity
-  return tier >= 1;
+  return isDigestDeliveryTier(await getUserTier(userId));
 }
 
 // ── Per-channel body composition ─────────────────────────────────────────────
@@ -1545,14 +1561,14 @@ function buildChannelBodies(storyListPlain, aiSummary, magazineUrl) {
       text: `${storyListPlain}${briefFooterPlain}`,
       telegramText: `${escapeTelegramHtml(storyListPlain)}${briefFooterTelegram}`,
       slackText: `${escapeSlackMrkdwn(storyListPlain)}${briefFooterSlack}`,
-      discordText: `${storyListPlain}${briefFooterDiscord}`,
+      discordText: `${escapeDiscordText(storyListPlain)}${briefFooterDiscord}`,
     };
   }
   return {
     text: `EXECUTIVE SUMMARY\n\n${aiSummary}\n\n${DIVIDER}\n\n${storyListPlain}${briefFooterPlain}`,
     telegramText: `<b>EXECUTIVE SUMMARY</b>\n\n${markdownToTelegramHtml(aiSummary)}\n\n${DIVIDER}\n\n${escapeTelegramHtml(storyListPlain)}${briefFooterTelegram}`,
     slackText: `*EXECUTIVE SUMMARY*\n\n${markdownToSlackMrkdwn(aiSummary)}\n\n${DIVIDER}\n\n${escapeSlackMrkdwn(storyListPlain)}${briefFooterSlack}`,
-    discordText: `**EXECUTIVE SUMMARY**\n\n${markdownToDiscord(aiSummary)}\n\n${DIVIDER}\n\n${storyListPlain}${briefFooterDiscord}`,
+    discordText: `**EXECUTIVE SUMMARY**\n\n${markdownToDiscord(aiSummary)}\n\n${DIVIDER}\n\n${escapeDiscordText(storyListPlain)}${briefFooterDiscord}`,
   };
 }
 
@@ -2647,7 +2663,7 @@ async function main() {
         // closes the channel-coverage gap so the webhook payload
         // exactly matches what U4 stamped + U5 evaluated for that
         // (user, rule, tick).
-        ok = await sendWebhook(rule.userId, ch.webhookEnvelope, formatterStories, briefLead);
+        ok = await sendWebhook(rule.userId, ch.webhookEnvelope, formatterStories, briefLead, ch.webhookSecret);
       }
       if (ok) {
         anyDelivered = true;

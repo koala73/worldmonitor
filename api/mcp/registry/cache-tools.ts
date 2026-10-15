@@ -27,8 +27,10 @@ import {
 } from '../../../server/_shared/corroboration';
 import { getSourceTier } from '../../../server/_shared/source-tiers';
 import { FLOW_SOURCE_WIRE_VALUES, narrowFlowSource } from '../../../server/_shared/flow-source';
+import { selectMarketAlertScorecard, selectScorecardFields } from '../../../server/worldmonitor/forecast/v1/scorecard-fields';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { torontoSafetySourceById } from '../../../shared/toronto-safety.js';
+import { accuracyAuditOverride, forecastAccuracyAudit, type ForecastAccuracyAudit } from '../../../shared/forecast-accuracy-audit.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 // @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
 import { BOOTSTRAP_CACHE_KEYS } from '../../_bootstrap-tier-keys.js';
@@ -467,6 +469,184 @@ export function applySectorValuationFreshness(
   return data;
 }
 
+const MARKET_TRANSPORT_LISTS = [
+  ['stocks-bootstrap', 'quotes'], ['commodities-bootstrap', 'quotes'],
+  ['crypto', 'quotes'], ['gulf-quotes', 'quotes'], ['sectors', 'sectors'], ['etf-flows', 'etfs'],
+] as const;
+
+export function isOrdinaryMarketDefault(params: Record<string, unknown>): boolean {
+  return !(typeof params.jmespath === 'string' && params.jmespath.length > 0)
+    && !['limit', 'summary', 'refresh', 'request_id', 'panel_request']
+    .some(key => Object.prototype.hasOwnProperty.call(params, key))
+    && argStrList(params.symbols).length === 0 && argStrList(params.asset_class).length === 0;
+}
+
+export function presentDefaultMarketData(result: Record<string, unknown>, budgetBytes: number): Record<string, unknown> {
+  if (!result.data || typeof result.data !== 'object' || Array.isArray(result.data)) return result;
+  const presented = structuredClone(result);
+  const data = presented.data as Record<string, unknown>;
+  const collections: Record<string, Record<string, unknown>> = {};
+  const lists = MARKET_TRANSPORT_LISTS.map(([section, field]) => {
+    const source = data[section];
+    const node = source && typeof source === 'object' && !Array.isArray(source) ? source as Record<string, unknown> : undefined;
+    const value = node?.[field];
+    const rows = Array.isArray(value) ? value : null;
+    const coverage: Record<string, unknown> = rows
+      ? { state: 'available', original_count: rows.length, returned_count: rows.length, omitted_count: 0, omission_reason: null }
+      : { state: Array.isArray(presented.unreadable) && presented.unreadable.includes(section) ? 'unavailable' : value === null || source === null ? 'null' : source === undefined || node !== undefined && value === undefined ? 'missing' : 'unavailable', original_count: null, returned_count: null, omitted_count: null, omission_reason: null };
+    collections[section + '.' + field] = coverage;
+    return { node, field, rows, coverage };
+  });
+  presented.transportCoverage = { count_scope: 'post_filter_snapshot', default_list_limit: 30, collections };
+  const size = () => new TextEncoder().encode(JSON.stringify(presented)).byteLength;
+  if (size() <= budgetBytes) return presented;
+  for (const list of lists) if (list.rows && list.node) {
+    list.node[list.field] = [];
+    list.coverage.returned_count = 0;
+    list.coverage.omitted_count = list.rows.length;
+    list.coverage.omission_reason = list.rows.length ? 'output_budget' : null;
+  }
+  if (size() > budgetBytes) return result;
+  const rounds = Math.max(0, ...lists.map(list => list.rows?.length ?? 0));
+  for (let ordinal = 0; ordinal < rounds; ordinal++) for (const list of lists) {
+    if (!list.rows || !list.node || ordinal >= list.rows.length) continue;
+    const selected = list.node[list.field] as unknown[];
+    selected.push(list.rows[ordinal]);
+    list.coverage.returned_count = selected.length;
+    list.coverage.omitted_count = list.rows.length - selected.length;
+    list.coverage.omission_reason = selected.length < list.rows.length ? 'output_budget' : null;
+    if (size() > budgetBytes) {
+      selected.pop();
+      list.coverage.returned_count = selected.length;
+      list.coverage.omitted_count = list.rows.length - selected.length;
+      list.coverage.omission_reason = selected.length < list.rows.length ? 'output_budget' : null;
+    }
+  }
+  return presented;
+}
+
+const FORECAST_VOID_REASONS = new Set([
+  'no_establishable_metric', 'value_source_never_settled', 'count_source_window_not_retained',
+  'unsupported_window', 'unsupported_metric_key', 'not_hard_spec', 'missing_threshold',
+  'missing_deadline', 'missing_generated_at', 'beyond_archive_horizon', 'no_archive_evidence',
+  'all_judges_void', 'judge_disagreement', 'judge_retry_exhausted', 'withheld_unpublished', 'other',
+  'resolver_envelope_bug', 'market_price_not_outcome', 'judged_evidence_unreliable', 'judged_old_selection',
+  'late_read', 'feed_unavailable', 'resolver_could_not_read_feed', 'base_rate_placeholder',
+]);
+
+function forecastFamilyOutcomes(data: Record<string, unknown>, ids: string[]) {
+  const raw = data.scorecard;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const card = raw as Record<string, unknown>;
+  if (card.degraded || card.error || !Array.isArray(card.familyOutcomes)) return undefined;
+  const rows = selectScorecardFields(card).familyOutcomes;
+  if (!Array.isArray(rows)) return undefined;
+  const retained = new Set(ids.slice(0, 30));
+  const counts = new Map<string, number>();
+  const history: { forecastId: string; outcome: string; voidReason?: string }[] = [];
+  for (const row of rows) {
+    if (typeof row.forecastId !== 'string' || !row.forecastId || !retained.has(row.forecastId)
+      || !['YES', 'NO', 'VOID'].includes(row.outcome)) continue;
+    const count = counts.get(row.forecastId) ?? 0;
+    if (count >= 5) continue;
+    counts.set(row.forecastId, count + 1);
+    history.push({ forecastId: row.forecastId, outcome: row.outcome,
+      ...(row.outcome === 'VOID' ? { voidReason: FORECAST_VOID_REASONS.has(row.voidReason) ? row.voidReason : 'other' } : {}),
+    });
+    if (history.length === 150) break;
+  }
+  return history;
+}
+
+// The scorecard seed's clock (#8990): the same 36-hour budget the REST handler
+// applies. An unknown clock is stale, so it cannot lift the audit.
+function scorecardClock(data: Record<string, unknown>, card: Record<string, unknown> | null) {
+  const capturedAt = Date.now();
+  const meta = data.scorecardMeta;
+  const raw = meta && typeof meta === 'object' && 'fetchedAt' in meta ? meta.fetchedAt : undefined;
+  // A missing, non-numeric or future clock is unknown, never fresh.
+  const fetchedAt = typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : NaN;
+  const knownClock = Number.isFinite(fetchedAt) && fetchedAt <= capturedAt;
+  return {
+    windowDays: typeof card?.rollingWindowDays === 'number' && Number.isFinite(card.rollingWindowDays) && card.rollingWindowDays > 0 ? card.rollingWindowDays : 180,
+    stale: !knownClock || capturedAt - fetchedAt > 36 * 3600000, freshnessUnknown: !knownClock,
+    asOf: knownClock ? new Date(fetchedAt).toISOString() : null, capturedAt: new Date(capturedAt).toISOString(),
+  };
+}
+
+function scorecardRecord(data: Record<string, unknown>): Record<string, unknown> | null {
+  const raw = data.scorecard;
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
+}
+
+/** The audit for the stored scorecard, held while its seed is stale (#8990). */
+export function storedScorecardAudit(data: Record<string, unknown>): ForecastAccuracyAudit | null {
+  const card = scorecardRecord(data);
+  return forecastAccuracyAudit(card, { stale: scorecardClock(data, card).stale });
+}
+
+/**
+ * While an audit holds for this scorecard (#8990) no domain score leaves this
+ * tool: status reads unavailable, byDomain is empty, and underAudit says why.
+ * The freshness fields stay, so the badge's clock contract is unchanged.
+ */
+export function forecastReliability(data: Record<string, unknown>, domains: string[], audit: ForecastAccuracyAudit | null = storedScorecardAudit(data)) {
+  const underAudit = audit ? { underAudit: { since: audit.since, issue: audit.issue, reason: audit.reason } } : {};
+  const unavailable = { status: 'unavailable', ...underAudit };
+  const card = scorecardRecord(data);
+  if (!card) return unavailable;
+  if (card.degraded || card.error || typeof card.schemaVersion !== 'number'
+    || !Number.isFinite(card.schemaVersion) || card.schemaVersion < 2 || !Array.isArray(card.publishedByDomain)) return unavailable;
+  const rows = new Map<string, Record<string, unknown>>();
+  for (const value of card.publishedByDomain) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const row = value as Record<string, unknown>;
+    if (typeof row.domain === 'string' && row.domain !== 'bet_engine' && domains.includes(row.domain)) rows.set(row.domain, row);
+  }
+  const clock = scorecardClock(data, card);
+  if (audit) return { status: 'unavailable', ...underAudit, ...clock, byDomain: [] };
+  return {
+    status: 'ready', ...clock,
+    byDomain: [...new Set(domains)].filter(domain => domain !== 'bet_engine').map(domain => {
+      const row = rows.get(domain);
+      const sampleCount = typeof row?.count === 'number' && Number.isFinite(row.count) && row.count > 0 ? row.count : 0;
+      const yes = row?.yesCount;
+      // The seeder writes a domain's bss only once the domain meets its family minimums (#8990).
+      return typeof row?.bss === 'number' && Number.isFinite(row.bss) && typeof row.brier === 'number' && Number.isFinite(row.brier)
+        && typeof yes === 'number' && Number.isInteger(yes) && yes >= 0 && yes <= sampleCount
+        ? { domain, kind: 'measured', n: sampleCount, brier: row.brier, yesShare: yes / sampleCount, bss: row.bss }
+        : { domain, kind: 'unmeasured', n: sampleCount };
+    }),
+  };
+}
+
+const FORECAST_SCORECARD_DESCRIPTION = 'Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, familyOutcomes (the recent outcomes of each live forecast id), and horizonGrades (grades of the 24h/7d/30d projections, which are not probabilities). From schemaVersion 3, totals and funnel count published forecasts only; shadow bets appear in byGenerationOrigin.';
+
+/**
+ * The first sentence is the one tools/list keeps, so it names the tool's
+ * purpose and the audit rule (#8990). A manual override makes the rule the
+ * dated notice. Otherwise the audit follows each scorecard, which a static
+ * description cannot know, so it points at underAudit.
+ */
+export function forecastScorecardDescription(configured?: ForecastAccuracyAudit | null): string {
+  const override = accuracyAuditOverride(configured);
+  const lead = override
+    ? `Forecast resolution scorecard, under audit since ${override.since} (issue ${override.issue}): do not quote its scores.`
+    : 'Forecast resolution scorecard (Brier, calibration, funnel); check underAudit before quoting scores.';
+  return `${lead} ${FORECAST_SCORECARD_DESCRIPTION}`;
+}
+
+/** The raw scorecard stays in the result; underAudit (#8990) tells a reader not to quote it as a verdict. */
+export function projectForecastScorecard(data: Record<string, unknown>, audit: ForecastAccuracyAudit | null = storedScorecardAudit(data)) {
+  const scorecard = data.scorecard;
+  const isRecord = scorecard != null && typeof scorecard === 'object' && !Array.isArray(scorecard);
+  return {
+    underAudit: audit ? { since: audit.since, issue: audit.issue, reason: audit.reason } : null,
+    scorecard: isRecord ? selectScorecardFields(scorecard as Record<string, unknown>, { extended: true }) : null,
+    marketAlerts: selectMarketAlertScorecard(data.marketAlerts) ?? null,
+  };
+}
+
 export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_toronto_reported_occurrences',
@@ -614,7 +794,8 @@ export const CACHE_TOOLS: ToolDef[] = [
     // This schema previously advertised `changePercent` and `flow`, which no
     // producer has ever written, so every agent projecting per the hint got
     // null for each row. Keep these names pinned to the seeders.
-    outputSchema: cacheEnvelope({
+    outputSchema: (() => {
+      const schema = cacheEnvelope({
       'stocks-bootstrap': {
         type: ['object', 'null'],
         properties: {
@@ -735,7 +916,20 @@ export const CACHE_TOOLS: ToolDef[] = [
           unavailable: { type: 'boolean' },
         },
       },
-    }),
+      }) as { properties: Record<string, unknown> };
+      return { ...schema, properties: { ...schema.properties, transportCoverage: {
+        type: 'object', required: ['count_scope', 'default_list_limit', 'collections'], properties: {
+          count_scope: { const: 'post_filter_snapshot' }, default_list_limit: { const: 30 },
+          collections: { type: 'object', properties: Object.fromEntries(MARKET_TRANSPORT_LISTS.map(([section, field]) => [section + '.' + field, {
+            type: 'object', required: ['state', 'original_count', 'returned_count', 'omitted_count', 'omission_reason'], properties: {
+              state: { type: 'string', enum: ['available', 'missing', 'null', 'unavailable'] },
+              original_count: { type: ['integer', 'null'], minimum: 0 }, returned_count: { type: ['integer', 'null'], minimum: 0 },
+              omitted_count: { type: ['integer', 'null'], minimum: 0 }, omission_reason: { enum: ['output_budget', null] },
+            },
+          }])) },
+        },
+      } } };
+    })(),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
       normalizePhysicalDivergenceDataset(data);
@@ -1285,7 +1479,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_natural_disasters',
     _uiResourceUri: NATURAL_DISASTERS_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Pro panels charge one allocation per opening; repeated views reuse the admission. Snapshot reuse is bounded by source clocks and known health, not complete provider coverage.',
+    description: 'Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Pro panels charge one allocation per opening; repeated views reuse the admission. Snapshot reuse is bounded by source clocks and known health, not complete provider coverage. Oversized paid panels may simplify or omit public geometry and regional detail, with explicit transportCoverage counts; API allowance reads retain full detail.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1303,7 +1497,8 @@ export const CACHE_TOOLS: ToolDef[] = [
       },
       required: [],
     },
-    outputSchema: cacheEnvelope({
+    outputSchema: (() => {
+      const schema = cacheEnvelope({
       earthquakes: {
         type: ['object', 'null'],
         properties: {
@@ -1345,7 +1540,25 @@ export const CACHE_TOOLS: ToolDef[] = [
           } } },
         },
       },
-    }),
+      }) as { properties: Record<string, unknown> };
+      return { ...schema, properties: { ...schema.properties, transportCoverage: {
+        type: 'object', required: ['count_scope', 'details'], properties: {
+          count_scope: { const: 'post_filter_snapshot' },
+          details: { type: 'array', items: { type: 'object', required: [
+            'dataset', 'collection', 'event_id', 'event_index', 'field', 'state', 'original_count',
+            'returned_count', 'omitted_count', 'omission_reason', 'geometry_simplified',
+          ], properties: {
+            dataset: { const: 'events' }, collection: { type: 'string' },
+            event_id: { type: ['string', 'null'] }, event_index: { type: ['integer', 'null'], minimum: 0 },
+            field: { type: 'string' }, state: { const: 'available' },
+            original_count: { type: 'integer', minimum: 0 }, returned_count: { type: 'integer', minimum: 0 },
+            omitted_count: { type: 'integer', minimum: 0 },
+            omission_reason: { enum: ['geometry_simplified', 'output_budget'] }, geometry_simplified: { type: 'boolean' },
+            original_ring_count: { type: 'integer', minimum: 0 }, returned_ring_count: { type: 'integer', minimum: 0 },
+          } } },
+        },
+      } } };
+    })(),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
       const minMag = argNum(params.min_magnitude);
@@ -1986,6 +2199,87 @@ export const CACHE_TOOLS: ToolDef[] = [
     ],
   },
   {
+    name: 'get_cross_border_arrivals',
+    _outputBudgetBytes: 262144,
+    description: 'UNHCR Operational Data Portal cross-border displacement situations, arrivals and returns. Public cached aggregates with source dates and partial unavailable situation IDs. Situations overlap: never sum them into a global total. Stock totals and monthly arrivals are different measures. Not annual UNHCR statistics or IOM DTM. No request-time provider fetch.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    outputSchema: cacheEnvelope({
+      crossBorderArrivals: {
+        type: ['object', 'null'],
+        properties: {
+          source: { type: 'string' },
+          situationCount: { type: 'integer', description: 'Full situation count in summary mode, before the three-situation sample.' },
+          unavailable: { type: 'array', items: { type: 'string' }, description: 'Situation IDs that failed during publication. Partial failure, not zero displacement.' },
+          situations: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' }, name: { type: 'string' },
+                origin: { type: ['string', 'null'] }, sourceUrl: { type: 'string' },
+                asOf: { type: 'string', description: 'Upstream report date; distinct from cached_at.' },
+                accelerating: { type: 'boolean' },
+                flows: {
+                  type: 'array', items: {
+                    type: 'object', properties: {
+                      kind: { type: 'string', enum: ['outflow', 'return', 'arrival', 'death'] },
+                      label: { type: 'string' }, measure: { type: 'string', enum: ['stock', 'monthly'] },
+                      origin: { type: ['string', 'null'] }, total: { type: 'number' }, asOf: { type: 'string' },
+                      months: { type: 'array', items: { type: 'object', properties: { month: { type: 'string' }, individuals: { type: 'number' } } } },
+                      countries: { type: 'array', items: { type: 'object', properties: {
+                        country: { type: 'string' }, iso2: { type: ['string', 'null'] }, individuals: { type: 'number' }, date: { type: 'string' },
+                        change: { type: 'object', properties: { since: { type: 'string' }, delta: { type: 'number' } } },
+                      } } },
+                    },
+                  },
+                },
+                trend: { type: 'object', properties: {
+                  measure: { type: 'string', enum: ['stock', 'monthly'] },
+                  points: { type: 'array', items: { type: 'array', minItems: 2, maxItems: 2, prefixItems: [{ type: 'string' }, { type: 'number' }], items: false } },
+                  latestDelta: { type: ['number', 'null'] }, latestDays: { type: ['number', 'null'] }, accelerating: { type: 'boolean' },
+                } },
+              },
+            },
+          },
+          attribution: { type: 'object', properties: {
+            source: { type: 'string' }, sourceUrl: { type: 'string' }, license: { type: 'string' },
+            licenseUrl: { type: 'string' }, termsUrl: { type: 'string' }, changes: { type: 'string' }, notice: { type: 'string' },
+          } },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _cacheKeys: ['displacement:cross-border:v1'],
+    _cacheLabels: { 'displacement:cross-border:v1': 'crossBorderArrivals' },
+    _freshnessChecks: [{ key: 'seed-meta:displacement:cross-border', maxStaleMin: 2880, minRecordCount: 12, honorContentAge: true }],
+    _apiPaths: [],
+    _attribution: 'data.crossBorderArrivals.{attribution: attribution, sources: situations[].{sourceUrl: sourceUrl, asOf: asOf}}',
+    _summarize: (data) => {
+      const value = data.crossBorderArrivals;
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return data;
+      const snapshot = value as Record<string, unknown>;
+      if (!Array.isArray(snapshot.situations)) return data;
+      return { ...data, crossBorderArrivals: {
+        ...snapshot,
+        situationCount: snapshot.situations.length,
+        situations: snapshot.situations.slice(0, 3),
+      } };
+    },
+    _project: (data) => {
+      const snapshot = data.crossBorderArrivals;
+      if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return data;
+      return { ...data, crossBorderArrivals: { ...snapshot, attribution: {
+        source: 'UNHCR Operational Data Portal',
+        sourceUrl: 'https://data.unhcr.org/',
+        license: 'CC BY 4.0',
+        licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
+        termsUrl: 'https://data.unhcr.org/en/disclaimer/',
+        changes: 'WorldMonitor normalizes portal aggregate reports and derives change figures; per-situation source URLs and dates are retained.',
+        notice: 'ODP dataset license applies except where otherwise indicated. No UNHCR endorsement. Situations overlap; do not sum totals.',
+      } } };
+    },
+  },
+  {
     name: 'get_displacement_data',
     _outputBudgetBytes: 131072,
     description: 'Refugee and IDP counts by country (UNHCR annual data).',
@@ -2079,9 +2373,19 @@ export const CACHE_TOOLS: ToolDef[] = [
         type: ['object', 'null'],
         properties: {
           outbreaks: { type: 'array', items: { type: 'object', properties: {
-            disease: { type: 'string' }, country: { type: 'string' }, countryCode: { type: 'string' },
-            cases: { type: ['number', 'null'] }, deaths: { type: ['number', 'null'] }, date: { type: 'string' },
+            id: { type: 'string', description: 'Source-derived report identifier; multiple sources may report one event.' },
+            disease: { type: 'string' }, location: { type: 'string' }, countryCode: { type: 'string' },
+            alertLevel: { type: 'string', description: 'Editorial watch, warning or alert classification, not a case-count measurement.' },
+            summary: { type: 'string' }, sourceName: { type: 'string' }, sourceUrl: { type: 'string' },
+            publishedAt: { type: 'number', description: 'Source report publication time in Unix epoch milliseconds, or fetch time when the source date is missing or invalid; this field alone does not confirm publication time.' },
+            lat: { type: 'number' }, lng: { type: 'number', description: 'Latitude/longitude are source locations or inferred points; both zero means unknown.' },
+            cases: { type: ['number', 'null'], description: 'Reported case count; zero, null or absence means unknown, not no cases.' },
+            country: { type: 'string', description: 'Optional legacy country field; current reports use location and countryCode.' },
+            deaths: { type: ['number', 'null'], description: 'Optional legacy count; absence is not zero.' },
+            date: { type: 'string', description: 'Optional legacy date; current reports use publishedAt.' },
           } } },
+          fetchedAt: { type: 'number', description: 'Snapshot fetch time in Unix epoch milliseconds; absent clocks remain unknown.' },
+          alertLevelMethodologyVersion: { type: 'string', description: 'Version of the editorial alert-level classifier.' },
         },
       },
       'air-quality': {
@@ -2649,7 +2953,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_tariff_trends',
     _outputBudgetBytes: 131072,
-    description: 'Global trade and pricing indicators: US tariff trends (HTS-coded), BigMac index, FAO Food Price Index, and per-country national debt levels.',
+    description: 'Global trade and pricing indicators: US MFN applied tariff trend (all-products average; for another reporter, a partner or a product group use get_tariff_averages), Big Mac index, FAO Food Price Index, and per-country national debt levels.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2662,7 +2966,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           type: 'string',
           description: 'Filter the per-country datasets to one ISO 3166-1 alpha-2 country code (e.g. "US"). It is translated to alpha-3 internally for the national-debt dataset; passing an alpha-3 code directly also works. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
         },
-        limit: { type: 'number', description: 'Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap).' },
+        limit: { type: 'number', description: 'Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap). Tariff datapoints keep the most recent years; coverageStartYear/coverageEndYear describe the full seeded window.' },
       },
       required: [],
     },
@@ -2671,11 +2975,33 @@ export const CACHE_TOOLS: ToolDef[] = [
     // on `tariffs`. Pin the historical `all` label via `_cacheLabels` so the
     // dataset enum and postFilter map stay stable for callers.
     outputSchema: cacheEnvelope({
+      // WTO TP_A_0010: the US simple-average MFN applied rate across all
+      // products, one row per year, oldest first. There is no partner or
+      // HS-level breakdown: partnerCountry is always "World", productSector
+      // "All products", and boundRate 0 (not seeded).
       all: {
         type: ['object', 'null'],
-        properties: { datapoints: { type: 'array', items: { type: 'object', properties: {
-          hsCode: { type: 'string' }, rate: { type: ['number', 'null'] }, country: { type: 'string' },
-        } } } },
+        properties: {
+          datapoints: { type: 'array', items: { type: 'object', properties: {
+            reportingCountry: { type: 'string' },
+            partnerCountry: { type: 'string' },
+            productSector: { type: 'string' },
+            year: { type: 'number' },
+            tariffRate: { type: ['number', 'null'] },
+            boundRate: { type: ['number', 'null'], description: 'Always 0: a placeholder, not an observed bound rate. Bound rates are not seeded.' },
+            indicatorCode: { type: 'string' },
+          } } },
+          // Customs duties / goods imports from FRED (BEA), when available.
+          effectiveTariffRate: { type: 'object', properties: {
+            sourceName: { type: 'string' },
+            sourceUrl: { type: 'string' },
+            observationPeriod: { type: 'string' },
+            updatedAt: { type: 'string' },
+            tariffRate: { type: 'number' },
+          } },
+          coverageStartYear: { type: 'number' },
+          coverageEndYear: { type: 'number' },
+        },
       },
       bigmac: {
         type: ['object', 'null'],
@@ -2705,7 +3031,13 @@ export const CACHE_TOOLS: ToolDef[] = [
         ];
         narrowNested(data, 'national-debt', 'entries', (e) => matchesCode(e.iso3, debtCodes));
       }
-      capNested(data, 'all', 'datapoints', limit);
+      // Tariff datapoints are oldest-first; keep the most recent years.
+      // Truncate like capNested so a fractional limit below 1 keeps none
+      // (slice(-0) would keep all).
+      if (limit > 0) {
+        const n = Math.floor(limit);
+        mapNested(data, 'all', 'datapoints', (d) => (Array.isArray(d) ? (n > 0 ? d.slice(-n) : []) : d));
+      }
       capNested(data, 'bigmac', 'countries', limit);
       capNested(data, 'national-debt', 'entries', limit);
       const ds = argStrList(params.dataset);
@@ -3102,6 +3434,15 @@ export const CACHE_TOOLS: ToolDef[] = [
     },
     outputSchema: (() => {
       const schema = cacheEnvelope({
+      familyOutcomes: { type: 'array', maxItems: 150, items: { type: 'object', additionalProperties: false,
+        properties: { forecastId: { type: 'string' }, outcome: { type: 'string', enum: ['YES', 'NO', 'VOID'] }, voidReason: { type: 'string', enum: [...FORECAST_VOID_REASONS] } },
+        required: ['forecastId', 'outcome'],
+      } },
+      reliability: { type: 'object', properties: {
+        status: { type: 'string', enum: ['ready', 'unavailable'] },
+        underAudit: { type: 'object', description: 'Present while forecast accuracy is under audit; domain scores are withheld.', properties: { since: { type: 'string' }, issue: { type: 'number' }, reason: { type: 'string' } } },
+        byDomain: { type: 'array', maxItems: 30, items: { type: 'object' } },
+      } },
       predictions: {
         type: ['object', 'null'],
         properties: { predictions: { type: 'array', items: { type: 'object', properties: {
@@ -3140,9 +3481,17 @@ export const CACHE_TOOLS: ToolDef[] = [
           }
         }
       }
-      return data;
+      if (execution?.panelScope === 'forecasts' || execution?.panelRequest && 'panel' in execution.panelRequest && execution.panelRequest.panel === 'forecasts') {
+        const node = data.predictions as { predictions?: unknown[] } | null;
+        const domains = (Array.isArray(node?.predictions) ? node.predictions : []).flatMap(value => value && typeof value === 'object' && 'domain' in value && typeof value.domain === 'string' ? [value.domain] : []);
+        const ids = (Array.isArray(node?.predictions) ? node.predictions : []).flatMap(value => value && typeof value === 'object' && 'id' in value && typeof value.id === 'string' ? [value.id] : []);
+        const familyOutcomes = forecastFamilyOutcomes(data, ids);
+        return { predictions: data.predictions, reliability: forecastReliability(data, domains), ...(familyOutcomes === undefined ? {} : { familyOutcomes }) };
+      }
+      return { predictions: data.predictions };
     },
-    _cacheKeys: ['forecast:predictions:v2'],
+    _cacheKeys: ['forecast:predictions:v2', 'forecast:scorecard:v1', 'seed-meta:forecast:scorecard'],
+    _cacheLabels: { 'forecast:predictions:v2': 'predictions', 'forecast:scorecard:v1': 'scorecard', 'seed-meta:forecast:scorecard': 'scorecardMeta' },
     _freshnessChecks: [{ key: 'seed-meta:forecast:predictions', maxStaleMin: 90 }],
     _apiPaths: [
       "GET /api/forecast/v1/get-forecasts",
@@ -3188,18 +3537,25 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_forecast_scorecard',
     _outputBudgetBytes: 65536,
-    description: 'Forecast resolution scorecard with calibration, Brier/log score, domain and generation-origin breakdowns, and pending/judged resolution counts.',
+    description: forecastScorecardDescription(),
     inputSchema: {
       type: 'object',
       properties: {},
       required: [],
     },
     outputSchema: cacheEnvelope({
+      underAudit: {
+        type: ['object', 'null'],
+        description: 'Set while the accuracy record is under audit: the scores below are unreliable and must not be quoted as a verdict. Without a manual override, it clears once the headline is measurable and the scorecard is fresh.',
+        properties: { since: { type: 'string' }, issue: { type: 'number' }, reason: { type: 'string' } },
+      },
       scorecard: {
         type: ['object', 'null'],
         properties: {
+          schemaVersion: { type: ['number', 'null'] },
           generatedAt: { type: ['number', 'null'] },
           rollingWindowDays: { type: ['number', 'null'] },
+          methodology: { type: ['string', 'null'] },
           totals: { type: ['object', 'null'] },
           overall: { type: ['object', 'null'] },
           skill: { type: ['object', 'null'] },
@@ -3207,11 +3563,37 @@ export const CACHE_TOOLS: ToolDef[] = [
           byGenerationOrigin: { type: 'array', items: { type: 'object' } },
           calibration: { type: 'array', items: { type: 'object' } },
           vsMarketSkill: { type: ['object', 'null'] },
+          publishedByDomain: { type: 'array', items: { type: 'object' } },
+          uncertainty: { type: ['object', 'null'] },
+          funnel: { type: ['object', 'null'] },
+          receipts: { type: 'array', items: { type: 'object' } },
+          familyOutcomes: { type: 'array', items: { type: 'object' } },
+          horizonGrades: {
+            type: ['object', 'null'],
+            description: 'Point-in-time grades of the 24h/7d/30d projections, one row per curvesVersion and horizon. Projections are not probabilities: they come from fixed hand-set curves. A row carries brier and realizedRate only when measurable (minimums: forecast families with YES and NO outcomes); otherwise counts only.',
+          },
+        },
+      },
+      marketAlerts: {
+        type: ['object', 'null'],
+        properties: {
+          generatedAt: { type: 'number' },
+          windowHours: { type: 'number' },
+          rollingWindowDays: { type: 'number' },
+          methodology: { type: 'string' },
+          byType: { type: 'array', items: { type: 'object', properties: {
+            type: { type: 'string' }, scored: { type: 'number' }, hitRate: { type: 'number' }, baseN: { type: 'number' },
+            baseHitRate: { type: 'number' }, pairedHitRate: { type: 'number' },
+            medianLeadTimeMs: { type: 'number', description: 'Median over hits; omitted below 30 hits.' },
+          } } },
         },
       },
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _cacheKeys: ['forecast:scorecard:v1'],
+    // The seed-meta clock decides staleness, and a stale scorecard holds the audit (#8990).
+    _cacheKeys: ['forecast:scorecard:v1', 'correlation:market-alerts:scorecard:v1', 'seed-meta:forecast:scorecard'],
+    _cacheLabels: { 'correlation:market-alerts:scorecard:v1': 'marketAlerts', 'seed-meta:forecast:scorecard': 'scorecardMeta' },
+    _project: (data) => projectForecastScorecard(data),
     _freshnessChecks: [{ key: 'seed-meta:forecast:scorecard', maxStaleMin: 2160 }],
     _apiPaths: [
       "GET /api/forecast/v1/get-forecast-scorecard",

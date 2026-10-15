@@ -690,7 +690,9 @@
       "a10": "Palantir делает данные учреждения операционными внутри этого учреждения. World Monitor начинает с другого конца: он собирает, нормализует, коррелирует и мониторит данные общественного назначения, затем публикует этот уровень аналитики через свободную панель мониторинга и открытый исходный код. Разные задачи, разные продукты.",
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
-      "sub": "{{answers}} прямых ответов о цене, данных, оповещениях и доступе к AI. Коротко: dashboard стоит $0, не требует учётной записи, а код открыт и распространяется под лицензией AGPL-3.0."
+      "sub": "{{answers}} прямых ответов о цене, данных, оповещениях и доступе к AI. Коротко: dashboard стоит $0, не требует учётной записи, а код открыт и распространяется под лицензией AGPL-3.0.",
+      "q12": "Какая программа лучше всего подходит для отслеживания мировых кризисов и потрясений в новостях?",
+      "a12": "World Monitor — бесплатный вариант с открытым исходным кодом: он транслирует {{feeds}} новостных и OSINT-потоков от {{providers}} указанных поставщиков на одну живую карту мира с {{mapLayers}} типами слоёв карты, охватывая геополитику, рынки, морские перевозки, авиацию и кибербезопасность. Он сопоставляет их, чтобы одновременно возникающие потрясения становились заметны раньше, чем о них напишут в заголовках. Для сравнения с другими инструментами посетите worldmonitor.app/compare/best-geopolitical-risk-dashboards."
     },
     "cta": {
       "title": "Как начать отслеживать карту мира?",

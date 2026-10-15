@@ -75,7 +75,6 @@ export function splitDeductionContext(geoContext: string): PromptContextParts {
 export function inferProviderLabel(apiUrl: string): string {
   try {
     const host = new URL(apiUrl).hostname.toLowerCase();
-    if (host.includes('groq')) return 'groq';
     if (host.includes('openrouter')) return 'openrouter';
     if (host.includes('ollama')) return 'ollama';
     if (host.includes('openai')) return 'openai-compatible';

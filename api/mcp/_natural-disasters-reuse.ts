@@ -1,6 +1,6 @@
 import { argBool, argNum, argStrList, capNested, selectDatasets } from './filters';
 import { DEFAULT_LIST_LIMIT } from './constants';
-import { projectNaturalEventsRetention } from '../_natural-events-dashboard.js';
+import { compactNaturalEventsDashboardPayload, projectNaturalEventsRetention } from '../_natural-events-dashboard.js';
 
 export type NaturalDisastersPanelRead = { value: unknown; reuseUntil: number | null };
 
@@ -98,4 +98,92 @@ export function filterNaturalDisastersPanelData(data: Record<string, unknown>, a
   }
   const labels = argStrList(args.dataset).map(value => SOURCES[value as keyof typeof SOURCES]?.label).filter((value): value is 'earthquakes' | 'fires' | 'events' => value !== undefined);
   return labels.length ? selectDatasets(data, labels) : data;
+}
+
+export function presentNaturalDisastersPanel(result: Record<string, unknown>, budgetBytes: number, summary = false): Record<string, unknown> {
+  const size = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
+  if (size(result) <= budgetBytes || !record(result.data) || !record(result.data.events)) return result;
+  const presented = structuredClone(result);
+  const bucket = (presented.data as Record<string, unknown>).events as Record<string, unknown>;
+  const details: Record<string, unknown>[] = [];
+  const entries = new Map<string, Record<string, unknown>>();
+  const coneCounts = (value: unknown): { points: number; rings: number } | null => {
+    if (!Array.isArray(value)) return null;
+    let points = 0;
+    for (const ring of value) {
+      const vertices = Array.isArray(ring) ? ring : record(ring) ? ring.points : null;
+      if (!Array.isArray(vertices) || vertices.some(point => Array.isArray(point)
+        ? !Number.isFinite(point[0]) || !Number.isFinite(point[1])
+        : !record(point) || !Number.isFinite(point.lon) || !Number.isFinite(point.lat))) return null;
+      points += vertices.length;
+    }
+    return { points, rings: value.length };
+  };
+  const note = (row: Record<string, unknown>, collection: string, index: number | null, field: string,
+    original: number, returned: number, reason: string, rings?: { original: number; returned: number }) => {
+    const key = collection + ':' + index + ':' + field;
+    let coverage = entries.get(key);
+    if (!coverage) {
+      coverage = { dataset: 'events', collection, event_id: typeof row.id === 'string' ? row.id : null,
+        event_index: index, field, state: 'available', original_count: original };
+      entries.set(key, coverage); details.push(coverage);
+    }
+    Object.assign(coverage, { returned_count: returned, omitted_count: Number(coverage.original_count) - returned,
+      omission_reason: reason, geometry_simplified: reason === 'geometry_simplified' });
+    if (rings) Object.assign(coverage, { original_ring_count: coverage.original_ring_count ?? rings.original,
+      returned_ring_count: rings.returned });
+    presented.transportCoverage = { count_scope: 'post_filter_snapshot', details };
+  };
+  const rows = Array.isArray(bucket.events) ? bucket.events
+    : summary && record(bucket.events) && Number.isSafeInteger(bucket.events.count)
+      && Array.isArray(bucket.events.sample) && Number(bucket.events.count) >= bucket.events.sample.length ? bucket.events.sample : [];
+  rows.forEach((row, index) => {
+    if (!record(row)) return;
+    const original = coneCounts(row.conePolygon);
+    if (!original || !original.points) return;
+    const next = compactNaturalEventsDashboardPayload({ events: [row] }).events[0]!;
+    if (next === row) return;
+    const originalRings = row.conePolygon as unknown[];
+    const compactedRings = (next.conePolygon as unknown[]).map((ring, index) => {
+      const before = coneCounts([originalRings[index]]);
+      const after = coneCounts([ring]);
+      return before && after && after.points < before.points ? ring : originalRings[index];
+    });
+    if (compactedRings.every((ring, index) => ring === originalRings[index])) return;
+    const returned = coneCounts(compactedRings);
+    if (!returned) return;
+    row.conePolygon = compactedRings;
+    note(row, 'events.events', index, 'conePolygon', original.points, returned.points, 'geometry_simplified',
+      { original: original.rings, returned: returned.rings });
+  });
+  if (size(presented) <= budgetBytes) return presented;
+  const omitGeometry = (row: Record<string, unknown>, collection: string, index: number) => {
+    for (const field of ['conePolygon', 'forecastTrack', 'pastTrack']) {
+      const value = row[field];
+      if (!Array.isArray(value) || !value.length) continue;
+      const cone = field === 'conePolygon' ? coneCounts(value) : null;
+      if (field === 'conePolygon' && !cone) continue;
+      if (field !== 'conePolygon' && !value.every(point => record(point)
+        && Number.isFinite(point.lat) && Math.abs(Number(point.lat)) <= 90
+        && Number.isFinite(point.lon) && Math.abs(Number(point.lon)) <= 180)) continue;
+      delete row[field];
+      note(row, collection, index, field, cone?.points ?? value.length, 0, 'output_budget',
+        cone ? { original: cone.rings, returned: 0 } : undefined);
+    }
+  };
+  rows.forEach((row, index) => { if (record(row)) omitGeometry(row, 'events.events', index); });
+  if (size(presented) <= budgetBytes) return presented;
+  for (const [region, field] of [['westernPacific', 'events'], ['hkoWarnings', 'warnings']]) {
+    const source = bucket[region!];
+    if (!record(source) || !Array.isArray(source[field!])) continue;
+    const original = source[field!] as unknown[];
+    if (!original.length) continue;
+    const sample = original.slice(0, 3);
+    sample.forEach((row, index) => { if (record(row)) omitGeometry(row, 'events.' + region + '.' + field, index); });
+    if (original.length > sample.length) {
+      source[field!] = { count: original.length, sample };
+      note({}, 'events.' + region, null, field!, original.length, sample.length, 'output_budget');
+    }
+  }
+  return details.length ? presented : result;
 }

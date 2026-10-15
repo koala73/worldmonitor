@@ -1,3 +1,5 @@
+import { RAW_SIGNAL_PATH } from '../../shared/country-raw-signals-model';
+import { combineAbortSignals } from './timeout-signal';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
 import type { createHostCountryFetch } from './country-brief-host-transport';
 import { IntelligenceServiceClient, MarketServiceClient, MilitaryServiceClient, MaritimeServiceClient, EconomicServiceClient, TradeServiceClient, SupplyChainServiceClient, ResilienceServiceClient, ScorecardServiceClient, PredictionServiceClient } from '@/services/generated-rpc-clients';
@@ -17,6 +19,19 @@ function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void }
     mode,
     canRequestPremium: () => mode === 'host' || (!IS_EMBEDDED_PREVIEW && hasPremiumAccess()),
     fetch: fetcher,
+    signalsRaw: async (code: string, signal: AbortSignal) => {
+      if (mode !== 'host') throw new Error('Raw Signals reader requires a country host connection.');
+      const requestSignal = combineAbortSignals([signal, AbortSignal.timeout(30_000)]);
+      requestSignal.throwIfAborted();
+      const { rawSignalsValueSchema } = await import('../../shared/country-raw-signals');
+      requestSignal.throwIfAborted();
+      const response = await fetcher(`${base}${RAW_SIGNAL_PATH}?country_code=${code}`, { signal: requestSignal });
+      requestSignal.throwIfAborted();
+      const value = rawSignalsValueSchema.parse(await response.json());
+      requestSignal.throwIfAborted();
+      if (value.countryCode !== code) throw new Error('Signals country identity mismatch');
+      return value;
+    },
     clearLoadedData: fetcher.clear ?? (() => {}),
     intelligence,
     market: new MarketServiceClient(base, options),
@@ -45,7 +60,7 @@ function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void }
     },
     food: async (code: string, signal: AbortSignal) => mode === 'website' ? (await import('@/services/resilience')).getFoodStocks({ countryCode: code, signal }) : resilience.getFoodStocks({ countryCode: code, commodity: '' }, { signal }),
     demographics: async (code: string, signal: AbortSignal) => mode === 'website' ? (await import('@/services/resilience')).getDemographicsCapability({ countryCode: code, signal }) : resilience.getDemographicsCapability({ countryCode: code }, { signal }),
-    factors: async (code: string, signal: AbortSignal) => mode === 'website' ? (await import('@/services/scorecard')).getFiveFactorScorecard(code, signal) : (await import('@/services/scorecard')).withScorecardDeadline(requestSignal => scorecard.getFiveFactorScorecard({ countryCode: code }, { signal: requestSignal }), signal),
+    factors: async (code: string, signal: AbortSignal) => mode === 'website' ? (await import('@/services/scorecard')).getFiveFactorScorecard(code, signal) : scorecard.getFiveFactorScorecard({ countryCode: code }, { signal }),
     resilience: async (code: string, signal: AbortSignal) => mode === 'website' ? (await import('@/services/resilience')).getResilienceScore(code) : resilience.getResilienceScore({ countryCode: code }, { signal }),
     cost: (code: string, chokepoint: string, days: number, signal: AbortSignal) => mode === 'website' ? fetchMultiSectorCostShock(code, chokepoint, days, { signal }) : supply.getMultiSectorCostShock({ iso2: code, chokepointId: chokepoint, closureDays: days }, { signal }),
     bypass: (chokepointId: string, signal: AbortSignal) => mode === 'website' ? fetchBypassOptions(chokepointId, 'container', 100) : supply.getBypassOptions({ chokepointId, cargoType: 'container', closurePct: 100 }, { signal }),

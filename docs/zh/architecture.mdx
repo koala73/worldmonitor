@@ -12,7 +12,7 @@ description: "World Monitor 背后的设计原则、情报工艺与算法决策�
 | 原则                           | 实现                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **速度优先于完美**           | 关键词分类器即时响应；LLM 异步细化。用户无需等待。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| **假设会失败**                  | 每个数据源配备独立熔断器，5 分钟冷却期。AI 回退链：Ollama（本地）→ Groq → OpenRouter → 浏览器端 T5。Redis 缓存失败时降级为内存回退并返回过期数据。负缓存（上游失败后 5 分钟退避）防止对宕机 API 的反复轰炸。每个边缘函数在上游 API 不可用时返回过期的缓存数据。**缓存击穿预防** — `cachedFetchJson` 使用一个进行中的 Promise 映射，将并发的缓存未命中合并为单次上游抓取：第一个请求创建并注册一个 Promise，所有对相同 key 的并发请求 await 同一个 Promise，而不是各自独立命中上游。对速率敏感的 API（Yahoo Finance）使用错峰顺序请求，请求间隔 150ms，避免 429 限流。UCDP 冲突数据使用自动版本发现（并行探测多个 API 版本）、已发现版本缓存（1 小时 TTL）以及出错时返回过期数据的回退策略。 |
+| **假设会失败**                  | 每个数据源配备独立熔断器，5 分钟冷却期。AI 回退链：Ollama（本地）→ OpenRouter → 浏览器端 T5。Redis 缓存失败时降级为内存回退并返回过期数据。负缓存（上游失败后 5 分钟退避）防止对宕机 API 的反复轰炸。每个边缘函数在上游 API 不可用时返回过期的缓存数据。**缓存击穿预防** — `cachedFetchJson` 使用一个进行中的 Promise 映射，将并发的缓存未命中合并为单次上游抓取：第一个请求创建并注册一个 Promise，所有对相同 key 的并发请求 await 同一个 Promise，而不是各自独立命中上游。对速率敏感的 API（Yahoo Finance）使用错峰顺序请求，请求间隔 150ms，避免 429 限流。UCDP 冲突数据使用自动版本发现（并行探测多个 API 版本）、已发现版本缓存（1 小时 TTL）以及出错时返回过期数据的回退策略。 |
 | **展示你无法看到的内容**         | 情报缺口追踪器显式报告数据源中断，而不是静默隐藏。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | **适当时浏览器优先计算** | 聚类、本地 ML、地理定位、激增检测和离线回退在客户端运行。服务端权威 API 发布 CII/CRI 评分、简报、预测、MCP 工具，以及带记录方法论与来源溯源的缓存运营数据。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | **本地优先地理定位**         | 国家检测使用浏览器端对 GeoJSON 多边形的射线投射，而非网络反向地理编码。亚毫秒级响应，零 API 依赖，离线可用。网络地理编码作为回退，而非主路径。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -241,7 +241,7 @@ Page Load → parallel fetch ─┬─ /api/bootstrap?tier=fast  (s-maxage=1200)
 | `seed-climate-anomalies` | Open-Meteo ERA5 | 15 分钟 | `climate:anomalies:v2` |
 | `seed-natural-events` | USGS + GDACS + NASA EONET | 2 小时 | `natural:events:v1` |
 | `seed-airport-delays` | FAA + AviationStack + ICAO NOTAM | 10 分钟 | `aviation:delays-bootstrap:v1` |
-| `seed-insights` | Groq LLM 世界简报 + 头条 | 10 分钟 | `news:insights:v1` |
+| `seed-insights` | LLM 世界简报 + 头条（先 Ollama，后 OpenRouter） | 10 分钟 | `news:insights:v1` |
 | `seed-prediction-markets` | Polymarket Gamma API | 10 分钟 | `prediction:markets-bootstrap:v1` |
 | `seed-etf-flows` | Yahoo Finance（IBIT、FBTC、GBTC+） | 15 分钟 | `market:etf-flows:v1` |
 | `seed-stablecoin-markets` | CoinGecko（USDT、USDC、DAI+） | 10 分钟 | `market:stablecoins:v1` |
@@ -252,7 +252,7 @@ Page Load → parallel fetch ─┬─ /api/bootstrap?tier=fast  (s-maxage=1200)
 | `seed-displacement-summary` | UNHCR / IOM | 30 分钟 | N/A |
 | `seed-military-bases` | 经审核的军事基地注册表 | 每日 | N/A |
 | `seed-wb-indicators` | World Bank 技术准备度 | 每日 | `economic:worldbank-techreadiness:v1` |
-| `seed-forecasts` | Groq LLM + 多领域信号 | 15 分钟 | `forecast:predictions:v2` |
+| `seed-forecasts` | OpenRouter LLM + 多领域信号 | 15 分钟 | `forecast:predictions:v2` |
 | `seed-conflict-intel` | ACLED + HAPI + PizzINT + GDELT | 15 分钟 | `conflict:acled:v1:all:0:0` |
 | `seed-economy` | EIA 能源 + FRED 宏观 + 支出 | 15 分钟 | N/A（额外键） |
 | `seed-supply-chain-trade` | FRED 航运 + WTO + US Treasury | 6 小时 | `supply_chain:shipping:v2` |
@@ -275,7 +275,7 @@ Page Load → parallel fetch ─┬─ /api/bootstrap?tier=fast  (s-maxage=1200)
 World Monitor 使用 Vercel Edge Functions 作为轻量 API 层，分为两代。`api/*.js` 中的遗留端点各自处理单一数据源问题 — 代理、缓存或转换外部 API。较新的 proto 优先端点使用**每领域薄入口点**，每个仅导入其自身的处理器模块。这取代了原来在每次冷启动时加载全部领域的单体网关。每个领域的函数经 tree-shaking 仅包含其依赖，将冷启动时间减少约 85%（大多数端点低于 100ms，而单体处理器需 500ms+）。共享的 `server/gateway.ts` 提供通用路由逻辑。两代共存，新功能以 proto 优先方式构建。此架构避免了单体后端同时保持 API 密钥服务端：
 
 - **RSS 代理** — 域名白名单代理，支持完整的订阅源目录，防止 CORS 问题并隐藏源服务器。Edge 代理和 Railway 中继都保持重定向为手动，并在每一跳前重新检查 RSS 域名白名单。来自屏蔽 Vercel IP 的域名的订阅源自动通过 Railway 中继路由。
-- **AI 管道** — Groq 和 OpenRouter 边缘函数配 Redis 去重，使并发用户间的相同标题仅触发一次 LLM 调用。classify-event 端点在 500 错误时暂停其队列以避免浪费 API 配额。
+- **AI 管道** — Ollama 和 OpenRouter 摘要边缘函数配 Redis 去重，使并发用户间的相同标题仅触发一次 LLM 调用。classify-event 端点在 500 错误时暂停其队列以避免浪费 API 配额。
 - **数据适配器** — GDELT、ACLED、OpenSky、USGS、NASA FIRMS、FRED、Yahoo Finance、CoinGecko、mempool.space、BIS、WTO 等各自有专用边缘函数将响应归一化为一致 schema
 - **市场情报** — 宏观信号、ETF 资金流和稳定币监控在服务端计算衍生分析（VWAP、SMA、peg 偏差、资金流估算）并将结果缓存到 Redis
 - **时间基线** — Welford 算法状态在跨请求间持久化到 Redis，无需传统数据库即可构建统计基线
@@ -495,7 +495,7 @@ Request → [1] In-Memory Cache → [2] Redis (Upstash) → [3] Upstream API
 
 **负缓存** — 当上游 API 返回错误时，系统缓存一个哨兵值（`__WM_NEG__`）120 秒，而非让缓存为空。这防止了数百个并发请求各自独立发现缓存为空并同时轰炸宕机 API 的失败级联。负哨兵对消费者透明 — `cachedFetchJson` 对负缓存键返回 `null`，面板回退到过期数据或显示适当的空状态。特定 API 使用更长的负 TTL：UCDP 使用 5 分钟退避，Polymarket 队列拒绝使用 30 秒退避。
 
-AI 摘要管道添加了基于内容的去重：标题在调用 Groq 前进行哈希并对照 Redis 检查，因此 1,000 个并发用户查看的同一条突发新闻恰好触发一次 LLM 调用。
+AI 摘要管道添加了基于内容的去重：标题在调用 LLM 提供商前进行哈希并对照 Redis 检查，因此 1,000 个并发用户查看的同一条突发新闻恰好触发一次 LLM 调用。
 
 ---
 
@@ -871,7 +871,7 @@ ACLED/GDELT → Protest Events ────────────────�
 
 外部服务中断可能影响：
 
-- AI 摘要（Groq、OpenRouter 中断）
+- AI 摘要（OpenRouter 中断）
 - 部署管道（Vercel、GitHub 中断）
 - API 可用性（Cloudflare、AWS 中断）
 

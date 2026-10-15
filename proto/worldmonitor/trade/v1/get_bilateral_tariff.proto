@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package worldmonitor.trade.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// Why no rate was served. NOT_COVERED is final; UPSTREAM_UNAVAILABLE is a fault.
+enum BilateralTariffUnavailableReason {
+  // A rate was served.
+  BILATERAL_TARIFF_UNAVAILABLE_REASON_UNSPECIFIED = 0;
+  // Malformed codes; only reachable when request validation is bypassed.
+  BILATERAL_TARIFF_UNAVAILABLE_REASON_INVALID_REQUEST = 1;
+  // TRAINS has no row for this reporter, HS code and year.
+  BILATERAL_TARIFF_UNAVAILABLE_REASON_NOT_COVERED = 2;
+  // WITS did not answer or returned an error.
+  BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE = 3;
+}
+
+// Source of applied_rate.
+enum AppliedTariffBasis {
+  // No rate was served.
+  APPLIED_TARIFF_BASIS_UNSPECIFIED = 0;
+  // A partner-specific preferential rate below MFN is on file.
+  APPLIED_TARIFF_BASIS_PREFERENTIAL = 1;
+  // Preferences were filed that year, none for this partner: MFN applies.
+  APPLIED_TARIFF_BASIS_MFN = 2;
+  // No preferences filed that year; the applied rate may be below MFN.
+  APPLIED_TARIFF_BASIS_MFN_PREFERENCES_NOT_REPORTED = 3;
+}
+
+// Applied tariff on one HS6 product between two countries, from UNCTAD TRAINS
+// via World Bank WITS. Excludes unilateral duties (Section 301/232, IEEPA,
+// AD/CVD, safeguards).
+message GetBilateralTariffRequest {
+  // Importer, 3-digit UN M49 ("840"). EU members use the EU schedule.
+  string reporting_country = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[0-9]{3}$",
+    (sebuf.http.query) = {name: "reporting_country"}
+  ];
+  // Exporter, 3-digit UN M49 ("484"). "000" returns MFN only.
+  string partner_country = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[0-9]{3}$",
+    (sebuf.http.query) = {name: "partner_country"}
+  ];
+  // Six-digit HS subheading ("870323").
+  string hs_code = 3 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[0-9]{6}$",
+    (sebuf.http.query) = {name: "hs_code"}
+  ];
+  // Tariff year; 0 = latest year TRAINS lists for the importer.
+  int32 year = 4 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 2100,
+    (sebuf.http.query) = {name: "year"}
+  ];
+}
+
+// Simple average across the importer's national tariff lines, in percent.
+message TariffRateDetail {
+  // Average ad valorem rate.
+  double rate = 1;
+  // Lowest line rate.
+  double min_rate = 2;
+  // Highest line rate.
+  double max_rate = 3;
+  // National tariff lines.
+  int32 tariff_lines = 4;
+  // Specific or compound lines, excluded from the average.
+  int32 non_ad_valorem_lines = 5;
+}
+
+// Preference granted to a partner group. Membership is not resolved.
+message GroupTariffPreference {
+  // WITS group code ("A41").
+  string group_code = 1;
+  // WITS group name; empty when WITS has none.
+  string group_name = 2;
+  // The group's rate.
+  TariffRateDetail rate = 3;
+}
+
+// Applied tariff on one HS6 product between two countries.
+message GetBilateralTariffResponse {
+  // Importer code, as requested.
+  string reporting_country = 1;
+  // Exporter code, as requested.
+  string partner_country = 2;
+  // HS6 code, as requested.
+  string hs_code = 3;
+  // Year served; 0 when none.
+  int32 year = 4;
+  // HS edition the importer filed in ("H5" = HS 2017).
+  string nomenclature = 5;
+  // Source of applied_rate.
+  AppliedTariffBasis basis = 6;
+  // Best available rate: preferential when lower, else MFN (AVE when present).
+  TariffRateDetail applied_rate = 7;
+  // MFN rate.
+  TariffRateDetail mfn_rate = 8;
+  // Partner-specific preferential rate, when on file.
+  TariffRateDetail preferential_rate = 9;
+  // Group preferences the partner may belong to.
+  repeated GroupTariffPreference group_preferences = 10;
+  // Data source.
+  string source = 11;
+  // WITS query behind the rows.
+  string source_url = 12;
+  // True on a fault, false on a coverage answer.
+  bool upstream_unavailable = 13;
+  // Why no rate was served.
+  BilateralTariffUnavailableReason unavailable_reason = 14;
+  // Reporter code queried: "918" for EU members.
+  string filing_reporter = 15;
+  // MFN with specific duties as ad valorem equivalents, when needed.
+  TariffRateDetail mfn_ave_rate = 16;
+}

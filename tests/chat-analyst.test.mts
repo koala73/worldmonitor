@@ -1296,12 +1296,17 @@ describe('#5857 — pure formatters cannot be tricked into forging a line', () =
   // poisoning each interpolated field independently.
   it('buildMarketImplications: EVERY interpolated card field is guarded, not just the title', () => {
     const benign = { ticker: 'GLD', title: 'Gold thesis', direction: 'LONG', confidence: 'HIGH' };
-    for (const field of ['ticker', 'title', 'direction', 'confidence'] as const) {
+    for (const field of ['ticker', 'title', 'direction'] as const) {
       const out = buildMarketImplications({
         cards: [{ ...benign, [field]: `${benign[field]}${FORGED_BULLET}` }],
       });
       assertNoForgedBullet(out, 1, `buildMarketImplications via ${field}`);
     }
+  });
+
+  it('buildMarketImplications: omits the unscored confidence label (#8869)', () => {
+    const out = buildMarketImplications({ cards: [{ ticker: 'GLD', title: 'Gold thesis', direction: 'LONG', confidence: 'HIGH' }] });
+    assert.equal(out, 'AI Market Signals:\n- GLD LONG: Gold thesis');
   });
 
   it('buildForecasts: both the title and the domain label are guarded', () => {
@@ -1402,7 +1407,7 @@ describe('#5857 — pure formatters cannot be tricked into forging a line', () =
       buildMarketImplications({
         cards: [{ ticker: 'GLD', title: 'Gold bid on haven flows', direction: 'LONG', confidence: 'HIGH' }],
       }),
-      'AI Market Signals:\n- GLD LONG (HIGH): Gold bid on haven flows',
+      'AI Market Signals:\n- GLD LONG: Gold bid on haven flows',
     );
     assert.equal(
       buildCountryBrief({ countryName: 'Ukraine', brief: 'Front lines static.' }),

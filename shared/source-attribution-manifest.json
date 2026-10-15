@@ -853,15 +853,10 @@
       "host": "api.groq.com",
       "provider": "api.groq.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "shared/llm-health-providers.js"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "api.hyperliquid.xyz",
@@ -2976,6 +2971,20 @@
       ]
     },
     {
+      "host": "data.unhcr.org",
+      "provider": "data.unhcr.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit data.unhcr.org and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-cross-border-arrivals.mjs"
+        }
+      ]
+    },
+    {
       "host": "data.uspto.gov",
       "provider": "USPTO Open Data Portal",
       "kind": "structured",
@@ -3226,6 +3235,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "api/channel-oauth-bind.ts"
+        },
+        {
           "path": "api/discord/oauth/callback.ts"
         },
         {
@@ -3312,6 +3324,20 @@
       "references": [
         {
           "path": "scripts/benchmark-resilience-external.mjs"
+        }
+      ]
+    },
+    {
+      "host": "dtmapi.iom.int",
+      "provider": "dtmapi.iom.int",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit dtmapi.iom.int and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-dtm-displacement.mjs"
         }
       ]
     },
@@ -5087,6 +5113,26 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "hts.usitc.gov",
+      "provider": "hts.usitc.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Harmonized Tariff Schedule of the United States, published by the US International Trade Commission; a US federal government work, not subject to copyright (17 U.S.C. 105)",
+      "attribution": "Credit the USITC Harmonized Tariff Schedule and name the HTS release the rates come from.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
+          "path": "scripts/seed-supply-chain-trade.mjs"
+        },
+        {
+          "path": "server/worldmonitor/trade/v1/get-us-import-duty.ts"
         }
       ]
     },
@@ -8100,6 +8146,20 @@
       ]
     },
     {
+      "host": "rt-english.com",
+      "provider": "rt-english.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit rt-english.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "rt-esp.rttv.com",
       "provider": "rt-esp.rttv.com",
       "kind": "feed",
@@ -8354,15 +8414,10 @@
       "host": "search.seznam.cz",
       "provider": "search.seznam.cz",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "scripts/seo-indexnow-submit.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "search.worldbank.org",
@@ -8396,15 +8451,10 @@
       "host": "searchadvisor.naver.com",
       "provider": "searchadvisor.naver.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "scripts/seo-indexnow-submit.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "searchconsole.googleapis.com",
@@ -8695,6 +8745,9 @@
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
       "status": "excluded",
       "references": [
+        {
+          "path": "api/channel-oauth-bind.ts"
+        },
         {
           "path": "api/slack/oauth/callback.ts"
         },
@@ -10382,6 +10435,26 @@
       ]
     },
     {
+      "host": "wits.worldbank.org",
+      "provider": "wits.worldbank.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "UNCTAD TRAINS tariff data served through the World Bank WITS API; redistribution to paying API customers confirmed by the owner on 2026-10-10",
+      "attribution": "Credit UNCTAD TRAINS and World Bank WITS, and link to the WITS query behind each rate.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
+          "path": "server/worldmonitor/trade/v1/_tradestats-tariff.ts"
+        },
+        {
+          "path": "server/worldmonitor/trade/v1/get-bilateral-tariff.ts"
+        }
+      ]
+    },
+    {
       "host": "workos.com",
       "provider": "workos.com",
       "kind": "structured",
@@ -10528,6 +10601,9 @@
           "path": "server/_shared/brief-url.ts"
         },
         {
+          "path": "server/_shared/channel-oauth-state.ts"
+        },
+        {
           "path": "server/_shared/intel-history-embed.ts"
         },
         {
@@ -10570,6 +10646,9 @@
       "references": [
         {
           "path": "src/shared/public-rpc-cache.ts"
+        },
+        {
+          "path": "src/utils/dom-utils.ts"
         }
       ]
     },
@@ -11091,15 +11170,10 @@
       "host": "www.bing.com",
       "provider": "www.bing.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "scripts/seo-indexnow-submit.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.brasilparalelo.com.br",
@@ -13539,15 +13613,10 @@
       "host": "www.rt.com",
       "provider": "www.rt.com",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.rt.com and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/feeds.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.saastr.com",
@@ -14368,6 +14437,20 @@
       ]
     },
     {
+      "host": "www.unognewsroom.org",
+      "provider": "www.unognewsroom.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.unognewsroom.org and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-disease-outbreaks.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.upworthy.com",
       "provider": "www.upworthy.com",
       "kind": "feed",
@@ -14979,15 +15062,10 @@
       "host": "yandex.com",
       "provider": "yandex.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "scripts/seo-indexnow-submit.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "yemenonline.info",

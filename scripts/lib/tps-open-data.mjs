@@ -5,7 +5,7 @@
  * Do not add the ~486k MCI corpus to FAST/SLOW bootstrap, and never walk the
  * full corpus: at the 2,000-record page cap that is ~243 pages and cannot fit
  * the Canada bundle's 570s wall budget. What ships instead is this BOUNDED
- * worker — a 90-day MCI lookback capped at 3 pages, and the Calls datastore
+ * worker — a 30-day MCI lookback capped at 3 pages, and the Calls datastore
  * capped at 12. Measured live 2026-09-04: 3,195 + 5,982 records in 22.1s for
  * the pair, so the bounded form fits the bundle comfortably and both seeders
  * run there on a 6h member interval (#7036). The earlier "on-demand only"
@@ -78,7 +78,11 @@ export const TPS_CALLS_MAX_CONTENT_AGE_MIN = 400 * 24 * 60;
 export const TPS_REQUEST_TIMEOUT_MS = 30_000;
 export const TPS_DEFAULT_MCI_MAX_PAGES = 3;
 export const TPS_DEFAULT_CALLS_MAX_PAGES = 12;
-export const TPS_DEFAULT_MCI_LOOKBACK_DAYS = 90;
+// About 3,150 MCI rows a month, ~700 bytes each (live, 2026-10-08). Counted
+// back from the newest row, 90 days held 9,318 rows and 6.5 MB, over the
+// 3-page cap and the 5 MB key limit; 45 days held 5,920 rows and 4.1 MB, too
+// close to both. 30 days keeps headroom for a busy month.
+export const TPS_DEFAULT_MCI_LOOKBACK_DAYS = 30;
 export const TPS_OGL_ATTRIBUTION = 'Contains information licensed under the Open Government Licence - Ontario.';
 export const TPS_CALLS_ATTRIBUTION = `Toronto Police Service, Calls for Service Attended, via City of Toronto Open Data. ${TPS_CALLS_PUBLIC_PAGE}`;
 
@@ -387,6 +391,38 @@ export function resolveTpsPublish(fetchResult, lastGood, validateFn) {
     sourceState: 'unavailable',
     reason: fetchResult?.reason || 'shape_break',
   };
+}
+
+// TPS publishes MCI quarterly, weeks after the quarter ends, so the newest
+// rows are months older than the run date. Count the lookback back from the
+// newest REPORT_DATE in the layer. editingInfo.dataLastEditDate is not a
+// substitute: an edit to an old row moves it with no new content.
+export function mciLookbackAnchor(newestReportMs, nowMs = Date.now()) {
+  return Math.min(newestReportMs, nowMs);
+}
+
+export async function fetchTpsMciNewestReportDate({
+  fetchImpl = DEFAULT_FETCH,
+  timeoutMs = TPS_REQUEST_TIMEOUT_MS,
+} = {}) {
+  const url = new URL(TPS_MCI_QUERY_URL);
+  url.searchParams.set('where', '1=1');
+  url.searchParams.set('outStatistics', JSON.stringify([{
+    statisticType: 'max',
+    onStatisticField: 'REPORT_DATE',
+    outStatisticFieldName: 'newestReportDate',
+  }]));
+  url.searchParams.set('f', 'json');
+  const body = await fetchArcGisJson(url.toString(), {
+    fetchImpl,
+    timeoutMs,
+    maxBytes: MAX_PAYLOAD_BYTES,
+    label: 'mci:newest',
+  });
+  if (body?.error) throw new TpsOpenDataError(`upstream_error:mci:newest:${body.error?.message || 'error'}`);
+  const value = finiteNumber(extractFeatures(body)?.[0]?.attributes?.newestReportDate);
+  if (value == null || value <= 0) throw new TpsOpenDataError('schema_drift:mci:newest_report_date');
+  return value;
 }
 
 export function mciLookbackWhere(nowMs = Date.now(), lookbackDays = TPS_DEFAULT_MCI_LOOKBACK_DAYS) {
@@ -884,7 +920,10 @@ export async function fetchTpsMci({
       queryUrl: TPS_MCI_QUERY_URL,
       pageSize: Math.min(pageSize, TPS_MCI_PAGE_CAP),
       maxPages,
-      where: where ?? mciLookbackWhere(now, lookbackDays),
+      where: where ?? mciLookbackWhere(
+        mciLookbackAnchor(await fetchTpsMciNewestReportDate({ fetchImpl }), now),
+        lookbackDays,
+      ),
       outFields: [...TPS_MCI_REQUIRED_FIELDS, 'OBJECTID', 'HOOD_140', 'NEIGHBOURHOOD_140'].join(','),
       orderByFields: 'REPORT_DATE DESC,OBJECTID',
       objectIdField: 'OBJECTID',

@@ -690,7 +690,9 @@
       "a10": "Palantir, bir kurumun kendi verilerini o kurum içinde operasyonel hale getirir. World Monitor ise ters yönden başlar: halka açık verileri toplar, normalleştirir, ilişkilendirir ve izler, ardından bu istihbarat katmanını ücretsiz bir pano ve açık kaynak kod aracılığıyla yayınlar. Farklı görev, farklı ürün.",
       "q11": "Which World Monitor license do I need?",
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
-      "sub": "{{answers}} fiyat, veri, uyarılar ve AI erişimi hakkında net cevaplar. Kısa versiyonu: dashboard $0 tutarındadır, hesap gerektirmez ve kod AGPL-3.0 altında açık kaynaktır."
+      "sub": "{{answers}} fiyat, veri, uyarılar ve AI erişimi hakkında net cevaplar. Kısa versiyonu: dashboard $0 tutarındadır, hesap gerektirmez ve kod AGPL-3.0 altında açık kaynaktır.",
+      "q12": "Haberlere yansıyan küresel kriz ve aksaklıkları takip etmek için en iyi yazılım nedir?",
+      "a12": "World Monitor ücretsiz ve açık kaynaklı bir seçenektir: adı belirtilen {{providers}} sağlayıcıdan gelen {{feeds}} haber ve OSINT akışını, {{mapLayers}} harita katmanı türüne sahip tek bir canlı dünya haritasında yayınlar; jeopolitik, piyasalar, denizcilik, havacılık ve siber alanları kapsar. Bunları ilişkilendirir, böylece aynı anda gelişen aksaklıklar manşetlere çıkmadan önce görünür hale gelir. Diğer araçlarla karşılaştırmak için worldmonitor.app/compare/best-geopolitical-risk-dashboards adresine bakın."
     },
     "cta": {
       "title": "Dünya haritasını izlemeye nasıl başlarım?",

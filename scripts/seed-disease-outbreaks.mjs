@@ -22,6 +22,8 @@ import {
   mapItem,
   isRoundupHeadline,
   isReportableHeadline,
+  detectDisease,
+  UNEXPLAINED_PNEUMONIA_RE,
   diseaseContentMeta,
   diseasePublishTransform,
   cleanRssDescription,
@@ -39,11 +41,19 @@ const CDC_FEED = 'https://tools.cdc.gov/api/v2/resources/media/132608.rss';
 // ECDC epidemiological updates: outbreak-only items (Ebola, MERS, hantavirus,
 // chikungunya, ...), including events outside the EU/EEA.
 const ECDC_EPI_UPDATES_FEED = 'https://www.ecdc.europa.eu/en/taxonomy/term/1310/feed';
+// ECDC news and press releases: its statements on events it is monitoring
+// (the 2026-10-06 Irkutsk pneumonia statement appeared only here).
+const ECDC_NEWS_FEED = 'https://www.ecdc.europa.eu/en/taxonomy/term/1307/feed';
+// UN Geneva newsroom (Atom): WHO's Geneva press-briefing statements, titled
+// "<story> - WHO" among other UN agencies' items. WHO's 2026-10-06 risk
+// assessment of the Irkutsk case came only from a briefing, not a DON post.
+// The https URL answers 301 to this http one.
+const UNOG_NEWSROOM_FEED = 'http://www.unognewsroom.org/feed';
 // CIDRAP publishes per-disease feeds only (a combined `/news/64+49/rss` returns
 // just the first topic), so each outbreak-prone disease is its own request:
 // Ebola, viral hemorrhagic fever, avian influenza, mpox, cholera, measles,
-// dengue, polio, foodborne disease.
-const CIDRAP_TOPIC_IDS = [64, 102, 49, 230556, 58, 78, 61, 90, 66];
+// dengue, polio, foodborne disease, plague.
+const CIDRAP_TOPIC_IDS = [64, 102, 49, 230556, 58, 78, 61, 90, 66, 88];
 // ThinkGlobalHealth disease tracker — 1,600+ ProMED-sourced real-time alerts
 // with lat/lng. Default branch is `master` (NOT `main`) — using `main` returns
 // HTTP 404 and silently zeroes out this source, which is the only one that
@@ -96,28 +106,37 @@ export async function fetchWhoDonApi({
 export const DISEASE_RSS_FEEDS = [
   { url: CDC_FEED, sourceName: 'CDC' },
   { url: ECDC_EPI_UPDATES_FEED, sourceName: 'ECDC' },
+  { url: ECDC_NEWS_FEED, sourceName: 'ECDC' },
+  { url: UNOG_NEWSROOM_FEED, sourceName: 'WHO briefing', titleSuffix: ' - WHO' },
   ...CIDRAP_TOPIC_IDS.map((id) => ({ url: `https://www.cidrap.umn.edu/news/${id}/rss`, sourceName: 'CIDRAP' })),
 ];
 
-export async function fetchRssItems(url, sourceName, { fetchImpl = globalThis.fetch } = {}) {
+// Parses RSS <item> and Atom <entry> blocks. With `titleSuffix`, keeps only
+// items whose title ends with it and drops the suffix from the title.
+export async function fetchRssItems(url, sourceName, { fetchImpl = globalThis.fetch, titleSuffix = '' } = {}) {
   try {
     const resp = await fetchImpl(url, {
-      headers: { Accept: 'application/rss+xml, application/xml, text/xml', 'User-Agent': CHROME_UA },
+      headers: { Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml', 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(15000),
     });
     if (!resp.ok) { console.warn(`[Disease] ${sourceName} HTTP ${resp.status}`); return []; }
     const xml = await resp.text();
     const bounded = xml.length > RSS_MAX_BYTES ? xml.slice(0, RSS_MAX_BYTES) : xml;
     const items = [];
-    const itemRe = /<item>([\s\S]*?)<\/item>/g;
+    const itemRe = /<(item|entry)\b[^>]*>([\s\S]*?)<\/\1>/g;
     let match;
     while ((match = itemRe.exec(bounded)) !== null) {
-      const block = match[1];
-      const title = decodeHtmlEntities((block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/) || [])[1] || '').trim();
-      const link = (block.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/) || [])[1]?.trim() || '';
-      const rawDesc = (block.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/) || [])[1] || '';
+      const block = match[2];
+      let title = decodeHtmlEntities((block.match(/<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/) || [])[1] || '').trim();
+      if (titleSuffix) {
+        if (!title.endsWith(titleSuffix)) continue;
+        title = title.slice(0, -titleSuffix.length).trim();
+      }
+      const link = (block.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/) || [])[1]?.trim()
+        || (block.match(/<link\b[^>]*\bhref=(["'])(.*?)\1/) || [])[2]?.trim() || '';
+      const rawDesc = (block.match(/<(description|summary|content)\b[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/\1>/) || [])[2] || '';
       const desc = cleanRssDescription(rawDesc);
-      const pubDate = (block.match(/<pubDate>(.*?)<\/pubDate>/) || [])[1]?.trim() || '';
+      const pubDate = (block.match(/<(pubDate|published|updated)>(.*?)<\/\1>/) || [])[2]?.trim() || '';
       // Per-item synthetic-tag normalization lives in _disease-outbreaks-helpers.mjs
       // (rssNormalizeItem) so tests verify the exact contract without duplicating logic.
       const normalized = rssNormalizeItem({ title, link, desc, pubDate, sourceName });
@@ -183,7 +202,7 @@ async function fetchThinkGlobalHealth() {
 export async function fetchDiseaseOutbreaks() {
   const [whoItems, rssBatches, tghItems] = await Promise.all([
     fetchWhoDonApi(),
-    Promise.all(DISEASE_RSS_FEEDS.map(({ url, sourceName }) => fetchRssItems(url, sourceName))),
+    Promise.all(DISEASE_RSS_FEEDS.map(({ url, sourceName, titleSuffix }) => fetchRssItems(url, sourceName, { titleSuffix }))),
     fetchThinkGlobalHealth(),
   ]);
   const rssItems = rssBatches.flat();
@@ -207,7 +226,9 @@ export async function fetchDiseaseOutbreaks() {
     .filter(item => {
       if (isRoundupHeadline(item.title)) return false;
       const text = `${item.title} ${item.desc}`.toLowerCase();
-      return diseaseKeywords.some(k => text.includes(k));
+      // A title naming a detected disease ("Two MERS cases ...") needs no generic keyword.
+      return diseaseKeywords.some(k => text.includes(k)) || UNEXPLAINED_PNEUMONIA_RE.test(text)
+        || detectDisease(item.title) !== 'Unknown Disease';
     })
     .map(mapItem)
     .filter((outbreak) => isReportableHeadline(outbreak));
@@ -215,11 +236,14 @@ export async function fetchDiseaseOutbreaks() {
   // Sort before dedup so the first occurrence is always the most recent.
   otherOutbreaks.sort((a, b) => b.publishedAt - a.publishedAt);
 
-  // Deduplicate non-TGH items by disease+country (keep most recent per pair).
+  // Deduplicate non-TGH items by source+disease+country (keep most recent per
+  // triple). Two sources on one event are two reports: the 2026-10-06 WHO
+  // briefing otherwise hid CIDRAP's Irkutsk story. ECDC's epi-update and news
+  // feeds share a source name, so their overlap still collapses.
   // TGH items each represent a distinct geo-located event — never collapse them.
   const seen = new Set();
   const dedupedOthers = otherOutbreaks.filter(o => {
-    const key = o.disease === 'Unknown Disease' ? o.id : `${o.disease}:${o.countryCode || o.location}`;
+    const key = o.disease === 'Unknown Disease' ? o.id : `${o.sourceName}:${o.disease}:${o.countryCode || o.location}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
