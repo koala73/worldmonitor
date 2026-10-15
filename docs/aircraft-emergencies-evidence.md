@@ -102,9 +102,9 @@ OpenSky defines address, callsign, position time, last contact, longitude, latit
 
 The new aviation RPC preserves its own observations and per-query availability.
 The browser service passes these to a layer controller, which owns bounded local retention, the aircraft list, and fresh markers.
-Emergency observations never enter military admission or intelligence ingestion.
-The existing military seeder, API recovery, browser mapping/cache return, surge summary, and all three relay posture fetch paths exclude the exact codes.
-Already-published aggregate posture snapshots are not rewritten. Their existing refresh/expiry must occur after deployment.
+The emergency feed does not admit civilian aircraft into military datasets.
+Aircraft that meet military admission criteria remain in the military layer, counts, clusters, surge summaries, and posture inputs when they report 7500, 7600, or 7700. They can also appear in the emergency layer.
+Changing squawk alone does not remove a qualifying aircraft from the military layer. The separate emergency feed does not rewrite existing posture snapshots.
 
 ## Replay proof
 
@@ -116,7 +116,7 @@ All positive emergency examples are labeled synthetic. None describes an observe
 | Captured empty squawk responses | Available, zero current records. |
 | Captured military and regional ordinary-code aircraft | No emergency rows. |
 | Synthetic `a00001`, `7500`, `seen=2`, `seen_pos=3`, provider clock 18:00:00Z | 7500 reported signal; message 17:59:58Z; position 17:59:57Z; known details and marker. |
-| Synthetic 7500/7600/7700 with military flag set or unset | Six aircraft rows. Zero military admissions. |
+| Synthetic 7500/7600/7700 with military flag set or unset | Six emergency aircraft rows. The three military-flagged aircraft also retain military admission. |
 | Synthetic missing or stale position | Aircraft details remain; no current-position marker. |
 | Synthetic duplicate address or conflicting code/position | One row; conflicting evidence remains unknown and unmarked. |
 | Synthetic later 7600, then older 7500 | Later 7600 remains. No cause or resolution claim. |
@@ -126,7 +126,7 @@ All positive emergency examples are labeled synthetic. None describes an observe
 | Synthetic empty response, failure, or reception loss | Distinct availability; previous aircraft become unknown and expire. |
 
 The relay subprocess tests inject all three emergency codes into adsb.lol, Wingbits, and OpenSky fixtures.
-Each source publishes only its one ordinary military aircraft to posture calculations.
+Each source publishes its one ordinary military aircraft and all three emergency-squawking military aircraft to posture calculations.
 
 ## Browser proof and live limits
 
@@ -149,7 +149,7 @@ The full timer replay can advance before the WebGL base map finishes loading, so
 The local dashboard also logs missing session/legacy route errors and unavailable unrelated feeds; the replay deliberately induces emergency RPC HTTP 503 responses. These runs are not a clean live dashboard health check.
 
 Local verification passed with Node 24: 46 focused capture/freshness/military tests, 558 sidecar/API tests, 77 map contract tests, 25 MCP parity tests, route-cache tests, both TypeScript checks, import boundaries, API/rate-limit contracts, safe HTML, source attribution, focused Biome, Markdown lint, and `git diff --check`.
-The CI integration repairs also passed 91 layer/widget/OpenAPI-example tests, 28 DOM tests, 17 map lifecycle tests, 19 AI-search fact tests, and 45 product-fact/catalog tests. Existing cache identity checks pass while emergency records remain excluded.
+The CI integration repairs also passed 91 layer/widget/OpenAPI-example tests, 28 DOM tests, 17 map lifecycle tests, 19 AI-search fact tests, and 45 product-fact/catalog tests. Existing cache identity checks pass while emergency-squawking military records remain included.
 Run the focused tests with `node --import tsx --test tests/aircraft-emergencies.test.mts tests/seed-military-flights-adsb.test.mjs tests/military-surges.test.mjs tests/military-flight-pagination.test.mts tests/military-flights-bounds.test.mts`.
 Run relay/API verification with `npm run test:sidecar`. Generated clients and OpenAPI were regenerated with pinned `make generate`.
 The final API examples label the aircraft synthetic, preserve unknown details, and use exact valid codes and availability values. The endpoint description distinguishes the unprojected response schema from an optional JMESPath result.
@@ -157,4 +157,4 @@ The shared OpenAPI emitter also hoists byte-identical reference schemas with sib
 
 The initial raw captures are bounded live provider observations. Replay proof is separate from browser proof.
 The local unmocked dashboard displays unavailable data when required gateway dependencies are absent.
-No deployment, natural refresh of production posture, production emergency display, or production acceptance is claimed.
+No deployment, production emergency display, or production acceptance is claimed.
