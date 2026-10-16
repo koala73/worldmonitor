@@ -142,6 +142,7 @@ describe('publisher-families map data', () => {
       interfax: 'interfax.ru Russian feed and interfax.com English edition — one Interfax newsroom',
       ndtv: 'both labels arrive via feedburner, which identifies no publisher',
       pivot: 'one show across a tier-only label and a megaphone.fm feed',
+      'sightline-media': 'defensenews.com and militarytimes.com — two Sightline Media Group titles, one owner',
     };
 
     const offenders = [];
@@ -328,6 +329,17 @@ describe('publisher-families resolution', () => {
     ];
     assert.equal(countPublisherFamilies(reutersLabels), 1);
     assert.equal(publisherNameForFamily(publisherFamilyFor('Reuters US')), 'Reuters');
+  });
+
+  it('counts Sightline Media titles as one publisher', () => {
+    // Defense News and Military Times are both Sightline Media Group titles;
+    // a story carried by only this pair is not independently corroborated.
+    assert.equal(publisherFamilyFor('Defense News'), publisherFamilyFor('Military Times'));
+    assert.equal(countPublisherFamilies(['Defense News', 'Military Times']), 1);
+    assert.ok(countPublisherFamilies(['Defense News', 'Military Times']) < MIN_CORROBORATING_PUBLISHERS);
+    assert.equal(publisherNameForFamily(publisherFamilyFor('Military Times')), 'Sightline Media');
+    assert.equal(publisherFamilyForDomain('www.militarytimes.com'), publisherFamilyFor('Defense News'));
+    assert.equal(countPublisherFamilies(['Defense News', 'Military Times', 'Defense One']), 2);
   });
 
   it('counts genuinely distinct publishers separately', () => {
