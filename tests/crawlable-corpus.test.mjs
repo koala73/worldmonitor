@@ -1672,10 +1672,23 @@ describe('crawlable corpus generator', () => {
     assert.deepEqual(COMPARISON_PAGE_LASTMOD_PATHS, [
       'scripts/build-comparison-pages.mjs',
       'scripts/comparison-page-narratives.mjs',
+      'scripts/comparison-shortlist.mjs',
+      'shared/product-facts.generated.json',
+      'shared/product-catalog.generated.json',
+      'public/.well-known/mcp/server-card.json',
       'shared/source-attribution-manifest.json',
       'src/config/chokepoint-registry.ts',
       'scripts/data/related-reading.json',
     ]);
+  });
+
+  it('folds every JSON file the shortlist module reads into the compare lastmod clock', () => {
+    const source = readFileSync(join(repoRoot, 'scripts/comparison-shortlist.mjs'), 'utf8');
+    const reads = [...source.matchAll(/readRepoJson\('([^']+)'\)/g)].map(([, path]) => path);
+    assert.ok(reads.length >= 2, 'expected the shortlist module to read the product facts and catalog');
+    for (const path of reads) {
+      assert.ok(COMPARISON_PAGE_LASTMOD_PATHS.includes(path), `${path} feeds the shortlist page but not its lastmod`);
+    }
   });
 
   // laterDate is imported rather than re-implemented, so the family-clock
@@ -5098,7 +5111,7 @@ describe('crawlable corpus generator', () => {
       for (const page of COMPARISON_PAGES) {
         const html = read(outDir, 'compare/' + page.slug + '/index.html');
         const ld = jsonLdObjects(html);
-        const h1 = html.match(/<h1>([^<]+)<\/h1>/)?.[1] ?? '';
+        const h1 = (html.match(/<h1>([^<]+)<\/h1>/)?.[1] ?? '').replaceAll('&#39;', "'").replaceAll('&amp;', '&');
         assert.ok(
           h1.toLowerCase().includes(page.h1.toLowerCase()),
           page.slug + ' H1 must contain its own h1 string',
@@ -5145,7 +5158,13 @@ describe('crawlable corpus generator', () => {
       assert.match(liveuamapPage, /Multi-domain fusion/i);
       assert.match(liveuamapPage, /maritime/i);
       const riskDashboards = read(outDir, 'compare/best-geopolitical-risk-dashboards/index.html');
-      assert.match(riskDashboards, /Update latency at zero price/i);
+      assert.match(riskDashboards, /Self-serve real-time monitoring with an API and MCP server/i);
+      assert.match(riskDashboards, /<a href="\/blog\/authors\/elie-habib\/" rel="author">Elie Habib<\/a>/);
+      assert.match(riskDashboards, /<h3 data-rank="1">1\. World Monitor, best for /);
+      assert.ok(
+        jsonLdObjects(riskDashboards).some((entry) => entry['@type'] === 'BlogPosting'),
+        'the buyer\'s shortlist must emit BlogPosting JSON-LD',
+      );
       const acledPage = read(outDir, 'compare/worldmonitor-vs-acled/index.html');
       assert.match(acledPage, /wins on historical depth/i);
       assert.match(acledPage, /complement/i);
@@ -5237,6 +5256,8 @@ describe('crawlable corpus generator', () => {
         'Satellite MCP',
         'OSINT MCP',
         'IMF PortWatch',
+        // Hosted MCP, generally available 2026-09-28 per its support site.
+        'Recorded Future',
       ];
       for (const row of comparisonRows) {
         const hasVerifiedMcp = verifiedMcpProducts.some((name) => row[0].includes(name));

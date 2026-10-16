@@ -2576,7 +2576,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_imd_cyclone_marine`
 
-Bounded India Meteorological Department cyclone tracks, forecast wind radii, cones of uncertainty, and official port / sea-area / coastal bulletins. Products stay typed and are not merged into `weather:alerts:v1`. Live fetch requires `IMD_API_KEY`, `IMD_API_EMAIL`, and `IMD_API_PASSWORD`; the seeder mints a short-lived JWT for each run. Always read `coverageState`: `disabled` means the credentials are missing or invalid, `degraded` is a partial product failure, `unavailable` is a total fetch failure, and `ok` is live. Empty lists with `disabled`, `degraded`, or `unavailable` coverage are not an India all-clear.
+Bounded India Meteorological Department sea-area and coastal marine bulletins from the public `mausam.imd.gov.in` pages: storm warnings, port signals, storm-surge or tidal warnings, wind, visibility, and sea state per area, each with its validity window. Products stay typed and are not merged into `weather:alerts:v1`. IMD cyclone track, wind radii, and cone are API-only and disabled; GDACS tropical cyclones cover the North Indian Ocean. Port warning and fishermen warning PDFs are not parsed. Always read `coverageState`: `degraded` means some bulletin pages failed and their last-good records were carried, `unavailable` means no page was readable, and `ok` is live. Per-page status is under `products.<id>.pages`. Empty lists with `degraded` or `unavailable` coverage are not an India all-clear.
 
 **Parameters (tool-specific):**
 
@@ -2587,7 +2587,7 @@ Bounded India Meteorological Department cyclone tracks, forecast wind radii, con
 
 - **API endpoints:** none (MCP-only cache read of `weather:imd-cyclone-marine:v1`; no equivalent public REST operation yet).
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
-- **Kind:** bounded cache read from the on-demand IMD cyclone/marine snapshot.
+- **Kind:** bounded cache read from the on-demand IMD marine bulletin snapshot.
 - **Freshness budget:** up to **45 min** before `stale: true` is flagged (matches `seed-meta:weather:imd-cyclone-marine`).
 
 <CodeGroup>

@@ -1882,10 +1882,6 @@
     "service": "seed-imd-cyclone-marine",
     "startCommand": "node seed-imd-cyclone-marine.mjs",
     "requiredEnv": [
-      "IMD_API_KEY",
-      "IMD_API_EMAIL",
-      "IMD_API_PASSWORD",
-      "PROXY_URL",
       "UPSTASH_REDIS_REST_URL",
       "UPSTASH_REDIS_REST_TOKEN"
     ],
@@ -1999,5 +1995,55 @@
     ],
     "cronSchedule": "7,22,37,52 * * * *",
     "documentedAt": "docs/analytics-collector-operations.md#retention-runner"
+  },
+  {
+    "entry": "demos/verification-desk/server.mjs",
+    "deployMode": "dockerfile",
+    "dockerfile": "demos/verification-desk/Dockerfile",
+    "service": "verification-desk",
+    "requiredEnv": [
+      "DESK_PASSWORD",
+      [
+        "WORLDMONITOR_API_KEY",
+        "WORLDMONITOR_MCP_TOKEN"
+      ],
+      "ANTHROPIC_API_KEY"
+    ],
+    "watchPatterns": [
+      ".dockerignore",
+      "demos/verification-desk/**",
+      "package.json",
+      "src/locales/en.json",
+      "scripts/_country-resolver.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/crawlable-developments.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/shared/brief-llm-core.js",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/iso3-to-iso2.json",
+      "scripts/shared/publisher-families.js",
+      "server/_shared/corroboration.ts",
+      "server/_shared/source-tiers.ts",
+      "shared/article-url.js",
+      "shared/brief-claim-rules.js",
+      "shared/brief-llm-core.js",
+      "shared/brief-sections.js",
+      "shared/country-names.json",
+      "shared/iso3-to-iso2.json",
+      "shared/news-credibility.js",
+      "shared/publisher-families.js",
+      "shared/source-provenance-declarations.ts",
+      "shared/source-provenance.ts",
+      "shared/source-tiers.json",
+      "shared/telegram-channel-trust.ts",
+      "shared/x-account-source-tiers.json",
+      "shared/x-account-trust.ts"
+    ],
+    "cronSchedule": null,
+    "documentedAt": "demos/verification-desk/README.md#run-it-from-any-computer-hosted-with-a-login"
   }
 ]

@@ -89,6 +89,12 @@ async function fetchImfMacro() {
       cpiEopPct:           cpiEop?.value ?? null,
       govExpenditurePct:   govExp?.value ?? null,
       primaryBalancePct:   primBal?.value ?? null,
+      periods: {
+        inflationPct: infl?.year ?? null,
+        primaryBalancePct: primBal?.year ?? null,
+        govExpenditurePct: govExp?.year ?? null,
+        govRevenuePct: rev?.year ?? null,
+      },
       year: infl?.year ?? ca?.year ?? rev?.year ?? cpi?.year ?? cpiEop?.year ?? govExp?.year ?? primBal?.year ?? null,
       // Codex PR #3604 P2 — see seed-imf-external.mjs for the full
       // rationale. `latestYear` = max forecast year across all this

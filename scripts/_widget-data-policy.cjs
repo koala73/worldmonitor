@@ -210,7 +210,7 @@ const EXCLUDED_BOOTSTRAP_KEYS = {
   manitobaRoads: "Road/traffic event feed (Manitoba 511); not widget data",
   torontoRoads: "Road/traffic feed, ~2 MB (2,342 records); unusable in a widget",
   bcOpen511: "Road/traffic event feed (DriveBC); not widget data",
-  imdCycloneMarine: "Disabled in production (IMD_API_KEY missing); no data",
+  imdCycloneMarine: "IMD marine bulletin text by sea area; map-layer feed, not widget data",
   temporalAnomalies: "Internal anomaly detector output; usually empty",
   aaiiSentiment: "Stale fallback data (fallback=true, last update 2026-04-03)",
 };

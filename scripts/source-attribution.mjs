@@ -210,7 +210,7 @@ const PROVIDER_OVERRIDES = {
   'mausam.imd.gov.in': {
     provider: 'India Meteorological Department',
     identityGroup: 'imd',
-    license: 'Official IMD visualization pages cited for attribution and source links, not scraped.',
+    license: 'Public IMD sea-area and coastal bulletin pages, parsed without an account or key. The RTI IMETD/R/E/25/00381 non-commercial-only terms recorded for the IMD API apply to these pages too. World Monitor public-display and redistribution rights are validated.',
     attribution: 'Data source: India Meteorological Department. Link the official marine/coastal bulletin page.',
     status: 'reviewed',
   },
@@ -1057,6 +1057,15 @@ const EXCLUDED_HOSTS = new Set([
   // Provider landing-page link in MapPopup; the ingested Wingbits endpoints
   // are tracked as customer-api.wingbits.com and ecs-api.wingbits.com.
   'wingbits.com',
+  // Vendor pricing, marketplace, and procurement pages cited as price sources
+  // in /compare/ copy. Nothing fetches them.
+  'aws.amazon.com',
+  'liveuamap.com',
+  'me.liveuamap.com',
+  'offnadir-delta.com',
+  'www.applytosupply.digitalmarketplace.service.gov.uk',
+  'www.factal.com',
+  'www.vendr.com',
 ]);
 
 function read(rootDir, path) {

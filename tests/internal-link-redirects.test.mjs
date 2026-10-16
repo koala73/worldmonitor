@@ -267,6 +267,13 @@ function blogRoutes(manifest) {
   for (const file of readdirSync(join(repoRoot, 'blog-site/src/content/blog'))) {
     if (file.endsWith('.md')) routes.add(`/blog/posts/${file.slice(0, -'.md'.length)}/`);
   }
+  // The guides collection (content.config.ts) renders /blog/<category>/<slug>/
+  // through pages/[category]/[slug].astro for vs, alternatives and best.
+  for (const category of ['vs', 'alternatives', 'best']) {
+    for (const file of readdirSync(join(repoRoot, 'blog-site/src/content/guides', category))) {
+      if (file.endsWith('.md')) routes.add(`/blog/${category}/${file.slice(0, -'.md'.length)}/`);
+    }
+  }
   // Each .astro under pages/authors/ is one static author route.
   const authors = readdirSync(join(repoRoot, 'blog-site/src/pages/authors')).filter((file) => file.endsWith('.astro'));
   assert.ok(authors.length > 0, 'blog author page extraction found nothing');
