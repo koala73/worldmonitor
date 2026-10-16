@@ -213,6 +213,49 @@ function htmlText(html) {
     .trim();
 }
 
+// Comments and script/style blocks never carry bulletin text. They are cut
+// with an index scan instead of a one-pass regex replace: each cut re-checks
+// the seam, so nested input like `<scr<script></script>ipt>` cannot rebuild a
+// block, and an unterminated block drops everything after it, as a browser would.
+const NON_CONTENT_BLOCKS = Object.freeze([
+  Object.freeze({ open: '<!--', close: '-->', tag: false }),
+  Object.freeze({ open: '<script', close: '</script>', tag: true }),
+  Object.freeze({ open: '<style', close: '</style>', tag: true }),
+]);
+const LONGEST_BLOCK_OPEN = Math.max(...NON_CONTENT_BLOCKS.map((block) => block.open.length));
+
+// ASCII-only lowercasing keeps every index aligned with the original string.
+function asciiLower(text) {
+  return text.replace(/[A-Z]/g, (char) => char.toLowerCase());
+}
+
+function firstNonContentBlock(lower, from) {
+  let first = null;
+  for (const block of NON_CONTENT_BLOCKS) {
+    let at = lower.indexOf(block.open, from);
+    while (at !== -1 && block.tag && /\w/.test(lower[at + block.open.length] ?? '')) {
+      at = lower.indexOf(block.open, at + 1);
+    }
+    if (at !== -1 && (!first || at < first.at)) first = { at, block };
+  }
+  return first;
+}
+
+export function stripNonContentBlocks(html) {
+  let text = String(html || '');
+  let from = 0;
+  for (;;) {
+    const lower = asciiLower(text);
+    const hit = firstNonContentBlock(lower, from);
+    if (!hit) return text;
+    const closeAt = lower.indexOf(hit.block.close, hit.at + hit.block.open.length);
+    const end = closeAt === -1 ? text.length : closeAt + hit.block.close.length;
+    text = text.slice(0, hit.at) + text.slice(end);
+    // Only an opener that straddles the cut can be new; rescan from just before it.
+    from = Math.max(0, hit.at - LONGEST_BLOCK_OPEN);
+  }
+}
+
 class ImdBulletinParseError extends Error {
   constructor(code) {
     super(code);
@@ -294,9 +337,7 @@ function tableRows(tableHtml) {
 export function parseImdBulletinHtml(html, productId) {
   const spec = IMD_PRODUCTS[productId];
   if (!spec?.pages) throw new Error(`UNKNOWN_IMD_BULLETIN_PRODUCT:${productId}`);
-  const body = String(html || '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '');
+  const body = stripNonContentBlocks(html);
   const firstTable = body.search(/<table\b/i);
   if (firstTable === -1) fail('BULLETIN_AREAS_MISSING');
   const headerText = htmlText(body.slice(0, firstTable));

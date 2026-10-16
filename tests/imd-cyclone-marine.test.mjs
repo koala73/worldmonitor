@@ -24,6 +24,7 @@ import {
   isNilText,
   parseImdBulletinHtml,
   shouldActivateImdSnapshot,
+  stripNonContentBlocks,
   validateImdEnvelope,
 } from '../scripts/lib/imd-cyclone-marine.mjs';
 
@@ -211,6 +212,27 @@ test('decodes entities and ignores commented-out markup inside the bulletin', ()
   assert.equal(bulletin.areas.find((area) => area.name === 'South East Bay').seaCondition, 'Smooth & calm.');
   assert.equal(bulletin.areas.some((area) => area.name === 'Old Area'), false);
   assert.equal(bulletin.areas.length, 8);
+});
+
+test('strips comments and script/style blocks completely, including nested and split openers', () => {
+  const cases = [
+    ['plain comment', 'a<!-- x -->b', 'ab'],
+    ['script block', 'a<SCRIPT type="x">alert(1)</script>b', 'ab'],
+    ['style block', 'a<style>td{}</STYLE>b', 'ab'],
+    ['nested script opener', 'a<scr<script>x</script>ipt>alert(1)</script>b', 'ab'],
+    ['nested comment opener reopens an unterminated comment', 'a<!<!---->--b', 'a'],
+    ['comment rebuilt around a script', 'a<!-<script></script>- x -->b', 'ab'],
+    ['unterminated comment drops the rest', 'a<!-- never closed <table>', 'a'],
+    ['unterminated script drops the rest', 'a<script>never closed', 'a'],
+    ['tag-name boundary is respected', 'a<scripts>b</scripts>', 'a<scripts>b</scripts>'],
+    ['non-ASCII text keeps its indexes', 'İ<!-- x -->İ', 'İİ'],
+  ];
+  for (const [label, input, expected] of cases) {
+    const out = stripNonContentBlocks(input);
+    assert.equal(out, expected, label);
+    assert.doesNotMatch(out, /<!--|<script\b|<style\b/i, label);
+  }
+  assert.equal(stripNonContentBlocks(null), '');
 });
 
 test('an expired page publishes no records but still proves IMD replied', () => {
