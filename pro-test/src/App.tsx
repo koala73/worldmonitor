@@ -90,6 +90,7 @@ export function renderTurnstileWidgets(): number {
  * referral-capture guard (#6493).
  */
 function getRefCode(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
   const params = new URLSearchParams(window.location.search);
   const code = params.get('ref') || undefined;
   if (!code || isInternalSourceTag(code)) return undefined;
@@ -100,6 +101,7 @@ function getMcpAttributionSource(): string | undefined {
   // Uses the shared allowlist rather than an inline literal so the /pro page,
   // the checkout edge function, and the Convex webhook reader can never disagree
   // about what the campaign marker is (#6716).
+  if (typeof window === 'undefined') return undefined;
   return readMcpAttributionFromSearch(window.location.search);
 }
 
@@ -444,7 +446,7 @@ const SignalBars = () => {
   );
 };
 
-const Hero = () => {
+const Hero = ({ srLead }: { srLead?: string }) => {
   const { user, isLoaded, signedIn } = useClerkUser();
   const { isPro, isChecked } = useProEntitlement();
   // Showing "Sign In" to an already-signed-in user wastes a CTA slot.
@@ -460,8 +462,10 @@ const Hero = () => {
     <section className="pt-28 pb-12 px-6 relative overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(74,222,128,0.08)_0%,transparent_50%)] pointer-events-none" />
       <div className="max-w-4xl mx-auto text-center relative z-10">
+        {/* The prerendered /pro HTML paints this hero before React mounts, so
+            an opacity:0 initial state would blank it out until the bundle ran. */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
         >
@@ -470,6 +474,7 @@ const Hero = () => {
           </div>
 
           <h1 className="text-6xl md:text-8xl font-display font-bold tracking-tighter leading-[0.95]">
+            {srLead && <span className="sr-only">{srLead} </span>}
             <span className="text-wm-muted/40">{t('hero.noiseWord')}</span>
             <span className="mx-3 md:mx-5 text-wm-border/50">→</span>
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-wm-green to-emerald-300 text-glow">{t('hero.signalWord')}</span>
@@ -1395,6 +1400,26 @@ const EnterprisePage = () => (
 );
 
 /* ─── Page Layout ─── */
+/**
+ * The home page's first viewport and landmark structure. prerender.mjs renders
+ * it to static HTML (pro-first-viewport-prerender.tsx) so the hero paints, at
+ * its final size, before the bundle mounts and replaces #root.
+ */
+export const ProHomeShell = ({ heroSrLead, footer, children }: {
+  heroSrLead?: string;
+  footer?: ReactNode;
+  children: ReactNode;
+}) => (
+  <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
+    <Navbar />
+    <main>
+      <Hero srLead={heroSrLead} />
+      {children}
+    </main>
+    {footer}
+  </div>
+);
+
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash.startsWith('#enterprise') ? 'enterprise' : 'home');
 
@@ -1444,33 +1469,28 @@ export default function App() {
 
   return (
     <ProEntitlementProvider>
-      <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
-        <Navbar />
-        <main>
-          <Hero />
-          <SourceMarquee />
-          <Pillars />
-          <WhyUpgrade />
-          <TwoPathSplit />
-          <ProShowcase />
-          <DeliveryDesk />
-          <AudiencePersonas />
-          <SocialProof />
-          <LivePreview />
-          <WhatsNew />
-          <PricingSection
-            refCode={getRefCode()}
-            attributionSource={getMcpAttributionSource()}
-            checkoutAttribution={parseMissionPreviewAttributionFromSearch(window.location.search) ?? undefined}
-            desktopHandoff={isDesktopCheckoutHandoff(window.location.search)}
-          />
-          <PricingTable />
-          <ApiSection />
-          <EnterpriseShowcase />
-          <FAQ />
-        </main>
-        <Footer />
-      </div>
+      <ProHomeShell footer={<Footer />}>
+        <SourceMarquee />
+        <Pillars />
+        <WhyUpgrade />
+        <TwoPathSplit />
+        <ProShowcase />
+        <DeliveryDesk />
+        <AudiencePersonas />
+        <SocialProof />
+        <LivePreview />
+        <WhatsNew />
+        <PricingSection
+          refCode={getRefCode()}
+          attributionSource={getMcpAttributionSource()}
+          checkoutAttribution={parseMissionPreviewAttributionFromSearch(window.location.search) ?? undefined}
+          desktopHandoff={isDesktopCheckoutHandoff(window.location.search)}
+        />
+        <PricingTable />
+        <ApiSection />
+        <EnterpriseShowcase />
+        <FAQ />
+      </ProHomeShell>
     </ProEntitlementProvider>
   );
 }

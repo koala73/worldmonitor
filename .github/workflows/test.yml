@@ -1126,6 +1126,20 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14
+      # Named explicitly for the same reason as the gates above. It reads the
+      # same public/pro/ bytes and proves the prerendered hero, not the React
+      # mount, owns the /pro LCP entry.
+      - name: Run /pro hero LCP gate
+        id: pro-lcp
+        run: npm run test:e2e:pro-lcp
+      - name: Upload /pro hero LCP Playwright artifacts
+        if: ${{ !cancelled() && steps.pro-lcp.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-pro-lcp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
       # WebMCP is exposed only by an enabled Chrome milestone. Keep this probe
       # separate from the bundled-Chromium smoke so an unavailable or stale
       # system Chrome fails the required PR job instead of silently skipping.
