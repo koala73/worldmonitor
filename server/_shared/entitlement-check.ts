@@ -178,7 +178,6 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/market/v1/backtest-stock': 1,
   '/api/market/v1/list-stored-stock-backtests': 1,
   '/api/economic/v1/list-global-tenders': 1,
-  '/api/sanctions/v1/list-sanctions-pressure': 1,
   '/api/scenario/v1/run-scenario': 1,
   '/api/scenario/v1/get-scenario-status': 1,
   '/api/supply-chain/v1/get-country-chokepoint-index': 1,

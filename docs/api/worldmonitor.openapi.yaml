@@ -8451,12 +8451,8 @@ paths:
             tags:
                 - EconomicService
             summary: GetNationalDebt
-            description: GetNationalDebt retrieves national debt clock data for all countries. PRO-gated. Requires an active Pro subscription.
+            description: GetNationalDebt retrieves national debt clock data for all countries.
             operationId: GetNationalDebt
-            security:
-                - WorldMonitorKey: []
-                - ApiKeyHeader: []
-                - BearerAuth: []
             parameters:
                 - name: jmespath
                   in: query
@@ -8497,7 +8493,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: Pro subscription required.
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -27330,12 +27326,8 @@ paths:
             tags:
                 - SanctionsService
             summary: ListSanctionsPressure
-            description: ListSanctionsPressure retrieves normalized OFAC designation summaries and recent additions. PRO-gated. Requires entitlement tier >= 1.
+            description: ListSanctionsPressure retrieves normalized OFAC designation summaries and recent additions.
             operationId: ListSanctionsPressure
-            security:
-                - WorldMonitorKey: []
-                - ApiKeyHeader: []
-                - BearerAuth: []
             parameters:
                 - name: max_items
                   in: query
@@ -27393,7 +27385,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: PRO entitlement access denied.
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).

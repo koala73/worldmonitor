@@ -428,7 +428,8 @@ describe('OpenAPI security contract', () => {
     assert.ok(BEARER_AUTH_PATHS.size > 0, 'expected at least one bearer-auth path');
     assert.ok(ENDPOINT_ENTITLEMENTS.size >= 18, 'expected issue-scoped entitlement-gated paths');
     assert.equal(ENDPOINT_ENTITLEMENTS.get('/api/market/v1/analyze-stock'), 1, 'expected tier-gated market path');
-    assert.equal(ENDPOINT_ENTITLEMENTS.get('/api/sanctions/v1/list-sanctions-pressure'), 1, 'expected sanctions pressure path');
+    assert.equal(ENDPOINT_ENTITLEMENTS.get('/api/economic/v1/list-global-tenders'), 1, 'expected procurement path');
+    assert.ok(!BEARER_AUTH_PATHS.has('/api/sanctions/v1/list-sanctions-pressure'), 'sanctions pressure is free (served by public bootstrap)');
     assert.equal(ENDPOINT_ENTITLEMENTS.get('/api/trade/v1/list-comtrade-flows'), 1, 'expected Comtrade path');
     assert.ok(PUBLIC_FORBIDDEN_GATES.has('/api/leads/v1/submit-contact'), 'expected Leads Turnstile 403 path');
     assert.ok(PUBLIC_FORBIDDEN_GATES.has('/api/leads/v1/register-interest'), 'expected Leads register-interest 403 gate');
