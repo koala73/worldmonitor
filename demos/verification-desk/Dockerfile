@@ -8,11 +8,11 @@ FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b533
 WORKDIR /app
 # Only what the desk imports: WorldMonitor's grading modules and the desk itself.
 COPY package.json ./
-COPY shared ./shared
-COPY server/_shared ./server/_shared
-COPY scripts ./scripts
+COPY shared/ ./shared/
+COPY server/_shared/ ./server/_shared/
+COPY scripts/ ./scripts/
 COPY src/locales/en.json ./src/locales/en.json
-COPY demos/verification-desk ./demos/verification-desk
+COPY demos/verification-desk/ ./demos/verification-desk/
 
 WORKDIR /app/demos/verification-desk
 RUN rm -rf node_modules data public/vendor public/deck.html \
