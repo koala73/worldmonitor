@@ -28,16 +28,22 @@ export function installBetaConsoleToggle(
   target: object,
   deps: BetaConsoleToggleDeps = browserDeps(),
 ): void {
-  Object.defineProperty(target, 'beta', {
-    get() {
-      const on = deps.get(BETA_MODE_STORAGE_KEY) === 'true';
-      deps.log(`[Beta] ${on ? 'ON' : 'OFF'}`);
-      return on;
-    },
-    set(v: boolean) {
-      if (v) deps.set(BETA_MODE_STORAGE_KEY, 'true');
-      else deps.remove(BETA_MODE_STORAGE_KEY);
-      deps.reload();
-    },
-  });
+  try {
+    if (Object.getOwnPropertyDescriptor(target, 'beta')) return;
+    Object.defineProperty(target, 'beta', {
+      configurable: true,
+      get() {
+        const on = deps.get(BETA_MODE_STORAGE_KEY) === 'true';
+        deps.log(`[Beta] ${on ? 'ON' : 'OFF'}`);
+        return on;
+      },
+      set(v: boolean) {
+        if (v) deps.set(BETA_MODE_STORAGE_KEY, 'true');
+        else deps.remove(BETA_MODE_STORAGE_KEY);
+        deps.reload();
+      },
+    });
+  } catch {
+    return;
+  }
 }
