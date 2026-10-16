@@ -728,6 +728,10 @@ async function proxyToCloud(requestUrl, req, remoteBase) {
   // Identify sidecar as trusted origin so the cloud API key validator
   // doesn't reject the request (no origin + no key = 401).
   headers.set('Origin', 'https://worldmonitor.app');
+  // The native proxy sends no User-Agent, and the cloud /api/* gate rejects an
+  // empty one with 403 agent_request_blocked (#9135). Match the register-interest
+  // proxy below.
+  headers.set('User-Agent', CHROME_UA);
   // Inject the configured enterprise key for cloud calls that pass through the
   // sidecar so auth-gated endpoints (e.g. /api/mcp-proxy per PR #3768, issue
   // #3723) succeed without each renderer call having to attach it. Renderer-
