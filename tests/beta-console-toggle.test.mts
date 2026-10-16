@@ -10,7 +10,25 @@ interface BetaHost {
   beta: boolean;
 }
 
-function harness(stored?: string): {
+interface FakeOverlay {
+  rendered: boolean;
+}
+
+/** A document holding one blocking overlay while `overlay.rendered` is true. */
+function documentWith(overlay?: FakeOverlay) {
+  return {
+    querySelectorAll: () => (overlay?.rendered ? [{
+      checkVisibility: () => true,
+      getAttribute: (name: string) => (name === 'role' ? 'dialog' : name === 'data-reload-policy' ? 'blocking' : null),
+      getBoundingClientRect: () => ({ width: 100, height: 100 }),
+      id: 'sign-up',
+      className: 'modal-overlay',
+      tagName: 'DIV',
+    }] : []),
+  } as unknown as BetaConsoleToggleDeps['document'];
+}
+
+function harness(stored?: string, overlay?: FakeOverlay): {
   store: Map<string, string>;
   logs: string[];
   reloads: { count: number };
@@ -28,6 +46,7 @@ function harness(stored?: string): {
     remove: (key) => { store.delete(key); },
     reload: () => { reloads.count += 1; },
     log: (message) => { logs.push(message); },
+    document: documentWith(overlay),
   };
   return { store, logs, reloads, target, deps };
 }
@@ -58,6 +77,27 @@ describe('installBetaConsoleToggle', () => {
     installBetaConsoleToggle(h.target, h.deps);
     h.target.beta = false;
     assert.equal(h.store.get(BETA_MODE_STORAGE_KEY), undefined);
+    assert.equal(h.reloads.count, 1);
+  });
+
+  it('saves the flag but does not reload over a blocking overlay', () => {
+    const overlay = { rendered: true };
+    const h = harness(undefined, overlay);
+    installBetaConsoleToggle(h.target, h.deps);
+    h.target.beta = true;
+    assert.equal(h.store.get(BETA_MODE_STORAGE_KEY), 'true');
+    assert.equal(h.reloads.count, 0, 'an open blocking overlay must not be reloaded away');
+    assert.match(h.logs.at(-1) ?? '', /not reloading while .+ is open/);
+    overlay.rendered = false;
+    h.target.beta = false;
+    assert.equal(h.store.get(BETA_MODE_STORAGE_KEY), undefined);
+    assert.equal(h.reloads.count, 1, 'once the overlay closes the toggle reloads again');
+  });
+
+  it('reloads when there is no document to protect', () => {
+    const h = harness();
+    installBetaConsoleToggle(h.target, { ...h.deps, document: null });
+    h.target.beta = true;
     assert.equal(h.reloads.count, 1);
   });
 
