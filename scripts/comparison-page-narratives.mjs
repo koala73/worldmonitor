@@ -97,7 +97,7 @@ export const COMPARE_HUB_NARRATIVE = {
   concessions: {
     heading: 'What we concede on purpose',
     paragraphs: [
-      'ACLED wins historical coded-event depth, academic citability, and downloadable structured datasets. GDELT wins raw archive volume back to 1979. Deep State Map wins Ukraine frontline granularity maintained by analysts. Dataminr wins proprietary social ingestion and sub-minute alerting SLAs. Recorded Future wins enterprise threat-intelligence depth across cyber, physical, and geopolitical risk. IMF PortWatch wins chokepoint coverage (28 to our ' + CHOKEPOINT_COUNT + '), bulk download, and IMF plus Oxford authority at zero cost. International SOS wins assistance delivery: 27 centers, medical evacuation, and case response. World Monitor has no assistance centers, no medical evacuation, and no case response, and the travel page says so.',
+      'ACLED wins historical coded-event depth, academic citability, and downloadable structured datasets. GDELT wins raw archive volume back to 1979. Deep State Map wins Ukraine frontline granularity maintained by analysts. Dataminr wins proprietary social ingestion and real-time alerting under an enterprise SLA. Recorded Future wins enterprise threat-intelligence depth across cyber, physical, and geopolitical risk. IMF PortWatch wins chokepoint coverage (28 to our ' + CHOKEPOINT_COUNT + '), bulk download, and IMF plus Oxford authority at zero cost. International SOS wins assistance delivery: 27 centers, medical evacuation, and case response. World Monitor has no assistance centers, no medical evacuation, and no case response, and the travel page says so.',
       'Those concessions are the credibility argument. A page that swept every column would read as marketing, and marketing is the thing this family is built not to be. If you need the cell they win, buy them. If you need a no-signup multi-domain watch with published prices, REST from $99.99/month, and MCP from Pro at $39.99/month, stay on the child page and read the rest of the matrix.',
     ],
   },
@@ -123,7 +123,7 @@ export const COMPARISON_NARRATIVES = {
       {
         name: 'Liveuamap',
         paragraphs: [
-          'Liveuamap is a conflict-event map with a long public audience and region-specific variants. The free, ad-funded map is the product most people mean by the name. The paid API is a separate SKU: Pro at $150/month for 200 requests/day and Enterprise from $1,000/month for 1,500 requests/day, published at liveuamap.com/promo/api. It is fast at headlines. It is not a multi-domain watch.',
+          'Liveuamap is a live news map centered on conflict and security events, with a long public audience and region-specific variants. The free, ad-funded map is the product most people mean by the name. The paid API is a separate SKU: Pro at $150/month for 200 requests/day and Enterprise from $1,000/month for 1,500 requests/day, published at liveuamap.com/promo/api. It is fast at headlines. It is not a multi-domain watch.',
           'Pick Liveuamap when you want a familiar conflict map and you do not need maritime AIS, aviation, markets, cables, or seismic context on the same canvas. Pick something else when the API quota or the missing domains are the reason you searched for alternatives.',
         ],
       },
@@ -220,7 +220,7 @@ export const COMPARISON_NARRATIVES = {
       {
         name: 'Liveuamap',
         paragraphs: [
-          'Liveuamap runs a public conflict-event map and sells API access as Pro at $150/month for 200 requests/day and Enterprise from $1,000/month for 1,500 requests/day. The free map is ad-funded. Coverage is conflict events. MCP status is unverified. The company has a decade of audience familiarity and region-specific map variants that a newer multi-domain dashboard will not copy.',
+          'Liveuamap runs a public news map centered on conflict and security events and sells API access as Pro at $150/month for 200 requests/day and Enterprise from $1,000/month for 1,500 requests/day. The free map is ad-funded. Coverage centers on conflict and security news, plus protests, disasters and weather. MCP status is unverified. The company has a decade of audience familiarity and region-specific map variants that a newer multi-domain dashboard will not copy.',
           'It wins on familiarity and on being the default conflict-headline canvas. It loses on API quota-per-dollar and on every domain it does not track. Teams that only need conflict pins should stay. Teams that need AIS, aviation, markets, or five times the daily API quota should not.',
         ],
       },
@@ -228,7 +228,7 @@ export const COMPARISON_NARRATIVES = {
     evaluationHeading: 'What to look for in a Liveuamap alternative',
     evaluationProse: [
       'Demand published numbers. A Liveuamap alternative that will not quote an API price is not competing on the axis that makes this page possible. Compare list price, daily quota, and whether the free canvas requires signup. Then compare domain coverage: conflict only, or conflict plus the infrastructure and market layers that turn a headline into a decision.',
-      'Score latency honestly. Liveuamap is near-real-time for conflict events. World Monitor is source-dependent: live and minute-level feeds plus slower datasets. If your only feed is conflict pins, Liveuamap\'s cadence is enough. If you also watch transits and airspace, a single conflict timer is the wrong SLA.',
+      'Score latency honestly. Liveuamap runs a live news feed but publishes no latency figure. World Monitor is source-dependent: live and minute-level feeds plus slower datasets. If your only feed is conflict pins, Liveuamap\'s cadence is enough. If you also watch transits and airspace, a single conflict timer is the wrong SLA.',
       'Keep the concession in view. Region-specific variants and a lighter ad-funded free experience are real Liveuamap wins. An alternative that cannot name them is selling, not comparing. The right alternative is the one that beats Liveuamap on the cell you actually failed — quota, price, or domains — without pretending to beat it on nostalgia.',
     ],
     switchHeading: 'Why teams switch from Liveuamap',
@@ -354,13 +354,13 @@ export const COMPARISON_NARRATIVES = {
 
   'worldmonitor-vs-dataminr': {
     headingProse: [
-      'Dataminr is an enterprise alerting company. It ingests proprietary social and public data, sells seconds-to-minutes alerting with SLAs, and does not publish list pricing. World Monitor is the public-source, published-price end of the same "tell me when something breaks" query. The page names what Dataminr wins, then names the only cells a transparent product can win: price, access, and an open catalog.',
+      'Dataminr is an enterprise alerting company. It ingests proprietary social and public data, sells real-time alerting under contracts with a published availability SLA, and does not publish list pricing. World Monitor is the public-source, published-price end of the same "tell me when something breaks" query. The page names what Dataminr wins, then names the only cells a transparent product can win: price, access, and an open catalog.',
     ],
     competitorProfiles: [
       {
         name: 'Dataminr',
         paragraphs: [
-          'Dataminr (Pulse and related enterprise products) sells real-time alerting to newsrooms, corporations, and the public sector. The distinctive cells are proprietary social-data ingestion, sub-minute alerting SLAs, and enterprise integration support. Those cells are why it wins procurement in rooms that already have a security budget. The company does not publish list pricing; licenses are negotiated. This page will not invent a number to fill that silence.',
+          'Dataminr (Pulse and related enterprise products) sells real-time alerting to newsrooms, corporations, and the public sector. The distinctive cells are proprietary social-data ingestion, real-time alerting under a published availability SLA, and enterprise integration support. Those cells are why it wins procurement in rooms that already have a security budget. The company does not publish list pricing; licenses are negotiated. This page will not invent a number to fill that silence.',
           'Who should pick Dataminr: organizations that need proprietary social firehoses, contractual SLAs, and a vendor that will sit in the incident channel. Who should pick something else: teams that cannot or will not sign an undisclosed enterprise contract, and teams that need a transparent public-source watch they can open without a salesperson. World Monitor is in the second set. It is not a Dataminr clone at a lower SLA.',
           `The category error is treating "alerting" as one product. Dataminr alerts from a proprietary stack. World Monitor alerts from ${PROVIDER_COUNT} attributed public providers. Speed and exclusivity versus transparency and price is the trade, and both sides of the trade are real.`,
         ],
@@ -382,11 +382,11 @@ export const COMPARISON_NARRATIVES = {
     ),
     whyWeWinBody: [
       `World Monitor publishes the prices Dataminr does not: $0 for the dashboard, Pro from $39.99/month with MCP, API Starter from $99.99/month. The data is ${PROVIDER_COUNT} attributed public providers rather than a proprietary social stack. That is the transparency trade: you can verify the cells, and you give up Dataminr's exclusivity and SLA.`,
-      'Dataminr still wins proprietary ingestion, sub-minute SLAs, and enterprise integration. If those cells are the job, this page is not a reason to churn. If the job is a public-source watch you can buy from a catalog, it is.',
+      'Dataminr still wins proprietary ingestion, real-time alerting under an SLA, and enterprise integration. If those cells are the job, this page is not a reason to churn. If the job is a public-source watch you can buy from a catalog, it is.',
     ],
     extraFaqs: [
       ['How much does Dataminr cost?', 'Dataminr does not publish list pricing. This page will not guess. World Monitor publishes $0 / $39.99 / $99.99 catalog SKUs.'],
-      ['Is World Monitor as fast as Dataminr?', 'Not as an SLA. Dataminr sells seconds-to-minutes proprietary alerting with enterprise SLAs. World Monitor cadence is source-dependent across public feeds.'],
+      ['Is World Monitor as fast as Dataminr?', 'Not as an SLA. Dataminr sells proprietary real-time alerting under enterprise contracts, though it publishes no latency figure. World Monitor cadence is source-dependent across public feeds.'],
       ['Does World Monitor ingest social media the way Dataminr does?', 'No. Dataminr\'s proprietary social ingestion is a conceded cell. World Monitor uses attributed public providers.'],
       ['Can a newsroom use World Monitor instead of Dataminr?', 'For a public-source watch, yes. For contractual alerting SLAs and proprietary social detection, no. Many rooms will keep Dataminr and add a public canvas.'],
       ['Does World Monitor require an enterprise contract?', 'No. The dashboard is free without signup. Dataminr licenses are enterprise-negotiated. That is a different access model, not a free Dataminr.'],
@@ -820,7 +820,7 @@ export const COMPARISON_NARRATIVES = {
       {
         name: 'Factal',
         paragraphs: [
-          'Factal is journalist-verified breaking news from social signals. Subscription, verification archive, a newsroom product. The win is verification labor, not evacuation.',
+          'Factal sells incident alerts verified by journalists, for a flat fee per team with a 30-day free trial and REST data back to 2018. The win is verification labor, not evacuation.',
           'Pick Factal to verify a clip. Pick International SOS to move a person. Pick World Monitor to watch public domains continuously.',
         ],
       },
