@@ -23,7 +23,7 @@
  * do NOT need a `touchProMcpTokenLastUsedFireAndForget` helper here.
  */
 
-import { deleteRedisKey } from './redis';
+import { deleteRedisKey } from './redis.js';
 
 /** Negative-cache TTL: 60s — short enough that a re-issued tokenId (vanishingly
  *  rare given Convex IDs) becomes resolvable promptly, long enough to suppress
@@ -489,7 +489,7 @@ export function envPrefix(): string {
  * Seconds remaining until the next UTC midnight — used for the
  * `Retry-After` header on -32029 quota-exceeded responses.
  */
-export { secondsUntilUtcMidnight } from './api-key-rate-limit';
+export { secondsUntilUtcMidnight } from './api-key-rate-limit.js';
 
 /** Hard cap per UTC day for Pro MCP `tools/call`s. Plan default. */
 export const PRO_DAILY_QUOTA_LIMIT = 50;

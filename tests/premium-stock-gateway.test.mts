@@ -4,6 +4,8 @@ import { afterEach, describe, it, before, after, mock } from 'node:test';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
 import { createDomainGateway } from '../server/gateway.ts';
+import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
+import { DIRECT_LLM_GATEWAY_QUOTA_PATHS } from '../server/_shared/direct-llm-quota.ts';
 import { issueSessionToken } from '../api/_session.js';
 import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
 
@@ -992,6 +994,68 @@ describe('premium gateway bearer token auth', () => {
     }
   });
 
+  // Every premium direct-LLM route must deny a confirmed free account. The
+  // gateway treats a resolved Clerk session as authenticated on quota routes,
+  // and deduct-situation (premium, quota-metered, but not tier-gated) used to
+  // ride that through to the handler with a 200 for any free sign-in.
+  it('free bearer token on premium direct-LLM routes → 403 before the handler', async () => {
+    const token = await signToken({ sub: 'user_free', plan: 'free' });
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const originalFetch = globalThis.fetch;
+    process.env.CONVEX_SITE_URL = 'https://test.convex.site';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'test-secret';
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/api/internal-entitlements')) {
+        return new Response(
+          JSON.stringify({
+            planKey: 'free',
+            validUntil: Date.now() + 86_400_000,
+            features: { tier: 0, apiAccess: false, apiRateLimit: 0, maxDashboards: 3, prioritySupport: false, exportFormats: [], mcpAccess: false },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+
+    const reached: string[] = [];
+    const premiumLlmPaths = [...PREMIUM_RPC_PATHS].filter((p) => DIRECT_LLM_GATEWAY_QUOTA_PATHS.has(p));
+    assert.ok(premiumLlmPaths.includes('/api/intelligence/v1/deduct-situation'));
+    const gateway = createDomainGateway(premiumLlmPaths.map((path) => ({
+      method: 'POST' as const,
+      path,
+      handler: async () => {
+        reached.push(path);
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      },
+    })));
+
+    try {
+      for (const path of premiumLlmPaths) {
+        const res = await gateway(new Request(`https://worldmonitor.app${path}`, {
+          method: 'POST',
+          headers: {
+            Origin: 'https://worldmonitor.app',
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ query: 'Will tensions escalate?' }),
+        }));
+        assert.equal(res.status, 403, `${path} must deny a free account`);
+      }
+      assert.deepEqual(reached, []);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSiteUrl;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+    }
+  });
+
   it('a free bearer with an UNCONFIGURED backend is retryable, not an upsell', async () => {
     // The other half. A missing env var is our deploy defect, and on this gate
     // it previously told every caller — subscribers included — that their
@@ -1145,7 +1209,7 @@ describe('premium gateway bearer token auth', () => {
     const echoHandler = createDomainGateway([
       {
         method: 'POST',
-        path: '/api/intelligence/v1/deduct-situation',
+        path: '/api/intelligence/v1/list-market-implications',
         handler: async (request) => {
           const body = await request.json();
           return new Response(JSON.stringify({
@@ -1157,7 +1221,7 @@ describe('premium gateway bearer token auth', () => {
     ]);
 
     const payload = { situation: 'test', evidence: ['a', 'b', 'c'], count: 42 };
-    const res = await echoHandler(new Request('https://worldmonitor.app/api/intelligence/v1/deduct-situation', {
+    const res = await echoHandler(new Request('https://worldmonitor.app/api/intelligence/v1/list-market-implications', {
       method: 'POST',
       headers: {
         Origin: 'https://worldmonitor.app',

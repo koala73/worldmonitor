@@ -1,9 +1,25 @@
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { test, expect, HYDRATED_MARKET } from './country-brief-fixtures';
+import { captureImfPeriods, type ImfPeriodScenario } from './country-brief-fixtures';
 import { readFile } from 'node:fs/promises';
 import { installCountryBriefDesignData, installDecisionBriefData, installCommodityBriefData } from './country-brief-design-fixtures';
 
 const recording = process.env.CI ? 'on-first-retry' : 'retain-on-failure';
+
+for (const width of [1280, 390]) for (const scenario of ['mixed', 'legacy', 'partial', 'sparse'] as ImfPeriodScenario[]) {
+  test(`IMF annual website ${scenario} ${width}`, async ({ page, countryBrief }, testInfo) => {
+    countryBrief.imfScenario = scenario;
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/dashboard?country=CA&expanded=1');
+    const panel = page.locator('#country-deep-dive-panel');
+    await expect(panel).toHaveAttribute('aria-hidden', 'false');
+    await panel.getByRole('button', { name: 'Economy & trade', exact: true }).click();
+    await captureImfPeriods(page, panel.locator('[data-brief-section=economic]'), scenario, testInfo, 'website');
+    if (scenario === 'mixed') {
+      await expect(panel.locator('[data-brief-section=economic] .cdp-economic-label')).toHaveText(['Stock Index', 'Weekly Momentum', 'Instability Regime', 'Real GDP Growth', 'CPI Inflation', 'Unemployment']);
+    }
+  });
+}
 test.use({ trace: recording, video: recording, serviceWorkers: 'block' });
 
 function marketsCard(page: Page) {

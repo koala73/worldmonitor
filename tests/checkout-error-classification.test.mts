@@ -113,6 +113,26 @@ describe('classifyHttpCheckoutError', () => {
     assert.equal(err.code, 'invalid_product');
   });
 
+  // Edge body parse failure is not a catalog miss. Generic 4xx → invalid_product
+  // showed "That product isn't available" and turned retry off
+  // (Sentry WORLDMONITOR-188). Match the 403 infra-block treatment.
+  it('maps 400 Invalid JSON to service_unavailable (retryable)', () => {
+    const err = classifyHttpCheckoutError(400, { error: 'Invalid JSON' });
+    assert.equal(err.code, 'service_unavailable');
+    assert.equal(err.retryable, true);
+    assert.equal(err.httpStatus, 400);
+    assert.equal(err.serverMessage, 'Invalid JSON');
+    assert.match(err.userMessage, /temporarily unavailable/i);
+    assert.doesNotMatch(err.userMessage, /product isn't available/i);
+  });
+
+  it('maps 400 INVALID_CHECKOUT_PRODUCT to invalid_product', () => {
+    const err = classifyHttpCheckoutError(400, { error: 'INVALID_CHECKOUT_PRODUCT' });
+    assert.equal(err.code, 'invalid_product');
+    assert.equal(err.retryable, false);
+    assert.equal(err.serverMessage, 'INVALID_CHECKOUT_PRODUCT');
+  });
+
   // 403 on the create-checkout edge route never comes from our handler or the
   // Convex relay — it's Vercel firewall / edge bot-protection. "Temporarily
   // unavailable" copy is honest and retryable; the generic 4xx copy ("That

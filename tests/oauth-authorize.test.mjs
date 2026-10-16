@@ -13,6 +13,8 @@
  */
 
 import { strict as assert } from 'node:assert';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import { consentPage } from '../api/oauth/authorize.js';
@@ -95,7 +97,7 @@ describe('consentPage — Pro CTA structure (U4)', () => {
   it('inline script wires the disclosure click handler + #api-key fragment + errorMsg auto-show', async () => {
     const html = await renderHtml(BASE_PARAMS, NONCE);
     // Single-IIFE inline script (no external assets — edge runtime constraint).
-    assert.match(html, /<script>\(function\(\)\{/);
+    assert.match(html, /<script nonce="wm-static-bootstrap">\(function\(\)\{/);
     // Reveal triggers — three of them, all going through the same showForm() helper.
     assert.match(html, /window\.location\.hash==='#api-key'/);
     assert.match(html, /tk\.addEventListener\('click'/);
@@ -215,5 +217,32 @@ describe('consentPage — preserved invariants (regression guard for U6+)', () =
     assert.equal(res.headers.get('X-Frame-Options'), 'DENY');
     assert.equal(res.headers.get('Cache-Control'), 'no-store');
     assert.equal(res.headers.get('Pragma'), 'no-cache');
+  });
+});
+
+// The site-wide CSP in vercel.json also covers /oauth/authorize. Its
+// script-src has 'strict-dynamic', so an inline script runs only when its
+// nonce or SHA-256 hash is listed. A blocked consent script leaves "Use API
+// key instead" with no click handler, so the API-key path is unreachable.
+describe('consentPage — scripts allowed by the deployed CSP', () => {
+  it('every inline script carries an allowed nonce or hash', async () => {
+    const vercel = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+    const rule = vercel.headers.find((h) => new RegExp(`^${h.source}$`).test('/oauth/authorize')
+      && h.headers.some((x) => x.key === 'Content-Security-Policy'));
+    assert.ok(rule, 'a vercel.json CSP rule must cover /oauth/authorize');
+    const csp = rule.headers.find((x) => x.key === 'Content-Security-Policy').value;
+    const scriptSrc = csp.split(';').map((d) => d.trim()).find((d) => d.startsWith('script-src ')).split(/\s+/);
+
+    const html = await renderHtml(BASE_PARAMS, NONCE);
+    const scripts = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)];
+    assert.ok(scripts.length > 0, 'consent page must render its disclosure script');
+    for (const [, attrs, body] of scripts) {
+      const nonce = /\bnonce="([^"]+)"/.exec(attrs)?.[1];
+      const hash = `'sha256-${createHash('sha256').update(body).digest('base64')}'`;
+      assert.ok(
+        (nonce && scriptSrc.includes(`'nonce-${nonce}'`)) || scriptSrc.includes(hash),
+        `inline consent script is blocked by the CSP (nonce=${nonce ?? 'none'}, hash=${hash})`,
+      );
+    }
   });
 });

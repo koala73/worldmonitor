@@ -184,6 +184,13 @@ const MAX_SSE_REPLAY_RESPONSE_BYTES = 128 * 1024;
 const MAX_SSE_REPLAY_SESSION_BYTES = 256 * 1024;
 const MAX_SSE_REPLAY_TOTAL_BYTES = 4 * 1024 * 1024;
 const MAX_SSE_SESSIONS = 500;
+// The store is shared by every caller in the isolate. A per-owner cap keeps
+// one principal from cycling sessions to push everyone else's replay buffers
+// out of the global LRU.
+const MAX_SSE_SESSIONS_PER_OWNER = 20;
+// Twenty full sessions would still exceed the shared byte budget, so each
+// owner also has its own byte budget and evicts its own oldest replay first.
+const MAX_SSE_REPLAY_OWNER_BYTES = 1024 * 1024;
 const MAX_SSE_STREAMS_PER_SESSION = 25;
 const mcpSseStreamsBySession = new Map<string, StoredSseSession>();
 let mcpSseReplayBytes = 0;
@@ -270,6 +277,40 @@ function evictOldestSseStream(exceptSessionId?: string): boolean {
   return false;
 }
 
+function ownerReplayBytes(owner: string): number {
+  let bytes = 0;
+  for (const session of mcpSseStreamsBySession.values()) {
+    if (session.owner === owner) bytes += sessionReplayBytes(session.streams);
+  }
+  return bytes;
+}
+
+function evictOldestOwnedSseStream(owner: string): boolean {
+  for (const session of mcpSseStreamsBySession.values()) {
+    if (session.owner !== owner) continue;
+    const streamId = session.streams.keys().next().value;
+    if (!streamId) continue;
+    const stream = session.streams.get(streamId);
+    if (!stream) continue;
+    session.streams.delete(streamId);
+    mcpSseReplayBytes -= stream.bytes;
+    return true;
+  }
+  return false;
+}
+
+// Test-only view of the in-isolate replay store.
+export const __sseReplayStoreForTest = {
+  reset(): void {
+    mcpSseStreamsBySession.clear();
+    mcpSseReplayBytes = 0;
+  },
+  store: (sessionId: string, streamId: string, data: string, owner: string): boolean =>
+    storeSseStream(sessionId, streamId, [{ id: `${streamId}:1`, data }], owner),
+  ownerBytes: ownerReplayBytes,
+  totalBytes: (): number => mcpSseReplayBytes,
+};
+
 /**
  * Claims `sessionId` for `owner`, or returns null when another owner already
  * claimed it. `initialize` calls this before content negotiation so a JSON
@@ -279,6 +320,17 @@ function evictOldestSseStream(exceptSessionId?: string): boolean {
 function claimSseSession(sessionId: string, owner: string): StoredSseSession | null {
   const existing = mcpSseStreamsBySession.get(sessionId);
   if (existing) return existing.owner === owner ? existing : null;
+
+  let ownedSessions = 0;
+  let oldestOwnedSessionId: string | undefined;
+  for (const [id, stored] of mcpSseStreamsBySession) {
+    if (stored.owner !== owner) continue;
+    ownedSessions += 1;
+    oldestOwnedSessionId ??= id;
+  }
+  if (ownedSessions >= MAX_SSE_SESSIONS_PER_OWNER && oldestOwnedSessionId) {
+    deleteSseSession(oldestOwnedSessionId);
+  }
 
   const session: StoredSseSession = { owner, streams: new Map() };
   mcpSseStreamsBySession.set(sessionId, session);
@@ -308,6 +360,9 @@ function storeSseStream(sessionId: string, streamId: string, events: StoredSseEv
     const oldest = streams.get(oldestStreamId);
     streams.delete(oldestStreamId);
     if (oldest) mcpSseReplayBytes -= oldest.bytes;
+  }
+  while (ownerReplayBytes(owner) + bytes > MAX_SSE_REPLAY_OWNER_BYTES && evictOldestOwnedSseStream(owner)) {
+    // Spend this owner's own budget before touching anyone else's replay.
   }
   while (mcpSseReplayBytes + bytes > MAX_SSE_REPLAY_TOTAL_BYTES && evictOldestSseStream(sessionId)) {
     // Evict least-recently-stored entries until this bounded replay fits.

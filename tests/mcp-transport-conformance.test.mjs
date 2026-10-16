@@ -333,6 +333,21 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     assert.equal((await readAllSseEvents(reconnect)).length, 0);
   });
 
+  it('caps replay sessions per principal so one caller cannot flush the shared store', async () => {
+    admitTwoPrincipals();
+    const other = await openBufferedStream(SECOND_BEARER);
+    const first = await openBufferedStream(PRO_BEARER);
+    for (let i = 0; i < 20; i++) await openBufferedStream(PRO_BEARER);
+
+    const evicted = await replayAs(PRO_BEARER, first);
+    assert.equal(evicted.status, 404, 'past the per-owner cap the owner\'s oldest session is dropped');
+    await evicted.text();
+
+    const untouched = await replayAs(SECOND_BEARER, other);
+    assert.equal(untouched.status, 200, 'another principal\'s session must survive');
+    assert.equal((await readAllSseEvents(untouched)).length, 0);
+  });
+
   it('binds a JSON-initialized session before the first SSE write', async () => {
     admitTwoPrincipals();
     const initialize = await fetch(server.url, {
@@ -989,5 +1004,32 @@ describe('api/mcp.ts — rate-limit denials stay correlatable over the wire (#78
       limiterKeys.some((key) => key.startsWith('rl:mcp:anon:')),
       'the recovered read must still have been metered — otherwise this control proves nothing',
     );
+  });
+});
+
+describe('api/mcp/handler.ts — SSE replay byte budget', () => {
+  it('one principal at its session cap cannot evict another principal\'s replay', async () => {
+    const { __sseReplayStoreForTest: store } = await import('../api/mcp/handler.ts');
+    store.reset();
+    try {
+      const big = 'x'.repeat(120 * 1024);
+      assert.equal(store.store('victim-session', 'victim-stream', big, 'victim'), true);
+      const victimBytes = store.ownerBytes('victim');
+
+      // Twenty sessions of two large responses each is ~4.8 MiB, above the
+      // shared 4 MiB budget. Before the per-owner byte budget, storing them
+      // evicted the victim's stream from the shared LRU.
+      for (let s = 0; s < 20; s++) {
+        for (let r = 0; r < 2; r++) {
+          assert.equal(store.store(`attacker-${s}`, `stream-${r}`, big, 'attacker'), true);
+        }
+      }
+
+      assert.equal(store.ownerBytes('victim'), victimBytes, 'the victim\'s replay must survive');
+      assert.ok(store.ownerBytes('attacker') <= 1024 * 1024, 'the attacker stays within its own budget');
+      assert.ok(store.totalBytes() <= 4 * 1024 * 1024);
+    } finally {
+      store.reset();
+    }
   });
 });

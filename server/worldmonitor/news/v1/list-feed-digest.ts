@@ -91,13 +91,26 @@ import { classifyEphemeralLiveCoverage } from '../../../../shared/ephemeral-live
 import { deriveCoreStoryPhase } from '../../../../shared/story-phase.js';
 import { buildTickerDictionary, extractTickers } from '../../../../shared/ticker-extract.js';
 import stocksData from '../../../../shared/stocks.json';
-import { buildClassifyCacheKey } from '../../intelligence/v1/_shared';
+import { buildClassifyCacheKey, isValidClassifyHit } from '../../intelligence/v1/_shared';
 import { declaredSourceTier, getSourceTier } from '../../../_shared/source-tiers';
 import {
   getSourcePropagandaRisk,
   hasReviewedPropagandaRisk,
 } from '../../../../shared/source-provenance';
 import { computeCredibilityScore } from '../../../../shared/news-credibility.js';
+import {
+  STORY_LABEL_FIELD,
+  countLabels,
+  encodeStoryLabel,
+  keepUnrecordedLabels,
+  labelChangeFor,
+  labelCountsCommand,
+  recordLabelChanges,
+  storyLabel,
+  type LabelChange,
+  type LabelCounts,
+  type StoryLabel,
+} from '../../../_shared/label-history';
 import {
   STORY_TRACK_KEY,
   STORY_SOURCES_KEY,
@@ -1436,6 +1449,10 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
     // operative skip check today. Locked by the `_skip` cases in
     // tests/news-classify-cache-hit-validation.test.mts.
     if (!hit || hit.level === '_skip' || !hit.level || !hit.category) continue;
+    // Shape is the parser's job; the value policy is ours. A level or category
+    // outside the classify enum never reaches item.category, which the
+    // dashboard renders as a badge.
+    if (!isValidClassifyHit(hit)) continue;
 
     for (const item of relatedItems) {
       // L3 defense-in-depth runs FIRST, BEFORE capLlmUpgrade. If the
@@ -1617,6 +1634,8 @@ interface StoryTrack {
   lastSeen: number;
   mentionCount: number;
   sourceCount: number;
+  /** Last recorded corroboration label (#9093), `state|publishers`; absent on rows from before it. */
+  label?: string;
 }
 
 /**
@@ -1671,10 +1690,16 @@ function derivePhase(track: StoryTrack, nowMs: number = Date.now()): ProtoStoryP
 /**
  * Batch-read existing story:track hashes from Redis for a list of title hashes.
  * Returns a Map<titleHash, StoryTrack>. Missing entries are absent from the map.
+ *
+ * `unread`, when given, receives every hash whose row could not be read (no
+ * time left, a failed pipeline, or a per-command error). Absent from the map
+ * then means "unknown", not "new story" (#9093 label history must not treat
+ * an unread row as a first sighting and overwrite its label).
  */
 async function readStoryTracks(
   titleHashes: string[],
   deadlineAt = Number.POSITIVE_INFINITY,
+  unread?: Set<string>,
 ): Promise<Map<string, StoryTrack>> {
   if (titleHashes.length === 0) return new Map();
   // currentScore and peakScore are deliberately NOT read here. derivePhase is
@@ -1685,15 +1710,22 @@ async function readStoryTracks(
   // trims two fields from every per-story HMGET in the batch. The WRITE side is
   // unchanged — buildStoryTrackHsetFields still persists currentScore, which
   // scripts/seed-digest-notifications.mjs reads.
-  const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount'];
+  const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount', STORY_LABEL_FIELD];
   const commands = titleHashes.map(h => [
     'HMGET', STORY_TRACK_KEY(h), ...fields,
   ]);
   const timeoutMs = redisTimeoutForDeadline(deadlineAt);
-  if (timeoutMs === undefined) return new Map();
+  if (timeoutMs === undefined) {
+    for (const hash of titleHashes) unread?.add(hash);
+    return new Map();
+  }
   const results = await runRedisPipeline(commands, false, timeoutMs);
   const map = new Map<string, StoryTrack>();
   for (let i = 0; i < titleHashes.length; i++) {
+    if (results.length !== titleHashes.length || results[i]?.error) {
+      unread?.add(titleHashes[i]!);
+      continue;
+    }
     const vals = results[i]?.result as string[] | null;
     if (!vals || !vals[0]) continue; // firstSeen missing → new story
     map.set(titleHashes[i]!, {
@@ -1701,6 +1733,7 @@ async function readStoryTracks(
       lastSeen:     Number(vals[1] ?? 0),
       mentionCount: Number(vals[2] ?? 0),
       sourceCount:  Number(vals[3] ?? 0),
+      ...(typeof vals[4] === 'string' && vals[4] !== '' ? { label: vals[4] } : {}),
     });
   }
   return map;
@@ -2215,6 +2248,7 @@ export async function listFeedDigest(
                 'unavailable',
               );
               if (publication === 'unavailable') deferDigestAttempt(digestCacheKey, 30);
+              if (publication === 'accepted') await publishAcceptedLabelCounts(result, responseDeadlineAt);
             } else {
               deferDigestAttempt(digestCacheKey, 30);
               console.warn(
@@ -2540,6 +2574,56 @@ function buildStoryTrackHsetFields(
   ];
 }
 
+function groupByTitleHash(items: readonly ParsedItem[]): Map<string, ParsedItem[]> {
+  const byHash = new Map<string, ParsedItem[]>();
+  for (const item of items) {
+    const hash = item.titleHash;
+    if (!hash) continue;
+    const members = byHash.get(hash);
+    if (members) members.push(item);
+    else byHash.set(hash, [item]);
+  }
+  return byHash;
+}
+
+/**
+ * #9093: this cycle's corroboration label for every served story, and the
+ * changes from the label each story's track row recorded last cycle. A label
+ * reads the story's whole servable cluster, because the category cap can drop a
+ * member whose publisher the cluster-wide count includes. The stored source
+ * roster is then capped by labelChangeFor; the publisher count is never capped.
+ */
+function storyLabelChanges(
+  served: readonly ParsedItem[],
+  servable: readonly ParsedItem[],
+  tracks: ReadonlyMap<string, StoryTrack>,
+  now: number,
+  unread: ReadonlySet<string> = new Set(),
+): { labelByHash: Map<string, string>; labelChanges: LabelChange[]; labelCounts: LabelCounts } {
+  const clusterByHash = groupByTitleHash(servable);
+  const labelByHash = new Map<string, string>();
+  const labelChanges: LabelChange[] = [];
+  const states: StoryLabel['state'][] = [];
+  for (const [hash, members] of groupByTitleHash(served)) {
+    const label = storyLabel(clusterByHash.get(hash) ?? members);
+    // Counts describe today's labels, whether or not the track row was read.
+    states.push(label.state);
+    // An unread track row is unknown, not new: leave its label untouched so
+    // the next cycle compares against the real previous label.
+    if (unread.has(hash)) continue;
+    labelByHash.set(hash, encodeStoryLabel(label));
+    const lead = members.reduce((best, item) => (item.importanceScore > best.importanceScore ? item : best));
+    const change = labelChangeFor(hash, tracks.get(hash)?.label, label, {
+      at: now,
+      title: lead.title,
+      link: storyTrackLinkForPersist(lead),
+      credibilityScore: lead.credibilityScore,
+    });
+    if (change) labelChanges.push(change);
+  }
+  return { labelByHash, labelChanges, labelCounts: countLabels(states, now) };
+}
+
 async function writeStoryTracking(
   items: ParsedItem[],
   variant: string,
@@ -2548,6 +2632,9 @@ async function writeStoryTracking(
   memberHashesByFinal?: Map<string, Set<string>>,
   deadlineAt = Number.POSITIVE_INFINITY,
   clusterAnchorEligibleByHash?: ReadonlyMap<string, boolean>,
+  // #9093: this cycle's corroboration label per story, persisted on the track
+  // row so the next cycle can tell whether it changed. Absent → not written.
+  labelByHash?: ReadonlyMap<string, string>,
 ): Promise<void> {
   if (items.length === 0) return;
   if (redisTimeoutForDeadline(deadlineAt) === undefined) {
@@ -2648,12 +2735,16 @@ async function writeStoryTracking(
         const anchorFieldAt = hsetFieldsWithEligibility.indexOf('anchorEligible');
         const anchorEligible = anchorFieldAt >= 0
           && hsetFieldsWithEligibility[anchorFieldAt + 1] === '1';
-        const hsetFields = anchorFieldAt >= 0
-          ? [
-            ...hsetFieldsWithEligibility.slice(0, anchorFieldAt),
-            ...hsetFieldsWithEligibility.slice(anchorFieldAt + 2),
-          ]
-          : hsetFieldsWithEligibility;
+        const label = labelByHash?.get(hash);
+        const hsetFields = [
+          ...(anchorFieldAt >= 0
+            ? [
+              ...hsetFieldsWithEligibility.slice(0, anchorFieldAt),
+              ...hsetFieldsWithEligibility.slice(anchorFieldAt + 2),
+            ]
+            : hsetFieldsWithEligibility),
+          ...(label ? [STORY_LABEL_FIELD, label] : []),
+        ];
         commands.push(
           ['HINCRBY', trackKey, 'mentionCount', '1'],
           ['HSET', trackKey, ...hsetFields],
@@ -3273,6 +3364,7 @@ async function buildDigest(
 
     // Sort by importanceScore desc, then pubDate desc; then truncate per category.
     const slicedByCategory = new Map<string, ParsedItem[]>();
+    const servableItems: ParsedItem[] = [];
     for (const [category, items] of results) {
       items.sort((a, b) =>
         b.importanceScore - a.importanceScore || b.publishedAt - a.publishedAt,
@@ -3282,6 +3374,7 @@ async function buildDigest(
       const servable = revokedUrls.size === 0
         ? items
         : items.filter((item) => typeof item.link !== 'string' || !revokedUrls.has(item.link));
+      servableItems.push(...servable);
       ledgerDrops.perCategoryCap += Math.max(0, servable.length - MAX_ITEMS_PER_CATEGORY);
       slicedByCategory.set(category, servable.slice(0, MAX_ITEMS_PER_CATEGORY));
     }
@@ -3299,8 +3392,33 @@ async function buildDigest(
     // mentionCount. We merge read state + this cycle's increment in memory to
     // produce accurate, current StoryMeta without a second Redis round-trip.
     const uniqueHashes = [...new Set(titleHashes)];
-    const storyTracks = await readStoryTracks(uniqueHashes, storyTrackingDeadlineAt)
-      .catch(() => new Map<string, StoryTrack>());
+    const unreadTracks = new Set<string>();
+    const storyTracks = await readStoryTracks(uniqueHashes, storyTrackingDeadlineAt, unreadTracks)
+      .catch(() => {
+        for (const hash of uniqueHashes) unreadTracks.add(hash);
+        return new Map<string, StoryTrack>();
+      });
+
+    // #9093 label history. Only full/en records it: the story:track row is
+    // shared by every variant, and a variant that keeps fewer of a story's
+    // feeds would flip the label back and forth.
+    const { labelByHash, labelChanges, labelCounts } = variant === 'full' && lang === 'en'
+      ? storyLabelChanges(allSliced, servableItems, storyTracks, now, unreadTracks)
+      : { labelByHash: undefined, labelChanges: [], labelCounts: undefined };
+
+    // Record changes before persisting the new labels: a story whose entry
+    // was not written keeps its previous label, so the change is detected
+    // again next cycle instead of being lost.
+    if (labelByHash && labelChanges.length > 0) {
+      const historyDeadlineAt = storyTrackingDeadlineAt - REDIS_PIPELINE_TIMEOUT_MS;
+      const recorded = historyDeadlineAt <= Date.now()
+        ? new Set<string>()
+        : await recordLabelChanges(labelChanges, historyDeadlineAt).catch((err: unknown) => {
+          console.warn('[digest] label history write failed:', err);
+          return new Set<string>();
+        });
+      keepUnrecordedLabels(labelByHash, labelChanges, recorded);
+    }
 
     // Write story tracking. Errors never fail the digest build.
     await writeStoryTracking(
@@ -3311,6 +3429,7 @@ async function buildDigest(
       memberHashesByFinal,
       storyTrackingDeadlineAt,
       clusterAnchorEligibleByFinalHash,
+      labelByHash,
     ).catch((err: unknown) =>
       console.warn('[digest] story tracking write failed:', err),
     );
@@ -3385,15 +3504,40 @@ async function buildDigest(
       buildStartMs: buildStart,
     });
 
-    return {
+    const response: ListFeedDigestResponse = {
       categories,
       feedStatuses,
       generatedAt: new Date().toISOString(),
       coverage,
     };
+    if (labelCounts) rememberLabelCounts(response, labelCounts);
+    return response;
   } finally {
     clearTimeout(deadlineTimeout);
   }
+}
+
+// #9093: today's stories by label, for /trust, keyed by the build they describe.
+// They are written only after the acceptance gate takes that build.
+const pendingLabelCounts = new WeakMap<ListFeedDigestResponse, LabelCounts>();
+
+function rememberLabelCounts(response: ListFeedDigestResponse, counts: LabelCounts): void {
+  // An empty build is never accepted, so it must not replace the served counts.
+  if (counts.stories > 0) pendingLabelCounts.set(response, counts);
+}
+
+/**
+ * Write the counts of a build the gate accepted. A rejected or unpublished
+ * build leaves /trust describing the digest that is still served.
+ */
+async function publishAcceptedLabelCounts(response: ListFeedDigestResponse, deadlineAt: number): Promise<void> {
+  const counts = pendingLabelCounts.get(response);
+  if (!counts) return;
+  pendingLabelCounts.delete(response);
+  const timeoutMs = redisTimeoutForDeadline(deadlineAt);
+  if (timeoutMs === undefined) return;
+  await runRedisPipeline([labelCountsCommand(counts)], false, timeoutMs)
+    .catch((err: unknown) => console.warn('[digest] label counts write failed:', err));
 }
 
 /** Internal exports for unit tests only — do not import in production code. */
@@ -3402,6 +3546,7 @@ export const __testing__ = {
   // than asserted against this file's own source text — a grep for
   // `serveLastGood(...)` passes whether or not the function behaves.
   publishAcceptedSnapshot,
+  rememberLabelCounts,
   serveLastGood,
   readRevokedUrlSet,
   suppressRevoked,
@@ -3445,6 +3590,7 @@ export const __testing__ = {
   resolveMaxAgeMs,
   capLlmUpgrade,
   parseClassifyCacheHit,
+  enrichWithAiCache,
   VERCEL_INITIAL_RESPONSE_LIMIT_MS,
   DIGEST_RESPONSE_TIMEOUT_MS,
   POST_FETCH_HEADROOM_MS,
@@ -3457,6 +3603,7 @@ export const __testing__ = {
   redisPipelineConfirmed,
   shouldPruneAccumulator,
   writeStoryTracking,
+  storyLabelChanges,
   MAX_REDIS_PIPELINE_COMMANDS,
   MAX_DESCRIPTION_LEN,
   MIN_DESCRIPTION_LEN,

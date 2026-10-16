@@ -63,6 +63,10 @@ const EXPOSED_HEADERS = [
   // Fail-open limiter degradation marker. Parity with api/_cors.js (#7270):
   // the Limit/Remaining/Reset triplet is not enough for browser JS to read Mode.
   'X-RateLimit-Mode',
+  // api/mcp-proxy marks the 504 it relays for a remote MCP server timeout so
+  // premium-fetch's origin-5xx canary can skip it (WORLDMONITOR-17A). Parity
+  // with api/_cors.js.
+  'X-Wm-Upstream-Timeout',
   // IETF draft-ietf-httpapi-ratelimit-headers fields — emitted by the
   // per-account API-key limiter; docs/usage-rate-limits.mdx tells browser
   // clients to self-throttle on these, so they must be readable cross-origin

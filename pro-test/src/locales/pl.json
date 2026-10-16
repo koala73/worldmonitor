@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Darmowy pulpit rozpowszechniania inteligencji w czasie rzeczywistym",
-      "description": "Zanim stanie się wiadomością, Ty już będziesz wiedzieć. Konflikty, gardła logistyczne, loty wojskowe, rynki, cyber: jedna darmowa mapa na żywo z analizą AI. Bez rejestracji.",
-      "ogTitle": "World Monitor — Kiedy to staje się wiadomością, ty już o tym wiesz.",
-      "ogDescription": "Surowe sygnały świata — statki, odrzutowce, syreny, kable, rynki — na jednej darmowej żywej mapie inteligencji, z AI, które flaguje ich zbieżności. Darmowe, bez rejestracji."
+      "title": "World Monitor: Darmowy panel wywiadu geopolitycznego",
+      "description": "World Monitor: panel wywiadu geopolitycznego w czasie rzeczywistym. Darmowa mapa na żywo: konflikty, żegluga, loty, rynki i cyberzagrożenia, z API i MCP.",
+      "ogTitle": "World Monitor: Darmowy panel wywiadu geopolitycznego",
+      "ogDescription": "World Monitor: panel wywiadu geopolitycznego w czasie rzeczywistym. Darmowa mapa na żywo: konflikty, żegluga, loty, rynki i cyberzagrożenia, z API i MCP."
     },
     "nav": {
       "useCases": "Korelacje",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Darmowy globalny pulpit inteligencji · dostępny teraz",
-      "headline1": "Kiedy to staje się wiadomością,",
-      "headline2": "ty już o tym wiesz.",
-      "sub": "Nagłówki to opóźnienie. World Monitor transmituje surowe sygnały świata — statki, odrzutowce, syreny, kable, rynki — na jedną żywą mapę, z AI, które flaguje ich zbieżności w coś, co się liczy.",
+      "headline1": "Panel wywiadu geopolitycznego",
+      "headline2": "w czasie rzeczywistym",
+      "sub": "Kiedy to staje się wiadomością, ty już o tym wiesz.",
       "ctaPrimary": "Uruchom pulpit",
       "ctaFree": "Darmowe · Bez rejestracji · Wczytuje się w sekundy",
       "ctaSecondary": "Zobacz, jak go używają ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor nie jest open-source'owym Palantir",
       "asOf": "Stan na {{date}}",
       "whatIsTitle": "Czym jest World Monitor?",
-      "whatIsBody": "World Monitor to darmowy ($0), open-source'owy (AGPL-3.0) dashboard używany przez 2M+ osób. Transmituje {{feeds}} kanałów wiadomości i OSINT ze {{providers}} przypisanych dostawców na jedną żywą mapę świata z {{mapLayers}} typami warstw mapy, obejmującymi geopolitykę, rynki, transport morski, lotnictwo i cyber. Koreluje je, aby zbieżne zdarzenia wyświetliły się przed nagłówkami. Każda liczba jest udokumentowana wraz ze źródłem i metodą."
+      "whatIsBody": "World Monitor to darmowy ($0), open-source'owy (AGPL-3.0) dashboard używany przez 2M+ osób. Transmituje {{feeds}} kanałów wiadomości i OSINT ze {{providers}} przypisanych dostawców na jedną żywą mapę świata z {{mapLayers}} typami warstw mapy, obejmującymi geopolitykę, rynki, transport morski, lotnictwo i cyber. Koreluje je, aby zbieżne zdarzenia wyświetliły się przed nagłówkami. Każda liczba jest udokumentowana wraz ze źródłem i metodą.",
+      "whatIsBestFor": "Najlepszy dla analityków, dziennikarzy, traderów i deweloperów, którzy potrzebują geopolitycznych sygnałów na żywo."
     },
     "live": {
       "eyebrow": "Na żywo teraz",

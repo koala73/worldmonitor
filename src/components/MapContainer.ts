@@ -66,6 +66,7 @@ import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { ChinaCorridorControlTower } from '../../shared/china-corridor-control-towers';
 import { projectChinaCorridorOverlay } from './map/china-corridor-overlay';
+import { AircraftEmergencyLayer } from './AircraftEmergencyLayer';
 import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-templates';
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -271,9 +272,14 @@ export class MapContainer {
   private cachedDdosLocations: DdosLocationHit[] | null = null;
   private cachedChokepointData: GetChokepointStatusResponse | null | undefined;
   private cachedChinaCorridorSelection: ChinaCorridorControlTower | null = null;
+  private emergencyLayer: AircraftEmergencyLayer;
 
   constructor(container: HTMLElement, initialState: MapContainerState, preferGlobe = false, options: MapContainerOptions = {}) {
     this.container = container;
+    this.emergencyLayer = new AircraftEmergencyLayer(container, markers => {
+      if (this.useDeckGL) this.deckGLMap?.setAircraftEmergencies(markers);
+      else this.svgMap?.setAircraftEmergencies(markers);
+    });
     this.initialState = initialState;
     this.chrome = options.chrome ?? true;
     this.mapLibreWorkerUrl = options.mapLibreWorkerUrl;
@@ -817,6 +823,7 @@ export class MapContainer {
     if (this.cachedFlightDelays) this.setFlightDelays(this.cachedFlightDelays);
     if (this.cachedAircraftPositions) this.setAircraftPositions(this.cachedAircraftPositions);
     if (this.cachedMilitaryFlights) this.setMilitaryFlights(this.cachedMilitaryFlights, this.cachedMilitaryFlightClusters ?? []);
+    this.emergencyLayer.setEnabled(!this.useGlobe && this.getState().layers.aircraftEmergencies === true);
     if (this.cachedMilitaryVessels) this.setMilitaryVessels(this.cachedMilitaryVessels, this.cachedMilitaryVesselClusters ?? []);
     if (this.cachedNaturalEvents) this.setNaturalEvents(this.cachedNaturalEvents);
     if (this.cachedFires) this.setFires(this.cachedFires);
@@ -1063,6 +1070,7 @@ export class MapContainer {
       sanitized = sanitizeLockedLayers(sanitized, false);
     }
     this.initialState = { ...this.initialState, layers: sanitized };
+    this.emergencyLayer.setEnabled(!this.useGlobe && sanitized.aircraftEmergencies === true);
     if (this.useGlobe) { this.globeMap?.setLayers(sanitized); return; }
     if (this.useDeckGL) { this.deckGLMap?.setLayers(sanitized); } else { this.svgMap?.setLayers(sanitized); }
   }
@@ -1480,8 +1488,12 @@ export class MapContainer {
 
   public setOnLayerChange(callback: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void): void {
     this.cachedOnLayerChange = callback;
-    if (this.useGlobe) { this.globeMap?.setOnLayerChange(callback); return; }
-    if (this.useDeckGL) { this.deckGLMap?.setOnLayerChange(callback); } else { this.svgMap?.setOnLayerChange(callback); }
+    const notify = (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic'): void => {
+      if (layer === 'aircraftEmergencies') this.emergencyLayer.setEnabled(!this.useGlobe && enabled);
+      callback(layer, enabled, source);
+    };
+    if (this.useGlobe) { this.globeMap?.setOnLayerChange(notify); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setOnLayerChange(notify); } else { this.svgMap?.setOnLayerChange(notify); }
   }
 
   public setOnAircraftPositionsUpdate(callback: (positions: PositionSample[]) => void): void {
@@ -1591,6 +1603,9 @@ export class MapContainer {
     } else {
       this.svgMap?.enableLayer(layer);
     }
+    // The renderer reports the change through onLayerChange, which also starts
+    // the emergency feed. Start it here too in case no listener is attached yet.
+    if (layer === 'aircraftEmergencies') this.emergencyLayer.setEnabled(this.getState().layers.aircraftEmergencies === true);
   }
 
   public triggerHotspotClick(id: string): void {
@@ -1803,6 +1818,7 @@ export class MapContainer {
   }
 
   public destroy(): void {
+    this.emergencyLayer.destroy();
     this.destroyed = true;
     this.container.removeEventListener('pointerdown', this.invalidateViewportAuthority);
     this.container.removeEventListener('wheel', this.invalidateViewportAuthority);

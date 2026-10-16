@@ -100,6 +100,7 @@ describe('/api/notification-channels POST billing-verification capture', () => {
     const captures: Capture[] = [];
     mod.__resetDenialCaptureDedupForTests();
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-capture' }),
       getEntitlements: async () => freeShapedEntitlements({ verificationUnavailable: true }),
       fetch: async () => {
@@ -133,6 +134,7 @@ describe('/api/notification-channels POST billing-verification capture', () => {
     const captures: Capture[] = [];
     mod.__resetDenialCaptureDedupForTests();
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-lapsed-nocapture' }),
       getEntitlements: async () => freeShapedEntitlements({ billingStatus: 'subscription_lapsed' }),
       fetch: async () => {
@@ -152,6 +154,7 @@ describe('/api/notification-channels POST billing-verification capture', () => {
     const captures: Capture[] = [];
     mod.__resetDenialCaptureDedupForTests();
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-free-nocapture' }),
       getEntitlements: async () => freeShapedEntitlements({}),
       fetch: async () => {
@@ -174,6 +177,7 @@ describe('/api/notification-channels POST billing-verification contract', () => 
       throw new Error('relay must not be reached for a denied request');
     });
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-verification-unavailable' }),
       getEntitlements: async () => freeShapedEntitlements({ verificationUnavailable: true }),
       fetch: relayFetch,
@@ -197,6 +201,7 @@ describe('/api/notification-channels POST billing-verification contract', () => 
   it('answers a pending renewal verification with a retryable 503 carrying the provider hint', async () => {
     const mod = await importFreshNotificationChannels();
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-renewal-pending' }),
       getEntitlements: async () => freeShapedEntitlements({
         billingStatus: 'renewal_verification_pending',
@@ -223,6 +228,7 @@ describe('/api/notification-channels POST billing-verification contract', () => 
   it('keeps the lapsed subscription denial a 403 with its own code', async () => {
     const mod = await importFreshNotificationChannels();
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-lapsed' }),
       getEntitlements: async () => freeShapedEntitlements({
         billingStatus: 'subscription_lapsed',
@@ -247,6 +253,7 @@ describe('/api/notification-channels POST billing-verification contract', () => 
   it('answers a failed renewal verification with a retryable 503', async () => {
     const mod = await importFreshNotificationChannels();
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-renewal-failed' }),
       getEntitlements: async () => freeShapedEntitlements({
         billingStatus: 'renewal_verification_failed',
@@ -281,6 +288,7 @@ describe('/api/notification-channels POST billing-verification contract', () => 
     // the helper to react to this marker, this test tells them it was a choice.
     const mod = await importFreshNotificationChannels();
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-day0-marker' }),
       getEntitlements: async () => freeShapedEntitlements({
         renewalVerificationFreshness: { status: 'not_applicable', checkedAt: Date.now() },
@@ -305,6 +313,7 @@ describe('/api/notification-channels POST billing-verification contract', () => 
   it('still hard-denies a genuine free user with the pro_required upsell', async () => {
     const mod = await importFreshNotificationChannels();
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-free' }),
       getEntitlements: async () => freeShapedEntitlements({}),
       fetch: async () => {
@@ -349,6 +358,7 @@ describe('/api/notification-channels POST billing-verification contract', () => 
   it('a Clerk role=pro session with no billed row still gets the clean upsell, not a deferred failure', async () => {
     const mod = await importFreshNotificationChannels();
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-clerk-pro', role: 'pro' }),
       getEntitlements: async () => freeShapedEntitlements({}),
       fetch: async () => {
@@ -378,6 +388,7 @@ describe('/api/notification-channels POST billing-verification contract', () => 
       const mod = await importFreshNotificationChannels();
       const entitlementCalls: string[] = [];
       mod.__setNotificationChannelsDepsForTests({
+        checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
         validateBearerToken: async () => ({
           valid: true,
           userId: `user-role-${String(role)}`,
@@ -428,6 +439,7 @@ describe('/api/notification-channels POST billing-verification contract', () => 
       });
     });
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-clerk-pro-billed', role: 'pro' }),
       getEntitlements: async () => ({
         ...freeShapedEntitlements({}),
@@ -464,6 +476,7 @@ describe('/api/notification-channels POST billing-verification contract', () => 
     const mod = await importFreshNotificationChannels();
     const entitlementCalls: string[] = [];
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-get-ungated' }),
       getEntitlements: async (userId: string) => {
         entitlementCalls.push(userId);
@@ -496,6 +509,7 @@ describe('/api/notification-channels POST billing-verification contract', () => 
   it('fails closed with pro_required when the entitlement lookup returns null', async () => {
     const mod = await importFreshNotificationChannels();
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-null-entitlement' }),
       getEntitlements: async () => null,
       fetch: async () => {

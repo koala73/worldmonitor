@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Ücretsiz Gerçek Zamanlı Global İstihbarat Panosu",
-      "description": "Haber olduğunda zaten biliyorsun. Çatışmalar, boğazlar, askeri uçuşlar, piyasalar, siber: AI analiziyle tek bir ücretsiz canlı harita. Kayıt yok.",
-      "ogTitle": "World Monitor — Haber olduğunda zaten biliyordun.",
-      "ogDescription": "Dünyanın ham sinyalleri — gemiler, jetler, sirenler, kablolar, piyasalar — AI ile birlikte tek bir ücretsiz canlı istihbarat haritasında ve bunlar bir şeye dönüştüğünde flaglenir. Ücretsiz, kayıt yok."
+      "title": "World Monitor: Ücretsiz jeopolitik istihbarat panosu",
+      "description": "World Monitor: gerçek zamanlı jeopolitik istihbarat panosu. Çatışmalar, gemiler, uçuşlar, piyasalar ve siber için ücretsiz canlı harita; API ve MCP ile.",
+      "ogTitle": "World Monitor: Ücretsiz jeopolitik istihbarat panosu",
+      "ogDescription": "World Monitor: gerçek zamanlı jeopolitik istihbarat panosu. Çatışmalar, gemiler, uçuşlar, piyasalar ve siber için ücretsiz canlı harita; API ve MCP ile."
     },
     "nav": {
       "useCases": "Korelasyonlar",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Ücretsiz global istihbarat panosu · şimdi canlı",
-      "headline1": "Haber olduğunda,",
-      "headline2": "zaten biliyordun.",
-      "sub": "Başlıklar gecikme. World Monitor, dünyanın ham sinyallerini — gemiler, jetler, sirenler, kablolar, piyasalar — tek bir canlı haritaya akıtır ve bunlar önemli bir şeye dönüştüğünde flaglemeyi yapan AI ile.",
+      "headline1": "Gerçek zamanlı jeopolitik",
+      "headline2": "istihbarat panosu",
+      "sub": "Haber olduğunda, zaten biliyordun.",
       "ctaPrimary": "Panoyu başlat",
       "ctaFree": "Ücretsiz · Kayıt yok · Saniyeler içinde yüklenir",
       "ctaSecondary": "İnsanlar bunu nasıl kullanıyor ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor açık kaynaklı bir Palantir değil",
       "asOf": "{{date}} itibarıyla",
       "whatIsTitle": "World Monitor Nedir?",
-      "whatIsBody": "World Monitor, 2M+ kişi tarafından kullanılan ücretsiz ($0), açık kaynaklı (AGPL-3.0) bir paneldir. {{feeds}} haber ve OSINT akışını {{providers}} atfedilen sağlayıcıdan {{mapLayers}} harita katmanı türüyle tek bir canlı dünya haritasına aktarır; jeopolitik, piyasalar, denizcilik, havacılık ve siber alanları kapsar. Bunları ilişkilendirerek yakınsayan olayları başlıklardan önce ortaya çıkarır. Her rakam kaynaklıdır ve her yöntem belgelenmiştir."
+      "whatIsBody": "World Monitor, 2M+ kişi tarafından kullanılan ücretsiz ($0), açık kaynaklı (AGPL-3.0) bir paneldir. {{feeds}} haber ve OSINT akışını {{providers}} atfedilen sağlayıcıdan {{mapLayers}} harita katmanı türüyle tek bir canlı dünya haritasına aktarır; jeopolitik, piyasalar, denizcilik, havacılık ve siber alanları kapsar. Bunları ilişkilendirerek yakınsayan olayları başlıklardan önce ortaya çıkarır. Her rakam kaynaklıdır ve her yöntem belgelenmiştir.",
+      "whatIsBestFor": "Canlı jeopolitik sinyallere ihtiyaç duyan analistler, gazeteciler, trader'lar ve geliştiriciler için ideal."
     },
     "live": {
       "eyebrow": "Şu anda canlı",

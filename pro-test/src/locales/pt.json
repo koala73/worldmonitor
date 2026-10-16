@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Painel Gratuito de Inteligência Global em Tempo Real",
-      "description": "Quando vira notícia, você já sabia. Conflitos, pontos críticos, voos militares, mercados, cibernética: um mapa ao vivo gratuito com análise de IA. Sem cadastro.",
-      "ogTitle": "World Monitor — Quando vira notícia, você já sabia.",
-      "ogDescription": "Os sinais brutos do mundo — navios, jatos, sirenes, cabos, mercados — em um mapa de inteligência ao vivo gratuito, com IA que sinaliza quando convergem. Grátis, sem cadastro."
+      "title": "World Monitor: Painel gratuito de inteligência geopolítica",
+      "description": "World Monitor: painel de inteligência geopolítica em tempo real. Mapa gratuito ao vivo de conflitos, navios, voos, mercados e ciber, com API e servidor MCP.",
+      "ogTitle": "World Monitor: Painel gratuito de inteligência geopolítica",
+      "ogDescription": "World Monitor: painel de inteligência geopolítica em tempo real. Mapa gratuito ao vivo de conflitos, navios, voos, mercados e ciber, com API e servidor MCP."
     },
     "nav": {
       "useCases": "Correlações",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Painel de inteligência global gratuito · agora ao vivo",
-      "headline1": "Quando vira notícia,",
-      "headline2": "você já sabia.",
-      "sub": "Manchetes são o atraso. World Monitor transmite os sinais brutos do mundo — navios, jatos, sirenes, cabos, mercados — para um mapa ao vivo, com IA que sinaliza quando convergem em algo que importa.",
+      "headline1": "Painel de inteligência geopolítica",
+      "headline2": "em tempo real",
+      "sub": "Quando vira notícia, você já sabia.",
       "ctaPrimary": "Abrir o painel",
       "ctaFree": "Grátis · Sem cadastro · Carrega em segundos",
       "ctaSecondary": "Veja como as pessoas usam ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor não é um Palantir de código aberto",
       "asOf": "Em {{date}}",
       "whatIsTitle": "O que é World Monitor?",
-      "whatIsBody": "World Monitor é um dashboard gratuito ($0), open-source (AGPL-3.0) usado por 2M+ pessoas. Ele transmite {{feeds}} feeds de notícias e OSINT de {{providers}} provedores atribuídos em um único mapa-múndi ao vivo com {{mapLayers}} tipos de camada de mapa, abrangendo geopolítica, mercados, navegação marítima, aviação e cibersegurança. Ele correlaciona-os para que eventos convergentes apareçam antes dos destaques. Cada dado é rastreado e cada método documentado."
+      "whatIsBody": "World Monitor é um dashboard gratuito ($0), open-source (AGPL-3.0) usado por 2M+ pessoas. Ele transmite {{feeds}} feeds de notícias e OSINT de {{providers}} provedores atribuídos em um único mapa-múndi ao vivo com {{mapLayers}} tipos de camada de mapa, abrangendo geopolítica, mercados, navegação marítima, aviação e cibersegurança. Ele correlaciona-os para que eventos convergentes apareçam antes dos destaques. Cada dado é rastreado e cada método documentado.",
+      "whatIsBestFor": "Ideal para analistas, jornalistas, traders e desenvolvedores que precisam de sinais geopolíticos ao vivo."
     },
     "live": {
       "eyebrow": "Ao vivo agora",

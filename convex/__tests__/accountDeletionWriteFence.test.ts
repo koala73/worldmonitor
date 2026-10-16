@@ -90,10 +90,10 @@ for (const state of states) {
       const t = await makeT(state);
       const user = t.withIdentity(identity);
       const userId = identity.subject;
-      await rejected(user.mutation(api.notificationChannels.setChannel, {
+      await rejected(user.mutation(internal.notificationChannels.setChannel, {
         channelType: "email", email: identity.email,
       }));
-      await rejected(user.mutation(api.notificationChannels.createPairingToken, {}));
+      await rejected(user.mutation(internal.notificationChannels.createPairingToken, {}));
       await rejected(t.mutation(internal.notificationChannels.setChannelForUser, {
         userId, channelType: "email", email: identity.email,
         verifiedAccountEmail: identity.email, scheduleWelcome: false,

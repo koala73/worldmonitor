@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Gratis instrumentpanel för global underrättelse i realtid",
-      "description": "Innan det blir nyheter vet du redan. Konflikter, flaskhalsar, militärflygningar, marknader, cyber: en gratis livekarta med AI-analys. Ingen registrering.",
-      "ogTitle": "World Monitor — Innan det blir nyheter, visste du redan.",
-      "ogDescription": "Världens råa signaler — fartyg, jetplan, sirener, kablar, marknader — på en gratis live-underrättelsekarta, med AI som flaggar när de konvergerar. Gratis, ingen registrering."
+      "title": "World Monitor: Gratis panel för geopolitisk underrättelse",
+      "description": "World Monitor: panel för geopolitisk underrättelse i realtid. En gratis livekarta över konflikter, sjöfart, flyg, marknader och cyber, med API och MCP-server.",
+      "ogTitle": "World Monitor: Gratis panel för geopolitisk underrättelse",
+      "ogDescription": "World Monitor: panel för geopolitisk underrättelse i realtid. En gratis livekarta över konflikter, sjöfart, flyg, marknader och cyber, med API och MCP-server."
     },
     "nav": {
       "useCases": "Korrelationer",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Gratis global underrättelseinstrumentpanel · live nu",
-      "headline1": "Innan det blir nyheter,",
-      "headline2": "visste du redan.",
-      "sub": "Rubriker är fördröjningen. World Monitor strömmar världens råa signaler — fartyg, jetplan, sirener, kablar, marknader — på en live-karta, med AI som flaggar när de konvergerar till något som spelar roll.",
+      "headline1": "Geopolitisk underrättelsepanel",
+      "headline2": "i realtid",
+      "sub": "Innan det blir nyheter, visste du redan.",
       "ctaPrimary": "Starta instrumentpanelen",
       "ctaFree": "Gratis · Ingen registrering · Läses in på sekunder",
       "ctaSecondary": "Se hur människor använder det ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor är inte en öppen källkod Palantir",
       "asOf": "Per {{date}}",
       "whatIsTitle": "Vad är World Monitor?",
-      "whatIsBody": "World Monitor är en kostnadsfri ($0), öppen källkod (AGPL-3.0) dashboard som används av 2M+ personer. Den strömmar {{feeds}} nyhets- och OSINT-flöden från {{providers}} attribuerade leverantörer till en live-världskarta med {{mapLayers}} kartlagertyper, som omfattar geopolitik, marknader, sjöfart, luftfart och cyber. Den korrelerar dem så att konvergerande händelser dyker upp innan rubrikerna gör det. Varje siffra är källa och varje metod dokumenterad."
+      "whatIsBody": "World Monitor är en kostnadsfri ($0), öppen källkod (AGPL-3.0) dashboard som används av 2M+ personer. Den strömmar {{feeds}} nyhets- och OSINT-flöden från {{providers}} attribuerade leverantörer till en live-världskarta med {{mapLayers}} kartlagertyper, som omfattar geopolitik, marknader, sjöfart, luftfart och cyber. Den korrelerar dem så att konvergerande händelser dyker upp innan rubrikerna gör det. Varje siffra är källa och varje metod dokumenterad.",
+      "whatIsBestFor": "Bäst för analytiker, journalister, traders och utvecklare som behöver geopolitiska signaler i realtid."
     },
     "live": {
       "eyebrow": "Live just nu",

@@ -52,6 +52,7 @@ const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { SAUDI_CIVIL_DEFENSE, MAX_POST_CHARS, publishSaudiCivilDefenseAlerts } = require('./lib/saudi-civil-defense-alerts.cjs');
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle, xPollSlot } = require('./lib/x-poll-cycle.cjs');
+const { createGuardedLookup, SSRF_BLOCKED_ERROR_CODE } = require('./lib/notification-webhook-ssrf.cjs');
 const {
   createXPostBudget,
   DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
@@ -131,6 +132,12 @@ function requireShared(name) {
   throw new Error(`Cannot find shared/${name}`);
 }
 const RSS_ALLOWED_DOMAINS = new Set(requireShared('rss-allowed-domains.cjs'));
+// /rss is public and the allowlisted hosts' DNS belongs to 428 third parties.
+// Vet every answer and connect only to a vetted address, so a dangling or
+// rebound feed hostname cannot read Railway-internal endpoints through us.
+const rssGuardedLookup = createGuardedLookup();
+const RSS_ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
+const RSS_MAX_BODY_BYTES = 5 * 1024 * 1024;
 const { COMPARE_AND_DELETE_SCRIPT } = requireShared('compare-and-delete-script.cjs');
 
 // Log effective heap limit at startup (verifies NODE_OPTIONS=--max-old-space-size is active)
@@ -2376,8 +2383,34 @@ function stripBom(text) {
   return text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
 }
 
-function redactOrefError(msg) {
-  return String(msg || '').replace(/\/\/[^@]+@/g, '//<redacted>@');
+// The configured `user:pass` of the OREF proxy, so log lines can drop the
+// exact secret rather than guess its shape with a pattern.
+const OREF_PROXY_CREDENTIAL = (() => {
+  const raw = OREF_PROXY_AUTH.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+  const at = raw.lastIndexOf('@');
+  return at > 0 ? raw.slice(0, at) : '';
+})();
+
+// Strip proxy credentials from an error message. The literal credential goes
+// first (it may contain `/`, `@` or whitespace, which no URL pattern can
+// anticipate); the `//user:pass@` pattern then covers any credential that
+// did not come from our own config.
+function redactOrefError(msg, credential) {
+  let text = String(msg || '');
+  if (credential) text = text.split(credential).join('<redacted>');
+  return text.replace(/\/\/[^\s/]*@/g, '//<redacted>@');
+}
+
+// What `/oref/alerts` may say about a failed poll. The curl failure text is
+// the whole command line, which embeds the proxy URL; no amount of regex
+// redaction should be the only thing between that and an unauthenticated
+// public route. The redacted detail goes to the server log, the public state
+// gets a fixed summary.
+const OREF_PUBLIC_POLL_ERROR = 'OREF upstream fetch failed';
+function orefPollFailure(context, err, credential) {
+  const stderr = err?.stderr ? err.stderr.toString().trim() : '';
+  console.warn(`[Relay] ${context}:`, redactOrefError(stderr || err?.message || String(err), credential));
+  return OREF_PUBLIC_POLL_ERROR;
 }
 
 function orefDateToUTC(dateStr) {
@@ -2516,9 +2549,7 @@ async function orefFetchAlerts() {
         } catch { alerts = []; }
       }
     } catch (err) {
-      const stderr = err.stderr ? err.stderr.toString().trim() : '';
-      orefState.lastError = redactOrefError(stderr || err.message);
-      console.warn('[Relay] OREF fallback poll error:', orefState.lastError);
+      orefState.lastError = orefPollFailure('OREF fallback poll error', err, OREF_PROXY_CREDENTIAL);
     }
   }
   if (source === 'none') {
@@ -2578,9 +2609,7 @@ async function orefFetchAlerts() {
     orefPreSerializeResponses();
     orefPersistHistory().catch(() => {});
   } catch (err) {
-    const stderr = err.stderr ? err.stderr.toString().trim() : '';
-    orefState.lastError = redactOrefError(stderr || err.message);
-    console.warn('[Relay] OREF poll error:', orefState.lastError);
+    orefState.lastError = orefPollFailure('OREF poll error', err, OREF_PROXY_CREDENTIAL);
     orefPreSerializeResponses();
   }
 }
@@ -2831,7 +2860,7 @@ async function orefBootstrapHistoryWithRetry() {
       console.log(`[Relay] OREF upstream bootstrap succeeded on attempt ${attempt}`);
       return;
     } catch (err) {
-      const msg = redactOrefError(err?.message || String(err));
+      const msg = redactOrefError(err?.message || String(err), OREF_PROXY_CREDENTIAL);
       console.warn(`[Relay] OREF upstream bootstrap attempt ${attempt}/${MAX_ATTEMPTS} failed: ${msg}`);
       if (attempt < MAX_ATTEMPTS) {
         const delay = BASE_DELAY_MS * 2 ** (attempt - 1) + Math.random() * 1000;
@@ -12605,10 +12634,16 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(410, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: 'Feed deprecated' }));
       }
-      if (!RSS_ALLOWED_DOMAINS.has(parsed.hostname)) {
+      // The allowlist names hosts, not services: only their default ports.
+      if (!RSS_ALLOWED_DOMAINS.has(parsed.hostname) || parsed.port !== '') {
         recordRelayOutcome('rss', 'terminalFailure');
         res.writeHead(403, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: 'Domain not allowed on Railway proxy' }));
+      }
+      if (!RSS_ALLOWED_PROTOCOLS.has(parsed.protocol)) {
+        recordRelayOutcome('rss', 'terminalFailure');
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Protocol not allowed on Railway proxy' }));
       }
 
       const sendRssStale = (cacheEntry, cacheLabel = 'STALE', extraHeaders = {}) => sendCompressed(req, res, 200, {
@@ -12755,6 +12790,30 @@ const server = http.createServer(async (req, res) => {
         rejectInFlight(new Error(message));
       };
 
+      // A blocked DNS answer is a verdict on the feed, not an upstream outage.
+      // No backoff (backoff would serve the stale body with a 200), the last
+      // good body is evicted so nothing can be served from it, and a 403
+      // negative entry answers in-flight followers and the next minute of
+      // callers without another lookup.
+      const sendBlocked = (message) => {
+        if (responseHandled || res.headersSent) return;
+        responseHandled = true;
+        recordAttemptOutcome(403, new Error(message));
+        rssResponseCache.delete(feedUrl);
+        rssResetFailure(feedUrl);
+        const data = Buffer.from(JSON.stringify({ error: message }));
+        setBoundedCacheEntry(rssNegativeCache, feedUrl, {
+          data, contentType: 'application/json', statusCode: 403, timestamp: Date.now(),
+        }, RSS_NEGATIVE_CACHE_MAX_ENTRIES);
+        res.writeHead(403, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'CDN-Cache-Control': 'no-store',
+        });
+        res.end(data);
+        resolveInFlight({ outcome: 'terminalFailure' });
+      };
+
       const fetchWithRedirects = (url, redirectCount = 0) => {
         if (redirectCount > 3) {
           return sendError(502, 'Too many redirects');
@@ -12782,13 +12841,19 @@ const server = http.createServer(async (req, res) => {
           // surface immediately. 64KB is well above any legitimate header set,
           // and is per-request (no process-level Node flag needed).
           maxHeaderSize: 65536,
+          lookup: rssGuardedLookup,
         }, (response) => {
           if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
-            const redirectUrl = response.headers.location.startsWith('http')
-              ? response.headers.location
-              : new URL(response.headers.location, url).href;
-            const redirectHost = new URL(redirectUrl).hostname;
-            if (!RSS_ALLOWED_DOMAINS.has(redirectHost)) {
+            // A malformed Location from an allowlisted upstream must be a 502
+            // for this feed, not an uncaught TypeError that exits the relay.
+            let redirectTarget;
+            try {
+              redirectTarget = new URL(response.headers.location, url);
+            } catch {
+              return sendError(502, 'Malformed redirect');
+            }
+            const redirectUrl = redirectTarget.href;
+            if (!RSS_ALLOWED_DOMAINS.has(redirectTarget.hostname) || !RSS_ALLOWED_PROTOCOLS.has(redirectTarget.protocol) || redirectTarget.port !== '') {
               return sendError(403, 'Redirect to disallowed domain');
             }
             logThrottled('log', `rss-redirect:${feedUrl}:${redirectUrl}`, `[Relay] Following redirect to: ${redirectUrl}`);
@@ -12819,7 +12884,19 @@ const server = http.createServer(async (req, res) => {
           }
 
           const chunks = [];
-          stream.on('data', chunk => chunks.push(chunk));
+          let bodyBytes = 0;
+          stream.on('data', (chunk) => {
+            bodyBytes += chunk.length;
+            if (bodyBytes > RSS_MAX_BODY_BYTES) {
+              sendError(502, 'Feed too large');
+              if (stream !== response) stream.destroy();
+              request.destroy();
+            }
+            chunks.push(chunk);
+          });
+          // Aborting mid-body surfaces as an error on the response as well as
+          // on the decompression stream; both are already answered above.
+          response.on('error', () => {});
           stream.on('end', () => {
             if (responseHandled || res.headersSent) return;
             responseHandled = true;
@@ -12872,6 +12949,10 @@ const server = http.createServer(async (req, res) => {
         });
 
         request.on('error', (err) => {
+          if (err.code === SSRF_BLOCKED_ERROR_CODE) {
+            logThrottled('warn', `rss-ssrf-blocked:${feedUrl}`, `[Relay] RSS blocked: ${err.message}`);
+            return sendBlocked('Feed resolves to a blocked address');
+          }
           const outcome = recordAttemptOutcome(0, err);
           const { failures, backoffSec } = recordFailure();
           logThrottled('error', `rss-error:${feedUrl}:${err.code || err.message}`, `[Relay] RSS error: ${err.message} (backoff ${backoffSec}s, failures=${failures})`);

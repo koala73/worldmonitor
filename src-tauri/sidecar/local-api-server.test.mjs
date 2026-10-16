@@ -2943,6 +2943,13 @@ test('rss-proxy blocks IPv4-mapped IPv6 literals and DNS answers before transpor
       'https://[::ffff:c0a8:101]/feed.xml',
       'https://[::ffff:a9fe:101]/feed.xml',
       'https://[::ffff:c633:6401]/feed.xml',
+      // Translator and tunnel prefixes carrying a loopback / private IPv4.
+      'https://[64:ff9b::7f00:1]/feed.xml',           // NAT64 -> 127.0.0.1
+      'https://[64:ff9b::a9fe:a9fe]/feed.xml',        // NAT64 -> 169.254.169.254
+      'https://[2002:7f00:1::]/feed.xml',             // 6to4 -> 127.0.0.1
+      'https://[2002:c0a8:101::1]/feed.xml',          // 6to4 -> 192.168.1.1
+      'https://[::7f00:1]/feed.xml',                  // IPv4-compatible -> 127.0.0.1
+      'https://[2001:0:4136:e378:8000:63bf:3fff:fdd2]/feed.xml', // Teredo
     ];
     for (const feedUrl of mappedUrls) {
       const response = await authFetch(

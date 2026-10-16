@@ -103,6 +103,10 @@ export function buildGrowthCountries(perIndicator) {
       investmentPct:      inv?.value ?? null,
       savingsPct:         sav?.value ?? null,
       savingsInvestmentGap: savInvGap,
+      periods: {
+        realGdpGrowthPct: growth?.year ?? null,
+        gdpPerCapitaUsd: gdpPc?.year ?? null,
+      },
       year: growth?.year ?? gdpPc?.year ?? realGdpV?.year ?? pppPc?.year ?? pppGdpV?.year ?? inv?.year ?? sav?.year ?? null,
       // Codex PR #3604 P2 — see seed-imf-external.mjs for the full
       // rationale. `latestYear` = max forecast year across all this

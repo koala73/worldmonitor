@@ -1,11 +1,20 @@
 // @ts-expect-error — JS module, no declaration file
-import { getClientIp } from '../_rate-limit.js';
+import { getClientRateLimitKey } from '../_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes, sha256Hex } from '../_crypto.js';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { checkBootstrapUserApiKeyRateLimit, validateBootstrapUserApiKey } from '../_user-api-key.js';
 import { redirectDisplayHost } from './_redirect-uri.js';
+import { isHostedAppOrigin } from '../_cors.js';
+import {
+  hashOAuthBindValue,
+  OAUTH_BIND_COOKIE,
+  oauthBindCookieHeader,
+  requestMatchesOAuthBinding,
+  readOAuthBindCookie,
+  resolveOAuthBindValue,
+} from './_browser-binding.js';
 
 export const config = { runtime: 'edge' };
 
@@ -206,20 +215,25 @@ button:disabled{opacity:.5;cursor:default}
 </form>
 </div>
 <p class="footer"><a href="https://www.worldmonitor.app" target="_blank" rel="noopener">worldmonitor.app</a> &middot; <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener">Get an API key &#x2192;</a></p>
-<script>(function(){function showForm(){var f=document.getElementById('cf');if(f)f.style.display='';var d=document.getElementById('dt');if(d)d.style.display='none';var k=document.getElementById('api_key');if(k){k.required=true;try{k.focus();}catch(e){}}}var em=document.getElementById('ke');if(em&&em.textContent&&em.textContent.length>0){showForm();}if(window.location.hash==='#api-key'){showForm();}var tk=document.getElementById('tk');if(tk){tk.addEventListener('click',function(e){e.preventDefault();showForm();});tk.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();showForm();}});}var cf=document.getElementById('cf');if(cf){cf.addEventListener('submit',function(e){e.preventDefault();var jf=document.getElementById('jf');if(jf)jf.value='1';var b=document.getElementById('ab');b.disabled=true;b.textContent='Authorizing…';var d=new URLSearchParams(new FormData(e.target));fetch('/oauth/authorize',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:d}).then(function(r){var c=r.headers.get('Content-Type')||'';if(c.indexOf('json')>=0)return r.json().then(function(j){if(j.location){window.location.replace(j.location);return;}if(j.error==='invalid_key'||j.error==='temporarily_unavailable'){var n=document.getElementById('nn');if(n)n.value=j.nonce||'';var em2=document.getElementById('ke');if(em2){em2.textContent=j.message||'Invalid API key. Please check and try again.';em2.style.display='';}showForm();}b.disabled=false;b.textContent='Authorize';});return r.text().then(function(h){document.open();document.write(h);document.close();});}).catch(function(){b.disabled=false;b.textContent='Authorize';});});}})();</script>
+<script nonce="wm-static-bootstrap">(function(){function showForm(){var f=document.getElementById('cf');if(f)f.style.display='';var d=document.getElementById('dt');if(d)d.style.display='none';var k=document.getElementById('api_key');if(k){k.required=true;try{k.focus();}catch(e){}}}var em=document.getElementById('ke');if(em&&em.textContent&&em.textContent.length>0){showForm();}if(window.location.hash==='#api-key'){showForm();}var tk=document.getElementById('tk');if(tk){tk.addEventListener('click',function(e){e.preventDefault();showForm();});tk.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();showForm();}});}var cf=document.getElementById('cf');if(cf){cf.addEventListener('submit',function(e){e.preventDefault();var jf=document.getElementById('jf');if(jf)jf.value='1';var b=document.getElementById('ab');b.disabled=true;b.textContent='Authorizing…';var d=new URLSearchParams(new FormData(e.target));fetch('/oauth/authorize',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:d}).then(function(r){var c=r.headers.get('Content-Type')||'';if(c.indexOf('json')>=0)return r.json().then(function(j){if(j.location){window.location.replace(j.location);return;}if(j.error==='invalid_key'||j.error==='temporarily_unavailable'){var n=document.getElementById('nn');if(n)n.value=j.nonce||'';var em2=document.getElementById('ke');if(em2){em2.textContent=j.message||'Invalid API key. Please check and try again.';em2.style.display='';}showForm();}b.disabled=false;b.textContent='Authorize';});return r.text().then(function(h){document.open();document.write(h);document.close();});}).catch(function(){b.disabled=false;b.textContent='Authorize';});});}})();</script>
 </body></html>`, { status: 200, headers: PAGE_HEADERS });
 }
 
-async function retryConsent(nonceData, client, isXHR, failure) {
+async function retryConsent(req, nonceData, client, isXHR, failure) {
   const retryNonce = crypto.randomUUID();
   // A consumed nonce stays consumed. Only server-held request values are copied.
   const stored = await redisSet(`oauth:nonce:${retryNonce}`, { ...nonceData, created_at: Date.now() }, 600);
   if (!stored) return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please start over shortly.');
-  const headers = { ...PAGE_HEADERS, ...failure.headers };
+  const headers = new Headers({ ...PAGE_HEADERS, ...failure.headers });
+  // The retry nonce gets a fresh 10-minute TTL, so renew the binding cookie
+  // with it; otherwise the cookie set by the original GET could expire first.
+  const bindValue = readOAuthBindCookie(req, nonceData.bind_cookie);
+  if (bindValue) headers.append('Set-Cookie', oauthBindCookieHeader(bindValue, req, nonceData.bind_cookie));
   if (isXHR) {
+    headers.set('Content-Type', 'application/json');
     return new Response(JSON.stringify({ error: failure.error, message: failure.message, nonce: retryNonce }), {
       status: failure.status,
-      headers: { ...headers, 'Content-Type': 'application/json' },
+      headers,
     });
   }
   const page = consentPage({ ...nonceData, client_name: client.client_name ?? 'Unknown Client' }, retryNonce, failure.message);
@@ -234,13 +248,15 @@ export default async function handler(req) {
   }
 
   if (method === 'POST') {
-    // Origin validation: allow any first-party worldmonitor.app host (the consent
+    // Origin validation: allow the hosts that actually serve the app (the consent
     // page is served host-derived — apex/www/api/variant — so a same-origin JS
     // fetch or the native form POST to api.worldmonitor.app arrives with any of
     // those Origins), plus absent origin (server/CLI) and 'null' (WebView with
-    // opaque/sandboxed origin). CSRF nonce provides the actual protection.
+    // opaque/sandboxed origin). The enumerated list, not WM_ORIGIN's any-label
+    // wildcard: vendor CNAMEs such as clerk.* are not ours to trust. CSRF nonce
+    // and the browser binding provide the actual protection.
     const origin = req.headers.get('origin');
-    if (origin && origin !== 'null' && !WM_ORIGIN.test(origin)) {
+    if (origin && origin !== 'null' && !isHostedAppOrigin(origin)) {
       return new Response('Forbidden', { status: 403 });
     }
   }
@@ -249,7 +265,7 @@ export default async function handler(req) {
     const rl = getRatelimit();
     if (rl) {
       try {
-        const { success } = await rl.limit(`ip:${getClientIp(req)}`);
+        const { success } = await rl.limit(`ip:${getClientRateLimitKey(req)}`);
         if (!success) {
           return new Response('Too Many Requests', { status: 429 });
         }
@@ -293,15 +309,23 @@ export default async function handler(req) {
 
     const nonce = crypto.randomUUID();
     const iss = resolveAuthorizationIssuer(req);
-    const nonceStored = await redisSet(`oauth:nonce:${nonce}`, { client_id, redirect_uri, code_challenge, state, iss, created_at: Date.now() }, 600);
+    // Bind the nonce to this browser (see _browser-binding.js): only a request
+    // carrying the same cookie can redeem it, so a forwarded consent link is
+    // inert in someone else's browser.
+    const bind_cookie = `${OAUTH_BIND_COOKIE}_${nonce}`;
+    const bindValue = resolveOAuthBindValue(req, bind_cookie);
+    const bind_hash = await hashOAuthBindValue(bindValue);
+    const nonceStored = await redisSet(`oauth:nonce:${nonce}`, { client_id, redirect_uri, code_challenge, state, iss, bind_cookie, bind_hash, created_at: Date.now() }, 600);
     if (!nonceStored) {
       return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.');
     }
 
-    return consentPage({
+    const page = consentPage({
       client_name: client.client_name ?? 'Unknown Client',
       redirect_uri, client_id, response_type: 'code', code_challenge, code_challenge_method: 'S256', state,
     }, nonce);
+    page.headers.append('Set-Cookie', oauthBindCookieHeader(bindValue, req, bind_cookie));
+    return page;
   }
 
   if (method === 'POST') {
@@ -334,6 +358,10 @@ export default async function handler(req) {
     if (!nonceData) {
       return htmlError('Session Expired', 'Authorization session expired or is invalid. Please start over.');
     }
+    // The nonce is already consumed, so a mismatched browser cannot retry it.
+    if (!(await requestMatchesOAuthBinding(req, nonceData))) {
+      return htmlError('Session Mismatch', 'This authorization was started in a different browser. Please start over from your MCP client in this browser.');
+    }
 
     // Authoritative values come exclusively from server-stored nonce.
     const { client_id, redirect_uri, code_challenge, state, iss } = nonceData;
@@ -359,18 +387,18 @@ export default async function handler(req) {
     let userKey = null;
     if (!enterpriseKey && api_key.startsWith('wm_')) {
       const guard = await checkBootstrapUserApiKeyRateLimit(req);
-      if (!guard.ok) return retryConsent(nonceData, client, isXHR, {
+      if (!guard.ok) return retryConsent(req, nonceData, client, isXHR, {
         error: 'temporarily_unavailable', message: guard.error, status: guard.status, headers: guard.headers,
       });
       userKey = await validateBootstrapUserApiKey(api_key);
       if (!userKey.ok && userKey.status === 503) {
-        return retryConsent(nonceData, client, isXHR, {
+        return retryConsent(req, nonceData, client, isXHR, {
           error: 'temporarily_unavailable', message: userKey.error, status: 503, headers: userKey.headers,
         });
       }
     }
     if (!enterpriseKey && !userKey?.ok) {
-      return retryConsent(nonceData, client, isXHR, {
+      return retryConsent(req, nonceData, client, isXHR, {
         error: 'invalid_key', message: 'Invalid API key. Please check and try again.', status: 400,
       });
     }

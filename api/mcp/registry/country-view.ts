@@ -99,6 +99,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
   },
 }, {
   name: 'get_country_brief_section',
+  title: 'Country brief data section',
   description: 'Read a fixed country-view dataset for the embedded country brief. Reviewed readers include military flights, AIS, fleet reports and Atlas assets. signalsRaw requires a verified same-country paid panel receipt and returns attributed earthquake, Internet outage, travel advisory and thermal samples through four fixed authorized GETs. Unavailable evidence is unknown, not zero; sample scope and unknown clocks remain explicit. Flight coverage follows provider redistribution permissions. Returns a ready, locked or unavailable state. Native dates remain in value; retrievedAt records retrieval. Does not accept URLs, headers or arbitrary RPC paths.',
   _subscriptionOnly: true,
   _weight: 2,

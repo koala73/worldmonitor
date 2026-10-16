@@ -126,6 +126,7 @@ describe('layer explanation metadata', () => {
       'weather',
       'canadaRoads', 'canadaAlerts',
       'flights',
+      'aircraftEmergencies',
       'ais',
       'waterways',
       'tradeRoutes',

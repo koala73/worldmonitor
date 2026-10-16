@@ -1,6 +1,6 @@
 ---
 title: "WorldMonitor MCP server: connect Claude, Cursor, and agents"
-description: "Connect Claude, Cursor, and other MCP-compatible clients to WorldMonitor's live global-intelligence data via the Model Context Protocol."
+description: "Connect Claude or Cursor to WorldMonitor MCP for country risk, markets, conflicts, chokepoints, current US duties, and historical tariff schedules."
 ---
 
 WorldMonitor exposes its intelligence stack as a [Model Context Protocol](https://modelcontextprotocol.io) server so any MCP-compatible client (Claude Desktop, Claude web, Cursor, MCP Inspector, custom agents) can pull live conflict, market, aviation, maritime, economic, and forecasting data directly into a model's context.
@@ -229,7 +229,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ## Tool catalog
 
-The server exposes a registry of tools. Most are cache-reads over pre-seeded Redis keys (sub-second). The slower, non-cache paths are the six live LLM/external-API tools (`get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`, `classify_event`) plus the live geo RPC tools (`get_airspace`, `get_maritime_activity`), the bounded canonical procurement proxy (`get_procurement_opportunities`), the corporate-intelligence proxy (`get_company_intelligence`), the canonical China decision-signal RPC (`get_china_decision_signals`), and the three durable-history RPCs (`search_intel_history`, `get_intel_timeline`, `get_similar_events`). `get_world_brief` reads the dashboard's precomputed, citation-grounded `news:insights:v1` snapshot and does not make a request-time LLM call. The on-demand NLP utilities (`classify_event`, `extract_entities`, `get_news_clusters`, `get_keyword_spikes`) accept bounded caller text or compute over live seeded data; all but `classify_event` are fully deterministic. One (`describe_tool`, added v1.5.0) returns the full uncompressed definition of any other tool — useful when the compressed `tools/list` description is ambiguous; exempt from the Pro daily quota.
+The server exposes a registry of tools. Most are cache-reads over pre-seeded Redis keys (sub-second). The slower, non-cache paths are the six live LLM/external-API tools (`get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`, `classify_event`) plus the live geo RPC tools (`get_airspace`, `get_maritime_activity`), the bounded canonical procurement proxy (`get_procurement_opportunities`), the corporate-intelligence proxy (`get_company_intelligence`), the canonical China decision-signal RPC (`get_china_decision_signals`), and the three durable-history RPCs (`search_intel_history`, `get_intel_timeline`, `get_similar_events`). `get_world_brief` reads the dashboard's precomputed, citation-grounded `news:insights:v1` snapshot and does not make a request-time LLM call. The on-demand NLP utilities (`classify_event`, `extract_entities`, `get_news_clusters`, `get_keyword_spikes`, `verify_claim`) accept bounded caller text or compute over live seeded data; all but `classify_event` are fully deterministic. One (`describe_tool`, added v1.5.0) returns the full uncompressed definition of any other tool — useful when the compressed `tools/list` description is ambiguous; exempt from the Pro daily quota.
 
 <Tip>
 For per-tool parameters, freshness budgets, timeouts, and concrete `curl` examples, see the [MCP Tools Reference](/mcp-tools-reference). For payload projection — every tool accepts an optional `jmespath` argument that typically cuts response size by 80-95% — see the [JMESPath guide](/mcp-jmespath).
@@ -303,6 +303,7 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 | `classify_event` | Threat category + severity for a supplied headline (max 500 chars) via the enum-validated classifier. Standard MCP quota bounds its per-call LLM cost. |
 | `extract_entities` | Deterministic entity extraction — registry entities (companies, indices, commodities, crypto, sectors, countries) plus CVE/APT/FIN designators and tracked leaders — from supplied text (max 2 KB) or aggregated across the live headline digest. |
 | `get_news_clusters` | Current topic clusters over the live digest using the same Jaccard clustering as the dashboard: primary headline, member count, sources, top keywords, threat level. |
+| `verify_claim` | Evidence card for a claim or headline: matches it to live-digest clusters and returns the coverage verdict, publishers with tiers, matched headlines, and figures no matched headline states, plus published fact-checks of a similar claim cited with attribution. Coverage, not accuracy; not found never means false. |
 | `get_keyword_spikes` | Trending keyword/CVE/APT spikes vs a 48h story-accumulator baseline, using the dashboard's spike-decision math. 10-minute result cache. |
 
 ### Historical intelligence
@@ -334,7 +335,7 @@ Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed 
 |------|-------------|
 | `get_natural_disasters` | USGS and Earthquakes Canada / NRCan earthquakes, NASA FIRMS wildfires, hazard events. |
 | `get_climate_data` | Temp/precip anomalies vs WMO normals, GDACS/FIRMS alerts, Mauna Loa CO2, OpenAQ PM2.5, sea ice, ocean heat. |
-| `get_imd_cyclone_marine` | Bounded IMD cyclone tracks, forecast wind/cones, and port / sea-area / coastal bulletins. Always read `coverageState`; disabled or degraded is not an all-clear. |
+| `get_imd_cyclone_marine` | Bounded IMD sea-area and coastal marine bulletins with storm warnings and port signals. Cyclone track, wind, and cone are API-only and disabled. Always read `coverageState`; disabled or degraded is not an all-clear. |
 | `get_radiation_data` | Global radiation monitoring station readings + anomaly flags. |
 | `get_research_signals` | Emerging technology events from curated research feeds. |
 
@@ -436,6 +437,7 @@ Reverse lookup workflow:
 | `classify_event` | `GET /api/intelligence/v1/classify-event` |
 | `extract_entities` | `GET /api/news/v1/list-feed-digest` |
 | `get_news_clusters` | `GET /api/news/v1/list-feed-digest` |
+| `verify_claim` | `GET /api/news/v1/list-feed-digest`, `GET /api/news/v1/search-fact-checks` |
 | `analyze_situation` | `POST /api/intelligence/v1/deduct-situation` |
 | `search_flights` | `GET /api/aviation/v1/search-google-flights` |
 | `search_flight_prices_by_date` | `GET /api/aviation/v1/search-google-dates` |

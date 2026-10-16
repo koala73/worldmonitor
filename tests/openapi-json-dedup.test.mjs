@@ -210,8 +210,14 @@ function expandLocalRefs(spec, targets, { skipSchemaNames = [] } = {}) {
   const visit = (value) => {
     if (!value || typeof value !== 'object') return;
     for (const [key, child] of Object.entries(value)) {
-      const target = child?.$ref ? targets.get(child.$ref) : null;
-      if (target) value[key] = restoreRefSite(child, target);
+      let target = child?.$ref ? targets.get(child.$ref) : null;
+      const seen = new Set();
+      while (target) {
+        assert.ok(!seen.has(value[key].$ref), 'added schema refs must not form a cycle');
+        seen.add(value[key].$ref);
+        value[key] = restoreRefSite(value[key], target);
+        target = targets.get(value[key]?.$ref);
+      }
       // A replacement can itself carry refs to other added components (a
       // hoisted subtree holding an expanded ChinaDatePrecision ref, say), so
       // the walk descends into what it just inserted as well.
@@ -508,6 +514,21 @@ describe('dedupeSharedSubtreeComponents (fixture)', () => {
       'the component holds the subtree bytes verbatim',
     );
     assert.deepEqual(expandSharedSubtrees(structuredClone(transformed)), original);
+  });
+
+  it('preserves repeated reference schemas and their sibling descriptions', () => {
+    const original = fixture();
+    original.components.schemas.ExampleValue = { type: 'string' };
+    for (const schema of Object.values(original.components.schemas).filter(schema => schema.properties)) {
+      schema.properties.report = {
+        $ref: '#/components/schemas/ExampleValue',
+        description: 'Reported provider value. Unknown values remain unknown; this description applies beside the reference.',
+      };
+    }
+    const transformed = structuredClone(original);
+    const stats = dedupeSharedSubtreeComponents(transformed);
+    assert.ok(stats.groups >= 2);
+    assert.deepEqual(expandSharedSubtrees(transformed), original);
   });
 
   it('never replaces a node an existing $ref resolves through', () => {
@@ -975,7 +996,9 @@ describe('public OpenAPI dedupe (real bundle)', () => {
   });
 
   it('engages the exact repeated headers and generated scalar/date schemas', () => {
-    assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 39 });
+    // #9093 adds two POST operations to the YAML bundle; only submit carries
+    // the 2 idempotency headers (review is exempt from replay).
+    assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 41 });
     assert.equal(int64Stats.replacedRefs, 41);
     // Described int64 fields (own comment + generated warning) keep their
     // comment beside the shared $ref; a regression to zero would silently give

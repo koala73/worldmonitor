@@ -12,12 +12,13 @@ import { UPSTREAM_TIMEOUT_MS, TIER1_COUNTRIES, sha256Hex } from './_shared';
 import { callLlm } from '../../../_shared/llm';
 import { verifyCitationIndexes, checkLeadGrounding, validateNoHallucinatedProperNouns, validateNoHallucinatedFacts, validateNoHallucinatedStatusQualifiers } from '../../../../shared/brief-llm-core.js';
 import { isCallerPremium } from '../../../_shared/premium-check';
+import { markUnservedLlmResponse } from '../../../_shared/response-headers';
 import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
 import { ENERGY_SPINE_KEY_PREFIX } from '../../../_shared/cache-keys';
 import { deriveCountryIntelCacheKey, fetchSharedCountryContext } from './_country-brief-context';
 import { buildCountryBriefEvidence } from './_country-brief-evidence';
 import { isBriefRelevantTitle } from '../../../../shared/brief-relevance.js';
-import { evidenceNumbersGrounded, isEvidenceLimitClaim } from '../../../../shared/brief-claim-rules.js';
+import { evidenceNumbersGrounded, isEvidenceLimitClaim, sanctionsEvidenceGrounded } from '../../../../shared/brief-claim-rules.js';
 import { briefSectionHeading, type BriefSectionKey } from '../../../../shared/brief-sections.js';
 import {
   resolveEnergyImportDependency,
@@ -135,6 +136,7 @@ const comparable = (value: string) => value.normalize('NFKD').replace(/\p{M}/gu,
 // not establish this") is not a claim about the country.
 function claimIsGrounded(text: string, titles: string[], evidence: CountryBriefEvidenceInput[]): boolean {
   if (isEvidenceLimitClaim(text)) return false;
+  if (!sanctionsEvidenceGrounded(text, titles.length, evidence)) return false;
   const factTexts = evidence.map((item) => item.factText);
   const grounds = [...titles, ...factTexts];
   if (!validateNoHallucinatedProperNouns(comparable(text), comparable(grounds.join(' . ')), { failClosed: true }).ok) return false;
@@ -286,7 +288,14 @@ export async function getCountryIntelBrief(
     evidence: [],
   };
 
-  if (!req.countryCode || !COUNTRY_CODE_RE.test(req.countryCode)) return empty;
+  // Every empty return below serves no brief: the gateway reserved a
+  // daily-quota slot for this call and releases it on this marker.
+  const unserved = (): GetCountryIntelBriefResponse => {
+    markUnservedLlmResponse(ctx.request);
+    return empty;
+  };
+
+  if (!req.countryCode || !COUNTRY_CODE_RE.test(req.countryCode)) return unserved();
 
   const isPremium = await isCallerPremium(ctx.request);
 
@@ -355,7 +364,9 @@ export async function getCountryIntelBrief(
     lang,
     isPremium,
     contextHash: contextSnapshot ? contextHashFull.slice(0, 16) : 'base',
-    frameworkHash: frameworkRaw ? frameworkHashFull.slice(0, 8) : '',
+    // Full digest: the framework is caller-supplied text, and a truncated hash
+    // would let a crafted framework collide with another user's cache entry.
+    frameworkHash: frameworkRaw ? frameworkHashFull : '',
     energyYear,
     energyImportYear,
   });
@@ -456,6 +467,7 @@ Sections:
 - watch: an unresolved event from a headline, or a market or forecast question. Do not predict its outcome.
 
 Rules:
+- A sanctions data point supports only its exact factText, cited alone without a headline or another data point. Do not use it for an implication or infer a sanctioning actor, target, cause or impact.
 - In a sentence that cites a data point, copy every number, percentage and date exactly from the cited data points; never use a number from a headline in that sentence.
 - A sentence that states a number may cite only one data point that has a value. Put each data point's number in its own sentence.
 - In a sentence that cites only headlines, copy numbers exactly from the cited headlines.
@@ -552,12 +564,15 @@ Rules:
       };
     });
   } catch {
-    return empty;
+    return unserved();
   }
 
   // A known country with nothing to ground a brief still carries its name,
   // unlike an invalid country code.
-  if (!result) return { ...empty, countryName };
+  if (!result) {
+    markUnservedLlmResponse(ctx.request);
+    return { ...empty, countryName };
+  }
   if (!isPremium) {
     // Shared entries carry server-derived sources; never backfill them with
     // this caller's parsed context (the brief text didn't see it).

@@ -158,6 +158,9 @@ const PUBLISHER_FAMILY_DATA = {
       "Seeking Alpha Tech",
     ],
   },
+  // Two titles, one owner: Sightline Media Group (owned by Regent) publishes
+  // both Defense News and Military Times, per each site's About page.
+  'sightline-media': { publisher: "Sightline Media", labels: ["Defense News", "Military Times"] },
   'sp-global': { publisher: "S&P Global", labels: ["S&P Global Commodity", "S&P Global Platts"] },
   'techcrunch': {
     publisher: "TechCrunch",
@@ -239,8 +242,9 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'nikkei': ['nikkei.com'],
   'politico': ['politico.com', 'politico.eu'],
   'reuters': ['reuters.com'],
-  'rt': ['rt.com'],
+  'rt': ['rt.com', 'rt-english.com'],
   'seeking-alpha': ['seekingalpha.com'],
+  'sightline-media': ['defensenews.com', 'militarytimes.com'],
   'sp-global': ['spglobal.com'],
   'techcrunch': ['techcrunch.com'],
   'the-verge': ['theverge.com'],

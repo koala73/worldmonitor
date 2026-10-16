@@ -569,7 +569,7 @@ Natural hazards and climate stress, merged from independent government and UN-co
 - Western Pacific tropical-cyclone observations (Hong Kong Observatory, Japan Meteorological Agency)
 - Climate anomaly detection over 15 conflict- and disaster-prone zones (Open-Meteo ERA5)
 - Weather alerts and severe conditions (NWS + ECCC polygons, WMO SWIC official CAP points)
-- IMD RSMC New Delhi cyclone tracks, forecast wind radii, cone of uncertainty, and port / sea-area / coastal bulletins (`weather:imd-cyclone-marine:v1`, on-demand). Live fetch requires `IMD_API_KEY`, `IMD_API_EMAIL`, and `IMD_API_PASSWORD`; the seeder mints a short-lived JWT for each run. A disabled snapshot is not an all-clear.
+- IMD sea-area and coastal marine bulletins, including storm warnings, port signals, and storm-surge or tidal warnings (`weather:imd-cyclone-marine:v1`, on-demand), parsed from the public `mausam.imd.gov.in` bulletin pages. IMD cyclone track, wind radii, and cone are API-only and disabled; GDACS covers North Indian Ocean cyclones. A disabled product is not an all-clear.
 - Radiation monitoring — see the [Radiation Watch panel](/panels/radiation-watch)
 
 **Key providers**
@@ -586,7 +586,7 @@ Natural hazards and climate stress, merged from independent government and UN-co
 | US National Weather Service | Official US weather alerts (polygon tier) | [api.weather.gov](https://api.weather.gov/alerts/active) |
 | Environment and Climate Change Canada | Official Canadian weather alerts (polygon tier) | [api.weather.gc.ca](https://api.weather.gc.ca) |
 | WMO Severe Weather Information Centre | Official CAP from WMO members, merged into `weather:alerts:v1` (point tier) | [severeweather.wmo.int](https://severeweather.wmo.int/json/wmo_all.json) |
-| India Meteorological Department | Cyclone track / wind / cone plus port, sea-area, and coastal products. Key-gated API; fishermen warning listed but undocumented and kept disabled. Not merged into `weather:alerts:v1`. | [api.imd.gov.in](https://api.imd.gov.in/public/api_reference.html) |
+| India Meteorological Department | Sea-area and coastal marine bulletins with storm warnings and port signals, parsed from public pages. Cyclone track / wind / cone (API-only), port warning PDFs, and fishermen warning PDFs stay disabled. Not merged into `weather:alerts:v1`. | [mausam.imd.gov.in](https://mausam.imd.gov.in/responsive/marine_forecast.php) |
 
 Deep dives: [Natural disasters](/natural-disasters) · [Disease alert methodology](/methodology/disease-alert-level) · [Thermal escalation panel](/panels/thermal-escalation)
 

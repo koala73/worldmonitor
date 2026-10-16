@@ -1,5 +1,5 @@
 ---
-title: Keep IMD cyclone and marine products typed, key-gated, and unflattened
+title: Keep IMD cyclone and marine products typed and unflattened
 date: 2026-08-27
 category: integration-issues
 module: Weather and natural seed pipeline
@@ -15,7 +15,7 @@ severity: high
 tags: [weather, tropical-cyclones, imd, marine-warnings, source-admission, railway-seeders]
 ---
 
-# Keep IMD cyclone and marine products typed, key-gated, and unflattened
+# Keep IMD cyclone and marine products typed and unflattened
 
 ## Problem
 
@@ -35,18 +35,38 @@ public API is account- and key-gated.
 
 ## Solution
 
-- `scripts/lib/imd-cyclone-marine.mjs` qualifies each product, fail-closes
-  undocumented fishermen warning, and keeps observed positions, forecast
-  positions, forecast-wind-radii, and cone-of-uncertainty as distinct
-  `geometryKind` values.
-- Live fetch requires `IMD_API_KEY`, `IMD_API_EMAIL`, and
-  `IMD_API_PASSWORD`. The seeder mints one short-lived JWT per run. Without
-  valid credentials, it publishes `coverageState: disabled` or
-  `unavailable` with `sourceState: unavailable` (not all-clear).
+- The original API seeder in `scripts/lib/imd-cyclone-marine.mjs` qualified
+  each product, failed closed on undocumented fishermen warning, and kept
+  observed positions, forecast positions, forecast-wind-radii, and
+  cone-of-uncertainty as distinct `geometryKind` values.
 - One failed product carries last-good for that product only.
 - Dashboard hydration is the on-demand bootstrap key `imdCycloneMarine`.
+
+## Update 2026-10-16: public bulletin pages replace the API (#7730)
+
+IMD binds each production API key to one server IPv4. Railway gives the
+seeder 3 outbound addresses, so the key-gated path never ran. The seeder now
+parses the public pages on `mausam.imd.gov.in` instead:
+
+- Sea-area bulletins `Forecast/seaarea_bulletin_new.php?id=1` (Bay of Bengal)
+  and `?id=4` (Arabian Sea). Other IDs return the Bay of Bengal bulletin.
+- Coastal bulletins `Forecast/coastal_bulletin_new.php` (West Bengal and
+  Andaman) and `?id=2` to `?id=7`. Port signals arrive here. The NAVTEX copies
+  redirect to a login page.
+- The IDs come from the index pages `responsive/marine_forecast.php` and
+  `responsive/coastal_forecast.php`. Their links are relative to
+  `/responsive/`, so `../Forecast/` resolves to `/Forecast/`.
+
+Each page fails closed on its own. A missing title, validity line, issue time,
+storm-warning row, or area field rejects the page and carries that page's
+last-good records. An expired page publishes nothing but still counts as a
+healthy reply. Cyclone track, wind radii, and cone stay disabled as API-only
+(`API_ONLY_COVERED_BY_GDACS`). Port warnings and fishermen warnings are PDFs
+and stay disabled. The RTI non-commercial rights record applies to the public
+pages too.
 
 ## Related Issues
 
 - Fixes #7005.
+- Supersedes the fixed-egress proxy plan in #7730.
 - Does not implement #7004 (district/nowcast) or #7002 (NDMA SACHET).

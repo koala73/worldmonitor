@@ -461,6 +461,9 @@
           "path": "scripts/seed-military-flights.mjs"
         },
         {
+          "path": "server/worldmonitor/aviation/v1/list-aircraft-emergencies.ts"
+        },
+        {
           "path": "src/components/MapPopup.ts"
         }
       ]
@@ -897,9 +900,6 @@
       "references": [
         {
           "path": "scripts/lib/imd-cyclone-marine.mjs"
-        },
-        {
-          "path": "src/app/data-loader.ts"
         }
       ]
     },
@@ -1809,6 +1809,20 @@
       "references": [
         {
           "path": "src/config/live-video-sources.ts"
+        }
+      ]
+    },
+    {
+      "host": "aws.amazon.com",
+      "provider": "aws.amazon.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
         }
       ]
     },
@@ -3235,6 +3249,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "api/channel-oauth-bind.ts"
+        },
+        {
           "path": "api/discord/oauth/callback.ts"
         },
         {
@@ -3982,6 +3999,20 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "factchecktools.googleapis.com",
+      "provider": "factchecktools.googleapis.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit factchecktools.googleapis.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/_shared/fact-checks.ts"
         }
       ]
     },
@@ -6019,6 +6050,20 @@
       "status": "excluded"
     },
     {
+      "host": "liveuamap.com",
+      "provider": "liveuamap.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
+        }
+      ]
+    },
+    {
       "host": "lnc-abc-news.tubi.video",
       "provider": "lnc-abc-news.tubi.video",
       "kind": "feed",
@@ -6199,12 +6244,15 @@
       "provider": "India Meteorological Department",
       "kind": "structured",
       "observed": true,
-      "license": "Official IMD visualization pages cited for attribution and source links, not scraped.",
+      "license": "Public IMD sea-area and coastal bulletin pages, parsed without an account or key. The RTI IMETD/R/E/25/00381 non-commercial-only terms recorded for the IMD API apply to these pages too. World Monitor public-display and redistribution rights are validated.",
       "attribution": "Data source: India Meteorological Department. Link the official marine/coastal bulletin page.",
       "status": "reviewed",
       "references": [
         {
           "path": "scripts/lib/imd-cyclone-marine.mjs"
+        },
+        {
+          "path": "src/app/data-loader.ts"
         }
       ]
     },
@@ -6233,6 +6281,20 @@
       "references": [
         {
           "path": "src/services/mcp-store.ts"
+        }
+      ]
+    },
+    {
+      "host": "me.liveuamap.com",
+      "provider": "me.liveuamap.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
         }
       ]
     },
@@ -6968,6 +7030,20 @@
       "references": [
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "offnadir-delta.com",
+      "provider": "offnadir-delta.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
         }
       ]
     },
@@ -8143,6 +8219,20 @@
       ]
     },
     {
+      "host": "rt-english.com",
+      "provider": "rt-english.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit rt-english.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "rt-esp.rttv.com",
       "provider": "rt-esp.rttv.com",
       "kind": "feed",
@@ -8310,6 +8400,9 @@
           "path": "scripts/build-use-cases.mjs"
         },
         {
+          "path": "scripts/comparison-shortlist.mjs"
+        },
+        {
           "path": "scripts/crawlable-sources-page.mjs"
         }
       ]
@@ -8397,15 +8490,10 @@
       "host": "search.seznam.cz",
       "provider": "search.seznam.cz",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "scripts/seo-indexnow-submit.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "search.worldbank.org",
@@ -8439,15 +8527,10 @@
       "host": "searchadvisor.naver.com",
       "provider": "searchadvisor.naver.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "scripts/seo-indexnow-submit.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "searchconsole.googleapis.com",
@@ -8738,6 +8821,9 @@
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
       "status": "excluded",
       "references": [
+        {
+          "path": "api/channel-oauth-bind.ts"
+        },
         {
           "path": "api/slack/oauth/callback.ts"
         },
@@ -10591,6 +10677,9 @@
           "path": "server/_shared/brief-url.ts"
         },
         {
+          "path": "server/_shared/channel-oauth-state.ts"
+        },
+        {
           "path": "server/_shared/intel-history-embed.ts"
         },
         {
@@ -10633,6 +10722,9 @@
       "references": [
         {
           "path": "src/shared/public-rpc-cache.ts"
+        },
+        {
+          "path": "src/utils/dom-utils.ts"
         }
       ]
     },
@@ -10962,6 +11054,20 @@
       ]
     },
     {
+      "host": "www.applytosupply.digitalmarketplace.service.gov.uk",
+      "provider": "www.applytosupply.digitalmarketplace.service.gov.uk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.asahi.com",
       "provider": "www.asahi.com",
       "kind": "feed",
@@ -11154,15 +11260,10 @@
       "host": "www.bing.com",
       "provider": "www.bing.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "scripts/seo-indexnow-submit.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.brasilparalelo.com.br",
@@ -11958,6 +12059,20 @@
       "references": [
         {
           "path": "src/services/story-share.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.factal.com",
+      "provider": "www.factal.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
         }
       ]
     },
@@ -12777,6 +12892,9 @@
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
       "status": "excluded",
       "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
+        },
         {
           "path": "server/worldmonitor/leads/v1/register-interest.ts"
         },
@@ -13602,15 +13720,10 @@
       "host": "www.rt.com",
       "provider": "www.rt.com",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.rt.com and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/feeds.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.saastr.com",
@@ -14476,6 +14589,20 @@
       ]
     },
     {
+      "host": "www.vendr.com",
+      "provider": "www.vendr.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/comparison-shortlist.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.vercel-status.com",
       "provider": "www.vercel-status.com",
       "kind": "operational-status",
@@ -14735,6 +14862,9 @@
         },
         {
           "path": "scripts/check-live-video-sources.mjs"
+        },
+        {
+          "path": "scripts/comparison-shortlist.mjs"
         },
         {
           "path": "scripts/discover-content-corpus-pages.mjs"
@@ -15034,6 +15164,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "scripts/comparison-shortlist.mjs"
+        },
+        {
           "path": "server/worldmonitor/leads/v1/register-interest.ts"
         }
       ]
@@ -15059,15 +15192,10 @@
       "host": "yandex.com",
       "provider": "yandex.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "scripts/seo-indexnow-submit.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "yemenonline.info",

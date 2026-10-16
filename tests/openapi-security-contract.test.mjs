@@ -416,6 +416,16 @@ function assertAuthContract(spec, label) {
 }
 
 describe('OpenAPI security contract', () => {
+  it('reads every public route from the gateway Set, comments included', () => {
+    // An apostrophe in a comment inside the Set once paired with the next quote,
+    // so later routes parsed as comment text and lost their `security: []`.
+    const gateway = readFileSync(resolve(root, 'server/gateway.ts'), 'utf8');
+    const block = gateway.match(/PUBLIC_NO_AUTH_RPC_PATHS\s*=\s*new Set<string>\(\[([\s\S]*?)\]\)/)[1];
+    const declared = [...block.matchAll(/^\s*'(\/api\/[^']+)',?\s*$/gm)].map((m) => m[1]);
+    assert.ok(declared.length > 0);
+    assert.deepEqual([...PUBLIC_PATHS].sort(), [...new Set(declared)].sort());
+  });
+
   it('audits the complete proto service surface', () => {
     assert.deepEqual(
       serviceSpecs.map((file) => file.replace(/\.openapi\.json$/, '')),

@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Bảng điều khiển tình báo toàn cầu trực tiếp miễn phí",
-      "description": "Khi nó trở thành tin tức thì bạn đã biết rồi. Xung đột, điểm nghẽn, chuyến bay quân sự, thị trường, an ninh mạng: một bản đồ trực tiếp miễn phí với phân tích AI. Không cần đăng ký.",
-      "ogTitle": "World Monitor — Khi tin tức xuất hiện, bạn đã biết rồi.",
-      "ogDescription": "Các tín hiệu thô của thế giới — tàu, máy bay, còi báo động, cáp, thị trường — trên một bản đồ tình báo trực tiếp miễn phí, có AI để phát hiệ khi chúng hội tụ. Miễn phí, không cần đăng ký."
+      "title": "World Monitor: Bảng tình báo địa chính trị miễn phí",
+      "description": "World Monitor: bảng tình báo địa chính trị thời gian thực. Bản đồ trực tiếp miễn phí: xung đột, hàng hải, chuyến bay, thị trường, an ninh mạng; có API và MCP.",
+      "ogTitle": "World Monitor: Bảng tình báo địa chính trị miễn phí",
+      "ogDescription": "World Monitor: bảng tình báo địa chính trị thời gian thực. Bản đồ trực tiếp miễn phí: xung đột, hàng hải, chuyến bay, thị trường, an ninh mạng; có API và MCP."
     },
     "nav": {
       "useCases": "Tương quan",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Bảng điều khiển tình báo toàn cầu miễn phí · đang hoạt động",
-      "headline1": "Khi tin tức xuất hiện,",
-      "headline2": "bạn đã biết rồi.",
-      "sub": "Tin tức là độ trễ. World Monitor truyền phát các tín hiệu thô của thế giới — tàu, máy bay, còi báo động, cáp, thị trường — lên một bản đồ trực tiếp, với AI phát hiệ khi chúng hội tụ thành một điều quan trọng.",
+      "headline1": "Bảng tình báo địa chính trị",
+      "headline2": "theo thời gian thực",
+      "sub": "Khi tin tức xuất hiện, bạn đã biết rồi.",
       "ctaPrimary": "Khởi chạy bảng điều khiển",
       "ctaFree": "Miễn phí · Không cần đăng ký · Tải trong vài giây",
       "ctaSecondary": "Xem cách mọi người sử dụng nó ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor không phải là Palantir mã nguồn mở",
       "asOf": "Tính đến {{date}}",
       "whatIsTitle": "World Monitor là gì?",
-      "whatIsBody": "World Monitor là một dashboard miễn phí ($0), mã nguồn mở (AGPL-3.0) được sử dụng bởi hơn 2 triệu người. Nó phát trực tiếp {{feeds}} nguồn tin tức và OSINT từ {{providers}} nhà cung cấp được ghi nguồn lên một bản đồ thế giới trực tiếp với {{mapLayers}} loại lớp bản đồ, bao gồm địa chính trị, thị trường, vận tải biển, hàng không và mạng. Nó tương quan chúng để các sự kiện hội tụ được nổi lên trước khi có tiêu đề. Mỗi con số đều có nguồn gốc và mỗi phương pháp đều được ghi chép."
+      "whatIsBody": "World Monitor là một dashboard miễn phí ($0), mã nguồn mở (AGPL-3.0) được sử dụng bởi hơn 2 triệu người. Nó phát trực tiếp {{feeds}} nguồn tin tức và OSINT từ {{providers}} nhà cung cấp được ghi nguồn lên một bản đồ thế giới trực tiếp với {{mapLayers}} loại lớp bản đồ, bao gồm địa chính trị, thị trường, vận tải biển, hàng không và mạng. Nó tương quan chúng để các sự kiện hội tụ được nổi lên trước khi có tiêu đề. Mỗi con số đều có nguồn gốc và mỗi phương pháp đều được ghi chép.",
+      "whatIsBestFor": "Phù hợp nhất với nhà phân tích, nhà báo, nhà giao dịch và nhà phát triển cần tín hiệu địa chính trị trực tiếp."
     },
     "live": {
       "eyebrow": "Trực tiếp ngay bây giờ",

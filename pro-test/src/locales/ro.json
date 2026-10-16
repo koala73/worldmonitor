@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Tabloul de bord gratuit de inteligență globală în timp real",
-      "description": "Până când devine știre, tu deja știai. Conflicte, puncte critice, zboruri militare, piețe, cyber: o hartă live gratuită cu analiză AI. Fără înregistrare.",
-      "ogTitle": "World Monitor — Până când devine știre, deja știai.",
-      "ogDescription": "Semnalele brute ale lumii — nave, avioane, sirene, cabluri, piețe — pe o singură hartă de inteligență în direct, cu AI care marchează când se converg. Gratuit, fără înregistrare."
+      "title": "World Monitor: tablou de bord geopolitic gratuit",
+      "description": "World Monitor: tablou de bord de informații geopolitice în timp real. Hartă live gratuită: conflicte, transport maritim, zboruri, piețe și cyber, cu API și MCP.",
+      "ogTitle": "World Monitor: tablou de bord geopolitic gratuit",
+      "ogDescription": "World Monitor: tablou de bord de informații geopolitice în timp real. Hartă live gratuită: conflicte, transport maritim, zboruri, piețe și cyber, cu API și MCP."
     },
     "nav": {
       "useCases": "Corelații",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Tabloul de bord gratuit de inteligență globală · live acum",
-      "headline1": "Până când devine știre,",
-      "headline2": "deja știai.",
-      "sub": "Știrile sunt decalajul. World Monitor transmite semnalele brute ale lumii — nave, avioane, sirene, cabluri, piețe — pe o singură hartă în direct, cu AI care marchează când se converg într-ceva care conține.",
+      "headline1": "Tablou de bord de informații geopolitice",
+      "headline2": "în timp real",
+      "sub": "Până când devine știre, deja știai.",
       "ctaPrimary": "Lansați tabloul de bord",
       "ctaFree": "Gratuit · Fără înregistrare · Se încarcă în secunde",
       "ctaSecondary": "Vedeți cum îl folosesc oamenii ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor nu este un Palantir open-source",
       "asOf": "Din {{date}}",
       "whatIsTitle": "Ce este World Monitor?",
-      "whatIsBody": "World Monitor este un dashboard gratuit ($0), open-source (AGPL-3.0) folosit de 2M+ persoane. Transmite {{feeds}} fluxuri de știri și OSINT de la {{providers}} furnizori atribuiți pe o hartă mondială live unificată cu {{mapLayers}} tipuri de straturi de hartă, acoperind geopolitică, piețe, transport maritim, aviație și cyber. Le corelează pentru ca evenimentele convergente să apară înaintea știrilor. Fiecare cifră este sursa și fiecare metodă documentată."
+      "whatIsBody": "World Monitor este un dashboard gratuit ($0), open-source (AGPL-3.0) folosit de 2M+ persoane. Transmite {{feeds}} fluxuri de știri și OSINT de la {{providers}} furnizori atribuiți pe o hartă mondială live unificată cu {{mapLayers}} tipuri de straturi de hartă, acoperind geopolitică, piețe, transport maritim, aviație și cyber. Le corelează pentru ca evenimentele convergente să apară înaintea știrilor. Fiecare cifră este sursa și fiecare metodă documentată.",
+      "whatIsBestFor": "Ideal pentru analiști, jurnaliști, traderi și dezvoltatori care au nevoie de semnale geopolitice în timp real."
     },
     "live": {
       "eyebrow": "Live chiar acum",

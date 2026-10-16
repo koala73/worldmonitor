@@ -4,10 +4,18 @@ import { summarizeArticle } from './summarize-article';
 import { getSummarizeArticleCache } from './get-summarize-article-cache';
 import { listFeedDigest } from './list-feed-digest';
 import { listCountryHeadlines } from './list-country-headlines';
+import { listLabelChanges } from './list-label-changes';
+import { listErrorReports, reviewErrorReport, submitErrorReport } from './error-reports';
+import { searchFactChecks } from './search-fact-checks';
 
 export const newsHandler: NewsServiceHandler = {
   summarizeArticle,
   getSummarizeArticleCache,
   listFeedDigest,
   listCountryHeadlines,
+  listLabelChanges,
+  submitErrorReport,
+  listErrorReports,
+  reviewErrorReport,
+  searchFactChecks,
 };

@@ -7,6 +7,9 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { setTimeout: sleep } = require('node:timers/promises');
 const test = require('node:test');
+// Node 24 loads the shared TypeScript module directly (type stripping), so the
+// emergency codes have one source of truth across TS, ESM and CommonJS.
+const { EMERGENCY_CODES } = require('../shared/aircraft-emergencies.ts');
 
 function get(port, requestPath, headers) {
   return new Promise((resolve, reject) => {
@@ -1056,6 +1059,33 @@ test('theater-posture Wingbits fallback publication is attributed to Wingbits, n
     await upstash.close();
   }
 });
+
+for (const source of ['adsb.lol', 'wingbits', 'opensky']) {
+  // Emergency squawks stay in theater posture (Elie's decision); the
+  // emergency layer reads its own feed and shows them as well.
+  test(`theater-posture keeps synthetic 7500/7600/7700 military records from ${source}`, async () => {
+    const upstash = await createUpstashMock();
+    const { child, ready } = spawnRelay({
+      ...upstash.env,
+      RELAY_TEST_EMERGENCY_ROWS: '1',
+      RELAY_TEST_ADSB_MODE_SEQUENCE: source === 'adsb.lol' ? 'flight' : 'error',
+      WINGBITS_API_KEY: source === 'wingbits' ? 'test-wingbits-key' : '',
+      RELAY_TEST_OPENSKY_STATUS_SEQUENCE: source === 'opensky' ? '200' : '429',
+    });
+    try {
+      const { port } = await ready;
+      const response = await get(port, '/__test/seed-theater-posture');
+      assert.equal(response.status, 200);
+      assert.equal(JSON.parse(response.body).ok, true);
+      const metrics = JSON.parse((await get(port, '/metrics')).body);
+      assert.equal(metrics.theaterPosture.lastRun.flightCount, 1 + EMERGENCY_CODES.length);
+      assert.equal(upstash.setsFor('theater-posture:sebuf:v1').length, 1);
+    } finally {
+      await stop(child);
+      await upstash.close();
+    }
+  });
+}
 
 test('theater-posture rejects Wingbits rows without usable theater coordinates', async () => {
   const upstash = await createUpstashMock();

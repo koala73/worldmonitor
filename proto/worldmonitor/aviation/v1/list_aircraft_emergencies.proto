@@ -1,0 +1,67 @@
+syntax = "proto3";
+package worldmonitor.aviation.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ListAircraftEmergenciesRequest has no filters. Coverage is provider reception.
+message ListAircraftEmergenciesRequest {}
+
+// EmergencyPosition keeps the position clock separate from last contact.
+message EmergencyPosition {
+  // Latitude in degrees.
+  double lat = 1;
+  // Longitude in degrees.
+  double lon = 2;
+  // Provider position time in epoch milliseconds. Zero means unknown.
+  int64 observed_at = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// EmergencyObservation is a reported Mode A code, not a confirmed incident.
+message EmergencyObservation {
+  // Provider address, including a non-ICAO prefix when present.
+  string address = 1;
+  // Exact four-character transponder code.
+  string squawk = 2;
+  // Observation provider.
+  string source = 3;
+  // Last message time in epoch milliseconds, not squawk selection time. Zero means unknown.
+  int64 observed_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Last available position, with its own timestamp.
+  EmergencyPosition position = 5;
+  // Reported callsign, empty when unknown.
+  string callsign = 6;
+  // Provider registration, empty when unknown.
+  string registration = 7;
+  // Provider type code, empty when unknown.
+  string aircraft_type = 8;
+  // Provider aircraft description, empty when unknown.
+  string description = 9;
+  // Military database bit, set, not_set, or unknown. This is not admission criteria.
+  string military_flag = 10;
+  // Barometric altitude in feet, absent when unknown or reported as ground.
+  optional double altitude_ft = 11;
+  // Ground speed in knots, absent when unknown.
+  optional double ground_speed_kts = 12;
+}
+
+// EmergencyFeed records success and failure separately for each exact code query.
+message EmergencyFeed {
+  // Provider name.
+  string source = 1;
+  // Requested squawk.
+  string squawk = 2;
+  // available, unavailable, or stale.
+  string status = 3;
+  // Retrieval time in epoch milliseconds.
+  int64 fetched_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Safe status explanation.
+  string message = 5;
+}
+
+// ListAircraftEmergenciesResponse preserves observations and per-query availability.
+message ListAircraftEmergenciesResponse {
+  // Exact-code observations, including records without usable positions.
+  repeated EmergencyObservation observations = 1;
+  // Each selected code has a feed status even when it has no observations.
+  repeated EmergencyFeed feeds = 2;
+}

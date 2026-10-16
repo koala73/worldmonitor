@@ -1589,6 +1589,49 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `verify_claim`
+
+Evidence card for a claim or headline. Finds the live-digest clusters that report the same event (one event often spans several clusters) and returns WorldMonitor's coverage verdict over them. A cluster matches when one of its headlines carries at least half of the claim's content words, and at least two of them; the 8 best-matching clusters are kept. The verdict is `assessCorroboration` over every matched headline, so syndicated feeds of one publisher count once.
+
+The result reports `found`, `state` (the coverage verdict; `not-found` when the digest was searched and nothing reports the claim; `unknown` with `found: false` when the digest was empty or unavailable, so nothing was searched), `corroboration` (`single-publisher`, `tier4-only`, `corroborated`, `unknown`), the `publishers` roster with declared tiers, up to 10 matched `headlines` with fail-closed source provenance, `credibilityScore` of the best match, `firstSeen` / `lastUpdated`, and `figures`: numbers and dates in the claim checked against the matched headlines with the brief grounding rule. `figures.ungrounded` lists figures no matched headline states; it does not mean the figure is wrong. `found: false` means no match: with `state: not-found` the claim is not in WorldMonitor's current sources; with `state: unknown` nothing was searched. It never means the claim is false. Every response carries the same `caveat`: coverage, not accuracy.
+
+`factChecks` cites ratings that fact-checkers have already published about a similar claim. WorldMonitor does not rate claims; it quotes theirs with attribution, the way it would quote a wire report. Each item gives the fact-checker (`publisher`, `site`), its own `rating` verbatim, the date it was published (`reviewedAt`), the `url`, and the `claimReviewed` it rated, introduced by `label`: a fact-check of a similar claim, never of this claim. The rules:
+
+- Only verified signatories of the [IFCN Code of Principles](https://github.com/IFCN/verified-signatories), kept in `shared/fact-checkers.json` and reviewed like source tiers. The link's own domain decides, not the name the feed reports.
+- Strong matches only: the claim and the rated claim must each carry at least 60% of the other's content words, and share at least three. A weaker match shows nothing.
+- English fact-checks of any age, newest first. Ratings that disagree are all listed, with no tie-breaking.
+- The same rules apply whoever made the claim: nothing in the matching names a person, party, topic or country.
+- A rating never changes `state`, `corroboration` or anything else in the card.
+
+`factChecks.state` is `ok` when the lookup ran (an empty `items` list then means none was found) and `unavailable` or `not-configured` when it did not. A failed lookup never fails the tool. Ratings come from the Google Fact Check Tools API.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `claim` | string | The claim or headline to check, up to 300 characters. Required. |
+| `variant` | `string: full / tech` | Headline digest variant to search. Defaults to full. |
+
+- **API endpoints:** `GET /api/news/v1/list-feed-digest`, `GET /api/news/v1/search-fact-checks`
+- **Access:** `subscription` — requires a Pro subscription.
+- **Kind:** deterministic local compute over the live digest window, not a historical index. No LLM.
+- **Quota:** standard — every call consumes the MCP daily reservation.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"verify_claim","arguments":{"claim":"Trump strikes diesel deal with Putin"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_keyword_spikes`
 
 Trending keyword, CVE, and APT/FIN threat-group spikes versus baseline, using the same term-candidacy and spike-decision math as the dashboard's trending-keywords engine (minimum recent count, strict baseline multiplier, source-diversity gate). Each spike includes `sourceNames` (curated publisher name, or the original feed label when unmapped) and up to three `sampleHeadlines` as `{title, source, link}` objects so an agent can attribute and follow the stories behind the count. `source` on a sample is every publisher that carried that collapsed title; `link` is the canonical `story:track:v1` URL and may not belong to a single named outlet. The tool queries the recent window and its pre-window baseline as separate cohorts, each capped at 800 stories, so a busy recent window cannot consume the baseline sample. `baseline_hours` reports the exact sampled pre-window duration, and `sample_truncated: true` means either cohort reached its cap. When no pre-window stories are available, the tool returns no spikes with an explicit `baseline unavailable` note and does not cache the result. Results are cached for 10 minutes per `(window_hours, min_count)` combination.
@@ -2576,7 +2619,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_imd_cyclone_marine`
 
-Bounded India Meteorological Department cyclone tracks, forecast wind radii, cones of uncertainty, and official port / sea-area / coastal bulletins. Products stay typed and are not merged into `weather:alerts:v1`. Live fetch requires `IMD_API_KEY`, `IMD_API_EMAIL`, and `IMD_API_PASSWORD`; the seeder mints a short-lived JWT for each run. Always read `coverageState`: `disabled` means the credentials are missing or invalid, `degraded` is a partial product failure, `unavailable` is a total fetch failure, and `ok` is live. Empty lists with `disabled`, `degraded`, or `unavailable` coverage are not an India all-clear.
+Bounded India Meteorological Department sea-area and coastal marine bulletins from the public `mausam.imd.gov.in` pages: storm warnings, port signals, storm-surge or tidal warnings, wind, visibility, and sea state per area, each with its validity window. Products stay typed and are not merged into `weather:alerts:v1`. IMD cyclone track, wind radii, and cone are API-only and disabled; GDACS tropical cyclones cover the North Indian Ocean. Port warning and fishermen warning PDFs are not parsed. Always read `coverageState`: `degraded` means some bulletin pages failed and their last-good records were carried, `unavailable` means no page was readable, and `ok` is live. Per-page status is under `products.<id>.pages`. Empty lists with `degraded` or `unavailable` coverage are not an India all-clear.
 
 **Parameters (tool-specific):**
 
@@ -2587,7 +2630,7 @@ Bounded India Meteorological Department cyclone tracks, forecast wind radii, con
 
 - **API endpoints:** none (MCP-only cache read of `weather:imd-cyclone-marine:v1`; no equivalent public REST operation yet).
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
-- **Kind:** bounded cache read from the on-demand IMD cyclone/marine snapshot.
+- **Kind:** bounded cache read from the on-demand IMD marine bulletin snapshot.
 - **Freshness budget:** up to **45 min** before `stale: true` is flagged (matches `seed-meta:weather:imd-cyclone-marine`).
 
 <CodeGroup>

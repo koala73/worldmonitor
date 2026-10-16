@@ -190,6 +190,39 @@ export function shortenGeneratedSuccessDescriptions(spec) {
   return stats;
 }
 
+/**
+ * Operations left out of this scanner-facing JSON. The bundle has a hard byte
+ * budget (SCANNER_BUDGET_BYTES) and the owner decided (#9093) that endpoints
+ * built for WorldMonitor's own pages and for operators stay out of it, so the
+ * budget goes to the data APIs agents call. An excluded operation is still
+ * served, still documented in its per-service spec and in the YAML bundle,
+ * and still callable: only this one artifact omits it. Every entry names why.
+ */
+export const SCANNER_BUNDLE_EXCLUDED_OPERATIONS = Object.freeze({
+  '/api/news/v1/list-label-changes': 'Label history read by the /trust page (#9093); documented in the NewsService spec.',
+  '/api/news/v1/submit-error-report': 'The /trust page "Report an error" form (#9093); documented in the NewsService spec.',
+  '/api/news/v1/list-error-reports': 'Operator review queue, secret-gated (#9093).',
+  '/api/news/v1/review-error-report': 'Operator review decision, secret-gated (#9093).',
+  '/api/news/v1/search-fact-checks': 'Fact-check lookup for the /verify page and verify_claim (#9094); documented in the NewsService spec.',
+});
+
+/**
+ * Remove SCANNER_BUNDLE_EXCLUDED_OPERATIONS from the spec. Runs before the
+ * dedup passes, so nothing is hoisted for an operation that is not served
+ * here, and before dropUnreachableSchemas, which then drops schemas only the
+ * excluded operations used. Returns { excluded } (paths removed).
+ */
+export function excludeScannerBundleOperations(spec, excluded = SCANNER_BUNDLE_EXCLUDED_OPERATIONS) {
+  const stats = { excluded: 0 };
+  for (const path of Object.keys(excluded)) {
+    if (spec.paths && Object.prototype.hasOwnProperty.call(spec.paths, path)) {
+      delete spec.paths[path];
+      stats.excluded += 1;
+    }
+  }
+  return stats;
+}
+
 export const DEPRECATION_POLICY_URL = 'https://www.worldmonitor.app/api-versioning.md';
 const DEPRECATION_POLICY_HTML_URL = 'https://www.worldmonitor.app/docs/api-versioning';
 
@@ -245,6 +278,7 @@ export function buildBundle({ spec: provided } = {}) {
     );
   }
 
+  const excludedStats = excludeScannerBundleOperations(spec);
   const stats = dedupeErrorResponses(spec);
   const headerStats = dedupeSharedResponseHeaders(spec);
   const schemaStats = dedupeSharedChinaProvenanceSchemas(spec);
@@ -296,6 +330,7 @@ export function buildBundle({ spec: provided } = {}) {
     softBreakStats,
     defaultRequiredStats,
     successDescriptionStats,
+    excludedStats,
   };
 }
 

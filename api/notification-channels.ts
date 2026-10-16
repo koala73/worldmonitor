@@ -17,12 +17,18 @@ import { getCorsHeaders } from './_cors.js';
 import { captureSilentError } from './_sentry-edge.js';
 import {
   beginStandaloneIdempotency,
+  abandonStandaloneIdempotency,
   completeStandaloneIdempotency,
   getIdempotencyKey,
 } from './_idempotency.js';
 import { assertNotificationWebhookRegistrationUrlSafe } from './_notification-webhook-ssrf';
 import { validateBearerToken } from '../server/auth-session';
 import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
+import {
+  RATE_LIMIT_DEGRADED_HEADERS,
+  checkScopedRateLimit,
+  scopedTooManyRequestsResponse,
+} from '../server/_shared/rate-limit';
 
 // Prefer explicit CONVEX_SITE_URL; fall back to deriving from CONVEX_URL (same pattern as notification-relay.cjs).
 const CONVEX_SITE_URL =
@@ -32,9 +38,17 @@ const CONVEX_TENANT_RELAY_SECRET = process.env.CONVEX_TENANT_RELAY_SECRET ?? '';
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL ?? '';
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 
+// Per-user write budget for the POST mutations. 30/min is far above any
+// settings-UI cadence (one action per click) and well under what a scripted
+// caller needs to turn the relay or the welcome mailer into a spend lever.
+export const NOTIFICATION_CHANNELS_WRITE_RATE_LIMIT = 30;
+export const NOTIFICATION_CHANNELS_WRITE_RATE_SCOPE = 'notification-channels-write';
+export const NOTIFICATION_CHANNELS_WRITE_RATE_WINDOW = '60 s' as const;
+
 type NotificationChannelsDeps = {
   validateBearerToken: typeof validateBearerToken;
   getEntitlements: typeof getEntitlements;
+  checkScopedRateLimit: typeof checkScopedRateLimit;
   fetch: typeof fetch;
   // Injected so the billing-denial capture is observable in tests. It cannot be
   // asserted through the real transport: api/_sentry-common.js's parseDsn()
@@ -48,6 +62,7 @@ function createDefaultNotificationChannelsDeps(): NotificationChannelsDeps {
   return {
     validateBearerToken,
     getEntitlements,
+    checkScopedRateLimit,
     fetch: (...args) => globalThis.fetch(...args),
     captureSilentError,
   };
@@ -86,6 +101,14 @@ export function __setNotificationChannelsDepsForTests(
   notificationChannelsDeps = overrides
     ? { ...createDefaultNotificationChannelsDeps(), ...overrides }
     : createDefaultNotificationChannelsDeps();
+}
+
+// 32 random bytes, base64url, with a recognisable prefix so a leaked value is
+// easy to identify in logs and secret scanners.
+function generateWebhookSigningSecret(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const b64 = btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''));
+  return `whsec_${b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
 }
 
 // AES-256-GCM encryption using Web Crypto (matches Node crypto.cjs decrypt format).
@@ -481,6 +504,32 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       }, 403, corsHeaders);
     }
 
+    // Every accepted POST writes through the Convex relay and the durable
+    // welcome path can send mail, so a signed-in Pro user must not be able to
+    // drive either without bound. Per-user, after the Pro gate so the limiter
+    // is not spent on callers the upsell already turns away. A limiter outage
+    // fails closed like api/notify.ts: a retryable 503, never an open door.
+    const scoped = await notificationChannelsDeps.checkScopedRateLimit(
+      NOTIFICATION_CHANNELS_WRITE_RATE_SCOPE,
+      NOTIFICATION_CHANNELS_WRITE_RATE_LIMIT,
+      NOTIFICATION_CHANNELS_WRITE_RATE_WINDOW,
+      session.userId,
+    );
+    if (scoped.degraded) {
+      return json(
+        { error: 'Rate-limit service temporarily unavailable' },
+        503,
+        { ...corsHeaders, ...RATE_LIMIT_DEGRADED_HEADERS },
+      );
+    }
+    if (!scoped.allowed) {
+      const shared = scopedTooManyRequestsResponse(scoped, NOTIFICATION_CHANNELS_WRITE_RATE_WINDOW, corsHeaders);
+      return new Response(JSON.stringify({ error: 'RATE_LIMITED' }), {
+        status: shared.status,
+        headers: shared.headers,
+      });
+    }
+
     let body: PostBody;
     try {
       body = (await req.json()) as PostBody;
@@ -523,6 +572,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       relay: WelcomeRelayResult,
       relayAction: string,
       welcomeChannelType: string,
+      extra: Record<string, unknown> = {},
     ): Promise<Response> => {
       const resp = relay.response;
       if (!resp.ok) {
@@ -549,7 +599,12 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       ) {
         ctx.waitUntil(publishWelcome(welcomeUserId, welcomeChannelType));
       }
-      return finish(json({ ok: true }, 200, corsHeaders));
+      const okResponse = json({ ok: true, ...extra }, 200, corsHeaders);
+      // A response carrying a signing secret is never cached for idempotent
+      // replay: the cache would hold the plaintext secret in Redis, and a
+      // later save rotates it, so a replay would hand back a dead secret.
+      if ('signingSecret' in extra) return abandonStandaloneIdempotency(idempotency, okResponse);
+      return finish(okResponse);
     };
 
     try {
@@ -593,8 +648,20 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
             return finish(json({ error: 'Encryption unavailable' }, 503, corsHeaders));
           }
         }
+        // Every webhook registration gets a fresh signing secret, so saving
+        // the URL again is also how a customer rotates it. Only the encrypted
+        // envelope is stored; the plaintext is returned once, in this response.
+        let signingSecret: string | undefined;
+        if (channelType === 'webhook') {
+          signingSecret = generateWebhookSigningSecret();
+          try {
+            relayBody.webhookSecret = await encryptSlackWebhook(signingSecret);
+          } catch {
+            return finish(json({ error: 'Encryption unavailable' }, 503, corsHeaders));
+          }
+        }
         const relay = await convexRelayWithDurableWelcome(relayBody);
-        return finishDurableWelcomeRelay(relay, 'set-channel', channelType);
+        return finishDurableWelcomeRelay(relay, 'set-channel', channelType, signingSecret ? { signingSecret } : {});
       }
 
       if (action === 'set-web-push') {

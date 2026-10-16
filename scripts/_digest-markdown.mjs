@@ -133,9 +133,27 @@ export function markdownToSlackMrkdwn(md) {
 // Only normalize what Discord doesn't handle: * bullets (Discord lists require -)
 // and trailing-colon section headers.
 
+// Headlines and LLM text are third-party content. Every Discord masked link
+// starts with `[`, so escaping backslashes and opening brackets stops
+// `[trusted](https://evil)` while bare URLs still render. Mirrors
+// escapeDiscordText in scripts/notification-relay.cjs.
+export function escapeDiscordText(str) {
+  return String(str).replace(/\\/g, '\\\\').replace(/\[/g, '\\[');
+}
+
 export function markdownToDiscord(md) {
-  let txt = String(md);
+  let txt = escapeDiscordText(md);
   txt = txt.replace(/^\*\s+/gm, '- ');
   txt = txt.replace(/^([A-Z][A-Za-z ]+): */gm, '**$1:** ');
   return txt;
+}
+
+// Cuts at Discord's 2000-char limit without splitting a `\x` escape pair.
+export function truncateDiscordContent(text, max = 2000) {
+  if (text.length <= max) return text;
+  let cut = max - 1;
+  let backslashes = 0;
+  while (cut - 1 - backslashes >= 0 && text[cut - 1 - backslashes] === '\\') backslashes++;
+  if (backslashes % 2 === 1) cut -= 1;
+  return text.slice(0, cut) + '\u2026';
 }

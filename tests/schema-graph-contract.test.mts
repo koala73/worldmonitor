@@ -591,11 +591,11 @@ describe('canonical schema graph', () => {
     assert.deepEqual(webPage.mainEntity, { '@id': SOFTWARE_ID });
     assert.deepEqual(webPage.speakable, {
       '@type': 'SpeakableSpecification',
-      cssSelector: ['h1', 'main > p:first-of-type'],
+      cssSelector: ['h1', '#pro-overview > p:first-of-type'],
     });
     assert.match(
       read('pro-test/index.html'),
-      /<main[^>]*>\s*<p>/,
+      /<section id="pro-overview"[^>]*>\s*<p>/,
       'the Pro speakable paragraph selector must match the static main content',
     );
     assert.deepEqual(webPage.breadcrumb, { '@id': 'https://www.worldmonitor.app/pro#breadcrumb' });

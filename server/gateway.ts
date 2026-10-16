@@ -35,6 +35,7 @@ import {
   drainResponseHeaders,
   drainRetryableResponse,
   drainSuccessStatusOverride,
+  drainUnservedLlmResponse,
 } from './_shared/response-headers';
 import {
   appendDeprecationPolicyLink,
@@ -295,6 +296,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/aviation/v1/get-carrier-ops': 'slow',
   '/api/aviation/v1/get-flight-status': 'fast',
   '/api/aviation/v1/track-aircraft': 'no-store',
+  '/api/aviation/v1/list-aircraft-emergencies': 'no-store',
   '/api/aviation/v1/search-flight-prices': 'medium',
   '/api/aviation/v1/search-google-flights': 'no-store',
   '/api/aviation/v1/search-google-dates': 'medium',
@@ -410,6 +412,11 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/supply-chain/v1/get-chokepoint-history': 'slow',
   '/api/news/v1/list-feed-digest': 'slow',
   '/api/news/v1/list-country-headlines': 'fast',
+  '/api/news/v1/list-label-changes': 'fast',
+  // #9093 operator queue: never cached, it is gated by a secret header.
+  '/api/news/v1/list-error-reports': 'no-store',
+  // #9094: per-claim fact-check lookup; the CDN key includes the claim.
+  '/api/news/v1/search-fact-checks': 'slow',
   '/api/intelligence/v1/get-country-facts': 'daily',
   '/api/intelligence/v1/list-security-advisories': 'slow',
   '/api/intelligence/v1/list-satellites': 'static',
@@ -547,6 +554,26 @@ export const PUBLIC_NO_AUTH_RPC_PATHS = new Set<string>([
   // throttle. Pinned by tests/leads-gateway-public.test.mts.
   '/api/leads/v1/submit-contact',
   '/api/leads/v1/register-interest',
+  // #9093 "Report an error": readers report without an account by design. The
+  // gates are the handler's honeypot and validation, a fail-closed per-IP
+  // endpoint limit (server/_shared/rate-limit.ts), and a bounded review queue
+  // that refuses rather than evicts. Reports are never applied automatically.
+  '/api/news/v1/submit-error-report',
+  // #9093 /trust page: public label history and today's counts. Read-only,
+  // public coverage metadata; a visitor who lands on /trust directly has no
+  // session cookie. Bounded by a per-IP endpoint limit and the 'fast' CDN tier.
+  '/api/news/v1/list-label-changes',
+  // #9093 operator review. The gate is TRUST_REVIEW_SECRET, checked in the
+  // handler (X-Trust-Review-Key, constant-time): unset → every call is 401.
+  // A browser session would add nothing an operator secret does not already
+  // prove, and the standalone review page has none. Fail-closed per-IP limits
+  // bound guessing; list-error-reports is no-store.
+  '/api/news/v1/list-error-reports',
+  '/api/news/v1/review-error-report',
+  // #9094 /verify: published fact-checks for a claim, cited with attribution.
+  // Free like /verify (owner decision), which needs no account; bounded by a
+  // fail-closed per-IP limit and a day-long per-claim cache of the upstream.
+  '/api/news/v1/search-fact-checks',
 ]);
 
 // Cacheable, non-premium RPC endpoints the Railway relay periodically warm-pings
@@ -858,6 +885,15 @@ const GATEWAY_DIRECT_LLM_QUOTA_METHODS: Record<string, string> = {
 };
 
 const COUNTRY_INTEL_BRIEF_PATH = '/api/intelligence/v1/get-country-intel-brief';
+
+// A direct-LLM reservation that dispatch() has charged but not yet settled,
+// keyed by the request it was charged for. dispatch() releases it itself on
+// every unserved outcome it can see; this map exists for the one it cannot:
+// a throw after the handler returned (a rejecting response body stream, a
+// failed response construction), which leaves dispatch() without a return
+// value and the platform answering 500. The outer handler drains it on a
+// rejected dispatch and releases the slot there.
+const pendingDirectLlmReservations = new WeakMap<Request, () => Promise<void>>();
 
 function methodForGetEquivalentPolicy(method: string): string {
   return method === 'HEAD' ? 'GET' : method;
@@ -1299,7 +1335,7 @@ export function createDomainGateway(
         // configuration incident (#7277).
         emitRequest(500, 'hmac_secret_unconfigured', null);
         return new Response(
-          JSON.stringify({ error: 'CONFIGURATION', detail: 'MCP_INTERNAL_HMAC_SECRET not configured' }),
+          JSON.stringify({ error: 'CONFIGURATION' }),
           { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
         );
       }
@@ -1708,8 +1744,11 @@ export function createDomainGateway(
     // validateApiKey is strict-no-trust-of-headers per #3541 and would 401 every
     // Clerk-authenticated user who hasn't also minted a wms_ session token.
     // Override: routes that deliberately resolved a sessionUserId pass this layer.
+    // Never for a legacy Pro bearer route: a session proves identity, not Pro,
+    // and skipping that gate would hand a free account the premium handler.
     if (
       (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution) &&
+      !needsLegacyProBearerGate &&
       sessionUserId &&
       keyCheck.required &&
       !keyCheck.valid
@@ -2325,6 +2364,21 @@ export function createDomainGateway(
       return pendingPostToGetCompatError;
     }
 
+    // Held from reservation until the outcome is known. reserveDirectLlmQuota
+    // charges the caller's daily allowance up front (INCR before the handler
+    // runs); every path below that ends without serving an answer releases
+    // it through this handle instead of leaving the slot spent (#5147, and
+    // the same defect api/chat-analyst.ts fixed for its own reservation in
+    // #7217). rollback is idempotent, so calling it from more than one exit
+    // path is safe.
+    let directLlmRollback: (() => Promise<void>) | null = null;
+    const releaseDirectLlmReservation = async (): Promise<void> => {
+      const rollback = directLlmRollback;
+      directLlmRollback = null;
+      pendingDirectLlmReservations.delete(originalRequest);
+      if (rollback) await rollback();
+    };
+
     if (requiresDirectLlmQuota && !isEnterpriseAuth) {
       // The Docker principal is deliberately derived from nginx's trusted
       // X-Real-IP value (docker/nginx.conf stamps $remote_addr), not from the
@@ -2378,6 +2432,8 @@ export function createDomainGateway(
           );
           return response;
         }
+        directLlmRollback = reservation.rollback;
+        pendingDirectLlmReservations.set(originalRequest, reservation.rollback);
       }
     }
 
@@ -2393,17 +2449,24 @@ export function createDomainGateway(
         idempotencyKey: request.headers.get(IDEMPOTENCY_HEADER) ?? '',
         corsHeaders,
       });
+      // The peek above ran before the reservation, so these short-circuits
+      // only fire when a concurrent request for the same key completed in
+      // between. None of them executes the handler; give the slot back.
       switch (idempotency.kind) {
         case 'invalid':
+          await releaseDirectLlmReservation();
           emitRequest(400, 'idempotency_invalid', null);
           return idempotency.response;
         case 'replay':
+          await releaseDirectLlmReservation();
           emitRequest(idempotency.response.status, 'idempotent_replay', null);
           return idempotency.response;
         case 'conflict':
+          await releaseDirectLlmReservation();
           emitRequest(409, 'idempotency_conflict', null);
           return idempotency.response;
         case 'mismatch':
+          await releaseDirectLlmReservation();
           emitRequest(422, 'idempotency_mismatch', null);
           return idempotency.response;
         // 'disabled' (fail-open) and 'proceed' fall through to execution.
@@ -2465,6 +2528,17 @@ export function createDomainGateway(
     }
     appendDeprecationPolicyLink(mergedHeaders);
     const retryableResponse = drainRetryableResponse(requestForHandler);
+
+    // Release the direct-LLM reservation when the request was not served: the
+    // handler threw (500 above), returned any 4xx/5xx, reported a retryable
+    // error inside a 200 envelope, or degraded to an empty LLM result and
+    // said so via markUnservedLlmResponse. A delivered answer, cached or
+    // partial, stays charged. Drained unconditionally so a marker set on a
+    // request that carried no reservation cannot leak into a later decision.
+    const unservedLlmResponse = drainUnservedLlmResponse(requestForHandler);
+    if (directLlmRollback && (response.status >= 400 || retryableResponse || unservedLlmResponse)) {
+      await releaseDirectLlmReservation();
+    }
     attachRequiredBboxDiagnosticHeaders(mergedHeaders, pathname, requiredBboxDiagnostic);
 
     // Handler side-channel status override (setSuccessStatusOverride): applied
@@ -2587,6 +2661,8 @@ export function createDomainGateway(
           }
         }
         if (!projection.ok) {
+          // The handler completed its work. A caller-controlled projection
+          // failure must not refund it and bypass the daily provider-spend cap.
           const errorBody = JSON.stringify(projection.envelope);
           emitRequest(400, 'malformed_request', null, errorBody.length);
           maybeAttachDevHealthHeader(mergedHeaders);
@@ -2683,7 +2759,20 @@ export function createDomainGateway(
   }
 
   return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
-    const response = await dispatch(originalRequest, ctx);
+    let response: Response;
+    try {
+      response = await dispatch(originalRequest, ctx);
+    } catch (err) {
+      // dispatch() threw after charging a direct-LLM reservation and before
+      // producing a response: nothing was served, so the slot goes back.
+      const rollback = pendingDirectLlmReservations.get(originalRequest);
+      if (rollback) {
+        pendingDirectLlmReservations.delete(originalRequest);
+        await rollback();
+      }
+      throw err;
+    }
+    pendingDirectLlmReservations.delete(originalRequest);
     return originalRequest.method === 'HEAD' ? toHeadResponse(response) : response;
   };
 }

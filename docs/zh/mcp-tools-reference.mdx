@@ -1227,6 +1227,49 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `verify_claim`
+
+针对一条说法或标题的证据卡。在实时摘要中找出报道同一事件的话题簇（一个事件常分布在多个簇中），并基于匹配簇给出 WorldMonitor 的覆盖判定。当簇中某条标题包含说法中至少一半的实义词且至少两个时即视为匹配；最多保留匹配度最高的 8 个簇。判定由 `assessCorroboration` 对所有匹配标题计算，因此同一发布方的转载源只计一次。
+
+返回 `found`、`state`（覆盖判定；已检索摘要但没有任何报道时为 `not-found`；摘要为空或不可用、未进行检索时为 `unknown` 且 `found: false`）、`corroboration`（`single-publisher`、`tier4-only`、`corroborated`、`unknown`）、带声明层级的 `publishers` 名单、最多 10 条带来源溯源信息的匹配 `headlines`、最佳匹配的 `credibilityScore`、`firstSeen` / `lastUpdated`，以及 `figures`：用简报溯源规则核对说法中的数字和日期是否出现在匹配标题中。`figures.ungrounded` 列出没有任何匹配标题提及的数字，并不表示该数字错误。`found: false` 表示没有匹配：`state` 为 `not-found` 时，该说法不在 WorldMonitor 当前的来源中；为 `unknown` 时，表示未进行检索。它绝不表示该说法为假。每个响应都带有相同的 `caveat`：衡量的是覆盖情况，而非准确性。
+
+`factChecks` 引用事实核查机构已就相似说法发布的评级。WorldMonitor 不对说法作出评级，只像引用通讯社报道一样注明出处地引用这些评级。每一项给出事实核查机构（`publisher`、`site`）、其原样评级 `rating`、发布日期 `reviewedAt`、链接 `url` 以及其所评级的说法 `claimReviewed`，并以 `label` 引出：这是对相似说法的事实核查，而非对本说法的核查。规则如下：
+
+- 仅限 [IFCN 原则准则](https://github.com/IFCN/verified-signatories)的认证签署机构，名单保存在 `shared/fact-checkers.json` 中，并像来源层级一样接受审核。以链接本身的域名为准，而非数据源报告的名称。
+- 仅显示强匹配：说法与被评级的说法须各自包含对方至少 60% 的实义词，且至少共有三个实义词。较弱的匹配不显示任何内容。
+- 英文事实核查，不限年份，按时间由新到旧排列。相互矛盾的评级全部列出，不作取舍。
+- 无论说法出自何人，规则均相同：匹配逻辑中不涉及任何人物、党派、话题或国家。
+- 评级绝不会改变 `state`、`corroboration` 或卡片中的任何其他内容。
+
+查询已执行时 `factChecks.state` 为 `ok`（此时 `items` 为空表示未找到）；未执行时为 `unavailable` 或 `not-configured`。查询失败绝不会导致工具调用失败。评级来自 Google Fact Check Tools API。
+
+**参数（工具专属）：**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `claim` | string | 要核查的说法或标题，最多 300 个字符。必填。 |
+| `variant` | `string: full / tech` | 要搜索的标题摘要变体。默认为 full。 |
+
+- **API 端点：** `GET /api/news/v1/list-feed-digest`、`GET /api/news/v1/search-fact-checks`
+- **访问：** `subscription` — 需要 Pro 订阅。
+- **类型：** 基于实时摘要窗口的确定性本地计算，并非历史索引。不使用 LLM。
+- **配额：** 标准 — 每次调用都会消耗 MCP 每日配额。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"verify_claim","arguments":{"claim":"Trump strikes diesel deal with Putin"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_keyword_spikes`
 
 相对基线的关键词、CVE 与 APT/FIN 威胁组织飙升趋势，使用与仪表盘趋势关键词引擎相同的词项候选与飙升判定数学（最低近期计数、严格基线倍数、来源多样性门槛）。每条飙升包含 `sourceNames`（有对照表时为出版机构名称，否则为原始 feed 标签）以及最多三条 `{title, source, link}` 形式的 `sampleHeadlines`，以便代理归因并打开计数背后的报道。样本上的 `source` 是承载该折叠标题的全部出版机构；`link` 是规范的 `story:track:v1` URL，不一定属于某一个具名来源。工具会分别查询近期窗口与窗口前的基线数据，每组最多 800 条故事，因此高流量的近期窗口不会挤占基线样本。`baseline_hours` 报告实际采样的窗口前基线时长；`sample_truncated: true` 表示任一数据组触及上限。若没有窗口前故事，工具会返回空的飙升列表与明确的 `baseline unavailable` 说明，并且不会缓存该结果。结果按 `(window_hours, min_count)` 组合缓存 10 分钟。

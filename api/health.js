@@ -1042,7 +1042,7 @@ const SEED_META = {
       sources: ['nws', 'eccc', 'swic'],
     },
   },
-  // Credential-gated seeder (#7005). This is an activation-marker cutover
+  // Public-bulletin seeder (#7005, #7730). This is an activation-marker cutover
   // rather than a 24h expiring acknowledgement.
   // Softening stays on-demand until the durable marker is written.
   imdCycloneMarine: {
@@ -3309,10 +3309,6 @@ function classifyKey(name, redisKey, opts, ctx) {
   const rankableRecordCount = name === 'educationAttainment' && Object.hasOwn(ctx, 'educationPayloadRankableCount')
     ? ctx.educationPayloadRankableCount
     : metaRankableCount;
-  const sourceUnavailableAfterActivation = sourceUnavailable
-    && name === 'imdCycloneMarine'
-    && errorCode !== 'IMD_API_KEY_MISSING'
-    && ctx.activationStates?.get(name) === true;
 
   // Pending activation: the producer has never published a contentFreshness
   // block, so this deployment simply predates the feature. Softened only for
@@ -3359,8 +3355,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   // Skipped entirely for an unconfigured adapter, which by the NOT_CONFIGURED
   // rule below has nothing to be degraded ABOUT — so it also publishes no cause.
   let fault = null;
-  if (sourceUnavailableAfterActivation) fault = 'SEED_ERROR';
-  else if (!sourceUnavailable) {
+  if (!sourceUnavailable) {
     if (sourceBlocked && name !== 'crossStraitActivityJapanMod') {
       // Keep the fleet-wide escape hatch narrow: only the Japan MOD adapter has
       // a reviewed-data contract and explicit two-path proof for this state.
@@ -3379,7 +3374,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   // key each run (recordCount 0) so operators can see the adapter is dormant, and
   // the moment the credential lands the next run reports sourceState 'ok' and this
   // flips to OK on its own — no health-config change needed.
-  if (sourceUnavailable && !sourceUnavailableAfterActivation) status = 'NOT_CONFIGURED';
+  if (sourceUnavailable) status = 'NOT_CONFIGURED';
   else if (!hasData) {
     // The absence verdict, decided on its own merits and independently of any
     // fault above. Note the two live SIDE BY SIDE here: seed-meta outlives its
@@ -5193,9 +5188,11 @@ export async function handleHealth(req, ctx, options = {}) {
     // A read cut short by the request deadline is not a Redis outage.
     if (budget.exhausted()) return deadlineFallback();
     if (ownsSnapshotRefreshLock) await releaseHealthVerdictRefreshLock(refreshLockToken);
+    // sentry-coverage-ok Redis read failures return HTTP 503 for health monitors.
+    console.error('[health] Redis read failed:', err?.message ?? err);
     return jsonResponse({
       status: 'REDIS_DOWN',
-      error: err.message,
+      error: 'Redis unavailable',
       checkedAt: new Date(now).toISOString(),
     }, 503, headers);
   }
@@ -5254,9 +5251,11 @@ export async function handleHealth(req, ctx, options = {}) {
     // monitor (UptimeRobot, k8s probe, LB) must see a failure. DEGRADED/
     // UNHEALTHY/WARNING stay 200 (verdict in body) so warn-level seed jitter
     // doesn't flap HTTP monitors — see #2699 and the always-200 main response.
+    // sentry-coverage-ok Redis read failures return HTTP 503 for health monitors.
+    console.error('[health] Redis read failed:', err?.message ?? err);
     return jsonResponse({
       status: 'REDIS_DOWN',
-      error: err.message,
+      error: 'Redis unavailable',
       checkedAt: new Date(now).toISOString(),
     }, 503, headers);
   }

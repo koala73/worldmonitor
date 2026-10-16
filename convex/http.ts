@@ -578,6 +578,27 @@ http.route({
   }),
 });
 
+// Shows enough of the account email for its owner to recognise it, without
+// handing a stranger who opens a forwarded link the full address.
+function maskEmail(email: string): string {
+  const at = email.lastIndexOf("@");
+  if (at <= 0) return "(hidden)";
+  const local = email.slice(0, at);
+  return `${local.slice(0, Math.min(2, local.length))}***${email.slice(at)}`;
+}
+
+async function telegramBotCall(botToken: string, method: string, body: Record<string, unknown>): Promise<void> {
+  // Awaited because HTTP actions end when the handler returns.
+  await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "User-Agent": "worldmonitor-convex/1.0" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000),
+  }).catch((err: unknown) => {
+    console.error(`[telegram-webhook] ${method} failed:`, err);
+  });
+}
+
 http.route({
   path: "/api/telegram-pair-callback",
   method: "POST",
@@ -614,8 +635,50 @@ http.route({
         text?: string;
         date?: number;
       };
+      callback_query?: {
+        id?: string;
+        from?: { id?: number };
+        data?: string;
+        message?: { chat?: { type?: string; id?: number }; message_id?: number };
+      };
     }>(request);
     if (!update) {
+      return new Response("OK", { status: 200 });
+    }
+
+    const botToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
+    const isPrivateChatId = (id: unknown): id is number =>
+      typeof id === "number" && Number.isSafeInteger(id) && id > 0;
+
+    // Step 2: the Confirm button pressed in the chat that sent /start.
+    const callback = update.callback_query;
+    if (callback) {
+      const chat = callback.message?.chat;
+      const confirm = typeof callback.data === "string"
+        ? callback.data.match(/^wmpair:([A-Za-z0-9_-]{40,50})$/)
+        : null;
+      // In a private chat the chat id is the user id, so requiring both to
+      // match means only the person in that chat can confirm it.
+      if (!confirm?.[1] || chat?.type !== "private" || !isPrivateChatId(chat.id) || callback.from?.id !== chat.id) {
+        return new Response("OK", { status: 200 });
+      }
+      const chatId = String(chat.id);
+      const claimed = await ctx.runMutation(internal.notificationChannels.claimPairingToken, {
+        token: confirm[1],
+        chatId,
+      });
+      if (botToken) {
+        await telegramBotCall(botToken, "answerCallbackQuery", {
+          callback_query_id: callback.id,
+          text: claimed.ok ? "Connected" : "This link has expired. Start again from WorldMonitor settings.",
+        });
+        if (claimed.ok) {
+          await telegramBotCall(botToken, "sendMessage", {
+            chat_id: chatId,
+            text: "✅ WorldMonitor connected! You'll receive breaking news alerts here.",
+          });
+        }
+      }
       return new Response("OK", { status: 200 });
     }
 
@@ -623,7 +686,7 @@ http.route({
     if (!msg) return new Response("OK", { status: 200 });
 
     if (msg.chat?.type !== "private") return new Response("OK", { status: 200 });
-    if (typeof msg.chat.id !== "number" || !Number.isSafeInteger(msg.chat.id) || msg.chat.id <= 0) {
+    if (!isPrivateChatId(msg.chat.id)) {
       return new Response("OK", { status: 200 });
     }
 
@@ -638,24 +701,29 @@ http.route({
     const match = text.match(/^\/start\s+([A-Za-z0-9_-]{40,50})$/);
     if (!match?.[1]) return new Response("OK", { status: 200 });
 
-    const claimed = await ctx.runMutation(internal.notificationChannels.claimPairingToken, {
+    // Step 1: record the chat and ask it to confirm. Nothing is bound yet.
+    const staged = await ctx.runMutation(internal.notificationChannels.stagePairingToken, {
       token: match[1],
       chatId,
     });
 
-    // Send welcome on successful first/re-pair — must be awaited in HTTP actions
-    const botToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
-    if (claimed.ok && botToken) {
-      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "User-Agent": "worldmonitor-convex/1.0" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: "✅ WorldMonitor connected! You'll receive breaking news alerts here.",
-        }),
-        signal: AbortSignal.timeout(8000),
-      }).catch((err: unknown) => {
-        console.error("[telegram-webhook] sendMessage failed:", err);
+    if (staged.ok && staged.userId && botToken) {
+      let accountEmail: string | undefined;
+      try {
+        accountEmail = await lookupVerifiedAccountEmail(staged.userId, { allowMissingUser: true });
+      } catch {
+        accountEmail = undefined;
+      }
+      const account = accountEmail ? `the WorldMonitor account ${maskEmail(accountEmail)}` : "a WorldMonitor account";
+      await telegramBotCall(botToken, "sendMessage", {
+        chat_id: chatId,
+        text:
+          `Connect this chat to ${account}?\n\n` +
+          "Only confirm if you started this from your own WorldMonitor settings. " +
+          "If someone sent you this link, ignore this message.",
+        reply_markup: {
+          inline_keyboard: [[{ text: "Confirm", callback_data: `wmpair:${match[1]}` }]],
+        },
       });
     }
 
@@ -722,11 +790,27 @@ http.route({
       });
     }
 
-    const channels = await ctx.runQuery((internal as any).notificationChannels.getChannelsByUserId, {
-      userId: body.userId,
-    });
+    const channels: Array<{ channelType?: string; email?: string }> =
+      await ctx.runQuery((internal as any).notificationChannels.getChannelsByUserId, {
+        userId: body.userId,
+      }) ?? [];
 
-    return new Response(JSON.stringify(channels ?? []), {
+    // Delivery workers send alert and digest mail to whatever this returns.
+    // Drop email channels whose address bounced, complained or was suppressed
+    // by an operator, so those sends stop like every other Resend sender.
+    const deliverable = [];
+    for (const channel of channels) {
+      if (channel.channelType === "email" && typeof channel.email === "string" && channel.email
+        && await ctx.runQuery(internal.emailSuppressions.isEmailSuppressed, {
+          email: channel.email,
+          purpose: "transactional",
+        })) {
+        continue;
+      }
+      deliverable.push(channel);
+    }
+
+    return new Response(JSON.stringify(deliverable), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
@@ -749,6 +833,7 @@ http.route({
       chatId?: string;
       webhookEnvelope?: string;
       webhookLabel?: string;
+      webhookSecret?: string;
       email?: string;
       variant?: string;
       enabled?: boolean;
@@ -798,7 +883,13 @@ http.route({
           ctx.runQuery((internal as any).notificationChannels.getChannelsByUserId, { userId }),
           ctx.runQuery((internal as any).alertRules.getAlertRulesByUserId, { userId }),
         ]);
-        return new Response(JSON.stringify({ channels: channels ?? [], alertRules: alertRules ?? [] }), {
+        // The signing secret is only ever shown once, at registration; the
+        // settings UI needs to know whether a webhook is signed, not the key.
+        const visibleChannels = (channels ?? []).map(
+          ({ webhookSecret, ...channel }: { webhookSecret?: string; [key: string]: unknown }) =>
+            channel.channelType === "webhook" ? { ...channel, webhookSigned: Boolean(webhookSecret) } : channel,
+        );
+        return new Response(JSON.stringify({ channels: visibleChannels, alertRules: alertRules ?? [] }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
@@ -834,6 +925,7 @@ http.route({
           email: body.email,
           verifiedAccountEmail,
           webhookLabel: body.webhookLabel,
+          webhookSecret: body.channelType === "webhook" ? body.webhookSecret : undefined,
           scheduleWelcome: body.scheduleWelcome === true,
         });
         return new Response(JSON.stringify({
@@ -1276,6 +1368,19 @@ function touchIsDue(lastUsedAt: unknown): boolean {
   return typeof lastUsedAt !== "number" || lastUsedAt <= Date.now() - TOUCH_DEBOUNCE_MS;
 }
 
+// The gate cannot stop a burst: every parallel validation that lands before
+// the first touch commits still sees a stale lastUsedAt, and touches scheduled
+// for the same instant conflict N-1 times (560 OCC conflicts in 72h across
+// userApiKeys + mcpProTokens, Convex Insights 2026-10). A random delay makes
+// the rest start after the first commits, read it, and no-op, except a touch
+// that lands within its ~20ms run: about (N-1) x 20ms / 30s per burst. On a
+// local backend, herds of 5 went from 4 conflicts each to 0.
+const TOUCH_SPREAD_MS = 30_000;
+
+function touchDelayMs(): number {
+  return Math.floor(Math.random() * TOUCH_SPREAD_MS);
+}
+
 // Service-to-service: validate a user API key by its SHA-256 hash.
 // Called by the Vercel edge gateway to look up user-owned keys.
 http.route({
@@ -1313,7 +1418,7 @@ http.route({
 
     if (result && touchIsDue(result.lastUsedAt)) {
       try {
-        await ctx.scheduler.runAfter(0, (internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
+        await ctx.scheduler.runAfter(touchDelayMs(), (internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
       } catch (err) {
         // sentry-coverage-ok: re-throwing here would 500 the gateway, which coerces to null
         // and stamps a 60s negative-cache sentinel for a valid key. lastUsedAt is best-effort telemetry.
@@ -1415,7 +1520,7 @@ http.route({
 
     if (result && touchIsDue(result.lastUsedAt)) {
       try {
-        await ctx.scheduler.runAfter(0, (internal as any).embedKeys.touchKeyLastUsed, { keyId: result.id });
+        await ctx.scheduler.runAfter(touchDelayMs(), (internal as any).embedKeys.touchKeyLastUsed, { keyId: result.id });
       } catch (err) {
         // sentry-coverage-ok: re-throwing here would 500 the edge validator, which
         // coerces to null and stamps a negative-cache sentinel for a valid key.
@@ -1544,7 +1649,7 @@ http.route({
       if (result && touchIsDue(result.lastUsedAt)) {
         try {
           await ctx.scheduler.runAfter(
-            0,
+            touchDelayMs(),
             (internal as any).mcpProTokens.touchProMcpTokenLastUsed,
             { tokenId: body.tokenId },
           );

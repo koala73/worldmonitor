@@ -19,11 +19,20 @@ import {
   COMPARISON_MEASUREMENTS,
   COMPARISON_NARRATIVES,
 } from './comparison-page-narratives.mjs';
+import {
+  SHORTLIST_LAYOUT,
+  SHORTLIST_MATRIX_COLUMNS,
+  SHORTLIST_PAGE_SEEDS,
+  UNIVERSAL_COLUMN_COUNT,
+  WORLD_MONITOR_UPDATE_CADENCE,
+  renderShortlistPage,
+  shortlistPage,
+} from './comparison-shortlist.mjs';
 import { computeStats } from './docs-stats.mjs';
 import { renderRelatedReading } from './related-reading.mjs';
 
 /** Bump when hub or child copy changes so lastmod advances without touching every sibling. */
-export const COMPARISONS_CONTENT_VERSION = '2026-09-10';
+export const COMPARISONS_CONTENT_VERSION = '2026-10-14';
 
 // Editorial route choices: compare event datasets on conflict-country pages,
 // mapping tools on crisis pages, and delivery options on operational workflows.
@@ -55,7 +64,7 @@ function comparisonAnchor(slug, escapeHtml) {
   const page = COMPARISON_PAGES.find((entry) => entry.slug === slug);
   if (!page) throw new Error(`Unknown comparison link: ${slug}`);
   let label = page.h1;
-  if (slug === 'best-geopolitical-risk-dashboards') label = 'Geopolitical risk dashboard comparison';
+  if (slug === 'best-geopolitical-risk-dashboards') label = 'Best geopolitical risk intelligence platforms';
   else if (slug.startsWith('worldmonitor-vs-')) label = `World Monitor vs ${page.competitors[0]}`;
   return `<a href="${page.path}">${escapeHtml(label)}</a>`;
 }
@@ -92,11 +101,16 @@ export const COMPARISON_MATRIX_COLUMNS = [
   'Best for',
 ];
 
+const shortlistUniversalColumns = SHORTLIST_MATRIX_COLUMNS.slice(0, UNIVERSAL_COLUMN_COUNT).map(([label]) => label);
+if (shortlistUniversalColumns.join('|') !== COMPARISON_MATRIX_COLUMNS.join('|')) {
+  throw new Error('shortlist matrix must open with COMPARISON_MATRIX_COLUMNS, got ' + shortlistUniversalColumns.join(', '));
+}
+
 export const COMPARE_HUB_PATH = '/compare/';
 export const COMPARE_HUB_TITLE = 'Compare World Monitor';
 export const COMPARE_HUB_DESCRIPTION =
   'Compare World Monitor with Liveuamap, ACLED, GDELT, Dataminr, Recorded Future, and more: one master matrix, honest concessions, and FAQs.';
-export const WORLD_MONITOR_UPDATE_CADENCE = 'Source-dependent: live and minute-level feeds plus daily, weekly, and monthly datasets';
+export { WORLD_MONITOR_UPDATE_CADENCE };
 export const MCP_UNVERIFIED = 'Unverified';
 export const WORLD_MONITOR_CHOKEPOINT_COUNT = CHOKEPOINT_REGISTRY.length;
 // computeStats, not loadStatsForInventoryFacts: a drifted attribution
@@ -112,16 +126,16 @@ const MCP_VERIFIED_SELF_HOSTED = 'Yes (self-hosted)';
 /** Master matrix rows on the hub: one row per major platform compared anywhere in the family. */
 export const COMPARISON_HUB_MATRIX_ROWS = [
   ['World Monitor', '$0 dashboard; API from $99.99/mo (1,000 req/day); MCP from $39.99/mo (Pro)', WORLD_MONITOR_UPDATE_CADENCE, 'Conflict, maritime AIS, aviation, markets, cyber, climate', 'No', 'From $99.99/mo (API Starter)', 'From $39.99/mo (Pro)', 'AGPL-3.0', WORLD_MONITOR_SOURCE_COUNT_CELL, 'Live + rolling published snapshots', 'Multi-domain awareness plus programmatic access'],
-  ['Liveuamap', 'Free tier; API Pro $150/mo (200 req/day); Enterprise from $1,000/mo', 'Near-real-time conflict events', 'Conflict events', 'No', 'Yes (paid)', MCP_UNVERIFIED, 'Proprietary, ad-funded', 'Curated public conflict feeds', 'Rolling conflict-event archive', 'Fast conflict-event headlines on a map'],
+  ['Liveuamap', 'Free tier; API Pro $150/mo (200 req/day); Enterprise from $1,000/mo', 'Live news feed (no latency figure published)', 'Conflict and security news, plus protests, disasters and weather', 'No', 'Yes (paid)', MCP_UNVERIFIED, 'Proprietary, ad-funded', 'Curated public and social media sources (count not published)', 'Recent events free; earlier history on PRO', 'Fast conflict-event headlines on a map'],
   ['ACLED (myACLED)', 'Open access available; commercial use requires a license', 'Tier-dependent: real-time aggregated to weekly disaggregated data', 'Conflict events, global', 'Yes (myACLED account)', 'Research, Partner, and Enterprise tiers', MCP_UNVERIFIED, 'ACLED EULA; commercial license required', 'ACLED-coded event data; tiered access', 'Event data from 1997', 'Academic conflict-event research'],
   ['GDELT Cloud', 'Free keyless DOC 2.0 REST; BigQuery for bulk', '15-minute global batches', 'Global news event firehose', 'No for REST; Google account for BigQuery', 'Yes', MCP_VERIFIED_COMMUNITY, 'Open dataset (GDELT)', 'Global news ingestion', 'Archive to 1979', 'Raw large-scale event research'],
   ['IMF PortWatch', 'Free', 'Event-triggered updates', '28 ports and chokepoints', 'No', 'Yes (API)', MCP_VERIFIED_COMMUNITY, 'Open data (IMF + Oxford)', 'IMF and Oxford academics', 'Archived transit snapshots', 'Authoritative chokepoint transit counts with bulk download'],
-  ['Dataminr', 'Enterprise-negotiated (undisclosed)', 'Seconds-to-minutes proprietary alerting', 'Breaking events across public and social data', 'Yes (enterprise)', 'Yes (enterprise)', MCP_UNVERIFIED, 'Proprietary', 'Proprietary ingestion incl. social', 'Enterprise alert archive', 'Enterprise real-time alerting with SLAs'],
-  ['Recorded Future', 'Enterprise-negotiated (undisclosed)', 'Continuous intelligence platform', 'Cyber, physical threat, geopolitical, country risk, and travel safety', 'Yes (enterprise)', 'Yes (enterprise)', MCP_UNVERIFIED, 'Proprietary', 'Proprietary + licensed sources', 'Enterprise intelligence archive', 'Enterprise threat and geopolitical intelligence'],
+  ['Dataminr', 'Enterprise-negotiated (undisclosed)', 'Real-time alerting (no latency figure published)', 'Breaking events across public and social data', 'Yes (enterprise)', 'Yes (enterprise)', MCP_UNVERIFIED, 'Proprietary', 'Proprietary ingestion incl. social', 'Not published', 'Enterprise real-time alerting with an availability SLA'],
+  ['Recorded Future', 'Enterprise-negotiated (undisclosed)', 'Continuous intelligence platform', 'Cyber, physical threat, geopolitical, country risk, and travel safety', 'Yes (enterprise)', 'Yes (enterprise)', 'Yes (hosted, customers only)', 'Proprietary', 'Proprietary collection (sources not itemized)', 'Enterprise intelligence archive', 'Enterprise threat and geopolitical intelligence'],
   ['Deep State Map', 'Free (ad-supported)', 'Manual analyst updates', 'Ukraine theatre', 'No', 'No', MCP_UNVERIFIED, 'Proprietary', 'Analyst-curated', 'Ukraine theatre archive', 'Ukraine frontline tracking'],
   ['OrreryX', 'From $1.99/mo (published tiers to $34.99/mo)', 'Periodic updates', 'Geopolitical risk', 'Yes', 'Unknown', MCP_UNVERIFIED, 'Proprietary', 'Analyst research', 'Unknown', 'Consultative risk analysis with a published price ladder'],
   ['ICG CrisisWatch', 'Free', 'Monthly publication', '70+ conflicts worldwide', 'No', 'No', MCP_UNVERIFIED, 'Proprietary (free publications)', 'Analyst-authored', 'Archive to 2003', 'Expert conflict early-warning briefs'],
-  ['Crisis24', 'Undisclosed (enterprise-negotiated)', '24/7 analyst desk', 'Travel risk alerts + assistance', 'Yes (enterprise)', 'Yes (enterprise)', MCP_UNVERIFIED, 'Proprietary', 'Analyst network', 'Alert archive', 'Duty-of-care alerting with assistance coordination'],
+  ['Crisis24', 'Undisclosed (enterprise-negotiated)', '24/7 analyst desk', 'Travel risk alerts + assistance', 'Yes (enterprise)', 'Yes (enterprise)', MCP_UNVERIFIED, 'Proprietary', 'Analyst network', 'Not published', 'Duty-of-care alerting with assistance coordination'],
   ['International SOS', 'Undisclosed (enterprise-negotiated)', '24/7 assistance centers', 'Medical and security assistance', 'Yes (enterprise)', 'Yes (enterprise)', MCP_UNVERIFIED, 'Proprietary', 'Global assistance network', 'Case archive', 'Assistance delivery: medical evacuation and response'],
 ];
 
@@ -148,7 +162,7 @@ const COMPARISON_PAGE_SEEDS = [
     summary: 'Eleven-column matrix comparing World Monitor with Liveuamap, Deep State Map, ACLED, ConflictZone.io, ISW, UNOSAT and ICG CrisisWatch on price, latency, API access and licensing, with the cells each competitor wins.',
     matrixRows: [
       ['World Monitor', '$0 dashboard; API from $99.99/mo (1,000 req/day); MCP from $39.99/mo (Pro)', WORLD_MONITOR_UPDATE_CADENCE, 'Conflict, maritime AIS, aviation, markets, seismic, cyber, climate', 'No', 'From $99.99/mo (API Starter)', 'From $39.99/mo (Pro)', 'AGPL-3.0', WORLD_MONITOR_SOURCE_COUNT_CELL, 'Live + rolling published snapshots', 'Multi-domain situational awareness on one map'],
-      ['Liveuamap', 'Free tier; API Pro $150/mo (200 req/day); Enterprise from $1,000/mo', 'Near-real-time conflict events', 'Conflict events only', 'No', 'Pro $150/mo (200 req/day); Enterprise from $1,000/mo', MCP_UNVERIFIED, 'Proprietary, ad-funded', 'Curated public conflict feeds', 'Rolling conflict-event archive', 'Fast conflict-event headlines on a map'],
+      ['Liveuamap', 'Free tier; API Pro $150/mo (200 req/day); Enterprise from $1,000/mo', 'Live news feed (no latency figure published)', 'Conflict and security news, plus protests, disasters and weather', 'No', 'Pro $150/mo (200 req/day); Enterprise from $1,000/mo', MCP_UNVERIFIED, 'Proprietary, ad-funded', 'Curated public and social media sources (count not published)', 'Recent events free; earlier history on PRO', 'Fast conflict-event headlines on a map'],
       ['Deep State Map (free)', 'Free (ad-supported)', 'Manual analyst updates', 'Ukraine theatre', 'No', 'No', MCP_UNVERIFIED, 'Proprietary', 'Analyst-curated', 'Ukraine theatre archive', 'Ukraine frontline tracking'],
       ['ACLED (myACLED)', 'Open access available; commercial use requires a license', 'Tier-dependent: real-time aggregated to weekly disaggregated data', 'Conflict events, global', 'Yes (myACLED account)', 'Research, Partner, and Enterprise tiers', MCP_UNVERIFIED, 'ACLED EULA; commercial license required', 'ACLED-coded event data; tiered access', 'Event data from 1997', 'Academic conflict-event research'],
       ['ConflictZone.io', 'Free', 'Near-real-time conflict events', 'Conflict events', 'No', 'No', MCP_UNVERIFIED, 'Proprietary', 'Curated public feeds', 'Rolling archive', 'Conflict events with cited pricing'],
@@ -171,45 +185,7 @@ const COMPARISON_PAGE_SEEDS = [
       ['Which Liveuamap alternative has an API?', 'Both publish one. World Monitor API Starter is $99.99/month for 1,000 requests/day; Liveuamap Pro is $150/month for 200 requests/day, with Enterprise from $1,000/month. ICG CrisisWatch and ConflictRadar have unverified public API status; ACLED provides API access through its Research, Partner, and Enterprise tiers.'],
     ],
   },
-  {
-    slug: 'best-geopolitical-risk-dashboards',
-    path: '/compare/best-geopolitical-risk-dashboards/',
-    title: 'Best Real-Time Geopolitical Risk Dashboards | World Monitor',
-    h1: 'Best Real-Time Geopolitical Risk Dashboards',
-    itemList: [
-      { name: 'World Monitor', position: 1 },
-      { name: 'BlackRock Geopolitical Risk Dashboard', position: 2 },
-      { name: 'IISS Six Analytic', position: 3 },
-      { name: 'OrreryX', position: 4 },
-      { name: 'the-world-now.com', position: 5 },
-      { name: 'Statista GPR Index', position: 6 },
-      { name: 'Earthian AI', position: 7 },
-    ],
-    competitors: ['BlackRock', 'IISS', 'OrreryX', 'the-world-now.com', 'Statista', 'Earthian AI'],
-    claim: 'Update latency at zero price',
-    summary: 'Real-time geopolitical risk dashboards ranked against BlackRock, IISS, OrreryX, the-world-now.com, Statista and Earthian AI on update latency, price and signup, with where the analyst products still win.',
-    matrixRows: [
-      ['World Monitor', '$0 dashboard; API from $99.99/mo (1,000 req/day); MCP from $39.99/mo (Pro)', WORLD_MONITOR_UPDATE_CADENCE, 'Conflict, maritime, aviation, markets, cyber, climate', 'No', 'From $99.99/mo (API Starter)', 'From $39.99/mo (Pro)', 'AGPL-3.0', WORLD_MONITOR_SOURCE_COUNT_CELL, 'Live + rolling published snapshots', 'Real-time monitoring at zero cost'],
-      ['BlackRock GRD', 'Client-only', 'Monthly or quarterly analyst updates', 'Geopolitical risk themes', 'Yes (client)', 'No', MCP_UNVERIFIED, 'Proprietary', 'Analyst research', 'Archived client publications', 'Institutional asset allocation context'],
-      ['IISS Six Analytic', 'Undisclosed (subscription)', 'Periodic analyst updates', 'Conflict and military balance', 'Yes (subscription)', 'No', MCP_UNVERIFIED, 'Proprietary', 'Analyst research', 'Archived publications', 'Military-balance depth with expert review'],
-      ['OrreryX', 'From $1.99/mo (published tiers to $34.99/mo)', 'Periodic updates', 'Geopolitical risk', 'Yes', 'Unknown', MCP_UNVERIFIED, 'Proprietary', 'Analyst research', 'Unknown', 'Consultative risk analysis'],
-      ['the-world-now.com', 'Free', 'Near-real-time events', 'Global events', 'No', 'No', MCP_UNVERIFIED, 'Proprietary', 'Curated feeds', 'Rolling archive', 'Event browsing'],
-      ['Statista GPR Index', 'Undisclosed (subscription)', 'Monthly index updates', 'Risk index only', 'Yes (account)', 'Partial (data export)', MCP_UNVERIFIED, 'Proprietary', 'Index compilation', 'Long index history', 'Quantitative risk-index series'],
-      ['Earthian AI', 'Undisclosed (subscription)', 'Periodic updates', 'Geopolitical risk', 'Yes', 'Unknown', MCP_UNVERIFIED, 'Proprietary', 'Unknown', 'Unknown', 'AI-assisted risk briefings'],
-    ],
-    concessionIntro: 'The incumbent dashboards win on things a free real-time map cannot give you. Those cells are listed here on purpose.',
-    concessions: [
-      ['BlackRock GRD and IISS', 'institutional analyst review, client research, and asset-allocation integration'],
-      ['IISS', 'the Military Balance archive and measured military-capability datasets'],
-      ['Statista', 'a long monthly GPR index history suitable for quantitative work'],
-    ],
-    whyWeWin: 'The incumbents are monthly or quarterly analyst products behind enterprise contracts. World Monitor refreshes continuously, is free without signup, and publishes the same comparison cells an engine needs to verify the claim.',
-    faqs: [
-      ['What is the best real-time geopolitical risk dashboard?', 'World Monitor is a leading free option: it combines live and minute-level feeds with slower source schedules across conflict, maritime, aviation, market, and cyber domains without signup. BlackRock GRD and IISS Six Analytic are stronger for institutional analyst research but update monthly or quarterly behind enterprise contracts.'],
-      ['Are there free geopolitical risk dashboards?', 'Yes. The World Monitor public dashboard is free, requires no signup, and covers conflict, maritime, aviation, markets, cyber, and climate domains in real time.'],
-      ['How fast does a geopolitical risk dashboard update?', 'The World Monitor public dashboard uses source-dependent schedules, from live and minute-level feeds to daily, weekly, and monthly datasets. Enterprise alternatives such as BlackRock GRD and IISS Six Analytic publish on monthly or quarterly analyst cycles.'],
-    ],
-  },
+  ...SHORTLIST_PAGE_SEEDS,
   {
     slug: 'worldmonitor-vs-liveuamap',
     path: '/compare/worldmonitor-vs-liveuamap/',
@@ -220,7 +196,7 @@ const COMPARISON_PAGE_SEEDS = [
     summary: 'Head-to-head on published numbers: World Monitor API Starter at $99.99/mo for 1,000 requests/day against Liveuamap Pro at $150/mo for 200, plus the domains only one side tracks.',
     matrixRows: [
       ['World Monitor', '$0 dashboard; API from $99.99/mo (1,000 req/day); MCP from $39.99/mo (Pro)', WORLD_MONITOR_UPDATE_CADENCE, 'Conflict, maritime AIS, aviation, markets, cyber, climate', 'No', 'From $99.99/mo (API Starter)', 'From $39.99/mo (Pro)', 'AGPL-3.0', WORLD_MONITOR_SOURCE_COUNT_CELL, 'Live + rolling published snapshots', 'Multi-domain awareness plus programmatic access'],
-      ['Liveuamap', 'Free tier; API Pro $150/mo (200 req/day); Enterprise from $1,000/mo', 'Near-real-time conflict events', 'Conflict events', 'No', 'Yes (paid API)', MCP_UNVERIFIED, 'Proprietary, ad-funded', 'Curated public conflict feeds', 'Rolling conflict-event archive', 'Fast conflict-event headlines'],
+      ['Liveuamap', 'Free tier; API Pro $150/mo (200 req/day); Enterprise from $1,000/mo', 'Live news feed (no latency figure published)', 'Conflict and security news, plus protests, disasters and weather', 'No', 'Yes (paid API)', MCP_UNVERIFIED, 'Proprietary, ad-funded', 'Curated public and social media sources (count not published)', 'Recent events free; earlier history on PRO', 'Fast conflict-event headlines'],
     ],
     concessionIntro: 'Liveuamap beats World Monitor on cells worth naming before choosing.',
     concessions: [
@@ -291,11 +267,11 @@ const COMPARISON_PAGE_SEEDS = [
     heading: 'Dataminr alternatives',
     matrixRows: [
       ['World Monitor', '$0 dashboard; API from $99.99/mo (1,000 req/day); MCP from $39.99/mo (Pro)', WORLD_MONITOR_UPDATE_CADENCE, 'Conflict, maritime, aviation, markets, cyber, climate', 'No', 'From $99.99/mo (API Starter)', 'From $39.99/mo (Pro)', 'AGPL-3.0', WORLD_MONITOR_SOURCE_COUNT_CELL, 'Live + rolling published snapshots', 'Real-time alerts at free or from $39.99/month (Pro)'],
-      ['Dataminr (Pulse)', 'Undisclosed (enterprise-negotiated)', 'Seconds-to-minutes proprietary alerting', 'Breaking events across public and social data', 'Yes (enterprise)', 'Yes (enterprise)', MCP_UNVERIFIED, 'Proprietary', 'Proprietary ingestion incl. social', 'Enterprise alert archive', 'Enterprise real-time alerting with SLAs'],
+      ['Dataminr (Pulse)', 'Undisclosed (enterprise-negotiated)', 'Real-time alerting (no latency figure published)', 'Breaking events across public and social data', 'Yes (enterprise)', 'Yes (enterprise)', MCP_UNVERIFIED, 'Proprietary', 'Proprietary ingestion incl. social', 'Not published', 'Enterprise real-time alerting with an availability SLA'],
     ],
     concessionIntro: 'Dataminr wins on cells that matter to enterprise buyers.',
     concessions: [
-      ['Dataminr', 'proprietary social-data ingestion, sub-minute alerting SLAs, and enterprise integration support'],
+      ['Dataminr', 'proprietary social-data ingestion, real-time alerting under a published availability SLA, and enterprise integration support'],
     ],
     whyWeWin: 'Dataminr does not publish list pricing; its licenses are enterprise-negotiated. World Monitor publishes its prices: $0 for the free dashboard, from $39.99/month for Pro with MCP access, and from $99.99/month for REST API access.',
     faqs: [
@@ -315,7 +291,7 @@ const COMPARISON_PAGE_SEEDS = [
     heading: 'Recorded Future alternatives',
     matrixRows: [
       ['World Monitor', '$0 dashboard; API from $99.99/mo (1,000 req/day); MCP from $39.99/mo (Pro)', WORLD_MONITOR_UPDATE_CADENCE, 'Conflict, maritime, aviation, markets, cyber, climate', 'No', 'From $99.99/mo (API Starter)', 'From $39.99/mo (Pro)', 'AGPL-3.0', WORLD_MONITOR_SOURCE_COUNT_CELL, 'Live + rolling published snapshots', 'Multi-domain awareness including cyber context'],
-      ['Recorded Future', 'Undisclosed (enterprise-negotiated)', 'Continuous intelligence platform', 'Cyber, physical threat, geopolitical, country risk, and travel safety', 'Yes (enterprise)', 'Yes (enterprise)', MCP_UNVERIFIED, 'Proprietary', 'Proprietary + licensed sources', 'Enterprise intelligence archive', 'Enterprise threat and geopolitical intelligence'],
+      ['Recorded Future', 'Undisclosed (enterprise-negotiated)', 'Continuous intelligence platform', 'Cyber, physical threat, geopolitical, country risk, and travel safety', 'Yes (enterprise)', 'Yes (enterprise)', 'Yes (hosted, customers only)', 'Proprietary', 'Proprietary collection (sources not itemized)', 'Enterprise intelligence archive', 'Enterprise threat and geopolitical intelligence'],
       ['Flare', 'Undisclosed (subscription)', 'Continuous', 'Cyber exposure and dark web', 'Yes', 'Yes', MCP_UNVERIFIED, 'Proprietary', 'Dark-web scans', 'Rolling exposure archive', 'Dark-web exposure monitoring'],
       ['MISP', 'Free (open source, self-hosted)', 'Self-managed', 'Threat-intel sharing', 'Yes (self-host)', 'Yes (self-host)', MCP_UNVERIFIED, 'Open source (AGPL)', 'Community + feeds', 'Self-managed retention', 'Threat-intel sharing communities'],
     ],
@@ -363,16 +339,17 @@ const COMPARISON_PAGE_SEEDS = [
     h1: 'MCP Servers for Geopolitical Data',
     competitors: ['world-intel-mcp', 'Satellite MCP', 'OSINT MCP', 'war-dashboard-data', 'GDELT Cloud MCP', 'Off-Nadir Delta', 'IMF PortWatch MCP'],
     claim: 'Hosted agent-native access',
+    metaDescription: 'Compare hosted World Monitor MCP with self-hosted geopolitical MCP servers on OAuth, quotas, country risk, tariffs, and multi-domain coverage.',
     summary: 'Hosted versus self-hosted MCP access to geopolitical data: World Monitor against world-intel-mcp, Satellite MCP, OSINT MCP, GDELT Cloud MCP and IMF PortWatch MCP on entitlements, quotas, OAuth and hosting burden.',
     heading: 'MCP servers for geopolitical data',
     matrixRows: [
-      ['World Monitor (hosted)', 'Free dashboard; MCP from $39.99/mo (Pro)', WORLD_MONITOR_UPDATE_CADENCE, 'Conflict, maritime AIS, aviation, markets, cyber, climate', 'No', 'From $99.99/mo (API Starter)', 'Yes (hosted, entitlements + quotas + OAuth)', 'AGPL-3.0', WORLD_MONITOR_SOURCE_COUNT_CELL, 'Live + rolling published snapshots', 'Hosted, governed multi-domain access for agents'],
+      ['World Monitor (hosted)', 'Free dashboard; MCP from $39.99/mo (Pro)', WORLD_MONITOR_UPDATE_CADENCE, 'Conflict, maritime AIS, aviation, markets, tariffs, cyber, climate', 'No', 'From $99.99/mo (API Starter)', 'Yes (hosted, entitlements + quotas + OAuth)', 'AGPL-3.0', WORLD_MONITOR_SOURCE_COUNT_CELL, 'Live + rolling published snapshots', 'Hosted, governed multi-domain access for agents'],
       ['world-intel-mcp', 'Free (MIT, self-hosted)', 'Upstream dependent', 'GDELT-derived event data', 'Self-host', 'GDELT-based', MCP_VERIFIED_SELF_HOSTED, 'MIT', 'Upstream public feeds', 'As retained', 'Self-hosted GDELT event surface'],
       ['Satellite MCP', 'Free (open source, self-hosted)', 'Pass-schedule dependent', 'Satellite imagery and passes', 'Self-host', 'Upstream dependent', MCP_VERIFIED_SELF_HOSTED, 'Open source', 'Public satellite catalogs', 'As retained', 'Satellite pass scheduling for self-hosters'],
       ['OSINT MCP', 'Free (open source, self-hosted)', 'Upstream dependent', 'OSINT tooling surface', 'Self-host', 'Upstream dependent', MCP_VERIFIED_SELF_HOSTED, 'Open source', 'Public OSINT sources', 'As retained', 'Broad OSINT tool surface for self-hosters'],
       ['war-dashboard-data', 'Free (open source, self-hosted)', '15-minute batches (GDELT upstream)', 'Conflict event dashboards', 'Self-host', 'GDELT-based', MCP_VERIFIED_SELF_HOSTED, 'Open source', 'GDELT-derived feeds', 'GDELT archive depth', 'Self-hosted GDELT-based war dashboard'],
       ['GDELT Cloud MCP', 'Free upstream; BigQuery for bulk', '15-minute global batches', 'Global news event firehose', 'No for REST; Google account for BigQuery', 'Yes', MCP_VERIFIED_COMMUNITY, 'Open dataset (GDELT)', 'Global news ingestion', 'Archive to 1979', 'Raw firehose volume in BigQuery'],
-      ['Off-Nadir Delta', 'Free (open source, self-hosted)', 'Upstream dependent', 'Imagery and geospatial tooling', 'Self-host', 'Upstream dependent', MCP_VERIFIED_SELF_HOSTED, 'Open source', 'Public imagery sources', 'As retained', 'Imagery tooling for self-hosters'],
+      ['Off-Nadir Delta', 'Free (200 tokens/mo, non-commercial); Starter $19/mo; Pro $59/mo (commercial)', "Paid: today's events as they come in; Free: up to the previous day", 'Geolocated events with satellite observability', 'Yes (free account)', 'Yes (all plans, token-metered)', 'Yes (hosted, OAuth 2.1, all plans)', 'Proprietary (Apache-2.0 MCP client and SDK)', 'Published list: news, hazard feeds, Sentinel, NISAR, VIIRS, FIRMS', 'Look-back: 30 days (Starter), full record (Pro)', 'Hosted event-to-satellite evidence for agents'],
       ['IMF PortWatch MCP', 'Free', 'Event-triggered updates', '28 ports and chokepoints', 'No', 'Yes (API)', MCP_VERIFIED_COMMUNITY, 'Open data (IMF + Oxford)', 'IMF and Oxford academics', 'Archived transit snapshots', 'Free authoritative chokepoint transit MCP'],
     ],
     concessionIntro: 'The self-hosted packs win the tool-count row outright, and it is not our axis: 171 and 120 tools beat our smaller hosted surface, stated openly.',
@@ -382,10 +359,10 @@ const COMPARISON_PAGE_SEEDS = [
       ['OSINT MCP (64 tools)', 'a wide OSINT tool surface outside our scope'],
       ['GDELT Cloud MCP', 'raw firehose volume and archive depth to 1979'],
     ],
-    whyWeWin: 'Self-hosted MCP packs wrap free APIs in scripts you must run, patch, and host. World Monitor is the hosted option: entitlements, quotas, OAuth, a published server-card, and an agent-skills index, so agents authenticate once and get governed access to live multi-domain data.',
+    whyWeWin: 'Self-hosted MCP packs wrap free APIs in scripts you must run, patch, and host. World Monitor is the hosted multi-domain option: entitlements, quotas, OAuth, a published server-card, and an agent-skills index, so agents authenticate once and get governed access to live multi-domain data.',
     faqs: [
       ['Which MCP server is best for geopolitical data?', 'World Monitor if you want hosted, governed access: entitlements, quotas, OAuth, a published server-card, and an agent-skills index over live multi-domain data. Self-hosted packs such as Satellite MCP (171 tools) and world-intel-mcp (120 tools) win on raw tool count and are free to fork.'],
-      ['Is there a hosted geopolitical MCP server?', 'Yes. World Monitor ships a hosted MCP server with entitlements, quotas, and OAuth, plus a published server-card and agent-skills index. Most alternatives are self-hosted scripts wrapping free APIs.'],
+      ['Is there a hosted geopolitical MCP server?', 'Yes. World Monitor ships a hosted MCP server with entitlements, quotas, and OAuth, plus a published server-card and agent-skills index. Off-Nadir Delta also runs a hosted server for event and satellite data. Most other alternatives are self-hosted scripts wrapping free APIs.'],
       ['Do self-hosted MCP packs cost anything?', 'The packs themselves are free and open source, but they wrap free APIs with rate limits and require you to run the server. World Monitor MCP access starts at $39.99/month (Pro) with entitlements and quotas handled for you.'],
     ],
   },
@@ -468,12 +445,12 @@ const COMPARISON_PAGE_SEEDS = [
     heading: 'Travel risk intelligence vs assistance',
     matrixRows: [
       ['World Monitor', '$0 dashboard; API from $99.99/mo (1,000 req/day); MCP from $39.99/mo (Pro)', WORLD_MONITOR_UPDATE_CADENCE, 'Conflict, maritime, aviation, markets, cyber, climate; travel-aware country risk', 'No', 'From $99.99/mo (API Starter)', 'From $39.99/mo (Pro)', 'AGPL-3.0', WORLD_MONITOR_SOURCE_COUNT_CELL, 'Live + rolling published snapshots', 'Always-on travel-aware intelligence layer'],
-      ['Crisis24', 'Undisclosed (enterprise-negotiated)', '24/7 analyst desk', 'Travel risk alerts + assistance', 'Yes (enterprise)', 'Yes (enterprise)', MCP_UNVERIFIED, 'Proprietary', 'Analyst network', 'Alert archive', 'Duty-of-care alerting with assistance coordination'],
+      ['Crisis24', 'Undisclosed (enterprise-negotiated)', '24/7 analyst desk', 'Travel risk alerts + assistance', 'Yes (enterprise)', 'Yes (enterprise)', MCP_UNVERIFIED, 'Proprietary', 'Analyst network', 'Not published', 'Duty-of-care alerting with assistance coordination'],
       ['International SOS', 'Undisclosed (enterprise-negotiated)', '24/7 assistance centers', 'Medical and security assistance', 'Yes (enterprise)', 'Yes (enterprise)', MCP_UNVERIFIED, 'Proprietary', 'Global assistance network', 'Case archive', 'Assistance delivery: medical evacuation and response'],
       ['Riskline', 'Undisclosed (enterprise-negotiated)', 'Periodic analyst updates', 'Travel risk reports', 'Yes', 'Unknown', MCP_UNVERIFIED, 'Proprietary', 'Analyst-authored', 'Report archive', 'Travel risk reports for travel programs'],
       ['Everbridge', 'Undisclosed (enterprise-negotiated)', 'Continuous mass notification', 'Critical event management', 'Yes (enterprise)', 'Yes (enterprise)', MCP_UNVERIFIED, 'Proprietary', 'Enterprise integrations', 'Incident archive', 'Mass notification and incident management'],
       ['Samdesk', 'Undisclosed (subscription)', 'Near-real-time social signal', 'Breaking event detection', 'Yes', 'Unknown', MCP_UNVERIFIED, 'Proprietary', 'Social + public data', 'Alert archive', 'Social-signal breaking-event detection'],
-      ['Factal', 'Undisclosed (subscription)', 'Near-real-time verification', 'Breaking news verification', 'Yes', 'Unknown', MCP_UNVERIFIED, 'Proprietary', 'Journalist-verified social signals', 'Verification archive', 'Journalist-verified breaking news'],
+      ['Factal', 'Not published (flat fee per team; 30-day free trial)', 'Not published', 'Journalist-verified incident alerts', 'Yes (contract)', 'Yes (described on vendor site)', MCP_UNVERIFIED, 'Proprietary', 'Not published', 'Incident data back to 2018 (vendor statement)', 'Journalist-verified incident alerts'],
     ],
     concessionIntro: 'The assistance providers win the response column outright, and no row pretends otherwise. International SOS runs 27 assistance centers; World Monitor has none, and claims none.',
     concessions: [
@@ -492,6 +469,7 @@ const COMPARISON_PAGE_SEEDS = [
 ];
 
 function applyComparisonNarrative(page) {
+  if (page.layout === SHORTLIST_LAYOUT) return shortlistPage(page);
   const narrative = COMPARISON_NARRATIVES[page.slug];
   if (!narrative) {
     throw new Error('Missing comparison narrative for ' + page.slug);
@@ -642,6 +620,16 @@ function renderMeasurement(slug, snapshotDate, escapeHtml) {
 }
 
 function renderComparePage(page, { tpl, baseUrl, lastmod, snapshotDate, relatedReading = [] }) {
+  if (page.layout === SHORTLIST_LAYOUT) {
+    return renderShortlistPage(page, {
+      tpl,
+      baseUrl,
+      lastmod,
+      snapshotDate,
+      relatedReading,
+      helpers: { renderMeasurement, faqPageLd, renderSiblingComparisons, renderRelatedReading },
+    });
+  }
   const { escapeHtml, breadcrumbLd, pageDocument } = tpl;
   const pageUrl = new URL(page.path, baseUrl).href;
   const description = page.metaDescription ?? (page.h1

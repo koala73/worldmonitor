@@ -269,8 +269,8 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     } },
     { name: 'Novaya Gazeta Europe', url: rss('https://novayagazeta.eu/feed/rss'), lang: 'ru' },
     { name: 'TASS', url: rss('https://news.google.com/rss/search?q=site:tass.com+OR+TASS+Russia+when:1d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'RT', url: rss('https://www.rt.com/rss/') },
-    { name: 'RT Russia', url: rss('https://www.rt.com/rss/russia/') },
+    { name: 'RT', url: rss('https://rt-english.com/rss/') },
+    { name: 'RT Russia', url: rss('https://rt-english.com/rss/russia/') },
     // English-language (no lang tag) — always EN-digest-reachable
     { name: 'Kyiv Independent', url: rss('https://news.google.com/rss/search?q=site:kyivindependent.com+when:3d&hl=en-US&gl=US&ceid=US:en') },
     // Ukraine depth pack (#5951) — local institutional + independent sources.

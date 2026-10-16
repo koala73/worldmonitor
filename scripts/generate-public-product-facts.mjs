@@ -27,7 +27,7 @@ import { INTEL_HOTSPOTS } from '../shared/geo-data.ts';
 import { PIPELINES } from '../shared/pipelines-data.ts';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 import { UI_RESOURCE_LIST_RESPONSE } from '../api/mcp/ui/registry.ts';
-import { publishedRankedCountries } from './build-ai-search.mjs';
+import { publishedRankedCountries } from './build-crawlable-corpus.mjs';
 import { commandPaletteCommandCount } from './lib/command-palette-count.mjs';
 import { defaultOnLayerStats } from './lib/default-map-layer-count.mjs';
 import { lngFacilityCount } from './_storage-facility-registry.mjs';
@@ -36,6 +36,9 @@ import { loadManifest, scanUpstreamHosts, sourceAttributionStats } from './sourc
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CHECK = process.argv.includes('--check');
+// Newest published resilience snapshot: the depth band's ranked slot and the
+// {ranked, universe} pair the blog glossary interpolates read this one value.
+const resilience = publishedRankedCountries(ROOT);
 const failures = [];
 
 const read = (path) => readFileSync(join(ROOT, path), 'utf8');
@@ -160,6 +163,10 @@ const facts = {
   plans,
   heroProofStats,
   depthProofStats: buildDepthProofStats(heroProofStats),
+  // Resilience ranking coverage from the newest published snapshot, so copy
+  // that cannot run the snapshot helper (the blog glossary) can still state
+  // "{ranked} of {universe} countries" without hard-coding either number.
+  resilienceCoverage: { ranked: resilience.ranked, universe: resilience.universe },
 };
 
 /**
@@ -195,7 +202,7 @@ function buildDepthProofStats(hero) {
     ...hero,
     chokepoints: CHOKEPOINT_REGISTRY.length,
     instabilityCountries: stats.tier1Countries,
-    resilienceRanked: publishedRankedCountries(ROOT).ranked,
+    resilienceRanked: resilience.ranked,
     submarineCables: UNDERSEA_CABLES.length,
     pipelinesLng: PIPELINES.length + lngFacilityCount(),
     aiDatacenters: AI_DATA_CENTERS.length,

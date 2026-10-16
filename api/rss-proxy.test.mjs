@@ -1049,3 +1049,20 @@ test('leaves a feed inside both bounds byte-identical', async () => {
   assert.equal(res.status, 200);
   assert.equal(await res.text(), feed, 'a small feed must pass through untouched');
 });
+
+test('rejects an allowlisted host on a non-default port, directly or via redirect', async () => {
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    calls.push(String(input));
+    return new Response('', { status: 302, headers: { Location: 'https://www.techcrunch.com:8443/feed' } });
+  };
+
+  const direct = await handler(makeRequest('https://techcrunch.com:8443/feed'));
+  assert.equal(direct.status, 403);
+  assert.equal(calls.length, 0, 'a non-default port is refused before any fetch');
+
+  const redirected = await handler(makeRequest('https://techcrunch.com/feed'));
+  assert.equal(redirected.status, 403);
+  assert.equal((await redirected.json()).error, 'Redirect to disallowed domain');
+  assert.deepEqual(calls, ['https://techcrunch.com/feed']);
+});

@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 446046
+    "raw": 448915
   },
   "chunks": {
     "analytics": {
@@ -70,6 +70,10 @@
       "raw": 10121,
       "files": 1
     },
+    "safe-storage": {
+      "raw": 1608,
+      "files": 1
+    },
     "tauri-bridge": {
       "raw": 1572,
       "files": 1
@@ -81,15 +85,19 @@
     "theme-manager": {
       "raw": 1616,
       "files": 1
+    },
+    "web-origin": {
+      "raw": 1261,
+      "files": 1
     }
   },
   "deferred": {
     "total": {
-      "raw": 1403769
+      "raw": 1407450
     },
     "chunks": {
       "App": {
-        "raw": 904635,
+        "raw": 888661,
         "files": 1
       },
       "ai-flow-settings": {
@@ -120,12 +128,16 @@
         "raw": 4613,
         "files": 1
       },
+      "corroboration": {
+        "raw": 19169,
+        "files": 1
+      },
       "cross-domain-storage": {
         "raw": 528,
         "files": 1
       },
       "feeds": {
-        "raw": 102826,
+        "raw": 94724,
         "files": 1
       },
       "gdelt-intel": {
@@ -166,6 +178,10 @@
       },
       "source-provenance": {
         "raw": 78804,
+        "files": 1
+      },
+      "source-tiers": {
+        "raw": 8588,
         "files": 1
       },
       "storage-facility-registry-store": {

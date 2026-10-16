@@ -2329,7 +2329,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.match(systemPrompts[0], /do not invent.*forecasts/i);
       assert.doesNotMatch(systemPrompts[0], /\[Risk 3\]|\[Named entity\]: \[mechanism\]/);
       assert.equal(out.sources[0].title, 'Finland completes border fence');
-      assert.ok(setKeys.some(key => key.includes('ci-sebuf:v9:')));
+      assert.ok(setKeys.some(key => key.includes('ci-sebuf:v10:')));
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnv();
@@ -2624,7 +2624,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
 
       assert.equal(counters.llmCalls, 1, 'anon context variations must share one cache entry');
       assert.equal(setKeys.length, 1, 'one shared cache write');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v9:IL:en:shared'), `anon key should use the shared v9 namespace, got ${setKeys[0]}`);
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v10:IL:en:shared'), `anon key should use the shared v10 namespace, got ${setKeys[0]}`);
       assert.ok(setKeys[0]?.includes(':i2023'), `anon key should include the import data year, got ${setKeys[0]}`);
       assert.match(alpha.brief, /Israel announces new security framework \[1\]/);
       assert.equal(beta.brief, alpha.brief, 'second anon caller must be served from cache');
@@ -2664,7 +2664,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.equal(counters.llmCalls, 2, 'different premium contexts should not share one cache entry');
       assert.equal(setKeys.length, 2, 'one cache write per unique premium context');
       assert.notEqual(setKeys[0], setKeys[1], 'context hash should differentiate premium cache keys');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v9:IL:'), 'cache key should use the v9 country-intel namespace');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v10:IL:'), 'cache key should use the v10 country-intel namespace');
       assert.ok(!setKeys[0]?.includes(':shared'), 'premium keys must not use the shared namespace');
       assert.equal(alpha.brief, 'SITUATION NOW\nIsrael announces alpha framework [1]');
       assert.equal(beta.brief, 'SITUATION NOW\nIsrael announces beta framework [1]');
@@ -2737,7 +2737,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.equal(second.brief, '');
       assert.deepEqual(first.evidence, []);
       assert.equal(setKeys.length, 1, 'one shared negative-cache write; the second call is served from it');
-      assert.ok(setKeys.every((key) => key.startsWith('ci-sebuf:v9:US:en:shared')), `anon callers land on the shared key, got ${setKeys}`);
+      assert.ok(setKeys.every((key) => key.startsWith('ci-sebuf:v10:US:en:shared')), `anon callers land on the shared key, got ${setKeys}`);
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
@@ -2753,6 +2753,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     const stubDir = createTempDir('wm-aircraft-rate-');
     const rateStub = join(stubDir, 'rate.mjs');
     writeFileSync(rateStub, `export const getClientIp = () => 'test';
+export const getClientRateLimitKey = () => 'test';
 export const checkScopedRateLimit = async () => ({ allowed: true, degraded: false });
 export const RATE_LIMIT_DEGRADED_HEADERS = { 'X-RateLimit-Mode': 'degraded', 'Retry-After': '5' };`);
     const imported = await importPatchedTsModule('server/worldmonitor/aviation/v1/track-aircraft.ts', {
@@ -3878,6 +3879,66 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         'a viewport outside a REGIONAL snapshot must fall through to request-specific recovery',
       );
       assert.deepEqual(result.flights.map((f) => f.id), ['RECOVERED']);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  // Elie's decision: an emergency squawk (7500/7600/7700) does not remove a
+  // military aircraft from the military layer, whether it arrives in the seed
+  // snapshot or only from OpenSky recovery.
+  it('keeps emergency-squawking military flights from the seed and from OpenSky-only recovery', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: undefined,
+      WS_RELAY_URL: 'wss://relay.test',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const store = new Map();
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/')[1] || '');
+        if (key === 'military:flights:v1') {
+          return jsonResponse({
+            result: JSON.stringify({
+              flights: [
+                { id: 'inregion', callsign: 'RCH301', lat: 20.2, lon: 10.2 },
+                { id: 'inregion-7700', callsign: 'RCH377', lat: 20.3, lon: 10.3, squawk: '7700' },
+              ],
+              coverage: 'regional',
+              fetchedAt: Date.now(),
+            }),
+          });
+        }
+        return jsonResponse({ result: store.get(key) ?? null });
+      }
+      if (isSetRequest(url, init)) return applySetToStore(store, url, init);
+      if (raw.includes('/opensky')) {
+        const state = ['emg7500', 'RCH475', null, null, null, -99.5, 40.5, 20000, false, 300, 90, 0, null, 20000, '7500'];
+        return jsonResponse({ states: [state] });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const seeded = await module.listMilitaryFlights(
+        { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
+        seededRequest,
+      );
+      assert.deepEqual(seeded.flights.map((f) => f.id).sort(), ['inregion', 'inregion-7700']);
+      const recovered = await module.listMilitaryFlights(
+        { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
+        americasRequest,
+      );
+      assert.deepEqual(recovered.flights.map((f) => f.id), ['EMG7500']);
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;

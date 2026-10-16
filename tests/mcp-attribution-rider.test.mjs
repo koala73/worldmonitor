@@ -16,12 +16,11 @@ import {
   buildTpsMciSnapshot,
 } from '../scripts/lib/tps-open-data.mjs';
 import {
-  IMD_API_REFERENCE_URL,
   IMD_RIGHTS_DECISION,
+  IMD_SEA_BULLETIN_PAGE,
   IMD_SOURCE_NAME,
   assembleImdSnapshot,
-  buildDisabledSnapshot,
-  parseImdProductPayload,
+  parseImdBulletinHtml,
 } from '../scripts/lib/imd-cyclone-marine.mjs';
 import {
   ATTRIBUTION_RIDER_NOTICE,
@@ -406,10 +405,6 @@ async function riderFromCache(name, snapshot, params = {}) {
   return { envelope, rider: buildAttributionRider(envelope, tool._attribution) };
 }
 
-const imdFixture = (file) => JSON.parse(
-  readFileSync(new URL(`./fixtures/${file}`, import.meta.url), 'utf8'),
-);
-
 describe('attribution rider — against real producer output', () => {
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
@@ -466,25 +461,24 @@ describe('attribution rider — against real producer output', () => {
   });
 
   test('get_imd_cyclone_marine extracts from a real assembleImdSnapshot over IMD fixtures', async () => {
-    const now = Date.parse('2026-09-05T00:00:00.000Z');
-    const productResults = {
-      cycloneTrack: { status: 'ok', records: parseImdProductPayload('cycloneTrack', imdFixture('imd-cyclone-track.json')) },
-      portWarning: { status: 'ok', records: parseImdProductPayload('portWarning', imdFixture('imd-port-warning.json')) },
-    };
-    const snapshot = assembleImdSnapshot({ productResults, now });
+    const html = readFileSync(new URL('./fixtures/imd/seaBulletin-bay-of-bengal.html', import.meta.url), 'utf8');
+    const snapshot = assembleImdSnapshot({
+      now: Date.parse('2026-10-16T11:00:00Z'),
+      pageResults: { seaBulletin: { 'bay-of-bengal': { status: 'parsed', bulletin: parseImdBulletinHtml(html, 'seaBulletin') } } },
+    });
+    assert.ok(snapshot.seaBulletins.length > 0);
     const { rider } = await riderFromCache('get_imd_cyclone_marine', snapshot);
     assert.ok(rider, 'the declared expression found nothing in the real snapshot');
     assert.deepEqual(rider.sources, [{
       attribution: IMD_RIGHTS_DECISION.attribution,
       sourceName: IMD_SOURCE_NAME,
-      sourceUrl: IMD_API_REFERENCE_URL,
+      sourceUrl: IMD_SEA_BULLETIN_PAGE,
     }]);
   });
 
-  test('a disabled IMD snapshot still carries its attribution', async () => {
-    // The key-missing path builds a different object than the live assembler.
-    // It serves no records, but it does declare the source, so the rider holds.
-    const { rider } = await riderFromCache('get_imd_cyclone_marine', buildDisabledSnapshot({ now: 1_757_030_400_000 }));
+  test('an unavailable IMD snapshot still carries its attribution', async () => {
+    // Every page failed, so nothing is served, but the envelope still declares the source.
+    const { rider } = await riderFromCache('get_imd_cyclone_marine', assembleImdSnapshot({ now: 1_757_030_400_000 }));
     assert.ok(rider);
     assert.equal(rider.sources[0].attribution, IMD_RIGHTS_DECISION.attribution);
   });
