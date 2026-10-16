@@ -3218,8 +3218,10 @@ describe('crawlable corpus generator', () => {
         const basePageWordCeiling = country.headlineEligible === false ? 950 : 900;
         const pageWordCeiling = basePageWordCeiling + developmentsWordCount + relatedLinksWordCount;
         assert.ok(
-          pageWordCount >= 600 && pageWordCount <= pageWordCeiling,
-          `${route} main content must contain at least 600 words and no more than ${basePageWordCeiling} base words plus ${developmentsWordCount} developments words and ${relatedLinksWordCount} related-link words; got ${pageWordCount}`,
+          // The 600-word floor is for page content, so the navigation block
+          // does not count toward it.
+          pageWordCount - relatedLinksWordCount >= 600 && pageWordCount <= pageWordCeiling,
+          `${route} main content must contain at least 600 words besides the related links and no more than ${basePageWordCeiling} base words plus ${developmentsWordCount} developments words and ${relatedLinksWordCount} related-link words; got ${pageWordCount}`,
         );
       }
 

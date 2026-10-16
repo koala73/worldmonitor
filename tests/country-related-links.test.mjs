@@ -140,6 +140,34 @@ describe('related-country selection (fixture)', () => {
     assert.equal(byCode.get('RU').detail, 'nearby');
   });
 
+  it('ranks more shared trackers first and names them in the plural', () => {
+    // Israel shares two trackers with Lebanon here, Syria one smaller one.
+    const LB_SY = crisis('lebanon-syria-border', 'Lebanon–Syria border', ['LB', 'SY']);
+    const LB_IL_GAZA = crisis('gaza-war', 'Gaza war', ['LB', 'IL', 'PS', 'EG']);
+    const countries = fixtureCountries().map((country) => {
+      if (country.code === 'LB') return { ...country, crisisMemberships: [LB_IL, LB_IL_GAZA, LB_SY] };
+      if (country.code === 'IL') return { ...country, crisisMemberships: [LB_IL, LB_IL_GAZA] };
+      if (country.code === 'SY') return { ...country, crisisMemberships: [LB_SY] };
+      return country;
+    });
+    const lebanon = select(countries).get('LB');
+    assert.deepEqual(lebanon.slice(0, 2).map((target) => target.code), ['IL', 'SY']);
+    assert.equal(lebanon[0].detail, 'shares the Gaza war and Lebanon–Israel escalation crisis trackers');
+    assert.equal(lebanon[1].detail, 'shares the Lebanon–Syria border crisis tracker');
+  });
+
+  it('breaks exact ties by name, whatever the input order', () => {
+    // Two candidates identical in every signal and distance.
+    const twin = (code, name) => ({ code, name, slug: name.toLowerCase(), regionId: 'europe' });
+    const countries = [twin('AA', 'Alpha'), twin('BB', 'Bravo'), twin('CC', 'Charlie'), twin('DD', 'Delta')];
+    const boxes = new Map(countries.map((country) => [country.code, [10, 10, 11, 11]]));
+    const centroids = Object.fromEntries(countries.map((country) => [country.code, [10.5, 10.5]]));
+    const run = (input) => selectRelatedCountries({ countries: input, bboxByCode: boxes, centroidByCode: centroids })
+      .get('DD').map((target) => target.code);
+    assert.deepEqual(run(countries), ['AA', 'BB', 'CC']);
+    assert.deepEqual(run([...countries].reverse()), ['AA', 'BB', 'CC']);
+  });
+
   it('tops up to the minimum when no signal applies', () => {
     const tuvalu = select().get('TV');
     assert.equal(tuvalu.length, MIN_RELATED_COUNTRIES);
@@ -241,6 +269,24 @@ describe('related countries and the Pro link on the generated corpus', () => {
     assert.ok(nearest * 10 < targets.length, `${nearest} of ${targets.length} links are the nearest-country fallback`);
   });
 
+  it('keeps far-off territory out of "nearby"', () => {
+    const nearbyCodes = (code) => data.relatedCountriesByCode.get(code)
+      .filter((target) => target.reason === 'nearby')
+      .map((target) => target.code);
+    // French Guiana and Russia's single box once made these "nearby".
+    for (const code of ['LR', 'SL', 'GM', 'CV', 'CA', 'SR', 'MA']) {
+      assert.ok(!nearbyCodes(code).includes('FR'), `${code} calls France nearby`);
+    }
+    for (const code of ['GR', 'AL', 'RS', 'BG', 'RO', 'MD', 'IT']) {
+      assert.ok(!nearbyCodes(code).includes('RU'), `${code} calls Russia nearby`);
+    }
+    // Real neighbours keep the link.
+    assert.ok(nearbyCodes('FI').includes('RU'), 'Finland must keep Russia');
+    assert.ok(nearbyCodes('GE').includes('RU'), 'Georgia must keep Russia');
+    assert.ok(nearbyCodes('MC').includes('FR'), 'Monaco must keep France');
+    assert.ok(nearbyCodes('CU').includes('US'), 'Cuba must keep the United States');
+  });
+
   it('selects the same targets on a second load', async () => {
     const again = await loadCorpusData({ rootDir: repoRoot });
     for (const [code, targets] of data.relatedCountriesByCode) {
@@ -251,7 +297,7 @@ describe('related countries and the Pro link on the generated corpus', () => {
   it('renders the related links and exactly one Pro/API link on every country page', () => {
     for (const country of data.countries) {
       const html = readFileSync(join(outDir, 'countries', country.slug, 'index.html'), 'utf8');
-      const section = html.match(/<ul class="related" data-related-countries>([\s\S]*?)<\/ul>/)?.[1] || '';
+      const section = html.match(/<ul class="related-countries" data-related-countries>([\s\S]*?)<\/ul>/)?.[1] || '';
       const hrefs = [...section.matchAll(/href="\/countries\/([^/"]+)\/"/g)].map((match) => match[1]);
       assert.deepEqual(hrefs, data.relatedCountriesByCode.get(country.code).map((target) => target.slug), country.code);
       assert.equal(

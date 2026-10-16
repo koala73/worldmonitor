@@ -2367,6 +2367,9 @@ function pageDocument({
       .card.domain:hover { border-color: var(--accent); text-decoration: none; }
       .related { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 0 20px; }
       .related a { display: inline-flex; align-items: center; min-height: 44px; }
+      .related-countries { list-style: none; padding: 0; margin: 12px 0 0; }
+      .related-countries li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+      .related-countries li:last-child { border-bottom: 0; }
       .source { margin-top: 34px; font-size: 13px; color: var(--muted); }
       table { border-collapse: collapse; width: 100%; margin-top: 16px; font-size: 14px; }
       .table-scroll { max-width: 100%; overflow-x: auto; }

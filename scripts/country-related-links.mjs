@@ -11,8 +11,10 @@
  *     shared/country-bboxes.js is at most NEARBY_GAP_DEGREES. Microstates
  *     have no box, so for them the test is a mainland-centroid distance
  *     (scripts/data/country-centroids.json) of at most NEARBY_CENTROID_KM.
- *     Either is a proximity proxy, not a land-border claim, so the copy says
- *     "nearby".
+ *     France, Russia and the US use land-following parts instead
+ *     (PROXIMITY_BOX_OVERRIDES), because their single box spans far-off
+ *     territory. Either is a proximity proxy, not a land-border claim, so the
+ *     copy says "nearby".
  *  4. Same region: shared/iso2-to-region.json.
  *
  * Candidates sort by the strongest signal first (crisis, tension, nearby,
@@ -95,15 +97,46 @@ export function boundingBoxGapDegrees(left, right) {
   return Math.hypot(latGap, lonScaled);
 }
 
+/**
+ * Proximity boxes for the three countries whose single shared/country-bboxes.js
+ * box spans far-off territory, as [south, west, north, east] parts. With one
+ * box, French Guiana put France "nearby" Liberia, Canada and Suriname, and
+ * Russia's Kaliningrad-to-Caucasus box covered the Balkans. The parts follow
+ * the land: Russia's south-west edge runs along Ukraine and the Caucasus, not
+ * Romania or Moldova. They feed only the "nearby" test here; the map and other
+ * pages keep the shared box.
+ */
+export const PROXIMITY_BOX_OVERRIDES = Object.freeze({
+  // Metropolitan France with Corsica; French Guiana and the islands are excluded.
+  FR: [[41.33, -5.14, 51.09, 9.56]],
+  RU: [
+    [54.3, 19.6, 55.3, 22.9], // Kaliningrad
+    [56.0, 27.3, 70.0, 60.0], // north-west, from the Baltic states to the Urals
+    [50.0, 31.0, 56.0, 60.0], // centre, from Belarus and Ukraine to Orenburg
+    [41.19, 36.5, 50.0, 48.5], // south, from the Sea of Azov to the Caucasus and Astrakhan
+    [49.0, 60.0, 81.29, 120.0], // Siberia, north of Kazakhstan and Mongolia
+    [42.29, 120.0, 81.29, 180], // Far East to the antimeridian
+    [64.0, -180, 72.0, -169.7], // Chukotka east of the antimeridian
+  ],
+  US: [
+    [24.4, -125.0, 49.39, -66.94], // contiguous states
+    [51.2, 172.4, 71.4, -129.9], // Alaska with the Aleutians; Hawaii is left out
+  ],
+});
+
 const pointBox = (point) => (point ? [point[0], point[1], point[0], point[1]] : null);
 
 /**
- * Box-to-box gap when both countries have a box; a microstate without one is
- * treated as its centroid, so Monaco sits inside France's box (gap 0) rather
- * than 500 km from France's mainland centroid.
+ * Smallest gap between any proximity box of each country. A microstate
+ * without a box is treated as its centroid, so Monaco sits inside France's
+ * box (gap 0) rather than 500 km from France's mainland centroid.
  */
-function proximityGapDegrees(ownBox, ownPoint, candidateBox, candidatePoint) {
-  return boundingBoxGapDegrees(ownBox || pointBox(ownPoint), candidateBox || pointBox(candidatePoint));
+function proximityGapDegrees(ownBoxes, candidateBoxes) {
+  let best = Infinity;
+  for (const own of ownBoxes) {
+    for (const candidate of candidateBoxes) best = Math.min(best, boundingBoxGapDegrees(own, candidate));
+  }
+  return best;
 }
 
 /** Great-circle distance in kilometres between two [lat, lon] points; Infinity when either is missing. */
@@ -146,8 +179,8 @@ function compareCandidates(left, right) {
     || right.sharedCrises.length - left.sharedCrises.length
     // A two-country tracker is a tighter tie than an eight-country one.
     || smallestTracker(left) - smallestTracker(right)
-    // Overseas territories stretch some boxes (France reaches South America),
-    // so a nearby country in the same region outranks one across an ocean.
+    // Box proximity is coarse, so among equal signals a country in the same
+    // region outranks one across a sea or a regional boundary.
     || Number(right.sameRegion) - Number(left.sameRegion)
     || (left.reason === 'nearby' ? left.gapDegrees - right.gapDegrees : 0)
     || left.distanceKm - right.distanceKm
@@ -167,6 +200,7 @@ export function selectRelatedCountries({
   tensionPairs = [],
   regionsByCode = {},
   regionLabels = {},
+  proximityBoxesByCode = PROXIMITY_BOX_OVERRIDES,
 } = {}) {
   const published = (countries || []).filter((country) => (
     /^[A-Z]{2}$/.test(String(country?.code || '')) && country.slug && country.name
@@ -175,6 +209,11 @@ export function selectRelatedCountries({
   const bboxOf = (code) => (bboxByCode instanceof Map ? bboxByCode.get(code) : bboxByCode?.[code]) || null;
   const centroidOf = (code) => (centroidByCode instanceof Map ? centroidByCode.get(code) : centroidByCode?.[code]) || null;
   const pointOf = (code) => anchorPoint(centroidOf(code), bboxOf(code));
+  const proximityBoxesOf = (code, box, point) => {
+    if (proximityBoxesByCode?.[code]) return proximityBoxesByCode[code];
+    const fallback = box || pointBox(point);
+    return fallback ? [fallback] : [];
+  };
   const regionOf = (country) => country.regionId || regionsByCode[country.code] || null;
   const crisesOf = (country) => (country.crisisMemberships || []).map((crisis) => ({
     slug: String(crisis.slug),
@@ -188,6 +227,7 @@ export function selectRelatedCountries({
     const ownRegion = regionOf(country);
     const ownBox = bboxOf(country.code);
     const ownPoint = pointOf(country.code);
+    const ownProximityBoxes = proximityBoxesOf(country.code, ownBox, ownPoint);
     const candidates = published
       .filter((candidate) => candidate.code !== country.code && candidate.slug !== country.slug)
       .map((candidate) => {
@@ -199,7 +239,10 @@ export function selectRelatedCountries({
         const candidateBox = bboxOf(candidate.code);
         const candidatePoint = pointOf(candidate.code);
         const distanceKm = greatCircleKm(ownPoint, candidatePoint);
-        const gapDegrees = proximityGapDegrees(ownBox, ownPoint, candidateBox, candidatePoint);
+        const gapDegrees = proximityGapDegrees(
+          ownProximityBoxes,
+          proximityBoxesOf(candidate.code, candidateBox, candidatePoint),
+        );
         const nearby = gapDegrees <= NEARBY_GAP_DEGREES
           || ((!ownBox || !candidateBox) && distanceKm <= NEARBY_CENTROID_KM);
         const sameRegion = ownRegion != null && ownRegion !== 'global' && regionOf(candidate) === ownRegion;
@@ -207,7 +250,7 @@ export function selectRelatedCountries({
         let detail = 'nearest country with a profile';
         if (sharedCrises.length > 0) {
           reason = 'crisis';
-          detail = `shares the ${sharedCrises.map((crisis) => crisis.shortTitle).join(' and ')} crisis tracker`;
+          detail = `shares the ${sharedCrises.map((crisis) => crisis.shortTitle).join(' and ')} crisis tracker${sharedCrises.length > 1 ? 's' : ''}`;
         } else if (tensionLabel) {
           reason = 'tension';
           detail = `${tensionLabel} tension pair in the GDELT monitor`;
@@ -254,7 +297,7 @@ export function renderRelatedCountries(country, related, escapeHtml) {
   if (!related?.length) return '';
   return `      <h2>Related country profiles</h2>
       <p>Linked to ${escapeHtml(country.name)} by a shared crisis tracker, a monitored tension pair, proximity or region.</p>
-      <ul class="related" data-related-countries>
+      <ul class="related-countries" data-related-countries>
 ${related.map((target) => `        <li data-related-reason="${escapeHtml(target.reason)}"><a href="/countries/${escapeHtml(target.slug)}/">${escapeHtml(relatedCountryAnchorText(target))}</a>: ${escapeHtml(target.detail)}.</li>`).join('\n')}
       </ul>`;
 }
