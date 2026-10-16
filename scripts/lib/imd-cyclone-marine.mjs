@@ -369,14 +369,16 @@ export function parseImdBulletinHtml(html, productId) {
     if (!area.name || spec.areaFields.some((field) => !area[field])) fail('BULLETIN_AREA_INCOMPLETE');
   }
   if (spec.requiresStormWarning && !bulletin.stormWarning) fail('BULLETIN_STORM_WARNING_MISSING');
+  if (!bulletin.synopticSituation) fail('BULLETIN_SYNOPTIC_MISSING');
+  if (!office) fail('BULLETIN_OFFICE_MISSING');
   const issuedAt = parseIssueTime(bulletin.timeOfIssue || '');
 
   return {
-    issuedBy: office ? office[1] : '',
+    issuedBy: office[1],
     issuedAt,
     ...validity,
     stormWarning: bulletin.stormWarning || '',
-    synopticSituation: bulletin.synopticSituation || '',
+    synopticSituation: bulletin.synopticSituation,
     areas,
   };
 }
@@ -438,16 +440,19 @@ function isWarningRecord(record) {
   return record.hasTttWarning || record.hasPortSignal || record.hasStormSurgeWarning;
 }
 
+function isFutureDated(bulletin, now) {
+  return bulletin.validFrom > now + MAX_FUTURE_VALIDITY_MS || bulletin.issuedAt > now + MAX_FUTURE_ISSUE_MS;
+}
+
 /**
  * Classify one page at `now`. A bulletin whose window has ended is `expired`:
  * IMD replied and the page parsed, but nothing on it is current.
  */
 function evaluatePage(productId, page, result, previousRecords, now) {
-  if (result?.status === 'parsed') {
+  const failure = result?.status !== 'parsed' ? result?.reason || 'FETCH_FAILED'
+    : isFutureDated(result.bulletin, now) ? 'BULLETIN_FUTURE_DATED' : null;
+  if (!failure) {
     const { bulletin } = result;
-    if (bulletin.validFrom > now + MAX_FUTURE_VALIDITY_MS || bulletin.issuedAt > now + MAX_FUTURE_ISSUE_MS) {
-      return { health: { status: 'failed', reason: 'BULLETIN_FUTURE_DATED' }, records: [], carried: false };
-    }
     const timing = { issuedAt: bulletin.issuedAt, validFrom: bulletin.validFrom, validUntil: bulletin.validUntil };
     if (bulletin.validUntil <= now) {
       return { health: { status: 'expired', reason: null, ...timing }, records: [], carried: false };
@@ -460,7 +465,7 @@ function evaluatePage(productId, page, result, previousRecords, now) {
   }
   const carried = dropExpiredRecords(previousRecords.filter((record) => record?.page === page.key), now);
   return {
-    health: { status: 'failed', reason: result?.reason || 'FETCH_FAILED' },
+    health: { status: 'failed', reason: failure },
     records: carried,
     carried: carried.length > 0,
   };
@@ -635,6 +640,14 @@ export async function fetchImdCycloneMarine({
   return assembleImdSnapshot({ pageResults, previous, now });
 }
 
+function activeWarnings(record) {
+  return [
+    record.hasTttWarning && `TTT: ${record.tttWarning}`,
+    record.hasPortSignal && `Port signal: ${record.portSignal}`,
+    record.hasStormSurgeWarning && `Storm surge/tidal: ${record.stormSurgeWarning}`,
+  ].filter(Boolean);
+}
+
 function marineSeverity(record) {
   if (record.hasTttWarning || record.hasPortSignal) return 'Severe';
   if (record.hasStormSurgeWarning) return 'Moderate';
@@ -642,35 +655,36 @@ function marineSeverity(record) {
 }
 
 export function marineBulletinsFromSnapshot(snapshot) {
-  return [...(snapshot?.seaBulletins || []), ...(snapshot?.coastalBulletins || [])].map((row) => ({
-    id: row.id,
-    event: row.kind === 'coastal-bulletin' ? 'IMD Coastal Bulletin' : 'IMD Sea Area Bulletin',
-    severity: marineSeverity(row),
-    headline: `${row.area}: ${row.hasTttWarning ? row.tttWarning : (row.weather || row.seaCondition || 'Marine bulletin')}`,
-    description: [
-      row.wind && `Wind: ${row.wind}`,
-      row.visibility && `Visibility: ${row.visibility}`,
-      row.seaCondition && `Sea: ${row.seaCondition}`,
-      row.hasTttWarning && `TTT: ${row.tttWarning}`,
-      row.hasPortSignal && `Port signal: ${row.portSignal}`,
-      row.hasStormSurgeWarning && `Storm surge/tidal: ${row.stormSurgeWarning}`,
-    ].filter(Boolean).join(' · '),
-    areaDesc: row.area,
-    onset: row.validFrom,
-    expires: row.expiresAt,
-    coordinates: row.centroid ? [row.centroid] : [],
-    centroid: row.centroid || undefined,
-    countryCode: IMD_COUNTRY,
-    source: row.source,
-    productKind: row.kind,
-    issuedBy: row.issuedBy,
-    wind: row.wind,
-    visibility: row.visibility,
-    seaState: row.seaCondition,
-    sourceUrl: row.sourceUrl,
-    geometryPrecision: row.centroid ? 'point' : undefined,
-    isForecastBulletin: true,
-  }));
+  return [...(snapshot?.seaBulletins || []), ...(snapshot?.coastalBulletins || [])].map((row) => {
+    const warnings = activeWarnings(row);
+    return {
+      id: row.id,
+      event: row.kind === 'coastal-bulletin' ? 'IMD Coastal Bulletin' : 'IMD Sea Area Bulletin',
+      severity: marineSeverity(row),
+      headline: `${row.area}: ${warnings[0] ?? (row.weather || row.seaCondition || 'Marine bulletin')}`,
+      description: [
+        ...warnings,
+        row.wind && `Wind: ${row.wind}`,
+        row.visibility && `Visibility: ${row.visibility}`,
+        row.seaCondition && `Sea: ${row.seaCondition}`,
+      ].filter(Boolean).join(' · '),
+      areaDesc: row.area,
+      onset: row.validFrom,
+      expires: row.expiresAt,
+      coordinates: row.centroid ? [row.centroid] : [],
+      centroid: row.centroid || undefined,
+      countryCode: IMD_COUNTRY,
+      source: row.source,
+      productKind: row.kind,
+      issuedBy: row.issuedBy,
+      wind: row.wind,
+      visibility: row.visibility,
+      seaState: row.seaCondition,
+      sourceUrl: row.sourceUrl,
+      geometryPrecision: row.centroid ? 'point' : undefined,
+      isForecastBulletin: true,
+    };
+  });
 }
 
 function validBulletinRecord(row) {

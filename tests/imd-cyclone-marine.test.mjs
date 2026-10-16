@@ -146,7 +146,8 @@ test('reads coastal port signals and storm-surge lines without treating NIL as a
   assert.match(andaman.stormSurgeWarning, /^SWELL WAVES IN THE RANGE OF 15\.0 - 19\.0 SEC PERIOD/);
   const surgeAlerts = snapshot.marineBulletins.filter((row) => row.severity !== 'Minor');
   assert.deepEqual(surgeAlerts.map((row) => [row.areaDesc, row.severity]), [['Andaman area', 'Moderate']]);
-  assert.match(surgeAlerts[0].description, /Storm surge\/tidal: SWELL WAVES/);
+  assert.match(surgeAlerts[0].headline, /^Andaman area: Storm surge\/tidal: SWELL WAVES/);
+  assert.match(surgeAlerts[0].description.slice(0, 300), /^Storm surge\/tidal: SWELL WAVES/, 'the warning leads the popup text');
   assert.equal(snapshot.products.coastalBulletin.warningCount, 1);
   assert.equal(snapshot.products.seaBulletin.warningCount, 0);
 });
@@ -168,6 +169,7 @@ test('a storm warning or port signal on the page becomes a severe marine alert',
   assert.ok(storm.every((row) => row.severity === 'Severe' && row.event === 'IMD Sea Area Bulletin'));
   const port = snapshot.marineBulletins.filter((row) => row.description.includes('Port signal: DC-III'));
   assert.deepEqual(port.map((row) => [row.areaDesc, row.severity]), [['North Andhra coast', 'Severe']]);
+  assert.equal(port[0].headline, 'North Andhra coast: Port signal: DC-III HOISTED AT VISAKHAPATNAM AND KAKINADA PORTS.');
   assert.equal(snapshot.products.seaBulletin.warningCount, 8);
   assert.equal(snapshot.products.coastalBulletin.warningCount, 2);
 });
@@ -192,6 +194,8 @@ test('a changed page layout fails closed with the first structural check it brea
     ['impossible date', sea.replaceAll('UTC of 2026-10-16', 'UTC of 2026-02-30'), 'seaBulletin', 'BULLETIN_VALIDITY_INCONSISTENT'],
     ['no issue time', sea.replace('13:32 IST of 2026-10-16', 'pending'), 'seaBulletin', 'BULLETIN_ISSUE_TIME_MISSING'],
     ['no storm warning row', sea.replace('TTT Warning', 'Remarks'), 'seaBulletin', 'BULLETIN_STORM_WARNING_MISSING'],
+    ['no synoptic row', sea.replace('Synoptic Situation', 'Outlook'), 'seaBulletin', 'BULLETIN_SYNOPTIC_MISSING'],
+    ['no issuing office', sea.replace('ACWC KOLKATA', 'Regional Centre'), 'seaBulletin', 'BULLETIN_OFFICE_MISSING'],
     ['area without wind', sea.replace('<td class="td-1">Wind</td>', '<td class="td-1">Breeze</td>'), 'seaBulletin', 'BULLETIN_AREA_INCOMPLETE'],
     ['coastal area without port signal', coastal.replace('Port Signal', 'Port Note'), 'coastalBulletin', 'BULLETIN_AREA_INCOMPLETE'],
     ['nested table', sea.replace('<td >Smooth</td>', '<td ><table><tr><td>x</td></tr></table></td>'), 'seaBulletin', 'BULLETIN_NESTED_TABLE'],
@@ -256,6 +260,23 @@ test('rejects a future-dated bulletin instead of publishing it as current', () =
   assert.deepEqual(snapshot.products.seaBulletin.pages['bay-of-bengal'], { status: 'failed', reason: 'BULLETIN_FUTURE_DATED' });
   assert.equal(snapshot.records.length, 0);
   assert.equal(shouldActivateImdSnapshot(snapshot), false);
+
+  const previous = assembleImdSnapshot({ pageResults: parsedResults(), now: NOW });
+  const misdated = pageFixture('seaBulletin', 'bay-of-bengal').replaceAll('UTC of 2026-10-16', 'UTC of 2026-10-18');
+  const carried = assembleImdSnapshot({
+    previous,
+    now: NOW + HOUR,
+    pageResults: parsedResults({
+      seaBulletin: { 'bay-of-bengal': { status: 'parsed', bulletin: parseImdBulletinHtml(misdated, 'seaBulletin') } },
+    }),
+  });
+  assert.deepEqual(carried.products.seaBulletin.pages['bay-of-bengal'], { status: 'failed', reason: 'BULLETIN_FUTURE_DATED' });
+  assert.equal(carried.products.seaBulletin.carried, true);
+  assert.deepEqual(
+    carried.seaBulletins.filter((row) => row.page === 'bay-of-bengal'),
+    previous.seaBulletins.filter((row) => row.page === 'bay-of-bengal'),
+    'a misdated page keeps its still-valid last-good bulletin',
+  );
 });
 
 test('a failed page carries only its own last-good records', () => {
