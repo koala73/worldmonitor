@@ -1958,6 +1958,11 @@ export async function loadCorpusData({
     gitFileLastmod(rootDir, COUNTRY_REGIONS_PATH),
     gitFileLastmod(rootDir, MICROSTATE_TERRITORIES_PATH),
     gitFileLastmod(rootDir, RELATED_READING_PATH),
+    // Inputs of the related-country links (scripts/country-related-links.mjs).
+    gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH),
+    gitFileLastmod(rootDir, TENSION_PAIRS_PATH),
+    gitFileLastmod(rootDir, COUNTRY_CENTROIDS_PATH),
+    gitFileLastmod(rootDir, COUNTRY_BBOXES_PATH),
     COUNTRY_PAGE_CONTENT_VERSION,
   );
   const ciiCountriesLastmod = laterDate(

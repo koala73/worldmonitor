@@ -34,6 +34,8 @@
  * research and welcome CTAs use.
  */
 
+import { haversineKm } from '../shared/geo-distance.ts';
+
 export const MIN_RELATED_COUNTRIES = 3;
 export const MAX_RELATED_COUNTRIES = 5;
 export const NEARBY_GAP_DEGREES = 1.5;
@@ -104,18 +106,13 @@ function proximityGapDegrees(ownBox, ownPoint, candidateBox, candidatePoint) {
   return boundingBoxGapDegrees(ownBox || pointBox(ownPoint), candidateBox || pointBox(candidatePoint));
 }
 
-/** Great-circle distance in kilometres between two [lat, lon] points. */
-export function greatCircleKm(left, right) {
+/** Great-circle distance in kilometres between two [lat, lon] points; Infinity when either is missing. */
+function greatCircleKm(left, right) {
   if (!Array.isArray(left) || !Array.isArray(right)) return Infinity;
   const [lat1, lon1] = left.map(Number);
   const [lat2, lon2] = right.map(Number);
   if (![lat1, lon1, lat2, lon2].every(Number.isFinite)) return Infinity;
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const h = Math.sin(dLat / 2) ** 2
-    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
+  return haversineKm(lat1, lon1, lat2, lon2);
 }
 
 /** A country's reference point: its mainland centroid, else its box centre. */
@@ -216,7 +213,9 @@ export function selectRelatedCountries({
           detail = `${tensionLabel} tension pair in the GDELT monitor`;
         } else if (nearby) {
           reason = 'nearby';
-          detail = `nearby in ${regionLabels[regionOf(candidate)] || 'the same area'}`;
+          // Only a shared region is named: Russia's box reaches Japan, but
+          // Russia is not "nearby in Europe" from Japan's page.
+          detail = sameRegion && regionLabels[ownRegion] ? `nearby in ${regionLabels[ownRegion]}` : 'nearby';
         } else if (sameRegion) {
           reason = 'region';
           detail = `also in ${regionLabels[ownRegion] || 'the same region'}`;

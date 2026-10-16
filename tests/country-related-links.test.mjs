@@ -117,6 +117,29 @@ describe('related-country selection (fixture)', () => {
     assert.equal(monaco[0].reason, 'nearby');
   });
 
+  it('names a region for nearby only when both countries are in it', () => {
+    // Russia's box reaches the Sea of Japan, but Japan's page must not call
+    // Russia "nearby in Europe".
+    const related = selectRelatedCountries({
+      countries: [
+        { code: 'JP', name: 'Japan', slug: 'japan', regionId: 'east-asia' },
+        { code: 'KR', name: 'South Korea', slug: 'south-korea', regionId: 'east-asia' },
+        { code: 'RU', name: 'Russia', slug: 'russia', regionId: 'europe' },
+      ],
+      bboxByCode: new Map(Object.entries({
+        JP: [24.04, 122.93, 45.52, 145.82],
+        KR: [33.11, 124.61, 38.61, 131.87],
+        RU: FIXTURE_BBOXES.get('RU'),
+      })),
+      centroidByCode: { JP: [36.2, 138.25], KR: [35.91, 127.77], RU: FIXTURE_CENTROIDS.RU },
+      regionLabels: { 'east-asia': 'East Asia and the Pacific', europe: 'Europe' },
+    }).get('JP');
+    const byCode = new Map(related.map((target) => [target.code, target]));
+    assert.equal(byCode.get('KR').detail, 'nearby in East Asia and the Pacific');
+    assert.equal(byCode.get('RU').reason, 'nearby');
+    assert.equal(byCode.get('RU').detail, 'nearby');
+  });
+
   it('tops up to the minimum when no signal applies', () => {
     const tuvalu = select().get('TV');
     assert.equal(tuvalu.length, MIN_RELATED_COUNTRIES);
@@ -203,6 +226,19 @@ describe('related countries and the Pro link on the generated corpus', () => {
       assert.ok(targets.every((target) => target.code !== country.code), `${country.code} links to itself`);
       assert.ok(targets.every((target) => slugs.has(target.slug)), `${country.code} links to a missing page`);
     }
+  });
+
+  it('feeds every signal from the real datasets', () => {
+    // The checks above pass even if every input were dropped and all pages
+    // fell back to "nearest". Each signal must reach some page, and the
+    // fallback must stay the exception.
+    const targets = [...data.relatedCountriesByCode.values()].flat();
+    const reasons = new Set(targets.map((target) => target.reason));
+    for (const reason of ['crisis', 'tension', 'nearby', 'region']) {
+      assert.ok(reasons.has(reason), `no country page links by ${reason}`);
+    }
+    const nearest = targets.filter((target) => target.reason === 'nearest').length;
+    assert.ok(nearest * 10 < targets.length, `${nearest} of ${targets.length} links are the nearest-country fallback`);
   });
 
   it('selects the same targets on a second load', async () => {

@@ -12,6 +12,7 @@ if [ "$VERCEL_GIT_COMMIT_REF" = "main" ] && [ -n "$VERCEL_GIT_PREVIOUS_SHA" ]; t
       'scripts/build-crawlable-corpus.mjs' 'scripts/unranked-country-inventory.mjs' 'scripts/build-use-cases.mjs' 'scripts/build-accuracy-page.mjs' 'scripts/build-research-reports.mjs' 'scripts/build-comparison-pages.mjs' 'scripts/comparison-page-narratives.mjs' \
       'scripts/build-sitemap.mjs' 'scripts/discover-content-corpus-pages.mjs' \
       'scripts/crawlable-live-tools.mjs' 'scripts/crawlable-sources-page.mjs' \
+      'scripts/country-related-links.mjs' 'scripts/data/country-centroids.json' \
       'scripts/source-origin.mjs' 'scripts/source-origin.d.mts' \
       'scripts/generate-inventory-facts.mjs' \
       'scripts/docs-stats.mjs' 'scripts/source-attribution.mjs' 'scripts/vercel-ignore.sh' \
@@ -84,6 +85,8 @@ git diff --name-only "$COMPARE_SHA" HEAD -- \
   'scripts/discover-content-corpus-pages.mjs' \
   'scripts/crawlable-live-tools.mjs' \
   'scripts/crawlable-sources-page.mjs' \
+  'scripts/country-related-links.mjs' \
+  'scripts/data/country-centroids.json' \
   'scripts/source-origin.mjs' \
   'scripts/source-origin.d.mts' \
   'scripts/generate-inventory-facts.mjs' \
