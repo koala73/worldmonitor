@@ -23,7 +23,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
     "@heygen/liveavatar-web-sdk": "^0.0.19",
-    "esbuild": "^0.25.10",
-    "tsx": "^4.21.0"
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15"
   }
 }
