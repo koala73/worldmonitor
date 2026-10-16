@@ -18,7 +18,7 @@ import { ENERGY_SPINE_KEY_PREFIX } from '../../../_shared/cache-keys';
 import { deriveCountryIntelCacheKey, fetchSharedCountryContext } from './_country-brief-context';
 import { buildCountryBriefEvidence } from './_country-brief-evidence';
 import { isBriefRelevantTitle } from '../../../../shared/brief-relevance.js';
-import { evidenceNumbersGrounded, isEvidenceLimitClaim } from '../../../../shared/brief-claim-rules.js';
+import { evidenceNumbersGrounded, isEvidenceLimitClaim, sanctionsEvidenceGrounded } from '../../../../shared/brief-claim-rules.js';
 import { briefSectionHeading, type BriefSectionKey } from '../../../../shared/brief-sections.js';
 import {
   resolveEnergyImportDependency,
@@ -136,6 +136,7 @@ const comparable = (value: string) => value.normalize('NFKD').replace(/\p{M}/gu,
 // not establish this") is not a claim about the country.
 function claimIsGrounded(text: string, titles: string[], evidence: CountryBriefEvidenceInput[]): boolean {
   if (isEvidenceLimitClaim(text)) return false;
+  if (!sanctionsEvidenceGrounded(text, titles.length, evidence)) return false;
   const factTexts = evidence.map((item) => item.factText);
   const grounds = [...titles, ...factTexts];
   if (!validateNoHallucinatedProperNouns(comparable(text), comparable(grounds.join(' . ')), { failClosed: true }).ok) return false;
@@ -466,6 +467,7 @@ Sections:
 - watch: an unresolved event from a headline, or a market or forecast question. Do not predict its outcome.
 
 Rules:
+- A sanctions data point supports only its exact factText, cited alone without a headline or another data point. Do not use it for an implication or infer a sanctioning actor, target, cause or impact.
 - In a sentence that cites a data point, copy every number, percentage and date exactly from the cited data points; never use a number from a headline in that sentence.
 - A sentence that states a number may cite only one data point that has a value. Put each data point's number in its own sentence.
 - In a sentence that cites only headlines, copy numbers exactly from the cited headlines.

@@ -6,6 +6,14 @@
 
 import { extractNumericFacts } from './brief-llm-core.js';
 
+export function sanctionsEvidenceGrounded(text, headlineCount, evidence) {
+  const sanctions = evidence.filter(item => item.kind === 'sanctions');
+  if (sanctions.length === 0) return true;
+  const normalize = value => value.replace(/\s+/g, ' ').trim();
+  return headlineCount === 0 && evidence.length === 1
+    && normalize(text) === normalize(sanctions[0].factText);
+}
+
 // The date forms evidence fact texts use ("Sep 23, 2026", "Aug 29, 2026")
 // plus ISO dates. Blanked before numbers are read, so a date's day or year
 // can never license a score ("23 of 100" off an "as of Sep 23" as-of).

@@ -2,7 +2,67 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { parseCountryBriefSources, renderEvidenceGroundedCountryBrief } from '../server/worldmonitor/intelligence/v1/get-country-intel-brief.ts';
-import { parseBriefSections } from '../scripts/crawlable-developments.mjs';
+import { briefCitationGroundingGap, parseBriefSections } from '../scripts/crawlable-developments.mjs';
+
+describe('sanctions aggregate claim publication', () => {
+  const headline = 'Belize PM vows stronger support for Taiwan after China sanctions';
+  const sources = [{ title: headline, source: 'Focus Taiwan', url: '', publishedAt: '' }];
+  const atom = 'China is linked to 1,396 US OFAC and Canada SEMA sanctions designations, as of Oct 16, 2026.';
+  const evidence = [{ id: 'E3', kind: 'sanctions', label: 'US OFAC and Canada SEMA designations', value: '1,396', factText: atom, asOf: '2026-10-16' }];
+  const claim = (text, sources = [], evidence = []) => ({ text, sources, evidence });
+  const render = (overrides, inputs = evidence) => renderEvidenceGroundedCountryBrief(JSON.stringify({
+    situation: [claim(headline, [1])], implications: [], risks: [], outlook: [], watch: [], ...overrides,
+  }), sources, inputs, 'China');
+
+  for (const text of [
+    "China's sanctions against Belize, linked to 1,396 US OFAC and Canada SEMA sanctions designations, may deepen its diplomatic isolation over Taiwan.",
+    'Belize imposed sanctions on China, linked to 1,396 US OFAC and Canada SEMA sanctions designations.',
+    'Belize supports Taiwan while China is linked to 1,396 US OFAC and Canada SEMA sanctions designations.',
+  ]) {
+    it(`withholds a mixed aggregate implication: ${text}`, () => {
+      const result = render({ implications: [claim(text, [1], ['E3'])] });
+      assert.deepEqual(result.sections.map(section => section.key), ['situation']);
+      assert.equal(result.withheld, 1);
+      assert.deepEqual(result.evidence, []);
+    });
+  }
+
+  it('keeps the independently cited headline and exact aggregate fact', () => {
+    const result = render({ risks: [claim(atom, [], ['E3'])] });
+    assert.deepEqual(result.sections.map(section => section.key), ['situation', 'risks']);
+    assert.equal(result.sections[1].claims[0].text, atom);
+    assert.equal(result.withheld, 0);
+    assert.deepEqual(result.evidence.map(item => item.id), ['E3']);
+  });
+
+  it('rejects section, evidence-number and companion-evidence bypasses', () => {
+    const renumbered = [{ ...evidence[0], id: 'E7' }, { id: 'E2', kind: 'chokepoint', value: 'Taiwan', factText: 'China is linked to Taiwan.' }];
+    for (const overrides of [
+      { watch: [claim('China sanctions Belize.', [1], ['E7'])] },
+      { risks: [claim('China sanctions Belize.', [1], ['E7', 'E2'])] },
+      { risks: [claim(atom, [1], ['E7'])] },
+      { risks: [claim(atom.replace('1,396', '1,397'), [], ['E7'])] },
+      { risks: [claim(atom, [], ['E99'])] },
+    ]) {
+      const result = render(overrides, renumbered);
+      assert.deepEqual(result.sections.map(section => section.key), ['situation']);
+      assert.equal(result.withheld, 1);
+    }
+  });
+
+  it('still refuses an assessment without a grounded Situation', () => {
+    assert.equal(render({ situation: [], risks: [claim(atom, [], ['E3'])] }), null);
+  });
+
+  it('publishes independent facts accepted by the corpus after withholding the mixed claim', () => {
+    const result = render({
+      implications: [claim('China sanctions Belize.', [1], ['E3'])],
+      risks: [claim(atom, [], ['E3'])],
+    });
+    assert.equal(result.withheld, 1);
+    assert.equal(briefCitationGroundingGap({ ...result, sources }, { countryCode: 'CN', countryName: 'China' }), null);
+  });
+});
 
 describe('evidence-grounded country brief rendering', () => {
   const sources = [
