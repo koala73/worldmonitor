@@ -101,7 +101,7 @@ export function assessCorroboration(evidence: ClaimEvidence): Corroboration {
 /** One publisher family behind a claim, and the tier its seen labels declare. */
 export type Publisher = {
   readonly family: string;
-  /** The curated publisher name, or the feed label itself when no family is curated. */
+  /** The curated publisher name; otherwise the feed label the tier was read from, or the first label when none declares one. */
   readonly name: string;
   /** Best tier declared among this claim's labels in the family; null when none declares one. Never defaulted to 4. */
   readonly tier: DeclaredTier | null;
@@ -123,19 +123,24 @@ const tierRank = (tier: DeclaredTier | null) => tier ?? 5;
  */
 export function publisherRoster(evidence: ClaimEvidence): PublisherRoster {
   const keyFor = publisherKeyFor(evidence);
-  const byKey = new Map<string, { labels: string[]; tier: DeclaredTier | null; families: Set<string> }>();
+  const byKey = new Map<string, { labels: string[]; tier: DeclaredTier | null; tierLabel: string | null; families: Set<string> }>();
   for (const label of claimLabels(evidence)) {
     const key = keyFor(label);
-    const entry = byKey.get(key) ?? { labels: [], tier: null, families: new Set<string>() };
+    const entry = byKey.get(key) ?? { labels: [], tier: null, tierLabel: null, families: new Set<string>() };
     if (!entry.labels.includes(label)) entry.labels.push(label);
     entry.families.add(publisherFamilyFor(label));
     const tier = declaredSourceTier(label);
-    if (tier !== null && (entry.tier === null || tier < entry.tier)) entry.tier = tier;
+    if (tier !== null && (entry.tier === null || tier < entry.tier)) {
+      entry.tier = tier;
+      entry.tierLabel = label;
+    }
     byKey.set(key, entry);
   }
-  return [...byKey].map(([family, { labels, tier, families }]): Publisher => ({
+  // An uncurated row is named after the label its tier came from, so the name
+  // and the tier describe one outlet.
+  return [...byKey].map(([family, { labels, tier, tierLabel, families }]): Publisher => ({
     family,
-    name: isCuratedFamily(family) ? publisherNameForFamily(family) : labels[0]!.trim(),
+    name: isCuratedFamily(family) ? publisherNameForFamily(family) : (tierLabel ?? labels[0]!).trim(),
     tier,
     labels,
     ...(families.size > 1 ? { sameCopy: true as const } : {}),

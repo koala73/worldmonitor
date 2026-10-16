@@ -146,6 +146,18 @@ describe('detectSyndication', () => {
     assert.equal(roster[0]!.sameCopy, true);
   });
 
+  it('the roster names an unlisted same-copy group after the outlet whose tier it shows', () => {
+    // EuroNews is tier 2, Balkan Insight tier 1: the row must not read "EuroNews T1".
+    const at = new Date('2026-10-11T09:00:00Z');
+    const euro = { source: 'EuroNews', title: ZAP_TITLE, snippet: ZAP_LEAD, link: 'https://example.test/a', pubDate: at, isAlert: false };
+    const balkan = { ...euro, source: 'Balkan Insight', link: 'https://example.test/b' };
+    for (const allItems of [[euro, balkan], [balkan, euro]]) {
+      const roster = publisherRoster(evidenceFromCluster({ allItems }));
+      assert.equal(roster.length, 1);
+      assert.deepEqual([roster[0]!.name, roster[0]!.tier], ['Balkan Insight', 1], allItems.map((item) => item.source).join(' + '));
+    }
+  });
+
   it('one family carrying two different copies does not join the outlets it copied', () => {
     // A hub that reprints both reports is not evidence that the two reporters are one copy.
     const alpha = { source: 'Outlet Alpha', title: cbcPanama.title, snippet: cbcPanama.snippet };
