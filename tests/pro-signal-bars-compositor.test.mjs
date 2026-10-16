@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 const source = readFileSync(new URL('../pro-test/src/App.tsx', import.meta.url), 'utf8');
-const signalBars = source.match(/const SignalBars = \(\) => \{[\s\S]*?\n\};\n\nconst Hero = \(\) => \{/);
+const signalBars = source.match(/const SignalBars = \(\) => \{[\s\S]*?\n\};\n\nconst Hero = /);
 
 function previousSignificantChar(sourceText, index) {
   for (let i = index - 1; i >= 0; i--) {
