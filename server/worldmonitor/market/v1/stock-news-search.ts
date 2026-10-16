@@ -199,6 +199,7 @@ async function searchWithExa(
       'Content-Type': 'application/json',
       'x-api-key': apiKey,
       'User-Agent': CHROME_UA,
+      'x-exa-integration': 'worldmonitor',
     },
     body: JSON.stringify({
       query,
@@ -206,6 +207,7 @@ async function searchWithExa(
       type: 'neural',
       useAutoprompt: false,
       startPublishedDate: startDate,
+      category: 'news',
     }),
     signal: providerSignal(signal),
   });
