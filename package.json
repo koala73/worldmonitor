@@ -172,6 +172,7 @@
     "test:e2e:ci-smoke:4": "cross-env VITE_VARIANT=full playwright test e2e/map-overlay-marker-budget.spec.ts e2e/settings-source-live-apply.spec.ts e2e/bootstrap-request-budget.spec.ts e2e/breaking-news-banner-provenance.spec.ts",
     "test:e2e:prehydration": "cross-env VITE_VARIANT=full playwright test e2e/prehydration-shell.spec.ts --project=chromium --grep \"server-rendered welcome page|dashboard shell without JavaScript\"",
     "test:e2e:pro-cls": "cross-env VITE_VARIANT=full playwright test e2e/pro-critical-css-cls.spec.ts --project=chromium",
+    "test:e2e:pro-overflow": "cross-env VITE_VARIANT=full playwright test e2e/pro-mobile-overflow.spec.ts --project=chromium",
     "test:e2e:pro-hero": "cross-env VITE_VARIANT=full playwright test e2e/pro-hero-animation.spec.ts --project=chromium",
     "test:e2e:variant-smoke:full": "cross-env VITE_VARIANT=full playwright test e2e/variant-live-smoke.spec.ts",
     "test:e2e:variant-smoke:tech": "cross-env VITE_VARIANT=tech playwright test e2e/variant-live-smoke.spec.ts",

@@ -912,7 +912,7 @@ const AudiencePersonas = () => {
 const ApiSection = () => (
   <section className="py-24 px-6 border-y border-wm-border bg-[#0a0a0a]" id="api">
     <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
-      <div className="order-2 lg:order-1">
+      <div className="order-2 lg:order-1 min-w-0">
         <div className="bg-black border border-wm-border rounded-lg overflow-hidden font-mono text-sm">
           <div className="bg-wm-card px-4 py-2 border-b border-wm-border flex items-center gap-2">
             <Terminal className="w-4 h-4 text-wm-muted" aria-hidden="true" />
@@ -939,7 +939,7 @@ const ApiSection = () => (
         </div>
       </div>
 
-      <div className="order-1 lg:order-2">
+      <div className="order-1 lg:order-2 min-w-0">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-wm-border bg-wm-card text-wm-muted text-xs font-mono mb-6">
           {t('apiSection.apiTier')}
         </div>
@@ -1124,7 +1124,7 @@ const PricingTable = () => {
         {rows.map((row, i) => (
           <div key={i} className="bg-wm-card border border-wm-border p-4 rounded-sm">
             <p className="font-medium text-sm mb-3">{row.feature}</p>
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="grid grid-cols-2 gap-2 text-xs break-words">
               <div><span className="text-wm-muted">{t('tiers.free')}:</span> {row.free}</div>
               <div><span className="text-wm-green">{t('tiers.pro')}:</span> <span className="text-wm-green">{row.pro}</span></div>
               <div><span className="text-wm-muted">{t('nav.api')}:</span> {row.api}</div>
