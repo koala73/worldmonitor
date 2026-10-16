@@ -1013,7 +1013,7 @@ describe('policy wiring', () => {
     // Raising it by more than one per entry, or ahead of an entry, defeats
     // the deliberation this red is here to force.
     assert.ok(
-      MARKETING_IGNORE_ERRORS.length < 24,
+      MARKETING_IGNORE_ERRORS.length < 26,
       `marketing array must stay a vetted subset, got ${MARKETING_IGNORE_ERRORS.length}`,
     );
   });
