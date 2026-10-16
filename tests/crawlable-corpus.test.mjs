@@ -5223,6 +5223,8 @@ describe('crawlable corpus generator', () => {
         'Satellite MCP',
         'OSINT MCP',
         'IMF PortWatch',
+        // Hosted MCP, generally available 2026-09-28 per its support site.
+        'Recorded Future',
       ];
       for (const row of comparisonRows) {
         const hasVerifiedMcp = verifiedMcpProducts.some((name) => row[0].includes(name));

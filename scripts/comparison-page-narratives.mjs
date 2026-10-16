@@ -500,7 +500,7 @@ export const COMPARISON_NARRATIVES = {
 
   'mcp-servers-for-geopolitical-data': {
     headingProse: [
-      'Most "MCP servers for geopolitical data" are self-hosted wrappers around free upstreams. World Monitor is the hosted option: entitlements, quotas, OAuth, a published server-card, and an agent-skills index. Tool count is not our axis. Satellite MCP\'s 171 tools and world-intel-mcp\'s 120 tools beat us on that row, and the concession list says so before the rest of the page argues hosted access.',
+      'Most "MCP servers for geopolitical data" are self-hosted wrappers around free upstreams. World Monitor is the hosted multi-domain option: entitlements, quotas, OAuth, a published server-card, and an agent-skills index. Tool count is not our axis. Satellite MCP\'s 171 tools and world-intel-mcp\'s 120 tools beat us on that row, and the concession list says so before the rest of the page argues hosted access.',
     ],
     competitorProfiles: [
       {
@@ -541,8 +541,8 @@ export const COMPARISON_NARRATIVES = {
       {
         name: 'Off-Nadir Delta',
         paragraphs: [
-          'Open-source, self-hosted imagery and geospatial tooling over public sources. Upstream dependent. The job is imagery workflows, not a hosted geopolitical data plane.',
-          'Pick it when the agent needs imagery tools you will run. It is not competing for the hosted multi-domain cell.',
+          'A hosted event intelligence service from Off-Nadir Lab. It turns news reporting and open data into geolocated events, and each event records whether a satellite could have observed it, using Sentinel-1, Sentinel-2, NISAR and VIIRS. The MCP server is hosted, authenticates with OAuth 2.1 or an API key, and is on every plan, Free included, with calls paid from a token balance. The service is proprietary; its MCP client and Python SDK on GitHub are Apache-2.0 and forward calls to the hosted server.',
+          'Pick it when an agent needs event-to-satellite evidence at a published price: free for personal use, $59/month for commercial use. You cannot self-host it.',
         ],
       },
       {
@@ -575,7 +575,7 @@ export const COMPARISON_NARRATIVES = {
       'Auth is the other split. A local stdio process with a personal API key is not OAuth with entitlements. Agents that will be shared across a team need the second. Agents that live on one laptop can use the first. World Monitor MCP is built for the shared case. Satellite MCP and OSINT MCP are built for the laptop-and-fork case. GDELT community MCP is built for the firehose case. If your proof-of-concept used stdio, do not assume production can keep that shape once two more people join the desk.',
     ],
     whyWeWinBody: [
-      'World Monitor is the hosted geopolitical MCP: entitlements, quotas, OAuth, a published server-card, and an agent-skills index over live multi-domain data. Agents authenticate once. You do not run the process. That is the cell self-hosted packs are not selling.',
+      'World Monitor is the hosted multi-domain geopolitical MCP: entitlements, quotas, OAuth, a published server-card, and an agent-skills index over live multi-domain data. Agents authenticate once. You do not run the process. That is the cell self-hosted packs are not selling.',
       'They still win tool count and the ability to fork for free. If your requirement is 171 satellite tools on a box you control, take Satellite MCP. If your requirement is governed multi-domain access, take the hosted server and stop scoring this as a hammer-versus-hammer fight.',
       'The hosted cell also includes a documented quota. Self-hosted packs inherit whatever the upstream API will tolerate today, which is not a quota you can put in a contract. Agents that retry aggressively will discover that difference in production. Pro at $39.99/month is the price of not discovering it that way, plus OAuth and the server-card. It is not the price of 171 tools, and this page will not sell it as that. If you need both, run the satellite pack locally and authenticate the multi-domain session against the hosted server.',
     ],
