@@ -15,7 +15,13 @@ import {
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { writeResearchSection } from './build-research-reports.mjs';
+import { UMAMI_SCRIPT_TAG, writeResearchSection } from './build-research-reports.mjs';
+import {
+  COUNTRY_CENTROIDS_PATH,
+  TENSION_PAIRS_PATH,
+  renderCountryRelatedLinks,
+  selectRelatedCountries,
+} from './country-related-links.mjs';
 import {
   COMPARISONS_CONTENT_VERSION,
   COMPARISON_PAGES,
@@ -174,7 +180,7 @@ export const COMPARISON_PAGE_LASTMOD_PATHS = Object.freeze([
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-09-01';
-export const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-13';
+export const COUNTRY_PAGE_CONTENT_VERSION = '2026-10-16';
 export const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-12';
 // Exported so the #7533 guard test can recompute every family clock without
 // re-implementing the version constants themselves.
@@ -1889,6 +1895,17 @@ export async function loadCorpusData({
     ...country,
     microstateTerritory: microstateTerritoryCodes.has(country.code),
   }));
+  // In-body related-country links, derived from the crisis registry, the GDELT
+  // tension pairs, bounding-box and centroid proximity and region. Only published country
+  // pages are candidates (scripts/country-related-links.mjs).
+  const relatedCountriesByCode = selectRelatedCountries({
+    countries,
+    bboxByCode: countryBboxByCode,
+    centroidByCode: readJson(rootDir, COUNTRY_CENTROIDS_PATH),
+    tensionPairs: readJson(rootDir, TENSION_PAIRS_PATH),
+    regionsByCode,
+    regionLabels: REGION_LABELS,
+  });
   // Every page that states coverage reads this one pair. The country rows are
   // built from the same snapshot, so their ranked rows must match it exactly,
   // or the /countries/ table would list a different count than its copy.
@@ -2040,6 +2057,8 @@ export async function loadCorpusData({
       liveToolsScript: LIVE_TOOLS_SCRIPT_PATH,
       countryBboxes: COUNTRY_BBOXES_PATH,
       crisisRegistry: CRISIS_REGISTRY_PATH,
+      tensionPairs: TENSION_PAIRS_PATH,
+      countryCentroids: COUNTRY_CENTROIDS_PATH,
       researchReports: RESEARCH_REPORTS_INDEX_PATH,
       useCases: 'scripts/build-use-cases.mjs',
       accuracy: ACCURACY_PAGE_SOURCE_PATH,
@@ -2074,6 +2093,7 @@ export async function loadCorpusData({
     countries,
     countryBounds,
     countryBboxByCode,
+    relatedCountriesByCode,
     crises,
     chokepoints,
     chokepointObservation: {
@@ -3861,6 +3881,7 @@ export function renderCountryPage({
   country,
   relatedChokepoints = [],
   relatedReading = [],
+  relatedCountries = [],
   baseUrl,
   capturedAt,
   lastmod,
@@ -3964,6 +3985,7 @@ ${renderCountryDevelopments({ countryCode: country.code, countryName: country.na
         <div class="metric"><span>Confidence</span><strong>${country.lowConfidence ? 'Low' : 'Standard'}</strong></div>
       </section>${scoreDisclosure}
 ${analysis.html}
+${renderCountryRelatedLinks(country, relatedCountries, escapeHtml)}
 ${renderRelatedChokepoints(relatedChokepoints)}
 ${renderRelatedReading(relatedReading, escapeHtml)}
 ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
@@ -3971,7 +3993,8 @@ ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
       <p>The 0-100 index records the ${escapeHtml(prettyDate(capturedAt))} snapshot. See the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a> for dimensions, sources and confidence rules. Published revisions that affect ${escapeHtml(country.name)} are in the <a href="/docs/corrections">corrections log</a>.</p>
       <p class="snapshot-note">${escapeHtml(snapshotNote)}</p>
       <p>Use this dated reference with the live map for active alerts, conflict, market and energy signals. Neither score on this page is a forecast; where World Monitor does forecast, the graded record is on the <a href="/accuracy/">forecast accuracy scorecard</a>.</p>`}
-      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: World Monitor Country Resilience Index snapshot, ${escapeHtml(prettyDate(capturedAt))}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
+      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: World Monitor Country Resilience Index snapshot, ${escapeHtml(prettyDate(capturedAt))}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>
+      ${UMAMI_SCRIPT_TAG}`;
   const coreTitle = ciiEntry
     ? `${country.name} Instability Index & Country Risk`
     : `${country.name} Country Risk and Resilience`;
@@ -5588,6 +5611,7 @@ export async function buildCorpus({
         country,
         relatedChokepoints: chokepointPageLinks.byCountryCode.get(country.code),
         relatedReading: relatedReading.get(pagePath),
+        relatedCountries: data.relatedCountriesByCode?.get(country.code) || [],
         baseUrl,
         capturedAt: data.resilience.capturedAt,
         lastmod: ciiEntry

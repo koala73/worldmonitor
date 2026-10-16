@@ -3184,11 +3184,23 @@ describe('crawlable corpus generator', () => {
         const developmentsWordCount = words(
           countryDocument.querySelector('[data-country-developments]')?.textContent,
         ).length;
+        // The related-country links and the Pro/API link are a navigation
+        // block with their own bound (scripts/country-related-links.mjs: at
+        // most five one-line links plus one CTA sentence), so they are counted
+        // like developments rather than eating the prose budget. The bound
+        // below keeps that block from becoming a second prose section.
+        const relatedLinksWordCount = words(
+          countryDocument.querySelector('[data-country-related-links]')?.textContent,
+        ).length;
+        assert.ok(
+          relatedLinksWordCount > 0 && relatedLinksWordCount <= 130,
+          `${route} related-links block must stay between 1 and 130 words, got ${relatedLinksWordCount}`,
+        );
         const basePageWordCeiling = country.headlineEligible === false ? 950 : 900;
-        const pageWordCeiling = basePageWordCeiling + developmentsWordCount;
+        const pageWordCeiling = basePageWordCeiling + developmentsWordCount + relatedLinksWordCount;
         assert.ok(
           pageWordCount >= 600 && pageWordCount <= pageWordCeiling,
-          `${route} main content must contain at least 600 words and no more than ${basePageWordCeiling} base words plus ${developmentsWordCount} developments words; got ${pageWordCount}`,
+          `${route} main content must contain at least 600 words and no more than ${basePageWordCeiling} base words plus ${developmentsWordCount} developments words and ${relatedLinksWordCount} related-link words; got ${pageWordCount}`,
         );
       }
 
