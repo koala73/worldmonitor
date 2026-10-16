@@ -2740,13 +2740,13 @@ export const CACHE_TOOLS: ToolDef[] = [
     _outputBudgetBytes: 65536,
     // IMD bulletins are reusable with attribution to the issuing office. The
     // snapshot carries it inline; the rider keeps it attached when a caller
-    // projects only `cyclones` or `portWarnings`.
+    // projects only `seaBulletins` or `coastalBulletins`.
     _attribution: 'data.imd_cyclone_marine.{attribution: attribution, sourceName: sourceName, sourceUrl: sourceUrl}',
     description:
-      'Bounded India Meteorological Department cyclone tracks, forecast wind radii, cones of uncertainty, and official port / sea-area / coastal bulletins. ' +
-      'Not merged into weather:alerts:v1. Live fetch requires IMD_API_KEY plus IMD_API_EMAIL and IMD_API_PASSWORD to mint a short-lived JWT for each run. ' +
-      'Read coverageState on every call: disabled means the IMD credentials are missing or invalid, degraded is a partial product failure, unavailable means no usable IMD snapshot, and ok is live. ' +
-      'Empty lists with disabled, degraded, or unavailable coverage are not an India all-clear.',
+      'Bounded India Meteorological Department sea-area and coastal marine bulletins from the public mausam.imd.gov.in pages: storm warnings, port signals, storm-surge/tidal warnings, wind, visibility, and sea state per area with each bulletin validity window. ' +
+      'Not merged into weather:alerts:v1. IMD cyclone track, wind radii, and cone products are API-only and disabled (GDACS tropical cyclones cover the North Indian Ocean in natural events); port warning and fishermen warning PDFs are not parsed. ' +
+      'Read coverageState on every call: degraded means some bulletin pages failed and their last-good records were carried, unavailable means no page was readable, and ok is live. Per-page status is under products.<id>.pages. ' +
+      'Empty lists with degraded or unavailable coverage are not an India all-clear.',
     inputSchema: {
       type: 'object',
       properties: {

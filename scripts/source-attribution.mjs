@@ -210,7 +210,7 @@ const PROVIDER_OVERRIDES = {
   'mausam.imd.gov.in': {
     provider: 'India Meteorological Department',
     identityGroup: 'imd',
-    license: 'Official IMD visualization pages cited for attribution and source links, not scraped.',
+    license: 'Public IMD sea-area and coastal bulletin pages, parsed without an account or key. The RTI IMETD/R/E/25/00381 non-commercial-only terms recorded for the IMD API apply to these pages too. World Monitor public-display and redistribution rights are validated.',
     attribution: 'Data source: India Meteorological Department. Link the official marine/coastal bulletin page.',
     status: 'reviewed',
   },

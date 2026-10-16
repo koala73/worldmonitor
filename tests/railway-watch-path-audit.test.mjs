@@ -1018,10 +1018,6 @@ describe('planned Railway service lifecycle', () => {
     assert.equal(imd.cronSchedule, '*/15 * * * *');
     assert.equal(imd.startCommand, 'node seed-imd-cyclone-marine.mjs');
     assert.deepEqual(imd.requiredEnv, [
-      'IMD_API_KEY',
-      'IMD_API_EMAIL',
-      'IMD_API_PASSWORD',
-      'PROXY_URL',
       'UPSTASH_REDIS_REST_URL',
       'UPSTASH_REDIS_REST_TOKEN',
     ]);
