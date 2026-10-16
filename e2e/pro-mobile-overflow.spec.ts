@@ -28,9 +28,14 @@ const CASES = [
   { width: 360, lang: 'ru' },
 ];
 
-test.describe('/pro fits phone viewports after mount', () => {
-  for (const { width, lang } of CASES) {
-    test(`no horizontal overflow at ${width}px (${lang})`, async ({ page }) => {
+for (const { width, lang } of CASES) {
+  test.describe(`/pro fits a ${width}px phone after mount (${lang})`, () => {
+    // isMobile honours the viewport meta tag and stretches the layout
+    // viewport to the widest content, which is how phones rendered the 807px
+    // page zoomed out. A resized desktop context never does either.
+    test.use({ viewport: { width, height: 844 }, isMobile: true, hasTouch: true });
+
+    test('no horizontal overflow', async ({ page }) => {
       // public/pro/ is gitignored build output. Fail with the fix rather than
       // with an opaque net::ERR_FAILED from aborting the document request.
       expect(
@@ -38,7 +43,6 @@ test.describe('/pro fits phone viewports after mount', () => {
         `${PRO_INDEX} is missing. Run \`npm run build:pro\` first.`,
       ).toBe(true);
 
-      await page.setViewportSize({ width, height: 844 });
       await page.route('**/*', async (route) => {
         const url = new URL(route.request().url());
         if (url.origin !== ORIGIN) return route.abort();
@@ -56,9 +60,11 @@ test.describe('/pro fits phone viewports after mount', () => {
       await expect(page.locator('html')).toHaveAttribute('lang', lang);
 
       const layout = await page.evaluate(() => ({
+        innerWidth: window.innerWidth,
         clientWidth: document.documentElement.clientWidth,
         scrollWidth: document.documentElement.scrollWidth,
       }));
+      expect(layout.innerWidth, `/pro layout viewport is not the ${width}px phone width`).toBe(width);
       expect(layout.scrollWidth, `/pro overflows a ${width}px viewport`).toBe(layout.clientWidth);
 
       // The long curl line must scroll inside its own box instead.
@@ -78,5 +84,5 @@ test.describe('/pro fits phone viewports after mount', () => {
       ));
       expect(navRight).toBeLessThanOrEqual(width);
     });
-  }
-});
+  });
+}
