@@ -369,6 +369,9 @@ export const CHOKEPOINT_CONTENT = {
     countryCodes: CHOKEPOINT_COUNTRY_CODES.kerch_strait,
     crisisSlugs: ['ukraine-war'],
     region: 'Black Sea ↔ Sea of Azov',
+    metaTitle: 'Kerch Strait Status: Bridge & Sea of Azov | World Monitor',
+    metaDescription:
+      'Kerch Strait status: live disruption risk, navigational warnings and AIS congestion on the only sea route from the Black Sea to the Sea of Azov, by its bridge.',
     whyHeading: 'Why does control of the Kerch Strait gate Azov-basin trade?',
     blurb:
       'The Kerch Strait connects the Black Sea to the Sea of Azov and is the only sea route to the Azov ports of Ukraine and Russia. It has been a repeated flashpoint in the Russia–Ukraine conflict, where control of the strait directly gates Azov-basin trade.',

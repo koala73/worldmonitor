@@ -2541,7 +2541,7 @@ ${countries.map((country) => {
   return pageDocument({
     baseUrl,
     path,
-    title: 'Country Risk by Country: Instability & Resilience | World Monitor',
+    title: 'Country Risk Scores and Rankings by Country | World Monitor',
     description,
     lastmod,
     jsonLd: [
@@ -4412,7 +4412,7 @@ function renderChokepointPage({
   const content = CHOKEPOINT_CONTENT[chokepoint.id] || {};
   const blurb = content.blurb
     || `${chokepoint.displayName} is one of the 13 canonical maritime chokepoints tracked by World Monitor.`;
-  const description = chokepointMetaDescription(chokepoint.displayName);
+  const description = content.metaDescription ?? chokepointMetaDescription(chokepoint.displayName);
   const mapUrl = absoluteUrl(baseUrl, `/dashboard?chokepoint=${encodeURIComponent(chokepoint.id)}`);
 
   const routes = chokepoint.routeIds
@@ -4619,7 +4619,7 @@ ${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
   return pageDocument({
     baseUrl,
     path,
-    title: `${chokepoint.displayName} Chokepoint Status | World Monitor`,
+    title: content.metaTitle ?? `${chokepoint.displayName} Chokepoint Status | World Monitor`,
     description,
     lastmod,
     extraStyles: `
