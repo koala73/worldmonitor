@@ -53,7 +53,7 @@ The desk listens on localhost only, because its routes spend your keys and World
 
 No laptop at the venue: host the desk and open its URL on the venue computer.
 
-1. Create a service from this repository with the Dockerfile `demos/verification-desk/Dockerfile` (on Railway: set the variable `RAILWAY_DOCKERFILE_PATH=demos/verification-desk/Dockerfile`). The image already listens on `0.0.0.0` and the host's `PORT`.
+1. Create a service from this repository with the Dockerfile `demos/verification-desk/Dockerfile` (on Railway: set the variable `RAILWAY_DOCKERFILE_PATH=demos/verification-desk/Dockerfile`). The image already listens on `0.0.0.0` and the host's `PORT`. The production desk (desk.worldmonitor.app) is the `verification-desk` Railway service. It deploys from `main`, and its watch paths live in `scripts/railway-services.json`. When the desk imports a new WorldMonitor module, add that file to the service's `watchPatterns`. Otherwise `tests/railway-watch-path-audit.test.mjs` fails.
 2. Set the variables on the service, never in the repo: `DESK_PASSWORD` (required), `WORLDMONITOR_API_KEY`, `ANTHROPIC_API_KEY`, `LIVEAVATAR_API_KEY`, `LIVEAVATAR_AVATAR_ID`, and ElevenLabs if used. Leave `LIVEAVATAR_VOICE_ID` unset for a video avatar such as Graham. Set `LIVEAVATAR_CONTEXT_ID` and `LIVEAVATAR_SILENT_CONTEXT_ID` to the ids in your local `data/liveavatar-context*.json` so redeploys reuse them.
 3. At the venue: open the URL in Chrome, enter the password, click once anywhere (browsers need a click before audio plays), press **F** for fullscreen.
 

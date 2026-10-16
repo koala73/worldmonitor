@@ -2048,6 +2048,6 @@
       "shared/x-account-trust.ts"
     ],
     "cronSchedule": null,
-    "documentedAt": "demos/verification-desk/README.md#hosting"
+    "documentedAt": "demos/verification-desk/README.md#run-it-from-any-computer-hosted-with-a-login"
   }
 ]

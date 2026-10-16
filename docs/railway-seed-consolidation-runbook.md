@@ -224,6 +224,17 @@ an unregistered repository service fails the run before source filtering. Edit
 the roster only with evidence for an intentional Railway inventory change; do
 not use it to acknowledge drift.
 
+The always-on `verification-desk` service (`1f732679-760d-467b-bc36-4be3f45bc586`,
+desk.worldmonitor.app) was created from a PR branch on 2026-10-10 and was never
+enrolled, so every health run from then on failed with
+`unexpected repository service(s): verification-desk`. PR #9083 enrolled it in
+the roster and registered it as a Dockerfile service
+(`demos/verification-desk/Dockerfile`, built from the repository root). Its
+watch paths are `demos/verification-desk/**`, the image's file inputs, and the
+exact WorldMonitor modules the desk imports. The closure audit in
+`tests/railway-watch-path-audit.test.mjs` fails when a new desk import is not
+watched.
+
 After linking the CLI to the `world-monitor` production environment, audit the
 live settings with:
 
