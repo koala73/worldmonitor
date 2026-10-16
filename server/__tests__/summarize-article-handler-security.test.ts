@@ -84,6 +84,19 @@ describe("summarizeArticle handler premium mode gate", () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
+  test("Atlas Cloud summaries skip cleanly when the key is not configured", async () => {
+    delete process.env.ATLASCLOUD_API_KEY;
+
+    const result = await summarizeArticle(makeContext(), request("translate", "atlascloud"));
+
+    expect(result).toMatchObject({
+      fallback: true,
+      status: "SUMMARIZE_STATUS_SKIPPED",
+      statusDetail: "ATLASCLOUD_API_KEY not configured",
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
   test("premium callers pass the summary gate", async () => {
     delete process.env.OPENROUTER_API_KEY;
     process.env.WORLDMONITOR_VALID_KEYS = "enterprise-test-key";

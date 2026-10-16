@@ -36,7 +36,8 @@ const TRUSTED_WINDOWS: [&str; 3] = ["main", "settings", "live-channels"];
 const SECRET_MANAGEMENT_WINDOWS: [&str; 2] = ["main", "settings"];
 const DESKTOP_SHARED_SECRET_KEY: &str = "WM_DESKTOP_SHARED_SECRET";
 const BUILD_TIME_SIDECAR_ENV_KEYS: [&str; 2] = ["CONVEX_URL", DESKTOP_SHARED_SECRET_KEY];
-const SUPPORTED_SECRET_KEYS: [&str; 29] = [
+const SUPPORTED_SECRET_KEYS: [&str; 30] = [
+    "ATLASCLOUD_API_KEY",
     "OPENROUTER_API_KEY",
     "EXA_API_KEYS",
     "BRAVE_API_KEYS",
