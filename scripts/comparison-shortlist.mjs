@@ -80,7 +80,11 @@ function catalogLimit(tier, field) {
   return value.toLocaleString('en-US');
 }
 
-const monthly = (planKey) => `$${catalogPlan(planKey).price.toFixed(2)}/mo`;
+const CATALOG_PRICES = new Set(PRODUCT_FACTS.plans.map((plan) => plan.price).filter(Number.isFinite));
+// A currency amount in entry prose: $65,000, £40,500, $9.54.
+const PROSE_AMOUNT_RE = /[$£€]\d[\d,]*(?:\.\d+)?/g;
+
+const monthly = (planKey) =>`$${catalogPlan(planKey).price.toFixed(2)}/mo`;
 
 function catalogOffer(planKey) {
   const plan = catalogPlan(planKey);
@@ -511,7 +515,7 @@ export const SHORTLIST_PAGE_SEEDS = [
       links: [
         { label: 'Compare plans', href: '/pro#pricing' },
         { label: 'MCP quickstart', href: '/docs/mcp-quickstart' },
-        { label: 'Open the live map, free', href: '/' },
+        { label: 'Open the live map, free', href: '/dashboard' },
       ],
     },
   },
@@ -573,6 +577,13 @@ export function shortlistPage(seed) {
       if (typeof value !== 'string' || !value.trim()) fail(`${entry.name} is missing its "${label}" cell`);
     }
     const { pricing } = entry;
+    const proseAmounts = [...entry.paragraphs, entry.bestSuitedFor].flatMap((value) => String(value).match(PROSE_AMOUNT_RE) ?? []);
+    if (entry.name === WORLD_MONITOR) {
+      const stray = proseAmounts.filter((amount) => !CATALOG_PRICES.has(Number(amount.slice(1).replaceAll(',', ''))));
+      if (stray.length) fail(`World Monitor prose prices must come from the product catalog, got ${stray.join(', ')}`);
+    } else if (proseAmounts.length && !pricing.sources?.length) {
+      fail(`${entry.name} quotes ${proseAmounts.join(', ')} in prose without a cited price source`);
+    }
     if (pricing.published) {
       if (!pricing.sources?.length) fail(`${entry.name} needs a cited source for its published price`);
     } else {

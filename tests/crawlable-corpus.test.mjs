@@ -1670,10 +1670,21 @@ describe('crawlable corpus generator', () => {
       'scripts/comparison-page-narratives.mjs',
       'scripts/comparison-shortlist.mjs',
       'shared/product-facts.generated.json',
+      'shared/product-catalog.generated.json',
+      'public/.well-known/mcp/server-card.json',
       'shared/source-attribution-manifest.json',
       'src/config/chokepoint-registry.ts',
       'scripts/data/related-reading.json',
     ]);
+  });
+
+  it('folds every JSON file the shortlist module reads into the compare lastmod clock', () => {
+    const source = readFileSync(join(repoRoot, 'scripts/comparison-shortlist.mjs'), 'utf8');
+    const reads = [...source.matchAll(/readRepoJson\('([^']+)'\)/g)].map(([, path]) => path);
+    assert.ok(reads.length >= 2, 'expected the shortlist module to read the product facts and catalog');
+    for (const path of reads) {
+      assert.ok(COMPARISON_PAGE_LASTMOD_PATHS.includes(path), `${path} feeds the shortlist page but not its lastmod`);
+    }
   });
 
   // laterDate is imported rather than re-implemented, so the family-clock

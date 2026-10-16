@@ -168,6 +168,8 @@ export const COMPARISON_PAGE_LASTMOD_PATHS = Object.freeze([
   'scripts/comparison-page-narratives.mjs',
   'scripts/comparison-shortlist.mjs',
   'shared/product-facts.generated.json',
+  'shared/product-catalog.generated.json',
+  'public/.well-known/mcp/server-card.json',
   SOURCE_ATTRIBUTION_MANIFEST_PATH,
   CHOKEPOINT_REGISTRY_PATH,
   RELATED_READING_PATH,

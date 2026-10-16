@@ -308,4 +308,17 @@ describe('the 2026 buyer\'s shortlist page contract', () => {
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.useCases.pop(); })), /use case/i);
     assert.throws(() => shortlistPage(seedWith((seed) => { seed.intro = `${seed.intro} ${'word '.repeat(60)}`; })), /95 words/);
   });
+
+  it('rejects price claims the brief does not allow', () => {
+    const published = (seed) => seed.entries.find((entry) => entry.name !== 'World Monitor' && entry.pricing.published);
+    const unpublished = (seed) => seed.entries.find((entry) => !entry.pricing.published);
+    assert.throws(() => shortlistPage(seedWith((seed) => { published(seed).pricing.sources = []; })), /cited (price )?source/);
+    assert.throws(() => shortlistPage(seedWith((seed) => { published(seed).pricing.sources[0].url = 'http://example.com/pricing'; })), /https URL/);
+    assert.throws(() => shortlistPage(seedWith((seed) => { unpublished(seed).pricing.offers = []; })), /offers/);
+    assert.throws(() => shortlistPage(seedWith((seed) => { unpublished(seed).pricing.sources = []; })), /in prose without a cited price source/);
+    assert.throws(() => shortlistPage(seedWith((seed) => { seed.entries[0].paragraphs[0] += ' Pro costs $1.99/mo.'; })), /World Monitor prose prices/);
+    assert.throws(() => shortlistPage(seedWith((seed) => { seed.useCases[0].href = '/blog/vs/dataminr/'; })), /\/blog\/best\//);
+    assert.throws(() => shortlistPage(seedWith((seed) => { seed.faqs = seed.faqs.slice(0, 5); })), /6-8 FAQs/);
+    assert.throws(() => shortlistPage(seedWith((seed) => { seed.keyTakeaways[0] += ' See [the plans](http://example.com).'; })), /site path or https URL/);
+  });
 });
