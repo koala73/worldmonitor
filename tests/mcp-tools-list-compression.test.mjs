@@ -5,6 +5,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 
 import { SERVER_VERSION } from '../api/mcp/constants.ts';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
+import { TOOL_CATEGORY_BY_NAME } from '../api/mcp/domains.ts';
 
 const originalEnv = { ...process.env };
 
@@ -529,11 +530,12 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.match(card.name, /^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/, 'top-level name must be reverse-DNS (Server Card schema)');
 
       // tools[] must be a name+description projection of the live registry,
-      // plus the same access marker tools/list emits, in the same order.
+      // plus the same access marker tools/list emits and the card-only
+      // category from api/mcp/domains.ts, in the same order.
       const expected = TOOL_REGISTRY.map((t) => ({
         name: t.name,
         description: t.description,
-        _meta: { 'worldmonitor/access': toolAccess(t) },
+        _meta: { 'worldmonitor/access': toolAccess(t), 'worldmonitor/category': TOOL_CATEGORY_BY_NAME[t.name] },
       }));
       assert.deepEqual(
         card.tools,

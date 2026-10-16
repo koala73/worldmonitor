@@ -3,7 +3,7 @@
   "kind": "agent-view",
   "product": "World Monitor",
   "url": "https://www.worldmonitor.app",
-  "description": "Live global-intelligence platform: real-time markets, conflict events, country risk and resilience, global procurement opportunities, shipping chokepoints, aviation/maritime activity, energy, climate, health, cyber threats, on-demand NLP utilities (classification, entity extraction, news clusters, keyword spikes), forecasts and AI-generated briefs — machine-readable JSON, correlated across layers.",
+  "description": "Live global-intelligence platform serving machine-readable JSON, correlated across layers, with forecasts and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy. On-demand NLP utilities add classification, entity extraction, news clusters, and keyword spikes.",
   "endpoints": {
     "mcp": {
       "url": "https://worldmonitor.app/mcp",

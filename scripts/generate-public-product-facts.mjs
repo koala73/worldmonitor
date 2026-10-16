@@ -26,10 +26,19 @@ import { getCompleteLayerCatalogKeys } from '../src/config/map-layer-definitions
 import { INTEL_HOTSPOTS } from '../shared/geo-data.ts';
 import { PIPELINES } from '../shared/pipelines-data.ts';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
+import { MCP_DOMAIN_SUMMARY, MCP_TAGS, MCP_TOOL_CATEGORIES, TOOL_CATEGORY_BY_NAME } from '../api/mcp/domains.ts';
 import { UI_RESOURCE_LIST_RESPONSE } from '../api/mcp/ui/registry.ts';
 import { publishedRankedCountries } from './build-ai-search.mjs';
 import { commandPaletteCommandCount } from './lib/command-palette-count.mjs';
 import { defaultOnLayerStats } from './lib/default-map-layer-count.mjs';
+import {
+  AGENT_CARD_DOMAIN_SURFACE,
+  JSON_DOMAIN_SURFACES,
+  MARKDOWN_DOMAIN_SURFACES,
+  SERVER_CARD_DOMAIN_SURFACE,
+  renderJsonDomainSurface,
+  renderMarkdownDomainSurface,
+} from './lib/mcp-domain-summary.mjs';
 import { lngFacilityCount } from './_storage-facility-registry.mjs';
 import { computeStats } from './docs-stats.mjs';
 import { loadManifest, scanUpstreamHosts, sourceAttributionStats } from './source-attribution.mjs';
@@ -333,7 +342,8 @@ transform('public/.well-known/agent-card.json', (source) => {
   if ([...source.matchAll(/\b\d+-tool catalog\b/g)].length !== 1) {
     throw new Error('agent-card must contain exactly one N-tool catalog claim');
   }
-  return source.replace(/\b\d+-tool catalog\b/, `${TOOL_REGISTRY.length}-tool catalog`);
+  const next = source.replace(/\b\d+-tool catalog\b/, `${TOOL_REGISTRY.length}-tool catalog`);
+  return renderJsonDomainSurface(next, AGENT_CARD_DOMAIN_SURFACE, MCP_DOMAIN_SUMMARY);
 });
 
 // The server card is the machine-readable tool catalog consumed by docs-stats
@@ -377,13 +387,32 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
     'get_country_risk → country-risk-v3.html',
   );
   card.metadata.mcpApps.uiResources = UI_RESOURCE_LIST_RESPONSE.map(resource => resource.uri);
-  card.tools = TOOL_REGISTRY.map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    _meta: { 'worldmonitor/access': toolAccess(tool) },
-  }));
-  return json(card);
+  // Categories and tags come from api/mcp/domains.ts. The per-tool category is
+  // card-only; the live tools/list _meta stays access + weight (no wire change).
+  card.toolCategories = MCP_TOOL_CATEGORIES.map((category) => category.id);
+  card.tags = [...MCP_TAGS];
+  card.tools = TOOL_REGISTRY.map((tool) => {
+    const category = TOOL_CATEGORY_BY_NAME[tool.name];
+    if (!category) throw new Error(`${tool.name} has no category in api/mcp/domains.ts`);
+    return {
+      name: tool.name,
+      description: tool.description,
+      _meta: { 'worldmonitor/access': toolAccess(tool), 'worldmonitor/category': category },
+    };
+  });
+  return renderJsonDomainSurface(json(card), SERVER_CARD_DOMAIN_SURFACE, MCP_DOMAIN_SUMMARY);
 });
+
+// The domain list on the other discovery surfaces. The card and agent-card
+// rows render inside their own transforms above, because a second transform
+// of the same file would read the unwritten original in --check mode.
+for (const surface of JSON_DOMAIN_SURFACES) {
+  if (surface === SERVER_CARD_DOMAIN_SURFACE || surface === AGENT_CARD_DOMAIN_SURFACE) continue;
+  transform(surface.path, (source) => renderJsonDomainSurface(source, surface, MCP_DOMAIN_SUMMARY));
+}
+for (const surface of MARKDOWN_DOMAIN_SURFACES) {
+  transform(surface.path, (source) => renderMarkdownDomainSurface(source, surface, MCP_DOMAIN_SUMMARY));
+}
 
 // Keep lifecycle cleanup here. Inventory totals in these locale files are not
 // generator-owned acceptance criteria.
