@@ -183,7 +183,7 @@ test('R6/R16: null-to-available preserves economic order, precision, attribution
     assert.deepEqual(fixtureState.rows().map(indicator => [indicator.label, indicator.value, indicator.source]), [
       ['Stock Index', 'Fixture index: 100.25 CNY', 'Market Service'], ['Weekly Momentum', '-1.25%', null],
       ['Instability Regime', '71/100 (high)', 'Country Instability Index'], ['Displacement Outflow', '1.5M', 'UN-style displacement feed'],
-      ['Real GDP Growth', '+4.3%', 'IMF WEO'], ['CPI Inflation', '+2.3%', 'IMF WEO'],
+      ['Real GDP Growth', '+4.3%', 'IMF WEO · Year not supplied · IMF release not supplied'], ['CPI Inflation', '+2.3%', 'IMF WEO · Year not supplied · IMF release not supplied'],
     ]);
     fixtureState.hydrations[0].imf(imf); assert.equal(fixtureState.rows().length, 6); fixtureState.check(71);
   }, { initial: null });
