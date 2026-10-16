@@ -61,7 +61,9 @@ The mutations are unchanged. `lastUsedAt` keeps its 5-minute debounce, so up to 
 
 ## Why This Works
 
-OCC conflicts need overlapping transactions on one document. With the delays spread over 30 seconds, the first touch commits in about 20 ms, long before the next one starts. The later touches read the fresh `lastUsedAt`, hit the debounce, and return without writing. A read-only no-op cannot conflict with a commit that already finished.
+OCC conflicts need overlapping transactions on one document. With the delays spread over 30 seconds, the first touch usually commits before the next one starts. The later touches read the fresh `lastUsedAt`, hit the debounce, and return without writing. Two of those read-only no-ops can land together without conflicting, because neither writes.
+
+The spread lowers the risk and does not remove it. A touch still conflicts when its delay lands within the first writer's run of about 20 ms. The expected count is about (N−1) × 20 ms / 30 s per burst of N, which is about 0.013 for a burst of 20. Serializing the touches instead would need a shared write target, which brings back the same conflict.
 
 Measured on the real `/api/internal-validate-api-key` route, with the repo's functions deployed to a local backend. Each row is concurrent POSTs in bursts.
 
@@ -77,7 +79,7 @@ Writes stay at one per key. The trade is that every validation in a burst now sc
 
 - **Reproduce OCC on a real backend, not `convex-test`.** Download `convex-local-backend-<arch>.zip` from the `get-convex/convex-backend` GitHub releases. Start it with `--instance-name` and `--instance-secret`, and get an admin key with `convex-local-backend keygen admin-key`. Deploy from a `git archive` copy of the repo with its own `.env.local` holding `CONVEX_SELF_HOSTED_URL` and `CONVEX_SELF_HOSTED_ADMIN_KEY`. A worktree's `.env.local` can carry the prod deploy key. `convex dev --local` is deprecated as of CLI 1.40.
 - **Count conflicts from the log stream.** `convex logs --success --jsonl` emits one Completion per run with `occInfo` (`tableName`, `documentId`, `writeSource`) and `willRetry`. The same fields on prod confirm the mechanism, because `writeSource` names the transaction that won.
-- **Pin the scheduling shape in a unit test.** `convex/__tests__/apiKeys.test.ts` stubs `Math.random`, fires three validations, and reads `ctx.db.system.query("_scheduled_functions")`. It asserts three distinct scheduled times inside the debounce window. On the old code it fails with `expected 1 to be 3`.
+- **Pin the scheduling shape in a unit test.** `convex/__tests__/apiKeys.test.ts` pins `Math.random` to a fixed value for each of three validations and reads `ctx.db.system.query("_scheduled_functions")`. It asserts the exact scheduled times, so a longer spread also fails. Pin the value with `mockReturnValue` for the whole request, not `mockReturnValueOnce`. Something else in the request path also calls `Math.random`, and a queue of one-shot values gets consumed out of order.
 - **Any best-effort write to a shared document from a fan-out path will herd.** A non-transactional "is it due" check cannot dedupe concurrent callers. Spread the writes in time, or give each caller its own write target.
 
 Not every OCC warning is a bug. In the same Insights run, `payments/webhookMutations:processWebhookEvent` showed 38 conflicts on `subscriptions`. Dodo sends several events per billing action within seconds, and each is a distinct write to the same subscription. OCC serializes them, and the retry runs inside the same HTTP request. A captured case retried once and wrote. That is the correct behavior, so it was left alone.

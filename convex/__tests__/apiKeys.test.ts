@@ -3,7 +3,6 @@ import { afterEach, beforeEach, expect, test, describe, vi } from "vitest";
 import schema from "../schema";
 import { api, internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
-import { TOUCH_DEBOUNCE_MS } from "../apiKeys";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -558,8 +557,10 @@ describe("HTTP route /api/internal-validate-api-key — touch scheduling gate", 
     const keyHash = makeKeyArgs(1).keyHash;
 
     const random = vi.spyOn(Math, "random");
-    for (const r of [0.1, 0.5, 0.9]) random.mockReturnValueOnce(r);
-    for (let i = 0; i < 3; i++) expect((await validate(t, keyHash)).status).toBe(200);
+    for (const r of [0.1, 0.5, 0.9]) {
+      random.mockReturnValue(r);
+      expect((await validate(t, keyHash)).status).toBe(200);
+    }
     random.mockRestore();
 
     const touchTimes = await t.run(async (ctx) =>
@@ -567,12 +568,7 @@ describe("HTTP route /api/internal-validate-api-key — touch scheduling gate", 
         .filter((job) => job.name.includes("touchKeyLastUsed"))
         .map((job) => job.scheduledTime),
     );
-    expect(touchTimes).toHaveLength(3);
-    expect(new Set(touchTimes).size).toBe(3);
-    for (const at of touchTimes) {
-      expect(at).toBeGreaterThan(T0);
-      expect(at).toBeLessThan(T0 + TOUCH_DEBOUNCE_MS);
-    }
+    expect(touchTimes.sort((a, b) => a - b)).toEqual([T0 + 3_000, T0 + 15_000, T0 + 27_000]);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
   });
 

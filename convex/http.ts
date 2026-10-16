@@ -1371,8 +1371,9 @@ function touchIsDue(lastUsedAt: unknown): boolean {
 // The gate cannot stop a burst: every parallel validation that lands before
 // the first touch commits still sees a stale lastUsedAt, and touches scheduled
 // for the same instant conflict N-1 times (560 OCC conflicts in 72h across
-// userApiKeys + mcpProTokens, Convex Insights 2026-10). A random delay lets the
-// first touch commit before the rest run, so they read it and no-op. On a
+// userApiKeys + mcpProTokens, Convex Insights 2026-10). A random delay makes
+// the rest start after the first commits, read it, and no-op, except a touch
+// that lands within its ~20ms run: about (N-1) x 20ms / 30s per burst. On a
 // local backend, herds of 5 went from 4 conflicts each to 0.
 const TOUCH_SPREAD_MS = 30_000;
 
