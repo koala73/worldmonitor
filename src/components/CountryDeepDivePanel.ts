@@ -1772,32 +1772,35 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const data = this.hostedAtlas;
     const code = this.currentCode;
     const signal = this.signal;
-    if (!data || !code || data.code !== code || data.signal !== signal || signal.aborted || this.outputClose || !this.source) throw new Error('Country Atlas data is not ready.');
+    if (!code || signal.aborted || this.outputClose) throw new Error('Country Atlas data is not ready.');
+    const website = this.source?.mode !== 'host';
+    if (!website && (!data || data.code !== code || data.signal !== signal)) throw new Error('Country Atlas data is not ready.');
     const outputController = new AbortController();
-    const client = this.source.atlas(code, AbortSignal.any([signal, outputController.signal]));
+    const source = this.source ?? (await import('@/services/country-brief-source')).createWebsiteCountryBriefSource();
+    const client = source.atlas(code, AbortSignal.any([signal, outputController.signal]));
     const shell = this.content.querySelector<HTMLElement>('.cdp-shell')!;
     const scrollTop = this.content.scrollTop;
     const selection = { type, id };
     let detailPanel: import('./Panel').Panel;
     let show: () => Promise<void>;
     if (type === 'pipeline') {
-      const rows = data.pipelines?.pipelines.filter(p => p.fromCountry === code || p.toCountry === code || p.transitCountries.includes(code));
-      if (!rows?.some(p => p.id === id)) throw new Error('Pipeline is not in this country.');
+      const rows = data?.pipelines?.pipelines.filter(p => p.fromCountry === code || p.toCountry === code || p.transitCountries.includes(code));
+      if (!website && !rows?.some(p => p.id === id)) throw new Error('Pipeline is not in this country.');
       const { PipelineStatusPanel } = await import('./PipelineStatusPanel');
       const panel = new PipelineStatusPanel(client); detailPanel = panel;
-      show = () => panel.presentDetail({ ...data.pipelines!, pipelines: rows }, id);
+      show = website ? () => panel.presentCountryDetail(code, id) : () => panel.presentDetail({ ...data!.pipelines!, pipelines: rows! }, id);
     } else if (type === 'storage') {
-      const rows = data.facilities?.facilities.filter(f => f.country === code);
-      if (!rows?.some(f => f.id === id)) throw new Error('Storage facility is not in this country.');
+      const rows = data?.facilities?.facilities.filter(f => f.country === code);
+      if (!website && !rows?.some(f => f.id === id)) throw new Error('Storage facility is not in this country.');
       const { StorageFacilityMapPanel } = await import('./StorageFacilityMapPanel');
       const panel = new StorageFacilityMapPanel(client); detailPanel = panel;
-      show = () => panel.presentDetail({ ...data.facilities!, facilities: rows }, id);
+      show = website ? () => panel.presentCountryDetail(code, id) : () => panel.presentDetail({ ...data!.facilities!, facilities: rows! }, id);
     } else {
-      const rows = data.shortages?.shortages.filter(s => s.country === code && !s.resolvedAt);
+      const rows = data?.shortages?.shortages.filter(s => s.country === code && !s.resolvedAt);
       if (!rows?.some(s => s.id === id)) throw new Error('Fuel shortage is not active in this country.');
       const { FuelShortagePanel } = await import('./FuelShortagePanel');
       const panel = new FuelShortagePanel(client); detailPanel = panel;
-      show = () => panel.presentDetail({ ...data.shortages!, shortages: rows }, id);
+      show = () => panel.presentDetail({ ...data!.shortages!, shortages: rows }, id);
     }
     if (signal.aborted || this.signal !== signal || this.currentCode !== code || this.outputClose) { detailPanel.destroy(); return; }
     const output = this.el('div', 'cdp-atlas-output');
@@ -1816,7 +1819,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.content.scrollTop = scrollTop;
     };
     shell.hidden = true; this.content.append(output); this.content.scrollTop = 0; back.focus();
-    await show();
+    try {
+      await show();
+    } catch (error) {
+      if (this.atlasSelection === selection) this.outputClose?.();
+      throw error;
+    }
   }
 
   private async loadDisruptionsForCountry(iso2: string, revision = this.atlasRevision): Promise<void> {
@@ -1903,7 +1911,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       row.textContent = it.label || it.id;
       row.addEventListener('click', () => {
         if (!it.id) return;
-        if (this.source?.mode === 'host') {
+        if (this.source?.mode === 'host' || it.event === 'energy:open-pipeline-detail' || it.event === 'energy:open-storage-facility-detail') {
           const type = it.event === 'energy:open-pipeline-detail' ? 'pipeline' : it.event === 'energy:open-storage-facility-detail' ? 'storage' : 'shortage';
           const id = it.detail.pipelineId ?? it.detail.facilityId ?? it.detail.shortageId ?? it.id;
           void this.openAtlasDetail(type, id).catch(() => showToast('Atlas detail is not available. Please retry.'));
