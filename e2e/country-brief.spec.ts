@@ -14,7 +14,7 @@ for (const width of [1280, 390]) for (const scenario of ['mixed', 'legacy', 'par
     const panel = page.locator('#country-deep-dive-panel');
     await expect(panel).toHaveAttribute('aria-hidden', 'false');
     await panel.getByRole('button', { name: 'Economy & trade', exact: true }).click();
-    await captureImfPeriods(page, panel.locator('[data-brief-section=economic]'), scenario, testInfo);
+    await captureImfPeriods(page, panel.locator('[data-brief-section=economic]'), scenario, testInfo, 'website');
     if (scenario === 'mixed') {
       await expect(panel.locator('[data-brief-section=economic] .cdp-economic-label')).toHaveText(['Stock Index', 'Weekly Momentum', 'Instability Regime', 'Real GDP Growth', 'CPI Inflation', 'Unemployment']);
     }

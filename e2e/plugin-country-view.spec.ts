@@ -33,7 +33,7 @@ for (const width of [1280, 390]) for (const scenario of ['mixed', 'legacy', 'par
       expect(boot.moduleUrl).toMatch(/^http:\/\/127\.0\.0\.1:4173\/plugin\/assets\/country-/);
       await expect.poll(() => host!.bootTrace.some(event => event.event === 'host' && event.method === 'ui/initialize'), { timeout: 5000 }).toBe(true);
       await frame.getByRole('button', { name: 'Economy & trade', exact: true }).click();
-      await captureImfPeriods(page, frame.locator('[data-brief-section=economic]'), scenario, testInfo);
+      await captureImfPeriods(page, frame.locator('[data-brief-section=economic]'), scenario, testInfo, 'native');
     } finally { await writeFile(testInfo.outputPath('fixture-requests.json'), JSON.stringify({ requests, errors, frames, routes: host?.bootTrace }, null, 2)); }
   });
 }

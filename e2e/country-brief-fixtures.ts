@@ -52,11 +52,18 @@ export function imfPeriodData(scenario: ImfPeriodScenario, code: string) {
   return { imfMacro: { countries: { [code]: macro } }, ...(scenario === 'partial' ? {} : { imfGrowth: { countries: { [code]: growth } } }), imfLabor: { countries: { [code]: labor } }, imfExternal: { countries: {} } };
 }
 
-export async function captureImfPeriods(page: Page, card: Locator, scenario: ImfPeriodScenario, testInfo: TestInfo) {
+export async function captureImfPeriods(page: Page, card: Locator, scenario: ImfPeriodScenario, testInfo: TestInfo, surface: 'website' | 'native') {
   await expect(card.locator('.cdp-economic-source').filter({ hasText: 'IMF WEO' }).first()).toBeVisible();
   const years: Record<string, number> = { 'Real GDP Growth': 2026, 'GDP / Capita': 2023, 'CPI Inflation': 2025, 'Primary Balance': 2024, 'Public Spending': 2022, 'Gov Revenue': 2021, Unemployment: 2020 };
   const values: Record<string, string> = { 'Real GDP Growth': '+1.5%', 'GDP / Capita': '$60.3k', 'CPI Inflation': '+2.5%', 'Primary Balance': '-2.4% GDP', 'Public Spending': '40.0% GDP', 'Gov Revenue': '0.0% GDP', Unemployment: '6.5%' };
-  await expect.poll(async () => (await card.locator('.cdp-economic-label').allTextContents()).filter(label => label in years).length).toBeGreaterThanOrEqual(3);
+  const metricLabels: Record<ImfPeriodScenario, string[]> = {
+    mixed: ['Real GDP Growth', 'CPI Inflation', 'Unemployment', ...(surface === 'native' ? ['Primary Balance'] : [])],
+    legacy: ['Real GDP Growth', 'CPI Inflation', 'Unemployment', 'Primary Balance'],
+    partial: ['CPI Inflation', 'Unemployment', 'Primary Balance', 'Public Spending'],
+    sparse: ['GDP / Capita', 'Public Spending', 'Gov Revenue'],
+  };
+  const prefix = scenario === 'sparse' ? [] : ['Stock Index', 'Weekly Momentum', ...(surface === 'website' && scenario === 'mixed' ? ['Instability Regime'] : [])];
+  await expect(card.locator('.cdp-economic-label')).toHaveText([...prefix, ...metricLabels[scenario]]);
   const rows = await card.locator('.cdp-economic-item').evaluateAll(items => items.map(item => ({ label: item.querySelector('.cdp-economic-label')?.textContent ?? '', value: item.querySelector('.cdp-economic-value')?.textContent, source: item.querySelector('.cdp-economic-source')?.textContent, width: item.getBoundingClientRect().width, overflow: item.scrollWidth > item.clientWidth + 1 })));
   for (const row of rows.filter(row => row.label in years)) {
     const missing = scenario === 'legacy' || scenario === 'partial' && ['CPI Inflation', 'Primary Balance'].includes(row.label);
