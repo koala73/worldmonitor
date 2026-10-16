@@ -92,7 +92,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-14'
+          - platform: 'macos-15'
             args: '--target aarch64-apple-darwin'
             node_target: 'aarch64-apple-darwin'
             label: 'macOS-ARM64'
