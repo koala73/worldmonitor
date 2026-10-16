@@ -2953,7 +2953,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_tariff_trends',
     _outputBudgetBytes: 131072,
-    description: 'Global trade and pricing indicators: US MFN applied tariff trend (all-products average; for another reporter, a partner or a product group use get_tariff_averages), Big Mac index, FAO Food Price Index, and per-country national debt levels.',
+    description: 'Four indicators: US MFN tariff schedule trend (not current duty), Big Mac index, FAO food prices, national debt. The tariff series is the US all-products MFN average; for another reporter, a partner or a product group use get_tariff_averages, for one HS6 product get_bilateral_tariff, and for the current US duty with Section 301 and 232 duties get_us_import_duty.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -482,7 +482,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_tariff_trends`
 
-全球贸易和价格指标：美国 MFN 适用关税趋势（全部产品平均；其他报告国、伙伴或产品组请使用 `get_tariff_averages`）、巨无霸指数、FAO 食品价格指数和各国国家债务水平。
+四项指标：美国 MFN 关税税则趋势（不是现行关税）、巨无霸指数、FAO 食品价格、国家债务。其中关税序列是美国全部产品的 MFN 平均；其他报告国、伙伴或产品组请使用 `get_tariff_averages`，单个 HS6 产品请使用 `get_bilateral_tariff`，含 301 条款和 232 条款关税的美国现行关税请使用 `get_us_import_duty`。
 
 **参数（工具特定）：**
 
@@ -545,7 +545,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_tariff_averages`
 
-一个国家按年份适用的平均关税。不传伙伴和产品组时，返回任一报告国的 WTO 全部产品 MFN 平均税率（`TP_A_0010`），不限于 `get_tariff_trends` 中的美国序列。传入非“世界”的伙伴或产品组时，返回来自 UNCTAD TRAINS（经 World Bank WITS）的实际适用平均税率：
+一个国家按年份适用的平均关税：截至 2023 年的税则税率，不含 301/232 条款关税。不传伙伴和产品组时，返回任一报告国的 WTO 全部产品 MFN 平均税率（`TP_A_0010`），不限于 `get_tariff_trends` 中的美国序列。传入非“世界”的伙伴或产品组时，返回来自 UNCTAD TRAINS（经 World Bank WITS）的实际适用平均税率：
 
 - `tariffRate` 为简单平均（`AHS-SMPL-AVRG`），计入该伙伴可享受的优惠。
 - `weightedRate` 为进口加权平均（`AHS-WGHTD-AVRG`）。
@@ -562,6 +562,8 @@ curl -s https://worldmonitor.app/mcp \
 | `years` | integer | 返回的年数，保留最新年份（0–30）。0 或省略表示路由默认值（10）。 |
 
 **响应区分：** 每个数据点的 `indicatorCode`、`partnerCountry` 和 `productSector` 说明由哪个序列作答。`TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED` 是覆盖范围答案（WITS 没有该序列）。`TARIFF_TREND_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` 是故障，并带有 `upstreamUnavailable: true`；请稍后重试。
+
+**覆盖范围：** 除上游故障外，每个答案都带有一个由 MCP 服务器添加的 `coverage` 对象。上游故障（`upstreamUnavailable: true`）不提供任何答案，因此不带该对象。`dataset` 表示所查询的数据集；信任税率之前，请先检查 `unavailableReason`。它在未传入非“世界”伙伴且未传入产品组时为 `WTO_MFN`，否则为 `WITS_TRAINS`。`rateBasis` 为 `SCHEDULE`，`includesUnilateralDuties` 为 `false`，`excludedDutyTypes` 列出 `SECTION_301`、`SECTION_232`、`IEEPA`、`ANTI_DUMPING` 和 `COUNTERVAILING`。`latestYear` 取 `coverageEndYear`，没有时取最新数据点的年份，没有任何年份作答时不出现。报告国为美国时，`seeAlso` 指向 `get_us_import_duty` 并说明原因。
 
 - **API 端点：** `GET /api/trade/v1/get-tariff-trends`
 - **访问：** `subscription` — 需要 Pro 订阅。RPC 工具：无 `summary` 参数（使用 `jmespath` 精简响应）。
@@ -584,7 +586,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_bilateral_tariff`
 
-一个国家在某一年对来自某一伙伴的某个 6 位 HS 产品适用的关税，来自 UNCTAD TRAINS（经 World Bank WITS）。`appliedRate` 是该伙伴实际支付的税率：其可享受的最优优惠税率，否则为 MFN。`basis` 说明是哪一种。`mfnRate`、`preferentialRate` 和按协定列出的 `groupPreferences` 分别报告。MFN 为从量税时，`mfnAveRate` 给出从价等值。欧盟成员国按欧盟税则作答（`filingReporter` 为 `918`）。
+两国之间某一 HS6 产品的关税：截至 2023 年的税则税率，不含 301/232 条款关税。即一个国家在某一年对来自某一伙伴的某个 6 位 HS 产品适用的关税，来自 UNCTAD TRAINS（经 World Bank WITS）。`appliedRate` 是该伙伴实际支付的税率：其可享受的最优优惠税率，否则为 MFN。`basis` 说明是哪一种。`mfnRate`、`preferentialRate` 和按协定列出的 `groupPreferences` 分别报告。MFN 为从量税时，`mfnAveRate` 给出从价等值。欧盟成员国按欧盟税则作答（`filingReporter` 为 `918`）。
 
 仅为税则税率：不包含 301 条款、232 条款、反倾销及其他单边关税。TRAINS 没有 2021 年以后的美国优惠数据，也没有 2023 年以后的美国数据，因此美国请使用 `get_us_import_duty`。
 
@@ -598,6 +600,8 @@ curl -s https://worldmonitor.app/mcp \
 | `year` | integer | 关税年份。0 或省略表示有数据的最新年份。 |
 
 **响应区分：** `BILATERAL_TARIFF_UNAVAILABLE_REASON_NOT_COVERED` 是覆盖范围答案。`BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` 是故障，并带有 `upstreamUnavailable: true`。
+
+**覆盖范围：** 除上游故障外，每个答案都带有一个由 MCP 服务器添加的 `coverage` 对象。上游故障（`upstreamUnavailable: true`）不提供任何答案，因此不带该对象。`dataset` 表示所查询的数据集；信任税率之前，请先检查 `unavailableReason`。它始终为 `WITS_TRAINS`。`rateBasis` 为 `SCHEDULE`，`includesUnilateralDuties` 为 `false`，`excludedDutyTypes` 列出 `SECTION_301`、`SECTION_232`、`IEEPA`、`ANTI_DUMPING` 和 `COUNTERVAILING`。`latestYear` 为作答的年份，`NOT_COVERED` 答案中不出现。报告国为美国时，`seeAlso` 指向 `get_us_import_duty` 并说明原因。
 
 - **API 端点：** `GET /api/trade/v1/get-bilateral-tariff`
 - **访问：** `subscription` — 需要 Pro 订阅。RPC 工具：无 `summary` 参数（使用 `jmespath` 精简响应）。
@@ -620,7 +624,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_us_import_duty`
 
-美国当前对来自某国的某一产品征收的关税。对 `hs_code` 下的每个 8 位税目，返回 USITC 协调关税表（HTS）的实时税率和 `basis`（`MFN`、带 `preferenceProgram` 的 `PREFERENTIAL`，或 `COLUMN_2`）。同时返回现行有效的第 99 章 301 条款和 232 条款关税，每项带有 `status`：
+美国当前对来自某国的某一产品征收的关税：实时 HTS 税率，加上现行有效的 301 条款和 232 条款关税（如适用）。对 `hs_code` 下的每个 8 位税目，返回 USITC 协调关税表（HTS）的实时税率和 `basis`（`MFN`、带 `preferenceProgram` 的 `PREFERENTIAL`，或 `COLUMN_2`）。同时返回现行有效的第 99 章 301 条款和 232 条款关税，每项带有 `status`：
 
 - `APPLIES`
 - `CONDITIONAL`，并以 `condition` 说明取决于什么
@@ -635,6 +639,8 @@ curl -s https://worldmonitor.app/mcp \
 |------|------|-------------|
 | `hs_code` | string | 6、8 或 10 位 HTS 编码（必填），如 `870380` 或 `8703.80.00`。点号会被忽略。 |
 | `partner` | string | 原产国（必填）。3 位代码、ISO alpha-2 或 alpha-3，或英文名称。 |
+
+**覆盖范围：** 除上游故障外，每个答案都带有一个由 MCP 服务器添加的 `coverage` 对象。上游故障（`upstreamUnavailable: true`）不提供任何答案，因此不带该对象。`dataset` 表示所查询的数据集；信任税率之前，请先检查 `unavailableReason`。它为 `USITC_HTS`，`rateBasis` 为 `CURRENT_DUTY`。只有 `additionalDutiesLoaded` 为 `true` 时，`includesUnilateralDuties` 才为 `true`，此时 `excludedDutyTypes` 列出 `IEEPA`、`ANTI_DUMPING` 和 `COUNTERVAILING`。否则答案仅含基础税率：`includesUnilateralDuties` 为 `false`，`excludedDutyTypes` 还会列出 `SECTION_301` 和 `SECTION_232`。`asOf` 为作答的 HTS 版本。
 
 - **API 端点：** `GET /api/trade/v1/get-us-import-duty`
 - **访问：** `subscription` — 需要 Pro 订阅。RPC 工具：无 `summary` 参数（使用 `jmespath` 精简响应）。

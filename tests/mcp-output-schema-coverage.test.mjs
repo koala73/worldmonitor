@@ -638,9 +638,6 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     'get_mineral_production',
     'get_resilience_indicators',
     'get_similar_events',
-    'get_bilateral_tariff',
-    'get_tariff_averages',
-    'get_us_import_duty',
     'list_five_factor_scorecards',
     'get_supply_vulnerabilities',
     'search_flight_prices_by_date',
@@ -911,12 +908,17 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   const SPREAD_PASSTHROUGH_TOOLS = new Map([
     ['open_news_dashboard', { adds: ['requestedView', 'panelRequest'] }],
     ['get_country_brief', { adds: ['digestCoverage', 'groundingStories', 'sources[].sourceProvenance'] }],
+    // The live tariff tools add what answered and where it stops (buildCoverage).
+    ['get_bilateral_tariff', { adds: ['coverage'] }],
+    ['get_tariff_averages', { adds: ['coverage'] }],
+    ['get_us_import_duty', { adds: ['coverage'] }],
   ]);
 
   for (const [toolName, { adds }] of SPREAD_PASSTHROUGH_TOOLS) {
     it(`${toolName} declares only fields its OpenAPI response carries, plus its own additions`, () => {
       const tool = mod.__testing__.TOOL_REGISTRY.find(t => t.name === toolName);
       assert.ok(tool, `tool ${toolName} not found in registry`);
+      assert.equal(typeof tool._execute, 'function', `${toolName} must be an RPC tool with an _execute to spread its response`);
       assert.equal(
         (tool._apiPaths ?? []).length, 1,
         `${toolName} must declare exactly one _apiPaths entry to be checked against a single OpenAPI operation`,
@@ -927,6 +929,14 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       const wire = wireResponseProperties(entry);
       assert.ok(wire, `${toolName}: OpenAPI operation declares no resolvable 200 JSON response schema`);
       assert.deepEqual(wire.unresolved, [], `${toolName}: OpenAPI response has unresolvable $refs`);
+
+      // The same outage-discriminator check the verbatim loop runs: moving a
+      // tool here must not drop it.
+      assert.deepEqual(
+        undeclaredSafetyFlags(tool.outputSchema, wire.properties), [],
+        `${toolName}'s response carries a degraded-state flag its outputSchema never declares. An agent cannot ` +
+          'distinguish "no data" from "everything is fine" without it.',
+      );
 
       const drift = declaredButNotOnWire(tool.outputSchema, wire.properties)
         .filter(name => !adds.includes(name));
@@ -951,6 +961,40 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       );
     });
   }
+
+  // The spread map is hand-written too, so deleting an entry silently drops
+  // that tool's wire-parity checks. Derive the tail-position spread form
+  // (`return { ...body, ... }` or `return { ...await response.json(), ... }`)
+  // from the same `_execute.toString()` source the verbatim derivation reads,
+  // and require each candidate to be enrolled. This is containment, not
+  // equality: get_country_brief spreads mid-function and is enrolled by hand.
+  const RETURNS_RESPONSE_SPREAD = /return\s*\{\s*\.\.\.(?:body|await\s+response\.json\(\))[\s\S]*?\}\s*;?\s*\}\s*$/;
+
+  it('SPREAD_PASSTHROUGH_TOOLS enrolls every RPC tool that returns the gateway response by spread', () => {
+    const candidates = mod.__testing__.TOOL_REGISTRY
+      .filter(t => typeof t._execute === 'function'
+        && (t._apiPaths ?? []).length === 1
+        && RETURNS_RESPONSE_SPREAD.test(t._execute.toString()))
+      .map(t => t.name)
+      .sort();
+
+    // Floor: if the regex stops matching, the set collapses and the
+    // containment check below passes vacuously.
+    for (const name of ['get_bilateral_tariff', 'get_tariff_averages', 'get_us_import_duty']) {
+      assert.ok(
+        candidates.includes(name),
+        `${name} was not derived as a spread-passthrough tool — the detection regex has stopped matching. ` +
+          `Fix the regex; derived: ${JSON.stringify(candidates)}`,
+      );
+    }
+    for (const name of candidates) {
+      assert.ok(
+        SPREAD_PASSTHROUGH_TOOLS.has(name),
+        `${name} returns its gateway response by spread but is not in SPREAD_PASSTHROUGH_TOOLS, so its declared ` +
+          'outputSchema is never checked against the OpenAPI response — enroll it with the keys _execute adds.',
+      );
+    }
+  });
 
   // Positive control: the assertion above is an "expect nothing" check over a
   // population, which stays green if the comparison itself is broken. Prove it

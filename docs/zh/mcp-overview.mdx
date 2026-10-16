@@ -245,10 +245,10 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_eu_industrial_production` | Eurostat 月度工业生产指数，12 个月迷你图。 |
 | `get_prediction_markets` | 含当前概率的预测市场：`geopolitical`（地缘政治/选举）、`tech`（有标签的科技：人工智能/加密货币/科学）以及 `finance`（金融/经济或未分类回退）。 |
 | `get_supply_chain_data` | 干散货航运压力指数、海关流量、COMTRADE 双边贸易。 |
-| `get_tariff_trends` | 全球贸易和定价指标：美国 MFN 适用关税趋势（全部产品平均；其他报告国、伙伴或产品组请使用 `get_tariff_averages`）、巨无霸指数、FAO 食品价格指数以及各国国债水平。 |
+| `get_tariff_trends` | 四项指标：美国 MFN 关税税则趋势（不是现行关税）、巨无霸指数、FAO 食品价格、国家债务。其中关税序列是美国全部产品的 MFN 平均；其他报告国、伙伴或产品组请使用 `get_tariff_averages`，单个 HS6 产品请使用 `get_bilateral_tariff`，含 301 条款和 232 条款关税的美国现行关税请使用 `get_us_import_duty`。 |
 | `get_wto_trade_flows` | 一个报告国与世界之间的 WTO 商品贸易流量（报告国使用 3 位 UN M49 代码，时间窗口为 1–30 年）。区分 `not_covered` 与故障。 |
-| `get_tariff_averages` | 一个国家按年份适用的平均关税：WTO MFN 平均，或传入伙伴和/或 WITS 产品组时的实际适用简单平均和进口加权平均（UNCTAD TRAINS）。仅为税则税率。 |
-| `get_bilateral_tariff` | 两国之间某一 HS6 产品在某一年的适用、MFN 和优惠关税（UNCTAD TRAINS，经 WITS）。仅为税则税率。 |
+| `get_tariff_averages` | 一个国家按年份适用的平均关税：截至 2023 年的税则税率，不含 301/232 条款关税。WTO MFN 平均，或传入伙伴和/或 WITS 产品组时的实际适用简单平均和进口加权平均（UNCTAD TRAINS）。 |
+| `get_bilateral_tariff` | 两国之间某一 HS6 产品的关税：截至 2023 年的税则税率，不含 301/232 条款关税。某一年的适用、MFN 和优惠税率（UNCTAD TRAINS，经 WITS）。 |
 | `get_us_import_duty` | 美国当前对来自某国的某一 HTS 产品征收的关税：实时 HTS 基础税率，加上现行 301 和 232 条款关税，每项带状态。 |
 | `get_chokepoint_status` | 实时海上咽喉要道状态：每个咽喉要道的船舶过境计数（10 分钟节奏）、滚动过境摘要、每个港口的活动，以及静态参考数据和流量汇总。覆盖苏伊士、霍尔木兹、马六甲、曼德海峡、巴拿马等。 |
 | `get_consumer_prices` | 各国消费者价格情报：30 天概览、品类级通胀、零售商价差（必需品篮子）、热门变动以及来源新鲜度。需要 `country_code`（目前仅填充了 `ae`）。 |
@@ -444,16 +444,18 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ### Prompt
 
-`prompts/list` 返回六个工作流模板。`prompts/get` 会将所选模板渲染为一条用户消息，其中包含正确的 `tools/call` 序列和预置的 JMESPath 投影。
+`prompts/list` 返回下列工作流模板。`prompts/get` 会将所选模板渲染为一条用户消息，其中包含正确的 `tools/call` 序列和预置的 JMESPath 投影。
 
 | Prompt | 用途 |
 |--------|---------|
+| `country-view` | 打开嵌入式国家面板，逐步进行需身份验证的分节读取。 |
 | `country-briefing` | 针对一个 ISO 3166-1 alpha-2 国家的国家风险、AI 情报简报和宏观指标。 |
 | `energy-shock-watch` | 活跃能源中断、燃料短缺和政府危机政策；可选按国家聚焦。 |
 | `market-open-prep` | 用于开盘扫描的轻量级股票、大宗商品和加密货币异动简报。 |
 | `conflict-pulse` | 活跃的 UCDP 冲突事件以及带警报标记的热门新闻，可全球或针对一个国家。 |
 | `route-risk-check` | 针对一个咽喉要道的海上过境摘要与风险态势。 |
 | `freshness-audit` | 跨市场、能源和咽喉要道 bootstrap 信封的缓存新鲜度检查。 |
+| `trade-exposure-check` | 某一伙伴国的某一 HS6 产品的美国进口风险敞口：先查当前生效的关税（已加载时包含 301 条款和 232 条款关税），再查截至 2023 年的关税表税率和实施税率平均值走势。 |
 
 `prompts/list` 和 `prompts/get` 是元数据/工作流发现方法。它们不计入 Pro 每日配额，但仍计入你所在套餐的每分钟突发额度。
 

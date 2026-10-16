@@ -489,7 +489,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_tariff_trends`
 
-Global trade and pricing indicators: US MFN applied tariff trend (all-products average; for another reporter, a partner or a product group use get_tariff_averages), Big Mac index, FAO Food Price Index, and per-country national debt levels.
+Four indicators: US MFN tariff schedule trend (not current duty), Big Mac index, FAO food prices, national debt. The tariff series is the US all-products MFN average; for another reporter, a partner or a product group use `get_tariff_averages`, for one HS6 product `get_bilateral_tariff`, and for the current US duty with Section 301 and 232 duties `get_us_import_duty`.
 
 **Parameters (tool-specific):**
 
@@ -554,7 +554,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_tariff_averages`
 
-Average tariff one country applies, by year. With no partner and no product group it returns the WTO MFN average over all products (`TP_A_0010`) for any reporter, not only the US series in `get_tariff_trends`. With a partner other than World, or a product group, it returns the effectively applied average from UNCTAD TRAINS via World Bank WITS:
+Average tariff a country applies by year: schedule rates through 2023, no Section 301/232 duties. With no partner and no product group it returns the WTO MFN average over all products (`TP_A_0010`) for any reporter, not only the US series in `get_tariff_trends`. With a partner other than World, or a product group, it returns the effectively applied average from UNCTAD TRAINS via World Bank WITS:
 
 - `tariffRate` is the simple average (`AHS-SMPL-AVRG`), counting preferences the partner qualifies for.
 - `weightedRate` is the import-weighted average (`AHS-WGHTD-AVRG`).
@@ -571,6 +571,8 @@ Series run from about 1990 to 2023 for most reporters. US preferences are report
 | `years` | integer | Years to return, newest kept (0–30). 0 or omitted means the route default (10). |
 
 **Response distinctions:** `indicatorCode`, `partnerCountry` and `productSector` on each datapoint say which series answered. `TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED` is a coverage answer (WITS has no such series). `TARIFF_TREND_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` is a fault, with `upstreamUnavailable: true`; retry later.
+
+**Coverage:** every answer except an upstream outage carries a `coverage` object, added by the MCP server. An outage (`upstreamUnavailable: true`) answers nothing, so it carries none. `dataset` names the dataset consulted; check `unavailableReason` before trusting the rates. It is `WTO_MFN` with no partner other than World and no product group, else `WITS_TRAINS`. `rateBasis` is `SCHEDULE`, `includesUnilateralDuties` is `false`, and `excludedDutyTypes` lists `SECTION_301`, `SECTION_232`, `IEEPA`, `ANTI_DUMPING` and `COUNTERVAILING`. `latestYear` is `coverageEndYear`, else the newest datapoint year, and is absent when no year answered. When the reporter is the United States, `seeAlso` names `get_us_import_duty` and says why.
 
 - **API endpoint:** `GET /api/trade/v1/get-tariff-trends`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
@@ -593,7 +595,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_bilateral_tariff`
 
-Tariff one country applies to one 6-digit HS product from one partner, for one year, from UNCTAD TRAINS via World Bank WITS. `appliedRate` is what the partner pays: the best preferential rate it qualifies for, else MFN. `basis` says which. `mfnRate`, `preferentialRate` and the per-agreement `groupPreferences` are reported separately. `mfnAveRate` is an ad valorem equivalent where the MFN duty is specific. EU members answer from the EU schedule (`filingReporter` `918`).
+Tariff on one HS6 product between two countries: schedule rate through 2023, no Section 301/232 duties. The rate one country applies to one 6-digit HS product from one partner, for one year, from UNCTAD TRAINS via World Bank WITS. `appliedRate` is what the partner pays: the best preferential rate it qualifies for, else MFN. `basis` says which. `mfnRate`, `preferentialRate` and the per-agreement `groupPreferences` are reported separately. `mfnAveRate` is an ad valorem equivalent where the MFN duty is specific. EU members answer from the EU schedule (`filingReporter` `918`).
 
 Schedule rates only: Section 301, 232, anti-dumping and other unilateral duties are not included. TRAINS has no US preferences after 2021 and no US data after 2023, so for the US use `get_us_import_duty`.
 
@@ -607,6 +609,8 @@ Schedule rates only: Section 301, 232, anti-dumping and other unilateral duties 
 | `year` | integer | Tariff year. 0 or omitted means the latest year with data. |
 
 **Response distinctions:** `BILATERAL_TARIFF_UNAVAILABLE_REASON_NOT_COVERED` is a coverage answer. `BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` is a fault, with `upstreamUnavailable: true`.
+
+**Coverage:** every answer except an upstream outage carries a `coverage` object, added by the MCP server. An outage (`upstreamUnavailable: true`) answers nothing, so it carries none. `dataset` names the dataset consulted; check `unavailableReason` before trusting the rates. It is always `WITS_TRAINS`. `rateBasis` is `SCHEDULE`, `includesUnilateralDuties` is `false`, and `excludedDutyTypes` lists `SECTION_301`, `SECTION_232`, `IEEPA`, `ANTI_DUMPING` and `COUNTERVAILING`. `latestYear` is the year that answered, and is absent on a `NOT_COVERED` answer. When the reporter is the United States, `seeAlso` names `get_us_import_duty` and says why.
 
 - **API endpoint:** `GET /api/trade/v1/get-bilateral-tariff`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
@@ -629,7 +633,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_us_import_duty`
 
-Current US duty on one product from one country. For each 8-digit line under `hs_code` it returns the live USITC Harmonized Tariff Schedule rates and a `basis` (`MFN`, `PREFERENTIAL` with `preferenceProgram`, or `COLUMN_2`). It also returns the chapter 99 Section 301 and 232 duties in force, each with a `status`:
+Current US duty on one product from one country: live HTS rates plus any Section 301 and 232 duties in force. For each 8-digit line under `hs_code` it returns the live USITC Harmonized Tariff Schedule rates and a `basis` (`MFN`, `PREFERENTIAL` with `preferenceProgram`, or `COLUMN_2`). It also returns the chapter 99 Section 301 and 232 duties in force, each with a `status`:
 
 - `APPLIES`
 - `CONDITIONAL`, with a `condition` saying what decides it
@@ -644,6 +648,8 @@ Current US duty on one product from one country. For each 8-digit line under `hs
 |------|------|-------------|
 | `hs_code` | string | HTS code of 6, 8 or 10 digits (required), e.g. `870380` or `8703.80.00`. Dots are ignored. |
 | `partner` | string | Country of origin (required). 3-digit code, ISO alpha-2 or alpha-3, or English name. |
+
+**Coverage:** every answer except an upstream outage carries a `coverage` object, added by the MCP server. An outage (`upstreamUnavailable: true`) answers nothing, so it carries none. `dataset` names the dataset consulted; check `unavailableReason` before trusting the rates. It is `USITC_HTS` and `rateBasis` is `CURRENT_DUTY`. `includesUnilateralDuties` is `true` only when `additionalDutiesLoaded` is `true`, and `excludedDutyTypes` then lists `IEEPA`, `ANTI_DUMPING` and `COUNTERVAILING`. Otherwise the answer is base rates only: `includesUnilateralDuties` is `false` and `excludedDutyTypes` also lists `SECTION_301` and `SECTION_232`. `asOf` is the HTS release that answered.
 
 - **API endpoint:** `GET /api/trade/v1/get-us-import-duty`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).

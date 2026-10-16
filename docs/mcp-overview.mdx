@@ -247,10 +247,10 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 | `get_eu_industrial_production` | Eurostat monthly industrial production index, 12-month sparkline. |
 | `get_prediction_markets` | Prediction markets with current probabilities: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. |
 | `get_supply_chain_data` | Dry bulk shipping stress index, customs flows, COMTRADE bilateral trade. |
-| `get_tariff_trends` | Global trade and pricing indicators: US MFN applied tariff trend (all-products average; for another reporter, a partner or a product group use get_tariff_averages), Big Mac index, FAO Food Price Index, and per-country national debt levels. |
+| `get_tariff_trends` | Four indicators: US MFN tariff schedule trend (not current duty), Big Mac index, FAO food prices, national debt. The tariff series is the US all-products MFN average; for another reporter, a partner or a product group use get_tariff_averages, for one HS6 product get_bilateral_tariff, and for the current US duty with Section 301 and 232 duties get_us_import_duty. |
 | `get_wto_trade_flows` | WTO merchandise trade flows for one reporting country versus the World (reporter 3-digit UN M49, window 1–30 years). Distinguishes `not_covered` from faults. |
-| `get_tariff_averages` | Average tariff a country applies by year: the WTO MFN average, or with a partner and/or WITS product group the effectively applied simple and import-weighted averages (UNCTAD TRAINS). Schedule rates only. |
-| `get_bilateral_tariff` | Applied, MFN and preferential tariff for one HS6 product between two countries in one year (UNCTAD TRAINS via WITS). Schedule rates only. |
+| `get_tariff_averages` | Average tariff a country applies by year: schedule rates through 2023, no Section 301/232 duties. The WTO MFN average, or with a partner and/or WITS product group the effectively applied simple and import-weighted averages (UNCTAD TRAINS). |
+| `get_bilateral_tariff` | Tariff on one HS6 product between two countries: schedule rate through 2023, no Section 301/232 duties. Applied, MFN and preferential rates for one year (UNCTAD TRAINS via WITS). |
 | `get_us_import_duty` | Current US duty on one HTS product from one country: live HTS base rates plus the Section 301 and 232 duties in force, each with a status. |
 | `get_chokepoint_status` | Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc. |
 | `get_consumer_prices` | Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires `country_code` (currently only `ae` is seeded). |
@@ -469,7 +469,7 @@ In addition to the live tool registry, WorldMonitor exposes MCP prompts and reso
 
 ### Prompts
 
-`prompts/list` returns six workflow templates. `prompts/get` renders the selected template into a user message with the right `tools/call` sequence and pre-baked JMESPath projections.
+`prompts/list` returns the workflow templates below. `prompts/get` renders the selected template into a user message with the right `tools/call` sequence and pre-baked JMESPath projections.
 
 | Prompt | Purpose |
 |--------|---------|
@@ -480,6 +480,7 @@ In addition to the live tool registry, WorldMonitor exposes MCP prompts and reso
 | `conflict-pulse` | Active UCDP conflict events plus alert-flagged top news, globally or for one country. |
 | `route-risk-check` | Maritime chokepoint transit summary and risk posture for one chokepoint. |
 | `freshness-audit` | Cache freshness check across market, energy, and chokepoint bootstrap envelopes. |
+| `trade-exposure-check` | US import exposure for one HS6 product from one partner: the duty in force today, including Section 301 and 232 duties when loaded, then the schedule rate and applied-average trend through 2023. |
 
 `prompts/list` and `prompts/get` are metadata/workflow discovery methods. They are exempt from the Pro daily quota, though they still count toward your plan's per-minute burst.
 

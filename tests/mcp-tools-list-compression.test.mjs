@@ -389,6 +389,42 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.doesNotMatch(full.description, /energy storage/i);
     });
 
+    // tools/list keeps only the first sentence, so a caveat placed later never
+    // reaches a client that does not call describe_tool.
+    it('get_tariff_trends leads with its four-indicator bundle and points to the sibling tools in full', async () => {
+      const tools = await getToolsList();
+      const compressed = tools.find(t => t.name === 'get_tariff_trends').description;
+      assert.ok(mod.utf8ByteLength(compressed) <= mod.TOOL_DESCRIPTION_MAX_BYTES);
+      assert.match(compressed, /Big Mac/);
+      assert.match(compressed, /tariff/i);
+      assert.match(compressed, /schedule|current duty/i);
+      const full = await callDescribeTool('get_tariff_trends');
+      assert.match(full.description, /get_tariff_averages/);
+      assert.match(full.description, /get_bilateral_tariff/);
+      assert.match(full.description, /get_us_import_duty/);
+    });
+
+    for (const name of ['get_tariff_averages', 'get_bilateral_tariff']) {
+      it(`${name} says "schedule rate through 2023" before the call, and names get_us_import_duty in full`, async () => {
+        const tools = await getToolsList();
+        const compressed = tools.find(t => t.name === name).description;
+        assert.ok(mod.utf8ByteLength(compressed) <= mod.TOOL_DESCRIPTION_MAX_BYTES);
+        assert.match(compressed, /schedule/i);
+        assert.match(compressed, /2023/);
+        assert.match(compressed, /Section 301/);
+        const full = await callDescribeTool(name);
+        assert.match(full.description, /get_us_import_duty/);
+      });
+    }
+
+    it('get_us_import_duty says "current" and "Section 301" before the call', async () => {
+      const tools = await getToolsList();
+      const compressed = tools.find(t => t.name === 'get_us_import_duty').description;
+      assert.ok(mod.utf8ByteLength(compressed) <= mod.TOOL_DESCRIPTION_MAX_BYTES);
+      assert.match(compressed, /current/i);
+      assert.match(compressed, /Section 301/i);
+    });
+
     it('describe_tool({tool_name: "get_market_data"}) returns the FULL uncompressed description', async () => {
       const tools = await getToolsList();
       const compressed = tools.find(t => t.name === 'get_market_data');
