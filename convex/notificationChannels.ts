@@ -5,7 +5,6 @@ import {
   internalMutation,
   internalQuery,
   type MutationCtx,
-  mutation,
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -514,7 +513,14 @@ export const getChannels = query({
   },
 });
 
-export const setChannel = mutation({
+// INTERNAL ONLY. Production writes go through api/notification-channels.ts ->
+// /relay/notification-channels -> setChannelForUser, which is where the
+// webhook SSRF check, Slack envelope encryption, email ownership proof and
+// the per-user write limit live. As a public mutation this was a second,
+// unguarded write path for webhook/slack envelopes (dead code: no client
+// called it). Kept as an identity-scoped internal, like deleteChannel below,
+// so deploy-key callers and the Sentry probe filters still resolve the name.
+export const setChannel = internalMutation({
   args: {
     channelType: channelTypeValidator,
     chatId: v.optional(v.string()),
@@ -602,7 +608,10 @@ export const deactivateChannel = internalMutation({
   },
 });
 
-export const createPairingToken = mutation({
+// INTERNAL ONLY. The client mints pairing tokens through
+// api/notification-channels.ts (create-pairing-token) -> createPairingTokenForUser.
+// Same reasoning as setChannel above.
+export const createPairingToken = internalMutation({
   args: { variant: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();

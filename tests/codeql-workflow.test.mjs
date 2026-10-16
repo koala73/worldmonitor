@@ -85,6 +85,7 @@ test('scan jobs use selected languages, least privilege, and stable categories',
   assert.equal(init.with.languages, '${{ matrix.language }}');
   const upload = analyze.steps.find(step => step.uses?.startsWith('github/codeql-action/analyze@'));
   assert.equal(upload.with.category, '/language:${{ matrix.language }}');
+  assert.equal(init.uses.split('@')[1], upload.uses.split('@')[1], 'CodeQL init and analyze must use the same version');
   for (const job of Object.values(workflow.jobs)) for (const step of job.steps) {
     if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/);
   }

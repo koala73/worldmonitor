@@ -33,10 +33,11 @@ export async function registerWebhook(
   req: RegisterWebhookRequest,
 ): Promise<RegisterWebhookResponse> {
   // Webhooks are per-tenant keyed on callerFingerprint(), which hashes the
-  // API key. Without forceKey, a Clerk-authenticated pro caller reaches this
-  // handler with no API key, callerFingerprint() falls back to 'anon', and
-  // every such caller collapses into a shared 'anon' owner bucket — letting
-  // one Clerk-session holder enumerate/overwrite other tenants' webhooks.
+  // API key. Without forceKey, a Clerk-authenticated pro caller would reach
+  // this handler with no API key; callerFingerprint() now throws 401 there
+  // instead of folding every such caller into a shared 'anon' owner bucket
+  // where one Clerk-session holder could enumerate/overwrite other tenants'
+  // webhooks. forceKey stays the primary gate; the throw is the backstop.
   // Matches the legacy `api/v2/shipping/webhooks/[subscriberId]{,/[action]}.ts`
   // gate and the documented "X-WorldMonitor-Key required" contract in
   // docs/api-shipping-v2.mdx.

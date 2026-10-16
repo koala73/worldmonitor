@@ -3886,6 +3886,66 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     }
   });
 
+  // Elie's decision: an emergency squawk (7500/7600/7700) does not remove a
+  // military aircraft from the military layer, whether it arrives in the seed
+  // snapshot or only from OpenSky recovery.
+  it('keeps emergency-squawking military flights from the seed and from OpenSky-only recovery', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: undefined,
+      WS_RELAY_URL: 'wss://relay.test',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const store = new Map();
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/')[1] || '');
+        if (key === 'military:flights:v1') {
+          return jsonResponse({
+            result: JSON.stringify({
+              flights: [
+                { id: 'inregion', callsign: 'RCH301', lat: 20.2, lon: 10.2 },
+                { id: 'inregion-7700', callsign: 'RCH377', lat: 20.3, lon: 10.3, squawk: '7700' },
+              ],
+              coverage: 'regional',
+              fetchedAt: Date.now(),
+            }),
+          });
+        }
+        return jsonResponse({ result: store.get(key) ?? null });
+      }
+      if (isSetRequest(url, init)) return applySetToStore(store, url, init);
+      if (raw.includes('/opensky')) {
+        const state = ['emg7500', 'RCH475', null, null, null, -99.5, 40.5, 20000, false, 300, 90, 0, null, 20000, '7500'];
+        return jsonResponse({ states: [state] });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const seeded = await module.listMilitaryFlights(
+        { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
+        seededRequest,
+      );
+      assert.deepEqual(seeded.flights.map((f) => f.id).sort(), ['inregion', 'inregion-7700']);
+      const recovered = await module.listMilitaryFlights(
+        { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
+        americasRequest,
+      );
+      assert.deepEqual(recovered.flights.map((f) => f.id), ['EMG7500']);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
   it('falls back to the 24h stale key when the live-seed read errors, without touching OpenSky', async () => {
     const { module, cleanup } = await importListMilitaryFlights();
     const restoreEnv = withEnv({

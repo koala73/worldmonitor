@@ -461,6 +461,9 @@
           "path": "scripts/seed-military-flights.mjs"
         },
         {
+          "path": "server/worldmonitor/aviation/v1/list-aircraft-emergencies.ts"
+        },
+        {
           "path": "src/components/MapPopup.ts"
         }
       ]

@@ -81,6 +81,7 @@ env:
     server/worldmonitor/consumer-prices/v1/get-consumer-price-basket-series.ts
     server/worldmonitor/consumer-prices/v1/_selection.ts
     server/worldmonitor/supply-chain/v1/scenario-templates.ts
+    shared/aircraft-emergencies.ts
     shared/attribution-rider.ts
     shared/compare-and-delete-script.cjs
     shared/china-corridor-control-towers.ts
@@ -304,7 +305,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -438,7 +439,7 @@ jobs:
 
       - name: Download generated artifact patch
         if: needs.internal-generate.outputs.changed == 'true'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: generated-proto-patch
           path: ${{ runner.temp }}
@@ -537,7 +538,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: '24'
           cache: 'npm'

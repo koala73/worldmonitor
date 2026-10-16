@@ -210,8 +210,14 @@ function expandLocalRefs(spec, targets, { skipSchemaNames = [] } = {}) {
   const visit = (value) => {
     if (!value || typeof value !== 'object') return;
     for (const [key, child] of Object.entries(value)) {
-      const target = child?.$ref ? targets.get(child.$ref) : null;
-      if (target) value[key] = restoreRefSite(child, target);
+      let target = child?.$ref ? targets.get(child.$ref) : null;
+      const seen = new Set();
+      while (target) {
+        assert.ok(!seen.has(value[key].$ref), 'added schema refs must not form a cycle');
+        seen.add(value[key].$ref);
+        value[key] = restoreRefSite(value[key], target);
+        target = targets.get(value[key]?.$ref);
+      }
       // A replacement can itself carry refs to other added components (a
       // hoisted subtree holding an expanded ChinaDatePrecision ref, say), so
       // the walk descends into what it just inserted as well.
@@ -508,6 +514,21 @@ describe('dedupeSharedSubtreeComponents (fixture)', () => {
       'the component holds the subtree bytes verbatim',
     );
     assert.deepEqual(expandSharedSubtrees(structuredClone(transformed)), original);
+  });
+
+  it('preserves repeated reference schemas and their sibling descriptions', () => {
+    const original = fixture();
+    original.components.schemas.ExampleValue = { type: 'string' };
+    for (const schema of Object.values(original.components.schemas).filter(schema => schema.properties)) {
+      schema.properties.report = {
+        $ref: '#/components/schemas/ExampleValue',
+        description: 'Reported provider value. Unknown values remain unknown; this description applies beside the reference.',
+      };
+    }
+    const transformed = structuredClone(original);
+    const stats = dedupeSharedSubtreeComponents(transformed);
+    assert.ok(stats.groups >= 2);
+    assert.deepEqual(expandSharedSubtrees(transformed), original);
   });
 
   it('never replaces a node an existing $ref resolves through', () => {

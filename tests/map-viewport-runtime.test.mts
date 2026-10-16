@@ -111,6 +111,7 @@ before(async () => {
             globeMap: null,
             svgMap: null,
             deckGLMap: null,
+            emergencyLayer: { setEnabled() {}, destroy() {} },
             rendererDemandCleanup: null,
             resizeObserver: null,
             globeInitToken: 0,

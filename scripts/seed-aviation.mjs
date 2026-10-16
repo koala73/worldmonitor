@@ -39,6 +39,7 @@ import {
   releaseLock,
   getRedisCredentials,
   readCanonicalValue,
+  markPreservableFetchFailure,
 } from './_seed-utils.mjs';
 import notificationDedup from './shared/notification-dedup.cjs';
 import countryNameMap from './shared/country-name-to-iso2.cjs';
@@ -256,7 +257,7 @@ export const AIRPORTS = [
 ];
 
 // Derived per-source views (built once at module load)
-const AVIATIONSTACK_LIST = AIRPORTS.filter(a => a.sources.includes('aviationstack'));
+export const AVIATIONSTACK_LIST = AIRPORTS.filter(a => a.sources.includes('aviationstack'));
 const FAA_LIST           = AIRPORTS.filter(a => a.sources.includes('faa')).map(a => a.iata);
 const NOTAM_LIST         = AIRPORTS.filter(a => a.sources.includes('notam')).map(a => a.icao);
 const AVIATIONSTACK_IATAS = new Set(AVIATIONSTACK_LIST.map(a => a.iata));
@@ -422,6 +423,17 @@ function aviationDetermineSeverity(avgDelay, delayedPct) {
   return 'normal';
 }
 
+// AviationStack answers a rejected key with HTTP 401/403 or one of these error
+// codes. They are configuration errors, not provider outages, so they must not
+// ride out on last-good with exit 0 (see fetchIntl).
+const AVIATIONSTACK_AUTH_ERROR_CODES = new Set([
+  'invalid_access_key',
+  'missing_access_key',
+  'inactive_user',
+  'function_access_restricted',
+  'https_access_restricted',
+]);
+
 async function fetchAviationStackSingle(
   apiKey,
   airport,
@@ -438,12 +450,14 @@ async function fetchAviationStackSingle(
     });
     if (!resp.ok) {
       logger.warn(`[Aviation] ${iata}: HTTP ${resp.status}`);
-      return { iata, status: 'failed', alert: null, flightCount: 0 };
+      const authFailed = resp.status === 401 || resp.status === 403;
+      return { iata, status: 'failed', alert: null, flightCount: 0, authFailed };
     }
     const json = await resp.json();
     if (json.error) {
       logger.warn(`[Aviation] ${iata}: ${json.error.message}`);
-      return { iata, status: 'failed', alert: null, flightCount: 0 };
+      const authFailed = AVIATIONSTACK_AUTH_ERROR_CODES.has(json.error.code);
+      return { iata, status: 'failed', alert: null, flightCount: 0, authFailed };
     }
     const flights = Array.isArray(json?.data) ? json.data : [];
     if (flights.length === 0) {
@@ -540,7 +554,7 @@ export async function seedIntlDelays({
   const t0 = Date.now();
   const alerts = [];
   const coverage = [];
-  let succeeded = 0, failed = 0, omitted = 0;
+  let succeeded = 0, failed = 0, omitted = 0, authFailed = 0;
 
   for (let i = 0; i < airports.length; i += AVIATION_BATCH_CONCURRENCY) {
     const chunk = airports.slice(i, i + AVIATION_BATCH_CONCURRENCY);
@@ -556,6 +570,7 @@ export async function seedIntlDelays({
           flightCount: r.value.flightCount,
           updatedAt: Date.now(),
         });
+        if (r.value.authFailed) authFailed++;
         if (r.value.status === 'failed') failed++;
         else if (r.value.status === 'omitted') omitted++;
         else succeeded++;
@@ -570,7 +585,7 @@ export async function seedIntlDelays({
   const unavailable = failed + omitted;
   const healthy = airports.length < 5 || unavailable <= succeeded;
   logger.log(`[Intl] ${alerts.length} alerts (${succeeded} covered, ${omitted} omitted, ${failed} failed, healthy: ${healthy}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  return { alerts, coverage, healthy, skipped: false };
+  return { alerts, coverage, healthy, skipped: false, authFailed };
 }
 
 export async function runChinaAviationStackSmoke({
@@ -1325,9 +1340,10 @@ async function runNewsSideCar() {
 // contract-mode envelope, retry-on-throw, graceful TTL-extend on failure,
 // seed-meta freshness. When intl is unhealthy we throw to force runSeed into
 // its catch path — which extends the INTL_KEY + seed-meta:aviation:intl TTLs
-// and exits 0 without touching afterPublish. Consumers keep serving the
-// last-good snapshot. FAA/NOTAM/news already ran via their side-cars and are
-// independent — an intl outage does NOT freeze their freshness.
+// and exits 0 only for a provider outage while Redis confirms last-good
+// retention within maxStaleMin, without touching afterPublish. FAA/NOTAM/news
+// already ran via their side-cars and are independent — an intl outage does
+// NOT freeze their freshness.
 
 // Quota guard: returns true when the last successful intl publish is younger
 // than INTL_MIN_REFRESH_MIN, meaning we can serve last-good and skip the paid
@@ -1450,7 +1466,9 @@ export async function fetchIntl() {
   if (!result.healthy || result.skipped) {
     const why = result.skipped
       ? 'no AVIATIONSTACK_API key'
-      : 'systemic fetch failure (failures > successes)';
+      : result.authFailed > 0
+        ? `AviationStack rejected the key on ${result.authFailed} airport(s)`
+        : 'systemic fetch failure (failures > successes)';
     // nonRetryable is load-bearing for the budget cap. Without it, runSeed's
     // withRetry re-runs fetchIntl up to 4x on an unhealthy tick, and EACH run
     // sweeps the FULL airport list again — so a degraded upstream costs up to
@@ -1461,6 +1479,10 @@ export async function fetchIntl() {
     // reservation. We lose nothing: the seeder already re-runs every cron tick.
     const err = new Error(`intl unpublishable: ${why}`);
     err.nonRetryable = true;
+    // Only a real provider outage may ride out on last-good with exit 0. A
+    // missing or rejected key is a configuration error and must keep crashing
+    // the cron.
+    if (!result.skipped && !(result.authFailed > 0)) markPreservableFetchFailure(err);
     throw err;
   }
 
@@ -1583,6 +1605,7 @@ async function main() {
     afterPublish: afterPublishIntl,
     maxStaleMin: 90,
     zeroIsValid: true,
+    allowPreservedFetchFailure: true,
   });
 }
 
