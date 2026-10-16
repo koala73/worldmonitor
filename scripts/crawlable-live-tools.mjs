@@ -822,7 +822,16 @@ const PIZZINT_LEVEL_LABELS = {
 
 // Mirrors PizzIntIndicator.getStatusLabel and the toLocation baseline rule in
 // src/services/pizzint.ts, in sentence case for a reading page.
+// A fresh, open venue with a live signal, as the relay's hasLiveSignal reads it.
+function isLivePizzIntVenue(location) {
+  return location?.dataFreshness === 'DATA_FRESHNESS_FRESH'
+    && location.isClosedNow !== true
+    && location.noLiveSignal !== true;
+}
+
 function pizzIntVenueStatus(location) {
+  // A stale row can ride along in a fresh poll; its stored busyness is not current.
+  if (location.dataFreshness !== 'DATA_FRESHNESS_FRESH') return 'No data';
   if (location.isClosedNow === true) return 'Closed';
   if (location.noLiveSignal === true) return 'No data';
   const percentage = location.hasBaseline === true
@@ -852,7 +861,8 @@ export function pizzIntViewModel(payload, now = Date.now()) {
     updatedAt === null
     || status.dataFreshness !== 'DATA_FRESHNESS_FRESH'
     || !(status.locationsMonitored > 0)
-    || locations.length === 0
+    // The relay also publishes closed-only polls; those are not a live reading.
+    || !locations.some(isLivePizzIntVenue)
   ) {
     return unavailable;
   }
@@ -1482,7 +1492,47 @@ function renderPizzIntView(tool, view, checkedAt) {
   else setTime(tool, '[data-live-updated]', view.updatedAt, 'Updated');
 }
 
+// The relay polls every 15 minutes. An open page reloads on that cadence, and
+// sooner when the shown reading would otherwise outlive MAX_PIZZINT_AGE_MS.
+const PIZZINT_REFRESH_MS = 15 * 60 * 1_000;
+const MIN_PIZZINT_REFRESH_MS = 60 * 1_000;
+const pizzIntRefreshes = new WeakMap();
+
+export function pizzIntRefreshDelay(view, now = Date.now()) {
+  if (!view?.available || view.updatedAt === null) return PIZZINT_REFRESH_MS;
+  const untilExpiry = view.updatedAt + MAX_PIZZINT_AGE_MS - now;
+  return Math.max(MIN_PIZZINT_REFRESH_MS, Math.min(PIZZINT_REFRESH_MS, untilExpiry));
+}
+
+export function cancelPizzIntRefresh(tool) {
+  const pending = pizzIntRefreshes.get(tool);
+  if (pending) clearTimeout(pending.timer);
+  pizzIntRefreshes.delete(tool);
+}
+
+function schedulePizzIntRefresh(tool, view) {
+  cancelPizzIntRefresh(tool);
+  const delay = pizzIntRefreshDelay(view);
+  const timer = setTimeout(() => {
+    pizzIntRefreshes.delete(tool);
+    void loadPizzInt(tool);
+  }, delay);
+  // Node test runs must not wait 15 minutes on this timer; browsers lack unref.
+  timer?.unref?.();
+  pizzIntRefreshes.set(tool, { timer, dueAt: Date.now() + delay });
+}
+
+// Hidden tabs throttle timers, so a returning reader could see an expired
+// level. Reload at once when the scheduled refresh is already overdue.
+export function resumePizzIntRefresh(tool, now = Date.now()) {
+  const pending = pizzIntRefreshes.get(tool);
+  if (!pending || pending.dueAt > now) return;
+  cancelPizzIntRefresh(tool);
+  void loadPizzInt(tool);
+}
+
 export async function loadPizzInt(tool) {
+  cancelPizzIntRefresh(tool);
   setToolState(tool, 'loading', 'Connecting…');
   try {
     await runLatestToolRequest(
@@ -1495,6 +1545,7 @@ export async function loadPizzInt(tool) {
         renderPizzIntView(tool, view, Date.now());
         if (view.available) setToolState(tool, 'ready', 'Live reading');
         else setToolState(tool, 'empty', 'Live feed checked');
+        schedulePizzIntRefresh(tool, view);
       },
     );
   } catch {
@@ -1503,6 +1554,7 @@ export async function loadPizzInt(tool) {
     setTime(tool, '[data-live-updated]', null, 'Updated');
     setText(tool, '[data-live-updated]', '');
     setToolState(tool, 'error', 'Temporarily unavailable');
+    schedulePizzIntRefresh(tool, null);
   }
 }
 
@@ -1740,9 +1792,17 @@ export function initLiveTools(root = document) {
     tool.querySelector('[data-live-refresh]')?.addEventListener('click', () => loadCrisis(tool));
     void loadCrisis(tool);
   }
-  for (const tool of root.querySelectorAll('[data-live-pizzint]')) {
+  const pizzIntTools = [...root.querySelectorAll('[data-live-pizzint]')];
+  for (const tool of pizzIntTools) {
     tool.querySelector('[data-live-refresh]')?.addEventListener('click', () => loadPizzInt(tool));
     void loadPizzInt(tool);
+  }
+  if (pizzIntTools.length > 0) {
+    const documentRoot = root.ownerDocument || root;
+    documentRoot.addEventListener?.('visibilitychange', () => {
+      if (documentRoot.visibilityState !== 'visible') return;
+      for (const tool of pizzIntTools) resumePizzIntRefresh(tool);
+    });
   }
   for (const tool of root.querySelectorAll('[data-natural-hazard-tool]')) {
     applyInitialCountrySelection(tool);

@@ -15,9 +15,12 @@ import {
   loadCiiRanking,
   loadCountryRisk,
   loadHazards,
+  cancelPizzIntRefresh,
   loadPizzInt,
   militaryFlightsViewModel,
+  pizzIntRefreshDelay,
   pizzIntViewModel,
+  resumePizzIntRefresh,
   pointInBounds,
   publishedTransitCountLabel,
   requestLiveJson,
@@ -2089,6 +2092,37 @@ describe('Pentagon Pizza Index live reading', () => {
     assert.deepEqual(view.venues, []);
   });
 
+  it('needs a fresh open venue before a level counts as current', () => {
+    // The relay publishes closed-only polls (tests/pizzint-seed-publication.test.mjs)
+    // but does not treat them as live; the page FAQ promises the same rule.
+    const closedOnly = payload({ defconLevel: 5 }, [
+      venue({ name: 'Closed A', isClosedNow: true, currentPopularity: 0, percentageOfUsual: 0 }),
+      venue({ name: 'Closed B', isClosedNow: true, currentPopularity: 0, percentageOfUsual: 0 }),
+      venue({ name: 'Dark C', noLiveSignal: true, currentPopularity: 0, percentageOfUsual: 0 }),
+      venue({ name: 'Stale D', dataFreshness: 'DATA_FRESHNESS_STALE', percentageOfUsual: 120 }),
+    ]);
+    assert.equal(pizzIntViewModel(closedOnly, NOW).available, false);
+  });
+
+  it('marks a stale venue row as no data inside a current reading', () => {
+    const view = pizzIntViewModel(payload({}, [
+      venue({ name: 'Fresh Pizza', percentageOfUsual: 130 }),
+      venue({ name: 'Stale Pizza', dataFreshness: 'DATA_FRESHNESS_STALE', percentageOfUsual: 150 }),
+      venue({ name: 'Stale Closed', dataFreshness: 'DATA_FRESHNESS_STALE', isClosedNow: true }),
+    ]), NOW);
+    assert.equal(view.available, true);
+    assert.deepEqual(view.venues.map((row) => row.status), ['+30% vs usual', 'No data', 'No data']);
+  });
+
+  it('refreshes before a shown reading outlives its age limit', () => {
+    const fresh = { available: true, updatedAt: NOW - 55 * 60_000 };
+    assert.equal(pizzIntRefreshDelay(fresh, NOW), 5 * 60_000);
+    assert.equal(pizzIntRefreshDelay({ available: true, updatedAt: NOW - 60_000 }, NOW), 15 * 60_000);
+    assert.equal(pizzIntRefreshDelay({ available: false, updatedAt: null }, NOW), 15 * 60_000);
+    // Never a tight loop, even for a reading already at its limit.
+    assert.equal(pizzIntRefreshDelay({ available: true, updatedAt: NOW - 70 * 60_000 }, NOW), 60_000);
+  });
+
   it('does not present a stale or old reading as current', () => {
     assert.equal(pizzIntViewModel(payload({ dataFreshness: 'DATA_FRESHNESS_STALE' }), NOW).available, false);
     assert.equal(pizzIntViewModel(payload({ updatedAt: NOW - 61 * 60_000 }), NOW).available, false);
@@ -2172,6 +2206,30 @@ describe('Pentagon Pizza Index live reading', () => {
     );
     // Dated by the check itself, never by an expired reading.
     assert.match(tool.querySelector('[data-live-updated]').textContent, /^Checked .+ UTC$/);
+  });
+
+  it('reloads an overdue reading when a background tab becomes visible', async () => {
+    const tool = pizzaTool();
+    let statusRequests = 0;
+    const handler = async (url) => {
+      if (String(url).includes('get-pizzint-status')) {
+        statusRequests += 1;
+        return { ok: true, status: 200, json: async () => payload({ updatedAt: Date.now() - 5 * 60_000 }) };
+      }
+      return anonymousSessionResponse();
+    };
+    await withFetch(handler, async () => {
+      await loadPizzInt(tool);
+      assert.equal(statusRequests, 1);
+      // Not yet due: nothing to do on resume.
+      resumePizzIntRefresh(tool, Date.now());
+      assert.equal(statusRequests, 1);
+      // Throttled timers in a hidden tab: the refresh is overdue on return.
+      resumePizzIntRefresh(tool, Date.now() + 16 * 60_000);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      assert.equal(statusRequests, 2);
+    });
+    cancelPizzIntRefresh(tool);
   });
 
   it('marks the reading unavailable when the request fails', async () => {
