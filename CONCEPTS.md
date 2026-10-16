@@ -392,6 +392,14 @@ A rolling, per-country index of GDELT GKG articles the bulk materializer keeps a
 
 The indexed country pages that carry no dated development in a given weekly capture. Its size is a property of the grounding pool — how many countries the week's digest and the Country Article Index actually name — not of whether the enrichment ran, and it is recorded as a count in the capture's coverage rather than gated to zero, because no article pool names every country every week. A capture whose freeze attempted the index — whatever the index answered — is held to a higher coverage floor at build time than one frozen before the index existed, so a tail the size of the digest-only era cannot ship as a green build, and a gate that relaxed when the index failed would be no gate. A measured-but-lower week can still publish through an operator override on the weekly workflow rather than by editing the floor. See also: Recent Developments, Brief Grounding, Country Article Index.
 
+## Comparison Pages
+
+### Comparison Page
+
+A generated, crawlable page that sets World Monitor beside named competitors on a shared set of matrix columns (price, update latency, domains, signup, REST API, MCP server, licence, sources, archive), with prose on where each competitor wins. Competitor cells are claims about another company's product, so each one must trace to a source a reader can open; when no source states a value the cell says it is not published or unverified rather than guessing, and an MCP cell reads unverified unless the product is on a test allowlist, which should only be extended once public documentation for the server exists.
+
+One vendor appears in several comparison pages at once — the hub matrix, its head-to-head page, alternatives and topic pages, and narrative prose — and nothing reconciles them automatically, so a correction to one vendor's facts is only complete when every page that names it agrees.
+
 ## Source Catalog
 
 ### Catalog Provider
