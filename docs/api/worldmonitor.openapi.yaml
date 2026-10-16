@@ -25771,7 +25771,8 @@ paths:
                 ListErrorReports lists stored reports for review. Operators only.
                  Requires the X-Trust-Review-Key header (the server's TRUST_REVIEW_SECRET), not an API key; without it the response is 401.
             operationId: ListErrorReports
-            security: []
+            security:
+                - TrustReviewKey: []
             parameters:
                 - name: status
                   in: query
@@ -25811,6 +25812,12 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/ValidationError'
                                     - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid X-Trust-Review-Key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
                 "429":
                     description: Rate limit exceeded.
                     headers:
@@ -25853,7 +25860,8 @@ paths:
                 ReviewErrorReport accepts or rejects a report. An accepted report's public note is added to the label log. Operators only.
                  Requires the X-Trust-Review-Key header (the server's TRUST_REVIEW_SECRET), not an API key; without it the response is 401.
             operationId: ReviewErrorReport
-            security: []
+            security:
+                - TrustReviewKey: []
             requestBody:
                 content:
                     application/json:
@@ -25886,6 +25894,12 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/ValidationError'
                                     - $ref: '#/components/schemas/InvalidRequestBodyError'
+                "401":
+                    description: Missing or invalid X-Trust-Review-Key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
                 "429":
                     description: Rate limit exceeded.
                     headers:
@@ -35432,6 +35446,11 @@ components:
             type: http
             scheme: bearer
             description: 'Bearer token: a Clerk-issued JWT for browser session flows, passed as Authorization: Bearer <token>.'
+        TrustReviewKey:
+            type: apiKey
+            in: header
+            name: X-Trust-Review-Key
+            description: Operator review key (the server TRUST_REVIEW_SECRET). Required by the error-report review operations; a WorldMonitor API key does not authorize them.
     schemas:
         worldmonitor_supply_chain_v1_ChinaCorridorControlTowerResponse:
             type: "object"

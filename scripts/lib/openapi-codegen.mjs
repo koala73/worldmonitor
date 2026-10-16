@@ -1025,3 +1025,15 @@ export const PUBLIC_FORBIDDEN_GATES = new Map([
     },
   }],
 ]);
+
+// ── Operator review key (#9192) ──────────────────────────────────────────────
+// Routes the gateway lets through without an API key (they are in
+// PUBLIC_NO_AUTH_RPC_PATHS) whose handler then requires X-Trust-Review-Key to
+// match TRUST_REVIEW_SECRET (isTrustReviewer, server/_shared/error-reports.ts)
+// and answers 401 `{ message: 'Unauthorized' }` without it. A WorldMonitor API
+// key alone authorizes neither, so the spec declares the review key instead of
+// `security: []`.
+export const TRUST_REVIEW_KEY_PATHS = new Set([
+  '/api/news/v1/list-error-reports',
+  '/api/news/v1/review-error-report',
+]);
