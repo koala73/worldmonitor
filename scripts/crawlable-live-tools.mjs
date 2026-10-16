@@ -1501,7 +1501,9 @@ const pizzIntRefreshes = new WeakMap();
 export function pizzIntRefreshDelay(view, now = Date.now()) {
   if (!view?.available || view.updatedAt === null) return PIZZINT_REFRESH_MS;
   const untilExpiry = view.updatedAt + MAX_PIZZINT_AGE_MS - now;
-  return Math.max(MIN_PIZZINT_REFRESH_MS, Math.min(PIZZINT_REFRESH_MS, untilExpiry));
+  // Reload at expiry, however close; the floor only guards an already-expired input.
+  if (untilExpiry <= 0) return MIN_PIZZINT_REFRESH_MS;
+  return Math.min(PIZZINT_REFRESH_MS, untilExpiry);
 }
 
 export function cancelPizzIntRefresh(tool) {

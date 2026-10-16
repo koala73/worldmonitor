@@ -2119,6 +2119,8 @@ describe('Pentagon Pizza Index live reading', () => {
     assert.equal(pizzIntRefreshDelay(fresh, NOW), 5 * 60_000);
     assert.equal(pizzIntRefreshDelay({ available: true, updatedAt: NOW - 60_000 }, NOW), 15 * 60_000);
     assert.equal(pizzIntRefreshDelay({ available: false, updatedAt: null }, NOW), 15 * 60_000);
+    // A reading 30 s from its limit reloads then, not after the 1-minute floor.
+    assert.equal(pizzIntRefreshDelay({ available: true, updatedAt: NOW - (60 * 60_000 - 30_000) }, NOW), 30_000);
     // Never a tight loop, even for a reading already at its limit.
     assert.equal(pizzIntRefreshDelay({ available: true, updatedAt: NOW - 70 * 60_000 }, NOW), 60_000);
   });
