@@ -487,6 +487,7 @@ describe("HTTP route /api/internal-validate-api-key — touch scheduling gate", 
   afterEach(() => {
     delete process.env.CONVEX_SERVER_SHARED_SECRET;
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   async function validate(t: ReturnType<typeof convexTest>, keyHash: string) {
@@ -513,6 +514,7 @@ describe("HTTP route /api/internal-validate-api-key — touch scheduling gate", 
   test("validate inside the debounce window schedules no touch; after expiry it does", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(T0);
+    vi.spyOn(Math, "random").mockReturnValue(0);
     const t = convexTest(schema, modules);
     await seedApiEntitlement(t, "user-api");
     await t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
