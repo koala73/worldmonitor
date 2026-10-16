@@ -351,6 +351,7 @@ export interface PublicToolShape {
   };
   outputSchema: object;
   annotations: {
+    title: string;
     readOnlyHint: boolean;
     destructiveHint: boolean;
     idempotentHint: boolean;

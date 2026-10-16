@@ -159,7 +159,9 @@ export function buildPublicTool(
     // Per-tool annotations declared on each registry entry (v1.7.0).
     // Deep-cloned so a mutating client can't poison the registry literal —
     // matches the inputSchema.properties + outputSchema treatment above.
-    annotations: structuredClone(tool.annotations),
+    // The spec's annotations.title repeats the top-level title: some hosts,
+    // including the Claude Connectors Directory, read only this one.
+    annotations: { title: tool.title, ...structuredClone(tool.annotations) },
     _meta: {
       'worldmonitor/access': toolAccess(tool),
       'worldmonitor/weight': toolWeight(tool),

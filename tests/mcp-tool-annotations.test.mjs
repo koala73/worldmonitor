@@ -126,6 +126,10 @@ describe('api/mcp.ts — per-tool annotations coverage (v1.7.0)', () => {
     assert.deepEqual(failures, [], `tools without a usable title:\n  ${failures.join('\n  ')}`);
     const titles = tools.map((t) => t.title.toLowerCase());
     assert.equal(new Set(titles).size, titles.length, 'tool titles must be distinct');
+    // The Connectors Directory portal reads the spec's annotations.title, not
+    // the top-level title, and flags every tool without it.
+    const mismatched = tools.filter((t) => t.annotations?.title !== t.title).map((t) => t.name);
+    assert.deepEqual(mismatched, [], 'annotations.title must repeat the tool title');
   });
 
   it('tools/list marks company intelligence as read-only and open-world for SEC filings search', async () => {
@@ -138,6 +142,7 @@ describe('api/mcp.ts — per-tool annotations coverage (v1.7.0)', () => {
     const body = await res.json();
     const tool = body.result.tools.find(tool => tool.name === 'get_company_intelligence');
     assert.deepEqual(tool.annotations, {
+      title: 'Company intelligence',
       readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: true,
