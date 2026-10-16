@@ -2040,6 +2040,7 @@
       "shared/source-provenance-declarations.ts",
       "shared/source-provenance.ts",
       "shared/source-tiers.json",
+      "shared/syndication.js",
       "shared/telegram-channel-trust.ts",
       "shared/x-account-source-tiers.json",
       "shared/x-account-trust.ts"

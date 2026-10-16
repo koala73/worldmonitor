@@ -146,6 +146,19 @@ describe('detectSyndication', () => {
     assert.equal(roster[0]!.sameCopy, true);
   });
 
+  it('one family carrying two different copies does not join the outlets it copied', () => {
+    // A hub that reprints both reports is not evidence that the two reporters are one copy.
+    const alpha = { source: 'Outlet Alpha', title: cbcPanama.title, snippet: cbcPanama.snippet };
+    const beta = { source: 'Outlet Beta', title: guardianPanama.title, snippet: guardianPanama.snippet };
+    const hubAlpha = { ...alpha, source: 'Hub Wire' };
+    const hubBeta = { ...beta, source: 'Hub Wire' };
+    for (const items of [[alpha, beta, hubAlpha, hubBeta], [hubBeta, alpha, hubAlpha, beta]]) {
+      const result = detectSyndication(items, byLabel);
+      assert.equal(result.publishers, 3);
+      assert.deepEqual(result.groups, []);
+    }
+  });
+
   it('the count can only go down', () => {
     const pool = [euronews, africanews, militaryTimes, defenseNews, cbcPanama, guardianPanama, apFlood, cbcFlood,
       { source: 'Reuters World', title: ZAP_TITLE, snippet: ZAP_LEAD }, { source: 'BBC World', title: ZAP_TITLE, snippet: ZAP_LEAD }];

@@ -15,7 +15,9 @@
  *    published it;
  *  - an item without a real lead never merges: two outlets can write the same
  *    short headline independently, so a headline alone is not evidence of a
- *    shared copy.
+ *    shared copy;
+ *  - a family that carried more than one copy shared with others merges with
+ *    nobody: a hub reprinting two independent reports must not join them.
  */
 import { publisherFamilyForItem } from './publisher-families.js';
 
@@ -153,13 +155,38 @@ export function detectSyndication(items, familyFor = publisherFamilyForItem) {
     const shingles = copyShingles(item);
     if (shingles) comparable.push({ family, shingles });
   }
+  // Group ITEMS into copies first. Merging families pair by pair would let one
+  // family that carried two different copies (a hub reprinting two outlets)
+  // join the outlets it copied, which are independent of each other.
+  const copyOf = comparable.map((_, i) => i);
+  const findCopy = (i) => {
+    while (copyOf[i] !== i) i = copyOf[i] = copyOf[copyOf[i]];
+    return i;
+  };
   for (let i = 0; i < comparable.length; i++) {
     for (let j = i + 1; j < comparable.length; j++) {
-      const a = comparable[i];
-      const b = comparable[j];
-      if (find(a.family) === find(b.family)) continue;
-      if (copyContainment(a.shingles, b.shingles) >= SYNDICATION_MIN_CONTAINMENT) union(a.family, b.family);
+      if (comparable[i].family === comparable[j].family || findCopy(i) === findCopy(j)) continue;
+      if (copyContainment(comparable[i].shingles, comparable[j].shingles) >= SYNDICATION_MIN_CONTAINMENT) {
+        copyOf[findCopy(i)] = findCopy(j);
+      }
     }
+  }
+  const familiesByCopy = new Map();
+  comparable.forEach(({ family }, i) => {
+    const copy = findCopy(i);
+    if (!familiesByCopy.has(copy)) familiesByCopy.set(copy, new Set());
+    familiesByCopy.get(copy).add(family);
+  });
+  const sharedCopies = new Map();
+  for (const families of familiesByCopy.values()) {
+    if (families.size < 2) continue;
+    for (const family of families) sharedCopies.set(family, (sharedCopies.get(family) ?? 0) + 1);
+  }
+  // A family that shares more than one copy is ambiguous: it stays on its own,
+  // and it does not link the families of either copy to each other.
+  for (const families of familiesByCopy.values()) {
+    const [first, ...rest] = [...families].filter((family) => sharedCopies.get(family) === 1);
+    for (const family of rest) union(first, family);
   }
 
   const membersByRoot = new Map();
