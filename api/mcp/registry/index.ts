@@ -142,7 +142,7 @@ export function buildPublicTool(
 
   const publicTool: PublicToolShape = {
     name: tool.name,
-    ...(tool.title ? { title: tool.title } : {}),
+    title: tool.title,
     description,
     inputSchema: {
       type: tool.inputSchema.type,

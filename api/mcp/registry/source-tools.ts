@@ -132,6 +132,7 @@ export function outletRecord(name: string) {
 export const SOURCE_TOOLS: ToolDef[] = [
   {
     name: 'get_sources',
+    title: 'Source inventory',
     _outputBudgetBytes: 65536,
     // U7 roster (R7). The selection criterion is cheap to serve, cacheable,
     // low value to bulk-scrape, AND reliably fresh. This tool satisfies all

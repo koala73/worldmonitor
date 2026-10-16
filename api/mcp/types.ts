@@ -69,7 +69,7 @@ export interface McpToolExecutionContext {
 // ---------------------------------------------------------------------------
 export interface BaseToolDef {
   name: string;
-  title?: string;
+  title: string;
   description: string;
   inputSchema: {
     type: string;
@@ -341,7 +341,7 @@ export interface ApplyJmespathResult {
 // ---------------------------------------------------------------------------
 export interface PublicToolShape {
   name: string;
-  title?: string;
+  title: string;
   description: string;
   inputSchema: {
     type: string;

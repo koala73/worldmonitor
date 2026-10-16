@@ -460,6 +460,7 @@ function nlpRegistryEntities(titles: string[], limit: number) {
 export const NLP_TOOLS: ToolDef[] = [
   {
     name: 'classify_event',
+    title: 'Classify a news event',
     _outputBudgetBytes: 4096,
     description: 'Classify a supplied news headline or short text into a threat category and severity via the enum-validated WorldMonitor event classifier (temperature-0, 24h-cached per title, never free-form LLM output). Input is capped at 500 characters. classification is null when the classifier cannot produce an enum-valid result.',
     inputSchema: {
@@ -540,6 +541,7 @@ export const NLP_TOOLS: ToolDef[] = [
   },
   {
     name: 'extract_entities',
+    title: 'Extract named entities',
     _outputBudgetBytes: 16384,
     description: 'Extract named entities deterministically — registry entities (companies, indices, commodities, crypto, sectors, countries) plus pattern entities (CVE IDs, APT/FIN threat-group designators, tracked world leaders). Supply text (max 2 KB), or omit text to aggregate headlines from the full digest (default) or tech digest with variant/category filters. Headline mode includes digestCoverage so agents can distinguish complete, partial, stale, and unavailable input. No LLM involved.',
     inputSchema: {
@@ -655,6 +657,7 @@ export const NLP_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_news_clusters',
+    title: 'Current news topic clusters',
     // At limit=25, each cluster can carry eight fail-closed provenance
     // records plus a separate primary record. Keep the dispatcher budget
     // aligned with that supported maximum instead of rejecting valid output.
@@ -838,6 +841,7 @@ export const NLP_TOOLS: ToolDef[] = [
   },
   {
     name: 'verify_claim',
+    title: 'Check a claim against news coverage',
     _outputBudgetBytes: 65536,
     description: 'Evidence card for a claim or headline (#9092): finds the live-digest clusters reporting the same event and returns a result state (corroborated, single-publisher, tier4-only, unknown, or not-found when the digest was searched and nothing reports it; unknown when the digest had no headlines to search) with WorldMonitor\'s coverage verdict over the matched clusters, the publishers roster with declared tiers, the matched headlines with fail-closed source provenance, a figure check (numbers and dates in the claim that no matched headline states), and first/last sighting. found=false means the claim was not matched (state tells whether the digest was searched), never that it is false. Coverage, not accuracy: nothing here says a claim is true or false. Deterministic — no LLM.',
     inputSchema: {
@@ -921,6 +925,7 @@ export const NLP_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_keyword_spikes',
+    title: 'Keyword and threat spikes',
     _outputBudgetBytes: 32768,
     description: 'Keyword/CVE/APT spikes vs baseline, each with sourceNames and {title, source, link}. Uses the dashboard term-candidacy and spike-decision math. sourceNames are curated publisher names, or the original feed label when unmapped. sampleHeadlines are up to 3 newest recent-window stories; sourceNames is the complete publisher set. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard\'s incremental 7-day client history. Results are cached for 10 minutes. Deterministic — no LLM.',
     inputSchema: {
