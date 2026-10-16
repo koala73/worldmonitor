@@ -1738,3 +1738,30 @@ describe('MARKETING_IGNORE_ERRORS — Clerk SDK network failure (WORLDMONITOR-12
     assert.deepEqual(offenders, [], 'the marketing surface now mints a ClerkJS-prefixed message — re-derive the WORLDMONITOR-12W rule');
   });
 });
+
+describe('MARKETING_IGNORE_ERRORS — Android WebView autofill globals (WORLDMONITOR-18D, -18F, -18G)', () => {
+  it('drops ReferenceError: xbrowser is not defined (WORLDMONITOR-18D, WORLDMONITOR-18G)', () => {
+    assert.equal(isIgnored('ReferenceError', 'xbrowser is not defined'), true);
+  });
+
+  it('drops ReferenceError: swbrowser is not defined (WORLDMONITOR-18F)', () => {
+    assert.equal(isIgnored('ReferenceError', 'swbrowser is not defined'), true);
+  });
+
+  it('keeps an unrelated first-party ReferenceError', () => {
+    assert.equal(isIgnored('ReferenceError', 'checkoutSession is not defined'), false);
+    assert.equal(
+      isIgnored('Error', 'Checkout aborted: xbrowser is not defined on the host page'),
+      false,
+    );
+    assert.equal(isIgnored('TypeError', 'xbrowser is not defined'), false);
+  });
+
+  it('pins the marketing surface free of both autofill globals, which is what licenses the rules', () => {
+    const offenders = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'))
+      .filter((f) => /\b(?:xbrowser|swbrowser)\b/.test(f.code))
+      .map((f) => f.rel);
+    assert.deepEqual(offenders, []);
+  });
+});
