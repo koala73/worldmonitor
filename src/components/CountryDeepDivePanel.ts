@@ -1627,11 +1627,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.energyBody.append(this.renderShockScenarioWidget());
     }
 
-    // Atlas exposure: pipelines, storage, shortages, disruptions filtered
-    // to this country. Reads from the same bootstrap-hydrated stores as
-    // the Energy Atlas variant, so the count is free when data is warm
-    // and silently absent when a user is on a variant that doesn't
-    // pre-hydrate those keys.
     this.renderAtlasExposure();
   }
 
@@ -1644,16 +1639,18 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       return;
     }
     const signal = this.signal;
+    const revision = ++this.atlasRevision;
 
     // Late-import so non-energy variants can tree-shake these modules at
     // build time if the Atlas panels aren't bundled. Static imports are
     // safe here because all four stores are pure client caches.
-    import('@/shared/pipeline-registry-store').then(({ getCachedPipelineRegistries }) => {
-      if (signal.aborted || this.signal !== signal || this.currentCode !== iso2) return;
-      const { gas, oil } = getCachedPipelineRegistries() as {
+    import('@/shared/pipeline-registry-store').then(async ({ ensurePipelineRegistriesHydrated }) => {
+      if (signal.aborted || this.signal !== signal || this.currentCode !== iso2 || this.atlasRevision !== revision) return;
+      const { gas, oil } = await ensurePipelineRegistriesHydrated() as {
         gas: { pipelines?: Record<string, { fromCountry?: string; toCountry?: string; transitCountries?: string[]; name?: string; id?: string }> } | undefined;
         oil: { pipelines?: Record<string, { fromCountry?: string; toCountry?: string; transitCountries?: string[]; name?: string; id?: string }> } | undefined;
       };
+      if (signal.aborted || this.signal !== signal || this.currentCode !== iso2 || this.atlasRevision !== revision) return;
       const touches = (p: { fromCountry?: string; toCountry?: string; transitCountries?: string[] }): boolean =>
         p.fromCountry === iso2 || p.toCountry === iso2 ||
         (Array.isArray(p.transitCountries) && p.transitCountries.includes(iso2));
@@ -1675,11 +1672,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
     }).catch(() => {});
 
-    import('@/shared/storage-facility-registry-store').then(({ getCachedStorageFacilityRegistry }) => {
-      if (signal.aborted || this.signal !== signal || this.currentCode !== iso2) return;
-      const { registry } = getCachedStorageFacilityRegistry() as {
+    import('@/shared/storage-facility-registry-store').then(async ({ ensureStorageFacilityRegistryHydrated }) => {
+      if (signal.aborted || this.signal !== signal || this.currentCode !== iso2 || this.atlasRevision !== revision) return;
+      const { registry } = await ensureStorageFacilityRegistryHydrated() as {
         registry: { facilities?: Record<string, { country?: string; name?: string; id?: string }> } | undefined;
       };
+      if (signal.aborted || this.signal !== signal || this.currentCode !== iso2 || this.atlasRevision !== revision) return;
       const facilities = Object.values(registry?.facilities ?? {}).filter(f => f.country === iso2);
       if (facilities.length > 0) {
         this.appendAtlasRow(
@@ -1696,7 +1694,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }).catch(() => {});
 
     import('@/shared/fuel-shortage-registry-store').then(({ getCachedFuelShortageRegistry }) => {
-      if (signal.aborted || this.signal !== signal || this.currentCode !== iso2) return;
+      if (signal.aborted || this.signal !== signal || this.currentCode !== iso2 || this.atlasRevision !== revision) return;
       const { registry } = getCachedFuelShortageRegistry() as {
         registry: { shortages?: Record<string, { country?: string; product?: string; severity?: string; id?: string; shortDescription?: string; resolvedAt?: string | null }> } | undefined;
       };
@@ -1732,7 +1730,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     // nothing, we silently skip — CountryDeepDive is not the primary
     // disruption surface (EnergyDisruptionsPanel is), so an empty row is
     // preferable to a spurious error.
-    this.loadDisruptionsForCountry(iso2);
+    this.loadDisruptionsForCountry(iso2, revision);
   }
 
   private async loadHostedAtlas(code: string, revision: number, signal: AbortSignal): Promise<void> {
