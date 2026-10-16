@@ -160,7 +160,7 @@ const TRUST_REVIEW_OPERATION_SECURITY = [{ TrustReviewKey: [] }];
 // The handler throws ApiError(401, 'Unauthorized'), which error-mapper renders
 // as the generated Error schema (`{ message }`), not UnauthorizedError.
 const TRUST_REVIEW_UNAUTHORIZED_RESPONSE = {
-  description: 'Missing or invalid X-Trust-Review-Key.',
+  description: 'Missing or invalid X-Trust-Review-Key, or review is not configured on the server.',
   content: {
     'application/json': {
       schema: { $ref: '#/components/schemas/Error' },

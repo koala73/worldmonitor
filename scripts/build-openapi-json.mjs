@@ -223,6 +223,36 @@ export function excludeScannerBundleOperations(spec, excluded = SCANNER_BUNDLE_E
   return stats;
 }
 
+/**
+ * Remove securitySchemes no root or operation `security` entry names. Runs
+ * after excludeScannerBundleOperations: a scheme only excluded operations used
+ * (TrustReviewKey, #9192) would otherwise ship as an orphan. Returns { dropped }.
+ */
+export function dropUnreferencedSecuritySchemes(spec) {
+  const stats = { dropped: 0 };
+  const schemes = spec.components?.securitySchemes;
+  if (!schemes) return stats;
+  const referenced = new Set();
+  const collect = (security) => {
+    for (const requirement of security ?? []) {
+      for (const name of Object.keys(requirement)) referenced.add(name);
+    }
+  };
+  collect(spec.security);
+  for (const ops of Object.values(spec.paths ?? {})) {
+    for (const op of Object.values(ops ?? {})) {
+      if (op && typeof op === 'object') collect(op.security);
+    }
+  }
+  for (const name of Object.keys(schemes)) {
+    if (!referenced.has(name)) {
+      delete schemes[name];
+      stats.dropped += 1;
+    }
+  }
+  return stats;
+}
+
 export const DEPRECATION_POLICY_URL = 'https://www.worldmonitor.app/api-versioning.md';
 const DEPRECATION_POLICY_HTML_URL = 'https://www.worldmonitor.app/docs/api-versioning';
 
@@ -279,6 +309,7 @@ export function buildBundle({ spec: provided } = {}) {
   }
 
   const excludedStats = excludeScannerBundleOperations(spec);
+  dropUnreferencedSecuritySchemes(spec);
   const stats = dedupeErrorResponses(spec);
   const headerStats = dedupeSharedResponseHeaders(spec);
   const schemaStats = dedupeSharedChinaProvenanceSchemas(spec);

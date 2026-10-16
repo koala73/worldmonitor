@@ -26,6 +26,7 @@ import {
   buildBundle,
   collapseSoftLineBreaks,
   dropDefaultParameterRequired,
+  dropUnreferencedSecuritySchemes,
   shortenGeneratedSuccessDescriptions,
 } from '../scripts/build-openapi-json.mjs';
 import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
@@ -1137,6 +1138,43 @@ describe('public OpenAPI dedupe (real bundle)', () => {
         'the newest per-op injection instead of raising this budget. ' +
         '`node scripts/openapi-capacity-report.mjs` ranks what is worth collapsing next.',
     );
+  });
+});
+
+function referencedSecuritySchemes(spec) {
+  const names = new Set();
+  const collect = (security) => {
+    for (const requirement of security ?? []) for (const name of Object.keys(requirement)) names.add(name);
+  };
+  collect(spec.security);
+  for (const ops of Object.values(spec.paths ?? {})) {
+    for (const op of Object.values(ops ?? {})) {
+      if (op && typeof op === 'object') collect(op.security);
+    }
+  }
+  return names;
+}
+
+describe('dropUnreferencedSecuritySchemes', () => {
+  it('drops a scheme only excluded operations used and keeps the rest', () => {
+    const spec = {
+      security: [{ WorldMonitorKey: [] }],
+      paths: { '/a': { get: { security: [{ WorldMonitorKey: [] }, { BearerAuth: [] }] } } },
+      components: {
+        securitySchemes: { WorldMonitorKey: {}, BearerAuth: {}, TrustReviewKey: {} },
+      },
+    };
+    assert.deepEqual(dropUnreferencedSecuritySchemes(spec), { dropped: 1 });
+    assert.deepEqual(Object.keys(spec.components.securitySchemes), ['WorldMonitorKey', 'BearerAuth']);
+  });
+
+  it('declares only schemes the served JSON references (#9192)', () => {
+    // The review-key operations are excluded from this artifact, so their
+    // TrustReviewKey scheme would be an orphan spending scanner budget.
+    const { spec } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
+    const declared = Object.keys(spec.components?.securitySchemes ?? {}).sort();
+    assert.ok(declared.includes('WorldMonitorKey'));
+    assert.deepEqual(declared, [...referencedSecuritySchemes(spec)].sort());
   });
 });
 

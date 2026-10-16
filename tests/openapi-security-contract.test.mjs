@@ -495,6 +495,13 @@ describe('OpenAPI security contract', () => {
       }
     }
     assert.deepEqual([...documented].sort(), [...TRUST_REVIEW_KEY_PATHS].sort());
+    // A handler that gates on isTrustReviewer without the proto comment would
+    // slip past the check above; one review-key path per call site.
+    const handlerDir = resolve(root, 'server/worldmonitor');
+    const callSites = readdirSync(handlerDir, { recursive: true })
+      .filter((file) => file.endsWith('.ts'))
+      .flatMap((file) => [...readFileSync(resolve(handlerDir, file), 'utf8').matchAll(/\bisTrustReviewer\(/g)]);
+    assert.equal(callSites.length, TRUST_REVIEW_KEY_PATHS.size, 'each isTrustReviewer handler needs a TRUST_REVIEW_KEY_PATHS entry');
   });
 
   for (const file of serviceSpecs) {

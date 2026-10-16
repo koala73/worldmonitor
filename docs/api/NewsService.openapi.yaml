@@ -890,7 +890,7 @@ paths:
                                     - $ref: '#/components/schemas/ValidationError'
                                     - $ref: '#/components/schemas/JmespathProjectionError'
                 "401":
-                    description: Missing or invalid X-Trust-Review-Key.
+                    description: Missing or invalid X-Trust-Review-Key, or review is not configured on the server.
                     content:
                         application/json:
                             schema:
@@ -972,7 +972,7 @@ paths:
                                     - $ref: '#/components/schemas/ValidationError'
                                     - $ref: '#/components/schemas/InvalidRequestBodyError'
                 "401":
-                    description: Missing or invalid X-Trust-Review-Key.
+                    description: Missing or invalid X-Trust-Review-Key, or review is not configured on the server.
                     content:
                         application/json:
                             schema:
