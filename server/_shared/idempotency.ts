@@ -130,8 +130,6 @@ export function isValidIdempotencyKey(key: string): boolean {
   return key.length <= KEY_MAX_LENGTH && KEY_PATTERN.test(key);
 }
 
-export const IDEMPOTENCY_KEY_PATTERN = '^[\\x21-\\x7e]{1,255}$';
-
 async function sha256Hex(input: string | ArrayBuffer): Promise<string> {
   const data = typeof input === 'string' ? new TextEncoder().encode(input) : input;
   const digest = await crypto.subtle.digest('SHA-256', data);
