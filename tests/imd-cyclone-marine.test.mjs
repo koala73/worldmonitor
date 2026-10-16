@@ -170,8 +170,26 @@ test('a storm warning or port signal on the page becomes a severe marine alert',
   const port = snapshot.marineBulletins.filter((row) => row.description.includes('Port signal: DC-III'));
   assert.deepEqual(port.map((row) => [row.areaDesc, row.severity]), [['North Andhra coast', 'Severe']]);
   assert.equal(port[0].headline, 'North Andhra coast: Port signal: DC-III HOISTED AT VISAKHAPATNAM AND KAKINADA PORTS.');
+  assert.match(port[0].description, /Weather: /, 'a warning-led alert keeps its weather text');
   assert.equal(snapshot.products.seaBulletin.warningCount, 8);
   assert.equal(snapshot.products.coastalBulletin.warningCount, 2);
+});
+
+test('every active warning is named inside the popup text, even behind a long one', () => {
+  const longSignal = `DC-III HOISTED AT ${'PARADIP, GOPALPUR, '.repeat(20)}PURI.`;
+  const coastal = pageFixture('coastalBulletin', 'west-bengal-andaman-nicobar').replace('NIL.', longSignal);
+  const snapshot = assembleImdSnapshot({
+    now: NOW,
+    pageResults: parsedResults({
+      coastalBulletin: { 'west-bengal-andaman-nicobar': { status: 'parsed', bulletin: parseImdBulletinHtml(coastal, 'coastalBulletin') } },
+    }),
+  });
+  const andaman = snapshot.marineBulletins.find((row) => row.areaDesc === 'Andaman area');
+  assert.ok(longSignal.length > 300);
+  assert.equal(andaman.severity, 'Severe');
+  assert.match(andaman.headline, /^Andaman area: Port signal: DC-III/);
+  assert.match(andaman.description.slice(0, 300), /^Active: Port signal, Storm surge\/tidal · Port signal: DC-III/);
+  assert.match(andaman.description, /Storm surge\/tidal: SWELL WAVES/);
 });
 
 test('isNilText accepts the NIL spellings IMD prints and nothing else', () => {

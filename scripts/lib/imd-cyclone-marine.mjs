@@ -640,12 +640,14 @@ export async function fetchImdCycloneMarine({
   return assembleImdSnapshot({ pageResults, previous, now });
 }
 
+const WARNING_FIELDS = Object.freeze([
+  Object.freeze({ flag: 'hasTttWarning', text: 'tttWarning', label: 'TTT' }),
+  Object.freeze({ flag: 'hasPortSignal', text: 'portSignal', label: 'Port signal' }),
+  Object.freeze({ flag: 'hasStormSurgeWarning', text: 'stormSurgeWarning', label: 'Storm surge/tidal' }),
+]);
+
 function activeWarnings(record) {
-  return [
-    record.hasTttWarning && `TTT: ${record.tttWarning}`,
-    record.hasPortSignal && `Port signal: ${record.portSignal}`,
-    record.hasStormSurgeWarning && `Storm surge/tidal: ${record.stormSurgeWarning}`,
-  ].filter(Boolean);
+  return WARNING_FIELDS.filter((field) => record[field.flag]);
 }
 
 function marineSeverity(record) {
@@ -661,9 +663,13 @@ export function marineBulletinsFromSnapshot(snapshot) {
       id: row.id,
       event: row.kind === 'coastal-bulletin' ? 'IMD Coastal Bulletin' : 'IMD Sea Area Bulletin',
       severity: marineSeverity(row),
-      headline: `${row.area}: ${warnings[0] ?? (row.weather || row.seaCondition || 'Marine bulletin')}`,
+      headline: `${row.area}: ${warnings.length > 0
+        ? `${warnings[0].label}: ${row[warnings[0].text]}`
+        : (row.weather || row.seaCondition || 'Marine bulletin')}`,
       description: [
-        ...warnings,
+        warnings.length > 1 && `Active: ${warnings.map((field) => field.label).join(', ')}`,
+        ...warnings.map((field) => `${field.label}: ${row[field.text]}`),
+        warnings.length > 0 && row.weather && `Weather: ${row.weather}`,
         row.wind && `Wind: ${row.wind}`,
         row.visibility && `Visibility: ${row.visibility}`,
         row.seaCondition && `Sea: ${row.seaCondition}`,
