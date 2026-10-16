@@ -53,13 +53,26 @@ export function createLazyRpcClientConstructor<T extends object>(loadConstructor
       return clientPromise;
     };
 
+    // Every property read yields an invoker, because the real client is not
+    // loaded yet and the generated clients expose only async methods. The
+    // `as T` cast below asserts that shape, so a future generated client with
+    // a public field or getter would compile against this proxy and then
+    // silently hand callers a function where they expected a value (#4550).
+    // Fail loudly in that case rather than forwarding the non-callable.
     return new Proxy({}, {
       get(target, property, receiver) {
         if (property === 'then') return undefined;
         if (typeof property === 'symbol') return Reflect.get(target, property, receiver);
         return (...args: unknown[]) => getClient().then((client) => {
           const value = (client as Record<PropertyKey, unknown>)[property];
-          return typeof value === 'function' ? value.apply(client, args) : value;
+          if (typeof value !== 'function') {
+            throw new TypeError(
+              `Lazy RPC client: "${String(property)}" is not a method on the loaded client `
+              + `(got ${value === null ? 'null' : typeof value}). Only async methods can be `
+              + 'read through the lazy proxy; access the loaded instance for fields.',
+            );
+          }
+          return value.apply(client, args);
         });
       },
     }) as T;
