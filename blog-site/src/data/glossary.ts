@@ -52,7 +52,31 @@ export interface GlossaryTerm {
   related: string[];
   /** Authoritative "learn more" pointers (methodology docs, dashboard, blog). */
   learnMore?: GlossaryLink[];
+  /**
+   * A live reading rendered above the body and hydrated by /tools/live-tools.js.
+   * 'pizzint' is the only one; its markup lives in pages/glossary/[slug].astro.
+   */
+  liveReading?: 'pizzint';
+  /** Visible questions and answers, also emitted in the page's FAQPage JSON-LD. */
+  faq?: GlossaryQuestion[];
 }
+
+export interface GlossaryQuestion {
+  question: string;
+  answer: string;
+}
+
+/**
+ * Pentagon Pizza Index levels by index points, as scored by the relay and
+ * documented in docs/algorithms.mdx (tests/glossary-data.test.mjs holds them equal).
+ */
+export const PIZZINT_LEVELS = [
+  { level: 1, label: 'Maximum Activity', points: '85 or more' },
+  { level: 2, label: 'High Activity', points: '70 to 84' },
+  { level: 3, label: 'Elevated Activity', points: '50 to 69' },
+  { level: 4, label: 'Above Normal', points: '25 to 49' },
+  { level: 5, label: 'Normal Activity', points: 'under 25' },
+] as const;
 
 export const GLOSSARY_TERMS: GlossaryTerm[] = [
   // ── Scoring & Indices ─────────────────────────────────────────────
@@ -141,6 +165,19 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     learnMore: [
       { label: 'Live Pentagon Pizza Index in the dashboard header', href: 'https://www.worldmonitor.app/dashboard' },
       { label: 'How the index is scored', href: 'https://www.worldmonitor.app/docs/algorithms' },
+    ],
+    liveReading: 'pizzint',
+    faq: [
+      {
+        question: 'Does the Pentagon Pizza Index predict military action?',
+        answer:
+          'No one has shown that it does. Lists of crises the index is said to have predicted are anecdotes collected after the fact, and a busy night near the Pentagon has many ordinary causes. World Monitor reports restaurant activity against each venue’s usual level for that hour, keeps venue readings for 90 days so the baselines can be checked, and reads the level next to other signals rather than as a forecast.',
+      },
+      {
+        question: 'Why does the page sometimes show no current reading?',
+        answer:
+          'The level needs at least one open venue with a fresh live busyness reading. Late at night most venues are closed, and the venue-data providers sometimes stop sending live readings. World Monitor then shows no current reading instead of a guessed level.',
+      },
     ],
   },
 

@@ -806,6 +806,68 @@ export function militaryFlightsViewModel(payload, now = Date.now()) {
   };
 }
 
+// The relay stores the seed for 45 minutes (PIZZINT_SEED_TTL in ais-relay.cjs);
+// the margin covers edge caching. Older than this is not the current level.
+const MAX_PIZZINT_AGE_MS = 60 * 60 * 1_000;
+
+// English activity labels as the dashboard header shows them
+// (components.pizzint.defconLabels in src/locales/en.json).
+const PIZZINT_LEVEL_LABELS = {
+  1: 'Maximum Activity',
+  2: 'High Activity',
+  3: 'Elevated Activity',
+  4: 'Above Normal',
+  5: 'Normal Activity',
+};
+
+// Mirrors PizzIntIndicator.getStatusLabel and the toLocation baseline rule in
+// src/services/pizzint.ts, in sentence case for a reading page.
+function pizzIntVenueStatus(location) {
+  if (location.isClosedNow === true) return 'Closed';
+  if (location.noLiveSignal === true) return 'No data';
+  const percentage = location.hasBaseline === true
+    ? finiteNumber(location.percentageOfUsual)
+    : finiteNumber(location.percentageOfUsual) || null;
+  if (percentage === null) return 'No baseline';
+  const deviation = Math.round(percentage - 100);
+  if (location.isSpike === true) return `Spike +${deviation}%`;
+  if (Math.abs(deviation) <= 10) return 'Normal';
+  return `${deviation > 0 ? '+' : '−'}${Math.abs(deviation)}% vs usual`;
+}
+
+export function pizzIntViewModel(payload, now = Date.now()) {
+  const status = payload?.pizzint;
+  const unavailable = { available: false, level: '—', label: 'No current reading', updatedAt: null, venues: [] };
+  // The relay publishes nothing without a live reading, so an expired seed is
+  // the normal "no venue is reporting" answer, not a failure.
+  if (status === undefined || status === null) return unavailable;
+  if (typeof status !== 'object') throw new Error('Pizza Index status is malformed');
+  const level = status.defconLevel;
+  if (!Number.isInteger(level) || !PIZZINT_LEVEL_LABELS[level]) {
+    throw new Error('Pizza Index level is outside 1-5');
+  }
+  const updatedAt = validTimestamp(status.updatedAt, now, MAX_PIZZINT_AGE_MS);
+  const locations = Array.isArray(status.locations) ? status.locations : [];
+  if (
+    updatedAt === null
+    || status.dataFreshness !== 'DATA_FRESHNESS_FRESH'
+    || !(status.locationsMonitored > 0)
+    || locations.length === 0
+  ) {
+    return unavailable;
+  }
+  return {
+    available: true,
+    level: String(level),
+    label: PIZZINT_LEVEL_LABELS[level],
+    updatedAt,
+    venues: locations.map((location) => ({
+      name: String(location?.name || 'Unnamed venue'),
+      status: pizzIntVenueStatus(location ?? {}),
+    })),
+  };
+}
+
 async function fetchWithTimeout(
   url,
   options = {},
@@ -1397,6 +1459,53 @@ export async function loadChokepoint(tool) {
   }
 }
 
+// The level numeral is hidden without a reading; the label carries the state.
+function setPizzIntLevel(tool, level, label) {
+  const numeral = tool.querySelector('[data-pizzint-level]');
+  if (numeral) {
+    numeral.textContent = level;
+    numeral.hidden = level === '—';
+  }
+  setText(tool, '[data-pizzint-label]', label);
+}
+
+function renderPizzIntView(tool, view, checkedAt) {
+  setPizzIntLevel(tool, view.level, view.label);
+  renderList(
+    tool,
+    '[data-pizzint-venues]',
+    view.venues,
+    (venue) => `${venue.name} · ${venue.status}`,
+    'No venue is reporting live busyness right now. The level returns with the next live reading.',
+  );
+  if (view.updatedAt === null) setTime(tool, '[data-live-updated]', checkedAt, 'Checked');
+  else setTime(tool, '[data-live-updated]', view.updatedAt, 'Updated');
+}
+
+export async function loadPizzInt(tool) {
+  setToolState(tool, 'loading', 'Connecting…');
+  try {
+    await runLatestToolRequest(
+      tool,
+      async (signal) => pizzIntViewModel(await requestLiveJson('/api/intelligence/v1/get-pizzint-status', {
+        signal,
+        preflightSession: true,
+      })),
+      (view) => {
+        renderPizzIntView(tool, view, Date.now());
+        if (view.available) setToolState(tool, 'ready', 'Live reading');
+        else setToolState(tool, 'empty', 'Live feed checked');
+      },
+    );
+  } catch {
+    setPizzIntLevel(tool, '—', 'Unavailable');
+    tool.querySelector('[data-pizzint-venues]')?.replaceChildren();
+    setTime(tool, '[data-live-updated]', null, 'Updated');
+    setText(tool, '[data-live-updated]', '');
+    setToolState(tool, 'error', 'Temporarily unavailable');
+  }
+}
+
 export async function loadCrisis(tool) {
   const state = beginToolRequest(tool);
   const countries = [...tool.querySelectorAll('[data-crisis-country]')].map((row) => ({
@@ -1630,6 +1739,10 @@ export function initLiveTools(root = document) {
   for (const tool of root.querySelectorAll('[data-live-crisis]')) {
     tool.querySelector('[data-live-refresh]')?.addEventListener('click', () => loadCrisis(tool));
     void loadCrisis(tool);
+  }
+  for (const tool of root.querySelectorAll('[data-live-pizzint]')) {
+    tool.querySelector('[data-live-refresh]')?.addEventListener('click', () => loadPizzInt(tool));
+    void loadPizzInt(tool);
   }
   for (const tool of root.querySelectorAll('[data-natural-hazard-tool]')) {
     applyInitialCountrySelection(tool);
