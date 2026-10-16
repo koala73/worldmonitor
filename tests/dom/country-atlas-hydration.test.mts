@@ -40,6 +40,9 @@ const storage = { facilities: {
   cn: { id: 'cn', name: 'CN storage', country: 'CN' },
   other: { id: 'other', name: 'Other storage', country: 'AA' },
 } };
+const unavailableEnergy = { mixAvailable: false, jodiOilAvailable: false, ieaStocksAvailable: false,
+  jodiGasAvailable: false, gasStorageAvailable: false, electricityAvailable: false,
+  emberAvailable: false, sprAvailable: false, importShareAvailable: false };
 let requests: string[];
 const cleanups: Array<() => void> = [];
 
@@ -91,6 +94,31 @@ afterEach(() => {
 });
 
 describe('country Energy Atlas hydration', () => {
+  it('keeps country assets visible when all Energy measurements are unavailable', async () => {
+    const { panel, body } = fixture();
+    Reflect.get(panel, 'renderEnergyProfile').call(panel, unavailableEnergy);
+    await settle();
+    expect(body.textContent).toContain('Energy data unavailable for this country.');
+    expectAssets(body);
+    Reflect.get(panel, 'renderEnergyProfile').call(panel, unavailableEnergy);
+    await settle();
+    expectAssets(body);
+    expect(requests.sort()).toEqual(['pipelinesGas', 'pipelinesOil', 'storageFacilities']);
+  });
+
+  it.each(['switch', 'abort'])('discards late assets after country %s when Energy measurements are unavailable', async action => {
+    const release = deferHydration();
+    const { panel, body, controller } = fixture();
+    Reflect.get(panel, 'renderEnergyProfile').call(panel, unavailableEnergy);
+    await settle();
+    expect(requests).toHaveLength(3);
+    if (action === 'switch') Reflect.set(panel, 'currentCode', 'DE');
+    else controller.abort();
+    release(); await settle();
+    expect(body.textContent).toBe('Energy data unavailable for this country.');
+    expect(body.querySelectorAll('button')).toHaveLength(0);
+  });
+
   it('retains cached gas when the production loader handles an oil fetch rejection', async () => {
     resetPipelines();
     setPipelineBootstrap(key => key === 'pipelinesGas' ? gas : undefined);
@@ -247,6 +275,7 @@ describe('country-owned Atlas details', () => {
     const button = [...body.querySelectorAll('button')].find(button => button.textContent === label)!;
     button.click(); await settle();
     expect(content.querySelector(selector)?.textContent).toContain(label);
+    expect(panel.getAtlasSelection()).toMatchObject({ type, id });
     expect(shell.hidden).toBe(true);
     expect(atlas).toHaveBeenCalledWith('CN', expect.any(AbortSignal));
     const back = content.querySelector<HTMLButtonElement>('.cdp-atlas-output > button')!;

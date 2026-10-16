@@ -1321,6 +1321,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     if (!hasAny) {
       this.energyBody.append(this.makeEmpty('Energy data unavailable for this country.'));
+      this.renderAtlasExposure();
       return;
     }
 
