@@ -22,8 +22,8 @@ jobs:
   audit-lockfile:
     name: audit-lockfile
     runs-on: ubuntu-latest
-    # Eight bounded audits plus setup and verdict upload.
-    timeout-minutes: 85
+    # Nine bounded audits plus setup and verdict upload.
+    timeout-minutes: 95
     env:
       # Authenticate advisory lookups used to date findings for the grace clock.
       GITHUB_TOKEN: ${{ github.token }}
