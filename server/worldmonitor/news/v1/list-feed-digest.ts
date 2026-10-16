@@ -3402,10 +3402,10 @@ async function buildDigest(
     // was not written keeps its previous label, so the change is detected
     // again next cycle instead of being lost.
     if (labelByHash && labelChanges.length > 0) {
-      const timeoutMs = redisTimeoutForDeadline(storyTrackingDeadlineAt);
-      const recorded = timeoutMs === undefined
+      const historyDeadlineAt = storyTrackingDeadlineAt - REDIS_PIPELINE_TIMEOUT_MS;
+      const recorded = historyDeadlineAt <= Date.now()
         ? new Set<string>()
-        : await recordLabelChanges(labelChanges, timeoutMs).catch((err: unknown) => {
+        : await recordLabelChanges(labelChanges, historyDeadlineAt).catch((err: unknown) => {
           console.warn('[digest] label history write failed:', err);
           return new Set<string>();
         });

@@ -20,6 +20,7 @@ import {
 } from '../server/_shared/label-history.ts';
 import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { listLabelChanges } from '../server/worldmonitor/news/v1/list-label-changes.ts';
+import { REDIS_PIPELINE_TIMEOUT_MS } from '../server/_shared/redis';
 
 const HASH_A = 'a'.repeat(64);
 const HASH_B = 'b'.repeat(64);
@@ -229,6 +230,113 @@ describe('recording', () => {
   const change = labelChangeFor(HASH_A, 'single-publisher|1', storyLabel([
     { source: 'Reuters World', corroborationCount: 2 }, { source: 'BBC World' },
   ]), context)!;
+
+  async function withDeadlineRedis(
+    stages: Array<{ ms: number; fail?: boolean }>,
+    run: (fixture: { now: () => number; budgets: number[]; commands: Command[] }) => Promise<void>,
+  ) {
+    const redis = installFakeRedis();
+    const savedNow = Date.now;
+    const savedTimeout = AbortSignal.timeout;
+    const budgets: number[] = [];
+    const commands: Command[] = [];
+    let now = NOW;
+    let budget = 0;
+    Date.now = () => now;
+    AbortSignal.timeout = (ms) => {
+      budget = ms;
+      return new AbortController().signal;
+    };
+    globalThis.fetch = async (_input, init) => {
+      budgets.push(budget);
+      const body = JSON.parse(String(init?.body)) as Command[];
+      commands.push(...body);
+      const stage = stages[budgets.length - 1];
+      assert.ok(stage, 'unexpected pipeline');
+      now += Math.min(stage.ms, budget);
+      if (stage.ms > budget) throw new Error('fixture deadline abort');
+      return { ok: !stage.fail, status: stage.fail ? 500 : 200,
+        json: async () => body.map(() => ({ result: 'OK' })) } as Response;
+    };
+    try {
+      await run({ now: () => now, budgets, commands });
+    } finally {
+      Date.now = savedNow;
+      AbortSignal.timeout = savedTimeout;
+      redis.restore();
+    }
+  }
+
+  it('shares one absolute deadline across guard and append without renewing cleanup', async () => {
+    await withDeadlineRedis([{ ms: 80 }, { ms: 80 }], async ({ now, budgets, commands }) => {
+      assert.equal((await recordLabelChanges([change], NOW + 100)).size, 0);
+      assert.deepEqual(budgets, [100, 20]);
+      assert.equal(now(), NOW + 100);
+      assert.equal(commands.some((command) => command[0] === 'DEL'), false);
+      const labels = new Map([[HASH_A, 'corroborated|2']]);
+      keepUnrecordedLabels(labels, [change], new Set());
+      assert.equal(labels.has(HASH_A), false);
+    });
+  });
+
+  it('recomputes cleanup after an immediate append failure and spends only the remainder', async () => {
+    for (const cleanupMs of [5, 50]) {
+      await withDeadlineRedis([{ ms: 80 }, { ms: 5, fail: true }, { ms: cleanupMs }], async ({ now, budgets, commands }) => {
+        assert.equal((await recordLabelChanges([change], NOW + 100)).size, 0);
+        assert.deepEqual(budgets, [100, 20, 15]);
+        assert.equal(now(), NOW + 85 + Math.min(cleanupMs, 15));
+        const guard = commands.find((command) => command[0] === 'SET')!;
+        assert.deepEqual(commands.at(-1), ['DEL', guard[1]]);
+      });
+    }
+  });
+
+  it('does not append after the guard consumes the deadline', async () => {
+    await withDeadlineRedis([{ ms: 100 }], async ({ budgets, commands }) => {
+      assert.equal((await recordLabelChanges([change], NOW + 100)).size, 0);
+      assert.deepEqual(budgets, [100]);
+      assert.equal(commands.length, 1);
+    });
+  });
+
+  it('retains confirmed IDs when an append response arrives at the deadline', async () => {
+    await withDeadlineRedis([{ ms: 80 }, { ms: 20 }], async ({ budgets, commands }) => {
+      const recorded = await recordLabelChanges([change], NOW + 100);
+      assert.deepEqual([...recorded], [HASH_A]);
+      assert.deepEqual(budgets, [100, 20]);
+      assert.deepEqual(commands[0], ['SET', `trust:label-change-guard:v1:${HASH_A}:single-publisher:corroborated`, String(change.at), 'NX', 'EX', 900]);
+      for (const [key, cap] of [[LABEL_CHANGES_KEY, 500], [STORY_LABEL_HISTORY_KEY(HASH_A), 20]] as const) {
+        assert.deepEqual(commands.filter((command) => command[1] === key), [
+          ['LPUSH', key, JSON.stringify(change)], ['LTRIM', key, 0, cap - 1], ['EXPIRE', key, 604800],
+        ]);
+      }
+      const labels = new Map([[HASH_A, 'corroborated|2']]);
+      keepUnrecordedLabels(labels, [change], recorded);
+      assert.equal(labels.get(HASH_A), 'corroborated|2');
+    });
+  });
+
+  it('refuses expired and invalid absolute deadlines before any history I/O', async () => {
+    await withDeadlineRedis([], async ({ budgets }) => {
+      for (const deadline of [0, -1, NOW - 1, NOW, Number.NaN, Number.NEGATIVE_INFINITY]) {
+        assert.equal((await recordLabelChanges([change], deadline)).size, 0, String(deadline));
+      }
+      assert.equal((await recordLabelChanges([], NOW + 100)).size, 0);
+      assert.deepEqual(budgets, []);
+    });
+  });
+
+  it('keeps omitted, undefined and positive Infinity outer deadlines unbounded', async () => {
+    for (const mode of ['omitted', 'undefined', 'infinity']) {
+      await withDeadlineRedis([{ ms: 4000 }, { ms: 4000 }], async ({ now, budgets }) => {
+        const recorded = mode === 'omitted' ? await recordLabelChanges([change])
+          : await recordLabelChanges([change], mode === 'infinity' ? Number.POSITIVE_INFINITY : undefined);
+        assert.deepEqual([...recorded], [HASH_A]);
+        assert.equal(now(), NOW + 8000);
+        assert.deepEqual(budgets, [REDIS_PIPELINE_TIMEOUT_MS, REDIS_PIPELINE_TIMEOUT_MS]);
+      });
+    }
+  });
 
   it('appends to the global and per-story logs, bounded and expiring after seven days', async () => {
     const redis = installFakeRedis();

@@ -227,24 +227,27 @@ export function correctionEntry(report: { storyId: string; url: string }, public
  * applied the write, the retry can log the change twice, which is preferred
  * to losing it. Never throws.
  */
-export async function recordLabelChanges(changes: readonly LabelChange[], timeoutMs?: number): Promise<Set<string>> {
+export async function recordLabelChanges(changes: readonly LabelChange[], deadlineAt = Number.POSITIVE_INFINITY): Promise<Set<string>> {
   const recorded = new Set<string>();
   if (changes.length === 0) return recorded;
+  const runPipelineBeforeDeadline = async (commands: RedisPipelineCommand[]) => {
+    const remainingMs = deadlineAt - Date.now();
+    if (!(remainingMs > 0)) return [];
+    return runRedisPipeline(commands, false, Number.isFinite(remainingMs) ? remainingMs : undefined);
+  };
   const guardKeys = changes.map((change) => LABEL_CHANGE_GUARD_KEY(change.storyId, change.previous, change.next));
-  const guards = await runRedisPipeline(
+  const guards = await runPipelineBeforeDeadline(
     changes.map((change, i) => ['SET', guardKeys[i]!, String(change.at), 'NX', 'EX', LABEL_CHANGE_GUARD_TTL_S]),
-    false,
-    timeoutMs,
   );
   if (guards.length !== changes.length) return recorded;
   const won = changes.flatMap((_, i) => (guards[i]!.result === 'OK' ? [i] : []));
   if (won.length === 0) return recorded;
   const commands = won.flatMap((i) => labelChangeCommands(changes[i]!));
-  const results = await runRedisPipeline(commands, false, timeoutMs);
+  const results = await runPipelineBeforeDeadline(commands);
   if (results.length === commands.length && results.every((result) => !result.error)) {
     for (const i of won) recorded.add(changes[i]!.storyId);
   } else {
-    await runRedisPipeline(won.map((i) => ['DEL', guardKeys[i]!]), false, timeoutMs);
+    await runPipelineBeforeDeadline(won.map((i) => ['DEL', guardKeys[i]!]));
   }
   return recorded;
 }
