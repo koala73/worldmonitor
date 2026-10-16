@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Gratis realtime dashboard voor wereldwijd inlichtingen",
-      "description": "Op het moment dat het nieuws is, wist je het al. Conflicten, knelpunten, militaire vluchten, markten, cyberdreiging: één gratis live kaart met AI-analyse. Geen registratie nodig.",
-      "ogTitle": "World Monitor — Tegen de tijd dat het nieuws is, wist je het al.",
-      "ogDescription": "De onbewerkte signalen van de wereld — schepen, vliegtuigen, sirenes, kabels, markten — op één gratis live inlichtingenkaart, met AI die aangeeft wanneer ze samenkomen. Gratis, geen registratie."
+      "title": "World Monitor: Gratis geopolitiek inlichtingendashboard",
+      "description": "World Monitor: realtime geopolitiek inlichtingendashboard. Gratis livekaart van conflicten, scheepvaart, vluchten, markten en cyber, met API en MCP-server.",
+      "ogTitle": "World Monitor: Gratis geopolitiek inlichtingendashboard",
+      "ogDescription": "World Monitor: realtime geopolitiek inlichtingendashboard. Gratis livekaart van conflicten, scheepvaart, vluchten, markten en cyber, met API en MCP-server."
     },
     "nav": {
       "useCases": "Correlaties",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Gratis dashboard voor wereldwijd inlichtingen · nu live",
-      "headline1": "Tegen de tijd dat het nieuws is,",
-      "headline2": "wist je het al.",
-      "sub": "Koppen zijn de vertraging. World Monitor streamt de onbewerkte signalen van de wereld — schepen, vliegtuigen, sirenes, kabels, markten — op één live kaart, met AI die aangeeft wanneer ze samenkomen tot iets wat ertoe doet.",
+      "headline1": "Geopolitiek inlichtingendashboard",
+      "headline2": "in realtime",
+      "sub": "Tegen de tijd dat het nieuws is, wist je het al.",
       "ctaPrimary": "Dashboard starten",
       "ctaFree": "Gratis · Geen registratie · Laadt in seconden",
       "ctaSecondary": "Zie hoe mensen het gebruiken ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor is geen open-source Palantir",
       "asOf": "Per {{date}}",
       "whatIsTitle": "Wat is World Monitor?",
-      "whatIsBody": "World Monitor is een gratis ($0), open-source (AGPL-3.0) dashboard dat door 2M+ mensen wordt gebruikt. Het streamt {{feeds}} nieuws- en OSINT-feeds van {{providers}} geattribueerde providers op één live wereldkaart met {{mapLayers}} kaartlaagtypen, omvattend geopolitiek, markten, scheepvaart, luchtvaart en cyber. Het correleert ze zodat convergende gebeurtenissen eerder aan het licht komen dan in de koppen. Elke cijfer is bronvermeld en elke methode gedocumenteerd."
+      "whatIsBody": "World Monitor is een gratis ($0), open-source (AGPL-3.0) dashboard dat door 2M+ mensen wordt gebruikt. Het streamt {{feeds}} nieuws- en OSINT-feeds van {{providers}} geattribueerde providers op één live wereldkaart met {{mapLayers}} kaartlaagtypen, omvattend geopolitiek, markten, scheepvaart, luchtvaart en cyber. Het correleert ze zodat convergende gebeurtenissen eerder aan het licht komen dan in de koppen. Elke cijfer is bronvermeld en elke methode gedocumenteerd.",
+      "whatIsBestFor": "Ideaal voor analisten, journalisten, traders en ontwikkelaars die live geopolitieke signalen nodig hebben."
     },
     "live": {
       "eyebrow": "Nu live",

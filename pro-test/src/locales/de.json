@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Kostenloses Live-Dashboard für globale Informationen in Echtzeit",
-      "description": "Bis es Nachrichten sind, wissen Sie bereits Bescheid. Konflikte, Engpässe, Militärflugverkehr, Märkte, Cyber: eine kostenlose Live-Karte mit KI-Analyse. Keine Registrierung erforderlich.",
-      "ogTitle": "World Monitor — Bevor es Nachrichten sind, wussten Sie es bereits.",
-      "ogDescription": "Die Rohsignale der Welt — Schiffe, Jets, Sirenen, Kabel, Märkte — auf einer kostenlosen Live-Intelligenz-Karte mit KI, die kennzeichnet, wenn sie zusammenlaufen. Kostenlos, keine Anmeldung."
+      "title": "World Monitor: Kostenloses geopolitisches Lagebild-Dashboard",
+      "description": "World Monitor: geopolitisches Lagebild-Dashboard in Echtzeit. Kostenlose Live-Karte: Konflikte, Schifffahrt, Flüge, Märkte und Cyber, mit API und MCP-Server.",
+      "ogTitle": "World Monitor: Kostenloses geopolitisches Lagebild-Dashboard",
+      "ogDescription": "World Monitor: geopolitisches Lagebild-Dashboard in Echtzeit. Kostenlose Live-Karte: Konflikte, Schifffahrt, Flüge, Märkte und Cyber, mit API und MCP-Server."
     },
     "nav": {
       "useCases": "Korrelationen",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Kostenloses globales Informations-Dashboard · live jetzt",
-      "headline1": "Bevor es Nachrichten sind,",
-      "headline2": "wussten Sie es bereits.",
-      "sub": "Nachrichten sind die Verzögerung. World Monitor streamt die Rohsignale der Welt — Schiffe, Jets, Sirenen, Kabel, Märkte — auf eine Live-Karte mit KI, die kennzeichnet, wenn sie sich zu etwas Wichtigem verbinden.",
+      "headline1": "Geopolitisches Lagebild-Dashboard",
+      "headline2": "in Echtzeit",
+      "sub": "Bevor es Nachrichten sind, wussten Sie es bereits.",
       "ctaPrimary": "Dashboard starten",
       "ctaFree": "Kostenlos · Keine Anmeldung · Lädt in Sekunden",
       "ctaSecondary": "Sehen Sie, wie Leute es nutzen ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor ist kein Open-Source-Palantir",
       "asOf": "Stand: {{date}}",
       "whatIsTitle": "Was ist World Monitor?",
-      "whatIsBody": "World Monitor ist ein kostenloses ($0), quelloffenes (AGPL-3.0) Dashboard, das von über 2 Millionen Menschen genutzt wird. Es streamt {{feeds}} Nachrichten- und OSINT-Feeds von {{providers}} zugeordneten Anbietern auf eine Live-Weltkarte mit {{mapLayers}} Kartenebenentypen, die Geopolitik, Märkte, Schifffahrt, Luftfahrt und Cyber abdeckt. Das System korreliert diese Daten, sodass zusammenhängende Ereignisse bereits vor den Schlagzeilen sichtbar werden. Jede Angabe ist belegt und jede Methode dokumentiert."
+      "whatIsBody": "World Monitor ist ein kostenloses ($0), quelloffenes (AGPL-3.0) Dashboard, das von über 2 Millionen Menschen genutzt wird. Es streamt {{feeds}} Nachrichten- und OSINT-Feeds von {{providers}} zugeordneten Anbietern auf eine Live-Weltkarte mit {{mapLayers}} Kartenebenentypen, die Geopolitik, Märkte, Schifffahrt, Luftfahrt und Cyber abdeckt. Das System korreliert diese Daten, sodass zusammenhängende Ereignisse bereits vor den Schlagzeilen sichtbar werden. Jede Angabe ist belegt und jede Methode dokumentiert.",
+      "whatIsBestFor": "Ideal für Analysten, Journalisten, Trader und Entwickler, die geopolitische Signale in Echtzeit brauchen."
     },
     "live": {
       "eyebrow": "Live jetzt",

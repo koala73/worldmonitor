@@ -451,10 +451,10 @@
   "soonBadge": "Soon",
   "welcome": {
     "meta": {
-      "title": "World Monitor — Free Real-Time Global Intelligence Dashboard",
-      "description": "تا زمانی که خبری شود، شما قبلاً می‌دانستید. درگیری‌ها، تنگناهای جغرافیایی، پروازهای نظامی، بازارها، فعالیت‌های سایبری: یک نقشه زنده رایگان با تحلیل هوش مصنوعی. بدون نیاز به ثبت‌نام.",
-      "ogTitle": "World Monitor — By the time it's news, you already knew.",
-      "ogDescription": "The world's raw signals — ships, jets, sirens, cables, markets — on one free live intelligence map, with AI that flags when they converge. Free, no signup."
+      "title": "World Monitor: داشبورد رایگان اطلاعات ژئوپلیتیکی",
+      "description": "World Monitor: داشبورد اطلاعات ژئوپلیتیکی در زمان واقعی. نقشه زنده و رایگان درگیری‌ها، کشتیرانی، پروازها، بازارها و فضای سایبری، همراه با API و سرور MCP.",
+      "ogTitle": "World Monitor: داشبورد رایگان اطلاعات ژئوپلیتیکی",
+      "ogDescription": "World Monitor: داشبورد اطلاعات ژئوپلیتیکی در زمان واقعی. نقشه زنده و رایگان درگیری‌ها، کشتیرانی، پروازها، بازارها و فضای سایبری، همراه با API و سرور MCP."
     },
     "nav": {
       "useCases": "Correlations",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Free global intelligence dashboard · live now",
-      "headline1": "By the time it's news,",
-      "headline2": "you already knew.",
-      "sub": "Headlines are the lag. World Monitor streams the world's raw signals — ships, jets, sirens, cables, markets — onto one live map, with AI that flags when they converge into something that matters.",
+      "headline1": "داشبورد اطلاعات ژئوپلیتیکی",
+      "headline2": "در زمان واقعی",
+      "sub": "تا وقتی خبر شود، شما از قبل می‌دانستید.",
       "ctaPrimary": "Launch the dashboard",
       "ctaFree": "Free · No signup · Loads in seconds",
       "ctaSecondary": "See how people use it ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor is not an open-source Palantir",
       "asOf": "تا {{date}}",
       "whatIsTitle": "World Monitor چیست؟",
-      "whatIsBody": "World Monitor یک داشبورد رایگان ($0) و متن‌باز (AGPL-3.0) است که توسط بیش از 2 میلیون نفر استفاده می‌شود. این داشبورد {{feeds}} خبر و منبع OSINT را از {{providers}} منبع معتبر به یک نقشه جهانی زنده با {{mapLayers}} نوع لایه نقشه منتقل می‌کند که سیاست‌های جهانی، بازارها، حمل‌ونقل دریایی، هواپیمایی و امنیت سایبری را پوشش می‌دهد. این داشبورد رویدادهای همگرا را قبل از منتشر شدن در خبرها شناسایی می‌کند. تمام اطلاعات منابع دارند و تمام روش‌ها مستند شده‌اند."
+      "whatIsBody": "World Monitor یک داشبورد رایگان ($0) و متن‌باز (AGPL-3.0) است که توسط بیش از 2 میلیون نفر استفاده می‌شود. این داشبورد {{feeds}} خبر و منبع OSINT را از {{providers}} منبع معتبر به یک نقشه جهانی زنده با {{mapLayers}} نوع لایه نقشه منتقل می‌کند که سیاست‌های جهانی، بازارها، حمل‌ونقل دریایی، هواپیمایی و امنیت سایبری را پوشش می‌دهد. این داشبورد رویدادهای همگرا را قبل از منتشر شدن در خبرها شناسایی می‌کند. تمام اطلاعات منابع دارند و تمام روش‌ها مستند شده‌اند.",
+      "whatIsBestFor": "بهترین گزینه برای تحلیلگران، روزنامه‌نگاران، معامله‌گران و توسعه‌دهندگانی که به سیگنال‌های ژئوپلیتیکی زنده نیاز دارند."
     },
     "live": {
       "eyebrow": "Live right now",

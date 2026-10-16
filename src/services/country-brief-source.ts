@@ -43,8 +43,9 @@ function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void }
     supply,
     atlas: (code: string, signal: AbortSignal) => {
       const detailClient = new SupplyChainServiceClient(base, { fetch: (input, init) => {
+        if (mode === 'website') return fetcher(input, { ...init, signal });
         const url = new URL(input instanceof Request ? input.url : String(input), base);
-        if (mode === 'host') url.searchParams.set('country_code', code);
+        url.searchParams.set('country_code', code);
         return fetcher(url, { ...init, signal });
       } });
       return {

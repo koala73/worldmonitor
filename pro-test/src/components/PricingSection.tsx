@@ -445,7 +445,7 @@ export function PricingSection({
 
                 {/* Price */}
                 <div className="mb-6">
-                  <span className="text-4xl font-display font-bold">{price.amount}</span>
+                  <span className="text-4xl font-display font-bold break-words hyphens-auto">{price.amount}</span>
                   <span className="text-sm text-wm-muted ml-1">{price.suffix}</span>
                   {cta.type === 'checkout' && cta.billedMonthlyOnly && (
                     <p className="mt-1 text-[11px] font-mono uppercase tracking-wider text-wm-muted">
@@ -510,7 +510,7 @@ export function PricingSection({
                 <h3 className="font-display text-lg font-bold mb-1 text-wm-text">{bandTier.name}</h3>
                 <p className="text-xs text-wm-muted mb-4">{localized.description}</p>
                 <div>
-                  <span className="text-4xl font-display font-bold">{price.amount}</span>
+                  <span className="text-4xl font-display font-bold break-words hyphens-auto">{price.amount}</span>
                   <span className="text-sm text-wm-muted ml-1">{price.suffix}</span>
                 </div>
               </div>

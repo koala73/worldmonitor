@@ -404,13 +404,13 @@ test.describe('server-rendered welcome page', () => {
   } of [
     {
       direction: 'ltr',
-      headline: "Au moment où c'est une nouvelle",
+      headline: 'Tableau de bord du renseignement',
       language: 'fr',
       ogLocale: 'fr_FR',
     },
     {
       direction: 'rtl',
-      headline: 'بحلول الوقت الذي تصبح فيه خبراً',
+      headline: 'لوحة استخبارات جيوسياسية',
       language: 'ar',
       ogLocale: 'ar_SA',
     },
@@ -477,7 +477,7 @@ test.describe('dashboard shell without JavaScript', () => {
     await expect(page.locator('#root[data-wm-prerendered="welcome"]')).toBeVisible();
     await expect(page.locator('#root h1')).toHaveCount(1);
     await expect(page.locator('#root h1')).toBeVisible();
-    await expect(page.locator('#root h1')).toContainText('you already knew');
+    await expect(page.locator('#root h1')).toContainText('intelligence dashboard');
     await expect(page.locator('#root a[href="/dashboard"][data-umami-event-target="welcome-hero"]')).toBeVisible();
     await expect(page.locator('#root footer a[href="/countries/"]')).toBeVisible();
     await expect(page.locator('#root footer a[href="https://github.com/koala73/worldmonitor"]')).toBeVisible();

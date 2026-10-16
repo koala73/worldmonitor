@@ -130,6 +130,36 @@ const CRITICAL_CSS = [
   '@media (min-width:1024px){nav[data-wm-nav] [class~="lg:flex"]{display:flex}nav[data-wm-nav] [class~="lg:hidden"]{display:none}}',
 ].join('');
 
+// /pro-only mirrors for the prerendered nav + hero (pro-first-viewport-prerender.tsx),
+// emitted into index.html alone so welcome.html's bytes and geometry cannot move.
+// Unlike the region mirrors above, these sit in @layer utilities under the same
+// single-class selectors Tailwind emits: pre-sheet they still beat the base
+// reset, and once the sheet lands Tailwind's identical rules, later in the
+// layer, take over -- so responsive and hover variants keep working and the
+// React page's geometry is exactly what it was. The shared unlayered rules still
+// win over both, which is the production target (h1 36/48/72px, `main p` sizing).
+const PRO_CRITICAL_CSS = [
+  '@layer base{button{font:inherit;letter-spacing:inherit;color:inherit;background-color:transparent;border-radius:0;opacity:1}}',
+  '@layer utilities{',
+  '.sr-only{clip-path:inset(50%);white-space:nowrap;border-width:0;width:1px;height:1px;margin:-1px;padding:0;position:absolute;overflow:hidden}',
+  '.flex{display:flex}.inline-flex{display:inline-flex}.flex-col{flex-direction:column}.flex-1{flex:1}.items-center{align-items:center}.items-end{align-items:flex-end}.justify-center{justify-content:center}',
+  '.gap-2{gap:.5rem}.gap-3{gap:.75rem}.gap-8{gap:2rem}.gap-\\[3px\\]{gap:3px}',
+  '.mx-3{margin-inline:.75rem}.-mx-6{margin-inline:-1.5rem}.my-4{margin-block:1rem}.mt-4{margin-top:1rem}.mt-8{margin-top:2rem}.mb-4{margin-bottom:1rem}',
+  '.px-3{padding-inline:.75rem}.px-4{padding-inline:1rem}.px-6{padding-inline:1.5rem}.py-1\\.5{padding-block:.375rem}.py-2{padding-block:.5rem}.py-3{padding-block:.75rem}',
+  '.w-full{width:100%}.w-3{width:.75rem}.h-3{height:.75rem}.w-4{width:1rem}.h-4{height:1rem}.w-64{width:16rem}.h-28{height:7rem}.h-40{height:10rem}.max-w-2{max-width:.5rem}',
+  '.border{border-style:solid;border-width:1px}.border-wm-border{border-color:#222}.rounded-sm{border-radius:.25rem}.rounded-full{border-radius:3.40282e38px}',
+  '.font-mono{font-family:var(--font-mono)}.font-bold{font-weight:700}.font-light{font-weight:300}.uppercase{text-transform:uppercase}.tracking-wider{letter-spacing:.05em}.text-xs{font-size:.75rem;line-height:var(--tw-leading,calc(1/.75))}.text-sm{font-size:.875rem;line-height:var(--tw-leading,calc(1.25/.875))}',
+  '.text-wm-text{color:#f3f4f6}.text-wm-muted{color:#9ca3af}.text-wm-green{color:#4ade80}.text-wm-bg{color:#050505}.text-transparent{color:#0000}',
+  '.text-wm-muted\\/40{color:color-mix(in oklab,#9ca3af 40%,transparent)}.text-wm-border\\/50{color:color-mix(in oklab,#222 50%,transparent)}',
+  '.bg-wm-green{background-color:#4ade80}.bg-wm-card{background-color:#111}.bg-wm-card\\/50{background-color:color-mix(in oklab,#111 50%,transparent)}.bg-wm-green\\/8{background-color:color-mix(in oklab,#4ade80 8%,transparent)}.bg-wm-muted\\/20{background-color:color-mix(in oklab,#9ca3af 20%,transparent)}',
+  '.bg-clip-text{-webkit-background-clip:text;background-clip:text}.bg-gradient-to-r.from-wm-green.to-emerald-300{background-image:linear-gradient(to right in oklab,#4ade80 0%,oklch(84.5% .143 164.978) 100%)}.blur-\\[80px\\]{filter:blur(80px)}',
+  '@media (min-width:640px){.sm\\:flex-row{flex-direction:row}}',
+  '@media (min-width:768px){.md\\:mx-5{margin-inline:1.25rem}.md\\:my-8{margin-block:2rem}.md\\:gap-1{gap:.25rem}.md\\:w-96{width:24rem}.md\\:h-44{height:11rem}.md\\:h-56{height:14rem}.md\\:max-w-3{max-width:.75rem}}',
+  '}',
+].join('');
+
+const PAGE_CRITICAL_CSS = { 'index.html': CRITICAL_CSS + PRO_CRITICAL_CSS };
+
 // Flip each deferred preload to a real stylesheet on load, on error (retry a
 // failed fetch as a stylesheet), and after a timeout (covers browsers that
 // ignore `rel=preload as=style` and never fire an event) -- without a timeout
@@ -169,16 +199,30 @@ function inlineCriticalCss(html, file) {
 
   const crossorigin = stylesheetTag.includes(' crossorigin') ? ' crossorigin' : '';
   const criticalTags = [
-    '    <style nonce="' + STATIC_SCRIPT_NONCE + '">' + CRITICAL_CSS + '</style>',
+    '    <style nonce="' + STATIC_SCRIPT_NONCE + '">' + (PAGE_CRITICAL_CSS[file] ?? CRITICAL_CSS) + '</style>',
     '    <link rel="preload" as="style" href="' + href + '"' + crossorigin + ' data-wm-deferred-style nonce="' + STATIC_SCRIPT_NONCE + '">',
     '    <script nonce="' + STATIC_SCRIPT_NONCE + '">' + DEFERRED_STYLES_SCRIPT + '</script>',
     '    <noscript><link rel="stylesheet" href="' + href + '"' + crossorigin + '></noscript>',
   ].join('\n');
-  // Function replacement, for the same $-expansion reason as the #root splice below.
+  // Function replacement, for the same $-expansion reason as spliceEmptyRoot() below.
   return html.replace(stylesheetTag, () => criticalTags);
 }
 
-async function renderWelcomeRoot() {
+// index.html's #root ships an <h1> and the curated crawlable section. The prerender
+// moves that section inside the rendered shell's <main>, after the hero, and
+// folds the <h1> text into the hero heading as a visually hidden lead, so the
+// built page keeps one <h1> and one <main>.
+function parseProTemplateRoot(html) {
+  const matches = [...html.matchAll(/<div id="root">\s*<h1>([^<&]+)<\/h1>\s*(<section id="pro-overview"[\s\S]*?<\/section>)\s*<\/div>/g)];
+  if (matches.length !== 1) {
+    console.error(`[prerender] ERROR: index.html #root must hold exactly one <h1> followed by <section id="pro-overview">; found ${matches.length} matches.`);
+    process.exit(1);
+  }
+  const [whole, heroSrLead, overview] = matches[0];
+  return { whole, heroSrLead: heroSrLead.trim(), overview };
+}
+
+async function renderSsrRoots() {
   const server = await createServer({
     configFile: resolve(__dirname, 'vite.config.ts'),
     appType: 'custom',
@@ -188,8 +232,20 @@ async function renderWelcomeRoot() {
   try {
     const { renderWelcomeApp } = await server.ssrLoadModule('/src/welcome-prerender.tsx');
     const { htmlToMarkdown } = await server.ssrLoadModule('../api/_md-url-twin.ts');
-    const html = rewriteBuiltAssetUrls(await renderWelcomeApp());
-    return { html, markdown: htmlToMarkdown(html, 'World Monitor') };
+    const welcomeHtml = rewriteBuiltAssetUrls(await renderWelcomeApp(), DASHBOARD_SCREENSHOT_ASSETS, 'welcome');
+
+    const { renderProFirstViewport, PRO_CONTENT_SLOT } = await server.ssrLoadModule('/src/pro-first-viewport-prerender.tsx');
+    const { heroSrLead } = parseProTemplateRoot(readFileSync(resolve(__dirname, '../public/pro/index.html'), 'utf-8'));
+    const proShell = rewriteBuiltAssetUrls(await renderProFirstViewport(heroSrLead), [], '/pro first viewport').split(PRO_CONTENT_SLOT);
+    if (proShell.length !== 2) {
+      console.error(`[prerender] ERROR: the /pro first viewport must carry exactly one content slot; found ${proShell.length - 1}.`);
+      process.exit(1);
+    }
+
+    return {
+      welcome: { html: welcomeHtml, markdown: htmlToMarkdown(welcomeHtml, 'World Monitor') },
+      proShell: { before: proShell[0], after: proShell[1] },
+    };
   } finally {
     await server.close();
   }
@@ -211,16 +267,16 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function rewriteBuiltAssetUrls(markup) {
+function rewriteBuiltAssetUrls(markup, assets, label) {
   let rewritten = markup;
-  for (const { filenamePrefix, extension } of DASHBOARD_SCREENSHOT_ASSETS) {
+  for (const { filenamePrefix, extension } of assets) {
     const builtHref = builtAssetHref(filenamePrefix, extension);
     const sourceAssetPattern = new RegExp(
       `(?:/pro/src/assets/|/@fs/[^"'<>\\s]*/)${escapeRegExp(filenamePrefix + extension)}`,
       'g',
     );
     if (!rewritten.match(sourceAssetPattern)) {
-      console.error(`[prerender] ERROR: Could not find SSR asset URL for ${filenamePrefix}${extension} in welcome markup.`);
+      console.error(`[prerender] ERROR: Could not find SSR asset URL for ${filenamePrefix}${extension} in ${label} markup.`);
       process.exit(1);
     }
     rewritten = rewritten.replace(sourceAssetPattern, () => builtHref);
@@ -231,13 +287,13 @@ function rewriteBuiltAssetUrls(markup) {
   // /@fs path into the static HTML and break hydration on the hashed client URL.
   const leaked = rewritten.match(/(?:\/pro\/src\/assets\/|\/@fs\/)[^"'<>\s]+/);
   if (leaked) {
-    console.error(`[prerender] ERROR: Unrewritten dev asset URL in welcome markup: ${leaked[0]}. Extend rewriteBuiltAssetUrls() to cover it.`);
+    console.error(`[prerender] ERROR: Unrewritten dev asset URL in ${label} markup: ${leaked[0]}. Pass its built asset to rewriteBuiltAssetUrls().`);
     process.exit(1);
   }
   return rewritten;
 }
 
-const { html: welcomeContent, markdown: welcomeMarkdown } = await renderWelcomeRoot();
+const { welcome: { html: welcomeContent, markdown: welcomeMarkdown }, proShell } = await renderSsrRoots();
 
 // GitHub star InteractionCounter: populated from the committed freeze
 // snapshot, never hardcoded and never fetched at build time (offline builds
@@ -284,40 +340,44 @@ function fillProofFacts(html, file) {
   return filled;
 }
 
+function spliceProFirstViewport(html) {
+  const { whole, overview } = parseProTemplateRoot(html);
+  // Function replacement, for the same $-expansion reason as spliceEmptyRoot.
+  return html.replace(whole, () => `<div id="root">${proShell.before}${overview}${proShell.after}</div>`);
+}
+
+function spliceEmptyRoot(html, file, content, rootAttributes) {
+  const emptyRoot = '<div id="root"></div>';
+  if (!html.includes(emptyRoot)) {
+    console.error(`[prerender] ERROR: ${file} has no empty <div id="root"></div> to inject into.`);
+    process.exit(1);
+  }
+  // Replacer FUNCTION, not a replacement string: `String.prototype.replace`
+  // expands `$$`, `$&`, `` $` `` and `$'` in a string replacement. Since #7608
+  // the SSR markup carries headline text from ~461 third-party RSS feeds, so
+  // those sequences are no longer ours to rule out. React escapes `'` to
+  // `&#x27;`, which turns a title containing `$'` into a literal `$&` — that
+  // splices a SECOND `<div id="root">` into the page and hydration mounts on
+  // the wrong one; a backtick (which React does not escape) splices the whole
+  // preceding document. A function replacement is taken literally.
+  return html.replace(emptyRoot, () => `<div id="root"${rootAttributes}>${content}</div>`);
+}
+
 const PAGES = [
-  { file: 'index.html', content: '', rootAttributes: '' },
+  { file: 'index.html', renderRoot: spliceProFirstViewport },
   {
     file: 'welcome.html',
-    content: welcomeContent,
-    rootAttributes: ' data-wm-prerendered="welcome" data-wm-prerender-lang="en"',
+    renderRoot: (html, file) => spliceEmptyRoot(html, file, welcomeContent, ' data-wm-prerendered="welcome" data-wm-prerender-lang="en"'),
   },
 ];
 
-for (const { file, content, rootAttributes } of PAGES) {
+for (const { file, renderRoot } of PAGES) {
   const htmlPath = resolve(__dirname, '../public/pro', file);
   let html = readFileSync(htmlPath, 'utf-8');
   html = inlineCriticalCss(html, file);
   html = injectGithubStars(html, file);
   html = fillProofFacts(html, file);
-  const emptyRoot = '<div id="root"></div>';
-  if (content || rootAttributes) {
-    if (!html.includes(emptyRoot)) {
-      console.error(`[prerender] ERROR: ${file} has no empty <div id="root"></div> to inject into.`);
-      process.exit(1);
-    }
-    // Replacer FUNCTION, not a replacement string: `String.prototype.replace`
-    // expands `$$`, `$&`, `` $` `` and `$'` in a string replacement. Since #7608
-    // the SSR markup carries headline text from ~461 third-party RSS feeds, so
-    // those sequences are no longer ours to rule out. React escapes `'` to
-    // `&#x27;`, which turns a title containing `$'` into a literal `$&` — that
-    // splices a SECOND `<div id="root">` into the page and hydration mounts on
-    // the wrong one; a backtick (which React does not escape) splices the whole
-    // preceding document. A function replacement is taken literally.
-    html = html.replace(emptyRoot, () => `<div id="root"${rootAttributes}>${content}</div>`);
-  } else if (!html.includes('<div id="root">')) {
-    console.error(`[prerender] ERROR: ${file} has no #root mount point.`);
-    process.exit(1);
-  }
+  html = renderRoot(html, file);
   writeFileSync(htmlPath, html, 'utf-8');
   console.log(`[prerender] Injected critical CSS and visible content into public/pro/${file}`);
 }
@@ -328,7 +388,18 @@ for (const { file, content, rootAttributes } of PAGES) {
 const agentContext = readFileSync(resolve(__dirname, '../public/home.md'), 'utf8');
 const metadata = agentContext.match(/^---\n[\s\S]*?\n---\n/);
 if (!metadata) throw new Error('Homepage agent context must have document metadata');
-const supplement = agentContext.slice(metadata[0].length).trim().replace(/^# .+\n+/, '');
+// The curated file repeats hero lines (slogan, audience) so it reads on its
+// own at /home.md; drop any one-line prose paragraph the rendered page already
+// states. Headings, lists and fences are never dropped.
+const renderedLines = new Set(welcomeMarkdown.split('\n').map((line) => line.trim()).filter(Boolean));
+const isRepeatedProse = (paragraph) => /^[A-Za-z][^\n]*$/.test(paragraph) && renderedLines.has(paragraph);
+const supplement = agentContext
+  .slice(metadata[0].length)
+  .trim()
+  .replace(/^# .+\n+/, '')
+  .split('\n\n')
+  .filter((paragraph) => !isRepeatedProse(paragraph))
+  .join('\n\n');
 writeFileSync(
   resolve(__dirname, '../public/pro/home.md'),
   `${metadata[0].replace('https://www.worldmonitor.app/home.md', 'https://www.worldmonitor.app/')}\n${welcomeMarkdown}\n\n${supplement}\n`,

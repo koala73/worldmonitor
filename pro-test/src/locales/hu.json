@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Ingyenes valós idejű globális hírszerzési irányítópult",
-      "description": "Mire hír lesz belőle, már tudtál róla. Konfliktusok, szoros pontok, katonai repülések, piacok, kibernetika: egy ingyenes élő térkép mesterséges intelligencia-elemzéssel. Regisztráció nélkül.",
-      "ogTitle": "World Monitor — Amíg hír lesz, már tudtad.",
-      "ogDescription": "A világ nyers jelei — hajók, repülőgépek, szirénák, kábelek, piacok — egy ingyenes élő hírszerzési térképen, AI-val, amely akkor jelöl meg, amikor összefolynak. Ingyenes, nincs regisztráció."
+      "title": "World Monitor: Ingyenes geopolitikai hírszerző irányítópult",
+      "description": "World Monitor: valós idejű geopolitikai hírszerzési irányítópult. Ingyenes élő térkép: konfliktusok, hajózás, járatok, piacok és kiber, API-val és MCP-vel.",
+      "ogTitle": "World Monitor: Ingyenes geopolitikai hírszerző irányítópult",
+      "ogDescription": "World Monitor: valós idejű geopolitikai hírszerzési irányítópult. Ingyenes élő térkép: konfliktusok, hajózás, járatok, piacok és kiber, API-val és MCP-vel."
     },
     "nav": {
       "useCases": "Korrelációk",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Ingyenes globális hírszerzési irányítópult · most élő",
-      "headline1": "Amíg hír lesz,",
-      "headline2": "már tudtad.",
-      "sub": "A hírek csak a késés. A World Monitor a világ nyers jeleit streameli — hajók, repülőgépek, szirénák, kábelek, piacok — egy élő térképre, AI-val, amely jelöli, amikor összefolynak valamivé, ami számít.",
+      "headline1": "Valós idejű geopolitikai",
+      "headline2": "hírszerzési irányítópult",
+      "sub": "Amíg hír lesz, már tudtad.",
       "ctaPrimary": "Irányítópult indítása",
       "ctaFree": "Ingyenes · Nincs regisztráció · Másodpercek alatt betölt",
       "ctaSecondary": "Nézd meg, hogyan használják az emberek ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "A WorldMonitor nem nyílt forráskódú Palantir",
       "asOf": "Állapot: {{date}}",
       "whatIsTitle": "Mi az a World Monitor?",
-      "whatIsBody": "A World Monitor egy ingyenes ($0), nyílt forráskódú (AGPL-3.0) műszerfal, amelyet 2M+ ember használ. {{feeds}} hír- és OSINT-forrást közvetít {{providers}} attribútummal ellátott szolgáltatótól egyetlen élő világtérképre {{mapLayers}} térképréteg-típussal, amely geopolitikát, piacokat, hajózást, repülést és kiberterületet fed le. Korrelálja őket, így az összefutó események a hírcímek előtt kerülnek felszínre. Minden adat forrásolt és minden módszer dokumentált."
+      "whatIsBody": "A World Monitor egy ingyenes ($0), nyílt forráskódú (AGPL-3.0) műszerfal, amelyet 2M+ ember használ. {{feeds}} hír- és OSINT-forrást közvetít {{providers}} attribútummal ellátott szolgáltatótól egyetlen élő világtérképre {{mapLayers}} térképréteg-típussal, amely geopolitikát, piacokat, hajózást, repülést és kiberterületet fed le. Korrelálja őket, így az összefutó események a hírcímek előtt kerülnek felszínre. Minden adat forrásolt és minden módszer dokumentált.",
+      "whatIsBestFor": "Elemzőknek, újságíróknak, kereskedőknek és fejlesztőknek ideális, akiknek élő geopolitikai jelzésekre van szükségük."
     },
     "live": {
       "eyebrow": "Most élő",

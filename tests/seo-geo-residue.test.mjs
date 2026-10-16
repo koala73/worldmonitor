@@ -4,16 +4,20 @@
 // captain calls — this file locks them as untouched rather than guessed.
 
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { comparisonDiscoveryEntries } from '../scripts/build-comparison-pages.mjs';
-import { COMPARISONS_HEADING, buildLlmsFullText, redactInternalApiOrigins, withComparisonsSection, withCorpusNavigation } from '../scripts/build-llms-full.mjs';
-import { resolveLatestLivePulseSnapshotPath } from '../scripts/build-crawlable-corpus.mjs';
+import { COMPARISONS_HEADING, buildLlmsFullText, redactInternalApiOrigins, withComparisonsSection, withCorpusNavigation, withResilienceCoverage } from '../scripts/build-llms-full.mjs';
+import { RESILIENCE_COVERAGE_PATTERN, buildCorpus, resilienceCoverageOf, resilienceCoveragePhrase, resolveLatestLivePulseSnapshotPath } from '../scripts/build-crawlable-corpus.mjs';
 import { parseSitemapDocument } from '../scripts/verify-sitemaps.mjs';
 import { accuracyStateAudit, classifyAccuracyState } from '../scripts/build-accuracy-page.mjs';
+import { RANKABLE_UNIVERSE_SIZE } from '../scripts/shared/rankable-universe.mjs';
+import { GLOSSARY_TERMS } from '../blog-site/src/data/glossary.ts';
+import { RESILIENCE_COVERAGE_SURFACES, restateCoverage, syncResilienceCoverage } from '../scripts/sync-resilience-coverage.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -300,15 +304,42 @@ describe('GEO residue #7463', () => {
 });
 
 describe('GEO residue #7616 (U1 agent surfaces)', () => {
-  function latestRankedCount() {
+  // Ranked = rows in the newest published snapshot; universe = ranked plus
+  // greyed-out rows, which must equal the committed rankable whitelist.
+  function latestResilienceCoverage() {
     const snapshots = readdirSync(join(repoRoot, 'docs/snapshots'))
       .filter((name) => /^resilience-ranking-\d{4}-\d{2}-\d{2}\.json$/.test(name))
       .sort();
     assert.ok(snapshots.length > 0, 'a published resilience snapshot must exist');
     const snapshot = JSON.parse(read(`docs/snapshots/${snapshots[ snapshots.length - 1]}`));
     assert.ok(Array.isArray(snapshot.items) && snapshot.items.length > 0);
-    return snapshot.items.length;
+    const ranked = snapshot.items.length;
+    const universe = ranked + (Array.isArray(snapshot.greyedOut) ? snapshot.greyedOut.length : 0);
+    assert.equal(universe, RANKABLE_UNIVERSE_SIZE, 'snapshot ranked + greyedOut must equal the rankable universe');
+    return { ranked, universe };
   }
+
+  it('fails closed when a snapshot does not cover the rankable universe', () => {
+    const rows = (n) => Array.from({ length: n }, (_, index) => ({ countryCode: `C${index}` }));
+    assert.deepEqual(
+      resilienceCoverageOf({ items: rows(RANKABLE_UNIVERSE_SIZE - 3), greyedOut: rows(3) }),
+      { ranked: RANKABLE_UNIVERSE_SIZE - 3, universe: RANKABLE_UNIVERSE_SIZE },
+    );
+    assert.throws(() => resilienceCoverageOf({ items: [], greyedOut: rows(3) }), /must contain ranked items/);
+    assert.throws(
+      () => resilienceCoverageOf({ items: rows(RANKABLE_UNIVERSE_SIZE - 3), greyedOut: rows(2) }),
+      /but the rankable universe has/,
+    );
+    assert.throws(() => resilienceCoverageOf({ items: rows(RANKABLE_UNIVERSE_SIZE - 3) }), /but the rankable universe has/);
+  });
+
+  const COVERAGE_FILES = [
+    'public/llms.txt',
+    'public/llms-full.txt',
+    'index.html',
+    'docs/about.mdx',
+    'src/config/variant-meta.ts',
+  ];
 
   it('links the real documentation file, not the dead DOCUMENTATION.md blob path', () => {
     const generated = buildLlmsFullText({ rootDir: repoRoot });
@@ -327,14 +358,198 @@ describe('GEO residue #7616 (U1 agent surfaces)', () => {
   });
 
   it('states coverage with the two-part definition pinned to the live snapshot', () => {
-    const ranked = latestRankedCount();
-    const standard = new RegExp(`live in 190\\+ countries[^.]*structural resilience ranked for ${ranked}`);
-    for (const file of ['public/llms.txt', 'public/llms-full.txt', 'index.html', 'docs/about.mdx']) {
-      assert.match(read(file), standard, `${file} must carry the standard coverage definition`);
+    const { ranked, universe } = latestResilienceCoverage();
+    const phrase = resilienceCoveragePhrase({ ranked, universe });
+    const standard = new RegExp(`live in 190\\+ countries[^.]*${phrase}`);
+    for (const file of COVERAGE_FILES) {
+      const body = read(file);
+      assert.match(body, standard, `${file} must carry the standard coverage definition`);
+      // Every mention must use the shared wording and carry the exact
+      // snapshot pair, so a bare "ranked for N" or a stale pair fails here.
+      const mentions = body.split('structural resilience ranked for').length - 1;
+      const statements = body.match(RESILIENCE_COVERAGE_PATTERN) ?? [];
+      assert.ok(statements.length > 0, `${file} must state resilience coverage`);
+      assert.equal(statements.length, mentions, `${file} must state every resilience mention as "${phrase}"`);
+      for (const statement of statements) {
+        assert.equal(statement.trim(), phrase, `${file} must state exactly "${phrase}"`);
+      }
     }
-    for (const file of ['public/llms.txt', 'public/llms-full.txt', 'index.html', 'docs/about.mdx']) {
+    assert.match(
+      buildLlmsFullText({ rootDir: repoRoot }),
+      standard,
+      'generated llms-full must derive the coverage pair from the newest snapshot',
+    );
+    assert.throws(
+      () => withResilienceCoverage('live in 190+ countries, with structural resilience ranked for 1.', { ranked, universe }),
+      /expected "structural resilience ranked for/,
+      'a bare ranked count without its universe is not the shared wording',
+    );
+    assert.equal(
+      withResilienceCoverage('ranked: structural resilience ranked for 9 of 9 countries.', { ranked, universe }),
+      `ranked: ${phrase}.`,
+    );
+    assert.throws(
+      () => withResilienceCoverage('live in 190+ countries.', { ranked, universe }),
+      /expected "structural resilience ranked for/,
+    );
+    for (const file of COVERAGE_FILES) {
       assert.doesNotMatch(read(file), /across 190\+ countries/, `${file} must not use the legacy reach phrasing`);
       assert.doesNotMatch(read(file), /used in 190\+ countries/, `${file} must not use the legacy reach phrasing`);
+    }
+  });
+
+  // Elie's standing decision: resilience coverage reads "{ranked} of
+  // {universe}" everywhere. These hand-written pages cannot run the snapshot
+  // helper, so each must carry the newest snapshot's pair verbatim, and no
+  // public surface may claim to score or rank "196 countries" bare. The 196-
+  // country rankable universe as a definition stays allowed.
+  it('states CRI ranking coverage on docs and blog pages as the snapshot pair', () => {
+    const { ranked, universe } = latestResilienceCoverage();
+    const required = [
+      ['docs/methodology/country-resilience-index.mdx', `Live resilience scoring with ${ranked} of ${universe} countries ranked`],
+      ['docs/zh/methodology/country-resilience-index.mdx', `其中 ${ranked} 个国家进入排名（${ranked}/${universe}）`],
+      ['docs/overview.mdx', `ranks ${ranked} of ${universe} countries`],
+      ['blog-site/src/content/blog/country-instability-index-methodology-explained.md', `Ranked for ${ranked} of ${universe} countries, refreshed every six hours`],
+      ['public/llms-full.txt', `refreshed every six hours, ranking ${ranked} of ${universe} countries.`],
+    ];
+    for (const [file, text] of required) {
+      assert.ok(read(file).includes(text), `${file} must state "${text}"`);
+    }
+    const facts = JSON.parse(read('shared/product-facts.generated.json'));
+    assert.deepEqual(facts.resilienceCoverage, { ranked, universe }, 'product facts must carry the snapshot pair');
+    const cri = GLOSSARY_TERMS.find((term) => term.slug === 'country-resilience-index');
+    assert.ok(cri.short.includes(`refreshed every six hours, ranking ${ranked} of ${universe} countries.`), cri.short);
+    assert.doesNotMatch(read('blog-site/src/data/glossary.ts'), new RegExp(`\\b${ranked} of ${universe}\\b`), 'the glossary must interpolate the pair, not hard-code it');
+
+    const surfaces = [
+      ...required.map(([file]) => file),
+      ...COVERAGE_FILES,
+      'blog-site/src/data/glossary.ts',
+      'docs/features.mdx',
+      'docs/documentation.mdx',
+      'docs/PRESS_KIT.md',
+      'public/home.md',
+      'public/ai-search.md',
+    ];
+    for (const file of new Set(surfaces)) {
+      const text = read(file);
+      // "the published score for all 196 countries" (a changelog fact about
+      // every scored country) is not a coverage claim, so "all" is excluded.
+      const bare = text.match(
+        /\b(?:scoring|scores|ranked|ranking|refresh\w*[^.\n]{0,40})\s+(?:for|across)\s+196 countries\b|\branks?\s+(?:a|the)\s+196-country\b|面向 196 个国家的实时韧性评分体系。/i,
+      );
+      assert.equal(bare?.[0] ?? null, null, `${file} states CRI coverage as a bare 196 countries`);
+      for (const line of text.split('\n').filter((row) => /rank|排名/i.test(row))) {
+        for (const [statement, statedRanked, statedUniverse] of line.matchAll(/\b(\d+) of (\d+) countries\b/g)) {
+          assert.deepEqual(
+            [Number(statedRanked), Number(statedUniverse)],
+            [ranked, universe],
+            `${file} states "${statement}", not the snapshot's ${ranked} of ${universe}`,
+          );
+        }
+      }
+    }
+  });
+
+  // Elie approved this audience line verbatim for the homepage "What is World
+  // Monitor?" block and the markdown served to AI agents.
+  it('states the approved audience line on the homepage and in home.md', () => {
+    const line = 'Best for analysts, journalists, traders and builders who need live geopolitical signals.';
+    const en = JSON.parse(read('pro-test/src/locales/en.json'));
+    assert.equal(en.welcome.hero.whatIsBestFor, line);
+    assert.match(
+      read('pro-test/src/welcome/Hero.tsx'),
+      /\{t\('welcome\.hero\.whatIsBody', depthProofStats\)\}<\/p>\s*<p[^>]*>\{t\('welcome\.hero\.whatIsBestFor'\)\}<\/p>/,
+      'the Hero must render the audience line right after the definition',
+    );
+    assert.ok(read('public/home.md').split('\n').includes(line), 'public/home.md must carry the audience line on its own line');
+  });
+
+  // The /countries/ hub (meta, og, twitter and JSON-LD descriptions plus its
+  // FAQ) and the CII page are generated, so check the built corpus rather than
+  // a committed file: every "N of M countries" there must be the snapshot pair.
+  it('states resilience coverage on the generated country pages as the snapshot pair', async () => {
+    const { ranked, universe } = latestResilienceCoverage();
+    const phrase = resilienceCoveragePhrase({ ranked, universe });
+    const outDir = mkdtempSync(join(tmpdir(), 'wm-coverage-'));
+    try {
+      await buildCorpus({ rootDir: repoRoot, outDir, baseUrl: 'https://www.worldmonitor.app' });
+      for (const page of ['countries/index.html', 'country-instability-index/index.html']) {
+        const html = readFileSync(join(outDir, page), 'utf8');
+        assert.ok(html.includes(phrase), `${page} must state "${phrase}"`);
+        const pairs = [...html.matchAll(/\b(\d+) of (\d+) countries\b/g)];
+        for (const [statement, statedRanked, statedUniverse] of pairs) {
+          assert.deepEqual(
+            [Number(statedRanked), Number(statedUniverse)],
+            [ranked, universe],
+            `${page} states "${statement}", not the snapshot's ${ranked} of ${universe}`,
+          );
+        }
+        assert.doesNotMatch(
+          html,
+          /structural (?:resilience|capacity) across \d+ countries/,
+          `${page} must not state resilience coverage as the universe alone`,
+        );
+      }
+      const hub = readFileSync(join(outDir, 'countries/index.html'), 'utf8');
+      for (const pattern of [
+        /<meta name="description" content="([^"]+)"/,
+        /<meta property="og:description" content="([^"]+)"/,
+        /<meta name="twitter:description" content="([^"]+)"/,
+      ]) {
+        const description = hub.match(pattern)?.[1];
+        assert.ok(description?.includes(phrase), `/countries/ ${pattern.source} must carry "${phrase}"`);
+      }
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+
+  // The hand-written surfaces cannot import the snapshot, so the monthly
+  // refresh restates them with scripts/sync-resilience-coverage.mjs. Prove the
+  // sync both agrees with the newest snapshot today and rewrites every surface
+  // when the ranked count moves, so a new snapshot cannot fail the checks above.
+  it('restates hand-written coverage from the newest snapshot', () => {
+    const { ranked, universe } = latestResilienceCoverage();
+    assert.deepEqual(syncResilienceCoverage({ rootDir: repoRoot, check: true }), []);
+    const moved = { ranked: ranked - 1, universe };
+    for (const surface of RESILIENCE_COVERAGE_SURFACES) {
+      const current = read(surface.path);
+      assert.equal(restateCoverage(current, surface, { ranked, universe }), current, `${surface.path} is stale`);
+      const next = restateCoverage(current, surface, moved);
+      assert.equal(next.split(surface.render(moved)).length - 1, surface.occurrences, `${surface.path} must restate every statement`);
+      assert.ok(!next.includes(surface.render({ ranked, universe })), `${surface.path} kept the old pair`);
+    }
+    assert.throws(
+      () => restateCoverage('no coverage here', RESILIENCE_COVERAGE_SURFACES[0], { ranked, universe }),
+      /expected 3 resilience coverage statement/,
+    );
+  });
+
+  it('regenerates every coverage surface in the monthly snapshot refresh', () => {
+    const workflow = read('.github/workflows/resilience-snapshot-refresh.yml');
+    const step = (command) => {
+      const index = workflow.indexOf(command);
+      assert.ok(index > 0, `the refresh workflow must run ${command}`);
+      return index;
+    };
+    // inventory:facts derives public/product-facts.json from product facts,
+    // and the glossary CRI line in llms-full reads them, so both run after.
+    const productFacts = step('scripts/generate-public-product-facts.mjs');
+    assert.ok(productFacts < step('npm run inventory:facts'), 'product facts must be regenerated before inventory:facts');
+    assert.ok(productFacts < step('npm run build:llms-full'), 'product facts must be regenerated before build:llms-full');
+    assert.ok(step('npm run resilience:coverage') < step('node --import tsx --test'));
+    const staged = workflow.slice(workflow.indexOf('git add "$snapshot_path"'), workflow.indexOf('git commit'));
+    for (const path of [
+      ...RESILIENCE_COVERAGE_SURFACES.map((surface) => surface.path),
+      'shared/product-facts.generated.json',
+      'scripts/shared/product-facts.generated.json',
+      'shared/product-catalog.generated.json',
+      'scripts/shared/product-catalog.generated.json',
+      'api/_product-catalog.generated.js',
+      'pro-test/src/generated/depth-stats.json',
+    ]) {
+      assert.ok(staged.includes(path), `the refresh workflow must commit ${path}`);
     }
   });
 });

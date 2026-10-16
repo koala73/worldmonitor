@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — 免费实时全球情报仪表板\t",
-      "description": "成为新闻之前，你已经知道。冲突、咽喉要道、军事飞行、市场、网络：一张免费实时地图加AI分析。无需注册。",
-      "ogTitle": "World Monitor — 新闻报道之前，您已经了解。\t",
-      "ogDescription": "世界原始信号 — 船舶、飞机、警报、电缆、市场 — 汇聚在一张免费实时情报地图上，AI 会在它们汇聚成重要信息时发出标记。免费、无需注册。\t"
+      "title": "World Monitor: 免费地缘政治情报仪表板",
+      "description": "World Monitor：实时地缘政治情报仪表板。免费实时地图，涵盖冲突、海运、航班、市场和网络安全，提供 API 和 MCP 服务器。",
+      "ogTitle": "World Monitor: 免费地缘政治情报仪表板",
+      "ogDescription": "World Monitor：实时地缘政治情报仪表板。免费实时地图，涵盖冲突、海运、航班、市场和网络安全，提供 API 和 MCP 服务器。"
     },
     "nav": {
       "useCases": "关联\t",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "免费全球情报仪表板 · 实时在线\t",
-      "headline1": "新闻报道之前，\t",
-      "headline2": "您已经了解。\t",
-      "sub": "新闻报道滞后。World Monitor 将世界的原始信号 — 船舶、飞机、警报、电缆、市场 — 流式传输到一张实时地图上，配有 AI 技术，可在它们汇聚成重要信息时发出标记。\t",
+      "headline1": "实时地缘政治",
+      "headline2": "情报仪表板",
+      "sub": "新闻报道之前，您已经了解。",
       "ctaPrimary": "启动仪表板\t",
       "ctaFree": "免费 · 无需注册 · 秒速加载\t",
       "ctaSecondary": "查看人们如何使用它 ↓\t",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor 不是开源的 Palantir\t",
       "asOf": "截至{{date}}",
       "whatIsTitle": "World Monitor 是什么？",
-      "whatIsBody": "World Monitor 是一款免费（$0）、开源（AGPL-3.0）的仪表板，供 200 多万人使用。它将来自 {{providers}} 个归属提供商的 {{feeds}} 条新闻和 OSINT 源流式传输到一张实时世界地图上，包括 {{mapLayers}} 种地图图层类型，涵盖地缘政治、市场、海运、航空和网络安全。它关联这些数据，使汇聚事件在登上新闻头条前就浮现出来。每个数据都有溯源，每种方法都有文档记录。"
+      "whatIsBody": "World Monitor 是一款免费（$0）、开源（AGPL-3.0）的仪表板，供 200 多万人使用。它将来自 {{providers}} 个归属提供商的 {{feeds}} 条新闻和 OSINT 源流式传输到一张实时世界地图上，包括 {{mapLayers}} 种地图图层类型，涵盖地缘政治、市场、海运、航空和网络安全。它关联这些数据，使汇聚事件在登上新闻头条前就浮现出来。每个数据都有溯源，每种方法都有文档记录。",
+      "whatIsBestFor": "最适合需要实时地缘政治信号的分析师、记者、交易员和开发者。"
     },
     "live": {
       "eyebrow": "实时在线\t",

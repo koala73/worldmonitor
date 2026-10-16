@@ -451,10 +451,10 @@
   "soonBadge": "Karibu",
   "welcome": {
     "meta": {
-      "title": "World Monitor — Dashibodi ya Kijamii-Simu ya Wakati Halisi Bila Malipo",
-      "description": "Kufikia wakati inakuwa habari, tayari ulikuwa unajua. Migogoro, njia nyeti, ndege za kijeshi, masoko, cyber: ramani moja ya moja kwa moja bila malipo yenye uchambuzi wa AI. Hakuna usajili.",
-      "ogTitle": "World Monitor — Wakati ilivyokuwa hadithi, tayari ulijua.",
-      "ogDescription": "Maajabu ya dunia — meli, ndege, mvua ya kengele, kebo, soko — kwenye ramani moja ya kijamii-simu ya wakati halisi, na AI inayofungua wakati inapogeana. Libre, hakuna jina lako."
+      "title": "World Monitor: Dashibodi ya bure ya ujasusi wa kijiopolitiki",
+      "description": "World Monitor: dashibodi ya ujasusi wa kijiopolitiki kwa wakati halisi. Ramani hai ya bure ya migogoro, meli, ndege, masoko na mtandao, na API na seva ya MCP.",
+      "ogTitle": "World Monitor: Dashibodi ya bure ya ujasusi wa kijiopolitiki",
+      "ogDescription": "World Monitor: dashibodi ya ujasusi wa kijiopolitiki kwa wakati halisi. Ramani hai ya bure ya migogoro, meli, ndege, masoko na mtandao, na API na seva ya MCP."
     },
     "nav": {
       "useCases": "Mahusiano",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Dashibodi ya akili za kimataifa · sasa moja kwa moja",
-      "headline1": "Wakati itakuwa habari,",
-      "headline2": "wewe tayari ulijua.",
-      "sub": "Habari ni kuchelewesha. World Monitor inapiga mtiririko wa mawimbi ya ulimwengu — mitambo ya baharini, ndege, sireni, kebo, soko — kwenye ramani moja tu ya moja kwa moja, na AI inayofanya alama wakati inakuja kuwa kitu kinachohitaji.",
+      "headline1": "Dashibodi ya ujasusi wa kijiopolitiki",
+      "headline2": "kwa wakati halisi",
+      "sub": "Wakati itakuwa habari, wewe tayari ulijua.",
       "ctaPrimary": "Anzisha dashibodi",
       "ctaFree": "Bure · Hapana usajili · Hupakiki kwa sekunde",
       "ctaSecondary": "Tazama jinsi watu wanavyotumia ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor si Palantir ya chanzo wazi",
       "asOf": "Kufikia {{date}}",
       "whatIsTitle": "World Monitor ni nini?",
-      "whatIsBody": "World Monitor ni dashibodi ya bure ($0), yenye chanzo wazi (AGPL-3.0) inayotumiwa na watu 2M+. Inatiririsha {{feeds}} milisho ya habari na OSINT kutoka kwa watoa huduma {{providers}} waliotajwa kwenye ramani moja hai ya dunia yenye aina {{mapLayers}} za tabaka za ramani, ikishughulikia jiopolitiki, masoko, usafirishaji wa baharini, usafiri wa anga na mtandao. Inazilinganisha ili matukio yanayokutana yajitokeze kabla ya vichwa vya habari. Kila takwimu ina chanzo na kila mbinu imeandikwa."
+      "whatIsBody": "World Monitor ni dashibodi ya bure ($0), yenye chanzo wazi (AGPL-3.0) inayotumiwa na watu 2M+. Inatiririsha {{feeds}} milisho ya habari na OSINT kutoka kwa watoa huduma {{providers}} waliotajwa kwenye ramani moja hai ya dunia yenye aina {{mapLayers}} za tabaka za ramani, ikishughulikia jiopolitiki, masoko, usafirishaji wa baharini, usafiri wa anga na mtandao. Inazilinganisha ili matukio yanayokutana yajitokeze kabla ya vichwa vya habari. Kila takwimu ina chanzo na kila mbinu imeandikwa.",
+      "whatIsBestFor": "Bora kwa wachambuzi, wanahabari, wafanyabiashara wa masoko na wasanidi programu wanaohitaji ishara za kijiografia na kisiasa za moja kwa moja."
     },
     "live": {
       "eyebrow": "Moja kwa moja sasa sasa",

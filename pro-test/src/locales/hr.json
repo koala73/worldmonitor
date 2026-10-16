@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Besplatna nadzorna ploča globalne obavještajne službe u stvarnom vremenu",
-      "description": "Dok se to do vijesti dogodi, vi ste već znali. Konflikti, uska grla, vojni letovi, tržišta, kibernetika: jedna besplatna živa karta s AI analizom. Bez registracije.",
-      "ogTitle": "World Monitor — Dok postane vijest, već si znao.",
-      "ogDescription": "Sirovi signali svijeta — brodovi, zrakoplovi, sirene, kabeli, tržišta — na jednoj besplatnoj živoj obavještajnoj karti, s AI koji se aktivira kada se konvergiraju. Besplatno, bez prijave."
+      "title": "World Monitor: Besplatna geopolitička obavještajna ploča",
+      "description": "World Monitor: geopolitička obavještajna ploča u stvarnom vremenu. Besplatna karta uživo: sukobi, pomorstvo, letovi, tržišta i kibernetika, s API-jem i MCP-om.",
+      "ogTitle": "World Monitor: Besplatna geopolitička obavještajna ploča",
+      "ogDescription": "World Monitor: geopolitička obavještajna ploča u stvarnom vremenu. Besplatna karta uživo: sukobi, pomorstvo, letovi, tržišta i kibernetika, s API-jem i MCP-om."
     },
     "nav": {
       "useCases": "Korelacije",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Besplatna nadzorna ploča globalne obavještajne službe · sada dostupna",
-      "headline1": "Dok postane vijest,",
-      "headline2": "već si znao.",
-      "sub": "Naslovi su kašnjenje. World Monitor prenosi sirove signale svijeta — brodove, zrakoplove, sirene, kabele, tržišta — na jednu živu kartu, s AI koji se aktivira kada se konvergiraju u nešto što je važno.",
+      "headline1": "Geopolitička obavještajna ploča",
+      "headline2": "u stvarnom vremenu",
+      "sub": "Dok postane vijest, već si znao.",
       "ctaPrimary": "Pokreni nadzornu ploču",
       "ctaFree": "Besplatno · Bez prijave · Učitava se u sekundama",
       "ctaSecondary": "Vidi kako ga koriste ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor nije otvoreni kod Palantira",
       "asOf": "Stanje od {{date}}",
       "whatIsTitle": "Što je World Monitor?",
-      "whatIsBody": "World Monitor je besplatna ($0), open-source (AGPL-3.0) kontrolna ploča koju koristi 2M+ osoba. Streamira {{feeds}} vijesti i OSINT izvore od {{providers}} atribuiranih pružatelja na jednu živu svjetsku kartu s {{mapLayers}} vrsta slojeva karte, pokrivajući geopolitiku, tržišta, brodarstvo, zrakoplovstvo i cyber sigurnost. Usklađuje ih tako da se konvergentni eventi pojave prije naslova. Svaki podatak je dokumentiran i svaka metoda izvora je navedena."
+      "whatIsBody": "World Monitor je besplatna ($0), open-source (AGPL-3.0) kontrolna ploča koju koristi 2M+ osoba. Streamira {{feeds}} vijesti i OSINT izvore od {{providers}} atribuiranih pružatelja na jednu živu svjetsku kartu s {{mapLayers}} vrsta slojeva karte, pokrivajući geopolitiku, tržišta, brodarstvo, zrakoplovstvo i cyber sigurnost. Usklađuje ih tako da se konvergentni eventi pojave prije naslova. Svaki podatak je dokumentiran i svaka metoda izvora je navedena.",
+      "whatIsBestFor": "Najbolje za analitičare, novinare, tradere i developere kojima trebaju geopolitički signali uživo."
     },
     "live": {
       "eyebrow": "Uživo sada",

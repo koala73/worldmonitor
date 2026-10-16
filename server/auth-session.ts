@@ -12,7 +12,7 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../api/_sentry-edge.js';
-import { isAllowedOrigin } from './cors';
+import { isAllowedOrigin } from './cors.js';
 
 // Clerk Backend API secret -- used to look up user metadata when the JWT
 // does not include a `plan` claim (i.e. standard session token, no template).

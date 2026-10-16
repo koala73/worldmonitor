@@ -6,11 +6,11 @@
  * environment-partitioned keys (no raw=true — keys are prefixed by deploy).
  */
 
-import { cachedFetchJson, deleteRedisKey } from './redis';
+import { cachedFetchJson, deleteRedisKey } from './redis.js';
 import {
   COMPANY_MONITORING_RPC_SCOPES,
   type CompanyMonitoringApiScope,
-} from '../../shared/company-monitoring-contract';
+} from '../../shared/company-monitoring-contract.js';
 
 const COMPANY_MONITORING_SCOPES = new Set<string>(Object.values(COMPANY_MONITORING_RPC_SCOPES));
 

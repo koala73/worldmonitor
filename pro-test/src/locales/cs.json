@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Bezplatný dashboard globální zpravodajské služby v reálném čase",
-      "description": "Než se stane zprávou, už to víš. Konflikty, kritické průchody, vojenské lety, trhy, kybernetika: jedna bezplatná živá mapa s AI analýzou. Bez registrace.",
-      "ogTitle": "World Monitor — Když se to stane zprávou, už jste to věděli.",
-      "ogDescription": "Nezpracované signály světa — lodě, letadla, sirény, kabely, trhy — na jedné bezplatné živé zpravodajské mapě s AI, která upozorní, když se convergují. Zdarma, bez registrace."
+      "title": "World Monitor: Bezplatný geopolitický zpravodajský dashboard",
+      "description": "World Monitor: geopolitický zpravodajský dashboard v reálném čase. Bezplatná živá mapa konfliktů, lodní dopravy, letů, trhů a kybernetiky, s API a MCP serverem.",
+      "ogTitle": "World Monitor: Bezplatný geopolitický zpravodajský dashboard",
+      "ogDescription": "World Monitor: geopolitický zpravodajský dashboard v reálném čase. Bezplatná živá mapa konfliktů, lodní dopravy, letů, trhů a kybernetiky, s API a MCP serverem."
     },
     "nav": {
       "useCases": "Korelace",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Bezplatný dashboard globální zpravodajské služby · live nyní",
-      "headline1": "Když se to stane zprávou,",
-      "headline2": "už jste to věděli.",
-      "sub": "Titulky jsou zpoždění. World Monitor streamuje nezpracované signály světa — lodě, letadla, sirény, kabely, trhy — na jednu živou mapu s AI, která upozorní, když se convergují do něčeho, na čem záleží.",
+      "headline1": "Geopolitický zpravodajský dashboard",
+      "headline2": "v reálném čase",
+      "sub": "Když se to stane zprávou, už jste to věděli.",
       "ctaPrimary": "Otevřít dashboard",
       "ctaFree": "Zdarma · Bez registrace · Načte se během sekund",
       "ctaSecondary": "Podívejte se, jak to lidé používají ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor není open-source Palantir",
       "asOf": "K {{date}}",
       "whatIsTitle": "Co je World Monitor?",
-      "whatIsBody": "World Monitor je bezplatný ($0), open-source (AGPL-3.0) dashboard, který používá 2M+ lidí. Streamuje {{feeds}} zpravodajských a OSINT zdrojů z {{providers}} atribuovaných poskytovatelů na jednu živou mapu světa s {{mapLayers}} typy mapových vrstev, která pokrývá geopolitiku, trhy, námořní dopravu, letectví a kybernetiku. Koreluje je tak, aby se sbíhající se události objevily dříve než se dostanou na titulky. Každá údaj má uvedený zdroj a každá metoda je zdokumentovaná."
+      "whatIsBody": "World Monitor je bezplatný ($0), open-source (AGPL-3.0) dashboard, který používá 2M+ lidí. Streamuje {{feeds}} zpravodajských a OSINT zdrojů z {{providers}} atribuovaných poskytovatelů na jednu živou mapu světa s {{mapLayers}} typy mapových vrstev, která pokrývá geopolitiku, trhy, námořní dopravu, letectví a kybernetiku. Koreluje je tak, aby se sbíhající se události objevily dříve než se dostanou na titulky. Každá údaj má uvedený zdroj a každá metoda je zdokumentovaná.",
+      "whatIsBestFor": "Nejlépe se hodí pro analytiky, novináře, tradery a vývojáře, kteří potřebují živé geopolitické signály."
     },
     "live": {
       "eyebrow": "Live právě teď",

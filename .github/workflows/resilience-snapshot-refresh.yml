@@ -66,10 +66,18 @@ jobs:
       - name: Rebuild and verify published artifacts
         if: steps.reconcile.outputs.skip != 'true'
         run: |
+          # Product facts carry the snapshot's ranked/universe pair (the depth
+          # band and the blog glossary's CRI definition, which llms-full
+          # renders). Regenerate them before inventory:facts, which derives
+          # public/product-facts.json from them, and before build:llms-full.
+          node --import tsx scripts/generate-public-product-facts.mjs
           # `npm ci --ignore-scripts` above skips the postinstall that writes
           # the gitignored inventory-facts boot artifacts, which the verifying
           # tests read. Generate them explicitly rather than relying on install.
           npm run inventory:facts
+          # Restate the pair on the hand-written HTML, docs and blog surfaces,
+          # or seo-geo-residue fails on any new ranked count.
+          npm run resilience:coverage
           npm run build:crawlable-corpus
           npm run build:sitemap
           npm run build:llms-full
@@ -83,6 +91,8 @@ jobs:
             tests/resilience-ranking-snapshot.test.mts \
             tests/sitemap-generation.test.mjs \
             tests/seo-geo-residue.test.mjs \
+            tests/seo-landing-metadata.test.mjs \
+            tests/public-product-facts.test.mjs \
             tests/ai-search-product-facts.test.mjs \
             tests/country-corpus-slugs-freshness.test.mjs
       - name: Commit the monthly snapshot
@@ -102,6 +112,14 @@ jobs:
           # canonicalising every share of it at the old slug — a hard 404, with
           # no legacy-slug redirect behind it (#8604).
           git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml public/llms-full.txt public/ai-search.md public/llms.txt api/_country-corpus-slugs.generated.js
+          # Ranked/universe pair regenerated above: product facts and the
+          # hand-written surfaces listed in scripts/sync-resilience-coverage.mjs.
+          git add shared/product-facts.generated.json scripts/shared/product-facts.generated.json \
+            shared/product-catalog.generated.json scripts/shared/product-catalog.generated.json \
+            api/_product-catalog.generated.js pro-test/src/generated/depth-stats.json \
+            index.html src/config/variant-meta.ts docs/about.mdx docs/overview.mdx \
+            docs/methodology/country-resilience-index.mdx docs/zh/methodology/country-resilience-index.mdx \
+            blog-site/src/content/blog/country-instability-index-methodology-explained.md
           git commit -m "chore(resilience): refresh published snapshot ${snapshot_date}"
           git push --set-upstream origin "$BRANCH_NAME"
       - name: Open the monthly snapshot PR

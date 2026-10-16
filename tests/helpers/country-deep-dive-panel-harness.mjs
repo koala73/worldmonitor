@@ -220,6 +220,8 @@ async function loadCountryDeepDivePanel(options = {}) {
       }
     `],
     ['supply-chain-stub', `
+      export function fetchMultiSectorExposure() { return Promise.resolve([]); }
+      export const SEEDED_HS2_CODES = [];
       export function fetchBypassOptions() { return Promise.resolve({ corridors: [] }); }
       export function getCountryChokepointIndex() { return null; }
       export function fetchChokepointStatus() { return Promise.resolve({ chokepoints: [], fetchedAt: '', upstreamUnavailable: false }); }
