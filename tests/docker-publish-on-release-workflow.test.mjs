@@ -47,6 +47,9 @@ test('the release publisher dispatches the Docker image build for the published 
     'a draft-kept or refused release must not publish an image'
   );
   assert.match(dispatch.run, /gh workflow run docker-publish\.yml --ref "\$TAG"/);
+  assert.match(publish.run, /echo "tag=\$TAG" >> "\$GITHUB_OUTPUT"/, 'the publish step must hand the tag on');
+  assert.equal(dispatch.env?.TAG, `\${{ steps.${publish.id}.outputs.tag }}`, 'the dispatch must target the tag that was published');
+  assert.equal(dispatch.env?.GH_TOKEN, '${{ secrets.GITHUB_TOKEN }}', 'gh workflow run needs a token');
   assert.equal(notesJob.permissions?.actions, 'write', 'gh workflow run needs actions: write');
 });
 
