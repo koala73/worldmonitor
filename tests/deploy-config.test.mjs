@@ -482,6 +482,27 @@ describe('vercel.json source matching', () => {
   });
 });
 
+describe('open data under /data/v1', () => {
+  it('revalidates versioned open data hourly instead of caching it as immutable', () => {
+    assert.equal(effectiveCacheControl('/data/v1/chokepoints/latest.json'), 'public, max-age=3600');
+  });
+
+  it('keeps open data readable cross-origin', () => {
+    assert.equal(effectiveHeader('/data/v1/chokepoints/latest.csv', 'Access-Control-Allow-Origin'), '*');
+  });
+
+  it('lets the CDN serve stale open data briefly while it revalidates', () => {
+    assert.equal(
+      effectiveHeader('/data/v1/chokepoints/latest.json', 'CDN-Cache-Control'),
+      'public, s-maxage=3600, stale-while-revalidate=600',
+    );
+  });
+
+  it('leaves unversioned /data assets immutable', () => {
+    assert.equal(effectiveCacheControl('/data/countries-50m.json'), 'public, max-age=31536000, immutable');
+  });
+});
+
 describe('crawlable content corpus deployment contracts', () => {
   const staticCorpusPaths = [
     '/countries/ukraine/',

@@ -1,0 +1,253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.worldmonitor.app/data/v1/chokepoints/schema.json",
+  "title": "WorldMonitor chokepoint status snapshot",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "dataset",
+    "snapshot_date",
+    "generated_at",
+    "source_url",
+    "source_fetched_at",
+    "upstream_unavailable",
+    "methodology_url",
+    "readme_url",
+    "license",
+    "attribution",
+    "chokepoints"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "dataset": {
+      "type": "string",
+      "const": "worldmonitor-chokepoint-status"
+    },
+    "snapshot_date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "UTC calendar date the snapshot represents."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this file was generated."
+    },
+    "source_url": {
+      "type": "string",
+      "description": "Public API endpoint the snapshot was built from."
+    },
+    "source_fetched_at": {
+      "type": "string",
+      "description": "fetchedAt reported by the API response."
+    },
+    "upstream_unavailable": {
+      "type": "boolean",
+      "description": "True when the API reported that an upstream source was unavailable."
+    },
+    "methodology_url": {
+      "type": "string"
+    },
+    "readme_url": {
+      "type": "string"
+    },
+    "license": {
+      "type": "object",
+      "required": [
+        "proposed",
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "proposed": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      }
+    },
+    "attribution": {
+      "type": "string"
+    },
+    "chokepoints": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "lat",
+          "lon",
+          "status",
+          "disruption_score",
+          "war_risk_tier",
+          "congestion_level",
+          "active_warnings",
+          "ais_disruptions",
+          "navigational_warnings_available",
+          "ais_snapshot_available",
+          "transit_data_available",
+          "transit_today_counts_available",
+          "transit_today_total",
+          "transit_today_tanker",
+          "transit_today_cargo",
+          "transit_today_other",
+          "transit_wow_change_pct",
+          "flow_ratio",
+          "flow_disrupted",
+          "flow_source"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable WorldMonitor chokepoint identifier."
+          },
+          "name": {
+            "type": "string",
+            "description": "Chokepoint display name."
+          },
+          "lat": {
+            "type": "number",
+            "description": "Latitude of the chokepoint reference point, decimal degrees."
+          },
+          "lon": {
+            "type": "number",
+            "description": "Longitude of the chokepoint reference point, decimal degrees."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "green",
+              "yellow",
+              "red"
+            ],
+            "description": "Traffic-light badge for disruption_score: green (<20), yellow (20-49), red (>=50). Not an operational closure status."
+          },
+          "disruption_score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "WorldMonitor composite disruption score, 0 (none) to 100 (severe)."
+          },
+          "war_risk_tier": {
+            "type": "string",
+            "enum": [
+              "unspecified",
+              "normal",
+              "elevated",
+              "high",
+              "critical",
+              "war_zone"
+            ],
+            "description": "War-risk tier derived from Lloyd's JWC Listed Areas and OSINT threat classification."
+          },
+          "congestion_level": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "normal",
+              "low",
+              "elevated",
+              "high",
+              null
+            ],
+            "description": "AIS-derived congestion level. Null when the AIS snapshot was unavailable."
+          },
+          "active_warnings": {
+            "type": "integer",
+            "description": "Active NGA navigational warnings matched to the chokepoint."
+          },
+          "ais_disruptions": {
+            "type": "integer",
+            "description": "Disruption events in the AIS snapshot matched to the chokepoint."
+          },
+          "navigational_warnings_available": {
+            "type": "boolean",
+            "description": "True when the NGA navigational-warning source returned a valid response, including an empty list."
+          },
+          "ais_snapshot_available": {
+            "type": "boolean",
+            "description": "True when the AIS snapshot source returned a valid response. Governs ais_disruptions and congestion_level."
+          },
+          "transit_data_available": {
+            "type": "boolean",
+            "description": "True when IMF PortWatch transit history was available this cycle. Governs transit_wow_change_pct."
+          },
+          "transit_today_counts_available": {
+            "type": "boolean",
+            "description": "True when the 24-hour AIS window held crossings for this chokepoint. Governs the transit_today_* counts."
+          },
+          "transit_today_total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "AIS transits in the last 24 hours, all vessel types. Null when not measured."
+          },
+          "transit_today_tanker": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Tanker transits in the last 24 hours. Null when not measured."
+          },
+          "transit_today_cargo": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Cargo transits in the last 24 hours. Null when not measured."
+          },
+          "transit_today_other": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Other-vessel transits in the last 24 hours. Null when not measured."
+          },
+          "transit_wow_change_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Week-over-week change in transits, percent. Null when transit history was unavailable."
+          },
+          "flow_ratio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Latest 7-day PortWatch average over the preceding baseline window of up to 90 days, clamped to 0.0-1.5. Null when no flow estimate exists."
+          },
+          "flow_disrupted": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "True when each of the latest 3 daily flow ratios is below 85% of the baseline window. Null when no flow estimate exists."
+          },
+          "flow_source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "portwatch-dwt",
+              "portwatch-counts",
+              null
+            ],
+            "description": "PortWatch coverage basis of flow_ratio: deadweight tonnage or vessel counts. Null when no flow estimate exists."
+          }
+        }
+      }
+    }
+  }
+}
