@@ -72,6 +72,9 @@ function runPublisher({
   ancestryValid = true,
   nextStatuses = [],
   successors = [NEXT_ANCHOR, HEAD],
+  gitDirectory,
+  observedSha = HEAD,
+  statusesBySha = {},
 }) {
   const tempDir = mkdtempSync(join(repoRoot, '.tmp-seed-status-publisher-'));
   const fakeBin = join(tempDir, 'bin');
@@ -86,6 +89,9 @@ function runPublisher({
     writeFileSync(join(statusesDir, `${ANCESTOR}.json`), JSON.stringify(ancestorStatuses));
     writeFileSync(join(statusesDir, `${STATUS_ANCHOR}.json`), JSON.stringify(statusStatuses));
     writeFileSync(join(statusesDir, `${NEXT_ANCHOR}.json`), JSON.stringify(nextStatuses));
+    for (const [sha, statuses] of Object.entries(statusesBySha)) {
+      writeFileSync(join(statusesDir, `${sha}.json`), JSON.stringify(statuses));
+    }
     writeFileSync(postLog, '');
     writeFileSync(join(fakeBin, 'git'), [
       '#!/bin/sh',
@@ -131,16 +137,17 @@ function runPublisher({
       '',
     ].join('\n'));
     chmodSync(join(fakeBin, 'git'), 0o755);
+    if (gitDirectory) rmSync(join(fakeBin, 'git'));
     chmodSync(join(fakeBin, 'gh'), 0o755);
 
     const args = [
       publisher,
-      '--sha', HEAD,
+      '--sha', observedSha,
       '--status-sha', statusSha,
       '--report', reportPath,
     ];
     const result = spawnSync(process.execPath, args, {
-      cwd: repoRoot,
+      cwd: gitDirectory ?? repoRoot,
       encoding: 'utf8',
       env: {
         ...process.env,
@@ -160,6 +167,46 @@ function runPublisher({
 }
 
 describe('seed health status publisher', () => {
+  it('rotates only to descendants when the anchor entered through a second parent', () => {
+    const gitDirectory = mkdtempSync(join(repoRoot, '.tmp-seed-status-history-'));
+    const git = (args, input = '') => {
+      const result = spawnSync('git', args, {
+        cwd: gitDirectory, input, encoding: 'utf8',
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: 'Seed publisher test', GIT_AUTHOR_EMAIL: 'seed@example.test',
+          GIT_COMMITTER_NAME: 'Seed publisher test', GIT_COMMITTER_EMAIL: 'seed@example.test',
+        },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      return result.stdout.trim();
+    };
+    try {
+      git(['init', '--quiet']);
+      const tree = git(['hash-object', '-t', 'tree', '--stdin', '-w']);
+      const root = git(['commit-tree', tree], 'root');
+      const beforeMerge = git(['commit-tree', tree, '-p', root], 'main before merge');
+      const anchor = git(['commit-tree', tree, '-p', root], 'side anchor');
+      const merge = git(['commit-tree', tree, '-p', beforeMerge, '-p', anchor], 'merge anchor');
+      const observedSha = git(['commit-tree', tree, '-p', merge], 'monitored revision');
+      const result = runPublisher({
+        gitDirectory, observedSha, statusSha: anchor,
+        blocking: [{ name: 'example', status: 'STALE_SEED' }],
+        statusesBySha: {
+          [anchor]: [...Array.from({ length: 900 }, () => aggregate(checkedAt(-120_000))), trusted(failure)],
+          [beforeMerge]: [], [merge]: [],
+        },
+      });
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, new RegExp(`"statusSha": "${merge}"`));
+      assert.match(result.posts, new RegExp(`/statuses/${merge}`));
+      assert.doesNotMatch(result.posts, new RegExp(`/statuses/(${beforeMerge}|${observedSha})`));
+    } finally {
+      rmSync(gitDirectory, { recursive: true, force: true });
+    }
+  });
+
   it('moves a full operational anchor to its historical successor without a duplicate incident', () => {
     const previousAt = checkedAt(-120_000);
     const result = runPublisher({
@@ -272,6 +319,49 @@ describe('seed health status publisher', () => {
         assert.doesNotMatch(result.posts, new RegExp(`/statuses/(${STATUS_ANCHOR}|${NEXT_ANCHOR}|${HEAD})`));
       }
     }
+  });
+
+  it('replaces an older completed successor without restoring its incidents or clock', () => {
+    const priorAt = checkedAt(-120_000);
+    const oldAt = checkedAt(-240_000);
+    for (const stale of [true, false]) {
+      const result = runPublisher({
+        blocking: [{ name: 'example', status: 'STALE_SEED' }],
+        observedAt: checkedAt(stale ? -180_000 : -60_000),
+        statusSha: STATUS_ANCHOR,
+        statusStatuses: [...Array.from({ length: 900 }, () => aggregate(priorAt)), trusted(failure)],
+        nextStatuses: [trusted({
+          context: 'ingestion/seed/acceptance', state: 'success',
+          description: `ingestion operational acceptance passed; observed ${oldAt}`,
+        }), trusted({ ...failure, state: 'success', description: 'recovered; no longer reported' })],
+      });
+
+      if (stale) {
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /is not newer than completed projection/);
+        assert.equal(result.posts, '');
+      } else {
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /"newOrChangedFailures": \[\]/);
+        assert.match(result.posts, new RegExp(`/statuses/${NEXT_ANCHOR}`));
+        assert.match(result.posts, /state=failure -f context=ingestion\/seed\/example/);
+      }
+    }
+  });
+
+  it('retains the newer clock while repairing an older partial successor', () => {
+    const result = runPublisher({
+      blocking: [], observedAt: checkedAt(-180_000), statusSha: STATUS_ANCHOR,
+      statusStatuses: [...Array.from({ length: 900 }, () => aggregate(checkedAt(-120_000))), trusted(failure)],
+      nextStatuses: [
+        trusted({ ...failure, state: 'success', description: 'recovered; no longer reported' }),
+        aggregate(checkedAt(-240_000)),
+      ],
+    });
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /is not newer than completed projection/);
+    assert.equal(result.posts, '');
   });
 
   it('keeps an unchanged incident off a new monitored revision', () => {
