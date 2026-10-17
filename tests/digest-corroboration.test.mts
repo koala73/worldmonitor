@@ -70,6 +70,14 @@ const story = (corroboration: unknown, title = 'Port strike halts container traf
   description: '', hash: `c-${title}`, ...(corroboration === undefined ? {} : { corroboration }),
 });
 
+describe('an unmerged reprinted story', () => {
+  it('keeps the stored single-publisher verdict although its feed labels are two families', () => {
+    const reps = [{ hash: 'r1', mergedHashes: ['r1'], sources: ['Reuters World', 'Harbour Gazette'] }];
+    attachDigestCorroboration(reps, [{ hash: 'r1', corroboration: 'single-publisher|1' }]);
+    assert.deepEqual(reps[0]!.corroboration, { state: 'single-publisher', publishers: 1 });
+  });
+});
+
 describe('chat digest (formatDigest)', () => {
   it('states the coverage on each item', () => {
     const text = formatDigest([

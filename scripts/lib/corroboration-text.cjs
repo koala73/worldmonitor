@@ -75,15 +75,18 @@ function corroborationText(value) {
  *     corroborated story cannot make it less so; the largest member count is a
  *     floor;
  *   - every member tier4-only: tier4-only, with the largest count;
+ *   - an unmerged story: its stored verdict, whatever its feed labels count;
  *   - every member single-publisher: single-publisher when the listed sources
- *     are one family, else null (several publishers of unknown tier, or, for a
- *     merged story whose sources could not be read, an unknown count); an
- *     unmerged story with no sources read keeps its stored verdict;
+ *     are one family, else null (several publishers of unknown tier, or
+ *     sources that could not be read);
  *   - an unknown member, or a mix of single-publisher and tier4-only: null.
  */
 function mergeCorroboration(values, familyCount) {
   const verdicts = (Array.isArray(values) ? values : []).map(parseCorroboration);
   if (verdicts.length === 0) return null;
+  // An unmerged story keeps the server's verdict. Its feed labels can count
+  // more families than the verdict, because the same-copy check folds reprints.
+  if (verdicts.length === 1) return verdicts[0];
   const known = verdicts.filter(Boolean);
   const most = (state) => Math.max(...known.filter((v) => v.state === state).map((v) => v.publishers));
   if (known.some((v) => v.state === 'corroborated')) {
@@ -92,11 +95,9 @@ function mergeCorroboration(values, familyCount) {
   if (known.length !== verdicts.length) return null;
   if (known.every((v) => v.state === 'tier4-only')) return { state: 'tier4-only', publishers: most('tier4-only') };
   if (known.every((v) => v.state === 'single-publisher')) {
-    const families = Number(familyCount) || 0;
     // Several merged clusters are one publisher only if their listed sources
     // show one family; with no sources read, that is unknown.
-    if (families > 1 || (verdicts.length > 1 && families !== 1)) return null;
-    return { state: 'single-publisher', publishers: 1 };
+    return Number(familyCount) === 1 ? { state: 'single-publisher', publishers: 1 } : null;
   }
   return null;
 }
