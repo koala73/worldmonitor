@@ -68,7 +68,7 @@ describe('/agent page content', () => {
     assert.doesNotMatch(PAGE, /utm_/);
     assert.doesNotMatch(PAGE, /href="[^"]*[?&]ref=/, 'same-site links carry no query tag');
     assert.ok(PAGE.includes(UMAMI_SCRIPT_TAG), 'the shared first-party Umami tag');
-    const scripts = [...PAGE.matchAll(/<script\b[^>]*>/g)].map((match) => match[0]);
+    const scripts = [...PAGE.matchAll(/<script\b[^>]*>/gi)].map((match) => match[0]);
     assert.equal(scripts.length, 2, 'only the page script and Umami');
     for (const tag of scripts) assert.match(tag, /nonce="wm-static-bootstrap"/);
     assert.ok((PAGE.match(/data-umami-event="agent-copy-command"/g) ?? []).length >= 8);
@@ -96,8 +96,10 @@ describe('/agent page SEO registration', () => {
   });
 
   it('is linked from llms.txt and agents.md', () => {
-    assert.ok(read('public/llms.txt').includes(`](${URL_CANONICAL})`));
-    assert.ok(read('public/agents.md').includes(URL_CANONICAL));
+    const llmsLinks = [...read('public/llms.txt').matchAll(/\]\((https:\/\/[^)\s]+)\)/g)].map((match) => match[1]);
+    assert.ok(llmsLinks.some((href) => href === URL_CANONICAL), 'llms.txt must link /agent/');
+    const agentsUrls = [...read('public/agents.md').matchAll(/https:\/\/[^\s)<>`]+/g)].map((match) => match[0]);
+    assert.ok(agentsUrls.some((href) => href === URL_CANONICAL), 'agents.md must name /agent/');
   });
 
   it('redirects the bare path to the trailing-slash page', () => {

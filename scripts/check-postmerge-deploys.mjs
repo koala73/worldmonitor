@@ -83,6 +83,7 @@ export const MONITORED_WORKFLOWS = Object.freeze([
       'shared/company-monitoring-evidence.ts',
       'shared/embed-access.ts',
       'shared/legal.ts',
+      'shared/agent-client-source.js',
       'scripts/lib/company-monitoring-classification.mjs',
       'src/utils/country-codes.ts',
     ]),
