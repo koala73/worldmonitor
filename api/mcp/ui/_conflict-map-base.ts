@@ -1,7 +1,7 @@
 import { geoEquirectangular, geoPath } from 'd3';
 import { feature } from 'topojson-client';
 import type { GeometryCollection, Topology } from 'topojson-specification';
-import world from '../../../public/data/countries-110m.json';
+import world from '../../../public/data/countries-110m.json' with { type: 'json' };
 
 const width = 720;
 const height = 384;

@@ -18,7 +18,7 @@
 // textContent-only rendering; renderBody stays backtick/`${`/regex-free.
 
 import { buildAppHtml } from './shell';
-import { CONFLICT_MAP_BASE } from './conflict-map-base';
+import { CONFLICT_MAP_BASE } from './_conflict-map-base';
 
 const STYLES = `
   .evt { display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
