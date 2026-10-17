@@ -149,6 +149,16 @@ describe('ETF flow observations in the compiled Market Radar', () => {
     send({ structuredContent: { data: { 'etf-flows': { etfs: { count: 0, sample: [] } } } } });
     assert.equal(document.querySelector('#marketStatus')!.textContent, 'No ETF flow rows in this snapshot.');
   });
+  it('distinguishes filtered non-empty ETF collections from empty snapshots', async () => {
+    const { document, send } = await open();
+    const invalidRows = [null, {}, 12, 'invalid'];
+    for (const etfs of [invalidRows, { count: 4, sample: invalidRows }, { sample: invalidRows }]) {
+      send({ structuredContent: { data: { 'etf-flows': { etfs } } } });
+      assert.equal(document.querySelector('#marketStatus')!.textContent, 'No usable ETF flow rows in this response.');
+      assert.equal(document.querySelectorAll('.etf-flow-row').length, 0);
+      assert.doesNotMatch(document.querySelector('.market-etf-flows')!.textContent, /No ETF flow rows in this snapshot/);
+    }
+  });
   it('renders untrusted labels inertly and clears all flow content on replacement', async () => {
     const { document, window, send } = await open({ data: { 'etf-flows': { ...etfSource, etfs: [{
       ...etfSource.etfs[0], ticker: '<img src=x onerror="window.pwned=true">', issuer: '<script>bad</script>',

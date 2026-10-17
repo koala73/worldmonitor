@@ -174,7 +174,8 @@ function mount(): void {
       const total = knownCount(sampled.count) ?? knownCount(sampled.total);
       flowStatus = !items ? 'ETF flow data unavailable in this response.' : !flows.length
         ? omittedByBudget('etf-flows', 'etfs') ? 'ETF flow rows omitted to fit the response budget.'
-          : Array.isArray(collection) || total === 0 ? 'No ETF flow rows in this snapshot.' : 'No ETF flow rows in this response sample.'
+          : items.length ? 'No usable ETF flow rows in this response.'
+            : Array.isArray(collection) || total === 0 ? 'No ETF flow rows in this snapshot.' : 'No ETF flow rows in this response sample.'
         : flowCount + ' loaded ETF flow rows.';
       section.append(node('p', 'qcoverage etf-row-coverage', total != null && total > flowCount
         ? 'Showing ' + flowCount + ' of ' + total + ' ETF flow rows from the response sample.' : flowStatus));
