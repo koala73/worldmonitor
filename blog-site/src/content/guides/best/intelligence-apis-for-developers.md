@@ -5,7 +5,7 @@ metaTitle: "Best intelligence APIs for developers and AI agents (2026) | World M
 keywords: "Developers and AI agent builders, best intelligence apis for developers, geopolitical API, MCP server, signed webhooks, global intelligence tools"
 audience: "Developers and AI agent builders"
 pubDate: "2026-10-02"
-modifiedDate: "2026-10-16"
+modifiedDate: "2026-10-17"
 author: "World Monitor editorial team"
 authorType: "Organization"
 authorUrl: "https://www.worldmonitor.app/"
@@ -47,7 +47,7 @@ Test empty records, outdated observations and access failures. An agent must exp
 
 **Best for applications and agents that need global context.**
 
-World Monitor covers conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets, including live ship transit counts at 13 maritime chokepoints. Developers reach it through a REST API on a separate API plan, SDKs for Python, Go and Ruby, an npm CLI, and an MCP server for AI clients that comes with Pro. For push delivery, alert rules filter by event type, severity and country and post to a webhook signed with HMAC-SHA256, so your receiver can verify the sender; the [notifications reference](https://www.worldmonitor.app/docs/api-notifications) documents the contract. Prices are published at [worldmonitor.app/pro](https://www.worldmonitor.app/pro#pricing).
+World Monitor covers conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets, including live ship transit counts at 13 maritime chokepoints. Developers reach it through a REST API on a separate API plan, SDKs for Python, Go and Ruby, an npm CLI, and an MCP server for AI clients that comes with Pro. For push delivery, alert rules filter by event type, severity and country and post to a webhook signed with HMAC-SHA256, so your receiver can verify the sender; the [notifications reference](https://www.worldmonitor.app/docs/api-notifications) documents the contract. To feed incidents into your own app, the [incident feed page](https://www.worldmonitor.app/docs/incident-feed) lists the conflict, unrest, news-cluster and event-history endpoints, the fields each returns, their filters and how far back each goes. Event history is kept for 180 days, and news clusters carry each outlet's tier and a corroboration state. Prices are published at [worldmonitor.app/pro](https://www.worldmonitor.app/pro#pricing).
 
 The free `get_sources` MCP tool returns each outlet's editorial tier and propaganda-risk band, which helps an agent explain where an answer came from; the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme. The code is open source under AGPL-3.0 on [GitHub](https://github.com/koala73/worldmonitor). Not every upstream source has completed a terms review, so check reuse terms before redistributing data, and there is no published availability SLA.
 

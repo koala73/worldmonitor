@@ -5,6 +5,7 @@ metaTitle: "World Monitor vs Factal for incident alerts | World Monitor"
 keywords: "Factal evaluators, world monitor vs factal, verified incident alerts, breaking news alerts"
 audience: "Factal evaluators"
 pubDate: "2026-10-16"
+modifiedDate: "2026-10-17"
 author: "World Monitor editorial team"
 authorType: "Organization"
 authorUrl: "https://www.worldmonitor.app/"
@@ -25,7 +26,7 @@ This guide is published by World Monitor. We compare public product documentatio
 | Delivery | Slack, Discord, Telegram, email, browser push, or an HMAC-SHA256 signed webhook | Factal platform, mobile app, and partner integrations |
 | Timing | Real time, or a daily, twice-daily or weekly digest | Real-time verified alerts |
 | Human help | None | Editors answer member questions in chat around the clock |
-| Developer access | REST API (API plan), Python, Go and Ruby SDKs, npm CLI, MCP with Pro | REST endpoints for live and historical incidents back to 2018 |
+| Developer access | REST API (API plan), Python, Go and Ruby SDKs, npm CLI, MCP with Pro; event history kept for 180 days ([incident feed](https://www.worldmonitor.app/docs/incident-feed)) | REST endpoints for live and historical incidents back to 2018 |
 | Price | Published on the [plans page](https://www.worldmonitor.app/pro#pricing) | Flat team fee with unlimited users; price not published |
 | Try it | [Free map](https://www.worldmonitor.app/dashboard) with no account | 30-day free trial; free for eligible life-saving NGOs |
 
@@ -43,7 +44,7 @@ Pricing is a [flat fee per team](https://www.factal.com/roi/) covering unlimited
 
 World Monitor is the better fit when you want to see the price and start alone. Prices are published on the [plans page](https://www.worldmonitor.app/pro#pricing), and you sign up without a sales call. Alert rules filter by event type, severity (all, high or critical) and country, and deliver to Slack, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256. Delivery is real time, or a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item. The [notifications reference](https://www.worldmonitor.app/docs/api-notifications) documents the channels and the signature header. Alerts and digests need the Pro plan.
 
-The free map shows conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets together, and the [chokepoints page](https://www.worldmonitor.app/chokepoints) shows live ship transit counts at 13 maritime chokepoints. Developers get a REST API on a separate API plan, Python, Go and Ruby SDKs, an npm CLI, and an MCP server with Pro. Each outlet has an editorial tier from 1 (wire or official) to 4 (aggregator or blog), a propaganda-risk band and, where it applies, a state-affiliation label: the News panel shows them as badges, the free `get_sources` MCP tool returns them for any outlet, and the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme. The [trust page](https://www.worldmonitor.app/trust/) labels how widely a story is covered, never whether it is true.
+The free map shows conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets together, and the [chokepoints page](https://www.worldmonitor.app/chokepoints) shows live ship transit counts at 13 maritime chokepoints. Developers get a REST API on a separate API plan, Python, Go and Ruby SDKs, an npm CLI, and an MCP server with Pro. The [incident feed page](https://www.worldmonitor.app/docs/incident-feed) lists the conflict, unrest, news-cluster and event-history endpoints, the fields each returns and how far back each goes; event history is kept for 180 days, so Factal's archive to 2018 goes much further back. Each outlet has an editorial tier from 1 (wire or official) to 4 (aggregator or blog), a propaganda-risk band and, where it applies, a state-affiliation label: the News panel shows them as badges, the free `get_sources` MCP tool returns them for any outlet, and the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme. The [trust page](https://www.worldmonitor.app/trust/) labels how widely a story is covered, never whether it is true.
 
 ## The limits that matter
 

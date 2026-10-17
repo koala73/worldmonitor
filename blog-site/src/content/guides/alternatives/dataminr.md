@@ -5,7 +5,7 @@ metaTitle: "Dataminr alternatives for event alerts | World Monitor"
 keywords: "Dataminr buyers, dataminr alternatives for intelligence teams, global intelligence tools"
 audience: "Dataminr buyers"
 pubDate: "2026-10-02"
-modifiedDate: "2026-10-16"
+modifiedDate: "2026-10-17"
 author: "World Monitor editorial team"
 authorType: "Organization"
 authorUrl: "https://www.worldmonitor.app/"
@@ -35,7 +35,7 @@ Most teams looking for a Dataminr alternative name cost first. Others want to tr
 
 **Best when cost and self-serve access are the reasons you are leaving.**
 
-World Monitor publishes its prices on the [plans page](https://www.worldmonitor.app/pro#pricing), and you sign up without a sales call. Alert rules filter by event type, severity (all, high or critical) and country. They deliver to Slack, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256, in real time or as a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item. The [notifications reference](https://www.worldmonitor.app/docs/api-notifications) documents each channel. Alerts and digests need the Pro plan. The map, covering conflict, protests, shipping, aviation, outages, hazards, cyber and markets, is [free with no account](https://www.worldmonitor.app/dashboard). Developers get a REST API on a separate API plan, Python, Go and Ruby SDKs, an npm CLI, and an MCP server with Pro.
+World Monitor publishes its prices on the [plans page](https://www.worldmonitor.app/pro#pricing), and you sign up without a sales call. Alert rules filter by event type, severity (all, high or critical) and country. They deliver to Slack, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256, in real time or as a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item. The [notifications reference](https://www.worldmonitor.app/docs/api-notifications) documents each channel. Alerts and digests need the Pro plan. The map, covering conflict, protests, shipping, aviation, outages, hazards, cyber and markets, is [free with no account](https://www.worldmonitor.app/dashboard). Developers get a REST API on a separate API plan, Python, Go and Ruby SDKs, an npm CLI, and an MCP server with Pro. The [incident feed page](https://www.worldmonitor.app/docs/incident-feed) lists the incident endpoints, their fields and how far back each goes.
 
 The tradeoff: World Monitor aggregates published reports and does not verify events on the ground. Alerts are scoped by country, not by a radius around a facility. There is no published SLA and no Microsoft Teams channel. Reaching Teams takes your own relay that receives the signed webhook and reposts it.
 

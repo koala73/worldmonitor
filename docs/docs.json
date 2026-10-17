@@ -249,6 +249,7 @@
                 "group": "HTTP API",
                 "pages": [
                   "api-platform",
+                  "incident-feed",
                   "api-brief",
                   "api-commerce",
                   "api-scenarios",
@@ -728,6 +729,7 @@
                 "group": "HTTP API",
                 "pages": [
                   "zh/api-platform",
+                  "zh/incident-feed",
                   "zh/api-brief",
                   "zh/api-commerce",
                   "zh/api-scenarios",

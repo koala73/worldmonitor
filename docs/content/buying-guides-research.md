@@ -45,6 +45,9 @@ Every claim a guide makes about World Monitor must appear here with its proof. T
 | Live transit counts at every registry chokepoint, with the energy subset measured against an EIA flow baseline | [chokepoint methodology](/methodology/chokepoints); live MCP `get_chokepoint_status` for Hormuz on October 16, 2026 |
 | Open source under AGPL-3.0 | `LICENSE` |
 | Published self-serve prices | `shared/product-facts.generated.json` plans; guides link to `/pro#pricing` instead of repeating a figure |
+| Incident feed: the [incident feed page](/incident-feed) lists the conflict, unrest, news-cluster and event-history endpoints, their fields, filters and retention. Guides link it when they mention the API. | Routes and fields from `proto/worldmonitor/conflict/v1/ucdp_event.proto`, `proto/worldmonitor/unrest/v1/unrest_event.proto`, `proto/worldmonitor/news/v1/news_item.proto`, `proto/worldmonitor/intelligence/v1/intel_history_record.proto`; `get_news_clusters` in `api/mcp/registry/nlp-tools.ts`; live MCP `get_intel_timeline`, `get_conflict_events` and `get_news_clusters` calls on October 17, 2026 |
+| Event history is kept for 180 days | `INTEL_HISTORY_RETENTION_DAYS = 180` in `convex/intelHistory.ts`; daily `intel-history-prune` cron in `convex/crons.ts`. The store began filling in 2026: on October 17, 2026 the oldest conflict record (live `get_intel_timeline`) occurred in late July 2026. |
+| News clusters carry each outlet's declared tier and a corroboration state (`single-publisher`, `tier4-only`, `corroborated`, `unknown`) | `sourceProvenance[].tier` and `corroboration` in the `get_news_clusters` output schema, `api/mcp/registry/nlp-tools.ts`. MCP only; the REST digest returns headlines with `corroborationCount`, not clusters. |
 
 Limits that guides must state and must not contradict:
 
@@ -55,6 +58,8 @@ Limits that guides must state and must not contradict:
 | No Microsoft Teams channel; reaching Teams needs a relay that reposts the signed webhook | Channel list in `convex/schema.ts` |
 | No published availability SLA, analyst service, or travel assistance | Not offered in product facts or plans |
 | Most providers have not completed a terms review, so guides must not call the sources licensed | Live MCP `get_sources` summary, `providersByStatus` |
+| Incident history does not reach back years. Guides must not imply an archive comparable to Factal's 2018 history. News headlines are a live window of 96 hours with no archive. | `INTEL_HISTORY_RETENTION_DAYS` in `convex/intelHistory.ts`; `resolveMaxAgeMs` in `server/worldmonitor/news/v1/_rss-cache.ts` |
+| There is no single incident object. A news cluster id changes when an earlier headline joins; webhook payloads carry no event id or coordinates; list routes have no cursor pagination. | `intel_history_record.proto`; `generateClusterId` in `shared/news-clustering-core.js`; `payload` in `scripts/ais-relay.cjs` `rss_alert`; `(sebuf.http.unimplemented)` on `cursor` in `list_ucdp_events.proto` and `list_unrest_events.proto` |
 | World Monitor aggregates published reports and does not verify events on the ground | [news credibility methodology](/methodology/news-credibility); `/trust/` labels coverage, not truth |
 
 Guides avoid volatile figures such as prices, tool counts and provider counts. They link to the page that renders the current value.

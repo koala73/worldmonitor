@@ -5,7 +5,7 @@ metaTitle: "World Monitor vs Dataminr for event alerts | World Monitor"
 keywords: "Dataminr evaluators, world monitor vs dataminr, global intelligence tools"
 audience: "Dataminr evaluators"
 pubDate: "2026-10-02"
-modifiedDate: "2026-10-16"
+modifiedDate: "2026-10-17"
 author: "World Monitor editorial team"
 authorType: "Organization"
 authorUrl: "https://www.worldmonitor.app/"
@@ -42,7 +42,7 @@ Dataminr sells proprietary real-time event detection built on public and social 
 
 World Monitor is the better fit when you want to run alerting yourself without a sales cycle. You write alert rules that filter by event type, severity (all, high or critical) and country. Each rule delivers to Slack, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256, so your own system can check that a message came from World Monitor. Delivery is real time, or a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item. The [notifications reference](https://www.worldmonitor.app/docs/api-notifications) documents the channels and the signature header. Alerts and digests need the Pro plan.
 
-For developers, World Monitor offers a REST API on a separate API plan, Python, Go and Ruby SDKs, an npm CLI, and an MCP server for AI clients, which comes with Pro. The same map shows conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets, and it is free with no account. Each outlet has an editorial tier from 1 (wire or official) to 4 (aggregator or blog), a propaganda-risk band and, where it applies, a state-affiliation label: the News panel shows them as badges, the free `get_sources` MCP tool returns them for any outlet, and the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme. Prices are published on the [plans page](https://www.worldmonitor.app/pro#pricing), and the code is open source under [AGPL-3.0](https://github.com/koala73/worldmonitor).
+For developers, World Monitor offers a REST API on a separate API plan, Python, Go and Ruby SDKs, an npm CLI, and an MCP server for AI clients, which comes with Pro. The [incident feed page](https://www.worldmonitor.app/docs/incident-feed) lists the incident endpoints, their fields and how far back each goes. The same map shows conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets, and it is free with no account. Each outlet has an editorial tier from 1 (wire or official) to 4 (aggregator or blog), a propaganda-risk band and, where it applies, a state-affiliation label: the News panel shows them as badges, the free `get_sources` MCP tool returns them for any outlet, and the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme. Prices are published on the [plans page](https://www.worldmonitor.app/pro#pricing), and the code is open source under [AGPL-3.0](https://github.com/koala73/worldmonitor).
 
 ## The limits that matter
 
