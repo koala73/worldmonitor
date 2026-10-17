@@ -556,7 +556,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             <div class="ai-flow-toggle-row">
               <div class="ai-flow-toggle-label-wrap">
                 <div class="ai-flow-toggle-label">Chokepoint disruption alerts</div>
-                <div class="ai-flow-toggle-desc">Alert when a shipping chokepoint's disruption score reaches 50 (red), once per crossing</div>
+                <div class="ai-flow-toggle-desc">Alert when warnings, AIS disruption or a traffic drop push a shipping chokepoint into the red, well above its usual threat level</div>
               </div>
               <label class="ai-flow-switch">
                 <input type="checkbox" id="usChokepointAlerts"${chokepointAlertsOn ? ' checked' : ''}>

@@ -1215,6 +1215,18 @@ function eventMatchesChokepointScope(event, rule) {
   return typeof chokepointId === 'string' && rule.chokepoints.includes(chokepointId);
 }
 
+/**
+ * Web push tag: a later push with the same tag replaces the earlier one in the
+ * tray. Chokepoint alerts carry the chokepoint so two crossings in one tick
+ * both stay visible.
+ */
+function webPushTagFor(event, userId) {
+  const chokepointId = event?.eventType === CHOKEPOINT_DISRUPTION_EVENT_TYPE ? event?.payload?.chokepointId : null;
+  return typeof chokepointId === 'string' && chokepointId
+    ? `${event.eventType}:${chokepointId}:${userId}`
+    : `${event.eventType}:${userId}`;
+}
+
 function shouldNotify(rule, event) {
   // Coerce (effective realtime + non-critical) → 'critical' before consulting
   // sensitivity in either branch. The mutation validators + migration make this
@@ -1775,7 +1787,7 @@ async function processEvent(event) {
             title: formatEventTitle(event, 'WorldMonitor'),
             body: firstLine,
             url: formatEventLinkForPush(event),
-            tag: `${event.eventType}:${rule.userId}`,
+            tag: webPushTagFor(event, rule.userId),
             eventType: event.eventType,
           });
         }
@@ -1881,6 +1893,7 @@ module.exports = {
   // the real ones change.
   eventMatchesTickerScope,
   eventMatchesChokepointScope,
+  webPushTagFor,
   ruleMatchesEventType,
   // Exported so the effective-sensitivity coercion and the importance-score
   // threshold ladder are exercised directly rather than grepped from source.

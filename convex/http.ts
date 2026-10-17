@@ -1146,7 +1146,7 @@ http.route({
           // path below — instead of letting them fall to the outer catch as a
           // generic 500, which the client can't route on.
           const code = extractConvexErrorCode(err);
-          if (code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED") {
+          if (code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED" || code === "CHOKEPOINTS_INVALID") {
             return new Response(JSON.stringify({ error: code }), { status: 400, headers: { "Content-Type": "application/json" } });
           }
           throw err;
@@ -1252,7 +1252,7 @@ http.route({
           const message = (parsed && typeof parsed === "object")
             ? (parsed as { message?: string }).message ?? ""
             : "";
-          if (code === "INCOMPATIBLE_DELIVERY" || code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED") {
+          if (code === "INCOMPATIBLE_DELIVERY" || code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED" || code === "CHOKEPOINTS_INVALID") {
             return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
           }
           if (code === "PRO_REQUIRED") {

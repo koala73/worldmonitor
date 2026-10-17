@@ -139,6 +139,15 @@ describe('chokepoint_disruption delivery shape', () => {
   });
 });
 
+describe('web push tag', () => {
+  it('keeps two chokepoint alerts apart and leaves other tags unchanged', () => {
+    const a = relay.webPushTagFor(chokepointEvent('suez'), 'u1');
+    const b = relay.webPushTagFor(chokepointEvent('bab_el_mandeb'), 'u1');
+    assert.notEqual(a, b);
+    assert.equal(relay.webPushTagFor(rssEvent(), 'u1'), 'rss_alert:u1');
+  });
+});
+
 describe('eventMatchesChokepointScope', () => {
   it('passes every other event type through', () => {
     assert.equal(relay.eventMatchesChokepointScope(rssEvent(), { chokepoints: ['suez'] }), true);

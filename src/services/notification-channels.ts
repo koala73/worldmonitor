@@ -468,6 +468,7 @@ export async function setNotificationConfig(args: {
   digestTimezone?: string;
   countries?: string[];
   tickers?: string[];
+  chokepoints?: string[];
 }, expectedUserId?: string, signal?: AbortSignal): Promise<void> {
   const res = await authFetch('/api/notification-channels', {
     method: 'POST',

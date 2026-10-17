@@ -106,6 +106,17 @@ describe("alertRules.chokepoints", () => {
   });
 });
 
+describe("alertRules.chokepoints rejects a list with no known id", () => {
+  test("setAlertRules throws CHOKEPOINTS_INVALID instead of widening to every chokepoint", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t);
+    await expect(
+      t.withIdentity(USER).mutation(api.alertRules.setAlertRules, { ...base, chokepoints: ["hormuz", "Strait of Hormuz"] }),
+    ).rejects.toThrow(/CHOKEPOINTS_INVALID/);
+    expect(await readRow(t)).toBeNull();
+  });
+});
+
 describe("/relay/notification-channels forwards chokepoints", () => {
   async function relayPost(t: ReturnType<typeof convexTest>, body: Record<string, unknown>) {
     process.env.CONVEX_TENANT_RELAY_SECRET = "relay-secret";
@@ -123,6 +134,14 @@ describe("/relay/notification-channels forwards chokepoints", () => {
       const res = await relayPost(t, { action, chokepoints: ["KERCH_STRAIT", "suez"] });
       expect(res.status).toBe(200);
       expect((await readRow(t))?.chokepoints).toEqual(["kerch_strait", "suez"]);
+    });
+
+    test(`${action} answers 400 CHOKEPOINTS_INVALID for unknown ids`, async () => {
+      const t = convexTest(schema, modules);
+      await seedProEntitlement(t);
+      const res = await relayPost(t, { action, chokepoints: ["hormuz"] });
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { error?: string }).error).toBe("CHOKEPOINTS_INVALID");
     });
 
     test(`${action} rejects a non-array`, async () => {

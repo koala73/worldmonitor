@@ -6181,6 +6181,7 @@ async function seedChokepointWarmPing() {
       readState: upstashGet,
       writeState: upstashSet,
       publish: publishNotificationEvent,
+      log: (message) => console.warn(message),
     });
     if (alerts === null) console.warn('[Chokepoints] Disruption alert state unreadable; skipped this tick');
     else if (alerts.published || alerts.failed || !alerts.stateWritten) console.log(`[Chokepoints] Disruption alerts: published=${alerts.published} failed=${alerts.failed}${alerts.stateWritten ? '' : ' stateWritten=false'}`);

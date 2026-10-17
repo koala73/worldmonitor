@@ -181,9 +181,10 @@ function normalizeTickers(input: string[]): string[] {
 
 /**
  * Normalize an inbound `chokepoints` array (#9217): trim, lowercase, keep
- * only ids in shared/chokepoint-alert-ids.ts (silently drop the rest, as the
- * other scopes do), dedupe in first-seen order. The list is closed, so the
- * registry size is the cap.
+ * only ids in shared/chokepoint-alert-ids.ts, dedupe in first-seen order.
+ * Unknown ids are dropped, as the other scopes do, but a non-empty list with
+ * no known id is rejected: [] means every chokepoint, so a caller sending
+ * ["hormuz"] would otherwise widen the rule to all of them.
  */
 function normalizeChokepoints(input: string[]): string[] {
   const known = new Set(CHOKEPOINT_ALERT_IDS);
@@ -193,6 +194,12 @@ function normalizeChokepoints(input: string[]): string[] {
     const id = raw.trim().toLowerCase();
     if (!known.has(id) || cleaned.includes(id)) continue;
     cleaned.push(id);
+  }
+  if (input.length > 0 && cleaned.length === 0) {
+    throw new ConvexError({
+      code: "CHOKEPOINTS_INVALID",
+      message: `chokepoints must use registry ids: ${CHOKEPOINT_ALERT_IDS.join(", ")}`,
+    });
   }
   return cleaned;
 }
