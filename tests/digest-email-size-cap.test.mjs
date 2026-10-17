@@ -68,8 +68,8 @@ describe('digest email size cap', () => {
     const result = renderDigestEmailHtml({ stories, nowMs, synthesis: SYNTHESIS, magazineUrl: MAGAZINE_URL });
     const legacy = injectBriefCta(injectEmailSummary(formatDigestHtml(stories, nowMs), SYNTHESIS), MAGAZINE_URL);
     assert.equal(result.truncated, false);
-    // Captured from the pre-extraction renderer at f66b775d530a32cfc50f587db87ca7f64a77bdc2.
-    assert.equal(createHash('sha256').update(result.html).digest('hex'), '687194f282a1a8f5c01d7d08a8baf6e02749475f722ba496d6f4ad5176b94bcd');
+    // Captured from the pre-extraction renderer at 2ffd43fd3da1e66e0f37357e9645da773d2436c7.
+    assert.equal(createHash('sha256').update(result.html).digest('hex'), '8c4fb966d3ff78833ebc35e6c36358da3a5ccbaf4c7bc602dc57fed96887af38');
     assert.equal(result.html, legacy);
     assert.equal(result.bytes, bytes(legacy));
     assert.equal(result.shownStories, 6 + 15 + 10);

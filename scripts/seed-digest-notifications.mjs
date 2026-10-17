@@ -44,6 +44,12 @@ const { fetchUserPreferences, extractUserContext, formatUserProfile } = require(
 const { fetchFollowedCountries } = require('./lib/followed-countries-fetch.cjs');
 const { Resend } = require('resend');
 const { normalizeResendSender } = require('./lib/resend-from.cjs');
+const {
+  appendUnsubscribeText,
+  injectUnsubscribeFooterHtml,
+  listUnsubscribeHeaders,
+  unsubscribeUrlFor,
+} = require('./lib/email-unsubscribe.cjs');
 const { sendResendEmail } = require('./lib/resend-send.cjs');
 import { readRawJsonFromUpstash, redisPipeline } from '../api/_upstash-json.js';
 import { classifyFeelGood } from '../server/_shared/feelgood-classifier.js';
@@ -77,6 +83,7 @@ import {
 } from './lib/digest-orchestration-helpers.mjs';
 import {
   DIGEST_CRITICAL_LIMIT,
+  DIGEST_EMAIL_MAX_HTML_BYTES,
   DIGEST_HIGH_LIMIT,
   DIGEST_MEDIUM_LIMIT,
   renderDigestEmailHtml,
@@ -1285,14 +1292,16 @@ async function sendDiscord(userId, webhookEnvelope, text) {
   }
 }
 
-async function sendEmail(email, subject, text, html) {
-  // Shared helper: default Reply-To (support@, not the brief@ role inbox)
-  // and treats the SDK's resolved `{ error }` as a failed send.
-  const result = await sendResendEmail(
-    resend,
-    { from: RESEND_FROM, to: email, subject, text, html },
-    { logPrefix: '[digest]' },
-  );
+async function sendEmail(email, subject, text, html, channel = null) {
+  const unsubscribeUrl = unsubscribeUrlFor(channel, 'brief');
+  const label = 'Unsubscribe from the daily brief';
+  const payload = {
+    from: RESEND_FROM, to: email, subject,
+    text: appendUnsubscribeText(text, unsubscribeUrl, label),
+    html: injectUnsubscribeFooterHtml(html, unsubscribeUrl, label),
+    headers: listUnsubscribeHeaders(unsubscribeUrl),
+  };
+  const result = await sendResendEmail(resend, payload, { logPrefix: '[digest]' });
   if (result.ok) console.log(`[digest] Email delivered to ${email}`);
   return result.ok;
 }
@@ -2330,11 +2339,17 @@ async function main() {
     // Gmail never clips the message (its cut-off is ~102KB of HTML). Over
     // the cap it drops the lowest-priority story cards and links to the
     // full brief instead of cutting markup mid-tag.
+    const unsubscribeBytes = Math.max(0, ...deliverableChannels
+      .filter((ch) => ch.channelType === 'email')
+      .map((ch) => Buffer.byteLength(injectUnsubscribeFooterHtml(
+        '', unsubscribeUrlFor(ch, 'brief'), 'Unsubscribe from the daily brief',
+      ), 'utf8')));
     const { html, truncated: htmlTruncated, bytes: htmlBytes, shownStories } = renderDigestEmailHtml({
       stories: formatterStories,
       nowMs,
       synthesis: briefSynthesis,
       magazineUrl,
+      maxBytes: DIGEST_EMAIL_MAX_HTML_BYTES - unsubscribeBytes,
     });
     if (htmlTruncated) {
       console.warn(
@@ -2511,7 +2526,7 @@ async function main() {
       } else if (ch.channelType === 'discord' && ch.webhookEnvelope) {
         ok = await sendDiscord(rule.userId, ch.webhookEnvelope, discordText);
       } else if (ch.channelType === 'email' && ch.email) {
-        ok = await sendEmail(ch.email, subject, text, html);
+        ok = await sendEmail(ch.email, subject, text, html, ch);
       } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
         // Webhook payload's `summary` field reads the canonical
         // briefLead — same string the email exec block + magazine

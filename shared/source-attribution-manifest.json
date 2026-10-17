@@ -15024,6 +15024,9 @@
           "path": "scripts/github-stars-snapshot.mjs"
         },
         {
+          "path": "scripts/lib/email-unsubscribe.cjs"
+        },
+        {
           "path": "scripts/lib/internal-links.mjs"
         },
         {

@@ -168,6 +168,7 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
       <p style="font-size: 10px; color: #444; margin: 0; line-height: 1.5;">
         <a href="https://worldmonitor.app" style="color: #4ade80; text-decoration: none;">worldmonitor.app</a>
       </p>
+      <p style="font-size: 10px; color: #444; margin: 8px 0 0; line-height: 1.5;"><!--wm-unsubscribe-slot--></p>
     </div>
   </div>
 </div>`;

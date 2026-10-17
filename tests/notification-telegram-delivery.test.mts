@@ -4,6 +4,7 @@ import Module, { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { DIGEST_EMAIL_MAX_HTML_BYTES } from '../scripts/lib/digest-email-html.mjs';
 
 const require = createRequire(import.meta.url);
 const savedEnv = { ...process.env };
@@ -81,6 +82,7 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       'main', 'sendTelegram', 'sanitizeTelegramHtml', 'truncateTelegramHtml',
     ].map(productionFunction).join('\n') + '\nmain', {
       Date, Map, Set, Intl, AbortSignal, process: { env: {} }, console: { log() {}, warn() {} },
+      DIGEST_EMAIL_MAX_HTML_BYTES,
       CONVEX_SITE_URL: 'https://convex.test', RELAY_SECRET: 'fake', DIGEST_LOOKBACK_MS: 86400000,
       TELEGRAM_BOT_TOKEN: 'fake', TELEGRAM_MAX_LEN: 4096, AI_DIGEST_ENABLED: false,
       scanAndEnqueueWatchlistStoryEvents: async () => {},
