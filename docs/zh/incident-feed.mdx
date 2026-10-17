@@ -105,7 +105,7 @@ REST 摘要返回的是底层标题而非聚类。每个条目包含 `title`、`
 | 历史记录 | 180 天，从每条记录存储时起算。每日任务删除更早的记录。存储于 2026 年开始积累，因此在 2026 年 10 月 17 日，最早的冲突记录发生于 2026 年 7 月下旬。 | `convex/intelHistory.ts` 中的 `INTEL_HISTORY_RETENTION_DAYS`；`convex/crons.ts` 中的 `intel-history-prune` 定时任务 |
 | UCDP 事件 | UCDP 数据集中最新事件之前的一年，默认上限约 2,000 条。UCDP 发布有延迟，因此最新事件比今天晚数周。 | `scripts/seed-ucdp-events.mjs` 中的 `TRAILING_WINDOW_MS` 和 `MAX_EVENTS` |
 | 动荡事件 | 约最近两小时。worldmonitor.app 没有 ACLED 凭据，因此该数据源就是当前的 GDELT 批次，由过去两小时的 GDELT 文章生成。2026 年 10 月 17 日，它包含 90 条记录，时间跨度为 1.5 小时。配置了 ACLED 凭据的自托管部署还会合并最近 30 天的 ACLED 抗议记录。 | `scripts/seed-gdelt-bulk-materializer.mjs` 中的 `RECENT_GKG_WINDOW_MS`；`scripts/seed-unrest-events.mjs` 中的 `ACLED_DISPLAY_LOOKBACK_DAYS` |
-| ACLED 冲突快照（`list-acled-events`） | 在 worldmonitor.app 上约为最近 24 小时。没有 ACLED 凭据时，生产方用 24 小时滚动窗口内的 GDELT 冲突文章填充该快照，而不是 ACLED 事件。2026 年 10 月 17 日，它包含 414 条记录，时间跨度为 23.5 小时。配置了 ACLED 凭据时，它包含最近 30 天的 ACLED 事件。日期筛选无法检索快照之外的数据。 | `scripts/_conflict-gdelt-bulk.mjs` 中的 `GDELT_ROLLING_WINDOW_MS`；[API 参考](/zh/api-reference) |
+| ACLED 冲突快照（`list-acled-events`） | 在 worldmonitor.app 上不返回任何记录。没有 ACLED 凭据时，生产方用不带坐标的 GDELT 冲突文章填充该快照，而该路由会省略没有坐标的记录。2026 年 10 月 17 日，快照包含 414 条这样的记录，路由一条也未返回。配置了 ACLED 凭据时，它返回最近 30 天的 ACLED 事件。日期筛选无法检索快照之外的数据。 | `server/worldmonitor/conflict/v1/list-acled-events.ts` 中 `listAcledEvents` 的坐标筛选；[API 参考](/api-reference#acled-conflict-snapshot) |
 | 新闻标题和聚类 | 仅实时窗口。构建摘要时会丢弃超过 96 小时（默认值）的标题，每个源最多贡献五条标题。如果重建失败，上一份有效摘要最多可再提供六小时，并以 `coverage.servedStale` 和 `coverage.staleAgeSeconds` 标记，因此返回的标题最长可能约 102 小时。没有新闻存档。 | `server/worldmonitor/news/v1/_rss-cache.ts` 中的 `resolveMaxAgeMs`；`server/worldmonitor/news/v1/list-feed-digest.ts` 中的 `ITEMS_PER_FEED` |
 
 如需更长的记录，请轮询这些数据流并自行存储。历史记录按 `id` 去重，动荡和 UCDP 记录按生产方 `id` 去重。较早的标题加入聚类时，新闻聚类的 `id` 可能变化，因此不要把它当作持久键。
