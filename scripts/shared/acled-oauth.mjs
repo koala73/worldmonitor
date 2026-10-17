@@ -10,6 +10,20 @@ const ACLED_TOKEN_URL = 'https://acleddata.com/oauth/token';
 const ACLED_CLIENT_ID = 'acled';
 
 /**
+ * Whether getAcledToken has any credentials to try: an email and password
+ * pair, or a static access token.
+ *
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {boolean}
+ */
+export function hasAcledCredentials(env = process.env) {
+  const email = (env.ACLED_EMAIL || '').trim();
+  const password = (env.ACLED_PASSWORD || '').trim();
+  const staticToken = (env.ACLED_ACCESS_TOKEN || '').trim();
+  return Boolean((email && password) || staticToken);
+}
+
+/**
  * Obtain a valid ACLED access token.
  *
  * Priority:

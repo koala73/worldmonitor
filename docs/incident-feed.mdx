@@ -44,7 +44,7 @@ Field names below are the JSON names the routes return. Unrest, news and history
 | `location.latitude`, `location.longitude` | Coordinates |
 | `occurredAt` | Event time, Unix epoch milliseconds |
 | `severity`, `fatalities`, `actors`, `tags` | Classification |
-| `sources`, `sourceUrls`, `sourceType` | Source names, article links (up to five), and `ACLED`, `GDELT` or `RSS` |
+| `sources`, `sourceUrls`, `sourceType` | Source names, article links (up to five), and the source type. worldmonitor.app serves only `GDELT` rows. `ACLED` rows appear only on a self-hosted deployment with ACLED credentials. |
 | `confidence` | `LOW`, `MEDIUM` or `HIGH` |
 
 A GDELT-derived row is a media signal, not a verified event. The route serves it with `confidence: CONFIDENCE_LEVEL_LOW`, an unspecified type and severity, and a summary that says the local event is not verified.
@@ -104,8 +104,8 @@ Checked against the code on October 17, 2026.
 | --- | --- | --- |
 | History records | 180 days, counted from when each record was stored. A daily job deletes older rows. The store began filling in 2026, so on October 17, 2026 the oldest conflict record dated from late July 2026. | `INTEL_HISTORY_RETENTION_DAYS` in `convex/intelHistory.ts`; the `intel-history-prune` cron in `convex/crons.ts` |
 | UCDP events | A trailing year before the newest event in the UCDP dataset, capped at about 2,000 events. UCDP publishes with a lag, so the newest event is weeks behind today. | `TRAILING_WINDOW_MS` and `MAX_EVENTS` in `scripts/seed-ucdp-events.mjs` |
-| Unrest events | ACLED protest rows from the last 30 days merged with the current GDELT batch. On October 17, 2026 every served row came from GDELT and they spanned 30 minutes. | `ACLED_DISPLAY_LOOKBACK_DAYS` in `scripts/seed-unrest-events.mjs` |
-| ACLED conflict snapshot (`list-acled-events`) | The producer targets the latest 30 days. Date filters cannot reach outside the stored snapshot. | [API reference](/api-reference#acled-conflict-snapshot) |
+| Unrest events | About the last two hours. worldmonitor.app has no ACLED credentials, so the feed is the current GDELT batch, built from GDELT articles of the past two hours. On October 17, 2026 it held 90 rows spanning 1.5 hours. A self-hosted deployment with ACLED credentials also merges ACLED protest rows from the last 30 days. | `RECENT_GKG_WINDOW_MS` in `scripts/seed-gdelt-bulk-materializer.mjs`; `ACLED_DISPLAY_LOOKBACK_DAYS` in `scripts/seed-unrest-events.mjs` |
+| ACLED conflict snapshot (`list-acled-events`) | About the last 24 hours on worldmonitor.app. Without ACLED credentials the producer fills this snapshot with GDELT conflict articles from a 24-hour rolling window, not ACLED events. On October 17, 2026 it held 414 rows spanning 23.5 hours. With ACLED credentials it holds ACLED events from the last 30 days. Date filters cannot reach outside the stored snapshot. | `GDELT_ROLLING_WINDOW_MS` in `scripts/_conflict-gdelt-bulk.mjs`; [API reference](/api-reference#acled-conflict-snapshot) |
 | News headlines and clusters | Live window only. When a digest is built, headlines older than 96 hours (the default) are dropped, and each feed contributes at most five headlines. If a rebuild fails, the last good digest can be served for up to six more hours, marked by `coverage.servedStale` and `coverage.staleAgeSeconds`, so a served headline can be up to about 102 hours old. There is no news archive. | `resolveMaxAgeMs` in `server/worldmonitor/news/v1/_rss-cache.ts`; `ITEMS_PER_FEED` in `server/worldmonitor/news/v1/list-feed-digest.ts` |
 
 To keep a longer record, poll the feeds and store the items yourself. De-duplicate history records on `id`, and unrest and UCDP rows on their producer `id`. A news cluster `id` can change when an earlier headline joins the cluster, so do not use it as a durable key.
