@@ -2939,6 +2939,7 @@
       "tier4OnlyHint": "Bu haberi bildiren her kuruluş bir seviye-4 kaynaktır (toplayıcılar ve bloglar). Bu, haber kapsamını gösterir; doğruluk değildir.",
       "rosterListed": "({{listed}} listede)",
       "rosterFeeds": "Görülen beslemeler: {{labels}}",
+      "rosterSameCopy": "Aynı metin, bir kez sayıldı",
       "rosterLegend": "Seviyeler kaynakları sıralar; bu iddiayı yargılamaz.",
       "tierDocsLink": "Seviyeler nasıl atanır",
       "tierChip": "S{{tier}}",

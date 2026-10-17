@@ -181,6 +181,14 @@ export interface CountryCoverageHeadline {
   source: string;
   publishedAt: string;
   publishedAtMs: number;
+  threat?: ThreatClassification;
+}
+
+export interface ThreatClassification {
+  level: ThreatLevel;
+  category: string;
+  confidence: number;
+  source: string;
 }
 
 export interface CountryCoverageEvent {
@@ -1176,6 +1184,8 @@ export type DataFreshness = "DATA_FRESHNESS_UNSPECIFIED" | "DATA_FRESHNESS_FRESH
 export type InterferenceLevel = "INTERFERENCE_LEVEL_UNSPECIFIED" | "INTERFERENCE_LEVEL_LOW" | "INTERFERENCE_LEVEL_MEDIUM" | "INTERFERENCE_LEVEL_HIGH";
 
 export type Mode = "MODE_UNSPECIFIED" | "MODE_HISTORY";
+
+export type ThreatLevel = "THREAT_LEVEL_UNSPECIFIED" | "THREAT_LEVEL_LOW" | "THREAT_LEVEL_MEDIUM" | "THREAT_LEVEL_HIGH" | "THREAT_LEVEL_CRITICAL";
 
 export interface FieldViolation {
   field: string;

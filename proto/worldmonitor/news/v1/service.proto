@@ -7,6 +7,10 @@ import "worldmonitor/news/v1/summarize_article.proto";
 import "worldmonitor/news/v1/get_summarize_article_cache.proto";
 import "worldmonitor/news/v1/list_feed_digest.proto";
 import "worldmonitor/news/v1/list_country_headlines.proto";
+import "worldmonitor/news/v1/list_label_changes.proto";
+import "worldmonitor/news/v1/error_reports.proto";
+import "worldmonitor/news/v1/search_fact_checks.proto";
+import "worldmonitor/news/v1/search_claim_headlines.proto";
 
 // NewsService provides AI-powered article summarization and feed aggregation.
 service NewsService {
@@ -30,5 +34,37 @@ service NewsService {
   // ListCountryHeadlines reads fresh country reporting from existing RSS caches without fetching publishers or applying dashboard category caps.
   rpc ListCountryHeadlines(ListCountryHeadlinesRequest) returns (ListCountryHeadlinesResponse) {
     option (sebuf.http.config) = {path: "/list-country-headlines", method: HTTP_METHOD_GET};
+  }
+
+  // ListLabelChanges returns stories whose corroboration label moved between single-publisher and corroborated in the last seven days, with the publishers behind each change.
+  rpc ListLabelChanges(ListLabelChangesRequest) returns (ListLabelChangesResponse) {
+    option (sebuf.http.config) = {path: "/list-label-changes", method: HTTP_METHOD_GET};
+  }
+
+  // SubmitErrorReport stores a reader's report that a label or story is wrong, for an operator to review. No account required; rate-limited; never applied automatically.
+  rpc SubmitErrorReport(SubmitErrorReportRequest) returns (SubmitErrorReportResponse) {
+    option (sebuf.http.config) = {path: "/submit-error-report", method: HTTP_METHOD_POST};
+  }
+
+  // ListErrorReports lists stored reports for review. Operators only.
+  // Requires the X-Trust-Review-Key header (the server's TRUST_REVIEW_SECRET), not an API key; without it the response is 401.
+  rpc ListErrorReports(ListErrorReportsRequest) returns (ListErrorReportsResponse) {
+    option (sebuf.http.config) = {path: "/list-error-reports", method: HTTP_METHOD_GET};
+  }
+
+  // ReviewErrorReport accepts or rejects a report. An accepted report's public note is added to the label log. Operators only.
+  // Requires the X-Trust-Review-Key header (the server's TRUST_REVIEW_SECRET), not an API key; without it the response is 401.
+  rpc ReviewErrorReport(ReviewErrorReportRequest) returns (ReviewErrorReportResponse) {
+    option (sebuf.http.config) = {path: "/review-error-report", method: HTTP_METHOD_POST};
+  }
+
+  // SearchFactChecks returns ratings that IFCN-verified fact-checkers published about claims similar to the one given, for citation with attribution.
+  rpc SearchFactChecks(SearchFactChecksRequest) returns (SearchFactChecksResponse) {
+    option (sebuf.http.config) = {path: "/search-fact-checks", method: HTTP_METHOD_GET};
+  }
+
+  // SearchClaimHeadlines returns the fresh headlines from every configured feed that share a claim's words, so the /verify page and verify_claim can build its coverage card.
+  rpc SearchClaimHeadlines(SearchClaimHeadlinesRequest) returns (SearchClaimHeadlinesResponse) {
+    option (sebuf.http.config) = {path: "/search-claim-headlines", method: HTTP_METHOD_GET};
   }
 }

@@ -55,6 +55,12 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Reuters World', url: gn('site:reuters.com world when:1d') },
       { name: 'CNN World', url: gn('site:cnn.com world news when:1d') },
       { name: 'Trump - Truth Social', url: 'https://trumpstruth.org/feed' },
+      // Major publishers Google News World leads with and no feed carried
+      // (2026-10-16 audit). Google News site: queries, like AP and Reuters.
+      { name: 'New York Times World', url: gn('site:nytimes.com world when:1d') },
+      { name: 'Washington Post World', url: gn('site:washingtonpost.com world when:1d') },
+      { name: 'The Economist', url: gn('site:economist.com when:1d') },
+      { name: 'The Independent', url: gn('site:independent.co.uk world when:1d') },
     ],
     us: [
       { name: 'Reuters US', url: gn('site:reuters.com US when:1d') },
@@ -203,6 +209,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Ta Nea', url: 'https://www.tanea.gr/feed/', lang: 'el' },
       { name: 'Liberal GR', url: gnLocale('site:liberal.gr when:2d', 'el', 'GR', 'GR:el'), lang: 'el' },
       { name: 'CNN Greece', url: gnLocale('site:cnn.gr when:2d', 'el', 'GR', 'GR:el'), lang: 'el' },
+      { name: 'Sky News', url: gn('site:news.sky.com when:1d') },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
@@ -232,6 +239,9 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Libya Herald', url: 'https://libyaherald.com/rss.xml' },
       { name: 'Egypt Independent', url: 'https://www.egyptindependent.com/feed/' },
       { name: 'Mada Masr', url: gn('site:madamasr.com when:30d') },
+      // Direct Times of Israel RSS returns 403 to cloud IPs; Google News does not.
+      { name: 'Times of Israel', url: gn('site:timesofisrael.com when:1d') },
+      { name: 'Middle East Eye', url: gn('site:middleeasteye.net when:1d') },
     ],
     tech: [
       { name: 'Hacker News', url: 'https://hnrss.org/frontpage' },
@@ -412,6 +422,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'The Daily Star', url: gn('site:thedailystar.net when:14d') },
       { name: 'Dhaka Tribune', url: gn('site:dhakatribune.com when:14d') },
       { name: 'Times of India', url: 'https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms', lang: 'en' },
+      { name: 'Japan Times', url: gn('site:japantimes.co.jp when:1d') },
     ],
     energy: [
       { name: 'Oil & Gas', url: gn('(oil price OR OPEC OR "natural gas" OR pipeline OR LNG) when:2d') },

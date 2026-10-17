@@ -343,6 +343,10 @@
     {
       "id": "ad4184fa-51d1-487f-8b2b-61ebbdd9ab4d",
       "name": "umami-retention"
+    },
+    {
+      "id": "1f732679-760d-467b-bc36-4be3f45bc586",
+      "name": "verification-desk"
     }
   ]
 }

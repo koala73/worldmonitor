@@ -92,6 +92,13 @@ crons.daily(
   {},
 );
 
+crons.daily(
+  "email-soft-bounce-prune",
+  { hourUTC: 4, minuteUTC: 50 },
+  internal.emailSuppressions.pruneSoftBounceData,
+  {},
+);
+
 // Daily retention prune for the append-only historical intelligence store
 // (#5694). The table has no natural ceiling — every seeder run appends the
 // events it published — and each row carries a 512-float vector, so the

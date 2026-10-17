@@ -1095,10 +1095,9 @@ describe('forecast panel transport through production cache reads', () => {
     await invoke(deps, 'get_forecast_predictions', { limit: 1 });
     const { TOOL_REGISTRY, toolWeight } = await import('../api/mcp/registry/index.ts');
     assert.equal(pipe.count, 2 * toolWeight(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions')));
-    const beforeDenied = sourceReads.length;
-    assert.equal((await invoke(deps, 'get_forecast_case', { forecast_id: 'original-0', generated_at: String(canonical.generatedAt) })).body.error.code, -32602);
-    assert.equal(sourceReads.length, beforeDenied);
-    assert.equal(pipe.count, 2 * toolWeight(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions')));
+    const detail = await invoke(deps, 'get_forecast_case', { forecast_id: 'original-0', generated_at: String(canonical.generatedAt) });
+    assert.deepEqual(detail.body.result.structuredContent.data.forecastCase.forecast, canonical.predictions[0]);
+    assert.equal(pipe.count, 2 * toolWeight(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions')) + toolWeight(TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_case')));
   });
   it('recovers an unavailable opening under the same allocation and caches observed empty lists', async () => {
     const { deps, pipe } = makeProDeps();
@@ -1732,14 +1731,17 @@ describe('bounded public Natural paid panel presentation', () => {
       sample.reduce((total, row) => total + row.conePolygon.reduce((points, ring) => points + ring.points.length, 0), 0));
     assert.deepEqual(eventBucket, original);
   });
-  it('preserves full API geometry and news map scope without panel presentation', async () => {
+  it('keeps full API geometry for a fitting projection, presents an oversized API read, and keeps news map scope', async () => {
     const api = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: {
       tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' },
     }, validUntil: Date.now() + 86400000 }) });
     const projected = (await invoke(api.deps, { limit: 2, jmespath: 'data.events.events[0].conePolygon[0].points | length(@)' })).structuredContent;
     assert.equal(projected.projection, 1900);
     const raw = (await invoke(api.deps, { limit: 2 })).structuredContent;
-    assert.equal(raw._budget_exceeded, true); assert.equal(raw.budget_bytes, 131072);
+    assert.notEqual(raw._budget_exceeded, true, 'an oversized API read returns rows, not an empty budget envelope');
+    assert.ok(bytes(raw) <= 131072); assert.equal(raw.data.events.events.length, 2);
+    assert.ok(raw.data.events.events[0].conePolygon[0].points.length <= 96);
+    assert.equal(raw.transportCoverage.details.find(item => item.event_id === 'a').original_count, 1900);
     const { admitNewsPanel } = await import('../api/mcp/panel-requests.ts');
     const news = makeProDeps(); const grant = await admitNewsPanel(context, budget, news.pipe.pipeline, {});
     const mapped = (await invoke(news.deps, { dataset: ['other'], limit: 1, panel_request: grant.token })).structuredContent;

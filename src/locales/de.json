@@ -2939,6 +2939,7 @@
       "tier4OnlyHint": "Jedes Medium, das darüber berichtet, ist eine Tier-4-Quelle (Aggregatoren und Blogs). Dies beschreibt die Berichterstattung, nicht die Genauigkeit.",
       "rosterListed": "({{listed}} aufgeführt)",
       "rosterFeeds": "Gesehene Feeds: {{labels}}",
+      "rosterSameCopy": "Gleicher Text, einmal gezählt",
       "rosterLegend": "Tiers ordnen Quellen ein; sie beurteilen diese Aussage nicht.",
       "tierDocsLink": "Wie Tiers vergeben werden",
       "tierChip": "T{{tier}}",

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trust and corrections · World Monitor</title>
+  <meta name="description" content="How World Monitor labels news coverage, how many stories carry each label today, every recent label change, and how to report an error.">
+  <link rel="canonical" href="https://www.worldmonitor.app/trust/">
+  <link rel="stylesheet" href="/trust/trust.css">
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow"><a href="/">World Monitor</a></p>
+      <h1>Trust and corrections</h1>
+      <p class="lede">World Monitor labels how widely a story is covered, never whether it is true. This page explains the labels, shows how many stories carry each one today, and lists every recent change to a label in the open.</p>
+    </header>
+
+    <section aria-labelledby="today-heading">
+      <h2 id="today-heading">Today</h2>
+      <p class="muted" id="today-note">Loading today's counts…</p>
+      <dl class="tiles" id="tiles" hidden>
+        <div class="tile"><dt>Corroborated</dt><dd id="count-corroborated">–</dd></div>
+        <div class="tile"><dt>Single publisher</dt><dd id="count-single">–</dd></div>
+        <div class="tile"><dt>Tier 4 only</dt><dd id="count-tier4">–</dd></div>
+        <div class="tile"><dt>Not enough evidence</dt><dd id="count-unknown">–</dd></div>
+      </dl>
+    </section>
+
+    <section aria-labelledby="changes-heading">
+      <h2 id="changes-heading">Recent label changes</h2>
+      <p class="muted">Every time a story moves between <em>single publisher</em> and <em>corroborated</em>, and every reader correction a reviewer accepted, from the last <span id="retention">7</span> days. Newest first.</p>
+      <p id="changes-status" role="status" aria-live="polite">Loading…</p>
+      <ol id="changes" class="changes"></ol>
+    </section>
+
+    <section aria-labelledby="method-heading">
+      <h2 id="method-heading">How the labels work</h2>
+      <dl class="method">
+        <dt>Corroborated</dt>
+        <dd>Two or more independent publisher families carry the story, not all of them tier 4. Outlets with one owner count once.</dd>
+        <dt>Single publisher</dt>
+        <dd>One publisher family carries it. That says nothing about whether it is wrong; many true stories start with one outlet.</dd>
+        <dt>Tier 4 only</dt>
+        <dd>Two or more families carry it, but every one is a declared aggregator or blog.</dd>
+        <dt>Not enough evidence</dt>
+        <dd>The digest could not tell who carries it. An undeclared tier is never treated as tier 4.</dd>
+        <dt>Source tiers</dt>
+        <dd>1 wire services and official bodies, 2 major outlets, 3 specialist, regional and think-tank sources, 4 aggregators and blogs. <a href="/docs/data-sources#source-credibility-%26-feed-tiering">The tier table</a>.</dd>
+        <dt>CRED score</dt>
+        <dd>A 0–100 credibility score built from propaganda risk (half), source tier and independent corroboration: low below 40, medium 40–69, high from 70. State-controlled outlets are capped at 40. <a href="/docs/methodology/news-credibility">How it is calculated</a>.</dd>
+      </dl>
+      <p class="muted">Corrections to datasets and methods are listed in the <a href="/docs/corrections">revision and corrections log</a>.</p>
+    </section>
+
+    <section aria-labelledby="report-heading">
+      <h2 id="report-heading">Report an error</h2>
+      <p class="muted">A person reviews every report; nothing changes automatically. If a reviewer accepts it, only their public note appears in the list above. Your message and email are never published and are deleted after 90 days.</p>
+      <form id="report-form" novalidate>
+        <p id="report-story" class="muted" hidden></p>
+        <label for="report-message">What is wrong?</label>
+        <textarea id="report-message" name="message" required minlength="10" maxlength="2000" rows="4"></textarea>
+        <label for="report-url">Link (optional)</label>
+        <input id="report-url" name="url" type="url" maxlength="2048" placeholder="https://">
+        <label for="report-contact">Email for a reply (optional)</label>
+        <input id="report-contact" name="contact" type="email" maxlength="320" autocomplete="email">
+        <div class="hp" aria-hidden="true">
+          <label for="report-website">Leave this empty</label>
+          <input id="report-website" name="website" type="text" tabindex="-1" autocomplete="off">
+        </div>
+        <button type="submit">Send report</button>
+        <p id="report-status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+  </main>
+  <script nonce="wm-static-bootstrap" src="/trust/trust.js"></script>
+</body>
+</html>

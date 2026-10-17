@@ -246,7 +246,7 @@
     "connectorsRow": "Konnektorer",
     "deployment": "Deployment",
     "securityRow": "Säkerhet",
-    "f5_15min": "5-15 min",
+    "f5_15min": "5-15 minuter",
     "fLt60s": "<60 sekunder",
     "fPerRequest": "Per begäran",
     "fLiveEdge": "Live-edge",
@@ -261,7 +261,7 @@
     "fWebhook": "Webhook",
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
-    "fMcpBulk": "+ MCP + bulk",
+    "fMcpBulk": "+ MCP + massexport",
     "fTensOfThousands": "+ tiotusentals",
     "fLiveTracking": "Live-spårning",
     "fPassAlerts": "Passagelarm + analys",
@@ -271,7 +271,7 @@
     "fCloudOnPrem": "Moln/on-prem/air-gap",
     "fStandard": "Standard",
     "fKeyAuth": "Nyckel-auth",
-    "fSsoMfa": "SSO/MFA/RBAC/audit",
+    "fSsoMfa": "SSO/MFA/RBAC/granskning",
     "noteBelow": "Kärnplattformen förblir gratis. Betalplaner låser upp equity research, makroanalys, AI-briefingar och organisatorisk användning.",
     "f50plus": "Tillgänglig",
     "sourcesRow": "Källor",
@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Gratis instrumentpanel för global underrättelse i realtid",
-      "description": "Innan det blir nyheter vet du redan. Konflikter, flaskhalsar, militärflygningar, marknader, cyber: en gratis livekarta med AI-analys. Ingen registrering.",
-      "ogTitle": "World Monitor — Innan det blir nyheter, visste du redan.",
-      "ogDescription": "Världens råa signaler — fartyg, jetplan, sirener, kablar, marknader — på en gratis live-underrättelsekarta, med AI som flaggar när de konvergerar. Gratis, ingen registrering."
+      "title": "World Monitor: Gratis panel för geopolitisk underrättelse",
+      "description": "World Monitor: panel för geopolitisk underrättelse i realtid. En gratis livekarta över konflikter, sjöfart, flyg, marknader och cyber, med API och MCP-server.",
+      "ogTitle": "World Monitor: Gratis panel för geopolitisk underrättelse",
+      "ogDescription": "World Monitor: panel för geopolitisk underrättelse i realtid. En gratis livekarta över konflikter, sjöfart, flyg, marknader och cyber, med API och MCP-server."
     },
     "nav": {
       "useCases": "Korrelationer",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Gratis global underrättelseinstrumentpanel · live nu",
-      "headline1": "Innan det blir nyheter,",
-      "headline2": "visste du redan.",
-      "sub": "Rubriker är fördröjningen. World Monitor strömmar världens råa signaler — fartyg, jetplan, sirener, kablar, marknader — på en live-karta, med AI som flaggar när de konvergerar till något som spelar roll.",
+      "headline1": "Geopolitisk underrättelsepanel",
+      "headline2": "i realtid",
+      "sub": "Innan det blir nyheter, visste du redan.",
       "ctaPrimary": "Starta instrumentpanelen",
       "ctaFree": "Gratis · Ingen registrering · Läses in på sekunder",
       "ctaSecondary": "Se hur människor använder det ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor är inte en öppen källkod Palantir",
       "asOf": "Per {{date}}",
       "whatIsTitle": "Vad är World Monitor?",
-      "whatIsBody": "World Monitor är en kostnadsfri ($0), öppen källkod (AGPL-3.0) dashboard som används av 2M+ personer. Den strömmar {{feeds}} nyhets- och OSINT-flöden från {{providers}} attribuerade leverantörer till en live-världskarta med {{mapLayers}} kartlagertyper, som omfattar geopolitik, marknader, sjöfart, luftfart och cyber. Den korrelerar dem så att konvergerande händelser dyker upp innan rubrikerna gör det. Varje siffra är källa och varje metod dokumenterad."
+      "whatIsBody": "World Monitor är en kostnadsfri ($0), öppen källkod (AGPL-3.0) dashboard som används av 2M+ personer. Den strömmar {{feeds}} nyhets- och OSINT-flöden från {{providers}} attribuerade leverantörer till en live-världskarta med {{mapLayers}} kartlagertyper, som omfattar geopolitik, marknader, sjöfart, luftfart och cyber. Den korrelerar dem så att konvergerande händelser dyker upp innan rubrikerna gör det. Varje siffra är källa och varje metod dokumenterad.",
+      "whatIsBestFor": "Bäst för analytiker, journalister, traders och utvecklare som behöver geopolitiska signaler i realtid."
     },
     "live": {
       "eyebrow": "Live just nu",
@@ -688,8 +689,8 @@
       "a9": "Ja — öppen källkod under AGPL-3.0 på GitHub: läs koden, själv-host den, eller bygg vidare på den. Interna skrivbordsprogram för Windows, macOS och Linux är också tillgängliga, plus en Android TV-app för väggdisplajer.",
       "q10": "Varför är World Monitor inte Palantir?",
       "a10": "Palantir gör en institutions egna data operationell inom den institutionen. World Monitor börjar från andra änden: det samlar, normaliserar, korrelerar och övervakar offentlig världsdata, och publicerar sedan det intelligensskiktet genom en gratis instrumentpanel och öppen källkod. Olika uppgift, olika produkt.",
-      "q11": "Which World Monitor license do I need?",
-      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
+      "q11": "Vilken World Monitor-licens behöver jag?",
+      "a11": "Välj efter vem som ska använda resultatet. Den personliga licensen för Pro är till för en person som använder World Monitor för egen forskning och egna beslut. Pro Business låter en licensierad användare använda det för företags- eller kundarbete, interna verktyg och rapporter. API Starter täcker API-användning inom en organisation, utan vidare spridning till kunder. API Business låter den organisationen bädda in World Monitor-data i produkter och tjänster för sina kunder. Enterprise täcker anpassade platser, White-label och driftsättningar. Dessa prenumerationslicenser är åtskilda från källkodslicenserna AGPL/MIT. Fullständiga villkor: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} raka svar om pris, data, aviseringar och AI-åtkomst. Den korta versionen: dashboarden kostar $0, kräver inget konto och koden är öppen källkod under AGPL-3.0.",
       "q12": "Vilken är den bästa programvaran för att följa globala kriser och störningar i nyheterna?",
       "a12": "World Monitor är ett kostnadsfritt alternativ med öppen källkod: det strömmar {{feeds}} nyhets- och OSINT-flöden från {{providers}} namngivna leverantörer till en enda live-världskarta med {{mapLayers}} typer av kartlager, som täcker geopolitik, marknader, sjöfart, luftfart och cyber. Det korrelerar dem så att samtidiga störningar syns innan de når rubrikerna. För att jämföra det med andra verktyg, se worldmonitor.app/compare/best-geopolitical-risk-dashboards."

@@ -210,7 +210,7 @@ const PROVIDER_OVERRIDES = {
   'mausam.imd.gov.in': {
     provider: 'India Meteorological Department',
     identityGroup: 'imd',
-    license: 'Official IMD visualization pages cited for attribution and source links, not scraped.',
+    license: 'Public IMD sea-area and coastal bulletin pages, parsed without an account or key. The RTI IMETD/R/E/25/00381 non-commercial-only terms recorded for the IMD API apply to these pages too. World Monitor public-display and redistribution rights are validated.',
     attribution: 'Data source: India Meteorological Department. Link the official marine/coastal bulletin page.',
     status: 'reviewed',
   },
@@ -309,6 +309,15 @@ const PROVIDER_OVERRIDES = {
   'madamasr.com': publisherMetadataFeed('Mada Masr'),
   'thedailystar.net': publisherMetadataFeed('The Daily Star'),
   'dhakatribune.com': publisherMetadataFeed('Dhaka Tribune'),
+  // Major publishers after the 2026-10-16 Google News World audit; Google News site: feeds.
+  'nytimes.com': publisherMetadataFeed('The New York Times'),
+  'washingtonpost.com': publisherMetadataFeed('The Washington Post'),
+  'economist.com': publisherMetadataFeed('The Economist'),
+  'independent.co.uk': publisherMetadataFeed('The Independent'),
+  'news.sky.com': publisherMetadataFeed('Sky News'),
+  'timesofisrael.com': publisherMetadataFeed('Times of Israel'),
+  'middleeasteye.net': publisherMetadataFeed('Middle East Eye'),
+  'japantimes.co.jp': publisherMetadataFeed('Japan Times'),
   'nation.africa': publisherMetadataFeed('Daily Nation'),
   'theguardianpostcameroon.com': publisherMetadataFeed('The Guardian Post'),
   'tchadinfos.com': publisherMetadataFeed('Tchadinfos'),
@@ -952,8 +961,8 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'd58673bf0ffb24d710c66510e833bca13df9fc4c98bfb2839606506dd0f95317',
-  reason: 'Preserve reviewed provider identities, register the two official NASA FIRMS Area API hosts as one provider identity, name TradingView as the provider behind the S&P 500 breadth screener scan that replaced the WAF-blocked Barchart quote pages, exclude the Sentry error-tracking host that the resolve-pin audit reads, and group the JODI publication catalog with its existing data host.',
+  sha256: '4a4f5416be777a6942a6a84063fbe0b8ee506dcbc0c6a4db687a5f684a60d371',
+  reason: 'Preserve reviewed provider identities, register the two official NASA FIRMS Area API hosts as one provider identity, name TradingView as the provider behind the S&P 500 breadth screener scan that replaced the WAF-blocked Barchart quote pages, exclude the Sentry error-tracking host that the resolve-pin audit reads, group the JODI publication catalog with its existing data host, and name the eight major publishers carried as Google News site: feeds after the 2026-10-16 Google News World audit.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
@@ -1057,6 +1066,15 @@ const EXCLUDED_HOSTS = new Set([
   // Provider landing-page link in MapPopup; the ingested Wingbits endpoints
   // are tracked as customer-api.wingbits.com and ecs-api.wingbits.com.
   'wingbits.com',
+  // Vendor pricing, marketplace, and procurement pages cited as price sources
+  // in /compare/ copy. Nothing fetches them.
+  'aws.amazon.com',
+  'liveuamap.com',
+  'me.liveuamap.com',
+  'offnadir-delta.com',
+  'www.applytosupply.digitalmarketplace.service.gov.uk',
+  'www.factal.com',
+  'www.vendr.com',
 ]);
 
 function read(rootDir, path) {

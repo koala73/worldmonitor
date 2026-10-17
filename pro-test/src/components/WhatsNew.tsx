@@ -39,7 +39,7 @@ export function WhatsNew() {
             <span>
               {t(`whatsNew.${key}`)}
               {pro && (
-                <span className="ml-2 align-middle inline-block font-mono text-[10px] font-semibold uppercase tracking-wider text-wm-green border border-wm-green/40 rounded px-1 py-px">
+                <span className="ml-2 align-middle inline-block font-mono text-xs font-semibold uppercase tracking-wider text-wm-green border border-wm-green/40 rounded px-1 py-px">
                   {t('whatsNew.proTag')}
                 </span>
               )}

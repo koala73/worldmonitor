@@ -257,7 +257,7 @@
     "fAgentsPersonas": "Agents + persona",
     "fDailyFlash": "Hàng ngày + flash",
     "fTeamDist": "Phân phối nhóm",
-    "fSlackTgWa": "Slack/Discord/TG/Email/Webhook",
+    "fSlackTgWa": "Slack/Discord/TG/email/webhook",
     "fWebhook": "Webhook",
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Bảng điều khiển tình báo toàn cầu trực tiếp miễn phí",
-      "description": "Khi nó trở thành tin tức thì bạn đã biết rồi. Xung đột, điểm nghẽn, chuyến bay quân sự, thị trường, an ninh mạng: một bản đồ trực tiếp miễn phí với phân tích AI. Không cần đăng ký.",
-      "ogTitle": "World Monitor — Khi tin tức xuất hiện, bạn đã biết rồi.",
-      "ogDescription": "Các tín hiệu thô của thế giới — tàu, máy bay, còi báo động, cáp, thị trường — trên một bản đồ tình báo trực tiếp miễn phí, có AI để phát hiệ khi chúng hội tụ. Miễn phí, không cần đăng ký."
+      "title": "World Monitor: Bảng tình báo địa chính trị miễn phí",
+      "description": "World Monitor: bảng tình báo địa chính trị thời gian thực. Bản đồ trực tiếp miễn phí: xung đột, hàng hải, chuyến bay, thị trường, an ninh mạng; có API và MCP.",
+      "ogTitle": "World Monitor: Bảng tình báo địa chính trị miễn phí",
+      "ogDescription": "World Monitor: bảng tình báo địa chính trị thời gian thực. Bản đồ trực tiếp miễn phí: xung đột, hàng hải, chuyến bay, thị trường, an ninh mạng; có API và MCP."
     },
     "nav": {
       "useCases": "Tương quan",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Bảng điều khiển tình báo toàn cầu miễn phí · đang hoạt động",
-      "headline1": "Khi tin tức xuất hiện,",
-      "headline2": "bạn đã biết rồi.",
-      "sub": "Tin tức là độ trễ. World Monitor truyền phát các tín hiệu thô của thế giới — tàu, máy bay, còi báo động, cáp, thị trường — lên một bản đồ trực tiếp, với AI phát hiệ khi chúng hội tụ thành một điều quan trọng.",
+      "headline1": "Bảng tình báo địa chính trị",
+      "headline2": "theo thời gian thực",
+      "sub": "Khi tin tức xuất hiện, bạn đã biết rồi.",
       "ctaPrimary": "Khởi chạy bảng điều khiển",
       "ctaFree": "Miễn phí · Không cần đăng ký · Tải trong vài giây",
       "ctaSecondary": "Xem cách mọi người sử dụng nó ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor không phải là Palantir mã nguồn mở",
       "asOf": "Tính đến {{date}}",
       "whatIsTitle": "World Monitor là gì?",
-      "whatIsBody": "World Monitor là một dashboard miễn phí ($0), mã nguồn mở (AGPL-3.0) được sử dụng bởi hơn 2 triệu người. Nó phát trực tiếp {{feeds}} nguồn tin tức và OSINT từ {{providers}} nhà cung cấp được ghi nguồn lên một bản đồ thế giới trực tiếp với {{mapLayers}} loại lớp bản đồ, bao gồm địa chính trị, thị trường, vận tải biển, hàng không và mạng. Nó tương quan chúng để các sự kiện hội tụ được nổi lên trước khi có tiêu đề. Mỗi con số đều có nguồn gốc và mỗi phương pháp đều được ghi chép."
+      "whatIsBody": "World Monitor là một dashboard miễn phí ($0), mã nguồn mở (AGPL-3.0) được sử dụng bởi hơn 2 triệu người. Nó phát trực tiếp {{feeds}} nguồn tin tức và OSINT từ {{providers}} nhà cung cấp được ghi nguồn lên một bản đồ thế giới trực tiếp với {{mapLayers}} loại lớp bản đồ, bao gồm địa chính trị, thị trường, vận tải biển, hàng không và mạng. Nó tương quan chúng để các sự kiện hội tụ được nổi lên trước khi có tiêu đề. Mỗi con số đều có nguồn gốc và mỗi phương pháp đều được ghi chép.",
+      "whatIsBestFor": "Phù hợp nhất với nhà phân tích, nhà báo, nhà giao dịch và nhà phát triển cần tín hiệu địa chính trị trực tiếp."
     },
     "live": {
       "eyebrow": "Trực tiếp ngay bây giờ",
@@ -688,8 +689,8 @@
       "a9": "Có — mã nguồn mở theo AGPL-3.0 trên GitHub: đọc mã, tự lưu trữ hoặc xây dựng dựa trên nó. Các ứng dụng máy tính để bàn gốc cho Windows, macOS và Linux cũng có sẵn, cùng với ứng dụng Android TV cho hiển thị tường.",
       "q10": "Tại sao World Monitor không phải là Palantir?",
       "a10": "Palantir làm cho dữ liệu riêng của một tổ chức hoạt động bên trong tổ chức đó. World Monitor bắt đầu từ phía khác: nó sắp xếp, chuẩn hóa, tương quan và giám sát dữ liệu công cộng trên thế giới, sau đó công bố lớp tình báo đó thông qua một bảng điều khiển miễn phí và mã nguồn mở. Công việc khác nhau, sản phẩm khác nhau.",
-      "q11": "Which World Monitor license do I need?",
-      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
+      "q11": "Tôi cần giấy phép World Monitor nào?",
+      "a11": "Hãy chọn theo người sẽ dùng kết quả. Giấy phép cá nhân của Pro dành cho một người dùng World Monitor để nghiên cứu và tự quyết định. Pro Business cho phép một người dùng được cấp phép dùng nó cho công việc công ty hoặc khách hàng, công cụ nội bộ và báo cáo. API Starter bao gồm việc dùng API bên trong một tổ chức, không phân phối lại cho khách hàng. API Business cho phép tổ chức đó nhúng dữ liệu World Monitor vào sản phẩm và dịch vụ cho khách hàng của mình. Enterprise bao gồm suất tùy chỉnh, White-label và triển khai. Các giấy phép đăng ký này tách biệt với giấy phép mã nguồn AGPL/MIT. Điều khoản đầy đủ: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} câu trả lời trực tiếp về giá cả, dữ liệu, cảnh báo và truy cập AI. Tóm lại: dashboard có giá $0, không cần tài khoản, và mã nguồn mở theo AGPL-3.0.",
       "q12": "Phần mềm tốt nhất để theo dõi các khủng hoảng và biến động toàn cầu trên tin tức là gì?",
       "a12": "World Monitor là một lựa chọn miễn phí và mã nguồn mở: nó phát trực tiếp {{feeds}} nguồn tin tức và OSINT từ {{providers}} nhà cung cấp được ghi rõ nguồn lên một bản đồ thế giới trực tiếp duy nhất với {{mapLayers}} loại lớp bản đồ, bao quát địa chính trị, thị trường, vận tải biển, hàng không và an ninh mạng. Nó liên kết các nguồn này để những biến động xảy ra đồng thời lộ diện trước khi lên các tiêu đề báo. Để so sánh với các công cụ khác, xem worldmonitor.app/compare/best-geopolitical-risk-dashboards."

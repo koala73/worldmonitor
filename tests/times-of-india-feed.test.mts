@@ -23,6 +23,7 @@ interface ClientFeedsModule {
   SOURCE_TIERS: Record<string, number>;
   SOURCE_TYPES: Record<string, string>;
   SOURCE_PROPAGANDA_RISK: Record<string, { risk: string }>;
+  MAJOR_PUBLISHER_DEFAULT_SOURCES: readonly string[];
   computeDefaultDisabledSources: (locale?: string) => string[];
 }
 
@@ -101,7 +102,11 @@ describe('Times of India licensed India feed', () => {
   });
 
   it('is opt-in and appended so adding it cannot evict an existing free-tier source', () => {
-    assert.equal(client.FULL_FEEDS.asia.at(-1)?.name, SOURCE);
+    // Appended: only feeds from later packs may follow it.
+    const asia = client.FULL_FEEDS.asia.map((feed) => feed.name);
+    const later = new Set<string>(client.MAJOR_PUBLISHER_DEFAULT_SOURCES);
+    assert.ok(asia.includes(SOURCE));
+    assert.ok(asia.slice(asia.indexOf(SOURCE) + 1).every((name) => later.has(name)), `${SOURCE} follows every earlier asia feed`);
 
     const currentDisabled = new Set(client.computeDefaultDisabledSources('en'));
     assert.equal(currentDisabled.has(SOURCE), true, `${SOURCE} must remain opt-in`);

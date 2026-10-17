@@ -203,7 +203,7 @@ export class PipelineStatusPanel extends Panel {
     // keeps the map and the panel decoupled — if the panel isn't mounted, the
     // event is a no-op. If both exist, a map click opens this drawer on the
     // same pipeline id.
-    if (typeof window !== 'undefined') {
+    if (!this.detailSource && typeof window !== 'undefined') {
       window.addEventListener('energy:open-pipeline-detail', this.openDetailHandler);
     }
     this.content.addEventListener('click', this.handleContentClick);
@@ -224,7 +224,7 @@ export class PipelineStatusPanel extends Panel {
   };
 
   public destroy(): void {
-    if (typeof window !== 'undefined') {
+    if (!this.detailSource && typeof window !== 'undefined') {
       window.removeEventListener('energy:open-pipeline-detail', this.openDetailHandler);
     }
     super.destroy?.();
@@ -310,6 +310,14 @@ export class PipelineStatusPanel extends Panel {
   public async presentDetail(data: ListPipelinesResponse, id: string): Promise<void> {
     this.data = data;
     await this.loadDetail(id);
+  }
+
+  public async presentCountryDetail(countryCode: string, id: string): Promise<void> {
+    const { gas, oil } = getCachedPipelineRegistries();
+    const data = buildBootstrapResponse(gas, oil);
+    const pipelines = data?.pipelines.filter(pipeline => pipeline.fromCountry === countryCode || pipeline.toCountry === countryCode || pipeline.transitCountries.includes(countryCode)) ?? [];
+    if (!data || !pipelines.some(pipeline => pipeline.id === id)) throw new Error('Pipeline is not in this country.');
+    await this.presentDetail({ ...data, pipelines }, id);
   }
 
   private async loadDetail(pipelineId: string): Promise<void> {

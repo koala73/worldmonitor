@@ -11,6 +11,7 @@
 import { ensureHydrated } from '@/services/bootstrap';
 
 export interface ImfMacroEntry {
+  periods?: Partial<Record<'inflationPct' | 'primaryBalancePct' | 'govExpenditurePct' | 'govRevenuePct', number | null>>;
   inflationPct: number | null;
   currentAccountPct: number | null;
   govRevenuePct: number | null;
@@ -22,6 +23,7 @@ export interface ImfMacroEntry {
 }
 
 export interface ImfGrowthEntry {
+  periods?: Partial<Record<'realGdpGrowthPct' | 'gdpPerCapitaUsd', number | null>>;
   realGdpGrowthPct: number | null;
   gdpPerCapitaUsd: number | null;
   realGdpLcuB: number | null;
@@ -36,6 +38,7 @@ export interface ImfGrowthEntry {
 }
 
 export interface ImfLaborEntry {
+  periods?: Partial<Record<'unemploymentPct', number | null>>;
   unemploymentPct: number | null;
   populationMillions: number | null;
   year: number | null;
@@ -200,6 +203,14 @@ export async function getImfCountryBundle(iso2Code: string): Promise<ImfCountryB
   };
 }
 
+function imfSource(periods: unknown, metric: string): string {
+  const year = periods && typeof periods === 'object' && !Array.isArray(periods)
+    ? (periods as Record<string, unknown>)[metric] : undefined;
+  const period = typeof year === 'number' && Number.isInteger(year) && year >= 1900 && year <= 2200
+    ? `Year ${year}` : 'Year not supplied';
+  return `IMF WEO · ${period} · IMF release not supplied`;
+}
+
 /**
  * Pure helper — selects up to N IMF-derived indicators ranked by
  * highest-signal-first ordering for the Economic Indicators card.
@@ -219,7 +230,7 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
       label: 'Real GDP Growth',
       value: `${growth >= 0 ? '+' : ''}${growth.toFixed(1)}%`,
       trend: growth > 0.5 ? 'up' : growth < -0.5 ? 'down' : 'flat',
-      source: 'IMF WEO',
+      source: imfSource(bundle.growth?.periods, 'realGdpGrowthPct'),
     });
   }
 
@@ -230,7 +241,7 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
       value: `${inflation >= 0 ? '+' : ''}${inflation.toFixed(1)}%`,
       // High inflation = bad for stability; flag downward trend on >5%.
       trend: inflation > 5 ? 'down' : inflation < 1 ? 'flat' : 'up',
-      source: 'IMF WEO',
+      source: imfSource(bundle.macro?.periods, 'inflationPct'),
     });
   }
 
@@ -240,7 +251,7 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
       label: 'Unemployment',
       value: `${lur.toFixed(1)}%`,
       trend: lur > 10 ? 'down' : lur < 5 ? 'up' : 'flat',
-      source: 'IMF WEO',
+      source: imfSource(bundle.labor?.periods, 'unemploymentPct'),
     });
   }
 
@@ -261,7 +272,7 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
       label: 'Primary Balance',
       value: `${primaryBalance >= 0 ? '+' : ''}${primaryBalance.toFixed(1)}% GDP`,
       trend: primaryBalance > 1 ? 'up' : primaryBalance < -3 ? 'down' : 'flat',
-      source: 'IMF WEO',
+      source: imfSource(bundle.macro?.periods, 'primaryBalancePct'),
     });
   }
 
@@ -274,7 +285,7 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
       label: 'GDP / Capita',
       value: formatted,
       trend: 'flat',
-      source: 'IMF WEO',
+      source: imfSource(bundle.growth?.periods, 'gdpPerCapitaUsd'),
     });
   }
 
@@ -288,7 +299,7 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
       label: 'Public Spending',
       value: `${govExp.toFixed(1)}% GDP`,
       trend: 'flat',
-      source: 'IMF WEO',
+      source: imfSource(bundle.macro?.periods, 'govExpenditurePct'),
     });
   }
 
@@ -298,7 +309,7 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
       label: 'Gov Revenue',
       value: `${govRev.toFixed(1)}% GDP`,
       trend: 'flat',
-      source: 'IMF WEO',
+      source: imfSource(bundle.macro?.periods, 'govRevenuePct'),
     });
   }
 

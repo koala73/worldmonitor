@@ -129,6 +129,7 @@ const PUBLISHER_FAMILY_DATA = {
     ],
   },
   'ndtv': { publisher: "NDTV", labels: ["NDTV", "NDTV India"] },
+  'new-york-times': { publisher: "The New York Times", labels: ["Hard Fork (NYT)", "New York Times World"] },
   'nikkei': { publisher: "Nikkei", labels: ["Nikkei Asia", "Nikkei Tech"] },
   'pivot': { publisher: "Pivot (Vox Media)", labels: ["Pivot (Vox)", "Pivot Podcast"] },
   'politico': { publisher: "Politico", labels: ["Politico", "Politico Tech"] },
@@ -158,6 +159,9 @@ const PUBLISHER_FAMILY_DATA = {
       "Seeking Alpha Tech",
     ],
   },
+  // Two titles, one owner: Sightline Media Group (owned by Regent) publishes
+  // both Defense News and Military Times, per each site's About page.
+  'sightline-media': { publisher: "Sightline Media", labels: ["Defense News", "Military Times"] },
   'sp-global': { publisher: "S&P Global", labels: ["S&P Global Commodity", "S&P Global Platts"] },
   'techcrunch': {
     publisher: "TechCrunch",
@@ -236,11 +240,13 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'marketwatch': ['marketwatch.com'],
   'mit-technology-review': ['technologyreview.com'],
   'ndtv': ['ndtv.com'],
+  'new-york-times': ['nytimes.com'],
   'nikkei': ['nikkei.com'],
   'politico': ['politico.com', 'politico.eu'],
   'reuters': ['reuters.com'],
   'rt': ['rt.com', 'rt-english.com'],
   'seeking-alpha': ['seekingalpha.com'],
+  'sightline-media': ['defensenews.com', 'militarytimes.com'],
   'sp-global': ['spglobal.com'],
   'techcrunch': ['techcrunch.com'],
   'the-verge': ['theverge.com'],

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { imfSdmxFetchIndicator } from '../scripts/_seed-utils.mjs';
 
 // Import only the pure compute function (no Redis, no fetch side-effects)
 import { computeEntries, weoYearWindow } from '../scripts/seed-national-debt.mjs';
@@ -7,9 +9,9 @@ import { computeEntries, weoYearWindow } from '../scripts/seed-national-debt.mjs
 const BASELINE_TS = Date.UTC(2024, 0, 1);
 
 describe('computeEntries formula', () => {
-  it('calculates debt_usd from IMF debt % and GDP billions', () => {
+  it('calculates debt_usd from IMF debt % and GDP dollars', () => {
     const debtPct = { USA: { '2024': '120', '2023': '110' } };
-    const gdp = { USA: { '2024': '28000' } }; // $28T in billions
+    const gdp = { USA: { '2024': 28_000_000_000_000 } }; // $28T
     const deficit = { USA: { '2024': '-5' } };
 
     const entries = computeEntries(debtPct, gdp, deficit, null);
@@ -25,7 +27,7 @@ describe('computeEntries formula', () => {
 
   it('calculates per_second_rate from deficit %', () => {
     const debtPct = { JPN: { '2024': '260' } };
-    const gdp = { JPN: { '2024': '4000' } }; // $4T
+    const gdp = { JPN: { '2024': 4_000_000_000_000 } }; // $4T
     const deficit = { JPN: { '2024': '-4' } };
 
     const entries = computeEntries(debtPct, gdp, deficit, null);
@@ -38,7 +40,7 @@ describe('computeEntries formula', () => {
 
   it('calculates annual_growth correctly', () => {
     const debtPct = { DEU: { '2024': '66', '2023': '60' } };
-    const gdp = { DEU: { '2024': '4500' } };
+    const gdp = { DEU: { '2024': 4_500_000_000_000 } };
     const deficit = {};
 
     const entries = computeEntries(debtPct, gdp, deficit, null);
@@ -51,7 +53,7 @@ describe('computeEntries formula', () => {
 
   it('sets correct baseline_ts (2024-01-01 UTC)', () => {
     const debtPct = { GBR: { '2024': '100' } };
-    const gdp = { GBR: { '2024': '3100' } };
+    const gdp = { GBR: { '2024': 3_100_000_000_000 } };
 
     const entries = computeEntries(debtPct, gdp, {}, null);
     assert.equal(entries[0].baselineTs, BASELINE_TS);
@@ -61,7 +63,7 @@ describe('computeEntries formula', () => {
 describe('source label derives year from SDMX response', () => {
   it('uses max year present when 2025 is returned', () => {
     const debtPct = { GBR: { '2024': '100', '2025': '102' } };
-    const gdp = { GBR: { '2024': '3100' } };
+    const gdp = { GBR: { '2024': 3_100_000_000_000 } };
 
     const entries = computeEntries(debtPct, gdp, {}, null);
     assert.equal(entries[0].source, 'IMF WEO 2025');
@@ -69,7 +71,7 @@ describe('source label derives year from SDMX response', () => {
 
   it('falls back to 2024 when only 2024 is present', () => {
     const debtPct = { FRA: { '2024': '110' } };
-    const gdp = { FRA: { '2024': '2900' } };
+    const gdp = { FRA: { '2024': 2_900_000_000_000 } };
 
     const entries = computeEntries(debtPct, gdp, {}, null);
     assert.equal(entries[0].source, 'IMF WEO 2024');
@@ -77,14 +79,14 @@ describe('source label derives year from SDMX response', () => {
 
   it('combines WEO year with Treasury label for USA override', () => {
     const debtPct = { USA: { '2024': '120', '2025': '124' } };
-    const gdp = { USA: { '2024': '28000' } };
+    const gdp = { USA: { '2024': 28_000_000_000_000 } };
     const entries = computeEntries(debtPct, gdp, {}, { debtUsd: 36e12, date: '2025-01-01' });
     assert.equal(entries[0].source, 'IMF WEO 2025 + US Treasury FiscalData');
   });
 
   it('tracks future WEO vintages (2026) when SDMX returns them', () => {
     const debtPct = { DEU: { '2024': '66', '2026': '68' } };
-    const gdp = { DEU: { '2024': '4500' } };
+    const gdp = { DEU: { '2024': 4_500_000_000_000 } };
     const entries = computeEntries(debtPct, gdp, {}, null);
     assert.equal(entries.length, 1);
     assert.equal(entries[0].source, 'IMF WEO 2026');
@@ -101,11 +103,11 @@ describe('aggregate filtering', () => {
       G7Q: { '2024': '100' }, // ends in Q
     };
     const gdp = {
-      USA: { '2024': '28000' },
-      WEOWORLD: { '2024': '100000' },
-      EURO: { '2024': '15000' },
-      G20: { '2024': '50000' },
-      G7Q: { '2024': '30000' },
+      USA: { '2024': 28_000_000_000_000 },
+      WEOWORLD: { '2024': 100_000_000_000_000 },
+      EURO: { '2024': 15_000_000_000_000 },
+      G20: { '2024': 50_000_000_000_000 },
+      G7Q: { '2024': 30_000_000_000_000 },
     };
 
     const entries = computeEntries(debtPct, gdp, {}, null);
@@ -119,7 +121,7 @@ describe('aggregate filtering', () => {
 
   it('excludes territories (ABW, PRI, WBG)', () => {
     const debtPct = { ABW: { '2024': '50' }, PRI: { '2024': '50' }, WBG: { '2024': '50' }, BRA: { '2024': '90' } };
-    const gdp = { ABW: { '2024': '3' }, PRI: { '2024': '100' }, WBG: { '2024': '10' }, BRA: { '2024': '2000' } };
+    const gdp = { ABW: { '2024': 3_000_000_000 }, PRI: { '2024': 100_000_000_000 }, WBG: { '2024': 10_000_000_000 }, BRA: { '2024': 2_000_000_000_000 } };
 
     const entries = computeEntries(debtPct, gdp, {}, null);
     const codes = entries.map(e => e.iso3);
@@ -131,7 +133,7 @@ describe('aggregate filtering', () => {
 
   it('excludes non-3-char codes', () => {
     const debtPct = { US: { '2024': '120' }, USAA: { '2024': '120' }, USA: { '2024': '120' } };
-    const gdp = { US: { '2024': '28000' }, USAA: { '2024': '28000' }, USA: { '2024': '28000' } };
+    const gdp = { US: { '2024': 28_000_000_000_000 }, USAA: { '2024': 28_000_000_000_000 }, USA: { '2024': 28_000_000_000_000 } };
 
     const entries = computeEntries(debtPct, gdp, {}, null);
     const codes = entries.map(e => e.iso3);
@@ -144,7 +146,7 @@ describe('aggregate filtering', () => {
 describe('US Treasury override', () => {
   it('uses Treasury debtUsd for USA when provided', () => {
     const debtPct = { USA: { '2024': '120' } };
-    const gdp = { USA: { '2024': '28000' } };
+    const gdp = { USA: { '2024': 28_000_000_000_000 } };
     const treasuryDebtUsd = 36_000_000_000_000; // $36T from Treasury
 
     const entries = computeEntries(debtPct, gdp, {}, { debtUsd: treasuryDebtUsd, date: '2024-12-31' });
@@ -155,7 +157,7 @@ describe('US Treasury override', () => {
 
   it('falls back to IMF when Treasury returns null', () => {
     const debtPct = { USA: { '2024': '120' } };
-    const gdp = { USA: { '2024': '28000' } };
+    const gdp = { USA: { '2024': 28_000_000_000_000 } };
 
     const entries = computeEntries(debtPct, gdp, {}, null);
     const expectedDebt = (120 / 100) * 28000e9;
@@ -192,7 +194,7 @@ describe('country count with realistic fixture', () => {
     const gdp = {};
     for (const code of SAMPLE_CODES) {
       debtPct[code] = { '2024': '80' };
-      gdp[code] = { '2024': '500' };
+      gdp[code] = { '2024': 500_000_000_000 };
     }
 
     const entries = computeEntries(debtPct, gdp, {}, null);
@@ -209,12 +211,40 @@ describe('rolling WEO year window', () => {
   it('picks latest year per country, not hardcoded 2024', () => {
     // Simulates a 2026 WEO vintage landing with 2025+2026 debt data and no 2024
     const debtPct = { FRA: { '2025': '110', '2026': '112' } };
-    const gdp = { FRA: { '2026': '3000' } };
+    const gdp = { FRA: { '2026': 3_000_000_000_000 } };
     const entries = computeEntries(debtPct, gdp, {}, null);
     assert.equal(entries.length, 1);
     assert.equal(entries[0].source, 'IMF WEO 2026');
     assert.ok(Math.abs(entries[0].debtToGdp - 112) < 0.001);
     // baseline should track the vintage year, not be pinned to 2024
     assert.equal(entries[0].baselineTs, Date.UTC(2026, 0, 1));
+  });
+});
+
+
+describe('IMF SDMX dollar contract', () => {
+  it('preserves raw NGDPD dollars in GDP, debt, and deficit rates', async (t) => {
+    const fixture = JSON.parse(readFileSync(new URL('./fixtures/national-debt/imf-ngdpd.json', import.meta.url), 'utf8'));
+    t.mock.method(globalThis, 'fetch', async (url) => {
+      assert.match(String(url), /dataflow\/IMF\.RES\/WEO\/\+\/\*\.NGDPD\.A/);
+      return Response.json(fixture);
+    });
+    const gdp = await imfSdmxFetchIndicator('NGDPD', { years: ['2027'] });
+    assert.equal(gdp.CHN['2027'], 22_939_132_112_000);
+    assert.equal(gdp.USA['2027'], 34_441_606_777_000);
+    const entries = computeEntries(
+      { CHN: { '2027': 100 }, USA: { '2027': 100 } },
+      gdp,
+      { CHN: { '2027': -5 }, USA: { '2027': -5 } },
+      null,
+    );
+    assert.deepEqual(entries.map(entry => entry.iso3).sort(), ['CHN', 'USA']);
+    for (const entry of entries) {
+      const expectedGdp = gdp[entry.iso3]['2027'];
+      assert.equal(entry.gdpUsd, expectedGdp);
+      assert.equal(entry.debtUsd, expectedGdp);
+      assert.equal(entry.perDayRate, expectedGdp * 0.05 / 365.25);
+      assert.equal(entry.perSecondRate, expectedGdp * 0.05 / (365.25 * 86400));
+    }
   });
 });

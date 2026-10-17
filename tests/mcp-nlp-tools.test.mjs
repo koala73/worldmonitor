@@ -853,6 +853,26 @@ describe('#5697 NLP MCP tools', () => {
       });
     });
 
+    it('counts same copy under two mastheads once, matching the digest (#9095)', async () => {
+      const title = 'Zaporizhzhia airstrikes kill 17 as Russia intensifies attacks across Ukraine';
+      const snippet = 'Zaporizhzhia was hit by deadly Russian airstrikes on Saturday, 10 October, killing at least 17 people, including three children, Ukrainian officials said. Rescuers searched rubble for survivors as the city faced renewed strikes on residential areas.';
+      await withDigestCategories({
+        europe: {
+          items: [
+            { source: 'EuroNews', title, snippet, link: 'https://n/euronews', publishedAt: 1785405600000, corroborationCount: 1 },
+            { source: 'Africanews', title, snippet, link: 'https://n/africanews', publishedAt: 1785405700000, corroborationCount: 1 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('get_news_clusters', { category: 'europe' });
+        const [cluster] = result.clusters;
+        assert.equal(cluster.memberCount, 2);
+        assert.equal(cluster.distinctSourceCount, 1);
+        assert.equal(cluster.corroboration.publishers, 1);
+        assert.equal(cluster.publishers.length, 1);
+      });
+    });
+
     it('stays inside the dispatcher budget at the maximum provenance-rich shape', async () => {
       // 25 clusters x 40 members fills MAX_CLUSTER_NEWS_ITEMS. Eight publisher
       // families per cluster: Reuters with all twelve curated labels, past the

@@ -2977,6 +2977,7 @@
       "tier4OnlyHint": "Všechny portály, které o tom podávají zprávu, jsou zdroje tier-4 (agregátory a blogy). Toto popisuje pokrytí, nikoli přesnost.",
       "rosterListed": "({{listed}} uvedeno)",
       "rosterFeeds": "Zobrazené kanály: {{labels}}",
+      "rosterSameCopy": "Stejný text, započítán jednou",
       "rosterLegend": "Úrovně klasifikují zdroje; nehodnotí toto tvrzení.",
       "tierDocsLink": "Jak se přiřazují úrovně",
       "tierChip": "T{{tier}}",

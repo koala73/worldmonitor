@@ -1370,7 +1370,7 @@ export function validateVolatileInventoryClaims() {
     { path: 'blog-site/src/content/blog/country-risk-monitoring-workflow-for-analysts.md', text: /72 indicators, 21 active dimensions, and 6 domains/ },
     // Fixed resilience schema. tests/resilience-doc-parity.test.mts derives
     // these values from the scorer registry and validates this exact page.
-    { path: 'docs/methodology/country-resilience-index.mdx', text: /196 countries using 72 indicators across 21 dimensions and 6 domains/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /\d+ of 196 countries ranked, using 72 indicators across 21 dimensions and 6 domains/ },
     { path: 'docs/methodology/country-resilience-index.mdx', text: /pillars\[\].*six domains/ },
     { path: 'docs/methodology/country-resilience-index.mdx', text: /72 indicators across 21 active dimensions and 6 domains.*3 pillars.*2 structurally-retired dimensions/ },
     { path: 'docs/methodology/country-resilience-index.mdx', text: /196-country public rankable universe.*72 indicators across 21 active dimensions and 6 domains.*2 structurally-retired dimensions/ },

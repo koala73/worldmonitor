@@ -2920,6 +2920,7 @@
       "tier4OnlyHint": "これを報じているすべてのメディアはTier4ソース（アグリゲーターとブログ）です。これは報道範囲を示すもので、正確性ではありません。",
       "rosterListed": "（{{listed}}社を表示）",
       "rosterFeeds": "確認されたフィード: {{labels}}",
+      "rosterSameCopy": "同一の本文、1件として集計",
       "rosterLegend": "ティアは情報源の順位付けであり、この主張の真偽を判断するものではありません。",
       "tierDocsLink": "ティアの割り当て方法",
       "tierChip": "T{{tier}}",

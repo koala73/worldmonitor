@@ -8,6 +8,8 @@ import bootstrap from '../api/bootstrap.js';
 import { issueSessionToken } from '../api/_session.js';
 import { BOOTSTRAP_CACHE_KEYS } from '../shared/bootstrap-tier-keys.js';
 import { assembleBootstrapTierPayload } from '../scripts/publish-bootstrap-tiers.mjs';
+import { sanitizeBootstrapValue as edgeSanitize } from '../api/_bootstrap-public-payload.js';
+import { sanitizeBootstrapValue as workerSanitize } from '../scripts/_bootstrap-public-payload.mjs';
 
 const PATH = 'https://api.worldmonitor.app/api/infrastructure/v1/get-bootstrap-data';
 
@@ -119,6 +121,25 @@ test('RPC, public bootstrap and publisher apply the same transforms and cutover 
 // snapshot to MCP/session callers. The RPC is gateway no-store, so a
 // malformed dataset is reported `missing`, exactly as bootstrap does.
 const IMF_FIELDS = { imfMacro: 'inflationPct', imfGrowth: 'realGdpGrowthPct', imfLabor: 'unemploymentPct', imfExternal: 'exportsUsd' } as const;
+
+test('public IMF transports retain explicit metric periods and strip the private envelope', async t => {
+  const { request, values } = await setup(t);
+  for (const [key, field] of Object.entries(IMF_FIELDS).filter(([key]) => key !== 'imfExternal')) {
+    for (const dropInvalid of [false, true]) {
+      const row = { [field]: 0, year: 2026, periods: { [field]: 2025 } };
+      const payload = { countries: { UA: row, ...(dropInvalid ? { XX: { [field]: 'invalid' } } : {}) }, seededAt: '2026-10-16T00:00:00Z' };
+      values.set(BOOTSTRAP_CACHE_KEYS[key], { _seed: { fetchedAt: 1792108800000, recordCount: 1, sourceVersion: 'not-a-release', schemaVersion: 1, state: 'OK' }, data: payload });
+      const rpcBody = await (await request('?keys=' + key)).json();
+      const publicBody = await (await bootstrap(new Request(`https://api.worldmonitor.app/api/bootstrap?keys=${key}&public=1`))).json();
+      const expected = { ...payload, countries: { UA: row } };
+      assert.deepEqual(JSON.parse(rpcBody.data[key]), expected);
+      assert.deepEqual(publicBody.data[key], expected);
+      assert.deepEqual(edgeSanitize(key, expected), expected);
+      assert.deepEqual(workerSanitize(key, expected), expected);
+      assert.ok(!JSON.stringify(publicBody).includes('_seed'));
+    }
+  }
+});
 
 test('RPC sends a structurally malformed IMF dataset to missing', async t => {
   const { request, values } = await setup(t);

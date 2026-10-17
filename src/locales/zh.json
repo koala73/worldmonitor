@@ -2920,6 +2920,7 @@
       "tier4OnlyHint": "报道此事的所有媒体都是第4级来源（聚合器和博客）。这反映的是覆盖范围，而非准确性。",
       "rosterListed": "（已列出{{listed}}家）",
       "rosterFeeds": "所见订阅源：{{labels}}",
+      "rosterSameCopy": "相同稿件，只计一次",
       "rosterLegend": "分级用于为来源排序，并不判断此说法的真伪。",
       "tierDocsLink": "分级如何分配",
       "tierChip": "T{{tier}}",

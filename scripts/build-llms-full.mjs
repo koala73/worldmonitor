@@ -23,7 +23,14 @@ import { GLOSSARY_TERMS } from '../blog-site/src/data/glossary.ts';
 import { getRootlessDocsDestination } from '../src/config/docs-root-redirects.ts';
 import { COMPARISON_MATRIX_COLUMNS, comparisonDiscoveryEntries } from './build-comparison-pages.mjs';
 import { renderAccuracyLlmsSection } from './build-accuracy-page.mjs';
-import { resolveLatestLivePulseSnapshotPath, resolveLatestResilienceSnapshotPath, slugify } from './build-crawlable-corpus.mjs';
+import {
+  RESILIENCE_COVERAGE_PATTERN,
+  publishedRankedCountries,
+  resilienceCoveragePhrase,
+  resolveLatestLivePulseSnapshotPath,
+  resolveLatestResilienceSnapshotPath,
+  slugify,
+} from './build-crawlable-corpus.mjs';
 import { CHOKEPOINT_CONTENT } from './chokepoint-page-content.mjs';
 import { SITE_ORIGIN } from './discover-content-corpus-pages.mjs';
 import { buildSourceCatalog, buildSourcePages } from './crawlable-sources-page.mjs';
@@ -301,6 +308,20 @@ function renderSourceDirectory(rootDir) {
 }
 
 /**
+ * Restate resilience coverage in the agent briefs from the newest published
+ * snapshot: "{ranked} of {universe} countries". Both numbers are read from the
+ * snapshot (ranked rows; ranked plus greyed-out rows), so a new snapshot
+ * rewrites the briefs instead of leaving a stale count behind.
+ */
+export function withResilienceCoverage(text, coverage) {
+  const source = String(text);
+  if (!source.match(RESILIENCE_COVERAGE_PATTERN)) {
+    throw new Error('expected "structural resilience ranked for <n> of <m> countries" in the llms brief');
+  }
+  return source.replace(RESILIENCE_COVERAGE_PATTERN, resilienceCoveragePhrase(coverage));
+}
+
+/**
  * Splice the generated Comparisons section into the hand-maintained
  * llms.txt: replace the existing section in place, or insert it ahead of
  * Live Instances the first time. Idempotent, so --check can diff it.
@@ -330,7 +351,10 @@ export function buildLlmsFullText({ rootDir = ROOT } = {}) {
   const existing = existsSync(join(rootDir, OUTPUT_PATH))
     ? read(rootDir, OUTPUT_PATH)
     : '';
-  const prefix = withVersionHeader(briefPrefix(existing), readVersionHeader(rootDir));
+  const prefix = withResilienceCoverage(
+    withVersionHeader(briefPrefix(existing), readVersionHeader(rootDir)),
+    publishedRankedCountries(rootDir),
+  );
   const introduction = [
     LLMS_FULL_GENERATED_HEADING,
     '',
@@ -370,7 +394,10 @@ export function buildLlmsFullText({ rootDir = ROOT } = {}) {
  */
 export function writeLlmsFull({ rootDir = ROOT, check = false } = {}) {
   const outputs = [
-    { relativePath: LLMS_TXT_PATH, next: withComparisonsSection(read(rootDir, LLMS_TXT_PATH)) },
+    {
+      relativePath: LLMS_TXT_PATH,
+      next: withResilienceCoverage(withComparisonsSection(read(rootDir, LLMS_TXT_PATH)), publishedRankedCountries(rootDir)),
+    },
     { relativePath: OUTPUT_PATH, next: buildLlmsFullText({ rootDir }) },
   ].map(({ relativePath, next }) => {
     const path = join(rootDir, relativePath);

@@ -233,10 +233,16 @@ const RENDER = `
         var event = otherView.items[otherIndex];
         if (!event || typeof event !== "object") continue;
         var eventRow = el("div", "drow");
-        eventRow.appendChild(el("span", "dplace", collapseWs(event.title) || "Natural event"));
+        var eventSource = httpUrl(event.sourceUrl);
+        var eventPlace = el(eventSource ? "a" : "span", "dplace", collapseWs(event.title) || "Natural event");
+        if (eventSource) { eventPlace.href = eventSource; eventPlace.target = "_blank"; eventPlace.rel = "noopener noreferrer"; }
+        eventRow.appendChild(eventPlace);
         var eventDetails = [collapseWs(event.type), collapseWs(event.country)].filter(Boolean);
-        var eventMagnitude = num(event.magnitude);
-        if (eventMagnitude != null) eventDetails.push("Magnitude " + eventMagnitude);
+        var eventMagnitude = typeof event.magnitude === "number" && Number.isFinite(event.magnitude) ? event.magnitude : null;
+        var eventUnit = typeof event.magnitudeUnit === "string" ? collapseWs(event.magnitudeUnit) : "";
+        if (eventMagnitude == null) eventDetails.push("Measurement unavailable");
+        else if (eventUnit) eventDetails.push("Measurement: " + eventMagnitude + " " + eventUnit);
+        else eventDetails.push("Reported value: " + eventMagnitude + "; unit unavailable" + (eventMagnitude === 0 ? "; measurement status unavailable" : ""));
         if (typeof event.closed === "boolean") eventDetails.push(event.closed ? "Closed" : "Active");
         eventRow.appendChild(el("span", "dtime", eventDetails.join(" · ")));
         otherView.section.appendChild(eventRow);

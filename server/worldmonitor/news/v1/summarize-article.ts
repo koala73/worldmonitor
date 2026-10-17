@@ -22,6 +22,7 @@ import {
 } from '../../../_shared/premium-check';
 import {
   markRetryableResponse,
+  markUnservedLlmResponse,
   setResponseHeader,
 } from '../../../_shared/response-headers';
 import { stripThinkingTags } from '../../../_shared/llm';
@@ -86,6 +87,14 @@ export async function summarizeArticle(
   const { provider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
   const systemAppend = isPremium && typeof req.systemAppend === 'string' ? req.systemAppend : '';
   const requiresPremium = mode !== 'translate';
+  // Every empty-summary envelope below (denied, skipped, rejected, failed)
+  // serves no LLM output; the gateway reserved a daily-quota slot for this
+  // call and releases it on this marker. The served and cached paths do not
+  // go through here and stay charged.
+  const unserved = (payload: SummarizeArticleResponse): SummarizeArticleResponse => {
+    markUnservedLlmResponse(ctx.request);
+    return payload;
+  };
 
   const MAX_HEADLINES = 10;
   const MAX_HEADLINE_LEN = 500;
@@ -135,7 +144,7 @@ export async function summarizeArticle(
         setResponseHeader(ctx.request, 'Retry-After', String(billingDenial.retryAfterSeconds));
         setResponseHeader(ctx.request, 'X-Billing-Verification', billingDenial.code);
       }
-      return {
+      return unserved({
         summary: '',
         model: '',
         provider,
@@ -145,9 +154,9 @@ export async function summarizeArticle(
         errorType: getPremiumRpcBillingErrorType(billingDenial),
         status: 'SUMMARIZE_STATUS_ERROR',
         statusDetail: billingDenial.code,
-      };
+      });
     }
-    return {
+    return unserved({
       summary: '',
       model: '',
       provider: provider,
@@ -157,11 +166,11 @@ export async function summarizeArticle(
       errorType: 'AuthError',
       status: 'SUMMARIZE_STATUS_ERROR',
       statusDetail: 'Pro subscription required',
-    };
+    });
   }
 
   if (mode === 'translate' && !TRANSLATE_TARGET_LANGUAGES.has(variant)) {
-    return {
+    return unserved({
       summary: '',
       model: '',
       provider,
@@ -171,7 +180,7 @@ export async function summarizeArticle(
       errorType: 'ValidationError',
       status: 'SUMMARIZE_STATUS_ERROR',
       statusDetail: 'Unsupported translation language',
-    };
+    });
   }
 
   // Provider credential check
@@ -182,7 +191,7 @@ export async function summarizeArticle(
 
   const credentials = getProviderCredentials(provider);
   if (!credentials) {
-    return {
+    return unserved({
       summary: '',
       model: '',
       provider: provider,
@@ -192,14 +201,14 @@ export async function summarizeArticle(
       errorType: '',
       status: 'SUMMARIZE_STATUS_SKIPPED',
       statusDetail: skipReasons[provider] || `Unknown provider: ${provider}`,
-    };
+    });
   }
 
   const { apiUrl, model, headers: providerHeaders, extraBody } = credentials;
 
   // Request validation
   if (!headlines || !Array.isArray(headlines) || headlines.length === 0) {
-    return {
+    return unserved({
       summary: '',
       model: '',
       provider: provider,
@@ -209,7 +218,7 @@ export async function summarizeArticle(
       errorType: 'ValidationError',
       status: 'SUMMARIZE_STATUS_ERROR',
       statusDetail: 'Headlines array required',
-    };
+    });
   }
 
   try {
@@ -375,7 +384,7 @@ export async function summarizeArticle(
       };
     }
 
-    return {
+    return unserved({
       summary: '',
       model: '',
       provider: provider,
@@ -385,13 +394,13 @@ export async function summarizeArticle(
       errorType: '',
       status: 'SUMMARIZE_STATUS_ERROR',
       statusDetail: 'Empty response',
-    };
+    });
 
   } catch (err: unknown) {
     // sentry-coverage-ok Provider failures return SUMMARIZE_STATUS_ERROR for the client fallback chain.
     const error = err instanceof Error ? err : new Error(String(err));
     console.error(`[SummarizeArticle:${provider}] Error:`, error.name, error.message);
-    return {
+    return unserved({
       summary: '',
       model: '',
       provider: provider,
@@ -403,6 +412,6 @@ export async function summarizeArticle(
       errorType: error.name,
       status: 'SUMMARIZE_STATUS_ERROR',
       statusDetail: error.name,
-    };
+    });
   }
 }

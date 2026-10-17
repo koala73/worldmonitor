@@ -97,7 +97,7 @@ export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCount
     const prevDebtPct = Number(debtByYear[prevYear]);
     const hasPrev = Number.isFinite(prevDebtPct) && prevDebtPct > 0;
 
-    const gdpUsd = gdpLatest * 1e9;
+    const gdpUsd = gdpLatest;
     let debtUsd = (effectiveDebtPct / 100) * gdpUsd;
 
     // Override USA with live Treasury data when available

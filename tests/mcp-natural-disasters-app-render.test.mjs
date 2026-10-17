@@ -83,6 +83,113 @@ async function mount(wire, check) {
 const groups = document => document.getElementById('groups').textContent;
 
 describe('Natural Disasters actual-handler resource source truth', () => {
+  it('renders supplied HTTP and HTTPS other-event sources as safe original-title links', async () => {
+    const supplied = [
+      { title: 'Controlled <img src=x onerror=alert(1)> storm', sourceUrl: 'https://example.invalid/advisory?id=1&source=original' },
+      { title: 'Controlled flood', sourceUrl: ' http://example.invalid/flood ' },
+    ];
+    const wire = await result({ dataset: ['other'] }, 'other', sources => {
+      sources.get('natural:events:v1').data.events = supplied;
+    });
+    await mount(wire, document => {
+      const places = [...document.querySelectorAll('.dplace')];
+      assert.equal(places.length, supplied.length);
+      for (const [index, place] of places.entries()) {
+        assert.equal(place.tagName, 'A', 'a supplied valid OTHER source must be actionable');
+        assert.equal(place.getAttribute('href'), supplied[index].sourceUrl.trim());
+        assert.equal(place.textContent, supplied[index].title);
+        assert.equal(place.target, '_blank');
+        assert.equal(place.rel, 'noopener noreferrer');
+      }
+      assert.equal(document.querySelector('#groups img'), null);
+      assert.doesNotMatch(groups(document), /Earthquakes|Wildfires/);
+    });
+  });
+  it('keeps missing and invalid other-event sources as honest plain title text', async () => {
+    for (const sourceUrl of [undefined, '', 'javascript:alert(1)', 'data:text/html,unsafe', 'ftp://example.invalid/event', '/relative/event', 'not a URL']) {
+      const title = 'Controlled <script>event</script>';
+      const wire = await result({ dataset: ['other'] }, 'other', sources => {
+        sources.get('natural:events:v1').data.events = [{ title, sourceUrl }];
+      });
+      await mount(wire, document => {
+        assert.equal(document.querySelector('.dplace').tagName, 'SPAN');
+        assert.equal(document.querySelector('.dplace').textContent, title);
+        assert.equal(document.querySelectorAll('#groups a, #groups script').length, 0);
+      });
+    }
+  });
+  it('delegates an other-event source to the supported host and discloses unsupported hosts without changing observations', async () => {
+    const sourceUrl = 'https://example.invalid/storm/advisory?issue=1&region=west';
+    const wire = await result({ dataset: ['other'] }, 'other', sources => {
+      sources.get('natural:events:v1').data.events = [{ title: 'Controlled linked storm', sourceUrl,
+        magnitude: 75, magnitudeUnit: 'kt', closed: false }];
+    });
+    await mount(wire, document => {
+      const win = document.defaultView;
+      const parent = win.eval('window.parent');
+      const posted = [];
+      const postMessage = parent.postMessage;
+      parent.postMessage = message => { posted.push(message); postMessage(message); };
+      const reply = data => win.dispatchEvent(new win.MessageEvent('message', {
+        source: parent, data: { jsonrpc: '2.0', ...data },
+      }));
+      const place = document.querySelector('.dplace');
+      assert.equal(place.tagName, 'A');
+      const before = groups(document);
+      const footer = document.getElementById('foot').textContent;
+      const usage = document.getElementById('panel-usage').textContent;
+      const unsupportedClick = new win.Event('click', { bubbles: true, cancelable: true });
+      place.dispatchEvent(unsupportedClick);
+      assert.equal(unsupportedClick.defaultPrevented, true);
+      assert.equal(posted.filter(message => message.method === 'ui/open-link').length, 0);
+      assert.equal(document.getElementById('source-link-status').textContent, 'Opening source links is unavailable in this host.');
+      reply({ id: 1, result: { hostCapabilities: { openLinks: {} } } });
+      const supportedClick = new win.Event('click', { bubbles: true, cancelable: true });
+      place.dispatchEvent(supportedClick);
+      assert.equal(supportedClick.defaultPrevented, true);
+      const requests = posted.filter(message => message.method === 'ui/open-link');
+      assert.equal(requests.length, 1);
+      assert.equal(requests[0].params.url, sourceUrl);
+      reply({ id: requests[0].id, result: {} });
+      assert.equal(document.getElementById('source-link-status').textContent, '');
+      assert.equal(groups(document), before);
+      assert.match(before, /Measurement: 75 kt.*Active/);
+      assert.equal(document.getElementById('foot').textContent, footer);
+      assert.equal(document.getElementById('panel-usage').textContent, usage);
+    });
+  });
+  it('discloses supplied event units and preserves measured zero without typing unitless values', async () => {
+    const wire = await result({ dataset: ['other'] }, 'other', sources => {
+      sources.get('natural:events:v1').data.events = [
+        { title: 'Wind', magnitude: 75, magnitudeUnit: 'kt' },
+        { title: 'Calm', magnitude: 0, magnitudeUnit: ' kt ' },
+        { title: 'Placeholder or observation', magnitude: 0, magnitudeUnit: '' },
+        { title: 'Untyped value', magnitude: 6 },
+        { title: 'Literal unit', magnitude: 4, magnitudeUnit: '<img src=x onerror=alert(1)>' },
+      ];
+    });
+    await mount(wire, async (document, send) => {
+      assert.match(groups(document), /Wind.*Measurement: 75 kt/);
+      assert.match(groups(document), /Calm.*Measurement: 0 kt/);
+      assert.match(groups(document), /Placeholder or observation.*Reported value: 0; unit unavailable; measurement status unavailable/);
+      assert.match(groups(document), /Untyped value.*Reported value: 6; unit unavailable/);
+      assert.match(groups(document), /Literal unit.*Measurement: 4 <img src=x onerror=alert\(1\)>/);
+      assert.equal(document.querySelector('img'), null);
+      assert.doesNotMatch(groups(document), /Magnitude /);
+      await send(await result({ dataset: ['other'] }, 'empty'));
+      assert.doesNotMatch(groups(document), /Measurement:|Reported value:|Literal unit/);
+    });
+  });
+  it('keeps absent, nonfinite and nonnumeric event measurements unavailable', async () => {
+    for (const magnitude of [undefined, null, NaN, Infinity, -Infinity, '', true, false, '75']) {
+      await mount({ structuredContent: { data: { events: { events: [
+        { title: 'Unknown measurement', magnitude, magnitudeUnit: 'kt' },
+      ] } } } }, document => {
+        assert.match(groups(document), /Unknown measurement.*Measurement unavailable/);
+        assert.doesNotMatch(groups(document), /Measurement:|Reported value:|Magnitude /);
+      });
+    }
+  });
   it('shows explicit detail limits and counts safely without changing source dates, links or recovery', async () => {
     const wire = await result();
     const coverage = { count_scope: 'post_filter_snapshot', details: [
@@ -180,7 +287,8 @@ describe('Natural Disasters actual-handler resource source truth', () => {
     const empty = await result({}, 'empty');
     const missing = await result({ dataset: ['other'] }, 'other', sources => sources.set('natural:events:v1', null));
     await mount(healthy, async (document, send) => {
-      assert.doesNotMatch(groups(document), /partial|unavailable/);
+      assert.doesNotMatch(groups(document), /partial|coverage is unavailable|temporarily unavailable/);
+      assert.match(groups(document), /Reported value: 6; unit unavailable/);
       await send(empty);
       assert.match(groups(document), /No natural-hazard events available/);
       await send(missing);

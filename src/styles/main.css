@@ -4869,6 +4869,13 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   overflow-wrap: anywhere;
 }
 
+/* #9095: outlets that carried the same copy, counted as one publisher. */
+.publisher-roster .publisher-same-copy {
+  flex-basis: 100%;
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  color: var(--semantic-elevated);
+}
+
 .tier-chip {
   padding: 0 4px;
   border-radius: 2px;

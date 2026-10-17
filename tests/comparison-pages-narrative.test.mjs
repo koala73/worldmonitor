@@ -262,6 +262,12 @@ describe('comparison page narrative depth (#7743)', () => {
     for (const [slug, html] of pages) {
       const main = mainEl(html);
       const lede = normalizeText(main.querySelector('p.lede')?.textContent);
+      if (COMPARISON_PAGES.find((page) => page.slug === slug).layout === 'shortlist') {
+        // The shortlist opens on a ranked intro instead of a Direct answer and
+        // explains the #1 placement inside the ranking, not in a Why-we-win H2.
+        assert.match(lede, /World Monitor/, slug + ' intro must name the #1 entry');
+        continue;
+      }
       const whyHeading = [...main.querySelectorAll('h2')]
         .find((node) => normalizeText(node.textContent).startsWith('Why World Monitor wins'));
       assert.ok(whyHeading, slug + ' must keep the Why-we-win H2');

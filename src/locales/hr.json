@@ -3034,6 +3034,7 @@
       "tier4OnlyHint": "Svaki medij koji izvještava o tome izvor je 4. razine (agregatori i blogovi). Ovo opisuje doseg izvještavanja, ne točnost.",
       "rosterListed": "({{listed}} na popisu)",
       "rosterFeeds": "Viđeni kanali: {{labels}}",
+      "rosterSameCopy": "Isti tekst, računa se jednom",
       "rosterLegend": "Razine rangiraju izvore; ne ocjenjuju ovu tvrdnju.",
       "tierDocsLink": "Kako se dodjeljuju razine",
       "tierChip": "R{{tier}}",

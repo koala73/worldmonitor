@@ -90,14 +90,14 @@ export const COMPARE_HUB_NARRATIVE = {
     heading: 'How to choose a comparison',
     paragraphs: [
       'Start with the task you need to complete. Compare tools with the same criteria, then consult the named vendor\'s current documentation for the capabilities that matter to you.',
-      'For global multi-domain monitoring, open Best Real-Time Geopolitical Risk Dashboards. For structured historical conflict research, open World Monitor vs ACLED. For Ukraine frontline detail, open World Monitor vs Deep State Map.',
+      "For global multi-domain monitoring, open Best Geopolitical Risk Intelligence Platforms in 2026: The Buyer's Shortlist. For structured historical conflict research, open World Monitor vs ACLED. For Ukraine frontline detail, open World Monitor vs Deep State Map.",
       'For programmatic API or MCP access, open MCP Servers for Geopolitical Data. For monitoring versus travel assistance, open Travel Risk Intelligence vs Assistance. Check the detailed comparison\'s dated methodology, then confirm the current price or capability with the vendor because both can change.',
     ],
   },
   concessions: {
     heading: 'What we concede on purpose',
     paragraphs: [
-      'ACLED wins historical coded-event depth, academic citability, and downloadable structured datasets. GDELT wins raw archive volume back to 1979. Deep State Map wins Ukraine frontline granularity maintained by analysts. Dataminr wins proprietary social ingestion and sub-minute alerting SLAs. Recorded Future wins enterprise threat-intelligence depth across cyber, physical, and geopolitical risk. IMF PortWatch wins chokepoint coverage (28 to our ' + CHOKEPOINT_COUNT + '), bulk download, and IMF plus Oxford authority at zero cost. International SOS wins assistance delivery: 27 centers, medical evacuation, and case response. World Monitor has no assistance centers, no medical evacuation, and no case response, and the travel page says so.',
+      'ACLED wins historical coded-event depth, academic citability, and downloadable structured datasets. GDELT wins raw archive volume back to 1979. Deep State Map wins Ukraine frontline granularity maintained by analysts. Dataminr wins proprietary social ingestion and real-time alerting under an enterprise SLA. Recorded Future wins enterprise threat-intelligence depth across cyber, physical, and geopolitical risk. IMF PortWatch wins chokepoint coverage (28 to our ' + CHOKEPOINT_COUNT + '), bulk download, and IMF plus Oxford authority at zero cost. International SOS wins assistance delivery: 27 centers, medical evacuation, and case response. World Monitor has no assistance centers, no medical evacuation, and no case response, and the travel page says so.',
       'Those concessions are the credibility argument. A page that swept every column would read as marketing, and marketing is the thing this family is built not to be. If you need the cell they win, buy them. If you need a no-signup multi-domain watch with published prices, REST from $99.99/month, and MCP from Pro at $39.99/month, stay on the child page and read the rest of the matrix.',
     ],
   },
@@ -121,9 +121,16 @@ export const COMPARISON_NARRATIVES = {
     ],
     competitorProfiles: [
       {
+        name: 'World Monitor',
+        paragraphs: [
+          'World Monitor is the pick when the reason you searched is coverage: every theatre rather than one, and conflict next to shipping, aviation, markets, cables and seismic signals. The map is free with no signup. Each panel names its source, and news items carry badges for the outlet\'s editorial tier, propaganda risk and state affiliation where they apply, so a reader can check where a marker came from.',
+          'It also answers the second reason teams leave a map: they want to be told. On Pro, alert rules filter by country, event type and severity and deliver to Slack, Discord, Telegram, email or a webhook signed with HMAC-SHA256, in real time or as a daily digest. Real-time alerts link to the original report, and email digests link every item. Alerts are scoped by country, not by a radius around a site, and World Monitor aggregates published reports rather than verifying events on the ground.',
+        ],
+      },
+      {
         name: 'Liveuamap',
         paragraphs: [
-          'Liveuamap is a conflict-event map with a long public audience and region-specific variants. The free, ad-funded map is the product most people mean by the name. The paid API is a separate SKU: Pro at $150/month for 200 requests/day and Enterprise from $1,000/month for 1,500 requests/day, published at liveuamap.com/promo/api. It is fast at headlines. It is not a multi-domain watch.',
+          'Liveuamap is a live news map centered on conflict and security events, with a long public audience and region-specific variants. The free, ad-funded map is the product most people mean by the name. The paid API is a separate SKU: Pro at $150/month for 200 requests/day and Enterprise from $1,000/month for 1,500 requests/day, published at liveuamap.com/promo/api. It is fast at headlines. It is not a multi-domain watch.',
           'Pick Liveuamap when you want a familiar conflict map and you do not need maritime AIS, aviation, markets, cables, or seismic context on the same canvas. Pick something else when the API quota or the missing domains are the reason you searched for alternatives.',
         ],
       },
@@ -211,92 +218,6 @@ export const COMPARISON_NARRATIVES = {
     ],
   },
 
-  'best-geopolitical-risk-dashboards': {
-    heading: 'Who these geopolitical risk dashboards are for',
-    headingProse: [
-      'Best-of lists fail when they score an asset-allocation memo and a live map as if they were the same product. BlackRock GRD and IISS are analyst publications. World Monitor is a real-time dashboard. OrreryX is a priced consultative ladder. Statista is an index series. The blocks below keep those jobs separate so the ranking is a ranking of fit, not of brand weight.',
-      'A useful ranking also says who should not be on it. Bloomberg Terminal is a market professional product, not a geopolitical-risk dashboard in this sense, so it is not a row here. Palantir is an enterprise platform without list pricing, so it is not a row here either. This page is the public, checkable set: live maps, analyst publications with a public description, a priced consultative ladder, an index series, and an AI briefing vendor that still has not filled its public cells. If a vendor cannot fill Price, latency, and access from a public page, it does not get a trophy on this list; it gets a missing cell.',
-    ],
-    competitorProfiles: [
-      {
-        name: 'BlackRock Geopolitical Risk Dashboard',
-        paragraphs: [
-          'BlackRock GRD is a client research product. Updates are monthly or quarterly analyst cycles. Access is client-only. There is no public REST or MCP cell. The output is thematic risk for asset allocation, written for people who already have a BlackRock relationship.',
-          'Pick it if you are that client and you need the memo in the allocation process. Do not pick it if you need a no-signup live map; it is not built to be one, and treating it as a dashboard alternative is how these lists go wrong.',
-        ],
-      },
-      {
-        name: 'IISS Six Analytic',
-        paragraphs: [
-          'IISS Six Analytic sits on top of the Military Balance franchise: measured military-capability datasets and expert review. Cadence is periodic analyst updates. Pricing is an undisclosed subscription. There is no public API we can quote.',
-          'Pick IISS when the question is force structure, inventory, and military balance. Pick a live dashboard when the question is what moved in the last hour across conflict, maritime, and aviation feeds.',
-        ],
-      },
-      {
-        name: 'OrreryX',
-        paragraphs: [
-          'OrreryX is the rare competitor that publishes a price ladder: from $1.99/month to $34.99/month. That undercuts World Monitor Pro on list price. The product is consultative geopolitical risk analysis with periodic updates, not a multi-domain live map, and MCP status is unverified.',
-          'Pick OrreryX when you want a cheap, published-price analyst product and you do not need live AIS or aviation. The published ladder is a genuine win and this page says so in the concession list.',
-        ],
-      },
-      {
-        name: 'the-world-now.com',
-        paragraphs: [
-          'the-world-now.com is a free global event browser with no signup. It is near-real-time for events, not a scored index and not a programmatic platform. No API cell is verified.',
-          'Pick it for casual event browsing. It is in the free-without-signup set with World Monitor; it is not in the fusion or API set.',
-        ],
-      },
-      {
-        name: 'Statista GPR Index',
-        paragraphs: [
-          'Statista\'s geopolitical risk index is a quantitative series with monthly updates and a long history. Access is a Statista account. Export exists; a live dashboard and MCP server do not. The job is time-series work in a spreadsheet or a model, not situational awareness.',
-          'Pick Statista when you need a GPR index history. Do not pick it as a real-time dashboard; the cadence and the output format are the tell.',
-        ],
-      },
-      {
-        name: 'Earthian AI',
-        paragraphs: [
-          'Earthian AI markets AI-assisted geopolitical risk briefings. Pricing is undisclosed. Cadence is periodic. Source inventory and MCP status are unverified from public pages, so those cells stay unknown rather than guessed.',
-          'If you already evaluate it, demand the same cells this matrix requires. Until those pages exist, it cannot win a comparison that is built on public evidence.',
-        ],
-      },
-    ],
-    evaluationHeading: 'What to look for in a geopolitical risk dashboard',
-    evaluationProse: [
-      'Separate publications from dashboards before you rank anything. A monthly analyst note can be excellent and still lose a real-time query. A live map can be excellent and still lose an asset-allocation query. The "best" dashboard is the one whose update latency, access model, and output format match the decision you have to make this week.',
-      'Weight five criteria. Latency: live and minute-level versus monthly or quarterly. Price transparency: a public catalog versus client-only or undisclosed. Access friction: signup, contract, or none. Coverage: a single index or theme versus multiple live domains. Programmatic path: REST, MCP, export, or a PDF.',
-      'Then require evidence. If a vendor will not publish a price, do not invent one. If a vendor will not show a live canvas, do not score it as a dashboard. If a vendor\'s advantage is expert review, concede that cell and stop trying to beat it with a map. The matrix is the rubric; the concession list is the sanity check.',
-    ],
-    switchHeading: 'Why teams shop for a new geopolitical risk dashboard',
-    switchProse: [
-      'The trigger is usually latency or access. Institutional products update on analyst cycles and sit behind client contracts. Teams that need to see a strait, an airspace, and a market move in the same hour cannot wait for the next memo. Teams that do not have a BlackRock or IISS seat cannot log in at all.',
-      'A second trigger is price opacity. When the incumbent will not publish a number, procurement stalls or a cheaper published ladder (OrreryX) or a free live map (World Monitor, the-world-now.com) enters the bake-off. The search query is "best dashboards" because the current tool failed a cycle-time or access test, not because a logo went stale.',
-    ],
-    methodologyProse: methodology(
-      'BlackRock GRD and IISS cells were taken from public product descriptions, not from client portals we cannot cite. OrreryX prices were read from its published tier list. Statista was scored as an index product, not as a live map.',
-    ),
-    usageHeading: 'How to use this best-dashboards ranking',
-    usageProse: [
-      'Treat "best" as best for a named output. If the output is an asset-allocation memo, BlackRock GRD is the product and a live map is a side feed. If the output is military-balance context, IISS is the product. If the output is a GPR time series, Statista is the product. If the output is a cheap analyst subscription with a public price ladder, OrreryX is the product. If the output is a canvas a stranger can open during an incident, World Monitor is the product and the-world-now.com is the lightweight cousin.',
-      'Do not average those jobs into a single score. Averaging is how a monthly memo "loses" to a live map on latency and a live map "loses" to IISS on the Military Balance, and everyone walks away thinking the comparison was biased. Use the concession list as the jobs we are not ranking first. Use the matrix to verify access and price. Use this section to pick the job before you pick the row.',
-      'If you are in procurement, write two requirements: one for analyst publications, one for real-time monitoring. Vendors that blur them should be asked which module they are bidding. Earthian AI, in particular, should be asked to fill the same public cells as everyone else before it gets a score. Unknown source mix and undisclosed price are not a mysterious advantage; they are missing evidence.',
-      'Latency numbers on this page are not a single SLA. World Monitor is source-dependent: live and minute-level feeds sit next to daily, weekly, and monthly datasets. BlackRock GRD and IISS publish on analyst cycles. Statista is monthly by design. Ranking them on one "speed" trophy is a category error. Rank them on whether their cycle matches the decision you have to make this afternoon versus this quarter.',
-    ],
-    whyWeWinBody: [
-      'World Monitor is the live, no-signup end of this list. It is not the analyst-review end. The dashboard is free, the cadence is source-dependent from live feeds to monthly datasets, and the programmatic path is published: Pro from $39.99/month with MCP, API Starter from $99.99/month. That is the product you can actually open without a relationship manager.',
-      'BlackRock and IISS still win institutional review. Statista still wins index history. OrreryX still wins a cheaper published analyst ladder. The ranking puts World Monitor first for real-time monitoring at zero cost because that is the axis the page is about, not because those other products are worse at their own jobs.',
-    ],
-    extraFaqs: [
-      ['Is BlackRock GRD free?', 'No. It is a client-only research product. World Monitor\'s public dashboard is free without signup.'],
-      ['Does IISS replace a live dashboard?', 'No. IISS wins military-balance depth. It does not replace live conflict, maritime, or aviation monitoring.'],
-      ['Why is OrreryX cheaper than World Monitor Pro?', 'OrreryX publishes tiers from $1.99/month. That is a real concession. World Monitor Pro is $39.99/month because it includes hosted MCP access and the live multi-domain dashboard, not because the list price is the lowest on the page.'],
-      ['Which dashboard is best for quantitative backtests?', 'Statista\'s GPR index, for a long monthly series. World Monitor is a live watch with rolling snapshots, not a decades-long single index.'],
-      ['Can I use these dashboards without a credit card?', 'World Monitor and the-world-now.com yes. BlackRock GRD, IISS, Statista, and Earthian AI no, on the public evidence we have.'],
-      ['Do any of these publish an MCP server?', 'World Monitor does, from Pro. The others are unverified or not applicable. Do not assume an "AI briefing" product speaks MCP.'],
-      ['How is "best" decided on this page?', 'Fit to a real-time, no-signup, multi-domain watch with published prices. Analyst publications can outrank us on review depth and still lose this query.'],
-    ],
-  },
-
   'worldmonitor-vs-liveuamap': {
     heading: 'Liveuamap alternatives',
     headingProse: [
@@ -306,7 +227,7 @@ export const COMPARISON_NARRATIVES = {
       {
         name: 'Liveuamap',
         paragraphs: [
-          'Liveuamap runs a public conflict-event map and sells API access as Pro at $150/month for 200 requests/day and Enterprise from $1,000/month for 1,500 requests/day. The free map is ad-funded. Coverage is conflict events. MCP status is unverified. The company has a decade of audience familiarity and region-specific map variants that a newer multi-domain dashboard will not copy.',
+          'Liveuamap runs a public news map centered on conflict and security events and sells API access as Pro at $150/month for 200 requests/day and Enterprise from $1,000/month for 1,500 requests/day. The free map is ad-funded. Coverage centers on conflict and security news, plus protests, disasters and weather. MCP status is unverified. The company has a decade of audience familiarity and region-specific map variants that a newer multi-domain dashboard will not copy.',
           'It wins on familiarity and on being the default conflict-headline canvas. It loses on API quota-per-dollar and on every domain it does not track. Teams that only need conflict pins should stay. Teams that need AIS, aviation, markets, or five times the daily API quota should not.',
         ],
       },
@@ -314,7 +235,7 @@ export const COMPARISON_NARRATIVES = {
     evaluationHeading: 'What to look for in a Liveuamap alternative',
     evaluationProse: [
       'Demand published numbers. A Liveuamap alternative that will not quote an API price is not competing on the axis that makes this page possible. Compare list price, daily quota, and whether the free canvas requires signup. Then compare domain coverage: conflict only, or conflict plus the infrastructure and market layers that turn a headline into a decision.',
-      'Score latency honestly. Liveuamap is near-real-time for conflict events. World Monitor is source-dependent: live and minute-level feeds plus slower datasets. If your only feed is conflict pins, Liveuamap\'s cadence is enough. If you also watch transits and airspace, a single conflict timer is the wrong SLA.',
+      'Score latency honestly. Liveuamap runs a live news feed but publishes no latency figure. World Monitor is source-dependent: live and minute-level feeds plus slower datasets. If your only feed is conflict pins, Liveuamap\'s cadence is enough. If you also watch transits and airspace, a single conflict timer is the wrong SLA.',
       'Keep the concession in view. Region-specific variants and a lighter ad-funded free experience are real Liveuamap wins. An alternative that cannot name them is selling, not comparing. The right alternative is the one that beats Liveuamap on the cell you actually failed — quota, price, or domains — without pretending to beat it on nostalgia.',
     ],
     switchHeading: 'Why teams switch from Liveuamap',
@@ -388,14 +309,21 @@ export const COMPARISON_NARRATIVES = {
   'worldmonitor-vs-gdelt': {
     heading: 'GDELT alternatives',
     headingProse: [
-      'GDELT Cloud is a firehose. It gives you global news event data in 15-minute batches, a keyless DOC 2.0 REST path, and BigQuery for bulk, with an archive to 1979. World Monitor is a curation layer: scored indices, hotspots, and convergence cues across conflict, maritime, aviation, and markets. The comparison is raw volume versus ready-to-act context, not two dashboards with different skins.',
+      'The GDELT Project is a firehose. It gives you global news event data in 15-minute batches, a keyless DOC 2.0 REST path, and BigQuery for bulk, with an archive to 1979. World Monitor is a curation layer: scored indices, hotspots, and convergence cues across conflict, maritime, aviation, and markets. The comparison is raw volume versus ready-to-act context, not two dashboards with different skins.',
     ],
     competitorProfiles: [
       {
-        name: 'GDELT Cloud',
+        name: 'GDELT Project',
         paragraphs: [
           'The GDELT Project ingests global news and emits event data. DOC 2.0 REST is free and keyless. BigQuery is the bulk path and needs a Google account. Community MCP implementations exist and are labelled as such. The archive is the headline win: decades of event data, conventionally cited to 1979.',
           'Pick GDELT when you have the engineering time to turn a firehose into meaning — models, counts, your own ontology. Do not pick it when you needed a scored dashboard this morning. The product is the stream. Meaning is your job.',
+        ],
+      },
+      {
+        name: 'GDELT Cloud',
+        paragraphs: [
+          'GDELT Cloud (gdeltcloud.com) is a separate commercial product, not the GDELT Project\'s free REST path. It sells event monitoring built on GDELT: events grouped into stories and connected to entities such as companies and facilities, delivered through an API, an MCP server and saved monitors, with self-serve plans and published prices.',
+          'Pick GDELT Cloud when the reason you are leaving raw GDELT is noise and you want cleaner GDELT-derived events and story clusters in one product. Pick World Monitor when you also need non-news signals (ship transits, flights, outages, hazards, markets) on the same map, country and severity alert rules delivered to Slack, Discord, Telegram, email or a signed webhook, and a public source inventory with an editorial tier on each outlet.',
         ],
       },
       {
@@ -418,7 +346,7 @@ export const COMPARISON_NARRATIVES = {
       'The other trigger is operations. BigQuery, quotas, and self-hosted wrappers have a staff cost. A hosted dashboard with published API and MCP prices is a different procurement conversation: you are buying the meaning layer, not the raw archive. Keep GDELT if you still need 1979. Add the watch if you need today.',
     ],
     methodologyProse: methodology(
-      'GDELT access paths (keyless DOC 2.0 REST and BigQuery) were read from public GDELT Cloud documentation. Community MCP implementations are labelled community, not as a GDELT-hosted product.',
+      'GDELT access paths (keyless DOC 2.0 REST and BigQuery) were read from public GDELT Project documentation. The GDELT Cloud description was read from gdeltcloud.com. Community MCP implementations are labelled community, not as a GDELT-hosted product.',
     ),
     usageHeading: 'How to use this GDELT comparison',
     usageProse: [
@@ -440,13 +368,13 @@ export const COMPARISON_NARRATIVES = {
 
   'worldmonitor-vs-dataminr': {
     headingProse: [
-      'Dataminr is an enterprise alerting company. It ingests proprietary social and public data, sells seconds-to-minutes alerting with SLAs, and does not publish list pricing. World Monitor is the public-source, published-price end of the same "tell me when something breaks" query. The page names what Dataminr wins, then names the only cells a transparent product can win: price, access, and an open catalog.',
+      'Dataminr is an enterprise alerting company. It ingests proprietary social and public data, sells real-time alerting under contracts with a published availability SLA, and does not publish list pricing. World Monitor is the public-source, published-price end of the same "tell me when something breaks" query. The page names what Dataminr wins, then names the only cells a transparent product can win: price, access, and an open catalog.',
     ],
     competitorProfiles: [
       {
         name: 'Dataminr',
         paragraphs: [
-          'Dataminr (Pulse and related enterprise products) sells real-time alerting to newsrooms, corporations, and the public sector. The distinctive cells are proprietary social-data ingestion, sub-minute alerting SLAs, and enterprise integration support. Those cells are why it wins procurement in rooms that already have a security budget. The company does not publish list pricing; licenses are negotiated. This page will not invent a number to fill that silence.',
+          'Dataminr (Pulse and related enterprise products) sells real-time alerting to newsrooms, corporations, and the public sector. The distinctive cells are proprietary social-data ingestion, real-time alerting under a published availability SLA, and enterprise integration support. Those cells are why it wins procurement in rooms that already have a security budget. The company does not publish list pricing; licenses are negotiated. This page will not invent a number to fill that silence.',
           'Who should pick Dataminr: organizations that need proprietary social firehoses, contractual SLAs, and a vendor that will sit in the incident channel. Who should pick something else: teams that cannot or will not sign an undisclosed enterprise contract, and teams that need a transparent public-source watch they can open without a salesperson. World Monitor is in the second set. It is not a Dataminr clone at a lower SLA.',
           `The category error is treating "alerting" as one product. Dataminr alerts from a proprietary stack. World Monitor alerts from ${PROVIDER_COUNT} attributed public providers. Speed and exclusivity versus transparency and price is the trade, and both sides of the trade are real.`,
         ],
@@ -468,11 +396,11 @@ export const COMPARISON_NARRATIVES = {
     ),
     whyWeWinBody: [
       `World Monitor publishes the prices Dataminr does not: $0 for the dashboard, Pro from $39.99/month with MCP, API Starter from $99.99/month. The data is ${PROVIDER_COUNT} attributed public providers rather than a proprietary social stack. That is the transparency trade: you can verify the cells, and you give up Dataminr's exclusivity and SLA.`,
-      'Dataminr still wins proprietary ingestion, sub-minute SLAs, and enterprise integration. If those cells are the job, this page is not a reason to churn. If the job is a public-source watch you can buy from a catalog, it is.',
+      'Dataminr still wins proprietary ingestion, real-time alerting under an SLA, and enterprise integration. If those cells are the job, this page is not a reason to churn. If the job is a public-source watch you can buy from a catalog, it is.',
     ],
     extraFaqs: [
       ['How much does Dataminr cost?', 'Dataminr does not publish list pricing. This page will not guess. World Monitor publishes $0 / $39.99 / $99.99 catalog SKUs.'],
-      ['Is World Monitor as fast as Dataminr?', 'Not as an SLA. Dataminr sells seconds-to-minutes proprietary alerting with enterprise SLAs. World Monitor cadence is source-dependent across public feeds.'],
+      ['Is World Monitor as fast as Dataminr?', 'Not as an SLA. Dataminr sells proprietary real-time alerting under enterprise contracts, though it publishes no latency figure. World Monitor cadence is source-dependent across public feeds.'],
       ['Does World Monitor ingest social media the way Dataminr does?', 'No. Dataminr\'s proprietary social ingestion is a conceded cell. World Monitor uses attributed public providers.'],
       ['Can a newsroom use World Monitor instead of Dataminr?', 'For a public-source watch, yes. For contractual alerting SLAs and proprietary social detection, no. Many rooms will keep Dataminr and add a public canvas.'],
       ['Does World Monitor require an enterprise contract?', 'No. The dashboard is free without signup. Dataminr licenses are enterprise-negotiated. That is a different access model, not a free Dataminr.'],
@@ -586,7 +514,7 @@ export const COMPARISON_NARRATIVES = {
 
   'mcp-servers-for-geopolitical-data': {
     headingProse: [
-      'Most "MCP servers for geopolitical data" are self-hosted wrappers around free upstreams. World Monitor is the hosted option: entitlements, quotas, OAuth, a published server-card, and an agent-skills index. Tool count is not our axis. Satellite MCP\'s 171 tools and world-intel-mcp\'s 120 tools beat us on that row, and the concession list says so before the rest of the page argues hosted access.',
+      'Most "MCP servers for geopolitical data" are self-hosted wrappers around free upstreams. World Monitor is the hosted multi-domain option: entitlements, quotas, OAuth, a published server-card, and an agent-skills index. Tool count is not our axis. Satellite MCP\'s 171 tools and world-intel-mcp\'s 120 tools beat us on that row, and the concession list says so before the rest of the page argues hosted access.',
     ],
     competitorProfiles: [
       {
@@ -618,17 +546,17 @@ export const COMPARISON_NARRATIVES = {
         ],
       },
       {
-        name: 'GDELT Cloud MCP',
+        name: 'GDELT MCP (community)',
         paragraphs: [
-          'Community MCP implementations on top of GDELT Cloud. The upstream is the 15-minute global news firehose and the 1979 archive. The MCP is not a GDELT-hosted product with a published enterprise SLA; it is community plumbing, labelled that way in the matrix.',
+          'Community MCP implementations on top of the GDELT Project. The upstream is the 15-minute global news firehose and the 1979 archive. The MCP is not a GDELT-hosted product with a published enterprise SLA; it is community plumbing, labelled that way in the matrix.',
           'Pick it for raw volume in an agent loop. Pick World Monitor for scored multi-domain access with a server-card you can point an agent at.',
         ],
       },
       {
         name: 'Off-Nadir Delta',
         paragraphs: [
-          'Open-source, self-hosted imagery and geospatial tooling over public sources. Upstream dependent. The job is imagery workflows, not a hosted geopolitical data plane.',
-          'Pick it when the agent needs imagery tools you will run. It is not competing for the hosted multi-domain cell.',
+          'A hosted event intelligence service from Off-Nadir Lab. It turns news reporting and open data into geolocated events, and each event records whether a satellite could have observed it, using Sentinel-1, Sentinel-2, NISAR and VIIRS. The MCP server is hosted, authenticates with OAuth 2.1 or an API key, and is on every plan, Free included, with calls paid from a token balance. The service is proprietary; its MCP client and Python SDK on GitHub are Apache-2.0 and forward calls to the hosted server.',
+          'Pick it when an agent needs event-to-satellite evidence at a published price: free for personal use, $59/month for commercial use. You cannot self-host it.',
         ],
       },
       {
@@ -661,7 +589,7 @@ export const COMPARISON_NARRATIVES = {
       'Auth is the other split. A local stdio process with a personal API key is not OAuth with entitlements. Agents that will be shared across a team need the second. Agents that live on one laptop can use the first. World Monitor MCP is built for the shared case. Satellite MCP and OSINT MCP are built for the laptop-and-fork case. GDELT community MCP is built for the firehose case. If your proof-of-concept used stdio, do not assume production can keep that shape once two more people join the desk.',
     ],
     whyWeWinBody: [
-      'World Monitor is the hosted geopolitical MCP: entitlements, quotas, OAuth, a published server-card, and an agent-skills index over live multi-domain data. Agents authenticate once. You do not run the process. That is the cell self-hosted packs are not selling.',
+      'World Monitor is the hosted multi-domain geopolitical MCP: entitlements, quotas, OAuth, a published server-card, and an agent-skills index over live multi-domain data. Agents authenticate once. You do not run the process. That is the cell self-hosted packs are not selling.',
       'They still win tool count and the ability to fork for free. If your requirement is 171 satellite tools on a box you control, take Satellite MCP. If your requirement is governed multi-domain access, take the hosted server and stop scoring this as a hammer-versus-hammer fight.',
       'The hosted cell also includes a documented quota. Self-hosted packs inherit whatever the upstream API will tolerate today, which is not a quota you can put in a contract. Agents that retry aggressively will discover that difference in production. Pro at $39.99/month is the price of not discovering it that way, plus OAuth and the server-card. It is not the price of 171 tools, and this page will not sell it as that. If you need both, run the satellite pack locally and authenticate the multi-domain session against the hosted server.',
     ],
@@ -670,7 +598,7 @@ export const COMPARISON_NARRATIVES = {
       ['Why concede 171 tools?', 'Because it is true. Satellite MCP\'s tool-count breadth is a real win for satellite-only workflows. We do not compete on that row.'],
       ['Does World Monitor wrap GDELT only?', `No. It curates ${PROVIDER_COUNT} attributed providers across domains. GDELT-derived signals are in the mix, not the whole mix.`],
       ['Can I point Claude or another agent at World Monitor MCP?', 'Yes. That is what a published server-card and OAuth are for. Confirm current auth docs at /mcp; this page is the comparison, not the live protocol spec.'],
-      ['Is a community GDELT MCP official?', 'No. It is labelled community implementation. GDELT Cloud is the upstream data; the MCP is plumbing.'],
+      ['Is a community GDELT MCP official?', 'No. It is labelled community implementation. The GDELT Project is the upstream data; the MCP is plumbing.'],
       ['Should I self-host and also buy Pro?', 'You can. Self-host the satellite or OSINT packs you need, and use World Monitor MCP for the governed multi-domain session. The page is a comparison, not a monopoly.'],
       ['What does "Unverified" mean in the MCP column?', 'We could not cite a public MCP server or community implementation on the check date. It is not a "No." It is a refusal to guess.'],
     ],
@@ -749,13 +677,13 @@ export const COMPARISON_NARRATIVES = {
     ),
     usageHeading: 'How to use this chokepoint tools list',
     usageProse: [
-      'Buy PortWatch first if you do not already have it. It is free, it is authoritative, and it wins the count cell. Then ask whether counts are the whole question. If yes, stop. If the next sentence in the incident is about airspace, cables, conflict, or freight, add World Monitor. If the next sentence is about a specific vessel, add MarineTraffic or Windward. If it is about cargo flows as a commercial product, add Kpler. If it is about editorial maritime risk, add Lloyd\'s List Intelligence.',
+      'Use PortWatch for transit-count history: it is free, it is authoritative, and it wins the count cell. Then ask whether counts are the whole question. If yes, stop. If you need to see what changed at a strait as it happens, or the next sentence in the incident is about airspace, cables, conflict, or freight, add World Monitor. If the next sentence is about a specific vessel, add MarineTraffic or Windward. If it is about cargo flows as a commercial product, add Kpler. If it is about editorial maritime risk, add Lloyd\'s List Intelligence.',
       'Do not let a fusion demo talk you out of PortWatch\'s bulk download. Do not let a vessel platform talk you out of a strait index. Chokepoint monitoring is three jobs that share a waterway: the count, the ship, and the rest of the world. This page lists vendors for all three so you can stack them instead of declaring a false winner. Our coverage number is ' + CHOKEPOINT_COUNT + ' because that is the registry, not because a larger number would look better next to 28.',
       'Enterprise maritime vendors without list prices — Kpler, Lloyd\'s List Intelligence, Windward — belong in a negotiated bake-off, not in a "which free tool" argument. SENTINEL GIP does publish a floor price, which is useful, but it does not inherit PortWatch\'s IMF plus Oxford citation. straits.live is the simple public window. Stack, do not average. A desk that buys fusion and skips counts, or buys AIS and skips the strait index, will rebuild the missing layer under incident pressure.',
     ],
     whyWeWinBody: [
       'World Monitor fuses ' + CHOKEPOINT_COUNT + ' named chokepoints with conflict events, aviation disruption, market moves, and climate hazards. A slowdown can be read next to the cable cut, the airspace closure, and the freight spike. PortWatch will give you the transit count. We give you the rest of the hour.',
-      'We still lose coverage (28 versus ' + CHOKEPOINT_COUNT + '), bulk download formats, and IMF plus Oxford authority. Those losses are the first thing on the page because a fusion story that hides PortWatch is not survivable. Buy PortWatch for counts. Add World Monitor when counts are not the whole question.',
+      'We still lose coverage (28 versus ' + CHOKEPOINT_COUNT + '), bulk download formats, and IMF plus Oxford authority. Those losses are the first thing on the page because a fusion story that hides PortWatch is not survivable. Use PortWatch for counts. Add World Monitor when counts are not the whole question.',
       'Fusion here means a named chokepoint next to conflict, aviation, market, and climate layers on one canvas, not a promise that we re-derived PortWatch\'s transit model. We do not out-IMF the IMF. We put the strait in the same view as the rest of the incident. That is a narrower claim than "best chokepoint tool," and it is the only claim that survives the 28-versus-' + CHOKEPOINT_COUNT + ' sentence. Download PortWatch\'s bulk files for the time series; keep this canvas for the hour the series breaks.',
     ],
     extraFaqs: [
@@ -906,7 +834,7 @@ export const COMPARISON_NARRATIVES = {
       {
         name: 'Factal',
         paragraphs: [
-          'Factal is journalist-verified breaking news from social signals. Subscription, verification archive, a newsroom product. The win is verification labor, not evacuation.',
+          'Factal sells incident alerts verified by journalists, for a flat fee per team with a 30-day free trial and REST data back to 2018. The win is verification labor, not evacuation.',
           'Pick Factal to verify a clip. Pick International SOS to move a person. Pick World Monitor to watch public domains continuously.',
         ],
       },

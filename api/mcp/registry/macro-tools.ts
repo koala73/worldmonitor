@@ -35,8 +35,9 @@ const CPI_READING_SCHEMA = {
 
 export const MACRO_TOOLS: ToolDef[] = [{
   name: 'get_macro_history',
+  title: 'Inflation, rates and yield history',
   _outputBudgetBytes: 262144,
-  description: 'CPI, interest-rate and sovereign yield histories from seeded official-source reports. Select a dataset; country is required for world CPI or government yields. Default 30 newest observations per series, kept in chronological order; maximum 365. Set history=false for latest snapshots. Dates are Unix milliseconds, rates and yields are percentages. Missing readings or tenors are unknown, not zero. Preserve source, frequency, index base and yield measure when comparing countries. A truncated response is not full history; unavailable is not a zero reading.',
+  description: 'CPI, interest-rate and sovereign yield histories from seeded official-source reports. Select a dataset; country is required for world CPI or government yields. Default 30 newest observations per series, kept in chronological order; maximum 365. Set history=false for latest snapshots. Dates are Unix milliseconds, rates and yields are percentages. Missing readings or tenors are unknown, not zero. Series differ in source, frequency, index base and yield measure; a series records those that apply to its dataset. A truncated response is not full history; unavailable is not a zero reading.',
   inputSchema: {
     type: 'object',
     properties: {

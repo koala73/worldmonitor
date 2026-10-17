@@ -2920,6 +2920,7 @@
       "tier4OnlyHint": "Mọi cơ quan báo chí đưa tin về điều này đều là nguồn cấp 4 (các trang tổng hợp tin tức và blog). Điều này mô tả phạm vi báo chí, không phải độ chính xác.",
       "rosterListed": "({{listed}} được liệt kê)",
       "rosterFeeds": "Kênh tin đã thấy: {{labels}}",
+      "rosterSameCopy": "Cùng một nội dung, chỉ tính một lần",
       "rosterLegend": "Các cấp xếp hạng nguồn; chúng không đánh giá tuyên bố này.",
       "tierDocsLink": "Cách phân cấp",
       "tierChip": "C{{tier}}",

@@ -28,6 +28,8 @@ import type {
   CountryCoverageSourceStatus,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
+import type { ThreatLevel as ProtoThreatLevel } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
+import type { ThreatLevel as SharedThreatLevel } from '../../../../shared/threat-keyword-classifier';
 
 import { TIER1_COUNTRIES } from '../../../../src/config/countries';
 import { countryDisplayName } from '../../../../shared/country-mention.js';
@@ -47,6 +49,14 @@ import {
 export const DEFAULT_WINDOW_HOURS = 168;
 export const DEFAULT_EVENT_LIMIT = 200;
 const MAX_EVENT_LIMIT = 500;
+
+const HEADLINE_LEVEL_TO_PROTO: Record<SharedThreatLevel, ProtoThreatLevel> = {
+  critical: 'THREAT_LEVEL_CRITICAL',
+  high: 'THREAT_LEVEL_HIGH',
+  medium: 'THREAT_LEVEL_MEDIUM',
+  low: 'THREAT_LEVEL_LOW',
+  info: 'THREAT_LEVEL_UNSPECIFIED',
+};
 
 /**
  * Ceiling on the two upstream feed fetches. The panel has no deadline because a
@@ -322,6 +332,7 @@ export async function getCountryCoverage(
     source: item.source,
     publishedAt: isoOrEmpty(item.publishedAtMs),
     publishedAtMs: item.publishedAtMs,
+    threat: { ...item.threat, level: HEADLINE_LEVEL_TO_PROTO[item.threat.level] },
   }));
 
   const sources: CountryCoverageSourceStatus[] = [

@@ -2573,6 +2573,7 @@
       "tier4OnlyHint": "Todos os veículos reportando isso são fontes de nível 4 (agregadores e blogs). Isso descreve cobertura, não precisão.",
       "rosterListed": "({{listed}} listados)",
       "rosterFeeds": "Feeds vistos: {{labels}}",
+      "rosterSameCopy": "Mesmo texto, contado uma vez",
       "rosterLegend": "Os níveis classificam as fontes; não julgam esta afirmação.",
       "tierDocsLink": "Como os níveis são atribuídos",
       "tierChip": "N{{tier}}",

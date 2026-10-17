@@ -271,6 +271,7 @@ const HOST_ORIGINS = Object.freeze({
   'feeds.news24.com': 'ZA',
   'feeds.npr.org': 'US',
   'financialpost.com': 'CA',
+  'factchecktools.googleapis.com': 'US',
   'finnhub.io': 'US',
   'foreignpolicy.com': 'US',
   'fr.africanews.com': null,
@@ -560,6 +561,7 @@ const HOST_ORIGINS = Object.freeze({
   'www.zdnet.com': 'US',
   'www.zoomstatus.com': 'US',
   'arxiv.org': 'US',
+  'economist.com': 'GB',
   'fc.yahoo.com': 'US',
   'finance.yahoo.com': 'US',
   'news.usni.org': 'US',
@@ -567,7 +569,14 @@ const HOST_ORIGINS = Object.freeze({
   'your-app.convex.site': 'US',
   'yourstory.com': 'IN',
   'gamma-api.polymarket.com': 'US',
+  'independent.co.uk': 'GB',
+  'japantimes.co.jp': 'JP',
+  'middleeasteye.net': 'GB',
+  'news.sky.com': 'GB',
   'noaadata.apps.nsidc.org': 'US',
+  'nytimes.com': 'US',
+  'timesofisrael.com': 'IL',
+  'washingtonpost.com': 'US',
 });
 
 // Provider-level overrides win when the host is a CDN, cloud, or shared

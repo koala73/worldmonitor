@@ -2556,6 +2556,7 @@
       "tier4OnlyHint": "Elk medium dat hierover bericht, is een tier-4-bron (aggregators en blogs). Dit beschrijft de verslaggeving, niet de nauwkeurigheid.",
       "rosterListed": "({{listed}} vermeld)",
       "rosterFeeds": "Feeds gezien: {{labels}}",
+      "rosterSameCopy": "Zelfde tekst, één keer geteld",
       "rosterLegend": "Tiers rangschikken bronnen; ze beoordelen deze bewering niet.",
       "tierDocsLink": "Hoe tiers worden toegekend",
       "tierChip": "T{{tier}}",

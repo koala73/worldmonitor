@@ -296,6 +296,7 @@
   "components.correlation.viewOnMap": "View on map",
   "components.correlation.waiting": "Waiting for the next data update. This panel updates automatically.",
   "components.corroboration.rosterFeeds": "Feeds seen: {{labels}}",
+  "components.corroboration.rosterSameCopy": "Same copy, counted once",
   "components.corroboration.rosterLegend": "Tiers rank sources; they do not judge this claim.",
   "components.corroboration.rosterListed": "({{listed}} listed)",
   "components.corroboration.rosterPublishers_one": "{{count}} publisher",

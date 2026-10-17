@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 import { latestValidGithubStarsSnapshot } from '../scripts/github-stars-snapshot.mjs';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
@@ -236,6 +236,11 @@ test('built welcome page ships the real hero in #root before JavaScript', { skip
   assert.doesNotMatch(rootContent, /id="seo-prerender"/);
   assert.equal([...rootContent.matchAll(/<h1\b/g)].length, 1);
   assert.match(rootContent, /<nav[\s>]/);
+  assert.match(
+    rootContent,
+    /<h1\b[^>]*>[\s\S]*Real-time geopolitical[\s\S]*intelligence dashboard[\s\S]*<\/h1>/,
+    'welcome H1 should name the product',
+  );
   assert.match(rootContent, /By the time it&#x27;s news,[\s\S]*you already knew\./);
   assert.match(rootContent, /Launch the dashboard/);
   assert.match(rootContent, /Open source · AGPL-3\.0/);
@@ -270,11 +275,69 @@ test('built welcome page ships the real hero in #root before JavaScript', { skip
   assert.match(navContent, /href="\/sources\/"[^>]*>Attributed providers<\/a>/);
   assert.match(navContent, /id="welcome-tablet-navigation"/);
   assert.match(navContent, />Menu</);
-  const headlineIndex = rootContent.indexOf('By the time it&#x27;s news,');
-  assert.ok(headlineIndex > 0, 'welcome headline should be in the prerendered root');
+  const headlineIndex = rootContent.indexOf('Real-time geopolitical');
+  assert.ok(headlineIndex > 0, 'welcome H1 should name the product');
   const heroSection = rootContent.slice(0, rootContent.indexOf('<section class="py-16'));
   assert.doesNotMatch(heroSection, /opacity:0/);
   assert.match(rootContent, /<img[^>]+src="\/pro\/assets\/worldmonitor-7-mar-2026-[^"]+\.jpg"[^>]+fetchPriority="high"/);
+});
+
+// React skips the image preload for an <img> inside <picture>, so without the
+// prerender's head tag the LCP hero waits for the body parser to reach it.
+test('built welcome head preloads the hero AVIF srcset the <picture> serves', { skip }, () => {
+  const html = welcomeHtml();
+  const head = html.slice(0, html.indexOf('</head>'));
+  // Desktop only: on phones the <h1> is the LCP and the screenshot is far below the fold.
+  const preload = head.match(/<link rel="preload" as="image" type="image\/avif" media="\(min-width: 640px\)" imagesrcset="([^"]+)" imagesizes="([^"]+)" fetchpriority="high">/);
+  assert.ok(preload, 'welcome <head> should preload the hero AVIF');
+  const source = welcomeRoot().content.match(/<picture><source type="image\/avif" srcSet="([^"]+)" sizes="([^"]+)"\/>/);
+  assert.ok(source, 'hero <picture> should carry an AVIF <source>');
+  assert.equal(preload[1], source[1], 'preload imagesrcset must match the rendered <source>');
+  assert.equal(preload[2], source[2], 'preload imagesizes must match the rendered <source>');
+});
+
+// Mobile audits fail any rendered text under 12px (0.75rem at the 16px root).
+const fontSizesBelow12px = (css) =>
+  [...css.matchAll(/font-size:\s*(\d*\.?\d+)(px|rem)/g)]
+    .map(([declaration, value, unit]) => ({ declaration, px: Number(value) * (unit === 'rem' ? 16 : 1) }))
+    .filter(({ px }) => px < 12)
+    .map(({ declaration }) => declaration);
+const SUB_12PX_TEXT_UTILITY = /\btext-\[(?:(?:\d|1[01])(?:\.\d+)?px|0?\.(?:[0-6]\d*|7(?:[0-4]\d*)?)rem)\]/;
+
+// The inline critical CSS is what audits read first, and it mirrors every size
+// the prerendered hero uses — on / (welcome.html) and, since #9175, /pro too.
+test('built welcome and /pro pages set no font size below 12px', { skip }, () => {
+  const proHtml = readFileSync(new URL('../public/pro/index.html', import.meta.url), 'utf8');
+  assert.deepEqual(fontSizesBelow12px(welcomeHtml()), [], 'welcome.html');
+  assert.deepEqual(fontSizesBelow12px(proHtml), [], 'index.html');
+  assert.doesNotMatch(welcomeRoot().content, SUB_12PX_TEXT_UTILITY);
+});
+
+// Source-level twin of the built check, so it runs without a build and covers
+// components the welcome prerender never renders (/pro, pricing, checkout).
+test('pro-test source uses no text utility or font-size below 12px', () => {
+  const srcRoot = new URL('../pro-test/src/', import.meta.url);
+  const offenders = readdirSync(srcRoot, { recursive: true })
+    .filter((path) => /\.(?:tsx?|css)$/.test(path))
+    .flatMap((path) => {
+      const source = readFileSync(new URL(path, srcRoot), 'utf8');
+      return [
+        ...(source.match(new RegExp(SUB_12PX_TEXT_UTILITY.source, 'g')) ?? []),
+        ...fontSizesBelow12px(source),
+      ].map((hit) => `${path}: ${hit}`);
+    });
+  assert.deepEqual(offenders, []);
+});
+
+// The JSON-LD `author` (#7459a) must name someone the page visibly credits, or
+// structured-data audits flag it as schema/content drift.
+test('welcome JSON-LD author is visibly credited in the rendered page', { skip }, () => {
+  const application = welcomeJsonLdBlocks().find((block) => block['@type'] === 'SoftwareApplication');
+  assert.equal(application.author?.['@id'], `${CANONICAL_ORIGIN}blog/authors/elie-habib/#person`);
+  assert.match(
+    welcomeRoot().content,
+    new RegExp(`<a href="${CANONICAL_ORIGIN}blog/authors/elie-habib/"[^>]*>${application.author.name}</a>`),
+  );
 });
 
 test('built welcome root hides no SSR content and links every primary reference page', { skip }, () => {
@@ -312,7 +375,7 @@ test('built welcome root hides no SSR content and links every primary reference 
 
 test('built welcome page prerenders task routes and agent discovery links', { skip }, () => {
   const { content: rootContent } = welcomeRoot();
-  const heroIndex = rootContent.indexOf('By the time it&#x27;s news,');
+  const heroIndex = rootContent.indexOf('Real-time geopolitical');
   const taskIndex = rootContent.indexOf('What are you trying to find out?');
   // Keep in sync with welcome.live.title in pro-test/src/locales/en.json (#7381).
   const liveIndex = rootContent.indexOf('What live data is this page showing right now?');
@@ -436,6 +499,18 @@ test('homepage answers "What is World Monitor?" and carries page date metadata',
   assert.ok(heading, 'homepage must define World Monitor under an answer-style H2');
   const words = heading[1].replace(/<[^>]+>/g, '').trim().split(/\s+/).length;
   assert.ok(words >= 40 && words <= 60, `definition must be 40-60 words, got ${words}`);
+  // The audience line Elie approved sits in its own paragraph, so it never
+  // counts against the 40-60 word definition budget.
+  assert.match(
+    html,
+    /<h2[^>]*>What is World Monitor\?<\/h2>\s*<p[^>]*>[\s\S]*?<\/p>\s*<p[^>]*>Best for analysts, journalists, traders and builders who need live geopolitical signals\.<\/p>/,
+    'the "Best for" line must follow the definition',
+  );
+  assert.match(
+    html,
+    /<h2[^>]*>What is World Monitor\?<\/h2>\s*<p class="welcome-seo-summary[^"]*">World Monitor is a free/,
+    'speakable .welcome-seo-summary must select the definition paragraph',
+  );
   assert.match(html, /<meta name="lastmod" content="\d{4}-\d{2}-\d{2}"\s*\/>/);
 });
 
@@ -457,4 +532,15 @@ test('built welcome lastmod tracks the teaser strip snapshot (#7654)', { skip },
     new RegExp(`<meta name="lastmod" content="${teasers.capturedAt}"`),
     'served homepage lastmod must be the snapshot capture date behind the strip',
   );
+});
+
+test('built homepage markdown twin states each hero line once', { skip }, () => {
+  const markdown = readFileSync(new URL('../public/pro/home.md', import.meta.url), 'utf8');
+  const { sub, whatIsBestFor } = enLocale().welcome.hero;
+  // The twin is the rendered page plus the curated public/home.md, and both
+  // carry the slogan and the audience line; the splice must keep only one.
+  for (const line of [sub, whatIsBestFor]) {
+    const count = markdown.split('\n').filter((row) => row.trim() === line).length;
+    assert.equal(count, 1, `public/pro/home.md must state "${line}" exactly once, found ${count}`);
+  }
 });

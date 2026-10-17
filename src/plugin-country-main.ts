@@ -15,6 +15,8 @@ import { CountryBriefController, projectChinaCountrySummary } from '@/components
 import { CountryTimeline } from '@/components/CountryTimeline';
 import { briefSectionState } from '@/components/country-brief-presentation';
 import { createHostCountryBriefSource } from '@/services/country-brief-source';
+import { protoThreatToNewsThreat } from '@/services/news-digest-items';
+import type { EventCategory } from '@/types';
 import { CountrySectionError } from '@/services/country-brief-error';
 import { preloadInfrastructureTables } from '@/services/related-assets';
 import { getCountryNameByCode, preloadCountryGeometry, hasCountryGeometry, isCoordinateInCountry } from '@/services/country-geometry';
@@ -421,9 +423,20 @@ async function mountPlugin(): Promise<void> {
     if (assessments.size > 30) { const oldest = assessments.keys().next().value!; assessments.delete(oldest); assessmentTimes.delete(oldest); }
     return pendingAssessment;
   }
+  const coverageCategories: Record<EventCategory, true> = {
+    conflict: true, protest: true, disaster: true, diplomatic: true, economic: true,
+    terrorism: true, cyber: true, health: true, environmental: true, military: true,
+    crime: true, infrastructure: true, tech: true, general: true,
+  };
+  const coverageThreatSchema = z.object({
+    level: z.enum(['THREAT_LEVEL_UNSPECIFIED', 'THREAT_LEVEL_LOW', 'THREAT_LEVEL_MEDIUM', 'THREAT_LEVEL_HIGH', 'THREAT_LEVEL_CRITICAL']),
+    category: z.custom<EventCategory>(value => typeof value === 'string' && Object.prototype.hasOwnProperty.call(coverageCategories, value)),
+    confidence: z.number().finite().min(0).max(1),
+    source: z.enum(['keyword', 'ml', 'llm']),
+  }).optional().catch(undefined);
   const coverageSchema = z.object({
     countryCode: z.string(), countryName: z.string(), generatedAt: z.string(), degraded: z.boolean(),
-    headlines: z.array(z.object({ title: z.string(), source: z.string(), url: z.string(), publishedAtMs: z.number().finite() })),
+    headlines: z.array(z.object({ title: z.string(), source: z.string(), url: z.string(), publishedAtMs: z.number().finite(), threat: coverageThreatSchema })),
     events: z.array(z.object({ timestampMs: z.number().finite(), lane: z.enum(['protest', 'conflict', 'natural', 'military']), label: z.string(), severity: z.enum(['low', 'medium', 'high', 'critical']) })),
     sources: z.array(z.object({ source: z.string(), state: z.string() }).passthrough()),
   });
@@ -586,7 +599,7 @@ async function mountPlugin(): Promise<void> {
     }).catch(() => { if (current() && !assessments.has(code)) panel.setSectionFailure('assessment', 'unavailable', 'The AI assessment could not be loaded. Other country sections remain available.'); });
     void getCoverage(code, signal).then(coverage => {
       if (!current() || coverage.countryCode !== code) return;
-      panel.updateNews(coverage.headlines.map(item => ({ title: item.title, source: item.source, link: item.url, pubDate: new Date(item.publishedAtMs), isAlert: false })));
+      panel.updateNews(coverage.headlines.map(item => ({ title: item.title, source: item.source, link: item.url, pubDate: new Date(item.publishedAtMs), isAlert: false, threat: protoThreatToNewsThreat(item.threat) })));
       const mount = panel.getTimelineMount();
       if (mount) {
         mount.replaceChildren();

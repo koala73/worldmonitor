@@ -13,6 +13,8 @@ import { resendWebhookHandler } from "./resendWebhookHandler";
 import { clerkWebhookHandler } from "./accountDeletion/clerkWebhook";
 import { USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
 import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
+import { verifyDunningPortalToken } from "./lib/identitySigning";
+import { buildUnsubscribeUrl, EMAIL_UNSUBSCRIBE_PATH, verifyUnsubscribeToken } from "./lib/emailUnsubscribe";
 import {
   INTEL_HISTORY_EMBED_DIMS,
   INTEL_HISTORY_MAX_APPEND_RECORDS,
@@ -768,6 +770,100 @@ http.route({
   }),
 });
 
+// ---------------------------------------------------------------------------
+// One-click email unsubscribe (RFC 8058) for the daily brief, alert emails and
+// winback. GET renders a confirm page and never changes state, because link
+// scanners and mail-security proxies prefetch GETs. POST unsubscribes without
+// a login: mail clients send `List-Unsubscribe=One-Click` to the header URL,
+// and the confirm page's form posts to the same URL. Token format and signing
+// live in lib/emailUnsubscribe.ts; the state change in emailUnsubscribe.ts.
+// ---------------------------------------------------------------------------
+
+const UNSUBSCRIBE_LIST_COPY = {
+  brief: { name: "the World Monitor daily brief", done: "You will no longer get the daily brief by email." },
+  alerts: { name: "World Monitor alert emails", done: "You will no longer get real-time alerts by email." },
+  marketing: { name: "World Monitor product emails", done: "You will no longer get product and win-back emails. Account and billing notices still arrive." },
+} as const;
+
+function unsubscribePage(status: number, title: string, bodyHtml: string): Response {
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title></head>
+<body style="margin:0;background:#0a0a0a;color:#e0e0e0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<div style="max-width:520px;margin:64px auto;padding:32px;background:#111;border:1px solid #1f1f1f;">
+<p style="font-size:13px;font-weight:800;letter-spacing:1px;color:#4ade80;margin:0 0 16px;">WORLD MONITOR</p>
+<h1 style="font-size:20px;color:#fff;margin:0 0 12px;">${title}</h1>
+${bodyHtml}
+<p style="font-size:12px;color:#777;line-height:1.5;margin:24px 0 0;">Manage daily brief and alert emails in <a href="https://www.worldmonitor.app/dashboard?settings=notifications" style="color:#4ade80;">Notification settings</a>. For product emails, <a href="mailto:support@worldmonitor.app?subject=Unsubscribe%20from%20product%20emails" style="color:#4ade80;">email support to unsubscribe</a>.</p>
+</div></body></html>`;
+  return new Response(html, {
+    status,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      // The URL carries the signed token.
+      "Referrer-Policy": "no-referrer",
+      "X-Robots-Tag": "noindex",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+    },
+  });
+}
+
+function invalidUnsubscribeLink(): Response {
+  return unsubscribePage(
+    400,
+    "This unsubscribe link is not valid",
+    `<p style="font-size:14px;color:#aaa;line-height:1.5;margin:0;">The link may be incomplete. Open the latest email again, or use the options below.</p>`,
+  );
+}
+
+async function readUnsubscribeToken(request: Request): Promise<string | null> {
+  const fromQuery = new URL(request.url).searchParams.get("t");
+  if (fromQuery) return fromQuery;
+  // The confirm form posts the token as a field as well as in the URL.
+  const contentType = request.headers.get("Content-Type") ?? "";
+  if (contentType.includes("application/x-www-form-urlencoded")) {
+    const text = await request.text().catch(() => "");
+    return new URLSearchParams(text.slice(0, 4096)).get("t");
+  }
+  return null;
+}
+
+http.route({
+  path: EMAIL_UNSUBSCRIBE_PATH,
+  method: "GET",
+  handler: httpAction(async (_ctx, request) => {
+    const token = new URL(request.url).searchParams.get("t");
+    const verified = await verifyUnsubscribeToken(token);
+    if (!verified || !token) return invalidUnsubscribeLink();
+    const copy = UNSUBSCRIBE_LIST_COPY[verified.list];
+    const action = `${EMAIL_UNSUBSCRIBE_PATH}?t=${encodeURIComponent(token)}`;
+    return unsubscribePage(
+      200,
+      `Unsubscribe from ${copy.name}?`,
+      `<form method="post" action="${action}" style="margin:0;">
+<input type="hidden" name="t" value="${token.replace(/[^A-Za-z0-9._-]/g, "")}">
+<button type="submit" style="background:#4ade80;color:#0a0a0a;border:0;padding:12px 28px;font-weight:800;font-size:13px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;">Unsubscribe</button>
+</form>`,
+    );
+  }),
+});
+
+http.route({
+  path: EMAIL_UNSUBSCRIBE_PATH,
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const verified = await verifyUnsubscribeToken(await readUnsubscribeToken(request));
+    if (!verified) return invalidUnsubscribeLink();
+    await ctx.runMutation(internal.emailUnsubscribe.applyUnsubscribe, verified);
+    const copy = UNSUBSCRIBE_LIST_COPY[verified.list];
+    console.log(`[email-unsubscribe] one-click unsubscribe applied (list=${verified.list})`);
+    return unsubscribePage(
+      200,
+      "You are unsubscribed",
+      `<p style="font-size:14px;color:#aaa;line-height:1.5;margin:0;">${copy.done}</p>`,
+    );
+  }),
+});
+
 http.route({
   path: "/relay/channels",
   method: "POST",
@@ -798,13 +894,25 @@ http.route({
     // Delivery workers send alert and digest mail to whatever this returns.
     // Drop email channels whose address bounced, complained or was suppressed
     // by an operator, so those sends stop like every other Resend sender.
+    // Email channels also carry pre-signed one-click unsubscribe URLs
+    // (RFC 8058) so the workers never need the signing secret; both are null
+    // when EMAIL_UNSUBSCRIBE_SECRET is unset.
     const deliverable = [];
+    let unsubscribeUrls: { brief: string | null; alerts: string | null } | null = null;
     for (const channel of channels) {
       if (channel.channelType === "email" && typeof channel.email === "string" && channel.email
         && await ctx.runQuery(internal.emailSuppressions.isEmailSuppressed, {
           email: channel.email,
           purpose: "transactional",
         })) {
+        continue;
+      }
+      if (channel.channelType === "email") {
+        unsubscribeUrls ??= {
+          brief: await buildUnsubscribeUrl(body.userId, "brief"),
+          alerts: await buildUnsubscribeUrl(body.userId, "alerts"),
+        };
+        deliverable.push({ ...channel, unsubscribeUrls });
         continue;
       }
       deliverable.push(channel);
@@ -1368,6 +1476,19 @@ function touchIsDue(lastUsedAt: unknown): boolean {
   return typeof lastUsedAt !== "number" || lastUsedAt <= Date.now() - TOUCH_DEBOUNCE_MS;
 }
 
+// The gate cannot stop a burst: every parallel validation that lands before
+// the first touch commits still sees a stale lastUsedAt, and touches scheduled
+// for the same instant conflict N-1 times (560 OCC conflicts in 72h across
+// userApiKeys + mcpProTokens, Convex Insights 2026-10). A random delay makes
+// the rest start after the first commits, read it, and no-op, except a touch
+// that lands within its ~20ms run: about (N-1) x 20ms / 30s per burst. On a
+// local backend, herds of 5 went from 4 conflicts each to 0.
+const TOUCH_SPREAD_MS = 30_000;
+
+function touchDelayMs(): number {
+  return Math.floor(Math.random() * TOUCH_SPREAD_MS);
+}
+
 // Service-to-service: validate a user API key by its SHA-256 hash.
 // Called by the Vercel edge gateway to look up user-owned keys.
 http.route({
@@ -1405,7 +1526,7 @@ http.route({
 
     if (result && touchIsDue(result.lastUsedAt)) {
       try {
-        await ctx.scheduler.runAfter(0, (internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
+        await ctx.scheduler.runAfter(touchDelayMs(), (internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
       } catch (err) {
         // sentry-coverage-ok: re-throwing here would 500 the gateway, which coerces to null
         // and stamps a 60s negative-cache sentinel for a valid key. lastUsedAt is best-effort telemetry.
@@ -1507,7 +1628,7 @@ http.route({
 
     if (result && touchIsDue(result.lastUsedAt)) {
       try {
-        await ctx.scheduler.runAfter(0, (internal as any).embedKeys.touchKeyLastUsed, { keyId: result.id });
+        await ctx.scheduler.runAfter(touchDelayMs(), (internal as any).embedKeys.touchKeyLastUsed, { keyId: result.id });
       } catch (err) {
         // sentry-coverage-ok: re-throwing here would 500 the edge validator, which
         // coerces to null and stamps a negative-cache sentinel for a valid key.
@@ -1636,7 +1757,7 @@ http.route({
       if (result && touchIsDue(result.lastUsedAt)) {
         try {
           await ctx.scheduler.runAfter(
-            0,
+            touchDelayMs(),
             (internal as any).mcpProTokens.touchProMcpTokenLastUsed,
             { tokenId: body.tokenId },
           );
@@ -1861,9 +1982,6 @@ http.route({
   }),
 });
 
-// Service-to-service: Vercel edge gateway creates Dodo customer portal sessions.
-// Authenticated via CONVEX_TENANT_RELAY_SECRET; edge endpoint validates Clerk JWT
-// and forwards the verified userId.
 http.route({
   path: "/relay/customer-portal",
   method: "POST",
@@ -1871,7 +1989,7 @@ http.route({
     const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
     if (unauthorized) return unauthorized;
 
-    const body = await parseJsonObjectBody<{ userId?: string }>(request);
+    const body = await parseJsonObjectBody<{ userId?: string; portalToken?: string }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
@@ -1879,7 +1997,29 @@ http.route({
       });
     }
 
-    if (!body.userId) {
+    let userId = typeof body.userId === "string" ? body.userId : "";
+    if (typeof body.portalToken === "string" && body.portalToken.length > 0) {
+      // A token never falls back to body.userId. It mints only while the
+      // signed user still has an open hold, so recovery or cancellation
+      // revokes every outstanding email link.
+      const rejectToken = (reason: "invalid_or_expired" | "no_open_hold") => {
+        console.log(JSON.stringify({ event: "dunning_portal_token_rejected", reason }));
+        return new Response(JSON.stringify({ error: "INVALID_PORTAL_TOKEN" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      };
+      const tokenUserId = await verifyDunningPortalToken(body.portalToken, Date.now());
+      if (!tokenUserId) return rejectToken("invalid_or_expired");
+      const hasOpenHold = await ctx.runQuery(
+        internal.payments.subscriptionEmails.hasOpenDunningHold,
+        { userId: tokenUserId },
+      );
+      if (!hasOpenHold) return rejectToken("no_open_hold");
+      userId = tokenUserId;
+    }
+
+    if (!userId) {
       return new Response(
         JSON.stringify({ error: "MISSING_FIELDS", required: ["userId"] }),
         { status: 400, headers: { "Content-Type": "application/json" } },
@@ -1889,7 +2029,7 @@ http.route({
     try {
       const result = await ctx.runAction(
         internal.payments.billing.internalGetCustomerPortalUrl,
-        { userId: body.userId },
+        { userId },
       );
       return new Response(JSON.stringify(result), {
         status: 200,
