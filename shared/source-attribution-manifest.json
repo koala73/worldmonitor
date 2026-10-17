@@ -10762,6 +10762,9 @@
           "path": "scripts/lib/company-monitoring-classifier-client.mjs"
         },
         {
+          "path": "scripts/lib/digest-email-html.mjs"
+        },
+        {
           "path": "scripts/lib/x-news-accounts.cjs"
         },
         {
