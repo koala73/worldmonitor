@@ -115,7 +115,10 @@ describe('country Energy Atlas hydration', () => {
     if (action === 'switch') Reflect.set(panel, 'currentCode', 'DE');
     else controller.abort();
     release(); await settle();
-    expect(body.textContent).toBe('Energy data unavailable for this country.');
+    expect(body.textContent).toBe('Energy data unavailable for this country.'
+      + 'JODI oil data not supplied in this profile.'
+      + 'JODI gas data not supplied in this profile.'
+      + 'IEA oil stocks data not supplied in this profile.');
     expect(body.querySelectorAll('button')).toHaveLength(0);
   });
 
