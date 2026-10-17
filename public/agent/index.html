@@ -46,7 +46,8 @@
 
       <article class="client" id="chatgpt">
         <h3>ChatGPT</h3>
-        <p>In ChatGPT on the web, open <em>Plugins</em>, click the plus button and choose <em>Add custom MCP server</em>. Enter World Monitor as the name and the URL below as the server URL, choose OAuth, confirm the warning, then create and install the plugin. Start a chat and pick World Monitor with <code>@</code>. On Business and Enterprise workspaces, an admin decides whether custom MCP servers are allowed.</p>
+        <p>Full MCP support is available on ChatGPT web for Business, Enterprise and Edu plans. On Business, only workspace admins and owners can create custom MCP connections. On Enterprise and Edu, admins can also give selected members permission to create connections. Only admins and owners can publish connections for the workspace. Pro supports custom MCP connections with read/fetch permissions. Check <a href="https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt" data-umami-event="agent-outbound-click" data-umami-event-target="chatgpt-requirements" rel="noopener">OpenAI’s current requirements</a> before setup.</p>
+        <p>With permission to create a connection, open <em>Plugins</em>, click the plus button and choose <em>Add custom MCP server</em>. Enter World Monitor as the name and the URL below as the server URL. Choose OAuth, confirm the warning, then create and install the plugin. Start a chat and pick World Monitor with <code>@</code>.</p>
         <div class="cmd"><pre><code>https://worldmonitor.app/mcp</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="chatgpt" aria-label="Copy ChatGPT server URL">Copy</button></div>
       </article>
 
@@ -88,7 +89,7 @@
         <p>Point it at the Streamable HTTP endpoint below. Clients that support OAuth register themselves and open the sign-in window. Clients that send headers can use an API key instead: <code>X-WorldMonitor-Key: wm_...</code>. Stdio-only clients can connect through <code>mcp-remote</code>.</p>
         <div class="cmd"><pre><code>https://worldmonitor.app/mcp</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="other" aria-label="Copy MCP endpoint">Copy</button></div>
         <p>Check the connection and browse the tools with the MCP Inspector:</p>
-        <div class="cmd"><pre><code>npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="other" aria-label="Copy MCP Inspector command">Copy</button></div>
+        <div class="cmd"><pre><code>npx @modelcontextprotocol/inspector --server-url https://worldmonitor.app/mcp --transport http</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="other" aria-label="Copy MCP Inspector command">Copy</button></div>
       </article>
     </section>
 
