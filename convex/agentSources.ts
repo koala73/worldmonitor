@@ -11,13 +11,18 @@
  *   - mcpProTokens.clientSource OAuth client_name of the granted MCP client
  *
  * Each table is scanned on the built-in `by_creation_time` index from `sinceMs`
- * and capped at MAX_ROWS_PER_TABLE; `truncated` says when a window was cut, so
- * narrow the window instead of trusting a partial count.
+ * and capped at MAX_ROWS_PER_TABLE (5,000) so the three reads stay inside one
+ * query's read limit; `truncated` says when a window was cut, so narrow the
+ * window instead of trusting a partial count.
  */
 import { v } from "convex/values";
 import { internalQuery } from "./_generated/server";
 
-const MAX_ROWS_PER_TABLE = 8000;
+// Convex caps one query at 16,384 document reads. Three tables each read up to
+// MAX_ROWS_PER_TABLE + 1 rows (the extra row detects truncation), so the cap
+// must keep 3 * (cap + 1) under that limit: 5,000 gives 15,003.
+// convex/__tests__/agentSources.test.ts pins that arithmetic.
+export const MAX_ROWS_PER_TABLE = 5000;
 const MAX_WINDOW_MS = 400 * 24 * 60 * 60 * 1000;
 /** Bucket for rows written before this field existed, or with no agent link. */
 export const NO_SOURCE = "none";

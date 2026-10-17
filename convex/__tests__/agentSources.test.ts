@@ -7,6 +7,7 @@ import { describe, expect, test } from "vitest";
 import schema from "../schema";
 import { api, internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
+import { MAX_ROWS_PER_TABLE } from "../agentSources";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -115,13 +116,27 @@ describe("agentSources.countBySource", () => {
     await t.mutation(internal.mcpProTokens.issueProMcpToken, { userId: "u3", name: "Connected via Claude" });
     await t.mutation(internal.mcpProTokens.issueProMcpToken, { userId: "u4", name: "Connected via Cursor" });
 
-    const result = await t.query(internal.agentSources.countBySource, { sinceMs: since });
+    const result = await t.query(internal.agentSources.countBySource, { sinceMs: since, untilMs: Date.now() + 1000 });
     expect(result.signups).toEqual({ total: 2, bySource: { "grok-bot": 1, none: 1 }, truncated: false });
     expect(result.apiKeys).toEqual({ total: 0, bySource: {}, truncated: false });
     expect(result.mcpGrants).toEqual({ total: 2, bySource: { claude: 1, cursor: 1 }, truncated: false });
 
     const empty = await t.query(internal.agentSources.countBySource, { sinceMs: since - 10_000, untilMs: since });
     expect(empty.signups.total).toBe(0);
+  });
+
+  test("reports truncation instead of exceeding the per-query read limit", async () => {
+    const t = convexTest(schema, modules);
+    const since = Date.now() - 1000;
+    await t.run(async (ctx) => {
+      for (let i = 0; i <= MAX_ROWS_PER_TABLE; i++) {
+        await ctx.db.insert("mcpProTokens", { userId: `bulk-${i}`, createdAt: Date.now(), clientSource: "claude" });
+      }
+    });
+    const result = await t.query(internal.agentSources.countBySource, { sinceMs: since, untilMs: Date.now() + 1000 });
+    expect(result.mcpGrants.total).toBe(MAX_ROWS_PER_TABLE);
+    expect(result.mcpGrants.truncated).toBe(true);
+    expect(3 * (MAX_ROWS_PER_TABLE + 1)).toBeLessThan(16384);
   });
 
   test("rejects an inverted or oversized window", async () => {
