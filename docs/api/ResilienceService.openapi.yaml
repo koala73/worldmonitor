@@ -444,50 +444,50 @@ paths:
                                     "available": true
                                     "medianAgeYears":
                                         "available": true
-                                        "source": "example"
-                                        "sourceStatus": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "years"
                                         "value": 1.5
+                                        "year": 2024
                                     "oldAgeDependencyRatioPercent":
                                         "available": true
-                                        "source": "example"
-                                        "sourceStatus": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "percent"
                                         "value": 1.5
+                                        "year": 2024
                                     "totalDependencyRatioPercent":
                                         "available": true
-                                        "source": "example"
-                                        "sourceStatus": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "percent"
                                         "value": 1.5
+                                        "year": 2024
                                     "workingAgePopulationPeople":
                                         "available": true
-                                        "source": "example"
-                                        "sourceStatus": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "people"
                                         "value": 1.5
+                                        "year": 2024
                                 "available": true
                                 "countryCode": "US"
                                 "education":
                                     "available": true
                                     "researchersPerMillion":
                                         "available": true
-                                        "source": "example"
-                                        "sourceStatus": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "people per million"
                                         "value": 1.5
+                                        "year": 2024
                                     "stemGraduatesSharePercent":
                                         "available": true
-                                        "source": "example"
-                                        "sourceStatus": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "percent"
                                         "value": 1.5
+                                        "year": 2024
                                     "tertiaryEnrollmentGrossPercent":
                                         "available": true
-                                        "source": "example"
-                                        "sourceStatus": "example"
-                                        "unit": "example"
+                                        "source": "Example dataset"
+                                        "unit": "percent"
                                         "value": 1.5
+                                        "year": 2024
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/GetDemographicsCapabilityResponse'

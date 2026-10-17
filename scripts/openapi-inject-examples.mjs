@@ -1175,6 +1175,17 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
         indicatorCode: 'IT.NET.USER.ZS',
       };
     }
+    if (resolvedName === 'CapabilityObservation') {
+      const field = context.name ?? '';
+      return {
+        available: true,
+        value: 1.5,
+        year: 2024,
+        source: 'Example dataset',
+        unit: field.endsWith('Years') ? 'years' : field.endsWith('People') ? 'people'
+          : field === 'researchersPerMillion' ? 'people per million' : 'percent',
+      };
+    }
     if (resolvedName === 'GetFiveFactorScorecardResponse' || resolvedName === 'GetBlocScorecardResponse') {
       return {
         scorecard: exampleForSchema(schema.properties.scorecard, spec, { ...context, name: 'scorecard' }, depth + 1, seen),

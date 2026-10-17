@@ -998,6 +998,33 @@ describe('OpenAPI curated example values', () => {
     }
   });
 
+  it('uses valid available demographics observations in each published example', () => {
+    const specs = [
+      ['ResilienceService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'ResilienceService.openapi.json'), 'utf8'))],
+      ['ResilienceService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'ResilienceService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadUnifiedOpenApiSpec()],
+    ];
+    for (const [label, spec] of specs) {
+      const example = spec.paths['/api/resilience/v1/get-demographics-capability'].get.responses['200'].content[JSON_MEDIA].example;
+      let checked = 0;
+      for (const group of Object.values(example)) {
+        if (!group || typeof group !== 'object' || Array.isArray(group)) continue;
+        for (const [field, observation] of Object.entries(group)) {
+          if (!observation || typeof observation !== 'object' || observation.available !== true) continue;
+          checked += 1;
+          assert.ok(Number.isInteger(observation.year) && observation.year >= 1900
+            && observation.year <= new Date().getUTCFullYear() + 50, `${label}: ${field} needs a valid source year`);
+          assert.ok(Number.isFinite(observation.value) && observation.value >= 0, `${label}: ${field} needs a valid value`);
+          assert.ok(observation.source?.trim(), `${label}: ${field} needs source attribution`);
+          const unit = field.endsWith('Years') ? 'years' : field.endsWith('People') ? 'people'
+            : field === 'researchersPerMillion' ? 'people per million' : 'percent';
+          assert.equal(observation.unit, unit, `${label}: ${field} unit must match the reader contract`);
+        }
+      }
+      assert.ok(checked > 0, `${label}: expected available observations`);
+    }
+  });
+
   it('uses a truthful partial-estimate Giving response example', () => {
     const specs = [
       ['GivingService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'GivingService.openapi.json'), 'utf8'))],
