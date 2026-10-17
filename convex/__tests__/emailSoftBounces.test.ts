@@ -70,12 +70,12 @@ describe("recordSoftBounce", () => {
 
     const r1 = await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m1", NOW - 20 * DAY));
     const r2 = await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m2", NOW - 10 * DAY));
-    expect(r1).toEqual({ strikes: 1, suppressed: false });
-    expect(r2).toEqual({ strikes: 2, suppressed: false });
+    expect(r1).toEqual({ strikes: 1, suppressed: false, ignored: false });
+    expect(r2).toEqual({ strikes: 2, suppressed: false, ignored: false });
     expect(await suppressionsOf(t)).toEqual([]);
 
     const r3 = await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m3", NOW));
-    expect(r3).toEqual({ strikes: 3, suppressed: true });
+    expect(r3).toEqual({ strikes: 3, suppressed: true, ignored: false });
     const rows = await suppressionsOf(t);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ normalizedEmail: "full.box@example.com", reason: "bounce" });
@@ -100,16 +100,25 @@ describe("recordSoftBounce", () => {
     expect(await suppressionsOf(t)).toEqual([]);
   });
 
-  test("strikes older than 30 days fall out of the window and are pruned", async () => {
+  test("a bounce older than the window is ignored, never a strike", async () => {
     vi.spyOn(Date, "now").mockReturnValue(NOW);
     const t = convexTest(schema, modules);
-    await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("old1", NOW - 45 * DAY));
-    await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("old2", NOW - 31 * DAY));
+    await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m1", NOW - 2 * DAY));
+    await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m2", NOW - DAY));
+    const r = await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("old", NOW - 31 * DAY));
+    expect(r).toEqual({ strikes: 2, suppressed: false, ignored: true });
+    expect(await strikesOf(t)).toHaveLength(2);
+    expect(await suppressionsOf(t)).toEqual([]);
+  });
 
-    // Both inserts were clamped to the window start, so advance past it.
-    vi.spyOn(Date, "now").mockReturnValue(NOW + 1);
-    const r = await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("new", NOW + 1));
-    expect(r).toEqual({ strikes: 1, suppressed: false });
+  test("strikes that age out of the window are pruned", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(NOW);
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m1", NOW - 29 * DAY));
+    await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m2", NOW - 28 * DAY));
+    vi.spyOn(Date, "now").mockReturnValue(NOW + 3 * DAY);
+    const r = await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m3", NOW + 3 * DAY));
+    expect(r).toEqual({ strikes: 1, suppressed: false, ignored: false });
     expect(await strikesOf(t)).toHaveLength(1);
     expect(await suppressionsOf(t)).toEqual([]);
   });
@@ -151,21 +160,77 @@ describe("recordSoftBounce", () => {
       reason: "complaint",
     });
     const r = await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m1", NOW));
-    expect(r).toEqual({ strikes: 0, suppressed: true });
+    expect(r).toEqual({ strikes: 0, suppressed: true, ignored: true });
     expect(await strikesOf(t)).toEqual([]);
     expect((await suppressionsOf(t))[0]!.reason).toBe("complaint");
   });
 
-  test("clearSoftBounces resets the count after a delivery", async () => {
+  test("a delivery clears the strikes before it", async () => {
     vi.spyOn(Date, "now").mockReturnValue(NOW);
     const t = convexTest(schema, modules);
-    await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m1", NOW));
-    await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m2", NOW));
+    await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m1", NOW - 3 * DAY));
+    await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m2", NOW - 2 * DAY));
     expect(await t.mutation(internal.emailSuppressions.clearSoftBounces, {
       email: "FULL.BOX@example.com",
+      deliveredAt: NOW - DAY,
     })).toBe(2);
     const r = await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m3", NOW));
-    expect(r).toEqual({ strikes: 1, suppressed: false });
+    expect(r).toEqual({ strikes: 1, suppressed: false, ignored: false });
     expect(await suppressionsOf(t)).toEqual([]);
+  });
+
+  test("a late, older delivery keeps newer strikes", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(NOW);
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m1", NOW - 2 * DAY));
+    await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m2", NOW - DAY));
+    // Delivered three days ago, but its webhook arrives only now.
+    expect(await t.mutation(internal.emailSuppressions.clearSoftBounces, {
+      email: "full.box@example.com",
+      deliveredAt: NOW - 3 * DAY,
+    })).toBe(0);
+    const r = await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m3", NOW));
+    expect(r).toEqual({ strikes: 3, suppressed: true, ignored: false });
+  });
+
+  test("a late bounce older than the last delivery cannot restart the count", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(NOW);
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m1", NOW - 3 * DAY));
+    await t.mutation(internal.emailSuppressions.clearSoftBounces, {
+      email: "full.box@example.com",
+      deliveredAt: NOW - DAY,
+    });
+    // Bounced before that delivery, but the webhook arrives afterwards.
+    const late = await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m0", NOW - 2 * DAY));
+    expect(late).toEqual({ strikes: 0, suppressed: false, ignored: true });
+    expect(await strikesOf(t)).toEqual([]);
+  });
+
+  test("a delivery with no strikes writes nothing", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(NOW);
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.emailSuppressions.clearSoftBounces, {
+      email: "healthy@example.com",
+      deliveredAt: NOW,
+    });
+    const resets = await t.run(async (ctx) => await ctx.db.query("emailSoftBounceResets").collect());
+    expect(resets).toEqual([]);
+  });
+
+  test("suppression removes the reset mark too", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(NOW);
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.emailSuppressions.recordSoftBounce, strike("m0", NOW - 5 * DAY));
+    await t.mutation(internal.emailSuppressions.clearSoftBounces, {
+      email: "full.box@example.com",
+      deliveredAt: NOW - 4 * DAY,
+    });
+    for (const [i, id] of ["m1", "m2", "m3"].entries()) {
+      await t.mutation(internal.emailSuppressions.recordSoftBounce, strike(id, NOW - (3 - i) * DAY));
+    }
+    expect(await suppressionsOf(t)).toHaveLength(1);
+    const resets = await t.run(async (ctx) => await ctx.db.query("emailSoftBounceResets").collect());
+    expect(resets).toEqual([]);
   });
 });

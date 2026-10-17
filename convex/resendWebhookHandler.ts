@@ -177,9 +177,12 @@ async function handleSoftBounceOrDelivery(
   event: ResendWebhookEvent,
 ): Promise<Response | null> {
   if (event.type === "email.delivered") {
+    const deliveredAt = event.created_at
+      ? Date.parse(event.created_at) || Date.now()
+      : Date.now();
     for (const email of recipientsOf(event)) {
       try {
-        await ctx.runMutation(internal.emailSuppressions.clearSoftBounces, { email });
+        await ctx.runMutation(internal.emailSuppressions.clearSoftBounces, { email, deliveredAt });
       } catch {
         console.error(`[resend-webhook] Failed to clear soft bounces for ${maskEmail(email)}`);
         return new Response("Internal processing error", { status: 500 });
@@ -219,7 +222,7 @@ async function handleSoftBounceOrDelivery(
       });
       console.log(
         `[resend-webhook] Soft bounce ${maskEmail(email)} (${subType ?? "unknown"}): `
-        + `${result.suppressed ? "suppressed" : `strike ${result.strikes}`}`,
+        + `${result.ignored ? "ignored (stale, duplicate or already suppressed)" : result.suppressed ? "suppressed" : `strike ${result.strikes}`}`,
       );
     } catch {
       console.error(`[resend-webhook] Failed to record soft bounce for ${maskEmail(email)}`);

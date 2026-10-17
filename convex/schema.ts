@@ -1839,6 +1839,17 @@ export default defineSchema({
     occurredAt: v.number(),
   }).index("by_normalized_email", ["normalizedEmail", "occurredAt"]),
 
+  // Latest email.delivered time for an address that had soft-bounce strikes.
+  // Webhooks can arrive out of order: a bounce that happened before this
+  // delivery is stale evidence and must not restart the count. Written only
+  // when a delivery clears strikes (or a mark already exists), so it does not
+  // grow with every delivered email; removed on suppression and pruned with
+  // the 30-day window.
+  emailSoftBounceResets: defineTable({
+    normalizedEmail: v.string(),
+    lastDeliveredAt: v.number(),
+  }).index("by_normalized_email", ["normalizedEmail"]),
+
   // Per-event log of Resend webhook deliveries tagged with a broadcast_id.
   // Used as forensic detail to drive engineer-level inspection alongside
   // Resend's dashboard. Idempotent on `webhookEventId` — Resend retries

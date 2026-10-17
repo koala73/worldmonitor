@@ -257,10 +257,10 @@ describe("Resend webhook bounce classification", () => {
   }
 
   // Payload shape from https://resend.com/docs/webhooks/emails/bounced
-  function bounced(emailId: string, type: string, subType: string) {
+  function bounced(emailId: string, type: string, subType: string, createdAt = "2023-11-14T22:13:20.000Z") {
     return {
       type: "email.bounced",
-      created_at: "2023-11-14T22:13:20.000Z",
+      created_at: createdAt,
       data: {
         email_id: emailId,
         to: ["Soft.Bounce@Example.com"],
@@ -334,11 +334,11 @@ describe("Resend webhook bounce classification", () => {
 
   test("email.delivered clears earlier strikes", async () => {
     const t = setup();
-    await post(t, bounced("e1", "Transient", "MailboxFull"), "msg_s1");
-    await post(t, bounced("e2", "Transient", "MailboxFull"), "msg_s2");
+    await post(t, bounced("e1", "Transient", "MailboxFull", "2023-11-14T21:00:00.000Z"), "msg_s1");
+    await post(t, bounced("e2", "Transient", "MailboxFull", "2023-11-14T21:30:00.000Z"), "msg_s2");
     const res = await post(t, {
       type: "email.delivered",
-      created_at: "2023-11-14T22:13:20.000Z",
+      created_at: "2023-11-14T22:00:00.000Z",
       data: { email_id: "e_ok", to: ["SOFT.BOUNCE@example.com"] },
     }, "msg_ok");
     expect(res.status).toBe(200);
