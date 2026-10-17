@@ -81,6 +81,7 @@ import { getCachedFuelShortageRegistry } from '@/shared/fuel-shortage-registry-s
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { t } from '@/services/i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
+import { createIdleAwareFrameProvider } from '@/utils/idle-aware-frame-provider';
 import { isInputPending, scheduleYield } from '@/utils/after-paint';
 import { showLayerWarning } from '@/utils/layer-warning';
 import { localizeMapLabels } from '@/utils/map-locale';
@@ -264,6 +265,10 @@ const VIEW_PRESETS: Record<DeckMapView, { longitude: number; latitude: number; z
 };
 
 const VIEWPORT_MOVEMENT_EVENT_KEY = 'worldMonitorViewportGeneration';
+const DECK_IDLE_FRAME_INTERVAL_MS = 250;
+const DECK_ACTIVE_FRAME_WINDOW_MS = 300;
+// 'render' covers every map frame, including repaints deck itself requests.
+const DECK_FRAME_WAKE_EVENTS = ['render', 'movestart', 'mousemove', 'mousedown', 'wheel', 'touchstart', 'click', 'resize'] as const;
 
 type ViewportMovementEventData = {
   worldMonitorViewportGeneration?: unknown;
@@ -591,6 +596,13 @@ export class DeckGLMap {
 
   private container: HTMLElement;
   private deckOverlay: MapLibreOverlay | null = null;
+  // deck.gl's loop polls for layer changes on every display frame. Between
+  // map activity it polls on a slow timer instead, which removes most idle
+  // main-thread work; any map event or layer update wakes it back to vsync.
+  private readonly deckFrameProvider = createIdleAwareFrameProvider({
+    idleIntervalMs: DECK_IDLE_FRAME_INTERVAL_MS,
+    activeWindowMs: DECK_ACTIVE_FRAME_WINDOW_MS,
+  });
   private maplibreMap: maplibregl.Map | null = null;
   private state: DeckMapState;
   private popup: MapPopup;
@@ -1318,8 +1330,10 @@ export class DeckGLMap {
 
     installDeckInterleavedRaceFilter();
 
-    this.deckOverlay = new MapLibreOverlay({
+    const overlayProps = {
       interleaved: true,
+      // Forwarded by Deck.setProps to luma.gl's AnimationLoop.setProps.
+      animationFrameProvider: this.deckFrameProvider,
       layers: this.buildLayers(true),
       getTooltip: (info: PickingInfo) => this.getTooltip(info),
       onClick: (info: PickingInfo) => this.handleClick(info),
@@ -1336,9 +1350,12 @@ export class DeckGLMap {
           this.updateLayers();
         }
       },
-    });
+    };
+    this.deckOverlay = new MapLibreOverlay(overlayProps);
 
     this.maplibreMap.addControl(this.deckOverlay as unknown as maplibregl.IControl);
+    const wakeDeckFrames = () => this.deckFrameProvider.wake();
+    for (const event of DECK_FRAME_WAKE_EVENTS) this.maplibreMap.on(event, wakeDeckFrames);
 
     this.maplibreMap.on('movestart', () => {
       if (this.moveTimeoutId) {
@@ -6379,6 +6396,7 @@ export class DeckGLMap {
       const built = this.buildLayers(!deferred);
       jsBuild = performance.now() - buildStart;
       layerCount = built.length;
+      this.deckFrameProvider.wake();
       this.deckOverlay?.setProps({ layers: built });
     } catch { /* map may be mid-teardown (null.getProjection) */ }
     if (import.meta.env.DEV) {
@@ -8472,6 +8490,7 @@ export class DeckGLMap {
   public destroy(): void {
     this.destroyed = true;
     this.aircraftFetchSeq += 1;
+    this.deckFrameProvider.dispose();
     this.settleViewportMovement(false);
     this.stopTradeAnimation();
     this.activeFlightTrails.clear();
