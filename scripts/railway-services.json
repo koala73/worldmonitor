@@ -246,6 +246,7 @@
       "scripts/lib/digest-cooldown-shadow-log.mjs",
       "scripts/lib/digest-delivered-log.mjs",
       "scripts/lib/digest-delivery-plan.mjs",
+      "scripts/lib/digest-email-html.mjs",
       "scripts/lib/digest-only-user.mjs",
       "scripts/lib/digest-opinion-track-filter.mjs",
       "scripts/lib/digest-orchestration-helpers.mjs",
