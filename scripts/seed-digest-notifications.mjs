@@ -13,12 +13,9 @@
  */
 import { createRequire } from 'node:module';
 import {
-  escapeTelegramHtml,
-  escapeSlackMrkdwn,
   markdownToTelegramHtml,
   markdownToSlackMrkdwn,
   markdownToDiscord,
-  escapeDiscordText,
   truncateDiscordContent,
   escapeDigestText,
   formatDigestItemTitle,
