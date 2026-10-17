@@ -2547,11 +2547,13 @@ async function main() {
         ok = await sendDiscord(rule.userId, ch.webhookEnvelope, discordText);
       } else if (ch.channelType === 'teams' && ch.webhookEnvelope) {
         // Same stories, lead and brief link as the other channels, as an
-        // Adaptive Card (#9215).
+        // Adaptive Card (#9215). The card renders its own story list, so it
+        // takes formatterStories rather than a formatDigest text target;
+        // titles get the same source-suffix strip formatDigest applies.
         ok = await sendTeams(rule.userId, ch.webhookEnvelope, buildTeamsDigestPayload({
           title: storyListPlain.split('\n')[0],
           summary: briefLead,
-          stories: formatterStories,
+          stories: formatterStories.map((story) => ({ ...story, title: stripSourceSuffix(story.title) })),
           briefUrl: magazineUrl,
         }));
       } else if (ch.channelType === 'email' && ch.email) {

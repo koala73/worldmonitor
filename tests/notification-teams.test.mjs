@@ -353,13 +353,14 @@ describe('digest cron Teams dispatch', () => {
       decrypt: (envelope) => envelope.replace(/^enc:/, ''),
       deactivateChannel: async (userId, channelType) => { deactivations.push({ userId, channelType }); },
       buildTeamsDigestPayload: teams.buildTeamsDigestPayload,
+      stripSourceSuffix: (title) => title.replace(/ - Reuters$/, ''),
       sendTeamsPayload: async (url, payload) => { sends.push({ url, payload }); return { ok: status < 300, status, gone: status === 404 }; },
       parseDigestOnlyUser: () => ({ kind: 'unset' }),
       composeBriefsForRun: async () => ({ briefByUser: new Map(), composeSuccess: 0, composeFailed: 0 }),
       readCooldownConfig: () => ({ invalidRaw: null, mode: 'off' }),
       getLastSentAt: async () => 0, isDue: () => true, isUserPro: async () => true,
       digestWindowStartMs: () => 0,
-      buildDigest: async () => [{ title: 'Synthetic digest story', severity: 'critical', sources: ['Reuters'] }],
+      buildDigest: async () => [{ title: 'Synthetic digest story - Reuters', severity: 'critical', sources: ['Reuters'] }],
       buildDigestDeliveryPlan: ({ rawStories }) => ({ formatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
       formatDigest: () => 'WorldMonitor Daily Digest — October 17, 2026\n\nSynthetic digest story',
       renderDigestEmailHtml: () => ({ html: '<p>x</p>', bytes: 0, truncated: false, shownStories: 1 }),
@@ -382,6 +383,7 @@ describe('digest cron Teams dispatch', () => {
     const text = renderedText(cardOf(sends[0].payload));
     assert.match(text, /WorldMonitor Daily Digest — October 17, 2026/);
     assert.match(text, /Synthetic digest story/);
+    assert.doesNotMatch(text, /Synthetic digest story - Reuters/, 'titles get the formatDigest source-suffix strip');
     assert.equal(metadata[0].sentCount, 1);
   });
 
