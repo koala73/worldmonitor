@@ -29,6 +29,8 @@ const ALLOWED_REDIRECT_URIS = new Set([
   'https://api.devin.ai/mcp/oauth/callback',
   // Google Antigravity
   'https://antigravity.google/oauth-callback',
+  // Vercel Connect
+  'https://connect.vercel.com/callback',
 ]);
 
 // Enforced at registration (api/oauth/register.js) and re-checked before a Pro

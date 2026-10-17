@@ -94,6 +94,7 @@ Dynamic Client Registration is **not** open to arbitrary redirects. A `redirect_
 | Mistral Le Chat | `https://callback.mistral.ai/v1/integrations_auth/oauth2_callback` |
 | Devin | `https://api.devin.ai/mcp/oauth/callback` ([Devin MCP docs](https://docs.devin.ai/work-with-devin/mcp)) |
 | Google Antigravity | `https://antigravity.google/oauth-callback` ([Antigravity MCP docs](https://antigravity.google/docs/mcp)) |
+| Vercel Connect | `https://connect.vercel.com/callback` ([Vercel Connect provider docs](https://vercel.com/docs/connect/providers)) |
 
 Claude Code, Cursor desktop, VS Code desktop, Codex, Gemini CLI, Zed, and MCP Inspector use the loopback form. A registration may list up to 8 `redirect_uris`, and one unlisted entry rejects the whole request with `400 invalid_redirect_uri`. Clients with per-user or per-tenant callbacks, such as Gemini custom apps and Microsoft Copilot Studio, cannot be exact-matched and are not supported.
 

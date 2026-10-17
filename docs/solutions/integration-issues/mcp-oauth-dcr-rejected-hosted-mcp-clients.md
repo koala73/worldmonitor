@@ -64,6 +64,7 @@ Fixed in PR #8305.
 | Mistral Le Chat | `https://callback.mistral.ai/v1/integrations_auth/oauth2_callback` | **documented exception** — no vendor doc or client source found; 7+ independent MCP servers allowlist this exact URL, including `aws-samples/mistral-on-aws`, and one reports observing it on live traffic |
 | Devin | `https://api.devin.ai/mcp/oauth/callback` | docs.devin.ai |
 | Google Antigravity | `https://antigravity.google/oauth-callback` | antigravity.google/docs/mcp |
+| Vercel Connect | `https://connect.vercel.com/callback` | vercel.com/docs/connect/providers (added later, not part of PR #8305) |
 
 Mistral is the one entry admitted without evidence from the client itself, so it is marked as an exception in the table above. What made it admissible is not the number of repositories citing it: it is that the URL is on a host the vendor owns, several independent implementations agree on it byte for byte, and a wrong entry here cannot grant anything — an exact-match string either matches what a client sends or never fires, and only Mistral can receive a code sent to `callback.mistral.ai`. Excluded for failing that same test: LobeHub, Linear Agent, and Amp, each resting on one uncorroborated third-party mention; Gemini custom apps and Copilot Studio, whose callbacks are generated per user or per tenant and cannot be matched exactly; and M365 Copilot, which needs a confidential client.
 

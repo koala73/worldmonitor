@@ -92,6 +92,7 @@ OAuth bearer 请求在分发之前会重新检查解析出的 MCP token、用户
 | Mistral Le Chat | `https://callback.mistral.ai/v1/integrations_auth/oauth2_callback` |
 | Devin | `https://api.devin.ai/mcp/oauth/callback`（[Devin MCP 文档](https://docs.devin.ai/work-with-devin/mcp)） |
 | Google Antigravity | `https://antigravity.google/oauth-callback`（[Antigravity MCP 文档](https://antigravity.google/docs/mcp)） |
+| Vercel Connect | `https://connect.vercel.com/callback`（[Vercel Connect 提供方文档](https://vercel.com/docs/connect/providers)） |
 
 Claude Code、Cursor 桌面版、VS Code 桌面版、Codex、Gemini CLI、Zed 与 MCP Inspector 使用本地回环形式。单次注册最多可列出 8 个 `redirect_uris`；任意一项不在允许列表中，整个请求即返回 `400 invalid_redirect_uri`。回调地址按用户或租户生成的客户端（例如 Gemini 自定义应用与 Microsoft Copilot Studio）无法精确匹配，暂不支持。
 
