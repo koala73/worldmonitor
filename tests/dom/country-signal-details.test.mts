@@ -240,6 +240,100 @@ describe('website Signals lifecycle', () => {
     h.panel.hide();
   });
 
+  it('settles early refresh count rejection and recovers without reviving opening counts', async () => {
+    const h = lifecycle();
+    const countPaints: string[] = [];
+    vi.spyOn(h.page, 'updateSignals').mockImplementation((signals, notes) => {
+      h.panel.updateSignals(signals, notes);
+      countPaints.push(h.body.querySelector('.cdp-signal-chips')?.textContent ?? '');
+    });
+    Reflect.set(h.manager, 'getCountrySignals', vi.fn().mockResolvedValueOnce({ ...h.signals })
+      .mockRejectedValueOnce(new Error('Controlled refresh counts outage'))
+      .mockResolvedValue({ ...h.signals, militaryVessels: 142 }));
+    await h.open({ onPresented: () => h.manager.refreshOpenBrief() });
+    expect(h.assessment).toHaveBeenCalledOnce();
+    expect(h.page.updateBrief).toHaveBeenCalledWith(expect.objectContaining({ brief: 'Controlled assessment' }));
+    expect(h.body.textContent).toContain('Aggregate severity and recent high-severity observations are unavailable');
+    expect(h.body.textContent).not.toContain('Loading top high-severity');
+    expect(h.body.querySelector('.cdp-signal-breakdown .cdp-metric')).toBeNull();
+    expect(countPaints).toEqual([]);
+    h.panel.updateScore(null, h.signals);
+    expect(h.body.textContent).toContain('observations are unavailable');
+    snapshot.read.mockReturnValue([]);
+    h.manager.refreshOpenBrief();
+    await vi.waitFor(() => expect(h.body.textContent).toContain('No recent high-severity signals'));
+    expect(h.body.textContent).toContain('142 Naval Vessels');
+    expect(h.body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical0High0Moderate0Low0');
+    snapshot.read.mockReturnValue([cluster('FR', [observation('radiation_anomaly', 'high', 8)])]);
+    h.manager.refreshOpenBrief();
+    await vi.waitFor(() => expect(h.body.textContent).toContain('radiation_anomaly 8'));
+    expect(h.body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical1High0Moderate0Low0');
+    expect(h.body.textContent).not.toContain('observations are unavailable');
+    h.panel.hide();
+  });
+
+  it('preserves settled detail evidence when a later refresh count read rejects', async () => {
+    const h = lifecycle();
+    await h.open();
+    const before = h.body.textContent;
+    const counts = deferred<typeof h.signals>();
+    Reflect.set(h.manager, 'getCountrySignals', () => counts.promise);
+    h.manager.refreshOpenBrief();
+    counts.reject(new Error('Controlled settled counts outage'));
+    await counts.promise.catch(() => {});
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(h.body.textContent).toBe(before);
+    h.panel.hide();
+  });
+
+  it.each(['success', 'failure'] as const)('settles count rejection while older refresh details are pending then suppresses their %s', async outcome => {
+    const h = lifecycle();
+    await h.open();
+    const pending = deferred<ReturnType<typeof projectCountrySignalDetails>>();
+    const detailRead = vi.spyOn(h.manager as unknown as { buildSignalDetails: (code: string) => Promise<ReturnType<typeof projectCountrySignalDetails>> }, 'buildSignalDetails').mockReturnValueOnce(pending.promise);
+    Reflect.set(h.manager, 'getCountrySignals', vi.fn().mockResolvedValueOnce({ ...h.signals, militaryVessels: 142 }).mockRejectedValueOnce(new Error('Controlled overlapping counts outage')));
+    h.manager.refreshOpenBrief();
+    await vi.waitFor(() => expect(detailRead).toHaveBeenCalledOnce());
+    expect(h.body.textContent).toContain('Loading top high-severity');
+    h.manager.refreshOpenBrief();
+    await vi.waitFor(() => expect(h.body.textContent).toContain('observations are unavailable'));
+    expect(h.body.textContent).toContain('142 Naval Vessels');
+    expect(h.body.textContent).not.toContain('Loading top high-severity');
+    const before = h.body.textContent;
+    if (outcome === 'success') pending.resolve(projectCountrySignalDetails([observation('protest', 'high', 6)]));
+    else pending.reject(new Error('Superseded detail outage'));
+    await pending.promise.catch(() => {});
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(h.body.textContent).toBe(before);
+    h.panel.hide();
+  });
+
+  it.each(['country', 'presentation', 'hidden', 'destroyed', 'page', 'newer-refresh'] as const)('suppresses early count rejection after %s ownership change', async change => {
+    const h = lifecycle();
+    const counts = deferred<typeof h.signals>();
+    const read = vi.fn().mockResolvedValueOnce(h.signals).mockReturnValueOnce(counts.promise).mockResolvedValue({ ...h.signals, militaryVessels: 142 });
+    Reflect.set(h.manager, 'getCountrySignals', read);
+    const opening = h.open({ onPresented: () => h.manager.refreshOpenBrief() });
+    await vi.waitFor(() => expect(read.mock.calls.length).toBeGreaterThanOrEqual(2));
+    if (change === 'country') h.switchCountry();
+    if (change === 'presentation') Reflect.set(h.manager, 'currentCountryPresentation', { ...Reflect.get(h.manager, 'currentCountryPresentation') });
+    if (change === 'hidden') h.page.hide();
+    if (change === 'destroyed') h.ctx.isDestroyed = true;
+    if (change === 'page') h.ctx.countryBriefPage = { ...h.page } as unknown as AppContext['countryBriefPage'];
+    if (change === 'newer-refresh') {
+      snapshot.read.mockReturnValue([cluster('FR', [observation('radiation_anomaly', 'high', 9)])]);
+      h.manager.refreshOpenBrief();
+      await vi.waitFor(() => expect(h.body.textContent).toContain('radiation_anomaly 9'));
+    } else h.panel.updateSignalDetails(projectCountrySignalDetails([observation('protest', 'high', 9)]));
+    const before = h.body.textContent;
+    counts.reject(new Error('Stale early counts outage'));
+    await counts.promise.catch(() => {});
+    await opening;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(h.body.textContent).toBe(before);
+    h.panel.hide();
+  });
+
   it.each(['success', 'failure'] as const)('does not let pending opening %s overwrite a newer refresh', async outcome => {
     const h = lifecycle();
     const pending = deferred<ReturnType<typeof projectCountrySignalDetails>>();
