@@ -52,6 +52,8 @@ const HOSTED_CLIENT_CALLBACKS = {
   'Skydive': 'https://www.skydive.com/api/v1/external-oauth/callback',
   'MCPJam': 'https://app.mcpjam.com/oauth/callback',
   'MCPJam score': 'https://score.mcpjam.com/oauth/callback',
+  'Glama connectors': 'https://glama.ai/api/app/mcp/oauth/callback',
+  'Glama Inspector': 'https://glama.ai/mcp/inspector/oauth/callback',
 };
 
 const LOOPBACK = [
@@ -93,6 +95,9 @@ const REJECTED = {
   'MCPJam staging host': 'https://staging.mcpjam.com/oauth/callback',
   'MCPJam www.score host': 'https://www.score.mcpjam.com/oauth/callback',
   'MCPJam debug callback': 'https://app.mcpjam.com/oauth/callback/debug',
+  'Glama callback on www': 'https://www.glama.ai/api/app/mcp/oauth/callback',
+  'Glama app callback with a trailing slash': 'https://glama.ai/api/app/mcp/oauth/callback/',
+  'other path on glama.ai': 'https://glama.ai/callback',
   'LobeHub cloud (derived from source, not vendor-published)': 'https://app.lobehub.com/oauth/connector/callback',
   'Teams callback with a lowercased path': 'https://teams.microsoft.com/api/platform/v1.0/oauthredirect',
   'https IPv6 loopback': 'https://[::1]/oauth_callback',

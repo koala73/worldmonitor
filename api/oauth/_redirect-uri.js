@@ -35,6 +35,10 @@ const ALLOWED_REDIRECT_URIS = new Set([
   'https://connect.vercel.com/callback',
   // Make.com MCP Client (https://apps.make.com/mcp-client)
   'https://www.make.com/oauth/cb/mcp',
+  // Glama connector test profiles and personal connections, then Glama MCP
+  // Inspector (both routes are in Glama's shipped route manifest)
+  'https://glama.ai/api/app/mcp/oauth/callback',
+  'https://glama.ai/mcp/inspector/oauth/callback',
   // Microsoft 365 Copilot MCP plugins (MicrosoftDocs/m365copilot-docs build-mcp-plugins.md)
   'https://teams.microsoft.com/api/platform/v1.0/oAuthRedirect',
   // The clients below publish CIMD documents (the cited URL) and prefer CIMD.
