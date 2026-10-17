@@ -18,6 +18,7 @@ import {
   suggestNotFoundSection,
 } from '../src/config/agent-not-found.ts';
 import { CONTENT_CORPUS_PREFIXES } from '../scripts/discover-content-corpus-pages.mjs';
+import { indexableLandingPassthroughPrefixes } from '../shared/indexable-landing-locales.ts';
 
 const vercelConfig = JSON.parse(
   readFileSync(resolve(import.meta.dirname, '../vercel.json'), 'utf8'),
@@ -142,7 +143,7 @@ describe('agent-friendly 404s (orank agent-friendly-404)', () => {
   });
 
   it('does not intercept known product routes or mutating methods', () => {
-    for (const path of ['/', '/dashboard', '/stocks/AAPL', '/story', '/pro', '/docs/mcp', '/countries/united-states']) {
+    for (const path of ['/', '/dashboard', '/stocks/AAPL', '/story', '/pro', '/docs/mcp', '/countries/united-states', ...indexableLandingPassthroughPrefixes()]) {
       assert.equal(call(path, { accept: '*/*' }), undefined, `${path} must keep its vercel.json route`);
     }
     assert.equal(call('/some-path-that-does-not-exist', { method: 'POST', accept: '*/*' }), undefined);

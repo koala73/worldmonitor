@@ -1840,6 +1840,35 @@ export default defineSchema({
     source: v.optional(v.string()),
   }).index("by_normalized_email", ["normalizedEmail"]),
 
+  // Soft-bounce strike log feeding emailSuppressions. One row per address per
+  // Resend message that came back as a Transient or Undetermined bounce.
+  // Rows older than the window are pruned daily and on the next write for
+  // that address. A later delivery clears them; reaching the threshold converts
+  // them into one emailSuppressions "bounce" row. See
+  // SOFT_BOUNCE_SUPPRESS_THRESHOLD in convex/emailSuppressions.ts.
+  emailSoftBounces: defineTable({
+    normalizedEmail: v.string(),
+    // Resend email_id. Dedupes webhook retries and repeat events for the
+    // same message so one message is at most one strike.
+    emailMessageId: v.string(),
+    bounceType: v.string(),
+    bounceSubType: v.optional(v.string()),
+    occurredAt: v.number(),
+  })
+    .index("by_normalized_email", ["normalizedEmail", "occurredAt"])
+    .index("by_occurred_at", ["occurredAt"]),
+
+  // Latest email.delivered time per address, even if no strike has arrived yet.
+  // Webhooks can arrive out of order: a bounce that happened before this
+  // delivery is stale evidence and must not restart the count. Removed on
+  // suppression; daily bounded cleanup removes marks outside the 30-day window.
+  emailSoftBounceResets: defineTable({
+    normalizedEmail: v.string(),
+    lastDeliveredAt: v.number(),
+  })
+    .index("by_normalized_email", ["normalizedEmail"])
+    .index("by_last_delivered_at", ["lastDeliveredAt"]),
+
   // Per-event log of Resend webhook deliveries tagged with a broadcast_id.
   // Used as forensic detail to drive engineer-level inspection alongside
   // Resend's dashboard. Idempotent on `webhookEventId` — Resend retries

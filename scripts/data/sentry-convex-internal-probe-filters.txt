@@ -140,7 +140,10 @@
 *Could not find public function for 'companyMonitoring/orchestration:scheduleCompanySources'*
 *Could not find public function for 'contactMessages:submit'*
 *Could not find public function for 'emailSuppressions:bulkSuppress'*
+*Could not find public function for 'emailSuppressions:clearSoftBounces'*
 *Could not find public function for 'emailSuppressions:isEmailSuppressed'*
+*Could not find public function for 'emailSuppressions:pruneSoftBounceData'*
+*Could not find public function for 'emailSuppressions:recordSoftBounce'*
 *Could not find public function for 'emailSuppressions:remove'*
 *Could not find public function for 'emailSuppressions:suppress'*
 *Could not find public function for 'embedKeys:touchKeyLastUsed'*
