@@ -22,6 +22,7 @@ permissions:
 
 jobs:
   changes:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     name: codeql-changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -76,7 +77,7 @@ jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     needs: changes
-    if: needs.changes.outputs.languages != '[]'
+    if: ${{ (needs.changes.outputs.languages != '[]') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -109,7 +110,7 @@ jobs:
   # and cache eviction is least-recently-accessed, so stale bases push out hot caches.
   prune-overlay-bases:
     needs: analyze
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    if: ${{ (!cancelled() && github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

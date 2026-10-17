@@ -37,6 +37,7 @@ concurrency:
 
 jobs:
   refresh:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     # The freeze fetches five digest variants, tops every under-filled country
     # up from the per-country GDELT index (~190 requests, ~50 minutes if every

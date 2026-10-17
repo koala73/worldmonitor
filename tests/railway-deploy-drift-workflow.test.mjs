@@ -19,7 +19,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workflowPath = resolve(repoRoot, '.github/workflows/railway-deploy-drift.yml');
 const source = readFileSync(workflowPath, 'utf8');
 const workflow = YAML.parse(source);
-const MAIN_GUARD = "${{ github.ref == 'refs/heads/main' }}";
+const MAIN_GUARD = "${{ (github.ref == 'refs/heads/main') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}";
 
 function steps(job) {
   assert.ok(Array.isArray(job?.steps), 'job must define steps');
