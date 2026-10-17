@@ -4,13 +4,14 @@ import type { CountrySignalCluster, GeoSignal } from '@/services/signal-aggregat
 import { projectCountrySignalDetails } from '../../shared/country-signal-details';
 
 const snapshot = vi.hoisted(() => ({ read: vi.fn() }));
-vi.mock('@/app/lazy-services', () => ({ getSignalAggregator: async () => ({ getCountryClusters: snapshot.read }) }));
+vi.mock('@/app/lazy-services', () => ({ getSignalAggregator: async () => ({ getCountryClusters: snapshot.read, getRegionalConvergence: () => [] }) }));
 import { CountryIntelManager } from '@/app/country-intel';
 import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
 import { countrySignalsFromMilitary } from '@/services/country-signals';
 import { initTestI18n } from './helpers/i18n.mts';
 
-vi.mock('@/utils/after-paint', () => ({ yieldToMain: async () => {} }));
+const paint = vi.hoisted(() => ({ yield: vi.fn(async () => {}) }));
+vi.mock('@/utils/after-paint', () => ({ yieldToMain: () => paint.yield() }));
 vi.mock('@/services/country-coverage', () => ({ fetchCountryCoverage: async () => ({ headlines: [], timelineEvents: [] }) }));
 vi.mock('@/services/country-geometry', async original => ({ ...await original<typeof import('@/services/country-geometry')>(), preloadCountryGeometry: async () => {}, getCountryCentroid: () => null }));
 vi.mock('@/services/related-assets', async original => ({ ...await original<typeof import('@/services/related-assets')>(), preloadInfrastructureTables: async () => {} }));
@@ -111,7 +112,7 @@ function lifecycle() {
     updateSignals: panel.updateSignals.bind(panel), updateSignalDetails: panel.updateSignalDetails.bind(panel),
     setSectionFailure: panel.setSectionFailure.bind(panel), updateScore: panel.updateScore.bind(panel),
     updateMilitaryActivity: () => {}, updateEconomicIndicators: () => {}, updateNews: () => {},
-    updateInfrastructure: () => {}, updateBrief: () => {}, getTimelineMount: () => null,
+    updateInfrastructure: () => {}, updateBrief: vi.fn(), getTimelineMount: () => null,
   };
   const ctx = { countryBriefPage: page, isDestroyed: false, allNews: [], latestClusters: [], intelligenceCache: {},
     map: { setRenderPaused: () => {}, highlightCountry: () => {}, fitCountry: () => {} },
@@ -120,19 +121,22 @@ function lifecycle() {
   Reflect.set(manager, 'ensureCountryBriefPage', async () => true);
   Reflect.set(manager, 'getCountrySignals', vi.fn(async () => signals));
   Reflect.set(manager, 'getCountryController', () => ({ hydrate: () => ({ stockPromise: Promise.resolve(null) }) }));
-  Reflect.set(manager, 'fetchCountryIntelBrief', async () => ({ brief: 'Controlled assessment', sources: [] }));
+  const assessment = vi.fn(async () => ({ brief: 'Controlled assessment', sources: [] }));
+  Reflect.set(manager, 'fetchCountryIntelBrief', assessment);
   for (const name of ['fetchDefenseIndustrialBase', 'fetchProSections', 'fetchCommodityVulnerability', 'mountCountryTimeline']) Reflect.set(manager, name, () => {});
-  return { manager, panel, body, ctx, signals, page, switchCountry: () => { code = 'DE'; }, open: () => manager.openCountryBriefByCode('FR', 'France', { trackAnalytics: false }) };
+  return { manager, panel, body, ctx, signals, page, assessment, switchCountry: () => { code = 'DE'; }, open: (options: { onPresented?: () => void } = {}) => manager.openCountryBriefByCode('FR', 'France', { trackAnalytics: false, ...options }) };
 }
 
 describe('website Signals lifecycle', () => {
-  beforeEach(() => { snapshot.read.mockReturnValue([cluster('FR', [observation('protest', 'high', 1)])]); });
+  beforeEach(() => { paint.yield.mockResolvedValue(undefined); snapshot.read.mockReturnValue([cluster('FR', [observation('protest', 'high', 1)])]); });
 
   it('keeps observed severity and recent evidence after the complete opening count flow', async () => {
     const h = lifecycle();
     await h.open();
     expect(h.body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical0High1Moderate0Low0');
     expect(h.body.textContent).toContain('protest 1');
+    expect(h.assessment).toHaveBeenCalledOnce();
+    expect(h.page.updateBrief).toHaveBeenCalledWith(expect.objectContaining({ brief: 'Controlled assessment' }));
     expect(h.body.textContent).not.toContain('Loading top high-severity');
     h.panel.hide();
   });
@@ -160,10 +164,21 @@ describe('website Signals lifecycle', () => {
     expect(h.body.textContent).toContain('141 Naval Vessels');
     expect(h.body.textContent).not.toContain('Loading top high-severity');
     expect(h.body.textContent).not.toContain('No recent high-severity signals');
+    if (mode === 'opening') {
+      expect(h.assessment).toHaveBeenCalledOnce();
+      expect(h.page.updateBrief).toHaveBeenCalledWith(expect.objectContaining({ brief: 'Controlled assessment' }));
+    }
+    h.panel.updateScore(null, h.signals);
+    expect(h.body.textContent).toContain('Aggregate severity and recent high-severity observations are unavailable');
+    expect(h.body.querySelector('.cdp-signal-breakdown .cdp-metric')).toBeNull();
     snapshot.read.mockReturnValue([]);
     h.manager.refreshOpenBrief();
     await vi.waitFor(() => expect(h.body.textContent).toContain('No recent high-severity signals'));
     expect(h.body.textContent).not.toContain('observations are unavailable');
+    snapshot.read.mockReturnValue([cluster('FR', [observation('radiation_anomaly', 'high', 3)])]);
+    h.manager.refreshOpenBrief();
+    await vi.waitFor(() => expect(h.body.textContent).toContain('radiation_anomaly 3'));
+    expect(h.body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical1High0Moderate0Low0');
     h.panel.hide();
   });
 
@@ -193,6 +208,36 @@ describe('website Signals lifecycle', () => {
         h.panel.hide();
       }
     }
+  });
+
+  it('keeps refresh counts coverage and details when refresh completes during the opening paint yield', async () => {
+    const h = lifecycle();
+    const yielded = deferred<void>();
+    const countPaints: string[] = [];
+    vi.spyOn(h.page, 'updateSignals').mockImplementation((signals, notes) => {
+      h.panel.updateSignals(signals, notes);
+      countPaints.push(h.body.querySelector('.cdp-signal-chips')?.textContent ?? '');
+    });
+    paint.yield.mockReturnValueOnce(yielded.promise);
+    Reflect.set(h.manager, 'getCountrySignals', vi.fn().mockResolvedValueOnce({ ...h.signals, militaryVessels: 141 }).mockResolvedValue({ ...h.signals, militaryVessels: 142 }));
+    Reflect.set(h.manager, 'buildMilitarySummary', () => ({ coverageNotes: ['Current refresh coverage'] }));
+    const opening = h.open({ onPresented: () => {
+      snapshot.read.mockReturnValue([cluster('FR', [observation('radiation_anomaly', 'high', 7)])]);
+      h.manager.refreshOpenBrief();
+    } });
+    await vi.waitFor(() => expect(h.body.textContent).toContain('radiation_anomaly 7'));
+    expect(h.body.textContent).toContain('142 Naval Vessels');
+    yielded.resolve();
+    await opening;
+    expect(h.body.textContent).toContain('142 Naval Vessels');
+    expect(h.body.textContent).not.toContain('141 Naval Vessels');
+    expect(h.body.textContent).toContain('Current refresh coverage');
+    expect(countPaints).toEqual(['⚓ 142 Naval Vessels']);
+    expect(h.body.textContent).toContain('radiation_anomaly 7');
+    expect(h.body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical1High0Moderate0Low0');
+    expect(h.assessment).toHaveBeenCalledOnce();
+    expect(h.page.updateBrief).toHaveBeenCalledWith(expect.objectContaining({ brief: 'Controlled assessment' }));
+    h.panel.hide();
   });
 
   it.each(['success', 'failure'] as const)('does not let pending opening %s overwrite a newer refresh', async outcome => {

@@ -442,6 +442,7 @@ export class CountryIntelManager implements AppModule {
         page, code, score, stock: null, imf: null, refreshGeneration: 0,
       };
       this.currentCountryPresentation = presentation;
+      const signalGeneration = presentation.refreshGeneration;
       this.currentCoverageEvents = [];
       pageShown = true;
       this.visibleBriefOwner = request.owner;
@@ -498,17 +499,18 @@ export class CountryIntelManager implements AppModule {
       }
       const militarySummary = this.buildMilitarySummary(code, country);
       page.updateMilitaryActivity?.(militarySummary);
-      page.updateSignals?.(signals, militarySummary.coverageNotes);
-      const signalGeneration = presentation.refreshGeneration;
-      try {
-        const signalDetails = await this.buildSignalDetails(code);
-        if (token === this.briefRequestToken && this.isCurrentPresentation(presentation) && signalGeneration === presentation.refreshGeneration) {
-          page.updateSignalDetails?.(signalDetails);
-        }
-      } catch (err) {
-        console.warn('[CountryBrief] signal details unavailable:', err);
-        if (token === this.briefRequestToken && this.isCurrentPresentation(presentation) && signalGeneration === presentation.refreshGeneration) {
-          page.setSectionFailure?.('signals', 'unavailable', 'Aggregate severity and recent high-severity observations are unavailable.');
+      if (signalGeneration === presentation.refreshGeneration) {
+        page.updateSignals?.(signals, militarySummary.coverageNotes);
+        try {
+          const signalDetails = await this.buildSignalDetails(code);
+          if (token === this.briefRequestToken && this.isCurrentPresentation(presentation) && signalGeneration === presentation.refreshGeneration) {
+            page.updateSignalDetails?.(signalDetails);
+          }
+        } catch (err) {
+          console.warn('[CountryBrief] signal details unavailable:', err);
+          if (token === this.briefRequestToken && this.isCurrentPresentation(presentation) && signalGeneration === presentation.refreshGeneration) {
+            page.setSectionFailure?.('signals', 'unavailable', 'Aggregate severity and recent high-severity observations are unavailable.');
+          }
         }
       }
       if (!this.isCurrentPresentation(presentation)) return;
@@ -627,7 +629,9 @@ export class CountryIntelManager implements AppModule {
           if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
           if (!this.isCurrentPresentation(presentation)) return;
           const currentScore = presentation.score;
-          this.commitCountryScore(presentation, currentScore, signals);
+          if (signalGeneration === presentation.refreshGeneration) {
+            this.commitCountryScore(presentation, currentScore, signals);
+          }
           Object.assign(context, signals);
           if (currentScore) {
             context.score = currentScore.score;
