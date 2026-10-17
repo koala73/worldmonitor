@@ -10762,6 +10762,9 @@
           "path": "scripts/lib/company-monitoring-classifier-client.mjs"
         },
         {
+          "path": "scripts/lib/digest-email-html.mjs"
+        },
+        {
           "path": "scripts/lib/x-news-accounts.cjs"
         },
         {
@@ -15019,6 +15022,9 @@
         },
         {
           "path": "scripts/github-stars-snapshot.mjs"
+        },
+        {
+          "path": "scripts/lib/email-unsubscribe.cjs"
         },
         {
           "path": "scripts/lib/internal-links.mjs"

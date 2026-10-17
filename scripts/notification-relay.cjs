@@ -2,6 +2,7 @@
 
 const { createHash } = require('node:crypto');
 const { Resend } = require('resend');
+const { appendUnsubscribeText, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
 const { sendResendEmail } = require('./lib/resend-send.cjs');
 const { decrypt } = require('./lib/crypto.cjs');
 const {
@@ -455,7 +456,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
       if (ch.channelType === 'telegram' && ch.chatId) ok = await sendTelegram(userId, ch.chatId, text);
       else if (ch.channelType === 'slack' && ch.webhookEnvelope) ok = await sendSlack(userId, ch.webhookEnvelope, text);
       else if (ch.channelType === 'discord' && ch.webhookEnvelope) ok = await sendDiscord(userId, ch.webhookEnvelope, text);
-      else if (ch.channelType === 'email' && ch.email) ok = await sendEmail(ch.email, subject, text);
+      else if (ch.channelType === 'email' && ch.email) ok = await sendEmail(ch.email, subject, text, unsubscribeUrlFor(ch, 'alerts'));
       else if (ch.channelType === 'webhook' && ch.webhookEnvelope) ok = await sendWebhook(userId, ch.webhookEnvelope, {
         eventType: 'quiet_hours_batch',
         severity: 'info',
@@ -737,14 +738,13 @@ async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
 
 // ── Delivery: Email ───────────────────────────────────────────────────────────
 
-async function sendEmail(email, subject, text) {
-  // Shared helper: default Reply-To (support@, not the alerts@ role inbox)
-  // and treats the SDK's resolved `{ error }` as a failed send.
-  const result = await sendResendEmail(
-    resend,
-    { from: RESEND_FROM, to: email, subject, text },
-    { logPrefix: '[relay]' },
-  );
+async function sendEmail(email, subject, text, unsubscribeUrl) {
+  const payload = { from: RESEND_FROM, to: email, subject, text };
+  if (unsubscribeUrl !== undefined) {
+    payload.text = appendUnsubscribeText(text, unsubscribeUrl, 'Unsubscribe from alert emails');
+    payload.headers = listUnsubscribeHeaders(unsubscribeUrl);
+  }
+  const result = await sendResendEmail(resend, payload, { logPrefix: '[relay]' });
   return result.ok;
 }
 
@@ -1733,7 +1733,7 @@ async function processEvent(event) {
         } else if (ch.channelType === 'discord' && ch.webhookEnvelope) {
           await sendDiscord(rule.userId, ch.webhookEnvelope, deliveryText);
         } else if (ch.channelType === 'email' && ch.email) {
-          await sendEmail(ch.email, subject, deliveryText);
+          await sendEmail(ch.email, subject, deliveryText, unsubscribeUrlFor(ch, 'alerts'));
         } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
           await sendWebhook(rule.userId, ch.webhookEnvelope, shapeEventForWebhook(event), ch.webhookSecret);
         } else if (ch.channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
