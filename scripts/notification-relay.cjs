@@ -1035,12 +1035,15 @@ function normalizeEventCountryCode(raw) {
 //    via event.userId.
 //  - watchlist_story_alert: scoped by ticker (eventMatchesTickerScope), not
 //    by country — an explicit per-rule opt-in that country scope must not veto.
+//  - chokepoint_disruption: same reasoning, scoped by chokepoint
+//    (eventMatchesChokepointScope) and opt-in only (#9217).
 const PERMISSIVE_UNATTRIBUTED_EVENT_TYPES = new Set([
   'rss_alert',
   'keyword_spike',
   'hotspot_escalation',
   'military_surge',
   'watchlist_story_alert',
+  'chokepoint_disruption',
 ]);
 
 function isPermissiveUnattributedEvent(event) {
@@ -1140,6 +1143,7 @@ function eventMatchesCountryScope(event, rule) {
 // ── Watchlist story alerts (#4922 item e / U3) ───────────────────────────────
 
 const WATCHLIST_STORY_EVENT_TYPE = 'watchlist_story_alert';
+const CHOKEPOINT_DISRUPTION_EVENT_TYPE = 'chokepoint_disruption';
 
 /**
  * Per-rule eventTypes gate, extracted from the inline matching expression so
@@ -1162,7 +1166,13 @@ function ruleMatchesEventType(rule, event) {
   if (event?.eventType === WATCHLIST_STORY_EVENT_TYPE) {
     return rule.eventTypes.includes(WATCHLIST_STORY_EVENT_TYPE);
   }
-  const broadcastTypes = rule.eventTypes.filter((t) => t !== WATCHLIST_STORY_EVENT_TYPE);
+  // Same opt-in contract as the watchlist row (#9217): a wildcard rule never
+  // receives it, and opting in does not narrow the rule's other alerts.
+  if (event?.eventType === CHOKEPOINT_DISRUPTION_EVENT_TYPE) {
+    return rule.eventTypes.includes(CHOKEPOINT_DISRUPTION_EVENT_TYPE);
+  }
+  const broadcastTypes = rule.eventTypes.filter((t) => t !== WATCHLIST_STORY_EVENT_TYPE)
+    .filter((t) => t !== CHOKEPOINT_DISRUPTION_EVENT_TYPE);
   return broadcastTypes.length === 0 || broadcastTypes.includes(event.eventType);
 }
 
@@ -1190,6 +1200,31 @@ function eventMatchesTickerScope(event, rule) {
   if (eventTickers.length === 0) return false;
   const ruleSet = new Set(rule.tickers.map((t) => String(t).toUpperCase()));
   return eventTickers.some((t) => ruleSet.has(String(t).toUpperCase()));
+}
+
+/**
+ * Narrows `chokepoint_disruption` to the rule's chokepoints. Unlike tickers,
+ * an empty/absent list means every chokepoint: the eventTypes opt-in already
+ * makes the event explicit, and "alert me on any chokepoint" is the common
+ * choice. Every other event type passes through untouched.
+ */
+function eventMatchesChokepointScope(event, rule) {
+  if (event?.eventType !== CHOKEPOINT_DISRUPTION_EVENT_TYPE) return true;
+  if (!Array.isArray(rule.chokepoints) || rule.chokepoints.length === 0) return true;
+  const chokepointId = event?.payload?.chokepointId;
+  return typeof chokepointId === 'string' && rule.chokepoints.includes(chokepointId);
+}
+
+/**
+ * Web push tag: a later push with the same tag replaces the earlier one in the
+ * tray. Chokepoint alerts carry the chokepoint so two crossings in one tick
+ * both stay visible.
+ */
+function webPushTagFor(event, userId) {
+  const chokepointId = event?.eventType === CHOKEPOINT_DISRUPTION_EVENT_TYPE ? event?.payload?.chokepointId : null;
+  return typeof chokepointId === 'string' && chokepointId
+    ? `${event.eventType}:${chokepointId}:${userId}`
+    : `${event.eventType}:${userId}`;
 }
 
 function shouldNotify(rule, event) {
@@ -1597,6 +1632,7 @@ async function processEvent(event) {
     shouldNotify(r, event) &&
     eventMatchesCountryScope(event, r) &&
     eventMatchesTickerScope(event, r) &&
+    eventMatchesChokepointScope(event, r) &&
     (!event.variant || !r.variant || r.variant === event.variant) &&
     (!event.userId || r.userId === event.userId)
   );
@@ -1611,6 +1647,7 @@ async function processEvent(event) {
     shouldNotify(r, event) &&
     !eventMatchesCountryScope(event, r) &&
     eventMatchesTickerScope(event, r) &&
+    eventMatchesChokepointScope(event, r) &&
     (!event.variant || !r.variant || r.variant === event.variant) &&
     (!event.userId || r.userId === event.userId)
   ).length;
@@ -1750,7 +1787,7 @@ async function processEvent(event) {
             title: formatEventTitle(event, 'WorldMonitor'),
             body: firstLine,
             url: formatEventLinkForPush(event),
-            tag: `${event.eventType}:${rule.userId}`,
+            tag: webPushTagFor(event, rule.userId),
             eventType: event.eventType,
           });
         }
@@ -1855,6 +1892,8 @@ module.exports = {
   // tests previously kept hand-copied mirrors of these, which cannot fail when
   // the real ones change.
   eventMatchesTickerScope,
+  eventMatchesChokepointScope,
+  webPushTagFor,
   ruleMatchesEventType,
   // Exported so the effective-sensitivity coercion and the importance-score
   // threshold ladder are exercised directly rather than grepped from source.

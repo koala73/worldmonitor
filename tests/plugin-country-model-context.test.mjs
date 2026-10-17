@@ -8,10 +8,12 @@ import { Window } from 'happy-dom';
 const source = readFileSync(new URL('../src/plugin-country-main.ts', import.meta.url), 'utf8');
 const downloadExports = {};
 vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/utils/country-text-download.ts', import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, { exports: downloadExports, TextEncoder });
+const sectionErrors = {};
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/services/country-brief-error.ts', import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, { exports: sectionErrors });
 const file = ts.createSourceFile('plugin-country-main.ts', source, ts.ScriptTarget.Latest, true);
 const mount = file.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'mountPlugin');
 assert.ok(mount?.body);
-const functions = ['request', 'snapshot', 'scheduleContext', 'contextTarget', 'renderConnection', 'publishContext', 'open', 'start'];
+const functions = ['request', 'snapshot', 'scheduleContext', 'contextTarget', 'renderConnection', 'publishContext', 'clearDeniedRawSignals', 'open', 'start'];
 const selected = mount.body.statements.filter(node => ts.isFunctionDeclaration(node) && functions.includes(node.name?.text));
 for (const name of ['request', 'snapshot', 'scheduleContext']) assert.ok(selected.some(node => node.name.text === name));
 const send = mount.body.statements.find(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(item => item.name.getText(file) === 'send'));
@@ -105,6 +107,7 @@ function harness({ country = 'CN', visible = true, capability = true } = {}) {
     BRIEF_TOPICS: { all: 'All', overview: 'Overview' },
     COUNTRY_EXPORT_REQUEST_BYTES: 65536, CountryDownloadRequestError: Error,
     hostSupportsCountryDownload: downloadExports.hostSupportsCountryDownload,
+    CountrySectionError: sectionErrors.CountrySectionError,
     briefSectionState: ({ body }) => body.querySelector('.cdp-pro-locked, [data-brief-state="locked"]') ? 'locked' : body.querySelector('.cdp-loading-inline') ? 'loading' : body.querySelector('[data-brief-state="unavailable"]') ? 'unavailable' : 'ready',
     setTimeout: (fn, delay) => { const id = ++timerId; timers.set(id, { fn, delay, requestId: delay === 30000 ? context.nextId - 1 : undefined }); return id; },
     clearTimeout: id => timers.delete(id),
@@ -716,6 +719,91 @@ test('diagnostic invalidation preserves a queued context send during admission',
   assert.equal(view.details().textContent, superseded);
   view.receive(sent.id); await view.drain();
   assert.equal(view.details().textContent, superseded);
+});
+
+test('failed admissions finish the current pending status without another context request', async () => {
+  for (const country of ['CA', 'CN']) for (const failure of ['unavailable', 'locked', 'receipt', 'mismatch']) {
+    const view = harness(); await view.initialize();
+    const sent = view.publish().message; view.receive(sent.id); await view.drain();
+    const error = new sectionErrors.CountrySectionError(failure === 'locked' ? 'locked' : 'unavailable', 'PRIVATE_ADMISSION_FAILURE');
+    view.context.call = failure === 'receipt' || failure === 'mismatch'
+      ? async () => ({ panelRequest: {} }) : async () => { throw error; };
+    view.context.panelAdmissionSchema.parse = () => {
+      if (failure === 'receipt') throw error;
+      return { countryCode: 'US', expiresAt: '2099-01-01T00:00:00Z' };
+    };
+    await assert.rejects(view.context.api.open({ country_code: country, refresh: true, topic: 'resources' }));
+    assert.match(view.details().textContent, /unconfirmed/i);
+    assert.doesNotMatch(view.details().textContent, /change is pending|PRIVATE_ADMISSION_FAILURE|Host acknowledged/i);
+    assert.equal(view.messages.filter(item => item.method === 'ui/update-model-context').length, 1);
+    assert.equal([...view.timers.values()].filter(item => item.delay === 200).length, 0);
+    assert.equal(view.context.pending.size, 0);
+  }
+});
+
+test('locked same-country refresh clears loaded signals and preserves the cleanup context update', async () => {
+  const view = harness({ country: 'CA' }); await view.initialize();
+  const prior = view.publish().message; view.receive(prior.id); await view.drain();
+  const raw = { privateSignal: 'PRIVATE_DENIED_SIGNAL' };
+  const base = [{ label: 'Public base signal' }];
+  const notes = ['Public military note'];
+  const receipt = { countryCode: 'CA', expiresAt: '2099-01-01T00:00:00Z' };
+  view.context.signalSlots = { countryCode: 'CA', base, military: undefined, militaryNotes: notes, raw };
+  view.context.signalCoverage = { loaded: true };
+  view.context.admission = receipt;
+  view.context.admissions.set('CA', receipt);
+  view.context.hydratedAt = Date.now();
+  let cleared = 0;
+  let usageUpdates = 0;
+  let rendered;
+  view.context.source.clearLoadedData = () => { cleared++; };
+  view.context.showUsage = () => { usageUpdates++; };
+  view.context.hasCountryGeometry = () => false;
+  view.context.composeCountrySignals = (signals, country, name, military, militaryNotes, admittedRaw) => {
+    assert.equal(country, 'CA');
+    assert.equal(admittedRaw, null);
+    return { signals, notes: militaryNotes };
+  };
+  view.context.panel.updateSignals = (signals, signalNotes) => { rendered = { signals, notes: signalNotes }; };
+  const error = new sectionErrors.CountrySectionError('locked', 'PRIVATE_ADMISSION_FAILURE');
+  view.context.call = async () => { throw error; };
+  await assert.rejects(view.context.api.open({ country_code: 'CA', refresh: true }), failure => failure === error);
+  assert.equal(cleared, 1);
+  assert.equal(usageUpdates, 1);
+  assert.equal(view.context.signalSlots.raw, null);
+  assert.equal(view.context.signalCoverage, null);
+  assert.equal(view.context.admissions.has('CA'), false);
+  assert.equal(view.context.admission, undefined);
+  assert.equal(view.context.hydratedAt, 0);
+  assert.deepEqual(rendered, { signals: base, notes });
+  assert.match(view.details().textContent, /scheduled/i);
+  assert.doesNotMatch(view.details().textContent, /unconfirmed|change is pending|PRIVATE_/i);
+  assert.equal(view.messages.filter(item => item.method === 'ui/update-model-context').length, 1);
+  const queued = [...view.timers.entries()].filter(([, timer]) => timer.delay === 200);
+  assert.equal(queued.length, 1);
+  view.timers.delete(queued[0][0]); queued[0][1].fn();
+  const sent = view.messages.findLast(item => item.method === 'ui/update-model-context');
+  assert.equal(view.messages.filter(item => item.method === 'ui/update-model-context').length, 2);
+  view.receive(sent.id); await view.drain();
+  assert.match(view.details().textContent, /Host acknowledged/i);
+});
+
+test('an older failed admission cannot overwrite a newer intent or pagehide', async () => {
+  for (const newer of ['open', 'context', 'pagehide']) {
+    const view = harness(); await view.initialize();
+    let reject;
+    view.context.call = () => new Promise((_, failed) => { reject = failed; });
+    const first = view.context.api.open({ country_code: 'CA', refresh: true });
+    const rejectFirst = reject;
+    if (newer === 'open') void view.context.api.open({ country_code: 'US', refresh: true });
+    else if (newer === 'context') view.context.api.scheduleContext();
+    else view.teardown();
+    const current = view.details().textContent;
+    rejectFirst(new Error('PRIVATE_OLD_ADMISSION_FAILURE'));
+    await assert.rejects(first);
+    assert.equal(view.details().textContent, current);
+    assert.equal(view.messages.filter(item => item.method === 'ui/update-model-context').length, 0);
+  }
 });
 
 test('actual preparation and serialization failures are unconfirmed with no invented request deadline', async () => {

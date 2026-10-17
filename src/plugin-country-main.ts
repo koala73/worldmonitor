@@ -613,7 +613,8 @@ async function mountPlugin(): Promise<void> {
     const name = getCountryNameByCode(code) ?? new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? code;
     const selectedInput = input.value;
     const openedRevision = ++revision;
-    contextStatus = { phase: 'superseded', target: null, generation: ++contextGeneration };
+    const openContextGeneration = ++contextGeneration;
+    contextStatus = { phase: 'superseded', target: null, generation: openContextGeneration };
     renderConnection();
     openRequest?.abort();
     openRequest = new AbortController();
@@ -623,12 +624,20 @@ async function mountPlugin(): Promise<void> {
     if (!refresh && !nextAdmission && previous && Date.parse(previous.expiresAt) > Date.now()) nextAdmission = previous;
     if (!fromHost && (refresh || !nextAdmission)) {
       status.textContent = `Opening ${name} country brief…`;
-      const result = await call('open_country_brief', { country_code: code, topic: view.topic, refresh, ...(refresh ? { request_id: view.request_id ?? crypto.randomUUID() } : {}) }, admissionSignal).catch(error => {
-        if (error instanceof CountrySectionError && error.state === 'locked') clearDeniedRawSignals(code, admissionSignal, openedRevision);
+      try {
+        const result = await call('open_country_brief', { country_code: code, topic: view.topic, refresh, ...(refresh ? { request_id: view.request_id ?? crypto.randomUUID() } : {}) }, admissionSignal).catch(error => {
+          if (error instanceof CountrySectionError && error.state === 'locked') clearDeniedRawSignals(code, admissionSignal, openedRevision);
+          throw error;
+        }) as { panelRequest?: unknown };
+        if (result.panelRequest !== undefined) nextAdmission = panelAdmissionSchema.parse(result.panelRequest);
+        if (nextAdmission && (nextAdmission.countryCode !== code || Date.parse(nextAdmission.expiresAt) <= Date.now())) throw new Error('Country admission did not match or expired.');
+      } catch (error) {
+        if (!contextClosed && revision === openedRevision && contextGeneration === openContextGeneration) {
+          contextStatus = { phase: 'unconfirmed', target: contextTarget(), generation: openContextGeneration, reason: 'other' };
+          renderConnection();
+        }
         throw error;
-      }) as { panelRequest?: unknown };
-      if (result.panelRequest !== undefined) nextAdmission = panelAdmissionSchema.parse(result.panelRequest);
-      if (nextAdmission && (nextAdmission.countryCode !== code || Date.parse(nextAdmission.expiresAt) <= Date.now())) throw new Error('Country admission did not match or expired.');
+      }
     }
     if (admissionSignal.aborted || openedRevision !== revision) return { state: 'cancelled' };
     admission = nextAdmission;

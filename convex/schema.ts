@@ -227,6 +227,10 @@ export default defineSchema({
     // receives NO `watchlist_story_alert` events (the relay requires a
     // non-empty intersection with the story's tickers).
     tickers: v.optional(v.array(v.string())),
+    // Optional chokepoint-scope for `chokepoint_disruption` (#9217), ids from
+    // shared/chokepoint-alert-ids.js. The event itself is opt-in through
+    // eventTypes; empty/absent here → every chokepoint.
+    chokepoints: v.optional(v.array(v.string())),
   })
     .index("by_user", ["userId"])
     .index("by_user_variant", ["userId", "variant"])
