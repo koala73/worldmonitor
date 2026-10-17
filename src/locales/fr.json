@@ -236,7 +236,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Estimate and imputation status not supplied"
     },
     "fiveFactorScorecard": {
       "title": "Tableau de bord de résilience à cinq facteurs",

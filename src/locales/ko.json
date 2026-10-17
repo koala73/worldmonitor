@@ -232,7 +232,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Estimate and imputation status not supplied"
     },
     "fiveFactorScorecard": {
       "title": "5요인 회복력 스코어카드",

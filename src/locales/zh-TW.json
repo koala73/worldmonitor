@@ -232,7 +232,8 @@
       "trainedIndustrialWorkforce": "工業勞動力合計",
       "manufacturingShare": "製造業就業",
       "source": "來源：{{sources}}。",
-      "retained": "{{stage}} 資料沿用上次成功重新整理的結果。"
+      "retained": "{{stage}} 資料沿用上次成功重新整理的結果。",
+      "statusNotSupplied": "Estimate and imputation status not supplied"
     },
     "fiveFactorScorecard": {
       "title": "五維韌性記分卡",
