@@ -50,6 +50,7 @@ const {
 } = require('./lib/llm-model-policy.cjs');
 const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { SAUDI_CIVIL_DEFENSE, MAX_POST_CHARS, publishSaudiCivilDefenseAlerts } = require('./lib/saudi-civil-defense-alerts.cjs');
+const { publishChokepointDisruptionAlerts } = require('./lib/chokepoint-disruption-alerts.cjs');
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle, xPollSlot } = require('./lib/x-poll-cycle.cjs');
 const { createGuardedLookup, SSRF_BLOCKED_ERROR_CODE } = require('./lib/notification-webhook-ssrf.cjs');
@@ -887,23 +888,28 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
       fallbackTtlSeconds: dedupTtl,
       emitTelemetry: recordNotificationDedupSetNxError,
     });
+    // Returns true once the event is queued or was already queued; callers
+    // that keep their own edge state retry on false.
     if (!dedupDecision.shouldPublish) {
-      if (!dedupDecision.isDuplicate) return;
+      if (!dedupDecision.isDuplicate) return false;
       console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
-      return;
+      return true;
     }
     const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt: Date.now() });
     const ok = await upstashLpush('wm:events:queue', msg);
     if (ok) {
       console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
+      return true;
     } else {
       // Rollback the dedup key so the next poll cycle can retry — avoids silent
       // suppression for the full dedupTtl when a transient LPUSH fails.
       console.warn(`[Notify] LPUSH failed for ${eventType} — rolling back dedup key`);
       upstashDel(dedupKey).catch(() => {});
+      return false;
     }
   } catch (e) {
     console.warn(`[Notify] publishNotificationEvent error (${eventType}):`, e?.message || e);
+    return false;
   }
 }
 
@@ -6168,6 +6174,16 @@ async function seedChokepointWarmPing() {
     console.log(`[Chokepoints] Warm-ping OK: ${count} chokepoints`);
     // seed-meta is written by the RPC handler when it fetches fresh data;
     // no direct write needed here.
+    // The status key's 5-min TTL rarely outlives a 30-min tick, so the alert
+    // check reads the response, not Redis.
+    const alerts = await publishChokepointDisruptionAlerts(data, {
+      now: Date.now,
+      readState: upstashGet,
+      writeState: upstashSet,
+      publish: publishNotificationEvent,
+    });
+    if (alerts === null) console.warn('[Chokepoints] Disruption alert state unreadable; skipped this tick');
+    else if (alerts.published || alerts.failed || !alerts.stateWritten) console.log(`[Chokepoints] Disruption alerts: published=${alerts.published} failed=${alerts.failed}${alerts.stateWritten ? '' : ' stateWritten=false'}`);
   } catch (e) {
     console.warn('[Chokepoints] Warm-ping error:', e?.message || e);
   }

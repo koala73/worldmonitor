@@ -336,6 +336,8 @@ interface PostBody {
   countries?: string[];
   // Optional watchlist ticker-scope (#4922 U3); relay re-validates + normalizes.
   tickers?: string[];
+  // Optional chokepoint-scope (#9217); Convex re-validates + normalizes.
+  chokepoints?: string[];
 }
 
 export default async function handler(req: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<Response> {
@@ -716,9 +718,12 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       }
 
       if (action === 'set-alert-rules') {
-        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, countries, tickers } = body;
+        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, countries, tickers, chokepoints } = body;
         if (tickers !== undefined && !Array.isArray(tickers)) {
           return finish(json({ error: 'TICKERS_MUST_BE_ARRAY' }, 400, corsHeaders));
+        }
+        if (chokepoints !== undefined && !Array.isArray(chokepoints)) {
+          return finish(json({ error: 'CHOKEPOINTS_MUST_BE_ARRAY' }, 400, corsHeaders));
         }
         const resp = await convexRelay({
           action: 'set-alert-rules',
@@ -731,6 +736,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           aiDigestEnabled,
           countries,
           tickers,
+          chokepoints,
         });
         if (!resp.ok) {
           // A 400 carries a structured validation code (TICKERS_LIMIT_EXCEEDED /
@@ -813,7 +819,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       if (action === 'set-notification-config') {
         const VALID_SENSITIVITY = new Set(['all', 'high', 'critical']);
         const VALID_DIGEST_MODE = new Set(['realtime', 'daily', 'twice_daily', 'weekly']);
-        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone, countries, tickers } = body;
+        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone, countries, tickers, chokepoints } = body;
         if (!variant) return finish(json({ error: 'variant required' }, 400, corsHeaders));
         if (sensitivity !== undefined && !VALID_SENSITIVITY.has(sensitivity)) {
           return finish(json({ error: 'invalid sensitivity' }, 400, corsHeaders));
@@ -826,6 +832,9 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         }
         if (tickers !== undefined && !Array.isArray(tickers)) {
           return finish(json({ error: 'TICKERS_MUST_BE_ARRAY' }, 400, corsHeaders));
+        }
+        if (chokepoints !== undefined && !Array.isArray(chokepoints)) {
+          return finish(json({ error: 'CHOKEPOINTS_MUST_BE_ARRAY' }, 400, corsHeaders));
         }
         const resp = await convexRelay({
           action: 'set-notification-config',
@@ -841,6 +850,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           digestTimezone,
           countries,
           tickers,
+          chokepoints,
         });
         if (!resp.ok) {
           // 400 from convex/http means user-facing validation failure (e.g.

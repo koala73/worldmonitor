@@ -968,6 +968,7 @@ http.route({
       aiDigestEnabled?: boolean;
       countries?: string[];
       tickers?: string[];
+      chokepoints?: string[];
       scheduleWelcome?: boolean;
     }>(request);
     if (!body) {
@@ -1109,7 +1110,8 @@ http.route({
           !Array.isArray(body.channels) ||
           (body.sensitivity !== undefined && !VALID_SENSITIVITY.has(body.sensitivity as string)) ||
           (body.countries !== undefined && !Array.isArray(body.countries)) ||
-          (body.tickers !== undefined && !Array.isArray(body.tickers))
+          (body.tickers !== undefined && !Array.isArray(body.tickers)) ||
+          (body.chokepoints !== undefined && !Array.isArray(body.chokepoints))
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
@@ -1133,6 +1135,8 @@ http.route({
             countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
             // Watchlist ticker-scope (#4922 U3); mutation re-validates + normalizes.
             tickers: Array.isArray(body.tickers) ? (body.tickers as string[]) : undefined,
+            // Chokepoint-scope (#9217); mutation re-validates + normalizes.
+            chokepoints: Array.isArray(body.chokepoints) ? (body.chokepoints as string[]) : undefined,
           });
         } catch (err: unknown) {
           // normalizeTickers/normalizeCountries throw ConvexError with a
@@ -1213,6 +1217,9 @@ http.route({
         if (body.tickers !== undefined && !Array.isArray(body.tickers)) {
           return new Response(JSON.stringify({ error: "TICKERS_MUST_BE_ARRAY" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
+        if (body.chokepoints !== undefined && !Array.isArray(body.chokepoints)) {
+          return new Response(JSON.stringify({ error: "CHOKEPOINTS_MUST_BE_ARRAY" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
         try {
           await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
             userId,
@@ -1227,6 +1234,7 @@ http.route({
             digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
             countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
             tickers: Array.isArray(body.tickers) ? (body.tickers as string[]) : undefined,
+            chokepoints: Array.isArray(body.chokepoints) ? (body.chokepoints as string[]) : undefined,
           });
         } catch (err: unknown) {
           // Translate structured ConvexError codes into machine-readable HTTP

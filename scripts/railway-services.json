@@ -43,6 +43,7 @@
       "scripts/lib/poll-generation-guard.cjs",
       "scripts/lib/publisher-link-relay-gate.cjs",
       "scripts/lib/saudi-civil-defense-alerts.cjs",
+      "scripts/lib/chokepoint-disruption-alerts.cjs",
       "scripts/lib/usni-fleet-parser.cjs",
       "scripts/lib/x-news-accounts.cjs",
       "scripts/lib/x-post-budget.cjs",

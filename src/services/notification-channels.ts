@@ -49,6 +49,9 @@ export interface AlertRule {
   // Optional watchlist ticker-scope (#4922 U3). OPT-IN scoped, unlike
   // countries: empty/absent → NO watchlist_story_alert delivery.
   tickers?: string[];
+  // Optional chokepoint-scope for the opt-in chokepoint_disruption event
+  // (#9217). Empty/absent → every chokepoint.
+  chokepoints?: string[];
 }
 
 export interface ChannelsData {

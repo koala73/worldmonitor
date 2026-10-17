@@ -27,6 +27,7 @@ import { hasTier } from '@/services/entitlements';
 import { t } from '@/services/i18n';
 import { getMarketWatchlistEntries } from '@/services/market-watchlist';
 import { SITE_VARIANT } from '@/config/variant';
+import { CHOKEPOINT_REGISTRY } from '@/config/chokepoint-registry';
 import { mountCountryChipPicker, loadFollowedCountriesSafe, type CountryChipPickerHandle } from '@/utils/country-chip-picker';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
@@ -40,6 +41,8 @@ const DIGEST_CRON_ENABLED = import.meta.env.VITE_DIGEST_CRON_ENABLED !== '0';
 // story's extracted tickers. Enabling the toggle sends the current market
 // watchlist symbols as `tickers`; the watchlist-modal save path re-syncs them.
 const WATCHLIST_STORY_EVENT_TYPE = 'watchlist_story_alert';
+// Opt-in like the watchlist row; scoped by alertRules.chokepoints (#9217).
+const CHOKEPOINT_DISRUPTION_EVENT_TYPE = 'chokepoint_disruption';
 
 export interface NotificationsSettingsHost {
   isSignedIn?: boolean;
@@ -463,6 +466,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const digestMode = alertRule?.digestMode ?? 'realtime';
         const digestHour = alertRule?.digestHour ?? 8;
         const aiDigestEnabled = alertRule?.aiDigestEnabled ?? true;
+        const chokepointAlertsOn = alertRule?.eventTypes?.includes(CHOKEPOINT_DISRUPTION_EVENT_TYPE) ?? false;
+        const chokepointScope = alertRule?.chokepoints ?? [];
 
         const hourOptions = Array.from({ length: 24 }, (_, h) => {
           const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
@@ -548,6 +553,23 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 <span class="ai-flow-slider"></span>
               </label>
             </div>
+            <div class="ai-flow-toggle-row">
+              <div class="ai-flow-toggle-label-wrap">
+                <div class="ai-flow-toggle-label">Chokepoint disruption alerts</div>
+                <div class="ai-flow-toggle-desc">Alert when a shipping chokepoint's disruption score reaches 50 (red), once per crossing</div>
+              </div>
+              <label class="ai-flow-switch">
+                <input type="checkbox" id="usChokepointAlerts"${chokepointAlertsOn ? ' checked' : ''}>
+                <span class="ai-flow-slider"></span>
+              </label>
+            </div>
+            <div id="usChokepointScope"${chokepointAlertsOn ? '' : ' hidden'}>
+              <div class="ai-flow-toggle-desc" style="margin-bottom:6px">Pick chokepoints, or leave none selected to cover all of them.</div>
+              <div class="us-notif-country-chips">${CHOKEPOINT_REGISTRY.map((cp) => {
+                const on = chokepointScope.includes(cp.id);
+                return `<button type="button" class="us-notif-country-chip${on ? ' us-notif-country-chip-on' : ''}" data-chokepoint-id="${escapeHtml(cp.id)}" aria-pressed="${on}">${escapeHtml(cp.displayName)}</button>`;
+              }).join('')}</div>
+            </div>
             <div class="ai-flow-section-label" style="margin-top:8px">Quiet Hours</div>
             <div class="ai-flow-toggle-row">
               <div class="ai-flow-toggle-label-wrap">
@@ -600,7 +622,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             </div>
           </div>
           <div class="ai-flow-section-label" style="margin-top:8px">Country scope</div>
-          <div class="ai-flow-toggle-desc" style="margin-bottom:6px">Restrict alerts to specific countries (ISO-3166 alpha-2). Leave empty to receive alerts from all countries. When set, global alerts without a country (markets, shipping) are excluded; breaking-news alerts are still delivered.</div>
+          <div class="ai-flow-toggle-desc" style="margin-bottom:6px">Restrict alerts to specific countries (ISO-3166 alpha-2). Leave empty to receive alerts from all countries. When set, global alerts without a country (markets, shipping stress) are excluded; breaking-news and chokepoint alerts are still delivered.</div>
           <div id="usNotifCountryPicker"></div>
           <div class="ai-flow-section-label" style="margin-top:8px">Timezone</div>
           <select class="unified-settings-select" id="usSharedTimezone" aria-label="Timezone" style="width:100%">${makeTzOptions(sharedTz)}</select>`;
@@ -735,11 +757,13 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         aiDigestEnabled: boolean;
         countries: string[] | undefined;
         tickers: string[];
+        chokepoints: string[];
       } {
         const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
         const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
         const aiDigestEl = container.querySelector<HTMLInputElement>('#usAiDigestEnabled');
         const watchlistEl = container.querySelector<HTMLInputElement>('#usWatchlistAlerts');
+        const chokepointEl = container.querySelector<HTMLInputElement>('#usChokepointAlerts');
         const connectedChannelTypes = Array.from(
           container.querySelectorAll<HTMLElement>('[data-channel-type]'),
         )
@@ -755,14 +779,26 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         // restores the broadcast wildcard ([]) and clears tickers so no
         // stale scope lingers server-side.
         const watchlistOn = watchlistEl?.checked ?? false;
+        // Chokepoint disruption alerts (#9217): same opt-in shape. No chips
+        // selected means every chokepoint; OFF clears the scope.
+        const chokepointOn = chokepointEl?.checked ?? false;
+        const eventTypes = [
+          ...(watchlistOn ? [WATCHLIST_STORY_EVENT_TYPE] : []),
+          ...(chokepointOn ? [CHOKEPOINT_DISRUPTION_EVENT_TYPE] : []),
+        ];
         return {
           enabled: enabledEl?.checked ?? false,
-          eventTypes: watchlistOn ? [WATCHLIST_STORY_EVENT_TYPE] : [],
+          eventTypes,
           sensitivity: (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical',
           channels: connectedChannelTypes,
           aiDigestEnabled: aiDigestEl?.checked ?? true,
           countries: alertRuleCountries,
           tickers: watchlistOn ? getMarketWatchlistEntries().map((e) => e.symbol) : [],
+          chokepoints: chokepointOn
+            ? Array.from(container.querySelectorAll<HTMLElement>('#usChokepointScope .us-notif-country-chip-on'))
+              .map((el) => el.dataset.chokepointId ?? '')
+              .filter(Boolean)
+            : [],
         };
       }
 
@@ -1013,7 +1049,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           }, 500);
           return;
         }
-        if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity' || target.id === 'usWatchlistAlerts') {
+        if (target.id === 'usChokepointAlerts') {
+          container.querySelector<HTMLElement>('#usChokepointScope')?.toggleAttribute('hidden', !(target as HTMLInputElement).checked);
+        }
+        if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity' || target.id === 'usWatchlistAlerts' || target.id === 'usChokepointAlerts') {
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = setTimeout(() => {
             // Source from the centralized helper so `countries` flows through.
@@ -1028,6 +1067,17 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
       container.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
+
+        const chokepointChip = target.closest<HTMLElement>('#usChokepointScope [data-chokepoint-id]');
+        if (chokepointChip) {
+          const on = chokepointChip.classList.toggle('us-notif-country-chip-on');
+          chokepointChip.setAttribute('aria-pressed', String(on));
+          if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
+          alertRuleDebounceTimer = setTimeout(() => {
+            saveCurrentAlertRule();
+          }, 800);
+          return;
+        }
 
         if (target.closest('.us-notif-tg-copy-btn')) {
           const btn = target.closest('.us-notif-tg-copy-btn') as HTMLButtonElement;
