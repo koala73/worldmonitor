@@ -924,6 +924,7 @@ for (const mobile of [false, true]) {
     void countryBrief;
     if (mobile) await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/dashboard?lang=sw');
+    await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
     if (mobile) {
       await page.locator('[data-mobile-tab="more"]').click();
       await page.locator('#mobileMenuSettings').click();
