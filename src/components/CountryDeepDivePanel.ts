@@ -1777,6 +1777,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const stores = data.facilities?.facilities.filter(f => f.country === code) ?? [];
     const crises = data.shortages?.shortages.filter(s => s.country === code && !s.resolvedAt) ?? [];
     const confirmed = crises.filter(s => s.severity === 'confirmed').length;
+    if (data.shortages && !data.shortages.upstreamUnavailable && crises.length === 0) this.hostedAtlasBody?.append(this.makeEmpty(`No active fuel shortages in ${code} in the loaded registry.`));
     this.appendAtlasRow(`Pipelines touching ${code}`, `${pipes.length} pipeline${pipes.length === 1 ? '' : 's'}`, pipes.map(p => ({ id: p.id, label: p.name, event: 'energy:open-pipeline-detail', detail: { pipelineId: p.id } })));
     this.appendAtlasRow(`Storage in ${code}`, `${stores.length} facilit${stores.length === 1 ? 'y' : 'ies'}`, stores.map(f => ({ id: f.id, label: f.name, event: 'energy:open-storage-facility-detail', detail: { facilityId: f.id } })));
     this.appendAtlasRow(`Fuel shortages in ${code}`, confirmed ? `${confirmed} confirmed · ${crises.length - confirmed} watch` : `${crises.length} watch`, crises.map(s => ({ id: s.id, label: `${s.product} — ${s.shortDescription}`, event: 'energy:open-fuel-shortage-detail', detail: { shortageId: s.id } })));
