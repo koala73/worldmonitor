@@ -117,6 +117,7 @@ for (const key of [keyA, keyB]) {
     expect(record).toMatchObject({ ...payload, ownerTag: hash(key), subscriberId: body.subscriberId, secret: body.secret, active: true });
     expect(commands[1]).toEqual(['SADD', `webhook:owner:${hash(key)}:v1`, body.subscriberId]);
     expect(commands[2]).toEqual(['EXPIRE', `webhook:owner:${hash(key)}:v1`, String(86400 * 30)]);
+    expect(commands[3]).toEqual(['SADD', 'webhook:all:v1', body.subscriberId]);
     expect(commands[0].slice(3)).toEqual(['EX', String(86400 * 30)]);
   });
 }
@@ -191,9 +192,10 @@ test('gateway registrations support owner-only status, rotation and reactivation
     expect(body.secret).not.toBe(own.secret);
     const storageKey = `webhook:sub:${own.subscriberId}:v1`;
     expect(records.get(storageKey)?.secret).toBe(body.secret);
-    records.set(storageKey, { ...records.get(storageKey), active: false });
+    records.set(storageKey, { ...records.get(storageKey), active: false, failureCount: 5, deactivatedAt: '2026-10-01T00:00:00.000Z' });
     expect((await manage(own.subscriberId, 'reactivate', owner)).status).toBe(200);
-    expect(records.get(storageKey)).toMatchObject({ active: true, secret: body.secret, ownerTag: hash(owner) });
+    expect(records.get(storageKey)).toMatchObject({ active: true, failureCount: 0, secret: body.secret, ownerTag: hash(owner) });
+    expect(records.get(storageKey)).not.toHaveProperty('deactivatedAt');
     expect(await (await manage(own.subscriberId, '', owner)).json()).not.toHaveProperty('secret');
     const persist = runRedisTransaction.mock.calls.at(-1)?.[0] as string[][];
     expect(persist?.[0]?.slice(3)).toEqual(['EX', String(86400 * 30)]);
@@ -282,6 +284,7 @@ test('rotate-secret refreshes the owner index with the record TTL', async () => 
   const commands = runRedisTransaction.mock.calls.at(-1)?.[0] as string[][];
   expect(commands[1]).toEqual(['SADD', `webhook:owner:${hash(keyA)}:v1`, own.subscriberId]);
   expect(commands[2]).toEqual(['EXPIRE', `webhook:owner:${hash(keyA)}:v1`, String(86400 * 30)]);
+  expect(commands[3]).toEqual(['SADD', 'webhook:all:v1', own.subscriberId]);
 });
 
 for (const failing of ['SADD', 'EXPIRE']) {

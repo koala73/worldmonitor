@@ -50,3 +50,14 @@ for (const scenario of [
     }
   });
 }
+
+test('status reports delivery counters, defaulting records written before the worker', async () => {
+  const read = async () => (await handler(new Request('https://www.worldmonitor.app/api/v2/shipping/webhooks/wh_test', {
+    headers: { Origin: 'https://www.worldmonitor.app', 'X-Api-Key': 'tenant-a' },
+  }))).json();
+  expect(await read()).toMatchObject({ failureCount: 0, lastDeliveryAt: null, lastDeliveryStatus: null });
+  getCachedJson.mockResolvedValue({
+    ...record, failureCount: 2, lastDeliveryAt: '2026-10-17T10:00:00.000Z', lastDeliveryStatus: 503,
+  } as typeof record);
+  expect(await read()).toMatchObject({ failureCount: 2, lastDeliveryAt: '2026-10-17T10:00:00.000Z', lastDeliveryStatus: 503 });
+});

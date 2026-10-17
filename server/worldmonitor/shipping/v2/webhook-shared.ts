@@ -3,6 +3,10 @@ import { CHOKEPOINT_REGISTRY } from '../../../_shared/chokepoint-registry';
 import { isBlockedResolvedAddress } from '../../../_shared/ip-address-classification';
 
 export const WEBHOOK_TTL = 86400 * 30; // 30 days
+// Every live subscriber, across owners. The delivery worker prunes ids whose
+// record has expired, so this set carries no TTL.
+export const ALL_INDEX_KEY = 'webhook:all:v1';
+export const DELIVERY_FAILURE_CEILING = 5;
 export const VALID_CHOKEPOINT_IDS = new Set(CHOKEPOINT_REGISTRY.map(c => c.id));
 
 // Private IP ranges + known cloud metadata hostnames blocked at registration
@@ -183,4 +187,9 @@ export interface WebhookRecord {
   createdAt: string;
   active: boolean;
   secret: string;
+  failureCount?: number;
+  lastDeliveryAt?: string;
+  lastDeliveryStatus?: number | null;
+  lastDeliveryError?: string;
+  deactivatedAt?: string;
 }

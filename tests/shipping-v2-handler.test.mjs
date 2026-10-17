@@ -8,7 +8,7 @@
  *   - registerWebhook: PRO gate, SSRF guards (https-only, private IP, cloud
  *     metadata), chokepointIds whitelist, alertThreshold 0-100 range,
  *     subscriberId / secret format (wh_ + 24 hex / 64 hex), 30-day TTL
- *     pipeline (SET + SADD + EXPIRE).
+ *     pipeline (SET + SADD + EXPIRE + global SADD).
  *   - listWebhooks: PRO gate, owner-filter isolation, `secret` never in response.
  *   - deliverWebhook: delivery-time DNS re-resolution blocks private/reserved
  *     addresses before fetch to prevent DNS rebinding SSRF.
@@ -289,7 +289,7 @@ describe('ShippingV2Service handlers', () => {
       );
     });
 
-    it('happy path returns wh_-prefixed subscriberId and 64-char hex secret; issues SET + SADD + EXPIRE pipeline with 30-day TTL', async () => {
+    it('happy path returns wh_-prefixed subscriberId and 64-char hex secret; issues SET + SADD + EXPIRE + global SADD pipeline with 30-day TTL', async () => {
       const calls = stubRedisOk();
       const res = await registerWebhook(proCtx(), {
         callbackUrl: 'https://93.184.216.34/wm',
@@ -302,10 +302,9 @@ describe('ShippingV2Service handlers', () => {
       assert.match(res.subscriberId, /^wh_[0-9a-f]{24}$/);
       assert.match(res.secret, /^[0-9a-f]{64}$/);
 
-      // Exactly one Redis pipeline call with 3 commands in order.
       assert.equal(calls.length, 1);
       const pipeline = calls[0];
-      assert.equal(pipeline.length, 3);
+      assert.equal(pipeline.length, 4);
       assert.equal(pipeline[0][0], 'SET');
       assert.ok(pipeline[0][1].startsWith('webhook:sub:wh_'), 'SET key is webhook:sub:wh_*:v1');
       assert.equal(pipeline[0][3], 'EX');
@@ -315,6 +314,8 @@ describe('ShippingV2Service handlers', () => {
       assert.equal(pipeline[2][0], 'EXPIRE');
       assert.equal(pipeline[2][1], pipeline[1][1], 'EXPIRE targets same owner index key');
       assert.equal(pipeline[2][2], String(86400 * 30));
+      const subscriberId = pipeline[0][1].slice('webhook:sub:'.length, -':v1'.length);
+      assert.deepEqual(pipeline[3], ['SADD', 'webhook:all:v1', subscriberId], 'delivery worker discovers the subscriber');
     });
 
     it('uses the authenticated enterprise cookie for ownership when wms_ is also present', async () => {
