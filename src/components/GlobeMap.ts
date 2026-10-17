@@ -16,6 +16,7 @@
 
 import Globe from 'globe.gl';
 import { isDesktopRuntime } from '@/services/runtime';
+import type { NewsLocationMarker as NewsLocationInput } from '@/types';
 import type { GlobeInstance, ConfigOptions } from 'globe.gl';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/geo';
 import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
@@ -40,6 +41,7 @@ import { GAMMA_IRRADIATORS } from '@/config/irradiators';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { getCountryBbox, getCountriesGeoJson, getCountryAtCoordinates, getCountryNameByCode } from '@/services/country-geometry';
 import { escapeHtml } from '@/utils/sanitize';
+import { corroborationLabelHtml } from '@/utils/corroboration-flag';
 import { showLayerWarning } from '@/utils/layer-warning';
 import { isMobileDevice } from '@/utils';
 import { setGlobeMarkerLoad } from '@/bootstrap/globe-marker-probe';
@@ -371,8 +373,10 @@ interface NotamRingMarker extends BaseMarker {
 interface NewsLocationMarker extends BaseMarker {
   _kind: 'newsLocation';
   id: string;
+  article?: NewsLocationInput['article'];
   title: string;
   threatLevel: string;
+  corroboration?: NewsLocationInput['corroboration'];
 }
 interface FlashMarker extends BaseMarker {
   _kind: 'flash';
@@ -608,6 +612,7 @@ export class GlobeMap {
   private currentView: MapView = 'global';
 
   // Click callbacks
+  private onNewsClick?: (item: Pick<NewsLocationInput, 'article' | 'title'>) => void;
   private onHotspotClickCb: ((h: Hotspot) => void) | null = null;
 
   // Auto-rotate timer (like Sentinel: resume after 60 s idle)
@@ -977,7 +982,7 @@ export class GlobeMap {
         return 0.005;
       })
       .polygonLabel((d: GlobePolygon) => {
-        if (d._kind === 'cii') return `<b>${escapeHtml(d.name)}</b><br/>CII: ${Number.isFinite(Number(d.score)) ? Number(d.score) : '—'}/100 (${escapeHtml(d.level ?? '')})`;
+        if (d._kind === 'cii') return `<b>${escapeHtml(d.name)}</b><br/>Country instability: ${Number.isFinite(Number(d.score)) ? Number(d.score) : '—'}/100 (${escapeHtml(d.level ?? '')})`;
         if (d._kind === 'conflict') {
           let label = `<b>${escapeHtml(d.name)}</b>`;
           if (d.parties?.length) label += `<br/>Parties: ${d.parties.map(p => escapeHtml(p)).join(', ')}`;
@@ -1446,6 +1451,7 @@ export class GlobeMap {
       return;
     }
     this.showMarkerTooltip(d, anchor);
+    if (d._kind === 'newsLocation') this.onNewsClick?.(d);
   }
 
   private showMarkerTooltip(d: GlobeMarker, anchor: HTMLElement): void {
@@ -1677,8 +1683,10 @@ export class GlobeMap {
              `<br><span style="opacity:.5;">${esc(d.severity)} · ${esc(d.description.slice(0, 60))}</span>`;
     } else if (d._kind === 'newsLocation') {
       const tc = d.threatLevel === 'critical' ? '#ff2020' : d.threatLevel === 'high' ? '#ff6600' : (d.threatLevel === 'elevated' || d.threatLevel === 'medium') ? '#ffaa00' : '#44aaff';
+      const coverage = corroborationLabelHtml(d.corroboration);
       html = `<span style="color:${tc};font-weight:bold;">📰 ${esc(d.title.slice(0, 60))}</span>` +
-             `<br><span style="opacity:.5;">${esc(d.threatLevel)}</span>`;
+             `<br><span style="opacity:.5;">${esc(d.threatLevel)}</span>` +
+             (coverage ? `<br>${coverage}` : '');
     } else if (d._kind === 'satellite') {
       const sc = SAT_COUNTRY_COLORS[d.country] || '#ccccff';
       const altBand = d.alt < 2000 ? 'LEO' : d.alt < 35786 ? 'MEO' : 'GEO';
@@ -3137,6 +3145,10 @@ export class GlobeMap {
 
   // ─── Callback setters ─────────────────────────────────────────────────────
 
+  public setOnNewsClick(callback: (item: Pick<NewsLocationInput, 'article' | 'title'>) => void): void {
+    this.onNewsClick = callback;
+  }
+
   public setOnHotspotClick(cb: (h: Hotspot) => void): void {
     this.onHotspotClickCb = cb;
   }
@@ -3530,7 +3542,7 @@ export class GlobeMap {
       }));
     this.flushMarkers();
   }
-  public setNewsLocations(data: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }>): void {
+  public setNewsLocations(data: NewsLocationInput[]): void {
     this.newsLocationMarkers = (data ?? [])
       .filter(d => d.lat != null && d.lon != null)
       .map((d, i) => ({
@@ -3538,8 +3550,10 @@ export class GlobeMap {
         _lat: d.lat,
         _lng: d.lon,
         id: `news-${i}-${d.title.slice(0, 20)}`,
+        article: d.article,
         title: d.title,
         threatLevel: d.threatLevel ?? 'info',
+        ...(d.corroboration ? { corroboration: d.corroboration } : {}),
       }));
     this.flushMarkers();
   }

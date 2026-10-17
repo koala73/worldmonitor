@@ -671,15 +671,15 @@ Every signal includes contextual information explaining its analytical significa
 
 | Field | Purpose | Example |
 |-------|---------|---------|
-| **Why It Matters** | Analytical significance | "Markets pricing in information before news" |
-| **Actionable Insight** | What to do next | "Monitor for breaking news in 1-6 hours" |
+| **Why It Matters** | Analytical significance | "Market moved while news coverage stayed low" |
+| **Actionable Insight** | What to do next | "Monitor for breaking news that could explain the move" |
 | **Confidence Note** | Signal reliability caveats | "Higher confidence if multiple markets align" |
 
 ### Signal-Specific Context
 
 | Signal | Why It Matters |
 |--------|---------------|
-| **Prediction Leading** | Prediction markets often price in information before it becomes news—traders may have early access to developments |
+| **Prediction Leading** | A prediction market moved while news coverage of the topic stayed low—the market may be reacting to information that has not been reported yet |
 | **Silent Divergence** | Market moving without identifiable catalyst—possible insider knowledge, algorithmic trading, or unreported development |
 | **Velocity Spike** | Story accelerating across multiple sources—indicates growing significance and potential for market/policy impact |
 | **Triangulation** | The "authority triangle" (wire + government + intel) aligned—gold standard for breaking news confirmation |

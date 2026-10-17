@@ -24,7 +24,7 @@ function makeContext() {
   };
 }
 
-function request(provider: "openrouter" | "groq", headline: string) {
+function request(provider: "openrouter" | "ollama", headline: string) {
   return {
     provider,
     headlines: [headline],
@@ -41,7 +41,7 @@ beforeEach(() => {
   restoreEnv();
   llmHealth.reset();
   process.env.OPENROUTER_API_KEY = "or-test-key";
-  process.env.GROQ_API_KEY = "groq-test-key";
+  process.env.OLLAMA_API_URL = "http://localhost:11434";
   process.env.WORLDMONITOR_VALID_KEYS = "enterprise-test-key";
   process.env.UPSTASH_REDIS_REST_URL = "https://redis.test";
   process.env.UPSTASH_REDIS_REST_TOKEN = "redis-token";
@@ -87,7 +87,7 @@ describe("summarizeArticle model health fallback", () => {
           }), { status: 400 });
         }
         return new Response(JSON.stringify({
-          choices: [{ message: { content: "Groq provides a healthy fallback summary for this headline." } }],
+          choices: [{ message: { content: "Ollama provides a healthy fallback summary for this headline." } }],
           usage: { total_tokens: 9 },
         }), { status: 200 });
       }
@@ -99,10 +99,10 @@ describe("summarizeArticle model health fallback", () => {
       const rejected = await summarizeArticle(makeContext(), request("openrouter", headline));
       expect(rejected.status).toBe("SUMMARIZE_STATUS_ERROR");
 
-      const immediateFallback = await summarizeArticle(makeContext(), request("groq", headline));
+      const immediateFallback = await summarizeArticle(makeContext(), request("ollama", headline));
       expect(immediateFallback).toMatchObject({
-        summary: "Groq provides a healthy fallback summary for this headline.",
-        provider: "groq",
+        summary: "Ollama provides a healthy fallback summary for this headline.",
+        provider: "ollama",
         status: "SUMMARIZE_STATUS_SUCCESS",
       });
     }
@@ -116,15 +116,15 @@ describe("summarizeArticle model health fallback", () => {
       "skipping a quarantined provider must not write a negative cache sentinel",
     );
 
-    const fallback = await summarizeArticle(makeContext(), request("groq", sharedHeadline));
+    const fallback = await summarizeArticle(makeContext(), request("ollama", sharedHeadline));
     expect(fallback).toMatchObject({
-      summary: "Groq provides a healthy fallback summary for this headline.",
-      provider: "groq",
+      summary: "Ollama provides a healthy fallback summary for this headline.",
+      provider: "ollama",
       fallback: false,
       status: "SUMMARIZE_STATUS_SUCCESS",
     });
     expect(providerPosts.filter(url => url.includes("openrouter.ai"))).toHaveLength(2);
-    expect(providerPosts.filter(url => url.includes("api.groq.com"))).toHaveLength(3);
+    expect(providerPosts.filter(url => url.startsWith("http://localhost:11434/"))).toHaveLength(3);
   });
 
   test("an accepted but invalid summary resets the rejection streak", async () => {

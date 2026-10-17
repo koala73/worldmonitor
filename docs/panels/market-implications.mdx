@@ -1,20 +1,24 @@
 ---
 title: "AI Market Implications"
-description: "AI-generated long/short/hedge trade signals with direction, confidence, and transmission-path context — derived from the day's news and market signals."
+description: "AI-generated long/short/hedge scenarios with direction, timeframe, and transmission-path context — derived from the day's news and market signals. Unscored."
 ---
 
-The **AI Market Implications** panel (internal id `market-implications`) turns today's intelligence and market flow into structured, probability-weighted trade ideas. Each card has a direction (`LONG` / `SHORT` / `HEDGE`), a confidence bucket (`HIGH` / `MEDIUM` / `LOW`), and a transmission-path note explaining *why* the signal was generated.
+The **AI Market Implications** panel (internal id `market-implications`) turns today's intelligence and market flow into structured trade scenarios. Each card has a direction (`LONG` / `SHORT` / `HEDGE`), a timeframe, and a transmission-path note explaining *why* the signal was generated.
+
+<Note>
+The cards are unscored narrative scenarios. No card is resolved against market prices, so the panel shows no confidence label, and the cards are not part of the [forecast accuracy scorecard](https://www.worldmonitor.app/accuracy/). The generator still emits a `confidence` field in the API payload; the panel does not display it.
+</Note>
 
 <Warning>
-Panel header carries a standing disclaimer: "AI-generated trade signals for informational purposes only. Not investment advice. Always do your own research." — `DISCLAIMER` constant in `src/components/MarketImplicationsPanel.ts`.
+Panel footer carries a standing disclaimer: "AI-generated trade signals for informational purposes only. Not investment advice. Always do your own research." — locale key `components.marketImplications.disclaimer`. A note above the cards reads "Narrative scenarios, not graded for accuracy." (`components.marketImplications.unscored`).
 </Warning>
 
 ## What the panel shows
 
-A list of market-implication cards. Each card shows:
+A one-line unscored note, then a list of market-implication cards. Each card shows:
 
 - **Direction** badge — `LONG` (bullish), `SHORT` (bearish), `HEDGE` (neutral / defensive).
-- **Confidence** badge — `HIGH` / `MEDIUM` / `LOW`.
+- **Timeframe** badge — the stated horizon, such as `1W` or `1M`.
 - **Asset** — ticker or instrument.
 - **Rationale** — short narrative paragraph.
 - **Transmission path** — the chain that gets from the triggering event to the named asset (`TransmissionNode[]`).

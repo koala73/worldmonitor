@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.forecast.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
 message ForecastSignal {
@@ -21,6 +22,10 @@ message CalibrationInfo {
   double market_price = 2;
   double drift = 3;
   string source = 4;
+  // Probability before the market blend.
+  optional double internal_probability = 5;
+  // Probability after the market blend and domain cap.
+  optional double market_blended_probability = 6;
 }
 
 message Perspectives {
@@ -29,47 +34,34 @@ message Perspectives {
   string contrarian = 3;
 }
 
-// Machine-checkable resolution spec — makes a forecast a scoreable *bet*.
-// Every forecast carries exactly one spec, either "hard" or "judged":
-//   - "hard":   auto-resolvable by a free metric comparison against a
-//               WorldMonitor feed the detector already scored from. Sets
-//               metric_key (feed + path expression), operator, threshold,
-//               window, and source_feed (a RESOLUTION_FEED_KEYS allowlist
-//               member). baseline_value is set only when operator is
-//               "crosses" (the emission-time metric value the move is
-//               measured from).
-//   - "judged": resolved by a later LLM judge against the question string;
-//               no numeric threshold, but still a resolution deadline.
-// kind and operator are strings, not proto enums, mirroring the trend field
-// above so a new operator/kind never requires a proto migration to land in
-// the 45-day history. Current kind values are "hard" and "judged"; current
-// operator values are ">=", "<=", and "crosses".
-// kind and deadline are always set; every other field is optional and absent
-// (persisted as JSON null) when it does not apply to the kind — a judged spec
-// carries no threshold/baseline_value so "no threshold" is never confused
-// with a real threshold of 0, and a hard spec carries no question.
+// kind and operator are strings, not enums, so a new value never needs a
+// proto migration to land in the 45-day history.
+
+// Resolution spec that makes a forecast scoreable. kind is "hard" (resolved by
+// comparing metric_key from source_feed to threshold with operator ">=", "<="
+// or "crosses") or "judged" (an LLM judge answers question). Other fields apply
+// per kind. baseline_value applies only to "crosses" specs. A judged spec's
+// threshold is absent, never 0.
 message ResolutionSpec {
-  string kind = 1;
+  string kind = 1 [(buf.validate.field).required = true];
   optional string metric_key = 2;
   optional string operator = 3;
   optional double threshold = 4;
   optional double baseline_value = 5;
   optional string window = 6;
-  int64 deadline = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 deadline = 7 [
+    (buf.validate.field).required = true,
+    (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER
+  ];
   optional string source_feed = 8;
   optional string question = 9;
 }
 
-// Projections contains bounded presentation-path probabilities derived from
-// domain curves. Market forecasts are peak-anchored, so the projected value at
-// the forecast's own time_horizon can intentionally differ from the headline
-// probability; non-market forecasts preserve their emitted horizon as anchor.
+// Deprecated (#8967): newly seeded payloads omit it; a payload cached
+// before the change may carry it until the next seed-forecasts run.
 message Projections {
-  // Projected 24-hour probability after domain-curve normalization.
   double h24 = 1;
-  // Projected 7-day probability after domain-curve normalization.
   double d7 = 2;
-  // Projected 30-day probability after domain-curve normalization.
   double d30 = 3;
 }
 
@@ -141,30 +133,29 @@ message Forecast {
   string time_horizon = 8;
   repeated ForecastSignal signals = 9;
   repeated CascadeEffect cascades = 10;
-  // Forecast trend direction. Current values are "rising", "falling", and
-  // "stable". The seeder compares probability against the prior forecast
-  // snapshot and uses a +/-0.05 deadband: deltas above +0.05 are rising,
-  // below -0.05 are falling, and everything inside the band is stable.
+  // "rising", "falling", or "stable" versus the prior snapshot, with a
+  // +/-0.05 deadband on the probability delta.
   string trend = 11;
   double prior_probability = 12;
   CalibrationInfo calibration = 13;
   int64 created_at = 14 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   int64 updated_at = 15 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   Perspectives perspectives = 16;
-  Projections projections = 17;
+  // Deprecated (#8967): newly seeded payloads omit it; a payload cached
+  // before the change may carry it until the next seed-forecasts run.
+  // Kept for v1 wire compatibility.
+  Projections projections = 17 [deprecated = true];
   ForecastCase case_file = 18;
-  // Simulation-scoring fields — populated when the deep forecast simulation pipeline
-  // has run for this forecast's state and produced a non-zero adjustment.
-  // simulation_adjustment: raw score delta (+0.08–+0.12 positive, -0.12/-0.15 negative).
-  // sim_path_confidence: clamped [0,1] confidence of the matched sim top-path; 0 = not set.
-  // demoted_by_simulation: true when a negative adjustment crossed the 0.50 acceptance threshold.
+  // Score delta from the deep simulation pipeline: +0.08 to +0.12, or
+  // -0.12 or -0.15; 0 when it has not run.
   double simulation_adjustment = 20;
+  // Confidence in [0, 1] of the matched simulation top path; 0 when not set.
   double sim_path_confidence = 21;
+  // True when a negative adjustment crossed the 0.50 acceptance threshold.
   bool demoted_by_simulation = 22;
-  // Resolution spec — the machine-checkable outcome contract for this forecast
-  // (see ResolutionSpec). "hard" specs resolve for free by metric comparison
-  // against source_feed; "judged" specs resolve via a later LLM judge against
-  // question. Nullable: a forecast that never passed through the resolution
-  // enrichment pass carries null. deadline is an epoch-milliseconds timestamp.
+  // Outcome contract for this forecast (see ResolutionSpec); null when the
+  // resolution enrichment pass has not run.
   ResolutionSpec resolution = 23;
+  // Horizons whose projection is graded.
+  repeated string scored_horizons = 24;
 }

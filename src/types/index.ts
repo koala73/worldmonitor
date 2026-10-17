@@ -106,6 +106,28 @@ export interface StoryMeta {
 }
 
 
+export interface NewsLocationMarker {
+  lat: number;
+  lon: number;
+  title: string;
+  threatLevel: string;
+  timestamp?: Date;
+  /** Original loaded article identity; marker titles may include inferred locations. */
+  article?: Pick<NewsItem, 'link' | 'title' | 'source'>;
+  /**
+   * #9213: the cluster's verdict from assessCorroboration, as the News panel
+   * shows it. Describes coverage, not accuracy.
+   */
+  corroboration?: NewsCorroboration;
+}
+
+/** Structural copy of Corroboration in server/_shared/corroboration.ts; corroboration-flag.ts checks they match. */
+export type NewsCorroboration =
+  | { readonly state: 'corroborated'; readonly publishers: number }
+  | { readonly state: 'single-publisher'; readonly publishers: 1 }
+  | { readonly state: 'tier4-only'; readonly publishers: number }
+  | { readonly state: 'unknown' };
+
 export interface NewsItem {
   source: string;
   title: string;
@@ -683,6 +705,7 @@ export interface MapLayers {
   protests: boolean;
   flights: boolean;
   military: boolean;
+  aircraftEmergencies?: boolean;
   natural: boolean;
   spaceports: boolean;
   minerals: boolean;

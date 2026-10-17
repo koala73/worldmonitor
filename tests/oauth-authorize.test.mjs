@@ -13,6 +13,8 @@
  */
 
 import { strict as assert } from 'node:assert';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import { consentPage } from '../api/oauth/authorize.js';
@@ -215,5 +217,31 @@ describe('consentPage — preserved invariants (regression guard for U6+)', () =
     assert.equal(res.headers.get('X-Frame-Options'), 'DENY');
     assert.equal(res.headers.get('Cache-Control'), 'no-store');
     assert.equal(res.headers.get('Pragma'), 'no-cache');
+  });
+});
+
+// /oauth/authorize has its own CSP rule in vercel.json, after the site-wide
+// catch-all; the last matching rule sets the header. An inline script runs
+// only when its SHA-256 hash is listed there. A blocked consent script leaves
+// "Use API key instead" with no click handler, so the API-key path is
+// unreachable.
+describe('consentPage — scripts allowed by the deployed CSP', () => {
+  it('every inline script is allowed by its hash, not the static nonce', async () => {
+    const vercel = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+    const rule = vercel.headers.findLast((h) => new RegExp(`^${h.source}$`).test('/oauth/authorize')
+      && h.headers.some((x) => x.key === 'Content-Security-Policy'));
+    assert.ok(rule, 'a vercel.json CSP rule must cover /oauth/authorize');
+    const csp = rule.headers.find((x) => x.key === 'Content-Security-Policy').value;
+    const scriptSrc = csp.split(';').map((d) => d.trim()).find((d) => d.startsWith('script-src ')).split(/\s+/);
+
+    const html = await renderHtml(BASE_PARAMS, NONCE);
+    const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script[^>]*>/gi)];
+    assert.ok(scripts.length > 0, 'consent page must render its disclosure script');
+    assert.ok(!scriptSrc.includes("'nonce-wm-static-bootstrap'"), 'the route CSP must not trust the static nonce');
+    for (const [, attrs, body] of scripts) {
+      assert.doesNotMatch(attrs, /\bnonce=/);
+      const hash = `'sha256-${createHash('sha256').update(body).digest('base64')}'`;
+      assert.ok(scriptSrc.includes(hash), `inline consent script is blocked by the CSP (hash=${hash})`);
+    }
   });
 });

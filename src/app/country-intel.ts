@@ -3,6 +3,7 @@ import { CountryBriefController, projectChinaCountrySummary } from '@/components
 import { createWebsiteCountryBriefSource } from '@/services/country-brief-source';
 import { hasTemporalBaselineSnapshot } from '@/services/temporal-baseline';
 import type { AppContext, AppModule, CountryBriefSignals } from '@/app/app-context';
+import type { CountrySignalCounts } from '@/types';
 import { getSignalAggregator } from '@/app/lazy-services';
 import type { CountrySignalCluster } from '@/services/signal-aggregator';
 import { premiumFetch } from '@/services/premium-fetch';
@@ -81,6 +82,9 @@ import { vesselTypeLabel } from '@/utils/vessel-type-label';
 // Guarded with the client-runtime check so node:test never dereferences import.meta.env.
 const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
 
+type MilitarySignalField = 'militaryFlights' | 'militaryVessels' | 'militaryFlightsInCountry' | 'militaryVesselsInCountry';
+type WebsiteCountrySignals = Omit<CountryBriefSignals, MilitarySignalField> & Pick<CountrySignalCounts, MilitarySignalField>;
+
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
   options: { type: 'region' }
@@ -127,6 +131,16 @@ type CountryBriefOpenOptions = {
   owner?: 'agent' | 'human';
 };
 
+type CountryPresentation = {
+  page: NonNullable<AppContext['countryBriefPage']>;
+  code: string;
+  score: CountryScore | null;
+  stock: CountryStockSnapshot | null;
+  imf: ImfCountryBundle | null;
+  refreshGeneration: number;
+  signalDetailsPending: boolean;
+};
+
 export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
   private briefRequestToken = 0;
@@ -143,6 +157,7 @@ export class CountryIntelManager implements AppModule {
   private authUnsubscribe: (() => void) | null = null;
   private entitlementUnsubscribe: (() => void) | null = null;
   private lastHadPremium = false;
+  private currentCountryPresentation: CountryPresentation | null = null;
   private countryController: CountryBriefController | null = null;
   private countryControllerPage: AppContext['countryBriefPage'] = null;
   private countryBriefPageLoading: Promise<boolean> | null = null;
@@ -174,6 +189,7 @@ export class CountryIntelManager implements AppModule {
   }
 
   destroy(): void {
+    this.currentCountryPresentation = null;
     this.briefRequestToken++;
     this.countryController?.dispose();
     this.countryController = null;
@@ -322,6 +338,7 @@ export class CountryIntelManager implements AppModule {
     this.getCountryController(this.ctx.countryBriefPage);
 
     this.ctx.countryBriefPage.onClose(() => {
+      this.currentCountryPresentation = null;
       this.briefRequestToken++;
       this.countryController?.dispose();
       // Keep the controller for the next open to cancel; closing must not
@@ -413,9 +430,6 @@ export class CountryIntelManager implements AppModule {
       if (canonicalName !== code) country = canonicalName;
       const isChina = code.toUpperCase() === 'CN';
 
-      const scoreCode = normalizeCiiCountryCode(code);
-      const score = getCachedCountryScore(scoreCode);
-
       let signals = await raceWebMcpAbort(
         this.getCountrySignals(code, country),
         opts?.signal,
@@ -423,7 +437,13 @@ export class CountryIntelManager implements AppModule {
       throwIfWebMcpAborted(opts?.signal);
       if (token !== this.briefRequestToken || this.ctx.isDestroyed || this.ctx.countryBriefPage !== page) return;
 
+      const score = getCachedCountryScore(normalizeCiiCountryCode(code));
       page.show(country, code, score, signals);
+      const presentation: CountryPresentation = {
+        page, code, score, stock: null, imf: null, refreshGeneration: 0, signalDetailsPending: true,
+      };
+      this.currentCountryPresentation = presentation;
+      const signalGeneration = presentation.refreshGeneration;
       this.currentCoverageEvents = [];
       pageShown = true;
       this.visibleBriefOwner = request.owner;
@@ -478,28 +498,37 @@ export class CountryIntelManager implements AppModule {
           }
         });
       }
-      try {
-        const signalDetails = await this.buildSignalDetails(code);
-        if (token === this.briefRequestToken && this.ctx.countryBriefPage?.getCode() === code) {
-          page.updateSignalDetails?.(signalDetails);
+      const militarySummary = this.buildMilitarySummary(code, country);
+      page.updateMilitaryActivity?.(militarySummary);
+      if (signalGeneration === presentation.refreshGeneration) {
+        page.updateSignals?.(signals, militarySummary.coverageNotes);
+        try {
+          const signalDetails = await this.buildSignalDetails(code);
+          if (token === this.briefRequestToken && this.isCurrentPresentation(presentation) && signalGeneration === presentation.refreshGeneration) {
+            presentation.signalDetailsPending = false;
+            page.updateSignalDetails?.(signalDetails);
+          }
+        } catch (err) {
+          console.warn('[CountryBrief] signal details unavailable:', err);
+          if (token === this.briefRequestToken && this.isCurrentPresentation(presentation) && signalGeneration === presentation.refreshGeneration) {
+            presentation.signalDetailsPending = false;
+            page.setSectionFailure?.('signals', 'unavailable', 'Aggregate severity and recent high-severity observations are unavailable.');
+          }
         }
-      } catch (err) {
-        console.warn('[CountryBrief] signal details unavailable:', err);
       }
-      if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
-      page.updateMilitaryActivity?.(this.buildMilitarySummary(code, country));
-      page.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, null));
+      if (!this.isCurrentPresentation(presentation)) return;
+      this.renderCountryEconomics(presentation);
 
-      let latestStock: CountryStockSnapshot | null = null;
-      let latestImf: ImfCountryBundle | null = null;
       const { stockPromise } = this.getCountryController(page).hydrate(code, country, {
         stock: stock => {
-          latestStock = stock;
-          page.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, stock, latestImf));
+          if (!this.isCurrentPresentation(presentation)) return;
+          presentation.stock = stock;
+          this.renderCountryEconomics(presentation);
         },
         imf: bundle => {
-          latestImf = bundle;
-          page.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, latestStock, bundle));
+          if (!this.isCurrentPresentation(presentation)) return;
+          presentation.imf = bundle;
+          this.renderCountryEconomics(presentation);
         },
       });
 
@@ -557,13 +586,6 @@ export class CountryIntelManager implements AppModule {
 
       try {
         const context: Record<string, unknown> = {};
-        if (score) {
-          context.score = score.score;
-          context.level = score.level;
-          context.trend = score.trend;
-          context.components = score.components;
-          context.change24h = score.change24h;
-        }
         Object.assign(context, signals);
 
         const aggregator = await getSignalAggregator();
@@ -608,10 +630,21 @@ export class CountryIntelManager implements AppModule {
           // so chips, prompt, and fallback lines share one fresh observation set.
           signals = await this.getCountrySignals(code, country);
           if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
+          if (!this.isCurrentPresentation(presentation)) return;
+          const currentScore = presentation.score;
+          if (signalGeneration === presentation.refreshGeneration) {
+            this.commitCountryScore(presentation, currentScore, signals);
+          }
           Object.assign(context, signals);
-          this.ctx.countryBriefPage?.updateScore?.(score, signals);
+          if (currentScore) {
+            context.score = currentScore.score;
+            context.level = currentScore.level;
+            context.trend = currentScore.trend;
+            context.components = currentScore.components;
+            context.change24h = currentScore.change24h;
+          }
 
-          let contextSnapshot = this.buildBriefContextSnapshot(country, code, score, signals, context);
+          let contextSnapshot = this.buildBriefContextSnapshot(country, code, currentScore, signals, context);
 
           if (isHeadlineMemoryEnabled() && mlWorker.isAvailable && mlWorker.isModelLoaded('embeddings') && briefHeadlines.length > 0) {
             try {
@@ -665,11 +698,11 @@ export class CountryIntelManager implements AppModule {
           if (fallbackBrief) {
             this.ctx.countryBriefPage?.updateBrief({ brief: fallbackBrief, country, code, fallback: true, sources: briefSources });
           } else {
-            const lines = this.buildFallbackSignalLines(score, signals, country, context);
+            const lines = this.buildFallbackSignalLines(presentation.score, signals, country, context);
             if (lines.length > 0) {
               this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true });
             } else {
-              this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'No AI service available. Configure GROQ_API_KEY in Settings for full briefs.' });
+              this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'No AI service available. Configure OPENROUTER_API_KEY in Settings for full briefs.' });
             }
           }
         }
@@ -723,18 +756,40 @@ export class CountryIntelManager implements AppModule {
     return !!activeCode && activeCode !== '__loading__' && activeCode !== '__error__';
   }
 
+  private isCurrentPresentation(presentation: CountryPresentation): boolean {
+    return this.currentCountryPresentation === presentation
+      && !this.ctx.isDestroyed
+      && this.ctx.countryBriefPage === presentation.page
+      && presentation.page.isVisible()
+      && presentation.page.getCode() === presentation.code;
+  }
+
+  private renderCountryEconomics(presentation: CountryPresentation): void {
+    presentation.page.updateEconomicIndicators?.(this.buildEconomicIndicators(
+      presentation.code, presentation.score, presentation.stock, presentation.imf,
+    ));
+  }
+
+  private commitCountryScore(presentation: CountryPresentation, score: CountryScore | null, signals: WebsiteCountrySignals): void {
+    if (!this.isCurrentPresentation(presentation)) return;
+    presentation.score = score;
+    presentation.page.updateScore?.(score, signals);
+    this.renderCountryEconomics(presentation);
+  }
+
   refreshOpenBrief(): void {
-    const page = this.ctx.countryBriefPage;
-    if (!page?.isVisible()) return;
-    const code = page.getCode();
-    if (!code || code === '__loading__' || code === '__error__') return;
+    const presentation = this.currentCountryPresentation;
+    if (!presentation || !this.isCurrentPresentation(presentation)) return;
+    const { page, code } = presentation;
     const name = TIER1_COUNTRIES[code] ?? CountryIntelManager.resolveCountryName(code);
-    const scoreCode = normalizeCiiCountryCode(code);
-    const score = getCachedCountryScore(scoreCode);
+    const generation = ++presentation.refreshGeneration;
     void this.getCountrySignals(code, name)
-      .then((signals) => {
-        if (!(page.isVisible() && page.getCode() === code)) return;
-        page.updateScore?.(score, signals);
+      .then(async (signals) => {
+        if (!this.isCurrentPresentation(presentation) || generation !== presentation.refreshGeneration) return;
+        const score = getCachedCountryScore(normalizeCiiCountryCode(code));
+        this.commitCountryScore(presentation, score, signals);
+        presentation.signalDetailsPending = true;
+        page.updateSignals?.(signals, this.buildMilitarySummary(code, name).coverageNotes);
         // Fallback assessments embed temporal status inline; refresh that copy
         // when chips change so unavailable/zero/global context stays consistent.
         if (page.isFallbackBrief?.()) {
@@ -743,9 +798,26 @@ export class CountryIntelManager implements AppModule {
             page.updateBrief({ brief: lines.join('\n'), country: name, code, fallback: true });
           }
         }
+        try {
+          const details = await this.buildSignalDetails(code);
+          if (this.isCurrentPresentation(presentation) && generation === presentation.refreshGeneration) {
+            presentation.signalDetailsPending = false;
+            page.updateSignalDetails?.(details);
+          }
+        } catch (err) {
+          console.warn('[CountryBrief] signal details unavailable:', err);
+          if (this.isCurrentPresentation(presentation) && generation === presentation.refreshGeneration) {
+            presentation.signalDetailsPending = false;
+            page.setSectionFailure?.('signals', 'unavailable', 'Aggregate severity and recent high-severity observations are unavailable.');
+          }
+        }
       })
       .catch((err) => {
         console.warn('[CountryBrief] refreshOpenBrief signal fetch failed:', err);
+        if (this.isCurrentPresentation(presentation) && generation === presentation.refreshGeneration && presentation.signalDetailsPending) {
+          presentation.signalDetailsPending = false;
+          page.setSectionFailure?.('signals', 'unavailable', 'Aggregate severity and recent high-severity observations are unavailable.');
+        }
       });
   }
 
@@ -808,7 +880,7 @@ export class CountryIntelManager implements AppModule {
 
   private buildFallbackSignalLines(
     score: CountryScore | null,
-    signals: CountryBriefSignals,
+    signals: WebsiteCountrySignals,
     _country: string,
     context: Record<string, unknown>,
   ): string[] {
@@ -821,8 +893,8 @@ export class CountryIntelManager implements AppModule {
       }));
     }
     if (signals.protests > 0) lines.push(t('countryBrief.fallback.protestsDetected', { count: String(signals.protests) }));
-    if (signals.militaryFlights > 0) lines.push(t('countryBrief.fallback.aircraftTracked', { count: String(signals.militaryFlights) }));
-    if (signals.militaryVessels > 0) lines.push(t('countryBrief.fallback.vesselsTracked', { count: String(signals.militaryVessels) }));
+    if ((signals.militaryFlights ?? 0) > 0) lines.push(t('countryBrief.fallback.aircraftTracked', { count: String(signals.militaryFlights) }));
+    if ((signals.militaryVessels ?? 0) > 0) lines.push(t('countryBrief.fallback.vesselsTracked', { count: String(signals.militaryVessels) }));
     if (signals.activeStrikes > 0) lines.push(t('countryBrief.fallback.activeStrikes', { count: String(signals.activeStrikes) }));
     if (signals.travelAdvisoryMaxLevel === 'do-not-travel') {
       lines.push(`⚠️ Travel advisory: Do Not Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`);
@@ -853,7 +925,7 @@ export class CountryIntelManager implements AppModule {
     country: string,
     code: string,
     score: CountryScore | null,
-    signals: CountryBriefSignals,
+    signals: WebsiteCountrySignals,
     context: Record<string, unknown>,
   ): string {
     const lines: string[] = [];
@@ -1080,7 +1152,7 @@ export class CountryIntelManager implements AppModule {
     this.ctx.countryTimeline.render(events);
   }
 
-  async getCountrySignals(code: string, country: string): Promise<CountryBriefSignals> {
+  async getCountrySignals(code: string, country: string): Promise<WebsiteCountrySignals> {
     const countryLower = country.toLowerCase();
     const hasGeoShape = hasCountryGeometry(code) || !!CountryIntelManager.COUNTRY_BOUNDS[code];
     // The signal-aggregator chunk is lazy-loaded; if it fails to load we still
@@ -1126,7 +1198,7 @@ export class CountryIntelManager implements AppModule {
       ).length;
     }
 
-    const military = projectCountryMilitarySignalCounts(code, this.ctx.intelligenceCache.military?.flights ?? [], this.ctx.intelligenceCache.military?.vessels ?? []);
+    const military = this.selectCountryMilitary(code, country).signalCounts;
 
     let outages = 0;
     if (this.ctx.intelligenceCache.outages) {
@@ -1241,8 +1313,41 @@ export class CountryIntelManager implements AppModule {
     return projectCountrySignalDetails(cluster?.signals ?? []);
   }
 
+  private selectCountryMilitary(code: string, country: string) {
+    const cached = this.ctx.intelligenceCache.military;
+    const flightState = cached?.flightDataState;
+    const vesselState = cached?.vesselDataState;
+    const flights = flightState && flightState.mode !== 'unavailable' ? cached!.flights : null;
+    const vessels = vesselState && vesselState.mode !== 'unavailable' ? cached!.vessels : null;
+    const flightConfirmed = flightState?.mode === 'live' && !flightState.offline;
+    const vesselConfirmed = vesselState?.mode === 'live' && !vesselState.offline && cached?.vesselNegativeEvidenceConfirmed === true;
+    const summary = projectCountryMilitaryActivity(code, country, flights, vessels);
+    const signalCounts = projectCountryMilitarySignalCounts(code, flights, vessels);
+    if (!flightConfirmed) {
+      if (summary.ownFlights === 0) summary.ownFlights = null;
+      if (summary.foreignFlights === 0) summary.foreignFlights = null;
+      if (signalCounts.militaryFlights === 0) signalCounts.militaryFlights = null;
+      if (signalCounts.militaryFlightsInCountry === 0) signalCounts.militaryFlightsInCountry = null;
+    }
+    if (!vesselConfirmed) {
+      if (summary.nearbyVessels === 0) summary.nearbyVessels = null;
+      if (signalCounts.militaryVessels === 0) signalCounts.militaryVessels = null;
+      if (signalCounts.militaryVesselsInCountry === 0) signalCounts.militaryVesselsInCountry = null;
+    }
+    if (summary.foreignPresence === false && (!flightConfirmed || !vesselConfirmed)) summary.foreignPresence = null;
+    const coverageNotes = [flightConfirmed
+      ? 'Flight counts use the current supplied sample. Country-empty observations are zero.'
+      : flights
+        ? 'Flight counts are previous cached observations. A previous empty sample does not confirm current absence.'
+        : 'Military flight observations unavailable or unconfirmed. This is not zero activity.',
+      ...(cached?.vesselCoverageNotes ?? []),
+      ...(vesselConfirmed ? [] : ['Military vessel coverage is partial, unavailable or cached. Positive observations remain supported; current absence is unconfirmed.']),
+    ];
+    return { signalCounts, summary: { ...summary, coverageNotes, coverage: flightConfirmed && vesselConfirmed ? 'complete' as const : 'partial' as const } };
+  }
+
   private buildMilitarySummary(code: string, country: string): CountryDeepDiveMilitarySummary {
-    return projectCountryMilitaryActivity(code, country, this.ctx.intelligenceCache.military?.flights ?? [], this.ctx.intelligenceCache.military?.vessels ?? []);
+    return this.selectCountryMilitary(code, country).summary;
   }
 
   private buildEconomicIndicators(
@@ -1281,7 +1386,7 @@ export class CountryIntelManager implements AppModule {
         label: 'Instability Regime',
         value: `${score.score}/100 (${score.level})`,
         trend,
-        source: 'CII',
+        source: 'Country Instability Index',
       });
     }
 

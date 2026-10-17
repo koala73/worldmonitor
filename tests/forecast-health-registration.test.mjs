@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import { __testing__ } from '../api/health.js';
+import { assessFunnelDiversity, buildFunnelHealthMeta } from '../scripts/_forecast-funnel.mjs';
 
 describe('forecast resolution health registration', () => {
   it('classifies the resolution ledger and scorecard as standalone health checks', () => {
@@ -19,8 +20,8 @@ describe('forecast resolution health registration', () => {
   });
 
   it('registers the funnel-diversity guardrail (#5233) as a standalone health check', () => {
-    // data key + companion seed-meta must stay paired so a collapsed funnel
-    // (seed-meta status:'error') surfaces via classifyKey's seedError path.
+    // data key + companion seed-meta must stay paired: seed-meta freshness is
+    // what reports a generator that stopped writing.
     assert.equal(__testing__.STANDALONE_KEYS.forecastFunnel, 'forecast:funnel:health:v1');
     assert.equal(__testing__.SEED_META.forecastFunnel.key, 'seed-meta:forecast:funnel:health:v1');
     // absent-key window (before the first generator run ships it) must be
@@ -131,15 +132,15 @@ describe('funnel-diversity guardrail health classification', () => {
     });
   }
 
-  it('surfaces a collapsed funnel (seed-meta status:error) as SEED_ERROR → warn', () => {
+  it('reports a run that published a collapsed funnel as OK (#8990)', () => {
+    // The generator ran, so health stays OK; the collapse is output quality.
+    const assessment = assessFunnelDiversity(['market', 'supply_chain'].map((domain) => ({ domain })));
+    assert.equal(assessment.collapsed, true);
     const entry = classify({
       keyStrens: new Map([[DATA_KEY, 120]]),
-      keyMetaValues: new Map([[META_KEY, JSON.stringify({
-        fetchedAt: NOW - 60_000, recordCount: 2, status: 'error', reasons: ['only 2 distinct domain(s) (min 4)'],
-      })]]),
+      keyMetaValues: new Map([[META_KEY, JSON.stringify(buildFunnelHealthMeta(assessment, NOW - 60_000))]]),
     });
-    assert.equal(entry.status, 'SEED_ERROR');
-    assert.equal(__testing__.STATUS_COUNTS[entry.status], 'warn');
+    assert.equal(entry.status, 'OK');
   });
 
   it('tolerates the absent-key window (before the cron ships it) as warn, never a crit EMPTY', () => {
@@ -167,4 +168,24 @@ describe('funnel-diversity guardrail health classification', () => {
     });
     assert.notEqual(__testing__.STATUS_COUNTS[entry.status], 'crit');
   });
+});
+
+describe('judged lane health classification (#8877)', () => {
+  const key = 'forecast:resolutions:v1';
+  const metaKey = 'seed-meta:forecast:resolutions';
+  const now = 1_790_000_000_000;
+  for (const [producerStatus, expected] of [['error', 'SEED_ERROR'], ['ok', 'OK']]) {
+    it(`classifies a ${producerStatus} lane through the normal health monitor`, () => {
+      assert.equal(__testing__.STANDALONE_KEYS.forecastResolutions, key);
+      assert.equal(__testing__.SEED_META.forecastResolutions.key, metaKey);
+      const entry = __testing__.classifyKey('forecastResolutions', key, { allowOnDemand: true }, {
+        keyStrens: new Map([[key, 200]]), keyErrors: new Map(), keyMetaErrors: new Map(), now,
+        keyMetaValues: new Map([[metaKey, JSON.stringify({
+          fetchedAt: now, recordCount: 1, status: producerStatus,
+          reasons: producerStatus === 'error' ? ['coverage_unverified_with_overdue_entries'] : [],
+        })]]),
+      });
+      assert.equal(entry.status, expected);
+    });
+  }
 });

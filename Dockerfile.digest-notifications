@@ -92,6 +92,9 @@ COPY shared/diplomacy-keywords.json ./shared/
 COPY shared/ticker-extract.js shared/ticker-extract.d.ts ./shared/
 COPY shared/stocks.json ./shared/
 COPY scripts/shared/notification-dedup.cjs ./scripts/shared/
+# notify-fields.cjs: link classifier for the Teams digest card
+# (scripts/lib/notification-teams.cjs, #9215).
+COPY scripts/shared/notify-fields.cjs ./scripts/shared/
 # #6428: corroboration counts publishers, not feed labels. Imported by
 # seed-digest-notifications.mjs (the corroboration run metric) as
 # shared/publisher-families.js, and by scripts/lib/digest-delivery-plan.mjs

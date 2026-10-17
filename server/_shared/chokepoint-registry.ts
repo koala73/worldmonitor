@@ -19,6 +19,7 @@ export interface ChokepointRegistryEntry {
   geoId: string;
   relayName: string;
   portwatchName: string;
+  transitMeasurementNote?: string;
   corridorRiskName: string | null;
   /** EIA chokepoint baseline ID.  Null = no EIA baseline. */
   baselineId: string | null;
@@ -66,6 +67,7 @@ export const CHOKEPOINT_REGISTRY: readonly ChokepointRegistryEntry[] = [
     geoId: 'hormuz_strait',
     relayName: 'Strait of Hormuz',
     portwatchName: 'Strait of Hormuz',
+    transitMeasurementNote: 'Not measured here in this snapshot. The live counter requires matched AIS entry and exit reports, with at least five minutes inside the monitored area. No complete crossing measurement is available for this period. Historical PortWatch totals do not supply today\'s count.',
     corridorRiskName: 'Hormuz',
     baselineId: 'hormuz',
     shockModelSupported: true,

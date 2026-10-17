@@ -134,6 +134,9 @@ describe('analytics collector health aggregate', () => {
     );
     assert.equal(parseCollectorHealthReport({ cohort: 'event', writes: 20, failures: 1, failureKind: 'none' }), null);
     assert.equal(parseCollectorHealthReport({ cohort: 'event', writes: 2, failures: 3, failureKind: 'network' }), null);
+    // A single report cannot claim more writes than one tab produces in a window.
+    assert.equal(parseCollectorHealthReport({ cohort: 'event', writes: 601, failures: 0, failureKind: 'none' }), null);
+    assert.ok(parseCollectorHealthReport({ cohort: 'event', writes: 600, failures: 600, failureKind: 'network' }));
     assert.equal(parseCollectorHealthReport({ cohort: 'other', writes: 5, failures: 5, failureKind: 'network' }), null);
     assert.equal(parseCollectorHealthReport({ cohort: 'event', writes: 5, failures: 1, failureKind: 'network', bucket: -1 }), null);
     assert.equal(parseCollectorHealthReport({ cohort: 'event', writes: 5, failures: 1, failureKind: 'network', bucket: 1.5 }), null);

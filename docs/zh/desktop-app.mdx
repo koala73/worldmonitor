@@ -17,7 +17,7 @@ description: "World Monitor Tauri 桌面应用架构深度详解：涵盖 Rust s
 - **OS 钥匙串集成** —— API 密钥存储在系统凭据管理器中（macOS Keychain、Windows Credential Manager），绝不以明文文件形式存储
 - **Token 鉴权的 sidecar** —— 一个唯一的会话 token 防止其他本地进程访问 localhost 上的 sidecar。每次启动时通过随机化哈希生成
 - **云端回退** —— 当本地 API 处理器失败或缺失时，请求会透明地回退到云端部署（worldmonitor.app），并剥离 Origin 头
-- **设置窗口** —— 专用配置 UI（Cmd+,），包含三个标签页：**LLMs**（Ollama 端点、模型选择、Groq、OpenRouter）、**API Keys**（受支持的数据源凭据目录，逐键校验）以及 **Debug & Logs**（流量日志、详细模式、日志文件）。每个标签页运行独立的校验流水线 —— 在 LLMs 标签页保存不会阻塞 API Keys 的校验
+- **设置窗口** —— 专用配置 UI（Cmd+,），包含三个标签页：**LLMs**（Ollama 端点、模型选择、OpenRouter）、**API Keys**（受支持的数据源凭据目录，逐键校验）以及 **Debug & Logs**（流量日志、详细模式、日志文件）。每个标签页运行独立的校验流水线 —— 在 LLMs 标签页保存不会阻塞 API Keys 的校验
 - **自动模型发现** —— 当你在 LLMs 标签页设置 Ollama 或 LM Studio 的端点 URL 时，设置面板会立即查询其可用模型（先尝试 Ollama 原生 `/api/tags`，再尝试 OpenAI 兼容的 `/v1/models`），并填充下拉菜单。Embedding 模型会被过滤掉。如果发现失败，会显示一个手动文本输入作为回退
 - **跨窗口密钥同步** —— 主仪表盘和设置窗口运行在独立的 webview 中，具有独立的 JS 上下文。在 Settings 中保存密钥时会写入 OS 钥匙串并广播一个 `localStorage` 变更事件。主窗口监听此事件并热重载所有密钥，无需重启应用
 - **合并式钥匙串保险库** —— 所有密钥作为一个 JSON blob 存储在单个钥匙串条目（`secrets-vault`）中，而非每个密钥一个条目。这将每次应用启动时的 macOS Keychain 授权提示从 20+ 次减少到正好 1 次。一次性迁移会读取现有任何单独条目，合并它们，并清理旧格式
@@ -108,7 +108,7 @@ API 密钥存储在操作系统的凭据管理器中（macOS Keychain、Windows 
 
 sidecar 启动时，会读取保险库、解析，并作为环境变量注入。空值或仅含空白字符的值会被跳过。密钥也可以在运行时更新而无需重启 sidecar：在 Settings 窗口保存密钥会触发一次 `POST /api/local-env-update` 调用，热补丁 `process.env`，使处理器立即取到新值。
 
-**校验流水线** —— 当你在 Settings 中输入凭据时，应用会针对实际的提供商 API 进行校验（Groq → `/openai/v1/models`，Ollama → `/api/tags`，FRED → GDP 测试查询，NASA FIRMS → 火灾数据拉取等）。网络错误（超时、DNS 失败、主机不可达）被视为软通过 —— 密钥会被保存并附带"无法验证"提示，而不会阻塞。只有来自提供商的明确 401/403 响应才会将密钥标记为无效。这防止了临时网络问题把用户锁在自己的凭据之外。
+**校验流水线** —— 当你在 Settings 中输入凭据时，应用会针对实际的提供商 API 进行校验（OpenRouter → `/api/v1/models`，Ollama → `/api/tags`，FRED → GDP 测试查询，NASA FIRMS → 火灾数据拉取等）。网络错误（超时、DNS 失败、主机不可达）被视为软通过 —— 密钥会被保存并附带"无法验证"提示，而不会阻塞。只有来自提供商的明确 401/403 响应才会将密钥标记为无效。这防止了临时网络问题把用户锁在自己的凭据之外。
 
 **智能重新校验** —— 保存设置时，校验流水线会跳过自上次成功校验以来未修改的密钥。这避免了当用户只改动一个密钥但已有 15 个已配置且校验通过的密钥时，对提供商 API 产生不必要的往返请求。只有新输入或修改过的密钥才会触发校验请求。
 
@@ -120,9 +120,8 @@ World Monitor 桌面端使用一个运行时配置 schema，具备按功能切�
 
 ### 密钥
 
-桌面保险库 schema（Rust `SUPPORTED_SECRET_KEYS`）支持以下 25 个密钥：
+桌面保险库 schema（Rust `SUPPORTED_SECRET_KEYS`）支持以下密钥：
 
-- `GROQ_API_KEY`
 - `OPENROUTER_API_KEY`
 - `FRED_API_KEY`
 - `EIA_API_KEY`
@@ -168,7 +167,7 @@ World Monitor 桌面端使用一个运行时配置 schema，具备按功能切�
 
 若所需密钥缺失/被禁用：
 
-- 摘要：Groq/OpenRouter 被禁用，回退到浏览器模型。
+- 摘要：OpenRouter 被禁用，回退到浏览器模型。
 - FRED / EIA / Finnhub：经济、石油分析和股票数据返回空状态。
 - Cloudflare / ACLED：中断/冲突返回空状态。
 - 网络威胁 feeds（URLhaus、OTX、AbuseIPDB）：网络威胁图层返回空状态。

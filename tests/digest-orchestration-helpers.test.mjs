@@ -15,10 +15,12 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   applyDigestScoreFloor,
   digestWindowStartMs,
   getDigestScoreMin,
+  isDigestDeliveryTier,
   pickWinningCandidateWithPool,
   readTimeAgeCutoffMs,
   runSynthesisWithFallback,
@@ -739,5 +741,25 @@ describe('applyDigestScoreFloor — post-dedup score floor', () => {
 
   it('returns an empty array when the floor drains every rep', () => {
     assert.deepEqual(applyDigestScoreFloor(reps, 100), []);
+  });
+});
+
+// GHSA-8j6q-8cjh-c9r8: an unknown tier (entitlement relay down, cache miss)
+// used to deliver the Pro digest to everyone. It now waits for the next run;
+// the rule's last-sent stamp is untouched, so the delivery is delayed, not lost.
+describe('isDigestDeliveryTier', () => {
+  it('delivers only to a known paid tier', () => {
+    assert.equal(isDigestDeliveryTier(null), false);
+    assert.equal(isDigestDeliveryTier(0), false);
+    assert.equal(isDigestDeliveryTier(1), true);
+    assert.equal(isDigestDeliveryTier(2), true);
+  });
+
+  it('is the gate the cron applies before building a digest', () => {
+    const source = readFileSync(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url), 'utf8');
+    const body = source.match(/async function isUserPro\(userId\) \{([\s\S]*?)\n\}/)?.[1];
+    assert.ok(body, 'isUserPro not found');
+    assert.match(body, /return isDigestDeliveryTier\(await getUserTier\(userId\)\);/);
+    assert.doesNotMatch(body, /return true/);
   });
 });

@@ -22,6 +22,7 @@ const REFRESH_HINT =
   'ANTHROPIC_API_KEY=... node scripts/translate-locales.mjs && npm run locales:zh-tw';
 
 const NEW_TRANSLATED_KEYS = [
+  'countryBrief.chips.normalPrecautions',
   'popups.militaryFlight.climbRate',
   'popups.militaryFlight.manufacturer',
   'popups.militaryFlight.owner',

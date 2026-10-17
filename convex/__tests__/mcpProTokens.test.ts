@@ -716,6 +716,7 @@ describe("HTTP route /api/internal-validate-pro-mcp-token", () => {
     const T0 = new Date("2026-08-13T00:00:00Z").getTime();
     vi.useFakeTimers();
     vi.setSystemTime(T0);
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
     const t = convexTest(schema, modules);
     await seedProEntitlement(t, "user-pro");
     const issued = await t.mutation(internal.mcpProTokens.issueProMcpToken, {
@@ -751,6 +752,7 @@ describe("HTTP route /api/internal-validate-pro-mcp-token", () => {
     expect((await validate()).status).toBe(200);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(await readLastUsedAt()).toBe(T0 + 6 * 60_000);
+    random.mockRestore();
     vi.useRealTimers();
   });
 });

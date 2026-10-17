@@ -1,5 +1,5 @@
 import {
-  ApiError,
+  ValidationError,
   type GetTorontoSafetyRequest,
   type GetTorontoSafetyResponse,
   type ServerContext,
@@ -93,7 +93,7 @@ export async function queryTorontoSafety(
 ): Promise<GetTorontoSafetyResponse> {
   const semantic = request.dataset || TORONTO_SAFETY_SEMANTICS.reportedOccurrence;
   if (!VALID_DATASETS.has(semantic)) {
-    throw new ApiError(400, 'dataset must be reported_occurrence or annual_aggregate', '');
+    throw new ValidationError([{ field: 'dataset', description: 'dataset must be reported_occurrence or annual_aggregate' }]);
   }
 
   const sourceId = semantic === TORONTO_SAFETY_SEMANTICS.reportedOccurrence ? 'tps-mci' : 'tps-calls-attended';

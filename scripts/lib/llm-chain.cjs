@@ -2,8 +2,6 @@
 
 const { buildLlmCallEvent, emitLlmEvents } = require('./llm-telemetry.cjs');
 const {
-  GROQ_DEFAULT_MODEL,
-  GROQ_REASONING_EXTRA_BODY,
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
@@ -46,15 +44,6 @@ const LLM_PROVIDERS = [
   // so the entries below are the defaults for every OTHER consumer. A default
   // changed here still has to bump every cache generation fed by it.
   {
-    name: 'groq',
-    envKey: 'GROQ_API_KEY',
-    apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    model: GROQ_DEFAULT_MODEL,
-    extraBody: GROQ_REASONING_EXTRA_BODY,
-    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': SERVICE_UA }),
-    timeout: 15_000,
-  },
-  {
     name: 'openrouter',
     envKey: 'OPENROUTER_API_KEY',
     apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
@@ -83,7 +72,7 @@ const LLM_PROVIDERS = [
 ];
 
 /**
- * Call an LLM using the Ollama → Groq → paid OpenRouter → fixed free OpenRouter chain.
+ * Call an LLM using the Ollama → paid OpenRouter → fixed free OpenRouter chain.
  *
  * @param {string} systemPrompt
  * @param {string} userPrompt

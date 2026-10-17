@@ -135,6 +135,16 @@ const KIND_RULES = Object.freeze([
  * that already own those surfaces rather than each becoming a family of one.
  */
 const SEGMENT_FAMILIES = Object.freeze({
+  // Indexable welcome landings are the homepage family at a locale prefix.
+  // Keep in lockstep with nonDefaultLandingLocales() in
+  // shared/indexable-landing-locales.ts — tests/seo-url-taxonomy.test.mjs
+  // fails if a registry row has no homepage mapping here.
+  es: 'homepage',
+  pt: 'homepage',
+  ru: 'homepage',
+  fr: 'homepage',
+  de: 'homepage',
+  ar: 'homepage',
   blog: 'blog',
   countries: 'country_pages',
   'country-instability-index': 'country_pages',
@@ -152,6 +162,7 @@ const SEGMENT_FAMILIES = Object.freeze({
   pro: 'pricing',
   pricing: 'pricing',
   mcp: 'developer_mcp',
+  agent: 'developer_mcp',
   api: 'developer_mcp',
   developers: 'developer_mcp',
   sdks: 'developer_mcp',

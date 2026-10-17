@@ -22,7 +22,13 @@ import {
   dedupeSharedSubtreeComponents,
   SHARED_SUBTREE_COMPONENT_PREFIX,
 } from '../scripts/openapi-dedup-schemas.mjs';
-import { buildBundle } from '../scripts/build-openapi-json.mjs';
+import {
+  buildBundle,
+  collapseSoftLineBreaks,
+  dropDefaultParameterRequired,
+  dropUnreferencedSecuritySchemes,
+  shortenGeneratedSuccessDescriptions,
+} from '../scripts/build-openapi-json.mjs';
 import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
 
 // Guards the served public/openapi.json against the ~1 MB scanner body cap.
@@ -205,8 +211,14 @@ function expandLocalRefs(spec, targets, { skipSchemaNames = [] } = {}) {
   const visit = (value) => {
     if (!value || typeof value !== 'object') return;
     for (const [key, child] of Object.entries(value)) {
-      const target = child?.$ref ? targets.get(child.$ref) : null;
-      if (target) value[key] = restoreRefSite(child, target);
+      let target = child?.$ref ? targets.get(child.$ref) : null;
+      const seen = new Set();
+      while (target) {
+        assert.ok(!seen.has(value[key].$ref), 'added schema refs must not form a cycle');
+        seen.add(value[key].$ref);
+        value[key] = restoreRefSite(value[key], target);
+        target = targets.get(value[key]?.$ref);
+      }
       // A replacement can itself carry refs to other added components (a
       // hoisted subtree holding an expanded ChinaDatePrecision ref, say), so
       // the walk descends into what it just inserted as well.
@@ -503,6 +515,21 @@ describe('dedupeSharedSubtreeComponents (fixture)', () => {
       'the component holds the subtree bytes verbatim',
     );
     assert.deepEqual(expandSharedSubtrees(structuredClone(transformed)), original);
+  });
+
+  it('preserves repeated reference schemas and their sibling descriptions', () => {
+    const original = fixture();
+    original.components.schemas.ExampleValue = { type: 'string' };
+    for (const schema of Object.values(original.components.schemas).filter(schema => schema.properties)) {
+      schema.properties.report = {
+        $ref: '#/components/schemas/ExampleValue',
+        description: 'Reported provider value. Unknown values remain unknown; this description applies beside the reference.',
+      };
+    }
+    const transformed = structuredClone(original);
+    const stats = dedupeSharedSubtreeComponents(transformed);
+    assert.ok(stats.groups >= 2);
+    assert.deepEqual(expandSharedSubtrees(transformed), original);
   });
 
   it('never replaces a node an existing $ref resolves through', () => {
@@ -803,11 +830,11 @@ describe('ensureInlineTypedInput (fixture)', () => {
     // The copy exists so a JSON-only scanner sees a typed, described input —
     // not so the component's full caveats are repeated on every operation.
     assert.equal(restored.schema.type, 'string');
-    // Jmespath carries a curated summary: the lead sentence plus the two
-    // limits the API contract states on every operation.
+    // Jmespath carries a curated summary: the name plus the two limits the
+    // API contract states on every operation.
     assert.equal(
       restored.description,
-      'JMESPath JSON response. 1024 UTF-8 bytes. 256 KB output cap. HTTP 400.',
+      'JMESPath; 1024 UTF-8 bytes; 256 KB output cap.',
     );
     assert.ok(
       Buffer.byteLength(restored.description, 'utf8') <= INLINE_DESCRIPTION_MAX_BYTES,
@@ -970,8 +997,10 @@ describe('public OpenAPI dedupe (real bundle)', () => {
   });
 
   it('engages the exact repeated headers and generated scalar/date schemas', () => {
-    assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 39 });
-    assert.equal(int64Stats.replacedRefs, 38);
+    // #9093 adds two POST operations to the YAML bundle; only submit carries
+    // the 2 idempotency headers (review is exempt from replay).
+    assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 41 });
+    assert.equal(int64Stats.replacedRefs, 41);
     // Described int64 fields (own comment + generated warning) keep their
     // comment beside the shared $ref; a regression to zero would silently give
     // back ~4 KB of the scanner budget.
@@ -1112,6 +1141,43 @@ describe('public OpenAPI dedupe (real bundle)', () => {
   });
 });
 
+function referencedSecuritySchemes(spec) {
+  const names = new Set();
+  const collect = (security) => {
+    for (const requirement of security ?? []) for (const name of Object.keys(requirement)) names.add(name);
+  };
+  collect(spec.security);
+  for (const ops of Object.values(spec.paths ?? {})) {
+    for (const op of Object.values(ops ?? {})) {
+      if (op && typeof op === 'object') collect(op.security);
+    }
+  }
+  return names;
+}
+
+describe('dropUnreferencedSecuritySchemes', () => {
+  it('drops a scheme only excluded operations used and keeps the rest', () => {
+    const spec = {
+      security: [{ WorldMonitorKey: [] }],
+      paths: { '/a': { get: { security: [{ WorldMonitorKey: [] }, { BearerAuth: [] }] } } },
+      components: {
+        securitySchemes: { WorldMonitorKey: {}, BearerAuth: {}, TrustReviewKey: {} },
+      },
+    };
+    assert.deepEqual(dropUnreferencedSecuritySchemes(spec), { dropped: 1 });
+    assert.deepEqual(Object.keys(spec.components.securitySchemes), ['WorldMonitorKey', 'BearerAuth']);
+  });
+
+  it('declares only schemes the served JSON references (#9192)', () => {
+    // The review-key operations are excluded from this artifact, so their
+    // TrustReviewKey scheme would be an orphan spending scanner budget.
+    const { spec } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
+    const declared = Object.keys(spec.components?.securitySchemes ?? {}).sort();
+    assert.ok(declared.includes('WorldMonitorKey'));
+    assert.deepEqual(declared, [...referencedSecuritySchemes(spec)].sort());
+  });
+});
+
 describe('build-openapi-json wiring', () => {
   it('keeps the transform source reviewable as text', () => {
     const src = readFileSync(resolve(root, 'scripts/openapi-dedup-responses.mjs'));
@@ -1166,5 +1232,106 @@ describe('build-openapi-json wiring', () => {
       `shared schema-subtree dedup: ${schemaSubtreeStats.replacedRefs} refs`,
     );
     assert.ok(unreachableStats.dropped >= 150, `unreachable drop: ${unreachableStats.dropped} schemas`);
+  });
+});
+
+describe('JSON-only description and parameter compaction', () => {
+  it('collapses proto wrap points to spaces but keeps block-level line breaks', () => {
+    const spec = {
+      paths: { '/x': { get: { description: 'Applied tariff on one\n product between\n two countries.' } } },
+      components: {
+        schemas: {
+          S: {
+            description: 'Values:\n - first\n * second\n 1. third\n   indented\n | a | b |\n ```\n # heading\n > quote',
+            properties: { f: { type: 'string', description: 'Lead\n continues here.' } },
+          },
+        },
+      },
+    };
+    const stats = collapseSoftLineBreaks(spec);
+    assert.equal(spec.paths['/x'].get.description, 'Applied tariff on one product between two countries.');
+    assert.equal(spec.components.schemas.S.properties.f.description, 'Lead continues here.');
+    assert.equal(
+      spec.components.schemas.S.description,
+      'Values:\n - first\n * second\n 1. third\n   indented\n | a | b |\n ```\n # heading\n > quote',
+      'list, quote, heading, table, fence and indented lines keep their break',
+    );
+    assert.equal(stats.collapsed, 3);
+  });
+
+  it('never joins lines inside a fenced code block', () => {
+    const fenced = 'Run:\n ```sh\n curl -s https://x\n echo done\n ```\n then\n read it.';
+    const spec = { paths: { '/x': { get: { description: fenced } } } };
+    collapseSoftLineBreaks(spec);
+    assert.equal(
+      spec.paths['/x'].get.description,
+      'Run:\n ```sh\n curl -s https://x\n echo done\n ``` then read it.',
+    );
+  });
+
+  it('protects tilde fences and longer backtick fences the same way', () => {
+    const spec = {
+      paths: {
+        '/t': { get: { description: 'A\n ~~~\n one\n two\n ~~~\n b\n c.' } },
+        '/q': { get: { description: 'A\n ````md\n one\n ```\n two\n ````\n b\n c.' } },
+      },
+    };
+    collapseSoftLineBreaks(spec);
+    assert.equal(spec.paths['/t'].get.description, 'A\n ~~~\n one\n two\n ~~~ b c.');
+    assert.equal(spec.paths['/q'].get.description, 'A\n ````md\n one\n ```\n two\n ```` b c.');
+  });
+
+  it('drops only the default required:false, never from path parameters', () => {
+    const spec = {
+      paths: {
+        '/a/{id}': {
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          get: {
+            parameters: [
+              { name: 'q', in: 'query', required: false, schema: { type: 'string' } },
+              { name: 'must', in: 'query', required: true, schema: { type: 'string' } },
+              { $ref: '#/components/parameters/P' },
+            ],
+          },
+        },
+      },
+      components: { parameters: { P: { name: 'h', in: 'header', required: false, schema: { type: 'string' } } } },
+    };
+    const stats = dropDefaultParameterRequired(spec);
+    const [q, must] = spec.paths['/a/{id}'].get.parameters;
+    assert.equal('required' in q, false);
+    assert.equal(must.required, true);
+    assert.equal(spec.paths['/a/{id}'].parameters[0].required, true);
+    assert.equal('required' in spec.components.parameters.P, false);
+    assert.equal(stats.dropped, 2);
+  });
+
+  it('shortens only the generated 2xx description, and keeps every 2xx response inline', () => {
+    const ok = { description: 'Successful response', content: { 'application/json': { schema: { type: 'object' } } } };
+    const spec = {
+      paths: {
+        '/a': {
+          get: { responses: { 200: structuredClone(ok), 400: { description: 'Successful response' } } },
+          post: { responses: { 201: { description: 'Created with a hand-written note' }, 202: { $ref: '#/components/responses/R' } } },
+        },
+      },
+      components: { responses: { R: { description: 'Successful response' } } },
+    };
+    const stats = shortenGeneratedSuccessDescriptions(spec);
+    const get = spec.paths['/a'].get.responses;
+    assert.equal(get[200].description, 'OK');
+    assert.deepEqual(get[200].content, ok.content);
+    assert.equal(get[400].description, 'Successful response', 'non-2xx left alone');
+    assert.equal(spec.paths['/a'].post.responses[201].description, 'Created with a hand-written note');
+    assert.equal(spec.components.responses.R.description, 'Successful response', 'components left alone');
+    assert.equal(stats.shortened, 1);
+  });
+
+  it('all three passes engage on the real bundle', () => {
+    const { json, softBreakStats, defaultRequiredStats, successDescriptionStats } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
+    assert.ok(softBreakStats.collapsed >= 500, `soft breaks collapsed: ${softBreakStats.collapsed}`);
+    assert.ok(defaultRequiredStats.dropped >= 200, `default required dropped: ${defaultRequiredStats.dropped}`);
+    assert.ok(successDescriptionStats.shortened >= 200, `success descriptions shortened: ${successDescriptionStats.shortened}`);
+    assert.equal(json.includes('"Successful response"'), false, 'no generated success description survives');
   });
 });

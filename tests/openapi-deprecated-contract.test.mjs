@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -244,6 +246,66 @@ describe('OpenAPI deprecated + operation-description contract', () => {
       );
       assert.match(generated, /export interface GetYoutubeLiveStreamInfoResponse \{[\s\S]*? {2}\/\*\* @deprecated \*\/\n {2}channelExists: boolean;/);
     }
+  });
+
+  // ScorecardTotals follows the one-line `message GetForecastScorecardRequest {}`.
+  // The injector once read that empty message's body up to the next
+  // column-zero brace, so the deprecation landed on the request instead (#7072).
+  it('propagates the deprecated scorecard publicationCoverage to every generated contract', () => {
+    const json = JSON.parse(readFileSync(resolve(apiDir, 'ForecastService.openapi.json'), 'utf8'));
+    assert.equal(json.components.schemas.ScorecardTotals.properties.publicationCoverage.deprecated, true);
+
+    for (const file of ['ForecastService.openapi.yaml', 'worldmonitor.openapi.yaml']) {
+      const block = yamlSchemaBlock(readFileSync(resolve(apiDir, file), 'utf8'), 'ScorecardTotals');
+      assert.match(block, /^\s{16}publicationCoverage:\n\s{20}deprecated: true/m, `${file} publicationCoverage field`);
+    }
+
+    for (const family of ['client', 'server']) {
+      const generated = readFileSync(
+        resolve(root, `src/generated/${family}/worldmonitor/forecast/v1/service_${family}.ts`),
+        'utf8',
+      );
+      assert.match(generated, /export interface ScorecardTotals \{[\s\S]*? {2}\/\*\* @deprecated \*\/\n {2}publicationCoverage: number;/);
+    }
+  });
+});
+
+// The injector attributes fields by top-level message. A shape it cannot
+// attribute must stop the generator rather than move a deprecation (#7072).
+describe('openapi-inject-deprecated message-shape guard', () => {
+  function runAgainst(protoText) {
+    const dir = mkdtempSync(join(tmpdir(), 'inject-deprecated-'));
+    try {
+      mkdirSync(join(dir, 'scripts/lib'), { recursive: true });
+      for (const file of ['scripts/openapi-inject-deprecated.mjs', 'scripts/lib/openapi-codegen.mjs']) {
+        copyFileSync(resolve(root, file), join(dir, file));
+      }
+      for (const sub of ['docs/api', 'src/generated/client', 'src/generated/server', 'proto/worldmonitor/demo/v1']) {
+        mkdirSync(join(dir, sub), { recursive: true });
+      }
+      writeFileSync(join(dir, 'proto/worldmonitor/demo/v1/demo.proto'), protoText);
+      return spawnSync(process.execPath, [join(dir, 'scripts/openapi-inject-deprecated.mjs'), '--check'], { encoding: 'utf8' });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  const header = 'syntax = "proto3";\n\npackage worldmonitor.demo.v1;\n\nmessage Empty {}\n\n';
+
+  it('accepts the shapes it can attribute', () => {
+    const run = runAgainst(`${header}message Totals {\n  double share = 1 [deprecated = true];\n}\n`);
+    assert.equal(run.status, 0, run.stderr);
+  });
+
+  it('refuses a one-line message with fields', () => {
+    const run = runAgainst(`${header}message OneLiner { int32 a = 1 [deprecated = true]; }\n\nmessage Totals {\n  double share = 1;\n}\n`);
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /message shape this parser cannot attribute/);
+  });
+
+  it('refuses a nested message', () => {
+    const run = runAgainst(`${header}message Totals {\n  message Inner {\n    int32 a = 1 [deprecated = true];\n  }\n  double share = 1;\n}\n`);
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /message shape this parser cannot attribute/);
   });
 });
 

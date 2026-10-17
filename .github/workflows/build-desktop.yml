@@ -92,7 +92,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-14'
+          - platform: 'macos-15'
             args: '--target aarch64-apple-darwin'
             node_target: 'aarch64-apple-darwin'
             label: 'macOS-ARM64'
@@ -132,7 +132,7 @@ jobs:
         run: echo "JOB_START_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
 
       - name: Setup Node.js
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -492,6 +492,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -526,6 +527,7 @@ jobs:
           echo "Updated release notes for $TAG"
 
       - name: Publish the release
+        id: publish
         # The one place a desktop release goes live. Every advertised platform
         # asset must exist first: `/api/download` maps each platform to exactly
         # one suffix, so a missing asset is a 302 to the releases page for every
@@ -590,3 +592,19 @@ jobs:
 
           gh release edit "$TAG" --draft=false
           echo "Published $TAG"
+          echo "published=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the Docker image
+        # A release published with GITHUB_TOKEN raises no `release` event for
+        # other workflows, so docker-publish.yml's release trigger never fires
+        # from here. workflow_dispatch is exempt, so dispatch it on the tag.
+        if: steps.publish.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.publish.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run docker-publish.yml --ref "$TAG"
+          echo "Dispatched docker-publish.yml on $TAG"

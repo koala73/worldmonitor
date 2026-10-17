@@ -15,7 +15,9 @@ import type {
   ListWorldBankIndicatorsResponse,
   WorldBankCountryData,
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
+import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
 import { cachedFetchJsonWithMeta, readCachedJson } from '../../../_shared/redis';
 import { SeedUnavailableError } from '../../../_shared/required-seed';
 import ISO3_TO_ISO2 from '../../../../shared/iso3-to-iso2.json';
@@ -35,20 +37,47 @@ const COUNTRY_CODES = new Map(Object.entries(ISO3_TO_ISO2).flatMap(([iso3, iso2]
   [iso3, iso3] as const, [iso2, iso3] as const,
 ]));
 
-function normalizeCountries(raw: string): string | null {
-  if (raw.length > 1000) return null;
+/**
+ * Two-letter World Bank ids that are not assigned ISO 3166-1 codes: income,
+ * lending and regional aggregates plus the Channel Islands (JG). Taken from
+ * https://api.worldbank.org/v2/country?format=json&per_page=500 on 2026-10-17,
+ * keeping the letter-only `iso2Code` values; ids with a digit (1W, 8S, ...)
+ * never passed this handler's two-letter shape.
+ */
+const WORLD_BANK_NON_ISO_IDS: ReadonlySet<string> = new Set([
+  'EU', 'JG', 'OE', 'XC', 'XD', 'XE', 'XF', 'XG', 'XH', 'XI', 'XJ', 'XL', 'XM', 'XN',
+  'XO', 'XP', 'XQ', 'XT', 'XU', 'XY', 'ZB', 'ZF', 'ZG', 'ZH', 'ZI', 'ZJ', 'ZQ', 'ZT',
+]);
+
+function invalidCountries(description: string): never {
+  throw new ValidationError([{ field: 'country_code', description }]);
+}
+
+/**
+ * Canonical `;`-joined country list, '' for the default list or 'all'. Throws
+ * a country_code ValidationError for anything the World Bank would not serve,
+ * so an unknown code is a 400 and not a provider call and cache read.
+ */
+function normalizeCountries(raw: string): string {
   const value = raw.trim().toUpperCase();
+  const parts = value.split(';');
+  if (raw.length > 1000 || parts.length > 250) {
+    invalidCountries('country_code must list at most 250 codes in at most 1000 characters.');
+  }
   if (!value) return '';
   if (value === 'ALL') return 'all';
-  const parts = value.split(';');
-  if (parts.length > 250) return null;
   const countries = parts.map(part => {
     const code = part.trim();
     // The shared alias map is not an exhaustive ISO table. Preserve the
-    // documented two-letter filter for territories absent from that map.
-    return COUNTRY_CODES.get(code) ?? (/^[A-Z]{2}$/.test(code) ? code : undefined);
+    // documented two-letter filter for assigned territories absent from it
+    // and for World Bank aggregate ids.
+    const country = COUNTRY_CODES.get(code)
+      ?? (isAssignedCountryCode(code) || WORLD_BANK_NON_ISO_IDS.has(code) ? code : undefined);
+    if (!country) {
+      invalidCountries(`country_code ${JSON.stringify(code.slice(0, 16))} is not an ISO 3166-1 alpha-2 or alpha-3 country code or a World Bank aggregate id; separate codes with ";" or pass "all".`);
+    }
+    return country;
   });
-  if (countries.some(country => !country)) return null;
   return [...new Set(countries)].sort().join(';');
 }
 
@@ -156,14 +185,15 @@ export async function listWorldBankIndicators(
   _ctx: ServerContext,
   req: ListWorldBankIndicatorsRequest,
 ): Promise<ListWorldBankIndicatorsResponse> {
+  // Outside the try: its catch turns every error into SeedUnavailableError.
+  const country = normalizeCountries(req.countryCode ?? '');
   try {
     // The exported client accepts generic indicator codes, not just the tech
     // display catalogue. Bound their grammar without restricting that contract.
     if (req.indicatorCode.length > 64 || !/^[A-Z0-9_]+(?:\.[A-Z0-9_]+)+$/.test(req.indicatorCode)) {
       return { data: [], pagination: undefined };
     }
-    const country = normalizeCountries(req.countryCode);
-    if (country === null || !Number.isInteger(req.year)) return { data: [], pagination: undefined };
+    if (!Number.isInteger(req.year)) return { data: [], pagination: undefined };
     // Match the existing World Bank relay's maximum lookback.
     const years = req.year > 0 ? Math.min(req.year, 30) : 5;
     const currentYear = new Date().getFullYear();

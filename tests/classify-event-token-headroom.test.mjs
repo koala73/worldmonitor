@@ -5,15 +5,15 @@
 // to 2026-08-29 used p50=10, p95=11, max=12 completion tokens, never within
 // 38 of the ceiling.
 //
-// The Groq fallback is `openai/gpt-oss-*`, a REASONING model. Even with
-// `reasoning_effort: 'low'` (#7289) it still spends some of the budget on
-// hidden reasoning before emitting content, so at 50 the JSON is cut mid-key
-// and the validator — correctly — rejects it. Observed in production
+// A REASONING fallback spends some of the budget on hidden reasoning before
+// emitting content. The former Groq `openai/gpt-oss-*` fallback (removed in
+// #8885), even with `reasoning_effort: 'low'` (#7289), cut the JSON mid-key
+// at 50 and the validator — correctly — rejected it. Observed in production
 // 2026-08-28T19:01:35Z: `validate_reject`, `tokens_completion: 50`, exactly
 // the ceiling.
 //
-// Measured against the live Groq API, eight representative headlines driven
-// through the stage's own system prompt and enums:
+// Measured against that model on the live Groq API, eight representative
+// headlines driven through the stage's own system prompt and enums:
 //
 //   max_tokens=50   no effort   0/8 valid   8 truncated   (pre-#7289)
 //   max_tokens=50   low         5/8 valid   3 truncated   (the residue)

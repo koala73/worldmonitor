@@ -192,7 +192,7 @@ describe('get_five_factor_scorecard MCP tool', () => {
     }));
     const listTool = (await listed.json()).result.tools.find((entry) => entry.name === 'list_five_factor_scorecards');
     assert.ok(listTool);
-    assert.match(listTool.description, /read hasScore first/);
+    assert.match(listTool.description, /hasScore=false makes numeric zero an insufficient-data placeholder/);
     assert.match(documentedOutputSchema(listTool).properties.scorecards.items.properties.pillars.items.properties.hasScore.description, /proto3 zero placeholders/);
     assert.deepEqual(documentedOutputSchema(listTool).oneOf, [
       {

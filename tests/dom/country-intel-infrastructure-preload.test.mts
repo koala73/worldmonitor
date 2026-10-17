@@ -252,11 +252,12 @@ describe('CountryIntelManager infrastructure preload barrier', () => {
     const { ctx, militaryUpdates, open } = createBriefHarness('US');
     await open();
     expect(militaryMocks.preloadMilitaryBases).toHaveBeenCalledOnce();
-    expect(militaryUpdates[militaryUpdates.length - 1]).toEqual(expect.objectContaining({ ownFlights: 0 }));
+    expect(militaryUpdates[militaryUpdates.length - 1]).toEqual(expect.objectContaining({ ownFlights: null,foreignPresence:null }));
     militaryUpdates.length = 0;
     ctx.intelligenceCache.military = {
       flights: [{ lat: 40, lon: -100, operatorCountry: 'United States' }],
       flightClusters: [], vessels: [], vesselClusters: [],
+      flightDataState:{mode:'live',timestamp:Date.now(),offline:false},vesselDataState:{mode:'live',timestamp:Date.now(),offline:false},vesselNegativeEvidenceConfirmed:true,
     } as never;
     await Promise.resolve();
     expect(militaryUpdates).toHaveLength(0);
@@ -275,6 +276,7 @@ describe('CountryIntelManager infrastructure preload barrier', () => {
       flightClusters: [],
       vessels: [],
       vesselClusters: [],
+      flightDataState:{mode:'live',timestamp:Date.now(),offline:false},vesselDataState:{mode:'live',timestamp:Date.now(),offline:false},vesselNegativeEvidenceConfirmed:true,
     } as never;
 
     manager.refreshOpenMilitaryActivity();

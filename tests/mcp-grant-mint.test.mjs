@@ -19,6 +19,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import { signGrant, verifyGrant, readGrantSecret, GrantConfigError } from '../api/_mcp-grant-hmac.ts';
 import { mintGrantHandler } from '../api/internal/mcp-grant-mint.ts';
 import { grantContextHandler } from '../api/internal/mcp-grant-context.ts';
+import { isAllowedRedirectUri } from '../api/oauth/_redirect-uri.js';
 
 const FIXED_NOW = 1_700_000_000_000; // arbitrary, far past Y2K
 
@@ -358,6 +359,17 @@ describe('mintGrantHandler', () => {
     assert.equal(res.status, 400);
     const json = await res.json();
     assert.equal(json.error, 'INVALID_REDIRECT_URI');
+  });
+
+  it('mints for a Vercel Connect client under the real redirect allowlist', async () => {
+    const VERCEL_CONNECT = 'https://connect.vercel.com/callback';
+    const redis = new Map();
+    redis.set('oauth:nonce:nonce_xyz', { ...BASE_NONCE_DATA, redirect_uri: VERCEL_CONNECT });
+    redis.set('oauth:client:client_abc', { ...BASE_CLIENT_DATA, redirect_uris: [VERCEL_CONNECT] });
+    const { deps } = makeMintDeps({ redisGet: async (k) => redis.get(k) ?? null, isAllowedRedirectUri });
+    const res = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps);
+    assert.equal(res.status, 200);
+    assert.equal(new URL((await res.json()).redirect).pathname, '/oauth/authorize-pro');
   });
 
   it('returns 400 INVALID_REDIRECT_URI when client.redirect_uris no longer includes the nonce uri', async () => {

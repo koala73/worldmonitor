@@ -57,6 +57,50 @@ export interface DisplacementFlow {
   asylumLocation?: GeoCoordinates;
 }
 
+export interface GetInternalDisplacementRequest {
+  countryCode: string;
+}
+
+export interface GetInternalDisplacementResponse {
+  operations: InternalDisplacementOperation[];
+  fetchedAt: number;
+  dataAvailable: boolean;
+}
+
+export interface InternalDisplacementOperation {
+  countryCode: string;
+  countryName: string;
+  operation: string;
+  reportingDate: string;
+  roundNumber: number;
+  totalIdps: number;
+  reasons: InternalDisplacementReason[];
+  regions: InternalDisplacementRegion[];
+  flows: InternalDisplacementFlow[];
+}
+
+export interface InternalDisplacementReason {
+  reason: string;
+  idps: number;
+}
+
+export interface InternalDisplacementRegion {
+  pcode: string;
+  name: string;
+  idps: number;
+  location?: GeoCoordinates;
+}
+
+export interface InternalDisplacementFlow {
+  originPcode: string;
+  originName: string;
+  destinationPcode: string;
+  destinationName: string;
+  idps: number;
+  originLocation?: GeoCoordinates;
+  destinationLocation?: GeoCoordinates;
+}
+
 export interface GetPopulationExposureRequest {
   mode: string;
   lat: number;
@@ -157,6 +201,31 @@ export class DisplacementServiceClient {
     }
 
     return await resp.json() as GetDisplacementSummaryResponse;
+  }
+
+  async getInternalDisplacement(req: GetInternalDisplacementRequest, options?: DisplacementServiceCallOptions): Promise<GetInternalDisplacementResponse> {
+    let path = "/api/displacement/v1/get-internal-displacement";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetInternalDisplacementResponse;
   }
 
   async getPopulationExposure(req: GetPopulationExposureRequest, options?: DisplacementServiceCallOptions): Promise<GetPopulationExposureResponse> {

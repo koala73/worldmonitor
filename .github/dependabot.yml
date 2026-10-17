@@ -46,25 +46,27 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
 
-  # The three docker directories, folded into one entry with `directories:` the
-  # way the npm block below already does it. They only ever differed by path:
-  # the same `ignore` rule was repeated verbatim in all three, so keeping them
-  # apart meant maintaining that rule in triplicate.
+  # Every docker directory, folded into one entry with `directories:` the way
+  # the npm block below already does it. They only ever differed by path: the
+  # same `ignore` rule was repeated verbatim in each, so keeping them apart
+  # meant maintaining that rule once per directory.
   - package-ecosystem: "docker"
     directories:
       - "/"
       - "/docker"
       - "/consumer-prices-core"
+      - "/demos/verification-desk"
     # Daily for the same reason as the actions above, and with one extra: the
     # base digests these bumps move are the only thing that makes a rebuilt
     # image genuinely fresher, because every FROM line in the repository is
     # pinned to an immutable digest and tests/ci-workflow-coverage.test.mts
     # requires it. On a weekly interval a base fix could sit unproposed for
-    # seven days before there was anything to merge; once merged, a bump
-    # republishes `latest` through docker-publish.yml's push trigger.
+    # seven days before there was anything to merge; once merged, a bump is
+    # built and published as a `sha-*` image by docker-publish.yml's push
+    # trigger, and reaches `latest` with the next release.
     schedule:
       interval: "daily"
-    # Many Dockerfiles share these three directories. Grouping should keep the
+    # Many Dockerfiles share these directories. Grouping should keep the
     # open PRs well under the default cap of 5, but if the group ever splits or
     # a bump falls outside it, a slow week of reviews would fill that cap and
     # silently stop new base bumps from being proposed at all.

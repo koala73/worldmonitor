@@ -64,8 +64,8 @@ function snapshotFixture(overrides: Partial<RegionalSnapshot> = {}): RegionalSna
       staleInputs: [],
       validUntil: 0,
       triggerReason: 'scheduled_6h',
-      narrativeProvider: 'groq',
-      narrativeModel: 'openai/gpt-oss-20b',
+      narrativeProvider: 'openrouter',
+      narrativeModel: 'deepseek/deepseek-v4-flash',
     },
     regime: {
       label: 'coercive_stalemate',
@@ -441,7 +441,7 @@ describe('buildMetaFooter', () => {
     assert.match(html, /confidence 92%/);
     assert.match(html, /scoring v1\.0\.0/);
     assert.match(html, /geo v1\.0\.0/);
-    assert.match(html, /groq\/openai\/gpt-oss-20b/);
+    assert.match(html, /openrouter\/deepseek\/deepseek-v4-flash/);
   });
 
   it('shows "no narrative" when provider is empty', () => {
@@ -790,8 +790,8 @@ describe('buildWeeklyBriefBlock', () => {
     regimeTrajectory: 'Shifted from calm to coercive stalemate mid-week.',
     keyDevelopments: ['Hormuz transit dropped 15%', 'CII spike for Iran'],
     riskOutlook: 'Escalation risk remains elevated.',
-    provider: 'groq',
-    model: 'openai/gpt-oss-20b',
+    provider: 'openrouter',
+    model: 'deepseek/deepseek-v4-flash',
   };
 
   it('renders all brief sections when populated', () => {
@@ -802,7 +802,7 @@ describe('buildWeeklyBriefBlock', () => {
     assert.match(html, /Hormuz transit dropped/);
     assert.match(html, /CII spike/);
     assert.match(html, /Escalation risk/);
-    assert.match(html, /groq/);
+    assert.match(html, /openrouter/);
   });
 
   it('shows "no brief" for undefined', () => {

@@ -3,14 +3,19 @@ import { describe, it } from 'node:test';
 
 import { generateBets } from '../scripts/_bet-templates.mjs';
 import { COMMODITY_BET_TEMPLATES, COMMODITY_FEED } from '../scripts/_bet-templates-commodities.mjs';
-import { parseMetricKey, resolveHardSpec } from '../scripts/_forecast-resolution-eval.mjs';
+import { parseMetricKey, resolveHardSpec, shapeResolutionFeed } from '../scripts/_forecast-resolution-eval.mjs';
 import { RESOLUTION_FEED_KEYS } from '../scripts/_forecast-resolution.mjs';
-import { shapeResolutionFeed, ingestHistory, samplePendingEntries, resolveDueEntries } from '../scripts/seed-forecast-resolutions.mjs';
+import { ingestHistory, samplePendingEntries, resolveDueEntries } from '../scripts/seed-forecast-resolutions.mjs';
 import { buildBetsSnapshot } from '../scripts/seed-forecast-bets.mjs';
 import { EIA_PETROLEUM_FEED } from '../scripts/_bet-templates-energy.mjs';
 
+// Only a bet carrying a model forecast opens a ledger window (#8990), so
+// ingest fixtures are tagged as the ensemble stage would tag them.
+const ensembled = (bets) => bets.map((bet) => ({ ...bet, probabilitySource: 'ensemble' }));
+
 const NOW = Date.parse('2026-07-12T00:00:00Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 const DEADLINE = NOW + 4 * DAY_MS; // 2026-07-16
 
 // Unwrapped shape (the seeder unwraps {_seed,data} before templates see it).
@@ -166,7 +171,7 @@ describe('seeder emits both energy and commodity bets', () => {
 describe('commodity resolution hardening (review fixes)', () => {
   function wtiEntryInLedger() {
     const snap = buildBetsSnapshot({ [COMMODITY_FEED]: { _seed: { fetchedAt: NOW }, data: commoditiesFixture() } }, NOW, {});
-    const ledger = ingestHistory({}, [snap], NOW);
+    const ledger = ingestHistory({}, [{ ...snap, predictions: ensembled(snap.predictions) }], NOW);
     const key = Object.keys(ledger).find((k) => ledger[k].spec?.metricKey?.includes('symbol==CL=F'));
     return { ledger, key, deadline: ledger[key].deadline };
   }
@@ -175,7 +180,7 @@ describe('commodity resolution hardening (review fixes)', () => {
     const { ledger, key, deadline } = wtiEntryInLedger();
     // Cycle 1: post-deadline but the feed still holds a STALE quote (asOf 2 days
     // pre-deadline) whose price 69.0 would score YES.
-    const cycle1 = deadline + DAY_MS;
+    const cycle1 = deadline + HOUR_MS;
     const staleFeed = { [COMMODITY_FEED]: shapeResolutionFeed(COMMODITY_FEED, {
       _seed: { fetchedAt: deadline - 2 * DAY_MS },
       data: { quotes: [{ symbol: 'CL=F', price: 69.0, change: -0.5 }] },
@@ -185,7 +190,8 @@ describe('commodity resolution hardening (review fixes)', () => {
     assert.equal(ledger[key].status, 'pending'); // gate held the stale cycle
 
     // Cycle 2: the feed freshens (asOf post-deadline) to 70.5, which scores NO.
-    const cycle2 = deadline + 2 * DAY_MS;
+    // It must land within one resolver cycle of the deadline (#8990).
+    const cycle2 = deadline + DAY_MS;
     const freshFeed = { [COMMODITY_FEED]: shapeResolutionFeed(COMMODITY_FEED, {
       _seed: { fetchedAt: cycle2 },
       data: { quotes: [{ symbol: 'CL=F', price: 70.5, change: -0.5 }] },

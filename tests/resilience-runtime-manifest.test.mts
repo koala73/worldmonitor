@@ -69,7 +69,7 @@ describe('resilience runtime manifest', () => {
       [modules.RESILIENCE_INTERVALS_META_KEY]: {
         fetchedAt: Date.parse('2026-05-29T11:45:00.000Z'),
       },
-      'resilience:intervals:v11:US': {
+      'resilience:intervals:v12:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'pc',
@@ -157,7 +157,7 @@ describe('resilience runtime manifest', () => {
       [modules.RESILIENCE_INTERVALS_META_KEY]: {
         fetchedAt: Date.parse('2026-05-30T10:00:00.000Z'),
       },
-      'resilience:intervals:v11:US': {
+      'resilience:intervals:v12:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'd6',
@@ -185,7 +185,7 @@ describe('resilience runtime manifest', () => {
       [modules.RESILIENCE_INTERVALS_META_KEY]: {
         fetchedAt: Date.parse('2026-05-30T10:00:00.000Z'),
       },
-      'resilience:intervals:v11:US': {
+      'resilience:intervals:v12:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'pc',
@@ -272,6 +272,13 @@ describe('resilience runtime manifest gateway auth', () => {
         '/api/resilience/v1/get-runtime-manifest',
         '/api/leads/v1/submit-contact',
         '/api/leads/v1/register-interest',
+        // #9093: anonymous error reports and the secret-gated review queue.
+        '/api/news/v1/submit-error-report',
+        '/api/news/v1/list-label-changes',
+        '/api/news/v1/list-error-reports',
+        '/api/news/v1/review-error-report',
+        '/api/news/v1/search-fact-checks',
+        '/api/news/v1/search-claim-headlines',
       ],
     );
     assert.equal(PREMIUM_RPC_PATHS.has('/api/resilience/v1/get-runtime-manifest'), false);

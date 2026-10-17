@@ -17,6 +17,7 @@ import {
 import { pruneOwnerWebhookIndex } from './webhook-owner-index';
 import { runRedisPipeline } from '../../../_shared/redis';
 import {
+  ALL_INDEX_KEY,
   WEBHOOK_TTL,
   VALID_CHOKEPOINT_IDS,
   assertCallbackUrlRegistrationSafe,
@@ -33,10 +34,11 @@ export async function registerWebhook(
   req: RegisterWebhookRequest,
 ): Promise<RegisterWebhookResponse> {
   // Webhooks are per-tenant keyed on callerFingerprint(), which hashes the
-  // API key. Without forceKey, a Clerk-authenticated pro caller reaches this
-  // handler with no API key, callerFingerprint() falls back to 'anon', and
-  // every such caller collapses into a shared 'anon' owner bucket — letting
-  // one Clerk-session holder enumerate/overwrite other tenants' webhooks.
+  // API key. Without forceKey, a Clerk-authenticated pro caller would reach
+  // this handler with no API key; callerFingerprint() now throws 401 there
+  // instead of folding every such caller into a shared 'anon' owner bucket
+  // where one Clerk-session holder could enumerate/overwrite other tenants'
+  // webhooks. forceKey stays the primary gate; the throw is the backstop.
   // Matches the legacy `api/v2/shipping/webhooks/[subscriberId]{,/[action]}.ts`
   // gate and the documented "X-WorldMonitor-Key required" contract in
   // docs/api-shipping-v2.mdx.
@@ -115,12 +117,14 @@ export async function registerWebhook(
     ['SET', webhookKey(newSubscriberId), JSON.stringify(record), 'EX', String(WEBHOOK_TTL)],
     ['SADD', ownerIndexKey(ownerTag), newSubscriberId],
     ['EXPIRE', ownerIndexKey(ownerTag), String(WEBHOOK_TTL)],
+    ['SADD', ALL_INDEX_KEY, newSubscriberId],
   ]);
 
-  if (!Array.isArray(results) || results.length !== 3 || results.some(result => !result || result.error)
+  if (!Array.isArray(results) || results.length !== 4 || results.some(result => !result || result.error)
     || results[0]?.result !== 'OK'
     || ![0, 1, '0', '1'].includes(results[1]?.result as number | string)
-    || (results[2]?.result !== 1 && results[2]?.result !== '1')) {
+    || (results[2]?.result !== 1 && results[2]?.result !== '1')
+    || ![0, 1, '0', '1'].includes(results[3]?.result as number | string)) {
     throw new ApiError(503, 'Webhook registration could not be confirmed', '');
   }
 

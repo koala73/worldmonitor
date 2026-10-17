@@ -9,8 +9,12 @@ import { checkRateLimit } from './_rate-limit.js';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
 import { sha256Hex } from './_crypto.js';
+// Shared classifier (WORLDMONITOR-R1). Re-exported as a test seam; the
+// classification is otherwise observable only through a Sentry capture.
+import { relayFailureLevel } from './_relay-failure-level.js';
 
 export const config = { runtime: 'edge' };
+export { relayFailureLevel };
 
 const EPOCH_ISO = new Date(0).toISOString();
 
@@ -87,50 +91,6 @@ const TELEGRAM_RELAY_TIMEOUT_MS = {
   channel: 22_000,
 };
 
-/**
- * Sentry severity for a failed relay request.
- *
- * `AbortError` is our own budget firing (TELEGRAM_RELAY_TIMEOUT_MS). The edge
- * runtime also drops upstream connections that were already established, and
- * those rejections are the same class of routine transport churn: this handler
- * neither caused them nor can fix them. WORLDMONITOR-R1 is one such group,
- * `Error: Network connection lost.`, which paged at `error` while the abort arm
- * of this same catch sat at `warning` (WORLDMONITOR-11G) — one condition split
- * across two severities, the shape the WORLDMONITOR-VM limiter fix addressed.
- *
- * "Not an AbortError" is the wrong discriminator. A relay refusing connections
- * or resolving to nothing IS a defect and must keep paging. The boundary is
- * whether a connection was established and then lost. `connect ETIMEDOUT` sits
- * on the defect side for that reason: a handshake that expired never carried a
- * request, so it reports a persistent routing or firewall outage rather than
- * churn. `fetch failed` is absent too, because undici uses it as a generic
- * wrapper that hides ECONNREFUSED.
- *
- * Matching is anchored and `code` outranks the message. Both guard the same
- * hole: relay diagnostics quote syscall names in prose, and an unanchored
- * substring would read `upstream reported ECONNRESET to its peer` as a drop.
- *
- * Exported purely as a test seam; the classification is otherwise observable
- * only through a Sentry capture.
- *
- * @param {{ name?: string, message?: string, code?: string } | null | undefined} error
- * @returns {'warning' | 'error'}
- */
-const RELAY_DROP_CODES = new Set(['ECONNRESET']);
-const RELAY_DROP_MESSAGES = [
-  /^Network connection lost\.?$/i,
-  /^(?:read |write )?ECONNRESET$/i,
-  /^socket hang up$/i,
-  /^terminated$/i,
-];
-
-export function relayFailureLevel(error) {
-  if (error?.name === 'AbortError') return 'warning';
-  const code = typeof error?.code === 'string' ? error.code : '';
-  if (code) return RELAY_DROP_CODES.has(code) ? 'warning' : 'error';
-  const msg = error?.message || String(error ?? '');
-  return RELAY_DROP_MESSAGES.some(pattern => pattern.test(msg)) ? 'warning' : 'error';
-}
 // `channel` is the fan-out mode: one request per watchlist entry, so the limit
 // has to clear TELEGRAM_WATCHLIST_MAX_ENTRIES (20) with room for a second tab
 // and an in-window add. Setting it equal to the cap left exactly zero headroom

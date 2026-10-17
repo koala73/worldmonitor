@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createTempDir, removeTempDir } from './helpers/temp-dir.mjs';
 
@@ -1726,7 +1727,64 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
     };
   }
 
-  it('returns fetchedAt=0 for missing country code instead of fabricating request time', async () => {
+  for (const scenario of [
+    { name: 'fails closed for an empty sanctions count map', counts: {}, count: 0, unavailable: true },
+    { name: 'keeps an explicit country zero in a populated sanctions map', counts: { CN: 0 }, count: 0, unavailable: false },
+    { name: 'keeps an absent country zero in a populated sanctions map', counts: { US: 2 }, count: 0, unavailable: false },
+    { name: 'preserves a positive China sanctions count', counts: { CN: 1390 }, count: 1390, unavailable: false },
+    { name: 'fails closed for a missing sanctions count key', counts: null, count: 0, unavailable: true },
+    { name: 'fails closed for missing risk data with populated sanctions', counts: { CN: 1390 }, missingKey: 'risk:scores:sebuf:stale:v8', count: 0, unavailable: true },
+    { name: 'fails closed for missing advisory data with populated sanctions', counts: { CN: 1390 }, missingKey: 'intelligence:advisories:v1', count: 0, unavailable: true },
+  ]) {
+    it(scenario.name, async () => {
+      const { module, cleanup } = await importCountryRisk();
+      const restoreEnv = withEnv({
+        UPSTASH_REDIS_REST_URL: 'https://redis.test',
+        UPSTASH_REDIS_REST_TOKEN: 'token',
+        VERCEL_ENV: 'production',
+        VERCEL_GIT_COMMIT_SHA: undefined,
+      });
+      const redis = createRequire(import.meta.url)(resolve(root, 'server/_shared/redis.ts'));
+      redis.__resetKeyPrefixCacheForTests();
+      const originalFetch = globalThis.fetch;
+      const readKeys = [];
+      const redisValues = new Map([
+        ['risk:scores:sebuf:stale:v8', JSON.stringify({ ciiScores: [{ region: 'CN', combinedScore: 70, computedAt: 1700000000000 }] })],
+        ['intelligence:advisories:v1', JSON.stringify({ byCountry: { CN: 'caution' }, byCountryName: { CN: 'China' } })],
+        ['sanctions:country-counts:v1', scenario.counts === null ? undefined : JSON.stringify(scenario.counts)],
+      ]);
+      if (scenario.missingKey) redisValues.delete(scenario.missingKey);
+      globalThis.fetch = async (url) => {
+        const raw = String(url);
+        assert.equal(new URL(raw).origin, 'https://redis.test');
+        if (raw.includes('/get/')) {
+          const key = parseGetKey(raw);
+          readKeys.push(key);
+          return jsonResponse({ result: redisValues.get(key) });
+        }
+        throw new Error(`Unexpected fetch URL: ${raw}`);
+      };
+      try {
+        const result = await module.getCountryRisk({}, { countryCode: 'CN' });
+        assert.equal(result.countryCode, 'CN');
+        assert.equal(result.countryName, 'China');
+        assert.equal(result.upstreamUnavailable, scenario.unavailable);
+        assert.equal(result.sanctionsCount, scenario.count);
+        assert.equal(result.sanctionsActive, scenario.count > 0);
+        assert.equal(result.cii?.combinedScore, scenario.unavailable ? undefined : 70);
+        assert.equal(result.fetchedAt, scenario.unavailable ? 0 : 1700000000000);
+        assert.equal(result.advisoryLevel, scenario.unavailable ? '' : 'caution');
+        assert.deepEqual(readKeys.toSorted(), ['risk:scores:sebuf:stale:v8', 'intelligence:advisories:v1', 'sanctions:country-counts:v1'].toSorted());
+      } finally {
+        cleanup();
+        globalThis.fetch = originalFetch;
+        restoreEnv();
+        redis.__resetKeyPrefixCacheForTests();
+      }
+    });
+  }
+
+  it('rejects a missing country code on country_code without hitting Redis', async () => {
     const { module, cleanup } = await importCountryRisk();
     const restoreNow = withMockedNow(1_777_000_000_000);
     const originalFetch = globalThis.fetch;
@@ -1737,9 +1795,10 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.getCountryRisk({}, { countryCode: '' });
-      assert.equal(result.fetchedAt, 0);
-      assert.equal(result.upstreamUnavailable, false);
+      await assert.rejects(
+        module.getCountryRisk({}, { countryCode: '' }),
+        (error) => error?.name === 'ValidationError' && error.violations?.[0]?.field === 'country_code',
+      );
       assert.equal(fetchCalls, 0, 'missing-code path must not hit Redis');
     } finally {
       cleanup();
@@ -1776,6 +1835,59 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
     }
   });
 
+  for (const scenario of [
+    { name: 'reads the preview CII snapshot instead of production', environment: 'preview', code: 'US', previewScore: 80, expectedScore: 80, expectedTime: 1800000000000 },
+    { name: 'reads the production CII snapshot in production', environment: 'production', code: 'US', previewScore: 80, expectedScore: 10, expectedTime: 1700000000000 },
+    { name: 'preserves a measured zero in the preview snapshot', environment: 'preview', code: 'US', previewScore: 0, expectedScore: 0, expectedTime: 1800000000000 },
+    { name: 'fails closed when preview CII is missing despite production data', environment: 'preview', code: 'US', previewScore: null, expectedScore: undefined, expectedTime: 0, unavailable: true },
+    { name: 'keeps untracked Canada scoreless with raw advisory and sanctions', environment: 'preview', code: 'CA', previewScore: 80, expectedScore: undefined, expectedTime: 0 },
+  ]) {
+    it(scenario.name, async () => {
+      const { module, cleanup } = await importCountryRisk();
+      const restoreEnv = withEnv({
+        UPSTASH_REDIS_REST_URL: 'https://redis.test',
+        UPSTASH_REDIS_REST_TOKEN: 'token',
+        VERCEL_ENV: scenario.environment,
+        VERCEL_GIT_COMMIT_SHA: 'abcdef0123456789',
+      });
+      const redis = createRequire(import.meta.url)(resolve(root, 'server/_shared/redis.ts'));
+      redis.__resetKeyPrefixCacheForTests();
+      const originalFetch = globalThis.fetch;
+      const riskKey = 'risk:scores:sebuf:stale:v8';
+      const redisValues = new Map([
+        [riskKey, JSON.stringify({ ciiScores: [{ region: 'US', combinedScore: 10, computedAt: 1700000000000 }] })],
+        ['intelligence:advisories:v1', JSON.stringify({ byCountry: { US: 'normal', CA: 'normal' }, byCountryName: { CA: 'Canada' } })],
+        ['sanctions:country-counts:v1', JSON.stringify({ US: 0, CA: 41 })],
+      ]);
+      if (scenario.previewScore !== null) {
+        redisValues.set('preview:abcdef01:' + riskKey, JSON.stringify({
+          ciiScores: [{ region: 'US', combinedScore: scenario.previewScore, computedAt: 1800000000000 }],
+        }));
+      }
+      globalThis.fetch = async (url) => {
+        const rawUrl = String(url);
+        assert.equal(new URL(rawUrl).origin, 'https://redis.test');
+        if (rawUrl.includes('/get/')) return jsonResponse({ result: redisValues.get(parseGetKey(rawUrl)) });
+        throw new Error(`Unexpected fetch URL: ${rawUrl}`);
+      };
+      try {
+        const result = await module.getCountryRisk({}, { countryCode: scenario.code });
+        assert.equal(result.cii?.combinedScore, scenario.expectedScore);
+        assert.equal(result.fetchedAt, scenario.expectedTime);
+        assert.equal(result.upstreamUnavailable, scenario.unavailable === true);
+        assert.equal(result.advisoryLevel, scenario.unavailable ? '' : 'normal');
+        assert.equal(result.sanctionsCount, scenario.code === 'CA' ? 41 : 0);
+        assert.equal(result.sanctionsActive, scenario.code === 'CA');
+        assert.equal(result.countryName, scenario.code === 'CA' ? 'Canada' : 'United States');
+      } finally {
+        cleanup();
+        globalThis.fetch = originalFetch;
+        restoreEnv();
+        redis.__resetKeyPrefixCacheForTests();
+      }
+    });
+  }
+
   it('returns fetchedAt=0 for untracked countries with no CII score', async () => {
     const { module, cleanup } = await importCountryRisk();
     const restoreEnv = withEnv({
@@ -1789,10 +1901,10 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
         ciiScores: [{ region: 'US', combinedScore: 10, computedAt: 1_700_000_000_000 }],
       })],
       ['intelligence:advisories:v1', JSON.stringify({
-        byCountry: { ZZ: 'caution' },
-        byCountryName: { ZZ: 'Untracked Testland' },
+        byCountry: { BV: 'caution' },
+        byCountryName: { BV: 'Untracked Testland' },
       })],
-      ['sanctions:country-counts:v1', JSON.stringify({ ZZ: 2 })],
+      ['sanctions:country-counts:v1', JSON.stringify({ BV: 2 })],
     ]);
 
     globalThis.fetch = async (url) => {
@@ -1802,7 +1914,7 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.getCountryRisk({}, { countryCode: 'ZZ' });
+      const result = await module.getCountryRisk({}, { countryCode: 'BV' });
       assert.equal(result.countryName, 'Untracked Testland');
       assert.equal(result.cii, undefined);
       assert.equal(result.fetchedAt, 0);
@@ -2142,7 +2254,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
   function installIntelFetchMock({ store, setKeys, userPrompts, counters, revoked = [], systemPrompts = [], completion }) {
     globalThis.fetch = async (url, init = {}) => {
       const raw = String(url);
-      if (raw === 'https://api.groq.com') {
+      if (raw === 'https://llm.example.test') {
         return jsonResponse({});
       }
       // #7084: the shared country context now reads the operator revocation
@@ -2155,15 +2267,15 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
           String(verb).toUpperCase() === 'SMEMBERS' ? { result: revoked } : { result: null }
         )));
       }
-      if (raw.includes('api.groq.com/openai/v1/chat/completions')) {
-        counters.groqCalls += 1;
+      if (raw.includes('llm.example.test/v1/chat/completions')) {
+        counters.llmCalls += 1;
         const body = JSON.parse(String(init.body || '{}'));
         userPrompts.push(body.messages?.[1]?.content || '');
         systemPrompts.push(body.messages?.[0]?.content || '');
         const title = body.messages?.[1]?.content.match(/^\[1\] (.+)$/m)?.[1];
         const content = title ? JSON.stringify({
           situation: [{ text: title, sources: [1], evidence: [] }], implications: [], risks: [], outlook: [], watch: [],
-        }) : `brief-${counters.groqCalls}`;
+        }) : `brief-${counters.llmCalls}`;
         return jsonResponse({ choices: [{ message: { content: completion ?? content } }] });
       }
       if (raw.includes('/get/')) {
@@ -2173,7 +2285,10 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       if (isSetRequest(raw, init)) {
         const { key, value } = parseSetRequest(raw, init);
         store.set(key, value);
-        if (!key.startsWith('seed-meta:')) setKeys.push(key);
+        if (!key.startsWith('seed-meta:')) {
+          setKeys.push(key);
+          assert.equal(parseSetRequest(raw, init).ttlSeconds, 21600, 'country assessment cache TTL stays six hours');
+        }
         return jsonResponse({ result: 'OK' });
       }
       throw new Error(`Unexpected fetch URL: ${raw}`);
@@ -2181,10 +2296,12 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
   }
 
   const INTEL_TEST_ENV = {
-    GROQ_API_KEY: 'test-key',
+    LLM_API_URL: 'https://llm.example.test/v1/chat/completions',
+    LLM_API_KEY: 'test-key',
+    LLM_MODEL: undefined,
     // The default chain is openrouter-first since #4944; clear these so the
-    // groq-only fetch mock deterministically sees groq as the first provider
-    // regardless of ambient shell env.
+    // generic-only fetch mock deterministically sees the generic endpoint as
+    // the first provider regardless of ambient shell env.
     OPENROUTER_API_KEY: undefined,
     OLLAMA_API_URL: undefined,
     UPSTASH_REDIS_REST_URL: 'https://redis.test',
@@ -2201,7 +2318,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     const userPrompts = [];
     const systemPrompts = [];
     const setKeys = [];
-    installIntelFetchMock({ store, setKeys, userPrompts, systemPrompts, counters: { groqCalls: 0 } });
+    installIntelFetchMock({ store, setKeys, userPrompts, systemPrompts, counters: { llmCalls: 0 } });
     const context = 'Source [1]: ' + JSON.stringify({ title: 'Finland completes border fence', source: 'Reuters', url: 'https://reuters.com/finland' })
       + '\nUnnumbered context: invented 30% increase at Tamar';
     try {
@@ -2216,7 +2333,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.match(systemPrompts[0], /do not invent.*forecasts/i);
       assert.doesNotMatch(systemPrompts[0], /\[Risk 3\]|\[Named entity\]: \[mechanism\]/);
       assert.equal(out.sources[0].title, 'Finland completes border fence');
-      assert.ok(setKeys.some(key => key.includes('ci-sebuf:v9:')));
+      assert.ok(setKeys.some(key => key.includes('ci-sebuf:v12:')));
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnv();
@@ -2234,7 +2351,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     const systemPrompts = [];
     const risk = 'The most severe government travel advisory World Monitor tracks for Finland is Exercise Increased Caution.';
     installIntelFetchMock({
-      store, setKeys: [], userPrompts, systemPrompts, counters: { groqCalls: 0 },
+      store, setKeys: [], userPrompts, systemPrompts, counters: { llmCalls: 0 },
       completion: JSON.stringify({
         situation: [{ text: 'Finland completes border fence', sources: [1], evidence: [] }],
         implications: [],
@@ -2274,7 +2391,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     store.set('news:digest:v1:full:en', JSON.stringify({ categories: { conflict: { items: [
       { title: 'Israel announces new security framework', source: 'Reuters', link: 'https://example.com/il-1', pubDate: '2026-07-05T06:00:00.000Z' },
     ] } } }));
-    const counters = { groqCalls: 0 };
+    const counters = { llmCalls: 0 };
     const userPrompts = [];
     installIntelFetchMock({ store, setKeys: [], userPrompts, counters });
     try {
@@ -2282,7 +2399,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=CII%3A%2045%2F100'),
         { countryCode: 'IL' },
       );
-      assert.equal(counters.groqCalls, 1);
+      assert.equal(counters.llmCalls, 1);
       assert.match(userPrompts[0], /\[1\] Israel announces new security framework/);
       assert.equal(out.brief, 'SITUATION NOW\nIsrael announces new security framework [1]');
       assert.equal(out.sources[0]?.url, 'https://example.com/il-1');
@@ -2297,16 +2414,48 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     const { module, cleanup } = await importCountryIntelBrief();
     const restoreEnv = withEnv(INTEL_TEST_ENV);
     const originalFetch = globalThis.fetch;
-    const counters = { groqCalls: 0 };
+    const counters = { llmCalls: 0 };
     installIntelFetchMock({ store: new Map(), setKeys: [], userPrompts: [], counters });
     try {
       const out = await module.getCountryIntelBrief(
         makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=FR&lang=fr'),
         { countryCode: 'FR' },
       );
-      assert.equal(counters.groqCalls, 0);
+      assert.equal(counters.llmCalls, 0);
       assert.equal(out.brief, '');
       assert.equal(out.countryName, 'France', 'an empty brief still names the country, unlike an invalid code');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
+
+  it('rejects an unassigned code from a premium caller before Redis or the LLM', async () => {
+    const { module, cleanup } = await importCountryIntelBrief({ premium: true });
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    const counters = { llmCalls: 0 };
+    const setKeys = [];
+    installIntelFetchMock({ store: new Map(), setKeys, userPrompts: [], counters });
+    const mockedFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    globalThis.fetch = (...args) => {
+      fetchCalls += 1;
+      return mockedFetch(...args);
+    };
+    const context = 'Source [1]: ' + JSON.stringify({ title: 'Government announces new border controls', source: 'Reuters', url: 'https://reuters.com/zz' });
+    try {
+      await assert.rejects(
+        module.getCountryIntelBrief(
+          makeCtx(`https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=ZZ&context=${encodeURIComponent(context)}`),
+          { countryCode: 'ZZ' },
+        ),
+        (error) => error?.name === 'ValidationError' && error.violations?.[0]?.field === 'country_code',
+      );
+      assert.equal(counters.llmCalls, 0);
+      assert.equal(fetchCalls, 0, 'an unassigned code must not reach Redis or any upstream');
+      assert.deepEqual(setKeys, []);
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnv();
@@ -2318,7 +2467,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     const { module, cleanup } = await importCountryIntelBrief({ premium: true });
     const restoreEnv = withEnv(INTEL_TEST_ENV);
     const originalFetch = globalThis.fetch;
-    const counters = { groqCalls: 0 };
+    const counters = { llmCalls: 0 };
     installIntelFetchMock({ store: new Map(), setKeys: [], userPrompts: [], counters });
     const context = 'Source [1]: ' + JSON.stringify({ title: 'Black Maidens thrash Burkina Faso 4-0 in WAFU B opener', source: 'MyJoyOnline', url: 'https://myjoyonline.com/bf' });
     try {
@@ -2326,7 +2475,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         makeCtx(`https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=BF&context=${encodeURIComponent(context)}`),
         { countryCode: 'BF' },
       );
-      assert.equal(counters.groqCalls, 0, 'a sports-only grounding must not reach the LLM');
+      assert.equal(counters.llmCalls, 0, 'a sports-only grounding must not reach the LLM');
       assert.equal(out.brief, '');
     } finally {
       globalThis.fetch = originalFetch;
@@ -2341,7 +2490,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     const originalFetch = globalThis.fetch;
     const setKeys = [];
     const store = new Map();
-    installIntelFetchMock({ store, setKeys, userPrompts: [], counters: { groqCalls: 0 }, completion: JSON.stringify({
+    installIntelFetchMock({ store, setKeys, userPrompts: [], counters: { llmCalls: 0 }, completion: JSON.stringify({
       situation: [{ text: 'Tamar output increases 30%', sources: [1], evidence: [] }], implications: [], risks: [], outlook: [], watch: [],
     }) });
     const context = 'Source [1]: ' + JSON.stringify({ title: 'Finland completes border fence', source: 'Reuters', url: 'https://reuters.com/finland' });
@@ -2365,7 +2514,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     const restoreEnv = withEnv(INTEL_TEST_ENV);
     const originalFetch = globalThis.fetch;
     const systemPrompts = [];
-    installIntelFetchMock({ store: new Map(), setKeys: [], userPrompts: [], systemPrompts, counters: { groqCalls: 0 } });
+    installIntelFetchMock({ store: new Map(), setKeys: [], userPrompts: [], systemPrompts, counters: { llmCalls: 0 } });
     const context = 'Source [1]: ' + JSON.stringify({ title: 'France signs agreement', source: 'Reuters', url: 'https://reuters.com/france' });
     try {
       const out = await module.getCountryIntelBrief(
@@ -2405,7 +2554,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     }));
     const setKeys = [];
     const userPrompts = [];
-    const counters = { groqCalls: 0 };
+    const counters = { llmCalls: 0 };
     installIntelFetchMock({
       store, setKeys, userPrompts, counters,
       revoked: ['https://example.com/il-revoked'],
@@ -2456,7 +2605,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     }));
     const setKeys = [];
     const userPrompts = [];
-    const counters = { groqCalls: 0 };
+    const counters = { llmCalls: 0 };
     installIntelFetchMock({ store, setKeys, userPrompts, counters });
 
     try {
@@ -2501,7 +2650,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     }));
     const setKeys = [];
     const userPrompts = [];
-    const counters = { groqCalls: 0 };
+    const counters = { llmCalls: 0 };
     installIntelFetchMock({ store, setKeys, userPrompts, counters });
 
     try {
@@ -2509,9 +2658,9 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       const alpha = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=alpha'), req);
       const beta = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=beta'), req);
 
-      assert.equal(counters.groqCalls, 1, 'anon context variations must share one cache entry');
+      assert.equal(counters.llmCalls, 1, 'anon context variations must share one cache entry');
       assert.equal(setKeys.length, 1, 'one shared cache write');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v9:IL:en:shared'), `anon key should use the shared v9 namespace, got ${setKeys[0]}`);
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v12:IL:en:shared'), `anon key should use the shared v12 namespace, got ${setKeys[0]}`);
       assert.ok(setKeys[0]?.includes(':i2023'), `anon key should include the import data year, got ${setKeys[0]}`);
       assert.match(alpha.brief, /Israel announces new security framework \[1\]/);
       assert.equal(beta.brief, alpha.brief, 'second anon caller must be served from cache');
@@ -2536,7 +2685,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     const store = new Map();
     const setKeys = [];
     const userPrompts = [];
-    const counters = { groqCalls: 0 };
+    const counters = { llmCalls: 0 };
     installIntelFetchMock({ store, setKeys, userPrompts, counters });
 
     try {
@@ -2548,10 +2697,10 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       const beta = await module.getCountryIntelBrief(makeCtx(betaUrl), req);
       const alphaCached = await module.getCountryIntelBrief(makeCtx(alphaUrl), req);
 
-      assert.equal(counters.groqCalls, 2, 'different premium contexts should not share one cache entry');
+      assert.equal(counters.llmCalls, 2, 'different premium contexts should not share one cache entry');
       assert.equal(setKeys.length, 2, 'one cache write per unique premium context');
       assert.notEqual(setKeys[0], setKeys[1], 'context hash should differentiate premium cache keys');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v9:IL:'), 'cache key should use the v9 country-intel namespace');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v12:IL:'), 'cache key should use the v12 country-intel namespace');
       assert.ok(!setKeys[0]?.includes(':shared'), 'premium keys must not use the shared namespace');
       assert.equal(alpha.brief, 'SITUATION NOW\nIsrael announces alpha framework [1]');
       assert.equal(beta.brief, 'SITUATION NOW\nIsrael announces beta framework [1]');
@@ -2568,8 +2717,10 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
   it('returns no English brief and makes no LLM call when nothing grounds it', async () => {
     const { module, cleanup } = await importCountryIntelBrief();
     const restoreEnv = withEnv({
-      GROQ_API_KEY: 'test-key',
-      // Deterministic groq-first for this groq-only mock (chain is
+      LLM_API_URL: 'https://llm.example.test/v1/chat/completions',
+      LLM_API_KEY: 'test-key',
+      LLM_MODEL: undefined,
+      // Deterministic generic-first for this generic-only mock (chain is
       // openrouter-first since #4944).
       OPENROUTER_API_KEY: undefined,
       OLLAMA_API_URL: undefined,
@@ -2583,11 +2734,11 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     const store = new Map();
     const setKeys = [];
     const userPrompts = [];
-    let groqCalls = 0;
+    let llmCalls = 0;
 
     globalThis.fetch = async (url, init = {}) => {
       const raw = String(url);
-      if (raw === 'https://api.groq.com') {
+      if (raw === 'https://llm.example.test') {
         return jsonResponse({});
       }
       if (raw.includes('/get/')) {
@@ -2600,8 +2751,8 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         if (!key.startsWith('seed-meta:')) setKeys.push(key);
         return jsonResponse({ result: 'OK' });
       }
-      if (raw.includes('api.groq.com/openai/v1/chat/completions')) {
-        groqCalls += 1;
+      if (raw.includes('llm.example.test/v1/chat/completions')) {
+        llmCalls += 1;
         const body = JSON.parse(String(init.body || '{}'));
         userPrompts.push(body.messages?.[1]?.content || '');
         return jsonResponse({ choices: [{ message: { content: 'base-brief' } }] });
@@ -2616,13 +2767,13 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
 
       // Before the evidence-grounded brief, this fell through to the analyst
       // prompt and published an ungrounded brief with 24/48/72-hour predictions.
-      assert.equal(groqCalls, 0, 'no headline means no LLM call');
+      assert.equal(llmCalls, 0, 'no headline means no LLM call');
       assert.equal(userPrompts.length, 0);
       assert.equal(first.brief, '');
       assert.equal(second.brief, '');
       assert.deepEqual(first.evidence, []);
       assert.equal(setKeys.length, 1, 'one shared negative-cache write; the second call is served from it');
-      assert.ok(setKeys.every((key) => key.startsWith('ci-sebuf:v9:US:en:shared')), `anon callers land on the shared key, got ${setKeys}`);
+      assert.ok(setKeys.every((key) => key.startsWith('ci-sebuf:v12:US:en:shared')), `anon callers land on the shared key, got ${setKeys}`);
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
@@ -2638,6 +2789,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     const stubDir = createTempDir('wm-aircraft-rate-');
     const rateStub = join(stubDir, 'rate.mjs');
     writeFileSync(rateStub, `export const getClientIp = () => 'test';
+export const getClientRateLimitKey = () => 'test';
 export const checkScopedRateLimit = async () => ({ allowed: true, degraded: false });
 export const RATE_LIMIT_DEGRADED_HEADERS = { 'X-RateLimit-Mode': 'degraded', 'Retry-After': '5' };`);
     const imported = await importPatchedTsModule('server/worldmonitor/aviation/v1/track-aircraft.ts', {
@@ -3763,6 +3915,66 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         'a viewport outside a REGIONAL snapshot must fall through to request-specific recovery',
       );
       assert.deepEqual(result.flights.map((f) => f.id), ['RECOVERED']);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  // Elie's decision: an emergency squawk (7500/7600/7700) does not remove a
+  // military aircraft from the military layer, whether it arrives in the seed
+  // snapshot or only from OpenSky recovery.
+  it('keeps emergency-squawking military flights from the seed and from OpenSky-only recovery', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: undefined,
+      WS_RELAY_URL: 'wss://relay.test',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const store = new Map();
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/')[1] || '');
+        if (key === 'military:flights:v1') {
+          return jsonResponse({
+            result: JSON.stringify({
+              flights: [
+                { id: 'inregion', callsign: 'RCH301', lat: 20.2, lon: 10.2 },
+                { id: 'inregion-7700', callsign: 'RCH377', lat: 20.3, lon: 10.3, squawk: '7700' },
+              ],
+              coverage: 'regional',
+              fetchedAt: Date.now(),
+            }),
+          });
+        }
+        return jsonResponse({ result: store.get(key) ?? null });
+      }
+      if (isSetRequest(url, init)) return applySetToStore(store, url, init);
+      if (raw.includes('/opensky')) {
+        const state = ['emg7500', 'RCH475', null, null, null, -99.5, 40.5, 20000, false, 300, 90, 0, null, 20000, '7500'];
+        return jsonResponse({ states: [state] });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const seeded = await module.listMilitaryFlights(
+        { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
+        seededRequest,
+      );
+      assert.deepEqual(seeded.flights.map((f) => f.id).sort(), ['inregion', 'inregion-7700']);
+      const recovered = await module.listMilitaryFlights(
+        { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
+        americasRequest,
+      );
+      assert.deepEqual(recovered.flights.map((f) => f.id), ['EMG7500']);
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;

@@ -16,6 +16,7 @@ ENV npm_config_install_links=true
 # Install root dependencies (layer-cached until package.json changes)
 COPY package.json package-lock.json ./
 COPY vendor/braces/ ./vendor/braces/
+COPY vendor/stream-json/ ./vendor/stream-json/
 RUN npm ci --ignore-scripts
 
 # Copy full source

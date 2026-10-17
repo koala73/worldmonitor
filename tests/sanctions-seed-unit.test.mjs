@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { ingestSemaEntries, mergeSanctionEntries, parseSemaXml, SEMA_SOURCE } from '../scripts/_sema-sanctions.mjs';
+import { ingestSemaEntries, mergeSanctionEntries, parseSemaXml, SEMA_SOURCE, SANCTIONS_SOURCE_VERSION } from '../scripts/_sema-sanctions.mjs';
 
 // Normalize values produced inside a vm context to host-realm equivalents.
 // Needed because deepStrictEqual checks prototypes — vm Arrays ≠ host Arrays.
@@ -46,7 +46,7 @@ const fetchPressureSrc = seedSrc.slice(
 async function partialPublication({ sources = ['CONSOLIDATED'], cached = [], snapshots = null, semaJson } = {}) {
   const context = vm.createContext({
     console: { log() {}, warn() {} },
-    SEMA_SOURCE, Buffer, gzipSync, gunzipSync,
+    SEMA_SOURCE, SANCTIONS_SOURCE_VERSION, Buffer, gzipSync, gunzipSync,
     mergeSanctionEntries,
     verifySeedKey: async (key) => key === 'sanctions:pressure:v1' ? { entries: cached } : null,
     readSeedSnapshot: async () => snapshots,

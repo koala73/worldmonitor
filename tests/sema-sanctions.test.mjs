@@ -713,7 +713,7 @@ describe('UI and seed surface SEMA beside OFAC', () => {
     assert.match(panelSrc, /semaError/);
     assert.match(panelSrc, /summary\.sema/);
     assert.match(panelSrc, /sourceLists/);
-    assert.match(localeEn, /Source: OFAC · GAC SEMA/);
+    assert.match(localeEn, /Source: Office of Foreign Assets Control · GAC SEMA/);
     assert.match(localeEn, /"sema": "SEMA"/);
     assert.match(serviceSrc, /semaCount/);
     assert.match(serviceSrc, /semaError/);

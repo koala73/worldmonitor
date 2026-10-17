@@ -3,9 +3,9 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-> Version: 2.10.0 · Last updated: 2026-09-10
+> Version: 2.11.0 · Last updated: 2026-10-17
 
-World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux. It is live in 190+ countries, with structural resilience ranked for 170.
+World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux. It is live in 190+ countries, with structural resilience ranked for 170 of 196 countries.
 
 A single codebase produces specialized variants — geopolitical, technology, finance, commodity, happy, and energy — each with distinct feeds, panels, map layers, and branding. The multi-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar. Each variant tree-shakes unused data files so audience-specific builds can omit unrelated panels, feeds, and map registries.
 
@@ -45,6 +45,7 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - [Chokepoint methodology](#corpus-chokepoint-methodology)
 - [Start here](#corpus-start-here)
 - [What we track](#corpus-what-we-track)
+- [Live transit counts and coverage](#corpus-live-transit-counts-and-coverage)
 - [Live Flow](#corpus-live-flow)
 - [Score Badge](#corpus-score-badge)
 - [Threat Taxonomy](#corpus-threat-taxonomy)
@@ -96,6 +97,8 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - [Changelog](#corpus-changelog)
 - [Revision and corrections log](#corpus-revision-and-corrections-log)
 - [Published revisions](#corpus-published-revisions)
+- [Story label history](#corpus-story-label-history)
+- [Reporting an error](#corpus-reporting-an-error)
 - [Energy Atlas automated revision log (planned)](#corpus-energy-atlas-automated-revision-log-planned)
 - [Planned data shape](#corpus-planned-data-shape)
 - [What is live today](#corpus-what-is-live-today)
@@ -257,12 +260,12 @@ Unique layers: stock exchanges, financial centers, and central-bank and supranat
 <a id="corpus-ai-powered-intelligence"></a>
 ## AI-Powered Intelligence
 
-- **World Brief**: LLM-synthesized summary of top global developments via Groq Llama 3.1, Redis-cached
-- **Hybrid Threat Classification**: Two-stage pipeline — instant keyword classifier (~120 threat keywords by severity tier) with async LLM override (Groq Llama 3.1 8B at temperature 0, 24h Redis cache). LLM overrides keyword result only when confidence is higher
+- **World Brief**: LLM-synthesized summary of top global developments via OpenRouter (Ollama when self-hosted), Redis-cached
+- **Hybrid Threat Classification**: Two-stage pipeline — instant keyword classifier (~120 threat keywords by severity tier) with async LLM override (OpenRouter DeepSeek V4.1 Flash at temperature 0, Ollama when self-hosted, 24h Redis cache). LLM overrides keyword result only when confidence is higher
 - **Focal Point Detection**: Correlates entities across news, military activity, protests, outages, and markets to identify convergence. Requires cross-source confirmation before escalating to critical
 - **Country Instability Index (CII v8)**: Server-authoritative 0-100 stress scores for 31 Tier-1 countries. The documented formula blends four event components into `eventScore = unrest * 0.25 + conflict * 0.30 + security * 0.20 + information * 0.25`, then combines `baselineRisk * 0.4 + eventScore * 0.6` with capped climate, cyber, fire, advisory, OREF, displacement, news-urgency, earthquake, sanctions, AIS, and UCDP/advisory floor terms. Each score emits `methodology_version`, component breakdown, advisory provenance, and signed 24-hour movement delta.
 - **Country Resilience Index (CRI)**: 0-100 resilience scores for the 196-country public rankable universe built from 72 indicators across 21 active dimensions, 6 domains, and 3 pillars. CRI uses official/authoritative sources, transparent goalposts, coverage tracking, and a four-class imputation taxonomy; the live runtime manifest reports the active formula tag and construct versions.
-- **Trending Keyword Spike Detection**: 2-hour rolling window vs 7-day baseline. Spikes require 5+ mentions, 3x baseline surge, 2+ unique sources, and 30-minute cooldown. Extracts CVE identifiers and APT/FIN designators. Auto-summarized via Groq (5 summaries/hour limit)
+- **Trending Keyword Spike Detection**: 2-hour rolling window vs 7-day baseline. Spikes require 5+ mentions, 3x baseline surge, 2+ unique sources, and 30-minute cooldown. Extracts CVE identifiers and APT/FIN designators. Auto-summarized through the summarization chain (5 summaries/hour limit)
 - **Strategic Posture Assessment**: Named operational theaters (Iran/Persian Gulf, Taiwan Strait, Baltic/Kaliningrad, Korean Peninsula, Eastern Mediterranean, Horn of Africa, South China Sea, Arctic, Black Sea) assessed continuously. Posture levels: NORMAL, ELEVATED, CRITICAL based on aircraft count, strike capability, naval presence, and country instability
 - **Geographic Convergence Detection**: Events binned into 1-degree geographic cells within 24-hour window. 3+ distinct event types in one cell triggers convergence alert
 - **Infrastructure Cascade Modeling**: BFS propagation (depth 3) through dependency graph of cables, pipelines, ports, chokepoints, and countries. Models real-world dependencies (e.g., Strait of Hormuz carries 80% of Japan's oil)
@@ -329,8 +332,7 @@ The live inventory currently covers 578+ observed upstream hosts. The [data-sour
 - ipinfo.io / freeipapi.com: IP geolocation enrichment
 - NWS (National Weather Service): Severe weather warnings
 - USASpending.gov: Government contracts and spending data
-- Groq API: Llama 3.1 for world briefs, threat classification, and spike summarization
-- OpenRouter API: LLM fallback provider
+- OpenRouter API: LLM provider for world briefs, threat classification, and spike summarization
 - MapTiler: Base map tiles
 
 <a id="corpus-supported-languages"></a>
@@ -356,7 +358,7 @@ Build-time: Vite HTML plugin transforms meta tags, Open Graph data, PWA manifest
 ## Architecture Principles
 
 - **Speed over perfection**: Keyword classifier is instant; LLM refines asynchronously. Users never wait
-- **Assume failure**: Per-feed circuit breakers with 5-minute cooldowns. AI fallback chain: Groq, OpenRouter, browser-side T5. Redis failures degrade gracefully. Edge functions return stale cached data when upstream APIs are down
+- **Assume failure**: Per-feed circuit breakers with 5-minute cooldowns. AI fallback chain: Ollama, OpenRouter, browser-side T5. Redis failures degrade gracefully. Edge functions return stale cached data when upstream APIs are down
 - **Show what you can't see**: Intelligence gap tracker explicitly reports data source outages rather than silently hiding them
 - **Browser-first compute where appropriate**: clustering, local ML, geolocation, and offline fallbacks run client-side; server-authoritative APIs publish CII/CRI scores, briefs, forecasts, MCP tools, and cached operational data
 - **Local-first geolocation**: Country detection uses browser-side ray-casting against GeoJSON polygons (sub-millisecond, zero API dependency, works offline)
@@ -374,7 +376,7 @@ Build-time: Vite HTML plugin transforms meta tags, Open Graph data, PWA manifest
 - **Desktop**: Tauri 2.x (Rust core + Node.js sidecar), OS keychain integration (macOS Keychain, Windows Credential Manager), token-authenticated local API
 - **Backend**: Vercel Edge Functions, Railway relay server for blocked RSS feeds
 - **Data Store**: Upstash Redis (caching, Welford baselines, LLM dedup), IndexedDB (historical playback), localStorage (preferences, panel state)
-- **AI Pipeline**: Groq (Llama 3.1 8B), OpenRouter (fallback), Transformers.js (browser fallback for NER, sentiment, summarization)
+- **AI Pipeline**: Ollama (self-hosted), OpenRouter, Transformers.js (browser fallback for NER, sentiment, summarization)
 - **Monitoring**: Sentry error tracking and a data-freshness tracker across source groups with intelligence gap reporting
 - **Testing**: Playwright E2E tests (per-variant), Node.js test runner for data/sidecar tests
 - **PWA**: Service worker with CacheFirst map tiles (500 tiles, 30-day TTL), NetworkOnly for intelligence data, offline fallback page
@@ -431,9 +433,9 @@ The sections below are produced by `npm run build:llms-full` from the source cat
 <a id="corpus-source-provider-directory"></a>
 ## Source provider directory
 
-World Monitor publishes 756 named providers across 18 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
+World Monitor publishes 770 named providers across 18 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
 
-- [Geopolitics & Conflict](https://www.worldmonitor.app/sources/geopolitics/): 36 providers.
+- [Geopolitics & Conflict](https://www.worldmonitor.app/sources/geopolitics/): 38 providers.
 - [Military & Strategic](https://www.worldmonitor.app/sources/military/): 22 providers.
 - [News & OSINT](https://www.worldmonitor.app/sources/news/): 60 providers.
 - [News & OSINT — page 2](https://www.worldmonitor.app/sources/news/page/2/): 60 providers.
@@ -442,12 +444,12 @@ World Monitor publishes 756 named providers across 18 source catalog pages. Each
 - [News & OSINT — page 5](https://www.worldmonitor.app/sources/news/page/5/): 60 providers.
 - [News & OSINT — page 6](https://www.worldmonitor.app/sources/news/page/6/): 60 providers.
 - [News & OSINT — page 7](https://www.worldmonitor.app/sources/news/page/7/): 60 providers.
-- [News & OSINT — page 8](https://www.worldmonitor.app/sources/news/page/8/): 43 providers.
+- [News & OSINT — page 8](https://www.worldmonitor.app/sources/news/page/8/): 52 providers.
 - [Finance & Economics](https://www.worldmonitor.app/sources/finance/): 60 providers.
-- [Finance & Economics — page 2](https://www.worldmonitor.app/sources/finance/page/2/): 3 providers.
+- [Finance & Economics — page 2](https://www.worldmonitor.app/sources/finance/page/2/): 5 providers.
 - [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 23 providers.
 - [Infrastructure & Cyber](https://www.worldmonitor.app/sources/infrastructure/): 52 providers.
-- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 45 providers.
+- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 46 providers.
 - [Aviation & Airspace](https://www.worldmonitor.app/sources/aviation/): 14 providers.
 - [China Coverage](https://www.worldmonitor.app/sources/china/): 12 providers.
 - [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 26 providers.
@@ -459,14 +461,14 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 
 - [Compare World Monitor](https://www.worldmonitor.app/compare/): Compare World Monitor with Liveuamap, ACLED, GDELT, Dataminr, Recorded Future, and more: one master matrix, honest concessions, and FAQs.
 - [Liveuamap Alternatives](https://www.worldmonitor.app/compare/liveuamap-alternatives/): Eleven-column matrix comparing World Monitor with Liveuamap, Deep State Map, ACLED, ConflictZone.io, ISW, UNOSAT and ICG CrisisWatch on price, latency, API access and licensing, with the cells each competitor wins.
-- [Best Real-Time Geopolitical Risk Dashboards](https://www.worldmonitor.app/compare/best-geopolitical-risk-dashboards/): Real-time geopolitical risk dashboards ranked against BlackRock, IISS, OrreryX, the-world-now.com, Statista and Earthian AI on update latency, price and signup, with where the analyst products still win.
+- [Best Geopolitical Risk Intelligence Platforms in 2026: The Buyer's Shortlist](https://www.worldmonitor.app/compare/best-geopolitical-risk-dashboards/): The 2026 buyer's shortlist of eight geopolitical risk intelligence platforms, from self-serve World Monitor to sales-led Dataminr, Recorded Future, Seerist and Crisis24, with cited prices and where each one wins.
 - [World Monitor vs Liveuamap](https://www.worldmonitor.app/compare/worldmonitor-vs-liveuamap/): Head-to-head on published numbers: World Monitor API Starter at $99.99/mo for 1,000 requests/day against Liveuamap Pro at $150/mo for 200, plus the domains only one side tracks.
 - [World Monitor vs ACLED](https://www.worldmonitor.app/compare/worldmonitor-vs-acled/): World Monitor and ACLED (myACLED) compared on access tiers, latency, API availability and licensing, and why World Monitor complements ACLED's coded-event research rather than replacing it.
-- [World Monitor vs GDELT Cloud](https://www.worldmonitor.app/compare/worldmonitor-vs-gdelt/): Curated indices versus the GDELT firehose: World Monitor, GDELT Cloud, war-dashboard-data and world-intel-mcp compared on latency, archive depth, API and MCP access, and where raw GDELT still wins.
+- [World Monitor vs GDELT](https://www.worldmonitor.app/compare/worldmonitor-vs-gdelt/): Curated indices versus the GDELT firehose: World Monitor, the GDELT Project, GDELT Cloud, war-dashboard-data and world-intel-mcp compared on latency, archive depth, API and MCP access, and where raw GDELT still wins.
 - [World Monitor vs Dataminr](https://www.worldmonitor.app/compare/worldmonitor-vs-dataminr/): Published prices against enterprise-negotiated licensing: World Monitor and Dataminr compared on alert latency, data domains, API access and price transparency, with the cells Dataminr wins.
 - [World Monitor vs Recorded Future](https://www.worldmonitor.app/compare/worldmonitor-vs-recorded-future/): World Monitor, Recorded Future, Flare and MISP compared on price transparency, public access, domains covered and open source, and when an enterprise threat-intelligence platform is the right call.
 - [World Monitor vs Deep State Map](https://www.worldmonitor.app/compare/worldmonitor-vs-deepstatemap/): Global multi-domain coverage against a single-theatre map: World Monitor and Deep State Map compared on scope, update method, API access and archive, and why Deep State Map wins on Ukraine frontline detail.
-- [MCP Servers for Geopolitical Data](https://www.worldmonitor.app/compare/mcp-servers-for-geopolitical-data/): Hosted versus self-hosted MCP access to geopolitical data: World Monitor against world-intel-mcp, Satellite MCP, OSINT MCP, GDELT Cloud MCP and IMF PortWatch MCP on entitlements, quotas, OAuth and hosting burden.
+- [MCP Servers for Geopolitical Data](https://www.worldmonitor.app/compare/mcp-servers-for-geopolitical-data/): Hosted versus self-hosted MCP access to geopolitical data: World Monitor against world-intel-mcp, Satellite MCP, OSINT MCP, community GDELT MCP and IMF PortWatch MCP on entitlements, quotas, OAuth and hosting burden.
 - [Chokepoint Monitoring Tools](https://www.worldmonitor.app/compare/chokepoint-monitoring-tools/): Chokepoint monitoring tools compared: World Monitor against IMF PortWatch, MarineTraffic, Kpler, Lloyd's List Intelligence, Windward and straits.live on transit counts, fused context, price and API access.
 - [Free Geopolitical Risk Dashboards](https://www.worldmonitor.app/compare/free-geopolitical-risk-dashboards/): Which geopolitical risk dashboards are free without signup: World Monitor against OrreryX, the-world-now.com, Sentinel, ConflictZone.io, BlackRock, Deep State Map and ICG CrisisWatch on gating, latency and domains.
 - [Travel Risk Intelligence vs Assistance](https://www.worldmonitor.app/compare/travel-risk-intelligence-vs-assistance/): Travel risk intelligence versus assistance: World Monitor as the always-on awareness layer next to Crisis24, International SOS, Riskline, Everbridge, Samdesk and Factal, which win on response and duty-of-care delivery.
@@ -486,7 +488,7 @@ Tier-1 membership is curated rather than algorithmic: a country is included when
 <a id="corpus-country-resilience-index-cri"></a>
 ### Country Resilience Index (CRI)
 
-The Country Resilience Index (CRI) is a composite 0–100 score from 72 indicators across 21 active dimensions, refreshed every six hours for 196 countries.
+The Country Resilience Index (CRI) is a 0–100 score from 72 indicators across 21 active dimensions, refreshed every six hours, ranking 170 of 196 countries.
 
 The Country Resilience Index (CRI) is a composite 0–100 score of a country’s structural ability to absorb and recover from shocks. Where the CII measures short-term instability, the CRI measures durable capacity — economic, infrastructure, energy, social-governance, health-and-food, and recovery strength — refreshed every six hours from official sources with full coverage and imputation provenance.
 
@@ -733,11 +735,9 @@ The Lombok Strait, between Bali and Lombok, is a deep-water alternative to the M
 
 The standing forecast-resolution record is published at https://www.worldmonitor.app/accuracy/.
 
-Over the current 180-day window, World Monitor's headline cohort scores a Brier of 0.125 across 223 scored forecasts, against 0.25 for answering 0.5 to everything.
+Under audit since 2026-10-07. An audit found three errors in how forecasts were scored. Some outcomes were recorded as "did not happen" without reading the data that decides them. Some forecasts were counted more than once. Some were scored at a probability other than the one published. The scores previously shown on that page were not reliable and are withdrawn while corrections are made. Forecasts are still being published and logged, and their outcomes will be rescored once the fixes land.
 
-Captured 2026-09-28.
-
-This page does not publish confidence intervals; each figure is published with the number of forecasts behind it instead. It does not score the 24-hour, 7-day and 30-day projections shown in the product. It publishes aggregates only — no individual forecasts, resolution evidence, judge inputs or archive locations.
+The audit's findings and fixes are tracked at https://github.com/koala73/worldmonitor/issues/8990.
 
 <a id="corpus-chokepoint-methodology"></a>
 ## Chokepoint methodology
@@ -816,6 +816,36 @@ in the current seeder:
 The other six canonical waterways still receive transit summaries, warnings,
 AIS-disruption matching, threat classification, disruption score, and war-risk
 tier, but `flowEstimate` is absent until a baseline-backed flow model is added.
+
+<a id="corpus-live-transit-counts-and-coverage"></a>
+## Live transit counts and coverage
+
+The live transit counter uses AIS entry and exit reports for the same vessel.
+The vessel must remain inside the monitored area for at least five minutes.
+A crossing is recorded at the first report outside the area that arrives
+within six hours of the vessel's last report inside it. Reports often arrive in
+bursts, so a vessel can be silent for most of that time.
+Counts cover the preceding 24 hours. They are observed crossings, not a census
+of all traffic. Missing entry or exit reports prevent a measurement.
+PortWatch history and week-over-week movement are separate inputs and do not
+fill a missing live count.
+
+Completed crossings are saved to a Redis event window at each transit publish,
+normally every ten minutes. Deployments read this window before publishing.
+Each observation expires at its original 24-hour deadline. A failed window read
+leaves the previous publication unchanged. An abrupt restart can still lose
+observations since the last successful save and journeys that have not yet exited.
+
+The Strait of Hormuz page explains this measurement requirement when its count
+is absent. An absent count does not establish zero traffic or a closed strait.
+There is no claim that AIS coverage is permanently unavailable there.
+
+The `chokepointTransits` health check counts canonical waterways with observed
+crossings, out of 13. Its floor is five, the coverage in the September 9, 2026
+published pulse. Fewer than five produces `COVERAGE_PARTIAL`; zero produces
+`EMPTY_DATA`. The existing Seed Freshness Monitor checks every 15 minutes and
+reports incident transitions. A fresh write of 13 empty rows cannot satisfy
+this coverage check. The raw cache and seed metadata include the missing ids.
 
 <a id="corpus-live-flow"></a>
 ## Live Flow
@@ -2417,10 +2447,10 @@ The CRI is designed to be auditable end-to-end: given the Redis snapshot at any 
 
 | Key | Type | TTL | Written by | Read by |
 |---|---|---|---|---|
-| `resilience:score:v28:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
-| `resilience:ranking:v28` | JSON | 12 hours | `getResilienceRanking` warm path, only when at least 90% of countries are scored (`RANKING_CACHE_MIN_COVERAGE = 0.90`) | `getResilienceRanking` handler |
-| `resilience:history:v22:{countryCode}` | sorted set | indefinite, trimmed to 30 days | `appendHistory` during scoring | trend and `change30d` computation |
-| `resilience:intervals:v11:{countryCode}` | JSON | 7 days; freshness monitored via `seed-meta`/health cadence | `scripts/seed-resilience-scores.mjs` | `getResilienceScore` (optional `scoreInterval` field) and `getResilienceRanking` (`rankStable`) |
+| `resilience:score:v29:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
+| `resilience:ranking:v29` | JSON | 12 hours | `getResilienceRanking` warm path, only when at least 90% of countries are scored (`RANKING_CACHE_MIN_COVERAGE = 0.90`) | `getResilienceRanking` handler |
+| `resilience:history:v23:{countryCode}` | sorted set | indefinite, trimmed to 30 days | `appendHistory` during scoring | trend and `change30d` computation |
+| `resilience:intervals:v12:{countryCode}` | JSON | 7 days; freshness monitored via `seed-meta`/health cadence | `scripts/seed-resilience-scores.mjs` | `getResilienceScore` (optional `scoreInterval` field) and `getResilienceRanking` (`rankStable`) |
 | `seed-meta:resilience:static` | JSON | 400 days | `scripts/seed-resilience-static.mjs` at the end of each successful seed run | scorer for `dataVersion` population, health checks |
 | `resilience:static:{countryCode}` | JSON | 400 days | `scripts/seed-resilience-static.mjs` | scorer for all baseline signals (WGI, WHO, FAO, GPI, RSF, and so on) |
 | `resilience:static:index:v1` | JSON | 400 days | `scripts/seed-resilience-static.mjs` | warmup path to enumerate countries |
@@ -2613,7 +2643,7 @@ The plan's non-compensatory pillar combine is the methodologically stronger form
 4. **Re-anchored release-gate bands**: `tests/resilience-pillar-combine-activation.test.mts` pins high-band anchors (NO, CH, DK) at ≥ 55 (vs the 6-domain formula's ≥ 70 floor) and low-band anchors (YE, SO) at ≤ 40 (vs ≤ 45). The snapshot test reads `methodologyFormula` from each snapshot and applies the matching bands. The reference-edition recompute confirms the bands hold with margin after domain-weighted pillar aggregation: NO = 74.85 (≥ 55 by 19.85 points), YE = 29.20 (≤ 40 by 10.80 points).
 5. **Projected and authoritative snapshots**: `docs/snapshots/resilience-ranking-pillar-combined-projected-2026-04-21.json` carries the 52-country preview tables used before activation. `docs/snapshots/resilience-ranking-2026-05-28.json` remains a labelled pre-P1-1 historical capture. `docs/snapshots/resilience-ranking-2026-08-29.json` is the current full-universe capture and applies domain design weights inside pillar aggregation.
 
-Rollback: set `RESILIENCE_PILLAR_COMBINE_ENABLED=false`, flush the current `resilience:score:v28:*`, `resilience:ranking:v28`, `resilience:history:v22:*`, and `resilience:intervals:v11:*` keys (or wait for TTLs to expire). The 6-domain formula lives alongside the pillar combine in `_shared.ts` and needs no code change to come back.
+Rollback: set `RESILIENCE_PILLAR_COMBINE_ENABLED=false`, flush the current `resilience:score:v29:*`, `resilience:ranking:v29`, `resilience:history:v23:*`, and `resilience:intervals:v12:*` keys (or wait for TTLs to expire). The 6-domain formula lives alongside the pillar combine in `_shared.ts` and needs no code change to come back.
 
 <a id="corpus-scorecard-v2-0-self-assessment"></a>
 ### Scorecard (v2.0 self-assessment)
@@ -2681,6 +2711,14 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 
 See [`financial-system-exposure-flag-flip-runbook.md`](https://github.com/koala73/worldmonitor/blob/main/docs/methodology/financial-system-exposure-flag-flip-runbook.md) and the committed [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) snapshot for the operator procedure and measured result.
 
+<a id="corpus-v2-5-october-2026-missing-sovereign-wealth-inputs-are-not-no-fund-9044"></a>
+### v2.5 (October 2026) — missing sovereign-wealth inputs are not "no fund" (#9044)
+
+**Status: active.** `sovereignFiscalBuffer` used to treat every country absent from the `resilience:recovery:sovereign-wealth:v1` `countries` map as having no sovereign wealth fund (`not-applicable`: score 0, zero weight). A country the fund manifest expects can also be absent because an input is missing, such as missing World Bank imports or no fund AUM matched. When the seed's `summary.countryStatuses` lists the country with a positive safe-integer `expected` fund count, the dimension now scores it as imputed `unmonitored` (score 50, certainty coverage 0.3) instead. Countries outside the manifest, and status rows whose `expected` count is fractional, overflowing, or unsafe, keep the `not-applicable` path.
+
+- **Cache generations rotated** — score/ranking `v28`→`v29` (`resilience:score:v29:`, `resilience:ranking:v29`), history `v22`→`v23`, and intervals `v11`→`v12`. The rotation keeps scores, history, rankings, and stability bands built under the old absence rule separate from the new ones.
+- **Golden baseline (frozen 2026-08-13 whole-index fixture, 17 countries).** Only Norway moves. Its one expected fund matched no AUM, so `sovereignFiscalBuffer` goes from `not-applicable` (score 0, coverage 0) to imputed `unmonitored` (score 50, coverage 0.3). Its overall score moves from 75.67 to 75.30, which swaps it with Switzerland (75.52) at ranks 1 and 2. This is a fixture regression check, not a full-universe acceptance measurement.
+
 <a id="corpus-editorial-notes"></a>
 ### Editorial notes
 
@@ -2698,7 +2736,8 @@ RPC response (`ListPipelines`, `ListStorageFacilities`,
 that describe how public badges are derived from those bundles. Until the
 asset-change writer ships:
 `GetPipelineDetail.revisions` and `GetStorageFacilityDetail.revisions`
-return empty arrays, and there is no automated correction-intake path.
+return empty arrays. Reader error reports for news labels are live; see
+[Reporting an error](#corpus-reporting-an-error).
 
 <a id="corpus-published-revisions"></a>
 ## Published revisions
@@ -2712,6 +2751,54 @@ return empty arrays, and there is no automated correction-intake path.
 | 2026-06-01 | Country Resilience Index | **P1-1 pillar aggregation correction.** Pillar scores now apply each domain's design weight inside pillar aggregation. The 2026-05-28 snapshot used the earlier coverage-only member aggregation and remains a labelled historical capture. | Live score, ranking, history, and interval cache generations changed together. The 2026-08-29 full-universe capture is the first published country snapshot after this correction. See [PR #4021](https://github.com/koala73/worldmonitor/pull/4021). |
 
 The crawlable CRI snapshot workflow is scheduled for the first day of each month (`17 5 1 * *` UTC). It captures the credentialed full-universe ranking, rebuilds the crawlable corpus and sitemap, and opens a pull request for review. Off-cycle captures also ship when a methodology correction needs a new full-universe artifact. The current published snapshot is `resilience-ranking-2026-08-29.json` (captured 2026-08-29, after the P1-1 pillar-aggregation correction), not a first-of-month run.
+
+<a id="corpus-story-label-history"></a>
+## Story label history
+
+WorldMonitor labels each news story with how widely it is covered: one
+publisher family carries it ("single publisher"), or two or more do
+("corroborated"). The label describes coverage, not accuracy. A story moving
+to "corroborated" means more publishers carry it, not that it was confirmed.
+
+When a story's label moves between those two states, the change is recorded
+automatically. Each entry records:
+
+- the previous and new label;
+- how many publisher families stood behind each;
+- the publishers behind the new label, with their tiers;
+- the story's CRED score;
+- the headline and a representative link;
+- the time.
+
+Entries are kept for seven days. The [trust page](https://www.worldmonitor.app/trust/)
+shows them, with today's count of stories under each label. Read them through
+[`GET /api/news/v1/list-label-changes`](/docs/api-reference/newsservice/listlabelchanges), for every story or
+for one story with `story_id`. The history starts when this shipped. Earlier
+changes were not recorded, and a story's first label is not an entry.
+
+Only the full English digest records changes. Other variants keep fewer of a
+story's feeds and would flip its label back and forth. "Tier 4 only" and
+"unknown" are not recorded, because they depend on which feed labels a cycle
+happened to keep.
+
+<a id="corpus-reporting-an-error"></a>
+## Reporting an error
+
+Anyone can report that a label or story is wrong, without an account, from the
+[trust page](https://www.worldmonitor.app/trust/) or through
+[`POST /api/news/v1/submit-error-report`](/docs/api-reference/newsservice/submiterrorreport).
+A report holds a message, and optionally the story it concerns, a URL and an
+email for a reply.
+
+- Reports are stored for review and never applied automatically.
+- Submissions are rate-limited per IP.
+- The review queue holds at most 1,000 pending reports. When it is full, new
+  reports are refused rather than pushing older ones out unseen.
+- Reports and any email are kept for 90 days and are never published.
+
+When a reviewer accepts a report, only the reviewer's public note is added to
+the label history above, as a `correction` entry with trigger `report`. The
+reader's message and email stay private. A rejected report publishes nothing.
 
 <a id="corpus-energy-atlas-automated-revision-log-planned"></a>
 ## Energy Atlas automated revision log (planned)
@@ -2802,12 +2889,10 @@ rather than pretending the surface is live.
 
 - Automated Energy Atlas asset-level entries. This page will list those
   rows after the classifier ships.
-- An automated correction-intake pipeline. If you spot something
-  wrong, use the feedback channels at
-  [worldmonitor.app](https://www.worldmonitor.app) or open a GitHub issue
-  at the [public repository](https://github.com/koala73/worldmonitor/issues).
-  Corrections are not yet on the classifier's path — they're handled
-  manually today.
+- Automated corrections. Reader reports (see
+  [Reporting an error](#corpus-reporting-an-error)) are reviewed by a person and are
+  never applied automatically. Energy Atlas corrections are not yet on the
+  classifier's path; they're handled manually today.
 - The `override`-trigger entry writer. Same dependency: ships with the
   classifier.
 

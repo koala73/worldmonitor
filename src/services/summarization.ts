@@ -1,7 +1,7 @@
 /**
  * Summarization Service with Fallback Chain
  * Server-side Redis caching handles cross-user deduplication
- * Fallback: Ollama -> Groq -> OpenRouter -> Browser T5
+ * Fallback: Ollama -> OpenRouter -> Browser T5
  *
  * Uses NewsServiceClient.summarizeArticle() RPC instead of legacy
  * per-provider fetch endpoints.
@@ -50,7 +50,7 @@ export interface SummarizationResult {
 export type ProgressCallback = (step: number, total: number, message: string) => void;
 
 export interface SummarizeOptions {
-  skipCloudProviders?: boolean;  // true = skip Ollama/Groq/OpenRouter, go straight to browser T5
+  skipCloudProviders?: boolean;  // true = skip Ollama/OpenRouter, go straight to browser T5
   skipBrowserFallback?: boolean; // true = skip browser T5 fallback
   /**
    * Optional article bodies paired 1:1 with `headlines`. When supplied and
@@ -85,7 +85,7 @@ const premiumNewsClient = new NewsServiceClient(getRpcBaseUrl(), {
 // Gate every API-provider dispatch on the client-side entitlement signal so
 // anon/free principals fall straight to the browser-T5 provider with ZERO
 // network attempts — before this gate, every summarize attempt fanned out up
-// to 3 doomed RPCs (ollama→openrouter→groq through the same gated endpoint).
+// to 2 doomed RPCs (ollama→openrouter through the same gated endpoint).
 // panel-gating's hasPremiumAccess is the dual-signal source of truth.
 // translateText is deliberately NOT gated: it uses mode='translate' via the
 // plain newsClient, which the server allows for non-premium callers.
@@ -109,13 +109,11 @@ interface ApiProviderDef {
   label: string;
 }
 
-// Order matches the server's default chain since #4944: OpenRouter
-// (DeepSeek V4 Flash) ahead of Groq — the RPC honors the client-supplied
-// provider, so the client's try-order decides which model summarizes.
+// The RPC honors the client-supplied provider, so the client's try-order
+// decides which model summarizes.
 const API_PROVIDERS: ApiProviderDef[] = [
   { featureId: 'aiOllama',      provider: 'ollama',     label: 'Ollama' },
   { featureId: 'aiOpenRouter',  provider: 'openrouter', label: 'OpenRouter' },
-  { featureId: 'aiGroq',        provider: 'groq',       label: 'Groq AI' },
 ];
 
 // ── Unified API provider caller (via SummarizeArticle RPC) ──
@@ -272,7 +270,7 @@ async function runApiChain(
 }
 
 /**
- * Generate a summary using the fallback chain: Ollama -> Groq -> OpenRouter -> Browser T5
+ * Generate a summary using the fallback chain: Ollama -> OpenRouter -> Browser T5
  * Server-side Redis caching is handled by the SummarizeArticle RPC handler.
  *
  * @param geoContext Optional geographic signal context to include in the prompt
@@ -348,12 +346,7 @@ async function generateSummaryInternal(
       if (!options?.skipBrowserFallback) {
         onProgress?.(1, totalSteps, 'Running local AI model (beta)...');
         const browserResult = await tryBrowserT5(attemptState, headlines, 'summarization-beta', bodies);
-        if (browserResult) {
-          const groqProvider = API_PROVIDERS.find(p => p.provider === 'groq');
-          if (groqProvider && !options?.skipCloudProviders) tryApiProvider(groqProvider, attemptState, headlines, geoContext, undefined, bodies).catch(() => {});
-
-          return browserResult;
-        }
+        if (browserResult) return browserResult;
       }
 
       // Warm model failed inference -- fallback through API providers

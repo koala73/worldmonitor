@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { mergeSanctionEntries, SEMA_SOURCE, sanctionsListContentMeta } from '../scripts/_sema-sanctions.mjs';
+import { mergeSanctionEntries, SEMA_SOURCE, SANCTIONS_SOURCE_VERSION, sanctionsListContentMeta } from '../scripts/_sema-sanctions.mjs';
+import { projectCountrySanctions } from '../shared/country-sanctions-signals.mjs';
 import { __testing__ as health } from '../api/health.js';
 import { readSeedSnapshot, verifySeedKey, runSeed, writeExtraKeyWithMeta } from '../scripts/_seed-utils.mjs';
+import { buildEnvelope } from '../scripts/_seed-envelope-source.mjs';
 
 const source = readFileSync('scripts/seed-sanctions-pressure.mjs', 'utf8');
 const pure = source.replace(/^import\s.*$/gm, '').replace(/loadEnvFile\([^)]+\);/, '').split('async function fetchSource')[0];
@@ -23,19 +25,19 @@ const row = (source, i) => ({
 });
 const canadian = Array.from({ length: 80 }, (_, i) => row(SEMA_SOURCE, i + 1));
 
-async function publish({ successes = ['SDN', 'CONSOLIDATED', SEMA_SOURCE], stored = null, preview = [], clock = now, writeError = false, readError = false, semaRecords = canadian, semaQuarantined = [], io = {} } = {}) {
+async function publish({ successes = ['SDN', 'CONSOLIDATED', SEMA_SOURCE], stored = null, preview = [], previousState = null, clock = now, writeError = false, readError = false, semaRecords = canadian, semaQuarantined = [], io = {} } = {}) {
   const writes = [];
   let options;
   const context = vm.createContext({
     console: { log() {}, warn() {} }, Buffer, gzipSync, gunzipSync,
     Date: class extends Date { static now() { return clock; } },
-    SEMA_SOURCE, mergeSanctionEntries, sanctionsListContentMeta,
-    SANCTIONS_SOURCE_VERSION: 'test', SANCTIONS_MAX_CONTENT_AGE_MIN: 43200,
+    SEMA_SOURCE, mergeSanctionEntries, sanctionsListContentMeta, projectCountrySanctions,
+    SANCTIONS_SOURCE_VERSION, SANCTIONS_MAX_CONTENT_AGE_MIN: 43200,
     readSeedSnapshot: async () => {
       if (readError) throw new Error('synthetic cache read failure');
       return stored;
     },
-    verifySeedKey: async key => key === 'sanctions:pressure:v1' ? { entries: preview } : null,
+    verifySeedKey: async key => key === 'sanctions:pressure:v1' ? { entries: preview } : previousState,
     fetchSource: async ({ label }) => {
       if (!successes.includes(label)) throw new Error('synthetic source timeout');
       return { entries: [row(label, 1)], datasetDate: now - 86400000 };
@@ -61,6 +63,52 @@ async function save(fresh) {
 }
 
 describe('sanctions source lifecycle', () => {
+  it('captures the actual preceding state clock and keeps expired or legacy baselines unknown', async () => {
+    for (const previousState of [null, { entryIds: ['SDN:1'] },
+      { entryIds: ['SDN:1'], observedAt: String(now - 7 * 3600000) }]) {
+      const { data, options } = await publish({ previousState });
+      const canonical = options.publishTransform(data);
+      assert.equal(data._state.observedAt, String(now));
+      assert.equal(canonical._state.comparison.to, String(now));
+      assert.equal(canonical._state.comparison.from, previousState?.observedAt ?? null);
+      assert.equal(canonical._state.comparison.kind, !previousState
+        ? 'baseline-unavailable' : previousState.observedAt ? 'id-set-difference' : 'window-unavailable');
+      assert.ok(Buffer.byteLength(JSON.stringify(canonical._state)) <= 4096);
+    }
+  });
+
+  it('preserves quarantine counts on retained cohorts without exposing private lists', async () => {
+    const semaQuarantined = [{ id: 'private-id', reason: 'INVALID_IMO' }];
+    const fresh = await publish({ semaQuarantined });
+    const stored = await save(fresh);
+    const retained = await publish({ successes: [], stored, clock: now + RETAIN_MS - 1 });
+    const meta = retained.options.publishTransform(retained.data)._state;
+    assert.equal(meta.sourceHealth[SEMA_SOURCE].quarantinedCount, 1);
+    assert.equal(meta.sourceHealth[SEMA_SOURCE].lastSuccessAt, now);
+    assert.equal(meta.sourceHealth[SEMA_SOURCE].lastAttemptAt, now + RETAIN_MS - 1);
+    assert.equal(meta.sourceHealth[SEMA_SOURCE].retainedUntil, now + RETAIN_MS);
+    assert.equal(JSON.stringify(meta).includes('private-id'), false);
+    const expired = await publish({ successes: [], stored, clock: now + RETAIN_MS });
+    const expiry = expired.options.publishTransform(expired.data)._state;
+    assert.equal(expiry.cohort.computationAt, String(now + RETAIN_MS));
+    assert.equal(expiry.sourceHealth[SEMA_SOURCE].status, 'unavailable');
+    assert.equal(expiry.sourceHealth[SEMA_SOURCE].quarantinedCount, null);
+    assert.equal(expiry.sourceHealth[SEMA_SOURCE].lastSuccessAt, null);
+    assert.equal(expiry.sourceHealth[SEMA_SOURCE].retainedUntil, null);
+  });
+
+  it('does not invent quarantine zero for retained snapshots written before the compact schema', async () => {
+    const snapshots = normalize((await publish()).data._sourceSnapshots);
+    for (const snapshot of Object.values(snapshots)) delete snapshot.quarantinedCount;
+    const stored = { version: 1, encoding: 'gzip-base64', data: gzipSync(JSON.stringify(snapshots)).toString('base64') };
+    const retained = await publish({ successes: [], stored, clock: now + 6 * 3600000 });
+    const canonical = retained.options.publishTransform(retained.data);
+    for (const source of ['SDN', 'CONSOLIDATED', SEMA_SOURCE]) {
+      assert.equal(canonical._state.sourceHealth[source].quarantinedCount, null);
+      assert.equal(canonical._state.sourceHealth[source].lastSuccessAt, now);
+    }
+  });
+
   it('reports each failed OFAC source while Canada succeeds', async () => {
     for (const successes of [[SEMA_SOURCE], ['SDN', SEMA_SOURCE], ['CONSOLIDATED', SEMA_SOURCE]]) {
       const { data, options } = await publish({ successes });
@@ -297,6 +345,9 @@ it('publishes all-source expiry through real runSeed with empty companions and p
     await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => data, options), error => error.exitCode === 0);
     const canonical = JSON.parse(store.get('sanctions:pressure:v1'));
     assert.equal(canonical.data.totalCount, 0);
+    assert.equal(canonical.data._state.cohort.computationAt, String(now + RETAIN_MS));
+    assert.equal(canonical.data._state.sourceHealth.SDN.status, 'unavailable');
+    assert.equal(canonical.data._state.sourceHealth.SDN.lastSuccessAt, null);
     assert.deepEqual(canonical.data.entries, []);
     assert.equal(canonical._seed.state, 'OK_ZERO', 'envelope state describes successful empty publication, not source health');
     assert.deepEqual(JSON.parse(store.get('sanctions:entities:v1')), []);
@@ -328,7 +379,149 @@ it('fails without claiming completed freshness if a companion write fails after 
     } });
     await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => data, options), /fixture companion write failure/);
     assert.equal(JSON.parse(store.get('sanctions:pressure:v1')).data.totalCount, 0);
+    assert.equal(JSON.parse(store.get('sanctions:pressure:v1')).data._state.cohort.computationAt, String(now));
     assert.equal(store.get('seed-meta:sanctions:pressure'), oldMeta, 'a partial publication must not claim completed freshness');
     assert.ok(!logs.some(line => line.includes('DEGRADED')));
+  });
+});
+
+it('keeps the preceding canonical cohort and private baseline when the publication guard rejects a contradiction', async () => {
+  await withLocalRedis(async ({ store }) => {
+    const { data, options } = await publish({ io: { writeExtraKeyWithMeta } });
+    const priorCanonical = JSON.stringify(buildEnvelope({ fetchedAt: now - 1, recordCount: 1,
+      sourceVersion: SANCTIONS_SOURCE_VERSION, schemaVersion: 1, state: 'OK', data: { marker: 'prior canonical' } }));
+    const priorState = JSON.stringify({ entryIds: ['SDN:1'], observedAt: String(now - 1) });
+    store.set('sanctions:pressure:v1', priorCanonical);
+    store.set('sanctions:pressure:state:v1', priorState);
+    data.datasetDate = String(now);
+    data.pressureMetadata.cohort.datasetDate = String(now);
+    await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => data, options),
+      /Invalid canonical sanctions publication: Contradictory source cohort/);
+    assert.equal(store.get('sanctions:pressure:v1'), priorCanonical);
+    assert.equal(store.get('sanctions:pressure:state:v1'), priorState);
+    assert.equal(store.has('sanctions:source-snapshots:v1'), false);
+    assert.equal(store.has('seed-meta:sanctions:pressure'), false);
+  });
+});
+
+it('preserves the published comparison cohort on a before-publish failure and does not advance the saved state', async () => {
+  await withLocalRedis(async ({ store }) => {
+    const priorAt = now - 7 * 3600000;
+    const first = await publish({ previousState: { entryIds: ['SDN:1'], observedAt: String(priorAt) },
+      io: { writeExtraKeyWithMeta } });
+    await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => first.data, first.options),
+      error => error.exitCode === 0);
+    const previousCanonical = store.get('sanctions:pressure:v1');
+    const previousState = store.get('sanctions:pressure:state:v1');
+    const failed = await publish({ clock: now + 6 * 3600000, io: {
+      verifySeedKey,
+      writeExtraKeyWithMeta: async () => { throw new Error('fixture publication failure'); },
+    } });
+    assert.equal(failed.data.pressureMetadata.comparison.from, String(now));
+    await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => failed.data, failed.options),
+      /fixture publication failure/);
+    assert.equal(store.get('sanctions:pressure:v1'), previousCanonical);
+    assert.equal(store.get('sanctions:pressure:state:v1'), previousState);
+    const canonical = JSON.parse(previousCanonical).data;
+    assert.equal(canonical._state.comparison.from, String(priorAt));
+    assert.equal(canonical._state.cohort.computationAt, String(now));
+  });
+});
+
+it('captures a missing expired state through the real Redis reader rather than reconstructing a 24-hour baseline', async () => {
+  await withLocalRedis(async ({ store }) => {
+    const first = await publish({ io: { writeExtraKeyWithMeta } });
+    await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => first.data, first.options),
+      error => error.exitCode === 0);
+    store.delete('sanctions:pressure:state:v1');
+    const next = await publish({ clock: now + 19 * 3600000, io: { verifySeedKey, writeExtraKeyWithMeta } });
+    assert.equal(next.data.pressureMetadata.comparison.kind, 'baseline-unavailable');
+    assert.equal(next.data.pressureMetadata.comparison.from, null);
+    await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => next.data, next.options),
+      error => error.exitCode === 0);
+    const canonical = JSON.parse(store.get('sanctions:pressure:v1')).data;
+    assert.equal(canonical._state.comparison.from, null);
+    assert.equal(canonical._state.comparison.to, String(now + 19 * 3600000));
+    assert.equal(canonical._state.cohort.computationAt, JSON.parse(store.get('sanctions:pressure:state:v1')).data.observedAt);
+    assert.equal(projectCountrySanctions(canonical, 'IR', Number(canonical.fetchedAt)).sanctionsNewDesignations, null);
+  });
+});
+
+it('keeps malformed and mixed-invalid IDs unknown through the real saved-state reader and canonical publisher', async () => {
+  await withLocalRedis(async ({ store }) => {
+    for (const entryIds of [[null], [{}], [3], ['not-a-sanctions-id'], ['SDN:1', null],
+      ['SDN:1', 'sema-ca:iran:1-part-2:0']]) {
+      const previousState = { observedAt: String(now - 7 * 3600000), entryIds };
+      store.set('sanctions:pressure:state:v1', JSON.stringify(buildEnvelope({
+        fetchedAt: now - 7 * 3600000, recordCount: entryIds.length,
+        sourceVersion: SANCTIONS_SOURCE_VERSION, schemaVersion: 1, state: 'OK', data: previousState,
+      })));
+      assert.deepEqual(await verifySeedKey('sanctions:pressure:state:v1'), previousState);
+      const semaRecords = canadian.map(record => ({ ...record, countryCodes: ['IR'], countryNames: ['Iran'] }));
+      const next = await publish({ semaRecords, io: { verifySeedKey, writeExtraKeyWithMeta } });
+      await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => next.data, next.options),
+        error => error.exitCode === 0);
+      const canonical = JSON.parse(store.get('sanctions:pressure:v1')).data;
+      const result = projectCountrySanctions(canonical, 'IR', Number(canonical.fetchedAt));
+      assert.equal(result.state, 'observed');
+      assert.equal(result.sanctionsDesignations, 80);
+      assert.equal(result.sanctionsNewDesignations, null, JSON.stringify(entryIds));
+      assert.equal(result.websiteCounts.sanctionsNewDesignations, null);
+      assert.equal(result.comparison.kind, 'baseline-unavailable');
+      assert.equal(result.comparison.from, null);
+      assert.equal(result.countryRow.newEntryCount, canonical.countries.find(row => row.countryCode === 'IR').newEntryCount);
+    }
+  });
+});
+
+it('keeps old canonical metadata and state when the canonical SET fails after source snapshots are saved', async () => {
+  await withLocalRedis(async ({ store }) => {
+    const first = await publish({ io: { writeExtraKeyWithMeta } });
+    await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => first.data, first.options),
+      error => error.exitCode === 0);
+    const oldCanonical = store.get('sanctions:pressure:v1');
+    const oldState = store.get('sanctions:pressure:state:v1');
+    const next = await publish({ clock: now + 6 * 3600000, io: { verifySeedKey, writeExtraKeyWithMeta } });
+    const fixtureFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init = {}) => {
+      const command = init.body ? JSON.parse(init.body) : null;
+      if (command?.[0] === 'SET' && command[1] === 'sanctions:pressure:v1') {
+        return new Response('fixture canonical write failure', { status: 400 });
+      }
+      return fixtureFetch(url, init);
+    };
+    await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => next.data, next.options),
+      /HTTP 400/);
+    assert.equal(store.get('sanctions:pressure:v1'), oldCanonical);
+    assert.equal(store.get('sanctions:pressure:state:v1'), oldState);
+    assert.equal(JSON.parse(oldCanonical).data._state.cohort.computationAt, String(now));
+  });
+});
+
+it('publishes retained success clocks through the last millisecond and unavailable evidence at exact expiry', async () => {
+  await withLocalRedis(async ({ store }) => {
+    const first = await publish({ semaQuarantined: [{ id: 'private-id', reason: 'INVALID_IMO' }],
+      io: { writeExtraKeyWithMeta } });
+    await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => first.data, first.options),
+      error => error.exitCode === 0);
+    for (const clock of [now + RETAIN_MS - 1, now + RETAIN_MS]) {
+      const next = await publish({ successes: [], clock,
+        io: { verifySeedKey, readSeedSnapshot, writeExtraKeyWithMeta } });
+      await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => next.data, next.options),
+        error => error.exitCode === 0);
+      const canonical = JSON.parse(store.get('sanctions:pressure:v1')).data;
+      const meta = canonical._state;
+      assert.equal(meta.cohort.computationAt, String(clock));
+      assert.equal(meta.comparison.from, String(clock < now + RETAIN_MS ? now : clock - 1));
+      const retained = clock < now + RETAIN_MS;
+      assert.equal(meta.sourceHealth[SEMA_SOURCE].status, retained ? 'retained' : 'unavailable');
+      assert.equal(meta.sourceHealth[SEMA_SOURCE].lastSuccessAt, retained ? now : null);
+      assert.equal(meta.sourceHealth[SEMA_SOURCE].retainedUntil, retained ? now + RETAIN_MS : null);
+      assert.equal(meta.sourceHealth[SEMA_SOURCE].quarantinedCount, retained ? 1 : null);
+      assert.equal(meta.sourceHealth[SEMA_SOURCE].publishedAt, retained ? now - 2 * 86400000 : null);
+      assert.equal(projectCountrySanctions(canonical, 'IR', Number(canonical.fetchedAt)).state, retained ? 'observed' : 'unavailable');
+      assert.equal(projectCountrySanctions(canonical, 'IR', Number(canonical.fetchedAt)).partial, true);
+      assert.equal(JSON.stringify(meta).includes('private-id'), false);
+    }
   });
 });

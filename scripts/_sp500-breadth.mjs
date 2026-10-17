@@ -23,6 +23,12 @@ const FIRST_SMA_INDEX = 2;
 const SCAN_RANGE = [0, 1000];
 
 export const BREADTH_HISTORY_KEY = 'market:breadth-history:v1';
+// The symbols of the last full index scan. TradingView's S&P 500 symbol set
+// can lose members while their quotes stay live (2026-10-09: 408 of 503), so
+// a short set falls back to scanning these tickers directly. Index changes are
+// a handful of names a quarter; past this age the list no longer stands in.
+export const SP500_CONSTITUENTS_KEY = 'market:sp500-constituents:v1';
+export const MAX_SAVED_CONSTITUENTS_AGE_MS = 45 * 86_400_000;
 export const HISTORY_LENGTH = 252;
 // Daily bars start at the open, before the overnight seed. Allow that extra
 // calendar day in the content budget; the existing seed-age budget stays 96h.
@@ -102,7 +108,7 @@ export function mergeBreadthHistory(history, readings, today, maxLength = HISTOR
   };
 }
 
-export async function readBreadthHistory({
+async function readSeededKey(key, label, {
   fetchImpl = fetch,
   url,
   token,
@@ -111,28 +117,36 @@ export async function readBreadthHistory({
   if (!url || !token) {
     throw scanError('Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN');
   }
-  const resp = await fetchImpl(`${url}/get/${encodeURIComponent(BREADTH_HISTORY_KEY)}`, {
+  const resp = await fetchImpl(`${url}/get/${encodeURIComponent(key)}`, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (resp.status !== 200) {
     const err = httpRetryError(resp);
-    err.message = `Breadth history GET HTTP ${resp.status}`;
+    err.message = `${label} GET HTTP ${resp.status}`;
     throw err;
   }
   let parsed;
   try {
     parsed = await resp.json();
   } catch {
-    throw scanError('Breadth history GET returned not JSON');
+    throw scanError(`${label} GET returned not JSON`);
   }
   const result = parsed?.result;
   if (!result) return null;
   try {
     return unwrapEnvelope(typeof result === 'string' ? JSON.parse(result) : result).data;
   } catch {
-    throw scanError('Breadth history GET returned not an envelope');
+    throw scanError(`${label} GET returned not an envelope`);
   }
+}
+
+export function readBreadthHistory(opts) {
+  return readSeededKey(BREADTH_HISTORY_KEY, 'Breadth history', opts);
+}
+
+export function readSavedConstituents(opts) {
+  return readSeededKey(SP500_CONSTITUENTS_KEY, 'Saved constituents', opts);
 }
 
 export async function readPublishedPctAbove200d(opts) {
@@ -141,15 +155,11 @@ export async function readPublishedPctAbove200d(opts) {
   return Number.isFinite(value) ? value : null;
 }
 
-export async function fetchSp500Breadth({ fetchImpl = fetch, timeoutMs = 15_000, now = Date.now() } = {}) {
+async function scan(symbols, { fetchImpl, timeoutMs }) {
   const resp = await fetchImpl(SCANNER_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': CHROME_UA },
-    body: JSON.stringify({
-      symbols: { symbolset: [SP500_SYMBOLSET] },
-      columns: COLUMNS,
-      range: SCAN_RANGE,
-    }),
+    body: JSON.stringify({ symbols, columns: COLUMNS, range: SCAN_RANGE }),
     signal: AbortSignal.timeout(timeoutMs),
   });
   // Strict 200: a bot-challenge interstitial arrives as 202 and passes resp.ok.
@@ -173,19 +183,58 @@ export async function fetchSp500Breadth({ fetchImpl = fetch, timeoutMs = 15_000,
       `TradingView scan truncated: totalCount=${body.totalCount} data=${body.data.length}`,
     );
   }
-  const breadth = computeBreadth(body.data);
-  requireCompleteReadings(breadth.readings);
-  const sourceSessionAt = body.data[0]?.d?.[TIME_INDEX] * 1000;
-  if (!Number.isFinite(sourceSessionAt) || sourceSessionAt <= 0 || sourceSessionAt > now
-      || now - sourceSessionAt > MAX_SESSION_AGE_MIN * 60_000) {
-    throw scanError('Breadth source session is missing, future, or stale');
+  return body.data;
+}
+
+function usableSavedSymbols(saved, now) {
+  const symbols = saved?.symbols;
+  if (!Array.isArray(symbols) || symbols.length < MIN_VALID_CONSTITUENTS) return null;
+  if (!Number.isFinite(saved.savedAt) || now - saved.savedAt > MAX_SAVED_CONSTITUENTS_AGE_MS) return null;
+  return symbols;
+}
+
+export async function fetchSp500Breadth({
+  fetchImpl = fetch,
+  timeoutMs = 15_000,
+  now = Date.now(),
+  loadSavedConstituents = async () => null,
+} = {}) {
+  const indexRows = await scan({ symbolset: [SP500_SYMBOLSET] }, { fetchImpl, timeoutMs });
+  let rows = indexRows;
+  let membership = 'index';
+  if (indexRows.length < MIN_VALID_CONSTITUENTS) {
+    const savedSymbols = usableSavedSymbols(await loadSavedConstituents(), now);
+    if (!savedSymbols) {
+      throw scanError(
+        `S&P 500 symbol set returned ${indexRows.length} rows and no saved constituent list within ${MAX_SAVED_CONSTITUENTS_AGE_MS / 86_400_000} days`,
+      );
+    }
+    rows = await scan({ tickers: savedSymbols }, { fetchImpl, timeoutMs });
+    membership = 'saved';
   }
-  const sessionDate = SESSION_DATE.format(sourceSessionAt);
-  if (body.data.some((row) => !Number.isFinite(row?.d?.[TIME_INDEX])
-      || row.d[TIME_INDEX] <= 0 || row.d[TIME_INDEX] * 1000 > now
-      || SESSION_DATE.format(row.d[TIME_INDEX] * 1000) !== sessionDate)) {
+  // Score the session most rows share. A halted or delisted constituent keeps
+  // its last bar (WBD stayed on 2026-10-05 the next day), so it is left out;
+  // a scan split across sessions still fails the constituent floor.
+  const bySession = new Map();
+  for (const row of rows) {
+    const seconds = row?.d?.[TIME_INDEX];
+    if (!Number.isFinite(seconds) || seconds <= 0 || seconds * 1000 > now) continue;
+    const date = SESSION_DATE.format(seconds * 1000);
+    if (!bySession.has(date)) bySession.set(date, []);
+    bySession.get(date).push(row);
+  }
+  let sessionRows = [];
+  for (const rows of bySession.values()) if (rows.length > sessionRows.length) sessionRows = rows;
+  if (sessionRows.length < MIN_VALID_CONSTITUENTS) {
     throw scanError('Breadth scan contains missing or mixed source sessions');
   }
+  const sourceSessionAt = sessionRows[0].d[TIME_INDEX] * 1000;
+  if (now - sourceSessionAt > MAX_SESSION_AGE_MIN * 60_000) {
+    throw scanError('Breadth source session is stale');
+  }
+  const sessionDate = SESSION_DATE.format(sourceSessionAt);
+  const breadth = computeBreadth(sessionRows);
+  requireCompleteReadings(breadth.readings);
   const weekday = new Date(`${sessionDate}T12:00:00Z`).getUTCDay();
   // A daily bar's timestamp is its open. Wait until the regular close even
   // on early-close days; the twice-daily cron runs outside trading hours.
@@ -193,5 +242,13 @@ export async function fetchSp500Breadth({ fetchImpl = fetch, timeoutMs = 15_000,
       || (sessionDate === SESSION_DATE.format(now) && Number(SESSION_HOUR.format(now)) < 16)) {
     throw scanError('Breadth source session has not closed or is not a weekday');
   }
-  return { ...breadth, sessionDate, sourceSessionAt };
+  return {
+    ...breadth,
+    sessionDate,
+    sourceSessionAt,
+    otherSessions: rows.length - sessionRows.length,
+    membership,
+    indexConstituents: indexRows.length,
+    ...(membership === 'index' ? { symbols: indexRows.map((row) => row.s) } : {}),
+  };
 }

@@ -212,6 +212,7 @@ const ANALYSIS_STALE_DESCRIPTION = 'True when any contributing cache key fails i
 export const ANALYSIS_TOOLS: ToolDef[] = [
   {
     name: 'get_signal_convergence',
+    title: 'Geographic signal convergence',
     _outputBudgetBytes: 65536,
     description:
       'Geographic signal convergence: grid cells where protests, military activity, naval movements, and earthquakes co-occur. ' +
@@ -363,6 +364,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_focal_points',
+    title: 'News and map focal points',
     _outputBudgetBytes: 65536,
     description:
       'Focal-point detection: entities where news coverage and live map signals converge, ranked by multi-signal score. ' +
@@ -463,6 +465,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'simulate_infrastructure_cascade',
+    title: 'Simulate an infrastructure cascade',
     _outputBudgetBytes: 131072,
     description:
       'Infrastructure cascade simulation: what fails downstream when a cable, chokepoint, pipeline, or port is disrupted. ' +
@@ -550,6 +553,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_military_surge',
+    title: 'Military surge alerts',
     _outputBudgetBytes: 65536,
     description:
       'Military surge watch: theater aircraft postures, foreign-presence detections, and seeder-computed surge alerts. ' +
@@ -680,6 +684,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_population_exposure',
+    title: 'Population exposed to active events',
     _outputBudgetBytes: 65536,
     description:
       'Population exposure: estimated people within the impact radius of active earthquakes, wildfires, and conflict events. ' +
@@ -815,6 +820,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_alert_digest',
+    title: 'Daily cross-domain alert digest',
     _outputBudgetBytes: 131072,
     description:
       'Cross-domain alert digest: everything that tripped a threshold today, in one rollup. ' +
@@ -940,6 +946,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_hotspot_escalation',
+    title: 'Hotspot escalation scores',
     _outputBudgetBytes: 65536,
     description:
       'Hotspot escalation scores: the 29 curated intelligence hotspots ranked by dynamic escalation on a 1-5 scale. ' +

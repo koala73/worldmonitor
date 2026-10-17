@@ -59,7 +59,8 @@ describe('terminalChart', () => {
     const flat = terminalChart([7, 7, 7]);
     assert.match(flat, /HI\/LO\/LAST 7/);
     assert.equal([...flat.matchAll(/<text /g)].length, 1);
-    assert.match(flat, /M8\.0,99\.0 L207\.0,99\.0 L406\.0,99\.0/);
+    const flatPoints = flat.match(/<path d="([^"]+)" fill="none"/)?.[1];
+    assert.match(flatPoints, /^M8\.0,99\.0 L[\d.]+,99\.0 L[\d.]+,99\.0$/);
   });
 
   it('keeps near-extreme axis labels on distinct baselines', () => {
@@ -78,6 +79,27 @@ describe('terminalChart', () => {
     assert.match(svg, /width="300"/);
     assert.match(svg, /height="120"/);
     assert.match(svg, /\$2\.2/);
+  });
+
+  it('reserves more plot space for longer labels without shortening their values', () => {
+    const narrow = terminalChart([90, 110, 100]);
+    const wide = terminalChart([1234567890120, 1234567890125, 1234567890123.4]);
+    const lastX = (svg) => Number(svg.match(/<circle cx="([^"]+)"/)?.[1]);
+    assert.ok(lastX(wide) < lastX(narrow), `Long label plot end ${lastX(wide)} must precede short label plot end ${lastX(narrow)}`);
+    assert.match(wide, /LAST 1234567890123\.4/);
+    assert.match(wide, /<text x="452"[^>]*text-anchor="end"/);
+    assert.match(terminalChart([NaN, 85233, Infinity, 86789.9, 85233]), /LAST 85233/);
+  });
+
+  it('keeps a narrow chart plot inside its requested width with long labels', () => {
+    const svg = terminalChart([1234567890120, 1234567890125, 1234567890123.4], { width: 120 });
+    const path = svg.match(/<path d="([^"]+)" fill="none"/)?.[1];
+    const coordinates = [...path.matchAll(/[ML]([\d.-]+),/g)].map((match) => Number(match[1]));
+    assert.equal(coordinates.length, 3);
+    assert.ok(coordinates.every((x) => x >= 8 && x <= 112), `Plot coordinates outside the SVG: ${coordinates}`);
+    assert.ok(coordinates[2] > coordinates[0], 'The plot must retain a positive width');
+    assert.match(svg, /width="120"/);
+    assert.match(svg, /LAST 1234567890123\.4/);
   });
 
   it('writes an escaped aria-label onto the svg when provided', () => {

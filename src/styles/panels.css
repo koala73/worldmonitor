@@ -1009,6 +1009,26 @@
   font-variant-numeric: tabular-nums;
 }
 
+.disp-operation {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.disp-round {
+  width: 84px;
+  min-width: 84px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.disp-source-note {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+  padding: 6px 8px 2px;
+}
+
 /* ----------------------------------------------------------
    UCDP Events Panel
    ---------------------------------------------------------- */

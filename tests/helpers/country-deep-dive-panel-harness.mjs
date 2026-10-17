@@ -192,8 +192,9 @@ async function loadCountryDeepDivePanel(options = {}) {
     `],
     ['export-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
-      export function exportCountryEvidenceMarkdown(data) {
+      export function countryEvidenceMarkdownArtifact(data) {
         state.evidenceExports.push(data);
+        return { filename: 'fixture.md', mimeType: 'text/markdown;charset=utf-8', content: JSON.stringify(data) };
       }
     `],
     ['utils-stub', `
@@ -219,6 +220,8 @@ async function loadCountryDeepDivePanel(options = {}) {
       }
     `],
     ['supply-chain-stub', `
+      export function fetchMultiSectorExposure() { return Promise.resolve([]); }
+      export const SEEDED_HS2_CODES = [];
       export function fetchBypassOptions() { return Promise.resolve({ corridors: [] }); }
       export function getCountryChokepointIndex() { return null; }
       export function fetchChokepointStatus() { return Promise.resolve({ chokepoints: [], fetchedAt: '', upstreamUnavailable: false }); }
@@ -501,8 +504,8 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     throw error;
   }
 
-  function createPanel() {
-    return new CountryDeepDivePanel(null);
+  function createPanel(download = async () => ({ state: 'attempted' })) {
+    return new CountryDeepDivePanel(null, undefined, download);
   }
 
   function getPanelRoot() {

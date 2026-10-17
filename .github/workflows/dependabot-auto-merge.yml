@@ -41,8 +41,9 @@ name: Dependabot auto-merge
 #      through to the human path that exists today.
 #
 # In particular the docker base-image bumps are left to a human, because
-# docker-publish.yml rebuilds and publishes `latest` from them as soon as they
-# merge, with only its own smoke test in front.
+# docker-publish.yml builds and publishes an image from them as soon as they
+# merge, and the next release carries them into `latest`, with only its own
+# smoke test in front.
 #
 # REACH. Not every group can land by itself. An action that proto-check.yml
 # pins (checkout, setup-node, setup-go, cache, upload-artifact,

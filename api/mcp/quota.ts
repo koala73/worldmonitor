@@ -169,6 +169,32 @@ function asFiniteNumber(raw: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+export function dailyAllowanceResetAt(nowMs: number): string {
+  const now = new Date(nowMs);
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)).toISOString();
+}
+
+export async function readDailyAllowance(userId: string, pipeline: PipelineFn, budget?: McpBudget, nowMs = Date.now()) {
+  let result;
+  try {
+    result = await pipeline([['GET', budgetCounterKey(budget, userId, new Date(nowMs))]], 5_000, true);
+  } catch {
+    return null;
+  }
+  const entry = result?.[0];
+  if (!Array.isArray(result) || result.length < 1 || !entry
+    || !Object.prototype.hasOwnProperty.call(entry, 'result')
+    || result.some(item => item?.error !== undefined && item?.error !== null)) return null;
+  const raw = entry.result;
+  if (raw !== null && raw !== undefined && typeof raw !== 'number' && typeof raw !== 'string') return null;
+  if (typeof raw === 'string' && raw.trim() === '') return null;
+  const count = raw === null || raw === undefined ? 0 : Number(raw);
+  if (!Number.isSafeInteger(count) || count < 0) return null;
+  const limit = resolveDailyLimit(budget?.limit);
+  const used = limit === null ? count : Math.min(count, limit);
+  return { used, limit, remaining: limit === null ? null : Math.max(0, limit - used), resetsAt: dailyAllowanceResetAt(nowMs) };
+}
+
 /**
  * Charge one `tools/call` against `budget`.
  *

@@ -21,6 +21,16 @@ import { cachedFetchJson, deleteRedisKey } from './redis';
  */
 export { hasEmbedAccess, type EmbedAccessEntitlement } from '../../shared/embed-access';
 
+/**
+ * The credential an embed request carries, shared by `api/embed/session.ts`
+ * and `api/embed/entitlement.ts`. A blank `X-WorldMonitor-Key` falls through to
+ * `X-Api-Key` — clients that send an empty default for the first header would
+ * otherwise have a valid key hidden behind it.
+ */
+export function embedCredentialFromHeaders(headers: Headers): string | null {
+  return headers.get('X-WorldMonitor-Key')?.trim() || headers.get('X-Api-Key')?.trim() || null;
+}
+
 interface EmbedKeyResult {
   userId: string;
   /**

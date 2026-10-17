@@ -223,6 +223,7 @@ export async function beginStandaloneIdempotency({
       key: idempotencyKey,
       store: (status, body, contentType) =>
         storeStandaloneResult(resolved.redisKey, status, body, contentType, resolved.reqHash, completedTtlSeconds),
+      release: () => releaseProcessingLock(resolved.redisKey),
     };
   }
 
@@ -248,6 +249,21 @@ export async function completeStandaloneIdempotency(idempotency, response) {
     statusText: response.statusText,
     headers,
   });
+}
+
+/**
+ * Finish a claimed request without caching its response, for responses that
+ * must never be replayed (a one-time secret, for example). Releases the
+ * processing marker so a retry with the same key runs the action again.
+ */
+export async function abandonStandaloneIdempotency(idempotency, response) {
+  if (!idempotency || idempotency.kind !== 'proceed') return response;
+  try {
+    await idempotency.release();
+  } catch {
+    // Ignore release failures; the processing marker has a short TTL.
+  }
+  return response;
 }
 
 async function storeStandaloneResult(redisKey, status, body, contentType, reqHash, completedTtlSeconds) {

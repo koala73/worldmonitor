@@ -33,7 +33,7 @@ const feature = (type, id = 1) => ({
   properties: { eventtype: type, eventid: id, alertlevel: 'Orange', name: type, fromdate: new Date(NOW).toISOString(), iscurrent: 'false' },
 });
 
-async function run({ previousSources, now = NOW, failures = [], eonetBody = { events: eonet }, types = { FL: [feature('FL')] }, requests = [] } = {}) {
+async function run({ previousSources, now = NOW, failures = [], eonetBody = { events: eonet }, types = { FL: [feature('FL')] }, requests = [], gdacsEmpty } = {}) {
   return fetchNaturalEvents({
     now, previousSources,
     fetchHkoWarningsFn: async () => ({ warnings: [], dataAvailable: true, sourceDecision: { status: 'used' } }),
@@ -47,6 +47,8 @@ async function run({ previousSources, now = NOW, failures = [], eonetBody = { ev
       if (url.hostname === 'www.gdacs.org') {
         // The real VO MAP route is unavailable; it must not be treated as empty.
         if (type === 'VO' && url.pathname.endsWith('/MAP')) return new Response('', { status: 404 });
+        const empty = !types[type]?.length && gdacsEmpty?.(url);
+        if (empty) return empty;
         return Response.json({ type: 'FeatureCollection', features: types[type] || [] });
       }
       if (url.hostname === 'mapservices.weather.noaa.gov') return Response.json({ type: 'FeatureCollection', features: [] });
@@ -66,6 +68,20 @@ test('VO uses bounded SEARCH, not the unavailable MAP route', async () => {
   assert.equal(vo.searchParams.get('toDate'), '2026-09-17');
   assert.equal(vo.searchParams.get('pageSize'), '100');
   assert.equal(requests.filter(url => url.hostname === 'www.gdacs.org').length, 6);
+});
+
+test('VO SEARCH 204 No Content is a verified empty window, not a source failure', async () => {
+  // GDACS SEARCH answers an event-free date range with 204 and no body.
+  const data = await run({ gdacsEmpty: url => url.pathname.endsWith('/SEARCH') ? new Response(null, { status: 204 }) : null });
+  assert.deepEqual(data._gdacsFailedTypes, []);
+  assert.equal(data._sourceSnapshots['gdacs:VO'].fetchedAt, NOW);
+  assert.ok(!data.events.some(event => event.id.startsWith('gdacs-VO-')));
+});
+
+test('a 204 from a GDACS MAP route stays a source failure', async () => {
+  const data = await run({ gdacsEmpty: url => url.pathname.endsWith('/MAP') ? new Response(null, { status: 204 }) : null });
+  assert.ok(data._gdacsFailedTypes.includes('EQ'));
+  assert.ok(!data._gdacsFailedTypes.includes('VO'));
 });
 
 test('VO closure follows SEARCH current state, including during retention and recovery', async () => {

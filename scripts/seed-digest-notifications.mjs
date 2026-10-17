@@ -13,12 +13,12 @@
  */
 import { createRequire } from 'node:module';
 import {
-  escapeHtml,
-  escapeTelegramHtml,
-  escapeSlackMrkdwn,
   markdownToTelegramHtml,
   markdownToSlackMrkdwn,
   markdownToDiscord,
+  truncateDiscordContent,
+  escapeDigestText,
+  formatDigestItemTitle,
 } from './_digest-markdown.mjs';
 
 const require = createRequire(import.meta.url);
@@ -33,18 +33,29 @@ const {
   assertNotificationWebhookDeliveryUrlSafe,
   postJsonWithPinnedAddress,
 } = require('./lib/notification-webhook-ssrf.cjs');
+const {
+  buildWebhookDeliveryHeaders,
+  resolveWebhookSigningSecret,
+} = require('./lib/notification-webhook-signing.cjs');
+const { buildTeamsDigestPayload, sendTeamsPayload } = require('./lib/notification-teams.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { flushPendingLlmEvents } = require('./lib/llm-telemetry.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { fetchFollowedCountries } = require('./lib/followed-countries-fetch.cjs');
 const { Resend } = require('resend');
 const { normalizeResendSender } = require('./lib/resend-from.cjs');
+const {
+  appendUnsubscribeText,
+  injectUnsubscribeFooterHtml,
+  listUnsubscribeHeaders,
+  unsubscribeUrlFor,
+} = require('./lib/email-unsubscribe.cjs');
+const { sendResendEmail } = require('./lib/resend-send.cjs');
 import { readRawJsonFromUpstash, redisPipeline } from '../api/_upstash-json.js';
 import { classifyFeelGood } from '../server/_shared/feelgood-classifier.js';
 import { classifyEphemeralLiveCoverage } from '../shared/ephemeral-live-classifier.js';
 import {
   deriveNotificationStoryPhase,
-  formatStoryPhaseBadge,
 } from '../shared/story-phase.js';
 import { shouldDropOpinionTrack } from './lib/digest-opinion-track-filter.mjs';
 import {
@@ -62,6 +73,7 @@ import {
   carouselUrlsFrom,
   digestWindowStartMs,
   getDigestScoreMin,
+  isDigestDeliveryTier,
   pickWinningCandidateWithPool,
   readTimeAgeCutoffMs,
   runSynthesisWithFallback,
@@ -69,7 +81,13 @@ import {
   shouldDropTrackByAge,
   subjectForBrief,
 } from './lib/digest-orchestration-helpers.mjs';
-import { injectEmailSummary } from './lib/email-summary-html.mjs';
+import {
+  DIGEST_CRITICAL_LIMIT,
+  DIGEST_EMAIL_MAX_HTML_BYTES,
+  DIGEST_HIGH_LIMIT,
+  DIGEST_MEDIUM_LIMIT,
+  renderDigestEmailHtml,
+} from './lib/digest-email-html.mjs';
 import { issueSlotInTz } from '../shared/brief-filter.js';
 import {
   MIN_CORROBORATING_PUBLISHERS,
@@ -105,6 +123,12 @@ import { readCooldownConfig } from './lib/digest-cooldown-config.mjs';
 import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
 import { buildDigestDeliveryPlan } from './lib/digest-delivery-plan.mjs';
+import {
+  attachDigestCorroboration,
+  digestCoverageText,
+  digestWebhookStory,
+  readStoryCorroboration,
+} from './lib/digest-corroboration.mjs';
 import { buildTickerDictionary } from '../shared/ticker-extract.js';
 import { scanAndEnqueueWatchlistStoryEvents as scanWatchlistStoryEvents } from './lib/watchlist-story-scan.mjs';
 
@@ -164,9 +188,6 @@ const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
 const DIGEST_MAX_ITEMS = 30;
 const DIGEST_LOOKBACK_MS = 24 * 60 * 60 * 1000; // 24h default lookback on first send
-const DIGEST_CRITICAL_LIMIT = Infinity;
-const DIGEST_HIGH_LIMIT = 15;
-const DIGEST_MEDIUM_LIMIT = 10;
 const AI_DIGEST_ENABLED = process.env.AI_DIGEST_ENABLED !== '0';
 const ENTITLEMENT_CACHE_TTL = 900; // 15 min
 
@@ -803,6 +824,9 @@ async function buildDigest(rule, windowStartMs) {
       // the LLM's top-ranked story is a corroborated flashpoint-diplomacy
       // development.
       entityCorroborationCount: parseInt(track.entityCorroborationCount ?? '0', 10) || 0,
+      // #9213: the verdict list-feed-digest served for this variant, stored
+      // on the track row; attachDigestCorroboration resolves it per item.
+      corroboration: readStoryCorroboration(track, variant, lang),
     });
   }
 
@@ -919,6 +943,8 @@ async function buildDigest(rule, windowStartMs) {
       }
     }
   }
+  // #9213: per-item corroboration, after sources are hydrated.
+  attachDigestCorroboration(dedupedAll, stories);
   const ruleKey = `${variant}:${lang}:${rule.sensitivity ?? 'high'}`;
   await writeReplayLog({
     stories,
@@ -1010,13 +1036,16 @@ async function buildDigest(rule, windowStartMs) {
   return top;
 }
 
-function formatDigest(stories, nowMs) {
+// target: 'plain' | 'telegram' | 'slack' | 'discord'. Chat targets return
+// channel-escaped text with each title linked to its original report (#9214).
+function formatDigest(stories, nowMs, target = 'plain') {
   if (!stories || stories.length === 0) return null;
+  const esc = (text) => escapeDigestText(text, target);
   const dateStr = new Intl.DateTimeFormat('en-US', {
     month: 'long', day: 'numeric', year: 'numeric',
   }).format(new Date(nowMs));
 
-  const lines = [`WorldMonitor Daily Digest — ${dateStr}`, ''];
+  const lines = [esc(`WorldMonitor Daily Digest — ${dateStr}`), ''];
 
   const buckets = { critical: [], high: [], medium: [] };
   for (const s of stories) {
@@ -1029,12 +1058,13 @@ function formatDigest(stories, nowMs) {
   for (const [level, items] of Object.entries(buckets)) {
     if (items.length === 0) continue;
     const limit = SEVERITY_LIMITS[level] ?? DIGEST_MEDIUM_LIMIT;
-    lines.push(`${level.toUpperCase()} (${items.length} event${items.length !== 1 ? 's' : ''})`);
+    lines.push(esc(`${level.toUpperCase()} (${items.length} event${items.length !== 1 ? 's' : ''})`));
     for (const item of items.slice(0, limit)) {
       const src = item.sources.length > 0
         ? ` [${item.sources.slice(0, 3).join(', ')}${item.sources.length > 3 ? ` +${item.sources.length - 3}` : ''}]`
         : '';
-      lines.push(`  \u2022 ${stripSourceSuffix(item.title)}${src}`);
+      const coverage = digestCoverageText(item);
+      lines.push(`  \u2022 ${formatDigestItemTitle(stripSourceSuffix(item.title), item.link, target)}${esc(src)}${coverage ? esc(` \u00b7 ${coverage}`) : ''}`);
       // Append the RSS description as a short context line when upstream
       // persisted one. Truncated at a word boundary to ~200 chars to keep
       // the plain-text email terse. Empty \u2192 no context line (R6).
@@ -1042,140 +1072,15 @@ function formatDigest(stories, nowMs) {
         const trimmed = item.description.length > 200
           ? item.description.slice(0, 200).replace(/\s+\S*$/, '') + '\u2026'
           : item.description;
-        lines.push(`    ${trimmed}`);
+        lines.push(`    ${esc(trimmed)}`);
       }
     }
-    if (items.length > limit) lines.push(`  ... and ${items.length - limit} more`);
+    if (items.length > limit) lines.push(esc(`  ... and ${items.length - limit} more`));
     lines.push('');
   }
 
-  lines.push('View full dashboard \u2192 worldmonitor.app');
+  lines.push(esc('View full dashboard \u2192 worldmonitor.app'));
   return lines.join('\n');
-}
-
-function formatDigestHtml(stories, nowMs) {
-  if (!stories || stories.length === 0) return null;
-  const dateStr = new Intl.DateTimeFormat('en-US', {
-    month: 'long', day: 'numeric', year: 'numeric',
-  }).format(new Date(nowMs));
-
-  const buckets = { critical: [], high: [], medium: [] };
-  for (const s of stories) {
-    const b = buckets[s.severity] ?? buckets.high;
-    b.push(s);
-  }
-
-  const totalCount = stories.length;
-  const criticalCount = buckets.critical.length;
-  const highCount = buckets.high.length;
-
-  const SEVERITY_BORDER = { critical: '#ef4444', high: '#f97316', medium: '#eab308' };
-
-  function storyCard(s) {
-    const borderColor = SEVERITY_BORDER[s.severity] ?? '#4ade80';
-    const phaseBadge = formatStoryPhaseBadge(s.phase);
-    const phaseColor = phaseBadge?.color;
-    const phaseCap = phaseBadge?.label ?? '';
-    const srcText = s.sources.length > 0
-      ? s.sources.slice(0, 3).join(', ') + (s.sources.length > 3 ? ` +${s.sources.length - 3}` : '')
-      : '';
-    const cleanTitle = stripSourceSuffix(s.title);
-    const titleEl = s.link
-      ? `<a href="${escapeHtml(s.link)}" style="color: #e0e0e0; text-decoration: none; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(cleanTitle)}</a>`
-      : `<span style="color: #e0e0e0; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(cleanTitle)}</span>`;
-    // RSS description: truncated ~200 chars at a word boundary, rendered
-    // between title and meta when present. Empty → section omitted (R6).
-    let snippetEl = '';
-    if (typeof s.description === 'string' && s.description.length > 0) {
-      const trimmed = s.description.length > 200
-        ? s.description.slice(0, 200).replace(/\s+\S*$/, '') + '…'
-        : s.description;
-      snippetEl = `<div style="margin-top: 6px; font-size: 12px; color: #999; line-height: 1.45;">${escapeHtml(trimmed)}</div>`;
-    }
-    const meta = [
-      phaseBadge ? `<span style="font-size: 10px; color: ${phaseColor}; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">${phaseCap}</span>` : '',
-      srcText ? `<span style="font-size: 11px; color: #555;">${escapeHtml(srcText)}</span>` : '',
-    ].filter(Boolean).join('<span style="color: #333; margin: 0 6px;">&bull;</span>');
-    return `<div style="background: #111; border: 1px solid #1a1a1a; border-left: 3px solid ${borderColor}; padding: 12px 16px; margin-bottom: 8px;">${titleEl}${snippetEl}${meta ? `<div style="margin-top: 6px;">${meta}</div>` : ''}</div>`;
-  }
-
-  const SEVERITY_LIMITS = { critical: DIGEST_CRITICAL_LIMIT, high: DIGEST_HIGH_LIMIT, medium: DIGEST_MEDIUM_LIMIT };
-
-  function sectionHtml(severity, items) {
-    if (items.length === 0) return '';
-    const limit = SEVERITY_LIMITS[severity] ?? DIGEST_MEDIUM_LIMIT;
-    const SEVERITY_LABEL = { critical: '&#128308; Critical', high: '&#128992; High', medium: '&#128993; Medium' };
-    const label = SEVERITY_LABEL[severity] ?? severity.toUpperCase();
-    const cards = items.slice(0, limit).map(storyCard).join('');
-    const overflow = items.length > limit
-      ? `<p style="font-size: 12px; color: #555; margin: 4px 0 16px; padding-left: 4px;">... and ${items.length - limit} more</p>`
-      : '';
-    return `<div style="margin-bottom: 24px;"><div style="font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px;">${label} (${items.length})</div>${cards}${overflow}</div>`;
-  }
-
-  const sectionsHtml = ['critical', 'high', 'medium']
-    .map((sev) => sectionHtml(sev, buckets[sev]))
-    .join('');
-
-  return `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #111; color: #e0e0e0;">
-  <div style="max-width: 680px; margin: 0 auto;">
-    <div style="background: #4ade80; height: 3px;"></div>
-    <div style="background: #0d0d0d; padding: 32px 36px 0;">
-      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom: 28px;">
-        <tr>
-          <td style="vertical-align: middle;">
-            <table cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td style="width: 36px; height: 36px; vertical-align: middle;">
-                  <img src="https://www.worldmonitor.app/favico/android-chrome-192x192.png" width="36" height="36" alt="WorldMonitor" style="border-radius: 50%; display: block;" />
-                </td>
-                <td style="padding-left: 10px;">
-                  <div style="font-size: 15px; font-weight: 800; color: #fff; letter-spacing: -0.3px;">WORLD MONITOR</div>
-                </td>
-              </tr>
-            </table>
-          </td>
-          <td style="text-align: right; vertical-align: middle;">
-            <span style="font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px;">${dateStr}</span>
-          </td>
-        </tr>
-      </table>
-      <div data-ai-summary-slot></div>
-      <div data-brief-cta-slot></div>
-      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom: 24px;">
-        <tr>
-          <td style="text-align: center; padding: 14px 8px; width: 33%; background: #161616; border: 1px solid #222;">
-            <div style="font-size: 24px; font-weight: 800; color: #4ade80;">${totalCount}</div>
-            <div style="font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">Events</div>
-          </td>
-          <td style="width: 1px;"></td>
-          <td style="text-align: center; padding: 14px 8px; width: 33%; background: #161616; border: 1px solid #222;">
-            <div style="font-size: 24px; font-weight: 800; color: #ef4444;">${criticalCount}</div>
-            <div style="font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">Critical</div>
-          </td>
-          <td style="width: 1px;"></td>
-          <td style="text-align: center; padding: 14px 8px; width: 33%; background: #161616; border: 1px solid #222;">
-            <div style="font-size: 24px; font-weight: 800; color: #f97316;">${highCount}</div>
-            <div style="font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px;">High</div>
-          </td>
-        </tr>
-      </table>
-      ${sectionsHtml}
-      <div style="text-align: center; padding: 12px 0 36px;">
-        <a href="https://worldmonitor.app/dashboard" style="display: inline-block; background: #4ade80; color: #0a0a0a; padding: 12px 32px; text-decoration: none; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 3px;">Open Dashboard</a>
-      </div>
-    </div>
-    <div style="background: #0a0a0a; border-top: 1px solid #1a1a1a; padding: 20px 36px; text-align: center;">
-      <div style="margin-bottom: 12px;">
-        <a href="https://x.com/worldmonitorapp" style="color: #555; text-decoration: none; font-size: 11px; margin: 0 10px;">X / Twitter</a>
-        <a href="https://github.com/koala73/worldmonitor" style="color: #555; text-decoration: none; font-size: 11px; margin: 0 10px;">GitHub</a>
-      </div>
-      <p style="font-size: 10px; color: #444; margin: 0; line-height: 1.5;">
-        <a href="https://worldmonitor.app" style="color: #4ade80; text-decoration: none;">worldmonitor.app</a>
-      </p>
-    </div>
-  </div>
-</div>`;
 }
 
 // ── (Removed) standalone generateAISummary ───────────────────────────────────
@@ -1229,6 +1134,10 @@ function sanitizeTelegramHtml(html) {
     const closes = (out.match(new RegExp(`</${tag}>`, 'g')) || []).length;
     for (let i = closes; i < opens; i++) out += `</${tag}>`;
   }
+  // Digest titles are <a href> links (#9214); a cut inside one must close it.
+  const linkOpens = (out.match(/<a\s/g) || []).length;
+  const linkCloses = (out.match(/<\/a>/g) || []).length;
+  for (let i = linkCloses; i < linkOpens; i++) out += '</a>';
   return out;
 }
 
@@ -1376,11 +1285,13 @@ async function sendDiscord(userId, webhookEnvelope, text) {
     console.warn(`[digest] Discord URL rejected for ${userId}:`, err.message);
     return false;
   }
-  const content = text.length > 2000 ? text.slice(0, 1999) + '\u2026' : text;
+  const content = truncateDiscordContent(text);
   try {
     const res = await postJsonWithPinnedAddress(
       safeUrl,
-      JSON.stringify({ content }),
+      // Headlines can carry @everyone/@here or role mentions; never let a
+      // digest ping anyone. Matches the real-time relay's payload.
+      JSON.stringify({ content, allowed_mentions: { parse: [] } }),
       { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
       resolvedAddresses,
     );
@@ -1400,23 +1311,46 @@ async function sendDiscord(userId, webhookEnvelope, text) {
   }
 }
 
-async function sendEmail(email, subject, text, html) {
-  if (!resend) { console.warn('[digest] Email: RESEND_API_KEY not set — skipping'); return false; }
-  try {
-    const payload = { from: RESEND_FROM, to: email, subject, text };
-    if (html) payload.html = html;
-    await resend.emails.send(payload);
-    console.log(`[digest] Email delivered to ${email}`);
-    return true;
-  } catch (err) {
-    console.warn('[digest] Resend failed:', err.message);
+async function sendTeams(userId, webhookEnvelope, payload) {
+  let webhookUrl;
+  try { webhookUrl = decrypt(webhookEnvelope); } catch (err) {
+    console.warn(`[digest] Teams decrypt failed for ${userId}:`, err.message); return false;
+  }
+  const result = await sendTeamsPayload(webhookUrl, payload, { userAgent: 'worldmonitor-digest/1.0' });
+  if (result.gone) {
+    console.warn(`[digest] Teams workflow gone for ${userId}, deactivating`);
+    await deactivateChannel(userId, 'teams');
     return false;
   }
+  if (!result.ok) {
+    console.warn(`[digest] Teams send failed for ${userId}: ${result.error}`);
+    return false;
+  }
+  console.log(`[digest] Teams delivered to ${userId}`);
+  return true;
 }
 
-async function sendWebhook(userId, webhookEnvelope, stories, aiSummary) {
+async function sendEmail(email, subject, text, html, channel = null) {
+  const unsubscribeUrl = unsubscribeUrlFor(channel, 'brief');
+  const label = 'Unsubscribe from the daily brief';
+  const payload = {
+    from: RESEND_FROM, to: email, subject,
+    text: appendUnsubscribeText(text, unsubscribeUrl, label),
+    html: injectUnsubscribeFooterHtml(html, unsubscribeUrl, label),
+    headers: listUnsubscribeHeaders(unsubscribeUrl),
+  };
+  const result = await sendResendEmail(resend, payload, { logPrefix: '[digest]' });
+  if (result.ok) console.log(`[digest] Email delivered to ${email}`);
+  return result.ok;
+}
+
+async function sendWebhook(userId, webhookEnvelope, stories, aiSummary, webhookSecretEnvelope) {
   let url;
-  try { url = decrypt(webhookEnvelope); } catch (err) {
+  let signingSecret;
+  try {
+    url = decrypt(webhookEnvelope);
+    signingSecret = resolveWebhookSigningSecret(decrypt, webhookSecretEnvelope);
+  } catch (err) {
     console.warn(`[digest] Webhook decrypt failed for ${userId}:`, err.message);
     return false;
   }
@@ -1431,7 +1365,7 @@ async function sendWebhook(userId, webhookEnvelope, stories, aiSummary) {
   const payload = JSON.stringify({
     version: '1',
     eventType: 'digest',
-    stories: stories.map(s => ({ title: s.title, severity: s.severity, phase: s.phase, sources: s.sources })),
+    stories: stories.map(digestWebhookStory),
     summary: aiSummary ?? null,
     storyCount: stories.length,
   });
@@ -1439,7 +1373,11 @@ async function sendWebhook(userId, webhookEnvelope, stories, aiSummary) {
     const resp = await postJsonWithPinnedAddress(
       safeUrl,
       payload,
-      { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
+      {
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-digest/1.0',
+        ...buildWebhookDeliveryHeaders({ body: payload, eventType: 'digest', secret: signingSecret }),
+      },
       resolvedAddresses,
     );
     if (resp.status === 404 || resp.status === 410 || resp.status === 403) {
@@ -1467,10 +1405,11 @@ async function sendWebhook(userId, webhookEnvelope, stories, aiSummary) {
  * usable number. Callers MUST treat null as "unknown" — never "free"
  * — so a transient relay outage doesn't accidentally clamp legitimate
  * paying users out of paywalled affordances. The digest cron's
- * `isUserPro` uses null → fail-open (true); the followed-country
- * composer clamp uses null → "skip clamp" (treat as Pro for the
- * duration of the outage). Same fail-open polarity in both call
- * sites, but explicit so future readers can audit the choice.
+ * `isUserPro` treats null as not-Pro and skips the rule until a later
+ * run can resolve the tier (fail-closed, see isDigestDeliveryTier).
+ * The followed-country composer clamp uses null → "skip clamp": it only
+ * widens a ranking bias, so a transient outage must not demote a
+ * paying user's brief.
  */
 async function getUserTier(userId) {
   const cacheKey = `relay:entitlement:${userId}`;
@@ -1499,9 +1438,7 @@ async function getUserTier(userId) {
 }
 
 async function isUserPro(userId) {
-  const tier = await getUserTier(userId);
-  if (tier === null) return true; // fail-open — preserve historic polarity
-  return tier >= 1;
+  return isDigestDeliveryTier(await getUserTier(userId));
 }
 
 // ── Per-channel body composition ─────────────────────────────────────────────
@@ -1513,7 +1450,10 @@ const DIVIDER = '─'.repeat(40);
  * Keeps the per-channel formatting logic out of main() so its cognitive
  * complexity stays within the lint budget.
  */
-function buildChannelBodies(storyListPlain, aiSummary, magazineUrl) {
+function buildChannelBodies(storyLists, aiSummary, magazineUrl) {
+  // storyLists: formatDigest output per target. The chat lists are already
+  // channel-escaped and carry per-story links, so they are not escaped again.
+  const { plain: storyListPlain, telegram, slack, discord } = storyLists;
   // The URL is already HMAC-signed and shape-validated at sign time
   // (userId regex + YYYY-MM-DD), but we still escape it per-target
   // as defence-in-depth — same discipline injectBriefCta uses for
@@ -1543,16 +1483,16 @@ function buildChannelBodies(storyListPlain, aiSummary, magazineUrl) {
   if (!aiSummary) {
     return {
       text: `${storyListPlain}${briefFooterPlain}`,
-      telegramText: `${escapeTelegramHtml(storyListPlain)}${briefFooterTelegram}`,
-      slackText: `${escapeSlackMrkdwn(storyListPlain)}${briefFooterSlack}`,
-      discordText: `${storyListPlain}${briefFooterDiscord}`,
+      telegramText: `${telegram}${briefFooterTelegram}`,
+      slackText: `${slack}${briefFooterSlack}`,
+      discordText: `${discord}${briefFooterDiscord}`,
     };
   }
   return {
     text: `EXECUTIVE SUMMARY\n\n${aiSummary}\n\n${DIVIDER}\n\n${storyListPlain}${briefFooterPlain}`,
-    telegramText: `<b>EXECUTIVE SUMMARY</b>\n\n${markdownToTelegramHtml(aiSummary)}\n\n${DIVIDER}\n\n${escapeTelegramHtml(storyListPlain)}${briefFooterTelegram}`,
-    slackText: `*EXECUTIVE SUMMARY*\n\n${markdownToSlackMrkdwn(aiSummary)}\n\n${DIVIDER}\n\n${escapeSlackMrkdwn(storyListPlain)}${briefFooterSlack}`,
-    discordText: `**EXECUTIVE SUMMARY**\n\n${markdownToDiscord(aiSummary)}\n\n${DIVIDER}\n\n${storyListPlain}${briefFooterDiscord}`,
+    telegramText: `<b>EXECUTIVE SUMMARY</b>\n\n${markdownToTelegramHtml(aiSummary)}\n\n${DIVIDER}\n\n${telegram}${briefFooterTelegram}`,
+    slackText: `*EXECUTIVE SUMMARY*\n\n${markdownToSlackMrkdwn(aiSummary)}\n\n${DIVIDER}\n\n${slack}${briefFooterSlack}`,
+    discordText: `**EXECUTIVE SUMMARY**\n\n${markdownToDiscord(aiSummary)}\n\n${DIVIDER}\n\n${discord}${briefFooterDiscord}`,
   };
 }
 
@@ -1560,28 +1500,6 @@ function buildChannelBodies(storyListPlain, aiSummary, magazineUrl) {
 // the multi-section HTML assembly can be unit-tested without
 // dragging the cron's env-checking side effects into the test
 // runtime. Imported at the top alongside the other lib helpers.
-
-/**
- * Inject the "Open your brief" CTA into the email HTML. Placed near
- * the top of the body so recipients see the magazine link before the
- * story list. Uses inline styles only (Gmail / Outlook friendly).
- * When no magazineUrl is present (composer skipped / signing
- * failed), the slot is stripped so the email stays clean.
- */
-function injectBriefCta(html, magazineUrl) {
-  if (!html) return html;
-  if (!magazineUrl) return html.replace('<div data-brief-cta-slot></div>', '');
-  const escapedUrl = String(magazineUrl)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-  const ctaHtml = `<div style="margin:0 0 24px 0;">
-<a href="${escapedUrl}" style="display:inline-block;background:#f2ede4;color:#0a0a0a;text-decoration:none;font-weight:700;font-size:14px;letter-spacing:0.08em;padding:14px 22px;border-radius:4px;">Open your WorldMonitor Brief →</a>
-<div style="margin-top:10px;font-size:11px;color:#888;line-height:1.5;">Your personalised editorial magazine. Opens in the browser — scroll or swipe through today's threads.</div>
-</div>`;
-  return html.replace('<div data-brief-cta-slot></div>', ctaHtml);
-}
 
 // ── Brief composition (runs once per cron tick, before digest loop) ─────────
 
@@ -2443,11 +2361,15 @@ async function main() {
 
     const storyListPlain = formatDigest(formatterStories, nowMs);
     if (!storyListPlain) continue;
-    const htmlRaw = formatDigestHtml(formatterStories, nowMs);
 
     const magazineUrl = brief?.magazineUrl ?? null;
     const { text, telegramText, slackText, discordText } = buildChannelBodies(
-      storyListPlain,
+      {
+        plain: storyListPlain,
+        telegram: formatDigest(formatterStories, nowMs, 'telegram'),
+        slack: formatDigest(formatterStories, nowMs, 'slack'),
+        discord: formatDigest(formatterStories, nowMs, 'discord'),
+      },
       briefLead,
       magazineUrl,
     );
@@ -2458,8 +2380,29 @@ async function main() {
     // single-string lead since their formats favour brevity. The
     // canonical-synthesis contract still holds: every channel reads
     // from the same generateDigestProse output for this rule.
-    const htmlWithSummary = injectEmailSummary(htmlRaw, briefSynthesis);
-    const html = injectBriefCta(htmlWithSummary, magazineUrl);
+    //
+    // renderDigestEmailHtml also enforces DIGEST_EMAIL_MAX_HTML_BYTES so
+    // Gmail never clips the message (its cut-off is ~102KB of HTML). Over
+    // the cap it drops the lowest-priority story cards and links to the
+    // full brief instead of cutting markup mid-tag.
+    const unsubscribeBytes = Math.max(0, ...deliverableChannels
+      .filter((ch) => ch.channelType === 'email')
+      .map((ch) => Buffer.byteLength(injectUnsubscribeFooterHtml(
+        '', unsubscribeUrlFor(ch, 'brief'), 'Unsubscribe from the daily brief',
+      ), 'utf8')));
+    const { html, truncated: htmlTruncated, bytes: htmlBytes, shownStories } = renderDigestEmailHtml({
+      stories: formatterStories,
+      nowMs,
+      synthesis: briefSynthesis,
+      magazineUrl,
+      maxBytes: DIGEST_EMAIL_MAX_HTML_BYTES - unsubscribeBytes,
+    });
+    if (htmlTruncated) {
+      console.warn(
+        `[digest] email HTML size-capped for ${rule.userId}: `
+        + `${shownStories}/${formatterStories.length} stories, ${htmlBytes} bytes`,
+      );
+    }
 
     const shortDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(nowMs));
     const subject = subjectForBrief({ briefLead, synthesisLevel, shortDate });
@@ -2628,8 +2571,19 @@ async function main() {
         ok = await sendSlack(rule.userId, ch.webhookEnvelope, slackText);
       } else if (ch.channelType === 'discord' && ch.webhookEnvelope) {
         ok = await sendDiscord(rule.userId, ch.webhookEnvelope, discordText);
+      } else if (ch.channelType === 'teams' && ch.webhookEnvelope) {
+        // Same stories, lead and brief link as the other channels, as an
+        // Adaptive Card (#9215). The card renders its own story list, so it
+        // takes formatterStories rather than a formatDigest text target;
+        // titles get the same source-suffix strip formatDigest applies.
+        ok = await sendTeams(rule.userId, ch.webhookEnvelope, buildTeamsDigestPayload({
+          title: storyListPlain.split('\n')[0],
+          summary: briefLead,
+          stories: formatterStories.map((story) => ({ ...story, title: stripSourceSuffix(story.title) })),
+          briefUrl: magazineUrl,
+        }));
       } else if (ch.channelType === 'email' && ch.email) {
-        ok = await sendEmail(ch.email, subject, text, html);
+        ok = await sendEmail(ch.email, subject, text, html, ch);
       } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
         // Webhook payload's `summary` field reads the canonical
         // briefLead — same string the email exec block + magazine
@@ -2647,7 +2601,7 @@ async function main() {
         // closes the channel-coverage gap so the webhook payload
         // exactly matches what U4 stamped + U5 evaluated for that
         // (user, rule, tick).
-        ok = await sendWebhook(rule.userId, ch.webhookEnvelope, formatterStories, briefLead);
+        ok = await sendWebhook(rule.userId, ch.webhookEnvelope, formatterStories, briefLead, ch.webhookSecret);
       }
       if (ok) {
         anyDelivered = true;

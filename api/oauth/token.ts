@@ -33,7 +33,7 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 // @ts-expect-error — JS module, no declaration file
-import { getClientIp, rateLimitErrorLevel, rateLimitFingerprintStage } from '../_rate-limit.js';
+import { getClientRateLimitKey, rateLimitErrorLevel, rateLimitFingerprintStage } from '../_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
@@ -622,6 +622,7 @@ async function handleRefreshToken(
 
   const refreshData = consume.refreshData as RefreshDataPro | RefreshDataLegacy;
   const attemptValue = consume.attemptValue;
+  const expiresAtMs = consume.expiresAtMs ?? null;
   if (!refreshData || typeof refreshData !== 'object') {
     return temporaryAuthFailure();
   }
@@ -650,6 +651,7 @@ async function handleRefreshToken(
       refreshData,
       refreshData.family_id,
       'persist-family-pointer',
+      expiresAtMs,
     );
     return temporaryAuthFailure();
   }
@@ -672,6 +674,7 @@ async function handleRefreshToken(
         refreshData,
         refreshData.family_id,
         'read-family-revocation',
+        expiresAtMs,
       );
       return temporaryAuthFailure();
     }
@@ -690,6 +693,7 @@ async function handleRefreshToken(
       refreshData,
       refreshData.family_id,
       'client-validation',
+      expiresAtMs,
     );
     return restored ? clientCheck : temporaryAuthFailure();
   }
@@ -726,6 +730,7 @@ async function handleRefreshToken(
         refreshData,
         refreshData.family_id,
         'convex-transient',
+        expiresAtMs,
       );
       return temporaryAuthFailure();
     }
@@ -758,6 +763,7 @@ async function handleRefreshToken(
         refreshData,
         refreshData.family_id,
         'store-rotated-token',
+        expiresAtMs,
       );
       return temporaryAuthFailure();
     }
@@ -791,6 +797,7 @@ async function handleRefreshToken(
       refreshData,
       refreshData.family_id,
       'store-rotated-token',
+      expiresAtMs,
     );
     return temporaryAuthFailure();
   }
@@ -890,7 +897,7 @@ async function applyRateLimit(
   }
   try {
     // Unvalidated credentials and client IDs must not select their own abuse budget.
-    const result = await rl.limit(`ip:${getClientIp(req)}`);
+    const result = await rl.limit(`ip:${getClientRateLimitKey(req)}`);
     // @upstash/ratelimit v2 races Redis against an internal timeout and
     // RESOLVES `{ success: true, reason: 'timeout' }` rather than rejecting,
     // so a slow Redis is indistinguishable from a genuine allow unless we

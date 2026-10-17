@@ -120,6 +120,19 @@ describe('authorization-server metadata — path-scoped probe', () => {
   }
 });
 
+describe('authorization-server metadata — registration method', () => {
+  // DCR only; CIMD is #9244. CIMD-first clients such as Notion and Linear pick
+  // CIMD at discovery when it is advertised and do not fall back to DCR.
+  for (const path of ['/.well-known/oauth-authorization-server', '/.well-known/oauth-authorization-server/mcp']) {
+    it(`${path} steers clients to DCR and does not advertise CIMD`, async () => {
+      const json = await (await get(asHandler, 'worldmonitor.app', path)).json();
+      assert.equal(json.registration_endpoint, 'https://worldmonitor.app/oauth/register');
+      assert.equal('client_id_metadata_document_supported' in json, false);
+      assert.deepEqual(json.token_endpoint_auth_methods_supported, ['none']);
+    });
+  }
+});
+
 describe('the MCP 401 challenge points at the path-scoped document', () => {
   it('wwwAuthHeader carries the /mcp resource metadata URL', async () => {
     const { wwwAuthHeader } = await import('../api/mcp/auth.ts');

@@ -292,11 +292,16 @@ export function dedupeSharedSubtreeComponents(spec) {
   const parentOf = new Map();
   const groups = new Map();
 
-  // Same traversal and overlap bookkeeping as dedupeSharedSchemaSubtrees — the
-  // only difference is the replacement strategy (named component ref instead of
-  // ref-to-shortest-inline-copy) and therefore the profitability arithmetic.
+  // Same overlap bookkeeping as dedupeSharedSchemaSubtrees, with a named
+  // component ref instead of a ref-to-shortest-inline-copy. Unlike that pass,
+  // this one also groups $ref nodes: a repeated ref to a long component name,
+  // or a ref carrying a repeated sibling description, becomes a WMShared ref to
+  // the same content. That adds one resolution hop and is lossless; the
+  // contract test resolves the chains back. On 2026-10-15 these groups freed
+  // about 7 KB and kept the bundle under SCANNER_BUDGET_BYTES; skipping them
+  // put it about 4 KB over.
   const visit = (schema, parent, key) => {
-    if (!schema || typeof schema !== 'object' || Array.isArray(schema) || schema.$ref) return;
+    if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return;
     parentOf.set(schema, parent);
     const serialized = canonical(schema);
     const unitBytes = Buffer.byteLength(serialized, 'utf8');

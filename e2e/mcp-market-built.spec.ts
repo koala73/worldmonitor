@@ -3,13 +3,15 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { buildUiResourceRead, MARKET_RADAR_UI_URI } from '../api/mcp/ui/registry';
+import { terminalChart } from '../src/utils/terminal-chart';
 
 test.describe.configure({ mode: 'serial' });
 let bootstrap: string;
 const fixture = { cached_at: '2026-10-03T18:30:00Z', data: {
   'stocks-bootstrap': { quotes: Array.from({ length: 12 }, (_, i) => ({
-    symbol: 'TEST' + i, name: 'Controlled asset ' + i, price: 100 + i, change: 1.25,
-    sparkline: i === 11 ? [] : [90, 110, 100],
+    symbol: 'TEST' + i, name: 'Controlled asset ' + i, price: i === 0 ? 85233 : 100 + i, change: 1.25,
+    sparkline: i === 11 ? [] : i === 0 ? [86789.9, 83340, 85233]
+      : i === 9 ? [85233, 85233] : i === 10 ? [1234567890120, 1234567890125, 1234567890123.4] : [90, 110, 100],
   })) },
 } };
 
@@ -25,6 +27,27 @@ test.beforeAll(async () => {
     const response = await buildUiResourceRead(1, MARKET_RADAR_UI_URI, {});
     bootstrap = (await response.json()).result.contents[0].text;
   } finally { globalThis.fetch = previous; }
+});
+
+test('narrow chart keeps long price labels and plot geometry in its SVG', async ({ page }) => {
+  const svg = terminalChart([1234567890120, 1234567890125, 1234567890123.4], { width: 120 });
+  await page.setContent(`<style>${readFileSync('src/styles/plugin-market.css', 'utf8')}</style>${svg}`);
+  for (const family of ['monospace', 'serif', 'sans-serif']) {
+    const bounds = await page.locator('svg').evaluate((element, font) => {
+      const chart = element as SVGSVGElement;
+      chart.style.fontFamily = font;
+      const labels = Array.from(chart.querySelectorAll('text'), label => {
+        const box = label.getBBox();
+        return { text: label.textContent, left: box.x, right: box.x + box.width };
+      });
+      return { width: chart.viewBox.baseVal.width, labels, lastX: Number(chart.querySelector('circle')?.getAttribute('cx')) };
+    }, family);
+    expect(bounds.labels.filter(label => label.left < 0 || label.right > bounds.width)).toEqual([]);
+    expect(bounds.lastX).toBeGreaterThan(8);
+    expect(bounds.lastX).toBeLessThan(bounds.width);
+  }
+  await expect(page.locator('svg')).toHaveAttribute('width', '120');
+  await expect(page.locator('svg')).toContainText('LAST 1234567890123.4');
 });
 
 for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 900]] as const) {
@@ -85,7 +108,19 @@ for (const [name, width, height] of [['desktop', 1280, 1000], ['mobile', 390, 90
     await summary.press('Enter');
     await expect(frame.locator('details').first()).toHaveAttribute('open', '');
     await expect(frame.locator('.terminal-chart')).toBeVisible();
-    await expect(frame.locator('.terminal-chart')).toContainText('LAST 100');
+    await expect(frame.locator('.terminal-chart')).toContainText('LAST 85233');
+    await frame.locator('details').evaluateAll(rows => rows.forEach(row => (row as HTMLDetailsElement).open = true));
+    await expect(frame.locator('.terminal-chart')).toHaveCount(11);
+    const clippedLabels = await frame.locator('.terminal-chart').evaluateAll(charts => charts.flatMap(chart => {
+      const svg = chart as SVGSVGElement;
+      return Array.from(svg.querySelectorAll('text')).flatMap(label => {
+        const bounds = label.getBBox();
+        return bounds.x < 0 || bounds.x + bounds.width > svg.viewBox.baseVal.width
+          ? [{ text: label.textContent, left: bounds.x, right: bounds.x + bounds.width, width: svg.viewBox.baseVal.width }]
+          : [];
+      });
+    }));
+    expect(clippedLabels).toEqual([]);
     await expect(frame.locator('#marketUsage')).toContainText('47 panel requests remaining');
     const last = frame.getByText('Controlled asset 11', { exact: true });
     await last.scrollIntoViewIfNeeded();

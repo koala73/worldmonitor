@@ -40,7 +40,7 @@ describe('root dependency cache (#8710)', () => {
     const cache = action.runs.steps.find((step) => step.id === 'node-modules');
     assert.match(cache.uses, /^actions\/cache\/restore@[a-f0-9]{40}$/);
     assert.equal(cache.with.path, 'node_modules');
-    assert.equal(cache.with.key, "node-modules-v2-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', 'package.json', '.npmrc', 'vendor/braces/**') }}");
+    assert.equal(cache.with.key, "node-modules-v2-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', 'package.json', '.npmrc', 'vendor/braces/**', 'vendor/stream-json/**') }}");
     assert.equal(cache.with['restore-keys'], undefined);
   });
 
@@ -73,13 +73,17 @@ describe('root dependency cache (#8710)', () => {
   });
 
   for (const [workflowText, jobIds] of [
-    [testWorkflow, ['unit-shards', 'unit-built-output', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'variant-smoke-pro-webmcp', 'resilience-validation-smoke']],
+    [testWorkflow, ['docs-stats', 'unit-shards', 'unit-built-output', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'variant-smoke-pro-webmcp', 'resilience-validation-smoke']],
+    [read(resolve(workflowsDir, 'perf-style-layout-budget.yml')), ['measure']],
     [lintCodeWorkflow, ['biome', 'markdown']],
     [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck']],
   ] as const) {
     for (const jobId of jobIds) {
       it(`${jobId} uses the shared action after Node 24 setup with npm fallback`, () => {
-        const steps = YAML.parse(workflowText).jobs[jobId].steps;
+        // A `parallel:` group holds its steps in a list; expand it in place so
+        // the action is still found, and the order check still holds.
+        const steps = YAML.parse(workflowText).jobs[jobId].steps
+          .flatMap((step: { parallel?: unknown[] }) => step.parallel ?? [step]);
         const setup = steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
         const install = steps.find((step) => step.uses === './.github/actions/install-root-deps');
         assert.ok(install, `${jobId} must use the shared root dependency action`);
@@ -864,7 +868,7 @@ describe('CI workflow coverage', () => {
     );
     assert.match(
       openPrStep,
-      /git commit -m "chore\(corpus\): refresh[^\n]+\n[\s\S]*npm run build:sitemap\n\s+git add public\/sitemap\.xml public\/sitemap-main\.xml\n[\s\S]*git commit -m "chore\(corpus\): align[^\n]+\n[\s\S]*node scripts\/build-sitemap\.mjs --check\n\s+git push/,
+      /git commit -m "chore\(corpus\): refresh[^\n]+\n[\s\S]*npm run build:sitemap\n\s+git add public\/sitemap\.xml public\/sitemap-main\.xml\n[\s\S]*git commit -m "chore\(corpus\): align[^\n]+\n[\s\S]*node --import tsx scripts\/build-sitemap\.mjs --check\n\s+git push/,
       'publish the sitemap only after regenerating its dates from committed material sources',
     );
   });
@@ -886,10 +890,19 @@ describe('CI workflow coverage', () => {
       assert.match(
         workflowStepBlock(pulseWorkflow, stepName),
         /^\s+if: \$\{\{ !cancelled\(\) && steps\.build\.outcome == 'success' \}\}$/m,
-        `${stepName} must run after a failed verification but never after a rejected build`,
+        `${stepName} requires a successful build and must not run after cancellation`,
       );
     }
     const openPrStep = workflowStepBlock(pulseWorkflow, 'Open the weekly pulse PR');
+    const pruneStep = workflowStepBlock(pulseWorkflow, 'Prune superseded pulse snapshots');
+    assert.ok(pulseWorkflow.indexOf(pruneStep) > pulseWorkflow.indexOf(buildStep));
+    assert.ok(
+      pulseWorkflow.indexOf(verifyStep) > pulseWorkflow.indexOf(pruneStep),
+      'verify the pruned snapshot set that the PR will publish',
+    );
+    assert.ok(pulseWorkflow.indexOf(openPrStep) > pulseWorkflow.indexOf(verifyStep));
+    assert.match(verifyStep, /tests\/brief-relevance\.test\.mjs/);
+    assert.match(verifyStep, /tests\/ci-workflow-coverage\.test\.mts/);
     assert.match(openPrStep, /VERIFY_OUTCOME: \$\{\{ steps\.verify\.outcome \}\}/);
     assert.match(openPrStep, /if \[ "\$VERIFY_OUTCOME" != "success" \]; then\n\s+draft=\(--draft\)/);
     assert.match(openPrStep, /gh pr create[\s\S]*"\$\{draft\[@\]\}"/);
@@ -1003,7 +1016,17 @@ describe('CI workflow coverage', () => {
       [...REQUIRED_CI_SMOKE_SPECS].sort(),
       'test:e2e:ci-smoke must contain exactly the pinned smoke-spec inventory',
     );
-    const shardSpecs = ['test:e2e:ci-smoke:1', 'test:e2e:ci-smoke:2'].map((script) => {
+    // One script per CI shard, read from the matrix so adding a shard without
+    // its spec list (or the reverse) fails here.
+    const smokeShards: number[] = YAML.parse(testWorkflow).jobs['variant-smoke-shards'].strategy.matrix.shard;
+    assert.deepEqual(smokeShards, smokeShards.map((_, i) => i + 1), 'smoke shard indices must be 1..N');
+    const shardScripts = Object.keys(packageScripts).filter((name) => /^test:e2e:ci-smoke:\d+$/.test(name));
+    assert.deepEqual(
+      shardScripts.sort(),
+      smokeShards.map((n) => `test:e2e:ci-smoke:${n}`).sort(),
+      'package.json must define exactly one test:e2e:ci-smoke:<n> script per CI smoke shard',
+    );
+    const shardSpecs = smokeShards.map((n) => `test:e2e:ci-smoke:${n}`).map((script) => {
       const command = packageScripts[script] ?? '';
       const tokens = shellArgvTokens(command);
       assert.deepEqual(
@@ -1016,10 +1039,11 @@ describe('CI workflow coverage', () => {
       assert.equal(new Set(specs).size, specs.length, `${script} must not repeat a spec`);
       return specs;
     });
-    const intersection = shardSpecs[0].filter((spec) => shardSpecs[1].includes(spec));
-    assert.deepEqual(intersection, [], 'ci-smoke shards must be disjoint');
+    const allShardSpecs = shardSpecs.flat();
+    assert.equal(new Set(allShardSpecs).size, allShardSpecs.length, 'ci-smoke shards must be disjoint');
+    assert.ok(shardSpecs.every((specs) => specs.length > 0), 'no ci-smoke shard may be empty');
     assert.deepEqual(
-      [...shardSpecs[0], ...shardSpecs[1]].sort(),
+      [...allShardSpecs].sort(),
       [...REQUIRED_CI_SMOKE_SPECS].sort(),
       'the ci-smoke shard union must equal the pinned smoke-spec inventory',
     );
@@ -1048,10 +1072,39 @@ describe('CI workflow coverage', () => {
         job,
         /id: playwright-install-deps[\s\S]*timeout-minutes: 8[\s\S]*continue-on-error: true[\s\S]*npx playwright install-deps chromium/,
       );
+      // install-deps runs only when ldd finds a library a Playwright browser
+      // cannot resolve. An unconditional install would download ~32 MB of
+      // fonts and Mesa upgrades on every run.
+      const installDeps = YAML.parse(testWorkflow).jobs[jobName].steps
+        .flatMap((step: { parallel?: unknown[] }) => step.parallel ?? [step])
+        .find((step: { id?: string }) => step.id === 'playwright-install-deps');
+      assert.match(installDeps.run, /ldd "\$browser" \| grep 'not found'[\s\S]*exit 0[\s\S]*npx playwright install-deps chromium/);
+      assert.match(installDeps.run, /missing="no Playwright browser binary found"/, 'a missing browser binary must fall through to install-deps');
       assert.match(
         job,
         /steps\.playwright-install-deps\.outcome == 'failure'[\s\S]*pkill -9 apt-get[\s\S]*npx playwright install --with-deps chromium/,
       );
+    }
+  });
+
+  it('installs the locale font subset from a package cache in every browser job', () => {
+    const action = YAML.parse(read(resolve(root, '.github/actions/install-browser-fonts/action.yml')));
+    const steps = action.runs.steps;
+    const download = steps.find((step: { name?: string }) => step.name === 'Download browser font packages on cache miss');
+    const packages = download.run.match(/packages=\(([^)]+)\)/)[1].trim().split(/\s+/);
+    assert.deepEqual(packages, ['fonts-wqy-zenhei', 'fonts-tlwg-loma-otf', 'fonts-lohit-deva']);
+    const keyStep = steps.find((step: { id?: string }) => step.id === 'font-key');
+    for (const pkg of packages) {
+      assert.ok(keyStep.run.includes(pkg), `the font cache key must change when ${pkg} leaves the list`);
+    }
+    assert.equal(download.if, "steps.font-debs.outputs.cache-hit != 'true'");
+    assert.equal(steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/cache/save@')).if, download.if);
+    for (const jobName of ['variant-smoke-shards', 'variant-smoke-pro-webmcp']) {
+      const fonts = YAML.parse(testWorkflow).jobs[jobName].steps
+        .flatMap((step: { parallel?: unknown[] }) => step.parallel ?? [step])
+        .find((step: { uses?: string }) => step.uses === './.github/actions/install-browser-fonts');
+      assert.ok(fonts, `${jobName} must install the browser fonts`);
+      assert.equal(fonts['continue-on-error'], true, `${jobName}: a font install failure must not fail the job`);
     }
   });
 
@@ -2304,6 +2357,7 @@ describe('privileged publish and auto-merge conditions', () => {
       expression.replace(/\.([A-Za-z_][A-Za-z0-9_]*(?:-[A-Za-z0-9_]+)+)/g, "['$1']"),
       {
         startsWith: (haystack: unknown, needle: unknown) => String(haystack).startsWith(String(needle)),
+        contains: (haystack: unknown, needle: unknown) => String(haystack).includes(String(needle)),
         format: (template: string, ...args: unknown[]) =>
           template.replace(/\{(\d+)\}/g, (_, index: string) => String(args[Number(index)])),
         cancelled: () => false,
@@ -2378,56 +2432,53 @@ describe('privileged publish and auto-merge conditions', () => {
     return enables;
   };
 
-  it('publishes `latest` only from main or a release, and semver only from a tag ref', () => {
+  it('moves `latest` only for a non-prerelease v* tag ref, never from a push, the cron or main', () => {
     const enables = tagEnableExpressions();
 
     const latest = [...enables.entries()].find(([key]) => key.includes('latest'));
     assert.ok(latest, 'docker-publish.yml must keep a type=raw latest tag entry');
-    const semver = [...enables.entries()].filter(([key]) => key.startsWith('type=semver'));
-    assert.equal(semver.length, 2, 'docker-publish.yml must keep both semver tag entries');
 
-    for (const [event_name, ref, latestExpected, semverExpected] of [
-      // A release cuts the version tags and moves `latest`.
-      ['release', 'refs/tags/v2.5.23', true, true],
-      // The scheduled rebuild is why `latest` follows main at all.
-      ['schedule', 'refs/heads/main', true, false],
-      // Repair path for a failed rebuild: republish `latest` without a release.
-      ['workflow_dispatch', 'refs/heads/main', true, false],
-      // Mirror repair path: re-cut the version tags from a release tag. Gating
-      // the semver entries on the EVENT instead of the ref silently loses this.
-      ['workflow_dispatch', 'refs/tags/v2.5.23', false, true],
+    for (const [event_name, ref, latestExpected] of [
+      // A release a person publishes by hand moves `latest`.
+      ['release', 'refs/tags/v2.5.23', true],
+      // build-desktop.yml publishes with GITHUB_TOKEN, which raises no release
+      // event, so it dispatches the build on the tag instead. Gating on the
+      // event rather than the ref would leave that build without `latest`.
+      ['workflow_dispatch', 'refs/tags/v2.5.23', true],
+      // A pre-release must not move what self-hosters pull.
+      ['release', 'refs/tags/v2.6.0-rc.1', false],
+      ['workflow_dispatch', 'refs/tags/v2.6.0-rc.1', false],
+      // Main-side runs publish their sha tag alone. The push trigger fires on
+      // every docker-relevant merge, so letting it move `latest` would re-point
+      // what self-hosters pull to unreleased code several times an hour.
+      ['push', 'refs/heads/main', false],
+      ['schedule', 'refs/heads/main', false],
+      ['workflow_dispatch', 'refs/heads/main', false],
       // The case that must never regress: a feature branch cannot move `latest`.
-      ['workflow_dispatch', 'refs/heads/feature/x', false, false],
-    ] as [string, string, boolean, boolean][]) {
-      const github = { event_name, ref };
+      ['workflow_dispatch', 'refs/heads/feature/x', false],
+      // A tag not named v<version> is not a release.
+      ['workflow_dispatch', 'refs/tags/nightly', false],
+    ] as [string, string, boolean][]) {
       assert.equal(
-        evaluateExpression(latest[1], { github }),
+        evaluateExpression(latest[1], { github: { event_name, ref } }),
         latestExpected,
         `latest on ${event_name}/${ref}`,
       );
-      for (const [key, expression] of semver) {
-        assert.equal(
-          evaluateExpression(expression, { github }),
-          semverExpected,
-          `${key} on ${event_name}/${ref}`,
-        );
-      }
     }
 
-    // A prefix match on the branch name would let these through.
-    for (const ref of ['refs/heads/main-experiment', 'refs/heads/mainline']) {
-      assert.equal(
-        evaluateExpression(latest[1], { github: { event_name: 'workflow_dispatch', ref } }),
-        false,
-        `latest on ${ref}`,
-      );
-    }
-    // Only the sha entry may be unconditional, and exactly one entry may move
-    // `latest`: a second, ungated line would publish it from anywhere.
+    // The semver entries need no gate of their own: metadata-action reads them
+    // only from a tag ref and returns early otherwise. Everything else that
+    // publishes must be gated, so that a stray unconditional `latest` line (or
+    // any other tag a push could re-point) fails here. Only the sha entry and
+    // the two semver ones may be unconditional.
     assert.deepEqual(
-      [...enables.entries()].filter(([, expression]) => expression === 'true').map(([key]) => key),
-      ['type=sha,prefix=sha-'],
-      'every tag entry except the sha one must be gated',
+      [...enables.entries()].filter(([, expression]) => expression === 'true').map(([key]) => key).sort(),
+      [
+        'type=semver,pattern={{major}}.{{minor}}',
+        'type=semver,pattern={{version}}',
+        'type=sha,prefix=sha-',
+      ],
+      'every tag entry except the semver and sha ones must be gated',
     );
     assert.equal([...enables.keys()].filter((key) => key.includes('latest')).length, 1, 'exactly one entry may move latest');
     // And the build that pushes must consume those gated tags, not a literal.
@@ -2568,8 +2619,8 @@ describe('privileged publish and auto-merge conditions', () => {
   it('leaves `latest` to the explicit raw entry rather than metadata-action\'s latest=auto', () => {
     const metaStep = dockerPublish.jobs.docker.steps.find((step: { id?: string }) => step.id === 'meta');
     // `latest=auto` is the default and appends `latest` whenever a semver tag
-    // resolves, which would put it on any tag ref -- including a dispatch
-    // against an OLD release tag -- behind the back of the raw entry above.
+    // resolves, which would put it on any tag ref -- a pre-release included --
+    // behind the back of the raw entry above.
     assert.match(String(metaStep.with.flavor ?? ''), /latest=false/);
   });
 

@@ -228,7 +228,11 @@ function collectIlostatSeries(rows, dimension, acceptedCodes) {
       || (row?.UNIT_MEASURE && row.UNIT_MEASURE !== 'PS')
     ) continue;
     const key = `${iso2}:${year}`;
-    byCountry.set(key, { ...(byCountry.get(key) || {}), [code]: value * (10 ** multiplier) });
+    const values = byCountry.get(key) || {};
+    const sources = values[code] || new Map();
+    sources.set(String(row?.SOURCE || '').trim(), value * (10 ** multiplier));
+    values[code] = sources;
+    byCountry.set(key, values);
   }
   return byCountry;
 }
@@ -245,36 +249,54 @@ export function parseIlostatWorkforceCsv(occupationCsv, economicCsv) {
   for (const [countryYear, values] of occupations) {
     const [iso2, rawYear] = countryYear.split(':');
     if (values.OCU_ISCO08_7 == null || values.OCU_ISCO08_8 == null) continue;
+    const sources = [...values.OCU_ISCO08_7.keys()].filter((source) => values.OCU_ISCO08_8.has(source));
+    if (sources.length !== 1) continue;
+    const source = sources[0];
     const year = Number(rawYear);
     if (!occupationByCountry.has(iso2) || year > occupationByCountry.get(iso2).year) {
-      occupationByCountry.set(iso2, { year, ...values });
+      occupationByCountry.set(iso2, {
+        year,
+        source: source ? `${ILOSTAT_SOURCE}: ${source}` : ILOSTAT_SOURCE,
+        craft: values.OCU_ISCO08_7.get(source),
+        operators: values.OCU_ISCO08_8.get(source),
+      });
     }
   }
   for (const [countryYear, values] of economy) {
     const [iso2, rawYear] = countryYear.split(':');
-    const total = values.ECO_AGGREGATE_TOTAL;
-    const manufacturing = values.ECO_AGGREGATE_MAN;
-    if (total == null || manufacturing == null || total <= 0 || manufacturing > total) continue;
+    if (values.ECO_AGGREGATE_TOTAL == null || values.ECO_AGGREGATE_MAN == null) continue;
+    const sources = [...values.ECO_AGGREGATE_TOTAL.keys()].filter((source) => {
+      const total = values.ECO_AGGREGATE_TOTAL.get(source);
+      const manufacturing = values.ECO_AGGREGATE_MAN.get(source);
+      return manufacturing != null && total > 0 && manufacturing <= total;
+    });
+    if (sources.length !== 1) continue;
+    const source = sources[0];
     const year = Number(rawYear);
     if (!economyByCountry.has(iso2) || year > economyByCountry.get(iso2).year) {
-      economyByCountry.set(iso2, { year, total, manufacturing });
+      economyByCountry.set(iso2, {
+        year,
+        source: source ? `${ILOSTAT_SOURCE}: ${source}` : ILOSTAT_SOURCE,
+        total: values.ECO_AGGREGATE_TOTAL.get(source),
+        manufacturing: values.ECO_AGGREGATE_MAN.get(source),
+      });
     }
   }
 
   for (const [iso2, values] of occupationByCountry) {
-    upsertCountry(countries, iso2, 'craftTradesEmploymentPeople', observation(values.OCU_ISCO08_7, values.year, ILOSTAT_SOURCE));
-    upsertCountry(countries, iso2, 'plantMachineOperatorsEmploymentPeople', observation(values.OCU_ISCO08_8, values.year, ILOSTAT_SOURCE));
+    upsertCountry(countries, iso2, 'craftTradesEmploymentPeople', observation(values.craft, values.year, values.source));
+    upsertCountry(countries, iso2, 'plantMachineOperatorsEmploymentPeople', observation(values.operators, values.year, values.source));
     upsertCountry(countries, iso2, 'trainedIndustrialWorkforcePeople', observation(
-      values.OCU_ISCO08_7 + values.OCU_ISCO08_8,
+      values.craft + values.operators,
       values.year,
-      ILOSTAT_SOURCE,
+      values.source,
     ));
   }
   for (const [iso2, values] of economyByCountry) {
     upsertCountry(countries, iso2, 'manufacturingEmploymentSharePercent', observation(
       (values.manufacturing / values.total) * 100,
       values.year,
-      ILOSTAT_SOURCE,
+      values.source,
       { max: 100 },
     ));
   }

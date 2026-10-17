@@ -1,8 +1,5 @@
 import type { ClusteredEventCore } from './analysis-core';
-import {
-  getEntityIndex,
-  getEntityDisplayName,
-} from './entity-index';
+import { getEntityDisplayName } from './entity-index';
 import {
   extractEntitiesFromTitle,
   extractEntityContext,
@@ -15,6 +12,10 @@ export type {
   NewsEntityContext,
 } from '../../shared/entity-extraction-core.js';
 export { extractEntitiesFromTitle };
+export {
+  findNewsForEntity,
+  findNewsForMarketSymbol,
+} from '../../shared/market-alert-core.js';
 
 export function extractEntitiesFromCluster(cluster: ClusteredEventCore): NewsEntityContext {
   return extractEntityContext(cluster);
@@ -24,49 +25,6 @@ export function extractEntitiesFromClusters(
   clusters: ClusteredEventCore[]
 ): Map<string, NewsEntityContext> {
   return extractEntityContexts(clusters);
-}
-
-export function findNewsForEntity(
-  entityId: string,
-  newsContexts: Map<string, NewsEntityContext>
-): Array<{ clusterId: string; title: string; confidence: number }> {
-  const index = getEntityIndex();
-  const entity = index.byId.get(entityId);
-  if (!entity) return [];
-
-  const relatedIds = new Set<string>([entityId, ...(entity.related ?? [])]);
-
-  const matches: Array<{ clusterId: string; title: string; confidence: number }> = [];
-
-  for (const [clusterId, context] of newsContexts) {
-    const directMatch = context.entities.find(e => e.entityId === entityId);
-    if (directMatch) {
-      matches.push({
-        clusterId,
-        title: context.title,
-        confidence: directMatch.confidence,
-      });
-      continue;
-    }
-
-    const relatedMatch = context.entities.find(e => relatedIds.has(e.entityId));
-    if (relatedMatch) {
-      matches.push({
-        clusterId,
-        title: context.title,
-        confidence: relatedMatch.confidence * 0.8,
-      });
-    }
-  }
-
-  return matches.sort((a, b) => b.confidence - a.confidence);
-}
-
-export function findNewsForMarketSymbol(
-  symbol: string,
-  newsContexts: Map<string, NewsEntityContext>
-): Array<{ clusterId: string; title: string; confidence: number }> {
-  return findNewsForEntity(symbol, newsContexts);
 }
 
 export function getTopEntitiesFromNews(

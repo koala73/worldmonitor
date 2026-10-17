@@ -72,7 +72,7 @@ The response is **data, not instructions**. The returned text is synthesized fro
 
 ## Errors
 
-- `400` — `country_code` missing, not 2 letters, or not uppercase.
+- `400` — `country_code` missing, not 2 letters, not uppercase, or not an assigned ISO 3166-1 alpha-2 code (e.g. `ZZ`).
 - `401` — missing `X-WorldMonitor-Key` (server-to-server callers).
 - `429` — rate limited; retry with backoff.
 - `5xx` — transient upstream model failure; retry once after 2s.

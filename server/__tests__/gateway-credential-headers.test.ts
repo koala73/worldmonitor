@@ -165,10 +165,10 @@ describe('credential-bearing headers force a private tier (#8400)', () => {
       { file: 'api/widget-agent.ts', header: 'X-Api-Key' },
       { file: 'api/widget-agent.ts', header: 'X-Widget-Key' },
       { file: 'api/widget-agent.ts', header: 'X-Pro-Key' },
-      { file: 'api/embed/entitlement.ts', header: 'X-WorldMonitor-Key' },
-      { file: 'api/embed/entitlement.ts', header: 'X-Api-Key' },
-      { file: 'api/embed/session.ts', header: 'X-WorldMonitor-Key' },
-      { file: 'api/embed/session.ts', header: 'X-Api-Key' },
+      // api/embed/{entitlement,session}.ts resolve through this helper;
+      // tests/embed-session.test.mts pins that delegation.
+      { file: 'server/_shared/embed-key.ts', header: 'X-WorldMonitor-Key' },
+      { file: 'server/_shared/embed-key.ts', header: 'X-Api-Key' },
       { file: 'server/_shared/premium-check.ts', header: 'X-WorldMonitor-Key' },
       { file: 'server/_shared/premium-check.ts', header: 'X-Api-Key' },
       { file: 'server/worldmonitor/shipping/v2/webhook-shared.ts', header: 'X-WorldMonitor-Key' },

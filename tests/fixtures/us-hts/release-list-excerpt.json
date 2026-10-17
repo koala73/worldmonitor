@@ -1,0 +1,40 @@
+[
+ {
+  "id": {
+   "timestamp": 1791388513,
+   "date": 1791388513000
+  },
+  "name": "2026HTSRev21",
+  "description": "2026 HTS Revision 21",
+  "date": "10/07/2026",
+  "time": "11:55:13",
+  "title": "Revision 21 (2026)",
+  "creator": "Heidi Yoo",
+  "status": "current",
+  "target": "10/09/2026",
+  "releaseStartDate": "10/09/2026",
+  "releaseEndDate": null,
+  "mergedRevisions": [
+   "6ac66c7c2bd28da9fcaca847"
+  ]
+ },
+ {
+  "id": {
+   "timestamp": 1790166779,
+   "date": 1790166779000
+  },
+  "name": "2026HTSRev20",
+  "description": "2026 HTS Revision 20",
+  "date": "09/23/2026",
+  "time": "08:32:59",
+  "title": "Revision 20 (2026)",
+  "creator": "Heidi Yoo",
+  "status": "archive",
+  "target": "09/28/2026",
+  "releaseStartDate": "09/28/2026",
+  "releaseEndDate": "10/09/2026",
+  "mergedRevisions": [
+   "6ab3c7aa5c44c04ee43d5535"
+  ]
+ }
+]

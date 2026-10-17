@@ -1,4 +1,5 @@
 import { COUNTRY_READERS, countryReadResultSchema, type CountryReader } from '../../shared/country-brief-host';
+import { RAW_SIGNAL_ENVELOPE_BYTES, rawSignalsResultSchema } from '../../shared/country-raw-signals';
 import { CountrySectionError } from './country-brief-error';
 export { CountrySectionError } from './country-brief-error';
 
@@ -44,15 +45,18 @@ export function createHostCountryFetch(call: (name: string, args: object, signal
         try {
           requestSignal.throwIfAborted();
           const raw = await call('get_country_brief_section', { section, arguments: args }, requestSignal);
-          const result = countryReadResultSchema.parse(raw);
+          const result = section === 'signalsRaw' ? rawSignalsResultSchema.parse(raw) : countryReadResultSchema.parse(raw);
           if (result.section !== section as CountryReader) throw new Error('Country section identity mismatch');
-          if (result.state !== 'ready') throw new CountrySectionError(result.state, result.reason);
+          requestSignal.throwIfAborted();
+          if (section !== 'signalsRaw' && result.state !== 'ready') throw new CountrySectionError(result.state, result.reason ?? 'The section is unavailable.');
+          if (!('value' in result)) throw new Error('Missing country value');
           const requestedCountry = 'country_code' in args ? args.country_code : 'countryCode' in args ? args.countryCode : 'iso2' in args ? args.iso2 : undefined;
-          const returnedCountry = result.value.countryCode ?? result.value.iso2;
-          if (requestedCountry && returnedCountry && requestedCountry !== returnedCountry) throw new Error('Country identity mismatch');
+          const returnedCountry = result.value.countryCode ?? ('iso2' in result.value ? result.value.iso2 : undefined);
+          if (requestedCountry && (section === 'signalsRaw' ? requestedCountry !== returnedCountry : returnedCountry && requestedCountry !== returnedCountry)) throw new Error('Country identity mismatch');
           const text = JSON.stringify(result.value);
           const bytes = new TextEncoder().encode(text).length;
-          if (bytes <= MAX_ENTRY_BYTES && !requestSignal.aborted && result.value.upstreamUnavailable !== true
+          if (section === 'signalsRaw' && new TextEncoder().encode(JSON.stringify(result)).length > RAW_SIGNAL_ENVELOPE_BYTES) throw new Error('Signals envelope exceeds its byte limit');
+          if (result.state === 'ready' && bytes <= MAX_ENTRY_BYTES && !requestSignal.aborted && (!('upstreamUnavailable' in result.value) || result.value.upstreamUnavailable !== true)
             && !(Array.isArray(result.value.missing) && result.value.missing.length)) {
             while (cacheBytes + bytes > MAX_CACHE_BYTES && cache.size) {
               const oldest = cache.keys().next().value!;

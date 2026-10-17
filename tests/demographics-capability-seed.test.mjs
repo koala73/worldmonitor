@@ -79,6 +79,62 @@ describe('demographics capability source parsers (#6437)', () => {
     assert.equal(result.countries.US?.manufacturingEmploymentSharePercent, undefined, 'economic rows from different years must not be divided');
   });
 
+  it('preserves the original source of each ILOSTAT dimension without inferring observation quality', () => {
+    const occupation = fixture('ilostat-occupation.csv');
+    const economic = fixture('ilostat-economic.csv');
+    const original = parseIlostatWorkforceCsv(occupation, economic).countries.DE;
+    for (const metric of ['craftTradesEmploymentPeople', 'plantMachineOperatorsEmploymentPeople', 'trainedIndustrialWorkforcePeople']) {
+      assert.equal(original[metric].source, 'ILOSTAT: LFS - EU Labour Force Survey');
+      assert.equal(original[metric].year, 2025);
+    }
+    assert.equal(original.manufacturingEmploymentSharePercent.source, 'ILOSTAT: ILO - Modelled Estimates');
+    const survey = parseIlostatWorkforceCsv(occupation, economic.replaceAll('ILO - Modelled Estimates', 'LFS - EU Labour Force Survey')).countries.DE;
+    assert.deepEqual(survey.manufacturingEmploymentSharePercent, {
+      ...original.manufacturingEmploymentSharePercent,
+      source: 'ILOSTAT: LFS - EU Labour Force Survey',
+    });
+    const statusChanged = parseIlostatWorkforceCsv(occupation, economic.replaceAll(',A,NB,', ',Z,NB,')).countries.DE;
+    assert.deepEqual(statusChanged, original, 'OBS_STATUS is not a supplied quality classification');
+    assert.deepEqual(Object.keys(original.manufacturingEmploymentSharePercent).sort(), ['source', 'value', 'year']);
+  });
+
+  it('keeps blank or missing ILOSTAT SOURCE generic and preserves measured zero', () => {
+    const occupation = fixture('ilostat-occupation.csv').replaceAll('LFS - EU Labour Force Survey', '').replace('2025,4602.43,', '2025,0,');
+    const economic = fixture('ilostat-economic.csv').replaceAll('ILO - Modelled Estimates', '').replace('2025,7604.915,', '2025,0,');
+    const result = parseIlostatWorkforceCsv(occupation, economic).countries.DE;
+    assert.deepEqual(result.craftTradesEmploymentPeople, { value: 0, year: 2025, source: 'ILOSTAT' });
+    assert.deepEqual(result.manufacturingEmploymentSharePercent, { value: 0, year: 2025, source: 'ILOSTAT' });
+    const withoutSource = (csv) => csv.split('\n').map((line) => line.slice(0, line.lastIndexOf(','))).join('\n');
+    assert.deepEqual(parseIlostatWorkforceCsv(withoutSource(occupation), withoutSource(economic)).countries.DE, result);
+  });
+
+  it('selects an older common source/year instead of combining mismatched ILOSTAT rows', () => {
+    const changeLatestSecondSource = (csv, code) => csv.split('\n').map((line) => (
+      line.includes(`,${code},2025,`) ? `${line.slice(0, line.lastIndexOf(','))},Different survey` : line
+    )).join('\n');
+    const occupation = changeLatestSecondSource(fixture('ilostat-occupation.csv'), 'OCU_ISCO08_8');
+    const economic = changeLatestSecondSource(fixture('ilostat-economic.csv'), 'ECO_AGGREGATE_MAN');
+    const result = parseIlostatWorkforceCsv(occupation, economic).countries.DE;
+    assert.equal(result.trainedIndustrialWorkforcePeople.year, 2024);
+    assert.equal(result.trainedIndustrialWorkforcePeople.value, 7_056_336);
+    assert.equal(result.trainedIndustrialWorkforcePeople.source, 'ILOSTAT: LFS - EU Labour Force Survey');
+    assert.equal(result.manufacturingEmploymentSharePercent.year, 2024);
+    assert.equal(result.manufacturingEmploymentSharePercent.source, 'ILOSTAT: ILO - Modelled Estimates');
+    const noOlderRows = (csv) => csv.split('\n').filter((line) => !line.includes(',2024,')).join('\n');
+    assert.equal(parseIlostatWorkforceCsv(noOlderRows(occupation), noOlderRows(economic)).countries.DE, undefined);
+  });
+
+  it('rejects competing complete same-year sources without a row-order preference', () => {
+    const addAlternative = (csv) => `${csv.trim()}\n${csv.split('\n').filter((line) => line.includes(',DEU,') && line.includes(',2025,')).map((line) => `${line.slice(0, line.lastIndexOf(','))},Alternative survey`).join('\n')}\n`;
+    const occupation = addAlternative(fixture('ilostat-occupation.csv'));
+    const economic = addAlternative(fixture('ilostat-economic.csv'));
+    const result = parseIlostatWorkforceCsv(occupation, economic).countries.DE;
+    assert.equal(result.trainedIndustrialWorkforcePeople.year, 2024);
+    assert.equal(result.manufacturingEmploymentSharePercent.year, 2024);
+    const reverseRows = (csv) => { const [header, ...rows] = csv.trim().split('\n'); return `${header}\n${rows.reverse().join('\n')}\n`; };
+    assert.deepEqual(parseIlostatWorkforceCsv(reverseRows(occupation), reverseRows(economic)).countries.DE, result);
+  });
+
   it('rejects an HTTP-200 stage that loses a required metric family', () => {
     const countries = Object.fromEntries(Array.from({ length: 150 }, (_, index) => [
       `C${index}`,

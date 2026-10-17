@@ -131,7 +131,7 @@ function runtimeIsoDaysAgo(days: number): string {
 function runtimeServerInsights(overrides: Partial<ServerInsights> = {}): ServerInsights {
   return {
     worldBrief: 'Threat timeline test brief',
-    briefProvider: 'groq',
+    briefProvider: 'openrouter',
     status: 'ok' as const,
     topStories: [
       serverStory({

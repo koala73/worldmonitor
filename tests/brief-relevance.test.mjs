@@ -76,16 +76,14 @@ describe('brief relevance replay over the 2026-09-28 frozen snapshot', () => {
   // 2026-09-28 freeze published 101 briefs; the filter may cost only those
   // whose grounding was the noise itself (Kenya: every other row is one
   // publisher; Cape Verde: the only curated row is a FIFA story).
-  const snapshot = JSON.parse(readFileSync(new URL('../docs/snapshots/crawlable-live-pulse-2026-09-28.json', import.meta.url), 'utf8'));
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/brief-relevance-2026-09-28.json', import.meta.url), 'utf8'));
 
   it('keeps at least 90 of the 101 published briefs grounded', () => {
     let published = 0;
     let stillGrounded = 0;
-    for (const country of Object.values(snapshot.countries)) {
-      const developments = country?.developments;
-      if (!developments?.brief) continue;
+    for (const headlines of Object.values(fixture.countries)) {
       published += 1;
-      const eligible = developments.headlines.filter((row) => isBriefRelevantTitle(row.title));
+      const eligible = headlines.filter((row) => isBriefRelevantTitle(row.title));
       if (briefGroundingGap(eligible) === null) stillGrounded += 1;
     }
     assert.equal(published, 101);

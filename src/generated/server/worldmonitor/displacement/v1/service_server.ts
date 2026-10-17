@@ -57,6 +57,50 @@ export interface DisplacementFlow {
   asylumLocation?: GeoCoordinates;
 }
 
+export interface GetInternalDisplacementRequest {
+  countryCode: string;
+}
+
+export interface GetInternalDisplacementResponse {
+  operations: InternalDisplacementOperation[];
+  fetchedAt: number;
+  dataAvailable: boolean;
+}
+
+export interface InternalDisplacementOperation {
+  countryCode: string;
+  countryName: string;
+  operation: string;
+  reportingDate: string;
+  roundNumber: number;
+  totalIdps: number;
+  reasons: InternalDisplacementReason[];
+  regions: InternalDisplacementRegion[];
+  flows: InternalDisplacementFlow[];
+}
+
+export interface InternalDisplacementReason {
+  reason: string;
+  idps: number;
+}
+
+export interface InternalDisplacementRegion {
+  pcode: string;
+  name: string;
+  idps: number;
+  location?: GeoCoordinates;
+}
+
+export interface InternalDisplacementFlow {
+  originPcode: string;
+  originName: string;
+  destinationPcode: string;
+  destinationName: string;
+  idps: number;
+  originLocation?: GeoCoordinates;
+  destinationLocation?: GeoCoordinates;
+}
+
 export interface GetPopulationExposureRequest {
   mode: string;
   lat: number;
@@ -130,6 +174,7 @@ export interface RouteDescriptor {
 
 export interface DisplacementServiceHandler {
   getDisplacementSummary(ctx: ServerContext, req: GetDisplacementSummaryRequest): Promise<GetDisplacementSummaryResponse>;
+  getInternalDisplacement(ctx: ServerContext, req: GetInternalDisplacementRequest): Promise<GetInternalDisplacementResponse>;
   getPopulationExposure(ctx: ServerContext, req: GetPopulationExposureRequest): Promise<GetPopulationExposureResponse>;
 }
 
@@ -166,6 +211,53 @@ export function createDisplacementServiceRoutes(
 
           const result = await handler.getDisplacementSummary(ctx, body);
           return new Response(JSON.stringify(result as GetDisplacementSummaryResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/displacement/v1/get-internal-displacement",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetInternalDisplacementRequest = {
+            countryCode: params.get("country_code") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getInternalDisplacement", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getInternalDisplacement(ctx, body);
+          return new Response(JSON.stringify(result as GetInternalDisplacementResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

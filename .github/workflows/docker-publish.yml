@@ -2,18 +2,24 @@ name: Publish Docker image
 
 # Publishes ghcr.io/koala73/worldmonitor.
 #
-# What puts a ceiling on the age of the published image is the push trigger
-# below, not the schedule: before either existed, the workflow ran on
-# `release: published` and manual dispatch only, so between two releases
-# nothing rebuilt and the image aged without bound.
+# Two kinds of run. A release tag (a release a person publishes, or the dispatch
+# build-desktop.yml sends for the one it publishes itself) cuts the version tags
+# and, unless it is a pre-release, moves `latest`. A push to main, the weekly
+# cron and a dispatch against main publish `sha-<commit>` alone and never move
+# `latest` — see the tag block below.
 #
-# The rebuild follows `main` rather than the last release tag on purpose. Both
-# FROM lines in docker/Dockerfile are pinned to an immutable digest and
+# The main-side runs exist so that a change to docker/Dockerfile, or a base
+# image bump, is built, smoke-tested and published within minutes of merging
+# instead of surfacing at the next release. Before either trigger existed, the
+# workflow ran on `release: published` and manual dispatch only, so the first
+# execution of a Dockerfile change was whatever release came next.
+#
+# They follow `main` rather than the last release tag on purpose. Both FROM
+# lines in docker/Dockerfile are pinned to an immutable digest and
 # tests/ci-workflow-coverage.test.mts requires that, so rebuilding a tag
 # verbatim reproduces the same base byte for byte and buys nothing. A base fix
-# reaches the image only once Dependabot has moved the pin on main, which is
-# therefore where the rebuild has to read from. The consequence is that
-# `latest` tracks main, not the newest release — see the tag block below.
+# reaches an image only once Dependabot has moved the pin on main, which is
+# therefore where the rebuild has to read from.
 #
 # What gates an unattended publish: the build itself (docker/Dockerfile asserts
 # its own output), then a smoke test that actually runs the image and requests
@@ -28,9 +34,10 @@ name: Publish Docker image
 # without repository activity; they then have to be re-enabled by hand from the
 # Actions tab. A run that never happens raises no alarm on its own, which is
 # what the failure issue below is a partial answer to. The push trigger is
-# immune to that 60-day disablement, so it is what actually keeps `latest`
-# fresh in practice; the schedule is the backstop for whatever the push trigger
-# misses — a workflow-dispatch of the wrong ref, a webhook delivery outage.
+# immune to that 60-day disablement, so it is what actually keeps the main-side
+# runs going in practice; the schedule is the backstop for whatever the push
+# trigger misses — a workflow-dispatch of the wrong ref, a webhook delivery
+# outage.
 
 on:
   release:
@@ -78,9 +85,10 @@ on:
     #
     # This is what makes the schedule below a backstop rather than the primary
     # mechanism: a Dependabot base-image bump or an ordinary application change
-    # now republishes `latest` within minutes of merging, not up to a week
-    # later. Action bumps live under .github/ and do not trigger it; they reach
-    # the image with the next rebuild.
+    # now builds, smoke-tests and publishes its `sha-*` image within minutes of
+    # merging, not up to a week later. `latest` itself moves with the next
+    # release. Action bumps live under .github/ and do not trigger it; they
+    # reach the image with the next rebuild.
     paths:
       - '**'
       - '!*.md'
@@ -126,11 +134,12 @@ on:
 # itself rather than "is this a tag" covers every ref that isn't main with the
 # same rule, including ones this workflow does not use today.
 #
-# The cost is that a tag run and a main run can overlap. Both may push
-# `latest` (a release's own run publishes it), and whichever finishes last
-# wins; the next main rebuild puts `latest` back on main, which is what it
-# tracks by design. Each registry push of a tag is a single manifest write,
-# so overlap reorders `latest`, it does not tear it.
+# The cost is that a tag run and a main run can overlap. Apart from `sha-*`
+# they publish different tags -- the version tags and `latest` only from the tag
+# run -- so neither can overwrite what the other pushes. When a release is cut
+# at main's head both runs write the same `sha-<commit>`; they build the same
+# commit, so whichever finishes last leaves equivalent content. Each registry
+# push of a tag is a single manifest write, so an overlap tears nothing.
 #
 # cancel-in-progress stays false because an in-progress build has no way to
 # know it will be superseded before its push, and cancelling it there risks a
@@ -176,27 +185,20 @@ jobs:
           images: ghcr.io/koala73/worldmonitor
           # `latest=auto` is the default, and it appends `latest` on its own
           # whenever a semver tag resolves. That would put `latest` on any tag
-          # ref, including a dispatch against an old release tag. Turning it off
-          # makes the `type=raw` line below the single place `latest` is decided.
+          # ref, a pre-release included. Turning it off makes the `type=raw`
+          # line below the single place `latest` is decided.
           flavor: latest=false
-          # The semver entries are gated on the REF, not the event, because that
-          # is what metadata-action itself keys on: procSemver returns early
-          # unless the ref starts with refs/tags/. Gating them on
-          # `event_name == 'release'` instead would silently drop the version
-          # tags from a manual dispatch against a release tag — the repair path
-          # for a failed release run, and the mirror of the main-dispatch repair
-          # for `latest` below.
-          #
-          # `latest` was gated on the event being a release, which is why it had
-          # never been published. It now follows the default branch too: a
-          # scheduled run always runs there, and a manual dispatch from main can
-          # repair `latest` after a failed rebuild without cutting a release.
-          # A dispatch from any other branch still publishes its `sha-*` tag
-          # alone, so `latest` cannot be moved onto a feature branch by hand.
+          # `latest` follows a release tag, whether it arrives as a release event
+          # or as the dispatch build-desktop.yml sends (its publish raises none).
+          # A push, the weekly cron or a dispatch against main publishes its
+          # `sha-*` tag alone: only a non-prerelease v* tag ref moves `latest`
+          # (any tag ref cuts its version tag, a pre-release its full
+          # pre-release version), so a rebuild of main can never re-point what
+          # self-hosters pull.
           tags: |
-            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/') }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/') }}
-            type=raw,value=latest,enable=${{ github.event_name == 'release' || github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
             type=sha,prefix=sha-
 
       # Build one platform into the local daemon first so the next step can
@@ -216,7 +218,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # The gate that stands between a broken main and the `latest` tag people
+      # The gate that stands between a broken main and the images people
       # pull. docker/Dockerfile's own `test -s` assertions prove files exist and
       # are non-empty; they cannot catch an nginx config that fails to start or
       # a route that 404s, and the runtime stage is copy-only with nothing
@@ -317,10 +319,11 @@ jobs:
       # Nobody watches an unattended rebuild. A push-triggered run fails after
       # its PR has already merged, and a scheduled one on a seven-day cadence;
       # either is invisible until someone opens the Actions tab, and the whole
-      # point of both triggers is that the published image cannot go stale --
-      # so a rebuild of main that stopped working has to say so somewhere
-      # durable. The push trigger is the primary freshness mechanism, so its
-      # failures are the ones most worth reporting. One open issue,
+      # point of both triggers is that a Dockerfile that stopped building is
+      # caught when it merges rather than at the next release -- so a rebuild
+      # of main that stopped working has to say so somewhere durable. The push
+      # trigger runs on every relevant merge, so its failures are the ones most
+      # worth reporting. One open issue,
       # re-commented rather than duplicated, in the manner of
       # orphaned-stacked-merge-monitor.yml.
       - name: Report a failed rebuild of main
@@ -335,12 +338,12 @@ jobs:
           TITLE: 'Docker rebuild of main failed'
         run: |
           set -euo pipefail
-          body="The ${GITHUB_EVENT_NAME}-triggered rebuild of ghcr.io/koala73/worldmonitor failed, so \`latest\` still points at the previous image and its age is no longer bounded.
+          body="The ${GITHUB_EVENT_NAME}-triggered rebuild of ghcr.io/koala73/worldmonitor failed, so no \`sha-*\` image was published for this commit and the Dockerfile on \`main\` is unverified until it passes again.
 
           Run: ${RUN_URL}
           Commit: ${GITHUB_SHA}
 
-          Once the cause is fixed on \`main\`, dispatch this workflow from \`main\` to republish \`latest\` without waiting for the next relevant merge or the Wednesday cron."
+          Once the cause is fixed on \`main\`, dispatch this workflow from \`main\` to rebuild without waiting for the next relevant merge or the Wednesday cron."
 
           existing="$(gh issue list --state open --search "\"${TITLE}\" in:title" --json number,title \
             --jq "[.[] | select(.title == \"${TITLE}\")] | first | .number // empty")"

@@ -48,9 +48,19 @@ function readProtoDeprecations() {
   for (const file of walkFiles(protoDir, name => name.endsWith('.proto'))) {
     const src = readFileSync(file, 'utf8');
 
-    // Top-level message bodies end at a column-zero brace in this corpus.
-    for (const message of src.matchAll(/^message\s+(\w+)\s*\{([\s\S]*?)^\}/gm)) {
-      const [, messageName, body] = message;
+    // Top-level message bodies end at a column-zero brace in this corpus. An
+    // empty `message X {}` closes on its own line; without that branch its body
+    // ran to the next message's brace and took that message's fields.
+    const messages = [...src.matchAll(/^message\s+(\w+)\s*\{(?:\s*\}|([\s\S]*?)^\})/gm)];
+    // A message shape this parser does not know (a one-line message with
+    // fields, a nested message) would move a deprecation onto the wrong
+    // schema silently, so a count mismatch stops the generator instead.
+    const declared = (src.match(/^message\s+\w+/gm) ?? []).length;
+    if (messages.length !== declared || /^[ \t]+message\s+\w+\s*\{/m.test(src)) {
+      throw new Error(`openapi-inject-deprecated: ${file} has a message shape this parser cannot attribute fields in (parsed ${messages.length} of ${declared} top-level messages, or a nested message); teach readProtoDeprecations that shape`);
+    }
+    for (const message of messages) {
+      const [, messageName, body = ''] = message;
       const fields = new Map();
       for (const field of body.matchAll(
         /^\s*(?:repeated\s+)?(?:map<[^>]+>|[\w.]+)\s+(\w+)\s*=\s*\d+\s*\[([^\]]*\bdeprecated\s*=\s*true[^\]]*)\]\s*;/gm,

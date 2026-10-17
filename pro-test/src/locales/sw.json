@@ -390,7 +390,7 @@
     "fCloudOnPrem": "Cloud/on-prem/air-gap",
     "fStandard": "Standard",
     "fKeyAuth": "Uthibitisho wa ufunguo",
-    "fSsoMfa": "SSO/MFA/RBAC/audit",
+    "fSsoMfa": "SSO/MFA/RBAC/ukaguzi",
     "noteBelow": "Jukwaa la msingi linabaki libre. Mipango ya kulipwa inafungua utafiti wa hisa, uchambuzi wa uchumi mkuu, na arifa za AI, na matumizi ya shirikishi.",
     "f50plus": "Inapatikana",
     "sourcesRow": "Vyanzo",
@@ -451,10 +451,10 @@
   "soonBadge": "Karibu",
   "welcome": {
     "meta": {
-      "title": "World Monitor — Dashibodi ya Kijamii-Simu ya Wakati Halisi Bila Malipo",
-      "description": "Kufikia wakati inakuwa habari, tayari ulikuwa unajua. Migogoro, njia nyeti, ndege za kijeshi, masoko, cyber: ramani moja ya moja kwa moja bila malipo yenye uchambuzi wa AI. Hakuna usajili.",
-      "ogTitle": "World Monitor — Wakati ilivyokuwa hadithi, tayari ulijua.",
-      "ogDescription": "Maajabu ya dunia — meli, ndege, mvua ya kengele, kebo, soko — kwenye ramani moja ya kijamii-simu ya wakati halisi, na AI inayofungua wakati inapogeana. Libre, hakuna jina lako."
+      "title": "World Monitor: Dashibodi ya bure ya ujasusi wa kijiopolitiki",
+      "description": "World Monitor: dashibodi ya ujasusi wa kijiopolitiki kwa wakati halisi. Ramani hai ya bure ya migogoro, meli, ndege, masoko na mtandao, na API na seva ya MCP.",
+      "ogTitle": "World Monitor: Dashibodi ya bure ya ujasusi wa kijiopolitiki",
+      "ogDescription": "World Monitor: dashibodi ya ujasusi wa kijiopolitiki kwa wakati halisi. Ramani hai ya bure ya migogoro, meli, ndege, masoko na mtandao, na API na seva ya MCP."
     },
     "nav": {
       "useCases": "Mahusiano",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Dashibodi ya akili za kimataifa · sasa moja kwa moja",
-      "headline1": "Wakati itakuwa habari,",
-      "headline2": "wewe tayari ulijua.",
-      "sub": "Habari ni kuchelewesha. World Monitor inapiga mtiririko wa mawimbi ya ulimwengu — mitambo ya baharini, ndege, sireni, kebo, soko — kwenye ramani moja tu ya moja kwa moja, na AI inayofanya alama wakati inakuja kuwa kitu kinachohitaji.",
+      "headline1": "Dashibodi ya ujasusi wa kijiopolitiki",
+      "headline2": "kwa wakati halisi",
+      "sub": "Wakati itakuwa habari, wewe tayari ulijua.",
       "ctaPrimary": "Anzisha dashibodi",
       "ctaFree": "Bure · Hapana usajili · Hupakiki kwa sekunde",
       "ctaSecondary": "Tazama jinsi watu wanavyotumia ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor si Palantir ya chanzo wazi",
       "asOf": "Kufikia {{date}}",
       "whatIsTitle": "World Monitor ni nini?",
-      "whatIsBody": "World Monitor ni dashibodi ya bure ($0), yenye chanzo wazi (AGPL-3.0) inayotumiwa na watu 2M+. Inatiririsha {{feeds}} milisho ya habari na OSINT kutoka kwa watoa huduma {{providers}} waliotajwa kwenye ramani moja hai ya dunia yenye aina {{mapLayers}} za tabaka za ramani, ikishughulikia jiopolitiki, masoko, usafirishaji wa baharini, usafiri wa anga na mtandao. Inazilinganisha ili matukio yanayokutana yajitokeze kabla ya vichwa vya habari. Kila takwimu ina chanzo na kila mbinu imeandikwa."
+      "whatIsBody": "World Monitor ni dashibodi ya bure ($0), yenye chanzo wazi (AGPL-3.0) inayotumiwa na watu 2M+. Inatiririsha {{feeds}} milisho ya habari na OSINT kutoka kwa watoa huduma {{providers}} waliotajwa kwenye ramani moja hai ya dunia yenye aina {{mapLayers}} za tabaka za ramani, ikishughulikia jiopolitiki, masoko, usafirishaji wa baharini, usafiri wa anga na mtandao. Inazilinganisha ili matukio yanayokutana yajitokeze kabla ya vichwa vya habari. Kila takwimu ina chanzo na kila mbinu imeandikwa.",
+      "whatIsBestFor": "Bora kwa wachambuzi, wanahabari, wafanyabiashara wa masoko na wasanidi programu wanaohitaji ishara za kijiografia na kisiasa za moja kwa moja."
     },
     "live": {
       "eyebrow": "Moja kwa moja sasa sasa",
@@ -690,7 +691,9 @@
       "a10": "Palantir inafanya data ya taasisi operative ndani ya taasisi hiyo. World Monitor inaanza kutoka upande mwingine: inakusanya, kurekezesha, kuhusiana, na kufuatilia data ya dunia nyingi, kisha kuchapisha tabaka hilo la akili kupitia dasibodi ya bure na nambari wazi. Kazi tofauti, bidhaa tofauti.",
       "q11": "Ni leseni gani ya World Monitor ninayohitaji?",
       "a11": "Chagua kulingana na nani atakayetumia matokeo. Leseni ya Personal ya Pro ni kwa mtu mmoja anayetumia World Monitor kwa utafiti na maamuzi yao. Pro Business inaruhusu mtumiaji mmoja aliyepewa leseni kuutumia kwa kazi ya kampuni au mteja, zana za ndani, na ripoti. API Starter inakamatia matumizi ya API ndani ya taasisi moja, bila kusambaza mteja. API Business inaruhusu taasisi hiyo kuingeza data ya World Monitor katika bidhaa na huduma kwa wateja wake. Enterprise inakamatia viti vya kaida, kuweka lebo, na usambazaji. Leseni hizi za usomaji wa sukari ni tofauti na leseni za nambari ya AGPL/MIT. Masharti kamili: worldmonitor.app/docs/terms.",
-      "sub": "{{answers}} majibu ya moja kwa moja kuhusu bei, data, arifa na upatikanaji wa AI. Muhtasari: dashboard hiyo inagharimu $0, haihitaji akaunti, na msimbo ni open source chini ya AGPL-3.0."
+      "sub": "{{answers}} majibu ya moja kwa moja kuhusu bei, data, arifa na upatikanaji wa AI. Muhtasari: dashboard hiyo inagharimu $0, haihitaji akaunti, na msimbo ni open source chini ya AGPL-3.0.",
+      "q12": "Ni programu gani bora zaidi ya kufuatilia migogoro na misukosuko ya dunia inayoripotiwa kwenye habari?",
+      "a12": "World Monitor ni chaguo la bure na la chanzo huria: hutiririsha milisho {{feeds}} ya habari na OSINT kutoka kwa watoa huduma {{providers}} waliotajwa kwa majina kwenye ramani moja ya dunia ya moja kwa moja yenye aina {{mapLayers}} za tabaka za ramani, ikijumuisha siasa za kijiografia, masoko, usafirishaji wa majini, usafiri wa anga na usalama wa mtandao. Huiunganisha ili misukosuko inayotokea kwa pamoja ionekane kabla ya kuingia kwenye vichwa vya habari. Ili kuilinganisha na zana nyingine, angalia worldmonitor.app/compare/best-geopolitical-risk-dashboards."
     },
     "cta": {
       "title": "Ninaanzia vipi kuangalia ramani ya dunia?",

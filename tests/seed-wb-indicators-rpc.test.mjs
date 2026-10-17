@@ -37,26 +37,29 @@ globalThis.fetch = async (input, init) => {
   }
   if (url.hostname !== 'api.worldbank.org') throw new Error('Unexpected network host ' + url.hostname);
   const indicator = url.pathname.split('/').at(-1);
+  if (indicator === 'IP.TMK.TOTL') return Response.json([{ message: [{ id: '175', key: 'Invalid format', value: 'The indicator was not found. It may have been deleted or archived.' }] }]);
+  if (indicator === config.failTrademark) return Response.json([{ message: 'Provider unavailable' }]);
   if (config.failGdp && indicator === 'NY.GDP.MKTP.CD') return Response.json([{ message: 'Provider unavailable' }]);
   const [start, end] = url.searchParams.get('date').split(':').map(Number);
-  const rows = [2000, 2024, 2025].filter(year => year >= start && year <= end).flatMap(year =>
+  const trademarkValue = { 'IP.TMK.RSCT': 551764, 'IP.TMK.NRCT': 347735 }[indicator];
+  const rows = (trademarkValue ? [2021] : [2000, 2024, 2025]).filter(year => year >= start && year <= end).flatMap(year =>
     [['USA', 'US'], ['CHI', 'JG']].map(([iso3, iso2]) => ({
       countryiso3code: iso3, country: { id: iso2, value: iso3 },
-      indicator: { value: indicator }, date: String(year), value: 42,
+      indicator: { value: indicator }, date: String(year), value: trademarkValue ?? 42,
     })));
   return Response.json([{ pages: 1, total: rows.length }, rows]);
 };
 process.on('exit', () => writeFileSync(process.env.WB_FIXTURE_RESULT, JSON.stringify({ cache: Object.fromEntries(cache), commands })));
 `;
 
-function runSeed({ cache = {}, failGdp = false } = {}) {
+function runSeed({ cache = {}, failGdp = false, failTrademark } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'wb-rpc-seed-'));
   try {
     const importPath = join(dir, 'fetch.mjs');
     const config = join(dir, 'config.json');
     const resultPath = join(dir, 'result.json');
     writeFileSync(importPath, preload);
-    writeFileSync(config, JSON.stringify({ now: fetchedAt, cache, failGdp }));
+    writeFileSync(config, JSON.stringify({ now: fetchedAt, cache, failGdp, failTrademark }));
     const child = spawnSync(process.execPath, ['--import', importPath, seeder], {
       env: {
         PATH: process.env.PATH,
@@ -104,6 +107,30 @@ test('ranking drop preservation still publishes the first RPC snapshots', () => 
   assert.equal(JSON.parse(run.cache[gdpKey]).data.length, 6);
   assert.ok(run.cache[`seed-meta:${gdpKey}`]);
 });
+
+test('seeds both current trademark series when the archived total is unavailable', () => {
+  const run = runSeed();
+  assert.equal(run.status, 0, run.log);
+  for (const [indicator, value] of [['IP.TMK.RSCT', 551764], ['IP.TMK.NRCT', 347735]]) {
+    for (const years of [5, 30]) {
+      const key = `${prefix}${indicator}:all:${years}:2026`;
+      const row = JSON.parse(run.cache[key]).data.find(row => row.countryCode === 'USA');
+      assert.equal(row.indicatorCode, indicator);
+      assert.equal(row.year, 2021);
+      assert.equal(row.value, value);
+      assert.equal(JSON.parse(run.cache[`seed-meta:${key}`]).recordCount, 2);
+    }
+  }
+  assert.equal(run.commands.some(command => command[1].includes('IP.TMK.TOTL')), false);
+});
+
+for (const indicator of ['IP.TMK.RSCT', 'IP.TMK.NRCT']) {
+  test(`missing ${indicator} still fails the complete catalogue check`, () => {
+    const run = runSeed({ failTrademark: indicator });
+    assert.equal(run.status, 1, run.log);
+    assert.ok(run.log.includes(`RPC snapshots missing for ${indicator}`), run.log);
+  });
+}
 
 test('a missing catalogue snapshot makes the seeder fail instead of verifying one healthy sample', () => {
   const run = runSeed({ failGdp: true });

@@ -148,6 +148,45 @@ describe('fetchJevLabel', () => {
     assert.deepEqual(Object.keys(JSON.parse(seen.init.body).questions), ['l0'], 'one question: 618 tokens, not 1,030');
   });
 
+  it('posts to the endpoint it is given', async () => {
+    let seen;
+    await fetchJevLabel('Strike on port', 200, {
+      apiKey: 'k', endpoint: 'http://127.0.0.1:8766/v1/systemone',
+      fetchFn: async (url) => { seen = url; return respond(200, okBody); },
+    });
+    assert.equal(seen, 'http://127.0.0.1:8766/v1/systemone');
+  });
+
+  it('reads TYPESAFE_BASE_URL when no endpoint is given', async () => {
+    const before = process.env.TYPESAFE_BASE_URL;
+    process.env.TYPESAFE_BASE_URL = 'http://localhost:8766';
+    try {
+      let seen;
+      await fetchJevLabel('Strike on port', 200, {
+        apiKey: 'k', fetchFn: async (url) => { seen = url; return respond(200, okBody); },
+      });
+      assert.equal(seen, 'http://localhost:8766/v1/systemone');
+    } finally {
+      if (before === undefined) delete process.env.TYPESAFE_BASE_URL;
+      else process.env.TYPESAFE_BASE_URL = before;
+    }
+  });
+
+  it('never sends the key to a remote plain-http endpoint', async () => {
+    let calls = 0;
+    const fetchFn = async () => { calls += 1; return respond(200, okBody); };
+    assert.equal(await fetchJevLabel('t', 200, { apiKey: 'k', endpoint: 'http://jev.example.com/v1/systemone', fetchFn }), null);
+    const before = process.env.TYPESAFE_BASE_URL;
+    process.env.TYPESAFE_BASE_URL = 'http://jev.example.com';
+    try {
+      assert.equal(await fetchJevLabel('t', 200, { apiKey: 'k', fetchFn }), null);
+    } finally {
+      if (before === undefined) delete process.env.TYPESAFE_BASE_URL;
+      else process.env.TYPESAFE_BASE_URL = before;
+    }
+    assert.equal(calls, 0);
+  });
+
   it('returns null on a network error, a non-retryable status, and an unparseable body', async () => {
     assert.equal(await fetchJevLabel('t', 200, { apiKey: 'k', fetchFn: async () => { throw new Error('x'); } }), null);
     assert.equal(await fetchJevLabel('t', 200, { apiKey: 'k', fetchFn: async () => respond(401, {}) }), null);

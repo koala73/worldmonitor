@@ -1,7 +1,12 @@
+import { ApiError } from '../../../../src/generated/server/worldmonitor/shipping/v2/service_server';
 import { CHOKEPOINT_REGISTRY } from '../../../_shared/chokepoint-registry';
 import { isBlockedResolvedAddress } from '../../../_shared/ip-address-classification';
 
 export const WEBHOOK_TTL = 86400 * 30; // 30 days
+// Every live subscriber, across owners. The delivery worker prunes ids whose
+// record has expired, so this set carries no TTL.
+export const ALL_INDEX_KEY = 'webhook:all:v1';
+export const DELIVERY_FAILURE_CEILING = 5;
 export const VALID_CHOKEPOINT_IDS = new Set(CHOKEPOINT_REGISTRY.map(c => c.id));
 
 // Private IP ranges + known cloud metadata hostnames blocked at registration
@@ -154,13 +159,20 @@ export function ownerIndexKey(ownerHash: string): string {
   return `webhook:owner:${ownerHash}:v1`;
 }
 
-/** SHA-256 hash of the resolved API credential — used as ownerTag and owner index key. Never secret. */
+/**
+ * SHA-256 hash of the resolved API credential — used as ownerTag and owner index key. Never secret.
+ *
+ * Every caller runs `validateApiKey(req, { forceKey: true })` first, so a
+ * missing credential here is a wiring bug, not a tenant. It used to fall back
+ * to the literal `'anon'`, which would have folded every such caller into one
+ * shared owner bucket; throwing keeps that failure loud instead of silent.
+ */
 export async function callerFingerprint(req: Request, resolvedCredential?: string): Promise<string> {
   const key = resolvedCredential
     ?? req.headers.get('X-WorldMonitor-Key')
     ?? req.headers.get('X-Api-Key')
     ?? '';
-  if (!key) return 'anon';
+  if (!key) throw new ApiError(401, 'API key required', '');
   const encoded = new TextEncoder().encode(key);
   const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -175,4 +187,9 @@ export interface WebhookRecord {
   createdAt: string;
   active: boolean;
   secret: string;
+  failureCount?: number;
+  lastDeliveryAt?: string;
+  lastDeliveryStatus?: number | null;
+  lastDeliveryError?: string;
+  deactivatedAt?: string;
 }

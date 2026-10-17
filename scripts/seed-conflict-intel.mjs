@@ -47,6 +47,7 @@ import {
 } from './_conflict-hapi.mjs';
 import { makeSeedHistoryAfterPublish } from './_seed-history.mjs';
 import { resolveIso2 } from './_country-resolver.mjs';
+import { pizzintVenuePoint } from './shared/pizzint-location.cjs';
 
 export {
   HAPI_HDX_MAX_RESPONSE_BYTES,
@@ -1235,7 +1236,7 @@ export async function fetchAllHumanitarianSummaries({
 
 // ─── PizzINT Status ───
 
-async function fetchPizzintStatus() {
+export async function fetchPizzintStatus() {
   const resp = await fetch('https://www.pizzint.watch/api/dashboard-data', {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(10_000),
@@ -1251,7 +1252,7 @@ async function fetchPizzintStatus() {
     isSpike: d.is_spike, spikeMagnitude: d.spike_magnitude ?? 0,
     dataSource: d.data_source, recordedAt: d.recorded_at,
     dataFreshness: d.data_freshness === 'fresh' ? 'DATA_FRESHNESS_FRESH' : 'DATA_FRESHNESS_STALE',
-    isClosedNow: d.is_closed_now ?? false, lat: d.lat ?? 0, lng: d.lng ?? 0,
+    isClosedNow: d.is_closed_now ?? false, ...(pizzintVenuePoint(d) ?? { lat: 0, lng: 0 }),
   }));
 
   const open = locations.filter(l => !l.isClosedNow);
