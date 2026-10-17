@@ -37,6 +37,7 @@ const {
   buildWebhookDeliveryHeaders,
   resolveWebhookSigningSecret,
 } = require('./lib/notification-webhook-signing.cjs');
+const { buildTeamsDigestPayload, sendTeamsPayload } = require('./lib/notification-teams.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { flushPendingLlmEvents } = require('./lib/llm-telemetry.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
@@ -122,6 +123,12 @@ import { readCooldownConfig } from './lib/digest-cooldown-config.mjs';
 import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
 import { buildDigestDeliveryPlan } from './lib/digest-delivery-plan.mjs';
+import {
+  attachDigestCorroboration,
+  digestCoverageText,
+  digestWebhookStory,
+  readStoryCorroboration,
+} from './lib/digest-corroboration.mjs';
 import { buildTickerDictionary } from '../shared/ticker-extract.js';
 import { scanAndEnqueueWatchlistStoryEvents as scanWatchlistStoryEvents } from './lib/watchlist-story-scan.mjs';
 
@@ -817,6 +824,9 @@ async function buildDigest(rule, windowStartMs) {
       // the LLM's top-ranked story is a corroborated flashpoint-diplomacy
       // development.
       entityCorroborationCount: parseInt(track.entityCorroborationCount ?? '0', 10) || 0,
+      // #9213: the verdict list-feed-digest served for this variant, stored
+      // on the track row; attachDigestCorroboration resolves it per item.
+      corroboration: readStoryCorroboration(track, variant, lang),
     });
   }
 
@@ -933,6 +943,8 @@ async function buildDigest(rule, windowStartMs) {
       }
     }
   }
+  // #9213: per-item corroboration, after sources are hydrated.
+  attachDigestCorroboration(dedupedAll, stories);
   const ruleKey = `${variant}:${lang}:${rule.sensitivity ?? 'high'}`;
   await writeReplayLog({
     stories,
@@ -1051,7 +1063,8 @@ function formatDigest(stories, nowMs, target = 'plain') {
       const src = item.sources.length > 0
         ? ` [${item.sources.slice(0, 3).join(', ')}${item.sources.length > 3 ? ` +${item.sources.length - 3}` : ''}]`
         : '';
-      lines.push(`  \u2022 ${formatDigestItemTitle(stripSourceSuffix(item.title), item.link, target)}${esc(src)}`);
+      const coverage = digestCoverageText(item);
+      lines.push(`  \u2022 ${formatDigestItemTitle(stripSourceSuffix(item.title), item.link, target)}${esc(src)}${coverage ? esc(` \u00b7 ${coverage}`) : ''}`);
       // Append the RSS description as a short context line when upstream
       // persisted one. Truncated at a word boundary to ~200 chars to keep
       // the plain-text email terse. Empty \u2192 no context line (R6).
@@ -1298,6 +1311,25 @@ async function sendDiscord(userId, webhookEnvelope, text) {
   }
 }
 
+async function sendTeams(userId, webhookEnvelope, payload) {
+  let webhookUrl;
+  try { webhookUrl = decrypt(webhookEnvelope); } catch (err) {
+    console.warn(`[digest] Teams decrypt failed for ${userId}:`, err.message); return false;
+  }
+  const result = await sendTeamsPayload(webhookUrl, payload, { userAgent: 'worldmonitor-digest/1.0' });
+  if (result.gone) {
+    console.warn(`[digest] Teams workflow gone for ${userId}, deactivating`);
+    await deactivateChannel(userId, 'teams');
+    return false;
+  }
+  if (!result.ok) {
+    console.warn(`[digest] Teams send failed for ${userId}: ${result.error}`);
+    return false;
+  }
+  console.log(`[digest] Teams delivered to ${userId}`);
+  return true;
+}
+
 async function sendEmail(email, subject, text, html, channel = null) {
   const unsubscribeUrl = unsubscribeUrlFor(channel, 'brief');
   const label = 'Unsubscribe from the daily brief';
@@ -1333,7 +1365,7 @@ async function sendWebhook(userId, webhookEnvelope, stories, aiSummary, webhookS
   const payload = JSON.stringify({
     version: '1',
     eventType: 'digest',
-    stories: stories.map(s => ({ title: s.title, severity: s.severity, phase: s.phase, sources: s.sources })),
+    stories: stories.map(digestWebhookStory),
     summary: aiSummary ?? null,
     storyCount: stories.length,
   });
@@ -2539,6 +2571,17 @@ async function main() {
         ok = await sendSlack(rule.userId, ch.webhookEnvelope, slackText);
       } else if (ch.channelType === 'discord' && ch.webhookEnvelope) {
         ok = await sendDiscord(rule.userId, ch.webhookEnvelope, discordText);
+      } else if (ch.channelType === 'teams' && ch.webhookEnvelope) {
+        // Same stories, lead and brief link as the other channels, as an
+        // Adaptive Card (#9215). The card renders its own story list, so it
+        // takes formatterStories rather than a formatDigest text target;
+        // titles get the same source-suffix strip formatDigest applies.
+        ok = await sendTeams(rule.userId, ch.webhookEnvelope, buildTeamsDigestPayload({
+          title: storyListPlain.split('\n')[0],
+          summary: briefLead,
+          stories: formatterStories.map((story) => ({ ...story, title: stripSourceSuffix(story.title) })),
+          briefUrl: magazineUrl,
+        }));
       } else if (ch.channelType === 'email' && ch.email) {
         ok = await sendEmail(ch.email, subject, text, html, ch);
       } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {

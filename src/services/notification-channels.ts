@@ -5,7 +5,7 @@ import {
 } from '@/services/billing-retry';
 import { SITE_VARIANT } from '@/config/variant';
 
-export type ChannelType = 'telegram' | 'slack' | 'email' | 'discord' | 'webhook' | 'web_push';
+export type ChannelType = 'telegram' | 'slack' | 'email' | 'discord' | 'teams' | 'webhook' | 'web_push';
 export type Sensitivity = 'all' | 'high' | 'critical';
 export type QuietHoursOverride = 'critical_only' | 'silence_all' | 'batch_on_wake';
 export type DigestMode = 'realtime' | 'daily' | 'twice_daily' | 'weekly';
@@ -318,6 +318,37 @@ export async function startDiscordOAuth(signal?: AbortSignal): Promise<ChannelOA
   if (!res.ok) throw new Error(`discord oauth start: ${res.status}`);
   const data = await res.json() as ChannelOAuthLaunch;
   return data;
+}
+
+async function responseErrorMessage(res: Response, fallback: string): Promise<string> {
+  const failure = await res.json().catch(() => null) as { error?: unknown } | null;
+  return res.status === 400 && typeof failure?.error === 'string' && failure.error ? failure.error : fallback;
+}
+
+/** Microsoft Teams Workflows webhook (#9215). The gateway rejects non-Microsoft hosts with a 400 and a reason. */
+export async function setTeamsChannel(
+  webhookUrl: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await authFetch('/api/notification-channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'set-channel', channelType: 'teams', webhookEnvelope: webhookUrl }),
+  }, undefined, signal);
+  if (!res.ok) throw new Error(await responseErrorMessage(res, 'Could not connect Teams. Please try again.'));
+}
+
+/** Queue a test card to a connected channel. Only Teams supports it. */
+export async function sendChannelTest(
+  channelType: 'teams',
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await authFetch('/api/notification-channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'send-test', channelType }),
+  }, undefined, signal);
+  if (!res.ok) throw new Error(await responseErrorMessage(res, 'Could not send a test message. Please try again.'));
 }
 
 export async function deleteChannel(

@@ -9868,6 +9868,11 @@ a.prediction-link:hover {
   color: var(--accent);
 }
 
+/* #9213: the coverage pill sizes to its text inside the column row. */
+.popup-news-item .corroboration-flag {
+  align-self: flex-start;
+}
+
 /* Vessel Popup Enhancements */
 .popup-title-row {
   display: flex;

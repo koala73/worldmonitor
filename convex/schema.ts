@@ -171,6 +171,16 @@ export default defineSchema({
         discordGuildId: v.optional(v.string()),
         discordChannelId: v.optional(v.string()),
       }),
+      // Microsoft Teams (#9215): an encrypted Workflows webhook URL. The
+      // gateway restricts the host to Microsoft's webhook domains before
+      // encrypting; the relay re-checks at delivery.
+      v.object({
+        userId: v.string(),
+        channelType: v.literal("teams"),
+        webhookEnvelope: v.string(),
+        verified: v.boolean(),
+        linkedAt: v.number(),
+      }),
       v.object({
         userId: v.string(),
         channelType: v.literal("webhook"),

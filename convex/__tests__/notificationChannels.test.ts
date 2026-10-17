@@ -360,6 +360,57 @@ describe("notificationChannels — live delete/deactivate (ungated)", () => {
     ).toMatchObject([{ channelType: "telegram", verified: false }]);
   });
 
+  test("a Teams channel round-trips through set-channel, alert rules and relay deactivate (#9215)", async () => {
+    process.env.CONVEX_TENANT_RELAY_SECRET = "relay-secret";
+    process.env.CONVEX_NOTIFICATION_RELAY_SECRET = "delivery-secret";
+    const t = convexTest(schema, modules);
+    await seedEntitlement(t);
+    const post = (path: string, secret: string, body: Record<string, unknown>) => t.fetch(path, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    const set = await post("/relay/notification-channels", "relay-secret", {
+      action: "set-channel",
+      userId: USER.subject,
+      channelType: "teams",
+      webhookEnvelope: "v1:teams-envelope",
+      webhookSecret: "v1:secret-envelope",
+    });
+    expect(set.status).toBe(200);
+    await expect(set.json()).resolves.toMatchObject({ ok: true, isNew: true });
+
+    const rules = await post("/relay/notification-channels", "relay-secret", {
+      action: "set-alert-rules",
+      userId: USER.subject,
+      variant: "full",
+      enabled: true,
+      eventTypes: [],
+      sensitivity: "critical",
+      channels: ["teams"],
+    });
+    expect(rules.status).toBe(200);
+
+    const delivery = await (await post("/relay/channels", "delivery-secret", { userId: USER.subject })).json() as Array<Record<string, unknown>>;
+    const teams = delivery.find((c) => c.channelType === "teams");
+    expect(teams).toMatchObject({ channelType: "teams", webhookEnvelope: "v1:teams-envelope", verified: true });
+    expect(teams).not.toHaveProperty("webhookSecret");
+
+    const deactivate = await post("/relay/deactivate", "delivery-secret", { userId: USER.subject, channelType: "teams" });
+    expect(deactivate.status).toBe(200);
+    expect(
+      await t.query(notificationChannelFns.getChannelsByUserId, { userId: USER.subject }),
+    ).toMatchObject([{ channelType: "teams", verified: false }]);
+    await t.run(async (ctx) => {
+      const rule = await ctx.db
+        .query("alertRules")
+        .withIndex("by_user", (q) => q.eq("userId", USER.subject))
+        .unique();
+      expect(rule?.channels).toEqual(["teams"]);
+    });
+  });
+
   test("deleteChannel and deactivateChannel are internal, not public", () => {
     const deleteRegistered = deleteChannel as unknown as {
       isInternal?: boolean;

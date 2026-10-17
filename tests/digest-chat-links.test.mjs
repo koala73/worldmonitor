@@ -26,6 +26,7 @@ import {
   DIGEST_MEDIUM_LIMIT,
 } from '../scripts/lib/digest-email-html.mjs';
 import { stripSourceSuffix } from '../scripts/lib/brief-dedup-jaccard.mjs';
+import { digestCoverageText } from '../scripts/lib/digest-corroboration.mjs';
 
 const source = readFileSync(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url), 'utf8');
 const parsed = ts.createSourceFile('digest.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
@@ -42,7 +43,7 @@ const { formatDigest, buildChannelBodies, sanitizeTelegramHtml } = runInNewConte
     Intl, Date, RegExp,
     DIGEST_CRITICAL_LIMIT, DIGEST_HIGH_LIMIT, DIGEST_MEDIUM_LIMIT,
     DIVIDER: '─'.repeat(40),
-    stripSourceSuffix, escapeDigestText, formatDigestItemTitle,
+    stripSourceSuffix, digestCoverageText, escapeDigestText, formatDigestItemTitle,
     escapeTelegramHtml, escapeSlackMrkdwn, escapeDiscordText,
     markdownToTelegramHtml, markdownToSlackMrkdwn, markdownToDiscord,
   },

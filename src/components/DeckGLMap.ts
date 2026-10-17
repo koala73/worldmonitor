@@ -62,6 +62,7 @@ import type { WeatherAlert } from '@/services/weather';
 import type { CanadaRoadRecord } from '@/services/canada-roads';
 import type { CanadaAlert } from '@/services/canada-alerts';
 import { escapeHtml } from '@/utils/sanitize';
+import { corroborationLabelHtml } from '@/utils/corroboration-flag';
 import {
   derivePipelinePublicBadge,
   type PipelineEvidenceInput,
@@ -5214,8 +5215,10 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${t('popups.cyberThreat.title')}</strong><br/>${text(obj.severity || t('components.deckgl.tooltip.medium'))} · ${text(obj.country || t('popups.unknown'))}</div>` };
       case 'iran-events-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${t('components.deckgl.layers.iranAttacks')}: ${text(obj.category || '')}</strong><br/>${text((obj.title || '').slice(0, 80))}</div>` };
-      case 'news-locations-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>📰 ${t('components.deckgl.tooltip.news')}</strong><br/>${text(obj.title?.slice(0, 80) || '')}</div>` };
+      case 'news-locations-layer': {
+        const coverage = corroborationLabelHtml(obj.corroboration);
+        return { html: `<div class="deckgl-tooltip"><strong>📰 ${t('components.deckgl.tooltip.news')}</strong><br/>${text(obj.title?.slice(0, 80) || '')}${coverage ? `<br/>${coverage}` : ''}</div>` };
+      }
       case 'positive-events-layer': {
         const catLabel = obj.category ? obj.category.replace(/-/g, ' & ') : 'Positive Event';
         const countInfo = obj.count > 1 ? `<br/><span style="opacity:.7">${numericLabel(obj.count)} sources reporting</span>` : '';

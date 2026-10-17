@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 448809
+    "raw": 450738
   },
   "chunks": {
     "analytics": {
@@ -19,7 +19,7 @@
       "files": 1
     },
     "convex-client": {
-      "raw": 3469,
+      "raw": 5338,
       "files": 1
     },
     "debugbear-rum": {
@@ -55,7 +55,7 @@
       "files": 1
     },
     "main": {
-      "raw": 131329,
+      "raw": 131389,
       "files": 1
     },
     "map-layer-definitions": {
@@ -93,11 +93,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1433836
+      "raw": 1433866
     },
     "chunks": {
       "App": {
-        "raw": 906321,
+        "raw": 906077,
         "files": 1
       },
       "ai-flow-settings": {
@@ -117,7 +117,7 @@
         "files": 1
       },
       "checkout": {
-        "raw": 13657,
+        "raw": 13661,
         "files": 1
       },
       "cloud-prefs-sync": {
@@ -129,7 +129,7 @@
         "files": 1
       },
       "corroboration": {
-        "raw": 22243,
+        "raw": 13002,
         "files": 1
       },
       "cross-domain-storage": {
@@ -137,11 +137,11 @@
         "files": 1
       },
       "feeds": {
-        "raw": 97044,
+        "raw": 97009,
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 120917,
+        "raw": 121828,
         "files": 1
       },
       "index": {
@@ -154,6 +154,10 @@
       },
       "markets": {
         "raw": 9518,
+        "files": 1
+      },
+      "news-credibility": {
+        "raw": 9373,
         "files": 1
       },
       "panel-gating": {
@@ -177,11 +181,7 @@
         "files": 1
       },
       "source-provenance": {
-        "raw": 80811,
-        "files": 1
-      },
-      "source-tiers": {
-        "raw": 8422,
+        "raw": 88495,
         "files": 1
       },
       "storage-facility-registry-store": {

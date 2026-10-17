@@ -21,7 +21,7 @@ import {
   completeStandaloneIdempotency,
   getIdempotencyKey,
 } from './_idempotency.js';
-import { assertNotificationWebhookRegistrationUrlSafe } from './_notification-webhook-ssrf';
+import { assertNotificationWebhookRegistrationUrlSafe, blockedTeamsWebhookUrlReason } from './_notification-webhook-ssrf';
 import { validateBearerToken } from '../server/auth-session';
 import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
 import {
@@ -631,6 +631,13 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         // skipped validation entirely and was encrypted + stored as a junk
         // channel config. The validator rejects empty/blank itself, so the
         // gap value now 400s instead of persisting.
+        // A Teams channel posts only to a Microsoft Workflows webhook
+        // (#9215). Checked before the generic guard so a missing URL and a
+        // non-Microsoft host both fail here, before any DNS lookup.
+        if (channelType === 'teams') {
+          const teamsError = blockedTeamsWebhookUrlReason(webhookEnvelope ?? '');
+          if (teamsError) return finish(json({ error: teamsError }, 400, corsHeaders));
+        }
         if (webhookEnvelope !== undefined) {
           try {
             await assertNotificationWebhookRegistrationUrlSafe(webhookEnvelope);
@@ -704,6 +711,18 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           userAgent: typeof userAgent === 'string' ? userAgent.slice(0, 200) : undefined,
         });
         return finishDurableWelcomeRelay(relay, 'set-web-push', 'web_push');
+      }
+
+      // Re-send the connect card to a connected channel so the user can check
+      // delivery after editing the workflow. Same queue and relay path as the
+      // first-connect welcome; the per-user write limit above bounds it.
+      if (action === 'send-test') {
+        const { channelType } = body;
+        if (channelType !== 'teams') {
+          return finish(json({ error: 'Test send is not available for this channel' }, 400, corsHeaders));
+        }
+        ctx.waitUntil(publishWelcome(session.userId, channelType));
+        return finish(json({ ok: true }, 200, corsHeaders));
       }
 
       if (action === 'delete-channel') {

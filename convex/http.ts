@@ -750,7 +750,7 @@ http.route({
 
     if (
       typeof body.userId !== "string" || !body.userId ||
-      (body.channelType !== "telegram" && body.channelType !== "slack" && body.channelType !== "email" && body.channelType !== "discord" && body.channelType !== "web_push")
+      (body.channelType !== "telegram" && body.channelType !== "slack" && body.channelType !== "email" && body.channelType !== "discord" && body.channelType !== "teams" && body.channelType !== "web_push")
     ) {
       return new Response(JSON.stringify({ error: "MISSING_FIELDS" }), {
         status: 400,
@@ -1028,7 +1028,7 @@ http.route({
           : undefined;
         const setResult = await ctx.runMutation((internal as any).notificationChannels.setChannelForUser, {
           userId,
-          channelType: body.channelType as "telegram" | "slack" | "email" | "webhook",
+          channelType: body.channelType as "telegram" | "slack" | "email" | "teams" | "webhook",
           chatId: body.chatId,
           webhookEnvelope: body.webhookEnvelope,
           email: body.email,
@@ -1096,7 +1096,7 @@ http.route({
         }
         await ctx.runMutation((internal as any).notificationChannels.deleteChannelForUser, {
           userId,
-          channelType: body.channelType as "telegram" | "slack" | "email" | "discord",
+          channelType: body.channelType as "telegram" | "slack" | "email" | "discord" | "teams",
         });
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
@@ -1227,7 +1227,7 @@ http.route({
             enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
             eventTypes: Array.isArray(body.eventTypes) ? (body.eventTypes as string[]) : undefined,
             sensitivity: body.sensitivity as "all" | "high" | "critical" | undefined,
-            channels: Array.isArray(body.channels) ? (body.channels as Array<"telegram" | "slack" | "email" | "discord" | "webhook" | "web_push">) : undefined,
+            channels: Array.isArray(body.channels) ? (body.channels as Array<"telegram" | "slack" | "email" | "discord" | "teams" | "webhook" | "web_push">) : undefined,
             aiDigestEnabled: typeof body.aiDigestEnabled === "boolean" ? body.aiDigestEnabled : undefined,
             digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly" | undefined,
             digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,

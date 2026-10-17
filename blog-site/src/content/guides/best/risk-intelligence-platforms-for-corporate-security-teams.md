@@ -5,7 +5,7 @@ metaTitle: "Best risk intelligence platforms for corporate security teams (2026)
 keywords: "Corporate security teams, best risk intelligence platforms for corporate security teams, GSOC tools, 24/7 incident monitoring, geopolitical alerting, global intelligence tools"
 audience: "Corporate security teams"
 pubDate: "2026-10-02"
-modifiedDate: "2026-10-16"
+modifiedDate: "2026-10-17"
 author: "World Monitor editorial team"
 authorType: "Organization"
 authorUrl: "https://www.worldmonitor.app/"
@@ -22,7 +22,7 @@ This guide is published by World Monitor. We compare public product documentatio
 | Tool | Best fit | Alert delivery and access | Main limit |
 | --- | --- | --- | --- |
 | Dataminr | Enterprise GSOC with facility monitoring and playbooks | Enterprise contract with an availability SLA | Sales cycle and enterprise pricing |
-| World Monitor | Small or mid-size team that runs its own alerting | Rules by country, event type and severity to Slack, Discord, Telegram, email, browser push or HMAC-signed webhook; published self-serve prices | Country scope, not a radius around a facility; no SLA or analyst desk |
+| World Monitor | Small or mid-size team that runs its own alerting | Rules by country, event type and severity to Slack, Microsoft Teams, Discord, Telegram, email, browser push or HMAC-signed webhook; published self-serve prices | Country scope, not a radius around a facility; no SLA or analyst desk |
 | Recorded Future | Cyber plus geopolitical investigations | Licensed modules, APIs and MCP | Entitlements follow the modules you license |
 | Crisis24 | Travelers, notification and assistance | Contracted service | Service scope set by contract |
 
@@ -48,9 +48,9 @@ Dataminr sells proprietary real-time event detection under enterprise contracts 
 
 **Best for a small or mid-size security team that needs alerting it can switch on today.**
 
-World Monitor puts conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets on one map. The core map and panels are free with no account at [worldmonitor.app/dashboard](https://www.worldmonitor.app/dashboard). On the paid Pro plan, alert rules filter by event type, severity (all, high or critical) and country, and deliver to Slack, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256 so your receiving system can check the sender. Delivery is real time or a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item. The setup is documented in the [notifications reference](https://www.worldmonitor.app/docs/api-notifications), and prices are published at [worldmonitor.app/pro](https://www.worldmonitor.app/pro#pricing) with no sales call.
+World Monitor puts conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets on one map. The core map and panels are free with no account at [worldmonitor.app/dashboard](https://www.worldmonitor.app/dashboard). On the paid Pro plan, alert rules filter by event type, severity (all, high or critical) and country, and deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256 so your receiving system can check the sender. Delivery is real time or a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item. The setup is documented in the [notifications reference](https://www.worldmonitor.app/docs/api-notifications), and prices are published at [worldmonitor.app/pro](https://www.worldmonitor.app/pro#pricing) with no sales call.
 
-The limits matter for this reader. Alerts are scoped by country, not by a radius around an address or facility. There is no Microsoft Teams channel. Reaching Teams takes your own relay that receives the signed webhook and reposts it. There is no published availability SLA, no analyst desk, and no travel or evacuation assistance. World Monitor aggregates published reports; it does not verify events on the ground.
+The limits matter for this reader. Alerts are scoped by country, not by a radius around an address or facility. There is no published availability SLA, no analyst desk, and no travel or evacuation assistance. World Monitor aggregates published reports; it does not verify events on the ground.
 
 [World Monitor alert channels](/blog/posts/alerts-notification-channels-worldmonitor/).
 
@@ -74,7 +74,7 @@ Crisis24 Horizon is the choice when the team owns duty of care: traveler visibil
 
 - **You need alerts this week, not after procurement.** Prices are published and self-serve, and alert rules are configured by the team itself.
 - **Your exposure is defined by country.** Rules filter by country, event type and severity (all, high, critical), which matches a team that covers a list of operating countries.
-- **Your operators live in chat or a ticketing tool.** Alerts go to Slack, Discord, Telegram, email, browser push, or an HMAC-SHA256 signed webhook your own system or relay can receive.
+- **Your operators live in chat or a ticketing tool.** Alerts go to Slack, Microsoft Teams, Discord, Telegram, email, browser push, or an HMAC-SHA256 signed webhook your own system or relay can receive.
 - **You want a morning brief your team can check.** Email digests, daily, twice daily or weekly, link every item to the original report.
 - **You want the free map on the wall before you pay.** The core map and panels need no account.
 
