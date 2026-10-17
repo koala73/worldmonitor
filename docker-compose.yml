@@ -5,9 +5,13 @@
 #
 # Quick start:
 #   cp .env.example .env        # add your API keys
-#   docker compose up -d --build
+#   docker compose pull && docker compose up -d   # pull published images (recommended)
+#   docker compose up -d --build                  # or build the three images from source
 #
 # The app will be available at http://localhost:3000
+#
+# Pin a specific release instead of latest (image tags have no leading "v"):
+#   echo "WM_IMAGE_TAG=2.11.0" >> .env && docker compose pull && docker compose up -d
 # =============================================================================
 
 services:
@@ -16,7 +20,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: worldmonitor:latest
+    image: ghcr.io/koala73/worldmonitor-selfhosted:${WM_IMAGE_TAG:-latest}
     container_name: worldmonitor
     ports:
       - "${WM_PORT:-3000}:8080"
@@ -71,7 +75,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.relay
-    image: worldmonitor-ais-relay:latest
+    image: ghcr.io/koala73/worldmonitor-ais-relay:${WM_IMAGE_TAG:-latest}
     container_name: worldmonitor-ais-relay
     environment:
       RELAY_SHARED_SECRET: "${RELAY_SHARED_SECRET:?RELAY_SHARED_SECRET required — generate with: openssl rand -hex 32}"
@@ -115,7 +119,7 @@ services:
     build:
       context: docker
       dockerfile: Dockerfile.redis-rest
-    image: worldmonitor-redis-rest:latest
+    image: ghcr.io/koala73/worldmonitor-redis-rest:${WM_IMAGE_TAG:-latest}
     container_name: worldmonitor-redis-rest
     # The proxy buffers each accepted request body in full (SRH_MAX_BODY_BYTES,
     # 16MB default), so concurrent large publishes multiply. Measured: 64
