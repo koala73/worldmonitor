@@ -32,12 +32,12 @@ function classify({ strlen, meta, activated }) {
 }
 
 describe('shipping webhook worker deployment registration', () => {
-  it('registers a planned always-on scripts-root Railway service with its dependency closure', () => {
+  it('registers an active always-on scripts-root Railway service with its dependency closure', () => {
     const service = registry.find((entry) => entry.service === 'shipping-webhook-worker');
     assert.ok(service);
     assert.equal(service.entry, 'scripts/shipping-webhook-worker.mjs');
     assert.equal(service.deployMode, 'nixpacks-root-scripts');
-    assert.equal(service.lifecycle, 'planned', 'not provisioned in Railway yet');
+    assert.equal(service.lifecycle, undefined, 'provisioned in Railway production 2026-10-17');
     assert.equal(service.startCommand, 'node shipping-webhook-worker.mjs');
     assert.equal(service.cronSchedule, null);
     assert.deepEqual(service.requiredEnv, [

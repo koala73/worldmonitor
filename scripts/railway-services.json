@@ -167,7 +167,6 @@
   {
     "entry": "scripts/shipping-webhook-worker.mjs",
     "deployMode": "nixpacks-root-scripts",
-    "lifecycle": "planned",
     "service": "shipping-webhook-worker",
     "startCommand": "node shipping-webhook-worker.mjs",
     "requiredEnv": [
@@ -191,7 +190,7 @@
       "scripts/shipping-webhook-worker.mjs"
     ],
     "cronSchedule": null,
-    "documentedAt": "scripts/shipping-webhook-worker.mjs (header docblock declares rootDirectory: scripts); planned until the Railway service is provisioned"
+    "documentedAt": "scripts/shipping-webhook-worker.mjs (header docblock declares rootDirectory: scripts); provisioned in Railway production 2026-10-17"
   },
   {
     "entry": "scripts/process-deep-forecast-tasks.mjs",

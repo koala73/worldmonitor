@@ -235,6 +235,14 @@ exact WorldMonitor modules the desk imports. The closure audit in
 `tests/railway-watch-path-audit.test.mjs` fails when a new desk import is not
 watched.
 
+The always-on `shipping-webhook-worker` service
+(`a97fa619-a8f4-4244-9748-6c0f6c3eade3`) was provisioned on 2026-10-17 after
+#9236 merged it as a planned registry entry. It runs from the `scripts` root
+with `node shipping-webhook-worker.mjs`, and its three variables reference
+`ais-relay` (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`,
+`WORLDMONITOR_RELAY_KEY`), so a key rotation there carries over. The same
+change enrolled it in the roster and made its registry entry active.
+
 After linking the CLI to the `world-monitor` production environment, audit the
 live settings with:
 
