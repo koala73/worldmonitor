@@ -123,6 +123,12 @@ import { readCooldownConfig } from './lib/digest-cooldown-config.mjs';
 import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
 import { buildDigestDeliveryPlan } from './lib/digest-delivery-plan.mjs';
+import {
+  attachDigestCorroboration,
+  digestCoverageText,
+  digestWebhookStory,
+  readStoryCorroboration,
+} from './lib/digest-corroboration.mjs';
 import { buildTickerDictionary } from '../shared/ticker-extract.js';
 import { scanAndEnqueueWatchlistStoryEvents as scanWatchlistStoryEvents } from './lib/watchlist-story-scan.mjs';
 
@@ -818,6 +824,9 @@ async function buildDigest(rule, windowStartMs) {
       // the LLM's top-ranked story is a corroborated flashpoint-diplomacy
       // development.
       entityCorroborationCount: parseInt(track.entityCorroborationCount ?? '0', 10) || 0,
+      // #9213: the verdict list-feed-digest served for this variant, stored
+      // on the track row; attachDigestCorroboration resolves it per item.
+      corroboration: readStoryCorroboration(track, variant, lang),
     });
   }
 
@@ -934,6 +943,8 @@ async function buildDigest(rule, windowStartMs) {
       }
     }
   }
+  // #9213: per-item corroboration, after sources are hydrated.
+  attachDigestCorroboration(dedupedAll, stories);
   const ruleKey = `${variant}:${lang}:${rule.sensitivity ?? 'high'}`;
   await writeReplayLog({
     stories,
@@ -1049,7 +1060,8 @@ function formatDigest(stories, nowMs) {
       const src = item.sources.length > 0
         ? ` [${item.sources.slice(0, 3).join(', ')}${item.sources.length > 3 ? ` +${item.sources.length - 3}` : ''}]`
         : '';
-      lines.push(`  \u2022 ${stripSourceSuffix(item.title)}${src}`);
+      const coverage = digestCoverageText(item);
+      lines.push(`  \u2022 ${stripSourceSuffix(item.title)}${src}${coverage ? ` \u00b7 ${coverage}` : ''}`);
       // Append the RSS description as a short context line when upstream
       // persisted one. Truncated at a word boundary to ~200 chars to keep
       // the plain-text email terse. Empty \u2192 no context line (R6).
@@ -1327,7 +1339,7 @@ async function sendWebhook(userId, webhookEnvelope, stories, aiSummary, webhookS
   const payload = JSON.stringify({
     version: '1',
     eventType: 'digest',
-    stories: stories.map(s => ({ title: s.title, severity: s.severity, phase: s.phase, sources: s.sources })),
+    stories: stories.map(digestWebhookStory),
     summary: aiSummary ?? null,
     storyCount: stories.length,
   });

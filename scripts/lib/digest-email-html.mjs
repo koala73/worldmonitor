@@ -8,6 +8,7 @@ import { escapeHtml } from '../_digest-markdown.mjs';
 import { formatStoryPhaseBadge } from '../../shared/story-phase.js';
 import { stripSourceSuffix } from './brief-dedup-jaccard.mjs';
 import { injectEmailSummary } from './email-summary-html.mjs';
+import { digestCoverageText } from './digest-corroboration.mjs';
 
 export const DIGEST_CRITICAL_LIMIT = Infinity;
 export const DIGEST_HIGH_LIMIT = 15;
@@ -74,6 +75,7 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
     const srcText = s.sources.length > 0
       ? s.sources.slice(0, 3).join(', ') + (s.sources.length > 3 ? ` +${s.sources.length - 3}` : '')
       : '';
+    const coverageText = digestCoverageText(s);
     const cleanTitle = stripSourceSuffix(s.title);
     const titleEl = s.link
       ? `<a href="${escapeHtml(s.link)}" style="color: #e0e0e0; text-decoration: none; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(cleanTitle)}</a>`
@@ -90,6 +92,7 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
     const meta = [
       phaseBadge ? `<span style="font-size: 10px; color: ${phaseColor}; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">${phaseCap}</span>` : '',
       srcText ? `<span style="font-size: 11px; color: #555;">${escapeHtml(srcText)}</span>` : '',
+      coverageText ? `<span style="font-size: 11px; color: #888;">${escapeHtml(coverageText)}</span>` : '',
     ].filter(Boolean).join('<span style="color: #333; margin: 0 6px;">&bull;</span>');
     return `<div style="background: #111; border: 1px solid #1a1a1a; border-left: 3px solid ${borderColor}; padding: 12px 16px; margin-bottom: 8px;">${titleEl}${snippetEl}${meta ? `<div style="margin-top: 6px;">${meta}</div>` : ''}</div>`;
   }

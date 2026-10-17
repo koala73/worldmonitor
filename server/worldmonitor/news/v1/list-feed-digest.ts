@@ -99,8 +99,10 @@ import {
 } from '../../../../shared/source-provenance';
 import { computeCredibilityScore } from '../../../../shared/news-credibility.js';
 import {
+  STORY_CORROBORATION_FIELD,
   STORY_LABEL_FIELD,
   countLabels,
+  encodeStoryCorroboration,
   encodeStoryLabel,
   keepUnrecordedLabels,
   labelChangeFor,
@@ -2638,6 +2640,24 @@ function storyLabelChanges(
   return { labelByHash, labelChanges, labelCounts: countLabels(states, now) };
 }
 
+/**
+ * #9213: the verdict every served story carries this cycle, encoded for its
+ * track row. Read like storyLabelChanges, over the story's whole servable
+ * cluster, but for every variant and all four states: alert and digest text
+ * show it, and an untracked tier4-only story still needs saying so.
+ */
+function storyCorroborationByHash(
+  served: readonly ParsedItem[],
+  servable: readonly ParsedItem[],
+): Map<string, string> {
+  const clusterByHash = groupByTitleHash(servable);
+  const byHash = new Map<string, string>();
+  for (const [hash, members] of groupByTitleHash(served)) {
+    byHash.set(hash, encodeStoryCorroboration(storyLabel(clusterByHash.get(hash) ?? members)));
+  }
+  return byHash;
+}
+
 async function writeStoryTracking(
   items: ParsedItem[],
   variant: string,
@@ -2649,6 +2669,8 @@ async function writeStoryTracking(
   // #9093: this cycle's corroboration label per story, persisted on the track
   // row so the next cycle can tell whether it changed. Absent → not written.
   labelByHash?: ReadonlyMap<string, string>,
+  // #9213: this cycle's verdict per story for this variant, read by digest text.
+  corroborationByHash?: ReadonlyMap<string, string>,
 ): Promise<void> {
   if (items.length === 0) return;
   if (redisTimeoutForDeadline(deadlineAt) === undefined) {
@@ -2750,6 +2772,7 @@ async function writeStoryTracking(
         const anchorEligible = anchorFieldAt >= 0
           && hsetFieldsWithEligibility[anchorFieldAt + 1] === '1';
         const label = labelByHash?.get(hash);
+        const corroboration = corroborationByHash?.get(hash);
         const hsetFields = [
           ...(anchorFieldAt >= 0
             ? [
@@ -2758,6 +2781,7 @@ async function writeStoryTracking(
             ]
             : hsetFieldsWithEligibility),
           ...(label ? [STORY_LABEL_FIELD, label] : []),
+          ...(corroboration ? [STORY_CORROBORATION_FIELD(variant, lang), corroboration] : []),
         ];
         commands.push(
           ['HINCRBY', trackKey, 'mentionCount', '1'],
@@ -3443,6 +3467,8 @@ async function buildDigest(
     const { labelByHash, labelChanges, labelCounts } = variant === 'full' && lang === 'en'
       ? storyLabelChanges(allSliced, servableItems, storyTracks, now, unreadTracks)
       : { labelByHash: undefined, labelChanges: [], labelCounts: undefined };
+    // #9213: every variant persists the verdict it served, for digest text.
+    const corroborationByHash = storyCorroborationByHash(allSliced, servableItems);
 
     // Record changes before persisting the new labels: a story whose entry
     // was not written keeps its previous label, so the change is detected
@@ -3468,6 +3494,7 @@ async function buildDigest(
       storyTrackingDeadlineAt,
       clusterAnchorEligibleByFinalHash,
       labelByHash,
+      corroborationByHash,
     ).catch((err: unknown) =>
       console.warn('[digest] story tracking write failed:', err),
     );
@@ -3580,6 +3607,7 @@ async function publishAcceptedLabelCounts(response: ListFeedDigestResponse, dead
 
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  storyCorroborationByHash,
   // #7084 serving path. Exported so the wiring can be EXECUTED in tests rather
   // than asserted against this file's own source text — a grep for
   // `serveLastGood(...)` passes whether or not the function behaves.

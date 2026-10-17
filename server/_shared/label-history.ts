@@ -171,6 +171,21 @@ export function encodeStoryLabel(label: StoryLabel): string {
   return `${label.state}|${label.publishers}`;
 }
 
+/**
+ * #9213: story-track field holding the label a digest variant served this
+ * cycle, all four states. Alert and digest text read it, so they show the
+ * verdict the dashboard showed instead of recomputing it. Scoped per variant
+ * and language because the track row is shared and each variant keeps a
+ * different set of a story's feeds.
+ */
+export const STORY_CORROBORATION_FIELD = (variant: string, lang: string) => `corroboration:${variant}:${lang}`;
+
+/** `state|publishers`, or `unknown`. Read by parseCorroboration in scripts/lib/corroboration-text.cjs. */
+export function encodeStoryCorroboration(label: Corroboration | Pick<StoryLabel, 'state' | 'publishers'>): string {
+  const publishers = 'publishers' in label ? label.publishers : null;
+  return label.state === 'unknown' || publishers === null ? 'unknown' : `${label.state}|${publishers}`;
+}
+
 export function decodeStoryLabel(raw: unknown): { state: LabelHistoryState; publishers: number } | null {
   if (typeof raw !== 'string') return null;
   const [state, count] = raw.split('|');
