@@ -219,4 +219,28 @@ describe('truncateDiscordContent with linked items', () => {
     for (const line of items) assert.match(line, /\]\(<https:\/\/news\.example\/story-\d+>\)/, line);
     assert.ok(out.endsWith('\n\u2026'), 'ellipsis follows the last whole line');
   });
+
+  it('never leaves a partial masked link when the last line break is far back', () => {
+    const url = `https://news.example/${'a'.repeat(400)}`;
+    const line = Array.from({ length: 12 }, (_, i) => `[Story ${i}](<${url}/${i}>)`).join(' ');
+    const out = truncateDiscordContent(`Header\n${line}`);
+    assert.ok(out.length <= 2000);
+    const body = out.slice('Header\n'.length, -1);
+    assert.ok(body.length > 0, 'keeps the complete links that fit');
+    assert.match(body, /^(\[Story \d+\]\(<[^>]+>\) ?)+$/, 'only whole links remain');
+  });
+
+  it('does not treat an escaped bracket as a link start', () => {
+    const text = `${'x'.repeat(1990)} \\[not a link ${'y'.repeat(50)}`;
+    const out = truncateDiscordContent(text);
+    assert.ok(out.length <= 2000);
+    assert.ok(out.length > 1990, 'escaped text is cut at the limit, not rewound');
+  });
+
+  it('is not fooled by >) or ] inside a headline', () => {
+    const link = formatDigestItemTitle('Talks >) stall ] again', `https://news.example/${'b'.repeat(300)}`, 'discord');
+    const out = truncateDiscordContent(`Header\n${'z'.repeat(1700)} ${link}`);
+    assert.ok(out.length <= 2000);
+    assert.doesNotMatch(out, /\[Talks/, 'the incomplete link is dropped whole');
+  });
 });

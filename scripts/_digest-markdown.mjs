@@ -199,5 +199,30 @@ export function truncateDiscordContent(text, max = 2000) {
   let backslashes = 0;
   while (cut - 1 - backslashes >= 0 && text[cut - 1 - backslashes] === '\\') backslashes++;
   if (backslashes % 2 === 1) cut -= 1;
-  return text.slice(0, cut) + '\u2026';
+  return text.slice(0, openLinkStart(text, cut)) + '\u2026';
+}
+
+// Escaped text writes `[` as `\[`, so an unescaped `[` on the cut line starts
+// a masked link. If that link is not closed before `cut`, rewind to it.
+function openLinkStart(text, cut) {
+  const lineStart = text.lastIndexOf('\n', cut - 1) + 1;
+  for (let i = cut - 1; i >= lineStart; i--) {
+    if (text[i] !== '[') continue;
+    let backslashes = 0;
+    while (i - 1 - backslashes >= lineStart && text[i - 1 - backslashes] === '\\') backslashes++;
+    if (backslashes % 2 === 1) continue;
+    return maskedLinkEnd(text, i) > cut ? i : cut;
+  }
+  return cut;
+}
+
+// End index (exclusive) of the `[label](<url>)` starting at `start`, or
+// Infinity when incomplete. The label escapes `\`, `[` and `]`, and the URL
+// never contains `>`, so the first unescaped `]` and the next `>` delimit it.
+function maskedLinkEnd(text, start) {
+  let i = start + 1;
+  while (i < text.length && text[i] !== ']') i += text[i] === '\\' ? 2 : 1;
+  if (text.slice(i, i + 3) !== '](<') return Infinity;
+  const gt = text.indexOf('>', i + 3);
+  return gt !== -1 && text[gt + 1] === ')' ? gt + 2 : Infinity;
 }

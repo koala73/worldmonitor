@@ -134,11 +134,12 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
       formatDigest: () => 'Synthetic digest',
       renderDigestEmailHtml,
-      buildChannelBodies: (text: string) => ({ text }),
+      buildChannelBodies: (lists: { plain: string }) => ({ text: lists.plain }),
       subjectForBrief: () => 'Synthetic digest', issueSlotInTz: () => 'slot',
       emitCooldownShadowLog: () => {}, upstashRest: async () => 'OK',
-      sendResendEmail: async (_client: unknown, message: { to: string; html: string }) => {
+      sendResendEmail: async (_client: unknown, message: { to: string; html: string; text: string }) => {
         assert.equal(message.to, 'owner@example.com');
+        assert.ok(message.text.startsWith('Synthetic digest'), 'plain-text part carries the plain story list');
         const deliveredHtml = message.html;
         assert.ok(Buffer.byteLength(deliveredHtml) <= DIGEST_EMAIL_MAX_HTML_BYTES);
         assert.ok(deliveredHtml.includes(`href="${unsubscribeUrl}"`));
