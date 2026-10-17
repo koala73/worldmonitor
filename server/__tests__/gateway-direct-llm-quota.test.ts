@@ -992,7 +992,7 @@ describe("direct LLM quota release on unserved requests", () => {
   test.each([
     ["invalid syntax", "[[[", "invalid_expression"],
     ["invalid input type", "length(classification.confidence)", "invalid_expression"],
-    ["oversized output", `classification${" | [@,@,@,@,@,@,@,@]".repeat(5)}`, "projection_too_large"],
+    ["unsafe expansion", `classification${" | [@,@,@,@,@,@,@,@]".repeat(5)}`, "invalid_expression"],
   ])("a failed projection (%s) keeps completed model work charged", async (_name, expression, error) => {
     const gateway = createDomainGateway(createIntelligenceServiceRoutes(intelligenceHandler));
     const res = await gateway(
@@ -1003,6 +1003,20 @@ describe("direct LLM quota release on unserved requests", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ _jmespath_error: expect.stringContaining(error) });
     expect(callLlm).toHaveBeenCalledTimes(1);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledTimes(1);
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
+  test("an oversized projection keeps completed handler work charged", async () => {
+    const completedWork = vi.fn(async () => json({ answer: "x".repeat(256 * 1024) }));
+    const res = await stubGateway(completedWork)(
+      req(`${CLASSIFY_PATH}?title=Novel%20headline&jmespath=answer`, { headers: { Authorization: "Bearer pro" } }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ _jmespath_error: expect.stringContaining("projection_too_large") });
+    expect(completedWork).toHaveBeenCalledTimes(1);
     expect(reserveDirectLlmQuota).toHaveBeenCalledTimes(1);
     expect(rollback).not.toHaveBeenCalled();
   });

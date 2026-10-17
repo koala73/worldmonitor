@@ -51,6 +51,7 @@ env:
     scripts/shared/iso2-to-region.json
     server/_shared/api-key-rate-limit.ts
     server/_shared/auth-session.ts
+    server/_shared/bounded-jmespath.ts
     server/_shared/bounded-json.ts
     server/_shared/cache-contract.ts
     server/_shared/client-ip.ts

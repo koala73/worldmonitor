@@ -520,7 +520,7 @@ The JMESPath expression itself exceeds **1024 UTF-8 bytes** (`JMESPATH_MAX_EXPR_
 
 #### `invalid_expression`
 
-The expression parsed by the JMESPath engine threw — bad syntax, unclosed bracket, unknown function. The `details` after the kind token is the parser's error message verbatim.
+The JMESPath parser, evaluation guard, or evaluator rejected the expression. Causes include bad syntax, an unclosed bracket, an unknown function, or an unsafe expression. Details beginning with `Unsafe JMESPath:` identify an evaluation restriction. The guard runs before search and rejects `to_string()`, equality without a scalar literal operand, `join()` without a literal string separator, indirect expression references in `map()` / `sort_by()` / `min_by()` / `max_by()`, and expressions above the [complexity limits](/mcp-jmespath#quick-orientation). Use explicit `&expression` references for those functions.
 
 ```json
 {
