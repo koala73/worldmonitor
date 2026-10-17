@@ -546,7 +546,7 @@ describe('CIMD — rejected documents and client_ids', () => {
     vendor.set(LINEAR, () => new Response(null, { status: 302, headers: { Location: 'https://evil.example/doc.json' } }));
     assert.equal((await resolveOAuthClient(LINEAR, deps())).reason, 'document_redirected');
     assert.equal(vendorFetches.at(-1).init.redirect, 'manual');
-    assert.equal(vendorFetches.some((f) => f.url.startsWith('https://evil.example')), false);
+    assert.deepEqual(vendorFetches.map((f) => f.url), [LINEAR], 'only the document URL is fetched');
   });
 
   it('rejects non-JSON, secret-bearing, and confidential-only documents', async () => {
