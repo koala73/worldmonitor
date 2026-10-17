@@ -345,7 +345,7 @@ function main() {
     // Advance along the archived first-parent lineage before GitHub's 1,000
     // statuses per SHA/context limit. The monitored revision stays untouched.
     const successors = runGit([
-      'rev-list', '--first-parent', '--reverse', `${statusSha}..${observedSha}`,
+      'rev-list', '--first-parent', '--ancestry-path', '--reverse', `${statusSha}..${observedSha}`,
     ]).split('\n').filter((sha) => sha && sha !== observedSha).slice(0, MAX_ANCHORS - 1);
     while (anchoredObservation.atCapacity) {
       rotatedObservation = {
@@ -362,6 +362,16 @@ function main() {
       if (!successor) throw new Error('no historical seed status anchor has capacity');
       statusSha = successor;
       anchoredObservation = readAnchorObservation({ repository, sha: statusSha, trustedWriter });
+      if (rotatedObservation.checkedAtTimestamp != null
+        && (anchoredObservation.checkedAtTimestamp ?? -Infinity) <= rotatedObservation.checkedAtTimestamp) {
+        anchoredObservation = {
+          ...anchoredObservation,
+          state: anchoredObservation.state === 'complete' ? 'empty' : anchoredObservation.state,
+          checkedAt: rotatedObservation.checkedAt,
+          checkedAtTimestamp: rotatedObservation.checkedAtTimestamp,
+          statuses: anchoredObservation.state === 'complete' ? new Map() : anchoredObservation.statuses,
+        };
+      }
     }
   }
   // An empty successor imports the last anchor projection. The first anchored
