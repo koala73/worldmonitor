@@ -20,6 +20,8 @@ import {
   markdownToDiscord,
   escapeDiscordText,
   truncateDiscordContent,
+  escapeDigestText,
+  formatDigestItemTitle,
 } from './_digest-markdown.mjs';
 
 const require = createRequire(import.meta.url);
@@ -1025,13 +1027,16 @@ async function buildDigest(rule, windowStartMs) {
   return top;
 }
 
-function formatDigest(stories, nowMs) {
+// target: 'plain' | 'telegram' | 'slack' | 'discord'. Chat targets return
+// channel-escaped text with each title linked to its original report (#9214).
+function formatDigest(stories, nowMs, target = 'plain') {
   if (!stories || stories.length === 0) return null;
+  const esc = (text) => escapeDigestText(text, target);
   const dateStr = new Intl.DateTimeFormat('en-US', {
     month: 'long', day: 'numeric', year: 'numeric',
   }).format(new Date(nowMs));
 
-  const lines = [`WorldMonitor Daily Digest — ${dateStr}`, ''];
+  const lines = [esc(`WorldMonitor Daily Digest — ${dateStr}`), ''];
 
   const buckets = { critical: [], high: [], medium: [] };
   for (const s of stories) {
@@ -1044,12 +1049,12 @@ function formatDigest(stories, nowMs) {
   for (const [level, items] of Object.entries(buckets)) {
     if (items.length === 0) continue;
     const limit = SEVERITY_LIMITS[level] ?? DIGEST_MEDIUM_LIMIT;
-    lines.push(`${level.toUpperCase()} (${items.length} event${items.length !== 1 ? 's' : ''})`);
+    lines.push(esc(`${level.toUpperCase()} (${items.length} event${items.length !== 1 ? 's' : ''})`));
     for (const item of items.slice(0, limit)) {
       const src = item.sources.length > 0
         ? ` [${item.sources.slice(0, 3).join(', ')}${item.sources.length > 3 ? ` +${item.sources.length - 3}` : ''}]`
         : '';
-      lines.push(`  \u2022 ${stripSourceSuffix(item.title)}${src}`);
+      lines.push(`  \u2022 ${formatDigestItemTitle(stripSourceSuffix(item.title), item.link, target)}${esc(src)}`);
       // Append the RSS description as a short context line when upstream
       // persisted one. Truncated at a word boundary to ~200 chars to keep
       // the plain-text email terse. Empty \u2192 no context line (R6).
@@ -1057,14 +1062,14 @@ function formatDigest(stories, nowMs) {
         const trimmed = item.description.length > 200
           ? item.description.slice(0, 200).replace(/\s+\S*$/, '') + '\u2026'
           : item.description;
-        lines.push(`    ${trimmed}`);
+        lines.push(`    ${esc(trimmed)}`);
       }
     }
-    if (items.length > limit) lines.push(`  ... and ${items.length - limit} more`);
+    if (items.length > limit) lines.push(esc(`  ... and ${items.length - limit} more`));
     lines.push('');
   }
 
-  lines.push('View full dashboard \u2192 worldmonitor.app');
+  lines.push(esc('View full dashboard \u2192 worldmonitor.app'));
   return lines.join('\n');
 }
 
@@ -1119,6 +1124,10 @@ function sanitizeTelegramHtml(html) {
     const closes = (out.match(new RegExp(`</${tag}>`, 'g')) || []).length;
     for (let i = closes; i < opens; i++) out += `</${tag}>`;
   }
+  // Digest titles are <a href> links (#9214); a cut inside one must close it.
+  const linkOpens = (out.match(/<a\s/g) || []).length;
+  const linkCloses = (out.match(/<\/a>/g) || []).length;
+  for (let i = linkCloses; i < linkOpens; i++) out += '</a>';
   return out;
 }
 
@@ -1412,7 +1421,10 @@ const DIVIDER = '─'.repeat(40);
  * Keeps the per-channel formatting logic out of main() so its cognitive
  * complexity stays within the lint budget.
  */
-function buildChannelBodies(storyListPlain, aiSummary, magazineUrl) {
+function buildChannelBodies(storyLists, aiSummary, magazineUrl) {
+  // storyLists: formatDigest output per target. The chat lists are already
+  // channel-escaped and carry per-story links, so they are not escaped again.
+  const { plain: storyListPlain, telegram, slack, discord } = storyLists;
   // The URL is already HMAC-signed and shape-validated at sign time
   // (userId regex + YYYY-MM-DD), but we still escape it per-target
   // as defence-in-depth — same discipline injectBriefCta uses for
@@ -1442,16 +1454,16 @@ function buildChannelBodies(storyListPlain, aiSummary, magazineUrl) {
   if (!aiSummary) {
     return {
       text: `${storyListPlain}${briefFooterPlain}`,
-      telegramText: `${escapeTelegramHtml(storyListPlain)}${briefFooterTelegram}`,
-      slackText: `${escapeSlackMrkdwn(storyListPlain)}${briefFooterSlack}`,
-      discordText: `${escapeDiscordText(storyListPlain)}${briefFooterDiscord}`,
+      telegramText: `${telegram}${briefFooterTelegram}`,
+      slackText: `${slack}${briefFooterSlack}`,
+      discordText: `${discord}${briefFooterDiscord}`,
     };
   }
   return {
     text: `EXECUTIVE SUMMARY\n\n${aiSummary}\n\n${DIVIDER}\n\n${storyListPlain}${briefFooterPlain}`,
-    telegramText: `<b>EXECUTIVE SUMMARY</b>\n\n${markdownToTelegramHtml(aiSummary)}\n\n${DIVIDER}\n\n${escapeTelegramHtml(storyListPlain)}${briefFooterTelegram}`,
-    slackText: `*EXECUTIVE SUMMARY*\n\n${markdownToSlackMrkdwn(aiSummary)}\n\n${DIVIDER}\n\n${escapeSlackMrkdwn(storyListPlain)}${briefFooterSlack}`,
-    discordText: `**EXECUTIVE SUMMARY**\n\n${markdownToDiscord(aiSummary)}\n\n${DIVIDER}\n\n${escapeDiscordText(storyListPlain)}${briefFooterDiscord}`,
+    telegramText: `<b>EXECUTIVE SUMMARY</b>\n\n${markdownToTelegramHtml(aiSummary)}\n\n${DIVIDER}\n\n${telegram}${briefFooterTelegram}`,
+    slackText: `*EXECUTIVE SUMMARY*\n\n${markdownToSlackMrkdwn(aiSummary)}\n\n${DIVIDER}\n\n${slack}${briefFooterSlack}`,
+    discordText: `**EXECUTIVE SUMMARY**\n\n${markdownToDiscord(aiSummary)}\n\n${DIVIDER}\n\n${discord}${briefFooterDiscord}`,
   };
 }
 
@@ -2323,7 +2335,12 @@ async function main() {
 
     const magazineUrl = brief?.magazineUrl ?? null;
     const { text, telegramText, slackText, discordText } = buildChannelBodies(
-      storyListPlain,
+      {
+        plain: storyListPlain,
+        telegram: formatDigest(formatterStories, nowMs, 'telegram'),
+        slack: formatDigest(formatterStories, nowMs, 'slack'),
+        discord: formatDigest(formatterStories, nowMs, 'discord'),
+      },
       briefLead,
       magazineUrl,
     );

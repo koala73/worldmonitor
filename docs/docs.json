@@ -149,6 +149,7 @@
                 "group": "Workflows",
                 "pages": [
                   "embed-live-map",
+                  "morning-world-risk-brief",
                   "route-explorer",
                   "scenario-engine"
                 ]

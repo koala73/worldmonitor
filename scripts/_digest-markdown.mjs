@@ -148,9 +148,53 @@ export function markdownToDiscord(md) {
   return txt;
 }
 
+// ── Digest story titles linked to the original report (#9214) ──────────────
+// target: 'plain' | 'telegram' | 'slack' | 'discord'. Plain text has no link
+// syntax, so it keeps the bare title.
+
+export function escapeDigestText(text, target) {
+  if (target === 'telegram') return escapeTelegramHtml(text);
+  if (target === 'slack') return escapeSlackMrkdwn(text);
+  if (target === 'discord') return escapeDiscordText(text);
+  return String(text);
+}
+
+function safeHttpUrl(link) {
+  if (typeof link !== 'string' || link.length === 0) return '';
+  let url;
+  try { url = new URL(link); } catch { return ''; }
+  return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '';
+}
+
+// encodeURIComponent leaves `(` and `)` alone, so encode by code point.
+function percentEncodeChar(ch) {
+  return `%${ch.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`;
+}
+
+// URL.href already percent-encodes space, `"`, `<` and `>`. Each channel then
+// encodes the characters that would end its own link syntax, and escapes the
+// headline so a `|`, `]` or `>` in it cannot close the link early.
+export function formatDigestItemTitle(title, link, target) {
+  const url = target === 'plain' ? '' : safeHttpUrl(link);
+  if (!url) return escapeDigestText(title, target);
+  if (target === 'telegram') {
+    return `<a href="${escapeTelegramHtml(url).replace(/"/g, '&quot;')}">${escapeTelegramHtml(title)}</a>`;
+  }
+  if (target === 'slack') {
+    // Slack has no escape for `|`; U+2223 keeps the headline readable.
+    return `<${url.replace(/[<>|]/g, percentEncodeChar)}|${escapeSlackMrkdwn(title).replace(/\|/g, '\u2223')}>`;
+  }
+  // Discord: `<url>` inside the masked link suppresses the embed preview.
+  const label = String(title).replace(/[\\[\]*_~`|]/g, '\\$&');
+  return `[${label}](<${url.replace(/[()<>]/g, percentEncodeChar)}>)`;
+}
+
 // Cuts at Discord's 2000-char limit without splitting a `\x` escape pair.
+// Prefers the last line break so a linked digest item is never cut mid-link.
 export function truncateDiscordContent(text, max = 2000) {
   if (text.length <= max) return text;
+  const lastNewline = text.lastIndexOf('\n', max - 2);
+  if (lastNewline > max * 0.6) return text.slice(0, lastNewline + 1) + '\u2026';
   let cut = max - 1;
   let backslashes = 0;
   while (cut - 1 - backslashes >= 0 && text[cut - 1 - backslashes] === '\\') backslashes++;
