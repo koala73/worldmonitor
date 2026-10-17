@@ -1,5 +1,5 @@
 import {
-  ApiError,
+  ValidationError,
   type GetStockAnalysisHistoryRequest,
   type GetStockAnalysisHistoryResponse,
   type MarketServiceHandler,
@@ -19,7 +19,7 @@ export const getStockAnalysisHistory: MarketServiceHandler['getStockAnalysisHist
   // Pro watchlists hold up to STOCK_ANALYSIS_PRO_LIMIT symbols. Slicing here
   // used to drop the rest and look like a successful, complete history (#8353).
   if (symbols.length > STOCK_ANALYSIS_PRO_LIMIT) {
-    throw new ApiError(400, `symbols must contain at most ${STOCK_ANALYSIS_PRO_LIMIT} item(s)`, '');
+    throw new ValidationError([{ field: 'symbols', description: `symbols must contain at most ${STOCK_ANALYSIS_PRO_LIMIT} item(s)` }]);
   }
   const limitPerSymbol = Math.max(1, Math.min(MAX_LIMIT_PER_SYMBOL, req.limitPerSymbol || DEFAULT_LIMIT_PER_SYMBOL));
   const history = await getStoredStockAnalysisHistory(symbols, !!req.includeNews, limitPerSymbol);

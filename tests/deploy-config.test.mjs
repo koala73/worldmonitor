@@ -5,6 +5,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { MACHINE_READABLE_URLS } from '../scripts/build-sitemap.mjs';
+import { nonDefaultLandingLocales } from '../shared/indexable-landing-locales.ts';
 import { dirname, join, relative, resolve } from 'node:path';
 function readFileSync(path, options) {
   const content = originalReadFileSync(path, options);
@@ -43,7 +44,12 @@ function parseRobotsGroups(source) {
   return groups;
 }
 import { fileURLToPath } from 'node:url';
-import { guardProBuiltOutput, shouldSkipProBuiltOutput, withoutUnbuiltProPaths } from './_lib/pro-built-output.mjs';
+import {
+  guardProBuiltOutput,
+  isProBuiltOutputPath,
+  shouldSkipProBuiltOutput,
+  withoutUnbuiltProPaths,
+} from './_lib/pro-built-output.mjs';
 import { CACHE_POLICY_HEADER_NAME, isSharedCacheable } from './helpers/shared-cache-policy.mjs';
 import {
   CONTENT_CORPUS_PREFIXES,
@@ -562,7 +568,7 @@ describe('crawlable content corpus deployment contracts', () => {
     );
     assert.equal(
       packageJson.scripts['build:sitemap'],
-      'node scripts/build-sitemap.mjs'
+      'node --import tsx scripts/build-sitemap.mjs'
     );
 
     for (const scriptName of ['build', 'build:full']) {
@@ -1648,6 +1654,24 @@ describe('welcome landing page routing', () => {
     assertPublicHtmlEntryCache('/');
   });
 
+  it('gives indexable locale landings the same public HTML cache as the English homepage', () => {
+    // Last matching header wins. Without an explicit later rule, /es/ inherits
+    // the SPA catch-all `private, no-cache` instead of the homepage CDN policy.
+    // Two-letter locale ids stay out of that catch-all's prefix lookahead so
+    // `/debug` or `/archive` cannot be excluded by `de` / `ar`.
+    const homepageLink = effectiveHeader('/', 'Link');
+    for (const locale of nonDefaultLandingLocales()) {
+      assertPublicHtmlEntryCache(`/${locale.pathSegment}`);
+      assertPublicHtmlEntryCache(locale.canonicalPath);
+      assert.equal(effectiveHeader(locale.canonicalPath, 'Link'), homepageLink);
+      assert.equal(
+        effectiveCacheControl(`/${locale.pathSegment}/not-a-landing`),
+        'private, no-cache, must-revalidate',
+        `/${locale.pathSegment}/not-a-landing must stay on the SPA HTML cache policy`,
+      );
+    }
+  });
+
   it('requires revalidation for direct dashboard.html without disabling bfcache', () => {
     assertPublicHtmlEntryCache('/dashboard.html');
   });
@@ -2525,7 +2549,7 @@ describe('security header guardrails', () => {
     const rules = vercelConfig.headers.filter((entry) =>
       entry.headers?.some((header) => header.key.toLowerCase() === 'origin-trial')
     );
-    assert.equal(rules.length, 3 + (WEBMCP_PRODUCTION_HOSTS.length - 1) * 2);
+    assert.equal(rules.length, 4 + (WEBMCP_PRODUCTION_HOSTS.length - 1) * 2);
 
     for (const host of WEBMCP_PRODUCTION_HOSTS) {
       const hostPattern = '^' + host.replaceAll('.', '\\.') + '$';
@@ -2533,11 +2557,11 @@ describe('security header guardrails', () => {
         rule.has?.some((condition) => condition.type === 'host' && condition.value === hostPattern)
       );
       const expectedSources = host === 'www.worldmonitor.app'
-        ? ['/', '/dashboard', '/dashboard.html']
+        ? ['/', '/(es|pt|ru|fr|de|ar)/', '/dashboard', '/dashboard.html']
         : ['/dashboard', '/dashboard.html'];
       assert.deepEqual(
         hostRules.map((rule) => rule.source).sort(),
-        expectedSources,
+        expectedSources.slice().sort(),
         host + ' must enroll only documents that directly return WebMCP HTML',
       );
       if (host === 'www.worldmonitor.app') {
@@ -2555,6 +2579,20 @@ describe('security header guardrails', () => {
           false,
           host + ' must not attach an Origin-Trial token to /?mode=agent',
         );
+        const landingRule = hostRules.find((rule) => rule.source === '/(es|pt|ru|fr|de|ar)/');
+        assert.ok(landingRule, host + ' must enroll prerendered locale landings');
+        assert.deepEqual(
+          landingRule.missing,
+          [{ type: 'query', key: 'mode', value: 'agent' }],
+          host + ' must exclude locale-landing ?mode=agent from enrollment',
+        );
+        for (const locale of nonDefaultLandingLocales()) {
+          assert.equal(headerRuleMatchesRequest(landingRule, { path: locale.canonicalPath, host }), true);
+          assert.equal(
+            headerRuleMatchesRequest(landingRule, { path: locale.canonicalPath, host, query: { mode: 'agent' } }),
+            false,
+          );
+        }
       }
       assert.equal(
         hostRules.some((rule) => headerRuleMatchesRequest(rule, { path: '/dashboard', host })),
@@ -2822,7 +2860,7 @@ describe('security header guardrails', () => {
     const scriptHashTokens = getCspDirectiveTokens(csp, 'script-src')
       .filter((token) => token.startsWith("'sha256-"));
     const committedFiles = GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES
-      .filter((file) => !file.startsWith('public/pro/'));
+      .filter((file) => !isProBuiltOutputPath(file));
     assert.ok(
       committedFiles.length > 0,
       'committed-HTML population is empty — this guard would pass vacuously',

@@ -1913,6 +1913,17 @@ export const RPC_TOOLS: ToolDef[] = [
               source: { type: 'string', description: 'Publisher name as the aggregator reported it. Also untrusted.' },
               publishedAt: { type: 'string', description: 'Publication time, ISO-8601 UTC.' },
               publishedAtMs: { type: 'number', description: 'Publication time, Unix epoch milliseconds.' },
+              threat: {
+                type: 'object',
+                description: 'Shared keyword classification of the raw headline before publisher normalization.',
+                required: ['level', 'category', 'confidence', 'source'],
+                properties: {
+                  level: { type: 'string', enum: ['THREAT_LEVEL_UNSPECIFIED', 'THREAT_LEVEL_LOW', 'THREAT_LEVEL_MEDIUM', 'THREAT_LEVEL_HIGH', 'THREAT_LEVEL_CRITICAL'] },
+                  category: { type: 'string', enum: ['conflict', 'protest', 'disaster', 'diplomatic', 'economic', 'terrorism', 'cyber', 'health', 'environmental', 'military', 'crime', 'infrastructure', 'tech', 'general'] },
+                  confidence: { type: 'number', minimum: 0, maximum: 1 },
+                  source: { type: 'string', enum: ['keyword', 'ml', 'llm'] },
+                },
+              },
             },
           },
         },

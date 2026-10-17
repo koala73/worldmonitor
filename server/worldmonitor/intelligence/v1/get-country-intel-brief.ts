@@ -18,7 +18,7 @@ import { ENERGY_SPINE_KEY_PREFIX } from '../../../_shared/cache-keys';
 import { deriveCountryIntelCacheKey, fetchSharedCountryContext } from './_country-brief-context';
 import { buildCountryBriefEvidence } from './_country-brief-evidence';
 import { isBriefRelevantTitle } from '../../../../shared/brief-relevance.js';
-import { evidenceNumbersGrounded, isEvidenceLimitClaim, sanctionsEvidenceGrounded } from '../../../../shared/brief-claim-rules.js';
+import { energyEvidenceGrounded, evidenceNumbersGrounded, isEvidenceLimitClaim, sanctionsEvidenceGrounded } from '../../../../shared/brief-claim-rules.js';
 import { briefSectionHeading, type BriefSectionKey } from '../../../../shared/brief-sections.js';
 import {
   resolveEnergyImportDependency,
@@ -178,6 +178,7 @@ function urgingRolesGrounded(text: string, titles: string[]): boolean {
 function claimIsGrounded(text: string, titles: string[], evidence: CountryBriefEvidenceInput[]): boolean {
   if (isEvidenceLimitClaim(text)) return false;
   if (!sanctionsEvidenceGrounded(text, titles.length, evidence)) return false;
+  if (!energyEvidenceGrounded(text, titles.length, evidence)) return false;
   if (!ciiClaimGrounded(text, titles, evidence) || !urgingRolesGrounded(text, titles)) return false;
   const factTexts = evidence.map((item) => item.factText);
   const grounds = [...titles, ...factTexts];
@@ -510,6 +511,7 @@ Sections:
 
 Rules:
 - A sanctions data point supports only its exact factText, cited alone without a headline or another data point. Do not use it for an implication or infer a sanctioning actor, target, cause or impact.
+- An energy data point supports only its complete exact factText, cited alone without a headline or another data point. Keep its provenance, year and any negative-value exporter explanation. Do not paraphrase it or use it for an implication.
 - A Country Instability Index data point supports only its descriptive factText, cited alone. Do not infer drivers or changes from a headline. You may omit its trailing band or as-of disclosure.
 - Preserve who urges whom. For a headline saying A urges B to act, keep that direction or write "Whether B will act as urged by A" using the exact supplied names and action. Do not paraphrase an ambiguous urging relation.
 - In a sentence that cites a data point, copy every number, percentage and date exactly from the cited data points; never use a number from a headline in that sentence.

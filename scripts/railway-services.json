@@ -259,6 +259,7 @@
       "scripts/lib/notification-webhook-signing.cjs",
       "scripts/lib/publisher-link-relay-gate.cjs",
       "scripts/lib/resend-from.cjs",
+      "scripts/lib/resend-send.cjs",
       "scripts/lib/story-track-batch-reader.mjs",
       "scripts/lib/user-context.cjs",
       "scripts/lib/watchlist-story-events.mjs",

@@ -30,6 +30,7 @@ import {
   EDGE_CACHED_FAMILIES,
   ENTRY_DOCUMENTS,
   FAMILY_EXCLUSIONS,
+  INDEXABLE_LANDING_ENTRY_PATHS,
   NEGOTIATED_MEDIA_TYPES,
   RETIRED_CACHE_RULES,
   RSC_REQUEST_HEADERS,
@@ -40,12 +41,14 @@ import {
   planApply,
   runCloudflareCacheRule,
 } from '../scripts/cloudflare-cache-rule.mjs';
+import { nonDefaultLandingLocales } from '../shared/indexable-landing-locales.ts';
 import agentRequestPolicy from '../shared/agent-request-policy.json' with { type: 'json' };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const vercelConfig = JSON.parse(readFileSync(resolve(__dirname, '../vercel.json'), 'utf-8'));
 
 const HTML_ENTRY_EDGE_CACHE = 'public, s-maxage=600, stale-while-revalidate=60';
+const INDEXABLE_LANDING_SEGMENTS = new Set(nonDefaultLandingLocales().map((locale) => locale.pathSegment));
 
 /**
  * vercel.json sources that advertise the shared TTL and that the rule leaves
@@ -63,6 +66,8 @@ const UNCLAIMED_ENTRY_SOURCES = new Set(['/dashboard.html']);
  *
  * Shapes in use:
  *   /  /dashboard                  the entry documents, exact (ENTRY_DOCUMENTS)
+ *   /(es|pt|ru|fr|de|ar)           slashless locale landings, exact documents
+ *   /(es|pt|ru|fr|de|ar)/          trailing-slash locale landings, exact documents
  *   /(a|b|c)                       bare corpus families (308s, mirrored anyway)
  *   /(a|b|c)/(.*)                  nested corpus families
  *   /blog                          a bare family that is itself a document
@@ -90,13 +95,22 @@ function classifyVercelSource(source) {
       }]],
     };
   }
+  match = source.match(/^\/\(([^()]+)\)\/$/);
+  if (match) {
+    const ids = match[1].split('|');
+    if (ids.length && ids.every((id) => INDEXABLE_LANDING_SEGMENTS.has(id))) {
+      return { documents: ids.map((id) => `/${id}/`) };
+    }
+  }
   match = source.match(/^\/\(([^()]+)\)$/);
   if (match) {
     const names = match[1].split('|').map((name) => name.replace(/\\\./g, '.'));
-    return {
-      bare: names.filter((name) => !name.includes('.')),
-      files: names.filter((name) => name.includes('.')),
-    };
+    const files = names.filter((name) => name.includes('.'));
+    const bare = names.filter((name) => !name.includes('.'));
+    if (!files.length && bare.length && bare.every((name) => INDEXABLE_LANDING_SEGMENTS.has(name))) {
+      return { documents: bare.map((name) => `/${name}`) };
+    }
+    return { bare, files };
   }
   match = source.match(/^\/([a-z-]+)$/);
   if (match) return { bare: [match[1]] };
@@ -135,7 +149,8 @@ function ruleClaims(expression) {
   for (const set of expression.matchAll(/http\.request\.uri\.path in \{([^}]*)\}/g)) {
     for (const literal of set[1].match(/"[^"]+"/g) ?? []) {
       const name = literal.slice(2, -1);
-      (name.includes('.') ? claims.files : claims.bare).add(name);
+      if (ENTRY_DOCUMENTS.includes(`/${name}`)) claims.documents.add(`/${name}`);
+      else (name.includes('.') ? claims.files : claims.bare).add(name);
     }
   }
   let current = null;
@@ -223,6 +238,7 @@ describe('cloudflare corpus cache rule', () => {
     assert.ok(claimed.nested.get('docs')?.exact.length, 'the rule must carve an exact path out of /docs');
 
     assert.ok(advertised.documents.has('/') && advertised.documents.has('/dashboard'), 'vercel.json must advertise / and /dashboard');
+    assert.ok(advertised.documents.has('/es/') && advertised.documents.has('/es'), 'vercel.json must advertise locale landings as exact documents');
 
     assert.deepEqual(sorted(claimed.bare), sorted(advertised.bare), 'bare document paths');
     assert.deepEqual(sorted(claimed.files), sorted(advertised.files), 'root agent text files');
@@ -411,10 +427,17 @@ describe('cloudflare corpus cache rule', () => {
     // request this rule's guard rejected still found cache: true there. The
     // corpus rule now claims both documents inside its path disjunction, which
     // sits after the guard block, and the entry rule is retired (see below).
-    assert.deepEqual([...ENTRY_DOCUMENTS], ['/', '/dashboard']);
+    assert.deepEqual(
+      [...ENTRY_DOCUMENTS],
+      ['/', '/dashboard', ...nonDefaultLandingLocales().flatMap((locale) => [`/${locale.pathSegment}`, locale.canonicalPath])],
+    );
+    assert.deepEqual(
+      [...INDEXABLE_LANDING_ENTRY_PATHS],
+      nonDefaultLandingLocales().flatMap((locale) => [`/${locale.pathSegment}`, locale.canonicalPath]),
+    );
     const lines = rule.expression.split('\n').map((line) => line.trim());
     const pathDisjunction = lines.lastIndexOf('and (');
-    const dashboard = lines.indexOf('or http.request.uri.path eq "/dashboard"');
+    const dashboard = lines.findIndex((line) => /or http\.request\.uri\.path in \{[^}]*"\/dashboard"/.test(line));
     const home = lines.indexOf('or (http.request.uri.path eq "/"');
     assert.ok(dashboard > pathDisjunction, '/dashboard must be claimed inside the path disjunction, behind the representation guard');
     assert.ok(home > pathDisjunction, '/ must be claimed inside the path disjunction, behind the representation guard');
@@ -451,14 +474,20 @@ describe('cloudflare corpus cache rule', () => {
       'User-Agent carve-outs belong to the homepage and the docs claims alone: corpus and blog answer one body per UA',
     );
     assert.ok(
-      lines.some((line) => line.trim() === 'or http.request.uri.path eq "/dashboard"'),
+      lines.some((line) => /or http\.request\.uri\.path in \{[^}]*"\/dashboard"/.test(line)),
       '/dashboard is UA-invariant and needs no carve-out',
     );
+    for (const path of INDEXABLE_LANDING_ENTRY_PATHS) {
+      assert.ok(
+        lines.some((line) => line.trim().startsWith('or http.request.uri.path in {') && line.includes(`"${path}"`)),
+        `${path} is UA-invariant (middleware markdown rewrite is / only) and needs no carve-out`,
+      );
+    }
 
     // Nobody to carve out is a plain claim, never an empty `and not ( )` group,
     // which Cloudflare would reject at --apply time.
     const nobody = buildCorpusCacheRule({ agents: [], userAgentRoutedFamilies: {} }).expression;
-    assert.ok(nobody.includes('    or http.request.uri.path eq "/"\n'), 'an empty agent list claims the homepage unguarded');
+    assert.ok(nobody.includes('    or http.request.uri.path in {"/" '), 'an empty agent list claims the homepage unguarded');
     assert.ok(!nobody.includes('and not ('), 'no empty carve-out group');
     assert.ok(
       !buildCorpusCacheRule({ userAgentRoutedFamilies: { docs: [] } }).expression.includes('and not (\n      )'),

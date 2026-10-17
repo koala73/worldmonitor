@@ -1,5 +1,6 @@
 import i18next from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
+import { landingByPath } from '../../shared/indexable-landing-locales';
 import en from './locales/en.json';
 import { throwOnMissingStaticTranslation } from './static-i18n-guard';
 import { isTraditionalChineseTag, resolveEffectiveWelcomeContentLanguage } from './welcome-language';
@@ -75,19 +76,33 @@ function applyMetaTags(prefix = 'meta', contentLanguage = currentLanguageBase())
   set('meta[name="twitter:description"]', ogDesc);
 }
 
+/**
+ * Path-prefixed landings (`/es/`) pin the document language so prerendered
+ * Spanish HTML hydrates as Spanish even when the browser is English. Query
+ * string and navigator stay the detection path on `/` and `/pro`.
+ */
+export function pinnedWelcomeContentLanguage(): SupportedLanguage | null {
+  if (typeof window === 'undefined' || typeof window.location === 'undefined') return null;
+  const landing = landingByPath(window.location.pathname);
+  if (!landing || landing.isDefault) return null;
+  return SUPPORTED_SET.has(landing.id as SupportedLanguage)
+    ? landing.id as SupportedLanguage
+    : null;
+}
+
 // Marketing site has no language switcher — querystring (`?lang=fr`) is the
-// only manual override. So detection order is querystring → navigator. We
-// intentionally drop the default `localStorage` step + auto-cache: a stale
+// only manual override on `/` and `/pro`. Detection order on those URLs is
+// querystring → navigator. Indexable landings (`/es/` and siblings) pin from
+// the path first so crawlers and direct visits keep the prerendered locale.
+// We intentionally drop the default `localStorage` step + auto-cache: a stale
 // `i18nextLng=en` stamp from any earlier visit would otherwise pin a French
 // browser to English forever and silently bury the localized copy we ship.
 //
 // CONSEQUENCE: the `?lang=` querystring is EPHEMERAL application state — it
 // does not persist across in-page navigations that strip the search string.
-// Shareable/bookmarkable locale URLs therefore need to retain `?lang=XX`, but
-// they remain base-canonical and are not advertised as indexable hreflang
-// documents. If anyone adds in-page links that drop ?lang=, they need to
-// propagate the param or surface a language switcher; otherwise the recipient
-// lands on browser-default.
+// Shareable/bookmarkable locale URLs on `/` therefore need to retain `?lang=XX`,
+// but they remain base-canonical and are not advertised as indexable hreflang
+// documents. Path-prefixed landings are the indexable equivalents.
 export async function initI18n(options?: { metaPrefix?: string }): Promise<void> {
   const metaPrefix = options?.metaPrefix ?? 'meta';
   if (i18next.isInitialized) return;
@@ -95,14 +110,26 @@ export async function initI18n(options?: { metaPrefix?: string }): Promise<void>
   // whose browser is e.g. French but who got pinned to `en` on any past
   // visit get auto-recovered to navigator-driven detection.
   try { localStorage.removeItem('i18nextLng'); } catch { /* private mode */ }
-  await i18next.use(LanguageDetector).init({
-    resources: { en: { translation: en as TranslationDictionary } },
-    supportedLngs: [...SUPPORTED_LANGUAGES],
-    nonExplicitSupportedLngs: true,
-    fallbackLng: 'en',
-    interpolation: { escapeValue: false },
-    detection: { order: ['querystring', 'navigator'], lookupQuerystring: 'lang', caches: [] },
-  });
+  const pinned = metaPrefix === 'welcome.meta' ? pinnedWelcomeContentLanguage() : null;
+  if (pinned) {
+    await i18next.init({
+      resources: { en: { translation: en as TranslationDictionary } },
+      lng: pinned,
+      supportedLngs: [...SUPPORTED_LANGUAGES],
+      nonExplicitSupportedLngs: true,
+      fallbackLng: 'en',
+      interpolation: { escapeValue: false },
+    });
+  } else {
+    await i18next.use(LanguageDetector).init({
+      resources: { en: { translation: en as TranslationDictionary } },
+      supportedLngs: [...SUPPORTED_LANGUAGES],
+      nonExplicitSupportedLngs: true,
+      fallbackLng: 'en',
+      interpolation: { escapeValue: false },
+      detection: { order: ['querystring', 'navigator'], lookupQuerystring: 'lang', caches: [] },
+    });
+  }
   const detected = await ensureLoaded(i18next.language || 'en');
   if (detected !== 'en') await i18next.changeLanguage(detected);
   const base = normalize(i18next.language || detected);
@@ -127,20 +154,20 @@ export async function initI18n(options?: { metaPrefix?: string }): Promise<void>
   applyMetaTags(metaPrefix, contentLanguage);
 }
 
-export async function initStaticI18n(): Promise<void> {
-  if (i18next.isInitialized) {
-    if (currentLanguageBase() !== 'en') {
-      await i18next.changeLanguage('en');
-    }
-    return;
+export async function initStaticI18n(localeId = 'en'): Promise<void> {
+  if (!i18next.isInitialized) {
+    await i18next.init({
+      resources: { en: { translation: en as TranslationDictionary } },
+      lng: 'en',
+      fallbackLng: 'en',
+      interpolation: { escapeValue: false },
+      parseMissingKeyHandler: throwOnMissingStaticTranslation,
+    });
   }
-  await i18next.init({
-    resources: { en: { translation: en as TranslationDictionary } },
-    lng: 'en',
-    fallbackLng: 'en',
-    interpolation: { escapeValue: false },
-    parseMissingKeyHandler: throwOnMissingStaticTranslation,
-  });
+  const loaded = await ensureLoaded(localeId);
+  if (currentLanguageBase() !== loaded) {
+    await i18next.changeLanguage(loaded);
+  }
 }
 
 export function currentLanguageBase(): string {
@@ -156,6 +183,8 @@ export function currentLanguageBase(): string {
  * therefore keep English document metadata and hydrate the truthful SSR.
  */
 export function effectiveWelcomeContentLanguage(): string {
+  const pinned = pinnedWelcomeContentLanguage();
+  if (pinned) return pinned;
   const currentLanguage = currentLanguageBase();
   const resources = i18next.getResourceBundle(
     currentLanguage,
