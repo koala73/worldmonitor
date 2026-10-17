@@ -18,6 +18,7 @@ import {
 import { buildDigestDeliveryPlan } from '../scripts/lib/digest-delivery-plan.mjs';
 import { formatDigestHtml } from '../scripts/lib/digest-email-html.mjs';
 import { stripSourceSuffix } from '../scripts/lib/brief-dedup-jaccard.mjs';
+import { escapeDigestText, formatDigestItemTitle } from '../scripts/_digest-markdown.mjs';
 
 const NOW = Date.UTC(2026, 9, 17, 12);
 
@@ -62,8 +63,11 @@ const formatDigestNode = parsed.statements.find((node) => ts.isFunctionDeclarati
 assert.ok(formatDigestNode, 'formatDigest must exist');
 const formatDigest = new Function(
   'DIGEST_CRITICAL_LIMIT', 'DIGEST_HIGH_LIMIT', 'DIGEST_MEDIUM_LIMIT', 'stripSourceSuffix', 'digestCoverageText',
+  'escapeDigestText', 'formatDigestItemTitle',
   `${formatDigestNode.getText(parsed)}\nreturn formatDigest;`,
-)(Infinity, 15, 10, stripSourceSuffix, digestCoverageText) as (stories: unknown[], nowMs: number) => string;
+)(Infinity, 15, 10, stripSourceSuffix, digestCoverageText, escapeDigestText, formatDigestItemTitle) as (
+  stories: unknown[], nowMs: number, target?: string,
+) => string;
 
 const story = (corroboration: unknown, title = 'Port strike halts container traffic') => ({
   title, severity: 'high', phase: 'sustained', sources: ['Reuters'], link: 'https://www.reuters.com/x',
@@ -88,6 +92,11 @@ describe('chat digest (formatDigest)', () => {
     assert.match(text, /• Port strike halts container traffic \[Reuters\] · Coverage: single publisher$/m);
     assert.match(text, /• Ceasefire talks resume \[Reuters\] · Coverage: 4 independent publishers$/m);
     assert.match(text, /• Chip export rumour spreads \[Reuters\] · Coverage: 2 publishers, all tier 4$/m);
+  });
+
+  it('keeps the coverage beside the linked title on chat targets', () => {
+    const text = formatDigest([story({ state: 'single-publisher', publishers: 1 })], NOW, 'slack');
+    assert.match(text, /• <https:\/\/www\.reuters\.com\/x\|Port strike halts container traffic> \[Reuters\] · Coverage: single publisher$/m);
   });
 
   it('states nothing for an unknown verdict', () => {

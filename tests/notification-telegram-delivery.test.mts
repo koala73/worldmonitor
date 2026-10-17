@@ -101,7 +101,7 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
       formatDigest: () => 'Synthetic alert',
       renderDigestEmailHtml: () => ({ html: '<p>Synthetic alert</p>', bytes: 0, truncated: false, shownStories: 1 }),
-      buildChannelBodies: (text: string) => ({ text, telegramText: text }),
+      buildChannelBodies: (lists: any) => ({ text: lists.plain, telegramText: lists.telegram }),
       subjectForBrief: () => 'Synthetic alert', issueSlotInTz: () => 'test-slot',
       emitCooldownShadowLog: () => {}, upstashRest: async () => 'OK',
       shouldExitOnBriefFailures: () => false,

@@ -11,6 +11,7 @@ import {
 import { runRedisPipeline, runRedisTransaction } from '../../../_shared/redis';
 import { setResponseHeader, setSuccessStatusOverride } from '../../../_shared/response-headers';
 import { getScenarioTemplate } from '../../supply-chain/v1/scenario-templates';
+import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
 import {
   SCENARIO_RESULT_TTL_SECONDS,
   generateScenarioJobId,
@@ -44,9 +45,11 @@ export async function runScenario(
     throw new ValidationError([{ field: 'disruptionPct', description: 'disruptionPct must be an integer from 0 to 100 for a physical scenario' }]);
   }
 
+  // Empty iso2 scopes the scenario to all countries. The proto checks shape
+  // only; an unassigned code such as ZZ would otherwise be queued for the worker.
   const iso2 = req.iso2 ? req.iso2.trim() : '';
-  if (iso2 && !/^[A-Z]{2}$/.test(iso2)) {
-    throw new ValidationError([{ field: 'iso2', description: 'iso2 must be a 2-letter uppercase country code' }]);
+  if (iso2 && !isAssignedCountryCode(iso2)) {
+    throw new ValidationError([{ field: 'iso2', description: 'iso2 must be empty or an assigned uppercase ISO 3166-1 alpha-2 code, e.g. "IQ".' }]);
   }
 
   // Queue-depth backpressure. Raw key: worker reads it unprefixed, so we must too.
