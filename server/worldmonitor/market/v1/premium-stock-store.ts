@@ -15,20 +15,18 @@ const BACKTEST_STORE_TTL_SECONDS = 30 * 24 * 60 * 60;
 type AnalysisHistoryRecord = Record<string, AnalyzeStockResponse[]>;
 
 function compareAnalysisDesc<T extends { analysisAt: number; generatedAt: string }>(a: T, b: T): number {
-  const aTime = a.analysisAt || Date.parse(a.generatedAt || '') || 0;
-  const bTime = b.analysisAt || Date.parse(b.generatedAt || '') || 0;
+  const aTime = Date.parse(a.generatedAt || '') || a.analysisAt || 0;
+  const bTime = Date.parse(b.generatedAt || '') || b.analysisAt || 0;
   return bTime - aTime;
 }
 
 function analysisHistoryIndexKey(symbol: string, includeNews: boolean): string {
-  // v5: rotate retained snapshots written before the backward-compatible
-  // ratingSignal/compositeScore pair became the surfaced rating contract.
-  return `market:stock-analysis-history:index:v5:${sanitizeSymbol(symbol)}:${includeNews ? 'news' : 'core'}`;
+  // v6 excludes snapshots whose narratives could contain caller labels (#9287).
+  return `market:stock-analysis-history:index:v6:${sanitizeSymbol(symbol)}:${includeNews ? 'news' : 'core'}`;
 }
 
 function analysisItemKey(analysisId: string): string {
-  // v5: see analysisHistoryIndexKey note.
-  return `market:stock-analysis-history:item:v5:${analysisId}`;
+  return `market:stock-analysis-history:item:v6:${analysisId}`;
 }
 
 function backtestSnapshotKey(symbol: string, evalWindowDays: number): string {
@@ -64,6 +62,7 @@ function normalizeAnalysisRecord(
   return {
     ...snapshot,
     symbol,
+    name: symbol,
     analysisId,
     analysisAt,
     engineVersion,
@@ -89,10 +88,10 @@ function normalizeLedgerRecord(snapshot: AnalyzeStockResponse): AnalyzeStockResp
   };
 }
 
-async function zrevrange(key: string, limit: number): Promise<string[]> {
-  if (limit <= 0) return [];
+async function zrevrange(key: string, limit?: number): Promise<string[]> {
+  if (limit !== undefined && limit <= 0) return [];
   const data = await runRedisPipeline([
-    ['ZREVRANGE', key, 0, Math.max(0, limit - 1)],
+    ['ZREVRANGE', key, 0, limit === undefined ? -1 : Math.max(0, limit - 1)],
   ]);
   return Array.isArray(data[0]?.result)
     ? data[0]!.result!.map((item) => String(item))
@@ -110,12 +109,17 @@ async function loadAnalysisRecords(ids: string[], itemKeyFor: (analysisId: strin
     .sort(compareAnalysisDesc);
 }
 
-async function trimIndexTail(indexKey: string, ids: string[], keepLimit: number): Promise<void> {
+async function trimIndexTail(
+  indexKey: string,
+  ids: string[],
+  keepLimit: number,
+  itemKeyFor?: (analysisId: string) => string,
+): Promise<void> {
   if (ids.length <= keepLimit) return;
   const overflow = ids.slice(keepLimit);
-  await runRedisPipeline([
-    ['ZREM', indexKey, ...overflow],
-  ]);
+  const commands: Array<Array<string | number>> = [['ZREM', indexKey, ...overflow]];
+  if (itemKeyFor) commands.push(['DEL', ...overflow.map(itemKeyFor)]);
+  await runRedisPipeline(commands);
 }
 
 export async function storeStockAnalysisSnapshot(
@@ -130,12 +134,12 @@ export async function storeStockAnalysisSnapshot(
 
   await runRedisPipeline([
     ['SET', itemKey, JSON.stringify(record), 'EX', ANALYSIS_HISTORY_TTL_SECONDS],
-    ['ZADD', indexKey, record.analysisAt, record.analysisId],
+    ['ZADD', indexKey, Date.parse(record.generatedAt) || record.analysisAt, record.analysisId],
     ['EXPIRE', indexKey, ANALYSIS_HISTORY_TTL_SECONDS],
   ]);
 
-  const ids = await zrevrange(indexKey, ANALYSIS_HISTORY_LIMIT + 4);
-  await trimIndexTail(indexKey, ids, ANALYSIS_HISTORY_LIMIT);
+  const ids = await zrevrange(indexKey);
+  await trimIndexTail(indexKey, ids, ANALYSIS_HISTORY_LIMIT, analysisItemKey);
 }
 
 export async function getStoredStockAnalysisHistory(
