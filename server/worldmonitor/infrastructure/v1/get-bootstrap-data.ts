@@ -1,5 +1,5 @@
 import {
-  ApiError,
+  ValidationError,
   type InfrastructureServiceHandler,
   type ServerContext,
   type GetBootstrapDataRequest,
@@ -35,7 +35,7 @@ function buildRegistry(req: GetBootstrapDataRequest): Record<string, string> {
   if ((req.tier && req.keys.length > 0)
     || (req.tier && req.tier !== 'fast' && req.tier !== 'slow')
     || (!req.tier && !isServableKeySelection(req.keys))) {
-    throw new ApiError(400, 'Specify a fast/slow tier, fast/slow bootstrap keys, or one on-demand bootstrap key', '');
+    throw new ValidationError([{ field: req.tier ? 'tier' : 'keys', description: 'Specify a fast/slow tier, fast/slow bootstrap keys, or one on-demand bootstrap key' }]);
   }
   let registry: Record<string, string>;
   if (req.tier === 'slow' || req.tier === 'fast') {
