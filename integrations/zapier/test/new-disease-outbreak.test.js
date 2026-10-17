@@ -14,20 +14,16 @@ describe('trigger new_disease_outbreak', () => {
     nock.cleanAll();
   });
 
-  it('returns outbreak rows with stable ids', async () => {
+  it('returns outbreaks newest first across sources', async () => {
     nock(BASE_URL)
       .get(PATHS.diseaseOutbreaks)
       .reply(200, {
         outbreaks: [
-          {
-            id: 'outbreak-cd-1',
-            disease: 'mpox',
-            countryCode: 'CD',
-            alertLevel: 'warning',
-            publishedAt: 1783250000000,
-          },
+          { id: 'thinkglobalhealth-a-1', disease: 'Polio', countryCode: 'PK', publishedAt: 1791763200000 },
+          { id: 'thinkglobalhealth-b-2', disease: 'Polio', countryCode: 'SS', publishedAt: 1791763200000 },
+          { id: 'cidrap-c-3', disease: 'Plague', countryCode: 'RU', publishedAt: 1792022400000 },
         ],
-        fetchedAt: 1783250000000,
+        fetchedAt: 1792022400000,
       });
 
     const results = await appTester(App.triggers.new_disease_outbreak.operation.perform, {
@@ -35,10 +31,6 @@ describe('trigger new_disease_outbreak', () => {
       inputData: {},
     });
 
-    assert.equal(results.length, 1);
-    assert.equal(results[0].id, 'outbreak-cd-1');
-    assert.equal(results[0].disease, 'mpox');
-    assert.equal(results[0].countryCode, 'CD');
-    assert.equal(results[0].alertLevel, 'warning');
+    assert.deepEqual(results.map((o) => o.id), ['cidrap-c-3', 'thinkglobalhealth-a-1', 'thinkglobalhealth-b-2']);
   });
 });

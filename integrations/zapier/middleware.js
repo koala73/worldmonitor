@@ -15,10 +15,25 @@ const addAuthHeader = (request, _z, bundle) => {
   return request;
 };
 
+const describeError = (response) => {
+  const body = response.data && typeof response.data === 'object' ? response.data : {};
+  if (Array.isArray(body.violations) && body.violations.length > 0) {
+    return body.violations.map((v) => `${v.field}: ${v.description}`).join('; ');
+  }
+  return body.message || body.error || `HTTP ${response.status}`;
+};
+
 const handleHttpError = (response, z) => {
+  if (response.status === 401 || response.status === 403) {
+    throw new z.errors.Error(
+      `WorldMonitor rejected the API key (${describeError(response)}). Reconnect with an active wm_ key from Settings, API Keys.`,
+      'AuthenticationError',
+      response.status,
+    );
+  }
   if (response.status >= 400) {
     throw new z.errors.Error(
-      `WorldMonitor API returned ${response.status}`,
+      `WorldMonitor API error ${response.status}: ${describeError(response)}`,
       'ApiError',
       response.status,
     );

@@ -3,7 +3,7 @@
 const { BASE_URL, PATHS } = require('../constants');
 
 const perform = async (z, bundle) => {
-  const countryCode = String(bundle.inputData.country_code || '').toUpperCase();
+  const countryCode = String(bundle.inputData.country_code || '').trim().toUpperCase();
   const response = await z.request({
     url: `${BASE_URL}${PATHS.countryRisk}`,
     params: { country_code: countryCode },

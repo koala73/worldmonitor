@@ -2,27 +2,15 @@
 
 const { BASE_URL, PATHS } = require('../constants');
 
-const perform = async (z, bundle) => {
-  const params = {};
-  if (bundle.inputData.country) {
-    params.country = bundle.inputData.country;
-  }
-  if (bundle.inputData.start) {
-    params.start = bundle.inputData.start;
-  }
-  if (bundle.inputData.end) {
-    params.end = bundle.inputData.end;
-  }
-  if (bundle.inputData.page_size) {
-    params.page_size = bundle.inputData.page_size;
-  }
+const MAX_RESULTS = 25;
 
+const perform = async (z, bundle) => {
   const response = await z.request({
     url: `${BASE_URL}${PATHS.latestEvents}`,
-    params,
+    params: { country: String(bundle.inputData.country || '').trim() },
   });
-  const body = response.data;
-  return Array.isArray(body && body.events) ? body.events : [];
+  const events = Array.isArray(response.data && response.data.events) ? response.data.events : [];
+  return [...events].sort((a, b) => (b.dateStart || 0) - (a.dateStart || 0)).slice(0, MAX_RESULTS);
 };
 
 module.exports = {
@@ -31,7 +19,7 @@ module.exports = {
   display: {
     label: 'Find Latest Conflict Events',
     description:
-      'Search geolocated UCDP armed-conflict events by country name and optional ISO date range.',
+      'Finds the most recent geolocated UCDP armed-conflict events in a country, newest first.',
   },
   operation: {
     inputFields: [
@@ -39,43 +27,24 @@ module.exports = {
         key: 'country',
         label: 'Country',
         type: 'string',
-        required: false,
-        helpText: 'Country name as used by UCDP, such as Sudan.',
-      },
-      {
-        key: 'start',
-        label: 'Start Date',
-        type: 'string',
-        required: false,
-        helpText: 'Inclusive ISO date, such as 2026-06-01.',
-      },
-      {
-        key: 'end',
-        label: 'End Date',
-        type: 'string',
-        required: false,
-        helpText: 'Inclusive ISO date, such as 2026-06-30.',
-      },
-      {
-        key: 'page_size',
-        label: 'Page Size',
-        type: 'integer',
-        required: false,
+        required: true,
+        helpText: 'Country name or ISO 3166-1 alpha-2 code, such as Sudan or SD.',
       },
     ],
     perform,
     sample: {
-      id: 'ucdp-1',
-      dateStart: '2026-06-28',
-      dateEnd: '2026-06-28',
-      location: 'Khartoum',
+      id: '639816',
+      dateStart: 1788134400000,
+      dateEnd: 1788134400000,
+      location: { latitude: 12.483333, longitude: 25.8 },
       country: 'Sudan',
       sideA: 'Government of Sudan',
-      sideB: 'RSF',
-      deathsBest: 12,
-      deathsLow: 8,
-      deathsHigh: 20,
-      violenceType: 'state-based',
+      sideB: 'SFA',
+      deathsBest: 4,
+      deathsLow: 4,
+      deathsHigh: 4,
+      violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED',
+      sourceOriginal: 'Sources from the city of Al-Abyad',
     },
   },
 };

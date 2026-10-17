@@ -43,9 +43,24 @@ describe('authentication', () => {
     await assert.rejects(
       () => appTester(App.authentication.test, { authData: { apiKey: 'bad' } }),
       (error) => {
-        assert.match(String(error.message), /401/);
+        assert.match(String(error.message), /rejected the API key \(Invalid API key\)/);
         return true;
       },
+    );
+  });
+
+  it('names the rejected field when the API returns violations', async () => {
+    nock(BASE_URL)
+      .get(PATHS.countryRisk)
+      .query({ country_code: 'XX' })
+      .reply(400, { violations: [{ field: 'country_code', description: 'unknown country' }] });
+
+    await assert.rejects(
+      () => appTester(App.searches.country_risk.operation.perform, {
+        authData: { apiKey: 'wm_test' },
+        inputData: { country_code: 'xx' },
+      }),
+      /WorldMonitor API error 400: country_code: unknown country/,
     );
   });
 });

@@ -6,10 +6,12 @@ const countryRisk = require('./searches/country-risk');
 const chokepointStatus = require('./searches/chokepoint-status');
 const latestEvents = require('./searches/latest-events');
 const newDiseaseOutbreak = require('./triggers/new-disease-outbreak');
+const chokepointList = require('./triggers/chokepoint-list');
 
 module.exports = {
   version: require('./package.json').version,
   platformVersion: require('zapier-platform-core').version,
+  flags: { cleanInputData: false },
   authentication,
   beforeRequest: [addAuthHeader],
   afterResponse: [handleHttpError],
@@ -20,5 +22,6 @@ module.exports = {
   },
   triggers: {
     [newDiseaseOutbreak.key]: newDiseaseOutbreak,
+    [chokepointList.key]: chokepointList,
   },
 };

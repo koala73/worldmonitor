@@ -13,8 +13,15 @@ This pull request does not register the app with Zapier or push a version. Elie 
 | Account connection test | Auth | GET | `/api/intelligence/v1/get-country-risk?country_code=US` |
 | Find Country Risk | Search | GET | `/api/intelligence/v1/get-country-risk` |
 | Find Chokepoint Status | Search | GET | `/api/supply-chain/v1/get-chokepoint-status` |
-| Find Latest Conflict Events | Search | GET | `/api/conflict/v1/list-ucdp-events` |
+| List Chokepoints (fills the Chokepoint dropdown) | Hidden trigger | GET | `/api/supply-chain/v1/get-chokepoint-status` |
+| Find Latest Conflict Events | Search | GET | `/api/conflict/v1/list-ucdp-events?country=` |
 | New Disease Outbreak | Polling trigger | GET | `/api/health/v1/list-disease-outbreaks` |
+
+Find Latest Conflict Events sends only `country`. The API accepts `start`, `end`, and `page_size` but ignores them, so the search does not offer them. It sorts by `dateStart` and returns the newest 25 events.
+
+New Disease Outbreak sorts by `publishedAt`, newest first. The API groups rows by source, and Zapier reads the first rows as the newest.
+
+API errors reach the Zap with the API's own message, and field-level `violations` name the rejected field.
 
 Auth uses the canonical header `X-WorldMonitor-Key`. `X-Api-Key` is an API alias and is not sent by this app.
 
@@ -46,12 +53,14 @@ Do not commit `package-lock.json` here. Root `security-audit.yml` must list ever
 
 ## Validate and push
 
-The Zapier CLI binary is `zapier-platform` on platform v19. Older docs still say `zapier`.
+The Zapier CLI is a pinned dev dependency. Its binary is `zapier-platform` on platform v19. Older docs still say `zapier`.
 
 ```bash
 cd integrations/zapier
-npx zapier-platform validate
+npm run validate
 ```
+
+Validate runs Zapier's integration checks locally. All 27 pass. The one remaining warning (D003) asks for a connection label, which Zapier lists as optional. The API has no endpoint that names the account behind a key, and a label must not show the key.
 
 `zapier-platform register` and `zapier-platform push` need a Zapier developer login. Do not run them in CI or in this pull request.
 
@@ -86,7 +95,8 @@ Elie submits the public listing. Work through [Zapier integration publishing req
 ### Test account
 
 - Create a non-expiring WorldMonitor account for `integration-testing@zapier.com`.
-- Put that account on API Starter or API Business so Zapier staff can create a `wm_` key.
+- Sign-up sends a verification code to that address, which only Zapier reads. Create the user in the Clerk dashboard with the email marked verified instead.
+- Comp the account to `api_starter` with `payments/billing:grantComplimentaryEntitlement`, so Zapier staff can create a `wm_` key. Pro plans cannot create API keys.
 - Zapier must be able to change the password unless the account is passwordless.
 - Turn on every Zapier step in a Zapier account, leave those Zaps on, and keep at least one successful run each.
 - Add a Zapier team admin whose email is on the worldmonitor.app domain.

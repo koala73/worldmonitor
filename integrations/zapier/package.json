@@ -5,16 +5,18 @@
   "description": "WorldMonitor is a real-time global intelligence dashboard for geopolitics, military activity, markets, climate, and maritime risk.",
   "main": "index.js",
   "scripts": {
-    "test": "mocha --recursive test --timeout 10000"
+    "test": "mocha --recursive test --timeout 10000",
+    "validate": "zapier-platform validate"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
-    "zapier-platform-core": "19.2.0"
+    "zapier-platform-core": "19.2.1"
   },
   "devDependencies": {
     "mocha": "^10.8.2",
-    "nock": "^13.5.6"
+    "nock": "^13.5.6",
+    "zapier-platform-cli": "19.2.1"
   }
 }
