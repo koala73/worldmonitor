@@ -10,7 +10,8 @@
 #
 # The app will be available at http://localhost:3000
 #
-# Pin a specific release instead of latest: WM_IMAGE_TAG=v2.10.0 docker compose pull
+# Pin a specific release instead of latest (image tags have no leading "v"):
+#   echo "WM_IMAGE_TAG=2.11.0" >> .env && docker compose pull && docker compose up -d
 # =============================================================================
 
 services:
