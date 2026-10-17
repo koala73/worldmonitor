@@ -186,6 +186,9 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'The Independent': 'mainstream', 'Sky News': 'mainstream', 'Japan Times': 'mainstream',
   // The BBC's UK desks, added after the 2026-10-17 audit.
   'BBC UK': 'mainstream', 'BBC Northern Ireland': 'mainstream',
+  // Science panel sources (2026-10-17 audit).
+  'Reuters Science': 'wire', 'Nature News': 'mainstream', 'BBC Science': 'mainstream',
+  'Guardian Science': 'mainstream', 'ScienceDaily': 'other',
   'Studio Tamani': 'mainstream', 'leFaso.net': 'mainstream',
   'ActuNiger': 'mainstream', 'Aïr Info': 'mainstream',
   'Caracas Chronicles': 'mainstream', 'Efecto Cocuyo': 'mainstream',
@@ -393,6 +396,11 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'Japan Times': { risk: 'low', note: 'Japanese English-language daily newspaper' },
   'BBC UK': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
   'BBC Northern Ireland': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
+  'Reuters Science': { risk: 'low', note: 'Wire service, strict editorial standards' },
+  'Nature News': { risk: 'low', note: 'News desk of the scientific journal Nature (Springer Nature)' },
+  'BBC Science': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
+  'Guardian Science': { risk: 'low', note: 'Scott Trust ownership, no shareholders' },
+  'ScienceDaily': { risk: 'low', note: 'Aggregator of university and institute press releases' },
   'PAP': { risk: 'medium', stateAffiliated: 'Poland', note: 'Polish national news agency (Polska Agencja Prasowa); state-owned wire' },
   'Gazeta Wyborcza': { risk: 'low', note: 'Independent Polish daily newspaper published by Agora' },
   'Polityka': { risk: 'low', note: 'Independent Polish weekly news magazine' },

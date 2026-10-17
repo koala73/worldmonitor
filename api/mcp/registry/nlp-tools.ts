@@ -102,7 +102,7 @@ type NlpDigestVariant = typeof NLP_DIGEST_VARIANTS[number];
 const FULL_DIGEST_CATEGORIES = [
   'politics', 'us', 'europe', 'middleeast', 'tech', 'ai', 'finance',
   'commodities', 'gov', 'africa', 'latam', 'asia', 'energy', 'thinktanks',
-  'crisis', 'layoffs', 'intel',
+  'crisis', 'layoffs', 'science', 'intel',
 ] as const;
 const TECH_DIGEST_CATEGORIES = [
   'tech', 'ai', 'startups', 'vcblogs', 'regionalStartups', 'unicorns',

@@ -875,13 +875,15 @@ describe('#5697 NLP MCP tools', () => {
 
     it('stays inside the dispatcher budget at the maximum provenance-rich shape', async () => {
       // 25 clusters x 40 members fills MAX_CLUSTER_NEWS_ITEMS. Eight publisher
-      // families per cluster: Reuters with all twelve curated labels, past the
+      // families per cluster: Reuters with twelve curated labels, past the
       // wire's label cap, and seven uncurated families at the cap, whose
-      // labels differ only in case and so fold into one family each.
+      // labels differ only in case and so fold into one family each. Twelve,
+      // not every label: a new Reuters desk would push the fixture past the
+      // 1000-item cap and stop it being the maximum shape.
       const caseVariant = (base, variant) => [...base]
         .map((char, index) => (index < 6 && (variant >> index) & 1 ? char.toUpperCase() : char)).join('');
       const sources = [
-        ...PUBLISHER_FAMILIES.reuters.labels,
+        ...PUBLISHER_FAMILIES.reuters.labels.slice(0, 12),
         ...Array.from({ length: 7 }, (_, family) => Array.from(
           { length: 4 },
           (_, variant) => caseVariant(`source${family}-${'s'.repeat(5_000)}`, variant),

@@ -184,7 +184,7 @@ export const PUBLIC_PRODUCT_FACTS = {
     "hotspots": 29,
     "stockExchanges": 29,
     "mcpTools": 94,
-    "commands": 620,
+    "commands": 621,
     "languages": 28
   },
   "resilienceCoverage": {

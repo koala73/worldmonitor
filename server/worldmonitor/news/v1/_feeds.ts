@@ -452,6 +452,14 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'TechCrunch Layoffs', url: 'https://techcrunch.com/tag/layoffs/feed/' },
       { name: 'Layoffs News', url: gn('(layoffs OR "job cuts" OR "workforce reduction") when:3d') },
     ],
+    // Science panel (2026-10-17 Google News World audit).
+    science: [
+      { name: 'Reuters Science', url: gn('site:reuters.com science when:2d') },
+      { name: 'Nature News', url: 'https://www.nature.com/nature.rss' },
+      { name: 'BBC Science', url: 'https://feeds.bbci.co.uk/news/science_and_environment/rss.xml' },
+      { name: 'Guardian Science', url: 'https://www.theguardian.com/science/rss' },
+      { name: 'ScienceDaily', url: 'https://www.sciencedaily.com/rss/all.xml' },
+    ],
   },
 
   tech: {

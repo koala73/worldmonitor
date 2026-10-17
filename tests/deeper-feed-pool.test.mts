@@ -124,8 +124,8 @@ describe('feeds added by the 2026-10-17 audit', () => {
     for (const name of before.keep) assert.ok(now.keep.has(name), `${name} is still kept under the free cap`);
   });
 
-  it('introduces BBC UK in its own, last rollout stage', () => {
+  it('introduces BBC UK in its own rollout stage', () => {
     assert.deepEqual([...feeds.BBC_UK_DEFAULT_SOURCES], ['BBC UK']);
-    assert.deepEqual([...feeds.REGIONAL_FEED_ROLLOUT_STAGES.at(-1)!.introducedNames], ['BBC UK']);
+    assert.ok(feeds.REGIONAL_FEED_ROLLOUT_STAGES.some((stage) => stage.introducedNames.length === 1 && stage.introducedNames[0] === 'BBC UK'));
   });
 });

@@ -583,6 +583,16 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Reuters Energy', url: rss('https://news.google.com/rss/search?q=site:reuters.com+(oil+OR+gas+OR+energy+OR+OPEC)+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Mining & Resources', url: rss('https://news.google.com/rss/search?q=(lithium+OR+"rare+earth"+OR+cobalt+OR+mining)+when:3d&hl=en-US&gl=US&ceid=US:en') },
   ],
+  // Science panel (2026-10-17 Google News World audit: science stories it
+  // carried, such as Nature's coral study and Reuters' Neanderthal report,
+  // reached no feed). Last category, so the free cap reaches it last.
+  science: [
+    { name: 'Reuters Science', url: rss('https://news.google.com/rss/search?q=site%3Areuters.com%20science%20when%3A2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Nature News', url: rss('https://www.nature.com/nature.rss') },
+    { name: 'BBC Science', url: rss('https://feeds.bbci.co.uk/news/science_and_environment/rss.xml') },
+    { name: 'Guardian Science', url: rss('https://www.theguardian.com/science/rss') },
+    { name: 'ScienceDaily', url: rss('https://www.sciencedaily.com/rss/all.xml') },
+  ],
 };
 
 // Tech/AI variant feeds
@@ -1168,7 +1178,7 @@ export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: str
   africa: { labelKey: 'header.sourceRegionAfrica', feedKeys: ['africa'] },
   latam: { labelKey: 'header.sourceRegionLatAm', feedKeys: ['latam'] },
   asia: { labelKey: 'header.sourceRegionAsiaPacific', feedKeys: ['asia'] },
-  topical: { labelKey: 'header.sourceRegionTopical', feedKeys: ['energy', 'tech', 'ai', 'finance', 'layoffs', 'thinktanks'] },
+  topical: { labelKey: 'header.sourceRegionTopical', feedKeys: ['energy', 'tech', 'ai', 'finance', 'layoffs', 'thinktanks', 'science'] },
   intel: { labelKey: 'header.sourceRegionIntel', feedKeys: [] },
 
   // Tech variant regions
@@ -1490,6 +1500,20 @@ export const MAJOR_PUBLISHER_DEFAULT_SOURCES = [
  */
 export const BBC_UK_DEFAULT_SOURCES = ['BBC UK'] as const;
 
+/**
+ * The Science panel's sources (2026-10-17 audit). The panel is opt-in, but its
+ * sources are EN default-on so it has content when enabled. The free-tier cap
+ * picks round-robin across categories, so a default free profile keeps Reuters
+ * Science and Nature News in place of Layoffs News and Foreign Affairs.
+ */
+export const SCIENCE_DEFAULT_SOURCES = [
+  'Reuters Science',
+  'Nature News',
+  'BBC Science',
+  'Guardian Science',
+  'ScienceDaily',
+] as const;
+
 /** Chronological feed introductions used to reconstruct untouched cap states. */
 export const REGIONAL_FEED_ROLLOUT_STAGES = [
   {
@@ -1593,6 +1617,16 @@ export const REGIONAL_FEED_ROLLOUT_STAGES = [
   },
   {
     introducedNames: [...BBC_UK_DEFAULT_SOURCES],
+    protectedNames: [
+      ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+      ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
+      ...CANADA_EN_DEFAULT_SOURCES,
+      ...CRISIS_FLOOR_EN_DEFAULT_SOURCES,
+      ...CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES,
+    ],
+  },
+  {
+    introducedNames: [...SCIENCE_DEFAULT_SOURCES],
     protectedNames: [
       ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
       ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
@@ -1705,6 +1739,7 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   thinktanks: ['Foreign Policy', 'Atlantic Council', 'Foreign Affairs', 'CSIS', 'RAND', 'Brookings', 'Carnegie', 'War on the Rocks', 'ISW'],
   crisis: ['CrisisWatch', 'IAEA', 'WHO', 'UNHCR'],
   energy: ['Oil & Gas', 'Nuclear Energy', 'Reuters Energy', 'Mining & Resources'],
+  science: [...SCIENCE_DEFAULT_SOURCES],
 };
 
 export const DEFAULT_ENABLED_INTEL: string[] = [
