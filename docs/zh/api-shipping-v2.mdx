@@ -153,7 +153,7 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 
 - 当 `disruptionScore >= alertThreshold` 时触发投递。每次向上越过阈值产生一次投递。分数降到阈值以下后，该咽喉要道重新进入待触发状态，下一次越过阈值会再次触发。
 - 如果 worker 首次评估某个 webhook 时咽喉要道已经达到或超过阈值，会产生一次投递。
-- 投递为至少一次。失败的投递保持待触发状态，只要分数仍达到或超过阈值，就会在下一个周期重试。
+- 投递为至少一次。失败的投递保持待触发状态，只要分数仍达到或超过阈值，就会在下一个周期重试。重试沿用原来的 `X-WM-Delivery-Id` 和 `triggeredAt`，`score` 与 `details` 为当前值。若在投递成功前分数回落、重新进入待触发状态，该次越过会被放弃，下一次越过使用新的 id。
 - 失败指非 2xx 响应、10 秒内没有响应，或回调 URL 解析到私有或保留地址。连续失败 5 次后，worker 将 `active` 设为 `false` 并停止向该 webhook 投递。一次成功的投递会重置计数。`reactivate` 可恢复投递。
 
 `GET /api/v2/shipping/webhooks/{subscriberId}` 返回以下投递计数器：

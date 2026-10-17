@@ -29,6 +29,7 @@ import {
   ALL_INDEX_KEY,
   DELIVERY_FAILURE_CEILING,
   deliverShippingWebhook,
+  makeDeliveryId,
   webhookKey,
 } from './lib/shipping-webhook-delivery.mjs';
 
@@ -55,7 +56,13 @@ const RPC_TIMEOUT_MS = 30_000;
 
 // Compare-and-set: a rotate-secret or reactivate that lands mid-tick wins, and
 // this tick's counter update is dropped rather than resurrecting the old record.
-const RECORD_CAS_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'KEEPTTL') return 1 end return 0";
+export const RECORD_CAS_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'KEEPTTL') return 1 end return 0";
+
+// The index entry goes only if the record is still gone: a rotate-secret or
+// reactivate can restore it between this tick's GET and the prune.
+export const PRUNE_SCRIPT = "if redis.call('EXISTS', KEYS[1]) == 0 then redis.call('SREM', KEYS[2], ARGV[1]) redis.call('DEL', KEYS[3]) return 1 end return 0";
+
+const LOCK_RENEW_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('PEXPIRE', KEYS[1], ARGV[2]) end return 0";
 
 export function stateKey(subscriberId) {
   return `webhook:state:${subscriberId}:v1`;
@@ -81,13 +88,17 @@ export function reasonFor(chokepoint) {
 /**
  * armed --(score >= threshold)--> deliver; a successful delivery disarms.
  * disarmed --(score < threshold)--> armed. Missing state is armed.
+ * A crossing keeps its `pending` delivery id and triggeredAt until it is
+ * delivered or re-armed, so a retry is the same event to the receiver.
  */
 export function nextChokepointState(previous, score, threshold) {
   const armed = previous?.armed ?? true;
   const lastDeliveredAt = previous?.lastDeliveredAt;
+  const fire = armed && score >= threshold;
   const state = { armed: score < threshold ? true : armed, lastScore: score };
   if (lastDeliveredAt) state.lastDeliveredAt = lastDeliveredAt;
-  return { fire: armed && score >= threshold, state };
+  if (fire && previous?.pending) state.pending = previous.pending;
+  return { fire, state };
 }
 
 function isRecord(value) {
@@ -124,7 +135,7 @@ export function parseStateHash(flat) {
  * Pure. `records` are active, parsed subscriber records; `states` maps
  * subscriberId to its stored per-chokepoint state.
  */
-export function planTick({ chokepoints, records, states, now, scoresFetchedAt }) {
+export function planTick({ chokepoints, records, states, now, scoresFetchedAt, makeId = makeDeliveryId }) {
   const byId = new Map(chokepoints
     .filter((cp) => typeof cp?.id === 'string' && Number.isFinite(cp.disruptionScore))
     .map((cp) => [cp.id, cp]));
@@ -141,15 +152,17 @@ export function planTick({ chokepoints, records, states, now, scoresFetchedAt })
       const { fire, state } = nextChokepointState(previous[chokepointId], score, record.alertThreshold);
       next[chokepointId] = state;
       if (!fire) continue;
+      state.pending ??= { deliveryId: makeId(), triggeredAt };
       deliveries.push({
         record,
         chokepoint,
+        deliveryId: state.pending.deliveryId,
         payload: {
           subscriberId: record.subscriberId,
           chokepointId,
           score,
           alertThreshold: record.alertThreshold,
-          triggeredAt,
+          triggeredAt: state.pending.triggeredAt,
           reason: reasonFor(chokepoint),
           details: {
             name: chokepoint.name ?? chokepointId,
@@ -290,12 +303,12 @@ async function backfillIndex(redis) {
   return found;
 }
 
-async function deliverForRecord(group, deliver, now) {
+async function deliverForRecord(group, deliver, now, holdLock) {
   let { record } = group;
   const outcomes = [];
   for (const delivery of group.deliveries) {
-    if (record.active === false) break;
-    const outcome = await deliver(record, delivery.payload);
+    if (record.active === false || !(await holdLock())) break;
+    const outcome = await deliver(record, delivery.payload, delivery.deliveryId);
     const at = now();
     outcomes.push({ chokepointId: delivery.payload.chokepointId, outcome, at });
     record = settleRecord(record, outcome, at);
@@ -344,7 +357,12 @@ async function writeWorkerStatus(redis, summary, now) {
   }
 }
 
-async function evaluate({ redis, deliver, fetchImpl, env, now }) {
+async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
+  let lockLost = false;
+  const holdLock = async () => {
+    if (!lockLost && !(await lock.renew())) lockLost = true;
+    return !lockLost;
+  };
   const status = await readChokepointStatus({ redis, fetchImpl, env });
   const summary = {
     sourceState: 'ok',
@@ -369,11 +387,10 @@ async function evaluate({ redis, deliver, fetchImpl, env, now }) {
   const raws = await runBatched(redis, ids, (id) => ['GET', webhookKey(id)], 'record read');
 
   const expired = ids.filter((_, index) => raws[index] === null);
-  if (expired.length) {
-    await runBatched(redis, expired, (id) => ['SREM', ALL_INDEX_KEY, id], 'index prune');
-    await runBatched(redis, expired, (id) => ['DEL', stateKey(id)], 'state prune');
-  }
-  summary.pruned = expired.length;
+  const pruned = await runBatched(redis, expired, (id) => [
+    'EVAL', PRUNE_SCRIPT, '3', webhookKey(id), ALL_INDEX_KEY, stateKey(id), id,
+  ], 'index prune');
+  summary.pruned = pruned.filter((result) => Number(result) === 1).length;
 
   const rawById = new Map();
   const records = [];
@@ -396,11 +413,21 @@ async function evaluate({ redis, deliver, fetchImpl, env, now }) {
     scoresFetchedAt: summary.scoresFetchedAt,
   });
 
+  // Persist each crossing's delivery id before sending, so a tick that dies
+  // after a send still retries under the same id.
+  const pendingWrites = deliveries.map(({ record, payload }) => [
+    'HSET', stateKey(record.subscriberId), payload.chokepointId,
+    JSON.stringify(nextStates.get(record.subscriberId)[payload.chokepointId]),
+  ]);
+  await runBatched(redis, pendingWrites, (command) => command, 'pending write');
+
   const settled = await allSettledWithConcurrency(
     groupBySubscriber(deliveries),
     DELIVERY_CONCURRENCY,
-    (group) => deliverForRecord(group, deliver, now),
+    (group) => deliverForRecord(group, deliver, now, holdLock),
   );
+  // Another worker owns the tick now; its state and record writes win.
+  if (!(await holdLock())) throw new Error('lock lost during delivery');
 
   const settledRecords = [];
   for (const result of settled) {
@@ -410,7 +437,8 @@ async function evaluate({ redis, deliver, fetchImpl, env, now }) {
     for (const { chokepointId, outcome, at } of outcomes) {
       summary.deliveries += 1;
       if (outcome.ok) {
-        next[chokepointId] = { ...next[chokepointId], armed: false, lastDeliveredAt: new Date(at).toISOString() };
+        const { pending: _pending, ...delivered } = next[chokepointId];
+        next[chokepointId] = { ...delivered, armed: false, lastDeliveredAt: new Date(at).toISOString() };
       } else {
         summary.failures += 1;
       }
@@ -447,14 +475,14 @@ async function evaluate({ redis, deliver, fetchImpl, env, now }) {
 export async function runTick({
   redis,
   lock,
-  deliver = (record, payload) => deliverShippingWebhook(record, payload),
+  deliver = (record, payload, deliveryId) => deliverShippingWebhook(record, payload, { deliveryId }),
   fetchImpl = globalThis.fetch,
   env = process.env,
   now = Date.now,
 }) {
   if (!(await lock.acquire())) return { skipped: true };
   try {
-    return await evaluate({ redis, deliver, fetchImpl, env, now });
+    return await evaluate({ redis, lock, deliver, fetchImpl, env, now });
   } finally {
     await lock.release();
   }
@@ -478,13 +506,19 @@ export function createUpstashPipeline({ url, token, fetchImpl = globalThis.fetch
   };
 }
 
-function createTickLock() {
+function createTickLock(redis) {
   let runId = '';
   return {
     async acquire() {
       runId = randomUUID();
       const { locked } = await acquireLockSafely(LOCK_DOMAIN, runId, LOCK_TTL_MS);
       return locked;
+    },
+    async renew() {
+      const [row] = await redis([
+        ['EVAL', LOCK_RENEW_SCRIPT, '1', `seed-lock:${LOCK_DOMAIN}`, runId, String(LOCK_TTL_MS)],
+      ]);
+      return Number(row?.result) === 1;
     },
     release: () => releaseLock(LOCK_DOMAIN, runId),
   };
@@ -501,7 +535,7 @@ async function main() {
     ? Number(process.env.SHIPPING_WEBHOOK_TICK_MS)
     : DEFAULT_TICK_MS;
   const redis = createUpstashPipeline({ url, token });
-  const lock = createTickLock();
+  const lock = createTickLock(redis);
 
   let stopping = false;
   let timer;

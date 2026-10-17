@@ -5,6 +5,8 @@ import {
   BACKFILL_CURSOR_KEY,
   CHOKEPOINT_STATUS_KEY,
   CHOKEPOINT_STATUS_RPC_URL,
+  PRUNE_SCRIPT,
+  RECORD_CAS_SCRIPT,
   WORKER_ACTIVATION_KEY,
   WORKER_META_KEY,
   WORKER_STATUS_KEY,
@@ -53,6 +55,7 @@ function plan(score, state, overrides = {}) {
     states: new Map(state ? [[rec.subscriberId, { suez: state }]] : []),
     now: NOW,
     scoresFetchedAt: '2026-10-17T11:58:00.000Z',
+    makeId: () => 'whd_fixed',
   });
 }
 
@@ -60,7 +63,10 @@ describe('planTick state machine', () => {
   it('fires once for a subscriber first seen above threshold', () => {
     const { deliveries, nextStates } = plan(75);
     assert.equal(deliveries.length, 1);
-    assert.deepEqual(nextStates.get(record().subscriberId), { suez: { armed: true, lastScore: 75 } });
+    assert.equal(deliveries[0].deliveryId, 'whd_fixed');
+    assert.deepEqual(nextStates.get(record().subscriberId), {
+      suez: { armed: true, lastScore: 75, pending: { deliveryId: 'whd_fixed', triggeredAt: '2026-10-17T12:00:00.000Z' } },
+    });
   });
 
   it('does not fire again while the score stays above threshold after a delivery', () => {
@@ -182,6 +188,15 @@ function fakeRedis(initial = {}) {
         return ['0', keys];
       }
       case 'EVAL': {
+        const script = key;
+        if (script === PRUNE_SCRIPT) {
+          const [, recordKey, indexKey, subStateKey, id] = args;
+          if (store.has(recordKey)) return 0;
+          store.get(indexKey)?.delete(id);
+          store.delete(subStateKey);
+          return 1;
+        }
+        assert.equal(script, RECORD_CAS_SCRIPT);
         const [, recordKey, expected, next] = args;
         if (store.get(recordKey) !== expected) return 0;
         store.set(recordKey, next);
@@ -197,12 +212,13 @@ function fakeRedis(initial = {}) {
   return { redis, store, ttl, log };
 }
 
-function lockStub(acquired = true) {
-  const calls = { acquire: 0, release: 0 };
+function lockStub(acquired = true, renewals = []) {
+  const calls = { acquire: 0, release: 0, renew: 0 };
   return {
     calls,
     lock: {
       acquire: async () => { calls.acquire += 1; return acquired; },
+      renew: async () => { calls.renew += 1; return renewals.shift() ?? true; },
       release: async () => { calls.release += 1; },
     },
   };
@@ -228,8 +244,8 @@ function seeded({ score = 75, rec = record(), backfilled = true, state } = {}) {
 
 function deliverStub(outcomes) {
   const sent = [];
-  const deliver = async (rec, payload) => {
-    sent.push({ rec, payload });
+  const deliver = async (rec, payload, deliveryId) => {
+    sent.push({ rec, payload, deliveryId });
     return outcomes.shift() ?? { ok: true, status: 200 };
   };
   return { sent, deliver };
@@ -349,6 +365,68 @@ describe('runTick', () => {
     assert.equal(summary.pruned, 1);
     assert.equal(fake.store.get('webhook:all:v1').has('wh_gone'), false);
     assert.equal(fake.store.has(stateKey('wh_gone')), false);
+  });
+
+  it('retries a failed crossing with the same delivery id and triggeredAt', async () => {
+    const fake = seeded();
+    const { sent, deliver } = deliverStub([{ ok: false, status: 0, error: 'timeout' }, { ok: true, status: 200 }]);
+    await tick(fake, deliver);
+    await tick(fake, deliver, { now: () => NOW + 5 * 60_000 });
+    assert.equal(sent.length, 2);
+    assert.match(sent[0].deliveryId, /^whd_[0-9a-f]{32}$/);
+    assert.equal(sent[1].deliveryId, sent[0].deliveryId);
+    assert.equal(sent[1].payload.triggeredAt, sent[0].payload.triggeredAt);
+    const state = JSON.parse(fake.store.get(stateKey(SUB)).suez);
+    assert.equal(state.armed, false);
+    assert.equal(state.pending, undefined);
+  });
+
+  it('gives a new crossing a new delivery id after re-arming', async () => {
+    const fake = seeded({ state: { armed: true, lastScore: 70, pending: { deliveryId: 'whd_old', triggeredAt: '2026-10-17T11:00:00.000Z' } } });
+    fake.store.set(CHOKEPOINT_STATUS_KEY, JSON.stringify({ chokepoints: [chokepoint('suez', 40)], fetchedAt: 'x' }));
+    const { sent, deliver } = deliverStub([]);
+    await tick(fake, deliver);
+    assert.equal(sent.length, 0);
+    assert.equal(JSON.parse(fake.store.get(stateKey(SUB)).suez).pending, undefined);
+    fake.store.set(CHOKEPOINT_STATUS_KEY, JSON.stringify({ chokepoints: [chokepoint('suez', 80)], fetchedAt: 'y' }));
+    await tick(fake, deliver);
+    assert.equal(sent.length, 1);
+    assert.notEqual(sent[0].deliveryId, 'whd_old');
+  });
+
+  it('keeps an index entry whose record was renewed after the read', async () => {
+    const fake = seeded();
+    fake.store.get('webhook:all:v1').add('wh_renewed');
+    const renewed = JSON.stringify(record({ subscriberId: 'wh_renewed', chokepointIds: ['hormuz_strait'] }));
+    const redis = async (commands) => {
+      const rows = await fake.redis(commands);
+      if (commands.some(([verb, key]) => verb === 'GET' && key === 'webhook:sub:wh_renewed:v1')) {
+        fake.store.set('webhook:sub:wh_renewed:v1', renewed);
+      }
+      return rows;
+    };
+    const { deliver } = deliverStub([]);
+    const summary = await tick({ ...fake, redis }, deliver);
+    assert.equal(summary.pruned, 0);
+    assert.equal(fake.store.get('webhook:all:v1').has('wh_renewed'), true);
+  });
+
+  it('stops sending and leaves only pending ids once the lock is lost', async () => {
+    const fake = seeded({ rec: record({ chokepointIds: ['suez', 'hormuz_strait'] }) });
+    fake.store.set(CHOKEPOINT_STATUS_KEY, JSON.stringify({
+      chokepoints: [chokepoint('suez', 75), chokepoint('hormuz_strait', 90)],
+      fetchedAt: 'x',
+    }));
+    const before = fake.store.get(RECORD_KEY);
+    const { calls, lock } = lockStub(true, [true, false]);
+    const { sent, deliver } = deliverStub([]);
+    await assert.rejects(tick(fake, deliver, { lock }), /lock lost/);
+    assert.equal(sent.length, 1);
+    assert.equal(fake.store.get(RECORD_KEY), before);
+    const pending = JSON.parse(fake.store.get(stateKey(SUB)).suez).pending;
+    assert.equal(pending.deliveryId, sent[0].deliveryId);
+    assert.equal(fake.store.has(WORKER_META_KEY), false);
+    assert.equal(calls.release, 1);
   });
 
   it('writes health status, meta, and the activation marker', async () => {
