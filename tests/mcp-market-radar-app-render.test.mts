@@ -149,7 +149,7 @@ describe('ETF flow observations in the compiled Market Radar', () => {
       ...etfSource.etfs[0], ticker: '<img src=x onerror="window.pwned=true">', issuer: '<script>bad</script>',
     }] } } });
     assert.match(document.querySelector('.etf-ticker')!.textContent, /<img src=x/);
-    assert.match(document.querySelector('.etf-flow-row .qname')!.textContent, /<script>/);
+    assert.equal(document.querySelector('.etf-flow-row .qname')!.textContent, '<script>bad</script>');
     assert.equal(document.querySelector('img,script'), null);
     assert.equal(window.eval('window.pwned'), undefined);
     send({ structuredContent: fixture });
