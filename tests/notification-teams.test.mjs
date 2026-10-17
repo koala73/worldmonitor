@@ -93,17 +93,21 @@ describe('Teams Adaptive Card payloads', () => {
     assert.equal(card.actions[0].title, 'Open original report');
   });
 
-  it('notice card keeps leading lines and counts the rest when it would exceed the Teams limit', () => {
-    const lines = Array.from({ length: 100 }, (_, i) => `[HIGH] Line ${i} ${'y'.repeat(200)}`);
-    const payload = teams.buildTeamsNoticePayload({ title: 'Batch', lines, moreLabel: 'held alert' });
-    assert.ok(Buffer.byteLength(JSON.stringify(payload)) <= teams.TEAMS_MAX_PAYLOAD_BYTES);
-    const text = renderedText(cardOf(payload));
-    assert.match(text, /Line 0 /);
-    const shown = (text.match(/Line \d+ /g) ?? []).length;
-    assert.ok(shown > 0 && shown < 100);
-    assert.match(text, new RegExp(`and ${100 - shown} more held alerts on the dashboard`));
-    const small = renderedText(cardOf(teams.buildTeamsNoticePayload({ title: 'Batch', lines: ['one', 'two'] })));
-    assert.doesNotMatch(small, /more/);
+  it('splits a notice that would exceed the Teams limit into cards that each fit, losing no line', () => {
+    const lines = Array.from({ length: 100 }, (_, i) => `[HIGH] Line ${String(i).padStart(3, '0')} ${'y'.repeat(200)}`);
+    const payloads = teams.buildTeamsNoticePayloads({ title: 'Batch', lines });
+    assert.ok(payloads.length > 1);
+    const seen = [];
+    payloads.forEach((payload, i) => {
+      assert.ok(Buffer.byteLength(JSON.stringify(payload)) <= teams.TEAMS_MAX_PAYLOAD_BYTES);
+      const text = renderedText(cardOf(payload));
+      assert.match(text, new RegExp(`Batch \\(part ${i + 1} of ${payloads.length}\\)`));
+      seen.push(...(text.match(/Line \d{3}/g) ?? []));
+    });
+    assert.deepEqual(seen, lines.map((_, i) => `Line ${String(i).padStart(3, '0')}`), 'every line, in order, exactly once');
+    const small = teams.buildTeamsNoticePayloads({ title: 'Batch', lines: ['one', 'two'] });
+    assert.equal(small.length, 1);
+    assert.doesNotMatch(renderedText(cardOf(small[0])), /part/);
   });
 
   it('alert and digest cards state coverage from the corroboration verdict (#9213)', () => {
@@ -253,7 +257,8 @@ function loadRelayWithTeamsStub(posts, { status = 202 } = {}) {
   ssrf.assertNotificationWebhookDeliveryUrlSafe = async (url) => ({ url: new URL(url), resolvedAddresses: [PUBLIC_IP] });
   ssrf.postJsonWithPinnedAddress = async (url, body) => {
     posts.push({ url: url.href, body: JSON.parse(body) });
-    return new Response(null, { status });
+    const current = Array.isArray(status) ? status[Math.min(posts.length - 1, status.length - 1)] : status;
+    return new Response(null, { status: current });
   };
   const loader = Module;
   const originalLoad = loader._load;
@@ -358,19 +363,33 @@ describe('realtime relay Teams dispatch', () => {
     assert.match(text, /Held alert/);
   });
 
-  it('fits a full quiet-hours batch of long titles into one deliverable card', async () => {
+  it('delivers every alert of a full quiet-hours batch of long titles, across cards that fit', async () => {
     const heldEvents = Array.from({ length: 100 }, (_, i) => ({
       eventType: 'conflict_escalation', severity: 'high', payload: { title: `Held ${String(i).padStart(3, '0')} ${'x'.repeat(190)}` },
     }));
     const { relay, posts, deletedHeld } = setup({ heldEvents });
     await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'owner', variant: 'full' });
-    assert.equal(posts.length, 1, 'the batch is delivered, not refused as oversized');
-    assert.ok(Buffer.byteLength(JSON.stringify(posts[0].body)) <= teams.TEAMS_MAX_PAYLOAD_BYTES);
-    const text = renderedText(cardOf(posts[0].body));
-    assert.match(text, /100 held alerts/);
-    assert.match(text, /Held 000 /);
-    assert.match(text, /and \d+ more held alerts? on the dashboard/);
+    assert.ok(posts.length > 1, 'the batch is split, not refused as oversized');
+    const delivered = [];
+    for (const post of posts) {
+      assert.ok(Buffer.byteLength(JSON.stringify(post.body)) <= teams.TEAMS_MAX_PAYLOAD_BYTES);
+      const text = renderedText(cardOf(post.body));
+      assert.match(text, /100 held alerts/);
+      delivered.push(...(text.match(/Held \d{3}/g) ?? []));
+    }
+    assert.equal(delivered.length, 100, 'no held alert is dropped before the queue is cleared');
+    assert.equal(new Set(delivered).size, 100);
     assert.equal(deletedHeld.length, 1, 'a delivered batch clears the held queue');
+  });
+
+  it('keeps the held queue when a later card of the batch fails', async () => {
+    const heldEvents = Array.from({ length: 100 }, (_, i) => ({
+      eventType: 'conflict_escalation', severity: 'high', payload: { title: `Held ${String(i).padStart(3, '0')} ${'x'.repeat(190)}` },
+    }));
+    const { relay, posts, deletedHeld } = setup({ heldEvents, status: [202, 500] });
+    await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'owner', variant: 'full' });
+    assert.ok(posts.length >= 2);
+    assert.equal(deletedHeld.length, 0, 'a partly delivered Teams batch is retried, not dropped');
   });
 });
 

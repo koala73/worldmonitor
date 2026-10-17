@@ -133,38 +133,48 @@ function buildTeamsAlertPayload(alert) {
 }
 
 /**
- * Plain notice card: channel welcome / test send and the quiet-hours batch.
- * A batch can hold up to 100 alerts; lines are dropped from the end, with a
- * "… and N more <moreLabel>s on the dashboard" line, until the card fits
- * the Teams size limit, so an oversized batch is never refused on every retry.
+ * Plain notice card: channel welcome / test send.
  *
- * @param {{ title: string; lines?: string[]; link?: string; linkTitle?: string; moreLabel?: string }} notice
+ * @param {{ title: string; lines?: string[]; link?: string; linkTitle?: string }} notice
  */
 function buildTeamsNoticePayload(notice) {
-  const lines = (notice.lines ?? []).filter(Boolean);
+  return noticeCard(notice.title, (notice.lines ?? []).filter(Boolean), notice);
+}
+
+function noticeCard(title, lines, notice) {
   const action = notice.link ? linkAction(notice.link, notice.linkTitle) : null;
-  const moreLabel = notice.moreLabel ?? 'item';
-  const build = (shown) => {
-    const body = [richText([{ text: notice.title, size: 'Medium', weight: 'Bolder' }])];
-    for (const line of lines.slice(0, shown)) body.push(richText([line], { spacing: 'Small' }));
-    const hidden = lines.length - shown;
-    if (hidden > 0) {
-      body.push({
-        type: 'TextBlock',
-        text: `… and ${hidden} more ${moreLabel}${hidden === 1 ? '' : 's'} on the dashboard`,
-        wrap: true,
-        isSubtle: true,
-      });
+  const body = [richText([{ text: title, size: 'Medium', weight: 'Bolder' }])];
+  for (const line of lines) body.push(richText([line], { spacing: 'Small' }));
+  return wrapCard(body, action ? [action] : []);
+}
+
+/**
+ * Notice split into as many cards as the Teams size limit needs, every line
+ * kept, in order (the quiet-hours batch holds up to 100 alerts). Titles read
+ * "<title> (part i of n)" when there is more than one card. A single line
+ * larger than the limit gets a card of its own, which the sender refuses.
+ *
+ * @param {{ title: string; lines?: string[]; link?: string; linkTitle?: string }} notice
+ * @returns {object[]}
+ */
+function buildTeamsNoticePayloads(notice) {
+  const lines = (notice.lines ?? []).filter(Boolean);
+  // Reserve room for the longest possible part suffix while packing.
+  const reserve = ` (part ${lines.length} of ${lines.length})`;
+  const chunks = [];
+  let current = [];
+  for (const line of lines) {
+    const candidate = [...current, line];
+    if (current.length > 0 && payloadBytes(noticeCard(notice.title + reserve, candidate, notice)) > TEAMS_MAX_PAYLOAD_BYTES) {
+      chunks.push(current);
+      current = [line];
+    } else {
+      current = candidate;
     }
-    return wrapCard(body, action ? [action] : []);
-  };
-  let shown = lines.length;
-  let payload = build(shown);
-  while (shown > 0 && payloadBytes(payload) > TEAMS_MAX_PAYLOAD_BYTES) {
-    shown -= 1;
-    payload = build(shown);
   }
-  return payload;
+  if (current.length > 0 || chunks.length === 0) chunks.push(current);
+  if (chunks.length === 1) return [noticeCard(notice.title, chunks[0], notice)];
+  return chunks.map((chunk, i) => noticeCard(`${notice.title} (part ${i + 1} of ${chunks.length})`, chunk, notice));
 }
 
 function payloadBytes(payload) {
@@ -279,6 +289,7 @@ module.exports = {
   buildTeamsAlertPayload,
   buildTeamsDigestPayload,
   buildTeamsNoticePayload,
+  buildTeamsNoticePayloads,
   describeCountry,
   sendTeamsPayload,
 };

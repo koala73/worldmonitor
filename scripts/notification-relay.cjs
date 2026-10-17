@@ -16,6 +16,7 @@ const {
 const {
   buildTeamsAlertPayload,
   buildTeamsNoticePayload,
+  buildTeamsNoticePayloads,
   sendTeamsPayload,
 } = require('./lib/notification-teams.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
@@ -463,7 +464,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
       if (ch.channelType === 'telegram' && ch.chatId) ok = await sendTelegram(userId, ch.chatId, text);
       else if (ch.channelType === 'slack' && ch.webhookEnvelope) ok = await sendSlack(userId, ch.webhookEnvelope, text);
       else if (ch.channelType === 'discord' && ch.webhookEnvelope) ok = await sendDiscord(userId, ch.webhookEnvelope, text);
-      else if (ch.channelType === 'teams' && ch.webhookEnvelope) ok = await sendTeams(userId, ch.webhookEnvelope, buildTeamsNoticePayload({
+      else if (ch.channelType === 'teams' && ch.webhookEnvelope) ok = await sendTeamsCards(userId, ch.webhookEnvelope, buildTeamsNoticePayloads({
         title: lines[0],
         lines: events.map((ev) => {
           const coverage = formatEventCoverage(ev);
@@ -471,7 +472,6 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
         }),
         link: NOTIFY_DASHBOARD_URL,
         linkTitle: 'Open dashboard',
-        moreLabel: 'held alert',
       }));
       else if (ch.channelType === 'email' && ch.email) ok = await sendEmail(ch.email, subject, text, unsubscribeUrlFor(ch, 'alerts'));
       else if (ch.channelType === 'webhook' && ch.webhookEnvelope) ok = await sendWebhook(userId, ch.webhookEnvelope, {
@@ -776,6 +776,18 @@ async function sendTeams(userId, webhookEnvelope, payload) {
   }
   console.log(`[relay] Teams delivered to ${userId}`);
   return true;
+}
+
+/**
+ * Post every card of a split notice in order. Delivered only when all of
+ * them are: a partly delivered quiet-hours batch keeps its held queue, so a
+ * retry may repeat earlier cards but never drops an alert.
+ */
+async function sendTeamsCards(userId, webhookEnvelope, payloads) {
+  for (const payload of payloads) {
+    if (!(await sendTeams(userId, webhookEnvelope, payload))) return false;
+  }
+  return payloads.length > 0;
 }
 
 /** Adaptive Card for a realtime event, shaped by the same field helpers as the text sinks. */
