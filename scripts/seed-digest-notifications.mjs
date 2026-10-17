@@ -2854,10 +2854,8 @@ async function main() {
       // not end the tick for every user after it. last-sent was not
       // written, so the rule is retried on the next tick while still due.
       sendFailed++;
-      console.warn(
-        `[digest] send failed user=${rule?.userId} variant=${rule?.variant}: ` +
-          `${err?.name ?? 'Error'}: ${err?.message ?? err}`,
-      );
+      // Log the error object, as main().catch did, so its stack survives.
+      console.warn(`[digest] send failed user=${rule?.userId} variant=${rule?.variant}:`, err);
     }
   }
 
