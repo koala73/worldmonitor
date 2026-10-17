@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppContext } from '@/app/app-context';
 import type { CountrySignalCluster, GeoSignal } from '@/services/signal-aggregator';
 import { projectCountrySignalDetails } from '../../shared/country-signal-details';
@@ -6,6 +6,18 @@ import { projectCountrySignalDetails } from '../../shared/country-signal-details
 const snapshot = vi.hoisted(() => ({ read: vi.fn() }));
 vi.mock('@/app/lazy-services', () => ({ getSignalAggregator: async () => ({ getCountryClusters: snapshot.read }) }));
 import { CountryIntelManager } from '@/app/country-intel';
+import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
+import { countrySignalsFromMilitary } from '@/services/country-signals';
+import { initTestI18n } from './helpers/i18n.mts';
+
+vi.mock('@/utils/after-paint', () => ({ yieldToMain: async () => {} }));
+vi.mock('@/services/country-coverage', () => ({ fetchCountryCoverage: async () => ({ headlines: [], timelineEvents: [] }) }));
+vi.mock('@/services/country-geometry', async original => ({ ...await original<typeof import('@/services/country-geometry')>(), preloadCountryGeometry: async () => {}, getCountryCentroid: () => null }));
+vi.mock('@/services/related-assets', async original => ({ ...await original<typeof import('@/services/related-assets')>(), preloadInfrastructureTables: async () => {} }));
+vi.mock('@/services/military-base-config', async original => ({ ...await original<typeof import('@/services/military-base-config')>(), preloadMilitaryBases: async () => [] }));
+
+beforeAll(async () => { await initTestI18n(); });
+
 
 function observation(type: GeoSignal['type'], severity: GeoSignal['severity'], minute: number): GeoSignal {
   return { type, severity, country: 'FR', countryName: 'France', lat: 48.85, lon: 2.35, title: `${type} ${minute}`, timestamp: new Date(Date.UTC(2026, 9, 3, 12, minute)) };
@@ -71,5 +83,151 @@ describe('shared country signal details', () => {
     snapshot.read.mockImplementation(() => { throw new Error('Controlled cluster outage'); });
     const manager = new CountryIntelManager({ latestClusters: [], intelligenceCache: {} } as unknown as AppContext);
     await expect(Reflect.get(manager, 'buildSignalDetails').call(manager, 'FR')).rejects.toThrow('Controlled cluster outage');
+  });
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((settle, fail) => { resolve = settle; reject = fail; });
+  return { promise, resolve, reject };
+}
+
+function lifecycle() {
+  const panel = new CountryDeepDivePanel();
+  const body = document.createElement('div');
+  const card = document.createElement('section');
+  card.append(body);
+  Reflect.set(panel, 'signalsBody', body);
+  Reflect.set(panel, 'sections', [{ id: 'signals', title: 'Signals', card, body }]);
+  let code = 'FR';
+  let visible = true;
+  const signals = { ...countrySignalsFromMilitary('FR'), ...Object.fromEntries(Object.keys(countrySignalsFromMilitary('FR')).map(key => [key, key === 'isTier1' ? false : 0])) };
+  signals.militaryVessels = 141;
+  const page = {
+    getCode: () => code, getName: () => code, isVisible: () => visible,
+    show: (_name: string, nextCode: string) => { code = nextCode; panel.updateSignals(signals); },
+    showLoading: () => {}, hide: () => { visible = false; },
+    updateSignals: panel.updateSignals.bind(panel), updateSignalDetails: panel.updateSignalDetails.bind(panel),
+    setSectionFailure: panel.setSectionFailure.bind(panel), updateScore: panel.updateScore.bind(panel),
+    updateMilitaryActivity: () => {}, updateEconomicIndicators: () => {}, updateNews: () => {},
+    updateInfrastructure: () => {}, updateBrief: () => {}, getTimelineMount: () => null,
+  };
+  const ctx = { countryBriefPage: page, isDestroyed: false, allNews: [], latestClusters: [], intelligenceCache: {},
+    map: { setRenderPaused: () => {}, highlightCountry: () => {}, fitCountry: () => {} },
+  } as unknown as AppContext;
+  const manager = new CountryIntelManager(ctx);
+  Reflect.set(manager, 'ensureCountryBriefPage', async () => true);
+  Reflect.set(manager, 'getCountrySignals', vi.fn(async () => signals));
+  Reflect.set(manager, 'getCountryController', () => ({ hydrate: () => ({ stockPromise: Promise.resolve(null) }) }));
+  Reflect.set(manager, 'fetchCountryIntelBrief', async () => ({ brief: 'Controlled assessment', sources: [] }));
+  for (const name of ['fetchDefenseIndustrialBase', 'fetchProSections', 'fetchCommodityVulnerability', 'mountCountryTimeline']) Reflect.set(manager, name, () => {});
+  return { manager, panel, body, ctx, signals, page, switchCountry: () => { code = 'DE'; }, open: () => manager.openCountryBriefByCode('FR', 'France', { trackAnalytics: false }) };
+}
+
+describe('website Signals lifecycle', () => {
+  beforeEach(() => { snapshot.read.mockReturnValue([cluster('FR', [observation('protest', 'high', 1)])]); });
+
+  it('keeps observed severity and recent evidence after the complete opening count flow', async () => {
+    const h = lifecycle();
+    await h.open();
+    expect(h.body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical0High1Moderate0Low0');
+    expect(h.body.textContent).toContain('protest 1');
+    expect(h.body.textContent).not.toContain('Loading top high-severity');
+    h.panel.hide();
+  });
+
+  it('refreshes both counts and current observed details', async () => {
+    const h = lifecycle();
+    await h.open();
+    snapshot.read.mockReturnValue([cluster('FR', [observation('radiation_anomaly', 'high', 2)])]);
+    h.signals.militaryVessels = 142;
+    h.manager.refreshOpenBrief();
+    await vi.waitFor(() => expect(h.body.textContent).toContain('radiation_anomaly 2'));
+    expect(h.body.textContent).toContain('142 Naval Vessels');
+    expect(h.body.textContent).not.toContain('protest 1');
+    expect(h.body.querySelector('.cdp-signal-breakdown')?.textContent).toContain('Critical1');
+    h.panel.hide();
+  });
+
+  it.each(['opening', 'refresh'] as const)('settles %s detail failure as unavailable and recovers to observed empty', async mode => {
+    const h = lifecycle();
+    if (mode === 'refresh') await h.open();
+    const detailRead = vi.spyOn(h.manager as unknown as { buildSignalDetails: (code: string) => Promise<ReturnType<typeof projectCountrySignalDetails>> }, 'buildSignalDetails');
+    detailRead.mockRejectedValueOnce(new Error('Controlled detail outage'));
+    if (mode === 'opening') await h.open(); else h.manager.refreshOpenBrief();
+    await vi.waitFor(() => expect(h.body.textContent).toContain('Aggregate severity and recent high-severity observations are unavailable'));
+    expect(h.body.textContent).toContain('141 Naval Vessels');
+    expect(h.body.textContent).not.toContain('Loading top high-severity');
+    expect(h.body.textContent).not.toContain('No recent high-severity signals');
+    snapshot.read.mockReturnValue([]);
+    h.manager.refreshOpenBrief();
+    await vi.waitFor(() => expect(h.body.textContent).toContain('No recent high-severity signals'));
+    expect(h.body.textContent).not.toContain('observations are unavailable');
+    h.panel.hide();
+  });
+
+  it.each(['opening', 'refresh'] as const)('suppresses stale %s success and failure after ownership changes', async mode => {
+    for (const change of ['country', 'presentation', 'hidden', 'destroyed', 'page'] as const) {
+      for (const outcome of ['success', 'failure'] as const) {
+        const h = lifecycle();
+        if (mode === 'refresh') await h.open();
+        const pending = deferred<ReturnType<typeof projectCountrySignalDetails>>();
+        const detailRead = vi.spyOn(h.manager as unknown as { buildSignalDetails: (code: string) => Promise<ReturnType<typeof projectCountrySignalDetails>> }, 'buildSignalDetails').mockReturnValueOnce(pending.promise);
+        const opening = mode === 'opening' ? h.open() : undefined;
+        if (mode === 'refresh') h.manager.refreshOpenBrief();
+        await vi.waitFor(() => expect(detailRead).toHaveBeenCalledOnce());
+        if (change === 'country') h.switchCountry();
+        if (change === 'presentation') Reflect.set(h.manager, 'currentCountryPresentation', { ...Reflect.get(h.manager, 'currentCountryPresentation') });
+        if (change === 'hidden') h.page.hide();
+        if (change === 'destroyed') h.ctx.isDestroyed = true;
+        if (change === 'page') h.ctx.countryBriefPage = { ...h.page } as unknown as AppContext['countryBriefPage'];
+        h.panel.updateSignalDetails(projectCountrySignalDetails([observation('protest', 'high', 9)]));
+        const before = h.body.textContent;
+        if (outcome === 'success') pending.resolve(projectCountrySignalDetails([observation('protest', 'high', 6)]));
+        else pending.reject(new Error('Stale controlled failure'));
+        await opening;
+        await pending.promise.catch(() => {});
+        await Promise.resolve();
+        expect(h.body.textContent, `${mode}/${change}/${outcome}`).toBe(before);
+        h.panel.hide();
+      }
+    }
+  });
+
+  it.each(['success', 'failure'] as const)('does not let pending opening %s overwrite a newer refresh', async outcome => {
+    const h = lifecycle();
+    const pending = deferred<ReturnType<typeof projectCountrySignalDetails>>();
+    const detailRead = vi.spyOn(h.manager as unknown as { buildSignalDetails: (code: string) => Promise<ReturnType<typeof projectCountrySignalDetails>> }, 'buildSignalDetails').mockReturnValueOnce(pending.promise);
+    const opening = h.open();
+    await vi.waitFor(() => expect(detailRead).toHaveBeenCalledOnce());
+    snapshot.read.mockReturnValue([cluster('FR', [observation('protest', 'high', 7)])]);
+    h.manager.refreshOpenBrief();
+    await vi.waitFor(() => expect(h.body.textContent).toContain('protest 7'));
+    if (outcome === 'success') pending.resolve(projectCountrySignalDetails([observation('protest', 'high', 6)]));
+    else pending.reject(new Error('Superseded opening failure'));
+    await opening;
+    expect(h.body.textContent).toContain('protest 7');
+    expect(h.body.textContent).not.toContain('protest 6');
+    h.panel.hide();
+  });
+
+  it.each(['success', 'failure'] as const)('does not let an older refresh %s overwrite a newer detail result', async outcome => {
+    const h = lifecycle();
+    await h.open();
+    const pending = deferred<ReturnType<typeof projectCountrySignalDetails>>();
+    const detailRead = vi.spyOn(h.manager as unknown as { buildSignalDetails: (code: string) => Promise<ReturnType<typeof projectCountrySignalDetails>> }, 'buildSignalDetails').mockReturnValueOnce(pending.promise);
+    h.manager.refreshOpenBrief();
+    await vi.waitFor(() => expect(detailRead).toHaveBeenCalledOnce());
+    snapshot.read.mockReturnValue([cluster('FR', [observation('protest', 'high', 7)])]);
+    h.manager.refreshOpenBrief();
+    await vi.waitFor(() => expect(h.body.textContent).toContain('protest 7'));
+    if (outcome === 'success') pending.resolve(projectCountrySignalDetails([observation('protest', 'high', 6)]));
+    else pending.reject(new Error('Superseded refresh failure'));
+    await pending.promise.catch(() => {});
+    await Promise.resolve();
+    expect(h.body.textContent).toContain('protest 7');
+    expect(h.body.textContent).not.toContain('protest 6');
+    h.panel.hide();
   });
 });
