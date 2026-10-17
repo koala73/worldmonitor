@@ -1490,6 +1490,9 @@
           "path": "scripts/seed-service-statuses.mjs"
         },
         {
+          "path": "scripts/shipping-webhook-worker.mjs"
+        },
+        {
           "path": "scripts/validate-rss-feeds.mjs"
         },
         {
@@ -10805,6 +10808,9 @@
         },
         {
           "path": "scripts/shared/notify-fields.cjs"
+        },
+        {
+          "path": "scripts/shipping-webhook-worker.mjs"
         },
         {
           "path": "scripts/validate-seed-migration.mjs"
