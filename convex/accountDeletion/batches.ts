@@ -724,7 +724,12 @@ export const advanceErase = internalMutation({
       // every committed page, even within one millisecond, so a stale action's
       // failure cannot overwrite this transaction's successful progress.
       // Committed progress also clears the retry counter: the ladder in
-      // markBatchFailed counts consecutive failures, not lifetime ones.
+      // markBatchFailed counts consecutive failures, not lifetime ones. That
+      // still bounds lifetime attempts, because a committed page always
+      // advances the step, the table cursor, or the fenced account's finite
+      // row set (pinned by accountDeletionLiveness.test.ts). No page is a
+      // no-op, so at most MAX_BATCH_ATTEMPTS - 1 failures separate two pages.
+      // A deadline on top would only turn a slow erase into a manual retry.
       await ctx.db.patch(after._id, {
         batchAttempts: undefined,
         updatedAt: Math.max(Date.now(), before?.updatedAt ?? 0, after.updatedAt) + 1,
