@@ -3,7 +3,7 @@
 // Publish Seed Freshness as durable, per-source operational statuses.
 //
 // The health probe remains strict. A new or changed source incident fails this
-// workflow once. Statuses live on one historical anchor commit so operational
+// workflow once. Statuses live on historical anchor commits so operational
 // incidents cannot poison the check suite of an unrelated deployable revision.
 // Unchanged observations append nothing. Recovery is posted only after the live
 // health payload stops reporting the source.
@@ -28,6 +28,8 @@ const DEFAULT_HISTORY_LIMIT = 100;
 const MAX_OBSERVATION_AGE_MS = 30 * 60 * 1000;
 const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 const OBSERVED_AT_SUFFIX = '; observed ';
+const MAX_STATUSES_PER_CONTEXT = 800;
+const MAX_ANCHORS = 100;
 
 function sourceContext(name) {
   if (typeof name !== 'string' || name.length === 0) {
@@ -260,9 +262,15 @@ function readAnchorObservation({ repository, sha, trustedWriter }) {
   const seedStatuses = statuses.filter(
     (status) => typeof status?.context === 'string' && status.context.startsWith(STATUS_PREFIX),
   );
+  const counts = new Map();
+  for (const status of seedStatuses) {
+    counts.set(status.context, (counts.get(status.context) ?? 0) + 1);
+  }
+  const atCapacity = [...counts.values()].some((count) => count >= MAX_STATUSES_PER_CONTEXT);
   if (seedStatuses.length === 0) {
     return {
       state: 'empty',
+      atCapacity,
       checkedAt: null,
       checkedAtTimestamp: null,
       statuses: new Map(),
@@ -279,6 +287,7 @@ function readAnchorObservation({ repository, sha, trustedWriter }) {
   if (newestIsMarker && !marker) {
     return {
       state: 'legacy',
+      atCapacity,
       checkedAt: null,
       checkedAtTimestamp: null,
       statuses: new Map(),
@@ -286,6 +295,7 @@ function readAnchorObservation({ repository, sha, trustedWriter }) {
   }
   return {
     state: newestIsMarker ? 'complete' : 'partial',
+    atCapacity,
     checkedAt: marker?.checkedAt ?? null,
     checkedAtTimestamp: marker?.timestamp ?? null,
     statuses: projection,
@@ -308,7 +318,7 @@ function main() {
   });
   const reportPath = values.report;
   const observedSha = values.sha;
-  const statusSha = values['status-sha'];
+  let statusSha = values['status-sha'];
   const repository = process.env.GITHUB_REPOSITORY;
   if (!reportPath) throw new Error('--report is required');
   if (!observedSha) throw new Error('--sha or GITHUB_SHA is required');
@@ -325,19 +335,44 @@ function main() {
     throw new Error('SEED_STATUS_HISTORY_LIMIT must be an integer from 1 to 100');
   }
   const trustedWriter = requireStatusWriterLogin();
-  const anchoredObservation = readAnchorObservation({
+  let anchoredObservation = readAnchorObservation({
     repository,
     sha: statusSha,
     trustedWriter,
   });
-  // The first anchored run imports the latest completed legacy projection from
-  // main. A partial anchor write overlays that complete projection so the next
+  let rotatedObservation = null;
+  if (anchoredObservation.atCapacity) {
+    // Advance along the archived first-parent lineage before GitHub's 1,000
+    // statuses per SHA/context limit. The monitored revision stays untouched.
+    const successors = runGit([
+      'rev-list', '--first-parent', '--reverse', `${statusSha}..${observedSha}`,
+    ]).split('\n').filter((sha) => sha && sha !== observedSha).slice(0, MAX_ANCHORS - 1);
+    while (anchoredObservation.atCapacity) {
+      rotatedObservation = {
+        sha: statusSha,
+        checkedAt: anchoredObservation.checkedAt ?? rotatedObservation?.checkedAt ?? null,
+        checkedAtTimestamp: anchoredObservation.checkedAtTimestamp
+          ?? rotatedObservation?.checkedAtTimestamp ?? null,
+        statuses: new Map([
+          ...(rotatedObservation?.statuses ?? []),
+          ...anchoredObservation.statuses,
+        ]),
+      };
+      const successor = successors.shift();
+      if (!successor) throw new Error('no historical seed status anchor has capacity');
+      statusSha = successor;
+      anchoredObservation = readAnchorObservation({ repository, sha: statusSha, trustedWriter });
+    }
+  }
+  // An empty successor imports the last anchor projection. The first anchored
+  // run imports the latest completed legacy projection from main instead.
+  // A partial anchor write overlays that projection so the next
   // run repairs the projection without alerting again for a source status that
   // GitHub already accepted. Once the newest anchor status is its completion
   // marker, the anchor is the sole authority.
-  const legacyObservation = anchoredObservation.state === 'complete'
+  const importedObservation = anchoredObservation.state === 'complete'
     ? null
-    : readPreviousObservation({
+    : rotatedObservation ?? readPreviousObservation({
       repository,
       shas: firstParentShas(observedSha, historyLimit),
       trustedWriter,
@@ -345,12 +380,12 @@ function main() {
   const previousObservation = anchoredObservation.state === 'complete'
     ? { ...anchoredObservation, sha: statusSha }
     : {
-        sha: legacyObservation.sha,
-        checkedAt: anchoredObservation.checkedAt ?? legacyObservation.checkedAt,
+        sha: importedObservation.sha,
+        checkedAt: anchoredObservation.checkedAt ?? importedObservation.checkedAt,
         checkedAtTimestamp: anchoredObservation.checkedAtTimestamp
-          ?? legacyObservation.checkedAtTimestamp,
+          ?? importedObservation.checkedAtTimestamp,
         statuses: new Map([
-          ...legacyObservation.statuses,
+          ...importedObservation.statuses,
           ...anchoredObservation.statuses,
         ]),
       };
@@ -379,7 +414,7 @@ function main() {
     observedSha,
     statusSha,
     anchorState: anchoredObservation.state,
-    importedFromSha: anchoredObservation.state === 'complete' ? null : legacyObservation.sha,
+    importedFromSha: anchoredObservation.state === 'complete' ? null : importedObservation.sha,
     statusesPublished: orderedUpdates.length,
     newOrChangedFailures: plan.alerting.map((status) => status.context),
   }, null, 2));

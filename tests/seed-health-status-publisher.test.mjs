@@ -247,6 +247,33 @@ describe('seed health status publisher', () => {
     assert.equal(result.posts, '');
   });
 
+  it('carries incident state and the completed clock through multiple full and partial anchors', () => {
+    const previousAt = checkedAt(-120_000);
+    for (const stale of [true, false]) {
+      const result = runPublisher({
+        blocking: [{ name: 'example', status: 'STALE_SEED' }],
+        observedAt: checkedAt(stale ? -180_000 : -60_000),
+        statusSha: STATUS_ANCHOR,
+        statusStatuses: [...Array.from({ length: 900 }, () => aggregate(previousAt)), trusted(failure)],
+        nextStatuses: Array.from({ length: 900 }, () => trusted(failure)),
+        ancestorStatuses: [trusted(failure)],
+        successors: [NEXT_ANCHOR, ANCESTOR, HEAD],
+      });
+
+      if (stale) {
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /is not newer than completed projection/);
+        assert.equal(result.posts, '');
+      } else {
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /"newOrChangedFailures": \[\]/);
+        assert.match(result.posts, new RegExp(`/statuses/${ANCESTOR}`));
+        assert.match(result.posts, /context=ingestion\/seed\/acceptance/);
+        assert.doesNotMatch(result.posts, new RegExp(`/statuses/(${STATUS_ANCHOR}|${NEXT_ANCHOR}|${HEAD})`));
+      }
+    }
+  });
+
   it('keeps an unchanged incident off a new monitored revision', () => {
     const firstAt = checkedAt(-120_000);
     const repeated = runPublisher({
