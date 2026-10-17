@@ -290,6 +290,8 @@ describe('CIMD — each vendor document completes the API-key flow', () => {
     for (const outage of [
       () => new Response('forbidden', { status: 403 }),
       () => new Response('<html>challenge</html>', { headers: { 'Content-Type': 'text/html' } }),
+      // A body cut off mid-transfer: JSON content type, unparseable text.
+      () => new Response('{"client_id":"https://vscode.dev/oauth/cli', { headers: { 'Content-Type': 'application/json' } }),
     ]) {
       vendor.set(vscode, outage);
       const res = await refresh(tokens.refresh_token, vscode);
@@ -642,6 +644,8 @@ describe('CIMD — cache', () => {
     assert.equal(clientMetadataCacheTtl('no-store,no-cache,max-age=0'), 0);
     assert.equal(clientMetadataCacheTtl('private, max-age=600'), 0);
     assert.equal(clientMetadataCacheTtl('max-age=0'), 0);
+    assert.equal(clientMetadataCacheTtl('public, max-age="300"'), 300);
+    assert.equal(clientMetadataCacheTtl('s-maxage="60", max-age=600'), 60);
     assert.equal(clientMetadataCacheTtl(null), 300);
   });
 

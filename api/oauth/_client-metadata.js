@@ -124,7 +124,8 @@ export function clientMetadataCacheTtl(cacheControl) {
   const read = (name) => {
     const d = directives.find((x) => x.startsWith(`${name}=`));
     if (!d) return null;
-    const n = Number.parseInt(d.slice(name.length + 1), 10);
+    // RFC 9111 allows the quoted form, e.g. max-age="300".
+    const n = Number.parseInt(d.slice(name.length + 1).replace(/^"(.*)"$/, '$1'), 10);
     return Number.isFinite(n) && n >= 0 ? n : 0;
   };
   const ttl = read('s-maxage') ?? read('max-age') ?? DEFAULT_CACHE_TTL_SECONDS;
@@ -197,7 +198,9 @@ async function fetchDocument(clientId, fetchImpl) {
       }
       const text = await readCappedBody(resp, controller.signal);
       let doc;
-      try { doc = JSON.parse(text); } catch { throw new ClientMetadataError('document_not_json'); }
+      // Retryable like the HTML branch above: a body cut off mid-transfer must
+      // not answer a refresh with invalid_client.
+      try { doc = JSON.parse(text); } catch { throw new ClientMetadataError('document_not_json', true); }
       return { doc, ttl: clientMetadataCacheTtl(resp.headers.get('cache-control')) };
     })()]);
   } finally {
