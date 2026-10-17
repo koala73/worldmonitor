@@ -4319,8 +4319,8 @@ ${chokepointHubRows.map((row) => {
   return pageDocument({
     baseUrl,
     path,
-    title: 'Maritime Chokepoints | World Monitor',
-    description,
+    title: 'Maritime Chokepoints: Live Shipping Lane Status | World Monitor',
+    description: `Live status of the ${chokepoints.length} maritime chokepoints, from Hormuz, Suez and Bab el-Mandeb to Malacca and Panama: disruption scores, AIS congestion and last-update times.`,
     lastmod,
     jsonLd: [
       {
@@ -5016,7 +5016,7 @@ ${renderRelatedReading(relatedReading, escapeHtml)}
 // claim about the corpus rather than as prose.
 function renderToolsIndex({ baseUrl, lastmod, crisisCount, chokepointCount }) {
   const path = '/tools/';
-  const description = 'Focused World Monitor tools for current natural hazards, country-level airspace disruption, and geographic signal convergence, backed by maintained first-party data contracts.';
+  const description = 'Live intelligence tools: natural-hazard pulse, airspace-disruption checker and signal convergence, backed by first-party World Monitor data contracts.';
   const body = `      <p class="eyebrow">Live intelligence tools</p>
       <h1>Check a current operational signal</h1>
       <p class="lede">${escapeHtml(description)}</p>
