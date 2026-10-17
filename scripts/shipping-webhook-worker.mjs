@@ -72,6 +72,8 @@ export const PRUNE_SCRIPT = `${FENCE}if redis.call('EXISTS', KEYS[2]) == 0 then 
 // cannot recreate a state hash nothing indexes.
 export const STATE_WRITE_SCRIPT = `${FENCE}if redis.call('EXISTS', KEYS[2]) == 0 then return 0 end redis.call('HSET', KEYS[3], unpack(ARGV, 3)) redis.call('EXPIRE', KEYS[3], ARGV[2]) return 1`;
 
+export const STATUS_WRITE_SCRIPT = `${FENCE}redis.call('SET', KEYS[2], ARGV[2], 'EX', ARGV[3]) redis.call('SET', KEYS[3], ARGV[4], 'EX', ARGV[5]) if ARGV[6] == '1' then redis.call('SET', KEYS[4], '1', 'NX') end return 1`;
+
 export const LOCK_RENEW_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('PEXPIRE', KEYS[1], ARGV[2]) end return 0";
 
 export function stateKey(subscriberId) {
@@ -95,6 +97,13 @@ export function reasonFor(chokepoint) {
   return REASON_RULES.find((rule) => rule.matches(chokepoint)).reason;
 }
 
+/**
+ * The most each score input adds to disruptionScore: warningComponent and
+ * aisComponent in server/worldmonitor/supply-chain/v1/_scoring.mjs, and the
+ * transit anomaly bonus in get-chokepoint-status.ts. Pinned by a test.
+ */
+export const SCORE_SOURCE_MAX_POINTS = Object.freeze({ navigationalWarnings: 15, ais: 15, transit: 10 });
+
 /** Which score inputs the feed had for a chokepoint. A missing input scores 0. */
 export function scoreSources(chokepoint) {
   return {
@@ -107,17 +116,19 @@ export function scoreSources(chokepoint) {
 /**
  * armed --(score >= threshold)--> deliver; a successful delivery disarms and
  * records the score sources it saw. disarmed --(score < threshold)--> armed,
- * unless a source present at delivery is now missing: the drop is then the
- * outage, not the disruption ending. Missing state is armed.
+ * unless the sources present at delivery but missing now could add back
+ * enough points to reach the threshold: the drop may then be the outage, not
+ * the disruption ending. Missing state is armed.
  * A crossing keeps its `pending` delivery id and triggeredAt until it is
  * delivered or re-armed, so a retry is the same event to the receiver.
  */
 export function nextChokepointState(previous, score, threshold, sources = {}) {
   const armed = previous?.armed ?? true;
   const fire = armed && score >= threshold;
-  const lostSource = !armed && Object.entries(previous?.sources ?? {})
-    .some(([name, present]) => present && !sources[name]);
-  const state = { armed: armed || (score < threshold && !lostSource), lastScore: score };
+  const missingPoints = Object.entries(previous?.sources ?? {})
+    .filter(([name, present]) => present && !sources[name])
+    .reduce((sum, [name]) => sum + (SCORE_SOURCE_MAX_POINTS[name] ?? 0), 0);
+  const state = { armed: armed || score + missingPoints < threshold, lastScore: score };
   if (previous?.lastDeliveredAt) state.lastDeliveredAt = previous.lastDeliveredAt;
   if (!state.armed && previous?.sources) state.sources = previous.sources;
   if (fire && previous?.pending) state.pending = previous.pending;
@@ -378,7 +389,7 @@ function stateWrite(fence, subscriberId, fields) {
   ];
 }
 
-async function writeWorkerStatus(redis, summary, now) {
+async function writeWorkerStatus(redis, fence, summary, now) {
   const fetchedAt = now();
   const meta = {
     fetchedAt,
@@ -397,16 +408,12 @@ async function writeWorkerStatus(redis, summary, now) {
     failures: summary.failures,
     scoresFetchedAt: summary.scoresFetchedAt,
   };
-  const commands = [
-    ['SET', WORKER_STATUS_KEY, JSON.stringify(status), 'EX', String(STATUS_TTL_SECONDS)],
-    ['SET', WORKER_META_KEY, JSON.stringify(meta), 'EX', String(META_TTL_SECONDS)],
-  ];
-  if (summary.sourceState === 'ok') commands.push(['SET', WORKER_ACTIVATION_KEY, '1', 'NX']);
-  // SET NX answers null when the marker already exists; that is not a failure.
-  const rows = await redis(commands);
-  if (!Array.isArray(rows) || rows.length !== commands.length || rows.some((row) => !row || row.error)) {
-    throw new Error('worker status write failed');
-  }
+  const [written] = assertRows(await redis([[
+    'EVAL', STATUS_WRITE_SCRIPT, '4', fence.key, WORKER_STATUS_KEY, WORKER_META_KEY, WORKER_ACTIVATION_KEY,
+    fence.token, JSON.stringify(status), String(STATUS_TTL_SECONDS), JSON.stringify(meta), String(META_TTL_SECONDS),
+    summary.sourceState === 'ok' ? '1' : '0',
+  ]]), 1, 'worker status write');
+  assertFenced([written.result]);
 }
 
 async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
@@ -445,7 +452,7 @@ async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
   };
   if (!status) {
     summary.sourceState = 'error';
-    await writeWorkerStatus(redis, summary, now);
+    await writeWorkerStatus(redis, fence, summary, now);
     return summary;
   }
 
@@ -531,7 +538,7 @@ async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
   summary.deactivated = settledRecords
     .filter((record, index) => record.active === false && Number(swapped[index]) === 1).length;
 
-  await writeWorkerStatus(redis, summary, now);
+  await writeWorkerStatus(redis, fence, summary, now);
   return summary;
 }
 

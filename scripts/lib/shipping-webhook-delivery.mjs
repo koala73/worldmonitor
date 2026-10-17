@@ -53,27 +53,33 @@ function failureCode(error) {
  * @returns {Promise<{ ok: boolean, status: number, error?: string }>}
  */
 export async function deliverShippingWebhook(record, payload, options = {}) {
+  const expired = { done: false };
   let timer;
   const deadline = new Promise((resolve) => {
-    timer = setTimeout(
-      () => resolve({ ok: false, status: 0, error: 'timeout' }),
-      options.deadlineMs ?? DELIVERY_DEADLINE_MS,
-    );
+    timer = setTimeout(() => {
+      expired.done = true;
+      resolve(TIMED_OUT);
+    }, options.deadlineMs ?? DELIVERY_DEADLINE_MS);
   });
   try {
-    return await Promise.race([attemptDelivery(record, payload, options), deadline]);
+    return await Promise.race([attemptDelivery(record, payload, options, expired), deadline]);
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function attemptDelivery(record, payload, options) {
+const TIMED_OUT = Object.freeze({ ok: false, status: 0, error: 'timeout' });
+
+async function attemptDelivery(record, payload, options, expired) {
   const deliveryId = options.deliveryId ?? makeDeliveryId();
   try {
     const { url, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(
       record.callbackUrl,
       options.resolveHostname,
     );
+    // The caller already counted this attempt as a timeout; a late DNS answer
+    // must not start a POST it no longer tracks.
+    if (expired.done) return TIMED_OUT;
     const { body, headers } = buildShippingWebhookDelivery({ record, payload, deliveryId });
     const response = options.fetchImpl
       ? await options.fetchImpl(url, { method: 'POST', headers, body })

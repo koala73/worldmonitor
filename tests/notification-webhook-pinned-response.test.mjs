@@ -67,4 +67,21 @@ describe('pinned webhook POST response status', () => {
     );
     assert.deepEqual(outcome, { ok: false, status: 0, error: 'timeout' });
   });
+
+  it('does not POST once the deadline has passed, even if DNS answers later', async () => {
+    let posts = 0;
+    const outcome = await deliverShippingWebhook(
+      { callbackUrl: url.href, secret: 'a'.repeat(64) },
+      { a: 1 },
+      {
+        deliveryId: 'whd_1',
+        deadlineMs: 20,
+        resolveHostname: () => new Promise((resolve) => setTimeout(() => resolve(['93.184.216.34']), 60)),
+        fetchImpl: async () => { posts += 1; return new Response(null, { status: 200 }); },
+      },
+    );
+    assert.deepEqual(outcome, { ok: false, status: 0, error: 'timeout' });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(posts, 0);
+  });
 });

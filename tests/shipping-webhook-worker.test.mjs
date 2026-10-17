@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+
+import { aisComponent, warningComponent } from '../server/worldmonitor/supply-chain/v1/_scoring.mjs';
 
 import {
   BACKFILL_CURSOR_KEY,
@@ -9,7 +12,9 @@ import {
   LOCK_RENEW_SCRIPT,
   PRUNE_SCRIPT,
   RECORD_CAS_SCRIPT,
+  SCORE_SOURCE_MAX_POINTS,
   STATE_WRITE_SCRIPT,
+  STATUS_WRITE_SCRIPT,
   WORKER_ACTIVATION_KEY,
   WORKER_META_KEY,
   WORKER_STATUS_KEY,
@@ -111,19 +116,44 @@ describe('planTick state machine', () => {
     assert.equal(plan(75, null, { chokepointIds: ['suez', 'suez'] }).deliveries.length, 1);
   });
 
-  it('does not re-arm when the score fell because a source went dark', () => {
+  it('does not re-arm when the missing source could account for the drop', () => {
     const delivered = { armed: false, lastScore: 75, sources: { navigationalWarnings: true, ais: true, transit: true } };
     const dark = planTick({
-      chokepoints: [chokepoint('suez', 40, { navigationalWarningsAvailable: false })],
+      chokepoints: [chokepoint('suez', 50, { navigationalWarningsAvailable: false })],
       records: [record()],
       states: new Map([[SUB_ID, { suez: delivered }]]),
       now: NOW,
     });
-    assert.deepEqual(dark.nextStates.get(SUB_ID).suez, { ...delivered, lastScore: 40 });
+    assert.deepEqual(dark.nextStates.get(SUB_ID).suez, { ...delivered, lastScore: 50 });
     const recovered = plan(75, dark.nextStates.get(SUB_ID).suez);
     assert.equal(recovered.deliveries.length, 0, 'the same disruption does not fire again');
     const ended = plan(40, recovered.nextStates.get(SUB_ID).suez);
     assert.equal(ended.nextStates.get(SUB_ID).suez.armed, true, 'a real drop with every source present re-arms');
+  });
+
+  it('re-arms when the score is below threshold even with every missing source at its maximum', () => {
+    const delivered = { armed: false, lastScore: 60, sources: { navigationalWarnings: true, ais: true, transit: true } };
+    const ended = planTick({
+      chokepoints: [chokepoint('suez', 30, { transitSummary: { dataAvailable: false } })],
+      records: [record({ alertThreshold: 50 })],
+      states: new Map([[SUB_ID, { suez: delivered }]]),
+      now: NOW,
+    });
+    assert.equal(ended.nextStates.get(SUB_ID).suez.armed, true, '30 + at most 10 from transit cannot reach 50');
+    const again = planTick({
+      chokepoints: [chokepoint('suez', 60, { transitSummary: { dataAvailable: false } })],
+      records: [record({ alertThreshold: 50 })],
+      states: new Map([[SUB_ID, { suez: ended.nextStates.get(SUB_ID).suez }]]),
+      now: NOW,
+    });
+    assert.equal(again.deliveries.length, 1);
+  });
+
+  it('caps each score source at the points the scoring code gives it', () => {
+    assert.equal(SCORE_SOURCE_MAX_POINTS.navigationalWarnings, warningComponent(1000));
+    assert.equal(SCORE_SOURCE_MAX_POINTS.ais, aisComponent(3));
+    const status = readFileSync(new URL('../server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts', import.meta.url), 'utf8');
+    assert.match(status, new RegExp(`anomaly\\.signal \\? ${SCORE_SOURCE_MAX_POINTS.transit} : 0`));
   });
 
   it('re-arms despite a source that was already missing at delivery', () => {
@@ -242,6 +272,14 @@ function fakeRedis(initial = {}) {
           for (let i = 2; i < argv.length; i += 2) hash[argv[i]] = argv[i + 1];
           store.set(keys[2], hash);
           ttl.set(keys[2], Number(argv[1]));
+          return 1;
+        }
+        if (script === STATUS_WRITE_SCRIPT) {
+          store.set(keys[1], argv[1]);
+          ttl.set(keys[1], Number(argv[2]));
+          store.set(keys[2], argv[3]);
+          ttl.set(keys[2], Number(argv[4]));
+          if (argv[5] === '1' && !store.has(keys[3])) store.set(keys[3], '1');
           return 1;
         }
         assert.equal(script, RECORD_CAS_SCRIPT);
@@ -545,6 +583,18 @@ describe('runTick', () => {
     await tick(fake, deliver);
     assert.equal(sent.length, 1);
     assert.equal(fake.store.get(RECORD_KEY), rotated);
+  });
+
+  it('a worker whose lock was taken does not overwrite the health result', async () => {
+    const fake = seeded({ rec: record({ active: false }) });
+    fake.store.set(WORKER_META_KEY, 'successor');
+    let stolen = false;
+    const redis = async (commands) => {
+      if (!stolen) { stolen = true; fake.store.set(LOCK_KEY, 'run-2'); }
+      return fake.redis(commands);
+    };
+    await assert.rejects(tick({ ...fake, redis }, deliverStub([]).deliver), /lock lost/);
+    assert.equal(fake.store.get(WORKER_META_KEY), 'successor');
   });
 
   it('retries a lock renewal that failed in transport', async () => {
