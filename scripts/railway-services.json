@@ -165,6 +165,35 @@
     "documentedAt": "scripts/company-monitoring-worker.mjs (header docblock declares rootDirectory: scripts); provisioned in Railway production 2026-08-12"
   },
   {
+    "entry": "scripts/shipping-webhook-worker.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "lifecycle": "planned",
+    "service": "shipping-webhook-worker",
+    "startCommand": "node shipping-webhook-worker.mjs",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      "WORLDMONITOR_RELAY_KEY"
+    ],
+    "watchPatterns": [
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/main-module.mjs",
+      "scripts/lib/notification-webhook-ssrf.cjs",
+      "scripts/lib/shipping-webhook-delivery.mjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shipping-webhook-worker.mjs"
+    ],
+    "cronSchedule": null,
+    "documentedAt": "scripts/shipping-webhook-worker.mjs (header docblock declares rootDirectory: scripts); planned until the Railway service is provisioned"
+  },
+  {
     "entry": "scripts/process-deep-forecast-tasks.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "deep-forecast-worker",

@@ -1000,6 +1000,9 @@ describe('planned Railway service lifecycle', () => {
       'seed-market-quotes',
       'seed-service-statuses',
       'seed-weather-alerts',
+      // #9217: the chokepoint webhook delivery worker ships before its Railway
+      // service exists; activate it once the owner provisions the service.
+      'shipping-webhook-worker',
     ].sort();
     const plannedEntries = RAILWAY_SERVICE_REGISTRY.filter(
       (entry) => entry.lifecycle === 'planned',
