@@ -106,7 +106,7 @@ REST 摘要返回的是底层标题而非聚类。每个条目包含 `title`、`
 | UCDP 事件 | UCDP 数据集中最新事件之前的一年，默认上限约 2,000 条。UCDP 发布有延迟，因此最新事件比今天晚数周。 | `scripts/seed-ucdp-events.mjs` 中的 `TRAILING_WINDOW_MS` 和 `MAX_EVENTS` |
 | 动荡事件 | 最近 30 天的 ACLED 抗议记录，与当前 GDELT 批次合并。2026 年 10 月 17 日，返回的每条记录都来自 GDELT，时间跨度为 30 分钟。 | `scripts/seed-unrest-events.mjs` 中的 `ACLED_DISPLAY_LOOKBACK_DAYS` |
 | ACLED 冲突快照（`list-acled-events`） | 生产方目标为最近 30 天。日期筛选无法检索快照之外的数据。 | [API 参考](/zh/api-reference) |
-| 新闻标题和聚类 | 仅实时窗口：超过 96 小时的标题会被丢弃，每个源最多向摘要贡献五条标题。没有新闻存档。 | `server/worldmonitor/news/v1/_rss-cache.ts` 中的 `resolveMaxAgeMs`；`server/worldmonitor/news/v1/list-feed-digest.ts` 中的 `ITEMS_PER_FEED` |
+| 新闻标题和聚类 | 仅实时窗口。构建摘要时会丢弃超过 96 小时（默认值）的标题，每个源最多贡献五条标题。如果重建失败，上一份有效摘要最多可再提供六小时，并以 `coverage.servedStale` 和 `coverage.staleAgeSeconds` 标记，因此返回的标题最长可能约 102 小时。没有新闻存档。 | `server/worldmonitor/news/v1/_rss-cache.ts` 中的 `resolveMaxAgeMs`；`server/worldmonitor/news/v1/list-feed-digest.ts` 中的 `ITEMS_PER_FEED` |
 
 如需更长的记录，请轮询这些数据流并自行存储。历史记录按 `id` 去重，动荡和 UCDP 记录按生产方 `id` 去重。较早的标题加入聚类时，新闻聚类的 `id` 可能变化，因此不要把它当作持久键。
 
@@ -114,7 +114,7 @@ REST 摘要返回的是底层标题而非聚类。每个条目包含 `title`、`
 
 告警规则会把匹配事件实时推送到 webhook，或按每日、每日两次、每周摘要推送。规则可按事件类型、严重程度（`all`、`high`、`critical`）和国家筛选。每次投递都在 `X-WM-Signature` 中使用 HMAC-SHA256 签名。你需要以付费方案登录，在仪表盘的通知设置中配置 webhook 和规则。
 
-实时投递包含 `eventType`、`severity`、`timestamp`，以及含 `title`、`source` 和 `link` 的 `payload`。新闻告警（`rss_alert`）另含 `publishedAt`、`importanceScore` 和 `corroborationCount`，冲突告警（`conflict_escalation`）另含 `countryCode`。payload 不含稳定的事件 ID，也不含坐标。信封格式和校验示例见[通知参考](/zh/api-notifications)。
+实时投递包含 `eventType`、`severity`、`timestamp`，以及字段随事件类型而定的 `payload`。请把 payload 的每个字段都视为可选。新闻告警（`rss_alert`）包含 `title`、`source`、`link`、`publishedAt`、`importanceScore` 和 `corroborationCount`。冲突告警（`conflict_escalation`）包含 `title` 和 `source`，国家解析成功时另含 `countryCode`，不含 `link`。payload 不含稳定的事件 ID，也不含坐标。信封格式和校验示例见[通知参考](/zh/api-notifications)。
 
 ## 代码
 
