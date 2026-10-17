@@ -27,10 +27,12 @@ describe('getCountryProducts sebuf handler (server/worldmonitor/supply-chain/v1/
     );
   });
 
-  it('validates iso2 with the /^[A-Z]{2}$/ pattern', () => {
+  it('validates iso2 as an assigned ISO 3166-1 alpha-2 code', () => {
+    // Shape alone let ZZ through to an unsupported_reporter sentinel write;
+    // tests/country-code-membership-writes.test.mts checks the behavior.
     assert.ok(
-      src.includes('[A-Z]{2}'),
-      'must validate iso2 with a two-uppercase-letter regex',
+      src.includes('isAssignedCountryCode(iso2)'),
+      'must validate iso2 by membership, not just a two-uppercase-letter shape',
     );
   });
 
@@ -45,14 +47,15 @@ describe('getCountryProducts sebuf handler (server/worldmonitor/supply-chain/v1/
     );
   });
 
-  it('returns the typed empty payload for both non-PRO and invalid-iso2 paths', () => {
+  it('returns the typed empty payload for non-PRO callers after rejecting an invalid iso2', () => {
     assert.ok(
       /products: \[\], fetchedAt: ''/.test(src),
       'empty fallback must have empty products array and empty fetchedAt',
     );
     const proIdx = src.indexOf('isPro');
-    const validIdx = src.indexOf('[A-Z]{2}');
+    const validIdx = src.indexOf('isAssignedCountryCode(iso2)');
     assert.ok(proIdx !== -1 && validIdx !== -1, 'must reference both PRO and validation gates');
+    assert.ok(validIdx < proIdx, 'an invalid iso2 must be rejected before the PRO gate');
   });
 
   it('reads from raw Upstash Redis (skip env-prefix) so seeder writes resolve', () => {

@@ -127,11 +127,11 @@
     "fireDesc": "NASA-FIRMS-Daten nahezu in Echtzeit zu Bränden und Hotspots",
     "cables": "Seekabel",
     "cablesDesc": "Untersee-Kabelrouten und Landungsstationen",
-    "internet": "Internet & GPS",
+    "internet": "Internet und GPS",
     "internetDesc": "Ausfallerkennung, BGP-Anomalien, GPS-Störzonen",
     "cyber": "Cyber-Bedrohungen",
     "cyberDesc": "Ransomware-Feeds, BGP-Hijacks, DDoS-Erkennung",
-    "gdelt": "GDELT & News",
+    "gdelt": "GDELT & Nachrichten",
     "gdeltDesc": "Kuratierte RSS-Feeds, KI-bewertete GDELT-Events, Live-Übertragungen",
     "seismology": "Seismologie & Natur",
     "seismologyDesc": "USGS-Erdbeben, vulkanische Aktivität, schwere Wetter"
@@ -148,7 +148,7 @@
     "proTier": "PRO-STUFE",
     "title": "Was macht der World Monitor AI-Analyst?",
     "subtitle": "Das kostenlose Dashboard zeigt Ihnen die Welt. Pro gibt Ihnen einen Analysten zum Fragen, einen Digest zum Abonnieren und Primitive zum Aufbauen. Aktien, Makro, geopolitisches Risiko — und die Verbindungen zwischen ihnen.",
-    "equityResearch": "Equity Research",
+    "equityResearch": "Aktienresearch",
     "equityResearchDesc": "Globale Aktienanalyse mit Visualisierung der Finanzdaten, Analystenpreiszielen und Bewertungsmetriken. Verfolgen Sie, was Märkte bewegt.",
     "geopoliticalAnalysis": "Geopolitische Analyse",
     "geopoliticalAnalysisDesc": "Grand Chessboard Strategie-Framework, Prisoners of Geography Modelle und Zentralbank- & Geldpolitik-Tracking.",
@@ -166,7 +166,7 @@
     "roadmapNote": "Auf der Roadmap: Orbitalüberwachung, längere Historie, Premium-Kartenschichten."
   },
   "slackMock": {
-    "morningBrief": "Morning Brief",
+    "morningBrief": "Morgenbriefing",
     "markets": "Märkte",
     "marketsText": "S&P 500 Futures -1,2 % vorbörslich. Fed-Chair-Anhörung um 10 Uhr EST — zinssensitive Sektoren unter Druck. Analysten-Konsens verschiebt sich beim Q2-Ergebnis.",
     "elevated": "Makro",
@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Kostenloses Live-Dashboard für globale Informationen in Echtzeit",
-      "description": "Bis es Nachrichten sind, wissen Sie bereits Bescheid. Konflikte, Engpässe, Militärflugverkehr, Märkte, Cyber: eine kostenlose Live-Karte mit KI-Analyse. Keine Registrierung erforderlich.",
-      "ogTitle": "World Monitor — Bevor es Nachrichten sind, wussten Sie es bereits.",
-      "ogDescription": "Die Rohsignale der Welt — Schiffe, Jets, Sirenen, Kabel, Märkte — auf einer kostenlosen Live-Intelligenz-Karte mit KI, die kennzeichnet, wenn sie zusammenlaufen. Kostenlos, keine Anmeldung."
+      "title": "World Monitor: Kostenloses geopolitisches Lagebild-Dashboard",
+      "description": "World Monitor: geopolitisches Lagebild-Dashboard in Echtzeit. Kostenlose Live-Karte: Konflikte, Schifffahrt, Flüge, Märkte und Cyber, mit API und MCP-Server.",
+      "ogTitle": "World Monitor: Kostenloses geopolitisches Lagebild-Dashboard",
+      "ogDescription": "World Monitor: geopolitisches Lagebild-Dashboard in Echtzeit. Kostenlose Live-Karte: Konflikte, Schifffahrt, Flüge, Märkte und Cyber, mit API und MCP-Server."
     },
     "nav": {
       "useCases": "Korrelationen",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Kostenloses globales Informations-Dashboard · live jetzt",
-      "headline1": "Bevor es Nachrichten sind,",
-      "headline2": "wussten Sie es bereits.",
-      "sub": "Nachrichten sind die Verzögerung. World Monitor streamt die Rohsignale der Welt — Schiffe, Jets, Sirenen, Kabel, Märkte — auf eine Live-Karte mit KI, die kennzeichnet, wenn sie sich zu etwas Wichtigem verbinden.",
+      "headline1": "Geopolitisches Lagebild-Dashboard",
+      "headline2": "in Echtzeit",
+      "sub": "Bevor es Nachrichten sind, wussten Sie es bereits.",
       "ctaPrimary": "Dashboard starten",
       "ctaFree": "Kostenlos · Keine Anmeldung · Lädt in Sekunden",
       "ctaSecondary": "Sehen Sie, wie Leute es nutzen ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor ist kein Open-Source-Palantir",
       "asOf": "Stand: {{date}}",
       "whatIsTitle": "Was ist World Monitor?",
-      "whatIsBody": "World Monitor ist ein kostenloses ($0), quelloffenes (AGPL-3.0) Dashboard, das von über 2 Millionen Menschen genutzt wird. Es streamt {{feeds}} Nachrichten- und OSINT-Feeds von {{providers}} zugeordneten Anbietern auf eine Live-Weltkarte mit {{mapLayers}} Kartenebenentypen, die Geopolitik, Märkte, Schifffahrt, Luftfahrt und Cyber abdeckt. Das System korreliert diese Daten, sodass zusammenhängende Ereignisse bereits vor den Schlagzeilen sichtbar werden. Jede Angabe ist belegt und jede Methode dokumentiert."
+      "whatIsBody": "World Monitor ist ein kostenloses ($0), quelloffenes (AGPL-3.0) Dashboard, das von über 2 Millionen Menschen genutzt wird. Es streamt {{feeds}} Nachrichten- und OSINT-Feeds von {{providers}} zugeordneten Anbietern auf eine Live-Weltkarte mit {{mapLayers}} Kartenebenentypen, die Geopolitik, Märkte, Schifffahrt, Luftfahrt und Cyber abdeckt. Das System korreliert diese Daten, sodass zusammenhängende Ereignisse bereits vor den Schlagzeilen sichtbar werden. Jede Angabe ist belegt und jede Methode dokumentiert.",
+      "whatIsBestFor": "Ideal für Analysten, Journalisten, Trader und Entwickler, die geopolitische Signale in Echtzeit brauchen."
     },
     "live": {
       "eyebrow": "Live jetzt",
@@ -688,8 +689,8 @@
       "a9": "Ja — Open Source unter AGPL-3.0 auf GitHub: Code lesen, selbst hosten oder erweitern. Native Desktop-Apps für Windows, macOS und Linux sind ebenfalls verfügbar, plus eine Android-TV-App für Wanddisplays.",
       "q10": "Warum ist World Monitor nicht Palantir?",
       "a10": "Palantir macht die eigenen Daten einer Institution innerhalb dieser Institution einsatzfähig. World Monitor startet von der anderen Seite: Es sammelt, normalisiert, korreliert und überwacht öffentliche Daten, veröffentlicht dann diese Intelligenzschicht über ein kostenloses Dashboard und Open-Source-Code. Andere Aufgabe, anderes Produkt.",
-      "q11": "Which World Monitor license do I need?",
-      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
+      "q11": "Welche World Monitor-Lizenz brauche ich?",
+      "a11": "Wählen Sie danach aus, wer das Ergebnis nutzen wird. Die persönliche Lizenz von Pro gilt für eine Person, die World Monitor für eigene Recherchen und Entscheidungen nutzt. Pro Business erlaubt einem lizenzierten Benutzer die Nutzung für Firmen- oder Kundenarbeit, interne Tools und Berichte. API Starter deckt die API-Nutzung innerhalb einer Organisation ab, ohne Weitergabe an Kunden. API Business erlaubt dieser Organisation, World Monitor-Daten in Produkte und Dienste für ihre Kunden einzubetten. Enterprise deckt individuelle Plätze, White-Label und Deployments ab. Diese Abonnementlizenzen sind von den Quellcode-Lizenzen AGPL/MIT getrennt. Vollständige Bedingungen: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} direkte Antworten zu Preis, Daten, Warnmeldungen und KI-Zugang. Kurzfassung: Das Dashboard kostet 0 $, benötigt kein Konto und der Code ist Open Source unter AGPL-3.0.",
       "q12": "Welche Software eignet sich am besten, um weltweite Krisen und Störungen in den Nachrichten zu verfolgen?",
       "a12": "World Monitor ist eine kostenlose Open-Source-Option: Es streamt {{feeds}} Nachrichten- und OSINT-Feeds von {{providers}} namentlich genannten Anbietern auf eine einzige Live-Weltkarte mit {{mapLayers}} Arten von Kartenebenen und deckt Geopolitik, Märkte, Schifffahrt, Luftfahrt und Cyber ab. Es verknüpft sie, sodass zusammentreffende Störungen sichtbar werden, bevor sie in den Schlagzeilen stehen. Für einen Vergleich mit anderen Tools siehe worldmonitor.app/compare/best-geopolitical-risk-dashboards."

@@ -422,11 +422,22 @@ export function provenanceValueSchema(dimension, provenanceContract) {
 // TypeScript so the published auth contract can never drift from runtime. Each
 // throws on a full parse miss or empty set — a rename can't silently mislabel
 // auth (the caller adds a further non-empty guard on the union).
+
+/**
+ * The quoted string literals in a Set/array source block, with full-line `//`
+ * comments removed first: an apostrophe in a comment ("the handler's ...") would
+ * otherwise pair with the next quote and swallow the entries that follow.
+ */
+function quotedLiterals(block) {
+  const code = block.replace(/^[ \t]*\/\/.*$/gm, '');
+  return [...code.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+}
+
 export function readPublicNoAuthPaths() {
   const src = readFileSync(resolve(root, 'server/gateway.ts'), 'utf8');
   const block = src.match(/PUBLIC_NO_AUTH_RPC_PATHS\s*=\s*new Set<string>\(\[([\s\S]*?)\]\)/);
   if (!block) throw new Error('could not locate PUBLIC_NO_AUTH_RPC_PATHS in server/gateway.ts');
-  const paths = [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  const paths = quotedLiterals(block[1]);
   if (paths.length === 0) throw new Error('PUBLIC_NO_AUTH_RPC_PATHS parsed as empty — refusing to run');
   return new Set(paths);
 }
@@ -444,7 +455,7 @@ export function readPremiumRpcPaths() {
   const src = readFileSync(resolve(root, 'src/shared/premium-paths.ts'), 'utf8');
   const block = src.match(/PREMIUM_RPC_PATHS\s*=\s*new Set<string>\(\[([\s\S]*?)\]\)/);
   if (!block) throw new Error('could not locate PREMIUM_RPC_PATHS in src/shared/premium-paths.ts');
-  return [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  return quotedLiterals(block[1]);
 }
 
 // ── Billing-verification wire contract (#5447) ──────────────────────────────
@@ -507,7 +518,7 @@ export function readIdempotencyExemptPaths() {
   if (!block) {
     throw new Error('could not locate IDEMPOTENCY_EXEMPT_RPC_PATHS in server/_shared/idempotency.ts');
   }
-  return new Set([...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]));
+  return new Set(quotedLiterals(block[1]));
 }
 
 function readConstStringArray(src, name) {
@@ -1013,4 +1024,16 @@ export const PUBLIC_FORBIDDEN_GATES = new Map([
       },
     },
   }],
+]);
+
+// ── Operator review key (#9192) ──────────────────────────────────────────────
+// Routes the gateway lets through without an API key (they are in
+// PUBLIC_NO_AUTH_RPC_PATHS) whose handler then requires X-Trust-Review-Key to
+// match TRUST_REVIEW_SECRET (isTrustReviewer, server/_shared/error-reports.ts)
+// and answers 401 `{ message: 'Unauthorized' }` without it. A WorldMonitor API
+// key alone authorizes neither, so the spec declares the review key instead of
+// `security: []`.
+export const TRUST_REVIEW_KEY_PATHS = new Set([
+  '/api/news/v1/list-error-reports',
+  '/api/news/v1/review-error-report',
 ]);

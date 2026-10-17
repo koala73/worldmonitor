@@ -6,7 +6,7 @@ import { unwrapEnvelope } from '../_seed-envelope.js';
 import { chokepointCacheIdentity, chokepointSourcePolicy, type ChokepointPanelRead } from './_chokepoint-snapshot';
 import { newsIntelligenceFreshness, newsIntelligenceReuseUntil, type NewsIntelligencePanelRead } from './_news-intelligence-snapshot';
 import { resolveCountryFilter } from './_country-args';
-import { filterNaturalDisastersPanelData, naturalDisastersReuseUntil, presentNaturalDisastersPanel, type NaturalDisastersPanelRead } from './_natural-disasters-reuse';
+import { filterNaturalDisastersPanelData, naturalDisastersReuseUntil, type NaturalDisastersPanelRead } from './_natural-disasters-reuse';
 import { isAppOwnedRedisKey } from '../_redis-key-ownership.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
@@ -25,7 +25,8 @@ import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
 import { admitChokepointPanel, admitConflictPanel, admitCountryPanel, admitDisasterPanel, admitForecastPanel, admitMarketPanel, admitNewsIntelligencePanel, admitNewsPanel, admitPredictionPanel, admitWorldBriefPanel, authorizePanelRead, PANEL_READ_LIMIT, PanelRequestError, type PaidPanelAdmission } from './panel-requests';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
-import { chokepointPanelViewSchema, conflictPanelViewSchema, disasterPanelViewSchema, forecastPanelReadSchema, marketPanelViewSchema, newsIntelligencePanelViewSchema, predictionPanelViewSchema, worldBriefPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
+import { forecastTheaterReadSchema } from '../../shared/forecast-theaters';
+import { chokepointPanelViewSchema, conflictPanelViewSchema, disasterPanelViewSchema, forecastCaseReadSchema, forecastPanelReadSchema, marketPanelViewSchema, newsIntelligencePanelViewSchema, predictionPanelViewSchema, worldBriefPanelViewSchema, type PanelUsage } from '../../shared/panel-admission';
 import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
@@ -502,6 +503,14 @@ export async function dispatchToolsCall(
   const suppliedPanel = p.arguments?.panel_request;
   const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request'));
   let sourceArguments = callArguments;
+  // Callers without a dedicated panel allowance (API allowances, operator keys)
+  // cannot hold a forecast panel_request; they read original evidence at the
+  // tool's own weight instead. Free accounts and keyless callers never reach here.
+  const forecastReader = tool.name === 'get_forecast_case' || tool.name === 'get_forecast_theaters';
+  const perToolForecastRead = !dedicatedPanel && suppliedPanel === undefined && forecastReader;
+  // jmespath only shapes the response after execution (and after any panel save),
+  // so the strict reader contracts and the panel read scope must not see it.
+  const forecastReaderArguments = forecastReader ? Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath')) : callArguments;
   try {
     if (tool.name === 'get_country_brief' || tool.name === 'get_country_risk') {
       if (!dedicatedPanel && ('refresh' in callArguments || 'request_id' in callArguments)) throw new PanelRequestError('Country refresh controls require a paid panel allowance.', 'invalid');
@@ -631,7 +640,10 @@ export async function dispatchToolsCall(
         panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name, filters, panelRequest.token);
       }
     }
-    if ((tool.name === 'get_forecast_case' || tool.name === 'get_forecast_theaters') && suppliedPanel === undefined) throw new PanelRequestError('Open a forecast panel before reading original evidence.', 'invalid');
+    if (perToolForecastRead) {
+      const schema = tool.name === 'get_forecast_case' ? forecastCaseReadSchema : forecastTheaterReadSchema;
+      if (!schema.safeParse(forecastReaderArguments).success) throw new PanelRequestError(tool.name === 'get_forecast_case' ? 'Provide an exact forecast_id and generated_at.' : 'Forecast theaters take no arguments.', 'invalid');
+    } else if ((tool.name === 'get_forecast_case' || tool.name === 'get_forecast_theaters') && suppliedPanel === undefined) throw new PanelRequestError('Open a forecast panel before reading original evidence.', 'invalid');
     if (dedicatedPanel && tool.name === 'get_forecast_predictions' && suppliedPanel === undefined) {
       const admissionArgs = Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath' && key !== 'summary'));
       panelRequest = await admitForecastPanel(context, budget, deps.redisPipeline, admissionArgs);
@@ -647,8 +659,8 @@ export async function dispatchToolsCall(
     } else if (suppliedPanel !== undefined) {
       if (!dedicatedPanel || budget?.limit === 0) throw new PanelRequestError('This allowance does not support panel requests.', 'invalid');
       panelRead = await authorizePanelRead(context, deps.redisPipeline, tool.name,
-        tool.name === 'get_forecast_predictions' || tool.name === 'get_forecast_case' || tool.name === 'get_forecast_theaters'
-          ? callArguments
+        tool.name === 'get_forecast_predictions' ? callArguments
+          : forecastReader ? forecastReaderArguments
           : Object.fromEntries(Object.entries(sourceArguments).filter(([key]) => key !== 'jmespath')), suppliedPanel);
     }
     if (tool.name === 'get_country_brief_section' && callArguments.section === 'signalsRaw'
@@ -792,8 +804,9 @@ export async function dispatchToolsCall(
         };
       }
       if (panelRead?.panel === 'forecasts') execution.panelScope = 'forecasts';
+      if (perToolForecastRead) execution.perToolForecastRead = true;
       if (tool._execute) result = await tool._execute(
-        dedicatedPanel && (tool.name === 'get_country_brief' || tool.name === 'get_country_risk') ? sourceArguments : callArguments,
+        dedicatedPanel && (tool.name === 'get_country_brief' || tool.name === 'get_country_risk') ? sourceArguments : forecastReaderArguments,
         execution.downstreamOrigin,
         context,
         execution,
@@ -802,7 +815,7 @@ export async function dispatchToolsCall(
         const sourceTool = tool.name === 'get_conflict_events' && dedicatedPanel
           ? { ...tool, _postFilter: filterConflictPanelEvents }
           : tool;
-        result = await executeTool(sourceTool, execution.panelScope === 'forecasts' ? Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'summary')) : sourceArguments, undefined, execution);
+        result = await executeTool(sourceTool, forecastReader ? forecastReaderArguments : execution.panelScope === 'forecasts' ? Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'summary')) : sourceArguments, undefined, execution);
       }
     }
     if (panelRead && panelRead.cached === undefined) {
@@ -858,13 +871,20 @@ export async function dispatchToolsCall(
       result = presentDefaultMarketData(result as Record<string, unknown>, tool._outputBudgetBytes);
     }
     let { text: projectedText, value: projectedValue, failed } = applyJmespath(result, jmespathArg);
-    if (tool.name === 'get_natural_disasters' && dedicatedPanel && panelRead?.panel === 'disasters'
+    // A news-panel token reading Natural map data keeps its full geometry.
+    const newsMapRead = tool.name === 'get_natural_disasters' && panelRead !== undefined && panelRead.panel !== 'disasters';
+    let fitCoverage: unknown;
+    if (tool._fitToBudget && !newsMapRead
       && result && typeof result === 'object'
       && (failed === 'projection_too_large' || utf8ByteLength(projectedText) > tool._outputBudgetBytes)) {
-      const presented = presentNaturalDisastersPanel(result as Record<string, unknown>, tool._outputBudgetBytes, argBool(callArguments.summary));
+      const presented = tool._fitToBudget(result as Record<string, unknown>, tool._outputBudgetBytes, callArguments);
       if (presented !== result) {
         result = presented;
         ({ text: projectedText, value: projectedValue, failed } = applyJmespath(result, jmespathArg));
+        // A projection can select the trimmed lists and leave the coverage
+        // record behind, so it rides outside the projection like the
+        // attribution rider below.
+        if (jmespathUsed && failed === undefined) fitCoverage = presented.transportCoverage;
       }
     }
     // Attribution accompaniment. A projection can detach a redistribution-
@@ -887,7 +907,13 @@ export async function dispatchToolsCall(
     const rider = jmespathUsed && tool._attribution !== undefined
       ? buildAttributionRider(result, tool._attribution)
       : null;
-    const text = rider === null ? projectedText : mergeAttributionRider(projectedText, rider);
+    let text = rider === null ? projectedText : mergeAttributionRider(projectedText, rider);
+    if (fitCoverage !== undefined) {
+      const coverage = JSON.stringify(fitCoverage);
+      text = rider === null
+        ? `{"projection":${projectedText},"transportCoverage":${coverage}}`
+        : `${text.slice(0, -1)},"transportCoverage":${coverage}}`;
+    }
     const latencyMs = Date.now() - tStart;
     // Budget gate: always compute byte length for the budget check. This
     // replaces the previous telemetry-only perf gate for the post-JMESPath
@@ -953,10 +979,11 @@ export async function dispatchToolsCall(
     // tool's `summary: true`, which turns lists into `{count, sample}` — is no
     // longer the documented shape and is carried under `projection`.
     const summaryUsed = tool._execute === undefined && argBool(p.arguments?.summary);
-    const structuredContent = buildStructuredContent(projectedValue, {
+    const builtContent = buildStructuredContent(projectedValue, {
       reshaped: failed === undefined && (jmespathUsed || summaryUsed),
       rider,
     });
+    const structuredContent = fitCoverage === undefined ? builtContent : { ...builtContent, transportCoverage: fitCoverage };
     return rpcOk(id, { content: [{ type: 'text', text }], structuredContent, ...(panelUsage ? { _meta: { 'worldmonitor/usage': panelUsage } } : {}) }, corsHeaders);
   } catch (err: unknown) {
     // `latency_ms` is time-in-tool (from tStart, captured after the quota

@@ -242,6 +242,10 @@ async function seedProcess(initial, now, mode, activeFixture, bcFixture) {
     const url = new URL(input);
     if (url.origin === 'https://redis.cwfis.test') {
       if (mode === 'bc-read-fail' && decodeURIComponent(url.pathname) === '/get/wildfire:bc-source:v1') return new Response('', { status: 403 });
+      if (mode === 'bc-read-glitch' && decodeURIComponent(url.pathname) === '/get/wildfire:bc-source:v1' && !calls.bcReadGlitch) {
+        calls.bcReadGlitch = 1;
+        return new Response('{"result":"{\\"version', { status: 200 });
+      }
       if (url.pathname.startsWith('/get/')) return Response.json({ result: store.get(decodeURIComponent(url.pathname.slice(5))) ?? null });
       const body = JSON.parse(init.body);
       if (mode.endsWith('state-write-fail') && body[0] === 'SET' && body[1] === 'wildfire:cwfis-source:v1') return new Response('', { status: 403 });
@@ -356,6 +360,26 @@ test('BC failures and unconfirmed empty results keep source coverage through the
     assert.equal(entry.sourceFailurePendingUntil, undefined);
     previous = captured.store;
   }
+});
+
+// Production 2026-10-17 08:11Z: Upstash answered the strict BC snapshot GET with
+// HTTP 200 and a body that was not JSON. With no retry the BC fetch rejected
+// without a snapshot and the whole run exited 1 (FATAL: BC recovery snapshot is
+// missing). The next tick read the same key cleanly.
+test('a transient unparsable BC snapshot read is retried instead of failing the run', () => {
+  const good = runSeedFixture([], NOW, 'bc-ok');
+  assert.equal(good.status, 0, good.output);
+  const goodSnapshot = JSON.parse(new Map(good.store).get('wildfire:bc-source:v1'));
+  const glitch = runSeedFixture(good.store, NOW + 10 * MIN, 'bc-read-glitch');
+  assert.equal(glitch.status, 0, glitch.output);
+  assert.equal(glitch.calls.bcReadGlitch, 1);
+  assert.equal(glitch.calls.bc, 1);
+  const store = new Map(glitch.store);
+  const snapshot = JSON.parse(store.get('wildfire:bc-source:v1'));
+  assert.equal(snapshot.fetchedAt, NOW + 10 * MIN);
+  assert.equal(snapshot.fireDetections.length, goodSnapshot.fireDetections.length);
+  const canonical = JSON.parse(store.get('wildfire:fires:v1')).data;
+  assert.equal(canonical._bcCount, goodSnapshot.fireDetections.length);
 });
 
 test('real wildfire seeder persists failure history and keeps canonical/bootstrap coverage across cron processes', () => {

@@ -144,7 +144,7 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       const tools = await getRegistry();
       const t = tools.find(t => t.name === 'get_cyber_threats');
       assert.ok(t, 'get_cyber_threats must be registered');
-      assert.deepEqual(Object.keys(t).sort(), ['_meta', 'annotations', 'description', 'inputSchema', 'name', 'outputSchema']);
+      assert.deepEqual(Object.keys(t).sort(), ['_meta', 'annotations', 'description', 'inputSchema', 'name', 'outputSchema', 'title']);
       assert.deepEqual(t._meta, {
         'worldmonitor/access': 'free-account',
         'worldmonitor/weight': 1,
@@ -416,6 +416,17 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.equal(definition._budget_exceeded, undefined);
       assert.equal(definition.description, registered.description);
       assert.deepEqual({ ...definition, description: listed.description }, listed);
+    });
+
+    // describe_tool's own output budget must hold the largest full definition;
+    // otherwise that tool's describe_tool call returns _budget_exceeded.
+    it('describe_tool returns the full definition of every registered tool within its budget', async () => {
+      const overBudget = [];
+      for (const tool of TOOL_REGISTRY) {
+        const definition = await callDescribeTool(tool.name);
+        if (definition._budget_exceeded !== undefined) overBudget.push(tool.name);
+      }
+      assert.deepEqual(overBudget, []);
     });
 
     it('country output schema requires raw evidence only for the raw Signals section', async () => {

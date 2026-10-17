@@ -16,11 +16,13 @@ const BLOCKED_METADATA_HOSTNAMES = new Set([
 
 const WEBHOOK_DELIVERY_TIMEOUT_MS = 10_000;
 const MAX_WEBHOOK_RESPONSE_BYTES = 1024 * 1024;
+const SSRF_BLOCKED_ERROR_CODE = 'ERR_SSRF_BLOCKED';
 
 class NotificationWebhookSsrfError extends Error {
   constructor(message) {
     super(message);
     this.name = 'NotificationWebhookSsrfError';
+    this.code = SSRF_BLOCKED_ERROR_CODE;
   }
 }
 
@@ -102,6 +104,10 @@ function embeddedIpv4FromIpv6(hextets) {
   if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0xffff) {
     return toDotted(h6, h7);
   }
+  // IPv4-translated (SIIT) ::ffff:0:0:0/96
+  if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0xffff && h5 === 0) {
+    return toDotted(h6, h7);
+  }
   // NAT64 64:ff9b::/96
   if (h0 === 0x0064 && h1 === 0xff9b && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0) {
     return toDotted(h6, h7);
@@ -139,6 +145,9 @@ function isBlockedResolvedAddress(address) {
     if (h0 === 0x0064 && h1 === 0xff9b && h2 === 0x0001) return true;
     // RFC 6666 discard-only prefix 100::/64.
     if (h0 === 0x0100 && h1 === 0 && h2 === 0 && h3 === 0) return true;
+    // 2001::/23 IETF protocol assignments (Teredo 2001::/32 tunnels to an
+    // arbitrary IPv4; benchmarking; ORCHID).
+    if (h0 === 0x2001 && h1 < 0x0200) return true;
   }
 
   if (addr === '::' || addr === '::1') return true;
@@ -193,6 +202,63 @@ function blockedNotificationWebhookUrlReason(rawUrl) {
   return null;
 }
 
+// Microsoft Teams channel (#9215). A Teams URL must also be a Microsoft
+// Workflows webhook, so a teams channel can never be pointed at an arbitrary
+// host. Sources (checked 2026-10-17):
+// - Workflows "When a Teams webhook request is received" trigger URLs moved
+//   to *.environment.api.powerplatform.com /powerautomate/automations/direct/
+//   (learn.microsoft.com/troubleshoot/power-platform/power-automate/
+//   flow-run-issues/triggers-troubleshoot, incl. the June 2026 /direct/cu/<n>/
+//   scale-unit form).
+// - The Teams connector reference still documents the Logic Apps form
+//   https://<x>.logic.azure.com:443/workflows/... (learn.microsoft.com/
+//   connectors/teams, "Microsoft Teams Webhook").
+// - Office 365 connector URLs (*.webhook.office.com) stopped working in the
+//   May 18-22 2026 retirement (devblogs.microsoft.com/microsoft365dev/
+//   retirement-of-office-365-connectors-within-microsoft-teams).
+// Keep in lockstep with blockedTeamsWebhookUrlReason in
+// api/_notification-webhook-ssrf.ts; tests/notification-webhook-ssrf.test.mts
+// asserts both return the same verdict.
+const TEAMS_WEBHOOK_HOST_RULES = [
+  { suffix: '.environment.api.powerplatform.com', pathPrefix: '/powerautomate/automations/direct/' },
+  { suffix: '.logic.azure.com', pathPrefix: '/workflows/' },
+];
+const TEAMS_RETIRED_HOST_SUFFIXES = ['webhook.office.com', 'outlook.office.com'];
+const TEAMS_WEBHOOK_MAX_URL_LENGTH = 4096;
+
+function hostMatchesSuffix(hostname, suffix) {
+  const bare = suffix.startsWith('.') ? suffix.slice(1) : suffix;
+  return hostname === bare || hostname.endsWith(`.${bare}`);
+}
+
+function blockedTeamsWebhookUrlReason(rawUrl) {
+  if (typeof rawUrl !== 'string' || !rawUrl.trim()) return 'Webhook URL must not be empty';
+  const baseReason = blockedNotificationWebhookUrlReason(rawUrl);
+  if (baseReason) return baseReason;
+  if (rawUrl.length > TEAMS_WEBHOOK_MAX_URL_LENGTH) {
+    return 'Teams webhook URL is too long';
+  }
+  const parsed = new URL(rawUrl);
+  if (parsed.username || parsed.password) {
+    return 'Teams webhook URL must not contain credentials';
+  }
+  if (parsed.port !== '') {
+    return 'Teams webhook URL must use the default HTTPS port';
+  }
+  const hostname = parsed.hostname.toLowerCase();
+  if (TEAMS_RETIRED_HOST_SUFFIXES.some(suffix => hostMatchesSuffix(hostname, suffix))) {
+    return 'Microsoft retired Office 365 connector webhooks in May 2026. Create a Workflows webhook in Teams and paste that URL';
+  }
+  const rule = TEAMS_WEBHOOK_HOST_RULES.find(candidate => hostname.endsWith(candidate.suffix));
+  if (!rule) {
+    return 'Teams webhook URL must be a Microsoft Workflows webhook (environment.api.powerplatform.com or logic.azure.com)';
+  }
+  if (!parsed.pathname.startsWith(rule.pathPrefix)) {
+    return 'Teams webhook URL path is not a Workflows webhook trigger';
+  }
+  return null;
+}
+
 async function defaultResolveHostname(hostname) {
   const records = await dns.lookup(hostname, { all: true, verbatim: true });
   return records.map(record => record.address);
@@ -223,6 +289,43 @@ async function assertNotificationWebhookDeliveryUrlSafe(rawUrl, resolveHostname 
   }
 
   return { url, resolvedAddresses };
+}
+
+async function defaultResolveHostnameRecords(hostname) {
+  return dns.lookup(hostname, { all: true, verbatim: true });
+}
+
+/**
+ * A `lookup` option for `http.request`/`https.request` that vets every DNS
+ * answer before the socket connects, and connects only to a vetted address.
+ * Rejecting when ANY answer is blocked keeps a mixed public/private answer
+ * set from reaching the private address through happy-eyeballs.
+ */
+function createGuardedLookup(resolveHostnameRecords = defaultResolveHostnameRecords) {
+  return function guardedLookup(hostname, options, callback) {
+    if (typeof options === 'function') {
+      callback = options;
+      options = {};
+    }
+    Promise.resolve()
+      .then(() => resolveHostnameRecords(hostname))
+      .then((records) => {
+        if (!records.length) {
+          throw new NotificationWebhookSsrfError(`DNS resolution returned no addresses for ${hostname}`);
+        }
+        const blocked = records.find(record => isBlockedResolvedAddress(record.address));
+        if (blocked) {
+          throw new NotificationWebhookSsrfError(`${hostname} resolves to a private/reserved address: ${blocked.address}`);
+        }
+        if (options && options.all) {
+          callback(null, records.map(record => ({ address: record.address, family: record.family })));
+          return;
+        }
+        const picked = records.find(record => record.family === 4) || records[0];
+        callback(null, picked.address, picked.family);
+      })
+      .catch(error => callback(error));
+  };
 }
 
 function responseFromNode(statusCode, statusMessage, headers, body) {
@@ -280,13 +383,25 @@ async function postJsonWithPinnedAddress(url, body, headers, resolvedAddresses) 
         }
         chunks.push(buffer);
       });
+      // A throw in this listener escapes the promise and kills the process:
+      // a callback answering `HTTP/1.1 999` made new Response() throw here.
       res.on('end', () => {
-        const responseHeaders = new Headers();
-        for (const [key, value] of Object.entries(res.headers)) {
-          if (!value) continue;
-          responseHeaders.set(key, Array.isArray(value) ? value.join(', ') : value);
+        try {
+          if (res.statusCode && (res.statusCode < 200 || res.statusCode > 599)) {
+            const error = new Error(`webhook responded with out-of-range status ${res.statusCode}`);
+            error.code = 'WEBHOOK_INVALID_STATUS';
+            error.statusCode = res.statusCode;
+            throw error;
+          }
+          const responseHeaders = new Headers();
+          for (const [key, value] of Object.entries(res.headers)) {
+            if (!value) continue;
+            responseHeaders.set(key, Array.isArray(value) ? value.join(', ') : value);
+          }
+          settle(resolve, responseFromNode(res.statusCode, res.statusMessage, responseHeaders, Buffer.concat(chunks)));
+        } catch (error) {
+          settle(reject, error);
         }
-        settle(resolve, responseFromNode(res.statusCode, res.statusMessage, responseHeaders, Buffer.concat(chunks)));
       });
     });
     req.on('error', error => settle(reject, error));
@@ -303,8 +418,11 @@ async function postJsonWithPinnedAddress(url, body, headers, resolvedAddresses) 
 
 module.exports = {
   NotificationWebhookSsrfError,
+  SSRF_BLOCKED_ERROR_CODE,
   assertNotificationWebhookDeliveryUrlSafe,
   blockedNotificationWebhookUrlReason,
+  blockedTeamsWebhookUrlReason,
+  createGuardedLookup,
   isBlockedResolvedAddress,
   postJsonWithPinnedAddress,
   responseFromNode,

@@ -224,6 +224,25 @@ an unregistered repository service fails the run before source filtering. Edit
 the roster only with evidence for an intentional Railway inventory change; do
 not use it to acknowledge drift.
 
+The always-on `verification-desk` service (`1f732679-760d-467b-bc36-4be3f45bc586`,
+desk.worldmonitor.app) was created from a PR branch on 2026-10-10 and was never
+enrolled, so every health run from then on failed with
+`unexpected repository service(s): verification-desk`. PR #9083 enrolled it in
+the roster and registered it as a Dockerfile service
+(`demos/verification-desk/Dockerfile`, built from the repository root). Its
+watch paths are `demos/verification-desk/**`, the image's file inputs, and the
+exact WorldMonitor modules the desk imports. The closure audit in
+`tests/railway-watch-path-audit.test.mjs` fails when a new desk import is not
+watched.
+
+The always-on `shipping-webhook-worker` service
+(`a97fa619-a8f4-4244-9748-6c0f6c3eade3`) was provisioned on 2026-10-17 after
+#9236 merged it as a planned registry entry. It runs from the `scripts` root
+with `node shipping-webhook-worker.mjs`, and its three variables reference
+`ais-relay` (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`,
+`WORLDMONITOR_RELAY_KEY`), so a key rotation there carries over. The same
+change enrolled it in the roster and made its registry entry active.
+
 After linking the CLI to the `world-monitor` production environment, audit the
 live settings with:
 
@@ -1571,10 +1590,10 @@ fetch('https://backboard.railway.com/graphql/v2',{method:'POST',
 | seed-hs2-chokepoint-exposure | `node scripts/seed-hs2-chokepoint-exposure.mjs` | periodic (TTL-extended) | HS2 chokepoint trade-exposure (derived) |
 | seed-service-statuses | `node scripts/seed-service-statuses.mjs` | **planned — not provisioned** | Service-status warm-ping; primary seeder is the AIS relay loop |
 | seed-live-video-resolved | `node seed-live-video-resolved.mjs` | **`0 */6 * * *` (verified 2026-09-24)** (health budget 1080 min) | The video each catalog YouTube channel has live now, for the Live News and Live Webcams players (#8545); scripts-root service `11581ac4-24ea-4cfc-bf17-471e41305364` (Railpack, `rootDirectory` `scripts`), reads channel `/live` pages through `LIVE_VIDEO_PROXY_URL` or `PROXY_URL` |
-| seed-imd-cyclone-marine | `node seed-imd-cyclone-marine.mjs` | **`*/15 * * * *` (verified 2026-09-05)** | Official IMD cyclone, port, coastal, and marine products; scripts-root Nixpacks service `5f943d96-5f89-4817-941b-fdc36b71722e` |
+| seed-imd-cyclone-marine | `node seed-imd-cyclone-marine.mjs` | **`*/15 * * * *` (verified 2026-09-05)** | Official IMD sea-area and coastal marine bulletins from public pages; scripts-root Nixpacks service `5f943d96-5f89-4817-941b-fdc36b71722e` |
 
-Configure the IMD account credentials and the IP-bound production key before
-you activate this service. See [Configure the IMD Railway seeder](natural-disasters.mdx#configure-the-imd-railway-seeder).
+The IMD seeder reads public bulletin pages. It needs no IMD account, API key,
+or proxy. See [Configure the IMD Railway seeder](natural-disasters.mdx#configure-the-imd-railway-seeder).
 
 `seed-live-video-resolved` was provisioned on 2026-09-24 after #8596 merged.
 Its first deployment (`46c6d048-300c-4d7b-aa6c-6c04488d6cd2`, commit

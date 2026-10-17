@@ -536,6 +536,27 @@ describe('reportServerError', () => {
     assert.equal(calls.length, 0, 'rate-limit degradation must not be captured again by every browser');
   });
 
+  // api/mcp-proxy answers an upstream MCP server timeout with its own 504 and
+  // has already captured it server-side at warning. Reporting it again here
+  // filed it as an origin `API 504: /api/mcp-proxy` error (WORLDMONITOR-17A).
+  it('skips the mcp-proxy 504 that relays an upstream MCP server timeout', () => {
+    const { calls, enqueue } = makeSpy();
+    const res = new Response(JSON.stringify({ error: 'MCP server timed out' }), {
+      status: 504,
+      headers: { 'Content-Type': 'application/json', 'X-Wm-Upstream-Timeout': '1' },
+    });
+    reportServerError(res, 'https://api.worldmonitor.app/api/mcp-proxy', enqueue);
+    assert.equal(calls.length, 0, 'an upstream MCP timeout is not an origin 5xx');
+  });
+
+  it('still reports an unmarked 504 from the proxy path', () => {
+    const { calls, enqueue } = makeSpy();
+    const res = new Response('', { status: 504 });
+    reportServerError(res, 'https://api.worldmonitor.app/api/mcp-proxy', enqueue);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].msg, 'API 504: /api/mcp-proxy');
+  });
+
   // WORLDMONITOR-ZH: closing the country deep-dive aborts its signal while
   // withBillingVerificationRetry waits out Retry-After, and the wrapper hands
   // back the FIRST 503. Nobody waited for the retry, so whether the outage was

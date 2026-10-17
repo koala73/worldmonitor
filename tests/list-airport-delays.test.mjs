@@ -23,6 +23,7 @@
 import { describe, it, before, beforeEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { drainResponseHeaders } from '../server/_shared/response-headers.ts';
+import { validationFailure } from './helpers/validation-failure.mts';
 
 // 4. Behavioural — actually invoke the handler against stubbed Redis.
 //    These are the regression tests the bug report would catch.
@@ -109,7 +110,7 @@ describe('listAirportDelays handler — coverage gating (#3707)', () => {
   it('rejects declared filters because the seed snapshot has no filtered contract', async () => {
     await assert.rejects(
       listAirportDelays(context(), { pageSize: 100, cursor: '', region: '', minSeverity: '' }),
-      { statusCode: 400 },
+      validationFailure('page_size', /not supported/),
     );
   });
 

@@ -489,7 +489,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_tariff_trends`
 
-Global trade and pricing indicators: US MFN applied tariff trend (All-products average, not bilateral or HS-level), Big Mac index, FAO Food Price Index, and per-country national debt levels.
+Global trade and pricing indicators: US MFN applied tariff trend (all-products average; for another reporter, a partner or a product group use get_tariff_averages), Big Mac index, FAO Food Price Index, and per-country national debt levels.
 
 **Parameters (tool-specific):**
 
@@ -527,7 +527,7 @@ WTO merchandise trade flows for one reporting country versus the World, over a c
 
 | Name | Type | Description |
 |------|------|-------------|
-| `reporter` | string | WTO reporting country as a 3-digit UN M49 code (e.g. "840" = United States). Defaults to "840". The only partner served is the World ("000"); any other partner answers `not_covered`. |
+| `reporter` | string | Reporting country as an ISO 3166-1 alpha-2 code ("US") or a 3-digit UN M49 code ("840"); ISO2 is mapped to M49. Defaults to "840" (United States). The only partner served is the World ("000"); any other partner answers `not_covered`. |
 | `years` | integer | Number of years to look back from the most recent published year, inclusive of both endpoints (10 returns 11 calendar years). Defaults to 10; 30 is the full seeded window. |
 
 **Response distinctions:** `unavailableReason` is the closed `TradeFlowUnavailableReason` enum from the RPC. `TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED` is a contract answer — the combination is simply outside seeded coverage, a retry cannot help. Every other non-UNSPECIFIED reason names a fault (`seed_missing`, `coverage_unknown`, `cache_unavailable`), with `upstreamUnavailable: true`.
@@ -547,6 +547,118 @@ curl -s https://worldmonitor.app/mcp \
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
     "params":{"name":"get_wto_trade_flows","arguments":{"reporter":"840","years":20}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_tariff_averages`
+
+Average tariff one country applies, by year. With no partner and no product group it returns the WTO MFN average over all products (`TP_A_0010`) for any reporter, not only the US series in `get_tariff_trends`. With a partner other than World, or a product group, it returns the effectively applied average from UNCTAD TRAINS via World Bank WITS:
+
+- `tariffRate` is the simple average (`AHS-SMPL-AVRG`), counting preferences the partner qualifies for.
+- `weightedRate` is the import-weighted average (`AHS-WGHTD-AVRG`).
+
+Series run from about 1990 to 2023 for most reporters. US preferences are reported only through 2021. These are schedule rates: Section 301, 232 and other unilateral duties are not included. For the US, use `get_us_import_duty`.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `reporter` | string | Importing country. Defaults to the United States (`840`). A 3-digit code is passed through, so WTO codes (`699` India) and the EU (`918`, or `"EU"`) work. ISO alpha-2, alpha-3 and English names are also accepted; France, Norway, India and Switzerland are sent as their WTO codes (`251`, `579`, `699`, `757`), which key the MFN series. |
+| `partner` | string | Exporting country whose goods are averaged. Omit, or pass `"World"` (`000`), for all partners. The EU is not a partner in this dataset. |
+| `product_group` | string (enum) | A WITS product group: an HS section range such as `84-85_MachElec` or `50-63_TextCloth`, or an aggregate such as `Textiles`, `Food`, `Fuels`, `manuf`. `all` or omitted means every product. |
+| `years` | integer | Years to return, newest kept (0–30). 0 or omitted means the route default (10). |
+
+**Response distinctions:** `indicatorCode`, `partnerCountry` and `productSector` on each datapoint say which series answered. `TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED` is a coverage answer (WITS has no such series). `TARIFF_TREND_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` is a fault, with `upstreamUnavailable: true`; retry later.
+
+- **API endpoint:** `GET /api/trade/v1/get-tariff-trends`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC proxy over the canonical route. Partner and product-group series are read from WITS on a cache miss and cached for 7 days.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_tariff_averages","arguments":{"reporter":"US","partner":"China","product_group":"Textiles","years":5}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_bilateral_tariff`
+
+Tariff one country applies to one 6-digit HS product from one partner, for one year, from UNCTAD TRAINS via World Bank WITS. `appliedRate` is what the partner pays: the best preferential rate it qualifies for, else MFN. `basis` says which. `mfnRate`, `preferentialRate` and the per-agreement `groupPreferences` are reported separately. `mfnAveRate` is an ad valorem equivalent where the MFN duty is specific. EU members answer from the EU schedule (`filingReporter` `918`).
+
+Schedule rates only: Section 301, 232, anti-dumping and other unilateral duties are not included. TRAINS has no US preferences after 2021 and no US data after 2023, so for the US use `get_us_import_duty`.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `reporter` | string | Importing country (required). 3-digit code, ISO alpha-2 or alpha-3, or English name. |
+| `partner` | string | Exporting country (required). Same forms. |
+| `hs_code` | string | 6-digit HS code (required), e.g. `870380`. Dots are ignored. |
+| `year` | integer | Tariff year. 0 or omitted means the latest year with data. |
+
+**Response distinctions:** `BILATERAL_TARIFF_UNAVAILABLE_REASON_NOT_COVERED` is a coverage answer. `BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` is a fault, with `upstreamUnavailable: true`.
+
+- **API endpoint:** `GET /api/trade/v1/get-bilateral-tariff`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC proxy over the canonical route, which reads WITS on a cache miss. A cold read can take several seconds.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_bilateral_tariff","arguments":{"reporter":"India","partner":"US","hs_code":"870380"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_us_import_duty`
+
+Current US duty on one product from one country. For each 8-digit line under `hs_code` it returns the live USITC Harmonized Tariff Schedule rates and a `basis` (`MFN`, `PREFERENTIAL` with `preferenceProgram`, or `COLUMN_2`). It also returns the chapter 99 Section 301 and 232 duties in force, each with a `status`:
+
+- `APPLIES`
+- `CONDITIONAL`, with a `condition` saying what decides it
+- `EXEMPT`
+- `SCHEDULED`
+
+`estimatedRate` adds only `APPLIES` duties to the base rate. `estimateComplete` is false when a specific duty, a condition or an unresolved preference program leaves it open. IEEPA duties are not collected and not reported. Anti-dumping and countervailing duties are not included. `additionalDutiesLoaded: false` means only the base rates were available.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `hs_code` | string | HTS code of 6, 8 or 10 digits (required), e.g. `870380` or `8703.80.00`. Dots are ignored. |
+| `partner` | string | Country of origin (required). 3-digit code, ISO alpha-2 or alpha-3, or English name. |
+
+- **API endpoint:** `GET /api/trade/v1/get-us-import-duty`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC proxy over the canonical route: a live HTS line read joined with the seeded chapter 99 catalog (`trade:us-hts:catalog:v1`).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_us_import_duty","arguments":{"hs_code":"870380","partner":"CN"}}
   }'
 ```
 
@@ -1420,7 +1532,7 @@ Deterministic named-entity extraction shared with the dashboard: registry entiti
 |------|------|-------------|
 | `text` | string | Optional text to extract from, max 2048 characters (longer input is rejected with an `error`). When omitted, the tool aggregates entities across the current headline digest instead. |
 | `variant` | `string: full / tech` | In headlines mode, which digest to aggregate. Defaults to `full`; use `tech` for the Tech dashboard categories. Ignored in text mode. |
-| `category` | string (enum) | In headlines mode, restrict aggregation to one category of the selected `variant`. `full`: `politics`, `us`, `europe`, `middleeast`, `tech`, `ai`, `finance`, `commodities`, `gov`, `africa`, `latam`, `asia`, `energy`, `thinktanks`, `crisis`, `layoffs`, `intel`. `tech`: `tech`, `ai`, `startups`, `vcblogs`, `regionalStartups`, `unicorns`, `accelerators`, `security`, `policy`, `github`, `funding`, `cloud`, `layoffs`, `finance`, `dev`, `ipo`, `producthunt`, `hardware`, `outages`. Echoed as `category` in the result (`null` when omitted). An unknown value yields `headlineCount: 0` and a `note` listing categories present in the current digest. |
+| `category` | string (enum) | In headlines mode, restrict aggregation to one category of the selected `variant`. `full`: `politics`, `us`, `europe`, `middleeast`, `tech`, `ai`, `finance`, `commodities`, `gov`, `africa`, `latam`, `asia`, `energy`, `thinktanks`, `crisis`, `layoffs`, `science`, `intel`. `tech`: `tech`, `ai`, `startups`, `vcblogs`, `regionalStartups`, `unicorns`, `accelerators`, `security`, `policy`, `github`, `funding`, `cloud`, `layoffs`, `finance`, `dev`, `ipo`, `producthunt`, `hardware`, `outages`. Echoed as `category` in the result (`null` when omitted). An unknown value yields `headlineCount: 0` and a `note` listing categories present in the current digest. |
 | `limit` | integer | Maximum entities per list (1-50). Defaults to 20. |
 
 - **API endpoint:** `GET /api/news/v1/list-feed-digest` (headlines mode only; text mode performs no fetch).
@@ -1454,9 +1566,10 @@ Current topic clusters computed over the live headline digest with the same Jacc
 | `limit` | integer | Maximum clusters returned (1-25). Defaults to 10. |
 | `min_sources` | integer | Only return clusters carrying at least this many **distinct outlets** (1-10) — real corroboration, not one outlet filing twice. Defaults to 1. |
 | `variant` | `string: full / tech` | Which headline digest to cluster. Defaults to `full`; use `tech` for the Tech dashboard categories. |
-| `category` | string (enum) | Restrict clustering to one category of the selected `variant`. `full`: `politics`, `us`, `europe`, `middleeast`, `tech`, `ai`, `finance`, `commodities`, `gov`, `africa`, `latam`, `asia`, `energy`, `thinktanks`, `crisis`, `layoffs`, `intel`. `tech`: `tech`, `ai`, `startups`, `vcblogs`, `regionalStartups`, `unicorns`, `accelerators`, `security`, `policy`, `github`, `funding`, `cloud`, `layoffs`, `finance`, `dev`, `ipo`, `producthunt`, `hardware`, `outages`. Echoed as `category` in the result (`null` when omitted). An unknown value yields `headlineCount: 0` and a `note` listing categories present in the current digest. |
+| `category` | string (enum) | Restrict clustering to one category of the selected `variant`. `full`: `politics`, `us`, `europe`, `middleeast`, `tech`, `ai`, `finance`, `commodities`, `gov`, `africa`, `latam`, `asia`, `energy`, `thinktanks`, `crisis`, `layoffs`, `science`, `intel`. `tech`: `tech`, `ai`, `startups`, `vcblogs`, `regionalStartups`, `unicorns`, `accelerators`, `security`, `policy`, `github`, `funding`, `cloud`, `layoffs`, `finance`, `dev`, `ipo`, `producthunt`, `hardware`, `outages`. Echoed as `category` in the result (`null` when omitted). An unknown value yields `headlineCount: 0` and a `note` listing categories present in the current digest. |
 | `query` | string | Keep only clusters whose primary headline or any member headline contains this text (case-insensitive substring). Member headlines are matched too, because the primary is recency-picked — the searched term often sits on a sibling headline. Filters the LIVE digest window only, not a historical index. Applied before `limit`, so a capped list is drawn from the matches. |
 
+- **Corroboration:** every cluster carries `corroboration` as `{ state, publishers }`. `state` is `corroborated` (two or more publisher families, not all tier 4), `single-publisher`, `tier4-only` (two or more families, every one a declared tier-4 aggregator or blog) or `unknown`; `publishers` counts distinct publisher families and is `null` when `state` is `unknown`. The News panel, map popups and digests show the same verdict for the story. Real-time alerts carry only the story's publisher count, so they report `single-publisher` or `corroborated` and never `tier4-only`. It describes coverage, not accuracy: no state says a claim is true or false. The `publishers` roster beside it names each publisher with its declared tier.
 - **API endpoint:** `GET /api/news/v1/list-feed-digest`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** deterministic local compute — clustering runs per call over the ~150-200 digest headlines (CDN/Redis-cached upstream, 15-min cadence).
@@ -1472,6 +1585,49 @@ curl -s https://worldmonitor.app/mcp \
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
     "params":{"name":"get_news_clusters","arguments":{"category":"commodities","min_sources":2,"limit":10}}
+  }'
+```
+
+</CodeGroup>
+
+### `verify_claim`
+
+Evidence card for a claim or headline. Finds the clusters of fresh headlines that report the same event (one event often spans several clusters) and returns WorldMonitor's coverage verdict over them. With `variant: full`, the default, it searches every fresh headline in WorldMonitor's feed caches, up to 30 per feed, not only the headlines the dashboard digest serves; the 100 headlines that share the most of the claim's words are clustered. The `tech` variant searches its digest. A cluster matches when one of its headlines carries at least half of the claim's content words, and at least two of them; the 8 best-matching clusters are kept. The verdict is `assessCorroboration` over every matched headline, so syndicated feeds of one publisher count once.
+
+The result reports `found`, `state` (the coverage verdict; `not-found` when the digest was searched and nothing reports the claim; `unknown` with `found: false` when the digest was empty or unavailable, so nothing was searched), `corroboration` (`single-publisher`, `tier4-only`, `corroborated`, `unknown`), the `publishers` roster with declared tiers, up to 10 matched `headlines` with fail-closed source provenance, `credibilityScore` of the best match, `firstSeen` / `lastUpdated`, and `figures`: numbers and dates in the claim checked against the matched headlines with the brief grounding rule. `figures.ungrounded` lists figures no matched headline states; it does not mean the figure is wrong. `found: false` means no match: with `state: not-found` the claim is not in WorldMonitor's current sources; with `state: unknown` nothing was searched. It never means the claim is false. Every response carries the same `caveat`: coverage, not accuracy.
+
+`factChecks` cites ratings that fact-checkers have already published about a similar claim. WorldMonitor does not rate claims; it quotes theirs with attribution, the way it would quote a wire report. Each item gives the fact-checker (`publisher`, `site`), its own `rating` verbatim, the date it was published (`reviewedAt`), the `url`, and the `claimReviewed` it rated, introduced by `label`: a fact-check of a similar claim, never of this claim. The rules:
+
+- Only verified signatories of the [IFCN Code of Principles](https://github.com/IFCN/verified-signatories), kept in `shared/fact-checkers.json` and reviewed like source tiers. The link's own domain decides, not the name the feed reports.
+- Strong matches only: the claim and the rated claim must each carry at least 60% of the other's content words, and share at least three. A weaker match shows nothing.
+- English fact-checks of any age, newest first. Ratings that disagree are all listed, with no tie-breaking.
+- The same rules apply whoever made the claim: nothing in the matching names a person, party, topic or country.
+- A rating never changes `state`, `corroboration` or anything else in the card.
+
+`factChecks.state` is `ok` when the lookup ran (an empty `items` list then means none was found) and `unavailable` or `not-configured` when it did not. A failed lookup never fails the tool. Ratings come from the Google Fact Check Tools API.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `claim` | string | The claim or headline to check, up to 300 characters. Required. |
+| `variant` | `string: full / tech` | Headline digest variant to search. Defaults to full. |
+
+- **API endpoints:** `GET /api/news/v1/list-feed-digest`, `GET /api/news/v1/search-fact-checks`, `GET /api/news/v1/search-claim-headlines`
+- **Access:** `subscription` — requires a Pro subscription.
+- **Kind:** deterministic local compute over the fresh-headline window (the last 96 hours), not a historical index. No LLM.
+- **Quota:** standard — every call consumes the MCP daily reservation.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"verify_claim","arguments":{"claim":"Trump strikes diesel deal with Putin"}}
   }'
 ```
 
@@ -2357,7 +2513,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `search_flights`
 
-Search Google Flights for real-time flight options between two airports on a specific date. Returns available flights with prices, stops, airline, and segment details. Use IATA airport codes (e.g. "JFK", "LHR", "DXB").
+Live Google Flights itineraries between two airports on one date, read from the Google Flights results page. Each itinerary has its total USD price for all passengers, stops, duration, and per-leg airline, flight number, airports, and local departure and arrival times. With return_date the price covers the round trip and the legs are the outbound journey. degraded with an error means the provider failed; an empty list without degraded means no itineraries were found. Airports are IATA codes (e.g. "JFK", "LHR", "DXB").
 
 **Parameters:**
 
@@ -2393,7 +2549,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `search_flight_prices_by_date`
 
-Search Google Flights date-grid pricing across a date range. Returns cheapest prices for each departure date between two airports. Useful for finding the cheapest day to fly. Use IATA airport codes.
+Cheapest Google Flights fare for each departure date between two airports, across a range of at most 31 days (one results-page search per date). Each row has the date, the return date for round trips (departure plus trip_duration), and the lowest total USD price for all passengers. A date with no itineraries is omitted. degraded with an error means some or all dates failed, and the list holds only the dates that answered. Airports are IATA codes.
 
 **Parameters:**
 
@@ -2402,7 +2558,7 @@ Search Google Flights date-grid pricing across a date range. Returns cheapest pr
 | `origin` | string | **yes** | IATA code for the departure airport, e.g. "JFK" |
 | `destination` | string | **yes** | IATA code for the arrival airport, e.g. "LHR" |
 | `start_date` | string | **yes** | Start of the date range in YYYY-MM-DD format |
-| `end_date` | string | **yes** | End of the date range in YYYY-MM-DD format |
+| `end_date` | string | **yes** | End of the date range in YYYY-MM-DD format, at most 30 days after start_date |
 | `is_round_trip` | boolean | no | Whether to search round-trip prices (default false). Requires trip_duration when true. |
 | `trip_duration` | number | no | Trip duration in days — required when is_round_trip is true (e.g. 7 for a one-week trip) |
 | `cabin_class` | string | no | Cabin class: "economy", "premium_economy", "business", or "first" (optional) |
@@ -2464,7 +2620,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_imd_cyclone_marine`
 
-Bounded India Meteorological Department cyclone tracks, forecast wind radii, cones of uncertainty, and official port / sea-area / coastal bulletins. Products stay typed and are not merged into `weather:alerts:v1`. Live fetch requires `IMD_API_KEY`, `IMD_API_EMAIL`, and `IMD_API_PASSWORD`; the seeder mints a short-lived JWT for each run. Always read `coverageState`: `disabled` means the credentials are missing or invalid, `degraded` is a partial product failure, `unavailable` is a total fetch failure, and `ok` is live. Empty lists with `disabled`, `degraded`, or `unavailable` coverage are not an India all-clear.
+Bounded India Meteorological Department sea-area and coastal marine bulletins from the public `mausam.imd.gov.in` pages: storm warnings, port signals, storm-surge or tidal warnings, wind, visibility, and sea state per area, each with its validity window. Products stay typed and are not merged into `weather:alerts:v1`. IMD cyclone track, wind radii, and cone are API-only and disabled; GDACS tropical cyclones cover the North Indian Ocean. Port warning and fishermen warning PDFs are not parsed. Always read `coverageState`: `degraded` means some bulletin pages failed and their last-good records were carried, `unavailable` means no page was readable, and `ok` is live. Per-page status is under `products.<id>.pages`. Empty lists with `degraded` or `unavailable` coverage are not an India all-clear. A response over the 64 KB output budget trims lists from the end, the repeated `records` list and the alert-shaped copies first, and reports each trimmed list under `transportCoverage.collections`.
 
 **Parameters (tool-specific):**
 
@@ -2475,7 +2631,7 @@ Bounded India Meteorological Department cyclone tracks, forecast wind radii, con
 
 - **API endpoints:** none (MCP-only cache read of `weather:imd-cyclone-marine:v1`; no equivalent public REST operation yet).
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
-- **Kind:** bounded cache read from the on-demand IMD cyclone/marine snapshot.
+- **Kind:** bounded cache read from the on-demand IMD marine bulletin snapshot.
 - **Freshness budget:** up to **45 min** before `stale: true` is flagged (matches `seed-meta:weather:imd-cyclone-marine`).
 
 <CodeGroup>
@@ -2495,7 +2651,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_natural_disasters`
 
-Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, source, and threat severity.
+Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, source, and threat severity. A response over the 128 KB output budget simplifies or omits storm cone and track geometry and samples regional detail, with counts under `transportCoverage`; a `jmespath` projection that fits returns the original geometry.
 
 **Parameters (tool-specific):**
 
@@ -2751,16 +2907,16 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `generate_forecasts`
 
-Generate live AI geopolitical and economic forecasts. Unlike get_forecast_predictions (pre-computed cache), this calls the forecasting model directly for fresh probability estimates. Note: slower than cache tools.
+Current AI geopolitical and economic forecasts with probabilities, scenarios, signals, and per-forecast case files, filterable by domain and region. An oversized response omits the case files and reports the omitted count in transportCoverage; a domain or region filter that fits returns them.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
-| `domain` | string | no | Forecast domain: "geopolitical", "economic", "military", "climate", or empty for all domains |
+| `domain` | string | no | Forecast domain: one of "conflict", "market", "supply_chain", "political", "military", "cyber", "infrastructure". Omit for all domains. |
 | `region` | string | no | Geographic region filter, e.g. "Middle East", "Europe", "Asia Pacific", or empty for global |
 
-- **API endpoints:** no public OpenAPI row; runtime proxies `POST /api/forecast/v1/get-forecasts` (the OpenAPI spec only declares `GET` on that path, which is covered by `get_forecast_predictions` — this tool's POST variant runs a fresh forecast).
+- **API endpoints:** no public OpenAPI row; runtime proxies `POST /api/forecast/v1/get-forecasts` (the OpenAPI spec only declares `GET` on that path, which is covered by `get_forecast_predictions` — this tool's POST variant reads the same published forecasts).
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **25.0s**.
 
@@ -2787,7 +2943,7 @@ AI-generated geopolitical and economic forecasts from WorldMonitor's predictive 
 
 | Name | Type | Description |
 |------|------|-------------|
-| `domain` | string | Filter to one forecast domain (exact, case-insensitive — e.g. "shipping", "energy", "macro"). |
+| `domain` | string | Filter to one forecast domain (exact, case-insensitive): conflict, market, supply_chain, political, military, cyber, infrastructure. |
 | `region` | string | Filter to one region/theater (case-insensitive substring). |
 | `limit` | number | Paid interactive panel: integers 1–30, default 30. Ordinary API readers may use 0 for no cap. |
 | `refresh` | boolean | Request a new paid panel snapshot; requires a fresh request_id. |
@@ -2816,35 +2972,35 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_forecast_case`
 
-Read one unchanged original forecast case for an exact loaded ID and generation. Requires a valid paid forecast panel admission. The existing 64-read allowance includes this internal read; it does not charge a new daily panel allocation. Missing source, missing ID, changed generation and oversized individual cases remain explicit. Failed cases can be retried after source recovery; successful cases are reused.
+Read one unchanged original forecast case for an exact ID and list generation. Dedicated MCP plans read it under a valid paid forecast panel admission: the existing 64-read allowance includes this read and it does not charge a new daily panel allocation. API plans cannot hold a panel and read it without `panel_request` at the tool's normal per-call weight. A changed generation returns `generation_changed` with no case. Missing source, missing ID, changed generation and oversized individual cases remain explicit. Failed cases can be retried after source recovery; successful cases are reused.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `forecast_id` | string | Exact original forecast ID from the loaded list. |
-| `generated_at` | string | Exact String(generatedAt) from the loaded list. |
-| `panel_request` | string | Signed forecast panel receipt. |
+| `forecast_id` | string | Exact original forecast ID from the forecast list. |
+| `generated_at` | string | Exact String(generatedAt) of the forecast list the ID came from. |
+| `panel_request` | string | Signed forecasts panel receipt. Required on dedicated MCP plans; not accepted on API plans. |
 
 - **API endpoints:** `GET /api/forecast/v1/get-forecasts`
-- **Access:** `subscription` — requires a valid paid forecast admission, including owner, scope, expiry and entitlement checks.
+- **Access:** `subscription`. Dedicated MCP plans need a valid paid forecast admission, including owner, scope, expiry and entitlement checks; API plans are billed per call.
 - **Kind:** cache read of the fixed canonical forecast dataset; no arbitrary cache keys or model generation.
 - **Output budget:** 128 KB for one complete original case; no silent dossier truncation.
 - **Freshness budget:** 1.5 h; original case source notices remain separate from the opening snapshot.
 
 ### `get_forecast_theaters`
 
-Read the latest original simulation theater summaries with a valid paid forecast admission. Preserves original paths, actors and optional roles, reactions, stabilizers, invalidators, independent source run/time and completion counts. A source timestamp does not establish freshness. Partial and unknown coverage do not become complete or empty.
+Read the latest original simulation theater summaries. Dedicated MCP plans read them under a valid paid forecast admission; API plans read them without `panel_request` at the tool's normal per-call weight. Preserves original paths, actors and optional roles, reactions, stabilizers, invalidators, independent source run/time and completion counts. A source timestamp does not establish freshness. Partial and unknown coverage do not become complete or empty.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `panel_request` | string | Signed forecast panel receipt from `get_forecast_predictions`. No other arguments are accepted. |
+| `panel_request` | string | Signed forecast panel receipt from `get_forecast_predictions`. Required on dedicated MCP plans; not accepted on API plans. No other arguments are accepted. |
 
 - **API endpoint:** `GET /api/forecast/v1/get-simulation-outcome`, latest-only.
 - **Access:** `subscription` with owner, scope, expiry and entitlement checks.
-- **Allocation:** shares the opening's daily allocation and 64 uncached-read budget. Complete validated and explicit no-eligible snapshots can replay; partial, failed, missing, processing and unknown results remain manually retryable.
+- **Allocation:** on dedicated MCP plans, shares the opening's daily allocation and 64 uncached-read budget; on API plans, each call is charged at the tool's weight. Complete validated and explicit no-eligible snapshots can replay; partial, failed, missing, processing and unknown results remain manually retryable.
 - **Output budget:** 128 KB for unchanged original evidence. Invalid or oversized source reports unavailable; no silent truncation, run selector, simulation trigger or private artifact read.
 
 ### `get_forecast_scorecard`

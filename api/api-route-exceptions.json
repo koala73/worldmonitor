@@ -187,7 +187,7 @@
     {
       "path": "api/mcp/registry/nlp-tools.ts",
       "category": "external-protocol",
-      "reason": "MCP TOOL_REGISTRY on-demand NLP tool entries (classify_event, extract_entities, get_news_clusters, get_keyword_spikes). Extracted from rpc-tools.ts so the registry file is not also the home of digest adaptation, entity aggregation, and story-accumulator key knowledge; same external-protocol constraint as its sibling registry modules.",
+      "reason": "MCP TOOL_REGISTRY on-demand NLP tool entries (classify_event, extract_entities, get_news_clusters, get_keyword_spikes, verify_claim). Extracted from rpc-tools.ts so the registry file is not also the home of digest adaptation, entity aggregation, and story-accumulator key knowledge; same external-protocol constraint as its sibling registry modules.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -216,6 +216,13 @@
       "path": "api/mcp/registry/cost-shock-tools.ts",
       "category": "external-protocol",
       "reason": "MCP cost-shock tool definition and fixed SupplyChainService dispatch. Exports no standalone JSON data route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/tariff-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP tariff tool definitions and fixed TradeService dispatch to get-tariff-trends, get-bilateral-tariff and get-us-import-duty. Exports no standalone JSON data route.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -496,6 +503,13 @@
       "path": "api/agent-auth.ts",
       "category": "external-protocol",
       "reason": "RFC 9728 agent-auth discovery challenge at /agent/auth. Returns 401 + WWW-Authenticate: Bearer resource_metadata=... (host-derived PRM pointer) so a GET-probing agent/scanner discovers the auth flow — /mcp's bare GET must stay 405 for the SSE handshake. Response is an auth challenge, not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/channel-oauth-bind.ts",
+      "category": "external-protocol",
+      "reason": "OAuth popup form target. Sets the browser binding after a one-time secret check and returns an HTML navigation to Slack or Discord.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

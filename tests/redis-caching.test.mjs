@@ -1784,7 +1784,7 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
     });
   }
 
-  it('returns fetchedAt=0 for missing country code instead of fabricating request time', async () => {
+  it('rejects a missing country code on country_code without hitting Redis', async () => {
     const { module, cleanup } = await importCountryRisk();
     const restoreNow = withMockedNow(1_777_000_000_000);
     const originalFetch = globalThis.fetch;
@@ -1795,9 +1795,10 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.getCountryRisk({}, { countryCode: '' });
-      assert.equal(result.fetchedAt, 0);
-      assert.equal(result.upstreamUnavailable, false);
+      await assert.rejects(
+        module.getCountryRisk({}, { countryCode: '' }),
+        (error) => error?.name === 'ValidationError' && error.violations?.[0]?.field === 'country_code',
+      );
       assert.equal(fetchCalls, 0, 'missing-code path must not hit Redis');
     } finally {
       cleanup();
@@ -1900,10 +1901,10 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
         ciiScores: [{ region: 'US', combinedScore: 10, computedAt: 1_700_000_000_000 }],
       })],
       ['intelligence:advisories:v1', JSON.stringify({
-        byCountry: { ZZ: 'caution' },
-        byCountryName: { ZZ: 'Untracked Testland' },
+        byCountry: { BV: 'caution' },
+        byCountryName: { BV: 'Untracked Testland' },
       })],
-      ['sanctions:country-counts:v1', JSON.stringify({ ZZ: 2 })],
+      ['sanctions:country-counts:v1', JSON.stringify({ BV: 2 })],
     ]);
 
     globalThis.fetch = async (url) => {
@@ -1913,7 +1914,7 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.getCountryRisk({}, { countryCode: 'ZZ' });
+      const result = await module.getCountryRisk({}, { countryCode: 'BV' });
       assert.equal(result.countryName, 'Untracked Testland');
       assert.equal(result.cii, undefined);
       assert.equal(result.fetchedAt, 0);
@@ -2284,7 +2285,10 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       if (isSetRequest(raw, init)) {
         const { key, value } = parseSetRequest(raw, init);
         store.set(key, value);
-        if (!key.startsWith('seed-meta:')) setKeys.push(key);
+        if (!key.startsWith('seed-meta:')) {
+          setKeys.push(key);
+          assert.equal(parseSetRequest(raw, init).ttlSeconds, 21600, 'country assessment cache TTL stays six hours');
+        }
         return jsonResponse({ result: 'OK' });
       }
       throw new Error(`Unexpected fetch URL: ${raw}`);
@@ -2329,7 +2333,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.match(systemPrompts[0], /do not invent.*forecasts/i);
       assert.doesNotMatch(systemPrompts[0], /\[Risk 3\]|\[Named entity\]: \[mechanism\]/);
       assert.equal(out.sources[0].title, 'Finland completes border fence');
-      assert.ok(setKeys.some(key => key.includes('ci-sebuf:v9:')));
+      assert.ok(setKeys.some(key => key.includes('ci-sebuf:v12:')));
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnv();
@@ -2420,6 +2424,38 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.equal(counters.llmCalls, 0);
       assert.equal(out.brief, '');
       assert.equal(out.countryName, 'France', 'an empty brief still names the country, unlike an invalid code');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
+
+  it('rejects an unassigned code from a premium caller before Redis or the LLM', async () => {
+    const { module, cleanup } = await importCountryIntelBrief({ premium: true });
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    const counters = { llmCalls: 0 };
+    const setKeys = [];
+    installIntelFetchMock({ store: new Map(), setKeys, userPrompts: [], counters });
+    const mockedFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    globalThis.fetch = (...args) => {
+      fetchCalls += 1;
+      return mockedFetch(...args);
+    };
+    const context = 'Source [1]: ' + JSON.stringify({ title: 'Government announces new border controls', source: 'Reuters', url: 'https://reuters.com/zz' });
+    try {
+      await assert.rejects(
+        module.getCountryIntelBrief(
+          makeCtx(`https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=ZZ&context=${encodeURIComponent(context)}`),
+          { countryCode: 'ZZ' },
+        ),
+        (error) => error?.name === 'ValidationError' && error.violations?.[0]?.field === 'country_code',
+      );
+      assert.equal(counters.llmCalls, 0);
+      assert.equal(fetchCalls, 0, 'an unassigned code must not reach Redis or any upstream');
+      assert.deepEqual(setKeys, []);
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnv();
@@ -2624,7 +2660,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
 
       assert.equal(counters.llmCalls, 1, 'anon context variations must share one cache entry');
       assert.equal(setKeys.length, 1, 'one shared cache write');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v9:IL:en:shared'), `anon key should use the shared v9 namespace, got ${setKeys[0]}`);
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v12:IL:en:shared'), `anon key should use the shared v12 namespace, got ${setKeys[0]}`);
       assert.ok(setKeys[0]?.includes(':i2023'), `anon key should include the import data year, got ${setKeys[0]}`);
       assert.match(alpha.brief, /Israel announces new security framework \[1\]/);
       assert.equal(beta.brief, alpha.brief, 'second anon caller must be served from cache');
@@ -2664,7 +2700,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.equal(counters.llmCalls, 2, 'different premium contexts should not share one cache entry');
       assert.equal(setKeys.length, 2, 'one cache write per unique premium context');
       assert.notEqual(setKeys[0], setKeys[1], 'context hash should differentiate premium cache keys');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v9:IL:'), 'cache key should use the v9 country-intel namespace');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v12:IL:'), 'cache key should use the v12 country-intel namespace');
       assert.ok(!setKeys[0]?.includes(':shared'), 'premium keys must not use the shared namespace');
       assert.equal(alpha.brief, 'SITUATION NOW\nIsrael announces alpha framework [1]');
       assert.equal(beta.brief, 'SITUATION NOW\nIsrael announces beta framework [1]');
@@ -2737,7 +2773,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.equal(second.brief, '');
       assert.deepEqual(first.evidence, []);
       assert.equal(setKeys.length, 1, 'one shared negative-cache write; the second call is served from it');
-      assert.ok(setKeys.every((key) => key.startsWith('ci-sebuf:v9:US:en:shared')), `anon callers land on the shared key, got ${setKeys}`);
+      assert.ok(setKeys.every((key) => key.startsWith('ci-sebuf:v12:US:en:shared')), `anon callers land on the shared key, got ${setKeys}`);
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
@@ -2753,6 +2789,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     const stubDir = createTempDir('wm-aircraft-rate-');
     const rateStub = join(stubDir, 'rate.mjs');
     writeFileSync(rateStub, `export const getClientIp = () => 'test';
+export const getClientRateLimitKey = () => 'test';
 export const checkScopedRateLimit = async () => ({ allowed: true, degraded: false });
 export const RATE_LIMIT_DEGRADED_HEADERS = { 'X-RateLimit-Mode': 'degraded', 'Retry-After': '5' };`);
     const imported = await importPatchedTsModule('server/worldmonitor/aviation/v1/track-aircraft.ts', {
@@ -3878,6 +3915,66 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         'a viewport outside a REGIONAL snapshot must fall through to request-specific recovery',
       );
       assert.deepEqual(result.flights.map((f) => f.id), ['RECOVERED']);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  // Elie's decision: an emergency squawk (7500/7600/7700) does not remove a
+  // military aircraft from the military layer, whether it arrives in the seed
+  // snapshot or only from OpenSky recovery.
+  it('keeps emergency-squawking military flights from the seed and from OpenSky-only recovery', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: undefined,
+      WS_RELAY_URL: 'wss://relay.test',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const store = new Map();
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/')[1] || '');
+        if (key === 'military:flights:v1') {
+          return jsonResponse({
+            result: JSON.stringify({
+              flights: [
+                { id: 'inregion', callsign: 'RCH301', lat: 20.2, lon: 10.2 },
+                { id: 'inregion-7700', callsign: 'RCH377', lat: 20.3, lon: 10.3, squawk: '7700' },
+              ],
+              coverage: 'regional',
+              fetchedAt: Date.now(),
+            }),
+          });
+        }
+        return jsonResponse({ result: store.get(key) ?? null });
+      }
+      if (isSetRequest(url, init)) return applySetToStore(store, url, init);
+      if (raw.includes('/opensky')) {
+        const state = ['emg7500', 'RCH475', null, null, null, -99.5, 40.5, 20000, false, 300, 90, 0, null, 20000, '7500'];
+        return jsonResponse({ states: [state] });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const seeded = await module.listMilitaryFlights(
+        { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
+        seededRequest,
+      );
+      assert.deepEqual(seeded.flights.map((f) => f.id).sort(), ['inregion', 'inregion-7700']);
+      const recovered = await module.listMilitaryFlights(
+        { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
+        americasRequest,
+      );
+      assert.deepEqual(recovered.flights.map((f) => f.id), ['EMG7500']);
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;

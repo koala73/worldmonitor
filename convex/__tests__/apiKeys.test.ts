@@ -486,6 +486,7 @@ describe("HTTP route /api/internal-validate-api-key — touch scheduling gate", 
   afterEach(() => {
     delete process.env.CONVEX_SERVER_SHARED_SECRET;
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   async function validate(t: ReturnType<typeof convexTest>, keyHash: string) {
@@ -512,6 +513,7 @@ describe("HTTP route /api/internal-validate-api-key — touch scheduling gate", 
   test("validate inside the debounce window schedules no touch; after expiry it does", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(T0);
+    vi.spyOn(Math, "random").mockReturnValue(0);
     const t = convexTest(schema, modules);
     await seedApiEntitlement(t, "user-api");
     await t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
@@ -538,6 +540,36 @@ describe("HTTP route /api/internal-validate-api-key — touch scheduling gate", 
     expect(res3.status).toBe(200);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(await readLastUsedAt(t, keyHash)).toBe(T0 + 6 * 60_000);
+  });
+
+  // Convex Insights (2026-10): the gate above still let 560 OCC conflicts
+  // through in 72h. Every validation that lands between the debounce expiring
+  // and the first touch committing sees a stale lastUsedAt, so a burst of
+  // parallel requests schedules a herd of touches for the same instant and
+  // all but one lose the write race. Spreading the herd lets the first touch
+  // commit before the rest run, so they read a fresh lastUsedAt and no-op.
+  test("concurrent validations of a stale key spread their touches over time", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, "user-api");
+    await t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
+    const keyHash = makeKeyArgs(1).keyHash;
+
+    const random = vi.spyOn(Math, "random");
+    for (const r of [0.1, 0.5, 0.9]) {
+      random.mockReturnValue(r);
+      expect((await validate(t, keyHash)).status).toBe(200);
+    }
+    random.mockRestore();
+
+    const touchTimes = await t.run(async (ctx) =>
+      (await ctx.db.system.query("_scheduled_functions").collect())
+        .filter((job) => job.name.includes("touchKeyLastUsed"))
+        .map((job) => job.scheduledTime),
+    );
+    expect(touchTimes.sort((a, b) => a - b)).toEqual([T0 + 3_000, T0 + 15_000, T0 + 27_000]);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
   });
 
   test("response body does not leak lastUsedAt (gateway contract unchanged)", async () => {

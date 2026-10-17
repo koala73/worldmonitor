@@ -1,7 +1,7 @@
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
-import { getClientIp, RATE_LIMIT_DEGRADED_HEADERS, rateLimitErrorLevel, rateLimitFingerprintStage } from '../_rate-limit.js';
+import { getClientRateLimitKey, RATE_LIMIT_DEGRADED_HEADERS, rateLimitErrorLevel, rateLimitFingerprintStage } from '../_rate-limit.js';
 import { captureSilentError } from '../_sentry-edge.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from '../_json-response.js';
@@ -116,7 +116,7 @@ export default async function handler(req, ctx) {
   try {
     const rl = getRatelimit();
     missingConfig = !rl;
-    if (rl) admission = await rl.limit(`ip:${getClientIp(req)}`);
+    if (rl) admission = await rl.limit(`ip:${getClientRateLimitKey(req)}`);
   } catch { /* Missing admission is unavailable, never permission to persist. */ }
   // Upstash can resolve a timeout with success:true without an admission decision.
   if (!admission || admission.reason === 'timeout' || typeof admission.success !== 'boolean') {

@@ -20,7 +20,7 @@ test('DeductionPanel imports the shared yield primitive (R5)', () => {
 test('DeductionPanel yields before the synchronous DOMPurify.sanitize (R5)', () => {
   const parseIdx = src.indexOf('await marked.parse(resp.analysis)');
   const yieldIdx = src.indexOf('await yieldToMain()', parseIdx);
-  const sanitizeIdx = src.indexOf('DOMPurify.sanitize(parsed)', parseIdx);
+  const sanitizeIdx = src.indexOf('DOMPurify.sanitize(parsed, DEDUCTION_PURIFY_CONFIG)', parseIdx);
   assert.ok(parseIdx >= 0, 'marked.parse present');
   assert.ok(yieldIdx > parseIdx, 'yieldToMain present after parse');
   assert.ok(sanitizeIdx > yieldIdx, 'sanitize runs after the yield');
@@ -28,6 +28,6 @@ test('DeductionPanel yields before the synchronous DOMPurify.sanitize (R5)', () 
 
 test('DeductionPanel re-checks isConnected after the new yield gap (R5)', () => {
   const yieldIdx = src.indexOf('await yieldToMain()');
-  const between = src.slice(yieldIdx, src.indexOf('DOMPurify.sanitize(parsed)', yieldIdx));
+  const between = src.slice(yieldIdx, src.indexOf('DOMPurify.sanitize(parsed, DEDUCTION_PURIFY_CONFIG)', yieldIdx));
   assert.match(between, /isConnected/, 'guard re-checked after the async yield');
 });

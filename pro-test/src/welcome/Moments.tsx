@@ -48,7 +48,7 @@ export const Moments = () => (
               transition={{ duration: 0.5, delay: (mi % 2) * 0.1 }}
               className="bg-wm-card border border-wm-border rounded-sm p-6 sm:p-8 hover:border-wm-green/30 transition-colors flex flex-col"
             >
-              <p className="font-mono text-[11px] uppercase tracking-[2px] text-wm-green mb-2">{t(`welcome.moments.${key}.kicker`)}</p>
+              <p className="font-mono text-xs uppercase tracking-[2px] text-wm-green mb-2">{t(`welcome.moments.${key}.kicker`)}</p>
               <h3 className="text-2xl font-display font-bold mb-6">
                 {twoLineTitle ? (
                   <>
@@ -61,13 +61,13 @@ export const Moments = () => (
                 )}
               </h3>
               <div className="mb-6 flex-1">
-                <div className="font-mono text-[10px] uppercase tracking-[2px] text-wm-muted mb-3">
+                <div className="font-mono text-xs uppercase tracking-[2px] text-wm-muted mb-3">
                   {t('welcome.moments.signalStack')}
                 </div>
                 <div className="space-y-3">
                   {signalRows.map((signal, si) => (
                     <div key={signal} className="grid grid-cols-[4.75rem_1fr] gap-3 items-start">
-                      <span className={`mt-0.5 inline-flex items-center justify-center rounded-sm border px-2 py-1 font-mono text-[10px] ${CHIP_CLASS[chips[si] ?? 'free']}`}>
+                      <span className={`mt-0.5 inline-flex items-center justify-center rounded-sm border px-2 py-1 font-mono text-xs ${CHIP_CLASS[chips[si] ?? 'free']}`}>
                         {signal}
                       </span>
                       <p className="text-sm text-wm-muted leading-relaxed">
@@ -78,11 +78,11 @@ export const Moments = () => (
                 </div>
                 <div className="mt-5 border-t border-wm-border pt-5">
                   <div className="grid grid-cols-[4.75rem_1fr] gap-3 items-start">
-                    <span className={`mt-0.5 inline-flex items-center justify-center rounded-sm border px-2 py-1 font-mono text-[10px] ${CHIP_CLASS[correlationTier]}`}>
+                    <span className={`mt-0.5 inline-flex items-center justify-center rounded-sm border px-2 py-1 font-mono text-xs ${CHIP_CLASS[correlationTier]}`}>
                       {correlationCode}
                     </span>
                     <div>
-                      <p className="font-mono text-[10px] uppercase tracking-[2px] text-wm-text mb-1">
+                      <p className="font-mono text-xs uppercase tracking-[2px] text-wm-text mb-1">
                         {t('welcome.moments.correlation')}
                       </p>
                       <p className="text-sm text-wm-text leading-relaxed">
@@ -94,7 +94,7 @@ export const Moments = () => (
               </div>
               <div className="flex flex-wrap gap-2 mb-6">
                 {chips.map((tier, ci) => (
-                  <span key={ci} className={`px-2.5 py-1 rounded-full border text-[10px] font-mono ${CHIP_CLASS[tier]}`}>
+                  <span key={ci} className={`px-2.5 py-1 rounded-full border text-xs font-mono ${CHIP_CLASS[tier]}`}>
                     {t(`welcome.moments.${key}.c${ci + 1}`)}
                   </span>
                 ))}

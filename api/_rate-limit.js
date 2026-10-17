@@ -9,13 +9,14 @@ import {
 } from './_rate-limit-fallback.js';
 import {
   RATE_LIMIT_DEGRADED_HEADERS,
-  getClientIp,
+  getClientRateLimitKey,
   hasUnprovenCloudflareClientIp,
 } from './_client-ip.js';
 export {
   RATE_LIMIT_DEGRADED_HEADERS,
   UNKNOWN_CLIENT_IP,
   getClientIp,
+  getClientRateLimitKey,
   hasCloudflareTransitProof,
   hasUnprovenCloudflareClientIp,
 } from './_client-ip.js';
@@ -213,7 +214,7 @@ export async function checkRateLimit(request, corsHeaders, opts = {}) {
     return null;
   }
 
-  const identifier = opts.identifier ?? getClientIp(request);
+  const identifier = opts.identifier ?? getClientRateLimitKey(request);
   try {
     const fallbackPrefix = policy.scope === DEFAULT_RATE_LIMIT_SCOPE ? 'rl:fw' : `rl:${policy.scope}:fw`;
     const result = await limitWithFallback(

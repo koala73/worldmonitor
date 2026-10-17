@@ -41,6 +41,7 @@ import { GAMMA_IRRADIATORS } from '@/config/irradiators';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { getCountryBbox, getCountriesGeoJson, getCountryAtCoordinates, getCountryNameByCode } from '@/services/country-geometry';
 import { escapeHtml } from '@/utils/sanitize';
+import { corroborationLabelHtml } from '@/utils/corroboration-flag';
 import { showLayerWarning } from '@/utils/layer-warning';
 import { isMobileDevice } from '@/utils';
 import { setGlobeMarkerLoad } from '@/bootstrap/globe-marker-probe';
@@ -375,6 +376,7 @@ interface NewsLocationMarker extends BaseMarker {
   article?: NewsLocationInput['article'];
   title: string;
   threatLevel: string;
+  corroboration?: NewsLocationInput['corroboration'];
 }
 interface FlashMarker extends BaseMarker {
   _kind: 'flash';
@@ -1681,8 +1683,10 @@ export class GlobeMap {
              `<br><span style="opacity:.5;">${esc(d.severity)} · ${esc(d.description.slice(0, 60))}</span>`;
     } else if (d._kind === 'newsLocation') {
       const tc = d.threatLevel === 'critical' ? '#ff2020' : d.threatLevel === 'high' ? '#ff6600' : (d.threatLevel === 'elevated' || d.threatLevel === 'medium') ? '#ffaa00' : '#44aaff';
+      const coverage = corroborationLabelHtml(d.corroboration);
       html = `<span style="color:${tc};font-weight:bold;">📰 ${esc(d.title.slice(0, 60))}</span>` +
-             `<br><span style="opacity:.5;">${esc(d.threatLevel)}</span>`;
+             `<br><span style="opacity:.5;">${esc(d.threatLevel)}</span>` +
+             (coverage ? `<br>${coverage}` : '');
     } else if (d._kind === 'satellite') {
       const sc = SAT_COUNTRY_COLORS[d.country] || '#ccccff';
       const altBand = d.alt < 2000 ? 'LEO' : d.alt < 35786 ? 'MEO' : 'GEO';
@@ -3549,6 +3553,7 @@ export class GlobeMap {
         article: d.article,
         title: d.title,
         threatLevel: d.threatLevel ?? 'info',
+        ...(d.corroboration ? { corroboration: d.corroboration } : {}),
       }));
     this.flushMarkers();
   }

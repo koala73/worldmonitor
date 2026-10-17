@@ -44,8 +44,8 @@ The top-level `status` describes user-visible platform availability, not perfect
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "summary": {
-    "total": 318,
-    "ok": 318,
+    "total": 319,
+    "ok": 319,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 0,
@@ -168,11 +168,11 @@ Keys are grouped into three tiers that determine alert severity:
 | `RELAY_GATE_REJECTED` | Crit | The deployed Convex tenant-relay gate answered `401` to this build's gateway credential on a body-less `POST /relay/create-checkout`. Either side can be stale: a variable written after the last `convex deploy` reads as undefined inside deployed functions until the next push. The probe runs once per verdict snapshot (60 s), never per poll |
 | `RELAY_GATE_UNREACHABLE` | Warn after grace | The gate probe got no classifiable answer (network error, timeout, 5xx, or anything other than `401` / `400 MISSING_FIELDS`). A transport verdict, not a credential one. The first sighting carries a three-minute `transportGraceUntil` during which it counts as `ok`, appears in compact `pending` and is not an operational problem; a stall still present when the deadline passes moves to `problems` and counts in `summary.warn`. The deadline is kept in Redis across sweeps, including by a sweep that only waited on another sweep's probe (it stores its fallback with `probed: false`, which the next sweep re-probes rather than reuses), so a probing sweep that dies before publishing does not restart the grace — but only when another sweep was waiting on it, since that fallback is written only by a sweep that lost the probe lease. If the sole scheduled caller takes the lease and dies before publishing, nothing is stored and the next run is a first sighting. Once the deadline passes the streak continues under `transportGraceExpiredAt` instead, because republishing an expired softening deadline would make every verdict snapshot unservable and turn each poll into a full sweep instead of a warm read. The relay itself is not re-probed at that rate: whenever a reusable gate verdict is cached, the gateway is contacted about once per freshness window however often the endpoint is polled. Two paths leave no reusable verdict — a stored fallback from a sweep that only waited (`probed: false`), and a probe whose publish failed — and the sweep after either one probes again. Persistent across sweeps means a Convex outage or a wrong `CONVEX_SITE_URL` |
 
-### Optional IMD Configuration
+### IMD Marine Bulletins
 
-IMD is optional when `IMD_API_KEY` is absent, including after intentional removal. Its disabled snapshot reports `NOT_CONFIGURED`, not an all-clear. Invalid configuration after activation and failed requests with credentials remain actionable.
+The IMD seeder reads public bulletin pages and needs no credentials. A run with no storm warnings, port signals, or surge warnings reports `OK`. A run between bulletin validity windows publishes no records and also reports `OK`. A page that fails to load or parse reports `sourceState: degraded`, which health shows as a warning.
 
-The v2 activation marker requires a successful documented-product response. Valid quiet responses qualify. Total failures and carried-only snapshots do not. The older marker is ignored because failed product batches could write it.
+The v2 activation marker requires at least one bulletin page that parsed in the current run. A page whose validity window has ended qualifies. Total failures and carried-only snapshots do not.
 
 ### Producers That Serve Last-Known-Good
 

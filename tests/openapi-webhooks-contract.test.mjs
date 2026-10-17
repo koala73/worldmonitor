@@ -13,6 +13,7 @@ import {
   EVENT_HEADER,
   DELIVERY_ID_HEADER,
 } from '../scripts/openapi-inject-webhooks.mjs';
+import { REASON_RULES } from '../scripts/shipping-webhook-worker.mjs';
 
 // Guards the outbound webhook-delivery contract injected into the OpenAPI bundle
 // by scripts/openapi-inject-webhooks.mjs (orank Access — "webhook signing
@@ -114,6 +115,12 @@ describe('OpenAPI webhooks contract', () => {
     );
   });
 
+  it('documents the reason enum the delivery worker emits', () => {
+    const { schema, example } = webhook.requestBody.content['application/json'];
+    assert.deepEqual(schema.properties.reason.enum, REASON_RULES.map((rule) => rule.reason));
+    assert.ok(schema.properties.reason.enum.includes(example.reason), 'example reason must be an enum value');
+  });
+
   it('the committed bundle is up to date with the injector (idempotent)', () => {
     const result = injectYamlWebhooks(bundleRaw);
     assert.equal(result.changed, false, 'run `npm run gen:openapi:webhooks` — committed bundle is stale');
@@ -166,6 +173,11 @@ describe('webhook verification fixture (/.well-known/webhook-sample.json)', () =
     const tampered = fixture.body.replace('"score":72', '"score":99');
     const forged = 'sha256=' + createHmac('sha256', fixture.secret).update(tampered).digest('hex');
     assert.notEqual(fixture.signature, forged, 'a mutated body must not verify against the sample signature');
+  });
+
+  it('the sample body carries a reason the worker emits', () => {
+    const { reason } = JSON.parse(fixture.body);
+    assert.ok(REASON_RULES.some((rule) => rule.reason === reason), `sample reason '${reason}' is not one the worker sends`);
   });
 
   it('the echoed X-WM-Signature header equals the top-level signature', () => {

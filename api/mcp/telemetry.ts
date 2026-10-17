@@ -68,6 +68,11 @@ export const MCP_TOOLS_LIST_TELEMETRY_KEYS = Object.freeze([
   'tools_array_bytes',
   'tool_count',
   'client_user_agent',
+  // MCP `initialize` params.clientInfo.name (bounded, printable ASCII) and its
+  // AI client bucket from shared/agent-client-source.js. Software identity
+  // only, never request content: counts MCP connections by client.
+  'client_name',
+  'client_source',
 ] as const);
 
 export const MCP_RATE_LIMIT_HIT_TELEMETRY_KEYS = Object.freeze([

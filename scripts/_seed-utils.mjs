@@ -865,6 +865,34 @@ export const PERMANENT_4XX_STATUSES = new Set([400, 401, 403, 404, 410, 413, 422
 // generic crash.
 export const GRACEFUL_FETCH_FAILURE_EXIT_CODE = 75;
 
+/**
+ * Tag a fetch error as an upstream outage the seeder may ride out on last-good
+ * data. Only tagged errors are eligible for runSeed's
+ * allowPreservedFetchFailure exit-0 path; configuration errors and code bugs
+ * stay untagged and keep exiting 75 so Railway still surfaces them.
+ *
+ * @param {Error} err
+ * @returns {Error}
+ */
+export function markPreservableFetchFailure(err) {
+  err.preservableFetchFailure = true;
+  return err;
+}
+
+// Age in minutes of the retained seed-meta, or null when it cannot be read or
+// trusted. Callers treat null as "not fresh" so an unreadable meta fails closed.
+async function readSeedMetaAgeMin(metaKey) {
+  try {
+    const meta = await readCanonicalValue(metaKey);
+    const fetchedAt = meta?.fetchedAt;
+    if (typeof fetchedAt !== 'number' || !Number.isFinite(fetchedAt)) return null;
+    const ageMin = (Date.now() - fetchedAt) / 60_000;
+    return ageMin >= 0 ? ageMin : null;
+  } catch {
+    return null;
+  }
+}
+
 // #6396: the seeder fetched its data but its coverage gate refused to publish
 // (and preserved the last-good TTL instead). Distinct from EX_TEMPFAIL so the
 // bundle runner can report PUBLISH_BLOCKED rather than OK for a section whose
@@ -1528,7 +1556,7 @@ export async function httpsProxyFetchRaw(url, proxyAuth, { accept = '*/*', timeo
 // datacenter IP gets rate-limited/blocked on → the whole batch fails. Exported
 // for unit testing (the proxy fetch itself is network-bound and not injectable).
 export function isTransientProxyError(message) {
-  return /HTTP 5\d{2}|522|timeout|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|EPIPE|socket (disconnected|hang up)|TLS connection|tls_get_more_records|packet length too long|SSL routines|secure TLS connection/i.test(message || '');
+  return /HTTP(?:\/1\.[01])? 5\d{2}|522|timeout|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|EPIPE|socket (disconnected|hang up)|TLS connection|tls_get_more_records|packet length too long|SSL routines|secure TLS connection/i.test(message || '');
 }
 
 // Whether the ORIGIN refused this particular egress IP — a failure that a
@@ -2450,10 +2478,25 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // Keys written outside runSeed's normal extra-key phase that still need
     // last-good TTL protection when the primary fetch fails or is skipped.
     preserveKeys = [],
+    // Some sources must keep their original absolute expiry after a failed
+    // refresh. Opt out of renewal without changing the stored value or clock.
+    extendTtlOnFailure = true,
     // Opt-in companion keys whose write TTL differs from the canonical key.
     // Each declaration is preserved at its own TTL; preserveKeys keeps its
     // existing canonical-TTL behavior for backward compatibility.
     preserveKeyTtls = [],
+    // Standalone-cron exit policy. Railway shows exit 75 as a crash, so a
+    // seeder that can serve last-good through a short upstream outage may opt
+    // in to exit 0 on a fetch failure. All of these must hold, else it exits 75:
+    //   - the error is tagged with markPreservableFetchFailure() (an upstream
+    //     outage, never a missing credential or a code bug);
+    //   - Redis confirms the canonical key and seed-meta TTLs were extended;
+    //   - seed-meta fetchedAt is within maxStaleMin, so a chronic outage goes
+    //     back to exit 75 once health would call the data stale;
+    //   - the run is standalone. Under _bundle-runner exit 0 means "keys were
+    //     written" (#6396), so bundle members always keep exit 75.
+    // Requires maxStaleMin. seed-meta is never refreshed on this path.
+    allowPreservedFetchFailure = false,
     beforePublish,
     publishAtomically,
     afterPublish,
@@ -2498,6 +2541,12 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   }
   if (afterFreshness && typeof afterFreshness !== 'function') {
     console.error(`  CONTRACT VIOLATION: ${domain}:${resource} afterFreshness must be a function`);
+    process.exit(1);
+  }
+  if (allowPreservedFetchFailure && !(Number.isFinite(opts.maxStaleMin) && opts.maxStaleMin > 0)) {
+    console.error(
+      `  CONTRACT VIOLATION: ${domain}:${resource} allowPreservedFetchFailure requires a positive maxStaleMin`,
+    );
     process.exit(1);
   }
   const bundleCompletionMetaKey = String(process.env[BUNDLE_COMPLETION_META_KEY_ENV] ?? '').trim();
@@ -2597,6 +2646,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   // keeps one Redis pipeline per TTL while allowing explicit declarations to
   // override a key that also appears in the default canonical-TTL cohort.
   const preserveExistingKeys = async (targets) => {
+    if (extendTtlOnFailure === false) return false;
     const ttlByKey = new Map();
     if (targets) {
       for (const target of targets) ttlByKey.set(target.key, target.ttlSeconds);
@@ -2729,7 +2779,30 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error(`  FETCH FAILED: ${err.message || err}${cause}`);
 
-    await preserveExistingKeys();
+    const preserved = await preserveExistingKeys();
+
+    if (
+      allowPreservedFetchFailure === true
+      && err?.preservableFetchFailure === true
+      && preserved
+      && sectionTimeoutMs == null
+    ) {
+      const ageMin = await readSeedMetaAgeMin(`seed-meta:${domain}:${resource}`);
+      if (ageMin != null && ageMin <= opts.maxStaleMin) {
+        // Distinct marker: this tick failed, but it is not the exit-75
+        // "Failed gracefully" outcome that log triage counts as a crash.
+        console.log(`\n=== Refresh failed; last-good retained (${Math.round(durationMs)}ms) ===`);
+        console.warn(
+          `  [${domain}:${resource}] last-good is ${Math.round(ageMin)}min old (maxStaleMin ${opts.maxStaleMin}); `
+          + 'exiting 0 without refreshing seed-meta',
+        );
+        await exitAfterTelemetryFlush(0);
+      }
+      console.warn(
+        `  [${domain}:${resource}] last-good age ${ageMin == null ? 'unknown' : `${Math.round(ageMin)}min`} `
+        + `is not within maxStaleMin ${opts.maxStaleMin}; exiting ${GRACEFUL_FETCH_FAILURE_EXIT_CODE}`,
+      );
+    }
 
     console.log(`\n=== Failed gracefully (${Math.round(durationMs)}ms) ===`);
     await exitAfterTelemetryFlush(GRACEFUL_FETCH_FAILURE_EXIT_CODE);

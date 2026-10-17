@@ -7,14 +7,43 @@ import { readCountryView } from '../api/mcp/ui/news-dashboard-app';
 import { assembleRawSignals, failedRawSignal, validateRawSignal, RAW_SIGNAL_FAMILIES, type RawSignalsValue } from '../shared/country-raw-signals';
 import type { CountrySignalCounts } from '../src/types';
 import { buildDefenseIndustrialResponse } from '../shared/defense-industrial-response';
+import { imfPeriodData, captureImfPeriods, type ImfPeriodScenario } from './country-brief-fixtures';
 
 const root = process.cwd();
+for (const width of [1280, 390]) for (const scenario of ['mixed', 'legacy', 'partial', 'sparse'] as ImfPeriodScenario[]) {
+  test(`IMF annual native ${scenario} ${width}`, async ({ page }, testInfo) => {
+    const requests: object[] = [];
+    const errors: object[] = [];
+    const frames: object[] = [];
+    let host: Awaited<ReturnType<typeof installCountryHost>> | undefined;
+    page.context().on('request', request => requests.push({ event: 'request', url: request.url() }));
+    page.context().on('requestfailed', request => requests.push({ event: 'failed', url: request.url(), failure: request.failure() }));
+    page.context().on('response', response => requests.push({ event: 'response', url: response.url(), status: response.status() }));
+    page.on('frameattached', frame => frames.push({ event: 'attached', url: frame.url() }));
+    page.on('framenavigated', frame => frames.push({ event: 'navigated', url: frame.url() }));
+    page.on('pageerror', error => errors.push({ message: error.message, stack: error.stack }));
+    page.on('console', message => { if (message.type() === 'error') errors.push({ message: message.text(), location: message.location() }); });
+    await page.setViewportSize({ width, height: 1000 });
+    try {
+      host = await installCountryHost(page, false, undefined, false, {}, undefined, undefined, false, false, undefined, scenario);
+      const frame = page.frameLocator('iframe');
+      const boot = await frame.locator('html').evaluate(() => ({ baseURI: document.baseURI, moduleUrl: document.querySelector<HTMLScriptElement>('script[type=module]')?.src }));
+      await writeFile(testInfo.outputPath('fixture-document.json'), JSON.stringify(boot, null, 2));
+      expect(boot.baseURI).toBe('http://127.0.0.1:4173/');
+      expect(boot.moduleUrl).toMatch(/^http:\/\/127\.0\.0\.1:4173\/plugin\/assets\/country-/);
+      await expect.poll(() => host!.bootTrace.some(event => event.event === 'host' && event.method === 'ui/initialize'), { timeout: 5000 }).toBe(true);
+      await frame.getByRole('button', { name: 'Economy & trade', exact: true }).click();
+      await captureImfPeriods(page, frame.locator('[data-brief-section=economic]'), scenario, testInfo, 'native');
+    } finally { await writeFile(testInfo.outputPath('fixture-requests.json'), JSON.stringify({ requests, errors, frames, routes: host?.bootTrace }, null, 2)); }
+  });
+}
 test.use({ serviceWorkers: 'block' });
 
 type HostCall = { name: string; arguments: Record<string, unknown> };
 type HostRequestIdentity = { requestId: number; name: string; section?: string; countryCode: string };
 type FactorsTimingFixture = { unavailable?: boolean; missing?: boolean };
-async function installCountryHost(page: Page, fullExposure = false, initialOpenError?: string, atlasFixture = false, atlasOutages: { energy?: boolean; timeline?: boolean } = {}, cachedShell?: string, rawScenario?: 'military-first' | 'raw-first', geometryUnavailable = false, defenseClockFixture = false, factorsTiming?: FactorsTimingFixture) {
+async function installCountryHost(page: Page, fullExposure = false, initialOpenError?: string, atlasFixture = false, atlasOutages: { energy?: boolean; timeline?: boolean } = {}, cachedShell?: string, rawScenario?: 'military-first' | 'raw-first', geometryUnavailable = false, defenseClockFixture = false, factorsTiming?: FactorsTimingFixture, imfScenario?: ImfPeriodScenario) {
+  const bootTrace: Array<{ event: string; url?: string; method?: string; error?: string }> = [];
   const calls: HostCall[] = [];
   const factorTrace: Array<{ event: string; requestId?: number; section: string; countryCode: string; at: number }> = [];
   let blocked = 0;
@@ -65,17 +94,29 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
   let releaseUS: () => void = () => {};
   const delayed = new Promise<void>(resolve => { releaseUS = resolve; });
   const unmanaged: string[] = [];
-  if (factorsTiming) await page.route('**/*', route => new URL(route.request().url()).origin === 'http://127.0.0.1:4173' ? route.continue() : route.abort());
+  if (factorsTiming || imfScenario) await page.route('**/*', route => {
+    if (imfScenario) bootTrace.push({ event: 'guard', url: route.request().url() });
+    const url = new URL(route.request().url());
+    return url.origin === 'http://127.0.0.1:4173' && !url.pathname.startsWith('/api/') ? route.continue() : route.fulfill({ status: 503, json: {} });
+  });
   page.on('request', request => { if (request.url().includes('/api/')) unmanaged.push(request.url()); });
   await page.route('**/plugin/assets/**', async route => {
+    if (imfScenario) bootTrace.push({ event: 'asset-entered', url: route.request().url() });
     if (route.request().url().endsWith('/country-removed.js')) return route.fulfill({ status: 404, contentType: 'text/html', body: 'Removed build asset', headers: { 'Access-Control-Allow-Origin': '*' } });
     const file = join(root, 'dist/plugin/assets', new URL(route.request().url()).pathname.split('/').at(-1)!);
     if (factorsTiming && file.includes('/service_client-') && (await readFile(file, 'utf8')).includes('/api/scorecard/v1/get-five-factor-scorecard')) await blockersStarted;
-    await route.fulfill({ path: file, headers: { 'Access-Control-Allow-Origin': '*' } });
+    try {
+      await route.fulfill({ path: file, headers: { 'Access-Control-Allow-Origin': '*' } });
+      if (imfScenario) bootTrace.push({ event: 'asset-fulfilled', url: route.request().url() });
+    } catch (error) {
+      if (imfScenario) bootTrace.push({ event: 'asset-failed', url: route.request().url(), error: String(error) });
+      throw error;
+    }
   });
   await page.route('**/data/*.geojson', async route => geometryUnavailable ? route.fulfill({ status: 503, body: 'Controlled geometry failure', headers: { 'Access-Control-Allow-Origin': '*' } }) : route.fulfill({ path: join(root, 'public/data', new URL(route.request().url()).pathname.split('/').at(-1)!), headers: { 'Access-Control-Allow-Origin': '*' } }));
   await page.route('**/country-host-test', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><title>Country plugin acceptance — controlled fixtures</title><h1>Country plugin acceptance — controlled fixtures</h1><p>Tests the built iframe and host transport. Does not test live OAuth or source freshness.</p><iframe title="WorldMonitor country view" sandbox="allow-scripts allow-downloads" style="width:100%;height:950px;border:0"></iframe>' }));
   await page.exposeFunction('countryHost', async (method: string, params: HostCall & { content?: Array<{ text: string }>; url?: string; requestId?: number }, id?: number) => {
+    if (imfScenario) bootTrace.push({ event: 'host', method });
     if (method === 'notifications/cancelled') {
       const identity = requestIdentities.get(params.requestId!);
       cancelled.push(identity?.name ?? 'unknown');
@@ -187,6 +228,10 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
       demographics: { available: false },
     };
     if (atlasPartial && section === 'pipelines') (values.pipelines as { upstreamUnavailable: boolean }).upstreamUnavailable = true;
+    if (imfScenario) {
+      values.imf = { data: imfPeriodData(imfScenario, code), missing: imfScenario === 'partial' ? ['imfGrowth'] : [] };
+      values.stock = imfScenario === 'sparse' ? { available: false } : { available: true, code, indexName: 'TSX Composite', price: '35518.6', weekChangePercent: '0.08', currency: 'CAD' };
+    }
     if (partialBootstrap && section === 'imf') {
       const value = values.imf as { data: Record<string, unknown>; missing: string[] };
       delete value.data.imfGrowth;
@@ -236,7 +281,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
     window.addEventListener('message', receive);
     frame.contentWindow!.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, '*');
   }), { name, args });
-  return { factorTrace, cancelledRequests, delayRaw: () => { delayRaw = true; }, releaseRaw, get rawCompleted() { return rawCompleted; }, admissionFail: (reason: string) => { admissionFailure = reason; }, rawInfo: () => { rawAdvisoryLevel = 'info'; }, calls, contexts, links, unmanaged, cancelled, action, releaseOrder, rawFail: () => { rawMode = 'transient'; rawRetrievedAt = '2026-10-05T12:30:00.000Z'; }, rawDeny: () => { rawMode = 'denied'; rawRetrievedAt = '2026-10-05T12:40:00.000Z'; }, rawZero: () => { rawMode = 'zero'; rawRetrievedAt = '2026-10-05T12:35:00.000Z'; }, rawRecover: () => { rawMode = 'observed'; rawRetrievedAt = '2026-10-05T12:45:00.000Z'; }, releaseDisruptions, failAtlas: () => { atlasUnavailable = true; }, recoverAtlas: () => { atlasUnavailable = false; }, delayAtlasDetail: () => { delayAtlasDetail = true; }, releaseAtlasDetail, failDisruptions: () => { disruptionsFailed = true; }, failEnergy: () => { energyFailed = true; }, partialAtlas: () => { atlasPartial = true; }, denyAtlas: () => { atlasDenied = true; }, activityOutage: () => { failActivity = true; }, activityRecover: () => { failActivity = false; }, denyActivity: () => { denyActivity = true; }, partial: () => { partialBootstrap = true; }, complete: () => { partialBootstrap = false; }, quota: () => { quotaExceeded = true; }, get admissions() { return admissions; }, delayAdmission: () => { delayAdmission = true; }, releaseAdmission, delayCoverage: () => { delayCoverage = true; }, releaseCoverage, fail: () => { failFacts = true; }, denyFacts: () => { factsDenied = true; }, recover: () => { failFacts = false; factsDenied = false; }, delay: () => { delayUS = true; }, release: releaseUS };
+  return { bootTrace, factorTrace, cancelledRequests, delayRaw: () => { delayRaw = true; }, releaseRaw, get rawCompleted() { return rawCompleted; }, admissionFail: (reason: string) => { admissionFailure = reason; }, rawInfo: () => { rawAdvisoryLevel = 'info'; }, calls, contexts, links, unmanaged, cancelled, action, releaseOrder, rawFail: () => { rawMode = 'transient'; rawRetrievedAt = '2026-10-05T12:30:00.000Z'; }, rawDeny: () => { rawMode = 'denied'; rawRetrievedAt = '2026-10-05T12:40:00.000Z'; }, rawZero: () => { rawMode = 'zero'; rawRetrievedAt = '2026-10-05T12:35:00.000Z'; }, rawRecover: () => { rawMode = 'observed'; rawRetrievedAt = '2026-10-05T12:45:00.000Z'; }, releaseDisruptions, failAtlas: () => { atlasUnavailable = true; }, recoverAtlas: () => { atlasUnavailable = false; }, delayAtlasDetail: () => { delayAtlasDetail = true; }, releaseAtlasDetail, failDisruptions: () => { disruptionsFailed = true; }, failEnergy: () => { energyFailed = true; }, partialAtlas: () => { atlasPartial = true; }, denyAtlas: () => { atlasDenied = true; }, activityOutage: () => { failActivity = true; }, activityRecover: () => { failActivity = false; }, denyActivity: () => { denyActivity = true; }, partial: () => { partialBootstrap = true; }, complete: () => { partialBootstrap = false; }, quota: () => { quotaExceeded = true; }, get admissions() { return admissions; }, delayAdmission: () => { delayAdmission = true; }, releaseAdmission, delayCoverage: () => { delayCoverage = true; }, releaseCoverage, fail: () => { failFacts = true; }, denyFacts: () => { factsDenied = true; }, recover: () => { failFacts = false; factsDenied = false; }, delay: () => { delayUS = true; }, release: releaseUS };
 }
 
 test('native queued Norway factors render retained pillars after the website deadline', async ({ page }, info) => {

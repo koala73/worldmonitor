@@ -365,7 +365,7 @@ export function PricingSection({
                   is covered by the backdrop anyway; locking during the
                   modal was unnecessary. */}
               {t('pricing.billingAnnual')}
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-sm ${
+              <span className={`text-xs px-1.5 py-0.5 rounded-sm ${
                 billing === 'annual'
                   ? 'bg-wm-bg/20 text-wm-bg'
                   : 'bg-wm-green/10 text-wm-green'
@@ -445,10 +445,10 @@ export function PricingSection({
 
                 {/* Price */}
                 <div className="mb-6">
-                  <span className="text-4xl font-display font-bold">{price.amount}</span>
+                  <span className="text-4xl font-display font-bold break-words hyphens-auto">{price.amount}</span>
                   <span className="text-sm text-wm-muted ml-1">{price.suffix}</span>
                   {cta.type === 'checkout' && cta.billedMonthlyOnly && (
-                    <p className="mt-1 text-[11px] font-mono uppercase tracking-wider text-wm-muted">
+                    <p className="mt-1 text-xs font-mono uppercase tracking-wider text-wm-muted">
                       {t('pricing.billedMonthlyNote', { defaultValue: 'Billed monthly — no annual plan' })}
                     </p>
                   )}
@@ -510,7 +510,7 @@ export function PricingSection({
                 <h3 className="font-display text-lg font-bold mb-1 text-wm-text">{bandTier.name}</h3>
                 <p className="text-xs text-wm-muted mb-4">{localized.description}</p>
                 <div>
-                  <span className="text-4xl font-display font-bold">{price.amount}</span>
+                  <span className="text-4xl font-display font-bold break-words hyphens-auto">{price.amount}</span>
                   <span className="text-sm text-wm-muted ml-1">{price.suffix}</span>
                 </div>
               </div>

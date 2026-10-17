@@ -13,6 +13,7 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../_sentry-edge.js';
+import { callbackMatchesBrowser, parseChannelOAuthState } from '../../../server/_shared/channel-oauth-state';
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID ?? '';
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET ?? '';
@@ -22,7 +23,11 @@ const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 const CONVEX_SITE_URL = process.env.CONVEX_SITE_URL ?? (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
 const CONVEX_TENANT_RELAY_SECRET = process.env.CONVEX_TENANT_RELAY_SECRET ?? '';
 const NOTIFICATION_ENCRYPTION_KEY = process.env.NOTIFICATION_ENCRYPTION_KEY ?? '';
-const APP_ORIGIN = '*';
+// Errors carry only an error code and can be sent before the state (and so
+// the opener's origin) is known, so they go to any opener. A success carries
+// the channel and workspace names and goes only to the app origin that
+// started the flow (server/_shared/channel-oauth-state.ts).
+const ANY_OPENER = '*';
 
 // AES-256-GCM: matches crypto.cjs decrypt format
 // v1:<base64(iv[12] | tag[16] | ciphertext)>
@@ -86,10 +91,10 @@ function safeJsonInScript(data: unknown): string {
   return JSON.stringify(data).replace(/<\//g, '<\\/');
 }
 
-function postAndClose(data: Record<string, unknown>): Response {
+function postAndClose(data: Record<string, unknown>, openerOrigin: string): Response {
   const msg = safeJsonInScript(data);
   return htmlResponse(
-    `window.opener&&window.opener.postMessage(${msg},'${APP_ORIGIN}');window.close();`,
+    `window.opener&&window.opener.postMessage(${msg},${safeJsonInScript(openerOrigin)});window.close();`,
     'Connected to Discord. You can close this window.',
   );
 }
@@ -97,7 +102,7 @@ function postAndClose(data: Record<string, unknown>): Response {
 function errorAndClose(error: string, status = 200): Response {
   const msg = safeJsonInScript({ type: 'wm:discord_error', error });
   return htmlResponse(
-    `window.opener&&window.opener.postMessage(${msg},'${APP_ORIGIN}');window.close();`,
+    `window.opener&&window.opener.postMessage(${msg},'${ANY_OPENER}');window.close();`,
     `Discord connection failed: ${escapeHtml(error)}. You can close this window.`,
     status,
   );
@@ -118,15 +123,20 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
 
   // Validate and consume state
   const stateKey = `wm:discord:oauth:${state}`;
-  let userId: string | null;
+  let rawState: string | null;
   try {
-    userId = await upstashGetDel(stateKey);
+    rawState = await upstashGetDel(stateKey);
   } catch (error) {
     console.error('[discord-oauth] state store unavailable:', error instanceof Error ? error.message : error);
     await captureSilentError(error, { tags: { route: 'api/discord/oauth/callback', step: 'state-consume' }, fingerprint: ['api/discord/oauth/callback', 'state-consume', error instanceof Error ? error.name : 'Error'], ctx });
     return errorAndClose('service_unavailable', 503);
   }
-  if (!userId) return errorAndClose('invalid_state');
+  const oauthState = parseChannelOAuthState(rawState);
+  if (!oauthState) return errorAndClose('invalid_state');
+  // The state is single-use and already consumed: a link forwarded to another
+  // browser cannot attach that browser's channel to the starter's account.
+  if (!(await callbackMatchesBrowser('discord', req, oauthState))) return errorAndClose('browser_mismatch');
+  const { userId, openerOrigin } = oauthState;
 
   // Exchange code for token
   const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
@@ -189,5 +199,5 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
     type: 'wm:discord_connected',
     guildId: tokenData.webhook.guild_id ?? '',
     channelId: tokenData.webhook.channel_id ?? '',
-  });
+  }, openerOrigin);
 }

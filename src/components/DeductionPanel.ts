@@ -18,6 +18,24 @@ const getIntelligenceClient = createLazyClient(() => new IntelligenceServiceClie
 
 const COOLDOWN_MS = 5_000;
 
+// The analysis is LLM markdown grounded on RSS headlines, so a headline that
+// smuggles markup into the model's output must not become a tracking pixel or
+// an outbound link. Text structure only: no images, anchors, or attributes
+// beyond class. Same shape as ChatAnalystPanel's ANALYST_PURIFY_CONFIG plus
+// headings and blockquotes, which the deduction prompt's sections produce.
+export const DEDUCTION_PURIFY_CONFIG = {
+  ALLOWED_TAGS: ['p', 'strong', 'em', 'b', 'i', 'br', 'hr',
+    'ul', 'ol', 'li', 'code', 'pre', 'blockquote',
+    'h1', 'h2', 'h3', 'h4',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'div', 'span'],
+  ALLOWED_ATTR: ['class'],
+  ALLOW_DATA_ATTR: false,
+  // DOMPurify keeps aria-* even when ALLOWED_ATTR omits them; an injected
+  // aria-hidden would hide the analysis from screen readers.
+  ALLOW_ARIA_ATTR: false,
+};
+
 export class DeductionPanel extends Panel {
     private formEl: HTMLFormElement;
     private inputEl: HTMLTextAreaElement;
@@ -299,7 +317,7 @@ export class DeductionPanel extends Panel {
                 // task instead of running parse+purify+innerHTML as one block (#4537).
                 await yieldToMain();
                 if (generation !== this.deductionGeneration || !this.element?.isConnected) return;
-                const safe = DOMPurify.sanitize(parsed);
+                const safe = DOMPurify.sanitize(parsed, DEDUCTION_PURIFY_CONFIG);
                 setTrustedHtml(this.resultContainer, trustedHtml(safe, 'legacy direct innerHTML migration'));
                 this.reformatResult(this.resultContainer);
             } else {

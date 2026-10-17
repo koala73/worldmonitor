@@ -31,37 +31,43 @@ description: "Design principles, intelligence tradecraft, and algorithmic decisi
 
 ## Internationalization and Search Indexing
 
-World Monitor currently uses **application localization**, not separate localized
-search documents. A `?lang=` parameter remains supported as shareable user
-preference state: the client loads the requested interface dictionary, updates
-the rendered document language and direction, and preserves the base page
-canonical. Raw apex, dashboard, and Pro HTML is English, so those documents
-advertise only `x-default` and `en`, both pointing at the self-canonical URL.
-Query-string locale URLs do not belong in hreflang, robots, or sitemap output.
+World Monitor uses **application localization** for the dashboard and Pro
+surfaces, and **indexable localized documents** for the welcome landing. A
+`?lang=` parameter remains supported as shareable user preference state on `/`,
+`/dashboard`, and `/pro`: the client loads the requested interface dictionary,
+updates the rendered document language and direction, and preserves the base
+page canonical. Query-string locale URLs do not belong in hreflang, robots, or
+sitemap output.
+
+The apex welcome page also ships prerendered landings at `/es/`, `/pt/`, `/ru/`,
+`/fr/`, `/de/`, and `/ar/`. Those URLs return HTTP 200 HTML with translated
+visible copy and metadata. There is no Accept-Language redirect: crawlers and
+direct visits receive the localized document. The locale set lives in
+`shared/indexable-landing-locales.ts`.
 
 **hreflang policy by surface:**
 
 | Surface | Indexable languages | Declaration |
 | --- | --- | --- |
-| Apex `/`, `/dashboard`, `/pro`, and English crawlable corpus pages (`/countries/`, `/chokepoints/`, …) | English only | Self-pointing `en` + `x-default` |
+| Apex `/` and localized welcome landings (`/es/`, `/pt/`, `/ru/`, `/fr/`, `/de/`, `/ar/`) | English plus those locales | Reciprocal cluster; `x-default` is English `/` |
+| `/dashboard`, `/pro`, and English crawlable corpus pages (`/countries/`, `/chokepoints/`, …) | English only | Self-pointing `en` + `x-default` |
 | Mintlify docs (`/docs/…` and `/docs/zh/…`) | English + Simplified Chinese | Reciprocal `en` / `zh-Hans` / `x-default` (English is `x-default`) |
 | Application UI via `?lang=` | Not indexable alternates | Never advertised in hreflang |
 
-Publishing any *additional* non-English hreflang entry (for example `/fr/` app
-routes) requires a separately reviewed locale-prefixed static or
-server-rendered architecture. Every advertised page must meet the complete
-localized-page contract:
+Every advertised landing page must meet the complete localized-page contract:
 
 - translated visible main content and metadata;
 - a correct `<html lang>` declaration;
 - a stable crawlable URL that returns HTTP 200 and remains indexable;
 - a self-referencing canonical;
 - self-referencing and reciprocal hreflang entries across the cluster; and
-- sitemap inclusion for the localized canonical URL.
+- sitemap inclusion for the localized canonical URL, with xhtml:link
+  alternates on the landing cluster.
 
-Genuinely localized pages must not canonicalize back to English. Until that
-architecture exists for a locale, adding a client translation or a supported
-locale code does not authorize publishing a new indexable alternate.
+Genuinely localized pages must not canonicalize back to English. Adding a
+client translation or a supported locale code does not authorize publishing a
+new indexable alternate until that locale is added to the landing registry
+and prerendered.
 
 ### Intelligence Analysis Tradecraft
 

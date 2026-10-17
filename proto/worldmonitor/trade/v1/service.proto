@@ -21,8 +21,9 @@ service TradeService {
     option (sebuf.http.config) = {path: "/get-trade-restrictions", method: HTTP_METHOD_GET};
   }
 
-  // Get the MFN applied tariff-rate timeseries (All-products average) for one
-  // reporting economy. Not a bilateral or product-level rate.
+  // Average applied tariff timeseries for one reporting economy: the MFN rate
+  // over all products, or with a partner and/or product group the effectively
+  // applied rate on those imports. Not an HS-line rate.
   rpc GetTariffTrends(GetTariffTrendsRequest) returns (GetTariffTrendsResponse) {
     option (sebuf.http.config) = {path: "/get-tariff-trends", method: HTTP_METHOD_GET};
   }

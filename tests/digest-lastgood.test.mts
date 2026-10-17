@@ -847,6 +847,27 @@ describe('durable last-good wiring (#7084)', () => {
     assert.equal(Number(command[12]), 900);
   });
 
+  it("writes /trust's label counts only when the gate accepts the build they describe (#9093)", async () => {
+    const counts = { at: NOW, stories: 2, corroborated: 1, singlePublisher: 1, tier4Only: 0, unknown: 0 };
+    const countWrites = () =>
+      stub.pipelineCalls.flat().filter((cmd: any) => Array.isArray(cmd) && cmd[0] === 'SET' && cmd[1] === 'trust:label-counts:v1');
+    const runWithGate = async (gateResult: number) => {
+      reset();
+      const data = body(['https://a/1'], COVERAGE, new Date().toISOString());
+      mod.__testing__.rememberLabelCounts(data, counts);
+      stub.fetchMeta = { data, source: 'fresh', leader: true };
+      stub.pipeline = async (cmds) => cmds.map((c: any) => ({ result: c[0] === 'EVAL' ? gateResult : 'OK' }));
+      await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    };
+
+    await runWithGate(0);
+    assert.equal(countWrites().length, 0, 'a rejected build keeps the counts of the digest still served');
+
+    await runWithGate(1);
+    assert.equal(countWrites().length, 1, 'an accepted build publishes its counts');
+    assert.deepEqual(JSON.parse(String(countWrites()[0]![2])), counts);
+  });
+
   it('a publication outage defers the next build so the isolate fallback can serve', async () => {
     reset();
     stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'fresh', leader: true };

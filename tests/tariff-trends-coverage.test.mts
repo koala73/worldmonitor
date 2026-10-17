@@ -6,7 +6,9 @@
 // `upstreamUnavailable: true` — reporting a fault for a request the contract
 // accepted. Malformed codes were also silently rewritten to '840' (United
 // States), and product_sector / partner_country were accepted without ever
-// affecting the answer or naming a coverage gap.
+// affecting the answer or naming a coverage gap. A partner or product group now
+// selects the WITS series (tests/tariff-trends-bilateral.test.mts); this file
+// covers the MFN path that requests without them still take.
 
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -273,17 +275,20 @@ describe('seeded reporter requests', () => {
     assert.equal(normalizeTariffTrendRequest(request())?.years, DEFAULT_YEARS);
   });
 
-  test('partner_country does not change the answer (MFN has no partner dimension)', async () => {
+  test('partner "" and "000" (World) read the MFN seed; any other partner leaves it', async () => {
     seedUs(2015, 2025);
     const without = await getTariffTrends(premiumCtx(), request({ partnerCountry: '' }));
     redisReads = [];
-    const withPartner = await getTariffTrends(premiumCtx(), request({ partnerCountry: '156' }));
-    assert.deepEqual(withPartner.datapoints, without.datapoints);
-    // Same key — partner never enters it.
+    const world = await getTariffTrends(premiumCtx(), request({ partnerCountry: '000' }));
+    assert.deepEqual(world.datapoints, without.datapoints);
     assert.deepEqual(redisReads, [tariffTrendSeedKey('840')]);
+
+    redisReads = [];
+    await getTariffTrends(premiumCtx(), request({ partnerCountry: '156' }));
+    assert.equal(redisReads.includes(tariffTrendSeedKey('840')), false, 'a partner request is not the MFN series');
   });
 
-  test('product_sector empty and "all" are covered; other sectors are not_covered', async () => {
+  test('product_sector empty and "all" are the MFN series; an unknown group is not_covered', async () => {
     seedUs(2015, 2025);
     seedManifest(['840']);
 
@@ -300,7 +305,7 @@ describe('seeded reporter requests', () => {
     assert.equal(sector.unavailableReason, R.notCovered);
     assert.equal(sector.upstreamUnavailable, false);
     assert.equal(sector.datapoints.length, 0);
-    // No Redis read for an out-of-coverage sector.
+    // No Redis read for a group WITS does not publish.
     assert.deepEqual(redisReads, []);
   });
 
@@ -500,21 +505,27 @@ describe('publishTariffTrends', () => {
 
 // ── Dashboard call site ───────────────────────────────────────────────────
 
-describe('the dashboard asks for a combination the seed can answer', () => {
-  test('data-loader US call with partner China still resolves after partner is ignored', async () => {
-    // src/app/data-loader.ts: fetchTariffTrends('840', '156', '', 10)
+describe('the dashboard asks for the series its tab labels', () => {
+  test('the Trade Policy tariffs tab gets the US MFN baseline it labels', async () => {
+    // src/app/data-loader.ts: fetchTariffTrends('840', '', '', 10). The tab
+    // calls the series the MFN baseline and compares it with the US-wide
+    // effective rate, so it must not ask for a partner (a WITS bilateral series).
     seedUs(2015, 2025);
     const resp = await getTariffTrends(
       premiumCtx(),
-      request({ reportingCountry: '840', partnerCountry: '156', productSector: '', years: 10 }),
+      request({ reportingCountry: '840', partnerCountry: '', productSector: '', years: 10 }),
     );
     assert.equal(resp.unavailableReason, R.served);
     assert.ok(resp.datapoints.length > 0);
+    assert.equal(resp.datapoints[0]!.indicatorCode, 'TP_A_0010');
+    // Seeded points predate weightedRate; the documented 0 must still be on the wire.
+    assert.ok(resp.datapoints.every((p) => p.weightedRate === 0));
+    assert.equal(JSON.parse(JSON.stringify(resp)).datapoints[0].weightedRate, 0);
   });
 
-  test('data-loader call site still passes the codes the contract accepts', () => {
+  test('data-loader call site passes no partner and no sector', () => {
     const src = readFileSync(resolve('src/app/data-loader.ts'), 'utf8');
-    assert.match(src, /fetchTariffTrends\('840',\s*'156',\s*'',\s*10\)/);
+    assert.match(src, /fetchTariffTrends\('840',\s*'',\s*'',\s*10\)/);
   });
 });
 

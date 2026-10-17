@@ -66,9 +66,15 @@ const WEBHOOKS_BLOCK = `webhooks:
             summary: Chokepoint disruption alert (outbound, signed)
             description: |-
                 WorldMonitor POSTs this event to the \`callbackUrl\` you register via
-                RegisterWebhook whenever a subscribed chokepoint's disruption score
-                crosses your \`alertThreshold\`. Every delivery is signed so you can
-                confirm it genuinely came from WorldMonitor.
+                RegisterWebhook when a subscribed chokepoint's disruption score is at or
+                above your \`alertThreshold\`, once per crossing, including one already
+                in progress at first evaluation. It re-arms below the threshold unless a
+                score input missing since the last delivery could explain the drop.
+                Failures retry every 5 minutes with the same \`X-WM-Delivery-Id\` while
+                the score holds; 5 failed ticks deactivate the webhook. Full rules at
+                https://www.worldmonitor.app/docs/api-shipping-v2#delivery-worker.
+                Every delivery is signed so you can confirm it genuinely came from
+                WorldMonitor.
 
                 Verification: the \`${SIGNATURE_HEADER}\` header is
                 \`sha256=<hex>\`, where \`<hex>\` is the lowercase hex HMAC-SHA256 of the
@@ -150,20 +156,25 @@ const WEBHOOKS_BLOCK = `webhooks:
                                     description: ISO-8601 timestamp when the alert fired.
                                 reason:
                                     type: string
-                                    description: Human-readable explanation for the alert.
+                                    enum:
+                                        - ais_congestion_spike
+                                        - navigational_warning
+                                        - transit_drop
+                                        - score_threshold
+                                    description: First matching rule, checked in order - AIS disruptions, then navigational warnings, then a transit drop; \`score_threshold\` when none matches.
                                 details:
                                     type: object
                                     additionalProperties: true
-                                    description: Optional structured context for the disruption.
+                                    description: Chokepoint name, status, warning and AIS counts, congestion, war-risk tier, week-over-week transit change, previous score and feed time.
                         example:
                             "subscriberId": "wh_1a2b3c4d5e6f7a8b9c0d1e2f"
                             "chokepointId": "suez"
                             "score": 72
                             "alertThreshold": 50
                             "triggeredAt": "2026-07-04T12:34:56Z"
-                            "reason": "Disruption score 72 crossed alert threshold 50"
+                            "reason": "navigational_warning"
                             "details":
-                                "trend": "rising"
+                                "name": "Suez Canal"
             responses:
                 "2XX":
                     description: |-

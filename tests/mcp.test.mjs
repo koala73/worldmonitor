@@ -1157,6 +1157,47 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.notEqual(ev[0].user_id, VALID_KEY, 'initialize user_id MUST be hashed for env_key — raw key never logged');
   });
 
+  it('telemetry: initialize records the MCP client name and its AI client source', async () => {
+    process.env.MCP_TELEMETRY = 'true';
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+    const body = {
+      jsonrpc: '2.0',
+      id: 44,
+      method: 'initialize',
+      params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'claude-ai\u0000\n', version: '0.1' } },
+    };
+    try {
+      await mod.default(makeReq('POST', body, { 'user-agent': 'node' }));
+    } finally {
+      console.log = origLog;
+    }
+    const ev = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.tools_list_emitted');
+    assert.equal(ev.length, 1);
+    assert.equal(ev[0].client_name, 'claude-ai', 'control characters are stripped from the logged client name');
+    assert.equal(ev[0].client_source, 'claude');
+  });
+
+  it('telemetry: initialize falls back to the User-Agent when clientInfo is generic or absent', async () => {
+    process.env.MCP_TELEMETRY = 'true';
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+    const body = { jsonrpc: '2.0', id: 45, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {} } };
+    try {
+      await mod.default(makeReq('POST', body, { 'user-agent': 'Cursor/2.4 (darwin)' }));
+    } finally {
+      console.log = origLog;
+    }
+    const ev = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.tools_list_emitted');
+    assert.equal(ev.length, 1);
+    assert.equal(ev[0].client_name, null);
+    assert.equal(ev[0].client_source, 'cursor');
+  });
+
   it('telemetry: 32 KB User-Agent is capped at 256 chars in client_user_agent', async () => {
     process.env.MCP_TELEMETRY = 'true';
     const mod = await import(`../api/mcp.ts?t=${Date.now()}`);

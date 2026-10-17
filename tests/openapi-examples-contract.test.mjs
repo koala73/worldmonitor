@@ -652,7 +652,7 @@ describe('OpenAPI examples contract', () => {
       const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
       return sum + operationEntries(spec).length;
     }, 0);
-    assert.equal(total, 241, `expected 241 OpenAPI operations, found ${total}`);
+    assert.equal(total, 248, `expected 248 OpenAPI operations, found ${total}`);
   });
 
   it('adds schema-valid request and response examples to every service JSON spec', () => {
@@ -664,9 +664,9 @@ describe('OpenAPI examples contract', () => {
       totals.requestExpected += result.requestExpected;
       totals.responseExpected += result.responseExpected;
     }
-    assert.equal(totals.operations, 241);
+    assert.equal(totals.operations, 248);
     assert.ok(totals.requestExpected >= 137, `expected at least 137 request example targets, found ${totals.requestExpected}`);
-    assert.equal(totals.responseExpected, 241);
+    assert.equal(totals.responseExpected, 248);
   });
 
   // record-baseline-snapshot's nested updates[].type is a bare string (no schema
@@ -705,14 +705,36 @@ describe('OpenAPI examples contract', () => {
       const spec = loadYaml(readFileSync(resolve(apiDir, yamlFile), 'utf8'));
       operations += assertOperationExamples(spec, yamlFile).operations;
     }
-    assert.equal(operations, 241);
+    assert.equal(operations, 248);
   });
 
   it('adds request and response examples to the unified OpenAPI bundle', () => {
     const bundle = loadUnifiedOpenApiSpec();
     const result = assertOperationExamples(bundle, 'worldmonitor.openapi.yaml');
-    assert.equal(result.operations, 241);
-    assert.equal(result.responseExpected, 241);
+    assert.equal(result.operations, 248);
+    assert.equal(result.responseExpected, 248);
+  });
+
+  it('labels aircraft emergency examples synthetic and documents projected response shapes', () => {
+    const specs = [
+      JSON.parse(readFileSync(resolve(apiDir, 'AviationService.openapi.json'), 'utf8')),
+      loadYaml(readFileSync(resolve(apiDir, 'AviationService.openapi.yaml'), 'utf8')),
+      loadUnifiedOpenApiSpec(),
+    ];
+    for (const spec of specs) {
+      const operation = spec.paths['/api/aviation/v1/list-aircraft-emergencies'].get;
+      const example = operation.responses['200'].content['application/json'].example;
+      assert.equal(example.feeds[0].squawk, '7500');
+      assert.equal(example.feeds[0].status, 'available');
+      assert.equal(example.feeds[0].source, 'adsb.lol');
+      assert.equal(example.observations[0].address, 'a00001');
+      assert.equal(example.observations[0].squawk, '7500');
+      assert.equal(example.observations[0].observedAt, 0);
+      assert.equal(example.observations[0].militaryFlag, 'unknown');
+      assert.match(example.observations[0].description, /Synthetic example/);
+      assert.match(operation.description, /200 schema describes the unprojected response/);
+      assert.match(operation.description, /array, scalar, or null/);
+    }
   });
 
   // A honeypot field (hidden anti-bot input) is silently discarded by the

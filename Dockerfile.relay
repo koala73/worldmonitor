@@ -53,6 +53,8 @@ COPY scripts/lib/usni-fleet-parser.cjs ./scripts/lib/usni-fleet-parser.cjs
 COPY scripts/lib/llm-telemetry.cjs ./scripts/lib/llm-telemetry.cjs
 # Canonical CommonJS model policy required directly by ais-relay.cjs.
 COPY scripts/lib/llm-model-policy.cjs ./scripts/lib/llm-model-policy.cjs
+# DNS-vetted, address-pinned lookup for the public /rss proxy.
+COPY scripts/lib/notification-webhook-ssrf.cjs ./scripts/lib/notification-webhook-ssrf.cjs
 # Curated X news-account helpers required by ais-relay.cjs (#6654).
 COPY scripts/lib/x-news-accounts.cjs ./scripts/lib/x-news-accounts.cjs
 COPY scripts/lib/poll-generation-guard.cjs ./scripts/lib/poll-generation-guard.cjs
@@ -66,6 +68,7 @@ COPY scripts/lib/publisher-link-relay-gate.cjs ./scripts/lib/publisher-link-rela
 # Classify digest URL/auth/transport helper required by ais-relay.cjs (#7437).
 COPY scripts/lib/classify-digest-request.cjs ./scripts/lib/classify-digest-request.cjs
 COPY scripts/lib/saudi-civil-defense-alerts.cjs ./scripts/lib/saudi-civil-defense-alerts.cjs
+COPY scripts/lib/chokepoint-disruption-alerts.cjs ./scripts/lib/chokepoint-disruption-alerts.cjs
 # Jev shadow observer required by ais-relay.cjs; its shared/jev-classify.js
 # half ships with the `COPY shared/` below.
 COPY scripts/lib/jev-classify-relay.cjs ./scripts/lib/jev-classify-relay.cjs

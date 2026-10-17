@@ -83,8 +83,8 @@ describe('country headlines from existing curated RSS caches', () => {
   it('recovers country reporting after entry five while keeping the digest selection and counters', async () => {
     const source = feed('Guardian Africa');
     const date = new Date(Date.now() - 3600_000).toUTCString();
-    const xml = `<rss><channel>${Array.from({ length: 21 }, (_, index) => {
-      const country = index === 5 ? 'Cameroon' : index === 19 ? 'Niger' : index === 20 ? 'Mauritius' : 'Kenya';
+    const xml = `<rss><channel>${Array.from({ length: 101 }, (_, index) => {
+      const country = index === 5 ? 'Cameroon' : index === 99 ? 'Niger' : index === 100 ? 'Mauritius' : 'Kenya';
       return `<item><title>${country} announces cabinet changes</title><link>https://www.theguardian.com/world/item-${index}</link><pubDate>${date}</pubDate></item>`;
     }).join('')}</channel></rss>`;
     const parsed = digest.parseRssXml(xml, source, 'full');
@@ -94,7 +94,7 @@ describe('country headlines from existing curated RSS caches', () => {
     assert.equal(parsed.items.length, 5);
     assert.equal(parsed.parsedTotal, 5);
     assert.equal(parsed.droppedUndated, 0);
-    assert.equal(parsed.droppedFeedCap, 16);
+    assert.equal(parsed.droppedFeedCap, 96);
     const key = rssFeedCacheKey('full', source.url);
     cache.delete(key);
     const readPipeline = globalThis.fetch;

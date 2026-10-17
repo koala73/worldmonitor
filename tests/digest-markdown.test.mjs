@@ -9,6 +9,8 @@ import {
   markdownToTelegramHtml,
   markdownToSlackMrkdwn,
   markdownToDiscord,
+  escapeDiscordText,
+  truncateDiscordContent,
 } from '../scripts/_digest-markdown.mjs';
 
 // Representative AI summary that exercises every feature: section headers,
@@ -241,6 +243,20 @@ describe('markdownToDiscord', () => {
   it('leaves **bold** and *italic* untouched (Discord parses CommonMark natively)', () => {
     const out = markdownToDiscord('the **Lebanon** region is *critical*');
     assert.equal(out, 'the **Lebanon** region is *critical*');
+  });
+
+  it('neutralises masked links in third-party text', () => {
+    const out = markdownToDiscord('Assessment: see [Verify account](https://evil.example/login) \\ now');
+    assert.equal(out, '**Assessment:** see \\[Verify account](https://evil.example/login) \\\\ now');
+    assert.equal(escapeDiscordText('[a](b)'), '\\[a](b)');
+  });
+
+  it('truncates at the limit without splitting an escape pair', () => {
+    const text = `${'x'.repeat(1998)}\\[tail`;
+    const out = truncateDiscordContent(text);
+    assert.ok(out.length <= 2000);
+    assert.ok(!/(^|[^\\])(\\\\)*\\\u2026$/.test(out), 'no dangling backslash before the ellipsis');
+    assert.equal(truncateDiscordContent('short'), 'short');
   });
 
   it('converts a realistic summary end-to-end', () => {

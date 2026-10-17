@@ -1,6 +1,6 @@
 ---
 title: "World Monitor MCP server"
-description: "MCP transport, discovery methods, tools, and authentication."
+description: "World Monitor MCP offers country risk, markets, chokepoints, current US duties, and historical tariff schedules. Connect with OAuth or an API key."
 canonical: "https://www.worldmonitor.app/mcp-server.md"
 ---
 
@@ -23,7 +23,7 @@ Use the apex server URL for all product MCP clients. Product-host aliases return
 
 ## Tools
 
-The server ships tools covering world and country briefs, country risk and resilience, China decision signals, conflict events, markets, commodities, global procurement opportunities, energy, maritime and aviation activity, cyber threats, sanctions, natural disasters, health signals, prediction markets, and AI forecasts. Issue `tools/list` for the live inventory, `prompts/list` for pre-built workflow templates, and `resources/list` for read-only resources. `tools/list`, `prompts/list`, and `resources/list` are **public** — no key required. General data tools accept an optional `jmespath` argument for [server-side projection](https://www.worldmonitor.app/docs/mcp-jmespath). The closed signed `get_forecast_case` and `get_forecast_theaters` readers preserve original evidence and reject projection arguments.
+The server ships tools covering world and country briefs, country risk and resilience, China decision signals, conflict events, markets, commodities, tariffs and trade policy, global procurement opportunities, energy, maritime and aviation activity, cyber threats, sanctions, natural disasters, health signals, prediction markets, and AI forecasts. Issue `tools/list` for the live inventory, `prompts/list` for pre-built workflow templates, and `resources/list` for read-only resources. `tools/list`, `prompts/list`, and `resources/list` are **public** — no key required. General data tools accept an optional `jmespath` argument for [server-side projection](https://www.worldmonitor.app/docs/mcp-jmespath). The `get_forecast_case` and `get_forecast_theaters` readers accept only their own arguments plus `jmespath`; a projection shapes that response only, and the original evidence is what gets cached.
 
 Call `get_mcp_allowance({})` to read the current verified account allowance when the host cannot read `worldmonitor://account/mcp-allowance`. It requires user-bound OAuth or `wm_…` credentials, accepts only optional `jmespath`, and rejects account selectors and `panel_request`. Status spends no daily allowance, remains available at the daily cap, and uses the shared 192/minute protocol bucket. Unreadable counters return an error rather than a zero snapshot. Check `sharedWithRestApi` before interpreting `used`; account totals may include REST traffic and do not identify individual callers.
 

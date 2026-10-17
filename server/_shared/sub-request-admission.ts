@@ -1,5 +1,5 @@
-import { runRedisPipeline } from './redis';
-import { canonicalGatewayQueryString, sha256Hex } from './mcp-internal-hmac';
+import { runRedisPipeline } from './redis.js';
+import { canonicalGatewayQueryString, sha256Hex } from './mcp-internal-hmac.js';
 
 export const SUB_REQUEST_MARKER_HEADER = 'x-wm-sub-request';
 const ADMISSION_TTL_SECONDS = 30;

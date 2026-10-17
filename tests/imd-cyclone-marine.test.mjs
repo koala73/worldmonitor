@@ -6,908 +6,494 @@ import { fileURLToPath } from 'node:url';
 
 import { __testing__ as healthTesting } from '../api/health.js';
 import {
-  IMD_API_REFERENCE_URL,
+  IMD_BULLETIN_PRODUCT_IDS,
   IMD_CANONICAL_KEY,
-  IMD_HOST,
   IMD_MAX_CONTENT_AGE_MIN,
-  IMD_OAUTH_TOKEN_URL,
+  IMD_PAGE_DELAY_MS,
   IMD_PRODUCTS,
+  IMD_PRODUCT_IDS,
+  IMD_RIGHTS_DECISION,
+  IMD_SEA_BULLETIN_PAGE,
   assembleImdSnapshot,
-  buildDisabledSnapshot,
-  cycloneEventsFromSnapshot,
-  createImdProxyFetch,
   declareImdRecords,
-  dropExpiredRecords,
+  fetchImdBulletinPage,
   fetchImdCycloneMarine,
   imdAfterPublish,
-  imdLiveFetchEnabled,
-  imdProductUrl,
-  shouldActivateImdSnapshot,
-  isAllowedImdHost,
+  imdContentMeta,
+  isAllowedImdUrl,
   isNilText,
-  marineBulletinsFromSnapshot,
-  parseCoastalBulletinPayload,
-  parseCycloneCouPayload,
-  parseCycloneTrackPayload,
-  parseCycloneWindPayload,
-  parseImdTrackDateTime,
-  parsePortWarningPayload,
-  parseSeaBulletinPayload,
+  parseImdBulletinHtml,
+  shouldActivateImdSnapshot,
+  stripNonContentBlocks,
   validateImdEnvelope,
-  weatherAlertsFromSnapshot,
 } from '../scripts/lib/imd-cyclone-marine.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const fixture = (name) => JSON.parse(readFileSync(join(root, 'tests/fixtures', name), 'utf8'));
-const NOW = Date.parse('2023-11-05T12:00:00.000Z');
-const CYCLONE_NOW = Date.parse('2019-11-06T00:00:00.000Z');
-const LIVE_ENV = Object.freeze({
-  IMD_API_KEY: 'test-key',
-  IMD_API_EMAIL: 'operator@example.com',
-  IMD_API_PASSWORD: 'railway-secret',
-});
+const fixture = (name) => readFileSync(join(root, 'tests/fixtures/imd', name), 'utf8');
+const pageFixture = (productId, pageKey) => fixture(`${productId}-${pageKey}.html`);
+const ALL_PAGES = IMD_BULLETIN_PRODUCT_IDS.flatMap((id) => IMD_PRODUCTS[id].pages.map((page) => ({ id, page })));
+const HOUR = 60 * 60 * 1000;
+// The captured bulletins are valid 09/10 to 21/22 UTC on 2026-10-16.
+const NOW = Date.parse('2026-10-16T11:00:00Z');
+const AFTER_EXPIRY = Date.parse('2026-10-16T23:00:00Z');
 
-function jsonResponse(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-function proxyJsonResponse(body, status = 200) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    buffer: Buffer.from(JSON.stringify(body)),
-    contentType: 'application/json',
-    headers: { 'content-type': 'application/json' },
-    location: '',
-  };
-}
-
-test('allows only https://api.imd.gov.in product URLs', () => {
-  assert.equal(isAllowedImdHost(imdProductUrl(IMD_PRODUCTS.cycloneTrack)), true);
-  assert.equal(isAllowedImdHost('http://api.imd.gov.in/api/v1/cyclone_track'), false);
-  assert.equal(isAllowedImdHost('https://evil.example/api/v1/cyclone_track'), false);
-  assert.equal(isAllowedImdHost('https://api.imd.gov.in.evil/api/v1/cyclone_track'), false);
-  assert.equal(IMD_HOST, 'api.imd.gov.in');
-});
-
-test('parses observed and forecast cyclone positions as distinct kinds', () => {
-  const records = parseCycloneTrackPayload(fixture('imd-cyclone-track.json'));
-  const observed = records.filter((row) => row.pointKind === 'observed');
-  const forecast = records.filter((row) => row.pointKind === 'forecast');
-  assert.equal(observed.length, 2);
-  assert.equal(forecast.length, 2);
-  assert.ok(observed.every((row) => row.geometryKind === 'observed-position'));
-  assert.ok(forecast.every((row) => row.geometryKind === 'forecast-position'));
-  assert.equal(observed[0].stormName, 'BULBUL');
-  assert.equal(observed[0].lat, 13.2);
-  assert.equal(observed[0].lon, 91.2);
-  assert.equal(parseImdTrackDateTime('05.11.19/1200'), Date.UTC(2019, 10, 5, 12, 0));
-});
-
-test('tags wind radii and cone geometry as forecast/uncertainty, never observed footprint', () => {
-  const winds = parseCycloneWindPayload(fixture('imd-cyclone-wind.json'));
-  const cones = parseCycloneCouPayload(fixture('imd-cyclone-cou.json'));
-  assert.equal(winds.length, 2);
-  assert.ok(winds.every((row) => row.geometryKind === 'forecast-wind-radii'));
-  assert.equal(winds[0].thresholdKt, 27);
-  assert.equal(cones[0].geometryKind, 'cone-of-uncertainty');
-  assert.notEqual(cones[0].geometryKind, 'observed-position');
-  assert.ok(Array.isArray(cones[0].polygons[0][0]));
-});
-
-test('preserves port authority, issue time, warning text, and does not treat NIL as a warning', () => {
-  const rows = parsePortWarningPayload(fixture('imd-port-warning.json'));
-  assert.equal(rows.length, 2);
-  const chennai = rows.find((row) => row.portName === 'Chennai');
-  const mumbai = rows.find((row) => row.portName === 'Mumbai');
-  assert.equal(chennai.issuedBy, 'ACWC CHENNAI');
-  assert.equal(chennai.isWarning, true);
-  assert.equal(chennai.warning, 'Distant Cautionary Signal 1 hoisted');
-  assert.equal(mumbai.isWarning, false);
-  assert.equal(mumbai.isNil, true);
-  assert.ok(chennai.centroid);
-  assert.equal(isNilText('NIL at all Ports'), true);
-});
-
-test('preserves marine bulletin sea state, wind, visibility, and TTT separately from forecasts', () => {
-  const sea = parseSeaBulletinPayload(fixture('imd-sea-bulletin.json'));
-  const coastal = parseCoastalBulletinPayload(fixture('imd-coastal-bulletin.json'));
-  assert.equal(sea[0].hasTttWarning, false);
-  assert.equal(sea[0].isForecastBulletin, true);
-  assert.match(sea[0].wind, /East\/ South Easterly/);
-  assert.match(sea[0].visibility, /Good Becoming Moderate/);
-  assert.match(sea[0].seaCondition, /Smooth/);
-  assert.equal(sea[0].issuedBy, 'ACWC KOLKATA');
-  assert.equal(sea[1].hasTttWarning, true);
-  assert.equal(coastal[0].hasPortSignal, false);
-  assert.equal(coastal[1].hasPortSignal, true);
-  assert.match(coastal[1].portSignal, /Local Cautionary Signal 3/);
-});
-
-test('does not flatten products into a single generic alert list', () => {
-  const snapshot = assembleImdSnapshot({
-    now: CYCLONE_NOW,
-    productResults: {
-      cycloneTrack: { status: 'ok', records: parseCycloneTrackPayload(fixture('imd-cyclone-track.json')) },
-      cycloneWind: { status: 'ok', records: parseCycloneWindPayload(fixture('imd-cyclone-wind.json')) },
-      cycloneCou: { status: 'ok', records: parseCycloneCouPayload(fixture('imd-cyclone-cou.json')) },
-      portWarning: { status: 'ok', records: parsePortWarningPayload(fixture('imd-port-warning.json')) },
-      seaBulletin: { status: 'ok', records: parseSeaBulletinPayload(fixture('imd-sea-bulletin.json')) },
-      coastalBulletin: { status: 'ok', records: parseCoastalBulletinPayload(fixture('imd-coastal-bulletin.json')) },
-      fishermenWarning: { status: 'disabled', reason: 'INDEXED_WITHOUT_FIELD_REFERENCE', records: [] },
-    },
-  });
-  assert.equal(validateImdEnvelope(snapshot), true);
-  assert.ok(snapshot.cyclones.length > 0);
-  assert.ok(Array.isArray(snapshot.cycloneEvents) && snapshot.cycloneEvents.length === 1);
-  assert.ok(Array.isArray(snapshot.portAlerts) && snapshot.portAlerts.length === 1);
-  assert.ok(snapshot.portWarnings.length > 0);
-  assert.ok(snapshot.seaBulletins.length > 0);
-  const alerts = weatherAlertsFromSnapshot(snapshot);
-  assert.ok(alerts.every((row) => row.productKind === 'imd-port-warning'));
-  assert.equal(alerts.length, 1);
-  assert.equal(alerts[0].issuedBy, 'ACWC CHENNAI');
-  const bulletins = marineBulletinsFromSnapshot(snapshot);
-  assert.ok(bulletins.some((row) => row.productKind === 'sea-area-bulletin'));
-  assert.ok(bulletins.some((row) => row.productKind === 'coastal-bulletin'));
-  const events = cycloneEventsFromSnapshot(snapshot);
-  assert.equal(events.length, 1);
-  assert.equal(events[0].pastTrack[0].geometryKind, 'observed-position');
-  assert.equal(events[0].forecastTrack[0].geometryKind, 'forecast-position');
-  assert.equal(events[0].coneGeometryKind, 'cone-of-uncertainty');
-  assert.equal(events[0].windRadii[0].geometryKind, 'forecast-wind-radii');
-});
-
-test('drops expired marine bulletins and keeps independent storm ids', () => {
-  const sea = parseSeaBulletinPayload(fixture('imd-sea-bulletin.json'));
-  const expired = dropExpiredRecords(sea, Date.parse('2023-04-10T00:00:00Z'));
-  assert.equal(expired.some((row) => row.bulletinId === '109'), false);
-  const live = dropExpiredRecords(sea, NOW);
-  assert.ok(live.some((row) => row.bulletinId === '110'));
-});
-
-test('a failed product carries last-good for that product only', () => {
-  const previous = assembleImdSnapshot({
-    now: CYCLONE_NOW,
-    productResults: {
-      cycloneTrack: { status: 'ok', records: parseCycloneTrackPayload(fixture('imd-cyclone-track.json')) },
-      portWarning: { status: 'ok', records: parsePortWarningPayload(fixture('imd-port-warning.json')) },
-      seaBulletin: { status: 'ok', records: parseSeaBulletinPayload(fixture('imd-sea-bulletin.json')) },
-      coastalBulletin: { status: 'ok', records: [] },
-      cycloneWind: { status: 'ok', records: [] },
-      cycloneCou: { status: 'ok', records: [] },
-    },
-  });
-  const snapshot = assembleImdSnapshot({
-    now: CYCLONE_NOW,
-    previous,
-    productResults: {
-      cycloneTrack: { status: 'failed', reason: 'HTTP 401', records: [] },
-      portWarning: { status: 'ok', records: parsePortWarningPayload(fixture('imd-port-warning.json')) },
-      seaBulletin: { status: 'ok', records: [] },
-      coastalBulletin: { status: 'ok', records: [] },
-      cycloneWind: { status: 'ok', records: [] },
-      cycloneCou: { status: 'ok', records: [] },
-    },
-  });
-  assert.equal(snapshot.coverageState, 'degraded');
-  assert.equal(snapshot.products.cycloneTrack.status, 'failed');
-  assert.equal(snapshot.products.cycloneTrack.carried, true);
-  assert.ok(snapshot.cyclones.length > 0);
-  assert.equal(snapshot.products.portWarning.status, 'ok');
-  assert.equal(snapshot.failedProducts.includes('cycloneTrack'), true);
-  assert.equal(snapshot.failedProducts.includes('portWarning'), false);
-  const meta = imdAfterPublish(snapshot);
-  assert.equal(meta.freshnessMetaPatch.sourceState, 'degraded');
-  assert.equal(meta.freshnessMetaPatch.errorCode, 'IMD_PRODUCT_PARTIAL');
-});
-
-test('stamps successful wind and cone geometry and omits it after an aged failed fetch', () => {
-  const previous = assembleImdSnapshot({
-    now: CYCLONE_NOW,
-    productResults: {
-      cycloneTrack: { status: 'ok', records: parseCycloneTrackPayload(fixture('imd-cyclone-track.json')) },
-      cycloneWind: { status: 'ok', records: parseCycloneWindPayload(fixture('imd-cyclone-wind.json')) },
-      cycloneCou: { status: 'ok', records: parseCycloneCouPayload(fixture('imd-cyclone-cou.json')) },
-      portWarning: { status: 'ok', records: [] },
-      seaBulletin: { status: 'ok', records: [] },
-      coastalBulletin: { status: 'ok', records: [] },
-    },
-  });
-  assert.ok(previous.windRadii.length > 0);
-  assert.ok(previous.cones.length > 0);
-  assert.ok(previous.windRadii.every((row) => row.updatedAt === CYCLONE_NOW));
-  assert.ok(previous.cones.every((row) => row.updatedAt === CYCLONE_NOW));
-
-  const freshFailed = assembleImdSnapshot({
-    now: CYCLONE_NOW + 60 * 60 * 1000,
-    previous,
-    productResults: {
-      cycloneTrack: { status: 'ok', records: parseCycloneTrackPayload(fixture('imd-cyclone-track.json')) },
-      cycloneWind: { status: 'failed', reason: 'HTTP 500', records: [] },
-      cycloneCou: { status: 'failed', reason: 'HTTP 500', records: [] },
-      portWarning: { status: 'ok', records: [] },
-      seaBulletin: { status: 'ok', records: [] },
-      coastalBulletin: { status: 'ok', records: [] },
-    },
-  });
-  assert.equal(freshFailed.products.cycloneWind.carried, true);
-  assert.equal(freshFailed.products.cycloneCou.carried, true);
-  assert.equal(freshFailed.windRadii.length, previous.windRadii.length);
-  assert.equal(freshFailed.cones.length, previous.cones.length);
-
-  const agedNow = CYCLONE_NOW + (IMD_MAX_CONTENT_AGE_MIN * 60 * 1000) + 1;
-  const currentTrack = parseCycloneTrackPayload(fixture('imd-cyclone-track.json')).map((row) => ({
-    ...row,
-    at: agedNow,
-  }));
-  const agedFailed = assembleImdSnapshot({
-    now: agedNow,
-    previous,
-    productResults: {
-      cycloneTrack: { status: 'ok', records: currentTrack },
-      cycloneWind: { status: 'failed', reason: 'HTTP 500', records: [] },
-      cycloneCou: { status: 'failed', reason: 'HTTP 500', records: [] },
-      portWarning: { status: 'ok', records: [] },
-      seaBulletin: { status: 'ok', records: [] },
-      coastalBulletin: { status: 'ok', records: [] },
-    },
-  });
-  assert.equal(agedFailed.windRadii.length, 0);
-  assert.equal(agedFailed.cones.length, 0);
-  assert.equal(agedFailed.products.cycloneWind.carried, false);
-  assert.equal(agedFailed.products.cycloneCou.carried, false);
-  const events = cycloneEventsFromSnapshot(agedFailed);
-  assert.equal(events.length, 1);
-  assert.equal(events[0].windRadii.length, 0);
-  assert.deepEqual(events[0].conePolygon, []);
-});
-
-test('omits unstamped previous wind or cone geometry when the product fetch fails', () => {
-  const previous = assembleImdSnapshot({
-    now: CYCLONE_NOW,
-    productResults: {
-      cycloneTrack: { status: 'ok', records: parseCycloneTrackPayload(fixture('imd-cyclone-track.json')) },
-      cycloneWind: { status: 'ok', records: [] },
-      cycloneCou: { status: 'ok', records: [] },
-      portWarning: { status: 'ok', records: [] },
-      seaBulletin: { status: 'ok', records: [] },
-      coastalBulletin: { status: 'ok', records: [] },
-    },
-  });
-  const snapshot = assembleImdSnapshot({
-    now: CYCLONE_NOW,
-    previous: {
-      ...previous,
-      windRadii: parseCycloneWindPayload(fixture('imd-cyclone-wind.json')),
-      cones: parseCycloneCouPayload(fixture('imd-cyclone-cou.json')),
-    },
-    productResults: {
-      cycloneTrack: { status: 'ok', records: parseCycloneTrackPayload(fixture('imd-cyclone-track.json')) },
-      cycloneWind: { status: 'failed', reason: 'HTTP 500', records: [] },
-      cycloneCou: { status: 'failed', reason: 'HTTP 500', records: [] },
-      portWarning: { status: 'ok', records: [] },
-      seaBulletin: { status: 'ok', records: [] },
-      coastalBulletin: { status: 'ok', records: [] },
-    },
-  });
-  assert.equal(snapshot.windRadii.length, 0);
-  assert.equal(snapshot.cones.length, 0);
-  assert.equal(snapshot.products.cycloneWind.carried, false);
-  assert.equal(snapshot.products.cycloneCou.carried, false);
-});
-
-test('requires valid IMD API key and account credentials', async () => {
-  assert.equal(imdLiveFetchEnabled({}), false);
-  assert.equal(imdLiveFetchEnabled({ IMD_API_KEY: 'secret' }), false);
-  assert.equal(imdLiveFetchEnabled(LIVE_ENV), true);
-  assert.equal(imdLiveFetchEnabled({ IMD_API_KEY: 'bad\r\nkey' }), false);
-  assert.equal(imdLiveFetchEnabled({ IMD_API_KEY: 'bad\u2028key' }), false);
-  const requested = [];
-  const snapshot = await fetchImdCycloneMarine({
-    env: {},
-    fetchFn: async (url) => {
-      requested.push(url);
-      throw new Error('a missing API key must not make an IMD request');
-    },
-    now: NOW,
-  });
-  assert.equal(snapshot.coverageState, 'disabled');
-  assert.equal(snapshot.skipReason, 'IMD_API_KEY_MISSING');
-  assert.equal(snapshot.rights.status, 'reviewed');
-  assert.deepEqual(requested, []);
-  assert.equal(declareImdRecords(snapshot), 0);
-  assert.equal(validateImdEnvelope(snapshot), true);
-  assert.equal(snapshot.products.fishermenWarning.reason, 'INDEXED_WITHOUT_FIELD_REFERENCE');
-  const meta = imdAfterPublish(snapshot);
-  assert.equal(meta.freshnessMetaPatch.sourceState, 'unavailable');
-  assert.notEqual(snapshot.coverageState, 'ok');
-
-  const invalidKey = await fetchImdCycloneMarine({
-    env: { IMD_API_KEY: 'bad\r\nkey' },
-    fetchFn: async (url) => {
-      requested.push(url);
-      throw new Error('an invalid API key must not make an IMD request');
-    },
-    now: NOW,
-  });
-  assert.equal(invalidKey.coverageState, 'disabled');
-  assert.equal(invalidKey.skipReason, 'IMD_API_KEY_INVALID');
-  assert.deepEqual(requested, []);
-
-  const missingEmail = await fetchImdCycloneMarine({
-    env: { IMD_API_KEY: 'test-key' },
-    fetchFn: async (url) => {
-      requested.push(url);
-      throw new Error('a missing email must not make an IMD request');
-    },
-    now: NOW,
-  });
-  assert.equal(missingEmail.coverageState, 'disabled');
-  assert.equal(missingEmail.skipReason, 'IMD_API_EMAIL_MISSING');
-  assert.deepEqual(requested, []);
-
-  const invalidEmail = await fetchImdCycloneMarine({
-    env: { ...LIVE_ENV, IMD_API_EMAIL: 'bad\r\nemail' },
-    fetchFn: async (url) => {
-      requested.push(url);
-      throw new Error('an invalid email must not make an IMD request');
-    },
-    now: NOW,
-  });
-  assert.equal(invalidEmail.coverageState, 'disabled');
-  assert.equal(invalidEmail.skipReason, 'IMD_API_EMAIL_INVALID');
-  assert.deepEqual(requested, []);
-
-  const missingPassword = await fetchImdCycloneMarine({
-    env: { IMD_API_KEY: 'test-key', IMD_API_EMAIL: 'operator@example.com' },
-    fetchFn: async (url) => {
-      requested.push(url);
-      throw new Error('a missing password must not make an IMD request');
-    },
-    now: NOW,
-  });
-  assert.equal(missingPassword.coverageState, 'disabled');
-  assert.equal(missingPassword.skipReason, 'IMD_API_PASSWORD_MISSING');
-  assert.deepEqual(requested, []);
-
-  const invalidPassword = await fetchImdCycloneMarine({
-    env: { ...LIVE_ENV, IMD_API_PASSWORD: 'bad\r\npassword' },
-    fetchFn: async (url) => {
-      requested.push(url);
-      throw new Error('an invalid password must not make an IMD request');
-    },
-    now: NOW,
-  });
-  assert.equal(invalidPassword.coverageState, 'disabled');
-  assert.equal(invalidPassword.skipReason, 'IMD_API_PASSWORD_INVALID');
-  assert.deepEqual(requested, []);
-
-  const invalidHeader = await fetchImdCycloneMarine({
-    env: {
-      ...LIVE_ENV,
-      IMD_API_KEY_HEADER: 'bad header',
-    },
-    fetchFn: async (url) => {
-      requested.push(url);
-      throw new Error('an invalid API key header must not make an IMD request');
-    },
-    now: NOW,
-  });
-  assert.equal(invalidHeader.coverageState, 'disabled');
-  assert.equal(invalidHeader.skipReason, 'IMD_API_KEY_HEADER_INVALID');
-  assert.deepEqual(requested, []);
-});
-
-test('documents the complete IMD Railway credential setup', () => {
-  const docs = readFileSync(join(root, 'docs/natural-disasters.mdx'), 'utf8');
-  const railwayServices = JSON.parse(readFileSync(join(root, 'scripts/railway-services.json'), 'utf8'));
-  const railwayService = railwayServices.find((entry) => entry.service === 'seed-imd-cyclone-marine');
-  assert.ok(railwayService, 'missing IMD Railway service registry entry');
-  const heading = '## Configure the IMD Railway seeder';
-  const start = docs.indexOf(heading);
-  assert.notEqual(start, -1, `missing ${heading}`);
-  const nextHeading = docs.indexOf('\n## ', start + heading.length);
-  const setup = docs.slice(start, nextHeading === -1 ? docs.length : nextHeading);
-  const setupText = setup.replace(/\s+/g, ' ');
-
-  assert.ok(setup.includes(railwayService.service));
-  for (const name of railwayService.requiredEnv.filter((entry) => entry.startsWith('IMD_'))) {
-    assert.ok(setup.includes(name), `missing documented Railway variable ${name}`);
+function parsedResults(overrides = {}) {
+  const results = {};
+  for (const { id, page } of ALL_PAGES) {
+    results[id] ??= {};
+    results[id][page.key] = overrides[id]?.[page.key]
+      ?? { status: 'parsed', bulletin: parseImdBulletinHtml(pageFixture(id, page.key), id) };
   }
-  assert.ok(railwayService.requiredEnv.includes('PROXY_URL'));
-  assert.ok(setup.includes('PROXY_URL'), 'missing documented Railway proxy variable');
-  assert.ok(setup.includes(railwayService.cronSchedule));
-  assert.match(setup, /https:\/\/api\.imd\.gov\.in\/public\/IMD_API_Portal_User_Guide\.pdf/);
-  assert.match(setup, /static public IP/i);
-  assert.match(setup, /three static outbound IPv4 addresses/i);
-  assert.match(setupText, /maximum of 2 Development keys and 2 Production keys/i);
-  assert.match(setupText, /balances traffic across them/i);
-  assert.match(setupText, /Application code cannot select the Railway NAT address.*or reliably probe it in advance/i);
-  assert.match(setupText, /native three-IP HA egress cannot satisfy the documented IMD contract/i);
-  assert.match(setupText, /requires deterministic single-IP external egress/i);
-  assert.match(setupText, /routes the JWT request and every IMD product request through this proxy/i);
-  assert.match(setupText, /does not fall back to direct Railway egress/i);
-  assert.match(setupText, /government sites as restricted/i);
-  assert.match(setupText, /returns a proxy CONNECT HTTP 403 before a request reaches IMD/i);
-  assert.match(setupText, /Do not cycle keys on HTTP 403/i);
-  assert.doesNotMatch(setupText, /written confirmation from IMD.*all three Railway addresses are authorized/i);
-  assert.match(setup, /HTTP 403/i);
-  assert.ok(setup.includes(IMD_OAUTH_TOKEN_URL));
-  assert.match(setup, /Do\s+not store the JWT/i);
-  assert.match(setup, /stale: false/);
-  assert.match(setup, /generatedAt.*later than the deployment time/is);
-  assert.match(setup, /imdCycloneMarine.*problems/is);
-  assert.doesNotMatch(setup, /IMD_API_TOKEN=/);
+  return results;
+}
+
+function parseCode(html, productId) {
+  try {
+    parseImdBulletinHtml(html, productId);
+  } catch (err) {
+    return err.code;
+  }
+  return 'PARSED';
+}
+
+function bulletinLinks(indexHtml) {
+  const base = 'https://mausam.imd.gov.in/responsive/marine_forecast.php';
+  return [...indexHtml.matchAll(/href="([^"]*(?:seaarea|coastal)_bulletin_[a-z]+\.php[^"]*)"/g)]
+    .map((match) => new URL(match[1], base).href);
+}
+
+test('the page registry matches the bulletin links on the captured IMD index pages', () => {
+  const links = new Set([
+    ...bulletinLinks(fixture('marine-forecast-index.html')),
+    ...bulletinLinks(fixture('coastal-forecast-index.html')),
+  ]);
+  const registered = ALL_PAGES.map(({ page }) => page.url);
+  for (const url of registered) assert.ok(links.has(url), `${url} is not linked from an IMD index page`);
+  const navtex = [...links].filter((url) => url.includes('coastal_bulletin_navtex.php'));
+  assert.equal(navtex.length, 7, 'NAVTEX copies are linked and deliberately excluded');
+  assert.deepEqual([...links].filter((url) => !navtex.includes(url)).sort(), [...registered].sort());
 });
 
-test('mints a fresh IMD JWT before each product batch', async (t) => {
-  const warn = t.mock.method(console, 'warn', () => {});
-  let minted = 0;
-  const productTokens = [];
-  const fetchFn = async (url, init = {}) => {
-    if (String(url) === IMD_OAUTH_TOKEN_URL) {
-      minted += 1;
-      assert.equal(init.method, 'POST');
-      assert.equal(init.headers.Accept, 'application/json');
-      assert.equal(init.headers['Content-Type'], 'application/json');
-      assert.equal(init.headers['User-Agent'], 'worldmonitor-imd-test');
-      assert.equal(init.redirect, 'error');
-      assert.deepEqual(JSON.parse(init.body), {
-        email: 'operator@example.com',
-        password: 'railway-secret',
-      });
-      return jsonResponse({
-        access_token: `fresh-token-${minted}`,
-        token_type: minted === 1 ? 'Bearer' : 'bEaReR',
-        expires_in: 3600,
-      });
-    }
-    productTokens.push(init.headers.Authorization);
-    return jsonResponse([]);
+test('parses the header, validity window, and areas of every captured bulletin page', () => {
+  const expected = {
+    'seaBulletin/bay-of-bengal': ['ACWC KOLKATA', '2026-10-16T08:02:00.000Z', '2026-10-16T09:00:00.000Z', '2026-10-16T21:00:00.000Z', 8],
+    'seaBulletin/arabian-sea': ['ACWC MUMBAI', '2026-10-16T09:17:00.000Z', '2026-10-16T09:00:00.000Z', '2026-10-16T21:00:00.000Z', 8],
+    'coastalBulletin/west-bengal-andaman-nicobar': ['ACWC KOLKATA', '2026-10-16T08:03:00.000Z', '2026-10-16T09:00:00.000Z', '2026-10-16T21:00:00.000Z', 2],
+    'coastalBulletin/kerala-karnataka-lakshadweep': ['CWC THIRUVANANTHAPURAM', '2026-10-16T06:16:00.000Z', '2026-10-16T10:00:00.000Z', '2026-10-16T22:00:00.000Z', 4],
+    'coastalBulletin/gujarat': ['CWC AHMEDABAD', '2026-10-16T07:10:00.000Z', '2026-10-16T10:00:00.000Z', '2026-10-16T22:00:00.000Z', 2],
+    'coastalBulletin/maharashtra-goa': ['ACWC MUMBAI', '2026-10-16T08:59:00.000Z', '2026-10-16T10:00:00.000Z', '2026-10-16T22:00:00.000Z', 2],
+    'coastalBulletin/odisha': ['CWC BHUBANESWAR', '2026-10-16T07:44:00.000Z', '2026-10-16T10:00:00.000Z', '2026-10-16T22:00:00.000Z', 2],
+    'coastalBulletin/tamil-nadu': ['ACWC CHENNAI', '2026-10-16T09:32:00.000Z', '2026-10-16T10:00:00.000Z', '2026-10-16T22:00:00.000Z', 2],
+    'coastalBulletin/andhra-pradesh': ['CWC VISAKHAPATANAM PORT', '2026-10-16T08:01:00.000Z', '2026-10-16T09:00:00.000Z', '2026-10-16T21:00:00.000Z', 2],
   };
-  await fetchImdCycloneMarine({ env: LIVE_ENV, fetchFn, now: NOW, userAgent: 'worldmonitor-imd-test' });
-  await fetchImdCycloneMarine({ env: LIVE_ENV, fetchFn, now: NOW + 1, userAgent: 'worldmonitor-imd-test' });
-
-  assert.equal(minted, 2);
-  assert.equal(warn.mock.callCount(), 0);
-  assert.deepEqual(new Set(productTokens), new Set([
-    'Bearer fresh-token-1',
-    'Bearer fresh-token-2',
-  ]));
+  assert.equal(Object.keys(expected).length, ALL_PAGES.length);
+  for (const { id, page } of ALL_PAGES) {
+    const bulletin = parseImdBulletinHtml(pageFixture(id, page.key), id);
+    const [issuedBy, issuedAt, validFrom, validUntil, areaCount] = expected[`${id}/${page.key}`];
+    assert.equal(bulletin.issuedBy, issuedBy, page.key);
+    assert.equal(new Date(bulletin.issuedAt).toISOString(), issuedAt, page.key);
+    assert.equal(new Date(bulletin.validFrom).toISOString(), validFrom, page.key);
+    assert.equal(new Date(bulletin.validUntil).toISOString(), validUntil, page.key);
+    assert.equal(bulletin.validityHours, 12, page.key);
+    assert.equal(bulletin.areas.length, areaCount, page.key);
+  }
 });
 
-test('routes IMD authentication and every product through PROXY_URL', async () => {
-  const proxyUrl = 'isp.decodo.test:10001:proxy-user:proxy-secret';
-  const proxyRequests = [];
-  const fetchFn = createImdProxyFetch(proxyUrl, {
-    proxyFetchFn: async (url, proxyConfig, options) => {
-      proxyRequests.push({ url: String(url), proxyConfig, options });
-      if (String(url) === IMD_OAUTH_TOKEN_URL) {
-        return proxyJsonResponse({ access_token: 'proxy-token', token_type: 'Bearer', expires_in: 3600 });
-      }
-      if (String(url).endsWith('/cyclone_cou')) {
-        return proxyJsonResponse(fixture('imd-cyclone-cou.json'));
-      }
-      return proxyJsonResponse([]);
-    },
+test('keeps sea-area wind, weather, visibility, sea state and the bulletin storm-warning line', () => {
+  const snapshot = assembleImdSnapshot({ pageResults: parsedResults(), now: NOW });
+  const southWestBay = snapshot.seaBulletins.find((row) => row.area === 'South West Bay');
+  assert.deepEqual({
+    id: southWestBay.id,
+    page: southWestBay.page,
+    wind: southWestBay.wind,
+    weather: southWestBay.weather,
+    visibility: southWestBay.visibility,
+    seaCondition: southWestBay.seaCondition,
+    tttWarning: southWestBay.tttWarning,
+    hasTttWarning: southWestBay.hasTttWarning,
+    synopticSituation: southWestBay.synopticSituation,
+    sourceUrl: southWestBay.sourceUrl,
+  }, {
+    id: 'imd-seaBulletin-bay-of-bengal-south-west-bay-2026101609',
+    page: 'bay-of-bengal',
+    wind: 'South to Southwesterly, 10 - 15 kts gusting 20 kts',
+    weather: 'Fairly widespread rain or thundershowers with isolated heavy rain',
+    visibility: 'Moderate becoming Poor in heavy rain/thundershower',
+    seaCondition: 'Smooth to Slight occasionally Moderate',
+    tttWarning: 'No Storm Warning.',
+    hasTttWarning: false,
+    synopticSituation: 'Weather seasonal over Bay of Bengal and Andaman sea.',
+    sourceUrl: 'https://mausam.imd.gov.in/Forecast/seaarea_bulletin_new.php?id=1',
   });
-  const snapshot = await fetchImdCycloneMarine({
-    env: LIVE_ENV,
-    fetchFn,
+  const arabian = snapshot.seaBulletins.filter((row) => row.page === 'arabian-sea');
+  assert.equal(arabian.length, 8);
+  assert.ok(arabian.every((row) => row.tttWarning === 'NIL' && row.hasTttWarning === false));
+  assert.match(arabian[0].synopticSituation, /^The upper air cyclonic circulation over southeast Arabian Sea/);
+  assert.ok(snapshot.records.every((row) => Array.isArray(row.centroid)), 'every captured area has a gazetteer centroid');
+});
+
+test('reads coastal port signals and storm-surge lines without treating NIL as a warning', () => {
+  const snapshot = assembleImdSnapshot({ pageResults: parsedResults(), now: NOW });
+  const karnataka = snapshot.coastalBulletins.find((row) => row.area === 'Karnataka coast');
+  assert.equal(karnataka.portSignal, 'NIL AT ALL PORTS');
+  assert.equal(karnataka.hasPortSignal, false);
+  assert.equal(karnataka.stormSurgeWarning, 'NIL');
+  assert.equal(karnataka.hasStormSurgeWarning, false);
+  assert.ok(snapshot.coastalBulletins.every((row) => row.hasPortSignal === false));
+
+  const andaman = snapshot.coastalBulletins.find((row) => row.area === 'Andaman area');
+  assert.equal(andaman.hasStormSurgeWarning, true);
+  assert.match(andaman.stormSurgeWarning, /^SWELL WAVES IN THE RANGE OF 15\.0 - 19\.0 SEC PERIOD/);
+  const surgeAlerts = snapshot.marineBulletins.filter((row) => row.severity !== 'Minor');
+  assert.deepEqual(surgeAlerts.map((row) => [row.areaDesc, row.severity]), [['Andaman area', 'Moderate']]);
+  assert.match(surgeAlerts[0].headline, /^Andaman area: Storm surge\/tidal: SWELL WAVES/);
+  assert.match(surgeAlerts[0].description.slice(0, 300), /^Storm surge\/tidal: SWELL WAVES/, 'the warning leads the popup text');
+  assert.equal(snapshot.products.coastalBulletin.warningCount, 1);
+  assert.equal(snapshot.products.seaBulletin.warningCount, 0);
+});
+
+test('a storm warning or port signal on the page becomes a severe marine alert', () => {
+  const sea = pageFixture('seaBulletin', 'bay-of-bengal')
+    .replace('No Storm Warning.', 'Deep Depression over southwest Bay of Bengal. Storm warning for all areas.');
+  const coastal = pageFixture('coastalBulletin', 'andhra-pradesh')
+    .replace('NIL AT ALL PORTS.', 'DC-III HOISTED AT VISAKHAPATNAM AND KAKINADA PORTS.');
+  const snapshot = assembleImdSnapshot({
     now: NOW,
+    pageResults: parsedResults({
+      seaBulletin: { 'bay-of-bengal': { status: 'parsed', bulletin: parseImdBulletinHtml(sea, 'seaBulletin') } },
+      coastalBulletin: { 'andhra-pradesh': { status: 'parsed', bulletin: parseImdBulletinHtml(coastal, 'coastalBulletin') } },
+    }),
   });
-
-  assert.equal(proxyRequests.length, 7);
-  assert.ok(proxyRequests.every(({ proxyConfig }) => (
-    proxyConfig.host === 'isp.decodo.test'
-    && proxyConfig.port === 10001
-    && proxyConfig.auth === 'proxy-user:proxy-secret'
-    && proxyConfig.tls === true
-  )));
-  assert.equal(proxyRequests[0].options.method, 'POST');
-  assert.deepEqual(JSON.parse(proxyRequests[0].options.body), {
-    email: 'operator@example.com',
-    password: 'railway-secret',
-  });
-  assert.ok(proxyRequests.slice(1).every(({ options }) => options.headers.Authorization === 'Bearer proxy-token'));
-  assert.equal(snapshot.coverageState, 'ok');
+  const storm = snapshot.marineBulletins.filter((row) => row.headline.includes('Storm warning for all areas'));
+  assert.equal(storm.length, 8);
+  assert.ok(storm.every((row) => row.severity === 'Severe' && row.event === 'IMD Sea Area Bulletin'));
+  const port = snapshot.marineBulletins.filter((row) => row.description.includes('Port signal: DC-III'));
+  assert.deepEqual(port.map((row) => [row.areaDesc, row.severity]), [['North Andhra coast', 'Severe']]);
+  assert.equal(port[0].headline, 'North Andhra coast: Port signal: DC-III HOISTED AT VISAKHAPATNAM AND KAKINADA PORTS.');
+  assert.match(port[0].description, /Weather: /, 'a warning-led alert keeps its weather text');
+  assert.equal(snapshot.products.seaBulletin.warningCount, 8);
+  assert.equal(snapshot.products.coastalBulletin.warningCount, 2);
 });
 
-test('fails closed without a required or valid IMD proxy', async () => {
-  assert.throws(() => createImdProxyFetch(''), /IMD_PROXY_URL_MISSING/);
-  assert.throws(() => createImdProxyFetch('not-a-proxy'), /IMD_PROXY_URL_INVALID/);
-  assert.throws(
-    () => createImdProxyFetch('http://proxy-user:proxy-secret@isp.decodo.test:10001'),
-    /IMD_PROXY_URL_INVALID/,
+test('every active warning is named inside the popup text, even behind a long one', () => {
+  const longSignal = `DC-III HOISTED AT ${'PARADIP, GOPALPUR, '.repeat(20)}PURI.`;
+  const coastal = pageFixture('coastalBulletin', 'west-bengal-andaman-nicobar').replace('NIL.', longSignal);
+  const snapshot = assembleImdSnapshot({
+    now: NOW,
+    pageResults: parsedResults({
+      coastalBulletin: { 'west-bengal-andaman-nicobar': { status: 'parsed', bulletin: parseImdBulletinHtml(coastal, 'coastalBulletin') } },
+    }),
+  });
+  const andaman = snapshot.marineBulletins.find((row) => row.areaDesc === 'Andaman area');
+  assert.ok(longSignal.length > 300);
+  assert.equal(andaman.severity, 'Severe');
+  assert.match(andaman.headline, /^Andaman area: Port signal: DC-III/);
+  assert.match(andaman.description.slice(0, 300), /^Active: Port signal, Storm surge\/tidal · Port signal: DC-III/);
+  assert.match(andaman.description, /Storm surge\/tidal: SWELL WAVES/);
+});
+
+test('isNilText accepts the NIL spellings IMD prints and nothing else', () => {
+  for (const text of ['NIL', 'NIL.', 'NIL AT ALL PORTS', 'NIL AT ALL PORTS.', 'No Storm Warning.', ' nil ', '']) {
+    assert.equal(isNilText(text), true, text);
+  }
+  for (const text of ['DC-III', 'Nilgiris coast warning', 'No storm warning for north areas; warning for south', 'Cyclone']) {
+    assert.equal(isNilText(text), false, text);
+  }
+});
+
+test('a changed page layout fails closed with the first structural check it breaks', () => {
+  const sea = pageFixture('seaBulletin', 'bay-of-bengal');
+  const coastal = pageFixture('coastalBulletin', 'kerala-karnataka-lakshadweep');
+  const cases = [
+    ['valid bulletin', sea, 'seaBulletin', 'PARSED'],
+    ['wrong product title', coastal, 'seaBulletin', 'BULLETIN_TITLE_MISSING'],
+    ['no validity line', sea.replace('Bulletin Valid for 12 hrs', 'Bulletin issued'), 'seaBulletin', 'BULLETIN_VALIDITY_MISSING'],
+    ['inconsistent window', sea.replace('to 21 UTC', 'to 22 UTC'), 'seaBulletin', 'BULLETIN_VALIDITY_INCONSISTENT'],
+    ['impossible date', sea.replaceAll('UTC of 2026-10-16', 'UTC of 2026-02-30'), 'seaBulletin', 'BULLETIN_VALIDITY_INCONSISTENT'],
+    ['no issue time', sea.replace('13:32 IST of 2026-10-16', 'pending'), 'seaBulletin', 'BULLETIN_ISSUE_TIME_MISSING'],
+    ['no storm warning row', sea.replace('TTT Warning', 'Remarks'), 'seaBulletin', 'BULLETIN_STORM_WARNING_MISSING'],
+    ['no synoptic row', sea.replace('Synoptic Situation', 'Outlook'), 'seaBulletin', 'BULLETIN_SYNOPTIC_MISSING'],
+    ['no issuing office', sea.replace('ACWC KOLKATA', 'Regional Centre'), 'seaBulletin', 'BULLETIN_OFFICE_MISSING'],
+    ['area without wind', sea.replace('<td class="td-1">Wind</td>', '<td class="td-1">Breeze</td>'), 'seaBulletin', 'BULLETIN_AREA_INCOMPLETE'],
+    ['coastal area without port signal', coastal.replace('Port Signal', 'Port Note'), 'coastalBulletin', 'BULLETIN_AREA_INCOMPLETE'],
+    ['nested table', sea.replace('<td >Smooth</td>', '<td ><table><tr><td>x</td></tr></table></td>'), 'seaBulletin', 'BULLETIN_NESTED_TABLE'],
+    ['no tables', sea.replace(/<table[\s\S]*<\/table>/, ''), 'seaBulletin', 'BULLETIN_AREAS_MISSING'],
+    ['oversized field', sea.replace('<td >Smooth</td>', `<td >${'x'.repeat(4_001)}</td>`), 'seaBulletin', 'BULLETIN_FIELD_TOO_LONG'],
+    ['empty body', '', 'seaBulletin', 'BULLETIN_AREAS_MISSING'],
+  ];
+  for (const [label, html, productId, code] of cases) {
+    assert.equal(parseCode(html, productId), code, label);
+  }
+});
+
+test('decodes entities and ignores commented-out markup inside the bulletin', () => {
+  const html = pageFixture('seaBulletin', 'bay-of-bengal')
+    .replace('<td >Smooth</td>', '<td >Smooth&nbsp;&amp; calm&#46;</td>')
+    .replace('<!-- Layer -->', '<!-- <table class="tr"><caption>Old Area</caption><tr><td>Wind</td><td>x</td></tr></table> -->');
+  const bulletin = parseImdBulletinHtml(html, 'seaBulletin');
+  assert.equal(bulletin.areas.find((area) => area.name === 'South East Bay').seaCondition, 'Smooth & calm.');
+  assert.equal(bulletin.areas.some((area) => area.name === 'Old Area'), false);
+  assert.equal(bulletin.areas.length, 8);
+});
+
+test('strips comments and script/style blocks completely, including nested and split openers', () => {
+  const cases = [
+    ['plain comment', 'a<!-- x -->b', 'ab'],
+    ['script block', 'a<SCRIPT type="x">alert(1)</script>b', 'ab'],
+    ['style block', 'a<style>td{}</STYLE>b', 'ab'],
+    ['nested script opener', 'a<scr<script>x</script>ipt>alert(1)</script>b', 'ab'],
+    ['nested comment opener reopens an unterminated comment', 'a<!<!---->--b', 'a'],
+    ['comment rebuilt around a script', 'a<!-<script></script>- x -->b', 'ab'],
+    ['unterminated comment drops the rest', 'a<!-- never closed <table>', 'a'],
+    ['unterminated script drops the rest', 'a<script>never closed', 'a'],
+    ['tag-name boundary is respected', 'a<scripts>b</scripts>', 'a<scripts>b</scripts>'],
+    ['non-ASCII text keeps its indexes', 'İ<!-- x -->İ', 'İİ'],
+  ];
+  for (const [label, input, expected] of cases) {
+    const out = stripNonContentBlocks(input);
+    assert.equal(out, expected, label);
+    assert.doesNotMatch(out, /<!--|<script\b|<style\b/i, label);
+  }
+  assert.equal(stripNonContentBlocks(null), '');
+});
+
+test('an expired page publishes no records but still proves IMD replied', () => {
+  const snapshot = assembleImdSnapshot({ pageResults: parsedResults(), now: AFTER_EXPIRY });
+  assert.equal(snapshot.coverageState, 'ok');
+  assert.equal(snapshot.seaBulletins.length + snapshot.coastalBulletins.length, 0);
+  assert.equal(snapshot.products.seaBulletin.pages['bay-of-bengal'].status, 'expired');
+  assert.equal(snapshot.products.coastalBulletin.emptyMeans, 'no-current-bulletin');
+  assert.equal(shouldActivateImdSnapshot(snapshot), true);
+  assert.equal(validateImdEnvelope(snapshot), true);
+  assert.deepEqual(imdContentMeta(snapshot, AFTER_EXPIRY), {
+    newestItemAt: Date.parse('2026-10-16T09:32:00Z'),
+    oldestItemAt: Date.parse('2026-10-16T06:16:00Z'),
+  });
+});
+
+test('rejects a future-dated bulletin instead of publishing it as current', () => {
+  const early = Date.parse('2026-10-15T20:00:00Z');
+  const snapshot = assembleImdSnapshot({ pageResults: parsedResults(), now: early });
+  assert.equal(snapshot.coverageState, 'unavailable');
+  assert.deepEqual(snapshot.products.seaBulletin.pages['bay-of-bengal'], { status: 'failed', reason: 'BULLETIN_FUTURE_DATED' });
+  assert.equal(snapshot.records.length, 0);
+  assert.equal(shouldActivateImdSnapshot(snapshot), false);
+
+  const previous = assembleImdSnapshot({ pageResults: parsedResults(), now: NOW });
+  const misdated = pageFixture('seaBulletin', 'bay-of-bengal').replaceAll('UTC of 2026-10-16', 'UTC of 2026-10-18');
+  const carried = assembleImdSnapshot({
+    previous,
+    now: NOW + HOUR,
+    pageResults: parsedResults({
+      seaBulletin: { 'bay-of-bengal': { status: 'parsed', bulletin: parseImdBulletinHtml(misdated, 'seaBulletin') } },
+    }),
+  });
+  assert.deepEqual(carried.products.seaBulletin.pages['bay-of-bengal'], { status: 'failed', reason: 'BULLETIN_FUTURE_DATED' });
+  assert.equal(carried.products.seaBulletin.carried, true);
+  assert.deepEqual(
+    carried.seaBulletins.filter((row) => row.page === 'bay-of-bengal'),
+    previous.seaBulletins.filter((row) => row.page === 'bay-of-bengal'),
+    'a misdated page keeps its still-valid last-good bulletin',
   );
 });
 
-test('redacts proxy credentials from IMD transport failures', async () => {
-  const proxySecret = 'proxy-user:proxy-secret';
-  const fetchFn = createImdProxyFetch(`isp.decodo.test:10001:${proxySecret}`, {
-    proxyFetchFn: async () => {
-      throw new Error(`proxy authentication failed for ${proxySecret}`);
-    },
+test('a failed page carries only its own last-good records', () => {
+  const previous = assembleImdSnapshot({ pageResults: parsedResults(), now: NOW });
+  const later = NOW + HOUR;
+  const snapshot = assembleImdSnapshot({
+    previous,
+    now: later,
+    pageResults: parsedResults({ coastalBulletin: { odisha: { status: 'failed', reason: 'BULLETIN_AREA_INCOMPLETE' } } }),
   });
-  const snapshot = await fetchImdCycloneMarine({
-    env: LIVE_ENV,
-    fetchFn,
-    now: NOW,
+  assert.equal(snapshot.coverageState, 'degraded');
+  assert.deepEqual(snapshot.failedProducts, ['coastalBulletin']);
+  assert.equal(snapshot.products.coastalBulletin.status, 'partial');
+  assert.equal(snapshot.products.coastalBulletin.carried, true);
+  assert.deepEqual(snapshot.products.coastalBulletin.pages.odisha, { status: 'failed', reason: 'BULLETIN_AREA_INCOMPLETE' });
+  assert.equal(snapshot.products.seaBulletin.status, 'ok');
+  assert.deepEqual(
+    snapshot.coastalBulletins.filter((row) => row.page === 'odisha'),
+    previous.coastalBulletins.filter((row) => row.page === 'odisha'),
+  );
+  assert.equal(snapshot.coastalBulletins.length, previous.coastalBulletins.length);
+  assert.deepEqual(imdAfterPublish(snapshot).freshnessMetaPatch, {
+    sourceState: 'degraded',
+    errorCode: 'IMD_PRODUCT_PARTIAL',
+    failedProducts: ['coastalBulletin'],
+    coverageState: 'degraded',
   });
 
-  assert.equal(snapshot.coverageState, 'unavailable');
-  assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_AUTH_FAILED');
-  assert.doesNotMatch(JSON.stringify(snapshot), /proxy-secret/);
+  const expiredCarry = assembleImdSnapshot({
+    previous,
+    now: AFTER_EXPIRY,
+    pageResults: parsedResults({ coastalBulletin: { odisha: { status: 'failed', reason: 'HTTP 503' } } }),
+  });
+  assert.equal(expiredCarry.coastalBulletins.length, 0, 'last-good past its validity window is not carried');
+  assert.equal(expiredCarry.products.coastalBulletin.carried, false);
 });
 
-test('logs sanitized IMD auth transport context without changing the failure snapshot', async (t) => {
-  const logs = [];
-  t.mock.method(console, 'warn', (line) => logs.push(JSON.parse(line)));
-  const failure = Object.assign(new Error('https://user:secret@proxy.test private response'), {
-    cause: Object.assign(new Error('Bearer secret-token'), { code: 'ERR_TLS_CERT_ALTNAME_INVALID' }),
-    proxyFailure: { stage: 'target_tls', proxyConnectStatus: 200, httpStatus: null },
-  });
-  let requests = 0;
-  const snapshot = await fetchImdCycloneMarine({
-    env: LIVE_ENV,
-    fetchFn: createImdProxyFetch('proxy.test:443:user:password', {
-      proxyFetchFn: async (url, config, options) => {
-        requests++;
-        assert.equal(url, IMD_OAUTH_TOKEN_URL);
-        assert.equal(options.timeoutMs, 15_000);
-        assert.ok(options.signal instanceof AbortSignal);
-        throw failure;
-      },
-    }),
-    now: NOW,
-  });
-  assert.deepEqual(logs, [{
-    event: 'imd_auth_failure', code: 'ERR_TLS_CERT_ALTNAME_INVALID',
-    stage: 'target_tls', proxyConnectStatus: 200,
-  }]);
-  const baseline = await fetchImdCycloneMarine({
-    env: LIVE_ENV, now: NOW, fetchFn: async () => { throw new Error('fetch failed'); },
-  });
-  assert.deepEqual(snapshot, baseline);
-  assert.equal(requests, 1);
-  assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_AUTH_FAILED');
-  assert.equal(snapshot.products.cycloneTrack.requestCount, 0);
-  assert.equal(snapshot.generatedAt, NOW);
+test('a run where every page fails is unavailable and does not activate, even with carried records', () => {
+  const failed = {};
+  for (const { id, page } of ALL_PAGES) {
+    failed[id] ??= {};
+    failed[id][page.key] = { status: 'failed', reason: 'IMD_FETCH_FAILED' };
+  }
+  const previous = assembleImdSnapshot({ pageResults: parsedResults(), now: NOW });
+  const snapshot = assembleImdSnapshot({ pageResults: failed, previous, now: NOW + HOUR });
+  assert.equal(snapshot.coverageState, 'unavailable');
+  assert.equal(snapshot.records.length, previous.records.length);
   assert.equal(shouldActivateImdSnapshot(snapshot), false);
   assert.equal(imdAfterPublish(snapshot).freshnessMetaPatch.errorCode, 'IMD_PRODUCTS_UNAVAILABLE');
 });
 
-test('IMD auth diagnostics reject hostile fields and cannot change failure handling', async (t) => {
-  const logs = [];
-  t.mock.method(console, 'warn', (line) => {
-    logs.push(JSON.parse(line));
-    throw new Error('logger failed');
-  });
-  const secret = 'https://operator:password@proxy.test/?token=private';
-  const failures = [
-    Object.assign(new Error(secret), {
-      code: secret, stack: secret, body: secret, url: secret,
-      proxyFailure: { stage: secret, httpStatus: secret, proxyConnectStatus: 999, token: secret },
-    }),
-    Object.assign(new Error(secret), {
-      code: 'ECONNRESET', proxyFailure: { stage: 'response_body', httpStatus: 200, proxyConnectStatus: 407 },
-    }),
-    Object.assign(new Error(secret), {
-      code: 'ENOTFOUND', proxyFailure: { stage: 'proxy_connect', httpStatus: 403, proxyConnectStatus: 407 },
-    }),
-    Object.assign(new Error(secret), {
-      proxyFailure: { stage: 'response_body', httpStatus: 600, proxyConnectStatus: '200' },
-    }),
-  ];
-  failures[0].cause = failures[0];
-  for (const failure of failures) {
-    const snapshot = await fetchImdCycloneMarine({
-      env: LIVE_ENV, now: NOW, fetchFn: async () => { throw failure; },
-    });
-    assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_AUTH_FAILED');
-    assert.equal(shouldActivateImdSnapshot(snapshot), false);
-    assert.doesNotMatch(JSON.stringify(snapshot), /operator|password|private/);
-  }
-  assert.deepEqual(logs, [
-    { event: 'imd_auth_failure', code: 'UNKNOWN' },
-    { event: 'imd_auth_failure', code: 'ECONNRESET', stage: 'response_body', httpStatus: 200 },
-    { event: 'imd_auth_failure', code: 'ENOTFOUND', stage: 'proxy_connect', proxyConnectStatus: 407 },
-    { event: 'imd_auth_failure', code: 'UNKNOWN', stage: 'response_body' },
+test('API-only and PDF-only products are disabled with an explicit reason, not dropped', () => {
+  const snapshot = assembleImdSnapshot({ pageResults: parsedResults(), now: NOW });
+  assert.deepEqual(IMD_PRODUCT_IDS, [
+    'cycloneTrack', 'cycloneWind', 'cycloneCou', 'portWarning', 'seaBulletin', 'coastalBulletin', 'fishermenWarning',
   ]);
-});
-
-test('classifies bounded proxy responses without exposing transport details', async () => {
-  const tooLarge = Object.assign(new Error('proxy response too large'), {
-    code: 'RESPONSE_TOO_LARGE',
+  const disabled = Object.fromEntries(IMD_PRODUCT_IDS
+    .filter((id) => snapshot.products[id].status === 'disabled')
+    .map((id) => [id, snapshot.products[id].reason]));
+  assert.deepEqual(disabled, {
+    cycloneTrack: 'API_ONLY_COVERED_BY_GDACS',
+    cycloneWind: 'API_ONLY_COVERED_BY_GDACS',
+    cycloneCou: 'API_ONLY_COVERED_BY_GDACS',
+    portWarning: 'PDF_ONLY_PORT_SIGNALS_IN_COASTAL_BULLETINS',
+    fishermenWarning: 'PDF_ONLY',
   });
-  const authSnapshot = await fetchImdCycloneMarine({
-    env: LIVE_ENV,
-    fetchFn: createImdProxyFetch('proxy.test:443:user:password', {
-      proxyFetchFn: async () => { throw tooLarge; },
-    }),
-    now: NOW,
-  });
-  assert.equal(authSnapshot.products.cycloneTrack.reason, 'IMD_AUTH_RESPONSE_TOO_LARGE');
-
-  const productSnapshot = await fetchImdCycloneMarine({
-    env: LIVE_ENV,
-    fetchFn: createImdProxyFetch('proxy.test:443:user:password', {
-      proxyFetchFn: async (url) => {
-        if (String(url) === IMD_OAUTH_TOKEN_URL) {
-          return proxyJsonResponse({ access_token: 'proxy-token', token_type: 'Bearer', expires_in: 3600 });
-        }
-        throw tooLarge;
-      },
-    }),
-    now: NOW,
-  });
-  assert.equal(productSnapshot.products.cycloneTrack.reason, 'IMD_RESPONSE_TOO_LARGE');
-});
-
-test('distinguishes a proxy tunnel rejection from an IMD origin rejection', async () => {
-  const proxyRejected = Object.assign(new Error('proxy refused target'), {
-    status: 403,
-    proxyConnect: true,
-  });
-  const snapshot = await fetchImdCycloneMarine({
-    env: LIVE_ENV,
-    fetchFn: createImdProxyFetch('proxy.test:443:user:password', {
-      proxyFetchFn: async () => { throw proxyRejected; },
-    }),
-    now: NOW,
-  });
-
-  assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_PROXY_CONNECT_HTTP_403');
-});
-
-test('redacts IMD transport errors before they reach the cached public snapshot', async () => {
-  const snapshot = await fetchImdCycloneMarine({
-    env: LIVE_ENV,
-    fetchFn: async (url) => {
-      if (String(url) === IMD_OAUTH_TOKEN_URL) {
-        return jsonResponse({ access_token: 'fresh-token', token_type: 'Bearer', expires_in: 3600 });
-      }
-      throw new Error('upstream rejected key secret-imd-key');
-    },
-    now: NOW,
-  });
-
-  assert.equal(snapshot.coverageState, 'unavailable');
-  assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_FETCH_FAILED');
-  assert.doesNotMatch(JSON.stringify(snapshot), /secret-imd-key/);
-
-  const timeout = await fetchImdCycloneMarine({
-    env: LIVE_ENV,
-    fetchFn: async (url) => {
-      if (String(url) === IMD_OAUTH_TOKEN_URL) {
-        return jsonResponse({ access_token: 'fresh-token', token_type: 'Bearer', expires_in: 3600 });
-      }
-      const error = new Error('timeout details must not be public');
-      error.name = 'TimeoutError';
-      throw error;
-    },
-    now: NOW,
-  });
-  assert.equal(timeout.products.cycloneTrack.reason, 'IMD_FETCH_TIMEOUT');
-  assert.doesNotMatch(JSON.stringify(timeout), /timeout details/);
-});
-
-test('fails a batch closed when IMD authentication fails and preserves bounded last-good data', async () => {
-  const previous = assembleImdSnapshot({
-    now: CYCLONE_NOW,
-    productResults: {
-      cycloneTrack: { status: 'ok', records: parseCycloneTrackPayload(fixture('imd-cyclone-track.json')) },
-      cycloneWind: { status: 'ok', records: [] },
-      cycloneCou: { status: 'ok', records: [] },
-      portWarning: { status: 'ok', records: [] },
-      seaBulletin: { status: 'ok', records: [] },
-      coastalBulletin: { status: 'ok', records: [] },
-    },
-  });
-  let requestCount = 0;
-  const snapshot = await fetchImdCycloneMarine({
-    env: LIVE_ENV,
-    previous,
-    now: CYCLONE_NOW + 1,
-    fetchFn: async () => {
-      requestCount += 1;
-      throw new Error('login rejected operator@example.com with railway-secret');
-    },
-  });
-
-  assert.equal(requestCount, 1);
-  assert.equal(snapshot.coverageState, 'unavailable');
-  assert.ok(snapshot.cyclones.length > 0);
-  for (const id of Object.keys(IMD_PRODUCTS).filter((id) => IMD_PRODUCTS[id].schema === 'documented')) {
-    assert.equal(snapshot.products[id].status, 'failed');
-    assert.equal(snapshot.products[id].reason, 'IMD_AUTH_FAILED');
-    assert.equal(snapshot.products[id].requestCount, 0);
+  for (const key of ['cyclones', 'windRadii', 'cones', 'portWarnings', 'fishermenWarnings', 'cycloneEvents', 'portAlerts']) {
+    assert.deepEqual(snapshot[key], [], key);
   }
-  assert.equal(snapshot.products.cycloneTrack.carried, true);
-  assert.equal(shouldActivateImdSnapshot(snapshot), false, 'carried last-good data does not prove a new IMD success');
-  assert.doesNotMatch(JSON.stringify(snapshot), /operator@example\.com|railway-secret/);
+  assert.deepEqual(snapshot.rights, { ...IMD_RIGHTS_DECISION });
+  assert.equal(snapshot.rights.commercialUse, 'rti-non-commercial-only');
+  assert.equal(snapshot.sourceUrl, IMD_SEA_BULLETIN_PAGE);
 });
 
-test('rejects malformed IMD authentication responses before product requests', async () => {
-  const invalidPayloads = [
-    { access_token: '', token_type: 'Bearer', expires_in: 3600 },
-    { access_token: ' fresh-token ', token_type: 'Bearer', expires_in: 3600 },
-    { access_token: 'bad\ntoken', token_type: 'Bearer', expires_in: 3600 },
-    { access_token: 'fresh-token', token_type: 'Basic', expires_in: 3600 },
-    { access_token: 'fresh-token', token_type: 'bearer', expires_in: 0 },
-  ];
-  for (const payload of invalidPayloads) {
-    let requestCount = 0;
-    const snapshot = await fetchImdCycloneMarine({
-      env: LIVE_ENV,
-      now: NOW,
-      fetchFn: async (url) => {
-        requestCount += 1;
-        assert.equal(String(url), IMD_OAUTH_TOKEN_URL);
-        return jsonResponse(payload);
-      },
-    });
-    assert.equal(requestCount, 1);
-    assert.equal(snapshot.coverageState, 'unavailable');
-    assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_AUTH_RESPONSE_INVALID');
-    assert.equal(snapshot.products.cycloneTrack.requestCount, 0);
-  }
-});
+test('a quiet run with no warnings is ok and reports healthy', () => {
+  const snapshot = assembleImdSnapshot({ pageResults: parsedResults(), now: NOW });
+  assert.equal(snapshot.coverageState, 'ok');
+  assert.equal(snapshot.products.seaBulletin.warningCount, 0);
+  assert.deepEqual(imdAfterPublish(snapshot).freshnessMetaPatch, { sourceState: 'ok', coverageState: 'ok' });
 
-test('keeps an intentionally disabled IMD source not configured after activation', () => {
-  const { ACTIVATION_MARKERS, SEED_META, STANDALONE_KEYS, STATUS_COUNTS, classifyKey } = healthTesting;
+  const { SEED_META, STANDALONE_KEYS, STATUS_COUNTS, classifyKey } = healthTesting;
   const name = 'imdCycloneMarine';
   const dataKey = STANDALONE_KEYS[name];
   const metaKey = SEED_META[name].key;
-  const now = Date.parse('2026-08-28T00:00:00.000Z');
-  const ctx = (activated) => ({
-    keyStrens: new Map([[dataKey, 128]]),
+  const classify = (data, now) => classifyKey(name, dataKey, { allowOnDemand: true }, {
+    keyStrens: new Map([[dataKey, 4096]]),
     keyErrors: new Map(),
     keyMetaValues: new Map([[metaKey, JSON.stringify({
       fetchedAt: now,
-      recordCount: 0,
-      sourceState: 'unavailable',
-      errorCode: 'IMD_API_KEY_MISSING',
-      coverageState: 'disabled',
+      recordCount: declareImdRecords(data),
+      ...imdAfterPublish(data).freshnessMetaPatch,
+      ...imdContentMeta(data, now),
+      maxContentAgeMin: IMD_MAX_CONTENT_AGE_MIN,
     })]]),
     keyMetaErrors: new Map(),
-    activationStates: new Map([[name, activated]]),
+    activationStates: new Map([[name, true]]),
     now,
   });
-
-  assert.equal(ACTIVATION_MARKERS[name], 'seed-activated:weather:imd-cyclone-marine:v2');
-  assert.equal(classifyKey(name, dataKey, { allowOnDemand: true }, ctx(false)).status, 'NOT_CONFIGURED');
-  const afterActivation = classifyKey(name, dataKey, { allowOnDemand: true }, ctx(true));
-  assert.equal(afterActivation.status, 'NOT_CONFIGURED');
-  assert.equal(STATUS_COUNTS[afterActivation.status], 'ok');
-
-  const invalidCredentials = classifyKey(name, dataKey, { allowOnDemand: true }, {
-    ...ctx(true),
-    keyMetaValues: new Map([[metaKey, JSON.stringify({
-      fetchedAt: now,
-      recordCount: 0,
-      sourceState: 'degraded',
-      errorCode: 'IMD_PRODUCTS_UNAVAILABLE',
-      coverageState: 'unavailable',
-    })]]),
-  });
-  assert.equal(invalidCredentials.status, 'SEED_ERROR');
-  assert.equal(STATUS_COUNTS[invalidCredentials.status], 'warn');
-});
-
-test('activates IMD only after a real documented product succeeds', () => {
-  const snapshot = (productResults) => assembleImdSnapshot({ productResults, now: NOW });
-  const quietSuccess = snapshot({
-    cycloneTrack: { status: 'ok', records: [] },
-    cycloneWind: { status: 'ok', records: [] },
-    cycloneCou: { status: 'ok', records: [] },
-    portWarning: { status: 'ok', records: [] },
-    seaBulletin: { status: 'ok', records: [] },
-    coastalBulletin: { status: 'ok', records: [] },
-  });
-  assert.equal(quietSuccess.coverageState, 'ok');
-  assert.equal(shouldActivateImdSnapshot(quietSuccess), true, 'valid NIL/empty products prove IMD replied');
-
-  const partialSuccess = snapshot({
-    cycloneTrack: { status: 'ok', records: [] },
-    cycloneWind: { status: 'failed', reason: 'IMD_FETCH_FAILED', records: [] },
-    cycloneCou: { status: 'failed', reason: 'IMD_FETCH_FAILED', records: [] },
-    portWarning: { status: 'failed', reason: 'IMD_FETCH_FAILED', records: [] },
-    seaBulletin: { status: 'failed', reason: 'IMD_FETCH_FAILED', records: [] },
-    coastalBulletin: { status: 'failed', reason: 'IMD_FETCH_FAILED', records: [] },
-  });
-  assert.equal(partialSuccess.coverageState, 'degraded');
-  assert.equal(shouldActivateImdSnapshot(partialSuccess), true, 'one direct product success is enough');
-
-  const totalFailure = snapshot({
-    cycloneTrack: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
-    cycloneWind: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
-    cycloneCou: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
-    portWarning: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
-    seaBulletin: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
-    coastalBulletin: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
-  });
-  assert.equal(totalFailure.coverageState, 'unavailable');
-  assert.equal(shouldActivateImdSnapshot(totalFailure), false);
-
-  const carriedOnly = assembleImdSnapshot({
-    previous: quietSuccess,
+  const quiet = classify(snapshot, NOW);
+  assert.equal(quiet.status, 'OK');
+  assert.equal(STATUS_COUNTS[quiet.status], 'ok');
+  const between = classify(assembleImdSnapshot({ pageResults: parsedResults(), now: AFTER_EXPIRY }), AFTER_EXPIRY);
+  assert.equal(between.status, 'OK', 'a gap between bulletin windows is not an alarm');
+  const broken = classify(assembleImdSnapshot({
+    previous: snapshot,
+    pageResults: parsedResults({ seaBulletin: { 'arabian-sea': { status: 'failed', reason: 'HTTP 503' } } }),
     now: NOW,
-    productResults: {
-      cycloneTrack: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
-      cycloneWind: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
-      cycloneCou: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
-      portWarning: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
-      seaBulletin: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
-      coastalBulletin: { status: 'failed', reason: 'IMD_AUTH_FAILED', records: [] },
-    },
-  });
-  assert.equal(carriedOnly.coverageState, 'unavailable');
-  assert.equal(shouldActivateImdSnapshot(carriedOnly), false, 'carried records do not prove this attempt reached IMD');
+  }), NOW);
+  assert.notEqual(STATUS_COUNTS[broken.status], 'ok', 'an unreadable page is a real fault');
 });
 
-test('never fetches fishermen warning even when live fetch is enabled', async () => {
-  const requested = [];
+function htmlResponse(body, status = 200) {
+  return new Response(body, { status, headers: { 'Content-Type': 'text/html; charset=UTF-8' } });
+}
+
+test('the seeder fetch path reads every registered page in sequence with a User-Agent and pacing', async () => {
+  const byUrl = new Map(ALL_PAGES.map(({ id, page }) => [page.url, pageFixture(id, page.key)]));
+  const requests = [];
+  const sleeps = [];
   const fetchFn = async (url, init) => {
-    requested.push(url);
-    if (String(url) === IMD_OAUTH_TOKEN_URL) {
-      return jsonResponse({ access_token: 'fresh-token', token_type: 'Bearer', expires_in: 3600 });
-    }
-    assert.equal(init.headers['X-API-Key'], 'test-key');
-    assert.equal(init.headers.Authorization, 'Bearer fresh-token');
-    if (String(url).includes('fishermen')) {
-      throw new Error('fishermen must not be requested');
-    }
-    if (String(url).includes('cyclone_track')) return jsonResponse(fixture('imd-cyclone-track.json'));
-    if (String(url).includes('cyclone_wind')) return jsonResponse(fixture('imd-cyclone-wind.json'));
-    if (String(url).includes('cyclone_cou')) return jsonResponse(fixture('imd-cyclone-cou.json'));
-    if (String(url).includes('portwarning')) return jsonResponse(fixture('imd-port-warning.json'));
-    if (String(url).includes('seabulletin')) return jsonResponse(fixture('imd-sea-bulletin.json'));
-    if (String(url).includes('coastalbulletin')) return jsonResponse(fixture('imd-coastal-bulletin.json'));
-    return jsonResponse({ error: 'API key missing' }, 401);
+    requests.push({ url, init });
+    assert.equal(sleeps.length, requests.length - 1, 'requests are paced, never concurrent');
+    return htmlResponse(byUrl.get(url));
   };
   const snapshot = await fetchImdCycloneMarine({
-    env: LIVE_ENV,
     fetchFn,
-    now: CYCLONE_NOW,
-  });
-  assert.equal(requested.some((url) => String(url).includes('fishermen')), false);
-  assert.equal(snapshot.products.fishermenWarning.status, 'disabled');
-  assert.equal(snapshot.coverageState, 'ok');
-  assert.equal(shouldActivateImdSnapshot(snapshot), true);
-  assert.ok(snapshot.cyclones.length > 0);
-});
-
-test('rejects untrusted hosts and does not treat 401 as all-clear', async () => {
-  const snapshot = await fetchImdCycloneMarine({
-    env: LIVE_ENV,
-    fetchFn: async (url) => String(url) === IMD_OAUTH_TOKEN_URL
-      ? jsonResponse({ access_token: 'fresh-token', token_type: 'Bearer', expires_in: 3600 })
-      : jsonResponse({ error: 'API key missing' }, 401),
     now: NOW,
+    userAgent: 'WorldMonitorTest/1.0',
+    sleep: async (ms) => { sleeps.push(ms); },
   });
-  assert.equal(snapshot.coverageState, 'unavailable');
-  assert.ok(snapshot.failedProducts.includes('cycloneTrack'));
-  assert.equal(snapshot.cyclones.length, 0);
-  const meta = imdAfterPublish(snapshot);
-  assert.equal(meta.freshnessMetaPatch.sourceState, 'degraded');
+  assert.deepEqual(requests.map((request) => request.url), ALL_PAGES.map(({ page }) => page.url));
+  assert.ok(requests.every(({ init }) => init.headers['User-Agent'] === 'WorldMonitorTest/1.0'));
+  assert.ok(requests.every(({ init }) => init.redirect === 'error' && init.signal instanceof AbortSignal));
+  assert.deepEqual(sleeps, Array(ALL_PAGES.length - 1).fill(IMD_PAGE_DELAY_MS));
+  assert.equal(snapshot.coverageState, 'ok');
+  assert.equal(validateImdEnvelope(snapshot), true);
+  assert.equal(declareImdRecords(snapshot), 32);
+  assert.equal(snapshot.marineBulletins.length, 32);
+  assert.equal(shouldActivateImdSnapshot(snapshot), true);
+  assert.equal(JSON.parse(JSON.stringify(snapshot)).seaBulletins.length, 16);
 });
 
-test('seeder stays off weather:alerts:v1 and uses the dedicated canonical key', () => {
+test('transport failures fail the page with a bounded reason', async () => {
+  const page = IMD_PRODUCTS.seaBulletin.pages[0];
+  const run = (fetchFn, options = {}) => fetchImdBulletinPage('seaBulletin', page, { fetchFn, ...options });
+  assert.deepEqual(await run(async () => htmlResponse('down', 503)), { status: 'failed', reason: 'HTTP 503' });
+  assert.deepEqual(await run(async () => { throw new TypeError('fetch failed: secret-host'); }), { status: 'failed', reason: 'IMD_FETCH_FAILED' });
+  assert.deepEqual(await run(async () => { throw new DOMException('timed out', 'TimeoutError'); }), { status: 'failed', reason: 'IMD_FETCH_TIMEOUT' });
+  assert.deepEqual(
+    await run(async () => htmlResponse(pageFixture('seaBulletin', 'bay-of-bengal')), { maxBytes: 1_000 }),
+    { status: 'failed', reason: 'BULLETIN_RESPONSE_TOO_LARGE' },
+  );
+  assert.deepEqual(await run(async () => htmlResponse('<html>login</html>')), { status: 'failed', reason: 'BULLETIN_AREAS_MISSING' });
+  let called = false;
+  const untrusted = await fetchImdBulletinPage('seaBulletin', { key: 'x', url: 'https://evil.example/seaarea.php' }, {
+    fetchFn: async () => { called = true; },
+  });
+  assert.deepEqual(untrusted, { status: 'failed', reason: 'UNTRUSTED_SOURCE_HOST' });
+  assert.equal(called, false);
+});
+
+test('allows only https mausam.imd.gov.in bulletin URLs', () => {
+  assert.equal(isAllowedImdUrl('https://mausam.imd.gov.in/Forecast/seaarea_bulletin_new.php?id=1'), true);
+  for (const url of [
+    'http://mausam.imd.gov.in/Forecast/seaarea_bulletin_new.php?id=1',
+    'https://api.imd.gov.in/api/v1/seabulletin',
+    'https://mausam.imd.gov.in.evil.example/',
+    'https://user:pass@mausam.imd.gov.in/',
+    'https://mausam.imd.gov.in:8443/',
+    'not a url',
+  ]) {
+    assert.equal(isAllowedImdUrl(url), false, url);
+  }
+  assert.ok(ALL_PAGES.every(({ page }) => isAllowedImdUrl(page.url)));
+});
+
+test('validateImdEnvelope rejects records without a usable validity window', () => {
+  const snapshot = assembleImdSnapshot({ pageResults: parsedResults(), now: NOW });
+  assert.equal(validateImdEnvelope(snapshot), true);
+  const [first, ...rest] = snapshot.seaBulletins;
+  for (const broken of [{ validFrom: null }, { expiresAt: first.validFrom }, { issuedAt: undefined }, { area: '' }]) {
+    assert.equal(validateImdEnvelope({ ...snapshot, seaBulletins: [{ ...first, ...broken }, ...rest] }), false, JSON.stringify(broken));
+  }
+  const { coastalBulletin: _dropped, ...products } = snapshot.products;
+  assert.equal(validateImdEnvelope({ ...snapshot, products }), false);
+  assert.equal(validateImdEnvelope({ ...snapshot, cones: null }), false);
+});
+
+test('the seeder publishes to its own key with no API credentials or proxy', () => {
   const seeder = readFileSync(join(root, 'scripts/seed-imd-cyclone-marine.mjs'), 'utf8');
-  assert.match(seeder, /IMD_CANONICAL_KEY/);
-  assert.doesNotMatch(seeder, /runSeed\('weather', 'alerts'/);
+  const lib = readFileSync(join(root, 'scripts/lib/imd-cyclone-marine.mjs'), 'utf8');
   assert.equal(IMD_CANONICAL_KEY, 'weather:imd-cyclone-marine:v1');
-  assert.match(seeder, /#7005/);
+  assert.match(seeder, /runSeed\('weather', 'imd-cyclone-marine', IMD_CANONICAL_KEY/);
   assert.match(seeder, /seed-activated:weather:imd-cyclone-marine:v2/);
   assert.match(seeder, /shouldActivateImdSnapshot\(data\)/);
-  assert.match(seeder, /createImdProxyFetch\(process\.env\.PROXY_URL\)/);
-  const lib = readFileSync(join(root, 'scripts/lib/imd-cyclone-marine.mjs'), 'utf8');
-  assert.doesNotMatch(lib, /\/api\/v1\/districtnowcast/);
-  assert.doesNotMatch(lib, /\/api\/v1\/districtwarning/);
-  assert.equal(IMD_API_REFERENCE_URL, 'https://api.imd.gov.in/public/api_reference.html');
+  for (const source of [seeder, lib]) {
+    assert.doesNotMatch(source, /IMD_API_KEY|IMD_API_EMAIL|IMD_API_PASSWORD|PROXY_URL|_proxy-utils|oauth/);
+  }
+  const registry = JSON.parse(readFileSync(join(root, 'scripts/railway-services.json'), 'utf8'));
+  const service = registry.find((entry) => entry.service === 'seed-imd-cyclone-marine');
+  assert.deepEqual(service.requiredEnv, ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']);
 });

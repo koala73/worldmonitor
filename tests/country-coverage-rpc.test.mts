@@ -32,6 +32,7 @@ import {
 import * as feedDigest from '../server/worldmonitor/news/v1/list-feed-digest.ts';
 import { isCountryHeadline } from '../shared/country-headline-match.ts';
 import { classifyByKeyword } from '../shared/threat-keyword-classifier.ts';
+import { protoThreatLevelToLabel } from '../shared/news-clustering-core.js';
 import type { CountryTimelineIncident } from '../shared/country-timeline-events.ts';
 import type {
   GetCountryCoverageRequest,
@@ -1376,6 +1377,42 @@ describe('fetchCountryCoverageFeeds — the real coverage pipeline', () => {
       item({ title: 'Israel election result confirmed - Reuters' }),
     ]);
     assert.equal(result.incidents.length, 0);
+  });
+
+  it('preserves raw shared headline classification through the RPC without changing coverage identity or events', async () => {
+    const inputs = [
+      item({ title: 'Israel nuclear strike - Reuters', level: 'info' }),
+      item({ title: 'Israel stability - War on the Rocks', level: 'info' }),
+      item({ title: 'Israel inflation - AP', level: 'critical' }),
+      item({ title: 'Israel summit', originPublisher: 'Origin publisher', level: 'critical' }),
+      item({ title: 'Israel garden exhibition', source: 'Feed fallback', level: 'critical' }),
+    ].map((entry, index) => ({ ...entry, link: `https://example.org/${index}`, publishedAt: NOW_MS - index * HOUR }));
+    const events = [item({ title: 'Protests erupt across Israel - Reuters' })];
+    const result = await runFeeds([
+      ...inputs,
+      item({ title: 'Iran responds to Israel - AP' }),
+      item({ title: 'Israel old report', publishedAt: NOW_MS - 30 * DAY }),
+    ], events);
+    assert.equal(result.headlines.length, inputs.length);
+    assert.deepEqual(result.headlines.map(headline => headline.threat), inputs.map(entry => classifyByKeyword(entry.title, 'full')));
+    assert.deepEqual(result.headlines.map(headline => headline.threat.level), ['critical', 'high', 'medium', 'low', 'info']);
+    const response = await getCountryCoverage(ctx, request(), deps({ coverage: result }));
+    assert.deepEqual(response.headlines.map(headline => protoThreatLevelToLabel(headline.threat?.level)), ['critical', 'high', 'medium', 'low', 'info']);
+    for (const [index, input] of inputs.entries()) {
+      const headline = response.headlines[index]!;
+      const expected = classifyByKeyword(input.title, 'full');
+      assert.deepEqual(headline.threat, { ...expected, level: headline.threat?.level });
+      assert.equal(headline.title, splitGoogleNewsTitle(input.title).title);
+      assert.equal(headline.url, input.link);
+      assert.equal(headline.publishedAtMs, input.publishedAt);
+      assert.equal(headline.publishedAt, new Date(input.publishedAt).toISOString());
+    }
+    assert.deepEqual(response.headlines.map(headline => headline.source), ['Reuters', 'War on the Rocks', 'AP', 'Origin publisher', 'Feed fallback']);
+    assert.equal(sourceState(response, 'coverage:headlines'), 'ok');
+    assert.equal(sourceState(response, 'coverage:events'), 'ok');
+    assert.deepEqual(result.incidents, (await runFeeds([], events)).incidents);
+    assert.equal(response.events[0]?.lane, 'protest');
+    assert.equal(response.events[0]?.severity, 'medium');
   });
 
   it('CLUSTERS BEFORE FILTERING, so a cluster named only by a later reprint is dropped', async () => {
