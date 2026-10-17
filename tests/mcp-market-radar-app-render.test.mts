@@ -141,6 +141,11 @@ describe('ETF flow observations in the compiled Market Radar', () => {
       assert.equal(document.querySelector('#marketStatus')!.textContent, 'No ETF flow rows in this response sample.');
       assert.match(document.querySelector('.etf-row-coverage')!.textContent, /Showing 0 of 3/);
     }
+    for (const etfs of [{ sample: [] }, { count: -1, sample: [] }, { count: '0', sample: [] }]) {
+      send({ structuredContent: { data: { 'etf-flows': { etfs } } } });
+      assert.equal(document.querySelector('#marketStatus')!.textContent, 'No ETF flow rows in this response sample.');
+      assert.equal(document.querySelector('.etf-row-coverage')!.textContent, 'No ETF flow rows in this response sample.');
+    }
     send({ structuredContent: { data: { 'etf-flows': { etfs: { count: 0, sample: [] } } } } });
     assert.equal(document.querySelector('#marketStatus')!.textContent, 'No ETF flow rows in this snapshot.');
   });
