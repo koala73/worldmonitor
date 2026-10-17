@@ -21,7 +21,7 @@ import { internalMutation, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { TERMS_VERSION } from "../shared/legal";
 import { isAccountDeleting } from "./accountDeletion/guard";
-import { agentSourceFromRef, normalizeAgentRef } from "../shared/agent-client-source";
+import { agentRefColumns } from "../shared/agent-client-source";
 
 // Validation invariants. Length-bounded BEFORE regex (defense in depth
 // against memory-exhaustion via huge strings).
@@ -70,10 +70,8 @@ export function signupSourceFields(rawRef: string | undefined): {
   signupRef?: string;
   signupSource?: string;
 } {
-  const signupRef = normalizeAgentRef(rawRef);
-  if (!signupRef) return {};
-  const signupSource = agentSourceFromRef(signupRef) ?? undefined;
-  return { signupRef, ...(signupSource ? { signupSource } : {}) };
+  const columns = agentRefColumns(rawRef);
+  return columns ? { signupRef: columns.ref, signupSource: columns.source } : {};
 }
 
 export const ensureRecord = mutation({

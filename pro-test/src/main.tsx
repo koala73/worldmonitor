@@ -14,16 +14,13 @@ import {
 } from './services/clerk-dom-safety';
 import { trackContentHandoff } from './services/checkout';
 import { captureContentAttributionFromUrl } from '../../shared/content-attribution';
-import { captureAgentRefFromSearch } from '../../shared/agent-client-source';
+import { agentRefCookieStorage, captureAgentRefFromSearch } from '../../shared/agent-client-source';
 import './index.css';
 
 // First-touch agent link (`?ref=agent-claude`), read by the dashboard when the
-// account record is created. Same origin, so the dashboard sees this storage.
-try {
-  captureAgentRefFromSearch(window.location.search, window.localStorage);
-} catch {
-  // Storage access can throw in sandboxed frames; attribution is best-effort.
-}
+// account record is created. Kept in a parent-domain cookie, so the dashboard
+// on any variant host sees it; blocked cookies mean no attribution.
+captureAgentRefFromSearch(window.location.search, agentRefCookieStorage(document, window.location));
 const capturedContentAttribution = captureContentAttributionFromUrl();
 if (capturedContentAttribution) trackContentHandoff();
 

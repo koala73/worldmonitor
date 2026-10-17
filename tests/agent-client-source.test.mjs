@@ -8,18 +8,40 @@ import {
   AGENT_CLIENT_SOURCES,
   AGENT_REF_STORAGE_KEY,
   AGENT_REF_TTL_MS,
+  UNKNOWN_CLIENT_NAME,
+  agentRefColumns,
+  agentRefCookieStorage,
   agentSourceFromRef,
   captureAgentRefFromSearch,
+  clearAgentRef,
   classifyAgentClient,
   classifyAgentClientHints,
   loadAgentRef,
+  mcpGrantClientSource,
+  mcpGrantName,
   normalizeAgentRef,
   sanitizeClientName,
 } from '../shared/agent-client-source.js';
 import { isInternalSourceTag } from '../shared/referral-namespaces.ts';
-import { mcpTokenClientSource } from '../convex/mcpProTokens.ts';
-import { apiKeySourceFields } from '../convex/apiKeys.ts';
 import { signupSourceFields } from '../convex/users.ts';
+
+/** A document.cookie stand-in that keeps name=value pairs and honours max-age=0. */
+function fakeCookieJar() {
+  const jar = new Map();
+  const writes = [];
+  return {
+    jar,
+    writes,
+    get cookie() { return [...jar].map(([k, v]) => `${k}=${v}`).join('; '); },
+    set cookie(line) {
+      writes.push(line);
+      const [pair, ...attrs] = line.split(';').map((part) => part.trim());
+      const eq = pair.indexOf('=');
+      const name = pair.slice(0, eq);
+      if (attrs.includes('max-age=0')) jar.delete(name); else jar.set(name, pair.slice(eq + 1));
+    },
+  };
+}
 
 function memoryStorage(initial = {}) {
   const data = new Map(Object.entries(initial));
@@ -133,11 +155,60 @@ describe('first-touch capture', () => {
     }
   });
 
+  it('reports no capture when a write is silently dropped', () => {
+    const dropping = { getItem: () => null, setItem() {}, removeItem() {} };
+    assert.equal(captureAgentRefFromSearch('?ref=agent-claude', dropping, NOW), null);
+  });
+
+  it('clears the ref once it has been used', () => {
+    const storage = memoryStorage();
+    captureAgentRefFromSearch('?ref=agent-claude', storage, NOW);
+    clearAgentRef(storage);
+    assert.equal(loadAgentRef(storage, NOW), null);
+    assert.equal(captureAgentRefFromSearch('?ref=agent-cursor', storage, NOW), 'agent-cursor');
+    clearAgentRef(null);
+  });
+
   it('degrades to no attribution when storage throws', () => {
     const throwing = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); }, removeItem() { throw new Error('blocked'); } };
     assert.equal(captureAgentRefFromSearch('?ref=agent-claude', throwing, NOW), null);
     assert.equal(loadAgentRef(throwing, NOW), null);
     assert.equal(captureAgentRefFromSearch('?ref=agent-claude', null, NOW), null);
+  });
+});
+
+describe('cookie storage', () => {
+  const NOW = 1_800_000_000_000;
+
+  it('shares the ref across worldmonitor.app hosts', () => {
+    const doc = fakeCookieJar();
+    const www = agentRefCookieStorage(doc, { hostname: 'www.worldmonitor.app', protocol: 'https:' });
+    assert.equal(captureAgentRefFromSearch('?ref=agent-claude', www, NOW), 'agent-claude');
+    assert.match(doc.writes[0], /^wm-agent-ref=[^;]+; max-age=2592000; path=\/; domain=\.worldmonitor\.app; SameSite=Lax; Secure$/);
+    const tech = agentRefCookieStorage(doc, { hostname: 'tech.worldmonitor.app', protocol: 'https:' });
+    assert.equal(loadAgentRef(tech, NOW + 1000), 'agent-claude');
+    clearAgentRef(tech);
+    assert.equal(loadAgentRef(www, NOW + 2000), null);
+    assert.match(doc.writes.at(-1), /max-age=0; path=\/; domain=\.worldmonitor\.app/);
+  });
+
+  it('is host-only off worldmonitor.app and only handles its own key', () => {
+    const doc = fakeCookieJar();
+    const local = agentRefCookieStorage(doc, { hostname: 'localhost', protocol: 'http:' });
+    local.setItem(AGENT_REF_STORAGE_KEY, 'x');
+    assert.doesNotMatch(doc.writes[0], /domain=|Secure/);
+    local.setItem('other-key', 'y');
+    assert.equal(doc.writes.length, 1);
+    assert.equal(local.getItem('other-key'), null);
+    const lookalike = agentRefCookieStorage(fakeCookieJar(), { hostname: 'evilworldmonitor.app', protocol: 'https:' });
+    assert.equal(lookalike.getItem(AGENT_REF_STORAGE_KEY), null);
+  });
+
+  it('degrades to no attribution when cookies throw', () => {
+    const blocked = { get cookie() { throw new Error('blocked'); }, set cookie(_) { throw new Error('blocked'); } };
+    const storage = agentRefCookieStorage(blocked, { hostname: 'www.worldmonitor.app', protocol: 'https:' });
+    assert.equal(captureAgentRefFromSearch('?ref=agent-claude', storage, NOW), null);
+    assert.equal(loadAgentRef(storage, NOW), null);
   });
 });
 
@@ -149,20 +220,35 @@ describe('stored fields', () => {
     assert.equal(sanitizeClientName(undefined), null);
   });
 
-  it('derives the users and userApiKeys fields from a ref, dropping invalid refs', () => {
+  it('derives the users fields from a ref, dropping invalid refs', () => {
+    assert.deepEqual(agentRefColumns(' Agent-Cursor '), { ref: 'agent-cursor', source: 'cursor' });
+    assert.equal(agentRefColumns('AFF123'), null);
     assert.deepEqual(signupSourceFields('agent-claude'), { signupRef: 'agent-claude', signupSource: 'claude' });
+    assert.deepEqual(signupSourceFields('agent'), { signupRef: 'agent', signupSource: 'other' });
     assert.deepEqual(signupSourceFields('AFF123'), {});
     assert.deepEqual(signupSourceFields(undefined), {});
-    assert.deepEqual(apiKeySourceFields('agent-cursor'), { sourceRef: 'agent-cursor', source: 'cursor' });
-    assert.deepEqual(apiKeySourceFields('nope'), {});
   });
 
   it('classifies the OAuth grant name an MCP token is issued with', () => {
-    assert.equal(mcpTokenClientSource('Connected via Claude'), 'claude');
-    assert.equal(mcpTokenClientSource('Connected via ChatGPT'), 'chatgpt');
-    assert.equal(mcpTokenClientSource('Connected via Cursor'), 'cursor');
-    assert.equal(mcpTokenClientSource('Connected via my-tool'), 'other');
-    assert.equal(mcpTokenClientSource('Connected via '), null);
-    assert.equal(mcpTokenClientSource(undefined), null);
+    assert.equal(mcpGrantName('Claude'), 'Connected via Claude');
+    assert.equal(mcpGrantClientSource(mcpGrantName('Claude')), 'claude');
+    assert.equal(mcpGrantClientSource(mcpGrantName('ChatGPT')), 'chatgpt');
+    assert.equal(mcpGrantClientSource(mcpGrantName('Cursor')), 'cursor');
+    assert.equal(mcpGrantClientSource(mcpGrantName('my-tool')), 'other');
+    assert.equal(mcpGrantClientSource('Connected via '), null);
+    assert.equal(mcpGrantClientSource(undefined), null);
+  });
+
+  it('counts a grant with no client name as no signal, not other', () => {
+    assert.equal(mcpGrantName(undefined), `Connected via ${UNKNOWN_CLIENT_NAME}`);
+    assert.equal(mcpGrantName('  '), `Connected via ${UNKNOWN_CLIENT_NAME}`);
+    assert.equal(mcpGrantClientSource(mcpGrantName(undefined)), null);
+    assert.equal(classifyAgentClient('unknown client'), null);
+  });
+
+  it('matches the placeholder the legacy OAuth register endpoint stores', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const register = await readFile(new URL('../api/oauth/register.js', import.meta.url), 'utf8');
+    assert.ok(register.includes(`: '${UNKNOWN_CLIENT_NAME}'`), 'api/oauth/register.js placeholder must equal UNKNOWN_CLIENT_NAME');
   });
 });

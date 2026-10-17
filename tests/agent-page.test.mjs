@@ -8,7 +8,6 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { AGENT_REF_PATTERN, AGENT_REF_STORAGE_KEY, AGENT_REF_TTL_MS } from '../shared/agent-client-source.js';
 import { STATIC_ROUTE_MANIFEST } from '../scripts/build-sitemap.mjs';
 import { UMAMI_SCRIPT_TAG } from '../scripts/build-research-reports.mjs';
 import { TOOL_LIST_RESPONSE } from '../api/mcp/registry/index.ts';
@@ -108,11 +107,18 @@ describe('/agent page SEO registration', () => {
   });
 });
 
-describe('/agent ref capture mirrors shared/agent-client-source.js', () => {
-  it('uses the same pattern, storage key and TTL', () => {
-    assert.ok(SCRIPT.includes(`var AGENT_REF_PATTERN = /${AGENT_REF_PATTERN.source}/;`));
-    assert.ok(SCRIPT.includes(`var AGENT_REF_STORAGE_KEY = '${AGENT_REF_STORAGE_KEY}';`));
-    assert.equal(AGENT_REF_TTL_MS, 30 * 24 * 60 * 60 * 1000);
-    assert.ok(SCRIPT.includes('var AGENT_REF_TTL_MS = 30 * 24 * 60 * 60 * 1000;'));
+describe('/agent ref capture is the shared module', () => {
+  it('ships a byte-for-byte copy of shared/agent-client-source.js', () => {
+    assert.equal(
+      read('public/agent/agent-client-source.js'),
+      read('shared/agent-client-source.js'),
+      'run: cp shared/agent-client-source.js public/agent/agent-client-source.js',
+    );
+  });
+
+  it('loads the page script as a module that imports the copy', () => {
+    assert.match(PAGE, /<script type="module" nonce="wm-static-bootstrap" src="\/agent\/agent\.js"><\/script>/);
+    assert.match(SCRIPT, /from '\.\/agent-client-source\.js';/);
+    assert.match(SCRIPT, /captureAgentRefFromSearch\(window\.location\.search, agentRefCookieStorage\(document, window\.location\)\)/);
   });
 });

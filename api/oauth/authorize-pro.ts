@@ -83,6 +83,7 @@ import {
 } from '../../server/_shared/pro-mcp-token';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
+import { mcpGrantName } from '../../shared/agent-client-source';
 
 /** OAuth authorization-code TTL — matches `api/oauth/authorize.js:10`. */
 const CODE_TTL_SECONDS = 600;
@@ -458,10 +459,9 @@ export async function authorizeProHandler(req: Request, deps: AuthorizeProDeps):
   }
 
   // ----- 8. Issue the Convex mcpProTokens row -----
-  const clientName = (typeof clientData.client_name === 'string' && clientData.client_name) || 'Unknown Client';
   let issueResult: { tokenId: string };
   try {
-    issueResult = await deps.issueProMcpTokenForUser(userId, client_id, `Connected via ${clientName}`);
+    issueResult = await deps.issueProMcpTokenForUser(userId, client_id, mcpGrantName(clientData.client_name));
   } catch (err) {
     if (err instanceof ProMcpIssueFailed) {
       if (err.kind === 'pro-required') {

@@ -40,6 +40,33 @@ const CLIENT_MATCHERS = Object.freeze([
   ['grok-bot', /grok/],
 ]);
 
+/**
+ * Placeholder the OAuth edge stores when a client registers without a
+ * client_name (api/oauth/register.js, api/oauth/authorize-pro.ts). It is no
+ * signal, so it classifies as null rather than `other`.
+ */
+export const UNKNOWN_CLIENT_NAME = 'Unknown Client';
+
+const MCP_GRANT_NAME_PREFIX = 'Connected via ';
+
+/** Display name of an OAuth MCP grant row, from the client's client_name. */
+export function mcpGrantName(clientName) {
+  const name = typeof clientName === 'string' && clientName.trim() ? clientName : UNKNOWN_CLIENT_NAME;
+  return `${MCP_GRANT_NAME_PREFIX}${name}`;
+}
+
+/**
+ * AI client bucket of an OAuth MCP grant, from the row name mcpGrantName()
+ * built. Both sides use this module, so the wording cannot drift apart.
+ */
+export function mcpGrantClientSource(grantName) {
+  if (typeof grantName !== 'string') return null;
+  const clientName = grantName.startsWith(MCP_GRANT_NAME_PREFIX)
+    ? grantName.slice(MCP_GRANT_NAME_PREFIX.length)
+    : grantName;
+  return classifyAgentClient(clientName);
+}
+
 /** Prefix that marks an inbound agent link: `?ref=agent-claude`. */
 export const AGENT_REF_PREFIX = 'agent';
 
@@ -78,7 +105,7 @@ export function normalizeAgentRef(raw) {
 export function classifyAgentClient(hint) {
   if (typeof hint !== 'string') return null;
   const value = hint.trim().toLowerCase().slice(0, 512);
-  if (!value) return null;
+  if (!value || value === UNKNOWN_CLIENT_NAME.toLowerCase()) return null;
   for (const [source, pattern] of CLIENT_MATCHERS) {
     if (pattern.test(value)) return source;
   }
@@ -104,10 +131,7 @@ export function classifyAgentClientHints(hints) {
 
 /** Bucket for an agent ref (`agent-claude` -> `claude`, `agent` -> `other`). */
 export function agentSourceFromRef(ref) {
-  const normalized = normalizeAgentRef(ref);
-  if (!normalized) return null;
-  const rest = normalized.slice(AGENT_REF_PREFIX.length).replace(/^-/, '');
-  return rest ? classifyAgentClient(rest) : 'other';
+  return agentRefColumns(ref)?.source ?? null;
 }
 
 /**
@@ -123,8 +147,9 @@ export function sanitizeClientName(raw) {
 /**
  * Read an agent ref from a URL search string and store it first-touch.
  * Never overwrites an unexpired earlier ref. Returns the stored ref (new or
- * existing) or null. `storage` is injected so tests and both browser apps can
- * call it; every storage failure degrades to "no attribution".
+ * existing) or null. `storage` is injected so tests and the browser pages can
+ * call it; every storage failure degrades to "no attribution", and a write is
+ * read back so a silently dropped one is reported as null.
  */
 export function captureAgentRefFromSearch(search, storage, now = Date.now()) {
   if (typeof search !== 'string' || !storage) return null;
@@ -143,7 +168,7 @@ export function captureAgentRefFromSearch(search, storage, now = Date.now()) {
   } catch {
     return null;
   }
-  return incoming;
+  return loadAgentRef(storage, now) === incoming ? incoming : null;
 }
 
 /** Read the stored first-touch agent ref, clearing it when stale or malformed. */
@@ -160,7 +185,72 @@ export function loadAgentRef(storage, now = Date.now()) {
     }
     return ref;
   } catch {
-    try { storage.removeItem(AGENT_REF_STORAGE_KEY); } catch { /* storage unavailable */ }
+    clearAgentRef(storage);
     return null;
   }
+}
+
+/**
+ * Forget the stored agent ref. Called once it has been used for an account
+ * record, so a later sign-up in the same browser is not credited to it.
+ */
+export function clearAgentRef(storage) {
+  try { storage?.removeItem(AGENT_REF_STORAGE_KEY); } catch { /* storage unavailable */ }
+}
+
+/** Parent domain the ref cookie is shared on, so every variant host sees it. */
+export const AGENT_REF_COOKIE_DOMAIN = 'worldmonitor.app';
+
+/**
+ * Storage-shaped adapter over a first-party cookie holding only the agent ref.
+ * A cookie rather than localStorage because sign-up can happen on another
+ * origin than the one the agent link opened (www vs tech., finance., ...):
+ * on worldmonitor.app hosts it is set on the parent domain, elsewhere
+ * (localhost, previews) host-only. `doc` is `document` and `loc` is
+ * `location`, injected so this module stays free of DOM globals.
+ */
+export function agentRefCookieStorage(doc, loc) {
+  const hostname = typeof loc?.hostname === 'string' ? loc.hostname.toLowerCase() : '';
+  const shared = hostname === AGENT_REF_COOKIE_DOMAIN || hostname.endsWith(`.${AGENT_REF_COOKIE_DOMAIN}`);
+  const attributes = [
+    'path=/',
+    shared ? `domain=.${AGENT_REF_COOKIE_DOMAIN}` : null,
+    'SameSite=Lax',
+    loc?.protocol === 'https:' ? 'Secure' : null,
+  ].filter(Boolean).join('; ');
+  const write = (key, value, maxAgeSeconds) => {
+    if (key !== AGENT_REF_STORAGE_KEY) return;
+    try {
+      doc.cookie = `${key}=${encodeURIComponent(value)}; max-age=${maxAgeSeconds}; ${attributes}`;
+    } catch { /* cookies blocked: no attribution */ }
+  };
+  return {
+    getItem(key) {
+      if (key !== AGENT_REF_STORAGE_KEY) return null;
+      try {
+        const prefix = `${key}=`;
+        const match = String(doc.cookie ?? '').split(';').map((part) => part.trim()).find((part) => part.startsWith(prefix));
+        return match ? decodeURIComponent(match.slice(prefix.length)) : null;
+      } catch {
+        return null;
+      }
+    },
+    setItem(key, value) {
+      write(key, value, Math.floor(AGENT_REF_TTL_MS / 1000));
+    },
+    removeItem(key) {
+      write(key, '', 0);
+    },
+  };
+}
+
+/**
+ * Normalized ref and its bucket for a row that records where it came from, or
+ * null when the ref is unusable. Callers map these onto their own columns.
+ */
+export function agentRefColumns(raw) {
+  const ref = normalizeAgentRef(raw);
+  if (!ref) return null;
+  const rest = ref.slice(AGENT_REF_PREFIX.length).replace(/^-/, '');
+  return { ref, source: rest ? classifyAgentClient(rest) : 'other' };
 }

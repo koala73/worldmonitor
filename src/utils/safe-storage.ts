@@ -42,17 +42,6 @@ export function safeStorageRemove(key: string): void {
 }
 
 /**
- * The three best-effort accessors as one Storage-shaped object, for shared
- * modules that take storage by injection (shared/agent-client-source.js) and
- * so cannot import this file themselves.
- */
-export const safeStorageAdapter = Object.freeze({
-  getItem: safeStorageGet,
-  setItem: safeStorageSet,
-  removeItem: safeStorageRemove,
-});
-
-/**
  * The storage object, or `null` when it cannot be reached at all.
  *
  * Retrieving the handle has to be its own guarded step, separate from the

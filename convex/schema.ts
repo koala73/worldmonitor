@@ -1727,9 +1727,10 @@ export default defineSchema({
     revokedAt: v.optional(v.number()),
     scopes: v.optional(v.array(v.string())),
     companyMonitoringAccountId: v.optional(v.string()),
-    // Where the key came from: the creating browser's first-touch inbound
-    // agent link (`sourceRef`, e.g. `agent-claude`) and its bucket (`source`).
-    // Client-reported, for counting only. OPTIONAL and not backfilled.
+    // Where the key came from: copied at creation from the owner's users row
+    // (`signupRef`, e.g. `agent-claude`, and its bucket `signupSource`), so a
+    // key counts toward the agent link that brought its owner in. For
+    // counting only. OPTIONAL and not backfilled.
     sourceRef: v.optional(v.string()),
     source: v.optional(v.string()),
   })

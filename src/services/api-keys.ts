@@ -13,8 +13,6 @@ import {
   waitForConvexAuthForUser,
 } from './convex-client';
 import { getClerkToken, getCurrentClerkUser } from './clerk';
-import { loadAgentRef } from '../../shared/agent-client-source';
-import { safeStorageAdapter } from '@/utils/safe-storage';
 import {
   assertAccountStillCurrent,
   settleAccountOperation,
@@ -51,12 +49,6 @@ async function sha256Hex(input: string): Promise<string> {
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** First-touch agent link, recorded on the key row as where it came from. */
-function agentSourceRefArg(): { sourceRef?: string } {
-  const sourceRef = loadAgentRef(safeStorageAdapter);
-  return sourceRef ? { sourceRef } : {};
-}
-
 /**
  * Create a new API key for the current user.
  * Returns the full plaintext key (shown once) and metadata.
@@ -80,7 +72,7 @@ export async function createApiKey(name: string): Promise<CreateApiKeyResult> {
     'creating the API key',
     () => client.mutation(
       (api as any).apiKeys.createApiKey,
-      { name: name.trim(), keyPrefix, keyHash, ...agentSourceRefArg() },
+      { name: name.trim(), keyPrefix, keyHash },
     ),
   );
   assertAccountStillCurrent(userId, 'creating the API key');

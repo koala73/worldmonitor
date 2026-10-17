@@ -7,7 +7,7 @@ import { describe, expect, test } from "vitest";
 import schema from "../schema";
 import { api, internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
-import { MAX_ROWS_PER_TABLE } from "../agentSources";
+import { PAGE_SIZE } from "../agentSources";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -57,8 +57,7 @@ describe("users.ensureRecord sign-up source", () => {
 });
 
 describe("apiKeys.createApiKey source", () => {
-  test("records the agent ref the key was created under", async () => {
-    const t = convexTest(schema, modules);
+  const createKey = async (t: ReturnType<typeof convexTest>) => {
     await t.run(async (ctx) => {
       await ctx.db.insert("entitlements", {
         userId: API_USER.subject,
@@ -72,11 +71,38 @@ describe("apiKeys.createApiKey source", () => {
       name: "agent key",
       keyPrefix: "wm_a1b2c",
       keyHash: "a1b2c".repeat(13).slice(0, 64),
-      sourceRef: "agent-gemini",
     });
-    const row = await t.run(async (ctx) => ctx.db.get(id));
+    return t.run(async (ctx) => ctx.db.get(id));
+  };
+
+  test("inherits the owner's sign-up source", async () => {
+    const t = convexTest(schema, modules);
+    await t.withIdentity(API_USER).mutation(api.users.ensureRecord, {
+      localeTag: "en-US",
+      localePrimary: "en",
+      signupRef: "agent-gemini",
+    });
+    const row = await createKey(t);
     expect(row?.sourceRef).toBe("agent-gemini");
     expect(row?.source).toBe("gemini");
+  });
+
+  test("records no source for an account without one", async () => {
+    const t = convexTest(schema, modules);
+    await t.withIdentity(API_USER).mutation(api.users.ensureRecord, { localeTag: "en-US", localePrimary: "en" });
+    const row = await createKey(t);
+    expect(row?.sourceRef).toBeUndefined();
+    expect(row?.source).toBeUndefined();
+  });
+
+  test("rejects a client-supplied source", async () => {
+    const t = convexTest(schema, modules);
+    await expect(t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, {
+      name: "agent key",
+      keyPrefix: "wm_a1b2c",
+      keyHash: "a1b2c".repeat(13).slice(0, 64),
+      sourceRef: "agent-claude",
+    } as never)).rejects.toThrow(/sourceRef/);
   });
 });
 
@@ -90,6 +116,16 @@ describe("mcpProTokens.issueProMcpToken client source", () => {
     });
     const row = await t.run(async (ctx) => ctx.db.get(tokenId));
     expect(row?.clientSource).toBe("chatgpt");
+  });
+
+  test("leaves the field unset for the unknown-client placeholder", async () => {
+    const t = convexTest(schema, modules);
+    const { tokenId } = await t.mutation(internal.mcpProTokens.issueProMcpToken, {
+      userId: "user-mcp-3",
+      name: "Connected via Unknown Client",
+    });
+    const row = await t.run(async (ctx) => ctx.db.get(tokenId));
+    expect(row?.clientSource).toBeUndefined();
   });
 
   test("leaves the field unset when there is no client name", async () => {
@@ -116,33 +152,36 @@ describe("agentSources.countBySource", () => {
     await t.mutation(internal.mcpProTokens.issueProMcpToken, { userId: "u3", name: "Connected via Claude" });
     await t.mutation(internal.mcpProTokens.issueProMcpToken, { userId: "u4", name: "Connected via Cursor" });
 
-    const result = await t.query(internal.agentSources.countBySource, { sinceMs: since, untilMs: Date.now() + 1000 });
+    const result = await t.action(internal.agentSources.countBySource, { sinceMs: since, untilMs: Date.now() + 1000 });
     expect(result.signups).toEqual({ total: 2, bySource: { "grok-bot": 1, none: 1 }, truncated: false });
     expect(result.apiKeys).toEqual({ total: 0, bySource: {}, truncated: false });
     expect(result.mcpGrants).toEqual({ total: 2, bySource: { claude: 1, cursor: 1 }, truncated: false });
 
-    const empty = await t.query(internal.agentSources.countBySource, { sinceMs: since - 10_000, untilMs: since });
+    const empty = await t.action(internal.agentSources.countBySource, { sinceMs: since - 10_000, untilMs: since });
     expect(empty.signups.total).toBe(0);
   });
 
-  test("reports truncation instead of exceeding the per-query read limit", async () => {
+  test("pages through more rows than one query reads", async () => {
     const t = convexTest(schema, modules);
     const since = Date.now() - 1000;
+    const rows = 2 * PAGE_SIZE + 7;
     await t.run(async (ctx) => {
-      for (let i = 0; i <= MAX_ROWS_PER_TABLE; i++) {
-        await ctx.db.insert("mcpProTokens", { userId: `bulk-${i}`, createdAt: Date.now(), clientSource: "claude" });
+      for (let i = 0; i < rows; i++) {
+        await ctx.db.insert("mcpProTokens", { userId: `bulk-${i}`, createdAt: Date.now(), ...(i % 2 ? { clientSource: "claude" } : {}) });
       }
     });
-    const result = await t.query(internal.agentSources.countBySource, { sinceMs: since, untilMs: Date.now() + 1000 });
-    expect(result.mcpGrants.total).toBe(MAX_ROWS_PER_TABLE);
-    expect(result.mcpGrants.truncated).toBe(true);
-    expect(3 * (MAX_ROWS_PER_TABLE + 1)).toBeLessThan(16384);
+    const result = await t.action(internal.agentSources.countBySource, { sinceMs: since, untilMs: Date.now() + 1000 });
+    expect(result.mcpGrants).toEqual({
+      total: rows,
+      bySource: { claude: PAGE_SIZE + 3, none: PAGE_SIZE + 4 },
+      truncated: false,
+    });
   });
 
   test("rejects an inverted or oversized window", async () => {
     const t = convexTest(schema, modules);
     const now = Date.now();
-    await expect(t.query(internal.agentSources.countBySource, { sinceMs: now, untilMs: now - 1 })).rejects.toThrow(/before untilMs/);
-    await expect(t.query(internal.agentSources.countBySource, { sinceMs: 0, untilMs: now })).rejects.toThrow(/window too large/);
+    await expect(t.action(internal.agentSources.countBySource, { sinceMs: now, untilMs: now - 1 })).rejects.toThrow(/before untilMs/);
+    await expect(t.action(internal.agentSources.countBySource, { sinceMs: 0, untilMs: now })).rejects.toThrow(/window too large/);
   });
 });
