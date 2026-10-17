@@ -4,7 +4,7 @@
 // email can be measured in tests without the cron's env-checking side
 // effects. The cron imports everything it renders from here.
 
-import { escapeHtml } from '../_digest-markdown.mjs';
+import { escapeHtml, safeHttpUrl } from '../_digest-markdown.mjs';
 import { formatStoryPhaseBadge } from '../../shared/story-phase.js';
 import { stripSourceSuffix } from './brief-dedup-jaccard.mjs';
 import { injectEmailSummary } from './email-summary-html.mjs';
@@ -77,8 +77,9 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
       : '';
     const coverageText = digestCoverageText(s);
     const cleanTitle = stripSourceSuffix(s.title);
-    const titleEl = s.link
-      ? `<a href="${escapeHtml(s.link)}" style="color: #e0e0e0; text-decoration: none; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(cleanTitle)}</a>`
+    const href = safeHttpUrl(s.link);
+    const titleEl = href
+      ? `<a href="${escapeHtml(href)}" style="color: #e0e0e0; text-decoration: none; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(cleanTitle)}</a>`
       : `<span style="color: #e0e0e0; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(cleanTitle)}</span>`;
     // RSS description: truncated ~200 chars at a word boundary, rendered
     // between title and meta when present. Empty → section omitted (R6).

@@ -159,7 +159,7 @@ export function escapeDigestText(text, target) {
   return String(text);
 }
 
-function safeHttpUrl(link) {
+export function safeHttpUrl(link) {
   if (typeof link !== 'string' || link.length === 0) return '';
   let url;
   try { url = new URL(link); } catch { return ''; }
@@ -174,7 +174,10 @@ function percentEncodeChar(ch) {
 // URL.href already percent-encodes space, `"`, `<` and `>`. Each channel then
 // encodes the characters that would end its own link syntax, and escapes the
 // headline so a `|`, `]` or `>` in it cannot close the link early.
-export function formatDigestItemTitle(title, link, target) {
+export function formatDigestItemTitle(rawTitle, link, target) {
+  // One line per item: a line break inside a link would let a line-boundary
+  // cut split it.
+  const title = target === 'plain' ? rawTitle : String(rawTitle).replace(/\s+/g, ' ').trim();
   const url = target === 'plain' ? '' : safeHttpUrl(link);
   if (!url) return escapeDigestText(title, target);
   if (target === 'telegram') {
@@ -186,7 +189,7 @@ export function formatDigestItemTitle(title, link, target) {
   }
   // Discord: `<url>` inside the masked link suppresses the embed preview.
   const label = String(title).replace(/[\\[\]*_~`|]/g, '\\$&');
-  return `[${label}](<${url.replace(/[()<>]/g, percentEncodeChar)}>)`;
+  return `[${label}](<${url.replace(/[()<>[\]]/g, percentEncodeChar)}>)`;
 }
 
 // Cuts at Discord's 2000-char limit without splitting a `\x` escape pair.

@@ -24,6 +24,7 @@ import {
   DIGEST_CRITICAL_LIMIT,
   DIGEST_HIGH_LIMIT,
   DIGEST_MEDIUM_LIMIT,
+  formatDigestHtml,
 } from '../scripts/lib/digest-email-html.mjs';
 import { stripSourceSuffix } from '../scripts/lib/brief-dedup-jaccard.mjs';
 import { digestCoverageText } from '../scripts/lib/digest-corroboration.mjs';
@@ -243,5 +244,40 @@ describe('truncateDiscordContent with linked items', () => {
     const out = truncateDiscordContent(`Header\n${'z'.repeat(1700)} ${link}`);
     assert.ok(out.length <= 2000);
     assert.doesNotMatch(out, /\[Talks/, 'the incomplete link is dropped whole');
+  });
+
+  it('encodes [ and ] in the URL so a cut inside it rewinds to the whole link', () => {
+    const link = formatDigestItemTitle('Talks', `https://news.example/a[1]/${'c'.repeat(300)}`, 'discord');
+    assert.doesNotMatch(link.slice(link.indexOf('](<') + 3), /[[\]]/, 'no raw bracket in the URL');
+    const out = truncateDiscordContent(`Header\n${'z'.repeat(1750)} ${link}`);
+    assert.ok(out.length <= 2000);
+    assert.doesNotMatch(out, /\[Talks/, 'the incomplete link is dropped whole');
+  });
+
+  it('keeps a headline with a line break on one line, so a line cut never splits its link', () => {
+    for (const target of ['telegram', 'slack', 'discord']) {
+      const out = formatDigestItemTitle('Talks stall\nagain\r\n today', 'https://news.example/x', target);
+      assert.doesNotMatch(out, /[\r\n]/, target);
+      assert.match(out, /Talks stall again today/, target);
+    }
+  });
+});
+
+describe('email digest links', () => {
+  const card = (link) => formatDigestHtml([{
+    title: 'Port strike halts traffic', severity: 'high', phase: 'sustained', sources: ['Reuters'],
+    link, description: '', hash: 'e1',
+  }], NOW);
+
+  it('links an http(s) headline', () => {
+    assert.match(card('https://news.example/x'), /<a href="https:\/\/news\.example\/x"[^>]*>Port strike halts traffic<\/a>/);
+  });
+
+  it('renders a non-http link as an unlinked headline', () => {
+    for (const link of ['javascript:alert(1)', 'data:text/html,x', 'not a url']) {
+      const html = card(link);
+      assert.doesNotMatch(html, /href="(javascript|data|not)/i, link);
+      assert.match(html, /<span[^>]*>Port strike halts traffic<\/span>/, link);
+    }
   });
 });
