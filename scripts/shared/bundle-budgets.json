@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 448734
+    "raw": 448809
   },
   "chunks": {
     "analytics": {
@@ -63,7 +63,7 @@
       "files": 1
     },
     "panels": {
-      "raw": 37595,
+      "raw": 37652,
       "files": 1
     },
     "runtime-config": {
@@ -79,7 +79,7 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 71995,
+      "raw": 72013,
       "files": 1
     },
     "theme-manager": {
@@ -93,11 +93,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1426183
+      "raw": 1433836
     },
     "chunks": {
       "App": {
-        "raw": 903677,
+        "raw": 906321,
         "files": 1
       },
       "ai-flow-settings": {
@@ -129,7 +129,7 @@
         "files": 1
       },
       "corroboration": {
-        "raw": 21783,
+        "raw": 22243,
         "files": 1
       },
       "cross-domain-storage": {
@@ -137,7 +137,7 @@
         "files": 1
       },
       "feeds": {
-        "raw": 94732,
+        "raw": 97044,
         "files": 1
       },
       "gdelt-intel": {
@@ -177,11 +177,11 @@
         "files": 1
       },
       "source-provenance": {
-        "raw": 78804,
+        "raw": 80811,
         "files": 1
       },
       "source-tiers": {
-        "raw": 8192,
+        "raw": 8422,
         "files": 1
       },
       "storage-facility-registry-store": {
