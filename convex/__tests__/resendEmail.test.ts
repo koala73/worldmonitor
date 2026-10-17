@@ -83,6 +83,8 @@ describe("sendResendEmail", () => {
     const result = await sendResendEmail({ runQuery: async () => false } as never, base);
     expect(result).toEqual({ sent: true, id: "email_1" });
     expect(resendBodies(fetchMock)).toEqual([expect.objectContaining({ reply_to: DEFAULT_REPLY_TO })]);
+    const init = fetchMock.mock.calls[0]![1] as RequestInit;
+    expect((init.headers as Record<string, string>)["User-Agent"]).toBe("worldmonitor-convex/1.0");
   });
 
   test("throws ResendSendError on a non-2xx", async () => {

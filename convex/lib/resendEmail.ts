@@ -24,6 +24,7 @@ import type { ActionCtx } from "../_generated/server";
 export const RESEND_EMAILS_URL = "https://api.resend.com/emails";
 export const DEFAULT_REPLY_TO = "support@worldmonitor.app";
 const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_USER_AGENT = "worldmonitor-convex/1.0";
 
 export type EmailPurpose = "transactional" | "marketing";
 
@@ -98,8 +99,9 @@ export async function sendResendEmail(
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${input.apiKey}`,
+    // AGENTS.md: every server fetch carries a User-Agent.
+    "User-Agent": input.userAgent || DEFAULT_USER_AGENT,
   };
-  if (input.userAgent) headers["User-Agent"] = input.userAgent;
 
   const res = await fetch(RESEND_EMAILS_URL, {
     method: "POST",
