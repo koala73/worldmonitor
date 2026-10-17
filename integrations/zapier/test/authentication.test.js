@@ -43,6 +43,7 @@ describe('authentication', () => {
     await assert.rejects(
       () => appTester(App.authentication.test, { authData: { apiKey: 'bad' } }),
       (error) => {
+        assert.equal(error.name, 'ExpiredAuthError');
         assert.match(String(error.message), /rejected the API key \(Invalid API key\)/);
         return true;
       },

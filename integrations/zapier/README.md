@@ -31,7 +31,7 @@ Air-quality alerts exist at `/api/health/v1/list-air-quality-alerts` but the doc
 
 ## Local setup
 
-Use Node 18 or newer. Zapier runs integrations on Node 22. The repository `.nvmrc` is 24, which is fine for these tests.
+Use Node 22 or newer. Zapier CLI 19.2.1 requires it, and Zapier runs integrations on Node 22. The repository `.nvmrc` is 24.
 
 1. Create an API key at [Find or replace your API key](https://www.worldmonitor.app/docs/api-keys) if you want a live `zapier-platform invoke` check. Unit tests mock HTTP and do not need a key.
 2. Install this folder only.

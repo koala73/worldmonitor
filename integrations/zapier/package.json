@@ -9,7 +9,7 @@
     "validate": "zapier-platform validate"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "dependencies": {
     "zapier-platform-core": "19.2.1"
