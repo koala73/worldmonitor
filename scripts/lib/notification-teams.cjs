@@ -13,6 +13,7 @@
 // Read through the module object, not destructured, so tests can stub the
 // network layer the same way they do for the relay's other senders.
 const ssrf = require('./notification-webhook-ssrf.cjs');
+const { corroborationText } = require('./corroboration-text.cjs');
 const { classifyNotificationLink, isFirstPartyNotificationHost, NOTIFY_DASHBOARD_URL } = require('../shared/notify-fields.cjs');
 
 const TEAMS_MAX_PAYLOAD_BYTES = 27 * 1024;
@@ -96,7 +97,7 @@ function wrapCard(body, actions) {
  * relay's notify-field sanitizers; this function only lays them out.
  *
  * @param {{ title: string; severity?: string; countryCode?: string | null;
- *   source?: string; description?: string; link?: string;
+ *   source?: string; coverage?: string; description?: string; link?: string;
  *   eventType?: string; impact?: string }} alert
  */
 function buildTeamsAlertPayload(alert) {
@@ -120,6 +121,8 @@ function buildTeamsAlertPayload(alert) {
   const country = describeCountry(alert.countryCode);
   if (country) body.push(fact('Country', country));
   if (alert.source) body.push(fact('Source', alert.source));
+  // #9213: the story's coverage, e.g. "single publisher". Coverage, not accuracy.
+  if (alert.coverage) body.push(fact('Coverage', alert.coverage));
   if (alert.eventType) body.push(fact('Type', alert.eventType));
   if (alert.impact) {
     body.push({ type: 'TextBlock', text: 'Impact', weight: 'Bolder', spacing: 'Medium' });
@@ -150,9 +153,11 @@ function payloadBytes(payload) {
 function digestStoryBlock(story) {
   const severity = severityLabel(story.severity);
   const sources = Array.isArray(story.sources) ? story.sources.filter(s => typeof s === 'string' && s) : [];
-  const sourceText = sources.length > 0
-    ? `${sources.slice(0, 3).join(', ')}${sources.length > 3 ? ` +${sources.length - 3}` : ''}`
-    : '';
+  const coverage = corroborationText(story.corroboration);
+  const sourceText = [
+    sources.length > 0 ? `${sources.slice(0, 3).join(', ')}${sources.length > 3 ? ` +${sources.length - 3}` : ''}` : '',
+    coverage ? `Coverage: ${coverage}` : '',
+  ].filter(Boolean).join(' · ');
   const items = [richText([
     { text: `${severity.toUpperCase()}  `, weight: 'Bolder', color: severityColor(severity) },
     story.title,

@@ -123,6 +123,15 @@ describe('mergeCorroboration — a digest story merged from several story cluste
     assert.equal(mergeCorroboration(['single-publisher|1'], 2), null, 'listed sources contradict the verdict');
   });
 
+  it('does not call merged single-publisher stories one publisher when their sources are unread', () => {
+    assert.equal(mergeCorroboration(['single-publisher|1', 'single-publisher|1'], 0), null);
+    assert.deepEqual(
+      mergeCorroboration(['single-publisher|1'], 0),
+      { state: 'single-publisher', publishers: 1 },
+      'an unmerged story keeps the verdict the server stored for it',
+    );
+  });
+
   it('states nothing it would need source tiers to judge', () => {
     assert.equal(mergeCorroboration(['single-publisher|1', 'tier4-only|2'], 3), null);
     assert.equal(mergeCorroboration(['single-publisher|1', 'unknown'], 1), null);

@@ -153,10 +153,19 @@ export function storyLabel(
     readonly originPublisher?: string;
     readonly originPublisherTrusted?: boolean;
     readonly corroborationCount?: number;
+    readonly title?: string;
+    readonly description?: string;
   }[],
 ): StoryLabel {
+  // Title and lead feed the same-copy check (#9095), so a reprint counts once
+  // here exactly as it does in the News panel (#9213).
   const evidence = evidenceFromCluster({
-    allItems: items.map((item) => ({ source: publisherLabel(item), corroborationCount: item.corroborationCount })),
+    allItems: items.map((item) => ({
+      source: publisherLabel(item),
+      corroborationCount: item.corroborationCount,
+      ...(typeof item.title === 'string' ? { title: item.title } : {}),
+      ...(typeof item.description === 'string' ? { snippet: item.description } : {}),
+    })),
   });
   const corroboration = assessCorroboration(evidence);
   return {

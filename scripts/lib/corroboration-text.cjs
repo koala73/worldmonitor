@@ -76,7 +76,9 @@ function corroborationText(value) {
  *     floor;
  *   - every member tier4-only: tier4-only, with the largest count;
  *   - every member single-publisher: single-publisher when the listed sources
- *     are one family, else null (several publishers of unknown tier);
+ *     are one family, else null (several publishers of unknown tier, or, for a
+ *     merged story whose sources could not be read, an unknown count); an
+ *     unmerged story with no sources read keeps its stored verdict;
  *   - an unknown member, or a mix of single-publisher and tier4-only: null.
  */
 function mergeCorroboration(values, familyCount) {
@@ -90,7 +92,11 @@ function mergeCorroboration(values, familyCount) {
   if (known.length !== verdicts.length) return null;
   if (known.every((v) => v.state === 'tier4-only')) return { state: 'tier4-only', publishers: most('tier4-only') };
   if (known.every((v) => v.state === 'single-publisher')) {
-    return (Number(familyCount) || 0) <= 1 ? { state: 'single-publisher', publishers: 1 } : null;
+    const families = Number(familyCount) || 0;
+    // Several merged clusters are one publisher only if their listed sources
+    // show one family; with no sources read, that is unknown.
+    if (families > 1 || (verdicts.length > 1 && families !== 1)) return null;
+    return { state: 'single-publisher', publishers: 1 };
   }
   return null;
 }

@@ -88,7 +88,7 @@ When an alert fires, registered webhook URLs receive:
     "variant": "full"
   }
   ```
-  `corroboration` is present on news alerts whose story the digest counted. `state` is `single-publisher` or `corroborated`, and `publishers` is the number of distinct publisher families carrying the story. It describes coverage, not accuracy: `corroborated` means independent publishers report the story, not that it is confirmed. Text channels (Telegram, Slack, Discord, email, browser push) show the same verdict as one token, for example `Source: Reuters · Coverage: single publisher`.
+  `corroboration` is present on news alerts whose story the digest counted. `state` is `single-publisher` or `corroborated`, and `publishers` is the number of distinct publisher families carrying the story. It describes coverage, not accuracy: `corroborated` means independent publishers report the story, not that it is confirmed. Text channels (Telegram, Slack, Discord, email, browser push) show the same verdict as one token, for example `Source: Reuters · Coverage: single publisher`; Microsoft Teams cards show it as a `Coverage` fact.
   A chokepoint disruption alert:
   ```json
   {
@@ -121,7 +121,7 @@ When an alert fires, registered webhook URLs receive:
     "storyCount": 12
   }
   ```
-  Each story's `corroboration` is the verdict the dashboard showed for it: `state` is `single-publisher`, `corroborated` or `tier4-only` (every publisher is a declared tier-4 aggregator or blog). It is omitted when unknown. Chat and email digests show it on each item as `Coverage: …`.
+  Each story's `corroboration` is the verdict the dashboard showed for it: `state` is `single-publisher`, `corroborated` or `tier4-only` (every publisher is a declared tier-4 aggregator or blog). It is omitted when unknown. Chat, Teams and email digests show it on each item as `Coverage: …`.
 
 ### Signing secret
 

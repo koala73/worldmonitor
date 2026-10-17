@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { describe, it } from 'node:test';
 
+import { assessCorroboration, evidenceFromCluster } from '../server/_shared/corroboration';
 import { STORY_CORROBORATION_FIELD, storyLabel } from '../server/_shared/label-history.ts';
 import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest';
 
@@ -73,6 +74,20 @@ describe('storyCorroborationByHash', () => {
       const label = storyLabel(servable.filter((candidate) => candidate.titleHash === hash) as never);
       assert.deepEqual(parseCorroboration(encoded), { state: label.state, publishers: label.publishers });
     }
+  });
+
+  it('counts a reprint once, as the News panel does (#9095 same-copy check)', () => {
+    const lead = 'Dockworkers at the port walked out on Monday after talks over pay and automation '
+      + 'collapsed, halting container traffic at the largest terminal in the region for a second day.';
+    const served = [
+      item({ titleHash: HASH_A, source: 'Reuters World', title: 'Port strike halts container traffic', description: lead }),
+      item({ titleHash: HASH_A, source: 'Harbour Gazette', title: 'Port strike halts container traffic', description: lead, link: 'https://harbour.example/x' }),
+    ];
+    const panel = assessCorroboration(evidenceFromCluster({
+      allItems: served.map((s) => ({ source: s.source, title: s.title, snippet: s.description, corroborationCount: s.corroborationCount })),
+    }));
+    assert.deepEqual(panel, { state: 'single-publisher', publishers: 1 });
+    assert.equal(__testing__.storyCorroborationByHash(served as never, served as never).get(HASH_A), 'single-publisher|1');
   });
 
   it('keeps tier4-only, which the change log stores as untracked', () => {

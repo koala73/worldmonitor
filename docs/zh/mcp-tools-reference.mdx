@@ -1208,7 +1208,7 @@ curl -s https://worldmonitor.app/mcp \
 | `min_sources` | integer | 仅返回覆盖**不同媒体来源数**不低于该值的簇（1-10）—— 真正的交叉印证，而非同一家媒体重复发稿。默认 1。 |
 | `category` | string（枚举） | 将聚类限制为一个完整摘要类别（`politics`、`us`、`europe`、`middleeast`、`tech`、`ai`、`finance`、`commodities`、`gov`、`africa`、`latam`、`asia`、`energy`、`thinktanks`、`crisis`、`layoffs`、`science`、`intel`）。结果中以 `category` 回显（省略时为 `null`）。未知值返回 `headlineCount: 0`，并以 `note` 列出当前摘要中存在的类别。 |
 
-- **交叉印证：** 每个簇都带有 `corroboration`，形如 `{ state, publishers }`。`state` 取值为 `corroborated`（两个及以上发布方家族，且并非全部为第 4 层级）、`single-publisher`、`tier4-only`（两个及以上家族，且每个都是已声明的第 4 层级聚合站或博客）或 `unknown`；`publishers` 统计不同的发布方家族，`state` 为 `unknown` 时为 `null`。它与新闻面板、地图弹窗、提醒和摘要为该故事显示的判定相同。它描述的是报道覆盖面，而非准确性：任何状态都不表示某条说法为真或为假。旁边的 `publishers` 名单列出每个发布方及其声明层级。
+- **交叉印证：** 每个簇都带有 `corroboration`，形如 `{ state, publishers }`。`state` 取值为 `corroborated`（两个及以上发布方家族，且并非全部为第 4 层级）、`single-publisher`、`tier4-only`（两个及以上家族，且每个都是已声明的第 4 层级聚合站或博客）或 `unknown`；`publishers` 统计不同的发布方家族，`state` 为 `unknown` 时为 `null`。新闻面板、地图弹窗和摘要为该故事显示相同的判定。实时提醒只携带该故事的发布方数量，因此只报告 `single-publisher` 或 `corroborated`，从不报告 `tier4-only`。它描述的是报道覆盖面，而非准确性：任何状态都不表示某条说法为真或为假。旁边的 `publishers` 名单列出每个发布方及其声明层级。
 - **API 端点：** `GET /api/news/v1/list-feed-digest`
 - **类型：** 确定性本地计算 —— 每次调用对约 150-200 条摘要头条运行聚类（上游为 CDN/Redis 缓存，15 分钟节奏）。
 - **配额：** 标准 —— 每次调用消耗 MCP 每日预留。
