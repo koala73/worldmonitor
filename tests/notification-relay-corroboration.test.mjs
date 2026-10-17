@@ -155,7 +155,7 @@ describe('processEvent — an alert delivered to a channel', () => {
 });
 
 describe('Microsoft Teams cards (#9215 channel)', () => {
-  const { buildTeamsDigestPayload, buildTeamsNoticePayload } = require('../scripts/lib/notification-teams.cjs');
+  const { buildTeamsNoticePayload } = require('../scripts/lib/notification-teams.cjs');
   const cardText = (payload) => JSON.stringify(payload.attachments[0].content.body);
 
   it('the real-time alert card states the coverage', () => {
@@ -171,19 +171,5 @@ describe('Microsoft Teams cards (#9215 channel)', () => {
       '[HIGH] Port strike halts container traffic',
     ]);
     assert.match(cardText(buildTeamsNoticePayload({ title: 'Held', lines })), /Coverage: single publisher/);
-  });
-
-  it('each digest story states the coverage', () => {
-    const text = cardText(buildTeamsDigestPayload({
-      title: 'WorldMonitor Daily Digest',
-      stories: [
-        { title: 'Port strike', severity: 'high', sources: ['Reuters'], corroboration: { state: 'single-publisher', publishers: 1 } },
-        { title: 'Ceasefire talks', severity: 'high', sources: ['AP'], corroboration: { state: 'tier4-only', publishers: 2 } },
-        { title: 'Storm lands', severity: 'medium', sources: ['BBC'] },
-      ],
-    }));
-    assert.match(text, /Reuters · Coverage: single publisher/);
-    assert.match(text, /AP · Coverage: 2 publishers, all tier 4/);
-    assert.equal(text.match(/Coverage:/g)?.length, 2);
   });
 });

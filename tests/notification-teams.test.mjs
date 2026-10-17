@@ -93,6 +93,40 @@ describe('Teams Adaptive Card payloads', () => {
     assert.equal(card.actions[0].title, 'Open original report');
   });
 
+  it('splits a notice that would exceed the Teams limit into cards that each fit, losing no line', () => {
+    const lines = Array.from({ length: 100 }, (_, i) => `[HIGH] Line ${String(i).padStart(3, '0')} ${'y'.repeat(200)}`);
+    const payloads = teams.buildTeamsNoticePayloads({ title: 'Batch', lines });
+    assert.ok(payloads.length > 1);
+    const seen = [];
+    payloads.forEach((payload, i) => {
+      assert.ok(Buffer.byteLength(JSON.stringify(payload)) <= teams.TEAMS_MAX_PAYLOAD_BYTES);
+      const text = renderedText(cardOf(payload));
+      assert.match(text, new RegExp(`Batch \\(part ${i + 1} of ${payloads.length}\\)`));
+      seen.push(...(text.match(/Line \d{3}/g) ?? []));
+    });
+    assert.deepEqual(seen, lines.map((_, i) => `Line ${String(i).padStart(3, '0')}`), 'every line, in order, exactly once');
+    const small = teams.buildTeamsNoticePayloads({ title: 'Batch', lines: ['one', 'two'] });
+    assert.equal(small.length, 1);
+    assert.doesNotMatch(renderedText(cardOf(small[0])), /part/);
+  });
+
+  it('alert and digest cards state coverage from the corroboration verdict (#9213)', () => {
+    const alert = renderedText(cardOf(teams.buildTeamsAlertPayload({ title: 't', severity: 'high', coverage: '3 independent publishers' })));
+    assert.match(alert, /Coverage: {2}\| 3 independent publishers/);
+    const digest = renderedText(cardOf(teams.buildTeamsDigestPayload({
+      title: 'Digest',
+      stories: [
+        { title: 'Wide story', severity: 'high', sources: ['Reuters', 'AP'], corroboration: { state: 'corroborated', publishers: 2 } },
+        { title: 'Lone story', severity: 'high', sources: ['BBC'], corroboration: 'single-publisher|1' },
+        { title: 'Unknown story', severity: 'high', sources: ['AFP'] },
+      ],
+    })));
+    assert.match(digest, /Reuters, AP · 2 independent publishers/);
+    assert.match(digest, /BBC · single publisher/);
+    assert.match(digest, /AFP( \||$)/);
+    assert.doesNotMatch(digest, /AFP ·/);
+  });
+
   it('an unresolvable country is omitted rather than guessed', () => {
     assert.equal(teams.describeCountry('Iran'), null);
     assert.equal(teams.describeCountry(undefined), null);
@@ -223,7 +257,8 @@ function loadRelayWithTeamsStub(posts, { status = 202 } = {}) {
   ssrf.assertNotificationWebhookDeliveryUrlSafe = async (url) => ({ url: new URL(url), resolvedAddresses: [PUBLIC_IP] });
   ssrf.postJsonWithPinnedAddress = async (url, body) => {
     posts.push({ url: url.href, body: JSON.parse(body) });
-    return new Response(null, { status });
+    const current = Array.isArray(status) ? status[Math.min(posts.length - 1, status.length - 1)] : status;
+    return new Response(null, { status: current });
   };
   const loader = Module;
   const originalLoad = loader._load;
@@ -251,7 +286,7 @@ describe('realtime relay Teams dispatch', () => {
     Object.assign(process.env, savedEnv);
   });
 
-  function setup({ status = 202, rule = {} } = {}) {
+  function setup({ status = 202, rule = {}, heldEvents = [{ eventType: 'conflict_escalation', severity: 'high', payload: { title: 'Held alert' } }] } = {}) {
     Object.assign(process.env, {
       UPSTASH_REDIS_REST_URL: 'https://upstash.test', UPSTASH_REDIS_REST_TOKEN: 'fake',
       CONVEX_URL: 'https://convex.test', CONVEX_SITE_URL: 'https://convex.test',
@@ -265,6 +300,7 @@ describe('realtime relay Teams dispatch', () => {
     const channel = { _id: 'teams-channel', channelType: 'teams', webhookEnvelope: crypto.encrypt(TEAMS_URL), verified: true };
     const deactivations = [];
     const held = [];
+    const deletedHeld = [];
     globalThis.fetch = async (input, init) => {
       const url = String(input);
       if (url.includes('/relay/enabled-rules')) return Response.json([{
@@ -275,23 +311,25 @@ describe('realtime relay Teams dispatch', () => {
       if (url.includes('/GET/relay%3Aentitlement')) return Response.json({ result: '1' });
       if (url.includes('/RPUSH/') || url.includes('/LPUSH/')) { held.push(url); return Response.json({ result: 1 }); }
       if (url.includes('/LLEN/')) return Response.json({ result: 1 });
-      if (url.includes('/LRANGE/')) return Response.json({ result: [JSON.stringify({ eventType: 'conflict_escalation', severity: 'high', payload: { title: 'Held alert' } })] });
+      if (url.includes('/LRANGE/')) return Response.json({ result: heldEvents.map(ev => JSON.stringify(ev)) });
+      if (url.includes('/DEL/')) { deletedHeld.push(url); return Response.json({ result: 1 }); }
       return Response.json({ result: 'OK' });
     };
-    return { relay: loaded.relay, posts, deactivations, held };
+    return { relay: loaded.relay, posts, deactivations, held, deletedHeld };
   }
 
   it('delivers a matching event to the Teams channel as an Adaptive Card', async () => {
     const { relay, posts } = setup();
     await relay.processEvent({
       eventType: 'conflict_escalation', severity: 'critical',
-      payload: { title: 'Synthetic escalation', countryCode: 'IR', source: 'Reuters', link: 'https://www.reuters.com/x' },
+      payload: { title: 'Synthetic escalation', countryCode: 'IR', source: 'Reuters', link: 'https://www.reuters.com/x', corroborationCount: 3 },
     });
     assert.equal(posts.length, 1);
     assert.equal(posts[0].url, TEAMS_URL);
     const card = cardOf(posts[0].body);
     assert.match(renderedText(card), /Synthetic escalation/);
     assert.match(renderedText(card), /Iran \(IR\)/);
+    assert.match(renderedText(card), /Coverage: {2}\| 3 independent publishers/);
     assert.equal(card.actions[0].url, 'https://www.reuters.com/x');
   });
 
@@ -323,6 +361,35 @@ describe('realtime relay Teams dispatch', () => {
     const text = renderedText(cardOf(posts[0].body));
     assert.match(text, /1 held alert/);
     assert.match(text, /Held alert/);
+  });
+
+  it('delivers every alert of a full quiet-hours batch of long titles, across cards that fit', async () => {
+    const heldEvents = Array.from({ length: 100 }, (_, i) => ({
+      eventType: 'conflict_escalation', severity: 'high', payload: { title: `Held ${String(i).padStart(3, '0')} ${'x'.repeat(190)}` },
+    }));
+    const { relay, posts, deletedHeld } = setup({ heldEvents });
+    await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'owner', variant: 'full' });
+    assert.ok(posts.length > 1, 'the batch is split, not refused as oversized');
+    const delivered = [];
+    for (const post of posts) {
+      assert.ok(Buffer.byteLength(JSON.stringify(post.body)) <= teams.TEAMS_MAX_PAYLOAD_BYTES);
+      const text = renderedText(cardOf(post.body));
+      assert.match(text, /100 held alerts/);
+      delivered.push(...(text.match(/Held \d{3}/g) ?? []));
+    }
+    assert.equal(delivered.length, 100, 'no held alert is dropped before the queue is cleared');
+    assert.equal(new Set(delivered).size, 100);
+    assert.equal(deletedHeld.length, 1, 'a delivered batch clears the held queue');
+  });
+
+  it('keeps the held queue when a later card of the batch fails', async () => {
+    const heldEvents = Array.from({ length: 100 }, (_, i) => ({
+      eventType: 'conflict_escalation', severity: 'high', payload: { title: `Held ${String(i).padStart(3, '0')} ${'x'.repeat(190)}` },
+    }));
+    const { relay, posts, deletedHeld } = setup({ heldEvents, status: [202, 500] });
+    await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'owner', variant: 'full' });
+    assert.ok(posts.length >= 2);
+    assert.equal(deletedHeld.length, 0, 'a partly delivered Teams batch is retried, not dropped');
   });
 });
 

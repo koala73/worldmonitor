@@ -162,10 +162,12 @@ function isAllowedPushEndpointHost(host: string): boolean {
   return false;
 }
 
-async function publishWelcome(userId: string, channelType: string): Promise<void> {
+// Resolves true when the welcome event was queued. Failures are logged and
+// captured, never thrown; send-test reads the result to report them.
+async function publishWelcome(userId: string, channelType: string): Promise<boolean> {
   if (!UPSTASH_URL || !UPSTASH_TOKEN) {
     console.error('[notification-channels] publishWelcome: UPSTASH env vars missing — welcome not queued');
-    return;
+    return false;
   }
   const msg = JSON.stringify({ eventType: 'channel_welcome', userId, channelType });
   try {
@@ -183,12 +185,14 @@ async function publishWelcome(userId: string, channelType: string): Promise<void
     if (!res.ok) {
       throw new Error(`publishWelcome: Upstash LPUSH returned HTTP ${res.status}`);
     }
+    return true;
   } catch (err) {
     console.error('[notification-channels] publishWelcome LPUSH failed:', (err as Error).message);
     await captureSilentError(err, {
       tags: { route: 'api/notification-channels', step: 'publish-welcome' },
       fingerprint: ['api/notification-channels', 'publish-welcome', err instanceof Error ? err.name : 'Error'],
     });
+    return false;
   }
 }
 
@@ -715,13 +719,16 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
 
       // Re-send the connect card to a connected channel so the user can check
       // delivery after editing the workflow. Same queue and relay path as the
-      // first-connect welcome; the per-user write limit above bounds it.
+      // first-connect welcome; the per-user write limit above bounds it. The
+      // queue write is awaited so a failure is reported, not shown as sent.
       if (action === 'send-test') {
         const { channelType } = body;
         if (channelType !== 'teams') {
           return finish(json({ error: 'Test send is not available for this channel' }, 400, corsHeaders));
         }
-        ctx.waitUntil(publishWelcome(session.userId, channelType));
+        if (!(await publishWelcome(session.userId, channelType))) {
+          return finish(json({ error: 'The test message could not be queued. Please try again.' }, 503, corsHeaders));
+        }
         return finish(json({ ok: true }, 200, corsHeaders));
       }
 

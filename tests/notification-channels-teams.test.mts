@@ -79,7 +79,7 @@ type RelayCall = { url: string; body: Record<string, unknown> };
 
 function installDeps(mod: {
   __setNotificationChannelsDepsForTests(overrides: unknown): void;
-}): RelayCall[] {
+}, { queueStatus = 200, queueGate }: { queueStatus?: number; queueGate?: Promise<void> } = {}): RelayCall[] {
   const relayCalls: RelayCall[] = [];
   installDnsFetch();
   mod.__setNotificationChannelsDepsForTests({
@@ -92,6 +92,10 @@ function installDeps(mod: {
         url: String(input instanceof Request ? input.url : input),
         body: parsed,
       });
+      if (new URL(String(input instanceof Request ? input.url : input)).hostname === 'upstash.test') {
+        if (queueGate) await queueGate;
+        return Response.json({ result: 1 }, { status: queueStatus });
+      }
       // The set-channel write negotiates durable welcome scheduling first.
       if (parsed.action === 'welcome-scheduling-capability') {
         return Response.json({ durableWelcomeScheduling: true });
@@ -154,10 +158,18 @@ describe('set-channel teams', () => {
 describe('send-test', () => {
   it('queues a test card for the connected Teams channel', async () => {
     const mod = await importFreshNotificationChannels();
-    const relayCalls = installDeps(mod);
-    const pending: Promise<unknown>[] = [];
-    const res = await mod.default(makeRequest({ action: 'send-test', channelType: 'teams' }), { waitUntil: (p: Promise<unknown>) => { pending.push(p); } });
-    await Promise.all(pending);
+    // The queue write is held open: the handler must not answer until it
+    // completes, or "Test sent" could be shown for a test that was never queued.
+    let release!: () => void;
+    const queueGate = new Promise<void>((resolve) => { release = resolve; });
+    const relayCalls = installDeps(mod, { queueGate });
+    let settled = false;
+    const pendingResponse = mod.default(makeRequest({ action: 'send-test', channelType: 'teams' }), { waitUntil: () => {} })
+      .then((response: Response) => { settled = true; return response; });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(settled, false, 'send-test answered before the queue write completed');
+    release();
+    const res = await pendingResponse;
     assert.equal(res.status, 200);
     const queued = relayCalls.filter((call) => {
       const parsed = new URL(call.url);
@@ -167,6 +179,14 @@ describe('send-test', () => {
     assert.equal(relayCalls.length, 1, 'nothing is written to Convex');
     const message = JSON.parse(decodeURIComponent(queued[0].url.split('/').pop()!));
     assert.deepEqual(message, { eventType: 'channel_welcome', userId: 'user-teams', channelType: 'teams' });
+  });
+
+  it('returns 503 when the test could not be queued', async () => {
+    const mod = await importFreshNotificationChannels();
+    installDeps(mod, { queueStatus: 500 });
+    const res = await mod.default(makeRequest({ action: 'send-test', channelType: 'teams' }), ctx);
+    assert.equal(res.status, 503);
+    assert.match(((await res.json()) as { error: string }).error, /could not be queued/i);
   });
 
   it('rejects channel types without a test send', async () => {

@@ -13,8 +13,8 @@
 // Read through the module object, not destructured, so tests can stub the
 // network layer the same way they do for the relay's other senders.
 const ssrf = require('./notification-webhook-ssrf.cjs');
-const { corroborationText } = require('./corroboration-text.cjs');
 const { classifyNotificationLink, isFirstPartyNotificationHost, NOTIFY_DASHBOARD_URL } = require('../shared/notify-fields.cjs');
+const { corroborationText } = require('./corroboration-text.cjs');
 
 const TEAMS_MAX_PAYLOAD_BYTES = 27 * 1024;
 // 1.2 renders on every Teams client, including mobile.
@@ -99,6 +99,7 @@ function wrapCard(body, actions) {
  * @param {{ title: string; severity?: string; countryCode?: string | null;
  *   source?: string; coverage?: string; description?: string; link?: string;
  *   eventType?: string; impact?: string }} alert
+ *   `coverage` is the #9213 corroboration token ("3 independent publishers").
  */
 function buildTeamsAlertPayload(alert) {
   const severity = severityLabel(alert.severity);
@@ -121,7 +122,6 @@ function buildTeamsAlertPayload(alert) {
   const country = describeCountry(alert.countryCode);
   if (country) body.push(fact('Country', country));
   if (alert.source) body.push(fact('Source', alert.source));
-  // #9213: the story's coverage, e.g. "single publisher". Coverage, not accuracy.
   if (alert.coverage) body.push(fact('Coverage', alert.coverage));
   if (alert.eventType) body.push(fact('Type', alert.eventType));
   if (alert.impact) {
@@ -133,17 +133,48 @@ function buildTeamsAlertPayload(alert) {
 }
 
 /**
- * Plain notice card: channel welcome / test send and the quiet-hours batch.
+ * Plain notice card: channel welcome / test send.
  *
  * @param {{ title: string; lines?: string[]; link?: string; linkTitle?: string }} notice
  */
 function buildTeamsNoticePayload(notice) {
-  const body = [richText([{ text: notice.title, size: 'Medium', weight: 'Bolder' }])];
-  for (const line of notice.lines ?? []) {
-    if (line) body.push(richText([line], { spacing: 'Small' }));
-  }
+  return noticeCard(notice.title, (notice.lines ?? []).filter(Boolean), notice);
+}
+
+function noticeCard(title, lines, notice) {
   const action = notice.link ? linkAction(notice.link, notice.linkTitle) : null;
+  const body = [richText([{ text: title, size: 'Medium', weight: 'Bolder' }])];
+  for (const line of lines) body.push(richText([line], { spacing: 'Small' }));
   return wrapCard(body, action ? [action] : []);
+}
+
+/**
+ * Notice split into as many cards as the Teams size limit needs, every line
+ * kept, in order (the quiet-hours batch holds up to 100 alerts). Titles read
+ * "<title> (part i of n)" when there is more than one card. A single line
+ * larger than the limit gets a card of its own, which the sender refuses.
+ *
+ * @param {{ title: string; lines?: string[]; link?: string; linkTitle?: string }} notice
+ * @returns {object[]}
+ */
+function buildTeamsNoticePayloads(notice) {
+  const lines = (notice.lines ?? []).filter(Boolean);
+  // Reserve room for the longest possible part suffix while packing.
+  const reserve = ` (part ${lines.length} of ${lines.length})`;
+  const chunks = [];
+  let current = [];
+  for (const line of lines) {
+    const candidate = [...current, line];
+    if (current.length > 0 && payloadBytes(noticeCard(notice.title + reserve, candidate, notice)) > TEAMS_MAX_PAYLOAD_BYTES) {
+      chunks.push(current);
+      current = [line];
+    } else {
+      current = candidate;
+    }
+  }
+  if (current.length > 0 || chunks.length === 0) chunks.push(current);
+  if (chunks.length === 1) return [noticeCard(notice.title, chunks[0], notice)];
+  return chunks.map((chunk, i) => noticeCard(`${notice.title} (part ${i + 1} of ${chunks.length})`, chunk, notice));
 }
 
 function payloadBytes(payload) {
@@ -153,11 +184,12 @@ function payloadBytes(payload) {
 function digestStoryBlock(story) {
   const severity = severityLabel(story.severity);
   const sources = Array.isArray(story.sources) ? story.sources.filter(s => typeof s === 'string' && s) : [];
+  const sourceList = sources.length > 0
+    ? `${sources.slice(0, 3).join(', ')}${sources.length > 3 ? ` +${sources.length - 3}` : ''}`
+    : '';
+  // #9213 coverage, the same token the other digest channels print per item.
   const coverage = corroborationText(story.corroboration);
-  const sourceText = [
-    sources.length > 0 ? `${sources.slice(0, 3).join(', ')}${sources.length > 3 ? ` +${sources.length - 3}` : ''}` : '',
-    coverage ? `Coverage: ${coverage}` : '',
-  ].filter(Boolean).join(' · ');
+  const sourceText = [sourceList, coverage].filter(Boolean).join(' · ');
   const items = [richText([
     { text: `${severity.toUpperCase()}  `, weight: 'Bolder', color: severityColor(severity) },
     story.title,
@@ -257,6 +289,7 @@ module.exports = {
   buildTeamsAlertPayload,
   buildTeamsDigestPayload,
   buildTeamsNoticePayload,
+  buildTeamsNoticePayloads,
   describeCountry,
   sendTeamsPayload,
 };
