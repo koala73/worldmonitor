@@ -524,6 +524,27 @@ const tick = document => document.defaultView.happyDOM.waitUntilComplete();
 const rowSelect = '[data-select="events:0"]';
 
 describe('Natural local geography and reported details', () => {
+  it('keeps a distant marker visible when keyboard focus reaches it after point zoom', async () => {
+    await mount(localWire([geoEvent({ lat: 12, lon: 70 }), geoEvent({ lat: 12, lon: 76 }), geoEvent({ lat: 0, lon: 0 })]), async document => {
+      const selected = activate(document, '[data-marker="12,70"]');
+      const map = document.getElementById('natural-map');
+      const zoom = map.getAttribute('viewBox');
+      const details = document.getElementById('natural-selection').textContent;
+      assert.notEqual(zoom, '0 0 720 384');
+      document.querySelector('[data-marker="12,76"]').focus();
+      assert.equal(map.getAttribute('viewBox'), zoom, 'nearby focus retains the point zoom');
+      const distant = document.querySelector('[data-marker="0,0"]');
+      distant.focus();
+      assert.equal(document.activeElement, distant);
+      assert.equal(map.getAttribute('viewBox'), '0 0 720 384', 'distant focus restores the visible world map');
+      assert.equal(selected.getAttribute('aria-pressed'), 'true');
+      assert.equal(document.getElementById('natural-selection').textContent, details);
+      distant.dispatchEvent(new document.defaultView.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      assert.equal(distant.getAttribute('aria-pressed'), 'true');
+      assert.notEqual(map.getAttribute('viewBox'), '0 0 720 384', 'keyboard activation can still select and zoom the distant point');
+      await tick(document);
+    });
+  });
   it('keeps strict OTHER event dates and details readable without coordinates', async () => {
     const dates = [occurredAt, 0, undefined, null, '123', new Date(occurredAt).toISOString(), true, false, NaN, Infinity, -Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1, 8640000000000001];
     for (const date of dates) await mount(localWire([geoEvent({ date, lat: undefined, lon: undefined })]), document => {

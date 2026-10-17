@@ -464,6 +464,13 @@ const RENDER = `
         var marker = svg("circle", { cx: xy[0], cy: xy[1], r: 4, role: "button", tabindex: 0,
           "data-marker": entry.key, "aria-pressed": "false", "class": "natural-marker " + entry.items[0].dataset });
         entry.marker = marker; targets.appendChild(entry.target); markers.appendChild(marker);
+        marker.onfocus = function() {
+          var bounds = map.getAttribute("viewBox").split(" ").map(Number);
+          if (xy[0] - 10 < bounds[0] || xy[0] + 10 > bounds[0] + bounds[2]
+            || xy[1] - 10 < bounds[1] || xy[1] + 10 > bounds[1] + bounds[3]) {
+            map.setAttribute("viewBox", world); layoutChanged();
+          }
+        };
         function choose() {
           var members = visibleItems(entry);
           if (members.length === 1) { selectItem(members[0]); marker.focus(); return; }
