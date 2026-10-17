@@ -38,6 +38,7 @@ const HOSTED_CLIENT_CALLBACKS = {
   'Mistral Le Chat': 'https://callback.mistral.ai/v1/integrations_auth/oauth2_callback',
   'Devin': 'https://api.devin.ai/mcp/oauth/callback',
   'Google Antigravity': 'https://antigravity.google/oauth-callback',
+  'Vercel Connect': 'https://connect.vercel.com/callback',
 };
 
 const LOOPBACK = [
@@ -68,6 +69,9 @@ const REJECTED = {
   'https loopback': 'https://localhost:8787/callback',
   'loopback lookalike host': 'http://localhost.evil.example/callback',
   'loopback userinfo smuggling': 'http://localhost@evil.example/callback',
+  'Vercel Connect callback with a trailing slash': 'https://connect.vercel.com/callback/',
+  'other path on connect.vercel.com': 'https://connect.vercel.com/evil',
+  'vercel.com without the connect subdomain': 'https://vercel.com/callback',
   'javascript scheme': 'javascript:alert(1)',
   'not a URL': 'not a url',
 };
@@ -151,6 +155,25 @@ describe('POST /oauth/register', () => {
     const res = await register({ client_name: 'Visual Studio Code', redirect_uris });
     assert.equal(res.status, 201);
     assert.deepEqual((await res.json()).redirect_uris, redirect_uris);
+  });
+
+  it('registers Vercel Connect with the metadata it sends', async () => {
+    stubRedis();
+    // https://vercel.com/docs/connect/providers: exact callback, public client, PKCE.
+    const redirect_uris = ['https://connect.vercel.com/callback'];
+    const res = await register({
+      client_name: 'Vercel Connect',
+      redirect_uris,
+      token_endpoint_auth_method: 'none',
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+    });
+    assert.equal(res.status, 201);
+    const json = await res.json();
+    assert.deepEqual(json.redirect_uris, redirect_uris);
+    assert.equal(json.token_endpoint_auth_method, 'none');
+    assert.deepEqual(json.grant_types, ['authorization_code', 'refresh_token']);
+    assert.equal(stored.length, 1);
   });
 
   it('still caps redirect_uris per registration', async () => {
