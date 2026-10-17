@@ -4,7 +4,7 @@ This folder is a [Zapier Platform CLI](https://docs.zapier.com/integrations/buil
 
 WorldMonitor users who already have an API Starter or API Business key can connect Zapier to country risk, chokepoint status, latest conflict events, and new disease-outbreak alerts.
 
-This pull request does not register the app with Zapier or push a version. Elie does those account steps.
+The app is registered on Zapier as integration 248027. `.zapierapprc` links this folder to it.
 
 ## What it calls
 
@@ -62,16 +62,15 @@ npm run validate
 
 Validate runs Zapier's integration checks locally. All 27 pass. The one remaining warning (D003) asks for a connection label, which Zapier lists as optional. The API has no endpoint that names the account behind a key, and a label must not show the key.
 
-`zapier-platform register` and `zapier-platform push` need a Zapier developer login. Do not run them in CI or in this pull request.
+`zapier-platform push` needs a Zapier developer login (`npx zapier-platform login`, or a deploy key). Do not run it in CI.
 
-When Elie is ready to upload a private version:
+To upload a new version, bump `version` in `package.json`, then push:
 
 ```bash
-npx zapier-platform register
 npx zapier-platform push
 ```
 
-`register` creates the integration. `push` uploads the current `package.json` version. Branding that the CLI does not store (logo, category, intended audience) is set in the [Platform UI](https://developer.zapier.com) after the first push.
+`push` reads `.zapierapprc` and uploads the current `package.json` version to integration 248027. Do not run `zapier-platform register` here: the app is already registered, and registering again creates a second integration. Branding that the CLI does not store (logo, category, intended audience) is set in the [Platform UI](https://developer.zapier.com/app/248027/settings).
 
 ## Zapier review checklist
 
