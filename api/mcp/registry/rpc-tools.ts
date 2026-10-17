@@ -756,6 +756,7 @@ const DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA = {
     year: { type: 'integer' as const, description: 'Source observation year.' },
     source: { type: 'string' as const },
     unit: { type: 'string' as const },
+    sourceStatus: { type: 'string' as const, description: 'Explicit provider status, or statuses of inputs for a derived value. Missing means unknown, not observed or unestimated.' },
   },
 };
 

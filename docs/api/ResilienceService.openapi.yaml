@@ -445,27 +445,27 @@ paths:
                                     "medianAgeYears":
                                         "available": true
                                         "source": "example"
+                                        "sourceStatus": "example"
                                         "unit": "example"
                                         "value": 1.5
-                                        "year": 1
                                     "oldAgeDependencyRatioPercent":
                                         "available": true
                                         "source": "example"
+                                        "sourceStatus": "example"
                                         "unit": "example"
                                         "value": 1.5
-                                        "year": 1
                                     "totalDependencyRatioPercent":
                                         "available": true
                                         "source": "example"
+                                        "sourceStatus": "example"
                                         "unit": "example"
                                         "value": 1.5
-                                        "year": 1
                                     "workingAgePopulationPeople":
                                         "available": true
                                         "source": "example"
+                                        "sourceStatus": "example"
                                         "unit": "example"
                                         "value": 1.5
-                                        "year": 1
                                 "available": true
                                 "countryCode": "US"
                                 "education":
@@ -473,21 +473,21 @@ paths:
                                     "researchersPerMillion":
                                         "available": true
                                         "source": "example"
+                                        "sourceStatus": "example"
                                         "unit": "example"
                                         "value": 1.5
-                                        "year": 1
                                     "stemGraduatesSharePercent":
                                         "available": true
                                         "source": "example"
+                                        "sourceStatus": "example"
                                         "unit": "example"
                                         "value": 1.5
-                                        "year": 1
                                     "tertiaryEnrollmentGrossPercent":
                                         "available": true
                                         "source": "example"
+                                        "sourceStatus": "example"
                                         "unit": "example"
                                         "value": 1.5
-                                        "year": 1
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/GetDemographicsCapabilityResponse'
@@ -1550,6 +1550,9 @@ components:
                 unit:
                     type: string
                     description: Human-readable unit such as "percent", "people", or "years".
+                sourceStatus:
+                    type: string
+                    description: Explicit provider status, or input statuses for a derived value. Missing is unknown.
             description: CapabilityObservation keeps a measured zero distinct from a missing value.
         DemographicsEducation:
             type: object

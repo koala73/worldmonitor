@@ -16,6 +16,8 @@ message CapabilityObservation {
   string source = 4;
   // Human-readable unit such as "percent", "people", or "years".
   string unit = 5;
+  // Explicit provider status, or input statuses for a derived value. Missing is unknown.
+  optional string source_status = 6;
 }
 
 // Independent fetch-stage state. One failed stage must not hide healthy groups.

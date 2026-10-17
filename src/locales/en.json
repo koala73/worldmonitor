@@ -97,6 +97,7 @@
       "unavailable": "Demographics and workforce data unavailable.",
       "proLocked": "Upgrade to PRO for demographics and workforce data",
       "notAvailable": "Not available",
+      "statusNotSupplied": "Estimate and imputation status not supplied",
       "ageStructure": "Age structure",
       "education": "Education pipeline",
       "industrialWorkforce": "Industrial workforce",
