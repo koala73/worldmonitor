@@ -136,6 +136,9 @@ describe('digest email size cap', () => {
     assert.equal(result.truncated, true);
     assert.ok(result.bytes <= DIGEST_EMAIL_MAX_HTML_BYTES);
     assert.ok(!result.html.includes('Very long lead.'));
+    // Dropping the synthesis frees enough room for every card.
+    assert.equal(result.shownStories, 15);
+    assert.ok(!result.html.includes(' more</p>'), 'no card was summarised away');
     assert.ok(result.html.includes('Read the full brief &rarr;'));
     assertWellFormed(result.html);
   });

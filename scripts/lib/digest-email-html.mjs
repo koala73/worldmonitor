@@ -264,14 +264,16 @@ export function renderDigestEmailHtml({
     ? { url: magazineUrl, label: 'Read the full brief' }
     : { url: DASHBOARD_URL, label: `See all ${stories.length} stories on the dashboard` };
 
-  // Largest card budget that fits. Rendered size grows with the budget,
-  // so binary search over [0, fullShown - 1].
+  // Largest card budget that fits. Rendered size grows with the budget, so
+  // binary search. With the synthesis, every card is already known not to
+  // fit (that was the full render), so search [0, fullShown - 1]. Without
+  // it, all cards may fit again, so search [0, fullShown].
   for (const withSynthesis of [true, false]) {
     const at = (budget) => render({ limits: limitsForBudget(counts, budget), fullBriefLink }, withSynthesis);
     const floor = at(0);
     if (htmlBytes(floor) > maxBytes) continue;
     let lo = 0;
-    let hi = fullShown - 1;
+    let hi = withSynthesis ? fullShown - 1 : fullShown;
     let best = floor;
     let bestBudget = 0;
     while (lo <= hi) {
