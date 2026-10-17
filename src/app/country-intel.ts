@@ -496,18 +496,21 @@ export class CountryIntelManager implements AppModule {
           }
         });
       }
+      const militarySummary = this.buildMilitarySummary(code, country);
+      page.updateMilitaryActivity?.(militarySummary);
+      page.updateSignals?.(signals, militarySummary.coverageNotes);
+      const signalGeneration = presentation.refreshGeneration;
       try {
         const signalDetails = await this.buildSignalDetails(code);
-        if (token === this.briefRequestToken && this.ctx.countryBriefPage?.getCode() === code) {
+        if (token === this.briefRequestToken && this.isCurrentPresentation(presentation) && signalGeneration === presentation.refreshGeneration) {
           page.updateSignalDetails?.(signalDetails);
         }
       } catch (err) {
         console.warn('[CountryBrief] signal details unavailable:', err);
+        if (token === this.briefRequestToken && this.isCurrentPresentation(presentation) && signalGeneration === presentation.refreshGeneration) {
+          page.setSectionFailure?.('signals', 'unavailable', 'Aggregate severity and recent high-severity observations are unavailable.');
+        }
       }
-      if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
-      const militarySummary = this.buildMilitarySummary(code, country);
-      page.updateMilitaryActivity?.(militarySummary);
-      page.updateSignals?.(signals, militarySummary.coverageNotes);
       if (!this.isCurrentPresentation(presentation)) return;
       this.renderCountryEconomics(presentation);
 
@@ -774,7 +777,7 @@ export class CountryIntelManager implements AppModule {
     const name = TIER1_COUNTRIES[code] ?? CountryIntelManager.resolveCountryName(code);
     const generation = ++presentation.refreshGeneration;
     void this.getCountrySignals(code, name)
-      .then((signals) => {
+      .then(async (signals) => {
         if (!this.isCurrentPresentation(presentation) || generation !== presentation.refreshGeneration) return;
         const score = getCachedCountryScore(normalizeCiiCountryCode(code));
         this.commitCountryScore(presentation, score, signals);
@@ -785,6 +788,17 @@ export class CountryIntelManager implements AppModule {
           const lines = this.buildFallbackSignalLines(score, signals, name, {});
           if (lines.length > 0) {
             page.updateBrief({ brief: lines.join('\n'), country: name, code, fallback: true });
+          }
+        }
+        try {
+          const details = await this.buildSignalDetails(code);
+          if (this.isCurrentPresentation(presentation) && generation === presentation.refreshGeneration) {
+            page.updateSignalDetails?.(details);
+          }
+        } catch (err) {
+          console.warn('[CountryBrief] signal details unavailable:', err);
+          if (this.isCurrentPresentation(presentation) && generation === presentation.refreshGeneration) {
+            page.setSectionFailure?.('signals', 'unavailable', 'Aggregate severity and recent high-severity observations are unavailable.');
           }
         }
       })
