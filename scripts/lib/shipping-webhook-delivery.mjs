@@ -13,6 +13,9 @@ import {
 export const SHIPPING_WEBHOOK_EVENT = 'chokepoint.disruption';
 export const ALL_INDEX_KEY = 'webhook:all:v1';
 export const DELIVERY_FAILURE_CEILING = 5;
+// DNS re-resolution has no timeout of its own and the HTTPS sender's 10 s
+// starts after it, so one deadline covers both.
+export const DELIVERY_DEADLINE_MS = 15_000;
 
 export function webhookKey(subscriberId) {
   return `webhook:sub:${subscriberId}:v1`;
@@ -50,6 +53,21 @@ function failureCode(error) {
  * @returns {Promise<{ ok: boolean, status: number, error?: string }>}
  */
 export async function deliverShippingWebhook(record, payload, options = {}) {
+  let timer;
+  const deadline = new Promise((resolve) => {
+    timer = setTimeout(
+      () => resolve({ ok: false, status: 0, error: 'timeout' }),
+      options.deadlineMs ?? DELIVERY_DEADLINE_MS,
+    );
+  });
+  try {
+    return await Promise.race([attemptDelivery(record, payload, options), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function attemptDelivery(record, payload, options) {
   const deliveryId = options.deliveryId ?? makeDeliveryId();
   try {
     const { url, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(
@@ -64,6 +82,9 @@ export async function deliverShippingWebhook(record, payload, options = {}) {
       ? { ok: true, status: response.status }
       : { ok: false, status: response.status, error: `http_${response.status}` };
   } catch (error) {
+    if (error?.code === 'WEBHOOK_INVALID_STATUS') {
+      return { ok: false, status: error.statusCode, error: `http_${error.statusCode}` };
+    }
     return { ok: false, status: 0, error: failureCode(error) };
   }
 }

@@ -326,13 +326,25 @@ async function postJsonWithPinnedAddress(url, body, headers, resolvedAddresses) 
         }
         chunks.push(buffer);
       });
+      // A throw in this listener escapes the promise and kills the process:
+      // a callback answering `HTTP/1.1 999` made new Response() throw here.
       res.on('end', () => {
-        const responseHeaders = new Headers();
-        for (const [key, value] of Object.entries(res.headers)) {
-          if (!value) continue;
-          responseHeaders.set(key, Array.isArray(value) ? value.join(', ') : value);
+        try {
+          if (res.statusCode && (res.statusCode < 200 || res.statusCode > 599)) {
+            const error = new Error(`webhook responded with out-of-range status ${res.statusCode}`);
+            error.code = 'WEBHOOK_INVALID_STATUS';
+            error.statusCode = res.statusCode;
+            throw error;
+          }
+          const responseHeaders = new Headers();
+          for (const [key, value] of Object.entries(res.headers)) {
+            if (!value) continue;
+            responseHeaders.set(key, Array.isArray(value) ? value.join(', ') : value);
+          }
+          settle(resolve, responseFromNode(res.statusCode, res.statusMessage, responseHeaders, Buffer.concat(chunks)));
+        } catch (error) {
+          settle(reject, error);
         }
-        settle(resolve, responseFromNode(res.statusCode, res.statusMessage, responseHeaders, Buffer.concat(chunks)));
       });
     });
     req.on('error', error => settle(reject, error));
