@@ -16,6 +16,16 @@
  */
 import { publisherFamilyFor } from '../../shared/publisher-families.js';
 import {
+  CALIBRATION_EVENTS_MAX,
+  CALIBRATION_EVENTS_TTL_S,
+  CALIBRATION_OTHER,
+  calibrationEventsKey,
+  calibrationStateOf,
+  encodeCalibrationEvent,
+  utcDay,
+  type CalibrationEvent,
+} from '../../shared/label-calibration.js';
+import {
   assessCorroboration,
   evidenceFromCluster,
   publisherRoster,
@@ -94,6 +104,14 @@ export const STORY_LABEL_FIELD = 'corrState';
  * tier4-only, then single-publisher must not log corroborated → single-publisher.
  */
 export const UNTRACKED_LABEL = 'untracked';
+/**
+ * #9097: prefixed to the new label after a calibration write whose outcome is
+ * unknown (an error or a lost reply may still have appended the event). The
+ * next cycle then logs the story's current state whatever it is, so the event
+ * log ends on the label the story really has. The label itself is kept after
+ * the prefix, so the public change log still compares against it.
+ */
+export const UNCONFIRMED_PREFIX = 'unconfirmed:';
 
 export interface StoryLabel {
   readonly state: Corroboration['state'];
@@ -173,7 +191,8 @@ export function encodeStoryLabel(label: StoryLabel): string {
 
 export function decodeStoryLabel(raw: unknown): { state: LabelHistoryState; publishers: number } | null {
   if (typeof raw !== 'string') return null;
-  const [state, count] = raw.split('|');
+  const label = raw.startsWith(UNCONFIRMED_PREFIX) ? raw.slice(UNCONFIRMED_PREFIX.length) : raw;
+  const [state, count] = label.split('|');
   const publishers = Number(count);
   if (!isLabelHistoryState(state) || !Number.isInteger(publishers) || publishers < 1) return null;
   return { state, publishers };
@@ -237,6 +256,86 @@ export function labelChangeCommands(change: LabelChange): RedisPipelineCommand[]
     );
   }
   return commands;
+}
+
+/**
+ * #9097: append calibration events to their UTC day's list. RPUSH then LTRIM
+ * keeps a day's first CALIBRATION_EVENTS_MAX events; the seeder treats a list
+ * that reached the cap as incomplete rather than counting from part of it.
+ */
+export function calibrationEventCommands(events: readonly CalibrationEvent[]): RedisPipelineCommand[] {
+  const membersByKey = new Map<string, string[]>();
+  for (const event of events) {
+    const member = encodeCalibrationEvent(event);
+    if (!member) continue;
+    const key = calibrationEventsKey(utcDay(event.at));
+    const members = membersByKey.get(key) ?? [];
+    members.push(member);
+    membersByKey.set(key, members);
+  }
+  return [...membersByKey].flatMap(([key, members]): RedisPipelineCommand[] => [
+    ['RPUSH', key, ...members],
+    ['LTRIM', key, 0, CALIBRATION_EVENTS_MAX - 1],
+    ['EXPIRE', key, CALIBRATION_EVENTS_TTL_S],
+  ]);
+}
+
+/**
+ * #9097: the calibration event this cycle's label adds: the first label the
+ * full English digest gives a story (no track row, or a row without a label
+ * because another variant created it), or any later change of its label,
+ * tracked or not. These are logged apart from the guarded public change log,
+ * so a move that log suppresses still reaches the calibration log on time.
+ */
+export function calibrationEventFor(
+  storyId: string,
+  track: { readonly label?: string } | undefined,
+  current: StoryLabel,
+  at: number,
+): CalibrationEvent | null {
+  const tracked = isLabelHistoryState(current.state) && current.publishers !== null;
+  // No row, or a row another variant created (only full/en records labels):
+  // this is the first label the full English digest gives the story.
+  if (!track || track.label === undefined) return tracked ? { kind: 'f', storyId, state: current.state as LabelHistoryState, at } : null;
+  const next = tracked ? (current.state as LabelHistoryState) : CALIBRATION_OTHER;
+  if (track.label.startsWith(UNCONFIRMED_PREFIX)) return { kind: 's', storyId, state: next, at };
+  const previous = calibrationStateOf(track.label, UNTRACKED_LABEL);
+  if (previous === null || previous === next) return null;
+  return { kind: 's', storyId, state: next, at };
+}
+
+/**
+ * Append first-label and untracked-move calibration events. Returns whether
+ * the write was confirmed. Never throws.
+ */
+export async function recordCalibrationEvents(events: readonly CalibrationEvent[], deadlineAt = Number.POSITIVE_INFINITY): Promise<boolean> {
+  const commands = calibrationEventCommands(events);
+  if (commands.length === 0) return true;
+  const remainingMs = deadlineAt - Date.now();
+  if (!(remainingMs > 0)) return false;
+  try {
+    const results = await runRedisPipeline(commands, false, Number.isFinite(remainingMs) ? remainingMs : undefined);
+    return results.length === commands.length && results.every((result) => !result.error);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * After a calibration write that was not confirmed, prefix the new label of
+ * every story whose move may or may not have been logged with
+ * UNCONFIRMED_PREFIX, so the next cycle logs its current state again. A repeated event is harmless; a missing one
+ * would freeze a wrong outcome. A lost first label is not retried: the story
+ * is then missing from its cohort, which undercounts n but never misstates an
+ * outcome.
+ */
+export function keepUnloggedMoves(labelByHash: Map<string, string>, events: readonly CalibrationEvent[]): void {
+  for (const event of events) {
+    if (event.kind !== 's') continue;
+    const label = labelByHash.get(event.storyId);
+    // Absent: the public log write failed too, so the old label stays and the move is seen again.
+    if (label !== undefined) labelByHash.set(event.storyId, `${UNCONFIRMED_PREFIX}${label}`);
+  }
 }
 
 /** The log entry for an accepted reader report: the operator's public note, never the reader's text. */

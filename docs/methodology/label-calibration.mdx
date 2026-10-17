@@ -1,0 +1,114 @@
+---
+title: "Label Calibration"
+description: "How often each first coverage label held up: the exact definitions behind the monthly calibration table on the WorldMonitor trust page, with sample sizes and reproducibility rules."
+---
+
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
+
+The [trust page](https://www.worldmonitor.app/trust/) has a monthly table of
+how stories first labelled **single publisher** or **corroborated** were
+labelled 24 hours and 7 days later. This page defines every number in it.
+
+<Note>
+**Coverage, not accuracy.** A label says how widely a story is carried, never
+whether it is true. A story that moves from single publisher to corroborated
+was later carried by two or more publisher families; that does not mean it was
+confirmed. A story that moves the other way was later carried by only one; that
+does not mean it was wrong.
+</Note>
+
+## Definitions
+
+These are version 1 of the definitions (`definitionsVersion: 1` in the API).
+
+| Term | Definition |
+|---|---|
+| **Label** | The coverage label the full English digest gives a story: corroborated, single publisher, tier 4 only, or not enough evidence. See [News Credibility Score](/methodology/news-credibility) and the [trust page](https://www.worldmonitor.app/trust/). |
+| **First label** | The label a story carries in the first digest cycle that creates its story record. If a story's first label is logged more than once, the earliest counts and later ones count as changes. Only stories whose first label is single publisher or corroborated are counted. A story first labelled tier 4 only or not enough evidence is not in the table. |
+| **Cohort day** | The UTC day of a story's first label. A story belongs to exactly one cohort day. |
+| **Checkpoint** | First label time plus 24 hours, and plus 7 days. |
+| **Label at a checkpoint** | The last label the digest recorded for the story at or before the checkpoint. A story that has left the digest keeps the last label it had. |
+| **Same label** | The label at the checkpoint equals the first label. A story that changed and changed back by the checkpoint counts as same. |
+| **Label changed** | The label at the checkpoint is the other tracked label. From single publisher: carried by two or more publisher families. From corroborated: carried by only one. |
+| **Other label** | The label at the checkpoint is tier 4 only or not enough evidence. |
+| **n** | The number of stories with that first label in the month's counted cohort days (`stories` in the API). For every row, same + changed + other = n. |
+| **Low n** | n below 30. The row shows its counts ("9 of 12") without a percentage, and is marked "low n". A row with n = 0 shows a dash and is marked low n too. Nothing is hidden, merged or extrapolated. |
+| **Month** | The UTC calendar month of the cohort day. The table covers the current month and the 12 before it. |
+
+Percentages are rounded to whole numbers, so a row's three percentages may not
+add up to exactly 100. The counts always do.
+
+### A fact-checker published a rating
+
+This column is **not measured**. WorldMonitor looks up published fact-checks
+only when someone checks a claim on [/verify](https://www.worldmonitor.app/verify)
+(see [Revision and Corrections Log](/corrections)), and those lookups are not
+linked to stories. Measuring it would need a fact-check lookup for every story
+in every cohort, which spends the Google Fact Check Tools API quota. Until that
+is decided, the column says "Not measured" with this reason, rather than being
+left out.
+
+If it is measured later, it will count stories for which an IFCN-verified
+fact-checker published a rating of a strongly matching claim, whatever the
+rating says. WorldMonitor will not map ratings onto a true/false scale.
+
+## When a day is counted
+
+A cohort day is counted once every story in it has passed its 7-day checkpoint:
+from 8 days after the day starts, plus a one-hour margin for digest writes in
+flight. Until then, its stories are not in the table at all, so a month's
+figures grow as its days are counted. Each month lists how many cohort days it
+counts and which.
+
+The figures are computed once per cohort day and never revised. A later change
+to a story, after its checkpoints, does not change the table.
+
+### Days left out
+
+The digest writes at most 60,000 events per day. If a day reaches that limit,
+every cohort day whose outcomes depend on it is left out of the table, and the
+month says how many days were left out. A day on which the digest recorded
+nothing (for example before this table existed) has no record and is not
+counted.
+
+## Reproducibility
+
+The table is computed only from logged label history.
+
+1. **Events.** The full English digest appends one line per event to a list for
+   the event's UTC day, `trust:calibration-events:v1:<YYYY-MM-DD>`:
+   `f|<storyId>|<state>|<epoch ms>` for a story's first label, and
+   `s|<storyId>|<state>|<epoch ms>` for each later change of its label, where
+   `<state>` is `single-publisher`, `corroborated` or `other`. Lists are kept for
+   21 days.
+2. **Day records.** The `seed-label-calibration` seeder reads a cohort day's list,
+   the day before it (so a story logged twice counts once, in the earlier day),
+   and the seven days after it, replays each story's events in time order, and
+   writes the counts once to `trust:calibration-day:v1:<YYYY-MM-DD>`. Day records
+   are kept for 400 days and never overwritten.
+3. **Table.** Every six hours the seeder sums the day records of the last 13
+   months into `trust:label-calibration:v1`, which
+   `GET /api/news/v1/list-label-changes` serves as `calibration`.
+
+Within the 21-day window, a day record can be recomputed from its event lists
+with the published rules (`shared/label-calibration.js`). After that, the day
+record is the logged history.
+
+## Uniform application
+
+Every rule above reads only the label, the story's identity hash and the time.
+No topic, person, party, outlet or country changes a definition or a threshold,
+and every story in a cohort counts the same.
+
+## Limits
+
+- **Coverage only.** The table measures how labels moved, not whether stories
+  were true.
+- **English digest only.** Other languages and variants are not counted.
+- **Left the digest.** A story that drops out of the digest keeps its last
+  label, so "same label" includes stories nobody covered again.
+- **Returning stories.** A story whose record expired after 7 days without
+  coverage and that then returns is counted again, as a new story.
+- **Event loss.** If an event write fails, a label change is retried on the next
+  digest cycle, but a lost first label is not: that story is missing from its
+  cohort, which lowers n without changing any outcome.

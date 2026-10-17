@@ -198,3 +198,64 @@ describe('/trust page', () => {
     expect(text('report-status')).not.toContain('Thank you');
   });
 });
+
+// #9097: the monthly calibration table. Every cell names its n; rows under the
+// low-n threshold show counts without a percentage; the fact-check column says
+// it is not measured rather than being left out.
+describe('/trust calibration table', () => {
+  const calibration = {
+    generatedAt: at,
+    definitionsVersion: 1,
+    lowNThreshold: 30,
+    factCheckStatus: 'not-measured',
+    factCheckNote: 'Not measured. <b>lookups</b> are not linked to stories.',
+    months: [{
+      month: '2026-09',
+      cohortDays: 12,
+      excludedDays: 1,
+      firstDay: '2026-09-01',
+      lastDay: '2026-09-12',
+      rows: [
+        { state: 'single-publisher', horizon: '24h', stories: 400, same: 300, changed: 88, other: 12 },
+        { state: 'single-publisher', horizon: '7d', stories: 400, same: 280, changed: 100, other: 20 },
+        { state: 'corroborated', horizon: '24h', stories: 12, same: 9, changed: 3, other: 0 },
+        { state: 'corroborated', horizon: '7d', stories: 0, same: 0, changed: 0, other: 0 },
+      ],
+    }],
+  };
+
+  it('shows every figure with its n, marks low-n rows and reports the fact-check column as not measured', async () => {
+    mount({ '/api/news/v1/list-label-changes': [{ body: { state: 'ok', changes: [], calibration } }] });
+    await flush();
+    const table = document.querySelector('#calibration table')!;
+    expect(table.querySelector('caption')!.textContent).toBe('September 2026 · 12 cohort days counted (1 Sep – 12 Sep); 1 left out because the day\'s log was full');
+    const rows = [...table.querySelectorAll('tbody tr')].map((row) => [...row.children].map((cell) => cell.textContent));
+    expect(rows).toEqual([
+      ['Single publisher', '24 hours', '400', '75% (300 of 400)', '22% (88 of 400)', '3% (12 of 400)', 'Not measured'],
+      ['Single publisher', '7 days', '400', '70% (280 of 400)', '25% (100 of 400)', '5% (20 of 400)', 'Not measured'],
+      ['Corroborated', '24 hours', '12low n', '9 of 12', '3 of 12', '0 of 12', 'Not measured'],
+      ['Corroborated', '7 days', '0low n', '–', '–', '–', 'Not measured'],
+    ]);
+    expect(table.querySelectorAll('tr.low-n')).toHaveLength(2);
+    expect(table.querySelectorAll('.low-n-badge')).toHaveLength(2);
+    expect(document.getElementById('calibration-notes')!.hidden).toBe(false);
+    expect(text('calibration-fact-check')).toBe(calibration.factCheckNote);
+    expect(document.querySelector('#calibration-fact-check b')).toBeNull();
+    expect(text('calibration-low-n')).toBe('30');
+    expect(text('calibration-status')).toContain('Computed 2026-10-11 09:30 UTC');
+    const heading = document.getElementById('calibration-heading')!.closest('section')!.textContent!;
+    expect(heading).not.toMatch(/\b(confirmed|accurate|verified)\b/i);
+  });
+
+  it('says when no day has been counted, and when the table is absent', async () => {
+    mount({ '/api/news/v1/list-label-changes': [{ body: { state: 'ok', changes: [], calibration: { ...calibration, months: [] } } }] });
+    await flush();
+    expect(text('calibration-status')).toContain('No cohort day has been counted yet');
+    expect(document.querySelector('#calibration table')).toBeNull();
+
+    mount({ '/api/news/v1/list-label-changes': [{ body: { state: 'ok', changes: [] } }] });
+    await flush();
+    expect(text('calibration-status')).toContain('not available yet');
+    expect(document.getElementById('calibration-notes')!.hidden).toBe(true);
+  });
+});

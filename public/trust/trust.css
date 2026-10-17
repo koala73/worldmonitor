@@ -46,3 +46,14 @@ button[type=submit] { justify-self: start; margin-top: 10px; background: #1a3a1a
 button[type=submit]:disabled { opacity: .5; cursor: default; }
 #report-status.error, #changes-status.error { color: var(--bad); }
 .hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.calibration-month { margin: 14px 0 0; }
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.calibration-table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.calibration-table caption { text-align: left; color: var(--muted); padding: 0 0 6px; }
+.calibration-table caption strong { color: var(--text); font-size: 15px; }
+.calibration-table th, .calibration-table td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+.calibration-table thead th { color: var(--muted); font-weight: 600; }
+.calibration-table tbody th { font-weight: 600; }
+.calibration-table .not-measured { color: var(--muted); }
+.low-n-badge { display: inline-block; margin-left: 6px; font-size: 11px; color: var(--warn); border: 1px solid var(--warn); border-radius: 3px; padding: 0 4px; }
+.calibration-notes { margin-top: 10px; }

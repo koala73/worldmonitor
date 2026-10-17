@@ -18,6 +18,9 @@ await runBundle('derived-signals', [
   // this covers native fetch and CONNECT TLS and preserves NODE_EXTRA_CA_CERTS.
   { label: 'Cross-Strait-Activity', script: 'seed-cross-strait-activity.mjs', useBundledCa: true, seedMetaKey: 'military:cross-strait-activity:complete', sourceRetryMetaKey: 'seed-meta:military:cross-strait-activity:taiwan-mnd', sourceRetryDelayMs: 30 * MIN, intervalMs: 3 * HOUR, timeoutMs: 300_000, requiredEnv: [['JAPAN_MOD_PROXY_URL', 'PROXY_URL']] },
   { label: 'China-Decision-Signals', script: 'seed-china-decision-signals.mjs', seedMetaKey: 'intelligence:china-decision-signals', canonicalKey: CHINA_DECISION_SIGNALS_KEY, completionMetaKey: 'seed-completion:intelligence:china-decision-signals', intervalMs: 15 * MIN, timeoutMs: 90_000 },
+  // #9097: Redis-derived. Finalizes each cohort day once and republishes the
+  // monthly table; a 6h cadence catches the day boundary within a quarter day.
+  { label: 'Label-Calibration', script: 'seed-label-calibration.mjs', seedMetaKey: 'trust:label-calibration', intervalMs: 6 * HOUR, timeoutMs: 120_000 },
   { label: 'Regional-Snapshots', script: 'seed-regional-snapshots.mjs', seedMetaKey: 'intelligence:regional-snapshots', intervalMs: 6 * HOUR, timeoutMs: 180_000 },
 ], {
   // Railway kills cron containers at 10 minutes. Defer sections whose full

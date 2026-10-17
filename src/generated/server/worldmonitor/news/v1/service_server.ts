@@ -132,6 +132,7 @@ export interface ListLabelChangesResponse {
   state: string;
   retentionDays: number;
   counts?: LabelCounts;
+  calibration?: LabelCalibration;
 }
 
 export interface LabelChange {
@@ -162,6 +163,33 @@ export interface LabelCounts {
   singlePublisher: number;
   tier4Only: number;
   unknown: number;
+}
+
+export interface LabelCalibration {
+  generatedAt: number;
+  definitionsVersion: number;
+  lowNThreshold: number;
+  months: LabelCalibrationMonth[];
+  factCheckStatus: string;
+  factCheckNote: string;
+}
+
+export interface LabelCalibrationMonth {
+  month: string;
+  cohortDays: number;
+  excludedDays: number;
+  firstDay: string;
+  lastDay: string;
+  rows: LabelCalibrationRow[];
+}
+
+export interface LabelCalibrationRow {
+  state: string;
+  horizon: string;
+  stories: number;
+  same: number;
+  changed: number;
+  other: number;
 }
 
 export interface SubmitErrorReportRequest {

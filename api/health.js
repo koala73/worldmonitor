@@ -688,6 +688,7 @@ const STANDALONE_KEYS = {
   forecastCalibrationMap:        'forecast:calibration-map:v1',
   marketAlertLedger:             'correlation:market-alerts:ledger:v1',
   marketAlertScorecard:          'correlation:market-alerts:scorecard:v1',
+  labelCalibration:              'trust:label-calibration:v1', // #9097 /trust calibration table
   forecastBets:                  'forecast:bets:history:v1',
   forecastFunnel:                'forecast:funnel:health:v1',
   researchArxivHnTrending:       'research:arxiv:v1:cs.AI::50',
@@ -1260,6 +1261,20 @@ const SEED_META = {
       fromKey: null,
       issue: 8867,
       activationKey: 'seed-activated:correlation:market-alerts',
+    },
+  },
+  // #9097 /trust label calibration, a 6-hourly section of
+  // seed-bundle-derived-signals; 18h = 3x cadence. Empty until the first
+  // cohort day is eight days old, so it binds an activation marker.
+  labelCalibration: {
+    key: 'seed-meta:trust:label-calibration',
+    maxStaleMin: 1080,
+    activationKey: 'seed-activated:trust:label-calibration',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 9097,
+      activationKey: 'seed-activated:trust:label-calibration',
     },
   },
   forecastBets:        { key: 'seed-meta:forecast:bets',            maxStaleMin: 2880 }, // #5233 shadow bet-engine seeder; daily cron (05:00 UTC), 48h = 2× interval
@@ -2131,6 +2146,7 @@ const ON_DEMAND_KEYS = new Set([
   'forecastCalibrationMap',
   'marketAlertLedger',
   'marketAlertScorecard',
+  'labelCalibration',
   'newsRecallBenchmark',
   'newsThreatSummary', // relay classify loop — only written when mergedByCountry has entries; absent on quiet news periods
   'resilienceRanking', // on-demand RPC cache populated after ranking requests; missing before first Pro use is expected
@@ -2218,6 +2234,7 @@ const ACTIVATION_MARKERS = {
   forecastCalibrationMap: SEED_META.forecastCalibrationMap.activationKey,
   marketAlertLedger: SEED_META.marketAlertLedger.activationKey,
   marketAlertScorecard: SEED_META.marketAlertScorecard.activationKey,
+  labelCalibration: SEED_META.labelCalibration.activationKey,
   supplyVulnerability: SEED_META.supplyVulnerability.activationKey,
   supplyChokepointDependencies: SEED_META.supplyChokepointDependencies.activationKey,
   newsFeedHealth: 'seed-activated:news:feed-health',
@@ -2518,6 +2535,7 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'forecastBets', // #5233 shadow bet-engine stream; absent before the cron ships it and empty on weeks the energy feed yields no bet — tolerate as STALE_SEED (warn), not EMPTY (crit).
   'forecastFunnel', // #5233 funnel guardrail is a new afterPublish side-write; before the first seed-forecasts run ships it the key is absent — tolerate as STALE_SEED (warn), not EMPTY (crit). Its producer never writes status:'error': a collapsed funnel is informational (#8990), so only freshness can degrade this check.
   'forecastCalibrationMap', // #7070 map; absent until the daily resolver first writes it, and seed-forecasts publishes raw while it is absent. A dead resolver still alarms through forecastResolutions/forecastScorecard.
+  'labelCalibration', // #9097: no month has a finalized cohort day until eight days after launch; a dead seeder still alarms through the 18h seed-meta gate.
   'marketAlertLedger', 'marketAlertScorecard', // #8867: an empty ledger means no market alert has fired yet, and the scorecard then carries four zero rows; a dead seeder still alarms through the 30-minute seed-meta gate.
   'viarailLive', // unofficial optional VIA Rail live JSON (#6615); unconfigured / 404 is STALE_SEED then NOT_CONFIGURED, never EMPTY/crit
   // Venues closed or not yet reporting: the relay advances seed-meta only when

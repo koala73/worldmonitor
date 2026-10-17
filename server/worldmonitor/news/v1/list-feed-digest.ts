@@ -89,6 +89,7 @@ import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
 import { classifyEphemeralLiveCoverage } from '../../../../shared/ephemeral-live-classifier.js';
 import { deriveCoreStoryPhase } from '../../../../shared/story-phase.js';
+import type { CalibrationEvent } from '../../../../shared/label-calibration.js';
 import { buildTickerDictionary, extractTickers } from '../../../../shared/ticker-extract.js';
 import stocksData from '../../../../shared/stocks.json';
 import { buildClassifyCacheKey, isValidClassifyHit } from '../../intelligence/v1/_shared';
@@ -100,11 +101,14 @@ import {
 import { computeCredibilityScore } from '../../../../shared/news-credibility.js';
 import {
   STORY_LABEL_FIELD,
+  calibrationEventFor,
   countLabels,
   encodeStoryLabel,
+  keepUnloggedMoves,
   keepUnrecordedLabels,
   labelChangeFor,
   labelCountsCommand,
+  recordCalibrationEvents,
   recordLabelChanges,
   storyLabel,
   type LabelChange,
@@ -2602,10 +2606,11 @@ function storyLabelChanges(
   tracks: ReadonlyMap<string, StoryTrack>,
   now: number,
   unread: ReadonlySet<string> = new Set(),
-): { labelByHash: Map<string, string>; labelChanges: LabelChange[]; labelCounts: LabelCounts } {
+): { labelByHash: Map<string, string>; labelChanges: LabelChange[]; labelCounts: LabelCounts; calibrationEvents: CalibrationEvent[] } {
   const clusterByHash = groupByTitleHash(servable);
   const labelByHash = new Map<string, string>();
   const labelChanges: LabelChange[] = [];
+  const calibrationEvents: CalibrationEvent[] = [];
   const states: StoryLabel['state'][] = [];
   for (const [hash, members] of groupByTitleHash(served)) {
     const label = storyLabel(clusterByHash.get(hash) ?? members);
@@ -2623,8 +2628,11 @@ function storyLabelChanges(
       credibilityScore: lead.credibilityScore,
     });
     if (change) labelChanges.push(change);
+    // #9097: a new story's first label, or a move the change log does not track.
+    const calibrationEvent = calibrationEventFor(hash, tracks.get(hash), label, now);
+    if (calibrationEvent) calibrationEvents.push(calibrationEvent);
   }
-  return { labelByHash, labelChanges, labelCounts: countLabels(states, now) };
+  return { labelByHash, labelChanges, labelCounts: countLabels(states, now), calibrationEvents };
 }
 
 async function writeStoryTracking(
@@ -3405,15 +3413,15 @@ async function buildDigest(
     // #9093 label history. Only full/en records it: the story:track row is
     // shared by every variant, and a variant that keeps fewer of a story's
     // feeds would flip the label back and forth.
-    const { labelByHash, labelChanges, labelCounts } = variant === 'full' && lang === 'en'
+    const { labelByHash, labelChanges, labelCounts, calibrationEvents } = variant === 'full' && lang === 'en'
       ? storyLabelChanges(allSliced, servableItems, storyTracks, now, unreadTracks)
-      : { labelByHash: undefined, labelChanges: [], labelCounts: undefined };
+      : { labelByHash: undefined, labelChanges: [], labelCounts: undefined, calibrationEvents: [] };
 
     // Record changes before persisting the new labels: a story whose entry
     // was not written keeps its previous label, so the change is detected
     // again next cycle instead of being lost.
+    const historyDeadlineAt = storyTrackingDeadlineAt - REDIS_PIPELINE_TIMEOUT_MS;
     if (labelByHash && labelChanges.length > 0) {
-      const historyDeadlineAt = storyTrackingDeadlineAt - REDIS_PIPELINE_TIMEOUT_MS;
       const recorded = historyDeadlineAt <= Date.now()
         ? new Set<string>()
         : await recordLabelChanges(labelChanges, historyDeadlineAt).catch((err: unknown) => {
@@ -3421,6 +3429,15 @@ async function buildDigest(
           return new Set<string>();
         });
       keepUnrecordedLabels(labelByHash, labelChanges, recorded);
+    }
+    // #9097 calibration events, on the same rule: a move that was not logged
+    // keeps the previous label, so the next cycle logs it.
+    if (labelByHash && calibrationEvents.length > 0) {
+      const logged = historyDeadlineAt > Date.now() && await recordCalibrationEvents(calibrationEvents, historyDeadlineAt);
+      if (!logged) {
+        console.warn('[digest] label calibration events were not written');
+        keepUnloggedMoves(labelByHash, calibrationEvents);
+      }
     }
 
     // Write story tracking. Errors never fail the digest build.

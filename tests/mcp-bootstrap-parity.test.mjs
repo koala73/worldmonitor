@@ -38,6 +38,9 @@ const { TOOL_REGISTRY } = mcpTesting;
 // -----------------------------------------------------------------------------
 const EXCLUDED_FROM_MCP = new Map([
 
+  ['trust:label-calibration:v1',
+    'transparency table for /trust (#9097): how WorldMonitor\'s own coverage labels held up, served as ListLabelChanges.calibration; it describes the product\'s labelling, not the world, so it is not an analytical MCP slice.'],
+
   ['live-video:resolved:v1',
     'dashboard-internal: channel id to current live YouTube video id, read by the Live News and Live Webcams players to try a fresh embed before the channel entry (#8545); a playback hint with no analytical content, not a queryable MCP slice.'],
 

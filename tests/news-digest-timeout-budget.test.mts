@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 
 import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest';
-import { keepUnrecordedLabels, labelChangeFor, recordLabelChanges, STORY_LABEL_FIELD, storyLabel } from '../server/_shared/label-history';
+import { keepUnloggedMoves, keepUnrecordedLabels, labelChangeFor, recordCalibrationEvents, recordLabelChanges, STORY_LABEL_FIELD, storyLabel } from '../server/_shared/label-history';
 import {
   __resetFetcherTimeoutForTests,
   __setFetcherTimeoutForTests,
@@ -27,19 +27,20 @@ const DIGEST_SRC = readFileSync(
   'utf8',
 );
 
-const callerStart = DIGEST_SRC.indexOf('    if (labelByHash && labelChanges.length > 0) {');
+const callerStart = DIGEST_SRC.indexOf('    const historyDeadlineAt = storyTrackingDeadlineAt - REDIS_PIPELINE_TIMEOUT_MS;');
 const callerEnd = DIGEST_SRC.indexOf('    for (const [category, sliced] of slicedByCategory)', callerStart);
 assert.ok(callerStart >= 0 && callerEnd > callerStart);
 const callerCode = ts.transpileModule(`
   return async function(storyTrackingDeadlineAt, labelByHash, labelChanges, allSliced, titleHashes) {
     const variant = 'full', lang = 'en';
     const memberHashesByFinal = undefined, clusterAnchorEligibleByFinalHash = undefined;
+    const calibrationEvents = [];
     ${DIGEST_SRC.slice(callerStart, callerEnd)}
   }`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
 const runHistoryThenTracking = new Function(
-  'recordLabelChanges', 'keepUnrecordedLabels', 'redisTimeoutForDeadline', 'writeStoryTracking', 'REDIS_PIPELINE_TIMEOUT_MS',
+  'recordLabelChanges', 'keepUnrecordedLabels', 'recordCalibrationEvents', 'keepUnloggedMoves', 'redisTimeoutForDeadline', 'writeStoryTracking', 'REDIS_PIPELINE_TIMEOUT_MS',
   callerCode,
-)(recordLabelChanges, keepUnrecordedLabels, __testing__.redisTimeoutForDeadline, __testing__.writeStoryTracking, REDIS_PIPELINE_TIMEOUT_MS) as (
+)(recordLabelChanges, keepUnrecordedLabels, recordCalibrationEvents, keepUnloggedMoves, __testing__.redisTimeoutForDeadline, __testing__.writeStoryTracking, REDIS_PIPELINE_TIMEOUT_MS) as (
   deadline: number, labels: Map<string, string>, changes: NonNullable<ReturnType<typeof labelChangeFor>>[],
   items: unknown[], hashes: string[],
 ) => Promise<void>;

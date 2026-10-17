@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trust and corrections · World Monitor</title>
-  <meta name="description" content="How World Monitor labels news coverage, how many stories carry each label today, every recent label change, and how to report an error.">
+  <meta name="description" content="How World Monitor labels news coverage, how many stories carry each label today, every recent label change, how first labels held up over time, and how to report an error.">
   <link rel="canonical" href="https://www.worldmonitor.app/trust/">
   <link rel="stylesheet" href="/trust/trust.css">
 </head>
@@ -32,6 +32,23 @@
       <p class="muted">Every time a story moves between <em>single publisher</em> and <em>corroborated</em>, and every reader correction a reviewer accepted, from the last <span id="retention">7</span> days. Newest first.</p>
       <p id="changes-status" role="status" aria-live="polite">Loading…</p>
       <ol id="changes" class="changes"></ol>
+    </section>
+
+    <section aria-labelledby="calibration-heading">
+      <h2 id="calibration-heading">How first labels held up</h2>
+      <p class="muted">Stories first seen in the English digest as <em>single publisher</em> or <em>corroborated</em>, and the label each carried 24 hours and 7 days later, by the month it was first seen. Counted only from the logged label history, and every figure names how many stories it is out of. A changed label describes coverage, not accuracy. <a href="/docs/methodology/label-calibration">Exact definitions</a>.</p>
+      <p id="calibration-status" role="status" aria-live="polite">Loading…</p>
+      <div id="calibration"></div>
+      <dl class="method calibration-notes" id="calibration-notes" hidden>
+        <dt>Label changed</dt>
+        <dd>From single publisher: later carried by two or more publisher families. From corroborated: later carried by only one. Neither says the story was true or false.</dd>
+        <dt>Other label</dt>
+        <dd>Tier 4 only or not enough evidence at the checkpoint.</dd>
+        <dt>Low n</dt>
+        <dd>Fewer than <span id="calibration-low-n">30</span> stories. Counts are shown without a percentage.</dd>
+        <dt>A fact-checker published a rating</dt>
+        <dd id="calibration-fact-check"></dd>
+      </dl>
     </section>
 
     <section aria-labelledby="method-heading">

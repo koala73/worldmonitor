@@ -46,6 +46,8 @@ const MIRRORED_FILES = [
   'news-clustering-core.js',
   // #9095: news-clustering-core.js imports it for same-copy detection.
   'syndication.js',
+  // #9097: seed-label-calibration.mjs folds the digest's label events with it.
+  'label-calibration.js',
 ];
 
 describe('scripts/shared/ mirrors shared/', () => {

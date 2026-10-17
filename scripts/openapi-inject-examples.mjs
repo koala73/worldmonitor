@@ -988,6 +988,27 @@ function getListLabelChangesExample() {
       tier4Only: 3,
       unknown: 2,
     },
+    // #9097: one synthetic month; each row's same + changed + other = n.
+    calibration: {
+      generatedAt: 1767182400000,
+      definitionsVersion: 1,
+      lowNThreshold: 30,
+      months: [{
+        month: '2025-12',
+        cohortDays: 23,
+        excludedDays: 0,
+        firstDay: '2025-12-01',
+        lastDay: '2025-12-23',
+        rows: [
+          { state: 'single-publisher', horizon: '24h', stories: 410, same: 302, changed: 96, other: 12 },
+          { state: 'single-publisher', horizon: '7d', stories: 410, same: 281, changed: 115, other: 14 },
+          { state: 'corroborated', horizon: '24h', stories: 22, same: 19, changed: 3, other: 0 },
+          { state: 'corroborated', horizon: '7d', stories: 22, same: 18, changed: 4, other: 0 },
+        ],
+      }],
+      factCheckStatus: 'not-measured',
+      factCheckNote: 'Not measured. Published fact-checks are looked up only when someone checks a claim on /verify, and those lookups are not linked to stories. Counting this column needs a per-story lookup, which has not been decided.',
+    },
   };
 }
 

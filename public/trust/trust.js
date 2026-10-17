@@ -1,5 +1,5 @@
-// /trust (#9093): today's label counts, recent label changes and the reader
-// error-report form. Every server value is rendered with textContent.
+// /trust (#9093): today's label counts, recent label changes, how first labels
+// held up (#9097) and the reader error-report form. Every server value is rendered with textContent.
 (function () {
   'use strict';
   var LIST_URL = '/api/news/v1/list-label-changes';
@@ -48,6 +48,89 @@
     $('count-unknown').textContent = String(counts.unknown);
     $('tiles').hidden = false;
     note.textContent = counts.stories + ' stories in the latest English digest, counted ' + when(counts.at) + '.';
+  }
+
+  // #9097: how first labels held up. Every figure is shown with its n.
+  var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+    'August', 'September', 'October', 'November', 'December'];
+  var HORIZON_TEXT = { '24h': '24 hours', '7d': '7 days' };
+  function monthName(month) {
+    var parts = String(month).split('-');
+    var index = Number(parts[1]) - 1;
+    return MONTHS[index] ? MONTHS[index] + ' ' + parts[0] : String(month);
+  }
+  function shortDay(day) {
+    var parts = String(day).split('-');
+    var index = Number(parts[1]) - 1;
+    return MONTHS[index] ? Number(parts[2]) + ' ' + MONTHS[index].slice(0, 3) : String(day);
+  }
+  function share(count, n, low) {
+    if (!n) return '–';
+    if (low) return count + ' of ' + n;
+    return Math.round((count / n) * 100) + '% (' + count + ' of ' + n + ')';
+  }
+  function calibrationTable(month, lowN, factCheck) {
+    var wrap = el('figure', 'calibration-month');
+    var caption = month.cohortDays + (month.cohortDays === 1 ? ' cohort day' : ' cohort days') + ' counted';
+    if (month.firstDay && month.lastDay) caption += ' (' + shortDay(month.firstDay) + ' – ' + shortDay(month.lastDay) + ')';
+    if (month.excludedDays) caption += '; ' + month.excludedDays + ' left out because the day\'s log was full';
+    var scroll = el('div', 'table-scroll');
+    var table = el('table', 'calibration-table');
+    var cap = el('caption');
+    cap.appendChild(el('strong', '', monthName(month.month)));
+    cap.appendChild(document.createTextNode(' · ' + caption));
+    table.appendChild(cap);
+    var head = el('thead');
+    var headRow = el('tr');
+    ['First label', 'Checked after', 'Stories (n)', 'Same label', 'Label changed', 'Other label', 'A fact-checker published a rating']
+      .forEach(function (name) {
+        var th = el('th', '', name);
+        th.scope = 'col';
+        headRow.appendChild(th);
+      });
+    head.appendChild(headRow);
+    table.appendChild(head);
+    var body = el('tbody');
+    (Array.isArray(month.rows) ? month.rows : []).forEach(function (row) {
+      var low = row.stories < lowN;
+      var tr = el('tr', low ? 'low-n' : '');
+      var state = el('th', '', STATE_TEXT[row.state] || row.state);
+      state.scope = 'row';
+      tr.appendChild(state);
+      tr.appendChild(el('td', '', HORIZON_TEXT[row.horizon] || row.horizon));
+      var n = el('td', 'n', String(row.stories));
+      if (low) n.appendChild(el('span', 'low-n-badge', 'low n'));
+      tr.appendChild(n);
+      tr.appendChild(el('td', '', share(row.same, row.stories, low)));
+      tr.appendChild(el('td', '', share(row.changed, row.stories, low)));
+      tr.appendChild(el('td', '', share(row.other, row.stories, low)));
+      tr.appendChild(el('td', 'not-measured', factCheck));
+      body.appendChild(tr);
+    });
+    table.appendChild(body);
+    scroll.appendChild(table);
+    wrap.appendChild(scroll);
+    return wrap;
+  }
+  function renderCalibration(calibration) {
+    var status = $('calibration-status');
+    var container = $('calibration');
+    container.replaceChildren();
+    if (!calibration || !Array.isArray(calibration.months)) {
+      status.textContent = 'Calibration figures are not available yet, or could not be read right now.';
+      return;
+    }
+    var lowN = Number(calibration.lowNThreshold) || 0;
+    var factCheck = calibration.factCheckStatus === 'not-measured' ? 'Not measured' : String(calibration.factCheckStatus || '');
+    $('calibration-low-n').textContent = String(lowN);
+    $('calibration-fact-check').textContent = calibration.factCheckNote || '';
+    $('calibration-notes').hidden = false;
+    if (calibration.months.length === 0) {
+      status.textContent = 'No cohort day has been counted yet. A day is counted once every story first seen on it is seven days old.';
+      return;
+    }
+    calibration.months.forEach(function (month) { container.appendChild(calibrationTable(month, lowN, factCheck)); });
+    status.textContent = 'Computed ' + when(calibration.generatedAt) + ' from the logged label history.';
   }
 
   function transition(change) {
@@ -162,6 +245,7 @@
     getJson(LIST_URL + '?limit=' + PAGE_LIMIT)
       .then(function (body) {
         renderCounts(body.counts);
+        renderCalibration(body.calibration);
         if (body.retentionDays) $('retention').textContent = String(body.retentionDays);
         if (body.state !== 'ok') {
           status.textContent = 'The change log could not be read right now. Nothing is hidden; try again shortly.';
@@ -180,6 +264,7 @@
       })
       .catch(function () {
         $('today-note').textContent = "Today's counts could not be loaded.";
+        $('calibration-status').textContent = 'Calibration figures could not be loaded. Try again shortly.';
         status.textContent = 'The change log could not be loaded. Try again shortly.';
         status.className = 'error';
       });

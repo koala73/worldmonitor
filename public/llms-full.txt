@@ -2781,6 +2781,9 @@ story's feeds and would flip its label back and forth. "Tier 4 only" and
 "unknown" are not recorded, because they depend on which feed labels a cycle
 happened to keep.
 
+How often first labels held up over 24 hours and 7 days is counted from a
+separate, longer-kept event log; see [Label Calibration](/docs/methodology/label-calibration).
+
 <a id="corpus-reporting-an-error"></a>
 ## Reporting an error
 

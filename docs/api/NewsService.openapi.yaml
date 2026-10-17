@@ -628,6 +628,43 @@ paths:
                     content:
                         application/json:
                             example:
+                                "calibration":
+                                    "definitionsVersion": 1
+                                    "factCheckNote": "Not measured. Published fact-checks are looked up only when someone checks a claim on /verify, and those lookups are not linked to stories. Counting this column needs a per-story lookup, which has not been decided."
+                                    "factCheckStatus": "not-measured"
+                                    "generatedAt": 1767182400000
+                                    "lowNThreshold": 30
+                                    "months":
+                                        - "cohortDays": 23
+                                          "excludedDays": 0
+                                          "firstDay": "2025-12-01"
+                                          "lastDay": "2025-12-23"
+                                          "month": "2025-12"
+                                          "rows":
+                                              - "changed": 96
+                                                "horizon": "24h"
+                                                "other": 12
+                                                "same": 302
+                                                "state": "single-publisher"
+                                                "stories": 410
+                                              - "changed": 115
+                                                "horizon": "7d"
+                                                "other": 14
+                                                "same": 281
+                                                "state": "single-publisher"
+                                                "stories": 410
+                                              - "changed": 3
+                                                "horizon": "24h"
+                                                "other": 0
+                                                "same": 19
+                                                "state": "corroborated"
+                                                "stories": 22
+                                              - "changed": 4
+                                                "horizon": "7d"
+                                                "other": 0
+                                                "same": 18
+                                                "state": "corroborated"
+                                                "stories": 22
                                 "changes":
                                     - "at": 1767182400000
                                       "credibilityScore": 72
@@ -1812,6 +1849,8 @@ components:
                     description: Retention window in days.
                 counts:
                     $ref: '#/components/schemas/LabelCounts'
+                calibration:
+                    $ref: '#/components/schemas/LabelCalibration'
             description: ListLabelChangesResponse lists changes from the last seven days, newest first.
         LabelChange:
             type: object
@@ -1905,6 +1944,90 @@ components:
                     format: int32
                     description: No evidence to judge.
             description: LabelCounts is how many stories in the latest full English digest carry each label.
+        LabelCalibration:
+            type: object
+            properties:
+                generatedAt:
+                    type: integer
+                    format: int64
+                    description: 'When the table was computed, Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                definitionsVersion:
+                    type: integer
+                    format: int32
+                    description: Version of the published definitions the figures follow.
+                lowNThreshold:
+                    type: integer
+                    format: int32
+                    description: 'Rows with fewer stories than this are low-n: shown with their counts, without a percentage.'
+                months:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LabelCalibrationMonth'
+                factCheckStatus:
+                    type: string
+                    description: 'State of the fact-check column: not-measured.'
+                factCheckNote:
+                    type: string
+                    description: Why the fact-check column is in that state, in English.
+            description: |-
+                LabelCalibration counts, per month, how stories first seen in the full English
+                 digest as single-publisher or corroborated were labelled 24 hours and 7 days later. Computed only from the
+                 logged label history. Coverage, not accuracy: no figure says a story was true or false.
+        LabelCalibrationMonth:
+            type: object
+            properties:
+                month:
+                    type: string
+                    description: UTC month, YYYY-MM.
+                cohortDays:
+                    type: integer
+                    format: int32
+                    description: 'Cohort days counted: days whose stories have all passed seven days.'
+                excludedDays:
+                    type: integer
+                    format: int32
+                    description: Cohort days left out because a day's event log reached its size cap.
+                firstDay:
+                    type: string
+                    description: First counted cohort day, YYYY-MM-DD; empty when none was counted.
+                lastDay:
+                    type: string
+                    description: Last counted cohort day, YYYY-MM-DD; empty when none was counted.
+                rows:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LabelCalibrationRow'
+            description: LabelCalibrationMonth sums the cohort days of one UTC calendar month.
+        LabelCalibrationRow:
+            type: object
+            properties:
+                state:
+                    type: string
+                    description: 'First label: single-publisher | corroborated.'
+                horizon:
+                    type: string
+                    description: 'Checkpoint after the first label: 24h | 7d.'
+                stories:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Stories first seen with this label in the month: the row's sample size (n).
+                         Named `stories`, not `n`: YAML 1.1 reads a bare `n` key as the boolean false.
+                same:
+                    type: integer
+                    format: int32
+                    description: Stories with the same label at the checkpoint.
+                changed:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Stories with the other tracked label at the checkpoint: from single-publisher,
+                         carried by two or more publisher families; from corroborated, by only one.
+                other:
+                    type: integer
+                    format: int32
+                    description: Stories labelled tier-4 only or not enough evidence at the checkpoint.
+            description: LabelCalibrationRow is one first label at one checkpoint. same + changed + other = stories.
         SubmitErrorReportRequest:
             type: object
             properties:

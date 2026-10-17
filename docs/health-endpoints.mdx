@@ -44,8 +44,8 @@ The top-level `status` describes user-visible platform availability, not perfect
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "summary": {
-    "total": 318,
-    "ok": 318,
+    "total": 319,
+    "ok": 319,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 0,
@@ -965,6 +965,17 @@ prove that every upstream story was captured. The marker names this proof and
 its archive source. Only judging opts into it. Accumulator pruning still
 requires the version-1 backfill proof. If the bounded scan cannot establish
 continuity, judging remains unavailable and the health signal names the stall.
+
+### Label calibration
+
+`labelCalibration` monitors `trust:label-calibration:v1` through
+`seed-meta:trust:label-calibration`. The `seed-label-calibration` section of
+`seed-bundle-derived-signals` republishes it every six hours and it becomes
+stale after 18 hours. The table has no counted month until the first cohort day
+is eight days old, so an empty payload is valid and never reports `EMPTY`. The
+check binds the activation marker `seed-activated:trust:label-calibration`,
+which the seeder sets after its first publish. See
+[Label Calibration](/methodology/label-calibration).
 
 ### Market alert ledger
 

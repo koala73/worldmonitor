@@ -70,6 +70,61 @@ message ListLabelChangesResponse {
   int32 retention_days = 3;
   // Stories in the latest full English digest by label. Absent when no recent count exists.
   LabelCounts counts = 4;
+  // Monthly calibration: how each first label held up after 24 hours and 7 days.
+  // Served only when story_id is empty; absent before the first publication or when it cannot be read.
+  LabelCalibration calibration = 5;
+}
+
+// LabelCalibration counts, per month, how stories first seen in the full English
+// digest as single-publisher or corroborated were labelled 24 hours and 7 days later. Computed only from the
+// logged label history. Coverage, not accuracy: no figure says a story was true or false.
+message LabelCalibration {
+  // When the table was computed, Unix epoch milliseconds.
+  int64 generated_at = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Version of the published definitions the figures follow.
+  int32 definitions_version = 2;
+  // Rows with fewer stories than this are low-n: shown with their counts, without a percentage.
+  int32 low_n_threshold = 3;
+  // Months with at least one finalized cohort day, newest first; at most 13.
+  repeated LabelCalibrationMonth months = 4;
+  // State of the fact-check column: not-measured.
+  string fact_check_status = 5;
+  // Why the fact-check column is in that state, in English.
+  string fact_check_note = 6;
+}
+
+// LabelCalibrationMonth sums the cohort days of one UTC calendar month.
+message LabelCalibrationMonth {
+  // UTC month, YYYY-MM.
+  string month = 1;
+  // Cohort days counted: days whose stories have all passed seven days.
+  int32 cohort_days = 2;
+  // Cohort days left out because a day's event log reached its size cap.
+  int32 excluded_days = 3;
+  // First counted cohort day, YYYY-MM-DD; empty when none was counted.
+  string first_day = 4;
+  // Last counted cohort day, YYYY-MM-DD; empty when none was counted.
+  string last_day = 5;
+  // One row per first label and checkpoint: single-publisher and corroborated, each at 24h and 7d.
+  repeated LabelCalibrationRow rows = 6;
+}
+
+// LabelCalibrationRow is one first label at one checkpoint. same + changed + other = stories.
+message LabelCalibrationRow {
+  // First label: single-publisher | corroborated.
+  string state = 1;
+  // Checkpoint after the first label: 24h | 7d.
+  string horizon = 2;
+  // Stories first seen with this label in the month: the row's sample size (n).
+  // Named `stories`, not `n`: YAML 1.1 reads a bare `n` key as the boolean false.
+  int32 stories = 3;
+  // Stories with the same label at the checkpoint.
+  int32 same = 4;
+  // Stories with the other tracked label at the checkpoint: from single-publisher,
+  // carried by two or more publisher families; from corroborated, by only one.
+  int32 changed = 5;
+  // Stories labelled tier-4 only or not enough evidence at the checkpoint.
+  int32 other = 6;
 }
 
 // LabelCounts is how many stories in the latest full English digest carry each label.
