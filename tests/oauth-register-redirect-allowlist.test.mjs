@@ -39,6 +39,19 @@ const HOSTED_CLIENT_CALLBACKS = {
   'Devin': 'https://api.devin.ai/mcp/oauth/callback',
   'Google Antigravity': 'https://antigravity.google/oauth-callback',
   'Vercel Connect': 'https://connect.vercel.com/callback',
+  'Cursor Bot, Grok Bot': 'https://www.cursor.com/bot/mcp/oauth/callback',
+  'Make.com MCP Client': 'https://www.make.com/oauth/cb/mcp',
+  'Notion (notion.so)': 'https://www.notion.so/workflows/mcp/oauth/callback',
+  'Notion (app.notion.com)': 'https://app.notion.com/workflows/mcp/oauth/callback',
+  'Linear': 'https://linear.app/connect/mcp/callback',
+  'Lovable': 'https://api.lovable.dev/workspaces/connectors/mcp/oauth/callback',
+  'Microsoft 365 Copilot': 'https://teams.microsoft.com/api/platform/v1.0/oAuthRedirect',
+  'Factory': 'https://app.factory.ai/mcp/oauth/callback',
+  'Factory EU': 'https://app.eu.factory.ai/mcp/oauth/callback',
+  'Conductor': 'https://api.conductor.build/oauth/callback',
+  'Skydive': 'https://www.skydive.com/api/v1/external-oauth/callback',
+  'MCPJam': 'https://app.mcpjam.com/oauth/callback',
+  'MCPJam score': 'https://score.mcpjam.com/oauth/callback',
 };
 
 const LOOPBACK = [
@@ -46,6 +59,8 @@ const LOOPBACK = [
   'http://127.0.0.1/', // VS Code desktop
   'http://127.0.0.1:33418/', // VS Code desktop, fixed-port fallback
   'http://localhost:6274/oauth/callback', // MCP Inspector
+  'http://[::1]/oauth_callback', // goose, IPv6 loopback
+  'http://[::1]:33418/callback',
 ];
 
 const REJECTED = {
@@ -72,6 +87,17 @@ const REJECTED = {
   'Vercel Connect callback with a trailing slash': 'https://connect.vercel.com/callback/',
   'other path on connect.vercel.com': 'https://connect.vercel.com/evil',
   'vercel.com without the connect subdomain': 'https://vercel.com/callback',
+  'Factory staging host': 'https://staging.app.factory.ai/mcp/oauth/callback',
+  'Factory dev host': 'https://dev.app.factory.ai/mcp/oauth/callback',
+  'Factory preprod EU host': 'https://preprod.app.eu.factory.ai/mcp/oauth/callback',
+  'MCPJam staging host': 'https://staging.mcpjam.com/oauth/callback',
+  'MCPJam www.score host': 'https://www.score.mcpjam.com/oauth/callback',
+  'MCPJam debug callback': 'https://app.mcpjam.com/oauth/callback/debug',
+  'LobeHub cloud (derived from source, not vendor-published)': 'https://app.lobehub.com/oauth/connector/callback',
+  'Teams callback with a lowercased path': 'https://teams.microsoft.com/api/platform/v1.0/oauthredirect',
+  'https IPv6 loopback': 'https://[::1]/oauth_callback',
+  'non-loopback IPv6 literal': 'http://[::2]/oauth_callback',
+  'IPv4-mapped IPv6 loopback': 'http://[::ffff:7f00:1]/oauth_callback',
   'javascript scheme': 'javascript:alert(1)',
   'not a URL': 'not a url',
 };
@@ -153,6 +179,30 @@ describe('POST /oauth/register', () => {
       'http://127.0.0.1:33418/',
     ];
     const res = await register({ client_name: 'Visual Studio Code', redirect_uris });
+    assert.equal(res.status, 201);
+    assert.deepEqual((await res.json()).redirect_uris, redirect_uris);
+  });
+
+  it('registers Cursor, which sends every callback in its published client metadata', async () => {
+    stubRedis();
+    // Verbatim from https://cursor.com/oauth/mcp-client.json (fetched 2026-10-17).
+    const redirect_uris = [
+      'https://www.cursor.com/agents/mcp/oauth/callback',
+      'https://www.cursor.com/bot/mcp/oauth/callback',
+      'https://grok.com/connectors-oauth-exchange-code/',
+      'http://localhost:8787/callback',
+      'http://127.0.0.1:8787/callback',
+    ];
+    const res = await register({ client_name: 'Cursor', redirect_uris });
+    assert.equal(res.status, 201);
+    assert.deepEqual((await res.json()).redirect_uris, redirect_uris);
+  });
+
+  it('registers goose, which sends IPv4 and IPv6 loopback', async () => {
+    stubRedis();
+    // Verbatim from https://goose-docs.ai/oauth/client-metadata.json (fetched 2026-10-17).
+    const redirect_uris = ['http://127.0.0.1/oauth_callback', 'http://[::1]/oauth_callback'];
+    const res = await register({ client_name: 'goose', redirect_uris });
     assert.equal(res.status, 201);
     assert.deepEqual((await res.json()).redirect_uris, redirect_uris);
   });
