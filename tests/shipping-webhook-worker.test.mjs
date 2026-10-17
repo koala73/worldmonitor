@@ -5,8 +5,11 @@ import {
   BACKFILL_CURSOR_KEY,
   CHOKEPOINT_STATUS_KEY,
   CHOKEPOINT_STATUS_RPC_URL,
+  LOCK_KEY,
+  LOCK_RENEW_SCRIPT,
   PRUNE_SCRIPT,
   RECORD_CAS_SCRIPT,
+  STATE_WRITE_SCRIPT,
   WORKER_ACTIVATION_KEY,
   WORKER_META_KEY,
   WORKER_STATUS_KEY,
@@ -28,7 +31,9 @@ function chokepoint(id, disruptionScore, extra = {}) {
     aisDisruptions: 0,
     congestionLevel: 'normal',
     warRiskTier: 'WAR_RISK_TIER_NORMAL',
-    transitSummary: { todayCountsAvailable: true, wowChangePct: -3 },
+    navigationalWarningsAvailable: true,
+    aisSnapshotAvailable: true,
+    transitSummary: { todayCountsAvailable: true, wowChangePct: -3, dataAvailable: true },
     ...extra,
   };
 }
@@ -46,6 +51,8 @@ function record(overrides = {}) {
     ...overrides,
   };
 }
+
+const SUB_ID = record().subscriberId;
 
 function plan(score, state, overrides = {}) {
   const rec = record(overrides);
@@ -98,6 +105,36 @@ describe('planTick state machine', () => {
 
   it('retries a still-armed crossing whose last delivery failed', () => {
     assert.equal(plan(75, { armed: true, lastScore: 75 }).deliveries.length, 1);
+  });
+
+  it('sends one delivery for a chokepoint listed twice', () => {
+    assert.equal(plan(75, null, { chokepointIds: ['suez', 'suez'] }).deliveries.length, 1);
+  });
+
+  it('does not re-arm when the score fell because a source went dark', () => {
+    const delivered = { armed: false, lastScore: 75, sources: { navigationalWarnings: true, ais: true, transit: true } };
+    const dark = planTick({
+      chokepoints: [chokepoint('suez', 40, { navigationalWarningsAvailable: false })],
+      records: [record()],
+      states: new Map([[SUB_ID, { suez: delivered }]]),
+      now: NOW,
+    });
+    assert.deepEqual(dark.nextStates.get(SUB_ID).suez, { ...delivered, lastScore: 40 });
+    const recovered = plan(75, dark.nextStates.get(SUB_ID).suez);
+    assert.equal(recovered.deliveries.length, 0, 'the same disruption does not fire again');
+    const ended = plan(40, recovered.nextStates.get(SUB_ID).suez);
+    assert.equal(ended.nextStates.get(SUB_ID).suez.armed, true, 'a real drop with every source present re-arms');
+  });
+
+  it('re-arms despite a source that was already missing at delivery', () => {
+    const delivered = { armed: false, lastScore: 75, sources: { navigationalWarnings: true, ais: true, transit: false } };
+    const { nextStates } = planTick({
+      chokepoints: [chokepoint('suez', 40, { transitSummary: { dataAvailable: false } })],
+      records: [record()],
+      states: new Map([[SUB_ID, { suez: delivered }]]),
+      now: NOW,
+    });
+    assert.equal(nextStates.get(SUB_ID).suez.armed, true);
   });
 
   it('evaluates only the chokepoints the subscriber chose', () => {
@@ -189,17 +226,27 @@ function fakeRedis(initial = {}) {
       }
       case 'EVAL': {
         const script = key;
+        const keys = args.slice(1, 1 + Number(args[0]));
+        const argv = args.slice(1 + Number(args[0]));
+        if (script === LOCK_RENEW_SCRIPT) return store.get(keys[0]) === argv[0] ? 1 : 0;
+        if (store.get(keys[0]) !== argv[0]) return -1;
         if (script === PRUNE_SCRIPT) {
-          const [, recordKey, indexKey, subStateKey, id] = args;
-          if (store.has(recordKey)) return 0;
-          store.get(indexKey)?.delete(id);
-          store.delete(subStateKey);
+          if (store.has(keys[1])) return 0;
+          store.get(keys[2])?.delete(argv[1]);
+          store.delete(keys[3]);
+          return 1;
+        }
+        if (script === STATE_WRITE_SCRIPT) {
+          if (!store.has(keys[1])) return 0;
+          const hash = store.get(keys[2]) ?? {};
+          for (let i = 2; i < argv.length; i += 2) hash[argv[i]] = argv[i + 1];
+          store.set(keys[2], hash);
+          ttl.set(keys[2], Number(argv[1]));
           return 1;
         }
         assert.equal(script, RECORD_CAS_SCRIPT);
-        const [, recordKey, expected, next] = args;
-        if (store.get(recordKey) !== expected) return 0;
-        store.set(recordKey, next);
+        if (store.get(keys[1]) !== argv[1]) return 0;
+        store.set(keys[1], argv[2]);
         return 1;
       }
       default: throw new Error(`unexpected command ${verb}`);
@@ -212,13 +259,19 @@ function fakeRedis(initial = {}) {
   return { redis, store, ttl, log };
 }
 
-function lockStub(acquired = true, renewals = []) {
-  const calls = { acquire: 0, release: 0, renew: 0 };
+const TOKEN = 'run-1';
+
+function lockStub(acquired = true, store = null) {
+  const calls = { acquire: 0, release: 0 };
   return {
     calls,
     lock: {
-      acquire: async () => { calls.acquire += 1; return acquired; },
-      renew: async () => { calls.renew += 1; return renewals.shift() ?? true; },
+      acquire: async () => {
+        calls.acquire += 1;
+        if (acquired) store?.set(LOCK_KEY, TOKEN);
+        return acquired;
+      },
+      fence: () => ({ key: LOCK_KEY, token: TOKEN }),
       release: async () => { calls.release += 1; },
     },
   };
@@ -226,6 +279,15 @@ function lockStub(acquired = true, renewals = []) {
 
 const SUB = record().subscriberId;
 const RECORD_KEY = `webhook:sub:${SUB}:v1`;
+
+function twoCrossings() {
+  const fake = seeded({ rec: record({ chokepointIds: ['suez', 'hormuz_strait'] }) });
+  fake.store.set(CHOKEPOINT_STATUS_KEY, JSON.stringify({
+    chokepoints: [chokepoint('suez', 75), chokepoint('hormuz_strait', 90)],
+    fetchedAt: 'x',
+  }));
+  return fake;
+}
 
 function seeded({ score = 75, rec = record(), backfilled = true, state } = {}) {
   const initial = {
@@ -253,7 +315,7 @@ function deliverStub(outcomes) {
 
 const tick = (fake, deliver, extra = {}) => runTick({
   redis: fake.redis,
-  lock: lockStub().lock,
+  lock: lockStub(true, fake.store).lock,
   deliver,
   env: {},
   fetchImpl: async () => { throw new Error('unexpected fetch'); },
@@ -269,7 +331,10 @@ describe('runTick', () => {
     assert.equal(sent.length, 1);
     assert.equal(summary.deliveries, 1);
     assert.deepEqual(JSON.parse(fake.store.get(stateKey(SUB)).suez), {
-      armed: false, lastScore: 75, lastDeliveredAt: '2026-10-17T12:00:00.000Z',
+      armed: false,
+      lastScore: 75,
+      lastDeliveredAt: '2026-10-17T12:00:00.000Z',
+      sources: { navigationalWarnings: true, ais: true, transit: true },
     });
     assert.equal(fake.ttl.get(stateKey(SUB)), 30 * 86400);
     assert.deepEqual(JSON.parse(fake.store.get(RECORD_KEY)), {
@@ -293,7 +358,7 @@ describe('runTick', () => {
     assert.equal(stored.lastDeliveryError, 'http_500');
     assert.equal(stored.deactivatedAt, '2026-10-17T12:00:00.000Z');
     assert.equal(JSON.parse(fake.store.get(stateKey(SUB)).suez).armed, true);
-    const write = fake.log.find((command) => command[0] === 'EVAL');
+    const write = fake.log.find((command) => command[0] === 'EVAL' && command[1] === RECORD_CAS_SCRIPT);
     assert.match(write[1], /'KEEPTTL'/);
     assert.equal(fake.log.some((command) => command[0] === 'SET' && command[1] === RECORD_KEY), false);
 
@@ -412,21 +477,90 @@ describe('runTick', () => {
   });
 
   it('stops sending and leaves only pending ids once the lock is lost', async () => {
-    const fake = seeded({ rec: record({ chokepointIds: ['suez', 'hormuz_strait'] }) });
-    fake.store.set(CHOKEPOINT_STATUS_KEY, JSON.stringify({
-      chokepoints: [chokepoint('suez', 75), chokepoint('hormuz_strait', 90)],
-      fetchedAt: 'x',
-    }));
+    const fake = twoCrossings();
     const before = fake.store.get(RECORD_KEY);
-    const { calls, lock } = lockStub(true, [true, false]);
-    const { sent, deliver } = deliverStub([]);
+    const { calls, lock } = lockStub(true, fake.store);
+    const { sent, deliver: send } = deliverStub([]);
+    const deliver = async (...args) => {
+      fake.store.set(LOCK_KEY, 'run-2');
+      return send(...args);
+    };
     await assert.rejects(tick(fake, deliver, { lock }), /lock lost/);
     assert.equal(sent.length, 1);
     assert.equal(fake.store.get(RECORD_KEY), before);
-    const pending = JSON.parse(fake.store.get(stateKey(SUB)).suez).pending;
-    assert.equal(pending.deliveryId, sent[0].deliveryId);
+    const state = fake.store.get(stateKey(SUB));
+    assert.equal(JSON.parse(state.suez).pending.deliveryId, sent[0].deliveryId);
+    assert.equal(JSON.parse(state.hormuz_strait).armed, true);
     assert.equal(fake.store.has(WORKER_META_KEY), false);
     assert.equal(calls.release, 1);
+  });
+
+  it('a worker whose lock was taken mid-delivery overwrites neither state nor record', async () => {
+    const fake = seeded();
+    const before = fake.store.get(RECORD_KEY);
+    const { sent, deliver: send } = deliverStub([{ ok: true, status: 200 }]);
+    const deliver = async (...args) => {
+      fake.store.set(LOCK_KEY, 'run-2');
+      return send(...args);
+    };
+    await assert.rejects(tick(fake, deliver), /lock lost/);
+    assert.equal(sent.length, 1);
+    const suez = JSON.parse(fake.store.get(stateKey(SUB)).suez);
+    assert.equal(suez.armed, true, 'the new owner, not this worker, decides the disarm');
+    assert.equal(suez.pending.deliveryId, sent[0].deliveryId);
+    assert.equal(fake.store.get(RECORD_KEY), before);
+  });
+
+  it('does not recreate state for a subscriber pruned during the tick', async () => {
+    const fake = seeded();
+    const { deliver: send } = deliverStub([{ ok: true, status: 200 }]);
+    const deliver = async (...args) => {
+      fake.store.delete(RECORD_KEY);
+      fake.store.delete(stateKey(SUB));
+      return send(...args);
+    };
+    await tick(fake, deliver);
+    assert.equal(fake.store.has(stateKey(SUB)), false);
+  });
+
+  it('stops a subscriber at its first failure in a tick so one outage counts once', async () => {
+    const fake = twoCrossings();
+    const { sent, deliver } = deliverStub([{ ok: false, status: 0, error: 'timeout' }]);
+    const summary = await tick(fake, deliver);
+    assert.equal(sent.length, 1);
+    assert.equal(summary.failures, 1);
+    assert.equal(JSON.parse(fake.store.get(RECORD_KEY)).failureCount, 1);
+    const state = fake.store.get(stateKey(SUB));
+    assert.ok(JSON.parse(state.hormuz_strait).pending, 'the unsent crossing waits for the next tick');
+  });
+
+  it('stops sending once the record changes mid-tick, so no send uses a rotated secret', async () => {
+    const fake = twoCrossings();
+    const rotated = JSON.stringify({ ...record({ chokepointIds: ['suez', 'hormuz_strait'] }), secret: 'b'.repeat(64) });
+    const { sent, deliver: send } = deliverStub([]);
+    const deliver = async (...args) => {
+      fake.store.set(RECORD_KEY, rotated);
+      return send(...args);
+    };
+    await tick(fake, deliver);
+    assert.equal(sent.length, 1);
+    assert.equal(fake.store.get(RECORD_KEY), rotated);
+  });
+
+  it('retries a lock renewal that failed in transport', async () => {
+    const fake = seeded();
+    let failed = false;
+    const redis = async (commands) => {
+      if (!failed && commands.some((command) => command[1] === LOCK_RENEW_SCRIPT)) {
+        failed = true;
+        throw new Error('fetch failed');
+      }
+      return fake.redis(commands);
+    };
+    const { sent, deliver } = deliverStub([]);
+    const summary = await tick({ ...fake, redis }, deliver);
+    assert.equal(sent.length, 1);
+    assert.equal(summary.deliveries, 1);
   });
 
   it('writes health status, meta, and the activation marker', async () => {
