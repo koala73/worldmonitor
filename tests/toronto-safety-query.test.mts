@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ApiError } from '../src/generated/server/worldmonitor/safety/v1/service_server.ts';
 import { queryTorontoSafety } from '../server/worldmonitor/safety/v1/get-toronto-safety.ts';
 import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
+import { validationFailure } from './helpers/validation-failure.mts';
 
 const MCI_KEY = 'safety:toronto:tps-mci:v1';
 const MCI_META = 'seed-meta:safety:tps-mci';
@@ -107,7 +107,7 @@ describe('Toronto safety bounded query surfaces (#7012)', () => {
     assert.deepEqual(missing.occurrences, []);
     await assert.rejects(
       queryTorontoSafety(request({ dataset: 'live_dispatch' }), reader(new Map())),
-      (error: unknown) => error instanceof ApiError && error.statusCode === 400,
+      validationFailure('dataset'),
     );
   });
 
