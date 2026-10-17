@@ -278,6 +278,15 @@ function readAnchorObservation({ repository, sha, trustedWriter }) {
   }
 
   const projection = latestStatusesByContext([statuses], STATUS_PREFIX, { creatorLogin: trustedWriter });
+  const createdAtByContext = new Map();
+  for (const status of seedStatuses) {
+    if (!createdAtByContext.has(status.context)) {
+      createdAtByContext.set(status.context, Date.parse(status.created_at));
+    }
+  }
+  for (const [context, status] of projection) {
+    status.createdAtTimestamp = createdAtByContext.get(context);
+  }
   const markerStatus = projection.get(ACCEPTANCE_CONTEXT);
   const marker = markerStatus ? completionMarkerCheckedAt(markerStatus) : null;
   const newestIsMarker = seedStatuses[0].context === ACCEPTANCE_CONTEXT;
@@ -364,12 +373,29 @@ function main() {
       anchoredObservation = readAnchorObservation({ repository, sha: statusSha, trustedWriter });
       if (rotatedObservation.checkedAtTimestamp != null
         && (anchoredObservation.checkedAtTimestamp ?? -Infinity) <= rotatedObservation.checkedAtTimestamp) {
+        const partialStatuses = new Map();
+        if (anchoredObservation.state === 'partial') {
+          for (const [context, status] of anchoredObservation.statuses) {
+            if (context === ACCEPTANCE_CONTEXT) continue;
+            const carried = rotatedObservation.statuses.get(context);
+            if (statusMeaningMatches(status, carried)) continue;
+            const cutoff = Math.max(
+              rotatedObservation.statuses.get(ACCEPTANCE_CONTEXT)?.createdAtTimestamp ?? -Infinity,
+              carried?.createdAtTimestamp ?? -Infinity,
+            );
+            if (!Number.isFinite(cutoff) || !Number.isFinite(status.createdAtTimestamp)
+              || status.createdAtTimestamp === cutoff) {
+              throw new Error(`cannot order partial seed status ${context} across anchors`);
+            }
+            if (status.createdAtTimestamp > cutoff) partialStatuses.set(context, status);
+          }
+        }
         anchoredObservation = {
           ...anchoredObservation,
           state: anchoredObservation.state === 'complete' ? 'empty' : anchoredObservation.state,
           checkedAt: rotatedObservation.checkedAt,
           checkedAtTimestamp: rotatedObservation.checkedAtTimestamp,
-          statuses: anchoredObservation.state === 'complete' ? new Map() : anchoredObservation.statuses,
+          statuses: partialStatuses,
         };
       }
     }
