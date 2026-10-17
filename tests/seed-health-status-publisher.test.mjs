@@ -33,11 +33,12 @@ function aggregate(checkedAt) {
     state: 'pending',
     description: `1 source incident remains active; observed ${checkedAt}`,
     creator: { login: WRITER },
+    created_at: checkedAt,
   };
 }
 
 function trusted(status) {
-  return { ...status, creator: { login: WRITER } };
+  return { created_at: checkedAt(-300_000), ...status, creator: { login: WRITER } };
 }
 
 function checkedAt(offsetMs = 0) {
@@ -349,19 +350,62 @@ describe('seed health status publisher', () => {
     }
   });
 
-  it('retains the newer clock while repairing an older partial successor', () => {
+  it('preserves newer incident state and clock over an older partial successor', () => {
+    for (const stale of [true, false]) {
+      const result = runPublisher({
+        blocking: stale ? [] : [{ name: 'example', status: 'STALE_SEED' }],
+        observedAt: checkedAt(stale ? -180_000 : -60_000), statusSha: STATUS_ANCHOR,
+        statusStatuses: [...Array.from({ length: 900 }, () => aggregate(checkedAt(-120_000))), trusted(failure)],
+        nextStatuses: [
+          trusted({ ...failure, state: 'success', description: 'recovered; no longer reported', created_at: checkedAt(-180_000) }),
+          aggregate(checkedAt(-240_000)),
+        ],
+      });
+
+      if (stale) {
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /is not newer than completed projection/);
+        assert.equal(result.posts, '');
+      } else {
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /"newOrChangedFailures": \[\]/);
+        assert.match(result.posts, /state=failure -f context=ingestion\/seed\/example/);
+      }
+    }
+  });
+
+  it('resumes newer partial writes despite an older successor completion marker', () => {
     const result = runPublisher({
-      blocking: [], observedAt: checkedAt(-180_000), statusSha: STATUS_ANCHOR,
+      blocking: [{ name: 'new-source', status: 'STALE_SEED' }],
+      statusSha: STATUS_ANCHOR,
       statusStatuses: [...Array.from({ length: 900 }, () => aggregate(checkedAt(-120_000))), trusted(failure)],
       nextStatuses: [
-        trusted({ ...failure, state: 'success', description: 'recovered; no longer reported' }),
+        trusted({ ...failure, context: 'ingestion/seed/new-source', created_at: checkedAt(-60_000) }),
         aggregate(checkedAt(-240_000)),
       ],
     });
 
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /is not newer than completed projection/);
-    assert.equal(result.posts, '');
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /"newOrChangedFailures": \[\]/);
+    assert.match(result.posts, /state=success -f context=ingestion\/seed\/example/);
+  });
+
+  it('fails before writes when conflicting partial publication order is unknown', () => {
+    const priorAt = checkedAt(-120_000);
+    for (const createdAt of [undefined, 'not-a-time', priorAt]) {
+      const result = runPublisher({
+        blocking: [], statusSha: STATUS_ANCHOR,
+        statusStatuses: [...Array.from({ length: 900 }, () => aggregate(priorAt)), trusted(failure)],
+        nextStatuses: [
+          trusted({ ...failure, state: 'success', description: 'recovered; no longer reported', created_at: createdAt }),
+          aggregate(checkedAt(-240_000)),
+        ],
+      });
+
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /cannot order partial seed status/);
+      assert.equal(result.posts, '');
+    }
   });
 
   it('keeps an unchanged incident off a new monitored revision', () => {
