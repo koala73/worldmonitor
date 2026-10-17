@@ -139,7 +139,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private currentScore: CountryScore | null = null;
   private currentSignals: CountrySignalCounts | null = null;
   private signalCoverageNotes: readonly string[] = [];
-  private currentSignalDetails: CountryDeepDiveSignalDetails | null = null;
+  private currentSignalDetails: CountryDeepDiveSignalDetails | 'unavailable' | null = null;
   private currentBrief: string | null = null;
   private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
@@ -310,6 +310,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const body = id === 'energy' && this.hostedAtlasBody ? this.energyBody! : section.body;
     const notice = state === 'locked' ? this.makeProLocked(reason) : this.makeEmpty(reason);
     notice.dataset.briefState = state;
+    if (id === 'signals' && state === 'unavailable' && this.signalBreakdownBody && this.signalRecentBody) {
+      this.currentSignalDetails = 'unavailable';
+      this.signalBreakdownBody.replaceChildren(notice);
+      this.signalRecentBody.replaceChildren();
+      return;
+    }
     body.querySelector('.cdp-refresh-failure')?.remove();
     const previous = briefSectionState({ id, title: '', card, body });
     if (state === 'unavailable' && previous === 'ready') {
@@ -881,6 +887,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     grid.append(this.factItem(t('countryBrief.facts.currencies'), data.currencies.join(', ')));
 
     this.factsBody.append(grid);
+    this.factsBody.append(this.el('p', 'cdp-economic-source', 'Configured structured facts source: Wikidata.'));
+    if (data.wikipediaSummary.trim()) {
+      this.factsBody.append(this.el('p', 'cdp-measure-note', 'Description: Wikipedia.'));
+    }
+    this.factsBody.append(this.el('p', 'cdp-measure-note', 'Reference years are not supplied.'));
   }
 
   public updateHousingCycle(data: {
@@ -966,6 +977,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.proMetricBox('Status', data.sanctionsActive ? 'Active' : 'None'),
     );
     this.sanctionsBody.append(grid);
+    this.sanctionsBody.append(
+      this.el('p', 'cdp-economic-source', 'Configured dataset sources: OFAC SDN and Consolidated lists; Global Affairs Canada consolidated sanctions.'),
+      this.el('p', 'cdp-measure-note', 'Count includes merged records linked to this country. Active means the count is greater than zero, not a legal assessment of the country.'),
+      this.el('p', 'cdp-measure-note', 'Per-source contributions, coverage and publication dates are not supplied here.'),
+    );
   }
 
   public updateComtradeFlows(flows: Array<{ partnerName: string; cmdDesc: string; tradeValueUsd: number; yoyChange: number }> | null): void {
@@ -1315,12 +1331,17 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.energyBody) return;
     this.energyBody.replaceChildren();
 
+    const sourceNotes: HTMLElement[] = [];
+    if (!data.jodiOilAvailable) sourceNotes.push(this.el('p', 'cdp-economic-source', 'JODI oil data not supplied in this profile.'));
+    if (!data.jodiGasAvailable) sourceNotes.push(this.el('p', 'cdp-economic-source', 'JODI gas data not supplied in this profile.'));
+    if (!data.ieaStocksAvailable) sourceNotes.push(this.el('p', 'cdp-economic-source', 'IEA oil stocks data not supplied in this profile.'));
+
     const hasAny = data.mixAvailable || data.jodiOilAvailable || data.ieaStocksAvailable
       || data.jodiGasAvailable || data.gasStorageAvailable || data.electricityAvailable
       || data.emberAvailable || data.sprAvailable || data.importShareAvailable;
 
     if (!hasAny) {
-      this.energyBody.append(this.makeEmpty('Energy data unavailable for this country.'));
+      this.energyBody.append(this.makeEmpty('Energy data unavailable for this country.'), ...sourceNotes);
       this.renderAtlasExposure();
       return;
     }
@@ -1562,7 +1583,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (data.emberAvailable) {
       const section = this.el('div', '');
       section.style.cssText = 'margin-top:10px';
-      const monthLabel = data.emberDataMonth || 'latest';
+      const monthLabel = data.emberDataMonth.trim() ? data.emberDataMonth : 'observation month not supplied';
       section.append(this.el('div', 'cdp-subtitle', `Monthly Generation Mix (${monthLabel})`));
 
       const segments: Array<{ label: string; color: string; value: number }> = [
@@ -1628,6 +1649,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.energyBody.append(this.renderShockScenarioWidget());
     }
 
+    this.energyBody.append(...sourceNotes);
     this.renderAtlasExposure();
   }
 

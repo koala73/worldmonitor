@@ -2062,6 +2062,46 @@ describe('api/mcp-proxy — observability', () => {
     assert.equal(proxyFailureFor(new Error('HTTP 401')).report, true);
   });
 
+  // HTTP 429 is the remote server rate-limiting the caller (a keyless panel
+  // polling past its free quota), the HTTP shape of the same verdict as a
+  // JSON-RPC rejection. One search.parallel.ai panel sent 1,019 such events in
+  // a day after the 401/403 and JSON-RPC exclusions shipped (WORLDMONITOR-172
+  // second regrowth). The audit log keeps the upstream status.
+  it('does not report an upstream rate limit to Sentry, but still reports upstream server faults', async () => {
+    const { McpProxyUpstreamError, proxyFailureFor } = await import(
+      `../api/mcp-proxy.ts?rate-limit=${Date.now()}`
+    );
+    const limited = proxyFailureFor(
+      new McpProxyUpstreamError('tools/call failed: HTTP 429', { upstreamStatus: 429 }),
+    );
+    assert.equal(limited.report, false, "upstream 429 is the remote's quota decision about the caller");
+    assert.equal(limited.level, 'warning');
+    for (const status of [500, 502, 503, 404, 400]) {
+      assert.equal(
+        proxyFailureFor(new McpProxyUpstreamError(`tools/call failed: HTTP ${status}`, { upstreamStatus: status })).report,
+        true,
+        `upstream ${status} still reports`,
+      );
+    }
+    assert.equal(proxyFailureFor(new McpProxyUpstreamError('tools/call failed: HTTP 429')).report, true);
+  });
+
+  it('audits the upstream status of a rate-limited call', async () => {
+    const logs = [];
+    const originalLog = console.log;
+    console.log = (...args) => { logs.push(args); };
+    try {
+      stubAxiom(async () => new Response('Too Many Requests', { status: 429 }));
+      const res = await obsHandler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 422);
+    } finally {
+      console.log = originalLog;
+    }
+    const audit = logs.find(([tag, entry]) => tag === '[mcp-proxy]' && entry?.event === 'mcp_proxy_call');
+    assert.ok(audit, 'the proxy call is still audited');
+    assert.equal(audit[1].upstream_status, 429);
+  });
+
   // A JSON-RPC `error` object answered on HTTP 200 is the remote server's
   // decision about the caller's own request (a keyless panel over its free
   // quota, an unknown tool name). One search.parallel.ai panel saved without

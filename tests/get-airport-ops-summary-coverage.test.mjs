@@ -16,6 +16,7 @@
 import { describe, it, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { drainResponseHeaders } from '../server/_shared/response-headers.ts';
+import { validationFailure } from './helpers/validation-failure.mts';
 
 let getAirportOpsSummary;
 let defaultWatchedAirports;
@@ -268,7 +269,7 @@ describe('airport ops input admission', () => {
     let calls = 0;
     globalThis.fetch = async (...args) => { calls++; return fetchImpl(...args); };
     try {
-      await assert.rejects(getAirportOpsSummary({}, { airports }), error => error.statusCode === 400);
+      await assert.rejects(getAirportOpsSummary({}, { airports }), validationFailure('airports'));
       assert.equal(calls, 0);
     } finally { globalThis.fetch = fetchImpl; }
   });

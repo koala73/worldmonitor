@@ -7,16 +7,21 @@
 
 import { v } from "convex/values";
 import { internalAction, internalMutation, internalQuery } from "../_generated/server";
+import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { buildCancellationConfirmEmail } from "./cancellationEmailCopy";
 import { signDunningPortalToken } from "../lib/identitySigning";
+import { buildUnsubscribeUrl, listUnsubscribeHeaders } from "../lib/emailUnsubscribe";
+import { ResendSendError, sendResendEmail, type EmailPurpose } from "../lib/resendEmail";
 import { billingDeletionForEvent, billingDeletionForUser, isCoveringAt } from "./subscriptionHelpers";
 
 export { formatAccessEndDate } from "./cancellationEmailCopy";
 
-const RESEND_URL = "https://api.resend.com/emails";
 const FROM = "World Monitor <noreply@worldmonitor.app>";
+// Marketing sender (audit check 4): winback is a marketing email, so it goes
+// from news@ like the launch broadcast, with a one-click unsubscribe.
+const MARKETING_FROM = "World Monitor <news@worldmonitor.app>";
 const ADMIN_EMAIL = "elie@worldmonitor.app";
 
 const PLAN_DISPLAY: Record<string, string> = {
@@ -43,30 +48,39 @@ const PRO_PLANS = new Set([
   "pro_business_annual",
 ]);
 
+/**
+ * All lifecycle mail goes through the shared Resend helper, which checks the
+ * local suppression table before every POST (welcome, reactivation and the
+ * sign-in pointer used to skip it). FROM is a noreply address, so
+ * customer-facing sends pass ADMIN_EMAIL as reply_to: the "Reply to this
+ * email" support copy only routes correctly with an explicit reply_to. Admin
+ * notifications pass `replyTo: null` so replies don't self-loop back to
+ * ADMIN_EMAIL. Returns false when the recipient is suppressed.
+ */
 async function sendEmail(
+  ctx: Pick<ActionCtx, "runQuery">,
   apiKey: string,
   to: string,
   subject: string,
   html: string,
-  replyTo?: string,
-): Promise<void> {
-  // FROM is a noreply address, so the welcome email's "Reply to this email"
-  // support copy only routes correctly when we explicitly set reply_to on the
-  // Resend payload. Admin notifications pass no replyTo so replies don't
-  // self-loop back to ADMIN_EMAIL.
-  const payload: Record<string, unknown> = { from: FROM, to: [to], subject, html };
-  if (replyTo) payload.reply_to = replyTo;
-  const res = await fetch(RESEND_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    const msg = `[subscriptionEmails] Resend ${res.status}: ${body}`;
+  options: { replyTo: string | null; purpose?: EmailPurpose; from?: string; headers?: Record<string, string> },
+): Promise<boolean> {
+  try {
+    const result = await sendResendEmail(ctx, {
+      apiKey,
+      from: options.from ?? FROM,
+      to,
+      subject,
+      html,
+      replyTo: options.replyTo,
+      purpose: options.purpose ?? "transactional",
+      headers: options.headers,
+    });
+    return result.sent;
+  } catch (err) {
+    const msg = err instanceof ResendSendError
+      ? `[subscriptionEmails] Resend ${err.status}: ${err.body}`
+      : `[subscriptionEmails] Resend request failed: ${err instanceof Error ? err.message : String(err)}`;
     console.error(msg);
     throw new Error(msg);
   }
@@ -202,13 +216,15 @@ function maskEmail(address: string): string {
  * a failure here must never propagate — log and continue.
  */
 async function sendSignInPointer(
+  ctx: Pick<ActionCtx, "runQuery">,
   apiKey: string,
   checkoutEmail: string,
   loginEmail: string,
   planName: string,
 ): Promise<void> {
   try {
-    await sendEmail(
+    const sent = await sendEmail(
+      ctx,
       apiKey,
       checkoutEmail,
       `Your World Monitor subscription is active — where to sign in`,
@@ -224,9 +240,9 @@ async function sendSignInPointer(
           <p style="font-size: 11px; color: #666; text-align: center; margin: 24px 0 0;">Questions? Reply to this email or contact ${ADMIN_EMAIL}.</p>
         </div>
       </div>`,
-      ADMIN_EMAIL,
+      { replyTo: ADMIN_EMAIL },
     );
-    console.log(`[subscriptionEmails] Sign-in pointer sent to checkout address`);
+    if (sent) console.log(`[subscriptionEmails] Sign-in pointer sent to checkout address`);
   } catch (err) {
     console.error(
       `[subscriptionEmails] Sign-in pointer to checkout address failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
@@ -419,14 +435,15 @@ export const sendSubscriptionEmails = internalAction({
     // Pro support line) to ADMIN_EMAIL — FROM is noreply@ and Gmail honours
     // Reply-To over From when both are present.
     try {
-      await sendEmail(
+      const sent = await sendEmail(
+        ctx,
         apiKey,
         args.userEmail,
         `Welcome to World Monitor ${planName}`,
         userWelcomeHtml(planName, args.planKey, args.checkoutEmail ? args.userEmail : undefined),
-        ADMIN_EMAIL,
+        { replyTo: ADMIN_EMAIL },
       );
-      console.log(`[subscriptionEmails] Welcome email sent to ${args.userEmail}`);
+      if (sent) console.log(`[subscriptionEmails] Welcome email sent to ${args.userEmail}`);
     } catch (err) {
       console.error(
         `[subscriptionEmails] Welcome email failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
@@ -436,7 +453,7 @@ export const sendSubscriptionEmails = internalAction({
     // 1b. Sign-in pointer to the checkout inbox (#6330) — see sendSignInPointer.
     if (!await canSend()) return;
     if (args.checkoutEmail) {
-      await sendSignInPointer(apiKey, args.checkoutEmail, args.userEmail, planName);
+      await sendSignInPointer(ctx, apiKey, args.checkoutEmail, args.userEmail, planName);
     }
 
     // 2. Admin notification — leads with what the user actually paid (and how
@@ -452,6 +469,7 @@ export const sendSubscriptionEmails = internalAction({
     });
     try {
       await sendEmail(
+        ctx,
         apiKey,
         ADMIN_EMAIL,
         `[WM] New User Subscribed to ${planName}`,
@@ -465,6 +483,7 @@ export const sendSubscriptionEmails = internalAction({
           <tr><td style="color: #888; padding-right: 16px;">User ID:</td><td style="color: #fff; font-size: 12px;">${escapeHtml(args.userId)}</td></tr>
         </table>
       </div>`,
+        { replyTo: null },
       );
       console.log(`[subscriptionEmails] Admin notification sent for ${args.userEmail}`);
     } catch (err) {
@@ -509,7 +528,8 @@ export const sendReactivationEmail = internalAction({
       ? `<p style="font-size: 13px; color: #999; line-height: 1.5; margin: 0 0 24px;">Sign in with <strong style="color: #fff;">${escapeHtml(args.userEmail)}</strong> — the address you entered at checkout is kept as your billing contact.</p>`
       : "";
     try {
-      await sendEmail(
+      const sent = await sendEmail(
+        ctx,
         apiKey,
         args.userEmail,
         `Welcome back to World Monitor ${planName}`,
@@ -525,9 +545,9 @@ export const sendReactivationEmail = internalAction({
           <p style="font-size: 11px; color: #666; text-align: center; margin: 24px 0 0;">Questions? Reply to this email or contact ${ADMIN_EMAIL}.</p>
         </div>
       </div>`,
-        ADMIN_EMAIL,
+        { replyTo: ADMIN_EMAIL },
       );
-      console.log(`[subscriptionEmails] Reactivation email sent to ${args.userEmail}`);
+      if (sent) console.log(`[subscriptionEmails] Reactivation email sent to ${args.userEmail}`);
     } catch (err) {
       console.error(
         `[subscriptionEmails] Reactivation email failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
@@ -538,7 +558,7 @@ export const sendReactivationEmail = internalAction({
     // path (#6330); best-effort by construction.
     if (!await canSend()) return;
     if (args.checkoutEmail) {
-      await sendSignInPointer(apiKey, args.checkoutEmail, args.userEmail, planName);
+      await sendSignInPointer(ctx, apiKey, args.checkoutEmail, args.userEmail, planName);
     }
   },
 });
@@ -730,7 +750,15 @@ export const recordDunningStepSent = internalMutation({
   },
 });
 
-function dunningEmailShell(headline: string, bodyHtml: string, ctaLabel: string, ctaHref: string, footerNote: string): string {
+function dunningEmailShell(headline: string, bodyHtml: string, ctaLabel: string, ctaHref: string, footerNote: string, unsubscribeUrl?: string | null): string {
+  // `undefined`: payment-failure mail, no line. `null`: a marketing email whose
+  // one-click URL could not be signed (EMAIL_UNSUBSCRIBE_SECRET unset); keep
+  // a visible support opt-out instead of dropping the line.
+  const unsubscribeLine = unsubscribeUrl
+    ? `<a href="${escapeHtml(unsubscribeUrl)}" style="color: #666; text-decoration: underline;">Unsubscribe from World Monitor product emails</a><br />`
+    : unsubscribeUrl === null
+    ? `<a href="mailto:support@worldmonitor.app?subject=Unsubscribe%20from%20product%20emails" style="color: #666; text-decoration: underline;">Email support to unsubscribe from product emails</a><br />`
+    : "";
   return `
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
   <div style="background: #f59e0b; height: 4px;"></div>
@@ -757,7 +785,7 @@ function dunningEmailShell(headline: string, bodyHtml: string, ctaLabel: string,
   <div style="border-top: 1px solid #1a1a1a; padding: 24px 32px; text-align: center;">
     <p style="font-size: 11px; color: #444; margin: 0; line-height: 1.6;">
       ${footerNote}<br />
-      <a href="https://worldmonitor.app" style="color: #f59e0b; text-decoration: none;">worldmonitor.app</a>
+      ${unsubscribeLine}<a href="https://worldmonitor.app" style="color: #f59e0b; text-decoration: none;">worldmonitor.app</a>
     </p>
   </div>
 </div>`;
@@ -773,6 +801,7 @@ export function buildDunningEmail(
   ctaUrl: string,
   accessUntil?: number,
   paidUntil?: number,
+  unsubscribeUrl?: string | null,
 ): { subject: string; html: string } {
   const stillCovered = typeof accessUntil === "number" && accessUntil > Date.now();
   // Access can outlive the paid period (a comp grant), so the "ends with your
@@ -838,6 +867,7 @@ export function buildDunningEmail(
           "Rejoin World Monitor",
           ctaUrl,
           "This is a one-time note — we won't send more emails about this subscription.",
+          unsubscribeUrl,
         ),
       };
   }
@@ -1129,6 +1159,12 @@ export const sendDunningEmail = internalAction({
     }
 
     const planName = PLAN_DISPLAY[fresh.sub.planKey] ?? fresh.sub.planKey;
+    // Winback is marketing: one-click unsubscribe (RFC 8058) + footer link,
+    // sent from news@. Null when EMAIL_UNSUBSCRIBE_SECRET is unset.
+    const isWinback = args.step === "winback_day30";
+    const unsubscribeUrl = isWinback
+      ? await buildUnsubscribeUrl(fresh.sub.userId, "marketing")
+      : undefined;
     const { subject, html } = buildDunningEmail(
       args.step,
       planName,
@@ -1137,8 +1173,19 @@ export const sendDunningEmail = internalAction({
         ? fresh.sub.currentPeriodEnd
         : Math.max(fresh.sub.currentPeriodEnd, fresh.sub.entitlementCoveredUntil),
       fresh.sub.currentPeriodEnd,
+      unsubscribeUrl,
     );
-    await sendEmail(apiKey, fresh.sub.email, subject, html, ADMIN_EMAIL);
+    const sent = await sendEmail(ctx, apiKey, fresh.sub.email, subject, html, {
+      replyTo: ADMIN_EMAIL,
+      purpose: isWinback ? "marketing" : "transactional",
+      ...(isWinback ? { from: MARKETING_FROM, headers: listUnsubscribeHeaders(unsubscribeUrl) } : {}),
+    });
+    if (!sent) {
+      // resolveSend already checked suppression; this only fires when a
+      // suppression landed in the narrow window after the re-read.
+      logDunningSkip({ ...args, reason: "suppressed" });
+      return { sent: false, reason: "suppressed" as const };
+    }
     // Ledger write AFTER the send: a Resend failure throws above, leaving no
     // row, so the next cron tick retries. The narrow crash window between
     // send and record risks one duplicate email — the right side to err on.

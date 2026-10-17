@@ -11,7 +11,7 @@
  */
 
 import type { PriceQuote, CabinClass, Carrier } from '../../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
-import { ApiError } from '../../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+import { ValidationError } from '../../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { cachedFetchJson } from '../../../../_shared/redis';
 import { CHROME_UA } from '../../../../_shared/constants';
 import { normalizeCountryToIso2 } from '../../../../_shared/country-normalize';
@@ -227,13 +227,16 @@ export async function searchPricesTravelpayouts(opts: {
     const market_ = (opts.market || inferMarket(origin)).trim().toLowerCase();
     // Validate before constructing cache keys or accessing the provider. Unknown
     // cabin strings otherwise issue the same economy query under unique keys.
-    if (!IATA_RE.test(origin) || !IATA_RE.test(destination)
-        || !validDate(departureDate) || !validDate(returnDate)
-        || !Object.prototype.hasOwnProperty.call(CABIN_CLASS_MAP, cabin)
-        || !CURRENCIES.has(currency_)
-        || !/^[a-z]{2}$/.test(market_) || !normalizeCountryToIso2(market_)) {
-        throw new ApiError(400, 'Invalid flight search airport, date, cabin, currency or market', '');
-    }
+    const invalidField = [
+        ['origin', IATA_RE.test(origin), 'Expected a three-letter airport code'],
+        ['destination', IATA_RE.test(destination), 'Expected a three-letter airport code'],
+        ['departure_date', validDate(departureDate), 'Expected a YYYY-MM-DD date'],
+        ['return_date', validDate(returnDate), 'Expected a YYYY-MM-DD date'],
+        ['cabin', Object.prototype.hasOwnProperty.call(CABIN_CLASS_MAP, cabin), 'Unsupported cabin class'],
+        ['currency', CURRENCIES.has(currency_), 'Unsupported currency'],
+        ['market', /^[a-z]{2}$/.test(market_) && Boolean(normalizeCountryToIso2(market_)), 'Expected a two-letter market country code'],
+    ].find(([, valid]) => !valid) as [string, boolean, string] | undefined;
+    if (invalidField) throw new ValidationError([{ field: invalidField[0], description: invalidField[2] }]);
     const now = Date.now();
     const tripClass = CABIN_CLASS_MAP[cabin]!;
 

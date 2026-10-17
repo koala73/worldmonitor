@@ -7,6 +7,12 @@ public/blog/
 # filename carries a content hash) and a staleness class when someone changed
 # pro-test/src without rebuilding.
 public/pro/
+public/es/
+public/pt/
+public/ru/
+public/fr/
+public/de/
+public/ar/
 public/countries/
 public/country-instability-index/
 public/chokepoints/

@@ -203,7 +203,7 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "chore(corpus): align pulse sitemap dates ${snapshot_date}"
           fi
-          node scripts/build-sitemap.mjs --check
+          node --import tsx scripts/build-sitemap.mjs --check
           git push --set-upstream origin "$BRANCH_NAME"
           body="Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus, root sitemap, llms-full forecast-accuracy section, and the homepage welcome-teaser strip (#7608, #8070)."
           draft=()

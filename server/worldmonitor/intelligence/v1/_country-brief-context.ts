@@ -57,7 +57,7 @@ export function deriveCountryIntelCacheKey(opts: CountryIntelCacheKeyOpts): stri
   // "withheld" notices, and their grounding on sports and global items.
   const energyTag = opts.energyYear ? `:e${opts.energyYear}` : '';
   const energyImportTag = opts.energyImportYear ? `:i${opts.energyImportYear}` : '';
-  const version = opts.lang === 'en' ? 'v11' : 'v9';
+  const version = opts.lang === 'en' ? 'v12' : 'v9';
   if (!opts.isPremium) {
     // Anonymous tier: caller inputs must not reach the key, or the shared
     // cache degenerates back into a per-caller one (and one caller's

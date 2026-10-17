@@ -40,6 +40,13 @@ async function seedDashboard(page: Page): Promise<void> {
   }, PANEL_KEY);
 }
 
+test('email preference link opens Notifications directly', async ({ page }) => {
+  await seedDashboard(page);
+  await page.goto('/dashboard?settings=notifications', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#us-tab-notifications')).toHaveAttribute('aria-selected', 'true', { timeout: 60_000 });
+  await expect(page.locator('#us-tab-panel-notifications')).toBeVisible();
+});
+
 test('enabling a panel in Settings shows it on the dashboard without a reload', async ({ page }) => {
   await seedDashboard(page);
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });

@@ -25,6 +25,6 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "shared/indexable-landing-locales.ts"],
   "exclude": ["src/workers/ml.worker.ts"]
 }

@@ -48,6 +48,9 @@ describe('production sitemap verifier helpers', () => {
 
   it('classifies every root, blog, docs, variant, and corpus family', () => {
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/'), 'landing');
+    assert.equal(classifySitemapUrl('https://www.worldmonitor.app/es/'), 'landing');
+    assert.equal(classifySitemapUrl('https://www.worldmonitor.app/pt/'), 'landing');
+    assert.equal(classifySitemapUrl('https://www.worldmonitor.app/ar'), 'landing');
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/dashboard'), 'dashboard');
     assert.equal(classifySitemapUrl('https://worldmonitor.app/mcp'), 'mcp');
     assert.equal(classifySitemapUrl('https://tech.worldmonitor.app/dashboard'), 'dashboard-variant');
