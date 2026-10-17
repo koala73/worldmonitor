@@ -91,7 +91,7 @@ function fixture(hosted = false) {
   Reflect.set(panel, 'energyBody', body);
   Reflect.set(panel, 'renderAtlasExposure', () => {});
   Reflect.set(panel, 'renderShockScenarioWidget', () => document.createElement('div'));
-  return { panel, body, atlas, section: { id: 'energy' as const, title: 'Energy', card, body } };
+  return { panel, body, atlas, section: { id: 'energy' as const, title: 'Energy', card, body: sectionBody } };
 }
 function oilCells(body: HTMLElement) {
   return [...body.querySelectorAll('tbody tr')].map(row => [...row.querySelectorAll('td')].map(cell => cell.textContent));
@@ -201,7 +201,8 @@ it('retains observations on failed refresh, replaces lock state, and recovers wi
   expect(body.textContent).not.toContain('not supplied in this profile');
   panel.updateEnergyProfile(energyProfile());
   expect(body.textContent).toBe(unavailableText);
-  expect(briefSectionState(section)).toBe('unavailable');
+  expect(body.firstElementChild?.classList.contains('cdp-empty')).toBe(true);
+  expect(briefSectionState(section)).toBe('ready');
   panel.updateEnergyProfile({ ...data, jodiOilDataMonth: '2026-07', jodiGasAvailable: true, ieaStocksAvailable: true });
   expect(briefSectionState(section)).toBe('ready');
   expect(body.textContent).toContain('2026-07');
