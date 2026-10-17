@@ -2262,6 +2262,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       // same way. Without this branch the mock threw, the read reported
       // unreadable, and grounding fail-closed to empty.
       if (raw.includes('/pipeline')) {
+        counters.pipelineCalls = (counters.pipelineCalls ?? 0) + 1;
         const commands = JSON.parse(String(init.body || '[]'));
         return jsonResponse(commands.map(([verb]) => (
           String(verb).toUpperCase() === 'SMEMBERS' ? { result: revoked } : { result: null }
@@ -2280,6 +2281,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       }
       if (raw.includes('/get/')) {
         const key = parseRedisKey(raw, 'get');
+        (counters.readKeys ??= []).push(key);
         return jsonResponse({ result: store.get(key) });
       }
       if (isSetRequest(raw, init)) {
@@ -2287,7 +2289,8 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         store.set(key, value);
         if (!key.startsWith('seed-meta:')) {
           setKeys.push(key);
-          assert.equal(parseSetRequest(raw, init).ttlSeconds, 21600, 'country assessment cache TTL stays six hours');
+          assert.equal(parseSetRequest(raw, init).ttlSeconds, JSON.parse(value) === '__WM_NEG__' ? 120 : 21600,
+            'accepted assessments keep six hours; failed generations keep only the short negative cache');
         }
         return jsonResponse({ result: 'OK' });
       }
@@ -2309,6 +2312,120 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     VERCEL_ENV: undefined,
     VERCEL_GIT_COMMIT_SHA: undefined,
   };
+
+  it('reuses one English default generation for the same sources despite unused caller context', async () => {
+    const { module, cleanup } = await importCountryIntelBrief({ premium: true });
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    const store = new Map();
+    const counters = { llmCalls: 0 };
+    const setKeys = [];
+    const userPrompts = [];
+    store.set('intelligence:advisories:v1', JSON.stringify({ byCountry: { FI: 'caution' }, fetchedAt: new Date().toISOString() }));
+    const risk = 'The most severe government travel advisory World Monitor tracks for Finland is Exercise Increased Caution.';
+    installIntelFetchMock({ store, setKeys, userPrompts, counters, completion: JSON.stringify({
+      situation: [{ text: 'Finland completes border fence', sources: [1], evidence: [] }],
+      implications: [], risks: [{ text: risk, sources: [], evidence: ['E1'] }], outlook: [], watch: [],
+    }) });
+    const source = 'Source [1]: ' + JSON.stringify({
+      title: 'Finland completes border fence', source: 'Reuters',
+      url: 'https://reuters.com/finland', publishedAt: '2026-10-17T06:00:00Z',
+    });
+    const read = context => module.getCountryIntelBrief(
+      makeCtx(`https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=FI&context=${encodeURIComponent(context)}`),
+      { countryCode: 'FI' },
+    );
+    try {
+      const first = await read(`Country: Finland (FI)\nInfrastructure exposure: invented port\n${source}\nSignals: protests=3`);
+      const readsBeforeHit = counters.readKeys.length;
+      const pipelinesBeforeHit = counters.pipelineCalls ?? 0;
+      const second = await read(`Brief source articles:\n${source}\nHeadlines:\nFinland completes border fence`);
+      assert.equal(counters.llmCalls, 1, 'unused context must not create another accepted generation');
+      assert.equal(setKeys.length, 1, 'the same source roster needs one accepted cache write');
+      assert.deepEqual(second, first, 'cached text, sources, evidence and original generation time stay together');
+      assert.equal(first.evidence[0]?.kind, 'advisory', 'the accepted response retains nonempty server evidence');
+      assert.equal(counters.pipelineCalls ?? 0, pipelinesBeforeHit, 'a hit adds no grounding pipelines');
+      assert.deepEqual(counters.readKeys.slice(readsBeforeHit).filter(key => !key.startsWith('ci-sebuf:')), [
+        'energy:spine:v1:FI', 'resilience:static:FI', 'energy:mix:v1:FI',
+      ], 'a hit keeps only the existing energy-year reads, with no new grounding or evidence reads');
+      assert.doesNotMatch(userPrompts[0], /invented port|protests=3/);
+      const irrelevant = 'Source [2]: ' + JSON.stringify({ title: 'Finland wins football final', source: 'Sports', url: 'https://example.com/sport' });
+      assert.deepEqual(await read(`${source}\n${irrelevant}\nSource [3]: {malformed`), first,
+        'ignored irrelevant and malformed source lines do not change the effective roster');
+      assert.equal(counters.llmCalls, 1);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
+
+  it('keeps each ordered source field in the English default generation identity', async () => {
+    const { module, cleanup } = await importCountryIntelBrief({ premium: true });
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    const counters = { llmCalls: 0 };
+    const setKeys = [];
+    installIntelFetchMock({ store: new Map(), setKeys, userPrompts: [], counters });
+    const first = { title: 'Finland completes border fence', source: 'Reuters', url: 'https://example.com/fi', publishedAt: '2026-10-17T06:00:00Z' };
+    const second = { title: 'Finland signs border agreement', source: 'Yle', url: 'https://example.com/fi-2', publishedAt: '2026-10-17T07:00:00Z' };
+    const read = sources => module.getCountryIntelBrief(
+      makeCtx(`https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=FI&context=${encodeURIComponent(
+        sources.map((source, index) => `Source [${index + 1}]: ${JSON.stringify(source)}`).join('\n'),
+      )}`), { countryCode: 'FI' },
+    );
+    try {
+      const base = await read([first, second]);
+      for (const change of [
+        { title: 'Finland announces border agreement' }, { source: 'AP' },
+        { url: 'https://example.com/another-fi' }, { publishedAt: '2026-10-17T08:00:00Z' },
+      ]) await read([{ ...first, ...change }, second]);
+      await read([second, first]);
+      assert.equal(counters.llmCalls, 6, 'changed title, publisher, URL, date and order each select a separate generation');
+      const repeated = await read([first, { ...second, publishedAt: '2026-10-17T07:00:00.000Z' }]);
+      assert.deepEqual(repeated, base, 'normalized publication dates preserve an identical ordered roster');
+      assert.equal(counters.llmCalls, 6);
+      assert.equal(new Set(setKeys).size, 6);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
+
+  it('preserves rich translated context and explicit framework customization', async () => {
+    const { module, cleanup } = await importCountryIntelBrief({ premium: true });
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    const counters = { llmCalls: 0 };
+    const setKeys = [], userPrompts = [], systemPrompts = [];
+    installIntelFetchMock({ store: new Map(), setKeys, userPrompts, systemPrompts, counters });
+    const source = 'Source [1]: ' + JSON.stringify({ title: 'France signs agreement', source: 'Reuters', url: 'https://example.com/fr' });
+    const read = (context, lang = 'en', framework = '') => module.getCountryIntelBrief(
+      makeCtx(`https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=FR&lang=${lang}&context=${encodeURIComponent(context)}`),
+      { countryCode: 'FR', framework },
+    );
+    try {
+      await read(`${source}\nInfrastructure exposure: Calais`, 'fr');
+      await read(`${source}\nInfrastructure exposure: Marseille`, 'fr');
+      assert.match(userPrompts[0], /Context snapshot:.*Calais/s);
+      assert.match(userPrompts[1], /Context snapshot:.*Marseille/s);
+      assert.equal(counters.llmCalls, 2, 'translated rich context still personalizes generation');
+      await read(`${source}\nSignals: protests=1`, 'en', 'CUSTOM LENS A');
+      await read(`${source}\nSignals: protests=2`, 'en', 'CUSTOM LENS A');
+      await read(`${source}\nSignals: protests=2`, 'en', 'CUSTOM LENS B');
+      await read(`${source}\nSignals: protests=2`, 'en', ' ');
+      assert.equal(counters.llmCalls, 6, 'custom framework requests keep full context and exact framework identity');
+      assert.match(systemPrompts[2], /CUSTOM LENS A/);
+      assert.match(systemPrompts[4], /CUSTOM LENS B/);
+      assert.ok(setKeys.slice(0, 2).every(key => key.startsWith('ci-sebuf:v9:FR:fr:')));
+      assert.ok(setKeys.slice(2).every(key => key.startsWith('ci-sebuf:v12:FR:en:') && !key.includes(':sources:')));
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
 
   it('bounds sourced briefs to numbered titles instead of forcing infrastructure forecasts', async () => {
     const { module, cleanup } = await importCountryIntelBrief({ premium: true });
@@ -2403,6 +2520,16 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.match(userPrompts[0], /\[1\] Israel announces new security framework/);
       assert.equal(out.brief, 'SITUATION NOW\nIsrael announces new security framework [1]');
       assert.equal(out.sources[0]?.url, 'https://example.com/il-1');
+      const readsBeforeHit = counters.readKeys.length;
+      const pipelinesBeforeHit = counters.pipelineCalls;
+      const repeated = await module.getCountryIntelBrief(
+        makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=Infrastructure%3A%20unused'),
+        { countryCode: 'IL' },
+      );
+      assert.deepEqual(repeated, out, 'different empty effective rosters reuse the accepted server fallback');
+      assert.equal(counters.llmCalls, 1);
+      assert.equal(counters.pipelineCalls, pipelinesBeforeHit, 'a fallback hit does not reread revocations');
+      assert.ok(!counters.readKeys.slice(readsBeforeHit).includes('news:digest:v1:full:en'), 'a fallback hit does not reread the digest');
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnv();

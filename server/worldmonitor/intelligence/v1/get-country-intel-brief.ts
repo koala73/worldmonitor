@@ -407,15 +407,18 @@ export async function getCountryIntelBrief(
   const energyYear = typeof energyMixData?.year === 'number' ? String(energyMixData.year) : '';
   const energyImportYear = importDependency.available ? String(importDependency.year) : '';
 
+  const cacheContext = isPremium && lang === 'en' && !frameworkRaw
+    ? JSON.stringify(sources.filter(source => isBriefRelevantTitle(source.title)))
+    : contextSnapshot;
   const [contextHashFull, frameworkHashFull] = await Promise.all([
-    contextSnapshot ? sha256Hex(contextSnapshot) : Promise.resolve('base'),
+    cacheContext ? sha256Hex(cacheContext) : Promise.resolve('base'),
     frameworkRaw    ? sha256Hex(frameworkRaw)    : Promise.resolve(''),
   ]);
   const cacheKey = deriveCountryIntelCacheKey({
     countryCode: req.countryCode.toUpperCase(),
     lang,
     isPremium,
-    contextHash: contextSnapshot ? contextHashFull.slice(0, 16) : 'base',
+    contextHash: cacheContext ? contextHashFull.slice(0, 16) : 'base',
     // Full digest: the framework is caller-supplied text, and a truncated hash
     // would let a crafted framework collide with another user's cache entry.
     frameworkHash: frameworkRaw ? frameworkHashFull : '',

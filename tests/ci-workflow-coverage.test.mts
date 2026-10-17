@@ -633,7 +633,7 @@ describe('live cache sweep deployment timing', () => {
       ['schedule', '', '', '', true],
       ['workflow_dispatch', '', '', '', true],
     ]) {
-      const github = { event_name: event, event: event === 'deployment_status' ? {
+      const github = { event_name: event, repository: 'koala73/worldmonitor', event: event === 'deployment_status' ? {
         deployment_status: { state },
         deployment: { environment, creator: { login: creator } },
       } : {} };
@@ -1450,7 +1450,7 @@ describe('CI workflow coverage', () => {
       };
       const admitted = Object.entries(jobs).filter(([, job]) => {
         const expression = (job as { if: string }).if.replace(/^\$\{\{\s*|\s*\}\}$/g, '');
-        return runInNewContext(expression, { github: { event_name: event }, needs, always: () => true });
+        return runInNewContext(expression, { github: { event_name: event, repository: 'koala73/worldmonitor' }, needs, always: () => true });
       }).map(([name]) => name);
       assert.deepEqual(admitted, completion ? ['evaluate-direct'] : ['discover', 'recover', 'evaluate', 'gate'], event);
     }
@@ -1480,7 +1480,7 @@ describe('CI workflow coverage', () => {
     assert.match(jobs.recover?.if ?? '', /always\(\).*needs\.discover\.result == 'success'/);
     assert.match(jobs.evaluate?.if ?? '', /always\(\).*needs\.recover\.result == 'success'.*outputs\.count != '0'/);
     assert.match(jobs.invalidate?.if ?? '', /needs\.discover\.result == 'success'.*outputs\.count != '0'/);
-    assert.equal(jobs.gate?.if, "${{ always() && github.event_name != 'workflow_run' }}");
+    assert.equal(jobs.gate?.if, "${{ (always() && github.event_name != 'workflow_run') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}");
 
     for (const name of ['invalidate', 'evaluate', 'evaluate-direct']) {
       assert.equal(jobs[name]?.concurrency?.group, 'deploy-gate-${{ matrix.sha }}', `${name} must own the SHA lock`);
@@ -1646,7 +1646,7 @@ describe('CI workflow coverage', () => {
     assert.match(markdownJob, /\n {4}needs: changes\n/);
     assert.match(
       markdownJob,
-      /\n {4}if: needs\.changes\.outputs\.markdown == 'true'\n/,
+      /\n {4}if: \$\{\{ \(needs\.changes\.outputs\.markdown == 'true'\) && \(github\.event_name != 'schedule' \|\| github\.repository == 'koala73\/worldmonitor'\) \}\}\n/,
       'markdown lint must skip on PRs that touch no markdown; the gate counts skipped as passing',
     );
     assert.match(markdownJob, /\n {6}- run: npm run lint:md\n/);
@@ -1970,7 +1970,7 @@ describe('CI workflow coverage', () => {
     assert.match(securityAuditWorkflow, /\n {4}name: security-audit\n/, 'security-audit.yml must publish a security-audit check run');
     assert.match(
       securityAuditWorkflow,
-      /if:\s*\$\{\{\s*always\(\)\s*\}\}/,
+      /if:\s*\$\{\{\s*\(always\(\)\)\s*&&\s*\(github\.event_name != 'schedule' \|\| github\.repository == 'koala73\/worldmonitor'\)\s*\}\}/,
       'security-audit.yml must always publish the aggregate check',
     );
     assert.match(
@@ -2755,13 +2755,13 @@ exit 0`);
     assert.equal(dockerPublish.jobs.docker.permissions.issues, undefined, 'the build job itself no longer needs to open issues');
     assert.equal(reportJob.permissions?.issues, 'write');
 
-    const fires = (event_name: string, result: string) =>
+    const fires = (event_name: string, result: string, repository = 'koala73/worldmonitor') =>
       evaluateExpression(String(reportJob.if), {
         always: () => true,
-        github: { event_name },
+        github: { event_name, repository },
         needs: { docker: { result } },
       });
-    // The push trigger is the primary freshness mechanism; its failures land
+    // The push trigger runs on every docker-relevant merge; its failures land
     // after the PR merged, where nobody is looking.
     for (const event_name of ['push', 'schedule']) {
       assert.equal(fires(event_name, 'failure'), true, `${event_name} + failure must alarm`);
@@ -2771,6 +2771,9 @@ exit 0`);
     // A release or manual dispatch has a human watching the run.
     assert.equal(fires('workflow_dispatch', 'failure'), false);
     assert.equal(fires('release', 'failure'), false);
+    // A fork's own cron never runs here (the build job is skipped for it too),
+    // so the alarm must not open issues in a fork either.
+    assert.equal(fires('schedule', 'failure', 'someone/worldmonitor'), false);
 
     const alarm = reportJob.steps.find((step) => String(step.run ?? '').includes('gh issue create'));
     assert.ok(alarm, 'the report job must keep its issue-filing step');
@@ -3151,6 +3154,40 @@ exit 0
     assert.ok(dockerGroups.length > 0, 'the docker entry must keep its group');
     for (const group of dockerGroups) {
       assert.equal(group['update-types'], undefined);
+    }
+  });
+});
+
+describe('scheduled workflows run only in the upstream repository', () => {
+  // A public repo's forks inherit every cron. Forks that enable Actions then
+  // probe production on our schedule: one day of MCP smoke traffic came from
+  // ~1,600 runner IPs against ~17 upstream runs. Push, PR and manual runs in
+  // forks stay allowed; only the fork's own schedule is skipped.
+  const FORK_GUARD = "github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor'";
+
+  it('every job in a scheduled workflow carries the fork guard', () => {
+    const missing: string[] = [];
+    for (const name of readdirSync(workflowsDir).filter((n) => n.endsWith('.yml') || n.endsWith('.yaml'))) {
+      const workflow = YAML.parse(read(resolve(workflowsDir, name)));
+      const on = workflow.on ?? workflow[true as unknown as string];
+      if (!on || typeof on !== 'object' || !('schedule' in on)) continue;
+      for (const [jobId, job] of Object.entries(workflow.jobs as Record<string, { if?: unknown }>)) {
+        if (!String(job.if ?? '').includes(FORK_GUARD)) missing.push(`${name}#${jobId}`);
+      }
+    }
+    assert.deepEqual(missing, [], `add \`(${FORK_GUARD})\` to the job-level if of: ${missing.join(', ')}`);
+  });
+
+  it('skips only a fork\'s own scheduled run', () => {
+    const cases: Array<[string, string, boolean]> = [
+      ['schedule', 'koala73/worldmonitor', true],
+      ['schedule', 'someone/worldmonitor', false],
+      ['push', 'someone/worldmonitor', true],
+      ['pull_request', 'someone/worldmonitor', true],
+      ['workflow_dispatch', 'someone/worldmonitor', true],
+    ];
+    for (const [event_name, repository, expected] of cases) {
+      assert.equal(runInNewContext(FORK_GUARD, { github: { event_name, repository } }), expected, `${event_name} in ${repository}`);
     }
   });
 });

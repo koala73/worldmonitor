@@ -566,8 +566,9 @@ export class NewsPanel extends Panel {
     const html = sorted
       .map((item) => {
         const provenance = renderPrimarySourceProvenance(item.source);
+        const titleLink = sanitizeUrl(item.link);
         return `
-      <div class="item ${item.isAlert ? 'alert' : ''}" ${item.monitorColor ? `style="border-inline-start-color: ${escapeHtml(item.monitorColor)}"` : ''}>
+      <div class="item ${item.isAlert ? 'alert' : ''}" data-news-id="${escapeHtml(item.link)}" ${item.monitorColor ? `style="border-inline-start-color: ${escapeHtml(item.monitorColor)}"` : ''}>
         <div class="item-source">
           ${escapeHtml(item.source)}
           ${renderCredibilityBadge(item.source, item)}
@@ -580,7 +581,7 @@ export class NewsPanel extends Panel {
           ${item.storyMeta?.phase === 'sustained' ? '<span class="phase-badge sustained">ONGOING</span>' : ''}
           ${item.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
         </div>
-        <a class="item-title" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
+        ${titleLink ? `<a class="item-title" href="${titleLink}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>` : `<span class="item-title">${escapeHtml(item.title)}</span>`}
         ${item.snippet ? `<div class="item-snippet">${escapeHtml(item.snippet.length > 200 ? item.snippet.slice(0, 200).replace(/\s+\S*$/, '') + '…' : item.snippet)}</div>` : ''}
         <div class="item-time">
           ${formatTime(item.pubDate)}
@@ -816,6 +817,7 @@ export class NewsPanel extends Panel {
       isNew ? 'item-new' : '',
     ].filter(Boolean).join(' ');
 
+    const titleLink = sanitizeUrl(cluster.primaryLink);
     return `
       <div class="${itemClasses}" ${cluster.monitorColor ? `style="border-inline-start-color: ${escapeHtml(cluster.monitorColor)}"` : ''} data-cluster-id="${escapeHtml(cluster.id)}" data-news-id="${escapeHtml(cluster.primaryLink)}">
         <div class="item-source">
@@ -834,7 +836,7 @@ export class NewsPanel extends Panel {
           ${categoryBadge}
           ${riskBadge}
         </div>
-        <a class="item-title" href="${sanitizeUrl(cluster.primaryLink)}" target="_blank" rel="noopener">${escapeHtml(cluster.primaryTitle)}</a>
+        ${titleLink ? `<a class="item-title" href="${titleLink}" target="_blank" rel="noopener">${escapeHtml(cluster.primaryTitle)}</a>` : `<span class="item-title">${escapeHtml(cluster.primaryTitle)}</span>`}
         <div class="cluster-meta">
           <div class="cluster-roster">${rosterView ? renderPublisherRosterHtml(rosterView) : ''}</div>
           <span class="item-time">${formatTime(cluster.lastUpdated)}</span>

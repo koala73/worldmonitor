@@ -50,8 +50,16 @@ describe('country intel brief cache key derivation', () => {
     assert.notEqual(mk('aaaaaaaaaaaaaaaa', ''), mk('bbbbbbbbbbbbbbbb', ''), 'premium context must personalize the key');
     assert.equal(mk('aaaaaaaaaaaaaaaa', ''), mk('aaaaaaaaaaaaaaaa', ''), 'same premium context must share the key');
     assert.notEqual(mk('aaaaaaaaaaaaaaaa', 'deadbeef'), mk('aaaaaaaaaaaaaaaa', ''), 'framework must personalize the key');
-    assert.ok(mk('aaaaaaaaaaaaaaaa', '').startsWith('ci-sebuf:v12:FR:en:aaaaaaaaaaaaaaaa'));
+    assert.ok(mk('aaaaaaaaaaaaaaaa', '').startsWith('ci-sebuf:v12:FR:en:sources:aaaaaaaaaaaaaaaa'));
     assert.ok(!mk('aaaaaaaaaaaaaaaa', '').includes(':shared'));
+  });
+
+  it('isolates English source defaults from old context entries without changing framework or translated keys', () => {
+    const options = { countryCode: 'FR', lang: 'en', isPremium: true, contextHash: 'abc', frameworkHash: '', energyYear: '2024', energyImportYear: '2023' };
+    assert.equal(deriveCountryIntelCacheKey(options), 'ci-sebuf:v12:FR:en:sources:abc:e2024:i2023');
+    assert.equal(deriveCountryIntelCacheKey({ ...options, frameworkHash: 'def' }), 'ci-sebuf:v12:FR:en:abc:def:e2024:i2023');
+    assert.equal(deriveCountryIntelCacheKey({ ...options, lang: 'fr' }), 'ci-sebuf:v9:FR:fr:abc:e2024:i2023');
+    assert.equal(deriveCountryIntelCacheKey({ ...options, isPremium: false }), 'ci-sebuf:v12:FR:en:shared:e2024:i2023');
   });
 });
 

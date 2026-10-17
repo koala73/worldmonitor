@@ -53,6 +53,7 @@ permissions:
 
 jobs:
   live-contract:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     # Each case carries a 120s test timeout; two cases plus checkout/setup-node
     # leaves generous headroom without letting a hung upstream pin a runner.

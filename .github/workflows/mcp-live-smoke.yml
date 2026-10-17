@@ -77,12 +77,14 @@ jobs:
     # ('production' vs 'Production') would silently disable the trigger and look
     # identical to the healthy case.
     if: >-
-      github.event_name != 'deployment_status' ||
       (
-        github.event.deployment_status.state == 'success' &&
-        github.event.deployment.environment == 'Production' &&
-        github.event.deployment.creator.login == 'vercel[bot]'
-      )
+        github.event_name != 'deployment_status' ||
+        (
+          github.event.deployment_status.state == 'success' &&
+          github.event.deployment.environment == 'Production' &&
+          github.event.deployment.creator.login == 'vercel[bot]'
+        )
+      ) && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     # Keep concurrency at job scope so deployment_status events rejected by the
     # gate above cannot evict a queued production smoke. GitHub cancels the
     # previously pending job in a group when a new one is queued, even with

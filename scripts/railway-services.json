@@ -194,6 +194,44 @@
     "documentedAt": "scripts/shipping-webhook-worker.mjs (header docblock declares rootDirectory: scripts); provisioned in Railway production 2026-10-17"
   },
   {
+    "entry": "scripts/notification-relay.cjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "notification-relay",
+    "startCommand": "npm run notification-relay",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      "CONVEX_URL",
+      "CONVEX_NOTIFICATION_RELAY_SECRET"
+    ],
+    "watchPatterns": [
+      "scripts/lib/corroboration-text.cjs",
+      "scripts/lib/crypto.cjs",
+      "scripts/lib/email-unsubscribe.cjs",
+      "scripts/lib/llm-chain.cjs",
+      "scripts/lib/llm-model-policy.cjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/notification-teams.cjs",
+      "scripts/lib/notification-webhook-signing.cjs",
+      "scripts/lib/notification-webhook-ssrf.cjs",
+      "scripts/lib/quiet-hours.cjs",
+      "scripts/lib/resend-send.cjs",
+      "scripts/lib/user-context.cjs",
+      "scripts/nixpacks.toml",
+      "scripts/notification-relay.cjs",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/shared/country-name-to-iso2.cjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/iso2-to-region.json",
+      "scripts/shared/notification-dedup.cjs",
+      "scripts/shared/notification-link-suppression.cjs",
+      "scripts/shared/notify-fields.cjs"
+    ],
+    "cronSchedule": null,
+    "documentedAt": "scripts/package.json (\"notification-relay\" script); provisioned in Railway production as service aa37bd8e-c28d-4e9b-9d1e-0961f1b63d97 (#9265)"
+  },
+  {
     "entry": "scripts/process-deep-forecast-tasks.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "deep-forecast-worker",

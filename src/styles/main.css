@@ -4780,7 +4780,7 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   display: block;
 }
 
-.item-title:hover {
+a.item-title:hover {
   color: var(--accent);
 }
 

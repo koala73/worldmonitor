@@ -26,6 +26,7 @@ env:
 
 jobs:
   test-linux-app:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     permissions:

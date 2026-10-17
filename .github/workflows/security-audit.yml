@@ -20,6 +20,7 @@ permissions:
 
 jobs:
   audit-lockfile:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     name: audit-lockfile
     runs-on: ubuntu-latest
     # Nine bounded audits plus setup and verdict upload.
@@ -151,6 +152,7 @@ jobs:
           retention-days: 1
 
   audit-rust:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     name: audit-rust
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -186,7 +188,7 @@ jobs:
     name: security-audit
     runs-on: ubuntu-latest
     needs: [audit-lockfile, audit-rust]
-    if: ${{ always() }}
+    if: ${{ (always()) && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     steps:
       - name: Download audit verdicts
         id: verdicts

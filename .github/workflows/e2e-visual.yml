@@ -47,8 +47,10 @@ jobs:
     # Skip ordinary main pushes. Goldens stay on map-touching PRs, nightly,
     # and manual dispatch so SwiftShader flake cannot sit on the hot path.
     if: >-
-      github.event_name != 'push' &&
-      (github.event_name != 'workflow_dispatch' || inputs.suite == 'both' || inputs.suite == 'visual-goldens')
+      (
+        github.event_name != 'push' &&
+        (github.event_name != 'workflow_dispatch' || inputs.suite == 'both' || inputs.suite == 'visual-goldens')
+      ) && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -96,7 +98,7 @@ jobs:
 
   chrome-gallery:
     name: chrome-gallery
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.suite == 'both' || inputs.suite == 'chrome' }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.suite == 'both' || inputs.suite == 'chrome') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
