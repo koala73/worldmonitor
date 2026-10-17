@@ -71,6 +71,18 @@
       .fc-rating{font-size:.95rem;overflow-wrap:anywhere}
       .fc-rating a{color:var(--accent)}
       .fc-claim{font-size:.82rem;color:var(--muted);font-style:italic;overflow-wrap:anywhere;margin-top:.15rem}
+      .vc-media{margin-top:1rem;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.25rem}
+      .mc-title{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);margin-bottom:.55rem}
+      .mc-section{font-size:.95rem;font-weight:600;margin:1rem 0 .35rem}
+      .mc-file{font-size:.82rem;color:var(--muted)}
+      .mc-headline{font-size:.98rem;overflow-wrap:anywhere}
+      .mc-note{font-size:.88rem;color:var(--muted);margin-top:.25rem}
+      .mc-warning,.mc-ai{font-size:.88rem;margin-top:.4rem;padding:.45rem .6rem;border-left:3px solid var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+      .mc-subtitle{font-size:.8rem;color:var(--faint);margin-top:.6rem}
+      .mc-facts,.mc-actions,.mc-copies{font-size:.86rem;margin:.3rem 0 0 1.1rem}
+      .mc-copies a{color:var(--accent);overflow-wrap:anywhere}
+      .mc-date{font-variant-numeric:tabular-nums;color:var(--muted)}
+      .mc-signin,.mc-upgrade{display:inline-block;margin-top:.6rem;padding:.45rem .9rem;border-radius:8px;border:1px solid var(--accent);color:var(--accent);background:transparent;font:inherit;cursor:pointer;text-decoration:none}
       .how{margin-top:2rem;font-size:.82rem;color:var(--muted)}
       .how h2{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);margin-bottom:.4rem}
       .how li{margin:.3rem 0 .3rem 1rem;list-style:disc}
@@ -88,9 +100,9 @@
       </a>
       <main>
         <h1>Who is reporting this?</h1>
-        <p class="lede">Paste a claim or headline. WorldMonitor shows which publishers carry it, whether they are independent of each other, and which of its numbers they state. It describes coverage, not truth.</p>
+        <p class="lede">Paste a claim or headline. WorldMonitor shows which publishers carry it, whether they are independent of each other, and which of its numbers they state. It describes coverage, not truth. With WorldMonitor Pro, paste a link to an image or video to read its content credentials and see the earliest copy TinEye has found.</p>
         <form id="verifyForm" role="search">
-          <label for="claimInput">Claim or headline</label>
+          <label for="claimInput">Claim, headline, or a link to an image or video</label>
           <textarea id="claimInput" name="claim" placeholder="e.g. Russia agrees to supply diesel to the US" autocomplete="off" spellcheck="true" required></textarea>
           <div class="row">
             <button type="submit" id="verifySubmit">Check coverage</button>
@@ -105,6 +117,7 @@
             <li>Feeds that belong to one newsroom (Reuters and Reuters World, say) count as one publisher.</li>
             <li>Each source carries a declared tier and, where reviewed, a state-media or caution label.</li>
             <li>“Not found” means not in WorldMonitor’s current sources. It never means false.</li>
+            <li>For an image or video link (Pro), WorldMonitor reads the file’s C2PA content credentials, which say who signed it and what they declared, and asks TinEye where it has seen the image, oldest first. Missing credentials are common and say nothing about editing; an earliest copy is when TinEye’s crawler found it, not when it was first published. The file is kept for 30 days, then deleted.</li>
             <li>Below the coverage, WorldMonitor quotes ratings that IFCN-verified fact-checkers have published about a similar claim, with their name, date and link. The rating is theirs; WorldMonitor does not rate claims, and a rating never changes the coverage result.</li>
           </ul>
         </section>

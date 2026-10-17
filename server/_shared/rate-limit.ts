@@ -770,6 +770,11 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // Operator review: secret-gated, but still bounded against secret guessing.
   '/api/news/v1/list-error-reports': { limit: 60, window: '60 s' },
   '/api/news/v1/review-error-report': { limit: 60, window: '60 s' },
+  // #9096 media checks: each new image can spend a paid TinEye search.
+  '/api/news/v1/check-media-provenance': { limit: 10, window: '60 s' },
+  '/api/news/v1/get-media-provenance': { limit: 120, window: '60 s' },
+  '/api/news/v1/check-report-media': { limit: 30, window: '60 s' },
+  '/api/news/v1/get-report-media': { limit: 120, window: '60 s' },
   // Scenario engine: legacy /api/scenario/v1/run capped at 10 jobs/min/IP via
   // inline Upstash INCR. Gateway preserves the same budget while using a
   // trusted paid-user principal when available, otherwise the client IP.
@@ -1031,6 +1036,15 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/news/v1/review-error-report': {
     reason: 'Operator review is gated by a shared secret; the limit bounds guessing (#9093).',
+  },
+  '/api/news/v1/check-media-provenance': {
+    reason: 'Media checks fetch remote files and can spend a paid TinEye search (#9096).',
+  },
+  '/api/news/v1/check-report-media': {
+    reason: 'Operator media checks are gated by a shared secret and can spend a paid TinEye search (#9096).',
+  },
+  '/api/news/v1/get-report-media': {
+    reason: 'Operator media results are gated by a shared secret; the limit bounds guessing (#9096).',
   },
   '/api/scenario/v1/run-scenario': {
     reason: 'Scenario runs are mutation-like jobs with a historical 10/min cap.',

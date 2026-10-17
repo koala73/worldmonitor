@@ -26016,6 +26016,560 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/news/v1/check-media-provenance:
+        post:
+            parameters:
+                - name: Idempotency-Key
+                  in: header
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.
+                  required: false
+                  example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
+                  schema:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                    pattern: "^[\\x21-\\x7E]{1,255}$"
+            tags:
+                - NewsService
+            summary: CheckMediaProvenance
+            description: |-
+                CheckMediaProvenance queues a check of an image or video URL: its C2PA content credentials and the earliest copies a reverse image search has seen. PRO-gated.
+                 Async job pattern: a successful enqueue returns HTTP 202 Accepted with a Location header pointing at GetMediaProvenance; poll it with the returned job_id until status is "done" or "failed". Requires entitlement tier >= 1.
+            operationId: CheckMediaProvenance
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            requestBody:
+                content:
+                    application/json:
+                        example:
+                            "url": "https://example.com/worldmonitor"
+                        schema:
+                            $ref: '#/components/schemas/worldmonitor_news_v1_CheckMediaProvenanceRequest'
+                required: true
+            responses:
+                "202":
+                    description: Accepted — media check enqueued. The body carries the job id (jobId), the initial status (always pending) and a poll URL (statusUrl); the Location header points at the same GetMediaProvenance endpoint. Poll it until status is done or failed. An idempotent replay reproduces only the body, so a retrying client polls statusUrl.
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key echoed from the request. Present only when the client opted into idempotency.
+                        Idempotent-Replayed:
+                            schema:
+                                type: boolean
+                            description: true when this response was replayed from an earlier request with the same key, false on the first (original) request. Present only when the client opted into idempotency.
+                        Location:
+                            schema:
+                                type: string
+                            description: Relative URL of the job-status poll endpoint for this job (same value as the statusUrl body field).
+                            example: "/api/news/v1/get-media-provenance?job_id=media%3A1717200000000%3A0123456789abcdef0123456789abcdef"
+                    content:
+                        application/json:
+                            example:
+                                "jobId": "media:1717200000000:0123456789abcdef0123456789abcdef"
+                                "status": "pending"
+                                "statusUrl": "/api/news/v1/get-media-provenance?job_id=media%3A1717200000000%3A0123456789abcdef0123456789abcdef"
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_news_v1_MediaCheckJob'
+                "400":
+                    description: Validation error, invalid Idempotency-Key header, or malformed JSON request body
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - type: object
+                                      required:
+                                        - error
+                                        - message
+                                      properties:
+                                        error:
+                                            type: string
+                                        message:
+                                            type: string
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
+                "409":
+                    description: A request with this Idempotency-Key is still being processed
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                        Retry-After:
+                            schema:
+                                type: string
+                            description: Seconds to wait before retrying the in-flight request.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "422":
+                    description: The Idempotency-Key was already used with a different request body
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/news/v1/get-media-provenance:
+        get:
+            tags:
+                - NewsService
+            summary: GetMediaProvenance
+            description: GetMediaProvenance polls a media check started with CheckMediaProvenance. PRO-gated; only the caller who started the check can read it. Requires entitlement tier >= 1.
+            operationId: GetMediaProvenance
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: job_id
+                  in: query
+                  description: Job id returned by the check.
+                  required: true
+                  example: "media:1717200000000:0123456789abcdef0123456789abcdef"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "error": ""
+                                "result":
+                                    "bytes": 482113
+                                    "caveats":
+                                        - "Content credentials say who signed a file and what they declared about it. They are not a judgment that the media is genuine."
+                                        - "An earliest copy is when a search provider's crawler first saw the image on a page, not when or where it was first published."
+                                    "credentials":
+                                        "actions":
+                                            - "action": "c2pa.created"
+                                              "digitalSourceType": "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture"
+                                              "softwareAgent": "Example Camera App"
+                                            - "action": "c2pa.cropped"
+                                              "digitalSourceType": ""
+                                              "softwareAgent": "Example Editor"
+                                        "claimGenerator": "Example Camera App 2.1"
+                                        "contentChangedAfterSigning": false
+                                        "declaresAiGeneration": false
+                                        "failureCodes":
+                                            []
+                                        "ingredientCount": 1
+                                        "signedAt": "2026-10-15T08:30:00Z"
+                                        "signer": "Example Newsroom (synthetic)"
+                                        "signerCommonName": "Example Newsroom Signer"
+                                        "signerTrust": "trusted"
+                                        "state": "found"
+                                        "validationState": "trusted"
+                                    "earliest":
+                                        "copies":
+                                            - "crawlDate": "2026-10-15"
+                                              "domain": "example.org"
+                                              "pageUrl": "https://example.org/2026/10/15/story"
+                                        "provider": "TinEye"
+                                        "searchedAt": "2026-10-16T12:00:05.000Z"
+                                        "state": "ok"
+                                        "totalMatches": 3
+                                    "fetchedAt": "2026-10-16T12:00:00.000Z"
+                                    "mediaType": "image/jpeg"
+                                    "sha256": "9f2c5f0e0b8a4d6c3e1f7a9b2d4c6e8f0a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d"
+                                    "url": "https://example.com/media/synthetic-photo.jpg"
+                                "status": "done"
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_news_v1_GetMediaProvenanceResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/news/v1/check-report-media:
+        post:
+            tags:
+                - NewsService
+            summary: CheckReportMedia
+            description: |-
+                CheckReportMedia queues the same media check for the link a reader submitted with an error report. Operators only.
+                 Requires the X-Trust-Review-Key header (the server's TRUST_REVIEW_SECRET), not an API key; without it the response is 401.
+            operationId: CheckReportMedia
+            security:
+                - TrustReviewKey: []
+            requestBody:
+                content:
+                    application/json:
+                        example:
+                            "reportId": "example-id"
+                        schema:
+                            $ref: '#/components/schemas/worldmonitor_news_v1_CheckReportMediaRequest'
+                required: true
+            responses:
+                "202":
+                    description: Accepted — media check for the report link enqueued. The body carries the job id (jobId), the initial status (always pending) and a poll URL (statusUrl); the Location header points at the same GetReportMedia endpoint. Poll it until status is done or failed.
+                    headers:
+                        Location:
+                            schema:
+                                type: string
+                            description: Relative URL of the job-status poll endpoint for this job (same value as the statusUrl body field).
+                            example: "/api/news/v1/get-report-media?job_id=media%3A1717200000000%3A0123456789abcdef0123456789abcdef"
+                    content:
+                        application/json:
+                            example:
+                                "jobId": "media:1717200000000:0123456789abcdef0123456789abcdef"
+                                "status": "pending"
+                                "statusUrl": "/api/news/v1/get-report-media?job_id=media%3A1717200000000%3A0123456789abcdef0123456789abcdef"
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_news_v1_MediaCheckJob'
+                "400":
+                    description: Validation error or malformed JSON request body
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
+                "401":
+                    description: Missing or invalid X-Trust-Review-Key, or review is not configured on the server.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/news/v1/get-report-media:
+        get:
+            tags:
+                - NewsService
+            summary: GetReportMedia
+            description: |-
+                GetReportMedia polls a media check started with CheckReportMedia. Operators only.
+                 Requires the X-Trust-Review-Key header (the server's TRUST_REVIEW_SECRET), not an API key; without it the response is 401.
+            operationId: GetReportMedia
+            security:
+                - TrustReviewKey: []
+            parameters:
+                - name: job_id
+                  in: query
+                  description: Job id returned by CheckReportMedia.
+                  required: true
+                  example: "media:1717200000000:0123456789abcdef0123456789abcdef"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "error": ""
+                                "result":
+                                    "bytes": 482113
+                                    "caveats":
+                                        - "Content credentials say who signed a file and what they declared about it. They are not a judgment that the media is genuine."
+                                        - "An earliest copy is when a search provider's crawler first saw the image on a page, not when or where it was first published."
+                                    "credentials":
+                                        "actions":
+                                            - "action": "c2pa.created"
+                                              "digitalSourceType": "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture"
+                                              "softwareAgent": "Example Camera App"
+                                            - "action": "c2pa.cropped"
+                                              "digitalSourceType": ""
+                                              "softwareAgent": "Example Editor"
+                                        "claimGenerator": "Example Camera App 2.1"
+                                        "contentChangedAfterSigning": false
+                                        "declaresAiGeneration": false
+                                        "failureCodes":
+                                            []
+                                        "ingredientCount": 1
+                                        "signedAt": "2026-10-15T08:30:00Z"
+                                        "signer": "Example Newsroom (synthetic)"
+                                        "signerCommonName": "Example Newsroom Signer"
+                                        "signerTrust": "trusted"
+                                        "state": "found"
+                                        "validationState": "trusted"
+                                    "earliest":
+                                        "copies":
+                                            - "crawlDate": "2026-10-15"
+                                              "domain": "example.org"
+                                              "pageUrl": "https://example.org/2026/10/15/story"
+                                        "provider": "TinEye"
+                                        "searchedAt": "2026-10-16T12:00:05.000Z"
+                                        "state": "ok"
+                                        "totalMatches": 3
+                                    "fetchedAt": "2026-10-16T12:00:00.000Z"
+                                    "mediaType": "image/jpeg"
+                                    "sha256": "9f2c5f0e0b8a4d6c3e1f7a9b2d4c6e8f0a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d"
+                                    "url": "https://example.com/media/synthetic-photo.jpg"
+                                "status": "done"
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_news_v1_GetMediaProvenanceResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid X-Trust-Review-Key, or review is not configured on the server.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/news/v1/search-claim-headlines:
         get:
             tags:
@@ -54314,6 +54868,195 @@ components:
                     type: string
                     description: 'The claim the fact-checker rated: similar to the claim searched, not necessarily the same.'
             description: FactCheck is one rating an IFCN-verified fact-checker published about a similar claim, cited with attribution.
+        worldmonitor_news_v1_CheckMediaProvenanceRequest:
+            type: object
+            properties:
+                url:
+                    type: string
+                    maxLength: 2048
+                    minLength: 1
+                    description: Public http(s) URL of the image or video file, up to 2048 characters. The worker fetches it; private and local addresses are refused.
+            required:
+                - url
+            description: CheckMediaProvenanceRequest names the image or video to check.
+        worldmonitor_news_v1_MediaCheckJob:
+            type: object
+            properties:
+                jobId:
+                    type: string
+                    description: Generated job id of the form `media:{epoch_ms}:{32 hex}`.
+                status:
+                    type: string
+                    description: Always "pending" at enqueue time.
+                statusUrl:
+                    type: string
+                    description: Server-computed URL to poll for the result.
+            description: MediaCheckJob is an accepted media check. A successful enqueue returns HTTP 202 Accepted with a Location header pointing at the status endpoint; treat any 2xx as success.
+        worldmonitor_news_v1_GetMediaProvenanceRequest:
+            type: object
+            properties:
+                jobId:
+                    type: string
+                    maxLength: 64
+                    minLength: 1
+                    description: Job id returned by the check.
+            required:
+                - jobId
+            description: GetMediaProvenanceRequest polls one media check.
+        worldmonitor_news_v1_GetMediaProvenanceResponse:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: pending | done | failed.
+                result:
+                    $ref: '#/components/schemas/worldmonitor_news_v1_MediaProvenance'
+                error:
+                    type: string
+                    description: Why the check failed, in plain English, when status is failed.
+            description: GetMediaProvenanceResponse is the state of one media check.
+        worldmonitor_news_v1_MediaProvenance:
+            type: object
+            properties:
+                url:
+                    type: string
+                    description: The URL submitted.
+                mediaType:
+                    type: string
+                    description: Detected media type, e.g. image/jpeg, video/mp4.
+                bytes:
+                    type: integer
+                    format: int64
+                    description: 'File size in bytes.. Warning: Values > 2^53 may lose precision in JavaScript'
+                sha256:
+                    type: string
+                    description: SHA-256 of the file, hex.
+                fetchedAt:
+                    type: string
+                    description: When the file was fetched, ISO 8601.
+                credentials:
+                    $ref: '#/components/schemas/worldmonitor_news_v1_MediaCredentials'
+                earliest:
+                    $ref: '#/components/schemas/worldmonitor_news_v1_MediaEarliestAppearance'
+                caveats:
+                    type: array
+                    items:
+                        type: string
+                        description: Fixed reminders shown with every result.
+            description: MediaProvenance is the result of one media check.
+        worldmonitor_news_v1_MediaCredentials:
+            type: object
+            properties:
+                state:
+                    type: string
+                    description: 'found | none | unreadable. none is common: most sites remove credentials on upload, and it says nothing about editing.'
+                signer:
+                    type: string
+                    description: Organisation on the signing certificate; empty when the certificate names none.
+                signerCommonName:
+                    type: string
+                    description: Common name on the signing certificate.
+                signerTrust:
+                    type: string
+                    description: trusted | untrusted | unknown. trusted means the certificate chains to a configured C2PA trust anchor.
+                claimGenerator:
+                    type: string
+                    description: Camera, phone or app that wrote the credentials.
+                signedAt:
+                    type: string
+                    description: Signing time from a timestamp authority, ISO 8601; empty when the credentials carry none.
+                actions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_news_v1_MediaCredentialAction'
+                declaresAiGeneration:
+                    type: boolean
+                    description: True when an action declares a generative-AI digital source type. Reported from the credentials, never detected by WorldMonitor.
+                ingredientCount:
+                    type: integer
+                    format: int32
+                    description: Number of source files (ingredients) the credentials list.
+                validationState:
+                    type: string
+                    description: valid | invalid | trusted, the C2PA validation state; empty when no credentials were found.
+                contentChangedAfterSigning:
+                    type: boolean
+                    description: 'True only when validation reports that the file no longer matches the signed hash: it changed after signing.'
+                failureCodes:
+                    type: array
+                    items:
+                        type: string
+                        description: C2PA validation failure codes, verbatim.
+            description: MediaCredentials is what the file's C2PA content credentials say. WorldMonitor reports them; it does not judge the media.
+        worldmonitor_news_v1_MediaCredentialAction:
+            type: object
+            properties:
+                action:
+                    type: string
+                    description: C2PA action, e.g. c2pa.created, c2pa.edited, c2pa.cropped.
+                softwareAgent:
+                    type: string
+                    description: Software or device the credentials name for the action; empty when none.
+                digitalSourceType:
+                    type: string
+                    description: IPTC digital source type URI the credentials declare; empty when none.
+            description: MediaCredentialAction is one action the content credentials declare, as written by the signer.
+        worldmonitor_news_v1_MediaEarliestAppearance:
+            type: object
+            properties:
+                state:
+                    type: string
+                    description: ok | unsupported-media | not-configured | cap-reached | unavailable. ok with no copies means the provider has not seen the image.
+                provider:
+                    type: string
+                    description: Search provider, e.g. TinEye.
+                copies:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_news_v1_MediaEarliestCopy'
+                totalMatches:
+                    type: integer
+                    format: int32
+                    description: Matches the provider reported in total.
+                searchedAt:
+                    type: string
+                    description: When the search ran, ISO 8601. A cached search shows when it first ran.
+            description: MediaEarliestAppearance is the earliest copies a reverse image search has seen.
+        worldmonitor_news_v1_MediaEarliestCopy:
+            type: object
+            properties:
+                domain:
+                    type: string
+                    description: Domain of the page.
+                pageUrl:
+                    type: string
+                    description: Page that showed the image.
+                crawlDate:
+                    type: string
+                    description: When the search provider's crawler first saw the image there, YYYY-MM-DD. Not a publication date.
+            description: MediaEarliestCopy is one place an earliest-copy search found the image, oldest first.
+        worldmonitor_news_v1_CheckReportMediaRequest:
+            type: object
+            properties:
+                reportId:
+                    type: string
+                    maxLength: 64
+                    minLength: 1
+                    description: Report id; the check uses the link the reader submitted with it.
+            required:
+                - reportId
+            description: CheckReportMediaRequest names the reader report whose link to check. Operators only.
+        worldmonitor_news_v1_GetReportMediaRequest:
+            type: object
+            properties:
+                jobId:
+                    type: string
+                    maxLength: 64
+                    minLength: 1
+                    description: Job id returned by CheckReportMedia.
+            required:
+                - jobId
+            description: GetReportMediaRequest polls a media check an operator started. Operators only.
         worldmonitor_news_v1_SearchClaimHeadlinesRequest:
             type: object
             properties:

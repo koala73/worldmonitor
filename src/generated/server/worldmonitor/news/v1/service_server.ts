@@ -228,6 +228,80 @@ export interface FactCheck {
   claimReviewed: string;
 }
 
+export interface CheckMediaProvenanceRequest {
+  url: string;
+}
+
+export interface MediaCheckJob {
+  jobId: string;
+  status: string;
+  statusUrl: string;
+}
+
+export interface GetMediaProvenanceRequest {
+  jobId: string;
+}
+
+export interface GetMediaProvenanceResponse {
+  status: string;
+  result?: MediaProvenance;
+  error: string;
+}
+
+export interface MediaProvenance {
+  url: string;
+  mediaType: string;
+  bytes: number;
+  sha256: string;
+  fetchedAt: string;
+  credentials?: MediaCredentials;
+  earliest?: MediaEarliestAppearance;
+  caveats: string[];
+}
+
+export interface MediaCredentials {
+  state: string;
+  signer: string;
+  signerCommonName: string;
+  signerTrust: string;
+  claimGenerator: string;
+  signedAt: string;
+  actions: MediaCredentialAction[];
+  declaresAiGeneration: boolean;
+  ingredientCount: number;
+  validationState: string;
+  contentChangedAfterSigning: boolean;
+  failureCodes: string[];
+}
+
+export interface MediaCredentialAction {
+  action: string;
+  softwareAgent: string;
+  digitalSourceType: string;
+}
+
+export interface MediaEarliestAppearance {
+  state: string;
+  provider: string;
+  copies: MediaEarliestCopy[];
+  totalMatches: number;
+  searchedAt: string;
+}
+
+export interface MediaEarliestCopy {
+  domain: string;
+  pageUrl: string;
+  crawlDate: string;
+}
+
+export interface CheckReportMediaRequest {
+  reportId: string;
+}
+
+export interface GetReportMediaRequest {
+  jobId: string;
+}
+
 export interface SearchClaimHeadlinesRequest {
   claim: string;
 }
@@ -309,6 +383,10 @@ export interface NewsServiceHandler {
   listErrorReports(ctx: ServerContext, req: ListErrorReportsRequest): Promise<ListErrorReportsResponse>;
   reviewErrorReport(ctx: ServerContext, req: ReviewErrorReportRequest): Promise<ReviewErrorReportResponse>;
   searchFactChecks(ctx: ServerContext, req: SearchFactChecksRequest): Promise<SearchFactChecksResponse>;
+  checkMediaProvenance(ctx: ServerContext, req: CheckMediaProvenanceRequest): Promise<MediaCheckJob>;
+  getMediaProvenance(ctx: ServerContext, req: GetMediaProvenanceRequest): Promise<GetMediaProvenanceResponse>;
+  checkReportMedia(ctx: ServerContext, req: CheckReportMediaRequest): Promise<MediaCheckJob>;
+  getReportMedia(ctx: ServerContext, req: GetReportMediaRequest): Promise<GetMediaProvenanceResponse>;
   searchClaimHeadlines(ctx: ServerContext, req: SearchClaimHeadlinesRequest): Promise<SearchClaimHeadlinesResponse>;
 }
 
@@ -709,6 +787,186 @@ export function createNewsServiceRoutes(
 
           const result = await handler.searchFactChecks(ctx, body);
           return new Response(JSON.stringify(result as SearchFactChecksResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/news/v1/check-media-provenance",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as CheckMediaProvenanceRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("checkMediaProvenance", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.checkMediaProvenance(ctx, body);
+          return new Response(JSON.stringify(result as MediaCheckJob), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/get-media-provenance",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetMediaProvenanceRequest = {
+            jobId: params.get("job_id") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getMediaProvenance", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getMediaProvenance(ctx, body);
+          return new Response(JSON.stringify(result as GetMediaProvenanceResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/news/v1/check-report-media",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as CheckReportMediaRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("checkReportMedia", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.checkReportMedia(ctx, body);
+          return new Response(JSON.stringify(result as MediaCheckJob), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/get-report-media",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetReportMediaRequest = {
+            jobId: params.get("job_id") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getReportMedia", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getReportMedia(ctx, body);
+          return new Response(JSON.stringify(result as GetMediaProvenanceResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

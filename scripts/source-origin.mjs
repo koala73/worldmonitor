@@ -272,6 +272,8 @@ const HOST_ORIGINS = Object.freeze({
   'feeds.npr.org': 'US',
   'financialpost.com': 'CA',
   'factchecktools.googleapis.com': 'US',
+  // TinEye is operated by Idée Inc., Toronto.
+  'api.tineye.com': 'CA',
   'finnhub.io': 'US',
   'foreignpolicy.com': 'US',
   'fr.africanews.com': null,

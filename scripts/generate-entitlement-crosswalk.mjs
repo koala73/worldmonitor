@@ -173,6 +173,9 @@ const MAP = [
   [/:\/api\/v2\/shipping\//,                              { cap: 'shipping.routes' }],
   [/:\/api\/mcp-proxy$/,                                  { cap: 'mcp.access', note: 'outbound proxy' }],
   [/:\/api\/chat-analyst$/,                               { cap: 'analyst.chat' }],
+  // #9096 media provenance: Pro check-and-poll pair. The operator twins
+  // (check-report-media, get-report-media) are review-key gated, not entitlement gated.
+  [/:\/api\/news\/v1\/(check|get)-media-provenance$/,     { cap: 'verify.media' }],
 
   // ---- layers
   // Effective enforcement only. isLayerEntitled(): 'locked' blocks free users;

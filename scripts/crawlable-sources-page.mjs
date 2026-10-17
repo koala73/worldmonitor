@@ -119,6 +119,7 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['api.rainviewer.com', 'environment'],
   // #9094: locates published fact-checks for /verify and verify_claim.
   ['factchecktools.googleapis.com', 'news'],
+  ['api.tineye.com', 'news'],
   // BestTime live busyness is the fallback feed for the PizzINT (Pentagon pizza) panel.
   ['besttime.app', 'military'],
   ['api.scrapecreators.com', 'news'],
@@ -196,6 +197,7 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
 const SOURCE_NAME_OVERRIDES = new Map([
   ['acleddata.com', 'ACLED'],
   ['factchecktools.googleapis.com', 'Google Fact Check Tools API'],
+  ['api.tineye.com', 'TinEye reverse image search API'],
   ['adsb.lol', 'ADSB.lol'],
   ['aerotime.aero', 'AeroTime'],
   ['agentskills.io', 'Agent Skills'],

@@ -278,6 +278,8 @@ describe('resilience runtime manifest gateway auth', () => {
         '/api/news/v1/list-error-reports',
         '/api/news/v1/review-error-report',
         '/api/news/v1/search-fact-checks',
+        '/api/news/v1/check-report-media',
+        '/api/news/v1/get-report-media',
         '/api/news/v1/search-claim-headlines',
       ],
     );

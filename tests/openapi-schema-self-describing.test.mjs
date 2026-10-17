@@ -27,6 +27,9 @@ const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options'
 // simply skipping it.
 const NO_200_EXEMPT = new Map([
   ['path POST /api/scenario/v1/run-scenario', { successCode: '202', body: 'typed-json' }],
+  // #9096 media checks use the same async-job envelope.
+  ['path POST /api/news/v1/check-media-provenance', { successCode: '202', body: 'typed-json' }],
+  ['path POST /api/news/v1/check-report-media', { successCode: '202', body: 'typed-json' }],
   ['webhook POST chokepoint.disruption', { successCode: '2XX', body: 'status-only' }],
 ]);
 

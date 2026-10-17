@@ -47,6 +47,26 @@ export const ASYNC_JOB_OPS = [
     locationExample:
       '/api/scenario/v1/get-scenario-status?jobId=scenario%3A1717200000000%3Aabcd1234',
   },
+  {
+    path: '/api/news/v1/check-media-provenance',
+    method: 'post',
+    description:
+      'Accepted — media check enqueued. The body carries the job id (jobId), the initial status (always pending) and a poll URL (statusUrl); the Location header points at the same GetMediaProvenance endpoint. Poll it until status is done or failed. An idempotent replay reproduces only the body, so a retrying client polls statusUrl.',
+    locationDescription:
+      'Relative URL of the job-status poll endpoint for this job (same value as the statusUrl body field).',
+    locationExample:
+      '/api/news/v1/get-media-provenance?job_id=media%3A1717200000000%3A0123456789abcdef0123456789abcdef',
+  },
+  {
+    path: '/api/news/v1/check-report-media',
+    method: 'post',
+    description:
+      'Accepted — media check for the report link enqueued. The body carries the job id (jobId), the initial status (always pending) and a poll URL (statusUrl); the Location header points at the same GetReportMedia endpoint. Poll it until status is done or failed.',
+    locationDescription:
+      'Relative URL of the job-status poll endpoint for this job (same value as the statusUrl body field).',
+    locationExample:
+      '/api/news/v1/get-report-media?job_id=media%3A1717200000000%3A0123456789abcdef0123456789abcdef',
+  },
 ];
 
 function clone(value) {

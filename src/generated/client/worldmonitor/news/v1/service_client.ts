@@ -228,6 +228,80 @@ export interface FactCheck {
   claimReviewed: string;
 }
 
+export interface CheckMediaProvenanceRequest {
+  url: string;
+}
+
+export interface MediaCheckJob {
+  jobId: string;
+  status: string;
+  statusUrl: string;
+}
+
+export interface GetMediaProvenanceRequest {
+  jobId: string;
+}
+
+export interface GetMediaProvenanceResponse {
+  status: string;
+  result?: MediaProvenance;
+  error: string;
+}
+
+export interface MediaProvenance {
+  url: string;
+  mediaType: string;
+  bytes: number;
+  sha256: string;
+  fetchedAt: string;
+  credentials?: MediaCredentials;
+  earliest?: MediaEarliestAppearance;
+  caveats: string[];
+}
+
+export interface MediaCredentials {
+  state: string;
+  signer: string;
+  signerCommonName: string;
+  signerTrust: string;
+  claimGenerator: string;
+  signedAt: string;
+  actions: MediaCredentialAction[];
+  declaresAiGeneration: boolean;
+  ingredientCount: number;
+  validationState: string;
+  contentChangedAfterSigning: boolean;
+  failureCodes: string[];
+}
+
+export interface MediaCredentialAction {
+  action: string;
+  softwareAgent: string;
+  digitalSourceType: string;
+}
+
+export interface MediaEarliestAppearance {
+  state: string;
+  provider: string;
+  copies: MediaEarliestCopy[];
+  totalMatches: number;
+  searchedAt: string;
+}
+
+export interface MediaEarliestCopy {
+  domain: string;
+  pageUrl: string;
+  crawlDate: string;
+}
+
+export interface CheckReportMediaRequest {
+  reportId: string;
+}
+
+export interface GetReportMediaRequest {
+  jobId: string;
+}
+
 export interface SearchClaimHeadlinesRequest {
   claim: string;
 }
@@ -525,6 +599,104 @@ export class NewsServiceClient {
     }
 
     return await resp.json() as SearchFactChecksResponse;
+  }
+
+  async checkMediaProvenance(req: CheckMediaProvenanceRequest, options?: NewsServiceCallOptions): Promise<MediaCheckJob> {
+    let path = "/api/news/v1/check-media-provenance";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as MediaCheckJob;
+  }
+
+  async getMediaProvenance(req: GetMediaProvenanceRequest, options?: NewsServiceCallOptions): Promise<GetMediaProvenanceResponse> {
+    let path = "/api/news/v1/get-media-provenance";
+    const params = new URLSearchParams();
+    if (req.jobId != null && req.jobId !== "") params.set("job_id", String(req.jobId));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetMediaProvenanceResponse;
+  }
+
+  async checkReportMedia(req: CheckReportMediaRequest, options?: NewsServiceCallOptions): Promise<MediaCheckJob> {
+    let path = "/api/news/v1/check-report-media";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as MediaCheckJob;
+  }
+
+  async getReportMedia(req: GetReportMediaRequest, options?: NewsServiceCallOptions): Promise<GetMediaProvenanceResponse> {
+    let path = "/api/news/v1/get-report-media";
+    const params = new URLSearchParams();
+    if (req.jobId != null && req.jobId !== "") params.set("job_id", String(req.jobId));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetMediaProvenanceResponse;
   }
 
   async searchClaimHeadlines(req: SearchClaimHeadlinesRequest, options?: NewsServiceCallOptions): Promise<SearchClaimHeadlinesResponse> {

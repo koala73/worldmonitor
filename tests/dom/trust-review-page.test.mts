@@ -95,3 +95,49 @@ describe('trust review page', () => {
     expect(document.getElementById('status')!.textContent).toContain('could not be read');
   });
 });
+
+describe('trust review page media check (#9096)', () => {
+  const jobId = `media:1760616000000:${'a'.repeat(32)}`;
+  const statusUrl = `/api/news/v1/get-report-media?job_id=${encodeURIComponent(jobId)}`;
+
+  afterEach(() => vi.useRealTimers());
+
+  it('uses the shared contract wording verbatim', async () => {
+    const { MEDIA_WORDING } = await import('../../shared/media-provenance-contract.js');
+    for (const line of Object.values(MEDIA_WORDING)) expect(script).toContain(line);
+  });
+
+  it('checks the report link and shows the result as text, with the key header', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const calls = await loadWithKey(mount([
+      { body: { state: 'ok', reports: [pending] } },
+      { status: 200, body: { jobId, status: 'pending', statusUrl } },
+      { body: { status: 'pending', error: '' } },
+      { body: { status: 'done', error: '', result: {
+        credentials: { state: 'found', signer: '<b>Example</b> Newsroom', signerTrust: 'untrusted', contentChangedAfterSigning: true, actions: [{ action: 'c2pa.edited', softwareAgent: 'Editor' }] },
+        earliest: { state: 'ok', copies: [{ domain: 'example.org', pageUrl: 'https://example.org/p', crawlDate: '2024-03-03' }] },
+        caveats: ['Caveat one.'],
+      } } },
+    ]));
+    const button = document.querySelector<HTMLButtonElement>('button.media-check')!;
+    expect(button.textContent).toBe('Check image or video');
+    button.click();
+    await vi.advanceTimersByTimeAsync(4_500);
+    expect(calls[1]!.url).toBe('/api/news/v1/check-report-media');
+    expect(JSON.parse(String(calls[1]!.init.body))).toEqual({ reportId: pending.id });
+    expect((calls[2]!.init.headers as Record<string, string>)['X-Trust-Review-Key']).toBe('secret');
+    expect(calls[2]!.url).toBe(statusUrl);
+    const lines = [...document.querySelectorAll('.media-result p')].map((p) => p.textContent);
+    expect(lines[0]).toBe('Content credentials found. They name the signer as <b>Example</b> Newsroom.');
+    expect(document.querySelector('.media-result b')).toBeNull();
+    expect(lines).toContain('Earliest copy TinEye has seen: 2024-03-03, example.org.');
+    expect(lines.some((line) => line?.startsWith('The credentials do not match the file'))).toBe(true);
+    expect(lines[lines.length - 1]).toBe('Caveat one.');
+    expect(button.disabled).toBe(false);
+  });
+
+  it('offers no media check for a report without a link', async () => {
+    await loadWithKey(mount([{ body: { state: 'ok', reports: [{ ...pending, url: '' }] } }]));
+    expect(document.querySelector('button.media-check')).toBeNull();
+  });
+});

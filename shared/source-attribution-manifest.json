@@ -1219,6 +1219,20 @@
       ]
     },
     {
+      "host": "api.tineye.com",
+      "provider": "api.tineye.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit api.tineye.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/media-provenance.mjs"
+        }
+      ]
+    },
+    {
       "host": "api.travelpayouts.com",
       "provider": "Travelpayouts flight-price data",
       "kind": "structured",
@@ -15022,6 +15036,9 @@
         },
         {
           "path": "scripts/lib/internal-links.mjs"
+        },
+        {
+          "path": "scripts/lib/media-provenance.mjs"
         },
         {
           "path": "scripts/mcp-proxy-live-smoke.mjs"

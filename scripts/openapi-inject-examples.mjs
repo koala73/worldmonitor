@@ -236,11 +236,27 @@ function overrideStringExample(key, context = {}) {
   // the heuristic defaults ('example' / a generic https URL) contradict the
   // fields' own descriptions. The statusUrl value must mirror the Location
   // header example in openapi-inject-async-jobs.mjs (contract-tested).
+  // #9096: a media job id has its own form; the generic jobId default is a
+  // scenario id, which the media poll routes reject.
+  if (key.replace(/_/g, '') === 'jobid' && /media-?provenance|report-?media/.test(where)) {
+    return 'media:1717200000000:0123456789abcdef0123456789abcdef';
+  }
   if (key === 'status' || key === 'statusurl') {
     if (where.includes('runscenario') || where.includes('run-scenario')) {
       return key === 'status'
         ? 'pending'
         : '/api/scenario/v1/get-scenario-status?jobId=scenario%3A1717200000000%3Aabcd1234';
+    }
+    // #9096 media checks share the same async-job envelope.
+    if (where.includes('checkmediaprovenance') || where.includes('check-media-provenance')) {
+      return key === 'status'
+        ? 'pending'
+        : '/api/news/v1/get-media-provenance?job_id=media%3A1717200000000%3A0123456789abcdef0123456789abcdef';
+    }
+    if (where.includes('checkreportmedia') || where.includes('check-report-media')) {
+      return key === 'status'
+        ? 'pending'
+        : '/api/news/v1/get-report-media?job_id=media%3A1717200000000%3A0123456789abcdef0123456789abcdef';
     }
   }
   // GetTradeFlows' 200 example must depict a SERVED response. The field-name
@@ -415,6 +431,53 @@ function descriptionClosedValueExample(description) {
 
 function shouldUseDescriptionClosedValue(context = {}) {
   return context.exampleSurface === 'parameter' || context.exampleSurface === 'request';
+}
+
+// #9096: a finished media check of a synthetic signed image. The generic
+// builder filled every state with "example"; this shows real states and the
+// fixed caveats (tests/media-provenance.test.mjs holds them to the contract).
+function getMediaProvenanceExample() {
+  return {
+    status: 'done',
+    error: '',
+    result: {
+      url: 'https://example.com/media/synthetic-photo.jpg',
+      mediaType: 'image/jpeg',
+      bytes: 482113,
+      sha256: '9f2c5f0e0b8a4d6c3e1f7a9b2d4c6e8f0a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d',
+      fetchedAt: '2026-10-16T12:00:00.000Z',
+      credentials: {
+        state: 'found',
+        signer: 'Example Newsroom (synthetic)',
+        signerCommonName: 'Example Newsroom Signer',
+        signerTrust: 'trusted',
+        claimGenerator: 'Example Camera App 2.1',
+        signedAt: '2026-10-15T08:30:00Z',
+        actions: [
+          { action: 'c2pa.created', softwareAgent: 'Example Camera App', digitalSourceType: 'http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture' },
+          { action: 'c2pa.cropped', softwareAgent: 'Example Editor', digitalSourceType: '' },
+        ],
+        declaresAiGeneration: false,
+        ingredientCount: 1,
+        validationState: 'trusted',
+        contentChangedAfterSigning: false,
+        failureCodes: [],
+      },
+      earliest: {
+        state: 'ok',
+        provider: 'TinEye',
+        copies: [
+          { domain: 'example.org', pageUrl: 'https://example.org/2026/10/15/story', crawlDate: '2026-10-15' },
+        ],
+        totalMatches: 3,
+        searchedAt: '2026-10-16T12:00:05.000Z',
+      },
+      caveats: [
+        'Content credentials say who signed a file and what they declared about it. They are not a judgment that the media is genuine.',
+        'An earliest copy is when a search provider\'s crawler first saw the image on a page, not when or where it was first published.',
+      ],
+    },
+  };
 }
 
 function getScenarioStatusExample() {
@@ -1071,6 +1134,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getGivingSummaryExample();
+  }
+  if (
+    depth === 0
+    && ['getmediaprovenance', 'getreportmedia'].includes(String(context.operationId ?? '').toLowerCase())
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getMediaProvenanceExample();
   }
   if (
     depth === 0

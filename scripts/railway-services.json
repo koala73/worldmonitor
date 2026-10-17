@@ -368,6 +368,36 @@
     "documentedAt": "scripts/scenario-worker.mjs (header docblock declares rootDirectory: scripts)"
   },
   {
+    "entry": "scripts/media-provenance-worker.mjs",
+    "deployMode": "dockerfile",
+    "dockerfile": "Dockerfile.media-provenance-worker",
+    "lifecycle": "planned",
+    "service": "media-provenance-worker",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      "TINEYE_API_KEY"
+    ],
+    "cronSchedule": null,
+    "watchPatterns": [
+      "Dockerfile.media-provenance-worker",
+      "docker/media-provenance-worker/package-lock.json",
+      "docker/media-provenance-worker/package.json",
+      "scripts/_proxy-utils.cjs",
+      "scripts/_r2-storage.mjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/media-provenance.mjs",
+      "scripts/lib/notification-webhook-ssrf.cjs",
+      "scripts/media-provenance-worker.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/media-provenance-contract.js"
+    ],
+    "documentedAt": "Dockerfile.media-provenance-worker"
+  },
+  {
     "entry": "scripts/seed-aaii-sentiment.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-aaii-sentiment",

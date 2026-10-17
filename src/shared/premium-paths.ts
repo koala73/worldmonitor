@@ -86,6 +86,9 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/trade/v1/get-us-import-duty',
   '/api/scenario/v1/run-scenario',
   '/api/scenario/v1/get-scenario-status',
+  // #9096 media provenance: queues a worker job that can spend a paid TinEye search.
+  '/api/news/v1/check-media-provenance',
+  '/api/news/v1/get-media-provenance',
   // #3734: PRO-gated mutation that enqueues a simulation task. Companion
   // /get-simulation-outcome remains public (existing convention).
   '/api/forecast/v1/trigger-simulation',

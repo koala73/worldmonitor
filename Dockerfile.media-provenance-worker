@@ -1,0 +1,26 @@
+# Media provenance worker for Railway (#9096).
+#
+# Reads C2PA content credentials with @contentauth/c2pa-node, a native addon
+# built for glibc, so this image is Debian-based (bookworm-slim), not Alpine.
+# Its dependencies live in docker/media-provenance-worker/ so the other
+# scripts/ services do not install a 50 MB native binary.
+#
+# Install scripts stay disabled; the one this worker needs, the C2PA binary
+# download, runs explicitly and the build fails if the binary is missing.
+
+FROM node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5
+
+WORKDIR /app
+
+COPY docker/media-provenance-worker/package.json docker/media-provenance-worker/package-lock.json ./
+# The download script must run from its own package directory: run from /app
+# it treats /app as the package and tries to build the Rust source instead.
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
+  && cd node_modules/@contentauth/c2pa-node && node scripts/postinstall.cjs && cd /app \
+  && test -s node_modules/@contentauth/c2pa-node/dist/index.node
+
+COPY scripts/ ./scripts/
+
+USER node
+
+CMD ["node", "scripts/media-provenance-worker.mjs"]

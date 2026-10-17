@@ -204,6 +204,10 @@ export const SCANNER_BUNDLE_EXCLUDED_OPERATIONS = Object.freeze({
   '/api/news/v1/list-error-reports': 'Operator review queue, secret-gated (#9093).',
   '/api/news/v1/review-error-report': 'Operator review decision, secret-gated (#9093).',
   '/api/news/v1/search-fact-checks': 'Fact-check lookup for the /verify page and verify_claim (#9094); documented in the NewsService spec.',
+  '/api/news/v1/check-media-provenance': 'Media check started from the /verify page (#9096); documented in the NewsService spec.',
+  '/api/news/v1/get-media-provenance': 'Media check result for the /verify page (#9096); documented in the NewsService spec.',
+  '/api/news/v1/check-report-media': 'Operator media check for a reader report, secret-gated (#9096).',
+  '/api/news/v1/get-report-media': 'Operator media check result, secret-gated (#9096).',
   '/api/news/v1/search-claim-headlines': 'Claim headline search for the /verify page and verify_claim; documented in the NewsService spec.',
 });
 

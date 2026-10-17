@@ -46,6 +46,9 @@ const MIRRORED_FILES = [
   'news-clustering-core.js',
   // #9095: news-clustering-core.js imports it for same-copy detection.
   'syndication.js',
+  // #9096: the media provenance worker and API share queue keys, limits and wording.
+  'media-provenance-contract.js',
+  'media-provenance-contract.d.ts',
 ];
 
 describe('scripts/shared/ mirrors shared/', () => {

@@ -58,6 +58,9 @@ export const IDEMPOTENCY_EXEMPT_RPC_PATHS = new Set<string>([
   // reviewed report answers 409), so it needs no generic replay. (No apostrophes
   // in this block: readIdempotencyExemptPaths parses its quoted strings.)
   '/api/news/v1/review-error-report',
+  // #9096 operator media check: same reason, a replay would run before the
+  // review secret is checked. A repeat only queues a second check.
+  '/api/news/v1/check-report-media',
 ]);
 
 // Printable-ASCII, 1..255 chars — matches the `maxLength: 255` we publish in

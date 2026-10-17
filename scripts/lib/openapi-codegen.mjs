@@ -1036,4 +1036,6 @@ export const PUBLIC_FORBIDDEN_GATES = new Map([
 export const TRUST_REVIEW_KEY_PATHS = new Set([
   '/api/news/v1/list-error-reports',
   '/api/news/v1/review-error-report',
+  '/api/news/v1/check-report-media',
+  '/api/news/v1/get-report-media',
 ]);
