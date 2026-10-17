@@ -618,6 +618,16 @@ test('WHO record without PublicationDateAndTime → in-memory item is tagged syn
   assert.equal(inMemory.publishedMs, NOW, 'publishedMs falls back to now() so existing isFinite filters + UI consumer contract still hold');
 });
 
+// WHO items skip the headline date gate, so an undated one is published. Its
+// id must not carry the fallback "now", or every seeder run mints a new id
+// and id-deduplicating consumers (the Zapier trigger) fire on it again.
+test('an undated WHO report keeps one id across seeder runs', () => {
+  const record = { Title: 'Mpox - Country X', ItemDefaultUrl: '/mpox-x' };
+  const first = mapItem(whoNormalizeItem(record, 1700000000000));
+  const second = mapItem(whoNormalizeItem(record, 1700000600000));
+  assert.equal(first.id, second.id);
+});
+
 test('WHO record with valid PublicationDateAndTime → in-memory item is non-synthetic', () => {
   const NOW = 1700000000000;
   const PUB_ISO = '2026-04-23T15:30:00Z';
