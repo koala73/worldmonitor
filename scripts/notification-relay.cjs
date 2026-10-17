@@ -404,9 +404,6 @@ async function holdEvent(userId, variant, eventJson) {
   await upstashRest('EXPIRE', key, String(QUIET_HELD_TTL));
 }
 
-// Delivers (or discards) the held queue for a single user+variant.
-// Used by both drainBatchOnWake (wake-up) and processFlushQuietHeld (settings change).
-// allowedChannelTypes: which channels to attempt delivery on; null = use rule's channels.
 /**
  * One line per held alert, shared by the text batch and the Teams card.
  * Titles get the same boundary as formatMessage: held events include
@@ -421,6 +418,9 @@ function formatHeldAlertLines(events) {
   });
 }
 
+// Delivers (or discards) the held queue for a single user+variant.
+// Used by both drainBatchOnWake (wake-up) and processFlushQuietHeld (settings change).
+// allowedChannelTypes: which channels to attempt delivery on; null = use rule's channels.
 async function drainHeldForUser(userId, variant, allowedChannelTypes) {
   const key = `digest:quiet-held:${userId}:${variant}`;
   const len = await upstashRest('LLEN', key);
