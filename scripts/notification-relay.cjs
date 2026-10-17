@@ -2,6 +2,7 @@
 
 const { createHash } = require('node:crypto');
 const { Resend } = require('resend');
+const { sendResendEmail } = require('./lib/resend-send.cjs');
 const { decrypt } = require('./lib/crypto.cjs');
 const {
   assertNotificationWebhookDeliveryUrlSafe,
@@ -737,14 +738,14 @@ async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
 // ── Delivery: Email ───────────────────────────────────────────────────────────
 
 async function sendEmail(email, subject, text) {
-  if (!resend) { console.warn('[relay] RESEND_API_KEY not set — skipping email'); return false; }
-  try {
-    await resend.emails.send({ from: RESEND_FROM, to: email, subject, text });
-    return true;
-  } catch (err) {
-    console.warn('[relay] Resend send failed:', err.message);
-    return false;
-  }
+  // Shared helper: default Reply-To (support@, not the alerts@ role inbox)
+  // and treats the SDK's resolved `{ error }` as a failed send.
+  const result = await sendResendEmail(
+    resend,
+    { from: RESEND_FROM, to: email, subject, text },
+    { logPrefix: '[relay]' },
+  );
+  return result.ok;
 }
 
 async function sendWebhook(userId, webhookEnvelope, event, webhookSecretEnvelope) {

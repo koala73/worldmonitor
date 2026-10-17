@@ -45,6 +45,7 @@ const { fetchUserPreferences, extractUserContext, formatUserProfile } = require(
 const { fetchFollowedCountries } = require('./lib/followed-countries-fetch.cjs');
 const { Resend } = require('resend');
 const { normalizeResendSender } = require('./lib/resend-from.cjs');
+const { sendResendEmail } = require('./lib/resend-send.cjs');
 import { readRawJsonFromUpstash, redisPipeline } from '../api/_upstash-json.js';
 import { classifyFeelGood } from '../server/_shared/feelgood-classifier.js';
 import { classifyEphemeralLiveCoverage } from '../shared/ephemeral-live-classifier.js';
@@ -1410,17 +1411,15 @@ async function sendDiscord(userId, webhookEnvelope, text) {
 }
 
 async function sendEmail(email, subject, text, html) {
-  if (!resend) { console.warn('[digest] Email: RESEND_API_KEY not set — skipping'); return false; }
-  try {
-    const payload = { from: RESEND_FROM, to: email, subject, text };
-    if (html) payload.html = html;
-    await resend.emails.send(payload);
-    console.log(`[digest] Email delivered to ${email}`);
-    return true;
-  } catch (err) {
-    console.warn('[digest] Resend failed:', err.message);
-    return false;
-  }
+  // Shared helper: default Reply-To (support@, not the brief@ role inbox)
+  // and treats the SDK's resolved `{ error }` as a failed send.
+  const result = await sendResendEmail(
+    resend,
+    { from: RESEND_FROM, to: email, subject, text, html },
+    { logPrefix: '[digest]' },
+  );
+  if (result.ok) console.log(`[digest] Email delivered to ${email}`);
+  return result.ok;
 }
 
 async function sendWebhook(userId, webhookEnvelope, stories, aiSummary, webhookSecretEnvelope) {
