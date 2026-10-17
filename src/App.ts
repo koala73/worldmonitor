@@ -2997,6 +2997,9 @@ export class App {
     this.pendingDeepLinkExpanded = initState.expanded === true;
     this.pendingDeepLinkChokepoint = initState.chokepoint ?? null;
     const earlyParams = new URLSearchParams(window.location.search);
+    if (earlyParams.get('settings') === 'notifications') {
+      void this.state.unifiedSettings?.open('notifications');
+    }
     this.pendingDeepLinkStoryCode = earlyParams.get('c') ?? null;
     this.pendingDeepLinkSearchQuery = readDashboardSearchQuery(window.location.search);
     this.eventHandlers.setupUrlStateSync();

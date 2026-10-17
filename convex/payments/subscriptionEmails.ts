@@ -12,12 +12,16 @@ import { internal } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { buildCancellationConfirmEmail } from "./cancellationEmailCopy";
 import { signDunningPortalToken } from "../lib/identitySigning";
+import { buildUnsubscribeUrl, listUnsubscribeHeaders } from "../lib/emailUnsubscribe";
 import { ResendSendError, sendResendEmail, type EmailPurpose } from "../lib/resendEmail";
 import { billingDeletionForEvent, billingDeletionForUser, isCoveringAt } from "./subscriptionHelpers";
 
 export { formatAccessEndDate } from "./cancellationEmailCopy";
 
 const FROM = "World Monitor <noreply@worldmonitor.app>";
+// Marketing sender (audit check 4): winback is a marketing email, so it goes
+// from news@ like the launch broadcast, with a one-click unsubscribe.
+const MARKETING_FROM = "World Monitor <news@worldmonitor.app>";
 const ADMIN_EMAIL = "elie@worldmonitor.app";
 
 const PLAN_DISPLAY: Record<string, string> = {
@@ -59,17 +63,18 @@ async function sendEmail(
   to: string,
   subject: string,
   html: string,
-  options: { replyTo: string | null; purpose?: EmailPurpose },
+  options: { replyTo: string | null; purpose?: EmailPurpose; from?: string; headers?: Record<string, string> },
 ): Promise<boolean> {
   try {
     const result = await sendResendEmail(ctx, {
       apiKey,
-      from: FROM,
+      from: options.from ?? FROM,
       to,
       subject,
       html,
       replyTo: options.replyTo,
       purpose: options.purpose ?? "transactional",
+      headers: options.headers,
     });
     return result.sent;
   } catch (err) {
@@ -745,7 +750,15 @@ export const recordDunningStepSent = internalMutation({
   },
 });
 
-function dunningEmailShell(headline: string, bodyHtml: string, ctaLabel: string, ctaHref: string, footerNote: string): string {
+function dunningEmailShell(headline: string, bodyHtml: string, ctaLabel: string, ctaHref: string, footerNote: string, unsubscribeUrl?: string | null): string {
+  // `undefined`: payment-failure mail, no line. `null`: a marketing email whose
+  // one-click URL could not be signed (EMAIL_UNSUBSCRIBE_SECRET unset); keep
+  // a visible support opt-out instead of dropping the line.
+  const unsubscribeLine = unsubscribeUrl
+    ? `<a href="${escapeHtml(unsubscribeUrl)}" style="color: #666; text-decoration: underline;">Unsubscribe from World Monitor product emails</a><br />`
+    : unsubscribeUrl === null
+    ? `<a href="mailto:support@worldmonitor.app?subject=Unsubscribe%20from%20product%20emails" style="color: #666; text-decoration: underline;">Email support to unsubscribe from product emails</a><br />`
+    : "";
   return `
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
   <div style="background: #f59e0b; height: 4px;"></div>
@@ -772,7 +785,7 @@ function dunningEmailShell(headline: string, bodyHtml: string, ctaLabel: string,
   <div style="border-top: 1px solid #1a1a1a; padding: 24px 32px; text-align: center;">
     <p style="font-size: 11px; color: #444; margin: 0; line-height: 1.6;">
       ${footerNote}<br />
-      <a href="https://worldmonitor.app" style="color: #f59e0b; text-decoration: none;">worldmonitor.app</a>
+      ${unsubscribeLine}<a href="https://worldmonitor.app" style="color: #f59e0b; text-decoration: none;">worldmonitor.app</a>
     </p>
   </div>
 </div>`;
@@ -788,6 +801,7 @@ export function buildDunningEmail(
   ctaUrl: string,
   accessUntil?: number,
   paidUntil?: number,
+  unsubscribeUrl?: string | null,
 ): { subject: string; html: string } {
   const stillCovered = typeof accessUntil === "number" && accessUntil > Date.now();
   // Access can outlive the paid period (a comp grant), so the "ends with your
@@ -853,6 +867,7 @@ export function buildDunningEmail(
           "Rejoin World Monitor",
           ctaUrl,
           "This is a one-time note — we won't send more emails about this subscription.",
+          unsubscribeUrl,
         ),
       };
   }
@@ -1144,6 +1159,12 @@ export const sendDunningEmail = internalAction({
     }
 
     const planName = PLAN_DISPLAY[fresh.sub.planKey] ?? fresh.sub.planKey;
+    // Winback is marketing: one-click unsubscribe (RFC 8058) + footer link,
+    // sent from news@. Null when EMAIL_UNSUBSCRIBE_SECRET is unset.
+    const isWinback = args.step === "winback_day30";
+    const unsubscribeUrl = isWinback
+      ? await buildUnsubscribeUrl(fresh.sub.userId, "marketing")
+      : undefined;
     const { subject, html } = buildDunningEmail(
       args.step,
       planName,
@@ -1152,10 +1173,12 @@ export const sendDunningEmail = internalAction({
         ? fresh.sub.currentPeriodEnd
         : Math.max(fresh.sub.currentPeriodEnd, fresh.sub.entitlementCoveredUntil),
       fresh.sub.currentPeriodEnd,
+      unsubscribeUrl,
     );
     const sent = await sendEmail(ctx, apiKey, fresh.sub.email, subject, html, {
       replyTo: ADMIN_EMAIL,
-      purpose: args.step === "winback_day30" ? "marketing" : "transactional",
+      purpose: isWinback ? "marketing" : "transactional",
+      ...(isWinback ? { from: MARKETING_FROM, headers: listUnsubscribeHeaders(unsubscribeUrl) } : {}),
     });
     if (!sent) {
       // resolveSend already checked suppression; this only fires when a

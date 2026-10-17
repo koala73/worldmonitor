@@ -139,7 +139,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private currentScore: CountryScore | null = null;
   private currentSignals: CountrySignalCounts | null = null;
   private signalCoverageNotes: readonly string[] = [];
-  private currentSignalDetails: CountryDeepDiveSignalDetails | null = null;
+  private currentSignalDetails: CountryDeepDiveSignalDetails | 'unavailable' | null = null;
   private currentBrief: string | null = null;
   private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
@@ -310,6 +310,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const body = id === 'energy' && this.hostedAtlasBody ? this.energyBody! : section.body;
     const notice = state === 'locked' ? this.makeProLocked(reason) : this.makeEmpty(reason);
     notice.dataset.briefState = state;
+    if (id === 'signals' && state === 'unavailable' && this.signalBreakdownBody && this.signalRecentBody) {
+      this.currentSignalDetails = 'unavailable';
+      this.signalBreakdownBody.replaceChildren(notice);
+      this.signalRecentBody.replaceChildren();
+      return;
+    }
     body.querySelector('.cdp-refresh-failure')?.remove();
     const previous = briefSectionState({ id, title: '', card, body });
     if (state === 'unavailable' && previous === 'ready') {

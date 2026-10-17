@@ -397,7 +397,9 @@ to `0`, which means no floor. Positive values drop clusters whose representative
 
 The digest pool caps at `30` clusters before channel formatting. Severity
 formatters cap high stories at `15`, medium stories at `10`, and do not cap
-critical stories. The rendered brief uses `MAX_STORIES_PER_USER`, default `12`
+critical stories by count. The email channel caps its email HTML at `90,000`
+bytes, below Gmail's ~102KB clipping point: over that size it drops the
+lowest-priority story cards and links to the full brief. The rendered brief uses `MAX_STORIES_PER_USER`, default `12`
 and tunable by `DIGEST_MAX_STORIES_PER_USER`. The brief also caps each
 source/category pair at `2` stories to reduce editorial clutter.
 
