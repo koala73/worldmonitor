@@ -233,7 +233,7 @@
       "manufacturingShare": "制造业就业",
       "source": "来源：{{sources}}。",
       "retained": "{{stage}} 数据沿用上次成功刷新的结果。",
-      "statusNotSupplied": "Estimate and imputation status not supplied"
+      "statusNotSupplied": "未提供估计和缺失值填补状态"
     },
     "fiveFactorScorecard": {
       "title": "五维韧性记分卡",

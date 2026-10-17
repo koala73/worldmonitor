@@ -233,7 +233,7 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh.",
-      "statusNotSupplied": "Estimate and imputation status not supplied"
+      "statusNotSupplied": "推定・欠損値補完の状態は提供されていません"
     },
     "fiveFactorScorecard": {
       "title": "5要素レジリエンススコアカード",

@@ -1894,6 +1894,7 @@
   "countryBrief.demographicsCapability.researchers": "Researchers",
   "countryBrief.demographicsCapability.retained": "{{stage}} data retained from the last successful refresh.",
   "countryBrief.demographicsCapability.source": "Sources: {{sources}}.",
+  "countryBrief.demographicsCapability.statusNotSupplied": "Estimate and imputation status not supplied",
   "countryBrief.demographicsCapability.stemGraduates": "Science, technology, engineering and mathematics graduates",
   "countryBrief.demographicsCapability.tertiaryEnrollment": "Tertiary enrollment",
   "countryBrief.demographicsCapability.title": "Demographics & Workforce",

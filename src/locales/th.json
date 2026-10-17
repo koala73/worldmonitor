@@ -233,7 +233,7 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh.",
-      "statusNotSupplied": "Estimate and imputation status not supplied"
+      "statusNotSupplied": "ไม่ได้ระบุสถานะการประมาณค่าและการแทนค่าที่ขาดหาย"
     },
     "fiveFactorScorecard": {
       "title": "คะแนนความยืดหยุ่น 5 ปัจจัย",

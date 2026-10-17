@@ -308,7 +308,7 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh.",
-      "statusNotSupplied": "Estimate and imputation status not supplied"
+      "statusNotSupplied": "Статус оцінки та заповнення пропусків не надано"
     },
     "fiveFactorScorecard": {
       "title": "П'ятифакторна шкала стійкості",

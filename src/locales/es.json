@@ -237,7 +237,7 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh.",
-      "statusNotSupplied": "Estimate and imputation status not supplied"
+      "statusNotSupplied": "No se ha indicado el estado de estimación e imputación"
     },
     "fiveFactorScorecard": {
       "title": "Tabla de puntuación de resiliencia de cinco factores",

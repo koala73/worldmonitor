@@ -3551,7 +3551,7 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh.",
-      "statusNotSupplied": "Estimate and imputation status not supplied"
+      "statusNotSupplied": "Status för skattning och imputering har inte angetts"
     },
     "fiveFactorScorecard": {
       "title": "Femfaktorsresilienspoängbord",

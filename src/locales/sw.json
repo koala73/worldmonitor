@@ -304,7 +304,7 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh.",
-      "statusNotSupplied": "Estimate and imputation status not supplied"
+      "statusNotSupplied": "Hali ya makadirio na ujazaji wa thamani zinazokosekana haijatolewa"
     },
     "fiveFactorScorecard": {
       "title": "Kadi ya Alama za Ustahimilivu ya Vipengele Vitano",

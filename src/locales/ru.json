@@ -239,7 +239,7 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh.",
-      "statusNotSupplied": "Estimate and imputation status not supplied"
+      "statusNotSupplied": "Статус оценки и заполнения пропусков не указан"
     },
     "fiveFactorScorecard": {
       "title": "Пятифакторная карта устойчивости",

@@ -304,7 +304,7 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh.",
-      "statusNotSupplied": "Estimate and imputation status not supplied"
+      "statusNotSupplied": "अनुमान और अनुपस्थित मानों की पूर्ति की स्थिति उपलब्ध नहीं है"
     },
     "fiveFactorScorecard": {
       "title": "पाँच-कारक लचीलाता स्कोरकार्ड",

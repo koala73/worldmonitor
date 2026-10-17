@@ -243,7 +243,7 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh.",
-      "statusNotSupplied": "Estimate and imputation status not supplied"
+      "statusNotSupplied": "لم تُقدَّم حالة التقدير وتعويض القيم المفقودة"
     },
     "fiveFactorScorecard": {
       "title": "بطاقة تقييم الصمود بخمسة عوامل",

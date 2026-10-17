@@ -233,7 +233,7 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh.",
-      "statusNotSupplied": "Estimate and imputation status not supplied"
+      "statusNotSupplied": "Chưa cung cấp trạng thái ước tính và điền giá trị thiếu"
     },
     "fiveFactorScorecard": {
       "title": "Bảng điểm khả năng phục hồi 5 yếu tố",

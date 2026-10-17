@@ -235,7 +235,7 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh.",
-      "statusNotSupplied": "Estimate and imputation status not supplied"
+      "statusNotSupplied": "Tahmin ve eksik değer atama durumu belirtilmemiş"
     },
     "fiveFactorScorecard": {
       "title": "Beş Faktörlü Dayanıklılık Puan Kartı",

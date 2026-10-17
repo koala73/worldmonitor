@@ -235,7 +235,7 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh.",
-      "statusNotSupplied": "Estimate and imputation status not supplied"
+      "statusNotSupplied": "Δεν παρέχεται κατάσταση εκτίμησης και συμπλήρωσης τιμών"
     },
     "fiveFactorScorecard": {
       "title": "Σκορκαρντ Ανθεκτικότητας Πέντε Παράγοντων",

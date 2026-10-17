@@ -233,7 +233,7 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh.",
-      "statusNotSupplied": "Estimate and imputation status not supplied"
+      "statusNotSupplied": "추정 및 결측값 대체 상태가 제공되지 않음"
     },
     "fiveFactorScorecard": {
       "title": "5요인 회복력 스코어카드",

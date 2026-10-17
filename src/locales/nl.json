@@ -3551,7 +3551,7 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh.",
-      "statusNotSupplied": "Estimate and imputation status not supplied"
+      "statusNotSupplied": "Status van schatting en imputatie niet opgegeven"
     },
     "fiveFactorScorecard": {
       "title": "Vijffactoren-resiliëntiescorekaart",
