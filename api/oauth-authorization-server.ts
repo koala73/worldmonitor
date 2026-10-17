@@ -60,7 +60,14 @@ export default function handler(req: Request): Response {
     grant_types_supported: ['authorization_code', 'refresh_token'],
     response_types_supported: ['code'],
     code_challenge_methods_supported: ['S256'],
+    // Public clients only. Adding private_key_jwt would move ChatGPT, which
+    // prefers it, onto signed client assertions this server does not verify.
     token_endpoint_auth_methods_supported: ['none'],
+    // A URL client_id is resolved from its Client ID Metadata Document, for
+    // the trusted vendor documents in api/oauth/_client-metadata.js (#9244).
+    // DCR stays available; clients choose one at discovery and do not fall
+    // back, so this flag must stay true only while that flow works end to end.
+    client_id_metadata_document_supported: true,
     scopes_supported: ['mcp'],
     // RFC 9207: /oauth/authorize and /oauth/authorize-pro append `iss` to the
     // authorization response. ChatGPT registers its stable redirect URI only

@@ -103,7 +103,7 @@ OAuth bearer 请求在分发之前会重新检查解析出的 MCP token、用户
 | Skydive | `https://www.skydive.com/api/v1/external-oauth/callback`（[客户端元数据](https://www.skydive.com/api/v1/external-oauth/client-metadata)） |
 | MCPJam | `https://app.mcpjam.com/oauth/callback`、`https://score.mcpjam.com/oauth/callback`（[客户端元数据](https://www.mcpjam.com/.well-known/oauth/client-metadata.json)） |
 
-Claude Code、Cursor 桌面版、VS Code 桌面版、Codex、Gemini CLI、goose、Zed 与 MCP Inspector 使用本地回环形式。Notion、Linear、Lovable、Factory、Conductor、Skydive 与 MCPJam 优先使用客户端 ID 元数据文档（CIMD），WorldMonitor 目前尚不支持；它们只有在回退到动态客户端注册时才能连接。单次注册最多可列出 8 个 `redirect_uris`；任意一项不在允许列表中，整个请求即返回 `400 invalid_redirect_uri`。回调地址按用户或租户生成的客户端（例如 Gemini 自定义应用与 Microsoft Copilot Studio）无法精确匹配，暂不支持。
+Claude Code、Cursor 桌面版、VS Code 桌面版、Codex、Gemini CLI、goose、Zed 与 MCP Inspector 使用本地回环形式。Notion、Linear、Lovable、Factory、Conductor、Skydive 与 MCPJam 优先使用客户端 ID 元数据文档（CIMD），现已可通过 CIMD 连接（受信任的文档 URL 列表见[英文版](/mcp-overview#client-id-metadata-documents)）；它们的回调仍保留在列表中，供仍使用注册的客户端使用。单次注册最多可列出 8 个 `redirect_uris`；任意一项不在允许列表中，整个请求即返回 `400 invalid_redirect_uri`。回调地址按用户或租户生成的客户端（例如 Gemini 自定义应用与 Microsoft Copilot Studio）无法精确匹配，暂不支持。
 
 授权响应携带 `iss`（[RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207)），其值为发起流程的主机的 `issuer`。ChatGPT 需要该参数才会使用其固定回调地址。
 

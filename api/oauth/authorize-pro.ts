@@ -18,9 +18,10 @@
  *   4. Atomically `GETDEL oauth:nonce:<n>` → recovers
  *      `{client_id, redirect_uri, code_challenge, state}` written by
  *      `api/oauth/authorize.js`. One-shot — replay fails on the second hit.
- *   5. Reads (does NOT consume) `oauth:client:<client_id>` for client_name
- *      + redirect_uri allowlist re-check (defense-in-depth; DCR validated
- *      this at register time but allowlist could be tightened since).
+ *   5. Resolves the client (non-consuming read of `oauth:client:<client_id>`,
+ *      or the CIMD document for a URL client_id, #9244) for client_name +
+ *      redirect_uri re-check (defense-in-depth; DCR validated this at
+ *      register time but allowlist could be tightened since).
  *   6. Re-fetches `getEntitlements(userId)` from Convex — the grant could
  *      be up to 5 minutes old; tier may have lapsed since mint. A denial here
  *      is split three ways (#5622): an unverifiable entitlement or in-flight
@@ -84,6 +85,8 @@ import {
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { mcpGrantName } from '../../shared/agent-client-source';
+// @ts-expect-error — JS module, no declaration file
+import { clientAllowsRedirectUri, describeClientFailure, resolveOAuthClient } from './_client-metadata.js';
 
 /** OAuth authorization-code TTL — matches `api/oauth/authorize.js:10`. */
 const CODE_TTL_SECONDS = 600;
@@ -264,6 +267,8 @@ export interface NonceData {
 export interface ClientData {
   client_name?: string;
   redirect_uris?: unknown;
+  /** True for a client resolved from a CIMD document. */
+  cimd?: boolean;
 }
 
 export interface GrantRedisData {
@@ -274,7 +279,7 @@ export interface GrantRedisData {
 export interface AuthorizeProDeps {
   /** Atomic GETDEL on a raw `mcp-grant:*` or `oauth:nonce:*` key. */
   redisGetDel: (key: string) => Promise<unknown | null>;
-  /** Non-consuming read of the `oauth:client:<id>` row. */
+  /** Non-consuming read of the `oauth:client:<id>` row and the CIMD cache. */
   redisGet: (key: string) => Promise<unknown | null>;
   /** SETEX of `oauth:code:<code>`. Returns false on failure (caller rolls back). */
   redisSetEx: (key: string, value: unknown, ttlSeconds: number) => Promise<boolean>;
@@ -297,6 +302,8 @@ export interface AuthorizeProDeps {
   randomCode: () => string;
   /** Wall clock — injectable for deterministic tests. */
   now: () => number;
+  /** Fetch for CIMD client metadata documents; defaults to the global fetch. */
+  fetchClientMetadata?: typeof fetch;
 }
 
 export async function authorizeProHandler(req: Request, deps: AuthorizeProDeps): Promise<Response> {
@@ -406,27 +413,27 @@ export async function authorizeProHandler(req: Request, deps: AuthorizeProDeps):
   const { client_id, redirect_uri, code_challenge } = nonceData;
   const state = typeof nonceData.state === 'string' ? nonceData.state : '';
 
-  // ----- 5. Read oauth:client:<client_id> (no consume) -----
-  let clientData: ClientData | null;
-  try {
-    clientData = (await deps.redisGet(`oauth:client:${client_id}`)) as ClientData | null;
-  } catch {
-    return htmlError(
-      'Service Unavailable',
-      'Authorization service is temporarily unavailable. Please try again shortly.',
-      503,
-    );
-  }
-  if (!clientData) {
+  // ----- 5. Resolve the client (DCR row or CIMD document; no consume) -----
+  const resolved = await resolveOAuthClient(client_id, {
+    redisGet: deps.redisGet,
+    redisSetEx: deps.redisSetEx,
+    fetch: deps.fetchClientMetadata,
+  });
+  if (!resolved.ok) {
+    if (resolved.transient) {
+      return htmlError('Service Unavailable', describeClientFailure(resolved), 503);
+    }
     return htmlError(
       'Unknown Client',
-      'The OAuth client registration has expired. Please re-register the client.',
+      resolved.reason === 'unknown_client'
+        ? 'The OAuth client registration has expired. Please re-register the client.'
+        : describeClientFailure(resolved),
     );
   }
+  const clientData = resolved.client as ClientData;
 
-  // ----- 6. Defense-in-depth: redirect_uri allowlist re-check -----
-  const uris = Array.isArray(clientData.redirect_uris) ? clientData.redirect_uris : [];
-  if (!uris.includes(redirect_uri)) {
+  // ----- 6. Defense-in-depth: redirect_uri re-check -----
+  if (!clientAllowsRedirectUri(clientData, redirect_uri)) {
     return htmlError(
       'Redirect URI Mismatch',
       'The redirect_uri does not match any registered redirect URI for this client.',

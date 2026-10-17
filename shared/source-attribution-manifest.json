@@ -2379,6 +2379,20 @@
       ]
     },
     {
+      "host": "chatgpt.com",
+      "provider": "ChatGPT link",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: documentation/UI link",
+      "attribution": "Excluded from the provider count: UI link, not an ingested source.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "api/oauth/_client-metadata.js"
+        }
+      ]
+    },
+    {
       "host": "chathamhouse.org",
       "provider": "chathamhouse.org",
       "kind": "feed",
@@ -2437,6 +2451,20 @@
       "references": [
         {
           "path": "scripts/lib/tps-open-data.mjs"
+        }
+      ]
+    },
+    {
+      "host": "claude.ai",
+      "provider": "Claude link",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: documentation/UI link",
+      "attribution": "Excluded from the provider count: UI link, not an ingested source.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "api/oauth/_client-metadata.js"
         }
       ]
     },

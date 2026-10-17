@@ -15,6 +15,7 @@
       .client-hd{margin-bottom:1.25rem}
       .client-name{font-size:1rem;color:#fff;font-weight:600;margin-bottom:.25rem}
       .client-host{font-size:.75rem;color:#444}
+      .client-warn{font-size:.72rem;color:#d97706;line-height:1.5;margin-top:.6rem}
       hr{border:none;border-top:1px solid #1e1e1e;margin:1.25rem 0}
       .scope-label{font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:#444;margin-bottom:.6rem}
       .scope-list{list-style:none}
@@ -48,6 +49,8 @@
         <div class="client-hd">
           <h1 class="client-name"><span id="clientName"></span> wants access</h1>
           <div class="client-host">via <span id="clientHost"></span></div>
+          <div class="client-host" id="clientIdHostLine" hidden>client ID from <span id="clientIdHost"></span></div>
+          <p class="client-warn" id="localhostWarn" hidden>This client sends the authorization only to this computer (localhost). Approve it only if you started this connection from an app on this device.</p>
         </div>
         <hr>
         <p class="scope-label">Read-only access to</p>

@@ -301,6 +301,34 @@ describe("issueProMcpToken", () => {
     const active = allRows.filter((r: any) => !r.revokedAt);
     expect(active).toHaveLength(5);
   });
+
+  // #9244: a CIMD client_id (a URL) is shared by every user of that client,
+  // unlike a per-connection DCR id. Re-authorizing, including enough times to
+  // rotate the cap, must only ever revoke the re-authorizing user's own rows.
+  test("re-authorizing one user never revokes another user's grant under the same CIMD client_id", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    await seedProEntitlement(t, "user-other");
+    const sharedClientId = "https://claude.ai/oauth/mcp-oauth-client-metadata";
+
+    const other = await t.mutation(internal.mcpProTokens.issueProMcpToken, {
+      userId: "user-other",
+      clientId: sharedClientId,
+      name: "Connected via Claude",
+    });
+    for (let i = 0; i < 7; i++) {
+      await t.mutation(internal.mcpProTokens.issueProMcpToken, {
+        userId: "user-pro",
+        clientId: sharedClientId,
+        name: "Connected via Claude",
+      });
+    }
+
+    const validated = await t.query(internal.mcpProTokens.validateProMcpToken, { tokenId: other.tokenId });
+    expect(validated?.userId).toBe("user-other");
+    const otherRows = await t.withIdentity(OTHER_USER).query(api.mcpProTokens.listProMcpTokens, {});
+    expect(otherRows.filter((r: any) => !r.revokedAt)).toHaveLength(1);
+  });
 });
 
 // ---------------------------------------------------------------------------

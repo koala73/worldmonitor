@@ -712,6 +712,10 @@
     "scopes": [
       "mcp"
     ],
+    "client_registration": [
+      "client_id_metadata_document",
+      "dynamic_client_registration"
+    ],
     "alternative_methods": [
       {
         "type": "api_key",

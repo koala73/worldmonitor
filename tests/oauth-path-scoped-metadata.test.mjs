@@ -121,14 +121,18 @@ describe('authorization-server metadata — path-scoped probe', () => {
 });
 
 describe('authorization-server metadata — registration method', () => {
-  // DCR only; CIMD is #9244. CIMD-first clients such as Notion and Linear pick
-  // CIMD at discovery when it is advertised and do not fall back to DCR.
+  // CIMD and DCR together (#9244). Clients pick one at discovery and do not
+  // fall back, so this flag ships only with the complete CIMD flow
+  // (tests/oauth-cimd.test.mjs). `none` stays the only auth method: Claude and
+  // Codex need it to choose CIMD, and advertising private_key_jwt would move
+  // ChatGPT onto signed client assertions we do not verify.
   for (const path of ['/.well-known/oauth-authorization-server', '/.well-known/oauth-authorization-server/mcp']) {
-    it(`${path} steers clients to DCR and does not advertise CIMD`, async () => {
+    it(`${path} advertises CIMD alongside DCR, public clients only`, async () => {
       const json = await (await get(asHandler, 'worldmonitor.app', path)).json();
       assert.equal(json.registration_endpoint, 'https://worldmonitor.app/oauth/register');
-      assert.equal('client_id_metadata_document_supported' in json, false);
+      assert.equal(json.client_id_metadata_document_supported, true);
       assert.deepEqual(json.token_endpoint_auth_methods_supported, ['none']);
+      assert.deepEqual(json.code_challenge_methods_supported, ['S256']);
     });
   }
 });

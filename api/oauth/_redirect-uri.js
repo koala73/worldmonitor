@@ -37,8 +37,9 @@ const ALLOWED_REDIRECT_URIS = new Set([
   'https://www.make.com/oauth/cb/mcp',
   // Microsoft 365 Copilot MCP plugins (MicrosoftDocs/m365copilot-docs build-mcp-plugins.md)
   'https://teams.microsoft.com/api/platform/v1.0/oAuthRedirect',
-  // The clients below publish CIMD documents (the cited URL) and prefer CIMD.
-  // We support DCR only, so they connect only if they fall back to it (#9244).
+  // The clients below publish CIMD documents (the cited URL) and prefer CIMD,
+  // which api/oauth/_client-metadata.js accepts. These entries remain for
+  // clients that still register through DCR.
   // Notion (https://www.notion.so/oauth/mcp-client-metadata.json,
   // https://app.notion.com/oauth/mcp-client-metadata.json)
   'https://www.notion.so/workflows/mcp/oauth/callback',
