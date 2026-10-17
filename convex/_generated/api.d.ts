@@ -58,6 +58,7 @@ import type * as lib_env from "../lib/env.js";
 import type * as lib_identitySigning from "../lib/identitySigning.js";
 import type * as lib_iso2 from "../lib/iso2.js";
 import type * as lib_notificationEmail from "../lib/notificationEmail.js";
+import type * as lib_resendEmail from "../lib/resendEmail.js";
 import type * as lib_shards from "../lib/shards.js";
 import type * as mcpProTokens from "../mcpProTokens.js";
 import type * as notificationChannels from "../notificationChannels.js";
@@ -140,6 +141,7 @@ declare const fullApi: ApiFromModules<{
   "lib/identitySigning": typeof lib_identitySigning;
   "lib/iso2": typeof lib_iso2;
   "lib/notificationEmail": typeof lib_notificationEmail;
+  "lib/resendEmail": typeof lib_resendEmail;
   "lib/shards": typeof lib_shards;
   mcpProTokens: typeof mcpProTokens;
   notificationChannels: typeof notificationChannels;
