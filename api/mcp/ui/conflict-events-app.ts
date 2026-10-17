@@ -33,7 +33,7 @@ const STYLES = `
   .evt:focus-visible, .conflict-marker:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   #conflict-map { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
   .conflict-land { fill: var(--card); stroke: var(--muted); stroke-width: 0.5; }
-  .conflict-marker { cursor: pointer; }
+  .conflict-marker, #conflict-hit-targets { cursor: pointer; }
   .conflict-dot { fill: var(--high); stroke: var(--fg); stroke-width: 1; }
   .conflict-marker[aria-pressed="true"] .conflict-dot { fill: var(--accent); stroke-width: 2; }
   .conflict-marker text { fill: var(--fg); font-size: 10px; font-weight: 700; pointer-events: none; }
@@ -60,6 +60,7 @@ const BODY = `
       </div>
       <svg id="conflict-map" viewBox="0 0 ${CONFLICT_MAP_BASE.width} ${CONFLICT_MAP_BASE.height}" role="group" aria-label="Locations of displayed conflict events">
         <path class="conflict-land" d="${CONFLICT_MAP_BASE.path}" aria-hidden="true"></path>
+        <g id="conflict-hit-targets" aria-hidden="true"></g>
         <g id="conflict-markers"></g>
       </svg>
       <div id="conflict-selection" role="status" aria-live="polite"></div>
@@ -95,6 +96,7 @@ const RENDER = `
     host.textContent = "";
     var map = q("conflict-map");
     var markers = q("conflict-markers");
+    var hitTargets = q("conflict-hit-targets");
     var chooser = q("conflict-chooser");
     var selection = q("conflict-selection");
     var geometry = ${JSON.stringify({ width: CONFLICT_MAP_BASE.width, height: CONFLICT_MAP_BASE.height, scale: CONFLICT_MAP_BASE.scale, translate: CONFLICT_MAP_BASE.translate })};
@@ -102,6 +104,7 @@ const RENDER = `
     var locations = new Map();
     var selectable = [];
     markers.textContent = "";
+    hitTargets.textContent = "";
     chooser.textContent = "";
     selection.textContent = "";
     map.setAttribute("viewBox", worldView);
@@ -123,6 +126,7 @@ const RENDER = `
       item.location.marker.setAttribute("aria-pressed", "true");
       focusLocation(item.location);
       selection.textContent = item.label + " · Coordinates: " + item.location.latitude + ", " + item.location.longitude;
+      reportSize();
     }
     function activate(node, action) {
       node.setAttribute("role", "button");
@@ -133,7 +137,7 @@ const RENDER = `
         if (event.key === "Enter" || event.key === " ") { event.preventDefault(); action(); }
       });
     }
-    q("conflict-world").onclick = function() { clearSelection(); map.setAttribute("viewBox", worldView); };
+    q("conflict-world").onclick = function() { clearSelection(); map.setAttribute("viewBox", worldView); reportSize(); };
     for (var i = 0; i < evs.length && i < 14; i++) {
       var ev = evs[i];
       if (!ev || typeof ev !== "object") continue;
@@ -196,14 +200,15 @@ const RENDER = `
       marker.setAttribute("aria-label", location.events.length === 1
         ? "Select " + location.events[0].label : "Choose " + location.events.length + " events at " + location.latitude + ", " + location.longitude);
       var hit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      hit.setAttribute("r", "24"); hit.setAttribute("fill", "transparent"); marker.appendChild(hit);
+      hit.setAttribute("r", "24"); hit.setAttribute("fill", "transparent");
+      hit.setAttribute("transform", marker.getAttribute("transform")); hitTargets.appendChild(hit);
       var dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       dot.setAttribute("r", location.events.length > 1 ? "8" : "5"); dot.setAttribute("class", "conflict-dot"); marker.appendChild(dot);
       if (location.events.length > 1) {
         var count = document.createElementNS("http://www.w3.org/2000/svg", "text");
         count.setAttribute("text-anchor", "middle"); count.setAttribute("dy", "3"); count.textContent = String(location.events.length); marker.appendChild(count);
       }
-      activate(marker, function() {
+      function chooseLocation() {
         if (!host.contains(location.events[0].row)) return;
         if (location.events.length === 1) { selectEvent(location.events[0]); return; }
         clearSelection(); focusLocation(location);
@@ -212,7 +217,10 @@ const RENDER = `
           var button = el("button", "conflict-control", item.label);
           button.type = "button"; button.onclick = function() { selectEvent(item, true); }; chooser.appendChild(button);
         });
-      });
+        reportSize();
+      }
+      activate(marker, chooseLocation);
+      hit.addEventListener("click", chooseLocation);
       markers.appendChild(marker);
     });
     q("conflict-geography").hidden = shown === 0;

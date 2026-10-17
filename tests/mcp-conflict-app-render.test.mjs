@@ -245,10 +245,11 @@ describe('Conflict Events geographic selection', () => {
       const height = () => 200.25 + chooser.children.length * 40 + selection.textContent.length;
       doc.getElementById('root').getBoundingClientRect = () => ({ height: height() });
       const expectSize = action => {
-        messages.length = 0;
+        const before = messages.length;
         action();
-        assert.deepEqual(messages.filter(message => message.method === 'ui/notifications/size-changed')
-          .map(message => message.params), [{ height: Math.ceil(height()) + 8 }]);
+        const sent = messages.slice(before);
+        assert.deepEqual(sent.map(message => message.method), ['ui/notifications/size-changed']);
+        assert.equal(sent[0].params.height, Math.ceil(height()) + 8);
       };
       expectSize(() => doc.querySelector('.conflict-marker').dispatchEvent(new doc.defaultView.MouseEvent('click')));
       assert.equal(chooser.children.length, 2);
