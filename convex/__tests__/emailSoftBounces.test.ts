@@ -7,6 +7,7 @@ import {
   SOFT_BOUNCE_WINDOW_MS,
 } from "../emailSuppressions";
 import { classifyBounce } from "../resendWebhookHandler";
+import crons from "../crons";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -207,15 +208,17 @@ describe("recordSoftBounce", () => {
     expect(await strikesOf(t)).toEqual([]);
   });
 
-  test("a delivery with no strikes writes nothing", async () => {
+  test("a delivery before the first bounce still rejects older failures", async () => {
     vi.spyOn(Date, "now").mockReturnValue(NOW);
     const t = convexTest(schema, modules);
     await t.mutation(internal.emailSuppressions.clearSoftBounces, {
       email: "healthy@example.com",
       deliveredAt: NOW,
     });
-    const resets = await t.run(async (ctx) => await ctx.db.query("emailSoftBounceResets").collect());
-    expect(resets).toEqual([]);
+    const late = await t.mutation(internal.emailSuppressions.recordSoftBounce,
+      strike("late-first", NOW - DAY, "healthy@example.com"));
+    expect(late).toEqual({ strikes: 0, suppressed: false, ignored: true });
+    expect(await strikesOf(t)).toEqual([]);
   });
 
   test("suppression removes the reset mark too", async () => {
@@ -232,5 +235,73 @@ describe("recordSoftBounce", () => {
     expect(await suppressionsOf(t)).toHaveLength(1);
     const resets = await t.run(async (ctx) => await ctx.db.query("emailSoftBounceResets").collect());
     expect(resets).toEqual([]);
+  });
+});
+
+describe("soft-bounce retention", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  test("schedules the retention mutation daily", () => {
+    expect(crons.crons["email-soft-bounce-prune"]).toMatchObject({
+      name: "emailSuppressions:pruneSoftBounceData",
+      schedule: { type: "daily" },
+    });
+  });
+
+  test("removes expired tracking data without deleting window-boundary evidence or suppressions", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(NOW);
+    const t = convexTest(schema, modules);
+    const cutoff = NOW - SOFT_BOUNCE_WINDOW_MS;
+    await t.run(async (ctx) => {
+      for (const occurredAt of [cutoff - 1, cutoff, NOW]) {
+        await ctx.db.insert("emailSoftBounces", {
+          normalizedEmail: "full.box@example.com",
+          emailMessageId: `m-${occurredAt}`,
+          bounceType: "Transient",
+          occurredAt,
+        });
+        await ctx.db.insert("emailSoftBounceResets", {
+          normalizedEmail: `delivered-${occurredAt}@example.com`,
+          lastDeliveredAt: occurredAt,
+        });
+      }
+    });
+    await t.mutation(internal.emailSuppressions.suppress, {
+      email: "suppressed@example.com", reason: "bounce",
+    });
+    const result = await t.mutation(internal.emailSuppressions.pruneSoftBounceData, {});
+    expect(result).toEqual({ strikesDeleted: 1, resetsDeleted: 1, rescheduled: false });
+    expect((await strikesOf(t)).map((row) => row.occurredAt).sort()).toEqual([cutoff, NOW]);
+    const resets = await t.run((ctx) => ctx.db.query("emailSoftBounceResets").collect());
+    expect(resets.map((row) => row.lastDeliveredAt).sort()).toEqual([cutoff, NOW]);
+    expect(await suppressionsOf(t)).toHaveLength(1);
+  });
+
+  test("bounds each batch and drains the remaining backlog through the scheduler", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 501; i++) {
+        await ctx.db.insert("emailSoftBounces", {
+          normalizedEmail: `old-${i}@example.com`,
+          emailMessageId: `old-${i}`,
+          bounceType: "Transient",
+          occurredAt: NOW - 31 * DAY,
+        });
+        await ctx.db.insert("emailSoftBounceResets", {
+          normalizedEmail: `old-${i}@example.com`,
+          lastDeliveredAt: NOW - 31 * DAY,
+        });
+      }
+    });
+    const first = await t.mutation(internal.emailSuppressions.pruneSoftBounceData, {});
+    expect(first).toEqual({ strikesDeleted: 500, resetsDeleted: 500, rescheduled: true });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await strikesOf(t)).toEqual([]);
+    expect(await t.run((ctx) => ctx.db.query("emailSoftBounceResets").collect())).toEqual([]);
   });
 });

@@ -1,5 +1,6 @@
 import { internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 
 export const suppress = internalMutation({
   args: {
@@ -283,9 +284,33 @@ export const clearSoftBounces = internalMutation({
       if (deliveredAt > reset.lastDeliveredAt) {
         await ctx.db.patch(reset._id, { lastDeliveredAt: deliveredAt });
       }
-    } else if (cleared > 0) {
+    } else {
       await ctx.db.insert("emailSoftBounceResets", { normalizedEmail, lastDeliveredAt: deliveredAt });
     }
     return cleared;
+  },
+});
+
+/** Expired strikes and delivery watermarks cannot affect the current window. */
+export const pruneSoftBounceData = internalMutation({
+  args: { cutoff: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const cutoff = args.cutoff ?? Date.now() - SOFT_BOUNCE_WINDOW_MS;
+    const batch = 500;
+    const strikes = await ctx.db
+      .query("emailSoftBounces")
+      .withIndex("by_occurred_at", (q) => q.lt("occurredAt", cutoff))
+      .take(batch);
+    const resets = await ctx.db
+      .query("emailSoftBounceResets")
+      .withIndex("by_last_delivered_at", (q) => q.lt("lastDeliveredAt", cutoff))
+      .take(batch);
+    for (const row of strikes) await ctx.db.delete(row._id);
+    for (const row of resets) await ctx.db.delete(row._id);
+    const rescheduled = strikes.length === batch || resets.length === batch;
+    if (rescheduled) {
+      await ctx.scheduler.runAfter(0, internal.emailSuppressions.pruneSoftBounceData, { cutoff });
+    }
+    return { strikesDeleted: strikes.length, resetsDeleted: resets.length, rescheduled };
   },
 });

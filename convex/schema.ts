@@ -1825,8 +1825,8 @@ export default defineSchema({
 
   // Soft-bounce strike log feeding emailSuppressions. One row per address per
   // Resend message that came back as a Transient or Undetermined bounce.
-  // Rows older than the window are pruned on the next write for that address,
-  // a successful delivery clears them, and reaching the threshold converts
+  // Rows older than the window are pruned daily and on the next write for
+  // that address. A later delivery clears them; reaching the threshold converts
   // them into one emailSuppressions "bounce" row. See
   // SOFT_BOUNCE_SUPPRESS_THRESHOLD in convex/emailSuppressions.ts.
   emailSoftBounces: defineTable({
@@ -1837,18 +1837,20 @@ export default defineSchema({
     bounceType: v.string(),
     bounceSubType: v.optional(v.string()),
     occurredAt: v.number(),
-  }).index("by_normalized_email", ["normalizedEmail", "occurredAt"]),
+  })
+    .index("by_normalized_email", ["normalizedEmail", "occurredAt"])
+    .index("by_occurred_at", ["occurredAt"]),
 
-  // Latest email.delivered time for an address that had soft-bounce strikes.
+  // Latest email.delivered time per address, even if no strike has arrived yet.
   // Webhooks can arrive out of order: a bounce that happened before this
-  // delivery is stale evidence and must not restart the count. Written only
-  // when a delivery clears strikes (or a mark already exists), so it does not
-  // grow with every delivered email; removed on suppression and pruned with
-  // the 30-day window.
+  // delivery is stale evidence and must not restart the count. Removed on
+  // suppression; daily bounded cleanup removes marks outside the 30-day window.
   emailSoftBounceResets: defineTable({
     normalizedEmail: v.string(),
     lastDeliveredAt: v.number(),
-  }).index("by_normalized_email", ["normalizedEmail"]),
+  })
+    .index("by_normalized_email", ["normalizedEmail"])
+    .index("by_last_delivered_at", ["lastDeliveredAt"]),
 
   // Per-event log of Resend webhook deliveries tagged with a broadcast_id.
   // Used as forensic detail to drive engineer-level inspection alongside

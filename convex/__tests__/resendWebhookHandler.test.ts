@@ -349,6 +349,29 @@ describe("Resend webhook bounce classification", () => {
     expect(rows).toEqual([]);
   });
 
+  test("a delivery before any bounce prevents stale webhooks from suppressing the address", async () => {
+    const t = setup();
+    const delivery = {
+      type: "email.delivered",
+      created_at: "2023-11-14T22:00:00.000Z",
+      data: { email_id: "recovered", to: ["soft.bounce@example.com"] },
+    };
+    expect((await post(t, delivery, "msg_recovered")).status).toBe(200);
+    for (const id of ["late1", "late2", "late3"]) {
+      expect((await post(t, bounced(id, "Transient", "MailboxFull", "2023-11-14T21:00:00.000Z"), id)).status).toBe(200);
+    }
+    for (const id of ["new1", "new2"]) {
+      expect((await post(t, bounced(id, "Transient", "MailboxFull"), id)).status).toBe(200);
+    }
+    // Retrying the earlier delivery must not erase failures that happened later.
+    expect((await post(t, delivery, "msg_recovered")).status).toBe(200);
+    const strikes = await t.run((ctx) => ctx.db.query("emailSoftBounces").collect());
+    expect(strikes).toHaveLength(2);
+    expect(await t.run((ctx) => ctx.db.query("emailSuppressions").collect())).toEqual([]);
+    expect((await post(t, bounced("new3", "Transient", "MailboxFull"), "new3")).status).toBe(200);
+    expect(await t.run((ctx) => ctx.db.query("emailSuppressions").collect())).toHaveLength(1);
+  });
+
   test("a broadcast-tagged delivery still records the broadcast event", async () => {
     const t = setup();
     const res = await post(t, {
