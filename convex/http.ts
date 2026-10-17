@@ -1,4 +1,5 @@
 import { anyApi, httpRouter } from "convex/server";
+import type { Infer } from "convex/values";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/notificationEmail";
@@ -11,7 +12,7 @@ import {
 import { webhookHandler } from "./payments/webhookHandlers";
 import { resendWebhookHandler } from "./resendWebhookHandler";
 import { clerkWebhookHandler } from "./accountDeletion/clerkWebhook";
-import { USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
+import { channelTypeValidator, USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
 import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
 import { verifyDunningPortalToken } from "./lib/identitySigning";
 import { buildUnsubscribeUrl, EMAIL_UNSUBSCRIBE_PATH, verifyUnsubscribeToken } from "./lib/emailUnsubscribe";
@@ -733,6 +734,13 @@ http.route({
   }),
 });
 
+// Every type the schema stores, read from the validator so a new channel
+// type cannot be left out of the deactivate route (#9264).
+const CHANNEL_TYPES: ReadonlySet<string> = new Set(channelTypeValidator.members.map((member) => member.value));
+function isChannelType(value: unknown): value is Infer<typeof channelTypeValidator> {
+  return typeof value === "string" && CHANNEL_TYPES.has(value);
+}
+
 http.route({
   path: "/relay/deactivate",
   method: "POST",
@@ -750,7 +758,7 @@ http.route({
 
     if (
       typeof body.userId !== "string" || !body.userId ||
-      (body.channelType !== "telegram" && body.channelType !== "slack" && body.channelType !== "email" && body.channelType !== "discord" && body.channelType !== "teams" && body.channelType !== "web_push")
+      !isChannelType(body.channelType)
     ) {
       return new Response(JSON.stringify({ error: "MISSING_FIELDS" }), {
         status: 400,
