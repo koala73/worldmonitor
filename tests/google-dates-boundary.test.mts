@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
 import type { SearchGoogleDatesRequest } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
 import { searchGoogleDates } from '../server/worldmonitor/aviation/v1/search-google-dates.ts';
-import { ApiError, createAviationServiceRoutes } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
+import { ValidationError, createAviationServiceRoutes } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
 import { aviationHandler } from '../server/worldmonitor/aviation/v1/handler.ts';
 import { createDomainGateway, serverOptions } from '../server/gateway.ts';
 import { __resetRateLimitForTest } from '../server/_shared/rate-limit.ts';
@@ -10,6 +10,7 @@ import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { readLimiterRequest } from './helpers/upstash-limiter-wire.mjs';
 import { decodeTfs, loadGoogleFlightsRelay, pageFixture, relayTransport, resultsPage } from './helpers/google-flights-page.mts';
 import { issueSessionToken } from '../api/_session.js';
+import { RpcValidationError, assertToolFetchOk } from '../api/mcp/billing-denial.ts';
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 const PATH = '/api/aviation/v1/search-google-dates';
@@ -49,7 +50,7 @@ const read = (overrides: Partial<typeof defaults> = {}) => searchGoogleDates(ctx
 test('rejects malformed or oversized date-grid input before cache or relay work', async () => {
   const invalid = [{ origin: 'X'.repeat(1000) }, { startDate: '' }, { startDate: '2026-2-01' }, { startDate: '2026-02-29' }, { destination: 'A/B' }, { startDate: '2026-02-30' }, { endDate: '2026-09-30' }, { endDate: '2027-10-02' }, { endDate: '2026-11-01' }, { cabinClass: 'arbitrary' }, { maxStops: '3' }, { departureWindow: '25-26' }, { departureWindow: '20-6' }, { airlines: ['BAD'] }, { airlines: Array(11).fill('BA') }, { isRoundTrip: true, tripDuration: 0 }, { isRoundTrip: true, tripDuration: 366 }];
   for (const value of invalid) {
-    await assert.rejects(read(value as Partial<typeof defaults>), (error: unknown) => error instanceof ApiError && error.statusCode === 400);
+    await assert.rejects(read(value as Partial<typeof defaults>), (error: unknown) => error instanceof ValidationError && error.violations.length === 1);
     assert.equal(calls.length, 0);
   }
 });
@@ -340,6 +341,15 @@ test('a range over 31 days is rejected at the edge and at the relay', async () =
   await direct.dates({ url: '/google-flights/search-dates?origin=JFK&destination=LHR&start_date=2026-11-01&end_date=2026-12-02' }, { writeHead(code) { status = code; }, end(value) { body = value; } });
   assert.equal(status, 400);
   assert.match(JSON.parse(body).error, /1 to 31 days/);
+});
+
+test('an MCP caller sees which argument broke the date range, not an internal error', async () => {
+  const response = await gateway(request({ start_date: '2026-11-01', end_date: '2026-12-20' }));
+  await assert.rejects(assertToolFetchOk(response, 'search-google-dates'), (error: unknown) => {
+    assert.ok(error instanceof RpcValidationError);
+    assert.deepEqual(error.violations, [{ field: 'end_date', description: 'Date range must contain 1 to 31 days' }]);
+    return true;
+  });
 });
 
 test('round-trip days carry the return leg and every filter in tfs; the window picks the fare', async () => {

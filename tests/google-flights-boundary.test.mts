@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
 import type { SearchGoogleFlightsRequest } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
 import { searchGoogleFlights } from '../server/worldmonitor/aviation/v1/search-google-flights.ts';
-import { ApiError, createAviationServiceRoutes } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
+import { ValidationError, createAviationServiceRoutes } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
 import { aviationHandler } from '../server/worldmonitor/aviation/v1/handler.ts';
 import { createDomainGateway, serverOptions } from '../server/gateway.ts';
 import { __resetRateLimitForTest, checkEndpointRateLimit } from '../server/_shared/rate-limit.ts';
@@ -10,6 +10,7 @@ import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { readLimiterRequest } from './helpers/upstash-limiter-wire.mjs';
 import { decodeTfs, loadGoogleFlightsRelay, pageFixture, relayTransport, resultsPage } from './helpers/google-flights-page.mts';
 import { issueSessionToken } from '../api/_session.js';
+import { RpcValidationError, assertToolFetchOk } from '../api/mcp/billing-denial.ts';
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 const PATH = '/api/aviation/v1/search-google-flights';
@@ -49,7 +50,7 @@ const read = (overrides: Partial<typeof defaults> = {}) => searchGoogleFlights(c
 test('rejects malformed or oversized inputs before cache or relay work', async () => {
   const invalid = [{ origin: 'X'.repeat(1000) }, { departureDate: '' }, { departureDate: '2026-2-01' }, { departureDate: '2026-02-29' }, { destination: 'A/B' }, { departureDate: '2026-02-30' }, { returnDate: '2026-09-30' }, { returnDate: 'junk' }, { cabinClass: 'arbitrary' }, { maxStops: '3' }, { sortBy: 'junk' }, { departureWindow: '25-26' }, { departureWindow: '20-6' }, { airlines: ['BAD'] }, { airlines: Array(11).fill('BA') }, { cabinClass: ' '.repeat(1000) }, { sortBy: ' '.repeat(1000) }, { departureDate: '2026-10-01 ' }, { airlines: [' '.repeat(1000) + 'BA'] }];
   for (const value of invalid) {
-    await assert.rejects(read(value), (error: unknown) => error instanceof ApiError && error.statusCode === 400);
+    await assert.rejects(read(value), (error: unknown) => error instanceof ValidationError && error.violations.length === 1);
     assert.equal(calls.length, 0);
   }
 });
@@ -68,6 +69,14 @@ test('fractional passenger counts share the integer relay query and cache entry'
   await read({ passengers: 1 });
   assert.equal(feeds().length, 1);
   assert.equal(feeds()[0]!.searchParams.get('passengers'), '1');
+});
+test('an MCP caller sees which argument was rejected, not an internal error', async () => {
+  const response = await gateway(request({ return_date: '2026-09-01' }));
+  await assert.rejects(assertToolFetchOk(response, 'search-google-flights'), (error: unknown) => {
+    assert.ok(error instanceof RpcValidationError);
+    assert.deepEqual(error.violations, [{ field: 'return_date', description: 'Return date must not precede departure date' }]);
+    return true;
+  });
 });
 test('ordinary gateway rejects bad input and store outages without upstream work', async () => {
   assert.equal((await gateway(request({ origin: 'TOOLONG' }))).status, 400);
