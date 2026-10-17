@@ -4,6 +4,84 @@ import { describe, it } from 'node:test';
 import { parseCountryBriefSources, renderEvidenceGroundedCountryBrief } from '../server/worldmonitor/intelligence/v1/get-country-intel-brief.ts';
 import { briefCitationGroundingGap, parseBriefSections } from '../scripts/crawlable-developments.mjs';
 
+describe('country assessment energy grounding', () => {
+  const sources = [
+    { title: 'EXCLUSIVE Belize PM vows stronger support for Taiwan after China sanctions - Focus Taiwan', source: 'Focus Taiwan', url: 'https://example.com/belize', publishedAt: '' },
+    { title: 'MAC criticizes China’s sanctions aiming at election interference - Taipei Times', source: 'Taipei Times', url: 'https://example.com/mac', publishedAt: '' },
+    { title: 'China to add AI, biopharma and solar tech to export control list - Nikkei Asia', source: 'Nikkei Asia', url: 'https://example.com/export-controls', publishedAt: '2026-10-16' },
+  ];
+  const situation = 'China plans to add AI, biopharma and solar tech to its export control list.';
+  const observed = "China's addition of AI, biopharma and solar tech to its export control list may affect global supply chains, given China has a net energy import dependency of 24%.";
+  const energy = { id: 'E4', kind: 'energy', label: 'Net energy import dependency', value: '24%',
+    factText: 'China has a net energy import dependency of 24% (IEA, 2023).', asOf: '2023-12-31T00:00:00.000Z' };
+  const claim = (text, sources = [], evidence = []) => ({ text, sources, evidence });
+  const render = (overrides = {}, evidence = [energy]) => renderEvidenceGroundedCountryBrief(JSON.stringify({
+    situation: [claim(situation, [3])], implications: [], risks: [], outlook: [], watch: [], ...overrides,
+  }), sources, evidence, 'China');
+
+  it('withholds the retained export-controls explanation and preserves the situation and complete energy fact', () => {
+    const result = render({ implications: [claim(observed, [3], ['E4'])], risks: [claim(energy.factText, [], ['E4'])] });
+    assert.ok(result, 'a useful brief must survive');
+    assert.ok(!result.text.includes(observed), 'the observed energy/export-controls implication must be withheld');
+    assert.equal(result.withheld, 1);
+    assert.deepEqual(result.sections.map(section => section.key), ['situation', 'risks']);
+    assert.equal(result.sections[0].claims[0].text, situation);
+    assert.equal(result.sections[1].claims[0].text, energy.factText);
+  });
+
+  it('rejects mixed energy claims independently of wording, evidence id and claim section', () => {
+    const alternate = 'China has a net energy import dependency of 24%, so its export control list may affect global supply chains.';
+    for (const id of ['E4', 'E9']) {
+      for (const section of ['implications', 'risks', 'watch']) {
+        const result = render({ [section]: [claim(alternate, [3], [id])] }, [{ ...energy, id }]);
+        assert.ok(result);
+        assert.equal(result.withheld, 1, `${id} ${section}`);
+        assert.deepEqual(result.sections.map(item => item.key), ['situation']);
+      }
+    }
+  });
+
+  it('preserves whitespace-only exact facts and complete negative-exporter facts', () => {
+    const exporter = { ...energy, value: '-24%', factText: 'China has a net energy import dependency of -24% (IEA, 2023); a negative value means China is a net energy exporter.' };
+    for (const [item, text] of [[energy, energy.factText.replaceAll(' ', '  ')], [exporter, exporter.factText]]) {
+      const result = render({ risks: [claim(text, [], [item.id])] }, [item]);
+      assert.ok(result);
+      assert.equal(result.withheld, 0);
+      assert.equal(result.sections[1].claims[0].text, text);
+    }
+    const incomplete = render({ risks: [claim('China has a net energy import dependency of -24% (IEA, 2023).', [], ['E4'])] }, [exporter]);
+    assert.equal(incomplete.withheld, 1);
+  });
+
+  it('explicitly rejects paraphrases, redundant headlines and companion evidence under the conservative policy', () => {
+    const companion = { id: 'E5', kind: 'chokepoint', label: 'Taiwan Strait', value: '', factText: 'The Taiwan Strait is a shipping chokepoint World Monitor tracks for China.', asOf: '2026-10-17' };
+    for (const bad of [
+      claim('China has a net energy import dependency of 24%.', [], ['E4']),
+      claim(energy.factText, [3], ['E4']),
+      claim(energy.factText, [], ['E4', 'E5']),
+      claim(energy.factText.replace('China', 'China’s economy'), [], ['E4']),
+      claim(energy.factText.replace('.', '!'), [], ['E4']),
+    ]) {
+      const result = render({ risks: [bad] }, [energy, companion]);
+      assert.ok(result);
+      assert.equal(result.withheld, 1, bad.text);
+      assert.deepEqual(result.sections.map(item => item.key), ['situation']);
+    }
+  });
+
+  it('leaves missing-energy and uncited-energy controls unchanged', () => {
+    for (const evidence of [[], [energy]]) {
+      const result = render({}, evidence);
+      assert.equal(result.withheld, 0);
+      assert.deepEqual(result.sections[0].claims.map(item => item.text), [situation]);
+    }
+    const other = { id: 'E2', kind: 'resilience-dimension', label: 'Fiscal space', value: '28 of 100', factText: "China's fiscal space scores 28 of 100 in the Country Resilience Index.", asOf: '2026-10-17' };
+    const result = render({ implications: [claim("China plans to add AI to its export control list while its fiscal space scores 28 of 100 in the Country Resilience Index.", [3], ['E2'])] }, [other]);
+    assert.equal(result.withheld, 0);
+    assert.deepEqual(result.sections.map(item => item.key), ['situation', 'implications']);
+  });
+});
+
 describe('country assessment relationship grounding', () => {
   const headline = 'Belize PM vows stronger support for Taiwan after China sanctions';
   const urging = 'China urges Taliban authorities to take concrete action against terrorist groups';
