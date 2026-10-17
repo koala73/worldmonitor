@@ -326,7 +326,7 @@ export function mapItem(item) {
       ? (extractCountryCodeFull(item._country) || extractCountryCodeFull(location || item.title))
       : extractCountryCodeFull(location || `${item.title} ${item.desc}`);
   return {
-    id: `${item.sourceName.toLowerCase()}-${stableHash(item._idSeed || item.link || item.title)}-${item.publishedMs}`,
+    id: `${item.sourceName.toLowerCase()}-${stableHash(item._idSeed || item.link || item.title)}-${item._publishedAtIsSynthetic ? 'undated' : item.publishedMs}`,
     disease,
     location,
     countryCode,
