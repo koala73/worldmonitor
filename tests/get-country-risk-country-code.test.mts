@@ -3,6 +3,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 
 import { getCountryRisk } from '../server/worldmonitor/intelligence/v1/get-country-risk.ts';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../server/_shared/cache-keys.ts';
+import { isAssignedCountryCode } from '../shared/country-code-resolve.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { validationFailure } from './helpers/validation-failure.mts';
 
@@ -67,4 +68,16 @@ test('assigned codes, including small territories and Kosovo, still resolve', as
 test('an empty country_code is rejected rather than answered with a blank record', async () => {
   await assert.rejects(read(''), validationFailure('country_code'));
   assert.deepEqual(redisReads, []);
+});
+
+test('membership covers all 249 assigned ISO 3166-1 codes plus XK and nothing else', () => {
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const members = [...letters].flatMap(a => [...letters].map(b => a + b)).filter(isAssignedCountryCode);
+  assert.equal(members.length, 250);
+  assert.ok(members.includes('XK'));
+  const names = new Intl.DisplayNames(['en'], { type: 'region' });
+  for (const code of members) {
+    const name = names.of(code);
+    assert.ok(name && name !== code && name !== 'Unknown Region', `${code} has no region name`);
+  }
 });

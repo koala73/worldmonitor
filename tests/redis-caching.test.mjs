@@ -1784,7 +1784,7 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
     });
   }
 
-  it('returns fetchedAt=0 for missing country code instead of fabricating request time', async () => {
+  it('rejects a missing country code on country_code without hitting Redis', async () => {
     const { module, cleanup } = await importCountryRisk();
     const restoreNow = withMockedNow(1_777_000_000_000);
     const originalFetch = globalThis.fetch;
@@ -1795,9 +1795,10 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.getCountryRisk({}, { countryCode: '' });
-      assert.equal(result.fetchedAt, 0);
-      assert.equal(result.upstreamUnavailable, false);
+      await assert.rejects(
+        module.getCountryRisk({}, { countryCode: '' }),
+        (error) => error?.name === 'ValidationError' && error.violations?.[0]?.field === 'country_code',
+      );
       assert.equal(fetchCalls, 0, 'missing-code path must not hit Redis');
     } finally {
       cleanup();
@@ -1900,10 +1901,10 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
         ciiScores: [{ region: 'US', combinedScore: 10, computedAt: 1_700_000_000_000 }],
       })],
       ['intelligence:advisories:v1', JSON.stringify({
-        byCountry: { ZZ: 'caution' },
-        byCountryName: { ZZ: 'Untracked Testland' },
+        byCountry: { BV: 'caution' },
+        byCountryName: { BV: 'Untracked Testland' },
       })],
-      ['sanctions:country-counts:v1', JSON.stringify({ ZZ: 2 })],
+      ['sanctions:country-counts:v1', JSON.stringify({ BV: 2 })],
     ]);
 
     globalThis.fetch = async (url) => {
@@ -1913,7 +1914,7 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.getCountryRisk({}, { countryCode: 'ZZ' });
+      const result = await module.getCountryRisk({}, { countryCode: 'BV' });
       assert.equal(result.countryName, 'Untracked Testland');
       assert.equal(result.cii, undefined);
       assert.equal(result.fetchedAt, 0);
