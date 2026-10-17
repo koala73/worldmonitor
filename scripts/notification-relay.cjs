@@ -465,9 +465,13 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
       else if (ch.channelType === 'discord' && ch.webhookEnvelope) ok = await sendDiscord(userId, ch.webhookEnvelope, text);
       else if (ch.channelType === 'teams' && ch.webhookEnvelope) ok = await sendTeams(userId, ch.webhookEnvelope, buildTeamsNoticePayload({
         title: lines[0],
-        lines: events.map(ev => `[${String(ev.severity ?? 'high').toUpperCase()}] ${formatEventTitle(ev)}`),
+        lines: events.map((ev) => {
+          const coverage = formatEventCoverage(ev);
+          return `[${String(ev.severity ?? 'high').toUpperCase()}] ${formatEventTitle(ev)}${coverage ? ` · ${coverage}` : ''}`;
+        }),
         link: NOTIFY_DASHBOARD_URL,
         linkTitle: 'Open dashboard',
+        moreLabel: 'held alert',
       }));
       else if (ch.channelType === 'email' && ch.email) ok = await sendEmail(ch.email, subject, text, unsubscribeUrlFor(ch, 'alerts'));
       else if (ch.channelType === 'webhook' && ch.webhookEnvelope) ok = await sendWebhook(userId, ch.webhookEnvelope, {
@@ -782,6 +786,7 @@ function buildTeamsAlertForEvent(event, impact) {
     severity: event.severity ?? 'high',
     countryCode: typeof rawCountry === 'string' && rawCountry.trim() ? normalizeEventCountryCode(rawCountry) : null,
     source: formatEventSource(event),
+    coverage: corroborationText(eventCorroboration(event)),
     description: NOTIFY_RELAY_INCLUDE_SNIPPET ? truncateForDisplay(formatEventDescription(event), SNIPPET_TELEGRAM_MAX) : '',
     link: event.payload?.link ?? event.payload?.url,
     eventType: sanitizeNotificationTitle(event.eventType),

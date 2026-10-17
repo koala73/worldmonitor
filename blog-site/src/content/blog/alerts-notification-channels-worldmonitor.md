@@ -51,7 +51,7 @@ Developers who want full control still have it — the API path with your own sc
 
 ## Limits
 
-Delivery depends on the receiving platform's own reliability and rate limits — Telegram, Slack, Discord, and Teams each have their own weather. A Teams workflow belongs to the person who created it, so it stops posting if that account leaves your organization. Web push requires a browser that supports it and permission you can revoke anytime. And no alert system substitutes for judgment about what deserves a rule: start with fewer rules at higher sensitivity, and widen only when you find yourself checking the dashboard for things it should have told you.
+Delivery depends on the receiving platform's own reliability and rate limits — Telegram, Slack, Discord, and Teams each have their own weather. Teams delivery may stop if the person who created the workflow leaves your organization and no other owner remains, or if the workflow's Teams connection belonged to that person. Add a second owner and keep its connections valid ([Microsoft: share a cloud flow](https://learn.microsoft.com/en-us/power-automate/create-team-flows)). Web push requires a browser that supports it and permission you can revoke anytime. And no alert system substitutes for judgment about what deserves a rule: start with fewer rules at higher sensitivity, and widen only when you find yourself checking the dashboard for things it should have told you.
 
 ## Sources and implementation references
 

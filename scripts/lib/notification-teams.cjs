@@ -14,6 +14,7 @@
 // network layer the same way they do for the relay's other senders.
 const ssrf = require('./notification-webhook-ssrf.cjs');
 const { classifyNotificationLink, isFirstPartyNotificationHost, NOTIFY_DASHBOARD_URL } = require('../shared/notify-fields.cjs');
+const { corroborationText } = require('./corroboration-text.cjs');
 
 const TEAMS_MAX_PAYLOAD_BYTES = 27 * 1024;
 // 1.2 renders on every Teams client, including mobile.
@@ -96,8 +97,9 @@ function wrapCard(body, actions) {
  * relay's notify-field sanitizers; this function only lays them out.
  *
  * @param {{ title: string; severity?: string; countryCode?: string | null;
- *   source?: string; description?: string; link?: string;
+ *   source?: string; coverage?: string; description?: string; link?: string;
  *   eventType?: string; impact?: string }} alert
+ *   `coverage` is the #9213 corroboration token ("3 independent publishers").
  */
 function buildTeamsAlertPayload(alert) {
   const severity = severityLabel(alert.severity);
@@ -120,6 +122,7 @@ function buildTeamsAlertPayload(alert) {
   const country = describeCountry(alert.countryCode);
   if (country) body.push(fact('Country', country));
   if (alert.source) body.push(fact('Source', alert.source));
+  if (alert.coverage) body.push(fact('Coverage', alert.coverage));
   if (alert.eventType) body.push(fact('Type', alert.eventType));
   if (alert.impact) {
     body.push({ type: 'TextBlock', text: 'Impact', weight: 'Bolder', spacing: 'Medium' });
@@ -131,16 +134,37 @@ function buildTeamsAlertPayload(alert) {
 
 /**
  * Plain notice card: channel welcome / test send and the quiet-hours batch.
+ * A batch can hold up to 100 alerts; lines are dropped from the end, with a
+ * "… and N more <moreLabel>s on the dashboard" line, until the card fits
+ * the Teams size limit, so an oversized batch is never refused on every retry.
  *
- * @param {{ title: string; lines?: string[]; link?: string; linkTitle?: string }} notice
+ * @param {{ title: string; lines?: string[]; link?: string; linkTitle?: string; moreLabel?: string }} notice
  */
 function buildTeamsNoticePayload(notice) {
-  const body = [richText([{ text: notice.title, size: 'Medium', weight: 'Bolder' }])];
-  for (const line of notice.lines ?? []) {
-    if (line) body.push(richText([line], { spacing: 'Small' }));
-  }
+  const lines = (notice.lines ?? []).filter(Boolean);
   const action = notice.link ? linkAction(notice.link, notice.linkTitle) : null;
-  return wrapCard(body, action ? [action] : []);
+  const moreLabel = notice.moreLabel ?? 'item';
+  const build = (shown) => {
+    const body = [richText([{ text: notice.title, size: 'Medium', weight: 'Bolder' }])];
+    for (const line of lines.slice(0, shown)) body.push(richText([line], { spacing: 'Small' }));
+    const hidden = lines.length - shown;
+    if (hidden > 0) {
+      body.push({
+        type: 'TextBlock',
+        text: `… and ${hidden} more ${moreLabel}${hidden === 1 ? '' : 's'} on the dashboard`,
+        wrap: true,
+        isSubtle: true,
+      });
+    }
+    return wrapCard(body, action ? [action] : []);
+  };
+  let shown = lines.length;
+  let payload = build(shown);
+  while (shown > 0 && payloadBytes(payload) > TEAMS_MAX_PAYLOAD_BYTES) {
+    shown -= 1;
+    payload = build(shown);
+  }
+  return payload;
 }
 
 function payloadBytes(payload) {
@@ -150,9 +174,12 @@ function payloadBytes(payload) {
 function digestStoryBlock(story) {
   const severity = severityLabel(story.severity);
   const sources = Array.isArray(story.sources) ? story.sources.filter(s => typeof s === 'string' && s) : [];
-  const sourceText = sources.length > 0
+  const sourceList = sources.length > 0
     ? `${sources.slice(0, 3).join(', ')}${sources.length > 3 ? ` +${sources.length - 3}` : ''}`
     : '';
+  // #9213 coverage, the same token the other digest channels print per item.
+  const coverage = corroborationText(story.corroboration);
+  const sourceText = [sourceList, coverage].filter(Boolean).join(' · ');
   const items = [richText([
     { text: `${severity.toUpperCase()}  `, weight: 'Bolder', color: severityColor(severity) },
     story.title,

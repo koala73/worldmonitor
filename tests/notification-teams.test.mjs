@@ -93,6 +93,36 @@ describe('Teams Adaptive Card payloads', () => {
     assert.equal(card.actions[0].title, 'Open original report');
   });
 
+  it('notice card keeps leading lines and counts the rest when it would exceed the Teams limit', () => {
+    const lines = Array.from({ length: 100 }, (_, i) => `[HIGH] Line ${i} ${'y'.repeat(200)}`);
+    const payload = teams.buildTeamsNoticePayload({ title: 'Batch', lines, moreLabel: 'held alert' });
+    assert.ok(Buffer.byteLength(JSON.stringify(payload)) <= teams.TEAMS_MAX_PAYLOAD_BYTES);
+    const text = renderedText(cardOf(payload));
+    assert.match(text, /Line 0 /);
+    const shown = (text.match(/Line \d+ /g) ?? []).length;
+    assert.ok(shown > 0 && shown < 100);
+    assert.match(text, new RegExp(`and ${100 - shown} more held alerts on the dashboard`));
+    const small = renderedText(cardOf(teams.buildTeamsNoticePayload({ title: 'Batch', lines: ['one', 'two'] })));
+    assert.doesNotMatch(small, /more/);
+  });
+
+  it('alert and digest cards state coverage from the corroboration verdict (#9213)', () => {
+    const alert = renderedText(cardOf(teams.buildTeamsAlertPayload({ title: 't', severity: 'high', coverage: '3 independent publishers' })));
+    assert.match(alert, /Coverage: {2}\| 3 independent publishers/);
+    const digest = renderedText(cardOf(teams.buildTeamsDigestPayload({
+      title: 'Digest',
+      stories: [
+        { title: 'Wide story', severity: 'high', sources: ['Reuters', 'AP'], corroboration: { state: 'corroborated', publishers: 2 } },
+        { title: 'Lone story', severity: 'high', sources: ['BBC'], corroboration: 'single-publisher|1' },
+        { title: 'Unknown story', severity: 'high', sources: ['AFP'] },
+      ],
+    })));
+    assert.match(digest, /Reuters, AP · 2 independent publishers/);
+    assert.match(digest, /BBC · single publisher/);
+    assert.match(digest, /AFP( \||$)/);
+    assert.doesNotMatch(digest, /AFP ·/);
+  });
+
   it('an unresolvable country is omitted rather than guessed', () => {
     assert.equal(teams.describeCountry('Iran'), null);
     assert.equal(teams.describeCountry(undefined), null);
@@ -251,7 +281,7 @@ describe('realtime relay Teams dispatch', () => {
     Object.assign(process.env, savedEnv);
   });
 
-  function setup({ status = 202, rule = {} } = {}) {
+  function setup({ status = 202, rule = {}, heldEvents = [{ eventType: 'conflict_escalation', severity: 'high', payload: { title: 'Held alert' } }] } = {}) {
     Object.assign(process.env, {
       UPSTASH_REDIS_REST_URL: 'https://upstash.test', UPSTASH_REDIS_REST_TOKEN: 'fake',
       CONVEX_URL: 'https://convex.test', CONVEX_SITE_URL: 'https://convex.test',
@@ -265,6 +295,7 @@ describe('realtime relay Teams dispatch', () => {
     const channel = { _id: 'teams-channel', channelType: 'teams', webhookEnvelope: crypto.encrypt(TEAMS_URL), verified: true };
     const deactivations = [];
     const held = [];
+    const deletedHeld = [];
     globalThis.fetch = async (input, init) => {
       const url = String(input);
       if (url.includes('/relay/enabled-rules')) return Response.json([{
@@ -275,23 +306,25 @@ describe('realtime relay Teams dispatch', () => {
       if (url.includes('/GET/relay%3Aentitlement')) return Response.json({ result: '1' });
       if (url.includes('/RPUSH/') || url.includes('/LPUSH/')) { held.push(url); return Response.json({ result: 1 }); }
       if (url.includes('/LLEN/')) return Response.json({ result: 1 });
-      if (url.includes('/LRANGE/')) return Response.json({ result: [JSON.stringify({ eventType: 'conflict_escalation', severity: 'high', payload: { title: 'Held alert' } })] });
+      if (url.includes('/LRANGE/')) return Response.json({ result: heldEvents.map(ev => JSON.stringify(ev)) });
+      if (url.includes('/DEL/')) { deletedHeld.push(url); return Response.json({ result: 1 }); }
       return Response.json({ result: 'OK' });
     };
-    return { relay: loaded.relay, posts, deactivations, held };
+    return { relay: loaded.relay, posts, deactivations, held, deletedHeld };
   }
 
   it('delivers a matching event to the Teams channel as an Adaptive Card', async () => {
     const { relay, posts } = setup();
     await relay.processEvent({
       eventType: 'conflict_escalation', severity: 'critical',
-      payload: { title: 'Synthetic escalation', countryCode: 'IR', source: 'Reuters', link: 'https://www.reuters.com/x' },
+      payload: { title: 'Synthetic escalation', countryCode: 'IR', source: 'Reuters', link: 'https://www.reuters.com/x', corroborationCount: 3 },
     });
     assert.equal(posts.length, 1);
     assert.equal(posts[0].url, TEAMS_URL);
     const card = cardOf(posts[0].body);
     assert.match(renderedText(card), /Synthetic escalation/);
     assert.match(renderedText(card), /Iran \(IR\)/);
+    assert.match(renderedText(card), /Coverage: {2}\| 3 independent publishers/);
     assert.equal(card.actions[0].url, 'https://www.reuters.com/x');
   });
 
@@ -323,6 +356,21 @@ describe('realtime relay Teams dispatch', () => {
     const text = renderedText(cardOf(posts[0].body));
     assert.match(text, /1 held alert/);
     assert.match(text, /Held alert/);
+  });
+
+  it('fits a full quiet-hours batch of long titles into one deliverable card', async () => {
+    const heldEvents = Array.from({ length: 100 }, (_, i) => ({
+      eventType: 'conflict_escalation', severity: 'high', payload: { title: `Held ${String(i).padStart(3, '0')} ${'x'.repeat(190)}` },
+    }));
+    const { relay, posts, deletedHeld } = setup({ heldEvents });
+    await relay.processEvent({ eventType: 'flush_quiet_held', userId: 'owner', variant: 'full' });
+    assert.equal(posts.length, 1, 'the batch is delivered, not refused as oversized');
+    assert.ok(Buffer.byteLength(JSON.stringify(posts[0].body)) <= teams.TEAMS_MAX_PAYLOAD_BYTES);
+    const text = renderedText(cardOf(posts[0].body));
+    assert.match(text, /100 held alerts/);
+    assert.match(text, /Held 000 /);
+    assert.match(text, /and \d+ more held alerts? on the dashboard/);
+    assert.equal(deletedHeld.length, 1, 'a delivered batch clears the held queue');
   });
 });
 
