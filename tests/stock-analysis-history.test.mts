@@ -23,9 +23,9 @@ import {
 import { analyzeStock } from '../server/worldmonitor/market/v1/analyze-stock.ts';
 import { getStockAnalysisHistory } from '../server/worldmonitor/market/v1/get-stock-analysis-history.ts';
 import { storeStockAnalysisSnapshot } from '../server/worldmonitor/market/v1/premium-stock-store.ts';
-import { ApiError } from '../src/generated/server/worldmonitor/market/v1/service_server.ts';
 import { STOCK_ANALYSIS_PRO_LIMIT } from '../src/services/stock-analysis-targets.ts';
 import { MarketServiceClient } from '../src/generated/client/worldmonitor/market/v1/service_client.ts';
+import { validationFailure } from './helpers/validation-failure.mts';
 
 const originalFetch = globalThis.fetch;
 const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -567,7 +567,7 @@ describe('server-backed stock analysis history', () => {
         limitPerSymbol: 1,
         includeNews: false,
       }),
-      (error: unknown) => error instanceof ApiError && error.statusCode === 400,
+      validationFailure('symbols', /at most/),
     );
   });
 });

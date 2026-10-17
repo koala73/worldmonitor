@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { listAirportDelays } from '../server/worldmonitor/aviation/v1/list-airport-delays.ts';
+import { validationFailure } from './helpers/validation-failure.mts';
 
 test('list-airport-delays rejects unknown query parameters before it builds a response', async () => {
   const request = new Request(
@@ -9,7 +10,7 @@ test('list-airport-delays rejects unknown query parameters before it builds a re
   );
   await assert.rejects(
     listAirportDelays({ request } as never, { pageSize: 0, cursor: '', region: '', minSeverity: '' }),
-    { statusCode: 400 },
+    validationFailure('ignored', /Unsupported/),
   );
 });
 
@@ -18,7 +19,7 @@ for (const query of ['cursor=&cursor=cache-split', 'page_size=0&page_size=999999
     const request = new Request(`https://worldmonitor.app/api/aviation/v1/list-airport-delays?${query}`);
     await assert.rejects(
       listAirportDelays({ request } as never, { pageSize: 0, cursor: '', region: '', minSeverity: '' }),
-      { statusCode: 400 },
+      validationFailure(query.split('=')[0]!, /Duplicate/),
     );
   });
 }
@@ -28,7 +29,7 @@ for (const query of ['page_size=' + '0'.repeat(10_000), 'page_size=0cache-split'
     const request = new Request(`https://worldmonitor.app/api/aviation/v1/list-airport-delays?${query}`);
     await assert.rejects(
       listAirportDelays({ request } as never, { pageSize: 0, cursor: '', region: '', minSeverity: '' }),
-      { statusCode: 400 },
+      validationFailure('page_size', /must be 0/),
     );
   });
 }

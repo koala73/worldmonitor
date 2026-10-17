@@ -4,7 +4,7 @@
 // generic -32603 "Internal error: data fetch failed".
 import { afterEach, describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { dispatchToolsCall } from '../api/mcp/dispatch.ts';
@@ -542,5 +542,20 @@ describe('MCP RPC ValidationError preservation on the observed-downstream path',
     assert.equal(downstreamEvent?.response_marker, 'json_error');
     assert.equal(downstreamEvent?.downstream_operation, 'search-intel-history');
     assert.ok(!JSON.stringify(downstreamEvent).includes('country is invalid'));
+  });
+});
+
+describe('handler input rejections', () => {
+  // A message-only ApiError(400) carries no violations, so MCP reports it as
+  // -32603 and agents retry instead of fixing the argument. The batch guard
+  // rejects a forwarded header, not a caller argument.
+  const ALLOWED = new Set(['server/worldmonitor/batch/v1/execute-batch.ts']);
+
+  it('name the rejected field with ValidationError instead of ApiError(400)', () => {
+    const offenders = readdirSync('server', { recursive: true })
+      .map((entry) => `server/${entry}`)
+      .filter((path) => path.endsWith('.ts') && !ALLOWED.has(path))
+      .filter((path) => /new ApiError\(\s*400\b/.test(readFileSync(path, 'utf8')));
+    assert.deepEqual(offenders, []);
   });
 });

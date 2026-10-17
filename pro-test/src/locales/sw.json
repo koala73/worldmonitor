@@ -390,7 +390,7 @@
     "fCloudOnPrem": "Cloud/on-prem/air-gap",
     "fStandard": "Standard",
     "fKeyAuth": "Uthibitisho wa ufunguo",
-    "fSsoMfa": "SSO/MFA/RBAC/audit",
+    "fSsoMfa": "SSO/MFA/RBAC/ukaguzi",
     "noteBelow": "Jukwaa la msingi linabaki libre. Mipango ya kulipwa inafungua utafiti wa hisa, uchambuzi wa uchumi mkuu, na arifa za AI, na matumizi ya shirikishi.",
     "f50plus": "Inapatikana",
     "sourcesRow": "Vyanzo",
