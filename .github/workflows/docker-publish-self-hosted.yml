@@ -12,6 +12,10 @@ name: Publish self-hosted Docker images
 #   worldmonitor-redis-rest -> docker/Dockerfile.redis-rest
 # so self-hosting docker-compose.yml can pull instead of building from source.
 
+# build-desktop.yml publishes the release with GITHUB_TOKEN, which raises no
+# `release` event for other workflows, so it dispatches this workflow on the
+# release tag instead (workflow_dispatch is exempt). The release trigger stays
+# for a release a person publishes by hand.
 on:
   release:
     types: [published]
@@ -54,10 +58,12 @@ jobs:
         id: meta
         with:
           images: ghcr.io/koala73/${{ matrix.image }}
+          # `latest` follows a release tag, whether it arrives as a release event
+          # or as the dispatch build-desktop.yml sends (its publish raises none).
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
             type=sha,prefix=sha-
 
       - uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
