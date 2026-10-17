@@ -740,7 +740,17 @@ const SEED_META = {
   // churn while still detecting a stopped worker well before leases age out.
   companyMonitoringWorker: { key: 'seed-meta:company-monitoring:worker', maxStaleMin: 5, workerControl: true },
   // Ticks every 5 minutes; 15 tolerates 2 missed ticks across a deploy.
-  shippingWebhookWorker: { key: 'seed-meta:shipping:webhook-worker', maxStaleMin: 15 },
+  shippingWebhookWorker: {
+    key: 'seed-meta:shipping:webhook-worker',
+    maxStaleMin: 15,
+    activationKey: 'seed-activated:shipping:webhook-worker',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 9217,
+      activationKey: 'seed-activated:shipping:webhook-worker',
+    },
+  },
   earthquakes: {
     key: 'seed-meta:seismology:earthquakes', maxStaleMin: 30,
     sourceFailure: {
@@ -2193,7 +2203,7 @@ const ACTIVATION_MARKERS = {
   // Written by the PizzINT archive's Lua (scripts/shared/pizzint-history.cjs).
   pizzintHistory: SEED_META.pizzintHistory.activationKey,
   companyMonitoringWorker: 'seed-activated:company-monitoring:worker',
-  shippingWebhookWorker: 'seed-activated:shipping:webhook-worker',
+  shippingWebhookWorker: SEED_META.shippingWebhookWorker.activationKey,
   // Written by scripts/seed-cbr-rates.mjs (CBR_ACTIVATION_KEY) in runSeed's
   // afterPublish hook, so it exists only once a real table has been published.
   cbrRates: 'seed-activated:economic:cbr-rates',

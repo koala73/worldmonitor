@@ -62,7 +62,12 @@ describe('shipping webhook worker deployment registration', () => {
 
   it('registers health keys the worker writes', () => {
     assert.equal(health.STANDALONE_KEYS.shippingWebhookWorker, WORKER_STATUS_KEY);
-    assert.deepEqual(health.SEED_META.shippingWebhookWorker, { key: WORKER_META_KEY, maxStaleMin: 15 });
+    assert.deepEqual(health.SEED_META.shippingWebhookWorker, {
+      key: WORKER_META_KEY,
+      maxStaleMin: 15,
+      activationKey: WORKER_ACTIVATION_KEY,
+      cutover: { mode: 'activation-marker', fromKey: null, issue: 9217, activationKey: WORKER_ACTIVATION_KEY },
+    });
     assert.equal(health.ON_DEMAND_KEYS.has('shippingWebhookWorker'), true);
     assert.equal(health.ACTIVATION_MARKERS.shippingWebhookWorker, WORKER_ACTIVATION_KEY);
   });
