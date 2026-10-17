@@ -1,6 +1,6 @@
 ---
 title: "Seven Ways WorldMonitor Reaches You When the World Changes"
-description: "Telegram, Slack, Discord, Microsoft Teams, email, webhooks, and web push — WorldMonitor's alert rules deliver scoped intelligence with digest modes and quiet hours, no code required."
+description: "Telegram, Slack, Discord, Teams, email, webhooks, and web push: WorldMonitor alert rules deliver scoped intelligence with digests and quiet hours."
 metaTitle: "Intelligence Alerts: 7 Notification Channels | WorldMonitor"
 keywords: "geopolitical alerts app, telegram news alerts, discord intelligence alerts, microsoft teams alerts, web push breaking news, alert fatigue quiet hours, intelligence notifications"
 audience: "Analysts, ops and security teams, traders, journalists, anyone who can't watch a dashboard all day"

@@ -65,7 +65,7 @@ function installDnsFetch(): void {
         Answer: type === 'A' ? [{ type: 1, data: '93.184.216.34' }] : [],
       });
     }
-    if (url.startsWith('https://upstash.test')) {
+    if (new URL(url).hostname === 'upstash.test') {
       // Idempotency marker reads/writes — irrelevant to this suite.
       return Response.json({ result: null });
     }
@@ -159,7 +159,10 @@ describe('send-test', () => {
     const res = await mod.default(makeRequest({ action: 'send-test', channelType: 'teams' }), { waitUntil: (p: Promise<unknown>) => { pending.push(p); } });
     await Promise.all(pending);
     assert.equal(res.status, 200);
-    const queued = relayCalls.filter((call) => call.url.startsWith('https://upstash.test/lpush/wm:events:queue/'));
+    const queued = relayCalls.filter((call) => {
+      const parsed = new URL(call.url);
+      return parsed.hostname === 'upstash.test' && parsed.pathname.startsWith('/lpush/wm:events:queue/');
+    });
     assert.equal(queued.length, 1, 'exactly one welcome event is queued');
     assert.equal(relayCalls.length, 1, 'nothing is written to Convex');
     const message = JSON.parse(decodeURIComponent(queued[0].url.split('/').pop()!));

@@ -134,7 +134,7 @@ describe('notification settings Microsoft Teams channel', () => {
       expect(channelMocks.saveAlertRules).toHaveBeenCalled();
     });
     expect(channelMocks.setTeamsChannel).toHaveBeenCalledWith(TEAMS_URL, expect.anything());
-    expect(channelMocks.saveAlertRules.mock.calls.at(-1)?.[0].channels).toContain('teams');
+    expect(channelMocks.saveAlertRules.mock.calls[channelMocks.saveAlertRules.mock.calls.length - 1]?.[0].channels).toContain('teams');
     await vi.waitFor(() => {
       expect(teamsRow(container).classList.contains('us-notif-ch-on')).toBe(true);
     });
