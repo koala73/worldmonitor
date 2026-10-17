@@ -1,9 +1,13 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { geoEquirectangular, geoPath } from 'd3';
+import { feature } from 'topojson-client';
 import { Window } from 'happy-dom';
 import { Ratelimit } from '@upstash/ratelimit';
 import { makeProDeps, proReq, callBody, HMAC_SECRET } from './helpers/mcp-pro-deps.mjs';
 import { CONFLICT_EVENTS_APP_HTML } from '../api/mcp/ui/conflict-events-app.ts';
+import { CONFLICT_MAP_BASE } from '../api/mcp/ui/_conflict-map-base.ts';
 
 const originalFetch = globalThis.fetch;
 const originalLimiter = Ratelimit.slidingWindow;
@@ -105,7 +109,7 @@ async function mount(wire, check) {
       await win.happyDOM.waitUntilComplete();
     };
     await send(wire);
-    await check(win.document, send);
+    await check(win.document, send, messages);
     assert.equal(reads, 0);
     assert.equal(messages.filter(m => ['tools/call', 'ui/call-tool'].includes(m?.method)).length, 0);
   } finally { await win.happyDOM.close(); }
@@ -187,6 +191,77 @@ describe('Conflict Events actual-handler supported envelopes', () => {
 });
 
 describe('Conflict Events geographic selection', () => {
+  it('keeps the checked world outline and projection equal to the existing topology', () => {
+    const world = JSON.parse(readFileSync(new URL('../public/data/countries-110m.json', import.meta.url), 'utf8'));
+    const width = 720;
+    const height = 384;
+    const scale = (width - 64) / (2 * Math.PI);
+    const translate = [width / 2, height / 2];
+    const projection = geoEquirectangular().scale(scale).translate(translate);
+    assert.deepEqual(CONFLICT_MAP_BASE, {
+      width, height, scale, translate,
+      path: geoPath(projection).digits(0)(feature(world, world.objects.countries)),
+    });
+  });
+  it('keeps every visible nearby dot above expanded hit targets and selects either event', async () => {
+    const wire = await result();
+    wire.structuredContent.data['ucdp-events'].events = [45, 55].map((longitude, i) => ({
+      ...events[2], sideA: 'Nearby event ' + i, location: { latitude: 15, longitude },
+    }));
+    await mount(wire, doc => {
+      const dots = [...doc.querySelectorAll('.conflict-dot')];
+      const hits = [...doc.querySelectorAll('#conflict-map circle[r="24"]')];
+      const markers = doc.querySelectorAll('.conflict-marker');
+      const xs = [...markers].map(marker => Number(marker.getAttribute('transform').match(/[-\d.]+/g)[0]));
+      assert.ok(Math.abs(xs[1] - xs[0]) < 24, 'the later expanded target covers the earlier dot location');
+      assert.equal(dots.length, 2);
+      assert.equal(hits.length, 2);
+      for (const dot of dots) {
+        for (const hit of hits) {
+          assert.ok(hit.compareDocumentPosition(dot) & doc.defaultView.Node.DOCUMENT_POSITION_FOLLOWING,
+            'visible dots must paint above every expanded hit target');
+        }
+      }
+      assert.equal(doc.querySelectorAll('#conflict-map [tabindex="0"]').length, 2);
+      for (let i = 0; i < 2; i++) {
+        for (const target of [dots[i], hits[i]]) {
+          target.dispatchEvent(new doc.defaultView.MouseEvent('click', { bubbles: true }));
+          assert.equal(doc.querySelectorAll('.evt')[i].getAttribute('aria-pressed'), 'true');
+          assert.match(doc.getElementById('conflict-selection').textContent, new RegExp('Nearby event ' + i));
+        }
+      }
+    });
+  });
+  it('reports final root height after chooser, member, row selection and World view reset', async () => {
+    const wire = await result();
+    wire.structuredContent.data['ucdp-events'].events = [
+      { ...events[2], sideA: 'Coincident first' },
+      { ...events[2], sideA: 'Coincident second' },
+      { ...events[3], sideA: 'Separate location' },
+    ];
+    await mount(wire, (doc, _send, messages) => {
+      const chooser = doc.getElementById('conflict-chooser');
+      const selection = doc.getElementById('conflict-selection');
+      const height = () => 200.25 + chooser.children.length * 40 + selection.textContent.length;
+      doc.getElementById('root').getBoundingClientRect = () => ({ height: height() });
+      const expectSize = action => {
+        messages.length = 0;
+        action();
+        assert.deepEqual(messages.filter(message => message.method === 'ui/notifications/size-changed')
+          .map(message => message.params), [{ height: Math.ceil(height()) + 8 }]);
+      };
+      expectSize(() => doc.querySelector('.conflict-marker').dispatchEvent(new doc.defaultView.MouseEvent('click')));
+      assert.equal(chooser.children.length, 2);
+      expectSize(() => chooser.children[1].click());
+      assert.match(selection.textContent, /Coincident second/);
+      expectSize(() => doc.querySelectorAll('.evt')[2].click());
+      assert.equal(chooser.children.length, 0);
+      assert.match(selection.textContent, /Separate location/);
+      expectSize(() => doc.getElementById('conflict-world').click());
+      assert.equal(selection.textContent, '');
+      assert.equal(chooser.children.length, 0);
+    });
+  });
   it('serves the unchanged resource URI within the existing SSE replay response budget', async () => {
     const { deps } = makeProDeps();
     const response = await handler(proReq('POST', {
