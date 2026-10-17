@@ -266,6 +266,40 @@ describe('CIMD — each vendor document completes the API-key flow', () => {
     assert.equal((await res.json()).error_description, 'client_id mismatch');
   });
 
+  it('a vendor outage at code exchange leaves the code redeemable on retry', async () => {
+    // VS Code serves its document no-store, so the exchange always refetches it.
+    const vscode = 'https://vscode.dev/oauth/client-metadata.json';
+    const redirectUri = 'https://vscode.dev/redirect';
+    const flow = await startFlow(vscode, redirectUri);
+    const code = new URL((await submitConsent(flow.nonce, flow.cookie)).headers.get('Location')).searchParams.get('code');
+    vendor.set(vscode, () => new Response('down', { status: 503 }));
+    const first = await exchangeCode(code, vscode, redirectUri);
+    assert.equal(first.status, 503);
+    assert.ok(store.has(`oauth:code:${code}`), 'the code is not consumed by a retryable failure');
+    vendor.set(vscode, LIVE_DOCS[vscode]);
+    const retry = await exchangeCode(code, vscode, redirectUri);
+    assert.equal(retry.status, 200, await retry.clone().text());
+  });
+
+  it('a vendor 403 or HTML challenge during refresh is retryable and keeps the token', async () => {
+    const vscode = 'https://vscode.dev/oauth/client-metadata.json';
+    const redirectUri = 'https://vscode.dev/redirect';
+    const flow = await startFlow(vscode, redirectUri);
+    const code = new URL((await submitConsent(flow.nonce, flow.cookie)).headers.get('Location')).searchParams.get('code');
+    const tokens = await (await exchangeCode(code, vscode, redirectUri)).json();
+    for (const outage of [
+      () => new Response('forbidden', { status: 403 }),
+      () => new Response('<html>challenge</html>', { headers: { 'Content-Type': 'text/html' } }),
+    ]) {
+      vendor.set(vscode, outage);
+      const res = await refresh(tokens.refresh_token, vscode);
+      assert.equal(res.status, 503);
+      assert.equal(JSON.parse(store.get(`oauth:refresh:${tokens.refresh_token}`)).client_id, vscode, 'refresh token restored');
+    }
+    vendor.set(vscode, LIVE_DOCS[vscode]);
+    assert.equal((await refresh(tokens.refresh_token, vscode)).status, 200);
+  });
+
   it('a client removed from the vendor document stops refreshing on the next fetch', async () => {
     const linear = 'https://linear.app/.well-known/oauth-client-metadata/mcp.json';
     const redirectUri = 'https://linear.app/connect/mcp/callback';
@@ -282,12 +316,36 @@ describe('CIMD — each vendor document completes the API-key flow', () => {
 });
 
 describe('CIMD — consent page', () => {
-  it('warns when every callback in the document is localhost', async () => {
+  it('warns when the authorization goes to localhost', async () => {
     const claudeCode = 'https://claude.ai/oauth/claude-code-client-metadata';
     const flow = await startFlow(claudeCode, 'http://localhost:61234/callback');
     assert.equal(flow.res.status, 200);
     assert.match(flow.html, /class="client-warn"/);
     assert.match(flow.html, /only to this computer/);
+  });
+
+  it('warns for a loopback redirect even when the document also lists hosted callbacks', async () => {
+    // Any local app can send VS Code's client_id with a loopback redirect.
+    const vscode = 'https://vscode.dev/oauth/client-metadata.json';
+    const loopback = await startFlow(vscode, 'http://127.0.0.1:33418/');
+    assert.match(loopback.html, /class="client-warn"/);
+    store.clear();
+    const hosted = await startFlow(vscode, 'https://vscode.dev/redirect');
+    assert.doesNotMatch(hosted.html, /class="client-warn"/);
+  });
+
+  it('keeps the client host and warning on the bad-key retry page', async () => {
+    const claudeCode = 'https://claude.ai/oauth/claude-code-client-metadata';
+    const flow = await startFlow(claudeCode, 'http://localhost:61234/callback');
+    const res = await authorizeHandler(new Request('https://api.worldmonitor.app/oauth/authorize', {
+      method: 'POST',
+      headers: { host: 'api.worldmonitor.app', origin: 'https://api.worldmonitor.app', 'Content-Type': 'application/x-www-form-urlencoded', cookie: flow.cookie },
+      body: new URLSearchParams({ api_key: 'not-a-key', _nonce: flow.nonce }).toString(),
+    }));
+    const html = await res.text();
+    assert.match(html, /Invalid API key/);
+    assert.match(html, /client ID from claude\.ai/);
+    assert.match(html, /class="client-warn"/);
   });
 
   it('does not warn for a hosted client', async () => {
@@ -325,7 +383,7 @@ describe('CIMD — Pro grant path', () => {
       resolveUserId: async () => 'user_pro', redisGet, getEntitlements: async () => PRO_ENT, now: () => NOW,
     });
     assert.equal(ctxRes.status, 200, await ctxRes.clone().text());
-    assert.deepEqual(await ctxRes.json(), { client_name: 'ChatGPT', redirect_host: 'chatgpt.com', client_host: 'chatgpt.com', localhost_only: false });
+    assert.deepEqual(await ctxRes.json(), { client_name: 'ChatGPT', redirect_host: 'chatgpt.com', client_host: 'chatgpt.com', localhost_redirect: false });
 
     const mintRes = await mintGrantHandler(new Request('https://worldmonitor.app/api/internal/mcp-grant-mint', {
       method: 'POST', headers: { 'Content-Type': 'application/json', cookie: flow.cookie }, body: JSON.stringify({ nonce: flow.nonce }),
@@ -510,11 +568,32 @@ describe('CIMD — rejected documents and client_ids', () => {
     assert.equal((await resolveOAuthClient('https://chatgpt.com/oauth/client.json', deps())).ok, true);
   });
 
-  it('answers a vendor 5xx as retryable and a 404 as invalid', async () => {
-    vendor.set(LINEAR, () => new Response('down', { status: 503 }));
-    assert.deepEqual(await resolveOAuthClient(LINEAR, deps()), { ok: false, reason: 'document_fetch_failed', transient: true });
+  it('answers a vendor 5xx, 403, or HTML page as retryable and a 404 or 410 as invalid', async () => {
+    for (const status of [503, 403, 401, 429]) {
+      vendor.set(LINEAR, () => new Response('nope', { status }));
+      assert.deepEqual(await resolveOAuthClient(LINEAR, deps()), { ok: false, reason: 'document_fetch_failed', transient: true }, String(status));
+    }
+    vendor.set(LINEAR, () => new Response('<html></html>', { headers: { 'Content-Type': 'text/html' } }));
+    assert.deepEqual(await resolveOAuthClient(LINEAR, deps()), { ok: false, reason: 'document_not_json', transient: true });
     vendor.delete(LINEAR);
     assert.deepEqual(await resolveOAuthClient(LINEAR, deps()), { ok: false, reason: 'document_not_found', transient: false });
+    vendor.set(LINEAR, () => new Response('gone', { status: 410 }));
+    assert.deepEqual(await resolveOAuthClient(LINEAR, deps()), { ok: false, reason: 'document_not_found', transient: false });
+  });
+
+  it('enforces a per-connector pinned callback on a cache hit too', async () => {
+    const connector = 'https://connect.vercel.com/connectors/conn_cached';
+    store.set(`oauth:cimd:${connector}`, JSON.stringify({ client_id: connector, client_name: 'x', redirect_uris: ['https://attacker.example/cb'] }));
+    const resolved = await resolveOAuthClient(connector, deps());
+    assert.equal(vendorFetches.length, 0, 'served from cache');
+    assert.equal(clientAllowsRedirectUri(resolved.client, 'https://attacker.example/cb'), false);
+  });
+
+  it('never treats a DCR record as CIMD, whatever it stores', async () => {
+    const id = crypto.randomUUID();
+    store.set(`oauth:client:${id}`, JSON.stringify({ client_name: 'x', cimd: true, client_id: 'https://claude.ai/oauth/mcp-oauth-client-metadata', redirect_uris: ['https://evil.example/cb'] }));
+    const resolved = await resolveOAuthClient(id, deps());
+    assert.equal(resolved.client.cimd, false);
   });
 
   it('serves a transient failure on authorize as Service Unavailable, not Unknown Client', async () => {

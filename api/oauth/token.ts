@@ -41,7 +41,7 @@ import { jsonResponse } from '../_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { keyFingerprint, sha256Hex, timingSafeIncludes, verifyPkceS256 } from '../_crypto.js';
 // @ts-expect-error — JS module, no declaration file
-import { resolveOAuthClient } from './_client-metadata.js';
+import { isClientMetadataDocumentId, resolveOAuthClient } from './_client-metadata.js';
 import { validateProMcpToken } from '../../server/_shared/pro-mcp-token';
 import type { ProMcpValidateUnion } from '../../server/_shared/pro-mcp-token';
 // @ts-expect-error — JS module, no declaration file
@@ -491,6 +491,16 @@ async function handleAuthorizationCode(
     );
   }
 
+  // A CIMD client is resolved before the code is consumed: it may need a live
+  // fetch of its metadata document (always, for a no-store document such as
+  // VS Code's), and a vendor blip there must answer a retryable 503 with the
+  // code still redeemable, not burn it (#9244). DCR keeps its original order.
+  const cimdClient = isClientMetadataDocumentId(clientId);
+  if (cimdClient) {
+    const clientCheck = await checkClientExists(deps, clientId);
+    if (clientCheck) return clientCheck;
+  }
+
   // Atomically consume the auth code (GETDEL — prevents concurrent exchange race).
   let codeData: CodeDataPro | CodeDataLegacy | null;
   try {
@@ -526,8 +536,10 @@ async function handleAuthorizationCode(
     );
   }
 
-  const clientCheck = await checkClientExists(deps, clientId);
-  if (clientCheck) return clientCheck;
+  if (!cimdClient) {
+    const clientCheck = await checkClientExists(deps, clientId);
+    if (clientCheck) return clientCheck;
+  }
 
   const accessUuid = deps.randomUuid();
   const refreshUuid = deps.randomUuid();

@@ -212,10 +212,10 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
     : 'Unknown Client';
 
   // CIMD clients add the host that published their document, and whether
-  // every callback is localhost (the consent page warns on that).
-  const display = clientDisplayInfo(clientData);
+  // this authorization goes to localhost (the consent page warns on that).
+  const display = clientDisplayInfo(clientData, nonceData.redirect_uri);
   const body = clientData.cimd
-    ? { client_name, redirect_host: redirectHost, client_host: display.client_host, localhost_only: display.localhost_only }
+    ? { client_name, redirect_host: redirectHost, client_host: display.client_host, localhost_redirect: display.localhost_redirect }
     : { client_name, redirect_host: redirectHost };
   return new Response(JSON.stringify(body), {
     status: 200, headers: NO_STORE_JSON,

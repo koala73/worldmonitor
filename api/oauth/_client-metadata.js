@@ -187,10 +187,13 @@ async function fetchDocument(clientId, fetchImpl) {
       if (resp.type === 'opaqueredirect' || (resp.status >= 300 && resp.status < 400)) {
         throw new ClientMetadataError('document_redirected');
       }
-      if (resp.status === 429 || resp.status >= 500) throw new ClientMetadataError('document_fetch_failed', true);
-      if (resp.status !== 200) throw new ClientMetadataError('document_not_found');
+      // Only "gone" is permanent. A 403, a 5xx, or an HTML bot challenge can be
+      // a blip at the vendor's edge, and treating it as permanent would answer
+      // a refresh with invalid_client and sign every user of that client out.
+      if (resp.status === 404 || resp.status === 410) throw new ClientMetadataError('document_not_found');
+      if (resp.status !== 200) throw new ClientMetadataError('document_fetch_failed', true);
       if (!/^application\/(?:[\w.+-]+\+)?json\b/i.test(resp.headers.get('content-type') ?? '')) {
-        throw new ClientMetadataError('document_not_json');
+        throw new ClientMetadataError('document_not_json', true);
       }
       const text = await readCappedBody(resp, controller.signal);
       let doc;
@@ -337,14 +340,16 @@ export function clientAllowsRedirectUri(client, redirectUri) {
 }
 
 // The consent screens show the client_id host for a CIMD client (the draft's
-// SHOULD), and warn when every callback stays on this machine.
-export function clientDisplayInfo(client) {
-  if (!client?.cimd) return { client_host: null, localhost_only: false };
-  const uris = Array.isArray(client.redirect_uris) ? client.redirect_uris : [];
-  const localhostOnly = uris.length > 0 && uris.every((uri) => {
-    try { return isLoopbackHttp(new URL(uri)); } catch { return false; }
-  });
-  return { client_host: new URL(client.client_id).hostname, localhost_only: localhostOnly };
+// SHOULD), and warn when this authorization goes to a loopback callback: any
+// local app can send a published client_id with a loopback redirect, so the
+// document's client_name proves nothing there. Keyed on the redirect in use,
+// not on whether the document lists only loopback callbacks, so documents
+// that mix hosted and loopback callbacks (VS Code, Cursor) still warn.
+export function clientDisplayInfo(client, redirectUri) {
+  if (!client?.cimd) return { client_host: null, localhost_redirect: false };
+  let localhostRedirect = false;
+  try { localhostRedirect = isLoopbackHttp(new URL(redirectUri)); } catch { /* not a URL */ }
+  return { client_host: new URL(client.client_id).hostname, localhost_redirect: localhostRedirect };
 }
 
 // Copy for an unresolvable client, for the HTML consent routes.

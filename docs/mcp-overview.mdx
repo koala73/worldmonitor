@@ -118,7 +118,7 @@ WorldMonitor accepts only the document URLs below, matched exactly, and fetches 
 - the `redirect_uri` is `https:` or http loopback, with no credentials or fragment;
 - the document offers `token_endpoint_auth_method` `none` (public client with PKCE `S256`), has no `client_secret`, and includes the `authorization_code` grant when it lists grants.
 
-The document is fetched over HTTPS with redirects refused, a 3-second timeout, and a 16 KB cap. A valid document is cached for its `Cache-Control` lifetime, at most one hour (`private` and `no-store` are not cached), so a vendor's change reaches WorldMonitor within that time. A failed fetch is never cached; an unreachable document returns a retryable error. The consent page shows the client name from the document, the host that published it, and the redirect host, and warns when every callback is on localhost.
+The document is fetched over HTTPS with redirects refused, a 3-second timeout, and a 16 KB cap. A valid document is cached for its `Cache-Control` lifetime, at most one hour (`private` and `no-store` are not cached), so a vendor's change reaches WorldMonitor within that time. A failed fetch is never cached. A missing document (`404` or `410`) is an unknown client; any other failure, such as a timeout, a `5xx` or `403`, or an HTML page, is retryable, and the token endpoint keeps the authorization code or refresh token for the retry. The consent page shows the client name from the document, the host that published it, and the redirect host, and warns when the authorization goes to a localhost callback.
 
 | Client | `client_id` (metadata document) |
 |--------|----------------------------------|
@@ -139,7 +139,7 @@ The document is fetched over HTTPS with redirects refused, a 3-second timeout, a
 | MCPJam | `https://www.mcpjam.com/.well-known/oauth/client-metadata.json` |
 | Vercel Connect | `https://connect.vercel.com/connectors/<connector id>`, one document per connector, with the callback pinned to `https://connect.vercel.com/callback` ([Vercel Connect provider docs](https://vercel.com/docs/connect/providers)) |
 
-ChatGPT's document prefers `private_key_jwt` but also lists `none`; WorldMonitor advertises only `none`, so ChatGPT uses PKCE without a client assertion. Make.com's published URL redirects, so it is not on the list and keeps using registration. A client whose document is not listed gets an "Unknown Client" error; ask for it to be added.
+ChatGPT's document prefers `private_key_jwt` but also lists `none`; WorldMonitor advertises only `none`, so ChatGPT uses PKCE without a client assertion. Make.com's published client URL redirects instead of serving a document, so it is not on the list. A client whose document is not listed gets an "Unknown Client" error; ask for it to be added.
 
 The authorization response carries `iss` ([RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207)), set to the `issuer` of the host where the flow started. ChatGPT requires it to use its stable callback.
 

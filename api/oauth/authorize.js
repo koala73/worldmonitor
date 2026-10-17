@@ -106,7 +106,7 @@ async function redisGet(key) {
 function resolveClient(client_id) {
   return resolveOAuthClient(client_id, {
     redisGet,
-    redisSetEx: (key, value, ttl) => redisSet(key, value, ttl),
+    redisSetEx: redisSet,
   });
 }
 
@@ -153,12 +153,12 @@ function htmlError(title, detail) {
 //   2. When the URL fragment is `#api-key` — Starter+ users can bookmark
 //      `…/oauth/authorize?…#api-key` to skip the disclosure click.
 export function consentPage(params, nonce, errorMsg = '') {
-  const { client_name, redirect_uri, client_host, localhost_only } = params;
+  const { client_name, redirect_uri, client_host, localhost_redirect } = params;
   const redirectHost = redirectDisplayHost(redirect_uri);
   // CIMD clients also show the host that published their metadata document,
   // since the document's client_name is the vendor's own claim.
   const clientHostLine = client_host ? `<div class="client-host">client ID from ${escapeHtml(client_host)}</div>` : '';
-  const localhostWarn = localhost_only
+  const localhostWarn = localhost_redirect
     ? '<p class="client-warn">This client sends the authorization only to this computer (localhost). Approve it only if you started this connection from an app on this device.</p>'
     : '';
   // U3 contract: bridge URL is apex (no www, no return_to). Apex page reads
@@ -254,7 +254,7 @@ async function retryConsent(req, nonceData, client, isXHR, failure) {
       headers,
     });
   }
-  const page = consentPage({ ...nonceData, ...clientDisplayInfo(client), client_name: client.client_name ?? 'Unknown Client' }, retryNonce, failure.message);
+  const page = consentPage({ ...nonceData, ...clientDisplayInfo(client, nonceData.redirect_uri), client_name: client.client_name ?? 'Unknown Client' }, retryNonce, failure.message);
   return new Response(page.body, { status: failure.status === 400 ? 200 : failure.status, headers });
 }
 
@@ -336,7 +336,7 @@ export default async function handler(req) {
     }
 
     const page = consentPage({
-      ...clientDisplayInfo(client),
+      ...clientDisplayInfo(client, redirect_uri),
       client_name: client.client_name ?? 'Unknown Client',
       redirect_uri, client_id, response_type: 'code', code_challenge, code_challenge_method: 'S256', state,
     }, nonce);

@@ -22,9 +22,11 @@ import { initClerk, getClerkToken, getCurrentClerkUser, openSignIn, subscribeCle
 import {
   classifyGrantDenial,
   describeGrantDelay,
+  grantClientDisplay,
   retryableGrantDelayMs,
   routeGrantContextDenial,
   shouldWaitInline,
+  type GrantClientContext,
   type GrantMintPhase,
 } from '@/services/mcp-grant-denial';
 
@@ -41,14 +43,7 @@ try {
 
 const API_BASE = ''; // same-origin (apex)
 
-interface ContextResponse {
-  client_name: string;
-  redirect_host: string;
-  /** CIMD clients only: the host that published the client metadata document. */
-  client_host?: string;
-  /** CIMD clients only: every callback in the document is localhost. */
-  localhost_only?: boolean;
-}
+type ContextResponse = GrantClientContext;
 
 interface MintResponse {
   redirect: string;
@@ -223,13 +218,14 @@ async function loadContextAttempt(
 
   setText('clientName', ctx.client_name);
   setText('clientHost', ctx.redirect_host);
-  if (typeof ctx.client_host === 'string' && ctx.client_host) {
-    setText('clientIdHost', ctx.client_host);
+  const display = grantClientDisplay(ctx);
+  if (display.clientIdHost) {
+    setText('clientIdHost', display.clientIdHost);
     show('clientIdHostLine');
   } else {
     hide('clientIdHostLine');
   }
-  if (ctx.localhost_only === true) show('localhostWarn');
+  if (display.showLocalhostWarning) show('localhostWarn');
   else hide('localhostWarn');
   const u = getCurrentClerkUser();
   setText('userEmail', u?.email ?? 'your account');
