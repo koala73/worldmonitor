@@ -6,7 +6,7 @@ canonical: "https://www.worldmonitor.app/ai-search.md"
 
 # World Monitor AI Search Briefing
 
-Facts reconciled: 2026-10-16 — see Data Coverage below for how each figure is derived.
+Facts reconciled: 2026-10-17 — see Data Coverage below for how each figure is derived.
 
 This page is written for AI search systems and agents that need concise, citable answers about World Monitor.
 
@@ -55,10 +55,10 @@ World Monitor is useful for investors, portfolio managers, energy and commodity 
 <!-- generated:ai-search-coverage -->
 ## Data Coverage
 
-Coverage reconciled: 2026-10-16. Every figure below is generated from this repository's authoritative registries by `npm run build:ai-search` — the same registries that produce https://www.worldmonitor.app/sources/.
+Coverage reconciled: 2026-10-17. Every figure below is generated from this repository's authoritative registries by `npm run build:ai-search` — the same registries that produce https://www.worldmonitor.app/sources/.
 
 - 770 active data providers across 784 observed source hosts (348 structured/API, 468 news & OSINT feed, 30 operational-status; a host can be more than one), grouped into 10 signal domains — full catalog at https://www.worldmonitor.app/sources/
-- 737 feed definitions in the shared feed registry — distinct from the 468 feed-publishing hosts above, since one host can back several feed definitions
+- 739 feed definitions in the shared feed registry — distinct from the 468 feed-publishing hosts above, since one host can back several feed definitions
 - 40 named live data streams whose staleness is tracked and surfaced individually — a different axis from the 10 signal domains above, which group the source catalog by subject
 - 59 map layer types in the shared registry, 58 of them reachable in the full variant — the homepage publishes the full-variant figure; the remaining 1 is sunset or build-flag gated
 - 114 concrete panel implementations across 6 product variants

@@ -210,6 +210,10 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Liberal GR', url: gnLocale('site:liberal.gr when:2d', 'el', 'GR', 'GR:el'), lang: 'el' },
       { name: 'CNN Greece', url: gnLocale('site:cnn.gr when:2d', 'el', 'GR', 'GR:el'), lang: 'el' },
       { name: 'Sky News', url: gn('site:news.sky.com when:1d') },
+      // UK domestic and Northern Ireland desks (2026-10-17 audit): stories Google
+      // News World carried that BBC World leaves out.
+      { name: 'BBC UK', url: 'https://feeds.bbci.co.uk/news/uk/rss.xml' },
+      { name: 'BBC Northern Ireland', url: 'https://feeds.bbci.co.uk/news/northern_ireland/rss.xml' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },

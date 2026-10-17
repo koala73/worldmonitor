@@ -37,6 +37,8 @@ const EXPECTED: Record<string, { category: string; query: string }> = {
   'Japan Times': { category: 'asia', query: 'site:japantimes.co.jp when:1d' },
 };
 const NAMES = Object.keys(EXPECTED);
+// Appended after this pack by the 2026-10-17 audit (tests/deeper-feed-pool.test.mts).
+const LATER = ['BBC UK', 'BBC Northern Ireland'];
 
 let feeds: FeedsModule;
 before(async () => { feeds = await bundleFeedsModule<FeedsModule>({ repoRoot, tempDir }); });
@@ -59,7 +61,7 @@ describe('major publisher feeds', () => {
       const names = entries.map((feed) => feed.name);
       const firstNew = names.findIndex((name) => NAMES.includes(name));
       if (firstNew < 0) continue;
-      assert.ok(names.slice(firstNew).every((name) => NAMES.includes(name)), `${category}: new feeds are appended`);
+      assert.ok(names.slice(firstNew).every((name) => NAMES.includes(name) || LATER.includes(name)), `${category}: new feeds are appended`);
     }
   });
 
@@ -79,7 +81,7 @@ describe('major publisher feeds', () => {
   });
 
   it('is introduced by its own rollout stage, so pre-existing capped profiles still reconstruct', () => {
-    const stage = feeds.REGIONAL_FEED_ROLLOUT_STAGES.at(-1)!;
+    const stage = feeds.REGIONAL_FEED_ROLLOUT_STAGES.find((s) => s.introducedNames.includes(NAMES[0]!))!;
     assert.deepEqual([...stage.introducedNames].sort(), [...NAMES].sort());
   });
 });

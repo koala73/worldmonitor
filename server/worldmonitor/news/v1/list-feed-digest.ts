@@ -183,9 +183,11 @@ function evictOldestIsolateEntry(): void {
 }
 const ITEMS_PER_FEED = 5;
 // Full-variant entries kept past the dashboard cap, for country headlines and
-// /verify claim search. 30 found 49 of 70 Google News World stories on
-// 2026-10-16 (20 found 44; uncapped 54), so the next entries add little.
-const COUNTRY_ITEMS_PER_FEED = 30;
+// /verify claim search. A Google News site: feed returns up to 100 entries and
+// a wire publishes fast: on 2026-10-17 AP's first 30 covered 6.6 hours, and
+// stories Google News World led with sat at AP entries 61, 92 and 95. Keeping
+// the whole feed grows the pool from about 4,400 to 8,300 headlines.
+const COUNTRY_ITEMS_PER_FEED = 100;
 const MAX_ITEMS_PER_CATEGORY = 20;
 const FEED_TIMEOUT_MS = 8_000;
 // Vercel Edge functions have a 25s initial-response ceiling. The digest
@@ -1098,6 +1100,9 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
   const droppedFeedCap = Math.max(0, matches.length - ITEMS_PER_FEED);
 
   const parseLimit = retainCountryItems ? COUNTRY_ITEMS_PER_FEED : ITEMS_PER_FEED;
+  // One log line per feed for gated pool links: a deep pool can drop dozens.
+  let poolLinkDrops = 0;
+  let poolLinkDropHost = '';
   for (const [index, match] of matches.slice(0, parseLimit).entries()) {
     const block = match[1]!;
     const forDigest = index < ITEMS_PER_FEED;
@@ -1174,10 +1179,8 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
           feed,
         )
       ) {
-        console.warn(
-          `[digest] publisher-link-gate drop feed="${feed.name}" variant=${variant} ` +
-            `host="${linkHostnameForLog(link)}"`,
-        );
+        poolLinkDrops++;
+        poolLinkDropHost ||= linkHostnameForLog(link);
         continue;
       }
       if (title.length <= 1000 && link.length <= 2048 && originPublisher.length <= 200) {
@@ -1256,6 +1259,13 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     console.warn(
       `[digest] partial-undated feed="${feed.name}" variant=${variant} ` +
         `parsed=${parsedTotal} dropped=${droppedUndated} kept=${items.length}`,
+    );
+  }
+
+  if (poolLinkDrops > 0) {
+    console.warn(
+      `[digest] publisher-link-gate drop feed="${feed.name}" variant=${variant} ` +
+        `host="${poolLinkDropHost}" count=${poolLinkDrops}`,
     );
   }
 

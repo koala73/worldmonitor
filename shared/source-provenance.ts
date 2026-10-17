@@ -184,6 +184,8 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   // overlays spread below, which own those names.
   'New York Times World': 'mainstream', 'Washington Post World': 'mainstream',
   'The Independent': 'mainstream', 'Sky News': 'mainstream', 'Japan Times': 'mainstream',
+  // The BBC's UK desks, added after the 2026-10-17 audit.
+  'BBC UK': 'mainstream', 'BBC Northern Ireland': 'mainstream',
   'Studio Tamani': 'mainstream', 'leFaso.net': 'mainstream',
   'ActuNiger': 'mainstream', 'Aïr Info': 'mainstream',
   'Caracas Chronicles': 'mainstream', 'Efecto Cocuyo': 'mainstream',
@@ -389,6 +391,8 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'The Independent': { risk: 'low', note: 'British national online newspaper' },
   'Sky News': { risk: 'low', note: 'British commercial news broadcaster (Comcast)' },
   'Japan Times': { risk: 'low', note: 'Japanese English-language daily newspaper' },
+  'BBC UK': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
+  'BBC Northern Ireland': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
   'PAP': { risk: 'medium', stateAffiliated: 'Poland', note: 'Polish national news agency (Polska Agencja Prasowa); state-owned wire' },
   'Gazeta Wyborcza': { risk: 'low', note: 'Independent Polish daily newspaper published by Agora' },
   'Polityka': { risk: 'low', note: 'Independent Polish weekly news magazine' },

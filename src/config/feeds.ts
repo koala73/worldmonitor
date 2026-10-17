@@ -316,6 +316,8 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'NewsMaker', url: rss('https://newsmaker.md/feed'), lang: 'ru' },
     { name: 'Ziarul de Gardă', url: rss('https://www.zdg.md/feed/'), lang: 'ro' },
     { name: 'Sky News', url: rss('https://news.google.com/rss/search?q=site%3Anews.sky.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'BBC UK', url: rss('https://feeds.bbci.co.uk/news/uk/rss.xml') },
+    { name: 'BBC Northern Ireland', url: rss('https://feeds.bbci.co.uk/news/northern_ireland/rss.xml') },
   ],
   middleeast: [
     { name: 'BBC Middle East', url: rss('https://feeds.bbci.co.uk/news/world/middle_east/rss.xml') },
@@ -1481,6 +1483,13 @@ export const MAJOR_PUBLISHER_DEFAULT_SOURCES = [
   'Japan Times',
 ] as const;
 
+/**
+ * The BBC's UK desk (2026-10-17 audit), default-on in EN like the major
+ * publishers above and, like them, listed last and not cap-protected.
+ * BBC Northern Ireland is in the catalog but opt-in.
+ */
+export const BBC_UK_DEFAULT_SOURCES = ['BBC UK'] as const;
+
 /** Chronological feed introductions used to reconstruct untouched cap states. */
 export const REGIONAL_FEED_ROLLOUT_STAGES = [
   {
@@ -1582,6 +1591,16 @@ export const REGIONAL_FEED_ROLLOUT_STAGES = [
       ...CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES,
     ],
   },
+  {
+    introducedNames: [...BBC_UK_DEFAULT_SOURCES],
+    protectedNames: [
+      ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+      ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
+      ...CANADA_EN_DEFAULT_SOURCES,
+      ...CRISIS_FLOOR_EN_DEFAULT_SOURCES,
+      ...CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES,
+    ],
+  },
 ] as const;
 
 /**
@@ -1662,6 +1681,7 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
     // Periphery packs (#5953) — Caucasus, Belarus/Moldova
     ...CAUCASUS_EN_DEFAULT_SOURCES,
     'Sky News',
+    ...BBC_UK_DEFAULT_SOURCES,
   ],
 
   middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'IRNA', 'Mehr News', 'Haaretz', 'Jerusalem Post', 'Ynetnews', 'Asharq News', 'The National', 'Yemen Online', 'Syria Direct', '+972 Magazine', 'Naharnet Lebanon', 'Libya Herald', 'Egypt Independent', 'Times of Israel', 'Middle East Eye'],
