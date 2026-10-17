@@ -45,7 +45,9 @@ const AIS_POINTS_BY_CONGESTION = { high: 15, elevated: 10, low: 5 };
 
 /** Splits a score into its standing threat level and live signals. */
 function breakdown(chokepoint) {
-  const score = Number(chokepoint?.disruptionScore);
+  // Number(null) is 0, which would read as a fully subsided score.
+  const raw = chokepoint?.disruptionScore;
+  const score = typeof raw === 'number' || (typeof raw === 'string' && raw.trim()) ? Number(raw) : NaN;
   const baseline = THREAT_POINTS_BY_TIER[chokepoint?.warRiskTier] ?? 0;
   const live = Math.max(0, score - baseline);
   const warnings = Math.min(15, Math.max(0, Number(chokepoint?.activeWarnings) || 0) * 5);
@@ -126,8 +128,11 @@ async function publishChokepointDisruptionAlerts(status, { now, readState, write
 
   let readFailed = false;
   const stored = await readState(STATE_KEY, (reason) => {
-    // A corrupt value would otherwise stall alerts until its TTL lapses.
-    if (/parse/i.test(String(reason))) log(`[Chokepoints] Disruption alert state unparseable (${reason}); starting fresh`);
+    // A corrupt stored value would otherwise stall alerts until its TTL
+    // lapses. A malformed Upstash response body ("JSON response parse
+    // failed") is a transport error: starting fresh then would overwrite the
+    // saved fired state and re-alert every red chokepoint.
+    if (/JSON result parse failed/.test(String(reason))) log(`[Chokepoints] Disruption alert state unparseable (${reason}); starting fresh`);
     else readFailed = true;
   });
   if (readFailed) return null;

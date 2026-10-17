@@ -159,6 +159,15 @@ describe('chokepoint disruption alerts', () => {
     assert.equal(h.published.length, 1);
   });
 
+  it('does not re-arm on a reading with no score', async () => {
+    const h = harness();
+    await h.tick([chokepoint()]);
+    await h.tick([chokepoint({ disruptionScore: null, activeWarnings: 0 })]);
+    h.advanceClock(REFIRE_COOLDOWN_MS);
+    await h.tick([chokepoint()]);
+    assert.equal(h.published.length, 1);
+  });
+
   it('needs transit data to re-arm a crossing that carried a transit drop', async () => {
     const h = harness();
     // 40 + 10 anomaly + 5 warning: the transit drop is part of the crossing.
@@ -220,6 +229,13 @@ describe('chokepoint disruption alerts', () => {
     await h.tick([chokepoint()]);
     assert.equal(h.published.length, 1);
     assert.ok(h.logs.some((m) => /unparseable/.test(m)));
+  });
+
+  it('treats a malformed Upstash response body as a read failure, not corrupt state', async () => {
+    const h = harness({ readFails: 'JSON response parse failed: Unexpected end of JSON input' });
+    assert.equal(await h.tick([chokepoint()]), null);
+    assert.equal(h.published.length, 0);
+    assert.equal(h.store.has(STATE_KEY), false, 'the saved state is not overwritten');
   });
 
   it('ignores an empty response and a non-numeric score', async () => {
