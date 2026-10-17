@@ -123,7 +123,8 @@ const RENDER = `
         ? "Source reliability: " + reliability + "/100." : "Source reliability unavailable.";
       var sourceTier = s.sourceTier;
       var sourceTierText = Number.isInteger(sourceTier) && sourceTier >= 1 && sourceTier <= 4
-        ? "Declared source tier: " + sourceTier + "." : "Declared source tier unavailable.";
+        ? "Cluster priority tier: " + sourceTier + ". This stored cluster tier may use a default when a source is absent from its tier table."
+        : "Cluster priority tier unavailable.";
       row.appendChild(el("div", "story-src", reliabilityText + " " + sourceTierText));
       var corroboration = s.corroboration && typeof s.corroboration === "object" ? s.corroboration : {};
       var coverageState = corroboration.state;
