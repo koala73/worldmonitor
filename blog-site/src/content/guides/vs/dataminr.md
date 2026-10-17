@@ -15,7 +15,7 @@ This guide is published by World Monitor. We compare public product documentatio
 
 ## TL;DR
 
-> For real-time event alerts, the choice between Dataminr and World Monitor depends on whether you buy an enterprise contract or run alerting yourself. Choose Dataminr when a corporate security team needs proprietary event detection under a contract with an availability SLA, plus facility monitoring and response workflows. Choose World Monitor when you want to set up alerts yourself at a published price: rules by event type, severity and country, delivered to Slack, Discord, Telegram, email, browser push or a signed webhook, with a REST API, SDKs and an MCP server for your own tools.
+> For real-time event alerts, the choice between Dataminr and World Monitor depends on whether you buy an enterprise contract or run alerting yourself. Choose Dataminr when a corporate security team needs proprietary event detection under a contract with an availability SLA, plus facility monitoring and response workflows. Choose World Monitor when you want to set up alerts yourself at a published price: rules by event type, severity and country, delivered to Slack, Microsoft Teams, Discord, Telegram, email, browser push or a signed webhook, with a REST API, SDKs and an MCP server for your own tools.
 
 ## The comparison at a glance
 
@@ -24,7 +24,7 @@ This guide is published by World Monitor. We compare public product documentatio
 | How you buy | Self-serve, with prices on the [plans page](https://www.worldmonitor.app/pro#pricing) | Enterprise contract; request a quote |
 | Detection | Aggregates published reports from a public source inventory | Proprietary real-time detection on public and social data |
 | Alert scope | Rules by event type, severity (all, high, critical) and country | People, facilities and assets in its corporate security product |
-| Delivery | Slack, Discord, Telegram, email, browser push, or an HMAC-SHA256 signed webhook | Platform alerts with documented playbooks and response workflows |
+| Delivery | Slack, Microsoft Teams, Discord, Telegram, email, browser push, or an HMAC-SHA256 signed webhook | Platform alerts with documented playbooks and response workflows |
 | Timing | Real time, or a daily, twice-daily or weekly digest | Real-time alerting; no latency figure published |
 | Availability commitment | No published SLA | Published SLA for enterprise contracts |
 | Developer access | REST API (API plan), Python, Go and Ruby SDKs, npm CLI, MCP with Pro | Confirm API scope in the contract |
@@ -40,13 +40,13 @@ Dataminr sells proprietary real-time event detection built on public and social 
 
 ## Where World Monitor is better
 
-World Monitor is the better fit when you want to run alerting yourself without a sales cycle. You write alert rules that filter by event type, severity (all, high or critical) and country. Each rule delivers to Slack, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256, so your own system can check that a message came from World Monitor. Delivery is real time, or a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item. The [notifications reference](https://www.worldmonitor.app/docs/api-notifications) documents the channels and the signature header. Alerts and digests need the Pro plan.
+World Monitor is the better fit when you want to run alerting yourself without a sales cycle. You write alert rules that filter by event type, severity (all, high or critical) and country. Each rule delivers to Slack, Microsoft Teams, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256, so your own system can check that a message came from World Monitor. Delivery is real time, or a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item. The [notifications reference](https://www.worldmonitor.app/docs/api-notifications) documents the channels and the signature header. Alerts and digests need the Pro plan.
 
 For developers, World Monitor offers a REST API on a separate API plan, Python, Go and Ruby SDKs, an npm CLI, and an MCP server for AI clients, which comes with Pro. The [incident feed page](https://www.worldmonitor.app/docs/incident-feed) lists the incident endpoints, their fields and how far back each goes. The same map shows conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets, and it is free with no account. Each outlet has an editorial tier from 1 (wire or official) to 4 (aggregator or blog), a propaganda-risk band and, where it applies, a state-affiliation label: the News panel shows them as badges, the free `get_sources` MCP tool returns them for any outlet, and the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme. Prices are published on the [plans page](https://www.worldmonitor.app/pro#pricing), and the code is open source under [AGPL-3.0](https://github.com/koala73/worldmonitor).
 
 ## The limits that matter
 
-World Monitor aggregates published reports and does not verify events on the ground. It has no published availability SLA, no analyst desk and no response service. Alert rules are scoped by country, not by a radius around a facility, so a team that needs alerts within a set distance of an office will find Dataminr closer to that job. There is no Microsoft Teams channel. Reaching Teams takes your own relay that receives the signed webhook and reposts it.
+World Monitor aggregates published reports and does not verify events on the ground. It has no published availability SLA, no analyst desk and no response service. Alert rules are scoped by country, not by a radius around a facility, so a team that needs alerts within a set distance of an office will find Dataminr closer to that job.
 
 We have not compared alert latency, missed events, or false-positive rates. Dataminr's speed claims are vendor claims. World Monitor's update timing depends on its sources and successful refreshes. Do not treat either description as a demonstrated service level.
 

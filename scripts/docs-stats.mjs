@@ -1402,7 +1402,7 @@ export function validateVolatileInventoryClaims() {
     // Fixed scoring universe: tests/chokepoint-scenario-doc-parity.test.mjs
     // derives the exact registry membership and validates this methodology.
     { path: 'docs/methodology/chokepoints.mdx', text: /13 monitored waterways/ },
-    { path: 'blog-site/src/content/blog/alerts-notification-channels-worldmonitor.md', text: /six channels/i },
+    { path: 'blog-site/src/content/blog/alerts-notification-channels-worldmonitor.md', text: /seven channels/i },
     { path: 'blog-site/src/content/blog/aviation-intelligence-airports-airspace-flight-prices.md', text: /between any two airports/ },
     { path: 'blog-site/src/content/blog/build-supply-chain-early-warning-system-api.md', text: /Three signals, three endpoints/ },
     { path: 'blog-site/src/content/blog/free-geopolitical-data-apis-2026.md', text: /ingest ten feeds/ },

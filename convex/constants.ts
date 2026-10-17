@@ -5,6 +5,7 @@ export const channelTypeValidator = v.union(
   v.literal("slack"),
   v.literal("email"),
   v.literal("discord"),
+  v.literal("teams"),
   v.literal("webhook"),
   v.literal("web_push"),
 );

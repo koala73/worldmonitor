@@ -241,6 +241,10 @@ export const setChannelForUser = internalMutation({
       if (!webhookEnvelope) throw new ConvexError("webhookEnvelope required for webhook channel");
       const doc = { userId, channelType: "webhook" as const, webhookEnvelope, verified: true, linkedAt: now, webhookLabel, webhookSecret: args.webhookSecret };
       if (existing) { await ctx.db.replace(existing._id, doc); } else { channelId = String(await ctx.db.insert("notificationChannels", doc)); }
+    } else if (channelType === "teams") {
+      if (!webhookEnvelope) throw new ConvexError("webhookEnvelope required for teams channel");
+      const doc = { userId, channelType: "teams" as const, webhookEnvelope, verified: true, linkedAt: now };
+      if (existing) { await ctx.db.replace(existing._id, doc); } else { channelId = String(await ctx.db.insert("notificationChannels", doc)); }
     } else {
       throw new ConvexError("discord channel must be set via set-discord-oauth");
     }
@@ -565,6 +569,14 @@ export const setChannel = internalMutation({
     } else if (args.channelType === "webhook") {
       if (!args.webhookEnvelope) throw new ConvexError("webhookEnvelope required for webhook channel");
       const doc = { userId, channelType: "webhook" as const, webhookEnvelope: args.webhookEnvelope, verified: true, linkedAt: now, webhookLabel: args.webhookLabel };
+      if (existing) {
+        await ctx.db.replace(existing._id, doc);
+      } else {
+        await ctx.db.insert("notificationChannels", doc);
+      }
+    } else if (args.channelType === "teams") {
+      if (!args.webhookEnvelope) throw new ConvexError("webhookEnvelope required for teams channel");
+      const doc = { userId, channelType: "teams" as const, webhookEnvelope: args.webhookEnvelope, verified: true, linkedAt: now };
       if (existing) {
         await ctx.db.replace(existing._id, doc);
       } else {

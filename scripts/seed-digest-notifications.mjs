@@ -38,6 +38,7 @@ const {
   buildWebhookDeliveryHeaders,
   resolveWebhookSigningSecret,
 } = require('./lib/notification-webhook-signing.cjs');
+const { buildTeamsDigestPayload, sendTeamsPayload } = require('./lib/notification-teams.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { flushPendingLlmEvents } = require('./lib/llm-telemetry.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
@@ -1292,6 +1293,25 @@ async function sendDiscord(userId, webhookEnvelope, text) {
   }
 }
 
+async function sendTeams(userId, webhookEnvelope, payload) {
+  let webhookUrl;
+  try { webhookUrl = decrypt(webhookEnvelope); } catch (err) {
+    console.warn(`[digest] Teams decrypt failed for ${userId}:`, err.message); return false;
+  }
+  const result = await sendTeamsPayload(webhookUrl, payload, { userAgent: 'worldmonitor-digest/1.0' });
+  if (result.gone) {
+    console.warn(`[digest] Teams workflow gone for ${userId}, deactivating`);
+    await deactivateChannel(userId, 'teams');
+    return false;
+  }
+  if (!result.ok) {
+    console.warn(`[digest] Teams send failed for ${userId}: ${result.error}`);
+    return false;
+  }
+  console.log(`[digest] Teams delivered to ${userId}`);
+  return true;
+}
+
 async function sendEmail(email, subject, text, html, channel = null) {
   const unsubscribeUrl = unsubscribeUrlFor(channel, 'brief');
   const label = 'Unsubscribe from the daily brief';
@@ -2525,6 +2545,15 @@ async function main() {
         ok = await sendSlack(rule.userId, ch.webhookEnvelope, slackText);
       } else if (ch.channelType === 'discord' && ch.webhookEnvelope) {
         ok = await sendDiscord(rule.userId, ch.webhookEnvelope, discordText);
+      } else if (ch.channelType === 'teams' && ch.webhookEnvelope) {
+        // Same stories, lead and brief link as the other channels, as an
+        // Adaptive Card (#9215).
+        ok = await sendTeams(rule.userId, ch.webhookEnvelope, buildTeamsDigestPayload({
+          title: storyListPlain.split('\n')[0],
+          summary: briefLead,
+          stories: formatterStories,
+          briefUrl: magazineUrl,
+        }));
       } else if (ch.channelType === 'email' && ch.email) {
         ok = await sendEmail(ch.email, subject, text, html, ch);
       } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
