@@ -5,6 +5,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import {
   DIGEST_EMAIL_MAX_HTML_BYTES,
   GMAIL_CLIP_BYTES,
@@ -63,9 +64,12 @@ describe('digest email size cap', () => {
 
   it('is byte-identical to the uncapped render on a typical day', () => {
     const stories = pool(6, 25, 20);
-    const result = renderDigestEmailHtml({ stories, nowMs: NOW, synthesis: SYNTHESIS, magazineUrl: MAGAZINE_URL });
-    const legacy = injectBriefCta(injectEmailSummary(formatDigestHtml(stories, NOW), SYNTHESIS), MAGAZINE_URL);
+    const nowMs = new Date(2026, 9, 17, 12).getTime();
+    const result = renderDigestEmailHtml({ stories, nowMs, synthesis: SYNTHESIS, magazineUrl: MAGAZINE_URL });
+    const legacy = injectBriefCta(injectEmailSummary(formatDigestHtml(stories, nowMs), SYNTHESIS), MAGAZINE_URL);
     assert.equal(result.truncated, false);
+    // Captured from the pre-extraction renderer at f66b775d530a32cfc50f587db87ca7f64a77bdc2.
+    assert.equal(createHash('sha256').update(result.html).digest('hex'), '687194f282a1a8f5c01d7d08a8baf6e02749475f722ba496d6f4ad5176b94bcd');
     assert.equal(result.html, legacy);
     assert.equal(result.bytes, bytes(legacy));
     assert.equal(result.shownStories, 6 + 15 + 10);
