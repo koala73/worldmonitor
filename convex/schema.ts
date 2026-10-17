@@ -1823,6 +1823,22 @@ export default defineSchema({
     source: v.optional(v.string()),
   }).index("by_normalized_email", ["normalizedEmail"]),
 
+  // Soft-bounce strike log feeding emailSuppressions. One row per address per
+  // Resend message that came back as a Transient or Undetermined bounce.
+  // Rows older than the window are pruned on the next write for that address,
+  // a successful delivery clears them, and reaching the threshold converts
+  // them into one emailSuppressions "bounce" row. See
+  // SOFT_BOUNCE_SUPPRESS_THRESHOLD in convex/emailSuppressions.ts.
+  emailSoftBounces: defineTable({
+    normalizedEmail: v.string(),
+    // Resend email_id. Dedupes webhook retries and repeat events for the
+    // same message so one message is at most one strike.
+    emailMessageId: v.string(),
+    bounceType: v.string(),
+    bounceSubType: v.optional(v.string()),
+    occurredAt: v.number(),
+  }).index("by_normalized_email", ["normalizedEmail", "occurredAt"]),
+
   // Per-event log of Resend webhook deliveries tagged with a broadcast_id.
   // Used as forensic detail to drive engineer-level inspection alongside
   // Resend's dashboard. Idempotent on `webhookEventId` — Resend retries

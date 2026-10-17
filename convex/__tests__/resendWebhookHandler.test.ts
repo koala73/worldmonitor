@@ -230,3 +230,134 @@ describe("Resend webhook signature verification (#4678)", () => {
     expect(rows).toEqual([]);
   });
 });
+
+describe("Resend webhook bounce classification", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.RESEND_WEBHOOK_SECRET;
+  });
+
+  async function post(
+    t: ReturnType<typeof convexTest>,
+    event: Record<string, unknown>,
+    messageId: string,
+  ) {
+    const payload = JSON.stringify(event);
+    const signature = await signPayload(payload, { messageId });
+    return await t.fetch("/resend-webhook", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "svix-id": messageId,
+        "svix-timestamp": String(TEST_NOW_SECONDS),
+        "svix-signature": `v1,${signature}`,
+      },
+      body: payload,
+    });
+  }
+
+  // Payload shape from https://resend.com/docs/webhooks/emails/bounced
+  function bounced(emailId: string, type: string, subType: string) {
+    return {
+      type: "email.bounced",
+      created_at: "2023-11-14T22:13:20.000Z",
+      data: {
+        email_id: emailId,
+        to: ["Soft.Bounce@Example.com"],
+        bounce: { type, subType, message: "smtp; 452 4.2.2 mailbox full" },
+      },
+    };
+  }
+
+  function setup() {
+    vi.spyOn(Date, "now").mockReturnValue(TEST_NOW_MS);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.env.RESEND_WEBHOOK_SECRET = RESEND_WEBHOOK_SECRET;
+    return convexTest(schema, modules);
+  }
+
+  test("a Permanent bounce suppresses at once", async () => {
+    const t = setup();
+    const res = await post(t, bounced("e_hard", "Permanent", "General"), "msg_hard");
+    expect(res.status).toBe(200);
+    const rows = await t.run(async (ctx) => await ctx.db.query("emailSuppressions").collect());
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      normalizedEmail: "soft.bounce@example.com",
+      reason: "bounce",
+      source: "resend-webhook:e_hard",
+    });
+  });
+
+  test("a bounce without a bounce object keeps the permanent behaviour", async () => {
+    const t = setup();
+    const event = bounced("e_legacy", "Permanent", "General");
+    delete (event.data as { bounce?: unknown }).bounce;
+    await post(t, event, "msg_legacy");
+    const rows = await t.run(async (ctx) => await ctx.db.query("emailSuppressions").collect());
+    expect(rows).toHaveLength(1);
+  });
+
+  test("Transient bounces suppress only on the third distinct message", async () => {
+    const t = setup();
+    await post(t, bounced("e1", "Transient", "MailboxFull"), "msg_s1");
+    await post(t, bounced("e1", "Transient", "MailboxFull"), "msg_s1_retry");
+    await post(t, bounced("e2", "Undetermined", "Undetermined"), "msg_s2");
+    let rows = await t.run(async (ctx) => await ctx.db.query("emailSuppressions").collect());
+    expect(rows).toEqual([]);
+
+    const res = await post(t, bounced("e3", "Transient", "General"), "msg_s3");
+    expect(res.status).toBe(200);
+    rows = await t.run(async (ctx) => await ctx.db.query("emailSuppressions").collect());
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.reason).toBe("bounce");
+    expect(rows[0]!.source).toMatch(/^soft-bounce:3-in-30d:resend-webhook:e3$/);
+  });
+
+  test("content-caused soft bounces and delivery delays are not strikes", async () => {
+    const t = setup();
+    await post(t, bounced("e1", "Transient", "MessageTooLarge"), "msg_c1");
+    await post(t, bounced("e2", "Transient", "ContentRejected"), "msg_c2");
+    for (const [i, id] of ["e3", "e4", "e5"].entries()) {
+      // Payload shape from https://resend.com/docs/webhooks/emails/delivery-delayed
+      await post(t, {
+        type: "email.delivery_delayed",
+        created_at: "2023-11-14T22:13:20.000Z",
+        data: { email_id: id, to: ["soft.bounce@example.com"] },
+      }, `msg_d${i}`);
+    }
+    const strikes = await t.run(async (ctx) => await ctx.db.query("emailSoftBounces").collect());
+    const rows = await t.run(async (ctx) => await ctx.db.query("emailSuppressions").collect());
+    expect(strikes).toEqual([]);
+    expect(rows).toEqual([]);
+  });
+
+  test("email.delivered clears earlier strikes", async () => {
+    const t = setup();
+    await post(t, bounced("e1", "Transient", "MailboxFull"), "msg_s1");
+    await post(t, bounced("e2", "Transient", "MailboxFull"), "msg_s2");
+    const res = await post(t, {
+      type: "email.delivered",
+      created_at: "2023-11-14T22:13:20.000Z",
+      data: { email_id: "e_ok", to: ["SOFT.BOUNCE@example.com"] },
+    }, "msg_ok");
+    expect(res.status).toBe(200);
+    await post(t, bounced("e3", "Transient", "MailboxFull"), "msg_s3");
+    const strikes = await t.run(async (ctx) => await ctx.db.query("emailSoftBounces").collect());
+    const rows = await t.run(async (ctx) => await ctx.db.query("emailSuppressions").collect());
+    expect(strikes).toHaveLength(1);
+    expect(rows).toEqual([]);
+  });
+
+  test("a broadcast-tagged delivery still records the broadcast event", async () => {
+    const t = setup();
+    const res = await post(t, {
+      type: "email.delivered",
+      created_at: "2023-11-14T22:13:20.000Z",
+      data: { email_id: "e_b", broadcast_id: "b_1", to: ["x@example.com"] },
+    }, "msg_bdel");
+    expect(res.status).toBe(200);
+    const events = await t.run(async (ctx) => await ctx.db.query("broadcastEvents").collect());
+    expect(events).toHaveLength(1);
+  });
+});
