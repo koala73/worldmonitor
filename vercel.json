@@ -88,6 +88,7 @@
     { "source": "/use-cases/:slug([a-z0-9-]+)", "destination": "/use-cases/:slug/", "permanent": true },
     { "source": "/accuracy", "destination": "/accuracy/", "permanent": true },
     { "source": "/trust", "destination": "/trust/", "permanent": true },
+    { "source": "/agent", "destination": "/agent/", "permanent": true },
     { "source": "/trust/review", "destination": "/trust/review/", "permanent": false },
     { "source": "/compare/:slug([a-z0-9-]+)", "destination": "/compare/:slug/", "permanent": true },
     { "source": "/compare", "destination": "/compare/", "permanent": true },

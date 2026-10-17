@@ -989,6 +989,14 @@ export default defineSchema({
     // and it cannot be reconstructed afterwards. The bump in #6983
     // (2026-07-27 → 2026-08-20) is the first one that would have done it.
     termsFirstAcceptedAt: v.optional(v.number()),
+    // Sign-up source. Written once, on insert, from the browser's first-touch
+    // inbound agent link (`?ref=agent-claude`). `signupRef` is the normalized
+    // ref; `signupSource` is its bucket from shared/agent-client-source.js
+    // (claude, chatgpt, cursor, gemini, grok-bot, other). CLIENT-REPORTED and
+    // for counting only. Absent means no agent link was seen, not "organic".
+    // OPTIONAL and not backfilled.
+    signupRef: v.optional(v.string()),
+    signupSource: v.optional(v.string()),
   })
     .index("by_userId", ["userId"])
     .index("by_normalizedEmail", ["normalizedEmail"])
@@ -1719,6 +1727,11 @@ export default defineSchema({
     revokedAt: v.optional(v.number()),
     scopes: v.optional(v.array(v.string())),
     companyMonitoringAccountId: v.optional(v.string()),
+    // Where the key came from: the creating browser's first-touch inbound
+    // agent link (`sourceRef`, e.g. `agent-claude`) and its bucket (`source`).
+    // Client-reported, for counting only. OPTIONAL and not backfilled.
+    sourceRef: v.optional(v.string()),
+    source: v.optional(v.string()),
   })
     .index("by_userId", ["userId"])
     .index("by_userId_revokedAt", ["userId", "revokedAt"])
@@ -1763,6 +1776,10 @@ export default defineSchema({
     userId: v.string(),
     clientId: v.optional(v.string()),
     name: v.optional(v.string()),
+    // AI client bucket of the OAuth client this grant was issued to, derived
+    // from its registered client_name (shared/agent-client-source.js). Set on
+    // insert. OPTIONAL and not backfilled.
+    clientSource: v.optional(v.string()),
     createdAt: v.number(),
     lastUsedAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()),

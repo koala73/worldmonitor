@@ -18,6 +18,7 @@ World Monitor is a real-time global intelligence dashboard: curated news feeds, 
 - **REST API:** base `https://api.worldmonitor.app` — OpenAPI spec: https://www.worldmonitor.app/openapi.yaml (JSON: /openapi.json) · API catalog: https://worldmonitor.app/.well-known/api-catalog
 - **NLWeb:** `POST https://www.worldmonitor.app/ask` (supports SSE) for natural-language questions; machine-readable dashboard view at `https://www.worldmonitor.app/?mode=agent`
 - **Agent Skills:** discovery index at https://worldmonitor.app/.well-known/agent-skills/index.json · install via `npx skills add koala73/worldmonitor` (https://skills.sh/koala73/worldmonitor)
+- **Agent setup page:** https://www.worldmonitor.app/agent/ — per-client MCP setup for Claude, ChatGPT, Cursor, Gemini CLI, Grok Bot and generic MCP clients, plus skill install commands
 - **Agent Plugin metadata:** https://www.worldmonitor.app/plugin.json — public metadata for the Agent Plugins 1.0.0 repository package. Install the package from https://github.com/koala73/worldmonitor (root `plugin.json`, `mcp.json`, and `skills/*/SKILL.md` live in the repository, not as sibling HTTP files)
 - **CLI:** `npx worldmonitor tools` lists every tool (public, no key) — https://www.npmjs.com/package/worldmonitor
 - **SDKs:** Python `pip install worldmonitor-sdk` · Ruby `gem install worldmonitor` · Go `go get github.com/koala73/worldmonitor/sdk/go` · JavaScript npm `worldmonitor` — guide: https://www.worldmonitor.app/docs/sdks

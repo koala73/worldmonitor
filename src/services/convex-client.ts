@@ -11,6 +11,8 @@
 
 import type { ConvexClient } from 'convex/browser';
 import { getClerkToken, clearClerkTokenCache, getCurrentClerkUser } from './clerk';
+import { loadAgentRef } from '../../shared/agent-client-source';
+import { safeStorageAdapter } from '@/utils/safe-storage';
 
 // Use typeof to get the exact generated API type without importing statically
 type ConvexApi = typeof import('../../convex/_generated/api').api;
@@ -256,11 +258,17 @@ async function callEnsureRecord(c: ConvexClient): Promise<void> {
     const api = await getConvexApi();
     if (!api) return;
 
+    // First-touch agent link (`?ref=agent-claude`), if one is stored. The
+    // server keeps it only when it creates the row, so this is the sign-up
+    // source and a later visit never rewrites it.
+    const signupRef = loadAgentRef(safeStorageAdapter) ?? undefined;
+
     const result = await c.mutation(api.users.ensureRecord, {
       localeTag,
       localePrimary,
       timezone,
       country,
+      ...(signupRef ? { signupRef } : {}),
     });
 
     if (result?.ok === true) {

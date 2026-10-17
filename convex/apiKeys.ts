@@ -2,6 +2,7 @@ import { assertAccountWritable } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { requireUserId, resolveUserId } from "./lib/auth";
+import { agentSourceFromRef, normalizeAgentRef } from "../shared/agent-client-source";
 import { activeAccountForOwner } from "./companyMonitoring/_shared";
 import { ensureActiveAccount } from "./companyMonitoring/accounts";
 import {
@@ -40,12 +41,26 @@ function normalizeCompanyMonitoringScopes(scopes: string[] | undefined) {
  * Requires an active entitlement with apiAccess=true (API_STARTER+ plans).
  * Pro plans (tier 1) have apiAccess=false and cannot create keys.
  */
+/** Source columns for a new key row; an unusable ref yields none. */
+export function apiKeySourceFields(rawRef: string | undefined): {
+  sourceRef?: string;
+  source?: string;
+} {
+  const sourceRef = normalizeAgentRef(rawRef);
+  if (!sourceRef) return {};
+  const source = agentSourceFromRef(sourceRef) ?? undefined;
+  return { sourceRef, ...(source ? { source } : {}) };
+}
+
 export const createApiKey = mutation({
   args: {
     name: v.string(),
     keyPrefix: v.string(),
     keyHash: v.string(),
     scopes: v.optional(v.array(v.string())),
+    // First-touch agent link (`agent-claude`) stored by the browser. Recorded
+    // on the row as where the key came from; an unusable value is dropped.
+    sourceRef: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -128,6 +143,7 @@ export const createApiKey = mutation({
       scopes,
       companyMonitoringAccountId: companyMonitoringAccount?.logicalAccountId,
       createdAt: Date.now(),
+      ...apiKeySourceFields(args.sourceRef),
     });
 
     return {

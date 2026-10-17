@@ -2,7 +2,7 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-> Version: 2.11.0 · Last updated: 2026-10-16
+> Version: 2.11.0 · Last updated: 2026-10-17
 
 World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. Used by 2M+ people live in 190+ countries, with structural resilience ranked for 170 of 196 countries, with press references in the [product identity document](https://www.worldmonitor.app/world-monitor.md). It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
 
@@ -35,7 +35,7 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 - [REST API guide](https://www.worldmonitor.app/openapi.md): API key required. Send the `X-WorldMonitor-Key` header. The contract is the [OpenAPI specification](https://www.worldmonitor.app/openapi.yaml), which is 3,089,728 bytes. Use the [sandbox index](https://www.worldmonitor.app/sandbox/index.json) for key-free examples. <!-- // pragma: allowlist secret -->
 - [worldmonitor CLI](https://www.worldmonitor.app/docs/cli): `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the command. `worldmonitor call get_sources` needs no key; pass `--api-key` for every other data tool.
 - [SDK guide](https://www.worldmonitor.app/docs/sdks): official zero-dependency clients for Python ([PyPI](https://pypi.org/project/worldmonitor-sdk/)), Ruby ([RubyGems](https://rubygems.org/gems/worldmonitor)), Go ([pkg.go.dev](https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go)), and JavaScript via the npm package.
-- [Agent Skills discovery manifest](https://worldmonitor.app/.well-known/agent-skills/index.json): install with `npx skills add koala73/worldmonitor`; see the [skills.sh listing](https://skills.sh/koala73/worldmonitor).
+- [Agent Skills discovery manifest](https://worldmonitor.app/.well-known/agent-skills/index.json): install with `npx skills add koala73/worldmonitor`; see the [skills.sh listing](https://skills.sh/koala73/worldmonitor); the [agent setup page](https://www.worldmonitor.app/agent/) shows single-skill and global installs.
 - [Agent Plugin metadata](https://www.worldmonitor.app/plugin.json): public metadata for the Agent Plugins 1.0.0 repository package. Install the package from the [World Monitor repository](https://github.com/koala73/worldmonitor).
 - [Keys, plans, and limits](https://www.worldmonitor.app/pricing.md): also see the public [product catalog](https://www.worldmonitor.app/api/product-catalog), [authentication matrix](https://www.worldmonitor.app/docs/usage-auth), [rate limits](https://www.worldmonitor.app/docs/usage-rate-limits.md), and [key signup](https://www.worldmonitor.app/pro).
 - [Accounts and signup guide](https://www.worldmonitor.app/docs/accounts.md): the free dashboard needs no account; Pro and API accounts are created through the [browser signup](https://www.worldmonitor.app/pro).
@@ -175,6 +175,7 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 
 ## AI Agent Files
 
+- [Agent setup](https://www.worldmonitor.app/agent/): Connect Claude, ChatGPT, Cursor, Gemini CLI, Grok Bot or any MCP client to the MCP server, and install the skills with one command
 - [agents.md](https://www.worldmonitor.app/agents.md): Agent operations guide — machine surfaces, auth, crawl policy, rate limits, and discovery endpoints
 - [llms.txt](https://www.worldmonitor.app/llms.txt): Short LLM-readable briefing
 - [llms-full.txt](https://www.worldmonitor.app/llms-full.txt): Full LLM-readable feature and data-source reference

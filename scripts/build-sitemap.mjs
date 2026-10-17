@@ -92,6 +92,9 @@ export const STATIC_ROUTE_MANIFEST = Object.freeze([
     'api/mcp',
     'public/mcp-server.md',
   ]),
+  route(`${SITE_ORIGIN}/agent/`, 'agent', [
+    'public/agent/index.html',
+  ]),
   route('https://tech.worldmonitor.app/dashboard', 'dashboard-variant', [
     ...DASHBOARD_MATERIAL_SOURCES,
     'src/config/variants/tech.ts',

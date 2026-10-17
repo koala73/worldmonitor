@@ -4,6 +4,7 @@ import { internalMutation, internalQuery, mutation, query } from "./_generated/s
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import { requireUserId, resolveUserId } from "./lib/auth";
 import { mergeEntitlementFeatures } from "./lib/entitlements";
+import { classifyAgentClient } from "../shared/agent-client-source";
 
 /**
  * Pro MCP token (non-key) identity rows.
@@ -38,6 +39,17 @@ const MAX_TOKENS_PER_USER = 5;
  * 5 active rows we revoke the oldest (by createdAt) before inserting the
  * new one — never delete (preserves audit trail).
  */
+/**
+ * AI client bucket for a grant. The edge (api/oauth/authorize-pro.ts) names the
+ * row `Connected via <client_name>` from the client's dynamic registration, so
+ * the bucket is derived from that name rather than a second edge field.
+ */
+export function mcpTokenClientSource(name: string | undefined): string | null {
+  if (typeof name !== "string") return null;
+  const clientName = name.replace(/^Connected via\s+/i, "");
+  return classifyAgentClient(clientName);
+}
+
 export const issueProMcpToken = internalMutation({
   args: {
     userId: v.string(),
@@ -140,10 +152,12 @@ export const issueProMcpToken = internalMutation({
       if (active.length < MAX_TOKENS_PER_USER + 1) break;
     }
 
+    const clientSource = mcpTokenClientSource(args.name);
     const tokenId = await ctx.db.insert("mcpProTokens", {
       userId: args.userId,
       clientId: args.clientId,
       name: args.name,
+      ...(clientSource ? { clientSource } : {}),
       createdAt: Date.now(),
     });
 

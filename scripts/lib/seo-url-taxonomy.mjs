@@ -152,6 +152,7 @@ const SEGMENT_FAMILIES = Object.freeze({
   pro: 'pricing',
   pricing: 'pricing',
   mcp: 'developer_mcp',
+  agent: 'developer_mcp',
   api: 'developer_mcp',
   developers: 'developer_mcp',
   sdks: 'developer_mcp',
