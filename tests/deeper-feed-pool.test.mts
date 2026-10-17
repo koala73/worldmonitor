@@ -66,7 +66,20 @@ describe('per-feed claim pool depth', () => {
     assert.ok(parsed);
     assert.equal(parsed.countryItems?.length, 0, 'every gated pool link is dropped');
     const drops = warn.mock.calls.map((call) => String(call.arguments[0])).filter((line) => line.includes('publisher-link-gate drop'));
-    assert.deepEqual(drops, ['[digest] publisher-link-gate drop feed="NPR News" variant=full host="evil.example" count=40']);
+    assert.deepEqual(drops, ['[digest] publisher-link-gate drop feed="NPR News" variant=full hosts="evil.example:40" count=40']);
+  });
+
+  it('counts gated pool links per host when a feed drops links to several hosts', (t) => {
+    const npr = { url: 'https://feeds.npr.org/1001/rss.xml', name: 'NPR News', lang: 'en' };
+    const hosts = ['b.example', 'a.example', 'a.example', 'c.example', 'a.example', 'b.example'];
+    const body = Array.from({ length: 5 }, (_, i) => `<item><title>NPR headline ${i}</title><link>https://feeds.npr.org/x-${i}</link>`
+      + `<pubDate>${new Date(Date.now() - i * 60_000).toUTCString()}</pubDate></item>`).join('')
+      + hosts.map((host, i) => `<item><title>Gated headline ${i}</title><link>https://${host}/p-${i}</link>`
+        + `<pubDate>${new Date(Date.now() - (i + 5) * 60_000).toUTCString()}</pubDate></item>`).join('');
+    const warn = t.mock.method(console, 'warn', () => {});
+    parseRssXml(`<?xml version="1.0"?><rss><channel>${body}</channel></rss>`, npr, 'full');
+    const drops = warn.mock.calls.map((call) => String(call.arguments[0])).filter((line) => line.includes('publisher-link-gate drop'));
+    assert.deepEqual(drops, ['[digest] publisher-link-gate drop feed="NPR News" variant=full hosts="a.example:3,b.example:2,c.example:1" count=6']);
   });
 
   it('keeps no pool past the dashboard cap outside the full variant', () => {

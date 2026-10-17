@@ -1101,8 +1101,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
 
   const parseLimit = retainCountryItems ? COUNTRY_ITEMS_PER_FEED : ITEMS_PER_FEED;
   // One log line per feed for gated pool links: a deep pool can drop dozens.
-  let poolLinkDrops = 0;
-  let poolLinkDropHost = '';
+  const poolLinkDrops = new Map<string, number>();
   for (const [index, match] of matches.slice(0, parseLimit).entries()) {
     const block = match[1]!;
     const forDigest = index < ITEMS_PER_FEED;
@@ -1179,8 +1178,8 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
           feed,
         )
       ) {
-        poolLinkDrops++;
-        poolLinkDropHost ||= linkHostnameForLog(link);
+        const host = linkHostnameForLog(link);
+        poolLinkDrops.set(host, (poolLinkDrops.get(host) ?? 0) + 1);
         continue;
       }
       if (title.length <= 1000 && link.length <= 2048 && originPublisher.length <= 200) {
@@ -1262,10 +1261,12 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     );
   }
 
-  if (poolLinkDrops > 0) {
+  if (poolLinkDrops.size > 0) {
+    const byHost = [...poolLinkDrops].sort(([a, x], [b, y]) => y - x || a.localeCompare(b));
     console.warn(
       `[digest] publisher-link-gate drop feed="${feed.name}" variant=${variant} ` +
-        `host="${poolLinkDropHost}" count=${poolLinkDrops}`,
+        `hosts="${byHost.map(([host, n]) => `${host}:${n}`).join(',')}" ` +
+        `count=${byHost.reduce((sum, [, n]) => sum + n, 0)}`,
     );
   }
 
