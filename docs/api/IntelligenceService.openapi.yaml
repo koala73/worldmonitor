@@ -19,15 +19,15 @@ paths:
                 - name: country_code
                   in: query
                   description: Uppercase ISO 3166-1 alpha-2 country code.
-                  required: false
+                  required: true
+                  "schema":
+                      "pattern": "^[A-Z]{2}$"
+                      "type": "string"
                   example: "US"
-                  schema:
-                    type: string
-                    pattern: '^[A-Z]{2}$'
                 - name: family
                   in: query
                   description: Fixed source family or eligible flight page; unspecified is rejected.
-                  required: false
+                  required: true
                   example: "COUNTRY_SIGNAL_FAMILY_OUTAGES"
                   schema:
                     type: string
@@ -44,17 +44,20 @@ paths:
                   in: query
                   description: Country-derived flight viewport index, 0 or 1. Other families require 0.
                   required: false
-                  example: 1
-                  schema:
-                    type: integer
-                    format: int32
+                  "schema":
+                      "format": "int32"
+                      "maximum": 1
+                      "minimum": 0
+                      "type": "integer"
+                  example: 0
                 - name: cursor
                   in: query
                   description: Prior eligible flight page cursor. Other families require an empty cursor.
                   required: false
-                  example: "next-page-token"
-                  schema:
-                    type: string
+                  "schema":
+                      "maxLength": 200
+                      "type": "string"
+                  example: ""
                 - name: jmespath
                   in: query
                   description: |-
@@ -71,31 +74,8 @@ paths:
                             example:
                                 "countryCode": "US"
                                 "family": "COUNTRY_SIGNAL_FAMILY_OUTAGES"
-                                "flightPage":
-                                    "clusters":
-                                        - "activityType": "MILITARY_ACTIVITY_TYPE_EXERCISE"
-                                          "dominantOperator": "MILITARY_OPERATOR_USAF"
-                                          "flightCount": 1
-                                          "flights":
-                                              - "aircraftModel": "example"
-                                                "aircraftType": "MILITARY_AIRCRAFT_TYPE_FIGHTER"
-                                                "altitude": 1.5
-                                                "callsign": "example"
-                                                "confidence": "MILITARY_CONFIDENCE_LOW"
-                                                "id": "example-id"
-                                          "id": "example-id"
-                                    "flights":
-                                        - "aircraftModel": "example"
-                                          "aircraftType": "MILITARY_AIRCRAFT_TYPE_FIGHTER"
-                                          "altitude": 1.5
-                                          "callsign": "example"
-                                          "confidence": "MILITARY_CONFIDENCE_LOW"
-                                          "id": "example-id"
-                                    "pagination":
-                                        "nextCursor": "next-page-token"
-                                        "totalCount": 1
-                                "outcomeJson": "example"
-                                "windowIndex": 1
+                                "outcomeJson": "{\"countryCode\":\"US\",\"family\":\"outages\",\"state\":\"unavailable\",\"observations\":[],\"snapshotAt\":null,\"retrievedAt\":\"2026-10-18T12:00:00.000Z\",\"computedAt\":null,\"observationWindow\":null,\"scope\":\"Country-qualified observations\",\"attribution\":\"Cloudflare Radar\",\"partial\":true,\"sampleBeforeCountryFilter\":false,\"reason\":\"Synthetic unavailable-source example.\",\"matchedRows\":null,\"sampledRows\":null,\"omittedRows\":null}"
+                                "windowIndex": 0
                             schema:
                                 $ref: '#/components/schemas/GetCountrySignalObservationsResponse'
                 "400":
@@ -7069,12 +7049,17 @@ components:
                     description: Fixed country observation profiles; callers cannot select sources or viewports.
                 windowIndex:
                     type: integer
+                    maximum: 1
+                    minimum: 0
                     format: int32
                     description: Country-derived flight viewport index, 0 or 1. Other families require 0.
                 cursor:
                     type: string
                     maxLength: 200
                     description: Prior eligible flight page cursor. Other families require an empty cursor.
+            required:
+                - countryCode
+                - family
         GetCountrySignalObservationsResponse:
             type: object
             properties:

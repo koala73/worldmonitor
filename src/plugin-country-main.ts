@@ -612,7 +612,7 @@ async function mountPlugin(): Promise<void> {
     const supplied = panelAdmissionSchema.safeParse(receipt);
     if (receipt !== undefined && (!supplied.success || supplied.data.countryCode !== code || Date.parse(supplied.data.expiresAt) <= Date.now())) throw new Error('This country request is invalid or expired. Open a new country brief.');
     if (panel.isVisible() && panel.getCode() === code && !refresh && Date.now() - hydratedAt < 300_000) {
-      if (supplied.success && supplied.data.countryCode === code && Date.parse(supplied.data.expiresAt) > Date.now()) { admission = supplied.data; admissions.set(code, admission); showUsage(); }
+      if (supplied.success && supplied.data.countryCode === code && Date.parse(supplied.data.expiresAt) > Date.now()) { admission = supplied.data; admissions.set(code, admission); source.selectAdmission(admission.token); showUsage(); }
       panel.selectTopic(view.topic);
       scheduleContext();
       return snapshot();
@@ -651,6 +651,7 @@ async function mountPlugin(): Promise<void> {
     if (admission) {
       admissions.set(code, admission);
       if (admissions.size > 30) admissions.delete(admissions.keys().next().value!);
+      source.selectAdmission(admission.token);
     }
     showUsage();
     if (refresh) { source.clearLoadedData(); coverages.delete(code); }

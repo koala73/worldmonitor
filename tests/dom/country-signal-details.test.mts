@@ -2,6 +2,9 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppContext } from '@/app/app-context';
 import type { CountrySignalCluster, GeoSignal } from '@/services/signal-aggregator';
 import { projectCountrySignalDetails } from '../../shared/country-signal-details';
+import { projectQualifiedCountrySignals, unavailableCountrySignal } from '../../shared/country-signal-observations';
+import { qualifiedFixtureOutcomes } from '../fixtures/qualified-country-signals';
+import * as militaryActivity from '@/services/country-military-activity';
 
 const snapshot = vi.hoisted(() => ({ read: vi.fn() }));
 vi.mock('@/app/lazy-services', () => ({ getSignalAggregator: async () => ({ getCountryClusters: snapshot.read, getRegionalConvergence: () => [] }) }));
@@ -89,6 +92,42 @@ describe('shared country signal details', () => {
     Reflect.set(manager, 'loadQualifiedCountrySignals', async () => { throw new Error('Controlled cluster outage'); });
     await expect(Reflect.get(manager, 'buildSignalDetails').call(manager, 'FR')).rejects.toThrow('Controlled cluster outage');
   });
+});
+
+it('retains same-country qualified observations after the website refresh resets military work', async () => {
+  const previous = projectQualifiedCountrySignals('IR', qualifiedFixtureOutcomes());
+  const page = { signal: new AbortController().signal, getCode: () => 'IR', getName: () => 'Iran', updateMilitaryActivity: vi.fn() };
+  const manager = new CountryIntelManager({ countryBriefPage: page, latestClusters: [], intelligenceCache: {} } as unknown as AppContext);
+  const qualified = qualifiedFixtureOutcomes().find(row => row.family === 'military')!;
+  const loader = vi.spyOn(militaryActivity, 'loadHostCountryMilitaryActivity').mockResolvedValue({ qualified } as Awaited<ReturnType<typeof militaryActivity.loadHostCountryMilitaryActivity>>);
+  Reflect.set(manager, 'qualifiedSignals', previous);
+  Reflect.set(manager, 'qualifiedMilitary', null);
+  Reflect.set(manager, 'qualifiedSource', {
+    settleMandatoryReads: async () => {},
+    countrySignals: async (_code: string, family: Parameters<typeof unavailableCountrySignal>[1]) => unavailableCountrySignal('IR', family, 'Controlled refresh failure'),
+  });
+  try {
+    const value = await Reflect.get(manager, 'loadQualifiedCountrySignals').call(manager, 'IR');
+    expect(value.families.find((row: { family: string }) => row.family === 'radiation')).toMatchObject({
+      state: 'observed', partial: true, snapshotAt: previous.families.find(row => row.family === 'radiation')!.snapshotAt,
+    });
+    expect(value.details).toEqual(previous.details);
+  } finally { loader.mockRestore(); }
+});
+
+it('replaces website military loading with unavailable when the qualified military load rejects', async () => {
+  const page = { signal: new AbortController().signal, getCode: () => 'IR', getName: () => 'Iran', updateMilitaryActivity: vi.fn() };
+  const manager = new CountryIntelManager({ countryBriefPage: page, latestClusters: [], intelligenceCache: {} } as unknown as AppContext);
+  const loader = vi.spyOn(militaryActivity, 'loadHostCountryMilitaryActivity').mockRejectedValue(new Error('Controlled infrastructure failure'));
+  Reflect.set(manager, 'qualifiedSource', {
+    settleMandatoryReads: async () => {},
+    countrySignals: async (_code: string, family: Parameters<typeof unavailableCountrySignal>[1]) => unavailableCountrySignal('IR', family, 'Controlled source failure'),
+  });
+  try {
+    await Reflect.get(manager, 'loadQualifiedCountrySignals').call(manager, 'IR');
+    expect(page.updateMilitaryActivity).toHaveBeenCalledWith(null);
+    expect(Reflect.get(manager, 'buildMilitarySummary').call(manager, 'IR', 'Iran').coverageNotes.join(' ')).not.toContain('loading');
+  } finally { loader.mockRestore(); }
 });
 
 function deferred<T>() {

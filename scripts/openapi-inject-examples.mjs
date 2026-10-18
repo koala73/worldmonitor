@@ -1069,6 +1069,17 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
   schema = resolveRef(schema, spec);
+  if (depth === 0 && context.operationId === 'GetCountrySignalObservations'
+    && context.exampleSurface === 'response') {
+    return {
+      countryCode: 'US', family: 'COUNTRY_SIGNAL_FAMILY_OUTAGES', windowIndex: 0,
+      outcomeJson: JSON.stringify({ countryCode: 'US', family: 'outages', state: 'unavailable', observations: [],
+        snapshotAt: null, retrievedAt: '2026-10-18T12:00:00.000Z', computedAt: null,
+        observationWindow: null, scope: 'Country-qualified observations', attribution: 'Cloudflare Radar',
+        partial: true, sampleBeforeCountryFilter: false, reason: 'Synthetic unavailable-source example.',
+        matchedRows: null, sampledRows: null, omittedRows: null }),
+    };
+  }
   if (depth === 0 && context.operationId === 'ListAircraftEmergencies'
     && String(context.name ?? '').endsWith('Response')) {
     return {
@@ -1373,6 +1384,19 @@ function injectDisplacementYearContract(spec) {
 
 function injectSpecExamples(spec) {
   let changed = injectDisplacementYearContract(spec);
+  const countrySignals = spec.paths?.['/api/intelligence/v1/get-country-signal-observations']?.get;
+  const countrySignalFields = spec.components?.schemas?.GetCountrySignalObservationsRequest?.properties;
+  for (const parameter of countrySignals?.parameters ?? []) {
+    const property = { country_code: 'countryCode', window_index: 'windowIndex', cursor: 'cursor' }[parameter.name];
+    if (property && countrySignalFields?.[property]) {
+      const schema = clone(countrySignalFields[property]);
+      delete schema.description;
+      delete schema.example;
+      delete schema.examples;
+      if (!eq(parameter.schema, schema)) changed = true;
+      parameter.schema = schema;
+    }
+  }
   const runId = spec.components?.schemas?.GetSimulationOutcomeRequest?.properties?.runId;
   const runIdParameter = spec.paths?.['/api/forecast/v1/get-simulation-outcome']?.get?.parameters
     ?.find((item) => item?.in === 'query' && item.name === 'runId');
@@ -1402,7 +1426,9 @@ function injectSpecExamples(spec) {
           // and clobbering it would fight that injector. That injector owns
           // header-param examples.
           if (param.in === 'header') continue;
-          const example = exampleForSchema(param.schema, spec, {
+          const example = context.operationId === 'GetCountrySignalObservations' && param.name === 'window_index' ? 0
+            : context.operationId === 'GetCountrySignalObservations' && param.name === 'cursor' ? ''
+            : exampleForSchema(param.schema, spec, {
             ...context,
             name: param.name,
             description: param.description,
@@ -1703,6 +1729,12 @@ function patchYamlExamples(raw, spec, label) {
   if (runIdParameter) {
     const loc = findOperation(lines, runIdPath, 'get', label);
     replaceParamSchema(lines, loc.start, loc.end, 'runId', runIdParameter.schema);
+  }
+  const countrySignalsPath = '/api/intelligence/v1/get-country-signal-observations';
+  for (const parameter of spec.paths?.[countrySignalsPath]?.get?.parameters ?? []) {
+    if (!['country_code', 'window_index', 'cursor'].includes(parameter.name)) continue;
+    const loc = findOperation(lines, countrySignalsPath, 'get', label);
+    replaceParamSchema(lines, loc.start, loc.end, parameter.name, parameter.schema);
   }
   for (const [path, ops] of Object.entries(spec.paths ?? {})) {
     for (const [method, op] of Object.entries(ops ?? {})) {

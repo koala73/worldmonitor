@@ -16,7 +16,9 @@ export function createHostCountryFetch(call: (name: string, args: object, signal
   const queue: Array<() => void> = [];
   const cache = new Map<string, CachedRead>();
   const pending = new Map<string, PendingRead>();
-  let dispatched = 2;
+  const admissionBudgets = new Map<string, { dispatched: number }>();
+  let readBudget = { dispatched: 2 };
+  let selectedAdmission: string | undefined;
   let mandatoryPending = 0;
   const fetcher: typeof fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
@@ -28,6 +30,7 @@ export function createHostCountryFetch(call: (name: string, args: object, signal
     const callerSignal = init?.signal ?? (input instanceof Request ? input.signal : new AbortController().signal);
     const signal = section === 'countrySignals' ? AbortSignal.any([callerSignal, AbortSignal.timeout(15_000)]) : callerSignal;
     signal.throwIfAborted();
+    const budget = readBudget;
     const key = JSON.stringify([section, Object.entries(args).sort(([a], [b]) => a.localeCompare(b))]);
     const stored = cache.get(key);
     if (stored && stored.expires > Date.now()) return new Response(stored.text, { headers: { 'Content-Type': 'application/json' } });
@@ -49,8 +52,8 @@ export function createHostCountryFetch(call: (name: string, args: object, signal
         try {
           requestSignal.throwIfAborted();
           const newFamily = section === 'countrySignals' && 'family' in args && args.family !== 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE';
-          if (newFamily && dispatched >= 64) throw new Error('Country read budget reserved for existing sections');
-          dispatched++;
+          if (newFamily && budget.dispatched >= 64) throw new Error('Country read budget reserved for existing sections');
+          budget.dispatched++;
           if (!newFamily) mandatoryPending++;
           let raw: unknown;
           try { raw = await call('get_country_brief_section', { section, arguments: args }, requestSignal); }
@@ -106,10 +109,20 @@ export function createHostCountryFetch(call: (name: string, args: object, signal
     }
   };
   const clear = () => {
-    dispatched = 2;
+    if (!selectedAdmission) readBudget = { dispatched: 2 };
     cache.clear(); cacheBytes = 0;
     for (const work of pending.values()) work.controller.abort();
     pending.clear();
+  };
+  const selectAdmission = (token: string) => {
+    selectedAdmission = token;
+    let budget = admissionBudgets.get(token);
+    if (!budget) {
+      budget = { dispatched: 2 };
+      admissionBudgets.set(token, budget);
+      if (admissionBudgets.size > 30) admissionBudgets.delete(admissionBudgets.keys().next().value!);
+    }
+    readBudget = budget;
   };
   const settleMandatoryReads = async (signal?: AbortSignal) => {
     for (let quiet = 0; quiet < 2;) {
@@ -119,5 +132,5 @@ export function createHostCountryFetch(call: (name: string, args: object, signal
     }
     signal?.throwIfAborted();
   };
-  return Object.assign(fetcher, { clear, settleMandatoryReads });
+  return Object.assign(fetcher, { clear, settleMandatoryReads, selectAdmission });
 }

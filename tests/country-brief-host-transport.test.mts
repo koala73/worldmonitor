@@ -7,6 +7,30 @@ import { ResilienceServiceClient } from '../src/generated/client/worldmonitor/re
 import { SupplyChainServiceClient } from '../src/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { countryRiskDirectViewSchema, normalizeCountryDirectRead } from '../shared/country-brief-host';
 
+it('keeps the local read budget with its admission across country switches and cache clearing', async () => {
+  let calls = 0;
+  const fetch = createHostCountryFetch(async (_name, args: any) => {
+    calls++;
+    return { section: args.section, state: 'unavailable', reason: 'Controlled unavailable source' };
+  });
+  const select = fetch.selectAdmission;
+  select('admitted-IR');
+  const read = (code: string) => fetch(`https://www.worldmonitor.app/api/intelligence/v1/get-country-signal-observations?country_code=${code}&family=COUNTRY_SIGNAL_FAMILY_OUTAGES`);
+  for (let count = 0; count < 62; count++) await assert.rejects(read('IR'), /Controlled unavailable/);
+  await assert.rejects(read('IR'), /budget/);
+  assert.equal(calls, 62);
+  select('admitted-CN');
+  await assert.rejects(read('CN'), /Controlled unavailable/);
+  assert.equal(calls, 63);
+  select('admitted-IR');
+  fetch.clear();
+  await assert.rejects(read('IR'), /budget/);
+  assert.equal(calls, 63);
+  select('refreshed-IR');
+  await assert.rejects(read('IR'), /Controlled unavailable/);
+  assert.equal(calls, 64);
+});
+
 it('includes queued country families in the one deadline and removes them before dispatch', async t => {
   const deadline = new AbortController();
   t.mock.method(AbortSignal, 'timeout', () => deadline.signal);

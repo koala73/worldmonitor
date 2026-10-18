@@ -1,5 +1,4 @@
-import { beforeAll, expect, it, vi } from 'vitest';
-import { writeFile } from 'node:fs/promises';
+import { afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { initTestI18n } from './helpers/i18n.mts';
 import { createHostCountryBriefSource } from '@/services/country-brief-source';
 import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
@@ -11,9 +10,9 @@ import { qualifiedFixtureOutcomes } from '../fixtures/qualified-country-signals'
 import { assembleRawSignals, failedRawSignal, RAW_SIGNAL_FAMILIES } from '../../shared/country-raw-signals';
 
 beforeAll(initTestI18n);
+afterEach(() => { vi.unstubAllGlobals(); });
 it.each(['IR', 'CN'])('measures %s panel and controller opening reads with ten sectors and eight flight pages', async code => {
   const calls: Array<{ section: string; arguments: Record<string, any> }> = [];
-  const fixtures: Array<{ section: string; arguments: Record<string, any>; value: Record<string, unknown> }> = [];
   vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('Network is forbidden in opening fixtures'); }));
   const source = await createHostCountryBriefSource(async (_name, args: any) => {
     calls.push(args);
@@ -45,32 +44,31 @@ it.each(['IR', 'CN'])('measures %s panel and controller opening reads with ten s
       case 'markets': value = { dataAvailable: true, markets: [] }; break;
       case 'bypass': value = { options: [] }; break;
     }
-    fixtures.push({ ...args, value });
     return { section: args.section, state: 'ready', value, retrievedAt: new Date().toISOString() };
   });
   const panel = new CountryDeepDivePanel(null, source);
   panel.show(code, code, null, countrySignalsFromMilitary(code));
   const controller = new CountryBriefController(source, panel);
-  controller.hydrate(code, code);
-  const military = loadHostCountryMilitaryActivity(source, code, code, panel.signal);
-  const risk = source.intelligence.getCountryRisk({ countryCode: code }, { signal: panel.signal });
-  const raw = source.signalsRaw(code, panel.signal);
-  const china = code === 'CN' ? source.intelligence.getChinaDecisionSignals({}, { signal: panel.signal }) : null;
-  const qualified = await loadQualifiedCountrySignals(source, code, panel.signal, military.then(async value => { await panel.settleHostedOpeningReads(); return value; }));
-  await china;
-  await risk;
-  await raw;
-  await source.settleMandatoryReads();
-  expect(calls.filter(call => call.section === 'exposure')).toHaveLength(10);
-  expect(calls.filter(call => call.section === 'dependency')).toHaveLength(10);
-  expect(calls.filter(call => call.section === 'countrySignals' && call.arguments.family === 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE')).toHaveLength(8);
-  expect(calls.filter(call => call.section === 'risk')).toHaveLength(1);
-  expect(calls.filter(call => call.section === 'cost')).toMatchObject([{ arguments: { closureDays: 30 } }]);
-  expect(calls.filter(call => call.section === 'chokepoints')).toHaveLength(1);
-  expect(calls.length + 2).toBeLessThanOrEqual(64);
-  expect(calls.filter(call => call.section === 'countrySignals' && call.arguments.family !== 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE')).toHaveLength(code === 'CN' ? 5 : 6);
-  expect(qualified.families.filter(family => family.reason?.startsWith('Deferred:'))).toHaveLength(1);
-  expect(qualified.details).not.toBeNull();
-  await writeFile(`/Users/elie/tmp/country-signals-opening-graph-${code}.json`, JSON.stringify({ scope: 'Actual panel, controller, generated source adapters and military loader; callback substitutes MCP dispatch. Two outer admission reads are reserved but not executed by this fixture.', totalWithOuterReads: calls.length + 2, families: qualified.families, calls, fixtures }, null, 2));
-  controller.dispose(); panel.hide(); vi.unstubAllGlobals();
+  try {
+    controller.hydrate(code, code);
+    const military = loadHostCountryMilitaryActivity(source, code, code, panel.signal);
+    const risk = source.intelligence.getCountryRisk({ countryCode: code }, { signal: panel.signal });
+    const raw = source.signalsRaw(code, panel.signal);
+    const china = code === 'CN' ? source.intelligence.getChinaDecisionSignals({}, { signal: panel.signal }) : null;
+    const qualified = await loadQualifiedCountrySignals(source, code, panel.signal, military.then(async value => { await panel.settleHostedOpeningReads(); return value; }));
+    await china;
+    await risk;
+    await raw;
+    await source.settleMandatoryReads();
+    expect(calls.filter(call => call.section === 'exposure')).toHaveLength(10);
+    expect(calls.filter(call => call.section === 'dependency')).toHaveLength(10);
+    expect(calls.filter(call => call.section === 'countrySignals' && call.arguments.family === 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE')).toHaveLength(8);
+    expect(calls.filter(call => call.section === 'risk')).toHaveLength(1);
+    expect(calls.filter(call => call.section === 'cost')).toMatchObject([{ arguments: { closureDays: 30 } }]);
+    expect(calls.filter(call => call.section === 'chokepoints')).toHaveLength(1);
+    expect(calls.length + 2).toBeLessThanOrEqual(64);
+    expect(calls.filter(call => call.section === 'countrySignals' && call.arguments.family !== 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE')).toHaveLength(code === 'CN' ? 5 : 6);
+    expect(qualified.families.filter(family => family.reason?.startsWith('Deferred:'))).toHaveLength(1);
+    expect(qualified.details).not.toBeNull();
+  } finally { controller.dispose(); panel.hide(); }
 });

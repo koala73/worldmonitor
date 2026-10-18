@@ -10,7 +10,7 @@ import { premiumFetch } from '@/services/premium-fetch';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { fetchMultiSectorCostShock, fetchMultiSectorExposure, fetchBypassOptions, fetchChokepointStatus, HS2_SHORT_LABELS, SEEDED_HS2_CODES } from '@/services/supply-chain';
 
-function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void; settleMandatoryReads?: (signal?: AbortSignal) => Promise<void> }, mode: 'website' | 'host') {
+function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void; settleMandatoryReads?: (signal?: AbortSignal) => Promise<void>; selectAdmission?: (token: string) => void }, mode: 'website' | 'host') {
   const base = mode === 'host' ? 'https://www.worldmonitor.app' : getRpcBaseUrl();
   const options = { fetch: fetcher };
   const intelligence = new IntelligenceServiceClient(base, mode === 'website' ? { fetch: fetchWebsiteCountrySignals } : options);
@@ -51,6 +51,7 @@ function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void; 
       return value;
     },
     clearLoadedData: () => { fetcher.clear?.(); },
+    selectAdmission: (token: string) => { fetcher.selectAdmission?.(token); },
     intelligence,
     market: new MarketServiceClient(base, options),
     economic: new EconomicServiceClient(base, options),

@@ -13,6 +13,7 @@ import { getTheaterPosture } from '../worldmonitor/military/v1/get-theater-postu
 import { drainResponseHeaders } from '../_shared/response-headers';
 import { countrySignalOutcomeSchema } from '../../shared/country-signal-observations';
 import type { GetCountrySignalObservationsRequest } from '../../src/generated/server/worldmonitor/intelligence/v1/service_server';
+import { createIntelligenceServiceRoutes, ValidationError, type IntelligenceServiceHandler } from '../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 const context = (signal?: AbortSignal) => ({ request: new Request('https://example.com/api/intelligence/v1/get-country-signal-observations', { signal }), headers: {}, pathParams: {} });
 const req = (family: GetCountrySignalObservationsRequest['family']): GetCountrySignalObservationsRequest => ({ countryCode: 'FR', family, windowIndex: 0, cursor: '' });
@@ -28,8 +29,24 @@ it.each([false, true])('preserves qualified live empty posture with stale positi
 });
 describe('bounded country family handler', () => {
   beforeEach(() => { cache.rows.clear(); cache.reads.mockClear(); });
+  it('returns HTTP400 field violations for invalid country profiles before source IO', async () => {
+    const route = createIntelligenceServiceRoutes({ getCountrySignalObservations } as IntelligenceServiceHandler)
+      .find(value => value.path === '/api/intelligence/v1/get-country-signal-observations')!;
+    for (const query of ['country_code=AA&family=COUNTRY_SIGNAL_FAMILY_OUTAGES', 'country_code=IR&family=COUNTRY_SIGNAL_FAMILY_UNSPECIFIED', 'country_code=IR&family=COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE&window_index=2']) {
+      const response = await route.handler(new Request(`https://example.com${route.path}?${query}`));
+      expect(response.status).toBe(400);
+      expect((await response.json()).violations[0]).toMatchObject({ field: expect.any(String), description: expect.any(String) });
+    }
+    expect(cache.reads).not.toHaveBeenCalled();
+  });
   it('rejects country/variant/window before source IO', async () => {
-    for (const request of [{ ...req('COUNTRY_SIGNAL_FAMILY_OUTAGES'), countryCode: 'XX' }, req('COUNTRY_SIGNAL_FAMILY_UNSPECIFIED'), { ...req('COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE'), windowIndex: 2 }, { ...req('COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE'), cursor: 'w1:100' }]) await expect(getCountrySignalObservations(context(), request)).rejects.toThrow();
+    for (const request of [
+      ...['', 'XX', 'AA', 'EU', 'IRN', 'fr'].map(countryCode => ({ ...req('COUNTRY_SIGNAL_FAMILY_OUTAGES'), countryCode })),
+      req('COUNTRY_SIGNAL_FAMILY_UNSPECIFIED'),
+      { ...req('COUNTRY_SIGNAL_FAMILY_OUTAGES'), cursor: 'unexpected' },
+      { ...req('COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE'), windowIndex: 2 },
+      { ...req('COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE'), cursor: 'w1:100' },
+    ]) await expect(getCountrySignalObservations(context(), request)).rejects.toBeInstanceOf(ValidationError);
     expect(cache.reads).not.toHaveBeenCalled();
   });
   it('does not misread the sanctions zero-clock fallback as observed empty', async () => {
@@ -100,7 +117,7 @@ describe('bounded country family handler', () => {
     expect(second.flightPage?.flights).toHaveLength(20);
     expect(new Set([...first.flightPage!.flights, ...second.flightPage!.flights].map(row => row.id)).size).toBe(120);
     const count = cache.reads.mock.calls.length;
-    await expect(getCountrySignalObservations(context(), { ...req('COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE'), cursor: 'US:w0:100' })).rejects.toThrow('window');
+    await expect(getCountrySignalObservations(context(), { ...req('COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE'), cursor: 'US:w0:100' })).rejects.toMatchObject({ name: 'ValidationError', violations: [{ field: 'cursor', description: 'Invalid country flight window or cursor.' }] });
     expect(cache.reads).toHaveBeenCalledTimes(count);
   });
   it('suppresses canceled source work without provider calls', async () => {

@@ -1,6 +1,7 @@
 import type { IntelligenceServiceHandler } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 import { COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_FAMILIES, projectCountrySignalFamily, unavailableCountrySignal } from '../../../../shared/country-signal-observations';
-import { resolveCountryCode } from '../../../../shared/country-code-resolve';
+import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
 import { countryActivityQueries } from '../../../../shared/country-activity-query';
 import { listInternetOutages } from '../../infrastructure/v1/list-internet-outages';
 import { listUnrestEvents } from '../../unrest/v1/list-unrest-events';
@@ -22,14 +23,14 @@ export const getCountrySignalObservations: IntelligenceServiceHandler['getCountr
     work.then(resolve, reject).finally(() => deadline.removeEventListener('abort', abort));
   });
   const family = req.family.replace('COUNTRY_SIGNAL_FAMILY_', '').toLowerCase();
-  if (resolveCountryCode(req.countryCode) !== req.countryCode || ['EU', 'UN', 'XX', 'ZZ'].includes(req.countryCode)) throw new Error('Invalid country');
-  if (family !== 'flight_page' && !COUNTRY_SIGNAL_FAMILIES.includes(family as typeof COUNTRY_SIGNAL_FAMILIES[number])) throw new Error('Invalid country signal family');
-  if (family !== 'flight_page' && (req.windowIndex !== 0 || req.cursor)) throw new Error('Unexpected pagination');
+  if (!isAssignedCountryCode(req.countryCode)) throw new ValidationError([{ field: 'country_code', description: 'Invalid country: use an assigned uppercase ISO 3166-1 alpha-2 code.' }]);
+  if (family !== 'flight_page' && !COUNTRY_SIGNAL_FAMILIES.includes(family as typeof COUNTRY_SIGNAL_FAMILIES[number])) throw new ValidationError([{ field: 'family', description: 'Invalid country signal family.' }]);
+  if (family !== 'flight_page' && (req.windowIndex !== 0 || req.cursor)) throw new ValidationError([{ field: 'window_index', description: 'Unexpected pagination: non-flight families require window_index=0 and an empty cursor.' }]);
   deadline.throwIfAborted();
   if (family === 'flight_page') {
     const box = Number.isInteger(req.windowIndex) && req.windowIndex >= 0 && req.windowIndex <= 1 ? countryActivityQueries(req.countryCode)[req.windowIndex] : undefined;
     const cursorPrefix = `${req.countryCode}:w${req.windowIndex}:`;
-    if (!box || req.cursor.length > 200 || req.cursor && (!req.cursor.startsWith(cursorPrefix) || !/^[1-9]\d{0,5}$/.test(req.cursor.slice(cursorPrefix.length)))) throw new Error('Invalid country flight window');
+    if (!box || req.cursor.length > 200 || req.cursor && (!req.cursor.startsWith(cursorPrefix) || !/^[1-9]\d{0,5}$/.test(req.cursor.slice(cursorPrefix.length)))) throw new ValidationError([{ field: 'cursor', description: 'Invalid country flight window or cursor.' }]);
     const flightPage = await withinDeadline(readMilitaryFlights(ctx, { neLat: box.ne_lat, neLon: box.ne_lon, swLat: box.sw_lat, swLon: box.sw_lon, pageSize: 100, cursor: req.cursor ? req.cursor.slice(cursorPrefix.length) : '', operator: 'MILITARY_OPERATOR_UNSPECIFIED', aircraftType: 'MILITARY_AIRCRAFT_TYPE_UNSPECIFIED' }, { redistributableOnly: true, allowProviderFetch: false }));
     if (flightPage.pagination?.nextCursor) flightPage.pagination = { ...flightPage.pagination, nextCursor: `${cursorPrefix}${flightPage.pagination.nextCursor}` };
     deadline.throwIfAborted();
@@ -52,7 +53,8 @@ export const getCountrySignalObservations: IntelligenceServiceHandler['getCountr
     deadline.throwIfAborted();
     const headers = drainResponseHeaders(ctx.request);
     if (headers) for (const [key, value] of Object.entries(headers)) setResponseHeader(ctx.request, key, value);
-    const outcome = headers?.['X-No-Cache'] ? unavailableCountrySignal(req.countryCode, selected, 'Source fallback cannot confirm empty country observations.') : projectCountrySignalFamily(req.countryCode, selected, body);
+    const projected = projectCountrySignalFamily(req.countryCode, selected, body);
+    const outcome = headers?.['X-No-Cache'] && projected.state !== 'locked' ? unavailableCountrySignal(req.countryCode, selected, 'Source fallback cannot confirm empty country observations.') : projected;
     const response = { countryCode: req.countryCode, family: req.family, outcomeJson: JSON.stringify(outcome), windowIndex: 0 };
     while (new TextEncoder().encode(JSON.stringify(response)).length > COUNTRY_SIGNAL_BYTES && outcome.observations.length) {
       outcome.observations.pop();

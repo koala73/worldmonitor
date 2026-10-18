@@ -1338,10 +1338,15 @@ export class CountryIntelManager implements AppModule {
     const country = page?.getName() ?? CountryIntelManager.resolveCountryName(code);
     const revision = this.currentCountryPresentation?.refreshGeneration;
     if (!this.qualifiedMilitary || this.qualifiedMilitary.code !== code || this.qualifiedMilitary.signal !== signal) {
-      if (this.qualifiedMilitary?.code !== code) this.qualifiedSignals = null;
+      if (this.qualifiedSignals?.countryCode !== code) this.qualifiedSignals = null;
       const promise = loadHostCountryMilitaryActivity(this.qualifiedSource, code, country, signal);
       this.qualifiedMilitary = { code, signal, promise };
-      void promise.then(summary => { if (!signal.aborted && page?.getCode() === code && revision === this.currentCountryPresentation?.refreshGeneration) { this.qualifiedMilitarySummary = { code, value: summary }; page.updateMilitaryActivity?.(summary); } }, () => {});
+      void promise.then(summary => { if (!signal.aborted && page?.getCode() === code && revision === this.currentCountryPresentation?.refreshGeneration) { this.qualifiedMilitarySummary = { code, value: summary }; page.updateMilitaryActivity?.(summary); } }, () => {
+        if (!signal.aborted && page?.getCode() === code && revision === this.currentCountryPresentation?.refreshGeneration) {
+          this.qualifiedMilitarySummary = { code, value: { ownFlights: null, foreignFlights: null, nearbyVessels: null, nearestBases: [], foreignPresence: null, coverage: 'partial', coverageNotes: ['Military observations could not be loaded. Retry or refresh to recover them.'] } };
+          page.updateMilitaryActivity?.(null);
+        }
+      });
     }
     const value = await loadQualifiedCountrySignals(this.qualifiedSource, code, signal, this.qualifiedMilitary.promise, this.qualifiedSignals);
     if (!signal.aborted && page?.getCode() === code && revision === this.currentCountryPresentation?.refreshGeneration) this.qualifiedSignals = value;
