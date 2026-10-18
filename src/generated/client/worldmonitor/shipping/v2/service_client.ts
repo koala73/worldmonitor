@@ -43,6 +43,22 @@ export interface RegisterWebhookRequest {
   eventType?: string;
   countries: string[];
   minLiveSignal?: number;
+  scope?: WebhookScope;
+}
+
+export interface WebhookScope {
+  keywords: string[];
+  categories: string[];
+  importanceFloor?: number;
+  severityFloor?: string;
+  countries: string[];
+  hazardTypes: string[];
+  minMagnitude?: number;
+  minAlertLevel?: string;
+  assetClasses: string[];
+  symbols: string[];
+  minAbsPct?: number;
+  direction?: string;
 }
 
 export interface RegisterWebhookResponse {
@@ -67,6 +83,7 @@ export interface WebhookSummary {
   eventType: string;
   countries: string[];
   minLiveSignal: number;
+  scope?: WebhookScope;
 }
 
 export interface FieldViolation {

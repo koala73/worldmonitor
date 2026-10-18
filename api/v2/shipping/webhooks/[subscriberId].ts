@@ -169,6 +169,7 @@ export default async function handler(req: Request): Promise<Response> {
     eventType: recordEventType(record),
     countries: Array.isArray(record.countries) ? record.countries : [],
     minLiveSignal: record.minLiveSignal ?? 0,
+    ...(record.scope ? { scope: record.scope } : {}),
     failureCount: record.failureCount ?? 0,
     lastDeliveryAt: record.lastDeliveryAt ?? null,
     lastDeliveryStatus: record.lastDeliveryStatus ?? null,

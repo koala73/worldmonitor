@@ -328,6 +328,15 @@ paths:
                                 - "suez"
                             "eventType": "chokepoint.disruption"
                             "minLiveSignal": 1
+                            "scope":
+                                "assetClasses":
+                                    - "example"
+                                "categories":
+                                    - "example"
+                                "direction": "example"
+                                "hazardTypes":
+                                    - "example"
+                                "importanceFloor": 1
                         schema:
                             $ref: '#/components/schemas/RegisterWebhookRequest'
                 required: true
@@ -769,12 +778,69 @@ components:
                     minimum: 0
                     format: int32
                     description: '`chokepoint.disruption` live-signal floor; 0 = score only.'
+                scope:
+                    $ref: '#/components/schemas/WebhookScope'
             required:
                 - callbackUrl
             description: |-
                 RegisterWebhookRequest subscribes to one eventType (default
                  chokepoint.disruption). Wire shape is byte-compatible with the legacy
                  POST body.
+        WebhookScope:
+            type: object
+            properties:
+                keywords:
+                    type: array
+                    items:
+                        type: string
+                        description: 'news.breaking: whole-word terms, any-of, 1-20.'
+                categories:
+                    type: array
+                    items:
+                        type: string
+                        description: 'news.breaking: classifier categories.'
+                importanceFloor:
+                    type: integer
+                    format: int32
+                    description: 'news.breaking: importanceScore floor, 0-100 (default 69).'
+                severityFloor:
+                    type: string
+                    description: 'news.breaking: `critical` or `high` (default high).'
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: ISO2 codes (news.breaking, natural.hazard).
+                hazardTypes:
+                    type: array
+                    items:
+                        type: string
+                        description: 'natural.hazard: hazard types.'
+                minMagnitude:
+                    type: number
+                    format: double
+                    description: 'natural.hazard: earthquake magnitude floor, 4.5-9.5 (default 5.5).'
+                minAlertLevel:
+                    type: string
+                    description: 'natural.hazard: GDACS `Orange` or `Red` (default Orange).'
+                assetClasses:
+                    type: array
+                    items:
+                        type: string
+                        description: 'market.move: `equity`, `commodity`, `crypto`.'
+                symbols:
+                    type: array
+                    items:
+                        type: string
+                        description: 'market.move: quote symbols, 1-50.'
+                minAbsPct:
+                    type: number
+                    format: double
+                    description: 'market.move: |changePct| floor, 5-100 (default 10).'
+                direction:
+                    type: string
+                    description: 'market.move: `up`, `down` or `any` (default any).'
+            description: Per-event filters for occurrence events. Each key applies to the events named in its comment; the handler validates against shared/event-triggers.json and stores the defaults.
         RegisterWebhookResponse:
             type: object
             properties:
@@ -831,6 +897,8 @@ components:
                 minLiveSignal:
                     type: integer
                     format: int32
+                scope:
+                    $ref: '#/components/schemas/WebhookScope'
             description: |-
                 Single webhook record in the list response. `secret` is intentionally
                  omitted; use rotate-secret to obtain a new one.
