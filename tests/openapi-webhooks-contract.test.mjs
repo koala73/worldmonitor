@@ -219,6 +219,8 @@ describe('webhook verification fixture (/.well-known/webhook-sample.json)', () =
   }
 
   it('the documented V2 verifier accepts the fixture at both tolerance boundaries', () => {
+    assert.equal(fixture.signatureV2Header, SIGNATURE_V2_HEADER);
+    assert.equal(fixture.timestampHeader, TIMESTAMP_HEADER);
     assert.equal(fixture.signatureV2, signV2(fixture.body, headers));
     assert.equal(headers['x-wm-signature-v2'], fixture.signatureV2);
     for (const drift of [-300_000, 0, 300_000]) {
@@ -246,13 +248,19 @@ describe('webhook verification fixture (/.well-known/webhook-sample.json)', () =
 
   it('rejects missing or malformed V2 headers without a legacy fallback', () => {
     for (const name of ['x-wm-timestamp', 'x-wm-delivery-id', 'x-wm-event', 'x-wm-signature-v2']) {
-      for (const value of [undefined, '', ['duplicate', 'headers']]) {
+      for (const value of [undefined, '', ['duplicate', 'headers'], `${headers[name]}, ${headers[name]}`]) {
         assert.equal(verify(fixture.body, { ...headers, [name]: value }, fixture.secret, sampleMs), false, name);
       }
     }
     for (const timestamp of ['NaN', 'Infinity', '1e9', '1783168496.5', '9007199254740992']) {
       assert.equal(verify(fixture.body, { ...headers, 'x-wm-timestamp': timestamp }, fixture.secret, sampleMs), false);
     }
+  });
+
+  it('authenticates event names independently of the receiver event router', () => {
+    const values = { ...headers, 'x-wm-event': 'vessel.alert' };
+    values['x-wm-signature-v2'] = signV2(fixture.body, values);
+    assert.equal(verify(fixture.body, values, fixture.secret, sampleMs), true);
   });
 
   it('rejects ambiguous delivery-id/event boundaries even with a matching HMAC', () => {

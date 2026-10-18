@@ -298,7 +298,7 @@ function verifyWorldMonitorWebhook(rawBody, headers, secret, nowMs = Date.now())
   const signature = headers['x-wm-signature-v2'];
   if (typeof timestamp !== 'string' || !/^\d+$/.test(timestamp)) return false;
   if (typeof deliveryId !== 'string' || !/^whd_[0-9a-f]{32}$/.test(deliveryId)) return false;
-  if (!['chokepoint.disruption', 'country.risk_surge'].includes(event)) return false;
+  if (typeof event !== 'string' || !/^[a-z0-9_]+(?:\.[a-z0-9_]+)*$/.test(event)) return false;
   if (typeof signature !== 'string' || !/^sha256=[0-9a-f]{64}$/.test(signature)) return false;
   const seconds = Number(timestamp);
   if (!Number.isSafeInteger(seconds) || Math.abs(Math.floor(nowMs / 1000) - seconds) > 300) return false;
