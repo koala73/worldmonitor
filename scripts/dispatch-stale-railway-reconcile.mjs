@@ -799,7 +799,9 @@ export class GitHubWatchdogClient {
 
   async readDispatchedRunIdentity({ runId, runAttempt = 1, expectedHeadSha }) {
     if (!validGitHubRunId(runId)) throw new TypeError('dispatched workflow run id is invalid');
-    if (runAttempt !== 1) throw new TypeError('dispatched workflow run attempt must be 1');
+    if (!Number.isSafeInteger(runAttempt) || runAttempt < 1) {
+      throw new TypeError('dispatched workflow run attempt is invalid');
+    }
     if (!/^[0-9a-f]{40}$/i.test(expectedHeadSha ?? '')) {
       throw new TypeError('expected dispatched workflow head is invalid');
     }
@@ -1719,6 +1721,7 @@ export async function dispatchGitHubRecovery({
     };
   }
   try {
+    if (correlatedRun.runAttempt !== 1) throw new TypeError('dispatched workflow run attempt must be 1');
     correlatedRun = await github.readDispatchedRunIdentity({
       runId: correlatedRun.id,
       runAttempt: correlatedRun.runAttempt,
