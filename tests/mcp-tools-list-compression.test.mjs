@@ -407,7 +407,7 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
     });
 
     for (const name of ['get_tariff_averages', 'get_bilateral_tariff']) {
-      it(`${name} says "schedule rate through 2023" before the call, and names get_us_import_duty in full`, async () => {
+      it(`${name} describes its schedule coverage before the call without routing to another tool`, async () => {
         const tools = await getToolsList();
         const compressed = tools.find(t => t.name === name).description;
         assert.ok(mod.utf8ByteLength(compressed) <= mod.TOOL_DESCRIPTION_MAX_BYTES);
@@ -415,7 +415,8 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         assert.match(compressed, /2023/);
         assert.match(compressed, /Section 301/);
         const full = await callDescribeTool(name);
-        assert.match(full.description, /get_us_import_duty/);
+        assert.match(full.description, /unilateral duties are NOT included/);
+        assert.doesNotMatch(full.description, /get_us_import_duty/);
       });
     }
 
