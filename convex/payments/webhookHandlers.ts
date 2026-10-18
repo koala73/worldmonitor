@@ -1,4 +1,4 @@
-import { httpAction, internalMutation } from "../_generated/server";
+import { httpAction, internalMutation, internalQuery, type QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { requireEnv } from "../lib/env";
@@ -106,6 +106,7 @@ export const reportDodoSignatureFailure = internalMutation({
     webhookId: v.optional(v.string()),
     webhookTimestamp: v.optional(v.string()),
     errorMessage: v.string(),
+    // Keep accepting reports queued before shared admission replaced the counter.
     suppressedSinceLastReport: v.optional(v.number()),
   },
   handler: async (_ctx, { webhookId, webhookTimestamp, errorMessage, suppressedSinceLastReport }) => {
@@ -132,51 +133,57 @@ export const DODO_WEBHOOK_MAX_BODY_BYTES = 1024 * 1024;
  * The endpoint is unauthenticated, so without this every forged request cost
  * a scheduler write plus a Sentry event — anyone could burn the Sentry quota.
  * A botched secret rotation fails every real delivery continuously, so one
- * report per window still surfaces it within minutes, and each report carries
- * how many failures it stood in for.
+ * report per window still surfaces it within minutes. Exact suppressed counts
+ * are omitted so rejected requests do not each need a database write.
  */
 export const DODO_SIGNATURE_FAILURE_REPORT_COOLDOWN_MS = 10 * 60 * 1000;
 
-export interface DodoSignatureFailureReportGate {
-  lastReportedAt: number | null;
-  suppressed: number;
-}
-
-/**
- * Decide whether this signature failure schedules a report. Mutates the gate.
- *
- * The gate lives in module scope, so it is per isolate: a burst spread over
- * several isolates reports once per isolate per window. That bounds the cost,
- * which is the point; an exact global count would need a database write on
- * every forged request, the very amplification this removes.
- */
-export function claimDodoSignatureFailureReport(
-  gate: DodoSignatureFailureReportGate,
-  now: number,
-): { report: boolean; suppressedSinceLastReport: number } {
-  if (
-    gate.lastReportedAt !== null &&
-    now - gate.lastReportedAt < DODO_SIGNATURE_FAILURE_REPORT_COOLDOWN_MS
-  ) {
-    gate.suppressed += 1;
-    return { report: false, suppressedSinceLastReport: 0 };
+async function readSignatureFailureReportGate(ctx: Pick<QueryCtx, "db">) {
+  const summary = await ctx.db
+    .query("paymentWebhookFailureSummary")
+    .withIndex("by_key", (q) => q.eq("key", "global"))
+    .first();
+  if (!summary) {
+    throw new Error(
+      "Dodo webhook failure summary is not seeded; run payments/webhookMutations:_seedFailureSummary",
+    );
   }
-  const suppressedSinceLastReport = gate.suppressed;
-  gate.lastReportedAt = now;
-  gate.suppressed = 0;
-  return { report: true, suppressedSinceLastReport };
+  return summary;
 }
 
-const signatureFailureReportGate: DodoSignatureFailureReportGate = {
-  lastReportedAt: null,
-  suppressed: 0,
-};
-
-/** Clears the module-scope gate; tests share one module instance per file. */
-export function resetDodoSignatureFailureReportGate(): void {
-  signatureFailureReportGate.lastReportedAt = null;
-  signatureFailureReportGate.suppressed = 0;
+function signatureFailureReportIsDue(lastReportedAt: number | undefined, now: number): boolean {
+  return lastReportedAt === undefined ||
+    now - lastReportedAt >= DODO_SIGNATURE_FAILURE_REPORT_COOLDOWN_MS;
 }
+
+// Convex HTTP actions start with fresh module state on every request. Read the
+// existing seeded summary so rejected requests need no writes or scheduler jobs.
+export const getLastDodoSignatureFailureReportAt = internalQuery({
+  args: {},
+  handler: async (ctx): Promise<number | null> => {
+    const summary = await readSignatureFailureReportGate(ctx);
+    return summary.lastSignatureFailureReportedAt ?? null;
+  },
+});
+
+export const scheduleDodoSignatureFailureReport = internalMutation({
+  args: {
+    webhookId: v.string(),
+    webhookTimestamp: v.string(),
+    errorMessage: v.string(),
+  },
+  handler: async (ctx, args): Promise<boolean> => {
+    const summary = await readSignatureFailureReportGate(ctx);
+    const now = Date.now();
+    if (!signatureFailureReportIsDue(summary.lastSignatureFailureReportedAt, now)) return false;
+
+    // Recheck and schedule in the same transaction. Concurrent candidates share
+    // the seeded document, and a scheduling failure rolls the timestamp back.
+    await ctx.db.patch(summary._id, { lastSignatureFailureReportedAt: now });
+    await ctx.scheduler.runAfter(0, internal.payments.webhookHandlers.reportDodoSignatureFailure, args);
+    return true;
+  },
+});
 
 /**
  * The request body as text, or null once it exceeds `maxBytes`. Checks a
@@ -332,23 +339,18 @@ export const webhookHandler = httpAction(async (ctx, request) => {
     // `runAfter` would surface as an uncaught 500 to Dodo, triggering
     // exactly the retry-storm this whole pattern exists to prevent.
     //
-    // Gated: the endpoint is unauthenticated, so one report per cooldown
-    // stands in for a burst (see claimDodoSignatureFailureReport).
-    const claim = claimDodoSignatureFailureReport(signatureFailureReportGate, Date.now());
-    if (!claim.report) {
-      return new Response("Invalid webhook signature", { status: 401 });
-    }
     try {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.payments.webhookHandlers.reportDodoSignatureFailure,
-        {
-          webhookId: webhookId ?? undefined,
-          webhookTimestamp: webhookTimestamp ?? undefined,
-          errorMessage: error instanceof Error ? error.message : String(error),
-          suppressedSinceLastReport: claim.suppressedSinceLastReport,
-        },
+      const lastReportedAt = await ctx.runQuery(
+        internal.payments.webhookHandlers.getLastDodoSignatureFailureReportAt,
+        {},
       );
+      if (signatureFailureReportIsDue(lastReportedAt ?? undefined, Date.now())) {
+        await ctx.runMutation(internal.payments.webhookHandlers.scheduleDodoSignatureFailureReport, {
+          webhookId,
+          webhookTimestamp,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+      }
     } catch (scheduleErr) {
       // Best-effort — log and continue. The 401 below is the
       // contract-critical path; Sentry capture is the bonus.

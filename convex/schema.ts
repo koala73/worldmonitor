@@ -1123,6 +1123,7 @@ export default defineSchema({
   paymentWebhookFailureSummary: defineTable({
     key: v.literal("global"),
     unresolvedCount: v.number(),
+    lastSignatureFailureReportedAt: v.optional(v.number()),
     eventTypes: v.array(
       v.object({
         eventType: v.string(),
