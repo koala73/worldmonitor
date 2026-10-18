@@ -873,6 +873,24 @@ describe("Dodo webhook unauthenticated cost bounds", () => {
     }
   });
 
+  test("fresh request modules share the reporting cooldown", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.DODO_PAYMENTS_WEBHOOK_SECRET = DODO_WEBHOOK_SECRET;
+    const t = await makeT();
+    try {
+      for (let i = 0; i < 3; i += 1) {
+        vi.resetModules();
+        const response = await postBadlySigned(t, "{}", `wh_fresh_${i}`);
+        expect(response.status).toBe(401);
+      }
+      expect(await scheduledSignatureReports(t)).toHaveLength(1);
+    } finally {
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+      vi.useRealTimers();
+    }
+  });
+
   test("an oversize body is refused before any crypto, report or failure write", async () => {
     vi.spyOn(Date, "now").mockReturnValue(BASE_TIMESTAMP);
     process.env.DODO_PAYMENTS_WEBHOOK_SECRET = DODO_WEBHOOK_SECRET;
@@ -886,7 +904,8 @@ describe("Dodo webhook unauthenticated cost bounds", () => {
   });
 
   test("a body exactly at the limit still reaches signature verification", async () => {
-    vi.spyOn(Date, "now").mockReturnValue(BASE_TIMESTAMP);
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
     process.env.DODO_PAYMENTS_WEBHOOK_SECRET = DODO_WEBHOOK_SECRET;
     const t = await makeT();
 
@@ -894,5 +913,7 @@ describe("Dodo webhook unauthenticated cost bounds", () => {
 
     expect(response.status).toBe(401);
     expect(await response.text()).toBe("Invalid webhook signature");
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    vi.useRealTimers();
   });
 });
