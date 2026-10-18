@@ -193,6 +193,47 @@ for (const failure of ['silent', 'trickle', 'refused']) {
   });
 }
 
+for (const localFailure of ['missing', 'error-response', 'throw']) {
+  test(`does not retry a timed-out cloud-preferred POST when the local handler is ${localFailure}`, async () => {
+    const endpoint = '/api/v2/shipping/webhooks';
+    let cloudCalls = 0;
+    const remote = createServer(() => { cloudCalls++; });
+    const remotePort = await listen(remote);
+    const handlers = {
+      'error-response': 'export default () => Response.json({ error: "unavailable" }, { status: 503 });',
+      throw: 'export default () => { throw new Error("local unavailable"); };',
+    };
+    const localApi = await setupApiDir(localFailure === 'missing' ? {} : {
+      'v2/shipping/webhooks.js': handlers[localFailure],
+    });
+    const app = await createLocalApiServer({
+      port: 0, apiDir: localApi.apiDir,
+      remoteBase: `http://127.0.0.1:${remotePort}`, cloudFallback: 'true', allowPrivateRemoteBase: true,
+      logger: { log() {}, warn() {}, error() {} },
+    });
+    const { port } = await app.start();
+    let deadline;
+    try {
+      const response = await Promise.race([
+        authFetch(`http://127.0.0.1:${port}${endpoint}`, {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"url":"https://example.com/hook"}',
+        }),
+        new Promise((_, reject) => {
+          deadline = setTimeout(() => reject(new Error('cloud-preferred POST was retried after its deadline')), 4000);
+        }),
+      ]);
+      assert.equal(response.status, { missing: 404, 'error-response': 503, throw: 502 }[localFailure]);
+      assert.equal(cloudCalls, 1, 'a POST may already have applied its side effect before the cloud response stalls');
+    } finally {
+      clearTimeout(deadline);
+      remote.closeAllConnections();
+      await new Promise(resolve => remote.close(resolve));
+      await app.close();
+      await localApi.cleanup();
+    }
+  });
+}
+
 test('cloud proxy cancels its upstream request when the desktop client disconnects', async () => {
   let cloudRequest;
   let cloudClosed;
@@ -218,15 +259,13 @@ test('cloud proxy cancels its upstream request when the desktop client disconnec
   client.on('error', () => {});
   let deadline;
   try {
+    const timeout = new Promise((_, reject) => {
+      deadline = setTimeout(() => reject(new Error('cloud proxy disconnect test did not settle within 1s')), 1000);
+    });
     client.end();
-    await received;
+    await Promise.race([received, timeout]);
     client.destroy();
-    await Promise.race([
-      closed,
-      new Promise((_, reject) => {
-        deadline = setTimeout(() => reject(new Error('cloud request stayed open after client disconnect')), 1000);
-      }),
-    ]);
+    await Promise.race([closed, timeout]);
   } finally {
     clearTimeout(deadline);
     client.destroy();
