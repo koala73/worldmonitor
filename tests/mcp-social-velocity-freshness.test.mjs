@@ -27,4 +27,15 @@ describe('get_social_velocity freshness', () => {
     assert.equal(evaluateFreshness([check], [hoursAgo(2.5)], now).stale, false);
     assert.equal(evaluateFreshness([check], [hoursAgo(10)], now).stale, true);
   });
+
+  // On a failed refresh the relay stamps a fresh fetchedAt with status 'error'
+  // and keeps serving the previous payload. Health reports SEED_ERROR
+  // (seedStale) for that meta; MCP must not call the old payload fresh for the
+  // whole 9-hour budget.
+  it('reports a just-failed refresh as stale, as /api/health does', () => {
+    const now = Date.UTC(2026, 9, 18, 12, 0, 0);
+    const failed = { fetchedAt: now - 60_000, recordCount: 0, sourceVersion: 'social-reddit', status: 'error' };
+    assert.equal(evaluateFreshness([check], [failed], now).stale, true);
+    assert.equal(evaluateFreshness([check], [{ ...failed, status: 'ok', recordCount: 30 }], now).stale, false);
+  });
 });

@@ -1741,7 +1741,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_social_velocity`
 
-The 30 posts from r/worldnews and r/geopolitics with the highest `velocityScore` (log of score × upvote ratio × a 6-hour recency decay), with score, upvote ratio, comment count and permalink. The relay refreshes it about every 3 hours and the envelope flags it stale after 9 hours, the same budget as `/api/health`. Posts are unverified user submissions: the tool measures public attention, not events.
+The 30 posts from r/worldnews and r/geopolitics with the highest `velocityScore` (log of score × upvote ratio × a 6-hour recency decay), with score, upvote ratio, comment count and the permalink as `url`. The relay refreshes it about every 3 hours and the envelope flags it stale after 9 hours, the same budget as `/api/health`. Posts are unverified user submissions: the tool measures public attention, not events.
 
 **Parameters (tool-specific):**
 
@@ -2817,7 +2817,7 @@ Call `get_cross_border_arrivals({})` for the full public snapshot. `summary: tru
 
 ### `get_displacement_data`
 
-UNHCR annual displacement statistics for one reporting year: global totals, per-country refugees, asylum seekers, IDPs and stateless people by origin, totals hosted by each asylum country, and the largest origin-to-asylum refugee flows. Annual stock figures only, with no monthly arrivals or crisis-situation updates.
+UNHCR annual displacement statistics for one reporting year: global totals, per-country refugees, asylum seekers, IDPs and stateless people by origin, totals hosted by each asylum country, and the largest origin-to-asylum refugee flows. Annual stock figures only, with no monthly arrivals or crisis-situation updates. Until UNHCR publishes the current year, the snapshot holds the prior year; `summary.year` names it.
 
 **Parameters (tool-specific):**
 
