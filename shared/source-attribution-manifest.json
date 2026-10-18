@@ -7100,6 +7100,20 @@
       ]
     },
     {
+      "host": "nvd.nist.gov",
+      "provider": "nvd.nist.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit nvd.nist.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-cve-reference.mjs"
+        }
+      ]
+    },
+    {
       "host": "nytimes.com",
       "provider": "The New York Times",
       "kind": "feed",
@@ -8801,6 +8815,20 @@
         },
         {
           "path": "scripts/lib/tps-open-data.mjs"
+        }
+      ]
+    },
+    {
+      "host": "services.nvd.nist.gov",
+      "provider": "services.nvd.nist.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit services.nvd.nist.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-cve-reference.mjs"
         }
       ]
     },

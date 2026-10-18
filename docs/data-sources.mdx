@@ -524,6 +524,7 @@ The physical and digital backbone: cables, pipelines, ports, datacenters, intern
 | Cloudflare Radar | Internet outages and traffic anomalies | [radar.cloudflare.com](https://radar.cloudflare.com) |
 | Submarine Cable Map | Global submarine cable infrastructure | [submarinecablemap.com](https://www.submarinecablemap.com) |
 | AbuseIPDB | Crowd-sourced malicious IP reports | [abuseipdb.com](https://www.abuseipdb.com) |
+| NVD (NIST) | CVE reference store for the CISA KEV subset: CVSS, CWE, affected products, KEV due dates (public domain) | [nvd.nist.gov](https://nvd.nist.gov/developers/vulnerabilities) |
 
 Deep dives: [Infrastructure cascade](/infrastructure-cascade) · [Supply chain panel](/panels/supply-chain)
 
@@ -541,6 +542,8 @@ Six threat intelligence feeds provide indicators of compromise (IOCs) for active
 | **Ransomware.live**          | Ransomware    | Active ransomware group feeds   |
 
 Each IP-based IOC is geo-enriched using ipinfo.io with freeipapi.com as fallback. Geolocation results are Redis-cached for 24 hours. Enrichment runs concurrently — 16 parallel lookups with a 12-second timeout, processing up to 250 IPs per collection run.
+
+A daily seeder keeps a CVE reference store for the CISA Known Exploited Vulnerabilities subset of the NVD corpus (`cyber:cve-reference:v1`): per CVE ID, the primary CVSS score and vector, CWE IDs, affected `vendor:product` pairs, the KEV added and due dates, and the SSVC exploitation verdict. Sync is incremental on NVD's last-modified window and keyless by default; a free `NVD_API_KEY` raises the request ceiling. This product uses the NVD API but is not endorsed or certified by the NVD.
 
 IOCs are classified into four types (`c2_server`, `malware_host`, `phishing`, `malicious_url`) with four severity levels, rendered as color-coded scatter dots on the globe. The layer uses a 10-minute cache, a 14-day rolling window, and caps display at 500 IOCs to maintain rendering performance.
 
