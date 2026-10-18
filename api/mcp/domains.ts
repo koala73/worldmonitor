@@ -64,8 +64,8 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_stock_research: 'markets-economy',
   get_gold_intelligence: 'markets-economy',
   get_macro_history: 'markets-economy',
+  get_price_and_debt_indicators: 'markets-economy',
   // Trade & tariffs
-  get_tariff_trends: 'trade-tariffs',
   get_wto_trade_flows: 'trade-tariffs',
   get_tariff_averages: 'trade-tariffs',
   get_bilateral_tariff: 'trade-tariffs',

@@ -611,7 +611,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(toolNames.includes('get_health_signals'), 'get_health_signals must be registered (U2)');
     assert.ok(toolNames.includes('get_energy_intelligence'), 'get_energy_intelligence must be registered (U3)');
     assert.ok(toolNames.includes('get_consumer_prices'), 'get_consumer_prices must be registered (U4)');
-    assert.ok(toolNames.includes('get_tariff_trends'), 'get_tariff_trends must be registered (U5)');
+    assert.ok(toolNames.includes('get_price_and_debt_indicators'), 'get_price_and_debt_indicators must be registered (U5)');
     assert.ok(toolNames.includes('get_chokepoint_status'), 'get_chokepoint_status must be registered (U6)');
     assert.ok(toolNames.includes('get_procurement_opportunities'), 'get_procurement_opportunities must be registered (#5301)');
     assert.ok(toolNames.includes('describe_tool'), 'describe_tool must be registered (v1.5.0 schema compression)');
@@ -1570,7 +1570,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.deepEqual(out.data._countries, ['DE'], 'gas-storage _countries is a string[] — filter must match the string itself');
   });
 
-  it('get_tariff_trends: alpha-2 country filter resolves to alpha-3 national-debt entries', async () => {
+  it('get_price_and_debt_indicators: alpha-2 country filter resolves to alpha-3 national-debt entries', async () => {
     // Regression: national-debt entries are keyed by ISO alpha-3 (iso3:"USA").
     // The country param is alpha-2 (consistent with the rest of the tool), so
     // country:"US" must still match iso3:"USA".
@@ -1578,16 +1578,25 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       { 'economic:national-debt:v1': { entries: [{ iso3: 'USA', debtUsd: 2 }, { iso3: 'DEU', debtUsd: 1 }], seededAt: 1 } },
       { 'seed-meta:economic:national-debt': { fetchedAt: Date.now() - 60_000, recordCount: 2 } },
     );
-    const out = await callTool('get_tariff_trends', { dataset: ['national-debt'], country: 'US' });
+    const out = await callTool('get_price_and_debt_indicators', { dataset: ['national-debt'], country: 'US' });
     assert.equal(out.data['national-debt'].entries.length, 1, 'alpha-2 "US" must match iso3 "USA"');
     assert.equal(out.data['national-debt'].entries[0].iso3, 'USA');
   });
 
-  it('get_tariff_trends: free accounts never receive the Pro-gated US tariff series (#9301)', async () => {
+  it('get_tariff_trends: the pre-rename name still serves get_price_and_debt_indicators', async () => {
+    mockCacheKeys(
+      { 'economic:national-debt:v1': { entries: [{ iso3: 'USA', debtUsd: 2 }, { iso3: 'DEU', debtUsd: 1 }], seededAt: 1 } },
+      { 'seed-meta:economic:national-debt': { fetchedAt: Date.now() - 60_000, recordCount: 2 } },
+    );
+    const out = await callTool('get_tariff_trends', { dataset: ['national-debt'], country: 'US' });
+    assert.deepEqual(out.data['national-debt'].entries.map((e) => e.iso3), ['USA']);
+  });
+
+  it('get_price_and_debt_indicators: free accounts never receive the Pro-gated US tariff series (#9301)', async () => {
     // /api/trade/v1/get-tariff-trends is tier 1 and get_tariff_averages wraps
     // it as a subscription tool. This free-account bundle must not read the
     // same seeded payload straight from Redis.
-    const tool = TOOL_REGISTRY.find((t) => t.name === 'get_tariff_trends');
+    const tool = TOOL_REGISTRY.find((t) => t.name === 'get_price_and_debt_indicators');
     assert.equal(tool._subscriptionOnly, undefined, 'the bundle stays free-account; only the tariff slice leaves');
     assert.deepEqual(tool._cacheKeys.filter((k) => k.startsWith('trade:tariffs:')), []);
     assert.deepEqual(tool._freshnessChecks.filter((c) => c.key === 'seed-meta:trade:tariffs'), []);
@@ -1604,7 +1613,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
         'seed-meta:economic:bigmac': { fetchedAt: Date.now() - 60_000, recordCount: 1 },
       },
     );
-    const out = await callTool('get_tariff_trends', {});
+    const out = await callTool('get_price_and_debt_indicators', {});
     assert.deepEqual(Object.keys(out.data).sort(), ['bigmac', 'fao-ffpi', 'national-debt']);
 
     // A caller still asking for the old slice learns where it went instead of
@@ -2531,9 +2540,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     }
   });
 
-  // --- get_tariff_trends (U5: trade + economic indicator bundle) ---
+  // --- get_price_and_debt_indicators (U5: trade + economic indicator bundle) ---
 
-  it('get_tariff_trends returns 3-slice data on cache hit when every per-key meta is within budget', async () => {
+  it('get_price_and_debt_indicators returns 3-slice data on cache hit when every per-key meta is within budget', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
 
@@ -2576,7 +2585,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
     const res = await freshHandler(makeReq('POST', {
       jsonrpc: '2.0', id: 400, method: 'tools/call',
-      params: { name: 'get_tariff_trends', arguments: {} },
+      params: { name: 'get_price_and_debt_indicators', arguments: {} },
     }));
     assert.equal(res.status, 200);
     const body = await res.json();
@@ -2589,7 +2598,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.deepEqual(payload.data['national-debt'], debtPayload, 'national-debt slice labelled from cache-key suffix');
   });
 
-  it('get_tariff_trends marks aggregate stale when FAO meta is past its monthly budget while Big Mac is fresh', async () => {
+  it('get_price_and_debt_indicators marks aggregate stale when FAO meta is past its monthly budget while Big Mac is fresh', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
 
@@ -2632,7 +2641,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
     const res = await freshHandler(makeReq('POST', {
       jsonrpc: '2.0', id: 401, method: 'tools/call',
-      params: { name: 'get_tariff_trends', arguments: {} },
+      params: { name: 'get_price_and_debt_indicators', arguments: {} },
     }));
     assert.equal(res.status, 200);
     const body = await res.json();
@@ -2643,7 +2652,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.deepEqual(payload.data['fao-ffpi'], faoPayload, 'stale FAO payload still returned alongside stale=true');
   });
 
-  it('get_tariff_trends returns mixed shape (2 slices null, 1 populated) without throwing when only one key is populated', async () => {
+  it('get_price_and_debt_indicators returns mixed shape (2 slices null, 1 populated) without throwing when only one key is populated', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
 
@@ -2667,7 +2676,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
     const res = await freshHandler(makeReq('POST', {
       jsonrpc: '2.0', id: 402, method: 'tools/call',
-      params: { name: 'get_tariff_trends', arguments: {} },
+      params: { name: 'get_price_and_debt_indicators', arguments: {} },
     }));
     assert.equal(res.status, 200);
     const body = await res.json();

@@ -475,15 +475,16 @@ describe('api/mcp.ts — tools/list description budget (v1.34.0)', () => {
       assert.doesNotMatch(full.description, /energy storage/i);
     });
 
-    it('get_tariff_trends advertises price and debt indicators without a tariff series', async () => {
+    it('get_price_and_debt_indicators advertises price and debt indicators without a tariff series', async () => {
       const tools = await getToolsList();
-      const listed = tools.find(t => t.name === 'get_tariff_trends').description;
+      const listed = tools.find(t => t.name === 'get_price_and_debt_indicators').description;
       assert.ok(mod.utf8ByteLength(listed) <= mod.TOOL_DESCRIPTION_MAX_BYTES);
       assert.match(listed, /Big Mac/);
       assert.match(listed, /FAO/);
       assert.match(listed, /debt/i);
       assert.match(listed, /No tariff rates/);
-      const full = await callDescribeTool('get_tariff_trends');
+      assert.doesNotMatch(listed, /Despite the name/);
+      const full = await callDescribeTool('get_price_and_debt_indicators');
       assert.match(full.description, /Big Mac/);
       assert.match(full.description, /FAO/);
       assert.match(full.description, /debt/i);

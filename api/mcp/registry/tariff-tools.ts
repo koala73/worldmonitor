@@ -8,8 +8,8 @@
  *
  * Each tool signs one gateway fetch and adds a `coverage` object to the route's
  * answer. Fault and caching rules live in the handlers only. The US MFN
- * series is served here only: the free-account `get_tariff_trends` bundle
- * dropped it (#9301).
+ * series is served here only: the free-account `get_price_and_debt_indicators`
+ * bundle (formerly get_tariff_trends) dropped it (#9301).
  *
  * Upstream budget: these routes read WITS or USITC on a cache miss. Over MCP
  * that work is bounded by the caller's own metering (Pro daily quota, or 2

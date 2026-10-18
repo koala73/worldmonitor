@@ -22,7 +22,7 @@ export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # or use the OAuth 
 如果您已完成 OAuth 流程，请在每个示例中将 `-H "X-WorldMonitor-Key: $WM_KEY"` 替换为 `-H "Authorization: Bearer $TOKEN"`。
 
 <Tip>
-**近期新增**（2026 年 5 月）：`get_displacement_data`、`get_health_signals`、`get_energy_intelligence`、`get_consumer_prices`、`get_tariff_trends`、`get_chokepoint_status` — 六个新的捆绑工具，通过 MCP 暴露了此前缓存的领域。
+**近期新增**（2026 年 5 月）：`get_displacement_data`、`get_health_signals`、`get_energy_intelligence`、`get_consumer_prices`、`get_price_and_debt_indicators`（原 `get_tariff_trends`）、`get_chokepoint_status` — 六个新的捆绑工具，通过 MCP 暴露了此前缓存的领域。
 </Tip>
 
 ## 发现工具
@@ -487,11 +487,11 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
-### `get_tariff_trends`
+### `get_price_and_debt_indicators`
 
 价格和债务指标：巨无霸指数、FAO 食品价格指数和各国国家债务水平。
 
-该工具保留原名以兼容现有调用方，但不再包含关税序列（#9301）。美国 MFN 关税趋势属于 Pro 数据：请调用 `get_tariff_averages`，报告国设为 `840`，不传伙伴和产品组。`dataset: ["tariffs"]` 会返回 Invalid params。
+原名 `get_tariff_trends`，直接调用旧名仍然有效。自 #9301 起该捆绑包不含关税序列。美国 MFN 关税趋势属于 Pro 数据：请调用 `get_tariff_averages`，报告国设为 `840`，不传伙伴和产品组。`dataset: ["tariffs"]` 会返回 Invalid params。
 
 **参数（工具特定）：**
 
@@ -514,7 +514,7 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_tariff_trends","arguments":{}}
+    "params":{"name":"get_price_and_debt_indicators","arguments":{}}
   }'
 ```
 

@@ -59,9 +59,11 @@ describe('MCP tool categories (U3)', () => {
   });
 
   it('files the tariff tools under trade-tariffs and the server utilities under meta', () => {
-    for (const name of ['get_tariff_averages', 'get_bilateral_tariff', 'get_us_import_duty', 'get_tariff_trends']) {
+    for (const name of ['get_tariff_averages', 'get_bilateral_tariff', 'get_us_import_duty']) {
       assert.equal(TOOL_CATEGORY_BY_NAME[name], 'trade-tariffs', name);
     }
+    // Big Mac, FAO food prices and national debt: no tariff data.
+    assert.equal(TOOL_CATEGORY_BY_NAME.get_price_and_debt_indicators, 'markets-economy');
     for (const name of ['get_sources', 'get_mcp_allowance', 'describe_tool', 'open_news_dashboard']) {
       assert.equal(TOOL_CATEGORY_BY_NAME[name], 'meta', name);
     }

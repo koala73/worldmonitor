@@ -26,7 +26,19 @@ export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TO
 // working, but never listed. Every published surface (tools/list,
 // describe_tool, the server card, docs, A2A) reads TOOL_REGISTRY only; the
 // tools/call dispatcher resolves names through findCallableTool.
-export const RETIRED_TOOLS: ToolDef[] = [...RETIRED_RPC_TOOLS];
+// A renamed tool keeps its old name as an alias of the renamed definition.
+const RENAMED_TOOLS: Record<string, string> = {
+  // Renamed in MCP server 1.39.0: no tariff data since #9301.
+  get_tariff_trends: 'get_price_and_debt_indicators',
+};
+export const RETIRED_TOOLS: ToolDef[] = [
+  ...RETIRED_RPC_TOOLS,
+  ...Object.entries(RENAMED_TOOLS).map(([oldName, current]) => {
+    const tool = TOOL_REGISTRY.find((t) => t.name === current);
+    if (!tool) throw new Error(`Renamed tool ${oldName} points at unregistered ${current}`);
+    return { ...tool, name: oldName };
+  }),
+];
 
 export function findCallableTool(name: string): ToolDef | undefined {
   return TOOL_REGISTRY.find((tool) => tool.name === name)
