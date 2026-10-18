@@ -2266,7 +2266,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // `observationProvenance` is deliberately not selected because it is not
     // part of the licence claim.
     _attribution: 'indicators[].{indicatorId: id, retrievedAt: retrievedAt, sources: sources[].{key: key, name: name, attribution: attribution, license: license, url: url, licenseUrl: licenseUrl, attributionUrl: attributionUrl}}',
-    description: 'Explain one country\'s resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. Answers why a country scores as it does, indicator by indicator; carries no instability index, travel advisory, sanctions status, story list or narrative. Requires an ISO-2 country code and a WorldMonitor Pro subscription; weight 2 on API plans. Read-only.',
+    description: 'Explain one country\'s resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. 51 indicators update annually; 11 move with current events (realtime or daily feeds such as the news threat score and Reddit velocity), so a short-term score change can come from those. Answers why a country scores as it does, indicator by indicator; carries no instability index, travel advisory, sanctions status, story list or narrative. Requires an ISO-2 country code and a WorldMonitor Pro subscription; weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
