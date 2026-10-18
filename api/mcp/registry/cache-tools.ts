@@ -657,7 +657,7 @@ export function forecastReliability(data: Record<string, unknown>, domains: stri
   };
 }
 
-const FORECAST_SCORECARD_DESCRIPTION = 'Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, familyOutcomes (the recent outcomes of each live forecast id), and horizonGrades (grades of the 24h/7d/30d projections, which are not probabilities). From schemaVersion 3, totals and funnel count published forecasts only; shadow bets appear in byGenerationOrigin.';
+const FORECAST_SCORECARD_DESCRIPTION = 'It grades published forecasts after they resolve: calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, familyOutcomes (the recent outcomes of each live forecast id), and horizonGrades (grades of the 24h/7d/30d projections, which are not probabilities). From schemaVersion 3, totals and funnel count published forecasts only; shadow bets appear in byGenerationOrigin. Past accuracy only: no open forecasts, current probabilities or case files, and nothing about countries. Flagged stale after 36 hours. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. Takes no filters.';
 
 /**
  * The first sentence is the one tools/list keeps, so it names the tool's
@@ -669,7 +669,7 @@ export function forecastScorecardDescription(configured?: ForecastAccuracyAudit 
   const override = accuracyAuditOverride(configured);
   const lead = override
     ? `Forecast resolution scorecard, under audit since ${override.since} (issue ${override.issue}): its scores are unverified.`
-    : 'Forecast resolution scorecard (Brier, calibration, funnel); underAudit marks scores still under audit.';
+    : 'Forecast resolution scorecard: the accuracy record of WorldMonitor forecasts; underAudit marks scores still under audit.';
   return `${lead} ${FORECAST_SCORECARD_DESCRIPTION}`;
 }
 
@@ -1352,10 +1352,10 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_news_intelligence',
-    title: 'Geopolitical threat news',
+    title: 'Threat news stories and signals',
     _uiResourceUri: NEWS_INTELLIGENCE_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'Return the seeded geopolitical threat-news snapshot: AI-classified top stories, GDELT intelligence signals by topic, cross-source signals (including physical-premium regime transitions) and government security advisories. Flagged stale after 30 minutes; live window only, not a historical index. Each top story carries corroboration metadata: uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, clustered headlines, credibilityScore (0-100 source reliability, distinct from importance), corroboration, and the publishers roster with declared tiers; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. topic, category, country, alerts_only, query and min_importance narrow the lists; limit caps each (default 30, 0 = no cap). Paid News Intelligence panels charge one opening allocation; repeat opens and filters reuse it.',
+    description: 'Return the seeded threat-news feed as individual items, not a written brief: AI-classified top stories, GDELT intelligence signals by topic, cross-source signals (including physical-premium regime transitions) and government security advisories. Flagged stale after 30 minutes; live window only, not a historical index. Each top story carries corroboration metadata: uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, clustered headlines, credibilityScore (0-100 source reliability, distinct from importance), corroboration, and the publishers roster; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. topic, category, country, alerts_only, query and min_importance narrow the lists; limit caps each (default 30, 0 = no cap). Paid News Intelligence panels charge one opening allocation; repeat opens and filters reuse it.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2338,7 +2338,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_displacement_data',
     title: 'Refugee and displacement counts',
     _outputBudgetBytes: 131072,
-    description: 'Refugee and IDP counts by country (UNHCR annual data).',
+    description: 'Return UNHCR annual displacement statistics for one reporting year (summary.year): global totals and per-country refugees, asylum seekers, IDPs and stateless people by origin, totals hosted by each asylum country, and the largest origin-to-asylum refugee flows, with centroid coordinates where known. Answers how many people a country has displaced or hosts. Annual stock figures only: no monthly arrivals, live crisis-situation updates or deaths, and no year selection; until UNHCR publishes the current year the snapshot holds the prior year, which summary.year names. Flagged stale after 60 hours. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. countries keeps rows whose origin or asylum country matches; limit caps the country and flow lists (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3027,9 +3027,9 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_tariff_trends',
-    title: 'Price and debt indicators',
+    title: 'Big Mac, food price and debt indicators',
     _outputBudgetBytes: 131072,
-    description: 'Return the seeded price and debt indicator bundle: the Economist Big Mac index by country, the FAO Food Price Index and per-country national debt levels. Each sub-dataset has its own staleness budget (Big Mac a week, FAO and debt 60 days). No tariff rates: a dataset value of tariffs is rejected with a validation error. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects bigmac, fao-ffpi or national-debt; country narrows Big Mac and debt rows (alpha-2, alpha-3 or name); limit caps each list (default 30, 0 for no cap).',
+    description: 'Despite the name, carries no tariff data. Return the seeded price and debt indicator bundle: the Economist Big Mac index by country, the FAO Food Price Index and per-country national debt levels. Each sub-dataset has its own staleness budget (Big Mac a week, FAO and debt 60 days). No tariff rates: a dataset value of tariffs is rejected with a validation error. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects bigmac, fao-ffpi or national-debt; country narrows Big Mac and debt rows (alpha-2, alpha-3 or name); limit caps each list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3451,10 +3451,10 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_forecast_predictions',
-    title: 'Interactive forecasts',
+    title: 'Published forecast list (cached)',
     _uiResourceUri: FORECASTS_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'Return the published forecast list from the seeded cache: each forecast with id, domain, region, probability, scenario text and, for API readers, its case file. Flagged stale after 90 minutes; AI assessments, not guarantees. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. domain filters exactly (conflict, market, supply_chain, political, military, cyber, infrastructure), region by case-insensitive substring, limit caps the list (default 30, 0 for no cap). Paid interactive openings return the compact list with case files stripped (hasCaseFile marks them) plus a signed panelRequest; repeat openings reuse the five-minute admission and refresh needs a fresh request_id.',
+    description: 'Return the current published forecast list straight from the seeded cache, the lowest-cost read of open forecasts (paid panel openings also attach per-domain reliability and recent familyOutcomes, not the full accuracy scorecard): each forecast with id, domain, region, probability, scenario text and, for API readers, its case file. Flagged stale after 90 minutes; AI assessments, not guarantees. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. domain filters exactly (conflict, market, supply_chain, political, military, cyber, infrastructure), region by case-insensitive substring, limit caps the list (default 30, 0 for no cap). Paid interactive openings return the compact list with case files stripped (hasCaseFile marks them) plus a signed panelRequest; repeat openings reuse the five-minute admission and refresh needs a fresh request_id.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3534,10 +3534,10 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_forecast_case',
-    title: 'Forecast case analysis',
+    title: 'One forecast case file by ID',
     _subscriptionOnly: true,
     _outputBudgetBytes: 131072,
-    description: 'Read exactly one original published forecast case, including its full case file, by forecast ID and the exact generatedAt of the forecast list it came from. Returns generation_changed with no forecast when the published list has been regenerated since, and missing when the ID is not in the current generation. Dedicated MCP plans read it inside an open forecasts panel with its signed panel_request and no additional daily allocation; API plans read it without panel_request at the normal per-call charge. A single case exceeding the fixed response budget remains explicitly unavailable.',
+    description: 'Read exactly one original published forecast case, including its full case file, by forecast ID and the exact generatedAt of the forecast list it came from; no list and no accuracy scores. Returns generation_changed with no forecast when the published list has been regenerated since, and missing when the ID is not in the current generation. Dedicated MCP plans read it inside an open forecasts panel with its signed panel_request and no additional daily allocation; API plans read it without panel_request at the normal per-call charge. A single case exceeding the fixed response budget remains explicitly unavailable.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3644,11 +3644,11 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_social_velocity',
     title: 'Reddit geopolitical activity',
     _outputBudgetBytes: 131072,
-    description: 'Reddit geopolitical social velocity: top posts from worldnews, geopolitics, and related subreddits with engagement scores and trend signals.',
+    description: 'Return the 30 Reddit posts from r/worldnews and r/geopolitics with the highest velocityScore (log of score x upvote ratio x a 6-hour recency decay), each with title, subreddit, url (the Reddit permalink), score, upvoteRatio, numComments and createdAt. Measures what is drawing public attention on Reddit now, not what happened: posts are unverified user submissions with no classification or corroboration, there is no history beyond the current snapshot, and no other social platform is covered. Refreshed about every 3 hours, flagged stale after 9 hours. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. subreddit keeps worldnews or geopolitics; limit caps the list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
-        subreddit: { type: 'string', description: 'Filter to one subreddit (e.g. "worldnews", "geopolitics").' },
+        subreddit: { type: 'string', description: 'Keep one subreddit: "worldnews" or "geopolitics".' },
         limit: { type: 'number', description: 'Cap the post list to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
@@ -3657,9 +3657,10 @@ export const CACHE_TOOLS: ToolDef[] = [
       reddit: {
         type: ['object', 'null'],
         properties: { posts: { type: 'array', items: { type: 'object', properties: {
-          subreddit: { type: 'string' }, title: { type: 'string' },
+          id: { type: 'string' }, subreddit: { type: 'string' }, title: { type: 'string' },
           score: { type: ['number', 'null'] }, url: { type: 'string' }, createdAt: { type: ['string', 'number'] },
-        } } } },
+          upvoteRatio: { type: 'number' }, numComments: { type: 'number' }, velocityScore: { type: 'number' },
+        } } }, fetchedAt: { type: 'number' } },
       },
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -3671,7 +3672,8 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['intelligence:social:reddit:v1'],
-    _freshnessChecks: [{ key: 'seed-meta:intelligence:social-reddit', maxStaleMin: 30 }],
+    // Mirrors api/health.js SEED_META.socialVelocity: the relay seeds every 3h.
+    _freshnessChecks: [{ key: 'seed-meta:intelligence:social-reddit', maxStaleMin: 540 }],
     _apiPaths: [
       "GET /api/intelligence/v1/get-social-velocity",
     ],
@@ -3687,7 +3689,9 @@ export const CACHE_TOOLS: ToolDef[] = [
       'streams are compared against 90-day Welford baselines keyed by weekday and month, so a Tuesday in July is only compared ' +
       'to prior Tuesdays in July. Each anomaly carries the observed count, expected baseline count, z-score, multiplier, and a ' +
       'severity band (medium >= 1.5σ, high >= 2σ, critical >= 3σ). Filter by stream type, region, or minimum severity. An empty ' +
-      'anomaly list with fresh data means activity is within normal bounds — that is itself signal.',
+      'anomaly list with fresh data means activity is within normal bounds — that is itself signal. Statistical deviations ' +
+      'per stream only: no story content, no cross-domain alert rollup. Seeded-cache read: weight 1 on API plans, included in ' +
+      'the signed-in free allowance.',
     inputSchema: {
       type: 'object',
       properties: {

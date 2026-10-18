@@ -4,7 +4,7 @@ This folder is a [Zapier Platform CLI](https://docs.zapier.com/integrations/buil
 
 WorldMonitor users who already have an API Starter or API Business key can connect Zapier to instant breaking-news, large-market-move, chokepoint-disruption and country-risk-surge alerts, keyword news search, the strategic risk overview, country risk, chokepoint status, latest conflict events, and new disease-outbreak alerts.
 
-The app is registered on Zapier as integration 248027 and `.zapierapprc` links this folder to it. Version 1.0.0 is pushed; 1.2.0 (this folder) is not yet and replaces the unpushed 1.1.0. Pushing is an account step Elie does, after the relay, the shipping webhook worker and the API sender are deployed and a real delivery of each new event has been observed carrying `X-WM-Signature-V2`; 1.2.0 accepts nothing else.
+The app is registered on Zapier as integration 248027 and `.zapierapprc` links this folder to it. Version 1.1.0 is pushed and every live Zap runs on it; 1.2.0 (this folder) is not pushed yet. Pushing is an account step Elie does, after the relay, the shipping webhook worker and the API sender are deployed and a real delivery of each new event has been observed carrying `X-WM-Signature-V2`; 1.2.0 accepts nothing else.
 
 ## What it calls
 
@@ -93,7 +93,7 @@ Validate runs Zapier's integration checks locally. All 27 pass. The one remainin
 
 `zapier-platform push` needs a Zapier developer login (`npx zapier-platform login`, or a deploy key). Do not run it in CI or from a pull request.
 
-To upload 1.2.0 (`push` reads `.zapierapprc`; do not run `zapier-platform register`, which would create a second integration). Order: deploy the relay (API fan-out tee), the shipping webhook worker (occurrence pipeline) and the API sender; observe a real `news.breaking` and `market.move` delivery, each carrying `X-WM-Signature-V2` and `X-WM-Timestamp`; then push 1.2.0; then migrate existing Zaps to 1.2.0 (`npx zapier-platform migrate 1.0.0 1.2.0`; 1.1.0 was never pushed). 1.2.0 rejects a delivery without V2, so it must not go out before the senders:
+To upload 1.2.0 (`push` reads `.zapierapprc`; do not run `zapier-platform register`, which would create a second integration). Order: deploy the relay (API fan-out tee), the shipping webhook worker (occurrence pipeline) and the API sender; observe a real `news.breaking` and `market.move` delivery, each carrying `X-WM-Signature-V2` and `X-WM-Timestamp`; then push 1.2.0; then migrate existing Zaps to 1.2.0 (`npx zapier-platform migrate 1.1.0 1.2.0`). 1.2.0 rejects a delivery without V2, so it must not go out before the senders:
 
 ```bash
 cd integrations/zapier
