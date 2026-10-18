@@ -2,7 +2,7 @@ import {
   PUBLIC_WEATHER_BOOTSTRAP_KEY,
   bootstrapTierKeyNames,
 } from './_bootstrap-tier-keys.js';
-import { stripTrailingSlashes } from '../shared/strip-trailing-slashes.js';
+import { stripTrailingSlashes } from './_strip-trailing-slashes.js';
 
 export const PUBLIC_BOOTSTRAP_TIERS = new Set(['fast', 'slow']);
 const PUBLIC_ON_DEMAND_BOOTSTRAP_KEYS = new Set(bootstrapTierKeyNames('on-demand'));

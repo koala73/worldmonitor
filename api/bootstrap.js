@@ -1,6 +1,6 @@
 import { sanitizeBootstrapValue } from './_bootstrap-public-payload.js';
 import { validateImfDataset } from './_imf-dataset.js';
-import { stripTrailingSlashes } from '../shared/strip-trailing-slashes.js';
+import { stripTrailingSlashes } from './_strip-trailing-slashes.js';
 import { waitUntil as vercelWaitUntil } from '@vercel/functions';
 
 import {
