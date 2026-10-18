@@ -110,15 +110,15 @@ for (const [key, event] of CASES) {
       await assert.rejects(() => perform(signedRequest(BODY, event), { secret: 'd'.repeat(64) }), /X-WM-Signature-V2 did not verify/);
     });
 
-    it('falls back to the legacy body-only signature only when V2 is absent', async () => {
+    it('rejects a legacy-only delivery: no fallback to the body-only signature, even when it verifies', async () => {
       const legacyOnly = signedRequest(BODY, event);
       delete legacyOnly.headers['Http-X-Wm-Signature-V2'];
       delete legacyOnly.headers['Http-X-Wm-Timestamp'];
-      const rows = await perform(legacyOnly);
-      assert.equal(rows.length, 1);
-      assert.equal(rows[0].id, DELIVERY_ID);
-      legacyOnly.headers['Http-X-Wm-Signature'] = signLegacy(BODY, 'e'.repeat(64));
-      await assert.rejects(() => perform(legacyOnly), /X-WM-Signature did not verify/);
+      assert.equal(legacyOnly.headers['Http-X-Wm-Signature'], signLegacy(BODY), 'the legacy header is genuine');
+      await assert.rejects(() => perform(legacyOnly), (err) => JSON.parse(err.message).code === 'InvalidSignature' && JSON.parse(err.message).status === 401);
+      const v2Stripped = signedRequest(BODY, event);
+      delete v2Stripped.headers['Http-X-Wm-Signature-V2'];
+      await assert.rejects(() => perform(v2Stripped), /X-WM-Signature-V2 did not verify/, 'stripping V2 from a captured delivery does not downgrade it');
     });
   });
 }

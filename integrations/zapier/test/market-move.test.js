@@ -1,11 +1,11 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { createHmac } = require('node:crypto');
 const nock = require('nock');
 const zapier = require('zapier-platform-core');
 
 const App = require('../index');
+const { signedRequest } = require('./helpers/signed-request');
 const { BASE_URL, PATHS, EVENT_REGISTRY } = require('../constants');
 
 const appTester = zapier.createAppTester(App);
@@ -18,12 +18,7 @@ const SECRET = '5d'.repeat(32);
 const DELIVERY_ID = 'whd_9b4d2e7f1a3c5e8d0f2b4a6c8e1d3f50';
 
 const BODY = JSON.stringify({ ...EVENT.sample, subscriberId: 'wh_041fef6d0657b56b75fb62cb' });
-const sign = (body, secret = SECRET) => `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
-const rawRequest = (body, overrides = {}) => ({
-  method: 'POST',
-  content: body,
-  headers: { 'Http-X-Wm-Signature': sign(body), 'Http-X-Wm-Event': 'market.move', 'Http-X-Wm-Delivery-Id': DELIVERY_ID, ...overrides },
-});
+const rawRequest = (body, overrides = {}) => signedRequest(body, { secret: SECRET, event: 'market.move', deliveryId: DELIVERY_ID, overrides });
 
 describe('trigger market_move (REST hook)', () => {
   afterEach(() => nock.cleanAll());
@@ -63,7 +58,7 @@ describe('trigger market_move (REST hook)', () => {
 
   it('rejects an unsigned delivery and ignores a news delivery on this hook', async () => {
     await assert.rejects(
-      () => appTester(trigger.perform, { authData: AUTH, subscribeData: { secret: SECRET }, cleanedRequest: JSON.parse(BODY), rawRequest: rawRequest(BODY, { 'Http-X-Wm-Signature': undefined }) }),
+      () => appTester(trigger.perform, { authData: AUTH, subscribeData: { secret: SECRET }, cleanedRequest: JSON.parse(BODY), rawRequest: rawRequest(BODY, { 'Http-X-Wm-Signature-V2': undefined }) }),
       /did not verify/,
     );
     const rows = await appTester(trigger.perform, { authData: AUTH, subscribeData: { secret: SECRET }, cleanedRequest: JSON.parse(BODY), rawRequest: rawRequest(BODY, { 'Http-X-Wm-Event': 'news.breaking' }) });

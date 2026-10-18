@@ -18,7 +18,7 @@
       "timestampHeader": "X-WM-Timestamp",
       "v2Algorithm": "sha256=hex(HMAC-SHA256(key=secret, message=timestamp + '.' + deliveryId + '.' + event + '.' + rawBody))",
       "toleranceSeconds": 300,
-      "note": "Every event, threshold or occurrence, goes through one sender (scripts/lib/shipping-webhook-delivery.mjs, mirrored by deliver-webhook.ts), so all of them carry the same headers. X-WM-Signature is the legacy body-only HMAC; X-WM-Signature-V2 also binds the X-WM-Timestamp send time, the delivery id and the event, so a captured delivery cannot be replayed under another id or outside the tolerance. Receivers verify V2 whenever it is present and never fall back to the legacy header when V2 fails; the legacy header alone is accepted only from a sender that predates V2."
+      "note": "Every event, threshold or occurrence, goes through one sender (scripts/lib/shipping-webhook-delivery.mjs, mirrored by deliver-webhook.ts), so all of them carry the same headers. X-WM-Signature is the legacy body-only HMAC; X-WM-Signature-V2 also binds the X-WM-Timestamp send time, the delivery id and the event, so a captured delivery cannot be replayed under another id or outside the tolerance. Receivers require V2 and never fall back to the legacy header, which a captured delivery can be replayed under with a new id or with V2 stripped; the Zapier app (1.2.0) rejects any delivery without a valid V2."
     },
     "evaluationSeconds": 300,
     "failureCeiling": 5,

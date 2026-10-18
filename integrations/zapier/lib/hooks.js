@@ -5,7 +5,6 @@ const { createHmac, timingSafeEqual } = require('node:crypto');
 const { BASE_URL, PATHS, EVENT_REGISTRY, SUBSCRIPTION_RENEW_DAYS } = require('../constants');
 
 const SIGNATURE = EVENT_REGISTRY.subscription.signature;
-const SIGNATURE_HEADER = SIGNATURE.header; // X-WM-Signature (legacy, body only)
 const SIGNATURE_V2_HEADER = SIGNATURE.v2Header; // X-WM-Signature-V2
 const TIMESTAMP_HEADER = SIGNATURE.timestampHeader; // X-WM-Timestamp
 const EVENT_HEADER = SIGNATURE.eventHeader; // X-WM-Event
@@ -78,12 +77,6 @@ function hmacHeaderEquals(header, secret, ...parts) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/** Legacy X-WM-Signature: HMAC over the raw body only. */
-function signatureMatches(rawBody, header, secret) {
-  if (typeof rawBody !== 'string' || typeof header !== 'string' || typeof secret !== 'string' || !secret) return false;
-  return hmacHeaderEquals(header, secret, rawBody);
-}
-
 /**
  * X-WM-Signature-V2: HMAC over `${timestamp}.${deliveryId}.${event}.${rawBody}`,
  * and the timestamp within SIGNATURE_TOLERANCE_SECONDS of this clock either way.
@@ -108,10 +101,11 @@ function verifySignatureV2(rawBody, { signature, timestamp, deliveryId, event },
 /**
  * Verifies an inbound delivery with the secret Zapier stored at subscribe time
  * and returns the event rows for the Zap, or throws when the delivery cannot
- * be trusted. X-WM-Signature-V2 is checked whenever it is present, and a V2
- * failure is final: falling back to the body-only header would let a captured
- * delivery be replayed under a new delivery id. Only a delivery without V2
- * (a sender that predates it) is checked against the legacy X-WM-Signature.
+ * be trusted. Every delivery must carry X-WM-Signature-V2 with its
+ * X-WM-Timestamp, X-WM-Delivery-Id and X-WM-Event; there is no fallback to the
+ * body-only X-WM-Signature, which a captured delivery could be replayed under
+ * with a new delivery id or with the V2 headers stripped. Both senders sign V2
+ * on every delivery, and this version ships only after they do.
  * The row id is the X-WM-Delivery-Id: WorldMonitor mints it once per crossing
  * or occurrence and reuses it on retries, so a retried POST carries the same
  * id. Zapier does not dedupe REST-hook deliveries itself.
@@ -121,31 +115,22 @@ function receive(z, bundle, { eventType }) {
   const headers = raw.headers || {};
   const rawBody = typeof raw.content === 'string' ? raw.content : undefined;
   const secret = bundle.subscribeData && bundle.subscribeData.secret;
-  const signatureV2 = headerValue(headers, SIGNATURE_V2_HEADER);
-  if (signatureV2 !== undefined) {
-    const verdict = verifySignatureV2(rawBody, {
-      signature: signatureV2,
-      timestamp: headerValue(headers, TIMESTAMP_HEADER),
-      deliveryId: headerValue(headers, DELIVERY_ID_HEADER),
-      event: headerValue(headers, EVENT_HEADER),
-    }, secret);
-    if (verdict === 'stale') {
-      throw new z.errors.Error(
-        `Rejected a delivery whose ${TIMESTAMP_HEADER} is more than ${SIGNATURE_TOLERANCE_SECONDS} seconds from now (a replay, or a skewed clock).`,
-        'StaleSignature',
-        401,
-      );
-    }
-    if (verdict !== 'ok') {
-      throw new z.errors.Error(
-        `Rejected a delivery whose ${SIGNATURE_V2_HEADER} did not verify against this Zap's subscription secret.`,
-        'InvalidSignature',
-        401,
-      );
-    }
-  } else if (rawBody === undefined || !secret || !signatureMatches(rawBody, headerValue(headers, SIGNATURE_HEADER), secret)) {
+  const verdict = verifySignatureV2(rawBody, {
+    signature: headerValue(headers, SIGNATURE_V2_HEADER),
+    timestamp: headerValue(headers, TIMESTAMP_HEADER),
+    deliveryId: headerValue(headers, DELIVERY_ID_HEADER),
+    event: headerValue(headers, EVENT_HEADER),
+  }, secret);
+  if (verdict === 'stale') {
     throw new z.errors.Error(
-      `Rejected a delivery whose ${SIGNATURE_HEADER} did not verify against this Zap's subscription secret.`,
+      `Rejected a delivery whose ${TIMESTAMP_HEADER} is more than ${SIGNATURE_TOLERANCE_SECONDS} seconds from now (a replay, or a skewed clock).`,
+      'StaleSignature',
+      401,
+    );
+  }
+  if (verdict !== 'ok') {
+    throw new z.errors.Error(
+      `Rejected a delivery whose ${SIGNATURE_V2_HEADER} did not verify against this Zap's subscription secret (or was missing).`,
       'InvalidSignature',
       401,
     );
@@ -193,7 +178,6 @@ function scopeFromInputs(inputs) {
 }
 
 module.exports = {
-  SIGNATURE_HEADER,
   SIGNATURE_V2_HEADER,
   TIMESTAMP_HEADER,
   SIGNATURE_TOLERANCE_SECONDS,
@@ -203,7 +187,6 @@ module.exports = {
   unsubscribe,
   receive,
   headerValue,
-  signatureMatches,
   verifySignatureV2,
   toInteger,
   toNumber,

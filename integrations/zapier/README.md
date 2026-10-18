@@ -4,7 +4,7 @@ This folder is a [Zapier Platform CLI](https://docs.zapier.com/integrations/buil
 
 WorldMonitor users who already have an API Starter or API Business key can connect Zapier to instant breaking-news, large-market-move, chokepoint-disruption and country-risk-surge alerts, keyword news search, the strategic risk overview, country risk, chokepoint status, latest conflict events, and new disease-outbreak alerts.
 
-The app is registered on Zapier as integration 248027 and `.zapierapprc` links this folder to it. Version 1.0.0 is pushed; 1.2.0 (this folder) is not yet and replaces the unpushed 1.1.0. Pushing is an account step Elie does, after the relay and worker that produce the new events are deployed and one real delivery per new event has been observed.
+The app is registered on Zapier as integration 248027 and `.zapierapprc` links this folder to it. Version 1.0.0 is pushed; 1.2.0 (this folder) is not yet and replaces the unpushed 1.1.0. Pushing is an account step Elie does, after the relay, the shipping webhook worker and the API sender are deployed and a real delivery of each new event has been observed carrying `X-WM-Signature-V2`; 1.2.0 accepts nothing else.
 
 ## What it calls
 
@@ -34,7 +34,7 @@ Two kinds of event share the plumbing. Chokepoint disruption and country risk su
 - New Large Market Move: `asset_classes`, `symbols` (as WorldMonitor lists them, upper-cased), `min_abs_pct` (default 10; the relay only publishes moves of 5 percent or more, 10 for crypto), `direction`. Sample rows are the largest current moves and ignore the percent floor.
 
 - `performSubscribe` registers the Zap's target URL and returns `{ id, subscriberId, secret, eventType, expiration_date }`. Zapier stores it as `bundle.subscribeData`. `expiration_date` is 29 days out so Zapier re-subscribes before the server's 30-day subscription TTL.
-- `perform` verifies `X-WM-Signature-V2` whenever the delivery carries it: `sha256=HMAC-SHA256(secret, timestamp.deliveryId.event.rawBody)` over the exact header strings and body bytes, compared in constant time, with `X-WM-Timestamp` within 300 seconds of Zapier's clock. A V2 failure is final; only a delivery with no V2 header (a sender that predates it) is checked against the legacy body-only `X-WM-Signature`. A delivery that does not verify, a stale timestamp, or a Zap with no stored secret raises an error instead of running the Zap. The row `id` is `X-WM-Delivery-Id`: the worker mints it once per crossing and reuses it on retries, so a later step can dedupe on it. Zapier itself does not dedupe REST-hook deliveries: a retried POST runs the Zap again with the same id. The server's per-subscriber hysteresis and cooldown decide what is sent.
+- `perform` requires `X-WM-Signature-V2` on every delivery: `sha256=HMAC-SHA256(secret, timestamp.deliveryId.event.rawBody)` over the exact header strings and body bytes, compared in constant time, with `X-WM-Timestamp` within 300 seconds of Zapier's clock and well-formed `X-WM-Delivery-Id` and `X-WM-Event`. There is no fallback to the legacy body-only `X-WM-Signature`: a delivery without V2, one that does not verify, a stale timestamp, or a Zap with no stored secret raises an error instead of running the Zap. Zaps on 1.1.0 keep 1.1.0's code until they are migrated to 1.2.0. The row `id` is `X-WM-Delivery-Id`: the worker mints it once per crossing and reuses it on retries, so a later step can dedupe on it. Zapier itself does not dedupe REST-hook deliveries: a retried POST runs the Zap again with the same id. The server's per-subscriber hysteresis and cooldown decide what is sent.
 - `performUnsubscribe` calls `DELETE /api/v2/shipping/webhooks/{subscriberId}`; a `404` (already gone) is not an error.
 - `performList` shapes live status rows exactly like a delivery so field mapping in the editor survives the switch to real events. Sample ids are `sample:<entity>:<feed time>`.
 
@@ -93,7 +93,7 @@ Validate runs Zapier's integration checks locally. All 27 pass. The one remainin
 
 `zapier-platform push` needs a Zapier developer login (`npx zapier-platform login`, or a deploy key). Do not run it in CI or from a pull request.
 
-To upload 1.2.0 (`push` reads `.zapierapprc`; do not run `zapier-platform register`, which would create a second integration). Push only after the relay (API fan-out tee) and the shipping webhook worker (occurrence pipeline) are deployed and a real `news.breaking` and `market.move` delivery have each been observed; the triggers subscribe fine before that but would receive nothing:
+To upload 1.2.0 (`push` reads `.zapierapprc`; do not run `zapier-platform register`, which would create a second integration). Order: deploy the relay (API fan-out tee), the shipping webhook worker (occurrence pipeline) and the API sender; observe a real `news.breaking` and `market.move` delivery, each carrying `X-WM-Signature-V2` and `X-WM-Timestamp`; then push 1.2.0; then migrate Zaps from 1.1.0 to 1.2.0 (`npx zapier-platform migrate`). 1.2.0 rejects a delivery without V2, so it must not go out before the senders:
 
 ```bash
 cd integrations/zapier
