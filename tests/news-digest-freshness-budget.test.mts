@@ -15,7 +15,7 @@ before(() => {
   const { fetchImpl } = createRedisFetch({});
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-    if (url.startsWith('https://redis.example')) return fetchImpl(input, init);
+    if (new URL(url).host === 'redis.example') return fetchImpl(input, init);
     return originalFetch(input, init);
   }) as typeof fetch;
 });
