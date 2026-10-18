@@ -92,10 +92,36 @@ impl Default for LocalApiState {
 
 impl LocalApiState {
     fn live_port(&self) -> Result<u16, String> {
-        self.port
+        let mut child_slot = self
+            .child
             .lock()
-            .map_err(|_| "Failed to lock local API port".to_string())?
-            .ok_or_else(|| "Local API sidecar is not ready".to_string())
+            .map_err(|_| "Failed to lock local API state".to_string())?;
+        match child_slot.as_mut() {
+            None => self.clear_recorded_port(),
+            Some(child) => match child.try_wait() {
+                Ok(None) => self
+                    .port
+                    .lock()
+                    .map_err(|_| "Failed to lock local API port".to_string())?
+                    .ok_or_else(|| "Local API sidecar is not ready".to_string()),
+                Ok(Some(_)) => {
+                    *child_slot = None;
+                    self.clear_recorded_port()
+                }
+                Err(_) => Self::refuse_unverified_child(),
+            },
+        }
+    }
+
+    fn clear_recorded_port(&self) -> Result<u16, String> {
+        if let Ok(mut port_slot) = self.port.lock() {
+            *port_slot = None;
+        }
+        Err("Local API sidecar is not ready".to_string())
+    }
+
+    fn refuse_unverified_child() -> Result<u16, String> {
+        Err("Local API sidecar is not ready".to_string())
     }
 }
 
@@ -346,11 +372,7 @@ async fn send_local_api_request(
     if body.as_ref().is_some_and(|body| body.len() > MAX_LOCAL_API_PROXY_BYTES) {
         return Err("Local API request body exceeds the proxy limit".to_string());
     }
-    let port = state
-        .port
-        .lock()
-        .map_err(|_| "Failed to lock local API port".to_string())?
-        .ok_or_else(|| "Local API sidecar is not ready".to_string())?;
+    let port = state.live_port()?;
     let token = state
         .token
         .lock()
@@ -412,7 +434,7 @@ async fn proxy_local_api_request(
 #[tauri::command]
 fn get_desktop_runtime_info(webview: Webview, state: tauri::State<'_, LocalApiState>) -> Result<DesktopRuntimeInfo, String> {
     require_trusted_window(webview.label())?;
-    let port = state.port.lock().ok().and_then(|g| *g);
+    let port = state.live_port().ok();
     Ok(DesktopRuntimeInfo {
         os: env::consts::OS.to_string(),
         arch: env::consts::ARCH.to_string(),
@@ -423,9 +445,7 @@ fn get_desktop_runtime_info(webview: Webview, state: tauri::State<'_, LocalApiSt
 #[tauri::command]
 fn get_local_api_port(webview: Webview, state: tauri::State<'_, LocalApiState>) -> Result<u16, String> {
     require_trusted_window(webview.label())?;
-    state.port.lock()
-        .map_err(|_| "Failed to lock port state".to_string())?
-        .ok_or_else(|| "Port not yet assigned".to_string())
+    state.live_port()
 }
 
 #[tauri::command]
