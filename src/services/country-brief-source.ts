@@ -13,7 +13,7 @@ import { fetchMultiSectorCostShock, fetchMultiSectorExposure, fetchBypassOptions
 function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void; settleMandatoryReads?: (signal?: AbortSignal) => Promise<void> }, mode: 'website' | 'host') {
   const base = mode === 'host' ? 'https://www.worldmonitor.app' : getRpcBaseUrl();
   const options = { fetch: fetcher };
-  const intelligence = new IntelligenceServiceClient(base, options);
+  const intelligence = new IntelligenceServiceClient(base, mode === 'website' ? { fetch: fetchWebsiteCountrySignals } : options);
   const supply = new SupplyChainServiceClient(base, options);
   const resilience = new ResilienceServiceClient(base, options);
   const scorecard = new ScorecardServiceClient(base, options);
@@ -97,7 +97,8 @@ function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void; 
   };
 }
 export type CountryBriefSource = ReturnType<typeof createCountryBriefSource>;
-export const createWebsiteCountryBriefSource = () => createCountryBriefSource(async (input, init) => {
+export const createWebsiteCountryBriefSource = () => createCountryBriefSource(premiumFetch, 'website');
+async function fetchWebsiteCountrySignals(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const url = new URL(input instanceof Request ? input.url : String(input), window.location.origin);
   if (url.pathname !== COUNTRY_SIGNAL_PATH) return premiumFetch(input, init);
   const signal = combineAbortSignals([init?.signal ?? (input instanceof Request ? input.signal : new AbortController().signal), AbortSignal.timeout(15_000)]);
@@ -135,7 +136,7 @@ export const createWebsiteCountryBriefSource = () => createCountryBriefSource(as
     if (response.ok) countrySignalResponseSchema.parse(JSON.parse(text));
     return new Response(text, { status: response.status, statusText: response.statusText, headers: response.headers });
   } finally { void reader.cancel().catch(() => {}); }
-}, 'website');
+}
 
 export async function createHostCountryBriefSource(call: Parameters<typeof createHostCountryFetch>[0]) {
   const { createHostCountryFetch } = await import('./country-brief-host-transport');
