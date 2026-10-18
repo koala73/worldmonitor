@@ -242,14 +242,15 @@ test.describe('panel drag reorder semantics', () => {
 });
 
 test.describe('monitor panel reload', () => {
-  async function loadMonitorDashboard(page: Page, order: string[]): Promise<void> {
+  async function loadMonitorDashboard(page: Page, order: string[], variant: 'full' | 'happy' = 'full'): Promise<void> {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
     await page.goto('/tests/runtime-harness.html');
-    await page.evaluate(async (panelOrder) => {
+    await page.evaluate(async ({ panelOrder, variant }) => {
       const { ALL_PANELS } = await import('/src/config/panels.ts');
       localStorage.clear();
-      localStorage.setItem('worldmonitor-variant', 'full');
+      localStorage.setItem('worldmonitor-variant', variant);
+      localStorage.setItem('worldmonitor-happy-panel-fix-v1', 'done');
       localStorage.setItem('wm-layer-warning-dismissed', 'true');
       localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
       localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
@@ -265,7 +266,7 @@ test.describe('monitor panel reload', () => {
         { id: 'strait', keywords: ['taiwan', 'strait'], color: '#ff0000' },
         { id: 'shipping', keywords: ['shipping'], color: '#00ff00' },
       ]));
-    }, order);
+    }, { panelOrder: order, variant });
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
   }
@@ -300,5 +301,16 @@ test.describe('monitor panel reload', () => {
     await expect.poll(visibleOrder).toEqual(order);
     expect(await storedPanelOrder(page)).toEqual(order);
     await page.screenshot({ path: testInfo.outputPath('monitor-position-after-reload.png') });
+  });
+
+  test('excludes My Monitors from saved Happy layouts after refresh', async ({ page }) => {
+    await loadMonitorDashboard(page, ['monitors', 'positive-feed'], 'happy');
+    const panels = page.locator('#panelsGrid > .panel[data-panel]:not(.hidden)');
+    const visibleOrder = () => panels.evaluateAll(elements => elements.map(element => (element as HTMLElement).dataset.panel));
+    await expect.poll(visibleOrder).toEqual(['positive-feed']);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('worldmonitor-panels')!).monitors.enabled))
+      .toBe(true);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect.poll(visibleOrder).toEqual(['positive-feed']);
   });
 });

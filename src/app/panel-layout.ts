@@ -3291,7 +3291,7 @@ export class PanelLayoutManager implements AppModule {
     let allOrder: string[];
 
     if (hasSavedOrder) {
-      const valid = savedOrder.filter(k => activePanelKeys.includes(k));
+      const valid = savedOrder.filter(k => activePanelKeys.includes(k) && (SITE_VARIANT !== 'happy' || k !== 'monitors'));
       const missing = activePanelKeys.filter(k => !valid.includes(k));
 
       missing.forEach(k => {
