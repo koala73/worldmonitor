@@ -82,3 +82,32 @@ test('widget sanitizer removes hostile markup and preserves supported content', 
     circleRadius: '2',
   });
 });
+
+test('widget sanitizer drops css url bypasses and keeps benign styles', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const modulePath = '/src/utils/widget-sanitizer.ts';
+    const { sanitizeWidgetHtml } = await import(/* @vite-ignore */ modulePath);
+    const styleOf = (html: string) => {
+      const host = document.createElement('div');
+      host.innerHTML = sanitizeWidgetHtml(html);
+      return host.querySelector('div, span')?.getAttribute('style') ?? null;
+    };
+    return {
+      imageSet: styleOf(`<div style="background-image:image-set('https://x.example/b' 1x)"></div>`),
+      escapedUrl: styleOf(`<div style="background:\\75rl(https://x.example/a)"></div>`),
+      literalUrl: styleOf(`<div style="background: url(https://evil.example)"></div>`),
+      color: styleOf(`<span style="color: red"></span>`),
+      layout: styleOf(`<div style="padding: 8px; display: flex"></div>`),
+      keptColor: styleOf(`<div style="color: var(--text); background: url(https://evil.example)"></div>`),
+    };
+  });
+
+  expect(result.imageSet ?? '').not.toMatch(/x\.example|image-set|url/i);
+  expect(result.escapedUrl ?? '').not.toMatch(/x\.example|\\/);
+  expect(result.literalUrl ?? '').not.toMatch(/url|evil\.example/i);
+  expect(result.color).toBe('color: red');
+  expect(result.layout).toMatch(/padding:\s*8px/i);
+  expect(result.layout).toMatch(/display:\s*flex/i);
+  expect(result.keptColor).toMatch(/color:\s*var\(--text\)/i);
+  expect(result.keptColor ?? '').not.toMatch(/url|evil\.example/i);
+});

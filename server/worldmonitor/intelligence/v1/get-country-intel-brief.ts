@@ -366,8 +366,8 @@ export async function getCountryIntelBrief(
       // MCP sends `context` in the signed POST body; the gateway promotes scalar
       // body fields into query params before this generated GET handler runs.
       const rawContextSnapshot = (url.searchParams.get('context') || '').trim().slice(0, 4000);
-      sources = parseCountryBriefSources(rawContextSnapshot);
-      contextSnapshot = sanitizeForPrompt(rawContextSnapshot);
+      contextSnapshot = sanitizeForPrompt(rawContextSnapshot.replace(/\r\n?|[\u2028\u2029]/g, '\n'));
+      sources = parseCountryBriefSources(contextSnapshot);
     }
   } catch {
     contextSnapshot = '';
@@ -407,9 +407,12 @@ export async function getCountryIntelBrief(
   const energyYear = typeof energyMixData?.year === 'number' ? String(energyMixData.year) : '';
   const energyImportYear = importDependency.available ? String(importDependency.year) : '';
 
-  const cacheContext = isPremium && lang === 'en' && !frameworkRaw
-    ? JSON.stringify(sources.filter(source => isBriefRelevantTitle(source.title)))
-    : contextSnapshot;
+  let cacheContext = '';
+  if (isPremium) {
+    cacheContext = lang === 'en' && !frameworkRaw
+      ? JSON.stringify(sources.filter(source => isBriefRelevantTitle(source.title)))
+      : JSON.stringify({ contextSnapshot, sources });
+  }
   const [contextHashFull, frameworkHashFull] = await Promise.all([
     cacheContext ? sha256Hex(cacheContext) : Promise.resolve('base'),
     frameworkRaw    ? sha256Hex(frameworkRaw)    : Promise.resolve(''),
