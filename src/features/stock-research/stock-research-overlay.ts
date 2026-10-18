@@ -46,6 +46,8 @@ let openGeneration = 0;
 let returnUrl: string | null = null;
 
 const ANALYZE_TIMEOUT_MS = 20_000;
+const CHART_MAX_WIDTH = 640;
+const CHART_HEIGHT = 240;
 
 /**
  * Resolve the badge for the header quote.
@@ -146,15 +148,7 @@ export async function openStockResearchOverlay(rawSymbol: string, stock?: Market
 
   const entitled = hasPremiumAccess();
   const tape = tapeNote();
-  const chart = stock && hasPlottableMarketSeries(stock)
-    ? terminalChart(stock.sparkline, {
-      change: stock.change,
-      width: 640,
-      height: 240,
-      formatValue: (value) => formatPrice(value),
-      ariaLabel: `${stock.display} price chart`,
-    })
-    : '';
+  const plottable = stock && hasPlottableMarketSeries(stock) ? stock : null;
 
   setTrustedHtml(
     overlayEl,
@@ -172,7 +166,7 @@ export async function openStockResearchOverlay(rawSymbol: string, stock?: Market
             ${tape ? `<div class="stock-research-tape" data-tape-claim="${escapeHtml(tape.claim)}">${escapeHtml(tape.label)}</div>` : ''}
           </div>
         </header>
-        <div class="stock-research-chart">${chart || '<p>No plottable Yahoo series for this symbol yet.</p>'}</div>
+        <div class="stock-research-chart">${plottable ? '' : '<p>No plottable Yahoo series for this symbol yet.</p>'}</div>
         <section class="stock-research-analyze" data-analyze-state="${entitled ? 'loading' : 'locked'}">
           ${entitled ? '<p>Loading analysis…</p>' : '<p>Premium stock analysis and backtest stay locked.</p>'}
         </section>
@@ -181,6 +175,22 @@ export async function openStockResearchOverlay(rawSymbol: string, stock?: Market
   );
 
   document.body.append(overlayEl);
+  const chartHost = overlayEl.querySelector('.stock-research-chart');
+  if (plottable && chartHost instanceof HTMLElement) {
+    // Render at the width the room actually has so axis labels keep their size on
+    // phones; scaling a 640px SVG down to fit shrank them to ~4px.
+    const width = Math.min(CHART_MAX_WIDTH, chartHost.clientWidth || CHART_MAX_WIDTH);
+    setTrustedHtml(
+      chartHost,
+      trustedHtml(terminalChart(plottable.sparkline, {
+        change: plottable.change,
+        width,
+        height: CHART_HEIGHT,
+        formatValue: (value) => formatPrice(value),
+        ariaLabel: `${plottable.display} price chart`,
+      }), 'Shared chart renderer escapes the label and uses finite numeric points'),
+    );
+  }
   overlayEl.querySelector('.stock-research-close')?.addEventListener('click', () => closeStockResearchOverlay());
   overlayEl.addEventListener('click', (event) => {
     if (event.target === overlayEl) closeStockResearchOverlay();

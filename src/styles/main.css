@@ -28585,6 +28585,13 @@ body.map-width-resizing {
 .stock-research-chart {
   margin: 12px 0 20px;
 }
+/* The chart renders at the room's width when opened; this cap covers a later
+   resize or rotation by scaling it via its viewBox. */
+.stock-research-chart .terminal-chart {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
 .stock-research-news {
   padding-left: 18px;
 }

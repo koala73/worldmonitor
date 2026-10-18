@@ -202,3 +202,61 @@ describe('stock research overlay overlapping opens', () => {
     expect(analyzeSection()?.textContent).not.toContain('FIRST');
   });
 });
+
+describe('stock research overlay chart width', () => {
+  const stock = {
+    symbol: 'AAPL',
+    name: 'Apple Inc.',
+    display: 'AAPL',
+    price: 231.42,
+    change: 1.18,
+    sparkline: [220, 222, 221, 224, 226, 231.42],
+  };
+  const chartSvg = () => document.querySelector('.stock-research-chart svg');
+
+  function stubChartHostWidth(width: number) {
+    // happy-dom has no layout; give only the chart host a measured width.
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList.contains('stock-research-chart') ? width : 0;
+      },
+    });
+    return () => {
+      if (original) Object.defineProperty(HTMLElement.prototype, 'clientWidth', original);
+    };
+  }
+
+  it('renders the chart at the room width on a narrow screen so labels keep their size', async () => {
+    const restore = stubChartHostWidth(296);
+    try {
+      await openStockResearchOverlay('AAPL', stock);
+      expect(chartSvg()?.getAttribute('width')).toBe('296');
+      expect(chartSvg()?.getAttribute('aria-label')).toBe('AAPL price chart');
+    } finally {
+      restore();
+    }
+  });
+
+  it('caps the chart at 640px when the room is wider', async () => {
+    const restore = stubChartHostWidth(874);
+    try {
+      await openStockResearchOverlay('AAPL', stock);
+      expect(chartSvg()?.getAttribute('width')).toBe('640');
+    } finally {
+      restore();
+    }
+  });
+
+  it('falls back to 640px when the room has no measured width', async () => {
+    await openStockResearchOverlay('AAPL', stock);
+    expect(chartSvg()?.getAttribute('width')).toBe('640');
+  });
+
+  it('keeps the no-series message when there is nothing to plot', async () => {
+    await openStockResearchOverlay('AAPL', { ...stock, sparkline: [231.42] });
+    expect(chartSvg()).toBeNull();
+    expect(document.querySelector('.stock-research-chart')?.textContent).toContain('No plottable Yahoo series');
+  });
+});
