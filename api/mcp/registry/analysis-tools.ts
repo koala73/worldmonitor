@@ -556,13 +556,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     title: 'Military surge alerts',
     _outputBudgetBytes: 65536,
     description:
-      'Military surge watch: theater aircraft postures, foreign-presence detections, and seeder-computed surge alerts. ' +
-      'Runs the dashboard military-surge engine server-side over the seeded flight snapshot: per-theater posture summaries ' +
-      'count fighters, tankers, AWACS, reconnaissance, transports, bombers, and drones inside each theater boundary, with ' +
-      'trend context recovered from the persisted surge history and tracked-vessel counts merged from the theater-posture ' +
-      'cache. Foreign-presence detection flags operators flying far from their home region above per-operator thresholds. ' +
-      'The seeded_surges block carries the surge alerts the flights seeder computed against its own persisted baselines — ' +
-      'reported separately because that variant uses different thresholds than the snapshot engine. Filter with theater.',
+      'Return the military surge watch computed server-side over the seeded flight snapshot: per-theater posture summaries counting fighters, tankers, AWACS, reconnaissance, transports, bombers and drones inside each theater boundary with trend context from persisted surge history and tracked-vessel counts; foreign_presence detections (operators flying far from home above per-operator thresholds); and seeded_surges, the alerts the flights seeder computed against its own baselines (reported separately because it uses different thresholds). Inputs are flagged stale after 30 minutes; flight_count and the *_available flags report which inputs were present. Requires a paid plan; weight 2 on API plans. theater narrows by id or name substring. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -338,7 +338,10 @@ export const SERVER_NAME = 'worldmonitor';
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
 // Bumped 1.32.0 → 1.33.0 for verify_claim (#9092).
-export const SERVER_VERSION = '1.33.0';
+// Bumped 1.33.0 → 1.34.0 when tools/list started shipping complete tool
+// descriptions under a per-tool byte budget instead of first-sentence
+// compression, with the weakest descriptions rewritten.
+export const SERVER_VERSION = '1.34.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
@@ -372,11 +375,32 @@ export const JMESPATH_MAX_OUTPUT_BYTES = 256 * 1024;
 import { MAX_JSON_RPC_BODY_BYTES } from './body-limits';
 export { MAX_JSON_RPC_BODY_BYTES };
 
-// tools/list tool-description compression cap (v1.5.0). Defined here
-// rather than near `compressDescription` so SERVER_INSTRUCTIONS can
-// quote it without a temporal-dead-zone error. The compressDescription
-// helper definition lives later, with the rest of the helpers.
-export const TOOL_DESCRIPTION_MAX_BYTES = 120;
+// Per-tool budget for the `description` tools/list ships (UTF-8 bytes).
+//
+// v1.5.0 compressed every description to its first sentence (≤120 B) to save
+// context tokens and routed agents to describe_tool for the full text. Hosts
+// that grade tool definitions (Glama's TDQS, the Claude Connectors Directory)
+// read only tools/list, and so do agents picking a tool, so a one-line entry
+// cost more in wrong tool choices than it saved in tokens. tools/list now
+// ships each description in full; this cap is what keeps the catalog bounded.
+//
+// 1024 bytes: OpenAI rejects function-tool descriptions over 1024 characters
+// (`string_above_max_length` on tools[i].function.description), and a byte
+// cap is at least as strict as a character cap, so every description that
+// fits here survives ChatGPT's import unchanged. It is also roughly 250
+// tokens, enough for purpose, scope, access tier, cost and the non-obvious
+// argument semantics without becoming a reference page. Enforced on every
+// registered description by tests/mcp-tools-list-description-budget.test.mjs;
+// `compressDescription` remains in buildPublicTool as a backstop that a
+// passing test suite never exercises. Defined here so SERVER_INSTRUCTIONS
+// can quote it without a temporal-dead-zone error.
+export const TOOL_DESCRIPTION_MAX_BYTES = 1024;
+
+// Total budget for every tools/list description together. 64 KiB is about
+// 16k tokens, roughly a sixth of the tools/list envelope (the input and output
+// schemas are the rest), and leaves headroom for a few more tools at the
+// per-tool cap above the ~57 KB the registry uses today. Test-enforced only.
+export const TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES = 65536;
 
 // Session-level discovery instructions. Per MCP 2025-03-26 lifecycle spec,
 // servers MAY return an `instructions` string in the `initialize` result;
@@ -397,7 +421,7 @@ export const SERVER_INSTRUCTIONS = [
   '',
   `Limits: request body ≤ ${MAX_JSON_RPC_BODY_BYTES}B (over-cap POSTs are rejected before parsing with HTTP 413 + -32600 and error.data.reason 'body-too-large'; shrink the payload, do not retry it), expr ≤ ${JMESPATH_MAX_EXPR_BYTES}B, output ≤ ${JMESPATH_MAX_OUTPUT_BYTES}B. Bad expressions soft-fail via {_jmespath_error, original_keys} envelope (consumes one daily quota unit on retry when that quota path applies — self-correct from original_keys). Full envelope reference: https://www.worldmonitor.app/docs/mcp-error-catalog.`,
   '',
-  `tools/list ships compressed tool descriptions (≤${TOOL_DESCRIPTION_MAX_BYTES}B). Call describe_tool({tool_name}) for the full uncompressed definition — quota-exempt (still counts toward the 60/min rate limit), so use freely while exploring. describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct. Full reference: https://www.worldmonitor.app/docs/mcp-tools-reference.`,
+  `tools/list ships each tool's complete description (≤${TOOL_DESCRIPTION_MAX_BYTES}B per tool) with its input and output schema. describe_tool({tool_name}) returns that same definition for one tool, for re-reading a single tool without re-listing all of them — quota-exempt (still counts toward the 60/min rate limit). describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct. Full reference: https://www.worldmonitor.app/docs/mcp-tools-reference.`,
   '',
   `get_sources is the sole credential-free data tool and consumes no daily quota. It has a separate fail-closed ceiling of 10 unauthenticated calls/minute/IP. Signed-in accounts without a subscription get a free taste of CACHED-data tools (3 request windows/day, 5 calls/day); live-fetch tools stay Pro-only. Structured account-access denials carry \`error.data\` = {reason, nextStep, upgradeUrl}: -32001/401 reason=no-account, -32029/429 reason=allowance-exhausted, and -32002/403 reason=upgrade-required or lapsed-subscription. Other rate-limit and service errors may omit those fields; branch on the JSON-RPC code and HTTP status. Read each tool's \`_meta["worldmonitor/access"]\`: \`free\` is anonymous and quota-free, \`free-account\` is available to signed-in free accounts (cache-backed data calls spend the allowance; describe_tool and get_mcp_allowance do not), and \`subscription\` requires Pro. Each tool also carries \`_meta["worldmonitor/weight"]\`: what one call COSTS, in REST-request units. It is charged only on an API plan, whose MCP calls and REST requests draw one daily budget (1 for a cache-backed read, 2 for a live downstream fetch, 3 for the two that fetch twice); Pro and Pro Business meter one unit per standalone data call. Opening any embedded panel costs one request including its rendered details. Country briefs include bounded section reads; news dashboards include bounded hazard map loads. Repeated same-country or news-dashboard opens reuse the admission for at least five minutes, local topic/filter/layer navigation reuses loaded data, and explicit refresh costs one new request. News summaries and translations are separate user requests. Budget before you call: get_mcp_allowance or the allowance resource reports \`sharedWithRestApi\` so you can tell whether \`used\` also counts REST traffic. Upgrade: ${MCP_UPGRADE_URL}.`,
   '',
@@ -410,7 +434,7 @@ export const SERVER_INSTRUCTIONS = [
   // Which tool fits which question. Tool descriptions describe only their own
   // tool: the Claude Connectors Directory forbids descriptions that name other
   // tools or direct the model (tests/mcp-tool-description-policy.test.mjs).
-  'Choosing between tools: open_country_brief for country brief requests and topic navigation; get_country_brief only for a text-only assessment. get_country_coverage for a country\'s deduplicated incident timeline rather than rebuilding it from the news tools. Tariffs: get_us_import_duty for current US duties including Section 301 and 232; get_tariff_averages for any reporter\'s average over time, a partner or a product group; get_bilateral_tariff for one HS product between two countries. Forecasts: get_forecast_predictions reads the published forecasts and get_forecast_case one of their cases; generate_forecasts runs the model fresh and is slower. list_five_factor_scorecards for the overview, get_five_factor_scorecard for one country\'s provenance and raw observations. get_mineral_production for who mines and refines; get_commodity_geo for site locations. search_intel_history for a short query; get_similar_events for a described situation. Before relying on a result, check its availability flags (upstreamUnavailable, hasScore, underAudit, unavailable, coverage and degraded fields): they separate unknown from zero.',
+  'Choosing between tools: open_country_brief for country brief requests and topic navigation; get_country_brief only for a text-only assessment. get_country_coverage for a country\'s deduplicated incident timeline rather than rebuilding it from the news tools. Tariffs: get_us_import_duty for current US duties including Section 301 and 232; get_tariff_averages for any reporter\'s average over time, a partner or a product group; get_bilateral_tariff for one HS product between two countries. Forecasts: get_forecast_predictions reads the published forecasts from the cache and get_forecast_case one of their cases; generate_forecasts returns the same published run filtered server-side by domain and region, with case files, as a downstream request (it does not start a new run). list_five_factor_scorecards for the overview, get_five_factor_scorecard for one country\'s provenance and raw observations. get_mineral_production for who mines and refines; get_commodity_geo for site locations. search_intel_history for a short query; get_similar_events for a described situation. Before relying on a result, check its availability flags (upstreamUnavailable, hasScore, underAudit, unavailable, coverage and degraded fields): they separate unknown from zero.',
   '',
   // Content safety (#5743). This stanza is the ONLY delivery channel that
   // reliably reaches the model: hosts compress the tool description to its

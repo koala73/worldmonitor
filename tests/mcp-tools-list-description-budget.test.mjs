@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import Ajv2020 from 'ajv/dist/2020.js';
 
-import { SERVER_VERSION } from '../api/mcp/constants.ts';
+import { SERVER_VERSION, TOOL_DESCRIPTION_MAX_BYTES, TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES } from '../api/mcp/constants.ts';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 
 const originalEnv = { ...process.env };
@@ -14,7 +14,15 @@ async function freshMod() {
   return import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}`);
 }
 
-describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
+// tools/list shipped first-sentence descriptions (≤120 B) from v1.5.0 to
+// v1.33.0 and routed agents to describe_tool for the full text. Since v1.34.0
+// every registered description must fit TOOL_DESCRIPTION_MAX_BYTES and
+// tools/list ships it whole, so the two surfaces carry identical text. These
+// tests own that budget: the per-tool cap, the total cap, the no-truncation
+// guarantee, and full description coverage of every input-schema property
+// (nested oneOf branches included), which is what tool-definition graders
+// and agents actually read.
+describe('api/mcp.ts — tools/list description budget (v1.34.0)', () => {
   let mod;
 
   beforeEach(async () => {
@@ -32,11 +40,17 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
   });
 
   // ============================================================
-  // U1: compressDescription helper + cap constant
+  // U1: compressDescription backstop + budget constants
   // ============================================================
-  describe('compressDescription helper', () => {
-    it('TOOL_DESCRIPTION_MAX_BYTES === 120', () => {
-      assert.equal(mod.TOOL_DESCRIPTION_MAX_BYTES, 120);
+  describe('compressDescription backstop', () => {
+    it('TOOL_DESCRIPTION_MAX_BYTES === 1024 (the OpenAI function-description limit, in bytes)', () => {
+      assert.equal(mod.TOOL_DESCRIPTION_MAX_BYTES, 1024);
+      assert.equal(TOOL_DESCRIPTION_MAX_BYTES, 1024);
+    });
+
+    it('TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES === 64 KiB and exceeds the per-tool cap times a few tools', () => {
+      assert.equal(TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES, 65536);
+      assert.ok(TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES > TOOL_DESCRIPTION_MAX_BYTES * 8);
     });
 
     it('short text (≤cap) returns unchanged (identity, same reference)', () => {
@@ -310,7 +324,7 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       });
     });
 
-    it('describe_tool(get_country_risk) carries the same _meta.ui linkage (uncompressed path)', async () => {
+    it('describe_tool(get_country_risk) carries the same _meta.ui linkage', async () => {
       const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
@@ -327,9 +341,9 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
   });
 
   // ============================================================
-  // U3: TOOL_LIST_RESPONSE compression + describe_tool RPC
+  // U3: tools/list description budget + describe_tool RPC
   // ============================================================
-  describe('tools/list compression + describe_tool RPC', () => {
+  describe('tools/list description budget + describe_tool RPC', () => {
     async function getToolsList() {
       const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
         method: 'POST',
@@ -366,12 +380,62 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         'describe_tool must be discoverable via tools/list');
     });
 
-    it('every tool in tools/list has compressed description ≤ TOOL_DESCRIPTION_MAX_BYTES utf8 bytes', async () => {
+    it('every registered description fits TOOL_DESCRIPTION_MAX_BYTES, so tools/list ships it whole', async () => {
+      const over = TOOL_REGISTRY
+        .filter((t) => mod.utf8ByteLength(t.description) > mod.TOOL_DESCRIPTION_MAX_BYTES)
+        .map((t) => `${t.name}=${mod.utf8ByteLength(t.description)}B`);
+      assert.deepEqual(over, [], `descriptions over the ${mod.TOOL_DESCRIPTION_MAX_BYTES}B per-tool budget: ${over.join(', ')}`);
       const tools = await getToolsList();
       for (const t of tools) {
         assert.ok(mod.utf8ByteLength(t.description) <= mod.TOOL_DESCRIPTION_MAX_BYTES,
           `tool "${t.name}" description is ${mod.utf8ByteLength(t.description)} bytes (cap ${mod.TOOL_DESCRIPTION_MAX_BYTES})`);
       }
+    });
+
+    it('tools/list carries every description untruncated (identical to the registry text)', async () => {
+      const tools = await getToolsList();
+      const truncated = [];
+      for (const t of tools) {
+        const registered = TOOL_REGISTRY.find((r) => r.name === t.name);
+        if (t.description !== registered.description) truncated.push(t.name);
+      }
+      assert.deepEqual(truncated, [], 'tools/list must not compress any registered description');
+      // The budget is a real constraint, not a formality: most descriptions
+      // are longer than the one-sentence entries v1.5.0 shipped.
+      const longer = tools.filter((t) => mod.utf8ByteLength(t.description) > 120).length;
+      assert.ok(longer > tools.length / 2, `expected most descriptions to exceed the old 120 B first-sentence cap, got ${longer}/${tools.length}`);
+    });
+
+    it('all tools/list descriptions together stay under TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES', async () => {
+      const tools = await getToolsList();
+      const total = tools.reduce((sum, t) => sum + mod.utf8ByteLength(t.description), 0);
+      assert.ok(total <= TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES,
+        `tools/list descriptions total ${total} B, over the ${TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES} B budget — tighten descriptions rather than raising the budget`);
+    });
+
+    it('every input-schema property, nested oneOf branches included, carries a description', async () => {
+      // Tool-definition graders score schema description coverage; agents read
+      // the same text to fill arguments. Walk properties, array items and
+      // oneOf/anyOf/allOf branches so a dispatcher tool's per-branch
+      // `arguments` objects count too.
+      function missingDescriptions(schema, path, out) {
+        if (!schema || typeof schema !== 'object') return;
+        if (schema.properties && typeof schema.properties === 'object') {
+          for (const [key, value] of Object.entries(schema.properties)) {
+            const here = `${path}.${key}`;
+            if (!(value && typeof value === 'object' && typeof value.description === 'string' && value.description.trim().length > 0)) out.push(here);
+            missingDescriptions(value, here, out);
+          }
+        }
+        if (schema.items) missingDescriptions(schema.items, `${path}[]`, out);
+        for (const branch of ['oneOf', 'anyOf', 'allOf']) {
+          if (Array.isArray(schema[branch])) schema[branch].forEach((s, i) => missingDescriptions(s, `${path}<${branch}${i}>`, out));
+        }
+      }
+      const tools = await getToolsList();
+      const missing = [];
+      for (const t of tools) missingDescriptions(t.inputSchema, t.name, missing);
+      assert.deepEqual(missing, [], `input-schema properties without a description:\n${missing.join('\n')}`);
     });
 
     it('discovery descriptions identify supply and economic data without unsupported capabilities', async () => {
@@ -389,16 +453,13 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.doesNotMatch(full.description, /energy storage/i);
     });
 
-    it('describe_tool({tool_name: "get_market_data"}) returns the FULL uncompressed description', async () => {
+    it('describe_tool({tool_name: "get_market_data"}) returns the same description tools/list ships', async () => {
       const tools = await getToolsList();
-      const compressed = tools.find(t => t.name === 'get_market_data');
+      const listed = tools.find(t => t.name === 'get_market_data');
       const full = await callDescribeTool('get_market_data');
-      assert.ok(mod.utf8ByteLength(full.description) > mod.utf8ByteLength(compressed.description),
-        `describe_tool should return longer description than tools/list (full=${mod.utf8ByteLength(full.description)}, compressed=${mod.utf8ByteLength(compressed.description)})`);
-      // Full text should NOT have been truncated by compression — verify
-      // the v1.4.0 description is longer than the cap so this test is meaningful.
-      assert.ok(mod.utf8ByteLength(full.description) > mod.TOOL_DESCRIPTION_MAX_BYTES,
-        'test premise: full get_market_data description should exceed the cap');
+      assert.equal(full.description, listed.description);
+      assert.ok(mod.utf8ByteLength(full.description) > 120,
+        'test premise: get_market_data carries more than a one-sentence description');
     });
 
     it('describe_tool result has the SAME shape as a tools/list entry (name + description + inputSchema + annotations)', async () => {
@@ -408,14 +469,14 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.deepEqual(Object.keys(fromList).sort(), Object.keys(fromDescribe).sort());
     });
 
-    it('describe_tool returns the complete country section definition within its existing budget', async () => {
+    it('describe_tool returns the complete country section definition, equal to its tools/list entry, within its budget', async () => {
       const tools = await getToolsList();
       const listed = tools.find(tool => tool.name === 'get_country_brief_section');
       const definition = await callDescribeTool('get_country_brief_section');
       const registered = TOOL_REGISTRY.find(tool => tool.name === 'get_country_brief_section');
       assert.equal(definition._budget_exceeded, undefined);
       assert.equal(definition.description, registered.description);
-      assert.deepEqual({ ...definition, description: listed.description }, listed);
+      assert.deepEqual(definition, listed);
     });
 
     // describe_tool's own output budget must hold the largest full definition;
@@ -447,6 +508,19 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.equal(validate({ ...result, value: { countryCode: 'US' } }), false);
       assert.equal(validate({ state: 'ready', section: 'facts', value: { capital: 'Washington' } }), true);
       assert.equal(validate({ state: 'ready', value: {} }), false);
+    });
+
+    it('country section input schema still validates each branch after the descriptions were added', () => {
+      const schema = TOOL_REGISTRY.find(tool => tool.name === 'get_country_brief_section').inputSchema;
+      const validate = new Ajv2020({ strict: false }).compile(schema);
+      assert.equal(validate({ section: 'facts', arguments: { country_code: 'US' } }), true);
+      assert.equal(validate({ section: 'flows', arguments: { reporter_code: '840', cmd_code: '', anomalies_only: 'false' } }), true);
+      assert.equal(validate({ section: 'facts', arguments: { country_code: 'US', extra: 1 } }), false, 'unknown keys stay rejected');
+      assert.equal(validate({ section: 'facts', arguments: { iso2: 'US' } }), false, 'a branch keeps its own key names');
+      for (const branch of schema.oneOf) {
+        assert.equal(typeof branch.properties.section.description, 'string');
+        assert.equal(typeof branch.properties.arguments.description, 'string');
+      }
     });
 
     it('describe_tool result has inputSchema.properties.jmespath structurally equal to JMESPATH_SCHEMA (R7)', async () => {
@@ -489,7 +563,7 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.equal(body.result?.serverInfo?.version, SERVER_VERSION);
     });
 
-    it('initialize.result.instructions mentions describe_tool AND the TOOL_DESCRIPTION_MAX_BYTES cap value', async () => {
+    it('initialize.result.instructions mentions describe_tool, the per-tool cap value, and no longer claims compression', async () => {
       const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
@@ -501,6 +575,8 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.ok(/describe_tool/i.test(inst), 'instructions should mention describe_tool');
       assert.ok(inst.includes(String(mod.TOOL_DESCRIPTION_MAX_BYTES)),
         'instructions should mention the TOOL_DESCRIPTION_MAX_BYTES cap');
+      assert.match(inst, /complete description/i, 'instructions should say tools/list ships the complete description');
+      assert.doesNotMatch(inst, /compressed tool descriptions|uncompressed/i, 'instructions must not describe tools/list as compressed');
     });
 
     it('server-card.json version matches SERVER_VERSION and tools[] matches the registry count', () => {
@@ -511,7 +587,9 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       // object. Keep it an array; the count now derives from the length.
       assert.ok(Array.isArray(card.tools), 'server-card tools must be an array (tools[])');
       assert.equal(card.tools.length, TOOL_REGISTRY.length);
-      assert.equal(card.features?.toolDescriptionCompression, true);
+      assert.equal(card.features?.toolDescriptionCompression, undefined, 'the v1.5.0 compression flag must be gone from the card');
+      assert.equal(card.features?.toolDescriptionMaxBytes, TOOL_DESCRIPTION_MAX_BYTES,
+        'the card advertises the per-tool description budget tools/list enforces');
       assert.equal(card.features?.responseProjection, 'jmespath',
         'v1.4.0 feature flag must still be present');
     });
@@ -552,35 +630,6 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         'server-card tools[] drifted from api/mcp/registry — regenerate the tools array in ' +
           'public/.well-known/mcp/server-card.json from TOOL_REGISTRY (see comment above this test)',
       );
-    });
-
-    // ============================================================
-    // U5: Reduction-target regression guard (R1: ≥8%)
-    // ============================================================
-    it('R1: tools/list description compression reduces total envelope vs uncompressed baseline', async () => {
-      const tools = await getToolsList();
-      // Baseline: same tools EXCEPT describe_tool (v1.5.0 addition),
-      // with full uncompressed descriptions. Use describe_tool to recover
-      // full text for each tool — same self-contained measurement strategy
-      // the U5 script uses.
-      const baseline = [];
-      for (const t of tools) {
-        if (t.name === 'describe_tool') continue;
-        const full = await callDescribeTool(t.name);
-        baseline.push(full);
-      }
-      const baselineBytes = mod.utf8ByteLength(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools: baseline } }));
-      const currentBytes = mod.utf8ByteLength(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools } }));
-      const reductionPct = ((baselineBytes - currentBytes) / baselineBytes) * 100;
-      // Floor lowered from 8% → 4% in v1.6.0. The R1 target was set against a
-      // v1.4.0 envelope that did NOT carry outputSchema. v1.6.0 emits an
-      // outputSchema on every tool — that adds wire bytes to BOTH the compressed
-      // and uncompressed sides equally, which dilutes the % savings even though
-      // the description-compression mechanism still saves the same absolute bytes.
-      // The 4% floor catches a true regression of the compression mechanism
-      // without re-flagging the legitimate v1.6.0 envelope growth.
-      assert.ok(reductionPct >= 4,
-        `reduction ${reductionPct.toFixed(2)}% below R1 v1.6.0 target (≥4%). baseline=${baselineBytes}B current=${currentBytes}B`);
     });
 
     it('round-trip: every tool returned by describe_tool has no _-prefixed key (R9)', async () => {
