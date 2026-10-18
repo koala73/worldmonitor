@@ -118,8 +118,9 @@ function rowsByMonth(allRows, iso2) {
 function pickMonthValue(monthRows, iso2, product, flow, isAnomalyCapped) {
   const r = monthRows.find(row => row.ENERGY_PRODUCT === product && row.FLOW_BREAKDOWN === flow);
   if (!r) return null;
-  const code = r.ASSESSMENT_CODE;
-  if (code === '3') return null;
+  // ASSESSMENT_CODE 3 means JODI has not assessed the value, not that it is
+  // missing: Saudi Arabia, Kazakhstan, Nigeria and Venezuela publish their
+  // crude exports under it. Absence is a non-numeric cell ('-', '..', 'x').
   const val = parseObsValue(r.OBS_VALUE);
   if (val === null) return null;
   if (isAnomalyCapped && iso2 !== 'US' && flow === 'TOTDEMO' && val > ANOMALY_DEMAND_KBD) return null;
@@ -228,12 +229,13 @@ export function extractCountryData(allRows, iso2) {
   let dataMonth = null;
   for (const month of sortedMonths) {
     const monthRows = byMonth.get(month);
-    const hasValidCode = monthRows.some(r => r.ASSESSMENT_CODE === '1' || r.ASSESSMENT_CODE === '2');
-    if (!hasValidCode) continue;
-    // Require at least one valid secondary-product row so a failed secondary
-    // download (crude-only month) never becomes the chosen dataMonth.
+    // A month counts only if it carries a number. Every JODI cell has an
+    // assessment code, including the '-' placeholders a non-reporting country
+    // (the UAE since 2019) files, so the code says nothing about presence.
+    // Require a usable secondary-product value so a failed secondary download
+    // (crude-only month) never becomes the chosen dataMonth.
     const hasSecondaryData = monthRows.some(
-      r => (r.ASSESSMENT_CODE === '1' || r.ASSESSMENT_CODE === '2') && r.ENERGY_PRODUCT in SECONDARY_PRODUCTS,
+      r => r.ENERGY_PRODUCT in SECONDARY_PRODUCTS && parseObsValue(r.OBS_VALUE) !== null,
     );
     if (hasSecondaryData) {
       dataMonth = month;
