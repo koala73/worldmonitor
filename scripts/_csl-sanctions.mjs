@@ -99,12 +99,13 @@ export function parseCslPayload(payload, nowMs) {
   }
   const updated = new Map((Array.isArray(payload.sources_used) ? payload.sources_used : [])
     .map(s => [s?.source, Date.parse(s?.source_last_updated)]));
-  const today = new Date(nowMs).toISOString().slice(0, 10);
+  const today = Date.parse(`${new Date(nowMs).toISOString().slice(0, 10)}T00:00:00Z`);
   const records = Object.fromEntries(CSL_SOURCES.map(source => [source, new Map()]));
   for (const row of payload.results) {
     const source = CSL_LISTS[row?.source];
     if (!source) continue;
-    if (typeof row.end_date === 'string' && row.end_date && row.end_date < today) continue;
+    const endAt = dayMs(row.end_date);
+    if (endAt !== null && endAt < today) continue;
     const record = cslRecord(row, source);
     if (record && !records[source].has(record.id)) records[source].set(record.id, record);
   }

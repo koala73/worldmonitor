@@ -907,9 +907,12 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
     // calls writeExtraKey (no meta), and we need a seed-meta key for health tracking.
     const sourceHealth = data._sourceHealth;
     if (data._entityIndex) {
-      // Screening is the only published surface for the CSL lists, so their
-      // outages degrade the index's health instead of pressure's.
-      const cslFailed = CSL_SOURCES.filter(source => sourceHealth[source]?.status !== 'ok');
+      // The index holds every source, so any outage degrades its health. CSL
+      // outages degrade only this key: screening is their only published surface.
+      const indexFailed = Object.keys(sourceHealth).filter(source => sourceHealth[source]?.status !== 'ok');
+      const indexErrorCode = indexFailed.includes(SEMA_SOURCE) ? 'SEMA_INGEST_FAILED'
+        : indexFailed.some(source => !CSL_SOURCES.includes(source)) ? 'OFAC_INGEST_FAILED'
+          : indexFailed.length ? 'CSL_INGEST_FAILED' : null;
       await writeExtraKeyWithMeta(
         ENTITY_INDEX_KEY,
         data._entityIndex,
@@ -918,7 +921,7 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
         ENTITY_INDEX_META_KEY,
         undefined,
         undefined,
-        { sourceState: cslFailed.length ? 'error' : 'ok', errorCode: cslFailed.length ? 'CSL_INGEST_FAILED' : null, failedSources: cslFailed },
+        { sourceState: indexFailed.length ? 'error' : 'ok', errorCode: indexErrorCode, failedSources: indexFailed },
       );
     }
     // Write full ISO2→count map for per-country sanctions lookup (no top-12 truncation).

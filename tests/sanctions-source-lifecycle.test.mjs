@@ -374,9 +374,9 @@ describe('sanctions source lifecycle', () => {
       const index = writes.find(([key]) => key === 'sanctions:entities:v1');
       assert.equal(index[1].length, screened);
       assert.equal(index[3], screened);
-      assert.equal(index[7].sourceState, 'error', 'a CSL outage degrades the screening index health');
-      assert.equal(index[7].errorCode, 'CSL_INGEST_FAILED');
-      assert.deepEqual(index[7].failedSources, CSL_SOURCES);
+      assert.equal(index[7].sourceState, 'error', 'every source outage degrades the screening index health');
+      assert.equal(index[7].errorCode, 'SEMA_INGEST_FAILED');
+      assert.deepEqual([...index[7].failedSources].sort(), ['CONSOLIDATED', 'SDN', SEMA_SOURCE, ...CSL_SOURCES].sort());
       assert.deepEqual(writes.find(([key]) => key === 'sanctions:country-counts:v1')[1], {});
     }
   });
@@ -405,6 +405,20 @@ describe('US Consolidated Screening List in the sanctions seed (#9352)', () => {
     assert.equal(result.freshnessMetaPatch.sourceState, 'ok');
     assert.equal(result.freshnessMetaPatch.failedSources.length, 0);
     assert.equal(result.completionState, 'OK');
+  });
+
+  it('reports every source missing from the screening index, not only the CSL lists', async () => {
+    const entityMeta = writes => writes.find(([key]) => key === 'sanctions:entities:v1')[7];
+    const ofacDown = await publish({ successes: ['CONSOLIDATED', SEMA_SOURCE, 'CSL'] });
+    await ofacDown.options.afterPublish(ofacDown.data, {});
+    const meta = entityMeta(ofacDown.writes);
+    assert.equal(meta.sourceState, 'error');
+    assert.equal(meta.errorCode, 'OFAC_INGEST_FAILED');
+    assert.deepEqual([...meta.failedSources], ['SDN']);
+    const cslDown = await publish({ successes: ['SDN', 'CONSOLIDATED', SEMA_SOURCE] });
+    await cslDown.options.afterPublish(cslDown.data, {});
+    assert.equal(entityMeta(cslDown.writes).errorCode, 'CSL_INGEST_FAILED');
+    assert.equal(entityMeta(cslDown.writes).failedSources.length, CSL_SOURCES.length);
   });
 
   it('logs a CSL designation with its Federal Register citation and list page, after a baseline run', async () => {

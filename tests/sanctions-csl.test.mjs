@@ -106,6 +106,9 @@ describe('CSL parsing', () => {
     const names = parseRows({ name: 'Ends Today', end_date: '2026-10-18' }, { name: 'Ended Yesterday', end_date: '2026-10-17' })
       .map(r => r.name);
     assert.deepEqual(names, ['Ends Today']);
+    const spelled = parseRows({ name: 'US Spelling Future', end_date: '10/20/2026' }, { name: 'Padded Past', end_date: ' 2026-10-17' })
+      .map(r => r.name);
+    assert.deepEqual(spelled, ['US Spelling Future'], 'end dates parse like start dates, not as raw text');
   });
 
   it('drops aliases equal to the name or to each other after normalization', () => {
