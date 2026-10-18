@@ -141,6 +141,11 @@ interface CheckoutArgs {
   referralCode?: string;
   /** MCP paid-funnel attribution (#6716). Parallel to referralCode. */
   attributionSource?: string;
+  /**
+   * Created by an agent through the MCP `start_upgrade` tool (#9144). Nobody
+   * was shown the Terms assent line, so none is recorded.
+   */
+  agentInitiated?: boolean;
 }
 
 interface UserInfo {
@@ -316,7 +321,11 @@ async function _createCheckoutSession(
   //
   // Never allowed to fail the checkout: losing a paid conversion to an audit
   // write is strictly worse than the missing row, which stays visible in logs.
-  if (!ANON_ID_V4_REGEX.test(user.userId)) {
+  //
+  // Skipped for an agent-created session (#9144): the MCP `start_upgrade` tool
+  // returns a URL and no one clicked under the assent line, so recording one
+  // would be a false record.
+  if (!ANON_ID_V4_REGEX.test(user.userId) && !args.agentInitiated) {
     try {
       await ctx.runMutation(internal.users.recordTermsAcceptance, {
         userId: user.userId,
@@ -476,6 +485,8 @@ export const internalCreateCheckout = internalAction({
     // "Start a new checkout anyway" — skips ONLY the pending-payment guard
     // (#4438). The subscription guard still applies.
     bypassPendingGuard: v.optional(v.boolean()),
+    // MCP `start_upgrade` (#9144): no Terms assent is recorded.
+    agentInitiated: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     if (!args.userId) {
@@ -511,6 +522,7 @@ export const internalCreateCheckout = internalAction({
         discountCode: args.discountCode,
         referralCode: args.referralCode,
         attributionSource: args.attributionSource,
+        agentInitiated: args.agentInitiated,
       },
       {
         userId: args.userId,

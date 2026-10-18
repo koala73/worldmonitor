@@ -43,6 +43,7 @@ import type {
 import { emitMcpRateLimitHit } from './telemetry';
 import { FREE_ACCOUNT_CALLS_PER_DAY } from './upgrade-constants';
 import { buildMcpStructuredDenial, type McpStaticDenialReason } from './upgrade';
+import { relayMcpCheckout } from './checkout';
 
 // ---------------------------------------------------------------------------
 // Rate limiters
@@ -210,6 +211,7 @@ export const PRODUCTION_DEPS: McpHandlerDeps = {
   // quota.ts / free-account-allowance.ts (their envPrefix), so the pipeline
   // must send them verbatim rather than prefixing again (#7674).
   redisPipeline: (commands, timeoutMs, raw = true) => rawRedisPipeline(commands, timeoutMs, raw),
+  createCheckout: (input) => relayMcpCheckout(input),
 };
 
 // ---------------------------------------------------------------------------
@@ -694,6 +696,7 @@ async function checkMcpEntitlementGate(
       ...((ent?.features?.tier ?? 0) >= 3 ? { enterprisePlan: true as const } : {}),
     },
     burstPerMinute,
+    ...(typeof ent?.planKey === 'string' ? { planKey: ent.planKey } : {}),
   });
   // Single-source Pro MCP decision. A current fallback entitlement still wins
   // over billing uncertainty; this caller keeps the JSON-RPC denial rendering.
@@ -729,6 +732,9 @@ async function checkMcpEntitlementGate(
       budget: { allowance: 'mcp', limit: FREE_ACCOUNT_CALLS_PER_DAY },
       burstPerMinute,
       freeAccountAllowance: true,
+      // A confirmed lapse keeps its old paid plan key on the row, but the
+      // caller is on the free allowance now, so it is upgraded as free.
+      planKey: 'free',
     };
   }
 

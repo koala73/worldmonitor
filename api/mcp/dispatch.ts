@@ -32,6 +32,15 @@ import { chokepointPanelViewSchema, conflictPanelViewSchema, disasterPanelViewSc
 import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
+import {
+  checkoutProductIdForPlan,
+  MCP_CHECKOUT_PLANS,
+  relayMcpCheckout,
+  START_UPGRADE_TOOL,
+  type McpCheckoutOutcome,
+  type McpCheckoutSubscription,
+  type StartUpgradeResult,
+} from './checkout';
 import { filterConflictPanelEvents, isOrdinaryMarketDefault, presentConflictEvents, presentDefaultMarketData, projectConflictSourceObservation } from './registry/cache-tools';
 import { findCallableTool, isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
@@ -401,6 +410,90 @@ function quotaBackendUnavailableResponse(
   );
 }
 
+const BILLING_PORTAL_HINT = 'worldmonitor.app → Settings → Manage Billing';
+
+function alreadySubscribedNextStep(subscription: McpCheckoutSubscription | null, plan: string): string {
+  const target = plan.startsWith('pro_business') ? 'pro_business' : plan.startsWith('api_business') ? 'api_business' : null;
+  const existing = subscription?.planKey ?? '';
+  if (target === 'pro_business' && (existing === 'pro_monthly' || existing === 'pro_annual')) {
+    return 'Pro and Pro Business are separate products, not a plan change. Ask the user to cancel Pro in the billing portal '
+      + `(${BILLING_PORTAL_HINT}); Pro access runs to the end of the paid term. Then call start_upgrade again.`;
+  }
+  if (target === 'api_business' && existing.startsWith('api_starter')) {
+    return `API Starter moves to API Business as a prorated plan change in the billing portal (${BILLING_PORTAL_HINT}), not through a new checkout.`;
+  }
+  return `This account already has this subscription. Manage or change it in the billing portal (${BILLING_PORTAL_HINT}).`;
+}
+
+/**
+ * Create the `start_upgrade` checkout session (#9144), or the JSON-RPC refusal
+ * for why it could not be created. Expected refusals (already subscribed,
+ * payment pending, rate limited) are customer states, not errors, so only an
+ * unavailable relay reaches Sentry.
+ */
+async function startUpgradeCheckout(
+  deps: McpHandlerDeps,
+  userId: string,
+  plan: string,
+  productId: string,
+  id: unknown,
+  corsHeaders: Record<string, string>,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<StartUpgradeResult | Response> {
+  let outcome: McpCheckoutOutcome;
+  try {
+    outcome = await (deps.createCheckout ?? relayMcpCheckout)({ userId, productId });
+  } catch (err) {
+    outcome = { kind: 'unavailable', cause: err instanceof Error ? err.name : 'Error' };
+  }
+  switch (outcome.kind) {
+    case 'created':
+      return {
+        checkoutUrl: outcome.checkoutUrl,
+        plan,
+        nextStep: 'Give checkoutUrl to the user to open in a browser and pay; this tool does not charge. '
+          + 'Once the payment is confirmed, get_mcp_allowance reports the paid limit with no re-authorization.',
+      };
+    case 'already-subscribed':
+      return rpcError(id, -32002, outcome.message, corsHeaders, {
+        reason: 'already-subscribed',
+        subscription: outcome.subscription,
+        nextStep: alreadySubscribedNextStep(outcome.subscription, plan),
+      });
+    case 'payment-in-progress':
+      return rpcError(id, -32002, outcome.message, corsHeaders, {
+        reason: 'payment-in-progress',
+        nextStep: 'Finish the checkout already open in the browser, or call start_upgrade again later; '
+          + 'an abandoned pending payment stops blocking new checkouts after a short window.',
+      });
+    case 'rate-limited':
+      return rpcError(
+        id,
+        -32029,
+        'Checkout is temporarily rate limited. Retry shortly.',
+        { ...corsHeaders, 'Retry-After': String(outcome.retryAfterSeconds) },
+        { reason: 'checkout-rate-limited', retryAfterSeconds: outcome.retryAfterSeconds },
+        429,
+      );
+    case 'invalid-product':
+      return rpcError(id, -32602, 'This plan is not available for checkout.', corsHeaders, { plans: MCP_CHECKOUT_PLANS });
+    case 'unavailable':
+      captureSilentError(new Error(`start_upgrade checkout unavailable: ${outcome.cause}`), {
+        tags: { route: 'api/mcp', step: 'start-upgrade', tool: START_UPGRADE_TOOL },
+        fingerprint: ['api/mcp', 'start-upgrade', outcome.cause],
+        ctx,
+      });
+      return rpcError(
+        id,
+        -32603,
+        'Checkout service temporarily unavailable. Retry in a moment.',
+        { ...corsHeaders, 'Retry-After': '5' },
+        undefined,
+        503,
+      );
+  }
+}
+
 export async function dispatchToolsCall(
   req: Request,
   context: McpAuthContext,
@@ -421,8 +514,17 @@ export async function dispatchToolsCall(
   // rather than emitted with a guessed URL.
   resourceMetadataUrl?: string,
   toolBurstPerMinute?: number,
+  // The caller's entitlement plan key (#9144), so a denial can name the plan
+  // one step up. Omitted → denials carry no checkout hint.
+  planKey?: string,
 ): Promise<Response> {
   const id = body.id ?? null;
+  // Only a user-bound caller can call start_upgrade, so only they get a
+  // checkout hint. The free allowance is upgraded as free even when a lapsed
+  // paid row still carries its old plan key.
+  const upgradeFrom = context.kind === 'pro' || context.kind === 'user_key'
+    ? (freeAccountAllowance ? 'free' : planKey)
+    : undefined;
   const p = body.params as { name?: string; arguments?: Record<string, unknown> } | null;
   const dedicatedPanel = !freeAccountAllowance && budget?.allowance !== 'api'
     && (context.kind === 'pro' || context.kind === 'user_key');
@@ -474,6 +576,29 @@ export async function dispatchToolsCall(
     }
   }
 
+  // #9144: quota-exempt like get_mcp_allowance, so it runs here, before any
+  // meter. Every refusal returns before the tool executes; only a created
+  // session reaches the normal result path.
+  let startUpgradeResult: StartUpgradeResult | undefined;
+  if (tool.name === START_UPGRADE_TOOL) {
+    if (context.kind !== 'pro' && context.kind !== 'user_key') {
+      return rpcError(id, -32002, 'Starting an upgrade requires a user-bound credential.', corsHeaders);
+    }
+    const upgradeArgs = p.arguments ?? {};
+    if (Object.keys(upgradeArgs).some(key => key !== 'plan' && key !== 'jmespath')
+      || (upgradeArgs.jmespath !== undefined && typeof upgradeArgs.jmespath !== 'string')) {
+      return rpcError(id, -32602, 'start_upgrade accepts only plan and the optional jmespath projection.', corsHeaders);
+    }
+    const plan = typeof upgradeArgs.plan === 'string' ? upgradeArgs.plan : '';
+    const productId = checkoutProductIdForPlan(plan);
+    if (!productId) {
+      return rpcError(id, -32602, 'Unknown plan. Pass one of the self-serve plans listed in data.plans.', corsHeaders, { plans: MCP_CHECKOUT_PLANS });
+    }
+    const upgrade = await startUpgradeCheckout(deps, context.userId, plan, productId, id, corsHeaders, ctx);
+    if (upgrade instanceof Response) return upgrade;
+    startUpgradeResult = upgrade;
+  }
+
   // Credentialed INCR-first reservation. Both cache-only AND RPC tools count
   // toward the caller's daily cap — EXCEPT free-tier tools and `describe_tool`
   // (v1.5.0). The latter is metadata-only and is actively encouraged by
@@ -500,7 +625,7 @@ export async function dispatchToolsCall(
   // local registry read that never reaches the gateway, and it is the tool an
   // agent needs most while deciding what it may call.
   if (freeAccountAllowance && toolAccess(tool) === 'subscription') {
-    return mcpDenialResponse({ reason: 'upgrade-required' }, -32002, 403, id, corsHeaders);
+    return mcpDenialResponse({ reason: 'upgrade-required', upgradeFrom }, -32002, 403, id, corsHeaders);
   }
 
   let panelRequest: PaidPanelAdmission | undefined;
@@ -707,7 +832,7 @@ export async function dispatchToolsCall(
       const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
       if (limited) return limited;
     }
-    if (error.code === 'quota') return mcpDenialResponse({ reason: 'quota-exceeded', limit: error.limit ?? 0, sharedWithRestApi: false }, -32029, 429, id, corsHeaders, { retryAfter: String(secondsUntilUtcMidnight()) });
+    if (error.code === 'quota') return mcpDenialResponse({ reason: 'quota-exceeded', limit: error.limit ?? 0, sharedWithRestApi: false, upgradeFrom }, -32029, 429, id, corsHeaders, { retryAfter: String(secondsUntilUtcMidnight()) });
     if (error.code === 'backend') return quotaBackendUnavailableResponse(id, corsHeaders);
     return rpcError(id, error.code === 'reads' ? -32029 : -32602, error.message, { ...corsHeaders, ...(error.retryAfter ? { 'Retry-After': String(error.retryAfter) } : {}) }, undefined, error.code === 'reads' ? 429 : 200);
   }
@@ -738,7 +863,7 @@ export async function dispatchToolsCall(
           // It must never be -32001/401: docs/mcp-error-catalog.mdx documents that
           // pair as "re-authenticate via OAuth", so an RFC-9728 client would loop
           // (OAuth succeeds, retry, 401 again) on a condition re-auth cannot fix.
-          return mcpDenialResponse({ reason: 'allowance-exhausted' }, -32029, 429, id, corsHeaders, {
+          return mcpDenialResponse({ reason: 'allowance-exhausted', upgradeFrom }, -32029, 429, id, corsHeaders, {
             retryAfter: String(secondsUntilUtcMidnight()),
           });
         }
@@ -767,6 +892,7 @@ export async function dispatchToolsCall(
               reason: 'quota-exceeded',
               limit: reservation.floor,
               sharedWithRestApi: isSharedRestCounter(budget),
+              upgradeFrom,
             },
             -32029,
             429,
@@ -876,6 +1002,7 @@ export async function dispatchToolsCall(
           return allowance;
         };
       }
+      if (startUpgradeResult) execution.startUpgradeResult = startUpgradeResult;
       if (panelRead?.panel === 'forecasts') execution.panelScope = 'forecasts';
       if (perToolForecastRead) execution.perToolForecastRead = true;
       if (tool._execute) result = await tool._execute(

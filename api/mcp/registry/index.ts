@@ -49,9 +49,13 @@ export const FREE_TIER_TOOL_NAMES: ReadonlySet<string> = new Set(
   TOOL_REGISTRY.filter((tool) => tool._freeTier === true).map((tool) => tool.name),
 );
 
-/** Metadata reads stay authenticated but never spend an allowance or quota slot. */
+/**
+ * Account tools stay authenticated but never spend an allowance or quota slot:
+ * the metadata reads, and `start_upgrade` (#9144), which an agent most needs
+ * exactly when the allowance is spent.
+ */
 export function isQuotaExemptMetadataTool(tool: ToolDef): boolean {
-  return tool.name === 'describe_tool' || tool.name === 'get_mcp_allowance';
+  return tool.name === 'describe_tool' || tool.name === 'get_mcp_allowance' || tool.name === 'start_upgrade';
 }
 
 /**

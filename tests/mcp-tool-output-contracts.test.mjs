@@ -45,6 +45,7 @@ const originalEnv = { ...process.env };
 // each tool's documented format (e.g. ISO 3166-1 alpha-2 for country_code).
 const REQUIRED_ARGS = {
   classify_event: { text: 'Iran closes Strait of Hormuz to tanker traffic' },
+  start_upgrade: { plan: 'pro_monthly' },
   get_country_brief: { country_code: 'US' },
   open_country_brief: { country_code: 'US' },
   get_country_risk: { country_code: 'US' },
@@ -192,6 +193,9 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry 
 
       let args = REQUIRED_ARGS[name] ?? {};
       const { deps, pipe } = makeProDeps();
+      // start_upgrade creates its checkout session in dispatch, before the
+      // stubbed _execute; answer the relay so the call reaches the result path.
+      if (name === 'start_upgrade') deps.createCheckout = async () => ({ kind: 'created', checkoutUrl: 'https://checkout.example/session' });
       let originalForecast;
       if (name === 'get_forecast_case' || name === 'get_forecast_theaters') {
         const generatedAt = Date.now();

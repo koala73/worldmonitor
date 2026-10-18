@@ -165,3 +165,47 @@ describe("first activation stamps attributionSource onto the subscription (#6716
     expect((await readRow(t))?.attributionSource).toBe(MCP_ATTRIBUTION_SOURCE);
   });
 });
+
+describe("an agent-created checkout through the relay (#9144)", () => {
+  // The body api/mcp/checkout.ts relayMcpCheckout sends.
+  const relay = (t: ReturnType<typeof convexTest>, extra: Record<string, unknown>) =>
+    t.fetch("/relay/create-checkout", {
+      method: "POST",
+      headers: { Authorization: "Bearer mcp-relay-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: USER_ID,
+        productId: PRODUCT_ID,
+        attributionSource: MCP_ATTRIBUTION_SOURCE,
+        ...extra,
+      }),
+    });
+  const usersRow = (t: ReturnType<typeof convexTest>) =>
+    t.run(async (ctx) =>
+      ctx.db.query("users").withIndex("by_userId", (q) => q.eq("userId", USER_ID)).unique());
+
+  beforeEach(() => { vi.stubEnv("CONVEX_TENANT_RELAY_SECRET", "mcp-relay-secret"); });
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  test("stamps the campaign marker and records no Terms assent nobody was shown", async () => {
+    const t = convexTest(schema, modules);
+    const response = await relay(t, { agentInitiated: true });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ checkout_url: "https://checkout.example/session" });
+    const metadata = capturedMetadata();
+    expect(metadata.wm_attribution).toBe(MCP_ATTRIBUTION_SOURCE);
+    expect(metadata.wm_user_id).toBe(USER_ID);
+    expect(await usersRow(t)).toBeNull();
+  });
+
+  test("a browser checkout through the same relay still records assent", async () => {
+    const t = convexTest(schema, modules);
+    expect((await relay(t, {})).status).toBe(200);
+    expect((await usersRow(t))?.termsAcceptedAt).toBeTypeOf("number");
+  });
+
+  test("only a literal true skips assent", async () => {
+    const t = convexTest(schema, modules);
+    expect((await relay(t, { agentInitiated: "true" })).status).toBe(200);
+    expect((await usersRow(t))?.termsAcceptedAt).toBeTypeOf("number");
+  });
+});

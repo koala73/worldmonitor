@@ -70,6 +70,8 @@ Today the REST and MCP halves reserve against separate counters that each hold t
 
 `get_mcp_allowance({})` reads the current verified account counters without spending daily allowance, even at the daily cap. It uses the shared 192/minute protocol bucket and requires user-bound OAuth or `wm_…` credentials. The same snapshot is available at `worldmonitor://account/mcp-allowance`. Account selectors and `panel_request` are rejected. Unreadable counters return an error, never a zero snapshot. `sharedWithRestApi` states whether `used` also includes REST traffic; account totals do not identify individual callers.
 
+`start_upgrade({plan})` returns a personal checkout link for the signed-in account and also spends no daily allowance, so an agent can still call it after an `allowance-exhausted` or `quota-exceeded` denial. Those denials, and `upgrade-required`, name the plan to pass in `error.data.recommendedPlan` when a self-serve plan sits one step up. The user pays in a browser; afterwards `get_mcp_allowance` reports the paid limit without re-authorization.
+
 ## Paid embedded-panel requests
 
 Pro includes **50 requests per UTC day**. Pro Business includes **250**. Both use a dedicated MCP counter.
