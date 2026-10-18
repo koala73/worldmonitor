@@ -57,7 +57,6 @@ let reporter: HighUsageReporter = captureSilentError;
 // isolates can still report the same crossing, and Sentry groups them under
 // one fingerprint.
 const reportedToday = new Map<string, string>();
-const REPORTED_TODAY_MAX = 1_000;
 
 export function __setHighUsageReporterForTests(fn: HighUsageReporter | null): void {
   reporter = fn ?? captureSilentError;
@@ -85,7 +84,12 @@ export function reportHighUsageIfCrossed(opts: {
   const day = new Date().toISOString().slice(0, 10);
   const key = `${opts.meter}|${opts.credential}|${opts.principal}`;
   if (reportedToday.get(key) === day) return false;
-  if (reportedToday.size >= REPORTED_TODAY_MAX) reportedToday.clear();
+  // Evict only earlier days. Today's entries are what stop a rollback and
+  // retry from re-reporting, and they are bounded by the principals that
+  // crossed a threshold today.
+  for (const [reportedKey, reportedDay] of reportedToday) {
+    if (reportedDay !== day) reportedToday.delete(reportedKey);
+  }
   reportedToday.set(key, day);
   reporter(
     new Error(

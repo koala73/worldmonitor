@@ -62,6 +62,22 @@ describe('reportHighUsageIfCrossed', () => {
     assert.equal(reports.length, 1);
   });
 
+  it('keeps a principal reported today even after many others cross the same day', () => {
+    assert.equal(report(250, 'first-key'), true);
+    for (let index = 0; index < 1_500; index += 1) report(250, `other-key-${index}`);
+    // A rollback and retry for the first key crosses again; it must not re-report.
+    assert.equal(report(250, 'first-key'), false);
+    assert.equal(reports.length, 1_501);
+  });
+
+  it('reports the same principal again on the next UTC day', (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: Date.UTC(2026, 9, 18, 23, 59) });
+    assert.equal(report(250), true);
+    t.mock.timers.setTime(Date.UTC(2026, 9, 19, 0, 1));
+    assert.equal(report(250), true);
+    assert.equal(reports.length, 2);
+  });
+
   it('keeps principals and meters separate', () => {
     report(250, 'first-key');
     report(250, 'second-key');
