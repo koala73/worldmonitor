@@ -13,6 +13,7 @@ import {
 // schedule. 21 days tolerates one missed report.
 const MAX_AGE_MS = 21 * 24 * 3_600_000;
 const EU_GAS_MAX_AGE_MS = 4 * 24 * 3_600_000;
+const WEEK_MS = 7 * 24 * 3_600_000;
 
 function weekMs(period) {
   return typeof period === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(period) ? Date.parse(`${period}T00:00:00Z`) : NaN;
@@ -51,7 +52,8 @@ export function crudeOilInventoriesRecord(payload, now = Date.now()) {
   // A section from another report week would put two dates behind one claim.
   const sameWeek = (weeks) => (weeks[0]?.period === latestPeriod ? weeks[0] : null);
   const sprLatest = sameWeek(spr);
-  const sprPrior = sprLatest ? spr[1] : null;
+  // The producer skips invalid rows, so the next record can be two weeks back.
+  const sprPrior = sprLatest && spr[1]?.ms === sprLatest.ms - WEEK_MS ? spr[1] : null;
   const gasLatest = sameWeek(gas);
   const refinery = payload?.refinery?.period === latestPeriod ? finiteNumber(payload.refinery.inputsMbpd) : null;
   return {

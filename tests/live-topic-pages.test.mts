@@ -261,6 +261,10 @@ describe('live topic readings never publish a missing value as a fact', () => {
     payload.spr.weeks[1].stocksMb = 282.99;
     const flat = topic.renderSection(liveTopicReading(topic, payload, NOW), { live: true });
     assert.match(flat, /<strong>283\.0M bbl<\/strong><small>Unchanged on the week<\/small>/, 'a change that rounds to zero is not written as 0.0');
+    payload.spr.weeks[1].period = '2026-09-25';
+    const gap = liveTopicReading(topic, payload, NOW);
+    assert.equal(gap.sprMb, 283);
+    assert.equal(gap.sprChangeMb, null, 'a skipped SPR week makes the prior reading two weeks old, not "on the week"');
   });
 
   it('drops an inventory section from another report week or with a zero placeholder', () => {
