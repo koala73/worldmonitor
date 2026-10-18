@@ -1387,7 +1387,7 @@ r/worldnews 与 r/geopolitics 中 `velocityScore`（得分对数 × 点赞率 ×
 
 - **API 端点：** `GET /api/intelligence/v1/get-social-velocity`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **9 小时**（中继约每 3 小时刷新一次；与 `/api/health` 预算一致）。
 
 <CodeGroup>
 

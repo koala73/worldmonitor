@@ -1753,7 +1753,7 @@ The 30 posts from r/worldnews and r/geopolitics with the highest `velocityScore`
 - **API endpoints:** `GET /api/intelligence/v1/get-social-velocity`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** up to **9 h** before `stale: true` is flagged (the relay refreshes about every 3 h; same budget as `/api/health`).
 
 <CodeGroup>
 
