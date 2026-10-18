@@ -1158,6 +1158,32 @@ The envelope checks every source even when selecting a subset. A missing timesta
 
 For example, call `get_energy_storage` with `{"dataset":["eu-gas-storage","nat-gas-storage"],"limit":5}` to compare the latest available gas-storage reports.
 
+### `get_oil_trade_series`
+
+Monthly oil supply and export series for 24 major exporting countries over the last 24 complete months, with a comparison of the last N complete months against the N before and against the same months a year earlier. It answers questions such as "UAE oil exports, last 6 months vs the 6 before".
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country` | `array<string>` | Countries as ISO alpha-2, alpha-3 or English names (e.g. ["AE"], ["Saudi Arabia"]). Selected countries include their monthly rows. Omit for every covered country, comparison only. Unresolved inputs return Invalid params; a resolvable country outside the 24 covered returns no row. |
+| `window_months` | integer | Months per comparison window, ending at the last complete month (default 6: the last 6 complete months vs the 6 before, plus the same 6 months a year earlier). |
+
+The response uses the standard `cached_at`, `stale`, and `data` envelope. Four sources are reported side by side and never blended or summed:
+
+- **production:** EIA Short-Term Energy Outlook crude oil and liquid fuels supply. Current to the last complete month; the two newest months are marked `provisional` because EIA revises them.
+- **jodi:** the country's own JODI-Oil filing of crude and total product exports. Values JODI has not assessed (assessment code 3) are reported values. The UAE has filed only placeholders since 2019, so its status is `not_reported`.
+- **mirror:** UN Comtrade imports from the country as declared by each buyer, converted at 7.33 bbl/t (crude) and 7.6 bbl/t (products). Buyers file one to four months late and some file no monthly partner data. Window comparisons use only buyers that filed in every covered month of both windows, listed in `basis.reporters`.
+- **ais:** IMF PortWatch AIS-derived tanker export tonnes across the country's ports. This index undercounts real exports and is not an export total.
+
+Each source carries `status` (`ok`, `stale`, `not_reported` or `unavailable`) and `lastObserved`. A month a source does not cover is null, never zero. Window averages are day-weighted over covered months; `monthsCovered` and `complete` say how much of each window a source covers.
+
+- **API endpoints:** none. The seeded cache is read directly.
+- **Access:** `free-account`. Authentication and the existing daily allowance apply. Pro calls spend the daily quota. This tool only reads seeded caches and accepts the universal `summary` and `jmespath` arguments.
+- **Freshness budget:** 14 days for the weekly seed, plus a content-age check on the newest EIA month.
+
+For example, call `get_oil_trade_series` with `{"country":["AE"],"window_months":6}` to compare UAE production, buyer-declared imports and tanker loadings for the last six complete months against the six before.
+
 ## Geopolitical & security
 
 ### `get_conflict_events`

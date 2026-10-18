@@ -63,6 +63,7 @@ import {
   summarizeData,
 } from '../filters';
 import { resolveCountryFilter } from '../_country-args';
+import { compareOilWindows, expandCountry } from '../../../shared/oil-trade-windows.js';
 import { RpcValidationError } from '../billing-denial';
 import type { ConflictSourceObservation, FreshnessCheck, ToolDef } from '../types';
 import { forecastCaseReadSchema, forecastPanelAdmissionSchema } from '../../../shared/panel-admission';
@@ -2940,6 +2941,97 @@ export const CACHE_TOOLS: ToolDef[] = [
       'GET /api/economic/v1/get-nat-gas-storage',
       'GET /api/economic/v1/get-crude-inventories',
     ],
+  },
+  {
+    name: 'get_oil_trade_series',
+    title: 'Oil production and export series by country',
+    _outputBudgetBytes: 131072,
+    description: 'Monthly oil supply and export series for 24 major exporters over 24 complete months, comparing the last N complete months with the N before and a year earlier (default N=6), e.g. UAE oil exports, last 6 months vs the 6 before. Four sources, never blended: production (EIA STEO liquids supply, revisable estimates); jodi (the country\'s own JODI crude and product exports; the UAE has filed none since 2019); mirror (Comtrade imports declared by buyers, a lagging sample compared only on buyers in basis.reporters); ais (PortWatch tanker loadings, an index that undercounts, not an export total). Uncovered months are null, never zero; each source has status and lastObserved. Weekly seed, stale after 14 days. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. country adds monthly rows; window_months sets N (1-12).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Countries as ISO alpha-2, alpha-3 or English names (e.g. ["AE"], ["Saudi Arabia"]). Selected countries include their monthly rows. Omit for every covered country, comparison only. Unresolved inputs return Invalid params; a resolvable country outside the 24 covered returns no row.',
+        },
+        window_months: {
+          type: 'integer', minimum: 1, maximum: 12,
+          description: 'Months per comparison window, ending at the last complete month (default 6: the last 6 complete months vs the 6 before, plus the same 6 months a year earlier).',
+        },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      oilTradeSeries: {
+        type: ['object', 'null'],
+        properties: {
+          generatedAt: { type: 'string', description: 'Seed time.' },
+          throughMonth: { type: 'string', description: 'Last complete month at seed time.' },
+          windowMonths: { type: 'integer' },
+          conversion: { type: 'object', properties: { crudeBblPerTonne: { type: 'number' }, productsBblPerTonne: { type: 'number' } } },
+          unavailable: { type: 'object', description: 'Countries whose mirror or ais fetch failed at seed time. Unavailable, not zero.', properties: {
+            mirror: { type: 'array', items: { type: 'string' } }, ais: { type: 'array', items: { type: 'string' } },
+          } },
+          countries: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                iso2: { type: 'string' }, iso3: { type: 'string' }, name: { type: 'string' },
+                sources: { type: 'object', description: 'Per source: name, url, measure, status (ok, stale, not_reported, unavailable), lastObserved month.' },
+                comparison: {
+                  type: 'object',
+                  properties: {
+                    windowMonths: { type: 'integer' },
+                    windows: { type: 'object', description: 'current, prior and yearAgo as {from, to} months.' },
+                    metrics: {
+                      type: 'object',
+                      description: 'production, jodiCrudeExports, jodiProductExports, mirrorCrudeImports, mirrorProductImports, aisTankerLoadings. Each: current/prior/yearAgo {kbd, monthsCovered} day-weighted over covered months (kbd null when none), changePct vs prior, yoyPct, complete (both windows fully covered), and for mirror metrics basis.reporters.',
+                    },
+                  },
+                },
+                months: {
+                  type: 'array',
+                  description: 'Present only for selected countries. One row per month; a source block is null for a month it does not cover.',
+                  items: { type: 'object', properties: {
+                    month: { type: 'string' },
+                    production: { type: ['object', 'null'], properties: { kbd: { type: 'number' }, provisional: { type: 'boolean' } } },
+                    jodi: { type: ['object', 'null'], properties: { crudeExportsKbd: { type: ['number', 'null'] }, productExportsKbd: { type: ['number', 'null'] }, crudeProductionKbd: { type: ['number', 'null'] } } },
+                    mirror: { type: ['object', 'null'], properties: { crudeKbd: { type: ['number', 'null'] }, productsKbd: { type: ['number', 'null'] }, reporters: { type: 'object' }, otherKbd: { type: ['object', 'null'] } } },
+                    ais: { type: ['object', 'null'], properties: { complete: { type: 'boolean' }, loadingsKbd: { type: ['number', 'null'] }, exportTankerKt: { type: ['number', 'null'] }, tankerCalls: { type: ['number', 'null'] } } },
+                  } },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _cacheKeys: ['energy:oil-trade-series:v1'],
+    _cacheLabels: { 'energy:oil-trade-series:v1': 'oilTradeSeries' },
+    _freshnessChecks: [{ key: 'seed-meta:energy:oil-trade-series', maxStaleMin: 20160, minRecordCount: 18, honorContentAge: true }],
+    _apiPaths: [],
+    _postFilter: (data, params) => {
+      const payload = data.oilTradeSeries;
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return data;
+      const stored = (payload as { countries?: unknown }).countries;
+      if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return data;
+      const selected = resolveCountryFilter(params.country, 'country').map((code) => code.toUpperCase());
+      const rawWindow = argNum(params.window_months);
+      const windowMonths = rawWindow !== null && Number.isInteger(rawWindow) && rawWindow >= 1 && rawWindow <= 12 ? rawWindow : 6;
+      const nowMs = Date.now();
+      const countries = Object.values(stored as Record<string, Record<string, unknown>>)
+        .filter((c) => selected.length === 0 || selected.includes(String(c?.iso2)))
+        .map((c) => {
+          const expanded = expandCountry(c);
+          const { months, from: _from, to: _to, ...rest } = expanded;
+          const comparison = compareOilWindows(expanded, { nowMs, windowMonths });
+          return selected.length > 0 ? { ...rest, comparison, months } : { ...rest, comparison };
+        });
+      return { ...data, oilTradeSeries: { ...payload, windowMonths, countries } };
+    },
   },
   {
     name: 'get_climate_data',

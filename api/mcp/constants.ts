@@ -349,7 +349,8 @@ export const SERVER_NAME = 'worldmonitor';
 // Bumped 1.38.0 → 1.39.0 when get_tariff_trends was renamed
 // get_price_and_debt_indicators; the old name stays callable as an alias.
 // Bumped 1.39.0 → 1.40.0 for start_upgrade (93 → 94 tools, #9144).
-export const SERVER_VERSION = '1.40.0';
+// Bumped 1.40.0 → 1.41.0 for get_oil_trade_series (94 → 95 tools).
+export const SERVER_VERSION = '1.41.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
