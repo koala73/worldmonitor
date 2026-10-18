@@ -450,6 +450,29 @@ describe('YahooQuoteSummaryClient', () => {
     assert.doesNotMatch(JSON.stringify(warnings), /proxy-user|proxy-password/);
   });
 
+  it('reports the plain HTTP proxy opt-in failure through the client diagnostics', async () => {
+    const saved = process.env.PROXY_ALLOW_INSECURE_HTTP;
+    const warnings = [];
+    try {
+      delete process.env.PROXY_ALLOW_INSECURE_HTTP;
+      const client = new YahooQuoteSummaryClient({
+        directRequest: async () => ({ status: 503, headers: {}, body: '' }),
+        resolveProxyString: () => 'http://proxy-user:proxy-password@proxy.example:10000',
+        sleepFn: async () => {},
+        logger: { warn: (message, context) => warnings.push({ message, context }) },
+      });
+      const result = await client.fetchDetailed('XLK');
+      assert.equal(result.kind, 'failed');
+      const failure = 'proxy request failed (PROXY_HTTP_OPT_IN_REQUIRED)';
+      assert.equal(result.diagnostics.find(item => item.transport === 'proxy').failure, failure);
+      assert.equal(warnings.find(item => item.context.transport === 'proxy').context.failure, failure);
+      assert.doesNotMatch(JSON.stringify({ result, warnings }), /proxy-user|proxy-password/);
+    } finally {
+      if (saved === undefined) delete process.env.PROXY_ALLOW_INSECURE_HTTP;
+      else process.env.PROXY_ALLOW_INSECURE_HTTP = saved;
+    }
+  });
+
   it('bounds upstream failure descriptions before logging route diagnostics', async () => {
     const warnings = [];
     const client = new YahooQuoteSummaryClient({
