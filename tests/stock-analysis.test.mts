@@ -476,6 +476,7 @@ describe('fetchYahooAnalystData', () => {
     });
 
     assert.equal(response.provider, 'openrouter');
+    assert.equal(response.fallback, false);
     assert.equal(response.fundamentals?.debtToEquity, 1.5);
     assert.equal(response.fundamentals?.financialCurrency, 'CNY');
 
@@ -511,6 +512,85 @@ describe('fetchYahooAnalystData', () => {
     assert.equal(userPayload.technical?.signal, response.signal);
     assert.equal(userPayload.technical?.signalScore, response.signalScore);
   });
+
+  for (const summary of ['', ' \t\n ']) {
+    for (const recovers of [false, true]) {
+      it(`rejects ${summary === '' ? 'an empty' : 'a whitespace'} rating summary and ${recovers ? 'uses the next model summary' : 'labels the full template as rules'}`, async () => {
+        process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
+        process.env.LLM_API_URL = 'https://generic.example/v1/chat/completions';
+        process.env.LLM_API_KEY = 'test-generic-key';
+        process.env.LLM_MODEL = 'test-recovery-model';
+        const llmPostUrls: string[] = [];
+        const narrative = {
+          summary: 'Model technical summary.',
+          action: 'Model action.',
+          confidence: 'Medium',
+          whyNow: 'Model rationale.',
+          technicalSummary: 'Model technical details.',
+          newsSummary: 'Model news summary.',
+          bullishFactors: ['Model bullish factor'],
+          riskFactors: ['Model risk factor'],
+        };
+
+        globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+          if (url.includes('query1.finance.yahoo.com/v8/finance/chart')) {
+            return new Response(JSON.stringify(mockChartPayload), { status: 200 });
+          }
+          if (url.includes('query1.finance.yahoo.com/v10/finance/quoteSummary')) {
+            return new Response(JSON.stringify(mockQuoteSummaryPayload), { status: 200 });
+          }
+          if (url.includes('news.google.com')) {
+            return new Response(mockNewsXml, { status: 200 });
+          }
+          if ((init?.method || 'GET') === 'GET') {
+            return new Response('ok', { status: 200 });
+          }
+          llmPostUrls.push(url);
+          return new Response(JSON.stringify({
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  technical: narrative,
+                  rating: {
+                    ...narrative,
+                    summary: recovers && url.startsWith('https://generic.example/') ? '  Model rating summary.  ' : summary,
+                  },
+                  newsSentiment: 0.42,
+                }),
+              },
+              finish_reason: 'stop',
+            }],
+          }), { status: 200 });
+        }) as typeof fetch;
+
+        const response = await analyzeStock({} as never, {
+          symbol: 'BABA',
+          name: 'Alibaba',
+          includeNews: true,
+        }, { now: new Date('2026-10-18T12:00:00Z') });
+
+        assert.equal(response.available, true);
+        assert.equal(response.provider, recovers ? 'generic' : 'rules');
+        assert.equal(response.fallback, !recovers);
+        assert.equal(response.model, recovers ? 'test-recovery-model' : '');
+        if (recovers) {
+          assert.equal(response.ratingSummary, 'Model rating summary.');
+          assert.equal(response.summary, narrative.summary);
+          assert.equal(response.newsSentiment, 0.42);
+        } else {
+          assert.match(response.ratingSummary, /^BABA screens as /);
+          assert.match(response.summary, /^BABA screens as /);
+          assert.notEqual(response.action, narrative.action);
+          assert.equal(response.newsSentiment, undefined);
+        }
+        assert.deepEqual(llmPostUrls, [
+          'https://openrouter.ai/api/v1/chat/completions',
+          'https://generic.example/v1/chat/completions',
+        ]);
+      });
+    }
+  }
 
   it('falls through to the next provider when headline sentiment is missing', async () => {
     process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
