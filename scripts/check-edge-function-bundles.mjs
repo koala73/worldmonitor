@@ -9,7 +9,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -96,11 +96,24 @@ export function listTrackedApiSourceFiles(root = process.cwd()) {
   ));
 }
 
+const NODE_RUNTIME_CONFIG = /export\s+const\s+config\s*=\s*\{[^}]*\bruntime\s*:\s*['"]nodejs['"]/;
+
+/**
+ * A route that declares `runtime: 'nodejs'` runs on Vercel's Node runtime and
+ * may import Node built-ins, so browser-bundling it proves nothing. Its own
+ * gate is the Node ESM import check in tests/edge-functions.test.mjs.
+ */
+export function declaresNodeRuntime(root, file) {
+  const abs = path.join(root, file);
+  return existsSync(abs) && NODE_RUNTIME_CONFIG.test(readFileSync(abs, 'utf8'));
+}
+
 function collectEdgeFunctionEntries(root, options = {}) {
   const { skipMissingWorktreeEntries, topLevelTsAllowlist } = normalizeCallerOptions(options);
   const trackedEntries = listTrackedApiFiles(root).filter((file) => {
     if (isPrivateApiPath(file, { recursive: false })) return false;
     if (path.posix.basename(file).includes('.test.')) return false;
+    if (declaresNodeRuntime(root, file)) return false;
     if (file.endsWith('.js')) return true;
     if (!file.endsWith('.ts') || path.posix.dirname(file) !== 'api') return false;
     // Nested TS gateways are checked through their importing top-level

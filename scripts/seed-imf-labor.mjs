@@ -71,6 +71,7 @@ export function buildLaborCountries({ unemployment = {}, population = {} }) {
     countries[iso2] = {
       unemploymentPct: lur?.value ?? null,
       populationMillions: popMillions,
+      periods: { unemploymentPct: lur?.year ?? null },
       year: lur?.year ?? lp?.year ?? null,
       // Codex PR #3604 P2 — see seed-imf-external.mjs for the full
       // rationale. `latestYear` = max forecast year across all this

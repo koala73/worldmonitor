@@ -236,7 +236,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Statut d’estimation et d’imputation non fourni"
     },
     "fiveFactorScorecard": {
       "title": "Tableau de bord de résilience à cinq facteurs",
@@ -407,6 +408,7 @@
     "energy": "Énergie & Ressources",
     "gov": "Gouvernement",
     "thinktanks": "Groupes de Réflexion",
+    "science": "Sciences",
     "polymarket": "Prédictions",
     "commodities": "Matières premières",
     "economic": "Indicateurs économiques",
@@ -2958,6 +2960,7 @@
       "tier4OnlyHint": "Chaque média qui rapporte cela est une source de niveau 4 (agrégateurs et blogs). Cela décrit la couverture, pas l'exactitude.",
       "rosterListed": "({{listed}} listés)",
       "rosterFeeds": "Flux détectés : {{labels}}",
+      "rosterSameCopy": "Même texte, compté une fois",
       "rosterLegend": "Les niveaux classent les sources ; ils ne jugent pas cette affirmation.",
       "tierDocsLink": "Comment les niveaux sont attribués",
       "tierChip": "N{{tier}}",

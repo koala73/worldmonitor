@@ -246,7 +246,7 @@
     "connectorsRow": "Konektori",
     "deployment": "Implementacija",
     "securityRow": "Sigurnost",
-    "f5_15min": "5-15 min",
+    "f5_15min": "5-15 minuta",
     "fLt60s": "<60 sekundi",
     "fPerRequest": "Po zahtjevu",
     "fLiveEdge": "Live-edge",
@@ -271,7 +271,7 @@
     "fCloudOnPrem": "Cloud/on-prem/air-gap",
     "fStandard": "Standard",
     "fKeyAuth": "Autentifikacija ključem",
-    "fSsoMfa": "SSO/MFA/RBAC/audit",
+    "fSsoMfa": "SSO/MFA/RBAC/revizija",
     "noteBelow": "Temeljna platforma ostaje besplatna. Plaćeni planovi otključavaju istraživanje dionica, makro analitiku, AI sažetke i organizacijsku upotrebu.",
     "f50plus": "Dostupno",
     "sourcesRow": "Izvori",
@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Besplatna nadzorna ploča globalne obavještajne službe u stvarnom vremenu",
-      "description": "Dok se to do vijesti dogodi, vi ste već znali. Konflikti, uska grla, vojni letovi, tržišta, kibernetika: jedna besplatna živa karta s AI analizom. Bez registracije.",
-      "ogTitle": "World Monitor — Dok postane vijest, već si znao.",
-      "ogDescription": "Sirovi signali svijeta — brodovi, zrakoplovi, sirene, kabeli, tržišta — na jednoj besplatnoj živoj obavještajnoj karti, s AI koji se aktivira kada se konvergiraju. Besplatno, bez prijave."
+      "title": "World Monitor: Besplatna geopolitička obavještajna ploča",
+      "description": "World Monitor: geopolitička obavještajna ploča u stvarnom vremenu. Besplatna karta uživo: sukobi, pomorstvo, letovi, tržišta i kibernetika, s API-jem i MCP-om.",
+      "ogTitle": "World Monitor: Besplatna geopolitička obavještajna ploča",
+      "ogDescription": "World Monitor: geopolitička obavještajna ploča u stvarnom vremenu. Besplatna karta uživo: sukobi, pomorstvo, letovi, tržišta i kibernetika, s API-jem i MCP-om."
     },
     "nav": {
       "useCases": "Korelacije",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Besplatna nadzorna ploča globalne obavještajne službe · sada dostupna",
-      "headline1": "Dok postane vijest,",
-      "headline2": "već si znao.",
-      "sub": "Naslovi su kašnjenje. World Monitor prenosi sirove signale svijeta — brodove, zrakoplove, sirene, kabele, tržišta — na jednu živu kartu, s AI koji se aktivira kada se konvergiraju u nešto što je važno.",
+      "headline1": "Geopolitička obavještajna ploča",
+      "headline2": "u stvarnom vremenu",
+      "sub": "Dok postane vijest, već si znao.",
       "ctaPrimary": "Pokreni nadzornu ploču",
       "ctaFree": "Besplatno · Bez prijave · Učitava se u sekundama",
       "ctaSecondary": "Vidi kako ga koriste ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor nije otvoreni kod Palantira",
       "asOf": "Stanje od {{date}}",
       "whatIsTitle": "Što je World Monitor?",
-      "whatIsBody": "World Monitor je besplatna ($0), open-source (AGPL-3.0) kontrolna ploča koju koristi 2M+ osoba. Streamira {{feeds}} vijesti i OSINT izvore od {{providers}} atribuiranih pružatelja na jednu živu svjetsku kartu s {{mapLayers}} vrsta slojeva karte, pokrivajući geopolitiku, tržišta, brodarstvo, zrakoplovstvo i cyber sigurnost. Usklađuje ih tako da se konvergentni eventi pojave prije naslova. Svaki podatak je dokumentiran i svaka metoda izvora je navedena."
+      "whatIsBody": "World Monitor je besplatna ($0), open-source (AGPL-3.0) kontrolna ploča koju koristi 2M+ osoba. Streamira {{feeds}} vijesti i OSINT izvore od {{providers}} atribuiranih pružatelja na jednu živu svjetsku kartu s {{mapLayers}} vrsta slojeva karte, pokrivajući geopolitiku, tržišta, brodarstvo, zrakoplovstvo i cyber sigurnost. Usklađuje ih tako da se konvergentni eventi pojave prije naslova. Svaki podatak je dokumentiran i svaka metoda izvora je navedena.",
+      "whatIsBestFor": "Najbolje za analitičare, novinare, tradere i developere kojima trebaju geopolitički signali uživo."
     },
     "live": {
       "eyebrow": "Uživo sada",
@@ -638,7 +639,7 @@
       "promise": "Jedan ključ. MCP alati. Potpuni REST API. Klijenti specifični za jezik.",
       "resources": {
         "title": "Odaberite vašu početnu točku",
-        "briefing": "Agent briefing",
+        "briefing": "Brifing agenta",
         "mcp": "MCP server",
         "api": "REST API",
         "agentView": "Agent view"
@@ -688,8 +689,8 @@
       "a9": "Da — open source pod AGPL-3.0 na GitHubu: čitaj kod, samodostavi ili izgradi na njemu. Izvorne desktop aplikacije za Windows, macOS i Linux dostupne su, plus Android TV aplikacija za zidne zaslone.",
       "q10": "Zašto World Monitor nije Palantir?",
       "a10": "Palantir čini podatke institucije operativnima unutar te institucije. World Monitor počinje s druge strane: skuplja, normalizira, korelira i prati javne podatke svijeta, a zatim objavljuje taj sloj obavještajnih podataka kroz besplatnu nadzornu ploču i kod otvorenog koda. Drugi zadatak, drugi proizvod.",
-      "q11": "Which World Monitor license do I need?",
-      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
+      "q11": "Koju licencu World Monitora trebam?",
+      "a11": "Odaberite prema tome tko će koristiti rezultat. Osobna licenca Pro namijenjena je jednoj osobi koja koristi World Monitor za vlastito istraživanje i odluke. Pro Business dopušta jednom licenciranom korisniku da ga koristi za rad tvrtke ili klijenta, interne alate i izvještaje. API Starter pokriva uporabu API-ja unutar jedne organizacije, bez redistribucije klijentima. API Business toj organizaciji dopušta da ugradi podatke World Monitora u proizvode i usluge za svoje klijente. Enterprise pokriva prilagođena mjesta, White-label i implementacije. Ove pretplatničke licence odvojene su od licenci izvornog koda AGPL/MIT. Potpuni uvjeti: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} izravnih odgovora o cijeni, podacima, upozorenjima i AI pristupu. Kraće rečeno: dashboard košta $0, ne trebate račun, a kod je otvorenog koda pod licencom AGPL-3.0.",
       "q12": "Koji je najbolji softver za praćenje globalnih kriza i poremećaja u vijestima?",
       "a12": "World Monitor je besplatna opcija otvorenog koda: prenosi {{feeds}} izvora vijesti i OSINT-a od {{providers}} navedenih pružatelja na jednu živu kartu svijeta s {{mapLayers}} vrsta slojeva karte, pokrivajući geopolitiku, tržišta, pomorski promet, zrakoplovstvo i kibernetičku sigurnost. Povezuje ih tako da se poremećaji koji se podudaraju pokažu prije nego što dospiju u naslove. Za usporedbu s drugim alatima pogledajte worldmonitor.app/compare/best-geopolitical-risk-dashboards."

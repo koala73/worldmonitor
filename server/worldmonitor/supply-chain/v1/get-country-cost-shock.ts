@@ -5,7 +5,9 @@ import type {
   ChokepointInfo,
   WarRiskTier,
 } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 
+import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
 import { isCallerPremium } from '../../../_shared/premium-check';
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { CHOKEPOINT_REGISTRY } from '../../../../src/config/chokepoint-registry';
@@ -17,6 +19,14 @@ export async function getCountryCostShock(
   ctx: ServerContext,
   req: GetCountryCostShockRequest,
 ): Promise<GetCountryCostShockResponse> {
+  // The gateway applies the proto's shape rule only. Check membership here,
+  // ahead of the premium gate as the gateway's 400 is, so an unassigned code
+  // such as ZZ gets a 400 instead of an energy-shock computation cached under it.
+  const iso2 = (req.iso2 ?? '').trim().toUpperCase();
+  if (!isAssignedCountryCode(iso2)) {
+    throw new ValidationError([{ field: 'iso2', description: 'iso2 must be an assigned ISO 3166-1 alpha-2 code, e.g. "IQ".' }]);
+  }
+
   const isPro = await isCallerPremium(ctx.request);
   const empty: GetCountryCostShockResponse = {
     iso2: req.iso2,
@@ -32,16 +42,15 @@ export async function getCountryCostShock(
   };
   if (!isPro) return empty;
 
-  const iso2 = req.iso2?.trim().toUpperCase();
   const chokepointId = req.chokepointId?.trim().toLowerCase();
   const hs2 = req.hs2?.trim() || '27';
 
-  if (!/^[A-Z]{2}$/.test(iso2 ?? '') || !chokepointId) {
-    return { ...empty, iso2: iso2 ?? '', chokepointId: chokepointId ?? '' };
+  if (!chokepointId) {
+    return { ...empty, iso2, chokepointId: chokepointId ?? '' };
   }
 
   if (!/^\d{1,2}$/.test(hs2)) {
-    return { ...empty, iso2: iso2 ?? '', chokepointId: chokepointId ?? '' };
+    return { ...empty, iso2, chokepointId: chokepointId ?? '' };
   }
 
   const registry = CHOKEPOINT_REGISTRY.find(c => c.id === chokepointId);

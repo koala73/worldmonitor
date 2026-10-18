@@ -27,6 +27,9 @@ export const FIXTURES = [
   { file: 'fat-get-market-data.response.json', tool: 'get_market_data' },
   { file: 'medium-get-conflict-events.response.json', tool: 'get_conflict_events' },
   { file: 'thin-get-chokepoint-status.response.json', tool: 'get_chokepoint_status' },
+  { file: 'rpc-generate-forecasts.response.json', tool: 'generate_forecasts' },
+  { file: 'oversized-get-natural-disasters.response.json', tool: 'get_natural_disasters' },
+  { file: 'oversized-get-imd-cyclone-marine.response.json', tool: 'get_imd_cyclone_marine' },
 ];
 
 // Tools whose default-args envelope is currently over their declared
@@ -46,14 +49,24 @@ export function readFixture(file) {
 // default-args identity path: no JMESPath, no `summary: true`) against a
 // captured fixture envelope and returns the byte count the runtime gate
 // would compare against `tool._outputBudgetBytes`.
+// An RPC tool's fixture is its `_execute` result, which dispatch serializes
+// as-is; a cache tool's fixture is the `{cached_at, stale, data}` envelope.
 export function measure(tool, fixture) {
-  const filtered = tool._postFilter
-    ? tool._postFilter(structuredClone(fixture.data), {})
-    : fixture.data;
-  const envelope = { cached_at: fixture.cached_at, stale: fixture.stale, data: filtered };
-  const presented = tool.name === 'get_market_data'
+  let envelope;
+  if (tool._execute) {
+    envelope = structuredClone(fixture);
+  } else {
+    const filtered = tool._postFilter
+      ? tool._postFilter(structuredClone(fixture.data), {})
+      : fixture.data;
+    envelope = { cached_at: fixture.cached_at, stale: fixture.stale, data: filtered };
+  }
+  let presented = tool.name === 'get_market_data'
     ? presentDefaultMarketData(envelope, tool._outputBudgetBytes)
     : envelope;
+  if (tool._fitToBudget && utf8ByteLength(JSON.stringify(presented)) > tool._outputBudgetBytes) {
+    presented = tool._fitToBudget(presented, tool._outputBudgetBytes, {});
+  }
   return utf8ByteLength(JSON.stringify(presented));
 }
 

@@ -1,4 +1,4 @@
-import type { ConflictZone, Hotspot, NewsItem, MilitaryBase, StrategicWaterway, APTGroup, NuclearFacility, EconomicCenter, GammaIrradiator, Pipeline, UnderseaCable, CableAdvisory, RepairShip, InternetOutage, AIDataCenter, AisDisruptionEvent, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, Port, Spaceport, CriticalMineralProject, CyberThreat } from '@/types';
+import type { ConflictZone, Hotspot, NewsItem, NewsLocationMarker, MilitaryBase, StrategicWaterway, APTGroup, NuclearFacility, EconomicCenter, GammaIrradiator, Pipeline, UnderseaCable, CableAdvisory, RepairShip, InternetOutage, AIDataCenter, AisDisruptionEvent, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, Port, Spaceport, CriticalMineralProject, CyberThreat } from '@/types';
 import type { TradeRouteSegment } from '@/config/trade-routes';
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { Earthquake } from '@/services/earthquakes';
@@ -9,6 +9,7 @@ import type { StartupHub, Accelerator, TechHQ, CloudRegion } from '@/config/tech
 import type { TechHubActivity } from '@/services/tech-activity';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { assessCorroboration, corroborationLabelHtml, evidenceFromItem } from '@/utils/corroboration-flag';
 import { isMobileDevice, getCSSColor } from '@/utils';
 import { TransitChart } from '@/utils/transit-chart';
 import { HS2RingChart } from '@/utils/hs2-ring-chart';
@@ -103,6 +104,9 @@ function fmtDelayMin(min: number | undefined): string {
   if (min === undefined || min === 0) return '';
   return `<span style="color:${min > 0 ? '#f97316' : '#22c55e'};font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin-left:3px">${min > 0 ? '+' : ''}${min}m</span>`;
 }
+
+/** A news marker's popup: its title and, when known, the cluster's corroboration (#9213). */
+type NewsPopupData = Pick<NewsLocationMarker, 'title' | 'corroboration'>;
 
 export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'news';
 
@@ -233,7 +237,7 @@ interface DatacenterClusterData {
 
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation | Pick<NewsItem, 'title'>;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation | NewsPopupData;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -829,7 +833,7 @@ export class MapPopup {
       case 'gpsJamming':
         return this.renderGpsJammingPopup(data.data as GpsJammingPopupData);
       case 'news':
-        return this.renderNewsPopup(data.data as Pick<NewsItem, 'title'>);
+        return this.renderNewsPopup(data.data as NewsPopupData);
       case 'radiation':
         return this.renderRadiationPopup(data.data as RadiationObservation);
       default:
@@ -837,13 +841,14 @@ export class MapPopup {
     }
   }
 
-  private renderNewsPopup(news: Pick<NewsItem, 'title'>): string {
+  private renderNewsPopup(news: NewsPopupData): string {
+    const coverage = corroborationLabelHtml(news.corroboration);
     return `
       <div class="popup-header">
         <span class="popup-title">${t('components.deckgl.tooltip.news')}</span>
         <button class="popup-close" aria-label="Close">×</button>
       </div>
-      <div class="popup-body"><p>${escapeHtml(news.title)}</p></div>
+      <div class="popup-body"><p>${escapeHtml(news.title)}</p>${coverage ? `<p>${coverage}</p>` : ''}</div>
     `;
   }
 
@@ -1165,6 +1170,7 @@ export class MapPopup {
                     <div class="popup-news-item">
                       <span class="news-source">${escapeHtml(n.source)}</span>
                       <a href="${sanitizeUrl(n.link)}" target="_blank" class="news-title">${escapeHtml(n.title)}</a>
+                      ${corroborationLabelHtml(assessCorroboration(evidenceFromItem(n)))}
                     </div>
                   `).join('')}
                 </div>

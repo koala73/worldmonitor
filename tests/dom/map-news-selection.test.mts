@@ -30,10 +30,10 @@ describe('loaded news selection callbacks', () => {
 
   it('rewires one cached callback through each active renderer after a switch', () => {
     const callback = vi.fn();
-    const flat = { setOnNewsClick: vi.fn() };
-    const deck = { setOnNewsClick: vi.fn() };
-    const globe = { setOnNewsClick: vi.fn() };
-    const map = Object.assign(Object.create(MapContainer.prototype), { useDeckGL: false, useGlobe: false, svgMap: flat, deckGLMap: deck, globeMap: globe, layerLoadingState: new Map(), layerReadyState: new Map(), hiddenLayerToggles: new Set() });
+    const flat = { setOnNewsClick: vi.fn(), getState: () => ({ layers: {} }) };
+    const deck = { setOnNewsClick: vi.fn(), getState: () => ({ layers: {} }) };
+    const globe = { setOnNewsClick: vi.fn(), getState: () => ({ layers: {} }) };
+    const map = Object.assign(Object.create(MapContainer.prototype), { useDeckGL: false, useGlobe: false, svgMap: flat, deckGLMap: deck, globeMap: globe, emergencyLayer: { setEnabled: vi.fn() }, layerLoadingState: new Map(), layerReadyState: new Map(), hiddenLayerToggles: new Set() });
     map.onNewsClicked(callback);
     expect(flat.setOnNewsClick).toHaveBeenCalledExactlyOnceWith(callback);
     map.useDeckGL = true;

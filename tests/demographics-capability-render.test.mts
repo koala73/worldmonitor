@@ -53,7 +53,9 @@ describe('demographics capability renderer', () => {
         ['countryBrief.demographicsCapability.industrialWorkforce', 'Industrial workforce'],
         ['countryBrief.demographicsCapability.medianAge', 'Median age'],
         ['countryBrief.demographicsCapability.tertiaryEnrollment', 'Tertiary enrollment'],
+        ['countryBrief.demographicsCapability.craftTrades', 'Craft and trades workers'],
         ['countryBrief.demographicsCapability.notAvailable', 'Not available'],
+        ['countryBrief.demographicsCapability.statusNotSupplied', 'Estimate and imputation status not supplied'],
       ]);
       const element = renderDemographicsCapabilitySection(
         response,
@@ -76,6 +78,25 @@ describe('demographics capability renderer', () => {
       assert.match(text, /Education pipeline data retained from the last successful refresh\./);
       assert.match(text, /Industrial workforce/);
       assert.match(text, /Not available/);
+      assert.equal(element.querySelectorAll('.cdp-military-grid .cdp-economic-source').length, 2);
+      assert.match(text, /Estimate and imputation status not supplied/);
+      assert.doesNotMatch(text, /Observed|Unestimated/);
+
+      response.industrialWorkforce!.available = true;
+      response.industrialWorkforce!.craftTradesEmploymentPeople = {
+        available: true, value: 1000, year: 2025, source: 'ILOSTAT', unit: 'people', sourceStatus: 'ILOSTAT status: Imputation',
+      };
+      response.education!.tertiaryEnrollmentGrossPercent!.value = 0;
+      response.education!.tertiaryEnrollmentGrossPercent!.sourceStatus = 'World Bank status: Forecast';
+      const supplied = renderDemographicsCapabilitySection(response, (label, value) => {
+        const row = window.document.createElement('div');
+        row.textContent = `${label}: ${value}`;
+        return row;
+      }, (key) => labels.get(key) ?? key);
+      const rows = supplied.querySelectorAll('.cdp-military-grid > div');
+      assert.match(rows[8]!.textContent!, /Craft and trades workers: 1,000 · 2025ILOSTAT status: Imputation/);
+      assert.match(rows[5]!.textContent!, /Tertiary enrollment: 0% · 2024World Bank status: Forecast/);
+      assert.equal(supplied.querySelectorAll('.cdp-military-grid .cdp-economic-source').length, 3);
     } finally {
       Object.defineProperty(globalThis, 'document', { configurable: true, value: previousDocument });
       Object.defineProperty(globalThis, 'Node', { configurable: true, value: previousNode });

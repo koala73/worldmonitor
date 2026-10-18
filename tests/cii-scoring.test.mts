@@ -2513,6 +2513,8 @@ describe('CII scoring', () => {
       { relPath: 'scripts/regional-snapshot/trigger-evaluator.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
       { relPath: 'api/mcp/registry/analysis-tools.ts', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.live'] },
       { relPath: 'tests/regional-snapshot.test.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'scripts/shipping-webhook-worker.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.live', 'CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'shared/event-triggers.json', expectedKeys: [expectedLiveKey, expectedStaleKey] },
     ];
 
     const violations: string[] = [];

@@ -519,7 +519,7 @@ curl -s https://worldmonitor.app/mcp \
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `reporter` | string | WTO 报告国的 3 位 UN M49 代码（例如 "840" 表示美国）。默认为 "840"。目前仅提供与世界（"000"）之间的数据；其他伙伴代码会返回 `not_covered`。 |
+| `reporter` | string | 报告国的 ISO 3166-1 alpha-2 代码（"US"）或 3 位 UN M49 代码（"840"）；ISO2 会映射为 M49。默认为 "840"（美国）。目前仅提供与世界（"000"）之间的数据；其他伙伴代码会返回 `not_covered`。 |
 | `years` | integer | 从最新发布年份向前回看的年数，包含起止年份（10 会返回 11 个日历年）。默认为 10；30 是完整播种窗口。 |
 
 **响应区分：** `unavailableReason` 使用 RPC 的封闭 `TradeFlowUnavailableReason` 枚举。`TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED` 是合约答案：该组合不在播种覆盖范围内，重试无效。其他非 UNSPECIFIED 原因均表示故障（`seed_missing`、`coverage_unknown`、`cache_unavailable`），并带有 `upstreamUnavailable: true`。
@@ -1174,7 +1174,7 @@ curl -s https://worldmonitor.app/mcp \
 | 名称 | 类型 | 描述 |
 |------|------|------|
 | `text` | string | 可选的提取文本，最长 2048 字符（超长输入返回 `error`）。省略时，工具转而跨当前头条摘要聚合实体。 |
-| `category` | string（枚举） | 在头条模式下，将聚合限制为一个完整摘要类别（`politics`、`us`、`europe`、`middleeast`、`tech`、`ai`、`finance`、`commodities`、`gov`、`africa`、`latam`、`asia`、`energy`、`thinktanks`、`crisis`、`layoffs`、`intel`）。结果中以 `category` 回显（省略时为 `null`）。未知值返回 `headlineCount: 0`，并以 `note` 列出当前摘要中存在的类别。 |
+| `category` | string（枚举） | 在头条模式下，将聚合限制为一个完整摘要类别（`politics`、`us`、`europe`、`middleeast`、`tech`、`ai`、`finance`、`commodities`、`gov`、`africa`、`latam`、`asia`、`energy`、`thinktanks`、`crisis`、`layoffs`、`science`、`intel`）。结果中以 `category` 回显（省略时为 `null`）。未知值返回 `headlineCount: 0`，并以 `note` 列出当前摘要中存在的类别。 |
 | `limit` | integer | 每个列表的最大实体数（1-50）。默认 20。 |
 
 - **API 端点：** `GET /api/news/v1/list-feed-digest`（仅头条模式；文本模式不发起任何请求）。
@@ -1206,8 +1206,9 @@ curl -s https://worldmonitor.app/mcp \
 |------|------|------|
 | `limit` | integer | 返回簇的上限（1-25）。默认 10。 |
 | `min_sources` | integer | 仅返回覆盖**不同媒体来源数**不低于该值的簇（1-10）—— 真正的交叉印证，而非同一家媒体重复发稿。默认 1。 |
-| `category` | string（枚举） | 将聚类限制为一个完整摘要类别（`politics`、`us`、`europe`、`middleeast`、`tech`、`ai`、`finance`、`commodities`、`gov`、`africa`、`latam`、`asia`、`energy`、`thinktanks`、`crisis`、`layoffs`、`intel`）。结果中以 `category` 回显（省略时为 `null`）。未知值返回 `headlineCount: 0`，并以 `note` 列出当前摘要中存在的类别。 |
+| `category` | string（枚举） | 将聚类限制为一个完整摘要类别（`politics`、`us`、`europe`、`middleeast`、`tech`、`ai`、`finance`、`commodities`、`gov`、`africa`、`latam`、`asia`、`energy`、`thinktanks`、`crisis`、`layoffs`、`science`、`intel`）。结果中以 `category` 回显（省略时为 `null`）。未知值返回 `headlineCount: 0`，并以 `note` 列出当前摘要中存在的类别。 |
 
+- **交叉印证：** 每个簇都带有 `corroboration`，形如 `{ state, publishers }`。`state` 取值为 `corroborated`（两个及以上发布方家族，且并非全部为第 4 层级）、`single-publisher`、`tier4-only`（两个及以上家族，且每个都是已声明的第 4 层级聚合站或博客）或 `unknown`；`publishers` 统计不同的发布方家族，`state` 为 `unknown` 时为 `null`。新闻面板、地图弹窗和摘要为该故事显示相同的判定。实时提醒只携带该故事的发布方数量，因此只报告 `single-publisher` 或 `corroborated`，从不报告 `tier4-only`。它描述的是报道覆盖面，而非准确性：任何状态都不表示某条说法为真或为假。旁边的 `publishers` 名单列出每个发布方及其声明层级。
 - **API 端点：** `GET /api/news/v1/list-feed-digest`
 - **类型：** 确定性本地计算 —— 每次调用对约 150-200 条摘要头条运行聚类（上游为 CDN/Redis 缓存，15 分钟节奏）。
 - **配额：** 标准 —— 每次调用消耗 MCP 每日预留。
@@ -1222,6 +1223,49 @@ curl -s https://worldmonitor.app/mcp \
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
     "params":{"name":"get_news_clusters","arguments":{"category":"commodities","min_sources":2,"limit":10}}
+  }'
+```
+
+</CodeGroup>
+
+### `verify_claim`
+
+针对一条说法或标题的证据卡。在最新标题中找出报道同一事件的话题簇（一个事件常分布在多个簇中），并基于匹配簇给出 WorldMonitor 的覆盖判定。`variant: full`（默认）检索 WorldMonitor 信息源缓存中的所有最新标题（每个信息源最多 30 条），而不只是仪表板摘要提供的标题；与说法共享实义词最多的 100 条标题参与聚类。`tech` 变体检索其摘要。当簇中某条标题包含说法中至少一半的实义词且至少两个时即视为匹配；最多保留匹配度最高的 8 个簇。判定由 `assessCorroboration` 对所有匹配标题计算，因此同一发布方的转载源只计一次。
+
+返回 `found`、`state`（覆盖判定；已检索摘要但没有任何报道时为 `not-found`；摘要为空或不可用、未进行检索时为 `unknown` 且 `found: false`）、`corroboration`（`single-publisher`、`tier4-only`、`corroborated`、`unknown`）、带声明层级的 `publishers` 名单、最多 10 条带来源溯源信息的匹配 `headlines`、最佳匹配的 `credibilityScore`、`firstSeen` / `lastUpdated`，以及 `figures`：用简报溯源规则核对说法中的数字和日期是否出现在匹配标题中。`figures.ungrounded` 列出没有任何匹配标题提及的数字，并不表示该数字错误。`found: false` 表示没有匹配：`state` 为 `not-found` 时，该说法不在 WorldMonitor 当前的来源中；为 `unknown` 时，表示未进行检索。它绝不表示该说法为假。每个响应都带有相同的 `caveat`：衡量的是覆盖情况，而非准确性。
+
+`factChecks` 引用事实核查机构已就相似说法发布的评级。WorldMonitor 不对说法作出评级，只像引用通讯社报道一样注明出处地引用这些评级。每一项给出事实核查机构（`publisher`、`site`）、其原样评级 `rating`、发布日期 `reviewedAt`、链接 `url` 以及其所评级的说法 `claimReviewed`，并以 `label` 引出：这是对相似说法的事实核查，而非对本说法的核查。规则如下：
+
+- 仅限 [IFCN 原则准则](https://github.com/IFCN/verified-signatories)的认证签署机构，名单保存在 `shared/fact-checkers.json` 中，并像来源层级一样接受审核。以链接本身的域名为准，而非数据源报告的名称。
+- 仅显示强匹配：说法与被评级的说法须各自包含对方至少 60% 的实义词，且至少共有三个实义词。较弱的匹配不显示任何内容。
+- 英文事实核查，不限年份，按时间由新到旧排列。相互矛盾的评级全部列出，不作取舍。
+- 无论说法出自何人，规则均相同：匹配逻辑中不涉及任何人物、党派、话题或国家。
+- 评级绝不会改变 `state`、`corroboration` 或卡片中的任何其他内容。
+
+查询已执行时 `factChecks.state` 为 `ok`（此时 `items` 为空表示未找到）；未执行时为 `unavailable` 或 `not-configured`。查询失败绝不会导致工具调用失败。评级来自 Google Fact Check Tools API。
+
+**参数（工具专属）：**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `claim` | string | 要核查的说法或标题，最多 300 个字符。必填。 |
+| `variant` | `string: full / tech` | 要搜索的标题摘要变体。默认为 full。 |
+
+- **API 端点：** `GET /api/news/v1/list-feed-digest`、`GET /api/news/v1/search-fact-checks`、`GET /api/news/v1/search-claim-headlines`
+- **访问：** `subscription` — 需要 Pro 订阅。
+- **类型：** 基于最新标题窗口（最近 96 小时）的确定性本地计算，并非历史索引。不使用 LLM。
+- **配额：** 标准 — 每次调用都会消耗 MCP 每日配额。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"verify_claim","arguments":{"claim":"Trump strikes diesel deal with Putin"}}
   }'
 ```
 
@@ -1967,7 +2011,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `search_flights`
 
-在 Google Flights 上搜索特定日期两个机场之间的实时航班选项。返回可用航班，含价格、经停、航空公司和航段详情。使用 IATA 机场代码（例如 "JFK"、"LHR"、"DXB"）。
+从 Google Flights 结果页实时读取特定日期两个机场之间的行程。每个行程包含全部乘客的美元总价、经停、时长，以及每个航段的航空公司、航班号、机场和当地出发与到达时间。提供 return_date 时价格覆盖往返行程，航段为去程。degraded 带 error 表示数据源失败；无 degraded 的空列表表示未找到行程。机场使用 IATA 代码（例如 "JFK"、"LHR"、"DXB"）。
 
 **参数：**
 
@@ -2002,7 +2046,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `search_flight_prices_by_date`
 
-在 Google Flights 上搜索日期范围内日期网格的定价。返回两个机场之间每个出发日期的最便宜价格。适用于寻找最便宜的飞行日期。使用 IATA 机场代码。
+两个机场之间每个出发日期的 Google Flights 最低票价，日期范围最多 31 天（每个日期一次结果页搜索）。每行包含日期、往返行程的返程日期（出发日期加 trip_duration），以及全部乘客的最低美元总价。没有行程的日期不列出。degraded 带 error 表示部分或全部日期失败，列表只包含有结果的日期。机场使用 IATA 代码。
 
 **参数：**
 
@@ -2011,7 +2055,7 @@ curl -s https://worldmonitor.app/mcp \
 | `origin` | string | **是** | 出发机场的 IATA 代码，例如 "JFK" |
 | `destination` | string | **是** | 到达机场的 IATA 代码，例如 "LHR" |
 | `start_date` | string | **是** | 日期范围起始，格式为 YYYY-MM-DD |
-| `end_date` | string | **是** | 日期范围结束，格式为 YYYY-MM-DD |
+| `end_date` | string | **是** | 日期范围结束，格式为 YYYY-MM-DD，最多在 start_date 之后 30 天 |
 | `is_round_trip` | boolean | 否 | 是否搜索往返价格（默认 false）。为 true 时需要 trip_duration。 |
 | `trip_duration` | number | 否 | 行程天数 — is_round_trip 为 true 时必填（例如 7 表示一周行程） |
 | `cabin_class` | string | 否 | 舱位等级："economy"、"premium_economy"、"business" 或 "first"（可选） |
@@ -2367,7 +2411,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_forecast_case`
 
-读取已加载列表中指定 ID 和 generation 对应的原始预测案例，保留案例内容。此操作需要有效的付费预测面板准入。现有的 64 次读取额度包含此内部读取，不会额外扣减每日面板配额。缺少数据源、ID 不存在、generation 已更改或单个案例超出大小限制时，都会明确报告。数据源恢复后可重试失败的案例；成功的案例会被复用。
+读取指定 ID 和列表 generation 对应的原始预测案例，保留案例内容。专用 MCP 套餐需要有效的付费预测面板准入：现有的 64 次读取额度包含此读取，不会额外扣减每日面板配额。API 套餐无法持有面板，无需 `panel_request` 即可读取，按工具的常规单次权重计费。generation 已更改时返回 `generation_changed` 且不含案例。缺少数据源、ID 不存在、generation 已更改或单个案例超出大小限制时，都会明确报告。数据源恢复后可重试失败的案例；成功的案例会被复用。
 
 **参数（工具特定）：**
 
@@ -2375,27 +2419,27 @@ curl -s https://worldmonitor.app/mcp \
 |------|------|-------------|
 | `forecast_id` | string | 已加载列表中的精确原始预测 ID。 |
 | `generated_at` | string | 已加载列表中的精确 `String(generatedAt)` 值。 |
-| `panel_request` | string | 签名的预测面板凭证。 |
+| `panel_request` | string | 签名的预测面板凭证。专用 MCP 套餐必填；API 套餐不接受。 |
 
 - **API 端点：** `GET /api/forecast/v1/get-forecasts`
-- **访问权限：** `subscription` — 需要通过所有者、范围、有效期和权益检查的有效付费预测面板准入。
+- **访问权限：** `subscription`。专用 MCP 套餐需要通过所有者、范围、有效期和权益检查的有效付费预测面板准入；API 套餐按次计费。
 - **类型：** 读取固定规范预测数据集的缓存；不会访问任意缓存键，也不会运行模型生成。
 - **输出上限：** 单个完整原始案例为 128 KB；不会静默截断案例内容。
 - **新鲜度预算：** 1.5 小时；原始案例的数据源通知与打开面板时的快照分开处理。
 
 ### `get_forecast_theaters`
 
-使用有效的付费预测准入读取最新原始模拟战区摘要。保留原始路径、参与者及可选角色、反应、稳定因素、失效条件、独立来源运行 ID 和时间以及完成计数。来源时间不能证明新鲜度；部分和未知覆盖不会被视为完整覆盖或空结果。
+读取最新原始模拟战区摘要。专用 MCP 套餐需要有效的付费预测准入；API 套餐无需 `panel_request`，按工具的常规单次权重计费。保留原始路径、参与者及可选角色、反应、稳定因素、失效条件、独立来源运行 ID 和时间以及完成计数。来源时间不能证明新鲜度；部分和未知覆盖不会被视为完整覆盖或空结果。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `panel_request` | string | `get_forecast_predictions` 返回的签名预测凭证。不接受其他参数。 |
+| `panel_request` | string | `get_forecast_predictions` 返回的签名预测凭证。专用 MCP 套餐必填；API 套餐不接受。不接受其他参数。 |
 
 - **API 端点：** `GET /api/forecast/v1/get-simulation-outcome`，只读取最新摘要。
 - **访问权限：** `subscription`，检查所有者、范围、有效期和权益。
-- **配额：** 共享打开面板时的每日分配和 64 次未缓存读取上限。完整且通过验证的快照及明确无符合条件的空快照可以复用；部分、失败、缺失、处理中及未知结果可以手动重试。
+- **配额：** 专用 MCP 套餐共享打开面板时的每日分配和 64 次未缓存读取上限；API 套餐每次调用按工具权重计费。完整且通过验证的快照及明确无符合条件的空快照可以复用；部分、失败、缺失、处理中及未知结果可以手动重试。
 - **输出上限：** 原始证据为 128 KB。无效或过大的来源报告不可用，不会静默截断，不支持任意运行选择、模拟触发或私有产物读取。
 
 ### `get_forecast_scorecard`

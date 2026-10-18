@@ -149,6 +149,7 @@
                 "group": "Workflows",
                 "pages": [
                   "embed-live-map",
+                  "morning-world-risk-brief",
                   "route-explorer",
                   "scenario-engine"
                 ]
@@ -249,6 +250,7 @@
                 "group": "HTTP API",
                 "pages": [
                   "api-platform",
+                  "incident-feed",
                   "api-brief",
                   "api-commerce",
                   "api-scenarios",
@@ -628,6 +630,7 @@
                 "group": "工作流",
                 "pages": [
                   "zh/embed-live-map",
+                  "zh/morning-world-risk-brief",
                   "zh/route-explorer",
                   "zh/scenario-engine"
                 ]
@@ -728,6 +731,7 @@
                 "group": "HTTP API",
                 "pages": [
                   "zh/api-platform",
+                  "zh/incident-feed",
                   "zh/api-brief",
                   "zh/api-commerce",
                   "zh/api-scenarios",

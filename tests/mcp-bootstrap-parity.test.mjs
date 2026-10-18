@@ -52,6 +52,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: bounded China coverage verdict and reason codes consumed by api/health.js and the read-only operator audit; source content remains available through its domain tools, so this summary is not a queryable MCP slice (#5271).'],
   ['company-monitoring:worker-health:v1',
     'operational: bounded Company Monitoring worker control-plane heartbeat, outcome, and counters consumed by api/health.js and operators; durable scan state remains in Convex and provider/product query surfaces are deferred beyond #6007.'],
+  ['shipping:webhook-worker:v1',
+    'operational: per-tick status of the chokepoint webhook delivery worker (subscriber, delivery, and failure counts) consumed by api/health.js and operators; chokepoint scores stay queryable through get_chokepoint_status (#9217).'],
   ['economic:global-tenders:v1:source:sam',
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ['economic:global-tenders:v1:source:ted',

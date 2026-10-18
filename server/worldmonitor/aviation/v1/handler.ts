@@ -6,6 +6,7 @@ import { listAirportFlights } from './list-airport-flights';
 import { getCarrierOps } from './get-carrier-ops';
 import { getFlightStatus } from './get-flight-status';
 import { trackAircraft } from './track-aircraft';
+import { listAircraftEmergencies } from './list-aircraft-emergencies';
 import { searchFlightPrices } from './search-flight-prices';
 import { listAviationNews } from './list-aviation-news';
 import { getYoutubeLiveStreamInfo } from './get-youtube-live-stream-info';
@@ -19,6 +20,7 @@ export const aviationHandler: AviationServiceHandler = {
   getCarrierOps,
   getFlightStatus,
   trackAircraft,
+  listAircraftEmergencies,
   searchFlightPrices,
   listAviationNews,
   getYoutubeLiveStreamInfo,

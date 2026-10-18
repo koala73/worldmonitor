@@ -40,6 +40,8 @@ import { getPublicCorsHeaders } from '../_cors.js';
 import { jsonResponse } from '../_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { keyFingerprint, sha256Hex, timingSafeIncludes, verifyPkceS256 } from '../_crypto.js';
+// @ts-expect-error — JS module, no declaration file
+import { isClientMetadataDocumentId, resolveOAuthClient } from './_client-metadata.js';
 import { validateProMcpToken } from '../../server/_shared/pro-mcp-token';
 import type { ProMcpValidateUnion } from '../../server/_shared/pro-mcp-token';
 // @ts-expect-error — JS module, no declaration file
@@ -409,6 +411,8 @@ export interface TokenHandlerDeps extends RefreshRecoveryDeps {
   randomPointerId: () => string;
   /** Optional Vercel isolate context so limiter Sentry/usage survive teardown. */
   ctx?: WaitUntilCtx;
+  /** Fetch for CIMD client metadata documents; defaults to the global fetch. */
+  fetchClientMetadata?: typeof fetch;
 }
 
 interface CodeDataPro {
@@ -487,6 +491,16 @@ async function handleAuthorizationCode(
     );
   }
 
+  // A CIMD client is resolved before the code is consumed: it may need a live
+  // fetch of its metadata document (always, for a no-store document such as
+  // VS Code's), and a vendor blip there must answer a retryable 503 with the
+  // code still redeemable, not burn it (#9244). DCR keeps its original order.
+  const cimdClient = isClientMetadataDocumentId(clientId);
+  if (cimdClient) {
+    const clientCheck = await checkClientExists(deps, clientId);
+    if (clientCheck) return clientCheck;
+  }
+
   // Atomically consume the auth code (GETDEL — prevents concurrent exchange race).
   let codeData: CodeDataPro | CodeDataLegacy | null;
   try {
@@ -522,8 +536,10 @@ async function handleAuthorizationCode(
     );
   }
 
-  const clientCheck = await checkClientExists(deps, clientId);
-  if (clientCheck) return clientCheck;
+  if (!cimdClient) {
+    const clientCheck = await checkClientExists(deps, clientId);
+    if (clientCheck) return clientCheck;
+  }
 
   const accessUuid = deps.randomUuid();
   const refreshUuid = deps.randomUuid();
@@ -848,27 +864,35 @@ async function handleClientCredentials(
 }
 
 /**
- * Verify `oauth:client:<id>` exists; returns a Response on failure (caller
- * short-circuits) or null on success. Also fires the sliding-TTL EXPIRE.
+ * Verify the client still resolves — a DCR `oauth:client:<id>` row, or a CIMD
+ * document that is still trusted and valid (#9244), so a vendor revoking or
+ * changing its document takes effect on the next code exchange or refresh.
+ * Returns a Response on failure (caller short-circuits) or null on success.
+ * Also fires the DCR sliding-TTL EXPIRE.
  */
 async function checkClientExists(deps: TokenHandlerDeps, clientId: string): Promise<Response | null> {
-  let client: unknown;
-  try {
-    client = await deps.redisGet(`oauth:client:${clientId}`);
-  } catch {
-    return temporaryAuthFailure();
-  }
-  if (!client) {
+  const resolved = await resolveOAuthClient(clientId, {
+    redisGet: deps.redisGet,
+    redisSetEx: (key: string, value: unknown, ttl: number) =>
+      deps.redisPipeline([['SET', key, JSON.stringify(value), 'EX', ttl]]),
+    fetch: deps.fetchClientMetadata,
+  });
+  if (!resolved.ok) {
+    if (resolved.transient) return temporaryAuthFailure();
     return jsonResp(
       {
         error: 'invalid_client',
-        error_description: 'Client registration not found or expired. Please re-register.',
+        error_description: resolved.reason === 'unknown_client'
+          ? 'Client registration not found or expired. Please re-register.'
+          : 'Client metadata document is not accepted.',
       },
       401,
     );
   }
   // Extend client TTL (sliding 90-day window) — fire-and-forget
-  deps.redisPipeline([['EXPIRE', `oauth:client:${clientId}`, CLIENT_TTL_SECONDS]]).catch(() => {});
+  if (!resolved.client.cimd) {
+    deps.redisPipeline([['EXPIRE', `oauth:client:${clientId}`, CLIENT_TTL_SECONDS]]).catch(() => {});
+  }
   return null;
 }
 

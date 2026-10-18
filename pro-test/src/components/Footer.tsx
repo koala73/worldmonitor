@@ -24,7 +24,11 @@ export const Footer = () => (
         <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
         <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
       </div>
-      <span className="text-[10px] text-wm-muted mt-4 md:mt-0" suppressHydrationWarning>&copy; {new Date().getFullYear()} WorldMonitor</span>
+      {/* The visible byline backs the welcome page's JSON-LD `author` (#7459a). */}
+      <span className="text-xs text-wm-muted mt-4 md:mt-0" suppressHydrationWarning>
+        &copy; {new Date().getFullYear()} WorldMonitor · Built by{' '}
+        <a href="https://www.worldmonitor.app/blog/authors/elie-habib/" className="hover:text-wm-text transition-colors">Elie Habib</a>
+      </span>
     </div>
     <PressFooterNav />
     <LegalFooterNav />

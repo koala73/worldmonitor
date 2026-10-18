@@ -27,6 +27,26 @@ import {
 
 const YEAR = String(new Date().getFullYear());
 
+it('retains metric-specific growth and labor periods including zero and fallback years', t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-16T00:00:00Z') });
+  const growth = buildGrowthCountries({
+    realGdpGrowth: { USA: { 2025: 0 } },
+    nominalGdpPerCapita: { USA: { 2024: 80000 } },
+  }).US;
+  assert.deepEqual(growth.periods, { realGdpGrowthPct: 2025, gdpPerCapitaUsd: 2024 });
+  assert.equal(growth.realGdpGrowthPct, 0);
+  assert.equal(growth.gdpPerCapitaUsd, 80000);
+  assert.equal(growth.year, 2025);
+  assert.equal(growth.latestYear, 2025);
+  const labor = buildLaborCountries({ unemployment: { USA: { 2025: 0 } }, population: { USA: { 2026: 342000000 }, FRA: { 2026: 60000000 } } });
+  assert.deepEqual(labor.US.periods, { unemploymentPct: 2025 });
+  assert.deepEqual(labor.FR.periods, { unemploymentPct: null });
+  assert.equal(labor.US.unemploymentPct, 0);
+  assert.equal(labor.US.populationMillions, 342);
+  assert.equal(labor.US.year, 2025);
+  assert.equal(labor.US.latestYear, 2026);
+});
+
 describe('seed-imf shared helpers', () => {
   it('isAggregate flags WEO regional aggregates and rejects 2-letter codes', () => {
     assert.equal(isAggregateGrowth('USA'), false);
@@ -123,13 +143,16 @@ describe('seed-imf-labor', () => {
     // all the country's indicators — populated by every IMF seeder so the
     // content-age helper can prefer it over the priority-first `year`.
     assert.deepEqual(countries.US, {
+      periods: { unemploymentPct: Number(YEAR) },
       unemploymentPct: 4.1, populationMillions: 333.3, year: Number(YEAR), latestYear: Number(YEAR),
     });
     assert.deepEqual(countries.FR, {
+      periods: { unemploymentPct: Number(YEAR) },
       unemploymentPct: 7.5, populationMillions: 67.9, year: Number(YEAR), latestYear: Number(YEAR),
     });
     // South Africa: only population (no LUR); still included.
     assert.deepEqual(countries.ZA, {
+      periods: { unemploymentPct: null },
       unemploymentPct: null, populationMillions: 60.2, year: Number(YEAR), latestYear: Number(YEAR),
     });
   });

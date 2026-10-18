@@ -234,7 +234,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Tahmin ve eksik değer atama durumu belirtilmemiş"
     },
     "fiveFactorScorecard": {
       "title": "Beş Faktörlü Dayanıklılık Puan Kartı",
@@ -406,6 +407,7 @@
     "energy": "Enerji ve Kaynaklar",
     "gov": "Hukumet",
     "thinktanks": "Dusunce Kuruluslari",
+    "science": "Bilim",
     "polymarket": "Tahminler",
     "commodities": "Emtialar",
     "economic": "Ekonomik Gostergeler",
@@ -2939,6 +2941,7 @@
       "tier4OnlyHint": "Bu haberi bildiren her kuruluş bir seviye-4 kaynaktır (toplayıcılar ve bloglar). Bu, haber kapsamını gösterir; doğruluk değildir.",
       "rosterListed": "({{listed}} listede)",
       "rosterFeeds": "Görülen beslemeler: {{labels}}",
+      "rosterSameCopy": "Aynı metin, bir kez sayıldı",
       "rosterLegend": "Seviyeler kaynakları sıralar; bu iddiayı yargılamaz.",
       "tierDocsLink": "Seviyeler nasıl atanır",
       "tierChip": "S{{tier}}",

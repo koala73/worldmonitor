@@ -6,7 +6,7 @@ import type {
     AirportDelayAlert,
     FlightDelaySeverity,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
-import { ApiError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { MONITORED_AIRPORTS, AVIATIONSTACK_AIRPORTS } from '../../../../src/config/airports';
 import { readCachedJson } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
@@ -36,15 +36,15 @@ export async function getAirportOpsSummary(
         ? raw.length <= MAX_AIRPORT_INPUT_LENGTH
         : Array.isArray(raw) && raw.length <= MAX_OPS_AIRPORTS
             && raw.every(code => typeof code === 'string' && code.length <= MAX_AIRPORT_INPUT_LENGTH))) {
-        throw new ApiError(400, 'Expected at most 20 IATA airport codes', '');
+        throw new ValidationError([{ field: 'airports', description: 'Expected at most 20 IATA airport codes' }]);
     }
     const rawAirports = parseStringArray(raw);
     if (rawAirports.length > MAX_OPS_AIRPORTS) {
-        throw new ApiError(400, 'Expected at most 20 IATA airport codes', '');
+        throw new ValidationError([{ field: 'airports', description: 'Expected at most 20 IATA airport codes' }]);
     }
     const normalized = rawAirports.map(code => code.trim().toUpperCase());
     if (normalized.some(code => !IATA_RE.test(code))) {
-        throw new ApiError(400, 'Expected three-letter IATA airport codes', '');
+        throw new ValidationError([{ field: 'airports', description: 'Expected three-letter IATA airport codes' }]);
     }
     const requested = normalized.length > 0
         ? [...new Set(normalized)]

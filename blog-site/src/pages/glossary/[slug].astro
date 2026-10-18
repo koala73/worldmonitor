@@ -1,6 +1,6 @@
 ---
 import Base from '../../layouts/Base.astro';
-import { GLOSSARY_TERMS } from '../../data/glossary';
+import { GLOSSARY_TERMS, PIZZINT_LEVELS } from '../../data/glossary';
 
 export function getStaticPaths() {
   return GLOSSARY_TERMS.map((term) => ({
@@ -75,6 +75,11 @@ const faqLd = {
       name: `What is ${term.term}${term.abbr ? ` (${term.abbr})` : ''}?`,
       acceptedAnswer: { '@type': 'Answer', text: term.short },
     },
+    ...(term.faq ?? []).map((item) => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: { '@type': 'Answer', text: item.answer },
+    })),
   ],
 };
 ---
@@ -106,11 +111,62 @@ const faqLd = {
       <p class="glossary-lede">{term.short}</p>
     </header>
 
+    {term.liveReading === 'pizzint' && (
+      <section class="live-reading" data-live-pizzint data-state="loading" aria-labelledby="live-reading-heading">
+        <div class="live-reading-head">
+          <h2 id="live-reading-heading">Current level</h2>
+          <span class="live-reading-status" data-live-status>Loading the live level…</span>
+        </div>
+        <p class="live-reading-fallback" data-live-fallback>
+          The current level loads in your browser from World Monitor’s live feed, refreshed every 15 minutes.
+          It also appears next to the pizza icon in the <a href="/dashboard">dashboard header</a>.
+        </p>
+        <div class="live-reading-body" data-live-grid hidden aria-busy="true">
+          <p class="live-reading-level">
+            <strong data-pizzint-level>—</strong>
+            <span data-pizzint-label></span>
+          </p>
+          <ul class="live-reading-venues" data-pizzint-venues></ul>
+        </div>
+        <div class="live-reading-foot">
+          <time data-live-updated></time>
+          <button type="button" data-live-refresh>Refresh</button>
+        </div>
+      </section>
+    )}
+
     <div class="prose">
       {term.body.map((para) => (
         <p>{para}</p>
       ))}
     </div>
+
+    {term.liveReading === 'pizzint' && (
+      <div class="glossary-levels">
+        <h2>Levels</h2>
+        <table>
+          <thead>
+            <tr><th scope="col">Level</th><th scope="col">Activity</th><th scope="col">Index points</th></tr>
+          </thead>
+          <tbody>
+            {PIZZINT_LEVELS.map((row) => (
+              <tr><td>{row.level}</td><td>{row.label}</td><td>{row.points}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    {term.faq && term.faq.length > 0 && (
+      <div class="glossary-faq">
+        {term.faq.map((item) => (
+          <section>
+            <h2>{item.question}</h2>
+            <p>{item.answer}</p>
+          </section>
+        ))}
+      </div>
+    )}
 
     {term.learnMore && term.learnMore.length > 0 && (
       <div class="glossary-learn">
@@ -152,7 +208,105 @@ const faqLd = {
     </div>
   </article>
 
+  {term.liveReading && (
+    <script type="module" is:inline nonce="wm-static-bootstrap" src="/tools/live-tools.js"></script>
+  )}
+
   <style>
+    .live-reading {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      margin: 0 0 2rem;
+    }
+    .live-reading-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .live-reading-head h2 {
+      margin: 0;
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .live-reading-status {
+      font-size: 0.8rem;
+      opacity: 0.75;
+    }
+    .live-reading-fallback {
+      margin: 0.75rem 0 0;
+      font-size: 0.9rem;
+      opacity: 0.85;
+    }
+    .live-reading-level {
+      margin: 0.75rem 0;
+      display: flex;
+      align-items: baseline;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+    }
+    .live-reading-level strong {
+      font-size: 2rem;
+      line-height: 1;
+      color: var(--wm-green, #4ade80);
+    }
+    .live-reading-venues {
+      margin: 0;
+      padding-left: 1.1rem;
+      font-size: 0.9rem;
+    }
+    .live-reading-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-top: 0.75rem;
+      font-size: 0.8rem;
+      opacity: 0.75;
+    }
+    .live-reading-foot button {
+      font: inherit;
+      color: inherit;
+      background: transparent;
+      border: 1px solid currentColor;
+      border-radius: 6px;
+      padding: 0.25rem 0.7rem;
+      cursor: pointer;
+    }
+    .live-reading-foot button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    .glossary-levels,
+    .glossary-faq {
+      margin-top: 2.5rem;
+    }
+    .glossary-levels h2,
+    .glossary-faq h2 {
+      font-size: 1.1rem;
+      margin: 0 0 0.5rem;
+    }
+    .glossary-faq section + section {
+      margin-top: 1.75rem;
+    }
+    .glossary-faq p {
+      margin: 0;
+    }
+    .glossary-levels table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    .glossary-levels th,
+    .glossary-levels td {
+      text-align: left;
+      padding: 0.45rem 0.75rem 0.45rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
     .glossary-term {
       max-width: 720px;
       margin: 0 auto;

@@ -18,6 +18,15 @@ const tool = () => {
 const call = args => tool()._execute(args, 'https://worldmonitor.app', { kind: 'env_key', apiKey: 'wm_shock_fixture' });
 
 const callThroughRealRoutes = async args => {
+  const payload = await dispatchThroughRealRoutes(args);
+  assert.ok(payload.result, JSON.stringify(payload));
+  const { result } = payload;
+  assert.notEqual(result.isError, true, JSON.stringify(result));
+  return result.structuredContent;
+};
+
+/** The JSON-RPC body the MCP endpoint answers, dispatched through the real RPC routes. */
+const dispatchThroughRealRoutes = async args => {
   const envNames = ['WORLDMONITOR_VALID_KEYS', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'];
   const previousEnv = new Map(envNames.map(name => [name, process.env[name]]));
   const routes = createSupplyChainServiceRoutes({ getMultiSectorCostShock, getCountryCostShock });
@@ -65,11 +74,7 @@ const callThroughRealRoutes = async args => {
       assert.match(commands[0][3], /^rl:mcp:key:/);
     }
     assert.equal(response.status, 200);
-    const payload = await response.json();
-    assert.ok(payload.result, JSON.stringify(payload));
-    const { result } = payload;
-    assert.notEqual(result.isError, true, JSON.stringify(result));
-    return result.structuredContent;
+    return await response.json();
   } finally {
     __resetKeyPrefixCacheForTests();
     for (const [name, value] of previousEnv) {
@@ -95,6 +100,15 @@ describe('supply-chain cost shock MCP workflow', () => {
       for (const sector of result.data.sectors) assert.equal(sector.closureDays, closureDays ?? 30);
     });
   }
+
+  it('answers an unassigned energy country with -32602 from the real RPC, before any shock read or cache fill', async () => {
+    // The resolver passes ZZ through on shape; the RPC's 400 must reach the
+    // caller as invalid params, not as a modelled cost shock for ZZ.
+    const payload = await dispatchThroughRealRoutes({ mode: 'energy', country: 'ZZ', chokepoint_id: 'suez' });
+    assert.equal(payload.result, undefined, JSON.stringify(payload));
+    assert.equal(payload.error?.code, -32602, JSON.stringify(payload));
+    assert.deepEqual(payload.error?.data?.violations?.map(violation => violation.field), ['iso2']);
+  });
 
   it('dispatches energy arguments through the real RPC and preserves unavailable model information', async () => {
     const result = await callThroughRealRoutes({ mode: 'energy', country: 'CN', chokepoint_id: 'taiwan_strait' });

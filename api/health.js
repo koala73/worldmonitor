@@ -422,6 +422,9 @@ const STANDALONE_KEYS = {
   // Control-plane heartbeat only. Convex owns every durable scan lease,
   // checkpoint, receipt, and replay decision; this Redis value is disposable.
   companyMonitoringWorker: 'company-monitoring:worker-health:v1',
+  // Per-tick status of the chokepoint webhook delivery worker (#9217). No
+  // dashboard reads it; recordCount is the number of active subscribers.
+  shippingWebhookWorker: 'shipping:webhook-worker:v1',
   // Seeded and health-monitored; no dashboard consumer yet (#6155 is the
   // data layer only), so it is standalone rather than bootstrap-tiered.
   chinaStockConnect:  'market:china:stock-connect:v1',
@@ -736,6 +739,18 @@ const SEED_META = {
   // Always-on loop publishes every few seconds. Five minutes tolerates deploy
   // churn while still detecting a stopped worker well before leases age out.
   companyMonitoringWorker: { key: 'seed-meta:company-monitoring:worker', maxStaleMin: 5, workerControl: true },
+  // Ticks every 5 minutes; 15 tolerates 2 missed ticks across a deploy.
+  shippingWebhookWorker: {
+    key: 'seed-meta:shipping:webhook-worker',
+    maxStaleMin: 15,
+    activationKey: 'seed-activated:shipping:webhook-worker',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 9217,
+      activationKey: 'seed-activated:shipping:webhook-worker',
+    },
+  },
   earthquakes: {
     key: 'seed-meta:seismology:earthquakes', maxStaleMin: 30,
     sourceFailure: {
@@ -1042,7 +1057,7 @@ const SEED_META = {
       sources: ['nws', 'eccc', 'swic'],
     },
   },
-  // Credential-gated seeder (#7005). This is an activation-marker cutover
+  // Public-bulletin seeder (#7005, #7730). This is an activation-marker cutover
   // rather than a 24h expiring acknowledgement.
   // Softening stays on-demand until the durable marker is written.
   imdCycloneMarine: {
@@ -2038,6 +2053,10 @@ const ON_DEMAND_KEYS = new Set([
   // Deployment-order bridge. The worker writes a permanent activation marker
   // on its first healthy loop report; absence becomes strict immediately after.
   'companyMonitoringWorker',
+  // Deployment-order bridge (#9217): this reader ships before the
+  // shipping-webhook-worker Railway service is provisioned. The worker SETs the
+  // durable marker on its first tick that reads the score feed; strict from then on.
+  'shippingWebhookWorker',
   // Same deployment-order bridge as chinaCoverage: Vercel can ship this reader
   // before seed-bundle-macro's next 08:00 UTC tick publishes the first CBR
   // table, and the every-15-minute freshness monitor would otherwise report an
@@ -2184,6 +2203,7 @@ const ACTIVATION_MARKERS = {
   // Written by the PizzINT archive's Lua (scripts/shared/pizzint-history.cjs).
   pizzintHistory: SEED_META.pizzintHistory.activationKey,
   companyMonitoringWorker: 'seed-activated:company-monitoring:worker',
+  shippingWebhookWorker: SEED_META.shippingWebhookWorker.activationKey,
   // Written by scripts/seed-cbr-rates.mjs (CBR_ACTIVATION_KEY) in runSeed's
   // afterPublish hook, so it exists only once a real table has been published.
   cbrRates: 'seed-activated:economic:cbr-rates',
@@ -2584,6 +2604,9 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   // A current List query can validly return no Posts. The relay still writes
   // the canonical snapshot, so a missing xFeed key remains a hard failure.
   'xFeed',
+  // Zero active webhook subscribers is a valid state; the status key is still
+  // written every tick, so a missing key stays a hard failure.
+  'shippingWebhookWorker',
   // Both Toronto CAD sources publish an explicit {records:[]} envelope on a
   // quiet tick. Keep zero valid without softening a missing payload after each
   // activation marker exists.
@@ -3309,10 +3332,6 @@ function classifyKey(name, redisKey, opts, ctx) {
   const rankableRecordCount = name === 'educationAttainment' && Object.hasOwn(ctx, 'educationPayloadRankableCount')
     ? ctx.educationPayloadRankableCount
     : metaRankableCount;
-  const sourceUnavailableAfterActivation = sourceUnavailable
-    && name === 'imdCycloneMarine'
-    && errorCode !== 'IMD_API_KEY_MISSING'
-    && ctx.activationStates?.get(name) === true;
 
   // Pending activation: the producer has never published a contentFreshness
   // block, so this deployment simply predates the feature. Softened only for
@@ -3359,8 +3378,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   // Skipped entirely for an unconfigured adapter, which by the NOT_CONFIGURED
   // rule below has nothing to be degraded ABOUT — so it also publishes no cause.
   let fault = null;
-  if (sourceUnavailableAfterActivation) fault = 'SEED_ERROR';
-  else if (!sourceUnavailable) {
+  if (!sourceUnavailable) {
     if (sourceBlocked && name !== 'crossStraitActivityJapanMod') {
       // Keep the fleet-wide escape hatch narrow: only the Japan MOD adapter has
       // a reviewed-data contract and explicit two-path proof for this state.
@@ -3379,7 +3397,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   // key each run (recordCount 0) so operators can see the adapter is dormant, and
   // the moment the credential lands the next run reports sourceState 'ok' and this
   // flips to OK on its own — no health-config change needed.
-  if (sourceUnavailable && !sourceUnavailableAfterActivation) status = 'NOT_CONFIGURED';
+  if (sourceUnavailable) status = 'NOT_CONFIGURED';
   else if (!hasData) {
     // The absence verdict, decided on its own merits and independently of any
     // fault above. Note the two live SIDE BY SIDE here: seed-meta outlives its

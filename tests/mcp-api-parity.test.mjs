@@ -85,7 +85,7 @@ const HTTP_METHODS = new Set([
 
 const EXCLUDED_FROM_MCP_PARITY = new Map([
 
-  // === mutating (18) ===
+  // === mutating (20) ===
   ["GET /api/aviation/v1/list-airport-delays",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/infrastructure/v1/list-temporal-anomalies",
@@ -111,6 +111,10 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "mutating: writes to Convex (not server/_shared/redis) — lead registration write"],
   ["POST /api/leads/v1/submit-contact",
     "mutating: writes to Convex (not server/_shared/redis) — contact form write"],
+  ["POST /api/news/v1/submit-error-report",
+    "mutating: reader error report written to the #9093 review queue via runRedisPipeline"],
+  ["POST /api/news/v1/review-error-report",
+    "mutating: operator decision on a #9093 report, secret-gated; publishes to the label log"],
   ["POST /api/v2/shipping/webhooks",
     "mutating: webhook/registration write — POSTs persistent record"],
   ["POST /api/company-monitoring/v1/create-monitored-company",
@@ -231,9 +235,15 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["POST /api/economic/v1/get-fred-series-batch",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
 
-  // === deferred-to-future-tool (53) ===
+  // === deferred-to-future-tool (55) ===
+  ["GET /api/aviation/v1/list-aircraft-emergencies",
+    "deferred-to-future-tool: reported transponder observations belong in a future aircraft-signals tool with explicit reception and freshness limits. This change adds only the dashboard layer and details."],
   ["GET /api/news/v1/list-country-headlines",
     "deferred-to-future-tool: country snapshot capture reads existing full RSS caches; a future country_headlines tool can expose this uncapped country pool"],
+  ["GET /api/news/v1/list-error-reports",
+    "deferred-to-future-tool: operator review queue (#9093) is secret-gated and holds private reader contacts; no MCP surface by design"],
+  ["GET /api/news/v1/list-label-changes",
+    "deferred-to-future-tool: label history (#9093) is read by the /trust page; a future trust tool can expose recent label changes"],
   ["GET /api/consumer-prices/v1/get-consumer-price-basket-series",
     "deferred-to-future-tool: handler reads parameterized consumer-prices:basket-series:<market>:<basket>:<range> key NOT in get_consumer_prices._coverageKeys — bundle into a future expanded_consumer_prices tool that exposes the basket-series time series"],
   ["GET /api/company-monitoring/v1/get-company-coverage",

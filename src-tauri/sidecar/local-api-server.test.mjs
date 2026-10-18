@@ -945,6 +945,126 @@ test('preserves caller Authorization while hiding the sidecar transport token', 
   }
 });
 
+test('bounds self-hosted register-interest input before the Convex bridge', async (t) => {
+  const originalConvex = process.env.CONVEX_URL;
+  const originalSite = process.env.CONVEX_SITE_URL;
+  const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+  const originalFetch = globalThis.fetch;
+  process.env.CONVEX_URL = 'https://self-hosted.convex.cloud';
+  process.env.CONVEX_SITE_URL = 'http://self-hosted.convex.site';
+  process.env.CONVEX_SERVER_SHARED_SECRET = 'convex-test-secret';
+  let bridgeCalls = 0;
+  globalThis.fetch = async () => {
+    bridgeCalls++;
+    return Response.json({ status: 'registered' });
+  };
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const base = `http://127.0.0.1:${port}`;
+  t.after(async () => {
+    await app.close();
+    await localApi.cleanup();
+    globalThis.fetch = originalFetch;
+    if (originalConvex === undefined) delete process.env.CONVEX_URL;
+    else process.env.CONVEX_URL = originalConvex;
+    if (originalSite === undefined) delete process.env.CONVEX_SITE_URL;
+    else process.env.CONVEX_SITE_URL = originalSite;
+    if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+    else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+  });
+
+  await t.test('rejects a null registration payload', async () => {
+    const response = await postJsonViaHttp(`${base}/api/register-interest`, null);
+    assert.equal(response.status, 400);
+    assert.equal(bridgeCalls, 0);
+  });
+
+  for (const [email, status] of [
+    ['a'.repeat(242) + '@example.com', 200],
+    ['first.last+tag@sub.example.com', 200],
+    ['a'.repeat(243) + '@example.com', 400],
+    ['a@.example.com', 400],
+    ['a@example..com', 400],
+    ['a@example.com.', 400],
+    ['a@' + '.'.repeat(8000) + '@', 400],
+    [42, 400],
+  ]) {
+    await t.test(`email ${String(email).slice(0, 40)} (${String(email).length} characters)`, async () => {
+      const before = bridgeCalls;
+      const response = await postJsonViaHttp(`${base}/api/register-interest`, { email });
+      assert.equal(response.status, status);
+      assert.equal(bridgeCalls - before, status === 200 ? 1 : 0);
+    });
+  }
+
+  const limit = 16 * 1024;
+  const payload = { email: 'valid@example.com', padding: '' };
+  const overhead = Buffer.byteLength(JSON.stringify(payload));
+  for (const bytes of [limit, limit + 1]) {
+    await t.test(`registration body of ${bytes} bytes`, async () => {
+      const before = bridgeCalls;
+      const response = await postJsonViaHttp(`${base}/api/register-interest`, {
+        ...payload, padding: 'x'.repeat(bytes - overhead),
+      });
+      assert.equal(response.status, bytes <= limit ? 200 : 413);
+      assert.equal(bridgeCalls - before, bytes <= limit ? 1 : 0);
+    });
+  }
+  await t.test('counts UTF-8 body bytes rather than characters', async () => {
+    const before = bridgeCalls;
+    const response = await postJsonViaHttp(`${base}/api/register-interest`, {
+      ...payload, padding: 'é'.repeat(limit / 2),
+    });
+    assert.equal(response.status, 413);
+    assert.equal(bridgeCalls, before);
+  });
+
+  for (const declaredLength of [true, false]) {
+    await t.test(`rejects ${declaredLength ? 'declared' : 'chunked'} overflow before upload ends`, async () => {
+      const before = bridgeCalls;
+      const response = await new Promise((resolve, reject) => {
+        const req = httpRequest(`${base}/api/register-interest`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${TEST_LOCAL_API_TOKEN}`,
+            ...(declaredLength ? { 'Content-Length': String(limit + 1) } : {}),
+          },
+        }, (res) => {
+          res.resume();
+          res.on('end', () => {
+            resolve(res.statusCode);
+            req.destroy();
+          });
+        });
+        req.on('error', reject);
+        req.setTimeout(3000, () => req.destroy(new Error('rejection waited for upload completion')));
+        req.flushHeaders();
+        if (!declaredLength) {
+          req.write('x'.repeat(limit));
+          req.write('x');
+        }
+      });
+      assert.equal(response, 413);
+      assert.equal(bridgeCalls, before);
+      assert.equal((await getJsonViaHttp(`${base}/api/local-status`)).status, 200);
+    });
+  }
+  await t.test('rejects overlong email even without a configured bridge secret', async () => {
+    delete process.env.CONVEX_SERVER_SHARED_SECRET;
+    const before = bridgeCalls;
+    const response = await postJsonViaHttp(`${base}/api/register-interest`, {
+      email: 'a'.repeat(243) + '@example.com',
+    });
+    assert.equal(response.status, 400);
+    assert.equal(bridgeCalls, before);
+  });
+});
+
 for (const registrationStatus of ['registered', 'already_registered']) {
   test(`uses the authenticated Convex bridge for self-hosted register-interest (${registrationStatus})`, async () => {
     const originalConvex = process.env.CONVEX_URL;

@@ -125,8 +125,9 @@ function productGroupParam(raw: unknown, operation: string): string {
 export const TARIFF_TOOLS: ToolDef[] = [
   {
     name: 'get_tariff_averages',
+    title: 'Average tariff rates',
     _outputBudgetBytes: 65536,
-    description: 'Average tariff one country applies, by year, optionally to one partner\'s goods and/or one product group. With no partner and no product group it is the WTO MFN average over all products (TP_A_0010) for any reporter. With a partner other than World, or a product group, it is the effectively applied average from UNCTAD TRAINS via World Bank WITS: tariffRate is the simple average (AHS-SMPL-AVRG, preferences counted), weightedRate the import-weighted one. Series run from about 1990 to 2023 for most reporters; US preferences are reported only through 2021. These are schedule rates: Section 301, 232 and other unilateral duties are NOT included (use get_us_import_duty for the US). unavailableReason NOT_COVERED is a coverage answer; UPSTREAM_UNAVAILABLE is a fault worth retrying later.',
+    description: 'Average tariff one country applies, by year, optionally to one partner\'s goods and/or one product group. With no partner and no product group it is the WTO MFN average over all products (TP_A_0010) for any reporter. With a partner other than World, or a product group, it is the effectively applied average from UNCTAD TRAINS via World Bank WITS: tariffRate is the simple average (AHS-SMPL-AVRG, preferences counted), weightedRate the import-weighted one. Series run from about 1990 to 2023 for most reporters; US preferences are reported only through 2021. These are schedule rates: Section 301, 232 and other unilateral duties are NOT included. unavailableReason NOT_COVERED is a coverage answer; UPSTREAM_UNAVAILABLE is a fault worth retrying later.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -200,8 +201,9 @@ export const TARIFF_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_bilateral_tariff',
+    title: 'Product tariff between two countries',
     _outputBudgetBytes: 65536,
-    description: 'Tariff one country applies to one 6-digit HS product from one partner, for one year, from UNCTAD TRAINS via World Bank WITS. appliedRate is what the partner pays: the best preferential rate it qualifies for, else MFN (basis says which). mfnRate and preferentialRate are reported separately, with mfnAveRate an ad valorem equivalent where the MFN duty is specific. EU members answer from the EU schedule (filingReporter 918). Year 0 means the latest year with data. Schedule rates only: Section 301, 232, anti-dumping and other unilateral duties are NOT included, and TRAINS has no US preferences after 2021 and no US data after 2023 (use get_us_import_duty for the US). NOT_COVERED is a coverage answer; UPSTREAM_UNAVAILABLE is a fault.',
+    description: 'Tariff one country applies to one 6-digit HS product from one partner, for one year, from UNCTAD TRAINS via World Bank WITS. appliedRate is what the partner pays: the best preferential rate it qualifies for, else MFN (basis says which). mfnRate and preferentialRate are reported separately, with mfnAveRate an ad valorem equivalent where the MFN duty is specific. EU members answer from the EU schedule (filingReporter 918). Year 0 means the latest year with data. Schedule rates only: Section 301, 232, anti-dumping and other unilateral duties are NOT included, and TRAINS has no US preferences after 2021 and no US data after 2023. NOT_COVERED is a coverage answer; UPSTREAM_UNAVAILABLE is a fault.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -266,6 +268,7 @@ export const TARIFF_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_us_import_duty',
+    title: 'US import duty for a product',
     _outputBudgetBytes: 131072,
     description: 'Current US duty on one product from one country: the live USITC Harmonized Tariff Schedule rates for each 8-digit line under hs_code, plus the chapter 99 Section 301 and 232 duties in force. Each additional duty has a status: APPLIES, CONDITIONAL (condition says what decides it), EXEMPT or SCHEDULED. estimatedRate adds only APPLIES duties to the base rate; estimateComplete is false when a specific duty, a condition or an unresolved preference program leaves it open. IEEPA duties are not collected and not reported; anti-dumping and countervailing duties are not included. additionalDutiesLoaded false means only base rates were available.',
     inputSchema: {

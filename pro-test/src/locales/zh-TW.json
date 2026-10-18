@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — 免費即時全球情報儀表板\t",
-      "description": "成為新聞之前，你已經知道。衝突、咽喉要道、軍事飛行、市場、網路：一張免費即時地圖加AI分析。無需註冊。",
-      "ogTitle": "World Monitor — 新聞報道之前，您已經瞭解。\t",
-      "ogDescription": "世界原始訊號 — 船舶、飛機、警報、電纜、市場 — 匯聚在一張免費即時情報地圖上，AI 會在它們匯聚成重要資訊時發出標記。免費、無需註冊。\t"
+      "title": "World Monitor: 免費地緣政治情報儀表板",
+      "description": "World Monitor：即時地緣政治情報儀表板。免費即時地圖，涵蓋衝突、海運、航班、市場和網路安全，提供 API 和 MCP 伺服器。",
+      "ogTitle": "World Monitor: 免費地緣政治情報儀表板",
+      "ogDescription": "World Monitor：即時地緣政治情報儀表板。免費即時地圖，涵蓋衝突、海運、航班、市場和網路安全，提供 API 和 MCP 伺服器。"
     },
     "nav": {
       "useCases": "關聯\t",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "免費全球情報儀表板 · 即時線上\t",
-      "headline1": "新聞報道之前，\t",
-      "headline2": "您已經瞭解。\t",
-      "sub": "新聞報道滯後。World Monitor 將世界的原始訊號 — 船舶、飛機、警報、電纜、市場 — 流式傳輸到一張即時地圖上，配有 AI 技術，可在它們匯聚成重要資訊時發出標記。\t",
+      "headline1": "即時地緣政治",
+      "headline2": "情報儀表板",
+      "sub": "新聞報道之前，您已經瞭解。",
       "ctaPrimary": "啟動儀表板\t",
       "ctaFree": "免費 · 無需註冊 · 秒速載入\t",
       "ctaSecondary": "檢視人們如何使用它 ↓\t",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor 不是開源的 Palantir\t",
       "asOf": "截至{{date}}",
       "whatIsTitle": "World Monitor 是什麼？",
-      "whatIsBody": "World Monitor 是一款免費（$0）、開源（AGPL-3.0）的儀表板，供 200 多萬人使用。它將來自 {{providers}} 個歸屬提供商的 {{feeds}} 條新聞和 OSINT 源流式傳輸到一張即時世界地圖上，包括 {{mapLayers}} 種地圖圖層型別，涵蓋地緣政治、市場、海運、航空和網路安全。它關聯這些資料，使匯聚事件在登上新聞頭條前就浮現出來。每個資料都有溯源，每種方法都有文件記錄。"
+      "whatIsBody": "World Monitor 是一款免費（$0）、開源（AGPL-3.0）的儀表板，供 200 多萬人使用。它將來自 {{providers}} 個歸屬提供商的 {{feeds}} 條新聞和 OSINT 源流式傳輸到一張即時世界地圖上，包括 {{mapLayers}} 種地圖圖層型別，涵蓋地緣政治、市場、海運、航空和網路安全。它關聯這些資料，使匯聚事件在登上新聞頭條前就浮現出來。每個資料都有溯源，每種方法都有文件記錄。",
+      "whatIsBestFor": "最適合需要即時地緣政治訊號的分析師、記者、交易員和開發者。"
     },
     "live": {
       "eyebrow": "即時線上\t",
@@ -688,8 +689,8 @@
       "a9": "是的 — 在 GitHub 上以 AGPL-3.0 許可證開源：閱讀程式碼、自託管或基於其進行構建。還提供 Windows、macOS 和 Linux 的原生桌面應用，以及用於牆面顯示的 Android TV 應用。",
       "q10": "為什麼 World Monitor 不是 Palantir？",
       "a10": "Palantir 使機構能夠在其內部運營自有資料。World Monitor 從另一個角度出發：它彙集、規範化、關聯和監控公開資料，然後透過免費儀表板和開原始碼釋出該情報層。工作不同，產品也不同。",
-      "q11": "Which World Monitor license do I need?",
-      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
+      "q11": "我需要哪種 World Monitor 許可證？",
+      "a11": "按誰會使用產出結果來選擇。Pro 的個人許可證供一個人使用 World Monitor 進行自己的研究和決策。Pro Business 允許一名已獲許可的使用者將其用於公司或客戶工作、內部工具和報告。API Starter 覆蓋一個組織內部的 API 使用，不向客戶再分發。API Business 允許該組織將 World Monitor 資料嵌入面向其客戶的產品和服務。Enterprise 覆蓋自訂席位、White-label 和部署。這些訂閱許可證與 AGPL/MIT 原始碼許可證相互獨立。完整條款：worldmonitor.app/docs/terms。",
       "sub": "{{answers}} 個關於價格、資料、告警和 AI 存取權限的直接問答。簡而言之：該 dashboard 費用為 $0，無需註冊帳戶，程式碼以 AGPL-3.0 許可證開源。",
       "q12": "追蹤全球新聞中危機與動盪事件的最佳軟體是什麼?",
       "a12": "World Monitor 是一個免費、開源的選項：它將來自 {{providers}} 個具名提供方的 {{feeds}} 條新聞和 OSINT 資訊流彙集到一張即時世界地圖上，提供 {{mapLayers}} 種地圖圖層型別，涵蓋地緣政治、市場、航運、航空和網路安全。它對這些資訊進行關聯分析，使同時出現的多重動盪在登上新聞頭條之前就顯現出來。要將其與其他工具進行比較，請存取 worldmonitor.app/compare/best-geopolitical-risk-dashboards。"

@@ -70,6 +70,8 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   heatmap: { name: 'Sector Heatmap', enabled: true, priority: 2 },
   ai: { name: 'AI/ML', enabled: true, priority: 2 },
   layoffs: { name: 'Layoffs Tracker', enabled: true, priority: 2 },
+  // Opt-in news panel (2026-10-17 audit); its feeds also widen /verify claim search.
+  science: { name: 'Science', enabled: false, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
   'latest-brief': { name: 'Latest Brief', enabled: true, priority: 1, premium: 'locked' as const },
   'satellite-fires': { name: 'Fires', enabled: true, priority: 2 },
@@ -138,6 +140,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
+  aircraftEmergencies: false,
   iranAttacks: IRAN_ATTACKS_ENABLED && !_desktop,
   gpsJamming: false,
   satellites: false,
@@ -208,6 +211,7 @@ const FULL_MAP_LAYERS: MapLayers = {
 };
 
 const FULL_MOBILE_MAP_LAYERS: MapLayers = {
+  aircraftEmergencies: false,
   iranAttacks: IRAN_ATTACKS_ENABLED,
   gpsJamming: false,
   satellites: false,
@@ -1532,7 +1536,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   topical: {
     labelKey: 'header.panelCatTopical',
-    panelKeys: ['energy', 'gov', 'thinktanks', 'tech', 'ai', 'layoffs'],
+    panelKeys: ['energy', 'gov', 'thinktanks', 'tech', 'ai', 'layoffs', 'science'],
     variants: ['full', 'energy'],
   },
   dataTracking: {

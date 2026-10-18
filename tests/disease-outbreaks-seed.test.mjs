@@ -499,6 +499,35 @@ test('dedup keeps one item per source for the same disease and country', async (
   ]);
 });
 
+// A ThinkGlobalHealth article that covers several countries ships one row per
+// country under a single Alert_ID and link. API consumers such as the Zapier
+// trigger deduplicate on `id`, so each row needs its own.
+test('ThinkGlobalHealth rows from one multi-country article get distinct ids', async (t) => {
+  const date = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
+  const row = (country, lat, lng) => ({
+    Alert_ID: '8735680', lat: String(lat), lng: String(lng), diseases: 'Polio', place_name: country,
+    country, date, cases: '1', link: 'https://example.com/weekly-polio', Type: 'outbreak', summary: `${country} polio`,
+  });
+  const realtime = [row('Pakistan', 29.97, 69.39), row('South Sudan', 6.88, 30.5), row('Nigeria', 9.08, 8.68), row('Nigeria', 9.08, 8.68)];
+  const bundle = `/* boilerplate */\neval("${JSON.stringify(`var res = ${JSON.stringify(realtime)}`).slice(1, -1)}")\n`;
+  t.mock.method(globalThis, 'fetch', async (input) => {
+    const url = String(input);
+    if (url.startsWith('https://www.who.int/')) return new Response(JSON.stringify({ value: [] }), { status: 200 });
+    if (url.endsWith('index_bundle.js')) return new Response(bundle, { status: 200 });
+    return new Response('<rss><channel></channel></rss>', { status: 200 });
+  });
+
+  const { outbreaks } = await fetchDiseaseOutbreaks();
+  const tgh = outbreaks.filter((o) => o.sourceName === 'ThinkGlobalHealth');
+  assert.deepEqual(tgh.map((o) => o.location).sort(), ['Nigeria', 'Pakistan', 'South Sudan']);
+  assert.equal(new Set(outbreaks.map((o) => o.id)).size, outbreaks.length);
+});
+
+test('ThinkGlobalHealth ids stay stable across seeder runs', () => {
+  const rec = { lat: 6.88, lng: 30.5, disease: 'Polio', placeName: 'South Sudan', country: 'South Sudan', date: '2026-09-01', cases: '1', sourceUrl: 'https://example.com/weekly-polio', summary: 's' };
+  assert.equal(mapItem(tghNormalizeItem(rec)).id, mapItem(tghNormalizeItem({ ...rec })).id);
+});
+
 test('CDC items without a known disease are dropped', () => {
   const cdc = (title) => mapItem(rssNormalizeItem({ title, link: 'https://www.cdc.gov/x', desc: '', pubDate: 'Wed, 10 Sep 2026 12:00:00 GMT', sourceName: 'CDC' }));
   assert.equal(isReportableHeadline(cdc('We extend our deepest condolences to Suzy’s family'), NOW), false);
@@ -587,6 +616,16 @@ test('WHO record without PublicationDateAndTime → in-memory item is tagged syn
   assert.equal(inMemory._publishedAtIsSynthetic, true);
   assert.equal(inMemory._originalPublishedMs, null);
   assert.equal(inMemory.publishedMs, NOW, 'publishedMs falls back to now() so existing isFinite filters + UI consumer contract still hold');
+});
+
+// WHO items skip the headline date gate, so an undated one is published. Its
+// id must not carry the fallback "now", or every seeder run mints a new id
+// and id-deduplicating consumers (the Zapier trigger) fire on it again.
+test('an undated WHO report keeps one id across seeder runs', () => {
+  const record = { Title: 'Mpox - Country X', ItemDefaultUrl: '/mpox-x' };
+  const first = mapItem(whoNormalizeItem(record, 1700000000000));
+  const second = mapItem(whoNormalizeItem(record, 1700000600000));
+  assert.equal(first.id, second.id);
 });
 
 test('WHO record with valid PublicationDateAndTime → in-memory item is non-synthetic', () => {

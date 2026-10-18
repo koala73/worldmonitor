@@ -207,6 +207,7 @@ export class MapComponent {
   private flightDelays: AirportDelayAlert[] = [];
   private aircraftPositions: PositionSample[] = [];
   private militaryFlights: MilitaryFlight[] = [];
+  private emergencyMarkers: import('../../shared/aircraft-emergencies').EmergencyMapMarker[] = [];
   private militaryFlightClusters: MilitaryFlightCluster[] = [];
   private militaryVessels: MilitaryVessel[] = [];
   private militaryVesselClusters: MilitaryVesselCluster[] = [];
@@ -580,7 +581,7 @@ export class MapComponent {
       // Adding them here would surface a toggle that produces zero output. They're
       // already restricted to renderers: ['deck'] in LAYER_REGISTRY, which keeps
       // them out of the globe picker too.
-      'ais', 'flights', 'gpsJamming',                      // transport/interference
+      'ais', 'flights', 'aircraftEmergencies', 'gpsJamming',
       'natural', 'weather',                               // natural
       'economic',                                         // economic
       'waterways',                                        // labels
@@ -3608,6 +3609,27 @@ export class MapComponent {
       });
     }
 
+    // After military markers so an emergency-squawking military aircraft keeps
+    // its emergency marker on top and clickable.
+    if (this.state.layers.aircraftEmergencies) {
+      for (const aircraft of this.emergencyMarkers) {
+        const point = projection([aircraft.lon, aircraft.lat]);
+        if (!point) continue;
+        const marker = document.createElement('button');
+        marker.type = 'button';
+        marker.className = 'aircraft-emergency-marker';
+        marker.textContent = `✈ ${aircraft.squawk}`;
+        marker.setAttribute('aria-label', `Reported squawk ${aircraft.squawk}, aircraft ${aircraft.address}`);
+        marker.style.left = `${point[0]}px`;
+        marker.style.top = `${point[1]}px`;
+        marker.onclick = event => {
+          event.stopPropagation();
+          this.container.dispatchEvent(new CustomEvent('aircraft-emergency-select', { detail: aircraft.address }));
+        };
+        this.appendOverlay(marker);
+      }
+    }
+
     // Natural Events (NASA EONET) - part of NATURAL layer
     if (this.state.layers.natural) {
       slices.naturalEvents.forEach((event) => {
@@ -5043,6 +5065,11 @@ export class MapComponent {
   public setMilitaryFlights(flights: MilitaryFlight[], clusters: MilitaryFlightCluster[] = []): void {
     this.militaryFlights = flights;
     this.militaryFlightClusters = clusters;
+    this.render();
+  }
+
+  public setAircraftEmergencies(markers: import('../../shared/aircraft-emergencies').EmergencyMapMarker[]): void {
+    this.emergencyMarkers = markers;
     this.render();
   }
 

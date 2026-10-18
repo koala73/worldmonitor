@@ -79,12 +79,12 @@ OAuth bearer 请求在分发之前会重新检查解析出的 MCP token、用户
 
 ### Redirect URI 允许列表
 
-动态客户端注册**不**对任意重定向开放。`redirect_uri` 必须是 `http://localhost:<port>` 或 `http://127.0.0.1:<port>`（任意端口、任意路径），或与下表中托管 MCP 客户端实际发送的回调地址完全一致。厂商有官方文档时附上链接。
+动态客户端注册**不**对任意重定向开放。`redirect_uri` 必须是 `http://localhost:<port>`、`http://127.0.0.1:<port>` 或 `http://[::1]:<port>`（任意端口、任意路径），或与下表中托管 MCP 客户端实际发送的回调地址完全一致。厂商有官方文档时附上链接。
 
 | 客户端 | 回调地址 |
 |--------|----------|
 | Claude | `https://claude.ai/api/mcp/auth_callback`、`https://claude.com/api/mcp/auth_callback` |
-| Cursor Agents、Cursor 网页版、Grok Bot | `https://www.cursor.com/agents/mcp/oauth/callback`、`cursor://anysphere.cursor-mcp/oauth/callback`（[Cursor MCP 文档](https://cursor.com/docs/mcp)） |
+| Cursor Agents、Cursor Bot、Cursor 网页版、Grok Bot | `https://www.cursor.com/agents/mcp/oauth/callback`、`https://www.cursor.com/bot/mcp/oauth/callback`、`cursor://anysphere.cursor-mcp/oauth/callback`（[Cursor MCP 文档](https://cursor.com/docs/mcp)、[Cursor 客户端元数据](https://cursor.com/oauth/mcp-client.json)） |
 | ChatGPT | `https://chatgpt.com/connector_platform_oauth_redirect`（[OpenAI 认证文档](https://developers.openai.com/plugins/build/auth)） |
 | Grok | `https://grok.com/connectors-oauth-exchange-code/`、`https://console.x.ai/connectors-oauth-exchange-code/`（[Grok 客户端元数据](https://grok.com/oauth/mcp-client.json)） |
 | VS Code 网页版 | `https://vscode.dev/redirect`、`https://insiders.vscode.dev/redirect` |
@@ -92,8 +92,19 @@ OAuth bearer 请求在分发之前会重新检查解析出的 MCP token、用户
 | Mistral Le Chat | `https://callback.mistral.ai/v1/integrations_auth/oauth2_callback` |
 | Devin | `https://api.devin.ai/mcp/oauth/callback`（[Devin MCP 文档](https://docs.devin.ai/work-with-devin/mcp)） |
 | Google Antigravity | `https://antigravity.google/oauth-callback`（[Antigravity MCP 文档](https://antigravity.google/docs/mcp)） |
+| Vercel Connect | `https://connect.vercel.com/callback`（[Vercel Connect 提供方文档](https://vercel.com/docs/connect/providers)） |
+| Glama | `https://glama.ai/api/app/mcp/oauth/callback`（连接器与测试配置）、`https://glama.ai/mcp/inspector/oauth/callback`（[Glama MCP Inspector](https://glama.ai/mcp/inspector)） |
+| Make.com | `https://www.make.com/oauth/cb/mcp`（[Make MCP 客户端](https://apps.make.com/mcp-client)） |
+| Microsoft 365 Copilot | `https://teams.microsoft.com/api/platform/v1.0/oAuthRedirect`（[构建 MCP 插件](https://learn.microsoft.com/microsoft-365/copilot/extensibility/build-mcp-plugins)） |
+| Notion | `https://www.notion.so/workflows/mcp/oauth/callback`、`https://app.notion.com/workflows/mcp/oauth/callback`（[客户端元数据](https://www.notion.so/oauth/mcp-client-metadata.json)） |
+| Linear | `https://linear.app/connect/mcp/callback`（[客户端元数据](https://linear.app/.well-known/oauth-client-metadata/mcp.json)） |
+| Lovable | `https://api.lovable.dev/workspaces/connectors/mcp/oauth/callback`（[客户端元数据](https://api.lovable.dev/.well-known/oauth-client)） |
+| Factory | `https://app.factory.ai/mcp/oauth/callback`、`https://app.eu.factory.ai/mcp/oauth/callback`（[客户端元数据](https://api.factory.ai/mcp/oauth-client)） |
+| Conductor | `https://api.conductor.build/oauth/callback`（[客户端元数据](https://api.conductor.build/oauth/client-metadata.json)） |
+| Skydive | `https://www.skydive.com/api/v1/external-oauth/callback`（[客户端元数据](https://www.skydive.com/api/v1/external-oauth/client-metadata)） |
+| MCPJam | `https://app.mcpjam.com/oauth/callback`、`https://score.mcpjam.com/oauth/callback`（[客户端元数据](https://www.mcpjam.com/.well-known/oauth/client-metadata.json)） |
 
-Claude Code、Cursor 桌面版、VS Code 桌面版、Codex、Gemini CLI、Zed 与 MCP Inspector 使用本地回环形式。单次注册最多可列出 8 个 `redirect_uris`；任意一项不在允许列表中，整个请求即返回 `400 invalid_redirect_uri`。回调地址按用户或租户生成的客户端（例如 Gemini 自定义应用与 Microsoft Copilot Studio）无法精确匹配，暂不支持。
+Claude Code、Cursor 桌面版、VS Code 桌面版、Codex、Gemini CLI、goose、Zed 与 MCP Inspector 使用本地回环形式。Notion、Linear、Lovable、Factory、Conductor、Skydive 与 MCPJam 优先使用客户端 ID 元数据文档（CIMD），现已可通过 CIMD 连接（受信任的文档 URL 列表见[英文版](/mcp-overview#client-id-metadata-documents)）；它们的回调仍保留在列表中，供仍使用注册的客户端使用。单次注册最多可列出 8 个 `redirect_uris`；任意一项不在允许列表中，整个请求即返回 `400 invalid_redirect_uri`。回调地址按用户或租户生成的客户端（例如 Gemini 自定义应用与 Microsoft Copilot Studio）无法精确匹配，暂不支持。
 
 授权响应携带 `iss`（[RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207)），其值为发起流程的主机的 `issuer`。ChatGPT 需要该参数才会使用其固定回调地址。
 
@@ -227,7 +238,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ## 工具目录
 
-服务器暴露实时工具目录。大多数是对预填充 Redis key 的缓存读取（亚秒级）。较慢的非缓存路径包括六个实时 LLM/外部 API 工具（`get_country_brief`、`analyze_situation`、`generate_forecasts`、`search_flights`、`search_flight_prices_by_date`、`classify_event`）、实时地理 RPC 工具（`get_airspace`、`get_maritime_activity`）、受预算约束的规范采购代理（`get_procurement_opportunities`）、企业情报代理（`get_company_intelligence`）、规范化中国决策信号 RPC（`get_china_decision_signals`），以及三个持久化历史 RPC（`search_intel_history`、`get_intel_timeline`、`get_similar_events`）。`get_world_brief` 读取仪表板使用的预计算、有引用依据的 `news:insights:v1` 快照，不会在请求时调用 LLM。按需 NLP 实用工具（`classify_event`、`extract_entities`、`get_news_clusters`、`get_keyword_spikes`）接受有严格上限的调用方文本或基于实时种子数据计算；除 `classify_event` 外全部为确定性计算。有一个工具（`describe_tool`，v1.5.0 新增）返回任何其他工具的完整未压缩定义 —— 在压缩后的 `tools/list` 描述含糊不清时很有用；不计入 Pro 每日配额。
+服务器暴露实时工具目录。大多数是对预填充 Redis key 的缓存读取（亚秒级）。较慢的非缓存路径包括六个实时 LLM/外部 API 工具（`get_country_brief`、`analyze_situation`、`generate_forecasts`、`search_flights`、`search_flight_prices_by_date`、`classify_event`）、实时地理 RPC 工具（`get_airspace`、`get_maritime_activity`）、受预算约束的规范采购代理（`get_procurement_opportunities`）、企业情报代理（`get_company_intelligence`）、规范化中国决策信号 RPC（`get_china_decision_signals`），以及三个持久化历史 RPC（`search_intel_history`、`get_intel_timeline`、`get_similar_events`）。`get_world_brief` 读取仪表板使用的预计算、有引用依据的 `news:insights:v1` 快照，不会在请求时调用 LLM。按需 NLP 实用工具（`classify_event`、`extract_entities`、`get_news_clusters`、`get_keyword_spikes`、`verify_claim`）接受有严格上限的调用方文本或基于实时种子数据计算；除 `classify_event` 外全部为确定性计算。有一个工具（`describe_tool`，v1.5.0 新增）返回任何其他工具的完整未压缩定义 —— 在压缩后的 `tools/list` 描述含糊不清时很有用；不计入 Pro 每日配额。
 
 <Tip>
 如需各工具的参数、新鲜度预算、超时以及具体的 `curl` 示例，请参阅 [MCP 工具参考](/zh/mcp-tools-reference)。关于 payload 投影 —— 每个工具都接受一个可选的 `jmespath` 参数，通常可将响应大小缩减 80-95% —— 请参阅 [JMESPath 指南](/zh/mcp-jmespath)。
@@ -286,6 +297,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `classify_event` | 通过枚举校验的分类器为提供的标题（最长 500 字符）给出威胁类别 + 严重性。标准 MCP 配额约束其单次调用 LLM 成本。 |
 | `extract_entities` | 确定性实体提取 —— 注册表实体（公司、指数、大宗商品、加密货币、行业、国家）加上 CVE/APT/FIN 编号与被追踪的领导人 —— 可从提供的文本（最长 2 KB）提取，或跨实时头条摘要聚合。 |
 | `get_news_clusters` | 使用与仪表盘相同的 Jaccard 聚类，对实时摘要计算当前话题簇：主标题、成员数、来源、热门关键词、威胁级别。 |
+| `verify_claim` | 针对一条说法或标题的证据卡：将其匹配到所有已配置信息源的最新标题话题簇，返回覆盖判定、带层级的发布方、匹配标题，没有任何匹配标题提及的数字，以及注明出处引用的、针对相似说法已发布的事实核查。衡量覆盖而非准确性；未找到绝不表示为假。 |
 | `get_keyword_spikes` | 相对 48 小时故事累积器基线的关键词/CVE/APT 飙升趋势，使用仪表盘的飙升判定数学。结果缓存 10 分钟。 |
 
 ### 历史情报
@@ -309,7 +321,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_aviation_status` | FAA 机场延误、NOTAM 关闭、被跟踪的军用飞机。 |
 | `get_infrastructure_status` | Cloudflare Radar 中断、主要云/互联网服务状态。 |
 | `search_flights` | Google Flights 在指定日期在 IATA 机场代码之间的实时搜索。 |
-| `search_flight_prices_by_date` | 跨日期范围的日期网格最便宜日定价。 |
+| `search_flight_prices_by_date` | 最多 31 天日期范围内每个出发日期的最低票价。 |
 
 ### 环境与科学
 
@@ -341,8 +353,8 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `analyze_situation` | 基于查询 + 上下文的临时地缘推断推理。返回置信度 + 支撑信号。 | LLM |
 | `generate_forecasts` | 新鲜概率估计（绕过缓存）。 | LLM |
 | `get_forecast_predictions` | 缓存预测；付费交互面板返回紧凑列表和签名的案例读取授权。 | 缓存 |
-| `get_forecast_case` | 使用预测面板授权读取指定 ID 和版本的原始案例。 | 缓存 |
-| `get_forecast_theaters` | 通过同一预测准入读取最新原始模拟战区，保留独立来源时间和部分覆盖状态。 | RPC |
+| `get_forecast_case` | 读取指定 ID 和版本的原始案例；专用 MCP 套餐使用预测面板授权，API 套餐按次计费。 | 缓存 |
+| `get_forecast_theaters` | 读取最新原始模拟战区（专用 MCP 套餐通过同一预测准入，API 套餐按次计费），保留独立来源时间和部分覆盖状态。 | RPC |
 | `get_forecast_scorecard` | 缓存的预测结算校准与记分卡。 | 缓存 |
 
 ## API 覆盖
@@ -411,6 +423,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `classify_event` | `GET /api/intelligence/v1/classify-event` |
 | `extract_entities` | `GET /api/news/v1/list-feed-digest` |
 | `get_news_clusters` | `GET /api/news/v1/list-feed-digest` |
+| `verify_claim` | `GET /api/news/v1/list-feed-digest`、`GET /api/news/v1/search-fact-checks`、`GET /api/news/v1/search-claim-headlines` |
 | `analyze_situation` | `POST /api/intelligence/v1/deduct-situation` |
 | `search_flights` | `GET /api/aviation/v1/search-google-flights` |
 | `search_flight_prices_by_date` | `GET /api/aviation/v1/search-google-dates` |

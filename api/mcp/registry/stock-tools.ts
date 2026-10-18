@@ -55,8 +55,9 @@ const BACKTEST_SCHEMA = {
 
 export const STOCK_TOOLS: ToolDef[] = [{
   name: 'get_stock_research',
+  title: 'Stock research',
   _outputBudgetBytes: 524288,
-  description: 'Stock research through the existing subscription gateway: current analysis, technical backtest, saved analysis history, or saved backtests. Analyze or backtest one symbol; retrieve stored results for a watchlist. Default no news, four history snapshots per symbol, and a ten-trading-day evaluation window. Preserve availability, observation dates, model/fallback provenance, ratingBasis and engineVersion. Technical backtests omit point-in-time fundamentals and are simulations, not trading results or forecasts. Cold analysis may invoke upstream data and an LLM; Existing provider quotas and billing denials apply; account calls use the daily MCP meter, while env-key calls retain their existing rate limit. Analysis/backtest generation may save shared research snapshots. No trading or account changes. For large histories use fewer symbols/snapshots or a jmespath projection.',
+  description: 'Stock research through the existing subscription gateway: current analysis, technical backtest, saved analysis history, or saved backtests. Analyze or backtest one symbol; retrieve stored results for a watchlist. Default no news, four history snapshots per symbol, and a ten-trading-day evaluation window. Results record availability and observation dates; analysis results also carry ratingBasis, and generated results carry model/fallback provenance and engineVersion where the operation produces them. Technical backtests omit point-in-time fundamentals and are simulations, not trading results or forecasts. Cold analysis may invoke upstream data and an LLM; Existing provider quotas and billing denials apply; account calls use the daily MCP meter, while env-key calls retain their existing rate limit. Analysis/backtest generation may save shared research snapshots. No trading or account changes. For large histories use fewer symbols/snapshots or a jmespath projection.',
   inputSchema: {
     type: 'object',
     properties: {

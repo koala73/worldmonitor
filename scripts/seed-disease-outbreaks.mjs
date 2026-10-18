@@ -214,7 +214,8 @@ export async function fetchDiseaseOutbreaks() {
 
   // TGH items are already disease-curated with exact lat/lng — skip keyword filter,
   // preserve all geo-located alerts, and don't collapse by disease+country.
-  const tghOutbreaks = tghItems.map(mapItem);
+  // The bundle repeats some rows verbatim; those share an id and publish once.
+  const tghOutbreaks = [...new Map(tghItems.map(mapItem).map((o) => [o.id, o])).values()];
 
   const diseaseKeywords = ['outbreak', 'disease', 'virus', 'fever', 'flu', 'ebola', 'mpox',
     'cholera', 'dengue', 'measles', 'polio', 'plague', 'avian', 'h5n1', 'epidemic',

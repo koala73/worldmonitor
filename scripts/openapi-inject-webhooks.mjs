@@ -3,10 +3,10 @@
  * Inject the outbound webhook-delivery contract into the OpenAPI bundle.
  *
  * The ShippingV2Service lets partners register a `callbackUrl` (RegisterWebhook)
- * that WorldMonitor POSTs a signed chokepoint-disruption alert to. The delivery
- * worker (server/worldmonitor/shipping/v2/deliver-webhook.ts) signs every POST
- * with an HMAC-SHA256 over the raw body, keyed by the subscription `secret`, and
- * sends it in a branded `X-WM-Signature` header (plus `X-WM-Event` /
+ * that WorldMonitor POSTs signed events to. The delivery worker
+ * (server/worldmonitor/shipping/v2/deliver-webhook.ts) signs every POST with an
+ * HMAC-SHA256 over the raw body, keyed by the subscription `secret`, and sends
+ * it in a branded `X-WM-Signature` header (plus `X-WM-Event` /
  * `X-WM-Delivery-Id`). The sebuf `protoc-gen-openapiv3` plugin only emits the
  * *inbound* request/response shapes it can see in the proto; it has no way to
  * describe an *outbound* callback, so the published spec references the HMAC
@@ -20,6 +20,16 @@
  * injects one `chokepoint.disruption` webhook documenting the three branded
  * headers, the payload schema, and — crucially — the verification recipe, so a
  * consuming agent can confirm a delivery genuinely came from WorldMonitor.
+ *
+ * The event registry (shared/event-triggers.json) also defines
+ * `country.risk_surge`. It shares every header and the signature with the
+ * block below, and the `X-WM-Event` parameter names it; its payload schema is
+ * published in the registry and at docs/api-shipping-v2#delivery-format, not
+ * as a second `webhooks` entry. The served public/openapi.json sits a few
+ * hundred bytes under the 950,000-byte scanner budget
+ * (tests/openapi-json-dedup.test.mjs), and the dedup passes have no repeated
+ * structure left that would pay for another 3 KB entry; the contract test
+ * pins the registry events to the header description instead.
  *
  * Only the bundle (docs/api/worldmonitor.openapi.yaml) is touched: it is copied
  * to public/openapi.yaml and deserialized to public/openapi.json (the artifact
@@ -44,9 +54,13 @@ const bundlePath = resolve(root, 'docs/api/worldmonitor.openapi.yaml');
 
 const CHECK = process.argv.includes('--check');
 
-// The webhook event name — matches the default `options.event` in
-// deliver-webhook.ts (the `X-WM-Event` header value).
+// The webhook event names — `X-WM-Event` header values, the keys of
+// shared/event-triggers.json. WEBHOOK_EVENT is the default `options.event` in
+// deliver-webhook.ts and the one `webhooks` entry; the others are named in the
+// event header's description.
 export const WEBHOOK_EVENT = 'chokepoint.disruption';
+export const RISK_SURGE_WEBHOOK_EVENT = 'country.risk_surge';
+export const WEBHOOK_EVENTS = Object.freeze([WEBHOOK_EVENT, RISK_SURGE_WEBHOOK_EVENT]);
 
 // The branded delivery headers, verbatim from deliver-webhook.ts. Header names
 // are case-insensitive on the wire (the worker sends them lowercase); the spec
@@ -66,9 +80,14 @@ const WEBHOOKS_BLOCK = `webhooks:
             summary: Chokepoint disruption alert (outbound, signed)
             description: |-
                 WorldMonitor POSTs this event to the \`callbackUrl\` you register via
-                RegisterWebhook whenever a subscribed chokepoint's disruption score
-                crosses your \`alertThreshold\`. Every delivery is signed so you can
-                confirm it genuinely came from WorldMonitor.
+                RegisterWebhook when a subscribed chokepoint's disruption score is at or
+                above your \`alertThreshold\` (and its live signals above \`minLiveSignal\`
+                when set), once per crossing, including one already in progress at
+                first evaluation. It re-arms below the threshold unless a score input
+                missing since the last delivery could explain the drop. Failures retry
+                every 5 minutes with the same \`X-WM-Delivery-Id\` while the score holds;
+                5 failed ticks deactivate the webhook. Full rules at
+                https://www.worldmonitor.app/docs/api-shipping-v2#delivery-worker.
 
                 Verification: the \`${SIGNATURE_HEADER}\` header is
                 \`sha256=<hex>\`, where \`<hex>\` is the lowercase hex HMAC-SHA256 of the
@@ -79,11 +98,6 @@ const WEBHOOKS_BLOCK = `webhooks:
                 compare against \`${SIGNATURE_HEADER}\` in constant time. Use the
                 \`secret\` string verbatim as the HMAC key — do not hex-decode it.
                 Reject the delivery if the signatures differ.
-
-                A verifiable signed sample (fixed secret + exact raw body +
-                resulting signature) is published at
-                https://www.worldmonitor.app/.well-known/webhook-sample.json so you
-                can confirm your HMAC verification end-to-end before registering.
 
                 Respond with any 2xx to acknowledge receipt; a non-2xx response or a
                 timeout marks the delivery failed. \`${DELIVERY_ID_HEADER}\` uniquely
@@ -104,10 +118,14 @@ const WEBHOOKS_BLOCK = `webhooks:
                 - name: ${EVENT_HEADER}
                   in: header
                   required: true
-                  description: Event type. Currently always \`${WEBHOOK_EVENT}\`.
+                  description: |-
+                      Always \`${WEBHOOK_EVENT}\` for this body. A \`${RISK_SURGE_WEBHOOK_EVENT}\`
+                      subscription sends the same headers with the payload documented at
+                      https://www.worldmonitor.app/docs/api-shipping-v2#delivery-format.
                   schema:
                       type: string
-                      example: ${WEBHOOK_EVENT}
+                      enum:
+                          - ${WEBHOOK_EVENT}
                 - name: ${DELIVERY_ID_HEADER}
                   in: header
                   required: true
@@ -150,20 +168,23 @@ const WEBHOOKS_BLOCK = `webhooks:
                                     description: ISO-8601 timestamp when the alert fired.
                                 reason:
                                     type: string
-                                    description: Human-readable explanation for the alert.
+                                    enum:
+                                        - ais_congestion_spike
+                                        - navigational_warning
+                                        - transit_drop
+                                        - score_threshold
+                                    description: First matching rule in this order; \`score_threshold\` when none matches.
                                 details:
                                     type: object
                                     additionalProperties: true
-                                    description: Optional structured context for the disruption.
+                                    description: Name, status, warning and AIS counts, congestion, war-risk tier, transit change, previous score, feed time.
                         example:
                             "subscriberId": "wh_1a2b3c4d5e6f7a8b9c0d1e2f"
                             "chokepointId": "suez"
                             "score": 72
                             "alertThreshold": 50
                             "triggeredAt": "2026-07-04T12:34:56Z"
-                            "reason": "Disruption score 72 crossed alert threshold 50"
-                            "details":
-                                "trend": "rising"
+                            "reason": "navigational_warning"
             responses:
                 "2XX":
                     description: |-

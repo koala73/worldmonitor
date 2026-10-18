@@ -301,6 +301,34 @@ describe("issueProMcpToken", () => {
     const active = allRows.filter((r: any) => !r.revokedAt);
     expect(active).toHaveLength(5);
   });
+
+  // #9244: a CIMD client_id (a URL) is shared by every user of that client,
+  // unlike a per-connection DCR id. Re-authorizing, including enough times to
+  // rotate the cap, must only ever revoke the re-authorizing user's own rows.
+  test("re-authorizing one user never revokes another user's grant under the same CIMD client_id", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    await seedProEntitlement(t, "user-other");
+    const sharedClientId = "https://claude.ai/oauth/mcp-oauth-client-metadata";
+
+    const other = await t.mutation(internal.mcpProTokens.issueProMcpToken, {
+      userId: "user-other",
+      clientId: sharedClientId,
+      name: "Connected via Claude",
+    });
+    for (let i = 0; i < 7; i++) {
+      await t.mutation(internal.mcpProTokens.issueProMcpToken, {
+        userId: "user-pro",
+        clientId: sharedClientId,
+        name: "Connected via Claude",
+      });
+    }
+
+    const validated = await t.query(internal.mcpProTokens.validateProMcpToken, { tokenId: other.tokenId });
+    expect(validated?.userId).toBe("user-other");
+    const otherRows = await t.withIdentity(OTHER_USER).query(api.mcpProTokens.listProMcpTokens, {});
+    expect(otherRows.filter((r: any) => !r.revokedAt)).toHaveLength(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -716,6 +744,7 @@ describe("HTTP route /api/internal-validate-pro-mcp-token", () => {
     const T0 = new Date("2026-08-13T00:00:00Z").getTime();
     vi.useFakeTimers();
     vi.setSystemTime(T0);
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
     const t = convexTest(schema, modules);
     await seedProEntitlement(t, "user-pro");
     const issued = await t.mutation(internal.mcpProTokens.issueProMcpToken, {
@@ -751,6 +780,7 @@ describe("HTTP route /api/internal-validate-pro-mcp-token", () => {
     expect((await validate()).status).toBe(200);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(await readLastUsedAt()).toBe(T0 + 6 * 60_000);
+    random.mockRestore();
     vi.useRealTimers();
   });
 });

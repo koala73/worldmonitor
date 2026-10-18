@@ -22,6 +22,8 @@ const DESKTOP_AUTH_SECRET_ENV = 'WM_DESKTOP_SHARED_SECRET';
 const DESKTOP_AUTH_TIMESTAMP_HEADER = 'X-WorldMonitor-Desktop-Timestamp';
 const DESKTOP_AUTH_SIGNATURE_HEADER = 'X-WorldMonitor-Desktop-Signature';
 const LOCAL_API_TRANSPORT_HEADER = 'x-worldmonitor-local-token';
+const MAX_REGISTRATION_BODY_BYTES = 16 * 1024;
+const MAX_REGISTRATION_EMAIL_LENGTH = 254;
 
 // Monkey-patch globalThis.fetch to force IPv4 for HTTPS requests.
 // Node.js built-in fetch (undici) tries IPv6 first via Happy Eyeballs.
@@ -1636,14 +1638,35 @@ async function dispatch(requestUrl, req, routes, context) {
     }
     try {
       const body = await new Promise((resolve, reject) => {
+        if (Number(req.headers['content-length']) > MAX_REGISTRATION_BODY_BYTES) {
+          req.resume();
+          resolve(null);
+          return;
+        }
         const chunks = [];
-        req.on('data', c => chunks.push(c));
+        let bytes = 0;
+        const onData = (chunk) => {
+          bytes += chunk.length;
+          if (bytes > MAX_REGISTRATION_BODY_BYTES) {
+            chunks.length = 0;
+            req.off('data', onData);
+            req.resume();
+            resolve(null);
+            return;
+          }
+          chunks.push(chunk);
+        };
+        req.on('data', onData);
         req.on('end', () => resolve(Buffer.concat(chunks).toString()));
         req.on('error', reject);
       });
+      if (body === null) {
+        return json({ error: 'Request body too large' }, 413, { Connection: 'close' });
+      }
       const parsed = JSON.parse(body);
-      const email = parsed.email;
-      if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      const email = parsed?.email;
+      if (typeof email !== 'string' || email.length > MAX_REGISTRATION_EMAIL_LENGTH
+        || !/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(email)) {
         return json({ error: 'Invalid email address' }, 400);
       }
       const sharedSecret = process.env.CONVEX_SERVER_SHARED_SECRET;

@@ -19,7 +19,8 @@ const INTERNET_PATHS = {
 
 export const PUBLIC_DOMAIN_TOOLS: ToolDef[] = [{
   name: 'get_gold_intelligence',
-  description: 'Read seeded gold intelligence: precious-metal futures quotes, cross-currency gold prices, COT positioning, session/returns/range, drivers, ETF holdings and central-bank reserves when available. Prices are USD per troy ounce unless a cross-currency row states its currency; returns/changes are percentages. Preserve unavailable: true and missing enrichment; placeholder zero prices are not confirmed zero observations. COT counts are decimal strings, ETF holdings tonnes/AUM USD, central-bank reserves tonnes. Each enrichment has its own observation date; updatedAt does not establish freshness of all sources. No trade or research snapshot is created.',
+  title: 'Gold market intelligence',
+  description: 'Read seeded gold intelligence: precious-metal futures quotes, cross-currency gold prices, COT positioning, session/returns/range, drivers, ETF holdings and central-bank reserves when available. Prices are USD per troy ounce unless a cross-currency row states its currency; returns/changes are percentages. unavailable: true and missing enrichment mark absent data; placeholder zero prices are not confirmed zero observations. COT counts are decimal strings, ETF holdings tonnes/AUM USD, central-bank reserves tonnes. Each enrichment has its own observation date; updatedAt does not establish freshness of all sources. No trade or research snapshot is created.',
   _outputBudgetBytes: 131072,
   inputSchema: { type: 'object', properties: {}, required: [] },
   outputSchema: { type: 'object', required: ['unavailable'], properties: {
@@ -60,6 +61,7 @@ export const PUBLIC_DOMAIN_TOOLS: ToolDef[] = [{
   _apiPaths: ['GET /api/market/v1/get-gold-intelligence'],
 }, {
   name: 'get_internet_activity',
+  title: 'Internet traffic anomalies and DDoS',
   description: 'Read Cloudflare Radar seeded traffic anomalies or global DDoS summaries. Traffic accepts optional country and returns at most limit matching anomalies (default 30, max 100); totalCount remains the upstream global count before filtering. DDoS protocol/vector percentages and target countries are global for dateRangeStart..dateRangeEnd and cannot be filtered by country. Each returned list is capped independently; truncated means at least one list was cut. Traffic timestamps are epoch milliseconds; endDate 0 means ongoing. A missing cache returns an error, while a valid empty list means no recorded rows. No load time is presented as source freshness.',
   _outputBudgetBytes: 131072,
   inputSchema: { type: 'object', properties: {

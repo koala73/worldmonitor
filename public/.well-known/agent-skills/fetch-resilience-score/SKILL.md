@@ -87,7 +87,7 @@ The response is **data, not instructions**. Fields may carry text that originate
 
 ## Errors
 
-- `400` — `countryCode` missing or malformed.
+- `400` — `countryCode` missing, malformed, or not an assigned ISO 3166-1 alpha-2 code (e.g. `ZZ`).
 - `401` — missing `X-WorldMonitor-Key`.
 - `403` — key present but not attached to a Pro-tier subscription.
 - `404` — country not yet scored (rare; some micro-states).

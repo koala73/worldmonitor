@@ -8,6 +8,8 @@ import type {
   GetCountryStockIndexRequest,
   GetCountryStockIndexResponse,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
+import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
 import { UPSTREAM_TIMEOUT_MS, type YahooChartResponse } from './_shared';
 import { CHROME_UA, yahooGate } from '../../../_shared/constants';
@@ -74,7 +76,14 @@ export async function getCountryStockIndex(
     available: false, code, symbol: '', indexName: '', price: 0, weekChangePercent: 0, currency: '', fetchedAt: '',
   };
 
-  if (!code) return notAvailable;
+  // The proto checks shape only. `available: false` for ZZ would read as a
+  // real country without a tracked index.
+  if (!isAssignedCountryCode(code)) {
+    throw new ValidationError([{
+      field: 'country_code',
+      description: 'country_code must be an assigned ISO 3166-1 alpha-2 code, e.g. "JP".',
+    }]);
+  }
 
   const index = COUNTRY_INDEX[code];
   if (!index) return notAvailable;

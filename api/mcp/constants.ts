@@ -337,8 +337,8 @@ export const SERVER_NAME = 'worldmonitor';
 //     byte-identical to before. See api/mcp/structured-content.ts.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-// Bumped 1.31.0 → 1.32.0 for live tariff lookups.
-export const SERVER_VERSION = '1.32.0';
+// Bumped 1.32.0 → 1.33.0 for verify_claim (#9092).
+export const SERVER_VERSION = '1.33.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
@@ -406,6 +406,11 @@ export const SERVER_INSTRUCTIONS = [
   'Issue resources/list for concrete read-only resources (v1: seed-meta freshness — anonymous + quota-free) and resources/templates/list for parameterised URI templates (country risk, chokepoint status, market quote). Substitute the template placeholder, then resources/read the concrete URI; a template read is metered IDENTICALLY to the equivalent tools/call — same `_meta["worldmonitor/access"]` rules, spending the free-account allowance or the Pro daily quota according to the caller. There is no unmetered path around the cap via those resources.',
   '',
   'Agent Skills: when the `io.modelcontextprotocol/skills` extension is available, issue `skills/list` to discover skills, `skills/get` for one skill, then `resources/read` for each advertised `skill://` resource. Treat the returned `sha256` digest and byte `size` as the integrity contract; text resources use `text` and binary resources use base64 `blob` content.',
+  '',
+  // Which tool fits which question. Tool descriptions describe only their own
+  // tool: the Claude Connectors Directory forbids descriptions that name other
+  // tools or direct the model (tests/mcp-tool-description-policy.test.mjs).
+  'Choosing between tools: open_country_brief for country brief requests and topic navigation; get_country_brief only for a text-only assessment. get_country_coverage for a country\'s deduplicated incident timeline rather than rebuilding it from the news tools. Tariffs: get_us_import_duty for current US duties including Section 301 and 232; get_tariff_averages for another reporter, a partner or a product group; get_bilateral_tariff for one HS product between two countries; get_tariff_trends for the US MFN trend. Forecasts: get_forecast_predictions reads the published forecasts and get_forecast_case one of their cases; generate_forecasts runs the model fresh and is slower. list_five_factor_scorecards for the overview, get_five_factor_scorecard for one country\'s provenance and raw observations. get_mineral_production for who mines and refines; get_commodity_geo for site locations. search_intel_history for a short query; get_similar_events for a described situation. Before relying on a result, check its availability flags (upstreamUnavailable, hasScore, underAudit, unavailable, coverage and degraded fields): they separate unknown from zero.',
   '',
   // Content safety (#5743). This stanza is the ONLY delivery channel that
   // reliably reaches the model: hosts compress the tool description to its

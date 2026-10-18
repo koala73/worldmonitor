@@ -43,7 +43,7 @@ tags: [sentry, mcp-proxy, upstream-outcome, json-rpc, canary, double-report, exp
 ```ts
 // api/mcp-proxy.ts — the remote answered; its JSON-RPC error is its verdict, not ours
 report: !(error instanceof McpProxyUpstreamError
-  && (UPSTREAM_CREDENTIAL_REJECTIONS.has(error.upstreamStatus) || error.upstreamRpcRejected)),
+  && (UPSTREAM_CALLER_REJECTIONS.has(error.upstreamStatus) || error.upstreamRpcRejected)),
 ```
 
 ## Why This Works
@@ -51,6 +51,10 @@ report: !(error instanceof McpProxyUpstreamError
 The proxy's Sentry contract is "report proxy defects". A remote MCP server has three ways to say no to a caller: an HTTP 4xx, a JSON-RPC `error` on 200, or a timeout. The first exclusion handled only the HTTP shape, so the JSON-RPC shape, which is how MCP servers express quota, unknown tool, and invalid params, still looked like a defect. Classifying on the error's provenance (`upstreamRpcRejected`, `upstreamStatus`) rather than its message keeps the exclusion narrow: a transport failure, an SSE stream with no result, or a thrown non-`McpProxyUpstreamError` still reports.
 
 The 504 double-report is the same class one hop later: the proxy correctly recorded the remote's timeout at `warning`, then the browser canary, which cannot know who minted a 504, promoted it to an origin `error`. A fixed-value response header is the only channel that survives the cross-origin hop, which is why `Access-Control-Expose-Headers` is part of the fix and not an afterthought.
+
+## Second regrowth: HTTP 429
+
+The exclusion above still missed a shape. Two days after #9140 deployed, WORLDMONITOR-172 regrew as `tools/call failed: HTTP 429`: 1,019 events on 2026-10-16, all against `search.parallel.ai`, with no distinct Sentry users. A remote that rate-limits a keyless caller can answer with an HTTP 429 instead of a JSON-RPC error on 200. The set of excluded statuses is now `UPSTREAM_CALLER_REJECTIONS = [401, 403, 429]`. Upstream 5xx, 404 and 400 still report, pinned by `tests/mcp-proxy.test.mjs`, and the audit row keeps `upstream_status: 429`.
 
 ## Prevention
 
