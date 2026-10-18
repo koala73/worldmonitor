@@ -1309,7 +1309,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_aviation_status',
     title: 'Airport delays and airspace closures',
     _outputBudgetBytes: 131072,
-    description: 'Return the seeded airport disruption snapshot: one alert row per monitored airport (about 85 major airports worldwide) with iata, name, country and severity, built from AviationStack delay aggregates for international hubs, FAA ASWS delays for US airports and ICAO NOTAM closures. Seeded about every 30 minutes and flagged stale after 90; every monitored airport is listed, so most rows are severity "normal" unless disrupted_only=true. Airport-level status only; no fares, schedules or flight tracks. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country is a case-insensitive name substring, iata selects one airport, limit caps the list (default 30, 0 for no cap).',
+    description: 'Return the seeded airport disruption snapshot: one alert row per monitored airport (about 85 major airports worldwide) with iata, name, country and severity, built from AviationStack delay aggregates for international hubs, FAA ASWS delays for US airports and ICAO NOTAM closures. Seeded about every 30 minutes and flagged stale after 90. The snapshot holds every monitored airport, so most rows are severity "normal" unless disrupted_only=true, and the default limit of 30 returns only part of it (0 for the whole list). Airport-level status only; no fares, schedules or flight tracks. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country is a case-insensitive name substring, iata selects one airport, limit caps the list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3330,7 +3330,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_positive_events',
     title: 'Positive geopolitical events',
     _outputBudgetBytes: 131072,
-    description: 'Return the seeded list of positive geopolitical and societal events: diplomatic agreements, humanitarian aid, development milestones, peace initiatives, science and health advances, conservation wins and community stories, each with category, source and publication time, seeded from curated feeds and flagged stale after 1 h. Covers constructive developments only; it carries no conflict, risk or alert data. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. category selects one of six buckets; limit caps the list (default 30, 0 for no cap).',
+    description: 'Return the seeded map of positive-news locations: each entry is a place (name, latitude, longitude) with the count of positive-toned GDELT bulk reports that mention it, a category classified from report keywords (science-health, nature-wildlife, climate-wins, innovation-tech, humanity-kindness, culture-community) and the timestamp of the latest report. Location buckets, not individual stories: there are no titles, article text or source URLs, and a bucket needs at least 3 reports before it appears. Seeded from the GDELT bulk feed and flagged stale after 1 h. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. category selects one of the six buckets; limit caps the list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {

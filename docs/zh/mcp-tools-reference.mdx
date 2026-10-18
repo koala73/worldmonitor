@@ -1711,7 +1711,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_positive_events`
 
-积极的地缘政治事件：外交协议、人道主义援助、发展里程碑和全球和平倡议。
+返回缓存的正面新闻地点地图：每个条目是一个地点（name、latitude、longitude），附带提及该地点的正面基调 GDELT 批量报道计数、按报道关键词分类的类别（science-health、nature-wildlife、climate-wins、innovation-tech、humanity-kindness、culture-community）以及最新报道的时间戳。这是地点聚合桶而非单条新闻：没有标题、正文或来源 URL，且一个桶至少需要 3 条报道才会出现。由 GDELT 批量源写入种子，1 小时后标记为过期。缓存读取，无实时抓取：API 套餐权重 1，包含在已登录免费额度内。category 选择六个类别之一；limit 限制列表长度（默认 30，0 表示不限）。
 
 **参数（工具特定）：**
 
@@ -1861,7 +1861,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_aviation_status`
 
-返回缓存的机场中断快照：每个受监控机场（全球约 85 个主要机场）一行告警，含 iata、name、country 和 severity，由国际枢纽的 AviationStack 延误聚合、美国机场的 FAA ASWS 延误以及 ICAO NOTAM 关闭构成。约每 30 分钟写入种子、90 分钟后标记为过期；所有受监控机场都会列出，因此除非设置 disrupted_only=true，大多数行的 severity 为 "normal"。仅机场级状态；不含票价、航班时刻或航迹。缓存读取，无实时抓取：API 套餐权重 1，包含在已登录免费额度内。country 为不区分大小写的名称子串，iata 选择单个机场，limit 限制列表长度（默认 30，0 表示不限）。
+返回缓存的机场中断快照：每个受监控机场（全球约 85 个主要机场）一行告警，含 iata、name、country 和 severity，由国际枢纽的 AviationStack 延误聚合、美国机场的 FAA ASWS 延误以及 ICAO NOTAM 关闭构成。约每 30 分钟写入种子、90 分钟后标记为过期。快照包含所有受监控机场，因此除非设置 disrupted_only=true，大多数行的 severity 为 "normal"；默认 limit 30 只返回其中一部分（0 返回完整列表）。仅机场级状态；不含票价、航班时刻或航迹。缓存读取，无实时抓取：API 套餐权重 1，包含在已登录免费额度内。country 为不区分大小写的名称子串，iata 选择单个机场，limit 限制列表长度（默认 30，0 表示不限）。
 
 **参数（工具特定）：**
 
@@ -2492,7 +2492,7 @@ curl -s https://worldmonitor.app/mcp \
 |-----------|------|----------|-------------|
 | `tool_name` | string | **是** | 来自 `tools/list` 的确切工具名称（例如 `"get_market_data"`）。 |
 
-**响应形状：** 与单个 `tools/list` 条目相同 — `{ name, description, inputSchema, outputSchema, annotations }` — 含相同的 `description` 和相同的 `inputSchema.properties`（包括缓存工具注入的 `summary` 和每个工具的 `jmespath`）。
+**响应形状：** 与单个 `tools/list` 条目相同 — `{ name, description, inputSchema, outputSchema, annotations, _meta }` — 含相同的 `description` 和相同的 `inputSchema.properties`（包括缓存工具注入的 `summary` 和每个工具的 `jmespath`）。
 
 **软错误**（HTTP 200，在正常的 `content[0].text` 信封内返回 — 非 JSON-RPC 错误）：
 

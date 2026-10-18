@@ -67,7 +67,7 @@ export const PUBLIC_DOMAIN_TOOLS: ToolDef[] = [{
   inputSchema: { type: 'object', properties: {
     dataset: { type: 'string', enum: Object.keys(INTERNET_PATHS), description: 'traffic returns Cloudflare Radar traffic anomalies (filterable by country); ddos returns the global DDoS protocol, vector and target-country summary.' },
     country: { type: 'string', description: `Traffic only. ${COUNTRY_ARG_HINT}` },
-    limit: { type: 'integer', minimum: 1, maximum: 100, default: 30, description: 'Maximum rows per returned list, 1-100 (default 30); each list is capped independently.' },
+    limit: { type: 'integer', minimum: 1, maximum: 100, default: 30, description: 'Maximum rows per returned list, 1-100; defaults to 30. Each list is capped independently.' },
   }, required: ['dataset'] },
   outputSchema: { type: 'object', required: ['dataset', 'data', 'truncated'], properties: {
     dataset: { type: 'string', enum: Object.keys(INTERNET_PATHS) }, truncated: { type: 'boolean' },
