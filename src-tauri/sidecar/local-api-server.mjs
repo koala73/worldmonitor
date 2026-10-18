@@ -719,7 +719,9 @@ function toHeaders(nodeHeaders, options = {}) {
 }
 
 async function proxyToCloud(requestUrl, req, remoteBase) {
-  const target = `${remoteBase}${requestUrl.pathname}${requestUrl.search}`;
+  const target = new URL(remoteBase);
+  target.pathname = `${target.pathname.replace(/\/$/, '')}${requestUrl.pathname}`;
+  target.search = requestUrl.search;
   const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
   const headers = toHeaders(req.headers, { stripOrigin: true });
   headers.delete(LOCAL_API_TRANSPORT_HEADER);

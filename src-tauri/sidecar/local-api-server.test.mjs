@@ -193,6 +193,33 @@ for (const failure of ['silent', 'trickle', 'refused']) {
   });
 }
 
+for (const allowPrivateRemoteBase of [false, true]) {
+  test(`cloud proxy preserves its configured base and SSRF guard with private opt-in ${allowPrivateRemoteBase}`, async () => {
+    const remote = await setupRemoteServer();
+    const localApi = await setupApiDir({
+      'displacement/v1/get-displacement-summary.js': 'export default () => Response.json({ source: "local-empty" });',
+    });
+    const app = await createLocalApiServer({
+      port: 0, apiDir: localApi.apiDir, remoteBase: `${remote.remoteBase}/cloud-prefix`,
+      cloudFallback: 'true', allowPrivateRemoteBase,
+      logger: { log() {}, warn() {}, error() {} },
+    });
+    const { port } = await app.start();
+    try {
+      const endpoint = '/api/displacement/v1/get-displacement-summary';
+      const response = await authFetch(`http://127.0.0.1:${port}${endpoint}?url=http://169.254.169.254/secret`);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.source, allowPrivateRemoteBase ? 'remote' : 'local-empty');
+      assert.deepEqual(remote.hits, allowPrivateRemoteBase ? [`/cloud-prefix${endpoint}`] : []);
+    } finally {
+      await app.close();
+      await localApi.cleanup();
+      await remote.close();
+    }
+  });
+}
+
 for (const localFailure of ['missing', 'error-response', 'throw']) {
   test(`does not retry a timed-out cloud-preferred POST when the local handler is ${localFailure}`, async () => {
     const endpoint = '/api/v2/shipping/webhooks';
