@@ -2,15 +2,15 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
   "name": "app.worldmonitor/mcp",
   "title": "WorldMonitor",
-  "description": "Live markets, conflicts, country risk, chokepoints, energy, and China decision signals.",
+  "description": "Live country risk, conflicts, markets and chokepoints; rated sources, scored forecasts.",
   "kind": "product",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.34.0",
+  "version": "1.35.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.34.0",
+    "version": "1.35.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server, serving real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
