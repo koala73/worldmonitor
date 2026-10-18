@@ -27,6 +27,51 @@ const USER = {
   emailVerified: true,
 };
 
+describe("notificationChannels legacy alert-rule delivery validation", () => {
+  test.each(["all", "high"])("returns recovery guidance without saving realtime + %s", async sensitivity => {
+    process.env.CONVEX_TENANT_RELAY_SECRET = "relay-secret";
+    const t = convexTest(schema, modules);
+    const id = await t.run(ctx => ctx.db.insert("alertRules", {
+      userId: USER.subject,
+      variant: "full",
+      enabled: true,
+      eventTypes: [],
+      sensitivity: "critical",
+      channels: [],
+      digestMode: "realtime",
+      updatedAt: 1,
+    }));
+    const before = await t.run(ctx => ctx.db.get(id));
+    const save = (value: string) => t.fetch("/relay/notification-channels", {
+      method: "POST",
+      headers: { Authorization: "Bearer relay-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "set-alert-rules",
+        userId: USER.subject,
+        variant: "full",
+        enabled: false,
+        eventTypes: [],
+        sensitivity: value,
+        channels: [],
+      }),
+    });
+
+    const rejected = await save(sensitivity);
+    expect(rejected.status).toBe(400);
+    expect(await rejected.json()).toEqual({
+      error: "INCOMPATIBLE_DELIVERY",
+      message: "Real-time delivery is for Critical events only. "
+        + "To receive High or All events, choose a digest cadence (Daily, Twice daily, or Weekly).",
+    });
+    expect(await t.run(ctx => ctx.db.get(id))).toEqual(before);
+
+    const recovered = await save("critical");
+    expect(recovered.status).toBe(200);
+    expect(await recovered.json()).toEqual({ ok: true });
+    expect(await t.run(ctx => ctx.db.get(id))).toMatchObject({ enabled: false, sensitivity: "critical" });
+  });
+});
+
 afterEach(() => {
   globalThis.fetch = originalFetch;
   if (originalUpstashUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
