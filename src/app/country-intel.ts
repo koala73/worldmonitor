@@ -19,7 +19,6 @@ import { yieldToMain } from '@/utils/after-paint';
 import { effectivePubDateMs } from '@/services/feed-date';
 import type { CountryCoverageEvent } from '@/services/country-coverage';
 import { reconcileCountryTimelineIncidents } from '../../shared/country-timeline-events';
-import { loadQualifiedCountrySignals } from '@/services/country-signal-projection';
 import { loadHostCountryMilitaryActivity } from '@/services/country-military-activity';
 import type { QualifiedCountrySignals } from '../../shared/country-signal-observations';
 import {
@@ -1348,7 +1347,11 @@ export class CountryIntelManager implements AppModule {
         }
       });
     }
-    const value = await loadQualifiedCountrySignals(this.qualifiedSource, code, signal, this.qualifiedMilitary.promise, this.qualifiedSignals);
+    const military = this.qualifiedMilitary.promise;
+    const previous = this.qualifiedSignals;
+    const { loadQualifiedCountrySignals } = await import('@/services/country-signal-projection');
+    signal.throwIfAborted();
+    const value = await loadQualifiedCountrySignals(this.qualifiedSource, code, signal, military, previous);
     if (!signal.aborted && page?.getCode() === code && revision === this.currentCountryPresentation?.refreshGeneration) {
       this.qualifiedSignals = value;
       const counts = page.getSignalCounts?.();

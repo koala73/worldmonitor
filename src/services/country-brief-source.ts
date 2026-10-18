@@ -1,5 +1,5 @@
 import { RAW_SIGNAL_PATH } from '../../shared/country-raw-signals-model';
-import { COUNTRY_SIGNAL_PATH, COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_WIRE_FAMILIES, countrySignalResponseSchema, countrySignalOutcomeSchema, type CountrySignalFamily } from '../../shared/country-signal-observations';
+import { COUNTRY_SIGNAL_PATH, COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_WIRE_FAMILIES, type CountrySignalFamily } from '../../shared/country-signal-contract';
 import { combineAbortSignals } from './timeout-signal';
 import { CountrySectionError } from './country-brief-error';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
@@ -23,6 +23,8 @@ function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void; 
     fetch: fetcher,
     settleMandatoryReads: fetcher.settleMandatoryReads ?? (async () => {}),
     countrySignals: async (code: string, family: CountrySignalFamily, signal: AbortSignal) => {
+      const { countrySignalOutcomeSchema } = await import('../../shared/country-signal-observations');
+      signal.throwIfAborted();
       const wire = COUNTRY_SIGNAL_WIRE_FAMILIES.find(value => value === `COUNTRY_SIGNAL_FAMILY_${family.toUpperCase()}`)!;
       const result = await intelligence.getCountrySignalObservations({ countryCode: code, family: wire, windowIndex: 0, cursor: '' }, { signal });
       signal.throwIfAborted();
@@ -134,7 +136,11 @@ async function fetchWebsiteCountrySignals(input: RequestInfo | URL, init?: Reque
     let offset = 0;
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
     const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    if (response.ok) countrySignalResponseSchema.parse(JSON.parse(text));
+    if (response.ok) {
+      const { countrySignalResponseSchema } = await withinDeadline(import('../../shared/country-signal-observations'));
+      signal.throwIfAborted();
+      countrySignalResponseSchema.parse(JSON.parse(text));
+    }
     return new Response(text, { status: response.status, statusText: response.statusText, headers: response.headers });
   } finally { void reader.cancel().catch(() => {}); }
 }

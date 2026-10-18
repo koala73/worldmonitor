@@ -1,12 +1,8 @@
 import { z } from 'zod';
 import { resolveCountryCode } from './country-code-resolve';
 import { countryActivityQueries } from './country-activity-query';
-
-export const COUNTRY_SIGNAL_PATH = '/api/intelligence/v1/get-country-signal-observations';
-export const COUNTRY_SIGNAL_BYTES = 131072;
-export const COUNTRY_SIGNAL_FAMILIES = ['outages', 'unrest', 'fires', 'radiation', 'sanctions', 'conflict', 'posture'] as const;
-export type CountrySignalFamily = typeof COUNTRY_SIGNAL_FAMILIES[number];
-export const COUNTRY_SIGNAL_WIRE_FAMILIES = ['COUNTRY_SIGNAL_FAMILY_OUTAGES', 'COUNTRY_SIGNAL_FAMILY_UNREST', 'COUNTRY_SIGNAL_FAMILY_FIRES', 'COUNTRY_SIGNAL_FAMILY_RADIATION', 'COUNTRY_SIGNAL_FAMILY_SANCTIONS', 'COUNTRY_SIGNAL_FAMILY_CONFLICT', 'COUNTRY_SIGNAL_FAMILY_POSTURE', 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE'] as const;
+import { COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_FAMILIES, COUNTRY_SIGNAL_WIRE_FAMILIES, type CountrySignalFamily } from './country-signal-contract';
+export { COUNTRY_SIGNAL_PATH, COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_FAMILIES, COUNTRY_SIGNAL_WIRE_FAMILIES, type CountrySignalFamily } from './country-signal-contract';
 const countryFlightSchema = z.object({
   id: z.string().min(1).max(200), source: z.string().min(1).max(500),
   location: z.object({ latitude: z.number().finite().min(-90).max(90), longitude: z.number().finite().min(-180).max(180) }).optional(),
