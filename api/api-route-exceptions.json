@@ -248,6 +248,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/domains.ts",
+      "category": "internal-helper",
+      "reason": "One source for each MCP tool's category, the server card toolCategories and tags, and the domain list the discovery surfaces quote. Read at build time by scripts/generate-public-product-facts.mjs and by tests; exports no HTTP route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/upgrade.ts",
       "category": "external-protocol",
       "reason": "MCP paid-funnel (#6716) structured denial builders and upgrade-URL re-exports. Part of the streamable-HTTP MCP surface — not a JSON data API.",

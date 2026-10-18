@@ -1,7 +1,7 @@
 {
   "protocolVersion": "0.3.0",
   "name": "WorldMonitor Intelligence Concierge",
-  "description": "Agent-facing concierge for WorldMonitor's live global-intelligence platform. Send a natural-language description of the data you need (conflicts, markets, chokepoints, country risk, energy, cyber, forecasts…) and it routes you to the best-fit WorldMonitor MCP tools and REST operations, with auth guidance and a live data-freshness probe. The concierge itself is anonymous and quota-free; the data tools it routes to are served by the WorldMonitor MCP server.",
+  "description": "Agent-facing concierge for WorldMonitor's live global-intelligence platform. Send a natural-language description of the data you need (markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy) and it routes you to the best-fit WorldMonitor MCP tools and REST operations, with auth guidance and a live data-freshness probe. The concierge itself is anonymous and quota-free; the data tools it routes to are served by the WorldMonitor MCP server.",
   "url": "https://www.worldmonitor.app/a2a",
   "preferredTransport": "JSONRPC",
   "supportedInterfaces": [

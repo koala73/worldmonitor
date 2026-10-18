@@ -254,7 +254,7 @@
     "esbuild": "0.28.1",
     "exceljs": "^4.4.0",
     "fengari": "^0.1.5",
-    "happy-dom": "^20.11.1",
+    "happy-dom": "^20.11.2",
     "js-yaml": "^4.3.2",
     "markdownlint-cli2": "^0.21.0",
     "opencc-js": "^1.4.1",
