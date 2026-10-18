@@ -1771,11 +1771,19 @@ export function normalizeSdmxPeriod(period) {
  * `normalizeSdmxPeriod()` on every period before storing it as a key.
  * See `scripts/seed-gold-cb-reserves.mjs::fetchIrfclMonthlySeries` for the
  * canonical monthly pattern.
+ *
+ * `release` holds the dataset-level PUBLICATION_DATE and UPDATE_DATE of this
+ * one response, as IMF supplied them, or null when absent, malformed or
+ * ambiguous. They are reference metadata, so the request uses
+ * `attributes=all`: `dsd` omits them and `msd` drops the series attributes.
+ * Neither date names a WEO edition.
+ *
+ * @returns {Promise<{ values: Record<string, Record<string, number>>, release: { publishedAt: string|null, updatedAt: string|null } }>}
  */
-export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years } = {}) {
+export async function imfSdmxFetchIndicatorWithRelease(indicator, { database = 'WEO', years } = {}) {
   const agencyMap = { WEO: 'IMF.RES', FM: 'IMF.FAD' };
   const agency = agencyMap[database] || 'IMF.RES';
-  const url = `${IMF_SDMX_BASE}/data/dataflow/${agency}/${database}/+/*.${indicator}.A?dimensionAtObservation=TIME_PERIOD&attributes=dsd&measures=all`;
+  const url = `${IMF_SDMX_BASE}/data/dataflow/${agency}/${database}/+/*.${indicator}.A?dimensionAtObservation=TIME_PERIOD&attributes=all&measures=all`;
 
   const json = await withRetry(async () => {
     const r = await fetch(url, {
@@ -1795,14 +1803,18 @@ export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years
     return r.json();
   }, 2, 2000);
 
-  const struct = json?.data?.structures?.[0];
   const ds = json?.data?.dataSets?.[0];
-  if (!struct || !ds?.series) return {};
+  const struct = json?.data?.structures?.[Number.isInteger(ds?.structure) ? ds.structure : 0];
+  const release = {
+    publishedAt: imfDatasetDate(struct, ds, 'PUBLICATION_DATE'),
+    updatedAt: imfDatasetDate(struct, ds, 'UPDATE_DATE'),
+  };
+  if (!struct || !ds?.series) return { values: {}, release };
 
   const countryDim = struct.dimensions.series.find(d => d.id === 'COUNTRY');
   const countryDimPos = struct.dimensions.series.findIndex(d => d.id === 'COUNTRY');
   const timeDim = struct.dimensions.observation.find(d => d.id === 'TIME_PERIOD');
-  if (!countryDim || countryDimPos === -1 || !timeDim) return {};
+  if (!countryDim || countryDimPos === -1 || !timeDim) return { values: {}, release };
 
   const countryValues = countryDim.values.map(v => v.id);
   const timeValues = timeDim.values.map(v => v.value || v.id);
@@ -1824,7 +1836,35 @@ export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years
     }
     if (Object.keys(byYear).length > 0) result[iso3] = byYear;
   }
-  return result;
+  return { values: result, release };
+}
+
+export async function imfSdmxFetchIndicator(indicator, options) {
+  return (await imfSdmxFetchIndicatorWithRelease(indicator, options)).values;
+}
+
+const IMF_RELEASE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(?:T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)?)?$/;
+
+function imfDatasetDate(struct, ds, id) {
+  const descriptors = struct?.attributes?.dataSet;
+  if (!Array.isArray(descriptors)) return null;
+  const positions = descriptors.flatMap((d, i) => (d?.id === id ? [i] : []));
+  if (positions.length !== 1) return null;
+  let value = ds?.attributes?.[positions[0]];
+  if (Array.isArray(value)) {
+    if (value.length !== 1) return null;
+    [value] = value;
+  }
+  if (Number.isInteger(value)) {
+    const coded = descriptors[positions[0]].values?.[value];
+    value = coded?.value ?? coded?.id;
+  }
+  if (typeof value !== 'string') return null;
+  const match = IMF_RELEASE_DATE_RE.exec(value);
+  if (!match) return null;
+  const [y, m, d] = match.slice(1, 4).map(Number);
+  const day = new Date(Date.UTC(y, m - 1, d));
+  return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d ? value : null;
 }
 
 // ---------------------------------------------------------------------------
