@@ -293,7 +293,7 @@ export default function middleware(request: Request) {
       return originNotFoundResponse(path, request);
     }
 
-    if (isLiveChokepointPageRequest(request, path)) {
+    if (isLiveChokepointPageRequest(request, url)) {
       return liveChokepointPage(url);
     }
   }
@@ -396,17 +396,23 @@ function docsResponseHeaders(upstream: Response, host: string): Headers {
 // section re-rendered from the current public reading; any failure serves the
 // built page unchanged.
 const CHOKEPOINT_PAGE_PATH = /^\/chokepoints\/[a-z0-9-]+\/$/;
-// The inner fetch of the built page carries this header so it skips this
-// branch. A client that sends it only receives the built page.
-const LIVE_PAGE_BYPASS_HEADER = 'x-wm-live-page-bypass';
+// The inner fetch of the built page uses this query marker so it skips this
+// branch. A URL rather than a header keeps the built and live variants under
+// different cache keys; a shared cache never answers a page request with the
+// built copy. A client that sends it only receives the built page.
+const BUILT_PAGE_PARAM = 'wm-built';
 const LIVE_PAGE_FETCH_TIMEOUT_MS = 4_000;
+// The reading refreshes every few minutes; the built page's hour-long browser
+// cache would hold it for an hour.
+const LIVE_PAGE_CACHE_CONTROL = 'public, max-age=300, must-revalidate';
+const LIVE_PAGE_CDN_CACHE_CONTROL = 'public, s-maxage=300, stale-while-revalidate=60';
 // Must pass the /api/* bot gate below: no BOT_UA token, at least 10 chars.
 const LIVE_PAGE_USER_AGENT = 'Mozilla/5.0 (compatible; WorldMonitorLivePages/1.0)';
 const CHOKEPOINT_STATUS_PUBLIC_PATH = '/api/supply-chain/v1/get-chokepoint-status?public=1';
 
-function isLiveChokepointPageRequest(request: Request, path: string): boolean {
-  if (request.method !== 'GET' || !CHOKEPOINT_PAGE_PATH.test(path)) return false;
-  if (request.headers.has(LIVE_PAGE_BYPASS_HEADER)) return false;
+function isLiveChokepointPageRequest(request: Request, url: URL): boolean {
+  if (request.method !== 'GET' || !CHOKEPOINT_PAGE_PATH.test(url.pathname)) return false;
+  if (url.searchParams.has(BUILT_PAGE_PARAM)) return false;
   const accept = request.headers.get('accept');
   return !accept || (acceptQuality(accept, 'text/html', true) ?? 0) > 0;
 }
@@ -430,9 +436,11 @@ const passThroughToOrigin = () => new Response(null, { headers: { 'x-middleware-
 async function liveChokepointPage(url: URL): Promise<Response> {
   let page: Response;
   let html: string;
+  const builtUrl = new URL(url.pathname, url);
+  builtUrl.searchParams.set(BUILT_PAGE_PARAM, '1');
   try {
-    page = await fetch(url, {
-      headers: { accept: 'text/html', 'user-agent': LIVE_PAGE_USER_AGENT, [LIVE_PAGE_BYPASS_HEADER]: '1' },
+    page = await fetch(builtUrl, {
+      headers: { accept: 'text/html', 'user-agent': LIVE_PAGE_USER_AGENT },
       redirect: 'manual',
       signal: AbortSignal.timeout(LIVE_PAGE_FETCH_TIMEOUT_MS),
     });
@@ -472,6 +480,12 @@ async function liveChokepointPage(url: URL): Promise<Response> {
     const live = replaceChokepointLiveSection(html, section);
     if (live === null) return builtPage();
     headers.set('x-wm-live-page', 'chokepoint');
+    headers.set('cache-control', LIVE_PAGE_CACHE_CONTROL);
+    headers.set('cdn-cache-control', LIVE_PAGE_CDN_CACHE_CONTROL);
+    headers.set('vercel-cdn-cache-control', LIVE_PAGE_CDN_CACHE_CONTROL);
+    // The built file's validators describe a different body.
+    headers.delete('etag');
+    headers.delete('last-modified');
     return new Response(live, { status: 200, headers });
   } catch {
     // Missing row, stale snapshot, or out-of-range score: the view model throws

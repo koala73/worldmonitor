@@ -10,6 +10,7 @@ import {
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache.ts';
 
 const PAGE_URL = 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/';
+const BUILT_URL = `${PAGE_URL}?wm-built=1`;
 const HORMUZ = {
   id: 'hormuz_strait',
   displayName: 'Strait of Hormuz',
@@ -59,8 +60,8 @@ function statusPayload(fetchedAt = new Date(Date.now() - 60_000).toISOString()) 
   };
 }
 
-function pageRequest(headers: Record<string, string> = {}, method = 'GET'): Request {
-  return new Request(PAGE_URL, {
+function pageRequest(headers: Record<string, string> = {}, method = 'GET', url = PAGE_URL): Request {
+  return new Request(url, {
     method,
     headers: { accept: 'text/html,*/*;q=0.8', 'user-agent': 'Mozilla/5.0 (compatible; OAI-SearchBot/1.0)', ...headers },
   });
@@ -79,10 +80,17 @@ function stubFetch(route: Route) {
 }
 
 function servePage(url: string): Response {
-  if (url === PAGE_URL) {
+  if (url === BUILT_URL) {
     return new Response(builtPage(), {
       status: 200,
-      headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=3600, must-revalidate', 'content-length': '999' },
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'public, max-age=3600, must-revalidate',
+        'cdn-cache-control': 'public, s-maxage=600, stale-while-revalidate=60',
+        'content-length': '999',
+        etag: 'W/"built"',
+        'last-modified': 'Mon, 12 Oct 2026 05:02:48 GMT',
+      },
     });
   }
   throw new Error(`unexpected fetch ${url}`);
@@ -102,6 +110,10 @@ describe('live chokepoint page HTML', () => {
 
     assert.equal(response.headers.get('x-wm-live-page'), 'chokepoint');
     assert.equal(response.headers.get('content-length'), null, 'stale framing header dropped');
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=300, must-revalidate');
+    assert.equal(response.headers.get('cdn-cache-control'), 'public, s-maxage=300, stale-while-revalidate=60');
+    assert.equal(response.headers.get('etag'), null, 'the built file validator does not describe the live body');
+    assert.equal(response.headers.get('last-modified'), null);
     assert.match(html, /data-chokepoint-transits>91</);
     assert.match(html, /data-chokepoint-score>62</);
     assert.match(html, /Live reading /);
@@ -111,8 +123,7 @@ describe('live chokepoint page HTML', () => {
     assert.equal(html.split(CHOKEPOINT_LIVE_START).length, 2, 'exactly one live section');
     assert.match(html, /exclude &quot;dark&quot; transits/, 'measurement note round-trips through the attribute');
 
-    const pageFetch = calls.find((call) => call.url === PAGE_URL);
-    assert.equal(pageFetch?.headers.get('x-wm-live-page-bypass'), '1');
+    assert.ok(calls.some((call) => call.url === BUILT_URL), 'the built page is fetched under its own cache key');
     const statusFetch = calls.find((call) => call.url.includes('get-chokepoint-status'));
     assert.equal(new URL(statusFetch!.url).search, '?public=1');
     assert.ok(isPublicSharedRpcRequest(statusFetch!.url), 'the status read is the anonymous public shape');
@@ -146,7 +157,7 @@ describe('live chokepoint page HTML', () => {
 
   it('leaves the inner fetch, HEAD and markdown requests on the static path', async () => {
     const calls = stubFetch(servePage);
-    assert.equal(await middleware(pageRequest({ 'x-wm-live-page-bypass': '1' })), undefined);
+    assert.equal(await middleware(pageRequest({}, 'GET', BUILT_URL)), undefined);
     assert.equal(await middleware(pageRequest({}, 'HEAD')), undefined);
     assert.equal(await middleware(pageRequest({ accept: 'text/markdown' })), undefined);
     assert.equal(calls.length, 0);
