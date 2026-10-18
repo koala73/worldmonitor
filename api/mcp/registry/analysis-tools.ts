@@ -824,7 +824,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       'trips are listed as quiet, and domains whose caches are unavailable are listed separately so silence is never mistaken ' +
       'for calm. The weekly view adds direction, volatility, and anomaly flags derived from the persisted military-activity ' +
       'history plus the current temporal-anomaly snapshot. A rollup of threshold trips across domains: no news stories, ' +
-      'narrative or per-stream baseline statistics. Requires a paid plan; weight 2 on API plans. Read-only.',
+      'narrative, or full per-stream anomaly lists. Requires a paid plan; weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -172,7 +172,7 @@
     },
     {
       "name": "get_displacement_data",
-      "description": "Return UNHCR annual displacement statistics for one reporting year (summary.year): global totals and per-country refugees, asylum seekers, IDPs and stateless people by origin, totals hosted by each asylum country, and the largest origin-to-asylum refugee flows with coordinates. Answers how many people a country has displaced or hosts. Annual stock figures only: no monthly arrivals, live crisis-situation updates, deaths or earlier years. Flagged stale after 60 hours. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. countries keeps rows whose origin or asylum country matches; limit caps the country and flow lists (default 30, 0 for no cap).",
+      "description": "Return UNHCR annual displacement statistics for one reporting year (summary.year): global totals and per-country refugees, asylum seekers, IDPs and stateless people by origin, totals hosted by each asylum country, and the largest origin-to-asylum refugee flows, with centroid coordinates where known. Answers how many people a country has displaced or hosts. Annual stock figures only: no monthly arrivals, live crisis-situation updates, deaths or earlier years. Flagged stale after 60 hours. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. countries keeps rows whose origin or asylum country matches; limit caps the country and flow lists (default 30, 0 for no cap).",
       "_meta": {
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "humanitarian-displacement"
@@ -300,7 +300,7 @@
     },
     {
       "name": "get_social_velocity",
-      "description": "Return the 30 Reddit posts from r/worldnews and r/geopolitics with the highest velocityScore (log of score x upvote ratio x a 6-hour recency decay), each with title, subreddit, permalink, score, upvoteRatio, numComments and createdAt. Measures what is drawing public attention on Reddit now, not what happened: posts are unverified user submissions with no classification or corroboration, there is no history beyond the current snapshot, and no other social platform is covered. Refreshed about every 3 hours, flagged stale after 9. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. subreddit keeps worldnews or geopolitics; limit caps the list (default 30, 0 for no cap).",
+      "description": "Return the 30 Reddit posts from r/worldnews and r/geopolitics with the highest velocityScore (log of score x upvote ratio x a 6-hour recency decay), each with title, subreddit, permalink, score, upvoteRatio, numComments and createdAt. Measures what is drawing public attention on Reddit now, not what happened: posts are unverified user submissions with no classification or corroboration, there is no history beyond the current snapshot, and no other social platform is covered. Refreshed about every 3 hours, flagged stale after 9 hours. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. subreddit keeps worldnews or geopolitics; limit caps the list (default 30, 0 for no cap).",
       "_meta": {
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "geopolitical-security"
@@ -372,7 +372,7 @@
     },
     {
       "name": "get_country_risk",
-      "description": "Return the structured risk snapshot for one country: the Composite Instability Index at cii.combinedScore (0-100) with its four components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive and sanctionsCount. Four headline numbers only, read from the seeded risk cache in under a second: no narrative, no LLM, and no per-indicator resilience breakdown. upstreamUnavailable=true means a required upstream read failed and the whole response was withheld: zeroed fields are unknown, not calm. Requires a paid plan; one downstream fetch, weight 2 on API plans. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one. Read-only; idempotent within a cache window.",
+      "description": "Return the structured risk snapshot for one country: the Composite Instability Index at cii.combinedScore (0-100) with its four components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive and sanctionsCount. Index scores, advisory and sanctions fields only, read from the seeded risk cache in under a second: no narrative, no LLM, and no per-indicator resilience breakdown. upstreamUnavailable=true means a required upstream read failed and the whole response was withheld: zeroed fields are unknown, not calm. Requires a paid plan; one downstream fetch, weight 2 on API plans. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one. Read-only; idempotent within a cache window.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"
@@ -412,7 +412,7 @@
     },
     {
       "name": "get_resilience_indicators",
-      "description": "Explain one country's resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. Answers why a country scores as it does on structural, slow-moving capacity; carries no current instability index, travel advisory, sanctions status, news or narrative. Requires an ISO-2 country code and a WorldMonitor Pro subscription; weight 2 on API plans. Read-only.",
+      "description": "Explain one country's resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. Answers why a country scores as it does, indicator by indicator; carries no instability index, travel advisory, sanctions status, story list or narrative. Requires an ISO-2 country code and a WorldMonitor Pro subscription; weight 2 on API plans. Read-only.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"
@@ -500,7 +500,7 @@
     },
     {
       "name": "get_commodity_geo",
-      "description": "Return a curated reference list of 71 major mine sites: name, coordinates, country, mineral, operator, status (producing, development, exploration), significance, annual output, a production-rank label and open-pit or underground. Answers where a mineral is mined and who operates a given mine. Static dataset bundled with the server, not live data: no national output totals, market shares, refining, prices or recent ownership changes, and mines outside the list are absent. Minerals: Gold, Silver, Copper, Lithium, Cobalt, Rare Earths, Nickel, Platinum, Palladium, Iron Ore and Uranium. Requires a paid plan; weight 2 on API plans. Read-only. Omit both filters for every site.",
+      "description": "Return a curated reference list of 71 major mine sites: name, coordinates, country, mineral, operator, status (producing, development, exploration), significance and, where recorded, annual output, a production-rank label and open-pit or underground. Answers where a mineral is mined and who operates a given mine. Static dataset bundled with the server, not live data: no national output totals, market shares, refining, prices or recent ownership changes, and mines outside the list are absent. Minerals: Gold, Silver, Copper, Lithium, Cobalt, Rare Earths, Nickel, Platinum, Palladium, Iron Ore and Uranium. Requires a paid plan; weight 2 on API plans. Read-only. Omit both filters for every site.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"
@@ -572,7 +572,7 @@
     },
     {
       "name": "get_alert_digest",
-      "description": "Cross-domain alert digest: everything that tripped a threshold today, in one rollup. Sweeps seven seeded domains — country instability bands, military surge alerts, submarine-cable health, ongoing internet outages, temporal anomalies, thermal escalation zones, and shipping stress — and reports each trip with the severity vocabulary its own producer already uses; no thresholds are invented by this tool. Domains with data but no trips are listed as quiet, and domains whose caches are unavailable are listed separately so silence is never mistaken for calm. The weekly view adds direction, volatility, and anomaly flags derived from the persisted military-activity history plus the current temporal-anomaly snapshot. A rollup of threshold trips across domains: no news stories, narrative or per-stream baseline statistics. Requires a paid plan; weight 2 on API plans. Read-only.",
+      "description": "Cross-domain alert digest: everything that tripped a threshold today, in one rollup. Sweeps seven seeded domains — country instability bands, military surge alerts, submarine-cable health, ongoing internet outages, temporal anomalies, thermal escalation zones, and shipping stress — and reports each trip with the severity vocabulary its own producer already uses; no thresholds are invented by this tool. Domains with data but no trips are listed as quiet, and domains whose caches are unavailable are listed separately so silence is never mistaken for calm. The weekly view adds direction, volatility, and anomaly flags derived from the persisted military-activity history plus the current temporal-anomaly snapshot. A rollup of threshold trips across domains: no news stories, narrative, or full per-stream anomaly lists. Requires a paid plan; weight 2 on API plans. Read-only.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"

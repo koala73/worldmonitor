@@ -1795,7 +1795,7 @@ export const RPC_TOOLS: ToolDef[] = [
     name: 'get_country_risk',
     title: 'Country instability score, advisory and sanctions',
     _outputBudgetBytes: 262144,
-    description: 'Return the structured risk snapshot for one country: the Composite Instability Index at cii.combinedScore (0-100) with its four components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive and sanctionsCount. Four headline numbers only, read from the seeded risk cache in under a second: no narrative, no LLM, and no per-indicator resilience breakdown. upstreamUnavailable=true means a required upstream read failed and the whole response was withheld: zeroed fields are unknown, not calm. Requires a paid plan; one downstream fetch, weight 2 on API plans. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one. Read-only; idempotent within a cache window.',
+    description: 'Return the structured risk snapshot for one country: the Composite Instability Index at cii.combinedScore (0-100) with its four components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive and sanctionsCount. Index scores, advisory and sanctions fields only, read from the seeded risk cache in under a second: no narrative, no LLM, and no per-indicator resilience breakdown. upstreamUnavailable=true means a required upstream read failed and the whole response was withheld: zeroed fields are unknown, not calm. Requires a paid plan; one downstream fetch, weight 2 on API plans. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one. Read-only; idempotent within a cache window.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2266,7 +2266,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // `observationProvenance` is deliberately not selected because it is not
     // part of the licence claim.
     _attribution: 'indicators[].{indicatorId: id, retrievedAt: retrievedAt, sources: sources[].{key: key, name: name, attribution: attribution, license: license, url: url, licenseUrl: licenseUrl, attributionUrl: attributionUrl}}',
-    description: 'Explain one country\'s resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. Answers why a country scores as it does on structural, slow-moving capacity; carries no current instability index, travel advisory, sanctions status, news or narrative. Requires an ISO-2 country code and a WorldMonitor Pro subscription; weight 2 on API plans. Read-only.',
+    description: 'Explain one country\'s resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. Answers why a country scores as it does, indicator by indicator; carries no instability index, travel advisory, sanctions status, story list or narrative. Requires an ISO-2 country code and a WorldMonitor Pro subscription; weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3143,7 +3143,7 @@ export const RPC_TOOLS: ToolDef[] = [
     name: 'get_commodity_geo',
     title: 'Global mining sites',
     _outputBudgetBytes: 262144,
-    description: 'Return a curated reference list of 71 major mine sites: name, coordinates, country, mineral, operator, status (producing, development, exploration), significance, annual output, a production-rank label and open-pit or underground. Answers where a mineral is mined and who operates a given mine. Static dataset bundled with the server, not live data: no national output totals, market shares, refining, prices or recent ownership changes, and mines outside the list are absent. Minerals: Gold, Silver, Copper, Lithium, Cobalt, Rare Earths, Nickel, Platinum, Palladium, Iron Ore and Uranium. Requires a paid plan; weight 2 on API plans. Read-only. Omit both filters for every site.',
+    description: 'Return a curated reference list of 71 major mine sites: name, coordinates, country, mineral, operator, status (producing, development, exploration), significance and, where recorded, annual output, a production-rank label and open-pit or underground. Answers where a mineral is mined and who operates a given mine. Static dataset bundled with the server, not live data: no national output totals, market shares, refining, prices or recent ownership changes, and mines outside the list are absent. Minerals: Gold, Silver, Copper, Lithium, Cobalt, Rare Earths, Nickel, Platinum, Palladium, Iron Ore and Uranium. Requires a paid plan; weight 2 on API plans. Read-only. Omit both filters for every site.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -917,7 +917,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_commodity_geo`
 
-A curated, static list of 71 major mine sites with coordinates, country, mineral, operator, status (producing, development, exploration), annual output and a production-rank label. Minerals: gold, silver, copper, lithium, cobalt, rare earths, nickel, platinum, palladium, iron ore and uranium. It answers where a mineral is mined and who operates a mine; it has no national output totals, market shares, refining or prices. `mineral` is an exact, case-sensitive match ("Gold", "Rare Earths"); `country` is a case-insensitive substring.
+A curated, static list of 71 major mine sites with coordinates, country, mineral, operator, status (producing, development, exploration) and, where recorded, annual output and a production-rank label. Minerals: gold, silver, copper, lithium, cobalt, rare earths, nickel, platinum, palladium, iron ore and uranium. It answers where a mineral is mined and who operates a mine; it has no national output totals, market shares, refining or prices. `mineral` is an exact, case-sensitive match ("Gold", "Rare Earths"); `country` is a case-insensitive substring.
 
 **Parameters:**
 
@@ -1741,7 +1741,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_social_velocity`
 
-The 30 posts from r/worldnews and r/geopolitics with the highest `velocityScore` (log of score × upvote ratio × a 6-hour recency decay), with score, upvote ratio, comment count and permalink. The relay refreshes it about every 3 hours and the envelope flags it stale after 9, the same budget as `/api/health`. Posts are unverified user submissions: the tool measures public attention, not events.
+The 30 posts from r/worldnews and r/geopolitics with the highest `velocityScore` (log of score × upvote ratio × a 6-hour recency decay), with score, upvote ratio, comment count and permalink. The relay refreshes it about every 3 hours and the envelope flags it stale after 9 hours, the same budget as `/api/health`. Posts are unverified user submissions: the tool measures public attention, not events.
 
 **Parameters (tool-specific):**
 
