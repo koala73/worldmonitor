@@ -19,7 +19,6 @@ import type { WmSessionDeadReason } from './wm-session-copy';
 import { isPublicSharedRpcRequest } from '@/shared/public-rpc-cache';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { PUBLIC_WEATHER_BOOTSTRAP_KEY, bootstrapTierKeyNames } from '../../shared/bootstrap-tier-keys.js';
-import { stripTrailingSlashes } from '../../shared/strip-trailing-slashes.js';
 
 const STORAGE_KEY = 'wm-session-exp';
 // Refresh well before expiry so a half-loaded page doesn't fail mid-flight.
@@ -922,6 +921,12 @@ export function isApiCallTarget(url: string, apiOrigin: string): boolean {
     return false;
   }
   return parsed.origin === apiOrigin && parsed.pathname.startsWith('/api/');
+}
+
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
 }
 
 function isCredentiallessPublicDataRequest(

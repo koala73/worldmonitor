@@ -7,8 +7,6 @@
  * internal acquisition metadata can never be mistaken for a referral.
  */
 
-import { stripTrailingSlashes } from './strip-trailing-slashes.js';
-
 export const CONTENT_ATTRIBUTION_STORAGE_KEY = 'wm-content-attribution-v1';
 export const CONTENT_ATTRIBUTION_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 export const CONTENT_ATTRIBUTION_MAX_VALUE_LENGTH = 100;
@@ -248,6 +246,12 @@ export function parseContentAttribution(
     placement: params.get(CONTENT_ATTRIBUTION_PARAMS.placement),
     landingPageFamily: inferLandingPageFamily(pathname),
   });
+}
+
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
 }
 
 /** Keep scorecard page-family values closed even for crafted destination URLs. */

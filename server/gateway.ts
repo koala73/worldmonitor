@@ -14,7 +14,6 @@ import { hasCurrentEntitlementCoverage } from './_shared/entitlement-coverage';
 import { createRouter, toHeadResponse, type RouteDescriptor } from './router';
 import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache';
-import { stripTrailingSlashes } from '../shared/strip-trailing-slashes.js';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '../src/shared/pro-fresh-rpc';
 // @ts-expect-error — JS module, no declaration file
 import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, getHeaderApiKey, validateApiKey } from '../api/_api-key.js';
@@ -996,6 +995,12 @@ export const CREDENTIAL_BEARING_HEADERS = [
 
 export function hasCredentialBearingHeader(request: Request): boolean {
   return CREDENTIAL_BEARING_HEADERS.some((header) => Boolean(request.headers.get(header)));
+}
+
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
 }
 
 async function isResilienceRankingSeedRefreshRequest(request: Request, pathname: string): Promise<boolean> {

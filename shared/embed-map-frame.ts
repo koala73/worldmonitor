@@ -14,7 +14,6 @@ import {
   isEmbedLayerId,
   type EmbedLayerId,
 } from './embed-panels';
-import { stripTrailingSlashes } from './strip-trailing-slashes.js';
 
 export const EMBED_MAP_FRAME_PATH = '/api/embed/map-frame';
 
@@ -155,6 +154,12 @@ export function classifyPublicEmbedFrameSearch(
  * `api/embed/map-frame.ts`), and which would fail closed toward `no-store`
  * rather than toward a shared entry if that ever changed.
  */
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
+}
+
 export function classifyPublicEmbedFrameRequest(
   urlLike: string | URL,
   method = 'GET',

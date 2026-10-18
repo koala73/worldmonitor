@@ -1,5 +1,3 @@
-import { stripTrailingSlashes } from '../../shared/strip-trailing-slashes.js';
-
 // Membership here is an ANONYMOUS-ACCESS decision, not a caching one: the
 // gateway consults isPublicSharedRpcRequest() before the tier gate, so a path
 // listed here is reachable with no credential whatever ENDPOINT_ENTITLEMENTS
@@ -88,6 +86,12 @@ function isNewsDigestShape(params: URLSearchParams): boolean {
     && hasSingleValue(params, 'lang')
     && NEWS_VARIANTS.has(params.get('variant') ?? '')
     && NEWS_LANGUAGES.has(params.get('lang') ?? '');
+}
+
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
 }
 
 export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'): boolean {
