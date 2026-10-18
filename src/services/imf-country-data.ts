@@ -5,7 +5,7 @@
  * Indicators + Country Facts cards (issue #3027).
  *
  * Network policy: four public on-demand bootstrap reads; the validated bundle
- * is memoised for ~10 min; WEO is published each April and September/October.
+ * is memoised for ~10 min.
  */
 
 import { ensureHydrated } from '@/services/bootstrap';
@@ -222,7 +222,6 @@ function parseImfReleases(value: unknown): ImfReleases {
   return releases;
 }
 
-/** One country's slice of the IMF bootstrap keys, shared by both bundle readers. */
 export function selectImfCountryBundle(data: ImfBootstrapPayload | undefined, iso2Code: string, fetchedAt: number): ImfCountryBundle {
   const code = iso2Code.toUpperCase();
   return {

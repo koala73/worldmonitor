@@ -1839,7 +1839,6 @@ export async function imfSdmxFetchIndicatorWithRelease(indicator, { database = '
   return { values: result, release };
 }
 
-/** Values-only form of `imfSdmxFetchIndicatorWithRelease` for callers that store no release. */
 export async function imfSdmxFetchIndicator(indicator, options) {
   return (await imfSdmxFetchIndicatorWithRelease(indicator, options)).values;
 }

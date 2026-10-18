@@ -4,15 +4,14 @@ import { build } from 'esbuild';
 
 const VALUES = { USA: { 2026: 1 }, FRA: { 2026: 2 } };
 
-// Synthetic dates: each indicator gets its own so a swapped mapping shows.
-function releaseFor(indicator) {
+function distinctReleaseFor(indicator) {
   const day = String([...indicator].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % 28 + 1).padStart(2, '0');
   return { publishedAt: `2000-01-${day}T00:00:00Z`, updatedAt: `2000-02-${day}T00:00:00Z` };
 }
 
 async function loadSeeder(file, t) {
   t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-16T00:00:00Z') });
-  globalThis.__imfReleaseFor = releaseFor;
+  globalThis.__imfReleaseFor = distinctReleaseFor;
   globalThis.__imfValues = VALUES;
   t.after(() => { delete globalThis.__imfReleaseFor; delete globalThis.__imfValues; });
   const result = await build({
@@ -34,10 +33,10 @@ async function loadSeeder(file, t) {
 test('macro stores each displayed metric with its own indicator release', async t => {
   const data = await (await loadSeeder('seed-imf-macro.mjs', t)).fetchImfMacro();
   assert.deepEqual(data.releases, {
-    inflationPct: releaseFor('PCPIPCH'),
-    primaryBalancePct: releaseFor('GGXONLB_NGDP'),
-    govExpenditurePct: releaseFor('GGX_NGDP'),
-    govRevenuePct: releaseFor('GGR_NGDP'),
+    inflationPct: distinctReleaseFor('PCPIPCH'),
+    primaryBalancePct: distinctReleaseFor('GGXONLB_NGDP'),
+    govExpenditurePct: distinctReleaseFor('GGX_NGDP'),
+    govRevenuePct: distinctReleaseFor('GGR_NGDP'),
   });
   assert.equal(data.countries.US.inflationPct, 1);
   assert.equal(data.seededAt, '2026-10-16T00:00:00.000Z');
@@ -46,8 +45,8 @@ test('macro stores each displayed metric with its own indicator release', async 
 test('growth stores each displayed metric with its own indicator release', async t => {
   const data = await (await loadSeeder('seed-imf-growth.mjs', t)).fetchImfGrowth();
   assert.deepEqual(data.releases, {
-    realGdpGrowthPct: releaseFor('NGDP_RPCH'),
-    gdpPerCapitaUsd: releaseFor('NGDPDPC'),
+    realGdpGrowthPct: distinctReleaseFor('NGDP_RPCH'),
+    gdpPerCapitaUsd: distinctReleaseFor('NGDPDPC'),
   });
   assert.equal(data.countries.FR.realGdpGrowthPct, 2);
   assert.equal(data.countries.FR.gdpPerCapitaUsd, 2);
@@ -55,6 +54,6 @@ test('growth stores each displayed metric with its own indicator release', async
 
 test('labor stores the unemployment indicator release', async t => {
   const data = await (await loadSeeder('seed-imf-labor.mjs', t)).fetchImfLabor();
-  assert.deepEqual(data.releases, { unemploymentPct: releaseFor('LUR') });
+  assert.deepEqual(data.releases, { unemploymentPct: distinctReleaseFor('LUR') });
   assert.equal(data.countries.US.unemploymentPct, 1);
 });
