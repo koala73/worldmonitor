@@ -8,6 +8,7 @@ vi.mock('@/services/related-assets', () => ({ preloadInfrastructureTables: async
 import { isCountryActivityCoordinate, loadHostCountryMilitaryActivity, projectCountryMilitaryActivity, projectCountryMilitarySignalCounts } from '@/services/country-military-activity';
 import * as geometry from '@/services/country-geometry';
 import { classifyMilitaryVessel } from '@/services/military-vessels';
+import { projectQualifiedCountrySignals, unavailableCountrySignal } from '../../shared/country-signal-observations';
 
 const own = { lat: 38, lon: -77, operatorCountry: 'US' };
 const foreign = { lat: 39, lon: -76, operatorCountry: 'United Kingdom' };
@@ -106,6 +107,26 @@ describe('shared country military observations', () => {
     expect(summary.foreignPresence).toBe(true);
     expect(summary.coverage).toBe('partial');
     expect(summary.coverageNotes.join(' ')).toContain('3 military reports with invalid dates excluded');
+  });
+  it.each([
+    { name: 'empty ID', id: '', description: 'Malformed disruption' },
+    { name: 'overlong ID', id: 'x'.repeat(201), description: 'Malformed disruption' },
+    { name: 'empty description', id: 'missing-description', description: '' },
+  ])('retains combined Signals when a local AIS disruption has an $name', async invalid => {
+    const reader = source(vi.fn().mockResolvedValue({ flights: [], pagination: { nextCursor: '' } }));
+    const valid = { id: 'valid-disruption', description: 'Valid AIS disruption', location: { latitude: 38, longitude: -77 }, severity: 'AIS_DISRUPTION_SEVERITY_HIGH' };
+    const snapshot = { snapshotAt: Date.now(), status: { connected: true }, candidateReports: [], disruptions: [valid] };
+    reader.vessels.getVesselSnapshot = vi.fn().mockResolvedValue({ dataAvailable: true, snapshot });
+    reader.military.getUSNIFleetReport = vi.fn().mockResolvedValue({ report: { vessels: [], articleDate: '2026-10-18', timestamp: Date.now() } });
+    const baseline = await loadHostCountryMilitaryActivity(reader, 'US', 'United States', new AbortController().signal);
+    expect(baseline.qualified.partial).toBe(false);
+    snapshot.disruptions.push({ ...valid, id: invalid.id, description: invalid.description });
+    const summary = await loadHostCountryMilitaryActivity(reader, 'US', 'United States', new AbortController().signal);
+    const other = { ...unavailableCountrySignal('US', 'outages', ''), state: 'observed' as const, reason: null, observations: [{ id: 'other-family', family: 'outages' as const, type: 'internet_outage', severity: 'medium' as const, title: 'Independent source observation', source: 'Controlled source', eventAt: null, snapshotAt: null, timeBasis: 'unknown' as const }] };
+    const combined = projectQualifiedCountrySignals('US', [summary.qualified, other]);
+    expect(combined.observations.map(row => row.id)).toEqual(['valid-disruption', 'other-family']);
+    expect(combined.details).toMatchObject({ high: 1, medium: 1 });
+    expect(summary.qualified.partial).toBe(true);
   });
   it('retains flights on an AIS outage and does not claim no foreign presence', async () => {
     const flights = vi.fn().mockResolvedValue({ flights: [flight('own')], pagination: { nextCursor: '' } });

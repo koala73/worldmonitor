@@ -1,5 +1,5 @@
 import { countryActivityQueries } from '../../shared/country-activity-query';
-import { unavailableCountrySignal, sourceClock, type CountrySignalOutcome } from '../../shared/country-signal-observations';
+import { unavailableCountrySignal, sourceClock, qualifiedObservationSchema, type CountrySignalOutcome } from '../../shared/country-signal-observations';
 import { CountrySectionError } from './country-brief-error';
 import type { CountryBriefSource } from './country-brief-source';
 import type { MilitaryVessel } from '@/types';
@@ -73,7 +73,9 @@ export async function loadHostCountryMilitaryActivity(source: CountryBriefSource
   if ((summary.nearbyVessels ?? 0) > 0) qualified.observations.push({ id: 'country-vessels', family: 'military', type: 'military_vessel', severity: summary.nearbyVessels! >= 5 ? 'high' : summary.nearbyVessels! >= 2 ? 'medium' : 'low', title: `${summary.nearbyVessels} military vessel observations`, source: fleet ? 'AIS / USNI (reported locations; source dates differ)' : 'AIS candidate snapshot', eventAt: null, snapshotAt: ais && !fleet ? sourceClock(ais.at) : null, timeBasis: ais && !fleet ? 'snapshot' : 'unknown' });
   for (const row of ais?.disruptions ?? []) {
     if (!row.location || !isCountryActivityCoordinate(row.location.latitude, row.location.longitude, code)) continue;
-    qualified.observations.push({ id: row.id, family: 'military', type: 'ais_disruption', severity: row.severity.endsWith('_HIGH') ? 'high' : row.severity.endsWith('_ELEVATED') ? 'medium' : 'low', title: row.description.slice(0, 512), source: 'AIS relay disruption snapshot', eventAt: null, snapshotAt: sourceClock(ais!.at), timeBasis: 'snapshot' });
+    const observation = qualifiedObservationSchema.safeParse({ id: row.id, family: 'military', type: 'ais_disruption', severity: row.severity.endsWith('_HIGH') ? 'high' : row.severity.endsWith('_ELEVATED') ? 'medium' : 'low', title: row.description.slice(0, 512), source: 'AIS relay disruption snapshot', eventAt: null, snapshotAt: sourceClock(ais!.at), timeBasis: 'snapshot' });
+    if (!observation.success) { qualified.partial = true; continue; }
+    qualified.observations.push(observation.data);
     if (qualified.observations.length >= 100) { qualified.partial = true; break; }
   }
   if ((!ais || ais.invalidReports > 0 || !fleet) && summary.foreignPresence === false) summary.foreignPresence = null;
