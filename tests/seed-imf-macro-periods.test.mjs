@@ -21,6 +21,7 @@ test('macro retains each displayed metric period without executing the live seed
         export const loadEnvFile = () => {};
         export const loadSharedConfig = () => ({US:'USA', FR:'FRA'});
         export const imfSdmxFetchIndicator = async indicator => globalThis.__imfPeriodIndicators[indicator] ?? {};
+        export const imfSdmxFetchIndicatorWithRelease = async indicator => ({ values: globalThis.__imfPeriodIndicators[indicator] ?? {}, release: { publishedAt: null, updatedAt: null } });
         export const runSeed = () => { throw new Error('Live seed execution forbidden'); };
       ` }));
     } }],
