@@ -648,11 +648,9 @@ export const listRetractions = internalQuery({
  * has no index and no bounded cost. The REST layer rejects the unscoped case
  * too, so this throw is the backstop, not the user-facing error.
  *
- * `domain` wins the index when both are given, matching `search` below so the
- * two read paths agree; `country` is then post-filtered from a window
- * over-fetched by POST_FILTER_OVERFETCH. When that candidate window is full,
- * `partial` tells callers it may contain more country matches beyond the
- * bounded scan; they must not treat a short or empty page as exhaustive.
+ * `domain` wins the index when both are given. The country filter has a
+ * bounded scan budget, so a page can be empty with a continuation cursor.
+ * Native index cursors preserve ties on occurredAt without dropping events.
  */
 export const timeline = internalQuery({
   args: {
@@ -661,6 +659,7 @@ export const timeline = internalQuery({
     from: v.optional(v.number()),
     to: v.optional(v.number()),
     limit: v.optional(v.number()),
+    cursor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (args.domain === undefined && args.country === undefined) {
@@ -682,9 +681,9 @@ export const timeline = internalQuery({
     // part of the index range rather than a post-read filter. The duplicated
     // branches are the price of that: `withIndex` types the range builder
     // against the specific index, so one shared helper cannot serve both.
-    const docs =
+    const query =
       args.domain !== undefined
-        ? await ctx.db
+        ? ctx.db
             .query("intelHistory")
             .withIndex("by_domain_occurredAt", (q) => {
               const scoped = q.eq("domain", args.domain as string);
@@ -696,8 +695,7 @@ export const timeline = internalQuery({
               return scoped;
             })
             .order("desc")
-            .take(scanLimit)
-        : await ctx.db
+        : ctx.db
             .query("intelHistory")
             .withIndex("by_country_occurredAt", (q) => {
               const scoped = q.eq("country", args.country as string);
@@ -708,16 +706,22 @@ export const timeline = internalQuery({
               if (to !== undefined) return scoped.lte("occurredAt", to);
               return scoped;
             })
-            .order("desc")
-            .take(scanLimit);
+            .order("desc");
 
-    const matched = needsPostFilter
-      ? docs.filter((doc) => doc.country === args.country)
-      : docs;
+    const scoped = needsPostFilter
+      ? query.filter((q) => q.eq(q.field("country"), args.country))
+      : query;
+    const result = await scoped.paginate({
+      cursor: args.cursor || null,
+      numItems: limit,
+      maximumRowsRead: scanLimit,
+      maximumBytesRead: 2_000_000,
+    });
 
     return {
-      records: matched.slice(0, limit).map(projectRecord),
-      partial: needsPostFilter && docs.length === scanLimit,
+      records: result.page.map(projectRecord),
+      partial: !result.isDone,
+      nextCursor: result.isDone ? "" : result.continueCursor,
     };
   },
 });

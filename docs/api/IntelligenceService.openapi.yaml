@@ -4447,6 +4447,15 @@ paths:
                   schema:
                     type: integer
                     format: int32
+                - name: cursor
+                  in: query
+                  description: |-
+                    Opaque next_cursor from the preceding response. Omit for the first page.
+                     Keep domain, country, from and to unchanged between pages.
+                  required: false
+                  example: "next-page-token"
+                  schema:
+                    type: string
                 - name: jmespath
                   in: query
                   description: |-
@@ -4461,6 +4470,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "nextCursor": "next-page-token"
                                 "partial": true
                                 "records":
                                     - "category": "cs.AI"
@@ -10036,6 +10046,12 @@ components:
                         Maximum events to return. Defaults to 50 server-side when omitted or
                          <= 0; the handler caps it at 200, the TIMELINE_MAX_LIMIT the Convex
                          query clamps to (convex/intelHistory.ts).
+                cursor:
+                    type: string
+                    maxLength: 4096
+                    description: |-
+                        Opaque next_cursor from the preceding response. Omit for the first page.
+                         Keep domain, country, from and to unchanged between pages.
             description: |-
                 GetIntelTimelineRequest asks for stored historical intelligence events in
                  reverse-chronological order. Unlike SearchIntelHistory this is a pure
@@ -10053,7 +10069,9 @@ components:
                         $ref: '#/components/schemas/IntelHistoryRecord'
                 partial:
                     type: boolean
-                    description: True when the bounded post-filter candidate window may omit older events.
+                    description: |-
+                        True when more history may remain after this bounded page. Continue with
+                         next_cursor, including when records is empty.
                 upstreamUnavailable:
                     type: boolean
                     description: |-
@@ -10061,6 +10079,11 @@ components:
                          flag out of the body and switches the response to Cache-Control:
                          no-store, so a transient outage is never pinned as a false-empty timeline
                          for the tier's full TTL.
+                nextCursor:
+                    type: string
+                    description: |-
+                        Continue with this cursor, even when records is empty. Empty means the
+                         scoped archive is exhausted. Also empty when upstream_unavailable is true.
             description: GetIntelTimelineResponse returns the scoped history newest-first.
         GetSimilarEventsRequest:
             type: object

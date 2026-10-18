@@ -90,11 +90,13 @@ REST 摘要返回的是底层标题而非聚类。每个条目包含 `title`、`
 | `list-unrest-events` | `country`、`start`、`end`（含边界的毫秒时间戳）。严重程度、边界框、`page_size` 和 `cursor` 参数会被接受但不生效。 |
 | `list-feed-digest` | `variant`（`full`、`tech`、`finance`、`happy`、`commodity`）、`lang` |
 | `get_news_clusters` | `variant`、`category`、`query`（子串匹配）、`min_sources`、`limit`（最多 25） |
-| `get-intel-timeline` | `domain` 和/或 `country`（至少一个）、`from`、`to`、`limit`（默认 50，最多 200） |
+| `get-intel-timeline` | `domain` 和/或 `country`（至少一个）、`from`、`to`、`limit`（默认 50，最多 200）、`cursor` |
 | `search-intel-history` | `query`（必填）、`domain`、`country`、`from`、`to`、`limit`（默认 20，最多 64） |
 | `get_conflict_events` | `country`、`min_fatalities`、`limit` |
 
-列表路由在一次响应中返回整个当前快照，没有游标分页。当有界读取可能遗漏更早的匹配时，历史路由会设置 `partial: true`；无法访问存储时会设置 `upstreamUnavailable: true`。此时的空列表表示读取失败，而不是没有事件。
+UCDP 和动荡列表路由返回当前快照，不支持游标分页。历史时间线路由返回不透明的 `nextCursor`。将它作为 `cursor` 传入，并保持 domain、country 和时间筛选不变，以读取下一页。即使 `records` 为空，也要继续读取，直到 `nextCursor` 为空。有界国家扫描可能在找到更早的匹配之前返回空页。`partial: true` 表示可能还有更多历史记录。
+
+无法访问存储时，历史读取会设置 `upstreamUnavailable: true`。此时的空列表表示读取失败，而不是没有事件。恢复后重试相同请求。无效游标返回 HTTP 400。游标被拒绝时，请从第一页重新开始。每页读取当前存储状态，因此导出时应固定时间范围，并按 `id` 去重。
 
 ## 保留期限：每个数据流能追溯多远
 
@@ -133,6 +135,12 @@ unrest = client.get("/api/unrest/v1/list-unrest-events",
 history = client.get("/api/intelligence/v1/get-intel-timeline",
                      {"domain": "conflict", "country": "UA", "limit": 50})
 
+# 继续读取保留的历史，包括中间的空页
+while not history["upstreamUnavailable"] and history["nextCursor"]:
+    history = client.get("/api/intelligence/v1/get-intel-timeline",
+                         {"domain": "conflict", "country": "UA", "limit": 50,
+                          "cursor": history["nextCursor"]})
+
 # MCP：多方印证的新闻聚类，附每个媒体的层级
 clusters = client.call_tool("get_news_clusters", min_sources=2, limit=10)
 ```
@@ -158,4 +166,4 @@ npx worldmonitor call get_intel_timeline --args '{"domain":"conflict","country":
 - World Monitor 聚合已发布的报道，不在现场核实事件；来自 GDELT 的记录是媒体信号。
 - 并非所有上游来源都已完成条款审查。再分发数据前请确认复用条款。免费的 `get_sources` MCP 工具会列出每个媒体的层级和审查状态。
 - 没有公布的可用性 SLA。
-- 计划中的工作：带游标分页、保留期更长的历史端点，见 [issue #4276](https://github.com/koala73/worldmonitor/issues/4276) 和 [issue #5745](https://github.com/koala73/worldmonitor/issues/5745)。
+- 时间线可分页读取现有的 180 天存储。国家历史回放由 [issue #4276](https://github.com/koala73/worldmonitor/issues/4276) 跟踪，更多事件领域由 [issue #5745](https://github.com/koala73/worldmonitor/issues/5745) 跟踪。延长保留期需要买方需求和存储成本证据。
