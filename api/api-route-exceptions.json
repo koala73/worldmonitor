@@ -262,6 +262,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/checkout.ts",
+      "category": "external-protocol",
+      "reason": "MCP start_upgrade tool (#9144): plan mapping and the server-side relay to the existing Convex create-checkout action, with its JSON-RPC refusal mapping. Part of the streamable-HTTP MCP surface — not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/upgrade-constants.ts",
       "category": "external-protocol",
       "reason": "MCP free-account allowance numeric constants (#6716). Supporting module for the MCP transport; listed so the sebuf contract script accepts the api/mcp/ tree.",
