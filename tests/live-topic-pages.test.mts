@@ -85,6 +85,36 @@ function marketsPayload(fetchedAt = NOW - 30 * 60_000) {
   };
 }
 
+const DAY = 24 * HOUR;
+
+function yieldCurvePayload(date = Date.parse('2026-10-16T00:00:00Z'), overrides: Record<string, unknown> = {}) {
+  return {
+    unavailable: false,
+    curves: [{
+      date,
+      oneMonth: 4.12, oneAndAHalfMonth: 4.14, twoMonth: 4.17, threeMonth: 4.26, fourMonth: 4.32, sixMonth: 4.34,
+      oneYear: 4.46, twoYear: 4.74, threeYear: 4.82, fiveYear: 4.89, sevenYear: 4.98, tenYear: 5.09, twentyYear: 5.47, thirtyYear: 5.43,
+      ...overrides,
+    }],
+  };
+}
+
+function oilPayload() {
+  return {
+    // Oldest first, unlike the seed, so the record cannot rely on order.
+    crudeWeeks: [
+      { period: '2026-09-25', stocksMb: 425.1, weeklyChangeMb: 1.2 },
+      { period: '2026-10-02', stocksMb: 424.134, weeklyChangeMb: -0.966 },
+      { period: '2026-10-09', stocksMb: 415.577, weeklyChangeMb: -8.557 },
+    ],
+    spr: { latestStocksMb: 282.983, changeWow: 0, weeks: [{ period: '2026-10-09', stocksMb: 282.983 }, { period: '2026-10-02', stocksMb: 283.5 }] },
+    natGasWeeks: [{ period: '2026-10-09', storBcf: 3567, weeklyChangeBcf: 67 }],
+    euGas: { fillPct: 74.31, fillPctChange1d: 0.09, trend: 'injecting', history: [{ date: '2026-10-15', fillPct: 74.22 }, { date: '2026-10-16', fillPct: 74.31 }] },
+    refinery: { inputsMbpd: 16.615, period: '2026-10-09' },
+    updatedAt: new Date(NOW).toISOString(),
+  };
+}
+
 describe('live topic readings', () => {
   it('reads the Fear & Greed composite with CNN and AAII beside it, and refuses a stale seed', () => {
     const record = liveTopicReading(page('fear-and-greed-index'), fearGreedPayload(), NOW);
@@ -187,6 +217,66 @@ describe('live topic readings never publish a missing value as a fact', () => {
     assert.match(section, /Volume traded, all tracked markets/);
     assert.match(section, /The 15 most traded of 20 tracked markets/);
     assert.match(section, /tracks 20 Polymarket and Kalshi markets/);
+  });
+
+  it('reads the latest Treasury curve with both spreads and refuses a curve older than seven days', () => {
+    const topic = page('treasury-yield-curve');
+    const record = liveTopicReading(topic, yieldCurvePayload(), NOW);
+    assert.equal(record.asOf, '2026-10-16T00:00:00.000Z');
+    assert.equal(record.points.length, 14);
+    assert.equal(record.tenTwoBp, 35, 'floating-point 5.09 - 4.74 rounds to whole basis points');
+    assert.equal(record.tenThreeMonthBp, 83);
+    assert.equal(liveTopicReading(topic, yieldCurvePayload(NOW - 8 * DAY), NOW), null);
+    assert.equal(liveTopicReading(topic, { curves: [], unavailable: true }, NOW), null);
+    assert.equal(liveTopicReading(topic, yieldCurvePayload(undefined, { tenYear: null }), NOW), null, 'no 10-year, no headline');
+  });
+
+  it('dates the curve by its business day, not a clock time, and calls an inversion an inversion', () => {
+    const topic = page('treasury-yield-curve');
+    const section = topic.renderSection(liveTopicReading(topic, yieldCurvePayload(), NOW), { live: true });
+    assert.match(section, /<p data-live-answer>On Oct 16, 2026, the US Treasury par yield curve had the 10-year at 5\.09%, the 2-year at 4\.74% and the 3-month at 4\.26%\. The 10-year minus 2-year spread was \+35 basis points, so the curve was not inverted\./);
+    assert.match(section, /<time data-live-updated datetime="2026-10-16">Live reading for Oct 16, 2026<\/time>/);
+    assert.doesNotMatch(section, /UTC/);
+    const inverted = topic.renderSection(liveTopicReading(topic, yieldCurvePayload(undefined, { twoYear: 5.3 }), NOW), { live: true });
+    assert.match(inverted, /spread was -21 basis points, so the curve was inverted\./);
+  });
+
+  it('reads the newest EIA week whatever the order, and refuses a week older than 21 days', () => {
+    const topic = page('crude-oil-inventories');
+    const payload = oilPayload();
+    const record = liveTopicReading(topic, payload, NOW);
+    assert.equal(record.asOf, '2026-10-09T00:00:00.000Z');
+    assert.equal(record.crudeMb, 415.6);
+    assert.equal(record.crudeChangeMb, -8.557);
+    assert.equal(record.sprMb, 283);
+    assert.equal(record.sprChangeMb, -0.5, 'the SPR change comes from the weeks, not the handler default of 0');
+    assert.deepEqual(record.weeks.map((week: { period: string }) => week.period), ['2026-10-09', '2026-10-02', '2026-09-25']);
+    assert.deepEqual(record.euGas, { date: '2026-10-16T00:00:00.000Z', fillPct: 74.3 });
+    assert.equal(liveTopicReading(topic, oilPayload(), Date.parse('2026-10-31T00:00:00Z')), null);
+    assert.equal(liveTopicReading(topic, { crudeWeeks: [], natGasWeeks: [], updatedAt: '' }, NOW), null);
+    const section = topic.renderSection(record, { live: true });
+    assert.match(section, /For the week ending Oct 9, 2026, US commercial crude oil inventories were 415\.6 million barrels, down 8\.6 million barrels from the prior week, according to the EIA\. The Strategic Petroleum Reserve held 283\.0 million barrels\. US working natural gas in storage was 3,567 billion cubic feet\./);
+    assert.match(section, /Live reading for Oct 9, 2026/);
+    assert.match(section, /<strong>415\.6M bbl<\/strong><small>-8\.6M bbl on the week<\/small>/);
+    payload.spr.weeks[1].stocksMb = 282.99;
+    const flat = topic.renderSection(liveTopicReading(topic, payload, NOW), { live: true });
+    assert.match(flat, /<strong>283\.0M bbl<\/strong><small>Unchanged on the week<\/small>/, 'a change that rounds to zero is not written as 0.0');
+  });
+
+  it('drops an inventory section from another report week or with a zero placeholder', () => {
+    const topic = page('crude-oil-inventories');
+    const payload = oilPayload();
+    payload.spr = { latestStocksMb: 0, changeWow: 0, weeks: [{ period: '2026-10-02', stocksMb: 283.5 }] };
+    payload.natGasWeeks = [{ period: '2026-10-09', storBcf: 0, weeklyChangeBcf: 0 }];
+    payload.refinery = { inputsMbpd: 16.6, period: '2026-10-02' };
+    payload.euGas.history = [{ date: '2026-10-10', fillPct: 73 }];
+    const record = liveTopicReading(topic, payload, NOW);
+    assert.equal(record.sprMb, null, "an SPR figure from the prior week is not this week's");
+    assert.equal(record.natGasBcf, null);
+    assert.equal(record.refineryMbpd, null);
+    assert.equal(record.euGas, null, 'EU storage older than four days is dropped');
+    const section = topic.renderSection(record, { live: true });
+    assert.doesNotMatch(section, /Strategic Petroleum Reserve held|natural gas in storage was|EU gas storage|agsi\.gie\.eu/);
   });
 });
 

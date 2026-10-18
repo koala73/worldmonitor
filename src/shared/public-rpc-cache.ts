@@ -21,6 +21,8 @@ export const LIVE_TOPIC_RPC_PATHS = Object.freeze([
   '/api/infrastructure/v1/list-internet-outages',
   '/api/prediction/v1/list-prediction-markets',
   '/api/economic/v1/get-national-debt',
+  '/api/economic/v1/get-us-treasury-par-yield-curve',
+  '/api/economic/v1/get-oil-inventories',
 ]);
 const LIVE_TOPIC_PUBLIC_SEARCH = 'public=1';
 

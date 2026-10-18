@@ -36,6 +36,13 @@ export function requireFreshTimestamp(value, { now, maxAgeMs, label }) {
   return new Date(timestamp).toISOString();
 }
 
+/** "Oct 16, 2026" for a value that names a day, not a moment (a market close, a report week). */
+export function formatStaticDate(iso) {
+  const timestamp = Date.parse(iso);
+  if (!Number.isFinite(timestamp)) return String(iso || '');
+  return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(timestamp));
+}
+
 // Number(null) and Number('') are 0, which would publish a missing value as a
 // real zero; absent stays null.
 export function finiteNumber(value) {
@@ -72,13 +79,14 @@ function scriptJson(value) {
  * FAQ markup lives inside the section so the middleware's swap updates the
  * structured answer together with the visible one.
  */
-export function renderLiveSection({ slug, question, record, live, answer, bodyHtml, asOf, sourceHtml }) {
+export function renderLiveSection({ slug, question, record, live, answer, bodyHtml, asOf, dateOnly = false, sourceHtml }) {
   const { start, end } = liveSectionMarkers(slug);
   const status = record
     ? (live ? 'Live reading' : 'Published reading')
     : 'No current reading';
+  const when = dateOnly ? `for ${formatStaticDate(asOf)}` : formatStaticDateTime(asOf);
   const time = record && asOf
-    ? `<time data-live-updated datetime="${escapeHtml(asOf)}">${escapeHtml(live ? 'Live reading' : 'Published reading')} ${escapeHtml(formatStaticDateTime(asOf))}</time>`
+    ? `<time data-live-updated datetime="${escapeHtml(dateOnly ? asOf.slice(0, 10) : asOf)}">${escapeHtml(live ? 'Live reading' : 'Published reading')} ${escapeHtml(when)}</time>`
     : '<span data-live-updated>No current reading is available</span>';
   return `${start}
       <section class="live-tool" data-live-topic="${escapeHtml(slug)}" data-state="${record ? 'ready' : 'loading'}"${live && record ? ' data-live-at-request' : ''}>

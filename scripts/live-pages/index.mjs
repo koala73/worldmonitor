@@ -2,16 +2,20 @@
 // freeze and the routing middleware all read this one list.
 
 import { UnpublishableReading } from './common.mjs';
+import { crudeOilInventoriesPage } from './crude-oil-inventories.mjs';
 import { fearGreedPage } from './fear-greed.mjs';
 import { internetOutagesPage } from './internet-outages.mjs';
 import { nationalDebtPage } from './national-debt.mjs';
 import { predictionMarketsPage } from './prediction-markets.mjs';
+import { treasuryYieldCurvePage } from './treasury-yield-curve.mjs';
 
 export const LIVE_TOPIC_PAGES = Object.freeze([
   fearGreedPage,
   internetOutagesPage,
   predictionMarketsPage,
   nationalDebtPage,
+  treasuryYieldCurvePage,
+  crudeOilInventoriesPage,
 ]);
 
 const BY_PATH = new Map(LIVE_TOPIC_PAGES.map((page) => [page.path, page]));
