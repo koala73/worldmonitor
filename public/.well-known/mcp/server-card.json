@@ -206,7 +206,7 @@
       "name": "get_supply_chain_data",
       "description": "Dry bulk shipping stress index, customs revenue flows, and COMTRADE bilateral trade data. Tracks global supply chain pressure and trade disruptions.",
       "_meta": {
-        "worldmonitor/access": "free-account"
+        "worldmonitor/access": "subscription"
       }
     },
     {

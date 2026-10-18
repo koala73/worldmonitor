@@ -2958,6 +2958,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_supply_chain_data',
     title: 'Shipping stress and trade flows',
+    _subscriptionOnly: true,
     _outputBudgetBytes: 131072,
     description: 'Dry bulk shipping stress index, customs revenue flows, and COMTRADE bilateral trade data. Tracks global supply chain pressure and trade disruptions.',
     inputSchema: {

@@ -69,8 +69,8 @@ describe('free-account allowance — tool scope', () => {
         process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
         process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
         let cacheReads = 0;
-        globalThis.fetch = async () => {
-          cacheReads += 1;
+        globalThis.fetch = async (url) => {
+          if (String(url).includes('/get/')) cacheReads += 1;
           return new Response(JSON.stringify({ result: JSON.stringify({ flows: [{ cmdCode: '8542' }] }) }));
         };
 
