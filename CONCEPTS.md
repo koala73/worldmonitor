@@ -36,6 +36,12 @@ Two rules follow from what the contract reduces to. It reports a single newest t
 
 Sizing the budget belongs to the source's own publication calendar, measured rather than assumed: the widest gap the source routinely takes — a holiday cluster, a non-working period, a weekend either side — plus room for one missed run. A budget guessed generously enough to never false-alarm has usually also stopped detecting the freeze it exists for. See also: Seed-Owned Key, Activation Marker, Content Clock, Superseded Failure.
 
+### Source Release
+
+The publication and update dates an upstream attaches to the dataset a value came from, kept per indicator and distinct from the value's observation period, the time it was fetched or seeded, and any named edition.
+
+Publication marks when the dataset was formally issued; the update date moves with later revisions, so an unchanged publication date does not mean unchanged data. A release is known only when the upstream supplied it in the same response as the values. An absent, malformed or ambiguous date stays unknown and is shown as not supplied, never filled from fetch or seed time. A date does not identify an edition, so a named edition needs an edition-specific source rather than a date match. See also: Content-Age Contract, Reference Period.
+
 ### Activation Marker
 
 A durable, deliberately expiry-free key a producer writes only after its first genuinely successful publish, used to end a deployment-order grace period. It exists because the reader and the producer ship on different clocks — the reader deploys on merge, the producer runs on its own schedule — so a newly registered data key is legitimately absent for a window that can span a full producer cycle, and grading it strictly during that window reports a loud, unactionable failure for something that has simply not happened yet.
