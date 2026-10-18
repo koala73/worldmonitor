@@ -718,7 +718,14 @@ describe('U6 tokenHandler — authorization_code (legacy)', () => {
 describe('U6 tokenHandler — refresh_token (Pro)', () => {
   it('Pro refresh preserves kind, userId, mcpTokenId, scope, family_id', async () => {
     await ensureFixtures();
-    const { redis, deps } = makeDeps();
+    let validationOptions;
+    const { redis, deps } = makeDeps({
+      validateProMcpToken: async (tokenId, options) => {
+        assert.equal(tokenId, MCP_TOKEN_ID);
+        validationOptions = options;
+        return { ok: 'valid', userId: USER_ID };
+      },
+    });
     const FAMILY = 'family_original_xxx';
     redis.store.set('oauth:refresh:rt-1', {
       kind: 'pro',
@@ -739,6 +746,7 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
       deps,
     );
     assert.equal(resp.status, 200);
+    assert.deepEqual(validationOptions, { recordUsage: false });
     const body = await resp.json();
     assert.equal(body.scope, 'mcp_pro');
     assert.equal(body.refresh_token, 'uuid_0202');
