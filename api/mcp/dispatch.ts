@@ -689,6 +689,20 @@ export async function dispatchToolsCall(
     if (error.code === 'backend') return quotaBackendUnavailableResponse(id, corsHeaders);
     return rpcError(id, error.code === 'reads' ? -32029 : -32602, error.message, { ...corsHeaders, ...(error.retryAfter ? { 'Retry-After': String(error.retryAfter) } : {}) }, undefined, error.code === 'reads' ? 429 : 200);
   }
+  // A new panel allocation charges the same daily counter as a standalone call
+  // but skips that call's reservation below, so check the Enterprise alarm
+  // here too. A reused allocation charged nothing.
+  if (panelRequest && !panelRequest.reused && budget?.enterprisePlan
+    && (context.kind === 'pro' || context.kind === 'user_key')) {
+    reportHighUsageIfCrossed({
+      meter: 'mcp',
+      credential: 'enterprise-plan',
+      principal: context.userId,
+      newCount: panelRequest.usage.used,
+      ceiling: resolveDailyLimit(budget.limit) ?? 0,
+      ctx,
+    });
+  }
 
   // user_key (#4859) consumes the same per-user daily budget as pro: cache
   // tools read Upstash directly (no downstream gateway metering), so an

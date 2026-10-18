@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { HMAC_SECRET, makeProDeps, proReq, callBody } from './helpers/mcp-pro-deps.mjs';
 import { admitNewsPanel, authorizePanelRead } from '../api/mcp/panel-requests.ts';
 import { dailyCounterKey } from '../server/_shared/pro-mcp-token.ts';
+import { __resetHighUsageAlarmForTests, __setHighUsageReporterForTests, HIGH_USAGE_ALARM_FRACTION } from '../server/_shared/high-usage-alarm.ts';
 
 const originalFetch = globalThis.fetch, OriginalDate = Date, originalEnv = { ...process.env };
 const context = { kind: 'pro', userId: 'user_pro_xyz', mcpTokenId: 'k57mcptokenid' };
@@ -174,6 +175,25 @@ describe('World Brief closed paid admission', () => {
     const free = makeProDeps({ getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: now + 86400000 }) });
     assert.equal((await invoke(free, { refresh: true })).response.status, 403); assert.equal(free.pipe.count, 0);
     assert.equal(calls.length, 0);
+  });
+  it('raises the Enterprise high-usage alarm when a new panel allocation crosses it, not on reuse', async () => {
+    const reports = [];
+    __resetHighUsageAlarmForTests();
+    __setHighUsageReporterForTests((_error, opts) => { reports.push(opts); });
+    try {
+      const mcpCallsPerDay = 25_000, threshold = Math.ceil(mcpCallsPerDay * HIGH_USAGE_ALARM_FRACTION);
+      const getEntitlements = async () => ({ planKey: 'enterprise', features: { tier: 3, mcpAccess: true, apiAccess: true, planLimits: { apiRequestsPerDay: 100_000, mcpCallsPerDay, dashboardAiCallsPerDay: 25_000, mcpBurstRequestsPerMinute: 1_000 } }, validUntil: now + 86400000 });
+      const bundle = makeProDeps({ getEntitlements, pipelineOpts: { initialCount: threshold - 1 } });
+      assert.equal(value(await invoke(bundle)).panelRequest.panel, 'world-brief');
+      assert.equal(bundle.pipe.count, threshold);
+      await invoke(bundle);
+      assert.equal(bundle.pipe.count, threshold, 'the second opening reuses the allocation');
+      assert.equal(reports.length, 1);
+      assert.deepEqual(reports[0].tags, { route: 'high-usage-alarm', meter: 'mcp', credential: 'enterprise-plan' });
+      assert.equal(reports[0].extra.newCount, threshold);
+    } finally {
+      __setHighUsageReporterForTests(null);
+    }
   });
   it('keeps the ordinary operator route outside paid admission', async () => {
     process.env.WORLDMONITOR_VALID_KEYS = 'world-brief-fixture-operator';

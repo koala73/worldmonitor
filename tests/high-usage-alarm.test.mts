@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { describe, it } from 'node:test';
+import { after, beforeEach, describe, it } from 'node:test';
 
 import {
+  __resetHighUsageAlarmForTests,
+  __setHighUsageReporterForTests,
   crossedHighUsageThreshold,
   HIGH_USAGE_ALARM_FRACTION,
   OPERATOR_KEY_DAILY_CEILINGS,
   operatorKeyQuotaPrincipal,
+  reportHighUsageIfCrossed,
 } from '../server/_shared/high-usage-alarm.ts';
 import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
 import { mergeEntitlementFeatures } from '../convex/lib/entitlements.ts';
@@ -35,6 +38,35 @@ describe('crossedHighUsageThreshold', () => {
     assert.equal(crossedHighUsageThreshold(250, 1, 0), false);
     assert.equal(crossedHighUsageThreshold(250, 1, Number.NaN), false);
     assert.equal(crossedHighUsageThreshold(Number.NaN, 1, ceiling), false);
+  });
+});
+
+describe('reportHighUsageIfCrossed', () => {
+  const reports: unknown[] = [];
+  beforeEach(() => {
+    reports.length = 0;
+    __resetHighUsageAlarmForTests();
+    __setHighUsageReporterForTests((error, opts) => { reports.push({ error, opts }); });
+  });
+  after(() => __setHighUsageReporterForTests(null));
+
+  const report = (newCount: number, principal = 'hashed-key') => reportHighUsageIfCrossed({
+    meter: 'direct-llm', credential: 'operator-key', principal, newCount, ceiling: 1_000,
+  });
+
+  it('reports a crossing once per principal per day even when a rollback re-crosses it', () => {
+    // Call 250 crosses and reports; a failed relay rolls the counter back to
+    // 249, so the retry reserves 250 again and crosses a second time.
+    assert.equal(report(250), true);
+    assert.equal(report(250), false);
+    assert.equal(reports.length, 1);
+  });
+
+  it('keeps principals and meters separate', () => {
+    report(250, 'first-key');
+    report(250, 'second-key');
+    reportHighUsageIfCrossed({ meter: 'mcp', credential: 'operator-key', principal: 'first-key', newCount: 250, ceiling: 1_000 });
+    assert.equal(reports.length, 3);
   });
 });
 

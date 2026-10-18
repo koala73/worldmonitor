@@ -336,7 +336,7 @@ const SITE_BASELINE = {
   "server/_shared/embed-entitlement.ts::embedAccess": 2,
   "server/_shared/embed-session.ts::embedAccess": 2,
   "server/_shared/entitlement-check.ts::apiAccess": 1,
-  "server/_shared/entitlement-check.ts::tier": 1,
+  "server/_shared/entitlement-check.ts::tier": 2,
   "server/_shared/premium-check.ts::apiAccess": 1,
   "server/_shared/premium-check.ts::isCallerPremium": 1,
   "server/_shared/premium-check.ts::resolvePremiumCallerIdentity": 3,

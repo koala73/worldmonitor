@@ -48,6 +48,25 @@ export function crossedHighUsageThreshold(newCount: number, weight: number, ceil
   return previous < threshold && newCount >= threshold;
 }
 
+type HighUsageReporter = (error: Error, opts: Record<string, unknown>) => unknown;
+let reporter: HighUsageReporter = captureSilentError;
+
+// Crossings already reported this UTC day, by meter, credential and principal.
+// Direct-LLM counters roll back when a relay fails, so a retry at the
+// threshold crosses it again; this keeps that to one event per isolate. Other
+// isolates can still report the same crossing, and Sentry groups them under
+// one fingerprint.
+const reportedToday = new Map<string, string>();
+const REPORTED_TODAY_MAX = 1_000;
+
+export function __setHighUsageReporterForTests(fn: HighUsageReporter | null): void {
+  reporter = fn ?? captureSilentError;
+}
+
+export function __resetHighUsageAlarmForTests(): void {
+  reportedToday.clear();
+}
+
 /**
  * Report a crossed threshold to Sentry. `principal` must already be a
  * non-secret identifier — the gateway's `hashKeySync` of an operator key (the
@@ -63,7 +82,12 @@ export function reportHighUsageIfCrossed(opts: {
   ctx?: { waitUntil: (p: Promise<unknown>) => void };
 }): boolean {
   if (!crossedHighUsageThreshold(opts.newCount, opts.weight ?? 1, opts.ceiling)) return false;
-  captureSilentError(
+  const day = new Date().toISOString().slice(0, 10);
+  const key = `${opts.meter}|${opts.credential}|${opts.principal}`;
+  if (reportedToday.get(key) === day) return false;
+  if (reportedToday.size >= REPORTED_TODAY_MAX) reportedToday.clear();
+  reportedToday.set(key, day);
+  reporter(
     new Error(
       `High daily usage: ${opts.credential} ${opts.principal} reached ${opts.newCount} of its ` +
         `${opts.ceiling} ${opts.meter} ceiling`,
