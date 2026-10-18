@@ -728,7 +728,10 @@ async function handleRefreshToken(
     // ever returns a different user for this tokenId (impossible under
     // U1's schema, but cheap), refuse rather than silently rotate to the
     // wrong identity.
-    const validation: ProMcpValidateUnion = await deps.validateProMcpToken(refreshData.mcpTokenId);
+    const validation: ProMcpValidateUnion = await deps.validateProMcpToken(
+      refreshData.mcpTokenId,
+      { recordUsage: false },
+    );
 
     if (validation.ok === 'transient') {
       // Restore the user's refresh token after the claim because Convex has not

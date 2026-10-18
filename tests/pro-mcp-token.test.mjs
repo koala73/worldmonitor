@@ -126,7 +126,7 @@ describe('pro-mcp-token', () => {
     it('can validate a refresh without recording MCP use', async () => {
       const redis = makeRedisStub();
       let requestBody;
-      const { stub } = makeFetchStub(redis, (url, init) => {
+      const stub = makeFetchStub(redis, (url, init) => {
         requestBody = JSON.parse(init.body);
         return new Response(JSON.stringify({ userId: 'user_123' }), { status: 200 });
       });
