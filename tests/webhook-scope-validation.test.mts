@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import { ValidationError } from '../src/generated/server/worldmonitor/shipping/v2/service_server';
@@ -116,5 +117,16 @@ describe('normalizeWebhookScope: market.move', () => {
     rejects(() => normalizeWebhookScope('market.move', { minAbsPct: 'ten' }), 'scope.minAbsPct', /must be a number/);
     rejects(() => normalizeWebhookScope('market.move', { direction: 'sideways' }), 'scope.direction', /up, down, any/);
     rejects(() => normalizeWebhookScope('market.move', { keywords: ['oil'] }), 'scope.keywords', /does not apply to market\.move/);
+  });
+});
+
+describe('published RegisterWebhook example', () => {
+  it('carries no scope, since its chokepoint.disruption event rejects one', () => {
+    const spec = JSON.parse(readFileSync(new URL('../docs/api/ShippingV2Service.openapi.json', import.meta.url), 'utf8'));
+    const example = spec.paths['/api/v2/shipping/webhooks'].post.requestBody.content['application/json'].example;
+    assert.equal(example.eventType, 'chokepoint.disruption');
+    assert.equal('scope' in example, false);
+    assert.doesNotThrow(() => normalizeWebhookScope(example.eventType, example.scope));
+    assert.throws(() => normalizeWebhookScope('chokepoint.disruption', { keywords: ['oil'] }), ValidationError);
   });
 });

@@ -29723,15 +29723,6 @@ paths:
                                 - "suez"
                             "eventType": "chokepoint.disruption"
                             "minLiveSignal": 1
-                            "scope":
-                                "assetClasses":
-                                    - "example"
-                                "categories":
-                                    - "example"
-                                "direction": "example"
-                                "hazardTypes":
-                                    - "example"
-                                "importanceFloor": 1
                         schema:
                             $ref: '#/components/schemas/worldmonitor_shipping_v2_RegisterWebhookRequest'
                 required: true
