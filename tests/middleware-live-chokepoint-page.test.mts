@@ -1,0 +1,172 @@
+import { afterEach, describe, it, mock } from 'node:test';
+import assert from 'node:assert/strict';
+
+import middleware from '../middleware';
+import {
+  CHOKEPOINT_LIVE_START,
+  renderChokepointLiveSection,
+  replaceChokepointLiveSection,
+} from '../scripts/crawlable-chokepoint-live.mjs';
+import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache.ts';
+
+const PAGE_URL = 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/';
+const HORMUZ = {
+  id: 'hormuz_strait',
+  displayName: 'Strait of Hormuz',
+  transitMeasurementNote: 'Counts cover AIS-visible crossings & exclude "dark" transits.',
+};
+
+const PUBLISHED_PULSE = {
+  disruptionScore: '85',
+  status: 'Red',
+  congestion: 'High',
+  navigationalWarnings: '0 warnings',
+  navigationalWarningsAvailable: true,
+  aisDisruptions: '1 AIS disruption',
+  aisSnapshotAvailable: true,
+  description: null,
+  todayTransits: '76',
+  todayCountsAvailable: true,
+  weekMovement: '-13.6% vs prior week',
+  partial: false,
+  asOf: '2026-10-12T05:02:00.000Z',
+};
+
+function builtPage(): string {
+  return `<!doctype html><html><body><main>
+      <h1>Strait of Hormuz</h1>
+${renderChokepointLiveSection({ chokepoint: HORMUZ, pulse: PUBLISHED_PULSE })}
+      <a class="cta" href="/dashboard?chokepoint=hormuz_strait">Open</a>
+</main></body></html>`;
+}
+
+function statusPayload(fetchedAt = new Date(Date.now() - 60_000).toISOString()) {
+  return {
+    fetchedAt,
+    upstreamUnavailable: false,
+    chokepoints: [{
+      id: 'hormuz_strait',
+      disruptionScore: 62,
+      status: 'yellow',
+      congestionLevel: 'moderate',
+      activeWarnings: 2,
+      navigationalWarningsAvailable: true,
+      aisDisruptions: 0,
+      aisSnapshotAvailable: true,
+      description: 'Tanker traffic recovering',
+      transitSummary: { dataAvailable: true, todayTotal: 91, todayCountsAvailable: true, wowChangePct: 4.2 },
+    }],
+  };
+}
+
+function pageRequest(headers: Record<string, string> = {}, method = 'GET'): Request {
+  return new Request(PAGE_URL, {
+    method,
+    headers: { accept: 'text/html,*/*;q=0.8', 'user-agent': 'Mozilla/5.0 (compatible; OAI-SearchBot/1.0)', ...headers },
+  });
+}
+
+type Route = (input: string, init?: RequestInit) => Response | Promise<Response>;
+
+function stubFetch(route: Route) {
+  const calls: { url: string; headers: Headers }[] = [];
+  mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    calls.push({ url, headers: new Headers(init?.headers) });
+    return route(url, init);
+  });
+  return calls;
+}
+
+function servePage(url: string): Response {
+  if (url === PAGE_URL) {
+    return new Response(builtPage(), {
+      status: 200,
+      headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=3600, must-revalidate', 'content-length': '999' },
+    });
+  }
+  throw new Error(`unexpected fetch ${url}`);
+}
+
+afterEach(() => mock.restoreAll());
+
+describe('live chokepoint page HTML', () => {
+  it('replaces the published pulse with the current reading', async () => {
+    const calls = stubFetch((url) => (url.includes('/api/supply-chain/v1/get-chokepoint-status')
+      ? Response.json(statusPayload())
+      : servePage(url)));
+
+    const response = await middleware(pageRequest());
+    assert.ok(response instanceof Response);
+    const html = await response.text();
+
+    assert.equal(response.headers.get('x-wm-live-page'), 'chokepoint');
+    assert.equal(response.headers.get('content-length'), null, 'stale framing header dropped');
+    assert.match(html, /data-chokepoint-transits>91</);
+    assert.match(html, /data-chokepoint-score>62</);
+    assert.match(html, /Live reading /);
+    assert.match(html, /data-live-at-request/);
+    assert.doesNotMatch(html, /data-chokepoint-transits>76</, 'week-old count is gone');
+    assert.doesNotMatch(html, /Published pulse/);
+    assert.equal(html.split(CHOKEPOINT_LIVE_START).length, 2, 'exactly one live section');
+    assert.match(html, /exclude &quot;dark&quot; transits/, 'measurement note round-trips through the attribute');
+
+    const pageFetch = calls.find((call) => call.url === PAGE_URL);
+    assert.equal(pageFetch?.headers.get('x-wm-live-page-bypass'), '1');
+    const statusFetch = calls.find((call) => call.url.includes('get-chokepoint-status'));
+    assert.equal(new URL(statusFetch!.url).search, '?public=1');
+    assert.ok(isPublicSharedRpcRequest(statusFetch!.url), 'the status read is the anonymous public shape');
+  });
+
+  it('serves the built page unchanged when the reading is unavailable', async () => {
+    stubFetch((url) => (url.includes('get-chokepoint-status')
+      ? new Response('nope', { status: 503 })
+      : servePage(url)));
+    const response = await middleware(pageRequest());
+    assert.ok(response instanceof Response);
+    assert.equal(await response.text(), builtPage());
+    assert.equal(response.headers.get('x-wm-live-page'), null);
+  });
+
+  it('serves the built page when the reading is too old to vouch for', async () => {
+    stubFetch((url) => (url.includes('get-chokepoint-status')
+      ? Response.json(statusPayload(new Date(Date.now() - 72 * 3_600_000).toISOString()))
+      : servePage(url)));
+    const response = await middleware(pageRequest());
+    assert.ok(response instanceof Response);
+    assert.equal(await response.text(), builtPage());
+  });
+
+  it('hands the request back to the origin when the built page cannot be fetched', async () => {
+    stubFetch(() => new Response('gone', { status: 404 }));
+    const response = await middleware(pageRequest());
+    assert.ok(response instanceof Response);
+    assert.equal(response.headers.get('x-middleware-next'), '1');
+  });
+
+  it('leaves the inner fetch, HEAD and markdown requests on the static path', async () => {
+    const calls = stubFetch(servePage);
+    assert.equal(await middleware(pageRequest({ 'x-wm-live-page-bypass': '1' })), undefined);
+    assert.equal(await middleware(pageRequest({}, 'HEAD')), undefined);
+    assert.equal(await middleware(pageRequest({ accept: 'text/markdown' })), undefined);
+    assert.equal(calls.length, 0);
+  });
+});
+
+describe('replaceChokepointLiveSection', () => {
+  it('refuses pages without exactly one marked section', () => {
+    const section = renderChokepointLiveSection({ chokepoint: HORMUZ, pulse: PUBLISHED_PULSE, live: true });
+    assert.equal(replaceChokepointLiveSection('<main></main>', section), null);
+    assert.equal(replaceChokepointLiveSection(builtPage() + builtPage(), section), null);
+  });
+});
+
+describe('chokepoint status public shape', () => {
+  it('accepts only the bare public marker', () => {
+    const base = 'https://www.worldmonitor.app/api/supply-chain/v1/get-chokepoint-status';
+    assert.equal(isPublicSharedRpcRequest(`${base}?public=1`), true);
+    assert.equal(isPublicSharedRpcRequest(`${base}?public=1&x=1`), false);
+    assert.equal(isPublicSharedRpcRequest(base), false);
+    assert.equal(isPublicSharedRpcRequest(`${base}?public=1`, 'POST'), false);
+  });
+});

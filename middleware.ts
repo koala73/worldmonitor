@@ -11,6 +11,12 @@ import {
 import { getRootlessDocsDestination } from './src/config/docs-root-redirects';
 import agentRequestPolicy from './shared/agent-request-policy.json';
 import { isMcpAliasRequest, normalizeMcpHost } from './shared/mcp-host-policy';
+import { chokepointStatusViewModel } from './scripts/crawlable-live-tools.mjs';
+import {
+  chokepointPulseRecord,
+  renderChokepointLiveSection,
+  replaceChokepointLiveSection,
+} from './scripts/crawlable-chokepoint-live.mjs';
 
 const AGENT_UA = new RegExp(`(?:^|[^a-z0-9-])(?:${agentRequestPolicy.userAgents.join('|')})(?:$|[^a-z0-9-])`, 'i');
 
@@ -286,6 +292,10 @@ export default function middleware(request: Request) {
     if (!isKnownPublicPagePath(path)) {
       return originNotFoundResponse(path, request);
     }
+
+    if (isLiveChokepointPageRequest(request, path)) {
+      return liveChokepointPage(url);
+    }
   }
 
   // Only apply bot filtering to /api/* paths.
@@ -378,6 +388,96 @@ function docsResponseHeaders(upstream: Response, host: string): Headers {
   }
   headers.set('vary', [...varyParts].join(', '));
   return headers;
+}
+
+// Chokepoint pages are built from a weekly pulse snapshot. Crawlers run no
+// hydrate script, so an answer engine asking "is Hormuz open right now?" read
+// that week-old capture. Full-document GETs get the built page with its live
+// section re-rendered from the current public reading; any failure serves the
+// built page unchanged.
+const CHOKEPOINT_PAGE_PATH = /^\/chokepoints\/[a-z0-9-]+\/$/;
+// The inner fetch of the built page carries this header so it skips this
+// branch. A client that sends it only receives the built page.
+const LIVE_PAGE_BYPASS_HEADER = 'x-wm-live-page-bypass';
+const LIVE_PAGE_FETCH_TIMEOUT_MS = 4_000;
+// Must pass the /api/* bot gate below: no BOT_UA token, at least 10 chars.
+const LIVE_PAGE_USER_AGENT = 'Mozilla/5.0 (compatible; WorldMonitorLivePages/1.0)';
+const CHOKEPOINT_STATUS_PUBLIC_PATH = '/api/supply-chain/v1/get-chokepoint-status?public=1';
+
+function isLiveChokepointPageRequest(request: Request, path: string): boolean {
+  if (request.method !== 'GET' || !CHOKEPOINT_PAGE_PATH.test(path)) return false;
+  if (request.headers.has(LIVE_PAGE_BYPASS_HEADER)) return false;
+  const accept = request.headers.get('accept');
+  return !accept || (acceptQuality(accept, 'text/html', true) ?? 0) > 0;
+}
+
+function decodeAttribute(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+function sectionAttribute(html: string, name: string): string | null {
+  const match = html.match(new RegExp(`<section[^>]*\\sdata-live-chokepoint\\b[^>]*\\s${name}="([^"]*)"`));
+  return match ? decodeAttribute(match[1] ?? '') : null;
+}
+
+const passThroughToOrigin = () => new Response(null, { headers: { 'x-middleware-next': '1' } });
+
+async function liveChokepointPage(url: URL): Promise<Response> {
+  let page: Response;
+  let html: string;
+  try {
+    page = await fetch(url, {
+      headers: { accept: 'text/html', 'user-agent': LIVE_PAGE_USER_AGENT, [LIVE_PAGE_BYPASS_HEADER]: '1' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(LIVE_PAGE_FETCH_TIMEOUT_MS),
+    });
+    if (page.status !== 200) return passThroughToOrigin();
+    html = await page.text();
+  } catch {
+    return passThroughToOrigin();
+  }
+
+  const headers = new Headers(page.headers);
+  // fetch() already decoded the body; framing headers do not describe the new string.
+  for (const name of ['content-encoding', 'content-length', 'transfer-encoding', 'connection']) {
+    headers.delete(name);
+  }
+  const builtPage = () => new Response(html, { status: 200, headers });
+
+  const id = sectionAttribute(html, 'data-chokepoint-id');
+  const displayName = sectionAttribute(html, 'data-chokepoint-name');
+  if (!id || !displayName) return builtPage();
+
+  try {
+    const status = await fetch(new URL(CHOKEPOINT_STATUS_PUBLIC_PATH, url), {
+      headers: { accept: 'application/json', 'user-agent': LIVE_PAGE_USER_AGENT },
+      signal: AbortSignal.timeout(LIVE_PAGE_FETCH_TIMEOUT_MS),
+    });
+    if (!status.ok) return builtPage();
+    const view = chokepointStatusViewModel(await status.json(), id);
+    const section = renderChokepointLiveSection({
+      chokepoint: {
+        id,
+        displayName,
+        transitMeasurementNote: sectionAttribute(html, 'data-transit-measurement-note') ?? '',
+      },
+      pulse: chokepointPulseRecord(view),
+      live: true,
+    });
+    const live = replaceChokepointLiveSection(html, section);
+    if (live === null) return builtPage();
+    headers.set('x-wm-live-page', 'chokepoint');
+    return new Response(live, { status: 200, headers });
+  } catch {
+    // Missing row, stale snapshot, or out-of-range score: the view model throws
+    // rather than return a reading it cannot vouch for.
+    return builtPage();
+  }
 }
 
 async function proxyDocsLocaleHtml(request: Request, url: URL, host: string): Promise<Response> {

@@ -528,8 +528,8 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
     congestion: coverageMetrics.congestion,
     navigationalWarnings: coverageMetrics.navigationalWarnings,
     aisDisruptions: coverageMetrics.aisDisruptions,
-    // null, never a placeholder sentence — see publishableDescription in
-    // scripts/freeze-crawlable-live-pulse.mjs (#7530).
+    // null, never a placeholder sentence — see publishableChokepointDescription in
+    // scripts/crawlable-chokepoint-live.mjs (#7530).
     description: String(row.description || '').trim() || null,
     todayTransits: coverageMetrics.todayTransits,
     todayCountsAvailable: coverageMetrics.todayCountsAvailable,

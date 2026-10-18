@@ -13,6 +13,7 @@ const PUBLIC_SHARED_RPC_PATHS = new Set([
   '/api/news/v1/list-feed-digest',
   '/api/displacement/v1/get-displacement-summary',
   '/api/forecast/v1/get-forecasts',
+  '/api/supply-chain/v1/get-chokepoint-status',
 ]);
 
 const NEWS_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity', 'energy']);
@@ -39,6 +40,13 @@ const DISPLACEMENT_PUBLIC_SEARCH = 'flow_limit=50&public=1';
 // 30-minute tick fell through to this RPC, which had no CDN shield — ~17.5k uncached
 // origin reads/day of a 188 KB payload (#5300).
 const FORECASTS_PUBLIC_SEARCH = 'public=1';
+
+// Chokepoint status takes no request fields, and its readings are already
+// published on every /chokepoints/<slug>/ page. The routing middleware reads
+// this shape to put the current reading into those pages' HTML for crawlers,
+// which run no hydrate script and hold no session. Origin load stays bounded:
+// the handler caches in Redis for 5 minutes behind a single-flight fetch.
+const CHOKEPOINT_STATUS_PUBLIC_SEARCH = 'public=1';
 
 function hasSingleValue(params: URLSearchParams, key: string): boolean {
   return params.getAll(key).length === 1;
@@ -117,6 +125,7 @@ export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'):
 
   if (pathname === '/api/news/v1/list-feed-digest') return isNewsDigestShape(params);
   if (pathname === '/api/forecast/v1/get-forecasts') return search === FORECASTS_PUBLIC_SEARCH;
+  if (pathname === '/api/supply-chain/v1/get-chokepoint-status') return search === CHOKEPOINT_STATUS_PUBLIC_SEARCH;
   return search === DISPLACEMENT_PUBLIC_SEARCH;
 }
 
