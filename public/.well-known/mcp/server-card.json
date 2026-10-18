@@ -211,7 +211,7 @@
     },
     {
       "name": "get_tariff_trends",
-      "description": "Return the seeded trade and price-indicator bundle: the US MFN applied tariff trend (all-products average by year), the Economist Big Mac index by country, the FAO Food Price Index and per-country national debt levels. Each sub-dataset has its own staleness budget (tariffs 7 h, Big Mac a week, FAO and debt 60 days); no product-level or bilateral tariff rates. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects sub-datasets; country narrows Big Mac and debt rows (alpha-2, alpha-3 or name); limit caps each list, keeping the most recent tariff years (default 30, 0 for no cap).",
+      "description": "Return the seeded price and debt indicator bundle: the Economist Big Mac index by country, the FAO Food Price Index and per-country national debt levels. Each sub-dataset has its own staleness budget (Big Mac a week, FAO and debt 60 days). No tariff rates: a dataset value of tariffs is rejected with a validation error. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects bigmac, fao-ffpi or national-debt; country narrows Big Mac and debt rows (alpha-2, alpha-3 or name); limit caps each list (default 30, 0 for no cap).",
       "_meta": {
         "worldmonitor/access": "free-account"
       }

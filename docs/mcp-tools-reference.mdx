@@ -489,7 +489,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_tariff_trends`
 
-Price and debt indicators: Big Mac index, FAO Food Price Index, and per-country national debt levels.
+Return the seeded price and debt indicator bundle: the Economist Big Mac index by country, the FAO Food Price Index and per-country national debt levels. Each sub-dataset has its own staleness budget (Big Mac a week, FAO and debt 60 days). No tariff rates: a dataset value of tariffs is rejected with a validation error. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects bigmac, fao-ffpi or national-debt; country narrows Big Mac and debt rows (alpha-2, alpha-3 or name); limit caps each list (default 30, 0 for no cap).
 
 The tool keeps its name for existing callers, but it no longer carries a tariff series (#9301). The US MFN tariff trend is Pro data: call `get_tariff_averages` with reporter `840` and no partner or product group. `dataset: ["tariffs"]` returns Invalid params.
 
