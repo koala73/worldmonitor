@@ -197,7 +197,8 @@ describe('sanctions seed: production freshness contract', () => {
       return Number(match[1].replaceAll('_', ''));
     }
 
-    const fetchPhaseTimeoutMs = optionMs('fetchPhaseTimeoutMs');
+    assert.match(seedSrc, /fetchPhaseTimeoutMs: FETCH_PHASE_TIMEOUT_MS,/);
+    const fetchPhaseTimeoutMs = Number(seedSrc.match(/const FETCH_PHASE_TIMEOUT_MS = (\d[\d_]*);/)[1].replaceAll('_', ''));
     const lockTtlMs = optionMs('lockTtlMs');
     assert.ok(fetchPhaseTimeoutMs >= 7 * 60 * 1000,
       'the two serial OFAC source ladders need at least a seven-minute fetch budget');

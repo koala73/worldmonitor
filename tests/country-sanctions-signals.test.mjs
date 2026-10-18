@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { projectCountrySanctions, MAX_COUNTRY_SANCTIONS_BYTES } from '../shared/country-sanctions-signals.mjs';
 import { mergeSanctionEntries, SEMA_SOURCE, SANCTIONS_SOURCE_VERSION, sanctionsListContentMeta } from '../scripts/_sema-sanctions.mjs';
+import { CSL_ROW_ID, CSL_SOURCES } from '../scripts/_csl-sanctions.mjs';
 import { buildSanctionsChanges } from '../scripts/_sanctions-changes.mjs';
 
 const seed = readFileSync('scripts/seed-sanctions-pressure.mjs', 'utf8');
@@ -41,6 +42,7 @@ async function produce({ previousState = { entryIds: ['SDN:1', 'CONSOLIDATED:1',
     ingestSemaEntries: async () => failures.includes(SEMA_SOURCE)
       ? { records: [], error: 'SEMA_INGEST_FAILED' }
       : { records: rows[SEMA_SOURCE], quarantined, publishedAtMs: publications[SEMA_SOURCE], error: null },
+    CSL_SOURCES, CSL_ROW_ID, ingestCslEntries: async () => ({ lists: {}, error: 'CSL_FIXTURE_OFF' }),
     runSeed: (_d, _r, _k, _f, value) => { options = value; },
   });
   vm.runInContext(`${pure}\n${tail}`, context);
@@ -454,7 +456,8 @@ describe('country sanctions producer projection', () => {
   it('keeps retained legacy quarantine coverage unknown instead of a known zero', async () => {
     const fresh = await produce();
     const snapshots = json(fresh.producerData._sourceSnapshots);
-    for (const snapshot of Object.values(snapshots)) delete snapshot.quarantinedCount;
+    // CSL is switched off in this harness, so its snapshots are null.
+    for (const snapshot of Object.values(snapshots).filter(Boolean)) delete snapshot.quarantinedCount;
     const stored = { version: 1, encoding: 'gzip-base64', data: gzipSync(JSON.stringify(snapshots)).toString('base64') };
     const retained = await produce({ failures: ['SDN', 'CONSOLIDATED', SEMA_SOURCE], stored,
       at: now + 6 * 3600000, previousState: fresh.producerData._state });

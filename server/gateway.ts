@@ -415,7 +415,9 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/forecast/v1/get-simulation-outcome': 'slow',
   '/api/supply-chain/v1/get-chokepoint-status': 'fast',
   '/api/supply-chain/v1/get-chokepoint-history': 'slow',
-  '/api/news/v1/list-feed-digest': 'slow',
+  // Fast, not slow: the digest is rebuilt into Redis every 15 min, and a CDN
+  // holding one body for an hour made the CDN the freshness floor.
+  '/api/news/v1/list-feed-digest': 'fast',
   '/api/news/v1/list-country-headlines': 'fast',
   '/api/news/v1/list-label-changes': 'fast',
   // #9093 operator queue: never cached, it is gated by a secret header.

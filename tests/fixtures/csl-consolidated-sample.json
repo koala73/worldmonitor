@@ -1,0 +1,398 @@
+{
+  "_fixture": "Real rows from https://data.trade.gov/downloadable_consolidated_screening_list/v1/consolidated.json, downloaded 2026-10-18 (import 2026-10-18T13:15Z). One active row per non-Treasury list, one expired and one future-dated Denied Persons row, one SDN row.",
+  "search_performed_at": "2026-10-18T13:15:00.017258+00:00",
+  "sources_used": [
+    {
+      "last_imported": "2026-10-18T13:15:00.017258+00:00",
+      "source_last_updated": "2026-04-28T12:39:28+00:00",
+      "source": "Denied Persons List (DPL) - Bureau of Industry and Security",
+      "import_rate": "Hourly"
+    },
+    {
+      "last_imported": "2026-10-18T13:15:00.017258+00:00",
+      "source_last_updated": "2026-07-24T00:00:00+00:00",
+      "source": "ITAR Debarred (DTC) - State Department",
+      "import_rate": "Hourly"
+    },
+    {
+      "last_imported": "2026-10-18T13:15:00.017258+00:00",
+      "source_last_updated": "2026-08-21T20:19:33+00:00",
+      "source": "Entity List (EL) - Bureau of Industry and Security",
+      "import_rate": "Hourly"
+    },
+    {
+      "last_imported": "2026-10-18T13:15:00.017258+00:00",
+      "source_last_updated": "2026-10-02T14:20:52+00:00",
+      "source": "Nonproliferation Sanctions (ACN) - State Department",
+      "import_rate": "Hourly"
+    },
+    {
+      "last_imported": "2026-10-18T13:15:00.017258+00:00",
+      "source_last_updated": "2026-02-20T18:34:52+00:00",
+      "source": "Military End User (MEU) List - Bureau of Industry and Security",
+      "import_rate": "Hourly"
+    },
+    {
+      "last_imported": "2026-10-18T13:15:00.017258+00:00",
+      "source_last_updated": "2026-10-15T16:34:31+00:00",
+      "source": "Specially Designated Nationals (SDN) - Treasury Department",
+      "import_rate": "Hourly"
+    },
+    {
+      "last_imported": "2026-10-18T13:15:00.017258+00:00",
+      "source_last_updated": "2026-02-10T23:02:53+00:00",
+      "source": "Unverified List (UVL) - Bureau of Industry and Security",
+      "import_rate": "Hourly"
+    }
+  ],
+  "total": 9,
+  "results": [
+    {
+      "source": "Entity List (EL) - Bureau of Industry and Security",
+      "name": "China Aeronautical Radio Electronics Research Institute",
+      "addresses": [
+        {
+          "address": "No. 432 Ziyue Road, Minhang District",
+          "city": "Shanghai",
+          "state": "",
+          "postal_code": "",
+          "country": "CN"
+        },
+        {
+          "address": "No. 432 Gui Ping Road",
+          "city": "Shanghai",
+          "state": "",
+          "postal_code": "",
+          "country": "CN"
+        },
+        {
+          "address": "No. 599 Zixing Road",
+          "city": "Shanghai",
+          "state": "",
+          "postal_code": "",
+          "country": "CN"
+        },
+        {
+          "address": "A14 Tiantan Dongli Zhongqu Dongcheng District",
+          "city": "Beijing",
+          "state": "",
+          "postal_code": "",
+          "country": "CN"
+        },
+        {
+          "address": "666 Zixing Road, Min Hang District",
+          "city": "Beijing",
+          "state": "",
+          "postal_code": "",
+          "country": "CN"
+        }
+      ],
+      "federal_register_notice": "90 FR 14032",
+      "start_date": "2025-03-28",
+      "standard_order": null,
+      "license_policy": "Presumption of denial",
+      "license_requirement": "For all items subject to the EAR. (See § 744.11 of the EAR)",
+      "call_sign": "",
+      "vessel_type": "",
+      "gross_tonnage": "",
+      "gross_registered_tonnage": "",
+      "vessel_flag": "",
+      "vessel_owner": "",
+      "remarks": "",
+      "source_list_url": "https://www.bis.gov/regulations/ear/744#supplement-4-744",
+      "alt_names": [
+        "615th Institute",
+        "615 Institute",
+        "Shanghai 615 Research Institute",
+        "Off -Power Station",
+        "Power Office",
+        "Shanghai Aviation Electronics",
+        "China Aviation Radio Electronics Research Institute",
+        "AVIC Radio Electronics Research Institute",
+        "Shanghai Aviation Electronics Company",
+        "CAVIONICS",
+        "Longzhi Aviation Electric",
+        "National Aeronautical Radio Electronics Research Institute",
+        "Institute of Aeronautical and Radio Electronics",
+        "China Aviation Radio Electronics Research Institute",
+        "Shanghai Avionics Company",
+        "China Institute of Aeronautics Radio Electronics",
+        "AVIC 615",
+        "Lairene Institute",
+        "Aviation Industry Institute of Electrical and Electronics Industries",
+        "Institute of Electrical and Electronic Engineering",
+        "Institute of Electric Power",
+        "Electricity Institute",
+        "Aeronautical Radio",
+        "China Aero Radio",
+        "China Aeronautical Radio",
+        "China Aeronautics Radio"
+      ],
+      "source_information_url": "https://www.bis.gov/licensing/guidance-on-end-user-and-end-use-controls-and-us-person-controls",
+      "id": "25f2d1aedc2f7e28359cf555f446727923bb638ac0ffe361ab070abe",
+      "title": null
+    },
+    {
+      "source": "Denied Persons List (DPL) - Bureau of Industry and Security",
+      "name": "UNITED AFRICAN AIRLINES",
+      "addresses": [
+        {
+          "address": "185 SEPTEMBER STREET",
+          "city": "TRIPOLI",
+          "state": "",
+          "postal_code": "",
+          "country": "LY"
+        },
+        {
+          "address": "",
+          "city": "",
+          "state": "",
+          "postal_code": "",
+          "country": "LU"
+        },
+        {
+          "address": "MALTA AIRPORT",
+          "city": "",
+          "state": "",
+          "postal_code": "",
+          "country": "MT"
+        }
+      ],
+      "federal_register_notice": "46 F.R. 44803 9/8/81",
+      "start_date": "1981-09-01",
+      "end_date": null,
+      "standard_order": "Y",
+      "remarks": "",
+      "source_list_url": "https://www.bis.gov/licensing/end-user-guidance/denied-persons-list-dpl",
+      "source_information_url": "https://www.bis.gov/licensing/guidance-on-end-user-and-end-use-controls-and-us-person-controls",
+      "id": "eb7517abf957cc898024bca50e76f8fbeddcbf355299660951d3643b"
+    },
+    {
+      "alt_names": [
+        "Anthony Fernandez",
+        "Steven Joseph",
+        "Robert Joseph",
+        "Gerald Jousuf",
+        "Solomon Jousuf",
+        "Amanullah Kahn",
+        "Aman Khan",
+        "Aman Ullah Khan",
+        "Amanulla Khan",
+        "Amanullah J. Khan",
+        "Armand Khan",
+        "George Paal",
+        "Joseph Salmon",
+        "Jousuf Solomon",
+        "Yousuf Solomon",
+        "Joseph Sulman",
+        "Solomon Yousef"
+      ],
+      "federal_register_notice": "83 FR 18112 ",
+      "name": "Amanullah Khan",
+      "source": "ITAR Debarred (DTC) - State Department",
+      "source_list_url": "https://deccs.pmddtc.state.gov/ddtc_public?id=ddtc_kb_article_page&sys_id=c22d1833dbb8d300d0a370131f9619f0",
+      "source_information_url": "https://deccs.pmddtc.state.gov/ddtc_public?id=ddtc_kb_article_page&sys_id=c22d1833dbb8d300d0a370131f9619f0",
+      "id": "c432426a1faa4045831a9a55282b144a"
+    },
+    {
+      "source": "Military End User (MEU) List - Bureau of Industry and Security",
+      "name": "CAST Xi’an Spaceflight Engine Factory",
+      "alt_names": [
+        "7103 Factory"
+      ],
+      "federal_register_notice": "85 FR 83799",
+      "start_date": "2020-12-23",
+      "license_requirement": "For any item subject to the EAR listed in supplement no. 2 to part 744.",
+      "license_policy": "The license application procedure and license review policy for entities specified in supplement no. 2 to part 744 is specified in §744.21(d) and (e).",
+      "source_list_url": "https://www.bis.gov/regulations/ear/744#supplement-7-744",
+      "source_information_url": "https://www.bis.gov/licensing/guidance-on-end-user-and-end-use-controls-and-us-person-controls",
+      "standard_order": "",
+      "id": "7f872cf3be5540a3b8cd1b2fd3df5290",
+      "addresses": [
+        {
+          "address": "7103 Factory No 6 Academy No 69, Shenzhou Second Road, Aerospace Base",
+          "city": "Xian",
+          "state": "",
+          "postal_code": "",
+          "country": "CN"
+        }
+      ],
+      "title": null
+    },
+    {
+      "source": "Nonproliferation Sanctions (ACN) - State Department",
+      "programs": [
+        "Chemical and Biological Weapons Act"
+      ],
+      "name": "W & M Limited Partnership ",
+      "federal_register_notice": "Vol. 59, No. 44, 03/07/1994",
+      "start_date": "1994-02-08",
+      "remarks": null,
+      "source_list_url": "https://www.state.gov/bureau-of-arms-control-and-nonproliferation/nonproliferation-sanctions",
+      "alt_names": [
+        "W&M Engineering",
+        "the Wintrade Company",
+        "the Winman Company"
+      ],
+      "source_information_url": "https://www.state.gov/bureau-of-arms-control-and-nonproliferation/nonproliferation-sanctions",
+      "id": "6b1afd880f0aa5d6de2b8ca262fb4ab3b424bb830751bfe128cb0e03",
+      "country": "TH"
+    },
+    {
+      "source": "Unverified List (UVL) - Bureau of Industry and Security",
+      "name": "Ling Ao Electronic Technology Co., Ltd.",
+      "addresses": [
+        {
+          "address": "Room 17, 7/F, Metro Centre Phase 1, No. 32 Lam Hing St., Kowloon Bay, Kwun Tong, Hong Kong",
+          "city": null,
+          "state": null,
+          "postal_code": null,
+          "country": "CN"
+        },
+        {
+          "address": "15B, 15/F, Cheuk Nang Plaza, 250 Hennessy Road, Wanchai, Hong Kong",
+          "city": null,
+          "state": null,
+          "postal_code": null,
+          "country": "CN"
+        },
+        {
+          "address": "Room C1-D, 6/F, Wing Hing Industrial Building, 14 Hing Yip Street, Kwun Tong, Kowloon, Hong Kong",
+          "city": null,
+          "state": null,
+          "postal_code": null,
+          "country": "CN"
+        },
+        {
+          "address": "Flat C, 11/F, Block No. 2, Camelpaint Bldg., 62 Hoi Yuen Street, Kwun Tong, Kowloon, Hong Kong",
+          "city": null,
+          "state": null,
+          "postal_code": null,
+          "country": "CN"
+        },
+        {
+          "address": "Flat/Rm. A30, 9/F Silvercorp International Tower, 707-713 Nathan Road, Mongkok, Kowloon, Hong Kong",
+          "city": null,
+          "state": null,
+          "postal_code": null,
+          "country": "CN"
+        },
+        {
+          "address": "Room 912/A, 9/F, Witty Commercial Building, 1A-1L Tung Choi Street, Mongkok, Kowloon, Hong Kong",
+          "city": null,
+          "state": null,
+          "postal_code": null,
+          "country": "CN"
+        },
+        {
+          "address": "Unit A, 7/F, King Yip Factory Bldg., 59 King Yip Street, Kwun Tong, Kownloon, Hong Kong",
+          "city": null,
+          "state": null,
+          "postal_code": null,
+          "country": "CN"
+        },
+        {
+          "address": "Unit D, 16/F, One Capital Place, 18 Luard Road, Wanchai, Hong Kong",
+          "city": null,
+          "state": null,
+          "postal_code": null,
+          "country": "CN"
+        },
+        {
+          "address": "Unit B213, 1/F, New East Sun Industrial Bldg, 18 Shing Yip Street, Kowloon, Kwun Tong, Hong Kong",
+          "city": null,
+          "state": null,
+          "postal_code": null,
+          "country": "CN"
+        }
+      ],
+      "source_list_url": "https://www.bis.gov/regulations/ear/744#supplement-6-744",
+      "source_information_url": "https://www.bis.gov/licensing/guidance-on-end-user-and-end-use-controls-and-us-person-controls",
+      "id": "ccfb09ba3168db2f52daf2b8e323d2b76ec8fb83be9d2eb817f72d24",
+      "alt_names": []
+    },
+    {
+      "source": "Denied Persons List (DPL) - Bureau of Industry and Security",
+      "name": "SEMICONDUCTOR SYSTEMS INTL., INC. (SSI)",
+      "addresses": [
+        {
+          "address": "BAGSVAERD HOVEDGADE 99 1 2880 BAGSVAERD",
+          "city": "COPENHAGEN",
+          "state": "",
+          "postal_code": "",
+          "country": "DK"
+        }
+      ],
+      "federal_register_notice": "",
+      "start_date": "1992-03-20",
+      "end_date": "2000-10-04",
+      "standard_order": "Y",
+      "remarks": "",
+      "source_list_url": "https://www.bis.gov/licensing/end-user-guidance/denied-persons-list-dpl",
+      "source_information_url": "https://www.bis.gov/licensing/guidance-on-end-user-and-end-use-controls-and-us-person-controls",
+      "id": "2815dd9334befab373278b903a412b353b292cc8d09cf8d06af746db"
+    },
+    {
+      "source": "Denied Persons List (DPL) - Bureau of Industry and Security",
+      "name": "THANE-COAT, INC",
+      "addresses": [
+        {
+          "address": "12725 ROYAL DRIVE",
+          "city": "STAFFORD",
+          "state": "TX",
+          "postal_code": "77477",
+          "country": "US"
+        }
+      ],
+      "federal_register_notice": "67 F.R. 7351 2/19/02 66 F.R. 48998 9/25/01 62 F.R. 26471 5/14/97 62 F.R. 34688 6/27/97 62 F.R. 60063 11/6/97 63 F.R. 25817 5/11/98 63 F.R. 58707 11/2/98 64 F.R. 23049 4/29/99",
+      "start_date": "2002-01-24",
+      "end_date": "2027-01-24",
+      "standard_order": "Y",
+      "remarks": "STANDARD ORDER",
+      "source_list_url": "https://www.bis.gov/licensing/end-user-guidance/denied-persons-list-dpl",
+      "source_information_url": "https://www.bis.gov/licensing/guidance-on-end-user-and-end-use-controls-and-us-person-controls",
+      "id": "e8e62a20de26fe327462978a684d3d1c7868333511985d62d61c2539"
+    },
+    {
+      "addresses": [
+        {
+          "city": "Havana",
+          "country": "CU",
+          "address": null,
+          "state": null,
+          "postal_code": null
+        }
+      ],
+      "alt_names": [
+        "AERO-CARIBBEAN"
+      ],
+      "call_sign": null,
+      "citizenships": [],
+      "dates_of_birth": [],
+      "end_date": null,
+      "entity_number": "36",
+      "federal_register_notice": null,
+      "gross_registered_tonnage": null,
+      "gross_tonnage": null,
+      "id": "36",
+      "ids": [],
+      "license_policy": null,
+      "license_requirement": null,
+      "name": "AEROCARIBBEAN AIRLINES",
+      "nationalities": [],
+      "places_of_birth": [],
+      "programs": [
+        "CUBA"
+      ],
+      "remarks": null,
+      "source": "Specially Designated Nationals (SDN) - Treasury Department",
+      "source_information_url": "https://home.treasury.gov/policy-issues/financial-sanctions/specially-designated-nationals-and-blocked-persons-list-sdn-human-readable-lists",
+      "source_list_url": "https://sanctionslist.ofac.treas.gov/Home/SdnList",
+      "title": null,
+      "type": "Entity",
+      "vessel_flag": null,
+      "vessel_owner": null,
+      "vessel_type": null
+    }
+  ]
+}

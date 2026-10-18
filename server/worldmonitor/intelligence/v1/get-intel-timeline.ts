@@ -49,12 +49,16 @@ export const getIntelTimeline: IntelligenceServiceHandler['getIntelTimeline'] = 
   }
 
   const limit = resolveLimit(scope.limit, DEFAULT_LIMIT, MAX_LIMIT);
-  const result = await cacheSuccessfulHistoryRead('timeline', {
-    domain, country, from: scope.from, to: scope.to, limit,
-  }, () => intelHistoryTimeline({ ...scope, limit }));
+  const cursor = req.cursor ?? '';
+  if (typeof cursor !== 'string' || cursor.length > 4096) {
+    throw new ValidationError([{ field: 'cursor', description: 'cursor must be a string of at most 4096 characters' }]);
+  }
+  const result = await cacheSuccessfulHistoryRead('timeline-page', {
+    domain, country, from: scope.from, to: scope.to, limit, cursor,
+  }, () => intelHistoryTimeline({ ...scope, limit, cursor }));
   if (!result) {
-    return { records: [], partial: false, upstreamUnavailable: true };
+    return { records: [], partial: false, upstreamUnavailable: true, nextCursor: '' };
   }
 
-  return { records: result.records, partial: result.partial, upstreamUnavailable: false };
+  return { records: result.records, partial: result.partial, upstreamUnavailable: false, nextCursor: result.nextCursor };
 };

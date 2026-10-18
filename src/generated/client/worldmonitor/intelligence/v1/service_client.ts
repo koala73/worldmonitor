@@ -1150,12 +1150,14 @@ export interface GetIntelTimelineRequest {
   from: number;
   to: number;
   limit: number;
+  cursor?: string;
 }
 
 export interface GetIntelTimelineResponse {
   records: IntelHistoryRecord[];
   partial: boolean;
   upstreamUnavailable: boolean;
+  nextCursor: string;
 }
 
 export interface GetSimilarEventsRequest {
@@ -2059,6 +2061,7 @@ export class IntelligenceServiceClient {
     if (req.from != null && req.from !== 0) params.set("from", String(req.from));
     if (req.to != null && req.to !== 0) params.set("to", String(req.to));
     if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {

@@ -90,11 +90,13 @@ History records carry a country but no coordinates.
 | `list-unrest-events` | `country`, `start`, `end` (inclusive epoch milliseconds). Severity, bounding-box, `page_size` and `cursor` parameters are accepted but ignored. |
 | `list-feed-digest` | `variant` (`full`, `tech`, `finance`, `happy`, `commodity`), `lang` |
 | `get_news_clusters` | `variant`, `category`, `query` (substring), `min_sources`, `limit` (up to 25) |
-| `get-intel-timeline` | `domain` and/or `country` (one is required), `from`, `to`, `limit` (default 50, maximum 200) |
+| `get-intel-timeline` | `domain` and/or `country` (one is required), `from`, `to`, `limit` (default 50, maximum 200), `cursor` |
 | `search-intel-history` | `query` (required), `domain`, `country`, `from`, `to`, `limit` (default 20, maximum 64) |
 | `get_conflict_events` | `country`, `min_fatalities`, `limit` |
 
-The list routes return the whole current snapshot in one response; there is no cursor pagination. The history routes set `partial: true` when a bounded read may have omitted older matches, and `upstreamUnavailable: true` when the store could not be reached. An empty list in that case is a failed read, not a quiet period.
+The UCDP and unrest list routes return the current snapshot without cursor pagination. The history timeline returns an opaque `nextCursor`. Pass it as `cursor` with the same domain, country and time filters to read the next page. Continue until `nextCursor` is empty, even when `records` is empty. A bounded country scan can return an empty page before older matches. `partial: true` means more history may remain.
+
+History reads set `upstreamUnavailable: true` when the store could not be reached. An empty list in that case is a failed read, not a quiet period. Retry the same request after recovery. Invalid cursors return HTTP 400. Restart from the first page if a cursor is rejected. Pages read the current store, so retain fixed time bounds for an export and de-duplicate records by `id`.
 
 ## Retention: how far back each feed goes
 
@@ -133,6 +135,12 @@ unrest = client.get("/api/unrest/v1/list-unrest-events",
 history = client.get("/api/intelligence/v1/get-intel-timeline",
                      {"domain": "conflict", "country": "UA", "limit": 50})
 
+# Continue through the retained archive, including empty intermediate pages
+while not history["upstreamUnavailable"] and history["nextCursor"]:
+    history = client.get("/api/intelligence/v1/get-intel-timeline",
+                         {"domain": "conflict", "country": "UA", "limit": 50,
+                          "cursor": history["nextCursor"]})
+
 # MCP: corroborated news clusters with each outlet's tier
 clusters = client.call_tool("get_news_clusters", min_sources=2, limit=10)
 ```
@@ -158,4 +166,4 @@ These plans are self-serve with published prices on the [pricing page](https://w
 - World Monitor aggregates published reports. It does not verify events on the ground, and a GDELT-derived row is a media signal.
 - Not every upstream source has completed a terms review. Check reuse terms before you redistribute data. The free `get_sources` MCP tool lists each outlet's tier and review status.
 - There is no published availability SLA.
-- Planned work: a cursor-paginated history endpoint with longer retention is tracked in [issue #4276](https://github.com/koala73/worldmonitor/issues/4276) and [issue #5745](https://github.com/koala73/worldmonitor/issues/5745).
+- The timeline pages through the existing 180-day store. Country playback is tracked in [issue #4276](https://github.com/koala73/worldmonitor/issues/4276), and additional event domains in [issue #5745](https://github.com/koala73/worldmonitor/issues/5745). Longer retention needs evidence of buyer demand and storage cost.

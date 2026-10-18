@@ -1876,6 +1876,7 @@
     ],
     "watchPatterns": [
       "scripts/_content-age-helpers.mjs",
+      "scripts/_csl-sanctions.mjs",
       "scripts/_html-entities.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_sanctions-changes.mjs",

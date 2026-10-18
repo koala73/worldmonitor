@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { ingestSemaEntries, mergeSanctionEntries, parseSemaXml, SEMA_SOURCE, SANCTIONS_SOURCE_VERSION } from '../scripts/_sema-sanctions.mjs';
+import { CSL_ROW_ID, CSL_SOURCES } from '../scripts/_csl-sanctions.mjs';
 
 // Normalize values produced inside a vm context to host-realm equivalents.
 // Needed because deepStrictEqual checks prototypes — vm Arrays ≠ host Arrays.
@@ -27,7 +28,7 @@ const pureSrc = seedSrc
   .replace(/loadEnvFile\([^)]+\);/, '')
   .replace(/async function fetchSource[\s\S]*/, ''); // remove network + runSeed tail
 
-const ctx = vm.createContext({ console, Date, Math, Number, Array, Map, Set, String, RegExp });
+const ctx = vm.createContext({ console, Date, Math, Number, Array, Map, Set, String, RegExp, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID });
 vm.runInContext(pureSrc, ctx);
 
 const {
@@ -54,6 +55,7 @@ async function partialPublication({ sources = ['CONSOLIDATED'], cached = [], sna
     ingestSemaEntries: semaJson === undefined
       ? async () => ({ records: [], publishedAtMs: 0, error: 'SEMA_INVALID_RECORD' })
       : () => ingestSemaEntries({ fetchFn: async () => new Response(JSON.stringify(semaJson)) }),
+    CSL_SOURCES, CSL_ROW_ID, ingestCslEntries: async () => ({ lists: {}, error: 'CSL_FIXTURE_OFF' }),
     fetchSource: async ({ label }) => {
       if (!sources.includes(label)) throw new Error('source timeout');
       return {
