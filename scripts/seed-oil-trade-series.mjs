@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Monthly oil supply and export series for major exporting countries
-// (energy:oil-trade-series:v1), from declared sources:
+// (energy:oil-trade-series:v1, #9392), from declared sources:
 //
 //   production  EIA Short-Term Energy Outlook, crude oil and liquid fuels
 //               supply per country (PAPR_*). Current to the last complete
@@ -25,6 +25,7 @@
 
 import { loadEnvFile, CHROME_UA, runSeed, withRetry, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
 import { DAY_MIN } from './_content-age-helpers.mjs';
+import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { fetchYearCsv, parseObsValue } from './seed-jodi-oil.mjs';
 import {
   compactCountry,
@@ -37,6 +38,7 @@ import {
 loadEnvFile(import.meta.url);
 
 export const OIL_TRADE_CANONICAL_KEY = 'energy:oil-trade-series:v1';
+export const OIL_TRADE_ACTIVATION_KEY = 'seed-activated:energy:oil-trade-series';
 const CACHE_TTL_SECONDS = 21 * 24 * 60 * 60; // 3x the weekly cadence
 const SERIES_MONTHS = 24;
 const REQUEST_TIMEOUT_MS = 90_000;
@@ -629,6 +631,18 @@ export async function fetchOilTradeSeries({ nowMs = Date.now() } = {}) {
   };
 }
 
+// Durable marker read by api/health.js: once set, an absent or stale series
+// is a fault rather than a deploy-before-first-publish gap.
+async function markActivated() {
+  try {
+    const creds = getOptionalUpstashCreds();
+    if (!creds) return;
+    await upstashCommand(creds, ['SET', OIL_TRADE_ACTIVATION_KEY, '1']);
+  } catch (err) {
+    console.warn(`  WARN: oil-trade-series activation marker write failed: ${err?.message || err}`);
+  }
+}
+
 export const seedOptions = {
   validateFn: validate,
   ttlSeconds: CACHE_TTL_SECONDS,
@@ -642,6 +656,7 @@ export const seedOptions = {
   maxContentAgeMin: 100 * DAY_MIN,
   emptyDataIsFailure: true,
   lockTtlMs: 15 * 60 * 1000,
+  afterPublish: markActivated,
 };
 
 if (process.argv[1]?.endsWith('seed-oil-trade-series.mjs')) {

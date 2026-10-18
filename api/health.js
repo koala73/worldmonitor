@@ -1863,7 +1863,18 @@ const SEED_META = {
   // Weekly bundle tick (seed-bundle-energy-sources); 14d = two missed runs. minRecordCount
   // mirrors MIN_COUNTRIES_WITH_PRODUCTION in scripts/seed-oil-trade-series.mjs. Content age is
   // the newest EIA STEO month (newestItemAt/maxContentAgeMin in seed-meta).
-  oilTradeSeries:       { key: 'seed-meta:energy:oil-trade-series',      maxStaleMin: 20160, minRecordCount: 18 },
+  oilTradeSeries: {
+    key: 'seed-meta:energy:oil-trade-series',
+    maxStaleMin: 20160,
+    minRecordCount: 18,
+    activationKey: 'seed-activated:energy:oil-trade-series',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 9392,
+      activationKey: 'seed-activated:energy:oil-trade-series',
+    },
+  },
   ieaOilStocks:         { key: 'seed-meta:energy:iea-oil-stocks',        maxStaleMin: 60 * 24 * 40 }, // monthly cron on 15th; 40d threshold = TTL_SECONDS
   oilStocksAnalysis:    { key: 'seed-meta:energy:oil-stocks-analysis',   maxStaleMin: 60 * 24 * 50 }, // afterPublish of ieaOilStocks; 50d = matches seed-meta TTL (exceeds 40d data TTL)
   eiaPetroleum:         { key: 'seed-meta:energy:eia-petroleum',         maxStaleMin: 4320 }, // daily bundle cron (seed-bundle-energy-sources); 72h = 3× interval, well under 7d data TTL
@@ -2097,6 +2108,9 @@ const ON_DEMAND_KEYS = new Set([
   // daily tick publishes. seed-dtm-displacement.mjs SETs the marker after its
   // first successful publish.
   'dtmDisplacement',
+  // Same bridge for the oil trade series: the reader ships before the energy
+  // bundle's first tick publishes. seed-oil-trade-series.mjs SETs the marker.
+  'oilTradeSeries',
   // Same bridge for the UNHCR cross-border movements (#9023).
   'crossBorderArrivals',
   // Same deploy-before-first-tick bridge as cbrRates for the two Canada
@@ -2244,6 +2258,8 @@ const ACTIVATION_MARKERS = {
   cbrRates: 'seed-activated:economic:cbr-rates',
   // Written by scripts/seed-dtm-displacement.mjs in runSeed's afterPublish hook.
   dtmDisplacement: SEED_META.dtmDisplacement.activationKey,
+  // Written by scripts/seed-oil-trade-series.mjs in runSeed's afterPublish hook.
+  oilTradeSeries: SEED_META.oilTradeSeries.activationKey,
   // Written by scripts/seed-cross-border-arrivals.mjs in runSeed's afterPublish hook.
   crossBorderArrivals: SEED_META.crossBorderArrivals.activationKey,
   bocValet: 'seed-activated:economic:boc-valet',

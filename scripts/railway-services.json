@@ -738,6 +738,7 @@
       "scripts/_seed-envelope-source.mjs",
       "scripts/_seed-utils.mjs",
       "scripts/_storage-facility-registry.mjs",
+      "scripts/_upstash-rest.mjs",
       "scripts/data/energy-crisis-policies.json",
       "scripts/data/energy-disruptions.json",
       "scripts/data/fuel-shortages.json",
