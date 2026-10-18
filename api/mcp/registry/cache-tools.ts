@@ -2315,7 +2315,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         country: { type: 'string', description: 'Filter sanctioned entities and pressure scores to one ISO 3166-1 alpha-2 country code. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.' },
-        entity_type: { type: 'string', description: 'Filter to one entity type (case-insensitive substring, e.g. "vessel", "aircraft", "person", "entity").' },
+        entity_type: { type: 'string', description: 'Filter to one entity type (case-insensitive substring, e.g. "vessel", "aircraft", "individual", "entity"; CSL rows are "unspecified").' },
         query: { type: 'string', description: 'Keep only sanctioned entities whose name contains this text (case-insensitive).' },
         screen: { type: 'string', minLength: 2, maxLength: 200, description: 'Screen a name, alias or IMO identifier against the seeded lists (2-200 characters). Omit changes_since_days for entity screening.' },
         min_score: { type: 'number', minimum: 0, maximum: 100, default: 70, description: 'Minimum screening score from 0 to 100 (default 70); applies only with screen.' },

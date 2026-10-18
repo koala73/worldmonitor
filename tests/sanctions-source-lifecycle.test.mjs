@@ -422,6 +422,26 @@ describe('US Consolidated Screening List in the sanctions seed (#9352)', () => {
     assert.equal(event.et, 'unspecified');
     assert.equal(event.notice, '90 FR 14032');
     assert.equal(event.url, 'https://www.bis.gov/regulations/ear/744');
+    // The stored history now holds a CSL event; the next run must still accept it.
+    const third = await publish({ stored: await save(next), history: normalize(next.data._changes),
+      clock: now + 12 * 3600000, cslRecords: added });
+    assert.notEqual(third.data._changes, null, 'history with a CSL event validates on the next run');
+    assert.equal(third.data._changes.events.length, 1);
+    assert.equal(third.data._changes.events[0].notice, '90 FR 14032');
+  });
+
+  it('bounds the CSL download by the fetch-phase deadline', async () => {
+    let seen;
+    const { options } = await publish({ io: { ingestCslEntries: async args => { seen = args; return { lists: {}, error: 'CSL_FETCH_DEADLINE' }; } } });
+    assert.equal(seen.deadlineAt, now + options.fetchPhaseTimeoutMs - 30_000);
+  });
+
+  it('writes no change history when the source snapshots cannot be encoded', async () => {
+    const first = await publish();
+    first.data._sourceSnapshots = { ...first.data._sourceSnapshots, 'CSL-EL': { records: [{ name: 'x'.repeat(33 * 1024 * 1024) }] } };
+    await first.options.beforePublish(first.data, {});
+    assert.deepEqual(first.writes.filter(([key]) => key === 'sanctions:changes:v1'), [],
+      'an oversized snapshot must not leave history ahead of its baseline');
   });
 
   it('holds a CSL list that loses more than 5% of its rows instead of logging mass removals', async () => {

@@ -1363,7 +1363,7 @@ curl -s https://worldmonitor.app/mcp \
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
 | `country` | string | 将制裁实体和压力评分筛选为一个 ISO 3166-1 alpha-2 国家代码。 |
-| `entity_type` | string | 筛选为一种实体类型（不区分大小写的子串，例如 "vessel"、"aircraft"、"person"、"entity"）。 |
+| `entity_type` | string | 筛选为一种实体类型（不区分大小写的子串，例如 "vessel"、"aircraft"、"individual"、"entity"；CSL 行为 "unspecified"）。 |
 | `query` | string | 仅保留名称包含此文本的制裁实体（不区分大小写）。 |
 | `screen` | string | 按名称、别名或 IMO 编号筛选，长度 2-200 字符；实体筛选时不要提供 `changes_since_days`。 |
 | `min_score` | number | 最低匹配分数 0-100，默认 70，仅与 `screen` 一起使用。 |

@@ -54,6 +54,14 @@ test('REST applies shared name normalization, returns total before limiting, and
   assert.equal(requests.length, 2, 'new seed data must not be hidden behind a per-query cache');
 });
 
+test('REST screens US Consolidated Screening List rows and names their list in source', async t => {
+  const csl = { id: 'CSL-EL:ab12', name: 'Acme Electronics', et: 'unspecified', cc: ['CN'], pr: [], sl: ['CSL-EL'] };
+  installIndex(t, [...index, csl]);
+  const response = await lookup('Acme Electronics');
+  assert.equal(response.results[0]?.id, 'CSL-EL:ab12');
+  assert.equal(response.source, 'CONSOLIDATED, CSL-EL, SDN, SEMA');
+});
+
 test('REST rejects out-of-bounds queries without reading Redis', async t => {
   const requests = installIndex(t);
   for (const q of ['', 'x', 'x'.repeat(201)]) assert.equal((await lookup(q)).total, 0);

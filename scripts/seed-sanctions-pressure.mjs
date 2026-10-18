@@ -39,6 +39,11 @@ const SOURCE_RETAIN_MS = 48 * 60 * 60 * 1000;
 const LEGACY_SOURCE_RETAIN_MS = 12 * 60 * 60 * 1000;
 const SOURCE_SNAPSHOTS_TTL = 54 * 60 * 60; // retention + one 6h cron
 const SNAPSHOT_MAX_BYTES = 32 * 1024 * 1024;
+// The bounded direct/proxy/signed recovery ladder can spend about 7 minutes
+// across both serial XML sources, plus the SEMA source. The CSL download goes
+// last and gets only what is left, minus room to build and validate the result.
+const FETCH_PHASE_TIMEOUT_MS = 540_000;
+const CSL_DEADLINE_MARGIN_MS = 30_000;
 const CACHE_TTL = 18 * 60 * 60; // 18h — 3× live 6h cron; remains queryable after the 12h freshness alarm
 // Compact entity type codes for the lookup index (saves space vs full enum strings)
 const ET_CODE = {
@@ -643,6 +648,7 @@ async function fetchSource(source) {
 }
 
 async function fetchSanctionsPressure() {
+  const fetchStartedAt = Date.now();
   const previousState = await verifySeedKey(STATE_KEY).catch(() => null);
   const validPreviousIds = Array.isArray(previousState?.entryIds)
     && previousState.entryIds.every(id => validSourceId(SEMA_SOURCE, id)
@@ -679,7 +685,7 @@ async function fetchSanctionsPressure() {
     quarantinedCount: sema.error ? null : sema.quarantined.length, error: sema.error };
   if (sema.error) console.warn(`  SEMA fetch failed: ${sema.error}`);
   // One bulk download covers all six CSL lists; a failed download fails each list.
-  const csl = await ingestCslEntries();
+  const csl = await ingestCslEntries({ deadlineAt: fetchStartedAt + FETCH_PHASE_TIMEOUT_MS - CSL_DEADLINE_MARGIN_MS });
   if (csl.error) console.warn(`  CSL fetch failed: ${csl.error}`);
   for (const source of CSL_SOURCES) {
     const list = csl.lists[source];
@@ -820,11 +826,10 @@ export function sanctionsPressureContentMeta(data, nowMs) {
 
 runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
   ttlSeconds: CACHE_TTL,
-  // The bounded direct/proxy/signed recovery ladder can spend about 7 minutes
-  // across both serial XML sources, plus the SEMA source. Keep its fetch deadline
-  // explicit and the lock alive longer so a slow recovery cannot race a second run.
+  // Keep the fetch deadline explicit and the lock alive longer so a slow
+  // recovery cannot race a second run.
   lockTtlMs: 660_000,
-  fetchPhaseTimeoutMs: 540_000,
+  fetchPhaseTimeoutMs: FETCH_PHASE_TIMEOUT_MS,
   validateFn: validate,
   sourceVersion: SANCTIONS_SOURCE_VERSION,
   recordCount: (data) => data.totalCount ?? 0,
@@ -857,6 +862,8 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
       return;
     }
     try {
+      // Encode first: an oversized snapshot must abort before history moves past its baseline.
+      const encodedSnapshots = encodeSourceSnapshots(data._sourceSnapshots);
       const currentGaps = data._changes.gaps.filter(gap => gap.to === data._changes.fetchedAt
         && gap.reason !== 'baseline-unavailable');
       await writeExtraKeyWithMeta(CHANGES_KEY, data._changes, CHANGES_TTL, data._changes.events.length,
@@ -867,7 +874,7 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
           failedSources: [...new Set(currentGaps.map(gap => gap.list))],
         });
       const count = Object.values(data._sourceSnapshots).reduce((sum, snapshot) => sum + (snapshot?.records.length ?? 0), 0);
-      await writeExtraKeyWithMeta(SOURCE_SNAPSHOTS_KEY, encodeSourceSnapshots(data._sourceSnapshots), SOURCE_SNAPSHOTS_TTL, count, SOURCE_SNAPSHOTS_META_KEY);
+      await writeExtraKeyWithMeta(SOURCE_SNAPSHOTS_KEY, encodedSnapshots, SOURCE_SNAPSHOTS_TTL, count, SOURCE_SNAPSHOTS_META_KEY);
       await upstashCommand(creds, ['SET', CHANGES_ACTIVATION_KEY, '1']);
     } catch {
       console.warn('  Sanctions change history publication failed; core sanctions publication will continue.');

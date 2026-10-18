@@ -4665,6 +4665,16 @@ describe('get_sanctions_data screening contract', () => {
     const invalid = await mcpHandler(proReq('POST', callBody('get_sanctions_data', { screen: 'x' }, 101)), deps);
     assert.equal((await invalid.json()).error.code, -32602);
   });
+  it('screens US Consolidated Screening List rows and filters them by the unspecified type', () => {
+    const csl = { id: 'CSL-EL:ab12', name: 'Semiconductor Manufacturing International Corporation', et: 'unspecified', cc: ['CN'], pr: [], al: ['SMIC'], sl: ['CSL-EL'] };
+    const data = { entities: [...index, csl], pressure: { entries: [], countries: [] } };
+    const [hit] = tool._postFilter(structuredClone(data), { screen: 'SMIC', min_score: 100 }).entities;
+    assert.equal(hit.id, 'CSL-EL:ab12');
+    assert.deepEqual(hit.sl, ['CSL-EL']);
+    assert.equal(hit.matched_on, 'alias');
+    assert.deepEqual(tool._postFilter(structuredClone(data), { entity_type: 'unspecified' }).entities.map(e => e.id), ['CSL-EL:ab12']);
+    assert.match(tool.inputSchema.properties.entity_type.description, /"unspecified"/);
+  });
   it('rejects invalid screening arguments and does not turn a missing cache into a valid empty list', () => {
     for (const args of [{ screen: 'x' }, { screen: 123 }, { screen: 'x'.repeat(201) }, { min_score: -1 }, { min_score: 101 }, { min_score: '70' }]) {
       assert.throws(() => tool._postFilter({ entities: index }, args), /./);
@@ -4725,6 +4735,15 @@ describe('get_sanctions_data change feed contract', () => {
     assert.equal(new Set(ids).size, 250);
     assert.throws(() => tool._postFilter(data(), { changes_since_days: 7, changes_cursor: `${now - 1}:1` }));
     assert.throws(() => tool._postFilter(data(), { changes_cursor: `${now}:1` }));
+  });
+  it('keeps the Federal Register citation and list link on CSL events', () => {
+    const csl = { ...event, list: 'CSL-EL', id: 'CSL-EL:ab12', name: 'Acme Electronics', et: 'unspecified', cc: ['CN'], pr: [],
+      notice: '90 FR 14032', url: 'https://www.bis.gov/regulations/ear/744' };
+    const result = tool._postFilter({ changes: { ...log, events: [...log.events, csl] } }, { changes_since_days: 7, entity_type: 'unspecified' });
+    assert.deepEqual(result.changes.events, [csl]);
+    const props = tool.outputSchema.properties.data.properties.changes.properties.events.items.properties;
+    assert.equal(props.notice.type, 'string');
+    assert.equal(props.url.type, 'string');
   });
   it('anchors the paged time window to the history snapshot', () => {
     const cachedAt = now - 6 * 3600000;

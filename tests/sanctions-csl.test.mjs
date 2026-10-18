@@ -3,7 +3,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { CSL_SOURCES, CSL_URL, ingestCslEntries, parseCslPayload } from '../scripts/_csl-sanctions.mjs';
+import { CSL_SOURCES, CSL_TIMEOUT_MS, CSL_URL, cslFetchBudget, ingestCslEntries, parseCslPayload } from '../scripts/_csl-sanctions.mjs';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/csl-consolidated-sample.json', import.meta.url), 'utf8'));
 const today = Date.UTC(2026, 9, 18);
@@ -70,6 +70,65 @@ describe('CSL parsing', () => {
     assert.equal(lists['CSL-EL'].error, null);
   });
 
+  // Synthetic rows built on the fixture's Entity List row, one field changed at a time.
+  const elRow = fixture.results.find(r => r.source.startsWith('Entity List'));
+  const parseRows = (...overrides) => parseCslPayload({
+    ...fixture,
+    results: overrides.map((o, i) => ({ ...elRow, id: String(i + 1).padStart(56, 'a'), ...o })),
+  }, today).lists['CSL-EL'].records;
+
+  it('maps the country spellings the live file uses instead of ISO codes', () => {
+    const codes = country => parseRows({ country: null, addresses: [{ country }] })[0].countryCodes;
+    assert.deepEqual(codes('turkiye'), ['TR']);
+    assert.deepEqual(codes('turkey (turkiye)'), ['TR']);
+    assert.deepEqual(codes(' US'), ['US']);
+    assert.deepEqual(codes('PRC'), ['CN']);
+    assert.deepEqual(codes('dprk'), ['KP']);
+    assert.deepEqual(codes("people's republic of china (prc)"), ['CN']);
+    assert.deepEqual(codes('people\u0092s republic of china (prc)'), ['CN']);
+    assert.deepEqual(codes('crimea (occupied)'), ['UA']);
+    assert.deepEqual(codes(''), []);
+    assert.deepEqual(codes('atlantis'), []);
+  });
+
+  it('reads an M/D/YYYY start date with stray spaces', () => {
+    assert.equal(parseRows({ start_date: ' 8/11/2015' })[0].effectiveAt, String(Date.UTC(2015, 7, 11)));
+    assert.equal(parseRows({ start_date: '13/45/2015' })[0].effectiveAt, '0');
+  });
+
+  it('replaces the stray U+0092 apostrophe in names and programs', () => {
+    const [record] = parseRows({ name: 'Foo\u0092s Bar', programs: ['Countering America\u0092s Adversaries'] });
+    assert.equal(record.name, 'Foo’s Bar');
+    assert.deepEqual(record.programs, ['Countering America’s Adversaries']);
+  });
+
+  it('keeps a row that ends today and drops one that ended yesterday', () => {
+    const names = parseRows({ name: 'Ends Today', end_date: '2026-10-18' }, { name: 'Ended Yesterday', end_date: '2026-10-17' })
+      .map(r => r.name);
+    assert.deepEqual(names, ['Ends Today']);
+  });
+
+  it('drops aliases equal to the name or to each other after normalization', () => {
+    const [record] = parseRows({ name: 'Acme Ltd', alt_names: ['ACME LTD', 'Acme Co', 'acme co.', '  ', 'Other'] });
+    assert.deepEqual(record._aliases, ['Acme Co', 'Other']);
+  });
+
+  it('keeps the first of two rows with the same id', () => {
+    const dup = parseCslPayload({ ...fixture, results: [{ ...elRow, name: 'First' }, { ...elRow, name: 'Second' }] }, today);
+    assert.deepEqual(dup.lists['CSL-EL'].records.map(r => r.name), ['First']);
+  });
+
+  it('drops a non-https list link, a malformed id and a future list date', () => {
+    const [plain] = parseRows({ source_list_url: 'http://www.bis.gov/x' });
+    assert.equal(plain._url, undefined);
+    assert.deepEqual(parseRows({ id: 'NOT-HEX' }), []);
+    const future = parseCslPayload({
+      ...fixture,
+      sources_used: fixture.sources_used.map(s => ({ ...s, source_last_updated: '2027-01-01T00:00:00+00:00' })),
+    }, today);
+    assert.equal(future.lists['CSL-EL'].publishedAt, 0);
+  });
+
   it('rejects a payload that is not the bulk download shape', () => {
     assert.equal(parseCslPayload({ results: 'x' }, today).error, 'CSL_INVALID_PAYLOAD');
     assert.equal(parseCslPayload(null, today).error, 'CSL_INVALID_PAYLOAD');
@@ -88,6 +147,16 @@ describe('CSL ingest', () => {
     assert.ok(seen.init.headers['User-Agent']);
     assert.equal(result.error, null);
     assert.equal(result.lists['CSL-EL'].records.length, 1);
+  });
+
+  it('clamps its timeout to the caller deadline and skips the download when too little time is left', async () => {
+    assert.equal(cslFetchBudget(Infinity, 0), CSL_TIMEOUT_MS);
+    assert.equal(cslFetchBudget(40_000, 0), 40_000);
+    assert.equal(cslFetchBudget(5_000, 0), 0, 'under the 10s floor');
+    let fetched = false;
+    const skipped = await ingestCslEntries({ deadlineAt: Date.now() + 5_000, fetchFn: async () => { fetched = true; } });
+    assert.equal(skipped.error, 'CSL_FETCH_DEADLINE');
+    assert.equal(fetched, false);
   });
 
   it('turns HTTP and transport failures into an error for every list, never a throw', async () => {
