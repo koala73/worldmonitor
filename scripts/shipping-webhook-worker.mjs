@@ -24,9 +24,12 @@
  *     message against every subscriber's stored `scope`, and delivers one
  *     POST per (subscriber, eventId). A failed delivery stays pending under
  *     the same delivery id until retry.pendingTtlSeconds; per-subscription
- *     caps (volume.maxDeliveriesPerHour/Day) drop and count the overflow.
- *     `webhook:seen:<event>:v1` (sorted set scored by first-seen ms) stops a
- *     replayed or multi-variant copy of one event from being evaluated twice.
+ *     caps (volume.maxDeliveriesPerHour/Day) count the events POSTed in each
+ *     UTC hour and day, retries included, and drop and count new overflow.
+ *     Each subscriber's `occ:<eventId>` field (pending, then a delivered or
+ *     expired tombstone for a day) is what stops a replayed, multi-variant or
+ *     republished copy from firing twice; `webhook:seen:<event>:v1` (sorted
+ *     set scored by first-seen ms) only counts those copies for the summary.
  * Delivery state per (subscriber, entity) lives in `webhook:state:<id>:v1`
  * (chokepoint ids, `cii:<CC>`, `occ:<eventId>` and `occ-cap` fields share the
  * hash); delivery counters live on the subscriber record. Delivery is
@@ -615,26 +618,47 @@ function planOccurrenceRecord({ record, previous, next, prune, occurrences, now,
     if (state.pending) {
       const age = now - Date.parse(state.pending.triggeredAt);
       if (!(age < rule.pendingTtlMs) || !state.payload) {
-        prune.push(field);
+        // Never sent, and never sent later: the tombstone keeps a republish
+        // of the same event from starting over under a new delivery id.
+        next[field] = { kind: 'occurrence', event: state.event, eventId: state.eventId, firstSeenAt: state.firstSeenAt, expiredAt: isoFromMs(now) };
         counters.expired += 1;
         continue;
       }
       pendingRetries.push([field, state]);
-    } else if (typeof state.deliveredAt === 'string' && now - Date.parse(state.deliveredAt) < DELIVERED_TOMBSTONE_MS) {
+    } else if (now - Date.parse(state.deliveredAt ?? state.expiredAt) < DELIVERED_TOMBSTONE_MS) {
       continue;
     } else {
       prune.push(field);
       counters.pruned += 1;
     }
   }
-  pendingRetries.sort((a, b) => Date.parse(a[1].pending.triggeredAt) - Date.parse(b[1].pending.triggeredAt));
-  for (const [field, state] of pendingRetries) {
-    next[field] = { ...state, attempts: (Number.isSafeInteger(state.attempts) ? state.attempts : 0) + 1 };
-    deliveries.push({ record, event, stateField: field, sources: {}, deliveryId: state.pending.deliveryId, payload: state.payload });
-  }
 
+  // The caps count events POSTed in each UTC hour and day. A pending retry
+  // holds the slot of the bucket it was admitted (or last counted) in; carried
+  // into a new bucket it needs a slot there, and waits, still pending, when
+  // that bucket is full. Retries go first, oldest first, so the backlog drains
+  // before new events take the room.
   const cap = nextCapState(previous[OCCURRENCE_CAP_FIELD], now);
   const capBefore = JSON.stringify(cap);
+  pendingRetries.sort((a, b) => Date.parse(a[1].pending.triggeredAt) - Date.parse(b[1].pending.triggeredAt));
+  for (const [field, state] of pendingRetries) {
+    const admitted = isoFromMs(Date.parse(state.pending.triggeredAt));
+    const countedHour = state.pending.countedHour ?? admitted.slice(0, 13);
+    const countedDay = state.pending.countedDay ?? admitted.slice(0, 10);
+    const needsHour = countedHour !== cap.hour;
+    const needsDay = countedDay !== cap.day;
+    if ((needsHour && cap.hourCount >= rule.maxPerHour) || (needsDay && cap.dayCount >= rule.maxPerDay)) {
+      next[field] = state;
+      counters.deferred += 1;
+      continue;
+    }
+    if (needsHour) cap.hourCount += 1;
+    if (needsDay) cap.dayCount += 1;
+    const pending = { ...state.pending, countedHour: cap.hour, countedDay: cap.day };
+    next[field] = { ...state, pending, attempts: (Number.isSafeInteger(state.attempts) ? state.attempts : 0) + 1 };
+    deliveries.push({ record, event, stateField: field, sources: {}, deliveryId: pending.deliveryId, payload: state.payload });
+  }
+
   for (const occurrence of occurrences) {
     if (occurrence.event !== event) continue;
     const field = occurrenceStateField(occurrence.eventId);
@@ -666,7 +690,7 @@ function planOccurrenceRecord({ record, previous, next, prune, occurrences, now,
 }
 
 export function emptyOccurrenceCounters() {
-  return { drained: 0, unreadable: 0, duplicates: 0, matched: 0, suppressed: 0, expired: 0, pruned: 0 };
+  return { drained: 0, unreadable: 0, duplicates: 0, matched: 0, suppressed: 0, deferred: 0, expired: 0, pruned: 0 };
 }
 
 /**
@@ -675,9 +699,10 @@ export function emptyOccurrenceCounters() {
  * `occurrences` may be null when that source was unreadable this tick:
  * records on that event are then left untouched (no state write, nothing
  * fired, pendings not retried) while records on the other events proceed.
- * `occurrences` are the fan-out messages drained this tick, already filtered
- * against the global seen set and de-duplicated by eventId; `prunes` maps a
- * subscriberId to the state fields to HDEL.
+ * `occurrences` are the fan-out messages drained this tick, oldest first,
+ * copies included: a subscriber takes the first copy of an eventId that
+ * matches its scope and skips the rest through its `occ:` field; `prunes`
+ * maps a subscriberId to the state fields to HDEL.
  */
 export function planTick({ chokepoints, riskScores = null, occurrences = null, records, states, now, scoresFetchedAt, riskFetchedAt = null, makeId = makeDeliveryId }) {
   const byId = new Map((chokepoints ?? [])
@@ -821,8 +846,7 @@ export async function readRiskScores({ redis, fetchImpl, env }) {
  * is unreadable, so occurrence records are skipped this tick the way a
  * missing feed skips its event. The messages are trimmed only after the tick
  * persisted its pending state (FANOUT_TRIM_SCRIPT), so a crash in between
- * replays them, which the seen set and the per-subscriber `occ:` fields make
- * a no-op. If the relay's own cap trimmed the tail between the read and the
+ * replays them, which the per-subscriber `occ:` fields make a no-op. If the relay's own cap trimmed the tail between the read and the
  * trim, the trim can drop as many unread messages as were lost; that only
  * happens after the worker has been away long enough to fill 2,000 messages.
  */
@@ -846,12 +870,15 @@ export async function readFanout({ redis, now = Date.now() }) {
 }
 
 /**
- * Drops occurrences already in the global seen set or repeated within this
- * drain (the relay publishes one copy per site variant; they share an id).
- * Returns the survivors plus the number dropped. A seen-set read failure is a
- * tick failure: delivering duplicates is worse than waiting five minutes.
+ * Counts the drained copies whose eventId was already seen, in an earlier
+ * tick (the global seen set) or earlier in this drain (the relay publishes one
+ * copy per site variant, and republishes a sustained market move hourly).
+ * Nothing is dropped here: whether a subscriber already has an eventId is
+ * settled by its own `occ:` field, so a later copy that newly clears one
+ * subscriber's scope (a bigger move, a reworded headline) still reaches it,
+ * while subscribers that already have the event skip it. Informational only.
  */
-async function filterUnseen(redis, occurrences) {
+async function countSeen(redis, occurrences) {
   const unique = new Map();
   let duplicates = 0;
   for (const occurrence of occurrences) {
@@ -861,8 +888,7 @@ async function filterUnseen(redis, occurrences) {
   }
   const candidates = [...unique.values()];
   const scores = await runBatched(redis, candidates, (occurrence) => ['ZSCORE', seenKey(occurrence.event), occurrence.eventId], 'seen read');
-  const unseen = candidates.filter((_, index) => scores[index] === null || scores[index] === undefined);
-  return { unseen, duplicates: duplicates + (candidates.length - unseen.length) };
+  return duplicates + scores.filter((score) => score !== null && score !== undefined).length;
 }
 
 function assertRows(rows, expected, label) {
@@ -1074,11 +1100,10 @@ async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
 
   let occurrences = null;
   if (fanout) {
-    const { unseen, duplicates } = await filterUnseen(redis, fanout.occurrences);
-    occurrences = unseen;
+    occurrences = fanout.occurrences;
     summary.occurrences.drained = fanout.count;
     summary.occurrences.unreadable = fanout.unreadable;
-    summary.occurrences.duplicates = duplicates;
+    summary.occurrences.duplicates = await countSeen(redis, fanout.occurrences);
   }
 
   const { deliveries, nextStates, prunes, counters } = planTick({
@@ -1091,7 +1116,7 @@ async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
     scoresFetchedAt: summary.scoresFetchedAt,
     riskFetchedAt: summary.riskFetchedAt,
   });
-  for (const key of ['matched', 'suppressed', 'expired', 'pruned']) summary.occurrences[key] = counters[key];
+  for (const key of ['matched', 'suppressed', 'deferred', 'expired', 'pruned']) summary.occurrences[key] = counters[key];
 
   // Persist each crossing's delivery id before sending, so a tick that dies
   // after a send still retries under the same id.

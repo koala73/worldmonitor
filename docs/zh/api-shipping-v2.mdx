@@ -99,7 +99,7 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 | `news.breaking` | 事件 | WorldMonitor 新闻中继将某条标题分类为 critical 或 high，且通过订阅的重要性下限、严重性下限、关键词、类别和国家范围；每个报道链接一次 | `scope.keywords`、`scope.categories`、`scope.countries`、`scope.importanceFloor`、`scope.severityFloor` |
 | `market.move` | 事件 | 被跟踪的股票、大宗商品或加密货币报价当日波动至少 `minAbsPct` 个百分点；每个代码、方向和严重性区间每个 UTC 日一次 | `scope.assetClasses`、`scope.symbols`、`scope.minAbsPct`、`scope.direction` |
 
-阈值事件由 worker 每 5 分钟重新评估条件，一次越过投递一次。事件型（occurrence）事件只触发一次：每次投递携带 `eventId`（`news.breaking` 为 `rss_` + 报道规范链接的哈希，`market.move` 为 `mkt_` + 中继合并键按 UTC 日的哈希），每个订阅对同一 `eventId` 最多投递一次；失败的投递在两小时内以相同的 `X-WM-Delivery-Id` 每 5 分钟重试，之后丢弃；每个订阅每小时最多 20 次、每天最多 100 次投递，超出部分在服务器端丢弃并计数，不会批量合并。它们的过滤条件放在请求体的 `scope` 对象中，服务器按注册表中该事件的 `inputSchema` 校验：事件未定义的键、阈值事件上的任何 `scope`、未知枚举值或超出范围的数值都会返回 `400`，字段名为 `scope.<key>`；省略的键在注册时写入默认值（`importanceFloor` 69、`severityFloor` high、`minAbsPct` 10、`direction` any）。`news.breaking` 的国家范围是严格的：中继无法归属国家的标题不会匹配任何国家范围。
+阈值事件由 worker 每 5 分钟重新评估条件，一次越过投递一次。事件型（occurrence）事件只触发一次：每次投递携带 `eventId`（`news.breaking` 为 `rss_` + 报道规范链接的哈希，`market.move` 为 `mkt_` + 中继合并键按 UTC 日的哈希），每个订阅对同一 `eventId` 只分配一个 `X-WM-Delivery-Id`，取自第一个匹配其 `scope` 的副本（之后的副本，例如同一档位内更大的波动或改写后的标题，仍可送达此前未匹配的订阅）；投递仍是至少一次，重试可能重复，请按该 id 幂等处理。失败的投递在两小时内以相同的 `X-WM-Delivery-Id` 每 5 分钟重试，之后永久丢弃；停用的 webhook 若在两小时内重新激活，会在下一次检查时重试这些待投递项。每个订阅每小时最多 20 个、每天最多 100 个事件（含重试），跨入新小时的重试占用该小时的名额，名额已满时继续等待；超出上限的新事件在服务器端丢弃并计数，不会批量合并。它们的过滤条件放在请求体的 `scope` 对象中，服务器按注册表中该事件的 `inputSchema` 校验：事件未定义的键、阈值事件上的任何 `scope`、未知枚举值或超出范围的数值都会返回 `400`，字段名为 `scope.<key>`；省略的键在注册时写入默认值（`importanceFloor` 69、`severityFloor` high、`minAbsPct` 10、`direction` any）。`news.breaking` 的国家范围是严格的：中继无法归属国家的标题不会匹配任何国家范围。
 
 **请求**（突发新闻）：
 ```json

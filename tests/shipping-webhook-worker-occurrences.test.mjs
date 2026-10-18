@@ -272,16 +272,16 @@ describe('planTick: occurrence records', () => {
     assert.equal(nextStates.get(rec.subscriberId)[occurrenceStateField(earlier.eventId)].attempts, 3);
   });
 
-  it('drops a pending delivery older than retry.pendingTtlSeconds without sending it, and counts it', () => {
+  it('drops a pending delivery older than retry.pendingTtlSeconds without sending it, counts it and leaves an expired tombstone', () => {
     const rec = newsRecord();
     const old = occ(rssMessage({ title: 'Old story', link: 'https://example.com/old' }));
     const ttlMs = OCCURRENCE_RULES['news.breaking'].pendingTtlMs;
     const stored = { kind: 'occurrence', event: 'news.breaking', eventId: old.eventId, firstSeenAt: 'x', attempts: 9, pending: { deliveryId: 'whd_old', triggeredAt: new Date(NOW - ttlMs - 1).toISOString() }, payload: { title: 'x' } };
     const { deliveries, prunes, counters, nextStates } = plan({ records: [rec], occurrences: [], states: new Map([[rec.subscriberId, { [occurrenceStateField(old.eventId)]: stored }]]) });
     assert.equal(deliveries.length, 0);
-    assert.deepEqual(prunes.get(rec.subscriberId), [occurrenceStateField(old.eventId)]);
+    assert.equal(prunes.size, 0);
     assert.equal(counters.expired, 1);
-    assert.equal(occurrenceStateField(old.eventId) in nextStates.get(rec.subscriberId), false);
+    assert.deepEqual(nextStates.get(rec.subscriberId)[occurrenceStateField(old.eventId)], { kind: 'occurrence', event: 'news.breaking', eventId: old.eventId, firstSeenAt: 'x', expiredAt: new Date(NOW).toISOString() });
   });
 
   it('a delivered tombstone blocks re-delivery of the same event and is pruned after a day', () => {
@@ -376,7 +376,7 @@ describe('runTick: occurrence deliveries', () => {
     assert.equal(sent[0].payload.variant, 'full', 'the oldest copy wins');
     assert.equal(sent[1].payload.symbol, 'VIX');
     assert.equal(summary.fanoutState, 'ok');
-    assert.deepEqual(summary.occurrences, { drained: 5, unreadable: 1, duplicates: 1, matched: 2, suppressed: 0, expired: 0, pruned: 0 });
+    assert.deepEqual(summary.occurrences, { drained: 5, unreadable: 1, duplicates: 1, matched: 2, suppressed: 0, deferred: 0, expired: 0, pruned: 0 });
     assert.equal(summary.deliveries, 2);
     assert.equal(fake.store.has(FANOUT_LIST_KEY), false, 'every drained message is trimmed');
     const newsSeen = fake.store.get(seenKey('news.breaking'));
@@ -419,7 +419,7 @@ describe('runTick: occurrence deliveries', () => {
     assert.equal(JSON.parse(fake.store.get(`webhook:sub:${NEWS_SUB}:v1`)).failureCount, 0);
   });
 
-  it('a replayed message after a crash between drain and trim is a no-op (seen set), and an expired pending is HDEL\'d', async () => {
+  it('a replayed message after a crash between drain and trim is a no-op, and an expired pending becomes a tombstone that is HDEL\'d a day later', async () => {
     const msg = rssMessage({ title: 'Story', link: 'https://example.com/replay' });
     const fake = seeded({ records: [newsRecord()], messages: [msg] });
     const { sent, deliver } = deliverStub();
@@ -433,10 +433,13 @@ describe('runTick: occurrence deliveries', () => {
     const old = occurrenceStateField('rss_' + 'f'.repeat(32));
     const state = fake.store.get(stateKey(NEWS_SUB));
     state[old] = JSON.stringify({ kind: 'occurrence', event: 'news.breaking', eventId: 'rss_' + 'f'.repeat(32), firstSeenAt: 'x', attempts: 3, pending: { deliveryId: 'whd_old', triggeredAt: new Date(NOW - 3 * HOUR).toISOString() }, payload: { title: 'x' } });
-    const pruned = await tick(fake, deliver, NOW + 2 * 60_000);
-    assert.equal(pruned.occurrences.expired, 1);
-    assert.equal(old in fake.store.get(stateKey(NEWS_SUB)), false, 'STATE_HDEL removed the expired pending');
+    const expired = await tick(fake, deliver, NOW + 2 * 60_000);
+    assert.equal(expired.occurrences.expired, 1);
+    assert.equal(JSON.parse(fake.store.get(stateKey(NEWS_SUB))[old]).pending, undefined, 'the expired pending is now a tombstone');
     assert.equal(sent.length, 1);
+    const pruned = await tick(fake, deliver, NOW + 25 * HOUR);
+    assert.ok(pruned.occurrences.pruned >= 1);
+    assert.equal(old in fake.store.get(stateKey(NEWS_SUB)), false, 'STATE_HDEL removed the day-old tombstone');
   });
 
   it('skips occurrence records and reports fanoutState error when the list is unreadable, while a chokepoint still delivers', async () => {
@@ -472,5 +475,101 @@ describe('runTick: occurrence deliveries', () => {
     await assert.rejects(tick(fake, deliver), /lock lost/);
     assert.equal(fake.store.get(FANOUT_LIST_KEY).length, 1);
     assert.equal(fake.store.has(seenKey('news.breaking')), false);
+  });
+});
+
+// PR #9332 review: an eventId is settled per subscriber, not globally, and the
+// hourly cap counts every event POSTed in the hour, retries included.
+describe('occurrence dedupe is per subscriber; caps count retries', () => {
+  const plan = ({ records, occurrences, states = new Map(), now = NOW }) => {
+    let n = 0;
+    return planTick({ chokepoints: null, riskScores: null, occurrences, records, states, now, scoresFetchedAt: null, makeId: () => `whd_${String(++n).padStart(32, '0')}` });
+  };
+
+  it('a later copy of one move that clears a subscriber\'s floor is delivered after an earlier copy that did not (two ticks)', async () => {
+    const rec = marketRecord({ minAbsPct: 15 });
+    const fake = seeded({ records: [rec], messages: [marketMessage({ changePct: 11, publishedAt: NOW - HOUR })] });
+    const { sent, deliver } = deliverStub();
+    await tick(fake, deliver);
+    assert.equal(sent.length, 0, '11 percent is under the 15 percent floor');
+    fake.store.set(FANOUT_LIST_KEY, [marketMessage({ changePct: 16 })]);
+    await tick(fake, deliver, NOW + HOUR);
+    assert.equal(sent.length, 1, 'the same critical-band move at 16 percent now matches');
+    assert.equal(sent[0].payload.changePct, 16);
+  });
+
+  it('the same holds within one drain, and the first matching copy is the one delivered', async () => {
+    const rec = marketRecord({ minAbsPct: 15 });
+    const fake = seeded({ records: [rec, marketRecord({}, { subscriberId: 'wh_cccccccccccccccccccccccc' })], messages: [
+      marketMessage({ changePct: 11, publishedAt: NOW - HOUR }),
+      marketMessage({ changePct: 16 }),
+      marketMessage({ changePct: 17, publishedAt: NOW + 60_000 }),
+    ] });
+    const { sent, deliver } = deliverStub();
+    await tick(fake, deliver);
+    const bySub = Object.fromEntries(sent.map((s) => [s.rec.subscriberId, s.payload.changePct]));
+    assert.deepEqual(bySub, { [rec.subscriberId]: 16, wh_cccccccccccccccccccccccc: 11 });
+  });
+
+  it('a reworded headline of an already-seen story reaches a subscriber whose keyword only the new wording carries', async () => {
+    const link = 'https://www.rferl.org/a/iran-tankers/33560001.html';
+    const fake = seeded({ records: [newsRecord({ keywords: ['hormuz'] })], messages: [rssMessage({ title: 'Two tankers hit mines in the Gulf', link })] });
+    const { sent, deliver } = deliverStub();
+    await tick(fake, deliver);
+    assert.equal(sent.length, 0);
+    fake.store.set(FANOUT_LIST_KEY, [rssMessage({ title: 'Two tankers hit mines in Strait of Hormuz', link, variant: 'finance' })]);
+    await tick(fake, deliver, NOW + 10 * 60_000);
+    assert.equal(sent.length, 1);
+    assert.deepEqual(sent[0].payload.matchedKeywords, ['hormuz']);
+  });
+
+  it('retries carried into a new hour use that hour\'s slots, so no hour sends more than maxDeliveriesPerHour events', () => {
+    const rule = OCCURRENCE_RULES['news.breaking'];
+    const rec = newsRecord();
+    const admittedAt = '2026-10-17T18:55:00.000Z';
+    const state = {};
+    for (let i = 0; i < rule.maxPerHour; i += 1) {
+      const eventId = rssEventId(`https://example.com/p/${i}`, `P${i}`);
+      state[occurrenceStateField(eventId)] = {
+        kind: 'occurrence', event: 'news.breaking', eventId, firstSeenAt: admittedAt, attempts: 1,
+        pending: { deliveryId: `whd_${String(i).padStart(32, 'a')}`, triggeredAt: admittedAt },
+        payload: { subscriberId: rec.subscriberId, title: `P${i}` },
+      };
+    }
+    const now = Date.parse('2026-10-17T19:05:00.000Z');
+    state[OCCURRENCE_CAP_FIELD] = { hour: '2026-10-17T19', hourCount: 5, day: '2026-10-17', dayCount: rule.maxPerHour + 5, suppressed: 0 };
+    const fresh = Array.from({ length: 3 }, (_, i) => normalizeTeeMessage(rssMessage({ title: `New ${i}`, link: `https://example.com/n/${i}`, publishedAt: now - 60_000 }), now));
+    const { deliveries, nextStates, counters } = plan({ records: [rec], occurrences: fresh, states: new Map([[rec.subscriberId, state]]), now });
+    assert.equal(deliveries.length, rule.maxPerHour - 5, 'only the hour\'s remaining slots are used');
+    assert.ok(deliveries.every((d) => d.payload.title.startsWith('P')), 'retries go first');
+    const next = nextStates.get(rec.subscriberId);
+    assert.equal(next[OCCURRENCE_CAP_FIELD].hourCount, rule.maxPerHour);
+    assert.equal(counters.deferred, 5, 'five retries wait for the next hour, still pending');
+    const waiting = Object.values(next).filter((s) => s?.pending && s.pending.countedHour !== '2026-10-17T19');
+    assert.equal(waiting.length, 5);
+    assert.equal(counters.suppressed, 3, 'new events over the cap are dropped as before');
+
+    // Later in the same hour the retries already counted resend without taking a slot.
+    const again = plan({ records: [rec], occurrences: [], states: new Map([[rec.subscriberId, next]]), now: now + 5 * 60_000 });
+    assert.equal(again.deliveries.length, rule.maxPerHour - 5);
+    assert.equal(again.counters.deferred, 5);
+  });
+
+  it('an expired pending delivery leaves a tombstone, so a republish of the same event does not fire later', () => {
+    const rec = marketRecord();
+    const move = occ(marketMessage());
+    const field = occurrenceStateField(move.eventId);
+    const ttlMs = OCCURRENCE_RULES['market.move'].pendingTtlMs;
+    const stored = { kind: 'occurrence', event: 'market.move', eventId: move.eventId, firstSeenAt: 'x', attempts: 20, pending: { deliveryId: 'whd_old', triggeredAt: new Date(NOW - ttlMs - 1).toISOString() }, payload: { symbol: 'VIX' } };
+    const expired = plan({ records: [rec], occurrences: [move], states: new Map([[rec.subscriberId, { [field]: stored }]]) });
+    assert.equal(expired.deliveries.length, 0);
+    assert.equal(expired.counters.expired, 1);
+    const tombstone = expired.nextStates.get(rec.subscriberId)[field];
+    assert.equal(tombstone.pending, undefined);
+    assert.equal(tombstone.expiredAt, new Date(NOW).toISOString());
+    const later = plan({ records: [rec], occurrences: [occ(marketMessage({ publishedAt: NOW + HOUR }))], states: new Map([[rec.subscriberId, { [field]: tombstone }]]), now: NOW + HOUR });
+    assert.equal(later.deliveries.length, 0);
+    const dayLater = plan({ records: [rec], occurrences: [], states: new Map([[rec.subscriberId, { [field]: tombstone }]]), now: NOW + 25 * HOUR });
+    assert.deepEqual(dayLater.prunes.get(rec.subscriberId), [field]);
   });
 });

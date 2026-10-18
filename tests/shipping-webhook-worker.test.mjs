@@ -806,7 +806,7 @@ describe('runTick', () => {
       failures: 0,
       deactivated: 0,
       pruned: 0,
-      occurrences: { drained: 0, unreadable: 0, duplicates: 0, matched: 0, suppressed: 0, expired: 0, pruned: 0 },
+      occurrences: { drained: 0, unreadable: 0, duplicates: 0, matched: 0, suppressed: 0, deferred: 0, expired: 0, pruned: 0 },
       scoresFetchedAt: '2026-10-17T11:58:00.000Z',
       riskFetchedAt: null,
     });

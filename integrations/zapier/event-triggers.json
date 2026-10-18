@@ -24,7 +24,7 @@
     "failureCeiling": 5,
     "kinds": {
       "threshold": "The worker re-evaluates a condition against a feed every tick and keeps the delivery pending while the condition holds; one crossing is one delivery id.",
-      "occurrence": "A fire-once event: one eventId is delivered at most once per subscription. A failed delivery is retried every tick under the same delivery id until retry.pendingTtlSeconds, then dropped. Per-subscription volume caps drop and count the overflow. Scope fields travel in the `scope` object of the registration body."
+      "occurrence": "A fire-once event: a subscription gets one delivery id per eventId, from the first copy that matches its scope (delivery stays at-least-once, so a retry can repeat it). A failed delivery is retried every tick under the same delivery id until retry.pendingTtlSeconds, then dropped for good. Per-subscription volume caps count the events POSTed per UTC hour and day, retries included; a retry over the cap waits, new events over it are dropped and counted. Scope fields travel in the `scope` object of the registration body."
     }
   },
   "events": {
