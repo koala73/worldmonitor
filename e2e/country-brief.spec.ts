@@ -1,10 +1,58 @@
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { test, expect, HYDRATED_MARKET } from './country-brief-fixtures';
 import { captureImfPeriods, type ImfPeriodScenario } from './country-brief-fixtures';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { installCountryBriefDesignData, installDecisionBriefData, installCommodityBriefData } from './country-brief-design-fixtures';
 
 const recording = process.env.CI ? 'on-first-retry' : 'retain-on-failure';
+
+for (const width of [1280, 390]) for (const addedIds of [0, 5]) {
+  test(`mixed-source sanctions attribution ${addedIds} added IDs ${width}`, async ({ page, countryBrief }, testInfo) => {
+    void countryBrief;
+    await page.setViewportSize({ width, height: 900 });
+    const title = addedIds > 0
+      ? '5 designation IDs added since the prior snapshot for China (OFAC / Canada SEMA)'
+      : '50 sanctions designations tied to China (OFAC / Canada SEMA)';
+    const entries = Array.from({ length: 50 }, (_, index) => ({
+      id: `${index < 25 ? 'SDN' : 'sema-ca'}:${index}`, name: `Controlled mixed-source entity ${index}`,
+      sourceLists: [index < 25 ? 'SDN' : 'sema-ca'], programs: [],
+      countryCodes: ['CN'], countryNames: ['China'], entityType: 'SANCTIONS_ENTITY_TYPE_ENTITY',
+      effectiveAt: '1577836800000', isNew: index >= 25 && index < 25 + addedIds,
+    }));
+    let reads = 0;
+    await page.route('**/api/bootstrap?*', async route => {
+      const keys = new URL(route.request().url()).searchParams.get('keys') ?? '';
+      if (!keys.split(',').includes('sanctionsPressure')) return route.fallback();
+      reads++;
+      await route.fulfill({ json: { data: { sanctionsPressure: { entries, totalCount: 50, sdnCount: 25, consolidatedCount: 0,
+        semaCount: 25, newEntryCount: addedIds, vesselCount: 0, aircraftCount: 0,
+        countries: [{ countryCode: 'CN', countryName: 'China', entryCount: 50,
+          newEntryCount: addedIds, vesselCount: 0, aircraftCount: 0 }], programs: [],
+        fetchedAt: String(Date.now()), datasetDate: '1577836800000' } }, missing: [] } });
+    });
+    await page.goto('/dashboard?layers=sanctions');
+    await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
+    await expect(page.locator('html')).toHaveAttribute('data-wm-initial-data-ready', 'true');
+    await expect.poll(() => reads).toBeGreaterThan(0);
+    await page.locator(width < 768 ? '[data-mobile-tab="search"]' : '#searchBtn').click();
+    await page.locator('.search-overlay .search-input').fill('China');
+    await page.locator('.search-result-item[data-index]').filter({ hasText: 'Brief: China' }).click();
+    const panel = page.locator('#country-deep-dive-panel');
+    await expect(panel.locator('.cdp-country-name')).toHaveText('China');
+    await panel.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'Security', exact: true }).click();
+    const signals = panel.locator('#cdp-section-signals');
+    await expect(signals).toContainText(title);
+    await expect(signals).not.toContainText('OFAC-linked');
+    await expect(signals).not.toContainText('new OFAC');
+    await signals.scrollIntoViewIfNeeded();
+    await expect(signals.getByText(title, { exact: true })).toBeVisible();
+    const clipped = await signals.getByText(title, { exact: true }).evaluate(el => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1);
+    expect(clipped).toBe(false);
+    await signals.screenshot({ path: testInfo.outputPath(`controlled-mixed-source-${addedIds}-added-${width}-signals.png`) });
+    await page.screenshot({ path: testInfo.outputPath(`controlled-mixed-source-${addedIds}-added-${width}-viewport.png`) });
+    await writeFile(testInfo.outputPath('sanctions-fixture.json'), JSON.stringify({ mode: 'controlled mixed OFAC / Canada SEMA', addedIds, width, entries, title, reads }, null, 2));
+  });
+}
 
 for (const width of [1280, 390]) for (const scenario of ['mixed', 'legacy', 'partial', 'sparse'] as ImfPeriodScenario[]) {
   test(`IMF annual website ${scenario} ${width}`, async ({ page, countryBrief }, testInfo) => {
