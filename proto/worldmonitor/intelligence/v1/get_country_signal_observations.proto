@@ -1,0 +1,36 @@
+syntax = "proto3";
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/military/v1/list_military_flights.proto";
+
+// Fixed country observation profiles; callers cannot select sources or viewports.
+enum CountrySignalFamily {
+  COUNTRY_SIGNAL_FAMILY_UNSPECIFIED = 0;
+  COUNTRY_SIGNAL_FAMILY_OUTAGES = 1;
+  COUNTRY_SIGNAL_FAMILY_UNREST = 2;
+  COUNTRY_SIGNAL_FAMILY_FIRES = 3;
+  COUNTRY_SIGNAL_FAMILY_RADIATION = 4;
+  COUNTRY_SIGNAL_FAMILY_SANCTIONS = 5;
+  COUNTRY_SIGNAL_FAMILY_CONFLICT = 6;
+  COUNTRY_SIGNAL_FAMILY_POSTURE = 7;
+  COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE = 8;
+}
+
+message GetCountrySignalObservationsRequest {
+  string country_code = 1 [(buf.validate.field).string.pattern = "^[A-Z]{2}$", (sebuf.http.query) = {name: "country_code"}];
+  CountrySignalFamily family = 2 [(sebuf.http.query) = {name: "family"}];
+  int32 window_index = 3 [(sebuf.http.query) = {name: "window_index"}];
+  string cursor = 4 [(buf.validate.field).string.max_len = 200, (sebuf.http.query) = {name: "cursor"}];
+}
+
+// Nullable clocks and coverage live in the validated bounded outcome JSON.
+// Flight pages retain the original typed provider-attributed flight DTO.
+message GetCountrySignalObservationsResponse {
+  string country_code = 1;
+  CountrySignalFamily family = 2;
+  string outcome_json = 3;
+  worldmonitor.military.v1.ListMilitaryFlightsResponse flight_page = 4;
+  int32 window_index = 5;
+}

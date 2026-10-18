@@ -15,6 +15,7 @@ const outside = { lat: 52, lon: 0, operatorCountry: 'US' };
 const flight = (id: string, item = own) => ({ id, location: { latitude: item.lat, longitude: item.lon }, operatorCountry: item.operatorCountry });
 function source(flights: ReturnType<typeof vi.fn>, aisAvailable = true) {
   return {
+    countryFlightPage: (_code: string, _window: number, cursor: string, signal: AbortSignal) => flights({ cursor }, { signal }),
     military: { listMilitaryFlights: flights, getUSNIFleetReport: async () => ({}) },
     vessels: { getVesselSnapshot: async () => ({ dataAvailable: aisAvailable, snapshot: { snapshotAt: Date.now(), status: { connected: true }, candidateReports: [{ mmsi: '235123456', name: 'Controlled AIS', shipType: 35, lat: 38, lon: -77, timestamp: Date.now() }] } }) },
   } as unknown as CountryBriefSource;
@@ -126,13 +127,14 @@ describe('shared country military observations', () => {
 
 });
 
-it('keeps ambiguous empty flights unknown and reports authorization loss for refresh retention', async () => {
+it('keeps verified country empty flights observed and reports authorization loss for refresh retention', async () => {
   const reader = source(vi.fn().mockResolvedValue({ flights: [], pagination: { nextCursor: '' } }));
   const empty = await loadHostCountryMilitaryActivity(reader, 'US', 'United States', new AbortController().signal);
-  expect(empty.signalCounts.militaryFlights).toBeNull();
+  expect(empty.signalCounts.militaryFlights).toBe(0);
   expect(empty.deniedSignalFields).toEqual([]);
-  reader.military.listMilitaryFlights = vi.fn().mockRejectedValue(new CountrySectionError('locked', 'Not authorized'));
+  reader.countryFlightPage = vi.fn().mockRejectedValue(new CountrySectionError('locked', 'Not authorized'));
   reader.vessels.getVesselSnapshot = vi.fn().mockRejectedValue(new CountrySectionError('locked', 'Not authorized'));
   const denied = await loadHostCountryMilitaryActivity(reader, 'US', 'United States', new AbortController().signal);
   expect(denied.deniedSignalFields).toEqual(['militaryFlights', 'militaryFlightsInCountry', 'militaryVessels', 'militaryVesselsInCountry']);
+  expect(denied.qualified).toMatchObject({ state: 'locked', observations: [] });
 });

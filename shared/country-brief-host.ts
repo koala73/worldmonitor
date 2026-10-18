@@ -3,6 +3,7 @@ import { BRIEF_TOPICS } from './country-brief-sections';
 import { panelReceiptSchema } from './panel-admission';
 import { resolveCountryCode } from './country-code-resolve';
 import { RAW_SIGNAL_PATH } from './country-raw-signals';
+import { COUNTRY_SIGNAL_PATH, COUNTRY_SIGNAL_WIRE_FAMILIES } from './country-signal-observations';
 
 const signalCountryNames = new Intl.DisplayNames(['en'], { type: 'region', fallback: 'none' });
 // Intl includes named organizations, statistical regions and test locales as well as countries/territories.
@@ -56,6 +57,7 @@ const activityBoundsSchema = {
 };
 
 export const COUNTRY_READERS = {
+  countrySignals: { path: COUNTRY_SIGNAL_PATH, args: z.object({ country_code: signalCountryCode, family: z.enum(COUNTRY_SIGNAL_WIRE_FAMILIES), window_index: z.coerce.number().int().min(0).max(1).default(0), cursor: z.string().max(200).default('') }).strict().refine(value => value.family === 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE' || value.window_index === 0 && value.cursor === '') },
   signalsRaw: { path: RAW_SIGNAL_PATH, args: z.object({ country_code: signalCountryCode }).strict() },
   flights: { path: '/api/military/v1/list-military-flights', args: z.object({ ...activityBoundsSchema, page_size: z.coerce.number().int().min(100).max(100).default(100), operator: z.literal('MILITARY_OPERATOR_UNSPECIFIED').default('MILITARY_OPERATOR_UNSPECIFIED'), aircraft_type: z.literal('MILITARY_AIRCRAFT_TYPE_UNSPECIFIED').default('MILITARY_AIRCRAFT_TYPE_UNSPECIFIED'), cursor: z.string().max(200).default('') }).strict() },
   vessels: { path: '/api/maritime/v1/get-vessel-snapshot', args: z.object({ ne_lat: z.coerce.number().pipe(z.literal(0)).default(0), ne_lon: z.coerce.number().pipe(z.literal(0)).default(0), sw_lat: z.coerce.number().pipe(z.literal(0)).default(0), sw_lon: z.coerce.number().pipe(z.literal(0)).default(0), include_candidates: z.literal('true').default('true') }).strict() },

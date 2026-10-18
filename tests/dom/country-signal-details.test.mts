@@ -70,19 +70,23 @@ describe('shared country signal details', () => {
     expect(projectCountrySignalDetails([{ ...observation('protest', 'high', 1), type }]).recentHigh[0]?.type).toBe('OTHER');
   });
 
-  it('uses only the website country cluster, preserving the aggregator cap and window owner', async () => {
+  it('uses the qualified country loader without reading the global aggregator', async () => {
     const signals = [observation('temporal_anomaly', 'high', 2), observation('active_strike', 'high', 1)];
     snapshot.read.mockReturnValue([cluster('XX', [observation('protest', 'high', 6)]), cluster('US', [observation('protest', 'high', 5)]), cluster('FR', signals)]);
     const manager = new CountryIntelManager({ latestClusters: [], intelligenceCache: {} } as unknown as AppContext);
+    const qualified = vi.fn(async (code: string) => ({ details: projectCountrySignalDetails(code === 'FR' ? signals : []) }));
+    Reflect.set(manager, 'loadQualifiedCountrySignals', qualified);
     const project = Reflect.get(manager, 'buildSignalDetails').bind(manager);
     expect(await project('FR')).toEqual(projectCountrySignalDetails(signals));
     expect(await project('DE')).toEqual(projectCountrySignalDetails([]));
-    expect(snapshot.read).toHaveBeenCalledTimes(2);
+    expect(qualified).toHaveBeenCalledTimes(2);
+    expect(snapshot.read).not.toHaveBeenCalled();
   });
 
   it('does not turn a failed website cluster read into observed empty coverage', async () => {
     snapshot.read.mockImplementation(() => { throw new Error('Controlled cluster outage'); });
     const manager = new CountryIntelManager({ latestClusters: [], intelligenceCache: {} } as unknown as AppContext);
+    Reflect.set(manager, 'loadQualifiedCountrySignals', async () => { throw new Error('Controlled cluster outage'); });
     await expect(Reflect.get(manager, 'buildSignalDetails').call(manager, 'FR')).rejects.toThrow('Controlled cluster outage');
   });
 });
@@ -118,6 +122,7 @@ function lifecycle() {
     map: { setRenderPaused: () => {}, highlightCountry: () => {}, fitCountry: () => {} },
   } as unknown as AppContext;
   const manager = new CountryIntelManager(ctx);
+  Reflect.set(manager, 'loadQualifiedCountrySignals', async (country: string) => ({ details: projectCountrySignalDetails(snapshot.read().find((value: CountrySignalCluster) => value.country === country)?.signals ?? []) }));
   Reflect.set(manager, 'ensureCountryBriefPage', async () => true);
   Reflect.set(manager, 'getCountrySignals', vi.fn(async () => signals));
   Reflect.set(manager, 'getCountryController', () => ({ hydrate: () => ({ stockPromise: Promise.resolve(null) }) }));
@@ -128,6 +133,24 @@ function lifecycle() {
 }
 
 describe('website Signals lifecycle', () => {
+  it.each(['opening', 'refresh'] as const)('publishes qualified unavailable coverage during %s without zero totals', async phase => {
+    const h = lifecycle();
+    if (phase === 'refresh') await h.open();
+    const { COUNTRY_SIGNAL_FAMILIES, projectQualifiedCountrySignals, unavailableCountrySignal } = await import('../../shared/country-signal-observations');
+    const value = projectQualifiedCountrySignals('FR', [...COUNTRY_SIGNAL_FAMILIES, 'military' as const].map(family => unavailableCountrySignal('FR', family, `Controlled ${family} unavailable`)));
+    const publish = vi.fn((qualified: typeof value) => { Reflect.set(h.panel, 'currentCode', 'FR'); h.panel.updateQualifiedCountrySignals(qualified); });
+    Object.assign(h.page, { updateQualifiedCountrySignals: publish });
+    Reflect.set(h.manager, 'loadQualifiedCountrySignals', async () => { Reflect.set(h.manager, 'qualifiedSignals', value); return value; });
+    try {
+      if (phase === 'opening') await h.open(); else h.manager.refreshOpenBrief();
+      await vi.waitFor(() => expect(publish).toHaveBeenCalledWith(value));
+      expect(value.details).toBeNull();
+      expect(value.families).toHaveLength(8);
+      expect(h.body.textContent).toContain('Controlled radiation unavailable');
+      expect(h.body.textContent).toContain('This is not zero activity');
+      expect(h.body.querySelectorAll('.cdp-signal-item')).toHaveLength(0);
+    } finally { h.panel.hide(); }
+  });
   beforeEach(() => { paint.yield.mockResolvedValue(undefined); snapshot.read.mockReturnValue([cluster('FR', [observation('protest', 'high', 1)])]); });
 
   it('keeps observed severity and recent evidence after the complete opening count flow', async () => {
@@ -294,7 +317,7 @@ describe('website Signals lifecycle', () => {
     Reflect.set(h.manager, 'getCountrySignals', vi.fn().mockResolvedValueOnce({ ...h.signals, militaryVessels: 142 }).mockRejectedValueOnce(new Error('Controlled overlapping counts outage')));
     h.manager.refreshOpenBrief();
     await vi.waitFor(() => expect(detailRead).toHaveBeenCalledOnce());
-    expect(h.body.textContent).toContain('Loading top high-severity');
+    expect(h.body.textContent).toContain('protest 1');
     h.manager.refreshOpenBrief();
     await vi.waitFor(() => expect(h.body.textContent).toContain('observations are unavailable'));
     expect(h.body.textContent).toContain('142 Naval Vessels');

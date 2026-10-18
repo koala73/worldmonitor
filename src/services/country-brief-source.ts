@@ -1,5 +1,7 @@
 import { RAW_SIGNAL_PATH } from '../../shared/country-raw-signals-model';
+import { COUNTRY_SIGNAL_PATH, COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_WIRE_FAMILIES, countrySignalResponseSchema, countrySignalOutcomeSchema, type CountrySignalFamily } from '../../shared/country-signal-observations';
 import { combineAbortSignals } from './timeout-signal';
+import { CountrySectionError } from './country-brief-error';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
 import type { createHostCountryFetch } from './country-brief-host-transport';
 import { IntelligenceServiceClient, MarketServiceClient, MilitaryServiceClient, MaritimeServiceClient, EconomicServiceClient, TradeServiceClient, SupplyChainServiceClient, ResilienceServiceClient, ScorecardServiceClient, PredictionServiceClient } from '@/services/generated-rpc-clients';
@@ -8,7 +10,7 @@ import { premiumFetch } from '@/services/premium-fetch';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { fetchMultiSectorCostShock, fetchMultiSectorExposure, fetchBypassOptions, fetchChokepointStatus, HS2_SHORT_LABELS, SEEDED_HS2_CODES } from '@/services/supply-chain';
 
-function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void }, mode: 'website' | 'host') {
+function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void; settleMandatoryReads?: (signal?: AbortSignal) => Promise<void> }, mode: 'website' | 'host') {
   const base = mode === 'host' ? 'https://www.worldmonitor.app' : getRpcBaseUrl();
   const options = { fetch: fetcher };
   const intelligence = new IntelligenceServiceClient(base, options);
@@ -19,6 +21,22 @@ function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void }
     mode,
     canRequestPremium: () => mode === 'host' || (!IS_EMBEDDED_PREVIEW && hasPremiumAccess()),
     fetch: fetcher,
+    settleMandatoryReads: fetcher.settleMandatoryReads ?? (async () => {}),
+    countrySignals: async (code: string, family: CountrySignalFamily, signal: AbortSignal) => {
+      const wire = COUNTRY_SIGNAL_WIRE_FAMILIES.find(value => value === `COUNTRY_SIGNAL_FAMILY_${family.toUpperCase()}`)!;
+      const result = await intelligence.getCountrySignalObservations({ countryCode: code, family: wire, windowIndex: 0, cursor: '' }, { signal });
+      signal.throwIfAborted();
+      if (result.countryCode !== code || result.family !== wire) throw new Error('Country source identity mismatch');
+      const outcome = countrySignalOutcomeSchema.parse(JSON.parse(result.outcomeJson));
+      if (outcome.countryCode !== code || outcome.family !== family) throw new Error('Country outcome identity mismatch');
+      return outcome;
+    },
+    countryFlightPage: async (code: string, windowIndex: number, cursor: string, signal: AbortSignal) => {
+      const result = await intelligence.getCountrySignalObservations({ countryCode: code, family: 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE', windowIndex, cursor }, { signal });
+      signal.throwIfAborted();
+      if (result.countryCode !== code || result.family !== 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE' || result.windowIndex !== windowIndex || !result.flightPage) throw new Error('Country flight identity mismatch');
+      return result.flightPage;
+    },
     signalsRaw: async (code: string, signal: AbortSignal) => {
       if (mode !== 'host') throw new Error('Raw Signals reader requires a country host connection.');
       const requestSignal = combineAbortSignals([signal, AbortSignal.timeout(30_000)]);
@@ -32,7 +50,7 @@ function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void }
       if (value.countryCode !== code) throw new Error('Signals country identity mismatch');
       return value;
     },
-    clearLoadedData: fetcher.clear ?? (() => {}),
+    clearLoadedData: () => { fetcher.clear?.(); },
     intelligence,
     market: new MarketServiceClient(base, options),
     economic: new EconomicServiceClient(base, options),
@@ -79,7 +97,45 @@ function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void }
   };
 }
 export type CountryBriefSource = ReturnType<typeof createCountryBriefSource>;
-export const createWebsiteCountryBriefSource = () => createCountryBriefSource(premiumFetch, 'website');
+export const createWebsiteCountryBriefSource = () => createCountryBriefSource(async (input, init) => {
+  const url = new URL(input instanceof Request ? input.url : String(input), window.location.origin);
+  if (url.pathname !== COUNTRY_SIGNAL_PATH) return premiumFetch(input, init);
+  const signal = combineAbortSignals([init?.signal ?? (input instanceof Request ? input.signal : new AbortController().signal), AbortSignal.timeout(15_000)]);
+  const withinDeadline = <T>(work: Promise<T>) => new Promise<T>((resolve, reject) => {
+    signal.throwIfAborted();
+    const abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+  const pending = premiumFetch(input, { ...init, signal });
+  void pending.then(response => { if (signal.aborted) void response.body?.cancel().catch(() => {}); }, () => {});
+  const response = await withinDeadline(pending);
+  if (response.status === 401 || response.status === 403) {
+    void response.body?.cancel().catch(() => {});
+    const billing = response.headers.get('X-Billing-Verification');
+    throw new CountrySectionError('locked', billing ? `Country Signals authorization denied (${billing}).` : 'This connection is not authorized for Country Signals.');
+  }
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('Country signal body unavailable');
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const chunk = await withinDeadline(reader.read());
+      if (chunk.done) break;
+      size += chunk.value.byteLength;
+      if (size > COUNTRY_SIGNAL_BYTES) throw new Error('Country Signals exceeds byte limit');
+      chunks.push(chunk.value);
+    }
+    signal.throwIfAborted();
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    if (response.ok) countrySignalResponseSchema.parse(JSON.parse(text));
+    return new Response(text, { status: response.status, statusText: response.statusText, headers: response.headers });
+  } finally { void reader.cancel().catch(() => {}); }
+}, 'website');
 
 export async function createHostCountryBriefSource(call: Parameters<typeof createHostCountryFetch>[0]) {
   const { createHostCountryFetch } = await import('./country-brief-host-transport');

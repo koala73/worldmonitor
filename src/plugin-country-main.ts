@@ -1,11 +1,13 @@
 import './bootstrap/zod-csp';
 import { loadHostCountryMilitaryActivity, type CountryMilitarySignalCounts } from '@/services/country-military-activity';
+import { loadQualifiedCountrySignals } from '@/services/country-signal-projection';
 import { countrySignalsFromMilitary, recoverCountrySignals, recoverRawSignals, composeCountrySignals, type CountryRawSignalSlot } from '@/services/country-signals';
 import './styles/base-layer.css';
 import './styles/plugin-country.css';
 import { z } from 'zod';
 import { countryViewSchema, panelAdmissionSchema, type PanelAdmission } from '../shared/country-brief-host';
 import { RAW_SIGNAL_FAMILIES, failedRawSignal, assembleRawSignals } from '../shared/country-raw-signals';
+import { projectQualifiedCountrySignalContext } from '../shared/country-signal-observations';
 import { resolveCountryCode } from '../shared/country-code-resolve';
 import { BRIEF_TOPICS } from '../shared/country-brief-sections';
 import { isChinaDecisionSignalSnapshot } from '../shared/china-decision-signals';
@@ -421,6 +423,10 @@ async function mountPlugin(): Promise<void> {
       usage: admission?.usage,
       selectedAtlasAsset: panel.getAtlasSelection(),
       signals: panel.getSignalCounts(),
+      qualifiedCountrySignals: (() => {
+        const value = panel.getQualifiedCountrySignals();
+        return value ? projectQualifiedCountrySignalContext(value) : null;
+      })(),
       signalCoverage,
       topic: currentDocument?.querySelector<HTMLElement>('.cdp-shell')?.dataset.briefTopic,
       sections: Array.from(currentDocument?.querySelectorAll<HTMLElement>('[data-brief-section]') ?? []).map(card => {
@@ -583,6 +589,7 @@ async function mountPlugin(): Promise<void> {
     if (signal.aborted || expectedRevision !== revision || panel.getCode() !== code || signalSlots?.countryCode !== code) return;
     openRequest?.abort();
     signalSlots.raw = null;
+    panel.clearQualifiedCountrySignals();
     signalCoverage = null;
     source.clearLoadedData();
     admissions.delete(code);
@@ -675,7 +682,13 @@ async function mountPlugin(): Promise<void> {
       scheduleContext();
     };
     publishSignals();
-    void preloadCountryGeometry().then(() => loadHostCountryMilitaryActivity(source, code, name, signal)).then(summary => {
+    const militaryPromise = preloadCountryGeometry().then(() => loadHostCountryMilitaryActivity(source, code, name, signal));
+    void loadQualifiedCountrySignals(source, code, signal, militaryPromise.then(async value => { await panel.settleHostedOpeningReads(); return value; }), sameCountryRefresh ? panel.getQualifiedCountrySignals() : null).then(value => {
+      if (!current()) return;
+      panel.updateQualifiedCountrySignals(value);
+      scheduleContext();
+    }).catch(() => {});
+    void militaryPromise.then(summary => {
       if (!current()) return;
       panel.updateMilitaryActivity(summary);
       const recovered = recoverCountrySignals(countrySignalsFromMilitary(code, summary.signalCounts), priorSignalSlots ? countrySignalsFromMilitary(code, priorSignalSlots.military) : null, summary.deniedSignalFields);
