@@ -324,23 +324,23 @@ describe('#5697 NLP MCP tools', () => {
     assert.match(
       described?.description ?? '',
       /sourceNames/,
-      'uncompressed description must mention the attributed sourceNames field',
+      'describe_tool description must mention the attributed sourceNames field',
     );
     assert.match(
       described?.description ?? '',
       /title, source, link/,
-      'uncompressed description must describe the attributed sample headline shape',
+      'describe_tool description must describe the attributed sample headline shape',
     );
     const listedSpike = byName.get('get_keyword_spikes');
     assert.match(
       listedSpike?.description ?? '',
       /sourceNames/,
-      'tools/list compressed description must still name sourceNames',
+      'tools/list description must name sourceNames',
     );
     assert.match(
       listedSpike?.description ?? '',
       /title, source, link/,
-      'tools/list compressed description must still name the sample shape',
+      'tools/list description must name the sample shape',
     );
   });
 

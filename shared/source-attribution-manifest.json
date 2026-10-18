@@ -10822,9 +10822,6 @@
           "path": "scripts/measure-mobile-mainthread.mjs"
         },
         {
-          "path": "scripts/measure-tools-list-compression.mjs"
-        },
-        {
           "path": "scripts/publish-mcp-registry.mjs"
         },
         {

@@ -83,9 +83,9 @@ export const COST_SHOCK_TOOLS: ToolDef[] = [{
     type: 'object',
     properties: {
       country: { type: 'string', description: COUNTRY_ARG_HINT },
-      chokepoint_id: { type: 'string', enum: CHOKEPOINT_REGISTRY.filter(point => point.shockModelSupported).map(point => point.id) },
-      disruption_pct: { type: 'integer', minimum: 10, maximum: 100, default: 100 },
-      fuel_mode: { type: 'string', enum: ['oil', 'gas', 'both'], default: 'oil' },
+      chokepoint_id: { type: 'string', enum: CHOKEPOINT_REGISTRY.filter(point => point.shockModelSupported).map(point => point.id), description: 'Registry id of the disrupted chokepoint; only chokepoints with a supported shock model are listed.' },
+      disruption_pct: { type: 'integer', minimum: 10, maximum: 100, default: 100, description: 'Share of the chokepoint flow disrupted, 10-100 percent (default 100, a full closure).' },
+      fuel_mode: { type: 'string', enum: ['oil', 'gas', 'both'], default: 'oil', description: 'Which fuel sensitivity to compute: oil (default), gas or both.' },
     },
     required: ['country', 'chokepoint_id'],
   },

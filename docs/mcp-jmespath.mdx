@@ -569,7 +569,7 @@ Every cache tool also accepts a universal `summary: true` argument that returns 
 
 ### `describe_tool`
 
-When `tools/list` returns a compressed description that's ambiguous about a tool's response shape, call `describe_tool({ tool_name: "get_market_data" })` to fetch the full uncompressed definition. `describe_tool` is metadata-only and **exempt from the Pro daily quota** — use it freely while authoring projections. If the name is wrong, the response is `{ error: "unknown_tool", available: [...] }`, again with no quota cost.
+To re-read one tool's definition — its `outputSchema` included — without re-listing the whole catalog, call `describe_tool({ tool_name: "get_market_data" })`. `describe_tool` is metadata-only and **exempt from the Pro daily quota** — use it freely while authoring projections. If the name is wrong, the response is `{ error: "unknown_tool", available: [...] }`, again with no quota cost.
 
 ## See also
 

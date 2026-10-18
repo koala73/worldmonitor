@@ -275,7 +275,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ## Tool catalog
 
-The server exposes a registry of tools. Most are cache-reads over pre-seeded Redis keys (sub-second). The slower, non-cache paths are the six live LLM/external-API tools (`get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`, `classify_event`) plus the live geo RPC tools (`get_airspace`, `get_maritime_activity`), the bounded canonical procurement proxy (`get_procurement_opportunities`), the corporate-intelligence proxy (`get_company_intelligence`), the canonical China decision-signal RPC (`get_china_decision_signals`), and the three durable-history RPCs (`search_intel_history`, `get_intel_timeline`, `get_similar_events`). `get_world_brief` reads the dashboard's precomputed, citation-grounded `news:insights:v1` snapshot and does not make a request-time LLM call. The on-demand NLP utilities (`classify_event`, `extract_entities`, `get_news_clusters`, `get_keyword_spikes`, `verify_claim`) accept bounded caller text or compute over live seeded data; all but `classify_event` are fully deterministic. One (`describe_tool`, added v1.5.0) returns the full uncompressed definition of any other tool — useful when the compressed `tools/list` description is ambiguous; exempt from the Pro daily quota.
+The server exposes a registry of tools. Most are cache-reads over pre-seeded Redis keys (sub-second). The slower, non-cache paths are the six live LLM/external-API tools (`get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`, `classify_event`) plus the live geo RPC tools (`get_airspace`, `get_maritime_activity`), the bounded canonical procurement proxy (`get_procurement_opportunities`), the corporate-intelligence proxy (`get_company_intelligence`), the canonical China decision-signal RPC (`get_china_decision_signals`), and the three durable-history RPCs (`search_intel_history`, `get_intel_timeline`, `get_similar_events`). `get_world_brief` reads the dashboard's precomputed, citation-grounded `news:insights:v1` snapshot and does not make a request-time LLM call. The on-demand NLP utilities (`classify_event`, `extract_entities`, `get_news_clusters`, `get_keyword_spikes`, `verify_claim`) accept bounded caller text or compute over live seeded data; all but `classify_event` are fully deterministic. One (`describe_tool`, added v1.5.0) returns the complete definition of any other tool by name — the same entry `tools/list` ships, for re-reading one tool without re-listing the catalog; exempt from the Pro daily quota.
 
 <Tip>
 For per-tool parameters, freshness budgets, timeouts, and concrete `curl` examples, see the [MCP Tools Reference](/mcp-tools-reference). For payload projection — every tool accepts an optional `jmespath` argument that typically cuts response size by 80-95% — see the [JMESPath guide](/mcp-jmespath).
@@ -415,7 +415,7 @@ Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed 
 | Tool | Description |
 |------|-------------|
 | `get_sources` | Live source inventory (providers + outlets) with tiers and provenance. The sole credential-free, quota-free data tool. |
-| `describe_tool` | Full uncompressed definition of any other tool. Quota-exempt metadata lookup. |
+| `describe_tool` | Complete definition of any other tool, identical to its `tools/list` entry. Quota-exempt metadata lookup. |
 
 ## API coverage
 

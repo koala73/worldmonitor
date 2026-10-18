@@ -31,9 +31,9 @@ Before diving into the per-tool reference, two affordances make discovery cheape
 
 MCP coverage is intentionally curated. Some OpenAPI operations are REST-only because they mutate state, pass through LLM cost, fetch paid/high-cardinality upstreams on cache miss, or need manual cache-key mapping. The [API coverage section](/mcp-overview#api-coverage) names the enforced categories and links the current follow-up trackers.
 
-### `describe_tool` — full uncompressed definition on demand
+### `describe_tool` — one tool's definition on demand
 
-Since v1.5.0, `tools/list` returns each tool's `description` truncated to the first sentence (≤120 UTF-8 bytes). That keeps the per-session input-token cost low when the LLM only needs to scan names — and the same `tools/list` entry now ships an `outputSchema` (v1.6.0) so the model can author a [JMESPath projection](/mcp-jmespath) on the first call. When the compressed description is ambiguous, call `describe_tool` for the long form:
+Since v1.34.0, `tools/list` ships each tool's complete `description` (every registered description fits a 1,024-byte per-tool budget, enforced in CI) together with its `inputSchema` and `outputSchema` (v1.6.0), so the model can choose a tool and author a [JMESPath projection](/mcp-jmespath) from the listing alone. `describe_tool` returns that same definition for one tool, for re-reading a single entry without re-listing the whole catalog:
 
 ```json
 {
@@ -44,7 +44,7 @@ Since v1.5.0, `tools/list` returns each tool's `description` truncated to the fi
 }
 ```
 
-Response — identical shape to a `tools/list` entry, with the full uncompressed `description` and the full `inputSchema.properties` text. Every entry also carries `_meta["worldmonitor/access"]` (the tier marker: `free`, `free-account`, or `subscription`) and `_meta["worldmonitor/weight"]` (what one call costs in [budget units](/usage-rate-limits#mcp-calls-against-an-api-plan): 1, 2, or 3), and UI-bearing tools add `_meta.ui.resourceUri`:
+Response — identical to that tool's `tools/list` entry: the same `description` and the same `inputSchema.properties` text. Every entry also carries `_meta["worldmonitor/access"]` (the tier marker: `free`, `free-account`, or `subscription`) and `_meta["worldmonitor/weight"]` (what one call costs in [budget units](/usage-rate-limits#mcp-calls-against-an-api-plan): 1, 2, or 3), and UI-bearing tools add `_meta.ui.resourceUri`:
 
 ```json
 {
@@ -62,9 +62,9 @@ Response — identical shape to a `tools/list` entry, with the full uncompressed
 }
 ```
 
-`describe_tool` is **exempt from the Pro daily quota** (per-minute rate limit still applies). The exemption is intentional — counting metadata lookups against the 50/day cap would discourage exploration, defeating the compression. Two common workflows:
+`describe_tool` is **exempt from the Pro daily quota** (per-minute rate limit still applies). The exemption is intentional — counting metadata lookups against the 50/day cap would discourage exploration. Two common workflows:
 
-- **Compressed entry is ambiguous about behaviour or argument semantics.** Call `describe_tool` to see the full long-form description plus every property's full description.
+- **Re-reading one tool mid-session.** Call `describe_tool` to get a single tool's definition back into context without paying for the whole `tools/list` catalog again.
 - **First-time JMESPath authoring against an unfamiliar response.** Call `describe_tool` to read the `outputSchema` (see next section) without paying a quota slot for a real `tools/call`.
 
 `describe_tool` returns two soft-error envelopes inside the normal `content[0].text`:
@@ -458,7 +458,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_eu_industrial_production`
 
-Eurostat monthly industrial production index (sts_inpr_m, NACE B-D industry excl. construction, SCA, base 2021=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, month label, and a 12-month sparkline series. Leading indicator of real-economy activity used by the "Real economy pulse" sparkline.
+Return the Eurostat monthly industrial production index (sts_inpr_m: NACE B-D industry excluding construction, seasonally and calendar adjusted, 2021=100) for the 27 EU members plus the EA20 and EU27_2020 aggregates. Each country entry has the latest value, prior value, month label and a 12-month series. Monthly data; the seed is flagged stale after 5 days. Covers the EU industrial index only; no other production or GDP measures. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. countries uses Eurostat geo codes (ISO alpha-2 except EL for Greece); limit caps the country map when no filter is given (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -489,7 +489,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_tariff_trends`
 
-Price and debt indicators: Big Mac index, FAO Food Price Index, and per-country national debt levels.
+Return the seeded price and debt indicator bundle: the Economist Big Mac index by country, the FAO Food Price Index and per-country national debt levels. Each sub-dataset has its own staleness budget (Big Mac a week, FAO and debt 60 days). No tariff rates: a dataset value of tariffs is rejected with a validation error. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects bigmac, fao-ffpi or national-debt; country narrows Big Mac and debt rows (alpha-2, alpha-3 or name); limit caps each list (default 30, 0 for no cap).
 
 The tool keeps its name for existing callers, but it no longer carries a tariff series (#9301). The US MFN tariff trend is Pro data: call `get_tariff_averages` with reporter `840` and no partner or product group. `dataset: ["tariffs"]` returns Invalid params.
 
@@ -947,7 +947,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_prediction_markets`
 
-Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. Contracts include current probabilities. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance. Dedicated paid connections use one panel allocation across openings and filters. Explicit refresh with a request_id starts one new allocation; the same ID retries it. API allowances retain per-tool billing.
+Return seeded prediction-market contracts from multiple venues with current probabilities, grouped into three buckets: geopolitical (including elections), tech (AI, crypto, science) and finance (economics, plus the untagged fallback for non-geopolitical records). Flagged stale when the seed is older than 90 minutes. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. query matches titles case-insensitively; limit caps each bucket (default 30, 0 for no cap). Dedicated paid connections reuse one panel allocation across openings and filters; refresh with a request_id starts a new one and the same ID retries it. API allowances retain per-tool billing.
 
 **Parameters (tool-specific):**
 
@@ -1675,7 +1675,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_cyber_threats`
 
-Active cyber threat intelligence: malware IOCs (URLhaus, Feodotracker), CISA known exploited vulnerabilities, and active command-and-control infrastructure.
+Return the seeded cyber-threat snapshot: malware indicators of compromise (URLhaus, Feodo Tracker), CISA Known Exploited Vulnerabilities and active command-and-control infrastructure, each with type, severity, country when known, and first-seen time. Flagged stale after 4 hours. Indicator feeds only; no incident narratives or attribution analysis. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. threat_type is a case-insensitive substring (malware, vulnerability, c2); min_severity keeps known severities at or above a level; country drops threats without a country; limit caps the list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2093,7 +2093,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_military_posture`
 
-Theater posture assessment and military risk scores. Reflects aggregated military positioning and escalation signals across global theaters.
+Return the seeded theater posture assessment: for each global theater (Iran, Taiwan, Baltic, Korea and others) a posture level, military risk score and the aggregated positioning and escalation signals behind it. Flagged stale after 2 hours; theater-level summaries only, no individual aircraft or vessel tracks. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. theater is a case-insensitive id substring, posture_level filters one level exactly, limit caps the list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2134,9 +2134,9 @@ Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min ca
 | `panel_request` | string | Signed owner-bound chokepoint reader token from a paid opening. Covers only this tool and its existing filters; cannot be combined with refresh. |
 | `refresh` | boolean | Paid allowance only: explicitly request a new panel allocation. Supply a request_id UUID. |
 | `request_id` | string | UUID for an explicit paid refresh; retry the same UUID to reuse that allocation. |
-| `chokepoint` | string | Filter to one chokepoint — matches by case-insensitive substring across the differing identifiers used by each dataset (e.g. "hormuz" matches "hormuz_strait", "Strait of Hormuz"). |
+| `chokepoint` | string | Filter to one chokepoint — matches by case-insensitive substring in transit-summaries, chokepoint_transits, chokepoint-baselines and chokepoint-flows (e.g. "hormuz" matches "hormuz_strait", "Strait of Hormuz"). ref and _countries are not filtered by it. |
 | `dataset` | `array<string: transit-summaries / chokepoint_transits / _countries / chokepoint-baselines / ref / chokepoint-flows>` | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
-| `limit` | number | Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped — use the `chokepoint` filter instead. |
+| `limit` | number | Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped; the `chokepoint` filter narrows all of them except ref. |
 
 - **API endpoints:** `GET /api/intelligence/v1/get-country-port-activity`, `GET /api/supply-chain/v1/get-chokepoint-status`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
@@ -2210,7 +2210,7 @@ Returns the highest-scoring country and commodity dependencies for one maritime 
 
 ### `get_positive_events`
 
-Positive geopolitical events: diplomatic agreements, humanitarian aid, development milestones, and peace initiatives worldwide.
+Return the seeded map of positive-news locations: each entry is a place (name, latitude, longitude) with the count of positive-toned GDELT bulk reports that mention it, a category classified from report keywords (science-health, nature-wildlife, climate-wins, innovation-tech, humanity-kindness, culture-community) and the timestamp of the latest report. Location buckets, not individual stories: there are no titles, article text or source URLs, and a bucket needs at least 3 reports before it appears. Seeded from the GDELT bulk feed and flagged stale after 1 h. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. category selects one of the six buckets; limit caps the list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2364,7 +2364,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_aviation_status`
 
-Airport delays, NOTAM airspace closures, and tracked military aircraft. Covers FAA delay data and active airspace restrictions.
+Return the seeded airport disruption snapshot: one alert row per monitored airport (about 85 major airports worldwide) with iata, name, country and severity, built from AviationStack delay aggregates for international hubs, FAA ASWS delays for US airports and ICAO NOTAM closures. Seeded about every 30 minutes and flagged stale after 90. The snapshot holds every monitored airport, so most rows are severity "normal" unless disrupted_only=true, and the default limit of 30 returns only part of it (0 for the whole list). Airport-level status only; no fares, schedules or flight tracks. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country is a case-insensitive name substring, iata selects one airport, limit caps the list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2427,7 +2427,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_maritime_activity`
 
-Live vessel traffic and maritime disruptions for a country's waters. Returns AIS density zones (ships-per-day, intensity score), dark ship events, and chokepoint congestion from AIS tracking.
+Return live vessel traffic inside one country's bounding box from the AIS snapshot: density_zones (name, intensity, ships_per_day, delta_pct) and disruptions (dark-ship events and chokepoint congestion with severity, dark_ships, vessel_count), plus snapshot_at and the bounding_box used. Results change minute to minute; the snapshot is filtered server-side to the country box with a 3-degree pad. A country without a bounding box in the dataset returns an error field. Requires a paid plan; one live fetch, weight 2 on API plans. country_code accepts alpha-2, alpha-3 or an English name. Read-only.
 
 **Parameters:**
 
@@ -2456,7 +2456,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_supply_chain_data`
 
-Dry bulk shipping stress index, customs revenue flows, and COMTRADE bilateral trade data. Tracks global supply chain pressure and trade disruptions.
+Return the seeded supply-chain pressure bundle: the dry-bulk shipping stress index with per-carrier detail, monthly customs revenue flows and UN COMTRADE bilateral trade flows by reporter and HS commodity. Trade flows are monthly official statistics (customs revenue is flagged stale after 2 days), not live shipment tracking. Requires a paid plan (the COMTRADE flows are licensed for subscribers); seeded-cache read with no live fetch, weight 1 on API plans. dataset selects shipping_stress, customs-revenue or flows; commodity matches an HS code exactly or a description substring; reporter matches a numeric reporter code or name; limit caps each list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2489,7 +2489,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_infrastructure_status`
 
-Internet infrastructure health: Cloudflare Radar outages and service status for major cloud providers and internet services.
+Return the seeded Internet infrastructure snapshot: Cloudflare Radar national and regional outages with start time, severity and cause, plus service status for major cloud providers and Internet services. Flagged stale after 30 minutes. Connectivity incidents only; no traffic volumes, DDoS data or physical infrastructure. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country and severity are case-insensitive substring filters; limit caps the outage list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2557,7 +2557,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `search_flight_prices_by_date`
 
-Cheapest Google Flights fare for each departure date between two airports, across a range of at most 31 days (one results-page search per date). Each row has the date, the return date for round trips (departure plus trip_duration), and the lowest total USD price for all passengers. A date with no itineraries is omitted. degraded with an error means some or all dates failed, and the list holds only the dates that answered. Airports are IATA codes.
+Return the cheapest Google Flights fare for each departure date between two airports across a range of at most 31 days (one results-page search per date, so a long range is slow). Each row has the date, the return date for round trips (departure plus trip_duration) and the lowest total USD price for all passengers; a date with no itineraries is omitted. degraded with an error means some or all dates failed and the list holds only the dates that answered. Prices change minute to minute. Requires a paid plan; one live search request, weight 2 on API plans, up to 25 s. Airports are IATA codes; is_round_trip needs trip_duration; passengers is 1-9. Read-only.
 
 **Parameters:**
 
@@ -2596,7 +2596,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_climate_data`
 
-Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normals), climate-relevant disaster alerts (ReliefWeb/GDACS/FIRMS), atmospheric CO2 trend (NOAA Mauna Loa), air quality (OpenAQ/WAQI PM2.5 stations), Arctic sea ice extent and ocean heat indicators (NSIDC/NOAA), weather alerts, and climate news.
+Return the seeded climate bundle: temperature and precipitation anomalies against 30-year WMO normals, climate-relevant disaster alerts (ReliefWeb, GDACS, FIRMS), the NOAA Mauna Loa CO2 trend, OpenAQ/WAQI PM2.5 station readings, NSIDC/NOAA Arctic sea-ice extent and ocean-heat indicators, active weather alerts and climate news. Each sub-dataset carries its own seed time and staleness budget (anomalies are flagged stale after 2 h, CO2 and sea ice after 2 days). Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects sub-datasets, country narrows the disaster and air-quality lists, limit caps each list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2609,7 +2609,7 @@ Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normal
 - **API endpoints:** `GET /api/climate/v1/get-co2-monitoring`, `GET /api/climate/v1/get-ocean-ice-data`, `GET /api/climate/v1/list-air-quality-data`, `GET /api/climate/v1/list-climate-anomalies`, `GET /api/climate/v1/list-climate-disasters`, `GET /api/climate/v1/list-climate-news`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** per slice — weather alerts **45 min**, climate news intelligence **90 min**, anomalies **2 h**, air quality **3 h**, ocean/ice **24 h**, CO2 monitoring **48 h**. The single `stale` flag ORs every check, so it flips as soon as any one slice exceeds its own budget.
+- **Freshness budget:** per slice — weather alerts **45 min**, climate news intelligence **90 min**, anomalies **2 h**, air quality **3 h**, ocean/ice **48 h**, CO2 monitoring **48 h**. The single `stale` flag ORs every check, so it flips as soon as any one slice exceeds its own budget.
 
 <CodeGroup>
 
@@ -2699,7 +2699,7 @@ Each uncached execution reads three fixed data keys and the existing seismology 
 
 ### `get_radiation_data`
 
-Radiation observation levels from global monitoring stations. Flags anomalous readings that may indicate nuclear incidents.
+Return the seeded radiation monitoring snapshot: gamma dose-rate readings from public monitoring stations worldwide with station, country, value, unit, time and a severity flag (normal, elevated, spike) that marks anomalous readings. Flagged stale after 30 minutes. Station observations only; an elevated reading is a flag for review, not a confirmed nuclear incident. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country is a case-insensitive name substring; anomalous_only drops normal readings; limit caps the list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2731,7 +2731,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_research_signals`
 
-Tech and research event signals: emerging technology events bootstrap data from curated research feeds.
+Return the seeded technology and research event list: upcoming and recent conferences, earnings dates, IPOs and other tech events from curated feeds such as Techmeme and dev.events, each with type, source, date and link. Flagged stale after 8 hours. Calendar-style event signals only; no papers, patents or funding data. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. type selects conference, earnings, ipo or other; source filters one feed; limit caps the list (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2884,7 +2884,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `analyze_situation`
 
-AI geopolitical situation analysis (DeductionPanel). Provide a query and optional geo-political context; returns an LLM-powered analytical deduction with confidence and supporting signals.
+Run an LLM analytical deduction on a free-text geopolitical question and return `{analysis, confidence, signals, provider, model}`: a narrative assessment with a confidence level and the supporting signals the model cited. Each call generates fresh text (non-deterministic, up to 25 s) from the query, optional context and optional framework; it does not read a cached brief or a fixed country dataset. An empty provider result returns a source-unavailable error rather than empty text. Requires a paid plan; one live LLM request, weight 2 on API plans. Read-only; nothing is stored.
 
 **Parameters:**
 
@@ -2915,7 +2915,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `generate_forecasts`
 
-Current AI geopolitical and economic forecasts with probabilities, scenarios, signals, and per-forecast case files, filterable by domain and region. An oversized response omits the case files and reports the omitted count in transportCoverage; a domain or region filter that fits returns them.
+Return the published AI forecasts, each with probability, scenarios, signals and a per-forecast case file, filtered server-side by domain and region. The list is produced by the forecasting pipeline on its own schedule (rule-based probabilities with LLM-written narrative, republished on the pipeline's own cadence); a call returns the latest published run and does not start a new one. An oversized response omits the case files and reports the omitted count in transportCoverage; a narrower domain or region filter returns them. Requires a paid plan; one downstream request, weight 2 on API plans. domain is one of conflict, market, supply_chain, political, military, cyber, infrastructure; region is free text such as "Middle East". Read-only.
 
 **Parameters:**
 
@@ -3085,13 +3085,13 @@ Reads the existing allowance snapshot for the current verified account. Use this
 
 ### `describe_tool`
 
-Returns the full uncompressed definition of any other tool by name. Use when the compressed `tools/list` entry is ambiguous about behaviour or argument semantics — since v1.5.0, `tools/list` returns each tool's `description` truncated to the first sentence (≤120 UTF-8 bytes); `describe_tool` returns the full long-form text plus the same `inputSchema` (every property's full description).
+Returns the complete definition of any other tool by name — the same `description`, `inputSchema` (every property's description), `outputSchema`, `annotations` and `_meta` that its `tools/list` entry carries. Since v1.34.0 `tools/list` ships every description whole under a 1,024-byte per-tool budget, so this is a single-tool re-read rather than the only route to the full text (from v1.5.0 to v1.33.0 the listing was truncated to the first sentence, ≤120 bytes).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `tool_name` | string | **yes** | Exact tool name from `tools/list` (e.g. `"get_market_data"`). |
 
-**Response shape:** identical to a single `tools/list` entry — `{ name, description, inputSchema, outputSchema, annotations, _meta }` — with the full uncompressed `description` and the same `inputSchema.properties` (including injected `summary` for cache tools and `jmespath` for every tool). `_meta` always carries the `worldmonitor/access` tier marker and the `worldmonitor/weight` per-call cost, plus `ui.resourceUri` on UI-bearing tools.
+**Response shape:** identical to a single `tools/list` entry — `{ name, description, inputSchema, outputSchema, annotations, _meta }` — with the same `description` and the same `inputSchema.properties` (including injected `summary` for cache tools and `jmespath` for every tool). `_meta` always carries the `worldmonitor/access` tier marker and the `worldmonitor/weight` per-call cost, plus `ui.resourceUri` on UI-bearing tools.
 
 **Soft errors** (HTTP 200, returned inside the normal `content[0].text` envelope — NOT JSON-RPC errors):
 

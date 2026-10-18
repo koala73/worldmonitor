@@ -263,12 +263,16 @@ describe('published forecast reliability under the accuracy audit (#8990)', () =
     assert.equal(lifted.status, 'ready');
     assert.equal(lifted.underAudit, undefined);
   });
-  it('leads the scorecard tool description with the override notice or the underAudit rule, inside the tools/list sentence budget', async () => {
+  it('leads the scorecard tool description with the override notice or the underAudit rule, inside the tools/list description budget', async () => {
     const { compressDescription, TOOL_DESCRIPTION_MAX_BYTES } = await import('../api/mcp.ts');
+    // tools/list ships the whole description (the cap is a backstop that must
+    // not bite), so the lead sentence is what a host that truncates sees.
     const listed = (override) => compressDescription(forecastScorecardDescription(override), TOOL_DESCRIPTION_MAX_BYTES);
-    assert.equal(listed(AUDIT), 'Forecast resolution scorecard, under audit since 2026-10-07 (issue 8990): its scores are unverified.');
-    assert.equal(listed(null), 'Forecast resolution scorecard (Brier, calibration, funnel); underAudit marks scores still under audit.');
-    for (const override of [null, AUDIT]) assert.ok(Buffer.byteLength(listed(override)) <= 120, 'inside the tools/list sentence budget');
+    assert.equal(listed(AUDIT), forecastScorecardDescription(AUDIT));
+    assert.equal(listed(null), forecastScorecardDescription(null));
+    assert.ok(listed(AUDIT).startsWith('Forecast resolution scorecard, under audit since 2026-10-07 (issue 8990): its scores are unverified.'));
+    assert.ok(listed(null).startsWith('Forecast resolution scorecard (Brier, calibration, funnel); underAudit marks scores still under audit.'));
+    for (const override of [null, AUDIT]) assert.ok(Buffer.byteLength(listed(override)) <= TOOL_DESCRIPTION_MAX_BYTES, 'inside the tools/list description budget');
     const scorecardTool = TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_scorecard');
     assert.equal(scorecardTool.description, forecastScorecardDescription(FORECAST_ACCURACY_AUDIT_OVERRIDE));
   });
