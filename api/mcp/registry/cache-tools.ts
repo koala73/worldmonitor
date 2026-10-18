@@ -3109,7 +3109,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_chokepoint_status',
     title: 'Maritime chokepoint status',
     _outputBudgetBytes: 131072,
-    description: 'Return the seeded maritime chokepoint snapshot: per-chokepoint vessel transit counts at 10-minute cadence, rolling transit summaries, per-port activity, oil and gas flow aggregates, baselines and the canonical 13-chokepoint registry (Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama and others). Transit data is flagged stale after 30 minutes. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. chokepoint matches identifiers by case-insensitive substring across datasets ("hormuz"); dataset selects sub-datasets; limit caps the baselines list and _countries index (default 30, 0 for no cap) while keyed maps are not capped. Paid openings use one chokepoint panel allocation; repeat views reuse it, refresh with a request_id UUID spends a new one and the same UUID retries it. API and free accounts retain per-tool accounting.',
+    description: 'Return the seeded maritime chokepoint snapshot: per-chokepoint vessel transit counts at 10-minute cadence, rolling transit summaries, per-port activity, oil and gas flow aggregates, baselines and the canonical 13-chokepoint registry (Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama and others). Transit data is flagged stale after 30 minutes. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. chokepoint narrows transit-summaries, chokepoint_transits, chokepoint-baselines and chokepoint-flows by case-insensitive substring ("hormuz"), leaving ref and _countries unfiltered; dataset selects sub-datasets; limit caps the baselines list and _countries index (default 30, 0 for no cap) while keyed maps are not capped. Paid openings use one chokepoint panel allocation; repeat views reuse it, refresh with a request_id UUID spends a new one and the same UUID retries it. API and free accounts retain per-tool accounting.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3118,7 +3118,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         request_id: { type: 'string', description: 'UUID for an explicit paid refresh; retry the same UUID to reuse that allocation.' },
         chokepoint: {
           type: 'string',
-          description: 'Filter to one chokepoint — matches by case-insensitive substring across the differing identifiers used by each dataset (e.g. "hormuz" matches "hormuz_strait", "Strait of Hormuz").',
+          description: 'Filter to one chokepoint — matches by case-insensitive substring in transit-summaries, chokepoint_transits, chokepoint-baselines and chokepoint-flows (e.g. "hormuz" matches "hormuz_strait", "Strait of Hormuz"). ref and _countries are not filtered by it.',
         },
         dataset: {
           type: 'array',
@@ -3128,7 +3128,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           },
           description: 'Restrict the response to one or more sub-datasets. Omit for the full bundle.',
         },
-        limit: { type: 'number', description: 'Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped — use the `chokepoint` filter instead.' },
+        limit: { type: 'number', description: 'Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped; the `chokepoint` filter narrows all of them except ref.' },
       },
       required: [],
     },
