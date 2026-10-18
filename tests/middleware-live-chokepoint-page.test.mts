@@ -137,6 +137,12 @@ describe('live chokepoint page HTML', () => {
     assert.ok(response instanceof Response);
     assert.equal(await response.text(), builtPage());
     assert.equal(response.headers.get('x-wm-live-page'), null);
+    assert.equal(
+      response.headers.get('cache-control'),
+      'public, max-age=300, must-revalidate',
+      'a fallback is not held in the browser for an hour after the reading recovers',
+    );
+    assert.equal(response.headers.get('cdn-cache-control'), 'public, s-maxage=300, stale-while-revalidate=60');
   });
 
   it('serves the built page when the reading is too old to vouch for', async () => {

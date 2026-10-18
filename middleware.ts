@@ -455,6 +455,10 @@ async function liveChokepointPage(url: URL): Promise<Response> {
   for (const name of ['content-encoding', 'content-length', 'transfer-encoding', 'connection']) {
     headers.delete(name);
   }
+  // Also on the fallback, so a browser re-asks once the reading recovers.
+  headers.set('cache-control', LIVE_PAGE_CACHE_CONTROL);
+  headers.set('cdn-cache-control', LIVE_PAGE_CDN_CACHE_CONTROL);
+  headers.set('vercel-cdn-cache-control', LIVE_PAGE_CDN_CACHE_CONTROL);
   const builtPage = () => new Response(html, { status: 200, headers });
 
   const id = sectionAttribute(html, 'data-chokepoint-id');
@@ -480,9 +484,6 @@ async function liveChokepointPage(url: URL): Promise<Response> {
     const live = replaceChokepointLiveSection(html, section);
     if (live === null) return builtPage();
     headers.set('x-wm-live-page', 'chokepoint');
-    headers.set('cache-control', LIVE_PAGE_CACHE_CONTROL);
-    headers.set('cdn-cache-control', LIVE_PAGE_CDN_CACHE_CONTROL);
-    headers.set('vercel-cdn-cache-control', LIVE_PAGE_CDN_CACHE_CONTROL);
     // The built file's validators describe a different body.
     headers.delete('etag');
     headers.delete('last-modified');
