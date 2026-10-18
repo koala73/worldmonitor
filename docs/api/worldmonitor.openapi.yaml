@@ -35464,8 +35464,9 @@ webhooks:
                   in: header
                   required: true
                   description: |-
-                      Always `chokepoint.disruption` for this body. A `country.risk_surge`
-                      subscription sends the same headers with the payload documented at
+                      Always `chokepoint.disruption` for this body. The other events
+                      (`country.risk_surge`, `news.breaking`, `market.move`) send the
+                      same headers and signature with the payloads documented at
                       https://www.worldmonitor.app/docs/api-shipping-v2#delivery-format.
                   schema:
                       type: string

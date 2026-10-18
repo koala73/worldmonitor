@@ -55,12 +55,17 @@ const bundlePath = resolve(root, 'docs/api/worldmonitor.openapi.yaml');
 const CHECK = process.argv.includes('--check');
 
 // The webhook event names — `X-WM-Event` header values, the keys of
-// shared/event-triggers.json. WEBHOOK_EVENT is the default `options.event` in
-// deliver-webhook.ts and the one `webhooks` entry; the others are named in the
-// event header's description.
+// shared/event-triggers.json (read here so a registry event cannot land
+// without the header naming it; the contract test pins the two together).
+// WEBHOOK_EVENT is the default `options.event` in deliver-webhook.ts and the
+// one `webhooks` entry; the others are named in the event header's description.
 export const WEBHOOK_EVENT = 'chokepoint.disruption';
 export const RISK_SURGE_WEBHOOK_EVENT = 'country.risk_surge';
-export const WEBHOOK_EVENTS = Object.freeze([WEBHOOK_EVENT, RISK_SURGE_WEBHOOK_EVENT]);
+const registryEvents = Object.keys(
+  JSON.parse(readFileSync(resolve(root, 'shared/event-triggers.json'), 'utf8')).events,
+);
+export const WEBHOOK_EVENTS = Object.freeze([WEBHOOK_EVENT, ...registryEvents.filter((event) => event !== WEBHOOK_EVENT)]);
+const OTHER_EVENTS = WEBHOOK_EVENTS.filter((event) => event !== WEBHOOK_EVENT);
 
 // The branded delivery headers, verbatim from deliver-webhook.ts. Header names
 // are case-insensitive on the wire (the worker sends them lowercase); the spec
@@ -131,8 +136,9 @@ const WEBHOOKS_BLOCK = `webhooks:
                   in: header
                   required: true
                   description: |-
-                      Always \`${WEBHOOK_EVENT}\` for this body. A \`${RISK_SURGE_WEBHOOK_EVENT}\`
-                      subscription sends the same headers with the payload documented at
+                      Always \`${WEBHOOK_EVENT}\` for this body. The other events
+                      (${OTHER_EVENTS.map((event) => `\`${event}\``).join(', ')}) send the
+                      same headers and signature with the payloads documented at
                       https://www.worldmonitor.app/docs/api-shipping-v2#delivery-format.
                   schema:
                       type: string
