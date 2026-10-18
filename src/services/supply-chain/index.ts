@@ -84,7 +84,7 @@ function vulnerabilityRequestSignal(callerSignal?: AbortSignal): AbortSignal {
 const client = new SupplyChainServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 
 const shippingBreaker = createCircuitBreaker<GetShippingRatesResponse>({ name: 'Shipping Rates', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
-// Equal to REFRESH_INTERVALS.chokepointStrip; the server status refreshes every 5 min.
+// Equal to REFRESH_INTERVALS.chokepointStrip; the server status refreshes every 6 min.
 const chokepointBreaker = createCircuitBreaker<GetChokepointStatusResponse>({ name: 'Chokepoint Status', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const mineralsBreaker = createCircuitBreaker<GetCriticalMineralsResponse>({ name: 'Critical Minerals', cacheTtlMs: 24 * 60 * 60 * 1000, persistCache: true });
 const chinaCorridorBreaker = createCircuitBreaker<ChinaCorridorControlTowerResponse>({

@@ -6211,7 +6211,10 @@ function startCiiWarmPingLoop() {
 // The handler reads only Redis, so a tick costs one function call. Each tick
 // also runs the disruption-alert check, which has its own 12 h cooldown.
 // ─────────────────────────────────────────────────────────────
-const CHOKEPOINT_WARM_PING_INTERVAL_MS = 5 * 60 * 1000; // 5 min: matches the status key TTL, so each tick recomputes
+// One minute past the 300 s status-key TTL: the boot tick writes the key a few
+// seconds after the interval starts, so a 5-minute tick could land just before
+// expiry and re-read the cached reading on every other tick.
+const CHOKEPOINT_WARM_PING_INTERVAL_MS = 6 * 60 * 1000;
 const CHOKEPOINT_RPC_URL = 'https://api.worldmonitor.app/api/supply-chain/v1/get-chokepoint-status';
 
 async function seedChokepointWarmPing() {
@@ -6231,7 +6234,7 @@ async function seedChokepointWarmPing() {
     console.log(`[Chokepoints] Warm-ping OK: ${count} chokepoints`);
     // seed-meta is written by the RPC handler when it fetches fresh data;
     // no direct write needed here.
-    // The status key has a 5-min TTL, the same as the tick, so the alert
+    // The status key has a 5-min TTL, shorter than the tick, so the alert
     // check reads the response, not Redis.
     const alerts = await publishChokepointDisruptionAlerts(data, {
       now: Date.now,
