@@ -6,7 +6,6 @@ import { mergeSanctionEntries, SEMA_SOURCE } from '../scripts/_sema-sanctions.mj
 import { signalAggregator } from '@/services/signal-aggregator';
 import { projectCountrySignalDetails } from '../shared/country-signal-details';
 
-// Reuse the seed unit suite's pure-helper loading pattern: no env or network.
 const seedSource = readFileSync('scripts/seed-sanctions-pressure.mjs', 'utf8');
 const producer = vm.createContext({ console, Date, Math, Number, Array, Map, Set, String, RegExp });
 vm.runInContext(seedSource.replace(/^import\s.*$/gm, '')
@@ -23,7 +22,6 @@ for (const addedIds of [0, 1, 5]) {
       entityType: 'SANCTIONS_ENTITY_TYPE_ENTITY', effectiveAt: '1577836800000',
       isNew: source === SEMA_SOURCE && index < addedIds,
     });
-    // The added IDs represent old designations first seen in this comparison.
     const entries = mergeSanctionEntries({
       ofac: Array.from({ length: 25 }, (_, index) => entry('SDN', index)),
       sema: Array.from({ length: 25 }, (_, index) => entry(SEMA_SOURCE, index)),
