@@ -973,6 +973,7 @@ for (const [key, field] of Object.entries({ imfMacro: 'inflationPct', imfGrowth:
         WW: { year: 2026 },
         lower: { [field]: 4 },
       },
+      releases: { [field]: { publishedAt: '2026-08-01T00:00:00Z', updatedAt: null } },
       seededAt: '2026-09-01T00:00:00Z',
     };
     await withMockedBootstrapAuth({ entitlement: null, bootstrapPipelineBody: presentOnDemandPipelineBody(value) }, async () => {
@@ -981,6 +982,7 @@ for (const [key, field] of Object.entries({ imfMacro: 'inflationPct', imfGrowth:
       assert.deepEqual(body.missing, []);
       assert.deepEqual(body.data[key], {
         countries: { UA: good, AE: { [field]: 2 } },
+        releases: { [field]: { publishedAt: '2026-08-01T00:00:00Z', updatedAt: null } },
         seededAt: '2026-09-01T00:00:00Z',
       });
       assertSharedCacheHeaders(response);
