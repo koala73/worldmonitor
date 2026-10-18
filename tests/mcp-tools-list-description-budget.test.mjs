@@ -413,6 +413,27 @@ describe('api/mcp.ts — tools/list description budget (v1.34.0)', () => {
         `tools/list descriptions total ${total} B, over the ${TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES} B budget — tighten descriptions rather than raising the budget`);
     });
 
+    it('access and cost claims in every description agree with _meta access and weight', async () => {
+      // The descriptions state tier and cost in prose because hosts show the
+      // model the description, not `_meta`. A later tier or fan-out change
+      // must fail here rather than leave the prose lying.
+      const tools = await getToolsList();
+      const failures = [];
+      for (const t of tools) {
+        const access = t._meta['worldmonitor/access'];
+        const weight = t._meta['worldmonitor/weight'];
+        const d = t.description;
+        for (const [, claimed] of d.matchAll(/weight (\d+) on API plans/g)) {
+          if (Number(claimed) !== weight) failures.push(`${t.name}: description says weight ${claimed}, _meta weight is ${weight}`);
+        }
+        if (/signed-in free allowance/.test(d) && access !== 'free-account') failures.push(`${t.name}: claims the signed-in free allowance but access is ${access}`);
+        if (/requires (a |the )?(paid plan|pro\b|[\w ]*subscription)/i.test(d) && access !== 'subscription') failures.push(`${t.name}: claims a paid plan or subscription is required but access is ${access}`);
+        if (/credential-free|without credentials|no credentials|anonymous/i.test(d) && access !== 'free') failures.push(`${t.name}: claims anonymous or credential-free access but access is ${access}`);
+        if (access === 'free' && !/credential-free|without credentials|no credentials|anonymous|quota-free/i.test(d)) failures.push(`${t.name}: is free but its description does not say so`);
+      }
+      assert.deepEqual(failures, [], `description claims drifted from _meta:\n${failures.join('\n')}`);
+    });
+
     it('every input-schema property, nested oneOf branches included, carries a description', async () => {
       // Tool-definition graders score schema description coverage; agents read
       // the same text to fill arguments. Walk properties, array items and
