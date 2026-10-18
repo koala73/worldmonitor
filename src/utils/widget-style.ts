@@ -119,7 +119,8 @@ function isSafeStyleValue(value: string): boolean {
     }
   }
   if (depth !== 0) return false;
-  for (const match of value.matchAll(/([a-z_][\w-]*)\s*\(/gi)) {
+  for (const match of value.matchAll(/([a-z_][\w-]*)(\s*\()?/gi)) {
+    if (!match[2]) continue;
     const name = match[1];
     if (!name || !SAFE_STYLE_FUNCTION_SET.has(name.toLowerCase())) return false;
   }
