@@ -299,7 +299,7 @@
     {
       "path": "api/mcp/utils.ts",
       "category": "external-protocol",
-      "reason": "MCP utf8ByteLength + compressDescription — UTF-8 byte counting and tools/list description compression. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "reason": "MCP utf8ByteLength + compressDescription — UTF-8 byte counting and the tools/list description-cap backstop. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

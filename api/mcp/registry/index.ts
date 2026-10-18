@@ -105,8 +105,12 @@ for (const tool of TOOL_REGISTRY) {
 // the public-shape fields (name, description, inputSchema, annotations).
 //
 // `opts.compressDescriptions` — when true (the tools/list call path),
-// the tool's top-level `description` is run through compressDescription.
-// When false (the describe_tool call path), full text is preserved.
+// the tool's top-level `description` is capped at TOOL_DESCRIPTION_MAX_BYTES
+// through compressDescription. Every registered description already fits
+// (tests/mcp-tools-list-description-budget.test.mjs), so on a passing build
+// both paths emit the same text; the cap is a runtime backstop, not a
+// second shape. When false (the describe_tool call path), text is passed
+// through untouched.
 export function buildPublicTool(
   tool: ToolDef,
   opts: { compressDescriptions: boolean },

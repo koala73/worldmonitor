@@ -485,7 +485,7 @@ export const NLP_TOOLS: ToolDef[] = [
     name: 'classify_event',
     title: 'Classify a news event',
     _outputBudgetBytes: 4096,
-    description: 'Classify a supplied news headline or short text into a threat category and severity via the enum-validated WorldMonitor event classifier (temperature-0, 24h-cached per title, never free-form LLM output). Input is capped at 500 characters. classification is null when the classifier cannot produce an enum-valid result.',
+    description: 'Classify one supplied headline or short text (1-500 characters) into {category, level, severity, confidence} with the enum-validated WorldMonitor event classifier (temperature 0, cached 24 h per title, never free-form LLM output). classification is null when the classifier cannot produce an enum-valid result; longer input is rejected, not truncated. Operates only on the text passed in; no news lookup. Requires a paid plan; one downstream request, weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -866,7 +866,7 @@ export const NLP_TOOLS: ToolDef[] = [
     name: 'verify_claim',
     title: 'Check a claim against news coverage',
     _outputBudgetBytes: 65536,
-    description: 'Evidence card for a claim or headline (#9092): finds the live-digest clusters reporting the same event and returns a result state (corroborated, single-publisher, tier4-only, unknown, or not-found when the digest was searched and nothing reports it; unknown when the digest had no headlines to search) with WorldMonitor\'s coverage verdict over the matched clusters, the publishers roster with declared tiers, the matched headlines with fail-closed source provenance, a figure check (numbers and dates in the claim that no matched headline states), and first/last sighting. found=false means the claim was not matched (state tells whether the digest was searched), never that it is false. Coverage, not accuracy: nothing here says a claim is true or false. factChecks (#9094) cites ratings that IFCN-verified fact-checkers published about a similar claim, each with the fact-checker, date and link; the rating is theirs, quoted verbatim, and never changes state. Deterministic — no LLM.',
+    description: 'Return an evidence card for a claim or headline: the live-digest clusters reporting the same event, a result state (corroborated, single-publisher, tier4-only, unknown, or not-found when the digest was searched and nothing reports it; unknown when there were no headlines to search), WorldMonitor\'s coverage verdict over the matched clusters, the publishers roster with declared tiers, matched headlines with fail-closed source provenance, a figure check (numbers and dates in the claim that no matched headline states) and first/last sighting. found=false means the claim was not matched, never that it is false; this is coverage, not accuracy. factChecks quotes ratings IFCN-verified fact-checkers published about a similar claim, each with checker, date and link; the rating is theirs and never changes state. Deterministic, no LLM. Requires a paid plan; one downstream search, weight 2 on API plans. claim is up to 300 characters; variant picks the full or tech digest. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {

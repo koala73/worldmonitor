@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { TOOL_DESCRIPTION_MAX_BYTES } from '../api/mcp/constants.ts';
+import { TOOL_LIST_RESPONSE, TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 
 const findTool = (name) => TOOL_REGISTRY.find((tool) => tool.name === name);
 // ---------------------------------------------------------------------------
@@ -35,7 +36,7 @@ describe('wave-2a analysis tools registry contract', () => {
       assert.ok(tool, `${name} must be registered in the tool registry`);
       assert.equal(tool._cacheKeys, undefined, `${name} is a hybrid _execute tool, not a cache tool`);
       assert.equal(typeof tool.description, 'string');
-      assert.ok(tool.description.length > 200, 'descriptions are long-form; tools/list compresses them');
+      assert.ok(tool.description.length > 200, 'descriptions are long-form; tools/list ships them whole');
       assert.equal(tool._outputBudgetBytes, spec.budget);
       assert.deepEqual(tool.annotations, {
         readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false,
@@ -51,16 +52,14 @@ describe('wave-2a analysis tools registry contract', () => {
     });
   }
 
-  it('first sentences stay inside the tools/list compression budget', () => {
-    // Same extraction compressDescription() uses (api/mcp/utils.ts) — asserting
-    // on a hand-rolled split would let a description pass here and still be
-    // byte-truncated mid-word on the wire.
+  it('descriptions stay inside the tools/list per-tool budget and ship whole', () => {
+    // tools/list carries the full description; the cap in constants.ts is the
+    // only thing that could still cut it (tests/mcp-tools-list-description-budget.test.mjs).
     for (const name of Object.keys(expected)) {
       const tool = findTool(name);
-      const match = tool.description.match(/^[\s\S]+?[.!?](?:\s|$)/);
-      assert.ok(match, `${name}: description has no extractable first sentence`);
-      const bytes = Buffer.byteLength(match[0].trim(), 'utf8');
-      assert.ok(bytes <= 120, `${name}: first sentence is ${bytes} bytes (max 120)`);
+      const bytes = Buffer.byteLength(tool.description, 'utf8');
+      assert.ok(bytes <= TOOL_DESCRIPTION_MAX_BYTES, `${name}: description is ${bytes} bytes (max ${TOOL_DESCRIPTION_MAX_BYTES})`);
+      assert.equal(TOOL_LIST_RESPONSE.find((entry) => entry.name === name)?.description, tool.description);
     }
   });
 

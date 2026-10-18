@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
+import { TOOL_DESCRIPTION_MAX_BYTES } from '../api/mcp/constants.ts';
 import {
   TOOL_LIST_RESPONSE,
   TOOL_REGISTRY,
@@ -125,13 +126,14 @@ describe('get_prediction_markets agent-facing category contract', () => {
     }
   });
 
-  it('keeps every category discoverable in the actual compressed tools/list description', () => {
+  it('keeps every category discoverable in the actual tools/list description', () => {
     const publicTool = TOOL_LIST_RESPONSE.find((entry) => entry.name === TOOL_NAME);
     assert.ok(publicTool, `${TOOL_NAME} must be published by tools/list`);
     assert.ok(
-      Buffer.byteLength(publicTool.description, 'utf8') <= 120,
-      'tools/list description must stay within the registry compression budget',
+      Buffer.byteLength(publicTool.description, 'utf8') <= TOOL_DESCRIPTION_MAX_BYTES,
+      'tools/list description must stay within the per-tool description budget',
     );
+    assert.equal(publicTool.description, tool.description, 'tools/list ships the registry description whole');
     assertEnglishCategoryMeaning(publicTool.description, 'tools/list description');
     assert.match(publicTool.description, /untagged fallback/i);
     assertNoGeopoliticalDefault(publicTool.description, 'tools/list description');
