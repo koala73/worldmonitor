@@ -259,7 +259,7 @@ export const DOCS_PAGE_DATES: Record<string, { datePublished: string; dateModifi
   "api-scenarios": {"datePublished":"2026-04-19","dateModified":"2026-09-22"},
   "api-shipping-v2": {"datePublished":"2026-04-19","dateModified":"2026-09-14"},
   "api-versioning": {"datePublished":"2026-07-29","dateModified":"2026-08-29"},
-  "architecture": {"datePublished":"2026-03-11","dateModified":"2026-10-06"},
+  "architecture": {"datePublished":"2026-03-11","dateModified":"2026-10-15"},
   "authentication": {"datePublished":"2026-03-26","dateModified":"2026-07-10"},
   "changelog": {"datePublished":"2026-03-12","dateModified":"2026-10-07"},
   "china-corporate-disclosures": {"datePublished":"2026-07-30","dateModified":"2026-09-08"},

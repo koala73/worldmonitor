@@ -1158,7 +1158,7 @@ ${providerCards}
   return pageDocument({
     baseUrl,
     path,
-    title: sourcePage ? `${sourcePage.name} sources | World Monitor` : 'Data Source Catalog | World Monitor',
+    title: sourcePage ? `${sourcePage.name}: Data Sources and Providers | World Monitor` : 'Data Source Catalog | World Monitor',
     description,
     lastmod,
     jsonLd: [
