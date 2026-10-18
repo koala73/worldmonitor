@@ -2514,7 +2514,8 @@ curl -s https://worldmonitor.app/mcp \
 
 - **访问：** `free-account`。要求绑定用户的 OAuth 或 `wm_…` 凭据。匿名调用返回常规的 `-32001` `no-account` 拒绝；运营方密钥返回 `-32002`。
 - **配额：** 不消耗每日额度，也不消耗免费账户调用次数，因此额度用尽后仍可调用。每分钟限流照常适用。
-- **结账路径：** 与定价页相同，因此账户结账限流以及已有订阅、待处理付款检查都适用。账户已持有同一系列的套餐时返回 `-32002`，`error.data.reason` 为 `"already-subscribed"`；从 Pro 升级到 Pro Business 需先取消 Pro，从 API Starter 升级到 API Business 则在账单门户中按比例变更。存在待处理付款时返回 `reason: "payment-in-progress"`。触发结账限流时返回 HTTP 429 的 `-32029`，并带 `Retry-After`。
+- **结账路径：** 与定价页相同，因此账户结账限流以及已有订阅、待处理付款检查都适用。账户已持有同一系列的套餐时返回 `-32002`，`error.data.reason` 为 `"already-subscribed"`；从 Pro 升级到 Pro Business 需先取消 Pro，从 API Starter 升级到 API Business 则在账单门户中按比例变更。存在 15 分钟内的待处理付款时返回 `reason: "payment-in-progress"`。触发结账限流（每个账户每 10 分钟 5 个会话，与定价页共用）时返回 HTTP 429 的 `-32029`，并带 `Retry-After`。
+- **服务条款：** 创建会话时会记录该账户接受服务条款，与定价页相同。[服务条款](/zh/terms)将 MCP 请求视为接受。
 - **付款之后：** 付款 webhook 到达后，下一次 `get_mcp_allowance` 调用即报告付费套餐的额度，无需重新授权。
 - **API 端点：** 无。响应为 `no-store`。
 

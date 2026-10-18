@@ -3560,14 +3560,14 @@ export const RPC_TOOLS: ToolDef[] = [
     name: START_UPGRADE_TOOL,
     title: 'Start a plan upgrade',
     _outputBudgetBytes: 2048,
-    description: 'Return a personal checkout link for a paid self-serve plan, bound to the signed-in account. The allowance-exhausted, upgrade-required and quota-exceeded denials name a plan in recommendedPlan. The user pays in a browser: the tool never charges and spends no daily allowance. Once payment is confirmed the account allowance reports the paid limit, with no re-authorization. An account already holding a plan in the same family, a pending payment or the checkout rate limit returns an error instead of a link.',
+    description: 'Return a personal checkout link for a paid self-serve plan, bound to the signed-in account. The allowance-exhausted, upgrade-required and quota-exceeded denials name the plan one step up in recommendedPlan. The user pays in a browser: the tool never charges and spends no daily allowance. Each call opens a new checkout session, counts toward a limit of 5 per account per 10 minutes, and records the account\'s acceptance of the Terms of Service, as the pricing page does. Once payment is confirmed the account allowance reports the paid limit, with no re-authorization. An account already holding a plan in the same family, a payment pending for under 15 minutes, or the checkout limit returns an error instead of a link.',
     inputSchema: {
       type: 'object',
       properties: {
         plan: {
           type: 'string',
           enum: [...MCP_CHECKOUT_PLANS],
-          description: 'Self-serve plan to buy. Monthly and annual variants are separate values.',
+          description: 'Self-serve plan to buy, usually the recommendedPlan from a denial. Monthly and annual variants are separate values.',
         },
       },
       required: ['plan'],

@@ -620,7 +620,7 @@
     },
     {
       "name": "start_upgrade",
-      "description": "Return a personal checkout link for a paid self-serve plan, bound to the signed-in account. The allowance-exhausted, upgrade-required and quota-exceeded denials name a plan in recommendedPlan. The user pays in a browser: the tool never charges and spends no daily allowance. Once payment is confirmed the account allowance reports the paid limit, with no re-authorization. An account already holding a plan in the same family, a pending payment or the checkout rate limit returns an error instead of a link.",
+      "description": "Return a personal checkout link for a paid self-serve plan, bound to the signed-in account. The allowance-exhausted, upgrade-required and quota-exceeded denials name the plan one step up in recommendedPlan. The user pays in a browser: the tool never charges and spends no daily allowance. Each call opens a new checkout session, counts toward a limit of 5 per account per 10 minutes, and records the account's acceptance of the Terms of Service, as the pricing page does. Once payment is confirmed the account allowance reports the paid limit, with no re-authorization. An account already holding a plan in the same family, a payment pending for under 15 minutes, or the checkout limit returns an error instead of a link.",
       "_meta": {
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "meta"

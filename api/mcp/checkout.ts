@@ -225,7 +225,7 @@ export async function startUpgradeCheckout(
       return rpcError(id, -32002, outcome.message, corsHeaders, {
         reason: 'payment-in-progress',
         nextStep: 'Finish the checkout already open in the browser, or call start_upgrade again later; '
-          + 'an abandoned pending payment stops blocking new checkouts after a short window.',
+          + 'a pending payment stops blocking new checkouts 15 minutes after it started.',
       });
     case 'rate-limited':
       return rpcError(
