@@ -243,7 +243,9 @@
 *Could not find public function for 'payments/unattributedPayments:getUnattributedRow'*
 *Could not find public function for 'payments/unattributedPayments:listUnresolvedUnattributed'*
 *Could not find public function for 'payments/unattributedPayments:notifyUnattributedPayment'*
+*Could not find public function for 'payments/webhookHandlers:getLastDodoSignatureFailureReportAt'*
 *Could not find public function for 'payments/webhookHandlers:reportDodoSignatureFailure'*
+*Could not find public function for 'payments/webhookHandlers:scheduleDodoSignatureFailureReport'*
 *Could not find public function for 'payments/webhookMutations:_seedFailureSummary'*
 *Could not find public function for 'payments/webhookMutations:attributeUnattributedPayment'*
 *Could not find public function for 'payments/webhookMutations:getWebhookFailureDiagnostics'*
