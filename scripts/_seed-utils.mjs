@@ -1487,7 +1487,10 @@ export function curlFetch(
   const curlTimeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
   const args = ['-sS', '--compressed', '--max-time', String(curlTimeoutSeconds), '-L'];
   if (proxyAuth) {
-    const proxyUrl = /^https?:\/\//i.test(proxyAuth) ? proxyAuth : `http://${proxyAuth}`;
+    const proxyUrl = /^https?:\/\//i.test(proxyAuth) ? proxyAuth : `https://${proxyAuth}`;
+    if (/^http:\/\//i.test(proxyUrl) && process.env.PROXY_ALLOW_INSECURE_HTTP !== '1') {
+      throw new Error('Plain HTTP curl proxies require PROXY_ALLOW_INSECURE_HTTP=1');
+    }
     args.push('-x', proxyUrl);
   }
   for (const [k, v] of Object.entries(headers)) args.push('-H', `${k}: ${v}`);

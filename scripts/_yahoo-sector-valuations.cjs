@@ -187,7 +187,11 @@ function curlConfigValue(value) {
 }
 
 function buildCurlConfig(url, { headers = {}, proxy } = {}) {
-  const lines = [`proxy = ${curlConfigValue(`http://${proxy}`)}`];
+  const proxyUrl = /^https?:\/\//i.test(proxy) ? proxy : `https://${proxy}`;
+  if (/^http:\/\//i.test(proxyUrl) && process.env.PROXY_ALLOW_INSECURE_HTTP !== '1') {
+    throw new Error('Plain HTTP curl proxies require PROXY_ALLOW_INSECURE_HTTP=1');
+  }
+  const lines = [`proxy = ${curlConfigValue(proxyUrl)}`];
   for (const [name, value] of Object.entries(headers)) {
     lines.push(`header = ${curlConfigValue(`${name}: ${value}`)}`);
   }
