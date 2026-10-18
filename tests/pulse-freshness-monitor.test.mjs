@@ -230,7 +230,8 @@ describe('pulse freshness reporting', () => {
     const verdict = evaluatePulseFreshness(snapshot(9), { conclusion: 'failure' });
     const result = publishPulseFreshness(verdict, {
       repository: 'koala73/worldmonitor',
-      gh: () => [[{ number: 8339, title: ISSUE_TITLE }]],
+      gh: () => [[{ number: 1, title: ISSUE_TITLE, user: { login: 'outsider' } }],
+        [{ number: 8339, title: ISSUE_TITLE, user: { login: 'github-actions[bot]' } }]],
       ghPost: (args, payload) => { calls.push({ args, payload }); return {}; },
     });
 
@@ -272,7 +273,8 @@ describe('pulse freshness reporting', () => {
     const verdict = evaluatePulseFreshness(HAND_REFRESHED, FAILED_BEFORE_REFRESH);
     const result = publishPulseFreshness(verdict, {
       repository: 'koala73/worldmonitor',
-      gh: () => [[{ number: 8417, title: ISSUE_TITLE }]],
+      gh: () => [[{ number: 1, title: ISSUE_TITLE, user: { login: 'outsider' } }],
+        [{ number: 8417, title: ISSUE_TITLE, user: { login: 'github-actions[bot]' } }]],
       ghPost: (args, payload) => { calls.push({ args, payload }); return {}; },
     });
 
@@ -296,6 +298,26 @@ describe('pulse freshness reporting', () => {
     });
     assert.deepEqual(result, { alert: false });
     assert.equal(posted, false);
+  });
+
+  it('never updates, comments on, or closes an outside or unidentified issue', () => {
+    for (const user of [{ login: 'outsider' }, undefined]) {
+      for (const alert of [true, false]) {
+        const calls = [];
+        const verdict = evaluatePulseFreshness(snapshot(alert ? 9 : 1), { conclusion: 'success' });
+        const result = publishPulseFreshness(verdict, {
+          repository: 'koala73/worldmonitor',
+          gh: () => [[{ number: 42, title: ISSUE_TITLE, user }]],
+          ghPost: (args, payload) => { calls.push({ args, payload }); return {}; },
+        });
+        assert.equal(result.action, alert ? 'created' : undefined);
+        assert.equal(calls.length, alert ? 1 : 0);
+        if (alert) {
+          assert.ok(calls[0].args.includes('POST'));
+          assert.ok(calls[0].args.includes('repos/koala73/worldmonitor/issues'));
+        }
+      }
+    }
   });
 
   it('tells the reader how to fix it, including the keyless-freeze trap', () => {

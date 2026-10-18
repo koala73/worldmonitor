@@ -1918,6 +1918,11 @@ describe('durably held recovery dispatch orchestration', () => {
         readTargetRunSummaries: async () => [],
         hydrateTargetRuns: async () => [],
         findRunByRecoveryAttemptId: async () => ({ id: 9008, runAttempt: 1 }),
+        readDispatchedRunIdentity: async (input) => {
+          assert.deepEqual(input, { runId: 9008, runAttempt: 1, expectedHeadSha: HEAD });
+          assert.equal(bindCalls.length, 0);
+          return { id: '9008', runAttempt: 1 };
+        },
       },
       control: {
         status: async () => ({
@@ -1942,6 +1947,65 @@ describe('durably held recovery dispatch orchestration', () => {
       runAttempt: 1,
     }]);
     assert.equal(snapshot.controlState.dispatchHolds[0].state, 'RUN_BOUND');
+  });
+
+  it('validates the exact recovery run before binding a title-matched hold', async () => {
+    const identity = {
+      ...rawRun({ id: 9008, displayTitle: 'reconcile held-recovery-id' }),
+      event: 'workflow_dispatch',
+      head_branch: 'main',
+      path: '.github/workflows/railway-deploy-trigger.yml',
+      repository: { full_name: 'o/r' },
+      head_repository: { full_name: 'o/r', fork: false },
+    };
+    for (const changed of [
+      { event: 'pull_request' },
+      { head_branch: 'feature/spoof' },
+      { head_sha: 'b'.repeat(40) },
+      { path: '.github/workflows/other.yml' },
+      { path: '.github/workflows/railway-deploy-trigger.yml@refs/heads/spoof' },
+      { repository: { full_name: 'outsider/r' } },
+      { head_repository: { full_name: 'outsider/r', fork: true } },
+      { head_repository: null },
+      { path: '.github/workflows/railway-deploy-trigger.yml@refs/heads/main' },
+      null,
+    ]) {
+      const binds = [];
+      const requests = [];
+      const github = new GitHubWatchdogClient({
+        repository: 'o/r', token: 'token', now: () => NOW,
+        fetchImpl: async (url) => {
+          const parsed = new URL(url);
+          requests.push(parsed);
+          if (parsed.pathname.endsWith('/git/ref/heads/main')) return json({ object: { sha: HEAD } });
+          if (parsed.pathname.endsWith('/statuses')) return json([{ context: 'gate', state: 'success' }]);
+          if (parsed.pathname.endsWith('/railway-deploy-trigger.yml/runs')) {
+            return json({ total_count: parsed.searchParams.has('status') ? 0 : 1,
+              workflow_runs: parsed.searchParams.has('status') ? [] : [identity] });
+          }
+          if (parsed.pathname.endsWith('/jobs')) return json({ total_count: 0, jobs: [] });
+          if (parsed.pathname.endsWith('/actions/runs/9008/attempts/1')) return json({ ...identity, ...changed });
+          throw new Error(`unexpected ${url}`);
+        },
+      });
+      const hold = { state: 'DISPATCH_HELD', recoveryAttemptId: 'held-recovery-id', headSha: HEAD };
+      const control = {
+        status: async () => ({ data: eligibleControl({ dispatchHolds: binds.length ? [] : [hold] }) }),
+        bindRun: async (body) => { binds.push(body); },
+      };
+      const read = readWatchdogSnapshot({ github, control, clock: () => NOW });
+      if (changed && changed.path !== `${identity.path}@refs/heads/main`) {
+        await assert.rejects(read, (error) => error.code === 'GITHUB_READ_FAILED', JSON.stringify(changed));
+        assert.equal(binds.length, 0);
+      } else {
+        await read;
+        assert.deepEqual(binds, [{ recoveryAttemptId: hold.recoveryAttemptId, headSha: HEAD, runId: '9008', runAttempt: 1 }]);
+      }
+      for (const url of requests.filter((url) => url.pathname.endsWith('/railway-deploy-trigger.yml/runs'))) {
+        assert.equal(url.searchParams.get('event'), 'workflow_dispatch');
+        assert.equal(url.searchParams.get('branch'), 'main');
+      }
+    }
   });
 
   it('closes a cancellation-before-job hold only after exact terminal source evidence proves POST never started', async () => {
