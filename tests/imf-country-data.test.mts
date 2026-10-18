@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   buildImfEconomicIndicators,
   buildCountryInflationRows,
+  selectImfCountryBundle,
   type ImfCountryBundle,
   type ImfMacroEntry,
 } from '../src/services/imf-country-data.ts';
@@ -42,6 +43,40 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
       assert.equal(buildImfEconomicIndicators(data)[0].source, `IMF WEO · Year ${year} · IMF release not supplied`);
     }
   });
+  it('discloses each metric release from its own theme without naming an edition', () => {
+    const data = selectImfCountryBundle({
+      imfGrowth: {
+        countries: { US: { realGdpGrowthPct: 2, gdpPerCapitaUsd: 900, periods: { realGdpGrowthPct: 2026, gdpPerCapitaUsd: 2026 } } },
+        releases: { realGdpGrowthPct: { publishedAt: '2026-10-13T02:00:00Z', updatedAt: '2026-10-13T09:00:00Z' }, gdpPerCapitaUsd: { publishedAt: '2026-10-13T02:00:00Z', updatedAt: null } },
+      },
+      imfMacro: {
+        countries: { US: { inflationPct: 3, govRevenuePct: 30, periods: { inflationPct: 2026, govRevenuePct: 2025 } } },
+        releases: { inflationPct: { publishedAt: '2025-10-14T13:00:00Z', updatedAt: '2025-11-19T21:00:00Z' }, govRevenuePct: { publishedAt: null, updatedAt: '2025-11-19T21:00:00Z' } },
+      },
+      imfLabor: {
+        countries: { US: { unemploymentPct: 4, periods: { unemploymentPct: 2026 } } },
+        releases: { unemploymentPct: { publishedAt: '2026-04-14T13:00:00Z', updatedAt: '2026-04-14T20:00:00Z' }, realGdpGrowthPct: { publishedAt: '2000-01-01T00:00:00Z', updatedAt: null } },
+      },
+    } as never, 'us', 0);
+    assert.deepEqual(buildImfEconomicIndicators(data).map(row => [row.label, row.source]), [
+      ['Real GDP Growth', 'IMF WEO · Year 2026 · IMF published 2026-10-13'],
+      ['CPI Inflation', 'IMF WEO · Year 2026 · IMF published 2025-10-14, updated 2025-11-19'],
+      ['Unemployment', 'IMF WEO · Year 2026 · IMF published 2026-04-14'],
+      ['GDP / Capita', 'IMF WEO · Year 2026 · IMF published 2026-10-13'],
+      ['Gov Revenue', 'IMF WEO · Year 2025 · IMF updated 2025-11-19, publication date not supplied'],
+    ]);
+  });
+  it('keeps the release unknown when bootstrap release metadata is missing or malformed', () => {
+    for (const releases of [undefined, null, [], 'x', { inflationPct: null }, { inflationPct: [] }, { inflationPct: 'x' }, ...[42, '', '13/10/2026', '2026', '2026-13-40', '2026-02-30T00:00:00Z', '2026-10-13Tjunk', { en: '2026-10-13' }].map(publishedAt => ({ inflationPct: { publishedAt, updatedAt: publishedAt } }))]) {
+      const data = selectImfCountryBundle({ imfMacro: { countries: { US: { inflationPct: 1, periods: { inflationPct: 2026 } } }, releases } } as never, 'US', 0);
+      assert.equal(buildImfEconomicIndicators(data)[0].source, 'IMF WEO · Year 2026 · IMF release not supplied', JSON.stringify(releases));
+    }
+  });
+  it('selects one country across themes for both bundle readers', () => {
+    const data = selectImfCountryBundle({ imfExternal: { countries: { AE: { exportsUsd: 5 } } } } as never, 'ae', 7);
+    assert.deepEqual(data, { macro: null, growth: null, labor: null, external: { exportsUsd: 5 }, releases: { macro: {}, growth: {}, labor: {} }, fetchedAt: 7 });
+  });
+
   it('returns no rows when no IMF data is present', () => {
     assert.deepEqual(buildImfEconomicIndicators(bundle()), []);
   });

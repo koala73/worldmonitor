@@ -5,7 +5,6 @@
  *   1. Relay security  — SSRF guard, auth gate, isPublicRoute, body limit, CORS
  *   2. Widget store    — constants, span-map keys, `cw-` prefix, history trim
  *   3. Title regex     — hyphens in titles (bug fixed: [^\n\-] → [^\n])
- *   4. HTML sanitizer  — allowlist shape, forbidden tags, unsafe style strip
  *   5. Panel guardrails — cw- exclusion in UnifiedSettings, event-handlers
  *   6. SSE event types — html_complete, done, error, tool_call all present
  */
@@ -1722,25 +1721,8 @@ describe('widget-sanitizer — allowlist verification', () => {
     assert.ok(san.includes('FORCE_BODY: true'), 'FORCE_BODY must be true');
   });
 
-  it('post-pass strips url() from style attributes', () => {
-    assert.ok(
-      san.includes('url') && (san.includes('UNSAFE_STYLE') || san.includes('unsafe')),
-      'Must have post-pass regex stripping url() from style values',
-    );
-  });
-
-  it('post-pass strips javascript: from style attributes', () => {
-    assert.ok(
-      san.includes('javascript'),
-      'Must have post-pass regex stripping javascript: from style values',
-    );
-  });
-
-  it('post-pass strips expression() from style attributes', () => {
-    assert.ok(
-      san.includes('expression'),
-      'Must have post-pass regex stripping expression() from style values',
-    );
+  it('style attributes are rebuilt by the declaration allowlist', () => {
+    assert.match(san, /sanitizeWidgetStyle\(/);
   });
 });
 

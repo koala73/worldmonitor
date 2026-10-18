@@ -90,6 +90,41 @@ impl Default for LocalApiState {
     }
 }
 
+impl LocalApiState {
+    fn live_port(&self) -> Result<u16, String> {
+        let mut child_slot = self
+            .child
+            .lock()
+            .map_err(|_| "Failed to lock local API state".to_string())?;
+        match child_slot.as_mut() {
+            None => self.clear_recorded_port(),
+            Some(child) => match child.try_wait() {
+                Ok(None) => self
+                    .port
+                    .lock()
+                    .map_err(|_| "Failed to lock local API port".to_string())?
+                    .ok_or_else(|| "Local API sidecar is not ready".to_string()),
+                Ok(Some(_)) => {
+                    *child_slot = None;
+                    self.clear_recorded_port()
+                }
+                Err(_) => Self::refuse_unverified_child(),
+            },
+        }
+    }
+
+    fn clear_recorded_port(&self) -> Result<u16, String> {
+        if let Ok(mut port_slot) = self.port.lock() {
+            *port_slot = None;
+        }
+        Err("Local API sidecar is not ready".to_string())
+    }
+
+    fn refuse_unverified_child() -> Result<u16, String> {
+        Err("Local API sidecar is not ready".to_string())
+    }
+}
+
 /// In-memory cache for keychain secrets. Populated once at startup to avoid
 /// repeated macOS Keychain prompts (each `Entry::get_password()` triggers one).
 struct SecretsCache {
@@ -337,11 +372,7 @@ async fn send_local_api_request(
     if body.as_ref().is_some_and(|body| body.len() > MAX_LOCAL_API_PROXY_BYTES) {
         return Err("Local API request body exceeds the proxy limit".to_string());
     }
-    let port = state
-        .port
-        .lock()
-        .map_err(|_| "Failed to lock local API port".to_string())?
-        .ok_or_else(|| "Local API sidecar is not ready".to_string())?;
+    let port = state.live_port()?;
     let token = state
         .token
         .lock()
@@ -403,7 +434,7 @@ async fn proxy_local_api_request(
 #[tauri::command]
 fn get_desktop_runtime_info(webview: Webview, state: tauri::State<'_, LocalApiState>) -> Result<DesktopRuntimeInfo, String> {
     require_trusted_window(webview.label())?;
-    let port = state.port.lock().ok().and_then(|g| *g);
+    let port = state.live_port().ok();
     Ok(DesktopRuntimeInfo {
         os: env::consts::OS.to_string(),
         arch: env::consts::ARCH.to_string(),
@@ -414,9 +445,7 @@ fn get_desktop_runtime_info(webview: Webview, state: tauri::State<'_, LocalApiSt
 #[tauri::command]
 fn get_local_api_port(webview: Webview, state: tauri::State<'_, LocalApiState>) -> Result<u16, String> {
     require_trusted_window(webview.label())?;
-    state.port.lock()
-        .map_err(|_| "Failed to lock port state".to_string())?
-        .ok_or_else(|| "Port not yet assigned".to_string())
+    state.live_port()
 }
 
 #[tauri::command]
@@ -1112,7 +1141,7 @@ mod sanitize_path_tests {
     use super::{
         build_time_sidecar_env_value, can_manage_renderer_secrets, configured_renderer_secret_keys,
         is_renderer_managed_secret_key, local_api_proxy_path_is_allowed, sanitize_path_for_node,
-        read_port_file, watch_for_late_sidecar_port, SidecarReadinessOutcome,
+        read_port_file, watch_for_late_sidecar_port, LocalApiState, SidecarReadinessOutcome,
         BUILD_TIME_SIDECAR_ENV_KEYS, DEFAULT_LOCAL_API_PORT, DESKTOP_SHARED_SECRET_KEY,
         SUPPORTED_SECRET_KEYS,
     };
@@ -1282,6 +1311,53 @@ mod sanitize_path_tests {
             let _ = child.wait();
         }
         let _ = fs::remove_dir_all(test_dir);
+    }
+
+    fn state_with_sidecar(child: Option<Child>, port: Option<u16>) -> LocalApiState {
+        let state = LocalApiState::default();
+        *state.child.lock().expect("lock child") = child;
+        *state.port.lock().expect("lock port") = port;
+        state
+    }
+
+    #[test]
+    fn live_port_rejects_exited_sidecar_and_clears_recorded_port() {
+        let mut child = delayed_sidecar_test_child();
+        child.kill().expect("kill sidecar test child");
+        child.wait().expect("reap sidecar test child");
+        let state = state_with_sidecar(Some(child), Some(46123));
+
+        assert_eq!(
+            state.live_port(),
+            Err("Local API sidecar is not ready".to_string())
+        );
+        assert_eq!(*state.port.lock().expect("lock port"), None);
+    }
+
+    #[test]
+    fn live_port_rejects_missing_sidecar_and_clears_recorded_port() {
+        let state = state_with_sidecar(None, Some(46123));
+
+        assert_eq!(
+            state.live_port(),
+            Err("Local API sidecar is not ready".to_string())
+        );
+        assert_eq!(*state.port.lock().expect("lock port"), None);
+    }
+
+    #[test]
+    fn live_port_returns_recorded_port_while_sidecar_is_alive() {
+        let child = delayed_sidecar_test_child();
+        let state = state_with_sidecar(Some(child), Some(47555));
+
+        assert_eq!(state.live_port(), Ok(47555));
+        assert_eq!(*state.port.lock().expect("lock port"), Some(47555));
+
+        let mut slot = state.child.lock().expect("lock child");
+        if let Some(mut child) = slot.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 }
 
