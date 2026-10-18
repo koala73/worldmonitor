@@ -534,13 +534,14 @@ describe('fetchYahooAnalystData', () => {
 
         globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
           const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-          if (url.includes('query1.finance.yahoo.com/v8/finance/chart')) {
+          const parsedUrl = new URL(url);
+          if (parsedUrl.hostname === 'query1.finance.yahoo.com' && parsedUrl.pathname.startsWith('/v8/finance/chart/')) {
             return new Response(JSON.stringify(mockChartPayload), { status: 200 });
           }
-          if (url.includes('query1.finance.yahoo.com/v10/finance/quoteSummary')) {
+          if (parsedUrl.hostname === 'query1.finance.yahoo.com' && parsedUrl.pathname.startsWith('/v10/finance/quoteSummary/')) {
             return new Response(JSON.stringify(mockQuoteSummaryPayload), { status: 200 });
           }
-          if (url.includes('news.google.com')) {
+          if (parsedUrl.hostname === 'news.google.com') {
             return new Response(mockNewsXml, { status: 200 });
           }
           if ((init?.method || 'GET') === 'GET') {
