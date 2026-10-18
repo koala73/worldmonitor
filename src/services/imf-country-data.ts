@@ -207,8 +207,14 @@ export async function getImfCountryBundle(iso2Code: string): Promise<ImfCountryB
   return selectImfCountryBundle(data, iso2Code, cachedBundle?.fetchedAt ?? Date.now());
 }
 
+const RELEASE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(?:T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)?)?$/;
+
 function releaseDate(value: unknown): string | null {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}(?:T|$)/.test(value) ? value : null;
+  const match = typeof value === 'string' ? RELEASE_DATE_RE.exec(value) : null;
+  if (!match) return null;
+  const [y, m, d] = match.slice(1, 4).map(Number) as [number, number, number];
+  const day = new Date(Date.UTC(y, m - 1, d));
+  return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d ? value as string : null;
 }
 
 function parseImfReleases(value: unknown): ImfReleases {

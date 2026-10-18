@@ -67,7 +67,7 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
     ]);
   });
   it('keeps the release unknown when bootstrap release metadata is missing or malformed', () => {
-    for (const releases of [undefined, null, [], 'x', { inflationPct: null }, { inflationPct: [] }, { inflationPct: 'x' }, ...[42, '', '13/10/2026', '2026', { en: '2026-10-13' }].map(publishedAt => ({ inflationPct: { publishedAt, updatedAt: publishedAt } }))]) {
+    for (const releases of [undefined, null, [], 'x', { inflationPct: null }, { inflationPct: [] }, { inflationPct: 'x' }, ...[42, '', '13/10/2026', '2026', '2026-13-40', '2026-02-30T00:00:00Z', '2026-10-13Tjunk', { en: '2026-10-13' }].map(publishedAt => ({ inflationPct: { publishedAt, updatedAt: publishedAt } }))]) {
       const data = selectImfCountryBundle({ imfMacro: { countries: { US: { inflationPct: 1, periods: { inflationPct: 2026 } } }, releases } } as never, 'US', 0);
       assert.equal(buildImfEconomicIndicators(data)[0].source, 'IMF WEO · Year 2026 · IMF release not supplied', JSON.stringify(releases));
     }
