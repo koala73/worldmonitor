@@ -685,6 +685,8 @@ async function buildRouteTable(root) {
 }
 
 const REQUEST_BODY_CACHE = Symbol('requestBodyCache');
+// Leave time for local fallback within the frontend's 5s request budgets.
+const CLOUD_PROXY_TIMEOUT_MS = 3000;
 
 async function readBody(req) {
   if (Object.prototype.hasOwnProperty.call(req, REQUEST_BODY_CACHE)) {
@@ -739,11 +741,20 @@ async function proxyToCloud(requestUrl, req, remoteBase) {
     const wmKey = process.env.WORLDMONITOR_API_KEY;
     if (wmKey) headers.set('X-WorldMonitor-Key', wmKey);
   }
-  return fetch(target, {
-    method: req.method,
-    headers,
-    body,
-  });
+  const clientAbort = new AbortController();
+  const onClientClose = () => clientAbort.abort();
+  req.socket.once('close', onClientClose);
+  if (req.socket.destroyed) clientAbort.abort();
+  try {
+    return await fetch(target, {
+      method: req.method,
+      headers,
+      body,
+      signal: AbortSignal.any([clientAbort.signal, AbortSignal.timeout(CLOUD_PROXY_TIMEOUT_MS)]),
+    });
+  } finally {
+    req.socket.off('close', onClientClose);
+  }
 }
 
 async function proxyRegisterInterestToCloud(requestUrl, req, context) {
