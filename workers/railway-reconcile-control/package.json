@@ -10,6 +10,9 @@
     "test": "node --test index.test.mjs"
   },
   "devDependencies": {
-    "wrangler": "^4.128.0"
+    "wrangler": "^4.143.1"
+  },
+  "overrides": {
+    "sharp": "0.35.5"
   }
 }

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>World Monitor Settings</title>
-    <script>(function(){try{var t=localStorage.getItem('worldmonitor-theme');if(t==='light')document.documentElement.dataset.theme='light';}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
+    <script>(function(){try{var t=localStorage.getItem('worldmonitor-theme');if(t==='light'||(t!=='dark'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches))document.documentElement.dataset.theme='light';}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
     <style>.settings-shell{height:100vh;display:flex;flex-direction:column}.settings-main{display:flex;flex:1;min-height:0}.settings-sidebar{width:220px;flex-shrink:0;border-right:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column}.settings-content{flex:1;overflow-y:auto;padding:20px 24px}</style>
   </head>
   <body style="background:#1a1c1e;color:#e8eaed;margin:0">

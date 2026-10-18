@@ -101,7 +101,7 @@ function mixedEnterpriseRequest(sessionToken: string) {
     method: "GET",
     headers: {
       "X-WorldMonitor-Key": sessionToken,
-      Cookie: "wm-pro-key=enterprise-browser-key",
+      Cookie: "__Host-wm-pro-key=enterprise-browser-key",
     },
   });
 }

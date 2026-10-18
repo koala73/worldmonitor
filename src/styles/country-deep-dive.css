@@ -805,6 +805,17 @@
   border-color: color-mix(in srgb, var(--semantic-high) 35%, transparent);
 }
 
+.cdp-state-badge.provenance-fact {
+  margin-left: 0;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 400;
+  color: var(--text-secondary);
+  background: var(--overlay-medium);
+  border-color: var(--border);
+  border-radius: 999px;
+  padding: 2px 6px;
+}
+
 .cdp-severity-badge.sev-critical {
   color: var(--semantic-critical);
   background: color-mix(in srgb, var(--semantic-critical) 12%, transparent);

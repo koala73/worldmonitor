@@ -138,31 +138,49 @@ test('resilience-validation-smoke runs only for validation changes that skip uni
 
 test('required unit aggregate rejects failed, cancelled and unexpected skips', () => {
   const aggregate = workflow.jobs.unit;
-  assert.deepEqual(aggregate.needs, ['changes', 'unit-shards']);
+  assert.deepEqual(aggregate.needs, ['changes', 'unit-shards', 'unit-built-output']);
   assert.equal(aggregate.if, 'always()');
   const shards = workflow.jobs['unit-shards'];
-  assert.deepEqual(shards.strategy.matrix.shard, [1, 2, 3]);
+  assert.deepEqual(shards.strategy.matrix.shard, [1, 2, 3, 4]);
   assert.equal(shards.strategy['fail-fast'], false);
+  // Both halves of the data inventory run under the same change selection;
+  // a built-output job gated differently would skip its suites on a code PR.
+  assert.equal(workflow.jobs['unit-built-output'].if, shards.if);
   // The denominator must equal the matrix length: a matrix of three passing
   // --shard=n/2 would run shard 3 as 3/2, which the runner rejects, while a
   // matrix of two passing n/3 would silently never run the third of the
   // inventory.
   const shardCount = shards.strategy.matrix.shard.length;
+  const shardTests = shards.steps.find((step) => step.run?.includes('npm run test:data'));
   assert.match(
-    shards.steps.find((step) => step.run?.includes('WM_EXPECT_BUILT_OUTPUT=1 npm run test:data')).run,
-    new RegExp(`--shard=\\$\\{\\{ matrix.shard \\}\\}/${shardCount} --concurrency=4`),
+    shardTests.run,
+    new RegExp(`--built-output=exclude --shard=\\$\\{\\{ matrix.shard \\}\\}/${shardCount} --concurrency=4`),
   );
+  // Shards have no build, so the marker is what turns a misplaced guarded
+  // suite into a failure rather than a skip.
+  assert.equal(shardTests.env?.WM_EXPECT_BUILT_OUTPUT, '1');
+  // Expand `parallel:` groups so a build nested in one is still caught.
+  const shardSteps = shards.steps.flatMap((step) => step.parallel ?? [step]);
+  assert.equal(shardSteps.some((step) => /build:pro|vite build/.test(step.run ?? '')), false);
+  const builtTests = workflow.jobs['unit-built-output'].steps.find((step) => step.run?.includes('npm run test:data'));
+  assert.match(builtTests.run, /^WM_EXPECT_BUILT_OUTPUT=1 npm run test:data -- --built-output=only --concurrency=4 /);
   for (const changes of ['success', 'failure', 'cancelled', 'skipped']) {
     for (const code of ['true', 'false', '']) {
       for (const result of ['success', 'failure', 'cancelled', 'skipped']) {
-        const expected = changes === 'success' && ((code === 'true' && result === 'success') || (code === 'false' && result === 'skipped'));
-        const run = spawnSync('bash', ['-euo', 'pipefail', '-c', aggregate.steps[0].run], {
-          encoding: 'utf8', env: { ...process.env, CHANGES_RESULT: changes, CODE_CHANGED: code, SHARDS_RESULT: result },
-        });
-        assert.equal(run.status === 0, expected, `${changes}/${code}/${result}`);
+        for (const built of ['success', 'failure', 'cancelled', 'skipped']) {
+          const expected = changes === 'success' && (
+            (code === 'true' && result === 'success' && built === 'success')
+            || (code === 'false' && result === 'skipped' && built === 'skipped'));
+          const run = spawnSync('bash', ['-euo', 'pipefail', '-c', aggregate.steps[0].run], {
+            encoding: 'utf8',
+            env: { ...process.env, CHANGES_RESULT: changes, CODE_CHANGED: code, SHARDS_RESULT: result, BUILT_OUTPUT_RESULT: built },
+          });
+          assert.equal(run.status === 0, expected, `${changes}/${code}/${result}/${built}`);
+        }
       }
     }
   }
+  assert.equal(aggregate.steps[0].env.BUILT_OUTPUT_RESULT, '${{ needs.unit-built-output.result }}');
 });
 
 test('required variant-smoke aggregate rejects failed, cancelled and unexpected skips', () => {
@@ -176,7 +194,7 @@ test('required variant-smoke aggregate rejects failed, cancelled and unexpected 
     SHARDS_RESULT: '${{ needs.variant-smoke-shards.result }}',
     PRO_WEBMCP_RESULT: '${{ needs.variant-smoke-pro-webmcp.result }}',
   });
-  assert.deepEqual(shards.strategy.matrix.shard, [1, 2]);
+  assert.deepEqual(shards.strategy.matrix.shard, [1, 2, 3, 4]);
   assert.equal(shards.strategy['fail-fast'], false);
   assert.match(
     shards.steps.find((step) => step.run?.includes('npm run test:e2e:ci-smoke:')).run,

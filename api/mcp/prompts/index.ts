@@ -41,6 +41,26 @@ import type { McpPromptArgument, McpPromptDef } from '../types';
 // `data.` prefix needed.
 export const PROMPT_REGISTRY: McpPromptDef[] = [
   {
+    name: 'country-view',
+    description:
+      'Interactive country brief with assessment, resilience, energy, trade, security and source evidence. Text-only clients can use the existing data tools.',
+    arguments: [
+      {
+        name: 'iso2',
+        description: 'Country designator, substituted into the tools\' country_code: an ISO 3166-1 alpha-2 code (e.g. "DE"), an alpha-3 code ("DEU"), or an English country name ("Germany"). Case-insensitive.',
+        required: true,
+      },
+    ],
+    steps: [{
+      tool: 'open_country_brief',
+      args: { country_code: '${iso2}' },
+      jmespath: '{countryCode: countryCode, topic: topic}',
+      purpose: 'Open the embedded country interface. Its sections load through the authenticated host and keep their observation dates and source states.',
+    }],
+    intro:
+      'Open the WorldMonitor country brief for ${iso2} with the linked interactive view. Use its topic tabs and evidence rather than replacing the interface with paragraphs. If the user explicitly requests text only or the host cannot render apps, use get_country_risk, get_country_brief and get_country_macro for a labeled text assessment.',
+  },
+  {
     name: 'country-briefing',
     description:
       'Multi-tool country brief: quantitative risk score + LLM-synthesised intelligence brief + macro indicators for a single ISO 3166-1 alpha-2 country.',

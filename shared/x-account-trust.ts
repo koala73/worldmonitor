@@ -153,7 +153,6 @@ export const X_ACCOUNT_TRUST: readonly XAccountTrustEntry[] = [
     tier: 2,
     type: 'mainstream',
     risk: 'low',
-    knownBiases: ['Israeli left-liberal'],
     note: 'Israeli newspaper of record with editorial standards',
   },
   {
@@ -213,7 +212,6 @@ export const X_ACCOUNT_TRUST: readonly XAccountTrustEntry[] = [
     tier: 2,
     type: 'mainstream',
     risk: 'low',
-    knownBiases: ['Israeli centre-right'],
     note: 'English-language Israeli daily of record',
     reuseRisk: true,
   },

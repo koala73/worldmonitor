@@ -1,0 +1,173 @@
+{
+  "generatedFrom": "src/config/live-video-sources.ts",
+  "channels": [
+    {
+      "channelId": "UCIALMKvObZNtJ6AmdCLP7Lg",
+      "slots": [
+        "live-news/bloomberg"
+      ]
+    },
+    {
+      "channelId": "UCknLrEdhRCp1aegoMqRaCZg",
+      "slots": [
+        "live-news/dw"
+      ]
+    },
+    {
+      "channelId": "UCNye-wNBqNL5ZzHSJj3l8Bg",
+      "slots": [
+        "live-news/aljazeera"
+      ]
+    },
+    {
+      "channelId": "UCBi2mrWuNuyYy4gbM6fU18Q",
+      "slots": [
+        "live-news/abc-news"
+      ]
+    },
+    {
+      "channelId": "UCeY0bbntWzzVIaj2z3QigXg",
+      "slots": [
+        "live-news/nbc-news"
+      ]
+    },
+    {
+      "channelId": "UCuFFtHWoLl5fauMMD5Ww2jA",
+      "slots": [
+        "live-news/cbc-news"
+      ]
+    },
+    {
+      "channelId": "UCBgTP2LOFVPmq15W-RH-WXA",
+      "slots": [
+        "live-news/trt-haber"
+      ]
+    },
+    {
+      "channelId": "UCV6zcRug6Hqp1UX_FdyUeBg",
+      "slots": [
+        "live-news/cnn-turk"
+      ]
+    },
+    {
+      "channelId": "UCvdwhh_fDyWccR42-rReZLw",
+      "slots": [
+        "live-news/cnn-brasil"
+      ]
+    },
+    {
+      "channelId": "UCuiLR4p6wQ3xLEm15pEn1Xw",
+      "slots": [
+        "live-news/record-news"
+      ]
+    },
+    {
+      "channelId": "UCFgk2Q2mVO1BklRQhSv6p0w",
+      "slots": [
+        "live-news/c5n"
+      ]
+    },
+    {
+      "channelId": "UC2Xq2PK-got3Rtz9ZJ32hLQ",
+      "slots": [
+        "live-news/noticias-caracol"
+      ]
+    },
+    {
+      "channelId": "UCEJs1fTF3KszRJGxJY14VrA",
+      "slots": [
+        "live-news/ntn24"
+      ]
+    },
+    {
+      "channelId": "UCsRnhjcUCR78Q3Ud6OXCTNg",
+      "slots": [
+        "live-news/t13"
+      ]
+    },
+    {
+      "channelId": "UCd94YCD7yp6d-YZSRYWyeFA",
+      "slots": [
+        "live-news/cgtn-espanol"
+      ]
+    },
+    {
+      "channelId": "UCSPEjw8F2nQDtmUKPFNF7_A",
+      "slots": [
+        "live-news/nhk-world"
+      ]
+    },
+    {
+      "channelId": "UCRWFSbif-RFENbBrSiez1DA",
+      "slots": [
+        "live-news/abp-news"
+      ]
+    },
+    {
+      "channelId": "UCQmJk0ErE_FiorcLBsDKORA",
+      "slots": [
+        "live-news/cgtn-arabic"
+      ]
+    },
+    {
+      "channelId": "UCktyejXTxWaKfrgp1Oq7CMQ",
+      "slots": [
+        "live-news/al-qahera-news"
+      ]
+    },
+    {
+      "channelId": "UCAUHoE2Ykw0sguyi5AjhrjQ",
+      "slots": [
+        "live-news/rudaw"
+      ]
+    },
+    {
+      "channelId": "UC1_E8NeF5QHY2dtdLRBCCLA",
+      "slots": [
+        "live-news/africanews"
+      ]
+    },
+    {
+      "channelId": "UCEXGDNclvmg6RW0vipJYsTQ",
+      "slots": [
+        "live-news/channels-tv"
+      ]
+    },
+    {
+      "channelId": "UCKVsdeoHExltrWMuK0hOWmg",
+      "slots": [
+        "live-news/ktn-news"
+      ]
+    },
+    {
+      "channelId": "UCyEJX-kSj0kOOCS7Qlq2G7g",
+      "slots": [
+        "live-news/arise-news"
+      ]
+    },
+    {
+      "channelId": "UCZMsvbAhhRblVGXmEXW8TSA",
+      "slots": [
+        "live-news/welt"
+      ]
+    },
+    {
+      "channelId": "UC8HJZNfDPoySgW9DN3YGNaA",
+      "slots": [
+        "live-news/euronews-gr"
+      ]
+    },
+    {
+      "channelId": "UCO6K_kkdP-lnSCiO3tPx7WA",
+      "slots": [
+        "live-news/france-info"
+      ]
+    },
+    {
+      "channelId": "UCXwDLMDV86ldKoFVc_g8P0g",
+      "slots": [
+        "live-news/bfmtv"
+      ]
+    }
+  ]
+}

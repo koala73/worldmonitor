@@ -13,6 +13,7 @@ import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import { isDesktopRuntime } from '@/services/runtime';
+import { LatestRequestGuard } from '@/utils/latest-request-guard';
 
 type TabId = 'restrictions' | 'tariffs' | 'flows' | 'barriers' | 'revenue' | 'comtrade';
 
@@ -24,6 +25,7 @@ export class TradePolicyPanel extends Panel {
   private revenueData: GetCustomsRevenueResponse | null = null;
   private comtradeData: ListComtradeFlowsResponse | null = null;
   private activeTab: TabId = 'restrictions';
+  private loadGuard = new LatestRequestGuard();
 
   constructor() {
     super({ id: 'trade-policy', title: t('panels.tradePolicy'), defaultRowSpan: 2, infoTooltip: t('components.tradePolicy.infoTooltip') });
@@ -36,6 +38,30 @@ export class TradePolicyPanel extends Panel {
         this.render();
       }
     });
+  }
+
+  public override clearSensitiveContent(): void {
+    this.loadGuard.begin();
+    this.restrictionsData = null;
+    this.tariffsData = null;
+    this.flowsData = null;
+    this.barriersData = null;
+    this.revenueData = null;
+    this.comtradeData = null;
+    super.clearSensitiveContent();
+  }
+
+  public override unlockPanel(): void {
+    super.unlockPanel();
+    if (!this.content.hasChildNodes()) this.render();
+  }
+
+  public beginDataLoad(): number {
+    return this.loadGuard.begin();
+  }
+
+  public acceptsDataLoad(generation: number): boolean {
+    return this.loadGuard.isCurrent(generation) && !this.isLocked && !this.signal.aborted;
   }
 
   public updateRestrictions(data: GetTradeRestrictionsResponse): void {

@@ -7,7 +7,7 @@ import { resolveBearerToContext } from '../_oauth-token.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from '../_crypto.js';
 // @ts-expect-error — JS module, no declaration file
-import { getClientIp, hasCloudflareTransitProof } from '../_client-ip.js';
+import { getClientRateLimitKey, hasCloudflareTransitProof } from '../_client-ip.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { redisPipeline as rawRedisPipeline } from '../_upstash-json.js';
@@ -26,6 +26,7 @@ import {
 } from '../../server/_shared/mcp-internal-hmac';
 import { validateProMcpToken } from '../../server/_shared/pro-mcp-token';
 import { validateUserApiKey } from '../../server/_shared/user-api-key';
+import { hashKeySync } from '../../server/_shared/usage-identity';
 import {
   checkFailClosedScopedIpRateLimit,
   RATE_LIMIT_DEGRADED_HEADERS,
@@ -83,6 +84,11 @@ function getMcpRatelimit(): Ratelimit | null {
  * value every plan below API Business sells anyway.
  */
 export const MCP_DEFAULT_BURST_PER_MINUTE = 60;
+// One 64-read panel can establish a fresh connection per read, with initialize,
+// initialized acknowledgment and one catalog/control request per connection.
+export const MCP_PROTOCOL_BURST_PER_MINUTE = 192;
+
+type McpMinuteScope = { kind: 'protocol' } | { kind: 'panel'; key: string };
 
 /**
  * The burst threshold a plan sells, from `planLimits.mcpBurstRequestsPerMinute`.
@@ -512,6 +518,7 @@ export async function runProPreChecks(
   if (!process.env.MCP_INTERNAL_HMAC_SECRET) {
     captureSilentError(new Error('MCP_INTERNAL_HMAC_SECRET unset'), {
       tags: { route: 'api/mcp', step: 'pro-secret-preflight' },
+      fingerprint: ['api/mcp', 'pro-secret-preflight', 'Error'],
       ctx,
     });
     return { ok: false, response: new Response(
@@ -666,7 +673,7 @@ async function checkMcpEntitlementGate(
   try {
     ent = await deps.getEntitlements(userId);
   } catch (err) {
-    captureSilentError(err, { tags: { route: 'api/mcp', step: sentryStep }, ctx });
+    captureSilentError(err, { tags: { route: 'api/mcp', step: sentryStep }, fingerprint: ['api/mcp', sentryStep, err instanceof Error ? err.name : 'Error'], ctx });
     // #6716 F21: a THROWN entitlement lookup is the backend being unreachable.
     // Reporting it as 'no-account' told an already-authenticated caller — a
     // paying subscriber, possibly — to "sign in and subscribe", and buried a
@@ -755,6 +762,7 @@ export async function runUserKeyPreChecks(
   if (!process.env.MCP_INTERNAL_HMAC_SECRET) {
     captureSilentError(new Error('MCP_INTERNAL_HMAC_SECRET unset'), {
       tags: { route: 'api/mcp', step: 'user-key-secret-preflight' },
+      fingerprint: ['api/mcp', 'user-key-secret-preflight', 'Error'],
       ctx,
     });
     return { ok: false, response: new Response(
@@ -808,9 +816,8 @@ export async function runContextPreChecks(
  *  the daily quota is the hard-cap fail-CLOSED gate. Returns null on success
  *  or pass-through, a Response on a real burst limit hit.
  *  `perMinute` is the caller's plan threshold, carried from the pre-check that
- *  already read the entitlement; it defaults to the catalog's common value for
- *  the one call site that has no pre-check to carry it (a credentialed caller
- *  on a PUBLIC method), which errs to the lower of the two ceilings sold.
+ *  already read the entitlement. Data-free protocol requests use a separate
+ *  fixed user bucket so connection setup cannot spend the data burst.
  *  user_key (#4859) shares the per-USER limiter with pro — the principal is
  *  the key OWNER, so a user with an OAuth connection and a dashboard key gets
  *  one combined budget instead of two stackable ones.
@@ -825,13 +832,17 @@ export async function applyPerMinuteLimit(
   headers: Record<string, string> = {},
   perMinute: number = MCP_DEFAULT_BURST_PER_MINUTE,
   id: unknown = null,
+  scope?: McpMinuteScope,
 ): Promise<Response | null> {
   if (context.kind === 'env_key') {
     const rl = getMcpRatelimit();
     if (!rl) return null;
     let denied = false;
     try {
-      const { success } = await rl.limit(`key:${context.apiKey}`);
+      // Hash the operator key. The raw WORLDMONITOR_VALID_KEYS value must not
+      // sit in Redis under rl:mcp — telemetry and SSE replay already use
+      // hashKeySync for the same reason.
+      const { success } = await rl.limit(`key:${hashKeySync(context.apiKey)}`);
       if (!success) {
         // Operator env keys are ungated and carry no entitlement row, so this
         // branch keeps the fixed legacy threshold rather than a plan's.
@@ -849,7 +860,7 @@ export async function applyPerMinuteLimit(
     // rate-limit bypass. The id is validated upstream, so this is defence in
     // depth for a future caller, not a live bug — but the limiter decision and
     // the response construction do not belong under one catch-all.
-    if (denied) return rpcError(id, -32029, `Rate limit exceeded. Max ${MCP_DEFAULT_BURST_PER_MINUTE} requests per minute per API key.`, headers);
+    if (denied) return rpcError(id, -32029, `Rate limit exceeded. Max ${MCP_DEFAULT_BURST_PER_MINUTE} requests per minute per API key.`, { ...headers, 'X-RateLimit-Limit': String(MCP_DEFAULT_BURST_PER_MINUTE), 'X-RateLimit-Remaining': '0' });
     return null;
   }
   if (context.kind === 'free') {
@@ -861,11 +872,15 @@ export async function applyPerMinuteLimit(
     // worse than useless — every free caller would share one bucket.
     return null;
   }
+  if (scope?.kind === 'protocol') perMinute = MCP_PROTOCOL_BURST_PER_MINUTE;
   const rl = getMcpProMinRatelimit(perMinute);
   if (!rl) return null;
   let denied = false;
   try {
-    const { success } = await rl.limit(`pro-user:${context.userId}`);
+    const principal = scope?.kind === 'panel'
+      ? `pro-panel:${hashKeySync(scope.key)}`
+      : `${scope?.kind === 'protocol' ? 'pro-protocol' : 'pro-user'}:${context.userId}`;
+    const { success } = await rl.limit(principal);
     if (!success) {
       // The emitted limit must be the one that actually rejected: the
       // `mcp_minute_burst` scanner query reads `observed_limit` from this
@@ -880,7 +895,8 @@ export async function applyPerMinuteLimit(
     }
   } catch { /* graceful degradation */ }
   // Outside the fail-open catch — see the env_key branch above.
-  if (denied) return rpcError(id, -32029, `Rate limit exceeded. Max ${perMinute} requests per minute per user.`, headers);
+  const bucket = scope?.kind === 'panel' ? 'panel' : scope?.kind === 'protocol' ? 'user protocol bucket' : 'user';
+  if (denied) return rpcError(id, -32029, `Rate limit exceeded. Max ${perMinute} requests per minute per ${bucket}.`, { ...headers, 'X-RateLimit-Limit': String(perMinute), 'X-RateLimit-Remaining': '0' });
   return null;
 }
 
@@ -903,7 +919,7 @@ export async function applyAnonDiscoveryLimit(
   if (!rl) return null;
   let denied = false;
   try {
-    const { success } = await rl.limit(`ip:${getClientIp(req)}`);
+    const { success } = await rl.limit(`ip:${getClientRateLimitKey(req)}`);
     denied = !success;
   } catch { /* graceful degradation */ }
   // Outside the fail-open catch — see `applyPerMinuteLimit`'s env_key branch.
@@ -1026,7 +1042,7 @@ export async function applyFreeTierLimit(
     return freeTierRateLimitDegradedResponse(id, headers);
   }
   try {
-    const result = await rl.limit(`ip:${getClientIp(req)}`);
+    const result = await rl.limit(`ip:${getClientRateLimitKey(req)}`);
     // @upstash/ratelimit can resolve a timeout as success:true rather than
     // rejecting. Treat that as unavailable, not as verified headroom.
     if (result.reason === 'timeout') {

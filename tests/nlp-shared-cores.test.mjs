@@ -24,6 +24,7 @@ import {
   stripSourceAttribution,
 } from '../shared/keyword-spike-core.js';
 import {
+  MAX_CLUSTER_NEWS_ITEMS,
   clusterNewsCore,
   effectivePubDateMs,
   topClusterKeywords,
@@ -440,6 +441,32 @@ describe('news-clustering-core', () => {
     assert.equal(effectivePubDateMs({ pubDate: new Date('2026-01-01'), pubDateMissing: true }), 0);
     assert.equal(effectivePubDateMs({ pubDate: Number.NaN }), 0);
     assert.equal(effectivePubDateMs({ pubDate: 'not-a-date' }), 0);
+  });
+
+  it('caps input at MAX_CLUSTER_NEWS_ITEMS, keeping the newest, before per-item work', () => {
+    // Unique tokens per title so no two items cluster: every kept item
+    // becomes its own single-item cluster.
+    const word = (i) => [2, 1, 0].map((p) => String.fromCharCode(97 + (Math.floor(i / 26 ** p) % 26))).join('');
+    const base = Date.UTC(2026, 8, 1);
+    const overCap = MAX_CLUSTER_NEWS_ITEMS + 1;
+    // Index 0 is the OLDEST item and sits first, so a cap that slices the
+    // unsorted input would keep it and drop the newest one instead.
+    const bulk = Array.from({ length: overCap }, (_, i) => ({
+      source: 'Reuters',
+      title: `${word(i)}alpha ${word(i)}bravo`,
+      link: `https://fixture.test/${i}`,
+      pubDate: new Date(base + i * 60_000),
+      isAlert: false,
+    }));
+
+    let tierLookups = 0;
+    const clusters = clusterNewsCore(bulk, () => { tierLookups += 1; return 3; });
+    const keptLinks = new Set(clusters.flatMap((c) => c.allItems.map((item) => item.link)));
+
+    assert.equal(tierLookups, MAX_CLUSTER_NEWS_ITEMS, 'per-item work must run only on the capped set');
+    assert.equal(keptLinks.size, MAX_CLUSTER_NEWS_ITEMS);
+    assert.ok(!keptLinks.has('https://fixture.test/0'), 'the oldest item is the one dropped');
+    assert.ok(keptLinks.has(`https://fixture.test/${overCap - 1}`), 'the newest item is kept');
   });
 
   it('tokenize + jaccard agree with the clustering threshold contract', () => {

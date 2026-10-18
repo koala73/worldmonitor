@@ -10,10 +10,11 @@
  * Both widgets rebuild their DOM after activation, so these tests also prove
  * that focus moves to the equivalent replacement control.
  */
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { WsbTickerScannerPanel } from '@/components/WsbTickerScannerPanel';
 import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
+import type { CountryBriefSource } from '@/services/country-brief-source';
 import type {
   GetCountryChokepointIndexResponse,
   SectorExposureSummary,
@@ -140,17 +141,47 @@ describe('CountryDeepDivePanel sector rows (#7023)', () => {
     },
   ];
 
-  function renderedRows(): { body: HTMLElement } {
-    const panel = new CountryDeepDivePanel(null);
+  function renderedRows(source?: CountryBriefSource, suppliedSectors = sectors): { body: HTMLElement; panel: CountryDeepDivePanel } {
+    const panel = new CountryDeepDivePanel(null, source);
     const internals = panel as unknown as CdpInternals;
     const body = document.createElement('div');
     document.body.appendChild(body);
     internals.tradeExposureBody = body;
     internals.cachedTradeExposureData = exposureData;
-    internals.cachedSectors = sectors;
+    internals.cachedSectors = suppliedSectors;
     internals.renderTradeExposureContent();
-    return { body };
+    return { body, panel };
   }
+
+  it.each([
+    ['WAR_RISK_TIER_UNSPECIFIED', 'Unknown'],
+    ['WAR_RISK_TIER_NORMAL', 'Normal'],
+    ['WAR_RISK_TIER_ELEVATED', 'Elevated'],
+    ['WAR_RISK_TIER_HIGH', 'High'],
+    ['WAR_RISK_TIER_CRITICAL', 'Critical'],
+    ['WAR_RISK_TIER_WAR_ZONE', 'War Zone'],
+    ['FUTURE_UNRECOGNIZED_TIER', 'FUTURE_UNRECOGNIZED_TIER'],
+  ])('renders bypass risk %s as %s through the sector disclosure', async (tier, label) => {
+    const externalFetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Synthetic bypass fixtures forbid network reads'));
+    const bypass = vi.fn(async () => ({ options: [{
+      name: 'Synthetic bypass', addedTransitDays: 1, addedCostMultiplier: 1.03, bypassWarRiskTier: tier,
+    }] }));
+    const source = { canRequestPremium: () => true, bypass } as unknown as CountryBriefSource;
+    const { body, panel } = renderedRows(source, [{ ...sectors[1]!, primaryChokepointId: 'malacca_strait', primaryChokepointName: 'Strait of Malacca' }]);
+    try {
+      body.querySelector<HTMLButtonElement>('button.cdp-sector-toggle')!.click();
+      await vi.waitFor(() => {
+        const cells = body.querySelectorAll('.cdp-sector-detail-row table tbody tr td');
+        expect([...cells].map(cell => cell.textContent)).toEqual(['Synthetic bypass', '+1d', '+3%', label]);
+      });
+      expect(bypass).toHaveBeenCalledTimes(1);
+      expect(bypass).toHaveBeenCalledWith('malacca_strait', expect.any(AbortSignal));
+      expect(externalFetch).not.toHaveBeenCalled();
+    } finally {
+      panel.hide();
+      externalFetch.mockRestore();
+    }
+  });
 
   it('keeps row semantics and puts disclosure state on native buttons', () => {
     const { body } = renderedRows();
@@ -168,6 +199,16 @@ describe('CountryDeepDivePanel sector rows (#7023)', () => {
       expect(button.type).toBe('button');
       expect(button.getAttribute('aria-expanded')).toBe('false');
       expect(button.getAttribute('aria-controls')).toBe(`cdp-sector-detail-${button.dataset.hs2}`);
+    }
+  });
+
+  it('scopes every rendered header cell to its column', () => {
+    const { body } = renderedRows();
+    const headers = [...body.querySelectorAll<HTMLTableCellElement>('th')];
+
+    expect(headers.map((th) => th.textContent)).toEqual(['Sector', 'Chokepoint', 'Risk']);
+    for (const th of headers) {
+      expect(th.getAttribute('scope')).toBe('col');
     }
   });
 

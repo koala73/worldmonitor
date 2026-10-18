@@ -29,21 +29,24 @@ const rpc = (method, params = {}, id = 7) => ({ jsonrpc: '2.0', id, method, para
 const INIT_PARAMS = { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'probe', version: '1' } };
 
 async function post(url, body, headers = {}) {
+  return request(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...headers },
+    body: JSON.stringify(body),
+  });
+}
+
+async function request(url, init = {}, ctx = { skip: false }) {
   const { mcpHandler } = await import('../api/mcp/handler.ts');
   const host = new URL(url).host;
   return mcpHandler(new Request(url, {
-    method: 'POST',
-    headers: { host, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...headers },
-    body: JSON.stringify(body),
-  }), undefined, { skip: false });
+    ...init,
+    headers: { host, ...(init.headers ?? {}) },
+  }), undefined, ctx);
 }
 
 describe('an unauthenticated initialize on the transport is challenged', () => {
-  for (const [url, document] of [
-    ['https://worldmonitor.app/mcp', 'https://worldmonitor.app/.well-known/oauth-protected-resource/mcp'],
-    ['https://www.worldmonitor.app/mcp', 'https://www.worldmonitor.app/.well-known/oauth-protected-resource/mcp'],
-    ['https://api.worldmonitor.app/api/mcp', 'https://api.worldmonitor.app/.well-known/oauth-protected-resource/api/mcp'],
-  ]) {
+  for (const [url, document] of [['https://worldmonitor.app/mcp', 'https://worldmonitor.app/.well-known/oauth-protected-resource/mcp']]) {
     it(`${new URL(url).host}${new URL(url).pathname} → 401 + challenge naming its own document`, async () => {
       const res = await post(url, rpc('initialize', INIT_PARAMS));
       assert.equal(res.status, 401);
@@ -65,6 +68,235 @@ describe('an unauthenticated initialize on the transport is challenged', () => {
   it('the refusal is JSON, never an SSE stream, even for an SSE-capable client', async () => {
     const res = await post('https://worldmonitor.app/mcp', rpc('initialize', INIT_PARAMS));
     assert.match(res.headers.get('content-type') ?? '', /application\/json/);
+  });
+});
+
+const PRODUCT_MCP_ALIASES = [
+  'www.worldmonitor.app',
+  'api.worldmonitor.app',
+  'tech.worldmonitor.app',
+  'finance.worldmonitor.app',
+  'commodity.worldmonitor.app',
+  'happy.worldmonitor.app',
+  'energy.worldmonitor.app',
+];
+
+const MCP_PATHS = ['/mcp', '/api/mcp', '/.well-known/mcp', '/.well-known/mcp.json'];
+
+describe('product MCP host aliases are migration-only', () => {
+  it('redirects ordinary discovery GETs and HEADs to constant canonical locations', async () => {
+    for (const host of PRODUCT_MCP_ALIASES) {
+      for (const path of MCP_PATHS) {
+        const expected = path === '/api/mcp'
+          ? 'https://worldmonitor.app/mcp'
+          : `https://worldmonitor.app${path}`;
+        for (const method of ['GET', 'HEAD']) {
+          const res = await request(`https://${host}${path}?caller-controlled=1`, { method, headers: { Accept: 'text/html' } });
+          assert.equal(res.status, 308, `${host}${path} ${method}`);
+          assert.equal(res.headers.get('location'), expected);
+          assert.equal(res.headers.get('vary'), 'Accept, Last-Event-ID');
+          assert.equal(res.headers.get('cache-control'), 'no-store');
+          assert.equal(res.headers.get('access-control-allow-origin'), '*');
+        }
+      }
+    }
+  });
+
+  it('rejects SSE stream and replay operations before auth, sessions, Redis, or dispatch', async () => {
+    for (const host of PRODUCT_MCP_ALIASES) {
+      for (const path of MCP_PATHS) {
+        for (const headers of [
+          { Accept: 'text/event-stream' },
+          { 'Last-Event-ID': 'cursor-1' },
+        ]) {
+          const res = await request(`https://${host}${path}`, { method: 'GET', headers });
+          assert.equal(res.status, 410, `${host}${path}`);
+          assert.equal(res.headers.get('link'), '<https://worldmonitor.app/mcp>; rel="canonical"');
+          assert.match(res.headers.get('cache-control') ?? '', /no-store/);
+          assert.equal(res.headers.get('access-control-allow-origin'), '*');
+          assert.deepEqual(await res.json(), {
+            jsonrpc: '2.0',
+            id: null,
+            error: {
+              code: -32000,
+              message: 'Use https://worldmonitor.app/mcp',
+              data: {
+                reason: 'canonical_endpoint_required',
+                endpoint: 'https://worldmonitor.app/mcp',
+              },
+            },
+          });
+        }
+      }
+    }
+
+    const head = await request(`https://${'api'}.worldmonitor.app/api/mcp`, { method: 'HEAD', headers: { Accept: 'text/event-stream' } });
+    assert.equal(head.status, 410);
+    assert.equal(await head.text(), '');
+
+    const replayHead = await request(`https://${'api'}.worldmonitor.app/api/mcp`, { method: 'HEAD', headers: { 'Last-Event-ID': 'cursor-1' } });
+    assert.equal(replayHead.status, 410);
+    assert.equal(replayHead.headers.get('link'), '<https://worldmonitor.app/mcp>; rel="canonical"');
+    assert.equal(replayHead.headers.get('access-control-allow-origin'), '*');
+    assert.equal(await replayHead.text(), '');
+  });
+
+  it('treats text/event-stream;q=0 as ordinary discovery', async () => {
+    const res = await request('https://www.worldmonitor.app/mcp', {
+      method: 'GET', headers: { Accept: 'text/event-stream;q=0, text/html' },
+    });
+    assert.equal(res.status, 308);
+    assert.equal(res.headers.get('location'), 'https://worldmonitor.app/mcp');
+  });
+
+  it('returns the migration JSON-RPC error from every alias path and preserves valid request ids', async () => {
+    for (const host of PRODUCT_MCP_ALIASES) {
+      for (const path of MCP_PATHS) {
+        const res = await post(`https://${host}${path}`, rpc('initialize', INIT_PARAMS, 0));
+        assert.equal(res.status, 410, `${host}${path}`);
+        const body = await res.json();
+        assert.equal(body.id, 0);
+        assert.equal(body.error.code, -32000);
+        assert.equal(body.error.message, 'Use https://worldmonitor.app/mcp');
+        assert.deepEqual(body.error.data, {
+          reason: 'canonical_endpoint_required', endpoint: 'https://worldmonitor.app/mcp',
+        });
+      }
+    }
+
+    for (const id of ['', null]) {
+      const res = await post(`https://${'api'}.worldmonitor.app/api/mcp`, rpc('initialize', INIT_PARAMS, id));
+      assert.equal(res.status, 410);
+      const body = await res.json();
+      assert.equal(body.id, id);
+    }
+
+    for (const host of PRODUCT_MCP_ALIASES) {
+      for (const path of MCP_PATHS) {
+        const notification = await post(`https://${host}${path}`, { jsonrpc: '2.0', method: 'notifications/initialized' });
+        assert.equal(notification.status, 410, `${host}${path}`);
+        assert.equal(await notification.text(), '');
+      }
+    }
+  });
+
+  it('keeps OPTIONS and unsupported-method contracts explicit on aliases', async () => {
+    for (const host of PRODUCT_MCP_ALIASES) {
+      for (const path of MCP_PATHS) {
+        const options = await request(`https://${host}${path}`, { method: 'OPTIONS' });
+        assert.equal(options.status, 204, `${host}${path}`);
+        assert.match(options.headers.get('access-control-allow-methods') ?? '', /POST/);
+
+        const put = await request(`https://${host}${path}`, { method: 'PUT' });
+        assert.equal(put.status, 405, `${host}${path}`);
+        assert.equal(put.headers.get('allow'), 'POST, GET, HEAD, OPTIONS');
+        assert.equal(put.headers.get('link'), '<https://worldmonitor.app/mcp>; rel="canonical"');
+        assert.equal(put.headers.get('access-control-allow-origin'), '*');
+      }
+    }
+  });
+
+  it('still returns malformed-envelope errors before migration handling', async () => {
+    const res = await request(`https://${'api'}.worldmonitor.app/api/mcp`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{not-json',
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error.code, -32600);
+
+    const invalidId = await post(`https://${'api'}.worldmonitor.app/api/mcp`, { jsonrpc: '2.0', id: {}, method: 'initialize' });
+    assert.equal(invalidId.status, 200);
+    assert.equal((await invalidId.json()).error.code, -32600);
+
+    const missingMethod = await post(`https://${'api'}.worldmonitor.app/api/mcp`, { jsonrpc: '2.0', id: 'missing-method' });
+    assert.equal(missingMethod.status, 200);
+    const missingMethodBody = await missingMethod.json();
+    assert.equal(missingMethodBody.id, 'missing-method');
+    assert.equal(missingMethodBody.error.code, -32600);
+
+    const { MAX_JSON_RPC_BODY_BYTES } = await import('../api/mcp/constants.ts');
+    const oversized = await request(`https://${'api'}.worldmonitor.app/api/mcp`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: 'x'.repeat(MAX_JSON_RPC_BODY_BYTES + 1),
+    });
+    assert.equal(oversized.status, 413);
+    assert.equal((await oversized.json()).error.code, -32600);
+  });
+
+  it('does not let a conflicting Host header or trailing DNS dot bypass the alias boundary', async () => {
+    const hostConflict = await post(
+      `https://${'api'}.worldmonitor.app/api/mcp`,
+      rpc('initialize', INIT_PARAMS),
+      { host: 'worldmonitor.app' },
+    );
+    assert.equal(hostConflict.status, 410);
+
+    const trailingDot = await post('https://www.worldmonitor.app./mcp', rpc('initialize', INIT_PARAMS));
+    assert.equal(trailingDot.status, 410);
+
+    const inverseHostConflict = await post(
+      'https://worldmonitor.app/mcp',
+      rpc('initialize', INIT_PARAMS),
+      { host: 'api.worldmonitor.app:443' },
+    );
+    assert.equal(inverseHostConflict.status, 410);
+  });
+
+  it('classifies every handler-originated alias response as a migration event', async () => {
+    const { mcpReasonFor } = await import('../api/mcp/usage.ts');
+    assert.equal(mcpReasonFor('migration', 308), 'canonical_endpoint_required');
+    assert.equal(mcpReasonFor('migration', 410), 'canonical_endpoint_required');
+    assert.equal(mcpReasonFor('migration', 405), 'canonical_endpoint_required');
+  });
+
+  it('emits bounded migration events for alias redirects and rejections', async () => {
+    const originalFetch = globalThis.fetch;
+    const originalUsage = process.env.USAGE_TELEMETRY;
+    const originalToken = process.env.AXIOM_API_TOKEN;
+    const events = [];
+    const pending = [];
+    process.env.USAGE_TELEMETRY = '1';
+    process.env.AXIOM_API_TOKEN = 'test-token';
+    globalThis.fetch = async (input, init) => {
+      if (String(input).includes('api.axiom.co')) {
+        events.push(...JSON.parse(String(init?.body ?? '[]')));
+        return new Response('{}', { status: 200 });
+      }
+      return originalFetch(input, init);
+    };
+
+    try {
+      const res = await request(
+        'https://www.worldmonitor.app/mcp?query=payload-secret',
+        { method: 'GET', headers: { Authorization: 'Bearer credential-secret' } },
+        { waitUntil: (promise) => { pending.push(promise); } },
+      );
+      assert.equal(res.status, 308);
+      const sse = await request(
+        `https://${'api'}.worldmonitor.app/api/mcp?query=payload-secret`,
+        { method: 'GET', headers: { Authorization: 'Bearer credential-secret', Accept: 'text/event-stream' } },
+        { waitUntil: (promise) => { pending.push(promise); } },
+      );
+      assert.equal(sse.status, 410);
+      const put = await request(
+        `https://${'api'}.worldmonitor.app/api/mcp?query=payload-secret`,
+        { method: 'PUT', headers: { Authorization: 'Bearer credential-secret' } },
+        { waitUntil: (promise) => { pending.push(promise); } },
+      );
+      assert.equal(put.status, 405);
+      await Promise.all(pending);
+      assert.deepEqual(events.map((event) => [event.status, event.reason]), [
+        [308, 'canonical_endpoint_required'],
+        [410, 'canonical_endpoint_required'],
+        [405, 'canonical_endpoint_required'],
+      ]);
+      assert.doesNotMatch(JSON.stringify(events), /credential-secret|payload-secret/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalUsage === undefined) delete process.env.USAGE_TELEMETRY;
+      else process.env.USAGE_TELEMETRY = originalUsage;
+      if (originalToken === undefined) delete process.env.AXIOM_API_TOKEN;
+      else process.env.AXIOM_API_TOKEN = originalToken;
+    }
   });
 });
 

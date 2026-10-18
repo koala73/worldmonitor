@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { hangUntilAbort } from './_lib/hang-until-abort.mjs';
 import { afterEach, describe, it, mock } from 'node:test';
 
 const originalEnv = { ...process.env };
@@ -57,6 +58,7 @@ function makeSetWebPushRequest(): Request {
 }
 
 type RedisCommand = string[];
+
 
 function installInMemoryUpstash() {
   const store = new Map<string, string>();
@@ -121,11 +123,7 @@ describe('/api/notification-channels relay timeout recovery', () => {
       relaySignals.push(signal);
       assert.equal(body.scheduleWelcome, true);
       if (mutationAttempt === 1) {
-        return await new Promise<Response>((_resolve, reject) => {
-          const rejectForAbort = () => reject(signal.reason ?? new DOMException('Timed out', 'TimeoutError'));
-          if (signal.aborted) rejectForAbort();
-          else signal.addEventListener('abort', rejectForAbort, { once: true });
-        });
+        return hangUntilAbort(signal);
       }
       return Response.json({
         ok: true,
@@ -135,6 +133,7 @@ describe('/api/notification-channels relay timeout recovery', () => {
     });
 
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-timeout-retry' }),
       getEntitlements: async () => ({
         planKey: 'pro_monthly',
@@ -234,6 +233,7 @@ describe('/api/notification-channels relay timeout recovery', () => {
     });
 
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-mixed-deploy' }),
       getEntitlements: async () => ({
         planKey: 'pro_monthly',
@@ -300,6 +300,7 @@ describe('/api/notification-channels relay timeout recovery', () => {
     });
 
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-durable-deploy' }),
       getEntitlements: async () => ({
         planKey: 'pro_monthly',
@@ -359,6 +360,7 @@ describe('/api/notification-channels relay timeout recovery', () => {
     });
 
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-web-push-deploy' }),
       getEntitlements: async () => ({
         planKey: 'pro_monthly',
@@ -403,6 +405,7 @@ describe('/api/notification-channels email ownership errors', () => {
     installInMemoryUpstash();
     const mod = await importFreshNotificationChannels();
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-email-proof' }),
       getEntitlements: async () => ({
         planKey: 'pro_monthly',

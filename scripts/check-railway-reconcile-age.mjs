@@ -35,6 +35,7 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { REPOSITORY, readArgument } from './railway-cli.mjs';
+import { corroborateRunListings, reduceRunListings } from './lib/gh-run-listing.mjs';
 
 // The step whose conclusion IS the signal. A run reconciled iff this step ran
 // and succeeded; `skipped` is the #6203 transcript verbatim.
@@ -187,7 +188,7 @@ export function toCreatedFilter(instantMs) {
  * the seam the current-run exclusion lives on, and getting that wrong is how a
  * run reds itself.
  */
-export function readRunsSince({ gh, repository, workflowFile, sinceMs, excludeRunId }) {
+export function readRunsSince({ gh, repository, workflowFile, sinceMs, excludeRunId, clock = Date.now, sampleBudgetMs = 90_000 }) {
   // `created:>=` is what makes the negative answer decidable: the returned set
   // IS the window, so "none of these reconciled" means the fleet went
   // un-reconciled for the whole window rather than "the page ran out".
@@ -196,22 +197,31 @@ export function readRunsSince({ gh, repository, workflowFile, sinceMs, excludeRu
     `created=%3E%3D${encodeURIComponent(toCreatedFilter(sinceMs))}`,
     `per_page=${RUN_PAGE_SIZE}`,
   ].join('&');
-  const payload = JSON.parse(gh([
-    'api', '--paginate', '--slurp',
-    `repos/${repository}/actions/workflows/${workflowFile}/runs?${query}`,
-  ]));
-  // --slurp wraps paginated responses in an array of pages.
-  const pages = Array.isArray(payload) ? payload : [payload];
-  const runs = [];
-  for (const page of pages) {
-    // An unreadable listing must never be summarised as an empty window: empty
-    // now means STALE, which is loud, but it would be loud for a false reason.
-    if (!Array.isArray(page?.workflow_runs)) {
-      throw new Error(`the run listing for ${workflowFile} was not an array of workflow runs`);
-    }
-    runs.push(...page.workflow_runs);
-  }
-  return runs
+  const listings = corroborateRunListings({
+    workflowFile, clock, sampleBudgetMs,
+    read: () => {
+      const payload = JSON.parse(gh([
+        'api', '--paginate', '--slurp',
+        `repos/${repository}/actions/workflows/${workflowFile}/runs?${query}`,
+      ]));
+      // --slurp wraps paginated responses in an array of pages.
+      const pages = Array.isArray(payload) ? payload : [payload];
+      if (!pages.length) throw new Error(`the run listing for ${workflowFile} was incomplete`);
+      const runs = [];
+      for (const page of pages) {
+        if (!Array.isArray(page?.workflow_runs)) {
+          throw new Error(`the run listing for ${workflowFile} was not an array of workflow runs`);
+        }
+        runs.push(...page.workflow_runs);
+      }
+      const totalCount = pages[0]?.total_count;
+      if (Number.isInteger(totalCount) && new Set(runs.map(run => run?.id)).size < totalCount) {
+        throw new Error(`the run listing for ${workflowFile} was incomplete`);
+      }
+      return { runs, totalCount };
+    },
+  });
+  return reduceRunListings(listings)
     // The CURRENT run is excluded twice over — `status=completed` cannot return
     // a run that is still executing, and this drops it by id as well. That is
     // deliberate and it is why the workflow must not ask this question on a run
@@ -229,7 +239,13 @@ export function readRunsSince({ gh, repository, workflowFile, sinceMs, excludeRu
  * than one per run in the window.
  */
 export function collectReconcileWindow({ gh, repository, workflowFile, sinceMs, excludeRunId }) {
-  const candidates = readRunsSince({ gh, repository, workflowFile, sinceMs, excludeRunId });
+  let candidates;
+  try {
+    candidates = readRunsSince({ gh, repository, workflowFile, sinceMs, excludeRunId });
+  } catch (error) {
+    error.githubListingUnknown = true;
+    throw error;
+  }
   const inspected = [];
   for (const candidate of candidates) {
     const jobs = JSON.parse(gh(['api', `repos/${repository}/actions/runs/${candidate.id}/jobs`]));
@@ -290,6 +306,10 @@ function isMainModule() {
 
 if (process.argv[1] && isMainModule()) {
   main().catch((error) => {
+    if (error.githubListingUnknown) {
+      console.log('::warning::UNKNOWN: Railway reconcile run listing could not be corroborated.');
+      return;
+    }
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   });

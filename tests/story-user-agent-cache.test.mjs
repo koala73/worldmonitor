@@ -54,7 +54,9 @@ test('keeps crawler and browser responses cache-distinct for the same URL', () =
   assert.equal(browserResponse.headers.vary, 'User-Agent');
   assert.equal(browserResponse.headers['cache-control'], 'private, no-store');
   assert.equal(browserResponse.headers.location, 'https://www.worldmonitor.app/dashboard?c=US&t=ciianalysis&ts=2026-08-27T12%3A00%3A00Z');
-  assert.match(crawlerResponse.body, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/dashboard"/);
+  // US has a corpus page, so the stub consolidates on it rather than on the
+  // param-carrying /dashboard shell (#8604). Neither og:url nor the 302 moves.
+  assert.match(crawlerResponse.body, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/countries\/united-states\/"/);
 });
 
 for (const key of ['c', 't', 'ts', 's', 'l']) {
@@ -68,10 +70,14 @@ for (const key of ['c', 't', 'ts', 's', 'l']) {
     assert.equal(crawler.statusCode, 200);
     const links = [...crawler.body.matchAll(/(?:content|href)="(https:\/\/(?:www\.)?worldmonitor\.app[^" ]*)"/g)]
       .map((match) => match[1].replaceAll('&amp;', '&'));
-    assert.equal(links.length, 5);
+    // og:image, og:url, twitter:image, canonical, "View live analysis" — plus
+    // the corpus link and canonical target, which only exist when `c` survives
+    // as a real ISO2 (the hostile-`c` case falls back to /dashboard).
+    assert.equal(links.length, key === 'c' ? 5 : 6);
     for (const target of [browser.headers.location, ...links]) {
       const url = new URL(target);
-      assert.equal(url.origin, url.pathname === '/dashboard' ? 'https://www.worldmonitor.app' : 'https://worldmonitor.app');
+      const indexable = url.pathname === '/dashboard' || url.pathname.startsWith('/countries/');
+      assert.equal(url.origin, indexable ? 'https://www.worldmonitor.app' : 'https://worldmonitor.app');
       assert.equal(url.hash, '');
       assert.doesNotMatch(target, /[\r\n"<>]/);
       const keys = !url.search ? [] : url.pathname === '/api/og-story' ? ['c', 't', 's', 'l'] : ['c', 't', 'ts'];

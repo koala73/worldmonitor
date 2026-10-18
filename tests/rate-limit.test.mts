@@ -491,6 +491,7 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
       ['/api/market/v1/get-insider-transactions', { limit: 60, window: '60 s' }],
       ['/api/market/v1/list-crypto-quotes', { limit: 60, window: '60 s' }],
       ['/api/market/v1/get-country-stock-index', { limit: 30, window: '60 s' }],
+      ['/api/market/v1/get-price-history', { limit: 30, window: '60 s' }],
       ['/api/economic/v1/list-world-bank-indicators', { limit: 30, window: '60 s' }],
     ] as const);
 
@@ -670,6 +671,8 @@ describe('rate-limit fail-closed call-site policy (#3531)', () => {
   // in CI rather than during a Redis incident.
   const FAIL_CLOSED_REQUIRED = [
     'api/chat-analyst.ts', // streaming LLM analyst, Pro-only
+    'api/widget-agent.ts', // frontier-model widget proxy
+    'api/create-checkout.ts', // paid Dodo checkout relay
   ];
 
   for (const path of FAIL_CLOSED_REQUIRED) {
@@ -744,6 +747,11 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       path: 'api/notify.ts',
       expected: /limiter outage here should NOT fail open/,
       reason: 'notify publishes create relay-side delivery obligations on the shared event queue, so Redis degradation fails closed instead of allowing unbounded fan-out',
+    },
+    {
+      path: 'api/notification-channels.ts',
+      expected: /if\s*\(\s*scoped\.degraded\s*\)\s*\{/,
+      reason: 'channel mutations write through the Convex relay and can trigger welcome mail, so Redis degradation fails closed instead of allowing unbounded writes',
     },
   ];
 

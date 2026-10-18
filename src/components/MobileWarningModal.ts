@@ -3,6 +3,7 @@ import { isMobileDevice } from '@/utils';
 import { getDismissed, setDismissed } from '@/utils/cross-domain-storage';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
+import { declareOverlay } from '@/utils/open-modal';
 
 
 const STORAGE_KEY = 'mobile-warning-dismissed';
@@ -16,6 +17,11 @@ export class MobileWarningModal {
     this.element.className = 'mobile-warning-overlay';
     this.element.setAttribute('role', 'dialog');
     this.element.setAttribute('aria-modal', 'true');
+    // Auto-opens on boot for every mobile visitor and holds no entered state:
+    // the checkbox is a dismissal preference the button commits. No live
+    // constructor call today, declared so reinstating it cannot wedge every
+    // mobile session (WORLDMONITOR-15X shape).
+    declareOverlay(this.element, { reload: 'safe' });
     setTrustedHtml(this.element, trustedHtml(`
       <div class="mobile-warning-modal">
         <div class="mobile-warning-header">

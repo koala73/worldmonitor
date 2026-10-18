@@ -44,6 +44,9 @@ interface DigestLoaderInternals {
   commitNewsFreshness(generation: number, servedStale: boolean): boolean;
   canNotifyForCommittedNews(generation: number, servedStale: boolean): boolean;
   runCorrelationAnalysis(): Promise<void>;
+  resolveEnabledNewsCategories(): Array<{ key: string; feeds: Array<{ name: string; url: string }>; isCustom: boolean }>;
+  loadIntelNews(): Promise<unknown[]>;
+  clusterNewsForGeneration(): Promise<{ clusters: ClusteredEvent[] }>;
   loadNewsCategory(
     category: string,
     feeds: Array<{ name: string }>,
@@ -151,6 +154,41 @@ describe('digest coverage follows the selected browser response', () => {
       feedsCompleted: 2,
     }));
     expect(retained.coverage?.state).toBe('complete');
+  });
+
+  it('clears news locations on a successful refresh without located clusters', async () => {
+    const { loader, internal } = await makeLoader();
+    const ctx = (loader as unknown as { ctx: AppContext }).ctx;
+    const setNewsLocations = vi.fn();
+    ctx.map = { setNewsLocations, updateHotspotActivity: vi.fn() } as unknown as AppContext['map'];
+    ctx.monitors = [];
+    internal.resolveEnabledNewsCategories = () => [];
+    internal.tryFetchDigest = async () => null;
+    internal.loadIntelNews = async () => [];
+    internal.clusterNewsForGeneration = async () => ({ clusters: [] });
+    setNewsLocations([{ lat: 52.5, lon: 13.4, title: 'Previous headline', threatLevel: 'info' }]);
+
+    await loader.loadNews();
+
+    expect(ctx.clustersSettled).toBe(true);
+    expect(setNewsLocations).toHaveBeenLastCalledWith([]);
+  });
+
+  it('preserves news locations when the news load has no authoritative result', async () => {
+    const { loader, internal } = await makeLoader();
+    const ctx = (loader as unknown as { ctx: AppContext }).ctx;
+    const setNewsLocations = vi.fn();
+    ctx.map = { setNewsLocations, updateHotspotActivity: vi.fn() } as unknown as AppContext['map'];
+    internal.resolveEnabledNewsCategories = () => [{ key: 'politics', feeds: [{ name: 'Reuters', url: 'https://fixture.test/rss' }], isCustom: false }];
+    internal.tryFetchDigest = async () => null;
+    internal.loadNewsCategory = async () => [];
+    internal.loadIntelNews = async () => [];
+    internal.clusterNewsForGeneration = async () => ({ clusters: [] });
+
+    await loader.loadNews();
+
+    expect(ctx.clustersSettled).toBe(true);
+    expect(setNewsLocations).not.toHaveBeenCalled();
   });
 
   it('derives retained item counts when a pre-coverage digest is marked stale', async () => {

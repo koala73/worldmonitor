@@ -6,12 +6,14 @@ keywords: "real-time conflict map, geopolitical intelligence map, military track
 audience: "Geopolitical analysts, defense researchers, policy makers, journalists covering conflict"
 heroImage: "/blog/images/blog/track-global-conflicts-in-real-time.jpg"
 pubDate: "2026-02-14"
-modifiedDate: "2026-09-10"
+modifiedDate: "2026-10-18"
 ---
 
 When a military escalation begins, the first 24 hours define the narrative. Analysts who see the signals early, the unusual flight patterns, the naval repositioning, the news velocity spike, have a decisive advantage over those waiting for the morning briefing.
 
 World Monitor was built to give you those 24 hours back.
+
+To compare aircraft observations with conflict reporting, follow the [military flight-tracking workflow](/blog/posts/military-flight-tracking-osint/).
 
 ## A Situation Room in Your Browser
 
@@ -19,8 +21,8 @@ World Monitor's core dashboard (worldmonitor.app) is designed around one questio
 
 The answer comes from layering multiple intelligence sources onto a single interactive 3D globe:
 
-- **[ACLED](https://acleddata.com/) conflict data** for armed clashes, protests, and political violence
 - **[UCDP](https://ucdp.uu.se/) warfare events** for state-based and non-state conflicts
+- **[GDELT](https://www.gdeltproject.org/) event and news data** for reported clashes, protests, and political violence
 - **Live ADS-B tracking** for military aircraft positions
 - **AIS vessel monitoring** merged with USNI fleet reports for naval movements
 - **Curated Telegram OSINT channels** for raw, low-latency intelligence
@@ -77,7 +79,7 @@ World Monitor's escalation algorithm goes beyond showing where events are happen
 - **Geographic convergence (25%):** Multiple event types (conflict, protest, natural disaster, cyber) co-occurring within the same 1-degree grid cell within 24 hours
 - **Military indicators (15%):** Unusual force movements, exercise activity, weapons tests
 
-Geographic convergence is particularly powerful. When you see protests AND military deployments AND a communications outage in the same area within the same day, that pattern has predictive value that individual events don't.
+[Geographic convergence](https://www.worldmonitor.app/docs/geographic-convergence) is particularly powerful. When you see protests AND military deployments AND a communications outage in the same area within the same day, that pattern has predictive value that individual events don't.
 
 ## Military Bases Mapped
 
@@ -159,7 +161,7 @@ For public sharing, the story export feature generates social-ready briefs with 
 ## Frequently Asked Questions
 
 **What data sources does World Monitor use for conflict tracking?**
-World Monitor aggregates ACLED conflict events, UCDP warfare data, live ADS-B aircraft transponders, AIS maritime positions merged with USNI fleet reports, curated Telegram OSINT channels, and NASA satellite fire detection. All sources are public and verifiable.
+World Monitor aggregates UCDP warfare data, GDELT event reporting, live ADS-B aircraft transponders, AIS maritime positions merged with USNI fleet reports, curated Telegram OSINT channels, and NASA satellite fire detection. All sources are public and verifiable.
 
 **Is World Monitor free to use for conflict monitoring?**
 Yes. World Monitor is completely free and open source under AGPL-3.0. There is no login, paywall, or data collection. You can also self-host it for full control.

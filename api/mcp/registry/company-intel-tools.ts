@@ -102,6 +102,7 @@ function addStringParam(query: URLSearchParams, name: string, value: unknown): v
 
 export const COMPANY_INTEL_TOOL: ToolDef = {
   name: 'get_company_intelligence',
+  title: 'Company intelligence',
   _outputBudgetBytes: 65536,
   description: 'Per-company corporate intelligence from SEC EDGAR and market data. Views: enrichment (SEC identity, recent filings, market profile, earnings surprises, news mentions), signals (classified 8-K material events + news), filings-search (EDGAR full-text search with form/date filters), material-events (market-wide stream of recent material 8-K filings). Company identity resolves through the SEC ticker registry — unresolvable companies return empty envelopes, never guessed attribution.',
   inputSchema: {
@@ -219,7 +220,7 @@ export const COMPANY_INTEL_TOOL: ToolDef = {
       },
     },
   },
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   _execute: async (params, base, context, execution) => {
     const view = typeof params.view === 'string' && (COMPANY_INTEL_VIEWS as readonly string[]).includes(params.view)
       ? params.view

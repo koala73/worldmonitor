@@ -26,8 +26,8 @@ export default createRelayHandler({
     ? { 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store' } : {},
   cacheHeaders: (ok) => ({
     'Cache-Control': ok
-      ? 'public, max-age=120, s-maxage=300, stale-while-revalidate=900, stale-if-error=1800'
+      ? 'private, max-age=120'
       : 'no-store',
-    'CDN-Cache-Control': ok ? 'public, s-maxage=300, stale-while-revalidate=900, stale-if-error=1800' : 'no-store',
+    ...(!ok && { 'CDN-Cache-Control': 'no-store' }),
   }),
 });

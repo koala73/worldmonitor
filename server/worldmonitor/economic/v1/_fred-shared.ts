@@ -1,16 +1,10 @@
+import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
 import type { FredSeries } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
 export const FRED_KEY_PREFIX = 'economic:fred:v1';
 
 // Only expose the series published by the FRED, GSCPI, and ECB seeders.
-export const ALLOWED_FRED_SERIES = new Set<string>([
-  'WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS',
-  'GDP', 'M2SL', 'DCOILWTICO', 'BAMLH0A0HYM2', 'ICSA', 'MORTGAGE30US',
-  'GSCPI', 'T10Y3M', 'STLFSI4',
-  'DGS1MO', 'DGS3MO', 'DGS6MO', 'DGS1', 'DGS2', 'DGS5', 'DGS30',
-  'BAMLC0A0CM', 'SOFR',
-  'ESTR', 'EURIBOR3M', 'EURIBOR6M', 'EURIBOR1Y',
-]);
+export const ALLOWED_FRED_SERIES = new Set<string>(filterParamContracts.economicFredSeriesIds);
 
 export function fredSeedKey(seriesId: string): string {
   return `${FRED_KEY_PREFIX}:${seriesId}:0`;

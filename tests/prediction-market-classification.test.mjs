@@ -36,6 +36,7 @@ import {
   validateBootstrapPayload,
 } from '../scripts/_prediction-classify.mjs';
 import { filterAndScore } from '../scripts/_prediction-scoring.mjs';
+import * as predictionScoring from '../scripts/_prediction-scoring.mjs';
 import predictionTags from '../scripts/data/prediction-tags.json' with { type: 'json' };
 import filterParamContracts from '../shared/openapi-filter-param-contracts.json' with { type: 'json' };
 import fixture from './fixtures/prediction-markets-raw-candidates.json' with { type: 'json' };
@@ -45,6 +46,63 @@ const FIXTURE_NOW = Date.parse('2026-08-04T00:00:00Z');
 const COUNTRY_INDEX_KEY = 'prediction:markets-country-index:v1';
 const COUNTRY_INDEX_META_KEY = 'seed-meta:prediction:markets-country-index';
 const COUNTRY_INDEX_ACTIVATION_KEY = 'seed-activated:prediction:markets-country-index';
+
+describe('Kalshi public landing and market identity', () => {
+  const seed = readFileSync(new URL('../scripts/seed-prediction-markets.mjs', import.meta.url), 'utf8');
+  const body = seed.slice(seed.indexOf('function kalshiTitle('), seed.indexOf('async function fetchKalshiCountryMarkets('));
+  const event = {
+    title: 'Where will Trump and Putin next meet?', series_ticker: 'KXPUTINDJTLOCATION', event_ticker: 'KXPUTINDJTLOCATION-29',
+    markets: [{ ticker: 'KXPUTINDJTLOCATION-29-PRC', event_ticker: 'KXPUTINDJTLOCATION-29', yes_sub_title: 'China', last_price_dollars: '0.70', volume_fp: '30000', market_type: 'binary', status: 'active' }],
+  };
+  const subject = new Function(...Object.keys(predictionScoring), 'fetchKalshiEvents', `${body}\nreturn { kalshiCountryCandidate, fetchKalshiMarkets };`)(
+    ...Object.values(predictionScoring), async () => ({ events: [event], complete: true }),
+  );
+
+  it('uses explicit series provenance for both country and featured links', async () => {
+    const result = await subject.fetchKalshiMarkets();
+    for (const row of [result.countryCandidates[0], result.featured[0]]) {
+      assert.equal(row.url, 'https://kalshi.com/markets/KXPUTINDJTLOCATION-29-PRC');
+      assert.equal(row.displayUrl, 'https://kalshi.com/markets/kxputindjtlocation');
+      assert.equal(row.yesPrice, 70);
+      assert.equal(row.source, 'kalshi');
+    }
+    assert.equal(result.countryCandidates[0].eventKey, 'kalshi:KXPUTINDJTLOCATION-29');
+  });
+
+  it('does not infer a series from a market ticker when provenance is absent or malformed', () => {
+    for (const series_ticker of [undefined, '', '../other']) {
+      const row = subject.kalshiCountryCandidate({ ...event.markets[0], series_ticker });
+      assert.equal(row.url, 'https://kalshi.com/markets/KXPUTINDJTLOCATION-29-PRC');
+      assert.equal(row.displayUrl, '');
+    }
+  });
+
+  it('preserves distinct event markets through actual bootstrap pool construction', () => {
+    const first = { title: 'Will China meet Trump in 2027?', yesPrice: 70, volume: 30000, source: 'kalshi', tags: [], url: 'https://kalshi.com/markets/KXMEETING-27-CN', displayUrl: 'https://kalshi.com/markets/kxmeeting', endDate: '2027-01-01T00:00:00Z' };
+    const second = { ...first, title: 'Will China meet Trump in 2028?', url: 'https://kalshi.com/markets/KXMEETING-28-CN', volume: 40000 };
+    const result = buildBootstrapPools([first, second, { ...first, volume: 50000 }], { now: FIXTURE_NOW });
+    assert.deepEqual(new Set(Object.values(result.pools).flat().map(row => row.url)), new Set([first.url, second.url]));
+    assert.equal(result.duplicatesDropped, 1);
+    assert.equal(Object.values(result.pools).flat().find(row => row.url === first.url).volume, 50000);
+  });
+
+  it('preserves all four observed China Polymarket links and prices', () => {
+    const urls = [
+      'https://polymarket.com/event/china-gdp-growth-yy-in-q3-2026-20260716161116873',
+      'https://polymarket.com/event/best-chinese-ai-company-end-of-october',
+      'https://polymarket.com/event/second-best-chinese-ai-company-end-of-october',
+      'https://polymarket.com/event/third-best-chinese-ai-company-end-of-october',
+    ];
+    const rows = urls.map((url, i) => ({ title: `Will China AI company ${i} succeed?`, url, yesPrice: [68, 30, 22, 18][i], volume: 30000, source: 'polymarket', tags: ['ai'], endDate: '2027-01-01T00:00:00Z' }));
+    const result = Object.values(buildBootstrapPools(rows, { now: FIXTURE_NOW }).pools).flat();
+    assert.equal(result.length, 4);
+    for (const row of rows) {
+      const { regions, ...actual } = result.find(entry => entry.url === row.url);
+      assert.deepEqual(actual, row);
+    }
+  });
+
+});
 
 // The seeder's REAL pool-building path — buildBootstrapPools is what
 // seed-prediction-markets.mjs calls, not a replica of it. This matters: an

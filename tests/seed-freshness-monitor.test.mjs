@@ -10,6 +10,7 @@ import YAML from 'yaml';
 
 import { __testing__ as healthTesting } from '../api/health.js';
 import {
+  fetchCompactHealth,
   applyAcceptanceBaseline,
   buildAcceptanceObservation,
   findOperationalProblems,
@@ -137,14 +138,16 @@ describe('production acceptance summary', () => {
     assert.match(expired, /baseline expired/);
   });
 
-  it('writes JSON and Markdown from one CLI request before returning a failed verdict', () => {
+  it('writes JSON and Markdown after a pending refresh before returning a failed verdict', () => {
     const dir = mkdtempSync(join(tmpdir(), 'seed-summary-'));
     try {
       const preload = join(dir, 'fetch.mjs');
       const calls = join(dir, 'calls');
       writeFileSync(preload, `import { appendFileSync } from 'node:fs';
+let attempts = 0;
 globalThis.fetch = async () => {
   appendFileSync(${JSON.stringify(calls)}, 'request\\n');
+  if (attempts++ === 0) return Response.json({ status: 'REFRESH_PENDING' }, { status: 503, headers: { 'Retry-After': '0' } });
   return Response.json({ status: 'WARNING', checkedAt: new Date().toISOString(), problems: { wildfires: { status: 'SEED_ERROR', records: 2 } } });
 };\n`);
       const json = join(dir, 'observation.json');
@@ -157,7 +160,7 @@ globalThis.fetch = async () => {
       const report = JSON.parse(readFileSync(json, 'utf8'));
       assert.equal(report.report.failed, true);
       assert.equal(readFileSync(markdown, 'utf8'), formatAcceptanceMarkdown(report));
-      assert.equal(readFileSync(calls, 'utf8'), 'request\n');
+      assert.equal(readFileSync(calls, 'utf8'), 'request\nrequest\n');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -1329,7 +1332,7 @@ describe('scheduled seed freshness monitor', () => {
 
         assert.match(
           workflow,
-          /unit-shards:[\s\S]*?fetch-depth: 0[\s\S]*?name: Enforce health-probe cutovers[\s\S]*?node --import tsx scripts\/check-health-probe-cutovers\.mts/,
+          /\n {2}unit-built-output:\n(?:(?!\n {2}[\w-]+:\n)[\s\S])*?fetch-depth: 0(?:(?!\n {2}[\w-]+:\n)[\s\S])*?name: Enforce health-probe cutovers(?:(?!\n {2}[\w-]+:\n)[\s\S])*?node --import tsx scripts\/check-health-probe-cutovers\.mts/,
         );
         assert.match(
           hook,
@@ -1356,8 +1359,8 @@ describe('scheduled seed freshness monitor', () => {
       // The merge ref's FIRST parent is the base tip the tree was merged onto,
       // so it cannot drift away from what is actually being tested.
       it('bases the cutover diff on the merged tree, not the pinned base.sha', () => {
-        const workflow = readFileSync(TEST_WORKFLOW_URL, 'utf8').split('  unit-shards:\n')[1]?.split('  unit:\n')[0];
-        assert.ok(workflow, 'the unit shard job must exist');
+        const workflow = readFileSync(TEST_WORKFLOW_URL, 'utf8').split('  unit-built-output:\n')[1]?.split('  unit:\n')[0];
+        assert.ok(workflow, 'the unit-built-output job must exist');
 
         // Matches the interpolation, not the prose: the step's own comment names
         // the rejected expression to explain why it is rejected.
@@ -1587,5 +1590,170 @@ describe('scheduled seed freshness monitor', () => {
     assert.match(workflow, /context\s*==\s*"gate"/);
     assert.match(workflow, /gate_state.*success/s);
     assert.match(workflow, /node scripts\/check-seed-freshness\.mjs/);
+  });
+});
+
+
+describe('bounded compact-health refresh retries', () => {
+  function fixture(responses) {
+    let clock = Date.parse('2026-09-16T12:00:00Z');
+    const sleeps = [];
+    let calls = 0;
+    return {
+      options: {
+        now: () => clock,
+        sleep: async (ms) => { sleeps.push(ms); clock += ms; },
+        fetchFn: async () => {
+          const value = responses[Math.min(calls++, responses.length - 1)];
+          if (value instanceof Error) throw value;
+          return value.clone();
+        },
+      },
+      sleeps,
+      get calls() { return calls; },
+    };
+  }
+  const pending = (retryAfter) => Response.json({ status: 'REFRESH_PENDING' }, {
+    status: 503, headers: retryAfter == null ? {} : { 'Retry-After': retryAfter },
+  });
+  it('recovers normal contention using Retry-After seconds', async () => {
+    const expected = { status: 'HEALTHY', checkedAt: '2026-09-16T12:00:04Z' };
+    const f = fixture([pending('4'), Response.json(expected)]);
+    assert.deepEqual(await fetchCompactHealth('https://health.test', f.options), expected);
+    assert.deepEqual(f.sleeps, [4000]);
+    assert.equal(f.calls, 2);
+  });
+  it('honors HTTP dates and defaults malformed or absent Retry-After to three seconds', async () => {
+    for (const [header, expected] of [['Wed, 16 Sep 2026 12:00:05 GMT', 5000], ['bad', 3000], ['-1', 3000], [null, 3000]]) {
+      const f = fixture([pending(header), Response.json({ status: 'HEALTHY' })]);
+      await fetchCompactHealth('https://health.test', f.options);
+      assert.deepEqual(f.sleeps, [expected]);
+    }
+  });
+  it('bounds persistent pending by elapsed budget and attempts without shortening Retry-After', async () => {
+    for (const header of ['3', '0', '90']) {
+      const f = fixture([pending(header)]);
+      await assert.rejects(fetchCompactHealth('https://health.test', f.options), /refresh remained pending/);
+      assert.ok(f.calls <= 12);
+      assert.ok(f.sleeps.reduce((sum, ms) => sum + ms, 0) < 45_000);
+      if (header === '90') assert.equal(f.calls, 1);
+    }
+  });
+  it('preserves Redis/auth/network and malformed response failures without retries', async () => {
+    for (const response of [
+      Response.json({ status: 'REDIS_DOWN' }, { status: 503 }),
+      Response.json({ status: 'REFRESH_PENDING' }, { status: 401 }),
+      Response.json({ status: 'REFRESH_PENDING' }, { status: 500 }),
+      new Response('broken JSON', { status: 503 }),
+      new Error('network unavailable'),
+    ]) {
+      const f = fixture([response]);
+      await assert.rejects(fetchCompactHealth('https://health.test', f.options));
+      assert.equal(f.calls, 1);
+      assert.deepEqual(f.sleeps, []);
+    }
+  });
+  it('does not hide an outage following a pending response', async () => {
+    const f = fixture([pending('1'), Response.json({ status: 'REDIS_DOWN' }, { status: 503 })]);
+    await assert.rejects(fetchCompactHealth('https://health.test', f.options), /HTTP 503/);
+    assert.equal(f.calls, 2);
+    assert.deepEqual(f.sleeps, [1000]);
+  });
+});
+
+// ── CONTENT_AGE_PREWARNING (pre-breach lead time) ─────────────────────────
+
+describe('content-age pre-warning diagnostics', () => {
+  const NOW = Date.parse('2026-08-04T00:00:00.000Z');
+  const budgetMin = 331200;                       // 230 days
+  const ageMin = 265000;                          // 80.0%
+  const warnAt = Math.ceil(budgetMin * 0.8);      // 264960
+  const breachAt = '2026-09-19T00:00:30.000Z';
+
+  const warningEntry = () => ({
+    status: 'CONTENT_AGE_PREWARNING',
+    records: 58,
+    contentAgeMin: ageMin,
+    maxContentAgeMin: budgetMin,
+    warnAtContentAgeMin: warnAt,
+    contentAgeRemainingMin: budgetMin - ageMin,
+    contentAgeBreachAt: breachAt,
+  });
+
+  const compactPayload = () => ({
+    status: 'HEALTHY',
+    checkedAt: new Date(NOW).toISOString(),
+    summary: { total: 1, ok: 1, warn: 0, crit: 0 },
+    pending: { jodiGas: warningEntry() },
+  });
+
+  it('never blocks operational acceptance, even when the entry is malformed', () => {
+    for (const broken of [
+      { status: 'CONTENT_AGE_PREWARNING' },
+      { ...warningEntry(), contentAgeMin: 'many' },
+      { ...warningEntry(), warnAtContentAgeMin: 100 },
+      { ...warningEntry(), contentAgeRemainingMin: 1 },
+      { ...warningEntry(), contentAgeBreachAt: 'not-a-date' },
+      { ...warningEntry(), contentAgeMin: budgetMin + 1 },   // over budget: stale territory
+      { ...warningEntry(), contentAgeMin: warnAt - 1 },      // below threshold
+    ]) {
+      const problems = findOperationalProblems({ ...compactPayload(), pending: { jodiGas: broken } }, NOW);
+      assert.equal(problems.length, 0, `malformed entry must not block: ${JSON.stringify(broken)}`);
+    }
+    // An object with NO status string is not a pre-warning at all: it falls
+    // through to the unknown-problem path and blocks, which is correct
+    // fail-closed behavior for unrecognized shapes.
+    const unknown = findOperationalProblems({ ...compactPayload(), pending: { jodiGas: {} } }, NOW);
+    assert.equal(unknown.length, 1, 'status-less entry stays a blocking unknown');
+  });
+
+  it('reports a valid pre-warning as a pending diagnostic with lead-time fields', () => {
+    const diagnostics = findPendingDiagnostics(compactPayload(), NOW);
+    assert.equal(diagnostics.length, 1);
+    const d = diagnostics[0];
+    assert.equal(d.name, 'jodiGas');
+    assert.equal(d.status, 'CONTENT_AGE_PREWARNING');
+    assert.equal(d.graceUntil, null);
+    assert.equal(d.usedPercent, 80);
+    assert.equal(d.remainingMin, budgetMin - ageMin);
+    assert.equal(d.breachAt, breachAt);
+    assert.equal(d.breachObserved, false, 'checkedAt precedes the breach instant');
+  });
+
+  it('validates against the fenced checkedAt, not the wall clock', () => {
+    // A snapshot that crossed the breach before the monitor read it still
+    // reports, with breachObserved true.
+    const lateNow = Date.parse(breachAt) + 60_000;
+    const diagnostics = findPendingDiagnostics({
+      ...compactPayload(),
+      checkedAt: new Date(lateNow).toISOString(),
+    }, lateNow);
+    assert.equal(diagnostics.length, 1);
+    assert.equal(diagnostics[0].breachObserved, true);
+  });
+
+  it('drops pre-warning diagnostics from the sorted list when invalid', () => {
+    const diagnostics = findPendingDiagnostics(
+      { ...compactPayload(), pending: { jodiGas: { status: 'CONTENT_AGE_PREWARNING' } } },
+      NOW,
+    );
+    assert.equal(diagnostics.length, 0, 'malformed advisory is dropped, not reported');
+  });
+
+  it('does not let the advisory alter the exit verdict for a fresh observation', () => {
+    const observation = buildAcceptanceObservation(compactPayload(), { expiresAt: '2099-01-01', acknowledged: [] }, NOW);
+    assert.equal(observation.report.failed, false);
+    assert.equal(observation.acceptance.blocking.length, 0);
+  });
+
+  it('keeps a problems-lane entry of the same name authoritative', () => {
+    // Duplicate name across lanes: problems wins. Hard status stays blocking.
+    const payload = {
+      ...compactPayload(),
+      problems: { jodiGas: { status: 'STALE_CONTENT', records: 58 } },
+    };
+    const problems = findOperationalProblems(payload, NOW);
+    assert.equal(problems.length, 1);
+    assert.equal(problems[0].status, 'STALE_CONTENT');
   });
 });

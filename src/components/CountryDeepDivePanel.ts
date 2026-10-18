@@ -1,6 +1,13 @@
-import type { CountryBriefSignals } from '@/types';
+import type { ListPipelinesResponse, ListStorageFacilitiesResponse, ListFuelShortagesResponse } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+import type { CountryBriefSource } from '@/services/country-brief-source';
+import type { BriefTopic } from '../../shared/country-brief-sections';
+import type { CountrySignalCounts } from '@/types';
 import {
+  PERSPECTIVE_LABEL_CAVEAT,
+  composeProvenanceSummary,
+  declaredSourceTier,
   describePropagandaBadge,
+  getProvenanceFacts,
   getSourcePropagandaRisk,
   getSourceTier,
   getSourceTierBadgeTitle,
@@ -14,14 +21,14 @@ import type { PredictionMarket } from '@/services/prediction';
 import type { AssetType, NewsItem, RelatedAsset } from '@/types';
 import { sanitizeUrl, escapeHtml } from '@/utils/sanitize';
 import { computeAlternativeSuppliers, type ChokepointScoreMap, type EnrichedExporter } from '@/utils/supplier-route-risk';
-import { formatIntelBrief } from '@/utils/format-intel-brief';
+import { formatIntelBrief, renderBriefEvidenceFooter, type IntelBriefEvidence } from '@/utils/format-intel-brief';
 import { collectBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
 import { getCSSColor, isMobileDevice, showToast } from '@/utils';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { PORTS } from '@/config/ports';
 import { getChokepointRoutes } from '@/config/trade-routes';
 import { STRATEGIC_WATERWAYS } from '@/config/geo';
-import { hasPremiumAccess } from '@/services/panel-gating';
+import { hasPremiumAccess, readClientEntitlementBelief, readPremiumAccessGrant } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
 import { trackGateHit } from '@/services/analytics';
@@ -30,6 +37,7 @@ import { haversineDistanceKm } from '@/services/related-assets';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import type {
   CountryBriefPanel,
+  CountryTariffTrendsData,
   CountryIntelData,
   StockIndexData,
   CountryDeepDiveSignalDetails,
@@ -55,19 +63,24 @@ import type {
   VulnerabilityInput,
 } from '@/services/supply-chain';
 import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-signals';
+import { formatChinaSignalText } from './china-signal-labels';
 import { fetchMultiSectorCostShock, HS2_SHORT_LABELS } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
+import { assessCorroboration, corroborationFlag, evidenceFromCluster, publisherRoster } from '@/utils/corroboration-flag';
+import { describePublisherRoster, renderPublisherRosterElement } from './news/publisher-roster';
 import { decodeHtmlEntities } from '@/utils/html-entities';
 import { renderFollowButton } from '@/utils/follow-button';
 import { renderNotifyCountryLink } from '@/utils/notify-country-link';
-import { exportCountryEvidenceMarkdown } from '@/utils/export';
+import { countryEvidenceMarkdownArtifact } from '@/utils/export';
+import { attemptWebCountryDownload, countryDownloadMessage, type CountryTextDownload } from '@/utils/country-text-download';
 import type { CountryEvidenceBundleInput } from '@/utils/export';
 import { ciiBandForLevel } from './CountryDeepDivePanel-cii';
 import { renderDefenseIndustrialSection } from './CountryDeepDivePanel-defense-industrial';
 import { renderDemographicsCapabilitySection } from './CountryDeepDivePanel-demographics-capability';
 import { renderFiveFactorScorecardSection } from './CountryDeepDivePanel-five-factor-scorecard';
 import { combineAbortSignals } from '@/services/timeout-signal';
+import { CountrySectionError } from '@/services/country-brief-error';
 import { BRIEF_SECTIONS, CountryBriefPresentation, briefSectionState, summarizeCountryBrief, type BriefSection, type BriefSectionId } from './country-brief-presentation';
 
 const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
@@ -124,7 +137,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private currentCode: string | null = null;
   private currentName: string | null = null;
   private currentScore: CountryScore | null = null;
-  private currentSignals: CountryBriefSignals | null = null;
+  private currentSignals: CountrySignalCounts | null = null;
+  private signalCoverageNotes: readonly string[] = [];
+  private currentSignalDetails: CountryDeepDiveSignalDetails | 'unavailable' | null = null;
   private currentBrief: string | null = null;
   private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
@@ -144,6 +159,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private presentation: CountryBriefPresentation | null = null;
   private sections: BriefSection[] = [];
   private outputClose: (() => void) | null = null;
+  private atlasRevision = 0;
+  private hostedAtlasBody: HTMLElement | null = null;
+  private hostedAtlas: { code: string; signal: AbortSignal; pipelines?: ListPipelinesResponse; facilities?: ListStorageFacilitiesResponse; shortages?: ListFuelShortagesResponse } | null = null;
+  private atlasSelection: { type: 'pipeline' | 'storage' | 'shortage'; id: string } | null = null;
   private outputRequestSignal: AbortSignal | null = null;
   private signalsBody: HTMLElement | null = null;
   private signalBreakdownBody: HTMLElement | null = null;
@@ -151,6 +170,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private newsBody: HTMLElement | null = null;
   private militaryBody: HTMLElement | null = null;
   private defenseIndustrialBody: HTMLElement | null = null;
+  private defenseIndustrialFailure: { state: 'locked' | 'unavailable'; reason: string } | null = null;
   private currentMilitarySummary: CountryDeepDiveMilitarySummary | null = null;
   private currentDefenseIndustrial: GetDefenseIndustrialBaseResponse | null = null;
   private infrastructureBody: HTMLElement | null = null;
@@ -194,6 +214,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private costShockCalcTotalLabel: HTMLElement | null = null;
   private costShockCalcPrimaryChokepoint: string | null = null;
   private costShockCalcClosureDays = 30;
+  private costShockCalcResultDays: number | null = null;
+  private costShockCalcStatus: HTMLElement | null = null;
   private costShockCalcAbort: AbortController | null = null;
   private costShockCalcDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   // Holds the teardown returned by the FollowButton's `attach()` mounted
@@ -241,7 +263,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
   };
 
-  constructor(map: MapContainer | null = null) {
+  constructor(map: MapContainer | null = null, private readonly source?: CountryBriefSource, private readonly downloadText: CountryTextDownload = attemptWebCountryDownload) {
     this.map = map;
     this.panel = this.getOrCreatePanel();
 
@@ -262,8 +284,66 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     });
   }
 
+  private canRequestPremium(): boolean {
+    return this.source?.canRequestPremium() ?? hasPremiumAccess(getAuthState());
+  }
+
+  public selectTopic(topic: BriefTopic): void {
+    this.presentation?.selectTopic(topic);
+  }
+
+  public setSectionFailure(id: BriefSectionId, state: 'locked' | 'unavailable', reason: string): void {
+    if (id === 'military') {
+      this.defenseIndustrialFailure = { state, reason };
+      if (state === 'locked') this.currentDefenseIndustrial = null;
+      this.renderDefenseIndustrialBase();
+      return;
+    }
+    const section = this.sections.find(section => section.id === id);
+    if (!section) return;
+    if (state === 'locked') {
+      this.setSectionCoverage(id, []);
+      this.outputClose?.();
+      if (id === 'trade') { this.cachedTradeExposureData = null; this.cachedSectors = []; }
+    }
+    const { card } = section;
+    const body = id === 'energy' && this.hostedAtlasBody ? this.energyBody! : section.body;
+    const notice = state === 'locked' ? this.makeProLocked(reason) : this.makeEmpty(reason);
+    notice.dataset.briefState = state;
+    if (id === 'signals' && state === 'unavailable' && this.signalBreakdownBody && this.signalRecentBody) {
+      this.currentSignalDetails = 'unavailable';
+      this.signalBreakdownBody.replaceChildren(notice);
+      this.signalRecentBody.replaceChildren();
+      return;
+    }
+    body.querySelector('.cdp-refresh-failure')?.remove();
+    const previous = briefSectionState({ id, title: '', card, body });
+    if (state === 'unavailable' && previous === 'ready') {
+      notice.textContent = `${reason} Previously loaded observations remain visible.`;
+      notice.classList.add('cdp-refresh-failure');
+      body.append(notice);
+    } else body.replaceChildren(notice);
+  }
+
   public setMap(map: MapContainer | null): void {
     this.map = map;
+  }
+
+  public setSectionCoverage(id: BriefSectionId, missing: string[]): void {
+    const section = this.sections.find(section => section.id === id);
+    if (!section) return;
+    section.card.querySelector('.cdp-section-coverage')?.remove();
+    section.card.dataset.briefCoverage = missing.length ? 'partial' : 'complete';
+    if (!missing.length) return;
+    const labels: Record<string, string> = {
+      imfMacro: 'inflation and fiscal indicators', imfGrowth: 'growth and GDP',
+      imfLabor: 'employment', imfExternal: 'external trade',
+      bisDsr: 'household debt service', bisPropertyResidential: 'residential property',
+      bisPropertyCommercial: 'commercial property',
+    };
+    const notice = this.el('div', 'cdp-empty cdp-section-coverage', `Partial coverage. Unavailable data: ${missing.map(key => labels[key] ?? 'additional measurements').join(', ')}. Available measurements remain visible.`);
+    notice.setAttribute('role', 'status');
+    section.card.append(notice);
   }
 
   public get signal(): AbortSignal {
@@ -303,13 +383,14 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.content.append(wrapper);
   }
 
-  public show(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals): void {
+  public show(country: string, code: string, score: CountryScore | null, signals: CountrySignalCounts | null): void {
     this.abortController.abort();
     this.abortController = new AbortController();
     this.currentCode = code;
     this.currentName = country;
     this.currentScore = score;
     this.currentSignals = signals;
+    this.signalCoverageNotes = [];
     this.currentBrief = null;
     this.currentBriefGeneratedAt = null;
     this.currentBriefCached = null;
@@ -319,6 +400,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.economicIndicators = [];
     this.infrastructureByType.clear();
     this.renderSkeleton(country, code, score, signals);
+    if (this.source?.mode === 'host') this.renderAtlasExposure(true);
     this.content.scrollTop = 0;
     this.open();
   }
@@ -344,6 +426,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.currentName = null;
     this.currentScore = null;
     this.currentSignals = null;
+    this.signalCoverageNotes = [];
     this.currentBrief = null;
     this.currentBriefGeneratedAt = null;
     this.currentBriefCached = null;
@@ -396,7 +479,28 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return this.timelineBody;
   }
 
+  public getSignalCounts(): CountrySignalCounts | null {
+    return this.currentSignals ? { ...this.currentSignals } : null;
+  }
+
+  public updateSignals(signals: CountrySignalCounts, notes: readonly string[] = []): void {
+    this.currentSignals = signals;
+    this.signalCoverageNotes = notes.slice(0, 12).map(note => note.slice(0, 1600));
+    this.renderInitialSignals(signals);
+    const liveValues = Object.entries(signals).filter(([key]) => key !== 'isTier1').map(([, value]) => value);
+    const partial = liveValues.some(value => value === null);
+    if (partial) {
+      const notice = this.el('p', 'cdp-economic-source', 'Signal coverage is partial. Unavailable inputs are not evidence of zero activity.');
+      if (liveValues.every(value => value === null)) notice.dataset.briefState = 'unavailable';
+      this.signalsBody?.prepend(notice);
+    }
+    for (const note of notes) this.signalsBody?.append(this.el('p', 'cdp-economic-source', note));
+    const section = this.sections.find(section => section.id === 'signals');
+    if (section) section.card.dataset.briefCoverage = partial ? 'partial' : 'complete';
+  }
+
   public updateSignalDetails(details: CountryDeepDiveSignalDetails): void {
+    this.currentSignalDetails = details;
     if (!this.signalBreakdownBody || !this.signalRecentBody) return;
     this.renderSignalBreakdown(details);
     this.renderRecentSignals(details.recentHigh);
@@ -428,7 +532,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
 
     for (let i = 0; i < deduped.length; i++) {
-      const { item, extraSources } = deduped[i]!;
+      const { item, items } = deduped[i]!;
+      const evidence = evidenceFromCluster({ allItems: items });
+      const corroboration = assessCorroboration(evidence);
       const row = this.el('a', 'cdp-news-item');
       row.id = `cdp-news-${i + 1}`;
       const href = sanitizeUrl(item.link);
@@ -441,15 +547,16 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
 
       const top = this.el('div', 'cdp-news-top');
-      const tier = item.tier ?? getSourceTier(item.source);
+      const tier = declaredSourceTier(item.source);
       const sourceType = getSourceType(item.source);
-      const clampedTier = Math.max(1, Math.min(4, tier));
-      const tierBadge = this.badge(`T${clampedTier} SRC`, `cdp-tier-badge tier-${clampedTier}`);
-      tierBadge.setAttribute(
-        'title',
-        `${getSourceTierBadgeTitle(sourceType)}. Source tier ${clampedTier}; independent of article severity.`,
-      );
-      top.append(tierBadge);
+      if (tier !== null) {
+        const tierBadge = this.badge(`T${tier} SRC`, `cdp-tier-badge tier-${tier}`);
+        tierBadge.setAttribute(
+          'title',
+          `${getSourceTierBadgeTitle(sourceType)}. Source tier ${tier}; independent of article severity.`,
+        );
+        top.append(tierBadge);
+      }
 
       const severity = this.toThreatLevel(item.threat?.level);
       const levelKey = severity === 'info' ? 'low' : severity === 'medium' ? 'moderate' : severity;
@@ -461,38 +568,42 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const risk = getSourcePropagandaRisk(item.source);
       const riskDescription = describePropagandaBadge(risk, sourceType);
       if (riskDescription) {
-        const riskLabel = risk.stateAffiliated
-          ? `${riskDescription.label}: ${risk.stateAffiliated}`
-          : riskDescription.label;
         const riskBadge = this.badge(
-          riskLabel,
+          riskDescription.label,
           `cdp-state-badge propaganda-badge ${riskDescription.risk}`,
         );
-        riskBadge.setAttribute(
-          'title',
-          risk.stateAffiliated
-            ? `${sourceType === 'gov' ? 'Official government source' : 'State-affiliated'}: ${risk.stateAffiliated}. ${riskDescription.title}`
-            : riskDescription.title,
-        );
+        riskBadge.setAttribute('title', riskDescription.title);
         top.append(riskBadge);
+      }
+      const factTitle = `${composeProvenanceSummary(risk, sourceType)} ${PERSPECTIVE_LABEL_CAVEAT}`;
+      for (const fact of getProvenanceFacts(risk, sourceType)) {
+        const factBadge = this.badge(fact.label, `cdp-state-badge provenance-fact ${fact.kind}`);
+        factBadge.setAttribute('title', factTitle);
+        top.append(factBadge);
       }
 
       const title = this.el('div', 'cdp-news-title', decodeHtmlEntities(item.title));
-      const metaText = extraSources.length > 0
-        ? `${item.source} +${extraSources.length} ${extraSources.length === 1 ? 'source' : 'sources'} • ${this.formatRelativeTime(item.pubDate)}`
-        : `${item.source} • ${this.formatRelativeTime(item.pubDate)}`;
-      const meta = this.el('div', 'cdp-news-meta', metaText);
-      if (extraSources.length > 0) {
-        meta.setAttribute('title', `Also reported by: ${extraSources.join(', ')}`);
+      const meta = this.el('div', 'cdp-news-meta', `${item.source} • ${this.formatRelativeTime(item.pubDate)}`);
+      const flag = corroborationFlag(corroboration);
+      if (flag) {
+        const pill = this.el('span', 'corroboration-flag', flag.text);
+        pill.setAttribute('title', flag.hint);
+        meta.append(pill);
       }
       row.append(top, title, meta);
 
+      // The roster is interactive, so it sits beside the link rather than inside it.
+      const entry = this.el('div', 'cdp-news-entry');
+      entry.append(row);
+      const roster = describePublisherRoster(corroboration, publisherRoster(evidence));
+      if (roster) entry.append(renderPublisherRosterElement(roster));
+
       if (i >= 3) {
         const wrapper = this.el('div', 'cdp-expanded-only');
-        wrapper.append(row);
+        wrapper.append(entry);
         this.newsBody.append(wrapper);
       } else {
-        this.newsBody.append(row);
+        this.newsBody.append(entry);
       }
     }
     const more = this.el('button', 'cdp-inline-action cdp-summary-only', `Read all ${deduped.length} headlines ↗`);
@@ -505,14 +616,32 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
 
-  public updateMilitaryActivity(summary: CountryDeepDiveMilitarySummary): void {
+  public updateMilitaryActivity(summary: CountryDeepDiveMilitarySummary | null): void {
     this.currentMilitarySummary = summary;
+    const card = this.militaryBody?.closest('section');
+    if (card) card.dataset.briefCoverage = summary ? summary.coverage ?? 'complete' : 'partial';
     this.renderMilitaryActivity();
   }
 
   public updateDefenseIndustrialBase(data: GetDefenseIndustrialBaseResponse | null): void {
+    this.defenseIndustrialFailure = null;
     this.currentDefenseIndustrial = data;
     this.renderDefenseIndustrialBase();
+  }
+
+  public refreshHostedSections(): void {
+    if (this.source?.mode !== 'host' || !this.currentCode) return;
+    const code = this.currentCode;
+    this.renderAtlasExposure(true);
+    if (this.foodStocksBody) void this.renderFoodStocks(code, this.foodStocksBody);
+    if (this.demographicsBody) void this.renderDemographicsCapability(code, this.demographicsBody);
+    if (this.fiveFactorScorecardBody) {
+      this.fiveFactorScorecardAbortController?.abort();
+      const request = new AbortController();
+      this.fiveFactorScorecardAbortController = request;
+      void this.renderFiveFactorScorecard(code, this.fiveFactorScorecardBody, request.signal);
+    }
+    void this.resilienceWidget?.refresh();
   }
 
   public syncCountryPremiumSectionsAccess(hasAccess: boolean): void {
@@ -521,7 +650,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (this.costShockCalcDebounceTimer) clearTimeout(this.costShockCalcDebounceTimer);
     this.foodStocksRequestId++;
     this.demographicsCapabilityRequestId++;
-    for (const id of ['food', 'demographics', 'debt', 'sanctions', 'flows', 'tariffs', 'products', 'scenario', 'commodities'] as const) {
+    if (!hasAccess) { this.cachedTradeExposureData = null; this.cachedSectors = []; }
+    for (const id of ['trade', 'food', 'demographics', 'debt', 'sanctions', 'flows', 'tariffs', 'products', 'scenario', 'commodities'] as const) {
       const section = this.sections.find(section => section.id === id);
       if (section) section.body.replaceChildren(hasAccess
         ? this.makeLoading(`Loading ${section.title.toLowerCase()}…`)
@@ -552,12 +682,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (summary) {
       const stats = this.el('div', 'cdp-military-grid');
       stats.append(
-        this.metric(t('countryBrief.ownFlights'), String(summary.ownFlights), 'cdp-chip-neutral'),
-        this.metric(t('countryBrief.foreignFlights'), String(summary.foreignFlights), summary.foreignFlights > 0 ? 'cdp-chip-danger' : 'cdp-chip-neutral'),
-        this.metric(t('countryBrief.navalVessels'), String(summary.nearbyVessels), 'cdp-chip-neutral'),
-        this.metric(t('countryBrief.foreignPresence'), summary.foreignPresence ? t('countryBrief.detected') : t('countryBrief.notDetected'), summary.foreignPresence ? 'cdp-chip-danger' : 'cdp-chip-success'),
+        this.metric(t('countryBrief.ownFlights'), summary.ownFlights === null ? 'Unavailable' : String(summary.ownFlights), 'cdp-chip-neutral'),
+        this.metric(t('countryBrief.foreignFlights'), summary.foreignFlights === null ? 'Unavailable' : String(summary.foreignFlights), (summary.foreignFlights ?? 0) > 0 ? 'cdp-chip-danger' : 'cdp-chip-neutral'),
+        this.metric(t('countryBrief.navalVessels'), summary.nearbyVessels === null ? 'Unavailable' : String(summary.nearbyVessels), 'cdp-chip-neutral'),
+        this.metric(t('countryBrief.foreignPresence'), summary.foreignPresence === null ? 'Unknown' : summary.foreignPresence ? t('countryBrief.detected') : t('countryBrief.notDetected'), summary.foreignPresence === null ? 'cdp-chip-neutral' : summary.foreignPresence ? 'cdp-chip-danger' : 'cdp-chip-success'),
       );
       this.militaryBody.append(stats);
+      for (const note of summary.coverageNotes ?? []) this.militaryBody.append(this.el('p', 'cdp-economic-source', note));
 
       const basesTitle = this.el('div', 'cdp-subtitle', t('countryBrief.nearestBases'));
       this.militaryBody.append(basesTitle);
@@ -577,6 +708,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
     }
 
+    if (!summary) this.militaryBody.append(this.makeEmpty('Live flight and vessel observations are unavailable in this view.'));
     this.defenseIndustrialBody = this.el('div', 'cdp-defense-industrial-mount');
     this.militaryBody.append(this.defenseIndustrialBody);
     this.renderDefenseIndustrialBase();
@@ -594,19 +726,30 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       body.append(this.makeProLocked(t('countryBrief.defenseIndustrialBase.proLocked')));
       return;
     }
+    const failure = this.defenseIndustrialFailure;
+    if (failure?.state === 'locked') {
+      const notice = this.makeProLocked(failure.reason);
+      notice.dataset.briefState = 'locked';
+      body.append(notice);
+      return;
+    }
     // Pro (#6438). The gate lives here rather than only at the fetch site
     // because renderMilitaryActivity() also re-runs on updateMilitaryActivity,
     // whose free-tier flight/base data stays free — without this the section
     // would simply vanish for a free viewer instead of naming the paywall.
-    if (!hasPremiumAccess(getAuthState())) {
+    if (!this.canRequestPremium()) {
       body.append(this.makeProLocked(t('countryBrief.defenseIndustrialBase.proLocked')));
       return;
     }
-    if (!this.currentDefenseIndustrial?.available) return;
+    if (!this.currentDefenseIndustrial?.available) {
+      body.append(this.makeEmpty(failure?.reason ?? 'Defense-industrial observations are unavailable.'));
+      return;
+    }
     body.append(renderDefenseIndustrialSection(
       this.currentDefenseIndustrial,
       (label, value, chipClass) => this.metric(label, value, chipClass),
     ));
+    if (failure) body.append(this.makeEmpty(`${failure.reason} Previously loaded observations remain visible.`));
   }
 
   public updateInfrastructure(countryCode: string): void {
@@ -744,6 +887,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     grid.append(this.factItem(t('countryBrief.facts.currencies'), data.currencies.join(', ')));
 
     this.factsBody.append(grid);
+    this.factsBody.append(this.el('p', 'cdp-economic-source', 'Configured structured facts source: Wikidata.'));
+    if (data.wikipediaSummary.trim()) {
+      this.factsBody.append(this.el('p', 'cdp-measure-note', 'Description: Wikipedia.'));
+    }
+    this.factsBody.append(this.el('p', 'cdp-measure-note', 'Reference years are not supplied.'));
   }
 
   public updateHousingCycle(data: {
@@ -829,6 +977,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.proMetricBox('Status', data.sanctionsActive ? 'Active' : 'None'),
     );
     this.sanctionsBody.append(grid);
+    this.sanctionsBody.append(
+      this.el('p', 'cdp-economic-source', 'Configured dataset sources: OFAC SDN and Consolidated lists; Global Affairs Canada consolidated sanctions.'),
+      this.el('p', 'cdp-measure-note', 'Count includes merged records linked to this country. Active means the count is greater than zero, not a legal assessment of the country.'),
+      this.el('p', 'cdp-measure-note', 'Per-source contributions, coverage and publication dates are not supplied here.'),
+    );
   }
 
   public updateComtradeFlows(flows: Array<{ partnerName: string; cmdDesc: string; tradeValueUsd: number; yoyChange: number }> | null): void {
@@ -844,7 +997,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const table = this.el('table', 'cdp-pro-flow-table');
     const thead = this.el('thead');
     const hr = this.el('tr');
-    for (const col of ['Partner', 'Commodity', 'Value', 'YoY']) {
+    for (const col of ['Partner', 'Commodity', 'Value', 'Year-over-year change']) {
       hr.append(this.el('th', '', col));
     }
     thead.append(hr);
@@ -873,21 +1026,49 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.comtradeBody.append(scope);
   }
 
-  public updateTariffTrends(data: { currentRate: number; trend: string; datapoints: Array<{ year: number; tariffRate: number }> } | null): void {
+  public updateTariffTrends(data: CountryTariffTrendsData | null): void {
     if (!this.tariffBody) return;
     this.tariffBody.replaceChildren();
-    if (!data) {
+    if (!data || !Number.isFinite(data.currentRate) || data.currentRate < 0) {
       this.tariffBody.append(this.makeEmpty('No tariff data available'));
       return;
     }
     const layout = this.el('div', 'cdp-tariff-layout');
     const rate = this.el('div');
-    rate.append(this.el('div', 'cdp-measure-note', 'Effective tariff rate'), this.el('div', 'cdp-metric-hero', `${data.currentRate.toFixed(2)}%`));
+    rate.append(this.el('div', 'cdp-measure-note', data.effectiveTariffRate ? 'Effective tariff rate' : 'Reported annual tariff rate'), this.el('div', 'cdp-metric-hero', `${data.currentRate.toFixed(2)}%`));
     const direction = data.trend === 'rising' ? '↑ Rising' : data.trend === 'falling' ? '↓ Falling' : data.trend === 'stable' ? '→ Unchanged' : 'Trend not available';
     const trend = this.el('div', 'cdp-tariff-trend');
     trend.append(this.el('h4', '', direction), this.el('p', 'cdp-measure-note', 'Direction compares the two latest reported annual observations.'));
     layout.append(rate, trend);
     this.tariffBody.append(layout);
+    const provenance = this.el('div', 'cdp-measure-note');
+    provenance.style.overflowWrap = 'anywhere';
+    const effective = data.effectiveTariffRate;
+    if (effective) {
+      provenance.append(this.el('div', '', `Source: ${effective.sourceName || 'Not supplied'}`));
+      if (effective.sourceUrl) {
+        try {
+          const url = new URL(effective.sourceUrl);
+          if (url.protocol === 'https:' || url.protocol === 'http:') {
+            const link = this.el('a', '', 'Original source');
+            link.style.color = 'var(--accent)';
+            link.href = effective.sourceUrl;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            provenance.append(link);
+          }
+        } catch {}
+      }
+      provenance.append(
+        this.el('div', '', `Observation period: ${effective.observationPeriod || 'Not supplied'}`),
+        this.el('div', '', `Source page updated: ${effective.updatedAt || 'Not supplied'}`),
+      );
+    } else {
+      const latest = data.datapoints[data.datapoints.length - 1];
+      if (latest) provenance.append(this.el('div', '', `Annual observation: ${latest.year}`));
+      provenance.append(this.el('div', '', 'Effective rate source metadata: Not supplied'));
+    }
+    this.tariffBody.append(provenance);
     if (data.datapoints.length > 0) {
       const history = this.el('details', 'cdp-tariff-history');
       history.append(this.el('summary', '', `View ${data.datapoints.length} annual observations`));
@@ -909,14 +1090,21 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   public updateMultiSectorCostShock(data: MultiSectorShockResponse | null): void {
     if (!this.costShockCalcBody) return;
     this.costShockCalcBody.replaceChildren();
+    this.costShockCalcTable = null;
+    this.costShockCalcTotalLabel = null;
+    this.costShockCalcDurationLabel = null;
+    this.costShockCalcStatus = null;
+    this.costShockCalcResultDays = null;
+    this.costShockCalcPrimaryChokepoint = null;
 
-    if (!data || (!data.sectors.length && !data.unavailableReason)) {
-      this.costShockCalcBody.append(this.makeEmpty('No cost shock scenario available for this country.'));
+    if (!data || data.unavailableReason || !data.sectors.length) {
+      this.costShockCalcBody.append(this.makeEmpty(data?.unavailableReason || 'No cost shock scenario available for this country.'));
       return;
     }
 
     this.costShockCalcPrimaryChokepoint = data.chokepointId;
     this.costShockCalcClosureDays = Number.isFinite(data.closureDays) && data.closureDays > 0 ? data.closureDays : 30;
+    this.costShockCalcResultDays = this.costShockCalcClosureDays;
 
     // ── Header line: chokepoint + war risk tier badge ────────────────────
     const header = this.el('div', 'cdp-cost-shock-calc-header');
@@ -951,6 +1139,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
     sliderWrap.append(ticks);
     this.costShockCalcBody.append(sliderWrap);
+    this.costShockCalcStatus = this.el('div', 'cdp-card-footer', `Results for ${this.costShockCalcResultDays}-day calculation.`);
+    this.costShockCalcStatus.setAttribute('role', 'status');
+    this.costShockCalcStatus.setAttribute('aria-live', 'polite');
+    this.costShockCalcBody.append(this.costShockCalcStatus);
 
     // ── Table ───────────────────────────────────────────────────────────
     const table = this.el('table', 'cdp-cost-shock-calc-table');
@@ -972,15 +1164,14 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     totalRow.append(this.costShockCalcTotalLabel);
     this.costShockCalcBody.append(totalRow);
 
-    if (data.unavailableReason) {
-      this.costShockCalcBody.append(this.el('div', 'cdp-card-footer', data.unavailableReason));
-    } else {
-      this.costShockCalcBody.append(
-        this.el('div', 'cdp-card-footer', 'Added cost = annual imports × (bypass freight uplift + war risk bps) × closure days / 365'),
-      );
-    }
+    this.costShockCalcBody.append(
+      this.el('div', 'cdp-card-footer', 'Added cost = annual imports × (bypass freight uplift + war risk bps) × closure days / 365'),
+    );
 
     this.renderMultiSectorShockRows(data.sectors);
+    if (Number.isFinite(data.totalAddedCost) && data.totalAddedCost >= 0) {
+      this.costShockCalcTotalLabel.textContent = this.formatMoney(data.totalAddedCost);
+    }
   }
 
   /** Render (or re-render) just the cost-shock table rows + total. */
@@ -1011,8 +1202,21 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (this.costShockCalcDurationLabel) {
       this.costShockCalcDurationLabel.textContent = `${days} day${days === 1 ? '' : 's'}`;
     }
+    this.setCostShockCalculationStatus('loading');
     this.scheduleCostShockRefetch(days);
   };
+
+  private setCostShockCalculationStatus(state: 'loading' | 'unavailable', reason?: string): void {
+    const status = this.costShockCalcStatus;
+    if (!status) return;
+    status.className = state === 'loading' ? 'cdp-loading-inline' : 'cdp-card-footer';
+    if (state === 'unavailable') status.dataset.briefState = 'unavailable';
+    else delete status.dataset.briefState;
+    const request = state === 'loading'
+      ? `Calculating ${this.costShockCalcClosureDays}-day scenario.`
+      : `${this.costShockCalcClosureDays}-day calculation unavailable.${reason ? ` ${reason}` : ''}`;
+    status.textContent = `${request} Retained ${this.costShockCalcResultDays}-day results are shown below.`;
+  }
 
   /** Debounce re-fetch by 300ms so rapid slider drags don't spam the API. */
   private scheduleCostShockRefetch(days: number): void {
@@ -1025,12 +1229,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
   private async loadCostShock(chokepoint: string): Promise<void> {
     const code = this.currentCode;
-    if (!code || !hasPremiumAccess(getAuthState())) return;
+    if (!code || !this.canRequestPremium()) return;
     this.costShockCalcAbort?.abort();
     const request = this.costShockCalcAbort = new AbortController();
-    const current = () => !request.signal.aborted && this.currentCode === code && hasPremiumAccess(getAuthState());
+    const current = () => !request.signal.aborted && this.currentCode === code && this.canRequestPremium();
     try {
-      const data = await fetchMultiSectorCostShock(code, chokepoint, 30, { signal: request.signal });
+      const data = await (this.source ? this.source.cost(code, chokepoint, 30, request.signal) : fetchMultiSectorCostShock(code, chokepoint, 30, { signal: request.signal }));
       if (current()) this.updateMultiSectorCostShock(data);
     } catch {
       if (current()) this.updateMultiSectorCostShock(null);
@@ -1040,18 +1244,25 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private async refetchMultiSectorShock(days: number): Promise<void> {
     const iso2 = this.currentCode;
     const cp = this.costShockCalcPrimaryChokepoint;
-    if (!iso2 || !cp || !hasPremiumAccess(getAuthState())) return;
+    if (!iso2 || !cp || !this.canRequestPremium()) return;
 
     // Abort any in-flight fetch before starting a new one.
     this.costShockCalcAbort?.abort();
     const request = this.costShockCalcAbort = new AbortController();
+    const current = () => !request.signal.aborted && this.currentCode === iso2 && this.canRequestPremium()
+      && this.costShockCalcClosureDays === days && this.costShockCalcPrimaryChokepoint === cp;
     try {
-      const resp = await fetchMultiSectorCostShock(iso2, cp, days, { signal: request.signal });
-      if (request.signal.aborted || this.currentCode !== iso2 || !hasPremiumAccess(getAuthState())) return;
-      if (this.costShockCalcClosureDays !== days) return; // a newer slider move superseded this
-      this.renderMultiSectorShockRows(resp.sectors);
+      const resp = await (this.source ? this.source.cost(iso2, cp, days, request.signal) : fetchMultiSectorCostShock(iso2, cp, days, { signal: request.signal }));
+      if (!current()) return;
+      if (resp.unavailableReason || !resp.sectors.length || resp.closureDays !== days) {
+        this.setCostShockCalculationStatus('unavailable', resp.unavailableReason || 'No matching cost scenario returned.');
+        return;
+      }
+      const sliderOwnedFocus = this.costShockCalcBody?.querySelector('.cdp-cost-shock-calc-slider') === document.activeElement;
+      this.updateMultiSectorCostShock(resp);
+      if (sliderOwnedFocus) this.costShockCalcBody?.querySelector<HTMLInputElement>('.cdp-cost-shock-calc-slider')?.focus();
     } catch {
-      // Ignore — either aborted or transient network; leave prior values visible.
+      if (current()) this.setCostShockCalculationStatus('unavailable');
     }
   }
 
@@ -1120,12 +1331,18 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.energyBody) return;
     this.energyBody.replaceChildren();
 
+    const sourceNotes: HTMLElement[] = [];
+    if (!data.jodiOilAvailable) sourceNotes.push(this.el('p', 'cdp-economic-source', 'JODI oil data not supplied in this profile.'));
+    if (!data.jodiGasAvailable) sourceNotes.push(this.el('p', 'cdp-economic-source', 'JODI gas data not supplied in this profile.'));
+    if (!data.ieaStocksAvailable) sourceNotes.push(this.el('p', 'cdp-economic-source', 'IEA oil stocks data not supplied in this profile.'));
+
     const hasAny = data.mixAvailable || data.jodiOilAvailable || data.ieaStocksAvailable
       || data.jodiGasAvailable || data.gasStorageAvailable || data.electricityAvailable
       || data.emberAvailable || data.sprAvailable || data.importShareAvailable;
 
     if (!hasAny) {
-      this.energyBody.append(this.makeEmpty('Energy data unavailable for this country.'));
+      this.energyBody.append(this.makeEmpty('Energy data unavailable for this country.'), ...sourceNotes);
+      this.renderAtlasExposure();
       return;
     }
 
@@ -1212,16 +1429,17 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       table.append(thead);
 
       const tbody = this.el('tbody', '');
-      const rows: Array<{ label: string; demand: number; imports: number }> = [
-        { label: 'Gasoline', demand: data.gasolineDemandKbd, imports: data.gasolineImportsKbd },
-        { label: 'Diesel', demand: data.dieselDemandKbd, imports: data.dieselImportsKbd },
-        { label: 'Jet fuel', demand: data.jetDemandKbd, imports: data.jetImportsKbd },
-        { label: 'LPG', demand: data.lpgDemandKbd, imports: data.lpgImportsKbd },
+      const observed = new Set(data.jodiOilObservedMeasurements ?? []);
+      const fmtKbd = (value: number, path: string) => value > 0 || (value === 0 && observed.has(path)) ? `${value} kbd` : '\u2014';
+      const rows: Array<{ label: string; key: string; demand: number; imports: number }> = [
+        { label: 'Gasoline', key: 'gasoline', demand: data.gasolineDemandKbd, imports: data.gasolineImportsKbd },
+        { label: 'Diesel', key: 'diesel', demand: data.dieselDemandKbd, imports: data.dieselImportsKbd },
+        { label: 'Jet fuel', key: 'jet', demand: data.jetDemandKbd, imports: data.jetImportsKbd },
+        { label: 'Liquefied petroleum gas', key: 'lpg', demand: data.lpgDemandKbd, imports: data.lpgImportsKbd },
       ];
       for (const r of rows) {
         const tr = this.el('tr', '');
-        const fmtKbd = (v: number) => v > 0 ? `${v} kbd` : '\u2014';
-        for (const val of [r.label, fmtKbd(r.demand), fmtKbd(r.imports)]) {
+        for (const val of [r.label, fmtKbd(r.demand, `${r.key}.demandKbd`), fmtKbd(r.imports, `${r.key}.importsKbd`)]) {
           const td = this.el('td', '');
           td.textContent = val;
           td.style.cssText = 'padding:2px 4px';
@@ -1229,7 +1447,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         }
         tbody.append(tr);
       }
-      if (data.crudeImportsKbd > 0) {
+      if (data.crudeImportsKbd > 0 || (data.crudeImportsKbd === 0 && observed.has('crude.importsKbd'))) {
         const tr = this.el('tr', '');
         for (const val of ['Crude', '\u2014', `${data.crudeImportsKbd} kbd`]) {
           const td = this.el('td', '');
@@ -1263,7 +1481,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const gasLabel = this.el('span', '', `Gas demand${gasMonth}: ${totalBcmMonth} BCM/mo`);
       const lngBadge = this.el('span', '');
       lngBadge.style.cssText = `background:${lngColor};color:#fff;padding:1px 5px;border-radius:3px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))`;
-      lngBadge.textContent = `LNG ${lngShare.toFixed(0)}%`;
+      lngBadge.textContent = `Liquefied natural gas ${lngShare.toFixed(0)}%`;
       const pipeBadge = this.el('span', '');
       pipeBadge.style.cssText = 'background:#6b7280;color:#fff;padding:1px 5px;border-radius:3px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))';
       pipeBadge.textContent = `Pipeline ${pipeShare.toFixed(0)}%`;
@@ -1305,6 +1523,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         marker.style.cssText = 'position:absolute;top:-2px;left:50%;width:2px;height:12px;background:#f59e0b;transform:translateX(-50%)';
         barOuter.append(fill, marker);
         section.append(barOuter);
+      }
+      if (data.ieaStocksDataMonth) {
+        section.append(this.el('div', 'cdp-economic-source', `Source: IEA · ${data.ieaStocksDataMonth}`));
       }
       this.energyBody.append(section);
     }
@@ -1362,7 +1583,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (data.emberAvailable) {
       const section = this.el('div', '');
       section.style.cssText = 'margin-top:10px';
-      const monthLabel = data.emberDataMonth || 'latest';
+      const monthLabel = data.emberDataMonth.trim() ? data.emberDataMonth : 'observation month not supplied';
       section.append(this.el('div', 'cdp-subtitle', `Monthly Generation Mix (${monthLabel})`));
 
       const segments: Array<{ label: string; color: string; value: number }> = [
@@ -1428,27 +1649,31 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.energyBody.append(this.renderShockScenarioWidget());
     }
 
-    // Atlas exposure: pipelines, storage, shortages, disruptions filtered
-    // to this country. Reads from the same bootstrap-hydrated stores as
-    // the Energy Atlas variant, so the count is free when data is warm
-    // and silently absent when a user is on a variant that doesn't
-    // pre-hydrate those keys.
+    this.energyBody.append(...sourceNotes);
     this.renderAtlasExposure();
   }
 
-  private renderAtlasExposure(): void {
+  private renderAtlasExposure(hostRefresh = false): void {
     if (!this.energyBody) return;
     const iso2 = this.currentCode;
     if (!iso2 || iso2.length !== 2) return;
+    if (this.source?.mode === 'host') {
+      if (hostRefresh) void this.loadHostedAtlas(iso2, ++this.atlasRevision, this.signal);
+      return;
+    }
+    const signal = this.signal;
+    const revision = ++this.atlasRevision;
 
     // Late-import so non-energy variants can tree-shake these modules at
     // build time if the Atlas panels aren't bundled. Static imports are
     // safe here because all four stores are pure client caches.
-    import('@/shared/pipeline-registry-store').then(({ getCachedPipelineRegistries }) => {
-      const { gas, oil } = getCachedPipelineRegistries() as {
+    import('@/shared/pipeline-registry-store').then(async ({ ensurePipelineRegistriesHydrated }) => {
+      if (signal.aborted || this.signal !== signal || this.currentCode !== iso2 || this.atlasRevision !== revision) return;
+      const { gas, oil } = await ensurePipelineRegistriesHydrated() as {
         gas: { pipelines?: Record<string, { fromCountry?: string; toCountry?: string; transitCountries?: string[]; name?: string; id?: string }> } | undefined;
         oil: { pipelines?: Record<string, { fromCountry?: string; toCountry?: string; transitCountries?: string[]; name?: string; id?: string }> } | undefined;
       };
+      if (signal.aborted || this.signal !== signal || this.currentCode !== iso2 || this.atlasRevision !== revision) return;
       const touches = (p: { fromCountry?: string; toCountry?: string; transitCountries?: string[] }): boolean =>
         p.fromCountry === iso2 || p.toCountry === iso2 ||
         (Array.isArray(p.transitCountries) && p.transitCountries.includes(iso2));
@@ -1470,10 +1695,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
     }).catch(() => {});
 
-    import('@/shared/storage-facility-registry-store').then(({ getCachedStorageFacilityRegistry }) => {
-      const { registry } = getCachedStorageFacilityRegistry() as {
+    import('@/shared/storage-facility-registry-store').then(async ({ ensureStorageFacilityRegistryHydrated }) => {
+      if (signal.aborted || this.signal !== signal || this.currentCode !== iso2 || this.atlasRevision !== revision) return;
+      const { registry } = await ensureStorageFacilityRegistryHydrated() as {
         registry: { facilities?: Record<string, { country?: string; name?: string; id?: string }> } | undefined;
       };
+      if (signal.aborted || this.signal !== signal || this.currentCode !== iso2 || this.atlasRevision !== revision) return;
       const facilities = Object.values(registry?.facilities ?? {}).filter(f => f.country === iso2);
       if (facilities.length > 0) {
         this.appendAtlasRow(
@@ -1490,6 +1717,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }).catch(() => {});
 
     import('@/shared/fuel-shortage-registry-store').then(({ getCachedFuelShortageRegistry }) => {
+      if (signal.aborted || this.signal !== signal || this.currentCode !== iso2 || this.atlasRevision !== revision) return;
       const { registry } = getCachedFuelShortageRegistry() as {
         registry: { shortages?: Record<string, { country?: string; product?: string; severity?: string; id?: string; shortDescription?: string; resolvedAt?: string | null }> } | undefined;
       };
@@ -1525,10 +1753,106 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     // nothing, we silently skip — CountryDeepDive is not the primary
     // disruption surface (EnergyDisruptionsPanel is), so an empty row is
     // preferable to a spurious error.
-    this.loadDisruptionsForCountry(iso2);
+    this.loadDisruptionsForCountry(iso2, revision);
   }
 
-  private async loadDisruptionsForCountry(iso2: string): Promise<void> {
+  private async loadHostedAtlas(code: string, revision: number, signal: AbortSignal): Promise<void> {
+    const source = this.source!;
+    const results = await Promise.allSettled([
+      source.supply.listPipelines({ commodityType: '' }, { signal }),
+      source.supply.listStorageFacilities({ facilityType: '' }, { signal }),
+      source.supply.listFuelShortages({ country: '', product: '', severity: '' }, { signal }),
+    ]);
+    if (signal.aborted || this.signal !== signal || this.currentCode !== code || this.atlasRevision !== revision) return;
+    this.hostedAtlasBody?.replaceChildren();
+    const [pipelines, facilities, shortages] = results;
+    const previous = this.hostedAtlas?.code === code && this.hostedAtlas.signal === signal ? this.hostedAtlas : null;
+    const canRetain = (result: PromiseSettledResult<unknown>) => !(result.status === 'rejected' && result.reason instanceof CountrySectionError && result.reason.state === 'locked');
+    const data = this.hostedAtlas = { code, signal,
+      pipelines: pipelines.status === 'fulfilled' && Array.isArray(pipelines.value.pipelines) && (!pipelines.value.upstreamUnavailable || pipelines.value.pipelines.length) ? pipelines.value : canRetain(pipelines) ? previous?.pipelines : undefined,
+      facilities: facilities.status === 'fulfilled' && Array.isArray(facilities.value.facilities) && (!facilities.value.upstreamUnavailable || facilities.value.facilities.length) ? facilities.value : canRetain(facilities) ? previous?.facilities : undefined,
+      shortages: shortages.status === 'fulfilled' && Array.isArray(shortages.value.shortages) && (!shortages.value.upstreamUnavailable || shortages.value.shortages.length) ? shortages.value : canRetain(shortages) ? previous?.shortages : undefined,
+    };
+    const pipes = data.pipelines?.pipelines.filter(p => p.fromCountry === code || p.toCountry === code || p.transitCountries.includes(code)) ?? [];
+    const stores = data.facilities?.facilities.filter(f => f.country === code) ?? [];
+    const crises = data.shortages?.shortages.filter(s => s.country === code && !s.resolvedAt) ?? [];
+    const confirmed = crises.filter(s => s.severity === 'confirmed').length;
+    if (data.shortages && !data.shortages.upstreamUnavailable && crises.length === 0) this.hostedAtlasBody?.append(this.makeEmpty(`No active fuel shortages in ${code} in the loaded registry.`));
+    this.appendAtlasRow(`Pipelines touching ${code}`, `${pipes.length} pipeline${pipes.length === 1 ? '' : 's'}`, pipes.map(p => ({ id: p.id, label: p.name, event: 'energy:open-pipeline-detail', detail: { pipelineId: p.id } })));
+    this.appendAtlasRow(`Storage in ${code}`, `${stores.length} facilit${stores.length === 1 ? 'y' : 'ies'}`, stores.map(f => ({ id: f.id, label: f.name, event: 'energy:open-storage-facility-detail', detail: { facilityId: f.id } })));
+    this.appendAtlasRow(`Fuel shortages in ${code}`, confirmed ? `${confirmed} confirmed · ${crises.length - confirmed} watch` : `${crises.length} watch`, crises.map(s => ({ id: s.id, label: `${s.product} — ${s.shortDescription}`, event: 'energy:open-fuel-shortage-detail', detail: { shortageId: s.id } })));
+    for (const [label, available, result] of [['Pipeline', data.pipelines, pipelines], ['Storage', data.facilities, facilities], ['Fuel shortage', data.shortages, shortages]] as const) {
+      if (available?.upstreamUnavailable) this.hostedAtlasBody?.append(this.makeEmpty(`${label} Atlas coverage is partial. Counts include only loaded observations.`));
+      if (!available || result.status === 'rejected' || (result.status === 'fulfilled' && result.value.upstreamUnavailable && !available.upstreamUnavailable)) this.hostedAtlasBody?.append(this.makeEmpty(`${label} Atlas ${result.status === 'rejected' && result.reason instanceof CountrySectionError && result.reason.state === 'locked' ? 'data is not authorized by this connection' : 'data unavailable'}. ${available ? 'Previously loaded Atlas observations remain visible.' : 'Other loaded observations remain visible.'}`));
+    }
+    await this.loadDisruptionsForCountry(code, revision);
+  }
+
+  public getAtlasSelection() {
+    return this.atlasSelection ? { ...this.atlasSelection, renderedText: this.content.querySelector<HTMLElement>('[data-country-atlas-detail]')?.innerText.slice(0, 6000) ?? '' } : null;
+  }
+
+  public async openAtlasDetail(type: 'pipeline' | 'storage' | 'shortage', id: string): Promise<void> {
+    const data = this.hostedAtlas;
+    const code = this.currentCode;
+    const signal = this.signal;
+    if (!code || signal.aborted || this.outputClose) throw new Error('Country Atlas data is not ready.');
+    const website = this.source?.mode !== 'host';
+    if (!website && (!data || data.code !== code || data.signal !== signal)) throw new Error('Country Atlas data is not ready.');
+    const outputController = new AbortController();
+    const source = this.source ?? (await import('@/services/country-brief-source')).createWebsiteCountryBriefSource();
+    const client = source.atlas(code, AbortSignal.any([signal, outputController.signal]));
+    const shell = this.content.querySelector<HTMLElement>('.cdp-shell')!;
+    const scrollTop = this.content.scrollTop;
+    const selection = { type, id };
+    let detailPanel: import('./Panel').Panel;
+    let show: () => Promise<void>;
+    if (type === 'pipeline') {
+      const rows = data?.pipelines?.pipelines.filter(p => p.fromCountry === code || p.toCountry === code || p.transitCountries.includes(code));
+      if (!website && !rows?.some(p => p.id === id)) throw new Error('Pipeline is not in this country.');
+      const { PipelineStatusPanel } = await import('./PipelineStatusPanel');
+      const panel = new PipelineStatusPanel(client); detailPanel = panel;
+      show = website ? () => panel.presentCountryDetail(code, id) : () => panel.presentDetail({ ...data!.pipelines!, pipelines: rows! }, id);
+    } else if (type === 'storage') {
+      const rows = data?.facilities?.facilities.filter(f => f.country === code);
+      if (!website && !rows?.some(f => f.id === id)) throw new Error('Storage facility is not in this country.');
+      const { StorageFacilityMapPanel } = await import('./StorageFacilityMapPanel');
+      const panel = new StorageFacilityMapPanel(client); detailPanel = panel;
+      show = website ? () => panel.presentCountryDetail(code, id) : () => panel.presentDetail({ ...data!.facilities!, facilities: rows! }, id);
+    } else {
+      const rows = data?.shortages?.shortages.filter(s => s.country === code && !s.resolvedAt);
+      if (!rows?.some(s => s.id === id)) throw new Error('Fuel shortage is not active in this country.');
+      const { FuelShortagePanel } = await import('./FuelShortagePanel');
+      const panel = new FuelShortagePanel(client); detailPanel = panel;
+      show = () => panel.presentDetail({ ...data!.shortages!, shortages: rows }, id);
+    }
+    if (signal.aborted || this.signal !== signal || this.currentCode !== code || this.outputClose) { detailPanel.destroy(); return; }
+    const output = this.el('div', 'cdp-atlas-output');
+    output.dataset.countryAtlasDetail = type;
+    const back = this.el('button', 'cdp-action-btn', 'Back to country');
+    back.addEventListener('click', () => this.outputClose?.());
+    output.addEventListener('click', event => {
+      if (!(event.target instanceof Element) || !event.target.closest('.pp-drawer-close, .sf-drawer-close, .fs-drawer-close, .panel-close-btn')) return;
+      event.stopImmediatePropagation();
+      this.outputClose?.();
+    }, true);
+    output.append(back, detailPanel.getElement());
+    this.atlasSelection = selection;
+    this.outputClose = () => {
+      outputController.abort(); detailPanel.destroy(); output.remove(); shell.hidden = false; this.outputClose = null; this.atlasSelection = null;
+      this.content.scrollTop = scrollTop;
+    };
+    shell.hidden = true; this.content.append(output); this.content.scrollTop = 0; back.focus();
+    try {
+      await show();
+    } catch (error) {
+      if (this.atlasSelection === selection) this.outputClose?.();
+      throw error;
+    }
+  }
+
+  private async loadDisruptionsForCountry(iso2: string, revision = this.atlasRevision): Promise<void> {
+    const abortSignal = this.signal;
     try {
       const { SupplyChainServiceClient } = await import(
         '@/generated/client/worldmonitor/supply_chain/v1/service_client'
@@ -1538,16 +1862,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       // switch or panel close cancels the in-flight request, not just
       // discards the result via the `this.currentCode !== iso2` guard
       // below. Codex P2 on PR #3377.
-      const abortSignal = this.signal;
-      const client = new SupplyChainServiceClient(getRpcBaseUrl(), {
+      const client = this.source?.supply ?? new SupplyChainServiceClient(getRpcBaseUrl(), {
         fetch: (input, init) => globalThis.fetch(input, { ...(init ?? {}), signal: abortSignal }),
       });
       const res = await client.listEnergyDisruptions({
         assetId: '',
         assetType: '',
         ongoingOnly: false,
-      });
-      if (!res || !Array.isArray(res.events) || this.currentCode !== iso2) return;
+      }, { signal: abortSignal });
+      if (!res || !Array.isArray(res.events) || abortSignal.aborted || this.signal !== abortSignal || this.currentCode !== iso2 || this.atlasRevision !== revision) return;
       const events = res.events.filter(e =>
         Array.isArray(e.countries) && e.countries.includes(iso2),
       );
@@ -1597,7 +1920,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     summary: string,
     items: Array<{ id: string; label: string; event: string; detail: Record<string, string | undefined> }>,
   ): void {
-    if (!this.energyBody || items.length === 0) return;
+    const body = this.hostedAtlasBody ?? this.energyBody;
+    if (!body || items.length === 0) return;
     const section = this.el('div', '');
     section.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06)';
     const header = this.el('div', '');
@@ -1606,11 +1930,17 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     header.append(this.el('div', 'cdp-economic-source', summary));
     section.append(header);
     for (const it of items.slice(0, 5)) {
-      const row = this.el('div', '');
+      const row = this.el('button', 'cdp-action-btn');
       row.style.cssText = 'font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:#ddd;padding:2px 0;cursor:pointer';
       row.textContent = it.label || it.id;
       row.addEventListener('click', () => {
         if (!it.id) return;
+        if (this.source?.mode === 'host' || it.event === 'energy:open-pipeline-detail' || it.event === 'energy:open-storage-facility-detail') {
+          const type = it.event === 'energy:open-pipeline-detail' ? 'pipeline' : it.event === 'energy:open-storage-facility-detail' ? 'storage' : 'shortage';
+          const id = it.detail.pipelineId ?? it.detail.facilityId ?? it.detail.shortageId ?? it.id;
+          void this.openAtlasDetail(type, id).catch(() => showToast('Atlas detail is not available. Please retry.'));
+          return;
+        }
         try {
           window.dispatchEvent(new CustomEvent(it.event, { detail: it.detail }));
         } catch { /* Non-browser runtime no-op */ }
@@ -1621,7 +1951,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const more = this.el('div', 'cdp-economic-source', `+${items.length - 5} more`);
       section.append(more);
     }
-    this.energyBody.append(section);
+    body.append(section);
   }
 
   private buildDonutSvg(
@@ -1700,7 +2030,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const fuelModeSelect = this.el('select', '') as HTMLSelectElement;
     fuelModeSelect.style.cssText = disruptionSelect.style.cssText;
-    for (const [val, label] of [['oil', 'Oil'], ['gas', 'Gas (LNG)'], ['both', 'Both']] as const) {
+    for (const [val, label] of [['oil', 'Oil'], ['gas', 'Gas (liquefied natural gas)'], ['both', 'Both']] as const) {
       const opt = this.el('option', '') as HTMLOptionElement;
       opt.value = val;
       opt.textContent = label;
@@ -1735,9 +2065,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       coverageBadge.style.display = 'none';
       coverageBadge.textContent = '';
 
-      const url = toApiUrl(`/api/intelligence/v1/compute-energy-shock?country_code=${encodeURIComponent(code)}&chokepoint_id=${encodeURIComponent(chokepoint)}&disruption_pct=${disruption}&fuel_mode=${encodeURIComponent(fuelModeSelect.value)}`);
-      globalThis.fetch(url)
-        .then((r) => r.json() as Promise<ComputeEnergyShockScenarioResponse>)
+      const url = (this.source?.mode === 'host' ? (path: string) => `https://www.worldmonitor.app${path}` : toApiUrl)(`/api/intelligence/v1/compute-energy-shock?country_code=${encodeURIComponent(code)}&chokepoint_id=${encodeURIComponent(chokepoint)}&disruption_pct=${disruption}&fuel_mode=${encodeURIComponent(fuelModeSelect.value)}`);
+      (this.source?.fetch ?? globalThis.fetch)(url, { signal: this.signal })
+        .then((r) => { if (!r.ok) throw new Error('Scenario unavailable'); return r.json(); })
+        .then((result) => result as ComputeEnergyShockScenarioResponse)
         .then((result) => {
           resultArea.replaceChildren();
           if (result.gasImpact || (result.gasSensitivity && result.gasSensitivity.modelBasis !== 'assumed_route_sensitivity')) {
@@ -1878,14 +2209,14 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
       const gasTitle = this.el('div', '');
       gasTitle.style.cssText = 'font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;color:#e5e7eb;margin-bottom:4px';
-      gasTitle.textContent = 'Gas / LNG assumed sensitivity';
+      gasTitle.textContent = 'Gas / liquefied natural gas assumed sensitivity';
       gasSection.append(gasTitle);
 
       const metrics = this.el('div', 'cdp-economic-source');
       const lngShare = gi.lngShareOfImports == null ? 'unknown' : `${(gi.lngShareOfImports * 100).toFixed(0)}%`;
       const loss = gi.lngDisruptionTj > 0 && gi.lngDisruptionTj < 0.1 ? '<0.1' : gi.lngDisruptionTj.toFixed(1);
       const demandPct = gi.deficitPct > 0 && gi.deficitPct < 0.1 ? '<0.1' : gi.deficitPct.toFixed(1);
-      metrics.textContent = `Recorded LNG share: ${lngShare} | Assumed monthly loss: ${loss} TJ | Share of recorded demand: ${demandPct}%`;
+      metrics.textContent = `Recorded liquefied natural gas share: ${lngShare} | Assumed monthly loss: ${loss} terajoules | Share of recorded demand: ${demandPct}%`;
       gasSection.append(metrics);
 
       if (gi.storage) {
@@ -1925,7 +2256,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const table = this.el('table', 'cdp-maritime-table');
     const thead = this.el('thead');
     const headerRow = this.el('tr');
-    for (const col of ['Port', 'Tanker Calls (30d)', 'Trend', 'Import DWT', 'Export DWT']) {
+    for (const col of ['Port', 'Tanker Calls (30d)', 'Trend', 'Import vessel capacity (tonnes)', 'Export vessel capacity (tonnes)']) {
       const th = this.el('th', '', col);
       headerRow.append(th);
     }
@@ -1987,6 +2318,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.cachedTradeExposureData = null;
       this.cachedSectors = [];
       this.tradeExposureBody.replaceChildren(this.makeEmpty('No trade exposure data available for this country.'));
+      this.updateMultiSectorCostShock(null);
       return;
     }
 
@@ -1994,7 +2326,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.cachedSectors = sectors ?? [];
 
     this.renderTradeExposureContent();
-    if (hasPremiumAccess(getAuthState())) {
+    if (this.canRequestPremium()) {
       if (data.primaryChokepointId) void this.loadCostShock(data.primaryChokepointId);
       else this.updateMultiSectorCostShock(null);
     }
@@ -2186,7 +2518,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     bypassSection.append(bypassHeading);
     const bypassContent = this.el('div');
 
-    const isPro = hasPremiumAccess(getAuthState());
+    const isPro = this.canRequestPremium();
     if (!isPro) {
       const gateEl = this.makeProLocked('Bypass corridors available with PRO');
       gateEl.addEventListener('click', () => trackGateHit('sector-bypass-corridors'), { once: true });
@@ -2195,7 +2527,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       bypassContent.append(this.makeLoading('Loading bypass options\u2026'));
       this.sectorBypassAbort = new AbortController();
       const signal = this.sectorBypassAbort.signal;
-      void fetchBypassOptions(sector.primaryChokepointId, 'container', 100).then(resp => {
+      void (this.source ? this.source.bypass(sector.primaryChokepointId, combineAbortSignals([signal, this.signal])) : fetchBypassOptions(sector.primaryChokepointId, 'container', 100)).then(resp => {
         if (signal.aborted) return;
         bypassContent.replaceChildren();
         const top3 = resp.options.slice(0, 3);
@@ -2211,7 +2543,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         tbl.append(tHead);
         const tBody = this.el('tbody');
         const riskTierMap: Record<string, string> = {
-          WAR_RISK_TIER_UNSPECIFIED: 'Normal',
+          WAR_RISK_TIER_UNSPECIFIED: 'Unknown',
           WAR_RISK_TIER_WAR_ZONE: 'War Zone',
           WAR_RISK_TIER_CRITICAL: 'Critical',
           WAR_RISK_TIER_HIGH: 'High',
@@ -2245,7 +2577,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   public updateProductImports(data: CountryProductsResponse | null): void {
     if (!this.productImportsBody) return;
     this.productImportsBody.replaceChildren();
-    if (!data || data.products.length === 0) {
+    if (!data) {
+      this.productImportsBody.append(this.makeEmpty('No data available'));
+      return;
+    }
+    this.productImportsBody.append(this.el('div', 'cdp-card-footer', `Cache state: ${data.evidence?.state?.trim() || 'unavailable'} · Cache source: ${data.evidence?.source?.trim() || 'unavailable'}`));
+    if (data.products.length === 0) {
       this.productImportsBody.append(this.makeEmpty('No data available'));
       return;
     }
@@ -2431,6 +2768,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     );
     mount.append(header);
 
+    const year = Number.isInteger(product.year) && product.year > 0 ? product.year : 'unavailable';
+    mount.append(this.el('div', 'cdp-card-footer', `Source: UN Comtrade HS4 bilateral · ${year}`));
+    const selection = product.partnerBasis === 'leading_5' ? 'Leading five' : product.partnerBasis === 'share_threshold' ? 'Suppliers selected by share' : 'Supplier selection unavailable';
+    const count = product.partnerBasis !== 'leading_5' && typeof product.omittedPartnerCount === 'number' && Number.isInteger(product.omittedPartnerCount) && product.omittedPartnerCount >= 0 ? product.omittedPartnerCount : 'unavailable';
+    const share = product.partnerBasis !== 'leading_5' && typeof product.omittedPartnerShare === 'number' && Number.isFinite(product.omittedPartnerShare) && product.omittedPartnerShare >= 0 && product.omittedPartnerShare <= 1 ? `${product.omittedPartnerShare * 100}%` : 'unavailable';
+    mount.append(this.el('div', 'cdp-card-footer', `${selection} · Omitted suppliers: ${count} · Omitted share: ${share}`));
+
     if (product.topExporters.length === 0) {
       mount.append(this.makeEmpty('No exporter data'));
       return;
@@ -2566,7 +2910,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const importerIso2 = this.currentCode;
     const capturedCode = this.getCode();
     if (importerIso2) {
-      fetchChokepointStatus().then(resp => {
+      (this.source ? this.source.chokepoints(this.signal) : fetchChokepointStatus()).then(resp => {
         if (this.getCode() !== capturedCode) return;
         if (!resp.chokepoints.length) return;
         const scores: ChokepointScoreMap = new Map();
@@ -2579,9 +2923,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         console.warn('[deep-dive] Chokepoint status unavailable for route risk enrichment');
       });
     }
-
-    const source = this.el('div', 'cdp-card-footer', `Source: UN Comtrade HS4 bilateral \u00B7 ${product.year}`);
-    mount.append(source);
   }
 
   private factItem(label: string, value: string): HTMLElement {
@@ -2595,20 +2936,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return this.currentBriefIsFallback;
   }
 
-  public updateScore(score: CountryScore | null, _signals: CountryBriefSignals): void {
+  public updateScore(score: CountryScore | null, _signals: CountrySignalCounts | null): void {
     this.currentScore = score;
-    this.currentSignals = _signals;
-    if (this.signalsBody) {
-      const chips = this.buildSignalChipsElement(_signals);
-      this.signalsBody.querySelector('.cdp-signal-chips')?.replaceWith(chips);
-      const seeded: CountryDeepDiveSignalDetails = {
-        critical: _signals.criticalNews + Math.max(0, _signals.activeStrikes),
-        high: _signals.militaryFlights + _signals.militaryVessels + _signals.protests,
-        medium: _signals.outages + _signals.cyberThreats + _signals.aisDisruptions + _signals.radiationAnomalies,
-        low: _signals.earthquakes + (_signals.temporalAnomalies ?? 0) + _signals.satelliteFires,
-        recentHigh: [],
-      };
-      this.renderSignalBreakdown(seeded);
+    if (_signals) {
+      this.currentSignals = _signals;
+      this.signalsBody?.querySelector('.cdp-signal-chips')?.replaceWith(this.buildSignalChipsElement(_signals));
+      if (!this.currentSignalDetails) this.renderInitialSignalBreakdown(_signals);
     }
     if (!this.scoreCard) return;
     // Partial DOM update: score number, level color, trend, component bars only
@@ -2645,7 +2978,17 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       ? delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'
       : 'flat';
 
-    const base = this.economicIndicators.filter((item) => item.label !== 'Stock Index');
+    const base = this.economicIndicators.filter((item) => item.label !== 'Stock Index' && item.label !== 'Weekly Momentum');
+    const weeklyValue = data.weekChangePercent.trim();
+    if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(weeklyValue) && Number.isFinite(delta)) {
+      const magnitude = weeklyValue.replace(/^[+-]/, '');
+      const negative = weeklyValue.startsWith('-') && /[1-9]/.test(magnitude.split(/[eE]/)[0] ?? '');
+      base.unshift({
+        label: 'Weekly Momentum',
+        value: `${negative ? '-' : '+'}${magnitude}%`,
+        trend,
+      });
+    }
     base.unshift({
       label: 'Stock Index',
       value: `${data.indexName}: ${data.price} ${data.currency}`,
@@ -2656,13 +2999,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.renderEconomicIndicators();
   }
 
-  public updateMarkets(markets: PredictionMarket[]): void {
+  public updateMarkets(markets: PredictionMarket[], metadata?: { fetchedAt?: number }): void {
     if (!this.marketsBody) return;
     this.marketsBody.replaceChildren();
 
     if (markets.length === 0) {
       this.marketsBody.append(this.makeEmpty(t('countryBrief.noMarkets')));
-      return;
     }
 
     for (const market of markets.slice(0, 5)) {
@@ -2671,7 +3013,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const title = this.el('div', 'cdp-market-title', market.title);
       top.append(title);
 
-      const link = sanitizeUrl(market.url || '');
+      const link = sanitizeUrl((market.source === 'kalshi' ? market.displayUrl ?? market.url : market.url) || '');
       if (link) {
         const anchor = this.el('a', 'cdp-market-link', 'Open');
         anchor.setAttribute('href', link);
@@ -2686,6 +3028,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const sourceBadge = this.el('span', 'prediction-source', source);
       sourceBadge.dataset.source = market.source === 'kalshi' ? 'kalshi' : 'polymarket';
       meta.append(sourceBadge, document.createTextNode(market.endDate ? ` Ends ${this.shortDate(market.endDate)}` : ' Active'));
+      const identity = this.el('div', 'cdp-market-contract', `Contract: ${market.id || 'Unknown'}`);
+      identity.style.overflowWrap = 'anywhere';
+      meta.append(identity);
       item.append(top, prob, meta);
 
       const expanded = this.el('div', 'cdp-expanded-only');
@@ -2705,6 +3050,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
       this.marketsBody.append(item);
     }
+    const fetchedAt = metadata?.fetchedAt;
+    const snapshot = typeof fetchedAt === 'number' && Number.isFinite(fetchedAt) && fetchedAt > 0 ? new Date(fetchedAt) : null;
+    const snapshotText = snapshot && Number.isFinite(snapshot.getTime()) ? `Market data snapshot: ${snapshot.toISOString()}. This time applies to the list.` : 'Snapshot time unavailable.';
+    this.marketsBody.append(this.el('div', 'cdp-section-source cdp-economic-source', `${snapshotText} Quote times are not supplied.`));
   }
 
   public updateBrief(data: CountryIntelData): void {
@@ -2726,7 +3075,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.currentBriefIsFallback = data.fallback === true;
 
     const briefSources = collectBriefSources(data.sources ?? [], 6);
-    const summaryHtml = this.formatBrief(summarizeCountryBrief(data.brief), briefSources, 0);
+    const summaryHtml = this.formatBrief(summarizeCountryBrief(data.brief), briefSources, 0, data.evidence);
     const text = this.el('div', 'cdp-assessment-text cdp-summary-only');
     setTrustedHtml(text, trustedHtml(summaryHtml, "legacy direct innerHTML migration"));
 
@@ -2736,7 +3085,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (data.generatedAt) metaTokens.push(`Updated ${new Date(data.generatedAt).toLocaleTimeString()}`);
     const meta = this.el('div', 'cdp-assessment-meta', metaTokens.join(' • '));
     this.briefBody.append(text, meta);
-    const sourcesFooter = renderBriefSourcesFooter(briefSources, { className: 'cdp-brief-sources' });
+    const sourcesFooter = renderBriefSourcesFooter(briefSources, { className: 'cdp-brief-sources' })
+      + renderBriefEvidenceFooter(data.evidence, { className: 'cdp-brief-sources cdp-brief-evidence' });
     if (sourcesFooter) {
       const summarySources = this.el('div', 'cdp-summary-only');
       setTrustedHtml(summarySources, trustedHtml(sourcesFooter, "legacy direct innerHTML migration"));
@@ -2745,7 +3095,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const expandedBrief = this.el('div', 'cdp-expanded-only');
     const fullText = this.el('div', 'cdp-assessment-text');
-    setTrustedHtml(fullText, trustedHtml(this.formatBrief(data.brief, briefSources, this.currentHeadlineCount), "legacy direct innerHTML migration"));
+    setTrustedHtml(fullText, trustedHtml(this.formatBrief(data.brief, briefSources, this.currentHeadlineCount, data.evidence), "legacy direct innerHTML migration"));
     expandedBrief.append(fullText);
     if (sourcesFooter) {
       const sources = this.el('div', 'cdp-expanded-only');
@@ -2770,7 +3120,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.content.append(loading);
   }
 
-  private renderSkeleton(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals): void {
+  private renderSkeleton(country: string, code: string, score: CountryScore | null, signals: CountrySignalCounts | null): void {
     this.resetPanelContent();
 
     const shell = this.el('div', 'cdp-shell');
@@ -2787,28 +3137,36 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     // mount a fresh one for the new country.
     const followHost = this.el('span', 'cdp-follow-btn-host');
     followHost.dataset.country = code;
-    const handle = renderFollowButton({
-      countryCode: code,
-      countryName: country,
-      size: 'md',
-    });
-    setTrustedHtml(followHost, trustedHtml(handle.html, "legacy direct innerHTML migration"));
-    this.followButtonTeardown = handle.attach(followHost);
-
-    // U8 (degraded path) — "Notify me about this country" sub-action.
-    // Visible only when the user is currently following this country.
-    // The schema PR for `alertRules.countries` has NOT merged, so the
-    // click just opens the existing notifications settings tab — no
-    // pre-fill. See plan U8 R9 + the TODO inside notify-country-link.ts
-    // for the future pre-fill injection point.
     const notifyHost = this.el('span', 'cdp-notify-link-host');
-    notifyHost.dataset.country = code;
-    const notifyHandle = renderNotifyCountryLink({
-      countryCode: code,
-      countryName: country,
-    });
-    setTrustedHtml(notifyHost, trustedHtml(notifyHandle.html, "legacy direct innerHTML migration"));
-    this.notifyLinkTeardown = notifyHandle.attach(notifyHost);
+    if (this.source?.mode === 'host') {
+      const link = this.el('a', 'cdp-action-btn', 'Follow / notifications on WorldMonitor') as HTMLAnchorElement;
+      link.href = `https://www.worldmonitor.app/dashboard?c=${encodeURIComponent(code)}`;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      followHost.append(link);
+    } else {
+      const handle = renderFollowButton({
+        countryCode: code,
+        countryName: country,
+        size: 'md',
+      });
+      setTrustedHtml(followHost, trustedHtml(handle.html, "legacy direct innerHTML migration"));
+      this.followButtonTeardown = handle.attach(followHost);
+
+      // U8 (degraded path) — "Notify me about this country" sub-action.
+      // Visible only when the user is currently following this country.
+      // The schema PR for `alertRules.countries` has NOT merged, so the
+      // click just opens the existing notifications settings tab — no
+      // pre-fill. See plan U8 R9 + the TODO inside notify-country-link.ts
+      // for the future pre-fill injection point.
+      notifyHost.dataset.country = code;
+      const notifyHandle = renderNotifyCountryLink({
+        countryCode: code,
+        countryName: country,
+      });
+      setTrustedHtml(notifyHost, trustedHtml(notifyHandle.html, "legacy direct innerHTML migration"));
+      this.notifyLinkTeardown = notifyHandle.attach(notifyHost);
+    }
 
     left.append(flag, titleWrap, followHost, notifyHost);
 
@@ -2829,7 +3187,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     setTrustedHtml(shareBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>', "legacy direct innerHTML migration"));
     shareBtn.addEventListener('click', () => {
       if (!this.currentCode || !this.currentName) return;
-      const url = `${window.location.origin}/dashboard?c=${encodeURIComponent(this.currentCode)}`;
+      const url = `${this.source?.mode === 'host' ? 'https://www.worldmonitor.app' : window.location.origin}/dashboard?c=${encodeURIComponent(this.currentCode)}`;
       navigator.clipboard.writeText(url).then(() => {
         const orig = shareBtn.innerHTML;
         setTrustedHtml(shareBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>', "legacy direct innerHTML migration"));
@@ -2851,18 +3209,27 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const evidenceButton = this.el('button', 'cdp-action-btn cdp-evidence-export-btn', 'Evidence') as HTMLButtonElement;
     evidenceButton.setAttribute('type', 'button');
     evidenceButton.setAttribute('title', 'Export evidence bundle as Markdown (PRO)');
-    evidenceButton.addEventListener('click', () => {
-      if (!hasPremiumAccess(getAuthState())) {
+    evidenceButton.addEventListener('click', async () => {
+      if (evidenceButton.disabled) return;
+      if (!this.canRequestPremium()) {
         trackGateHit('evidence-export');
         showToast('Evidence export is available on Pro.');
         return;
       }
-      this.exportEvidenceBundle();
+      const signal = this.signal;
+      const code = this.currentCode;
+      evidenceButton.disabled = true;
+      try {
+        const result = await this.exportEvidenceBundle(signal);
+        if (!signal.aborted && this.signal === signal && this.currentCode === code && this.isVisible() && result) showToast(countryDownloadMessage(result));
+      } catch {
+        if (!signal.aborted && this.signal === signal && this.currentCode === code && this.isVisible()) showToast(countryDownloadMessage({ state: 'unconfirmed' }));
+      } finally { evidenceButton.disabled = false; }
     });
     const decisionButton = this.el('button', 'cdp-action-btn', t('components.decisionBrief.title')) as HTMLButtonElement;
     decisionButton.type = 'button';
     decisionButton.addEventListener('click', () => {
-      if (!hasPremiumAccess(getAuthState())) {
+      if (!this.canRequestPremium()) {
         trackGateHit('decision-brief');
         showToast(t('components.decisionBrief.locked'));
         return;
@@ -2872,7 +3239,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const commodityButton = this.el('button', 'cdp-action-btn', t('components.decisionBrief.commodityTitle')) as HTMLButtonElement;
     commodityButton.type = 'button';
     commodityButton.addEventListener('click', () => {
-      if (!hasPremiumAccess(getAuthState())) { trackGateHit('decision-brief'); showToast(t('components.decisionBrief.locked')); return; }
+      if (!this.canRequestPremium()) { trackGateHit('decision-brief'); showToast(t('components.decisionBrief.locked')); return; }
       void this.openDecisionBrief(commodityButton, true);
     });
     right.append(shareBtn, maxBtn, storyButton, exportButton, decisionButton, commodityButton, evidenceButton);
@@ -2922,8 +3289,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     factsBody.append(this.makeLoading(t('countryBrief.loadingFacts')));
 
     const [energyCard, energyBody] = this.sectionCard('energy', 'Energy Profile', 'Oil import dependency, chokepoint exposure, and energy shock data from JODI, IEA, and PortWatch.');
-    this.energyBody = energyBody;
-    energyBody.append(this.makeLoading('Loading energy data\u2026'));
+    this.energyBody = this.source?.mode === 'host' ? this.el('div', 'cdp-energy-metrics') : energyBody;
+    if (this.source?.mode === 'host') {
+      this.hostedAtlasBody = this.el('div', 'cdp-country-atlas');
+      energyBody.append(this.energyBody, this.hostedAtlasBody);
+    }
+    this.energyBody.append(this.makeLoading('Loading energy data\u2026'));
 
     const [foodStocksCard, foodStocksBody] = this.sectionCard(
       'food',
@@ -2935,7 +3306,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     // premium RPCs for a free user cost two guaranteed 401s per deep-dive open
     // and painted a dead "unavailable" card where the sibling cards show the
     // upgrade prompt.
-    const isPro = hasPremiumAccess(getAuthState());
+    const isPro = this.canRequestPremium();
     if (isPro) {
       foodStocksBody.append(this.makeLoading(t('countryBrief.loadingFoodStocks')));
       void this.renderFoodStocks(code, foodStocksBody);
@@ -3076,8 +3447,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       // a gateway-level rejection on it alone (billing verification, rate limit,
       // Clerk token race) must not discard country data that arrived fine.
       const [countryResult, worldResult] = await Promise.allSettled([
-        getFoodStocks({ countryCode: code, signal: this.signal }),
-        getFoodStocks({ countryCode: 'WORLD', signal: this.signal }),
+        this.source ? this.source.food(code, this.signal) : getFoodStocks({ countryCode: code, signal: this.signal }),
+        this.source ? this.source.food('WORLD', this.signal) : getFoodStocks({ countryCode: 'WORLD', signal: this.signal }),
       ]);
       if (!stillCurrent()) return;
       type FoodStocks = Awaited<ReturnType<typeof getFoodStocks>>;
@@ -3120,11 +3491,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       for (const rec of rows) {
         const tr = this.el('tr', '');
         const worldRec = worldByCommodity.get(rec.commodity);
+        const worldRatio = this.formatStocksToUse(worldRec?.stocksToUse, worldRec);
+        const worldLabel = worldRatio !== '—' && worldRec?.marketingYear
+          ? `${worldRatio} (${worldRec.marketingYear})`
+          : worldRatio;
         tr.append(
           this.el('td', '', this.foodStockCommodityLabel(rec.commodity)),
           this.el('td', '', rec.marketingYear || '—'),
           this.el('td', '', this.formatStocksToUse(rec.stocksToUse, rec)),
-          this.el('td', '', this.formatStocksToUse(worldRec?.stocksToUse, worldRec)),
+          this.el('td', '', worldLabel),
         );
         tbody.append(tr);
       }
@@ -3140,7 +3515,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
           widget: 'food-stocks',
         });
       }
-      if (stillCurrent()) body.replaceChildren(this.makeEmpty(t('countryBrief.foodStocksUnavailable')));
+      if (stillCurrent()) {
+        if (error instanceof CountrySectionError && error.state === 'locked') this.setSectionFailure('food', 'locked', error.message);
+        else this.setSectionFailure('food', 'unavailable', t('countryBrief.foodStocksUnavailable'));
+      }
     }
   }
 
@@ -3155,7 +3533,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
       const { getDemographicsCapability } = await import('@/services/resilience');
       if (!stillCurrent() || signal.aborted) return;
-      const data = await getDemographicsCapability({ countryCode: code, signal });
+      const data = await (this.source ? this.source.demographics(code, signal) : getDemographicsCapability({ countryCode: code, signal }));
       if (!stillCurrent()) return;
       if (!data.available) {
         body.replaceChildren(this.makeEmpty(t('countryBrief.demographicsCapability.unavailable')));
@@ -3175,7 +3553,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
           widget: 'demographics-capability',
         });
       }
-      if (stillCurrent()) body.replaceChildren(this.makeEmpty(t('countryBrief.demographicsCapability.unavailable')));
+      if (stillCurrent()) this.setSectionFailure('demographics', error instanceof CountrySectionError ? error.state : 'unavailable', t('countryBrief.demographicsCapability.unavailable'));
     }
   }
 
@@ -3185,7 +3563,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     let lastAccess: boolean | null = null;
     const syncAccess = (): void => {
       if (this.currentCode !== code || this.fiveFactorScorecardBody !== body) return;
-      const hasAccess = hasPremiumAccess(getAuthState());
+      const hasAccess = this.canRequestPremium();
       if (hasAccess === lastAccess) return;
       lastAccess = hasAccess;
       this.fiveFactorScorecardRequestId += 1;
@@ -3200,8 +3578,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.fiveFactorScorecardAbortController = accessController;
       void this.renderFiveFactorScorecard(code, body, accessController.signal);
     };
-    this.fiveFactorScorecardAuthUnsubscribe = subscribeAuthState(syncAccess);
-    this.fiveFactorScorecardEntitlementUnsubscribe = onEntitlementChange(syncAccess);
+    if (this.source?.mode !== 'host') {
+      this.fiveFactorScorecardAuthUnsubscribe = subscribeAuthState(syncAccess);
+      this.fiveFactorScorecardEntitlementUnsubscribe = onEntitlementChange(syncAccess);
+    }
     syncAccess();
   }
 
@@ -3229,8 +3609,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
       const { getFiveFactorScorecard } = await import('@/services/scorecard');
       if (!stillCurrent() || signal.aborted || accessSignal.aborted) return;
-      const response = await getFiveFactorScorecard(code, combineAbortSignals([signal, accessSignal]));
-      if (!stillCurrent() || !hasPremiumAccess(getAuthState())) return;
+      const response = await (this.source ? this.source.factors(code, combineAbortSignals([signal, accessSignal])) : getFiveFactorScorecard(code, combineAbortSignals([signal, accessSignal])));
+      if (!stillCurrent() || !this.canRequestPremium()) return;
       body.replaceChildren(renderFiveFactorScorecardSection(response, t));
     } catch (error) {
       console.warn('[CountryDeepDivePanel] five-factor scorecard load failed', error);
@@ -3241,8 +3621,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
           widget: 'five-factor-scorecard',
         });
       }
-      if (stillCurrent() && hasPremiumAccess(getAuthState())) {
-        body.replaceChildren(this.makeEmpty(t('countryBrief.fiveFactorScorecard.unavailable')));
+      if (stillCurrent() && this.canRequestPremium()) {
+        this.setSectionFailure('factors', error instanceof CountrySectionError ? error.state : 'unavailable', t('countryBrief.fiveFactorScorecard.unavailable'));
       }
     } finally {
       if (this.fiveFactorScorecardAbortController?.signal === accessSignal) {
@@ -3267,9 +3647,33 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       // failure. The `kind` tag claims it for beforeSend: a scorecard deadline
       // or a network failure arrives with zero frames (`signal timed out`,
       // `Failed to fetch`) and would otherwise be dropped as extension noise.
+      //
+      // A 401/403 is the one failure this panel cannot diagnose from the event
+      // alone. Every premium widget here fetches only once `hasPremiumAccess()`
+      // is true, so a denial means the client's premium belief and the
+      // credential the premium injector actually attached disagreed — and the
+      // event said nothing about which of the four arms had granted access
+      // (WORLDMONITOR-147). Record the arm and the client's own entitlement
+      // belief; together they separate "a browser-local key unlocked the panel"
+      // from "the Clerk session lapsed mid-flight".
+      //
+      // Denials ONLY. A deadline or a network failure says nothing about the
+      // account, and widening this to every failure would both attach account
+      // state to unrelated events and break the exact tag-shape assertion in
+      // tests/five-factor-scorecard-ui-registration.test.mjs, which is the
+      // preservation control for the deadline capture.
+      const status = (error as { statusCode?: unknown } | null)?.statusCode;
+      const denial = status === 401 || status === 403;
       Sentry.captureException?.(error instanceof Error ? error : new Error(String(error)), {
-        tags: { kind: 'country_deep_dive_load_failed', surface: 'country-deep-dive', widget: details.widget },
-        extra: { countryCode },
+        tags: {
+          kind: 'country_deep_dive_load_failed',
+          surface: 'country-deep-dive',
+          widget: details.widget,
+          ...(denial ? { status: String(status), premium_grant: readPremiumAccessGrant(getAuthState()) } : {}),
+        },
+        extra: denial
+          ? { countryCode, entitlementBelief: readClientEntitlementBelief(getAuthState()) }
+          : { countryCode },
       });
     });
   }
@@ -3325,7 +3729,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       .then(({ ResilienceWidget }) => {
         if (requestId !== this.resilienceWidgetRequestId) return;
         if (typeof ResilienceWidget !== 'function') throw new Error('ResilienceWidget export is unavailable.');
-        const widget = new ResilienceWidget(code);
+        const widget = new ResilienceWidget(code, this.source?.mode === 'host' ? { load: country => this.source!.resilience(country, this.signal) } : undefined);
         try {
           if (this.pendingResilienceEnergyMix) {
             widget.setEnergyMix(this.pendingResilienceEnergyMix);
@@ -3377,6 +3781,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private resetPanelContent(): void {
+    this.currentSignalDetails = null;
     this.outputClose?.();
     this.presentation?.destroy();
     this.presentation = null;
@@ -3396,9 +3801,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.map?.clearHighlightedRoute();
     this.scoreCard = null;
     this.currentMilitarySummary = null;
+    this.defenseIndustrialFailure = null;
     this.currentDefenseIndustrial = null;
     this.defenseIndustrialBody = null;
     this.energyBody = null;
+    this.hostedAtlasBody = null;
     this.maritimeBody = null;
     this.tradeExposureBody = null;
     this.chinaSummaryBody = null;
@@ -3421,15 +3828,18 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.costShockCalcTotalLabel = null;
     this.costShockCalcPrimaryChokepoint = null;
     this.costShockCalcClosureDays = 30;
+    this.costShockCalcResultDays = null;
+    this.costShockCalcStatus = null;
     this.content.replaceChildren();
   }
 
-  private buildSignalChipsElement(signals: CountryBriefSignals): HTMLElement {
+  private buildSignalChipsElement(signals: CountrySignalCounts | null): HTMLElement {
     const chips = this.el('div', 'cdp-signal-chips');
+    if (!signals) { chips.append(this.makeEmpty('Dashboard signal observations are unavailable in this host.')); return chips; }
     this.addSignalChip(chips, signals.criticalNews, t('countryBrief.chips.criticalNews'), '🚨', 'conflict');
     this.addSignalChip(chips, signals.protests, t('countryBrief.chips.protests'), '📢', 'protest');
-    this.addSignalChip(chips, signals.militaryFlights, t('countryBrief.chips.militaryAir'), '✈️', 'military', `${signals.militaryFlights} near · ${signals.militaryFlightsInCountry} inside borders`);
-    this.addSignalChip(chips, signals.militaryVessels, t('countryBrief.chips.navalVessels'), '⚓', 'military', `${signals.militaryVessels} near · ${signals.militaryVesselsInCountry} inside borders`);
+    this.addSignalChip(chips, signals.militaryFlights, t('countryBrief.chips.militaryAir'), '✈️', 'military', `${signals.militaryFlights ?? 'unknown'} near · ${signals.militaryFlightsInCountry ?? 'unknown'} inside borders`);
+    this.addSignalChip(chips, signals.militaryVessels, t('countryBrief.chips.navalVessels'), '⚓', 'military', `${signals.militaryVessels ?? 'unknown'} near · ${signals.militaryVesselsInCountry ?? 'unknown'} inside borders`);
     this.addSignalChip(chips, signals.outages, t('countryBrief.chips.outages'), '🌐', 'outage');
     this.addSignalChip(chips, signals.aisDisruptions, t('countryBrief.chips.aisDisruptions'), '🚢', 'outage');
     this.addSignalChip(chips, signals.satelliteFires, t('countryBrief.chips.satelliteFires'), '🔥', 'climate');
@@ -3440,8 +3850,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.addSignalChip(chips, signals.temporalAnomalies, t('countryBrief.chips.temporalAnomalies'), '⏱️', 'outage');
     }
     this.addSignalChip(chips, signals.cyberThreats, t('countryBrief.chips.cyberThreats'), '🛡️', 'conflict');
+    this.addSignalChip(chips, signals.thermalEscalations, 'Thermal escalations', '🌡️', 'climate');
     this.addSignalChip(chips, signals.earthquakes, t('countryBrief.chips.earthquakes'), '🌍', 'quake');
-    if (signals.displacementOutflow > 0) {
+    if (signals.displacementOutflow === null) {
+      chips.append(this.makeSignalChip(`🌊 ${t('countryBrief.chips.displaced')} unavailable`, 'unavailable'));
+    } else if (signals.displacementOutflow > 0) {
       const fmt = signals.displacementOutflow >= 1_000_000
         ? `${(signals.displacementOutflow / 1_000_000).toFixed(1)}M`
         : `${(signals.displacementOutflow / 1000).toFixed(0)}K`;
@@ -3450,11 +3863,17 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.addSignalChip(chips, signals.climateStress, t('countryBrief.chips.climateStress'), '🌡️', 'climate');
     this.addSignalChip(chips, signals.conflictEvents, t('countryBrief.chips.conflictEvents'), '⚔️', 'conflict');
     this.addSignalChip(chips, signals.activeStrikes, t('countryBrief.chips.activeStrikes'), '💥', 'conflict');
-    if (signals.travelAdvisories > 0 && signals.travelAdvisoryMaxLevel) {
+    if (signals.travelAdvisories === null) {
+      chips.append(this.makeSignalChip(`⚠️ ${t('countryBrief.chips.advisory')} unavailable`, 'unavailable'));
+    } else if (signals.travelAdvisories > 0 && signals.travelAdvisoryMaxLevel) {
       const advLabel = signals.travelAdvisoryMaxLevel === 'do-not-travel' ? t('countryBrief.chips.doNotTravel')
         : signals.travelAdvisoryMaxLevel === 'reconsider' ? t('countryBrief.chips.reconsiderTravel')
+        : signals.travelAdvisoryMaxLevel === 'normal' ? t('countryBrief.chips.normalPrecautions')
+        : signals.travelAdvisoryMaxLevel === 'info' ? t('components.securityAdvisories.levels.info')
         : t('countryBrief.chips.exerciseCaution');
       chips.append(this.makeSignalChip(`⚠️ ${signals.travelAdvisories} ${t('countryBrief.chips.advisory')}: ${advLabel}`, 'advisory'));
+    } else {
+      this.addSignalChip(chips, signals.travelAdvisories, t('countryBrief.chips.advisory'), '⚠️', 'advisory');
     }
     this.addSignalChip(chips, signals.orefSirens, t('countryBrief.chips.activeSirens'), '🚨', 'conflict');
     this.addSignalChip(chips, signals.orefHistory24h, t('countryBrief.chips.sirens24h'), '🕓', 'conflict');
@@ -3463,9 +3882,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return chips;
   }
 
-  private renderInitialSignals(signals: CountryBriefSignals): void {
+  private renderInitialSignals(signals: CountrySignalCounts | null): void {
+    this.currentSignalDetails = null;
     if (!this.signalsBody) return;
     this.signalsBody.replaceChildren();
+    if (!signals) { this.signalsBody.append(this.makeEmpty('Dashboard signal observations are unavailable in this host.')); return; }
 
     const chips = this.buildSignalChipsElement(signals);
     this.signalsBody.append(chips);
@@ -3474,18 +3895,26 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.signalRecentBody = this.el('div', 'cdp-signal-recent');
     this.signalsBody.append(this.signalBreakdownBody, this.signalRecentBody);
 
-    const seeded: CountryDeepDiveSignalDetails = {
-      critical: signals.criticalNews + Math.max(0, signals.activeStrikes),
-      high: signals.militaryFlights + signals.militaryVessels + signals.protests,
-      medium: signals.outages + signals.cyberThreats + signals.aisDisruptions + signals.radiationAnomalies,
-      low: signals.earthquakes + (signals.temporalAnomalies ?? 0) + signals.satelliteFires,
-      recentHigh: [],
-    };
-    this.renderSignalBreakdown(seeded);
-    this.signalRecentBody.append(this.makeLoading('Loading top high-severity signals…'));
+    if (this.renderInitialSignalBreakdown(signals)) this.signalRecentBody.append(this.makeLoading('Loading top high-severity signals…'));
   }
 
-  private addSignalChip(container: HTMLElement, count: number, label: string, icon: string, cls: string, tooltip?: string): void {
+  private renderInitialSignalBreakdown(signals: CountrySignalCounts): boolean {
+    if (!this.signalBreakdownBody) return false;
+    const sum = (...values: Array<number | null>) => values.some(value => value === null) ? null : values.reduce<number>((total, value) => total + (value ?? 0), 0);
+    const critical = sum(signals.criticalNews, signals.activeStrikes);
+    const high = sum(signals.militaryFlights, signals.militaryVessels, signals.protests);
+    const medium = sum(signals.outages, signals.cyberThreats, signals.aisDisruptions, signals.radiationAnomalies);
+    const low = sum(signals.earthquakes, signals.temporalAnomalies, signals.satelliteFires);
+    if (critical === null || high === null || medium === null || low === null) {
+      this.signalBreakdownBody.replaceChildren(this.makeEmpty('Aggregate severity and recent high-severity observations are unavailable. Military counts alone do not establish these totals.'));
+      return false;
+    }
+    this.renderSignalBreakdown({ critical, high, medium, low, recentHigh: [] });
+    return true;
+  }
+
+  private addSignalChip(container: HTMLElement, count: number | null, label: string, icon: string, cls: string, tooltip?: string): void {
+    if (count === null) { container.append(this.makeSignalChip(`${icon} ${label} unavailable`, 'unavailable')); return; }
     if (count <= 0) return;
     container.append(this.makeSignalChip(`${icon} ${count} ${label}`, cls, tooltip));
   }
@@ -3635,15 +4064,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         children.push(this.el(
           'div',
           'cdp-china-summary-empty',
-          group.unavailableReason || t(`countryBrief.china.status.${group.state}`),
+          formatChinaSignalText(group.unavailableReason || t(`countryBrief.china.status.${group.state}`)),
         ));
       } else {
         for (const signal of group.signals) {
           const item = this.el('div', 'cdp-china-summary-signal');
           if (signal.stale) item.dataset.stale = 'true';
           item.append(
-            this.el('div', 'cdp-china-summary-signal-label', signal.label),
-            this.el('div', 'cdp-china-summary-signal-value', signal.value),
+            this.el('div', 'cdp-china-summary-signal-label', ['policy-enforcement', 'corporate-disclosures'].includes(group.id) ? signal.label : formatChinaSignalText(signal.label)),
+            this.el('div', 'cdp-china-summary-signal-value', formatChinaSignalText(signal.value)),
           );
           if (signal.observedAt) {
             item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.observed')} ${signal.observedAt}`));
@@ -3680,7 +4109,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
           children.push(item);
         }
         if (group.unavailableReason) {
-          children.push(this.el('div', 'cdp-china-summary-note', group.unavailableReason));
+          children.push(this.el('div', 'cdp-china-summary-note', formatChinaSignalText(group.unavailableReason)));
         }
       }
       section.replaceChildren(...children);
@@ -3700,7 +4129,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private highlightInfrastructure(type: AssetType): void {
-    if (!this.map) return;
+    if (!this.map) {
+      this.infrastructureBody?.querySelector<HTMLElement>('.cdp-expanded-only')?.classList.remove('cdp-expanded-only');
+      return;
+    }
     const assets = this.infrastructureByType.get(type) ?? [];
     if (assets.length === 0) return;
     this.map.flashAssets(type, assets.map((asset) => asset.id));
@@ -3764,15 +4196,27 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     card.dataset.briefSection = id;
     card.tabIndex = -1;
     const heading = this.el('h3', 'cdp-card-title', title);
+    card.append(heading);
     if (helpText) {
       const tip = this.el('button', 'cdp-card-help', '?');
+      const explanation = this.el('p', 'cdp-card-help-text cdp-measure-note', helpText);
+      explanation.id = `${card.id}-help`;
+      explanation.hidden = true;
       tip.setAttribute('title', helpText);
       tip.setAttribute('type', 'button');
       tip.setAttribute('aria-label', `About ${title}`);
+      tip.setAttribute('aria-controls', explanation.id);
+      tip.setAttribute('aria-describedby', explanation.id);
+      tip.setAttribute('aria-expanded', 'false');
+      tip.addEventListener('click', () => {
+        explanation.hidden = !explanation.hidden;
+        tip.setAttribute('aria-expanded', String(!explanation.hidden));
+      });
       heading.append(tip);
+      card.append(explanation);
     }
     const body = this.el('div', 'cdp-card-body');
-    card.append(heading, body);
+    card.append(body);
     this.sections.push({ id, title, card, body });
     return [card, body];
   }
@@ -3804,7 +4248,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return this.el('span', className, text);
   }
 
-  private formatBrief(text: string, sources: BriefSource[] = [], headlineCount = 0): string {
+  private formatBrief(text: string, sources: BriefSource[] = [], headlineCount = 0, evidence?: IntelBriefEvidence[]): string {
     return formatIntelBrief(
       text,
       sources.length > 0
@@ -3813,6 +4257,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
           ? { count: headlineCount, hrefPrefix: '#cdp-news-' }
           : undefined,
       this.currentName ?? undefined,
+      evidence,
     );
   }
 
@@ -3833,9 +4278,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const outputController = new AbortController();
       const outputSignal = AbortSignal.any([signal, outputController.signal]);
       const output = commodity ? createCommodityBriefOutput({ code, name }, outputSignal, COMMODITY_BRIEF_OPTIONS,
-        async (selection, requestSignal) => buildCommodityBrief(selection, await captureCommodityBrief(selection, requestSignal)),
+        async (selection, requestSignal) => buildCommodityBrief(selection, await captureCommodityBrief(selection, requestSignal, this.source)),
         () => this.outputClose?.()) : createDecisionBriefOutput({ code, name }, outputSignal,
-        async (selection, requestSignal) => buildDecisionBrief(selection, await captureDecisionBrief(selection, requestSignal)),
+        async (selection, requestSignal) => buildDecisionBrief(selection, await captureDecisionBrief(selection, requestSignal, this.source)),
         () => this.outputClose?.());
       this.outputClose = () => {
         outputController.abort();
@@ -3875,12 +4320,14 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
       const assessment = this.el('div', 'cdp-story-assessment');
       assessment.append(this.el('p', '', this.currentBrief ? summarizeCountryBrief(this.currentBrief).replace(/\*\*/g, '') : 'Assessment is not available in this snapshot.'));
-      const sources = this.briefBody?.querySelector<HTMLElement>('.cdp-brief-sources');
-      if (sources) assessment.append(freezeBriefContent(sources));
+      const assessmentMeta = this.briefBody?.querySelector<HTMLElement>('.cdp-assessment-meta');
+      if (assessmentMeta) assessment.append(freezeBriefContent(assessmentMeta));
+      const assessmentBody = this.briefBody?.querySelector<HTMLElement>(':scope > .cdp-expanded-only') ?? this.briefBody;
+      for (const sources of assessmentBody?.querySelectorAll<HTMLElement>('.cdp-brief-sources') ?? []) assessment.append(freezeBriefContent(sources));
       const factors = sections.find(section => section.id === 'factors')?.content.cloneNode(true) as HTMLElement | undefined;
       factors?.querySelector('.cdp-scorecard-evidence')?.remove();
       const headlines = this.el('div');
-      for (const row of Array.from(this.newsBody?.querySelectorAll<HTMLElement>('.cdp-news-item') ?? []).slice(0, 3)) headlines.append(freezeBriefContent(row));
+      for (const row of Array.from(this.newsBody?.querySelectorAll<HTMLElement>('.cdp-news-entry') ?? []).slice(0, 3)) headlines.append(freezeBriefContent(row));
       if (!headlines.childElementCount) headlines.append(this.makeEmpty('No headlines available in this snapshot.'));
       const snapshot: import('./CountryBriefOutput').BriefOutputSnapshot = {
         country: this.currentName, code, capturedAt: new Date().toISOString(), sections,
@@ -3890,7 +4337,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       };
       const shell = this.content.querySelector<HTMLElement>('.cdp-shell')!;
       const scrollTop = this.content.scrollTop;
-      const output = createCountryBriefOutput(snapshot, kind, () => this.outputClose?.());
+      const output = createCountryBriefOutput(snapshot, kind, () => this.outputClose?.(), this.downloadText, signal);
       this.outputClose = () => {
         output.remove();
         shell.hidden = false;
@@ -3911,7 +4358,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
   }
 
-  private exportEvidenceBundle(): void {
+  private async exportEvidenceBundle(signal: AbortSignal): Promise<import('@/utils/country-text-download').CountryDownloadResult | undefined> {
     if (!this.currentCode || !this.currentName) return;
     const exportedAt = new Date().toISOString();
     const data: CountryEvidenceBundleInput = {
@@ -3970,7 +4417,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         pubDate: headline.pubDate ? new Date(headline.pubDate).toISOString() : undefined,
       }));
     }
-    exportCountryEvidenceMarkdown(data);
+    data.signalCoverageNotes = this.signalCoverageNotes;
+    return this.downloadText(countryEvidenceMarkdownArtifact(data), signal);
   }
 
 

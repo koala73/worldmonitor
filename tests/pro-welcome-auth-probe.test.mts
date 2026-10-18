@@ -7,7 +7,11 @@ import {
   type ClerkUserStateSource,
   type ClerkUserStateUpdate,
 } from '../pro-test/src/services/clerk-user-state.ts';
-import { hasLiveClientSession, hasLiveSessionJwt } from '../pro-test/src/services/clerk-session.ts';
+import {
+  hasLiveClientSession,
+  hasLiveSessionJwt,
+  readDocumentCookie,
+} from '../pro-test/src/services/clerk-session.ts';
 import { maybeRedirectWelcomeVisitor } from '../pro-test/src/services/welcome-redirect.ts';
 
 // Build a minimal Clerk-style session JWT (header.payload.signature). Only the
@@ -67,6 +71,14 @@ describe('welcome auth probe — hasLiveSessionJwt (live __session token only)',
     assert.equal(hasLiveSessionJwt('foo=bar; baz=qux'), false);
   });
 
+  it('is false for non-string cookie headers (WORLDMONITOR-17E)', () => {
+    // Synthetic stand-ins for a missing/broken document.cookie — never paste
+    // production cookie values into fixtures.
+    assert.equal(hasLiveSessionJwt(undefined as unknown as string), false);
+    assert.equal(hasLiveSessionJwt(null as unknown as string), false);
+    assert.equal(hasLiveSessionJwt(123 as unknown as string), false);
+  });
+
   it('decodes a URL-encoded __session value before parsing', () => {
     assert.equal(hasLiveSessionJwt(`__session=${encodeURIComponent(jwt({ exp: nowSec + 3600 }))}`), true);
   });
@@ -75,6 +87,7 @@ describe('welcome auth probe — hasLiveSessionJwt (live __session token only)',
 describe('welcome auth probe — hasLiveClientSession browser wrapper', () => {
   it('is false in SSR/prerender contexts without document', () => {
     assert.equal(hasLiveClientSession(), false);
+    assert.equal(readDocumentCookie(), '');
   });
 
   it('reads document.cookie without loading Clerk', () => {
@@ -87,6 +100,73 @@ describe('welcome auth probe — hasLiveClientSession browser wrapper', () => {
     withDocumentCookie('', () => {
       assert.equal(hasLiveClientSession(), false);
     });
+  });
+
+  it('coerces a non-string document.cookie to empty (WORLDMONITOR-17E)', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: {
+        get cookie(): unknown {
+          return undefined;
+        },
+      },
+    });
+    try {
+      assert.equal(readDocumentCookie(), '');
+      assert.equal(hasLiveClientSession(), false);
+      assert.equal(
+        maybeRedirectWelcomeVisitor(readDocumentCookie(), {
+          search: '',
+          hash: '',
+          replace() {
+            assert.fail('must not redirect when cookie is non-string');
+          },
+        }),
+        false,
+      );
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(globalThis, 'document', descriptor);
+      } else {
+        delete (globalThis as { document?: unknown }).document;
+      }
+    }
+  });
+
+  it('treats sandboxed-iframe cookie SecurityError as no session (WORLDMONITOR-14B)', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: {
+        get cookie(): string {
+          throw new DOMException(
+            "Failed to read the 'cookie' property from 'Document': The document is sandboxed and lacks the 'allow-same-origin' flag.",
+            'SecurityError',
+          );
+        },
+      },
+    });
+    try {
+      assert.equal(readDocumentCookie(), '');
+      assert.equal(hasLiveClientSession(), false);
+      assert.equal(
+        maybeRedirectWelcomeVisitor(readDocumentCookie(), {
+          search: '',
+          hash: '',
+          replace() {
+            assert.fail('must not redirect when cookies are unreadable');
+          },
+        }),
+        false,
+      );
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(globalThis, 'document', descriptor);
+      } else {
+        delete (globalThis as { document?: unknown }).document;
+      }
+    }
   });
 });
 

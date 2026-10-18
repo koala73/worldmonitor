@@ -38,6 +38,7 @@ import { LlmStatusIndicator } from '@/components/LlmStatusIndicator';
 import type { PredictionPanel } from '@/components/PredictionPanel';
 import {
   buildMapUrl,
+  withUrlFragment,
   debounce,
   loadFromStorage,
   saveToStorage,
@@ -91,6 +92,7 @@ import {
   trackPanelToggled,
   trackDownloadClicked,
   trackGateHit,
+  trackLayoutCustomized,
 } from '@/services/analytics';
 import { detectPlatform, allButtons, buttonsForPlatform } from '@/components/DownloadBanner';
 import type { Platform } from '@/components/DownloadBanner';
@@ -113,6 +115,7 @@ import { resolveGateAction, type PanelGateReason } from '@/services/panel-gating
 import { ExportGateControl } from '@/components/ExportGateControl';
 import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
+import { declareOverlay, isModalOpen } from '@/utils/open-modal';
 import {
   isAgentAnalyticsSuppressed,
   isAgentPanelViewSuppressed,
@@ -346,7 +349,7 @@ export class EventHandlerManager implements AppModule {
     if (!shareUrl) return;
     // Preserve the shared mobile-overlay marker while syncing map URL state;
     // replacing it with null makes Android Back skip the open sheet.
-    try { history.replaceState(history.state, '', shareUrl); } catch { }
+    try { history.replaceState(history.state, '', withUrlFragment(shareUrl, window.location.hash)); } catch { }
   };
   private readonly debouncedUrlSync = debounce(this.writeUrlState, 250);
 
@@ -919,9 +922,16 @@ export class EventHandlerManager implements AppModule {
       // fixed 700ms timeout that forced layout reads (getBoundingClientRect +
       // offsetHeight) on the post-load path. Re-check state at fire time since
       // the idle wait can outlast an early user choice.
+      //
+      // That includes a modal the user opened first. On a slow machine the
+      // idle period lands after it; the prompt then took focus and swallowed
+      // the modal's Escape (its keydown handler stops propagation), leaving the
+      // modal impossible to close from the keyboard. Skipping costs nothing:
+      // an undismissed prompt re-appears on the next load.
       scheduleAfterFirstPaint(() => {
         if (this.ctx.isDestroyed) return;
         if (this.missionPresetPopover || loadStoredMissionPreset() || isMissionPresetPromptDismissed()) return;
+        if (isModalOpen(document)) return;
         this.openMissionPresetPopover(document.getElementById('missionPresetBtn'), false, 'auto');
       });
     }
@@ -991,6 +1001,13 @@ export class EventHandlerManager implements AppModule {
     popover.className = `mission-preset-popover${mobile ? ' mission-preset-popover--mobile' : ''}`;
     popover.setAttribute('role', 'dialog');
     popover.setAttribute('aria-label', 'Mission presets');
+    // Auto-opens after first paint for every preset-less user, and holds no
+    // entered state — it re-appears on the next load. Without this, the
+    // automatic reload guards treated it as work worth protecting and
+    // deferred stale-bundle reloads for a broad population
+    // (WORLDMONITOR-15X). Read-only on every `trigger`, so one declaration
+    // covers all three paths. Accessibility still sees a dialog.
+    declareOverlay(popover, { reload: 'safe' });
     popover.tabIndex = -1;
 
     const cards = getMissionPresetsForVariant(SITE_VARIANT).map((preset) => {
@@ -1559,6 +1576,10 @@ export class EventHandlerManager implements AppModule {
     dialog.className = 'embed-modal';
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-modal', 'true');
+    // Generated snippets only; nothing is typed here, so a reload loses nothing.
+    // The outer overlay is role="presentation"; this inner element is the one
+    // the reload guard sees.
+    declareOverlay(dialog, { reload: 'safe' });
     dialog.setAttribute('aria-labelledby', 'embedModalTitle');
 
     const header = document.createElement('div');
@@ -2732,6 +2753,7 @@ export class EventHandlerManager implements AppModule {
     // Set only by applyDrag: a zero-movement press/tap must not persist the
     // container-clamped application back over the raw stored preference.
     let dragMoved = false;
+    let dragStartPct = '';
 
     this.boundMapWidthEndResizeHandler = () => {
       activeTouchId = null;
@@ -2743,7 +2765,10 @@ export class EventHandlerManager implements AppModule {
       document.body.classList.remove('map-width-resizing');
       widthHandle.classList.remove('resizing');
       const current = mainContent.style.getPropertyValue('--map-col-width');
-      if (current && dragMoved) writeStorageValue('map-col-width', current);
+      if (current && dragMoved) {
+        writeStorageValue('map-col-width', current);
+        if (Number.parseFloat(current).toFixed(1) !== dragStartPct) trackLayoutCustomized('map-divider');
+      }
       dragMoved = false;
       syncMapColNarrowState();
       syncWidthSeparatorAria();
@@ -2756,7 +2781,8 @@ export class EventHandlerManager implements AppModule {
       activeDragSource = source;
       startX = clientX;
       startTotalWidth = mainContent.offsetWidth;
-      startColPx = startTotalWidth * (getCurrentWidthPercent() / 100);
+      dragStartPct = getCurrentWidthPercent().toFixed(1);
+      startColPx = startTotalWidth * (Number(dragStartPct) / 100);
       dragSign = isMapVisuallyRight() ? -1 : 1;
       this.ctx.map?.setIsResizing(true);
       document.body.classList.add('map-width-resizing');
@@ -2792,11 +2818,13 @@ export class EventHandlerManager implements AppModule {
       if (arrow === 0) return;
       e.preventDefault();
       const step = isMapVisuallyRight() ? -arrow : arrow;
-      const newPct = clampMapColWidthPercent(getCurrentWidthPercent() + step, mainContent.offsetWidth);
+      const currentPct = getCurrentWidthPercent();
+      const newPct = clampMapColWidthPercent(currentPct + step, mainContent.offsetWidth);
       const value = `${newPct.toFixed(1)}%`;
       mainContent.style.setProperty('--map-col-width', value);
       this.ctx.map?.resize();
       writeStorageValue('map-col-width', value);
+      if (newPct.toFixed(1) !== currentPct.toFixed(1)) trackLayoutCustomized('map-divider');
       syncMapColNarrowState();
       syncWidthSeparatorAria();
     });

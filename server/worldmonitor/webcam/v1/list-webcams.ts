@@ -1,6 +1,8 @@
 import type { ListWebcamsRequest, ListWebcamsResponse, WebcamEntry, WebcamCluster, ServerContext } from '../../../../src/generated/server/worldmonitor/webcam/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/webcam/v1/service_server';
-import { geoSearchByBox, getHashFieldsBatch, getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { geoSearchByBoxStrict, getHashFieldsBatchStrict, getCachedJson, setCachedJson } from '../../../_shared/redis';
+
+import { readRequiredSeed, SeedUnavailableError } from '../../../_shared/required-seed';
 
 const MAX_RESULTS = 2000;
 const RESPONSE_CACHE_TTL = 3600; // 1 hour
@@ -98,11 +100,9 @@ export async function listWebcams(_ctx: ServerContext, req: ListWebcamsRequest):
   const qN = Math.ceil(Math.max(-90, Math.min(90, values.boundN)));
 
   // Read active version
-  const versionResult = await getCachedJson('webcam:cameras:active', true);
-  const version = versionResult != null ? String(versionResult) : null;
-  if (!version) {
-    return { webcams: [], clusters: [], totalInView: 0 };
-  }
+  const version = await readRequiredSeed('webcam:cameras:active', value =>
+    typeof value === 'string' && value.length > 0 ? value
+      : typeof value === 'number' && Number.isFinite(value) ? String(value) : undefined);
 
   // Check response cache (quantized bbox + zoom + version)
   const cacheKey = `webcam:resp:${version}:${zoom}:${qW}:${qS}:${qE}:${qN}`;
@@ -112,68 +112,72 @@ export async function listWebcams(_ctx: ServerContext, req: ListWebcamsRequest):
   const geoKey = `webcam:cameras:geo:${version}`;
   const metaKey = `webcam:cameras:meta:${version}`;
 
-  // Compute center and dimensions for GEOSEARCH using quantized bounds
-  const centerLat = (qN + qS) / 2;
-  const heightKm = Math.abs(qN - qS) * 111.32;
+  try {
+    // Compute center and dimensions for GEOSEARCH using quantized bounds
+    const centerLat = (qN + qS) / 2;
+    const heightKm = Math.abs(qN - qS) * 111.32;
 
-  // Antimeridian: if W > E, split into two queries
-  let ids: string[];
-  if (qW > qE) {
-    const centerLon1 = (qW + 180) / 2;
-    const centerLon2 = (-180 + qE) / 2;
-    const width1 = (180 - qW) * 111.32 * Math.cos(centerLat * Math.PI / 180);
-    const width2 = (qE + 180) * 111.32 * Math.cos(centerLat * Math.PI / 180);
-    const [ids1, ids2] = await Promise.all([
-      geoSearchByBox(geoKey, centerLon1, centerLat, width1, heightKm, MAX_RESULTS, true),
-      geoSearchByBox(geoKey, centerLon2, centerLat, width2, heightKm, MAX_RESULTS, true),
-    ]);
-    ids = [...ids1, ...ids2];
-  } else {
-    const centerLon = (qW + qE) / 2;
-    const widthKm = equirectangularWidthKm(qS, qN, qW, qE);
-    ids = await geoSearchByBox(geoKey, centerLon, centerLat, widthKm, heightKm, MAX_RESULTS, true);
+    // Antimeridian: if W > E, split into two queries
+    let ids: string[];
+    if (qW > qE) {
+      const centerLon1 = (qW + 180) / 2;
+      const centerLon2 = (-180 + qE) / 2;
+      const width1 = (180 - qW) * 111.32 * Math.cos(centerLat * Math.PI / 180);
+      const width2 = (qE + 180) * 111.32 * Math.cos(centerLat * Math.PI / 180);
+      const [ids1, ids2] = await Promise.all([
+        geoSearchByBoxStrict(geoKey, centerLon1, centerLat, width1, heightKm, MAX_RESULTS, true),
+        geoSearchByBoxStrict(geoKey, centerLon2, centerLat, width2, heightKm, MAX_RESULTS, true),
+      ]);
+      ids = [...ids1, ...ids2];
+    } else {
+      const centerLon = (qW + qE) / 2;
+      const widthKm = equirectangularWidthKm(qS, qN, qW, qE);
+      ids = await geoSearchByBoxStrict(geoKey, centerLon, centerLat, widthKm, heightKm, MAX_RESULTS, true);
+    }
+
+    if (ids.length === 0) {
+      const empty: ListWebcamsResponse = { webcams: [], clusters: [], totalInView: 0 };
+      await setCachedJson(cacheKey, empty, RESPONSE_CACHE_TTL);
+      return empty;
+    }
+
+    // Fetch metadata
+    const metaMap = await getHashFieldsBatchStrict(metaKey, ids, true);
+    const webcams: Array<{ webcamId: string; title: string; lat: number; lng: number; category: string; country: string }> = [];
+
+    for (const id of ids) {
+      const raw = metaMap.get(id);
+      if (!raw) throw new SeedUnavailableError(metaKey);
+      try {
+        const meta = JSON.parse(raw);
+        webcams.push({
+          webcamId: id,
+          title: meta.title || '',
+          lat: meta.lat || 0,
+          lng: meta.lng || 0,
+          category: meta.category || 'other',
+          country: meta.country || '',
+        });
+      } catch { throw new SeedUnavailableError(metaKey); }
+    }
+
+    const cellSize = getClusterCellSize(zoom);
+    const { singles, clusters } = clusterWebcams(webcams, cellSize);
+
+    const result: ListWebcamsResponse = {
+      webcams: singles,
+      clusters,
+      totalInView: webcams.length,
+    };
+
+    setCachedJson(cacheKey, result, RESPONSE_CACHE_TTL).catch(err => {
+      console.warn('[webcam] response cache write failed:', err);
+    });
+
+    return result;
+  } catch {
+    throw new SeedUnavailableError(geoKey);
   }
-
-  if (ids.length === 0) {
-    const empty: ListWebcamsResponse = { webcams: [], clusters: [], totalInView: 0 };
-    await setCachedJson(cacheKey, empty, RESPONSE_CACHE_TTL);
-    return empty;
-  }
-
-  // Fetch metadata
-  const metaMap = await getHashFieldsBatch(metaKey, ids, true);
-  const webcams: Array<{ webcamId: string; title: string; lat: number; lng: number; category: string; country: string }> = [];
-
-  for (const id of ids) {
-    const raw = metaMap.get(id);
-    if (!raw) continue;
-    try {
-      const meta = JSON.parse(raw);
-      webcams.push({
-        webcamId: id,
-        title: meta.title || '',
-        lat: meta.lat || 0,
-        lng: meta.lng || 0,
-        category: meta.category || 'other',
-        country: meta.country || '',
-      });
-    } catch { /* skip malformed */ }
-  }
-
-  const cellSize = getClusterCellSize(zoom);
-  const { singles, clusters } = clusterWebcams(webcams, cellSize);
-
-  const result: ListWebcamsResponse = {
-    webcams: singles,
-    clusters,
-    totalInView: webcams.length,
-  };
-
-  setCachedJson(cacheKey, result, RESPONSE_CACHE_TTL).catch(err => {
-    console.warn('[webcam] response cache write failed:', err);
-  });
-
-  return result;
 }
 
 function equirectangularWidthKm(s: number, n: number, w: number, e: number): number {

@@ -3,10 +3,11 @@
 # Multi-stage build for the World Monitor web app (frontend only).
 
 # Stage 1: Build the frontend with TypeScript + Vite.
-FROM node:24-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81 AS builder
+FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS builder
 ARG BUILDKIT_SBOM_SCAN_STAGE=true
 
 WORKDIR /app
+ENV npm_config_install_links=true
 
 # Copy source and build.
 COPY . .
@@ -66,6 +67,8 @@ COPY --from=builder /app/dist/ ./
 COPY docker/nginx.conf.template /etc/nginx/nginx.conf.template
 COPY docker/nginx-security-headers.conf /etc/nginx/security_headers.conf
 COPY docker/nginx-embed-security-headers.conf /etc/nginx/embed_security_headers.conf
+COPY docker/nginx-oauth-authorize-security-headers.conf /etc/nginx/oauth_authorize_security_headers.conf
+COPY docker/nginx-youtube-embed-security-headers.conf /etc/nginx/youtube_embed_security_headers.conf
 COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 

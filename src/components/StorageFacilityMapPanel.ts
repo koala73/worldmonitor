@@ -1,3 +1,4 @@
+import { CountrySectionError } from '@/services/country-brief-error';
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
@@ -7,7 +8,6 @@ import type {
   ListStorageFacilitiesResponse,
   StorageFacilityEntry,
   GetStorageFacilityDetailResponse,
-  ListEnergyDisruptionsResponse,
   EnergyDisruptionEntry,
 } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { formatEventWindow, formatCapacityOffline } from '@/shared/disruption-timeline';
@@ -169,7 +169,8 @@ export class StorageFacilityMapPanel extends Panel {
   private selectedId: string | null = null;
   private detail: GetStorageFacilityDetailResponse | null = null;
   private detailLoading = false;
-  private detailEvents: EnergyDisruptionEntry[] | undefined = undefined;
+  private detailError: string | null = null;
+  private detailEvents: EnergyDisruptionEntry[] | null | undefined = undefined;
   private usedHydrationPaint = false;
   private openDetailHandler = (ev: Event): void => {
     const id = (ev as CustomEvent<{ facilityId?: string }>).detail?.facilityId;
@@ -177,7 +178,7 @@ export class StorageFacilityMapPanel extends Panel {
     void this.loadDetail(id);
   };
 
-  constructor() {
+  constructor(private readonly detailSource?: Pick<ReturnType<typeof getSupplyChainClient>, 'getStorageFacilityDetail' | 'listEnergyDisruptions'>) {
     super({
       id: 'storage-facility-map',
       title: 'Strategic Storage Atlas',
@@ -191,7 +192,7 @@ export class StorageFacilityMapPanel extends Panel {
     // Loose coupling with DeckGLMap: map clicks on a storage dot dispatch
     // 'energy:open-storage-facility-detail' with the id, and this panel
     // opens its drawer. No-op if the panel isn't mounted.
-    if (typeof window !== 'undefined') {
+    if (!this.detailSource && typeof window !== 'undefined') {
       window.addEventListener('energy:open-storage-facility-detail', this.openDetailHandler);
     }
     this.content.addEventListener('click', this.handleContentClick);
@@ -212,7 +213,7 @@ export class StorageFacilityMapPanel extends Panel {
   };
 
   public destroy(): void {
-    if (typeof window !== 'undefined') {
+    if (!this.detailSource && typeof window !== 'undefined') {
       window.removeEventListener('energy:open-storage-facility-detail', this.openDetailHandler);
     }
     super.destroy?.();
@@ -288,22 +289,38 @@ export class StorageFacilityMapPanel extends Panel {
     }
   }
 
+  public async presentDetail(data: ListStorageFacilitiesResponse, id: string): Promise<void> {
+    this.data = data;
+    await this.loadDetail(id);
+  }
+
+  public async presentCountryDetail(countryCode: string, id: string): Promise<void> {
+    const { registry } = getCachedStorageFacilityRegistry();
+    const data = buildBootstrapResponse(registry);
+    const facilities = data?.facilities.filter(facility => facility.country === countryCode) ?? [];
+    if (!data || !facilities.some(facility => facility.id === id)) throw new Error('Storage facility is not in this country.');
+    await this.presentDetail({ ...data, facilities }, id);
+  }
+
   private async loadDetail(facilityId: string): Promise<void> {
     this.selectedId = facilityId;
     this.detailLoading = true;
+    this.detailError = null;
     this.detailEvents = undefined;
     this.render();
     try {
-      const [d, events] = await Promise.all([
-        getSupplyChainClient().getStorageFacilityDetail({ facilityId }),
-        getSupplyChainClient().listEnergyDisruptions({ assetId: facilityId, assetType: 'storage', ongoingOnly: false }),
-      ]);
+      const timeline = (this.detailSource ?? getSupplyChainClient()).listEnergyDisruptions({ assetId: facilityId, assetType: 'storage', ongoingOnly: false }).catch(() => undefined);
+      const d = await (this.detailSource ?? getSupplyChainClient()).getStorageFacilityDetail({ facilityId });
       if (!this.element?.isConnected || this.selectedId !== facilityId) return;
       this.detail = d;
-      this.detailEvents = (events as ListEnergyDisruptionsResponse)?.events ?? [];
       this.detailLoading = false;
       this.render();
-    } catch {
+      void timeline.then(events => {
+        if (!this.element?.isConnected || this.selectedId !== facilityId) return;
+        this.detailEvents = events && !events.upstreamUnavailable ? events.events : null;
+        this.render();
+      });
+    } catch (error) {
       if (!this.element?.isConnected) return;
       // Mirror the stale-response guard on the failure path: if the user
       // has clicked a different facility while this request was in flight,
@@ -311,6 +328,7 @@ export class StorageFacilityMapPanel extends Panel {
       if (this.selectedId !== facilityId) return;
       this.detailLoading = false;
       this.detail = null;
+      this.detailError = error instanceof CountrySectionError ? error.message : null;
       this.render();
     }
   }
@@ -323,7 +341,8 @@ export class StorageFacilityMapPanel extends Panel {
   }
 
   private renderDisruptionTimeline(): string {
-    if (this.detailEvents === undefined) return '';
+    if (this.detailEvents === undefined) return this.detailLoading ? '' : '<div class="sf-evidence"><div class="sf-sub">Loading disruption timeline…</div></div>';
+    if (this.detailEvents === null) return '<div class="sf-evidence"><div class="sf-sub">Disruption timeline unavailable. Asset details remain visible.</div></div>';
     if (this.detailEvents.length === 0) {
       return `<div class="sf-evidence">
         <div class="sf-sub" style="margin-bottom:6px">Disruption timeline</div>
@@ -377,7 +396,7 @@ export class StorageFacilityMapPanel extends Panel {
 
     const drawer = this.selectedId ? this.renderDrawer() : '';
 
-    this.setSafeContent(unsafeRawHtml(`
+    const html = unsafeRawHtml(`
       <div class="sf-wrap">
         <table class="sf-table">
           <thead>
@@ -414,7 +433,9 @@ export class StorageFacilityMapPanel extends Panel {
         .sf-ev-item a { color: #4ade80; text-decoration: none; }
         .sf-ev-item a:hover { text-decoration: underline; }
       </style>
-    `, 'legacy Panel.setContent() migration'));
+    `, 'legacy Panel.setContent() migration');
+    if (this.detailSource) this.setSafeContentImmediate(html);
+    else this.setSafeContent(html);
   }
 
   private renderRow(f: StorageFacilityEntry): string {
@@ -438,7 +459,7 @@ export class StorageFacilityMapPanel extends Panel {
     }
     const f = this.detail?.facility;
     if (!f) {
-      return `<div class="sf-drawer"><button class="sf-drawer-close" aria-label="Close">✕</button>Facility detail unavailable.</div>`;
+      return `<div class="sf-drawer"><button class="sf-drawer-close" aria-label="Close">✕</button>${escapeHtml(this.detailError ?? 'Facility detail unavailable.')}</div>`;
     }
 
     const ev = f.evidence;

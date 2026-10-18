@@ -1,0 +1,4 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<wits:error xmlns:wits="http://wits.worldbank.org">
+  <wits:message id="160" key="Data not found.">The provided parameter value is not valid or data not found.</wits:message>
+</wits:error>

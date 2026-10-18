@@ -10,21 +10,16 @@ import type {
   ListClimateAnomaliesResponse,
 } from '../../../../src/generated/server/worldmonitor/climate/v1/service_server';
 
-import { getCachedJson } from '../../../_shared/redis';
+import { readRequiredSeed } from '../../../_shared/required-seed';
 import { CLIMATE_ANOMALIES_KEY } from '../../../_shared/cache-keys';
-import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 export const listClimateAnomalies: ClimateServiceHandler['listClimateAnomalies'] = async (
-  ctx: ServerContext,
+  _ctx: ServerContext,
   _req: ListClimateAnomaliesRequest,
 ): Promise<ListClimateAnomaliesResponse> => {
-  try {
-    const result = await getCachedJson(CLIMATE_ANOMALIES_KEY, true) as ListClimateAnomaliesResponse | null;
-    if (!result?.anomalies) {
-      return markNoStoreFallbackResponse(ctx.request, { anomalies: [], pagination: undefined });
-    }
-    return { anomalies: result.anomalies, pagination: result.pagination };
-  } catch {
-    return markNoStoreFallbackResponse(ctx.request, { anomalies: [], pagination: undefined });
-  }
+  const result = await readRequiredSeed(CLIMATE_ANOMALIES_KEY, value => {
+    const data = value as ListClimateAnomaliesResponse | null;
+    return data && Array.isArray(data.anomalies) ? data : undefined;
+  });
+  return { anomalies: result.anomalies, pagination: result.pagination };
 };

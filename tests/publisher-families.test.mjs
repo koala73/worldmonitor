@@ -142,6 +142,7 @@ describe('publisher-families map data', () => {
       interfax: 'interfax.ru Russian feed and interfax.com English edition — one Interfax newsroom',
       ndtv: 'both labels arrive via feedburner, which identifies no publisher',
       pivot: 'one show across a tier-only label and a megaphone.fm feed',
+      'sightline-media': 'defensenews.com and militarytimes.com — two Sightline Media Group titles, one owner',
     };
 
     const offenders = [];
@@ -228,9 +229,20 @@ describe('publisher-families map data', () => {
   });
 
   it('gives every family a publisher display name and at least two labels', () => {
+    // #8398: domain-only families (labels: []) declare an article-host
+    // allowance without folding any label — the ingest/relay link gates
+    // need wsj.com for Dow Jones delivery-host feeds, but the label must
+    // NOT merge (that would understate corroboration). Exempt from the
+    // two-label minimum: that rule targets label folding, and an empty
+    // label list cannot merge anything.
+    const DOMAIN_ONLY_FAMILIES = new Set(['wsj', 'miit']);
     for (const [familyId, entry] of Object.entries(PUBLISHER_FAMILIES)) {
       assert.equal(typeof entry.publisher, 'string', `${familyId} has no publisher name`);
       assert.ok(entry.publisher.length > 0, `${familyId} has an empty publisher name`);
+      if (DOMAIN_ONLY_FAMILIES.has(familyId)) {
+        assert.deepEqual(entry.labels, [], `${familyId} must stay domain-only (no label folding)`);
+        continue;
+      }
       assert.ok(
         entry.labels.length >= 2,
         `${familyId} lists ${entry.labels.length} label(s) — a one-label family is what the ` +
@@ -277,7 +289,7 @@ describe('corroboration threshold is one constant, not three literals', () => {
   // and the other two silently disagree.
   const GATES = [
     ['scripts/_clustering.mjs', /bucket\.sources\.size < MIN_CORROBORATING_PUBLISHERS/],
-    ['scripts/_clustering.mjs', /countPublisherFamilies\(cluster\?\.sources\) >= MIN_CORROBORATING_PUBLISHERS/],
+    ['scripts/_clustering.mjs', /ownPublisherCount\(cluster\) >= MIN_CORROBORATING_PUBLISHERS/],
     ['server/worldmonitor/news/v1/list-feed-digest.ts', /bucket\.sources\.size < MIN_CORROBORATING_PUBLISHERS/],
     ['scripts/seed-insights.mjs', />= MIN_CORROBORATING_PUBLISHERS/],
   ];
@@ -317,6 +329,17 @@ describe('publisher-families resolution', () => {
     ];
     assert.equal(countPublisherFamilies(reutersLabels), 1);
     assert.equal(publisherNameForFamily(publisherFamilyFor('Reuters US')), 'Reuters');
+  });
+
+  it('counts Sightline Media titles as one publisher', () => {
+    // Defense News and Military Times are both Sightline Media Group titles;
+    // a story carried by only this pair is not independently corroborated.
+    assert.equal(publisherFamilyFor('Defense News'), publisherFamilyFor('Military Times'));
+    assert.equal(countPublisherFamilies(['Defense News', 'Military Times']), 1);
+    assert.ok(countPublisherFamilies(['Defense News', 'Military Times']) < MIN_CORROBORATING_PUBLISHERS);
+    assert.equal(publisherNameForFamily(publisherFamilyFor('Military Times')), 'Sightline Media');
+    assert.equal(publisherFamilyForDomain('www.militarytimes.com'), publisherFamilyFor('Defense News'));
+    assert.equal(countPublisherFamilies(['Defense News', 'Military Times', 'Defense One']), 2);
   });
 
   it('counts genuinely distinct publishers separately', () => {

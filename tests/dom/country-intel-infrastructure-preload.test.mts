@@ -244,6 +244,27 @@ describe('CountryIntelManager infrastructure preload barrier', () => {
     expect(infrastructureUpdates).toEqual(['AE', 'AE']);
   });
 
+  it('refreshes the visible military card after lazy base data settles', async () => {
+    geometryMocks.preloadCountryGeometry.mockResolvedValue(undefined);
+    infraMocks.preloadInfrastructureTables.mockResolvedValue(undefined);
+    const bases = deferred<[]>();
+    militaryMocks.preloadMilitaryBases.mockReturnValue(bases.promise);
+    const { ctx, militaryUpdates, open } = createBriefHarness('US');
+    await open();
+    expect(militaryMocks.preloadMilitaryBases).toHaveBeenCalledOnce();
+    expect(militaryUpdates[militaryUpdates.length - 1]).toEqual(expect.objectContaining({ ownFlights: null,foreignPresence:null }));
+    militaryUpdates.length = 0;
+    ctx.intelligenceCache.military = {
+      flights: [{ lat: 40, lon: -100, operatorCountry: 'United States' }],
+      flightClusters: [], vessels: [], vesselClusters: [],
+      flightDataState:{mode:'live',timestamp:Date.now(),offline:false},vesselDataState:{mode:'live',timestamp:Date.now(),offline:false},vesselNegativeEvidenceConfirmed:true,
+    } as never;
+    await Promise.resolve();
+    expect(militaryUpdates).toHaveLength(0);
+    bases.resolve([]);
+    await vi.waitFor(() => expect(militaryUpdates).toEqual([expect.objectContaining({ ownFlights: 1, foreignFlights: 0 })]));
+  });
+
   it('refreshes the visible military card from the current military cache', async () => {
     geometryMocks.preloadCountryGeometry.mockResolvedValue(undefined);
     infraMocks.preloadInfrastructureTables.mockResolvedValue(undefined);
@@ -255,6 +276,7 @@ describe('CountryIntelManager infrastructure preload barrier', () => {
       flightClusters: [],
       vessels: [],
       vesselClusters: [],
+      flightDataState:{mode:'live',timestamp:Date.now(),offline:false},vesselDataState:{mode:'live',timestamp:Date.now(),offline:false},vesselNegativeEvidenceConfirmed:true,
     } as never;
 
     manager.refreshOpenMilitaryActivity();

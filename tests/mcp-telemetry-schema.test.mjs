@@ -181,9 +181,16 @@ describe('api/mcp.ts — telemetry redaction (closed-key allowlist)', () => {
     // The catch-block emit site in dispatchToolsCall adds `error_kind` —
     // a key the success path never sends. Without this case the allowlist
     // promise has a hole on the error branch (greptile review on PR
-    // #3849). Force the cache-tool fetch to throw so dispatchToolsCall's
-    // outer catch fires and emits the ok:false telemetry line.
-    globalThis.fetch = async () => { throw new TypeError('fetch failed'); };
+    // #3849). Force the cache tool to throw so dispatchToolsCall's outer
+    // catch fires and emits the ok:false telemetry line. Every Redis GET
+    // reads back absent, so the throw is `cache_all_null` (a server_error);
+    // a GET that itself FAILS is a source outage, a different error kind.
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('/get/')) {
+        return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      throw new TypeError('fetch failed');
+    };
 
     const origErr = console.error;
     console.error = () => {}; // swallow the captureSilentError stderr noise

@@ -22,6 +22,21 @@ function flowClass(direction: string): string {
   return 'flow-neutral';
 }
 
+type NetFlowKind = 'inflow' | 'outflow' | 'neutral';
+
+function netFlowKind(direction: string): NetFlowKind {
+  if (direction.includes('INFLOW')) return 'inflow';
+  if (direction.includes('OUTFLOW')) return 'outflow';
+  return 'neutral';
+}
+
+export function etfNetFlowLabel(direction: string): string {
+  const kind = netFlowKind(direction);
+  if (kind === 'inflow') return t('components.etfFlows.netInflow');
+  if (kind === 'outflow') return t('components.etfFlows.netOutflow');
+  return t('components.etfFlows.netNeutral');
+}
+
 function changeClass(val: number): string {
   if (val > 0.1) return 'change-positive';
   if (val < -0.1) return 'change-negative';
@@ -91,7 +106,7 @@ export class ETFFlowsPanel extends Panel {
     }
 
     const s = d.summary || { etfCount: 0, totalVolume: 0, totalEstFlow: 0, netDirection: 'NEUTRAL', inflowCount: 0, outflowCount: 0 };
-    const dirClass = s.netDirection.includes('INFLOW') ? 'flow-inflow' : s.netDirection.includes('OUTFLOW') ? 'flow-outflow' : 'flow-neutral';
+    const dirClass = `flow-${netFlowKind(s.netDirection)}`;
 
     const rows = d.etfs.map(etf => `
       <tr class="etf-row ${flowClass(etf.direction)}">
@@ -108,7 +123,7 @@ export class ETFFlowsPanel extends Panel {
         <div class="etf-summary ${dirClass}">
           <div class="etf-summary-item">
             <span class="etf-summary-label">${t('components.etfFlows.netFlow')}</span>
-            <span class="etf-summary-value ${dirClass}">${s.netDirection.includes('INFLOW') ? t('components.etfFlows.netInflow') : t('components.etfFlows.netOutflow')}</span>
+            <span class="etf-summary-value ${dirClass}">${etfNetFlowLabel(s.netDirection)}</span>
           </div>
           <div class="etf-summary-item">
             <span class="etf-summary-label">${t('components.etfFlows.estFlow')}</span>

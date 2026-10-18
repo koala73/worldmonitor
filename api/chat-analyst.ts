@@ -285,6 +285,10 @@ export default async function handler(req: Request): Promise<Response> {
       timeoutMs: 25_000,
       signal: req.signal,
       stage: 'chat-analyst',
+      // A provider that took the request has done billable work, so the
+      // reservation stands even if the client cancels before any answer
+      // content (GHSA-cgm2-fpj5-427h).
+      onProviderAccepted: () => { rollbackQuota = null; },
     });
 
     // Always prepend a meta event so the client knows which sources are live
@@ -310,7 +314,7 @@ export default async function handler(req: Request): Promise<Response> {
     });
   } catch (err) {
     await rollbackUnservedQuota();
-    captureSilentError(err, { tags: { route: 'api/chat-analyst', step: 'pre-stream' } });
+    captureSilentError(err, { tags: { route: 'api/chat-analyst', step: 'pre-stream' }, fingerprint: ['api/chat-analyst', 'pre-stream', err instanceof Error ? err.name : 'Error'] });
     return json({ error: 'service_unavailable' }, 503, corsHeaders);
   }
 }

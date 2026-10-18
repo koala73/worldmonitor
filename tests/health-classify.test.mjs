@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 
 import { __testing__ } from '../api/health.js';
 import { BUNDLE_HEARTBEAT_TTL_SECONDS, bundleHeartbeatKey } from '../scripts/_bundle-runner.mjs';
-import { isOnDemandProblem } from '../scripts/check-seed-freshness.mjs';
+import { isOnDemandProblem, findOperationalProblems } from '../scripts/check-seed-freshness.mjs';
 import { BOOTSTRAP_KEY as AVIATION_BOOTSTRAP_KEY, BOOTSTRAP_META_KEY as AVIATION_BOOTSTRAP_META_KEY } from '../scripts/seed-aviation.mjs';
 
 const {
@@ -38,6 +38,22 @@ const {
 
 const NOW = 1_700_000_000_000;
 const ONE_MIN_MS = 60_000;
+
+test('transit coverage alerts below five measured canonical waterways despite a fresh payload', () => {
+  const key = STANDALONE_KEYS.chokepointTransits;
+  for (const [recordCount, status] of [[0, 'EMPTY_DATA'], [3, 'COVERAGE_PARTIAL'], [4, 'COVERAGE_PARTIAL'], [5, 'OK'], [13, 'OK']]) {
+    const result = classifyKey('chokepointTransits', key, { allowOnDemand: false }, makeCtx({
+      strens: { [key]: 2000 },
+      metaValues: { [SEED_META.chokepointTransits.key]: { fetchedAt: NOW, recordCount } },
+    }));
+    assert.equal(result.status, status, `${recordCount}/13 measured waterways`);
+    const problems = findOperationalProblems({
+      status: status === 'OK' ? 'HEALTHY' : 'UNHEALTHY',
+      problems: status === 'OK' ? {} : { chokepointTransits: result },
+    });
+    assert.equal(problems.length, recordCount < 5 ? 1 : 0, 'the scheduled monitor must report the coverage fault');
+  }
+});
 
 test('MND first-failure pending requires fresh last-good and expires without another poll', () => {
   const name = 'crossStraitActivityTaiwanMnd';
@@ -1121,13 +1137,12 @@ test('classifyKey: a blocked source with no data escalates like every other faul
   assert.equal(blockedWithData.status, 'SEED_ERROR');
 });
 
-test('classifyKey: a collapsed forecast funnel keeps SEED_ERROR when its payload is absent', () => {
-  // forecastFunnel is in EMPTY_DATA_OK_KEYS, so its absence branch resolves to
-  // OK/STALE_SEED — softer than the fault. api/health.js's own comment on the
-  // set entry states the dependency: "A COLLAPSED funnel still surfaces via
-  // seed-meta status:'error' → SEED_ERROR, which classifyKey checks before this
-  // branch." A bare `&& hasData` guard would demote the collapse to a generic
-  // STALE_SEED and drop the reason.
+test('classifyKey: an EMPTY_DATA_OK key keeps a producer SEED_ERROR when its payload is absent', () => {
+  // The rule covers every key in EMPTY_DATA_OK_KEYS, whose absence branch
+  // resolves to OK/STALE_SEED — softer than the fault. forecastFunnel is only
+  // the fixture: its producer no longer writes status:'error' (#8990), but the
+  // reader path is shared. A bare `&& hasData` guard would demote the error to
+  // a generic STALE_SEED and drop the reason.
   const entry = classifyKey(
     'forecastFunnel',
     STANDALONE_KEYS.forecastFunnel,
@@ -2836,4 +2851,54 @@ test('China composition can contain degraded coverage when the summary seed is s
     assert.equal(entry.chinaCoveragePendingUntil, undefined);
     assert.equal(isContainedHealthWarning(entry, { ...evidence, status: entry.status }, now), true);
   }
+});
+
+test('dyad health is pending before activation and strict afterward', () => {
+  const name = 'gdeltDyadTension';
+  const key = STANDALONE_KEYS[name];
+  assert.equal(__testing__.ACTIVATION_MARKERS[name], 'seed-activated:gdelt:bulk:dyad-tension');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true },
+    makeCtx({ activationStates: { [name]: false } })).status, 'EMPTY_ON_DEMAND');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true },
+    makeCtx({ activationStates: { [name]: true } })).status, 'EMPTY');
+});
+
+
+test('calibration map uses its declared activation marker before the first resolver run', () => {
+  const name = 'forecastCalibrationMap';
+  const entry = classifyKey(name, STANDALONE_KEYS[name], { allowOnDemand: true },
+    makeCtx({ activationStates: { [name]: false } }));
+  assert.equal(entry.status, 'EMPTY_ON_DEMAND');
+  assert.equal(__testing__.ACTIVATION_MARKERS[name], SEED_META[name].activationKey);
+  assert.ok(ON_DEMAND_KEYS.has(name));
+  assert.equal(findOperationalProblems({ problems: { [name]: entry } }).length, 0);
+});
+
+test('calibration activation does not hide missing data, stale publications, errors, or unknown markers', () => {
+  const name = 'forecastCalibrationMap';
+  const key = STANDALONE_KEYS[name];
+  const staleAt = NOW - (SEED_META[name].maxStaleMin + 1) * ONE_MIN_MS;
+  const cases = [
+    [{ activationStates: { [name]: true } }, 'STALE_SEED'],
+    [{ activationStates: {} }, 'STALE_SEED'],
+    [{ activationStates: { [name]: false }, metaValues: {
+      [SEED_META[name].key]: seedMeta({ fetchedAt: staleAt, recordCount: 1 }),
+    } }, 'STALE_SEED'],
+    [{ activationStates: { [name]: false }, metaValues: {
+      [SEED_META[name].key]: seedMeta({ status: 'error', error: 'publication failed' }),
+    } }, 'SEED_ERROR'],
+    [{ activationStates: { [name]: true }, strens: { [key]: 128 }, metaValues: {
+      [SEED_META[name].key]: seedMeta({ fetchedAt: staleAt, recordCount: 1 }),
+    } }, 'STALE_SEED'],
+  ];
+  for (const [state, status] of cases) {
+    const entry = classifyKey(name, key, { allowOnDemand: true }, makeCtx(state));
+    assert.equal(entry.status, status);
+    assert.equal(findOperationalProblems({ problems: { [name]: entry } }).length, 1);
+  }
+  const fresh = classifyKey(name, key, { allowOnDemand: true }, makeCtx({
+    activationStates: { [name]: true }, strens: { [key]: 128 },
+    metaValues: { [SEED_META[name].key]: seedMeta({ recordCount: 1 }) },
+  }));
+  assert.equal(fresh.status, 'OK');
 });

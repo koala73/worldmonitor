@@ -15,6 +15,10 @@ fi
 
 node /app/validate-session-secret.mjs
 
+# This image is always the public Docker ingress, with or without Compose.
+# The sidecar's default (desktop) mode serves /api/local-* management to any
+# caller nginx forwards with the internal token, so the mode is not optional.
+export LOCAL_API_MODE=docker
 export LOCAL_API_PORT="${LOCAL_API_PORT:-46123}"
 if [ -z "${LOCAL_API_TOKEN:-}" ]; then
   LOCAL_API_TOKEN="$(node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))")"

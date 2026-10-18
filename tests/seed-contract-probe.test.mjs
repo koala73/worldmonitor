@@ -18,6 +18,82 @@ const { checkProbe, checkPublicBoundary, DEFAULT_PROBES, withRetry } = await imp
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 
+test('boundary requests reject untrusted origins before fetching and forbid redirects', async () => {
+  let calls = 0;
+  globalThis.fetch = async (url, options) => {
+    calls++;
+    assert.equal(new URL(url).origin, 'https://www.worldmonitor.app');
+    assert.equal(options.redirect, 'manual');
+    return new Response('{}', { headers: { 'x-product-catalog-source': 'cache' } });
+  };
+  for (const origin of ['https://evil.example', 'http://worldmonitor.app', 'https://clerk.worldmonitor.app', 'javascript:alert(1)', 'data:text/plain,hello']) {
+    const results = await checkPublicBoundary(origin, 0);
+    assert.ok(results.every(result => !result.pass && result.reason === 'untrusted-origin'));
+  }
+  assert.equal(calls, 0);
+  assert.ok((await checkPublicBoundary('https://worldmonitor.app', 0)).every(result => result.pass));
+  assert.equal(calls, 2);
+});
+
+test('boundary fetch uses a redirect mode the edge runtime accepts', async () => {
+  // Vercel's edge runtime rejects `redirect: 'error'` with a TypeError before
+  // the request leaves the function ("won't be implemented since it does not
+  // make sense at the edge"). A stub that happily accepted 'error' let PR #8374
+  // ship a probe that 503'd on every poll in production while CI stayed green,
+  // so model the runtime's allowlist here.
+  const EDGE_REDIRECT_MODES = new Set(['follow', 'manual']);
+  globalThis.fetch = async (url, options) => {
+    if (!EDGE_REDIRECT_MODES.has(options.redirect)) {
+      throw new TypeError(`Invalid redirect value, must be one of "follow" or "manual" ("${options.redirect}" won't be implemented since it does not make sense at the edge; use "manual" and check the response status code).`);
+    }
+    return new Response('{}', { headers: { 'x-product-catalog-source': 'cache' } });
+  };
+  const results = await checkPublicBoundary('https://www.worldmonitor.app', 0);
+  assert.deepEqual(results.filter(result => !result.pass), []);
+});
+
+test('boundary refuses a redirected response instead of following it', async () => {
+  // 'manual' must not weaken the guarantee 'error' was reaching for: a 3xx is
+  // still a hard fail, so credentials never chase a Location header.
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return new Response(null, { status: 308, headers: { location: 'https://evil.example/api/bootstrap' } });
+  };
+  const results = await checkPublicBoundary('https://www.worldmonitor.app', 0);
+  assert.ok(results.every(result => !result.pass && result.reason === 'redirect'));
+  assert.equal(calls, 4); // 2 endpoints x 1 retry each — never a followed hop
+});
+
+test('handler ignores the request host and authenticates before making requests', async () => {
+  const { default: handler } = await import('../api/seed-contract-probe.ts');
+  const originalBase = process.env.WORLDMONITOR_PUBLIC_BASE_URL;
+  delete process.env.WORLDMONITOR_PUBLIC_BASE_URL;
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    const parsed = new URL(url);
+    urls.push(parsed);
+    return parsed.origin === 'https://redis.test'
+      ? new Response(JSON.stringify({ result: null }))
+      : new Response('{}', { headers: { 'x-product-catalog-source': 'cache' } });
+  };
+  try {
+    const denied = await handler(new Request('https://evil.example/api/seed-contract-probe'));
+    assert.equal(denied.status, 401);
+    assert.equal(urls.length, 0);
+    await handler(new Request('https://evil.example/api/seed-contract-probe', { headers: { 'x-probe-secret': 'test-secret', Host: 'evil.example' } }));
+    assert.ok(urls.some(url => url.origin === 'https://www.worldmonitor.app' && url.pathname === '/api/bootstrap'));
+    assert.ok(urls.every(url => url.origin === 'https://redis.test' || url.origin === 'https://www.worldmonitor.app'));
+    urls.length = 0;
+    process.env.WORLDMONITOR_PUBLIC_BASE_URL = 'https://api.worldmonitor.app/';
+    await handler(new Request('https://evil.example/api/seed-contract-probe', { headers: { 'x-probe-secret': 'test-secret' } }));
+    assert.ok(urls.some(url => url.origin === 'https://api.worldmonitor.app' && url.pathname === '/api/bootstrap'));
+  } finally {
+    if (originalBase === undefined) delete process.env.WORLDMONITOR_PUBLIC_BASE_URL;
+    else process.env.WORLDMONITOR_PUBLIC_BASE_URL = originalBase;
+  }
+});
+
 function mockRedisGet(value) {
   globalThis.fetch = async () => ({
     ok: true,
@@ -136,7 +212,7 @@ test('checkPublicBoundary: product-catalog served from cache + bootstrap no leak
     },
     { '/api/product-catalog': { 'x-product-catalog-source': 'cache' } },
   );
-  const res = await checkPublicBoundary('https://example.test', 0);
+  const res = await checkPublicBoundary('https://worldmonitor.app', 0);
   assert.equal(res.every(r => r.pass), true, JSON.stringify(res));
 });
 
@@ -150,7 +226,7 @@ test('checkPublicBoundary: product-catalog served from fallback fails source-hea
     },
     { '/api/product-catalog': { 'x-product-catalog-source': 'fallback' } },
   );
-  const res = await checkPublicBoundary('https://example.test', 0);
+  const res = await checkPublicBoundary('https://worldmonitor.app', 0);
   const pc = res.find(r => r.endpoint === '/api/product-catalog');
   assert.equal(pc.pass, false);
   assert.match(pc.reason, /source:fallback!=cache/);
@@ -161,7 +237,7 @@ test('checkPublicBoundary: product-catalog missing source header fails', async (
     '/api/product-catalog': JSON.stringify({ tiers: [] }),
     '/api/bootstrap':       JSON.stringify({}),
   });
-  const res = await checkPublicBoundary('https://example.test', 0);
+  const res = await checkPublicBoundary('https://worldmonitor.app', 0);
   const pc = res.find(r => r.endpoint === '/api/product-catalog');
   assert.equal(pc.pass, false);
   assert.match(pc.reason, /source:missing!=cache/);
@@ -175,7 +251,7 @@ test('checkPublicBoundary: response leaking _seed fails before source check', as
     },
     { '/api/product-catalog': { 'x-product-catalog-source': 'cache' } },
   );
-  const res = await checkPublicBoundary('https://example.test', 0);
+  const res = await checkPublicBoundary('https://worldmonitor.app', 0);
   assert.ok(res.some(r => !r.pass && r.reason === 'seed-leak'));
 });
 
@@ -183,7 +259,7 @@ test('checkPublicBoundary: bad status fails', async () => {
   globalThis.fetch = async () => ({
     ok: false, status: 502, text: async () => '', headers: { get: () => null },
   });
-  const res = await checkPublicBoundary('https://example.test', 0);
+  const res = await checkPublicBoundary('https://worldmonitor.app', 0);
   assert.ok(res.every(r => !r.pass && r.reason.startsWith('status:')));
 });
 
@@ -271,7 +347,7 @@ test('checkPublicBoundary: a transient first-attempt failure on each endpoint re
     const hdrs = new Headers(path === '/api/product-catalog' ? { 'x-product-catalog-source': 'cache' } : {});
     return { ok: true, status: 200, text: async () => body, headers: { get: (n) => hdrs.get(n) } };
   };
-  const res = await checkPublicBoundary('https://example.test', 0);
+  const res = await checkPublicBoundary('https://worldmonitor.app', 0);
   assert.equal(res.every(r => r.pass), true, JSON.stringify(res));
   assert.ok(res.every(r => r.recovered === true), 'both endpoints should be flagged recovered');
 });

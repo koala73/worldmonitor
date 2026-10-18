@@ -16,20 +16,6 @@ function updateThemeMetaColor(theme: Theme, variant = document.documentElement.d
   if (meta) meta.content = resolveThemeColor(theme, variant);
 }
 
-/**
- * Read the stored theme preference from localStorage.
- * Returns 'dark' or 'light' if valid, otherwise DEFAULT_THEME.
- */
-export function getStoredTheme(): Theme {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === 'dark' || stored === 'light') return stored;
-  } catch {
-    // localStorage unavailable (e.g., sandboxed iframe, private browsing)
-  }
-  return DEFAULT_THEME;
-}
-
 export function getThemePreference(): ThemePreference {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -56,16 +42,19 @@ function teardownAutoListener(): void {
   }
 }
 
-export function setThemePreference(pref: ThemePreference): void {
-  try { localStorage.setItem(STORAGE_KEY, pref); } catch { /* noop */ }
+function updateAutoListener(pref: ThemePreference): void {
   teardownAutoListener();
-  const effective: Theme = pref === 'auto' ? resolveAutoTheme() : pref;
-  setTheme(effective);
   if (pref === 'auto' && typeof window !== 'undefined' && window.matchMedia) {
     autoMediaQuery = window.matchMedia('(prefers-color-scheme: light)');
-    autoMediaHandler = () => setTheme(resolveAutoTheme());
+    autoMediaHandler = () => applyTheme(resolveAutoTheme());
     autoMediaQuery.addEventListener('change', autoMediaHandler);
   }
+}
+
+export function setThemePreference(pref: ThemePreference): void {
+  try { localStorage.setItem(STORAGE_KEY, pref); } catch { /* noop */ }
+  updateAutoListener(pref);
+  applyTheme(pref === 'auto' ? resolveAutoTheme() : pref);
 }
 
 /**
@@ -82,13 +71,12 @@ export function getCurrentTheme(): Theme {
  * persist to localStorage, update meta theme-color, and dispatch event.
  */
 export function setTheme(theme: Theme): void {
+  setThemePreference(theme);
+}
+
+function applyTheme(theme: Theme): void {
   document.documentElement.dataset.theme = theme;
   invalidateColorCache();
-  try {
-    localStorage.setItem(STORAGE_KEY, theme);
-  } catch {
-    // localStorage unavailable
-  }
   updateThemeMetaColor(theme);
   window.dispatchEvent(new CustomEvent('theme-changed', { detail: { theme } }));
 }
@@ -121,6 +109,10 @@ export function applyStoredTheme(): void {
     effective = variant === 'happy' ? 'light' : resolveAutoTheme();
   }
 
+  // No stored preference reads as Auto in settings, so it follows the system
+  // theme too, except on Happy, which stays light.
+  const followsSystem = raw === 'auto' || (!hasExplicitPreference && variant !== 'happy');
+  updateAutoListener(followsSystem ? 'auto' : effective);
   document.documentElement.dataset.theme = effective;
   updateThemeMetaColor(effective, variant);
 }

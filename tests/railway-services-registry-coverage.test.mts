@@ -151,6 +151,7 @@ describe('Railway service registry coverage', () => {
       'scripts/_gdelt-fetch.mjs',
       'scripts/china-corporate-disclosures/adapters.mjs',
       'scripts/cross-strait-activity/adapters.mjs',
+      'scripts/seed-live-video-resolved.mjs',
     ]) {
       const src = readFileSync(resolve(repoRoot, file), 'utf8');
       for (const m of src.matchAll(PROXY_FALLBACK_RE)) {
@@ -158,8 +159,8 @@ describe('Railway service registry coverage', () => {
       }
     }
     assert.ok(
-      fallbackPairs.length >= 3,
-      'expected the GDELT, SZSE and Japan MOD adapters to resolve a source-specific proxy with a PROXY_URL fallback',
+      fallbackPairs.length >= 4,
+      'expected the GDELT, SZSE and Japan MOD adapters and the live video seeder to resolve a source-specific proxy with a PROXY_URL fallback',
     );
 
     for (const [specific, shared] of fallbackPairs) {
@@ -368,5 +369,24 @@ describe('Railway service registry coverage', () => {
     const m = sample.match(SCRIPT_HEADER_SERVICE_RE);
     assert.ok(m, 'SCRIPT_HEADER_SERVICE_RE failed to match canonical service header shape');
     assert.equal(m![1], 'seed-bundle-fake');
+  });
+});
+
+// The live audit gives an unregistered service a watch-path contract only when
+// its start command is a seeder (`node seed-*`): it must watch scripts/** and
+// shared/**. Any other live service outside the registry keeps whatever
+// patterns were set by hand, and nothing checks them against its imports.
+// notification-relay (`npm run notification-relay`) watched six paths while
+// seventeen files it requires went unwatched, so fixes to those never deployed (#9265).
+describe('Railway fleet registry coverage', () => {
+  it('registers every live non-seeder service', () => {
+    const fleet = JSON.parse(
+      readFileSync(resolve(repoRoot, 'scripts/railway-native-autodeploy-fleet.json'), 'utf8'),
+    ) as { services: { id: string; name: string }[] };
+    const registered = new Set(registry.map((entry) => entry.service));
+    const unregistered = fleet.services
+      .map((service) => service.name)
+      .filter((name) => !name.startsWith('seed-') && !registered.has(name));
+    assert.deepEqual(unregistered, [], 'register these services in scripts/railway-services.json');
   });
 });

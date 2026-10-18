@@ -18,6 +18,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { lua, lauxlib, lualib, to_luastring, to_jsstring } from 'fengari';
 
+import { PANEL_REQUEST_READ_SCRIPT, PANEL_REQUEST_RESERVE_SCRIPT } from '../shared/panel-request-scripts.mjs';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { MCP_QUOTA_RESERVE_SCRIPT } from '../shared/mcp-quota-reserve-script.mjs';
 import { PRO_DAILY_QUOTA_TTL_SECONDS } from '../server/_shared/pro-mcp-token.ts';
 
@@ -62,6 +65,7 @@ function makeRedis(initial = {}) {
       }
       if (verb === 'SET') {
         store.set(args[0], String(args[1]));
+        if (args[2] === 'EX') ttls.set(args[0], Number(args[3]));
         return 'OK';
       }
       if (verb === 'EXPIRE') {
@@ -90,7 +94,7 @@ function pushValue(L, value) {
 function readReturn(L) {
   assert.equal(lua.lua_type(L, -1), lua.LUA_TTABLE, 'the script must return a table');
   const out = [];
-  for (let i = 1; i <= 2; i += 1) {
+  for (let i = 1; i <= 3; i += 1) {
     lua.lua_geti(L, -1, i);
     out.push(lua.lua_tonumber(L, -1));
     lua.lua_pop(L, 1);
@@ -103,7 +107,7 @@ function readReturn(L) {
  * `argv` entries are stringified the way Redis hands them to a script; an
  * `undefined` entry is a genuinely absent ARGV slot.
  */
-function reserve({ argv, initial = {} }) {
+function reserve({ argv, initial = {}, script = MCP_QUOTA_RESERVE_SCRIPT, keys = [COUNTER_KEY, FLOOR_KEY] }) {
   const redis = makeRedis(initial);
   const L = lauxlib.luaL_newstate();
   lualib.luaL_openlibs(L);
@@ -120,7 +124,7 @@ function reserve({ argv, initial = {} }) {
   lua.lua_setfield(L, -2, to_luastring('call'));
   lua.lua_setglobal(L, to_luastring('redis'));
 
-  pushValue(L, [COUNTER_KEY, FLOOR_KEY]);
+  pushValue(L, keys);
   lua.lua_setglobal(L, to_luastring('KEYS'));
   // A trailing `undefined` truncates the ARGV table, which is what Redis does
   // when the caller passes fewer arguments.
@@ -137,14 +141,14 @@ function reserve({ argv, initial = {} }) {
     const raw = lua.lua_tostring(L, -1);
     return raw ? to_jsstring(raw) : '<no error message on the stack>';
   };
-  if (lauxlib.luaL_loadstring(L, to_luastring(MCP_QUOTA_RESERVE_SCRIPT)) !== lua.LUA_OK) {
+  if (lauxlib.luaL_loadstring(L, to_luastring(script)) !== lua.LUA_OK) {
     assert.fail(`script failed to compile: ${luaError()}`);
   }
   if (lua.lua_pcall(L, 0, 1, 0) !== lua.LUA_OK) {
     assert.fail(`script raised: ${luaError()}`);
   }
-  const [status, count] = readReturn(L);
-  return { status, count, redis };
+  const [status, count, expires] = readReturn(L);
+  return { status, count, expires, redis };
 }
 
 /**
@@ -362,4 +366,60 @@ describe('MCP quota reserve script — the ARGV[4] residue clamp switch', () => 
       assert.equal(redis.count, 250, `ARGV[4]=${JSON.stringify(argv4)} must not disable the clamp`);
     });
   }
+});
+
+
+describe('country panel admission and work ceiling, real Lua', () => {
+  const marker = 'country:US:window';
+  const reads = `${marker}:reads`;
+  const previous = 'country:US:previous';
+  const expires = '1790942700000';
+  const admit = (initial = {}, limit = 50) => reserve({ script: PANEL_REQUEST_RESERVE_SCRIPT, keys: [COUNTER_KEY, FLOOR_KEY, marker, previous], argv: [limit, PRO_DAILY_QUOTA_TTL_SECONDS, 1, 1, 300, expires], initial });
+  it('reuses the previous paid window atomically without a new marker or charge', () => {
+    const repeated = admit({ [previous]: expires, [COUNTER_KEY]: 50 });
+    assert.equal(repeated.status, 3);
+    assert.equal(repeated.redis.count, 50);
+    assert.equal(repeated.redis.store.has(marker), false);
+    assert.equal(repeated.expires, Number(expires));
+  });
+  it('charges once, records the paid marker and reuses even at the daily cap', () => {
+    const first = admit({ [COUNTER_KEY]: 49 });
+    assert.equal(first.status, 1);
+    assert.equal(first.redis.count, 50);
+    assert.equal(first.redis.store.get(marker), expires);
+    assert.equal(first.redis.ttls.get(marker), 300);
+    const repeated = admit(Object.fromEntries(first.redis.store));
+    assert.equal(repeated.status, 2);
+    assert.equal(repeated.redis.count, 50);
+    assert.equal(repeated.expires, first.expires);
+    assert.equal(repeated.redis.commands.filter(cmd => cmd[0] === 'INCRBY').length, 0);
+  });
+  it('denied admission leaves no paid marker or extra charge', () => {
+    const denied = admit({ [COUNTER_KEY]: 50 });
+    assert.equal(denied.status, 0);
+    assert.equal(denied.redis.count, 50);
+    assert.equal(denied.redis.store.has(marker), false);
+  });
+  it('executes 64 reads and refuses the next without advancing the stored work count', () => {
+    let initial = { [marker]: expires };
+    for (let i = 1; i <= 65; i++) {
+      const result = reserve({ script: PANEL_REQUEST_READ_SCRIPT, keys: [marker, reads], argv: [64, 300, expires], initial });
+      assert.equal(result.status, i <= 64 ? 1 : 0);
+      assert.equal(result.count, Math.min(i, 64));
+      initial = Object.fromEntries(result.redis.store);
+    }
+  });
+  it('cannot read without a paid marker or reuse a corrupt counter', () => {
+    assert.equal(reserve({ script: PANEL_REQUEST_READ_SCRIPT, keys: [marker, reads], argv: [64, 300, expires] }).status, -1);
+    assert.equal(admit({ [marker]: expires, [COUNTER_KEY]: 'corrupt' }).status, -1);
+    assert.equal(reserve({ script: PANEL_REQUEST_READ_SCRIPT, keys: [marker, reads], argv: [64, 300, Number(expires) + 1], initial: { [marker]: expires } }).status, -1);
+  });
+  it('the self-hosted proxy allows the exact executed scripts', () => {
+    const source = readFileSync(new URL('../docker/redis-rest-proxy.mjs', import.meta.url), 'utf8');
+    const start = source.indexOf('const MCP_QUOTA_RESERVE_SCRIPT =');
+    const end = source.indexOf('const ALLOWED_EVAL_SCRIPTS', start);
+    const pinned = runInNewContext(`${source.slice(start, end)}; ({PANEL_REQUEST_READ_SCRIPT, PANEL_REQUEST_RESERVE_SCRIPT})`);
+    assert.equal(pinned.PANEL_REQUEST_READ_SCRIPT, PANEL_REQUEST_READ_SCRIPT);
+    assert.equal(pinned.PANEL_REQUEST_RESERVE_SCRIPT, PANEL_REQUEST_RESERVE_SCRIPT);
+  });
 });

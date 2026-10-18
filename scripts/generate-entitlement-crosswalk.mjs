@@ -135,7 +135,7 @@ const MAP = [
   [/^proFresh:/,                             { cap: 'freshness.market_quotes' }],
 
   // ---- API surfaces by domain
-  [/:(\/api\/market\/v1\/analyze-stock|\/api\/market\/v1\/get-stock-analysis-history)$/, { cap: 'markets.stock_analysis' }],
+  [/:(\/api\/market\/v1\/analyze-stock|\/api\/market\/v1\/get-stock-analysis-history|\/api\/market\/v1\/get-insider-transactions)$/, { cap: 'markets.stock_analysis' }],
   [/:(\/api\/market\/v1\/backtest-stock|\/api\/market\/v1\/list-stored-stock-backtests)$/, { cap: 'markets.backtest' }],
   [/:\/api\/intelligence\/v1\/list-market-implications$/, { cap: 'markets.implications' }],
   // WSB scanner RPC (#8043): same premium surface as panel wsb-ticker-scanner.
@@ -185,7 +185,7 @@ const MAP = [
   [/^panel:\w+\.(regional-intelligence|deduction)$/, { exclude: 'ships enabled:false — gate guards nothing' }],
   // isPanelEntitled(): a 'locked' panel outside apiKeyPanels returns isDesktopRuntime(),
   // so desktop-only markers grant access on desktop and are absent on web. Not a paid gate.
-  [/^panel:\w+\.(forecast|oref-sirens|telegram-intel|x-intel)$/, { exclude: "desktop-only 'locked' — isPanelEntitled returns isDesktopRuntime(); free users are entitled on both surfaces" }],
+  [/^panel:\w+\.(forecast|oref-sirens|x-intel)$/, { exclude: "desktop-only 'locked' — isPanelEntitled returns isDesktopRuntime(); free users are entitled on both surfaces" }],
   [/^panel:\w+\.(cii|strategic-risk|gdelt-intel|supply-chain)$/, { exclude: "desktop-only 'enhanced' — badge only, never blocks a free user" }],
   [/^panel:\w+\.stock-analysis$/,             { cap: 'markets.stock_analysis' }],
   [/^panel:\w+\.stock-backtest$/,             { cap: 'markets.backtest' }],
@@ -206,6 +206,7 @@ const MAP = [
 ];
 
 const SITE_MAP = [
+  [/^src\/components\/TelegramIntelPanel\.ts$/, { cap: 'intel.telegram', note: 'desktop access lifecycle; free web feed remains available', preds: ['hasPremiumAccess'] }],
   // --- capabilities the hand-built ledger never found ---
   [/convex\/companyMonitoring\//,             { cap: 'monitoring.company', note: 'requires planKey!==free && tier>0' , preds: ['tier'] }],
   [/_shared\/direct-llm-quota\.ts/,           { cap: 'llm.direct_quota', note: 'entitlement-derived daily LLM ceiling' , preds: ['tier'] }],
@@ -217,6 +218,8 @@ const SITE_MAP = [
   [/server\/gateway\.ts/,                     { cap: 'embed.panels', note: 'wme_ key accepted on the RPC paths a paid embed panel declares (EMBED_KEY_RPC_PATHS) — the data read behind the entitlement answer' , preds: ['embedAccess'] }],
   // --- false positive: data LOD tier, not an entitlement tier ---
   [/list-military-bases\.ts/,                 { exclude: 'meta.tier is a base-importance LOD tier for zoom filtering, NOT an entitlement tier' , preds: ['tier'] }],
+  // --- false positive: publisher source-credibility tier, not an entitlement tier ---
+  [/api\/mcp\/ui\/news-intelligence-app\.ts/,   { exclude: 'publisher.tier is a declared source-credibility tier (1-4) shown beside news publishers, NOT an entitlement tier' , preds: ['tier'] }],
   // --- server route enforcement points of already-mapped API paths ---
   [/server\/worldmonitor\/supply-chain\/v1\/(get-country-chokepoint-index|get-bypass-options)/, { cap: 'supplychain.chokepoints', note: 'enforcement point' , preds: ['isCallerPremium'] }],
   [/server\/worldmonitor\/supply-chain\/v1\/(get-route-explorer-lane|get-route-impact)/,        { cap: 'supplychain.routes', note: 'enforcement point' , preds: ['isCallerPremium'] }],
@@ -308,6 +311,7 @@ const SITE_BASELINE = {
   "api/chat-analyst.ts::resolvePremiumCallerIdentity": 1,
   "api/mcp-proxy.ts::resolvePremiumCallerIdentity": 1,
   "api/mcp/skill-extension/generated.ts::tier": 1,
+  "api/mcp/ui/news-intelligence-app.ts::tier": 1,
   "api/me/entitlement.ts::isCallerPremium": 1,
   "api/notification-channels.ts::tier": 1,
   "api/v2/shipping/webhooks/[subscriberId].ts::resolvePremiumCallerIdentity": 1,
@@ -342,15 +346,12 @@ const SITE_BASELINE = {
   "server/_shared/pro-mcp-gate.ts::tier": 1,
   "server/gateway.ts::apiAccess": 3,
   "server/gateway.ts::embedAccess": 1,
-  "src/services/entitlements.ts::embedAccess": 1,
   "server/gateway.ts::tier": 5,
-  "server/worldmonitor/economic/v1/get-national-debt.ts::isCallerPremium": 1,
   "server/worldmonitor/intelligence/v1/deduct-situation.ts::isCallerPremium": 1,
   "server/worldmonitor/intelligence/v1/get-country-intel-brief.ts::isCallerPremium": 1,
   "server/worldmonitor/military/v1/list-military-bases.ts::tier": 1,
   "server/worldmonitor/news/v1/summarize-article.ts::requiresPremium": 2,
   "server/worldmonitor/news/v1/summarize-article.ts::resolvePremiumCallerIdentity": 1,
-  "server/worldmonitor/sanctions/v1/list-sanctions-pressure.ts::isCallerPremium": 1,
   "server/worldmonitor/supply-chain/v1/get-bypass-options.ts::isCallerPremium": 1,
   "server/worldmonitor/supply-chain/v1/get-country-chokepoint-index.ts::isCallerPremium": 1,
   "server/worldmonitor/supply-chain/v1/get-country-cost-shock.ts::isCallerPremium": 1,
@@ -359,16 +360,20 @@ const SITE_BASELINE = {
   "server/worldmonitor/supply-chain/v1/get-route-explorer-lane.ts::isCallerPremium": 1,
   "server/worldmonitor/supply-chain/v1/get-route-impact.ts::isCallerPremium": 1,
   "server/worldmonitor/supply-chain/v1/get-sector-dependency.ts::isCallerPremium": 1,
+  "server/worldmonitor/trade/v1/get-bilateral-tariff.ts::isCallerPremium": 1,
   "server/worldmonitor/trade/v1/get-tariff-trends.ts::isCallerPremium": 1,
+  "server/worldmonitor/trade/v1/get-us-import-duty.ts::isCallerPremium": 1,
   "server/worldmonitor/trade/v1/list-comtrade-flows.ts::isCallerPremium": 1,
   "src/app/data-loader.ts::hasPremiumAccess": 13,
   "src/app/event-handlers.ts::isProUser": 2,
   "src/app/panel-layout.ts::hasPremiumAccess": 1,
   "src/components/RegionalIntelligenceBoard.ts::hasPremiumAccess": 1,
+  "src/components/TelegramIntelPanel.ts::hasPremiumAccess": 1,
   "src/components/UnifiedSettings.ts::isProUser": 1,
   "src/services/analysis-framework-store.ts::hasPremiumAccess": 1,
   "src/services/correlation-engine/engine.ts::hasPremiumAccess": 1,
   "src/services/economic/index.ts::hasPremiumAccess": 1,
+  "src/services/entitlements.ts::embedAccess": 1,
   "src/services/entitlements.ts::tier": 1,
   "src/services/gates/export-resolver.ts::dataExport": 4,
   "src/services/gates/export.ts::dataExport": 1,

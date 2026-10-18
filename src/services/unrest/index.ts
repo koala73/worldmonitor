@@ -55,26 +55,27 @@ function mapConfidence(c: string): 'high' | 'medium' | 'low' {
 /** Exported for the embed loader, which receives this wire shape from the
  *  composed map-frame endpoint rather than from this module's own fetch. */
 export function toSocialUnrestEvent(e: UnrestEvent): SocialUnrestEvent {
+  const mediaSignal = e.sourceType === 'UNREST_SOURCE_TYPE_GDELT';
   return {
     id: e.id,
     title: e.title,
     summary: e.summary || undefined,
-    eventType: mapEventType(e.eventType),
+    eventType: mediaSignal ? 'civil_unrest' : mapEventType(e.eventType),
     city: e.city || undefined,
     country: e.country,
     region: e.region || undefined,
     lat: e.location?.latitude ?? 0,
     lon: e.location?.longitude ?? 0,
     time: new Date(e.occurredAt),
-    severity: mapSeverity(e.severity),
+    severity: mediaSignal ? 'low' : mapSeverity(e.severity),
     fatalities: e.fatalities > 0 ? e.fatalities : undefined,
     sources: e.sources,
     sourceUrls: e.sourceUrls?.length ? e.sourceUrls : undefined,
     sourceType: mapSourceType(e.sourceType),
     tags: e.tags.length > 0 ? e.tags : undefined,
     actors: e.actors.length > 0 ? e.actors : undefined,
-    confidence: mapConfidence(e.confidence),
-    validated: mapConfidence(e.confidence) === 'high',
+    confidence: mediaSignal ? 'low' : mapConfidence(e.confidence),
+    validated: !mediaSignal && mapConfidence(e.confidence) === 'high',
   };
 }
 
@@ -101,11 +102,11 @@ const emptyFallback: ListUnrestEventsResponse = {
 
 export async function fetchProtestEvents(): Promise<ProtestData> {
   const hydrated = getHydratedData('unrestEvents') as ListUnrestEventsResponse | undefined;
-  if (hydrated?.events?.length) {
+  if (Array.isArray(hydrated?.events)) {
     // Warm the breaker under the same key a later recurring call reads
     // (#7048); a bare return drained the consume-once slot and forced a
     // refetch.
-    unrestBreaker.recordSuccess(hydrated);
+    unrestBreaker.recordSuccess(hydrated, 'available-v1');
     const events = hydrated.events.map(toSocialUnrestEvent);
     const byCountry = new Map<string, SocialUnrestEvent[]>();
     for (const event of events) {
@@ -133,7 +134,8 @@ export async function fetchProtestEvents(): Promise<ProtestData> {
       swLat: 0,
       swLon: 0,
     });
-  }, emptyFallback);
+  }, emptyFallback, { cacheKey: 'available-v1' });
+  if (resp === emptyFallback) throw new Error('Unrest events unavailable');
 
   const events = resp.events.map(toSocialUnrestEvent);
 

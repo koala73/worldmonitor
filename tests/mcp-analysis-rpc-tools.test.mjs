@@ -1167,6 +1167,65 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.equal(result.data.events[0].id, 'palestine-quake');
   });
 
+  for (const view of ['today', 'weekly']) {
+    for (const sourceVersion of ['wingbits', 'OpenSky Network', undefined, '', '   ', 42]) {
+      it(`${view} digest enforces surge attribution ${JSON.stringify(sourceVersion)}`, async () => {
+        const payloads = analysisPayloads();
+        payloads['military:surges:v1'].sourceVersion = sourceVersion;
+        const fetchedAt = Date.now() - MIN;
+        payloads['seed-meta:intelligence:risk-scores'] = { fetchedAt, recordCount: 3 };
+        installUpstashStub(payloads);
+
+        const result = await findTool('get_alert_digest')._execute({ view }, '', {}, {});
+        const allowed = sourceVersion === 'wingbits';
+        const military = result.data.tripped.filter((alert) => alert.domain === 'military_surge');
+        assert.equal(military.length, allowed ? 1 : 0);
+        if (allowed) assert.equal(military[0].value, 2.1);
+        assert.equal(result.data.unavailable.includes('military_surge'), !allowed);
+        assert.equal(result.data.quiet.includes('military_surge'), false);
+        assert.equal(result.stale, !allowed);
+        assert.equal(result.cached_at, new Date(fetchedAt).toISOString());
+        assert.deepEqual(result.unavailable_inputs, allowed ? [] : ['military:surges:v1']);
+        assert.deepEqual(result.failed_inputs, []);
+        for (const domain of ['cable_health', 'outages', 'thermal', 'shipping_stress']) {
+          assert.ok(result.data.tripped.some((alert) => alert.domain === domain));
+        }
+        assert.ok(result.data.quiet.includes('temporal_anomaly'));
+        if (view === 'weekly') {
+          assert.equal(result.data.weekly.history_available, true);
+          assert.ok(result.data.weekly.trends.length > 0);
+        } else {
+          assert.equal(result.data.weekly, null);
+        }
+      });
+    }
+
+    it(`${view} digest keeps an attributed empty surge feed quiet`, async () => {
+      installUpstashStub({ 'military:surges:v1': { sourceVersion: 'wingbits', surges: [] } });
+      const result = await findTool('get_alert_digest')._execute({ view }, '', {}, {});
+      assert.ok(result.data.quiet.includes('military_surge'));
+      assert.ok(!result.data.unavailable.includes('military_surge'));
+      assert.ok(!result.unavailable_inputs.includes('military:surges:v1'));
+    });
+
+    for (const sourceVersion of ['opensky', undefined]) {
+      it(`${view} digest rejects when only withheld surges are available (${sourceVersion})`, async () => {
+        installUpstashStub({
+          'military:surges:v1': { ...analysisPayloads()['military:surges:v1'], sourceVersion },
+        });
+        await assert.rejects(
+          () => findTool('get_alert_digest')._execute({ view }, '', {}, {}),
+          (error) => {
+            assert.ok(error instanceof McpSourceUnavailableError);
+            assert.ok(error.unavailableInputs.includes('military:surges:v1'));
+            assert.deepEqual(error.failedInputs, []);
+            return true;
+          },
+        );
+      });
+    }
+  }
+
   it('surfaces missing weekly history in both freshness and digest availability', async () => {
     installUpstashStub(analysisPayloads(), { misses: ['military:surges:history:v1'] });
     const result = await findTool('get_alert_digest')._execute({ view: 'weekly' }, '', {}, {});

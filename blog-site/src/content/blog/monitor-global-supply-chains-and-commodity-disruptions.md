@@ -207,4 +207,4 @@ Yes. The Country Instability Index (CII), conflict layers, and Infrastructure Ca
 
 ---
 
-**Start monitoring at [commodity.worldmonitor.app](https://commodity.worldmonitor.app). Free real-time intelligence for supply chain professionals.**
+**Start monitoring at [commodity.worldmonitor.app](https://commodity.worldmonitor.app/dashboard). Free real-time intelligence for supply chain professionals.**

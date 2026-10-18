@@ -4,7 +4,7 @@
 **Dimension ID**: `financialSystemExposure`
 **Domain**: `economic` (weight 0.50 within domain)
 **Type**: `stress`
-**Rollout**: `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true` is live in Vercel production. The code default remains `false` for CI and rollback; see the [flag-flip runbook](./financial-system-exposure-flag-flip-runbook.md).
+**Rollout**: `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true` is live in Vercel production. The code default remains `false` for CI and rollback; see the [flag-flip runbook](https://github.com/koala73/worldmonitor/blob/main/docs/methodology/financial-system-exposure-flag-flip-runbook.md).
 
 ## Question answered
 
@@ -249,7 +249,7 @@ FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO  (server/worldmonitor/resilience/v1/_dime
 
 **Applied post-blend, so provenance is untouched.** `coverage`, `observedWeight`, `imputedWeight` and `imputationClass` continue to describe what was actually read. An operator inspecting a capped country still sees which components resolved; the cap does not disguise a construct verdict as a data outage.
 
-**This is not the rejected "transit-hub exclusion list"** ([Alternative 2](#alternative-2--transit-hub-exclusion-list)). That would have been an editorial carve-out of jurisdictions the construct scored inconveniently. This list *is* the construct's subject, and its membership is externally defined by published US OFAC and EU Council programmes rather than drawn by us.
+**This is not the rejected "transit-hub exclusion list"** ([Alternative 2](#alternative-2-%E2%80%94-transit-hub-exclusion-list)). That would have been an editorial carve-out of jurisdictions the construct scored inconveniently. This list *is* the construct's subject, and its membership is externally defined by published US OFAC and EU Council programmes rather than drawn by us.
 
 **Maintenance**: the list is static and must be reviewed when a programme is materially lifted or imposed. It was last reviewed on **2026-08-11** and has a maximum review age of **120 days**, enforced in CI. Syria was removed during that review because [OFAC revoked the comprehensive Syria sanctions program effective 2025-07-01](https://ofac.treasury.gov/recent-actions/20250630). A jurisdiction leaving the list re-enters the graded components on its own merits; tests require the runtime set, calibration cohort, and this code block to remain identical.
 
@@ -410,7 +410,7 @@ Keep `tradeSanctions` as a retired/compat dimension at coverage=0; add `tradePol
 
 ## References
 
-- Phase 1 (rename + drop OFAC): [`known-limitations.md § tradeSanctions → tradePolicy`](./known-limitations.md#tradesanctions--tradepolicy-ofac-domicile-component-dropped-ship-1-2026-04-25)
+- Phase 1 (rename + drop OFAC): [`known-limitations.md § tradeSanctions → tradePolicy`](./known-limitations.md#tradesanctions-%E2%86%92-tradepolicy-ofac-domicile-component-dropped-ship-1-2026-04-25)
 - Scorer: `server/worldmonitor/resilience/v1/_dimension-scorers.ts` (`scoreFinancialSystemExposure`)
 - Indicator registry: `server/worldmonitor/resilience/v1/_indicator-registry.ts` (4 entries with dimension `financialSystemExposure`)
 - Seeders: `scripts/seed-{wb-external-debt,bis-lbs,fatf-listing}.mjs`
@@ -439,4 +439,4 @@ Measured effect on the 2026-08-11 production payloads (dimension score, before �
 | before | 68 | 48 | 52 | 0 | 100 | 45 | 59 | 54 | 54 | 54 | 80 | 89 | 30 |
 | after | 15 | 15 | 15 | 0 | 15 | 15 | 15 | 15 | 72 | 72 | 81 | 85 | 55 |
 
-The dimension is live behind `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED` in production. The code default remains flag-off for CI and rollback. The cache rotation, read-only acceptance capture, and operator closeout are defined in [the activation runbook](./financial-system-exposure-flag-flip-runbook.md). #6461 is already closed by #6515, so no reprioritization mutation is required.
+The dimension is live behind `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED` in production. The code default remains flag-off for CI and rollback. The cache rotation, read-only acceptance capture, and operator closeout are defined in [the activation runbook](https://github.com/koala73/worldmonitor/blob/main/docs/methodology/financial-system-exposure-flag-flip-runbook.md). #6461 is already closed by #6515, so no reprioritization mutation is required.

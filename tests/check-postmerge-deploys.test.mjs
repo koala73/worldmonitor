@@ -16,7 +16,9 @@ import { parse as parseYaml } from 'yaml';
 import {
   DEFAULT_NO_RUN_WINDOW_MS,
   MONITORED_WORKFLOWS,
+  RUN_LISTING_SAMPLES,
   checkPostmergeDeploys,
+  createDeadlineGh,
   createRetryingGh,
   diffTouchesPaths,
   readDeployedBaselineSha,
@@ -335,6 +337,399 @@ describe('post-merge deploy monitor', () => {
     assert.match(verdict.detail, /trigger path/i);
   });
 
+  // A stale GitHub index shard answers the run listing with an OLD snapshot:
+  // a smaller `total_count` and a newest run from weeks ago, served with HTTP
+  // 200 alongside fresh answers to the identical URL. Observed on
+  // convex-deploy.yml on 2026-09-24 — 1 read in 30 from a runner returned
+  // total_count 1366 (true: 3168) with run 34136482776 (2026-09-07) as the
+  // newest, which is what made this monitor cry NO_RUN_IN_WINDOW on a
+  // workflow that had deployed minutes earlier. One read cannot tell the two
+  // apart, so the listing is sampled several times and the newest run seen
+  // across every sample wins: a stale sample is a strict subset of a fresh
+  // one, so the maximum can never invent a run it did not see.
+  it('outvotes a stale run-listing snapshot instead of alarming on it', () => {
+    const fresh = [
+      { id: 900, created_at: new Date(NOW - 30 * 60 * 1000).toISOString(), conclusion: 'success', run_attempt: 1, head_sha: 'd'.repeat(40), event: 'push', display_title: 'push' },
+    ];
+    const stale = [
+      { id: 100, created_at: new Date(NOW - 17 * 24 * HOUR).toISOString(), conclusion: 'success', run_attempt: 1, head_sha: 'e'.repeat(40), event: 'push', display_title: 'push' },
+    ];
+
+    for (const stalePositions of [[0], [1], [2], [0, 1], [1, 2], [0, 2]]) {
+      let read = -1;
+      const newest = readNewestRun({
+        gh: (args) => {
+          read += 1;
+          assert.match(args.join(' '), /workflows\/convex-deploy\.yml\/runs/);
+          return JSON.stringify({ workflow_runs: stalePositions.includes(read) ? stale : fresh });
+        },
+        repository: 'koala73/worldmonitor',
+        workflowFile: 'convex-deploy.yml',
+        now: NOW,
+        noRunWindowMs: 7 * 24 * HOUR,
+      });
+      assert.equal(newest.verdict, 'RUN_FOUND', `stale reads at ${stalePositions} must not resolve to a window alarm`);
+      assert.equal(newest.runId, 900, `stale reads at ${stalePositions} must not win over a fresh one`);
+    }
+  });
+
+  it('still alarms when every sample of the run listing agrees the newest run is old', () => {
+    let reads = 0;
+    const newest = readNewestRun({
+      gh: () => {
+        reads += 1;
+        return JSON.stringify({
+          workflow_runs: [
+            { id: 100, created_at: new Date(NOW - 17 * 24 * HOUR).toISOString(), conclusion: 'success', run_attempt: 1, head_sha: 'e'.repeat(40), event: 'push', display_title: 'push' },
+          ],
+        });
+      },
+      repository: 'koala73/worldmonitor',
+      workflowFile: 'convex-deploy.yml',
+      now: NOW,
+      noRunWindowMs: 7 * 24 * HOUR,
+    });
+    assert.equal(newest.verdict, 'NO_RUN_IN_WINDOW');
+    assert.equal(newest.runId, 100);
+    assert.ok(reads > 1, 'a window alarm must rest on more than one read of the listing');
+  });
+
+  // A re-run keeps the run id AND the original created_at and only bumps
+  // run_attempt — proven on a monitored workflow: deploy-worker.yml run
+  // 29382756713 has attempt 1 `failure` and attempt 2 `success` at the same
+  // created_at 2026-07-15T01:53:51Z. A bare `created_at >` reduction therefore
+  // lets whichever sample is read FIRST win the tie, so a sample holding the
+  // green attempt outranks one holding the red re-run, and readRunJobs is then
+  // called attempts-scoped on the green attempt: DEPLOYED for a failed deploy.
+  it('prefers the later attempt of a re-run when two samples share a created_at', () => {
+    const createdAt = new Date(NOW - HOUR).toISOString();
+    const attemptOne = { id: 900, created_at: createdAt, status: 'completed', conclusion: 'success', run_attempt: 1, head_sha: 'a'.repeat(40), event: 'push', display_title: 'push' };
+    const attemptTwo = { id: 900, created_at: createdAt, status: 'completed', conclusion: 'failure', run_attempt: 2, head_sha: 'a'.repeat(40), event: 'push', display_title: 'push' };
+
+    // The green attempt first is the ordering that hides the failure.
+    for (const order of [[attemptOne, attemptTwo, attemptTwo], [attemptTwo, attemptOne, attemptOne]]) {
+      let read = -1;
+      const newest = readNewestRun({
+        gh: () => {
+          read += 1;
+          return JSON.stringify({ total_count: 10, workflow_runs: [order[read]] });
+        },
+        repository: 'koala73/worldmonitor',
+        workflowFile: 'deploy-worker.yml',
+        now: NOW,
+      });
+      assert.equal(newest.runAttempt, 2, 'the re-run supersedes the attempt it replaced');
+      assert.equal(newest.conclusion, 'failure', 'a green earlier attempt must not outrank the red re-run');
+    }
+  });
+
+  it('orders tied run creation times within each listing before choosing its newest run', () => {
+    const createdAt = new Date(NOW - HOUR).toISOString();
+    const newest = readNewestRun({
+      gh: () => JSON.stringify({ total_count: 2, workflow_runs: [
+        { id: 900, created_at: createdAt, status: 'completed', conclusion: 'success' },
+        { id: 901, created_at: createdAt, status: 'completed', conclusion: 'failure' },
+      ] }),
+      repository: 'o/r', workflowFile: 'w.yml', now: NOW,
+    });
+    assert.equal(newest.runId, 901);
+    assert.equal(newest.conclusion, 'failure');
+  });
+
+  // A sample a sibling PROVES is an older view must not vote. The selection
+  // never needed it — an older view's newest run loses the ordering anyway —
+  // but the alarm quorum does: without the discard, two stale samples pad a
+  // window alarm that only one sample actually saw, and the monitor reports a
+  // dead workflow on the strength of a single read. Both proofs are checked:
+  // a narrower total_count, and an empty listing beside a sibling with runs.
+  it('will not let a sample total_count proves stale pad the alarm quorum', () => {
+    // One FRESH sample says the newest run is 17 days old — a real-looking
+    // window alarm — and two proven-stale samples would otherwise second it.
+    const old = { id: 100, created_at: new Date(NOW - 17 * 24 * HOUR).toISOString(), conclusion: 'success', run_attempt: 1, head_sha: 'e'.repeat(40), event: 'push', display_title: 'push' };
+    const older = { id: 50, created_at: new Date(NOW - 20 * 24 * HOUR).toISOString(), conclusion: 'success', run_attempt: 1, head_sha: 'f'.repeat(40), event: 'push', display_title: 'push' };
+    const payloads = [
+      JSON.stringify({ total_count: 3168, workflow_runs: [old] }),
+      JSON.stringify({ total_count: 1366, workflow_runs: [older] }),
+      JSON.stringify({ total_count: 1366, workflow_runs: [older] }),
+    ];
+    let read = -1;
+    assert.throws(
+      () => readNewestRun({
+        gh: () => { read += 1; return payloads[read]; },
+        repository: 'koala73/worldmonitor',
+        workflowFile: 'convex-deploy.yml',
+        now: NOW,
+        noRunWindowMs: 7 * 24 * HOUR,
+      }),
+      /could not be corroborated/,
+      'samples a narrower total_count proves stale cannot second an alarm',
+    );
+  });
+
+  it('will not let an empty listing pad the quorum beside a sibling that has runs', () => {
+    const old = { id: 100, created_at: new Date(NOW - 17 * 24 * HOUR).toISOString(), conclusion: 'success', run_attempt: 1, head_sha: 'e'.repeat(40), event: 'push', display_title: 'push' };
+    const payloads = [
+      JSON.stringify({ workflow_runs: [] }),
+      JSON.stringify({ workflow_runs: [old] }),
+      JSON.stringify({ workflow_runs: [] }),
+    ];
+    let read = -1;
+    assert.throws(
+      () => readNewestRun({
+        gh: () => { read += 1; return payloads[read]; },
+        repository: 'koala73/worldmonitor',
+        workflowFile: 'convex-deploy.yml',
+        now: NOW,
+        noRunWindowMs: 7 * 24 * HOUR,
+      }),
+      /could not be corroborated/,
+      'a run cannot un-happen: the empty view is the truncated one, not a vote',
+    );
+  });
+
+  // Selection still prefers the fresher sample outright.
+  it('discards a sample that total_count proves stale', () => {
+    const fresh = { id: 900, created_at: new Date(NOW - HOUR).toISOString(), conclusion: 'success', run_attempt: 1, head_sha: 'd'.repeat(40), event: 'push', display_title: 'push' };
+    const stale = { id: 100, created_at: new Date(NOW - 17 * 24 * HOUR).toISOString(), conclusion: 'success', run_attempt: 1, head_sha: 'e'.repeat(40), event: 'push', display_title: 'push' };
+
+    // Two stale samples outnumber the one fresh sample. Voting loses here;
+    // the total_count comparison does not.
+    const payloads = [
+      JSON.stringify({ total_count: 1366, workflow_runs: [stale] }),
+      JSON.stringify({ total_count: 3168, workflow_runs: [fresh] }),
+      JSON.stringify({ total_count: 3168, workflow_runs: [fresh] }),
+    ];
+    let read = -1;
+    const newest = readNewestRun({
+      gh: () => { read += 1; return payloads[read]; },
+      repository: 'koala73/worldmonitor',
+      workflowFile: 'convex-deploy.yml',
+      now: NOW,
+      noRunWindowMs: 7 * 24 * HOUR,
+    });
+    assert.equal(newest.verdict, 'RUN_FOUND');
+    assert.equal(newest.runId, 900, 'a narrower total_count is proof of staleness, not a vote');
+  });
+
+  it('keeps a sample that answered when a sibling sample throws', () => {
+    const fresh = { id: 900, created_at: new Date(NOW - HOUR).toISOString(), conclusion: 'success', run_attempt: 1, head_sha: 'd'.repeat(40), event: 'push', display_title: 'push' };
+    let read = -1;
+    const newest = readNewestRun({
+      gh: () => {
+        read += 1;
+        if (read === 1) {
+          const error = new Error('gh api ... failed (1): tls handshake timeout');
+          error.githubReadSource = 'github-api';
+          throw error;
+        }
+        return JSON.stringify({ total_count: 3168, workflow_runs: [fresh] });
+      },
+      repository: 'koala73/worldmonitor',
+      workflowFile: 'convex-deploy.yml',
+      now: NOW,
+      noRunWindowMs: 7 * 24 * HOUR,
+    });
+    assert.equal(newest.verdict, 'RUN_FOUND', 'a sibling read failure must not discard an answer already in hand');
+    assert.equal(newest.runId, 900);
+  });
+
+  // The two verdicts a truncated or stale listing manufactures are exactly the
+  // two this monitor shouts about. Neither may rest on one read: below quorum
+  // the tick is UNKNOWN (a warning on a green job), never a claim that a
+  // production deploy stopped happening.
+  it('refuses to alarm on a window verdict only one sample could corroborate', () => {
+    const stale = { id: 100, created_at: new Date(NOW - 17 * 24 * HOUR).toISOString(), conclusion: 'success', run_attempt: 1, head_sha: 'e'.repeat(40), event: 'push', display_title: 'push' };
+    let read = -1;
+    assert.throws(
+      () => readNewestRun({
+        gh: () => {
+          read += 1;
+          if (read === 0) return JSON.stringify({ total_count: 1366, workflow_runs: [stale] });
+          const error = new Error('gh api ... failed (1): tls handshake timeout');
+          error.githubReadSource = 'github-api';
+          throw error;
+        },
+        repository: 'koala73/worldmonitor',
+        workflowFile: 'convex-deploy.yml',
+        now: NOW,
+        noRunWindowMs: 7 * 24 * HOUR,
+      }),
+      /could not be corroborated/,
+      'one lonely sample is not enough to say a workflow stopped deploying',
+    );
+
+    // And the read failure it throws is unreadability, so the job warns
+    // instead of claiming a failed deploy.
+    const perWorkflow = new Map();
+    const results = checkPostmergeDeploys({
+      repository: 'koala73/worldmonitor',
+      gh: (args) => {
+        const joined = args.join(' ');
+        const workflow = joined.match(/workflows\/([^/]+)\/runs/)?.[1];
+        if (!workflow) throw Object.assign(new Error('unexpected read'), { githubReadSource: 'github-api' });
+        const seen = perWorkflow.get(workflow) ?? 0;
+        perWorkflow.set(workflow, seen + 1);
+        // Exactly one sample answers per workflow; the rest are unreadable.
+        if (seen === 0) return JSON.stringify({ total_count: 1366, workflow_runs: [stale] });
+        throw Object.assign(new Error('gh api ... failed (1): tls handshake timeout'), { githubReadSource: 'github-api' });
+      },
+      git: () => '',
+      now: NOW,
+    });
+    for (const entry of results) {
+      assert.equal(entry.state, 'UNKNOWN', `${entry.workflow}: an uncorroborated alarm is a warning, not a failed deploy`);
+      assert.equal(entry.verdict, 'READ_FAILED');
+    }
+    assert.equal(summarizeResults(results).exitCode, 0, 'a monitor that could not corroborate must not fail the job');
+  });
+
+  // "This workflow has no runs at all" is the other verdict a truncated
+  // listing manufactures, and it is the louder of the two — it reads as a
+  // workflow that was deleted. It needs the same corroboration as the window
+  // alarm, or one empty answer beside two unreadable ones condemns a healthy
+  // workflow.
+  it('refuses to report NO_RUN on a single uncorroborated empty listing', () => {
+    let read = -1;
+    assert.throws(
+      () => readNewestRun({
+        gh: () => {
+          read += 1;
+          if (read === 0) return JSON.stringify({ total_count: 0, workflow_runs: [] });
+          throw Object.assign(new Error('gh api ... failed (1): tls handshake timeout'), { githubReadSource: 'github-api' });
+        },
+        repository: 'koala73/worldmonitor',
+        workflowFile: 'convex-deploy.yml',
+        now: NOW,
+      }),
+      /could not be corroborated/,
+      'one empty listing is not proof a workflow stopped existing',
+    );
+
+    // Two agreeing empty listings ARE enough — a genuinely absent workflow
+    // must still alarm.
+    const newest = readNewestRun({
+      gh: () => JSON.stringify({ total_count: 0, workflow_runs: [] }),
+      repository: 'koala73/worldmonitor',
+      workflowFile: 'convex-deploy.yml',
+      now: NOW,
+    });
+    assert.equal(newest.verdict, 'NO_RUN');
+  });
+
+  // A listing that says thousands of runs exist and then carries none is not
+  // evidence of absence, however many samples repeat it — it is the truncated
+  // shape agreeing with itself. Without this, the defence against the stale
+  // snapshot invents the loudest false alarm in the file.
+  it('refuses to read NO_RUN out of listings that contradict themselves', () => {
+    assert.throws(
+      () => readNewestRun({
+        gh: () => JSON.stringify({ total_count: 3168, workflow_runs: [] }),
+        repository: 'koala73/worldmonitor',
+        workflowFile: 'convex-deploy.yml',
+        now: NOW,
+      }),
+      /could not be corroborated/,
+      'a payload claiming 3168 runs cannot prove the workflow never ran',
+    );
+  });
+
+  // The false-green half. A lone stale sample whose newest run still falls
+  // INSIDE the window used to resolve RUN_FOUND with no corroboration at all,
+  // and a superseded green attempt then grades as DEPLOYED.
+  it('refuses to speak for a workflow on one uncorroborated in-window sample', () => {
+    const staleInWindow = { id: 100, created_at: new Date(NOW - 10 * 24 * HOUR).toISOString(), status: 'completed', conclusion: 'success', run_attempt: 1, head_sha: 'e'.repeat(40), event: 'push', display_title: 'push' };
+    let read = -1;
+    assert.throws(
+      () => readNewestRun({
+        gh: () => {
+          read += 1;
+          if (read === 0) return JSON.stringify({ total_count: 1366, workflow_runs: [staleInWindow] });
+          throw Object.assign(new Error('gh api ... failed (1): tls handshake timeout'), { githubReadSource: 'github-api' });
+        },
+        repository: 'koala73/worldmonitor',
+        workflowFile: 'deploy-worker.yml',
+        now: NOW,
+        noRunWindowMs: 14 * 24 * HOUR,
+      }),
+      /could not be corroborated/,
+      'a green verdict needs the same corroboration as an alarm',
+    );
+  });
+
+  it('spends no gh read once the monitor wall-clock budget is gone', () => {
+    let calls = 0;
+    const gh = createDeadlineGh({
+      gh: () => { calls += 1; return '{}'; },
+      deadlineAt: 1_000,
+      clock: () => 1_000,
+    });
+    assert.throws(() => gh(['api', 'repos/x/actions/workflows/y/runs']), /wall-clock budget/);
+    assert.equal(calls, 0, 'the read must not be issued at all');
+
+    // It is a timeout, so it is never retried and it warns instead of alarming.
+    let thrown;
+    try { gh(['api', 'repos/x/actions/workflows/y/runs']); } catch (error) { thrown = error; }
+    assert.equal(isRetryableGhFailure(thrown), false, 'retrying is what spent the budget');
+    assert.equal(isGithubRecordUnreadability(thrown), true, 'a spent budget is unreadability, not a failed deploy');
+  });
+
+  it('skips a sample whose listing is empty without treating it as no run', () => {
+    const fresh = { id: 900, created_at: new Date(NOW - HOUR).toISOString(), conclusion: 'success', run_attempt: 1, head_sha: 'd'.repeat(40), event: 'push', display_title: 'push' };
+    const payloads = [
+      JSON.stringify({ total_count: 3168, workflow_runs: [] }),
+      JSON.stringify({ total_count: 3168, workflow_runs: [fresh] }),
+      JSON.stringify({ total_count: 3168, workflow_runs: [fresh] }),
+    ];
+    let read = -1;
+    const newest = readNewestRun({
+      gh: () => { read += 1; return payloads[read]; },
+      repository: 'koala73/worldmonitor',
+      workflowFile: 'convex-deploy.yml',
+      now: NOW,
+      noRunWindowMs: 7 * 24 * HOUR,
+    });
+    assert.equal(newest.verdict, 'RUN_FOUND');
+    assert.equal(newest.runId, 900);
+  });
+
+  it('samples the listing RUN_LISTING_SAMPLES times, not merely more than once', () => {
+    let reads = 0;
+    readNewestRun({
+      gh: () => {
+        reads += 1;
+        return JSON.stringify({
+          total_count: 3168,
+          workflow_runs: [{ id: 900, created_at: new Date(NOW - HOUR).toISOString(), conclusion: 'success', run_attempt: 1, head_sha: 'd'.repeat(40), event: 'push', display_title: 'push' }],
+        });
+      },
+      repository: 'koala73/worldmonitor',
+      workflowFile: 'convex-deploy.yml',
+      now: NOW,
+    });
+    assert.equal(reads, RUN_LISTING_SAMPLES, 'the sample count is the knob; pin it, not a floor of 2');
+  });
+
+  it('stops sampling when the wall-clock budget is spent', () => {
+    let reads = 0;
+    let fakeNow = 0;
+    const newest = readNewestRun({
+      gh: () => {
+        reads += 1;
+        fakeNow += 60_000; // a slow but answering read
+        return JSON.stringify({
+          total_count: 3168,
+          workflow_runs: [{ id: 900, created_at: new Date(NOW - HOUR).toISOString(), conclusion: 'success', run_attempt: 1, head_sha: 'd'.repeat(40), event: 'push', display_title: 'push' }],
+        });
+      },
+      repository: 'koala73/worldmonitor',
+      workflowFile: 'convex-deploy.yml',
+      now: NOW,
+      clock: () => fakeNow,
+    });
+    assert.equal(reads, 2, 'a slow listing must not spend the job budget three workflows over');
+    assert.equal(newest.verdict, 'RUN_FOUND');
+  });
+
   it('reads the newest run and the attempts-scoped jobs', () => {
     const newest = readNewestRun({
       gh: ghRuns('convex-deploy.yml', [
@@ -609,9 +1004,11 @@ describe('post-merge deploy monitor — read-path resilience (#6479)', () => {
     });
 
     // Every timeout attempt burns the full 30s call budget. Three workflows x
-    // two reads x three attempts would be 9 minutes against `timeout-minutes:
+    // four reads x three attempts would be 18 minutes against `timeout-minutes:
     // 10`, so the retry would cause the outage it is meant to survive. Same
-    // decision, same reason, as the sibling watchdog in #6478.
+    // decision, same reason, as the sibling watchdog in #6478. The read count
+    // rose with RUN_LISTING_SAMPLES; RUN_LISTING_SAMPLE_BUDGET_MS bounds the
+    // slow-but-answering 5xx tail that IS retried.
     it('never retries a timeout', () => {
       const timedOut = new Error('gh api repos/x/actions/runs timed out');
       timedOut.timedOut = true;
@@ -856,8 +1253,8 @@ describe('post-merge deploy monitor — read-path resilience (#6479)', () => {
         });
         assert.equal(
           calls,
-          MONITORED_WORKFLOWS.length * 2,
-          `HTTP ${status} must exhaust its retry budget before each workflow alarms`,
+          MONITORED_WORKFLOWS.length * RUN_LISTING_SAMPLES * 2,
+          `HTTP ${status} must exhaust its retry budget on every sample before each workflow alarms`,
         );
         assert.ok(results.every((entry) => entry.state === 'ALARM' && entry.verdict === 'READ_UNPROVEN'));
         assert.equal(summarizeResults(results).exitCode, 1);

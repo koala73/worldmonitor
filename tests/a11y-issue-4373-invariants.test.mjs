@@ -265,3 +265,15 @@ describe('target-size — small map controls', () => {
       'DeckGL layer help button must expose an accessible name');
   });
 });
+
+// settings-main.ts boots the desktop settings window on import (module-level
+// `void initSettingsWindow()` behind the Tauri bridge and local sidecar), so
+// the traffic-log table has no runtime harness; its markup is checked here.
+describe('settings traffic-log headers are scoped (#7023)', () => {
+  it('diag-table thead headers include scope="col"', () => {
+    assert.match(
+      read('src', 'settings-main.ts'),
+      /<table class="diag-table"><thead><tr>(?:<th scope="col">[^<]*<\/th>){5}<\/tr><\/thead>/,
+    );
+  });
+});

@@ -57,13 +57,31 @@ API Starter 与 API Business 没有单独的 MCP 额度。它们的 MCP 工具�
 | 向下游取数两次 | **3** | `get_country_brief` |
 | 向下游取数最多四次 | **5** | `get_airspace` |
 
-`get_airspace` 固定计 5 个单位，即使只需一个来源或一个经度区间。跨越日期变更线的国家需要向每个来源发出两次有界查询。Pro 的专属 MCP 额度仍按每次调用一个单位计数。
+`get_airspace` 固定计 5 个单位，即使只需一个来源或一个经度区间。跨越日期变更线的国家需要向每个来源发出两次有界查询。Pro 的独立调用按每次一个单位计数。内嵌面板包含下文说明的内部读取。
 
-加权调用是全有或全无。在 1,000 个单位已用掉 999 个时，一次 2 单位的调用会被直接拒绝，而不是只完成一部分。`describe_tool` 与 `get_sources` 不计费，所有发现类方法同样不计费。
+加权调用是全有或全无。在 1,000 个单位已用掉 999 个时，一次 2 单位的调用会被直接拒绝，而不是只完成一部分。`describe_tool`、`get_sources` 与 `get_mcp_allowance` 不计费，所有发现类方法同样不计费。
 
 目前 REST 与 MCP 两侧各自预留在独立的计数器上，且每个计数器都持有该套餐的完整数字，因此纯 MCP 负载与纯 REST 负载都能各自用满 1,000 或 10,000。等 REST 强制执行开启后，两者会合并为同一个物理计数器。请按合并后的数字来规划：套餐卖的是这个合并额度，合并本身不会把它调高。
 
-Pro 与 Pro Business 不受影响。它们没有 REST 额度，其 MCP 调用计在自己的计数器上，每天分别为 50 次和 250 次，每次调用计一个单位。
+`get_mcp_allowance({})` 读取当前已验证账户的计数器，不消耗每日额度，额度耗尽后仍可使用。它要求绑定用户的 OAuth 或 `wm_…` 凭据，并使用账户共享的每分钟 192 次协议限流。同一快照可通过 `worldmonitor://account/mcp-allowance` 读取。账户选择器和 `panel_request` 会被拒绝；计数器不可读取时返回错误，不能当作零使用量。`sharedWithRestApi` 表示 `used` 是否还包含 REST 流量；账户总数不能识别具体调用者。
+
+## 付费内嵌面板请求
+
+Pro 与 Pro Business 没有 REST 额度。它们使用独立的 MCP 计数器，每个 UTC 日分别包含 **50** 次与 **250** 次请求。
+
+首次打开内嵌面板扣一次额度，包含该面板授权的内部读取。国家简报包含章节、默认评估和来源覆盖。新闻地图包含分类面板及有界的灾害快照。每份分配最多允许 **64** 次未缓存执行。有效凭据的未缓存读取与已确认缓存回放分别限制为每分钟 **64** 次。所有读取仍检查当前账户权限、所有者、到期时间和允许的数据范围。
+
+同一国家、默认新闻面板、精选市场面板和预测面板分别在五分钟窗口内复用各自的分配。市场的 `symbols`、`asset_class` 和 `limit` 筛选复用市场分配。筛选仅选择种子快照，不会查询任意代码或账户自选列表。凭据有效期为五至十分钟，最晚在 UTC 午夜到期。成功结果可复用，故障和陈旧结果不会作为成功观察缓存。
+
+`get_market_data` 与 `get_prediction_markets` 的 `refresh: true` 必须附带 UUID `request_id`，新的 UUID 扣一次新额度。同一 UUID 的重试复用原额度与原始到期时间，字母大小写不改变身份。刷新时省略 `panel_request`。普通精选读取可将返回的 `panelRequest.token` 作为 `panel_request`，在到期前复用分配。
+
+预测面板的 category、source、query 和 limit 筛选共用预测分配。相同规范化筛选复用成功原始结果。新的未缓存筛选执行固定的引导数据与新鲜度读取。64 次上限计量的是工具执行次数，不是 Redis 命令数。付费预测调用在预留前校验筛选。API 和免费调用保留既有筛选转换行为，并拒绝付费刷新控制。新鲜且有效的筛选空结果可以复用，陈旧、格式错误、不可用及未知观察仍可重试，已分配额度不退还。显式授权预测凭据读取同时查询当前每日计数器，不扣新额度。计数器不可用或未确认时，保留已加载合约而不显示数值通知。
+
+直接调用 `get_country_brief` 和 `get_country_risk` 共享同一国家的既有额度，包括分析框架变化。已接受的原始结果按工具和实际分析分别复用。未知、不完整、保留或失败的来源结果可在同一额度内重试。`refresh: true` 需要 UUID `request_id`，并省略 `panel_request`；新的 UUID 分配一次国家额度，同一 UUID 的重试复用该额度。刷新重新读取来源，不会强制生成简报或绕过后端六小时缓存。64 次读取上限及普通 API 工具权重不变。
+
+市场图表和预测类别展开、加载结果的重复问答及本地筛选不发起新的数据调用。用量通知显示最近一次观察到的剩余额度及本地重置时间，不能单独证明后续账户计数。上游故障不会退还已分配额度，订阅拒绝或凭据到期后不能继续复用。
+
+API Starter 与 API Business 仍按工具权重计费，不接受付费面板凭据。50 与 250 的数值上限仍是已公布额度，尚需结合实际提供方成本和客户使用量评估。
 
 ## 仪表盘 AI 配额
 
@@ -136,7 +154,7 @@ Free 与未登录的仪表盘用户在信息流增强上仍可使用常规的关
 
 这些端点大多使用默认公开 API 限制。缓存头因端点而异：
 
-- `GET /api/bootstrap` — 只有显式标记的 `?...&public=1` URL 可被共享缓存。`?tier=fast&public=1` / `?tier=slow&public=1` 使用浏览器 `max-age=60` / `max-age=300` 和 CDN `s-maxage=600` / `s-maxage=7200`。单键公开 URL：on-demand 键（`?keys=<onDemandName>&public=1`）在未声明自有配置时继承 slow 配置 —— 浏览器 `max-age=300`、CDN `s-maxage=7200`；发布频率高于该缓存时长的键均声明了自有配置：`correlationCards`（浏览器 `max-age=60`、CDN `s-maxage=300`）、`chinaDecisionSignals`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`canadaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`albertaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`manitobaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`marketCorrelationSeries`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`imdCycloneMarine`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`bcOpen511`（浏览器 `max-age=60`、CDN `s-maxage=1800`）、`flightDelays`（浏览器 `max-age=60`、CDN `s-maxage=1800`）和 `forecasts`（浏览器 `max-age=300`、CDN `s-maxage=3600`）；`?keys=weatherAlerts&public=1` 使用 `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` 并配合 fast 层 CDN 屏蔽。其余所有形态 —— 密钥认证、会话认证、未标记的 `?tier=...` URL，以及匿名 `?keys=weatherAlerts` 路径 —— 均使用 `Cache-Control: no-store` 且不发出 CDN 缓存头，因此凭据 URL 永远不会由共享缓存应答。用户 API 密钥校验还有一个故障关闭的固定 60 秒按 IP 预校验限制，最多 600 次尝试。
+- `GET /api/bootstrap` — 只有显式标记的 `?...&public=1` URL 可被共享缓存。`?tier=fast&public=1` / `?tier=slow&public=1` 使用浏览器 `max-age=60` / `max-age=300` 和 CDN `s-maxage=600` / `s-maxage=7200`。单键公开 URL：on-demand 键（`?keys=<onDemandName>&public=1`）在未声明自有配置时继承 slow 配置 —— 浏览器 `max-age=300`、CDN `s-maxage=7200`；发布频率高于该缓存时长的键均声明了自有配置：`correlationCards`（浏览器 `max-age=60`、CDN `s-maxage=300`）、`chinaDecisionSignals`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`canadaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`albertaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`manitobaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`marketCorrelationSeries`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`imdCycloneMarine`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`bcOpen511`（浏览器 `max-age=60`、CDN `s-maxage=1800`）、`flightDelays`（浏览器 `max-age=60`、CDN `s-maxage=1800`）、`liveVideoResolved`（浏览器 `max-age=300`、CDN `s-maxage=1800`）和 `forecasts`（浏览器 `max-age=300`、CDN `s-maxage=3600`）；`?keys=weatherAlerts&public=1` 使用 `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` 并配合 fast 层 CDN 屏蔽。其余所有形态 —— 密钥认证、会话认证、未标记的 `?tier=...` URL，以及匿名 `?keys=weatherAlerts` 路径 —— 均使用 `Cache-Control: no-store` 且不发出 CDN 缓存头，因此凭据 URL 永远不会由共享缓存应答。用户 API 密钥校验还有一个故障关闭的固定 60 秒按 IP 预校验限制，最多 600 次尝试。
 - `GET /api/health` — `private, no-store, max-age=0` 加上 `CDN-Cache-Control: no-store`。
 - `GET /api/version` — `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`。
 

@@ -135,11 +135,16 @@ test('widget-agent request-body read must terminate for a body that never ends',
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (() => never<Response>()) as typeof fetch;
   try {
-    const { default: handler } = await import('../api/widget-agent.ts?resource-repro=1');
+    const { default: handler, __setWidgetAgentSpendDepsForTests } = await import('../api/widget-agent.ts?resource-repro=1');
+    __setWidgetAgentSpendDepsForTests({
+      checkRateLimit: async () => null,
+    });
+    let cancelled = false;
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new TextEncoder().encode('{"prompt":"'));
       },
+      cancel() { cancelled = true; },
     });
     const req = new Request('https://www.worldmonitor.app/api/widget-agent', {
       method: 'POST',
@@ -153,10 +158,11 @@ test('widget-agent request-body read must terminate for a body that never ends',
     } as RequestInit & { duplex: 'half' });
 
     const outcome = await Promise.race([
-      handler(req).then(() => 'settled'),
+      handler(req).then((res) => { assert.equal(res.status, 408); return 'settled'; }),
       after(500, 'still-pending'),
     ]);
     assert.equal(outcome, 'settled');
+    assert.equal(cancelled, true);
   } finally {
     globalThis.fetch = originalFetch;
     delete process.env.WIDGET_AGENT_BODY_TIMEOUT_MS;

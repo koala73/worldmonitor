@@ -88,7 +88,7 @@ describe('iran-events sunset — backend gates (source guards)', () => {
   });
 
   it('get-risk-scores.ts gates the iran-events fetch (no CII/risk contribution)', () => {
-    assert.match(read('server/worldmonitor/intelligence/v1/get-risk-scores.ts'), /IRAN_EVENTS_ENABLED \? getCachedJson\('conflict:iran-events:v1'/);
+    assert.match(read('server/worldmonitor/intelligence/v1/get-risk-scores.ts'), /IRAN_EVENTS_ENABLED \? \{ key: 'conflict:iran-events:v1', raw: true \} : null/);
   });
 
   it('seed-forecasts.mjs feeds empty iranEvents when disabled', () => {

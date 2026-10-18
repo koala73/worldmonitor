@@ -53,6 +53,22 @@ const ILOSTAT_SOURCE = 'ILOSTAT';
 const WPP_BASE = 'https://population.un.org/dataportalapi/uiapi/v1/data';
 const WORLD_BANK_BASE = 'https://api.worldbank.org/v2';
 const ILOSTAT_BASE = 'https://sdmx.ilo.org/rest';
+const ILOSTAT_OBSERVATION_STATUSES = Object.freeze({
+  A: 'Adjusted', B: 'Break in series', C: 'Confidential', E: 'Estimate',
+  F: 'Forecast', I: 'Imputation', L: 'Computed value', M: 'Model-based extrapolation',
+  N: 'Not available', P: 'Provisional', R: 'Real value', S: 'Not significant', U: 'Unreliable',
+  X: 'Not applicable', Z: 'Non-official estimated value',
+});
+
+function sourceStatusLabel(raw, labels) {
+  const code = typeof raw === 'string' ? raw.trim() : '';
+  return code ? (Object.hasOwn(labels, code) ? labels[code] : `Code ${code}`) : undefined;
+}
+
+function inputStatuses(provider, statuses) {
+  if (!statuses.some(Boolean)) return undefined;
+  return `${provider} input statuses: ${[...new Set(statuses.map((status) => status || 'Not supplied'))].join('; ')}`;
+}
 
 function finiteNumber(value) {
   if (value == null || value === '') return null;
@@ -70,11 +86,11 @@ function round(value, digits = 6) {
   return Math.round((value + Number.EPSILON) * factor) / factor;
 }
 
-function observation(value, year, source, { min = 0, max = Infinity } = {}) {
+function observation(value, year, source, { min = 0, max = Infinity, sourceStatus } = {}) {
   const numeric = finiteNumber(value);
   const observationYear = integerYear(year);
   if (numeric == null || observationYear == null || numeric < min || numeric > max) return null;
-  return { value: round(numeric), year: observationYear, source };
+  return { value: round(numeric), year: observationYear, source, ...(sourceStatus ? { sourceStatus } : {}) };
 }
 
 function upsertCountry(countries, iso2, metric, value) {
@@ -155,7 +171,8 @@ function latestWorldBankObservation(rows, { max = Infinity } = {}) {
   const latest = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
     const iso2 = iso3ToIso2[String(row?.countryiso3code || '').toUpperCase()];
-    const obs = observation(row?.value, row?.date, EDUCATION_SOURCE, { max });
+    const status = sourceStatusLabel(row?.obs_status, { F: 'Forecast' });
+    const obs = observation(row?.value, row?.date, EDUCATION_SOURCE, { max, sourceStatus: status ? `World Bank status: ${status}` : undefined });
     if (!iso2 || !obs) continue;
     if (!latest.has(iso2) || obs.year > latest.get(iso2).year) latest.set(iso2, obs);
   }
@@ -167,7 +184,7 @@ function worldBankByCountryYear(rows) {
   for (const row of Array.isArray(rows) ? rows : []) {
     const iso2 = iso3ToIso2[String(row?.countryiso3code || '').toUpperCase()];
     const obs = observation(row?.value, row?.date, EDUCATION_SOURCE, { max: 100 });
-    if (iso2 && obs) values.set(`${iso2}:${obs.year}`, obs.value);
+    if (iso2 && obs) values.set(`${iso2}:${obs.year}`, { ...obs, status: sourceStatusLabel(row?.obs_status, { F: 'Forecast' }) });
   }
   return values;
 }
@@ -190,10 +207,14 @@ export function parseWorldBankEducation(rowsByIndicator) {
     if (!science.has(countryYear) || !ict.has(countryYear)) continue;
     const [iso2, rawYear] = countryYear.split(':');
     const year = Number(rawYear);
-    const value = engineeringValue + science.get(countryYear) + ict.get(countryYear);
+    const scienceValue = science.get(countryYear);
+    const ictValue = ict.get(countryYear);
+    const value = engineeringValue.value + scienceValue.value + ictValue.value;
     if (value > 100) continue;
     const previous = complete.get(iso2);
-    if (!previous || year > previous.year) complete.set(iso2, { value: round(value), year, source: EDUCATION_SOURCE });
+    if (!previous || year > previous.year) complete.set(iso2, observation(value, year, EDUCATION_SOURCE, {
+      sourceStatus: inputStatuses('World Bank', [engineeringValue.status, scienceValue.status, ictValue.status]),
+    }));
   }
   for (const [iso2, obs] of complete) upsertCountry(countries, iso2, 'stemGraduatesSharePercent', obs);
 
@@ -228,7 +249,14 @@ function collectIlostatSeries(rows, dimension, acceptedCodes) {
       || (row?.UNIT_MEASURE && row.UNIT_MEASURE !== 'PS')
     ) continue;
     const key = `${iso2}:${year}`;
-    byCountry.set(key, { ...(byCountry.get(key) || {}), [code]: value * (10 ** multiplier) });
+    const values = byCountry.get(key) || {};
+    const sources = values[code] || new Map();
+    sources.set(String(row?.SOURCE || '').trim(), {
+      value: value * (10 ** multiplier),
+      status: sourceStatusLabel(row?.OBS_STATUS, ILOSTAT_OBSERVATION_STATUSES),
+    });
+    values[code] = sources;
+    byCountry.set(key, values);
   }
   return byCountry;
 }
@@ -245,37 +273,60 @@ export function parseIlostatWorkforceCsv(occupationCsv, economicCsv) {
   for (const [countryYear, values] of occupations) {
     const [iso2, rawYear] = countryYear.split(':');
     if (values.OCU_ISCO08_7 == null || values.OCU_ISCO08_8 == null) continue;
+    const sources = [...values.OCU_ISCO08_7.keys()].filter((source) => values.OCU_ISCO08_8.has(source));
+    if (sources.length !== 1) continue;
+    const source = sources[0];
     const year = Number(rawYear);
     if (!occupationByCountry.has(iso2) || year > occupationByCountry.get(iso2).year) {
-      occupationByCountry.set(iso2, { year, ...values });
+      occupationByCountry.set(iso2, {
+        year,
+        source: source ? `${ILOSTAT_SOURCE}: ${source}` : ILOSTAT_SOURCE,
+        craft: values.OCU_ISCO08_7.get(source),
+        operators: values.OCU_ISCO08_8.get(source),
+      });
     }
   }
   for (const [countryYear, values] of economy) {
     const [iso2, rawYear] = countryYear.split(':');
-    const total = values.ECO_AGGREGATE_TOTAL;
-    const manufacturing = values.ECO_AGGREGATE_MAN;
-    if (total == null || manufacturing == null || total <= 0 || manufacturing > total) continue;
+    if (values.ECO_AGGREGATE_TOTAL == null || values.ECO_AGGREGATE_MAN == null) continue;
+    const sources = [...values.ECO_AGGREGATE_TOTAL.keys()].filter((source) => {
+      const total = values.ECO_AGGREGATE_TOTAL.get(source)?.value;
+      const manufacturing = values.ECO_AGGREGATE_MAN.get(source)?.value;
+      return manufacturing != null && total > 0 && manufacturing <= total;
+    });
+    if (sources.length !== 1) continue;
+    const source = sources[0];
     const year = Number(rawYear);
     if (!economyByCountry.has(iso2) || year > economyByCountry.get(iso2).year) {
-      economyByCountry.set(iso2, { year, total, manufacturing });
+      economyByCountry.set(iso2, {
+        year,
+        source: source ? `${ILOSTAT_SOURCE}: ${source}` : ILOSTAT_SOURCE,
+        total: values.ECO_AGGREGATE_TOTAL.get(source),
+        manufacturing: values.ECO_AGGREGATE_MAN.get(source),
+      });
     }
   }
 
   for (const [iso2, values] of occupationByCountry) {
-    upsertCountry(countries, iso2, 'craftTradesEmploymentPeople', observation(values.OCU_ISCO08_7, values.year, ILOSTAT_SOURCE));
-    upsertCountry(countries, iso2, 'plantMachineOperatorsEmploymentPeople', observation(values.OCU_ISCO08_8, values.year, ILOSTAT_SOURCE));
+    upsertCountry(countries, iso2, 'craftTradesEmploymentPeople', observation(values.craft.value, values.year, values.source, {
+      sourceStatus: values.craft.status ? `ILOSTAT status: ${values.craft.status}` : undefined,
+    }));
+    upsertCountry(countries, iso2, 'plantMachineOperatorsEmploymentPeople', observation(values.operators.value, values.year, values.source, {
+      sourceStatus: values.operators.status ? `ILOSTAT status: ${values.operators.status}` : undefined,
+    }));
     upsertCountry(countries, iso2, 'trainedIndustrialWorkforcePeople', observation(
-      values.OCU_ISCO08_7 + values.OCU_ISCO08_8,
+      values.craft.value + values.operators.value,
       values.year,
-      ILOSTAT_SOURCE,
+      values.source,
+      { sourceStatus: inputStatuses('ILOSTAT', [values.craft.status, values.operators.status]) },
     ));
   }
   for (const [iso2, values] of economyByCountry) {
     upsertCountry(countries, iso2, 'manufacturingEmploymentSharePercent', observation(
-      (values.manufacturing / values.total) * 100,
+      (values.manufacturing.value / values.total.value) * 100,
       values.year,
-      ILOSTAT_SOURCE,
-      { max: 100 },
+      values.source,
+      { max: 100, sourceStatus: inputStatuses('ILOSTAT', [values.total.status, values.manufacturing.status]) },
     ));
   }
 

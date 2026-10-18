@@ -106,7 +106,7 @@ export function flattenFires(regions: Record<string, FireDetection[]>): FireDete
   return all;
 }
 
-export function toMapFires(fires: FireDetection[]): MapFire[] {
+export function toMapFires(fires: Pick<FireDetection, 'location' | 'brightness' | 'frp' | 'confidence' | 'region' | 'detectedAt' | 'dayNight'>[]): MapFire[] {
   return fires.map(f => ({
     lat: f.location?.latitude ?? 0,
     lon: f.location?.longitude ?? 0,

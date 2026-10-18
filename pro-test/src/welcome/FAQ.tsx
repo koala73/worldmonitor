@@ -1,5 +1,7 @@
 import { ChevronDown } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { t } from '../i18n';
+import depthProofStats from '../generated/depth-stats.json';
 import { SectionHeading } from './SectionHeading';
 
 type FaqLink = { label: string; href: string };
@@ -9,36 +11,36 @@ type FaqLink = { label: string; href: string };
 // the string verbatim) keeps the destination while the DOM renders it as a
 // real anchor. The label is a URL, so the translator pins it and crawlers
 // that do not run JavaScript still see the link (#7746).
-const FAQ_LINKS: Record<number, FaqLink> = {
-  5: { label: 'worldmonitor.app/compare/liveuamap-alternatives', href: '/compare/liveuamap-alternatives/' },
-  11: { label: 'worldmonitor.app/docs/terms', href: '/docs/terms' },
+const FAQ_LINKS: Record<number, FaqLink[]> = {
+  5: [
+    { label: 'worldmonitor.app/compare/liveuamap-alternatives', href: '/compare/liveuamap-alternatives/' },
+    { label: 'worldmonitor.app/compare/best-geopolitical-risk-dashboards', href: '/compare/best-geopolitical-risk-dashboards/' },
+  ],
+  11: [{ label: 'worldmonitor.app/docs/terms', href: '/docs/terms' }],
+  12: [{ label: 'worldmonitor.app/compare/best-geopolitical-risk-dashboards', href: '/compare/best-geopolitical-risk-dashboards/' }],
 };
 
-const renderAnswer = (answer: string, link?: FaqLink) => {
-  if (!link) return answer;
-  const parts = answer.split(link.label);
-  if (parts.length === 1) return answer;
-  return parts.flatMap((part, i) => (i === 0
-    ? [part]
-    : [
-        <a key={i} className="text-wm-green hover:text-green-300 transition-colors" href={link.href}>
-          {link.label}
-        </a>,
-        part,
-      ]));
-};
+const renderAnswer = (answer: string, links: FaqLink[] = []) => links.reduce<ReactNode[]>(
+  (nodes, link) => nodes.flatMap(node => typeof node !== 'string' ? [node]
+    : node.split(link.label).flatMap((part, i) => i === 0 ? [part] : [
+      <a key={`${link.href}-${i}`} className="text-wm-green hover:text-green-300 transition-colors [overflow-wrap:anywhere]" href={link.href}>
+        {link.label}
+      </a>, part,
+    ])),
+  [answer],
+);
 
 export const FAQ = () => {
-  const faqs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(n => ({
+  const faqs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => ({
     q: t(`welcome.faq.q${n}`),
-    a: t(`welcome.faq.a${n}`),
+    a: t(`welcome.faq.a${n}`, depthProofStats),
     link: FAQ_LINKS[n],
     open: n === 1,
   }));
 
   return (
     <section id="faq" className="py-24 px-6 max-w-3xl mx-auto border-t border-wm-border">
-      <SectionHeading eyebrow={t('welcome.faq.eyebrow')} title={t('welcome.faq.title')} />
+      <SectionHeading eyebrow={t('welcome.faq.eyebrow')} title={t('welcome.faq.title')} subtitle={t('welcome.faq.sub', { answers: faqs.length })} />
       <div className="space-y-4">
         {faqs.map((faq, i) => (
           <details key={i} open={faq.open} className="group bg-wm-card border border-wm-border rounded-sm [&_summary::-webkit-details-marker]:hidden">

@@ -149,11 +149,17 @@ describe('carousel route — no placeholder PNG on failure', () => {
     // Old impl had errorPng() returning a 1x1 transparent PNG at 200 +
     // 7d cache. If that pattern ever comes back, this test fails.
     assert.doesNotMatch(src, /\berrorPng\b/, 'errorPng helper must not be reintroduced');
-    // Render-failed branch must return 503 with noStore.
+    // Render-failed branch must return 503 through jsonError, which always
+    // sets Cache-Control: no-store (including CDN cache headers).
     assert.match(
       src,
-      /render_failed.{0,200}503.{0,400}noStore:\s*true/s,
-      'render failure must 503 with no-store',
+      /return jsonError\('render_failed', 503, cors\)/,
+      'render failure must 503 through jsonError',
+    );
+    assert.match(
+      src,
+      /'Cache-Control': 'no-store'/,
+      'jsonError must mark every error response no-store',
     );
   });
 
@@ -284,17 +290,18 @@ describe('renderCarouselImageResponse', () => {
 
   it('keeps @vercel/og default Cache-Control (extraHeaders must NOT override it)', async () => {
     // ImageResponse APPENDS rather than overrides Cache-Control when
-    // the caller passes one via headers. Guards the route handler
-    // choice to rely on @vercel/og's 1-year immutable default instead
-    // of stacking our own. If @vercel/og ever changes this semantics,
-    // this test fails and the route needs a review.
+    // the caller passes one via headers. The route therefore rebuilds
+    // the Response after render (see brief-carousel-cache.test.mts)
+    // instead of trusting this default. If @vercel/og starts replacing
+    // Cache-Control, that rebuild is still correct but this guard
+    // should be re-read.
     const res = await renderCarouselImageResponseForTest(SAMPLE_ENVELOPE, 'cover', {
       'Cache-Control': 'public, max-age=60',
     });
     const cc = res.headers.get('cache-control') ?? '';
     assert.ok(
       cc.includes('max-age=31536000'),
-      `expected @vercel/og's default 1-year cache to survive, got "${cc}"`,
+      `expected @vercel/og's default 1-year cache to survive on the raw ImageResponse, got "${cc}"`,
     );
   });
 });

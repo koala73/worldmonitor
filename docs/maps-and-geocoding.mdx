@@ -126,6 +126,34 @@ The override mechanism lets us improve individual country boundaries without rep
 - When adding overrides for disputed territories, document the source and rationale in the PR description
 - The override system does not add or remove territory — it replaces low-resolution outlines with higher-resolution ones from the same authoritative source
 
+### Crimea attribution
+
+The bundled selection geometry represents Crimea as part of Ukraine (`UA`), as
+specified in [#8609](https://github.com/koala73/worldmonitor/issues/8609). This is
+country attribution, not a depiction of territorial control.
+
+The correction reuses the exact coordinates in `public/data/countries.geojson`
+at commit `42aea73995d19afae2144059afadefdd675f3002`. It removes the separate
+Crimea polygon from Russia and joins its coastline to Ukraine at the existing
+shared edge, between `[33.628517, 46.124935]` and `[35.001891, 45.729003]`.
+No new coastline coordinates or unrelated boundaries are introduced. The
+source's coarse resolution remains, so this is not a coastal-detail upgrade.
+Regenerate the committed country bounds with
+`node scripts/generate-country-bboxes.cjs` after editing the geometry.
+
+DeckGLMap uses this geometry for selection and highlighting. GlobeMap uses it
+for country overlays, including the CII choropleth and Ukraine conflict area.
+Globe country-click and selection-highlight methods are currently no-ops.
+The SVG fallback uses the shared coordinate lookup for clicks but separate
+world topology for its base outlines and has no country selection highlight.
+
+Provider tiles and globe imagery are separate assets. A local CARTO basemap
+check on 2026-09-29 still showed both "Autonomous Republic of Crimea" and
+"Republic of Crimea" labels under the corrected Ukraine highlight. This
+geometry change does not change those labels or provider borders. The public
+boundary override checked on that date contained Pakistan only; future Ukraine
+or Russia overrides must preserve this attribution.
+
 ## Fallback Bounds
 
 For regions where full polygon geometry may not be loaded, `ME_STRIKE_BOUNDS` in `country-geometry.ts` provides rectangular bounding boxes for Middle Eastern countries. `resolveCountryFromBounds()` uses these as a fast first pass, falling back to precise point-in-polygon when multiple bounding boxes overlap.

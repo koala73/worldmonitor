@@ -50,7 +50,7 @@ test('natural-events consumer serves a retained NHC storm from the seeded envelo
   assert.deepEqual(response.events, [storm]);
 });
 
-test('producer, RPC and health keep a failed EONET source visible without renewing its age', async () => {
+test('producer, RPC and health keep a failed EONET source visible without renewing its age', async (t) => {
   let failEonet = false;
   let transientFailures = 0;
   let eventId = 'eonet-consumer';
@@ -76,6 +76,7 @@ test('producer, RPC and health keep a failed EONET source visible without renewi
   const first = await fetchNaturalEvents({ ...options, now: NOW });
   failEonet = true;
   const now = NOW + 3_600_000;
+  t.mock.method(Date, 'now', () => now);
   const retained = await fetchNaturalEvents({ ...options, now, previousSources: first._sourceSnapshots });
   const meta = { fetchedAt: now, recordCount: retained.events.length, ...naturalEventsAfterPublish(retained).freshnessMetaPatch };
   const values = new Map([

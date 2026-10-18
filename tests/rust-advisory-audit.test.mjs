@@ -7,6 +7,24 @@ import { join, resolve } from 'node:path';
 import YAML from 'yaml';
 import { classifyRustAudit, runRustAudit } from '../.github/scripts/audit-rust-dependencies.mjs';
 const now = Date.parse('2026-09-08');
+test('workflow caches only the pinned audit binary and installs on a miss', () => {
+  const workflow = YAML.parse(readFileSync('.github/workflows/security-audit.yml', 'utf8'));
+  const steps = workflow.jobs['audit-rust'].steps;
+  const cache = steps.find((step) => step.id === 'cargo-audit-cache');
+  const install = steps.find((step) => step.name === 'Install pinned advisory tool');
+  const audit = steps.find((step) => step.name === 'Audit Cargo.lock');
+  assert.ok(cache, 'restore the binary before installing');
+  assert.match(cache.uses, /^actions\/cache@[a-f0-9]{40}$/);
+  assert.equal(cache.with.path, '~/.cargo/bin/cargo-audit');
+  assert.equal(cache.with.key, 'cargo-audit-0.22.2-${{ runner.os }}-${{ runner.arch }}');
+  assert.equal(cache.with['restore-keys'], undefined);
+  assert.equal(install.if, "steps.cargo-audit-cache.outputs.cache-hit != 'true'");
+  assert.equal(install.run, 'cargo install cargo-audit --version 0.22.2 --locked');
+  assert.ok(steps.indexOf(cache) < steps.indexOf(install));
+  assert.ok(steps.indexOf(install) < steps.indexOf(audit));
+  assert.equal(audit.if, undefined, 'audit must run on cache hits and misses');
+  assert.equal(audit.run, 'node .github/scripts/audit-rust-dependencies.mjs');
+});
 const finding = (patched = ['>=1.1.0']) => ({
   advisory: { id: 'RUSTSEC-2026-0001' },
   package: { name: 'fixture', version: '1.0.0' },

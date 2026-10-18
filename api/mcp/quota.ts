@@ -66,7 +66,7 @@ export function isRestEnforcementEnabled(): boolean {
  *
  * `allowance` decides the PRICE: `'api'` charges the per-tool weight, so a unit
  * of work costs the same whichever door it arrives through; `'mcp'` charges one
- * unit per call, which is what `docs/usage-rate-limits.mdx` sells on the
+ * unit per standalone call or bounded panel admission on the
  * dedicated counter and what the GHSA-hcq5 no-refund slot assumes.
  *
  * `counter` decides the PLACE, and exists only on the `api` arm — so "a
@@ -75,7 +75,7 @@ export function isRestEnforcementEnabled(): boolean {
  *
  *   - `{allowance: 'mcp'}` — Pro 50, Pro Business 250, the free-account
  *     ceiling, Enterprise `null`. `apiAccess: false` with a zero REST budget,
- *     so they keep `mcp:pro-usage:…` at one unit per call.
+ *     so they keep `mcp:pro-usage:…` at one unit per standalone call or bounded panel admission.
  *   - `{allowance: 'api', counter: 'mcp'}` — API tiers while
  *     `API_RATE_LIMIT_ENFORCE` is off: the sold REST number, weighted, on the
  *     dedicated counter.
@@ -167,6 +167,32 @@ function asFiniteNumber(raw: unknown): number | null {
   if (typeof raw === 'string' && raw.trim() === '') return null;
   const n = typeof raw === 'number' ? raw : Number(raw);
   return Number.isFinite(n) ? n : null;
+}
+
+export function dailyAllowanceResetAt(nowMs: number): string {
+  const now = new Date(nowMs);
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)).toISOString();
+}
+
+export async function readDailyAllowance(userId: string, pipeline: PipelineFn, budget?: McpBudget, nowMs = Date.now()) {
+  let result;
+  try {
+    result = await pipeline([['GET', budgetCounterKey(budget, userId, new Date(nowMs))]], 5_000, true);
+  } catch {
+    return null;
+  }
+  const entry = result?.[0];
+  if (!Array.isArray(result) || result.length < 1 || !entry
+    || !Object.prototype.hasOwnProperty.call(entry, 'result')
+    || result.some(item => item?.error !== undefined && item?.error !== null)) return null;
+  const raw = entry.result;
+  if (raw !== null && raw !== undefined && typeof raw !== 'number' && typeof raw !== 'string') return null;
+  if (typeof raw === 'string' && raw.trim() === '') return null;
+  const count = raw === null || raw === undefined ? 0 : Number(raw);
+  if (!Number.isSafeInteger(count) || count < 0) return null;
+  const limit = resolveDailyLimit(budget?.limit);
+  const used = limit === null ? count : Math.min(count, limit);
+  return { used, limit, remaining: limit === null ? null : Math.max(0, limit - used), resetsAt: dailyAllowanceResetAt(nowMs) };
 }
 
 /**

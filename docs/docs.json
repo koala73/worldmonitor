@@ -121,6 +121,9 @@
                   "methodology/country-resilience-index",
                   "methodology/resilience-indicators",
                   "methodology/resilience-indicator-licensing",
+                  "methodology/known-limitations",
+                  "methodology/financial-system-exposure",
+                  "methodology/swf-classification-rubric",
                   "methodology/five-factor-scorecard",
                   "methodology/demographics-capability",
                   "methodology/food-stocks",
@@ -146,6 +149,7 @@
                 "group": "Workflows",
                 "pages": [
                   "embed-live-map",
+                  "morning-world-risk-brief",
                   "route-explorer",
                   "scenario-engine"
                 ]
@@ -207,7 +211,8 @@
                   "panels/oref-sirens",
                   "panels/telegram-intel",
                   "panels/x-intel",
-                  "panels/fsi"
+                  "panels/fsi",
+                  "panels/news-market-correlation"
                 ]
               },
               {
@@ -245,6 +250,7 @@
                 "group": "HTTP API",
                 "pages": [
                   "api-platform",
+                  "incident-feed",
                   "api-brief",
                   "api-commerce",
                   "api-scenarios",
@@ -579,6 +585,7 @@
                   "zh/features",
                   "zh/pro-intelligence-suite",
                   "zh/data-sources",
+                  "zh/global-procurement-intelligence",
                   "zh/hotspots"
                 ]
               },
@@ -623,6 +630,7 @@
                 "group": "工作流",
                 "pages": [
                   "zh/embed-live-map",
+                  "zh/morning-world-risk-brief",
                   "zh/route-explorer",
                   "zh/scenario-engine"
                 ]
@@ -684,7 +692,8 @@
                   "zh/panels/oref-sirens",
                   "zh/panels/telegram-intel",
                   "zh/panels/x-intel",
-                  "zh/panels/fsi"
+                  "zh/panels/fsi",
+                  "zh/panels/news-market-correlation"
                 ]
               },
               {
@@ -722,6 +731,7 @@
                 "group": "HTTP API",
                 "pages": [
                   "zh/api-platform",
+                  "zh/incident-feed",
                   "zh/api-brief",
                   "zh/api-commerce",
                   "zh/api-scenarios",

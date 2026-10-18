@@ -164,7 +164,7 @@ A simple weekly job that flags any origin country whose resilience dropped more 
 - **Country-level early warning** on supplier fragility, refreshed every six hours
 - A Slack channel that occasionally says something genuinely important
 
-Total code: one webhook receiver and two cron jobs. If you want to stress-test the design, the [scenario engine](https://www.worldmonitor.app/docs/scenario-engine) simulates events like a Taiwan Strait closure or a Panama drought against live trade data. AI agents can run the same checks conversationally through the [MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/).
+Total code: one webhook receiver and two cron jobs. If you want to stress-test the design, the [scenario engine](https://www.worldmonitor.app/docs/scenario-engine) simulates events like a [Taiwan Strait](https://www.worldmonitor.app/chokepoints/taiwan-strait/) closure or a Panama drought against live trade data. AI agents can run the same checks conversationally through the [MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/).
 
 ## Primary Trade Sources
 
@@ -174,7 +174,7 @@ Validate trade signals against primary datasets such as the [WTO API portal](htt
 
 **Which chokepoints can I monitor?**
 
-Every strategic waterway in World Monitor's canonical registry, including the Strait of Hormuz, Suez Canal, Bab el-Mandeb, Strait of Malacca, Panama Canal, Taiwan Strait, Bosporus, Kerch Strait, and the Cape of Good Hope bypass corridor.
+Every strategic waterway in World Monitor's canonical registry, including the Strait of Hormuz, Suez Canal, Bab el-Mandeb, Strait of Malacca, [Panama Canal](https://www.worldmonitor.app/chokepoints/panama-canal/), Taiwan Strait, Bosporus, [Kerch Strait](https://www.worldmonitor.app/chokepoints/kerch-strait/), and the Cape of Good Hope bypass corridor.
 
 **How fresh is the disruption data?**
 

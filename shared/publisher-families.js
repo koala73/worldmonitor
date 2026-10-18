@@ -49,6 +49,7 @@
  * A literal is the one form that works everywhere.
  */
 const PUBLISHER_FAMILY_DATA = {
+  'miit': { publisher: "MIIT (China)", labels: [] },
   'a16z': { publisher: "Andreessen Horowitz", labels: ["a16z Blog", "a16z Insights", "a16z Podcast"] },
   'acquired': { publisher: "Acquired", labels: ["Acquired Episodes", "Acquired Podcast"] },
   'ap-news': { publisher: "Associated Press", labels: ["AP Mexico", "AP News"] },
@@ -66,7 +67,10 @@ const PUBLISHER_FAMILY_DATA = {
       "BBC Mundo",
       "BBC Persian",
       "BBC Russian",
+      "BBC Northern Ireland",
+      "BBC Science",
       "BBC Turkce",
+      "BBC UK",
       "BBC World",
     ],
   },
@@ -111,6 +115,7 @@ const PUBLISHER_FAMILY_DATA = {
       "Guardian Caribbean",
       "Guardian ME",
       "Guardian Pacific",
+      "Guardian Science",
       "Guardian World",
     ],
   },
@@ -128,6 +133,7 @@ const PUBLISHER_FAMILY_DATA = {
     ],
   },
   'ndtv': { publisher: "NDTV", labels: ["NDTV", "NDTV India"] },
+  'new-york-times': { publisher: "The New York Times", labels: ["Hard Fork (NYT)", "New York Times World"] },
   'nikkei': { publisher: "Nikkei", labels: ["Nikkei Asia", "Nikkei Tech"] },
   'pivot': { publisher: "Pivot (Vox Media)", labels: ["Pivot (Vox)", "Pivot Podcast"] },
   'politico': { publisher: "Politico", labels: ["Politico", "Politico Tech"] },
@@ -144,6 +150,7 @@ const PUBLISHER_FAMILY_DATA = {
       "Reuters LatAm",
       "Reuters Markets",
       "Reuters Nasdaq Futures",
+      "Reuters Science",
       "Reuters US",
       "Reuters World",
     ],
@@ -157,6 +164,9 @@ const PUBLISHER_FAMILY_DATA = {
       "Seeking Alpha Tech",
     ],
   },
+  // Two titles, one owner: Sightline Media Group (owned by Regent) publishes
+  // both Defense News and Military Times, per each site's About page.
+  'sightline-media': { publisher: "Sightline Media", labels: ["Defense News", "Military Times"] },
   'sp-global': { publisher: "S&P Global", labels: ["S&P Global Commodity", "S&P Global Platts"] },
   'techcrunch': {
     publisher: "TechCrunch",
@@ -179,6 +189,18 @@ const PUBLISHER_FAMILY_DATA = {
   },
   'venturebeat': { publisher: "VentureBeat", labels: ["VentureBeat", "VentureBeat AI"] },
   'white-house': { publisher: "The White House", labels: ["White House", "White House Actions"] },
+  // #8398: the feed URL is a Dow Jones delivery host
+  // (feeds.content.dowjones.io) but item links point at the publisher apex
+  // (wsj.com, per the Dow Jones Investor Select RSS docs). Without this
+  // mapping the ingest gate blanks every WSJ link. Domain-only by design:
+  // the bare feed label ("Wall Street Journal") keeps its own singleton
+  // (failing closed on labels), while the wsj.com domain allowance is
+  // declared explicitly in PUBLISHER_FAMILY_DOMAINS below and the ingest
+  // gate composes the feed-host leg (dowjones.io) separately. Domain-only
+  // families are exempt from the two-label minimum (that rule targets label
+  // folding; a domain table entry cannot merge two publishers' counts).
+  // Exempted in tests/publisher-families.test.mjs via DOMAIN_ONLY_FAMILIES.
+  'wsj': { publisher: "Wall Street Journal", labels: [] },
   'y-combinator': { publisher: "Y Combinator", labels: ["YC Launches", "Y Combinator Blog"] },
   'yahoo-finance': { publisher: "Yahoo Finance", labels: ["Yahoo Finance", "Yahoo Finance Commodities"] },
 };
@@ -198,6 +220,7 @@ export const PUBLISHER_FAMILIES = Object.freeze(PUBLISHER_FAMILY_DATA);
  * that several publishers share cannot name one.
  */
 const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
+  'miit': ['miit.gov.cn'],
   'a16z': ['a16z.com'],
   'ap-news': ['apnews.com'],
   'arxiv': ['arxiv.org'],
@@ -222,16 +245,21 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'marketwatch': ['marketwatch.com'],
   'mit-technology-review': ['technologyreview.com'],
   'ndtv': ['ndtv.com'],
+  'new-york-times': ['nytimes.com'],
   'nikkei': ['nikkei.com'],
   'politico': ['politico.com', 'politico.eu'],
   'reuters': ['reuters.com'],
-  'rt': ['rt.com'],
+  'rt': ['rt.com', 'rt-english.com'],
   'seeking-alpha': ['seekingalpha.com'],
+  'sightline-media': ['defensenews.com', 'militarytimes.com'],
   'sp-global': ['spglobal.com'],
   'techcrunch': ['techcrunch.com'],
   'the-verge': ['theverge.com'],
   'venturebeat': ['venturebeat.com'],
   'white-house': ['whitehouse.gov'],
+  // #8398: see the 'wsj' family entry above — the Dow Jones delivery host
+  // is not the article host.
+  'wsj': ['wsj.com'],
 });
 export const PUBLISHER_FAMILY_DOMAIN_TABLE = PUBLISHER_FAMILY_DOMAINS;
 

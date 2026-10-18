@@ -7,38 +7,36 @@
  * shared/news-clustering-core.js (issue #5697) so server-side MCP tools
  * cluster identically; they are re-exported here unchanged. This module keeps
  * the correlation signal detection algorithms, which pull in entity
- * extraction and other client-coupled modules.
+ * extraction and other client-coupled modules. The market-alert detectors and
+ * the pipeline flow-drop detector live in shared/market-alert-core.js
+ * (issue #8867) so a Railway seeder emits the same alerts.
  *
  * Both the main-thread services and the Web Worker import from here.
  */
 
 import {
   SIMILARITY_THRESHOLD,
-  PREDICTION_SHIFT_THRESHOLD,
-  MARKET_MOVE_THRESHOLD,
-  NEWS_VELOCITY_THRESHOLD,
-  FLOW_PRICE_THRESHOLD,
-  ENERGY_COMMODITY_SYMBOLS,
-  PIPELINE_KEYWORDS,
-  FLOW_DROP_KEYWORDS,
-  TOPIC_KEYWORDS,
   SUPPRESSED_TRENDING_TERMS,
+  NEWS_VELOCITY_THRESHOLD,
   tokenize,
   jaccardSimilarity,
-  includesKeyword,
-  containsTopicKeyword,
-  findRelatedTopics,
   generateSignalId,
   generateDedupeKey,
 } from '@/utils/analysis-constants';
 
 import {
-  extractEntitiesFromClusters,
-  findNewsForMarketSymbol,
-} from './entity-extraction';
-import { getEntityIndex } from './entity-index';
+  predictionChangesSnapshot,
+  extractTopics,
+  detectPipelineFlowDrops,
+  detectMarketAlerts,
+} from '../../shared/market-alert-core.js';
+import { extractEntitiesFromClusters } from './entity-extraction';
 import { effectivePubDateMs } from './feed-date';
 
+export {
+  predictionMarketKey,
+  detectPipelineFlowDrops,
+} from '../../shared/market-alert-core.js';
 export {
   MAX_CLUSTER_NEWS_ITEMS,
   aggregateThreats,
@@ -73,6 +71,7 @@ export interface PredictionMarketCore {
   title: string;
   yesPrice: number;
   volume?: number;
+  url?: string;
 }
 
 export interface MarketDataCore {
@@ -123,6 +122,7 @@ export interface CorrelationSignalCore {
   data: {
     newsVelocity?: number;
     marketChange?: number;
+    /** Signed change in YES probability, in points: negative when the market fell. */
     predictionShift?: number;
     relatedTopics?: string[];
     correlatedEntities?: string[];
@@ -156,22 +156,6 @@ export interface StreamSnapshot {
 // CORRELATION FUNCTIONS
 // ============================================================================
 
-function extractTopics(events: ClusteredEventCore[]): Map<string, number> {
-  const topics = new Map<string, number>();
-
-  for (const event of events) {
-    const title = event.primaryTitle.toLowerCase();
-    for (const kw of TOPIC_KEYWORDS) {
-      if (SUPPRESSED_TRENDING_TERMS.has(kw)) continue;
-      if (!containsTopicKeyword(title, kw)) continue;
-      const velocity = event.velocity?.sourcesPerHour ?? 0;
-      topics.set(kw, (topics.get(kw) ?? 0) + velocity + event.sourceCount);
-    }
-  }
-
-  return topics;
-}
-
 function pruneVelocityHistory(history: TopicVelocityPoint[], now: number): TopicVelocityPoint[] {
   return history.filter(point => now - point.timestamp <= TOPIC_BASELINE_WINDOW_MS);
 }
@@ -180,58 +164,6 @@ function averageVelocity(history: TopicVelocityPoint[]): number {
   if (history.length === 0) return 0;
   const total = history.reduce((sum, point) => sum + point.velocity, 0);
   return total / history.length;
-}
-
-function countRelatedTopicMentions(
-  newsTopics: Map<string, number>,
-  market: Pick<MarketDataCore, 'name' | 'symbol'>
-): number {
-  const marketNameLower = market.name.toLowerCase();
-  const marketSymbolLower = market.symbol.toLowerCase();
-  return Array.from(newsTopics.entries())
-    .filter(([topic]) => marketNameLower.includes(topic) || topic.includes(marketSymbolLower))
-    .reduce((sum, [, velocity]) => sum + velocity, 0);
-}
-
-export function detectPipelineFlowDrops(
-  events: ClusteredEventCore[],
-  isRecentDuplicate: (key: string) => boolean,
-  markSignalSeen: (key: string) => void
-): CorrelationSignalCore[] {
-  const signals: CorrelationSignalCore[] = [];
-
-  for (const event of events) {
-    const titles = [
-      event.primaryTitle,
-      ...(event.allItems?.map(item => item.title) ?? []),
-    ]
-      .map(title => title.toLowerCase())
-      .filter(Boolean);
-
-    const hasPipeline = titles.some(title => includesKeyword(title, PIPELINE_KEYWORDS));
-    const hasFlowDrop = titles.some(title => includesKeyword(title, FLOW_DROP_KEYWORDS));
-
-    if (hasPipeline && hasFlowDrop) {
-      const dedupeKey = generateDedupeKey('flow_drop', event.id, event.sourceCount);
-      if (!isRecentDuplicate(dedupeKey)) {
-        markSignalSeen(dedupeKey);
-        signals.push({
-          id: generateSignalId(),
-          type: 'flow_drop',
-          title: 'Pipeline Flow Drop',
-          description: `"${event.primaryTitle.slice(0, 70)}..." indicates reduced flow or disruption`,
-          confidence: Math.min(0.9, 0.4 + event.sourceCount / 10),
-          timestamp: new Date(),
-          data: {
-            newsVelocity: event.sourceCount,
-            relatedTopics: ['pipeline', 'flow'],
-          },
-        });
-      }
-    }
-  }
-
-  return signals;
 }
 
 export function detectConvergence(
@@ -268,7 +200,7 @@ export function detectConvergence(
           id: generateSignalId(),
           type: 'convergence',
           title: 'Source Convergence',
-          description: `"${event.primaryTitle.slice(0, 50)}..." reported by ${types.join(', ')} (${recentItems.length} sources in 30m)`,
+          description: `"${event.primaryTitle.slice(0, 50)}..." reported by ${types.join(', ')} (${recentItems.length} sources in 60m)`,
           confidence: Math.min(0.95, 0.6 + sourceTypes.size * 0.1),
           timestamp: new Date(),
           data: {
@@ -347,7 +279,6 @@ export function analyzeCorrelationsCore(
   const pipelineFlowSignals = detectPipelineFlowDrops(events, isRecentDuplicate, markSignalSeen);
   const pipelineFlowMentions = pipelineFlowSignals.length;
 
-  const entityIndex = getEntityIndex();
   const newsEntityContexts = extractEntitiesFromClusters(events);
 
   const previousHistory = previousSnapshot?.topicVelocityHistory ?? new Map<string, TopicVelocityPoint[]>();
@@ -369,44 +300,13 @@ export function analyzeCorrelationsCore(
   const currentSnapshot: StreamSnapshot = {
     newsVelocity: newsTopics,
     marketChanges: new Map(markets.map(m => [m.symbol, m.change ?? 0])),
-    predictionChanges: new Map(predictions.map(p => [p.title.slice(0, 50), p.yesPrice])),
+    predictionChanges: predictionChangesSnapshot(predictions),
     topicVelocityHistory: currentHistory,
     timestamp: now,
   };
 
   if (!previousSnapshot) {
     return { signals: [], snapshot: currentSnapshot };
-  }
-
-  // Detect prediction shifts
-  for (const pred of predictions) {
-    const key = pred.title.slice(0, 50);
-    const prev = previousSnapshot.predictionChanges.get(key);
-    if (prev !== undefined) {
-      const shift = Math.abs(pred.yesPrice - prev);
-      if (shift >= PREDICTION_SHIFT_THRESHOLD) {
-        const related = findRelatedTopics(pred.title);
-        const newsActivity = related.reduce((sum, t) => sum + (newsTopics.get(t) ?? 0), 0);
-
-        const dedupeKey = generateDedupeKey('prediction_leads_news', key, shift);
-        if (newsActivity < NEWS_VELOCITY_THRESHOLD && !isRecentDuplicate(dedupeKey)) {
-          markSignalSeen(dedupeKey);
-          signals.push({
-            id: generateSignalId(),
-            type: 'prediction_leads_news',
-            title: 'Prediction Market Shift',
-            description: `"${pred.title.slice(0, 60)}..." moved ${shift > 0 ? '+' : ''}${shift.toFixed(1)}% with low news coverage`,
-            confidence: Math.min(0.9, 0.5 + shift / 20),
-            timestamp: new Date(),
-            data: {
-              predictionShift: shift,
-              newsVelocity: newsActivity,
-              relatedTopics: related,
-            },
-          });
-        }
-      }
-    }
   }
 
   // Detect news velocity spikes
@@ -448,89 +348,16 @@ export function analyzeCorrelationsCore(
     }
   }
 
-  // Detect market moves with entity-aware news correlation
-  for (const market of markets) {
-    const change = Math.abs(market.change ?? 0);
-    if (change < MARKET_MOVE_THRESHOLD) continue;
-
-    const entity = entityIndex.byId.get(market.symbol);
-    const relatedNews = findNewsForMarketSymbol(market.symbol, newsEntityContexts);
-
-    if (relatedNews.length > 0) {
-      const topNews = relatedNews[0]!;
-      const dedupeKey = generateDedupeKey('explained_market_move', market.symbol, change);
-      if (!isRecentDuplicate(dedupeKey)) {
-        markSignalSeen(dedupeKey);
-        const direction = market.change! > 0 ? '+' : '';
-        signals.push({
-          id: generateSignalId(),
-          type: 'explained_market_move',
-          title: 'Market Move Explained',
-          description: `${market.name} ${direction}${market.change!.toFixed(2)}% correlates with: "${topNews.title.slice(0, 60)}..."`,
-          confidence: Math.min(0.9, 0.5 + (relatedNews.length * 0.1) + (change / 20)),
-          timestamp: new Date(),
-          data: {
-            marketChange: market.change!,
-            newsVelocity: relatedNews.length,
-            correlatedEntities: [market.symbol],
-            correlatedNews: relatedNews.map(n => n.clusterId),
-            explanation: `${relatedNews.length} related news item${relatedNews.length > 1 ? 's' : ''} found`,
-          },
-        });
-      }
-    } else {
-      const oldRelatedNews = countRelatedTopicMentions(newsTopics, market);
-
-      const dedupeKey = generateDedupeKey('silent_divergence', market.symbol, change);
-      if (oldRelatedNews < 2 && !isRecentDuplicate(dedupeKey)) {
-        markSignalSeen(dedupeKey);
-        const searchedTerms = entity
-          ? [market.symbol, market.name, ...(entity.keywords?.slice(0, 2) ?? [])].join(', ')
-          : market.symbol;
-        signals.push({
-          id: generateSignalId(),
-          type: 'silent_divergence',
-          title: 'Silent Divergence',
-          description: `${market.name} moved ${market.change! > 0 ? '+' : ''}${market.change!.toFixed(2)}% - no news found for: ${searchedTerms}`,
-          confidence: Math.min(0.8, 0.4 + change / 10),
-          timestamp: new Date(),
-          data: {
-            marketChange: market.change!,
-            newsVelocity: oldRelatedNews,
-            explanation: `Searched: ${searchedTerms}`,
-          },
-        });
-      }
-    }
-  }
-
-  // Detect flow/price divergence for energy commodities
-  for (const market of markets) {
-    if (!ENERGY_COMMODITY_SYMBOLS.has(market.symbol)) continue;
-
-    const change = market.change ?? 0;
-    if (change >= FLOW_PRICE_THRESHOLD) {
-      const relatedNews = countRelatedTopicMentions(newsTopics, market);
-
-      const dedupeKey = generateDedupeKey('flow_price_divergence', market.symbol, change);
-      if (relatedNews < 2 && pipelineFlowMentions === 0 && !isRecentDuplicate(dedupeKey)) {
-        markSignalSeen(dedupeKey);
-        signals.push({
-          id: generateSignalId(),
-          type: 'flow_price_divergence',
-          title: 'Flow/Price Divergence',
-          description: `${market.name} up ${change.toFixed(2)}% without pipeline flow news`,
-          confidence: Math.min(0.85, 0.4 + change / 8),
-          timestamp: new Date(),
-          data: {
-            marketChange: change,
-            newsVelocity: relatedNews,
-            relatedTopics: ['pipeline', market.display],
-          },
-        });
-      }
-    }
-  }
+  signals.push(...detectMarketAlerts({
+    markets,
+    predictions,
+    previousPredictionChanges: previousSnapshot.predictionChanges,
+    newsTopics,
+    newsEntityContexts,
+    pipelineFlowMentions,
+    isRecentDuplicate,
+    markSignalSeen,
+  }));
 
   // Add convergence and triangulation signals
   signals.push(...detectConvergence(events, getSourceType, isRecentDuplicate, markSignalSeen));

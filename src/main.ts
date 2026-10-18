@@ -4,15 +4,17 @@ import { SITE_VARIANT } from '@/config/variant';
 import { installLcpAttributionDebug } from '@/bootstrap/lcp-attribution';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import { registerWebMcpTools, type WebMcpAppBindings } from '@/services/webmcp';
-import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
+import { safeStorageRemove } from '@/utils/safe-storage';
 import { enqueueSentryCall, installPreInitErrorQueue, scheduleSentryInit } from '@/bootstrap/sentry-defer';
 import { registerClsReporting } from '@/bootstrap/cls-report';
 import { registerInpReporting } from '@/bootstrap/inp-report';
 import { registerLcpReporting } from '@/bootstrap/lcp-report';
-import { initVercelAnalytics } from '@/bootstrap/secondary-startup';
+import { initVercelAnalytics, stripSensitiveParamsFromUrl } from '@/bootstrap/secondary-startup';
 import { loadVariantThemeStylesheet } from '@/bootstrap/variant-theme';
 import { installUtmInterceptor } from './utils/utm';
 import { captureContentAttributionFromUrl } from '../shared/content-attribution';
+import { captureAgentRefFromSearch } from '../shared/agent-client-source';
+import { agentRefStorage } from '@/services/agent-ref';
 
 if (SITE_VARIANT === 'happy') {
   // Keeps happy-theme.css off other variants' eager CSS graph. On happy, the
@@ -550,10 +552,17 @@ import { initAnalytics, trackContentHandoff } from '@/services/analytics';
 import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chunk-reload';
 import { initDebugBearRum } from '@/bootstrap/debugbear-rum';
 import { installStaleBundleCheck } from '@/bootstrap/stale-bundle-check';
+import { installBetaConsoleToggle } from '@/bootstrap/beta-console-toggle';
 import { installSwUpdateHandler, readServiceWorkerContainer } from '@/bootstrap/sw-update';
 
 // Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
 const chunkReloadStorageKey = installChunkReloadGuard(__BUILD_HASH__);
+
+// First-touch agent link (`?ref=agent-claude`). Read before App.ts referral
+// capture strips `ref` from the URL; recorded as the sign-up source on the
+// Convex user row (users.ensureRecord), which new API keys inherit.
+// Best-effort: blocked cookies mean "no attribution".
+captureAgentRefFromSearch(window.location.search, agentRefStorage());
 
 // Product analytics are secondary startup work; RUM starts once the trusted
 // dashboard entry executes so it can observe page-load vitals.
@@ -564,6 +573,9 @@ if (capturedContentAttribution) {
   // reload does not duplicate the landing handoff.
   trackContentHandoff();
 }
+// Drop unread secrets (email, license_key) from the live URL before any
+// telemetry vendor initializes.
+stripSensitiveParamsFromUrl();
 void initAnalytics();
 initVercelAnalytics();
 initDebugBearRum();
@@ -679,19 +691,7 @@ if (urlParams.get('settings') === '1') {
   count: getCellCount,
 };
 
-// Beta mode toggle: type `beta=true` / `beta=false` in console
-Object.defineProperty(window, 'beta', {
-  get() {
-    const on = safeStorageGet('worldmonitor-beta-mode') === 'true';
-    console.log(`[Beta] ${on ? 'ON' : 'OFF'}`);
-    return on;
-  },
-  set(v: boolean) {
-    if (v) safeStorageSet('worldmonitor-beta-mode', 'true');
-    else safeStorageRemove('worldmonitor-beta-mode');
-    location.reload();
-  },
-});
+installBetaConsoleToggle(window);
 
 // Suppress native WKWebView context menu in Tauri — allows custom JS context menus
 if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {

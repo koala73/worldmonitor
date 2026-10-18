@@ -1009,6 +1009,26 @@
   font-variant-numeric: tabular-nums;
 }
 
+.disp-operation {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.disp-round {
+  width: 84px;
+  min-width: 84px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.disp-source-note {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+  padding: 6px 8px 2px;
+}
+
 /* ----------------------------------------------------------
    UCDP Events Panel
    ---------------------------------------------------------- */
@@ -2867,7 +2887,7 @@ body.panel-drag-active .map-bottom-grid:empty::after {
 }
 .deduction-form-row { display: flex; gap: 6px; align-items: center; }
 .deduction-geo-input {
-  flex: 1; padding: 7px 10px; box-sizing: border-box;
+  flex: 1; min-width: 0; resize: vertical; padding: 7px 10px; box-sizing: border-box;
   background: transparent; border: 1px solid var(--border);
   border-radius: 5px; color: var(--text-dim);
   font-family: var(--font-body-base, system-ui, sans-serif);

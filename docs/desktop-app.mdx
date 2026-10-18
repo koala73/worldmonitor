@@ -17,7 +17,7 @@ Running the app entirely against your own API keys and local sources needs no pl
 - **OS keychain integration** — API keys stored in the system credential manager (macOS Keychain, Windows Credential Manager), never in plaintext files
 - **Token-authenticated sidecar** — a unique session token prevents other local processes from accessing the sidecar on localhost. Generated per launch using randomized hashing
 - **Cloud fallback** — when a local API handler fails or is missing, requests transparently fall through to the cloud deployment (worldmonitor.app) with origin headers stripped
-- **Settings window** — dedicated configuration UI (Cmd+,) with three tabs: **LLMs** (Ollama endpoint, model selection, Groq, OpenRouter), **API Keys** (the supported data-source credential catalog with per-key validation), and **Debug & Logs** (traffic log, verbose mode, log files). Each tab runs an independent verification pipeline — saving in the LLMs tab doesn't block API Keys validation
+- **Settings window** — dedicated configuration UI (Cmd+,) with three tabs: **LLMs** (Ollama endpoint, model selection, OpenRouter), **API Keys** (the supported data-source credential catalog with per-key validation), and **Debug & Logs** (traffic log, verbose mode, log files). Each tab runs an independent verification pipeline — saving in the LLMs tab doesn't block API Keys validation
 - **Automatic model discovery** — when you set an Ollama or LM Studio endpoint URL in the LLMs tab, the settings panel immediately queries it for available models (tries Ollama native `/api/tags` first, then OpenAI-compatible `/v1/models`) and populates a dropdown. Embedding models are filtered out. If discovery fails, a manual text input appears as fallback
 - **Cross-window secret sync** — the main dashboard and settings window run in separate webviews with independent JS contexts. Saving a secret in Settings writes to the OS keychain and broadcasts a `localStorage` change event. The main window listens for this event and hot-reloads all secrets without requiring an app restart
 - **Consolidated keychain vault** — all secrets are stored as a single JSON blob in one keychain entry (`secrets-vault`) rather than individual entries per key. This reduces macOS Keychain authorization prompts from 20+ to exactly 1 on each app launch. A one-time migration reads any existing individual entries, consolidates them, and cleans up the old format
@@ -60,7 +60,7 @@ All published variants run on three platforms that work together:
 └──────────────────────────────────────────┘
 ```
 
-**Why two platforms?** Several upstream APIs (OpenSky Network, CNN RSS, UN News, CISA, IAEA) actively block requests from Vercel's IP ranges, and some require persistent connections or protocols that edge functions cannot support. The Railway relay server acts as an alternate origin, handling:
+**Why two platforms?** Several upstream APIs (OpenSky Network, CNN RSS, UN News, CISA, IAEA) actively block requests from Vercel's IP ranges, and some require persistent connections or protocols that edge functions cannot support. The [Railway relay server](/relay-parameters) acts as an alternate origin, handling:
 
 - **AIS vessel tracking** — maintains a persistent WebSocket connection to AISStream.io and multiplexes it to all connected browser clients, avoiding per-user connection limits
 - **OpenSky aircraft data** — authenticates via OAuth2 client credentials flow (Vercel IPs get 403'd by OpenSky without auth tokens)
@@ -108,7 +108,7 @@ API keys are stored in the operating system's credential manager (macOS Keychain
 
 At sidecar launch, the vault is read, parsed, and injected as environment variables. Empty or whitespace-only values are skipped. Secrets can also be updated at runtime without restarting the sidecar: saving a key in the Settings window triggers a `POST /api/local-env-update` call that hot-patches `process.env` so handlers pick up the new value immediately.
 
-**Verification pipeline** — when you enter a credential in Settings, the app validates it against the actual provider API (Groq → `/openai/v1/models`, Ollama → `/api/tags`, FRED → GDP test query, NASA FIRMS → fire data fetch, etc.). Network errors (timeouts, DNS failures, unreachable hosts) are treated as soft passes — the key is saved with a "could not verify" notice rather than blocking. Only explicit 401/403 responses from the provider mark a key as invalid. This prevents transient network issues from locking users out of their own credentials.
+**Verification pipeline** — when you enter a credential in Settings, the app validates it against the actual provider API (OpenRouter → `/api/v1/models`, Ollama → `/api/tags`, FRED → GDP test query, NASA FIRMS → fire data fetch, etc.). Network errors (timeouts, DNS failures, unreachable hosts) are treated as soft passes — the key is saved with a "could not verify" notice rather than blocking. Only explicit 401/403 responses from the provider mark a key as invalid. This prevents transient network issues from locking users out of their own credentials.
 
 **Smart re-verification** — when saving settings, the verification pipeline skips keys that haven't been modified since their last successful verification. This prevents unnecessary round-trips to provider APIs when a user changes one key but has 15 others already configured and validated. Only newly entered or modified keys trigger verification requests.
 
@@ -120,9 +120,8 @@ World Monitor desktop uses a runtime configuration schema with per-feature toggl
 
 ### Secret keys
 
-The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following 25 keys:
+The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following keys:
 
-- `GROQ_API_KEY`
 - `OPENROUTER_API_KEY`
 - `FRED_API_KEY`
 - `EIA_API_KEY`
@@ -168,7 +167,7 @@ Secrets are **not stored in plaintext files** by the frontend.
 
 If required secrets are missing/disabled:
 
-- Summarization: Groq/OpenRouter disabled, browser model fallback.
+- Summarization: OpenRouter disabled, browser model fallback.
 - FRED / EIA / Finnhub: economic, oil analytics, and stock data return empty state.
 - Cloudflare / ACLED: outages/conflicts return empty state.
 - Cyber threat feeds (URLhaus, OTX, AbuseIPDB): cyber threat layer returns empty state.

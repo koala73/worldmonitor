@@ -2132,11 +2132,13 @@ body.panel-resize-active iframe {
 }
 
 /* The resize strips are keyboard-focusable separators (arrow keys resize);
-   show where focus is when it lands on one. */
+   show where focus is when it lands on one. Panel content is a tab stop so
+   overflow-y:auto regions stay keyboard-scrollable (#8460). */
 .panel-resize-handle:focus-visible,
 .panel-col-resize-handle:focus-visible,
 .map-resize-handle:focus-visible,
-.map-width-resize-handle:focus-visible {
+.map-width-resize-handle:focus-visible,
+.panel-content:focus-visible {
   outline: 2px solid var(--text);
   outline-offset: -2px;
 }
@@ -3029,6 +3031,15 @@ body.panel-resize-active iframe {
   white-space: normal;
 }
 
+.live-news-manage-row-editing .live-news-manage-hint {
+  flex-basis: 100%;
+  margin-top: 0;
+}
+
+.live-news-manage-row-editing .live-news-manage-edit-handle.invalid {
+  border-color: #f44;
+}
+
 .live-news-manage-row-editing .live-news-manage-edit-handle,
 .live-news-manage-row-editing .live-news-manage-edit-name {
   padding: 10px 12px;
@@ -3111,6 +3122,12 @@ body.panel-resize-active iframe {
 .live-news-manage-handle.invalid {
   border-color: #f44;
   box-shadow: 0 0 0 1px rgba(255, 68, 68, 0.3);
+}
+
+.live-news-manage-hint {
+  margin-top: 4px;
+  color: #f44;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
 .live-news-manage-add-btn {
@@ -3206,7 +3223,10 @@ body.panel-resize-active iframe {
   margin-top: 20px;
 }
 
-/* Channel management modal overlay */
+/* Channel management modal overlay. Hides only by unmounting: the base rule
+   is display:flex with opacity:0 and .active raises the opacity, while the
+   reload guard's checkVisibility() probe ignores opacity, so a leaked overlay
+   reads as open for the rest of the session. LiveNewsPanel.destroy() removes it. */
 .live-channels-modal-overlay {
   position: fixed;
   inset: 0;
@@ -3648,18 +3668,12 @@ body.panel-resize-active iframe {
   }
 }
 
-.bot-check-actions {
+.live-offline-actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
   justify-content: center;
   margin-top: 4px;
-}
-
-.bot-check-actions .bot-check-signin {
-  background: var(--accent, #4a9eff);
-  border-color: var(--accent, #4a9eff);
-  color: #fff;
 }
 
 @keyframes loadingDots {
@@ -3720,8 +3734,7 @@ body.panel-resize-active iframe {
 }
 
 .live-news-fullscreen .live-news-player,
-.live-news-fullscreen .live-news-native-video,
-.live-news-fullscreen .live-news-embed-frame {
+.live-news-fullscreen .live-news-media {
   height: 100% !important;
 }
 
@@ -3815,16 +3828,63 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 }
 
 .live-news-player {
+  position: relative;
   width: 100%;
   flex: 1;
   background: var(--bg);
   aspect-ratio: 16 / 9;
 }
 
-.live-news-player iframe {
+.live-news-player iframe,
+.live-news-player video {
   width: 100%;
   height: 100%;
   display: block;
+  border: 0;
+}
+
+.live-news-player video {
+  object-fit: contain;
+  background: #000;
+}
+
+/* Covers the player while a stream connects; a corner chip discloses a recording or an unconfirmed stream. */
+.live-news-status {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.live-news-status--cover {
+  inset: 0;
+  justify-content: center;
+  background: var(--bg);
+  color: var(--text-dim);
+}
+
+.live-news-status--chip {
+  top: 8px;
+  left: 8px;
+  max-width: calc(100% - 16px);
+  flex-wrap: wrap;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.72);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.live-news-status .offline-retry {
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 4px;
+  color: inherit;
+  font-size: inherit;
+  text-decoration: none;
+  cursor: pointer;
 }
 
 /* Live Webcams Panel */
@@ -4113,6 +4173,21 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 
 .webcam-idle-notice {
   min-height: 200px;
+}
+
+.webcam-tile-status {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.webcam-offline-note {
+  padding: 4px 8px;
+  color: var(--text-dim);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  background: var(--darken-heavy);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 @media (max-width: 768px) {
@@ -4705,7 +4780,7 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   display: block;
 }
 
-.item-title:hover {
+a.item-title:hover {
   color: var(--accent);
 }
 
@@ -4725,6 +4800,29 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   border-radius: 8px;
 }
 
+/* Coverage disclosure (#6419), deliberately neutral: it is not a warning. */
+.corroboration-flag {
+  display: inline-block;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 0 5px;
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.5;
+  border-radius: 8px;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.breaking-alert .corroboration-flag {
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+.cdp-news-meta .corroboration-flag {
+  margin-inline-start: 6px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+}
+
 .cluster-meta {
   display: flex;
   align-items: center;
@@ -4733,33 +4831,90 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   gap: 8px;
 }
 
-.top-sources {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
+.cluster-roster {
+  min-width: 0;
 }
 
-.top-source {
-  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  padding: 1px 4px;
-  border-radius: 2px;
-  background: var(--panel-border);
+/* Publisher roster (#6419 step 3): who reports a claim and each declared tier. */
+.publisher-roster {
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
 }
 
-.top-source.tier-1 {
+.publisher-roster summary {
+  cursor: pointer;
+}
+
+.publisher-roster ol {
+  margin: 4px 0 0;
+  padding-inline-start: 16px;
+}
+
+.publisher-roster li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 4px;
+  row-gap: 1px;
+}
+
+.publisher-roster li + li {
+  margin-top: 5px;
+}
+
+.publisher-roster .publisher-feeds {
+  flex-basis: 100%;
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  opacity: 0.75;
+  overflow-wrap: anywhere;
+}
+
+/* #9095: outlets that carried the same copy, counted as one publisher. */
+.publisher-roster .publisher-same-copy {
+  flex-basis: 100%;
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  color: var(--semantic-elevated);
+}
+
+.tier-chip {
+  padding: 0 4px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  cursor: help;
+}
+
+.tier-chip.tier-1 {
   background: rgba(0, 255, 136, 0.15);
   color: var(--green);
 }
 
-.top-source.tier-2 {
+.tier-chip.tier-2 {
   background: rgba(0, 170, 255, 0.15);
   color: var(--accent);
 }
 
-.top-source.tier-3 {
+.tier-chip.tier-3 {
   background: rgba(255, 170, 0, 0.15);
   color: var(--yellow);
+}
+
+.tier-legend {
+  margin: 4px 0 0;
+  font-style: italic;
+}
+
+.tier-legend a {
+  color: inherit;
+}
+
+.insight-story .publisher-roster {
+  margin-top: 4px;
+  padding-left: 12px;
+}
+
+.cdp-news-entry .publisher-roster {
+  padding: 4px 0 8px;
 }
 
 /* Source credibility tier badge */
@@ -4782,24 +4937,6 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   background: rgba(0, 170, 255, 0.15);
   color: var(--accent);
   border: 1px solid rgba(0, 170, 255, 0.3);
-}
-
-/* "Also reported by" label */
-.also-reported {
-  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-dim);
-  margin-right: 4px;
-  font-style: italic;
-}
-
-/* Enhanced tier indicators for top sources */
-.top-source.tier-1 {
-  font-weight: 500;
-  border: 1px solid rgba(0, 255, 136, 0.3);
-}
-
-.top-source.tier-2 {
-  border: 1px solid rgba(0, 170, 255, 0.2);
 }
 
 .item.clustered {
@@ -8461,6 +8598,24 @@ a.prediction-link:hover {
   cursor: pointer;
 }
 
+/* Clerk's mounted card brings its own surface; the wrapper only positions it and the close button. */
+.signup-resume-modal {
+  position: relative;
+  padding: 0;
+  max-width: none;
+  width: auto;
+  background: transparent;
+  border: none;
+  overflow: visible;
+}
+
+.signup-resume-close {
+  position: absolute;
+  top: -36px;
+  right: 0;
+  z-index: 1;
+}
+
 .confirm-modal-message {
   margin: 0 0 16px;
   font-size: calc(14px * var(--wm-panel-effective-scale, 1));
@@ -9711,6 +9866,11 @@ a.prediction-link:hover {
 
 .popup-news-item .news-title:hover {
   color: var(--accent);
+}
+
+/* #9213: the coverage pill sizes to its text inside the column row. */
+.popup-news-item .corroboration-flag {
+  align-self: flex-start;
 }
 
 /* Vessel Popup Enhancements */
@@ -14150,8 +14310,11 @@ a.prediction-link:hover {
   display: flex;
 }
 
-/* Non-blocking confirm dialog (#4559) — replaces native confirm(). Sits above
-   the settings modal; mirrors the mobile-warning overlay tokens. */
+/* Non-blocking confirm dialog (#4559) — replaces native confirm(); mirrors the
+   mobile-warning overlay tokens. Appended to document.body, not nested in
+   #unifiedSettingsModal, so it must out-stack .modal-overlay (9999): below it,
+   the discard prompt is hidden behind Settings and the close button goes dead
+   while it waits (WORLDMONITOR-15Z). Same layer as the account-deletion dialog. */
 .confirm-dialog-overlay {
   position: fixed;
   inset: 0;
@@ -14160,7 +14323,7 @@ a.prediction-link:hover {
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 4000;
+  z-index: 10050;
   padding: 20px;
 }
 
@@ -14355,11 +14518,6 @@ a.prediction-link:hover {
   color: var(--accent);
 }
 
-.pizzint-score {
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-dim);
-}
-
 .pizzint-panel {
   position: absolute;
   top: 100%;
@@ -14420,7 +14578,8 @@ a.prediction-link:hover {
 
 .pizzint-locations {
   padding: 8px 16px;
-  max-height: 180px;
+  /* Six venues without a scrollbar; more would scroll. */
+  max-height: 240px;
   overflow-y: auto;
 }
 
@@ -14538,6 +14697,8 @@ a.prediction-link:hover {
 
 .pizzint-footer {
   display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   justify-content: space-between;
   padding: 8px 16px;
   border-top: 1px solid var(--overlay-medium);
@@ -17151,10 +17312,31 @@ a.prediction-link:hover {
   border: 1px solid rgba(160, 160, 170, 0.25);
 }
 
-.top-source .propaganda-badge {
+.publisher-roster .propaganda-badge {
   font-size: calc(7px * var(--wm-panel-effective-scale, 1));
   padding: 0 3px;
   margin-left: 2px;
+}
+
+/* Perspective and affiliation are disclosure, not caution: neutral styling. */
+.provenance-fact {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  font-weight: 500;
+  margin-left: 4px;
+  vertical-align: middle;
+  color: var(--text-secondary);
+  background: var(--overlay-medium);
+  border: 1px solid var(--border);
+}
+
+.provenance-fact-marker {
+  font-size: calc(7px * var(--wm-panel-effective-scale, 1));
+  margin-left: 2px;
+  color: var(--text-secondary);
 }
 
 /* --- Intelligence Findings Badge --- */
@@ -21055,39 +21237,37 @@ body:has(.tauri-titlebar) .breaking-news-container {
 }
 
 .breaking-alert {
+  --breaking-alert-accent: var(--semantic-high);
   pointer-events: auto;
-  padding: 8px 16px;
+  padding: 10px 16px;
   display: flex;
   align-items: center;
   gap: 12px;
   animation: banner-slide-in 0.3s ease-out;
-  color: #fff;
-  font-family: var(--font-mono);
+  background: var(--surface);
+  border-inline-start: 3px solid var(--breaking-alert-accent);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-body);
   font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.5;
 }
 
 .breaking-alert.severity-critical {
-  background: linear-gradient(90deg, #8B0000, #DC143C);
-  border-bottom: 2px solid var(--semantic-critical);
-}
-
-.breaking-alert.severity-high {
-  background: linear-gradient(90deg, var(--semantic-high, #c2410c), #b45309);
-  border-bottom: 2px solid var(--semantic-high, #c2410c);
+  --breaking-alert-accent: var(--semantic-critical);
 }
 
 .breaking-alert-icon {
-  font-size: calc(18px * var(--wm-panel-effective-scale, 1));
-  flex-shrink: 0;
+  display: none;
 }
 
 .breaking-alert-content {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
+  gap: 6px 10px;
   flex: 1;
   min-width: 0;
-  overflow: hidden;
 }
 
 .breaking-alert-level {
@@ -21095,13 +21275,11 @@ body:has(.tauri-titlebar) .breaking-news-container {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   letter-spacing: 0.5px;
   padding: 1px 6px;
-  background: var(--overlay-heavy);
+  color: var(--breaking-alert-accent);
+  background: color-mix(in srgb, var(--breaking-alert-accent) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--breaking-alert-accent) 35%, var(--surface));
   border-radius: 3px;
-  flex-shrink: 0;
-}
-
-.breaking-alert.severity-critical .breaking-alert-level {
-  animation: pulse-breaking 0.8s ease-in-out infinite;
+  font-family: var(--font-mono);
 }
 
 .breaking-alert-headline {
@@ -21113,16 +21291,26 @@ body:has(.tauri-titlebar) .breaking-news-container {
 
 .breaking-alert-headline-link {
   color: inherit;
+  text-decoration: none;
+}
+
+.breaking-alert-headline-link:hover {
+  text-decoration: underline;
 }
 
 .breaking-alert-meta {
-  display: inline-flex;
+  display: flex;
+  grid-column: 1 / -1;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-secondary);
+}
+
+.breaking-alert-time {
+  color: var(--text-dim);
   white-space: nowrap;
-  flex-shrink: 0;
 }
 
 .breaking-alert-provenance {
@@ -21138,24 +21326,52 @@ body:has(.tauri-titlebar) .breaking-news-container {
 }
 
 .breaking-alert .tier-badge,
-.breaking-alert .propaganda-badge {
-  flex-shrink: 0;
+.breaking-alert .propaganda-badge,
+.breaking-alert .provenance-fact {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
 }
 
 .breaking-alert .tier-badge {
   margin-right: 0;
 }
 
-.breaking-alert .propaganda-badge {
+.breaking-alert .propaganda-badge,
+.breaking-alert .provenance-fact {
   margin-left: 0;
+}
+
+.breaking-alert .propaganda-badge.high {
+  background: rgba(255, 60, 60, 0.12);
+}
+
+[data-theme="light"] .breaking-alert {
+  --breaking-alert-accent: #9a3412;
+}
+
+[data-theme="light"] .breaking-alert.severity-critical {
+  --breaking-alert-accent: #b91c1c;
+}
+
+[data-theme="light"] .breaking-alert .tier-badge.tier-1 {
+  color: #166534;
+}
+
+[data-theme="light"] .breaking-alert .propaganda-badge.medium {
+  color: #854d0e;
+}
+
+[data-theme="light"] .breaking-alert .propaganda-badge.high {
+  color: #991b1b;
 }
 
 .breaking-alert-view-panel,
 .breaking-alert-dismiss {
-  background: var(--overlay-heavy);
-  border: none;
-  color: white;
-  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border-radius: 4px;
   cursor: pointer;
   font-size: calc(16px * var(--wm-panel-effective-scale, 1));
@@ -21164,12 +21380,14 @@ body:has(.tauri-titlebar) .breaking-news-container {
 
 .breaking-alert-view-panel:hover,
 .breaking-alert-dismiss:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--surface-hover);
+  color: var(--text);
 }
 
+.breaking-alert-headline-link:focus-visible,
 .breaking-alert-view-panel:focus-visible,
 .breaking-alert-dismiss:focus-visible {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--text);
   outline-offset: 2px;
 }
 
@@ -21180,10 +21398,6 @@ body.has-breaking-alert .panels-grid {
 
 @media (prefers-reduced-motion: reduce) {
   .breaking-alert {
-    animation: none;
-  }
-
-  .breaking-alert.severity-critical .breaking-alert-level {
     animation: none;
   }
 }
@@ -22617,6 +22831,10 @@ body.has-breaking-alert .panels-grid {
 
 /* ============================================
    Country Brief Page (full-page overlay)
+
+   Hides via `opacity` while staying mounted, which is safe ONLY because the
+   element carries no dialog role. See the note in CountryBriefPage's
+   constructor before adding one.
    ============================================ */
 
 .country-brief-overlay {
@@ -23550,6 +23768,7 @@ body.map-width-resizing {
 }
 
 .telegram-intel-channel-wrapper .propaganda-badge,
+.telegram-intel-channel-wrapper .provenance-fact,
 .telegram-intel-channel-wrapper .tier-badge {
   flex-shrink: 0;
   margin-left: 0;
@@ -26340,6 +26559,117 @@ body.map-width-resizing {
 
 .upgrade-pro-cta:hover { opacity: 0.85; }
 
+.account-deletion-zone {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--danger, #d64545) 35%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--danger, #d64545) 6%, var(--surface));
+}
+
+.account-deletion-title {
+  font-weight: 600;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
+  color: var(--danger, #d64545);
+  margin: 0 0 8px;
+}
+
+.account-deletion-desc {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  margin: 0 0 12px;
+  line-height: 1.45;
+}
+
+.delete-account-btn {
+  padding: 8px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--danger, #d64545);
+  background: transparent;
+  color: var(--danger, #d64545);
+  font-weight: 600;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  cursor: pointer;
+}
+
+.delete-account-btn:hover {
+  background: color-mix(in srgb, var(--danger, #d64545) 12%, transparent);
+}
+
+.account-deletion-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-scrim, rgb(0 0 0 / 50%));
+  backdrop-filter: blur(2px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  /* Appended to document.body, not nested in #unifiedSettingsModal.
+     Must sit above .modal-overlay (9999) or the type-DELETE dialog is
+     invisible behind Settings. */
+  z-index: 10050;
+  padding: 20px;
+}
+
+.account-deletion-dialog-overlay.active {
+  display: flex;
+}
+
+.account-deletion-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 8px 32px var(--shadow-color);
+  padding: 20px 20px 16px;
+}
+
+.account-deletion-dialog-title {
+  margin: 0 0 10px;
+  font-size: calc(16px * var(--wm-panel-effective-scale, 1));
+  color: var(--text);
+}
+
+.account-deletion-dialog-copy,
+.account-deletion-dialog-label {
+  margin: 0 0 10px;
+  color: var(--text-dim);
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.5;
+}
+
+.account-deletion-dialog-label {
+  display: block;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.account-deletion-dialog-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
+}
+
+.account-deletion-dialog-error {
+  min-height: 1.2em;
+  margin: 0 0 12px;
+  color: var(--danger, #d64545);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.account-deletion-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 /* -- Legal links + pre-payment assent (#6976) -- */
 /* The dashboard had no path to the Terms at all, and every upgrade CTA jumped
    straight to Dodo's hosted checkout, where Dodo (merchant of record) shows its
@@ -27523,24 +27853,21 @@ body.map-width-resizing {
   /* Breaking news alerts — let headlines wrap instead of ellipsizing into
    * uselessness on narrow screens; source/time drops to its own line. */
   .breaking-alert {
-    padding: 8px 10px;
-    gap: 8px;
+    padding: 10px;
+    gap: 6px;
+    align-items: flex-start;
     font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   }
 
   .breaking-alert-content {
-    flex-wrap: wrap;
     gap: 6px;
+    align-items: start;
   }
 
   .breaking-alert-headline {
+    grid-column: 1 / -1;
     white-space: normal;
-  }
-
-  .breaking-alert-meta {
-    flex-basis: 100%;
-    flex-wrap: wrap;
-    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }
 
@@ -27878,6 +28205,50 @@ body.map-width-resizing {
 
 .us-notif-country-chip-on:hover .us-notif-country-chip-x {
   opacity: 1;
+}
+
+.us-notif-country-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.us-notif-country-add-input {
+  font: inherit;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  width: 7em;
+  padding: 4px 10px;
+  background: var(--settings-surface-inset);
+  border: 1px solid var(--settings-border);
+  border-radius: 5px;
+  color: var(--settings-text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.us-notif-country-add-input::placeholder {
+  color: var(--settings-text-secondary);
+  opacity: 0.7;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.us-notif-country-add-input:focus {
+  outline: none;
+  border-color: var(--settings-accent);
+}
+
+.us-notif-country-error {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--settings-red);
+}
+
+.us-notif-country-hint {
+  margin-top: 6px;
 }
 
 .us-notif-slack-wrap {

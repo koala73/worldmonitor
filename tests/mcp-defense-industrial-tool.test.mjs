@@ -127,6 +127,33 @@ describe('get_defense_industrial_base MCP tool', () => {
     assert.deepEqual(JSON.parse(body.result.content[0].text), canonicalResponse);
   });
 
+  // WORLDMONITOR-181 sibling: the tool used to forward `country_code` as
+  // typed (uppercased), so a country name reached the RPC and 400'd there.
+  it('resolves a country name to the alpha-2 code before the military RPC', async () => {
+    requests = [];
+    const { deps } = makeProDeps();
+    const response = await mcpHandler(
+      proReq('POST', callBody('get_defense_industrial_base', { country_code: 'Ukraine' })),
+      deps,
+    );
+    assert.equal(response.status, 200);
+    const downstream = findMilitaryRpcRequest(requests);
+    assert.equal(new URL(downstream.url).searchParams.get('country_code'), 'UA');
+  });
+
+  it('rejects an unresolvable country at the tool without calling the RPC', async () => {
+    requests = [];
+    const { deps } = makeProDeps();
+    const response = await mcpHandler(
+      proReq('POST', callBody('get_defense_industrial_base', { country_code: 'Atlantis' })),
+      deps,
+    );
+    const body = await response.json();
+    assert.equal(body.error?.code, -32602, JSON.stringify(body));
+    assert.ok(body.error.data.violations.some((v) => v.field === 'country_code'), JSON.stringify(body.error));
+    assert.equal(requests.filter((r) => String(r.url).includes(MILITARY_RPC_PATH)).length, 0);
+  });
+
   it('authenticates a local loopback self-fetch with the sidecar token and Pro HMAC', async () => {
     process.env.LOCAL_API_TOKEN = 'local-sidecar-token';
     const { deps } = makeProDeps();

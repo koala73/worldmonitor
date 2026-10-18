@@ -26,6 +26,18 @@ describe('seed-eia-petroleum constants', () => {
 describe('parseSeries', () => {
   const shape = (values) => ({ response: { data: values } });
 
+  it('preserves the EIA API units field for stocks and production', () => {
+    for (const units of ['Thousand Barrels', 'Thousand Barrels per Day', 'Dollars per Barrel']) {
+      assert.equal(parseSeries(shape([{ value: '427320', period: '2026-09-25', units }])).unit, units);
+    }
+  });
+
+  it('spells out EIA unit codes so MBBL cannot be read as million barrels', () => {
+    for (const [units, expected] of Object.entries({ MBBL: 'thousand barrels', 'MBBL/D': 'thousand barrels per day', '$/BBL': 'USD per barrel' })) {
+      assert.equal(parseSeries(shape([{ value: 427320, units }])).unit, expected);
+    }
+  });
+
   it('returns current/previous/date/unit from a 2-row response', () => {
     const parsed = parseSeries(shape([
       { value: '76.23', period: '2026-04-11', unit: 'dollars per barrel' },

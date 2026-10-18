@@ -565,13 +565,6 @@ function timelineSeriesFetchedAt(current, previous, merged, series) {
   return newestTimelinePointDate(merged);
 }
 
-function classifyUnrestType(records) {
-  const text = records.flatMap((record) => [...record.themes, record.title]).join(' ');
-  if (/\b(?:VIOLENT_UNREST|RIOT)\b/i.test(text)) return 'UNREST_EVENT_TYPE_RIOT';
-  if (/\bSTRIKE\b/i.test(text)) return 'UNREST_EVENT_TYPE_STRIKE';
-  return 'UNREST_EVENT_TYPE_PROTEST';
-}
-
 function classifyPositiveName(name) {
   const lower = ` ${name.toLowerCase()} `;
   for (const [keyword, category] of POSITIVE_CATEGORY_KEYWORDS) {
@@ -619,28 +612,25 @@ function aggregateGeo(records, { minimumCount, predicate, positive = false }) {
         timestamp: occurredAt,
       }];
     }
-    const eventType = classifyUnrestType(bucket.records);
     const country = bucket.name.split(',').at(-1)?.trim() || bucket.name;
     const worstTone = Math.min(...bucket.records.map((record) => record.tone));
     return [{
       id: `gdelt-bulk-${bucket.latitude.toFixed(2)}-${bucket.longitude.toFixed(2)}-${occurredAt}`,
       title: `${bucket.name} (${count} reports)`,
-      summary: '',
-      eventType,
+      summary: 'Unverified media signal. This location is mentioned in unrest-related articles; a local event is not verified.',
+      eventType: 'UNREST_EVENT_TYPE_UNSPECIFIED',
       city: bucket.name.split(',')[0]?.trim() || '',
       country,
       region: '',
       location: { latitude: bucket.latitude, longitude: bucket.longitude },
       occurredAt,
-      severity: count > 100 || eventType === 'UNREST_EVENT_TYPE_RIOT'
-        ? 'SEVERITY_LEVEL_HIGH'
-        : (count < 25 ? 'SEVERITY_LEVEL_LOW' : 'SEVERITY_LEVEL_MEDIUM'),
+      severity: 'SEVERITY_LEVEL_UNSPECIFIED',
       fatalities: 0,
       sources: ['GDELT'],
       sourceType: 'UNREST_SOURCE_TYPE_GDELT',
       tags: [],
       actors: [],
-      confidence: count > 20 ? 'CONFIDENCE_LEVEL_HIGH' : 'CONFIDENCE_LEVEL_MEDIUM',
+      confidence: 'CONFIDENCE_LEVEL_LOW',
       sourceUrls: bucket.sourceUrls,
       tone: worstTone,
     }];

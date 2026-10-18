@@ -68,7 +68,9 @@ for (const mode of ['healthy', 'miss', 'intl-error', 'timeout'] as const) {
       return Response.json({ result: 'OK' });
     });
 
-    const rpc = await listAirportDelays({} as never, {} as never);
+    const rpc = await listAirportDelays({
+      request: new Request('https://worldmonitor.app/api/aviation/v1/list-airport-delays'),
+    } as never, {} as never);
     assert.ok(reads.includes(FAA_KEY) && reads.includes(INTL_KEY));
     const severity = (iata: string) => rpc.alerts.find(a => a.iata === iata)?.severity;
     assert.equal(severity('JFK'), mode === 'healthy' || mode === 'intl-error' ? 'FLIGHT_DELAY_SEVERITY_NORMAL' : 'FLIGHT_DELAY_SEVERITY_UNKNOWN');

@@ -107,10 +107,10 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.prompts), 'result.prompts must be an array');
-    assert.equal(body.result.prompts.length, 6, `Expected 6 prompts, got ${body.result.prompts.length}`);
+    assert.equal(body.result.prompts.length, 7, `Expected 7 prompts, got ${body.result.prompts.length}`);
 
     const expectedNames = [
-      'country-briefing', 'energy-shock-watch', 'market-open-prep',
+      'country-view', 'country-briefing', 'energy-shock-watch', 'market-open-prep',
       'conflict-pulse', 'route-risk-check', 'freshness-audit',
     ];
     const actualNames = body.result.prompts.map((p) => p.name);
@@ -160,6 +160,17 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
         `rendered message must reference step tool "${expectedTool}" — got: ${msg.content.text.slice(0, 200)}…`,
       );
     }
+  });
+
+  it('renders an executable country-view step for interactive clients', async () => {
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 3, method: 'prompts/get',
+      params: { name: 'country-view', arguments: { iso2: 'DE' } },
+    }));
+    const body = await res.json();
+    const text = body.result.messages[0].content.text;
+    assert.match(text, /Step 1 \u2014 open_country_brief/);
+    assert.match(text, /"country_code":"DE"/);
   });
 
   it('prompts/get(energy-shock-watch, {}) renders the "global view" branch when the optional arg is omitted', async () => {
@@ -344,6 +355,7 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
   // contract gate. These values only need to exercise the declared JMESPath
   // branches; the captured fixtures remain the broad payload proof.
   const FIXTURE_BUILDERS = {
+    open_country_brief: () => ({ countryCode: 'US', topic: 'overview' }),
     // Mirrors the GetCountryRiskResponse the handler actually returns
     // (server/worldmonitor/intelligence/v1/get-country-risk.ts:76-85), NOT the
     // pre-#7189 shape: `cii` is an OBJECT whose `combinedScore` is the headline

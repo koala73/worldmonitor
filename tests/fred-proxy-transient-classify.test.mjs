@@ -25,7 +25,10 @@ test('FRED retries a failed sticky exit on a different port before falling back 
   const routes = [];
   t.mock.method(proxyUtils, 'proxyFetch', async (_url, config) => {
     routes.push(config);
-    if (config.port === 10001) throw new Error('Proxy CONNECT: HTTP/1.1 522 Server Error');
+    if (config.port === 10001) throw Object.assign(
+      new Error('Proxy CONNECT: HTTP/1.1 502 Bad Gateway or Proxy Error'),
+      { status: 502, proxyConnect: true },
+    );
     return { ok: true, buffer: Buffer.from('{"observations":[{"value":"1"}]}') };
   });
   t.mock.method(globalThis, 'fetch', async () => { throw new Error('direct must not be needed'); });
@@ -39,7 +42,9 @@ test('FRED exhausts three distinct sticky exits then retains the direct fallback
   const ports = [];
   t.mock.method(proxyUtils, 'proxyFetch', async (_url, config) => {
     ports.push(config.port);
-    throw new Error('Proxy CONNECT: HTTP/1.1 522 Server Error');
+    throw Object.assign(new Error('Proxy CONNECT: HTTP/1.0 503 Service Unavailable'), {
+      status: 503, proxyConnect: true,
+    });
   });
   const direct = t.mock.method(globalThis, 'fetch', async () => new Response('{"observations":[]}'));
   await fredFetchJson('https://api.stlouisfed.org/fred/series/observations', 'https://fake:secret@gate.decodo.com:49999');
@@ -306,6 +311,9 @@ test('TLS-handshake tear signatures (from the real failing logs) are transient',
 test('classic transient signatures still classify transient (no regression)', () => {
   for (const msg of [
     'HTTP 522', 'HTTP 503', 'proxy fetch timeout',
+    'Proxy CONNECT: HTTP/1.0 500 Internal Server Error',
+    'Proxy CONNECT: HTTP/1.1 502 Bad Gateway or Proxy Error',
+    'Proxy CONNECT: HTTP/1.1 504 Gateway Timeout',
     'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'socket hang up',
   ]) {
     assert.equal(isTransientProxyError(msg), true, `should retry: ${msg}`);
@@ -318,4 +326,9 @@ test('genuinely non-transient errors are NOT retried (fall straight to direct)',
   }
   assert.equal(isTransientProxyError(undefined), false);
   assert.equal(isTransientProxyError(null), false);
+  for (const version of ['1.0', '1.1']) {
+    for (const status of [401, 403, 404, 407, 429]) {
+      assert.equal(isTransientProxyError(`Proxy CONNECT: HTTP/${version} ${status}`), false);
+    }
+  }
 });

@@ -24,7 +24,8 @@
  * PKCE (S256) flow to obtain a bearer access token — no pre-asserted user
  * identity (identity is established interactively during authorization). WM does
  * not implement ID-JAG identity assertion endpoints, so only `anonymous` is
- * advertised. The `skill` field round-trips to the published /auth.md.
+ * advertised. The `skill` field points at the published /auth.md on a host that
+ * serves it without a redirect (www for the apex; see `authSkillUrl`).
  *
  * `claim_uri` completes the anonymous method: an anonymously-registered agent's
  * credential is *claimed* (bound to a human owner) at authorization time — the
@@ -41,7 +42,7 @@
  * spoofed Host cannot be reflected into `issuer`/`token_endpoint`.
  */
 
-import { guardMetadataMethod, resolveMetadataOrigin } from './_agent-metadata';
+import { authSkillUrl, guardMetadataMethod, resolveMetadataOrigin } from './_agent-metadata';
 
 export const config = { runtime: 'edge' };
 
@@ -59,14 +60,21 @@ export default function handler(req: Request): Response {
     grant_types_supported: ['authorization_code', 'refresh_token'],
     response_types_supported: ['code'],
     code_challenge_methods_supported: ['S256'],
+    // Public clients only. Adding private_key_jwt would move ChatGPT, which
+    // prefers it, onto signed client assertions this server does not verify.
     token_endpoint_auth_methods_supported: ['none'],
+    // A URL client_id is resolved from its Client ID Metadata Document, for
+    // the trusted vendor documents in api/oauth/_client-metadata.js (#9244).
+    // DCR stays available; clients choose one at discovery and do not fall
+    // back, so this flag must stay true only while that flow works end to end.
+    client_id_metadata_document_supported: true,
     scopes_supported: ['mcp'],
     // RFC 9207: /oauth/authorize and /oauth/authorize-pro append `iss` to the
     // authorization response. ChatGPT registers its stable redirect URI only
     // with authorization servers that advertise this.
     authorization_response_iss_parameter_supported: true,
     agent_auth: {
-      skill: `${origin}/auth.md`,
+      skill: authSkillUrl(origin),
       register_uri: `${origin}/oauth/register`,
       claim_uri: `${origin}/oauth/authorize`,
       identity_types_supported: ['anonymous'],

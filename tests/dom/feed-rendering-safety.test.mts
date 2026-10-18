@@ -30,7 +30,38 @@ describe('feed values at the map HTML boundary', () => {
     }
   });
 
-  it.each(['earthquakes-layer', 'ddos-locations-layer'])('%s accepts malformed numeric input without throwing', id => {
-    expect(() => tooltip.call({}, { layer: { id }, object: { magnitude: hostile, percentage: hostile } })).not.toThrow();
+  it('renders a dash for malformed numbers and keeps a finite magnitude', () => {
+    const host = document.createElement('div');
+    const render = (id: string, object: Record<string, unknown>) => {
+      host.innerHTML = tooltip.call({}, { layer: { id }, object }).html;
+    };
+
+    render('earthquakes-layer', { magnitude: hostile, place: 'Test' });
+    expect(host.querySelector('img,script,svg')).toBeNull();
+    expect(host.textContent).toContain('—');
+    expect(host.textContent).not.toContain(hostile);
+    expect(host.textContent).not.toContain('NaN');
+
+    render('earthquakes-layer', { magnitude: 4.26, place: 'Test' });
+    expect(host.textContent).toContain('4.3');
+
+    render('earthquakes-layer', { magnitude: '', place: 'Test' });
+    expect(host.textContent).toContain('M—');
+    expect(host.textContent).not.toContain('M0');
+
+    render('earthquakes-layer', { magnitude: null, place: 'Test' });
+    expect(host.textContent).toContain('M—');
+
+    render('ddos-locations-layer', { countryName: 'Test', percentage: hostile });
+    expect(host.querySelector('img,script,svg')).toBeNull();
+    expect(host.textContent).toContain('—');
+    expect(host.textContent).not.toContain(hostile);
+    expect(host.textContent).not.toContain('NaN');
+
+    render('bases-cluster-layer', { count: hostile });
+    expect(host.querySelector('img,script,svg')).toBeNull();
+    expect(host.textContent).toContain('—');
+    expect(host.textContent).not.toContain(hostile);
+    expect(host.textContent).not.toContain('NaN');
   });
 });

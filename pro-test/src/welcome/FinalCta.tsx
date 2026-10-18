@@ -2,6 +2,7 @@ import { motion } from 'motion/react';
 import { ArrowRight } from 'lucide-react';
 import { t } from '../i18n';
 import { DASHBOARD_PATH } from '../routes';
+import depthProofStats from '../generated/depth-stats.json';
 
 export const FinalCta = () => (
   <section className="py-28 px-6 border-t border-wm-border relative overflow-hidden">
@@ -14,17 +15,17 @@ export const FinalCta = () => (
       className="max-w-3xl mx-auto text-center relative"
     >
       <h2 className="text-3xl md:text-5xl font-display font-bold tracking-tight">{t('welcome.cta.title')}</h2>
-      <p className="text-wm-muted mt-4">{t('welcome.cta.subtitle')}</p>
+      <p className="text-wm-muted mt-4">{t('welcome.cta.subtitle', depthProofStats)}</p>
       <div className="mt-9">
         <a
-          href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=final`}
+          href={DASHBOARD_PATH}
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-final"
           className="bg-wm-green text-wm-bg px-10 py-4 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"
         >
           {t('welcome.cta.button')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </a>
-        <div className="mt-3 font-mono text-[11px] uppercase tracking-widest text-wm-muted">{t('welcome.cta.note')}</div>
+        <div className="mt-3 font-mono text-xs uppercase tracking-widest text-wm-muted">{t('welcome.cta.note')}</div>
       </div>
       <a href="/pro" data-umami-event="welcome-cta" data-umami-event-target="welcome-final-pro" className="inline-block mt-6 text-sm text-wm-muted hover:text-wm-green transition-colors font-mono">
         {t('welcome.cta.secondary')}

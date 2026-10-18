@@ -2279,6 +2279,59 @@ describe("webhook processWebhookEvent", () => {
     });
   });
 
+  // #8733: Dodo stamps every event of one change with the same timestamp. On a
+  // live upgrade `renewed` landed first (it never reads product_id), which left
+  // `plan_changed` and `updated` looking stale and the customer on Pro.
+  test("subscription.plan_changed sharing its batch timestamp with an earlier renewed still applies (#8733)", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await seedProductPlan(t, "pdt_test_api", "api_starter", "API Starter");
+
+    await processEvent(t, "wh_8733_01", "subscription.active", makeSubscriptionPayload(), BASE_TIMESTAMP);
+
+    const batchTimestamp = BASE_TIMESTAMP + 1000;
+    const upgraded = makeSubscriptionPayload({ product_id: "pdt_test_api" });
+    await processEvent(t, "wh_8733_02", "subscription.renewed", upgraded, batchTimestamp);
+    await processEvent(t, "wh_8733_03", "subscription.plan_changed", upgraded, batchTimestamp);
+    await processEvent(t, "wh_8733_04", "subscription.updated", upgraded, batchTimestamp);
+
+    const subs = await t.run((ctx) => ctx.db.query("subscriptions").collect());
+    expect(subs).toHaveLength(1);
+    expect(subs[0].dodoProductId).toBe("pdt_test_api");
+    expect(subs[0].planKey).toBe("api_starter");
+
+    const entitlements = await t.run((ctx) => ctx.db.query("entitlements").collect());
+    expect(entitlements).toHaveLength(1);
+    expect(entitlements[0].planKey).toBe("api_starter");
+    expect(entitlements[0].features).toMatchObject({ apiAccess: true, apiRateLimit: 60 });
+  });
+
+  test("subscription.plan_changed older than the stored state is still rejected", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await seedProductPlan(t, "pdt_test_api", "api_starter", "API Starter");
+
+    await processEvent(
+      t,
+      "wh_8733_10",
+      "subscription.active",
+      makeSubscriptionPayload({ product_id: "pdt_test_api" }),
+      BASE_TIMESTAMP + 1000,
+    );
+    await processEvent(
+      t,
+      "wh_8733_11",
+      "subscription.plan_changed",
+      makeSubscriptionPayload(),
+      BASE_TIMESTAMP,
+    );
+
+    const subs = await t.run((ctx) => ctx.db.query("subscriptions").collect());
+    expect(subs[0].planKey).toBe("api_starter");
+  });
+
   test("payment.succeeded creates audit record", async () => {
     const t = convexTest(schema, modules);
 

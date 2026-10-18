@@ -17,7 +17,7 @@ describe('country intel brief cache key derivation', () => {
       contextHash: 'bbbbbbbbbbbbbbbb', frameworkHash: '', energyYear: '2024', energyImportYear: '2023',
     });
     assert.equal(a, b, 'anon key must not vary with client context');
-    assert.ok(a.startsWith('ci-sebuf:v8:FR:en:shared'), `anon key should use shared namespace, got ${a}`);
+    assert.ok(a.startsWith('ci-sebuf:v12:FR:en:shared'), `anon key should use shared namespace, got ${a}`);
   });
 
   it('anon key ignores framework hash (framework is premium-only input)', () => {
@@ -50,8 +50,29 @@ describe('country intel brief cache key derivation', () => {
     assert.notEqual(mk('aaaaaaaaaaaaaaaa', ''), mk('bbbbbbbbbbbbbbbb', ''), 'premium context must personalize the key');
     assert.equal(mk('aaaaaaaaaaaaaaaa', ''), mk('aaaaaaaaaaaaaaaa', ''), 'same premium context must share the key');
     assert.notEqual(mk('aaaaaaaaaaaaaaaa', 'deadbeef'), mk('aaaaaaaaaaaaaaaa', ''), 'framework must personalize the key');
-    assert.ok(mk('aaaaaaaaaaaaaaaa', '').startsWith('ci-sebuf:v8:FR:en:aaaaaaaaaaaaaaaa'));
+    assert.ok(mk('aaaaaaaaaaaaaaaa', '').startsWith('ci-sebuf:v12:FR:en:sources:aaaaaaaaaaaaaaaa'));
     assert.ok(!mk('aaaaaaaaaaaaaaaa', '').includes(':shared'));
+  });
+
+  it('isolates English source defaults from old context entries without changing framework or translated keys', () => {
+    const options = { countryCode: 'FR', lang: 'en', isPremium: true, contextHash: 'abc', frameworkHash: '', energyYear: '2024', energyImportYear: '2023' };
+    assert.equal(deriveCountryIntelCacheKey(options), 'ci-sebuf:v12:FR:en:sources:abc:e2024:i2023');
+    assert.equal(deriveCountryIntelCacheKey({ ...options, frameworkHash: 'def' }), 'ci-sebuf:v12:FR:en:abc:def:e2024:i2023');
+    assert.equal(deriveCountryIntelCacheKey({ ...options, lang: 'fr' }), 'ci-sebuf:v9:FR:fr:abc:e2024:i2023');
+    assert.equal(deriveCountryIntelCacheKey({ ...options, isPremium: false }), 'ci-sebuf:v12:FR:en:shared:e2024:i2023');
+  });
+});
+
+describe('country relationship grounding generation namespace', () => {
+  it('retires old English generations without changing other languages', () => {
+    for (const isPremium of [false, true]) {
+      const options = { countryCode: 'FR', lang: 'en', isPremium, contextHash: 'abc', frameworkHash: 'def', energyYear: '2024', energyImportYear: '2023' };
+      const key = deriveCountryIntelCacheKey(options);
+      assert.ok(key.startsWith('ci-sebuf:v12:FR:en:'));
+      assert.equal(deriveCountryIntelCacheKey({ ...options, lang: 'fr' }), isPremium
+        ? 'ci-sebuf:v9:FR:fr:abc:def:e2024:i2023'
+        : 'ci-sebuf:v9:FR:fr:shared:e2024:i2023');
+    }
   });
 });
 
@@ -82,10 +103,34 @@ describe('shared country context from the news digest', () => {
     assert.equal(sources[0].publishedAt, '2026-07-05T08:00:00.000Z');
   });
 
-  it('falls back to top digest items when nothing matches the country', () => {
-    const { contextSnapshot, sources } = buildSharedCountryContext(digest, 'JP');
-    assert.ok(contextSnapshot.includes('Headlines:'));
-    assert.ok(sources.length > 0, 'fallback grounding should still surface sources');
+  it('returns empty context when nothing mentions the country (no global fallback)', () => {
+    // A brief grounded on top global items reads as a claim about the country
+    // it never made; zero mentions must reach the handler's empty path.
+    assert.deepEqual(buildSharedCountryContext(digest, 'JP'), { contextSnapshot: '', sources: [] });
+  });
+
+  it('drops sports items and returns empty context when they were the only mentions', () => {
+    const sportsOnly = {
+      items: [
+        { title: 'Burkina Faso beat Mali 2-1 in AFCON qualifier', source: 'Wire', link: 'https://example.com/bf-afcon' },
+        { title: 'Burkina Faso striker signs for French club', source: 'Wire', link: 'https://example.com/bf-striker' },
+        { title: 'Unrelated market rally continues', source: 'Bloomberg', link: 'https://example.com/markets' },
+      ],
+    };
+    assert.deepEqual(buildSharedCountryContext(sportsOnly, 'BF'), { contextSnapshot: '', sources: [] });
+  });
+
+  it('keeps relevant country items while filtering its sports items out of sources and headlines', () => {
+    const mixed = {
+      items: [
+        { title: 'Burkina Faso beat Mali 2-1 in AFCON qualifier', source: 'Wire', link: 'https://example.com/bf-afcon' },
+        { title: 'Burkina Faso junta extends transition by five years', source: 'Reuters', link: 'https://example.com/bf-junta' },
+      ],
+    };
+    const { contextSnapshot, sources } = buildSharedCountryContext(mixed, 'BF');
+    assert.deepEqual(sources.map((source) => source.url), ['https://example.com/bf-junta']);
+    assert.ok(!contextSnapshot.includes('AFCON'), 'sports headline must not reach the Headlines block');
+    assert.ok(contextSnapshot.includes('Source [1]: {"title":"Burkina Faso junta'));
   });
 
   it('returns empty context for an empty or malformed digest', () => {

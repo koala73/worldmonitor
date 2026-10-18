@@ -412,9 +412,14 @@ async function terminalize(
   return ctx.db.get(account._id);
 }
 
+/** Same fence as `markOwnerDeleted`, callable inside another mutation. */
+export async function applyOwnerDeletedFence(ctx: MutationCtx, ownerUserId: string) {
+  return terminalize(ctx, ownerUserId, "owner_deleted");
+}
+
 export const markOwnerDeleted = internalMutation({
   args: { ownerUserId: v.string() },
-  handler: async (ctx, args) => terminalize(ctx, args.ownerUserId, "owner_deleted"),
+  handler: async (ctx, args) => applyOwnerDeletedFence(ctx, args.ownerUserId),
 });
 
 export const markAccountDeleted = internalMutation({

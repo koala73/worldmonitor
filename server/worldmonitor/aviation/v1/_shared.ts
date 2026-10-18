@@ -8,18 +8,38 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import type { MonitoredAirport } from '../../../../src/types';
 import {
-  MONITORED_AIRPORTS,
   FAA_AIRPORTS,
   DELAY_SEVERITY_THRESHOLDS,
 } from '../../../../src/config/airports';
 import { ApiError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { CHROME_UA } from '../../../_shared/constants';
 import { incrementProviderCounter } from './_counters';
-import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+import { readCachedJson } from '../../../_shared/redis';
 import { requirePremiumRpcAccess } from '../../../_shared/premium-check';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
 export { parseStringArray } from '../../../_shared/parse-string-array';
+
+export type IntlCoverage = { iata: string; status: 'normal' | 'disruption' | 'omitted' | 'failed'; flightCount: number };
+const COVERAGE_STATUSES = new Set<IntlCoverage['status']>(['normal', 'disruption', 'omitted', 'failed']);
+
+export function isValidAirportDelayAlert(value: unknown): value is AirportDelayAlert {
+  if (!value || typeof value !== 'object') return false;
+  const alert = value as Partial<AirportDelayAlert>;
+  return typeof alert.iata === 'string'
+    && (alert.reason === undefined || typeof alert.reason === 'string')
+    && (alert.delayedFlightsPct === undefined || Number.isFinite(alert.delayedFlightsPct))
+    && (alert.avgDelayMinutes === undefined || Number.isFinite(alert.avgDelayMinutes))
+    && (alert.cancelledFlights === undefined || Number.isFinite(alert.cancelledFlights))
+    && (alert.totalFlights === undefined || Number.isFinite(alert.totalFlights));
+}
+
+export function isValidIntlCoverage(value: unknown): value is IntlCoverage {
+  if (!value || typeof value !== 'object') return false;
+  const coverage = value as Partial<IntlCoverage>;
+  return typeof coverage.iata === 'string' && typeof coverage.status === 'string'
+    && COVERAGE_STATUSES.has(coverage.status as IntlCoverage['status']);
+}
 
 // ---------- Live (metered) aviation access ----------
 
@@ -401,56 +421,40 @@ export function buildNotamAlert(
 // ---------- Shared NOTAM loader (used by both list-airport-delays and get-airport-ops-summary) ----------
 
 const NOTAM_CACHE_KEY = 'aviation:notam:closures:v2';
-const NOTAM_CACHE_TTL = 1800; // 30 minutes
-const SEED_FRESHNESS_MS = 20 * 60 * 1000; // 20 minutes
-
 export interface LoadedNotamResult {
   closedIcaos: string[];
   restrictedIcaos: string[];
   reasons: Record<string, string>;
 }
 
-export async function loadNotamClosures(): Promise<LoadedNotamResult | null> {
-  const t0 = Date.now();
-  let notamResult: LoadedNotamResult | null = null;
-  let fromSeed = false;
+export interface LoadedNotamRead {
+  data: LoadedNotamResult | null;
+  unavailable: boolean;
+}
 
+export async function loadNotamClosures(): Promise<LoadedNotamRead> {
   try {
-    // Two independent Redis reads — fetch them concurrently.
-    const [notamMeta, seedNotam] = await Promise.all([
-      getCachedJson('seed-meta:aviation:notam', true) as Promise<{ fetchedAt?: number } | null>,
-      getCachedJson(NOTAM_CACHE_KEY, true) as Promise<LoadedNotamResult | null>,
-    ]);
-    const notamAge = notamMeta?.fetchedAt ? t0 - notamMeta.fetchedAt : Infinity;
-    if (seedNotam && (notamAge < SEED_FRESHNESS_MS || !process.env.SEED_FALLBACK_NOTAM)) {
-      notamResult = seedNotam;
-      fromSeed = true;
+    const seed = await readCachedJson(NOTAM_CACHE_KEY, true);
+    if (seed.status === 'miss') return { data: null, unavailable: false };
+    if (seed.status === 'error') return { data: null, unavailable: true };
+    const value = seed.value as Partial<LoadedNotamResult> | null;
+    if (!value || !Array.isArray(value.closedIcaos) || !Array.isArray(value.restrictedIcaos)
+      || !value.reasons || typeof value.reasons !== 'object') return { data: null, unavailable: true };
+    if (!value.closedIcaos.every((icao) => typeof icao === 'string')
+      || !value.restrictedIcaos.every((icao) => typeof icao === 'string')
+      || !Object.values(value.reasons).every((reason) => typeof reason === 'string')) {
+      return { data: null, unavailable: true };
     }
+    return { data: {
+      closedIcaos: value.closedIcaos,
+      restrictedIcaos: value.restrictedIcaos,
+      reasons: value.reasons,
+    }, unavailable: false };
   } catch (err) {
     console.warn(`[Aviation] NOTAM seed read failed: ${err instanceof Error ? err.message : 'unknown'}`);
     void captureSilentError(err, { tags: { route: 'aviation/notam', step: 'seed-read' } });
   }
-
-  if (!fromSeed && process.env.ICAO_API_KEY) {
-    try {
-      notamResult = await cachedFetchJson<LoadedNotamResult>(
-        NOTAM_CACHE_KEY, NOTAM_CACHE_TTL, async () => {
-          const allAirports = MONITORED_AIRPORTS;
-          const result = await fetchNotamClosures(allAirports);
-          const closedIcaos = [...result.closedIcaoCodes];
-          const restrictedIcaos = [...result.restrictedIcaoCodes];
-          const reasons: Record<string, string> = {};
-          for (const [icao, reason] of result.notamsByIcao) reasons[icao] = reason;
-          return { closedIcaos, restrictedIcaos, reasons };
-        }
-      );
-    } catch (err) {
-      console.warn(`[Aviation] NOTAM fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
-      void captureSilentError(err, { tags: { route: 'aviation/notam', step: 'live-fetch' } });
-    }
-  }
-
-  return notamResult;
+  return { data: null, unavailable: true };
 }
 
 // ---------- NOTAM + flight data merge ----------

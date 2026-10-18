@@ -1,3 +1,5 @@
+import { whenUrlFreeOfSensitiveParams } from '../../shared/sensitive-url-params';
+
 export const DEBUGBEAR_RUM_SCRIPT_SRC = 'https://cdn.debugbear.com/lpMwA9KpC6pf.js';
 // 10% sampling. 100% overran the DebugBear RUM monthly quota (~529k/500k, 2026-07). The R2-origin
 // experiment that justified full sampling is a no-go (KTD7 feasibility failure); ongoing web-vitals
@@ -23,6 +25,8 @@ declare global {
 }
 
 let debugBearRumStarted = false;
+let removeErrorListeners: (() => void) | undefined;
+const MAX_BUFFERED_ERRORS = 50;
 
 export function shouldEnableDebugBearRum(hostname: string): boolean {
   return DEBUGBEAR_RUM_HOSTS.has(hostname.toLowerCase());
@@ -38,7 +42,21 @@ function loadDebugBearRumScript(): void {
   if ('fetchPriority' in script) {
     script.fetchPriority = 'low';
   }
+  script.onerror = abandonDebugBearRum;
   document.head.appendChild(script);
+}
+
+/** Drop the pre-script error buffer and listeners when the collector will
+ * never run (load failure, or a URL that never sheds its sensitive params). */
+function abandonDebugBearRum(): void {
+  removeErrorListeners?.();
+  const queue = window.dbbRum;
+  if (Array.isArray(queue)) {
+    for (let i = queue.length - 1; i >= 0; i--) {
+      if (queue[i]?.[0] === 'error' || queue[i]?.[0] === 'unhandledrejection') queue.splice(i, 1);
+    }
+  }
+  debugBearRumStarted = false;
 }
 
 export function initDebugBearRum(): void {
@@ -51,15 +69,30 @@ export function initDebugBearRum(): void {
   window.dbbRum = queue;
   queue.push(['presampling', DEBUGBEAR_RUM_SAMPLE_RATE]);
 
-  for (const type of ['error', 'unhandledrejection'] as const) {
-    window.addEventListener(type, (event) => {
-      queue.push([type, event]);
-    });
-  }
+  // The loaded collector replaces the array and still needs these listeners
+  // (#8249), so push to whatever window.dbbRum currently is.
+  const target = window;
+  const onError = (event: Event) => {
+    const current = target.dbbRum;
+    if (!current) return;
+    if (Array.isArray(current)
+      && current.filter(([type]) => type === 'error' || type === 'unhandledrejection').length >= MAX_BUFFERED_ERRORS) return;
+    current.push([event.type as 'error' | 'unhandledrejection', event]);
+  };
+  target.addEventListener('error', onError);
+  target.addEventListener('unhandledrejection', onError);
+  removeErrorListeners = () => {
+    target.removeEventListener('error', onError);
+    target.removeEventListener('unhandledrejection', onError);
+    removeErrorListeners = undefined;
+  };
 
-  loadDebugBearRumScript();
+  // Hold the collector until referral/invite/checkout/Clerk params are gone
+  // from the live URL; see the dashboard sibling.
+  whenUrlFreeOfSensitiveParams(() => window.location.href, loadDebugBearRumScript, abandonDebugBearRum);
 }
 
 export function resetDebugBearRumForTesting(): void {
+  removeErrorListeners?.();
   debugBearRumStarted = false;
 }

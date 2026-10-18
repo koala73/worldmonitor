@@ -105,6 +105,7 @@ import type { NqPulsePanel } from '@/components/NqPulsePanel';
 import type { NqCatalystsPanel } from '@/components/NqCatalystsPanel';
 import type { YieldCurvePanel } from '@/components/YieldCurvePanel';
 import type { EarningsCalendarPanel } from '@/components/EarningsCalendarPanel';
+import type { MaterialEventsPanel } from '@/components/MaterialEventsPanel';
 import type { EconomicCalendarPanel } from '@/components/EconomicCalendarPanel';
 import type { CotPositioningPanel } from '@/components/CotPositioningPanel';
 import type { LiquidityShiftsPanel } from '@/components/LiquidityShiftsPanel';
@@ -211,6 +212,8 @@ import { TierPreferenceHandoff } from '@/app/tier-preference-handoff';
 import { initialRegionFromCache, resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
 import { showProBanner } from '@/components/ProBanner';
 import { getAuthState, initAuthState, subscribeAuthState } from '@/services/auth-state';
+import { installSignUpResume } from '@/services/sign-up-resume';
+import { createSignUpResumeOverlay } from '@/components/SignUpResumeOverlay';
 import {
   CLOUD_PREFS_APPLIED_EVENT,
   CLOUD_PREFS_SIGN_IN_TERMINAL_EVENT,
@@ -254,7 +257,11 @@ import {
   resetEntitlementState,
   resetEntitlementVerification,
 } from '@/services/entitlements';
-import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
+import { initSubscriptionWatch, destroySubscriptionWatch, openBillingPortal } from '@/services/billing';
+import {
+  captureBillingPortalIntentFromUrl,
+  resumePendingBillingPortal,
+} from '@/services/billing-portal-intent';
 import {
   FREE_TIER_FOLLOW_LIMIT,
   WM_FOLLOWED_COUNTRIES_CAP_DROP,
@@ -298,6 +305,15 @@ export type { CountryBriefSignals } from '@/app/app-context';
 
 export class App {
   private state: AppContext;
+  private resumeBillingPortal(capturedThisLoad = false): Promise<boolean> {
+    return resumePendingBillingPortal({
+      getUserId: () => getAuthState().user?.id,
+      openAuth: () => this.state.authModal?.open(),
+      openPortal: () => openBillingPortal(),
+      notify: (message) => showToast(message),
+    }, capturedThisLoad);
+  }
+
   private pendingDeepLinkCountry: string | null = null;
   private pendingDeepLinkExpanded = false;
   private pendingDeepLinkStoryCode: string | null = null;
@@ -879,6 +895,10 @@ export class App {
     if (shouldPrime('earnings-calendar')) {
       const panel = this.state.panels['earnings-calendar'] as EarningsCalendarPanel | undefined;
       if (panel) primeTask('earnings-calendar', () => panel.fetchData());
+    }
+    if (shouldPrime('material-events')) {
+      const panel = this.state.panels['material-events'] as MaterialEventsPanel | undefined;
+      if (panel) primeTask('material-events', () => panel.fetchData());
     }
     if (shouldPrime('economic-calendar')) {
       const panel = this.state.panels['economic-calendar'] as EconomicCalendarPanel | undefined;
@@ -1610,6 +1630,7 @@ export class App {
       },
       updateMonitorResults: () => this.dataLoader.updateMonitorResults(),
       loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),
+      loadTelegramIntel: () => this.dataLoader.loadTelegramIntel(),
       applyMapLayerChange: (layer, enabled, source) => this.eventHandlers.applyMapLayerChange(layer, enabled, source),
       isFreeTierFallbackActive: () => this.freeTierGate.authSettleDeadlineExceeded,
     });
@@ -2597,6 +2618,7 @@ export class App {
     // Verify OAuth OTT and hydrate auth session BEFORE any UI subscribes to auth state
     await initAuthState();
     initAuthAnalytics();
+    installSignUpResume(createSignUpResumeOverlay());
     installCloudPrefsSync(SITE_VARIANT);
     window.addEventListener(CLOUD_PREFS_APPLIED_EVENT, this.handleCloudPrefsApplied);
     window.addEventListener(
@@ -2613,7 +2635,7 @@ export class App {
     let _prevUserId: string | null = null;
     let _convexWatchHandoffGeneration = 0;
     // Track the last-seen PRO entitlement so we can re-fire PRO-gated loaders
-    // ONCE on a false→true transition (user signs in / purchase lands mid-session).
+    // on a false→true transition or an account change while still premium.
     // Without this, loaders gated behind hasPremiumAccess() at init time (e.g.
     // loadTradePolicy) would sit empty until the next scheduled refresh — for
     // trade-policy that's a 10-minute wait post-sign-in. See PR #3295 review.
@@ -2625,16 +2647,16 @@ export class App {
     // for a Pro Monthly subscriber because the original listener only
     // watched subscribeAuthState (Clerk-only); Convex Free→Pro transitions
     // never re-fired loadTradePolicy. Same root cause as PR #3409 layer-unlock.
-    const firePremiumLoaders = (): void => {
+    const firePremiumLoaders = (accountTransition = false): void => {
       // Account sign-in replaces anonymous/local preferences asynchronously.
       // Entitlement callbacks may arrive first; defer every ownership mutation
       // until cloud prefs signals success or error for this same account.
       this.reconcileTierOwnedPreferences();
       const hadPremium = _prevHadPremium;
       const nowPremium = hasPremiumAccess();
-      if (nowPremium && !hadPremium) {
-        // Entitlement just resolved → fire PRO-gated initial loads that were
-        // skipped at boot. Each loader early-returns if the panel isn't
+      if (nowPremium && (!hadPremium || accountTransition)) {
+        // Load panels skipped at boot or cleared for an account change.
+        // Each loader early-returns if the panel isn't
         // mounted and re-checks hasPremiumAccess() internally, so these
         // calls are safe and idempotent. Without this, panels would sit empty
         // until the next scheduled refresh (10+ min for trade-policy; FOREVER
@@ -2823,6 +2845,7 @@ export class App {
         void resumePendingCheckout({
           openAuth: () => this.state.authModal?.open(),
         });
+        void this.resumeBillingPortal();
       } else if (userId === null && _prevUserId !== null) {
         // Clerk's mounted UserButton signs out through the SDK directly, so
         // this observed transition is the authoritative place to invalidate
@@ -2842,7 +2865,7 @@ export class App {
       _prevUserId = userId;
       // Run after account handoff/reset so this pass cannot enforce the
       // previous user's entitlement against the new user's panels.
-      firePremiumLoaders();
+      firePremiumLoaders(accountTransition);
     });
 
 
@@ -2952,6 +2975,11 @@ export class App {
         openAuth: () => this.state.authModal?.open(),
       });
     }
+    // Payment-email fallback (/dashboard?billing=portal): open the portal
+    // now if signed in, else after the sign-in the auth listener observes.
+    if (captureBillingPortalIntentFromUrl()) {
+      void this.resumeBillingPortal(true);
+    }
 
     // Phase 4: MapLayerHandlers, CountryIntel. SearchManager is lazy-loaded
     // on first CMD+K/search-button open so its modal catalog stays off startup.
@@ -2969,6 +2997,9 @@ export class App {
     this.pendingDeepLinkExpanded = initState.expanded === true;
     this.pendingDeepLinkChokepoint = initState.chokepoint ?? null;
     const earlyParams = new URLSearchParams(window.location.search);
+    if (earlyParams.get('settings') === 'notifications') {
+      void this.state.unifiedSettings?.open('notifications');
+    }
     this.pendingDeepLinkStoryCode = earlyParams.get('c') ?? null;
     this.pendingDeepLinkSearchQuery = readDashboardSearchQuery(window.location.search);
     this.eventHandlers.setupUrlStateSync();
@@ -4198,6 +4229,12 @@ export class App {
       () => (this.state.panels['earnings-calendar'] as EarningsCalendarPanel).fetchData(),
       REFRESH_INTERVALS.earningsCalendar,
       () => this.isPanelNearViewport('earnings-calendar')
+    );
+    this.refreshScheduler.scheduleRefresh(
+      'material-events',
+      () => (this.state.panels['material-events'] as MaterialEventsPanel).fetchData(),
+      REFRESH_INTERVALS.materialEvents,
+      () => this.isPanelNearViewport('material-events')
     );
     this.refreshScheduler.scheduleRefresh(
       'economic-calendar',

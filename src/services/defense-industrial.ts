@@ -6,6 +6,7 @@ import type {
 export async function getCountryDefenseIndustrialBase(
   countryCode: string,
   client: Pick<MilitaryServiceClient, 'getDefenseIndustrialBase'>,
+  signal?: AbortSignal,
 ): Promise<GetDefenseIndustrialBaseResponse> {
-  return client.getDefenseIndustrialBase({ countryCode: countryCode.trim().toUpperCase() });
+  return client.getDefenseIndustrialBase({ countryCode: countryCode.trim().toUpperCase() }, { signal });
 }

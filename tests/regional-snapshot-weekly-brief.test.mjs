@@ -27,14 +27,11 @@ const gatewaySrc = readFileSync(resolve(root, 'server/gateway.ts'), 'utf-8');
 const protoSrc = readFileSync(resolve(root, 'proto/worldmonitor/intelligence/v1/get_regional_brief.proto'), 'utf-8');
 const serviceProtoSrc = readFileSync(resolve(root, 'proto/worldmonitor/intelligence/v1/service.proto'), 'utf-8');
 const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
-const originalGroqApiKey = process.env.GROQ_API_KEY;
 
 afterEach(() => {
   __setWeeklyBriefTransportForTests(null);
   if (originalOpenRouterApiKey === undefined) delete process.env.OPENROUTER_API_KEY;
   else process.env.OPENROUTER_API_KEY = originalOpenRouterApiKey;
-  if (originalGroqApiKey === undefined) delete process.env.GROQ_API_KEY;
-  else process.env.GROQ_API_KEY = originalGroqApiKey;
 });
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
@@ -132,7 +129,7 @@ describe('parseBriefJson', () => {
 // ── generateWeeklyBrief ─────────────────────────────────────────────────────
 
 describe('generateWeeklyBrief', () => {
-  function mockCall(text, provider = 'groq', model = 'openai/gpt-oss-20b') {
+  function mockCall(text, provider = 'openrouter', model = 'deepseek/deepseek-v4-flash') {
     return async () => ({ text, provider, model });
   }
 
@@ -144,25 +141,24 @@ describe('generateWeeklyBrief', () => {
     assert.ok(brief.generated_at > 0);
     assert.ok(brief.period_start > 0);
     assert.equal(brief.situation_recap, 'Iran increased naval posture near Hormuz.');
-    assert.equal(brief.provider, 'groq');
+    assert.equal(brief.provider, 'openrouter');
   });
 
   it('uses the fixed backup free model after paid and primary validation failures', async () => {
     process.env.OPENROUTER_API_KEY = 'or-test-key';
-    process.env.GROQ_API_KEY = 'groq-test-key';
     const bodies = [];
     __setWeeklyBriefTransportForTests({
       fetch: async (url, init = {}) => {
         if (!String(url).includes('openrouter.ai')) {
-          throw new Error(`Groq must not be reached: ${url}`);
+          throw new Error(`only OpenRouter may be reached: ${url}`);
         }
         const body = JSON.parse(String(init.body || '{}'));
         bodies.push(body);
-        const isBackup = body.model === 'minimax/minimax-m3:free';
+        const isBackup = body.model === 'nvidia/nemotron-3-super-120b-a12b:free';
         return {
           ok: true,
           json: async () => ({
-            model: isBackup ? 'minimax/minimax-m3:free:resolved' : body.model,
+            model: isBackup ? 'nvidia/nemotron-3-super-120b-a12b:free:resolved' : body.model,
             choices: [{ message: { content: isBackup ? validPayload : 'not valid JSON' } }],
             usage: { total_tokens: 10 },
           }),
@@ -173,11 +169,11 @@ describe('generateWeeklyBrief', () => {
     const brief = await generateWeeklyBrief(mena, snapshotFixture, transitionsFixture);
 
     assert.equal(brief.provider, 'openrouter-free-backup');
-    assert.equal(brief.model, 'minimax/minimax-m3:free:resolved');
+    assert.equal(brief.model, 'nvidia/nemotron-3-super-120b-a12b:free:resolved');
     assert.deepEqual(bodies.map(body => body.model), [
       'deepseek/deepseek-v4-flash',
       'google/gemma-4-26b-a4b-it:free',
-      'minimax/minimax-m3:free',
+      'nvidia/nemotron-3-super-120b-a12b:free',
     ]);
     for (const body of bodies) {
       assert.deepEqual(body.reasoning, { enabled: false });

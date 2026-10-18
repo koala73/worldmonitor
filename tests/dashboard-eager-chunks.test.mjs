@@ -247,19 +247,6 @@ describe('eager chunk budget: military base data stays behind its lazy loader', 
     assert.match(src, /private async runMilitarySurgeAnalysis\(flights: MilitaryFlight\[\]\): Promise<void>/);
     assert.match(src, /\[Intelligence\] Military surge analysis skipped/);
   });
-
-  it('country brief refreshes the military card after lazy base data loads', () => {
-    const src = readFileSync(resolve(repoRoot, 'src/app/country-intel.ts'), 'utf-8');
-    const start = src.indexOf('void Promise.all([', src.indexOf('page.updateInfrastructure(code);'));
-    assert.notEqual(start, -1, 'country brief should preload lazy infrastructure/base tables after first render');
-    const end = src.indexOf('const intelClient', start);
-    assert.notEqual(end, -1, 'country brief preload block should precede intelligence client setup');
-    const block = src.slice(start, end);
-    assert.match(block, /preloadMilitaryBases\(\)/);
-    assert.match(block, /preloadInfrastructureTables\(\)/);
-    assert.match(block, /updateInfrastructure\(code\)/);
-    assert.match(block, /updateMilitaryActivity\?\.\(this\.buildMilitarySummary\(code, country\)\)/);
-  });
 });
 
 describe('eager chunk budget: Sentry stays behind the deferred scheduler', { skip: shouldSkipDashboard() }, () => {

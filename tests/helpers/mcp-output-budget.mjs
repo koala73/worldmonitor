@@ -14,6 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { __testing__, utf8ByteLength } from '../../api/mcp.ts';
+import { presentDefaultMarketData } from '../../api/mcp/registry/cache-tools.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const FIXTURES_DIR = path.resolve(HERE, '..', 'fixtures', 'jmespath-samples');
@@ -26,6 +27,9 @@ export const FIXTURES = [
   { file: 'fat-get-market-data.response.json', tool: 'get_market_data' },
   { file: 'medium-get-conflict-events.response.json', tool: 'get_conflict_events' },
   { file: 'thin-get-chokepoint-status.response.json', tool: 'get_chokepoint_status' },
+  { file: 'rpc-generate-forecasts.response.json', tool: 'generate_forecasts' },
+  { file: 'oversized-get-natural-disasters.response.json', tool: 'get_natural_disasters' },
+  { file: 'oversized-get-imd-cyclone-marine.response.json', tool: 'get_imd_cyclone_marine' },
 ];
 
 // Tools whose default-args envelope is currently over their declared
@@ -35,10 +39,7 @@ export const FIXTURES = [
 // fails the check; a tool listed here without a fixture in `FIXTURES` also
 // fails. Remove an entry once the underlying tool is brought back under
 // budget.
-export const KNOWN_OVER_BUDGET = new Map([
-  ['get_market_data',
-    'commodities-bootstrap ships 30 quotes per the universal default `limit` — that single key alone is ~133 KB, more than the entire 128 KB budget. Default-args calls currently return the runtime `_budget_exceeded` envelope. Delete this entry once the per-key default cap is tightened (or the per-tool budget raised with justification) so the envelope fits under budget.'],
-]);
+export const KNOWN_OVER_BUDGET = new Map();
 
 export function readFixture(file) {
   return JSON.parse(readFileSync(path.join(FIXTURES_DIR, file), 'utf8'));
@@ -48,12 +49,25 @@ export function readFixture(file) {
 // default-args identity path: no JMESPath, no `summary: true`) against a
 // captured fixture envelope and returns the byte count the runtime gate
 // would compare against `tool._outputBudgetBytes`.
+// An RPC tool's fixture is its `_execute` result, which dispatch serializes
+// as-is; a cache tool's fixture is the `{cached_at, stale, data}` envelope.
 export function measure(tool, fixture) {
-  const filtered = tool._postFilter
-    ? tool._postFilter(structuredClone(fixture.data), {})
-    : fixture.data;
-  const envelope = { cached_at: fixture.cached_at, stale: fixture.stale, data: filtered };
-  return utf8ByteLength(JSON.stringify(envelope));
+  let envelope;
+  if (tool._execute) {
+    envelope = structuredClone(fixture);
+  } else {
+    const filtered = tool._postFilter
+      ? tool._postFilter(structuredClone(fixture.data), {})
+      : fixture.data;
+    envelope = { cached_at: fixture.cached_at, stale: fixture.stale, data: filtered };
+  }
+  let presented = tool.name === 'get_market_data'
+    ? presentDefaultMarketData(envelope, tool._outputBudgetBytes)
+    : envelope;
+  if (tool._fitToBudget && utf8ByteLength(JSON.stringify(presented)) > tool._outputBudgetBytes) {
+    presented = tool._fitToBudget(presented, tool._outputBudgetBytes, {});
+  }
+  return utf8ByteLength(JSON.stringify(presented));
 }
 
 // Per-fixture outcome categories. The two consumers (test + script) map

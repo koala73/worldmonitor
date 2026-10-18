@@ -652,7 +652,7 @@ describe('OpenAPI examples contract', () => {
       const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
       return sum + operationEntries(spec).length;
     }, 0);
-    assert.equal(total, 232, `expected 232 OpenAPI operations, found ${total}`);
+    assert.equal(total, 248, `expected 248 OpenAPI operations, found ${total}`);
   });
 
   it('adds schema-valid request and response examples to every service JSON spec', () => {
@@ -664,9 +664,9 @@ describe('OpenAPI examples contract', () => {
       totals.requestExpected += result.requestExpected;
       totals.responseExpected += result.responseExpected;
     }
-    assert.equal(totals.operations, 232);
+    assert.equal(totals.operations, 248);
     assert.ok(totals.requestExpected >= 137, `expected at least 137 request example targets, found ${totals.requestExpected}`);
-    assert.equal(totals.responseExpected, 232);
+    assert.equal(totals.responseExpected, 248);
   });
 
   // record-baseline-snapshot's nested updates[].type is a bare string (no schema
@@ -705,14 +705,36 @@ describe('OpenAPI examples contract', () => {
       const spec = loadYaml(readFileSync(resolve(apiDir, yamlFile), 'utf8'));
       operations += assertOperationExamples(spec, yamlFile).operations;
     }
-    assert.equal(operations, 232);
+    assert.equal(operations, 248);
   });
 
   it('adds request and response examples to the unified OpenAPI bundle', () => {
     const bundle = loadUnifiedOpenApiSpec();
     const result = assertOperationExamples(bundle, 'worldmonitor.openapi.yaml');
-    assert.equal(result.operations, 232);
-    assert.equal(result.responseExpected, 232);
+    assert.equal(result.operations, 248);
+    assert.equal(result.responseExpected, 248);
+  });
+
+  it('labels aircraft emergency examples synthetic and documents projected response shapes', () => {
+    const specs = [
+      JSON.parse(readFileSync(resolve(apiDir, 'AviationService.openapi.json'), 'utf8')),
+      loadYaml(readFileSync(resolve(apiDir, 'AviationService.openapi.yaml'), 'utf8')),
+      loadUnifiedOpenApiSpec(),
+    ];
+    for (const spec of specs) {
+      const operation = spec.paths['/api/aviation/v1/list-aircraft-emergencies'].get;
+      const example = operation.responses['200'].content['application/json'].example;
+      assert.equal(example.feeds[0].squawk, '7500');
+      assert.equal(example.feeds[0].status, 'available');
+      assert.equal(example.feeds[0].source, 'adsb.lol');
+      assert.equal(example.observations[0].address, 'a00001');
+      assert.equal(example.observations[0].squawk, '7500');
+      assert.equal(example.observations[0].observedAt, 0);
+      assert.equal(example.observations[0].militaryFlag, 'unknown');
+      assert.match(example.observations[0].description, /Synthetic example/);
+      assert.match(operation.description, /200 schema describes the unprojected response/);
+      assert.match(operation.description, /array, scalar, or null/);
+    }
   });
 
   // A honeypot field (hidden anti-bot input) is silently discarded by the
@@ -802,11 +824,54 @@ describe('OpenAPI curated example values', () => {
     }
   });
 
+  it('keeps every probability example inside [0, 1]', () => {
+    const outOfRange = [];
+    const walk = (value, path) => {
+      if (Array.isArray(value)) return value.forEach((item, index) => walk(item, `${path}[${index}]`));
+      if (!value || typeof value !== 'object') return;
+      for (const [key, child] of Object.entries(value)) {
+        if (/probability$/i.test(key) && typeof child === 'number' && (child < 0 || child > 1)) outOfRange.push(`${path}.${key}=${child}`);
+        walk(child, `${path}.${key}`);
+      }
+    };
+    for (const file of serviceSpecs) walk(JSON.parse(readFileSync(resolve(apiDir, file), 'utf8')).paths, file);
+    assert.deepEqual(outOfRange, []);
+  });
+
   it('uses an ISO datetime example for webcam lastUpdated', () => {
     const spec = JSON.parse(readFileSync(resolve(apiDir, 'WebcamService.openapi.json'), 'utf8'));
     const example = spec.paths?.['/api/webcam/v1/get-webcam-image']?.get
       ?.responses?.['200']?.content?.[JSON_MEDIA]?.example?.lastUpdated;
     assert.equal(example, '2026-01-15T12:00:00.000Z');
+  });
+
+  it('uses an ISO3 country and a real DTM operation for GetInternalDisplacement', () => {
+    const specs = [
+      ['DisplacementService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'DisplacementService.openapi.json'), 'utf8'))],
+      ['DisplacementService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'DisplacementService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadUnifiedOpenApiSpec()],
+    ];
+    for (const [label, spec] of specs) {
+      const op = spec.paths?.['/api/displacement/v1/get-internal-displacement']?.get;
+      assert.equal(op?.parameters?.find((p) => p.name === 'country_code')?.example, 'SDN', `${label}: country_code`);
+      const example = op?.responses?.['200']?.content?.[JSON_MEDIA]?.example;
+      assert.equal(example?.operations?.[0]?.countryCode, 'SDN', `${label}: operation country`);
+      assert.equal(example?.operations?.[0]?.regions?.[0]?.pcode, 'SD11', `${label}: region P-code`);
+    }
+  });
+
+  it('uses a published wire id and UTC-midnight epoch for GetUsInterestRates', () => {
+    const specs = [
+      ['EconomicService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'EconomicService.openapi.json'), 'utf8'))],
+      ['EconomicService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'EconomicService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadUnifiedOpenApiSpec()],
+    ];
+    for (const [label, spec] of specs) {
+      const example = spec.paths?.['/api/economic/v1/get-us-interest-rates']?.get
+        ?.responses?.['200']?.content?.[JSON_MEDIA]?.example;
+      assert.equal(example?.series?.[0]?.id, 'fed_funds_effective', `${label}: series id`);
+      assert.equal(example?.series?.[0]?.points?.[0]?.date, 1717200000000, `${label}: observation date`);
+    }
   });
 
   it('uses accepted LLM providers in SummarizeArticle examples', () => {
@@ -930,6 +995,33 @@ describe('OpenAPI curated example values', () => {
 
     for (const [label, spec] of specs) {
       assertScenarioStatusPollExample(spec, label);
+    }
+  });
+
+  it('uses valid available demographics observations in each published example', () => {
+    const specs = [
+      ['ResilienceService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'ResilienceService.openapi.json'), 'utf8'))],
+      ['ResilienceService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'ResilienceService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadUnifiedOpenApiSpec()],
+    ];
+    for (const [label, spec] of specs) {
+      const example = spec.paths['/api/resilience/v1/get-demographics-capability'].get.responses['200'].content[JSON_MEDIA].example;
+      let checked = 0;
+      for (const group of Object.values(example)) {
+        if (!group || typeof group !== 'object' || Array.isArray(group)) continue;
+        for (const [field, observation] of Object.entries(group)) {
+          if (!observation || typeof observation !== 'object' || observation.available !== true) continue;
+          checked += 1;
+          assert.ok(Number.isInteger(observation.year) && observation.year >= 1900
+            && observation.year <= new Date().getUTCFullYear() + 50, `${label}: ${field} needs a valid source year`);
+          assert.ok(Number.isFinite(observation.value) && observation.value >= 0, `${label}: ${field} needs a valid value`);
+          assert.ok(observation.source?.trim(), `${label}: ${field} needs source attribution`);
+          const unit = field.endsWith('Years') ? 'years' : field.endsWith('People') ? 'people'
+            : field === 'researchersPerMillion' ? 'people per million' : 'percent';
+          assert.equal(observation.unit, unit, `${label}: ${field} unit must match the reader contract`);
+        }
+      }
+      assert.ok(checked > 0, `${label}: expected available observations`);
     }
   });
 

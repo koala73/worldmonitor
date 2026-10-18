@@ -7,7 +7,7 @@
  * binds runtime tags.
  *
  * Public surface:
- *   - `captureSilentError(err, { tags?, extra?, ctx? })` — preferred.
+ *   - `captureSilentError(err, { tags?, extra?, fingerprint?, ctx? })` — preferred.
  *     Pass the Vercel handler's `ctx` so the helper can register the
  *     delivery via `ctx.waitUntil`. When ctx is absent (local tests,
  *     sidecar invocations, non-Vercel callers), the helper falls back
@@ -20,7 +20,7 @@
  *         ctx, // optional — required for guaranteed delivery on Vercel
  *       });
  *
- *   - `captureEdgeException(err, context, ctx?)` — backwards-compat
+ *   - `captureEdgeException(err, context, ctx?, fingerprint?)` — legacy
  *     alias for the original (pre-sweep) shape. Existing callers in
  *     `notification-channels.ts` keep working unchanged; new callers
  *     should use `captureSilentError`.
@@ -49,8 +49,9 @@ export const captureSilentError = makeCaptureSilentError({
  * @param {{ waitUntil: (p: Promise<unknown>) => void }} [vctx]
  *   Optional Vercel handler context. Passed through to
  *   `captureSilentError` so the isolate is held alive for delivery.
+ * @param {string[]} [fingerprint] Caller-supplied stable Sentry grouping key.
  * @returns {Promise<void>}
  */
-export async function captureEdgeException(err, context = {}, vctx = undefined) {
-  await captureSilentError(err, { extra: context, ctx: vctx });
+export async function captureEdgeException(err, context = {}, vctx = undefined, fingerprint = undefined) {
+  await captureSilentError(err, { extra: context, ctx: vctx, fingerprint });
 }

@@ -4,6 +4,37 @@ import type { AppContext } from '@/app/app-context';
 import { CountryIntelManager } from '@/app/country-intel';
 
 describe('CountryIntelManager WebMCP presentation cancellation', () => {
+  it.each(['CN-TW', 'TW'])('opens the Taiwan brief with canonical request code from %s', async (code) => {
+    const controller = new AbortController();
+    const page = {
+      getCode: () => 'TW',
+      isVisible: () => false,
+      showLoading: vi.fn(),
+      show: vi.fn(),
+      hide: vi.fn(),
+    };
+    const manager = new CountryIntelManager({
+      countryBriefPage: page,
+      isDestroyed: false,
+      map: { setRenderPaused: vi.fn() },
+    } as unknown as AppContext);
+    const getSignals = vi.fn(async () => ({}));
+    Reflect.set(manager, 'ensureCountryBriefPage', async () => true);
+    Reflect.set(manager, 'getCountrySignals', getSignals);
+
+    // Stop enrichment after presentation; exercise the real request and panel handoff.
+    await manager.openCountryBriefByCode(code, 'Taiwan', {
+      trackAnalytics: false,
+      signal: controller.signal,
+      onPresented: () => controller.abort(),
+    }).catch((error) => {
+      expect(error).toBe(controller.signal.reason);
+    });
+
+    expect(getSignals).toHaveBeenCalledExactlyOnceWith('TW', 'Taiwan');
+    expect(page.show).toHaveBeenCalledExactlyOnceWith('Taiwan', 'TW', null, {});
+  });
+
   it('removes the loading shell and never presents after an in-flight abort', async () => {
     let visible = false;
     let activeCode = '';

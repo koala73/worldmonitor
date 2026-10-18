@@ -1,5 +1,6 @@
 import type { MilitaryVessel, MilitaryVesselCluster, USNIFleetReport, USNIVesselEntry } from '@/types';
 import { getRpcBaseUrl } from '@/services/rpc-client';
+import type { BreakerDataState } from '@/utils/circuit-breaker';
 import { createCircuitBreaker } from '@/utils';
 import { getUSNIRegionApproxCoords, getUSNIRegionCoords, HULL_HOMEPORT } from '@/config/military';
 import type { GetUSNIFleetReportResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
@@ -15,7 +16,7 @@ const breaker = createCircuitBreaker<USNIFleetReport | null>({
   persistCache: true,
 });
 
-function mapProtoToReport(resp: GetUSNIFleetReportResponse): USNIFleetReport | null {
+export function mapProtoToReport(resp: GetUSNIFleetReportResponse): USNIFleetReport | null {
   const r = resp.report;
   if (!r) return null;
 
@@ -47,12 +48,25 @@ function mapProtoToReport(resp: GetUSNIFleetReportResponse): USNIFleetReport | n
   };
 }
 
-export async function fetchUSNIFleetReport(): Promise<USNIFleetReport | null> {
-  return breaker.execute(async () => {
+export async function fetchUSNIFleetObservation(): Promise<{ report: USNIFleetReport | null; dataState: BreakerDataState }> {
+  let completed: USNIFleetReport | null | undefined;
+  let completedAt: number | null = null;
+  const report = await breaker.execute(async () => {
     const resp = await client.getUSNIFleetReport({ forceRefresh: false });
-    if (resp.error && !resp.report) return null;
-    return mapProtoToReport(resp);
+    completed = resp.error && !resp.report ? null : mapProtoToReport(resp);
+    completedAt = Date.now();
+    return completed;
   }, null, { shouldCache: (result) => result !== null });
+  const dataState: BreakerDataState = report === null
+    ? { mode: 'unavailable', timestamp: null, offline: breaker.getDataState().offline }
+    : report === completed
+      ? { mode: 'live', timestamp: completedAt, offline: false }
+      : { mode: 'cached', timestamp: null, offline: breaker.getDataState().offline };
+  return { report, dataState };
+}
+
+export async function fetchUSNIFleetReport(): Promise<USNIFleetReport | null> {
+  return (await fetchUSNIFleetObservation()).report;
 }
 
 function normalizeHull(hull: string | undefined): string {

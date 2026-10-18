@@ -12,8 +12,8 @@ function reply(status, text = '', headers = {}) {
 
 function sequence(...responses) {
   const requests = [];
-  const timedFetch = async (url, init = {}) => {
-    requests.push({ url, init });
+  const timedFetch = async (url, init = {}, context = {}) => {
+    requests.push({ url, init, context });
     const next = responses.shift();
     if (next instanceof Error) throw next;
     assert.ok(next, 'probe made more requests than the test supplied');
@@ -36,10 +36,12 @@ function assertRequestOrder(requests, url, count) {
     Origin: 'https://www.worldmonitor.app',
     'Access-Control-Request-Method': 'POST',
   });
+  assert.deepEqual(requests[0].context, { group: 'proxy' });
   if (count === 2) {
     assert.equal(requests[1].url, url);
     assert.equal(requests[1].init.method, undefined);
     assert.deepEqual(requests[1].init.headers, { Origin: 'https://www.worldmonitor.app' });
+    assert.deepEqual(requests[1].context, { group: 'proxy' });
   }
 }
 
@@ -68,7 +70,7 @@ test('accepts only the exact 301 apex redirect with the same path and query', as
   assert.deepEqual(records, [{
     check: 'mcp-proxy OPTIONS',
     ok: true,
-    detail: `301 → ${APEX_REDIRECT_URL} (expected apex → www host split; www carries the assertions)`,
+    detail: '301 → https://www.worldmonitor.app/api/mcp-proxy (expected apex → www host split; www carries the assertions)',
   }]);
   assertRequestOrder(requests, APEX_PROXY_URL, 1);
 });
@@ -195,7 +197,7 @@ test('stops after an OPTIONS timeout', async () => {
   assert.deepEqual(records, [{
     check: 'mcp-proxy OPTIONS',
     ok: false,
-    detail: 'HANG/transport error: AbortError',
+    detail: 'HANG/transport error: AbortError: OPTIONS timed out',
   }]);
   assertRequestOrder(requests, PROXY_URL, 1);
 });
@@ -207,7 +209,7 @@ test('records a GET timeout after a healthy OPTIONS response', async () => {
 
   assert.deepEqual(records, [
     { check: 'mcp-proxy OPTIONS', ok: true, detail: '204' },
-    { check: 'mcp-proxy anon GET', ok: false, detail: 'HANG/transport error: AbortError' },
+    { check: 'mcp-proxy anon GET', ok: false, detail: 'HANG/transport error: AbortError: GET timed out' },
   ]);
   assertRequestOrder(requests, PROXY_URL, 2);
 });

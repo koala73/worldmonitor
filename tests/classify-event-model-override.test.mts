@@ -6,10 +6,9 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { classifyEvent } from '../server/worldmonitor/intelligence/v1/classify-event.ts';
 import { __testing__ as llmHealth } from '../server/_shared/llm-health.ts';
-import { GROQ_DEFAULT_MODEL } from '../scripts/_llm-model-timeouts.mjs';
 
 const ENV_KEYS = [
-  'OPENROUTER_API_KEY', 'GROQ_API_KEY', 'OLLAMA_API_URL', 'LLM_API_URL', 'LLM_API_KEY',
+  'OPENROUTER_API_KEY', 'OLLAMA_API_URL', 'LLM_API_URL', 'LLM_API_KEY', 'LLM_MODEL',
   'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN',
 ] as const;
 const originalEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
@@ -36,7 +35,9 @@ describe('classify_event sends the classification model', () => {
   beforeEach(() => {
     for (const k of ENV_KEYS) delete process.env[k];
     process.env.OPENROUTER_API_KEY = 'or-test-key';
-    process.env.GROQ_API_KEY = 'groq-test-key';
+    process.env.LLM_API_URL = 'https://llm.example.test/v1/chat/completions';
+    process.env.LLM_API_KEY = 'generic-test-key';
+    process.env.LLM_MODEL = 'generic-test-model';
   });
 
   afterEach(() => {
@@ -61,8 +62,8 @@ describe('classify_event sends the classification model', () => {
     assert.equal(res.classification?.subcategory, 'high');
     assert.equal(sent[0]?.model, 'deepseek/deepseek-v4.1-flash');
     const last = sent.at(-1);
-    assert.equal(last?.host, 'api.groq.com');
-    assert.equal(last?.model, GROQ_DEFAULT_MODEL);
+    assert.equal(last?.host, 'llm.example.test');
+    assert.equal(last?.model, 'generic-test-model');
     for (const s of sent.slice(1)) assert.notEqual(s.model, 'deepseek/deepseek-v4.1-flash', `${s.host} must keep its own model`);
   });
 });

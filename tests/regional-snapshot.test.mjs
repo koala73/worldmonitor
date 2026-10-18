@@ -553,12 +553,12 @@ describe('snapshot meta', () => {
     const final = buildFinalMeta(pre, {
       snapshot_id: 'abc-123',
       trigger_reason: 'regime_shift',
-      narrative_provider: 'groq',
+      narrative_provider: 'openrouter',
       narrative_model: 'mixtral',
     });
     assert.equal(final.snapshot_id, 'abc-123');
     assert.equal(final.trigger_reason, 'regime_shift');
-    assert.equal(final.narrative_provider, 'groq');
+    assert.equal(final.narrative_provider, 'openrouter');
     assert.equal(final.model_version, MODEL_VERSION);
   });
 

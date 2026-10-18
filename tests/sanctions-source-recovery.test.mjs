@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  describeFetchError,
   fetchOfacSourceResponse,
   resolveOfacProxyUrl,
 } from '../scripts/_sanctions-source.mjs';
@@ -325,5 +326,48 @@ describe('OFAC source transport recovery', () => {
     assert.equal(resolveOfacProxyUrl({ PROXY_URL: 'http://shared-exit.test:9000' }),
       'http://shared-exit.test:9000');
     assert.equal(resolveOfacProxyUrl({}), '');
+  });
+
+  // "fetch failed" alone could not tell a refused connection from DNS or a
+  // connect timeout when Railway lost egress to OFAC on 2026-09-26/27.
+  it('names the socket error code behind a bare "fetch failed"', async () => {
+    const refused = Object.assign(new TypeError('fetch failed'), {
+      cause: Object.assign(new Error('connect ECONNREFUSED 1.2.3.4:443'), { code: 'ECONNREFUSED' }),
+    });
+    assert.equal(describeFetchError(refused), 'fetch failed (ECONNREFUSED)');
+    assert.equal(describeFetchError(new Error('The operation was aborted due to timeout')), 'The operation was aborted due to timeout');
+    assert.equal(describeFetchError(Object.assign(new TypeError('fetch failed'), { cause: { code: 'x; secret' } })), 'fetch failed');
+
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => warnings.push(args.join(' '));
+    try {
+      await fetchOfacSourceResponse(SOURCE_URL, {
+        fetchFn: async (url) => {
+          if (String(url) === SOURCE_URL) throw refused;
+          return response(200);
+        },
+        proxyFetchFn: async () => ({ ok: false, status: 302, location: SIGNED_S3_URL, buffer: Buffer.alloc(0), contentType: '' }),
+        proxyUrl: 'http://user:pass@proxy.test:8000',
+        sleepFn: async () => {},
+      });
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.ok(warnings.some((line) => line.includes('OFAC direct fetch failed (fetch failed (ECONNREFUSED))')), warnings.join('\n'));
+
+    const s3Refused = Object.assign(new TypeError('fetch failed'), { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } });
+    await assert.rejects(
+      fetchOfacSourceResponse(SOURCE_URL, {
+        fetchFn: async (url) => {
+          if (String(url) === SOURCE_URL) return response(403, 'blocked');
+          throw s3Refused;
+        },
+        proxyFetchFn: async () => ({ ok: false, status: 302, location: SIGNED_S3_URL, buffer: Buffer.alloc(0), contentType: '' }),
+        proxyUrl: 'http://user:pass@proxy.test:8000',
+        sleepFn: async () => {},
+      }),
+      (error) => error.message === 'fetch failed (UND_ERR_CONNECT_TIMEOUT)' && error.nonRetryable === true,
+    );
   });
 });

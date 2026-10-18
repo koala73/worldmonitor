@@ -104,6 +104,17 @@ function mockTransports({ relay, relayOrigin = SITE }) {
         return { result: 'OK' };
       }
       if (op === 'DEL' && key in snapshotStore) { snapshotStore[key] = null; return { result: 1 }; }
+      if (op === 'EVAL' && key === __testing__.HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT) {
+        // The fenced verdict publish (#8268): KEYS = lease, full, compact[,
+        // last-known full, last-known compact]; ARGV = token, full, compact, ttl.
+        // This suite does not model the lease; the owner always holds it.
+        const numkeys = Number(value);
+        const keys = rest.slice(0, numkeys);
+        const [, full, compact] = rest.slice(numkeys);
+        snapshotStore[keys[1]] = full;
+        snapshotStore[keys[2]] = compact;
+        return { result: 'OK' };
+      }
       if (op === 'EVAL') {
         // EVAL <script> 1 <key> <expected> [<next> <ttl>]: the compare-and-set
         // fallback publish when the script sets, the compare-and-delete
@@ -309,8 +320,10 @@ test('a stall that outlives its grace becomes an operational RELAY_GATE_UNREACHA
   // read (#8282 review).
   assert.equal(entry.transportGraceExpiredAt, expiredGrace, 'the original deadline is carried across windows');
   assert.equal(entry.transportGraceUntil, undefined, 'an expired deadline is never republished as a softening');
-  const snapshotWrite = redisCommands.find(([op, key]) => op === 'SET' && key === HEALTH_SNAPSHOT_KEY);
-  assert.equal(snapshotWrite[4], String(__testing__.HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS), 'the warning snapshot keeps its full TTL');
+  // Fenced publish: EVAL <script> <numkeys> <keys...> <token> <full> <compact> <ttl> ...
+  const snapshotWrite = redisCommands.find(([op, script]) => op === 'EVAL' && script === __testing__.HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT);
+  const snapshotTtlArg = snapshotWrite[3 + Number(snapshotWrite[2]) + 3];
+  assert.equal(snapshotTtlArg, String(__testing__.HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS), 'the warning snapshot keeps its full TTL');
   assert.equal(compact.problems[RELAY_GATEWAY_GATE_CHECK_NAME].status, 'RELAY_GATE_UNREACHABLE');
   assert.ok(findOperationalProblems(compact).some((p) => p.name === RELAY_GATEWAY_GATE_CHECK_NAME), 'now operational');
   // Owner publish: EVAL <script> 2 <lease> <verdict> <token> <json> <ttl>.

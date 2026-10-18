@@ -8,6 +8,7 @@ import { describe, it } from 'node:test';
 import { XMLValidator } from 'fast-xml-parser';
 
 import {
+  MACHINE_READABLE_URLS,
   SITE_ORIGIN,
   STATIC_ROUTE_MANIFEST,
   buildSitemapEntries,
@@ -17,6 +18,7 @@ import {
   validateSitemapEntries,
   validateSitemapIndex,
 } from '../scripts/build-sitemap.mjs';
+import { INDEXABLE_LANDING_LOCALES, landingHreflangCluster } from '../shared/indexable-landing-locales.ts';
 import { gitFileLastmod } from '../scripts/build-crawlable-corpus.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -43,16 +45,22 @@ function writeCorpusPage(publicDir, relativePath, { canonical, lastmod, robots =
 
 describe('root sitemap generator', () => {
   it('declares owned material-content sources without copying blog or docs inventories', () => {
-    assert.ok(STATIC_ROUTE_MANIFEST.length > 10);
+    assert.ok(STATIC_ROUTE_MANIFEST.length >= 9);
 
     const locations = STATIC_ROUTE_MANIFEST.map((route) => route.loc);
     assert.ok(locations.includes(`${SITE_ORIGIN}/`));
+    for (const locale of INDEXABLE_LANDING_LOCALES) {
+      assert.ok(locations.includes(`${SITE_ORIGIN}${locale.canonicalPath}`), locale.canonicalPath);
+    }
     assert.ok(locations.includes(`${SITE_ORIGIN}/dashboard`));
     assert.ok(locations.includes(`${SITE_ORIGIN}/pro`));
     assert.ok(locations.includes('https://worldmonitor.app/mcp'));
-    assert.ok(locations.includes(`${SITE_ORIGIN}/pricing.md`));
-    assert.ok(locations.includes(`${SITE_ORIGIN}/world-monitor.md`));
-    assert.ok(locations.includes(`${SITE_ORIGIN}/api-versioning.md`));
+    // Markdown twins and llms manifests are files, not pages: a sitemap entry
+    // asks Google to index them, and it indexed none of the twelve (#8608).
+    assert.equal(MACHINE_READABLE_URLS.length, 12);
+    for (const url of MACHINE_READABLE_URLS) {
+      assert.ok(!locations.includes(url), `${url} must stay out of the sitemap`);
+    }
     assert.ok(locations.includes('https://tech.worldmonitor.app/dashboard'));
     assert.ok(locations.every((loc) => !new URL(loc).pathname.startsWith('/blog')));
     assert.ok(locations.every((loc) => !new URL(loc).pathname.startsWith('/docs')));
@@ -117,6 +125,19 @@ describe('root sitemap generator', () => {
       assert.match(first, /<lastmod>2026-05-28<\/lastmod>/);
       assert.match(first, /<lastmod>2026-07-20<\/lastmod>/);
       assert.doesNotMatch(first, /<changefreq>|<priority>/);
+      assert.match(first, /xmlns:xhtml="http:\/\/www.w3.org\/1999\/xhtml"/);
+      for (const alternate of landingHreflangCluster()) {
+        assert.match(
+          first,
+          new RegExp(
+            `<xhtml:link rel="alternate" hreflang="${alternate.hreflang}" href="${alternate.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"/>`,
+          ),
+        );
+      }
+      assert.doesNotMatch(
+        first.slice(first.indexOf(`${SITE_ORIGIN}/dashboard`)),
+        /<xhtml:link[\s\S]*https:\/\/www\.worldmonitor\.app\/dashboard/,
+      );
       assert.doesNotMatch(first, /worldmonitor\.app\/blog/);
       assert.doesNotMatch(first, /worldmonitor\.app\/docs/);
 
@@ -186,6 +207,13 @@ describe('root sitemap generator', () => {
       () => validateSitemapEntries([{ ...valid, loc: `${SITE_ORIGIN}/dashboard/` }], { today: '2026-07-27' }),
       /trailing slash|canonical/i,
     );
+    for (const file of ['/pricing.md', '/llms.txt', '/openapi.json', '/docs/api/x.openapi.yaml']) {
+      assert.throws(
+        () => validateSitemapEntries([{ ...valid, loc: `${SITE_ORIGIN}${file}` }], { today: '2026-07-27' }),
+        /not an HTML page/,
+        `${file} must be rejected as a non-HTML sitemap URL`,
+      );
+    }
     assert.throws(
       () => validateSitemapEntries([{ ...valid, lastmod: null }], { today: '2026-07-27' }),
       /lastmod/i,
@@ -198,6 +226,14 @@ describe('root sitemap generator', () => {
       () => validateSitemapEntries([{ ...valid, lastmod: '2026-07-28' }], { today: '2026-07-27' }),
       /future/i,
     );
+  });
+
+  it('commits a sitemap that names only HTML pages (#8608)', () => {
+    const sitemap = readFileSync(new URL('../public/sitemap-main.xml', import.meta.url), 'utf8');
+    const files = [...sitemap.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
+      .map((match) => match[1])
+      .filter((loc) => /\/[^/]+\.[a-z0-9]+$/i.test(new URL(loc).pathname));
+    assert.deepEqual(files, []);
   });
 
   it('preserves committed freshness when Git history is shallow', () => {

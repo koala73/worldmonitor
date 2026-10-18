@@ -4,7 +4,7 @@ import { clearPanelColSpanEntry, clearPanelSpanEntry } from '@/utils/panel-stora
 import { getAuthState } from '@/services/auth-state';
 import { isEntitled, getEntitlementState } from '@/services/entitlements';
 import {
-  clearLegacyKeyStorage,
+  clearBrowserKeySession,
   migrateLegacyKeysToHttpOnlySession,
   readLegacySessionKey,
 } from '@/services/browser-key-session';
@@ -175,31 +175,31 @@ function migrateLegacyKeyStorage(): void {
   widgetSessionHint = !!widgetKey;
   proSessionHint = !!proKey;
   void migrateLegacyKeysToHttpOnlySession({ widgetKey, proKey })
-    .catch(() => { /* retry on next boot; keep legacy storage until success */ });
+    .catch(() => { /* retry on next boot; a transport failure keeps legacy storage */ });
 }
 
-export function setWidgetKey(key: string): void {
+export async function setWidgetKey(key: string): Promise<boolean> {
   const trimmed = key.trim();
-  widgetSessionHint = !!trimmed;
-  notifyAccessChanged();
-  if (!trimmed) {
-    clearLegacyKeyStorage('wm-widget-key');
-    return;
+  const ok = trimmed
+    ? await migrateLegacyKeysToHttpOnlySession({ widgetKey: trimmed })
+    : await clearBrowserKeySession('wm-widget-key');
+  if (ok) {
+    widgetSessionHint = !!trimmed;
+    notifyAccessChanged();
   }
-  void migrateLegacyKeysToHttpOnlySession({ widgetKey: trimmed })
-    .catch(() => { /* caller can retry; no new JS-readable write */ });
+  return ok;
 }
 
-export function setProKey(key: string): void {
+export async function setProKey(key: string): Promise<boolean> {
   const trimmed = key.trim();
-  proSessionHint = !!trimmed;
-  notifyAccessChanged();
-  if (!trimmed) {
-    clearLegacyKeyStorage('wm-pro-key');
-    return;
+  const ok = trimmed
+    ? await migrateLegacyKeysToHttpOnlySession({ proKey: trimmed })
+    : await clearBrowserKeySession('wm-pro-key');
+  if (ok) {
+    proSessionHint = !!trimmed;
+    notifyAccessChanged();
   }
-  void migrateLegacyKeysToHttpOnlySession({ proKey: trimmed })
-    .catch(() => { /* caller can retry; no new JS-readable write */ });
+  return ok;
 }
 
 export function isWidgetFeatureEnabled(): boolean {

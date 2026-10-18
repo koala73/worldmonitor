@@ -105,7 +105,7 @@ ollama pull llama3.1
 
 ### Step 2: Open World Monitor
 
-Navigate to worldmonitor.app or install the desktop app from GitHub releases.
+Navigate to worldmonitor.app or install the [desktop app](https://www.worldmonitor.app/docs/desktop-app) from GitHub releases.
 
 ### Step 3: Configure AI
 

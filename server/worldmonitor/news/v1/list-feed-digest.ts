@@ -66,18 +66,23 @@ import {
 import {
   FORECAST_EVIDENCE_KEY,
   FORECAST_EVIDENCE_COVERAGE_KEY,
-  FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
   FORECAST_EVIDENCE_TTL_S,
   accumulatorPruneBounds,
   advanceForecastEvidenceCoverage,
   buildForecastEvidenceMember,
+  buildForecastEvidenceRecordWrite,
+  forecastEvidenceLinkHost,
   evidencePruneBounds,
-  forecastEvidenceCoversWindow,
   forecastEvidenceRecordKey,
   isEligibleForecastEvidence,
   parseForecastEvidenceCoverage,
 } from '../../../../scripts/_forecast-evidence-archive.mjs';
 import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
+import {
+  feedPublisherHost,
+  isPublisherLink,
+  linkHostname,
+} from '../../../../shared/publisher-link-gate.js';
 // @ts-expect-error — JS module, no declaration file
 import { STORY_ALIAS_PUBLISH_SCRIPT } from '../../../../shared/story-alias-publish-script.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
@@ -86,13 +91,28 @@ import { classifyEphemeralLiveCoverage } from '../../../../shared/ephemeral-live
 import { deriveCoreStoryPhase } from '../../../../shared/story-phase.js';
 import { buildTickerDictionary, extractTickers } from '../../../../shared/ticker-extract.js';
 import stocksData from '../../../../shared/stocks.json';
-import { buildClassifyCacheKey } from '../../intelligence/v1/_shared';
-import { getSourceTier, hasSourceTier } from '../../../_shared/source-tiers';
+import { buildClassifyCacheKey, isValidClassifyHit } from '../../intelligence/v1/_shared';
+import { declaredSourceTier, getSourceTier } from '../../../_shared/source-tiers';
 import {
   getSourcePropagandaRisk,
   hasReviewedPropagandaRisk,
 } from '../../../../shared/source-provenance';
 import { computeCredibilityScore } from '../../../../shared/news-credibility.js';
+import {
+  STORY_CORROBORATION_FIELD,
+  STORY_LABEL_FIELD,
+  countLabels,
+  encodeStoryCorroboration,
+  encodeStoryLabel,
+  keepUnrecordedLabels,
+  labelChangeFor,
+  labelCountsCommand,
+  recordLabelChanges,
+  storyLabel,
+  type LabelChange,
+  type LabelCounts,
+  type StoryLabel,
+} from '../../../_shared/label-history';
 import {
   STORY_TRACK_KEY,
   STORY_SOURCES_KEY,
@@ -105,10 +125,12 @@ import {
 } from '../../../_shared/cache-keys';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import diplomacyKeywordsData from '../../../../shared/diplomacy-keywords.json';
+import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
 // #6428: entity corroboration must count publishers, not feed labels.
 import {
   MIN_CORROBORATING_PUBLISHERS,
   PUBLISHER_FAMILIES,
+  PUBLISHER_FAMILY_DOMAIN_TABLE,
   publisherFamilyFor,
   publisherFamilyForItem,
 } from '../../../../shared/publisher-families.js';
@@ -116,9 +138,58 @@ import {
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
 const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity']);
+// The one digest language set, shared with the gateway's public-shape
+// classifier so a CDN-shielded `?lang=xx&public=1` shape and the handler can
+// never disagree. Anything outside it is a 400 (#8360).
+const DIGEST_LANGUAGES = NEWS_LANGUAGES;
+const DEFAULT_DIGEST_LANG = 'en';
+const ISOLATE_FALLBACK_MAX_KEYS = 50;
 const fallbackDigestCache = new Map<string, { data: ListFeedDigestResponse; ts: number }>();
+
+/**
+ * Move an entry to the back of the insertion order so it counts as recently
+ * used. Map has no reorder primitive, so delete + re-set is the idiom.
+ *
+ * #8385 review: recency used to be bumped only when a digest was REBUILT, not
+ * when one was served from this tier. `full:en` is the hottest key and the one
+ * degraded serving depends on, but it is rebuilt rarely — so it drifted to the
+ * front of the order and was evicted first, while being read on every request.
+ */
+function touchIsolateEntry(key: string): void {
+  const entry = fallbackDigestCache.get(key);
+  if (!entry) return;
+  fallbackDigestCache.delete(key);
+  fallbackDigestCache.set(key, entry);
+}
+
+/**
+ * Evict the least-recently-used entry, never the default-language shard.
+ *
+ * #8385 review: the cap (50) is below the legitimate key space — VALID_VARIANTS
+ * x DIGEST_LANGUAGES is 135 — so ordinary multi-locale traffic, not just
+ * abuse, can cycle past it. Pinning `<variant>:en` costs one slot per variant
+ * and keeps the shard every degraded serve falls back to, which is the whole
+ * point of this tier. Raising the cap to 135 instead would mean ~17MB of 126KB
+ * snapshots resident per isolate.
+ */
+function evictOldestIsolateEntry(): void {
+  for (const key of fallbackDigestCache.keys()) {
+    if (key.endsWith(`:${DEFAULT_DIGEST_LANG}`)) continue;
+    fallbackDigestCache.delete(key);
+    return;
+  }
+  // Every resident entry is a pinned default-lang shard: drop the oldest so the
+  // cache still cannot grow without bound.
+  const oldest = fallbackDigestCache.keys().next();
+  if (!oldest.done) fallbackDigestCache.delete(oldest.value);
+}
 const ITEMS_PER_FEED = 5;
-const COUNTRY_ITEMS_PER_FEED = 20;
+// Full-variant entries kept past the dashboard cap, for country headlines and
+// /verify claim search. A Google News site: feed returns up to 100 entries and
+// a wire publishes fast: on 2026-10-17 AP's first 30 covered 6.6 hours, and
+// stories Google News World led with sat at AP entries 61, 92 and 95. Keeping
+// the whole feed grows the pool from about 4,400 to 8,300 headlines.
+const COUNTRY_ITEMS_PER_FEED = 100;
 const MAX_ITEMS_PER_CATEGORY = 20;
 const FEED_TIMEOUT_MS = 8_000;
 // Vercel Edge functions have a 25s initial-response ceiling. The digest
@@ -467,6 +538,9 @@ export interface ParsedItem {
   originPublisherTrusted: boolean;
   title: string;
   link: string;
+  // Host of a link the ingest publisher gate blanked (#8990). Internal: lets
+  // the evidence writer drop a stored link on a host the gate now rejects.
+  blankedLinkHost?: string;
   publishedAt: number;
   isAlert: boolean;
   level: ThreatLevel;
@@ -535,9 +609,9 @@ function resolveCredibilitySourceName(item: CredibilitySourceItem): string {
   // Prefer one identity reviewed by both registries so tier and risk describe
   // the same publisher; then degrade toward whichever curated signal exists.
   return candidates.find(candidate =>
-    hasReviewedPropagandaRisk(candidate) && hasSourceTier(candidate))
+    hasReviewedPropagandaRisk(candidate) && declaredSourceTier(candidate) !== null)
     ?? candidates.find(hasReviewedPropagandaRisk)
-    ?? candidates.find(hasSourceTier)
+    ?? candidates.find(candidate => declaredSourceTier(candidate) !== null)
     ?? rawName;
 }
 
@@ -847,6 +921,8 @@ export async function fetchAndParseRss(
   // lack it, so zero-item entries could not be classified between
   // negative-cache and fresh-failure; force a cold parse on rollout.
   // v9→v10 (#7748): retain a bounded country headline pool beyond entry five.
+  // v10→v11 (#8398): items gained the publisher-link ingest gate. Warm v10
+  // rows carry un-gated links, so force a cold parse to gate every link.
   const cacheKey = rssFeedCacheKey(variant, feed.url);
 
   try {
@@ -1026,6 +1102,8 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
   const droppedFeedCap = Math.max(0, matches.length - ITEMS_PER_FEED);
 
   const parseLimit = retainCountryItems ? COUNTRY_ITEMS_PER_FEED : ITEMS_PER_FEED;
+  // One log line per feed for gated pool links: a deep pool can drop dozens.
+  const poolLinkDrops = new Map<string, number>();
   for (const [index, match] of matches.slice(0, parseLimit).entries()) {
     const block = match[1]!;
     const forDigest = index < ITEMS_PER_FEED;
@@ -1036,6 +1114,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     if (forDigest) parsedTotal++;
 
     let link: string;
+    let blankedLinkHost = '';
     if (isAtom) {
       const hrefMatch = block.match(/<link[^>]+href=["']([^"']+)["']/);
       link = hrefMatch?.[1] ?? '';
@@ -1044,6 +1123,13 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     }
     // Strip non-HTTP links (javascript:, data:, etc.) before any downstream use.
     if (!/^https?:\/\//i.test(link)) link = '';
+
+    // #8398: ingest-side publisher-link gate — an item whose link leaves its
+    // own publisher's domain is the suspicious case. The expected set is
+    // composed below (after the origin publisher is known); the check itself
+    // runs per branch so a rejected link never reaches the item builders.
+    // `link` is NOT cleared here: clearing would conflate "rejected" with
+    // "absent" for the counters below. Each branch drops-or-blanks.
 
     // Strict date gate (R2): walk the dialect-specific tag priority list and
     // require at least one non-empty, parseable, non-future timestamp. Items
@@ -1079,11 +1165,31 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // identity bound.
     const originPublisher = originPublisherTrusted ? extractedOriginPublisher : '';
     if (!forDigest) {
+
+      // #8398: country-pool branch. parseRssXml is feed-scoped (it knows
+      // `feed`), so the ingest gate runs here — the per-category assembly
+      // below is item-scoped and no longer knows which feed an item came
+      // from (it only carries `source`, the feed label). A rejected link
+      // drops the item: the row never reaches the pool (the pool has its own
+      // link-length cap below, which a hostile link would otherwise satisfy).
+      if (
+        link &&
+        !isItemLinkAllowed(
+          link,
+          { source: feed.name, originPublisher, originPublisherTrusted },
+          feed,
+        )
+      ) {
+        const host = linkHostnameForLog(link);
+        poolLinkDrops.set(host, (poolLinkDrops.get(host) ?? 0) + 1);
+        continue;
+      }
       if (title.length <= 1000 && link.length <= 2048 && originPublisher.length <= 200) {
         countryItems.push({
           source: feed.name, title, link, publishedAt,
           originPublisher, originPublisherTrusted,
         });
+        continue;
       }
       continue;
     }
@@ -1092,12 +1198,35 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     const isAlert = threat.level === 'critical' || threat.level === 'high';
     const description = extractDescription(block, isAtom, title);
 
+    // #8398: digest branch — same ingest gate as the country-pool branch
+    // above (this is the last feed-scoped point before items lose their feed;
+    // see the comment there for why the gate cannot run later). The link is
+    // blanked rather than the item dropped: the title still carries
+    // corroboration/brief signal while no hostile link can be persisted to
+    // story:track or fanned out by the relay.
+    if (
+      link &&
+      !isItemLinkAllowed(
+        link,
+        { source: feed.name, originPublisher: extractedOriginPublisher, originPublisherTrusted },
+        feed,
+      )
+    ) {
+      console.warn(
+        `[digest] publisher-link-gate blank feed="${feed.name}" variant=${variant} ` +
+          `host="${linkHostnameForLog(link)}"`,
+      );
+      blankedLinkHost = forecastEvidenceLinkHost(link);
+      link = '';
+    }
+
     items.push({
       source: feed.name,
       originPublisher: extractedOriginPublisher,
       originPublisherTrusted,
       title,
       link,
+      ...(blankedLinkHost ? { blankedLinkHost } : {}),
       publishedAt,
       isAlert,
       level: threat.level,
@@ -1131,6 +1260,15 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     console.warn(
       `[digest] partial-undated feed="${feed.name}" variant=${variant} ` +
         `parsed=${parsedTotal} dropped=${droppedUndated} kept=${items.length}`,
+    );
+  }
+
+  if (poolLinkDrops.size > 0) {
+    const byHost = [...poolLinkDrops].sort(([a, x], [b, y]) => y - x || a.localeCompare(b));
+    console.warn(
+      `[digest] publisher-link-gate drop feed="${feed.name}" variant=${variant} ` +
+        `hosts="${byHost.map(([host, n]) => `${host}:${n}`).join(',')}" ` +
+        `count=${byHost.reduce((sum, [, n]) => sum + n, 0)}`,
     );
   }
 
@@ -1327,6 +1465,10 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
     // operative skip check today. Locked by the `_skip` cases in
     // tests/news-classify-cache-hit-validation.test.mts.
     if (!hit || hit.level === '_skip' || !hit.level || !hit.category) continue;
+    // Shape is the parser's job; the value policy is ours. A level or category
+    // outside the classify enum never reaches item.category, which the
+    // dashboard renders as a badge.
+    if (!isValidClassifyHit(hit)) continue;
 
     for (const item of relatedItems) {
       // L3 defense-in-depth runs FIRST, BEFORE capLlmUpgrade. If the
@@ -1508,6 +1650,8 @@ interface StoryTrack {
   lastSeen: number;
   mentionCount: number;
   sourceCount: number;
+  /** Last recorded corroboration label (#9093), `state|publishers`; absent on rows from before it. */
+  label?: string;
 }
 
 /**
@@ -1562,10 +1706,16 @@ function derivePhase(track: StoryTrack, nowMs: number = Date.now()): ProtoStoryP
 /**
  * Batch-read existing story:track hashes from Redis for a list of title hashes.
  * Returns a Map<titleHash, StoryTrack>. Missing entries are absent from the map.
+ *
+ * `unread`, when given, receives every hash whose row could not be read (no
+ * time left, a failed pipeline, or a per-command error). Absent from the map
+ * then means "unknown", not "new story" (#9093 label history must not treat
+ * an unread row as a first sighting and overwrite its label).
  */
 async function readStoryTracks(
   titleHashes: string[],
   deadlineAt = Number.POSITIVE_INFINITY,
+  unread?: Set<string>,
 ): Promise<Map<string, StoryTrack>> {
   if (titleHashes.length === 0) return new Map();
   // currentScore and peakScore are deliberately NOT read here. derivePhase is
@@ -1576,15 +1726,22 @@ async function readStoryTracks(
   // trims two fields from every per-story HMGET in the batch. The WRITE side is
   // unchanged — buildStoryTrackHsetFields still persists currentScore, which
   // scripts/seed-digest-notifications.mjs reads.
-  const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount'];
+  const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount', STORY_LABEL_FIELD];
   const commands = titleHashes.map(h => [
     'HMGET', STORY_TRACK_KEY(h), ...fields,
   ]);
   const timeoutMs = redisTimeoutForDeadline(deadlineAt);
-  if (timeoutMs === undefined) return new Map();
+  if (timeoutMs === undefined) {
+    for (const hash of titleHashes) unread?.add(hash);
+    return new Map();
+  }
   const results = await runRedisPipeline(commands, false, timeoutMs);
   const map = new Map<string, StoryTrack>();
   for (let i = 0; i < titleHashes.length; i++) {
+    if (results.length !== titleHashes.length || results[i]?.error) {
+      unread?.add(titleHashes[i]!);
+      continue;
+    }
     const vals = results[i]?.result as string[] | null;
     if (!vals || !vals[0]) continue; // firstSeen missing → new story
     map.set(titleHashes[i]!, {
@@ -1592,6 +1749,7 @@ async function readStoryTracks(
       lastSeen:     Number(vals[1] ?? 0),
       mentionCount: Number(vals[2] ?? 0),
       sourceCount:  Number(vals[3] ?? 0),
+      ...(typeof vals[4] === 'string' && vals[4] !== '' ? { label: vals[4] } : {}),
     });
   }
   return map;
@@ -1887,7 +2045,7 @@ export async function listFeedDigest(
 ): Promise<ListFeedDigestResponse> {
   const variant = VALID_VARIANTS.has(req.variant) ? req.variant : 'full';
   const lang = req.lang === undefined || req.lang === '' ? 'en' : req.lang;
-  if (typeof lang !== 'string' || lang.length !== 2 || !/^[a-z]{2}$/.test(lang)) {
+  if (typeof lang !== 'string' || !DIGEST_LANGUAGES.has(lang)) {
     throw new ValidationError([{ field: 'lang', description: 'must be a lowercase two-letter language code' }]);
   }
 
@@ -1948,6 +2106,11 @@ export async function listFeedDigest(
       console.log(`[digest-serving] outcome=unavailable reason=${reason} variant=${variant} lang=${lang}`);
       return empty(at, reason);
     }
+    // A serve-time hit is the strongest possible signal this key is in use, so
+    // it must refresh recency — otherwise the tier evicts the very entry it
+    // exists to keep warm. Safe before the gates below: a key that later proves
+    // unservable is deleted outright by those branches.
+    touchIsolateEntry(fallbackKey);
     if (!revoked.readable) {
       // Same fail-closed rule as the durable tier: replayed content must not
       // go out unfiltered when the suppression set could not be read.
@@ -2101,6 +2264,7 @@ export async function listFeedDigest(
                 'unavailable',
               );
               if (publication === 'unavailable') deferDigestAttempt(digestCacheKey, 30);
+              if (publication === 'accepted') await publishAcceptedLabelCounts(result, responseDeadlineAt);
             } else {
               deferDigestAttempt(digestCacheKey, 30);
               console.warn(
@@ -2133,7 +2297,18 @@ export async function listFeedDigest(
       return await serveDegraded('empty-rebuild', leaderFailure, source !== 'cache');
     }
 
-    if (fallbackDigestCache.size > 50) fallbackDigestCache.clear();
+    // LRU eviction: the legitimate variant x lang key space (135) exceeds the
+    // cap, so ordinary multi-locale traffic must not wipe the warm high-traffic
+    // keys (e.g. full:en) that degraded serving relies on when Redis is unreadable.
+    // Map preserves insertion order, so the first key is the least-recently-used;
+    // re-inserting the touched key refreshes its recency (touchIsolateEntry does
+    // the same on a serve-time hit, so a key being read every request cannot be
+    // evicted as "old" just because it is not due for a rebuild).
+    if (!fallbackDigestCache.has(fallbackKey) && fallbackDigestCache.size >= ISOLATE_FALLBACK_MAX_KEYS) {
+      evictOldestIsolateEntry();
+    } else {
+      fallbackDigestCache.delete(fallbackKey);
+    }
     // Anchor the isolate entry to the CONTENT clock, exactly like acceptedAt:
     // stamping Date.now() re-aged unchanged content on every cache hit, so a
     // steadily-hit digest never expired from this tier and a later replay
@@ -2204,38 +2379,28 @@ function redisPipelineConfirmed(
 }
 
 /**
- * The prune is destructive, so this gate takes no staleness budget: the marker
- * handed in was written by THIS publication and must already reach `nowMs`.
- * (The read path in seed-forecast-resolutions.mjs is the only caller that opts
- * into FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS.)
+ * Member pruning bounds every accumulator at ACCUMULATOR_RETENTION_MS, the
+ * widest live reader's lookback (inventory on that constant). A scope is pruned
+ * only when this cycle's tracking writes and the key-TTL refresh were confirmed.
  *
- * `evidenceDropped` is deliberately separate from `evidenceWritesConfirmed`:
- * a story whose member could not be built never reached Redis, so it says
- * nothing about whether the writes that DID happen were confirmed. It still
- * blocks the marker advance (and therefore this gate, via coverageAdvanced),
- * but it must not be laundered into a write-failure signal.
+ * `full:en` additionally waits for FORECAST_EVIDENCE_CUTOVER_ENABLED, the
+ * operator's switch for the one-time drop from ~183 days to 8. It no longer
+ * waits for a backfill-certified coverage marker: that marker protected the
+ * resolver's accumulator fallback, which #8995 deleted. Judging reads only the
+ * evidence archive, which this prune never touches, so archive write and
+ * coverage outcomes say nothing about whether the accumulator tail is still
+ * needed (#7082, owner decision 2026-10-08).
  */
 function shouldPruneAccumulator(options: {
   evidenceEligible: boolean;
   cutoverEnabled: boolean;
-  coverage: unknown;
-  nowMs: number;
   trackingWritesConfirmed: boolean;
-  evidenceWritesConfirmed: boolean;
-  coverageAdvanced: boolean;
   accumulatorTtlConfirmed: boolean;
 }): boolean {
   if (!options.trackingWritesConfirmed || !options.accumulatorTtlConfirmed) return false;
-  if (!options.evidenceEligible) return true;
-  return options.cutoverEnabled
-    && options.evidenceWritesConfirmed
-    && options.coverageAdvanced
-    && forecastEvidenceCoversWindow(
-      options.coverage,
-      options.nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
-      options.nowMs,
-    );
+  return !options.evidenceEligible || options.cutoverEnabled;
 }
+
 /**
  * Build the HSET field list for a story:track:v1 row.
  *
@@ -2250,7 +2415,110 @@ function shouldPruneAccumulator(options: {
  * empty is the authoritative signal that the current mention has no body;
  * consumers then fall back to the cleaned headline (R6) honestly, and the
  * next mention with a body re-populates the field naturally.
+ *
+ * #8398: log-safe host of a rejected link. Never logs the full URL — a
+ * hostile link may carry a phishing path/query worth no free print.
  */
+function linkHostnameForLog(link: string): string {
+  return linkHostname(link) || 'unparseable';
+}
+
+/**
+ * #8398: expected publisher hosts for a parsed feed item's link.
+ *
+ * A story link must resolve to the publisher the item claims. The expected
+ * set is unioned from three server-known signals so one missing registry
+ * cannot wedge a whole publisher:
+ *   1. the configured feed URL's own host (`feedPublisherHost`) — the
+ *      publisher domain as registered for this feed;
+ *   2. the curated family table (`PUBLISHER_FAMILY_DOMAINS` behind
+ *      `publisherFamilyForDomain`-style lookup) via `PUBLISHER_FAMILIES` —
+ *      covers the edition/CDN split where the article host differs from the
+ *      feed host (e.g. `amp.` editions);
+ *   3. the trusted-aggregator origin publisher (RSS `<source>`, only when the
+ *      parser marked this feed trusted) — a wire syndicated through Google
+ *      News is still the wire's article, not the aggregator's.
+ *
+ * The RSS `<source>` element on an UNTRUSTED feed is upstream text and never
+ * enters the set (same rule as `publisherFamilyForItem`): a hostile feed
+ * cannot self-attest an arbitrary publisher domain. Returns an empty array
+ * when no server-known signal exists — `isPublisherLink` then fails closed
+ * and the item's link is dropped at ingest.
+ */
+function expectedPublisherHostsForItem(
+  item: Pick<ParsedItem, 'source' | 'originPublisher' | 'originPublisherTrusted'>,
+  feed: Pick<ServerFeed, 'url'>,
+): string[] {
+  const hosts = new Set<string>();
+  const feedHost = feedPublisherHost(feed?.url);
+  if (feedHost) hosts.add(feedHost);
+  const sourceFamily = publisherFamilyFor(item?.source ?? '');
+  const familyDomains = PUBLISHER_FAMILY_DOMAIN_TABLE[sourceFamily];
+  if (Array.isArray(familyDomains)) for (const domain of familyDomains) hosts.add(domain);
+  // Trusted-aggregator origin: map the origin NAME to its family the same
+  // way corroboration does, then add that family's domains.
+  if (item?.originPublisherTrusted === true) {
+    const originFamily = publisherFamilyFor(item?.originPublisher ?? '');
+    const originDomains = PUBLISHER_FAMILY_DOMAIN_TABLE[originFamily];
+    if (Array.isArray(originDomains)) for (const domain of originDomains) hosts.add(domain);
+  }
+  return [...hosts];
+}
+
+// Persistence no longer has the feed object. Recover its host from the
+// server-owned registry, never from upstream item metadata. Build once so
+// each story lookup stays independent of the number of configured feeds.
+const registeredFeedHostsBySource = new Map<string, Set<string>>();
+for (const categories of Object.values(VARIANT_FEEDS)) {
+  for (const feeds of Object.values(categories)) {
+    for (const feed of feeds) {
+      const host = feedPublisherHost(feed.url);
+      if (!host) continue;
+      const hosts = registeredFeedHostsBySource.get(feed.name) ?? new Set<string>();
+      hosts.add(host);
+      registeredFeedHostsBySource.set(feed.name, hosts);
+    }
+  }
+}
+
+/**
+ * #8398: ingest-side publisher-link gate.
+ *
+ * Defense in depth behind the parse-time gate in `parseRssXml`: that gate
+ * covers items parsed from a feed, but `buildStoryTrackHsetFields` is also
+ * reachable with reconstructed items (tests, backfills, residue replays).
+ * Persisting happens here, so the check happens here too — a stored
+ * hostile link is harder to contain than a rejected one, and the relay
+ * fans stored rows out to every matching user.
+ *
+ * Recheck against the configured feed hosts, curated family domains, and
+ * trusted-aggregator origin publisher. Unknown sources without a curated
+ * publisher still fail closed. Item-supplied feed URLs cannot extend the
+ * expected host set.
+ */
+function storyTrackLinkForPersist(
+  item: Pick<ParsedItem, 'link' | 'source' | 'originPublisher' | 'originPublisherTrusted'>,
+): string {
+  const link = typeof item.link === 'string' ? item.link : '';
+  if (!link) return '';
+  const hosts = new Set(expectedPublisherHostsForItem(item, { url: '' }));
+  for (const host of registeredFeedHostsBySource.get(item.source) ?? []) hosts.add(host);
+  if (isPublisherLink(link, hosts)) return link;
+  console.warn(
+    `[digest] publisher-link-gate persist-blank source="${item?.source ?? ''}" ` +
+      `host="${linkHostnameForLog(link)}"`,
+  );
+  return '';
+}
+
+function isItemLinkAllowed(
+  link: string,
+  item: Pick<ParsedItem, 'source' | 'originPublisher' | 'originPublisherTrusted'>,
+  feed: Pick<ServerFeed, 'url'>,
+): boolean {
+  return isPublisherLink(link, expectedPublisherHostsForItem(item, feed));
+}
+
 function buildStoryTrackHsetFields(
   item: ParsedItem,
   nowStr: string,
@@ -2264,7 +2532,9 @@ function buildStoryTrackHsetFields(
     // eligibility stamp is present. Legacy rows without it fail closed.
     'anchorEligible', anchorEligible ? '1' : '0',
     'title', item.title,
-    'link', item.link,
+    // #8398: never persist a link that fails the publisher gate (see
+    // storyTrackLinkForPersist above — fail-closed, blank on rejection).
+    'link', storyTrackLinkForPersist(item),
     'severity', item.level,
     'lang', item.lang,
     'description', item.description ?? '',
@@ -2320,6 +2590,74 @@ function buildStoryTrackHsetFields(
   ];
 }
 
+function groupByTitleHash(items: readonly ParsedItem[]): Map<string, ParsedItem[]> {
+  const byHash = new Map<string, ParsedItem[]>();
+  for (const item of items) {
+    const hash = item.titleHash;
+    if (!hash) continue;
+    const members = byHash.get(hash);
+    if (members) members.push(item);
+    else byHash.set(hash, [item]);
+  }
+  return byHash;
+}
+
+/**
+ * #9093: this cycle's corroboration label for every served story, and the
+ * changes from the label each story's track row recorded last cycle. A label
+ * reads the story's whole servable cluster, because the category cap can drop a
+ * member whose publisher the cluster-wide count includes. The stored source
+ * roster is then capped by labelChangeFor; the publisher count is never capped.
+ */
+function storyLabelChanges(
+  served: readonly ParsedItem[],
+  servable: readonly ParsedItem[],
+  tracks: ReadonlyMap<string, StoryTrack>,
+  now: number,
+  unread: ReadonlySet<string> = new Set(),
+): { labelByHash: Map<string, string>; labelChanges: LabelChange[]; labelCounts: LabelCounts } {
+  const clusterByHash = groupByTitleHash(servable);
+  const labelByHash = new Map<string, string>();
+  const labelChanges: LabelChange[] = [];
+  const states: StoryLabel['state'][] = [];
+  for (const [hash, members] of groupByTitleHash(served)) {
+    const label = storyLabel(clusterByHash.get(hash) ?? members);
+    // Counts describe today's labels, whether or not the track row was read.
+    states.push(label.state);
+    // An unread track row is unknown, not new: leave its label untouched so
+    // the next cycle compares against the real previous label.
+    if (unread.has(hash)) continue;
+    labelByHash.set(hash, encodeStoryLabel(label));
+    const lead = members.reduce((best, item) => (item.importanceScore > best.importanceScore ? item : best));
+    const change = labelChangeFor(hash, tracks.get(hash)?.label, label, {
+      at: now,
+      title: lead.title,
+      link: storyTrackLinkForPersist(lead),
+      credibilityScore: lead.credibilityScore,
+    });
+    if (change) labelChanges.push(change);
+  }
+  return { labelByHash, labelChanges, labelCounts: countLabels(states, now) };
+}
+
+/**
+ * #9213: the verdict every served story carries this cycle, encoded for its
+ * track row. Read like storyLabelChanges, over the story's whole servable
+ * cluster, but for every variant and all four states: alert and digest text
+ * show it, and an untracked tier4-only story still needs saying so.
+ */
+function storyCorroborationByHash(
+  served: readonly ParsedItem[],
+  servable: readonly ParsedItem[],
+): Map<string, string> {
+  const clusterByHash = groupByTitleHash(servable);
+  const byHash = new Map<string, string>();
+  for (const [hash, members] of groupByTitleHash(served)) {
+    byHash.set(hash, encodeStoryCorroboration(storyLabel(clusterByHash.get(hash) ?? members)));
+  }
+  return byHash;
+}
+
 async function writeStoryTracking(
   items: ParsedItem[],
   variant: string,
@@ -2328,6 +2666,11 @@ async function writeStoryTracking(
   memberHashesByFinal?: Map<string, Set<string>>,
   deadlineAt = Number.POSITIVE_INFINITY,
   clusterAnchorEligibleByHash?: ReadonlyMap<string, boolean>,
+  // #9093: this cycle's corroboration label per story, persisted on the track
+  // row so the next cycle can tell whether it changed. Absent → not written.
+  labelByHash?: ReadonlyMap<string, string>,
+  // #9213: this cycle's verdict per story for this variant, read by digest text.
+  corroborationByHash?: ReadonlyMap<string, string>,
 ): Promise<void> {
   if (items.length === 0) return;
   if (redisTimeoutForDeadline(deadlineAt) === undefined) {
@@ -2339,9 +2682,9 @@ async function writeStoryTracking(
   // The archive/coverage keys are written raw (see the pipeline call below), so
   // getKeyPrefix() does NOT isolate them per deployment the way the accumulator
   // ZADD on the adjacent line is isolated. Preview and dev deployments share
-  // this Upstash instance, and the marker they would rewrite is the artefact
-  // that authorises destructive accumulator pruning — so production is the only
-  // deployment allowed to publish evidence at all.
+  // this Upstash instance, and the archive and marker they would rewrite are
+  // what forecast judging reads — so production is the only deployment allowed
+  // to publish evidence at all.
   const productionDeployment = (process.env.VERCEL_ENV ?? 'production') === 'production';
   const evidenceEligible = isEligibleForecastEvidence(variant, lang) && productionDeployment;
   const cutoverEnabled = process.env.FORECAST_EVIDENCE_CUTOVER_ENABLED === '1';
@@ -2428,12 +2771,18 @@ async function writeStoryTracking(
         const anchorFieldAt = hsetFieldsWithEligibility.indexOf('anchorEligible');
         const anchorEligible = anchorFieldAt >= 0
           && hsetFieldsWithEligibility[anchorFieldAt + 1] === '1';
-        const hsetFields = anchorFieldAt >= 0
-          ? [
-            ...hsetFieldsWithEligibility.slice(0, anchorFieldAt),
-            ...hsetFieldsWithEligibility.slice(anchorFieldAt + 2),
-          ]
-          : hsetFieldsWithEligibility;
+        const label = labelByHash?.get(hash);
+        const corroboration = corroborationByHash?.get(hash);
+        const hsetFields = [
+          ...(anchorFieldAt >= 0
+            ? [
+              ...hsetFieldsWithEligibility.slice(0, anchorFieldAt),
+              ...hsetFieldsWithEligibility.slice(anchorFieldAt + 2),
+            ]
+            : hsetFieldsWithEligibility),
+          ...(label ? [STORY_LABEL_FIELD, label] : []),
+          ...(corroboration ? [STORY_CORROBORATION_FIELD(variant, lang), corroboration] : []),
+        ];
         commands.push(
           ['HINCRBY', trackKey, 'mentionCount', '1'],
           ['HSET', trackKey, ...hsetFields],
@@ -2453,12 +2802,16 @@ async function writeStoryTracking(
         // evidence archive member is self-contained (title/link/description
         // ride on the member; no story:track dependency) and only the
         // full/English scope that judging actually reads is archived.
+        // #8398: the evidence link rides the same persist-time gate as
+        // story:track — the member is a second stored copy of the link, so
+        // it must not carry a hostile URL the track row blanks.
         if (evidenceEligible) {
+          const evidenceLink = storyTrackLinkForPersist(representative);
           const evidenceMember = buildForecastEvidenceMember(
             {
               hash,
               title: representative.title,
-              link: representative.link,
+              link: evidenceLink,
               description: representative.description,
               publishedAt: representative.publishedAt,
             },
@@ -2469,7 +2822,11 @@ async function writeStoryTracking(
             // representative fields live in a self-contained, independently
             // retained record key, so refreshing one story cannot create a
             // second index member or crowd unique evidence out of the cap.
-            evidenceBatchCommands.push(['SET', forecastEvidenceRecordKey(hash), evidenceMember, 'EX', FORECAST_EVIDENCE_TTL_S]);
+            // A blanked link never replaces a stored link for the same story (#8990).
+            evidenceBatchCommands.push(buildForecastEvidenceRecordWrite(
+              forecastEvidenceRecordKey(hash), evidenceMember, evidenceLink, FORECAST_EVIDENCE_TTL_S, now,
+              evidenceLink ? '' : (representative.blankedLinkHost || forecastEvidenceLinkHost(representative.link)),
+            ));
             evidenceBatchCommands.push(['ZADD', FORECAST_EVIDENCE_KEY, nowStr, hash]);
             evidenceAttempted += 1;
           } else {
@@ -2655,18 +3012,10 @@ async function writeStoryTracking(
     coverageAdvanced = canAdvance && redisPipelineConfirmed(coverageResults, coverageCommands.length);
   }
 
-  // For the judged full/en accumulator, pruning is destructive migration:
-  // retain legacy evidence until backfill has installed a verified coverage
-  // marker AND this cycle's archive writes and coverage update are confirmed.
-  // Other accumulator scopes are not used by forecast judging.
   const pruneAllowed = shouldPruneAccumulator({
     evidenceEligible,
     cutoverEnabled,
-    coverage: coverageAfter,
-    nowMs: now,
     trackingWritesConfirmed,
-    evidenceWritesConfirmed,
-    coverageAdvanced,
     accumulatorTtlConfirmed,
   });
   let pruneConfirmed = true;
@@ -2698,13 +3047,26 @@ async function writeStoryTracking(
       `writes_confirmed=${evidenceWritesConfirmed} coverage_advanced=${coverageAdvanced} ` +
       `accumulator_ttl_confirmed=${accumulatorTtlConfirmed} maintenance_confirmed=${maintenanceConfirmed} ` +
       `accumulator_pruned=${pruneAllowed} accumulator_prune_confirmed=${pruneConfirmed} ` +
-      `cutover_enabled=${cutoverEnabled} cutover_verified=${pruneAllowed} ` +
+      `cutover_enabled=${cutoverEnabled} ` +
       `key=${FORECAST_EVIDENCE_KEY} ttl_s=${FORECAST_EVIDENCE_TTL_S}`;
     if (evidenceWritesConfirmed && coverageAdvanced && maintenanceConfirmed && pruneConfirmed) console.info(message);
     else console.warn(message);
   } else if (!pruneConfirmed) {
     console.warn(`[forecast-evidence] accumulator prune unconfirmed key=${accKey}`);
   }
+}
+
+/**
+ * Fetches each full-variant feed's depthUrl so its cache entry stays warm for
+ * claim search. It runs beside the feed batches rather than in a batch slot,
+ * so a slow depth fetch never holds back a digest feed; the build's deadline
+ * signal bounds it, and a failure is ignored. Its items never reach the digest.
+ */
+async function warmDepthFeeds(entries: DigestFeedEntry[], variant: string, signal: AbortSignal): Promise<void> {
+  if (variant !== 'full') return;
+  await Promise.allSettled(entries.flatMap(({ feed }) => feed.depthUrl
+    ? [fetchAndParseRss({ name: feed.name, url: feed.depthUrl, ...(feed.lang ? { lang: feed.lang } : {}) }, variant, signal)]
+    : []));
 }
 
 function buildDigestFeedBatches(variant: string, lang: string): {
@@ -2736,9 +3098,17 @@ function buildDigestFeedBatches(variant: string, lang: string): {
   // behind the global deadline.
   const priorityOrdered = orderServerFeedEntries(allEntries);
   const priorityHead = priorityOrdered.filter((entry) => (entry.feed.deadlinePriority ?? 0) > 0);
+  // A category the priority head already starts takes its interleave turn
+  // last, so the first wave spends its slots on categories with no feed in
+  // flight yet (the China trio is all asia).
+  const headCategories = new Set(priorityHead.map((entry) => entry.category));
+  const rest = priorityOrdered.filter((entry) => (entry.feed.deadlinePriority ?? 0) <= 0);
   const orderedEntries = [
     ...priorityHead,
-    ...interleaveByCategory(priorityOrdered.filter((entry) => (entry.feed.deadlinePriority ?? 0) <= 0)),
+    ...interleaveByCategory([
+      ...rest.filter((entry) => !headCategories.has(entry.category)),
+      ...rest.filter((entry) => headCategories.has(entry.category)),
+    ]),
   ];
   const batches: DigestFeedEntry[][] = [];
   for (let i = 0; i < orderedEntries.length; i += BATCH_CONCURRENCY) {
@@ -2769,6 +3139,7 @@ async function buildDigest(
 
   try {
     const { allEntries, batches } = buildDigestFeedBatches(variant, lang);
+    const depthWarming = warmDepthFeeds(allEntries, variant, deadlineController.signal);
 
     const results = new Map<string, ParsedItem[]>();
     const buildStart = Date.now();
@@ -2811,6 +3182,8 @@ async function buildDigest(
         };
       },
     );
+
+    await depthWarming;
 
     for (const { value } of attempts.fulfilled) {
       const { category, items, droppedUndated, droppedFeedCap } = value;
@@ -3053,6 +3426,7 @@ async function buildDigest(
 
     // Sort by importanceScore desc, then pubDate desc; then truncate per category.
     const slicedByCategory = new Map<string, ParsedItem[]>();
+    const servableItems: ParsedItem[] = [];
     for (const [category, items] of results) {
       items.sort((a, b) =>
         b.importanceScore - a.importanceScore || b.publishedAt - a.publishedAt,
@@ -3062,6 +3436,7 @@ async function buildDigest(
       const servable = revokedUrls.size === 0
         ? items
         : items.filter((item) => typeof item.link !== 'string' || !revokedUrls.has(item.link));
+      servableItems.push(...servable);
       ledgerDrops.perCategoryCap += Math.max(0, servable.length - MAX_ITEMS_PER_CATEGORY);
       slicedByCategory.set(category, servable.slice(0, MAX_ITEMS_PER_CATEGORY));
     }
@@ -3079,8 +3454,35 @@ async function buildDigest(
     // mentionCount. We merge read state + this cycle's increment in memory to
     // produce accurate, current StoryMeta without a second Redis round-trip.
     const uniqueHashes = [...new Set(titleHashes)];
-    const storyTracks = await readStoryTracks(uniqueHashes, storyTrackingDeadlineAt)
-      .catch(() => new Map<string, StoryTrack>());
+    const unreadTracks = new Set<string>();
+    const storyTracks = await readStoryTracks(uniqueHashes, storyTrackingDeadlineAt, unreadTracks)
+      .catch(() => {
+        for (const hash of uniqueHashes) unreadTracks.add(hash);
+        return new Map<string, StoryTrack>();
+      });
+
+    // #9093 label history. Only full/en records it: the story:track row is
+    // shared by every variant, and a variant that keeps fewer of a story's
+    // feeds would flip the label back and forth.
+    const { labelByHash, labelChanges, labelCounts } = variant === 'full' && lang === 'en'
+      ? storyLabelChanges(allSliced, servableItems, storyTracks, now, unreadTracks)
+      : { labelByHash: undefined, labelChanges: [], labelCounts: undefined };
+    // #9213: every variant persists the verdict it served, for digest text.
+    const corroborationByHash = storyCorroborationByHash(allSliced, servableItems);
+
+    // Record changes before persisting the new labels: a story whose entry
+    // was not written keeps its previous label, so the change is detected
+    // again next cycle instead of being lost.
+    if (labelByHash && labelChanges.length > 0) {
+      const historyDeadlineAt = storyTrackingDeadlineAt - REDIS_PIPELINE_TIMEOUT_MS;
+      const recorded = historyDeadlineAt <= Date.now()
+        ? new Set<string>()
+        : await recordLabelChanges(labelChanges, historyDeadlineAt).catch((err: unknown) => {
+          console.warn('[digest] label history write failed:', err);
+          return new Set<string>();
+        });
+      keepUnrecordedLabels(labelByHash, labelChanges, recorded);
+    }
 
     // Write story tracking. Errors never fail the digest build.
     await writeStoryTracking(
@@ -3091,6 +3493,8 @@ async function buildDigest(
       memberHashesByFinal,
       storyTrackingDeadlineAt,
       clusterAnchorEligibleByFinalHash,
+      labelByHash,
+      corroborationByHash,
     ).catch((err: unknown) =>
       console.warn('[digest] story tracking write failed:', err),
     );
@@ -3141,7 +3545,7 @@ async function buildDigest(
     // Key-cardinality clamp: variant/lang are request-supplied — only write
     // ledgers for known variants and well-formed 2-letter langs so a caller
     // spraying arbitrary values cannot inflate the keyspace.
-    if (VARIANT_FEEDS[variant] && /^[a-z]{2}$/.test(lang)) {
+    if (VARIANT_FEEDS[variant] && DIGEST_LANGUAGES.has(lang)) {
       // #4927 review P2: awaited — a fire-and-forget write can be killed
       // when the response finishes before the side write lands.
       await setCachedJson(`news:coverage-ledger:v1:${variant}:${lang}`, ledger, 7200).catch((err: unknown) =>
@@ -3165,27 +3569,56 @@ async function buildDigest(
       buildStartMs: buildStart,
     });
 
-    return {
+    const response: ListFeedDigestResponse = {
       categories,
       feedStatuses,
       generatedAt: new Date().toISOString(),
       coverage,
     };
+    if (labelCounts) rememberLabelCounts(response, labelCounts);
+    return response;
   } finally {
     clearTimeout(deadlineTimeout);
   }
 }
 
+// #9093: today's stories by label, for /trust, keyed by the build they describe.
+// They are written only after the acceptance gate takes that build.
+const pendingLabelCounts = new WeakMap<ListFeedDigestResponse, LabelCounts>();
+
+function rememberLabelCounts(response: ListFeedDigestResponse, counts: LabelCounts): void {
+  // An empty build is never accepted, so it must not replace the served counts.
+  if (counts.stories > 0) pendingLabelCounts.set(response, counts);
+}
+
+/**
+ * Write the counts of a build the gate accepted. A rejected or unpublished
+ * build leaves /trust describing the digest that is still served.
+ */
+async function publishAcceptedLabelCounts(response: ListFeedDigestResponse, deadlineAt: number): Promise<void> {
+  const counts = pendingLabelCounts.get(response);
+  if (!counts) return;
+  pendingLabelCounts.delete(response);
+  const timeoutMs = redisTimeoutForDeadline(deadlineAt);
+  if (timeoutMs === undefined) return;
+  await runRedisPipeline([labelCountsCommand(counts)], false, timeoutMs)
+    .catch((err: unknown) => console.warn('[digest] label counts write failed:', err));
+}
+
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  storyCorroborationByHash,
   // #7084 serving path. Exported so the wiring can be EXECUTED in tests rather
   // than asserted against this file's own source text — a grep for
   // `serveLastGood(...)` passes whether or not the function behaves.
   publishAcceptedSnapshot,
+  rememberLabelCounts,
   serveLastGood,
   readRevokedUrlSet,
   suppressRevoked,
   fallbackDigestCache,
+  evictOldestIsolateEntry,
+  touchIsolateEntry,
   markFallbackCoverageStale,
   settleBeforeDeadline,
   finishSuccessfulDigestAttempt,
@@ -3196,6 +3629,7 @@ export const __testing__ = {
   recoverFailedAttempt,
   shouldStartDigestAttempt,
   buildDigestFeedBatches,
+  warmDepthFeeds,
   parseRssXml,
   isTrustedOriginAggregator,
   decodeXmlEntities,
@@ -3203,6 +3637,9 @@ export const __testing__ = {
   extractRawTagBody,
   extractFirstDateTag,
   buildStoryTrackHsetFields,
+  storyTrackLinkForPersist,
+  isItemLinkAllowed,
+  expectedPublisherHostsForItem,
   isAnchorEligible,
   isIdentityAnchorEligible,
   computeImportanceScore,
@@ -3220,6 +3657,7 @@ export const __testing__ = {
   resolveMaxAgeMs,
   capLlmUpgrade,
   parseClassifyCacheHit,
+  enrichWithAiCache,
   VERCEL_INITIAL_RESPONSE_LIMIT_MS,
   DIGEST_RESPONSE_TIMEOUT_MS,
   POST_FETCH_HEADROOM_MS,
@@ -3232,6 +3670,7 @@ export const __testing__ = {
   redisPipelineConfirmed,
   shouldPruneAccumulator,
   writeStoryTracking,
+  storyLabelChanges,
   MAX_REDIS_PIPELINE_COMMANDS,
   MAX_DESCRIPTION_LEN,
   MIN_DESCRIPTION_LEN,

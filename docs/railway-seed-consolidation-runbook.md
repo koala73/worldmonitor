@@ -34,7 +34,7 @@ The normal deployment architecture is intentionally small:
 |---|---|---|
 | Merge safety | GitHub protected `main` | Require a PR, current-base checks with `strict=true`, administrator enforcement, zero required human approvals, and no bypass actors. |
 | Service selection | Railway's native watch paths, backed by `scripts/railway-services.json`, its closure audit, and the exact identity roster in `scripts/railway-native-autodeploy-fleet.json` | A source migration may change `source.checkSuites` only. It must not change watch paths, fleet identity, or another service field. |
-| Desired configuration sync | Main-only `Railway Registry Sync` workflow | Apply registry-managed watch paths, Dockerfile paths, and cron schedules from the exact merged checkout. Verify through the separate Viewer identity. |
+| Desired configuration sync | Main-only `Railway Registry Sync` workflow | Apply registry-managed watch paths, Dockerfile paths, and cron schedules from the current `main` revision. Verify through the separate Viewer identity. |
 | Deployment creation | Railway's native GitHub integration on explicit branch `main` | No GitHub Actions workflow dispatches, retries, leases, or repairs a normal deployment. |
 | Drift detection | One six-hourly, read-only Railway workflow after the monitor migration | Missing, detached, replaced, unexpected, unknown, failed, skipped, overdue, or contradictory state is red. The monitor has no mutation token, dispatch permission, retry, reviewer, or acceptance baseline. |
 | Recovery | Operator diagnosis followed by an explicit Railway action or batch rollback | Recovery is never automatic and never turns missing evidence green. Seed/ingestion freshness remains a separate acceptance surface. |
@@ -224,6 +224,25 @@ an unregistered repository service fails the run before source filtering. Edit
 the roster only with evidence for an intentional Railway inventory change; do
 not use it to acknowledge drift.
 
+The always-on `verification-desk` service (`1f732679-760d-467b-bc36-4be3f45bc586`,
+desk.worldmonitor.app) was created from a PR branch on 2026-10-10 and was never
+enrolled, so every health run from then on failed with
+`unexpected repository service(s): verification-desk`. PR #9083 enrolled it in
+the roster and registered it as a Dockerfile service
+(`demos/verification-desk/Dockerfile`, built from the repository root). Its
+watch paths are `demos/verification-desk/**`, the image's file inputs, and the
+exact WorldMonitor modules the desk imports. The closure audit in
+`tests/railway-watch-path-audit.test.mjs` fails when a new desk import is not
+watched.
+
+The always-on `shipping-webhook-worker` service
+(`a97fa619-a8f4-4244-9748-6c0f6c3eade3`) was provisioned on 2026-10-17 after
+#9236 merged it as a planned registry entry. It runs from the `scripts` root
+with `node shipping-webhook-worker.mjs`, and its three variables reference
+`ais-relay` (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`,
+`WORLDMONITOR_RELAY_KEY`), so a key rotation there carries over. The same
+change enrolled it in the roster and made its registry entry active.
+
 After linking the CLI to the `world-monitor` production environment, audit the
 live settings with:
 
@@ -258,10 +277,13 @@ list and can answer a matching commit with `No changes to watched files`.
 The `Railway Registry Sync` workflow
 (`.github/workflows/railway-registry-sync.yml`) owns this transition. It runs
 after a push to `main` changes the registry, fleet identity, audit, a shared
-Railway helper, the runner, or the workflow. The apply step uses the dedicated
-mutation token only after the checkout SHA is confirmed as the current `main`
-revision. This rejects a stale re-run before it can restore an older registry.
-The apply changes only registry-managed fields. The final step starts a fresh
+Railway helper, the runner, or the workflow. The job resolves the current `main`
+revision before checkout and applies that, not the pushed SHA. A run that main
+outpaced, or a re-run of an older attempt, therefore applies the newest
+registry: it can neither restore an older one nor skip a change when the next
+`main` commit leaves these paths alone (#9274). A re-run keeps its original
+workflow file, so an attempt created before #9274 still refuses a stale
+checkout; dispatch a new run for those. The apply changes only registry-managed fields. The final step starts a fresh
 read budget, uses the separate Viewer identity, and fails unless live Railway
 matches the repository. That read also reports `source.branch` and
 `source.checkSuites` drift, which the apply step never writes: a run that stays
@@ -1172,7 +1194,7 @@ any red check anywhere strands this service's builds.
 | **Watch paths** | See `scripts/railway-services.json` (exact runtime closure; run `node scripts/audit-railway-watch-paths.mjs`) |
 | **Replaces** | 2 services |
 | **Net savings** | 1 slot |
-| **Members** | Correlation (5min), Cross-Source Signals (15min), Cross-Strait Activity (3h), China Decision Signals (15min), Regional Snapshots (6h) |
+| **Members** | Correlation (5min), Market-Alert-Ledger (5min), Cross-Source Signals (15min), Cross-Strait Activity (3h), China Decision Signals (15min), Regional Snapshots (6h) |
 | **Required env** | `JAPAN_MOD_PROXY_URL` or `PROXY_URL` (Cross-Strait Activity's Japan MOD exit; the section declares an any-of group, so either satisfies it and only an environment with neither fails as `CONFIG_ERROR`) |
 | **Note** | Cross-Strait Activity is the only direct external-source member; it uses bounded MND/Japan MOD requests and a 3h freshness gate. China Decision Signals validates and republishes the bounded public composition after reading its domain lanes. Other members are Redis-derived. The bundle enforces a 570s wall-time admission budget so a non-fitting due section defers before Railway's 10-minute container limit. |
 
@@ -1320,7 +1342,7 @@ Recovery is accepted only when:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 6 services |
 | **Net savings** | 5 slots |
-| **Members** | BIS Data (12h), CBR Rates (daily), BoC Valet (daily), StatCan WDS (daily), China Macro (36h), China Release Calendar (36h), China Policy Events (6h), BIS Extended (12h), BLS Series (daily), Eurostat (daily), Eurostat House Prices (7d), Eurostat Government Debt (2d), Eurostat Industrial Production (daily), IMF Macro (30d), National Debt (30d), FAO FFPI (daily), World Bank External Debt (30d), BIS LBS (7d), FATF Listing (30d), Education Attainment (7d) |
+| **Members** | BIS Data (12h), CBR Rates (daily), BoC Valet (daily), StatCan WDS (daily), China Macro (36h), China Release Calendar (36h), China Policy Events (6h), BIS Extended (12h), BLS Series (daily), Eurostat (daily), Eurostat House Prices (7d), Eurostat Government Debt (2d), Eurostat Industrial Production (daily), IMF Macro (30d), National Debt (30d), FAO FFPI (daily), World Bank External Debt (30d), BIS LBS (7d), FATF Listing (30d), Education Attainment (7d), World CPI IMF (daily), World CPI Eurostat (daily), World CPI JP e-Stat (daily), World CPI AU ABS (daily) |
 | **Wall budget** | 570 seconds. The runner defers a section when its timeout plus 10-second kill grace cannot fit before Railway's 10-minute limit. Physical Premiums runs first with 80 seconds of admission headroom. Education gets first priority at 08:00 each Sunday UTC, with Physical second. The 09:00 retry always puts Physical first, so a deferred run has another full admission window even when Education fails. Completed members skip through their interval gates. |
 
 ### Bundle 9: seed-bundle-health
@@ -1362,7 +1384,53 @@ Recovery is accepted only when:
 | **Members** | Climate News (30min), USA Spending (hourly), Global Tenders (hourly), UCDP Events (6h), WB Indicators (daily) |
 | **Note** | Existing members are backups for ais-relay inline loops/child spawns; Global Tenders is hosted directly in this bundle. Each seed's freshness gate skips when the canonical data is already fresh. |
 
+The World Bank catalogue uses `IP.TMK.RSCT` and `IP.TMK.NRCT` for resident
+and nonresident trademark application counts. `IP.TMK.TOTL` is archived and
+the standard indicator endpoint rejects it. The two current series keep their
+own codes and observation years. They are not aliases for the archived total.
+Both snapshots must pass the same coverage check as the other catalogue entries.
+
+### Bundle 12: seed-bundle-yield-curves
+
+| Setting | Value |
+|---|---|
+| **Service name** | `seed-bundle-yield-curves` |
+| **Start command** | `node seed-bundle-yield-curves.mjs` (source root `scripts`) |
+| **Cron schedule** | `0 10 * * *` (daily, 10:00 UTC — offset from the 08:00 macro bundle) |
+| **Watch paths** | See `scripts/railway-services.json` (exact runtime closure; run `node scripts/audit-railway-watch-paths.mjs`) |
+| **Status** | Provisioned 2026-09-23. Service `017af607-5a4c-49d7-b8dc-1c28d06d1835` in production. |
+| **Resource limits** | One replica, 1 vCPU, 2 GB RAM; Node heap capped at 1400 MiB. Restart policy `NEVER`. |
+| **Initial source** | Reviewed PR #8543 commit `041f66dd06e00b97506bd8f01272d14f76aa215e` on `feat/government-yield-curves`. After merge, clear the commit pin and switch the source branch to `main`. |
+| **Replaces** | 0 services (new bundle, #8522) |
+| **Net savings** | n/a |
+| **Members** | Yield-Curve-JP (daily), Yield-Curve-CA (daily), Yield-Curve-DE (daily), Yield-Curve-GB (daily), Yield-Curve-AU (daily), Yield-Curve-CH (daily), Yield-Curve-NO (daily), Yield-Curve-SE (daily), OECD-LT-Rates (weekly) |
+| **Required env** | Upstash Redis (shared). No upstream API keys — all nine sources are keyless official publishers. |
+| **Note** | Serves GetGovernmentYieldCurve (`/api/economic/v1/get-government-yield-curve`). Split from seed-bundle-macro because that bundle's 570s budget is already saturated by 22 sections. GB refreshes the 39 MB BoE archive on cold start and month rollover to recover missed month-end observations; other daily runs merge the ~370 KB current-month zip into accumulated history. SE paces its four SWEA requests (2s gaps plus Retry-After-honoring backoff) because the API throttles bursts with escalating 429s. Every market publishes per-year shards plus a `:latest` key; the OECD fallback is monthly and covers markets without a daily fitted curve. |
+
 ---
+
+### Australian yield fallback
+
+The daily bundle remains the primary AU producer. The `ais-relay` service also
+checks `seed-meta:economic:yield-curve-au` every six hours. It runs the same
+`seed-yield-curve-au.mjs` only when the publication is at least 24 hours old,
+the newest curve is at least ten days old, or either clock is missing or invalid.
+Suppression also requires a completion marker that matches the canonical
+publication and was written after its freshness metadata. An incomplete run
+remains eligible even when both clocks are recent.
+
+This second request path addresses the RBA HTTP 403 responses observed in the
+yield bundle on October 1 to 3, 2026. Read-only RBA requests succeeded from the
+US-East relay. The upstream rejection policy is unknown; both paths can still
+fail. The fallback uses the existing seeder validation, shared economic lock,
+canonical payload, latest/year shards, and bundle completion marker. Failed
+fetches preserve the previous data and freshness clocks.
+
+The relay image and its registry watch paths must include the AU seeder and its
+import graph. After deploying the relay change, verify `[AuYieldFallback]`
+execution, matching canonical/latest/year data, a newer seed heartbeat, and
+the public AU health verdict. A healthy response after a manual seed is not
+proof that this scheduled fallback has run.
 
 ## Registry-covered live resilience services
 
@@ -1483,9 +1551,10 @@ entries.
 > marked **planned** are registry/documentation entries for services that are
 > not provisioned in production; they remain excluded from the live audit and
 > `--apply` until an explicit lifecycle activation. The four planned rows below
-> are repository-root `nixpacks-root-repo` cron candidates (root directory
-> `.`, start command `node scripts/<file>`), so their eventual packaging can
-> include valid imports outside `scripts/`. Active rows must instead follow the
+> that read **planned — not provisioned** are repository-root
+> `nixpacks-root-repo` cron candidates (root directory `.`, start command
+> `node scripts/<file>`), so their eventual packaging can include valid imports
+> outside `scripts/`. Active rows must instead follow the
 > deploy mode and exact `watchPatterns` recorded in `scripts/railway-services.json`.
 > These rows are intentionally **not** part of the 100-service inventory count
 > above. The planned rows are registered with deploy mode
@@ -1523,10 +1592,23 @@ fetch('https://backboard.railway.com/graphql/v2',{method:'POST',
 | seed-comtrade-bilateral-hs4 | `node scripts/seed-comtrade-bilateral-hs4.mjs` | **`0 6 1 * *` (monthly, verified 2026-07-27)** | UN Comtrade bilateral HS4 trade flows — only scheduled consumer of the keyed 500/mo Comtrade quota |
 | seed-hs2-chokepoint-exposure | `node scripts/seed-hs2-chokepoint-exposure.mjs` | periodic (TTL-extended) | HS2 chokepoint trade-exposure (derived) |
 | seed-service-statuses | `node scripts/seed-service-statuses.mjs` | **planned — not provisioned** | Service-status warm-ping; primary seeder is the AIS relay loop |
-| seed-imd-cyclone-marine | `node seed-imd-cyclone-marine.mjs` | **`*/15 * * * *` (verified 2026-09-05)** | Official IMD cyclone, port, coastal, and marine products; scripts-root Nixpacks service `5f943d96-5f89-4817-941b-fdc36b71722e` |
+| seed-live-video-resolved | `node seed-live-video-resolved.mjs` | **`0 */6 * * *` (verified 2026-09-24)** (health budget 1080 min) | The video each catalog YouTube channel has live now, for the Live News and Live Webcams players (#8545); scripts-root service `11581ac4-24ea-4cfc-bf17-471e41305364` (Railpack, `rootDirectory` `scripts`), reads channel `/live` pages through `LIVE_VIDEO_PROXY_URL` or `PROXY_URL` |
+| seed-imd-cyclone-marine | `node seed-imd-cyclone-marine.mjs` | **`*/15 * * * *` (verified 2026-09-05)** | Official IMD sea-area and coastal marine bulletins from public pages; scripts-root Nixpacks service `5f943d96-5f89-4817-941b-fdc36b71722e` |
 
-Configure the IMD account credentials and the IP-bound production key before
-you activate this service. See [Configure the IMD Railway seeder](natural-disasters.mdx#configure-the-imd-railway-seeder).
+The IMD seeder reads public bulletin pages. It needs no IMD account, API key,
+or proxy. See [Configure the IMD Railway seeder](natural-disasters.mdx#configure-the-imd-railway-seeder).
+
+`seed-live-video-resolved` was provisioned on 2026-09-24 after #8596 merged.
+Its first deployment (`46c6d048-300c-4d7b-aa6c-6c04488d6cd2`, commit
+`952db28`) succeeded at 08:40 UTC. The first publish came from a manual
+`railway run --service seed-live-video-resolved` at 08:43:21 UTC, not from a
+cron tick: every catalog channel resolved, and the publish set the
+durable activation marker that lifts the `liveVideoResolved` health softening.
+`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` and `PROXY_URL` are
+Railway reference variables to `seed-fred-rates`; `LIVE_VIDEO_PROXY_URL` is
+unset, so the seeder uses `PROXY_URL`. The service is enrolled in
+`scripts/railway-native-autodeploy-fleet.json` with `source.checkSuites`
+`false`, like the rest of the fleet.
 
 The bilateral HS4 cron uses `COMTRADE_API_KEYS` and a 480-request hard budget
 under the provider's 500-call monthly quota. The authenticated route requests

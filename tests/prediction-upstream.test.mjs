@@ -159,6 +159,7 @@ describe('prediction-market upstream coverage', () => {
     });
 
     assert.deepEqual(markets.map((market) => market.ticker), ['IRAN-1', 'IRAN-2', 'LEBANON-1']);
+    assert.deepEqual(markets.map((market) => market.series_ticker), ['KXIRAN', 'KXIRAN', 'KXLEBANON']);
     assert.equal(maxActiveRequests, 1);
     assert.equal(urls.length, 3);
     assert.equal(new URL(urls[0]).searchParams.get('status'), 'open');

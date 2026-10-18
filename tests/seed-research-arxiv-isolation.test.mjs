@@ -83,3 +83,12 @@ test('ARXIV_TTL outlives the health staleness gate so a late tick is STALE_SEED,
       `(maxStaleMin ${RESEARCH_MAX_STALE_MIN}min = ${RESEARCH_MAX_STALE_MIN * 60}s)`,
   );
 });
+
+test('the arXiv query asks for the newest submissions first', async () => {
+  const urls = [];
+  const fetchFn = async (url) => { urls.push(url); return okResp(arxivXml('cs.AI-1', 'paper')); };
+  await fetchArxivCategory('cs.AI', { fetchFn, retries: 0, sleepFn: noSleep });
+  const params = new URL(urls[0]).searchParams;
+  assert.equal(params.get('sortBy'), 'submittedDate');
+  assert.equal(params.get('sortOrder'), 'descending');
+});

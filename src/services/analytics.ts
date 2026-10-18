@@ -1,3 +1,5 @@
+import { bucketPanelKeyForAnalytics } from '@/utils/analytics-panel-key';
+export { bucketPanelKeyForAnalytics } from '@/utils/analytics-panel-key';
 /**
  * Analytics facade — wired to Umami.
  *
@@ -6,6 +8,7 @@
  */
 
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
+import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
 import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
@@ -29,6 +32,7 @@ import {
   withContentAttribution,
 } from '../../shared/content-attribution';
 import { MISSION_PRESET_IDS } from '../../shared/mission-domain';
+import { redactSensitiveUrl } from '../../shared/sensitive-url-params';
 import {
   isCheckoutSurface,
   parseCheckoutContext,
@@ -71,6 +75,25 @@ const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
 // tolerate collector failures. tech/commodity stay out until #4183 ships.
 const UMAMI_DOMAINS = 'worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app,finance.worldmonitor.app';
 const UMAMI_QUEUE_LIMIT = 50;
+const UMAMI_BEFORE_SEND_HOOK = '__wmUmamiBeforeSend';
+
+/** Umami `data-before-send` hook: strip the shared sensitive-param list from
+ * the payload's url and referrer. Returns the payload itself when clean. */
+function redactUmamiPayload(_type: string, payload: unknown): unknown {
+  if (!payload || typeof payload !== 'object') return payload;
+  const record = payload as Record<string, unknown>;
+  let next: Record<string, unknown> | null = null;
+  for (const field of ['url', 'referrer'] as const) {
+    const raw = record[field];
+    if (typeof raw !== 'string') continue;
+    const redacted = redactSensitiveUrl(raw, window.location?.origin);
+    if (redacted !== raw) {
+      next ??= { ...record };
+      next[field] = redacted;
+    }
+  }
+  return next ?? payload;
+}
 const UMAMI_LOAD_ATTEMPT_LIMIT = 2;
 const UMAMI_LOAD_RETRY_DELAY_MS = 5_000;
 const UMAMI_IDENTIFY_RETRY_LIMIT = 2;
@@ -120,6 +143,7 @@ const EVENTS = {
   'map-layer-toggle': true,
   // Panels
   'panel-toggle': true,
+  'layout-customize': true,
   // Settings
   'settings-open': true,
   'variant-switch': true,
@@ -132,6 +156,9 @@ const EVENTS = {
   'live-news-fullscreen': true,
   'live-media-idle-stopped': true,
   'live-media-idle-notice-action': true,
+  'live-video-attempt-failed': true,
+  'live-video-signal-missing': true,
+  'live-video-resolved-applied': true,
   // Webcams
   'webcam-selected': true,
   'webcam-region-filter': true,
@@ -165,6 +192,11 @@ const EVENTS = {
   // Auth (wired in PR #1812 — do not remove)
   'sign-in': true,
   'sign-up': true,
+  // Sign-up resume funnel (#8577): started once per attempt, resumed after a
+  // reload, dismissed by the user; `sign-up` carries `resumed`.
+  'sign-up-started': true,
+  'sign-up-resumed': true,
+  'sign-up-resume-dismissed': true,
   'sign-out': true,
   'gate-hit': true,
   // Conversion funnel (#4931) — pageview → gate-hit → checkout-start →
@@ -563,6 +595,12 @@ function loadUmamiScript(): void {
   script.src = UMAMI_SCRIPT_SRC;
   script.dataset.websiteId = UMAMI_WEBSITE_ID;
   script.dataset.domains = UMAMI_DOMAINS;
+  // Deferred consumers keep invite, checkout, referral, and Clerk params in
+  // the live URL until they read them; Umami payloads must not copy those.
+  // Redact per payload rather than data-exclude-search, which would also
+  // drop the utm_* params campaign attribution reads.
+  (window as unknown as Record<string, unknown>)[UMAMI_BEFORE_SEND_HOOK] = redactUmamiPayload;
+  script.dataset.beforeSend = UMAMI_BEFORE_SEND_HOOK;
   script.addEventListener('load', flushPendingUmamiCalls, { once: true });
   script.addEventListener('error', () => {
     umamiLoadStarted = false;
@@ -689,7 +727,7 @@ export function initAuthAnalytics(): void {
         !hasTrackedSignupInSession(nextUserId) &&
         isLikelyFreshSignup(prevUserId, nextUserId, getClerkUserCreatedAt(), Date.now())
       ) {
-        trackSignUp('clerk');
+        trackSignUp('clerk', { resumed: consumeSignUpResumed() });
         markSignupTrackedInSession(nextUserId);
       }
     }
@@ -722,8 +760,43 @@ export function trackSignIn(method: string): void {
   track('sign-in', { method });
 }
 
-export function trackSignUp(method: string): void {
-  track('sign-up', { method });
+export function trackSignUp(method: string, opts?: { resumed?: boolean }): void {
+  track('sign-up', { method, resumed: opts?.resumed === true });
+}
+
+/**
+ * Sign-up funnel: started -> (resumed) -> sign-up. Abandonment is
+ * started minus sign-up; resume effectiveness is sign-up{resumed} over resumed.
+ * `started` fires once per attempt id (the resume service keeps the marker),
+ * so a reload mid-attempt does not count a second start.
+ */
+export function trackSignUpStarted(): void {
+  track('sign-up-started');
+}
+
+export function trackSignUpResumed(props: { trigger: 'hydration' | 'user'; code: 'live' | 'expired'; sinceBootMs: number }): void {
+  track('sign-up-resumed', { trigger: props.trigger, code: props.code, since_boot_ms: props.sinceBootMs });
+}
+
+export function trackSignUpResumeDismissed(): void {
+  track('sign-up-resume-dismissed');
+}
+
+/**
+ * Set when the resumed verify card mounts; read and cleared by the completion
+ * `sign-up` event on the next page load. localStorage rather than session
+ * scope for the same cross-tab reason as `wm-signup-tracked:`.
+ */
+const SIGNUP_RESUMED_KEY = 'wm-signup-resumed';
+
+export function markSignUpResumed(): void {
+  safeStorageSet(SIGNUP_RESUMED_KEY, '1');
+}
+
+export function consumeSignUpResumed(): boolean {
+  const resumed = safeStorageGet(SIGNUP_RESUMED_KEY) === '1';
+  if (resumed) safeStorageRemove(SIGNUP_RESUMED_KEY);
+  return resumed;
 }
 
 export function trackAnalystControlAction(actionType: string, status: string, reason?: string): void {
@@ -868,6 +941,7 @@ export function resetAnalyticsForTesting(): void {
   umamiLoadAttempts = 0;
   latestIdentityRevision = 0;
   proFunnelReplaysAwaitingDelivery = 0;
+  layoutCustomizationsSent.clear();
 }
 
 export function trackGateHit(feature: string): void {
@@ -1359,35 +1433,6 @@ export function bucketMissionIdForAnalytics(missionId: string): string {
   return KNOWN_MISSION_IDS.has(missionId) ? missionId : 'unknown';
 }
 
-/**
- * Panel keys at every call site are code-controlled (panel registry constants,
- * `data-panel` attributes our own mount code writes), so this is a structural
- * guard, not a catalog check: anything that does not look like a panel key
- * collapses to 'unknown'. The full catalog lives in config/panels, whose
- * import-time side effects must stay out of the analytics graph. The registry
- * mixes kebab-case and camelCase ids (`gccNews`, `regionalStartups`), so the
- * shape allows interior uppercase; the real-catalog sweep in
- * tests/mission-funnel-events.test.mts pins that every live key passes.
- */
-const PANEL_KEY_PATTERN = /^[a-z][a-zA-Z0-9-]{0,39}$/;
-
-/**
- * User-created panels carry generated ids (`cw-<uuid>` custom widgets,
- * `mcp-<uuid>` MCP panels) that pass the structural guard but would fragment
- * the funnel into one Umami row per widget instance. Collapse each family to
- * a stable bucket before the shape check.
- */
-const DYNAMIC_PANEL_KEY_BUCKETS: ReadonlyArray<[prefix: string, bucket: string]> = [
-  ['cw-', 'custom-widget'],
-  ['mcp-', 'mcp-panel'],
-];
-
-export function bucketPanelKeyForAnalytics(panelKey: string): string {
-  for (const [prefix, bucket] of DYNAMIC_PANEL_KEY_BUCKETS) {
-    if (panelKey.startsWith(prefix)) return bucket;
-  }
-  return PANEL_KEY_PATTERN.test(panelKey) ? panelKey : 'unknown';
-}
 
 /**
  * Shared context fields for every mission-funnel event: the active mission (if
@@ -1707,8 +1752,16 @@ export function trackPanelToggled(panelId: string, enabled: boolean): void {
   track('panel-toggle', { panelId, enabled });
 }
 
-export function trackPanelResized(_panelId: string, _newSpan: number): void {
-  // No-op: fires on every drag step, too noisy for analytics.
+export type LayoutCustomizationKind = 'panel-resize' | 'panel-reorder' | 'map-divider';
+
+// Once per page load per kind: the metric is the share of sessions that ever
+// customize, and it keeps held arrow keys on a resize handle from spamming.
+const layoutCustomizationsSent = new Set<LayoutCustomizationKind>();
+
+export function trackLayoutCustomized(kind: LayoutCustomizationKind): void {
+  if (layoutCustomizationsSent.has(kind)) return;
+  layoutCustomizationsSent.add(kind);
+  track('layout-customize', { kind });
 }
 
 // ---------------------------------------------------------------------------

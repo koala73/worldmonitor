@@ -193,6 +193,10 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
       'scripts/validate-resilience-correlation.mjs',
       'scripts/backtest-resilience-outcomes.mjs',
       'scripts/validate-resilience-backtest.mjs',
+      // The country brief's evidence pack reads the score key but must not
+      // import resilience/v1/_shared.ts: that pulls the scoring engine into
+      // the intelligence edge bundle.
+      'server/worldmonitor/intelligence/v1/_country-brief-evidence.ts',
     ] as const;
     const RANKING_MIRROR_FILES = [
       'scripts/seed-resilience-scores.mjs',

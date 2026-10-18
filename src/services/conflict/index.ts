@@ -5,10 +5,7 @@ import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
 import { ConflictServiceClient } from '@/services/generated-rpc-clients';
-import { isDuplicatedByAcled } from './ucdp-dedupe';
-import type { AcledDedupEvent, UcdpDedupeIndexEntry, UcdpTabAggregate } from './ucdp-dedupe';
-export { deduplicateUcdpProjectionAggregates } from './ucdp-dedupe';
-export type { UcdpDedupeIndexEntry, UcdpTabAggregate } from './ucdp-dedupe';
+export interface UcdpTabAggregate { count: number; totalDeaths: number }
 
 // ---- Client + Circuit Breakers ----
 
@@ -113,17 +110,12 @@ function toUcdpGeoEvent(proto: ProtoUcdpEvent): UcdpGeoEvent {
 export type HydratedUcdpPayload = ListUcdpEventsResponse & {
   classifications?: Record<string, UcdpConflictStatus>;
   aggregates?: Record<string, UcdpTabAggregate>;
-  dedupeIndex?: UcdpDedupeIndexEntry[];
   totalEvents?: number;
 };
 
 import type { UcdpConflictStatus } from './ucdp-classify';
 export { deriveConflictHistory, deriveUcdpClassifications } from './ucdp-classify';
 export type { ConflictIntensity, UcdpConflictStatus } from './ucdp-classify';
-
-// ---- AcledEvent interface for deduplication (ported from legacy) ----
-
-type AcledEvent = AcledDedupEvent;
 
 // ---- Empty fallbacks ----
 
@@ -182,16 +174,6 @@ export async function fetchUcdpEvents(hydrated?: HydratedUcdpPayload): Promise<U
     data: events,
     cached_at: '',
   };
-}
-
-export function deduplicateAgainstAcled(ucdpEvents: UcdpGeoEvent[], acledEvents: AcledEvent[]): UcdpGeoEvent[] {
-  if (!acledEvents.length) return ucdpEvents;
-  return ucdpEvents.filter((ucdp) => !isDuplicatedByAcled({
-    latitude: ucdp.latitude,
-    longitude: ucdp.longitude,
-    dateMs: new Date(ucdp.date_start).getTime(),
-    deathsBest: ucdp.deaths_best,
-  }, acledEvents));
 }
 
 export function groupByCountry(events: UcdpGeoEvent[]): Map<string, UcdpGeoEvent[]> {

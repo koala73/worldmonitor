@@ -6,12 +6,16 @@ import {
   MARKET_BET_TEMPLATES, MARKET_FEED, MARKET_SETTLEMENT_FEED, MARKET_MIN_VOLUME,
   eligibleMarkets, marketSlugFromUrl,
 } from '../scripts/_bet-templates-markets.mjs';
-import { parseMetricKey, resolveHardSpec, MARKET_SETTLEMENT_MAX_LAG_MS } from '../scripts/_forecast-resolution-eval.mjs';
+import { parseMetricKey, resolveHardSpec, shapeResolutionFeed, MARKET_SETTLEMENT_MAX_LAG_MS } from '../scripts/_forecast-resolution-eval.mjs';
 import { RESOLUTION_FEED_KEYS } from '../scripts/_forecast-resolution.mjs';
-import { shapeResolutionFeed, ingestHistory } from '../scripts/seed-forecast-resolutions.mjs';
+import { ingestHistory } from '../scripts/seed-forecast-resolutions.mjs';
 import {
   updateMarketSettlements, parseGammaSettlement, parseKalshiSettlement,
 } from '../scripts/_forecast-market-settlements.mjs';
+
+// Only a bet carrying a model forecast opens a ledger window (#8990), so
+// ingest fixtures are tagged as the ensemble stage would tag them.
+const ensembled = (bets) => bets.map((bet) => ({ ...bet, probabilitySource: 'ensemble' }));
 
 const NOW = Date.parse('2026-07-23T00:00:00Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -103,9 +107,32 @@ describe('eligibleMarkets + slot templates', () => {
 });
 
 describe('market bets resolve via the settlement feed (pend → settle → resolve)', () => {
+  it('preserves the exact Kalshi market ticker through bet generation and the settlement API request', async () => {
+    const row = market({ title: 'Fed interest rate in September 2026', source: 'kalshi', url: 'https://kalshi.com/markets/KXFED-26SEP-T4', displayUrl: 'https://kalshi.com/markets/kxfed' });
+    assert.deepEqual(marketSlugFromUrl(row.url), { source: 'kalshi', slug: 'KXFED-26SEP-T4' });
+    const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture([row]) }, NOW);
+    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: ensembled(bets) }], NOW);
+    const entry = Object.values(ledger)[0];
+    assert.equal(entry.marketSlug, 'KXFED-26SEP-T4');
+    const originalFetch = globalThis.fetch;
+    const urls = [];
+    globalThis.fetch = async url => {
+      urls.push(String(url));
+      return Response.json({ market: { status: 'settled', result: 'yes' } });
+    };
+    try {
+      const stats = await updateMarketSettlements(ledger, entry.deadline + DAY_MS, { readJson: async () => ({ records: [] }), writeJson: async () => {} });
+      assert.equal(stats.settled, 1);
+      assert.equal(urls.length, 1);
+      assert.equal(new URL(urls[0]).pathname, '/trade-api/v2/markets/KXFED-26SEP-T4');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   function marketEntry() {
     const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture() }, NOW);
-    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: bets }], NOW);
+    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: ensembled(bets) }], NOW);
     return Object.values(ledger)[0];
   }
 
@@ -150,7 +177,7 @@ describe('market bets resolve via the settlement feed (pend → settle → resol
     // still match the spec end-to-end or every such bet VOIDs after grace.
     const statement = market({ title: 'Fed cuts rates in September 2026', url: 'https://polymarket.com/event/fed-statement' });
     const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture([statement]) }, NOW);
-    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: bets }], NOW);
+    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: ensembled(bets) }], NOW);
     const entry = Object.values(ledger)[0];
     const writes = [];
     await updateMarketSettlements(ledger, entry.deadline + DAY_MS, {
@@ -170,12 +197,12 @@ describe('market bets resolve via the settlement feed (pend → settle → resol
 describe('open-window merge tracks the venue endDate (review #4)', () => {
   it('advances deadline + spec.deadline when the venue moves endDate on re-ingest', () => {
     const first = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture() }, NOW);
-    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: first }], NOW);
+    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: ensembled(first) }], NOW);
     const movedEndDate = new Date(NOW + 30 * DAY_MS).toISOString();
     const moved = generateBets(MARKET_BET_TEMPLATES, {
       [MARKET_FEED]: feedFixture([market({ endDate: movedEndDate })], { fetchedAt: NOW + DAY_MS }),
     }, NOW + DAY_MS);
-    const after = ingestHistory(ledger, [{ generatedAt: NOW + DAY_MS, predictions: moved }], NOW + DAY_MS);
+    const after = ingestHistory(ledger, [{ generatedAt: NOW + DAY_MS, predictions: ensembled(moved) }], NOW + DAY_MS);
     assert.equal(Object.values(after).length, 1); // merged, not duplicated
     const entry = Object.values(after)[0];
     assert.equal(entry.deadline, Date.parse(movedEndDate));
@@ -207,7 +234,7 @@ describe('settlement parsing + loader', () => {
 
   it('updateMarketSettlements fetches due unsettled slugs and appends records', async () => {
     const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture() }, NOW);
-    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: bets }], NOW);
+    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: ensembled(bets) }], NOW);
     const writes = [];
     const stats = await updateMarketSettlements(ledger, Date.parse(market().endDate) + DAY_MS, {
       fetchSettlement: async () => 100,
@@ -223,12 +250,12 @@ describe('settlement parsing + loader', () => {
 
   it('updateMarketSettlements skips already-settled slugs and non-due bets', async () => {
     const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture() }, NOW);
-    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: bets }], NOW);
+    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: ensembled(bets) }], NOW);
     let fetches = 0;
     // Already settled → no fetch.
     const statsSettled = await updateMarketSettlements(ledger, Date.parse(market().endDate) + DAY_MS, {
       fetchSettlement: async () => { fetches += 1; return 100; },
-      readJson: async () => ({ records: [{ slug: 'fed-cut-september-2026', yesPrice: 100 }] }),
+      readJson: async () => ({ records: [{ market: market().title, slug: 'fed-cut-september-2026', yesPrice: 100 }] }),
       writeJson: async () => {},
     });
     assert.equal(statsSettled.fetched, 0);
@@ -240,6 +267,27 @@ describe('settlement parsing + loader', () => {
     });
     assert.deepEqual(statsNotDue, { fetched: 0, settled: 0 });
     assert.equal(fetches, 0);
+  });
+
+  it('fetches a later market of a slug whose earlier market already has a record (#8990)', async () => {
+    const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture() }, NOW);
+    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: ensembled(bets) }], NOW);
+    const fetched = [];
+    const earlierMarket = { records: [{ market: 'Will the Fed cut rates in July 2026?', slug: 'fed-cut-september-2026', yesPrice: 0 }] };
+    const stats = await updateMarketSettlements(ledger, Date.parse(market().endDate) + DAY_MS, {
+      fetchSettlement: async (entry) => { fetched.push(entry.title); return 100; },
+      readJson: async () => earlierMarket,
+      writeJson: async () => {},
+    });
+    assert.equal(stats.fetched, 1);
+    assert.deepEqual(fetched.map((title) => title.replace(/\?$/, '')), [market().title.replace(/\?$/, '')]);
+    const kalshiLedger = Object.fromEntries(Object.entries(ledger).map(([key, entry]) => [key, { ...entry, marketSource: 'kalshi' }]));
+    const kalshi = await updateMarketSettlements(kalshiLedger, Date.parse(market().endDate) + DAY_MS, {
+      fetchSettlement: async () => 100,
+      readJson: async () => earlierMarket,
+      writeJson: async () => {},
+    });
+    assert.equal(kalshi.fetched, 0, 'a Kalshi ticker is one market, so its slug record settles it');
   });
 
   it('fetch cap drains the OLDEST deadlines first — a backlog cannot starve near-grace markets (review R2 #2)', async () => {
@@ -285,7 +333,7 @@ describe('settlement parsing + loader', () => {
 
   it('fails CLOSED when the settlement feed read errors — never rebuilds from empty (review #2)', async () => {
     const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture() }, NOW);
-    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: bets }], NOW);
+    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: ensembled(bets) }], NOW);
     const writes = [];
     const stats = await updateMarketSettlements(ledger, Date.parse(market().endDate) + DAY_MS, {
       fetchSettlement: async () => 100,
@@ -304,7 +352,7 @@ describe('settlement loader edge paths + health meta (review #5526)', () => {
 
   function dueLedger(markets = [market()]) {
     const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture(markets) }, NOW);
-    return ingestHistory({}, [{ generatedAt: NOW, predictions: bets }], NOW);
+    return ingestHistory({}, [{ generatedAt: NOW, predictions: ensembled(bets) }], NOW);
   }
 
   it('a not-yet-adjudicated venue (null) writes no record — the bet stays pending', async () => {

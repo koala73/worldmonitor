@@ -96,7 +96,7 @@ A magnitude 6.5 earthquake off the coast of Portugal might not make global headl
 
 ## Displacement Flows: The Human Aftermath
 
-World Monitor integrates **UNHCR displacement data** to show refugee and internally displaced person (IDP) migration patterns. When a disaster strikes, you can see:
+World Monitor integrates **[UNHCR displacement data](/blog/posts/track-refugee-displacement-flows-unhcr-worldmonitor/)** to show refugee and internally displaced person (IDP) migration patterns. When a disaster strikes, you can see:
 
 - Historical displacement from the affected region
 - Existing refugee populations that may face compounding vulnerability

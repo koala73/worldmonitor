@@ -33,7 +33,7 @@ export const EXPOSURE_BATCH_SIZE = 350;
 // the single-threaded queue for jobs behind it. Landing inside it keeps the result useful.
 const COMPUTE_BUDGET_MS = 45_000;
 
-/** @typedef {{ jobId: string; scenarioId: string; iso2: string | null; disruptionPct?: number; enqueuedAt: number }} ScenarioJob */
+/** @typedef {{ jobId: string; scenarioId: string; iso2: string | null; disruptionPct?: number; enqueuedAt: number; owner?: string }} ScenarioJob */
 
 /**
  * Inline copy of SCENARIO_TEMPLATES (no TypeScript import).
@@ -386,7 +386,15 @@ async function requeueOrphanedJobs() {
 // Job payload validation
 // ────────────────────────────────────────────────────────────────────────────
 
-const JOB_ID_RE = /^scenario:\d{13}:[a-z0-9]{8}$/;
+const JOB_ID_RE = /^scenario:\d{13}:(?:[a-f0-9]{32}|[a-z0-9]{8})$/;
+const OWNER_TOKEN_RE = /^[a-f0-9]{64}$/;
+
+/** Owner-scoped result key. Null when jobId or owner would be an unsafe key fragment. */
+export function scenarioResultKey(jobId, owner) {
+  if (typeof jobId !== 'string' || !JOB_ID_RE.test(jobId)) return null;
+  if (typeof owner !== 'string' || !OWNER_TOKEN_RE.test(owner)) return null;
+  return `scenario-result:${owner}:${jobId}`;
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Main worker loop
@@ -429,11 +437,13 @@ async function runWorker() {
       continue;
     }
 
-    const { jobId, scenarioId, iso2, disruptionPct } = job;
+    const { jobId, scenarioId, iso2, disruptionPct, owner } = job;
 
     // Validate payload fields before using any as Redis key fragments.
+    // Jobs enqueued before owner binding have no owner and are discarded.
+    const resultKey = scenarioResultKey(jobId, owner);
     if (
-      typeof jobId !== 'string' || !JOB_ID_RE.test(jobId) ||
+      !resultKey ||
       typeof scenarioId !== 'string' ||
       (iso2 !== null && (typeof iso2 !== 'string' || !/^[A-Z]{2}$/.test(iso2)))
     ) {
@@ -445,7 +455,6 @@ async function runWorker() {
     console.log(`[scenario-worker] processing ${jobId} (${scenarioId}, iso2=${iso2 ?? 'all'})`);
 
     // Idempotency: skip if result already written
-    const resultKey = `scenario-result:${jobId}`;
     const existing = await redisGet(resultKey).catch(() => null);
     if (existing) {
       console.log(`[scenario-worker] ${jobId} already processed, skipping`);

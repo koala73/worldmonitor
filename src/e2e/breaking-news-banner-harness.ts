@@ -21,6 +21,7 @@ const SAMPLE_ALERTS: BreakingAlert[] = [
     timestamp: new Date(),
     origin: 'rss_alert',
     link: 'https://example.com/reuters',
+    corroboration: { state: 'corroborated', publishers: 3 },
   },
   {
     id: 'harness-aljazeera',
@@ -30,6 +31,7 @@ const SAMPLE_ALERTS: BreakingAlert[] = [
     timestamp: new Date(),
     origin: 'rss_alert',
     link: 'https://example.com/aljazeera',
+    corroboration: { state: 'corroborated', publishers: 2 },
   },
   {
     id: 'harness-miit',
@@ -39,6 +41,7 @@ const SAMPLE_ALERTS: BreakingAlert[] = [
     timestamp: new Date(),
     origin: 'rss_alert',
     link: 'https://example.com/miit',
+    corroboration: { state: 'unknown' },
   },
 ];
 

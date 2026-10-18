@@ -422,7 +422,9 @@ test('Contracts Finder health checks the canonical payload, not the positive sou
   t.mock.method(globalThis, 'fetch', async (_url, init) => {
     const commands = JSON.parse(init.body);
     return new Response(JSON.stringify(commands.map(([op, key]) => {
-      if (expireDuringWrite && op === 'SET' && key === __testing__.HEALTH_VERDICT_SNAPSHOT_KEY) clock = CF_NOW + 90 * 60_000;
+      if (expireDuringWrite && op === 'EVAL' && key === __testing__.HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT) {
+        clock = CF_NOW + 90 * 60_000;
+      }
       if (op === 'STRLEN') return { result: key === CF_KEY && canonical === null ? 0 : 256 };
       if (op === 'GET' && key === CF_KEY) { canonicalReads++; return { result: canonical === null ? null : JSON.stringify(canonical) }; }
       if (op === 'GET' && key === __testing__.SEED_META[CF_NAME].key) return { result: JSON.stringify(meta) };

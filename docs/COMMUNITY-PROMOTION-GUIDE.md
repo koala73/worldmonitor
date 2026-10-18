@@ -36,7 +36,7 @@ The centerpiece. A WebGL-accelerated globe (deck.gl) with toggleable layers for 
 
 ### 2. AI-Powered World Brief
 
-One-click AI summary of the top global developments. Three-tier LLM provider chain: local Ollama/LM Studio (fully private, offline), Groq (fast cloud), or OpenRouter (fallback). Redis caching for instant responses on repeat queries.
+One-click AI summary of the top global developments. Tiered LLM provider chain: local Ollama/LM Studio (fully private, offline), then OpenRouter (cloud), then a browser-side T5 model. Redis caching for instant responses on repeat queries.
 
 **Show**: The summary card at the top of the news panel.
 
@@ -90,7 +90,7 @@ Generate intelligence briefs for any country and share to Twitter/X, LinkedIn, W
 
 ### 11. Local LLM Support (Ollama / LM Studio)
 
-Run AI summarization entirely on your own hardware — no API keys, no cloud, no data leaving your machine. The desktop app auto-discovers models from Ollama or LM Studio, with a three-tier fallback chain: local → Groq → OpenRouter. Settings are split into dedicated LLMs and API Keys tabs for easy configuration.
+Run AI summarization entirely on your own hardware — no API keys, no cloud, no data leaving your machine. The desktop app auto-discovers models from Ollama or LM Studio, with a fallback chain: local → OpenRouter → browser T5. Settings are split into dedicated LLMs and API Keys tabs for easy configuration.
 
 **Show**: Open Settings → LLMs tab → Ollama model dropdown auto-populated → generate a summary with the local model.
 

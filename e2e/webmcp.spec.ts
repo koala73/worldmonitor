@@ -2,6 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 
 import { runWebMcpCancellationScenario } from './helpers/webmcp-cancellation';
+import { installWebMcpExecuteTool } from './helpers/webmcp-execute';
 
 const requireWebMcp = process.env.WM_REQUIRE_WEBMCP === '1';
 const productionSmoke = process.env.WM_WEBMCP_PRODUCTION === '1';
@@ -54,6 +55,10 @@ const PRODUCTION_DASHBOARDS = [
   { origin: 'https://happy.worldmonitor.app', variant: 'happy' },
   { origin: 'https://energy.worldmonitor.app', variant: 'energy' },
 ] as const;
+
+test.beforeEach(async ({ page }) => {
+  await installWebMcpExecuteTool(page);
+});
 
 type MutationExecutionProbe = {
   errorMessage?: string;
@@ -144,7 +149,7 @@ function assertMapLayerListResult(listed: unknown, label: string): MapLayerListR
 async function executeListMapLayers(page: Page): Promise<unknown> {
   return page.evaluate(async (): Promise<unknown> => {
     type ExecutableModelContext = WebMCP.ModelContext & {
-      executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+      executeTool(tool: WebMCP.RegisteredTool, input: Record<string, unknown>): Promise<unknown>;
     };
     const parseOutput = (value: unknown): unknown => {
       if (typeof value !== 'string') return value;
@@ -157,7 +162,7 @@ async function executeListMapLayers(page: Page): Promise<unknown> {
     const provider = document.modelContext as ExecutableModelContext;
     const listTool = (await provider.getTools()).find((tool) => tool.name === 'list_map_layers');
     if (!listTool) throw new Error('list_map_layers was not discovered.');
-    return parseOutput(await provider.executeTool(listTool, JSON.stringify({ limit: 8 })));
+    return parseOutput(await window.__wmExecuteWebMcpTool(provider, listTool, { limit: 8 }));
   });
 }
 
@@ -178,7 +183,7 @@ async function executeDashboardTool(
 ): Promise<unknown> {
   return page.evaluate(async ({ toolName, payload }) => {
     type ExecutableModelContext = WebMCP.ModelContext & {
-      executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+      executeTool(tool: WebMCP.RegisteredTool, input: Record<string, unknown>): Promise<unknown>;
     };
     const provider = document.modelContext as ExecutableModelContext | undefined;
     if (!provider || typeof provider.executeTool !== 'function') {
@@ -186,7 +191,7 @@ async function executeDashboardTool(
     }
     const tool = (await provider.getTools()).find((candidate) => candidate.name === toolName);
     if (!tool) throw new Error(`${toolName} was not discovered.`);
-    const raw = await provider.executeTool(tool, JSON.stringify(payload));
+    const raw = await window.__wmExecuteWebMcpTool(provider, tool, payload);
     if (typeof raw !== 'string') return raw;
     try {
       return JSON.parse(raw);
@@ -194,6 +199,136 @@ async function executeDashboardTool(
       return raw;
     }
   }, { toolName: name, payload: input });
+}
+
+async function readTargetCancellationSupported(page: Page, toolName: string): Promise<boolean> {
+  return page.evaluate((name) => {
+    const marks = (window as Window & {
+      __wmLcpDebug?: {
+        getSnapshot?: () => {
+          marks: Array<{
+            detail?: { targetCancellationSupported?: boolean; tool?: string };
+            name: string;
+          }>;
+        };
+      };
+    }).__wmLcpDebug?.getSnapshot?.().marks ?? [];
+    const supported = marks.filter((mark) => (
+      mark.name === 'wm:webmcp:tool-start' && mark.detail?.tool === name
+    )).at(-1)?.detail?.targetCancellationSupported;
+    if (typeof supported !== 'boolean') {
+      throw new Error(
+        `missing targetCancellationSupported mark for ${name}; install the LCP debug recorder before navigation`,
+      );
+    }
+    return supported;
+  }, toolName);
+}
+
+function isEvaluateNavigationDestroyedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Execution context was destroyed|Most likely because of a navigation|Target closed/i.test(
+    message,
+  );
+}
+
+async function executeDashboardToolObserved(
+  page: Page,
+  name: string,
+  input: Record<string, unknown>,
+): Promise<{ output: unknown; targetCancellationSupported: boolean }> {
+  // switch_monitor may call location.reload()/assign before executeTool's
+  // promise settles back through Playwright's bridge. Persist the observation
+  // in sessionStorage (survives same-origin reload) so a destroyed evaluate
+  // context is recoverable from the next document instead of racing sleeps.
+  const storageKey = `__wmWebMcpObserved:${name}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+
+  type ObservedToolResult = { output: unknown; targetCancellationSupported: boolean };
+
+  const readStoredObservation = async (): Promise<ObservedToolResult | null> => {
+    return page.evaluate((key) => {
+      const raw = sessionStorage.getItem(key);
+      if (raw == null) return null;
+      sessionStorage.removeItem(key);
+      try {
+        const parsed = JSON.parse(raw) as ObservedToolResult;
+        if (!parsed || typeof parsed !== 'object' || typeof parsed.targetCancellationSupported !== 'boolean') {
+          return null;
+        }
+        return parsed;
+      } catch {
+        return null;
+      }
+    }, storageKey);
+  };
+
+  try {
+    const result = await page.evaluate(async ({ toolName, payload, storageKey: key }) => {
+      type ExecutableModelContext = WebMCP.ModelContext & {
+        executeTool(tool: WebMCP.RegisteredTool, input: Record<string, unknown>): Promise<unknown>;
+      };
+      const provider = document.modelContext as ExecutableModelContext | undefined;
+      if (!provider || typeof provider.executeTool !== 'function') {
+        throw new Error('Chrome WebMCP execution API is unavailable.');
+      }
+      const tool = (await provider.getTools()).find((candidate) => candidate.name === toolName);
+      if (!tool) throw new Error(`${toolName} was not discovered.`);
+      const raw = await window.__wmExecuteWebMcpTool(provider, tool, payload);
+      let output: unknown = raw;
+      if (typeof raw === 'string') {
+        try {
+          output = JSON.parse(raw);
+        } catch {
+          output = raw;
+        }
+      }
+      // Read the mark before returning. switch_monitor reloads on success, and
+      // a later evaluate can land on the next document, which has no mark.
+      const supported = (window as Window & {
+        __wmLcpDebug?: {
+          getSnapshot?: () => {
+            marks: Array<{
+              detail?: { targetCancellationSupported?: boolean; tool?: string };
+              name: string;
+            }>;
+          };
+        };
+      }).__wmLcpDebug?.getSnapshot?.().marks
+        ?.filter((mark) => mark.name === 'wm:webmcp:tool-start' && mark.detail?.tool === toolName)
+        .at(-1)?.detail?.targetCancellationSupported;
+      if (typeof supported !== 'boolean') {
+        throw new Error(
+          `missing targetCancellationSupported mark for ${toolName}; install the LCP debug recorder before navigation`,
+        );
+      }
+      const observed = { output, targetCancellationSupported: supported };
+      try {
+        sessionStorage.setItem(key, JSON.stringify(observed));
+      } catch {
+        // Private mode / quota: return path may still win the race.
+      }
+      return observed;
+    }, { toolName: name, payload: input, storageKey });
+    await page.evaluate((key) => {
+      try {
+        sessionStorage.removeItem(key);
+      } catch {
+        /* ignore */
+      }
+    }, storageKey).catch(() => undefined);
+    return result;
+  } catch (error) {
+    if (!isEvaluateNavigationDestroyedError(error)) throw error;
+  }
+
+  await page.waitForLoadState('domcontentloaded');
+  const recovered = await readStoredObservation();
+  if (!recovered) {
+    throw new Error(
+      `executeDashboardToolObserved(${name}): evaluation context was destroyed by navigation and no sessionStorage observation was found`,
+    );
+  }
+  return recovered;
 }
 
 async function installReadinessRecorder(page: Page): Promise<void> {
@@ -213,7 +348,7 @@ async function installSignalCapableModelContext(page: Page): Promise<void> {
     type ToolDescriptor = {
       annotations?: Record<string, unknown>;
       description: string;
-      inputSchema: string;
+      inputSchema: Record<string, unknown>;
       name: string;
       title?: string;
     };
@@ -223,7 +358,7 @@ async function installSignalCapableModelContext(page: Page): Promise<void> {
         const descriptor: ToolDescriptor = Object.freeze({
           annotations: definition.annotations,
           description: definition.description,
-          inputSchema: JSON.stringify(definition.inputSchema),
+          inputSchema: JSON.parse(JSON.stringify(definition.inputSchema)) as Record<string, unknown>,
           name: definition.name,
           title: definition.title,
         });
@@ -236,12 +371,20 @@ async function installSignalCapableModelContext(page: Page): Promise<void> {
           .map(({ descriptor }) => descriptor)
           .sort((left, right) => left.name.localeCompare(right.name));
       },
-      async executeTool(descriptor: ToolDescriptor, input: string) {
+      // Mirrors Chrome 155+: input is a plain object, serialized to JSON before
+      // it reaches the tool, and a non-object (including a JSON string) is a
+      // TypeError, as in native ModelContext.executeTool().
+      async executeTool(descriptor: ToolDescriptor, input: Record<string, unknown>) {
         const entry = tools.get(descriptor.name);
         if (!entry || entry.descriptor !== descriptor) {
           throw new DOMException('Tool descriptor is stale or foreign.', 'InvalidStateError');
         }
-        return entry.definition.execute(JSON.parse(input), {
+        if (!input || typeof input !== 'object' || Array.isArray(input)) {
+          throw new TypeError(
+            "Failed to execute 'executeTool' on 'ModelContext': invalid input object: value is not an object",
+          );
+        }
+        return entry.definition.execute(JSON.parse(JSON.stringify(input)) as Record<string, unknown>, {
           signal: new AbortController().signal,
         });
       },
@@ -305,12 +448,12 @@ async function executeDashboardTabTool(
 ): Promise<Record<string, unknown>> {
   return page.evaluate(async ({ name, input }) => {
     type ExecutableModelContext = WebMCP.ModelContext & {
-      executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+      executeTool(tool: WebMCP.RegisteredTool, input: Record<string, unknown>): Promise<unknown>;
     };
     const provider = document.modelContext as ExecutableModelContext;
     const tool = (await provider.getTools()).find((candidate) => candidate.name === name);
     if (!tool) throw new Error(`${name} was not discovered.`);
-    const raw = await provider.executeTool(tool, JSON.stringify(input));
+    const raw = await window.__wmExecuteWebMcpTool(provider, tool, input);
     const parsed = typeof raw === 'string' ? JSON.parse(raw) as unknown : raw;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       throw new Error(`${name} returned a non-object result.`);
@@ -332,9 +475,9 @@ async function executeDashboardToolProbe(
   name: string,
   input: Record<string, unknown>,
 ): Promise<MutationExecutionProbe> {
-  return page.evaluate(async ({ toolName, inputJson }) => {
+  return page.evaluate(async ({ toolName, input }) => {
     type ExecutableModelContext = WebMCP.ModelContext & {
-      executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+      executeTool(tool: WebMCP.RegisteredTool, input: Record<string, unknown>): Promise<unknown>;
     };
     const provider = document.modelContext as ExecutableModelContext | undefined;
     if (!provider || typeof provider.executeTool !== 'function') {
@@ -351,7 +494,7 @@ async function executeDashboardToolProbe(
     const tool = (await provider.getTools()).find((candidate) => candidate.name === toolName);
     if (!tool) throw new Error(`${toolName} was not discovered.`);
     try {
-      return { ok: true, output: parseOutput(await provider.executeTool(tool, inputJson)) };
+      return { ok: true, output: parseOutput(await window.__wmExecuteWebMcpTool(provider, tool, input)) };
     } catch (error) {
       return {
         errorMessage: error && typeof error === 'object' && 'message' in error
@@ -363,7 +506,7 @@ async function executeDashboardToolProbe(
         ok: false,
       };
     }
-  }, { toolName: name, inputJson: JSON.stringify(input) });
+  }, { toolName: name, input });
 }
 
 async function storedMapMode(page: Page): Promise<string | null> {
@@ -381,7 +524,7 @@ async function executeDashboardToolWithCallerSignal(
     type ExecutableModelContext = WebMCP.ModelContext & {
       executeTool(
         tool: WebMCP.RegisteredTool,
-        input: string,
+        input: Record<string, unknown>,
         options?: { signal?: AbortSignal },
       ): Promise<unknown>;
     };
@@ -400,9 +543,10 @@ async function executeDashboardToolWithCallerSignal(
     const tool = (await provider.getTools()).find((candidate) => candidate.name === toolName);
     if (!tool) throw new Error(`${toolName} was not discovered.`);
     const controller = new AbortController();
-    return parseOutput(await provider.executeTool(
+    return parseOutput(await window.__wmExecuteWebMcpTool(
+      provider,
       tool,
-      JSON.stringify(payload),
+      payload,
       { signal: controller.signal },
     ));
   }, { toolName: name, payload: input });
@@ -520,7 +664,7 @@ async function waitForCountryGeometry(page: Page): Promise<void> {
 async function installColdStartContextProbe(page: Page): Promise<void> {
   await page.addInitScript(() => {
     type ExecutableModelContext = WebMCP.ModelContext & {
-      executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+      executeTool(tool: WebMCP.RegisteredTool, input: Record<string, unknown>): Promise<unknown>;
     };
     type ProbeWindow = Window & {
       __wmLcpDebug?: { getSnapshot?: () => { marks: ToolStartMark[] } };
@@ -584,7 +728,7 @@ async function installColdStartContextProbe(page: Page): Promise<void> {
         const discoveredAt = performance.now();
         const invokedBeforeUiReady = !isUiReady();
         const context = parseOutput(
-          await withTimeout(provider.executeTool(tool, '{}'), 30_000, 'executeTool()'),
+          await withTimeout(window.__wmExecuteWebMcpTool(provider, tool, {}), 30_000, 'executeTool()'),
         );
         resolve({
           context,
@@ -637,6 +781,7 @@ test.describe('dashboard tab persistence', () => {
 
   test('creates, renames, selects, and deletes a dashboard tab', async ({ page }) => {
     await dismissMissionPreset(page);
+    await installReadinessRecorder(page);
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
     const tabBar = page.locator('.dashboard-tabs-bar');
@@ -659,22 +804,35 @@ test.describe('dashboard tab persistence', () => {
       });
       expect((listed.tabs as Array<{ id: string }>)[0]?.id).toMatch(/^tab-[a-z0-9]+-[a-z0-9]+$/);
 
-      // Current Chrome still omits the target-side AbortSignal, so persistent
-      // tab mutations fail closed. Prove the denial, then drive persistence
-      // through the visible tab bar like the model-free path.
+      // Branch on the tool-start mark, which records whether this call received
+      // a target AbortSignal. Chrome through 151 omits it; Chrome 153+ delivers
+      // it. A denial is only acceptable when that mark is false.
       const created = await executeDashboardTabTool(page, 'create_dashboard_tab', {
         name: 'Draft Workspace',
       });
-      expect(created).toMatchObject({
-        ok: false,
-        status: 'denied',
-        reason: 'target_cancellation_unsupported',
-      });
-      await expect(labels).toHaveCount(1);
+      const cancellationSupported = await readTargetCancellationSupported(page, 'create_dashboard_tab');
+      if (!cancellationSupported) {
+        expect(created).toMatchObject({
+          ok: false,
+          status: 'denied',
+          reason: 'target_cancellation_unsupported',
+        });
+        await expect(labels).toHaveCount(1);
+      } else {
+        expect(created).toMatchObject({
+          ok: true,
+          status: 'applied',
+          name: 'Draft Workspace',
+        });
+        await expect(labels).toHaveCount(2);
+        await expect(labels.nth(1)).toHaveText('Draft Workspace');
+      }
     }
 
-    await page.locator('.dashboard-tab-add').click();
-    await expect(labels).toHaveCount(2);
+    if (await labels.count() === 1) {
+      await page.locator('.dashboard-tab-add').click();
+      await expect(labels).toHaveCount(2);
+    }
     const createdName = (await labels.nth(1).innerText()).trim();
     expect(createdName).not.toBe(originalName);
 
@@ -796,7 +954,11 @@ test.describe('top-level WebMCP dashboard contract', () => {
         annotations: tool.annotations ?? {},
         description: tool.description,
         name: tool.name,
-        schema: tool.inputSchema ? JSON.parse(tool.inputSchema) : null,
+        // Chrome 155+ returns the parsed schema object; earlier milestones
+        // returned a JSON string. Key on the observed shape, not the version.
+        schema: (typeof tool.inputSchema === 'string'
+          ? JSON.parse(tool.inputSchema)
+          : tool.inputSchema ?? null) as { properties?: Record<string, unknown>; [key: string]: unknown },
         title: tool.title,
       }));
     });
@@ -837,7 +999,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
       type ExecutableModelContext = WebMCP.ModelContext & {
         executeTool(
           tool: WebMCP.RegisteredTool,
-          input: string,
+          input: Record<string, unknown>,
           options?: { signal?: AbortSignal },
         ): Promise<unknown>;
       };
@@ -860,11 +1022,11 @@ test.describe('top-level WebMCP dashboard contract', () => {
       if (!accessTool || !signInTool) {
         throw new Error('Expected access and sign-in tools were not discovered.');
       }
-      const access = parseOutput(await provider.executeTool(accessTool, JSON.stringify({})));
+      const access = parseOutput(await window.__wmExecuteWebMcpTool(provider, accessTool, {}));
       let signInError: { message?: string; name?: string } | null = null;
       let signInResult: unknown;
       try {
-        signInResult = parseOutput(await provider.executeTool(signInTool, JSON.stringify({})));
+        signInResult = parseOutput(await window.__wmExecuteWebMcpTool(provider, signInTool, {}));
       } catch (error) {
         signInError = {
           name: error instanceof Error ? error.name : undefined,
@@ -930,7 +1092,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
 
     const catalogProbe = await page.evaluate(async (): Promise<DashboardPanelCatalogProbe> => {
       type ExecutableModelContext = WebMCP.ModelContext & {
-        executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+        executeTool(tool: WebMCP.RegisteredTool, input: Record<string, unknown>): Promise<unknown>;
       };
       type CatalogItem = {
         enabled?: boolean;
@@ -959,7 +1121,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
       let pages = 0;
       let total = 0;
       for (; pages < 80; pages += 1) {
-        const raw = await provider.executeTool(tool, JSON.stringify({ cursor, limit: 8 }));
+        const raw = await window.__wmExecuteWebMcpTool(provider, tool, { cursor, limit: 8 });
         const page = (typeof raw === 'string' ? JSON.parse(raw) : raw) as CatalogPage;
         const panels = Array.isArray(page.panels) ? page.panels : [];
         total = typeof page.total === 'number' ? page.total : total;
@@ -987,7 +1149,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
       type ExecutableModelContext = WebMCP.ModelContext & {
         executeTool(
           tool: WebMCP.RegisteredTool,
-          input: string,
+          input: Record<string, unknown>,
           options?: { signal?: AbortSignal },
         ): Promise<unknown>;
       };
@@ -1012,9 +1174,10 @@ test.describe('top-level WebMCP dashboard contract', () => {
       try {
         return {
           ok: true,
-          output: parseOutput(await provider.executeTool(
+          output: parseOutput(await window.__wmExecuteWebMcpTool(
+            provider,
             panelTool,
-            JSON.stringify({ panelId: 'stock-analysis' }),
+            { panelId: 'stock-analysis' },
           )),
         };
       } catch (error) {
@@ -1060,14 +1223,14 @@ test.describe('top-level WebMCP dashboard contract', () => {
     if (!productionSmoke) {
       const mutation = await page.evaluate(async (): Promise<MutationExecutionProbe> => {
         type ExecutableModelContext = WebMCP.ModelContext & {
-          executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+          executeTool(tool: WebMCP.RegisteredTool, input: Record<string, unknown>): Promise<unknown>;
         };
         const provider = document.modelContext as ExecutableModelContext;
         const searchTool = (await provider.getTools())
           .find((tool) => tool.name === 'openSearch');
         if (!searchTool) throw new Error('openSearch was not discovered.');
         try {
-          const raw = await provider.executeTool(searchTool, '{}');
+          const raw = await window.__wmExecuteWebMcpTool(provider, searchTool, {});
           let output = raw;
           if (typeof raw === 'string') {
             try {
@@ -1114,7 +1277,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
         targetCancellationSupported: boolean | undefined,
       ): Promise<SearchResultEffectProbe> => {
         type ExecutableModelContext = WebMCP.ModelContext & {
-          executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+          executeTool(tool: WebMCP.RegisteredTool, input: Record<string, unknown>): Promise<unknown>;
         };
         const parseOutput = (value: unknown): unknown => {
           if (typeof value !== 'string') return value;
@@ -1132,9 +1295,9 @@ test.describe('top-level WebMCP dashboard contract', () => {
         if (!searchTool || !openTool) {
           throw new Error('Expected dashboard search tools were not discovered.');
         }
-        const execute = async (tool: WebMCP.RegisteredTool, input: string) => {
+        const execute = async (tool: WebMCP.RegisteredTool, input: Record<string, unknown>) => {
           try {
-            return { ok: true as const, output: parseOutput(await provider.executeTool(tool, input)) };
+            return { ok: true as const, output: parseOutput(await window.__wmExecuteWebMcpTool(provider, tool, input)) };
           } catch (error) {
             return {
               errorMessage: error && typeof error === 'object' && 'message' in error
@@ -1147,11 +1310,11 @@ test.describe('top-level WebMCP dashboard contract', () => {
             };
           }
         };
-        const panelSearch = await execute(searchTool, JSON.stringify({
+        const panelSearch = await execute(searchTool, {
           query: 'live webcams',
           scope: 'panels',
           limit: 8,
-        }));
+        });
         const panelResults = panelSearch.ok
           && panelSearch.output
           && typeof panelSearch.output === 'object'
@@ -1163,7 +1326,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
           : [];
         const allowedResult = panelResults.find((result) => result.executable === true) ?? panelResults[0];
         const allowedOpen = allowedResult?.key
-          ? await execute(openTool, JSON.stringify({ resultKey: allowedResult.key }))
+          ? await execute(openTool, { resultKey: allowedResult.key })
           : {
             ok: false as const,
             errorName: 'missing_result',
@@ -1178,11 +1341,11 @@ test.describe('top-level WebMCP dashboard contract', () => {
         };
         if (targetCancellationSupported === true) return probe;
 
-        const layerSearch = await execute(searchTool, JSON.stringify({
+        const layerSearch = await execute(searchTool, {
           query: 'conflicts',
           scope: 'map',
           limit: 8,
-        }));
+        });
         const layerResults = layerSearch.ok
           && layerSearch.output
           && typeof layerSearch.output === 'object'
@@ -1195,7 +1358,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
         const deniedResult = layerResults.find((result) => result.executable === false)
           ?? layerResults[0];
         const deniedOpen = deniedResult?.key
-          ? await execute(openTool, JSON.stringify({ resultKey: deniedResult.key }))
+          ? await execute(openTool, { resultKey: deniedResult.key })
           : {
             ok: false as const,
             errorName: 'missing_result',
@@ -1277,6 +1440,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
   test('validates monitor switches and opens settings and alerts through existing UI', async ({ page }, testInfo) => {
     test.skip(productionSmoke, 'Must not execute switch_monitor against a production origin.');
     testInfo.setTimeout(120_000);
+    await installReadinessRecorder(page);
     const response = await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
     expect(response).not.toBeNull();
     await expect.poll(async () => page.evaluate(async () => (
@@ -1316,24 +1480,51 @@ test.describe('top-level WebMCP dashboard contract', () => {
 
     const historyBefore = await page.evaluate(() => window.history.length);
     const locationBefore = new URL(page.url());
-    const switchResult = await executeDashboardTool(page, 'switch_monitor', { monitor: 'tech' });
-    expect(switchResult).toMatchObject({
-      ok: false,
-      status: 'denied',
-      reason: 'target_cancellation_unsupported',
-    });
+    const observedSwitch = await executeDashboardToolObserved(page, 'switch_monitor', { monitor: 'tech' });
+    const switchResult = observedSwitch.output;
+    const { targetCancellationSupported } = observedSwitch;
 
-    const context = await executeDashboardTool(page, 'get_dashboard_context', {}) as {
-      variant?: string;
-    };
-    expect(context.variant).toBe('full');
-    await expect(page.locator('.variant-option.active[data-variant="full"]')).toBeVisible();
-    const locationAfter = new URL(page.url());
-    expect({ origin: locationAfter.origin, pathname: locationAfter.pathname }).toEqual({
-      origin: locationBefore.origin,
-      pathname: locationBefore.pathname,
-    });
-    expect(await page.evaluate(() => window.history.length)).toBe(historyBefore);
+    let context: { variant?: string } | null = null;
+    if (!targetCancellationSupported) {
+      // Chrome through 151: the tool-start mark says no AbortSignal arrived,
+      // so the switch must fail closed with no navigation.
+      expect(switchResult).toMatchObject({
+        ok: false,
+        status: 'denied',
+        reason: 'target_cancellation_unsupported',
+      });
+      context = await executeDashboardTool(page, 'get_dashboard_context', {}) as {
+        variant?: string;
+      };
+      expect(context.variant).toBe('full');
+      await expect(page.locator('.variant-option.active[data-variant="full"]')).toBeVisible();
+      const locationAfter = new URL(page.url());
+      expect({ origin: locationAfter.origin, pathname: locationAfter.pathname }).toEqual({
+        origin: locationBefore.origin,
+        pathname: locationBefore.pathname,
+      });
+      expect(await page.evaluate(() => window.history.length)).toBe(historyBefore);
+    } else {
+      // Chrome 153+: the same mark says the signal arrived, so the switch must
+      // apply and local/dev reloads into the staged tech variant.
+      expect(switchResult).toMatchObject({
+        ok: true,
+        status: 'applied',
+        destination: 'tech',
+      });
+      // stageVariantSelection + reload may already be in flight when executeTool
+      // resolves; wait on the post-reload tech chrome rather than loadState alone.
+      await expect(page.locator('.variant-option.active[data-variant="tech"]')).toBeVisible({
+        timeout: 60_000,
+      });
+      await expect.poll(async () => page.evaluate(async () => (
+        (await document.modelContext?.getTools())?.map((tool) => tool.name).sort() ?? []
+      )), { timeout: 60_000 }).toEqual(DASHBOARD_TOOL_NAMES);
+      context = await executeDashboardTool(page, 'get_dashboard_context', {}) as {
+        variant?: string;
+      };
+      expect(context.variant).toBe('tech');
+    }
 
     await attachJsonEvidence(testInfo, 'webmcp-navigation.json', {
       invalid,
@@ -1341,6 +1532,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
       alerts,
       switchResult,
       context,
+      targetCancellationSupported,
       url: page.url(),
       historyLength: await page.evaluate(() => window.history.length),
     });
@@ -1358,7 +1550,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
       type ExecutableModelContext = WebMCP.ModelContext & {
         executeTool(
           tool: WebMCP.RegisteredTool,
-          input: string,
+          input: Record<string, unknown>,
           options?: { signal?: AbortSignal },
         ): Promise<unknown>;
       };
@@ -1378,9 +1570,10 @@ test.describe('top-level WebMCP dashboard contract', () => {
       if (!tool) throw new Error('set_panel_enabled was not discovered.');
       const execute = async (input: { panelId: string; enabled: boolean }) => {
         const controller = new AbortController();
-        return parseOutput(await provider.executeTool(
+        return parseOutput(await window.__wmExecuteWebMcpTool(
+          provider,
           tool,
-          JSON.stringify(input),
+          input,
           { signal: controller.signal },
         ));
       };
@@ -1408,9 +1601,10 @@ test.describe('top-level WebMCP dashboard contract', () => {
           .find((candidate) => candidate.name === 'open_dashboard_panel');
         if (!openTool) throw new Error('open_dashboard_panel was not discovered.');
         const controller = new AbortController();
-        openGiving = parseOutput(await provider.executeTool(
+        openGiving = parseOutput(await window.__wmExecuteWebMcpTool(
+          provider,
           openTool,
-          JSON.stringify({ panelId: 'giving' }),
+          { panelId: 'giving' },
           { signal: controller.signal },
         ));
       }
@@ -1452,13 +1646,13 @@ test.describe('top-level WebMCP dashboard contract', () => {
 
     const afterReload = await page.evaluate(async () => {
       type ExecutableModelContext = WebMCP.ModelContext & {
-        executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+        executeTool(tool: WebMCP.RegisteredTool, input: Record<string, unknown>): Promise<unknown>;
       };
       const provider = document.modelContext as ExecutableModelContext;
       const contextTool = (await provider.getTools())
         .find((tool) => tool.name === 'get_dashboard_context');
       if (!contextTool) throw new Error('get_dashboard_context was not discovered.');
-      const raw = await provider.executeTool(contextTool, '{}');
+      const raw = await window.__wmExecuteWebMcpTool(provider, contextTool, {});
       let context = raw;
       if (typeof raw === 'string') {
         try {
@@ -1491,7 +1685,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
       type ExecutableModelContext = WebMCP.ModelContext & {
         executeTool(
           tool: WebMCP.RegisteredTool,
-          input: string,
+          input: Record<string, unknown>,
           options?: { signal?: AbortSignal },
         ): Promise<unknown>;
       };
@@ -1510,14 +1704,15 @@ test.describe('top-level WebMCP dashboard contract', () => {
       const listTool = (await provider.getTools())
         .find((candidate) => candidate.name === 'list_mission_presets');
       if (!listTool) throw new Error('list_mission_presets was not discovered.');
-      const listOutput = parseOutput(await provider.executeTool(listTool, '{}'));
+      const listOutput = parseOutput(await window.__wmExecuteWebMcpTool(provider, listTool, {}));
       const applyTool = (await provider.getTools())
         .find((candidate) => candidate.name === 'apply_mission_preset');
       if (!applyTool) throw new Error('apply_mission_preset was not discovered.');
       const controller = new AbortController();
-      const applyOutput = parseOutput(await provider.executeTool(
+      const applyOutput = parseOutput(await window.__wmExecuteWebMcpTool(
+        provider,
         applyTool,
-        JSON.stringify({ presetId: 'supply-chain-risk' }),
+        { presetId: 'supply-chain-risk' },
         { signal: controller.signal },
       ));
       return {
@@ -1539,9 +1734,11 @@ test.describe('top-level WebMCP dashboard contract', () => {
       test.skip(true, 'Host omitted the target-side AbortSignal; persist proof requires cancellation.');
     }
 
+    // full variant lists every bundled preset except finance-only nq-day-trader
+    // (8 after country-watcher landed in #7650).
     expect(first.listOutput).toMatchObject({
       ok: true,
-      count: 7,
+      count: 8,
     });
     expect(applyOutput).toMatchObject({
       ok: true,
@@ -1565,13 +1762,13 @@ test.describe('top-level WebMCP dashboard contract', () => {
 
     const afterReload = await page.evaluate(async () => {
       type ExecutableModelContext = WebMCP.ModelContext & {
-        executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+        executeTool(tool: WebMCP.RegisteredTool, input: Record<string, unknown>): Promise<unknown>;
       };
       const provider = document.modelContext as ExecutableModelContext;
       const listTool = (await provider.getTools())
         .find((tool) => tool.name === 'list_mission_presets');
       if (!listTool) throw new Error('list_mission_presets was not discovered.');
-      const raw = await provider.executeTool(listTool, '{}');
+      const raw = await window.__wmExecuteWebMcpTool(provider, listTool, {});
       let listed = raw;
       if (typeof raw === 'string') {
         try {
@@ -1845,29 +2042,44 @@ test.describe('top-level WebMCP dashboard contract', () => {
     await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="flat"]')).toHaveClass(/active/);
     await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="globe"]')).toBeVisible();
 
-    // Chrome 149–151 invokes the page callback with the input alone, even when
-    // executeTool() is given `{ signal }`. set_map_mode stays gated there.
-    // Do not click the 2D/3D control as a substitute: that would hide a broken
-    // cancellation gate. Binding tests cover the apply path with a real signal.
+    // Branch on the tool-start mark, not the denial reason. Chrome 149–151
+    // invokes the callback without a target AbortSignal; Chrome 153+ delivers
+    // one. Do not click the 2D/3D control as a substitute.
     const to3d = await executeDashboardToolProbe(page, 'set_map_mode', { mode: '3d' });
-    expect(to3d).toMatchObject({
-      ok: true,
-      output: {
-        ok: false,
-        status: 'denied',
-        reason: 'target_cancellation_unsupported',
-      },
-    });
-    await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="flat"]')).toHaveClass(/active/);
-    await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="globe"]')).not.toHaveClass(/active/);
-    expect(new URL(page.url()).searchParams.get('mapMode')).toBeNull();
+    const mapCancellationSupported = await readTargetCancellationSupported(page, 'set_map_mode');
+    if (!mapCancellationSupported) {
+      expect(to3d).toMatchObject({
+        ok: true,
+        output: {
+          ok: false,
+          status: 'denied',
+          reason: 'target_cancellation_unsupported',
+        },
+      });
+      await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="flat"]')).toHaveClass(/active/);
+      await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="globe"]')).not.toHaveClass(/active/);
+      expect(new URL(page.url()).searchParams.get('mapMode')).toBeNull();
+      expect(await storedMapMode(page)).not.toBe('globe');
+    } else {
+      expect(to3d).toMatchObject({
+        ok: true,
+        output: {
+          ok: true,
+          status: 'applied',
+          actionType: 'set_map_mode',
+        },
+      });
+      await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="globe"]')).toHaveClass(/active/);
+      await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="flat"]')).not.toHaveClass(/active/);
+      expect(await storedMapMode(page)).toBe('globe');
+    }
     expect(new URL(page.url()).searchParams.get('timeRange')).toBe('6h');
-    expect(await storedMapMode(page)).not.toBe('globe');
 
     await attachJsonEvidence(testInfo, 'webmcp-map-view-state.json', {
       timeRange,
       focus,
       to3d,
+      targetCancellationSupported: mapCancellationSupported,
       urlAfterFocus: afterFocus.toString(),
     });
   });

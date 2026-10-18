@@ -4,6 +4,8 @@ import { afterEach, describe, it, before, after, mock } from 'node:test';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
 import { createDomainGateway } from '../server/gateway.ts';
+import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
+import { DIRECT_LLM_GATEWAY_QUOTA_PATHS } from '../server/_shared/direct-llm-quota.ts';
 import { issueSessionToken } from '../api/_session.js';
 import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
 
@@ -43,8 +45,8 @@ function installRateLimitRedisFake(): void {
 }
 
 const ISSUE_4609_GATED_ROUTES = [
+  { method: 'GET', path: '/api/market/v1/get-insider-transactions' },
   { method: 'POST', path: '/api/forecast/v1/trigger-simulation' },
-  { method: 'GET', path: '/api/sanctions/v1/list-sanctions-pressure' },
   { method: 'POST', path: '/api/scenario/v1/run-scenario' },
   { method: 'GET', path: '/api/scenario/v1/get-scenario-status' },
   { method: 'GET', path: '/api/supply-chain/v1/get-country-chokepoint-index' },
@@ -178,10 +180,10 @@ describe('premium gateway API key enforcement', () => {
     }));
     assert.equal(publicAllowed.status, 200);
 
-    const insiderTransactionsAllowed = await handler(new Request('https://worldmonitor.app/api/market/v1/get-insider-transactions?symbol=AAPL', {
+    const insiderTransactionsDenied = await handler(new Request('https://worldmonitor.app/api/market/v1/get-insider-transactions?symbol=AAPL', {
       headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
     }));
-    assert.equal(insiderTransactionsAllowed.status, 200);
+    assert.equal(insiderTransactionsDenied.status, 401);
   });
 
   it('standardizes issue #4609 Pro RPCs behind the entitlement 403 gate', async () => {
@@ -344,6 +346,27 @@ describe('premium gateway API key enforcement', () => {
         headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
       }));
       assert.notEqual(res.status, 200, `wms_ MUST NOT unlock ${path} (got ${res.status})`);
+    }
+  });
+
+  it('serves the freed national-debt and sanctions-pressure routes to an anonymous wms_ session', async () => {
+    // Both seeds are already public through /api/bootstrap?tier=slow&public=1,
+    // so the gateway must not re-gate the RPCs behind Pro auth or a tier.
+    const freedPaths = [
+      '/api/economic/v1/get-national-debt',
+      '/api/sanctions/v1/list-sanctions-pressure',
+    ];
+    const handler = createDomainGateway(freedPaths.map((path) => ({
+      method: 'GET',
+      path,
+      handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    })));
+
+    for (const path of freedPaths) {
+      const res = await handler(new Request(`https://worldmonitor.app${path}`, {
+        headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
+      }));
+      assert.equal(res.status, 200, `wms_ session must reach ${path} (got ${res.status})`);
     }
   });
 
@@ -801,6 +824,65 @@ describe('premium gateway bearer token auth', () => {
       .sign(opts?.key ?? privateKey);
   }
 
+  it('keeps a paid bearer endpoint limit when its batch paid only an IP bucket', async () => {
+    const { createExecuteBatch } = await import('../server/worldmonitor/batch/v1/execute-batch.ts');
+    const { __resetRateLimitForTest } = await import('../server/_shared/rate-limit.ts');
+    const token = await signToken({ sub: 'user_batch_bearer_review', plan: 'pro' });
+    const savedFetch = globalThis.fetch;
+    const site = process.env.CONVEX_SITE_URL;
+    const secret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    process.env.CONVEX_SITE_URL = 'https://bearer-batch.convex.site';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'test-secret';
+    const path = '/api/market/v1/list-market-quotes';
+    const origin = 'https://worldmonitor.app';
+    const redis = createRedisFetch({});
+    let chargedPrincipal = false;
+    __resetRateLimitForTest();
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith(`${origin}${path}`)) return handler(new Request(url, init));
+      if (url.includes('/api/internal-entitlements')) return Response.json({
+        planKey: 'pro', validUntil: Date.now() + 86_400_000, features: { tier: 1 },
+      });
+      if (url.startsWith(process.env.UPSTASH_REDIS_REST_URL!)) {
+        const response = await redis.fetchImpl(input, init);
+        const commands = JSON.parse(String(init?.body ?? '[]'));
+        if (!Array.isArray(commands[0])) return response;
+        const results = await response.json();
+        for (let i = 0; i < commands.length; i++) {
+          if (String(commands[i][0]).toUpperCase() === 'EVALSHA'
+            && JSON.stringify(commands[i]).includes(`rl:ep:${path}:user:user_batch_bearer_review:`)) {
+            chargedPrincipal = true;
+            results[i] = { result: [-1, Date.now() + 60_000] };
+          }
+        }
+        return Response.json(results);
+      }
+      return savedFetch(input, init);
+    }) as typeof fetch;
+    try {
+      const { serverOptions } = await import('../server/gateway.ts');
+      const generated = await import('../src/generated/server/worldmonitor/batch/v1/service_server.ts');
+      const outer = createDomainGateway(generated.createBatchServiceRoutes({ executeBatch: createExecuteBatch() }, serverOptions));
+      const response = await outer(new Request(`${origin}/api/batch/v1/execute`, {
+        method: 'POST', headers: {
+          'Content-Type': 'application/json', 'X-WorldMonitor-Key': SESSION_TOKEN,
+          Authorization: `Bearer ${token}`, 'x-real-ip': '203.0.113.19',
+        },
+        body: JSON.stringify({ operations: [{ id: 'a', path }] }),
+      }));
+      assert.equal(response.status, 200, await response.clone().text());
+      const result = await response.json();
+      assert.equal(result.results[0].status, 429);
+      assert.equal(chargedPrincipal, true, 'the resolved bearer budget must still be checked');
+    } finally {
+      globalThis.fetch = savedFetch;
+      if (site === undefined) delete process.env.CONVEX_SITE_URL; else process.env.CONVEX_SITE_URL = site;
+      if (secret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET; else process.env.CONVEX_SERVER_SHARED_SECRET = secret;
+      __resetRateLimitForTest();
+    }
+  });
+
   it('valid Pro bearer token unlocks tier-1 entitlement-gated endpoints without a Convex row', async () => {
     // Clerk role='pro' remains a supported Pro signal for complimentary,
     // tester, and legacy grants that do not have a Convex entitlement row.
@@ -923,6 +1005,68 @@ describe('premium gateway bearer token auth', () => {
         },
       }));
       assert.equal(res.status, 403);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSiteUrl;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+    }
+  });
+
+  // Every premium direct-LLM route must deny a confirmed free account. The
+  // gateway treats a resolved Clerk session as authenticated on quota routes,
+  // and deduct-situation (premium, quota-metered, but not tier-gated) used to
+  // ride that through to the handler with a 200 for any free sign-in.
+  it('free bearer token on premium direct-LLM routes → 403 before the handler', async () => {
+    const token = await signToken({ sub: 'user_free', plan: 'free' });
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const originalFetch = globalThis.fetch;
+    process.env.CONVEX_SITE_URL = 'https://test.convex.site';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'test-secret';
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/api/internal-entitlements')) {
+        return new Response(
+          JSON.stringify({
+            planKey: 'free',
+            validUntil: Date.now() + 86_400_000,
+            features: { tier: 0, apiAccess: false, apiRateLimit: 0, maxDashboards: 3, prioritySupport: false, exportFormats: [], mcpAccess: false },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+
+    const reached: string[] = [];
+    const premiumLlmPaths = [...PREMIUM_RPC_PATHS].filter((p) => DIRECT_LLM_GATEWAY_QUOTA_PATHS.has(p));
+    assert.ok(premiumLlmPaths.includes('/api/intelligence/v1/deduct-situation'));
+    const gateway = createDomainGateway(premiumLlmPaths.map((path) => ({
+      method: 'POST' as const,
+      path,
+      handler: async () => {
+        reached.push(path);
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      },
+    })));
+
+    try {
+      for (const path of premiumLlmPaths) {
+        const res = await gateway(new Request(`https://worldmonitor.app${path}`, {
+          method: 'POST',
+          headers: {
+            Origin: 'https://worldmonitor.app',
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ query: 'Will tensions escalate?' }),
+        }));
+        assert.equal(res.status, 403, `${path} must deny a free account`);
+      }
+      assert.deepEqual(reached, []);
     } finally {
       globalThis.fetch = originalFetch;
       if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
@@ -1085,7 +1229,7 @@ describe('premium gateway bearer token auth', () => {
     const echoHandler = createDomainGateway([
       {
         method: 'POST',
-        path: '/api/intelligence/v1/deduct-situation',
+        path: '/api/intelligence/v1/list-market-implications',
         handler: async (request) => {
           const body = await request.json();
           return new Response(JSON.stringify({
@@ -1097,7 +1241,7 @@ describe('premium gateway bearer token auth', () => {
     ]);
 
     const payload = { situation: 'test', evidence: ['a', 'b', 'c'], count: 42 };
-    const res = await echoHandler(new Request('https://worldmonitor.app/api/intelligence/v1/deduct-situation', {
+    const res = await echoHandler(new Request('https://worldmonitor.app/api/intelligence/v1/list-market-implications', {
       method: 'POST',
       headers: {
         Origin: 'https://worldmonitor.app',

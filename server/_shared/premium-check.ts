@@ -1,8 +1,9 @@
+import { hasCurrentEntitlementCoverage } from './entitlement-coverage.js';
 // @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../../api/_api-key.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from '../../api/_crypto.js';
-import { validateBearerToken } from '../auth-session';
+import { validateBearerToken } from '../auth-session.js';
 import {
   classifyBillingVerification,
   getEntitlements,
@@ -10,18 +11,17 @@ import {
   unverifiableEntitlementDenial,
   type BillingVerificationDenial,
   type BillingVerificationInput,
-  type CachedEntitlements,
-} from './entitlement-check';
+} from './entitlement-check.js';
 import {
   INTERNAL_MCP_VERIFIED_HEADER,
   TRUSTED_USER_ID_HEADER,
   getInternalMcpVerifiedNonce,
-} from './mcp-internal-hmac';
-import { validateUserApiKey } from './user-api-key';
+} from './mcp-internal-hmac.js';
+import { validateUserApiKey } from './user-api-key.js';
 import {
   DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
   resolveActiveDirectLlmLimit,
-} from './direct-llm-quota';
+} from './direct-llm-quota.js';
 
 export type PremiumCallerIdentity =
   | { isPremium: true; userId: string; kind: 'internal-mcp'; quotaExempt: true }
@@ -152,12 +152,6 @@ function denyFor(entitlements: BillingVerificationInput | null): DeniedIdentity 
   return billingDenial ? { ...DENIED, billingDenial } : DENIED;
 }
 
-// Billing markers can retain paid fallback flags past validUntil during their
-// cache cooldown. Check validity at the grant, without discarding the marker.
-function isCurrentEntitlement(ent: CachedEntitlements | null): ent is CachedEntitlements {
-  return ent !== null && Number.isFinite(ent.validUntil) && ent.validUntil >= Date.now();
-}
-
 type RpcApiErrorLike = Error & {
   statusCode: number;
   body: string;
@@ -217,9 +211,9 @@ export async function requirePremiumRpcAccess<T extends RpcApiErrorLike>(
   request: Request,
   ApiErrorConstructor: RpcApiErrorConstructor<T>,
   fallbackMessage: string,
-): Promise<void> {
+): Promise<Extract<PremiumCallerIdentity, { isPremium: true }>> {
   const identity = await resolvePremiumCallerIdentity(request);
-  if (identity.isPremium) return;
+  if (identity.isPremium) return identity;
 
   const billingError = createPremiumRpcBillingDenialError(identity, ApiErrorConstructor);
   if (billingError) throw billingError;
@@ -262,7 +256,7 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
     if (diff === 0) {
       const ent = await getEntitlements(trustedUserId);
       if (
-        isCurrentEntitlement(ent) &&
+        hasCurrentEntitlementCoverage(ent) &&
         ent.features.tier >= 1 &&
         // mcpAccess lands in U10. Until then the field is undefined for
         // existing entitlement rows; treat undefined as false (fail-closed)
@@ -305,7 +299,7 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
       const userKey = await validateUserApiKey(wmKey);
       if (userKey) {
         const ent = await getEntitlements(userKey.userId);
-        if (isCurrentEntitlement(ent) && ent.features.apiAccess === true) {
+        if (hasCurrentEntitlementCoverage(ent) && ent.features.apiAccess === true) {
           return {
             isPremium: true,
             userId: userKey.userId,
@@ -372,7 +366,7 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
     // A Dodo subscriber (tier >= 1) is premium regardless of Clerk role.
     if (session.userId) {
       const ent = await getEntitlements(session.userId);
-      if (isCurrentEntitlement(ent) && ent.features.tier >= 1) {
+      if (hasCurrentEntitlementCoverage(ent) && ent.features.tier >= 1) {
         return {
           isPremium: true,
           userId: session.userId,

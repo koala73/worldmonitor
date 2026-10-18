@@ -33,8 +33,13 @@
  *   - byte-identical nested Schema Objects  -> reused local $refs
  *   - repeated response headers, generated int64 warnings, and China
  *     date-precision unions                  -> components $refs
+ *     (described int64 fields keep their own comment and numeric bounds
+ *     as OpenAPI 3.1 $ref siblings; the warning lives in the component)
  *     (all in openapi-dedup-schemas.mjs; every dedup transform is resolved
  *     back to the source document in tests, proving they are lossless)
+ *   - repeated subtrees too deep for an inline-target ref to pay for
+ *     (the pointer into the document is longer than the subtree itself)
+ *                                            -> shared WMShared<N> components
  *   - component schemas nothing can reach   -> removed
  *     (openapi-drop-unreachable-schemas.mjs)
  *
@@ -56,6 +61,7 @@ import {
   dedupeSharedChinaProvenanceSchemas,
   dedupeSharedResponseHeaders,
   dedupeSharedSchemaSubtrees,
+  dedupeSharedSubtreeComponents,
 } from './openapi-dedup-schemas.mjs';
 import { dropUnreachableSchemas } from './openapi-drop-unreachable-schemas.mjs';
 
@@ -74,6 +80,178 @@ export function withOpenApiByteSize(text, yamlBytes) {
     throw new Error('llms.txt must contain exactly one OpenAPI YAML byte-size annotation');
   }
   return text.replace(annotation, (_, prefix) => `${prefix}${yamlBytes.toLocaleString('en-US')} bytes`);
+}
+
+/**
+ * protoc-gen-openapiv3 copies wrapped proto comments verbatim, so every wrap
+ * point lands in a description as "\n " — three bytes in the minified JSON for
+ * what Markdown renders as one space. Collapsing a soft break to a space is
+ * lossless for rendering. A break is kept when the next line starts a block
+ * that a newline delimits: a list item, quote, heading, table row, code fence,
+ * or a further-indented line. Lines inside a ``` or ~~~ fence are never joined.
+ *
+ * JSON only. The YAML is the human copy Mintlify renders, and it keeps the
+ * proto line structure. Mutates `spec` in place; returns { collapsed }.
+ */
+const SOFT_BREAK = /\n (?![ \t\-*+>#|`]|\d+[.)]\s)(?=\S)/g;
+
+export function collapseSoftLineBreaks(spec) {
+  const stats = { collapsed: 0 };
+  const visit = (node) => {
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+    if (!node || typeof node !== 'object') return;
+    for (const [key, value] of Object.entries(node)) {
+      if (key === 'description' && typeof value === 'string') {
+        // Fenced code blocks keep their line breaks. A fence closes only on a
+        // run of the same character at least as long as the one that opened
+        // it, so ```` and ~~~ blocks are protected too. split() with two
+        // capture groups yields [prose, fence, fenceMarker, prose, ...].
+        node[key] = value
+          .split(/((`{3,}|~{3,})[\s\S]*?\2[`~]*)/)
+          .filter((_, index) => index % 3 !== 2)
+          .map((segment, index) => (index % 2 === 1
+            ? segment
+            : segment.replace(SOFT_BREAK, () => {
+              stats.collapsed += 1;
+              return ' ';
+            })))
+          .join('');
+      } else if (value && typeof value === 'object') {
+        visit(value);
+      }
+    }
+  };
+  visit(spec);
+  return stats;
+}
+
+/**
+ * `required: false` is the OpenAPI default for every non-path Parameter Object
+ * (path parameters must say `true`), so stating it is pure bytes: 316 copies in
+ * the served artifact. ensureInlineTypedInput already drops it from restored
+ * jmespath copies on the same reasoning. JSON only; the YAML keeps it for the
+ * human reader and for the per-spec contract tests that assert it.
+ *
+ * Mutates `spec` in place; returns { dropped }.
+ */
+export function dropDefaultParameterRequired(spec) {
+  const stats = { dropped: 0 };
+  const strip = (param) => {
+    if (!param || typeof param !== 'object' || param.$ref) return;
+    if (param.in !== 'path' && param.required === false) {
+      delete param.required;
+      stats.dropped += 1;
+    }
+  };
+  for (const param of Object.values(spec.components?.parameters ?? {})) strip(param);
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    if (!pathItem || typeof pathItem !== 'object') continue;
+    (pathItem.parameters ?? []).forEach(strip);
+    for (const operation of Object.values(pathItem)) {
+      if (operation && typeof operation === 'object' && Array.isArray(operation.parameters)) {
+        operation.parameters.forEach(strip);
+      }
+    }
+  }
+  return stats;
+}
+
+/**
+ * The generator describes every 2xx response as "Successful response". The
+ * description is required, but the status code already says it: 240 verbatim
+ * copies, 8.6 KB of the served artifact. "OK" is the status code's own reason
+ * phrase, so it says the same. The responses themselves stay inline, the rule
+ * scanners credit. Only that exact generated string is replaced; a hand-written
+ * description is left alone. JSON only; the YAML keeps the generated text.
+ *
+ * Mutates `spec` in place; returns { shortened }.
+ */
+export const GENERATED_SUCCESS_DESCRIPTION = 'Successful response';
+
+export function shortenGeneratedSuccessDescriptions(spec) {
+  const stats = { shortened: 0 };
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    if (!pathItem || typeof pathItem !== 'object') continue;
+    for (const operation of Object.values(pathItem)) {
+      const responses = operation && typeof operation === 'object' ? operation.responses : null;
+      if (!responses || typeof responses !== 'object') continue;
+      for (const [code, response] of Object.entries(responses)) {
+        if (!/^2\d\d$/.test(code) || !response || typeof response !== 'object' || response.$ref) continue;
+        if (response.description === GENERATED_SUCCESS_DESCRIPTION) {
+          response.description = 'OK';
+          stats.shortened += 1;
+        }
+      }
+    }
+  }
+  return stats;
+}
+
+/**
+ * Operations left out of this scanner-facing JSON. The bundle has a hard byte
+ * budget (SCANNER_BUDGET_BYTES) and the owner decided (#9093) that endpoints
+ * built for WorldMonitor's own pages and for operators stay out of it, so the
+ * budget goes to the data APIs agents call. An excluded operation is still
+ * served, still documented in its per-service spec and in the YAML bundle,
+ * and still callable: only this one artifact omits it. Every entry names why.
+ */
+export const SCANNER_BUNDLE_EXCLUDED_OPERATIONS = Object.freeze({
+  '/api/news/v1/list-label-changes': 'Label history read by the /trust page (#9093); documented in the NewsService spec.',
+  '/api/news/v1/submit-error-report': 'The /trust page "Report an error" form (#9093); documented in the NewsService spec.',
+  '/api/news/v1/list-error-reports': 'Operator review queue, secret-gated (#9093).',
+  '/api/news/v1/review-error-report': 'Operator review decision, secret-gated (#9093).',
+  '/api/news/v1/search-fact-checks': 'Fact-check lookup for the /verify page and verify_claim (#9094); documented in the NewsService spec.',
+  '/api/news/v1/search-claim-headlines': 'Claim headline search for the /verify page and verify_claim; documented in the NewsService spec.',
+});
+
+/**
+ * Remove SCANNER_BUNDLE_EXCLUDED_OPERATIONS from the spec. Runs before the
+ * dedup passes, so nothing is hoisted for an operation that is not served
+ * here, and before dropUnreachableSchemas, which then drops schemas only the
+ * excluded operations used. Returns { excluded } (paths removed).
+ */
+export function excludeScannerBundleOperations(spec, excluded = SCANNER_BUNDLE_EXCLUDED_OPERATIONS) {
+  const stats = { excluded: 0 };
+  for (const path of Object.keys(excluded)) {
+    if (spec.paths && Object.prototype.hasOwnProperty.call(spec.paths, path)) {
+      delete spec.paths[path];
+      stats.excluded += 1;
+    }
+  }
+  return stats;
+}
+
+/**
+ * Remove securitySchemes no root or operation `security` entry names. Runs
+ * after excludeScannerBundleOperations: a scheme only excluded operations used
+ * (TrustReviewKey, #9192) would otherwise ship as an orphan. Returns { dropped }.
+ */
+export function dropUnreferencedSecuritySchemes(spec) {
+  const stats = { dropped: 0 };
+  const schemes = spec.components?.securitySchemes;
+  if (!schemes) return stats;
+  const referenced = new Set();
+  const collect = (security) => {
+    for (const requirement of security ?? []) {
+      for (const name of Object.keys(requirement)) referenced.add(name);
+    }
+  };
+  collect(spec.security);
+  for (const ops of Object.values(spec.paths ?? {})) {
+    for (const op of Object.values(ops ?? {})) {
+      if (op && typeof op === 'object') collect(op.security);
+    }
+  }
+  for (const name of Object.keys(schemes)) {
+    if (!referenced.has(name)) {
+      delete schemes[name];
+      stats.dropped += 1;
+    }
+  }
+  return stats;
 }
 
 export const DEPRECATION_POLICY_URL = 'https://www.worldmonitor.app/api-versioning.md';
@@ -131,6 +309,8 @@ export function buildBundle({ spec: provided } = {}) {
     );
   }
 
+  const excludedStats = excludeScannerBundleOperations(spec);
+  dropUnreferencedSecuritySchemes(spec);
   const stats = dedupeErrorResponses(spec);
   const headerStats = dedupeSharedResponseHeaders(spec);
   const schemaStats = dedupeSharedChinaProvenanceSchemas(spec);
@@ -141,6 +321,11 @@ export function buildBundle({ spec: provided } = {}) {
   const chinaDateStats = dedupeRepeatedChinaDateSchemas(spec);
   const int64Stats = dedupeRepeatedInt64Schemas(spec);
   const schemaSubtreeStats = dedupeSharedSchemaSubtrees(spec);
+  // After the named passes and the inline-target pass: anything still repeated
+  // here sat deep in a long-named component, where a $ref INTO the document is
+  // longer than the repeated subtree itself and only a compact shared
+  // component ref wins (see openapi-dedup-schemas.mjs).
+  const sharedSubtreeStats = dedupeSharedSubtreeComponents(spec);
   const paramStats = dedupeSharedParameters(spec);
   const inlineTypedStats = ensureInlineTypedInput(spec);
   injectDeprecationPolicyMetadata(spec);
@@ -150,6 +335,11 @@ export function buildBundle({ spec: provided } = {}) {
   // schema targets alive wherever it runs — that unconditional seeding, not
   // this ordering, is the invariant a future edit must preserve.
   const unreachableStats = dropUnreachableSchemas(spec);
+  // Runs on the finished document so every surviving description, hoisted
+  // component or inline copy alike, is compacted exactly once.
+  const softBreakStats = collapseSoftLineBreaks(spec);
+  const defaultRequiredStats = dropDefaultParameterRequired(spec);
+  const successDescriptionStats = shortenGeneratedSuccessDescriptions(spec);
 
   // Minified: this artifact is machine-consumed (scanners/agents), and the
   // smaller payload dodges fetch-size caps. The YAML remains the human copy.
@@ -163,11 +353,16 @@ export function buildBundle({ spec: provided } = {}) {
     headerStats,
     schemaStats,
     schemaSubtreeStats,
+    sharedSubtreeStats,
     chinaDateStats,
     int64Stats,
     paramStats,
     inlineTypedStats,
     unreachableStats,
+    softBreakStats,
+    defaultRequiredStats,
+    successDescriptionStats,
+    excludedStats,
   };
 }
 
@@ -181,6 +376,7 @@ function main() {
     stats,
     schemaStats,
     schemaSubtreeStats,
+    sharedSubtreeStats,
     chinaDateStats,
     int64Stats,
     headerStats,
@@ -197,10 +393,11 @@ function main() {
       `${bytes} bytes; hoisted ${stats.hoisted} shared error responses into ${stats.replacedRefs} $refs; ` +
       `hoisted ${headerStats.hoisted} shared response headers into ${headerStats.replacedRefs} $refs; ` +
       `hoisted ${paramStats.hoisted} fleet-wide parameters into ${paramStats.replacedRefs} $refs; ` +
-      `reused ${int64Stats.replacedRefs} generated int64 schemas; ` +
+      `reused ${int64Stats.replacedRefs} generated int64 schemas (+${int64Stats.describedRefs} described int64 fields); ` +
       `restored ${inlineTypedStats.inlined} inline typed parameters for JSON-only scanners; ` +
       `reused ${schemaStats.replacedRefs}/${schemaStats.compared} shared China provenance schemas; ` +
       `reused ${schemaSubtreeStats.replacedRefs} byte-identical schema subtrees across ${schemaSubtreeStats.groups} groups; ` +
+      `hoisted ${sharedSubtreeStats.replacedRefs} deep repeated subtrees into ${sharedSubtreeStats.groups} shared components (${sharedSubtreeStats.bytesFreed} bytes); ` +
       `reused ${chinaDateStats.replacedRefs} China date-precision schemas; ` +
       `dropped ${unreachableStats.dropped} unreachable schemas worth ${unreachableStats.bytesFreed} bytes)`,
   );

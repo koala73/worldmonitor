@@ -53,10 +53,15 @@ function exportRow({
 }) {
   const fields = Array.from({ length: 61 }, () => '');
   fields[0] = id;
+  fields[7] = 'USA';
+  fields[17] = 'RUS';
   fields[25] = '1';
   fields[26] = '190';
   fields[28] = '19';
   fields[29] = '4';
+  fields[30] = '-5';
+  fields[31] = '2';
+  fields[34] = '-3';
   fields[53] = country;
   fields[59] = timestamp;
   fields[60] = `https://example.com/${id}`;
@@ -298,6 +303,9 @@ describe('seed-gdelt-bulk-materializer download boundaries', () => {
   });
 });
 
+// The live fetch tests stub history repair out; it is covered on its own below.
+const noDyadRepair = async () => ({ days: {}, outcomes: {} });
+
 const TOPICS = ['military', 'cyber', 'nuclear', 'sanctions', 'intelligence', 'maritime'];
 
 function materializationFiles({
@@ -339,6 +347,34 @@ function publicationData() {
 }
 
 describe('seed-gdelt-bulk-materializer fetch integration', () => {
+  it('replays an export without double-counting an independently published dyad snapshot', async () => {
+    let previousDyads = null;
+    const deps = {
+      _repairDyadHistory: noDyadRepair,
+      _now: () => Date.parse('2026-07-30T12:05:00Z'),
+      _readSnapshot: async key => key === 'gdelt:bulk:dyad-tension:v1' ? previousDyads : null,
+      _fetchFiles: async () => materializationFiles(),
+    };
+    const first = await fetchMaterializedGdelt(deps);
+    previousDyads = first._dyads;
+    const replay = await fetchMaterializedGdelt(deps);
+    assert.deepEqual(replay._dyads, first._dyads);
+    assert.equal(first._dyads.days['2026-07-30'].pairs.usa_russia.intensity, 10);
+  });
+  it('accepts a cohort GDELT published before its nominal timestamp', async () => {
+    // GDELT lists 193000 at ~19:18:45; a run starting then crashed every
+    // retry with "Invalid dyad cohort timestamp" (seed-gdelt-intel, 2026-10-03).
+    const nowMs = Date.parse('2026-07-30T11:48:50Z');
+    const result = await fetchMaterializedGdelt({
+      _repairDyadHistory: noDyadRepair,
+      _now: () => nowMs,
+      _readSnapshot: async () => null,
+      _fetchFiles: async () => materializationFiles(),
+    });
+    assert.equal(result._dyads.cursor, '20260730120000');
+    assert.equal(result._dyads.days['2026-07-30'].cohorts, 1);
+    assert.deepEqual(gdeltBulkContentMeta(result, nowMs), { newestItemAt: nowMs, oldestItemAt: nowMs });
+  });
   it('advances per-kind cursors and merges the rolling conflict window', async () => {
     const previousState = {
       cursor: { gkg: '20260730114500', export: '20260730114500' },
@@ -384,12 +420,14 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     };
     const reads = [];
     const result = await fetchMaterializedGdelt({
+      _repairDyadHistory: noDyadRepair,
       _now: () => Date.parse('2026-07-30T12:05:00Z'),
       _readSnapshot: async (key) => {
         reads.push(key);
         if (key === GDELT_INTEL_KEY) return null;
         if (key === GDELT_BULK_STATE_KEY) return previousState;
         if (key === GDELT_BULK_COUNTRY_ARTICLES_KEY) return null;
+        if (key === 'gdelt:bulk:dyad-tension:v1') return null;
         throw new Error(`unexpected key ${key}`);
       },
       _fetchFiles: async ({ afterTimestamp }) => {
@@ -407,11 +445,14 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
       },
     });
 
-    assert.deepEqual(reads.sort(), [GDELT_BULK_STATE_KEY, GDELT_INTEL_KEY, GDELT_BULK_COUNTRY_ARTICLES_KEY].sort());
+    assert.deepEqual(reads.sort(), [GDELT_BULK_STATE_KEY, GDELT_INTEL_KEY, GDELT_BULK_COUNTRY_ARTICLES_KEY, 'gdelt:bulk:dyad-tension:v1'].sort());
     assert.deepEqual(result._state.cursor, {
       gkg: '20260730120000',
       export: '20260730120000',
     });
+    assert.equal(result._dyads.cursor, '20260730120000');
+    assert.equal(result._dyads.days['2026-07-30'].cohorts, 1);
+    assert.equal(result._dyads.insufficientPairs.length, 4);
     assert.deepEqual(
       result._state.recentGkgBatches.flatMap((batch) =>
         batch.records.map((record) => record.id)),
@@ -446,6 +487,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     gkg[15] = '1.5,1,2,3';
     gkg[26] = '<PAGE_TITLE>Palau signs maritime pact</PAGE_TITLE>';
     const result = await fetchMaterializedGdelt({
+      _repairDyadHistory: noDyadRepair,
       _now: () => Date.parse('2026-07-30T12:05:00Z'),
       _readSnapshot: async (key) => (key === GDELT_BULK_COUNTRY_ARTICLES_KEY ? previousIndex : null),
       _fetchFiles: async () => [
@@ -461,6 +503,39 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     assert.equal(RUN_SEED_OPTS.publishTransform(result).countryIndex, undefined, 'the canonical intel key keeps its shape');
   });
 
+  it('reads its multi-MB snapshots with a timeout sized for the body, not the 5s default', async () => {
+    const originalFetch = globalThis.fetch;
+    const originalTimeout = AbortSignal.timeout;
+    const reads = [];
+    globalThis.fetch = async (url, options) => {
+      reads.push({ key: decodeURIComponent(String(url).split('/get/')[1]), timeoutMs: options.signal.timeoutMs });
+      return { ok: true, status: 200, json: async () => ({ result: null }) };
+    };
+    AbortSignal.timeout = (ms) => Object.assign(originalTimeout.call(AbortSignal, ms), { timeoutMs: ms });
+    try {
+      await assert.rejects(
+        fetchMaterializedGdelt({
+      _repairDyadHistory: noDyadRepair,
+          _now: () => Date.parse('2026-07-30T12:05:00Z'),
+          _fetchFiles: async () => { throw new Error('stop after the snapshot reads'); },
+        }),
+        /stop after the snapshot reads/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      AbortSignal.timeout = originalTimeout;
+    }
+    // The state key is ~3.9MB; a 5s ceiling on its body read timed out the
+    // first attempt of every Railway run and crashed 1 in 8 (2026-09-23).
+    assert.deepEqual(
+      reads.map(({ key }) => key).sort(),
+      [GDELT_BULK_COUNTRY_ARTICLES_KEY, GDELT_BULK_STATE_KEY, GDELT_INTEL_KEY, 'gdelt:bulk:dyad-tension:v1'].sort(),
+    );
+    for (const { key, timeoutMs } of reads) {
+      assert.ok(timeoutMs >= 30_000, `${key} read with ${timeoutMs}ms`);
+    }
+  });
+
   it('fails closed unless both feeds are current and GKG has usable records', async () => {
     const baseDeps = {
       _now: () => Date.parse('2026-07-30T12:05:00Z'),
@@ -468,6 +543,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     };
     await assert.rejects(
       fetchMaterializedGdelt({
+      _repairDyadHistory: noDyadRepair,
         ...baseDeps,
         _fetchFiles: async () => materializationFiles().filter(
           ({ descriptor }) => descriptor.kind === 'gkg',
@@ -477,6 +553,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     );
     await assert.rejects(
       fetchMaterializedGdelt({
+      _repairDyadHistory: noDyadRepair,
         ...baseDeps,
         _fetchFiles: async () => materializationFiles().filter(
           ({ descriptor }) => descriptor.kind === 'export',
@@ -486,6 +563,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     );
     await assert.rejects(
       fetchMaterializedGdelt({
+      _repairDyadHistory: noDyadRepair,
         ...baseDeps,
         _fetchFiles: async () => materializationFiles({ records: [] }),
       }),
@@ -493,6 +571,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     );
     await assert.rejects(
       fetchMaterializedGdelt({
+      _repairDyadHistory: noDyadRepair,
         ...baseDeps,
         _fetchFiles: async () => [
           materializationFiles()[0],
@@ -506,6 +585,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     );
     await assert.rejects(
       fetchMaterializedGdelt({
+      _repairDyadHistory: noDyadRepair,
         ...baseDeps,
         _fetchFiles: async () => [
           {
@@ -532,6 +612,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
 
     await assert.rejects(
       fetchMaterializedGdelt({
+      _repairDyadHistory: noDyadRepair,
         _now: () => Date.parse('2026-07-30T12:05:00Z'),
         _readSnapshot: async (key) => {
           if (key === GDELT_INTEL_KEY) {
@@ -568,6 +649,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     const legacyTonePoint = { date: '2026-07-28T10:00:00.000Z', value: -3 };
     const legacyVolumePoint = { date: '2026-07-30T11:45:00.000Z', value: 7 };
     const result = await fetchMaterializedGdelt({
+      _repairDyadHistory: noDyadRepair,
       _now: () => Date.parse('2026-07-30T12:05:00Z'),
       _readSnapshot: async (key) => {
         reads.push(key);
@@ -628,6 +710,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
       },
     };
     const first = await fetchMaterializedGdelt({
+      _repairDyadHistory: noDyadRepair,
       _now: () => Date.parse('2026-07-30T11:05:00Z'),
       _readSnapshot: async (key) => key === GDELT_BULK_STATE_KEY ? previousState : null,
       _fetchFiles: async () => materializationFiles({ timestamp: '20260730110000' }),
@@ -649,6 +732,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     assert.equal(first._state.coverage.gkg.lastGap.gapMs, 60 * 60 * 1000);
 
     const second = await fetchMaterializedGdelt({
+      _repairDyadHistory: noDyadRepair,
       _now: () => Date.parse('2026-07-30T11:20:00Z'),
       _readSnapshot: async (key) => key === GDELT_BULK_STATE_KEY ? first._state : null,
       _fetchFiles: async () => materializationFiles({ timestamp: '20260730111500' }),
@@ -690,6 +774,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
       })),
     ];
     const result = await fetchMaterializedGdelt({
+      _repairDyadHistory: noDyadRepair,
       _now: () => Date.parse('2026-07-30T12:05:00Z'),
       _readSnapshot: async () => ({ cursor: {} }),
       _fetchFiles: async () => materializationFiles({ records }),
@@ -746,6 +831,10 @@ describe('seed-gdelt-bulk-materializer publication cohort', () => {
       assert.ok(writes.some((write) => write.key === key), `missing write for ${key}`);
     }
     assert.equal(writes.at(-1).key, GDELT_BULK_STATE_KEY);
+    const dyadWrite = writes.find(({ key }) => key === 'gdelt:bulk:dyad-tension:v1');
+    assert.equal(dyadWrite.type, 'meta');
+    assert.equal(dyadWrite.args[2], 92 * 86_400);
+    assert.equal(dyadWrite.args[4], 'seed-meta:gdelt:bulk:dyad-tension');
     const countryIndexWrite = writes.find(({ key }) => key === GDELT_BULK_COUNTRY_ARTICLES_KEY);
     assert.equal(countryIndexWrite.type, 'meta', 'the per-country index publishes with its own seed-meta record (#7748)');
     assert.deepEqual(countryIndexWrite.args[1], data._countryIndex);
@@ -967,7 +1056,7 @@ describe('gdelt materializer freshness constants stay in lockstep (#5864)', () =
       _state: { cursor: { gkg: 20260730120000, export: '20260730120000' } },
     }, nowMs), null);
     assert.equal(gdeltBulkContentMeta({
-      _state: { cursor: { gkg: '20260730121500', export: '20260730121500' } },
+      _state: { cursor: { gkg: '20260730122500', export: '20260730122500' } },
     }, nowMs), null);
   });
 
@@ -990,7 +1079,11 @@ describe('gdelt materializer freshness constants stay in lockstep (#5864)', () =
       now,
     });
 
-    assert.equal(classifyAt(Date.parse('2026-07-30T15:00:00Z')).status, 'OK');
+    // 90 min of a 180 min budget: fresh, below the 80% pre-warning threshold.
+    assert.equal(classifyAt(Date.parse('2026-07-30T13:30:00Z')).status, 'OK');
+    // Exactly at the 180 min budget (stale is strict >): the pre-warning owns
+    // the boundary instant, not OK.
+    assert.equal(classifyAt(Date.parse('2026-07-30T15:00:00Z')).status, 'CONTENT_AGE_PREWARNING');
     assert.equal(classifyAt(Date.parse('2026-07-30T15:01:00Z')).status, 'STALE_CONTENT');
   });
 
@@ -1037,5 +1130,282 @@ describe('gdelt materializer freshness constants stay in lockstep (#5864)', () =
       positiveTtl > Number(gate[1]) * 60,
       `positive-events TTL ${positiveTtl}s must outlive its ${gate[1]}min health gate`,
     );
+  });
+});
+
+describe('dyad health activation', () => {
+  for (const succeeds of [false, true]) {
+    it(`activates only when its data and metadata publish succeeds (${succeeds})`, async () => {
+      let activated = false;
+      const outcome = await afterPublish(publicationData(), undefined, {
+        _writeExtraKey: async () => {},
+        _writeExtraKeyWithMeta: async key => key === 'gdelt:bulk:dyad-tension:v1' ? succeeds : true,
+        _writeActivationMarker: async () => {},
+        _writeDyadActivationMarker: async () => { activated = true; },
+      });
+      assert.equal(activated, succeeds);
+      assert.equal(outcome.completionState, succeeds ? 'OK' : 'DEGRADED');
+    });
+  }
+});
+
+describe('dyad history repair', async () => {
+  const { repairDyadHistory } = await import('../scripts/seed-gdelt-bulk-materializer.mjs');
+  const { dyadDayExportTimestamps } = await import('../scripts/_gdelt-dyad-tension.mjs');
+  const repairNow = Date.parse('2026-09-28T17:30:00Z');
+  const live = { cursor: '20260928171500', days: {} };
+
+  // A manifest tail and the files it names. `count` trims a day's cohorts to
+  // model an upstream gap; `corrupt` breaks one file's checksum.
+  function repairSource(dates, { count = 96, corrupt = null, conflictRows = 1 } = {}) {
+    const lines = [];
+    const files = new Map();
+    for (const date of dates) {
+      for (const timestamp of dyadDayExportTimestamps(date).slice(0, count)) {
+        const csv = Array.from({ length: conflictRows }, (_, i) => exportRow({ id: `${timestamp}-${i}`, timestamp })).join('\n');
+        const zip = storedZip(`${timestamp}.export.CSV`, csv);
+        const md5 = timestamp === corrupt ? '0'.repeat(32) : undefined;
+        lines.push(bulkDescriptorLine('gkg', timestamp, zip), bulkDescriptorLine('export', timestamp, zip, { md5 }));
+        files.set(`https://storage.googleapis.com/data.gdeltproject.org/gdeltv2/${timestamp}.export.CSV.zip`, zip);
+      }
+    }
+    const requests = [];
+    const manifestText = lines.length ? `${lines.join('\n')}\n` : '';
+    const fetchImpl = fakeBulkFetch(manifestText, files);
+    return {
+      requests, files, manifestText,
+      fetchImpl: async (url, init) => { requests.push(String(url)); return fetchImpl(url, init); },
+    };
+  }
+
+  it('rebuilds a missing day from its 96 verified exports', async () => {
+    const source = repairSource(['2026-09-27']);
+    const result = await repairDyadHistory({ snapshot: live, nowMs: repairNow, fetchImpl: source.fetchImpl, maxDays: 1 });
+    assert.equal(result.days['2026-09-27'].cohorts, 96);
+    assert.equal(result.days['2026-09-27'].pairs.usa_russia.conflict, 96);
+    assert.deepEqual(result.outcomes, { repaired: 1 });
+    assert.equal(source.requests.length, 97, 'one manifest tail plus 96 exports');
+  });
+
+  it('skips a day with an upstream gap without downloading any of it', async () => {
+    const source = repairSource(['2026-09-27'], { count: 95 });
+    const result = await repairDyadHistory({ snapshot: live, nowMs: repairNow, fetchImpl: source.fetchImpl, maxDays: 1 });
+    assert.deepEqual(result.days, {});
+    assert.deepEqual(result.outcomes, { upstream_gap: 1, manifest_short: 1 }, 'the walk moves on to 2026-09-26, which predates the tail');
+    assert.deepEqual(result.failures, {}, 'a gap is not a failed download');
+    assert.equal(source.requests.length, 1, 'only the manifest tail');
+  });
+
+  it('a checksum mismatch abandons only that day', async () => {
+    const source = repairSource(['2026-09-26', '2026-09-27'], { corrupt: '20260927120000' });
+    const result = await repairDyadHistory({ snapshot: live, nowMs: repairNow, fetchImpl: source.fetchImpl, maxDays: 2 });
+    assert.equal(result.days['2026-09-27'], undefined);
+    assert.equal(result.days['2026-09-26'].cohorts, 96);
+    assert.deepEqual(result.outcomes, { verify_failed: 1, repaired: 1 });
+  });
+
+  it('an upstream-gap day does not use the download budget', async () => {
+    const gap = repairSource(['2026-09-27'], { count: 95 });
+    const full = repairSource(['2026-09-26']);
+    const requests = [];
+    let first = true;
+    const fetchImpl = async (url, init) => {
+      requests.push(String(url));
+      if (first) {
+        first = false;
+        // One manifest carrying both days: the gap day and the complete day.
+        const manifest = [gap, full].map(s => s.manifestText).join('');
+        return new Response(Buffer.from(manifest), { status: 206, headers: {
+          'content-length': String(Buffer.byteLength(manifest)),
+          'content-range': `bytes 0-${Buffer.byteLength(manifest) - 1}/${Buffer.byteLength(manifest)}`,
+        } });
+      }
+      const body = full.files.get(String(url));
+      return new Response(body, { status: 200, headers: { 'content-length': String(body.length) } });
+    };
+    const result = await repairDyadHistory({ snapshot: live, nowMs: repairNow, fetchImpl, maxDays: 1 });
+    assert.deepEqual(Object.keys(result.days), ['2026-09-26']);
+    assert.deepEqual(result.outcomes, { upstream_gap: 1, repaired: 1 });
+    assert.equal(requests.length, 97);
+  });
+
+  it('a day that fails verification backs off so older days are repaired, then is retried', async () => {
+    const { DYAD_REPAIR_BACKOFF_MS } = await import('../scripts/_gdelt-dyad-tension.mjs');
+    const failures = {};
+    const tick1 = await repairDyadHistory({
+      snapshot: live, nowMs: repairNow, maxDays: 1, failures,
+      fetchImpl: repairSource(['2026-09-26', '2026-09-27'], { corrupt: '20260927120000' }).fetchImpl,
+    });
+    assert.deepEqual(tick1.outcomes, { verify_failed: 1 });
+    assert.deepEqual(tick1.failures, { '2026-09-27': repairNow });
+
+    const withFailure = { ...live, repairFailures: tick1.failures };
+    const tick2 = await repairDyadHistory({
+      snapshot: withFailure, nowMs: repairNow + 15 * 60_000, maxDays: 1,
+      fetchImpl: repairSource(['2026-09-26', '2026-09-27'], { corrupt: '20260927120000' }).fetchImpl,
+    });
+    assert.deepEqual(Object.keys(tick2.days), ['2026-09-26'], 'the failing day no longer holds the slot');
+
+    const retry = repairSource(['2026-09-26', '2026-09-27']);
+    const tick3 = await repairDyadHistory({
+      snapshot: withFailure, nowMs: repairNow + DYAD_REPAIR_BACKOFF_MS, maxDays: 1, fetchImpl: retry.fetchImpl,
+    });
+    assert.deepEqual(Object.keys(tick3.days), ['2026-09-27'], 'after the backoff the day is retried');
+  });
+
+  it('a live tick persists repair failures and clears them on success', async () => {
+    const tick = (repair, previousDyads) => fetchMaterializedGdelt({
+      _now: () => Date.parse('2026-07-30T12:05:00Z'),
+      _readSnapshot: async key => key === 'gdelt:bulk:dyad-tension:v1' ? previousDyads : null,
+      _fetchFiles: async () => materializationFiles(),
+      _repairDyadHistory: repair,
+    });
+    const failed = await tick(async ({ failures }) => {
+      failures['2026-07-29'] = Date.parse('2026-07-30T12:05:00Z');
+      return { days: {}, outcomes: { verify_failed: 1 } };
+    }, null);
+    assert.deepEqual(failed._dyads.repairFailures, { '2026-07-29': Date.parse('2026-07-30T12:05:00Z') });
+    let seen;
+    const recovered = await tick(async ({ snapshot }) => {
+      seen = snapshot.repairFailures;
+      return { days: { '2026-07-29': { cohorts: 96, pairs: {} } }, outcomes: { repaired: 1 } };
+    }, failed._dyads);
+    assert.deepEqual(seen, failed._dyads.repairFailures, 'the next tick plans against the stored failures');
+    assert.equal(recovered._dyads.repairFailures, undefined);
+  });
+
+  it('aborts in-flight downloads and starts no new one once the signal fires', async () => {
+    const source = repairSource(['2026-09-27']);
+    const controller = new AbortController();
+    const signals = [];
+    let downloads = 0;
+    const fetchImpl = async (url, init) => {
+      if (String(url).endsWith('masterfilelist.txt')) return source.fetchImpl(url, init);
+      downloads += 1;
+      signals.push(init.signal);
+      return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
+    };
+    const pending = repairDyadHistory({ snapshot: live, nowMs: repairNow, fetchImpl, maxDays: 1, signal: controller.signal });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const started = downloads;
+    assert.equal(started, 4, 'the concurrency limit of downloads is in flight');
+    const abortedAt = Date.now();
+    controller.abort();
+    const result = await pending;
+    assert.ok(Date.now() - abortedAt < 2_000, 'the abort ends the downloads, not their 30 s request timeout');
+    // The other workers keep draining the queue after the first rejection, so
+    // give them time to start one before counting.
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(downloads, started, 'no queued download starts after the abort');
+    assert.ok(signals.every(signal => signal.aborted && signal.reason?.name === 'AbortError'),
+      'every in-flight download sees the budget abort');
+    assert.deepEqual(result.days, {});
+    assert.deepEqual(result.outcomes, { over_budget: 1 });
+    assert.deepEqual(result.failures, {}, 'an abort is not the day\'s fault');
+  });
+
+  it('a download that completes after the abort does not start the next one', async () => {
+    const source = repairSource(['2026-09-27']);
+    const controller = new AbortController();
+    let downloads = 0;
+    const fetchImpl = async (url, init) => {
+      if (String(url).endsWith('masterfilelist.txt')) return source.fetchImpl(url, init);
+      downloads += 1;
+      // The budget runs out while this download is in flight, but its body
+      // still arrives (a transport that finishes before noticing the abort).
+      if (downloads === 1) controller.abort();
+      const body = source.files.get(String(url));
+      return new Response(body, { status: 200, headers: { 'content-length': String(body.length) } });
+    };
+    const result = await repairDyadHistory({ snapshot: live, nowMs: repairNow, fetchImpl, maxDays: 1, signal: controller.signal });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(downloads, 1, 'no download starts once the signal has fired');
+    assert.deepEqual(result.outcomes, { over_budget: 1 });
+    assert.deepEqual(result.failures, {});
+  });
+
+  it('the live tick aborts its repair when the budget runs out', async () => {
+    let signal;
+    await liveTick({
+      _repairDyadHistory: (opts) => { signal = opts.signal; return new Promise(() => {}); },
+      _dyadRepairBudgetMs: 20,
+    });
+    assert.equal(signal?.aborted, true);
+  });
+
+  it('starts no new day once its deadline has passed', async () => {
+    const source = repairSource(['2026-09-26', '2026-09-27']);
+    let clock = 0;
+    const result = await repairDyadHistory({
+      snapshot: live, nowMs: repairNow, fetchImpl: source.fetchImpl, maxDays: 2,
+      deadlineAt: 1, clock: () => clock++,
+    });
+    assert.deepEqual(Object.keys(result.days), ['2026-09-27']);
+    assert.deepEqual(result.outcomes, { repaired: 1, over_budget: 1 });
+    assert.equal(source.requests.length, 97);
+  });
+
+  it('does not repair a day the manifest tail does not reach', async () => {
+    const source = repairSource(['2026-09-27']);
+    const snapshot = { ...live, days: { '2026-09-27': { cohorts: 96, pairs: {} } } };
+    const result = await repairDyadHistory({ snapshot, nowMs: repairNow, fetchImpl: source.fetchImpl, maxDays: 1 });
+    assert.deepEqual(result.days, {});
+    assert.deepEqual(result.outcomes, { manifest_short: 1 }, '2026-09-26 predates the tail');
+    assert.equal(source.requests.length, 1);
+  });
+
+  it('does nothing, not even the manifest read, when history is complete', async () => {
+    const days = {};
+    for (let i = 1; i <= 90; i++) days[new Date(repairNow - i * 86_400_000).toISOString().slice(0, 10)] = { cohorts: 96, pairs: {} };
+    const source = repairSource([]);
+    const result = await repairDyadHistory({ snapshot: { ...live, days }, nowMs: repairNow, fetchImpl: source.fetchImpl });
+    assert.deepEqual(result, { days: {}, outcomes: {}, failures: {} });
+    assert.equal(source.requests.length, 0);
+  });
+
+  const liveTick = (overrides) => fetchMaterializedGdelt({
+    _now: () => Date.parse('2026-07-30T12:05:00Z'),
+    _readSnapshot: async () => null,
+    _fetchFiles: async () => materializationFiles(),
+    ...overrides,
+  });
+
+  it('a failing repair leaves the live publication unchanged', async () => {
+    const baseline = await liveTick({ _repairDyadHistory: noDyadRepair });
+    const failed = await liveTick({ _repairDyadHistory: async () => { throw new Error('https://secret.invalid/?token=x'); } });
+    assert.deepEqual(failed._dyads, baseline._dyads);
+    assert.deepEqual(failed._state, baseline._state);
+  });
+
+  it('a repair that overruns its budget cannot hold the live publication', async () => {
+    const baseline = await liveTick({ _repairDyadHistory: noDyadRepair });
+    const started = Date.now();
+    const stalled = await liveTick({ _repairDyadHistory: () => new Promise(() => {}), _dyadRepairBudgetMs: 20 });
+    assert.ok(Date.now() - started < 2_000);
+    assert.deepEqual(stalled._dyads, baseline._dyads);
+  });
+
+  it('keeps the days a repair finished before its budget ran out', async () => {
+    const stalled = await liveTick({
+      _repairDyadHistory: ({ into }) => {
+        into['2026-07-29'] = { cohorts: 96, pairs: {} };
+        return new Promise(() => {});
+      },
+      _dyadRepairBudgetMs: 20,
+    });
+    assert.equal(stalled._dyads.days['2026-07-29'].cohorts, 96);
+  });
+
+  it('merges a repaired day into the published snapshot and rescans it', async () => {
+    let seen;
+    const result = await liveTick({
+      _repairDyadHistory: async ({ snapshot }) => {
+        seen = snapshot;
+        return { days: { '2026-07-29': { cohorts: 96, pairs: {} } }, outcomes: { repaired: 1 } };
+      },
+    });
+    assert.equal(seen.cursor, '20260730120000', 'repair plans against the post-merge cursor');
+    assert.equal(result._dyads.days['2026-07-29'].cohorts, 96);
+    assert.equal(result._dyads.days['2026-07-30'].cohorts, 1, 'the live day is untouched');
   });
 });

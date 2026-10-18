@@ -3,21 +3,29 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { getAircraftDetails } from '../server/worldmonitor/military/v1/get-aircraft-details.ts';
 import { getAircraftDetailsBatch } from '../server/worldmonitor/military/v1/get-aircraft-details-batch.ts';
+import { _resetTrackedAircraftCacheForTests } from '../server/worldmonitor/military/v1/_tracked-aircraft.ts';
 import {
   ENDPOINT_RATE_POLICIES,
   FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED,
 } from '../server/_shared/rate-limit.ts';
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
 import { GENERATED_MESSAGE_RULES } from '../src/generated/server/request_validation.ts';
+import { validationFailure } from './helpers/validation-failure.mts';
 
 const AIRCRAFT_DETAILS_PATH = '/api/military/v1/get-aircraft-details';
 const BATCH_PATH = '/api/military/v1/get-aircraft-details-batch';
 const API_KEY = 'test-enterprise-key';
-const ENV_KEYS = ['WINGBITS_API_KEY', 'WORLDMONITOR_VALID_KEYS'] as const;
+const ENV_KEYS = [
+  'WINGBITS_API_KEY',
+  'WORLDMONITOR_VALID_KEYS',
+  'UPSTASH_REDIS_REST_URL',
+  'UPSTASH_REDIS_REST_TOKEN',
+] as const;
 const originalEnv = new Map<string, string | undefined>();
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
+  _resetTrackedAircraftCacheForTests();
   for (const key of ENV_KEYS) {
     originalEnv.set(key, process.env[key]);
     delete process.env[key];
@@ -102,12 +110,7 @@ describe('Wingbits aircraft-details access contract', () => {
 
     await assert.rejects(
       () => getAircraftDetails(ctx({ 'X-WorldMonitor-Key': API_KEY }), { icao24: 'not-an-icao24' }),
-      (error: unknown) => {
-        const typed = error as { statusCode?: number; message?: string };
-        assert.equal(typed.statusCode, 400);
-        assert.equal(typed.message, 'icao24 must be a 6-character hexadecimal address');
-        return true;
-      },
+      validationFailure('icao24', /^icao24 must be a 6-character hexadecimal address$/),
     );
   });
 
@@ -204,6 +207,87 @@ describe('Wingbits aircraft-details batch input contract', () => {
       'requested must span every non-empty key the caller sent, or the client '
       + 'negative-cache prefix silently drops valid trailing keys',
     );
+    assert.deepEqual(urls, [
+      'https://customer-api.wingbits.com/v1/flights/details/aa0001',
+      'https://customer-api.wingbits.com/v1/flights/details/bb0002',
+    ]);
+  });
+});
+
+describe('Wingbits aircraft-details batch spend boundary', () => {
+  const REDIS_URL = 'https://redis.test';
+
+  // Redis answers the flight snapshot read with `seed`, misses every aircraft
+  // cache key, and accepts writes. Wingbits URLs are recorded.
+  function installFetch(seed: unknown, wingbitsUrls: string[]) {
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      if (url.startsWith('https://customer-api.wingbits.com/')) {
+        wingbitsUrls.push(url);
+        return Response.json({ registration: 'N123WM' });
+      }
+      if (url === `${REDIS_URL}/pipeline`) {
+        const commands = JSON.parse(String(init?.body ?? '[]')) as unknown[];
+        return Response.json(commands.map(() => ({ result: null })));
+      }
+      if (url === `${REDIS_URL}/get/${encodeURIComponent('military:flights:v1')}`) {
+        return Response.json({ result: seed === null ? null : JSON.stringify(seed) });
+      }
+      if (url.startsWith(`${REDIS_URL}/get/`)) return Response.json({ result: null });
+      return Response.json({ result: 'OK' });
+    };
+  }
+
+  beforeEach(() => {
+    process.env.WINGBITS_API_KEY = 'test-wingbits-key';
+    process.env.UPSTASH_REDIS_REST_URL = REDIS_URL;
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  });
+
+  it('spends the credential only on aircraft in the published flight snapshot', async () => {
+    const urls: string[] = [];
+    installFetch({ flights: [{ hexCode: 'AA0001', lat: 1, lon: 2 }] }, urls);
+
+    // Pre-fix, an anonymous caller could send any ten valid addresses per call
+    // and each cache miss was a paid Wingbits lookup, which made the Pro gate
+    // on the singular route meaningless.
+    const response = await getAircraftDetailsBatch(ctx(), { icao24s: ['aa0001', 'bb0002', 'cc0003'] });
+
+    assert.deepEqual(urls, ['https://customer-api.wingbits.com/v1/flights/details/aa0001']);
+    assert.deepEqual(Object.keys(response.results), ['aa0001']);
+    // The client negative-caches `batchKeys.slice(0, requested)` for an hour.
+    // A skipped address is not a negative result (the aircraft may have joined
+    // the snapshot after the tracked set was read), so the prefix stops before
+    // the first one and the client retries it on its next refresh.
+    assert.equal(response.requested, 1);
+  });
+
+  it('makes no paid lookups when the snapshot cannot be read', async () => {
+    const urls: string[] = [];
+    installFetch({ flights: [{ hexCode: 'AA0001', lat: 1, lon: 2 }] }, urls);
+    const redisAndWingbits = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input).startsWith(`${REDIS_URL}/get/military%3Aflights`)) {
+        return new Response('unavailable', { status: 503 });
+      }
+      return redisAndWingbits(input, init);
+    };
+
+    // An unknown boundary must not fall back to looking up whatever the
+    // caller sends.
+    const response = await getAircraftDetailsBatch(ctx(), { icao24s: ['aa0001', 'bb0002'] });
+
+    assert.deepEqual(urls, []);
+    assert.equal(response.requested, 0);
+  });
+
+  it('keeps looking up misses when no snapshot exists to check against', async () => {
+    const urls: string[] = [];
+    installFetch(null, urls);
+
+    // The desktop sidecar has no seed; enrichment there must keep working.
+    await getAircraftDetailsBatch(ctx(), { icao24s: ['aa0001', 'bb0002'] });
+
     assert.deepEqual(urls, [
       'https://customer-api.wingbits.com/v1/flights/details/aa0001',
       'https://customer-api.wingbits.com/v1/flights/details/bb0002',

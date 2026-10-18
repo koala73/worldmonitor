@@ -112,7 +112,7 @@ const APP_CHECKOUT_BASE_URL = `${WEB_APP_ORIGIN}/dashboard`;
  */
 function navigateToWebSurface(url: string): void {
   if (isDesktopRuntime()) {
-    void openExternalUrl(url);
+    void openExternalUrl(url, null, { desktopPopupFallback: false });
     return;
   }
   window.location.assign(url);
@@ -120,15 +120,6 @@ function navigateToWebSurface(url: string): void {
 
 export const DESKTOP_CHECKOUT_HANDOFF_MESSAGE =
   'Checkout opened in your browser. Finish payment there, then come back — Pro unlocks here automatically.';
-
-/**
- * Same contract, minus the claim about WHERE it opened. Used when the native
- * handoff failed and checkout landed in a WebView window instead: the buyer
- * can still complete payment, so naming the wrong window is the only real
- * risk to avoid.
- */
-export const DESKTOP_CHECKOUT_FALLBACK_MESSAGE =
-  'Checkout opened in a new window. Finish payment there — Pro unlocks here automatically.';
 
 /**
  * Consume a legacy overlay-return flag from an existing tab. Hosted checkout
@@ -786,11 +777,7 @@ export async function startCheckout(
         // buyer finishes in the browser; the desktop client needs no redirect
         // back in, because Pro arrives over the same live Convex entitlement
         // subscription the web client uses.
-        const outcome = await openExternalUrl(hostedCheckoutUrl);
-        // Only a confirmed NATIVE open counts. `popup` on desktop means the
-        // bridge call failed and we fell back to `window.open` inside the
-        // WebView — which is the bug this branch exists to prevent, so
-        // announcing "opened in your browser" for it would be false.
+        const outcome = await openExternalUrl(hostedCheckoutUrl, null, { desktopPopupFallback: false });
         if (outcome !== 'native') {
           // Nothing opened. Announcing "check your browser" here would send
           // the buyer to a window that does not exist and strand a paid-for
@@ -808,15 +795,7 @@ export async function startCheckout(
           renderCheckoutErrorSurface(handoffError, fallbackToPricingPage, checkoutContext);
           return false;
         }
-        // Only `native` actually reached the OS browser. `popup` means the
-        // native handoff failed and the session opened in a WebView window
-        // instead — the buyer can still pay, so the sale is not blocked, but
-        // pointing them at "your browser" would send them to the wrong place.
-        showToast(
-          outcome === 'native'
-            ? DESKTOP_CHECKOUT_HANDOFF_MESSAGE
-            : DESKTOP_CHECKOUT_FALLBACK_MESSAGE,
-        );
+        showToast(DESKTOP_CHECKOUT_HANDOFF_MESSAGE);
         return true;
       }
       window.location.assign(hostedCheckoutUrl);
@@ -962,7 +941,7 @@ function renderCheckoutErrorSurface(
     // of replacing the app. The toast stays on desktop because, unlike the
     // web redirect, the app is still on screen to show it.
     if (isDesktopRuntime()) {
-      void openExternalUrl(proUrl);
+      void openExternalUrl(proUrl, null, { desktopPopupFallback: false });
       showCheckoutErrorToast(error.userMessage);
       return;
     }

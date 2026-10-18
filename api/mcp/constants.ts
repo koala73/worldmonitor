@@ -210,7 +210,7 @@ export const SERVER_NAME = 'worldmonitor';
 //     bump records it in the audit trail; rollback is git revert.
 // Bumped 1.10.0 → 1.11.0 (2026-07-04) reflecting:
 //   - MCP Apps support (extension `io.modelcontextprotocol/ui`, spec
-//     2026-01-26). Adds a `ui://worldmonitor/country-risk.html` app-shell
+//     2026-01-26). Adds a country-risk app-shell (current `ui://worldmonitor/country-risk-v2.html`)
 //     resource (mimeType `text/html;profile=mcp-app`, served via
 //     resources/list + resources/read) and links it from the
 //     `get_country_risk` tool via `_meta.ui.resourceUri` (+ the deprecated
@@ -268,8 +268,8 @@ export const SERVER_NAME = 'worldmonitor';
 // Bumped 1.13.0 → 1.14.0 (2026-07-08) reflecting:
 //   - MCP Apps interactive-dashboard fleet: four new ui:// app-shell resources
 //     joining the v1.11.0 country-risk widget —
-//       * ui://worldmonitor/world-brief.html      (get_world_brief)
-//       * ui://worldmonitor/country-brief.html    (get_country_brief)
+//       * ui://worldmonitor/world-brief-v2.html      (get_world_brief)
+//       * ui://worldmonitor/country-brief-v3.html (get_country_brief)
 //       * ui://worldmonitor/market-radar.html      (get_market_data)
 //       * ui://worldmonitor/chokepoint-monitor.html (get_chokepoint_status)
 //     Each is linked from its backing tool via `_meta.ui.resourceUri` (+ the
@@ -287,7 +287,7 @@ export const SERVER_NAME = 'worldmonitor';
 //     app-shell resources joining the existing fleet —
 //       * ui://worldmonitor/news-intelligence.html  (get_news_intelligence)
 //       * ui://worldmonitor/conflict-events.html     (get_conflict_events)
-//       * ui://worldmonitor/natural-disasters.html   (get_natural_disasters)
+//       * ui://worldmonitor/natural-disasters-v3.html   (get_natural_disasters)
 //       * ui://worldmonitor/prediction-markets.html  (get_prediction_markets)
 //       * ui://worldmonitor/forecasts.html           (get_forecast_predictions)
 //     Each renders through the shared shell (api/mcp/ui/shell.ts) and links from
@@ -337,7 +337,8 @@ export const SERVER_NAME = 'worldmonitor';
 //     byte-identical to before. See api/mcp/structured-content.ts.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-export const SERVER_VERSION = '1.21.0';
+// Bumped 1.32.0 → 1.33.0 for verify_claim (#9092).
+export const SERVER_VERSION = '1.33.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
@@ -390,19 +391,26 @@ export const TOOL_DESCRIPTION_MAX_BYTES = 120;
 const JMESPATH_SPEC_URL = 'https://jmespath.org/specification.html';
 
 export const SERVER_INSTRUCTIONS = [
+  'Call get_mcp_allowance({}) to read the current verified account allowance, including used, limit, remaining, resetsAt, requestWindows and sharedWithRestApi. It returns the same snapshot as worldmonitor://account/mcp-allowance for hosts without resources/read. Only user-bound OAuth or wm_… credentials are accepted. No account selector or panel_request is accepted. Status spends no daily allowance, including at the daily cap, but uses the shared 192/minute protocol bucket. Unreadable counters return an error, never a zero snapshot. Shared API usage also includes REST traffic and does not identify individual callers.',
+  '',
   `Every tool accepts optional \`jmespath\`. Server-side projection is applied AFTER per-tool filter/summary. Typical 80-95% token reduction. A projected response from a tool whose data is licensed for reuse with attribution comes back as {data, _attribution} — keep the _attribution block with the values if you redistribute them. Grammar: ${JMESPATH_SPEC_URL}. Guide + 12 worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.`,
   '',
   `Limits: request body ≤ ${MAX_JSON_RPC_BODY_BYTES}B (over-cap POSTs are rejected before parsing with HTTP 413 + -32600 and error.data.reason 'body-too-large'; shrink the payload, do not retry it), expr ≤ ${JMESPATH_MAX_EXPR_BYTES}B, output ≤ ${JMESPATH_MAX_OUTPUT_BYTES}B. Bad expressions soft-fail via {_jmespath_error, original_keys} envelope (consumes one daily quota unit on retry when that quota path applies — self-correct from original_keys). Full envelope reference: https://www.worldmonitor.app/docs/mcp-error-catalog.`,
   '',
   `tools/list ships compressed tool descriptions (≤${TOOL_DESCRIPTION_MAX_BYTES}B). Call describe_tool({tool_name}) for the full uncompressed definition — quota-exempt (still counts toward the 60/min rate limit), so use freely while exploring. describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct. Full reference: https://www.worldmonitor.app/docs/mcp-tools-reference.`,
   '',
-  `get_sources is the sole credential-free data tool and consumes no daily quota. It has a separate fail-closed ceiling of 10 unauthenticated calls/minute/IP. Signed-in accounts without a subscription get a free taste of CACHED-data tools (3 request windows/day, 5 calls/day); live-fetch tools stay Pro-only. Structured account-access denials carry \`error.data\` = {reason, nextStep, upgradeUrl}: -32001/401 reason=no-account, -32029/429 reason=allowance-exhausted, and -32002/403 reason=upgrade-required or lapsed-subscription. Other rate-limit and service errors may omit those fields; branch on the JSON-RPC code and HTTP status. Read each tool's \`_meta["worldmonitor/access"]\`: \`free\` is anonymous and quota-free, \`free-account\` is available to signed-in free accounts (cache-backed data calls spend the allowance; describe_tool does not), and \`subscription\` requires Pro. Each tool also carries \`_meta["worldmonitor/weight"]\`: what one call COSTS, in REST-request units. It is charged only on an API plan, whose MCP calls and REST requests draw one daily budget (1 for a cache-backed read, 2 for a live downstream fetch, 3 for the two that fetch twice); Pro and Pro Business meter one unit per call on their own counter whatever the weight says. Budget before you call: the allowance resource reports \`sharedWithRestApi\` so you can tell whether \`used\` also counts REST traffic. Upgrade: ${MCP_UPGRADE_URL}.`,
+  `get_sources is the sole credential-free data tool and consumes no daily quota. It has a separate fail-closed ceiling of 10 unauthenticated calls/minute/IP. Signed-in accounts without a subscription get a free taste of CACHED-data tools (3 request windows/day, 5 calls/day); live-fetch tools stay Pro-only. Structured account-access denials carry \`error.data\` = {reason, nextStep, upgradeUrl}: -32001/401 reason=no-account, -32029/429 reason=allowance-exhausted, and -32002/403 reason=upgrade-required or lapsed-subscription. Other rate-limit and service errors may omit those fields; branch on the JSON-RPC code and HTTP status. Read each tool's \`_meta["worldmonitor/access"]\`: \`free\` is anonymous and quota-free, \`free-account\` is available to signed-in free accounts (cache-backed data calls spend the allowance; describe_tool and get_mcp_allowance do not), and \`subscription\` requires Pro. Each tool also carries \`_meta["worldmonitor/weight"]\`: what one call COSTS, in REST-request units. It is charged only on an API plan, whose MCP calls and REST requests draw one daily budget (1 for a cache-backed read, 2 for a live downstream fetch, 3 for the two that fetch twice); Pro and Pro Business meter one unit per standalone data call. Opening any embedded panel costs one request including its rendered details. Country briefs include bounded section reads; news dashboards include bounded hazard map loads. Repeated same-country or news-dashboard opens reuse the admission for at least five minutes, local topic/filter/layer navigation reuses loaded data, and explicit refresh costs one new request. News summaries and translations are separate user requests. Budget before you call: get_mcp_allowance or the allowance resource reports \`sharedWithRestApi\` so you can tell whether \`used\` also counts REST traffic. Upgrade: ${MCP_UPGRADE_URL}.`,
   '',
   'Issue prompts/list to discover pre-built workflow templates (country-briefing, energy-shock-watch, market-open-prep, conflict-pulse, route-risk-check, freshness-audit). Each prompt pre-bakes a JMESPath projection per step so the first execution lands on the right shape. prompts/list + prompts/get are quota-exempt (per-minute limit only).',
   '',
   'Issue resources/list for concrete read-only resources (v1: seed-meta freshness — anonymous + quota-free) and resources/templates/list for parameterised URI templates (country risk, chokepoint status, market quote). Substitute the template placeholder, then resources/read the concrete URI; a template read is metered IDENTICALLY to the equivalent tools/call — same `_meta["worldmonitor/access"]` rules, spending the free-account allowance or the Pro daily quota according to the caller. There is no unmetered path around the cap via those resources.',
   '',
   'Agent Skills: when the `io.modelcontextprotocol/skills` extension is available, issue `skills/list` to discover skills, `skills/get` for one skill, then `resources/read` for each advertised `skill://` resource. Treat the returned `sha256` digest and byte `size` as the integrity contract; text resources use `text` and binary resources use base64 `blob` content.',
+  '',
+  // Which tool fits which question. Tool descriptions describe only their own
+  // tool: the Claude Connectors Directory forbids descriptions that name other
+  // tools or direct the model (tests/mcp-tool-description-policy.test.mjs).
+  'Choosing between tools: open_country_brief for country brief requests and topic navigation; get_country_brief only for a text-only assessment. get_country_coverage for a country\'s deduplicated incident timeline rather than rebuilding it from the news tools. Tariffs: get_us_import_duty for current US duties including Section 301 and 232; get_tariff_averages for any reporter\'s average over time, a partner or a product group; get_bilateral_tariff for one HS product between two countries. Forecasts: get_forecast_predictions reads the published forecasts and get_forecast_case one of their cases; generate_forecasts runs the model fresh and is slower. list_five_factor_scorecards for the overview, get_five_factor_scorecard for one country\'s provenance and raw observations. get_mineral_production for who mines and refines; get_commodity_geo for site locations. search_intel_history for a short query; get_similar_events for a described situation. Before relying on a result, check its availability flags (upstreamUnavailable, hasScore, underAudit, unavailable, coverage and degraded fields): they separate unknown from zero.',
   '',
   // Content safety (#5743). This stanza is the ONLY delivery channel that
   // reliably reaches the model: hosts compress the tool description to its

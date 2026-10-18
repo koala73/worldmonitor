@@ -129,8 +129,7 @@ test('run deadline cannot admit recovery: preserve the real parse failure, not a
 
 test('recovery cannot restart the fallback chain after the original provider fails', async () => {
   const { store, requests } = setup([{ text: malformed, tokens: 1500 }, { status: 503 }]);
-  process.env.GROQ_API_KEY = 'fixture-key';
-  process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER = 'openrouter,groq';
+  process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER = 'openrouter,openrouter-free';
   await buildAndSeedMarketImplications({});
   assert.equal(requests.length, 2);
   assert.equal(store[metaKey].consecutiveFailures, 1);

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeScenario, physicalImpact, EXPOSURE_BATCH_SIZE } from '../scripts/scenario-worker.mjs';
+import { computeScenario, physicalImpact, EXPOSURE_BATCH_SIZE, scenarioResultKey } from '../scripts/scenario-worker.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -295,5 +295,18 @@ describe('scenario worker manifest and evidence', () => {
     assert.ok(pipelineCalls > 1, 'expected a retry after the transient failure');
     assert.equal(result.coverage.records[0].state, 'evaluated');
     assert.equal(result.topImpactCountries[0].totalImpact, 84);
+  });
+});
+
+describe('scenario result key', () => {
+  it('scopes results to a validated owner and rejects unsafe fragments', () => {
+    const owner = 'a'.repeat(64);
+    const jobId = 'scenario:1712345678901:' + 'ab'.repeat(16);
+    assert.equal(scenarioResultKey(jobId, owner), `scenario-result:${owner}:${jobId}`);
+    assert.equal(scenarioResultKey('scenario:1712345678901:abcdefgh', owner), `scenario-result:${owner}:scenario:1712345678901:abcdefgh`);
+    assert.equal(scenarioResultKey(jobId, ''), null);
+    assert.equal(scenarioResultKey(jobId, 'oo3b5v1bl1cc0'), null);
+    assert.equal(scenarioResultKey(jobId, '../owner'), null);
+    assert.equal(scenarioResultKey('scenario:1:abcdefgh', owner), null);
   });
 });

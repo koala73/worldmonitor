@@ -171,6 +171,16 @@ export default defineSchema({
         discordGuildId: v.optional(v.string()),
         discordChannelId: v.optional(v.string()),
       }),
+      // Microsoft Teams (#9215): an encrypted Workflows webhook URL. The
+      // gateway restricts the host to Microsoft's webhook domains before
+      // encrypting; the relay re-checks at delivery.
+      v.object({
+        userId: v.string(),
+        channelType: v.literal("teams"),
+        webhookEnvelope: v.string(),
+        verified: v.boolean(),
+        linkedAt: v.number(),
+      }),
       v.object({
         userId: v.string(),
         channelType: v.literal("webhook"),
@@ -227,6 +237,10 @@ export default defineSchema({
     // receives NO `watchlist_story_alert` events (the relay requires a
     // non-empty intersection with the story's tickers).
     tickers: v.optional(v.array(v.string())),
+    // Optional chokepoint-scope for `chokepoint_disruption` (#9217), ids from
+    // shared/chokepoint-alert-ids.js. The event itself is opt-in through
+    // eventTypes; empty/absent here → every chokepoint.
+    chokepoints: v.optional(v.array(v.string())),
   })
     .index("by_user", ["userId"])
     .index("by_user_variant", ["userId", "variant"])
@@ -331,6 +345,9 @@ export default defineSchema({
     expiresAt: v.number(),
     used: v.boolean(),
     variant: v.optional(v.string()),
+    // Chat that sent `/start <token>` and was asked to confirm. The token
+    // binds only when that same chat presses Confirm.
+    pendingChatId: v.optional(v.string()),
   })
     .index("by_token", ["token"])
     .index("by_expiresAt", ["expiresAt"])
@@ -594,7 +611,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_referrer", ["referrerUserId"])
-    .index("by_referrer_email", ["referrerUserId", "refereeEmail"]),
+    .index("by_referrer_email", ["referrerUserId", "refereeEmail"])
+    .index("by_refereeEmail", ["refereeEmail"]),
 
   contactMessages: defineTable({
     name: v.string(),
@@ -985,10 +1003,78 @@ export default defineSchema({
     // and it cannot be reconstructed afterwards. The bump in #6983
     // (2026-07-27 → 2026-08-20) is the first one that would have done it.
     termsFirstAcceptedAt: v.optional(v.number()),
+    // Sign-up source. Written once, on insert, from the browser's first-touch
+    // inbound agent link (`?ref=agent-claude`). `signupRef` is the normalized
+    // ref; `signupSource` is its bucket from shared/agent-client-source.js
+    // (claude, chatgpt, cursor, gemini, grok-bot, other). CLIENT-REPORTED and
+    // for counting only. Absent means no agent link was seen, not "organic".
+    // OPTIONAL and not backfilled.
+    signupRef: v.optional(v.string()),
+    signupSource: v.optional(v.string()),
   })
     .index("by_userId", ["userId"])
     .index("by_normalizedEmail", ["normalizedEmail"])
     .index("by_localePrimary", ["localePrimary"]),
+
+  // Durable DSAR tombstone for a Clerk subject. Personal Convex rows are
+  // deleted or anonymized by `convex/accountDeletion`; Company Monitoring
+  // still uses `markOwnerDeleted` / `advanceAccountPurge` for its own fence.
+  // `verifiedEmail` is captured for waitlist/contact deletes and cleared
+  // when status becomes complete so the tombstone is not a second email index.
+  accountDeletions: defineTable({
+    userId: v.string(),
+    userIdHash: v.string(),
+    source: v.union(
+      v.literal("self"),
+      v.literal("support"),
+      v.literal("clerk_webhook"),
+    ),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("complete"),
+      v.literal("failed"),
+    ),
+    step: v.union(
+      v.literal("follows"),
+      v.literal("personal"),
+      v.literal("grants"),
+      v.literal("anonymize"),
+      v.literal("email_keyed"),
+      v.literal("external"),
+      v.literal("complete"),
+    ),
+    personalTableIndex: v.optional(v.number()),
+    verifiedEmail: v.optional(v.string()),
+    dodoSubscriptionIds: v.optional(v.array(v.string())),
+    subscriptionDocIds: v.optional(v.array(v.id("subscriptions"))),
+    cancelledDodoSubscriptionIds: v.optional(v.array(v.string())),
+    keyHashes: v.optional(v.array(v.string())),
+    embedKeyHashes: v.optional(v.array(v.string())),
+    mcpTokenIds: v.optional(v.array(v.string())),
+    redisClearedAt: v.optional(v.number()),
+    clerkDeletedAt: v.optional(v.number()),
+    fenceAppliedAt: v.optional(v.number()),
+    // Set when the email-keyed step ran with no verified proof of the account
+    // email — the webhook path never has one, because Clerk deleted the user
+    // before we were told. Waitlist, contact-form and invitee-email-keyed rows
+    // are then left alone rather than matched on a cached address we cannot
+    // trust. Recorded so the gap is visible and repairable instead of silent;
+    // `accountDeletion/batches:completeEmailKeyedErasure` clears it.
+    emailKeyedSkipped: v.optional(v.boolean()),
+    externalAttempts: v.optional(v.number()),
+    // Consecutive failures of the Convex-side batch stepper. A write conflict
+    // on a globally shared aggregate row is routine, so a batch failure is
+    // retried a bounded number of times before the row goes terminal.
+    // Reset whenever a batch commits progress.
+    batchAttempts: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userIdHash", ["userIdHash"])
+    .index("by_status_updatedAt", ["status", "updatedAt"]),
 
   webhookEvents: defineTable({
     webhookId: v.string(),
@@ -1135,6 +1221,13 @@ export default defineSchema({
   })
     .index("by_dodoPaymentId", ["dodoPaymentId"])
     .index("by_reconciledAt", ["reconciledAt"]),
+
+  // One reusable admission counter per account, independent of provider alarms.
+  checkoutAdmissions: defineTable({
+    userId: v.string(),
+    windowStart: v.number(),
+    count: v.number(),
+  }).index("by_user", ["userId"]),
 
   // One row per checkout that exhausted the #6027 provider-429 retry ladder
   // and returned a terminal CHECKOUT_RATE_LIMITED to the buyer (#6698). This
@@ -1648,6 +1741,12 @@ export default defineSchema({
     revokedAt: v.optional(v.number()),
     scopes: v.optional(v.array(v.string())),
     companyMonitoringAccountId: v.optional(v.string()),
+    // Where the key came from: copied at creation from the owner's users row
+    // (`signupRef`, e.g. `agent-claude`, and its bucket `signupSource`), so a
+    // key counts toward the agent link that brought its owner in. For
+    // counting only. OPTIONAL and not backfilled.
+    sourceRef: v.optional(v.string()),
+    source: v.optional(v.string()),
   })
     .index("by_userId", ["userId"])
     .index("by_userId_revokedAt", ["userId", "revokedAt"])
@@ -1692,6 +1791,10 @@ export default defineSchema({
     userId: v.string(),
     clientId: v.optional(v.string()),
     name: v.optional(v.string()),
+    // AI client bucket of the OAuth client this grant was issued to, derived
+    // from its registered client_name (shared/agent-client-source.js). Set on
+    // insert. OPTIONAL and not backfilled.
+    clientSource: v.optional(v.string()),
     createdAt: v.number(),
     lastUsedAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()),
@@ -1751,6 +1854,35 @@ export default defineSchema({
     suppressedAt: v.number(),
     source: v.optional(v.string()),
   }).index("by_normalized_email", ["normalizedEmail"]),
+
+  // Soft-bounce strike log feeding emailSuppressions. One row per address per
+  // Resend message that came back as a Transient or Undetermined bounce.
+  // Rows older than the window are pruned daily and on the next write for
+  // that address. A later delivery clears them; reaching the threshold converts
+  // them into one emailSuppressions "bounce" row. See
+  // SOFT_BOUNCE_SUPPRESS_THRESHOLD in convex/emailSuppressions.ts.
+  emailSoftBounces: defineTable({
+    normalizedEmail: v.string(),
+    // Resend email_id. Dedupes webhook retries and repeat events for the
+    // same message so one message is at most one strike.
+    emailMessageId: v.string(),
+    bounceType: v.string(),
+    bounceSubType: v.optional(v.string()),
+    occurredAt: v.number(),
+  })
+    .index("by_normalized_email", ["normalizedEmail", "occurredAt"])
+    .index("by_occurred_at", ["occurredAt"]),
+
+  // Latest email.delivered time per address, even if no strike has arrived yet.
+  // Webhooks can arrive out of order: a bounce that happened before this
+  // delivery is stale evidence and must not restart the count. Removed on
+  // suppression; daily bounded cleanup removes marks outside the 30-day window.
+  emailSoftBounceResets: defineTable({
+    normalizedEmail: v.string(),
+    lastDeliveredAt: v.number(),
+  })
+    .index("by_normalized_email", ["normalizedEmail"])
+    .index("by_last_delivered_at", ["lastDeliveredAt"]),
 
   // Per-event log of Resend webhook deliveries tagged with a broadcast_id.
   // Used as forensic detail to drive engineer-level inspection alongside

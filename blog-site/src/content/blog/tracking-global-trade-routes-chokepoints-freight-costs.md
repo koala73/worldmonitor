@@ -6,7 +6,7 @@ keywords: "chokepoint monitoring, Strait of Hormuz shipping, freight index dashb
 audience: "Supply chain professionals, commodity traders, logistics analysts, maritime intelligence, geopolitical risk analysts"
 heroImage: "/blog/images/blog/hormuz-chokepoint-crisis.png"
 pubDate: "2026-03-15"
-modifiedDate: "2026-09-10"
+modifiedDate: "2026-10-18"
 ---
 
 > **Key Takeaways:** In the March 15, 2026 snapshot, Strait of Hormuz traffic was down 94.4%. World Monitor combines its canonical waterway registry, freight indices, WTO trade policy, and critical-mineral concentration in one dashboard.
@@ -126,7 +126,7 @@ No single data source shows this full picture. World Monitor puts chokepoint sta
 Transparency matters. Here is where the data comes from:
 
 - **Vessel transit data**: AIS (Automatic Identification System) feeds, cross-referenced with historical baselines
-- **Conflict events**: [ACLED](https://acleddata.com/) (Armed Conflict Location & Event Data Project), 7-day rolling windows
+- **Conflict events**: [UCDP](https://ucdp.uu.se/) coded conflict events and [GDELT](https://www.gdeltproject.org/) event reporting
 - **Shipping advisories**: AI-generated from combined conflict, navigational, and AIS disruption signals
 - **Container indices**: [Shanghai Shipping Exchange (SSE)](https://en.sse.net.cn/) public JSON API
 - **Bulk indices**: [Baltic Exchange](https://www.balticexchange.com/) via HandyBulk daily reports

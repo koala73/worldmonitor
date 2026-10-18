@@ -101,6 +101,38 @@ export function formatSnapshotDate(capturedAt: string): string {
   return `${MONTHS[Number(match[2]) - 1]} ${Number(match[3])}, ${match[1]}`;
 }
 
+/**
+ * The capture date of the committed pulse freeze. `build-welcome-teasers.mjs`
+ * writes the same date into the homepage `lastmod` and `dateModified`, so the
+ * hero's visible "As of" date reads from here and cannot trail them (#8701).
+ */
+export const PUBLISHED_PULSE_DATE: string = (fallbackJson as { capturedAt: string }).capturedAt;
+
+// Locale tags whose Intl default differs from the date the copy has always
+// shown: day-first English, and Latin digits in Arabic. Every locale also
+// forces the Gregorian calendar, which Thai and Persian do not default to.
+const HERO_DATE_LOCALES: Record<string, string> = {
+  en: 'en-GB',
+  ar: 'ar-u-nu-latn',
+  zh: 'zh-CN',
+};
+
+/**
+ * A YYYY-MM-DD capture date as a long localized date ("28 September 2026",
+ * "2026年9月28日"). Read in UTC so the prerender and every browser time zone
+ * print the same day.
+ */
+export function formatLocalizedDate(capturedAt: string, language: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(capturedAt || ''))) return String(capturedAt || '');
+  return new Intl.DateTimeFormat(HERO_DATE_LOCALES[language] ?? language, {
+    calendar: 'gregory',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${capturedAt}T00:00:00Z`));
+}
+
 const isDisrupted = (c: { status: string }) => c.status !== 'green';
 
 export function getFallbackTeasers(): TeaserState {

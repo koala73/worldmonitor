@@ -47,6 +47,7 @@ import {
 } from './_conflict-hapi.mjs';
 import { makeSeedHistoryAfterPublish } from './_seed-history.mjs';
 import { resolveIso2 } from './_country-resolver.mjs';
+import { pizzintVenuePoint } from './shared/pizzint-location.cjs';
 
 export {
   HAPI_HDX_MAX_RESPONSE_BYTES,
@@ -753,6 +754,10 @@ function hapiFailureReason(status, providerMessage = '') {
   return Number.isInteger(Number(status)) ? `HTTP_${Number(status)}` : 'HAPI_FETCH_FAILED';
 }
 
+function isHapiTerminalRejection(error) {
+  return error?.status === 403 || error?.status === 429 || error?.reasonCode === 'HAPI_BOT_BLOCK';
+}
+
 async function hapiResponseError(resp) {
   let providerMessage = '';
   try {
@@ -805,6 +810,20 @@ async function fetchHapiRows({
       },
     );
     if (!resp.ok) {
+      const retryAfter = resp.headers.get('retry-after');
+      const seconds = retryAfter !== null && /^\d+$/.test(retryAfter) ? Number(retryAfter) : NaN;
+      // HTTP dates are UTC, including the legacy asctime form with no zone.
+      // Only the normalized timestamp is logged; never expose the raw header.
+      const retryDate = retryAfter !== null && Number.isNaN(seconds)
+        ? Date.parse(retryAfter.endsWith(' GMT') ? retryAfter : `${retryAfter} GMT`) : NaN;
+      console.warn(`  HAPI API rejection ${JSON.stringify({
+        status: resp.status,
+        country: /^[A-Z]{2}$/.test(countryCode ?? '') ? countryCode : 'global',
+        adminLevel: ['0', '1', '2'].includes(adminLevel) ? adminLevel : null,
+        offset,
+        retryAfterSeconds: Number.isSafeInteger(seconds) && seconds >= 0 ? seconds : null,
+        retryAfterAt: Number.isFinite(retryDate) ? new Date(retryDate).toISOString() : null,
+      })}`);
       throw await hapiResponseError(resp);
     }
 
@@ -1099,6 +1118,7 @@ export async function fetchAllHumanitarianSummaries({
     let fallbackFailure = sweepFailure;
     let fallbackRows = 0;
     for (let i = 0; i < missingCountries.length; i += 1) {
+      if (isHapiTerminalRejection(fallbackFailure)) break;
       const countryCode = missingCountries[i];
       // Snapshot-backed iterations issue no network request — they filter rows
       // already in memory — so they are not what this budget bounds, and gating
@@ -1130,7 +1150,7 @@ export async function fetchAllHumanitarianSummaries({
       } catch (error) {
         fallbackFailure = error;
         console.warn(`  HAPI ${countryCode} fallback failed: ${error.message}`);
-        if (error.status === 429 || error.status === 403) break;
+        if (isHapiTerminalRejection(error)) break;
       }
       if (i < missingCountries.length - 1 && sourceChannel !== HAPI_SNAPSHOT_CHANNEL) {
         await pace(HAPI_REQUEST_DELAY_MS);
@@ -1216,7 +1236,7 @@ export async function fetchAllHumanitarianSummaries({
 
 // ─── PizzINT Status ───
 
-async function fetchPizzintStatus() {
+export async function fetchPizzintStatus() {
   const resp = await fetch('https://www.pizzint.watch/api/dashboard-data', {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(10_000),
@@ -1232,7 +1252,7 @@ async function fetchPizzintStatus() {
     isSpike: d.is_spike, spikeMagnitude: d.spike_magnitude ?? 0,
     dataSource: d.data_source, recordedAt: d.recorded_at,
     dataFreshness: d.data_freshness === 'fresh' ? 'DATA_FRESHNESS_FRESH' : 'DATA_FRESHNESS_STALE',
-    isClosedNow: d.is_closed_now ?? false, lat: d.lat ?? 0, lng: d.lng ?? 0,
+    isClosedNow: d.is_closed_now ?? false, ...(pizzintVenuePoint(d) ?? { lat: 0, lng: 0 }),
   }));
 
   const open = locations.filter(l => !l.isClosedNow);

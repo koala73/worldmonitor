@@ -63,8 +63,14 @@ export function reportServerError(
   res: Response,
   input: RequestInfo | URL,
   enqueue: typeof enqueueSentryCall = enqueueSentryCall,
+  signal?: AbortSignal | null,
 ): void {
   if (res.status < 500) return;
+  // A caller that aborted while withBillingVerificationRetry waited out
+  // Retry-After gets the FIRST 503 back without the retry ever running, so
+  // nothing shows the outage was sustained (WORLDMONITOR-ZH: closing the
+  // country deep-dive mid-wait).
+  if (signal?.aborted) return;
   // wm-session's dead-session cooldown synthesizes a local 503 (marked with
   // X-Wm-Session-Degraded) for every suppressed anonymous call — it never
   // left the browser, so reporting it here floods one `API 503:` issue per
@@ -75,6 +81,10 @@ export function reportServerError(
   // decision point. Reporting every browser-visible 503 again would turn one
   // Redis outage into a per-route, per-client Sentry flood.
   if (res.headers.get('X-RateLimit-Mode') === 'degraded') return;
+  // api/mcp-proxy relays a remote MCP server's timeout as its own 504 and
+  // already captured it server-side at warning. The remote server is the
+  // caller's choice, not our origin (WORLDMONITOR-17A).
+  if (res.headers.get('X-Wm-Upstream-Timeout') === '1') return;
   try {
     const href = input instanceof Request ? input.url : String(input);
     const path = new URL(href, globalThis.location?.href ?? 'https://worldmonitor.app').pathname;
@@ -153,7 +163,7 @@ async function fetchReportingServerErrors(
   init?: RequestInit,
 ): Promise<Response> {
   const res = await globalThis.fetch(input, init);
-  reportServerError(res, input);
+  reportServerError(res, input, undefined, init?.signal);
   return res;
 }
 

@@ -79,6 +79,7 @@ export const REFRESH_INTERVALS = {
   fsi: 30 * 60 * 1000,
   yieldCurve: 30 * 60 * 1000,
   earningsCalendar: 60 * 60 * 1000,
+  materialEvents: 15 * 60 * 1000,
   economicCalendar: 60 * 60 * 1000,
   cotPositioning: 60 * 60 * 1000,
   goldIntelligence: 5 * 60 * 1000,

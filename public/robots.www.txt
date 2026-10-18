@@ -17,9 +17,11 @@
 # safelists `content-signal`, so the #4471 SEO regression that once forced the
 # header-only placement no longer applies.
 
-# Crawl-budget disallows (#7660). Search Console measured 1,271 "Page with
-# redirect" and 512 "Not found (404)" URLs against a declared inventory of 845,
-# both live and rising (199 -> 1,271 and 102 -> 512 in three months).
+# Crawl-budget disallows (#7660). The 2026-09-04 Search Console export that
+# motivated them counted 1,271 "Page with redirect" and 512 "Not found (404)"
+# URLs against a declared inventory of 845. Those counts are history, not the
+# current state: the 2026-09-24 export was attributed URL by URL in #8602, and
+# its redirects are expected host and parameter consolidation.
 #
 # Only ONE thing is blocked here, and the line is deliberate: robots.txt is a
 # crawl control, not a canonicalization tool. A disallowed URL is never

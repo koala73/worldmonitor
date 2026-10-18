@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { summarizeUcdpEvents } from '../scripts/_ucdp-dashboard.mjs';
 
 const require = createRequire(import.meta.url);
 const {
@@ -171,32 +172,57 @@ describe('capWithAnnualFloor', () => {
   });
 
   it('reserves the annual floor once the candidate alone exceeds the cap', () => {
-    // The regression: 2500 candidate events would otherwise evict the annual
-    // base entirely from a 2000-event payload.
     const capped = capWithAnnualFloor(build(2500, 3000), isCandidate, MAX_EVENTS);
-    assert.equal(capped.length, MAX_EVENTS);
-    assert.equal(countCandidates(capped), MAX_EVENTS - CANDIDATE_ANNUAL_FLOOR);
+    assert.equal(capped.length, 2500 + CANDIDATE_ANNUAL_FLOOR);
+    assert.equal(countCandidates(capped), 2500);
     assert.equal(capped.length - countCandidates(capped), CANDIDATE_ANNUAL_FLOOR);
   });
 
   it('keeps the annual base represented at the measured live mix', () => {
-    // 1795 candidate / 2000 cap was the live mix when this was written; the
-    // plain slice left only 205 annual events and trended to zero.
     const capped = capWithAnnualFloor(build(1795, 3000), isCandidate, MAX_EVENTS);
-    assert.equal(capped.length, MAX_EVENTS);
+    assert.equal(capped.length, 1795 + CANDIDATE_ANNUAL_FLOOR);
+    assert.equal(countCandidates(capped), 1795);
     assert.equal(capped.length - countCandidates(capped), CANDIDATE_ANNUAL_FLOOR);
   });
 
-  it('gives unused annual slots back to the candidate rather than shipping a short payload', () => {
+  it('retains all candidates when the annual base cannot fill its floor', () => {
     const capped = capWithAnnualFloor(build(2500, 100), isCandidate, MAX_EVENTS);
-    assert.equal(capped.length, MAX_EVENTS, 'must not publish fewer events than the plain slice would');
+    assert.equal(capped.length, 2600, 'all candidate rows and the available annual floor survive');
     assert.equal(capped.length - countCandidates(capped), 100, 'all available annual events kept');
+  });
+
+  it('fills spare capacity with annual history for a small candidate release', () => {
+    const capped = capWithAnnualFloor(build(100, 3000), isCandidate, MAX_EVENTS);
+    assert.equal(capped.length, MAX_EVENTS);
+    assert.equal(countCandidates(capped), 100);
+  });
+
+  it('preserves a candidate release when annual history is absent', () => {
+    const events = build(2500, 0);
+    assert.deepEqual(capWithAnnualFloor(events, isCandidate, MAX_EVENTS), events);
   });
 
   it('degrades to a plain newest-first cap when there is no candidate at all', () => {
     const capped = capWithAnnualFloor(build(0, 5000), isCandidate, MAX_EVENTS);
     assert.equal(capped.length, MAX_EVENTS);
     assert.equal(countCandidates(capped), 0);
+  });
+
+  it('preserves monthly deaths when a release exceeds the cap and its aggregate starts on day one', () => {
+    const monthStart = Date.parse('2026-08-01T00:00:00Z');
+    const monthEnd = Date.parse('2026-08-31T00:00:00Z');
+    const candidate = Array.from({ length: 2500 }, (_, i) => ({
+      id: `c${i}`, country: 'Ukraine', dateStart: monthEnd, dateEnd: monthEnd,
+      deathsBest: 1, violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED',
+    }));
+    candidate.push({ ...candidate[0], id: 'c-monthly', dateStart: monthStart, deathsBest: 5017 });
+    const capped = capWithAnnualFloor([...candidate, ...build(0, 3000)], isCandidate, MAX_EVENTS);
+    const retained = JSON.parse(JSON.stringify(capped)).filter(isCandidate);
+    assert.equal(retained.reduce((sum, event) => sum + event.deathsBest, 0), 7517);
+    assert.equal(retained.length, 2501);
+    assert.ok(retained.some((event) => event.id === 'c-monthly' && event.dateEnd === monthEnd));
+    assert.equal(capped.length - retained.length, CANDIDATE_ANNUAL_FLOOR);
+    assert.deepEqual(summarizeUcdpEvents(retained), summarizeUcdpEvents(candidate));
   });
 
   it('returns events sorted newest-first', () => {

@@ -144,8 +144,10 @@ describe('OpenAPI empty-200 degradation contract', () => {
       for (const [schemaName, schema] of Object.entries(spec.components?.schemas ?? {})) {
         if (!schema?.properties?.unavailable) continue;
         matched += 1;
+        const field = schema.properties.unavailable;
         assertTerms(
-          schema.properties.unavailable.description,
+          // sebuf documents a repeated field on its items.
+          field.description ?? field.items?.description,
           file + " " + schemaName + ".unavailable",
           ["unavailable"],
         );

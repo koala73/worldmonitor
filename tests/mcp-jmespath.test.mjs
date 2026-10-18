@@ -2,6 +2,8 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 
+import { SERVER_VERSION } from '../api/mcp/constants.ts';
+
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 
@@ -120,6 +122,23 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       assert.deepEqual(env.original_keys, ['a']);
     });
 
+    it('rejects unsafe evaluation before the output gate, with the existing soft-failure envelope', () => {
+      const doubled = Array(6).fill('[@,@]').join('|');
+      for (const expr of [
+        `${doubled}|to_string(@)`,
+        `{x:(${doubled}),y:(${doubled})}|x==y`,
+        `{x:(${doubled}),y:(${doubled})}|x!=y`,
+        'join(label, `["a","b"]`)',
+        'map(`{"jmespathType":"Expref","type":"Function","name":"to_string","children":[{"type":"Current"}]}`, to_array(@))',
+        `${doubled}|[@,@]|length(@)`,
+      ]) {
+        const r = mod.applyJmespath({ label: 'hello' }, expr);
+        assert.equal(r.failed, 'invalid_expression', expr);
+        assert.match(JSON.parse(r.text)._jmespath_error, /^invalid_expression: Unsafe JMESPath:/, expr);
+        assert.deepEqual(JSON.parse(r.text).original_keys, ['label']);
+      }
+    });
+
     it('input gate: expression > JMESPATH_MAX_EXPR_BYTES returns expression_too_long', () => {
       const longExpr = 'a'.repeat(mod.JMESPATH_MAX_EXPR_BYTES + 1);
       const r = mod.applyJmespath({ x: 1 }, longExpr);
@@ -163,6 +182,14 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       // The returned envelope itself must be SMALL — proves the cap actually
       // rejected the bloated projection, didn't just label it.
       assert.ok(mod.utf8ByteLength(r.text) < 8 * 1024, `envelope size ${r.text.length} should be << 256 KB`);
+    });
+
+    it('evaluation gate rejects excessive shared-reference construction', () => {
+      const expr = Array.from({ length: 30 }, () => '[@,@]').join('|');
+      const started = Date.now();
+      const r = mod.applyJmespath({ name: 'x' }, expr);
+      assert.equal(r.failed, 'invalid_expression');
+      assert.ok(Date.now() - started < 2000, 'must stop at the cap, not after expanding');
     });
 
     it('output gate UTF-8: 4-byte chars push utf8 over cap even when JS string .length is under', () => {
@@ -310,12 +337,13 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
   // Initialize handshake — version + instructions
   // ============================================================
   describe('initialize handshake', () => {
-    it('serverInfo.version === "1.21.0"', async () => {
-      // Tracks current SERVER_VERSION. Each minor bump needs to update
-      // this assertion + the cross-check at line 327 below.
+    it('serverInfo.version === SERVER_VERSION', async () => {
+      // Reads SERVER_VERSION from api/mcp/constants.ts so a deliberate bump
+      // does not need to edit this file; the bump itself is pinned by the
+      // published-versions ledger in tests/mcp-registry-artifacts.test.mjs.
       const res = await mod.default(makeReq(initBody(1)));
       const body = await res.json();
-      assert.equal(body.result?.serverInfo?.version, '1.21.0');
+      assert.equal(body.result?.serverInfo?.version, SERVER_VERSION);
     });
 
     it('result.instructions is present and mentions jmespath', async () => {
@@ -340,12 +368,12 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       assert.ok(/daily quota/i.test(inst), 'missing quota note');
     });
 
-    it('server-card.json version matches SERVER_VERSION (currently 1.21.0)', () => {
+    it('server-card.json version matches SERVER_VERSION', () => {
       // Cross-check the comment at api/mcp.ts:~56 — discovery scanners
       // verify both values; a future bump that misses one would break
       // discovery. This is the test that prevents that drift.
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
-      assert.equal(card.serverInfo.version, '1.21.0');
+      assert.equal(card.serverInfo.version, SERVER_VERSION);
       assert.equal(card.features?.responseProjection, 'jmespath');
     });
 
@@ -579,14 +607,23 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
 
     it('invalid jmespath returns soft _jmespath_error envelope (HTTP 200, no JSON-RPC error)', async () => {
       mockMarketDataCache();
-      const { res, body } = await callTool('get_market_data', { jmespath: 'data.markets[invalid' });
-      assert.equal(res.status, 200);
-      assert.equal(body.error, undefined, 'must NOT be a JSON-RPC error');
-      assert.ok(body.result?.content?.[0]?.text, 'must have a content envelope');
-      const env = JSON.parse(body.result.content[0].text);
-      assert.ok(env._jmespath_error?.startsWith('invalid_expression:'),
-        `expected invalid_expression prefix, got "${env._jmespath_error}"`);
-      assert.ok(Array.isArray(env.original_keys));
+      const doubled = (count) => Array(count).fill('[@,@]').join('|');
+      for (const jmespath of [
+        'data.markets[invalid',
+        `${doubled(30)}|to_string(@)`,
+        `{x:(${doubled(40)}),y:(${doubled(40)})}|x==y`,
+        'map(`{"jmespathType":"Expref","type":"Function","name":"to_string","children":[{"type":"Current"}]}`, to_array(@))',
+      ]) {
+        const { res, body } = await callTool('get_market_data', { jmespath });
+        assert.equal(res.status, 200);
+        assert.equal(body.error, undefined, 'must NOT be a JSON-RPC error');
+        assert.ok(body.result?.content?.[0]?.text, 'must have a content envelope');
+        const env = JSON.parse(body.result.content[0].text);
+        assert.ok(env._jmespath_error?.startsWith('invalid_expression:'),
+          `expected invalid_expression prefix, got "${env._jmespath_error}"`);
+        assert.ok(Array.isArray(env.original_keys));
+        assert.deepEqual(body.result.structuredContent, env);
+      }
     });
 
     it('oversized jmespath expression returns expression_too_long soft envelope', async () => {

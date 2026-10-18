@@ -16,7 +16,10 @@ import { readFileSync } from 'node:fs';
 
 type Harness = {
   fetchBootstrapData: () => Promise<void>;
-  bootstrapTesting: { resetBootstrapForTests: () => void };
+  bootstrapTesting: {
+    resetBootstrapForTests: () => void;
+    seedHydrationCacheForTests: (data: Record<string, unknown>) => void;
+  };
   fetchNaturalEvents: () => Promise<Array<{ id: string; title: string }>>;
   fetchAllFires: () => Promise<{ totalCount: number; regions?: Record<string, unknown[]>; skipped?: boolean }>;
   fetchEarthquakes: () => Promise<Array<{ id: string }>>;
@@ -31,6 +34,12 @@ type Harness = {
   fetchTrafficAnomalies: (country?: string) => Promise<{ anomalies: Array<{ id: string }>; totalCount: number }>;
   fetchSocialVelocity: () => Promise<{ posts: Array<{ id: string }>; fetchedAt: number }>;
   fetchDiseaseOutbreaks: () => Promise<{ outbreaks: Array<{ id: string }>; fetchedAt: number }>;
+  fetchImdCycloneMarine: () => Promise<{
+    coverageState: string;
+    cycloneEvents: Array<{ id: string }>;
+    portAlerts: Array<{ id: string }>;
+    marineBulletins: Array<{ id: string }>;
+  }>;
   fetchSanctionsPressure: () => Promise<{
     totalCount: number;
     semaError: string | null;
@@ -40,6 +49,7 @@ type Harness = {
     dataFreshness: 'fresh' | 'stale';
     lastUpdate: Date;
   }>;
+  fetchGdeltTensions: () => Promise<Array<{ score: number }>>;
   fetchChokepointStatus: () => Promise<{
     chokepoints: Array<{ id: string }>;
     fetchedAt: string;
@@ -201,8 +211,9 @@ before(async () => {
         "export { fetchTrafficAnomalies } from './src/services/infrastructure/index.ts';",
         "export { fetchSocialVelocity } from './src/services/social-velocity.ts';",
         "export { fetchDiseaseOutbreaks } from './src/services/disease-outbreaks.ts';",
+        "export { fetchImdCycloneMarine } from './src/services/imd-cyclone-marine.ts';",
         "export { fetchSanctionsPressure } from './src/services/sanctions-pressure.ts';",
-        "export { fetchPizzIntStatus } from './src/services/pizzint.ts';",
+        "export { fetchPizzIntStatus, fetchGdeltTensions } from './src/services/pizzint.ts';",
         "export { fetchChokepointStatus, refreshChokepointStatusAfterHydration } from './src/services/supply-chain/index.ts';",
         "export { fetchConsumerPriceOverview, fetchConsumerPriceCategories, fetchConsumerPriceMovers, fetchRetailerPriceSpreads } from './src/services/consumer-prices/index.ts';",
         "export { createHydrationHandoff } from './src/services/hydration-handoff.ts';",
@@ -422,6 +433,103 @@ describe('bootstrap hydration reuse (#7048)', () => {
     );
   });
 
+  function imdSnapshotFixture(generatedAt: number) {
+    // Shapes follow the producer (scripts/lib/imd-cyclone-marine.mjs
+    // weatherAlertsFromSnapshot / marineBulletinsFromSnapshot) and every field
+    // main's mapImdSnapshot (#8374) copies, with allowlisted IMD source URLs.
+    return {
+      coverageState: 'ok',
+      generatedAt,
+      products: { cycloneTrack: { status: 'ok', recordCount: 1 }, portWarning: { status: 'ok', recordCount: 1 } },
+      cycloneEvents: [{
+        id: 'imd-BOB052026', title: 'Cyclonic Storm DANA', description: 'RSMC New Delhi advisory',
+        lat: 15.2, lon: 86.4, date: generatedAt - 3_600_000, categoryTitle: 'Tropical Cyclone', closed: false,
+        stormId: 'BOB052026', stormName: 'DANA', basin: 'NI', classification: 'CS', windKt: 45,
+        sourceName: 'India Meteorological Department', sourceUrl: 'https://rsmcnewdelhi.imd.gov.in/',
+        pastTrack: [{ lat: 14.8, lon: 87.1, windKt: 40, timestamp: generatedAt - 7_200_000, geometryKind: 'observed-track' }],
+        forecastTrack: [{ lat: 16.0, lon: 85.5, windKt: 55, hour: 24, category: 1, geometryKind: 'forecast-track' }],
+        conePolygon: [[[85, 15], [87, 15], [87, 17], [85, 17], [85, 15]]], coneGeometryKind: 'cone-of-uncertainty',
+        windRadii: [], agencyObservations: [],
+      }],
+      portAlerts: [{
+        id: 'imd-port-paradip-2026-09-22', event: 'IMD Port Warning', severity: 'Severe',
+        headline: 'Paradip: Hoist Distant Warning Signal Number Two', description: 'Hoist Distant Warning Signal Number Two',
+        areaDesc: 'Paradip', onset: generatedAt - 1_800_000, expires: generatedAt + 86_400_000,
+        coordinates: [[86.67, 20.26]], centroid: [86.67, 20.26], countryCode: 'IN', source: 'IMD port warning',
+        productKind: 'imd-port-warning', issuedBy: 'ACWC KOLKATA',
+        sourceUrl: 'https://rsmcnewdelhi.imd.gov.in/port-warning.php', geometryPrecision: 'point',
+      }],
+      marineBulletins: [{
+        id: 'imd-sea-bay-central', event: 'IMD Sea Area Bulletin', severity: 'Minor',
+        headline: 'Central Bay of Bengal: Rough sea', description: 'Wind: SW 20-25 kt · Visibility: 4-10 km · Sea: Rough',
+        areaDesc: 'Central Bay of Bengal', onset: generatedAt - 1_800_000, expires: generatedAt + 43_200_000,
+        coordinates: [[88, 15]], centroid: [88, 15], countryCode: 'IN', source: 'IMD sea area bulletin',
+        productKind: 'sea-area-bulletin', issuedBy: 'IMD Mumbai', wind: 'SW 20-25 kt', visibility: '4-10 km', seaState: 'Rough',
+        sourceUrl: 'https://mausam.imd.gov.in/responsive/marine_forecast.php', geometryPrecision: 'point',
+      }],
+      sourceName: 'India Meteorological Department',
+      sourceUrl: 'https://api.imd.gov.in/public/api_reference.html',
+    };
+  }
+
+  it('imdCycloneMarine: parallel weather/natural loaders share one accepted snapshot (#8354)', async () => {
+    const snapshot = imdSnapshotFixture(Date.now());
+    // Pre-seed the consume-once slot AFTER bootstrap hydration (which drains an
+    // empty slow deferred with {}), mirroring a tier payload or a completed
+    // on-demand read landing while both loaders are already queued.
+    const requests = bootstrapStub({});
+    await harness.fetchBootstrapData();
+    harness.bootstrapTesting.resetBootstrapForTests();
+    harness.bootstrapTesting.seedHydrationCacheForTests({ imdCycloneMarine: snapshot });
+
+    // loadNatural() and loadWeatherAlerts() both call fetchImdCycloneMarine()
+    // in the same tick; the consume-once slot drains on the first read, so the
+    // second must be served from the shared handoff with zero RPC requests.
+    const [first, second] = await Promise.all([
+      harness.fetchImdCycloneMarine(),
+      harness.fetchImdCycloneMarine(),
+    ]);
+    assert.equal(first.coverageState, 'ok');
+    assert.deepEqual(first.cycloneEvents.map((event) => event.id), ['imd-BOB052026']);
+    assert.deepEqual(first.portAlerts.map((alert) => alert.id), ['imd-port-paradip-2026-09-22']);
+    assert.deepEqual(first.marineBulletins.map((alert) => alert.id), ['imd-sea-bay-central']);
+    // The accepted record went through main's mapper, not a raw passthrough.
+    assert.equal(first.portAlerts[0]?.severity, 'Severe');
+    assert.equal(first.portAlerts[0]?.issuedBy, 'ACWC KOLKATA');
+    assert.equal(first.portAlerts[0]?.sourceUrl, 'https://rsmcnewdelhi.imd.gov.in/port-warning.php');
+    assert.ok(first.portAlerts[0]?.onset instanceof Date);
+    assert.equal(first.marineBulletins[0]?.seaState, 'Rough');
+    assert.equal(first.cycloneEvents[0]?.sourceUrl, 'https://rsmcnewdelhi.imd.gov.in/');
+    assert.deepEqual(second, first, 'both layers must share one accepted snapshot');
+    assert.equal(rpcUrlCount(requests), 0, 'accepted hydration must not trigger an RPC refetch');
+
+    const third = await harness.fetchImdCycloneMarine();
+    assert.deepEqual(third, first, 'the accepted snapshot is retained inside the handoff window');
+    assert.equal(rpcUrlCount(requests), 0, 'retained hydration must not trigger a second fetch');
+  });
+
+  it('imdCycloneMarine: the shared snapshot expires after a short handoff window, not 30 minutes', async (t) => {
+    const requests = bootstrapStub({});
+    await harness.fetchBootstrapData();
+    harness.bootstrapTesting.resetBootstrapForTests();
+    const now = Date.now();
+    let clock = now;
+    t.mock.method(Date, 'now', () => clock);
+    harness.bootstrapTesting.seedHydrationCacheForTests({ imdCycloneMarine: imdSnapshotFixture(now) });
+
+    const accepted = await harness.fetchImdCycloneMarine();
+    assert.equal(accepted.portAlerts.length, 1);
+
+    // The handoff only bridges the two same-tick loaders. A later refresh
+    // must go back to the load path instead of replaying a snapshot for the
+    // breaker-length 30-minute default.
+    clock = now + 60_001;
+    const later = await harness.fetchImdCycloneMarine();
+    assert.equal(later.coverageState, 'unavailable');
+    assert.equal(later.portAlerts.length, 0);
+    assert.equal(rpcUrlCount(requests), 0);
+  });
+
   it('malformed live DDoS and traffic responses use their fallbacks', async () => {
     const requests = bootstrapStub({}, (url) => {
       if (url.includes('list-internet-ddos-attacks')) {
@@ -602,7 +710,11 @@ describe('bootstrap hydration reuse (#7048)', () => {
     const staleStatus = {
       defconLevel: 4, defconLabel: 'stale', aggregateActivity: 10, activeSpikes: 1,
       locationsMonitored: 1, locationsOpen: 1, updatedAt: 1,
-      dataFreshness: 'DATA_FRESHNESS_STALE', locations: [],
+      dataFreshness: 'DATA_FRESHNESS_STALE', locations: [{
+        placeId: 'missing-live', name: 'Pizza', currentPopularity: 0,
+        percentageOfUsual: 0, noLiveSignal: true, isClosedNow: false,
+        dataFreshness: 'DATA_FRESHNESS_STALE',
+      }],
     };
     const freshStatus = {
       ...staleStatus,
@@ -610,6 +722,11 @@ describe('bootstrap hydration reuse (#7048)', () => {
       defconLabel: 'fresh',
       updatedAt: 2,
       dataFreshness: 'DATA_FRESHNESS_FRESH',
+      locations: [...staleStatus.locations, {
+        placeId: 'quiet-live', name: 'Quiet Pizza', currentPopularity: 0,
+        percentageOfUsual: 0, hasBaseline: true, noLiveSignal: false, isClosedNow: false,
+        dataFreshness: 'DATA_FRESHNESS_FRESH',
+      }],
     };
     const requests = bootstrapStub(
       { pizzint: { pizzint: staleStatus, tensionPairs: [] } },
@@ -622,9 +739,23 @@ describe('bootstrap hydration reuse (#7048)', () => {
     const cached = await harness.fetchPizzIntStatus();
 
     assert.equal(hydrated.dataFreshness, 'stale');
+    assert.equal(hydrated.locations[0].no_live_signal, true);
     assert.equal(recovered.dataFreshness, 'fresh');
+    assert.equal(recovered.locations[0].no_live_signal, true);
+    assert.equal(recovered.locations[1].percentage_of_usual, 0);
     assert.deepEqual(cached, recovered);
     assert.equal(rpcUrlCount(requests), 1, 'stale hydration must retry once and cache only the fresh result');
+  });
+
+  it('GDELT tensions: every refresh rechecks the server instead of serving a browser cache', async () => {
+    let score = 50;
+    const requests = bootstrapStub({}, () => ({ tensionPairs: [{ id: 'usa_russia',
+      countries: ['US', 'RU'], label: 'US–Russia', score,
+      trend: 'TREND_DIRECTION_STABLE', changePercent: 0, region: 'global' }] }));
+    assert.equal((await harness.fetchGdeltTensions())[0]?.score, 50);
+    score = 75;
+    assert.equal((await harness.fetchGdeltTensions())[0]?.score, 75);
+    assert.equal(rpcUrlCount(requests), 2);
   });
 
   it('chokepoints: degraded hydration renders promptly, refreshes once, and remains retryable', async () => {
@@ -851,6 +982,22 @@ describe('bootstrap hydration reuse (#7048)', () => {
     const aviation = roundTrip('Flight Delays v2', [{ updatedAt: new Date(1) }]);
     assert.ok(aviation[0]?.updatedAt instanceof Date);
 
+    const ops = roundTrip('Airport Ops', [{ updatedAt: new Date(1) }]);
+    assert.ok(ops[0]?.updatedAt instanceof Date);
+
+    const prices = roundTrip('Flight Prices', {
+      quotes: [
+        { id: 'q1', expiresAt: new Date(2) },
+        { id: 'q2', expiresAt: null },
+      ],
+      isDemoMode: false, isIndicative: false, degraded: false, error: '', provider: 'x',
+    });
+    assert.ok(prices.quotes[0]?.expiresAt instanceof Date);
+    assert.equal(prices.quotes[1]?.expiresAt, null);
+
+    const news = roundTrip('Aviation News', [{ publishedAt: new Date(3) }]);
+    assert.ok(news[0]?.publishedAt instanceof Date);
+
     const pizzint = roundTrip('PizzINT', { lastUpdate: new Date(2) });
     assert.ok(pizzint.lastUpdate instanceof Date);
 
@@ -997,7 +1144,7 @@ describe('bootstrap hydration reuse (#7048)', () => {
       ['src/services/conflict/index.ts', /iranBreaker\.recordSuccess\(hydrated\)/],
       ['src/services/pizzint.ts', /pizzintBreaker\.recordSuccess\(status\)/],
       ['src/services/thermal-escalation.ts', /breaker\.recordSuccess\(watch, cacheKey\)/],
-      ['src/services/unrest/index.ts', /unrestBreaker\.recordSuccess\(hydrated\)/],
+      ['src/services/unrest/index.ts', /unrestBreaker\.recordSuccess\(hydrated,\s*'available-v1'\)/],
       ['src/services/economic/index.ts', /bisPolicyBreaker\.recordSuccess\(hPolicy\)/],
       ['src/services/consumer-prices/index.ts', /overviewBreaker\.recordSuccess\(hydrated,/],
     ];

@@ -20,6 +20,8 @@
 import { internalMutation, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { TERMS_VERSION } from "../shared/legal";
+import { isAccountDeleting } from "./accountDeletion/guard";
+import { agentRefColumns } from "../shared/agent-client-source";
 
 // Validation invariants. Length-bounded BEFORE regex (defense in depth
 // against memory-exhaustion via huge strings).
@@ -59,12 +61,28 @@ function isValidTimezone(tz: string): boolean {
   }
 }
 
+/**
+ * Sign-up source columns for a new users row. An unusable ref is dropped, not
+ * rejected: attribution must never block the account record. Exported for
+ * tests.
+ */
+export function signupSourceFields(rawRef: string | undefined): {
+  signupRef?: string;
+  signupSource?: string;
+} {
+  const columns = agentRefColumns(rawRef);
+  return columns ? { signupRef: columns.ref, signupSource: columns.source } : {};
+}
+
 export const ensureRecord = mutation({
   args: {
     localeTag: v.string(),
     localePrimary: v.string(),
     timezone: v.optional(v.string()),
     country: v.optional(v.string()),
+    // First-touch agent link (`agent-claude`), stored by the browser from an
+    // inbound `?ref=`. Kept only on insert, as the sign-up source.
+    signupRef: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // ──── Validation ────
@@ -110,6 +128,9 @@ export const ensureRecord = mutation({
       return { ok: false as const, reason: "unauthenticated" as const };
     }
     const userId = identity.subject;
+    if (await isAccountDeleting(ctx, userId)) {
+      return { ok: false as const, reason: "account-deletion" as const };
+    }
     // Email may be empty for phone-only signups; treated as "no email
     // observed yet" — we'll fill it on a later call when one is added.
     const incomingEmail = (identity.email ?? "").trim();
@@ -189,6 +210,7 @@ export const ensureRecord = mutation({
       termsAcceptedAt: now,
       termsFirstAcceptedAt: now,
       termsVersion: TERMS_VERSION,
+      ...signupSourceFields(args.signupRef),
     });
     return { ok: true as const, action: "inserted" as const };
   },
@@ -225,6 +247,9 @@ export const recordTermsAcceptance = internalMutation({
     if (!userId) {
       console.warn("[users:recordTermsAcceptance] empty userId rejected");
       return { ok: false as const, reason: "invalid-input" as const };
+    }
+    if (await isAccountDeleting(ctx, userId)) {
+      return { ok: false as const, reason: "account-deletion" as const };
     }
 
     const now = Date.now();

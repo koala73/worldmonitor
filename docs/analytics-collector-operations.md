@@ -40,6 +40,25 @@ health signal: a healthy deployment can still return HTTP 500 from `POST
   retry append-only conversion events after an ambiguous 5xx; identity snapshots
   may use their idempotent retry policy.
 
+### Diagnose a monitor transport failure
+
+The scheduled monitor reports each failed write with its burst number, UTC
+start time, and elapsed milliseconds. Transport failures include bounded error
+codes from nested causes and aggregate connection errors, such as `ECONNRESET`,
+`EAI_AGAIN`, and `UND_ERR_CONNECT_TIMEOUT`. Arbitrary error messages, stacks,
+socket addresses, and request payloads are excluded.
+
+`phase=request` means fetch failed before response headers were available.
+`phase=body` means headers arrived but the response body could not be read.
+The latter includes the HTTP status. Neither proves that the collector did not
+commit the write.
+
+Compare the failed attempt times with Railway HTTP and runtime logs for the
+`umami` service. Check the adjacent scheduled runs before classifying an alert
+as isolated. A later clean run proves recovery for that sample; it does not
+identify the cause of an earlier connection failure. Any failed write still
+fails the monitor, including failures followed by successful bursts.
+
 ### Raced-timeout retry / replay (#6968)
 
 A `raced` failure means the transport ignored our abort and the request may
@@ -470,7 +489,32 @@ starts a new trend.
 A warning emits a GitHub annotation but leaves the scheduled workflow green so
 the 15-minute probe does not send repeated failed-run alerts during a bounded
 retention drain. A critical condition fails the workflow. Input, Railway, or
-state-processing errors also fail closed.
+state-processing errors also fail closed, with one exception: Railway being
+unreachable.
+
+[`scripts/read-railway-volumes.mjs`](../scripts/read-railway-volumes.mjs) reads
+the volume list and retries transport failures: a timeout, a dropped or refused
+connection, or a 502–504. `railway volume list` is a project-wide query. On
+2026-09-28 it took 44–70 s against the CLI's ~90 s request timeout, and 7 of 35
+runs failed on a single timed-out request. The workflow no longer runs
+`railway status` first, because that call took 41–90 s and checked nothing the
+volume read does not. A bad token or an unknown project still fails at once. A
+timed-out attempt kills the CLI's whole process group, because the npm wrapper
+runs the real binary with inherited pipes.
+
+When every attempt fails, the run warns and judges the stored samples instead:
+
+- It fails when the newest sample is more than 6 hours old, which is one
+  Railway size refresh. With no stored sample at all, the state records when
+  reads started failing, and the same 6 hours count from then.
+- It fails when the newest sample measured critical, so a critical run is not
+  followed by a green one just because the next read timed out.
+- Otherwise it only warns.
+
+A Railway latency spike therefore produces an annotation, and an outage that
+leaves the monitor blind fails the workflow. The job timeout is 8 minutes, so
+the retention runner check still runs when both the volume attempts and the
+retention read run into the CLI timeout.
 
 ## Retention runner alarm
 

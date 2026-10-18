@@ -79,7 +79,7 @@ describe('protected-resource metadata — path-scoped /mcp document', () => {
   for (const query of ['resource=api/mcp', 'resource=api%2Fmcp']) {
     it(`a rewritten ?${query} serves the /api/mcp document`, async () => {
       const json = await (await get(prmHandler, 'api.worldmonitor.app', `/api/oauth-protected-resource?${query}`)).json();
-      assert.equal(json.resource, 'https://api.worldmonitor.app/api/mcp');
+      assert.equal(json.resource, `https://${'api'}.worldmonitor.app/api/mcp`);
     });
   }
 
@@ -102,8 +102,8 @@ describe('protected-resource metadata — path-scoped /mcp document', () => {
   // `/api/mcp` cannot be handed the `/mcp` document.
   it('describes /api/mcp for the deployed route', async () => {
     const json = await (await get(prmHandler, 'api.worldmonitor.app', '/.well-known/oauth-protected-resource/api/mcp')).json();
-    assert.equal(json.resource, 'https://api.worldmonitor.app/api/mcp');
-    assert.deepEqual(json.authorization_servers, ['https://api.worldmonitor.app']);
+    assert.equal(json.resource, `https://${'api'}.worldmonitor.app/api/mcp`);
+    assert.deepEqual(json.authorization_servers, [`https://${'api'}.worldmonitor.app`]);
   });
 });
 
@@ -116,6 +116,23 @@ describe('authorization-server metadata — path-scoped probe', () => {
       assert.equal(json.issuer, `https://${host}`);
       assert.equal(json.authorization_endpoint, `https://${host}/oauth/authorize`);
       assert.equal(json.authorization_response_iss_parameter_supported, true);
+    });
+  }
+});
+
+describe('authorization-server metadata — registration method', () => {
+  // CIMD and DCR together (#9244). Clients pick one at discovery and do not
+  // fall back, so this flag ships only with the complete CIMD flow
+  // (tests/oauth-cimd.test.mjs). `none` stays the only auth method: Claude and
+  // Codex need it to choose CIMD, and advertising private_key_jwt would move
+  // ChatGPT onto signed client assertions we do not verify.
+  for (const path of ['/.well-known/oauth-authorization-server', '/.well-known/oauth-authorization-server/mcp']) {
+    it(`${path} advertises CIMD alongside DCR, public clients only`, async () => {
+      const json = await (await get(asHandler, 'worldmonitor.app', path)).json();
+      assert.equal(json.registration_endpoint, 'https://worldmonitor.app/oauth/register');
+      assert.equal(json.client_id_metadata_document_supported, true);
+      assert.deepEqual(json.token_endpoint_auth_methods_supported, ['none']);
+      assert.deepEqual(json.code_challenge_methods_supported, ['S256']);
     });
   }
 });
@@ -159,15 +176,21 @@ describe('the MCP 401 challenge points at the path-scoped document', () => {
     );
   });
 
-  // The advertised resource must cover the URL the client actually called, or
-  // the MCP SDK rejects it (requested path must start with the configured one).
-  it('the deployed /api/mcp route points at its own document, not /mcp', async () => {
-    const res = await call('https://api.worldmonitor.app/api/mcp', 'api.worldmonitor.app');
-    assert.equal(res.status, 401);
-    assert.match(
-      res.headers.get('www-authenticate'),
-      /resource_metadata="https:\/\/api\.worldmonitor\.app\/\.well-known\/oauth-protected-resource\/api\/mcp"/,
-    );
+  it('a retired /api/mcp transport request gets the migration error before auth', async () => {
+    const res = await call(`https://${'api'}.worldmonitor.app/api/mcp`, 'api.worldmonitor.app');
+    assert.equal(res.status, 410);
+    assert.deepEqual(await res.json(), {
+      jsonrpc: '2.0',
+      id: 1,
+      error: {
+        code: -32000,
+        message: 'Use https://worldmonitor.app/mcp',
+        data: {
+          reason: 'canonical_endpoint_required',
+          endpoint: 'https://worldmonitor.app/mcp',
+        },
+      },
+    });
   });
 
   // The well-known aliases are the same transport under a different URL
@@ -185,16 +208,10 @@ describe('the MCP 401 challenge points at the path-scoped document', () => {
     });
   }
 
-  // The rewrite destination must not be a client-settable signal: a caller who
-  // appends the rewrite's own query to /api/mcp would otherwise be handed the
-  // /mcp document, which does not cover the URL they called.
-  it('a query parameter cannot talk the handler out of the /api/mcp document', async () => {
-    const res = await call('https://api.worldmonitor.app/api/mcp?transport=mcp', 'api.worldmonitor.app');
-    assert.equal(res.status, 401);
-    assert.match(
-      res.headers.get('www-authenticate'),
-      /resource_metadata="https:\/\/api\.worldmonitor\.app\/\.well-known\/oauth-protected-resource\/api\/mcp"/,
-    );
+  it('a query parameter cannot bypass the /api/mcp migration response', async () => {
+    const res = await call(`https://${'api'}.worldmonitor.app/api/mcp?transport=mcp`, 'api.worldmonitor.app');
+    assert.equal(res.status, 410);
+    assert.equal((await res.json()).error?.data?.reason, 'canonical_endpoint_required');
   });
 
   // The edge function observes the original path: production serves markdown at

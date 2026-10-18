@@ -52,18 +52,50 @@ const AI_PLATFORM_DOMAINS = Object.freeze({
     ['copilot_search', 'Copilot Search'],
   ]),
 });
-const PAGE_FAMILY_DOMAIN = defineDomain([
-  ['homepage', 'Homepage'],
-  ['dashboard', 'Dashboard'],
-  ['blog', 'Blog'],
-  ['documentation', 'Documentation'],
-  ['country_pages', 'Country pages'],
-  ['chokepoints', 'Chokepoints'],
-  ['crises', 'Crises'],
-  ['tools', 'Tools'],
-  ['pricing', 'Pricing'],
-  ['developer_mcp', 'Developer / MCP'],
-]);
+/**
+ * Page families by baseline schema version, the same shape as
+ * `AI_PLATFORM_DOMAINS` above and for the same reason: a reviewed baseline was
+ * collected against the taxonomy of its day, so widening the taxonomy must not
+ * retroactively invalidate it or silently rewrite the scorecard it renders.
+ *
+ * Version 2 adds the families the 2026-09-24 coverage export proved we cannot
+ * report without (#8606). Version 1 is unchanged.
+ */
+const PAGE_FAMILY_DOMAINS = Object.freeze({
+  1: defineDomain([
+    ['homepage', 'Homepage'],
+    ['dashboard', 'Dashboard'],
+    ['blog', 'Blog'],
+    ['documentation', 'Documentation'],
+    ['country_pages', 'Country pages'],
+    ['chokepoints', 'Chokepoints'],
+    ['crises', 'Crises'],
+    ['tools', 'Tools'],
+    ['pricing', 'Pricing'],
+    ['developer_mcp', 'Developer / MCP'],
+  ]),
+  2: defineDomain([
+    ['homepage', 'Homepage'],
+    ['dashboard', 'Dashboard'],
+    ['blog', 'Blog'],
+    ['documentation', 'Documentation'],
+    ['docs_zh', 'Documentation (zh)'],
+    ['country_pages', 'Country pages'],
+    ['chokepoints', 'Chokepoints'],
+    ['crises', 'Crises'],
+    ['tools', 'Tools'],
+    ['pricing', 'Pricing'],
+    ['developer_mcp', 'Developer / MCP'],
+    ['sources', 'Sources'],
+    ['compare', 'Compare'],
+    ['research', 'Research'],
+    ['use_cases', 'Use cases'],
+    ['markdown_twins', 'Markdown twins'],
+    ['story_shares', 'Story shares'],
+    ['site_infrastructure', 'Site infrastructure'],
+  ]),
+});
+const PAGE_FAMILY_DOMAIN = PAGE_FAMILY_DOMAINS[2];
 const INTENT_DOMAIN = defineDomain([
   ['category_definition', 'Category / definition'],
   ['use_case', 'Use case'],
@@ -123,6 +155,26 @@ export function aiPlatformsForSchemaVersion(schemaVersion) {
   );
   const domain = AI_PLATFORM_DOMAINS[schemaVersion];
   return domainIds(domain);
+}
+
+function pageFamilyDomainForSchemaVersion(schemaVersion) {
+  invariant(
+    schemaVersion === 1 || schemaVersion === 2,
+    'baseline schemaVersion must be 1 or 2',
+  );
+  return PAGE_FAMILY_DOMAINS[schemaVersion];
+}
+
+/**
+ * Page family ids a baseline or query set of `schemaVersion` must cover.
+ *
+ * `PAGE_FAMILIES` stays the union — the full taxonomy a URL may map to — so
+ * membership checks accept every id. Completeness checks use this instead, so
+ * a version 1 artifact is never asked for families that did not exist when it
+ * was reviewed.
+ */
+export function pageFamiliesForSchemaVersion(schemaVersion) {
+  return domainIds(pageFamilyDomainForSchemaVersion(schemaVersion));
 }
 
 export function isNonEmptyString(value) {
@@ -548,7 +600,7 @@ export function validateQuerySet(querySet) {
   for (const intent of INTENTS) {
     invariant(intents.has(intent), `query set is missing intent ${intent}`);
   }
-  for (const family of PAGE_FAMILIES) {
+  for (const family of pageFamiliesForSchemaVersion(querySet.schemaVersion)) {
     invariant(pageFamilies.has(family), `query set is missing page family ${family}`);
   }
   return querySet;
@@ -820,8 +872,8 @@ const INTENT_SLICE = Object.freeze({
   ),
   includeIndexedPages: false,
 });
-const PAGE_FAMILY_SLICE = Object.freeze({
-  domain: PAGE_FAMILY_DOMAIN,
+const pageFamilySlice = (schemaVersion) => Object.freeze({
+  domain: pageFamilyDomainForSchemaVersion(schemaVersion),
   matchesQuery: (query, group) => query.targetPage.family === group,
   searchRows: (source, group) => (
     source.pageFamilyRows.filter((row) => row.pageFamily === group)
@@ -907,7 +959,7 @@ export function buildScorecard(querySet, baseline) {
     observations,
     baseline.search,
     eligiblePlatformCount,
-    PAGE_FAMILY_SLICE,
+    pageFamilySlice(baseline.schemaVersion),
   );
   const referrals = structuredClone(baseline.referrals);
   referrals.byReferrerFamily = buildReferralSlices(
@@ -917,7 +969,7 @@ export function buildScorecard(querySet, baseline) {
   );
   referrals.byPageFamily = buildReferralSlices(
     baseline.referrals,
-    PAGE_FAMILY_DOMAIN,
+    pageFamilyDomainForSchemaVersion(baseline.schemaVersion),
     (segment, family) => segment.landingPageFamily === family,
   );
 

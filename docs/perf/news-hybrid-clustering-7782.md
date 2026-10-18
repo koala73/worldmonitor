@@ -169,9 +169,10 @@ inputs, known and unknown tiers, fallback, supersession, and teardown.
 node --test \
   tests/profile-news-hybrid-clustering-7782.test.mjs \
   tests/profile-news-hybrid-clustering-7782-dashboard.test.mjs \
-  tests/clustering-cap.test.mjs
+  tests/nlp-shared-cores.test.mjs
 npx vitest run --config vitest.dom.config.mts \
-  tests/dom/news-hybrid-worker-offload.test.mts
+  tests/dom/news-hybrid-worker-offload.test.mts \
+  tests/dom/analysis-core-clustering-reexport.test.mts
 npm run typecheck
 npm run lint:boundaries
 git diff --check

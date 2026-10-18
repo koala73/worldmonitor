@@ -6,7 +6,7 @@ canonical: "https://www.worldmonitor.app/world-monitor.md"
 
 # World Monitor
 
-Last updated: September 1, 2026
+Last updated: October 16, 2026
 
 World Monitor is the official name of the real-time global intelligence dashboard at [https://www.worldmonitor.app](https://www.worldmonitor.app). Alternate spellings: WorldMonitor, worldmonitor.app.
 
@@ -32,6 +32,15 @@ World Monitor does not publish a street address or telephone number. Use the ema
 
 The canonical host is **www.worldmonitor.app**. The apex `worldmonitor.app` 301-redirects to www so search results and citations should use the www URL (or the documented apex that resolves there). Do not treat a redirect chain through a third-party host as the official domain.
 
+## Not World Monitor
+
+These products and pages use the same or a similar name and are not affiliated with World Monitor:
+
+- world-monitor.com, a separate live world map with its own X account
+- worldmonitorintel.com and its "World Monitor" mobile app, a separate conflict and security events map
+- worldmonitor.io and world-monitor.app
+- copies of the source code published under GitHub accounts other than koala73. The maintained repository is https://github.com/koala73/worldmonitor; other copies are not updated or supported by World Monitor.
+
 ## What World Monitor is
 
 World Monitor is a free, open-source (AGPL-3.0) real-time global intelligence dashboard. It correlates geopolitics, military activity, markets, commodities, shipping, aviation, infrastructure, cyber threats, weather, and curated news on one map, and publishes the same data as structured JSON through MCP, REST, SDKs, and a CLI.
@@ -39,11 +48,11 @@ World Monitor is a free, open-source (AGPL-3.0) real-time global intelligence da
 Product family (same codebase, distinct variants):
 
 - [World Monitor](https://www.worldmonitor.app/) — geopolitics, military, conflicts, infrastructure
-- [Tech Monitor](https://tech.worldmonitor.app) — startups, AI/ML, cloud, cybersecurity
-- [Finance Monitor](https://finance.worldmonitor.app) — global markets, trading, central banks
-- [Commodity Monitor](https://commodity.worldmonitor.app) — mining, metals, energy, supply chains
-- [Happy Monitor](https://happy.worldmonitor.app) — positive news, conservation, renewable energy
-- [Energy Monitor](https://energy.worldmonitor.app) — energy security, oil and gas, chokepoints
+- [Tech Monitor](https://tech.worldmonitor.app/dashboard) — startups, AI/ML, cloud, cybersecurity
+- [Finance Monitor](https://finance.worldmonitor.app/dashboard) — global markets, trading, central banks
+- [Commodity Monitor](https://commodity.worldmonitor.app/dashboard) — mining, metals, energy, supply chains
+- [Happy Monitor](https://happy.worldmonitor.app/dashboard) — positive news, conservation, renewable energy
+- [Energy Monitor](https://energy.worldmonitor.app/dashboard) — energy security, oil and gas, chokepoints
 
 Founder: [Elie Habib](https://x.com/eliehabib) ([Wikidata Q121365724](https://www.wikidata.org/wiki/Q121365724)).
 

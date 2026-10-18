@@ -57,8 +57,12 @@ export function validateNoHallucinatedProperNouns(
   headline: unknown,
   options?: { failClosed?: boolean },
 ): { ok: true } | { ok: false; hallucinated: string[] };
-export function extractNumericFacts(text: string): Set<string>;
+export function extractNumericFacts(text: string, options?: { dateParts?: boolean }): Set<string>;
 export function validateNoHallucinatedFacts(
+  summary: unknown,
+  groundText: unknown,
+): { ok: true } | { ok: false; hallucinated: string[] };
+export function validateNoHallucinatedStatusQualifiers(
   summary: unknown,
   groundText: unknown,
 ): { ok: true } | { ok: false; hallucinated: string[] };

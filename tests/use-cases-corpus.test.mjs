@@ -376,7 +376,10 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
 
         const url = new URL(attributes.href, 'https://www.worldmonitor.app');
         assert.equal(url.pathname, expectedPaths[destination], label);
-        assert.equal(url.searchParams.get('utm_source'), 'seo-use-case', label);
+        // The published href carries wm_content_* attribution only. A utm_*
+        // key here is a redirect hop: middleware strips index-noise query
+        // keys with a 308 (#8603).
+        assert.equal(url.searchParams.has('utm_source'), false, label);
         assert.equal(url.searchParams.get('wm_content_source'), 'worldmonitor-use-cases', label);
         assert.equal(url.searchParams.get('wm_content_medium'), 'owned-content', label);
         assert.equal(url.searchParams.get('wm_content_campaign'), campaign, label);

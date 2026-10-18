@@ -572,12 +572,7 @@ describe("#5379 + #4770 — entitlement resolution outcomes are pinned", () => {
     expect(routeHandler).not.toHaveBeenCalled();
   });
 
-  test("apiAccess:true with a NON-NUMERIC validUntil → still served (residual gap, pinned)", async () => {
-    // `?? 0` only defaults null/undefined. A string date compares false against
-    // Date.now() and is served. Narrower than the missing-field case but the same
-    // shape of hole; the real fix is runtime shape validation of the Convex
-    // response in getEntitlements, not another special case here. Pinned so the
-    // residual risk stays visible rather than living only in a review comment.
+  test("apiAccess:true with a non-numeric validUntil is denied before dispatch", async () => {
     getEntitlements.mockImplementation(
       async () => ({
         planKey: "api_starter",
@@ -586,7 +581,8 @@ describe("#5379 + #4770 — entitlement resolution outcomes are pinned", () => {
       }) as never,
     );
     const res = await makeGateway()(keyReq(REGULAR_PATH), ctx);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    expect(routeHandler).not.toHaveBeenCalled();
   });
 
   test("a THROWING getEntitlements propagates", async () => {

@@ -1,3 +1,4 @@
+import { CountrySectionError } from '@/services/country-brief-error';
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
@@ -8,7 +9,6 @@ import type {
   ListPipelinesResponse,
   PipelineEntry,
   GetPipelineDetailResponse,
-  ListEnergyDisruptionsResponse,
   EnergyDisruptionEntry,
 } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { formatEventWindow, formatCapacityOffline } from '@/shared/disruption-timeline';
@@ -177,10 +177,11 @@ export class PipelineStatusPanel extends Panel {
   private selectedId: string | null = null;
   private detail: GetPipelineDetailResponse | null = null;
   private detailLoading = false;
+  private detailError: string | null = null;
   // Disruption events for the currently-open pipeline. Fetched lazily
   // alongside getPipelineDetail. undefined = not yet fetched;
   // empty array = fetched and no events on file.
-  private detailEvents: EnergyDisruptionEntry[] | undefined = undefined;
+  private detailEvents: EnergyDisruptionEntry[] | null | undefined = undefined;
   private usedHydrationPaint = false;
   private openDetailHandler = (ev: Event): void => {
     const id = (ev as CustomEvent<{ pipelineId?: string }>).detail?.pipelineId;
@@ -188,7 +189,7 @@ export class PipelineStatusPanel extends Panel {
     void this.loadDetail(id);
   };
 
-  constructor() {
+  constructor(private readonly detailSource?: Pick<ReturnType<typeof getSupplyChainClient>, 'getPipelineDetail' | 'listEnergyDisruptions'>) {
     super({
       id: 'pipeline-status',
       title: 'Oil & Gas Pipeline Status',
@@ -202,7 +203,7 @@ export class PipelineStatusPanel extends Panel {
     // keeps the map and the panel decoupled — if the panel isn't mounted, the
     // event is a no-op. If both exist, a map click opens this drawer on the
     // same pipeline id.
-    if (typeof window !== 'undefined') {
+    if (!this.detailSource && typeof window !== 'undefined') {
       window.addEventListener('energy:open-pipeline-detail', this.openDetailHandler);
     }
     this.content.addEventListener('click', this.handleContentClick);
@@ -223,7 +224,7 @@ export class PipelineStatusPanel extends Panel {
   };
 
   public destroy(): void {
-    if (typeof window !== 'undefined') {
+    if (!this.detailSource && typeof window !== 'undefined') {
       window.removeEventListener('energy:open-pipeline-detail', this.openDetailHandler);
     }
     super.destroy?.();
@@ -306,22 +307,38 @@ export class PipelineStatusPanel extends Panel {
     }
   }
 
+  public async presentDetail(data: ListPipelinesResponse, id: string): Promise<void> {
+    this.data = data;
+    await this.loadDetail(id);
+  }
+
+  public async presentCountryDetail(countryCode: string, id: string): Promise<void> {
+    const { gas, oil } = getCachedPipelineRegistries();
+    const data = buildBootstrapResponse(gas, oil);
+    const pipelines = data?.pipelines.filter(pipeline => pipeline.fromCountry === countryCode || pipeline.toCountry === countryCode || pipeline.transitCountries.includes(countryCode)) ?? [];
+    if (!data || !pipelines.some(pipeline => pipeline.id === id)) throw new Error('Pipeline is not in this country.');
+    await this.presentDetail({ ...data, pipelines }, id);
+  }
+
   private async loadDetail(pipelineId: string): Promise<void> {
     this.selectedId = pipelineId;
     this.detailLoading = true;
+    this.detailError = null;
     this.detailEvents = undefined;
     this.render();
     try {
-      const [d, events] = await Promise.all([
-        getSupplyChainClient().getPipelineDetail({ pipelineId }),
-        getSupplyChainClient().listEnergyDisruptions({ assetId: pipelineId, assetType: 'pipeline', ongoingOnly: false }),
-      ]);
+      const timeline = (this.detailSource ?? getSupplyChainClient()).listEnergyDisruptions({ assetId: pipelineId, assetType: 'pipeline', ongoingOnly: false }).catch(() => undefined);
+      const d = await (this.detailSource ?? getSupplyChainClient()).getPipelineDetail({ pipelineId });
       if (!this.element?.isConnected || this.selectedId !== pipelineId) return;
       this.detail = d;
-      this.detailEvents = (events as ListEnergyDisruptionsResponse)?.events ?? [];
       this.detailLoading = false;
       this.render();
-    } catch {
+      void timeline.then(events => {
+        if (!this.element?.isConnected || this.selectedId !== pipelineId) return;
+        this.detailEvents = events && !events.upstreamUnavailable ? events.events : null;
+        this.render();
+      });
+    } catch (error) {
       if (!this.element?.isConnected) return;
       // Mirror the same stale-response guard the success path uses: if the
       // user has already clicked a different pipeline while this one was
@@ -331,6 +348,7 @@ export class PipelineStatusPanel extends Panel {
       if (this.selectedId !== pipelineId) return;
       this.detailLoading = false;
       this.detail = null;
+      this.detailError = error instanceof CountrySectionError ? error.message : null;
       this.render();
     }
   }
@@ -343,7 +361,8 @@ export class PipelineStatusPanel extends Panel {
   }
 
   private renderDisruptionTimeline(): string {
-    if (this.detailEvents === undefined) return '';
+    if (this.detailEvents === undefined) return this.detailLoading ? '' : '<div class="pp-evidence"><div class="pp-sub">Loading disruption timeline…</div></div>';
+    if (this.detailEvents === null) return '<div class="pp-evidence"><div class="pp-sub">Disruption timeline unavailable. Asset details remain visible.</div></div>';
     if (this.detailEvents.length === 0) {
       return `<div class="pp-evidence">
         <div class="pp-sub" style="margin-bottom:6px">Disruption timeline</div>
@@ -400,7 +419,7 @@ export class PipelineStatusPanel extends Panel {
       ? `<div class="economic-warning">${escapeHtml(t('components.supplyChain.upstreamUnavailable'))}</div>`
       : '';
 
-    this.setSafeContent(unsafeRawHtml(`
+    const html = unsafeRawHtml(`
       <div class="pp-wrap">
         ${coverageWarning}
         <table class="pp-table">
@@ -438,7 +457,9 @@ export class PipelineStatusPanel extends Panel {
         .pp-ev-item a { color: #4ade80; text-decoration: none; }
         .pp-ev-item a:hover { text-decoration: underline; }
       </style>
-    `, 'legacy Panel.setContent() migration'));
+    `, 'legacy Panel.setContent() migration');
+    if (this.detailSource) this.setSafeContentImmediate(html);
+    else this.setSafeContent(html);
   }
 
   private renderRow(p: PipelineEntry): string {
@@ -462,7 +483,7 @@ export class PipelineStatusPanel extends Panel {
     }
     const p = this.detail?.pipeline;
     if (!p) {
-      return `<div class="pp-drawer"><button class="pp-drawer-close" aria-label="Close">✕</button>Pipeline detail unavailable.</div>`;
+      return `<div class="pp-drawer"><button class="pp-drawer-close" aria-label="Close">✕</button>${escapeHtml(this.detailError ?? 'Pipeline detail unavailable.')}</div>`;
     }
 
     const ev = p.evidence;

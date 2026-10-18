@@ -1,12 +1,14 @@
 import type { SignalArticle } from '@/services/analysis-core';
 import type { CorrelationSignal } from '@/services/correlation';
 import type { UnifiedAlert } from '@/services/cross-module-integration';
+import { readSignalMapPoint } from '@/utils/signal-map-point';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import { getSignalContext, type SignalType } from '@/utils/analysis-constants';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
+import { declareOverlay } from '@/utils/open-modal';
 
 // Render-side display ceiling for a keyword spike's evidence list. Independent
 // of the emitter's own cap (MAX_SPIKE_ARTICLES) and deliberately higher, so it
@@ -35,6 +37,14 @@ export class SignalModal {
     this.element.className = 'signal-modal-overlay';
     this.element.setAttribute('role', 'dialog');
     this.element.setAttribute('aria-modal', 'true');
+    // Read-only on every path: background correlation (`show`), a click on a
+    // finding (`showSignal`), a click on an alert (`showAlert`). The sound
+    // toggle is the only control and it resets on reload anyway, so the
+    // contract is constant and declared once. Before this line the modal was
+    // silent, silence blocks, and `show` has no auto-dismiss, so an ignored
+    // background popup wedged both reload consumers for the whole session
+    // (WORLDMONITOR-15X/15Z, 150 of 198 deferrals named this overlay).
+    declareOverlay(this.element, { reload: 'safe' });
     setTrustedHtml(this.element, trustedHtml(`
       <div class="signal-modal">
         <div class="signal-modal-header">
@@ -360,7 +370,7 @@ export class SignalModal {
       const data = signal.data as Record<string, unknown>;
       const newsCorrelation = data?.newsCorrelation as string | null;
       const focalPoints = data?.focalPointContext as string[] | null;
-      const locationData = { lat: data?.lat as number | undefined, lon: data?.lon as number | undefined, regionName: data?.regionName as string | undefined };
+      const locationData = readSignalMapPoint(signal);
 
       return `
         <div class="signal-item ${escapeHtml(signal.type)}">
@@ -386,7 +396,7 @@ export class SignalModal {
               <pre class="news-correlation-text">${escapeHtml(newsCorrelation)}</pre>
             </div>
           ` : ''}
-          ${locationData.lat && locationData.lon ? `
+          ${locationData ? `
             <div class="signal-location">
               <button class="location-link" data-lat="${locationData.lat}" data-lon="${locationData.lon}">
                 📍 ${t('modals.signal.viewOnMap')}: ${locationData.regionName ? escapeHtml(locationData.regionName) : `${locationData.lat.toFixed(2)}°, ${locationData.lon.toFixed(2)}°`}

@@ -36,6 +36,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   BUNDLE_COMPLETION_META_KEY_ENV,
+  BUNDLE_SECTION_TIMEOUT_MS_ENV,
   GRACEFUL_FETCH_FAILURE_EXIT_CODE,
   loadEnvFile,
   PUBLISH_BLOCKED_EXIT_CODE,
@@ -351,7 +352,7 @@ function streamLines(stream, onLine) {
   stream.on('error', (err) => onLine(`<stdio error: ${err.message}>`));
 }
 
-function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs, completionMetaKey }) {
+function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs, completionMetaKey, useBundledCa }) {
   return new Promise((resolve) => {
     const t0 = Date.now();
     // Capture the child's structured `seed_complete` event if emitted, so
@@ -366,10 +367,14 @@ function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs, completion
     // peer's seed-meta predates the current bundle run and fall back to a
     // hard default instead of reading a stale peer key. See plan
     // 2026-04-24-003 §"Phase 2 — SWF seeder" bundle-freshness guard.
-    const child = spawn(process.execPath, [scriptPath], {
+    const nodeArgs = useBundledCa === true ? ['--use-bundled-ca'] : [];
+    const child = spawn(process.execPath, [...nodeArgs, scriptPath], {
       env: {
         ...process.env,
         BUNDLE_RUN_STARTED_AT_MS: String(bundleStartedAtMs ?? Date.now()),
+        // Lets runSeed clamp its fetch deadline inside this wall clock so the
+        // graceful path fires before we SIGTERM (#8479).
+        [BUNDLE_SECTION_TIMEOUT_MS_ENV]: String(timeoutMs),
         [BUNDLE_COMPLETION_META_KEY_ENV]: completionMetaKey || '',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -734,6 +739,7 @@ export async function runBundle(label, sections, opts = {}) {
       label: section.label,
       bundleStartedAtMs: t0,
       completionMetaKey: section.freshnessMetaKey ? '' : section.completionMetaKey,
+      useBundledCa: section.useBundledCa,
     });
     if (result.ok) {
       console.log(`  [${section.label}] Done (${result.elapsed}s)`);

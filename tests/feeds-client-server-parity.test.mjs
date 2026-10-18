@@ -195,7 +195,7 @@ function extractUpstreamUrls(initializer) {
 }
 
 function canonicalizeUpstreamUrl(upstream) {
-  const url = new URL(upstream);
+  const url = new URL(upstream, 'https://api.worldmonitor.app');
   url.hash = '';
   url.host = url.host.toLowerCase();
   const parameters = [...url.searchParams.entries()].sort(([left], [right]) => left.localeCompare(right));

@@ -461,15 +461,21 @@ function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
     console.error(`[clerk] ${action} failed (${reason}):`, err);
     captureClerkSurfaceFailure(action, err, reason);
   };
+  const openClerk = (): void => runClerkSurfaceOpen(open, onFail('ui-components-not-ready'));
+  // The resume hook needs the loaded client, so it runs after the force-load too.
+  const openSurface = (): void => {
+    if (action === 'open-sign-up' && signUpResumeHook?.(openClerk)) return;
+    openClerk();
+  };
   if (clerkInstance) {
-    runClerkSurfaceOpen(open, onFail('ui-components-not-ready'));
+    openSurface();
     return;
   }
   // Deferred-load fast path: user clicked before the idle callback fired.
   // Force the load, then open once the SDK is live so the click never
   // silently no-ops.
   void initClerk()
-    .then(() => runClerkSurfaceOpen(open, onFail('ui-components-not-ready')))
+    .then(openSurface)
     .catch(onFail('clerk-load-failed'));
 }
 
@@ -653,6 +659,37 @@ export async function openSignInAndWait(signal?: AbortSignal): Promise<boolean> 
  */
 export function openSignUp(): void {
   openClerkSurface('open-sign-up');
+}
+
+/**
+ * Consulted by `openSignUp()` once Clerk is loaded. Returning true means the
+ * resume surface took the click; `openClerkSignUp` is the fallback it may call
+ * later if resuming fails.
+ */
+export type SignUpResumeHook = (openClerkSignUp: () => void) => boolean;
+
+let signUpResumeHook: SignUpResumeHook | null = null;
+
+export function registerSignUpResumeHook(hook: SignUpResumeHook | null): void {
+  signUpResumeHook = hook;
+}
+
+/** Mount Clerk's SignUp into a host element with the same retry as the modal surfaces. */
+export function mountSignUpInto(
+  host: HTMLDivElement,
+  props: { routing: 'hash'; fallbackRedirectUrl: string },
+): void {
+  runClerkSurfaceOpen(
+    () => clerkInstance?.mountSignUp(host, { ...props, appearance: getAppearance() }),
+    (err) => {
+      console.error('[clerk] mount-sign-up failed (ui-components-not-ready):', err);
+      captureClerkSurfaceFailure('mount-sign-up', err, 'ui-components-not-ready');
+    },
+  );
+}
+
+export function unmountSignUpFrom(host: HTMLDivElement): void {
+  clerkInstance?.unmountSignUp(host);
 }
 
 /**

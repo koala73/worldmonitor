@@ -12,17 +12,24 @@
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
-import { getCorsHeaders } from '../../_cors.js';
+import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from '../../_rate-limit.js';
 import { validateBearerToken } from '../../../server/auth-session';
 import { checkTierProEntitlement } from '../../../server/_shared/pro-entitlement';
+import { createChannelOAuthState } from '../../../server/_shared/channel-oauth-state';
 
 const SLACK_CLIENT_ID = process.env.SLACK_CLIENT_ID ?? '';
 const SLACK_REDIRECT_URI = process.env.SLACK_REDIRECT_URI ?? '';
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL ?? '';
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(req: Request, ctx?: { waitUntil: (p: Promise<unknown>) => void }): Promise<Response> {
   const corsHeaders = getCorsHeaders(req) as Record<string, string>;
+
+  if (isDisallowedOrigin(req)) {
+    return new Response(JSON.stringify({ error: 'Origin not allowed' }), { status: 403, headers: { 'Content-Type': 'application/json', ...getOriginDeniedCorsHeaders(req, 'POST, OPTIONS') } });
+  }
 
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -35,7 +42,7 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 
-  if (!SLACK_CLIENT_ID || !SLACK_REDIRECT_URI || !UPSTASH_URL) {
+  if (!SLACK_CLIENT_ID || !SLACK_REDIRECT_URI || !UPSTASH_URL || !UPSTASH_TOKEN) {
     return new Response(JSON.stringify({ error: 'Slack OAuth not configured' }), { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 
@@ -61,22 +68,18 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'pro_required', message: 'Slack notifications are available on the Pro plan.', upgradeUrl: 'https://worldmonitor.app/pro' }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 
+  const rateLimitResponse = await checkRateLimit(req, corsHeaders, {
+    scope: 'slack-oauth-start', identifier: session.userId, limit: 5, window: '60 s', failClosed: true, ctx,
+  });
+  if (rateLimitResponse) return rateLimitResponse;
+
   // Generate one-time state token (20 random bytes → base64url)
   const stateBytes = crypto.getRandomValues(new Uint8Array(20));
   const state = btoa(String.fromCharCode(...stateBytes))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-  // Store userId in Upstash with 10-min TTL — pipeline for atomicity
-  const pipelineRes = await fetch(`${UPSTASH_URL}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify([['SET', `wm:slack:oauth:${state}`, session.userId, 'EX', '600']]),
-    signal: AbortSignal.timeout(5000),
-  }).catch(() => null);
-
-  if (!pipelineRes?.ok) {
-    return new Response(JSON.stringify({ error: 'Failed to create OAuth state' }), { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-  }
+  // Bind the state to this browser and opener origin (see channel-oauth-state).
+  const oauthState = await createChannelOAuthState('slack', req, session.userId);
 
   const oauthUrl = new URL('https://slack.com/oauth/v2/authorize');
   oauthUrl.searchParams.set('client_id', SLACK_CLIENT_ID);
@@ -84,8 +87,27 @@ export default async function handler(req: Request): Promise<Response> {
   oauthUrl.searchParams.set('redirect_uri', SLACK_REDIRECT_URI);
   oauthUrl.searchParams.set('state', state);
 
-  return new Response(JSON.stringify({ oauthUrl: oauthUrl.toString() }), {
+  // Store the state record in Upstash with 10-min TTL — pipeline for atomicity
+  const pipelineRes = await fetch(`${UPSTASH_URL}/pipeline`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-edge/1.0' },
+    body: JSON.stringify([
+      ['SET', `wm:slack:oauth:${state}`, oauthState.record, 'EX', '600'],
+      ['SET', `wm:slack:oauth:launch:${state}`, JSON.stringify({ ...JSON.parse(oauthState.record), oauthUrl: oauthUrl.toString() }), 'EX', '600'],
+    ]),
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => null);
+
+  const results = pipelineRes?.ok ? await pipelineRes.json().catch(() => null) : null;
+  if (!Array.isArray(results) || results.length !== 2 || results.some((entry) => entry?.result !== 'OK')) {
+    return new Response(JSON.stringify({ error: 'Failed to create OAuth state' }), { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  return new Response(JSON.stringify({ oauthUrl: oauthUrl.toString(), browserBinding: {
+    url: new URL(`/api/channel-oauth-bind?provider=slack&state=${state}`, req.url).toString(),
+    token: oauthState.bindValue,
+  } }), {
     status: 200,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    headers: { 'Content-Type': 'application/json', 'Set-Cookie': oauthState.setCookie, 'Cache-Control': 'no-store', ...corsHeaders },
   });
 }

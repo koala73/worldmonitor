@@ -92,7 +92,7 @@ describe('handler: _state stripping', () => {
     );
   });
 
-  it('seed stores _state under STATE_KEY (not canonical key)', () => {
+  it('seed stores the full ID baseline separately under STATE_KEY', () => {
     assert.match(
       seedSrc,
       /extraKeys.*STATE_KEY/s,
@@ -333,24 +333,38 @@ describe('listSanctionsPressure typed SEMA behavior', () => {
     assert.equal(response.semaError, undefined);
   });
 
-  it('returns typed defaults for an empty cache and a premium denial', async () => {
+  it('returns typed defaults for an empty cache', async () => {
     const empty = await listSanctionsPressure(premiumContext(), { maxItems: 25 });
     assert.equal(empty.semaCount, 0);
     assert.equal(empty.semaError, undefined);
+  });
 
-    cacheStore.set(REDIS_KEY, cachedPayload({ semaError: 'must not leak' }));
-    const deniedRequest = new Request('https://worldmonitor.test/api/sanctions/v1/list-sanctions-pressure');
-    const denied = await listSanctionsPressure(
-      { request: deniedRequest, pathParams: {}, headers: {} },
+  // The same seed is served anonymously by /api/bootstrap, so the RPC is free
+  // too: a Pro gate here only hid the data from API callers.
+  it('serves anonymous callers the same payload as credentialed callers', async () => {
+    cacheStore.set(REDIS_KEY, cachedPayload());
+    const anonymousRequest = new Request('https://worldmonitor.test/api/sanctions/v1/list-sanctions-pressure');
+    const anonymous = await listSanctionsPressure(
+      { request: anonymousRequest, pathParams: {}, headers: {} },
       { maxItems: 25 },
     );
-    assert.equal(denied.semaCount, 0);
-    assert.equal(denied.semaError, undefined);
-    assert.deepEqual(denied.entries, []);
+    assert.deepEqual(anonymous, await listSanctionsPressure(premiumContext(), { maxItems: 25 }));
+    assert.equal(anonymous.entries.length, 1);
+  });
+
+  it('returns the unavailable sentinel for a published all-source expiry', async () => {
+    cacheStore.set(REDIS_KEY, cachedPayload({ totalCount: 0, entries: [], semaCount: 0, semaError: 'SEMA_INGEST_FAILED' }));
+    const response = await listSanctionsPressure(premiumContext(), { maxItems: 25 });
+    assert.equal(response.totalCount, 0);
+    assert.equal(response.fetchedAt, '0');
+    assert.deepEqual(response.entries, []);
   });
 
   it('serializes both SEMA fields over the generated RPC route', async () => {
-    cacheStore.set(REDIS_KEY, cachedPayload({ semaCount: 0, semaError: 'SEMA parse failed' }));
+    cacheStore.set(REDIS_KEY, cachedPayload({
+      semaCount: 0, semaError: 'SEMA parse failed',
+      _state: { schemaVersion: 1, population: 'top-12-first-iso2-display-v1', comparison: { from: '1699000000000' } },
+    }));
     const { createSanctionsServiceRoutes } = await import('../src/generated/server/worldmonitor/sanctions/v1/service_server.ts');
     const [route] = createSanctionsServiceRoutes({
       listSanctionsPressure,
@@ -365,6 +379,8 @@ describe('listSanctionsPressure typed SEMA behavior', () => {
     assert.equal(body.semaCount, 0);
     assert.equal(body.semaError, 'SEMA parse failed');
     assert.equal(body.entries[0]?.sourceLists[0], 'SDN');
+    assert.equal(Object.hasOwn(body, '_state'), false);
+    assert.equal(Object.hasOwn(body, 'pressureMetadata'), false);
   });
 });
 
@@ -377,9 +393,15 @@ async function loadSanctionsService(state) {
     ['utils-stub', `
       export function createCircuitBreaker() {
         return {
-          async execute(fn, fallback) { try { return await fn(); } catch { return fallback; } },
+          async execute(fn, fallback, options) {
+            try {
+              const result = await fn();
+              globalThis.${FRONTEND_STATE_KEY}.cacheable = options?.shouldCache?.(result);
+              return result;
+            } catch { return fallback; }
+          },
           recordSuccess() {},
-          clearCache() {},
+          clearCache() { globalThis.${FRONTEND_STATE_KEY}.cleared = true; },
         };
       }
     `],
@@ -437,6 +459,19 @@ async function loadSanctionsService(state) {
 }
 
 describe('sanctions frontend normalization parity', () => {
+  it('clears previous client data and refuses to cache the all-source expiry sentinel', async () => {
+    cacheStore.set(REDIS_KEY, cachedPayload({ totalCount: 0, entries: [], semaCount: 0, semaError: 'SEMA_INGEST_FAILED' }));
+    const rpcResponse = await listSanctionsPressure(premiumContext(), { maxItems: 25 });
+    const state = { hydrated: undefined, premium: true, rpcResponse };
+    const service = await loadSanctionsService(state);
+    const result = await service.fetchSanctionsPressure();
+    assert.equal(result.totalCount, 0);
+    assert.deepEqual(result.entries, []);
+    assert.equal(state.cleared, true);
+    assert.equal(state.cacheable, false);
+    assert.equal(service.getLatestSanctionsPressure(), result);
+  });
+
   it('normalizes old hydrated cache data to absent-error defaults', async () => {
     const oldPayload = cachedPayload();
     delete oldPayload.semaCount;
@@ -473,4 +508,26 @@ describe('sanctions frontend normalization parity', () => {
     assert.equal(rpcResult.semaError, 'SEMA unavailable');
     assert.equal(rpcResult.entries[0]?.sourceLists[0], 'SDN');
   });
+});
+
+it('renders zero-record sanctions data as unavailable', async () => {
+  const unavailable = JSON.parse(readFileSync('src/locales/en.json', 'utf8')).components.sanctionsPressure.unavailable;
+  globalThis[FRONTEND_STATE_KEY] = { unavailable };
+  const stubs = new Map([
+    ['./Panel', 'export class Panel { showLoading() {} setCount() {} setSafeContent(value) { this.rendered = value; } }'],
+    ['@/services/i18n', `export function t(key) { return key === 'components.sanctionsPressure.unavailable' ? globalThis.${FRONTEND_STATE_KEY}.unavailable : key; }`],
+  ]);
+  const result = await build({
+    entryPoints: [resolve(root, 'src/components/SanctionsPressurePanel.ts')],
+    bundle: true, format: 'esm', platform: 'browser', target: 'es2022', write: false,
+    plugins: [{ name: 'sanctions-panel-host', setup(api) {
+      api.onResolve({ filter: /.*/ }, args => stubs.has(args.path) ? { path: args.path, namespace: 'stub' } : null);
+      api.onLoad({ filter: /.*/, namespace: 'stub' }, args => ({ contents: stubs.get(args.path), loader: 'ts' }));
+    } }],
+  });
+  const { SanctionsPressurePanel } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
+  const panel = new SanctionsPressurePanel();
+  panel.setData({ totalCount: 0, entries: [], countries: [], programs: [] });
+  assert.equal(String(panel.rendered), `<div class="economic-empty">${unavailable}</div>`);
+  assert.match(unavailable, /unavailable/i);
 });

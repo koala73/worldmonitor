@@ -31,6 +31,7 @@ import {
   BRIEF_PUBLIC_POINTER_PREFIX,
   buildPublicBriefUrl,
   encodePublicPointer,
+  publicBaseUrl,
 } from '../../../server/_shared/brief-share-url';
 
 const HTML_HEADERS = {
@@ -132,6 +133,7 @@ async function fetchFollowedCountriesEdge(
       console.warn('[api/brief] followed-countries relay auth failed');
       captureSilentError(err, {
         tags: { route: 'api/brief', step: 'followed-countries-relay', status: '401' },
+        fingerprint: ['api/brief', 'followed-countries-relay', err instanceof Error ? err.name : 'Error'],
         ctx,
       });
       return [];
@@ -183,8 +185,15 @@ export default async function handler(
   if (parts.length !== 4 || root !== 'api' || route !== 'brief' || !rawUserId || !rawIssueDate) {
     return htmlResponse(req, 404, EXPIRED_PAGE);
   }
-  const userId = decodeURIComponent(rawUserId);
-  const issueDate = decodeURIComponent(rawIssueDate);
+  // A malformed percent-escape is a bad link, not a server fault.
+  let userId: string;
+  let issueDate: string;
+  try {
+    userId = decodeURIComponent(rawUserId);
+    issueDate = decodeURIComponent(rawIssueDate);
+  } catch {
+    return htmlResponse(req, 404, EXPIRED_PAGE);
+  }
   const token = url.searchParams.get('t') ?? '';
 
   let verified: boolean;
@@ -218,7 +227,7 @@ export default async function handler(
     envelope = await readRawJsonFromUpstash(`brief:${userId}:${issueDate}`, 3_000, true);
   } catch (err) {
     console.error('[api/brief] Upstash read failed:', (err as Error).message);
-    captureSilentError(err, { tags: { route: 'api/brief', step: 'envelope-read' }, ctx });
+    captureSilentError(err, { tags: { route: 'api/brief', step: 'envelope-read' }, fingerprint: ['api/brief', 'envelope-read', err instanceof Error ? err.name : 'Error'], ctx });
     ctx?.waitUntil(followedCountriesPromise);
     return htmlResponse(req, 503, UNAVAILABLE_PAGE);
   }
@@ -244,7 +253,7 @@ export default async function handler(
       const built = await buildPublicBriefUrl({
         userId,
         issueDate,
-        baseUrl: new URL(req.url).origin,
+        baseUrl: publicBaseUrl(req),
         secret: shareSecret,
       });
       // Idempotent pointer write: same hash every call, so SET just
@@ -263,7 +272,7 @@ export default async function handler(
       }
     } catch (err) {
       console.warn('[api/brief] share URL derive failed:', (err as Error).message);
-      captureSilentError(err, { tags: { route: 'api/brief', step: 'share-url-derive', severity: 'warn' }, ctx });
+      captureSilentError(err, { tags: { route: 'api/brief', step: 'share-url-derive', severity: 'warn' }, fingerprint: ['api/brief', 'share-url-derive', err instanceof Error ? err.name : 'Error'], ctx });
     }
   }
 
@@ -289,7 +298,7 @@ export default async function handler(
     // and log the details server-side. The renderer's assertion
     // message is safe to log (no secrets, no user content).
     console.error('[api/brief] malformed envelope for brief:*:*:', (err as Error).message);
-    captureSilentError(err, { tags: { route: 'api/brief', step: 'malformed-envelope' }, ctx });
+    captureSilentError(err, { tags: { route: 'api/brief', step: 'malformed-envelope' }, fingerprint: ['api/brief', 'malformed-envelope', err instanceof Error ? err.name : 'Error'], ctx });
     // Distinct log tag so ops can grep composer-bug vs Redis-miss. User
     // still sees the neutral "expired" page.
     return htmlResponse(req, 404, EXPIRED_PAGE);

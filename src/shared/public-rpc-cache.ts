@@ -16,7 +16,10 @@ const PUBLIC_SHARED_RPC_PATHS = new Set([
 ]);
 
 const NEWS_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity', 'energy']);
-const NEWS_LANGUAGES = new Set([
+// The ONE list of digest languages. list-feed-digest.ts rejects any other lang
+// with a 400 (#8360); a hand-copied second list would let the handler and this
+// public-shape classifier drift apart.
+export const NEWS_LANGUAGES = new Set([
   'en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl',
   'sv', 'sw', 'ru', 'uk', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi',
 ]);

@@ -1,3 +1,4 @@
+import { assertAccountWritable } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import {
   internalMutation,
@@ -7,6 +8,7 @@ import {
   query,
 } from "./_generated/server";
 import { channelTypeValidator, digestModeValidator, quietHoursOverrideValidator, sensitivityValidator } from "./constants";
+import { CHOKEPOINT_ALERT_IDS } from "../shared/chokepoint-alert-ids";
 
 type DigestMode = "realtime" | "daily" | "twice_daily" | "weekly";
 type Sensitivity = "all" | "high" | "critical";
@@ -177,6 +179,31 @@ function normalizeTickers(input: string[]): string[] {
   return cleaned;
 }
 
+/**
+ * Normalize an inbound `chokepoints` array (#9217): trim, lowercase, keep
+ * only ids in shared/chokepoint-alert-ids.ts, dedupe in first-seen order.
+ * Unknown ids are dropped, as the other scopes do, but a non-empty list with
+ * no known id is rejected: [] means every chokepoint, so a caller sending
+ * ["hormuz"] would otherwise widen the rule to all of them.
+ */
+function normalizeChokepoints(input: string[]): string[] {
+  const known = new Set(CHOKEPOINT_ALERT_IDS);
+  const cleaned: string[] = [];
+  for (const raw of input) {
+    if (typeof raw !== "string") continue;
+    const id = raw.trim().toLowerCase();
+    if (!known.has(id) || cleaned.includes(id)) continue;
+    cleaned.push(id);
+  }
+  if (input.length > 0 && cleaned.length === 0) {
+    throw new ConvexError({
+      code: "CHOKEPOINTS_INVALID",
+      message: `chokepoints must use registry ids: ${CHOKEPOINT_ALERT_IDS.join(", ")}`,
+    });
+  }
+  return cleaned;
+}
+
 export const getAlertRules = query({
   args: {},
   handler: async (ctx) => {
@@ -203,11 +230,15 @@ export const setAlertRules = mutation({
     // Optional watchlist ticker-scope (#4922 U3). Omit to preserve existing;
     // [] resets. Unlike countries, [] means "no watchlist story alerts".
     tickers: v.optional(v.array(v.string())),
+    // Optional chokepoint-scope (#9217). Omit to preserve existing; [] resets
+    // to every chokepoint.
+    chokepoints: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
     const userId = identity.subject;
+    await assertAccountWritable(ctx, userId);
     await assertProEntitlement(ctx, userId);
 
     const existing = await ctx.db
@@ -228,6 +259,9 @@ export const setAlertRules = mutation({
       : undefined;
     const normalizedTickers = args.tickers !== undefined
       ? normalizeTickers(args.tickers)
+      : undefined;
+    const normalizedChokepoints = args.chokepoints !== undefined
+      ? normalizeChokepoints(args.chokepoints)
       : undefined;
 
     const now = Date.now();
@@ -250,6 +284,7 @@ export const setAlertRules = mutation({
       if (normalizedCountries !== undefined) patch.countries = normalizedCountries;
       // Same preserve-on-omit contract for tickers ([] = explicit opt-out).
       if (normalizedTickers !== undefined) patch.tickers = normalizedTickers;
+      if (normalizedChokepoints !== undefined) patch.chokepoints = normalizedChokepoints;
       await ctx.db.patch(existing._id, patch);
     } else {
       await ctx.db.insert("alertRules", {
@@ -264,6 +299,7 @@ export const setAlertRules = mutation({
         // backward-compat tests (rule has no `countries` field) still hold.
         countries: normalizedCountries,
         tickers: normalizedTickers,
+        chokepoints: normalizedChokepoints,
         updatedAt: now,
       });
     }
@@ -281,6 +317,7 @@ export const setDigestSettings = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
     const userId = identity.subject;
+    await assertAccountWritable(ctx, userId);
     await assertProEntitlement(ctx, userId);
 
     if (args.digestHour !== undefined && (args.digestHour < 0 || args.digestHour > 23 || !Number.isInteger(args.digestHour))) {
@@ -352,8 +389,10 @@ export const setAlertRulesForUser = internalMutation({
     aiDigestEnabled: v.optional(v.boolean()),
     countries: v.optional(v.array(v.string())),
     tickers: v.optional(v.array(v.string())),
+    chokepoints: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     const { userId, ...rest } = args;
     const existing = await ctx.db
       .query("alertRules")
@@ -374,6 +413,9 @@ export const setAlertRulesForUser = internalMutation({
     const normalizedTickers = rest.tickers !== undefined
       ? normalizeTickers(rest.tickers)
       : undefined;
+    const normalizedChokepoints = rest.chokepoints !== undefined
+      ? normalizeChokepoints(rest.chokepoints)
+      : undefined;
 
     const now = Date.now();
     if (existing) {
@@ -389,6 +431,7 @@ export const setAlertRulesForUser = internalMutation({
       if (rest.aiDigestEnabled !== undefined) patch.aiDigestEnabled = rest.aiDigestEnabled;
       if (normalizedCountries !== undefined) patch.countries = normalizedCountries;
       if (normalizedTickers !== undefined) patch.tickers = normalizedTickers;
+      if (normalizedChokepoints !== undefined) patch.chokepoints = normalizedChokepoints;
       await ctx.db.patch(existing._id, patch);
     } else {
       await ctx.db.insert("alertRules", {
@@ -401,6 +444,7 @@ export const setAlertRulesForUser = internalMutation({
         aiDigestEnabled: rest.aiDigestEnabled,
         countries: normalizedCountries,
         tickers: normalizedTickers,
+        chokepoints: normalizedChokepoints,
         updatedAt: now,
       });
     }
@@ -442,6 +486,7 @@ export const setQuietHours = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
     const userId = identity.subject;
+    await assertAccountWritable(ctx, userId);
     await assertProEntitlement(ctx, userId);
     validateQuietHoursArgs(args);
 
@@ -508,6 +553,7 @@ export const setDigestSettingsForUser = internalMutation({
     countries: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     const { userId, variant, countries, ...digest } = args;
     if (digest.digestHour !== undefined && (digest.digestHour < 0 || digest.digestHour > 23 || !Number.isInteger(digest.digestHour))) {
       throw new ConvexError("digestHour must be an integer 0–23");
@@ -552,6 +598,7 @@ export const setDigestSettingsForUser = internalMutation({
 export const setQuietHoursForUser = internalMutation({
   args: { userId: v.string(), ...QUIET_HOURS_ARGS, countries: v.optional(v.array(v.string())) },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     const { userId, countries, ...rest } = args;
     validateQuietHoursArgs(rest);
 
@@ -630,8 +677,10 @@ export const setNotificationConfigForUser = internalMutation({
     digestTimezone: v.optional(v.string()),
     countries: v.optional(v.array(v.string())),
     tickers: v.optional(v.array(v.string())),
+    chokepoints: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     const { userId, variant } = args;
     // Layer-2 gate: this internal mutation is reachable from the public
     // `set-notification-config` HTTP action in convex/http.ts. Even though
@@ -675,6 +724,9 @@ export const setNotificationConfigForUser = internalMutation({
     const normalizedTickers = args.tickers !== undefined
       ? normalizeTickers(args.tickers)
       : undefined;
+    const normalizedChokepoints = args.chokepoints !== undefined
+      ? normalizeChokepoints(args.chokepoints)
+      : undefined;
 
     const now = Date.now();
 
@@ -691,6 +743,7 @@ export const setNotificationConfigForUser = internalMutation({
       if (args.digestTimezone !== undefined) patch.digestTimezone = args.digestTimezone;
       if (normalizedCountries !== undefined) patch.countries = normalizedCountries;
       if (normalizedTickers !== undefined) patch.tickers = normalizedTickers;
+      if (normalizedChokepoints !== undefined) patch.chokepoints = normalizedChokepoints;
       await ctx.db.patch(existing._id, patch);
     } else {
       await ctx.db.insert("alertRules", {
@@ -706,6 +759,7 @@ export const setNotificationConfigForUser = internalMutation({
         digestTimezone: args.digestTimezone,
         countries: normalizedCountries,
         tickers: normalizedTickers,
+        chokepoints: normalizedChokepoints,
         updatedAt: now,
       });
     }

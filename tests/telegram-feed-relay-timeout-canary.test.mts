@@ -55,7 +55,7 @@ process.env.WM_SESSION_SECRET = SESSION_SECRET;
 const ENVELOPE_URL_PREFIX = 'https://sentry.test/api/12345/envelope';
 const RELAY_URL_PREFIX = 'https://relay.example.com';
 
-const { default: handler } = await import('../api/telegram-feed.js');
+const { default: handler, relayFailureLevel } = await import('../api/telegram-feed.js');
 const { issueSessionToken } = await import('../api/_session.js');
 
 const originalFetch = globalThis.fetch;
@@ -168,5 +168,97 @@ describe('api/telegram-feed relay timeout canary', () => {
 
     assert.equal(status, 502);
     assert.deepEqual(body, { error: 'Relay request failed' });
+  });
+
+  // WORLDMONITOR-R1. The edge runtime drops an established upstream connection
+  // under ordinary operation and rejects with this exact message. It is the
+  // same class of routine transport churn as our own abort budget, so it must
+  // not page — but the ECONNREFUSED control above must stay at `error`, which
+  // is why "not an AbortError" is the wrong discriminator.
+  it('keeps a dropped upstream connection at warning level', async () => {
+    const { events, status, body } = await runWithRelayFailure(
+      '/api/telegram-feed?limit=50',
+      new Error('Network connection lost.'),
+    );
+
+    assert.equal(events.length, 1, 'a dropped relay connection must stay queryable in Sentry');
+    const [event] = events;
+    assert.equal(event.level, 'warning', 'an edge transport drop is not a WorldMonitor defect');
+    assert.equal(event.tags?.step, 'relay-fetch');
+    assert.equal(event.tags?.mode, 'feed');
+    assert.ok(
+      !('timeout_ms' in (event.extra ?? {})),
+      'timeout_ms describes an abort deadline that this failure never reached',
+    );
+
+    assert.equal(status, 502, 'severity is orthogonal to the client-facing status');
+    assert.deepEqual(body, { error: 'Relay request failed' });
+  });
+
+  it('keeps an unresolvable relay host at error level', async () => {
+    const { events } = await runWithRelayFailure(
+      '/api/telegram-feed?limit=50',
+      new Error('getaddrinfo ENOTFOUND relay.example.com'),
+    );
+
+    assert.equal(events[0]?.level, 'error', 'a relay that never answers is a deploy defect');
+  });
+});
+
+describe('relayFailureLevel (WORLDMONITOR-R1)', () => {
+  // A connection that was established and then dropped is transport churn. A
+  // connection that could never be established is a defect. The predicate
+  // encodes that boundary; these cases pin both sides of it.
+  for (const msg of [
+    'Network connection lost.',
+    'read ECONNRESET',
+    'socket hang up',
+    'terminated',
+  ]) {
+    it(`treats "${msg}" as routine transport churn`, () => {
+      assert.equal(relayFailureLevel(new Error(msg)), 'warning');
+    });
+  }
+
+  for (const msg of [
+    'connect ECONNREFUSED 10.0.0.1:443',
+    'getaddrinfo ENOTFOUND relay.example.com',
+    'Unexpected token < in JSON at position 0',
+    // A connection that expired mid-handshake was never established, so it is
+    // an unreachable relay, not a drop. Keeping it at `warning` would hide a
+    // persistent routing or firewall outage from on-call.
+    'connect ETIMEDOUT 10.0.0.1:443',
+  ]) {
+    it(`treats "${msg}" as a defect`, () => {
+      assert.equal(relayFailureLevel(new Error(msg)), 'error');
+    });
+  }
+
+  // `code` is structured and immune to message text, so it outranks any
+  // phrasing when the runtime supplies it.
+  it('prefers a structured code over the message', () => {
+    const reset = Object.assign(new Error('write failed'), { code: 'ECONNRESET' });
+    assert.equal(relayFailureLevel(reset), 'warning');
+
+    const refused = Object.assign(new Error('Network connection lost.'), { code: 'ECONNREFUSED' });
+    assert.equal(relayFailureLevel(refused), 'error', 'a structured code outranks a drop phrasing');
+  });
+
+  it('does not match a drop phrasing quoted inside a longer message', () => {
+    assert.equal(
+      relayFailureLevel(new Error('relay responded 500: upstream reported ECONNRESET to its peer')),
+      'error',
+      'diagnostic prose that mentions a drop code is not itself a drop',
+    );
+  });
+
+  it('classifies our own abort budget as routine, whatever its message', () => {
+    assert.equal(relayFailureLevel(abortError()), 'warning');
+  });
+
+  it('does not let a transient phrase inside a larger defect message win', () => {
+    // `fetch failed` is undici's generic wrapper and hides ECONNREFUSED, so it
+    // must not be a transient phrasing on its own.
+    assert.equal(relayFailureLevel(new Error('fetch failed')), 'error');
   });
 });

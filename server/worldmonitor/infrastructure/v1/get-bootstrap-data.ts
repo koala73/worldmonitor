@@ -1,5 +1,5 @@
 import {
-  ApiError,
+  ValidationError,
   type InfrastructureServiceHandler,
   type ServerContext,
   type GetBootstrapDataRequest,
@@ -10,6 +10,8 @@ import { BOOTSTRAP_CACHE_KEYS, BOOTSTRAP_TIERS } from '../../../_shared/cache-ke
 import { sanitizeBootstrapValue } from '../../../../api/_bootstrap-public-payload.js';
 // @ts-expect-error — Edge-safe JS helper
 import { extraCanadaAlertsCutoverReadKeys, canadaAlertsCutoverFallbackValue } from '../../../../api/_canada-alerts-cutover.js';
+// @ts-expect-error — Edge-safe JS helper, shared with api/bootstrap.js
+import { validateImfDataset } from '../../../../api/_imf-dataset.js';
 import { getCachedJsonBatch } from '../../../_shared/redis';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: this RPC bootstrap
@@ -18,11 +20,22 @@ import { getCachedJsonBatch } from '../../../_shared/redis';
 // IRAN_EVENTS_ENABLED=true to restore. See api/health.js.
 const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
 
+const isRegisteredKey = (key: string) => Object.prototype.hasOwnProperty.call(BOOTSTRAP_CACHE_KEYS, key);
+const isTieredKey = (key: string) => BOOTSTRAP_TIERS[key] === 'fast' || BOOTSTRAP_TIERS[key] === 'slow';
+
+// A multi-key read costs at most the fast and slow tiers together, which are
+// already servable; on-demand keys run to megabytes each, so they go alone.
+function isServableKeySelection(keys: string[]): boolean {
+  const unique = new Set(keys);
+  if (unique.size === 0 || ![...unique].every(isRegisteredKey)) return false;
+  return unique.size === 1 || [...unique].every(isTieredKey);
+}
+
 function buildRegistry(req: GetBootstrapDataRequest): Record<string, string> {
   if ((req.tier && req.keys.length > 0)
     || (req.tier && req.tier !== 'fast' && req.tier !== 'slow')
-    || (!req.tier && (req.keys.length !== 1 || !Object.prototype.hasOwnProperty.call(BOOTSTRAP_CACHE_KEYS, req.keys[0]!)))) {
-    throw new ApiError(400, 'Specify a fast/slow tier or one registered bootstrap key', '');
+    || (!req.tier && !isServableKeySelection(req.keys))) {
+    throw new ValidationError([{ field: req.tier ? 'tier' : 'keys', description: 'Specify a fast/slow tier, fast/slow bootstrap keys, or one on-demand bootstrap key' }]);
   }
   let registry: Record<string, string>;
   if (req.tier === 'slow' || req.tier === 'fast') {
@@ -40,7 +53,7 @@ function buildRegistry(req: GetBootstrapDataRequest): Record<string, string> {
 }
 
 /**
- * Fetch one named dataset or a fixed public tier; never enumerate the full registry.
+ * Fetch named datasets or a fixed public tier; never enumerate the full registry.
  */
 export const getBootstrapData: InfrastructureServiceHandler['getBootstrapData'] = async (
   _ctx: ServerContext,
@@ -60,9 +73,12 @@ export const getBootstrapData: InfrastructureServiceHandler['getBootstrapData'] 
     for (let i = 0; i < names.length; i += 1) {
       const keyName = names[i]!;
       const cacheKey = cacheKeys[i]!;
-      const value = keyName === 'canadaAlerts' && !cached.has(cacheKey)
+      const raw = keyName === 'canadaAlerts' && !cached.has(cacheKey)
         ? canadaAlertsCutoverFallbackValue(cached)
         : cached.get(cacheKey);
+      // Same gate as api/bootstrap.js: a malformed IMF dataset is `missing`,
+      // malformed country rows are dropped. Non-IMF keys pass through.
+      const value = raw === undefined ? undefined : validateImfDataset(keyName, raw);
       if (value === undefined) {
         missing.push(keyName);
         continue;

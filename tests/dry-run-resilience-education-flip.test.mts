@@ -431,6 +431,14 @@ function buildSyntheticAcceptanceArtifact(harnessCommitSha: string, harnessSha25
 }
 
 test('any committed education acceptance artifacts are internally consistent', () => {
+  // PREREQUISITE (local clones only): the capture provenance validates the
+  // harness AT its recorded commit (`git show <sha>:scripts/…` + sha256), and
+  // captures were made on PR branches that are squash-merged — the original
+  // commits live only in GitHub's `refs/pull/*/head`, which a normal `git
+  // clone` does not fetch (a shallow clone sees neither). CI is unaffected
+  // (actions/checkout uses fetch-depth: 0). If this test fails with
+  // "exists on disk, but not in '<sha>'", run:
+  //   git fetch origin '+refs/pull/*/head:refs/remotes/origin/pr/*'
   for (const { filename, artifact } of readEducationAcceptanceArtifacts()) {
     const validation = validateEducationAcceptanceArtifact(artifact, { filename });
     assert.equal(validation.verdict, 'PASS');

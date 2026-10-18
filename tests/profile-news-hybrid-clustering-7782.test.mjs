@@ -52,6 +52,12 @@ it('profiles the actual client conversion, including metadata and nondefault sou
   });
   assert.equal(item.pubDate.getTime(), 1788673162000);
   assert.equal(item.storyMeta.phase, 'developing');
+  const fadingItem = api.protoItemToNewsItem({
+    source: 'Reuters', title: 'An older event', link: 'https://fixture.test/fading',
+    publishedAt: 1788673162000, isAlert: false,
+    storyMeta: { phase: 'STORY_PHASE_FADING', firstSeen: 1, mentionCount: 4, sourceCount: 3 },
+  });
+  assert.equal(fadingItem.storyMeta.phase, 'fading');
   assert.equal(item.threat.level, 'high');
   assert.equal(item.credibilityScore, 0);
   assert.equal(item.importanceScore, 42);

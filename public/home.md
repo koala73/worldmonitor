@@ -1,14 +1,18 @@
 ---
 title: "World Monitor"
-description: "Live global intelligence, API access, authentication, and agent capabilities."
+description: "World Monitor: real-time geopolitical intelligence dashboard. A free live map of conflicts, shipping, flights, markets and cyber, with an API and MCP server."
 canonical: "https://www.worldmonitor.app/home.md"
 ---
 
-# World Monitor — By the time it's news, you already knew.
+# World Monitor: real-time geopolitical intelligence dashboard
 
-As of 2026-09-08.
+By the time it's news, you already knew.
+
+As of 2026-10-12.
 
 World Monitor is a free real-time global intelligence dashboard. It brings ships, aircraft, conflict events, alerts, infrastructure, markets, weather, cyber signals, and curated news onto one live map. Its analysis layer helps users see when separate signals begin to converge into one event that matters.
+
+Best for analysts, journalists, traders and builders who need live geopolitical signals.
 
 The core dashboard is open source under AGPL-3.0 and needs no signup. It runs in the browser, as an installable PWA, and as a desktop app for macOS, Windows, and Linux. World Monitor has also been [featured in WIRED](https://www.wired.com/story/world-monitor-elie-habib/).
 
@@ -71,7 +75,7 @@ Public discovery endpoints do not make every data operation anonymous. An MCP or
 Start with the short [llms.txt briefing](https://www.worldmonitor.app/llms.txt), then use this Markdown page or the [extended LLM reference](https://www.worldmonitor.app/llms-full.txt) when you need more context.
 
 - [MCP server](https://worldmonitor.app/mcp): Streamable HTTP for structured tool calls. Run `tools/list` to get the current tool inventory instead of relying on a copied count.
-- [REST API](https://api.worldmonitor.app): structured endpoints described by the [OpenAPI contract](https://www.worldmonitor.app/openapi.yaml).
+- [REST API](https://www.worldmonitor.app/docs/api-reference): structured endpoints described by the [OpenAPI contract](https://www.worldmonitor.app/openapi.yaml).
 - [Agent-mode homepage](https://www.worldmonitor.app/?mode=agent): a compact JSON summary of endpoints, authentication, capabilities, and discovery files.
 - [Agent Skills](https://worldmonitor.app/.well-known/agent-skills/index.json): task-focused instructions for common country, resilience, and intelligence workflows.
 - [Agent Plugin metadata](https://www.worldmonitor.app/plugin.json): public metadata for the Agent Plugins 1.0.0 repository package. Install from https://github.com/koala73/worldmonitor (root `plugin.json`, `mcp.json`, and `skills/*/SKILL.md` live in the repository, not as sibling HTTP files).

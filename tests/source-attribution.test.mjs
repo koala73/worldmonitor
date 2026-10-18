@@ -468,9 +468,9 @@ test('uppercase URL constants are included in the upstream inventory', () => {
 
 test('live HLS playback origins are observed with an explicit presentation exclusion', () => {
   const inventory = scanUpstreamHosts(rootDir);
-  assert.ok(inventory.some((entry) => entry.host === 'pe-fa-lp02a.9c9media.com'));
+  assert.ok(inventory.some((entry) => entry.host === 'live-hls-apps-aje-fa.getaj.net'));
   const manifest = loadManifest(rootDir);
-  const entry = manifest.entries.find((candidate) => candidate.host === 'pe-fa-lp02a.9c9media.com');
+  const entry = manifest.entries.find((candidate) => candidate.host === 'live-hls-apps-aje-fa.getaj.net');
   assert.equal(entry?.status, 'excluded');
   assert.match(entry?.attribution ?? '', /presentation-only HLS stream/);
 });
@@ -561,6 +561,24 @@ function writeUrlModule(path, host) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `const SOURCE_URL = 'https://${host}/v1/data';\nexport const url = SOURCE_URL;\n`);
 }
+
+test('a gn() site: search after a URL on the same line is scanned; a commented-out one is not', () => {
+  const fixture = makeFixtureCheckout();
+  try {
+    const feedsPath = join(fixture.dir, 'server/worldmonitor/news/v1/_feeds.ts');
+    mkdirSync(dirname(feedsPath), { recursive: true });
+    writeFileSync(feedsPath, [
+      "{ name: 'Native', url: 'https://native.example/rss', depthUrl: gn('site:depth.example when:2d') },",
+      "// { name: 'Retired', url: gn('site:retired.example when:1d') },",
+      '',
+    ].join('\n'));
+    const hosts = scanUpstreamHosts(fixture.dir).map((entry) => entry.host);
+    assert.ok(hosts.includes('depth.example'), 'the scheme in an earlier URL is not a comment');
+    assert.ok(!hosts.includes('retired.example'), 'a commented-out feed stays out of the inventory');
+  } finally {
+    fixture.cleanup();
+  }
+});
 
 test('the source walk ignores generated inventory modules and compiled handler siblings', () => {
   const fixture = makeFixtureCheckout();
@@ -1011,13 +1029,13 @@ test('a playback-only host that gains a real fetch stops being excluded', () => 
     observed: true,
     kind: 'feed',
     status: 'excluded',
-    references: [{ path: 'src/components/LiveNewsPanel.ts' }],
+    references: [{ path: 'src/config/live-video-sources.ts' }],
   };
   const rebuilt = buildManifest(
     [{
       host: 'stream.example',
       kinds: ['structured'],
-      references: [{ path: 'scripts/seed-example.mjs' }, { path: 'src/components/LiveNewsPanel.ts' }],
+      references: [{ path: 'scripts/seed-example.mjs' }, { path: 'src/config/live-video-sources.ts' }],
     }],
     { entries: [playbackOnly], logicalEntries: [] },
   );
@@ -1029,7 +1047,7 @@ test('a playback-only host that gains a real fetch stops being excluded', () => 
   // The same host while still playback-only stays excluded — otherwise the
   // assertions above would pass against a rule that never fires.
   const unchanged = buildManifest(
-    [{ host: 'stream.example', kinds: ['feed'], references: [{ path: 'src/components/LiveNewsPanel.ts' }] }],
+    [{ host: 'stream.example', kinds: ['feed'], references: [{ path: 'src/config/live-video-sources.ts' }] }],
     { entries: [playbackOnly], logicalEntries: [] },
   );
   assert.equal(unchanged.entries.find((entry) => entry.host === 'stream.example').status, 'excluded');

@@ -16,10 +16,10 @@ toast. Nothing watched that rate before [#6698](https://github.com/koala73/world
 
 - **Signal source is the server, not the browser.** Every terminal 429 writes
   one row to `checkoutRateLimitEvents` from
-  `convex/payments/checkout.ts`. Both entry points funnel through that function
-  (`createCheckout` for the dashboard, `internalCreateCheckout` for the
-  `/relay/create-checkout` edge gateway), so no occurrence can be missed by an
-  ad blocker, client sampling, or a Sentry project inbound filter.
+  `convex/payments/checkout.ts`. The only entry point, `internalCreateCheckout`
+  (reached through the `/relay/create-checkout` edge gateway), funnels through
+  that function, so no occurrence can be missed by an ad blocker, client
+  sampling, or a Sentry project inbound filter.
 - **Only exhausted ladders count.** A 429 the ladder absorbed and retried into
   a successful checkout writes nothing. The alarm measures buyers who were
   turned away, not provider turbulence they never saw.

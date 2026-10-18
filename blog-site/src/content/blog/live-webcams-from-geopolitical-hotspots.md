@@ -84,7 +84,7 @@ Each data source validates the others. A spike in the CII without visible activi
 **Scenario: Taiwan Strait Escalation**
 
 1. Strategic Theater Posture for Taiwan Strait elevates
-2. ADS-B shows increased military flight activity
+2. ADS-B shows increased [military flight activity](/blog/posts/military-flight-tracking-osint/)
 3. AIS shows PLA Navy vessel movements
 4. Taipei webcam shows normal city activity (or doesn't)
 5. Prediction market odds for Taiwan conflict shift
@@ -142,7 +142,7 @@ Yes, the streams run continuously. However, individual cameras may go offline du
 Yes. On mobile, the webcam panel switches to single-view mode for performance. You can filter by region and swipe between cameras.
 
 **Do the webcams work in the desktop app?**
-Yes. The Tauri desktop app includes staggered iframe loading and a custom sidecar relay for YouTube streams, providing the most stable multi-stream experience.
+Yes. The Tauri [desktop app](https://www.worldmonitor.app/docs/desktop-app) includes staggered iframe loading and a custom sidecar relay for YouTube streams, providing the most stable multi-stream experience.
 
 ---
 

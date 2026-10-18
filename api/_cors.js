@@ -2,6 +2,10 @@
 // Keep aligned with convex/payments/returnUrlOrigin.ts and CORS parity tests.
 const APP_ORIGIN_PATTERN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
 
+export function isHostedAppOrigin(origin) {
+  return typeof origin === 'string' && APP_ORIGIN_PATTERN.test(origin);
+}
+
 const ALLOWED_ORIGIN_PATTERNS = [
   APP_ORIGIN_PATTERN,
   // Vercel preview deployments under the "eliewm" team scope, e.g.
@@ -66,6 +70,9 @@ const EXPOSED_HEADERS = [
   // `response.headers.get('X-RateLimit-Mode')` null for cross-origin JS
   // even though the header is on the wire (#7270).
   'X-RateLimit-Mode',
+  // api/mcp-proxy marks the 504 it relays for a remote MCP server timeout so
+  // premium-fetch's origin-5xx canary can skip it (WORLDMONITOR-17A).
+  'X-Wm-Upstream-Timeout',
   'X-WorldMonitor-Bbox',
   'X-WorldMonitor-Bbox-Missing',
   'X-WorldMonitor-Bbox-Invalid',

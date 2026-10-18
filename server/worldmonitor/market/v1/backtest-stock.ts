@@ -270,7 +270,16 @@ export const backtestStock: MarketServiceHandler['backtestStock'] = async (
       definitiveInvalidSymbol = true;
       return null;
     }
-    if (historyOutcome.status !== 'success') return null;
+    // A transient Yahoo failure (network/5xx/parse) must not become a cached
+    // negative: returning null writes the 120s NEG_SENTINEL, which serves
+    // `available: false` to every caller for the whole window. Throwing keeps
+    // it out of Redis because this route sets `cacheFetcherErrors: false`
+    // (that flag only covers thrown errors, not null returns). Only a
+    // definitive invalid-symbol or insufficient-history result may be
+    // negatively cached.
+    if (historyOutcome.status !== 'success') {
+      throw new Error(`[backtestStock] Yahoo history unavailable for ${symbol}`);
+    }
     const history = historyOutcome.history;
     if (history.candles.length < MIN_REQUIRED_BARS) return null;
 

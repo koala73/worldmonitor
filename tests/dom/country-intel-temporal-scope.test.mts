@@ -103,6 +103,7 @@ it('refreshes deep-dive signal chips and breakdown when updateScore receives new
   const pending = { ...await manager().getCountrySignals('FR', 'France'), temporalAnomalies: null, globalTemporalAnomalies: null };
   Reflect.get(panel, 'renderInitialSignals').call(panel, pending);
   expect(body.querySelector('.cdp-signal-chips')?.textContent).toContain('Temporal observations unavailable');
+  expect(body.querySelector('.cdp-signal-breakdown')?.textContent).toContain('Aggregate severity');
   const refreshed = {
     ...pending,
     temporalAnomalies: 3,
@@ -114,6 +115,9 @@ it('refreshes deep-dive signal chips and breakdown when updateScore receives new
   const chips = body.querySelector('.cdp-signal-chips')?.textContent ?? '';
   expect(chips).toContain('3');
   expect(chips).not.toContain('Temporal observations unavailable');
+  expect(body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Aggregate severity and recent high-severity observations are unavailable. Military counts alone do not establish these totals.');
+  expect(body.querySelector('.cdp-signal-breakdown')?.textContent).not.toContain('6');
+  panel.updateScore(null, { ...refreshed, militaryFlights: 0, militaryVessels: 0 });
   // low bucket = earthquakes + temporal + satellite fires
   expect(body.querySelector('.cdp-signal-breakdown')?.textContent).toContain('6');
   document.body.replaceChildren();

@@ -4,7 +4,10 @@ import type {
   GetCountryRiskResponse,
   CiiScore,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
+import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
+import { countryDisplayName } from '../../../../shared/country-mention.js';
 import { getCachedJson } from '../../../_shared/redis';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
 import { TIER1_COUNTRIES } from './_shared';
@@ -19,7 +22,7 @@ function resolveCountryName(
   code: string,
   byCountryName: Record<string, string> | undefined,
 ): string {
-  return TIER1_COUNTRIES[code] ?? byCountryName?.[code] ?? code;
+  return TIER1_COUNTRIES[code] ?? byCountryName?.[code] ?? (countryDisplayName(code) || code);
 }
 
 export async function getCountryRisk(
@@ -27,30 +30,26 @@ export async function getCountryRisk(
   req: GetCountryRiskRequest,
 ): Promise<GetCountryRiskResponse> {
   const code = req.countryCode?.toUpperCase() ?? '';
-
-  if (!code) {
-    return {
-      countryCode: code,
-      countryName: '',
-      cii: undefined,
-      advisoryLevel: '',
-      sanctionsActive: false,
-      sanctionsCount: 0,
-      fetchedAt: UNKNOWN_CII_COMPUTED_AT,
-      upstreamUnavailable: false,
-    };
+  // The proto checks shape only. An unassigned code such as ZZ would otherwise
+  // read every key, find nothing, and answer with a record indistinguishable
+  // from a real country with no risk signals.
+  if (!isAssignedCountryCode(code)) {
+    throw new ValidationError([{
+      field: 'country_code',
+      description: 'country_code must be an assigned ISO 3166-1 alpha-2 code, e.g. "IQ".',
+    }]);
   }
 
   const [riskRaw, advisoriesRaw, sanctionsRaw] = await Promise.all([
-    getCachedJson(RISK_SCORES_KEY, true),
+    getCachedJson(RISK_SCORES_KEY),
     getCachedJson(ADVISORIES_KEY, true),
     getCachedJson(SANCTIONS_COUNTS_KEY, true),
   ]);
 
-  // Any missing upstream key: fail closed to prevent CDN-caching of partial
-  // data as if it were valid (e.g. sanctionsActive:false or cii:undefined when
-  // the Redis key itself is simply absent, not just untracked for this country).
-  if (sanctionsRaw === null || riskRaw === null || advisoriesRaw === null) {
+  // Missing keys or empty country coverage fail closed before CDN-caching partial
+  // data as valid. An empty global map does not establish a country-level zero.
+  if (sanctionsRaw === null || Object.keys(sanctionsRaw as Record<string, number>).length === 0
+    || riskRaw === null || advisoriesRaw === null) {
     return {
       countryCode: code,
       countryName: resolveCountryName(code, (advisoriesRaw as any)?.byCountryName),

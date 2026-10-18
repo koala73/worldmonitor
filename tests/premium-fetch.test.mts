@@ -16,6 +16,11 @@ import assert from 'node:assert/strict';
 import { describe, it, before, after, mock } from 'node:test';
 import { premiumFetch, proFreshRpcFetch, reportServerError, _setTestProviders } from '@/services/premium-fetch';
 import { hasPremiumIntent } from '@/services/premium-intent';
+import {
+  _resetSentryDeferStateForTests,
+  _setSentryLoaderForTests,
+  scheduleSentryInit,
+} from '@/bootstrap/sentry-defer';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -36,11 +41,11 @@ function sentHeaders(callIndex = 0): Headers {
 // injection is now path-gated. Using `some-premium-rpc` (a non-existent
 // path) made every "Clerk Bearer attached" assertion silently fail under
 // the new logic. See PREMIUM_RPC_PATHS in src/shared/premium-paths.ts.
-const TARGET = 'https://api.worldmonitor.app/api/sanctions/v1/list-sanctions-pressure';
+const TARGET = 'https://api.worldmonitor.app/api/economic/v1/list-global-tenders';
 // A real PUBLIC path used to verify the path-gating bypass: hits below
 // fetch the same way but should NOT see Bearer attached.
 const PUBLIC_TARGET = 'https://api.worldmonitor.app/api/economic/v1/get-fred-series-batch';
-const PUBLIC_INSIDER_TRANSACTIONS_TARGET =
+const PREMIUM_INSIDER_TRANSACTIONS_TARGET =
   'https://api.worldmonitor.app/api/market/v1/get-insider-transactions?symbol=AAPL';
 const PRO_FRESH_MARKET_TARGET =
   'https://api.worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL';
@@ -225,18 +230,18 @@ describe('premiumFetch', () => {
     );
   });
 
-  it('Pro-fresh market adapter attaches Clerk JWT only on the shared allowlist', async () => {
+  it('Pro-fresh market adapter leaves public paths on anonymous-session auth', async () => {
     setup({ testerKey: '', clerkToken: 'pro-fresh-clerk-token' });
 
     await proFreshRpcFetch(PRO_FRESH_MARKET_TARGET);
     assert.equal(sentHeaders(0).get('Authorization'), 'Bearer pro-fresh-clerk-token');
 
     fetchMock.mock.resetCalls();
-    await proFreshRpcFetch(PUBLIC_INSIDER_TRANSACTIONS_TARGET);
+    await proFreshRpcFetch(PUBLIC_TARGET);
     assert.equal(
       sentHeaders(0).get('Authorization'),
       null,
-      'other methods on the MarketService client must retain anonymous-session auth',
+      'public methods must retain anonymous-session auth',
     );
   });
 
@@ -254,10 +259,12 @@ describe('premiumFetch', () => {
     assert.equal(sentHeaders(0).get('Authorization'), 'Bearer premium-market-token');
   });
 
-  it('public insider transactions path: Clerk JWT NOT attached', async () => {
-    setup({ testerKey: '', clerkToken: 'clerk-token-should-be-skipped' });
-    await premiumFetch(PUBLIC_INSIDER_TRANSACTIONS_TARGET);
-    assert.equal(sentHeaders().get('Authorization'), null);
+  it('premium insider transactions path attaches the Clerk JWT', async () => {
+    setup({ testerKey: '', clerkToken: 'insider-clerk-token' });
+    await premiumFetch(PREMIUM_INSIDER_TRANSACTIONS_TARGET);
+    assert.equal(sentHeaders().get('Authorization'), 'Bearer insider-clerk-token');
+    await proFreshRpcFetch(PREMIUM_INSIDER_TRANSACTIONS_TARGET);
+    assert.equal(sentHeaders(1).get('Authorization'), 'Bearer insider-clerk-token');
   });
 
   it('non-premium path: tester key still attached (works on any path)', async () => {
@@ -529,6 +536,46 @@ describe('reportServerError', () => {
     assert.equal(calls.length, 0, 'rate-limit degradation must not be captured again by every browser');
   });
 
+  // api/mcp-proxy answers an upstream MCP server timeout with its own 504 and
+  // has already captured it server-side at warning. Reporting it again here
+  // filed it as an origin `API 504: /api/mcp-proxy` error (WORLDMONITOR-17A).
+  it('skips the mcp-proxy 504 that relays an upstream MCP server timeout', () => {
+    const { calls, enqueue } = makeSpy();
+    const res = new Response(JSON.stringify({ error: 'MCP server timed out' }), {
+      status: 504,
+      headers: { 'Content-Type': 'application/json', 'X-Wm-Upstream-Timeout': '1' },
+    });
+    reportServerError(res, 'https://api.worldmonitor.app/api/mcp-proxy', enqueue);
+    assert.equal(calls.length, 0, 'an upstream MCP timeout is not an origin 5xx');
+  });
+
+  it('still reports an unmarked 504 from the proxy path', () => {
+    const { calls, enqueue } = makeSpy();
+    const res = new Response('', { status: 504 });
+    reportServerError(res, 'https://api.worldmonitor.app/api/mcp-proxy', enqueue);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].msg, 'API 504: /api/mcp-proxy');
+  });
+
+  // WORLDMONITOR-ZH: closing the country deep-dive aborts its signal while
+  // withBillingVerificationRetry waits out Retry-After, and the wrapper hands
+  // back the FIRST 503. Nobody waited for the retry, so whether the outage was
+  // sustained is unknown — the canary must not count it.
+  it('skips a 503 handed back to a caller that already aborted', () => {
+    const { calls, enqueue } = makeSpy();
+    const controller = new AbortController();
+    controller.abort();
+    reportServerError(new Response('{}', { status: 503 }), PUBLIC_TARGET, enqueue, controller.signal);
+    assert.equal(calls.length, 0, 'an abandoned retry wait is not an origin outage');
+  });
+
+  it('still captures a 503 when the caller signal is live', () => {
+    const { calls, enqueue } = makeSpy();
+    const controller = new AbortController();
+    reportServerError(new Response('{}', { status: 503 }), PUBLIC_TARGET, enqueue, controller.signal);
+    assert.equal(calls.length, 1, 'a caller still waiting must keep the canary');
+  });
+
   // -------------------------------------------------------------------------
   // Grouping — WORLDMONITOR-P4.
   //
@@ -664,5 +711,73 @@ describe('reportServerError', () => {
     assert.equal(classOf(527), 'api-cf-5xx', '527 is the last Cloudflare code');
     assert.equal(classOf(528), 'api-5xx', '528 is above the Cloudflare window');
     assert.equal(classOf(530), 'api-5xx', 'CF 530 is deliberately outside the transient-transport window');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// premiumFetch → reportServerError signal forwarding (WORLDMONITOR-ZH).
+//
+// The reportServerError tests above pass the signal by hand, so they would
+// still pass if premiumFetch stopped forwarding the caller's signal. These go
+// through premiumFetch and the real enqueueSentryCall, with a recording SDK
+// loaded the way tests/stale-bundle-check.test.mts drains deferred calls.
+// ---------------------------------------------------------------------------
+describe('premiumFetch forwards the caller signal to the 5xx report', () => {
+  const captured: string[] = [];
+  let mock503: FetchMock;
+
+  before(async () => {
+    _resetSentryDeferStateForTests();
+    const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    const previousSetTimeout = Object.getOwnPropertyDescriptor(globalThis, 'setTimeout');
+    let delayedCallback: (() => void) | null = null;
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { addEventListener() {}, removeEventListener() {} },
+    });
+    Object.defineProperty(globalThis, 'setTimeout', {
+      configurable: true,
+      value: (cb: () => void) => { delayedCallback = cb; return 1; },
+    });
+    _setSentryLoaderForTests(async () => ({
+      captureMessage(message: string) { captured.push(message); },
+    } as never));
+    try {
+      const initPromise = scheduleSentryInit();
+      delayedCallback?.();
+      await initPromise;
+    } finally {
+      for (const [name, descriptor] of [['window', previousWindow], ['setTimeout', previousSetTimeout]] as const) {
+        if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+        else Reflect.deleteProperty(globalThis, name);
+      }
+    }
+    mock503 = mock.method(globalThis, 'fetch', () => Promise.resolve(fakeRes(503)));
+  });
+
+  after(() => {
+    mock503.mock.restore();
+    _resetSentryDeferStateForTests();
+  });
+
+  it('does not report the 503 when the caller aborted', async () => {
+    captured.length = 0;
+    const controller = new AbortController();
+    controller.abort();
+    const res = await premiumFetch(TARGET, {
+      headers: { Authorization: 'Bearer existing-token' },
+      signal: controller.signal,
+    });
+    assert.equal(res.status, 503, 'the caller still receives the response');
+    assert.deepEqual(captured, [], 'an abandoned request must not reach Sentry');
+  });
+
+  it('reports the 503 when the caller is still waiting', async () => {
+    captured.length = 0;
+    await premiumFetch(TARGET, {
+      headers: { Authorization: 'Bearer existing-token' },
+      signal: new AbortController().signal,
+    });
+    assert.deepEqual(captured, ['API 503: /api/economic/v1/list-global-tenders']);
   });
 });

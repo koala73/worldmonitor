@@ -7,7 +7,8 @@ import type {
   ServerContext,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
-import { getCachedJson } from '../../../_shared/redis';
+import { readCachedJson } from '../../../_shared/redis';
+import { SeedUnavailableError } from '../../../_shared/required-seed';
 import { parseStringArray } from './_shared';
 
 const PHYSICAL_PREMIUM_KEY = 'market:physical-premium:v1';
@@ -169,8 +170,10 @@ export async function getPhysicalPremiums(
   req: GetPhysicalPremiumsRequest,
 ): Promise<GetPhysicalPremiumsResponse> {
   const metals = resolvePhysicalPremiumMetals(parseStringArray(req.metals));
+  const read = await readCachedJson(PHYSICAL_PREMIUM_KEY, true);
+  if (read.status === 'error') throw new SeedUnavailableError(PHYSICAL_PREMIUM_KEY);
   try {
-    const raw = await getCachedJson(PHYSICAL_PREMIUM_KEY, true) as RawPayload | null;
+    const raw = read.status === 'hit' ? read.value as RawPayload | null : null;
     const fx = mapFx(raw?.fx);
     if (!fx || !Array.isArray(raw?.premiums)) return { premiums: [] };
     const premiums = raw.premiums.map((premium) => mapPremium(premium, fx.rate))

@@ -22,7 +22,12 @@
 // still does.
 //
 // The run-conclusion check is the fast half, not the reliable half: it turns a
-// week of silence into a day. Age is what fails closed.
+// week of silence into a day. Age is what fails closed. A failed run that the
+// newest snapshot postdates has already been remedied and is not reported; the
+// first run of this monitor reopened a fixed problem that way (#8417).
+//
+// Findings live in one issue that the monitor closes, with a comment, once the
+// pulse is healthy again. Left open, the daily body edit notifies nobody.
 
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, readdirSync, readFileSync } from 'node:fs';
@@ -33,6 +38,7 @@ import {
   livePulseSnapshotAgeDays,
 } from './build-crawlable-corpus.mjs';
 import { isMainModule } from './lib/main-module.mjs';
+import { corroborateRunListings, reduceRunListings } from './lib/gh-run-listing.mjs';
 
 export const ISSUE_TITLE = 'Crawlable pulse refresh: snapshot is going stale';
 export const SNAPSHOT_DIR = 'docs/snapshots';
@@ -82,20 +88,29 @@ export function readNewestSnapshot(rootDir, now = Date.now()) {
   if (dated.length === 0) return null;
 
   const [{ filename, match }] = dated;
-  const capturedAt = JSON.parse(readFileSync(join(dir, filename), 'utf8')).capturedAt ?? match[1];
+  const parsed = JSON.parse(readFileSync(join(dir, filename), 'utf8'));
+  const capturedAt = parsed.capturedAt ?? match[1];
   return {
     filename,
     capturedAt,
+    capturedAtMs: Number.isFinite(parsed.capturedAtMs) ? parsed.capturedAtMs : null,
     ageDays: livePulseSnapshotAgeDays(capturedAt, now),
   };
+}
+
+function capturedInstant({ capturedAtMs, capturedAt }) {
+  if (Number.isFinite(capturedAtMs)) return capturedAtMs;
+  // Date-only capture reads as midnight UTC, so a run later that day still
+  // counts as newer and the alarm fails closed.
+  return Date.parse(`${String(capturedAt || '').slice(0, 10)}T00:00:00Z`);
 }
 
 /**
  * Pure verdict. Kept separate from every GitHub call so the thresholds are
  * testable without a network.
  *
- * @param {{ filename: string, capturedAt: string, ageDays: number } | null} snapshot
- * @param {{ conclusion: string | null, url?: string, createdAt?: string } | null} lastRun
+ * @param {{ filename: string, capturedAt: string, capturedAtMs?: number | null, ageDays: number } | null} snapshot
+ * @param {{ conclusion: string | null, url?: string, createdAt?: string, completedAt?: string } | null} lastRun
  */
 export function evaluatePulseFreshness(snapshot, lastRun, {
   warnAgeDays = PULSE_SNAPSHOT_WARN_AGE_DAYS,
@@ -129,7 +144,15 @@ export function evaluatePulseFreshness(snapshot, lastRun, {
   // A failed run is reported even while the snapshot is still fresh: that is the
   // whole point of the fast half. Four consecutive failures were invisible
   // because the last committed snapshot was inside the ceiling the whole time.
-  if (lastRun && lastRun.conclusion && lastRun.conclusion !== 'success') {
+  // A failure the newest snapshot postdates is not a finding, though: a refresh
+  // merged after it is the remedy this issue asks for, and re-reporting the
+  // failure reopened the issue a day after the fix (#8417). A run without a
+  // timestamp compares as never superseded.
+  const failed = Boolean(lastRun?.conclusion) && lastRun.conclusion !== 'success';
+  // Reruns retain created_at; only a snapshot after the failed attempt can
+  // repair that failure. Older callers without attempt timing use createdAt.
+  const superseded = failed && capturedInstant(snapshot) > Date.parse(lastRun.completedAt ?? lastRun.createdAt ?? '');
+  if (failed && !superseded) {
     reasons.push({
       kind: 'refresh-failed',
       detail: `The most recent ${REFRESH_WORKFLOW} run concluded \`${lastRun.conclusion}\``
@@ -138,21 +161,33 @@ export function evaluatePulseFreshness(snapshot, lastRun, {
     });
   }
 
-  return { alert: reasons.length > 0, reasons, snapshot, lastRun };
+  return {
+    alert: reasons.length > 0,
+    reasons,
+    snapshot,
+    lastRun: lastRun ? { ...lastRun, superseded } : lastRun,
+  };
 }
 
-export function renderBody(verdict, { runUrl = '' } = {}) {
-  const { snapshot, lastRun, reasons } = verdict;
+function statusLines({ snapshot, lastRun }) {
   return [
-    `The crawlable live-pulse snapshot needs attention: ${reasons.length} finding(s).`,
-    '',
     snapshot
       ? `Newest snapshot: \`${snapshot.filename}\` captured ${snapshot.capturedAt}, `
         + `${Math.floor(snapshot.ageDays)} day(s) old.`
       : `No snapshot found in \`${SNAPSHOT_DIR}\`.`,
-    lastRun?.conclusion
-      ? `Last refresh run: \`${lastRun.conclusion}\`${lastRun.url ? ` — [run](${lastRun.url})` : ''}.`
+    lastRun?.unknown ? 'Last refresh run: UNKNOWN (listing could not be corroborated).' : lastRun?.conclusion
+      ? `Last refresh run: \`${lastRun.conclusion}\`${lastRun.url ? ` — [run](${lastRun.url})` : ''}`
+        + `${lastRun.superseded ? ', superseded by the newer snapshot above' : ''}.`
       : 'Last refresh run: none found.',
+  ];
+}
+
+export function renderBody(verdict, { runUrl = '' } = {}) {
+  const { reasons } = verdict;
+  return [
+    `The crawlable live-pulse snapshot needs attention: ${reasons.length} finding(s).`,
+    '',
+    ...statusLines(verdict),
     // null, not '': the join below keeps deliberate blank separators, because
     // markdown needs them between a paragraph and the list that follows.
     runUrl ? `Detected by [this monitor run](${runUrl}).` : null,
@@ -168,7 +203,17 @@ export function renderBody(verdict, { runUrl = '' } = {}) {
       + 'writes a snapshot with zero country briefs, so check `coverage.briefCountryCount` '
       + 'before committing.',
     '',
-    'This issue is reused while the condition persists. Close it once a fresh snapshot is merged.',
+    'This issue is reused while the condition persists and closed by the monitor once it clears.',
+  ].filter((line) => line !== null).join('\n');
+}
+
+export function renderRecovery(verdict, { runUrl = '' } = {}) {
+  return [
+    'The crawlable live-pulse snapshot is healthy again.',
+    '',
+    ...statusLines(verdict),
+    // Posted before the close request, so it must not claim the close happened.
+    runUrl ? `Recovery detected by [this monitor run](${runUrl}).` : null,
   ].filter((line) => line !== null).join('\n');
 }
 
@@ -179,13 +224,34 @@ export function publishPulseFreshness(verdict, {
   gh = ghJson,
   ghPost = ghWrite,
 } = {}) {
+  if (!verdict.alert && verdict.lastRun?.unknown) {
+    const message = 'UNKNOWN: pulse refresh run listing could not be corroborated; existing issue left unchanged.';
+    if (summaryPath) appendFileSync(summaryPath, `${message}\n`);
+    return { alert: false, state: 'UNKNOWN', action: 'unchanged' };
+  }
   const body = renderBody(verdict, { runUrl });
   if (summaryPath) appendFileSync(summaryPath, `${body}\n`);
-  if (!verdict.alert) return { alert: false };
-  if (!repository) throw new Error('GITHUB_REPOSITORY is required to publish pulse freshness findings');
+  if (!repository) {
+    if (!verdict.alert) return { alert: false };
+    throw new Error('GITHUB_REPOSITORY is required to publish pulse freshness findings');
+  }
 
   const pages = gh(['api', '--paginate', '--slurp', `repos/${repository}/issues?state=open&per_page=100`]);
   const existing = pages.flat().find((issue) => !issue.pull_request && issue.title === ISSUE_TITLE);
+  if (!verdict.alert) {
+    if (!existing) return { alert: false };
+    // A comment notifies subscribers; a body PATCH does not. Closing on
+    // recovery also makes the next finding a fresh issue instead of a silent
+    // edit to one nobody is watching any more.
+    ghPost(['api', `repos/${repository}/issues/${existing.number}/comments`, '--input', '-'], {
+      body: renderRecovery(verdict, { runUrl }),
+    });
+    ghPost(['api', '--method', 'PATCH', `repos/${repository}/issues/${existing.number}`, '--input', '-'], {
+      state: 'closed',
+      state_reason: 'completed',
+    });
+    return { alert: false, action: 'closed' };
+  }
   const endpoint = `repos/${repository}/issues${existing ? `/${existing.number}` : ''}`;
   ghPost(['api', '--method', existing ? 'PATCH' : 'POST', endpoint, '--input', '-'], {
     title: ISSUE_TITLE,
@@ -194,21 +260,41 @@ export function publishPulseFreshness(verdict, {
   return { alert: true, reasons: verdict.reasons.length, action: existing ? 'updated' : 'created' };
 }
 
-export function readLastRefreshRun({ repository = process.env.GITHUB_REPOSITORY, gh = ghJson } = {}) {
+export function readLastRefreshRun({ repository = process.env.GITHUB_REPOSITORY, gh = ghJson, clock = Date.now, sampleBudgetMs = 90_000 } = {}) {
   if (!repository) return null;
-  const payload = gh([
-    'api',
-    `repos/${repository}/actions/workflows/${REFRESH_WORKFLOW}/runs?per_page=1&status=completed`,
-  ]);
-  const run = payload?.workflow_runs?.[0];
+  const listings = corroborateRunListings({
+    workflowFile: REFRESH_WORKFLOW, clock, sampleBudgetMs,
+    read: () => {
+      const payload = gh([
+        'api',
+        `repos/${repository}/actions/workflows/${REFRESH_WORKFLOW}/runs?per_page=1&status=completed`,
+      ]);
+      if (!Array.isArray(payload?.workflow_runs) || payload.workflow_runs.some(run => !run?.id || !Number.isFinite(Date.parse(run.created_at)))) {
+        throw new Error('refresh run listing has unreadable workflow runs');
+      }
+      return { runs: payload.workflow_runs, totalCount: payload.total_count };
+    },
+  });
+  const run = reduceRunListings(listings)[0];
   if (!run) return null;
-  return { conclusion: run.conclusion ?? null, url: run.html_url ?? '', createdAt: run.created_at ?? '' };
+  return {
+    conclusion: run.conclusion ?? null,
+    url: run.html_url ?? '',
+    createdAt: run.created_at ?? '',
+    completedAt: run.updated_at ?? run.created_at ?? '',
+  };
 }
 
 if (isMainModule(import.meta.url, process.argv[1])) {
   try {
     const snapshot = readNewestSnapshot(process.cwd());
-    const lastRun = readLastRefreshRun();
+    let lastRun;
+    try {
+      lastRun = readLastRefreshRun();
+    } catch {
+      console.log('::warning::UNKNOWN: pulse refresh run listing could not be corroborated.');
+      lastRun = { unknown: true };
+    }
     const verdict = evaluatePulseFreshness(snapshot, lastRun);
     const runUrl = process.env.GITHUB_RUN_ID
       ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`

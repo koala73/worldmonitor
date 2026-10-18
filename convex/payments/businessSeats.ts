@@ -8,16 +8,19 @@
  * stops covering.
  */
 
+import { assertAccountWritable } from "../accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import {
   internalAction,
   mutation,
   query,
+  type ActionCtx,
   type MutationCtx,
   type QueryCtx,
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { USER_AGENT } from "../broadcast/_resendContacts";
+import { ResendSendError, sendResendEmail } from "../lib/resendEmail";
 import { requireUserId, resolveUserIdentity } from "../lib/auth";
 import {
   extractDomain,
@@ -119,6 +122,7 @@ export const inviteSeats = mutation({
   args: { emails: v.array(v.string()) },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, userId);
     const identity = await resolveUserIdentity(ctx);
     const ownerEmail = identity?.email?.trim();
     if (!ownerEmail) {
@@ -233,10 +237,12 @@ export const inviteSeats = mutation({
 
 /**
  * Shared Resend send + error-handling for both business-seat email actions.
+ * Routed through the shared helper so the local suppression table is checked
+ * (seat mail used to skip it) and replies reach support@ instead of noreply@.
  * `skipLogContext` names what's being skipped when RESEND_API_KEY is unset;
  * `failureLabel` names the operation in the thrown error on a non-2xx.
  */
-async function sendResendEmail(opts: {
+async function sendSeatEmail(ctx: Pick<ActionCtx, "runQuery">, opts: {
   to: string;
   subject: string;
   html: string;
@@ -250,26 +256,28 @@ async function sendResendEmail(opts: {
     return;
   }
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "User-Agent": USER_AGENT,
-    },
-    body: JSON.stringify({
+  let result;
+  try {
+    result = await sendResendEmail(ctx, {
+      apiKey,
       from: "World Monitor <noreply@worldmonitor.app>",
-      to: [opts.to],
+      to: opts.to,
       subject: opts.subject,
       html: opts.html,
-    }),
-    signal: AbortSignal.timeout(RESEND_FETCH_TIMEOUT_MS),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    console.error(`[businessSeats] Resend ${res.status}: ${body}`);
-    throw new Error(`Resend ${opts.failureLabel} failed: ${res.status}`);
+      purpose: "transactional",
+      userAgent: USER_AGENT,
+      timeoutMs: RESEND_FETCH_TIMEOUT_MS,
+    });
+  } catch (err) {
+    if (err instanceof ResendSendError) {
+      console.error(`[businessSeats] Resend ${err.status}: ${err.body}`);
+      throw new Error(`Resend ${opts.failureLabel} failed: ${err.status}`);
+    }
+    throw err;
+  }
+  if (!result.sent) {
+    console.log(`[businessSeats] Skipped ${opts.skipLogContext}: recipient is suppressed`);
+    return;
   }
   console.log(opts.successLog);
 }
@@ -280,7 +288,7 @@ async function sendResendEmail(opts: {
  */
 export const sendTeamAccessEndedEmail = internalAction({
   args: { inviteeEmail: v.string() },
-  handler: async (_ctx, args) => {
+  handler: async (ctx, args) => {
     const html = `
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
   <div style="background: #ef4444; height: 4px;"></div>
@@ -299,7 +307,7 @@ export const sendTeamAccessEndedEmail = internalAction({
   </div>
 </div>`;
 
-    await sendResendEmail({
+    await sendSeatEmail(ctx, {
       to: args.inviteeEmail,
       subject: "Your WorldMonitor team access has ended",
       html,
@@ -321,7 +329,7 @@ export const sendBusinessInviteEmail = internalAction({
     grantId: v.string(),
     token: v.string(),
   },
-  handler: async (_ctx, args) => {
+  handler: async (ctx, args) => {
     const acceptUrl = `https://worldmonitor.app/settings?accept-business-invite=${encodeURIComponent(args.grantId)}&token=${encodeURIComponent(args.token)}`;
     const html = `
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
@@ -341,7 +349,7 @@ export const sendBusinessInviteEmail = internalAction({
   </div>
 </div>`;
 
-    await sendResendEmail({
+    await sendSeatEmail(ctx, {
       to: args.inviteeEmail,
       subject: "You've been invited to WorldMonitor Pro",
       html,
@@ -450,6 +458,7 @@ export const acceptBusinessInvite = mutation({
   args: { grantId: v.id("businessProGrants"), token: v.string() },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, userId);
     const identity = await resolveUserIdentity(ctx);
     const inviteeEmail = identity?.email?.trim().toLowerCase();
     if (!inviteeEmail) {
@@ -460,6 +469,7 @@ export const acceptBusinessInvite = mutation({
     if (!grant) {
       throw new ConvexError({ kind: "GRANT_NOT_FOUND" });
     }
+    await assertAccountWritable(ctx, grant.ownerUserId);
     if (grant.status !== "pending") {
       throw new ConvexError({ kind: "INVITE_ALREADY_USED" });
     }

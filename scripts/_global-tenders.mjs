@@ -284,17 +284,21 @@ export function mergeTenderSourceResults({ settled, sourceNames, previousSnapsho
       });
       continue;
     }
+    // A fulfilled status reports its own last attempt: a paced SAM run made no
+    // request and carries the prior attempt time forward, which is what its
+    // pacing gate measures (#8505). Only a rejection is stamped with this run.
+    const fetchedAt = fulfilledStatus?.fetchedAt || attemptedAt;
     if (priorRecords.length > 0) {
       const lastSuccessfulAt = firstString(priorStatus?.lastSuccessfulAt, priorStatus?.fetchedAt,
         isoTimestamp(previousSnapshot?.fetchedAt));
       records.push(...priorRecords);
       sourceStatuses.push({
-        source, state: 'stale', recordCount: priorRecords.length, fetchedAt: attemptedAt,
+        source, state: 'stale', recordCount: priorRecords.length, fetchedAt,
         lastSuccessfulAt, stale: true, ...(error ? { error } : {}),
       });
     } else {
       sourceStatuses.push({
-        source, state: fulfilledStatus?.state || 'error', recordCount: 0, fetchedAt: attemptedAt,
+        source, state: fulfilledStatus?.state || 'error', recordCount: 0, fetchedAt,
         lastSuccessfulAt: firstString(priorStatus?.lastSuccessfulAt, priorStatus?.fetchedAt), stale: false,
         ...(error ? { error } : {}),
       });

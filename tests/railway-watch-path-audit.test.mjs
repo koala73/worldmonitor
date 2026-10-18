@@ -238,6 +238,14 @@ function repositoryCopyInputs(dockerfileSource) {
   return parseDockerfileCopy(repositoryCopySource);
 }
 
+// A Dockerfile kept inside its app's directory that copies that directory
+// whole ships every file in it, including the static assets and data the
+// import walk cannot see. Only the recursive pattern covers them.
+function ownDirectoryCopiedBy(dockerfile, copied) {
+  const directory = dirname(dockerfile);
+  return directory !== '.' && copied.directories.has(directory) ? directory : null;
+}
+
 /**
  * The BUILD inputs a service's closure must name, on top of its runtime graph.
  *
@@ -265,6 +273,8 @@ function buildInputsFor(entry, repoRootDir) {
     for (const file of copied.files) {
       if (file !== '.') inputs.add(file);
     }
+    const ownDirectory = ownDirectoryCopiedBy(entry.dockerfile, copied);
+    if (ownDirectory) inputs.add(`${ownDirectory}/**`);
     if (/^RUN node scripts\/generate-inventory-facts\.mjs$/mu.test(source)) {
       for (const file of RELAY_INVENTORY_BUILD_INPUTS) inputs.add(file);
     }
@@ -413,7 +423,8 @@ function dockerfileContainerContract(dockerfileName, repoRootDir) {
     // Anything the image copies in is somewhere a dynamic import can land.
     dynamicRoots: directories.map((directory) => resolve(repoRootDir, directory)),
     hasTsx: /^RUN\s+npm\s+install\b[^\n]*\stsx@/m.test(source)
-      || /^ENV\s+NODE_OPTIONS="[^"]*tsx[^"]*"/m.test(source),
+      || /^ENV\s+NODE_OPTIONS="[^"]*tsx[^"]*"/m.test(source)
+      || /^CMD\s+\[[^\]]*"--import",\s*"tsx"/m.test(source),
   };
 }
 
@@ -960,7 +971,7 @@ describe('planned Railway service lifecycle', () => {
     cronSchedule: '7,22,37,52 * * * *',
   };
 
-  it('keeps unprovisioned standalone seeders explicitly planned', () => {
+  it('keeps unprovisioned seeders explicitly planned', () => {
     // An exact list, not a predicate: `planned` removes an entry from the live
     // audit AND from `--apply`, so every addition has to be a decision somebody
     // made rather than a way to quiet a red gate.
@@ -979,10 +990,21 @@ describe('planned Railway service lifecycle', () => {
       // carries Arms-Suppliers, Military-Bases and Mineral-Production, so
       // leaving it planned would exempt three low-cadence members behind a
       // single daily cron from the watch-path and deploy-drift checks.
+      // seed-live-video-resolved (#8545) is deliberately ABSENT now: #8596
+      // landed it planned until the Railway service existed, and service
+      // 11581ac4-24ea-4cfc-bf17-471e41305364 now runs
+      // `node seed-live-video-resolved.mjs` on cron 0 */6 * * * and has
+      // published once. Leaving it planned would exempt a live cron from the
+      // watch-path and deploy-drift checks.
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',
       'seed-weather-alerts',
+      // shipping-webhook-worker (#9217) is deliberately ABSENT now: #9236
+      // landed it planned until the Railway service existed, and service
+      // a97fa619-a8f4-4244-9748-6c0f6c3eade3 now runs
+      // `node shipping-webhook-worker.mjs` always-on. Leaving it planned would
+      // exempt a live delivery worker from the watch-path and deploy-drift checks.
     ].sort();
     const plannedEntries = RAILWAY_SERVICE_REGISTRY.filter(
       (entry) => entry.lifecycle === 'planned',
@@ -991,11 +1013,11 @@ describe('planned Railway service lifecycle', () => {
     assert.deepEqual(
       plannedEntries.map((entry) => entry.service).sort(),
       expectedPlannedServices,
-      'only unprovisioned standalone seeders may be marked planned',
+      'only unprovisioned seeders may be marked planned',
     );
     assert.ok(
       plannedEntries.every((entry) => entry.lifecycle === 'planned'),
-      'unprovisioned standalone seeders must not be treated as active Railway services',
+      'unprovisioned seeders must not be treated as active Railway services',
     );
     assert.deepEqual(
       managedRailwayServices(RAILWAY_SERVICE_REGISTRY).filter((entry) =>
@@ -1012,14 +1034,27 @@ describe('planned Railway service lifecycle', () => {
     assert.equal(imd.cronSchedule, '*/15 * * * *');
     assert.equal(imd.startCommand, 'node seed-imd-cyclone-marine.mjs');
     assert.deepEqual(imd.requiredEnv, [
-      'IMD_API_KEY',
-      'IMD_API_EMAIL',
-      'IMD_API_PASSWORD',
-      'PROXY_URL',
       'UPSTASH_REDIS_REST_URL',
       'UPSTASH_REDIS_REST_TOKEN',
     ]);
     assert.ok(managedRailwayServices(RAILWAY_SERVICE_REGISTRY).includes(imd));
+  });
+
+  it('audit-manages provisioned seed-live-video-resolved', () => {
+    // Service 11581ac4-24ea-4cfc-bf17-471e41305364 exists and has published
+    // once, so the row must carry no lifecycle field. Asserting ABSENCE is
+    // what stops `planned` being reinstated to quiet a red gate.
+    const live = RAILWAY_SERVICE_REGISTRY.find((entry) => entry.service === 'seed-live-video-resolved');
+    assert.ok(live, 'seed-live-video-resolved must remain in the Railway registry');
+    assert.equal(Object.hasOwn(live, 'lifecycle'), false);
+    assert.equal(live.cronSchedule, '0 */6 * * *');
+    assert.equal(live.startCommand, 'node seed-live-video-resolved.mjs');
+    assert.deepEqual(live.requiredEnv, [
+      'UPSTASH_REDIS_REST_URL',
+      'UPSTASH_REDIS_REST_TOKEN',
+      ['LIVE_VIDEO_PROXY_URL', 'PROXY_URL'],
+    ]);
+    assert.ok(managedRailwayServices(RAILWAY_SERVICE_REGISTRY).includes(live));
   });
 
   it('does not attach watchPatterns to planned seed-weather-alerts (no dual-SET of weather:alerts:v1)', () => {
@@ -1504,6 +1539,7 @@ describe('critical ingestion Railway registry contract', () => {
     ['seed-security-advisories', '0 * * * *'],
     ['seed-supply-chain-trade', '0 */6 * * *'],
     ['seed-comtrade-bilateral-hs4', '0 6 1 * *'],
+    ['seed-trade-flows', '0 5 * * *'],
     ['seed-bundle-market-backup', '*/5 * * * *'],
     ['seed-bundle-derived-signals', '*/5 * * * *'],
     ['seed-bundle-portwatch', '0 */1 * * *'],
@@ -1516,6 +1552,55 @@ describe('critical ingestion Railway registry contract', () => {
   // closure never verified.
   const closureManaged = managedRailwayServices(registry)
     .filter((entry) => Array.isArray(entry.watchPatterns) && entry.watchPatterns.length > 0);
+
+  it('reconciles Comtrade flow watches without rebuilding for unrelated forecast changes', () => {
+    const entry = registry.find((candidate) => candidate.service === 'seed-trade-flows');
+    assert.ok(entry, 'daily Comtrade flows must be registry-managed');
+    const serviceId = 'svc-comtrade-flows';
+    const live = service({ watchPatterns: ['scripts/**', 'shared/**'], cronSchedule: '0 5 * * *' });
+    live.deploy.startCommand = 'node seed-trade-flows.mjs';
+    live.variables = {
+      UPSTASH_REDIS_REST_URL: 'https://redis.example',
+      UPSTASH_REDIS_REST_TOKEN: 'configured',
+    };
+    const ids = new Map([[entry.service, serviceId]]);
+    const drift = auditRailwayServiceConfig({ services: { [serviceId]: live } }, ids, [entry]);
+    const patch = buildRailwayServiceConfigPatch(drift);
+    assert.deepEqual(patch, { services: { [serviceId]: { build: { watchPatterns: entry.watchPatterns } } } });
+    const reconciled = { ...live, build: { ...live.build, ...patch.services[serviceId].build } };
+    assert.deepEqual(auditRailwayServiceConfig({ services: { [serviceId]: reconciled } }, ids, [entry]), []);
+    for (const path of ['scripts/seed-forecasts.mjs', 'scripts/seed-forecast-resolutions.mjs']) {
+      assert.equal(entry.watchPatterns.some((pattern) => pathPatternMatches(pattern, path)), false, path);
+    }
+    for (const path of ['scripts/seed-trade-flows.mjs', 'scripts/shared/comtrade-period.mjs', 'scripts/_seed-utils.mjs']) {
+      assert.equal(entry.watchPatterns.some((pattern) => pathPatternMatches(pattern, path)), true, path);
+    }
+  });
+
+  it('reconciles radiation watches without redeploying for unrelated forecast changes', () => {
+    const entry = registry.find((candidate) => candidate.service === 'seed-radiation-watch');
+    assert.ok(entry, 'radiation cron must be registry-managed');
+    assert.equal(entry.cronSchedule, '*/15 * * * *');
+    const serviceId = 'svc-radiation';
+    const live = service({ watchPatterns: ['scripts/**', 'shared/**'], cronSchedule: '*/15 * * * *' });
+    live.deploy.startCommand = 'node seed-radiation-watch.mjs';
+    live.variables = {
+      UPSTASH_REDIS_REST_URL: 'https://redis.example',
+      UPSTASH_REDIS_REST_TOKEN: 'configured',
+    };
+    const ids = new Map([[entry.service, serviceId]]);
+    const drift = auditRailwayServiceConfig({ services: { [serviceId]: live } }, ids, [entry]);
+    const patch = buildRailwayServiceConfigPatch(drift);
+    assert.deepEqual(patch, { services: { [serviceId]: { build: { watchPatterns: entry.watchPatterns } } } });
+    const reconciled = { ...live, build: { ...live.build, ...patch.services[serviceId].build } };
+    assert.deepEqual(auditRailwayServiceConfig({ services: { [serviceId]: reconciled } }, ids, [entry]), []);
+    for (const path of ['scripts/_forecast-resolution-eval.mjs', 'scripts/seed-forecast-resolutions.mjs']) {
+      assert.equal(entry.watchPatterns.some((pattern) => pathPatternMatches(pattern, path)), false, path);
+    }
+    for (const path of ['scripts/seed-radiation-watch.mjs', 'scripts/_seed-utils.mjs', 'scripts/package-lock.json']) {
+      assert.equal(entry.watchPatterns.some((pattern) => pathPatternMatches(pattern, path)), true, path);
+    }
+  });
 
   it('audit-manages the always-on Umami collector with its exact image inputs', () => {
     const collector = registry.find((entry) => entry.service === 'umami');
@@ -1560,6 +1645,47 @@ describe('critical ingestion Railway registry contract', () => {
     }]);
   });
 
+  it('audit-manages the hosted verification desk without rewriting its build', () => {
+    const desk = registry.find((entry) => entry.service === 'verification-desk');
+    assert.ok(desk, 'verification-desk must be registered');
+    assert.ok(managedRailwayServices(registry).includes(desk));
+    assert.deepEqual(
+      [...buildInputsFor(desk, repoRoot)].filter((input) => input.endsWith('/**')),
+      ['demos/verification-desk/**'],
+      'the desk image copies its whole directory, so every file in it is a build input',
+    );
+    assert.equal(dockerfileContainerContract(desk.dockerfile, repoRoot).hasTsx, true);
+    assert.ok(desk.requiredEnv.includes('DESK_PASSWORD'), 'the hosted desk binds 0.0.0.0 and must stay behind its login');
+
+    const liveDesk = {
+      source: { repo: 'koala73/worldmonitor', branch: 'claude/tender-gates-sr83m5', checkSuites: true },
+      build: { builder: 'RAILPACK' },
+      deploy: {},
+      variables: {
+        ANTHROPIC_API_KEY: { value: 'configured' },
+        DESK_PASSWORD: { value: 'configured' },
+        RAILWAY_DOCKERFILE_PATH: { value: desk.dockerfile },
+        WORLDMONITOR_API_KEY: { value: 'configured' },
+      },
+    };
+    const ids = new Map([['verification-desk', 'svc-desk']]);
+    const drift = auditRailwayServiceConfig({ services: { 'svc-desk': liveDesk } }, ids, [desk]);
+    assert.deepEqual(
+      buildRailwayServiceConfigPatch(drift),
+      { services: { 'svc-desk': { build: { watchPatterns: desk.watchPatterns, dockerfilePath: desk.dockerfile } } } },
+      'merge-time sync may set only the watch paths and the Dockerfile the desk already builds from',
+    );
+
+    const trigger = auditRailwayServiceConfig(
+      { services: { 'svc-desk': liveDesk } },
+      ids,
+      [desk],
+      { requireMainTrigger: true },
+    ).find((entry) => entry.service === 'verification-desk');
+    assert.deepEqual(trigger.sourceBranch, { actual: 'claude/tender-gates-sr83m5', expected: 'main' });
+    assert.deepEqual(trigger.checkSuites, { actual: true, expected: false });
+  });
+
   it('every cron pin names a service that is registry-managed', () => {
     const managedNames = new Set(closureManaged.map((entry) => entry.service));
     for (const serviceName of expected.keys()) {
@@ -1586,12 +1712,14 @@ describe('critical ingestion Railway registry contract', () => {
       );
       assert.ok(!entry.watchPatterns.includes('scripts/**'), `${serviceName} must not watch every seeder`);
       assert.ok(!entry.watchPatterns.includes('shared/**'), `${serviceName} must not watch all shared data`);
+      const buildInputs = buildInputsFor(entry, repoRoot);
       for (const watchedPath of entry.watchPatterns) {
         if (watchedPath.includes('*')) {
           assert.equal(
-            serviceName === 'ais-relay' && RELAY_INVENTORY_BUILD_INPUTS.includes(watchedPath),
+            (serviceName === 'ais-relay' && RELAY_INVENTORY_BUILD_INPUTS.includes(watchedPath))
+              || (watchedPath.endsWith('/**') && buildInputs.has(watchedPath)),
             true,
-            `${serviceName} may use only closed inventory-builder globs`,
+            `${serviceName} may use only closed inventory-builder globs or its own copied directory`,
           );
         }
         assert.ok(
@@ -1622,7 +1750,6 @@ describe('critical ingestion Railway registry contract', () => {
       // import graph lingers forever in a hand-typed 44-entry array, rebuilding
       // the service on changes it no longer depends on -- the exact cost the
       // exact-path registry was introduced to eliminate.
-      const buildInputs = buildInputsFor(entry, repoRoot);
       const staleWatchedFiles = [...watched]
         .filter((file) => !runtimeFiles.has(file) && !buildInputs.has(file))
         .sort();
@@ -1637,7 +1764,8 @@ describe('critical ingestion Railway registry contract', () => {
       // the build — the silently-skipped deployment this registry exists to
       // prevent, in the one class the import walk is blind to.
       const missingBuildInputs = [...buildInputs]
-        .filter((file) => !watched.has(file))
+        .filter((file) => !watched.has(file)
+          && ![...watched].some((pattern) => pattern.endsWith('/**') && pathPatternMatches(pattern, file)))
         .sort();
       assert.deepEqual(
         missingBuildInputs,

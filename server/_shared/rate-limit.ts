@@ -1,6 +1,7 @@
+import { SUB_REQUEST_MARKER_HEADER } from './sub-request-admission.js';
 import { Ratelimit, type Duration } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
-import { getClientIp } from './client-ip';
+import { getClientIp, getClientRateLimitKey, hasUnprovenCloudflareClientIp, UNKNOWN_CLIENT_IP } from './client-ip.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../api/_sentry-edge.js';
 // @ts-expect-error — JS module, no declaration file
@@ -12,7 +13,7 @@ import { durationToSeconds, limitWithFallback, resetRateLimitFallbackForTest } f
 // the helpers' original home and existing callers import them from this
 // module (getClientIp: api/ask.ts, api/a2a.ts, api/mcp-proxy.ts;
 // UNKNOWN_CLIENT_IP: turnstile.ts; plus the rate-limit test suites).
-export { getClientIp, hasCloudflareTransitProof, UNKNOWN_CLIENT_IP } from './client-ip';
+export { getClientIp, getClientRateLimitKey, hasCloudflareTransitProof, hasUnprovenCloudflareClientIp, rateLimitKeyForIp, UNKNOWN_CLIENT_IP } from './client-ip.js';
 
 // @upstash/redis defaults to 5 retries with exponential backoff (~4.3s total)
 // before surfacing an unreachable-Redis error. The node test runner sets
@@ -170,6 +171,29 @@ function logScopedRateLimitMissingConfig(scope: string): void {
   reportRateLimitDegraded(stage, new Error('UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN missing'));
 }
 
+// One-per-isolate latch for edge-proof rejections. Spoofed cf-connecting-ip
+// headers are caller-controlled on a direct origin hit; reporting every 403
+// would create an amplification path (mirrors api/mcp/auth.ts). (#8402)
+const EDGE_PROOF_RATE_LIMIT_LATCH = Symbol.for('worldmonitor.rate-limit.edge-proof-reported.v1');
+
+function reportEdgeProofRequiredOnce(stage: string, err: Error): void {
+  const existing = Reflect.get(globalThis, EDGE_PROOF_RATE_LIMIT_LATCH) as
+    | { reported: boolean }
+    | undefined;
+  const latch = existing ?? { reported: false };
+  if (!existing) Reflect.set(globalThis, EDGE_PROOF_RATE_LIMIT_LATCH, latch);
+  if (latch.reported) return;
+  latch.reported = true;
+  reportRateLimitDegraded(stage, err);
+}
+
+export function resetEdgeProofRateLimitReportedForTest(): void {
+  const latch = Reflect.get(globalThis, EDGE_PROOF_RATE_LIMIT_LATCH) as
+    | { reported: boolean }
+    | undefined;
+  if (latch) latch.reported = false;
+}
+
 // Marker header set on every degraded (fail-closed) response so observability
 // can correlate "rate-limit unavailable" windows with downstream behaviour
 // without parsing the JSON body. Mirrored in api/_rate-limit.js.
@@ -213,10 +237,36 @@ function rateLimitDegradedResponse(corsHeaders: Record<string, string>): Respons
     status: 503,
     headers: {
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
       ...RATE_LIMIT_DEGRADED_HEADERS,
       ...corsHeaders,
     },
   });
+}
+
+// 403 for IP-scoped budgets when cf-connecting-ip arrives without a valid
+// x-wm-edge-proof. Distinct from the Redis-degraded 503: the limiter is fine,
+// the Cloudflare transit proof is not. (#8402)
+function edgeProofRequiredResponse(corsHeaders: Record<string, string>): Response {
+  return new Response(JSON.stringify({ error: 'Cloudflare edge proof required' }), {
+    status: 403,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-RateLimit-Mode': 'edge-proof',
+      'Cache-Control': 'no-store',
+      ...corsHeaders,
+    },
+  });
+}
+
+/** Reject unproven Cloudflare IPs before an IP-scoped budget or Redis fallback. */
+export function checkIpScopedEdgeProof(request: Request, corsHeaders: Record<string, string>): Response | null {
+  if (!hasUnprovenCloudflareClientIp(request)) return null;
+  reportEdgeProofRequiredOnce(
+    'ip-scoped:edge-proof',
+    new Error('Cloudflare client IP arrived without a valid x-wm-edge-proof'),
+  );
+  return edgeProofRequiredResponse(corsHeaders);
 }
 
 export interface RateLimitOptions {
@@ -258,6 +308,241 @@ export type PrincipalRateLimitScope = 'session' | 'api_key';
 
 export type EndpointRateLimitOptions = RateLimitOptions;
 
+/**
+ * Header the gateway stamps with the rate-limit principal it RESOLVED for a
+ * request (`<scope>:<userId>`), so a handler that re-dispatches sub-requests
+ * can charge the caller's own budget without re-deriving identity itself.
+ *
+ * A handler cannot do that derivation safely: the credential headers it can
+ * see are raw and unvalidated, so a `wm_` prefix proves nothing about which
+ * bucket the gateway actually charged. Only the gateway knows, and it only
+ * knows after auth resolution completes.
+ *
+ * This is a gateway-internal trusted marker, exactly like
+ * TRUSTED_USER_ID_HEADER: the gateway is the only layer permitted to set it,
+ * and it strips inbound client copies at handler entry.
+ */
+export const TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER = 'x-wm-rl-principal';
+
+/** Opaque single-use admission, authenticated by consumeSubRequestAdmission. */
+export { SUB_REQUEST_MARKER_HEADER } from './sub-request-admission.js';
+
+export function formatTrustedRateLimitPrincipal(
+  principalUserId: string,
+  scope: PrincipalRateLimitScope,
+): string {
+  return `${scope}:${principalUserId}`;
+}
+
+/**
+ * Reads the gateway-stamped principal back into limiter options. Returns `{}`
+ * for anything unrecognised so the limiter falls back to the caller's IP —
+ * the same default the gateway itself uses when no principal was resolved.
+ */
+export function readTrustedRateLimitPrincipal(headers: Headers): RateLimitOptions {
+  const raw = headers.get(TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER);
+  if (!raw) return {};
+  const separator = raw.indexOf(':');
+  if (separator < 1) return {};
+  const scope = raw.slice(0, separator);
+  const principalUserId = raw.slice(separator + 1);
+  if (!principalUserId) return {};
+  if (scope !== 'session' && scope !== 'api_key') return {};
+  return { principalUserId, principalScope: scope };
+}
+
+/**
+ * RFC 1918 172.16/12 second octets (16-31), as exact dotted prefixes. Kept
+ * explicit rather than a single `'172.2'` prefix: `startsWith('172.2')` also
+ * matches public space (`172.2.0.1`, `172.200.x.x`) and would misclassify
+ * legitimate callers as unattributed.
+ */
+const SUB_REQUEST_UNATTRIBUTED_172_16_12_PREFIXES = Object.freeze([
+  '172.16.',
+  '172.17.',
+  '172.18.',
+  '172.19.',
+  '172.20.',
+  '172.21.',
+  '172.22.',
+  '172.23.',
+  '172.24.',
+  '172.25.',
+  '172.26.',
+  '172.27.',
+  '172.28.',
+  '172.29.',
+  '172.30.',
+  '172.31.',
+]);
+
+/**
+ * Egress-IP prefixes that prove a request was built by OUR OWN edge rather
+ * than by an external caller. `getClientIp` resolves server-initiated fetches
+ * to the platform's egress — the same value repeated for every caller — so the
+ * dispatch path treats a caller identity starting with one of these as
+ * unattributed instead of handing it the shared egress bucket.
+ *
+ * The `10/8`, `192.168/16`, and `169.254/16` ranges cover Vercel's internal /
+ * NAT egress (link-local + RFC 1918). The 172.16/12 range is spelled out
+ * octet-by-octet above.
+ *
+ * NOTE: a routable PUBLIC egress IP is intentionally NOT matched here. This
+ * helper resolves the INBOUND caller's identity (see
+ * `resolveServerSubRequestCharge`); a public IP on the inbound request names
+ * a real external caller and must stay attributed. Detecting the egress side
+ * (a public IP shared by every caller) is the job of the sub-request marker
+ * below, not of this prefix list.
+ */
+const SUB_REQUEST_UNATTRIBUTED_IP_PREFIXES = Object.freeze([
+  '10.',
+  ...SUB_REQUEST_UNATTRIBUTED_172_16_12_PREFIXES,
+  '192.168.',
+  '169.254.',
+]);
+
+/**
+ * True when `identity` cannot name an external caller: the unknown sentinel
+ * or an RFC 1918 / link-local egress range. Matching is exact on the sentinel
+ * (case-insensitive, trimmed — mirroring `getClientIp`'s own normalisation)
+ * and prefix-based on the dotted ranges above. Kept as a pure predicate so
+ * the dispatch-layer test pins the shape without Redis.
+ */
+export function isUnattributedSubRequestIdentity(identity: string): boolean {
+  const normalized = identity.trim().toLowerCase();
+  if (!normalized) return true;
+  if (normalized === UNKNOWN_CLIENT_IP) return true;
+  return SUB_REQUEST_UNATTRIBUTED_IP_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+}
+
+export interface ServerSubRequestCharge {
+  /** Limiter options the caller must spend from — never the egress bucket. */
+  opts: EndpointRateLimitOptions;
+  /**
+   * True when the inbound request carries no initiating principal of its own
+   * (no stamped principal, no usable client IP). The sub-request must be
+   * refused rather than keyed to whatever IP the platform egress resolves to.
+   */
+  unattributed: boolean;
+}
+
+/**
+ * Resolves the rate-limit identity a server-initiated sub-request must be
+ * charged to, from the INBOUND caller request — the shared dispatch path for
+ * every fan-out feature (batch today, any future fan-out tomorrow).
+ *
+ * A same-origin `fetch` re-derives `getClientIp` from the platform's egress,
+ * so charging inside the sub-request hands every caller one shared bucket and
+ * never touches the caller's own. Charge BEFORE dispatch instead, from the
+ * inbound identity this returns:
+ *   1. the gateway-stamped principal when present (the only trustworthy
+ *      source — raw credential headers are unvalidated at the handler), or
+ *   2. the inbound caller's IP, or
+ *   3. `unattributed: true` when neither exists — the caller MUST refuse the
+ *      sub-request rather than fall back to the egress IP.
+ *
+ * INBOUND ONLY: pass the caller's original request, never the re-dispatched
+ * sub-request. A public egress IP on the inbound side names a real external
+ * caller and stays attributed; the sub-request side is recognised by the
+ * `SUB_REQUEST_MARKER_HEADER` admission verified by the gateway, not by this helper.
+ *
+ * The fallback is observable: refusal paths report through
+ * `reportRateLimitDegraded` with the fixed stage
+ * `chargeServerSubRequestOperation:unattributed-sub-request` (pathname travels
+ * in the error message, not the stage, so Sentry grouping and the per-minute
+ * dedup map stay low-cardinality), so the next fan-out that forgets to stamp
+ * the principal surfaces in production logs/Sentry instead of silently
+ * sharing an egress bucket. Prefer `chargeServerSubRequestOperation` below
+ * over calling this directly: it takes the resolved `ServerSubRequestCharge`
+ * as ONE object, so a new fan-out endpoint cannot resolve the identity and
+ * then forget to honour `unattributed`. (#8399)
+ */
+export function resolveServerSubRequestCharge(inbound: Request): ServerSubRequestCharge {
+  // Reject marked callers conservatively, whether the marker is genuine or
+  // forged. Only consumeSubRequestAdmission can authenticate an inner call.
+  if (inbound.headers.has(SUB_REQUEST_MARKER_HEADER)) {
+    return { opts: {}, unattributed: true };
+  }
+  const stamped = readTrustedRateLimitPrincipal(inbound.headers);
+  if (stamped.principalUserId) {
+    return { opts: stamped as EndpointRateLimitOptions, unattributed: false };
+  }
+  const callerIp = getClientIp(inbound);
+  if (callerIp && !isUnattributedSubRequestIdentity(callerIp)) {
+    return { opts: {}, unattributed: false };
+  }
+  return { opts: {}, unattributed: true };
+}
+
+/**
+ * Refusal body for an unattributed sub-request. Carries a distinct `reason`
+ * (`unattributed-sub-request`) so it is greppable in logs and distinguishable
+ * from a genuine 429/503 the caller would have received directly.
+ */
+export interface ServerSubRequestRefusal {
+  status: 429;
+  body: { error: string; reason: 'unattributed-sub-request' };
+}
+
+/**
+ * Charges one server-initiated sub-operation against the CALLER's own budget
+ * BEFORE it is dispatched. This is `chargeCaller` generalised out of the
+ * batch handler so the next fan-out feature inherits it instead of
+ * remembering to add it.
+ *
+ * Takes the `ServerSubRequestCharge` resolved by
+ * `resolveServerSubRequestCharge` as ONE object — callers cannot resolve the
+ * identity and then forget to honour `unattributed`, which the previous
+ * split `(opts, unattributed)` signature allowed by omission.
+ *
+ * Returns `null` when the operation is admitted (the caller must dispatch
+ * it), otherwise a refusal the caller must return WITHOUT dispatching:
+ *   - an unattributed sub-request (no stamped principal AND no usable caller
+ *     IP, or a request that already carries the sub-request marker) is
+ *     refused with 429 `unattributed-sub-request` — fail closed rather than
+ *     keying on the egress IP;
+ *   - an endpoint-policy path charges `checkEndpointRateLimit` (fail-closed
+ *     default preserved), everything else the global `checkRateLimit`,
+ *     mirroring the gateway's two-phase order — a limiter refusal becomes the
+ *     status/body the caller would have received directly.
+ *
+ * Account burst/daily and enterprise-key meters remain enforced by the inner
+ * gateway; this pre-charge covers endpoint/global limits only.
+ */
+export async function chargeServerSubRequestOperation(
+  inbound: Request,
+  pathname: string,
+  charge: ServerSubRequestCharge,
+): Promise<{ status: number; body: unknown } | null> {
+  if (charge.unattributed) {
+    // Fixed stage: `pathname` is attacker-controlled (any documented-RPC
+    // shape passes validation), so it travels in the message — embedding it
+    // in the stage would mint one Sentry dedup entry per distinct path and
+    // defeat the low-cardinality grouping documented above.
+    reportRateLimitDegraded(
+      'chargeServerSubRequestOperation:unattributed-sub-request',
+      new Error(`Server-initiated sub-request for ${pathname} without a stamped principal or caller IP — refused instead of keying on egress IP`),
+    );
+    const refusal: ServerSubRequestRefusal = {
+      status: 429,
+      body: { error: 'Too many requests', reason: 'unattributed-sub-request' },
+    };
+    return refusal;
+  }
+  const refusal = hasEndpointRatePolicy(pathname)
+    ? await checkEndpointRateLimit(inbound, pathname, {}, charge.opts)
+    : await checkRateLimit(inbound, {}, charge.opts);
+  if (!refusal) return null;
+
+  let body: unknown;
+  try {
+    body = await refusal.json();
+  } catch {
+    body = {};
+  }
+  return { status: refusal.status, body };
+}
+
 function getPrincipalRateLimitIdentifier(
   principalUserId?: string,
   scope: PrincipalRateLimitScope = 'session',
@@ -267,6 +552,8 @@ function getPrincipalRateLimitIdentifier(
 }
 
 export async function checkRateLimit(request: Request, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
+  const proofDenied = !opts.principalUserId && checkIpScopedEdgeProof(request, corsHeaders);
+  if (proofDenied) return proofDenied;
   const rl = getRatelimit();
   if (!rl) {
     if (opts.failClosed) {
@@ -281,7 +568,7 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
   // principals use a separate namespace.
   const identifier =
     getPrincipalRateLimitIdentifier(opts.principalUserId, opts.principalScope) ??
-    getClientIp(request);
+    getClientRateLimitKey(request);
 
   try {
     const { success, limit, reset } = await limitWithFallback(
@@ -316,12 +603,18 @@ interface EndpointRatePolicy {
 // using checkEndpointRateLimit / hasEndpointRatePolicy below — the export is
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
+  // #9094 /verify fact-check lookup: public, and a cache miss spends the
+  // Google Fact Check Tools API quota.
+  '/api/news/v1/search-fact-checks': { limit: 20, window: '60 s' },
+  // /verify claim search: public; a cache miss reads every feed cache.
+  '/api/news/v1/search-claim-headlines': { limit: 30, window: '60 s' },
   '/api/aviation/v1/track-aircraft': { limit: 30, window: '60 s' },
+  '/api/aviation/v1/list-aircraft-emergencies': { limit: 20, window: '60 s' },
   '/api/aviation/v1/search-google-flights': { limit: 30, window: '60 s' },
   '/api/aviation/v1/search-google-dates': { limit: 10, window: '60 s' },
   '/api/aviation/v1/list-aviation-news': { limit: 30, window: '60 s' },
-  // Public relay/HTML discovery has the same scrape fan-out as the legacy
-  // YouTube live endpoint and needs its own fail-closed gateway budget.
+  // Public YouTube video lookups call oEmbed on cache misses (channel live
+  // detection is retired) and keep their own fail-closed gateway budget.
   '/api/aviation/v1/get-youtube-live-stream-info': { limit: 30, window: '60 s' },
   // Interactive fare searches use one provider request on a cache miss.
   // 30/min leaves headroom under the provider's 300-600/min shared quota.
@@ -329,6 +622,7 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // LLM article summarization is Pro-gated, but still needs a scoped,
   // fail-closed budget so Redis degradation cannot silently lift the
   // per-endpoint spend control.
+  '/api/news/v1/list-feed-digest': { limit: 30, window: '60 s' },
   '/api/news/v1/summarize-article': { limit: 30, window: '60 s' },
   '/api/news/v1/summarize-article-cache': { limit: 3000, window: '60 s' },
   '/api/intelligence/v1/classify-event': { limit: 600, window: '60 s' },
@@ -411,8 +705,8 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/intelligence/v1/search-sec-filings': { limit: 30, window: '60 s' },
   // Public market/economic provider proxies (#6236): caller-controlled symbols,
   // indicators, and year ranges create unbounded cache-key cardinality; the
-  // country-index route is bounded to the 45-country contract but still
-  // proxies Yahoo Finance on a cache miss. None may inherit the global
+  // country-index and price-history routes are bounded to their tracked
+  // symbol sets but still proxy Yahoo Finance on a cache miss. None may inherit the global
   // fail-open budget. The dashboard can legitimately fan out across 50 Pro
   // watchlist symbols, so those three per-symbol routes admit one full load
   // plus headroom. analyze-stock remains separately constrained by the
@@ -424,6 +718,7 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/market/v1/backtest-stock': { limit: 60, window: '60 s' },
   '/api/market/v1/get-insider-transactions': { limit: 60, window: '60 s' },
   '/api/market/v1/get-country-stock-index': { limit: 30, window: '60 s' },
+  '/api/market/v1/get-price-history': { limit: 30, window: '60 s' },
   // Stablecoins are seed-backed for the DEFAULT request, but naming coins the
   // snapshot does not carry reaches CoinGecko, and the caller picks the IDs —
   // unbounded cardinality, so the per-ID-set cache cannot bound spend alone.
@@ -468,6 +763,13 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // these hit Convex + Resend per request.
   '/api/leads/v1/submit-contact': { limit: 3, window: '1 h' },
   '/api/leads/v1/register-interest': { limit: 5, window: '1 h' },
+  // #9093 reader error reports: anonymous writes to the review queue.
+  '/api/news/v1/submit-error-report': { limit: 5, window: '1 h' },
+  // #9093 /trust page read: public and CDN-cached, bounded per IP.
+  '/api/news/v1/list-label-changes': { limit: 60, window: '60 s' },
+  // Operator review: secret-gated, but still bounded against secret guessing.
+  '/api/news/v1/list-error-reports': { limit: 60, window: '60 s' },
+  '/api/news/v1/review-error-report': { limit: 60, window: '60 s' },
   // Scenario engine: legacy /api/scenario/v1/run capped at 10 jobs/min/IP via
   // inline Upstash INCR. Gateway preserves the same budget while using a
   // trusted paid-user principal when available, otherwise the client IP.
@@ -535,9 +837,9 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // source of truth for the audit script and the docs, and
   // tests/rate-limit.test.mts fails if the two copies drift. (#6234)
   //
-  // youtube/live: one request can fan out to the Railway relay AND a full
-  // live-page HTML scrape of youtube.com, so it takes the same 30/min
-  // provider-proxy budget as the batch fan-out routes above.
+  // youtube/live: a video lookup calls youtube.com oEmbed from our egress IPs
+  // (channel live detection answers 410 without upstream work), so it keeps
+  // the same 30/min provider-proxy budget as the batch fan-out routes above.
   '/api/youtube/live': { limit: 30, window: '60 s' },
   // reverse-geocode: already Upstash-cached on a 0.001-degree grid and memoized
   // per cell in the browser (src/utils/reverse-geocode.ts), so 60/min is a
@@ -571,7 +873,24 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // its account owner so every display for one partner shares the same budget.
   // The CDN absorbs most canonical public requests before this policy runs.
   '/api/embed/map-frame': { limit: 120, window: '60 s' },
+  // Widget agent is a top-level edge proxy (api/widget-agent.ts) that spends a
+  // frontier-model call on every POST. It does not flow through the gateway, so
+  // the handler enforces this budget in-process, keyed on the validated
+  // user/key identity rather than the edge egress IP. 20/hour matches the
+  // relay's pro bucket; basic callers are still capped tighter on the relay.
+  '/api/widget-agent': { limit: 20, window: '1 h' },
+  // Checkout session creation (api/create-checkout.ts) relays to Dodo. Same
+  // per-user 5/min fail-closed budget as the customer portal, enforced
+  // in-handler after JWT validation. A Redis outage must not lift it.
+  '/api/create-checkout': { limit: 5, window: '60 s' },
 };
+
+// Second, per-client-IP checkout budget on top of the per-user one above. Dodo
+// rate-limits our shared API key (#6027), so one client cycling many free
+// accounts could otherwise spend it and block real buyers. Higher than the
+// per-user cap so a single buyer retrying always hits that first; a shared
+// office NAT still gets 10 sessions per 10 minutes.
+export const CHECKOUT_PER_IP_RATE_POLICY = { limit: 10, window: '10 m' } as const;
 
 interface RateLimitPolicyDecision {
   reason: string;
@@ -581,8 +900,12 @@ interface RateLimitPolicyDecision {
 // defence. scripts/enforce-rate-limit-policies.mjs fails if any route listed
 // here can drift back to the gateway's availability-first global fallback.
 export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimitPolicyDecision> = {
+  '/api/news/v1/list-feed-digest': { reason: 'Cold digest builds fan out to RSS providers and require a fail-closed caller budget.' },
   '/api/aviation/v1/track-aircraft': {
     reason: 'Distinct aircraft viewports call Wingbits on cache misses and can fall back to authenticated OpenSky quota.',
+  },
+  '/api/aviation/v1/list-aircraft-emergencies': {
+    reason: 'Public emergency aircraft reads fan out to three provider queries on shared cache misses.',
   },
   '/api/aviation/v1/search-google-flights': { reason: 'Public flight searches perform a live Google shopping request on each cache miss.' },
   '/api/aviation/v1/search-google-dates': { reason: 'Public date searches can trigger up to six Google calendar requests per cache miss.' },
@@ -590,7 +913,7 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
     reason: 'Public aviation news can fan out to nine RSS feeds when the shared snapshot is unavailable.',
   },
   '/api/aviation/v1/get-youtube-live-stream-info': {
-    reason: 'Public live-stream discovery can fan out to relay and YouTube HTML scrapes on cache misses.',
+    reason: 'Public YouTube video lookups call oEmbed on cache misses; channel live detection is retired.',
   },
   '/api/aviation/v1/search-flight-prices': {
     reason: 'Caller-selected fare searches consume Travelpayouts request quota on cache misses.',
@@ -640,6 +963,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   '/api/market/v1/get-country-stock-index': {
     reason: 'Per-country stock-index lookups proxy Yahoo Finance on cache miss.',
   },
+  '/api/market/v1/get-price-history': {
+    reason: 'Per-symbol daily-close history proxies Yahoo Finance on cache miss, up to four symbols per request.',
+  },
   '/api/market/v1/list-crypto-quotes': {
     reason: 'Caller-named coin IDs absent from the seed snapshot fan out to CoinGecko on cache miss.',
   },
@@ -685,11 +1011,26 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   '/api/sanctions/v1/lookup-sanction-entity': {
     reason: 'Live sanctions lookup proxies an external provider.',
   },
+  '/api/news/v1/search-fact-checks': {
+    reason: 'Public fact-check lookup proxies the quota-limited Google Fact Check Tools API on cache misses (#9094).',
+  },
+  '/api/news/v1/search-claim-headlines': {
+    reason: 'Public claim search reads every full-variant RSS feed cache on a pool miss.',
+  },
   '/api/leads/v1/submit-contact': {
     reason: 'Lead capture writes to Convex and sends email.',
   },
   '/api/leads/v1/register-interest': {
     reason: 'Lead capture writes to Convex and sends email.',
+  },
+  '/api/news/v1/submit-error-report': {
+    reason: 'Anonymous error reports write to the review queue (#9093).',
+  },
+  '/api/news/v1/list-error-reports': {
+    reason: 'Operator review is gated by a shared secret; the limit bounds guessing (#9093).',
+  },
+  '/api/news/v1/review-error-report': {
+    reason: 'Operator review is gated by a shared secret; the limit bounds guessing (#9093).',
   },
   '/api/scenario/v1/run-scenario': {
     reason: 'Scenario runs are mutation-like jobs with a historical 10/min cap.',
@@ -717,6 +1058,12 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/embed/map-frame': {
     reason: 'The keyless map frame is fully anonymous and fans out across four seed reads. Fail closed rather than inherit the availability-first global fallback: those reads come from the same Redis that would be degraded, so a fail-open origin would serve empty layers at unbounded volume while the CDN copy keeps real data on screen for the stale-while-revalidate window.',
+  },
+  '/api/widget-agent': {
+    reason: 'Each POST proxies a frontier-model widget generation. The edge must keep a per-identity cap when Redis is down instead of spending uncapped.',
+  },
+  '/api/create-checkout': {
+    reason: 'Checkout session creation relays to the paid Dodo provider. A Redis outage must not lift the per-user cap.',
   },
 };
 
@@ -829,6 +1176,16 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
     return null;
   }
 
+  // IP-scoped endpoint budgets depend on a real client IP. A cf-connecting-ip
+  // without x-wm-edge-proof is either a direct-origin spoof or a Transform Rule
+  // miss — reject rather than share a Cloudflare PoP bucket (#8402). Principal-
+  // scoped budgets do not need the edge proof. Report the deploy drift once per
+  // isolate; logging every rejection would amplify under spoofed headers.
+  // Run before the Redis availability gate so a missing Upstash config cannot
+  // re-admit unproven CF client IPs under fail-open callers.
+  const proofDenied = !opts.principalUserId && checkIpScopedEdgeProof(request, corsHeaders);
+  if (proofDenied) return proofDenied;
+
   const rl = getEndpointRatelimit(pathname);
   if (!rl) {
     const failClosed = opts.failClosed ?? true;
@@ -841,7 +1198,7 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
 
   const identifier =
     getPrincipalRateLimitIdentifier(opts.principalUserId, opts.principalScope) ??
-    `ip:${getClientIp(request)}`;
+    `ip:${getClientRateLimitKey(request)}`;
   const policy = ENDPOINT_RATE_POLICIES[pathname];
   // hasEndpointRatePolicy(pathname) above already guarantees this — the
   // extra check exists only to satisfy noUncheckedIndexedAccess, since TS
@@ -987,7 +1344,9 @@ export async function checkFailClosedScopedIpRateLimit(
   window: Duration,
   corsHeaders: Record<string, string>,
 ): Promise<Response | null> {
-  const result = await checkScopedRateLimit(scope, limit, window, getClientIp(request));
+  const proofDenied = checkIpScopedEdgeProof(request, corsHeaders);
+  if (proofDenied) return proofDenied;
+  const result = await checkScopedRateLimit(scope, limit, window, getClientRateLimitKey(request));
   if (result.degraded) return rateLimitDegradedResponse(corsHeaders);
   if (!result.allowed) {
     return tooManyRequestsResponse(result.limit, result.reset, corsHeaders, durationToSeconds(window));

@@ -7,7 +7,7 @@ import type {
   CrossSourceSignalType,
   CrossSourceSignalSeverity,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
-import { getCachedJson } from '../../../_shared/redis';
+import { readRequiredSeed } from '../../../_shared/required-seed';
 
 const REDIS_KEY = 'intelligence:cross-source-signals:v1';
 
@@ -80,12 +80,10 @@ export const listCrossSourceSignals: IntelligenceServiceHandler['listCrossSource
   _ctx: ServerContext,
   _req: ListCrossSourceSignalsRequest,
 ): Promise<ListCrossSourceSignalsResponse> => {
-  const raw = await getCachedJson(REDIS_KEY, true);
-  if (!raw || typeof raw !== 'object') {
-    return { signals: [], evaluatedAt: 0, compositeCount: 0 };
-  }
-
-  const payload = raw as CachedPayload;
+  const payload = await readRequiredSeed(REDIS_KEY, value => {
+    const data = value as CachedPayload | null;
+    return data && Array.isArray(data.signals) ? data : undefined;
+  });
   const signals = Array.isArray(payload.signals)
     ? payload.signals.flatMap((signal, index) => (
       signal && typeof signal === 'object' && !Array.isArray(signal)

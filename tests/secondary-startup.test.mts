@@ -169,6 +169,30 @@ describe('deferred Umami loader', () => {
       assert.equal(firstScript.async, true);
       assert.equal(firstScript.src, 'https://abacus.worldmonitor.app/script.js');
       assert.equal(firstScript.dataset.websiteId, 'e8800335-c853-46a8-8497-c993ed2f58bc');
+      // Deferred URL credentials must not enter Umami payloads, while UTM
+      // params (campaign attribution) must survive — so redact per payload
+      // with the shared list instead of excluding the whole query string.
+      const hookName = firstScript.dataset.beforeSend;
+      assert.ok(hookName, 'Umami must be given a data-before-send hook');
+      assert.equal(firstScript.dataset.excludeSearch, undefined, 'excluding the query string would drop UTM attribution');
+      const hook = (fakeWindow as unknown as Record<string, unknown>)[hookName!] as
+        (type: string, payload: Record<string, unknown>) => Record<string, unknown>;
+      assert.equal(typeof hook, 'function');
+      const redacted = hook('event', {
+        url: 'https://www.worldmonitor.app/settings?accept-business-invite=g1&token=tok123&utm_source=x',
+        referrer: 'https://www.worldmonitor.app/?__clerk_ticket=tkt_1&ref=abc',
+        name: 'pageview',
+      });
+      const url = new URL(redacted.url as string);
+      assert.equal(url.searchParams.get('token'), null);
+      assert.equal(url.searchParams.get('accept-business-invite'), null);
+      assert.equal(url.searchParams.get('utm_source'), 'x');
+      const referrer = new URL(redacted.referrer as string);
+      assert.equal(referrer.searchParams.get('__clerk_ticket'), null);
+      assert.equal(referrer.searchParams.get('ref'), null);
+      assert.equal(redacted.name, 'pageview');
+      const clean = { url: 'https://www.worldmonitor.app/?utm_source=x', referrer: '' };
+      assert.equal(hook('event', clean), clean, 'clean payloads pass through untouched');
       // www MUST stay listed (#4931): the apex 301s to www in production and
       // the tracker's data-domains check is an exact hostname match — without
       // www, analytics on the canonical host are silently disabled.

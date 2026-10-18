@@ -19,6 +19,7 @@ description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的�
   - Tool exec -32603                    api/mcp/dispatch.ts (dispatchToolsCall)
   - Source-unavailable -32003           api/mcp/dispatch.ts (McpSourceUnavailableError re-emit)
   - SSE replay -32004 / -32600          api/mcp/handler.ts (handleSseReplay + replay cursor check)
+  - Alias-host retirement -32000 / 410  shared/mcp-host-policy.ts (MCP_CANONICAL_ENDPOINT_ERROR_CODE) + api/mcp/handler.ts (mcpAliasRpcError)
   - _budget_exceeded envelope           api/mcp/dispatch.ts (budget cap handling)
   - _jmespath_error envelope            api/mcp/jmespath.ts (applyJmespath)
   - JMESPath caps                       api/mcp/constants.ts (JMESPATH_LIMITS)
@@ -33,7 +34,7 @@ description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的�
 ## 快速指引
 
 - **HTTP 状态码**是传输层的回答。大多数 JSON-RPC 回复 —— 无论成功还是错误 —— 按 JSON-RPC 2.0 惯例都会以 **HTTP 200** 返回。只有当失败属于通用 HTTP 客户端必须响应的情况（鉴权、每日上限、服务不可用）且受益于 `Retry-After` / `WWW-Authenticate` 头时，handler 才会升级状态码。
-- **JSON-RPC `error.code`** 是应用层的回答。共使用九个代码：`-32001`、`-32002`、`-32003`、`-32004`、`-32029`、`-32600`、`-32601`、`-32602`、`-32603`。handler 不会发出其他代码 —— 如果你看到了其他代码，请将其视为协议 bug 并提交 issue。
+- **JSON-RPC `error.code`** 是应用层的回答。共使用十个代码：`-32000`、`-32001`、`-32002`、`-32003`、`-32004`、`-32029`、`-32600`、`-32601`、`-32602`、`-32603`。`-32000` 是已退役别名主机传输的文档化迁移代码（HTTP 410 / `canonical_endpoint_required`），不是协议 bug。列表之外的任何代码才是协议 bug —— 请提交 issue。
 - **软行为信封**是高频失败模式。`tools/call` 在 JSON-RPC 层成功（HTTP 200，无 `error` 字段），但位于 `result.content[0].text` 中的 JSON 携带了一个 `_budget_exceeded` 或 `_jmespath_error` 判别字段。只检查 JSON-RPC 信封的客户端会默默地把这些当作成功 —— 请解析 `result.content[0].text`，并在将该负载作为数据消费前检查是否存在前导下划线 `_` 键。
 - **已执行的调用仍计费。** `_budget_exceeded`、`_jmespath_error` 和工具执行错误（`-32603`）都发生在工具已运行之后，因此它们会消耗 Pro 每日配额槽位。只有预分发失败（如每日上限拒绝或配额预留服务失败）才不消耗槽位。
 - **两条 401 路径都设置了 `WWW-Authenticate`**，包含 `realm="worldmonitor"` 以及指向所调用路由的受保护资源文档的 `resource_metadata` 指针：`/mcp` 对应 `/.well-known/oauth-protected-resource/mcp`，`/api/mcp` 对应 `/.well-known/oauth-protected-resource/api/mcp`。支持 RFC 9728 的客户端（Claude Desktop、MCP Inspector）会凭此头自动跳转 OAuth 流程，无需进一步干预。
@@ -42,6 +43,7 @@ description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的�
 
 | 代码      | 含义（本服务器）                                                      | 配对 HTTP 状态码        | 恢复方式                                                              |
 |-----------|------------------------------------------------------------------------|---------------------------|-----------------------------------------------------------------------|
+| `-32000`  | 已退役的别名主机传输 —— 客户端必须改用规范 MCP 端点 | **410** | 将客户端指向 `https://worldmonitor.app/mcp`（亦见 `error.data.endpoint` 与 `Link` 头） |
 | `-32001`  | 未鉴权或凭证无效                                       | **401**                   | 通过 OAuth 重新鉴权，或修正 `X-WorldMonitor-Key` 头      |
 | `-32002`  | 终止性权益拒绝 —— 执行中的 Pro 调用才可能遇到失效订阅，或所调工具超出当前套餐 | **403**（下文所述的账户额度资源读取为 **200**） | 对已发出的拒绝不要重新鉴权；已在预检查中确认失效的账户改走受限免费账户路径 |
 | `-32003`  | 必需数据输入不可用 —— 工具无法读取上游种子数据 | **200** | 可重试；`error.data` 会列出不可用或失败的输入 |
@@ -53,6 +55,43 @@ description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的�
 | `-32603`  | 内部错误 —— 鉴权服务 / 配额 / 工具执行失败         | **200**（工具）/ **503**（基础设施） | 退避重试；若持续，提交 issue                      |
 
 下面的小节给出每个代码的字面负载、触发站点以及应对方式。
+
+### `-32000` —— 必须使用规范端点
+
+已列出的生产别名（`www`、`api`、`tech`、`finance`、`commodity`、`happy`、`energy`，均在 `worldmonitor.app` 下）是客户端迁移面，不是额外的服务器。这些主机上的传输层 POST、SSE 与 replay 已退役：handler 在鉴权、配额、会话或分发之前以 HTTP **410** 和 JSON-RPC `-32000` 作答。常量位于 `shared/mcp-host-policy.ts`（`MCP_CANONICAL_ENDPOINT_ERROR_CODE = -32000`）；发出站点是 `api/mcp/handler.ts`（`mcpAliasRpcError`）。
+
+POST 故意**不是** 308。对 POST 做 308 会变成 GET（#4938），从而丢掉 JSON-RPC 请求体并破坏握手。这些主机上的普通 GET/HEAD 发现是可缓存的 308，指向 `https://worldmonitor.app/mcp`（或规范源上对应的 well-known 路径），不属于本代码。
+
+JSON-RPC `id` 会原样回显 —— 字符串或数字，包括 `0` 和 `""` —— 以便 SDK 传输层能结算待处理请求。没有自有 `id` 成员的通知，以及 `HEAD`，以 HTTP 410 和空主体返回。GET SSE 或 replay 请求没有可回显的 JSON-RPC 请求体，因此信封使用 `"id": null`。
+
+同侪拒绝常常携带 `error.data.nextStep`。本代码没有该字段：`data` 为 `{ reason: "canonical_endpoint_required", endpoint: "https://worldmonitor.app/mcp" }`。请按 `error.data.reason` 分支，并从 `error.data.endpoint`（或 `Link` 头）读取 URL。
+
+示例线上负载（带 id `0` 的 POST）：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 0,
+  "error": {
+    "code": -32000,
+    "message": "Use https://worldmonitor.app/mcp",
+    "data": {
+      "reason": "canonical_endpoint_required",
+      "endpoint": "https://worldmonitor.app/mcp"
+    }
+  }
+}
+```
+
+```http
+HTTP/1.1 410 Gone
+Cache-Control: no-store
+Link: <https://worldmonitor.app/mcp>; rel="canonical"
+Access-Control-Allow-Origin: *
+Content-Type: application/json
+```
+
+**如何处理。** 将客户端的服务器 URL 改为 `https://worldmonitor.app/mcp`。不要在别名主机上重试，也不要把 `-32000` 当成协议 bug。别名上的 `OPTIONS` 仍是 **204**（CORS 预检）。不支持的方法返回 **405**，带 `Allow: POST, GET, HEAD, OPTIONS` 以及相同的规范 `Link`。规范主机上的 `/mcp`、`/api/mcp` 以及 well-known 发现路径仍保持既有的 401 / 200 / 405 行为 —— 本代码仅用于别名主机退役。
 
 ### `-32001` —— 未鉴权 / 凭证无效
 
@@ -316,21 +355,22 @@ MCP handler 可能返回的每个状态码。大多数 JSON-RPC 回复 —— �
 
 | 状态码 | 主体形状                | JSON-RPC 代码 | 原因                                                                 |
 |--------|---------------------------|------------------|-----------------------------------------------------------------------|
-| **200** | JSON-RPC 信封         | 成功 或 `-32002`（账户额度资源读取）/ `-32003` / `-32029` / `-32600` / `-32601` / `-32602` / `-32603` | 任意成功调用，或不需要传输层升级的应用层错误。浏览器式的普通 `GET`/`HEAD /mcp` 也返回 200 markdown 指南，而不是 JSON-RPC。 |
+| **200** | JSON-RPC 信封         | 成功 或 `-32002`（账户额度资源读取）/ `-32003` / `-32029` / `-32600` / `-32601` / `-32602` / `-32603` | 任意成功调用，或不需要传输层升级的应用层错误。规范主机上浏览器式的普通 `GET`/`HEAD /mcp` 也返回 200 markdown 指南，而不是 JSON-RPC。规范主机上的 `/.well-known/mcp` 与 `/.well-known/mcp.json` 同样以 200 返回 JSON server card。 |
 | **202** | 空                     | n/a              | `notifications/initialized` —— 按规范，JSON-RPC 通知不返回响应体 |
-| **204** | 空                     | n/a              | `OPTIONS` 预检                                                  |
+| **204** | 空                     | n/a              | `OPTIONS` 预检（规范主机 `/mcp`、`/api/mcp`、well-known，以及已列出的生产别名主机） |
 | **400** | JSON-RPC 信封         | `-32600`         | SSE 重放 `GET` 缺少有效的 `Mcp-Session-Id`。 |
-| **401** | JSON-RPC 信封         | `-32001`         | 凭证缺失/无效/过期，或 Pro MCP 令牌被撤销。设置了 `WWW-Authenticate` 头。 |
+| **401** | JSON-RPC 信封         | `-32001`         | 出现在规范主机的 `/mcp` 与 `/api/mcp`（以及 well-known 上的受限方法）：凭证缺失/无效/过期，或 Pro MCP 令牌被撤销。设置了 `WWW-Authenticate` 头。别名主机的传输是 410，不是 401。 |
 | **403** | JSON-RPC 信封         | `-32002`         | 终止性权益拒绝：`lapsed-subscription` 仅在服务方确认的失效结果落在 Pro 调用执行中时出现（同时设置 `X-Billing-Verification: subscription_lapsed`）；`upgrade-required` 表示免费额度调用 Pro-only 工具，或非免费权益不活跃。预检查时已存在的失效结果会改走受限免费账户路径。不设置 `WWW-Authenticate`，因为重新鉴权无法修复已发出的拒绝。 |
 | **404** | JSON-RPC 信封         | `-32004`         | SSE 重放光标不存在（流已过期或重连落到另一实例）。 |
-| **405** | 空                     | n/a              | 请求方法不是 `POST`、`GET`、`HEAD` 或 `OPTIONS`，或带 SSE `Accept` 但不带 `Last-Event-ID` 的 `GET`/`HEAD`（不提供独立服务器→客户端流）。设置 `Allow: POST, GET, HEAD, OPTIONS`。 |
+| **405** | 空                     | n/a              | 请求方法不是 `POST`、`GET`、`HEAD` 或 `OPTIONS`，或带 SSE `Accept` 但不带 `Last-Event-ID` 的 `GET`/`HEAD`（不提供独立服务器→客户端流）。设置 `Allow: POST, GET, HEAD, OPTIONS`。在已列出的生产别名上，405 还带有 `Link: <https://worldmonitor.app/mcp>; rel="canonical"`。 |
 | **406** | JSON-RPC 信封         | `-32600`         | SSE 重放 `GET` 未接受 `text/event-stream`。 |
+| **410** | 带 id 的 POST 与 GET SSE/replay 为 JSON-RPC 信封；缺少自有 `id` 的通知以及 HEAD 为空主体 | `-32000` | 已列出的生产别名主机退役传输。`Link: <https://worldmonitor.app/mcp>; rel="canonical"`。POST 是 410 而不是 308，因为对 POST 做 308 会变成 GET（#4938）。 |
 | **429** | JSON-RPC 信封         | `-32029`         | 按套餐解析的每日上限、免费账户额度、匿名免费层上限，或鉴权前 key 验证洪泛。设置 `Retry-After`；每分钟节流仍在 HTTP 200 内返回 `-32029`。 |
 | **503** | JSON-RPC 信封         | `-32603`         | 鉴权服务不可用、`MCP_INTERNAL_HMAC_SECRET` 配置错误、限流后端故障关闭或额度预留 Redis 失败时使用 `Retry-After: 5`；续订校验进行中/失败时携带 `X-Billing-Verification` 与动态 `Retry-After`（1–60 秒）；权益后端不可达固定为 5 秒。 |
 
 有一个 HTTP 状态码不属于 JSON-RPC 错误：
 
-- **405 携带空主体**来自 JSON-RPC **之前**的方法校验。handler 接受 `POST`（JSON-RPC 路径）、`GET`（`Last-Event-ID` SSE 重放；无 SSE `Accept` 时也可返回 200 markdown 指南）、`HEAD`（与 GET 相同的路由：重放确认、指南响应头，或非 `/mcp` 路径上的 JSON 200 探针确认）和 `OPTIONS`（CORS 预检）。只有带 SSE `Accept` 但缺少 `Last-Event-ID` 的 `GET`/`HEAD` 才以 405 表示“不提供独立流”；其他不支持的方法也返回 405 + `Allow: POST, GET, HEAD, OPTIONS`。该端点不强制 `Origin` 允许列表：它通告通配 CORS，并通过显式 `Authorization` / `X-WorldMonitor-Key` 头鉴权，因此浏览器来源客户端（任意来源）均被接受。
+- **405 携带空主体**来自 JSON-RPC **之前**的方法校验。handler 接受 `POST`（JSON-RPC 路径）、`GET`（`Last-Event-ID` SSE 重放；无 SSE `Accept` 时也可返回 200 markdown 指南）、`HEAD`（与 GET 相同的路由：重放确认、指南响应头，或非 `/mcp` 路径上的 JSON 200 探针确认）和 `OPTIONS`（CORS 预检）。只有带 SSE `Accept` 但缺少 `Last-Event-ID` 的 `GET`/`HEAD` 才以 405 表示“不提供独立流”；其他不支持的方法也返回 405 + `Allow: POST, GET, HEAD, OPTIONS`。在已列出的生产别名上，该 405 还带有 `Link: <https://worldmonitor.app/mcp>; rel="canonical"`，且这些别名上的 `OPTIONS` 仍是 204。该端点不强制 `Origin` 允许列表：它通告通配 CORS，并通过显式 `Authorization` / `X-WorldMonitor-Key` 头鉴权，因此浏览器来源客户端（任意来源）均被接受。
 
 ## 软行为信封
 

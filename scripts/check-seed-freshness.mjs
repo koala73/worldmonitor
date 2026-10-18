@@ -4,6 +4,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
+import { CONTENT_AGE_PREWARNING_RATIO } from '../api/_content-age.js';
+
 const DEFAULT_HEALTH_URL = 'https://api.worldmonitor.app/api/health?compact=1';
 const BASELINE_URL = new URL('./seed-freshness-baseline.json', import.meta.url);
 // api/health.js only serves a cached verdict for 60 seconds. Allow its maximum
@@ -56,6 +58,48 @@ const ON_DEMAND_SOFT_STATUSES = new Set(['EMPTY_ON_DEMAND', 'EMPTY', 'EMPTY_DATA
 export function isOnDemandProblem(problem) {
   if (typeof problem?.status === 'string' && problem.status.endsWith('_ON_DEMAND')) return true;
   return problem?.onDemand === true && ON_DEMAND_SOFT_STATUSES.has(problem?.status);
+}
+
+// Content-age pre-warning (CONTENT_AGE_PREWARNING in api/health.js): the
+// reader's 80%-of-budget lead-time flag. Advisory only — the hard
+// STALE_CONTENT path stays the fail-closed authority, so this predicate is
+// excluded from operational problems UNCONDITIONALLY: a malformed advisory
+// entry is dropped, never promoted into a blocking false alarm. Validity is
+// checked separately for reporting; it must not gate the exclusion.
+export function isContentAgePreWarningProblem(problem) {
+  return problem?.status === 'CONTENT_AGE_PREWARNING';
+}
+
+// Full wire-field validation for reporting. Runs against the FENCED
+// observation time (checkedAt), not the monitor's wall clock: a valid
+// snapshot can cross its breach instant between snapshot and read, and that
+// must not invalidate the diagnostic. Returns null for any malformed shape.
+export function contentAgePreWarningDiagnostic(name, problem, observedAtMs) {
+  if (!isContentAgePreWarningProblem(problem)) return null;
+  const age = problem.contentAgeMin;
+  const budget = problem.maxContentAgeMin;
+  const warnAt = problem.warnAtContentAgeMin;
+  const remaining = problem.contentAgeRemainingMin;
+  const breachMs = Date.parse(typeof problem.contentAgeBreachAt === 'string' ? problem.contentAgeBreachAt : '');
+  if (!Number.isFinite(age) || age < 0) return null;
+  if (!Number.isFinite(budget) || budget <= 0) return null;
+  // Read the policy ratio from the shared assessor module so a future
+  // policy change cannot silently desynchronize the monitor's validation.
+  if (warnAt !== Math.ceil(budget * CONTENT_AGE_PREWARNING_RATIO)) return null;
+  if (age < warnAt || age > budget) return null;
+  if (remaining !== budget - age) return null;
+  if (!Number.isFinite(breachMs)) return null;
+  return {
+    name,
+    status: problem.status,
+    graceUntil: null,
+    contentAgeMin: age,
+    maxContentAgeMin: budget,
+    usedPercent: Math.round((age / budget) * 1000) / 10,
+    remainingMin: remaining,
+    breachAt: problem.contentAgeBreachAt,
+    breachObserved: observedAtMs != null && Number.isFinite(observedAtMs) ? observedAtMs >= breachMs : null,
+  };
 }
 
 // #6059 — a schema whose producer has not reached its first scheduled run yet.
@@ -173,24 +217,36 @@ function isWorkerControlPendingProblem(name, problem, now) {
 }
 
 export function findPendingDiagnostics(payload, now = Date.now()) {
+  const observedAtMs = Date.parse(payload?.checkedAt);
   return compactHealthEntries(payload)
     .filter(([name, problem]) => (
-      isStaleContentGraceProblem(problem, now)
+      // Pre-warnings are reported only when the full wire shape validates;
+      // malformed ones are dropped here AND excluded from operational
+      // problems unconditionally, so they vanish rather than false-alarm.
+      (isContentAgePreWarningProblem(problem)
+        && contentAgePreWarningDiagnostic(name, problem, observedAtMs) !== null)
+      || isStaleContentGraceProblem(problem, now)
       || isSourceFailurePendingProblem(problem, now)
       || isChinaCoveragePendingProblem(problem, now)
       || isRelayGateGraceProblem(problem, now)
       || isWorkerControlPendingProblem(name, problem, now)
     ))
     .map(([name, problem]) => ({
-      name,
-      status: problem?.status ?? 'UNKNOWN',
-      graceUntil: problem?.staleContentGraceUntil
-        ?? problem?.sourceFailurePendingUntil
-        ?? problem?.chinaCoveragePendingUntil
-        ?? problem?.transportGraceUntil
-        ?? problem?.workerControlPendingUntil
-        ?? null,
-    }));
+      ...(
+        contentAgePreWarningDiagnostic(name, problem, observedAtMs)
+        ?? {
+          name,
+          status: problem?.status ?? 'UNKNOWN',
+          graceUntil: problem?.staleContentGraceUntil
+            ?? problem?.sourceFailurePendingUntil
+            ?? problem?.chinaCoveragePendingUntil
+            ?? problem?.transportGraceUntil
+            ?? problem?.workerControlPendingUntil
+            ?? null,
+        }
+      ),
+    }))
+    .sort((a, b) => (b.usedPercent ?? -1) - (a.usedPercent ?? -1) || a.name.localeCompare(b.name));
 }
 
 function compactHealthEntries(payload) {
@@ -201,6 +257,8 @@ function compactHealthEntries(payload) {
 export function findOperationalProblems(payload, now = Date.now()) {
   return compactHealthEntries(payload)
     .filter(([name, problem]) => (
+      !isContentAgePreWarningProblem(problem)
+      &&
       !isOnDemandProblem(problem)
       && !isRolloutPendingProblem(problem, now)
       && !isStaleContentGraceProblem(problem, now)
@@ -582,6 +640,38 @@ export function formatAcceptanceMarkdown({ checkedAt, acceptance, report, graced
   return `${lines.join('\n')}\n`;
 }
 
+// Cover an abandoned 30s refresh lease plus its replacement sweep, without
+// turning a persistent outage into an unbounded scheduled job.
+export async function fetchCompactHealth(healthUrl, {
+  fetchFn = (...args) => globalThis.fetch(...args),
+  now = () => Date.now(),
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+} = {}) {
+  const deadline = now() + 45_000;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const remainingMs = deadline - now();
+    if (remainingMs <= 0) break;
+    const response = await fetchFn(healthUrl, {
+      headers: { 'User-Agent': 'worldmonitor-seed-freshness-monitor/1.0' },
+      signal: AbortSignal.timeout(Math.min(20_000, remainingMs)),
+    });
+    if (response.ok) return response.json();
+    const payload = response.status === 503 ? await response.json() : null;
+    if (payload?.status !== 'REFRESH_PENDING') {
+      throw new Error(`Compact health request failed: HTTP ${response.status}`);
+    }
+    const retryAfter = response.headers.get('Retry-After');
+    let delayMs = 3_000;
+    if (retryAfter && /^\d+$/.test(retryAfter)) delayMs = Number(retryAfter) * 1_000;
+    else if (retryAfter && /^[A-Za-z]{3}, \d{2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(retryAfter)
+      && Number.isFinite(Date.parse(retryAfter))) delayMs = Date.parse(retryAfter) - now();
+    delayMs = Math.max(100, delayMs);
+    if (attempt === 11 || delayMs >= deadline - now()) break;
+    await sleep(delayMs);
+  }
+  throw new Error('Compact health refresh remained pending within the retry budget');
+}
+
 async function main() {
   const { values } = parseArgs({
     args: process.argv.slice(2),
@@ -592,15 +682,7 @@ async function main() {
     strict: true,
   });
   const healthUrl = process.env.HEALTH_URL || DEFAULT_HEALTH_URL;
-  const response = await fetch(healthUrl, {
-    headers: { 'User-Agent': 'worldmonitor-seed-freshness-monitor/1.0' },
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!response.ok) {
-    throw new Error(`Compact health request failed: HTTP ${response.status}`);
-  }
-
-  const payload = await response.json();
+  const payload = await fetchCompactHealth(healthUrl);
   const observation = buildAcceptanceObservation(payload, readAcceptanceBaseline());
   const outputPath = values['json-output'];
   if (outputPath) writeFileSync(outputPath, `${JSON.stringify(observation, null, 2)}\n`);

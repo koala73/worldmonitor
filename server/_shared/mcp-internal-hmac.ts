@@ -152,6 +152,21 @@ export function canonicalQueryString(searchOrUrl: string | URL): string {
     .join('&');
 }
 
+/** Canonical query after the gateway router adds its exact rpc path echo. */
+export function canonicalGatewayQueryString(input: URL): string {
+  const url = new URL(input);
+  const pathSegments = url.pathname.split('/').filter(Boolean);
+  const lastSegment = pathSegments[pathSegments.length - 1] ?? '';
+  const rpcParams = url.searchParams.getAll('rpc');
+  if (rpcParams.some((value) => value === lastSegment)) {
+    url.searchParams.delete('rpc');
+    for (const value of rpcParams) {
+      if (value !== lastSegment) url.searchParams.append('rpc', value);
+    }
+  }
+  return canonicalQueryString(url);
+}
+
 /**
  * Build the HMAC payload string from request components. Both signer and
  * verifier MUST produce byte-identical strings here.
@@ -504,12 +519,6 @@ export async function verifyInternalMcpRequestDetailed(
   // ?rpc=<anything-else> still participates in the hash and breaks the
   // signature, so this is not a bypass vector: stripping the exact echo is
   // semantically identical to the router not having injected it.
-  const pathSegments = url.pathname.split('/').filter(Boolean);
-  const lastSegment = pathSegments[pathSegments.length - 1] ?? '';
-  const rpcParams = url.searchParams.getAll('rpc');
-  if (rpcParams.length > 0 && rpcParams.every((v) => v === lastSegment)) {
-    url.searchParams.delete('rpc');
-  }
 
   // Body must be cloned BEFORE reading so the downstream handler can still
   // read it — Web Fetch API contract: a body can only be consumed once on
@@ -525,7 +534,7 @@ export async function verifyInternalMcpRequestDetailed(
   // empty string → SHA-256(""), matching the signer's `coerceBodyToString`.
   const bodyAsString = bodyBytes.length === 0 ? '' : new TextDecoder().decode(bodyBytes);
 
-  const queryHash = await sha256Hex(canonicalQueryString(url));
+  const queryHash = await sha256Hex(canonicalGatewayQueryString(url));
   const bodyHash = await sha256Hex(bodyAsString);
 
   const expectedPayload = buildHmacPayload({

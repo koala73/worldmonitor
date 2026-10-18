@@ -10,7 +10,9 @@
 // (the strip rows plus the capture date the Published-pulse badge names) and
 // the date metadata in pro-test/welcome.html (`lastmod` + `dateModified`).
 // pro-test/index.html declares the same software entity, so its dateModified
-// must agree. All three refresh on this one command so a new freeze cannot leave the strip
+// must agree. public/home.md, the markdown the homepage serves to AI agents,
+// carries the same "As of" date the hero reads from teasers.json (#8701).
+// All of them refresh on this one command so a new freeze cannot leave the strip
 // publishing a newer capture under an older page date (#7654).
 //
 // Why this file is generated rather than hand-curated
@@ -50,6 +52,7 @@ const REPO_ROOT = resolve(dirname(__filename), '..');
 export const TEASERS_OUTPUT_PATH = 'pro-test/src/generated/teasers.json';
 export const WELCOME_HTML_PATH = 'pro-test/welcome.html';
 export const PRO_HTML_PATH = 'pro-test/index.html';
+export const HOME_MARKDOWN_PATH = 'public/home.md';
 
 // The strip renders five rows per data card and four headlines.
 const CHOKEPOINT_STATUSES = new Set(['green', 'yellow', 'red']);
@@ -71,14 +74,15 @@ const DISPLAY_NAME_BY_SLUG = new Map(
 //
 // parseCiiMovement is the canonical parser for this exact string shape and
 // throws on anything it does not recognise, so an unexpected label reds the
-// generator instead of being published as a confident direction. The one thing
-// it treats as a value rather than an error is "Stable or unavailable" -- the
-// upstream saying it does not know -- which must NOT become a published
-// "stable" claim, so it maps to UNSPECIFIED. LiveStrip's trendGlyph already
-// renders the neutral glyph for any unrecognised suffix.
+// generator instead of being published as a confident direction. It returns a
+// null change for "No earlier reading" and for the legacy conflated
+// "Stable or unavailable" labels -- the upstream saying it does not know --
+// which must NOT become a published "stable" claim, so they map to
+// UNSPECIFIED. "Unchanged" is a measured zero and maps to STABLE. LiveStrip's
+// trendGlyph already renders the neutral glyph for any unrecognised suffix.
 function trendDirection(trend) {
   const raw = String(trend || '').trim();
-  if (!raw || raw.startsWith('Stable or unavailable')) return 'TREND_DIRECTION_UNSPECIFIED';
+  if (!raw) return 'TREND_DIRECTION_UNSPECIFIED';
   const { change24h } = parseCiiMovement(raw);
   if (change24h === null) return 'TREND_DIRECTION_UNSPECIFIED';
   if (change24h > 0) return 'TREND_DIRECTION_RISING';
@@ -266,6 +270,18 @@ export function renderProHtml({ rootDir = REPO_ROOT, capturedAt } = {}) {
   return html.replace(/"dateModified": "\d{4}-\d{2}-\d{2}"/, `"dateModified": "${capturedAt}"`);
 }
 
+// The agent-facing homepage states the same "As of" date as the hero. One
+// line carries it; zero or two is a copy edit this sync must not guess about.
+const HOME_AS_OF_RE = /^As of \d{4}-\d{2}-\d{2}\.$/m;
+export function renderHomeMarkdown({ rootDir = REPO_ROOT, capturedAt } = {}) {
+  const markdown = readFileSync(join(rootDir, HOME_MARKDOWN_PATH), 'utf8');
+  const lines = markdown.match(new RegExp(HOME_AS_OF_RE.source, 'gm')) || [];
+  if (lines.length !== 1) {
+    throw new Error(`${HOME_MARKDOWN_PATH} must carry exactly one "As of YYYY-MM-DD." line (found ${lines.length})`);
+  }
+  return markdown.replace(HOME_AS_OF_RE, `As of ${capturedAt}.`);
+}
+
 const isMain = process.argv[1] && resolve(process.argv[1]) === __filename;
 if (isMain) {
   const check = process.argv.includes('--check');
@@ -275,24 +291,28 @@ if (isMain) {
   const expectedTeasers = `${JSON.stringify({ _comment: comment(snapshotPath, snapshot.capturedAt), ...teasers }, null, 2)}\n`;
   const expectedHtml = renderWelcomeHtml({ rootDir: REPO_ROOT, capturedAt: teasers.capturedAt });
   const expectedProHtml = renderProHtml({ rootDir: REPO_ROOT, capturedAt: teasers.capturedAt });
+  const expectedHomeMarkdown = renderHomeMarkdown({ rootDir: REPO_ROOT, capturedAt: teasers.capturedAt });
   const outPath = join(REPO_ROOT, TEASERS_OUTPUT_PATH);
   const htmlPath = join(REPO_ROOT, WELCOME_HTML_PATH);
   const proHtmlPath = join(REPO_ROOT, PRO_HTML_PATH);
+  const homeMarkdownPath = join(REPO_ROOT, HOME_MARKDOWN_PATH);
   if (check) {
     const stale = [];
     if (readFileSync(outPath, 'utf8') !== expectedTeasers) stale.push(TEASERS_OUTPUT_PATH);
     if (readFileSync(htmlPath, 'utf8') !== expectedHtml) stale.push(WELCOME_HTML_PATH);
     if (readFileSync(proHtmlPath, 'utf8') !== expectedProHtml) stale.push(PRO_HTML_PATH);
+    if (readFileSync(homeMarkdownPath, 'utf8') !== expectedHomeMarkdown) stale.push(HOME_MARKDOWN_PATH);
     if (stale.length > 0) {
       console.error(`[build-welcome-teasers] stale: ${stale.join(', ')}. Run \`npm run teasers:welcome\`.`);
       process.exitCode = 1;
     } else {
-      console.log(`[build-welcome-teasers] ${TEASERS_OUTPUT_PATH}, ${WELCOME_HTML_PATH}, and ${PRO_HTML_PATH} are current`);
+      console.log(`[build-welcome-teasers] ${TEASERS_OUTPUT_PATH}, ${WELCOME_HTML_PATH}, ${PRO_HTML_PATH}, and ${HOME_MARKDOWN_PATH} are current`);
     }
   } else {
     writeFileSync(outPath, expectedTeasers, 'utf8');
     writeFileSync(htmlPath, expectedHtml, 'utf8');
     writeFileSync(proHtmlPath, expectedProHtml, 'utf8');
-    console.log(`[build-welcome-teasers] wrote ${TEASERS_OUTPUT_PATH}, ${WELCOME_HTML_PATH}, and ${PRO_HTML_PATH}`);
+    writeFileSync(homeMarkdownPath, expectedHomeMarkdown, 'utf8');
+    console.log(`[build-welcome-teasers] wrote ${TEASERS_OUTPUT_PATH}, ${WELCOME_HTML_PATH}, ${PRO_HTML_PATH}, and ${HOME_MARKDOWN_PATH}`);
   }
 }

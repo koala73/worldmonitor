@@ -1,0 +1,32 @@
+{
+  "rows": [
+    {
+      "keys": [
+        "https://www.worldmonitor.app/"
+      ],
+      "clicks": 2,
+      "impressions": 150,
+      "ctr": 0.013333,
+      "position": 18.4
+    },
+    {
+      "keys": [
+        "https://tech.worldmonitor.app/dashboard"
+      ],
+      "clicks": 1,
+      "impressions": 40,
+      "ctr": 0.025,
+      "position": 26.0
+    },
+    {
+      "keys": [
+        "https://www.worldmonitor.app/countries/france/"
+      ],
+      "clicks": 0,
+      "impressions": 44,
+      "ctr": 0.0,
+      "position": 61.3
+    }
+  ],
+  "responseAggregationType": "byPage"
+}

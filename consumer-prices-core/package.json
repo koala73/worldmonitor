@@ -19,8 +19,8 @@
     "@fastify/cors": "^11.2.0",
     "dotenv": "^16.4.5",
     "exa-js": "^1.7.0",
-    "fastify": "^5.8.5",
-    "js-yaml": "^4.3.0",
+    "fastify": "^5.12.5",
+    "js-yaml": "^4.3.2",
     "jsdom": "^25.0.1",
     "pg": "^8.13.1",
     "pino": "^9.4.0",
@@ -35,10 +35,10 @@
     "@types/pg": "^8.11.10",
     "tsx": "^4.19.1",
     "typescript": "^5.6.3",
-    "vitest": "^3.2.6"
+    "vitest": "^5.0.3"
   },
   "overrides": {
-    "fast-uri": "^3.1.5",
+    "fast-uri": "^3.1.8",
     "ws": "8.21.0",
     "form-data": "4.0.6"
   }

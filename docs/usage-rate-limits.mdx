@@ -15,13 +15,16 @@ Applies to all `/api/*` routes that don't have a stricter override. Implemented 
 
 ## MCP server
 
-The MCP per-minute burst is set by plan, and it is per account for OAuth tokens and dashboard-issued `wm_…` keys alike.
+Ordinary MCP data calls use the plan burst shared by an account's OAuth tokens and dashboard-issued `wm_…` keys. Data-free protocol methods use a separate fixed account bucket. Validated paid MCP panel reads use a separate panel bucket.
 
 | Scope | Limit | Window |
 |-------|-------|--------|
 | Pro, Pro Business, API Starter (per user) | **60 requests** | 60 s |
 | API Business (per user) | **300 requests** | 60 s |
 | Enterprise (per user) | **1,000 requests** | 60 s |
+| Data-free protocol (per user) | **192 requests** | 60 s |
+| Validated paid MCP panel uncached reads (per admission) | **64 requests** | 60 s |
+| Validated paid MCP panel cached replays (per admission) | **64 requests** | 60 s |
 | Legacy operator key (per key) | **60 requests** | 60 s |
 | Anonymous discovery (per IP) | **60 requests** | 60 s |
 | Anonymous `get_sources` (per IP) | **10 requests**, fail-closed | 60 s |
@@ -57,15 +60,39 @@ A single MCP tool call is not always one unit, because the tools do not cost the
 | Fetches downstream twice | **3** | `get_country_brief` |
 | Fetches downstream up to four times | **5** | `get_airspace` |
 
-`get_airspace` has a fixed weight of 5, including when only one source or longitude interval is needed. Dateline-crossing countries require two bounded queries per source. Dedicated Pro MCP allowances still charge one unit per call.
+`get_airspace` has a fixed weight of 5, including when only one source or longitude interval is needed. Dateline-crossing countries require two bounded queries per source. Dedicated Pro MCP allowances charge one unit per standalone call. Embedded panels include their internal readers as described below.
 
 A weighted call is all-or-nothing. With 999 of 1,000 units spent, a 2-unit call is rejected rather than partly served. `describe_tool` and `get_sources` charge nothing, as do all the discovery methods.
 
-You do not have to read this table to know what a call costs. Every `tools/list` and `describe_tool` entry carries its own price at `_meta["worldmonitor/weight"]`, so a client can budget before it calls. The number is what the tool costs; whether it is charged is `_meta["worldmonitor/access"]`'s question, and only an API plan pays the weight — Pro and Pro Business pay one unit per call whatever the weight says.
+You do not have to read this table to know what a call costs. Every `tools/list` and `describe_tool` entry carries its own price at `_meta["worldmonitor/weight"]`, so a client can budget before it calls. The number is what the tool costs; whether it is charged is `_meta["worldmonitor/access"]`'s question, and only an API plan pays the weight — Pro and Pro Business pay one unit per standalone call or panel request.
 
 Today the REST and MCP halves reserve against separate counters that each hold the plan's full number, so an MCP-only workload and a REST-only workload both get the whole 1,000 or 10,000. They become one physical counter when REST enforcement turns on. Plan against the combined figure, because that is the allowance the plan sells and the merge will not raise it.
 
-Pro and Pro Business are unaffected. They have no REST budget, so their MCP calls are metered on their own counter at 50 and 250 per day, with every call costing one.
+`get_mcp_allowance({})` reads the current verified account counters without spending daily allowance, even at the daily cap. It uses the shared 192/minute protocol bucket and requires user-bound OAuth or `wm_…` credentials. The same snapshot is available at `worldmonitor://account/mcp-allowance`. Account selectors and `panel_request` are rejected. Unreadable counters return an error, never a zero snapshot. `sharedWithRestApi` states whether `used` also includes REST traffic; account totals do not identify individual callers.
+
+## Paid embedded-panel requests
+
+Pro includes **50 requests per UTC day**. Pro Business includes **250**. Both use a dedicated MCP counter.
+
+Opening any embedded panel costs **one request**, including its rendered details. The ten single-result widgets already obtain their data in one tool call, and loading a visual shell costs nothing. The country brief and news/maps dashboard also include their internal data calls in that allocation. A country brief includes its section reads, default assessment and source coverage. A news dashboard includes its category panels and bounded hazard snapshots. A request includes up to **64 uncached reads**.
+
+Panel openings retain the account's plan burst limit. Internal reads with a valid paid panel admission use separate **64 uncached requests per minute** and **64 cached replays per minute** limits per admission. Only server-confirmed cached results use the replay bucket, so reopening a loaded result card does not spend the unfinished sections' read burst. The admission still permits at most 64 uncached executions over its reuse window. Every read checks current account authorization, admission ownership, expiry, and allowed data scope. Invalid admissions and standalone calls retain the account burst limit. API plans retain their account burst limit for all calls.
+
+Same-country opens, default news-dashboard opens, curated market opens, and prediction opens share their respective admissions in a five-minute window. News display filters share the full loaded digest. Market filters reuse the market admission, including changes to `symbols`, `asset_class`, and `limit`. These filters select the seeded snapshot and do not fetch arbitrary tickers or account watchlists. The admission lasts five to ten minutes, clipped at UTC midnight. Ready responses are reused while that admission is valid. Topic navigation and repeated questions in the loaded interface reuse ready data for five minutes. Failures are retried rather than cached as successful observations.
+
+For `get_market_data` and `get_prediction_markets`, `refresh: true` with a new UUID `request_id` starts one new allocation. Retries with the same UUID reuse that allocation and its original expiry, including different letter case. Omit `panel_request` when refreshing. Ordinary curated reads can pass the returned `panelRequest.token` as `panel_request` until expiry. An API plan does not accept this receipt and retains per-tool billing.
+
+Prediction filters reuse the prediction admission across category, source, query, and limit changes. Identical canonical filters replay successful original results. Each new uncached filter executes the fixed bootstrap and freshness reads. The 64-execution bound counts tool executions, not Redis commands. Paid prediction calls validate filters before reservation. API and free calls retain existing filter coercion and reject paid refresh controls. Fresh valid filtered-empty results can replay. Stale, malformed, unavailable, and unknown observations remain retryable without refunding the opening. An authorized explicit prediction receipt read also queries the current daily counter without a new allocation. An unavailable or unconfirmed counter omits the numeric notice while preserving loaded contracts.
+
+**Refresh country**, **Refresh news** and **Refresh map data** each start one new request and reload that view’s observations. News refresh includes selected hazard layers. Layer toggles, country topic tabs and local news filters reuse loaded data. **New AI assessment** starts a new request for the assessment. Requested news summaries and translations are separate AI requests, each costing one unit. Other standalone data tools still cost one unit each.
+
+Direct `get_country_brief` and `get_country_risk` calls share the existing same-country allocation, including analytical framework variants. Accepted originals replay per tool and effective analysis. Unknown, incomplete, retained or failed source results remain retryable. `refresh: true` requires a UUID `request_id` and no `panel_request`; a new UUID starts one country allocation and the same UUID retries it. This refresh rereads the sources but does not force brief generation or bypass its six-hour backend cache. The 64-read ceiling and ordinary API weights remain unchanged.
+
+All twelve embedded views show remaining requests and the local reset time from their latest observed paid request. Single-result widgets receive usage metadata with their tool result; composite views receive it with their admission. Settings and the account-allowance resource read the same daily counter. Reuse cannot extend an admission past expiry or bypass a subscription denial. An admitted request remains charged after an upstream failure.
+
+API Starter and API Business retain weighted per-tool billing. The panel admission does not exempt an API plan from its REST budget.
+
+The 50 and 250 numerical limits remain the published paid allowances. Their unit covers a complete panel load, rather than each internal call. These numerical caps remain provisional pending provider costs and realistic customer usage. The [workflow measurement report](https://github.com/koala73/worldmonitor/blob/main/docs/solutions/performance-issues/mcp-country-panel-metering.md) records read counts, reuse, work ceilings, and the limits of the cost evidence.
 
 ## Dashboard AI quota
 
@@ -146,7 +173,7 @@ Other write endpoints (`/api/brief/share-url`, `/api/notification-channels`, `/a
 
 These mostly use the default public API limit. Cache headers vary by endpoint:
 
-- `GET /api/bootstrap` — only the explicitly-marked `?...&public=1` URLs are shared-cacheable. `?tier=fast&public=1` / `?tier=slow&public=1` use browser `max-age=60` / `max-age=300` and CDN `s-maxage=600` / `s-maxage=7200`. Single-key public URLs: on-demand keys (`?keys=<onDemandName>&public=1`) inherit the slow profile — browser `max-age=300`, CDN `s-maxage=7200` — unless the key declares its own, which every key published more often than that shield does: `correlationCards` (browser `max-age=60`, CDN `s-maxage=300`), `chinaDecisionSignals` (browser `max-age=60`, CDN `s-maxage=900`), `canadaRoads` (browser `max-age=60`, CDN `s-maxage=900`), `albertaRoads` (browser `max-age=60`, CDN `s-maxage=900`), `manitobaRoads` (browser `max-age=60`, CDN `s-maxage=900`), `marketCorrelationSeries` (browser `max-age=60`, CDN `s-maxage=900`), `imdCycloneMarine` (browser `max-age=60`, CDN `s-maxage=900`), `bcOpen511` (browser `max-age=60`, CDN `s-maxage=1800`), `flightDelays` (browser `max-age=60`, CDN `s-maxage=1800`), and `forecasts` (browser `max-age=300`, CDN `s-maxage=3600`); `?keys=weatherAlerts&public=1` uses `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` with the fast-tier CDN shield. Every other shape — key-authenticated, session-authenticated, the unmarked `?tier=...` URLs, and the anonymous `?keys=weatherAlerts` path — uses `Cache-Control: no-store` and emits no CDN cache headers, so a credentialed URL can never be answered from a shared cache. User API key validation also has a fail-closed fixed 60 s per-IP pre-validation limit of 600 attempts.
+- `GET /api/bootstrap` — only the explicitly-marked `?...&public=1` URLs are shared-cacheable. `?tier=fast&public=1` / `?tier=slow&public=1` use browser `max-age=60` / `max-age=300` and CDN `s-maxage=600` / `s-maxage=7200`. Single-key public URLs: on-demand keys (`?keys=<onDemandName>&public=1`) inherit the slow profile — browser `max-age=300`, CDN `s-maxage=7200` — unless the key declares its own, which every key published more often than that shield does: `correlationCards` (browser `max-age=60`, CDN `s-maxage=300`), `chinaDecisionSignals` (browser `max-age=60`, CDN `s-maxage=900`), `canadaRoads` (browser `max-age=60`, CDN `s-maxage=900`), `albertaRoads` (browser `max-age=60`, CDN `s-maxage=900`), `manitobaRoads` (browser `max-age=60`, CDN `s-maxage=900`), `marketCorrelationSeries` (browser `max-age=60`, CDN `s-maxage=900`), `imdCycloneMarine` (browser `max-age=60`, CDN `s-maxage=900`), `bcOpen511` (browser `max-age=60`, CDN `s-maxage=1800`), `flightDelays` (browser `max-age=60`, CDN `s-maxage=1800`), `liveVideoResolved` (browser `max-age=300`, CDN `s-maxage=1800`), and `forecasts` (browser `max-age=300`, CDN `s-maxage=3600`); `?keys=weatherAlerts&public=1` uses `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` with the fast-tier CDN shield. Every other shape — key-authenticated, session-authenticated, the unmarked `?tier=...` URLs, and the anonymous `?keys=weatherAlerts` path — uses `Cache-Control: no-store` and emits no CDN cache headers, so a credentialed URL can never be answered from a shared cache. User API key validation also has a fail-closed fixed 60 s per-IP pre-validation limit of 600 attempts.
 - `GET /api/health` — `private, no-store, max-age=0` plus `CDN-Cache-Control: no-store`.
 - `GET /api/version` — `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`.
 
@@ -197,7 +224,7 @@ Note the IETF `RateLimit-Reset` (and the `t` value in the combined `RateLimit` m
 
 API and MCP plan caps are tracked against the product catalog limits that ship with entitlements:
 
-| Plan | API requests / day | API burst / minute | MCP calls / day | MCP burst / minute |
+| Plan | API requests / day | API burst / minute | MCP units / day | MCP burst / minute |
 |------|--------------------|--------------------|-----------------|--------------------|
 | Free | 0 | 0 | 0 | 0 |
 | Pro | 0 | 0 | 50 | 60 |
@@ -206,7 +233,7 @@ API and MCP plan caps are tracked against the product catalog limits that ship w
 | API Business | 10,000 | 300 | shares the 10,000 | 300 |
 | Enterprise | Unlimited | 1,000 | Unlimited | 1,000 |
 
-Pro and Pro Business have no REST allowance, so their MCP calls are counted separately, one unit per call. API plans have one budget. The "MCP calls / day" column is not an additional allowance on top of the API one, it is the same number, spent at the [per-tool weight](#mcp-calls-against-an-api-plan).
+Pro and Pro Business have no REST allowance. Their separate counter charges one unit per standalone call or bounded panel request. API plans have one budget. The "MCP units / day" column is not an additional allowance on top of the API one, it is the same number, spent at the [per-tool weight](#mcp-calls-against-an-api-plan).
 
 When a paid user approaches or exceeds one of these limits, WorldMonitor records a compact Convex rollup and opens a current account notice in Settings. The daily count is read from the same per-account meter that governs enforcement, so a warning reflects the same usage number the plan is metered against. Daily limits warn at 80% and switch to over-limit at 100%; burst limits only notify on sustained pressure, not a single isolated spike.
 

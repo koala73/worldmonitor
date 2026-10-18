@@ -1,8 +1,9 @@
-// YouTube Live Stream Detection API
-// Proxies to Railway relay which uses residential proxy for YouTube scraping
+// YouTube video naming for channel management (src/live-channels-window.ts).
+// ?videoId= answers YouTube's public oEmbed title and channel name. ?channel= live
+// detection is retired: it scraped youtube.com through a residential proxy, and Live
+// News now plays verified streams listed in src/config/live-video-sources.ts.
 
 import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
-import { getRelayBaseUrl, getRelayHeaders } from '../_relay.js';
 import { checkRateLimit } from '../_rate-limit.js';
 
 export const config = { runtime: 'edge' };
@@ -15,6 +16,9 @@ const RATE_LIMIT_SCOPE = 'youtube-live';
 const RATE_LIMIT_PER_MINUTE = 30;
 const CHANNEL_ID_RE = /^UC[A-Za-z0-9_-]{22}$/;
 const HANDLE_RE = /^[\p{L}\p{N}](?:[\p{L}\p{N}\p{M}._·-]{0,28}[\p{L}\p{N}\p{M}])?$/u;
+const CHANNEL_DETECTION_RETIRED = 'channel_live_detection_retired';
+// Matches the RPC's oEmbed deadline (server/worldmonitor/aviation/v1/get-youtube-live-stream-info.ts).
+const OEMBED_TIMEOUT_MS = 5_000;
 
 export default async function handler(request, ctx) {
   const cors = getCorsHeaders(request);
@@ -25,9 +29,9 @@ export default async function handler(request, ctx) {
 
   // Metered before the parameter check so malformed requests are not a free
   // unlimited path. Availability-first on purpose: this is a read proxy for
-  // the live-stream panel, and checkRateLimit already returns null when
-  // Upstash is unconfigured, so a Redis blip degrades to today's behaviour
-  // instead of blanking the panel. (#6234)
+  // channel management, and checkRateLimit already returns null when Upstash is
+  // unconfigured, so a Redis blip degrades to today's behaviour instead of
+  // failing the lookup. (#6234)
   // `ctx` is forwarded so the degraded-path Sentry envelope survives isolate
   // teardown, matching api/reverse-geocode.js. (#6412 review)
   const limited = await checkRateLimit(request, cors, {
@@ -50,45 +54,21 @@ export default async function handler(request, ctx) {
     });
   }
 
-  const params = new URLSearchParams();
-  if (channel) params.set('channel', channel);
-  if (videoIdParam) params.set('videoId', videoIdParam);
-  const qs = params.toString();
-
-  if (!qs) {
+  if (!channel && !videoIdParam) {
     return new Response(JSON.stringify({ error: 'Missing channel or videoId parameter' }), {
       status: 400,
       headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
 
-  // Proxy to Railway relay
-  const relayBase = getRelayBaseUrl();
-  if (relayBase) {
-    try {
-      const relayHeaders = getRelayHeaders({ 'User-Agent': 'WorldMonitor-Edge/1.0' });
-      const relayRes = await fetch(`${relayBase}/youtube-live?${qs}`, { headers: relayHeaders });
-      if (relayRes.ok) {
-        const data = await relayRes.json();
-        const cacheTime = videoIdParam ? 3600 : 600;
-        return new Response(JSON.stringify(data), {
-          status: 200,
-          headers: {
-            ...cors,
-            'Content-Type': 'application/json',
-            'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}, stale-while-revalidate=60`,
-          },
-        });
-      }
-    } catch { /* relay unavailable — fall through to direct fetch */ }
-  }
-
-  // Fallback: direct fetch (works for oembed, limited for live detection from datacenter IPs)
-  if (videoIdParam && /^[A-Za-z0-9_-]{11}$/.test(videoIdParam)) {
+  if (videoIdParam) {
     try {
       const oembedRes = await fetch(
         `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoIdParam}&format=json`,
-        { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } },
+        {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+          signal: AbortSignal.timeout(OEMBED_TIMEOUT_MS),
+        },
       );
       if (oembedRes.ok) {
         const data = await oembedRes.json();
@@ -97,59 +77,17 @@ export default async function handler(request, ctx) {
           headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=3600' },
         });
       }
-    } catch { /* oembed failed — return minimal response */ }
+    } catch { /* oembed failed or passed its deadline — return minimal response */ }
     return new Response(JSON.stringify({ channelName: null, title: null, videoId: videoIdParam }), {
       status: 200,
       headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
 
-  if (!channel) {
-    return new Response(JSON.stringify({ error: 'Missing channel parameter' }), {
-      status: 400,
-      headers: { ...cors, 'Content-Type': 'application/json' },
-    });
-  }
-
-  // Fallback: direct scrape (limited from datacenter IPs)
-  try {
-    const channelPath = CHANNEL_ID_RE.test(channel) ? `channel/${channel}` : `@${encodeURIComponent(handle)}`;
-    const response = await fetch(`https://www.youtube.com/${channelPath}/live`, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      redirect: 'follow',
-    });
-    if (!response.ok) {
-      return new Response(JSON.stringify({ videoId: null, channelExists: false }), {
-        status: 200, headers: { ...cors, 'Content-Type': 'application/json' },
-      });
-    }
-    const html = await response.text();
-    const channelExists = html.includes('"channelId"') || html.includes('og:url');
-    let channelName = null;
-    const ownerMatch = html.match(/"ownerChannelName"\s*:\s*"([^"]+)"/);
-    if (ownerMatch) channelName = ownerMatch[1];
-    else { const am = html.match(/"author"\s*:\s*"([^"]+)"/); if (am) channelName = am[1]; }
-
-    let videoId = null;
-    const detailsIdx = html.indexOf('"videoDetails"');
-    if (detailsIdx !== -1) {
-      const block = html.substring(detailsIdx, detailsIdx + 5000);
-      const vidMatch = block.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
-      const liveMatch = block.match(/"isLive"\s*:\s*true/);
-      if (vidMatch && liveMatch) videoId = vidMatch[1];
-    }
-
-    let hlsUrl = null;
-    const hlsMatch = html.match(/"hlsManifestUrl"\s*:\s*"([^"]+)"/);
-    if (hlsMatch && videoId) hlsUrl = hlsMatch[1].replace(/\\u0026/g, '&');
-
-    return new Response(JSON.stringify({ videoId, isLive: videoId !== null, channelExists, channelName, hlsUrl }), {
-      status: 200,
-      headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300, s-maxage=600, stale-while-revalidate=120' },
-    });
-  } catch {
-    return new Response(JSON.stringify({ videoId: null, error: 'Failed to fetch channel data' }), {
-      status: 200, headers: { ...cors, 'Content-Type': 'application/json' },
-    });
-  }
+  // Tabs opened before the retirement still ask for a channel's live video. A cacheable 410
+  // tells them without any YouTube or relay request, and their client falls back on non-2xx.
+  return new Response(JSON.stringify({ error: CHANNEL_DETECTION_RETIRED }), {
+    status: 410,
+    headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=86400, s-maxage=86400' },
+  });
 }

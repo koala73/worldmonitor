@@ -22,6 +22,7 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sortRec, serialize, eq, normalizeKey } from './lib/openapi-codegen.mjs';
+import { EMERGENCY_CODES } from '../shared/aircraft-emergencies.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
@@ -184,6 +185,10 @@ const GDELT_TOPIC_EXAMPLE_ID = (() => {
 // IS informative in that state.
 function isCuratedOmission(key, context = {}) {
   const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
+  // RegisterWebhook: the request example depicts the default
+  // chokepoint.disruption subscription, and the handler rejects `countries` on
+  // that event, so the field would make the sample un-runnable.
+  if (key === 'countries' && where.includes('registerwebhook')) return true;
   // GetTradeFlows / GetTariffTrends: a 200 carrying rows always has
   // unavailableReason at the UNSPECIFIED zero value. The generic enum picker
   // skips the zero value and so paired rows with INVALID_REQUEST — a response
@@ -211,6 +216,26 @@ function isCuratedOmission(key, context = {}) {
 function overrideStringExample(key, context = {}) {
   const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
   if (key === 'jmespath') return 'keys(@)';
+  // Shipping v2 webhooks: eventType is a registry key (shared/event-triggers.json)
+  // and countries holds monitored ISO2 codes; the heuristic's "all" / "example"
+  // are rejected by registerWebhook.
+  if (where.includes('registerwebhook') || where.includes('listwebhooks') || where.includes('/api/v2/shipping/webhooks')) {
+    if (key === 'eventtype') return 'chokepoint.disruption';
+    if (key === 'countries') return 'US';
+  }
+  // IOM DTM keys countries by ISO3; the generic ISO2 'US' fails the pattern.
+  if (key === 'countrycode' && (where.includes('getinternaldisplacement') || where.includes('get-internal-displacement'))) {
+    return 'SDN';
+  }
+  if (where.includes('getpricehistory') || where.includes('get-price-history')) {
+    if (key === 'symbols') return 'GC=F,SI=F';
+    if (key === 'range') return '3mo';
+  }
+  // UsInterestRateSeries.id is a closed wire-id set. The generic `example-id`
+  // is not one of the published ids, so the documented 200 sample is un-runnable.
+  if (key === 'id' && (where.includes('getusinterestrates') || where.includes('get-us-interest-rates'))) {
+    return 'fed_funds_effective';
+  }
   if (where.includes('listvulnerabilityrankings') || where.includes('list-vulnerability-rankings')) {
     if (key === 'commodityid') return 'crude_oil';
     if (key === 'band') return 'high';
@@ -254,6 +279,20 @@ function overrideStringExample(key, context = {}) {
     if (key === 'partnercountry') return isParam ? '156' : 'World';
     if (key === 'productsector') return isParam ? 'all' : 'All products';
   }
+  // GetBilateralTariff request codes must stay inside their buf.validate
+  // patterns; the generic heuristic published "US" and "example", which the
+  // gateway rejects with 400. The response example is curated below.
+  if (where.includes('getbilateraltariff') || where.includes('get-bilateral-tariff')) {
+    if (key === 'reportingcountry') return '840';
+    if (key === 'partnercountry') return '484';
+    if (key === 'hscode') return '870323';
+  }
+  // GetUsImportDuty request codes must stay inside their buf.validate
+  // patterns. The response example is curated below.
+  if (where.includes('getusimportduty') || where.includes('get-us-import-duty')) {
+    if (key === 'hscode') return '870380';
+    if (key === 'partnercountry') return '156';
+  }
   // GetFoodStocks' commodity is a closed slug set enforced by
   // normalizeFoodStocksCommodity; the heuristic's empty-string -> "example"
   // fallback published a value the handler rejects with 400, so anyone running
@@ -273,6 +312,10 @@ function overrideStringExample(key, context = {}) {
   }
   if (key === 'topic') {
     if (where.includes('getgdelttopictimeline') || where.includes('get-gdelt-topic-timeline')) return GDELT_TOPIC_EXAMPLE_ID;
+  }
+  if (where.includes('getconsumerpricebasketseries') || where.includes('get-consumer-price-basket-series')) {
+    if (key === 'marketcode') return 'ae';
+    if (key === 'currencycode') return 'AED';
   }
   if (key === 'basketslug') return CONSUMER_PRICE_BASKET_EXAMPLE_ID;
   if (key === 'range') {
@@ -701,8 +744,16 @@ function numberExample(name, schema = {}, integer = false) {
   else if (key === 'lat' || key.endsWith('lat') || key.includes('latitude')) value = 40.7128;
   else if (key === 'lng' || key === 'lon' || key.endsWith('lng') || key.endsWith('lon') || key.includes('longitude')) value = -74.006;
   else if (key.includes('time') || key.endsWith('at')) value = 1717200000000;
+  // Epoch-ms calendar fields (UsInterestRateObservation.date, UsCpiMonth.month,
+  // UsTreasuryParYieldCurve.date, UCDP dateStart/dateEnd). Match date as a
+  // token, not a substring — `includes('date')` would hit consolidatedCount
+  // and lastUpdated because those keys contain the letters "date".
+  else if (integer && (key === 'date' || key === 'month' || key.startsWith('date') || key.endsWith('date'))) {
+    value = 1717200000000;
+  }
   else if (key.includes('percent') || key.includes('ratio') || key.includes('score')) value = 42.5;
   else if (key.includes('confidence')) value = 0.82;
+  else if (key.includes('probability')) value = 0.62;
   else if (key.includes('price') || key.includes('cost') || key.includes('rate')) value = 75.25;
   else if (key.includes('count') || key.includes('total')) value = 1;
 
@@ -782,6 +833,47 @@ function getCompanyEnrichmentExample() {
 // previousValue/unit/spikeAlert. Curate it so the published example shows what
 // the endpoint actually returns, including the fail-closed shape where the
 // exchange published no comparable prior.
+function getPriceHistoryExample() {
+  const days = [1785542400000, 1785628800000, 1785715200000];
+  return {
+    range: '3mo',
+    series: [
+      { symbol: 'GC=F', name: 'Gold', currency: 'USD', timestamps: days, closes: [4176.4, 4183.1, 4192.0] },
+      { symbol: 'SI=F', name: 'Silver', currency: 'USD', timestamps: days, closes: [60.84, 61.02, 61.25] },
+    ],
+    unavailable: [],
+  };
+}
+
+// One real DTM operation, trimmed to one region and one route.
+function getInternalDisplacementExample() {
+  const kassala = { latitude: 15.66, longitude: 35.87 };
+  return {
+    operations: [{
+      countryCode: 'SDN',
+      countryName: 'Sudan',
+      operation: 'Armed Clashes in Sudan (Overview)',
+      reportingDate: '2026-07-31',
+      roundNumber: 38,
+      totalIdps: 8622801,
+      reasons: [{ reason: 'Conflict', idps: 8622801 }],
+      regions: [{ pcode: 'SD11', name: 'Kassala', idps: 13596, location: kassala }],
+      flows: [{
+        originPcode: 'SD15',
+        originName: 'Aj Jazirah',
+        destinationPcode: 'SD11',
+        destinationName: 'Kassala',
+        idps: 13596,
+        originLocation: { latitude: 14.4, longitude: 33.5 },
+        destinationLocation: kassala,
+      }],
+    }],
+    // After the 2026-07-31 round: a snapshot cannot predate its newest round.
+    fetchedAt: 1785542400000,
+    dataAvailable: true,
+  };
+}
+
 function getShippingRatesExample() {
   return {
     indices: [
@@ -818,10 +910,172 @@ function getShippingRatesExample() {
   };
 }
 
+// GetYoutubeLiveStreamInfo names a video through oEmbed; channel live detection is
+// retired, so a success never reports a live stream or a manifest URL. The generic
+// builder would publish isLive: true, a sample hlsUrl and error: "example" (and
+// constrainedString turns an empty string back into "example"), so curate it.
+function getYoutubeLiveStreamInfoExample() {
+  return {
+    videoId: 'LuKwFajn37U',
+    isLive: false,
+    channelExists: true,
+    channelName: 'DW News',
+    hlsUrl: '',
+    title: 'DW News livestream',
+    error: '',
+  };
+}
+
+// SearchClaimHeadlines returns one of three states; the generic builder would
+// publish state "example". The headline is synthetic.
+function getSearchClaimHeadlinesExample() {
+  return {
+    headlines: [{
+      source: 'Example Feed',
+      title: 'Synthetic example headline sharing the claim\'s words',
+      link: 'https://example.com/news/synthetic-example',
+      publishedAt: 1768478400000,
+    }],
+    searchedHeadlines: 4140,
+    searchedFeeds: 216,
+    feedTotal: 241,
+    feedCached: 241,
+    state: 'complete',
+    readAt: '2026-01-15T12:00:00.000Z',
+  };
+}
+
+// SearchFactChecks (#9094) returns a fixed caveat and one of three states; the
+// generic builder published a timestamp caveat and state "example". The
+// fact-check is synthetic: no real fact-checker, rating or article is cited.
+// tests/fact-checks.test.mts holds the caveat to FACT_CHECK_CAVEAT.
+function getSearchFactChecksExample() {
+  return {
+    factChecks: [{
+      publisher: 'Example Fact-Checker (synthetic)',
+      site: 'example.com',
+      rating: 'Example rating',
+      reviewedAt: '2026-01-15T12:00:00.000Z',
+      url: 'https://example.com/fact-check/synthetic-example',
+      title: 'Synthetic example fact-check',
+      claimReviewed: 'A synthetic example claim, similar to the claim checked',
+    }],
+    state: 'ok',
+    caveat: 'Ratings are the fact-checkers\' own, quoted with attribution from IFCN-verified signatories. WorldMonitor does not rate claims, and a rating never changes the coverage result above.',
+  };
+}
+
+// A synthetic story moving from one publisher to two, with counts whose parts
+// add up to the total (the reader drops counts that do not). The generic
+// builder filled state and field with "example" and gave counts that summed
+// to 77 stories under stories: 1.
+function getListLabelChangesExample() {
+  return {
+    changes: [{
+      storyId: 'a'.repeat(64),
+      field: 'corroboration',
+      previous: 'single-publisher',
+      next: 'corroborated',
+      previousPublishers: 1,
+      nextPublishers: 2,
+      at: 1767182400000,
+      trigger: 'digest',
+      reason: '2 publisher families now carry this story (was 1).',
+      sources: [
+        { name: 'Example Wire (synthetic)', tier: 1 },
+        { name: 'Example Daily (synthetic)', tier: 2 },
+      ],
+      title: 'Synthetic example story',
+      link: 'https://example.com/news/synthetic-example',
+      credibilityScore: 72,
+    }],
+    state: 'ok',
+    retentionDays: 7,
+    counts: {
+      at: 1767182400000,
+      stories: 120,
+      corroborated: 64,
+      singlePublisher: 51,
+      tier4Only: 3,
+      unknown: 2,
+    },
+  };
+}
+
+// The served US <- Mexico passenger-car answer captured from WITS
+// (tests/fixtures/wits-trains/), trimmed to one group preference. The served
+// UNSPECIFIED unavailableReason is left out, as for GetTariffTrends: the
+// examples contract rejects enum sentinels in success examples. The generic
+// builder priced every rate at 75.25 with a specific-duty line, which reads as
+// a 75% tariff.
+function getBilateralTariffExample() {
+  const zero = { rate: 0, minRate: 0, maxRate: 0, tariffLines: 1, nonAdValoremLines: 0 };
+  return {
+    reportingCountry: '840',
+    partnerCountry: '484',
+    hsCode: '870323',
+    filingReporter: '840',
+    year: 2021,
+    nomenclature: 'H5',
+    basis: 'APPLIED_TARIFF_BASIS_PREFERENTIAL',
+    appliedRate: zero,
+    mfnRate: { rate: 2.5, minRate: 2.5, maxRate: 2.5, tariffLines: 1, nonAdValoremLines: 0 },
+    preferentialRate: zero,
+    groupPreferences: [{ groupCode: 'P22', groupName: 'North American Free Trade Agreement (NAFTA)', rate: zero }],
+    source: 'UNCTAD TRAINS via World Bank WITS',
+    sourceUrl: 'https://wits.worldbank.org/API/V1/SDMX/V21/datasource/TRN/reporter/840/partner/all/product/870323/year/2021/datatype/reported',
+    upstreamUnavailable: false,
+  };
+}
+
+// The served China -> US electric-vehicle answer against HTS 2026 Rev 21
+// (tests/fixtures/us-hts/), trimmed to two of its three duties. Enum
+// sentinels are left out, as above.
+function getUsImportDutyExample() {
+  return {
+    hsCode: '870380',
+    partnerCountry: '156',
+    htsRelease: '2026HTSRev21',
+    lines: [{
+      htsCode: '8703.80.00',
+      description: 'Other vehicles, with only electric motors for propulsion',
+      generalRate: '2.5%',
+      specialRate: 'Free (A+,AU,B,BH,CL,CO,D,E,IL,JO,KR,MA,OM,P,PA,PE,S,SG)',
+      column2Rate: '10%',
+      basis: 'US_DUTY_BASIS_MFN',
+      baseRate: '2.5%',
+      baseAdValorem: 2.5,
+      baseNonAdValorem: false,
+      preferenceProgram: '',
+      unresolvedPrograms: ['D', 'E'],
+      additionalDuties: [
+        { heading: '9903.91.03', authority: 'US_DUTY_AUTHORITY_SECTION_301', program: 'China four-year review', addedRate: 100, topUpTo: 0, status: 'US_ADDITIONAL_DUTY_STATUS_APPLIES', condition: '', legalNote: 'U.S. note 31(d)', effectiveFrom: '2024-09-27' },
+        { heading: '9903.94.01', authority: 'US_DUTY_AUTHORITY_SECTION_232', program: 'Passenger vehicles and light trucks', addedRate: 25, topUpTo: 0, status: 'US_ADDITIONAL_DUTY_STATUS_CONDITIONAL', condition: 'Section 232 rates vary by origin deal and, for some derivatives, apply to metal content only.', legalNote: 'U.S. note 33(b)', effectiveFrom: '' },
+      ],
+      estimatedRate: 102.5,
+      estimateComplete: false,
+    }],
+    additionalDutiesLoaded: true,
+    source: 'USITC Harmonized Tariff Schedule',
+    sourceUrl: 'https://hts.usitc.gov/search?query=8703.80',
+    upstreamUnavailable: false,
+  };
+}
+
 function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set()) {
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
   schema = resolveRef(schema, spec);
+  if (depth === 0 && context.operationId === 'ListAircraftEmergencies'
+    && String(context.name ?? '').endsWith('Response')) {
+    return {
+      feeds: EMERGENCY_CODES.map(squawk => ({
+        source: 'adsb.lol', squawk, status: 'available', fetchedAt: 1717200000000, message: 'Synthetic example.',
+      })),
+      observations: [{ address: 'a00001', squawk: '7500', source: 'adsb.lol', observedAt: 0,
+        callsign: 'SYNTHETIC', militaryFlag: 'unknown', description: 'Synthetic example. No observed incident.' }],
+    };
+  }
   if (
     depth === 0
     && String(context.operationId ?? '').toLowerCase() === 'getgivingsummary'
@@ -845,10 +1099,66 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   }
   if (
     depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getbilateraltariff'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getBilateralTariffExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getusimportduty'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getUsImportDutyExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getinternaldisplacement'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getInternalDisplacementExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getpricehistory'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getPriceHistoryExample();
+  }
+  if (
+    depth === 0
     && String(context.operationId ?? '').toLowerCase() === 'getshippingrates'
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getShippingRatesExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getyoutubelivestreaminfo'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getYoutubeLiveStreamInfoExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'searchfactchecks'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getSearchFactChecksExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'searchclaimheadlines'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getSearchClaimHeadlinesExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'listlabelchanges'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getListLabelChangesExample();
   }
   const ref = original.$ref;
   if (ref) {
@@ -863,6 +1173,17 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
         unit: 'percent',
         source: 'World Bank',
         indicatorCode: 'IT.NET.USER.ZS',
+      };
+    }
+    if (resolvedName === 'CapabilityObservation') {
+      const field = context.name ?? '';
+      return {
+        available: true,
+        value: 1.5,
+        year: 2024,
+        source: 'Example dataset',
+        unit: field.endsWith('Years') ? 'years' : field.endsWith('People') ? 'people'
+          : field === 'researchersPerMillion' ? 'people per million' : 'percent',
       };
     }
     if (resolvedName === 'GetFiveFactorScorecardResponse' || resolvedName === 'GetBlocScorecardResponse') {
@@ -955,6 +1276,20 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
       out[key] = exampleForSchema(props[key], spec, { ...context, name: key, parent: name }, depth + 1, seen);
     }
     return out;
+  }
+  // TP_A_0010 carries no bound rate, so the seeder writes boundRate 0 and the
+  // contract documents it as reserved. The generic `rate` heuristic published
+  // 75.25, an example the API cannot return.
+  // GetBilateralTariff's year is a calendar year; the generic integer `1`
+  // asks TRAINS for a year it does not hold. 2021 matches the curated
+  // response example.
+  if (type === 'integer' && String(name ?? '').toLowerCase() === 'year') {
+    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
+    if (where.includes('getbilateraltariff') || where.includes('get-bilateral-tariff')) return 2021;
+  }
+  if (type === 'number' && String(name ?? '').toLowerCase() === 'boundrate') {
+    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
+    if (where.includes('gettarifftrends') || where.includes('get-tariff-trends')) return 0;
   }
   if (type === 'integer') return numberExample(name, schema, true);
   if (type === 'number') return numberExample(name, schema, false);

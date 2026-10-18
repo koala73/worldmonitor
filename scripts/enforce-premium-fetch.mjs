@@ -271,6 +271,34 @@ function getFetchOptionText(optionsArg) {
   return null;
 }
 
+export function hasScopedCountrySource(ast) {
+  const factory = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'createCountryBriefSource');
+  if (!factory?.body || factory.modifiers?.some(node => node.kind === ts.SyntaxKind.ExportKeyword)) return false;
+  if (factory.parameters[0]?.name.getText(ast) !== 'fetcher') return false;
+  let options = false;
+  let callers = 0;
+  let invalid = false;
+  const compact = node => node.getText(ast).replace(/\s/g, '');
+  function visit(node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(ast) === 'options') {
+      options = node.initializer && compact(node.initializer) === '{fetch:fetcher}';
+    }
+    if (ts.isBinaryExpression(node) && node.left.getText(ast) === 'fetcher') invalid = true;
+    if (ts.isIdentifier(node) && node.text === 'createCountryBriefSource' && node !== factory.name && !ts.isTypeQueryNode(node.parent)) {
+      const call = node.parent;
+      if (!ts.isCallExpression(call) || call.expression !== node) invalid = true;
+      else {
+        const args = call.arguments.map(compact).join(',');
+        if (args !== "premiumFetch,'website'" && args !== "createHostCountryFetch(call),'host'") invalid = true;
+        callers++;
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(ast);
+  return options && callers === 2 && !invalid;
+}
+
 function checkFile(filePath, clientClassMap, premiumPaths) {
   const src = readFileSync(filePath, 'utf8');
   const ast = ts.createSourceFile(filePath, src, ts.ScriptTarget.Latest, true);
@@ -392,6 +420,7 @@ function checkFile(filePath, clientClassMap, premiumPaths) {
     const fetchText = getFetchOptionText(inst.optionsArg);
     if (fetchText === 'premiumFetch') continue;
     if (DELEGATING_ADAPTERS.has(fetchText)) continue;
+    if (relative(ROOT, filePath) === 'src/services/country-brief-source.ts' && inst.optionsArg?.getText(ast) === 'options' && hasScopedCountrySource(ast)) continue;
 
     violations.push({
       file: filePath,

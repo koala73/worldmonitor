@@ -10,7 +10,7 @@
 | MCP tool | None registered under `get_health_data` |
 | Hostname variant | Not configured |
 
-The disease outbreaks seeder is solid (WHO DON API + CDC + Outbreak News Today + ThinkGlobalHealth/ProMED, 150 geo-pinned alerts). VPD tracker has good historical WHO annual case data. Everything else is missing.
+The disease outbreaks seeder is solid (WHO DON API + CDC + ECDC + CIDRAP + ThinkGlobalHealth/ProMED, 150 geo-pinned alerts). VPD tracker has good historical WHO annual case data. Everything else is missing.
 
 ---
 

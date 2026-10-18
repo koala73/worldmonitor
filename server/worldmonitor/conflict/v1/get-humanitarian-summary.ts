@@ -18,7 +18,7 @@ import type {
   GetHumanitarianSummaryResponse,
 } from '../../../../src/generated/server/worldmonitor/conflict/v1/service_server';
 
-import { getCachedJson } from '../../../_shared/redis';
+import { readRequiredSeed } from '../../../_shared/required-seed';
 
 const REDIS_CACHE_KEY = 'conflict:humanitarian:v1';
 
@@ -27,20 +27,16 @@ export async function getHumanitarianSummary(
   req: GetHumanitarianSummaryRequest,
 ): Promise<GetHumanitarianSummaryResponse> {
   if (!req.countryCode) return { summary: undefined };
-  try {
-    // Normalized to match the seeder's uppercase keys (scripts/seed-conflict-intel.mjs
-    // writes conflict:humanitarian:v1:<UPPERCASE>) and the batch handler's sibling
-    // convention. The proto's buf.validate pattern (^[A-Z]{2}$) already rejects
-    // non-uppercase input at the RPC layer in normal operation, so this is defense
-    // in depth rather than a live bug -- but the old fetch-on-miss fallback used to
-    // self-heal any mismatch by hitting HAPI directly; that fallback is gone now, so
-    // a mismatched key would otherwise permanently miss instead of just being slow.
-    const countryCode = req.countryCode.trim().toUpperCase();
-    const cached = (await getCachedJson(`${REDIS_CACHE_KEY}:${countryCode}`, true)) as
-      | GetHumanitarianSummaryResponse
-      | null;
-    return cached ?? { summary: undefined };
-  } catch {
-    return { summary: undefined };
-  }
+  // Normalized to match the seeder's uppercase keys (scripts/seed-conflict-intel.mjs
+  // writes conflict:humanitarian:v1:<UPPERCASE>) and the batch handler's sibling
+  // convention. The proto's buf.validate pattern (^[A-Z]{2}$) already rejects
+  // non-uppercase input at the RPC layer in normal operation, so this is defense
+  // in depth rather than a live bug -- but the old fetch-on-miss fallback used to
+  // self-heal any mismatch by hitting HAPI directly; that fallback is gone now, so
+  // a mismatched key would otherwise permanently miss instead of just being slow.
+  const countryCode = req.countryCode.trim().toUpperCase();
+  return readRequiredSeed(`${REDIS_CACHE_KEY}:${countryCode}`, value => {
+    const data = value as GetHumanitarianSummaryResponse | null;
+    return data?.summary && typeof data.summary === 'object' ? data : undefined;
+  });
 }

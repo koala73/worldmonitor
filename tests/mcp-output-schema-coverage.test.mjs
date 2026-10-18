@@ -34,6 +34,7 @@ import {
 import { PHYSICAL_DIVERGENCE_CONTRACT } from '../shared/physical-divergence-contract.js';
 import { jsonResponse } from '../api/_json-response.js';
 import { documentedOutputSchema } from './helpers/mcp-output-schema.mjs';
+import { THREAT_CATEGORIES } from '../shared/jev-classify.js';
 
 const VALID_KEY = 'wm_test_key_output_schema';
 const originalEnv = { ...process.env };
@@ -85,6 +86,25 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       if (!(k in originalEnv)) delete process.env[k];
     });
     Object.assign(process.env, originalEnv);
+  });
+
+  it('accepts old coverage headlines and full classification while constraining the new nested field', () => {
+    const tool = mod.__testing__.TOOL_REGISTRY.find(item => item.name === 'get_country_coverage');
+    const check = new Ajv2020({ strict: false }).compile(tool.outputSchema);
+    const headline = { title: 'Controlled article', source: 'Publisher', url: 'https://example.org/a', publishedAt: '2026-10-17T00:00:00Z', publishedAtMs: 1792195200000 };
+    const response = { countryCode: 'NO', countryName: 'Norway', windowHours: 168, generatedAt: '2026-10-17T00:00:00Z', headlines: [headline], events: [], sources: [], degraded: false, containment: 'bbox' };
+    assert.equal(check(response), true, JSON.stringify(check.errors));
+    const categories = ['conflict', 'protest', 'disaster', 'diplomatic', 'economic', 'terrorism', 'cyber', 'health', 'environmental', 'military', 'crime', 'infrastructure', 'tech', 'general'];
+    assert.deepEqual(categories, THREAT_CATEGORIES);
+    const levels = ['THREAT_LEVEL_UNSPECIFIED', 'THREAT_LEVEL_LOW', 'THREAT_LEVEL_MEDIUM', 'THREAT_LEVEL_HIGH', 'THREAT_LEVEL_CRITICAL'];
+    const threat = { level: 'THREAT_LEVEL_HIGH', category: 'conflict', confidence: 0.8, source: 'keyword' };
+    const withThreat = value => ({ ...response, headlines: [{ ...headline, threat: value }] });
+    for (const category of categories) for (const level of levels) {
+      assert.equal(check(withThreat({ ...threat, category, level })), true, JSON.stringify(check.errors));
+    }
+    for (const value of [null, {}, { ...threat, level: 'FUTURE' }, { ...threat, category: 'invented' }, { ...threat, confidence: -0.1 }, { ...threat, confidence: 1.1 }, { ...threat, source: 'invented' }]) {
+      assert.equal(check(withThreat(value)), false, JSON.stringify(value));
+    }
   });
 
   // --------------------------------------------------------------------
@@ -296,7 +316,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.ok(newsStory.primarySource, 'news schema must declare primarySource');
     assert.ok(newsStory.threatLevel, 'news schema must declare threatLevel');
     assert.deepEqual(newsStory.sourceProvenance.required, [
-      'risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed',
+      'risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed', 'knownBiases', 'summary',
     ]);
     assert.deepEqual(newsStory.sourceProvenance.properties.risk.enum, [
       'low', 'medium', 'high', 'unknown',
@@ -305,6 +325,9 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       'wire', 'gov', 'intel', 'mainstream', 'market', 'tech', 'other', 'unknown',
     ]);
     assert.ok(newsStory.sourceProvenance.properties.stateAffiliated);
+    assert.deepEqual(newsStory.sourceProvenance.properties.knownBiases.items, { type: 'string' });
+    assert.match(newsStory.sourceProvenance.properties.knownBiases.description, /not assessed, not neutral/);
+    assert.equal(newsStory.sourceProvenance.properties.summary.type, 'string');
     assert.deepEqual(newsStory.countryCode.type, ['string', 'null']);
     assert.equal(newsStory.title, undefined, 'news schema must not advertise the drifted title field');
     assert.equal(newsStory.summary, undefined, 'news schema must not advertise the drifted summary field');
@@ -623,6 +646,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // `generate_forecasts` is verbatim too but declares `_apiPaths: []`, so it
   // has no OpenAPI operation to check against and cannot be listed here.
   const VERBATIM_PASSTHROUGH_TOOLS = [
+    'analyze_news_headlines',
     'analyze_situation',
     'get_chokepoint_dependencies',
     'get_country_coverage',
@@ -634,6 +658,9 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     'get_mineral_production',
     'get_resilience_indicators',
     'get_similar_events',
+    'get_bilateral_tariff',
+    'get_tariff_averages',
+    'get_us_import_duty',
     'list_five_factor_scorecards',
     'get_supply_vulnerabilities',
     'search_flight_prices_by_date',
@@ -651,16 +678,6 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     ['analyze_situation', {
       why: 'DeductSituationResponse is {analysis, model, provider}',
       names: ['deduction', 'confidence', 'signals', 'framework', 'generatedAt'],
-      types: [],
-    }],
-    ['search_flights', {
-      why: 'SearchGoogleFlightsResponse carries degraded/error/flights',
-      names: ['search_metadata', 'flights[].currency', 'flights[].airline', 'flights[].total_duration', 'flights[].segments'],
-      types: [],
-    }],
-    ['search_flight_prices_by_date', {
-      why: 'SearchGoogleDatesResponse carries dates/degraded/error',
-      names: ['prices', 'search_metadata'],
       types: [],
     }],
   ]);
@@ -899,10 +916,11 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // `provider` the response never had). Guarding only the literal-return form
   // would leave the second half of that fix unprotected.
   //
-  // `adds` lists the keys `_execute` layers on top; they are legitimately
+  // `adds` lists the keys `_execute` or MCP dispatch layers on top; they are legitimately
   // absent from the wire, so they are subtracted before comparing.
   const SPREAD_PASSTHROUGH_TOOLS = new Map([
-    ['get_country_brief', { adds: ['digestCoverage', 'groundingStories'] }],
+    ['open_news_dashboard', { adds: ['requestedView', 'panelRequest'] }],
+    ['get_country_brief', { adds: ['digestCoverage', 'groundingStories', 'sources[].sourceProvenance'] }],
   ]);
 
   for (const [toolName, { adds }] of SPREAD_PASSTHROUGH_TOOLS) {

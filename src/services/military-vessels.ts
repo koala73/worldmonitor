@@ -1,4 +1,5 @@
-import type { MilitaryVessel, MilitaryVesselCluster, MilitaryVesselType, MilitaryOperator } from '@/types';
+import type { MilitaryVessel, MilitaryVesselCluster, MilitaryVesselType } from '@/types';
+import type { BreakerDataState } from '@/utils/circuit-breaker';
 import { createCircuitBreaker } from '@/utils';
 import {
   KNOWN_NAVAL_VESSELS,
@@ -11,9 +12,10 @@ import {
   unregisterAisCallback,
   isAisConfigured,
   initAisStream,
+  getAisCandidateDataState,
   type AisPositionData,
 } from './maritime';
-import { fetchUSNIFleetReport, mergeUSNIWithAIS } from './usni-fleet';
+import { fetchUSNIFleetObservation, mergeUSNIWithAIS } from './usni-fleet';
 
 // In-memory vessel tracking
 const trackedVessels = new Map<string, MilitaryVessel>();
@@ -26,9 +28,13 @@ const MAX_MILITARY_VESSELS = 500;
 
 type VesselSnapshot = { vessels: MilitaryVessel[]; clusters: MilitaryVesselCluster[] };
 
-// Carriers first, then dark/unusual vessels, then recency. IDs make ties stable.
+// Carriers first, then hull-numbered ships (USNI roster and known naval
+// vessels), then dark/unusual vessels, then recency. Without the hull rank,
+// fresher AIS tugs and pilot boats displace roster warships dated to the last
+// USNI report. IDs make ties stable.
 function compareVesselPriority(a: MilitaryVessel, b: MilitaryVessel): number {
   return Number(b.vesselType === 'carrier') - Number(a.vesselType === 'carrier')
+    || Number(Boolean(b.hullNumber)) - Number(Boolean(a.hullNumber))
     || Number(Boolean(b.isDark || b.isInteresting)) - Number(Boolean(a.isDark || a.isInteresting))
     || (b.lastAisUpdate.getTime() || 0) - (a.lastAisUpdate.getTime() || 0)
     || a.id.localeCompare(b.id);
@@ -53,8 +59,21 @@ function limitVesselSnapshot(data: VesselSnapshot): VesselSnapshot {
   return { vessels, clusters };
 }
 
+// Snapshots persist for up to 24 h, so a returning user would keep seeing the
+// pre-#8611 'destroyer' claim long after the fix shipped. That claim is
+// identifiable: every destroyer this app can legitimately name comes from
+// KNOWN_NAVAL_VESSELS or the USNI merge, and both always carry a hull number,
+// while the old getVesselTypeFromAis(35) path never set one.
+function isStaleAisMilitaryOpsClaim(v: MilitaryVessel): boolean {
+  return v.vesselType === 'destroyer' && !v.hullNumber && v.aisShipType === 'Military Ops';
+}
+
 // Tracking state
 let isTracking = false;
+// Settles when the first AIS candidate snapshot has been processed (#8634).
+let firstCandidates: Promise<void> | null = null;
+// A slow relay must not hold back the USNI roster or the flights loaded beside it.
+const FIRST_CANDIDATES_WAIT_MS = 8_000;
 let messageCount = 0;
 let historyCleanupIntervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -69,6 +88,7 @@ const breaker = createCircuitBreaker<VesselSnapshot>({
     ...data,
     vessels: data.vessels.map((v: MilitaryVessel) => ({
       ...v,
+      vesselType: isStaleAisMilitaryOpsClaim(v) ? 'unknown' : v.vesselType,
       lastAisUpdate: v.lastAisUpdate instanceof Date ? v.lastAisUpdate : new Date(v.lastAisUpdate as unknown as string),
     })),
   }),
@@ -320,7 +340,11 @@ function getVesselTypeFromAis(shipType: number): MilitaryVesselType | undefined 
   // 50-59 = Special craft
   // 55 = Law enforcement
 
-  if (shipType === 35) return 'destroyer'; // Generic military
+  // 35 reports generic military ACTIVITY, not a hull class (#8611). Returning a
+  // class here labelled every unidentified ship a destroyer. 'unknown' still
+  // counts as a military signal for the tracking gate in processAisPosition,
+  // and aisShipType carries the supported 'Military Ops' fact to the UI.
+  if (shipType === 35) return 'unknown';
   if (shipType === 55) return 'patrol'; // Law enforcement/coast guard
   if (shipType >= 50 && shipType <= 59) return 'special';
 
@@ -353,28 +377,31 @@ function getNearbyChokepoint(lat: number, lon: number): string | undefined {
   return undefined;
 }
 
-/**
- * Process incoming AIS position report for military vessel detection
- * Called via callback from shared AIS stream
- */
-function processAisPosition(data: AisPositionData): void {
-  const mmsi = data.mmsi;
-  const name = data.name || '';
-  const lat = data.lat;
-  const lon = data.lon;
-  const now = Date.now();
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-
-  // Check if this is a military/government vessel
-  const mmsiAnalysis = analyzeMmsi(mmsi);
-  const knownVessel = matchKnownVessel(name);
+export function classifyMilitaryVessel(data: AisPositionData): MilitaryVessel | null {
+  if (!Number.isFinite(data.lat) || !Number.isFinite(data.lon)) return null;
+  const analysis = analyzeMmsi(data.mmsi);
+  const known = matchKnownVessel(data.name || '');
   const aisType = data.shipType ? getVesselTypeFromAis(data.shipType) : undefined;
+  if (!known && !analysis.isPotentialMilitary && !aisType) return null;
+  return {
+    id: `ais-${data.mmsi}`, mmsi: data.mmsi,
+    name: data.name || known?.name || `Vessel ${data.mmsi}`,
+    vesselType: known?.vesselType || aisType || 'unknown',
+    aisShipType: getAisShipTypeName(data.shipType), hullNumber: known?.hullNumber,
+    operator: known?.operator || 'other', operatorCountry: known?.country || analysis.country || 'Unknown',
+    lat: data.lat, lon: data.lon, heading: data.heading || data.course || 0,
+    speed: data.speed || 0, course: data.course,
+    lastAisUpdate: new Date(Date.now()), isDark: false,
+    confidence: known ? 'high' : analysis.isPotentialMilitary ? 'medium' : 'low',
+    isInteresting: false,
+  };
+}
 
-  // Determine if we should track this vessel
-  const isMilitary = knownVessel || mmsiAnalysis.isPotentialMilitary || aisType;
-
-  if (!isMilitary) return;
+function processAisPosition(data: AisPositionData): void {
+  const classified = classifyMilitaryVessel(data);
+  if (!classified) return;
+  const { mmsi, lat, lon } = data;
+  const now = Date.now();
 
   messageCount++;
 
@@ -395,15 +422,6 @@ function processAisPosition(data: AisPositionData): void {
   }
   history.lastUpdate = now;
 
-  // Determine operator
-  let operator: MilitaryOperator | 'other' = 'other';
-  let operatorCountry = mmsiAnalysis.country || 'Unknown';
-
-  if (knownVessel) {
-    operator = knownVessel.operator;
-    operatorCountry = knownVessel.country;
-  }
-
   // Check for AIS gap (dark ship detection)
   const existingVessel = trackedVessels.get(mmsi);
   let aisGapMinutes: number | undefined;
@@ -417,26 +435,13 @@ function processAisPosition(data: AisPositionData): void {
 
   // Create/update vessel record
   const vessel: MilitaryVessel = {
-    id: `ais-${mmsi}`,
-    mmsi,
-    name: name || (knownVessel?.name || `Vessel ${mmsi}`),
-    vesselType: knownVessel?.vesselType || aisType || 'unknown',
-    aisShipType: getAisShipTypeName(data.shipType),
-    hullNumber: knownVessel?.hullNumber,
-    operator,
-    operatorCountry,
-    lat,
-    lon,
-    heading: data.heading || data.course || 0,
-    speed: data.speed || 0,
-    course: data.course,
+    ...classified,
     lastAisUpdate: new Date(now),
     aisGapMinutes,
     isDark,
     nearChokepoint,
     nearBase,
     track: history.positions.length > 1 ? [...history.positions] : undefined,
-    confidence: knownVessel ? 'high' : mmsiAnalysis.isPotentialMilitary ? 'medium' : 'low',
     isInteresting: Boolean(nearHotspot?.priority === 'high' || isDark || nearChokepoint),
     note: isDark ? 'Returned after AIS silence' : (nearChokepoint ? `Near ${nearChokepoint}` : undefined),
   };
@@ -564,7 +569,7 @@ export function initMilitaryVesselStream(): void {
   breaker.clearMemoryCache();
 
   // Register callback with shared AIS stream
-  registerAisCallback(processAisPosition);
+  firstCandidates = registerAisCallback(processAisPosition);
   isTracking = true;
 
   // Ensure AIS stream is running
@@ -581,6 +586,7 @@ export function disconnectMilitaryVesselStream(): void {
 
   unregisterAisCallback(processAisPosition);
   isTracking = false;
+  firstCandidates = null;
 }
 
 /**
@@ -594,16 +600,40 @@ export function getMilitaryVesselStatus(): { connected: boolean; vessels: number
   };
 }
 
+async function awaitFirstCandidates(): Promise<void> {
+  const pending = firstCandidates;
+  if (!pending) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    pending.catch(() => {}),
+    new Promise<void>((resolve) => { timer = setTimeout(resolve, FIRST_CANDIDATES_WAIT_MS); }),
+  ]);
+  clearTimeout(timer);
+  if (firstCandidates === pending) firstCandidates = null;
+}
+
 /**
  * Main function to get military vessels
  */
-export async function fetchMilitaryVessels(): Promise<VesselSnapshot> {
-
-  return breaker.execute(async () => {
+export async function fetchMilitaryVessels(): Promise<VesselSnapshot & {
+  dataState: BreakerDataState;
+  negativeEvidenceConfirmed: boolean;
+  coverageNotes: string[];
+}> {
+  const fallback: VesselSnapshot = { vessels: [], clusters: [] };
+  let completed: VesselSnapshot | undefined;
+  let completedState: BreakerDataState | undefined;
+  let negativeEvidenceConfirmed = false;
+  let coverageNotes: string[] = [];
+  const result = await breaker.execute(async () => {
     // Initialize stream if not running
     if (!isTracking && isAisConfigured()) {
       initMilitaryVesselStream();
     }
+    // Start the roster fetch before the candidate wait so the two overlap.
+    const usniPending = fetchUSNIFleetObservation();
+    usniPending.catch(() => {}); // Rejection is handled by the merge below.
+    await awaitFirstCandidates();
 
     // Clean up old data and take the current tracking snapshot. The breaker
     // owns the single 30-second refresh cadence for this payload.
@@ -613,19 +643,44 @@ export async function fetchMilitaryVessels(): Promise<VesselSnapshot> {
     // Generate AIS-only clusters
     const aisClusters = clusterVessels(vessels);
 
-    // Merge with USNI Fleet Tracker data (non-blocking)
+    const candidateState = getAisCandidateDataState();
+    coverageNotes = [candidateState.mode === 'live'
+      ? 'AIS counts use the current relay candidate sample. They are bounded observations, not global coverage.'
+      : 'Current AIS candidate coverage is unavailable or cached. Retained positive positions are previous observations.'];
+    let sample: VesselSnapshot = { vessels, clusters: aisClusters };
+    let rosterLive = false;
     try {
-      const usniReport = await fetchUSNIFleetReport();
-      if (usniReport && usniReport.vessels.length > 0) {
-        const merged = mergeUSNIWithAIS(vessels, usniReport, aisClusters);
-        return limitVesselSnapshot(merged);
+      const { report, dataState } = await usniPending;
+      rosterLive = report !== null && dataState.mode === 'live' && !dataState.offline;
+      negativeEvidenceConfirmed = candidateState.mode === 'live' && !candidateState.offline
+        && dataState.mode === 'live' && !dataState.offline && report !== null;
+      coverageNotes.push(report
+        ? `USNI fleet report ${report.articleDate}. Regions and homeports are approximate locations, not live positions.${dataState.mode !== 'live' ? ' The roster is cached; it cannot confirm current absence.' : ''}`
+        : 'USNI fleet roster unavailable; current absence is unconfirmed.');
+      if (report && report.vessels.length > 0) {
+        sample = limitVesselSnapshot(mergeUSNIWithAIS(vessels, report, aisClusters));
       }
     } catch (e) {
       console.warn('[Military Vessels] USNI merge failed, using AIS only:', (e as Error).message);
+      coverageNotes.push('USNI fleet roster unavailable; current absence is unconfirmed.');
     }
 
-    return { vessels, clusters: aisClusters };
-  }, { vessels: [], clusters: [] });
+    completed = sample;
+    completedState = candidateState.mode === 'live' || rosterLive
+      ? { mode: 'live', timestamp: Date.now(), offline: false }
+      : sample.vessels.length > 0
+        ? { mode: 'cached', timestamp: null, offline: candidateState.offline }
+        : { mode: 'unavailable', timestamp: null, offline: candidateState.offline };
+    return completed;
+  }, fallback);
+  const ownResult = result === completed;
+  const dataState: BreakerDataState = result === fallback
+    ? { mode: 'unavailable', timestamp: null, offline: breaker.getDataState().offline }
+    : ownResult && completedState
+      ? completedState
+      : { mode: 'cached', timestamp: null, offline: breaker.getDataState().offline };
+  return { ...result, dataState, negativeEvidenceConfirmed: ownResult && negativeEvidenceConfirmed,
+    coverageNotes: ownResult ? coverageNotes : ['Military vessel sample is unavailable or cached; current absence is unconfirmed.'] };
 }
 
 /**

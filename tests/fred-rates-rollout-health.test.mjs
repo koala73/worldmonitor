@@ -1,3 +1,4 @@
+import { decodeHealthPipeline } from './helpers/health-pipeline-fixture.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -242,7 +243,7 @@ function installHealthPipelineMock(recordCount, {
     return meta;
   };
   globalThis.fetch = async (_url, init) => {
-    const commands = JSON.parse(init.body);
+    const { commands, encodeResults } = decodeHealthPipeline(init.body);
     const isSweep = commands.some(([op, key]) => op === 'SET' && key === FRED_RATES_ROLLOUT_DEADLINE_KEY);
     if (isSweep) sweepCommands = commands;
 
@@ -279,7 +280,7 @@ function installHealthPipelineMock(recordCount, {
       return { result: 'OK' };
     });
 
-    return new Response(JSON.stringify(results), {
+    return new Response(JSON.stringify(encodeResults(results)), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -515,7 +516,7 @@ test('seed-health reports partial at 18 FRED records and OK at all 24 records', 
   try {
     for (const [recordCount, expectedStatus] of [[18, 'coverage_partial'], [24, 'ok']]) {
       globalThis.fetch = async (_url, init) => {
-        const commands = JSON.parse(init.body);
+        const { commands, encodeResults } = decodeHealthPipeline(init.body);
         const results = commands.map(([op, key]) => {
           if (op === 'EXISTS') return { result: 0 };
           if (op === 'GET' && key === SEED_META[NAME].key) {
@@ -526,7 +527,7 @@ test('seed-health reports partial at 18 FRED records and OK at all 24 records', 
           }
           return { result: 'OK' };
         });
-        return new Response(JSON.stringify(results), {
+        return new Response(JSON.stringify(encodeResults(results)), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });

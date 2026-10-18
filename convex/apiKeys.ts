@@ -1,5 +1,6 @@
+import { assertAccountWritable } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
-import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireUserId, resolveUserId } from "./lib/auth";
 import { activeAccountForOwner } from "./companyMonitoring/_shared";
 import { ensureActiveAccount } from "./companyMonitoring/accounts";
@@ -39,6 +40,24 @@ function normalizeCompanyMonitoringScopes(scopes: string[] | undefined) {
  * Requires an active entitlement with apiAccess=true (API_STARTER+ plans).
  * Pro plans (tier 1) have apiAccess=false and cannot create keys.
  */
+/**
+ * Source columns for a new key: the owner's sign-up source, stamped on the
+ * users row when the account was created. Read server-side so a key is
+ * credited to the agent link that brought its owner in, never to a ref some
+ * other account left in the same browser.
+ */
+async function keySourceFields(
+  ctx: MutationCtx,
+  userId: string,
+): Promise<{ sourceRef?: string; source?: string }> {
+  const user = await ctx.db
+    .query("users")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .unique();
+  if (!user?.signupRef) return {};
+  return { sourceRef: user.signupRef, ...(user.signupSource ? { source: user.signupSource } : {}) };
+}
+
 export const createApiKey = mutation({
   args: {
     name: v.string(),
@@ -48,6 +67,7 @@ export const createApiKey = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, userId);
 
     // Entitlement gate: only users with apiAccess may create API keys.
     // This is catalog-driven — Pro (tier 1) has apiAccess=false;
@@ -126,6 +146,7 @@ export const createApiKey = mutation({
       scopes,
       companyMonitoringAccountId: companyMonitoringAccount?.logicalAccountId,
       createdAt: Date.now(),
+      ...(await keySourceFields(ctx, userId)),
     });
 
     return {

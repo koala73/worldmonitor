@@ -31,16 +31,26 @@ process.env.VITE_SENTRY_DSN = 'https://testpublickey@sentry.test/12345';
 process.env.WIDGET_AGENT_KEY = 'server-widget-key';
 process.env.PRO_WIDGET_KEY = 'server-pro-key';
 process.env.WORLDMONITOR_VALID_KEYS = 'browser-test-key';
-// Tight health budget so the unresponsive-relay case resolves in milliseconds.
-// Only the GET path has a timeout; see the route for why POST cannot.
+// Tight health and connect budgets so the unresponsive-relay cases resolve
+// in milliseconds. POST only aborts until response headers; the SSE body is
+// not on this timer.
 process.env.WIDGET_AGENT_HEALTH_TIMEOUT_MS = '50';
+process.env.WIDGET_AGENT_CONNECT_TIMEOUT_MS = '50';
 
 const ENVELOPE_URL_PREFIX = 'https://sentry.test/api/12345/envelope';
 const RELAY_POST_URL = 'https://proxy.worldmonitor.app/widget-agent';
 const RELAY_HEALTH_URL = 'https://proxy.worldmonitor.app/widget-agent/health';
 const ORIGIN = 'https://www.worldmonitor.app';
 
-const { default: handler } = await import('../api/widget-agent.ts');
+const { default: handler, __setWidgetAgentSpendDepsForTests } = await import('../api/widget-agent.ts');
+__setWidgetAgentSpendDepsForTests({
+  checkRateLimit: async () => null,
+  runRedisPipeline: async (commands) => {
+    const op = String(commands[0]?.[0] ?? '');
+    if (op === 'DECR') return [{ result: 0 }];
+    return [{ result: 1 }, { result: 1 }];
+  },
+});
 
 const originalFetch = globalThis.fetch;
 after(() => {
@@ -170,11 +180,9 @@ describe('widget-agent relay failure boundary (#7204)', () => {
     assert.equal(envelopeHits(), 1);
   });
 
-  // The health check is the one relay call that still carries a timeout, and it
-  // is the only place an abort signal is wired at all — so without this case
-  // that budget ships with no coverage. The explicit per-test timeout is the
-  // point: if the signal is ever dropped, the mock never settles, and this must
-  // fail on its own rather than hanging the whole suite forever.
+  // Health GET and the POST connect budget both abort. The explicit per-test
+  // timeout is the point: if the signal is ever dropped, the mock never
+  // settles, and this must fail on its own rather than hanging the suite.
   it('answers an unresponsive relay health GET with a CORS-correct 503', { timeout: 5_000 }, async () => {
     const { envelopeHits } = installFetch({ kind: 'unresponsive' });
 
@@ -183,6 +191,16 @@ describe('widget-agent relay failure boundary (#7204)', () => {
     assert.equal(res.status, 503);
     assert.equal(res.headers.get('Access-Control-Allow-Origin'), ORIGIN);
     assert.equal(envelopeHits(), 1, 'a health-check timeout is a real relay outage — it must reach Sentry');
+  });
+
+  it('answers an unresponsive relay POST with a CORS-correct 503', { timeout: 5_000 }, async () => {
+    const { envelopeHits } = installFetch({ kind: 'unresponsive' });
+
+    const res = await run(postRequest());
+
+    assert.equal(res.status, 503, 'a connect timeout is transient — never 403 or an opaque throw');
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), ORIGIN);
+    assert.equal(envelopeHits(), 1, 'a POST connect timeout is a real relay outage — it must reach Sentry');
   });
 
   it('streams the SSE success path through untouched (negative control: zero Sentry hits)', async () => {

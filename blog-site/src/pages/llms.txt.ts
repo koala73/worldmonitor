@@ -1,6 +1,7 @@
 import { getCollection } from 'astro:content';
 
 export async function GET() {
+  const guides = await getCollection('guides');
   const posts = (await getCollection('blog')).sort(
     (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
   );
@@ -20,6 +21,11 @@ export async function GET() {
       `- [${post.data.title}](https://www.worldmonitor.app/blog/posts/${post.id}/): ${post.data.description}`,
       `  Published: ${post.data.pubDate.toISOString().slice(0, 10)}${post.data.modifiedDate ? `; updated: ${post.data.modifiedDate.toISOString().slice(0, 10)}` : ''}`,
     ]),
+    '',
+    '## Comparisons and buying guides',
+    '',
+    '- [All buying guides](https://www.worldmonitor.app/blog/guides/)',
+    ...guides.map(guide => `- [${guide.data.title}](https://www.worldmonitor.app/blog/${guide.id}/): ${guide.data.description}`),
     '',
     '## Related machine-readable resources',
     '',

@@ -6,7 +6,7 @@ keywords: "OSINT tools free, open source intelligence software, OSINT dashboard,
 audience: "OSINT researchers, security analysts, journalists, hobbyist investigators"
 heroImage: "/blog/images/blog/osint-for-everyone-open-source-intelligence-democratized.jpg"
 pubDate: "2026-02-17"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-09-20"
 ---
 
 Open source intelligence used to require a dozen subscriptions, custom scrapers, and years of domain expertise. A professional OSINT analyst's browser might have 50+ tabs open at any given time: flight trackers, ship trackers, earthquake monitors, conflict databases, Telegram channels, RSS readers, and satellite imagery viewers.
@@ -55,6 +55,8 @@ Three of World Monitor's most powerful layers bring live tracking to your screen
 
 Military and civilian aircraft positions update in real time via OpenSky and Wingbits enrichment. The system automatically identifies military aircraft and displays their callsigns, types, and flight paths on the map.
 
+For source coverage, observation timing, and historical-data limits, see [military flight tracking for OSINT](/blog/posts/military-flight-tracking-osint/).
+
 ### AIS Maritime Monitoring
 
 Ship positions from AISStream.io are merged with **USNI Fleet Reports**, giving you both transponder data and editorial context from the U.S. Naval Institute. This combination reveals the complete order-of-battle for major naval deployments, something that usually requires a classified briefing.
@@ -100,7 +102,7 @@ World Monitor doesn't just show you where things are happening. It tells you whe
 
 - News activity (35%)
 - CII score (25%)
-- Geographic convergence (25%): when 3+ event types co-occur within the same 1-degree grid cell in 24 hours
+- [Geographic convergence](https://www.worldmonitor.app/docs/geographic-convergence) (25%): when 3+ event types co-occur within the same 1-degree grid cell in 24 hours
 - Military indicators (15%)
 
 When a region's escalation score spikes, it surfaces in the Strategic Risk panel before traditional media picks up the story.
@@ -126,7 +128,7 @@ No account needed. No API keys required for the web version. For local AI analys
 
 Closed-source intelligence tools are black boxes. You can't verify how they score threats, where their data comes from, or whether their algorithms have blind spots.
 
-World Monitor's AGPL-3.0 license means every scoring algorithm, every data pipeline, and every AI prompt is open for inspection. Security researchers can audit it. Academics can cite it. Developers can extend it. And anyone can self-host it for complete operational security.
+World Monitor's AGPL-3.0 license means every [scoring algorithm](https://www.worldmonitor.app/docs/algorithms), every data pipeline, and every AI prompt is open for inspection. Security researchers can audit it. Academics can cite it. Developers can extend it. And anyone can self-host it for complete operational security.
 
 ## Frequently Asked Questions
 

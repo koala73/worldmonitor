@@ -36,6 +36,7 @@ function emitAlert(overrides: Partial<BreakingAlert> = {}): BreakingAlert {
     threatLevel: 'critical',
     timestamp: new Date(),
     origin: 'rss_alert',
+    corroboration: { state: 'corroborated', publishers: 2 },
     ...overrides,
   };
 

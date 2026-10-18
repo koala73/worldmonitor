@@ -27,6 +27,7 @@
       "scripts/_seed-utils.mjs",
       "scripts/_wb-tech-readiness-projection.cjs",
       "scripts/_weather-alert-select.mjs",
+      "scripts/_widget-data-policy.cjs",
       "scripts/_widget-response-parser.cjs",
       "scripts/_yahoo-sector-valuations.cjs",
       "scripts/ais-relay.cjs",
@@ -38,8 +39,11 @@
       "scripts/lib/jev-classify-relay.cjs",
       "scripts/lib/llm-model-policy.cjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/notification-webhook-ssrf.cjs",
       "scripts/lib/poll-generation-guard.cjs",
+      "scripts/lib/publisher-link-relay-gate.cjs",
       "scripts/lib/saudi-civil-defense-alerts.cjs",
+      "scripts/lib/chokepoint-disruption-alerts.cjs",
       "scripts/lib/usni-fleet-parser.cjs",
       "scripts/lib/x-news-accounts.cjs",
       "scripts/lib/x-post-budget.cjs",
@@ -49,9 +53,16 @@
       "scripts/seed-chokepoint-flows.mjs",
       "scripts/seed-climate-news.mjs",
       "scripts/seed-ember-electricity.mjs",
+      "scripts/seed-yield-curve-au.mjs",
+      "scripts/seed-yield-curves-shared.mjs",
+      "scripts/_content-age-helpers.mjs",
+      "scripts/_upstash-rest.mjs",
+      "scripts/lib/yield-curves/model.mjs",
+      "scripts/lib/yield-curves/rba.mjs",
       "scripts/shared/ai-tokens.json",
       "scripts/shared/closed-market-equity-maintenance.cjs",
       "scripts/shared/commodities.json",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-name-to-iso2.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso2-to-region.json",
@@ -63,7 +74,10 @@
       "scripts/shared/market-quote-refresh.cjs",
       "scripts/shared/market-seed-universe.cjs",
       "scripts/shared/notification-dedup.cjs",
+      "scripts/shared/notification-link-suppression.cjs",
+      "scripts/shared/notify-fields.cjs",
       "scripts/shared/other-tokens.json",
+      "scripts/shared/pizzint-history.cjs",
       "scripts/shared/product-catalog.generated.json",
       "scripts/shared/rss-allowed-domains.cjs",
       "scripts/shared/rss-allowed-domains.json",
@@ -76,6 +90,7 @@
       "scripts/shared/ucdp-candidate.cjs",
       "scripts/source-attribution.mjs",
       "public/.well-known/mcp/server-card.json",
+      "shared/compare-and-delete-script.cjs",
       "shared/source-attribution-manifest.json",
       "src/components/**/*.ts",
       "src/config/feeds.ts",
@@ -84,7 +99,10 @@
       "src/locales/*.json",
       "src/services/data-freshness.ts",
       "shared/ai-tokens.json",
+      "shared/ais-watchdog.js",
       "shared/ais-vessel-type.js",
+      "shared/chokepoint-transit-tracker.js",
+      "shared/chokepoint-transit-window.js",
       "shared/chokepoint-threat-levels.js",
       "shared/chokepoint-traffic-anomaly.js",
       "shared/commodities.json",
@@ -102,7 +120,8 @@
       "shared/x-account-source-tiers.json",
       "shared/stablecoin-classifier.cjs",
       "shared/stablecoins.json",
-      "shared/stocks.json"
+      "shared/stocks.json",
+      "scripts/shared/pizzint-location.cjs"
     ],
     "documentedAt": "Dockerfile.relay"
   },
@@ -140,23 +159,98 @@
       "scripts/lib/notification-webhook-ssrf.cjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
-      "scripts/package.json"
+      "scripts/package.json",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "cronSchedule": null,
     "documentedAt": "scripts/company-monitoring-worker.mjs (header docblock declares rootDirectory: scripts); provisioned in Railway production 2026-08-12"
+  },
+  {
+    "entry": "scripts/shipping-webhook-worker.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "shipping-webhook-worker",
+    "startCommand": "node shipping-webhook-worker.mjs",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      "WORLDMONITOR_RELAY_KEY"
+    ],
+    "watchPatterns": [
+      "scripts/_cii-risk-cache-keys.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/main-module.mjs",
+      "scripts/lib/notification-webhook-ssrf.cjs",
+      "scripts/lib/shipping-webhook-delivery.mjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/event-triggers.json",
+      "scripts/shipping-webhook-worker.mjs"
+    ],
+    "cronSchedule": null,
+    "documentedAt": "scripts/shipping-webhook-worker.mjs (header docblock declares rootDirectory: scripts); provisioned in Railway production 2026-10-17"
+  },
+  {
+    "entry": "scripts/notification-relay.cjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "notification-relay",
+    "startCommand": "npm run notification-relay",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      "CONVEX_URL",
+      "CONVEX_NOTIFICATION_RELAY_SECRET"
+    ],
+    "watchPatterns": [
+      "scripts/lib/corroboration-text.cjs",
+      "scripts/lib/crypto.cjs",
+      "scripts/lib/email-unsubscribe.cjs",
+      "scripts/lib/llm-chain.cjs",
+      "scripts/lib/llm-model-policy.cjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/notification-teams.cjs",
+      "scripts/lib/notification-webhook-signing.cjs",
+      "scripts/lib/notification-webhook-ssrf.cjs",
+      "scripts/lib/quiet-hours.cjs",
+      "scripts/lib/resend-send.cjs",
+      "scripts/lib/user-context.cjs",
+      "scripts/nixpacks.toml",
+      "scripts/notification-relay.cjs",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/shared/country-name-to-iso2.cjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/iso2-to-region.json",
+      "scripts/shared/notification-dedup.cjs",
+      "scripts/shared/notification-link-suppression.cjs",
+      "scripts/shared/notify-fields.cjs"
+    ],
+    "cronSchedule": null,
+    "documentedAt": "scripts/package.json (\"notification-relay\" script); provisioned in Railway production as service aa37bd8e-c28d-4e9b-9d1e-0961f1b63d97 (#9265)"
   },
   {
     "entry": "scripts/process-deep-forecast-tasks.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "deep-forecast-worker",
     "watchPatterns": [
+      "scripts/_bet-templates-macro.mjs",
       "scripts/_bet-templates-markets-classify.mjs",
       "scripts/_cii-risk-cache-keys.mjs",
       "scripts/_ema-threat-engine.mjs",
+      "scripts/_forecast-calibration.mjs",
       "scripts/_forecast-dashboard.mjs",
       "scripts/_forecast-funnel.mjs",
+      "scripts/_forecast-resolution-eval.mjs",
       "scripts/_forecast-resolution.mjs",
       "scripts/_forecast-scorecard.mjs",
+      "scripts/_forecast-subject.mjs",
+      "scripts/_fred-series.mjs",
+      "scripts/_gps-maritime-regions.mjs",
       "scripts/_llm-json.mjs",
       "scripts/_llm-model-timeouts.mjs",
       "scripts/lib/llm-model-policy.cjs",
@@ -178,7 +272,11 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/process-deep-forecast-tasks.mjs",
-      "scripts/seed-forecasts.mjs"
+      "scripts/seed-forecasts.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/judged-subject-terms.json",
+      "shared/country-names.json"
     ],
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
   },
@@ -187,6 +285,10 @@
     "deployMode": "dockerfile",
     "dockerfile": "Dockerfile.digest-notifications",
     "service": "digest-notifications",
+    "requiredEnv": [
+      "USAGE_TELEMETRY",
+      "AXIOM_API_TOKEN"
+    ],
     "watchPatterns": [
       ".dockerignore",
       "Dockerfile.digest-notifications",
@@ -207,22 +309,30 @@
       "scripts/lib/brief-replay-constants.mjs",
       "scripts/lib/brief-synthesis-reuse.mjs",
       "scripts/lib/brief-url-sign.mjs",
+      "scripts/lib/corroboration-text.cjs",
       "scripts/lib/crypto.cjs",
       "scripts/lib/digest-cooldown-config.mjs",
       "scripts/lib/digest-cooldown-decision.mjs",
       "scripts/lib/digest-cooldown-shadow-log.mjs",
+      "scripts/lib/digest-corroboration.mjs",
       "scripts/lib/digest-delivered-log.mjs",
       "scripts/lib/digest-delivery-plan.mjs",
+      "scripts/lib/digest-email-html.mjs",
       "scripts/lib/digest-only-user.mjs",
       "scripts/lib/digest-opinion-track-filter.mjs",
       "scripts/lib/digest-orchestration-helpers.mjs",
       "scripts/lib/email-summary-html.mjs",
+      "scripts/lib/email-unsubscribe.cjs",
       "scripts/lib/entity-gazetteer.mjs",
       "scripts/lib/followed-countries-fetch.cjs",
       "scripts/lib/llm-chain.cjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/notification-teams.cjs",
       "scripts/lib/notification-webhook-ssrf.cjs",
+      "scripts/lib/notification-webhook-signing.cjs",
+      "scripts/lib/publisher-link-relay-gate.cjs",
       "scripts/lib/resend-from.cjs",
+      "scripts/lib/resend-send.cjs",
       "scripts/lib/story-track-batch-reader.mjs",
       "scripts/lib/user-context.cjs",
       "scripts/lib/watchlist-story-events.mjs",
@@ -233,6 +343,7 @@
       "scripts/shared/brief-llm-core.js",
       "scripts/shared/diplomacy-keywords.json",
       "scripts/shared/notification-dedup.cjs",
+      "scripts/shared/notify-fields.cjs",
       "scripts/shared/publisher-families.js",
       "scripts/shared/stocks.json",
       "server/_shared/brief-render.d.ts",
@@ -305,6 +416,7 @@
       "scripts/lib/llm-telemetry.cjs",
       "scripts/seed-bundle-portwatch-port-activity.mjs",
       "scripts/seed-portwatch-port-activity.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
       "shared/country-names.json",
@@ -326,7 +438,8 @@
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
-      "scripts/scenario-worker.mjs"
+      "scripts/scenario-worker.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "scripts/scenario-worker.mjs (header docblock declares rootDirectory: scripts)"
   },
@@ -343,7 +456,8 @@
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
-      "scripts/seed-aaii-sentiment.mjs"
+      "scripts/seed-aaii-sentiment.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
@@ -380,6 +494,7 @@
       "scripts/seed-military-bases.mjs",
       "scripts/seed-mineral-production.mjs",
       "scripts/seed-supply-vulnerability.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-name-to-iso2.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
@@ -402,7 +517,8 @@
       "UPSTASH_REDIS_REST_URL",
       "UPSTASH_REDIS_REST_TOKEN",
       "MANITOBA_511_KEY",
-      "ALBERTA_511_KEY"
+      "ALBERTA_511_KEY",
+      "ONTARIO_511_KEY"
     ],
     "watchPatterns": [
       "scripts/_511-rate-limit.mjs",
@@ -442,6 +558,7 @@
       "scripts/seed-tps-mci.mjs",
       "scripts/seed-ttc-alerts.mjs",
       "scripts/seed-viarail-live.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/toronto-safety.mjs",
       "scripts/viarail-live.mjs"
     ],
@@ -455,6 +572,7 @@
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
       "scripts/_climate-zones.mjs",
+      "scripts/_natural-events-dashboard.mjs",
       "scripts/_content-age-helpers.mjs",
       "scripts/_open-meteo-archive.mjs",
       "scripts/_proxy-utils.cjs",
@@ -462,6 +580,7 @@
       "scripts/_seed-envelope-source.mjs",
       "scripts/_seed-utils.mjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/natural/source-request-diagnostics.mjs",
       "scripts/natural/western-pacific-cyclones.mjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
@@ -473,13 +592,16 @@
       "scripts/seed-climate-zone-normals.mjs",
       "scripts/seed-co2-monitoring.mjs",
       "scripts/seed-natural-events.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-bboxes.json",
       "scripts/shared/country-names.json",
       "scripts/shared/geo-extract.mjs",
       "scripts/shared/iso3-to-iso2.json",
       "shared/country-bboxes.json",
       "shared/country-names.json",
-      "shared/iso3-to-iso2.json"
+      "shared/iso3-to-iso2.json",
+      "scripts/data/country-centroids.json",
+      "scripts/lib/country-centroid.mjs"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-6-seed-bundle-climate"
   },
@@ -500,6 +622,7 @@
       "scripts/_country-resolver.mjs",
       "scripts/_llm-json.mjs",
       "scripts/_llm-model-timeouts.mjs",
+      "scripts/_market-alert-ledger.mjs",
       "scripts/lib/llm-model-policy.cjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
@@ -514,6 +637,7 @@
       "scripts/lib/brief-embedding.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/physical-divergence.mjs",
+      "scripts/lib/story-track-batch-reader.mjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
@@ -541,15 +665,25 @@
       "scripts/seed-correlation.mjs",
       "scripts/seed-cross-source-signals.mjs",
       "scripts/seed-cross-strait-activity.mjs",
+      "scripts/seed-market-alert-ledger.mjs",
       "scripts/seed-regional-snapshots.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/correlation-runtime-mode.js",
       "scripts/shared/country-names.json",
+      "scripts/shared/entity-extraction-core.js",
+      "scripts/shared/entity-registry.js",
       "scripts/shared/geography.js",
       "scripts/shared/iso2-to-region.json",
       "scripts/shared/iso3-to-iso2.json",
+      "scripts/shared/market-alert-core.js",
+      "scripts/shared/news-clustering-core.js",
       "scripts/shared/notification-dedup.cjs",
       "scripts/shared/physical-divergence-contract.js",
       "scripts/shared/physical-divergence-staleness.js",
+      "scripts/shared/publisher-families.js",
+      "scripts/shared/source-tiers.json",
+      "scripts/shared/syndication.js",
+      "scripts/shared/text-analysis-core.js",
       "shared/country-names.json",
       "shared/iso3-to-iso2.json"
     ],
@@ -575,7 +709,8 @@
       "scripts/seed-ecb-fx-rates.mjs",
       "scripts/seed-ecb-short-rates.mjs",
       "scripts/seed-fsi-eu.mjs",
-      "scripts/seed-yield-curve-eu.mjs"
+      "scripts/seed-yield-curve-eu.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-1-seed-bundle-ecb-eu"
   },
@@ -621,6 +756,7 @@
       "scripts/seed-pipelines-oil.mjs",
       "scripts/seed-spr-policies.mjs",
       "scripts/seed-storage-facilities.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
       "scripts/shared/jodi-content-age.mjs",
@@ -639,6 +775,7 @@
       "scripts/_bundle-runner.mjs",
       "scripts/_china-macro-contract.mjs",
       "scripts/_china-news-coverage.mjs",
+      "scripts/_content-age-helpers.mjs",
       "scripts/_disease-outbreaks-helpers.mjs",
       "scripts/_html-entities.mjs",
       "scripts/_proxy-utils.cjs",
@@ -648,6 +785,10 @@
       "scripts/_upstash-rest.mjs",
       "scripts/china-coverage-health.mjs",
       "scripts/china-coverage-manifest.mjs",
+      "scripts/data/country-centroids.json",
+      "scripts/data/dtm-admin1-points.json",
+      "scripts/data/outbreak-places.json",
+      "scripts/lib/country-centroid.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/main-module.mjs",
       "scripts/nixpacks.toml",
@@ -655,12 +796,17 @@
       "scripts/package.json",
       "scripts/seed-bundle-health.mjs",
       "scripts/seed-china-coverage-health.mjs",
+      "scripts/seed-cross-border-arrivals.mjs",
       "scripts/seed-disease-outbreaks.mjs",
       "scripts/seed-displacement-summary.mjs",
+      "scripts/seed-dtm-displacement.mjs",
       "scripts/seed-health-air-quality.mjs",
       "scripts/seed-vpd-tracker.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-name-to-iso2.cjs",
       "scripts/shared/country-names.json",
-      "scripts/shared/geo-extract.mjs"
+      "scripts/shared/geo-extract.mjs",
+      "scripts/shared/iso3-to-iso2.json"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-9-seed-bundle-health"
   },
@@ -682,6 +828,7 @@
       "scripts/_seed-utils.mjs",
       "scripts/_upstash-rest.mjs",
       "scripts/_wb-country-dict-content-age-helpers.mjs",
+      "scripts/_world-cpi-shared.mjs",
       "scripts/china-macro/adapters.mjs",
       "scripts/china-macro/calendar.mjs",
       "scripts/china-macro/snapshot-builder.mjs",
@@ -718,17 +865,68 @@
       "scripts/seed-national-debt.mjs",
       "scripts/seed-physical-premiums.mjs",
       "scripts/seed-statcan-wds.mjs",
+      "scripts/seed-us-cpi.mjs",
+      "scripts/seed-us-interest-rates.mjs",
+      "scripts/seed-us-treasury-par-yield.mjs",
       "scripts/seed-wb-external-debt.mjs",
+      "scripts/seed-world-cpi-abs.mjs",
+      "scripts/seed-world-cpi-estat.mjs",
+      "scripts/seed-world-cpi-eurostat.mjs",
+      "scripts/seed-world-cpi-imf.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso2-to-iso3.json",
       "scripts/shared/iso3-to-iso2.json",
       "scripts/shared/physical-divergence-contract.js",
       "scripts/shared/physical-divergence-staleness.js",
       "scripts/shared/sovereign-status.json",
-      "shared/iso2-to-iso3.json"
+      "shared/iso2-to-iso3.json",
+      "shared/iso3-to-iso2.json"
     ],
     "cronSchedule": "0 8,9 * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-8-seed-bundle-macro"
+  },
+  {
+    "entry": "scripts/seed-bundle-yield-curves.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-bundle-yield-curves",
+    "watchPatterns": [
+      "scripts/_bundle-runner.mjs",
+      "scripts/_content-age-helpers.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/_upstash-rest.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/yield-curves/boc.mjs",
+      "scripts/lib/yield-curves/boe.mjs",
+      "scripts/lib/yield-curves/bundesbank.mjs",
+      "scripts/lib/yield-curves/jgb.mjs",
+      "scripts/lib/yield-curves/model.mjs",
+      "scripts/lib/yield-curves/norges.mjs",
+      "scripts/lib/yield-curves/oecd-lt.mjs",
+      "scripts/lib/yield-curves/rba.mjs",
+      "scripts/lib/yield-curves/riksbank.mjs",
+      "scripts/lib/yield-curves/snb.mjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/seed-bundle-yield-curves.mjs",
+      "scripts/seed-oecd-lt-rates.mjs",
+      "scripts/seed-yield-curve-au.mjs",
+      "scripts/seed-yield-curve-ca.mjs",
+      "scripts/seed-yield-curve-ch.mjs",
+      "scripts/seed-yield-curve-de.mjs",
+      "scripts/seed-yield-curve-gb.mjs",
+      "scripts/seed-yield-curve-jp.mjs",
+      "scripts/seed-yield-curve-no.mjs",
+      "scripts/seed-yield-curve-se.mjs",
+      "scripts/seed-yield-curves-shared.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
+    ],
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-12-seed-bundle-yield-curves",
+    "cronSchedule": "0 10 * * *"
   },
   {
     "entry": "scripts/seed-bundle-market-backup.mjs",
@@ -769,6 +967,7 @@
       "scripts/seed-token-panels.mjs",
       "scripts/shared/ai-tokens.json",
       "scripts/shared/china-corporate-disclosure-policy.js",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/crypto.json",
       "scripts/shared/defi-tokens.json",
       "scripts/shared/etf-flow-provider.mjs",
@@ -805,7 +1004,8 @@
       "scripts/seed-portwatch.mjs",
       "scripts/package.json",
       "scripts/package-lock.json",
-      "scripts/nixpacks.toml"
+      "scripts/nixpacks.toml",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "cronSchedule": "0 */1 * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-2-seed-bundle-portwatch"
@@ -833,6 +1033,7 @@
       "scripts/lib/llm-telemetry.cjs",
       "scripts/seed-bundle-portwatch-port-activity.mjs",
       "scripts/seed-portwatch-port-activity.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
       "shared/country-names.json",
@@ -881,6 +1082,7 @@
       "scripts/seed-bundle-regional.mjs",
       "scripts/seed-regional-briefs.mjs",
       "scripts/seed-regional-snapshots.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/geography.js",
       "scripts/shared/iso2-to-region.json",
       "scripts/shared/iso3-to-iso2.json",
@@ -913,8 +1115,10 @@
       "scripts/seed-ucdp-events.mjs",
       "scripts/seed-usa-spending.mjs",
       "scripts/seed-wb-indicators.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/iso3-to-iso2.json",
-      "scripts/shared/ucdp-candidate.cjs"
+      "scripts/shared/ucdp-candidate.cjs",
+      "scripts/shared/world-bank-rpc-cache.js"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-11-seed-bundle-relay-backup"
   },
@@ -940,6 +1144,7 @@
       "scripts/seed-five-factor-scorecard.mjs",
       "scripts/seed-resilience-scores.mjs",
       "scripts/seed-resilience-static.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
       "scripts/shared/rankable-universe.mjs",
@@ -981,6 +1186,7 @@
       "scripts/seed-fossil-electricity-share.mjs",
       "scripts/seed-low-carbon-generation.mjs",
       "scripts/seed-power-reliability.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
       "shared/country-names.json",
@@ -1013,6 +1219,7 @@
       "scripts/seed-recovery-reexport-share.mjs",
       "scripts/seed-recovery-reserve-adequacy.mjs",
       "scripts/seed-sovereign-wealth.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/comtrade-reporter-overrides.json",
       "scripts/shared/iso2-to-iso3.json",
       "scripts/shared/iso3-to-iso2.json",
@@ -1043,6 +1250,7 @@
       "scripts/lib/resilience-formula.mjs",
       "scripts/resilience-validation-bundle.mjs",
       "scripts/seed-bundle-resilience-validation.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
       "scripts/shared/sovereign-status.json",
@@ -1069,6 +1277,7 @@
       "server/worldmonitor/resilience/v1/_shared.ts",
       "server/worldmonitor/resilience/v1/_source-failure.ts",
       "server/worldmonitor/resilience/v1/_standalone-source-thresholds.ts",
+      "shared/compare-and-delete-script.cjs",
       "shared/country-names.json",
       "shared/iso2-to-iso3.json",
       "shared/iso3-to-iso2.json",
@@ -1106,6 +1315,7 @@
       "scripts/seed-defense-patents.mjs",
       "scripts/seed-demographics-capability.mjs",
       "scripts/seed-submarine-cables.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-name-to-iso2.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
@@ -1128,6 +1338,7 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-hs2-chokepoint-exposure.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/supply-vulnerability-commodities.json",
       "scripts/shared/country-port-clusters.json"
     ],
@@ -1150,9 +1361,58 @@
       "scripts/package.json",
       "scripts/seed-commodity-quotes.mjs",
       "scripts/shared/commodities.json",
+      "scripts/shared/compare-and-delete-script.cjs",
       "shared/commodities.json"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
+    "entry": "scripts/seed-radiation-watch.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-radiation-watch",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN"
+    ],
+    "watchPatterns": [
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/seed-radiation-watch.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/package.json",
+      "scripts/package-lock.json",
+      "scripts/nixpacks.toml"
+    ],
+    "cronSchedule": "*/15 * * * *",
+    "documentedAt": "scripts/seed-radiation-watch.mjs"
+  },
+  {
+    "entry": "scripts/seed-trade-flows.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-trade-flows",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN"
+    ],
+    "watchPatterns": [
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/seed-trade-flows.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/comtrade-period.mjs",
+      "scripts/shared/comtrade-strategic-products.json",
+      "scripts/package.json",
+      "scripts/package-lock.json",
+      "scripts/nixpacks.toml"
+    ],
+    "cronSchedule": "0 5 * * *",
+    "documentedAt": "scripts/seed-trade-flows.mjs"
   },
   {
     "entry": "scripts/seed-comtrade-bilateral-hs4.mjs",
@@ -1168,6 +1428,7 @@
       "scripts/_seed-utils.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/seed-comtrade-bilateral-hs4.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/comtrade.mjs",
       "scripts/shared/comtrade-bilateral.mjs",
       "scripts/shared/comtrade-partners.json",
@@ -1216,11 +1477,13 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-conflict-intel.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/crawlable-crises.json",
       "scripts/shared/hapi-app-identifier.json",
       "scripts/shared/iso2-to-iso3.json",
       "scripts/shared/iso3-to-iso2.json",
+      "scripts/shared/pizzint-location.cjs",
       "shared/country-names.json",
       "shared/crawlable-crises.json",
       "shared/hapi-app-identifier.json",
@@ -1252,7 +1515,8 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-earthquakes.mjs",
-      "scripts/seismology/nrcan-atom.mjs"
+      "scripts/seismology/nrcan-atom.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "cronSchedule": "*/5 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
@@ -1270,7 +1534,8 @@
       "scripts/seed-economy.mjs",
       "scripts/nixpacks.toml",
       "scripts/package.json",
-      "scripts/package-lock.json"
+      "scripts/package-lock.json",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "cronSchedule": "*/15 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
@@ -1301,7 +1566,8 @@
       "scripts/seed-fire-detections.mjs",
       "scripts/wildfire/bc-fire-points.mjs",
       "scripts/wildfire/cwfis-wfs.mjs",
-      "scripts/wildfire/firms-area.mjs"
+      "scripts/wildfire/firms-area.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "cronSchedule": "*/10 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
@@ -1316,6 +1582,7 @@
       "scripts/_cii-risk-cache-keys.mjs",
       "scripts/_ema-threat-engine.mjs",
       "scripts/_forecast-bets-keys.mjs",
+      "scripts/_forecast-calibration.mjs",
       "scripts/_forecast-dashboard.mjs",
       "scripts/_forecast-evidence-archive.mjs",
       "scripts/_forecast-funnel.mjs",
@@ -1323,7 +1590,9 @@
       "scripts/_forecast-resolution-eval.mjs",
       "scripts/_forecast-resolution.mjs",
       "scripts/_forecast-scorecard.mjs",
+      "scripts/_forecast-subject.mjs",
       "scripts/_fred-series.mjs",
+      "scripts/_gps-maritime-regions.mjs",
       "scripts/_llm-json.mjs",
       "scripts/_llm-model-timeouts.mjs",
       "scripts/_prediction-classify.mjs",
@@ -1347,7 +1616,9 @@
       "scripts/package.json",
       "scripts/seed-forecast-resolutions.mjs",
       "scripts/seed-forecasts.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
+      "scripts/shared/judged-subject-terms.json",
       "shared/country-names.json"
     ],
     "documentedAt": "scripts/seed-forecast-resolutions.mjs (header docblock declares daily cron)"
@@ -1357,13 +1628,19 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-forecasts",
     "watchPatterns": [
+      "scripts/_bet-templates-macro.mjs",
       "scripts/_bet-templates-markets-classify.mjs",
       "scripts/_cii-risk-cache-keys.mjs",
       "scripts/_ema-threat-engine.mjs",
+      "scripts/_forecast-calibration.mjs",
       "scripts/_forecast-dashboard.mjs",
       "scripts/_forecast-funnel.mjs",
+      "scripts/_forecast-resolution-eval.mjs",
       "scripts/_forecast-resolution.mjs",
       "scripts/_forecast-scorecard.mjs",
+      "scripts/_forecast-subject.mjs",
+      "scripts/_fred-series.mjs",
+      "scripts/_gps-maritime-regions.mjs",
       "scripts/_llm-json.mjs",
       "scripts/_llm-model-timeouts.mjs",
       "scripts/lib/llm-model-policy.cjs",
@@ -1384,7 +1661,11 @@
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
-      "scripts/seed-forecasts.mjs"
+      "scripts/seed-forecasts.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/judged-subject-terms.json",
+      "shared/country-names.json"
     ],
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
   },
@@ -1409,7 +1690,8 @@
       "scripts/seed-fred-rates.mjs",
       "scripts/nixpacks.toml",
       "scripts/package.json",
-      "scripts/package-lock.json"
+      "scripts/package-lock.json",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "cronSchedule": "0 * * * *",
     "documentedAt": "docs/market-data-cadence-audit.md"
@@ -1428,7 +1710,8 @@
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
-      "scripts/seed-fx-yoy.mjs"
+      "scripts/seed-fx-yoy.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
@@ -1446,6 +1729,8 @@
       "scripts/_gdelt-bulk-contract.mjs",
       "scripts/_gdelt-bulk-materializer.mjs",
       "scripts/_gdelt-country-codes.mjs",
+      "scripts/_gdelt-dyad-tension.mjs",
+      "scripts/shared/gdelt-tension-pairs.json",
       "scripts/_html-entities.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
@@ -1456,7 +1741,8 @@
       "scripts/seed-gdelt-bulk-materializer.mjs",
       "scripts/package.json",
       "scripts/package-lock.json",
-      "scripts/nixpacks.toml"
+      "scripts/nixpacks.toml",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "cronSchedule": "*/15 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
@@ -1482,15 +1768,49 @@
       "scripts/package.json",
       "scripts/seed-insights.mjs",
       "scripts/shared/brief-llm-core.js",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/digest-acceptance.mjs",
       "scripts/shared/diplomacy-keywords.json",
       "scripts/shared/geo-extract.mjs",
       "scripts/shared/publisher-families.js",
       "scripts/shared/source-tiers.json",
-      "scripts/shared/story-identity.js"
+      "scripts/shared/story-identity.js",
+      "scripts/shared/syndication.js"
     ],
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (added PR #3836)"
+  },
+  {
+    "entry": "scripts/seed-live-video-resolved.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-live-video-resolved",
+    "startCommand": "node seed-live-video-resolved.mjs",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      [
+        "LIVE_VIDEO_PROXY_URL",
+        "PROXY_URL"
+      ]
+    ],
+    "watchPatterns": [
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/_upstash-rest.mjs",
+      "scripts/lib/live-video-channel-live.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/main-module.mjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/seed-live-video-resolved.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/live-video-refresh-channels.generated.json"
+    ],
+    "cronSchedule": "0 */6 * * *",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
   {
     "entry": "scripts/seed-market-breadth.mjs",
@@ -1507,7 +1827,8 @@
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
-      "scripts/seed-market-breadth.mjs"
+      "scripts/seed-market-breadth.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
@@ -1531,7 +1852,8 @@
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
-      "scripts/seed-military-cii.mjs"
+      "scripts/seed-military-cii.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "scripts/seed-military-cii.mjs (header docblock declares rootDirectory: scripts and */10 cron)"
   },
@@ -1557,8 +1879,10 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-sanctions-pressure.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-name-to-iso2.cjs",
-      "scripts/shared/country-names.json"
+      "scripts/shared/country-names.json",
+      "scripts/shared/country-sanctions-signals.mjs"
     ],
     "cronSchedule": "0 */6 * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
@@ -1582,6 +1906,7 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-security-advisories.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/rss-allowed-domains.json",
       "shared/country-names.json",
@@ -1612,7 +1937,11 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-supply-chain-trade.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-name-to-iso2.cjs",
+      "scripts/shared/country-names.json",
       "scripts/shared/un-to-iso2.json",
+      "scripts/shared/us-hts-chapter99.mjs",
       "shared/un-to-iso2.json"
     ],
     "cronSchedule": "0 */6 * * *",
@@ -1631,10 +1960,6 @@
     "service": "seed-imd-cyclone-marine",
     "startCommand": "node seed-imd-cyclone-marine.mjs",
     "requiredEnv": [
-      "IMD_API_KEY",
-      "IMD_API_EMAIL",
-      "IMD_API_PASSWORD",
-      "PROXY_URL",
       "UPSTASH_REDIS_REST_URL",
       "UPSTASH_REDIS_REST_TOKEN"
     ],
@@ -1649,7 +1974,8 @@
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
-      "scripts/seed-imd-cyclone-marine.mjs"
+      "scripts/seed-imd-cyclone-marine.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "cronSchedule": "*/15 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
@@ -1659,13 +1985,19 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "simulation-worker",
     "watchPatterns": [
+      "scripts/_bet-templates-macro.mjs",
       "scripts/_bet-templates-markets-classify.mjs",
       "scripts/_cii-risk-cache-keys.mjs",
       "scripts/_ema-threat-engine.mjs",
+      "scripts/_forecast-calibration.mjs",
       "scripts/_forecast-dashboard.mjs",
       "scripts/_forecast-funnel.mjs",
+      "scripts/_forecast-resolution-eval.mjs",
       "scripts/_forecast-resolution.mjs",
       "scripts/_forecast-scorecard.mjs",
+      "scripts/_forecast-subject.mjs",
+      "scripts/_fred-series.mjs",
+      "scripts/_gps-maritime-regions.mjs",
       "scripts/_llm-json.mjs",
       "scripts/_llm-model-timeouts.mjs",
       "scripts/lib/llm-model-policy.cjs",
@@ -1687,7 +2019,11 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/process-simulation-tasks.mjs",
-      "scripts/seed-forecasts.mjs"
+      "scripts/seed-forecasts.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/judged-subject-terms.json",
+      "shared/country-names.json"
     ],
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
   },
@@ -1737,5 +2073,56 @@
     ],
     "cronSchedule": "7,22,37,52 * * * *",
     "documentedAt": "docs/analytics-collector-operations.md#retention-runner"
+  },
+  {
+    "entry": "demos/verification-desk/server.mjs",
+    "deployMode": "dockerfile",
+    "dockerfile": "demos/verification-desk/Dockerfile",
+    "service": "verification-desk",
+    "requiredEnv": [
+      "DESK_PASSWORD",
+      [
+        "WORLDMONITOR_API_KEY",
+        "WORLDMONITOR_MCP_TOKEN"
+      ],
+      "ANTHROPIC_API_KEY"
+    ],
+    "watchPatterns": [
+      ".dockerignore",
+      "demos/verification-desk/**",
+      "package.json",
+      "src/locales/en.json",
+      "scripts/_country-resolver.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/crawlable-developments.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/shared/brief-llm-core.js",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/iso3-to-iso2.json",
+      "scripts/shared/publisher-families.js",
+      "server/_shared/corroboration.ts",
+      "server/_shared/source-tiers.ts",
+      "shared/article-url.js",
+      "shared/brief-claim-rules.js",
+      "shared/brief-llm-core.js",
+      "shared/brief-sections.js",
+      "shared/country-names.json",
+      "shared/iso3-to-iso2.json",
+      "shared/news-credibility.js",
+      "shared/publisher-families.js",
+      "shared/source-provenance-declarations.ts",
+      "shared/source-provenance.ts",
+      "shared/source-tiers.json",
+      "shared/syndication.js",
+      "shared/telegram-channel-trust.ts",
+      "shared/x-account-source-tiers.json",
+      "shared/x-account-trust.ts"
+    ],
+    "cronSchedule": null,
+    "documentedAt": "demos/verification-desk/README.md#run-it-from-any-computer-hosted-with-a-login"
   }
 ]

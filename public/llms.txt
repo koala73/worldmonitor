@@ -2,9 +2,9 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-> Version: 2.10.0 · Last updated: 2026-09-10
+> Version: 2.11.0 · Last updated: 2026-10-18
 
-World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. Used by 2M+ people live in 190+ countries, with structural resilience ranked for 170, with press references in the [product identity document](https://www.worldmonitor.app/world-monitor.md). It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
+World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. Used by 2M+ people live in 190+ countries, with structural resilience ranked for 170 of 196 countries, with press references in the [product identity document](https://www.worldmonitor.app/world-monitor.md). It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
 
 A single codebase produces specialized variants — geopolitical (World Monitor), technology (Tech Monitor), finance (Finance Monitor), commodities (Commodity Monitor), positive news (Happy Monitor), and energy (Energy Monitor) — each with distinct feeds, panels, map layers, and branding. The multi-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar.
 
@@ -25,6 +25,8 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 - **Commodity & supply-chain disruption** — correlate physical supply signals with traded prices. MCP tools `get_supply_chain_data`, `get_energy_intelligence`, `get_commodity_geo`, `get_maritime_activity`.
 - **Live situational awareness** — the current world brief plus classified live signals. MCP tools `get_world_brief`, `get_news_intelligence`, `get_natural_disasters`, `get_cyber_threats`, `get_aviation_status`.
 - **Forecasting & prediction-market context** — generate or fetch scenario forecasts. MCP tools `generate_forecasts`, `get_forecast_predictions`, `get_prediction_markets`.
+- [Incident feed for developers](https://www.worldmonitor.app/docs/incident-feed): feed global incidents and risk signals into an internal app. Lists the conflict, unrest, news-cluster and event-history endpoints, each record's fields, filters, retention (event history is kept for 180 days; news is a live window, 96 hours by default, with no archive), signed webhooks, SDK calls and self-serve plans. MCP tools `get_conflict_events`, `get_news_clusters`, `get_intel_timeline`, `search_intel_history`.
+- [Alerts and event webhooks](https://www.worldmonitor.app/docs/api-notifications): be told instead of polling. Pro alert rules filter by country, event type, severity and maritime chokepoint and deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push or an HMAC-SHA256 signed webhook, in real time or as a digest. News alerts state how many independent publishers carry the story when that count is known, a coverage count, not verification. API plans subscribe signed webhooks to the `chokepoint.disruption` and `country.risk_surge` events ([event webhooks](https://www.worldmonitor.app/docs/api-shipping-v2#delivery-worker)).
 
 **When NOT to use:** World Monitor is not a general web-search engine, a historical archive, or a trading-execution venue — it places no orders and stores no user documents. For a one-off narrative that needs no correlation across live layers, a plain LLM is cheaper and faster.
 
@@ -32,10 +34,10 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 
 - [MCP server (recommended)](https://worldmonitor.app/mcp): Streamable HTTP; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. See the [server card](https://worldmonitor.app/.well-known/mcp/server-card.json), [official MCP registry](https://registry.modelcontextprotocol.io/), [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp), and [mcp.so](https://mcp.so/server/world-monitor).
 - [Docs MCP server card](https://www.worldmonitor.app/.well-known/mcp/docs-server-card.json): public Streamable HTTP search and retrieval over the documentation. Use it for "how do I…" questions about the platform; use the product MCP above for live data.
-- [REST API guide](https://www.worldmonitor.app/openapi.md): API key required. Send the `X-WorldMonitor-Key` header. The contract is the [OpenAPI specification](https://www.worldmonitor.app/openapi.yaml), which is 2,920,233 bytes. Use the [sandbox index](https://www.worldmonitor.app/sandbox/index.json) for key-free examples. <!-- // pragma: allowlist secret -->
+- [REST API guide](https://www.worldmonitor.app/openapi.md): API key required. Send the `X-WorldMonitor-Key` header. The contract is the [OpenAPI specification](https://www.worldmonitor.app/openapi.yaml), which is 3,091,170 bytes. Use the [sandbox index](https://www.worldmonitor.app/sandbox/index.json) for key-free examples. <!-- // pragma: allowlist secret -->
 - [worldmonitor CLI](https://www.worldmonitor.app/docs/cli): `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the command. `worldmonitor call get_sources` needs no key; pass `--api-key` for every other data tool.
 - [SDK guide](https://www.worldmonitor.app/docs/sdks): official zero-dependency clients for Python ([PyPI](https://pypi.org/project/worldmonitor-sdk/)), Ruby ([RubyGems](https://rubygems.org/gems/worldmonitor)), Go ([pkg.go.dev](https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go)), and JavaScript via the npm package.
-- [Agent Skills discovery manifest](https://worldmonitor.app/.well-known/agent-skills/index.json): install with `npx skills add koala73/worldmonitor`; see the [skills.sh listing](https://skills.sh/koala73/worldmonitor).
+- [Agent Skills discovery manifest](https://worldmonitor.app/.well-known/agent-skills/index.json): install with `npx skills add koala73/worldmonitor`; see the [skills.sh listing](https://skills.sh/koala73/worldmonitor); the [agent setup page](https://www.worldmonitor.app/agent/) shows single-skill and global installs.
 - [Agent Plugin metadata](https://www.worldmonitor.app/plugin.json): public metadata for the Agent Plugins 1.0.0 repository package. Install the package from the [World Monitor repository](https://github.com/koala73/worldmonitor).
 - [Keys, plans, and limits](https://www.worldmonitor.app/pricing.md): also see the public [product catalog](https://www.worldmonitor.app/api/product-catalog), [authentication matrix](https://www.worldmonitor.app/docs/usage-auth), [rate limits](https://www.worldmonitor.app/docs/usage-rate-limits.md), and [key signup](https://www.worldmonitor.app/pro).
 - [Accounts and signup guide](https://www.worldmonitor.app/docs/accounts.md): the free dashboard needs no account; Pro and API accounts are created through the [browser signup](https://www.worldmonitor.app/pro).
@@ -48,7 +50,7 @@ The documentation MCP transport accepts protocol requests at `https://www.worldm
 
 ### What is World Monitor?
 
-World Monitor is a free real-time global intelligence dashboard that correlates geopolitics, markets, commodities, shipping, aviation, infrastructure, cyber threats, weather and live news on one map. It is designed for people who need to see when separate signals converge before they become a consensus headline.
+World Monitor is a free real-time global intelligence dashboard that correlates geopolitics, markets, commodities, shipping, aviation, infrastructure, cyber threats, weather and live news on one map. It costs $0 with no signup, is open source under AGPL-3.0, and is used by 2M+ people. It is designed for people who need to see when separate signals converge before they become a consensus headline.
 
 ### What is the Country Instability Index?
 
@@ -76,14 +78,14 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 
 - [Compare World Monitor](https://www.worldmonitor.app/compare/): Compare World Monitor with Liveuamap, ACLED, GDELT, Dataminr, Recorded Future, and more: one master matrix, honest concessions, and FAQs.
 - [Liveuamap Alternatives](https://www.worldmonitor.app/compare/liveuamap-alternatives/): Eleven-column matrix comparing World Monitor with Liveuamap, Deep State Map, ACLED, ConflictZone.io, ISW, UNOSAT and ICG CrisisWatch on price, latency, API access and licensing, with the cells each competitor wins.
-- [Best Real-Time Geopolitical Risk Dashboards](https://www.worldmonitor.app/compare/best-geopolitical-risk-dashboards/): Real-time geopolitical risk dashboards ranked against BlackRock, IISS, OrreryX, the-world-now.com, Statista and Earthian AI on update latency, price and signup, with where the analyst products still win.
+- [Best Geopolitical Risk Intelligence Platforms in 2026: The Buyer's Shortlist](https://www.worldmonitor.app/compare/best-geopolitical-risk-dashboards/): The 2026 buyer's shortlist of eight geopolitical risk intelligence platforms, from self-serve World Monitor to sales-led Dataminr, Recorded Future, Seerist and Crisis24, with cited prices and where each one wins.
 - [World Monitor vs Liveuamap](https://www.worldmonitor.app/compare/worldmonitor-vs-liveuamap/): Head-to-head on published numbers: World Monitor API Starter at $99.99/mo for 1,000 requests/day against Liveuamap Pro at $150/mo for 200, plus the domains only one side tracks.
 - [World Monitor vs ACLED](https://www.worldmonitor.app/compare/worldmonitor-vs-acled/): World Monitor and ACLED (myACLED) compared on access tiers, latency, API availability and licensing, and why World Monitor complements ACLED's coded-event research rather than replacing it.
-- [World Monitor vs GDELT Cloud](https://www.worldmonitor.app/compare/worldmonitor-vs-gdelt/): Curated indices versus the GDELT firehose: World Monitor, GDELT Cloud, war-dashboard-data and world-intel-mcp compared on latency, archive depth, API and MCP access, and where raw GDELT still wins.
+- [World Monitor vs GDELT](https://www.worldmonitor.app/compare/worldmonitor-vs-gdelt/): Curated indices versus the GDELT firehose: World Monitor, the GDELT Project, GDELT Cloud, war-dashboard-data and world-intel-mcp compared on latency, archive depth, API and MCP access, and where raw GDELT still wins.
 - [World Monitor vs Dataminr](https://www.worldmonitor.app/compare/worldmonitor-vs-dataminr/): Published prices against enterprise-negotiated licensing: World Monitor and Dataminr compared on alert latency, data domains, API access and price transparency, with the cells Dataminr wins.
 - [World Monitor vs Recorded Future](https://www.worldmonitor.app/compare/worldmonitor-vs-recorded-future/): World Monitor, Recorded Future, Flare and MISP compared on price transparency, public access, domains covered and open source, and when an enterprise threat-intelligence platform is the right call.
 - [World Monitor vs Deep State Map](https://www.worldmonitor.app/compare/worldmonitor-vs-deepstatemap/): Global multi-domain coverage against a single-theatre map: World Monitor and Deep State Map compared on scope, update method, API access and archive, and why Deep State Map wins on Ukraine frontline detail.
-- [MCP Servers for Geopolitical Data](https://www.worldmonitor.app/compare/mcp-servers-for-geopolitical-data/): Hosted versus self-hosted MCP access to geopolitical data: World Monitor against world-intel-mcp, Satellite MCP, OSINT MCP, GDELT Cloud MCP and IMF PortWatch MCP on entitlements, quotas, OAuth and hosting burden.
+- [MCP Servers for Geopolitical Data](https://www.worldmonitor.app/compare/mcp-servers-for-geopolitical-data/): Hosted versus self-hosted MCP access to geopolitical data: World Monitor against world-intel-mcp, Satellite MCP, OSINT MCP, community GDELT MCP and IMF PortWatch MCP on entitlements, quotas, OAuth and hosting burden.
 - [Chokepoint Monitoring Tools](https://www.worldmonitor.app/compare/chokepoint-monitoring-tools/): Chokepoint monitoring tools compared: World Monitor against IMF PortWatch, MarineTraffic, Kpler, Lloyd's List Intelligence, Windward and straits.live on transit counts, fused context, price and API access.
 - [Free Geopolitical Risk Dashboards](https://www.worldmonitor.app/compare/free-geopolitical-risk-dashboards/): Which geopolitical risk dashboards are free without signup: World Monitor against OrreryX, the-world-now.com, Sentinel, ConflictZone.io, BlackRock, Deep State Map and ICG CrisisWatch on gating, latency and domains.
 - [Travel Risk Intelligence vs Assistance](https://www.worldmonitor.app/compare/travel-risk-intelligence-vs-assistance/): Travel risk intelligence versus assistance: World Monitor as the always-on awareness layer next to Crisis24, International SOS, Riskline, Everbridge, Samdesk and Factal, which win on response and duty-of-care delivery.
@@ -92,11 +94,11 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 
 - [World Monitor](https://www.worldmonitor.app): Geopolitics, military, conflicts, infrastructure
 - [Live Country Instability Index rankings](https://www.worldmonitor.app/country-instability-index/): CII v8 scores, bands, and approximate 24-hour movement for 31 Tier-1 countries
-- [Tech Monitor](https://tech.worldmonitor.app): Startups, AI/ML, cloud, cybersecurity
-- [Finance Monitor](https://finance.worldmonitor.app): Global markets, trading, central banks, Gulf FDI
-- [Commodity Monitor](https://commodity.worldmonitor.app): Mining, metals, energy, supply chains, commodity markets
-- [Happy Monitor](https://happy.worldmonitor.app): Positive news, breakthroughs, conservation, renewable energy
-- [Energy Monitor](https://energy.worldmonitor.app): Energy security, oil and gas, chokepoints, disruption timelines
+- [Tech Monitor](https://tech.worldmonitor.app/dashboard): Startups, AI/ML, cloud, cybersecurity
+- [Finance Monitor](https://finance.worldmonitor.app/dashboard): Global markets, trading, central banks, Gulf FDI
+- [Commodity Monitor](https://commodity.worldmonitor.app/dashboard): Mining, metals, energy, supply chains, commodity markets
+- [Happy Monitor](https://happy.worldmonitor.app/dashboard): Positive news, breakthroughs, conservation, renewable energy
+- [Energy Monitor](https://energy.worldmonitor.app/dashboard): Energy security, oil and gas, chokepoints, disruption timelines
 - [World Monitor Pro](https://www.worldmonitor.app/pro): AI-powered equity research, geopolitical analysis, macro intelligence
 - [Blog](https://www.worldmonitor.app/blog/): Analysis, OSINT guides, geopolitics, and market intelligence articles
 - [Pricing Markdown](https://www.worldmonitor.app/pricing.md): Machine-readable pricing and plan limits for AI agents
@@ -112,7 +114,7 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 - [Extended LLM Documentation](https://www.worldmonitor.app/llms-full.txt): Comprehensive version of this file with all data layers, components, and data sources
 - [Global Intelligence Glossary](https://www.worldmonitor.app/blog/glossary/): Definitions of the scoring indices (CII, CRI), detection signals (geographic convergence, focal points), maritime chokepoints, and OSINT methodology terms — one citable DefinedTerm page per concept
 - [Research Reports](https://www.worldmonitor.app/research/): Original, source-backed research built from committed data snapshots with downloadable CSV/JSON, per-figure provenance, and stable citation guidance — starting with the Strait of Hormuz transit report (July 2026)
-- [Forecast Accuracy Scorecard](https://www.worldmonitor.app/accuracy/): The standing record of how well World Monitor forecasts have scored — Brier and log scores, calibration buckets, per-domain and per-origin breakdowns, void rates, and the sample size behind every published figure, with a machine-readable JSON distribution
+- [Forecast Accuracy Scorecard](https://www.worldmonitor.app/accuracy/): The standing forecast-resolution record: the forecast track record, its current status and methodology, and a machine-readable JSON distribution
 - [Machine-Readable Pricing](https://www.worldmonitor.app/pricing.md): Free, Pro, API, API Business, and Enterprise plan details in markdown
 - [Accounts & Sign-up](https://www.worldmonitor.app/docs/accounts.md): How account creation works (free tier needs none; Clerk sign-up for Pro/API)
 - [Support & Contact](https://www.worldmonitor.app/support.md): Support channels, contact emails, status page, response expectations
@@ -149,7 +151,7 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 - **Desktop**: Tauri (Rust + Node.js sidecar) for macOS, Windows, Linux
 - **Backend**: Vercel Edge Functions, Railway relay server
 - **Data**: Upstash Redis caching, three-tier cache (in-memory, Redis, upstream)
-- **AI**: Groq (Llama 3.1), OpenRouter, browser-side T5 fallback
+- **AI**: Ollama (local), OpenRouter, browser-side T5 fallback
 - **Monitoring**: Sentry error tracking and a data-freshness tracker across source groups
 
 ## Blog Posts
@@ -157,7 +159,7 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 - [Complete Blog Article Index](https://www.worldmonitor.app/blog/llms.txt): Machine-readable index of every published article with canonical URL, summary, and publication date
 - [What Is World Monitor?](https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/): Overview of the platform, features, and use cases
 - [Dashboard Variants Guide](https://www.worldmonitor.app/blog/posts/five-dashboards-one-platform-worldmonitor-variants/): Guide to the multi-variant dashboard family
-- [Track Global Conflicts in Real Time](https://www.worldmonitor.app/blog/posts/track-global-conflicts-in-real-time/): Conflict monitoring using ACLED, UCDP, and Telegram OSINT
+- [Track Global Conflicts in Real Time](https://www.worldmonitor.app/blog/posts/track-global-conflicts-in-real-time/): Conflict monitoring using UCDP, GDELT, and Telegram OSINT
 - [OSINT for Everyone](https://www.worldmonitor.app/blog/posts/osint-for-everyone-open-source-intelligence-democratized/): How open-source intelligence is democratized
 - [Natural Disaster Monitoring](https://www.worldmonitor.app/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/): USGS earthquakes, NASA FIRMS fires, volcanic activity
 - [Real-Time Market Intelligence](https://www.worldmonitor.app/blog/posts/real-time-market-intelligence-for-traders-and-analysts/): Financial markets, Fear & Greed, ETF flows
@@ -175,6 +177,7 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 
 ## AI Agent Files
 
+- [Agent setup](https://www.worldmonitor.app/agent/): Connect Claude, ChatGPT, Cursor, Gemini CLI, Grok Bot or any MCP client to the MCP server, and install the skills with one command
 - [agents.md](https://www.worldmonitor.app/agents.md): Agent operations guide — machine surfaces, auth, crawl policy, rate limits, and discovery endpoints
 - [llms.txt](https://www.worldmonitor.app/llms.txt): Short LLM-readable briefing
 - [llms-full.txt](https://www.worldmonitor.app/llms-full.txt): Full LLM-readable feature and data-source reference

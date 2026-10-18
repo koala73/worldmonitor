@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deflateRawSync } from 'node:zlib';
+import * as gasSeed from '../scripts/seed-jodi-gas.mjs';
+import { MAX_JODI_GAS_CONTENT_AGE_MIN } from '../scripts/shared/jodi-content-age.mjs';
+import { __testing__ as health } from '../api/health.js';
 import {
   CANONICAL_KEY,
   MIN_COUNTRIES,
@@ -16,6 +20,112 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = resolve(__dirname, 'fixtures');
+
+// The official download page builds the archive URL from this catalog shape.
+const gasCatalog = (publicationId) => ({ publicationId, files: [
+  { filename: 'GAS_world_NewFormat.zip', format: 'CSV', ignore: false },
+  { filename: 'ivt.zip', format: 'IVT', ignore: false },
+] });
+
+function gasZip(csv) {
+  const name = Buffer.from('STAGING_world_NewFormat.csv');
+  const body = deflateRawSync(csv);
+  const header = Buffer.alloc(30);
+  header.writeUInt32LE(0x04034b50);
+  header.writeUInt16LE(8, 8);
+  header.writeUInt32LE(body.length, 18);
+  header.writeUInt32LE(Buffer.byteLength(csv), 22);
+  header.writeUInt16LE(name.length, 26);
+  return Buffer.concat([header, name, body]);
+}
+
+describe('official gas release discovery', () => {
+  const catalogUrl = 'https://api.publisher.jodidata.org/web/files/gas';
+  const now = Date.parse('2026-09-20T04:00:00Z');
+
+  for (const [id, month, expectedStatus] of [[17, '2026-01', 'STALE_CONTENT'], [26, '2026-06', 'OK']]) {
+    it(`uses publication ${id} and preserves its observation clock through health`, async (t) => {
+      const csv = [SAMPLE_CSV_HEADER, ...['DE', 'JP', 'KR'].flatMap(area => [
+        makeRow(area, month, 'IMPLNG', 'TJ', '0', '1'),
+        makeRow(area, month, 'TOTIMPSB', 'TJ', '100', '1'),
+        makeRow(area, month, 'CLOSTLV', 'TJ', '-', '1'),
+      ])].join('\n');
+      const urls = [];
+      t.mock.method(globalThis, 'fetch', async (url, options) => {
+        urls.push(url);
+        assert.ok(options.headers['User-Agent']);
+        assert.equal(options.redirect, 'error');
+        if (url === catalogUrl) return Response.json(gasCatalog(id));
+        assert.equal(url, `https://www.jodidata.org/jodi-publisher/gas/${id}/GAS_world_NewFormat.zip`);
+        return new Response(gasZip(csv));
+      });
+      const records = await gasSeed.fetchJodiGas();
+      assert.equal(urls.length, 2);
+      assert.equal(records.length, 3);
+      assert.equal(records[0].lngImportsTj, 0);
+      assert.equal(records[0].closingStockTj, null);
+      const content = gasSeed.gasContentMeta(records, now);
+      assert.equal(content.newestItemAt, Date.parse(`${month === '2026-01' ? '2026-01-31' : '2026-06-30'}T23:59:59.999Z`));
+      const lng = buildLngVulnerabilityIndex(records, month, new Date(now).toISOString());
+      assert.equal(lng.dataMonth, month);
+      assert.deepEqual(lng.top20LngDependent, []);
+      for (const name of ['jodiGas', 'lngVulnerability']) {
+        const key = health.STANDALONE_KEYS[name];
+        const entry = health.classifyKey(name, key, {}, {
+          keyStrens: new Map([[key, 4096]]), keyErrors: new Map(),
+          keyMetaValues: new Map([[health.SEED_META[name].key, JSON.stringify({
+            fetchedAt: now, recordCount: records.length, ...content,
+            maxContentAgeMin: MAX_JODI_GAS_CONTENT_AGE_MIN,
+          })]]), keyMetaErrors: new Map(), now,
+        });
+        assert.equal(entry.status, expectedStatus, name);
+      }
+    });
+  }
+
+  it('rejects missing, malformed, ignored, ambiguous and unsafe releases before archive fetch', async (t) => {
+    const invalid = [null, {}, { ...gasCatalog(26), publicationId: '../17' }, gasCatalog(0),
+      gasCatalog(1.5), gasCatalog(Number.MAX_SAFE_INTEGER + 1),
+      { publicationId: 26, files: [] }, { publicationId: 26, files: null },
+      { publicationId: 26, files: [null] },
+      { publicationId: 26, files: [{ ...gasCatalog(26).files[0], ignore: true }] },
+      { publicationId: 26, files: [gasCatalog(26).files[0], gasCatalog(26).files[0]] },
+      ...['../GAS_world_NewFormat.zip', 'https://example.com/gas.zip', 'other.zip'].map(filename => ({
+        publicationId: 26, files: [{ filename, format: 'CSV', ignore: false }],
+      })),
+    ];
+    for (const catalog of invalid) {
+      let calls = 0;
+      const mock = t.mock.method(globalThis, 'fetch', async (url) => {
+        calls++;
+        assert.equal(url, catalogUrl);
+        return Response.json(catalog);
+      });
+      await assert.rejects(() => gasSeed.fetchJodiGas(), /JODI Gas.*catalog/);
+      assert.equal(calls, 1);
+      mock.mock.restore();
+    }
+  });
+
+  it('propagates catalog and archive failures without falling back to an old release', async (t) => {
+    for (const failure of ['catalog-http', 'catalog-json', 'archive-http', 'archive-invalid']) {
+      const urls = [];
+      const mock = t.mock.method(globalThis, 'fetch', async (url) => {
+        urls.push(url);
+        if (url === catalogUrl) {
+          if (failure === 'catalog-http') return new Response('', { status: 503 });
+          if (failure === 'catalog-json') return new Response('not json');
+          return Response.json(gasCatalog(26));
+        }
+        return failure === 'archive-http' ? new Response('', { status: 404 }) : new Response('not zip');
+      });
+      await assert.rejects(() => gasSeed.fetchJodiGas());
+      assert.equal(urls.length, failure.startsWith('catalog') ? 1 : 2);
+      assert.ok(!urls.some(url => url.includes('/17/')));
+      mock.mock.restore();
+    }
+  });
+});
 
 describe('CANONICAL_KEY', () => {
   it('is energy:jodi-gas:v1:_countries', () => {

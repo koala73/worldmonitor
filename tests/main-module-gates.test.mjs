@@ -60,6 +60,19 @@ const GATES = [
     expected: /These dereference localStorage directly/,
   },
   {
+    file: 'scripts/enforce-overlay-reload-policy.mjs',
+    setup(root) {
+      mkdirSync(join(root, 'src/components'), { recursive: true });
+      writeFileSync(
+        join(root, 'src/components/UndeclaredModal.ts'),
+        "const overlay = document.createElement('div');\noverlay.setAttribute('role', 'dialog');\n",
+      );
+    },
+    // The violation line rather than the headline, for the same reason as
+    // above: the one-file fixture also trips the site-count floor.
+    expected: /Overlays without a reload contract/,
+  },
+  {
     file: 'scripts/check-local-secret-dumps.mjs',
     setup(root) {
       writeFileSync(join(root, '.env.vercel-backup'), 'do-not-use\n');

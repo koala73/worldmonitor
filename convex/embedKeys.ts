@@ -1,3 +1,4 @@
+import { assertAccountWritable } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { requireUserId, resolveUserId, resolveUserIdentity } from "./lib/auth";
@@ -61,6 +62,7 @@ export const createEmbedKey = mutation({
   handler: async (ctx, args) => {
     const identity = await resolveUserIdentity(ctx);
     const userId = identity?.subject ?? await requireUserId(ctx);
+    await assertAccountWritable(ctx, userId);
 
     const entitlement = await ctx.db
       .query("entitlements")

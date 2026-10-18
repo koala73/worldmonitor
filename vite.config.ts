@@ -2,12 +2,13 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { VitePWA } from 'vite-plugin-pwa';
 import type { OutputBundle } from 'rollup';
-import { resolve, dirname, extname } from 'path';
+import { resolve, dirname, extname, basename } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import pkg from './package.json';
 import { getSentryBuildMetadata } from './shared/sentry-build-metadata';
+import { appendChunkOwnership, chunkHasFirstPartyModule } from './shared/chunk-ownership';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 import {
   WEB_DASHBOARD_VARIANTS,
@@ -104,7 +105,7 @@ const LAZY_HTML_PRELOAD_RE = new RegExp(
 const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   // Markets / equities / crypto positioning
   AAIISentiment: 'panels-markets', CotPositioning: 'panels-markets',
-  ETFFlows: 'panels-markets', EarningsCalendar: 'panels-markets',
+  ETFFlows: 'panels-markets', EarningsCalendar: 'panels-markets', MaterialEvents: 'panels-markets',
   EconomicCalendar: 'panels-markets', FearGreed: 'panels-markets',
   Fx: 'panels-markets',
   GoldIntelligence: 'panels-markets', LiquidityShifts: 'panels-markets',
@@ -226,11 +227,15 @@ function brotliPrecompressPlugin(): Plugin {
   };
 }
 
+// Public pages whose title, description and canonical are their own; the
+// dashboard brand meta below would otherwise mark them duplicates of /dashboard.
+const PAGES_WITH_OWN_HEAD_META = new Set(['verify.html']);
+
 function htmlVariantPlugin(activeMeta: VariantMeta, activeVariant: string, isDesktopBuild: boolean): Plugin {
   return {
     name: 'html-variant',
-    transformIndexHtml(html) {
-      let result = html
+    transformIndexHtml(html, ctx) {
+      let result = PAGES_WITH_OWN_HEAD_META.has(basename(ctx.filename)) ? html : html
         .replace(/<title>.*?<\/title>/, `<title>${activeMeta.title}</title>`)
         .replace(/<meta name="title" content=".*?" \/>/, `<meta name="title" content="${activeMeta.title}" />`)
         .replace(/<meta name="description" content=".*?" \/>/, `<meta name="description" content="${activeMeta.description}" />`)
@@ -318,6 +323,36 @@ function dashboardHtmlOutputPlugin(): Plugin {
         dashboardHtml.source = deferDashboardStylesheetLinks(dashboardHtml.source, bundle);
       }
       bundle['dashboard.html'] = dashboardHtml;
+    },
+  };
+}
+
+// Stamp each emitted chunk with its own ownership so `beforeSend` can stop
+// guessing from the filename. See shared/chunk-ownership.ts for why a name
+// cannot answer the question. Runs at `enforce: 'post'` so the chunk bodies are
+// final, and appends (never prepends) so sourcemap columns stay valid.
+//
+// Web workers (`*.worker-<hash>.js`, `maplibre-gl-worker-<hash>.js`) go through
+// a separate Vite build and never reach this hook. That is correct, not a gap:
+// a worker has its own `globalThis`, so a registration there could never reach
+// the manifest the main thread's `beforeSend` reads. Worker frames stay
+// unregistered and fall back to the legacy name regex.
+function firstPartyChunkManifestPlugin(): Plugin {
+  return {
+    name: 'wm-first-party-chunk-manifest',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'chunk') continue;
+        const basename = output.fileName.split('/').pop();
+        if (!basename) continue;
+        output.code = appendChunkOwnership(
+          output.code,
+          basename,
+          chunkHasFirstPartyModule(output.moduleIds ?? []),
+        );
+      }
     },
   };
 }
@@ -739,6 +774,35 @@ function sebufApiPlugin(): Plugin {
   };
 }
 
+function miitNewsPlugin(): Plugin {
+  return {
+    name: 'miit-news',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (req.url?.split('?')[0] !== '/api/miit-news') return next();
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          res.statusCode = 405;
+          res.end();
+          return;
+        }
+        try {
+          const { default: handler } = await server.ssrLoadModule('/api/miit-news.js');
+          const headers = new Headers();
+          if (typeof req.headers.origin === 'string') headers.set('Origin', req.headers.origin);
+          const response: Response = await handler(new Request(`http://localhost${req.url}`, { headers }));
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => res.setHeader(key, value));
+          res.end(req.method === 'HEAD' ? undefined : await response.text());
+        } catch (error) {
+          console.error('[miit-news]', error);
+          res.statusCode = 502;
+          res.end();
+        }
+      });
+    },
+  };
+}
+
 function rssProxyPlugin(): Plugin {
   return {
     name: 'rss-proxy',
@@ -788,72 +852,6 @@ function rssProxyPlugin(): Plugin {
           res.statusCode = error.name === 'AbortError' ? 504 : 502;
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ error: error.name === 'AbortError' ? 'Feed timeout' : 'Failed to fetch feed' }));
-        }
-      });
-    },
-  };
-}
-
-function youtubeLivePlugin(): Plugin {
-  return {
-    name: 'youtube-live',
-    configureServer(server) {
-      server.middlewares.use(async (req, res, next) => {
-        if (!req.url?.startsWith('/api/youtube/live')) {
-          return next();
-        }
-
-        const url = new URL(req.url, 'http://localhost');
-        const channel = url.searchParams.get('channel');
-
-        if (!channel) {
-          res.statusCode = 400;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'Missing channel parameter' }));
-          return;
-        }
-
-        try {
-          const channelHandle = channel.startsWith('@') ? channel : `@${channel}`;
-          const liveUrl = `https://www.youtube.com/${channelHandle}/live`;
-
-          const ytRes = await fetch(liveUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            },
-            redirect: 'follow',
-          });
-
-          if (!ytRes.ok) {
-            res.setHeader('Content-Type', 'application/json');
-            res.setHeader('Cache-Control', 'public, max-age=300');
-            res.end(JSON.stringify({ videoId: null, channel }));
-            return;
-          }
-
-          const html = await ytRes.text();
-
-          // Scope both fields to the same videoDetails block so we don't
-          // combine a videoId from one object with isLive from another.
-          let videoId: string | null = null;
-          const detailsIdx = html.indexOf('"videoDetails"');
-          if (detailsIdx !== -1) {
-            const block = html.substring(detailsIdx, detailsIdx + 5000);
-            const vidMatch = block.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
-            const liveMatch = block.match(/"isLive"\s*:\s*true/);
-            if (vidMatch && liveMatch) {
-              videoId = vidMatch[1];
-            }
-          }
-
-          res.setHeader('Content-Type', 'application/json');
-          res.setHeader('Cache-Control', 'public, max-age=300');
-          res.end(JSON.stringify({ videoId, isLive: videoId !== null, channel }));
-        } catch (error) {
-          console.error(`[YouTube Live] Error:`, error);
-          res.statusCode = 500;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'Failed to fetch', videoId: null }));
         }
       });
     },
@@ -996,6 +994,7 @@ export default defineConfig(({ mode }) => {
         },
       },
       htmlVariantPlugin(activeMeta, activeVariant, isDesktopBuild),
+      firstPartyChunkManifestPlugin(),
       chunkSizeWarningPolicyPlugin(),
       !isDesktopBuild && dashboardHtmlOutputPlugin(),
       // Variant subdomain SEO pages only make sense on the web deployment,
@@ -1005,7 +1004,7 @@ export default defineConfig(({ mode }) => {
       webMcpDevSecurityHeadersPlugin(),
       polymarketPlugin(),
       rssProxyPlugin(),
-      youtubeLivePlugin(),
+      miitNewsPlugin(),
       gpsjamDevPlugin(),
       sebufApiPlugin(),
       brotliPrecompressPlugin(),
@@ -1074,7 +1073,9 @@ export default defineConfig(({ mode }) => {
           // Web Push handler (Phase 6). importScripts runs in the SW
           // context; /push-handler.js is a static file copied from
           // public/ and attaches 'push' + 'notificationclick' listeners.
-          importScripts: ['/push-handler.js', '/sw-navigation.js'],
+          // /link-suppression-check.js must load BEFORE the push handler
+          // so notificationclick can consult the operator block set (#8401).
+          importScripts: ['/link-suppression-check.js', '/push-handler.js', '/sw-navigation.js'],
 
           // Navigations are handled by public/sw-navigation.js (network-first
           // with an offline.html fallback), NOT by a runtime cache: a cached
@@ -1211,6 +1212,7 @@ export default defineConfig(({ mode }) => {
           settings: resolve(__dirname, 'settings.html'),
           liveChannels: resolve(__dirname, 'live-channels.html'),
           mcpGrant: resolve(__dirname, 'mcp-grant.html'),
+          verify: resolve(__dirname, 'verify.html'),
         },
         output: {
           // onlyExplicitManualChunks keeps the panel clusters from forming

@@ -4,13 +4,14 @@
  * subset for one country. Used by CountryDeepDivePanel Economic
  * Indicators + Country Facts cards (issue #3027).
  *
- * Network policy: single bootstrap GET with comma-separated keys; result
+ * Network policy: four public on-demand bootstrap reads; the validated bundle
  * is memoised for ~10 min since WEO is a monthly release.
  */
 
-import { toApiUrl } from '@/services/runtime';
+import { ensureHydrated } from '@/services/bootstrap';
 
 export interface ImfMacroEntry {
+  periods?: Partial<Record<'inflationPct' | 'primaryBalancePct' | 'govExpenditurePct' | 'govRevenuePct', number | null>>;
   inflationPct: number | null;
   currentAccountPct: number | null;
   govRevenuePct: number | null;
@@ -22,6 +23,7 @@ export interface ImfMacroEntry {
 }
 
 export interface ImfGrowthEntry {
+  periods?: Partial<Record<'realGdpGrowthPct' | 'gdpPerCapitaUsd', number | null>>;
   realGdpGrowthPct: number | null;
   gdpPerCapitaUsd: number | null;
   realGdpLcuB: number | null;
@@ -36,6 +38,7 @@ export interface ImfGrowthEntry {
 }
 
 export interface ImfLaborEntry {
+  periods?: Partial<Record<'unemploymentPct', number | null>>;
   unemploymentPct: number | null;
   populationMillions: number | null;
   year: number | null;
@@ -59,20 +62,24 @@ export interface ImfCountryBundle {
   fetchedAt: number;
 }
 
-interface ImfBootstrapPayload {
-  data?: {
-    imfMacro?: { countries?: Record<string, ImfMacroEntry> };
-    imfGrowth?: { countries?: Record<string, ImfGrowthEntry> };
-    imfLabor?: { countries?: Record<string, ImfLaborEntry> };
-    imfExternal?: { countries?: Record<string, ImfExternalEntry> };
-  };
+interface ImfBootstrapData {
+  imfMacro: { countries: Record<string, ImfMacroEntry> };
+  imfGrowth: { countries: Record<string, ImfGrowthEntry> };
+  imfLabor: { countries: Record<string, ImfLaborEntry> };
+  imfExternal: { countries: Record<string, ImfExternalEntry> };
 }
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
-let cachedBundle: { fetchedAt: number; payload: ImfBootstrapPayload['data'] } | null = null;
-let inFlight: Promise<ImfBootstrapPayload['data']> | null = null;
+let cachedBundle: { fetchedAt: number; payload: ImfBootstrapData } | null = null;
+let inFlight: Promise<Partial<ImfBootstrapData> | undefined> | null = null;
 
-async function fetchBundle(): Promise<ImfBootstrapPayload['data']> {
+function hasCountries(value: unknown): value is { countries: Record<string, never> } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const countries = (value as { countries?: unknown }).countries;
+  return Boolean(countries && typeof countries === 'object' && !Array.isArray(countries));
+}
+
+async function fetchBundle(): Promise<Partial<ImfBootstrapData> | undefined> {
   if (cachedBundle && Date.now() - cachedBundle.fetchedAt < CACHE_TTL_MS) {
     return cachedBundle.payload;
   }
@@ -80,16 +87,25 @@ async function fetchBundle(): Promise<ImfBootstrapPayload['data']> {
 
   inFlight = (async () => {
     try {
-      const resp = await fetch(
-        toApiUrl('/api/bootstrap?keys=imfMacro,imfGrowth,imfLabor,imfExternal'),
-        { signal: AbortSignal.timeout(8_000) },
-      );
-      if (!resp.ok) return undefined;
-      const payload = (await resp.json()) as ImfBootstrapPayload;
-      cachedBundle = { fetchedAt: Date.now(), payload: payload.data };
-      return payload.data;
+      const [imfMacro, imfGrowth, imfLabor, imfExternal] = await Promise.all([
+        ensureHydrated('imfMacro'),
+        ensureHydrated('imfGrowth'),
+        ensureHydrated('imfLabor'),
+        ensureHydrated('imfExternal'),
+      ]);
+      if (![imfMacro, imfGrowth, imfLabor, imfExternal].every(hasCountries)) {
+        return cachedBundle?.payload ?? {
+          ...(hasCountries(imfMacro) ? { imfMacro } : {}),
+          ...(hasCountries(imfGrowth) ? { imfGrowth } : {}),
+          ...(hasCountries(imfLabor) ? { imfLabor } : {}),
+          ...(hasCountries(imfExternal) ? { imfExternal } : {}),
+        };
+      }
+      const payload = { imfMacro, imfGrowth, imfLabor, imfExternal } as ImfBootstrapData;
+      cachedBundle = { fetchedAt: Date.now(), payload };
+      return payload;
     } catch {
-      return undefined;
+      return cachedBundle?.payload;
     } finally {
       inFlight = null;
     }
@@ -187,6 +203,14 @@ export async function getImfCountryBundle(iso2Code: string): Promise<ImfCountryB
   };
 }
 
+function imfSource(periods: unknown, metric: string): string {
+  const year = periods && typeof periods === 'object' && !Array.isArray(periods)
+    ? (periods as Record<string, unknown>)[metric] : undefined;
+  const period = typeof year === 'number' && Number.isInteger(year) && year >= 1900 && year <= 2200
+    ? `Year ${year}` : 'Year not supplied';
+  return `IMF WEO · ${period} · IMF release not supplied`;
+}
+
 /**
  * Pure helper — selects up to N IMF-derived indicators ranked by
  * highest-signal-first ordering for the Economic Indicators card.
@@ -206,7 +230,7 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
       label: 'Real GDP Growth',
       value: `${growth >= 0 ? '+' : ''}${growth.toFixed(1)}%`,
       trend: growth > 0.5 ? 'up' : growth < -0.5 ? 'down' : 'flat',
-      source: 'IMF WEO',
+      source: imfSource(bundle.growth?.periods, 'realGdpGrowthPct'),
     });
   }
 
@@ -217,7 +241,7 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
       value: `${inflation >= 0 ? '+' : ''}${inflation.toFixed(1)}%`,
       // High inflation = bad for stability; flag downward trend on >5%.
       trend: inflation > 5 ? 'down' : inflation < 1 ? 'flat' : 'up',
-      source: 'IMF WEO',
+      source: imfSource(bundle.macro?.periods, 'inflationPct'),
     });
   }
 
@@ -227,7 +251,7 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
       label: 'Unemployment',
       value: `${lur.toFixed(1)}%`,
       trend: lur > 10 ? 'down' : lur < 5 ? 'up' : 'flat',
-      source: 'IMF WEO',
+      source: imfSource(bundle.labor?.periods, 'unemploymentPct'),
     });
   }
 
@@ -248,7 +272,7 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
       label: 'Primary Balance',
       value: `${primaryBalance >= 0 ? '+' : ''}${primaryBalance.toFixed(1)}% GDP`,
       trend: primaryBalance > 1 ? 'up' : primaryBalance < -3 ? 'down' : 'flat',
-      source: 'IMF WEO',
+      source: imfSource(bundle.macro?.periods, 'primaryBalancePct'),
     });
   }
 
@@ -261,7 +285,7 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
       label: 'GDP / Capita',
       value: formatted,
       trend: 'flat',
-      source: 'IMF WEO',
+      source: imfSource(bundle.growth?.periods, 'gdpPerCapitaUsd'),
     });
   }
 
@@ -275,7 +299,7 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
       label: 'Public Spending',
       value: `${govExp.toFixed(1)}% GDP`,
       trend: 'flat',
-      source: 'IMF WEO',
+      source: imfSource(bundle.macro?.periods, 'govExpenditurePct'),
     });
   }
 
@@ -285,7 +309,7 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
       label: 'Gov Revenue',
       value: `${govRev.toFixed(1)}% GDP`,
       trend: 'flat',
-      source: 'IMF WEO',
+      source: imfSource(bundle.macro?.periods, 'govRevenuePct'),
     });
   }
 

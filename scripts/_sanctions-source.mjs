@@ -37,9 +37,18 @@ function nonRetryableError(message) {
   return Object.assign(new Error(message), { nonRetryable: true });
 }
 
+// Undici reports every socket failure as "fetch failed"; the code on its cause
+// (ECONNREFUSED, ENOTFOUND, UND_ERR_CONNECT_TIMEOUT, ...) says which one.
+export function describeFetchError(error) {
+  const message = error?.message || String(error);
+  const code = error?.cause?.code;
+  return typeof code === 'string' && /^[A-Z][A-Z0-9_]*$/.test(code) ? `${message} (${code})` : message;
+}
+
 function terminalFetchError(error) {
   if (error && typeof error === 'object') {
     error.nonRetryable = true;
+    try { error.message = describeFetchError(error); } catch { /* frozen message keeps its text */ }
     return error;
   }
   return nonRetryableError(String(error));
@@ -152,7 +161,7 @@ export async function fetchOfacSourceResponse(sourceUrl, {
   }
 
   if (!proxyUrl) throw terminalFetchError(directError);
-  console.warn(`  OFAC direct fetch failed (${directError?.message || directError}); retrying redirect bootstrap via proxy`);
+  console.warn(`  OFAC direct fetch failed (${describeFetchError(directError)}); retrying redirect bootstrap via proxy`);
 
   try {
     const signedUrl = await fetchRedirectViaProxy(sourceUrl, {

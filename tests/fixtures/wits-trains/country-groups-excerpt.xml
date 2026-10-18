@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wits:datasource datasourcecode="TRN" datasourcename="WITS - UNTCTAD TRAINS" language="en" total="481" xmlns:wits="http://wits.worldbank.org">
+  <wits:countries>
+    <wits:country countrycode="A41" isreporter="0" ispartner="1" isgroup="Yes" grouptype="Beneficiaries">
+      <wits:iso3Code>A41</wits:iso3Code>
+      <wits:name>Caribbean Basin Economic Recovery Act: USA 2014</wits:name>
+      <wits:notes />
+    </wits:country>
+    <wits:country countrycode="156" isreporter="1" ispartner="1" isgroup="No" grouptype="N/A">
+      <wits:iso3Code>CHN</wits:iso3Code>
+      <wits:name>China</wits:name>
+      <wits:notes />
+    </wits:country>
+    <wits:country countrycode="N75" isreporter="0" ispartner="1" isgroup="Yes" grouptype="Beneficiaries">
+      <wits:iso3Code>N75</wits:iso3Code>
+      <wits:name>Preferential tariff for CAFTA countries</wits:name>
+      <wits:notes />
+    </wits:country>
+    <wits:country countrycode="P22" isreporter="0" ispartner="1" isgroup="Yes" grouptype="Beneficiaries">
+      <wits:iso3Code>P22</wits:iso3Code>
+      <wits:name>North American Free Trade Agreement (NAFTA)</wits:name>
+      <wits:notes />
+    </wits:country>
+    <wits:country countrycode="P29" isreporter="0" ispartner="1" isgroup="Yes" grouptype="Beneficiaries">
+      <wits:iso3Code>P29</wits:iso3Code>
+      <wits:name>CARIFORUM - EU EPA: (CARICOM, DOM, EU) </wits:name>
+      <wits:notes />
+    </wits:country>
+    <wits:country countrycode="840" isreporter="1" ispartner="1" isgroup="No" grouptype="N/A">
+      <wits:iso3Code>USA</wits:iso3Code>
+      <wits:name>United States</wits:name>
+      <wits:notes />
+    </wits:country>
+  </wits:countries>
+</wits:datasource>

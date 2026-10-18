@@ -742,4 +742,29 @@ describe('country picker — removal affordance (regression)', () => {
       'main.css must style the ✕ remove glyph',
     );
   });
+
+  it('add-code row is styled by main.css, not an unstyled class plus inline styles', () => {
+    const css = readFileSync(
+      resolve(__dirname, '..', 'src', 'styles', 'main.css'),
+      'utf-8',
+    );
+    const pickerSrc = readFileSync(
+      resolve(__dirname, '..', 'src', 'utils', 'country-chip-picker.ts'),
+      'utf-8',
+    );
+    // `unified-settings-input` had no rule anywhere, so the input rendered as a
+    // raw white browser box with an uppercased, clipped placeholder.
+    assert.doesNotMatch(pickerSrc, /unified-settings-input/);
+    assert.doesNotMatch(pickerSrc, /style="/, 'picker markup must not carry inline styles');
+    const inputRule = cssRuleBody(css, '.us-notif-country-add-input');
+    assert.match(inputRule, /background:\s*var\(--settings-surface-inset\);/);
+    assert.match(inputRule, /color:\s*var\(--settings-text\);/);
+    assert.match(
+      css,
+      /\.us-notif-country-add-input::placeholder\s*\{[^}]*text-transform:\s*none;/,
+      'placeholder must not inherit the uppercase transform',
+    );
+    assert.match(css, /\.us-notif-country-add-row\s*\{/);
+    assert.match(cssRuleBody(css, '.us-notif-country-error'), /color:\s*var\(--settings-red\);/);
+  });
 });

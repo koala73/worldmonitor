@@ -4,6 +4,7 @@ import { t } from '@/services/i18n';
 import type { GdeltArticle as ProtoGdeltArticle, SearchGdeltDocumentsResponse, GdeltTimelinePoint } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
+import { normalizeGdeltSearchResponse, normalizeGdeltTopicSnapshot } from '../../shared/intelligence-snapshots.js';
 import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 
 export interface GdeltArticle {
@@ -133,11 +134,28 @@ const getClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBas
 const gdeltBreaker = createCircuitBreaker<SearchGdeltDocumentsResponse>({ name: 'GDELT Intelligence', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const positiveGdeltBreaker = createCircuitBreaker<SearchGdeltDocumentsResponse>({ name: 'GDELT Positive', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
-const emptyGdeltFallback: SearchGdeltDocumentsResponse = { articles: [], query: '', error: '' };
+const emptyGdeltFallback: SearchGdeltDocumentsResponse = { articles: [], query: '', error: 'request-unavailable' };
 
 const CACHE_TTL = 5 * 60 * 1000;
 const STALE_MAX = 60 * 60 * 1000; // 1h ceiling — never serve cache older than this
 const articleCache = new Map<string, { articles: GdeltArticle[]; timestamp: number }>();
+
+/**
+ * An error body or malformed envelope throws inside the breaker so it counts
+ * as a failure (and opens cooldown) instead of a success. Invalid articles
+ * are dropped; the valid ones are kept.
+ */
+function validatedGdeltResponse(response: SearchGdeltDocumentsResponse): SearchGdeltDocumentsResponse {
+  const normalized = normalizeGdeltSearchResponse(response);
+  if (!normalized) throw new Error(response?.error || 'Malformed GDELT response');
+  return normalized;
+}
+
+/** Unavailable read: last-good articles within the 1h ceiling, else a throw the panel renders as an error. */
+function staleOrUnavailable(cached: { articles: GdeltArticle[]; timestamp: number } | undefined): GdeltArticle[] {
+  if (cached && Date.now() - cached.timestamp < STALE_MAX) return cached.articles;
+  throw new Error('GDELT intelligence unavailable');
+}
 const timelineCache = new Map<string, { data: TopicTimeline; timestamp: number }>();
 
 export async function fetchTopicTimeline(topicId: string): Promise<TopicTimeline | null> {
@@ -173,35 +191,24 @@ export async function fetchGdeltArticles(
   maxrecords = 10,
   timespan = '24h'
 ): Promise<GdeltArticle[]> {
-  const cacheKey = `${query}:${maxrecords}:${timespan}`;
+  const cacheKey = JSON.stringify([query, maxrecords, timespan, '', '']);
   const cached = articleCache.get(cacheKey);
 
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return cached.articles;
   }
 
-  const resp = await gdeltBreaker.execute(async () => {
-    return getClient().searchGdeltDocuments({
-      query,
-      maxRecords: maxrecords,
-      timespan,
-      toneFilter: '',
-      sort: '',
-    });
-  }, emptyGdeltFallback);
+  const resp = await gdeltBreaker.execute(async () => validatedGdeltResponse(await getClient().searchGdeltDocuments({
+    query,
+    maxRecords: maxrecords,
+    timespan,
+    toneFilter: '',
+    sort: '',
+  })), emptyGdeltFallback, { cacheKey, shouldCache: (response) => !response.error, maxServeAgeMs: STALE_MAX });
 
   if (resp.error) {
-    if (resp.error === 'seed-unavailable') {
-      // Seed expired on the server — return stale client cache only if within the
-      // staleness ceiling so we do not serve arbitrarily old headlines as current data.
-      if (cached && Date.now() - cached.timestamp < STALE_MAX) {
-        return cached.articles;
-      }
-      return [];
-    }
     console.warn(`[GDELT-Intel] RPC error: ${resp.error}`);
-    if (cached && Date.now() - cached.timestamp < STALE_MAX) return cached.articles;
-    return [];
+    return staleOrUnavailable(cached);
   }
 
   const articles: GdeltArticle[] = (resp.articles || []).map(toGdeltArticle);
@@ -211,8 +218,25 @@ export async function fetchGdeltArticles(
 }
 
 export async function fetchHotspotContext(hotspot: Hotspot): Promise<GdeltArticle[]> {
-  const query = hotspot.keywords.slice(0, 5).join(' OR ');
-  return fetchGdeltArticles(query, 8, '48h');
+  return fetchGdeltArticles(selectHotspotTopicId(hotspot), 8, '48h');
+}
+
+/**
+ * The RPC serves the materializer's seeded topic identifiers. Hotspot labels
+ * are not a query language, so map them to the closest seeded topic instead
+ * of sending an unsupported concatenation of place names and keywords.
+ */
+export function selectHotspotTopicId(hotspot: Pick<Hotspot, 'name' | 'keywords' | 'description'>): string {
+  const text = [hotspot.name, hotspot.description, ...hotspot.keywords]
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ')
+    .toLowerCase();
+  if (/cyber|ransomware|hack|malware|breach/.test(text)) return 'cyber';
+  if (/nuclear|uranium|iaea|reactor|enrichment/.test(text)) return 'nuclear';
+  if (/sanction|embargo|tariff|trade war/.test(text)) return 'sanctions';
+  if (/spy|espionage|intelligence|surveillance/.test(text)) return 'intelligence';
+  if (/maritime|naval|piracy|strait|shipping|\bport\b(?!-)|sea lane|south china sea|warship/.test(text)) return 'maritime';
+  return 'military';
 }
 
 let _bootstrapConsumed = false;
@@ -221,13 +245,15 @@ const _bootstrapData = new Map<string, TopicIntelligence>();
 function _consumeBootstrap(): void {
   if (_bootstrapConsumed) return;
   _bootstrapConsumed = true;
-  const raw = getHydratedData('gdeltIntel') as { topics?: Array<{ id: string; articles: GdeltArticle[]; fetchedAt?: string }> } | undefined;
-  if (!raw?.topics) return;
+  // A malformed snapshot falls through to the RPC; a confirmed-empty topic is
+  // an answer, not a reason to ask again.
+  const raw = normalizeGdeltTopicSnapshot(getHydratedData('gdeltIntel'));
+  if (!raw) return;
   const now = new Date();
   for (const entry of raw.topics) {
     const topic = INTEL_TOPICS.find(t => t.id === entry.id);
-    if (!topic || !entry.articles?.length) continue;
-    _bootstrapData.set(entry.id, { topic, articles: entry.articles, fetchedAt: now });
+    if (!topic) continue;
+    _bootstrapData.set(entry.id, { topic, articles: entry.articles.map(toGdeltArticle), fetchedAt: now });
   }
 }
 
@@ -236,9 +262,10 @@ export async function fetchTopicIntelligence(topic: IntelTopic): Promise<TopicIn
   const bootstrapped = _bootstrapData.get(topic.id);
   if (bootstrapped) {
     _bootstrapData.delete(topic.id);
-    return bootstrapped;
+    // Unused hydration expires with the same 1h ceiling as the article cache.
+    if (Date.now() - bootstrapped.fetchedAt.getTime() < STALE_MAX) return bootstrapped;
   }
-  const articles = await fetchGdeltArticles(topic.query, 10, '24h');
+  const articles = await fetchGdeltArticles(topic.id, 10, '24h');
   return {
     topic,
     articles,
@@ -298,25 +325,23 @@ export async function fetchPositiveGdeltArticles(
   maxrecords = 15,
   timespan = '72h',
 ): Promise<GdeltArticle[]> {
-  const cacheKey = `positive:${query}:${toneFilter}:${sort}:${maxrecords}:${timespan}`;
+  const cacheKey = JSON.stringify([query, maxrecords, timespan, toneFilter, sort]);
   const cached = articleCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return cached.articles;
   }
 
-  const resp = await positiveGdeltBreaker.execute(async () => {
-    return getClient().searchGdeltDocuments({
-      query,
-      maxRecords: maxrecords,
-      timespan,
-      toneFilter,
-      sort,
-    });
-  }, emptyGdeltFallback);
+  const resp = await positiveGdeltBreaker.execute(async () => validatedGdeltResponse(await getClient().searchGdeltDocuments({
+    query,
+    maxRecords: maxrecords,
+    timespan,
+    toneFilter,
+    sort,
+  })), emptyGdeltFallback, { cacheKey, shouldCache: (response) => !response.error, maxServeAgeMs: STALE_MAX });
 
   if (resp.error) {
     console.warn(`[GDELT-Intel] Positive RPC error: ${resp.error}`);
-    return cached?.articles || [];
+    return staleOrUnavailable(cached);
   }
 
   const articles: GdeltArticle[] = (resp.articles || []).map(toGdeltArticle);

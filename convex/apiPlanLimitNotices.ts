@@ -1,3 +1,4 @@
+import { isAccountDeleting } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -196,6 +197,9 @@ export const recordUsageEvaluation = internalMutation({
     notice: v.optional(noticeInputValidator),
   },
   handler: async (ctx, args) => {
+    if (await isAccountDeleting(ctx, args.rollup.userId)) {
+      return { rollupId: null, noticeId: null };
+    }
     const ratio = usageRatio(args.rollup.usage, args.rollup.limit);
     if (!args.notice) {
       // No threshold notice this scan. Do NOT persist an apiUsageRollups row
@@ -300,6 +304,31 @@ export const recordUsageEvaluation = internalMutation({
       await ctx.db.patch(prior._id, { current: false, lastSeenAt: now });
     }
 
+    // Email due-ness is judged on (user, dimension, state), not on the
+    // day-scoped dedupe key. Notice identity rolls over at UTC midnight, so
+    // without this the first scan of a new day inserts a fresh notice with no
+    // `lastEmailedAt`, `emailStatusAfterRescan` reports it `pending`, and a
+    // customer emailed at 23:18 is emailed again minutes after 00:00 -- the
+    // cadence restarts at every day boundary (#4807 item 1). Carry the
+    // delivery record of the same-state notice this one supersedes (it was
+    // just retired above, so it is the only other place it exists) and judge
+    // it exactly as a same-window rescan judges `existingNotice`: its own
+    // `emailStatus` plus `lastEmailedAt`. Carrying the status, not just the
+    // timestamp, matters because `skipped` / `suppressed` also stamp
+    // `lastEmailedAt` (apiPlanLimitEmails) and must not become `sent` --
+    // getEnforcementReadiness reads them as skipped, not notified. A prior
+    // that was never attempted carries nothing; `failed` carries nothing
+    // either, so the new window retries with a fresh `emailAttempts` budget
+    // instead of inheriting a failure it never had. A state change is an
+    // escalation and still emails.
+    const carriedNotice = existingNotice
+      ?? priorCurrent.find(
+        (prior) =>
+          prior.state === args.notice!.state
+          && prior.lastEmailedAt !== undefined
+          && prior.emailStatus !== "failed",
+      );
+
     const noticePatch = {
       usage: args.rollup.usage,
       limit: args.rollup.limit,
@@ -307,9 +336,9 @@ export const recordUsageEvaluation = internalMutation({
       current: true,
       lastSeenAt: now,
       emailStatus: emailStatusAfterRescan({
-        currentStatus: existingNotice?.emailStatus,
+        currentStatus: carriedNotice?.emailStatus,
         state: args.notice.state,
-        lastEmailedAt: existingNotice?.lastEmailedAt,
+        lastEmailedAt: carriedNotice?.lastEmailedAt,
         now,
       }),
       upgradeTargetPlanKey: args.notice.upgradeTargetPlanKey,
@@ -334,6 +363,9 @@ export const recordUsageEvaluation = internalMutation({
       state: args.notice.state,
       windowKey: noticeWindowKey,
       firstSeenAt: now,
+      // Carried across the window boundary (see carriedNotice above) so the
+      // cadence clock keeps running instead of restarting with the new key.
+      ...(carriedNotice?.lastEmailedAt !== undefined ? { lastEmailedAt: carriedNotice.lastEmailedAt } : {}),
       ...noticePatch,
     });
 

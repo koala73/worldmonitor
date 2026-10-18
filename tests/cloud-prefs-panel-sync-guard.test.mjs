@@ -197,7 +197,7 @@ describe('cloud prefs panel sync guardrails', () => {
     const authBody = appSrc.slice(authStart, authEnd);
     assert.match(
       authBody,
-      /const userId = session\.user\?\.id \?\? null;[\s\S]*?this\.freeTierGate\.resetForAuthTransition\(\);[\s\S]*?firePremiumLoaders\(\);/,
+      /const userId = session\.user\?\.id \?\? null;[\s\S]*?this\.freeTierGate\.resetForAuthTransition\(\);[\s\S]*?firePremiumLoaders\(accountTransition\);/,
       'a new account must receive a fresh grace window before auth enforcement runs',
     );
   });

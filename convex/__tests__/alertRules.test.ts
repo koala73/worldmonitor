@@ -574,3 +574,94 @@ describe("alertRules — layer-2 entitlement gate (PRO_REQUIRED)", () => {
     expect(rows[0]?.enabled).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Every write path that accepts an IANA timezone rejects an invalid one and
+// writes nothing. The internal *ForUser mutations are reached from the edge
+// and HTTP paths without going through the public mutations.
+// ---------------------------------------------------------------------------
+
+describe("alertRules — invalid IANA timezone is rejected on every write path", () => {
+  const BAD_TZ = "Mars/Olympus_Mons";
+  const cases: Array<{
+    name: string;
+    message: RegExp;
+    call: (t: ReturnType<typeof convexTest>) => Promise<unknown>;
+  }> = [
+    {
+      name: "setDigestSettings",
+      message: /digestTimezone must be a valid IANA timezone/,
+      call: (t) =>
+        t.withIdentity(USER).mutation(api.alertRules.setDigestSettings, {
+          variant: VARIANT,
+          digestMode: "daily",
+          digestHour: 8,
+          digestTimezone: BAD_TZ,
+        }),
+    },
+    {
+      name: "setDigestSettingsForUser",
+      message: /digestTimezone must be a valid IANA timezone/,
+      call: (t) =>
+        t.mutation(internal.alertRules.setDigestSettingsForUser, {
+          userId: USER.subject,
+          variant: VARIANT,
+          digestMode: "daily",
+          digestHour: 8,
+          digestTimezone: BAD_TZ,
+        }),
+    },
+    {
+      name: "setNotificationConfigForUser",
+      message: /digestTimezone must be a valid IANA timezone/,
+      call: (t) =>
+        t.mutation(internal.alertRules.setNotificationConfigForUser, {
+          userId: USER.subject,
+          variant: VARIANT,
+          digestMode: "daily",
+          digestHour: 8,
+          digestTimezone: BAD_TZ,
+        }),
+    },
+    {
+      name: "setQuietHours",
+      message: /quietHoursTimezone must be a valid IANA timezone/,
+      call: (t) =>
+        t.withIdentity(USER).mutation(api.alertRules.setQuietHours, {
+          variant: VARIANT,
+          quietHoursEnabled: true,
+          quietHoursStart: 22,
+          quietHoursEnd: 7,
+          quietHoursTimezone: BAD_TZ,
+        }),
+    },
+    {
+      name: "setQuietHoursForUser",
+      message: /quietHoursTimezone must be a valid IANA timezone/,
+      call: (t) =>
+        t.mutation(internal.alertRules.setQuietHoursForUser, {
+          userId: USER.subject,
+          variant: VARIANT,
+          quietHoursEnabled: true,
+          quietHoursStart: 22,
+          quietHoursEnd: 7,
+          quietHoursTimezone: BAD_TZ,
+        }),
+    },
+  ];
+
+  for (const { name, message, call } of cases) {
+    test(`${name} with ${BAD_TZ} → throws and writes no row`, async () => {
+      const t = convexTest(schema, modules);
+      await seedProEntitlement(t);
+      await expect(call(t)).rejects.toThrow(message);
+      const rows = await t.run(async (ctx) =>
+        ctx.db
+          .query("alertRules")
+          .withIndex("by_user_variant", (q) => q.eq("userId", USER.subject).eq("variant", VARIANT))
+          .collect(),
+      );
+      expect(rows).toHaveLength(0);
+    });
+  }
+});

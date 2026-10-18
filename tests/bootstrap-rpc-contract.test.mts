@@ -8,6 +8,8 @@ import bootstrap from '../api/bootstrap.js';
 import { issueSessionToken } from '../api/_session.js';
 import { BOOTSTRAP_CACHE_KEYS } from '../shared/bootstrap-tier-keys.js';
 import { assembleBootstrapTierPayload } from '../scripts/publish-bootstrap-tiers.mjs';
+import { sanitizeBootstrapValue as edgeSanitize } from '../api/_bootstrap-public-payload.js';
+import { sanitizeBootstrapValue as workerSanitize } from '../scripts/_bootstrap-public-payload.mjs';
 
 const PATH = 'https://api.worldmonitor.app/api/infrastructure/v1/get-bootstrap-data';
 
@@ -49,7 +51,7 @@ async function setup(t: TestContext) {
 
 test('session RPC rejects unbounded and ambiguous selectors before reading seeds', async t => {
   const { request, reads } = await setup(t);
-  for (const query of ['', '?tier=unknown', '?keys=insights&keys=forecasts', '?tier=fast&keys=insights', '?keys=not-a-key']) {
+  for (const query of ['', '?tier=unknown', '?keys=insights&keys=forecasts', '?tier=fast&keys=insights', '?keys=not-a-key', '?keys=insights&keys=not-a-key']) {
     const response = await request(query);
     assert.equal(response.status, 400, query || 'empty request');
   }
@@ -64,6 +66,23 @@ test('explicit MCP insights request preserves JSON-string response and raw seed 
   const body = await response.json();
   assert.deepEqual(JSON.parse(body.data.insights), { headlines: ['fixture'] });
   assert.deepEqual(reads, [BOOTSTRAP_CACHE_KEYS.insights]);
+});
+
+test('several fast/slow keys are served together; on-demand keys still go one at a time', async t => {
+  const { request, reads, values } = await setup(t);
+  values.set(BOOTSTRAP_CACHE_KEYS.insights, { headlines: ['fixture'] });
+  const response = await request('?keys=insights&keys=wildfires&keys=insights');
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.deepEqual(Object.keys(body.data), ['insights']);
+  assert.deepEqual(body.missing, ['wildfires']);
+  assert.deepEqual(reads.toSorted(), [BOOTSTRAP_CACHE_KEYS.insights, BOOTSTRAP_CACHE_KEYS.wildfires].toSorted());
+
+  reads.length = 0;
+  const onDemand = await request('?keys=insights&keys=torontoRoads');
+  assert.equal(onDemand.status, 400);
+  assert.deepEqual(reads, []);
+  assert.equal((await request('?keys=torontoRoads')).status, 200);
 });
 
 test('RPC, public bootstrap and publisher apply the same transforms and cutover fallback', async t => {
@@ -95,6 +114,92 @@ test('RPC, public bootstrap and publisher apply the same transforms and cutover 
   }
 });
 
+
+// ── IMF WEO datasets: validated on the RPC path too (#8514 follow-up) ──────
+// api/bootstrap.js validates imfMacro/imfGrowth/imfLabor/imfExternal before
+// serving them; this RPC reads the same seeds and must not hand a malformed
+// snapshot to MCP/session callers. The RPC is gateway no-store, so a
+// malformed dataset is reported `missing`, exactly as bootstrap does.
+const IMF_FIELDS = { imfMacro: 'inflationPct', imfGrowth: 'realGdpGrowthPct', imfLabor: 'unemploymentPct', imfExternal: 'exportsUsd' } as const;
+
+test('public IMF transports retain explicit metric periods and strip the private envelope', async t => {
+  const { request, values } = await setup(t);
+  for (const [key, field] of Object.entries(IMF_FIELDS).filter(([key]) => key !== 'imfExternal')) {
+    for (const dropInvalid of [false, true]) {
+      const row = { [field]: 0, year: 2026, periods: { [field]: 2025 } };
+      const payload = { countries: { UA: row, ...(dropInvalid ? { XX: { [field]: 'invalid' } } : {}) }, seededAt: '2026-10-16T00:00:00Z' };
+      values.set(BOOTSTRAP_CACHE_KEYS[key], { _seed: { fetchedAt: 1792108800000, recordCount: 1, sourceVersion: 'not-a-release', schemaVersion: 1, state: 'OK' }, data: payload });
+      const rpcBody = await (await request('?keys=' + key)).json();
+      const publicBody = await (await bootstrap(new Request(`https://api.worldmonitor.app/api/bootstrap?keys=${key}&public=1`))).json();
+      const expected = { ...payload, countries: { UA: row } };
+      assert.deepEqual(JSON.parse(rpcBody.data[key]), expected);
+      assert.deepEqual(publicBody.data[key], expected);
+      assert.deepEqual(edgeSanitize(key, expected), expected);
+      assert.deepEqual(workerSanitize(key, expected), expected);
+      assert.ok(!JSON.stringify(publicBody).includes('_seed'));
+    }
+  }
+});
+
+test('RPC sends a structurally malformed IMF dataset to missing', async t => {
+  const { request, values } = await setup(t);
+  for (const [key, field] of Object.entries(IMF_FIELDS)) {
+    for (const value of [
+      {},
+      [],
+      { countries: {} },
+      { countries: [] },
+      { countries: { UA: { [field]: 1 } }, fallback: true },
+      { countries: { UA: { [field]: 1 } }, error: 'offline' },
+      { countries: { UA: { [field]: 1 } }, dataAvailable: false },
+      { countries: { UA: { [field]: 'bad' } } },
+    ]) {
+      values.set(BOOTSTRAP_CACHE_KEYS[key], value);
+      const response = await request('?keys=' + key);
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { data: {}, missing: [key] }, `${key} ${JSON.stringify(value)}`);
+    }
+  }
+});
+
+test('RPC drops malformed IMF country rows individually and serves the rest unchanged', async t => {
+  const { request, values } = await setup(t);
+  for (const [key, field] of Object.entries(IMF_FIELDS)) {
+    const good = { [field]: 1, year: 2026, extraField: 'kept' };
+    values.set(BOOTSTRAP_CACHE_KEYS[key], {
+      countries: {
+        UA: good,
+        AE: { [field]: 2 },
+        XX: { [field]: 'bad' },
+        YY: null,
+        ZZ: { [field]: '1e999' },
+        QQ: { [field]: 3, year: 1776.5 },
+        WW: { year: 2026 },
+        lower: { [field]: 4 },
+      },
+      seededAt: '2026-09-01T00:00:00Z',
+    });
+    const body = await (await request('?keys=' + key)).json();
+    assert.deepEqual(body.missing, [], key);
+    assert.deepEqual(JSON.parse(body.data[key]), {
+      countries: { UA: good, AE: { [field]: 2 } },
+      seededAt: '2026-09-01T00:00:00Z',
+    }, key);
+  }
+});
+
+test('RPC serves a well-formed IMF dataset exactly as seeded, matching public bootstrap', async t => {
+  const { request, values } = await setup(t);
+  for (const [key, field] of Object.entries(IMF_FIELDS)) {
+    const repaired = { countries: { UA: { [field]: 1, year: 2026 } }, seededAt: '2026-09-01T00:00:00Z' };
+    values.set(BOOTSTRAP_CACHE_KEYS[key], repaired);
+    const body = await (await request('?keys=' + key)).json();
+    assert.deepEqual(JSON.parse(body.data[key]), repaired, key);
+    // IMF keys are on-demand, served per key: RPC and public bootstrap agree.
+    const publicBody = await (await bootstrap(new Request(`https://api.worldmonitor.app/api/bootstrap?keys=${key}&public=1`))).json();
+    assert.deepEqual(JSON.parse(body.data[key]), publicBody.data[key], key);
+  }
+});
 
 test('public payload helpers stay equivalent across Edge and worker packaging', () => {
   const edge = readFileSync(new URL('../api/_bootstrap-public-payload.js', import.meta.url), 'utf8');
@@ -128,14 +233,14 @@ test('RPC still requires a session and does not expose arbitrary Redis keys', as
 });
 
 
-test('published RPC query schema documents the single-key selector', () => {
+test('published RPC query schema documents the multi-key selector', () => {
   const spec = JSON.parse(readFileSync(new URL('../docs/api/InfrastructureService.openapi.json', import.meta.url), 'utf8'));
   const parameters = spec.paths['/api/infrastructure/v1/get-bootstrap-data'].get.parameters;
   const yaml = loadYaml(readFileSync(new URL('../docs/api/InfrastructureService.openapi.yaml', import.meta.url), 'utf8')) as typeof spec;
   const yamlKeys = yaml.paths['/api/infrastructure/v1/get-bootstrap-data'].get.parameters.find((parameter: { name: string }) => parameter.name === 'keys');
-  assert.deepEqual(yamlKeys.schema, { type: 'array', maxItems: 1, items: { type: 'string', minLength: 1 } });
+  assert.deepEqual(yamlKeys.schema, { type: 'array', maxItems: 100, items: { type: 'string', minLength: 1 } });
   const keys = parameters.find((parameter: { name: string }) => parameter.name === 'keys');
-  assert.equal(keys.schema.maxItems, 1);
+  assert.equal(keys.schema.maxItems, 100);
   assert.equal(keys.schema.items.minLength, 1);
   const tier = parameters.find((parameter: { name: string }) => parameter.name === 'tier');
   assert.equal(tier.schema.pattern, '^(fast|slow)$');

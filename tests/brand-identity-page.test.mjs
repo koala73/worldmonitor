@@ -39,6 +39,13 @@ describe('World Monitor brand-identity page', () => {
     assert.match(body, /\|\s*Locality\s*\|\s*Dubai\s*\|/);
     assert.match(body, /\|\s*Country\s*\|\s*AE \(United Arab Emirates\)\s*\|/);
     assert.match(body, /does not publish a street address or telephone number/i);
+    assert.match(body, /## Not World Monitor[\s\S]*world-monitor\.com[\s\S]*worldmonitorintel\.com/, 'brand page must name the same-name sites answer engines confuse with it');
+    // The digest email footer linked x.com/worldmonitorapp, an unregistered handle,
+    // while every sameAs list names x.com/worldmonitorai.
+    // The digest HTML template lives in scripts/lib/digest-email-html.mjs.
+    const digest = read('scripts/seed-digest-notifications.mjs') + read('scripts/lib/digest-email-html.mjs');
+    assert.doesNotMatch(digest, /x\.com\/worldmonitorapp\b/, 'digest footer must not link the unregistered X handle');
+    assert.match(digest, /href="https:\/\/x\.com\/worldmonitorai"/, 'digest footer must link the official X account');
     assert.doesNotMatch(body, /streetAddress|tel:|\bfaxNumber\b|\+\d{8,}/);
     assert.doesNotMatch(body, /\|\s*Telephone\s*\|/i);
     assert.doesNotMatch(body, /\|\s*Street\s*\|/i);
@@ -61,7 +68,7 @@ describe('World Monitor brand-identity page', () => {
     assert.match(body, /https:\/\/www\.wikidata\.org\/wiki\/Q141237754/, 'brand page must cite the World Monitor Wikidata item');
   });
 
-  it('is advertised on catalog, llms, agents, and sitemap discovery surfaces', () => {
+  it('is advertised on catalog, llms, agents, and IndexNow discovery surfaces', () => {
     const catalog = JSON.parse(read('public/.well-known/api-catalog'));
     const hrefs = catalog.linkset.flatMap((ctx) =>
       Object.values(ctx).flatMap((value) => (Array.isArray(value) ? value.map((entry) => entry.href) : [])),
@@ -72,8 +79,11 @@ describe('World Monitor brand-identity page', () => {
       assert.ok(read(path).includes('/world-monitor.md'), `${path} must link world-monitor.md`);
     }
 
+    // A file, not a page: it left the sitemap (#8608) and is announced through
+    // IndexNow and llms.txt instead, still on the www host.
     const sitemap = read('public/sitemap-main.xml');
-    assert.ok(sitemap.includes(`<loc>${BRAND_URL}</loc>`), 'sitemap-main.xml must register the www brand page');
+    assert.ok(!sitemap.includes(`<loc>${BRAND_URL}</loc>`), 'sitemap-main.xml must not declare the brand markdown');
+    assert.match(read('scripts/build-sitemap.mjs'), /`\$\{SITE_ORIGIN\}\/world-monitor\.md`/);
   });
 });
 
@@ -126,6 +136,33 @@ describe('Organization JSON-LD NAP alignment', () => {
       false,
       'the web-application item must not be attached to the Organization node',
     );
+  });
+
+  it('names each Wikidata item only on the node it identifies (#8699)', () => {
+    // Two items, two entities: Q141437464 is the company, Q141237754 the web
+    // application. A single page carries both, so the check is per node, not
+    // "every ID on the page is the same".
+    const COMPANY = 'Q141437464';
+    const APPLICATION = 'Q141237754';
+    const blocks = [...read('pro-test/welcome.html').matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)]
+      .map((match) => JSON.parse(match[1]));
+    const [org] = blocks.filter((block) => block['@type'] === 'Organization');
+    const [app] = blocks.filter((block) => block['@type'] === 'SoftwareApplication');
+    const itemsIn = (value) => new Set(JSON.stringify(value ?? null).match(/Q\d+/g) ?? []);
+    const wikidataSameAs = (node) => node.sameAs.filter((url) => url.startsWith('https://www.wikidata.org/'));
+
+    assert.deepEqual(wikidataSameAs(org), [`https://www.wikidata.org/wiki/${COMPANY}`]);
+    assert.deepEqual(wikidataSameAs(app), [`https://www.wikidata.org/wiki/${APPLICATION}`]);
+    assert.ok(
+      itemsIn(org.disambiguatingDescription).has(COMPANY),
+      'the Organization description must name the company item it is the sameAs of',
+    );
+    assert.match(
+      org.disambiguatingDescription,
+      new RegExp(`the company ${COMPANY} and the web application ${APPLICATION}`),
+      'a second item in the Organization text must say which entity it is',
+    );
+    assert.ok(!itemsIn(app).has(COMPANY), 'the application node must not carry the company item');
   });
 
   it('keeps star counts out of the source template for build-time injection', () => {

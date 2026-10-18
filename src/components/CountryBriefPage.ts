@@ -1,5 +1,5 @@
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
-import { formatIntelBrief } from '@/utils/format-intel-brief';
+import { formatIntelBrief, renderBriefEvidenceFooter, type IntelBriefEvidence } from '@/utils/format-intel-brief';
 import { collectBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
 import { t } from '@/services/i18n';
 import { getCSSColor, showToast } from '@/utils';
@@ -82,6 +82,12 @@ export class CountryBriefPage implements CountryBriefPanel {
   constructor() {
     this.overlay = document.createElement('div');
     this.overlay.className = 'country-brief-overlay';
+    // Deliberately carries no `role="dialog"` / `aria-modal`. Adding either
+    // would make the reload guard see it (`src/utils/open-modal.ts`), and this
+    // element is appended once and hides via `opacity: 0` rather than leaving
+    // layout, so `checkVisibility()` would report it visible for the whole
+    // session and stop every automatic reload. Give it a dialog role only
+    // together with a `display`-based hidden state and a `declareOverlay` call.
     document.body.appendChild(this.overlay);
 
     // Single delegated click handler for all interactive elements.
@@ -286,6 +292,7 @@ export class CountryBriefPage implements CountryBriefPanel {
         : 'military';
       const advisoryLabel = signals.travelAdvisoryMaxLevel === 'do-not-travel' ? 'Do Not Travel'
         : signals.travelAdvisoryMaxLevel === 'reconsider' ? 'Reconsider Travel'
+        : signals.travelAdvisoryMaxLevel === 'normal' ? t('countryBrief.chips.normalPrecautions')
         : 'Exercise Caution';
       chips.push(`<span class="signal-chip ${advisoryClass}">\u26A0\uFE0F ${signals.travelAdvisories} Advisory: ${advisoryLabel}</span>`);
     }
@@ -528,11 +535,13 @@ export class CountryBriefPage implements CountryBriefPanel {
     this.currentBriefGeneratedAt = data.generatedAt ?? null;
     this.currentBriefCached = data.cached === true;
     const briefSources = collectBriefSources(data.sources ?? [], 6);
-    const formatted = this.formatBrief(data.brief, briefSources, this.currentHeadlineCount);
+    const formatted = this.formatBrief(data.brief, briefSources, this.currentHeadlineCount, data.evidence);
     const sourcesFooter = renderBriefSourcesFooter(briefSources, { className: 'cb-brief-sources' });
+    const evidenceFooter = renderBriefEvidenceFooter(data.evidence, { className: 'cb-brief-sources cb-brief-evidence' });
     setTrustedHtml(section, trustedHtml(`
       <div class="cb-brief-text">${formatted}</div>
       ${sourcesFooter}
+      ${evidenceFooter}
       <div class="cb-brief-footer">
         ${data.cached ? `<span class="intel-cached">📋 ${t('modals.countryBrief.cached')}</span>` : `<span class="intel-fresh">✨ ${t('modals.countryBrief.fresh')}</span>`}
         <span class="intel-timestamp">${data.generatedAt ? new Date(data.generatedAt).toLocaleTimeString() : ''}</span>
@@ -688,7 +697,7 @@ export class CountryBriefPage implements CountryBriefPanel {
     return t('modals.countryBrief.timeAgo.d', { count: Math.floor(hours / 24) });
   }
 
-  private formatBrief(text: string, sources: BriefSource[] = [], headlineCount = 0): string {
+  private formatBrief(text: string, sources: BriefSource[] = [], headlineCount = 0, evidence?: IntelBriefEvidence[]): string {
     return formatIntelBrief(
       text,
       sources.length > 0
@@ -697,6 +706,7 @@ export class CountryBriefPage implements CountryBriefPanel {
           ? { count: headlineCount, hrefPrefix: '#cb-news-' }
           : undefined,
       this.currentName ?? undefined,
+      evidence,
     );
   }
 

@@ -447,6 +447,36 @@ async function runHarness(
 }
 
 describe('cloud preference write serialization', () => {
+  it('normalizes legacy webcam data on upload without changing other preferences', async () => {
+    const result = await runHarness(async (cloudPrefs) => {
+      localStorage.setItem('wm-pinned-webcams', '[null,{}]');
+      localStorage.setItem('wm-market-watchlist-v1', 'unchanged');
+      await cloudPrefs.syncNow();
+    });
+    assert.equal(result.acceptedDataByToken['test-token']['wm-pinned-webcams'], '[]');
+    assert.equal(result.acceptedDataByToken['test-token']['wm-market-watchlist-v1'], 'unchanged');
+  });
+
+  it('normalizes legacy cloud webcam data before restoring local storage', async () => {
+    await runHarness(async (cloudPrefs, controls) => {
+      controls.seedRow('test-token', { 'wm-pinned-webcams': '[null,{}]', 'wm-market-watchlist-v1': 'unchanged' }, 1);
+      await cloudPrefs.onSignIn('user-1', 'full');
+      assert.equal(localStorage.getItem('wm-pinned-webcams'), '[]');
+      assert.equal(localStorage.getItem('wm-market-watchlist-v1'), 'unchanged');
+    });
+  });
+
+  it('normalizes a legacy webcam blob carried through a conflict retry', async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      controls.seedRow('test-token', { 'wm-pinned-webcams': '[null,{}]', 'wm-market-watchlist-v1': 'unchanged' }, 10);
+      await cloudPrefs.syncNow();
+      assert.equal(localStorage.getItem('wm-pinned-webcams'), '[]');
+    });
+    assert.equal(result.conflictCount, 1);
+    assert.equal(result.acceptedDataByToken['test-token']['wm-pinned-webcams'], '[]');
+    assert.equal(result.acceptedDataByToken['test-token']['wm-market-watchlist-v1'], 'unchanged');
+  });
+
   it('coalesces overlapping uploads instead of racing stale sync versions', async () => {
     const result = await runHarness(async (cloudPrefs) => {
       await Promise.all(Array.from({ length: 6 }, () => cloudPrefs.syncNow()));
@@ -1012,5 +1042,63 @@ describe('cloud prefs marker ordering (#7833 review)', () => {
       'the sync version must not advance past a rejected schema marker',
     );
     assert.equal(result.state, 'error');
+  });
+});
+
+describe('settings import cloud transaction', () => {
+  for (const failure of ['remove', 'restore']) {
+    it(`attempts every rollback entry after a ${failure} failure`, async () => {
+      await runHarness(async (cloudPrefs, controls) => {
+        localStorage.setItem('worldmonitor-theme', 'dark');
+        localStorage.setItem('wm-font-scale', '1');
+        localStorage.setItem('wm-map-provider', 'auto');
+        cloudPrefs.install('full');
+        const dirtyBefore = localStorage.getItem('wm-cloud-prefs-dirty-keys');
+        const setItem = localStorage.setItem.bind(localStorage);
+        const removeItem = localStorage.removeItem.bind(localStorage);
+        localStorage.removeItem = (key) => {
+          if (failure === 'remove' && key === 'wm-font-scale') throw new Error('SecurityError');
+          removeItem(key);
+        };
+        localStorage.setItem = (key, value) => {
+          if (failure === 'restore' && key === 'wm-font-scale' && value === '1') throw new Error('QuotaExceededError');
+          setItem(key, value);
+        };
+        controls.rejectWritesTo('wm-stream-quality');
+
+        assert.throws(() => cloudPrefs.applyLocalPreferenceImport([
+          ['worldmonitor-theme', 'light'], ['wm-font-scale', '1.2'],
+          ['wm-map-provider', 'carto'], ['wm-stream-quality', 'high'],
+        ]), /Settings rollback failed/);
+
+        assert.equal(localStorage.getItem('worldmonitor-theme'), 'dark');
+        assert.equal(localStorage.getItem('wm-map-provider'), 'auto');
+        assert.equal(localStorage.getItem('wm-font-scale'), failure === 'remove' ? '1' : null);
+        assert.equal(localStorage.getItem('wm-cloud-prefs-dirty-keys'), dirtyBefore);
+      });
+    });
+  }
+
+  it('does not mark partial imports dirty when a later write fails', async () => {
+    await runHarness(async (cloudPrefs, controls) => {
+      cloudPrefs.install('full');
+      const before = localStorage.getItem('worldmonitor-theme');
+      const dirtyBefore = localStorage.getItem('wm-cloud-prefs-dirty-keys');
+      controls.rejectWritesTo('wm-font-scale');
+      assert.throws(() => cloudPrefs.applyLocalPreferenceImport([
+        ['worldmonitor-theme', 'light'], ['wm-font-scale', '1.2'],
+      ]));
+      assert.equal(localStorage.getItem('worldmonitor-theme'), before);
+      assert.equal(localStorage.getItem('wm-cloud-prefs-dirty-keys'), dirtyBefore);
+    });
+  });
+
+  it('publishes successful validated imports through the normal sync path', async () => {
+    const result = await runHarness(async (cloudPrefs) => {
+      cloudPrefs.install('full');
+      cloudPrefs.applyLocalPreferenceImport([['worldmonitor-theme', 'light']]);
+      await cloudPrefs.syncNow();
+    });
+    assert.equal(result.acceptedDataByToken['test-token']?.['worldmonitor-theme'], 'light');
   });
 });

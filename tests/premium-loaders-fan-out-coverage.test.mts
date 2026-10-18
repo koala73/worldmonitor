@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { transpileModule } from 'typescript';
 
 // REGRESSION GUARD for PR #3828 (Free→Pro hydration race).
 //
@@ -100,6 +101,36 @@ function extractFanOutLoaders(src: string): Set<string> {
 describe('firePremiumLoaders fan-out coverage', () => {
   const gatedLoaders = extractGatedLoaders(DATA_LOADER_TS);
   const fanOutLoaders = extractFanOutLoaders(APP_TS);
+
+  it('reloads premium data for a new principal without repeating unchanged auth events', () => {
+    const start = APP_TS.indexOf('const firePremiumLoaders');
+    const end = APP_TS.indexOf('\n    };', start) + '\n    };'.length;
+    const emitted = transpileModule(APP_TS.slice(start, end), {}).outputText;
+    const calls: string[] = [];
+    let premium = true;
+    const host = {
+      reconcileTierOwnedPreferences() {},
+      connectCorrelationAssessments() {},
+      state: { correlationEngine: { clearAssessments() {} } },
+      dataLoader: new Proxy({}, { get: (_target, name) => () => { calls.push(String(name)); } }),
+    };
+    const fire = new Function('hasPremiumAccess', `let _prevHadPremium = true; ${emitted}; return firePremiumLoaders;`)
+      .call(host, () => premium) as (accountTransition?: boolean) => void;
+    fire();
+    assert.deepEqual(calls, []);
+    fire(true);
+    assert.ok(calls.includes('loadTradePolicy'));
+    const afterSwitch = calls.length;
+    fire();
+    assert.equal(calls.length, afterSwitch);
+    premium = false;
+    fire(true);
+    assert.equal(calls.filter((name) => name === 'loadTradePolicy').length, 1);
+    premium = true;
+    fire();
+    assert.equal(calls.filter((name) => name === 'loadTradePolicy').length, 2);
+    assert.match(APP_TS, /firePremiumLoaders\(accountTransition\)/);
+  });
 
   it('PR #3828 review fix: extracts loaders from single-line gates (no braces)', () => {
     // Synthetic fixture covering all three shapes the production regex must

@@ -46,6 +46,7 @@ import {
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import { withTimeout } from '@/utils/with-timeout';
+import { assessCorroboration, evidenceFromCluster } from '@/utils/corroboration-flag';
 import { fetchPredictionCandidates, reprioritizeMarketsForRegion as reprioritizePredictionMarketsForRegion } from '@/services/prediction';
 import {
   fetchEarthquakes,
@@ -121,16 +122,16 @@ import { fetchSatelliteTLEs, initSatRecs, propagatePositions, startPropagationLo
 import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import type { CorrelationSignal } from '@/services/correlation';
-import { fetchConflictEvents, fetchUcdpEvents, deduplicateAgainstAcled, deduplicateUcdpProjectionAggregates, fetchIranEvents } from '@/services/conflict';
-import { fetchUnhcrPopulation } from '@/services/displacement';
+import { fetchConflictEvents, fetchUcdpEvents, fetchIranEvents } from '@/services/conflict';
+import { fetchCrossBorderArrivals, fetchInternalDisplacement, fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { fetchImdCycloneMarine } from '@/services/imd-cyclone-marine';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
 import { fetchThermalEscalations } from '@/services/thermal-escalation';
 import { fetchCrossSourceSignals } from '@/services/cross-source-signals';
-import { fetchTelegramFeed } from '@/services/telegram-intel';
+import { fetchTelegramFeed, getTelegramIntelGeneration } from '@/services/telegram-intel';
 import { fetchXFeed, isUsableHydratedXFeed } from '@/services/x-intel';
-import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
+import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate, type OrefAlertsResponse } from '@/services/oref-alerts';
 import { getResilienceRanking } from '@/services/resilience';
 import { buildResilienceChoroplethMap } from '@/components/resilience-choropleth-utils';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
@@ -207,7 +208,6 @@ import type {
   SectorBriefContext,
 } from '@/services/daily-market-brief';
 import { fetchCachedRiskScores, getCachedScores, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
-import type { ThreatLevel as ClientThreatLevel } from '@/types';
 import type { NewsItem as ProtoNewsItem } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { fetchMarketImplications } from '@/services/market-implications';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreaks';
@@ -223,9 +223,8 @@ import type { GeoHubsPanel } from '@/components/GeoHubsPanel';
 import type { TechHubsPanel } from '@/components/TechHubsPanel';
 import { EconomicServiceClient, MarketServiceClient, ResearchServiceClient } from '@/services/generated-rpc-clients';
 
-// The proto-level -> label map lives in shared/news-clustering-core.js so the
-// client digest loader and the server-side MCP tools cannot drift (#5697).
-import { protoThreatLevelToLabel } from '../../shared/news-clustering-core.js';
+import { protoItemToNewsItem } from '@/services/news-digest-items';
+import { normalizeStockSymbol } from '../../shared/stock-symbol';
 
 type PhysicalPremiumFetcher = typeof import('@/services/market')['fetchPhysicalPremiums'];
 type PhysicalDivergenceFetcher = typeof import('@/services/market')['fetchPhysicalDivergence'];
@@ -264,52 +263,6 @@ export async function loadPhysicalPremiumComparisonIfNeeded(
   return true;
 }
 
-const PROTO_TO_CLIENT_PHASE: Record<string, import('@/types').StoryPhase> = {
-  STORY_PHASE_BREAKING:   'breaking',
-  STORY_PHASE_DEVELOPING: 'developing',
-  STORY_PHASE_SUSTAINED:  'sustained',
-  STORY_PHASE_FADING:     'fading',
-};
-
-function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
-  const level: ClientThreatLevel = protoThreatLevelToLabel(p.threat?.level);
-  return {
-    source: p.source,
-    title: p.title,
-    link: p.link,
-    pubDate: new Date(p.publishedAt),
-    isAlert: p.isAlert,
-    importanceScore: p.importanceScore || undefined,
-    credibilityScore: Number.isFinite(p.credibilityScore) ? p.credibilityScore : undefined,
-    corroborationCount: p.corroborationCount || undefined,
-    storyMeta: p.storyMeta && p.storyMeta.phase !== 'STORY_PHASE_UNSPECIFIED' ? {
-      firstSeen:    p.storyMeta.firstSeen,
-      mentionCount: p.storyMeta.mentionCount,
-      sourceCount:  p.storyMeta.sourceCount,
-      phase: PROTO_TO_CLIENT_PHASE[p.storyMeta.phase] ?? 'breaking',
-    } : undefined,
-    threat: p.threat ? {
-      level,
-      category: p.threat.category as import('@/services/threat-classifier').EventCategory,
-      confidence: p.threat.confidence,
-      source: (p.threat.source || 'keyword') as 'keyword' | 'ml' | 'llm',
-    } : undefined,
-    ...(p.locationName && { locationName: p.locationName }),
-    ...(p.location && { lat: p.location.latitude, lon: p.location.longitude }),
-    ...(p.importanceScore ? { importanceScore: p.importanceScore } : {}),
-    ...(Number.isFinite(p.credibilityScore) ? { credibilityScore: p.credibilityScore } : {}),
-    ...(p.corroborationCount ? { corroborationCount: p.corroborationCount } : {}),
-    // Cleaned RSS description (U3 proto field 12). Only populated when the
-    // upstream feed carried a usable <description>/<content:encoded>/<summary>;
-    // empty string otherwise. Consumers render the headline and fall back to
-    // snippet as a secondary line when non-empty.
-    ...(p.snippet ? { snippet: p.snippet } : {}),
-    // Ingest-extracted tickers (#4922a, proto field 13). Runtime guard on
-    // top of the generated type: persisted last-good digests from before
-    // the rollout carry items without the field.
-    ...(p.tickers && p.tickers.length ? { tickers: p.tickers } : {}),
-  };
-}
 
 interface SelectedNewsDigest {
   digest: ListFeedDigestResponse;
@@ -506,6 +459,8 @@ export class DataLoaderManager implements AppModule {
   private activeGlobalTenderScopedGeneration: number | null = null;
   private dailyBriefFrameworkUnsubscribe: (() => void) | null = null;
   private marketImplicationsFrameworkUnsubscribe: (() => void) | null = null;
+  private orefUnsubscribe: (() => void) | null = null;
+  private orefDisposed = false;
   private cachedSatRecs: SatRecEntry[] | null = null;
   private loadAllDataPromise: Promise<void> | null = null;
   private loadAllDataRerunRequested = false;
@@ -664,6 +619,9 @@ export class DataLoaderManager implements AppModule {
     this.applyTimeRangeFilterToNewsPanelsDebounced.cancel();
     this.xIntelAbortController?.abort();
     this.xIntelAbortController = null;
+    this.orefDisposed = true;
+    this.orefUnsubscribe?.();
+    this.orefUnsubscribe = null;
     stopOrefPolling();
     if (this.boundMarketWatchlistHandler) {
       window.removeEventListener('wm-market-watchlist-changed', this.boundMarketWatchlistHandler as EventListener);
@@ -1353,7 +1311,13 @@ export class DataLoaderManager implements AppModule {
   async loadSatellites(): Promise<void> {
     this.stopSatellitePropagation();
     const data = await fetchSatelliteTLEs();
-    if (!data || data.length === 0) return;
+    if (!data || data.length === 0) {
+      // Confirmed empty, expired, or unavailable without last-good data:
+      // clear the layer instead of leaving the previous orbits on the map.
+      this.cachedSatRecs = [];
+      this.ctx.map?.setSatellites([]);
+      return;
+    }
     try {
       this.cachedSatRecs = await initSatRecs(data);
     } catch (err) {
@@ -2301,8 +2265,10 @@ export class DataLoaderManager implements AppModule {
           title: c.primaryTitle,
           threatLevel: c.threat?.level ?? 'info',
           timestamp: c.lastUpdated,
+          // #9213: the verdict the News panel shows for this cluster.
+          corroboration: assessCorroboration(evidenceFromCluster(c)),
         }));
-      if (geoLocated.length > 0) {
+      if (geoLocated.length > 0 || landed) {
         this.ctx.map?.setNewsLocations(geoLocated);
       }
     } catch (error) {
@@ -2375,15 +2341,15 @@ export class DataLoaderManager implements AppModule {
       // Build a combined view so a partial refetch does not shrink the panel:
       // preserve still-fresh cached snapshots for symbols we did NOT refetch,
       // and use live results for symbols we did. Watchlist order is preserved.
-      const resultBySymbol = new Map(results.map((r) => [r.symbol, r]));
+      const resultBySymbol = new Map(results.map((r) => [normalizeStockSymbol(r.symbol), r]));
       const combined: StockAnalysisResult[] = [];
       for (const target of targets) {
-        const live = resultBySymbol.get(target.symbol);
+        const live = resultBySymbol.get(normalizeStockSymbol(target.symbol));
         if (live) {
           combined.push(live);
           continue;
         }
-        const cached = storedHistory[target.symbol]?.[0];
+        const cached = storedHistory[normalizeStockSymbol(target.symbol)]?.[0];
         if (cached?.available) combined.push(cached);
       }
       const snapshotsToRender = combined.length > 0 ? combined : results;
@@ -2457,16 +2423,16 @@ export class DataLoaderManager implements AppModule {
       // Build a combined view so a partial refetch does not shrink the panel:
       // keep still-fresh cached backtests for symbols we did NOT refetch, swap
       // in live results for the ones we did. Watchlist order is preserved.
-      const resultBySymbol = new Map(results.map((r) => [r.symbol, r]));
-      const storedBySymbol = new Map(stored.map((s) => [s.symbol, s]));
+      const resultBySymbol = new Map(results.map((r) => [normalizeStockSymbol(r.symbol), r]));
+      const storedBySymbol = new Map(stored.map((s) => [normalizeStockSymbol(s.symbol), s]));
       const combined: StockBacktestResult[] = [];
       for (const target of targets) {
-        const live = resultBySymbol.get(target.symbol);
+        const live = resultBySymbol.get(normalizeStockSymbol(target.symbol));
         if (live) {
           combined.push(live);
           continue;
         }
-        const cached = storedBySymbol.get(target.symbol);
+        const cached = storedBySymbol.get(normalizeStockSymbol(target.symbol));
         if (cached) combined.push(cached);
       }
       panel.renderBacktests(combined.length > 0 ? combined : results);
@@ -3201,7 +3167,7 @@ export class DataLoaderManager implements AppModule {
         portAlerts: [],
         marineBulletins: [],
         sourceName: 'India Meteorological Department',
-        sourceUrl: 'https://api.imd.gov.in/public/api_reference.html',
+        sourceUrl: 'https://mausam.imd.gov.in/responsive/marine_forecast.php',
       };
     }
   }
@@ -3410,6 +3376,31 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
+  private readonly applyOrefAlerts = (data: OrefAlertsResponse): void => {
+    if (this.orefDisposed) return;
+    this.callPanel('oref-sirens', 'setData', data);
+    this.ctx.intelligenceCache.orefAlerts = {
+      alertCount: data.alerts?.length ?? 0,
+      historyCount24h: data.historyCount24h ?? 0,
+    };
+    if (data.alerts?.length) dispatchOrefBreakingAlert(data.alerts);
+  };
+
+  async loadOrefAlerts(): Promise<void> {
+    if (this.orefDisposed) return;
+    this.orefUnsubscribe ??= onOrefAlertsUpdate(this.applyOrefAlerts);
+    try {
+      const data = await fetchOrefAlerts();
+      if (this.orefDisposed) return;
+      this.applyOrefAlerts(data);
+      startOrefPolling();
+    } catch (error) {
+      if (this.orefDisposed) return;
+      console.error('[Intelligence] OREF alerts fetch failed:', error);
+      this.callPanel('oref-sirens', 'showError');
+    }
+  }
+
   async loadIntelligenceSignals(): Promise<void> {
     const _desktopLocked = isDesktopRuntime() && !hasPremiumAccess();
     const tasks: Promise<void>[] = [];
@@ -3470,18 +3461,21 @@ export class DataLoaderManager implements AppModule {
     })();
     tasks.push(protestsTask.then(() => undefined));
 
-    tasks.push((async () => {
+    const conflictsTask = (async () => {
       try {
         const conflictData = await fetchConflictEvents();
         this.ctx.intelligenceCache.conflicts = conflictData.events;
         ingestConflictsForCountryData(conflictData.events);
         this.callbacks.refreshOpenCountryTimeline?.();
         if (conflictData.count > 0) dataFreshness.recordUpdate('acled_conflict', conflictData.count);
+        return conflictData.events;
       } catch (error) {
         console.error('[Intelligence] Conflict events fetch failed:', error);
         dataFreshness.recordError('acled_conflict', String(error));
+        return [];
       }
-    })());
+    })();
+    tasks.push(conflictsTask.then(() => undefined));
 
     const hydratedUcdp = getHydratedData('ucdpEvents') as import('@/services/conflict').HydratedUcdpPayload | undefined;
 
@@ -3500,6 +3494,10 @@ export class DataLoaderManager implements AppModule {
           flightClusters: flightData.clusters,
           vessels: vesselData.vessels,
           vesselClusters: vesselData.clusters,
+          flightDataState: flightData.dataState,
+          vesselDataState: vesselData.dataState,
+          vesselNegativeEvidenceConfirmed: vesselData.negativeEvidenceConfirmed,
+          vesselCoverageNotes: vesselData.coverageNotes,
         };
         this.callbacks.refreshOpenCountryMilitary?.();
         this.callbacks.refreshOpenCountryTimeline?.();
@@ -3537,7 +3535,6 @@ export class DataLoaderManager implements AppModule {
 
     tasks.push((async () => {
       try {
-        const protestEvents = await protestsTask;
         // The bootstrap payload is a dashboard projection (#5300) — 150 rows, not
         // 2,000. The panel is fine with that (it renders 50/tab and takes its
         // counts from the precomputed aggregates), but the map draws every event.
@@ -3552,13 +3549,9 @@ export class DataLoaderManager implements AppModule {
           this.showColdLoadError('ucdp-events');
           return;
         }
-        const acledEvents = protestEvents.map(e => ({
-          latitude: e.lat, longitude: e.lon, event_date: e.time.toISOString(), fatalities: e.fatalities ?? 0,
-        }));
-        const events = deduplicateAgainstAcled(result.data, acledEvents);
-        const aggregates = !wantsFullUcdpSet && hydratedUcdp?.aggregates && hydratedUcdp.dedupeIndex
-          ? deduplicateUcdpProjectionAggregates(hydratedUcdp.aggregates, hydratedUcdp.dedupeIndex, acledEvents)
-          : undefined;
+        // Keep each source's claims intact, even when ACLED reports an overlapping event.
+        const events = result.data;
+        const aggregates = !wantsFullUcdpSet ? hydratedUcdp?.aggregates : undefined;
         (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.setEvents(
           events,
           aggregates,
@@ -3597,6 +3590,35 @@ export class DataLoaderManager implements AppModule {
 
     tasks.push((async () => {
       try {
+        const internal = await fetchInternalDisplacement();
+        if (internal.operations.length === 0) return;
+        this.callPanel('displacement', 'setInternalData', internal);
+        if (this.ctx.mapLayers.displacement) {
+          this.ctx.map?.setInternalDisplacement(internal);
+        }
+      } catch (error) {
+        console.error('[Intelligence] IOM DTM displacement fetch failed:', error);
+      }
+    })());
+
+    // On-demand key: only fetched when something shows it.
+    if (this.ctx.mapLayers.displacement || this.ctx.panelSettings['displacement']?.enabled) {
+      tasks.push((async () => {
+        try {
+          const crossBorder = await fetchCrossBorderArrivals();
+          if (crossBorder.situations.length === 0) return;
+          this.callPanel('displacement', 'setCrossBorderData', crossBorder);
+          if (this.ctx.mapLayers.displacement) {
+            this.ctx.map?.setCrossBorderArrivals(crossBorder);
+          }
+        } catch (error) {
+          console.error('[Intelligence] UNHCR cross-border fetch failed:', error);
+        }
+      })());
+    }
+
+    tasks.push((async () => {
+      try {
         const climateResult = await fetchClimateAnomalies();
         if (!climateResult.ok) {
           dataFreshness.recordError('climate', 'Climate anomalies unavailable (retaining prior climate state)');
@@ -3631,27 +3653,7 @@ export class DataLoaderManager implements AppModule {
 
     // OREF sirens (premium-locked on desktop without API key)
     if (!_desktopLocked) {
-      tasks.push((async () => {
-        try {
-          const data = await fetchOrefAlerts();
-          this.callPanel('oref-sirens', 'setData', data);
-          const alertCount = data.alerts?.length ?? 0;
-          const historyCount24h = data.historyCount24h ?? 0;
-          this.ctx.intelligenceCache.orefAlerts = { alertCount, historyCount24h };
-          if (data.alerts?.length) dispatchOrefBreakingAlert(data.alerts);
-          onOrefAlertsUpdate((update) => {
-            this.callPanel('oref-sirens', 'setData', update);
-            const updAlerts = update.alerts?.length ?? 0;
-            const updHistory = update.historyCount24h ?? 0;
-            this.ctx.intelligenceCache.orefAlerts = { alertCount: updAlerts, historyCount24h: updHistory };
-            if (update.alerts?.length) dispatchOrefBreakingAlert(update.alerts);
-          });
-          startOrefPolling();
-        } catch (error) {
-          console.error('[Intelligence] OREF alerts fetch failed:', error);
-          this.callPanel('oref-sirens', 'showError');
-        }
-      })());
+      tasks.push(this.loadOrefAlerts());
     }
 
     // GPS/GNSS jamming (cloud-only — seeded by Wingbits API via fetch-gpsjam.mjs)
@@ -4030,6 +4032,10 @@ export class DataLoaderManager implements AppModule {
         flightClusters: flightData.clusters,
         vessels: vesselData.vessels,
         vesselClusters: vesselData.clusters,
+        flightDataState: flightData.dataState,
+        vesselDataState: vesselData.dataState,
+        vesselNegativeEvidenceConfirmed: vesselData.negativeEvidenceConfirmed,
+        vesselCoverageNotes: vesselData.coverageNotes,
       };
       this.callbacks.refreshOpenCountryMilitary?.();
       this.callbacks.refreshOpenCountryTimeline?.();
@@ -4267,6 +4273,7 @@ export class DataLoaderManager implements AppModule {
       procurementPanel.setRequestHandler((nextFilters, shouldAppend, requestSignal) => {
         return this.loadGlobalTenders(nextFilters, shouldAppend, requestSignal);
       });
+      procurementPanel.setPrincipalResetHandler(() => this.resetGlobalTendersForPrincipal());
       if (!hasPremiumAccess()) {
         if (isCanceledOrStale()) return;
         procurementPanel.clear();
@@ -4301,6 +4308,23 @@ export class DataLoaderManager implements AppModule {
     } finally {
       releaseScopedRequest();
     }
+  }
+
+  /**
+   * The procurement panel was reset for a principal change (sign-out,
+   * downgrade, or a switch to another Pro account). Drop the previous
+   * account's filters and cached results, then reload for the current account
+   * (loadGlobalTenders applies the access gate itself). App fires its
+   * account-transition loaders before panel gating runs, so the load already
+   * in flight carries the old filters; clearGlobalTenders() supersedes it and
+   * the reload replaces it.
+   */
+  private resetGlobalTendersForPrincipal(): void {
+    void this.clearGlobalTenders();
+    void Promise.resolve().then(() => {
+      if (this.ctx.isDestroyed) return;
+      void this.loadGlobalTenders();
+    });
   }
 
   async clearGlobalTenders(): Promise<void> {
@@ -4376,6 +4400,7 @@ export class DataLoaderManager implements AppModule {
     if (!hasPremiumAccess()) return;
     const tradePanel = this.ctx.panels['trade-policy'] as TradePolicyPanel | undefined;
     if (!tradePanel) return;
+    const generation = tradePanel.beginDataLoad();
 
     try {
       const {
@@ -4384,7 +4409,10 @@ export class DataLoaderManager implements AppModule {
       } = await import('@/services/trade');
       const [restrictions, tariffs, flows, barriers, revenue, comtrade] = await Promise.allSettled([
         fetchTradeRestrictions([], 50),
-        fetchTariffTrends('840', '156', '', 10),
+        // No partner: the tab shows the US MFN baseline against the US-wide
+        // effective rate. A partner selects the WITS bilateral average, which
+        // the tab does not label as such.
+        fetchTariffTrends('840', '', '', 10),
         // Partner '000' is World. This asked for '156' (China) until #6309:
         // WTO's ITS_MTV_AX/AM indicators publish a World total only and answer
         // 204 for any other partner, so the flows tab requested a combination
@@ -4395,6 +4423,7 @@ export class DataLoaderManager implements AppModule {
         fetchCustomsRevenue(),
         fetchComtradeFlows(),
       ]);
+      if (!tradePanel.acceptsDataLoad(generation)) return;
 
       const r = restrictions.status === 'fulfilled' ? restrictions.value : null;
       const ta = tariffs.status === 'fulfilled' ? tariffs.value : null;
@@ -4424,6 +4453,7 @@ export class DataLoaderManager implements AppModule {
         dataFreshness.recordUpdate('treasury_revenue', rev.months.length);
       }
     } catch (e) {
+      if (!tradePanel.acceptsDataLoad(generation)) return;
       console.error('[App] Trade policy failed:', e);
       this.callPanel('trade-policy', 'showError', undefined, () => void this.loadTradePolicy());
       this.ctx.statusPanel?.updateApi('WTO', { status: 'error' });
@@ -4721,16 +4751,15 @@ export class DataLoaderManager implements AppModule {
         fetchGdeltTensions()
       ]);
 
+      this.ctx.pizzintIndicator?.show();
+      this.ctx.pizzintIndicator?.updateStatus(status);
+      this.ctx.pizzintIndicator?.updateTensions(tensions);
       if (status.locationsMonitored === 0) {
-        this.ctx.pizzintIndicator?.hide();
         this.ctx.statusPanel?.updateApi('PizzINT', { status: 'error' });
         dataFreshness.recordError('pizzint', 'No monitored locations returned');
         return;
       }
 
-      this.ctx.pizzintIndicator?.show();
-      this.ctx.pizzintIndicator?.updateStatus(status);
-      this.ctx.pizzintIndicator?.updateTensions(tensions);
       this.ctx.statusPanel?.updateApi('PizzINT', { status: 'ok' });
       dataFreshness.recordUpdate('pizzint', Math.max(status.locationsMonitored, tensions.length));
     } catch (error) {
@@ -4924,9 +4953,13 @@ export class DataLoaderManager implements AppModule {
   async loadSecurityAdvisories(): Promise<void> {
     try {
       const result = await fetchSecurityAdvisories();
-      if (result.ok) {
-        this.callPanel('security-advisories', 'setData', result.advisories);
-        this.ctx.intelligenceCache.advisories = result.advisories;
+      // A failed read carries last-good advisories for at most an hour (or
+      // none): show them under an error header, or the full error view.
+      this.callPanel('security-advisories', 'setData', result.advisories);
+      this.ctx.intelligenceCache.advisories = result.advisories;
+      if (!result.ok) {
+        if (result.advisories.length > 0) this.callPanel('security-advisories', 'setErrorState', true);
+        else this.callPanel('security-advisories', 'showError');
       }
     } catch (error) {
       console.error('[App] Security advisories fetch failed:', error);
@@ -4995,14 +5028,20 @@ export class DataLoaderManager implements AppModule {
 
   async loadTelegramIntel(): Promise<void> {
     if (isDesktopRuntime() && !hasPremiumAccess()) return;
+    const generation = getTelegramIntelGeneration();
+    const isCurrent = () => !this.ctx.isDestroyed
+      && generation === getTelegramIntelGeneration()
+      && (!isDesktopRuntime() || hasPremiumAccess());
     try {
       const result = await fetchTelegramFeed();
-      this.callPanel('telegram-intel', 'setData', result);
+      if (!isCurrent()) return;
+      this.callPanel('telegram-intel', 'setData', result, generation);
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('[App] Telegram intel fetch failed:', error);
       this.callPanel('telegram-intel', 'setData', {
         source: 'telegram', enabled: false, count: 0, updatedAt: null, items: [],
-      });
+      }, generation);
     }
   }
 

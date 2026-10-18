@@ -45,8 +45,17 @@ export const LASTGOOD_MIN_ITEM_PCT = 80;
  *  snapshot expired). */
 export const ATTEMPT_META_TTL_S = 25 * 60 * 60;
 
-/** Closed vocabulary for why stale content is being served. */
-export type StaleReason = 'empty-rebuild' | 'build-error';
+/** Closed vocabulary for why stale content is being served.
+ *  `empty-rebuild` / `build-error` are failed latest attempts.
+ *  `gate-held` is a successful rebuild the acceptance gate refused to
+ *  publish: the incumbent stays live. Neither failure value means that
+ *  (#8361): recovering a leftover attempt row made degraded responses
+ *  report a build-error from up to 25 hours earlier. Empty when fresh. */
+export type StaleReason = 'empty-rebuild' | 'build-error' | 'gate-held';
+
+export function isStaleReason(value: unknown): value is StaleReason {
+  return value === 'empty-rebuild' || value === 'build-error' || value === 'gate-held';
+}
 
 /** Closed vocabulary for the durable-fallback outcome of one request. */
 export type ServingOutcome = 'fresh' | 'stale' | 'isolate-fallback' | 'expired' | 'unavailable';

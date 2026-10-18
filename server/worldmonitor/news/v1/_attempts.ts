@@ -328,7 +328,7 @@ export interface DigestCoverageBlock {
   servedStale: boolean;
   /** Age of the served content since acceptance, seconds (0 when fresh). */
   staleAgeSeconds: number;
-  /** Closed stale reason: empty-rebuild | build-error ('' when fresh). */
+  /** Closed stale reason: empty-rebuild | build-error | gate-held ('' when fresh). */
   staleReason: string;
 }
 

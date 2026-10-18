@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 
 import { createIntelligenceServiceRoutes } from '../src/generated/server/worldmonitor/intelligence/v1/service_server.ts';
+import { serverOptions } from '../server/gateway.ts';
 import { intelligenceHandler } from '../server/worldmonitor/intelligence/v1/handler.ts';
 
 const ENV_KEYS = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'] as const;
 const originalEnv = new Map<string, string | undefined>();
 
 function routeHandler() {
-  const descriptor = createIntelligenceServiceRoutes(intelligenceHandler, {})
+  const descriptor = createIntelligenceServiceRoutes(intelligenceHandler, serverOptions)
     .find((route) => route.path === '/api/intelligence/v1/list-cross-source-signals');
   assert.ok(descriptor);
   return descriptor.handler;
@@ -151,8 +152,13 @@ describe('ListCrossSourceSignals malformed cache records', () => {
     it(`returns the empty contract for ${JSON.stringify(payload)}`, async () => {
       mock.method(globalThis, 'fetch', async () => Response.json({ result: payload === null ? null : JSON.stringify(payload) }));
       const response = await routeHandler()(new Request('https://worldmonitor.app/api/intelligence/v1/list-cross-source-signals'));
-      assert.equal(response.status, 200);
-      assert.deepEqual(await response.json(), { signals: [], evaluatedAt: 0, compositeCount: 0 });
+      if (payload === null) {
+        assert.equal(response.status, 503);
+        assert.equal(response.headers.get('Cache-Control'), 'no-store');
+      } else {
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.json(), { signals: [], evaluatedAt: 0, compositeCount: 0 });
+      }
     });
   }
 });

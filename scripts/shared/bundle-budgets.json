@@ -7,153 +7,205 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 440495
+    "raw": 450738
   },
   "chunks": {
+    "analytics": {
+      "raw": 47621,
+      "files": 1
+    },
     "clerk": {
-      "raw": 18229,
+      "raw": 18191,
       "files": 1
     },
     "convex-client": {
-      "raw": 3360,
+      "raw": 5338,
       "files": 1
     },
     "debugbear-rum": {
-      "raw": 28203,
+      "raw": 2929,
       "files": 1
     },
     "dom-utils": {
-      "raw": 2747,
+      "raw": 2980,
       "files": 1
     },
     "entitlements": {
-      "raw": 2477,
+      "raw": 2618,
       "files": 1
     },
     "font-settings": {
-      "raw": 465,
+      "raw": 574,
       "files": 1
     },
     "geo-convergence": {
-      "raw": 46997,
+      "raw": 5044,
       "files": 1
     },
     "geo-distance": {
-      "raw": 28468,
+      "raw": 28576,
       "files": 1
     },
     "globe-marker-probe": {
-      "raw": 427,
+      "raw": 541,
       "files": 1
     },
     "i18n": {
-      "raw": 124750,
-      "files": 2
+      "raw": 52560,
+      "files": 1
     },
     "main": {
-      "raw": 126019,
+      "raw": 131389,
+      "files": 1
+    },
+    "map-layer-definitions": {
+      "raw": 27251,
+      "files": 1
+    },
+    "panels": {
+      "raw": 37652,
       "files": 1
     },
     "runtime-config": {
-      "raw": 10228,
+      "raw": 10194,
+      "files": 1
+    },
+    "safe-storage": {
+      "raw": 1212,
       "files": 1
     },
     "tauri-bridge": {
-      "raw": 1464,
+      "raw": 1572,
       "files": 1
     },
     "theme-colors": {
-      "raw": 45184,
+      "raw": 72013,
       "files": 1
     },
     "theme-manager": {
-      "raw": 1477,
+      "raw": 1616,
+      "files": 1
+    },
+    "web-origin": {
+      "raw": 867,
       "files": 1
     }
   },
   "deferred": {
     "total": {
-      "raw": 1368916
+      "raw": 1433866
     },
     "chunks": {
       "App": {
-        "raw": 897874,
+        "raw": 906077,
+        "files": 1
+      },
+      "ai-flow-settings": {
+        "raw": 2155,
+        "files": 1
+      },
+      "analysis-framework-store": {
+        "raw": 9675,
         "files": 1
       },
       "base": {
-        "raw": 2337,
+        "raw": 2460,
         "files": 1
       },
       "cached-risk-scores": {
-        "raw": 14907,
+        "raw": 15073,
         "files": 1
       },
       "checkout": {
-        "raw": 13166,
+        "raw": 13661,
+        "files": 1
+      },
+      "cloud-prefs-sync": {
+        "raw": 6944,
         "files": 1
       },
       "continuous": {
-        "raw": 4507,
+        "raw": 4613,
+        "files": 1
+      },
+      "corroboration": {
+        "raw": 13002,
         "files": 1
       },
       "cross-domain-storage": {
-        "raw": 409,
+        "raw": 533,
         "files": 1
       },
       "feeds": {
-        "raw": 102203,
+        "raw": 97009,
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 118099,
+        "raw": 121828,
         "files": 1
       },
       "index": {
-        "raw": 41627,
+        "raw": 38891,
         "files": 2
       },
       "layout-batch": {
-        "raw": 17357,
+        "raw": 17465,
         "files": 1
       },
       "markets": {
-        "raw": 9415,
+        "raw": 9518,
+        "files": 1
+      },
+      "news-credibility": {
+        "raw": 9373,
+        "files": 1
+      },
+      "panel-gating": {
+        "raw": 3445,
         "files": 1
       },
       "panel-storage": {
-        "raw": 1748,
+        "raw": 1857,
         "files": 1
       },
       "persistent-cache": {
-        "raw": 3735,
+        "raw": 3936,
+        "files": 1
+      },
+      "pinned-webcams": {
+        "raw": 2183,
         "files": 1
       },
       "sanitize": {
-        "raw": 1146,
+        "raw": 1280,
         "files": 1
       },
       "source-provenance": {
-        "raw": 78088,
+        "raw": 88495,
         "files": 1
       },
       "storage-facility-registry-store": {
-        "raw": 14204,
+        "raw": 14773,
+        "files": 1
+      },
+      "storage-quota": {
+        "raw": 356,
         "files": 1
       },
       "string": {
-        "raw": 20823,
+        "raw": 20925,
         "files": 1
       },
       "sync-keys": {
-        "raw": 1036,
+        "raw": 1178,
         "files": 1
       },
       "user-location": {
-        "raw": 4584,
+        "raw": 4696,
         "files": 1
       },
       "widget-store": {
-        "raw": 21651,
+        "raw": 22465,
         "files": 1
       }
     }

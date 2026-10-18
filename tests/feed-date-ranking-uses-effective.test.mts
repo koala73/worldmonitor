@@ -73,36 +73,36 @@ const ALLOW_LIST: AllowEntry[] = [
   // generateClusterId + cluster date aggregation moved with clusterNewsCore to
   // shared/news-clustering-core.js (#5697); the shared implementation still
   // routes its ranking comparators through effectivePubDateMs (pinned by
-  // tests/clustering-cap.test.mjs asserting the re-export, and the port was
+  // tests/dom/analysis-core-clustering-reexport.test.mts asserting the re-export, and the port was
   // characterized behavior-identical).
   {
     file: 'shared/news-clustering-core.js',
-    line: 59,
+    line: 60,
     reason: 'effectivePubDateMs implementation — the helper itself necessarily calls .getTime() on the underlying Date.',
   },
   {
     file: 'shared/news-clustering-core.js',
-    line: 70,
+    line: 71,
     reason: 'effectivePubDateMs implementation — string-input branch reconstructs Date and reads getTime; covered by the finite guard on the same line.',
   },
   {
     file: 'shared/news-clustering-core.js',
-    line: 111,
+    line: 112,
     reason: 'generateClusterId sort produces a stable identity string from earliest pubDate; not a freshness comparator.',
   },
   {
     file: 'shared/news-clustering-core.js',
-    line: 113,
+    line: 114,
     reason: 'generateClusterId uses earliest pubDate.getTime() in the identity string prefix.',
   },
   {
     file: 'shared/news-clustering-core.js',
-    line: 209,
+    line: 210,
     reason: 'cluster date aggregation for firstSeen/lastUpdated metadata; not a per-item ranking comparator.',
   },
   {
     file: 'src/services/clustering.ts',
-    line: 182,
+    line: 195,
     reason: 'allDates aggregation for cluster firstSeen/lastUpdated metadata; not a per-item ranking comparator.',
   },
   {

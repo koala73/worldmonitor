@@ -206,6 +206,8 @@ export interface OpenExternalUrlOptions {
    * and can surface it themselves.
    */
   sameTabFallback?: boolean;
+  /** Set false for desktop flows that must run in the OS browser, such as hosted checkout. */
+  desktopPopupFallback?: boolean;
 }
 
 export async function openExternalUrl(
@@ -243,6 +245,7 @@ export async function openExternalUrl(
       // `window.open` inside Tauri reproduces the very bug this module exists
       // to fix, and a silent reproduction is unfindable.
       reportOpenFailure(targetUrl, 'native-open-failed');
+      if (options?.desktopPopupFallback === false) return 'failed';
       return openWindowWithHandle(targetUrl) ? 'popup' : 'failed';
     }
   }

@@ -5,10 +5,12 @@
 // occurred when fast-xml-parser tried to build a ~300MB object tree from a
 // 120MB XML download against Railway's 512MB container limit.
 import sax from 'sax';
+import { gzipSync, gunzipSync } from 'node:zlib';
+import { projectCountrySanctions } from './shared/country-sanctions-signals.mjs';
 
-import { loadEnvFile, runSeed, verifySeedKey, writeExtraKeyWithMeta } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, verifySeedKey, readSeedSnapshot, writeExtraKeyWithMeta } from './_seed-utils.mjs';
 import { fetchOfacSourceResponse } from './_sanctions-source.mjs';
-import { SANCTIONS_MAX_CONTENT_AGE_MIN, SANCTIONS_SOURCE_VERSION, SEMA_SOURCE, ingestSemaEntries, mergeSanctionEntries, ofacRegistrationToIdentifier, sanctionsListContentMeta, sanctionsSemaHealthMeta } from './_sema-sanctions.mjs';
+import { SANCTIONS_MAX_CONTENT_AGE_MIN, SANCTIONS_SOURCE_VERSION, SEMA_SOURCE, ingestSemaEntries, mergeSanctionEntries, ofacRegistrationToIdentifier, sanctionsListContentMeta } from './_sema-sanctions.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -20,6 +22,16 @@ const ENTITY_INDEX_META_KEY = 'seed-meta:sanctions:entities';
 // with the top-pressure display list written under CANONICAL_KEY.countries.
 const COUNTRY_COUNTS_KEY = 'sanctions:country-counts:v1';
 const COUNTRY_COUNTS_META_KEY = 'seed-meta:sanctions:country-counts';
+const SOURCE_SNAPSHOTS_KEY = 'sanctions:source-snapshots:v1';
+const SOURCE_SNAPSHOTS_META_KEY = 'seed-meta:sanctions:source-snapshots';
+// OFAC's lists change slowly, and a Railway container can lose egress to
+// treasury.gov/S3 for several runs; 12h dropped ~20k OFAC entities on 2026-09-27.
+const SOURCE_RETAIN_MS = 48 * 60 * 60 * 1000;
+// Snapshots written before the 48h change carry fetchedAt + 12h; accept them and
+// move the deadline to 48h from the same fetch so a deploy cannot drop a live cohort.
+const LEGACY_SOURCE_RETAIN_MS = 12 * 60 * 60 * 1000;
+const SOURCE_SNAPSHOTS_TTL = 54 * 60 * 60; // retention + one 6h cron
+const SNAPSHOT_MAX_BYTES = 32 * 1024 * 1024;
 const CACHE_TTL = 18 * 60 * 60; // 18h — 3× live 6h cron; remains queryable after the 12h freshness alarm
 // Compact entity type codes for the lookup index (saves space vs full enum strings)
 const ET_CODE = {
@@ -31,10 +43,89 @@ const ET_CODE = {
 const DEFAULT_RECENT_LIMIT = 60;
 const PROGRAM_CODE_RE = /^[A-Z0-9][A-Z0-9-]{1,24}$/;
 
+function validPressureClock(value) {
+  return typeof value === 'string' && /^[1-9]\d{0,15}$/.test(value)
+    && Number.isSafeInteger(Number(value)) && Number(value) <= 8640000000000000;
+}
+
 const OFAC_SOURCES = [
   { label: 'SDN', url: 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/sdn_advanced.xml' },
   { label: 'CONSOLIDATED', url: 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/cons_advanced.xml' },
 ];
+
+function validSourceId(source, id) {
+  return typeof id === 'string' && (source === SEMA_SOURCE
+    ? /^sema-ca:(?!unspecified:|xx:)[^:]+:[^:]+:[1-9]\d*$/.test(id)
+    : new RegExp(`^${source}:\\d+$`).test(id));
+}
+
+function validSourceRecords(source, records) {
+  if (!Array.isArray(records) || records.length === 0) return false;
+  const ids = new Set();
+  return records.every(entry => {
+    const validId = validSourceId(source, entry?.id);
+    if (!validId || ids.has(entry.id) || typeof entry.name !== 'string' || !entry.name.trim()
+      || !Object.hasOwn(ET_CODE, entry.entityType)
+      || !Array.isArray(entry.sourceLists) || entry.sourceLists.length !== 1 || entry.sourceLists[0] !== source
+      || !['countryCodes', 'countryNames', 'programs'].every(field => Array.isArray(entry[field]) && entry[field].every(v => typeof v === 'string'))
+      || !['_aliases', '_identifiers'].every(field => entry[field] === undefined || (Array.isArray(entry[field]) && entry[field].every(v => typeof v === 'string')))
+      || typeof entry.effectiveAt !== 'string' || !/^\d+$/.test(entry.effectiveAt)) return false;
+    ids.add(entry.id);
+    return true;
+  });
+}
+
+function decodeSourceSnapshots(stored) {
+  if (!stored) return {};
+  try {
+    if (stored.version !== 1 || stored.encoding !== 'gzip-base64' || typeof stored.data !== 'string'
+      || stored.data.length > 5 * 1024 * 1024) throw new Error('invalid snapshot encoding');
+    const decoded = JSON.parse(gunzipSync(Buffer.from(stored.data, 'base64'), { maxOutputLength: SNAPSHOT_MAX_BYTES }).toString('utf8'));
+    if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) throw new Error('invalid snapshot map');
+    return decoded;
+  } catch {
+    console.warn('  SANCTIONS_SNAPSHOT_INVALID: ignoring unusable source snapshots');
+    return {};
+  }
+}
+
+function encodeSourceSnapshots(snapshots) {
+  const json = JSON.stringify(snapshots);
+  if (Buffer.byteLength(json) > SNAPSHOT_MAX_BYTES) throw new Error('SANCTIONS_SNAPSHOT_TOO_LARGE');
+  const data = gzipSync(json).toString('base64');
+  if (data.length > 5 * 1024 * 1024 - 1024) throw new Error('SANCTIONS_SNAPSHOT_TOO_LARGE');
+  return { version: 1, encoding: 'gzip-base64', data };
+}
+
+function selectSanctionsSourceSnapshot(source, result, previous, now) {
+  const valid = !result.error && validSourceRecords(source, result.records)
+    && Number.isSafeInteger(result.publishedAt) && result.publishedAt >= 0 && result.publishedAt <= now;
+  const retained = previous?.version === 1
+    && Number.isSafeInteger(previous.fetchedAt) && previous.fetchedAt > 0 && previous.fetchedAt <= now
+    && (previous.retainedUntil === previous.fetchedAt + SOURCE_RETAIN_MS
+      || previous.retainedUntil === previous.fetchedAt + LEGACY_SOURCE_RETAIN_MS)
+    && now < previous.fetchedAt + SOURCE_RETAIN_MS
+    && Number.isSafeInteger(previous.publishedAt) && previous.publishedAt >= 0 && previous.publishedAt <= previous.fetchedAt
+    && (previous.quarantinedCount === undefined
+      || (Number.isSafeInteger(previous.quarantinedCount) && previous.quarantinedCount >= 0))
+    && validSourceRecords(source, previous.records);
+  const snapshot = valid
+    ? { version: 1, fetchedAt: now, retainedUntil: now + SOURCE_RETAIN_MS, publishedAt: result.publishedAt,
+      quarantinedCount: result.quarantinedCount, records: result.records }
+    : retained ? { ...previous, retainedUntil: previous.fetchedAt + SOURCE_RETAIN_MS } : null;
+  return {
+    snapshot,
+    health: {
+      status: valid ? 'ok' : snapshot ? 'retained' : 'unavailable',
+      lastAttemptAt: now,
+      lastSuccessAt: snapshot?.fetchedAt ?? null,
+      retainedUntil: snapshot?.retainedUntil ?? null,
+      publishedAt: snapshot?.publishedAt ?? null,
+      recordCount: snapshot?.records.length ?? 0,
+      errorCode: valid ? null : source === SEMA_SOURCE ? 'SEMA_INGEST_FAILED' : 'OFAC_INGEST_FAILED',
+    },
+  };
+}
 
 // Strip XML namespace prefix (e.g. "sanc:SanctionsEntry" → "SanctionsEntry")
 function local(name) {
@@ -537,75 +628,52 @@ async function fetchSource(source) {
 
 async function fetchSanctionsPressure() {
   const previousState = await verifySeedKey(STATE_KEY).catch(() => null);
-  const previousIds = new Set(Array.isArray(previousState?.entryIds) ? previousState.entryIds.map((id) => String(id)) : []);
+  const validPreviousIds = Array.isArray(previousState?.entryIds)
+    && previousState.entryIds.every(id => validSourceId(SEMA_SOURCE, id)
+      || OFAC_SOURCES.some(({ label }) => validSourceId(label, id)));
+  const previousIds = new Set(validPreviousIds ? previousState.entryIds : []);
   const hasPrevious = previousIds.size > 0;
   console.log(`  Previous state: ${hasPrevious ? `${previousIds.size} known IDs` : 'none (first run or expired)'}`);
 
-  // Sequential OFAC fetch: SDN then Consolidated. SAX streaming keeps peak RAM
-  // low regardless of file size — no full XML string or DOM tree is ever built.
-  // Each list is independent: SEMA fail still publishes OFAC (and vice versa).
-  const ofacResults = [];
+  const previousSnapshots = decodeSourceSnapshots(await readSeedSnapshot(SOURCE_SNAPSHOTS_KEY, { strict: true }));
+  const outcomes = {};
   for (const source of OFAC_SOURCES) {
     try {
-      ofacResults.push(await fetchSource(source));
+      const result = await fetchSource(source);
+      outcomes[source.label] = { records: result.entries, publishedAt: result.datasetDate || 0, quarantinedCount: 0, error: null };
     } catch (err) {
       console.warn(`  OFAC ${source.label} fetch failed: ${err?.message || err}`);
+      outcomes[source.label] = { records: [], publishedAt: 0, error: 'OFAC_INGEST_FAILED' };
     }
   }
-
-  let semaEntries = [];
-  let semaPublishedAt = 0;
-  let semaError = null;
   const sema = await ingestSemaEntries();
-  semaEntries = sema.records;
-  semaPublishedAt = sema.publishedAtMs || 0;
-  semaError = sema.error;
-  let semaCarriedForward = 0;
-  if (semaError) {
-    console.warn(`  SEMA fetch failed: ${semaError}`);
-    // CARRY THE LAST-GOOD CANADIAN COHORT FORWARD. A SEMA outage used to delete
-    // every Canadian designation from the published list: the run still
-    // SUCCEEDS on OFAC, so the canonical key is overwritten with an OFAC-only
-    // merge and preserveKeys (which only fires when the whole seed fails) never
-    // engages. sanctionsSemaHealthMeta made the failure visible, but visibility
-    // does not put the entries back — a transient 500 at GAC silently dropped
-    // real sanctions data from the product until SEMA recovered.
-    //
-    // Re-using last-good is safe in the direction that matters: a stale Canadian
-    // designation is a listing that MIGHT have been lifted, whereas a deleted one
-    // is a listing that IS enforced but invisible. sourceState stays 'error' via
-    // the afterPublish patch, so nothing here claims the data is fresh.
-    try {
-      const previous = await verifySeedKey(CANONICAL_KEY);
-      const previousEntries = Array.isArray(previous?.entries) ? previous.entries : [];
-      const carried = previousEntries.filter(
-        (entry) => Array.isArray(entry?.sourceLists) && entry.sourceLists.includes(SEMA_SOURCE),
-      );
-      if (carried.length) {
-        semaEntries = carried;
-        semaCarriedForward = carried.length;
-        console.warn(`  SEMA: carrying ${carried.length} last-good Canadian entries forward`);
-      }
-    } catch (err) {
-      console.warn(`  SEMA: last-good carry-forward failed: ${err?.message || err}`);
-    }
-  } else {
-    console.log(`  SEMA: ${semaEntries.length} entries, publishedAt=${semaPublishedAt || 'unknown'}`);
-  }
+  if (!sema.error && !Array.isArray(sema.quarantined)) throw new Error('SANCTIONS_QUARANTINE_INVALID');
+  outcomes[SEMA_SOURCE] = { records: sema.records, publishedAt: sema.publishedAtMs || 0,
+    quarantinedCount: sema.error ? null : sema.quarantined.length, error: sema.error };
+  if (sema.error) console.warn(`  SEMA fetch failed: ${sema.error}`);
 
-  const ofacEntries = ofacResults.flatMap((result) => result.entries);
-  if (ofacEntries.length === 0 && semaEntries.length === 0) {
-    throw new Error('all sanctions lists failed');
+  const now = Date.now();
+  if (!validPressureClock(String(now)) || now + SOURCE_RETAIN_MS > 8640000000000000) {
+    throw new Error('SANCTIONS_CLOCK_INVALID');
   }
-
-  const entries = mergeSanctionEntries({
-    ofac: ofacEntries,
-    eu: [],
-    uk: [],
-    sema: semaEntries,
-  });
-  const ofacDatasetDate = ofacResults.reduce((max, result) => Math.max(max, result.datasetDate || 0), 0);
-  const datasetDate = Math.max(ofacDatasetDate, semaPublishedAt);
+  const _sourceSnapshots = {};
+  const _sourceHealth = {};
+  for (const [source, result] of Object.entries(outcomes)) {
+    const selected = selectSanctionsSourceSnapshot(source, result, previousSnapshots[source], now);
+    _sourceSnapshots[source] = selected.snapshot;
+    _sourceHealth[source] = selected.health;
+  }
+  // Quarantined rows are bounded by SEMA_MAX_QUARANTINE_SHARE and belong to this
+  // run's ingest only; a retained snapshot must not claim them.
+  if (_sourceHealth[SEMA_SOURCE].status === 'ok' && sema.quarantined?.length) {
+    _sourceHealth[SEMA_SOURCE].quarantined = sema.quarantined;
+    console.warn(`  SEMA quarantined ${sema.quarantined.length} row(s): ${sema.quarantined.map(q => `${q.id} ${q.reason}`).join(', ')}`);
+  }
+  const semaEntries = _sourceSnapshots[SEMA_SOURCE]?.records ?? [];
+  const semaError = _sourceHealth[SEMA_SOURCE].status === 'ok' ? null : sema.error || 'SEMA_INVALID_RECORD';
+  const ofacEntries = OFAC_SOURCES.flatMap(({ label }) => _sourceSnapshots[label]?.records ?? []);
+  const entries = mergeSanctionEntries({ ofac: ofacEntries, sema: semaEntries });
+  const datasetDate = Math.max(0, ...Object.values(_sourceSnapshots).map(snapshot => snapshot?.publishedAt ?? 0));
 
   if (hasPrevious) {
     for (const entry of entries) {
@@ -619,7 +687,9 @@ async function fetchSanctionsPressure() {
   const vesselCount = entries.filter((entry) => entry.entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL').length;
   const aircraftCount = entries.filter((entry) => entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT').length;
   const semaCount = semaEntries.length;
-  console.log(`  Merged: ${totalCount} total (${ofacResults[0]?.entries.length ?? 0} SDN + ${ofacResults[1]?.entries.length ?? 0} consolidated + ${semaCount} SEMA), ${newEntryCount} new, ${vesselCount} vessels, ${aircraftCount} aircraft`);
+  const sdnCount = _sourceSnapshots.SDN?.records.length ?? 0;
+  const consolidatedCount = _sourceSnapshots.CONSOLIDATED?.records.length ?? 0;
+  console.log(`  Merged: ${totalCount} total (${sdnCount} SDN + ${consolidatedCount} consolidated + ${semaCount} SEMA), ${newEntryCount} new, ${vesselCount} vessels, ${aircraftCount} aircraft`);
 
   // Build compact entity index for name-based lookup (Phase 1 — issue #2042).
   // Each record: { id, name, et (compact type), cc (country codes), pr (programs) }
@@ -633,12 +703,35 @@ async function fetchSanctionsPressure() {
   }));
   console.log(`  Entity index: ${_entityIndex.length} records (~${Math.round(JSON.stringify(_entityIndex).length / 1024)}KB)`);
 
+  const knownWindow = hasPrevious && validPressureClock(previousState.observedAt)
+    && Number(previousState.observedAt) < now;
+  const pressureMetadata = {
+    schemaVersion: 1,
+    sourceVersion: SANCTIONS_SOURCE_VERSION,
+    population: 'top-12-first-iso2-display-v1',
+    cohort: { computationAt: String(now), datasetDate: String(datasetDate), totalCount, newEntryCount },
+    comparison: {
+      kind: knownWindow ? 'id-set-difference' : hasPrevious ? 'window-unavailable' : 'baseline-unavailable',
+      from: knownWindow ? previousState.observedAt : null,
+      to: String(now),
+    },
+    sourceHealth: Object.fromEntries(Object.entries(_sourceHealth).map(([source, health]) => [source, {
+      status: health.status, lastAttemptAt: health.lastAttemptAt, lastSuccessAt: health.lastSuccessAt,
+      retainedUntil: health.retainedUntil, publishedAt: health.publishedAt, recordCount: health.recordCount,
+      errorCode: health.errorCode,
+      quarantinedCount: _sourceSnapshots[source]?.quarantinedCount ?? null,
+    }])),
+  };
+  if (Buffer.byteLength(JSON.stringify(pressureMetadata), 'utf8') > 4096) {
+    throw new Error('SANCTIONS_METADATA_TOO_LARGE');
+  }
+
   return {
-    fetchedAt: String(Date.now()),
+    fetchedAt: String(now),
     datasetDate: String(datasetDate),
     totalCount,
-    sdnCount: ofacResults[0]?.entries.length ?? 0,
-    consolidatedCount: ofacResults[1]?.entries.length ?? 0,
+    sdnCount,
+    consolidatedCount,
     semaCount,
     ...(semaError ? { semaError } : {}),
     newEntryCount,
@@ -647,16 +740,21 @@ async function fetchSanctionsPressure() {
     countries: buildCountryPressure(entries),
     programs: buildProgramPressure(entries),
     entries: sortedEntries.slice(0, DEFAULT_RECENT_LIMIT),
+    pressureMetadata,
     _entityIndex,
+    _sourceSnapshots,
+    _sourceHealth,
     _countryCounts: buildCountryCounts(entries),
     _state: {
+      observedAt: String(now),
       entryIds: entries.map((entry) => entry.id),
     },
   };
 }
 
 function validate(data) {
-  return (data?.totalCount ?? 0) > 0;
+  return ['totalCount', 'sdnCount', 'consolidatedCount', 'semaCount']
+    .every(field => Number.isSafeInteger(data?.[field]) && data[field] >= 0);
 }
 
 export function declareRecords(data) {
@@ -670,7 +768,7 @@ export function sanctionsPressureContentMeta(data, nowMs) {
 runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
   ttlSeconds: CACHE_TTL,
   // The bounded direct/proxy/signed recovery ladder can spend about 7 minutes
-  // across both serial XML sources, plus the SEMA XML. Keep its fetch deadline
+  // across both serial XML sources, plus the SEMA source. Keep its fetch deadline
   // explicit and the lock alive longer so a slow recovery cannot race a second run.
   lockTtlMs: 660_000,
   fetchPhaseTimeoutMs: 540_000,
@@ -682,14 +780,25 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
   // Strip internal-only fields before writing the main key so the pressure payload
   // does not include the entity index (~hundreds of KB) or state snapshot.
   publishTransform: (data) => {
-    const { _entityIndex: _ei, _state: _s, _countryCounts: _cc, ...rest } = data;
+    const { _entityIndex: _ei, _state: _s, _countryCounts: _cc, _sourceSnapshots, _sourceHealth, pressureMetadata, ...rest } = data;
     if (Array.isArray(rest.entries)) {
       rest.entries = rest.entries.map((entry) => {
         const { _aliases, _identifiers, _publishedAt, _regime, ...publicEntry } = entry;
         return publicEntry;
       });
     }
-    return rest;
+    const canonical = { ...rest, _state: pressureMetadata };
+    const projection = projectCountrySanctions(canonical, 'ZZ', Number(canonical.fetchedAt));
+    if (projection.state === 'unavailable' && !(canonical.totalCount === 0
+      && ['All sources unavailable', 'Empty producer sentinel'].includes(projection.reason))) {
+      throw new Error(`Invalid canonical sanctions publication: ${projection.reason}`);
+    }
+    return canonical;
+  },
+  zeroIsValid: true,
+  beforePublish: async (data) => {
+    const count = Object.values(data._sourceSnapshots).reduce((sum, snapshot) => sum + (snapshot?.records.length ?? 0), 0);
+    await writeExtraKeyWithMeta(SOURCE_SNAPSHOTS_KEY, encodeSourceSnapshots(data._sourceSnapshots), SOURCE_SNAPSHOTS_TTL, count, SOURCE_SNAPSHOTS_META_KEY);
   },
   extraKeys: [
     {
@@ -698,14 +807,19 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
       transform: (data) => data._state,
     },
   ],
-  // afterPublish owns these companion keys, so runSeed cannot infer them from
-  // extraKeys. Preserve their data and health metadata with the canonical
-  // last-good cohort when a later OFAC fetch fails.
+  // Publisher hooks own these keys, so runSeed cannot infer them from extraKeys.
+  // Preserve their data and metadata with the canonical cohort on a run failure.
   preserveKeys: [
     ENTITY_INDEX_KEY,
     ENTITY_INDEX_META_KEY,
     COUNTRY_COUNTS_KEY,
     COUNTRY_COUNTS_META_KEY,
+  ],
+  // The private snapshots must outlive the 48h retention even when whole runs
+  // fail; the canonical 18h preservation TTL would shrink them.
+  preserveKeyTtls: [
+    { key: SOURCE_SNAPSHOTS_KEY, ttlSeconds: SOURCE_SNAPSHOTS_TTL },
+    { key: SOURCE_SNAPSHOTS_META_KEY, ttlSeconds: SOURCE_SNAPSHOTS_TTL },
   ],
   afterPublish: async (data, _ctx) => {
     // Write entity lookup index with seed-meta so health.js can monitor it.
@@ -733,11 +847,17 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
     delete data._state;
     delete data._entityIndex;
     delete data._countryCounts;
-    const semaHealth = sanctionsSemaHealthMeta(data.semaError);
-    if (semaHealth) {
-      return { freshnessMetaPatch: semaHealth };
-    }
-    return undefined;
+    const sourceHealth = data._sourceHealth;
+    const failedSources = Object.keys(sourceHealth).filter(source => sourceHealth[source].status !== 'ok');
+    return {
+      freshnessMetaPatch: {
+        sourceState: failedSources.length ? 'error' : 'ok',
+        errorCode: failedSources.includes(SEMA_SOURCE) ? 'SEMA_INGEST_FAILED' : failedSources.length ? 'OFAC_INGEST_FAILED' : null,
+        failedSources,
+        sourceHealth,
+      },
+      completionState: failedSources.length ? 'DEGRADED' : 'OK',
+    };
   },
 
   declareRecords,

@@ -282,7 +282,12 @@ function parseMcpAppsInventory({
   if (!registryBlockMatch) {
     throw new Error('docs-stats: could not parse UI_RESOURCE_REGISTRY');
   }
-  const registryEntries = [...registryBlockMatch[1].matchAll(
+  const registryBody = [registryBlockMatch[1], ...[...uiRegistrySource.matchAll(/UI_RESOURCE_LIST_RESPONSE\.push\(\{([\s\S]*?)\}\);/g)].map(match => match[1])].join('\n');
+  const loaderSource = read('api/mcp/ui/news-dashboard-app.ts');
+  for (const [, name, uri] of loaderSource.matchAll(/^export\s+const\s+(\w+_UI_URI)\s*=\s*'([^']+)';/gm)) {
+    if (new RegExp(`\\b${name}\\b`).test(registryBody)) uiConstToUri.set(name, uri);
+  }
+  const registryEntries = [...registryBody.matchAll(
     /uri:\s*(\w+_UI_URI),\s*\n\s*name:\s*'((?:\\'|[^'])*)',\s*\n\s*description:\s*\n\s*'((?:\\'|[^'])*)',/g,
   )].map((m) => ({
     uriConst: m[1],
@@ -299,8 +304,11 @@ function parseMcpAppsInventory({
   }
 
   const toolLinks = [];
-  for (const source of [rpcToolsSource, cacheToolsSource]) {
-    for (const block of findTopLevelObjectBlocks(source)) {
+  const compiledToolSources = [];
+  if (uiConstToUri.has('NEWS_DASHBOARD_UI_URI')) compiledToolSources.push(read('api/mcp/registry/news-dashboard.ts'));
+  if (uiConstToUri.has('COUNTRY_VIEW_UI_URI')) compiledToolSources.push(read('api/mcp/registry/country-view.ts'));
+  for (const source of [rpcToolsSource, cacheToolsSource, ...compiledToolSources]) {
+    for (const block of (compiledToolSources.includes(source) ? source.split(/(?=^ {2}name:)/m) : findTopLevelObjectBlocks(source))) {
       const name = block.match(/^\s+name:\s*'([^']+)'/m)?.[1];
       const uriConst = block.match(/^\s+_uiResourceUri:\s*(\w+_UI_URI),/m)?.[1];
       if (name && uriConst) {
@@ -1362,7 +1370,7 @@ export function validateVolatileInventoryClaims() {
     { path: 'blog-site/src/content/blog/country-risk-monitoring-workflow-for-analysts.md', text: /72 indicators, 21 active dimensions, and 6 domains/ },
     // Fixed resilience schema. tests/resilience-doc-parity.test.mts derives
     // these values from the scorer registry and validates this exact page.
-    { path: 'docs/methodology/country-resilience-index.mdx', text: /196 countries using 72 indicators across 21 dimensions and 6 domains/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /\d+ of 196 countries ranked, using 72 indicators across 21 dimensions and 6 domains/ },
     { path: 'docs/methodology/country-resilience-index.mdx', text: /pillars\[\].*six domains/ },
     { path: 'docs/methodology/country-resilience-index.mdx', text: /72 indicators across 21 active dimensions and 6 domains.*3 pillars.*2 structurally-retired dimensions/ },
     { path: 'docs/methodology/country-resilience-index.mdx', text: /196-country public rankable universe.*72 indicators across 21 active dimensions and 6 domains.*2 structurally-retired dimensions/ },
@@ -1394,7 +1402,7 @@ export function validateVolatileInventoryClaims() {
     // Fixed scoring universe: tests/chokepoint-scenario-doc-parity.test.mjs
     // derives the exact registry membership and validates this methodology.
     { path: 'docs/methodology/chokepoints.mdx', text: /13 monitored waterways/ },
-    { path: 'blog-site/src/content/blog/alerts-notification-channels-worldmonitor.md', text: /six channels/i },
+    { path: 'blog-site/src/content/blog/alerts-notification-channels-worldmonitor.md', text: /seven channels/i },
     { path: 'blog-site/src/content/blog/aviation-intelligence-airports-airspace-flight-prices.md', text: /between any two airports/ },
     { path: 'blog-site/src/content/blog/build-supply-chain-early-warning-system-api.md', text: /Three signals, three endpoints/ },
     { path: 'blog-site/src/content/blog/free-geopolitical-data-apis-2026.md', text: /ingest ten feeds/ },

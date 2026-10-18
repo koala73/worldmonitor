@@ -46,8 +46,18 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
       static now() { return now; }
     };
     const realTimeout = setTimeout;
+    // Collapse the seeder's cooldowns so a run under test costs no wall time.
+    //
+    // Keyed on the RANGE rather than a list of literals: every cooldown the
+    // seeder can sleep for -- the baseline inter-batch gap, the per-country
+    // rate-limit retry, and the #8501 escalations -- lies between
+    // BATCH_BACKOFF_MS (5s) and MAX_RATE_LIMITED_BATCH_BACKOFF_MS (40s). The
+    // run budget clamps a gap to arbitrary values inside that band (e.g. 30s
+    // once 35s of the 60s budget is spent), so a literal list silently misses
+    // one and the suite really sleeps. PER_COUNTRY_TIMEOUT_MS (90s) is above
+    // the band and stays a real timer, which is what makes the wrap meaningful.
     globalThis.setTimeout = (fn, ms, ...args) => {
-      if (ms === 5000 || ms === 2000) { queueMicrotask(() => fn(...args)); return 0; }
+      if (ms >= 5000 && ms <= 40000) { queueMicrotask(() => fn(...args)); return 0; }
       return realTimeout(fn, ms, ...args);
     };
     const state = installRedis(${JSON.stringify(input)});
@@ -103,6 +113,14 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
       const iso3 = where.match(/ISO3='([^']+)'/)[1];
       const iso2 = countries.find(([code]) => code === iso3)[1];
       if (u.searchParams.has('outStatistics')) return Response.json({ features: [{ attributes: { max_date: mode === 'zero' ? null : currentDate } }] });
+      // #8501: ArcGIS answers a throttled activity query with HTTP 200 and an
+      // error body. Throttle 7 of every 8 countries so batch 1 clears the
+      // circuit-breaker's trip rate while a minority still lands -- the shape
+      // of the 2026-09-22 incident, where 6 of 30 cold fetches got through.
+      if (mode === 'rate-limited'
+        && countries.findIndex(([code]) => code === iso3) % 8 !== 0) {
+        return Response.json({ error: { code: 429, message: 'Unable to perform query. Too many requests.' } });
+      }
       if (mode === 'corrupt-failure' && iso3 === countries[0][0]) return Response.json({ features: [null] });
       if (mode === 'zero') return Response.json({ features: [], exceededTransferLimit: false });
       if (mode === 'activity-page' && iso3 === countries[0][0] && !where.includes('<=')) {
@@ -113,8 +131,10 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
     };
     const producer = await import('./scripts/seed-portwatch-port-activity.mjs');
     let error = null;
-    try { await producer.main(); } catch (e) { error = e.message; }
-    console.log('RESULT ' + JSON.stringify({ error, requests,
+    let publishBlocked = false;
+    try { publishBlocked = (await producer.main())?.publishBlocked === true; }
+    catch (e) { error = e.message; }
+    console.log('RESULT ' + JSON.stringify({ error, publishBlocked, requests,
       rawRedis: Object.fromEntries(state.redis),
       redis: Object.fromEntries([...state.redis].map(([key, value]) => {
         try { return [key, JSON.parse(value)]; } catch { return [key, value]; }
@@ -387,11 +407,18 @@ test('a deferred refresh failure cannot be hidden by otherwise complete retained
   const code = countries[0][1];
   input[`${PREFIX}${code}`].refreshAttemptedAt = 1;
   const failed = runProducer(input, 'activity-page');
-  assert.match(failed.error, /Incomplete PortWatch coverage/);
+  // #8501: a refresh failure with every country still usable blocks publication
+  // without crashing. The canonical list is retained, the failure is recorded,
+  // and the run exits publish-blocked — not exit 1 twice a day.
+  assert.equal(failed.error, null);
+  assert.equal(failed.publishBlocked, true);
+  assert.match(failed.logs, /ROTATION INCOMPLETE: 1 of 174 countries failed to refresh/);
   assert.equal(failed.redis[META].coverage.published, 174);
+  assert.equal(failed.redis[META].sourceState, 'error');
   assert.match(failed.logs, /usable coverage 174\/174; full publication blocked; 1 unresolved refresh failures/);
   const deferred = runProducer(failed.redis, 'moving', NOW + DAY / 2);
-  assert.match(deferred.error, /Incomplete PortWatch coverage/);
+  assert.equal(deferred.error, null);
+  assert.equal(deferred.publishBlocked, true);
   assert.equal(deferred.redis[META].fetchedAt, input[META].fetchedAt);
   assert.ok(deferred.redis[META].coverage.refreshFailures.some((entry: any) => entry.iso2 === code));
   assert.equal(health(deferred.redis, NOW + DAY / 2).status, 'SEED_ERROR');
@@ -497,3 +524,33 @@ for (const mode of ['canonical-expired', 'canonical-unconfirmed']) {
     assert.doesNotMatch(result.logs, /canonical list retained at/);
   });
 }
+
+// #8501: a throttled upstream must not end the run after batch 1, and must not
+// end it as a crash. This is the only end-to-end path that drives a rate-limited
+// ArcGIS through fetchAll, so it is what covers the in-loop machinery the pure
+// unit tests cannot reach: per-batch error slicing, the consecutive-batch
+// counter, the backoff budget, and the breaker's slow-down arm.
+test('a throttled upstream keeps its remaining cold-fetch slots and blocks publication without crashing', () => {
+  const input = fixtures();
+  for (const [, code] of countries) {
+    input[`${PREFIX}${code}`].cacheWrittenAt = NOW - DAY;
+    input[`${PREFIX}${code}`].asof = '2026-09-08';
+  }
+  const result = runProducer(input, 'rate-limited');
+
+  assert.equal(result.error, null, 'a throttle that loses no coverage is not a crash');
+  assert.equal(result.publishBlocked, true);
+  assert.match(result.logs, /CIRCUIT-BREAKER: \d+% of batch 1 rejected as rate_limited/);
+  assert.match(result.logs, /widening to the maximum inter-batch gap and continuing/);
+  assert.doesNotMatch(result.logs, /Skipping remaining \d+ batches/,
+    'the rate-limited arm must never abandon the remaining cold-fetch slots');
+  // Batch 5 of 5 proves the run kept working after the breaker tripped on
+  // batch 1 -- the whole point of splitting abort from slow-down.
+  assert.match(result.logs, /batch 5\/5/);
+  // The minority that upstream let through must actually have been refreshed.
+  const refreshed = countries.filter(([, code]) => result.redis[`${PREFIX}${code}`].cacheWrittenAt === NOW);
+  assert.ok(refreshed.length >= 2, `expected the un-throttled minority to land, got ${refreshed.length}`);
+  assert.equal(result.redis[META].coverage.published, 174, 'every country stays usable');
+  assert.ok(result.redis[META].coverage.refreshFailures.some((e: any) => e.code === 'rate_limited'));
+  assert.equal(health(result.redis, NOW).status, 'SEED_ERROR', 'the freshness monitor owns the alarm');
+});

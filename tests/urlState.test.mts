@@ -5,7 +5,9 @@ import {
   buildMapUrl,
   readDashboardSearchQuery,
   DASHBOARD_SEARCH_QUERY_MAX_CHARS,
+  withUrlFragment,
 } from '../src/utils/urlState.ts';
+import { LAYER_REGISTRY } from '../src/config/map-layer-definitions.ts';
 
 const EMPTY_LAYERS = {
   conflicts: false, bases: false, cables: false, pipelines: false,
@@ -18,6 +20,29 @@ const EMPTY_LAYERS = {
   accelerators: false, techHQs: false, techEvents: false,
   tradeRoutes: false, iranAttacks: false, gpsJamming: false,
 };
+
+// The URL layer list was a hand-kept copy that fell behind the registry, so a
+// `?layers=diseaseOutbreaks` link loaded with the layer off and the URL sync
+// rewrote it to `layers=none`. Every registered layer must survive a round trip.
+describe('every registered map layer survives the URL', () => {
+  const keys = Object.keys(LAYER_REGISTRY) as Array<keyof typeof LAYER_REGISTRY>;
+
+  it('parses each layer from ?layers=', () => {
+    const dropped = keys.filter((key) => parseMapUrlState(`?layers=${key}`, EMPTY_LAYERS).layers?.[key] !== true);
+    assert.deepEqual(dropped, []);
+  });
+
+  it('writes each enabled layer back to the URL', () => {
+    const dropped = keys.filter((key) => {
+      const url = buildMapUrl('https://worldmonitor.app/dashboard', {
+        view: 'global', zoom: 2, center: { lat: 0, lon: 0 }, timeRange: '24h',
+        layers: { ...EMPTY_LAYERS, [key]: true },
+      });
+      return !(new URL(url).searchParams.get('layers') ?? '').split(',').includes(key);
+    });
+    assert.deepEqual(dropped, []);
+  });
+});
 
 describe('parseMapUrlState expanded param', () => {
   it('parses legacy root dashboard deep links with disabled layers', () => {
@@ -204,5 +229,21 @@ describe('expanded param round-trip', () => {
     const url = buildMapUrl(base, { ...baseState, chokepoint: 'hormuz_strait' });
     const parsed = parseMapUrlState(new URL(url).search, EMPTY_LAYERS);
     assert.equal(parsed.chokepoint, 'hormuz_strait');
+  });
+});
+
+describe('withUrlFragment', () => {
+  const synced = 'https://www.worldmonitor.app/dashboard?zoom=1.00&view=global&layers=hotspots';
+
+  it('keeps a hash route another surface is routing on', () => {
+    assert.equal(withUrlFragment(synced, '#/verify-email-address'), `${synced}#/verify-email-address`);
+  });
+
+  it('adds nothing when there is no fragment', () => {
+    assert.equal(withUrlFragment(synced, ''), synced);
+  });
+
+  it('replaces a fragment already on the synced url', () => {
+    assert.equal(withUrlFragment(`${synced}#old`, '#new'), `${synced}#new`);
   });
 });

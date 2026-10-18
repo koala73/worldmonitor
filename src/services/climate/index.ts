@@ -76,8 +76,7 @@ export async function fetchClimateAnomalies(): Promise<ClimateFetchResult> {
   if (hydrated && (hydrated.anomalies ?? []).length > 0) {
     const anomalies = hydrated.anomalies.map(toDisplayAnomaly).filter(a => a.severity !== 'normal');
     if (anomalies.length > 0) {
-      // Warm the breaker under the same key a later recurring call reads
-      // (#7048); the raw non-empty guard mirrors its shouldCache.
+      // Warm the breaker under the same key a later recurring call reads (#7048).
       breaker.recordSuccess(hydrated);
       return { ok: true, anomalies };
     }
@@ -85,11 +84,11 @@ export async function fetchClimateAnomalies(): Promise<ClimateFetchResult> {
 
   const response = await breaker.execute(async () => {
     return client.listClimateAnomalies({ minSeverity: 'ANOMALY_SEVERITY_UNSPECIFIED', pageSize: 0, cursor: '' });
-  }, emptyClimateFallback, { shouldCache: (r) => r.anomalies.length > 0 });
+  }, emptyClimateFallback);
   const anomalies = (response.anomalies ?? [])
     .map(toDisplayAnomaly)
     .filter(a => a.severity !== 'normal');
-  return { ok: true, anomalies };
+  return { ok: breaker.getDataState().mode !== 'unavailable', anomalies };
 }
 
 export async function fetchCo2Monitoring(): Promise<Co2Monitoring | null> {

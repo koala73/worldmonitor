@@ -171,7 +171,7 @@ const ANALYSIS_CACHE_STATUS_PROPERTIES = {
   unavailable_inputs: {
     type: 'array',
     items: { type: 'string' },
-    description: 'Required cache keys that were missing or unreadable; their contribution is not treated as quiet.',
+    description: 'Required cache keys whose data was missing, unreadable, or withheld from redistribution; their contribution is not treated as quiet.',
   },
   failed_inputs: {
     type: 'array',
@@ -212,6 +212,7 @@ const ANALYSIS_STALE_DESCRIPTION = 'True when any contributing cache key fails i
 export const ANALYSIS_TOOLS: ToolDef[] = [
   {
     name: 'get_signal_convergence',
+    title: 'Geographic signal convergence',
     _outputBudgetBytes: 65536,
     description:
       'Geographic signal convergence: grid cells where protests, military activity, naval movements, and earthquakes co-occur. ' +
@@ -363,6 +364,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_focal_points',
+    title: 'News and map focal points',
     _outputBudgetBytes: 65536,
     description:
       'Focal-point detection: entities where news coverage and live map signals converge, ranked by multi-signal score. ' +
@@ -463,6 +465,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'simulate_infrastructure_cascade',
+    title: 'Simulate an infrastructure cascade',
     _outputBudgetBytes: 131072,
     description:
       'Infrastructure cascade simulation: what fails downstream when a cable, chokepoint, pipeline, or port is disrupted. ' +
@@ -550,6 +553,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_military_surge',
+    title: 'Military surge alerts',
     _outputBudgetBytes: 65536,
     description:
       'Military surge watch: theater aircraft postures, foreign-presence detections, and seeder-computed surge alerts. ' +
@@ -680,6 +684,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_population_exposure',
+    title: 'Population exposed to active events',
     _outputBudgetBytes: 65536,
     description:
       'Population exposure: estimated people within the impact radius of active earthquakes, wildfires, and conflict events. ' +
@@ -815,6 +820,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_alert_digest',
+    title: 'Daily cross-domain alert digest',
     _outputBudgetBytes: 131072,
     description:
       'Cross-domain alert digest: everything that tripped a threshold today, in one rollup. ' +
@@ -886,15 +892,22 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         payloads: [riskScores, surges, cableHealth, outages, temporal, thermal, stress, historyPayload],
         freshness,
       } = await readCachesWithFreshness(keys, checks);
+      const redistributableSurges = hasRedistributableProviderAttribution(
+        (surges as { sourceVersion?: unknown } | null)?.sourceVersion,
+      ) ? surges : null;
+      if (surges !== null && redistributableSurges === null) {
+        freshness.stale = true;
+        freshness.unavailable_inputs.push('military:surges:v1');
+      }
       requireAnyInput(
-        [riskScores, surges, cableHealth, outages, temporal, thermal, stress],
+        [riskScores, redistributableSurges, cableHealth, outages, temporal, thermal, stress],
         freshness,
         'No digest input feeds are available',
       );
 
       const now = Date.now();
       const digest = buildAlertDigest(
-        buildDigestInputs({ riskScores, surges, cableHealth, outages, temporal, thermal, stress }),
+        buildDigestInputs({ riskScores, surges: redistributableSurges, cableHealth, outages, temporal, thermal, stress }),
         now,
       );
 
@@ -933,6 +946,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_hotspot_escalation',
+    title: 'Hotspot escalation scores',
     _outputBudgetBytes: 65536,
     description:
       'Hotspot escalation scores: the 29 curated intelligence hotspots ranked by dynamic escalation on a 1-5 scale. ' +

@@ -16,6 +16,7 @@ import {
   buildScorecard,
   compareScorecards,
   formatScorecardMarkdown,
+  pageFamiliesForSchemaVersion,
   runCli,
   validateBaseline,
   validateQuerySet,
@@ -82,9 +83,16 @@ describe('SEO and AI visibility query registry', () => {
         'use_case',
       ],
     );
+    // The reviewed query set covers the families of its own schema version.
+    // PAGE_FAMILIES is the union across versions, so a query set that has not
+    // been re-reviewed must not be asked for families added afterwards.
     assert.deepEqual(
       [...new Set(querySet.queries.map((query) => query.targetPage.family))].sort(),
-      [...PAGE_FAMILIES].sort(),
+      [...pageFamiliesForSchemaVersion(querySet.schemaVersion)].sort(),
+    );
+    assert.ok(
+      querySet.queries.every((query) => PAGE_FAMILIES.includes(query.targetPage.family)),
+      'every reviewed target family must exist in the union taxonomy',
     );
     for (const query of querySet.queries) {
       assert.ok(query.targetAudience.length > 0, query.id);
@@ -618,7 +626,7 @@ describe('scorecard computation', () => {
     assert.equal(Object.keys(scorecard.byIntent).length, 5);
     assert.equal(
       Object.keys(scorecard.byPageFamily).length,
-      PAGE_FAMILIES.length,
+      pageFamiliesForSchemaVersion(baseline.schemaVersion).length,
     );
     assert.equal(
       scorecard.byIntent.category_definition.search.googleSearchConsole

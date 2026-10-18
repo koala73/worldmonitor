@@ -22,13 +22,14 @@ import { rpcError, rpcOk } from '../rpc';
 import { CHOKEPOINT_MONITOR_APP_HTML } from './chokepoint-monitor-app';
 import { COUNTRY_BRIEF_APP_HTML } from './country-brief-app';
 import { COUNTRY_RISK_APP_HTML } from './country-risk-app';
-import { MARKET_RADAR_APP_HTML } from './market-radar-app';
+import { PREVIOUS_MARKET_RADAR_UI_URI, LEGACY_MARKET_RADAR_UI_URI, readMarketRadar } from './market-radar-app';
 import { buildUiMeta, UI_RESOURCE_MIME_TYPE as SHELL_UI_MIME_TYPE, type UiResourceMeta } from './shell';
 import { WORLD_BRIEF_APP_HTML } from './world-brief-app';
 import { NEWS_INTELLIGENCE_APP_HTML } from './news-intelligence-app';
 import { CONFLICT_EVENTS_APP_HTML } from './conflict-events-app';
 import { NATURAL_DISASTERS_APP_HTML } from './natural-disasters-app';
 import { PREDICTION_MARKETS_APP_HTML } from './prediction-markets-app';
+import { PREVIOUS_COUNTRY_VIEW_UI_URI, PREVIOUS_NEWS_DASHBOARD_UI_URI, COUNTRY_VIEW_UI_URI, COUNTRY_VIEW_META, MARKET_RADAR_META, readCountryView, NEWS_DASHBOARD_UI_URI, NEWS_DASHBOARD_META, readNewsDashboard, LEGACY_COUNTRY_VIEW_UI_URI, LEGACY_NEWS_DASHBOARD_UI_URI } from './news-dashboard-app';
 import { FORECASTS_APP_HTML } from './forecasts-app';
 
 // Re-exported from the shared shell so the mimeType has a single source of
@@ -38,16 +39,32 @@ export const UI_RESOURCE_MIME_TYPE = SHELL_UI_MIME_TYPE;
 // Canonical ui:// URIs for each app shell. Each is imported by its backing tool
 // def as the single-source-of-truth `_uiResourceUri`, so the tool linkage and
 // the registered resource can never drift.
-export const COUNTRY_RISK_UI_URI = 'ui://worldmonitor/country-risk.html';
-export const WORLD_BRIEF_UI_URI = 'ui://worldmonitor/world-brief.html';
-export const COUNTRY_BRIEF_UI_URI = 'ui://worldmonitor/country-brief.html';
-export const MARKET_RADAR_UI_URI = 'ui://worldmonitor/market-radar.html';
-export const CHOKEPOINT_MONITOR_UI_URI = 'ui://worldmonitor/chokepoint-monitor.html';
-export const NEWS_INTELLIGENCE_UI_URI = 'ui://worldmonitor/news-intelligence.html';
-export const CONFLICT_EVENTS_UI_URI = 'ui://worldmonitor/conflict-events.html';
-export const NATURAL_DISASTERS_UI_URI = 'ui://worldmonitor/natural-disasters.html';
-export const PREDICTION_MARKETS_UI_URI = 'ui://worldmonitor/prediction-markets.html';
-export const FORECASTS_UI_URI = 'ui://worldmonitor/forecasts.html';
+export const COUNTRY_RISK_UI_URI = 'ui://worldmonitor/country-risk-v3.html';
+const PREVIOUS_COUNTRY_RISK_UI_URI = 'ui://worldmonitor/country-risk-v2.html';
+const LEGACY_COUNTRY_RISK_UI_URI = 'ui://worldmonitor/country-risk.html';
+export const WORLD_BRIEF_UI_URI = 'ui://worldmonitor/world-brief-v2.html';
+const LEGACY_WORLD_BRIEF_UI_URI = 'ui://worldmonitor/world-brief.html';
+export const COUNTRY_BRIEF_UI_URI = 'ui://worldmonitor/country-brief-v3.html';
+const PREVIOUS_COUNTRY_BRIEF_UI_URI = 'ui://worldmonitor/country-brief-v2.html';
+const LEGACY_COUNTRY_BRIEF_UI_URI = 'ui://worldmonitor/country-brief.html';
+export const MARKET_RADAR_UI_URI = 'ui://worldmonitor/market-radar-v3.html';
+export const CHOKEPOINT_MONITOR_UI_URI = 'ui://worldmonitor/chokepoint-monitor-v2.html';
+const LEGACY_CHOKEPOINT_MONITOR_UI_URI = 'ui://worldmonitor/chokepoint-monitor.html';
+export const NEWS_INTELLIGENCE_UI_URI = 'ui://worldmonitor/news-intelligence-v3.html';
+const PREVIOUS_NEWS_INTELLIGENCE_UI_URI = 'ui://worldmonitor/news-intelligence-v2.html';
+const LEGACY_NEWS_INTELLIGENCE_UI_URI = 'ui://worldmonitor/news-intelligence.html';
+export const CONFLICT_EVENTS_UI_URI = 'ui://worldmonitor/conflict-events-v2.html';
+const LEGACY_CONFLICT_EVENTS_UI_URI = 'ui://worldmonitor/conflict-events.html';
+export const NATURAL_DISASTERS_UI_URI = 'ui://worldmonitor/natural-disasters-v3.html';
+const PREVIOUS_NATURAL_DISASTERS_UI_URI = 'ui://worldmonitor/natural-disasters-v2.html';
+const LEGACY_NATURAL_DISASTERS_UI_URI = 'ui://worldmonitor/natural-disasters.html';
+export const PREDICTION_MARKETS_UI_URI = 'ui://worldmonitor/prediction-markets-v3.html';
+const PREVIOUS_PREDICTION_MARKETS_UI_URI = 'ui://worldmonitor/prediction-markets-v2.html';
+const LEGACY_PREDICTION_MARKETS_UI_URI = 'ui://worldmonitor/prediction-markets.html';
+export const FORECASTS_UI_URI = 'ui://worldmonitor/forecasts-v4.html';
+const PREVIOUS_FORECASTS_UI_URI = 'ui://worldmonitor/forecasts-v3.html';
+const LEGACY_FORECASTS_V2_UI_URI = 'ui://worldmonitor/forecasts-v2.html';
+const LEGACY_FORECASTS_UI_URI = 'ui://worldmonitor/forecasts.html';
 
 // Per-resource `_meta.ui` (ext-apps `UIResourceMeta`) is built by the shared
 // `buildUiMeta()` in ./shell — SINGLE source of truth for the fleet's CSP /
@@ -94,7 +111,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     uri: COUNTRY_BRIEF_UI_URI,
     name: 'Country Brief (interactive)',
     description:
-      'Interactive in-conversation app shell for get_country_brief: renders the AI-synthesised per-country intelligence brief as paragraphs, the analytical framework lens, and the grounding sources. Linked from the get_country_brief tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+      'Interactive in-conversation app shell for get_country_brief: renders the AI-synthesised per-country intelligence brief as paragraphs, the grounding sources, and cited WorldMonitor data. Linked from the get_country_brief tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
     _meta: buildUiMeta(),
     html: COUNTRY_BRIEF_APP_HTML,
@@ -103,10 +120,10 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     uri: MARKET_RADAR_UI_URI,
     name: 'Market Radar (interactive)',
     description:
-      'Interactive in-conversation app shell for get_market_data: renders the Fear & Greed composite plus per-asset-class quote tables (equities, commodities, crypto, Gulf, sectors) with signed, colour-coded change. Linked from the get_market_data tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+      'Interactive in-conversation app shell for get_market_data: renders the Fear & Greed composite plus per-asset-class quote tables (equities, commodities, crypto, Gulf, sectors) with signed change, loaded names and locally expandable original intraday charts. Linked from the get_market_data tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Data-free current-interface bootstrap, public and quota-exempt. Loads only the current public UI assets; chart expansion reuses the tool result.',
     mimeType: UI_RESOURCE_MIME_TYPE,
-    _meta: buildUiMeta(),
-    html: MARKET_RADAR_APP_HTML,
+    _meta: MARKET_RADAR_META,
+    html: '',
   },
   {
     uri: CHOKEPOINT_MONITOR_UI_URI,
@@ -157,7 +174,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     uri: FORECASTS_UI_URI,
     name: 'Forecasts (interactive)',
     description:
-      'Interactive in-conversation app shell for get_forecast_predictions: renders WorldMonitor\'s AI-generated geopolitical and economic forecasts as probability cards (title, domain, region). Linked from the get_forecast_predictions tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+      'Interactive in-conversation app shell for get_forecast_predictions: renders WorldMonitor\'s AI-generated forecasts with local domain/region filters and original case analysis. Analysis expansion loads original cases; Active theaters loads latest original theater summaries under the same signed forecast panel allocation, with independent run/time and completion coverage. Provided full cases and loaded theater details expand locally. Linked from the get_forecast_predictions tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
     _meta: buildUiMeta(),
     html: FORECASTS_APP_HTML,
@@ -168,7 +185,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
 const UI_RESOURCE_BY_URI = new Map(UI_RESOURCE_REGISTRY.map((r) => [r.uri, r]));
 
 export function isUiResourceUri(uri: string): boolean {
-  return UI_RESOURCE_BY_URI.has(uri);
+  return uri === PREVIOUS_COUNTRY_RISK_UI_URI || uri === PREVIOUS_COUNTRY_BRIEF_UI_URI || uri === LEGACY_COUNTRY_BRIEF_UI_URI || uri === LEGACY_COUNTRY_RISK_UI_URI || uri === LEGACY_WORLD_BRIEF_UI_URI || uri === LEGACY_CHOKEPOINT_MONITOR_UI_URI || uri === PREVIOUS_NEWS_INTELLIGENCE_UI_URI || uri === LEGACY_NEWS_INTELLIGENCE_UI_URI || uri === LEGACY_CONFLICT_EVENTS_UI_URI || uri === PREVIOUS_NATURAL_DISASTERS_UI_URI || uri === LEGACY_NATURAL_DISASTERS_UI_URI || uri === PREVIOUS_PREDICTION_MARKETS_UI_URI || uri === LEGACY_PREDICTION_MARKETS_UI_URI || uri === PREVIOUS_FORECASTS_UI_URI || uri === LEGACY_FORECASTS_V2_UI_URI || uri === LEGACY_FORECASTS_UI_URI || uri === PREVIOUS_MARKET_RADAR_UI_URI || uri === PREVIOUS_COUNTRY_VIEW_UI_URI || uri === PREVIOUS_NEWS_DASHBOARD_UI_URI || uri === LEGACY_MARKET_RADAR_UI_URI || uri === COUNTRY_VIEW_UI_URI || uri === NEWS_DASHBOARD_UI_URI || uri === LEGACY_COUNTRY_VIEW_UI_URI || uri === LEGACY_NEWS_DASHBOARD_UI_URI || UI_RESOURCE_BY_URI.has(uri);
 }
 
 // resources/list public shape — {uri, name, description, mimeType} plus the
@@ -194,12 +211,25 @@ export const UI_RESOURCE_LIST_RESPONSE: PublicUiResourceShape[] = UI_RESOURCE_RE
 // as a spec-shaped resources/read result. No auth context, no dispatch, no
 // quota — the caller (handler) has already resolved that this URI is a public
 // UI resource via isUiResourceUri().
-export function buildUiResourceRead(
+export async function buildUiResourceRead(
   id: unknown,
   uri: string,
   corsHeaders: Record<string, string>,
-): Response {
-  const def = UI_RESOURCE_BY_URI.get(uri);
+): Promise<Response> {
+  if (uri === MARKET_RADAR_UI_URI || uri === PREVIOUS_MARKET_RADAR_UI_URI || uri === LEGACY_MARKET_RADAR_UI_URI) return readMarketRadar(id, corsHeaders, uri);
+  if (uri === COUNTRY_VIEW_UI_URI || uri === PREVIOUS_COUNTRY_VIEW_UI_URI || uri === LEGACY_COUNTRY_VIEW_UI_URI) return readCountryView(id, corsHeaders, uri);
+  if (uri === NEWS_DASHBOARD_UI_URI || uri === PREVIOUS_NEWS_DASHBOARD_UI_URI || uri === LEGACY_NEWS_DASHBOARD_UI_URI) return readNewsDashboard(id, corsHeaders, uri);
+  const canonicalUri = (uri === PREVIOUS_COUNTRY_RISK_UI_URI || uri === LEGACY_COUNTRY_RISK_UI_URI) ? COUNTRY_RISK_UI_URI
+    : uri === LEGACY_WORLD_BRIEF_UI_URI ? WORLD_BRIEF_UI_URI
+    : (uri === PREVIOUS_COUNTRY_BRIEF_UI_URI || uri === LEGACY_COUNTRY_BRIEF_UI_URI) ? COUNTRY_BRIEF_UI_URI
+    : uri === LEGACY_CHOKEPOINT_MONITOR_UI_URI ? CHOKEPOINT_MONITOR_UI_URI
+    : (uri === PREVIOUS_NEWS_INTELLIGENCE_UI_URI || uri === LEGACY_NEWS_INTELLIGENCE_UI_URI) ? NEWS_INTELLIGENCE_UI_URI
+    : uri === LEGACY_CONFLICT_EVENTS_UI_URI ? CONFLICT_EVENTS_UI_URI
+    : uri === PREVIOUS_NATURAL_DISASTERS_UI_URI || uri === LEGACY_NATURAL_DISASTERS_UI_URI ? NATURAL_DISASTERS_UI_URI
+    : (uri === LEGACY_PREDICTION_MARKETS_UI_URI || uri === PREVIOUS_PREDICTION_MARKETS_UI_URI) ? PREDICTION_MARKETS_UI_URI
+    : uri === LEGACY_FORECASTS_UI_URI || uri === PREVIOUS_FORECASTS_UI_URI || uri === LEGACY_FORECASTS_V2_UI_URI ? FORECASTS_UI_URI
+      : uri;
+  const def = UI_RESOURCE_BY_URI.get(canonicalUri);
   if (!def) {
     // Unreachable in practice — the handler only routes here after
     // isUiResourceUri(uri) is true — but fail closed with a spec -32602.
@@ -207,7 +237,25 @@ export function buildUiResourceRead(
   }
   return rpcOk(
     id,
-    { contents: [{ uri: def.uri, mimeType: def.mimeType, text: def.html, _meta: def._meta }] },
+    { contents: [{ uri: (uri === LEGACY_PREDICTION_MARKETS_UI_URI || uri === PREVIOUS_PREDICTION_MARKETS_UI_URI) ? def.uri : uri, mimeType: def.mimeType, text: def.html, _meta: def._meta }] },
     corsHeaders,
   );
 }
+
+UI_RESOURCE_LIST_RESPONSE.push({
+  uri: NEWS_DASHBOARD_UI_URI,
+  name: 'WorldMonitor news and maps',
+  description:
+    'WorldMonitor news panels and interactive map, rendered with the dashboard components.',
+  mimeType: UI_RESOURCE_MIME_TYPE,
+  _meta: NEWS_DASHBOARD_META,
+});
+
+UI_RESOURCE_LIST_RESPONSE.push({
+  uri: COUNTRY_VIEW_UI_URI,
+  name: 'WorldMonitor country view',
+  description:
+    'Shared country deep dive with progressive authenticated sections.',
+  mimeType: UI_RESOURCE_MIME_TYPE,
+  _meta: COUNTRY_VIEW_META,
+});

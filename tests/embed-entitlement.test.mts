@@ -312,7 +312,9 @@ describe('embed entitlement', () => {
     const source = readFileSync(resolve(__dirname, '../api/embed/entitlement.ts'), 'utf-8');
     assert.match(source, /headers\.delete\('cookie'\)/);
     assert.match(source, /checkEndpointRateLimit/);
-    assert.match(source, /X-WorldMonitor-Key/);
+    // Keyed to the embedding account's key header; resolution is covered in
+    // embed-session.test.mts ("credential header resolution").
+    assert.match(source, /embedCredentialFromHeaders\(stripped\.headers\)/);
     assert.match(source, /isEntitlementBackendConfigured/);
     assert.equal(source.includes('validateBearerToken'), false);
     assert.equal(source.includes('getCookie'), false);

@@ -45,10 +45,21 @@ export const FORECAST_EVIDENCE_MAX_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
  *                                                    24h default, ~12h twice-
  *                                                    daily, ~6.5-7d WEEKLY,
  *                                                    older after missed ticks
+ *                                                    (but see story rows below)
+ *   seed-market-alert-ledger readStories()           full:en, emission - 24h
+ *                                                    for due rows <= 6d past
+ *                                                    deadline: <= 7d6h; its
+ *                                                    oldest-member coverage
+ *                                                    proof needs <= 6d6h
+ *   seed-forecast-bets.mjs:295 ensemble news         full:en, 3d (via
+ *                                                    readDigestAccumulatorArchive)
  *   scripts/lib/watchlist-story-scan.mjs             24h
  *   api/mcp/registry/nlp-tools.ts keyword spikes     48h
- *   seed-forecast-resolutions (judged)               14d -> migrating to the
- *                                                    dedicated archive below
+ *   seed-forecast-resolutions (judged)               none since #8995: judging
+ *                                                    reads only the archive
+ *   backfill-forecast-evidence-archive.mjs           14d, operator repair tool
+ *                                                    only; members past the 7d
+ *                                                    story row are unrecoverable
  *
  * A 48-hour member prune silently truncates every weekly digest to two days of
  * stories, so retention is sized to the widest surviving reader instead. Seven
@@ -56,7 +67,9 @@ export const FORECAST_EVIDENCE_MAX_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
  * every hash it reads here, so an accumulator member that outlives its story
  * row is unusable anyway — plus a one-day guard band, mirroring how the
  * evidence archive's own retention is sized. This still bounds a key that
- * previously grew without limit; it bounds it at the real contract.
+ * previously grew without limit; it bounds it at the real contract. Every
+ * reader above fits inside it, so `full:en` is pruned to the same 8 days once
+ * FORECAST_EVIDENCE_CUTOVER_ENABLED is set (#7082).
  */
 export const ACCUMULATOR_RETENTION_MS = 8 * 24 * 60 * 60 * 1000;
 
@@ -78,6 +91,7 @@ export const ACCUMULATOR_RETENTION_MS = 8 * 24 * 60 * 60 * 1000;
  * SHOULD fail closed rather than judge against a hole.
  */
 export const FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS = 6 * 60 * 60 * 1000;
+export const FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS = 6 * 60 * 60 * 1000;
 
 /**
  * @param {Record<string, string|undefined>} [env]
@@ -118,12 +132,11 @@ export function forecastEvidenceRecordKey(hash) {
 
 /**
  * Coverage is operational evidence, not an inference from retention policy.
- * A backfill creates the verified start and a confirmed digest publication
+ * A backfill or a complete archive continuity scan creates the start. A digest publication
  * advances the end. Readers accept the archive only when both bound the
  * complete requested window.
  *
  * @param {unknown} raw
- * @returns {{v: number, coverageStartMs: number, coverageEndMs: number, cutoverVerifiedAtMs: number, sourceDigestAtMs: number, maxLookbackMs: number, retentionSeconds: number, sourceKey: string, legacyOldestHash: string, legacyOldestScoreMs: number}|null}
  */
 export function parseForecastEvidenceCoverage(raw) {
   let value = raw;
@@ -136,61 +149,109 @@ export function parseForecastEvidenceCoverage(raw) {
   }
   if (!value || typeof value !== 'object') return null;
   const metadata = /** @type {Record<string, unknown>} */ (value);
+  const continuity = metadata.v === 2 && metadata.sourceKey === FORECAST_EVIDENCE_KEY;
+  const oldestHash = continuity ? metadata.archiveOldestHash : metadata.legacyOldestHash;
+  const oldestScore = continuity ? metadata.archiveOldestScoreMs : metadata.legacyOldestScoreMs;
   const timeFields = [
     metadata.coverageStartMs,
     metadata.coverageEndMs,
     metadata.cutoverVerifiedAtMs,
     metadata.sourceDigestAtMs,
-    metadata.legacyOldestScoreMs,
+    oldestScore,
   ];
   if (
-    metadata.v !== FORECAST_EVIDENCE_COVERAGE_VERSION
+    (!continuity && metadata.v !== FORECAST_EVIDENCE_COVERAGE_VERSION)
     || !timeFields.every(value => Number.isSafeInteger(value) && Number(value) >= 0)
     || metadata.maxLookbackMs !== FORECAST_EVIDENCE_MAX_LOOKBACK_MS
     || metadata.retentionSeconds !== FORECAST_EVIDENCE_TTL_S
-    || metadata.sourceKey !== FORECAST_EVIDENCE_SOURCE_KEY
-    || !isForecastEvidenceHash(metadata.legacyOldestHash)
+    || (!continuity && metadata.sourceKey !== FORECAST_EVIDENCE_SOURCE_KEY)
+    || (continuity && metadata.continuityBucketMs !== FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS)
+    || !isForecastEvidenceHash(oldestHash)
     || Number(metadata.coverageStartMs) > Number(metadata.coverageEndMs)
     || Number(metadata.coverageEndMs) - Number(metadata.coverageStartMs) < FORECAST_EVIDENCE_MAX_LOOKBACK_MS
     || Number(metadata.sourceDigestAtMs) !== Number(metadata.coverageEndMs)
     || Number(metadata.cutoverVerifiedAtMs) < Number(metadata.coverageStartMs)
     || Number(metadata.cutoverVerifiedAtMs) > Number(metadata.coverageEndMs)
-    || Number(metadata.legacyOldestScoreMs) > Number(metadata.coverageStartMs)
+    || Number(oldestScore) > Number(metadata.coverageStartMs)
   ) return null;
   return {
-    v: FORECAST_EVIDENCE_COVERAGE_VERSION,
+    v: continuity ? 2 : FORECAST_EVIDENCE_COVERAGE_VERSION,
     coverageStartMs: Math.floor(Number(metadata.coverageStartMs)),
     coverageEndMs: Math.floor(Number(metadata.coverageEndMs)),
     cutoverVerifiedAtMs: Math.floor(Number(metadata.cutoverVerifiedAtMs)),
     sourceDigestAtMs: Math.floor(Number(metadata.sourceDigestAtMs)),
     maxLookbackMs: FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
     retentionSeconds: FORECAST_EVIDENCE_TTL_S,
-    sourceKey: FORECAST_EVIDENCE_SOURCE_KEY,
-    legacyOldestHash: metadata.legacyOldestHash,
-    legacyOldestScoreMs: Math.floor(Number(metadata.legacyOldestScoreMs)),
+    ...(continuity ? {
+      sourceKey: FORECAST_EVIDENCE_KEY,
+      continuityBucketMs: FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS,
+      archiveOldestHash: oldestHash,
+      archiveOldestScoreMs: Number(oldestScore),
+    } : {
+      sourceKey: FORECAST_EVIDENCE_SOURCE_KEY,
+      legacyOldestHash: oldestHash,
+      legacyOldestScoreMs: Number(oldestScore),
+    }),
   };
 }
 
 /**
  * `maxLagMs` is the staleness budget described on
- * FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS. It defaults to 0 — a caller that
- * authorizes destruction (the accumulator prune gate, the sweep tool) must
- * demand a marker that already reaches the instant it is reasoning about, and
+ * FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS. It defaults to 0: the backfill tool
+ * verifies the marker it just wrote against the instant it reasons about, and
  * only the read path opts into a budget.
+ *
+ * No accumulator prune consults this marker any more. Since #7082 (owner
+ * decision 2026-10-08) the digest prune and the sweep tool are gated by
+ * FORECAST_EVIDENCE_CUTOVER_ENABLED alone, because judging stopped reading the
+ * accumulator in #8995. Do not re-add a marker gate to either: production
+ * carries only the v2 continuity marker, which the default rejects.
  *
  * @param {unknown} raw
  * @param {number} startMs
  * @param {number} endMs
  * @param {number} [maxLagMs]
+ * @param {boolean} [allowContinuity] Accept the v2 continuity attestation; the
+ *   judging read path sets it, backfill certification does not.
  */
-export function forecastEvidenceCoversWindow(raw, startMs, endMs, maxLagMs = 0) {
+export function forecastEvidenceCoversWindow(raw, startMs, endMs, maxLagMs = 0, allowContinuity = false) {
   const metadata = parseForecastEvidenceCoverage(raw);
   const lag = Number.isFinite(maxLagMs) && maxLagMs > 0 ? Math.floor(maxLagMs) : 0;
   return Boolean(
     metadata
+    && (metadata.v !== 2 || allowContinuity)
     && metadata.coverageStartMs <= startMs
     && metadata.coverageEndMs >= endMs - lag,
   );
+}
+
+/** Build a read-only continuity attestation from a complete validated scan. */
+export function recoverForecastEvidenceCoverage(records, nowMs) {
+  if (!Number.isSafeInteger(nowMs) || !records.length) return null;
+  const ordered = [...records].sort((a, b) => b.score - a.score);
+  const endMs = ordered[0].score;
+  const startMs = endMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS;
+  let previous = nowMs;
+  for (const { record, score } of ordered) {
+    if (!Number.isSafeInteger(score) || score !== record.lastSeen || score > previous
+      || previous - score > FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS) return null;
+    previous = score;
+  }
+  const oldest = ordered.at(-1);
+  if (oldest.score > startMs) return null;
+  return parseForecastEvidenceCoverage({
+    v: 2,
+    coverageStartMs: startMs,
+    coverageEndMs: endMs,
+    cutoverVerifiedAtMs: endMs,
+    sourceDigestAtMs: endMs,
+    maxLookbackMs: FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
+    retentionSeconds: FORECAST_EVIDENCE_TTL_S,
+    sourceKey: FORECAST_EVIDENCE_KEY,
+    continuityBucketMs: FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS,
+    archiveOldestHash: oldest.record.hash,
+    archiveOldestScoreMs: oldest.score,
+  });
 }
 
 /**
@@ -209,6 +270,8 @@ export function forecastEvidenceCoversWindow(raw, startMs, endMs, maxLagMs = 0) 
 export function advanceForecastEvidenceCoverage(raw, nowMs) {
   const metadata = parseForecastEvidenceCoverage(raw);
   if (!metadata || !Number.isFinite(nowMs)) return null;
+  // A publication cannot prove continuity across an earlier outage.
+  if (metadata.v === 2 && nowMs - metadata.coverageEndMs > FORECAST_EVIDENCE_CONTINUITY_BUCKET_MS) return null;
   const coverageEndMs = Math.max(metadata.coverageEndMs, Math.floor(nowMs));
   return {
     ...metadata,
@@ -216,6 +279,65 @@ export function advanceForecastEvidenceCoverage(raw, nowMs) {
     // Invariant: the parser requires these two to be equal.
     sourceDigestAtMs: coverageEndMs,
   };
+}
+
+/**
+ * Keeps a stored link when a later sighting of the same story arrives with its
+ * link blanked by the publisher gate (#8990). The stored record is reused with
+ * only `lastSeen` replaced, so the index score and the record still agree for
+ * coverage recovery, and the member stays within its byte budget (no JSON
+ * re-encoding). Otherwise the new member is written as a plain SET would.
+ *
+ * Gate-policy changes: a link kept here was allowed when it was stored. If its
+ * host later leaves the allowed list, the next sighting from that host is
+ * blanked by the gate and passes the host as ARGV[4]; a stored link on that
+ * host is then dropped, not kept. A stored link whose story is never seen
+ * again from that host keeps its link until the 15-day record TTL expires.
+ *
+ * KEYS[1] record key; ARGV[1] new member, ARGV[2] TTL seconds, ARGV[3]
+ * lastSeen, ARGV[4] the blanked link's host without `www.` ('' if none).
+ */
+export const FORECAST_EVIDENCE_KEEP_LINK_SCRIPT = [
+  "local old = redis.call('GET', KEYS[1])",
+  'if old then',
+  '  local ok, rec = pcall(cjson.decode, old)',
+  "  if ok and type(rec) == 'table' and type(rec.link) == 'string' and rec.link ~= '' then",
+  "    local host = string.match(rec.link, '^%a[%w+.-]*://([^/:?#]+)')",
+  "    if host then host = string.gsub(string.lower(host), '^www%.', '') end",
+  "    if ARGV[4] == '' or host ~= ARGV[4] then",
+  "      local kept, n = string.gsub(old, '\"lastSeen\":%d+}$', '\"lastSeen\":' .. ARGV[3] .. '}')",
+  "      if n == 1 then return redis.call('SET', KEYS[1], kept, 'EX', ARGV[2]) end",
+  '    end',
+  '  end',
+  'end',
+  "return redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])",
+].join('\n');
+
+/** Lowercase host without a leading `www.`, or '' when the link does not parse. */
+export function forecastEvidenceLinkHost(link) {
+  try {
+    return new URL(String(link || '')).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * The Redis command that stores one evidence record. A member whose link was
+ * blanked goes through FORECAST_EVIDENCE_KEEP_LINK_SCRIPT so it never replaces
+ * an earlier record of the story that carried a valid link.
+ *
+ * @param {string} key
+ * @param {string} member
+ * @param {string} link the link stored in `member` ('' when the gate blanked it)
+ * @param {number} ttlSeconds
+ * @param {number} lastSeen
+ * @param {string} [blankedHost] host of the link the gate blanked, from forecastEvidenceLinkHost
+ * @returns {Array<string|number>}
+ */
+export function buildForecastEvidenceRecordWrite(key, member, link, ttlSeconds, lastSeen, blankedHost = '') {
+  if (link || !Number.isSafeInteger(Math.floor(lastSeen))) return ['SET', key, member, 'EX', ttlSeconds];
+  return ['EVAL', FORECAST_EVIDENCE_KEEP_LINK_SCRIPT, '1', key, member, String(ttlSeconds), String(Math.floor(lastSeen)), blankedHost];
 }
 
 /**
@@ -260,7 +382,9 @@ export function isEligibleForecastEvidence(variant, lang) {
  *
  * Returns null only when a required field is missing or when the record is
  * still over budget with no description at all — a genuinely malformed
- * upstream the caller should count.
+ * upstream the caller should count. An empty link is not missing: the digest's
+ * publisher-link gate blanks links it will not store (#8398), and the story is
+ * still evidence. Counting those as drops froze the coverage marker (#8990).
  *
  * @param {{hash?: unknown, title?: unknown, link?: unknown, description?: unknown, publishedAt?: unknown}} track
  * @param {number} lastSeen
@@ -273,7 +397,7 @@ export function buildForecastEvidenceMember(track, lastSeen) {
   const description = typeof track.description === 'string' ? track.description : '';
   const publishedAt = Number(track.publishedAt);
 
-  if (!isForecastEvidenceHash(hash) || !title || !link || !Number.isFinite(publishedAt) || !Number.isFinite(lastSeen)) {
+  if (!isForecastEvidenceHash(hash) || !title || !Number.isFinite(publishedAt) || !Number.isFinite(lastSeen)) {
     return null;
   }
 

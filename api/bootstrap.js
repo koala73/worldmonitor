@@ -1,4 +1,5 @@
 import { sanitizeBootstrapValue } from './_bootstrap-public-payload.js';
+import { validateImfDataset } from './_imf-dataset.js';
 import { waitUntil as vercelWaitUntil } from '@vercel/functions';
 
 import {
@@ -17,6 +18,7 @@ import {
   validateApiKey,
 } from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
+import { checkRateLimit } from './_rate-limit.js';
 import {
   checkBootstrapUserApiKeyRateLimit,
   isCanonicalUserApiKey,
@@ -155,6 +157,13 @@ const ON_DEMAND_CACHE_PROFILES = {
     browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=1800',
     cdn: 'public, s-maxage=1800, stale-while-revalidate=300, stale-if-error=1800',
   },
+  // seed-live-video-resolved publishes every 6h against an 18h health budget
+  // (#8545). A 30-minute shield keeps a fresh video id reaching players within
+  // the hour after a refresh; the default 2h shield would hold a rotated id.
+  liveVideoResolved: {
+    browser: 'max-age=300, stale-while-revalidate=300, stale-if-error=1800',
+    cdn: 'public, s-maxage=1800, stale-while-revalidate=300, stale-if-error=3600',
+  },
 };
 
 // The legacy unmarked weather URL: `?keys=weatherAlerts` with no credentials.
@@ -259,7 +268,7 @@ function finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisDuration
   return response;
 }
 
-const BOOTSTRAP_CREDENTIAL_COOKIES = new Set(['wm-session', 'wm-pro-key', 'wm-widget-key']);
+const BOOTSTRAP_CREDENTIAL_COOKIES = new Set(['wm-session', '__Host-wm-pro-key', '__Host-wm-widget-key']);
 
 function hasBootstrapCredentialCookie(req) {
   const raw = req.headers.get('Cookie') || req.headers.get('cookie') || '';
@@ -491,6 +500,9 @@ function successCacheHeaders(requestedTier, authKind, cors, onDemandKey = null) 
   };
 }
 
+const SESSION_BOOTSTRAP_RATE_SCOPE = 'bootstrap-session';
+const SESSION_BOOTSTRAP_RATE_LIMIT = 120;
+
 export default async function handler(req, ctx) {
   // no-store because this rejection is decided by the Origin header, which no
   // cache layer here keys on (CF ignores Vary — see TIER_CACHE above). Without
@@ -507,6 +519,18 @@ export default async function handler(req, ctx) {
 
   const auth = await validateBootstrapAuth(req, cors);
   if (!auth.ok) return auth.response;
+  // Anonymous wms_ sessions are free to mint and their reads are no-store, so
+  // every request is a full Redis read plus egress. Give them a per-address
+  // budget well above a dashboard boot; wm_ user keys have their own limiter.
+  if (auth.kind === 'session') {
+    const limited = await checkRateLimit(req, cors, {
+      ctx,
+      scope: SESSION_BOOTSTRAP_RATE_SCOPE,
+      limit: SESSION_BOOTSTRAP_RATE_LIMIT,
+      window: '60 s',
+    });
+    if (limited) return limited;
+  }
 
   const url = new URL(req.url);
   const tier = url.searchParams.get('tier');
@@ -563,10 +587,11 @@ export default async function handler(req, ctx) {
   const data = {};
   const missing = [];
   for (let i = 0; i < names.length; i++) {
-    const val = keys[i] === BOOTSTRAP_CACHE_KEYS.canadaAlerts
+    const raw = keys[i] === BOOTSTRAP_CACHE_KEYS.canadaAlerts
       && !cached.has(BOOTSTRAP_CACHE_KEYS.canadaAlerts)
       ? canadaAlertsCutoverFallbackValue(cached)
       : cached.get(keys[i]);
+    const val = raw === undefined ? undefined : validateImfDataset(names[i], raw);
     if (val !== undefined) {
       data[names[i]] = sanitizeBootstrapValue(names[i], val);
     } else {

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import {
+  clearTelegramIntelCache,
+  fetchTelegramFeed,
   fetchTelegramChannelFeed,
   fetchTelegramChannelPreview,
 } from '../src/services/telegram-intel';
@@ -9,6 +11,7 @@ import {
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
+  clearTelegramIntelCache();
   let previewCalls = 0;
   let channelCalls = 0;
 
@@ -191,5 +194,50 @@ describe('telegram-intel service', () => {
     assert.equal(preview.username, 'pasted_channel');
     assert.match(requestedUrl, /username=pasted_channel(&|$)/);
     assert.doesNotMatch(requestedUrl, /t\.me/);
+  });
+});
+
+
+describe('Telegram cache access generation', () => {
+  for (const kind of ['feed', 'preview', 'channel'] as const) {
+    it(`discards late ${kind} responses and keeps the replacement request deduplicated`, async () => {
+      const payload = kind === 'preview'
+        ? { username: 'epoch_channel', title: 'Fresh preview' }
+        : { source: 'telegram', enabled: true, items: [] };
+      const load = () => kind === 'feed' ? fetchTelegramFeed()
+        : kind === 'preview' ? fetchTelegramChannelPreview('epoch_channel')
+        : fetchTelegramChannelFeed('epoch_channel');
+      const pending: Array<(response: Response) => void> = [];
+      globalThis.fetch = (() => new Promise<Response>(resolve => pending.push(resolve))) as typeof fetch;
+      const old = load();
+      const rejected = assert.rejects(old, { name: 'AbortError' });
+      clearTelegramIntelCache();
+      const fresh = load();
+      pending[0]!(Response.json(payload));
+      await rejected;
+      const shared = kind === 'feed' ? fresh : load();
+      assert.equal(pending.length, 2);
+      pending[1]!(Response.json(payload));
+      await Promise.all([fresh, shared]);
+      await load();
+      assert.equal(pending.length, 2, 'only the fresh response populates cache');
+    });
+  }
+
+  it('does not serve a captured stale channel fallback after invalidation', async () => {
+    const originalNow = Date.now;
+    const start = originalNow();
+    try {
+      globalThis.fetch = (async () => Response.json({ enabled: true, items: [] })) as typeof fetch;
+      await fetchTelegramChannelFeed('stale_epoch');
+      Date.now = () => start + 100_000;
+      let reject!: (error: Error) => void;
+      globalThis.fetch = (() => new Promise<Response>((_resolve, fail) => { reject = fail; })) as typeof fetch;
+      const pending = fetchTelegramChannelFeed('stale_epoch');
+      const rejected = assert.rejects(pending, { name: 'AbortError' });
+      clearTelegramIntelCache();
+      reject(new Error('offline'));
+      await rejected;
+    } finally { Date.now = originalNow; }
   });
 });

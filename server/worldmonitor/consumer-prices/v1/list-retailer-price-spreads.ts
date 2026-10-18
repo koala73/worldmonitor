@@ -5,15 +5,14 @@ import type {
 
 import { getCachedJson } from '../../../_shared/redis';
 
-const DEFAULT_MARKET = 'ae';
-const DEFAULT_BASKET = 'essentials-ae';
+import { resolveConsumerPriceSelection } from './_selection';
+
 
 export async function listRetailerPriceSpreads(
   _ctx: unknown,
   req: ListRetailerPriceSpreadsRequest,
 ): Promise<ListRetailerPriceSpreadsResponse> {
-  const market = req.marketCode || DEFAULT_MARKET;
-  const basket = req.basketSlug || DEFAULT_BASKET;
+  const { market, basket } = resolveConsumerPriceSelection(req.marketCode, req.basketSlug);
   const key = `consumer-prices:retailer-spread:${market}:${basket}`;
 
   const EMPTY: ListRetailerPriceSpreadsResponse = {

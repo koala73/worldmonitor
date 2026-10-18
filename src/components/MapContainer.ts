@@ -23,6 +23,7 @@ import type {
   MapLayers,
   Hotspot,
   NewsItem,
+  NewsLocationMarker,
   InternetOutage,
   RelatedAsset,
   AssetType,
@@ -41,7 +42,7 @@ import type {
   CableHealthRecord,
 } from '@/types';
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
-import type { DisplacementFlow } from '@/services/displacement';
+import type { CrossBorderData, DisplacementFlow, InternalDisplacementData } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { WeatherAlert } from '@/services/weather';
@@ -65,6 +66,7 @@ import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { ChinaCorridorControlTower } from '../../shared/china-corridor-control-towers';
 import { projectChinaCorridorOverlay } from './map/china-corridor-overlay';
+import { AircraftEmergencyLayer } from './AircraftEmergencyLayer';
 import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-templates';
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -118,6 +120,8 @@ export interface MapContainerState {
 
 export interface MapContainerOptions {
   chrome?: boolean;
+  mapLibreWorkerUrl?: string;
+  preferDesktopRenderer?: boolean;
   isFreeTierFallbackActive?: () => boolean;
 }
 
@@ -157,7 +161,6 @@ interface TechEventMarker {
 }
 
 type FireMarker = { lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string };
-type NewsLocationMarker = { lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date };
 type CIIScore = { code: string; score: number; level: string };
 
 /**
@@ -167,6 +170,7 @@ type CIIScore = { code: string; score: number; level: string };
 export class MapContainer {
   private container: HTMLElement;
   private isMobile: boolean;
+  private readonly preferDesktopRenderer: boolean;
   private deckGLMap: DeckGLMap | null = null;
   private svgMap: MapComponent | null = null;
   private globeMap: GlobeMap | null = null;
@@ -175,6 +179,7 @@ export class MapContainer {
   private useDeckGL: boolean;
   private useGlobe: boolean;
   private readonly chrome: boolean;
+  private readonly mapLibreWorkerUrl: string | undefined;
   private readonly svgLayerToggleGuard: NonNullable<MapComponentOptions['canToggleLayer']>;
   private readonly isFreeTierFallbackActive: (() => boolean) | null;
   private isResizingInternal = false;
@@ -209,6 +214,7 @@ export class MapContainer {
   private cachedOnStateChanged: ((state: MapContainerState) => void) | null = null;
   private cachedOnLayerChange: ((layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void) | null = null;
   private cachedOnTimeRangeChanged: ((range: TimeRange) => void) | null = null;
+  private cachedOnNewsClicked: ((item: Pick<NewsLocationMarker, 'article' | 'title'>) => void) | null = null;
   private cachedOnCountryClicked: ((country: CountryClickPayload) => void) | null = null;
   private cachedOnHotspotClicked: ((hotspot: Hotspot) => void) | null = null;
   private cachedOnAircraftPositionsUpdate: ((positions: PositionSample[]) => void) | null = null;
@@ -239,6 +245,8 @@ export class MapContainer {
   private cachedTechEvents: TechEventMarker[] | null = null;
   private cachedUcdpEvents: UcdpGeoEvent[] | null = null;
   private cachedDisplacementFlows: DisplacementFlow[] | null = null;
+  private cachedInternalDisplacement: InternalDisplacementData | null = null;
+  private cachedCrossBorderArrivals: CrossBorderData | null = null;
   private cachedClimateAnomalies: ClimateAnomaly[] | null = null;
   private cachedRadiationObservations: RadiationObservation[] | null = null;
   private cachedGpsJamming: GpsJamHex[] | null = null;
@@ -264,11 +272,17 @@ export class MapContainer {
   private cachedDdosLocations: DdosLocationHit[] | null = null;
   private cachedChokepointData: GetChokepointStatusResponse | null | undefined;
   private cachedChinaCorridorSelection: ChinaCorridorControlTower | null = null;
+  private emergencyLayer: AircraftEmergencyLayer;
 
   constructor(container: HTMLElement, initialState: MapContainerState, preferGlobe = false, options: MapContainerOptions = {}) {
     this.container = container;
+    this.emergencyLayer = new AircraftEmergencyLayer(container, markers => {
+      if (this.useDeckGL) this.deckGLMap?.setAircraftEmergencies(markers);
+      else this.svgMap?.setAircraftEmergencies(markers);
+    });
     this.initialState = initialState;
     this.chrome = options.chrome ?? true;
+    this.mapLibreWorkerUrl = options.mapLibreWorkerUrl;
     this.svgLayerToggleGuard = (layer, currentlyEnabled) => isLayerToggleAllowed(
       layer,
       currentlyEnabled === true,
@@ -276,6 +290,7 @@ export class MapContainer {
     );
     this.isFreeTierFallbackActive = options.isFreeTierFallbackActive ?? null;
     this.isMobile = isMobileDevice();
+    this.preferDesktopRenderer = options.preferDesktopRenderer ?? false;
     this.useGlobe = preferGlobe && this.hasGlobeSupport();
 
     this.useDeckGL = !this.useGlobe && this.shouldUseDeckGL();
@@ -338,7 +353,7 @@ export class MapContainer {
     // Keep the default mobile path on the lightweight SVG renderer. High-end
     // phones can still request globe mode explicitly via the persisted mode,
     // but they should not pull Deck/MapLibre before first paint by default.
-    if (this.isMobile) return false;
+    if (this.isMobile && !this.preferDesktopRenderer) return false;
     if (!this.hasWebGLSupport()) return false;
     return true;
   }
@@ -688,6 +703,7 @@ export class MapContainer {
         // Mid-session MapLibre rebuilds (fallback basemap after WebGL loss)
         // can throw GPUInitializationError outside whenReady(); degrade to SVG.
         onFatalError: (error) => this.handleDeckGLRuntimeFailure(token, error),
+        mapLibreWorkerUrl: this.mapLibreWorkerUrl,
       });
       this.rehydrateActiveMap();
       // DeckGLMap defers MapLibre construction behind an async init. Await it so
@@ -787,6 +803,7 @@ export class MapContainer {
     if (this.cachedOnLayerChange) this.setOnLayerChange(this.cachedOnLayerChange);
     if (this.cachedOnTimeRangeChanged) this.onTimeRangeChanged(this.cachedOnTimeRangeChanged);
     if (this.cachedOnCountryClicked) this.onCountryClicked(this.cachedOnCountryClicked);
+    if (this.cachedOnNewsClicked) this.onNewsClicked(this.cachedOnNewsClicked);
     if (this.cachedOnHotspotClicked) this.onHotspotClicked(this.cachedOnHotspotClicked);
     if (this.cachedOnAircraftPositionsUpdate) this.setOnAircraftPositionsUpdate(this.cachedOnAircraftPositionsUpdate);
     if (this.cachedOnMapContextMenu) this.onMapContextMenu(this.cachedOnMapContextMenu);
@@ -806,12 +823,15 @@ export class MapContainer {
     if (this.cachedFlightDelays) this.setFlightDelays(this.cachedFlightDelays);
     if (this.cachedAircraftPositions) this.setAircraftPositions(this.cachedAircraftPositions);
     if (this.cachedMilitaryFlights) this.setMilitaryFlights(this.cachedMilitaryFlights, this.cachedMilitaryFlightClusters ?? []);
+    this.emergencyLayer.setEnabled(!this.useGlobe && this.getState().layers.aircraftEmergencies === true);
     if (this.cachedMilitaryVessels) this.setMilitaryVessels(this.cachedMilitaryVessels, this.cachedMilitaryVesselClusters ?? []);
     if (this.cachedNaturalEvents) this.setNaturalEvents(this.cachedNaturalEvents);
     if (this.cachedFires) this.setFires(this.cachedFires);
     if (this.cachedTechEvents) this.setTechEvents(this.cachedTechEvents);
     if (this.cachedUcdpEvents) this.setUcdpEvents(this.cachedUcdpEvents);
     if (this.cachedDisplacementFlows) this.setDisplacementFlows(this.cachedDisplacementFlows);
+    if (this.cachedInternalDisplacement) this.setInternalDisplacement(this.cachedInternalDisplacement);
+    if (this.cachedCrossBorderArrivals) this.setCrossBorderArrivals(this.cachedCrossBorderArrivals);
     if (this.cachedClimateAnomalies) this.setClimateAnomalies(this.cachedClimateAnomalies);
     if (this.cachedRadiationObservations) this.setRadiationObservations(this.cachedRadiationObservations);
     if (this.cachedGpsJamming) {
@@ -1050,6 +1070,7 @@ export class MapContainer {
       sanitized = sanitizeLockedLayers(sanitized, false);
     }
     this.initialState = { ...this.initialState, layers: sanitized };
+    this.emergencyLayer.setEnabled(!this.useGlobe && sanitized.aircraftEmergencies === true);
     if (this.useGlobe) { this.globeMap?.setLayers(sanitized); return; }
     if (this.useDeckGL) { this.deckGLMap?.setLayers(sanitized); } else { this.svgMap?.setLayers(sanitized); }
   }
@@ -1065,10 +1086,10 @@ export class MapContainer {
 
   // ─── Data setters ────────────────────────────────────────────────────────────
 
-  public setEarthquakes(earthquakes: Earthquake[]): void {
+  public setEarthquakes(earthquakes: Earthquake[], options: { replaceEmpty?: boolean } = {}): void {
     this.cachedEarthquakes = earthquakes;
     if (this.useGlobe) { this.globeMap?.setEarthquakes(earthquakes); return; }
-    if (this.useDeckGL) { this.deckGLMap?.setEarthquakes(earthquakes); } else { this.svgMap?.setEarthquakes(earthquakes); }
+    if (this.useDeckGL) { this.deckGLMap?.setEarthquakes(earthquakes); } else { this.svgMap?.setEarthquakes(earthquakes, options); }
   }
 
   public setConflictEvents(events: AcledConflictEvent[]): void {
@@ -1238,6 +1259,24 @@ export class MapContainer {
     if (this.useGlobe) { this.globeMap?.setDisplacementFlows(flows); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.setDisplacementFlows(flows);
+    }
+  }
+
+  // Like the DTM layer, cross-border points are drawn by deck.gl only.
+  public setCrossBorderArrivals(data: CrossBorderData): void {
+    this.cachedCrossBorderArrivals = data;
+    if (this.useGlobe) return;
+    if (this.useDeckGL) {
+      this.deckGLMap?.setCrossBorderArrivals(data);
+    }
+  }
+
+  // The globe has no region layer yet; it keeps the country-level UNHCR arcs.
+  public setInternalDisplacement(data: InternalDisplacementData): void {
+    this.cachedInternalDisplacement = data;
+    if (this.useGlobe) return;
+    if (this.useDeckGL) {
+      this.deckGLMap?.setInternalDisplacement(data);
     }
   }
 
@@ -1449,8 +1488,12 @@ export class MapContainer {
 
   public setOnLayerChange(callback: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void): void {
     this.cachedOnLayerChange = callback;
-    if (this.useGlobe) { this.globeMap?.setOnLayerChange(callback); return; }
-    if (this.useDeckGL) { this.deckGLMap?.setOnLayerChange(callback); } else { this.svgMap?.setOnLayerChange(callback); }
+    const notify = (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic'): void => {
+      if (layer === 'aircraftEmergencies') this.emergencyLayer.setEnabled(!this.useGlobe && enabled);
+      callback(layer, enabled, source);
+    };
+    if (this.useGlobe) { this.globeMap?.setOnLayerChange(notify); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setOnLayerChange(notify); } else { this.svgMap?.setOnLayerChange(notify); }
   }
 
   public setOnAircraftPositionsUpdate(callback: (positions: PositionSample[]) => void): void {
@@ -1560,6 +1603,9 @@ export class MapContainer {
     } else {
       this.svgMap?.enableLayer(layer);
     }
+    // The renderer reports the change through onLayerChange, which also starts
+    // the emergency feed. Start it here too in case no listener is attached yet.
+    if (layer === 'aircraftEmergencies') this.emergencyLayer.setEnabled(this.getState().layers.aircraftEmergencies === true);
   }
 
   public triggerHotspotClick(id: string): void {
@@ -1650,6 +1696,12 @@ export class MapContainer {
     } else {
       this.svgMap?.flashLocation(lat, lon, durationMs);
     }
+  }
+
+  public onNewsClicked(callback: (item: Pick<NewsLocationMarker, 'article' | 'title'>) => void): void {
+    this.cachedOnNewsClicked = callback;
+    if (this.useGlobe) { this.globeMap?.setOnNewsClick(callback); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setOnNewsClick(callback); } else { this.svgMap?.setOnNewsClick(callback); }
   }
 
   public onCountryClicked(callback: (country: CountryClickPayload) => void): void {
@@ -1766,6 +1818,7 @@ export class MapContainer {
   }
 
   public destroy(): void {
+    this.emergencyLayer.destroy();
     this.destroyed = true;
     this.container.removeEventListener('pointerdown', this.invalidateViewportAuthority);
     this.container.removeEventListener('wheel', this.invalidateViewportAuthority);
@@ -1794,6 +1847,7 @@ export class MapContainer {
     this.cachedOnLayerChange = null;
     this.cachedOnTimeRangeChanged = null;
     this.cachedOnCountryClicked = null;
+    this.cachedOnNewsClicked = null;
     this.cachedOnHotspotClicked = null;
     this.cachedOnAircraftPositionsUpdate = null;
     this.cachedOnMapContextMenu = null;

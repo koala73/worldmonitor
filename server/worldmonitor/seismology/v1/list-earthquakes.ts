@@ -10,7 +10,7 @@ import type {
   ListEarthquakesResponse,
 } from '../../../../src/generated/server/worldmonitor/seismology/v1/service_server';
 
-import { getCachedJson } from '../../../_shared/redis';
+import { readRequiredSeed } from '../../../_shared/required-seed';
 
 const SEED_CACHE_KEY = 'seismology:earthquakes:v1';
 
@@ -21,11 +21,10 @@ export const listEarthquakes: SeismologyServiceHandler['listEarthquakes'] = asyn
   req: ListEarthquakesRequest,
 ): Promise<ListEarthquakesResponse> => {
   const pageSize = req.pageSize || 500;
-  try {
-    const seedData = await getCachedJson(SEED_CACHE_KEY, true) as EarthquakeCache | null;
-    const earthquakes = seedData?.earthquakes || [];
-    return { earthquakes: earthquakes.slice(0, pageSize), pagination: undefined };
-  } catch {
-    return { earthquakes: [], pagination: undefined };
-  }
+  const seedData = await readRequiredSeed(SEED_CACHE_KEY, value => {
+    const data = value as EarthquakeCache | null;
+    return data && Array.isArray(data.earthquakes) ? data : undefined;
+  });
+  const earthquakes = seedData.earthquakes;
+  return { earthquakes: earthquakes.slice(0, pageSize), pagination: undefined };
 };

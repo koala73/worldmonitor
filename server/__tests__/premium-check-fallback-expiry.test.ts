@@ -25,6 +25,8 @@ import {
   type CachedEntitlements,
 } from "../_shared/entitlement-check";
 import { resolvePremiumCallerIdentity } from "../_shared/premium-check";
+import { checkProMcpAccess } from '../_shared/pro-mcp-gate';
+import { checkEntitlementDetailed } from '../_shared/entitlement-check';
 import {
   getInternalMcpVerifiedNonce,
   INTERNAL_MCP_VERIFIED_HEADER,
@@ -79,6 +81,20 @@ afterEach(() => {
 });
 
 describe("Convex paid fallback through the marker cache and premium resolver", () => {
+  test('lapsed billing cannot be overridden by retained paid flags and a future expiry', async () => {
+    vi.mocked(getCachedJson).mockResolvedValue({
+      planKey: 'enterprise', features: getFeaturesForPlan('enterprise'),
+      validUntil: NOW + DAY, billingStatus: 'subscription_lapsed',
+    } satisfies CachedEntitlements);
+    for (const caller of ['bearer', 'user-api-key', 'internal-mcp'] as const) {
+      expect(await resolvePremiumCallerIdentity(requestFor(caller))).toMatchObject({
+        isPremium: false, billingDenial: { code: 'subscription_lapsed' },
+      });
+    }
+    const ent = await getEntitlements(USER);
+    expect(checkProMcpAccess(ent, NOW)).not.toBeNull();
+    expect((await checkEntitlementDetailed(USER, '/api/market/v1/get-insider-transactions', {})).response?.status).toBe(403);
+  });
   for (const caller of ["bearer", "user-api-key", "internal-mcp"] as const) {
     test.each([
       ["pending", "renewal_verification_pending", 3],

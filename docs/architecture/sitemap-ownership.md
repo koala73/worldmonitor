@@ -18,8 +18,10 @@ The root inventory lives in `STATIC_ROUTE_MANIFEST` in
 `scripts/build-sitemap.mjs`. Every static route declares the repository paths
 that materially determine its content:
 
-- The welcome and Pro pages use their `pro-test` page/component, generated
-  product-fact, style, and product-catalog sources.
+- The welcome landing cluster (`/` plus `/es/`, `/pt/`, `/ru/`, `/fr/`, `/de/`,
+  `/ar/`) and the Pro page use their `pro-test` page/component, generated
+  product-fact, style, locale, and product-catalog sources. Landing URLs carry
+  `xhtml:link` hreflang alternates; other root sitemap URLs do not.
 - Dashboard entries use the app shell, orchestration, components, configuration,
   locales, styles, and the corresponding variant configuration.
 - Markdown and text references use the file served at the canonical URL.
@@ -54,6 +56,18 @@ present and otherwise `pubDate`; `tests/blog-seo-contract.test.mjs` rejects a
 modified date earlier than publication.
 
 ## Build and verification
+
+`npm run lint:public-docs` checks every Markdown source under `docs/`.
+Each document must appear in indexable navigation, declare `noindex: true` or
+`hidden: true` in frontmatter, or match a literal file or directory in
+`docs/.mintignore`. The check rejects ignored navigation targets and missing
+source files. `.mintlifyignore` is not a publication control.
+
+Run `node scripts/check-public-doc-plan-references.mjs --inventory` to print
+each document's classification. Engineering records stay in Git and are excluded
+from Mintlify. The three English-only methodology appendices remain public.
+Global `seo.indexing: all` would also index unlisted engineering records, so the
+check rejects it.
 
 The normal full build runs these steps in order:
 

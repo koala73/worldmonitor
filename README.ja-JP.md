@@ -1,6 +1,6 @@
 # World Monitor
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+[English](README.md) | [Русский](README.ru.md) | [简体中文](README.zh-CN.md)
 
 **リアルタイム・グローバルインテリジェンスダッシュボード** — AI によるニュース集約、地政学モニタリング、インフラ追跡を統合された状況認識インターフェースで提供します。
 
@@ -108,7 +108,7 @@ npm run dev:energy     # energy.worldmonitor.app
 |----------|-------------|
 | **フロントエンド** | Vanilla TypeScript、Vite、globe.gl + Three.js、deck.gl + MapLibre GL |
 | **デスクトップ** | Tauri 2 (Rust) + Node.js サイドカー |
-| **AI/ML** | Ollama / Groq / OpenRouter、Transformers.js (ブラウザ側) |
+| **AI/ML** | Ollama / OpenRouter、Transformers.js (ブラウザ側) |
 | **API コントラクト** | Protocol Buffers、sebuf HTTP アノテーション |
 | **デプロイ** | Vercel Edge Functions、Railway リレー、Tauri、PWA |
 | **キャッシュ** | Redis (Upstash)、3 層キャッシュ、CDN、Service Worker |

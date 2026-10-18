@@ -206,6 +206,16 @@ To prevent alert fatigue, signals use **type-specific TTL (time-to-live)** value
 
 Market signals use **symbol-only keys** (e.g., `silent_divergence:AVGO`) rather than including the price change. This means a stock moving +2.5% then +3.0% won't trigger duplicate alerts—the first alert covers the story.
 
+### Market Alert Ledger
+
+The same market-alert detectors also run server-side every 5 minutes in `seed-market-alert-ledger`, a section of the `seed-bundle-derived-signals` Railway service. The server scores the union of the seeded stock, commodity and crypto quotes, while the dashboard scores only its watchlist, so the alerted symbols can differ between the surfaces. A qualifying emission opens a 6-hour window in the persistent ledger `correlation:market-alerts:ledger:v1`, keyed by signal type, entity and deadline. A repeat emission inside the window increments that window's sample count and opens no second row.
+
+The rolling 30-day scorecard at `correlation:market-alerts:scorecard:v1` reports the hit rate, the base rate and the median lead time per signal type, with the archive read status of the latest resolution pass that read the archive and when it read. `hitRate` counts every resolved HIT or MISS row, while `baseHitRate` and `pairedHitRate` count only the rows whose control scored, so the like-for-like comparison is `pairedHitRate` against `baseHitRate`, not the overall `hitRate`. `medianLeadTimeMs` is the median over HIT rows. `GET /api/forecast/v1/get-forecast-scorecard` and the `get_forecast_scorecard` MCP tool serve the scorecard as `marketAlerts` and omit `medianLeadTimeMs` for a type with fewer than 30 hits, and for `prediction_leads_news` until 30 of its control windows scored. These are the gates the [forecast accuracy scorecard](https://www.worldmonitor.app/accuracy/) applies, and its dataset download withholds the same medians. It carries the resolution rule and the base-rate rule verbatim as `methodology`:
+
+> An emission resolves HIT when a story first tracked by the English news digest within six hours after the emission has at least one Tier 1 or Tier 2 source and its title names the same entity: for a market, an alias match for the symbol's registry entity or a whole-word match of the market name of four or more characters; for a prediction market, a topic keyword that appears in the question itself. It resolves MISS when six hours pass with no such story. It resolves VOID, and is not counted, when the story archive for its window expired before the resolver read it. Lead time is the gap between emission and the matching story's first tracking. The base rate applies the same rule to a control window of the same length for the same entity that starts 24 hours before each scored emission, counted only when the archive covers the control window, no alert for that entity was open during it, and the emission and the control fall on the same side of a weekend in UTC.
+
+A closed window is scored only while the digest archive still holds a story last seen at or before the window opened; an archive that expired and was rebuilt cannot prove that no story appeared, so such windows stay pending and void after six days. A control window is skipped, and not counted in the base rate, when the archive does not cover its start, when its start is older than six days, when any alert for the same entity was open, or still re-emitting while held, or held with no fresh row of its type to bump, during it, or when exactly one of the emission and the control start falls on a Saturday or Sunday in UTC, so a Monday emission is not scored against Sunday news. A row of a given type opens for a symbol only when the previous tick, no more than 15 minutes earlier, carried a quote for the symbol, and no held activity for the symbol is under way that holds the type. Held activity is the symbol's rows, each from its emission to its window close or its last re-emission, whichever is later, and its runs of held alerts; spans no more than 15 minutes apart are one stretch, and a stretch is under way until 15 minutes after it ends. Any stretch under way holds a quiet-market alert (silent divergence, flow/price divergence), so one held move yields at most one row of each quiet type however the detector flips between explained and silent, and a dropout inside another type's window does not reopen the move. A stretch holds an explained alert only when it has already rowed or held one, so a move that was silent and then found its news gets one explained row. After a seeder gap or a cold start, every alert still being emitted stays held; such a hold bumps a fresh row of its type or else records a run naming the type, so the move cannot reopen inside the gap. A seeder outage does not age a move: the ticks the seeder skipped observed nothing and count as one, so a move fresh at the last snapshot is one tick older on the first tick after it, however long the outage lasted. Stock quotes are not refreshed while US equity markets are closed, so a Monday gap-open on a symbol whose quote was stale over the weekend is held until the symbol has a baseline, and a move on a symbol that was already alerted on the previous tick is not distinguishable from that alert. A prediction alert whose question carries no topic keyword opens no row, because the rule could never score it.
+
 ---
 
 ## Source Intelligence
@@ -216,10 +226,10 @@ Not all sources are equal. The system implements a dual classification to priori
 
 | Tier | Sources | Characteristics |
 |------|---------|-----------------|
-| **Tier 1** | Reuters, AP, AFP, Bloomberg, White House, Pentagon | Wire services and official government—fastest, most reliable |
-| **Tier 2** | BBC, Guardian, NPR, Al Jazeera, CNBC, Financial Times | Major outlets—high editorial standards, some latency |
+| **Tier 1** | Reuters, AP News, AFP, Bloomberg, White House, Pentagon | Wire services and official government—fastest, most reliable |
+| **Tier 2** | BBC, The Guardian, Al Jazeera, CNBC, Financial Times | Major outlets—high editorial standards, some latency |
 | **Tier 3** | Defense One, Bellingcat, Foreign Policy, MIT Tech Review | Domain specialists—deep expertise, narrower scope |
-| **Tier 4** | Hacker News, The Verge, VentureBeat, aggregators | Useful signal but requires corroboration |
+| **Tier 4** | Hacker News, The Verge, VentureBeat, Yahoo Finance | Useful signal but requires corroboration |
 
 When multiple sources report the same story, the **lowest tier** (most authoritative) source is displayed as the primary, with others listed as corroborating.
 
@@ -268,7 +278,7 @@ Every configured feed has an explicit per-dimension declaration of **Reviewed** 
 Propaganda risk badges appear in:
 
 - **Cluster primary source**: Badge next to the main source name
-- **Top sources list**: Small badge next to each flagged source
+- **Publisher roster**: In the expandable roster for a story, each publisher row shows its tier chip and the most severe risk marker across its feeds
 - **Cluster view**: Visible when expanding multi-source clusters
 
 **Why Include State Media?**
@@ -349,15 +359,15 @@ Every signal includes contextual information explaining its analytical significa
 
 | Field | Purpose | Example |
 |-------|---------|---------|
-| **Why It Matters** | Analytical significance | "Markets pricing in information before news" |
-| **Actionable Insight** | What to do next | "Monitor for breaking news in 1-6 hours" |
+| **Why It Matters** | Analytical significance | "Market moved while news coverage stayed low" |
+| **Actionable Insight** | What to do next | "Monitor for breaking news that could explain the move" |
 | **Confidence Note** | Signal reliability caveats | "Higher confidence if multiple markets align" |
 
 ### Signal-Specific Context
 
 | Signal | Why It Matters |
 |--------|---------------|
-| **Prediction Leading** | Prediction markets often price in information before it becomes news—traders may have early access to developments |
+| **Prediction Leading** | A prediction market moved while news coverage of the topic stayed low—the market may be reacting to information that has not been reported yet |
 | **Silent Divergence** | Market moving without identifiable catalyst—possible insider knowledge, algorithmic trading, or unreported development |
 | **Velocity Spike** | Story accelerating across multiple sources—indicates growing significance and potential for market/policy impact |
 | **Triangulation** | The "authority triangle" (wire + government + intel) aligned—gold standard for breaking news confirmation |
@@ -432,7 +442,7 @@ All signals are grouped by country code, creating a unified view:
 
 ### Regional Convergence Detection
 
-The aggregator identifies geographic convergence—when multiple signal types cluster in the same region:
+The aggregator identifies [geographic convergence](/geographic-convergence)—when multiple signal types cluster in the same region:
 
 | Convergence Level | Criteria | Alert Priority |
 |-------------------|----------|----------------|

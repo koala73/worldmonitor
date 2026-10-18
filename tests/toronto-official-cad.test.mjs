@@ -400,9 +400,15 @@ test('health monitors TFS and TPS freshness with durable activation', () => {
 
   assert.equal(classifyCad('torontoTfs', {
     fetchedAgeMin: 1,
-    contentAgeMin: 14,
+    contentAgeMin: 11,
     maxContentAgeMin: TFS_MAX_STALE_MIN,
   }).status, 'OK');
+  // 12 of a 15 min budget = 80%: inside the pre-warning window, not stale.
+  assert.equal(classifyCad('torontoTfs', {
+    fetchedAgeMin: 1,
+    contentAgeMin: 12,
+    maxContentAgeMin: TFS_MAX_STALE_MIN,
+  }).status, 'CONTENT_AGE_PREWARNING');
   assert.equal(classifyCad('torontoTfs', {
     fetchedAgeMin: 1,
     contentAgeMin: 16,

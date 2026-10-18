@@ -1,7 +1,7 @@
 import { motion } from 'motion/react';
 import { ArrowRight, Github } from 'lucide-react';
 import { WiredBadge } from '../components/WiredBadge';
-import { t } from '../i18n';
+import { currentLanguageBase, t } from '../i18n';
 import { DASHBOARD_PATH } from '../routes';
 import {
   DASHBOARD_SCREENSHOT_JPG,
@@ -12,6 +12,8 @@ import {
 } from '../assets/dashboard-screenshot';
 import { SILICON_CANALS_2M_URL } from '../../../shared/press';
 import heroProofStats from '../generated/hero-stats.json';
+import depthProofStats from '../generated/depth-stats.json';
+import { PUBLISHED_PULSE_DATE, formatLocalizedDate } from '../services/teasers';
 
 const HERO_IMAGE_SIZES = '(min-width: 1072px) 1024px, (min-width: 640px) calc(100vw - 3rem), calc(100vw - 2rem)';
 
@@ -24,7 +26,7 @@ const HERO_PROOF_STATS = [
   {
     value: String(heroProofStats.providers),
     labelKey: 'welcome.depth.s3l',
-    href: '/sources/?utm_source=welcome-hero',
+    href: '/sources/',
   },
   { value: String(heroProofStats.alertOrigins), labelKey: 'welcome.depth.s15l' },
 ] as const;
@@ -41,7 +43,7 @@ const HeroProofRail = () => (
       const content = (
         <>
           <div className="font-display text-2xl font-bold text-wm-text">{stat.value}</div>
-          <div className="mt-1 font-mono text-[10px] uppercase tracking-[1px] leading-relaxed break-words text-wm-muted">{t(stat.labelKey)}</div>
+          <div className="mt-1 font-mono text-xs uppercase tracking-[1px] leading-relaxed break-words text-wm-muted">{t(stat.labelKey)}</div>
         </>
       );
       return 'href' in stat ? (
@@ -68,12 +70,12 @@ const ConsoleFrame = () => (
   >
     <div className="absolute -inset-8 bg-wm-green/5 blur-[60px] rounded-full pointer-events-none" aria-hidden="true" />
     <a
-      href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=plate`}
+      href={DASHBOARD_PATH}
       data-umami-event="welcome-cta"
       data-umami-event-target="welcome-plate"
       className="relative block border border-wm-border rounded-md overflow-hidden border-glow bg-wm-card hover:border-wm-green/40 transition-colors"
     >
-      <div className="flex items-center justify-between gap-3 px-3 sm:px-4 h-9 border-b border-wm-border bg-wm-bg/80 font-mono text-[10px] uppercase tracking-widest text-wm-muted">
+      <div className="flex items-center justify-between gap-3 px-3 sm:px-4 h-9 border-b border-wm-border bg-wm-bg/80 font-mono text-xs uppercase tracking-widest text-wm-muted">
         <div className="flex items-center gap-1.5" aria-hidden="true">
           <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
           <span className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" />
@@ -110,7 +112,7 @@ export const Hero = () => (
     <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(74,222,128,0.10)_0%,transparent_55%)] pointer-events-none" aria-hidden="true" />
     <div className="max-w-5xl mx-auto text-center relative z-10">
       <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-        <div className="inline-flex max-w-full flex-wrap items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-[4px] text-wm-green mb-5 px-3 py-1.5 rounded-full border border-wm-green/30 bg-wm-green/10 leading-relaxed">
+        <div className="inline-flex max-w-full flex-wrap items-center justify-center gap-2 font-mono text-xs uppercase tracking-[4px] text-wm-green mb-5 px-3 py-1.5 rounded-full border border-wm-green/30 bg-wm-green/10 leading-relaxed">
           <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-wm-green opacity-60" />
             <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-wm-green" />
@@ -125,8 +127,10 @@ export const Hero = () => (
         <p className="text-base md:text-lg text-wm-muted max-w-2xl mx-auto mt-6">
           {t('welcome.hero.sub')}
         </p>
-        <p className="mt-3 font-mono text-[11px] uppercase tracking-widest text-wm-muted">
-          <time dateTime="2026-09-08">{t('welcome.hero.asOf')}</time>
+        <p className="mt-3 font-mono text-xs uppercase tracking-widest text-wm-muted">
+          <time dateTime={PUBLISHED_PULSE_DATE}>
+            {t('welcome.hero.asOf', { date: formatLocalizedDate(PUBLISHED_PULSE_DATE, currentLanguageBase()) })}
+          </time>
         </p>
       </motion.div>
 
@@ -137,7 +141,7 @@ export const Hero = () => (
         className="mt-9 mx-auto flex max-w-[22rem] sm:max-w-none flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4"
       >
         <a
-          href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=hero`}
+          href={DASHBOARD_PATH}
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-hero"
           className="w-full sm:w-auto justify-center bg-wm-green text-wm-bg px-5 sm:px-8 py-3.5 rounded-sm font-mono text-sm uppercase tracking-wide sm:tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"
@@ -155,7 +159,7 @@ export const Hero = () => (
         initial={false}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6, delay: 0.25 }}
-        className="mt-3 font-mono text-[11px] uppercase tracking-widest text-wm-muted"
+        className="mt-3 font-mono text-xs uppercase tracking-widest text-wm-muted"
       >
         {t('welcome.hero.ctaFree')}
       </motion.div>
@@ -194,7 +198,8 @@ export const Hero = () => (
       </motion.div>
       <div className="mx-auto mt-10 max-w-2xl text-center">
         <h2 className="font-display text-xl font-bold text-wm-text">{t('welcome.hero.whatIsTitle')}</h2>
-        <p className="mt-3 text-sm leading-relaxed text-wm-muted">{t('welcome.hero.whatIsBody')}</p>
+        <p className="welcome-seo-summary mt-3 text-sm leading-relaxed text-wm-muted">{t('welcome.hero.whatIsBody', depthProofStats)}</p>
+        <p className="mt-3 text-sm leading-relaxed text-wm-muted">{t('welcome.hero.whatIsBestFor')}</p>
       </div>
       <motion.div
         initial={false}

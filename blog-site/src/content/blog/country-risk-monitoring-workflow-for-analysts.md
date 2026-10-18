@@ -56,7 +56,7 @@ If you prefer this packaged as a routine, the [15-minute morning briefing workfl
 
 ## Step 4: Automate the Watch
 
-The daily check catches trends. Alerts catch the 3 a.m. event. With a Pro account, notification channels push to email, Slack, Discord, Telegram, web push, or a signed webhook into your own systems:
+The daily check catches trends. Alerts catch the 3 a.m. event. With a Pro account, [notification channels](/blog/posts/alerts-notification-channels-worldmonitor/) push to email, Slack, Discord, Telegram, web push, or a signed webhook into your own systems:
 
 - **Digest cadence:** daily, twice-daily, or weekly summaries to the channel of your choice
 - **Alert rules:** event-driven triggers, with quiet hours so the watch respects your time zone

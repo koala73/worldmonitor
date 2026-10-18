@@ -265,6 +265,9 @@ export function isCheckoutRateLimitedOutcome(
   return (
     candidate.checkoutFailed === true &&
     candidate.code === CHECKOUT_RATE_LIMITED &&
-    candidate.retryAfterSeconds === CHECKOUT_RETRY_AFTER_SECONDS
+    typeof candidate.retryAfterSeconds === "number" &&
+    Number.isInteger(candidate.retryAfterSeconds) &&
+    candidate.retryAfterSeconds > 0 &&
+    candidate.retryAfterSeconds <= 9999
   );
 }

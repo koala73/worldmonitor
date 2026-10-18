@@ -195,7 +195,10 @@ export function evaluateProbeResult(probe, result) {
     throw new TypeError('result must be an object');
   }
 
-  if (result.error) return `request failed: ${result.error}`;
+  if (result.error) {
+    const operation = result.phase === 'body' ? 'response body read' : 'request';
+    return `${operation} failed: ${result.error}`;
+  }
 
   if (!probe.okStatuses.includes(result.status)) {
     // 403 is the WAF rejecting the probe itself, not the collector being down.
@@ -267,22 +270,52 @@ export function summarizeWriteCanaryResults(attempts) {
   };
 }
 
+function describeTransportError(error) {
+  const codes = new Set();
+  const seen = new Set();
+  const pending = [error];
+  // Node fetch can wrap both a cause and AggregateError connection failures.
+  for (let index = 0; index < pending.length && index < 16; index += 1) {
+    const current = pending[index];
+    if (!current || typeof current !== 'object' || seen.has(current)) continue;
+    seen.add(current);
+    if (typeof current.code === 'string' && /^[A-Z][A-Z0-9_]{1,63}$/.test(current.code)) {
+      codes.add(current.code);
+    }
+    if (current.cause) pending.push(current.cause);
+    if (Array.isArray(current.errors)) pending.push(...current.errors.slice(0, 8));
+  }
+  const name = ['TypeError', 'Error', 'AggregateError', 'AbortError', 'TimeoutError'].includes(error?.name)
+    ? error.name
+    : 'Error';
+  const label = error?.message === 'fetch failed' ? 'fetch failed' : name;
+  return codes.size ? `${label} [${[...codes].join(', ')}]` : label;
+}
+
 async function runProbe(origin, probe) {
   const url = new URL(probe.path, origin).toString();
+  const startedAt = new Date().toISOString();
+  const started = performance.now();
+  let phase = 'request';
+  let status;
   try {
     const response = await fetch(url, {
       ...buildProbeRequest(probe),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
+    status = response.status;
+    phase = 'body';
     // Read only bodies needed for an assertion or sanitized failure metadata.
     // Never print this body: v3.1.0 could include the full Prisma stack and
     // request-adjacent details in a 500 response.
     const body = probe.mustInclude || probe.receiptFields || probe.captureFailureMetadata
       ? await response.text()
       : '';
-    return { status: response.status, body };
+    return { status, body, startedAt, elapsedMs: Math.round(performance.now() - started) };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error) };
+    const elapsedMs = Math.round(performance.now() - started);
+    const context = `phase=${phase}${status === undefined ? '' : ` HTTP ${status}`}`;
+    return { error: `${describeTransportError(error)} (${context})`, phase, startedAt, elapsedMs };
   }
 }
 
@@ -316,7 +349,13 @@ async function runWriteCanaryBursts(origin, probes, runner, sleep) {
     probes.forEach((probe, index) => {
       const result = results[index];
       lastByName[probe.name] = result;
-      attempts.push({ name: probe.name, reason: evaluateProbeResult(probe, result) });
+      attempts.push({
+        name: probe.name,
+        burst,
+        startedAt: result.startedAt,
+        elapsedMs: result.elapsedMs,
+        reason: evaluateProbeResult(probe, result),
+      });
     });
     if (burst < WRITE_CANARY_BURSTS) await sleep(WRITE_BURST_DELAY_MS);
   }
@@ -397,13 +436,8 @@ function reportCollectorChecks(report) {
       `- Write canary has ${writeSummary.failed}/${writeSummary.total} failed attempts; any failed POST is actionable after #5715 remediation.`,
     );
   }
-  // Deduplicate by reason so a race that hits every burst reads as one line.
-  const seen = new Set();
   for (const failure of writeSummary.failures) {
-    const line = `  - ${failure.name}: ${failure.reason}`;
-    if (seen.has(line)) continue;
-    seen.add(line);
-    console.error(line);
+    console.error(`  - ${failure.name} burst=${failure.burst} startedAt=${failure.startedAt} elapsedMs=${failure.elapsedMs}: ${failure.reason}`);
   }
 }
 

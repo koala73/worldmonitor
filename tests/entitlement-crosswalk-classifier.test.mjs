@@ -35,6 +35,12 @@ describe('entitlement crosswalk route classifier', () => {
 });
 
 describe('entitlement crosswalk classifier', () => {
+  it('maps Telegram desktop gates without claiming other predicate kinds', () => {
+    assert.equal(classify(site('src/components/TelegramIntelPanel.ts', 'hasPremiumAccess'))?.cap, 'intel.telegram');
+    assert.equal(classify(site('src/components/TelegramIntelPanel.ts', 'apiAccess')), null);
+    assert.equal(classify({ source: 'panel', rule: 'panel:full.telegram-intel' })?.cap, 'intel.telegram');
+  });
+
   it('maps a known file with its known predicate', () => {
     // convex/alertRules.ts gates on `tier` and is mapped to alerts.rules.
     const v = classify(site('convex/alertRules.ts', 'tier'));

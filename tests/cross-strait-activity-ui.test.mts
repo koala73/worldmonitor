@@ -125,12 +125,12 @@ describe('Force Posture official-activity supplement (#5575)', () => {
 
     assert.equal(model.heading, 'Official activity claims');
     assert.match(model.disclaimer, /Publisher claim/);
-    assert.match(model.disclaimer, /not ADS-B or AIS tracks/);
+    assert.match(model.disclaimer, /not aircraft or ship transponder tracks/);
     assert.equal(model.mnd?.categories[0].current, '29');
     assert.equal(model.mnd?.sourceUrl, 'https://www.mnd.gov.tw/en/News/PLAAct/87151');
     assert.match(model.mnd?.categories[0].comparisons[0].label ?? '', /30-report median 12/);
-    assert.match(model.mnd?.categories[0].comparisons[0].coverage ?? '', /n=30/);
-    assert.match(model.mnd?.categories[0].comparisons[1].coverage ?? '', /n=90/);
+    assert.match(model.mnd?.categories[0].comparisons[0].coverage ?? '', /Reports: 30/);
+    assert.match(model.mnd?.categories[0].comparisons[1].coverage ?? '', /Reports: 90/);
     assert.equal(model.japan.length, 1);
     assert.match(model.japan[0].label, /Japan Joint Staff/);
     assert.equal(model.japan[0].sourceUrl, '', 'non-default HTTPS ports must not become official links');

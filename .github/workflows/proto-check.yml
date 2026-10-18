@@ -51,11 +51,14 @@ env:
     scripts/shared/iso2-to-region.json
     server/_shared/api-key-rate-limit.ts
     server/_shared/auth-session.ts
+    server/_shared/bounded-jmespath.ts
+    server/_shared/bounded-json.ts
     server/_shared/cache-contract.ts
     server/_shared/client-ip.ts
     server/_shared/deprecation-policy.ts
     server/_shared/direct-llm-quota.ts
     server/_shared/entitlement-check.ts
+    server/_shared/entitlement-coverage.ts
     server/_shared/idempotency.ts
     server/_shared/internal-auth.ts
     server/_shared/mcp-internal-hmac.ts
@@ -66,6 +69,8 @@ env:
     server/_shared/response-headers.ts
     server/_shared/response-projection.ts
     server/_shared/seed-envelope.ts
+    server/_shared/server-sub-request-dispatch.ts
+    server/_shared/sub-request-admission.ts
     server/_shared/usage-identity.ts
     server/_shared/usage.ts
     server/auth-session.ts
@@ -75,8 +80,11 @@ env:
     server/request-validator.ts
     server/router.ts
     server/worldmonitor/consumer-prices/v1/get-consumer-price-basket-series.ts
+    server/worldmonitor/consumer-prices/v1/_selection.ts
     server/worldmonitor/supply-chain/v1/scenario-templates.ts
+    shared/aircraft-emergencies.ts
     shared/attribution-rider.ts
+    shared/compare-and-delete-script.cjs
     shared/china-corridor-control-towers.ts
     shared/china-decision-signal-manifest.ts
     shared/china-decision-signals.ts
@@ -111,8 +119,11 @@ permissions: {}
 
 # A generated commit updates the PR head and starts a clean follow-up run. Do
 # not let an older run race a newer head and push stale artifacts afterward.
+# On push to main, github.event.pull_request.number is empty; fall back to
+# github.sha so two close mainline pushes do not share one group and evict
+# each other (#8445). stacked-merge-guard.yml uses the same shape.
 concurrency:
-  group: proto-freshness-${{ github.event.pull_request.number }}
+  group: proto-freshness-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -125,7 +136,7 @@ jobs:
     outputs:
       codegen: ${{ steps.paths.outputs.codegen || steps.non-pr.outputs.codegen }}
       breaking: ${{ steps.paths.outputs.breaking || steps.non-pr.outputs.breaking }}
-      trusted_fork: ${{ steps.paths.outputs.trusted_fork || steps.non-pr.outputs.trusted_fork }}
+      owner_trusted_head: ${{ steps.paths.outputs.owner_trusted_head || steps.non-pr.outputs.owner_trusted_head }}
     steps:
       - name: Classify proto codegen paths
         id: paths
@@ -189,7 +200,7 @@ jobs:
             } as $classification
             |
             $classification + {
-              trusted_fork: (
+              owner_trusted_head: (
                 $classification.codegen
                 and $action == "synchronize"
                 and ($actor | length) > 0
@@ -197,8 +208,10 @@ jobs:
                 and ($head_repository | length) > 0
                 and ($pr_author | length) > 0
                 and $actor == $repository_owner
-                and $head_repository != $repository
-                and $pr_author != "dependabot[bot]"
+                and (
+                  ($head_repository != $repository and $pr_author != "dependabot[bot]")
+                  or ($head_repository == $repository and $pr_author == "dependabot[bot]")
+                )
               )
             }
             | to_entries[]
@@ -211,7 +224,7 @@ jobs:
         run: |
           echo "codegen=false" >> "$GITHUB_OUTPUT"
           echo "breaking=false" >> "$GITHUB_OUTPUT"
-          echo "trusted_fork=false" >> "$GITHUB_OUTPUT"
+          echo "owner_trusted_head=false" >> "$GITHUB_OUTPUT"
 
   proto-breaking:
     needs: changes
@@ -259,7 +272,7 @@ jobs:
     needs: changes
     if: >-
       needs.changes.outputs.codegen == 'true' &&
-      needs.changes.outputs.trusted_fork != 'true' &&
+      needs.changes.outputs.owner_trusted_head != 'true' &&
       (github.event.pull_request.head.repo.full_name != github.repository ||
       github.event.pull_request.user.login == 'dependabot[bot]')
     runs-on: ubuntu-latest
@@ -270,7 +283,7 @@ jobs:
         run: |
           echo "ERROR: Codegen inputs or generated outputs changed on a read-only PR."
           echo "CI does not execute or certify generated artifacts from this trust boundary."
-          echo "Ask a maintainer to move the commit to a trusted internal branch."
+          echo "Ask the repository owner to review and push this head, or use a trusted internal branch."
           exit 1
 
   internal-generate:
@@ -279,7 +292,7 @@ jobs:
       needs.changes.outputs.codegen == 'true' &&
       ((github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]') ||
-      needs.changes.outputs.trusted_fork == 'true')
+      needs.changes.outputs.owner_trusted_head == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -293,7 +306,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -322,7 +335,7 @@ jobs:
         env:
           GOPROXY: 'https://proxy.golang.org,direct'
           GOPRIVATE: github.com/SebastienMelki
-          TRUSTED_FORK: ${{ needs.changes.outputs.trusted_fork }}
+          OWNER_TRUSTED_HEAD: ${{ needs.changes.outputs.owner_trusted_head }}
         run: |
           MAKE_BIN=$(command -v make || true)
           GIT_BIN=$(command -v git || true)
@@ -382,8 +395,8 @@ jobs:
             exit 0
           fi
 
-          if [ "$TRUSTED_FORK" = "true" ]; then
-            echo "ERROR: Generated artifacts are stale on the owner-trusted fork head."
+          if [ "$OWNER_TRUSTED_HEAD" = "true" ]; then
+            echo "ERROR: Generated artifacts are stale on the owner-trusted head."
             echo "Regenerate the artifacts and push the reviewed result from the repository owner account."
             "$GIT_BIN" diff --cached --stat -- "${GENERATED_PATH_ARRAY[@]}"
             exit 1
@@ -394,7 +407,7 @@ jobs:
 
       - name: Upload generated artifact patch
         if: >-
-          needs.changes.outputs.trusted_fork != 'true' &&
+          needs.changes.outputs.owner_trusted_head != 'true' &&
           steps.patch.outputs.changed == 'true'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4.6.2
         with:
@@ -427,7 +440,7 @@ jobs:
 
       - name: Download generated artifact patch
         if: needs.internal-generate.outputs.changed == 'true'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: generated-proto-patch
           path: ${{ runner.temp }}
@@ -514,7 +527,7 @@ jobs:
       github.event.pull_request.user.login != 'dependabot[bot]' &&
       needs.internal-auto-generate.result == 'success' &&
       needs.internal-auto-generate.outputs.pushed != 'true') ||
-      (needs.changes.outputs.trusted_fork == 'true' &&
+      (needs.changes.outputs.owner_trusted_head == 'true' &&
       needs.internal-auto-generate.result == 'skipped'))
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -526,7 +539,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -640,7 +653,7 @@ jobs:
           CHANGE_RESULT: ${{ needs.changes.result }}
           CODEGEN_CHANGED: ${{ needs.changes.outputs.codegen }}
           BREAKING_CHANGED: ${{ needs.changes.outputs.breaking }}
-          TRUSTED_FORK: ${{ needs.changes.outputs.trusted_fork }}
+          OWNER_TRUSTED_HEAD: ${{ needs.changes.outputs.owner_trusted_head }}
           WRITABLE_INTERNAL_PR: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]' }}
           BREAKING_RESULT: ${{ needs.proto-breaking.result }}
           FORK_RESULT: ${{ needs.fork-artifact-check.result }}
@@ -664,16 +677,16 @@ jobs:
             exit 1
           fi
 
-          if [ "$TRUSTED_FORK" = "true" ]; then
+          if [ "$OWNER_TRUSTED_HEAD" = "true" ]; then
             if [ "$WRITABLE_INTERNAL_PR" = "true" ] || \
                [ "$FORK_RESULT" != "skipped" ] || \
                [ "$GENERATE_RESULT" != "success" ] || \
                [ "$PUBLISH_RESULT" != "skipped" ] || \
                [ "$MERGE_RESULT" != "success" ]; then
-              echo "ERROR: Owner-trusted fork generation did not complete through the read-only path."
+              echo "ERROR: Owner-trusted generation did not complete through the read-only path."
               exit 1
             fi
-            echo "Owner-trusted fork artifacts are fresh at the exact head and merge result."
+            echo "Owner-trusted artifacts are fresh at the exact head and merge result."
             exit 0
           fi
 

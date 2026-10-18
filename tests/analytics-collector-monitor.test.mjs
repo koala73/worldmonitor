@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 import {
   ANALYTICS_CANARY_WEBSITE_ID,
@@ -30,6 +34,83 @@ const healthyLiveness = (probe) => {
 const probeByName = (name) => COLLECTOR_PROBES.find((probe) => probe.name === name);
 
 describe('scheduled analytics collector monitor', () => {
+  it('retains nested transport codes and attempt context without logging error payloads', async (t) => {
+    const reset = Object.assign(new Error('secret connection details'), { code: 'ECONNRESET' });
+    const dns = Object.assign(new Error('secret hostname'), { code: 'EAI_AGAIN' });
+    const pipe = Object.assign(new Error('secret write details'), { code: 'EPIPE' });
+    const aggregate = new AggregateError([reset, dns, pipe], 'secret aggregate');
+    aggregate.cause = aggregate;
+    t.mock.method(globalThis, 'fetch', async (_url, options) => {
+      if (options.method === 'POST') throw new TypeError('fetch failed', { cause: aggregate });
+      return new Response("'/api/send'", { status: String(_url).endsWith('/api/send') ? 405 : 200 });
+    });
+
+    const report = await runCollectorChecks({ sleep: async () => {} });
+    assert.equal(report.alerting, true);
+    assert.equal(report.writeSummary.failed, 12);
+    assert.deepEqual(report.writeSummary.failures.map(({ burst }) => burst), [1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]);
+    for (const failure of report.writeSummary.failures) {
+      assert.match(failure.reason, /ECONNRESET/);
+      assert.match(failure.reason, /EAI_AGAIN/);
+      assert.match(failure.reason, /EPIPE/);
+      assert.match(failure.reason, /^request failed:/);
+      assert.match(failure.reason, /phase=request/);
+      assert.match(failure.startedAt, /^\d{4}-\d{2}-\d{2}T/);
+      assert.ok(Number.isFinite(failure.elapsedMs) && failure.elapsedMs >= 0);
+      assert.doesNotMatch(failure.reason, /secret/);
+    }
+  });
+
+  it('distinguishes a failed response body from a connection failure', async (t) => {
+    t.mock.method(globalThis, 'fetch', async () => ({
+      status: 200,
+      text: async () => { throw new TypeError('terminated', {
+        cause: Object.assign(new Error('secret socket details'), { code: 'UND_ERR_SOCKET' }),
+      }); },
+    }));
+    const report = await runCollectorChecks({ sleep: async () => {} });
+    assert.match(report.writeSummary.failures[0].reason, /^response body read failed:/);
+    assert.match(report.writeSummary.failures[0].reason, /phase=body/);
+    assert.match(report.writeSummary.failures[0].reason, /HTTP 200/);
+    assert.match(report.writeSummary.failures[0].reason, /UND_ERR_SOCKET/);
+    assert.doesNotMatch(report.writeSummary.failures[0].reason, /secret/);
+  });
+
+  it('omits arbitrary exception messages and invalid codes from public logs', async (t) => {
+    t.mock.method(globalThis, 'fetch', async () => {
+      throw Object.assign(new Error('https://user:secret@example.com'), {
+        code: 'ECONNRESET\nsecret',
+        cause: new Error('secret cause'),
+      });
+    });
+    const report = await runCollectorChecks({ sleep: async () => {} });
+    assert.equal(report.alerting, true);
+    assert.doesNotMatch(JSON.stringify(report), /secret|user:/);
+  });
+
+  it('prints socket diagnostics for every failed attempt and exits nonzero', async (t) => {
+    const server = createServer((request) => request.socket.destroy());
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    t.after(() => new Promise((resolve) => server.close(resolve)));
+    await assert.rejects(promisify(execFile)(process.execPath, [
+      fileURLToPath(new URL('../scripts/check-analytics-collector.mjs', import.meta.url)),
+    ], {
+      env: { ...process.env, ANALYTICS_COLLECTOR_ORIGIN: `http://127.0.0.1:${server.address().port}` },
+      timeout: 15_000,
+    }), (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stdout, /12\/12 attempts failed/);
+      const failures = error.stderr.split('\n').filter((line) => line.includes('write-canary-'));
+      assert.equal(failures.length, 12);
+      for (const line of failures) {
+        assert.match(line, /burst=[123] startedAt=\d{4}-\d{2}-\d{2}T\S+ elapsedMs=\d+/);
+        assert.match(line, /\[[A-Z][A-Z0-9_]{1,63}(?:, [A-Z][A-Z0-9_]{1,63})*\]/);
+        assert.match(line, /phase=request/);
+      }
+      return true;
+    });
+  });
+
   it('accepts the live shape of a healthy collector', () => {
     // Verified against production 2026-07-24 after the #5565 restore.
     assert.equal(evaluateProbeResult(probeByName('heartbeat'), { status: 200 }), null);

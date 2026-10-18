@@ -131,7 +131,7 @@ function runtimeIsoDaysAgo(days: number): string {
 function runtimeServerInsights(overrides: Partial<ServerInsights> = {}): ServerInsights {
   return {
     worldBrief: 'Threat timeline test brief',
-    briefProvider: 'groq',
+    briefProvider: 'openrouter',
     status: 'ok' as const,
     topStories: [
       serverStory({
@@ -193,7 +193,7 @@ async function loadThreatTimelinePanelHarness() {
       export function toApiUrl(path) { return path; }
     `],
     ['tauri-bridge-stub', `export function invokeTauri() { return Promise.reject(new Error('not wired in test')); }`],
-    ['analytics-stub', `export function trackPanelResized() {}`],
+    ['analytics-stub', `export function trackLayoutCustomized() {}`],
     ['ai-flow-settings-stub', `export function getAiFlowSettings() { return { badgeAnimation: false }; }`],
     ['runtime-config-stub', `export function getSecretState() { return { present: true }; }`],
     // Return null (not undefined) on purpose: harness stubs often use null

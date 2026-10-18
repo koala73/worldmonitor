@@ -92,7 +92,11 @@ Two payload-level fields you'll see on every cache tool:
 - `cached_at` — ISO timestamp of the oldest contributing data point. Use this to reason about how fresh the answer is.
 - `stale` — `true` when any contributing seed exceeded its freshness budget. Tells the model when to caveat its answer.
 
-Two more appear only when relevant: `activationUnknown: true` when a content-freshness activation marker could not be read, meaning `stale` was computed without knowing whether the producer has ever published; and `contentFreshnessPendingUntil` (ISO timestamp) when a never-published seed is inside its deployment grace window — content-age checks start counting against `stale` after that deadline.
+A few more fields appear only when relevant:
+- `activationUnknown: true` when a content-freshness activation marker could not be read, so `stale` was computed without knowing whether the producer has ever published.
+- `freshnessUnknown: true` when a freshness record could not be read, so `stale` is `true` because freshness is unknown, not because the data is known to be old.
+- `unreadable` (a list of `data` labels) when some cache reads failed. Those sections are `null` because they could not be read, not because the dataset is empty, and retrying shortly usually fills them.
+- `contentFreshnessPendingUntil` (ISO timestamp) when a never-published seed is inside its deployment grace window. Content-age checks start counting against `stale` after that deadline.
 
 ## 4. Trim the response (when it matters)
 

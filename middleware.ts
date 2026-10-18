@@ -10,6 +10,7 @@ import {
 } from './src/config/docs-locale-seo';
 import { getRootlessDocsDestination } from './src/config/docs-root-redirects';
 import agentRequestPolicy from './shared/agent-request-policy.json';
+import { isMcpAliasRequest, normalizeMcpHost } from './shared/mcp-host-policy';
 
 const AGENT_UA = new RegExp(`(?:^|[^a-z0-9-])(?:${agentRequestPolicy.userAgents.join('|')})(?:$|[^a-z0-9-])`, 'i');
 
@@ -89,28 +90,12 @@ const VARIANT_HOST_MAP: Record<string, string> = {
   'energy.worldmonitor.app': 'energy',
 };
 
-function normalizeHost(raw: string): string {
-  return raw.toLowerCase().replace(/:\d+$/, '');
-}
-
 function hasLegacyDashboardRootState(searchParams: URLSearchParams): boolean {
   return LEGACY_DASHBOARD_ROOT_QUERY_KEYS.some((key) => searchParams.has(key));
 }
 
 function hasUnboundedDashboardRootState(searchParams: URLSearchParams): boolean {
   return UNBOUNDED_DASHBOARD_ROOT_QUERY_KEYS.some((key) => searchParams.has(key));
-}
-
-function clientAcceptsSse(request: Request): boolean {
-  const accept = request.headers.get('accept') ?? '';
-  return accept.split(',').some((entry) => {
-    const [type, ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
-    if (type !== 'text/event-stream') return false;
-    const qParam = params.find((part) => part.startsWith('q='));
-    if (!qParam) return true;
-    const q = Number(qParam.slice(2));
-    return Number.isFinite(q) && q > 0;
-  });
 }
 
 /** Query keys that create duplicate index entries without changing document identity. */
@@ -204,7 +189,17 @@ export default function middleware(request: Request) {
   const url = new URL(request.url);
   const ua = request.headers.get('user-agent') ?? '';
   const path = url.pathname;
-  const host = normalizeHost(request.headers.get('host') ?? url.hostname);
+  const host = normalizeMcpHost(request.headers.get('host') ?? url.hostname);
+  const aliasMcpRequest = isMcpAliasRequest(url.hostname, path)
+    || isMcpAliasRequest(request.headers.get('host') ?? '', path);
+
+  // Product MCP aliases are migration-only surfaces. Let every policy request
+  // reach the handler so it returns the protocol-shaped response and emits one
+  // bounded migration event. This bypass must precede generic crawler/API bot
+  // gates, which otherwise turn direct alias transport calls into a 403.
+  // The handler repeats the policy because dotted well-known paths bypass this
+  // middleware matcher.
+  if (aliasMcpRequest) return;
 
   // Bots indexing ?ref= / utm_* dashboard URLs as distinct pages (#7380), and
   // map-state deep links as an unbounded redirect space (#7660). Humans still
@@ -291,38 +286,6 @@ export default function middleware(request: Request) {
     if (!isKnownPublicPagePath(path)) {
       return originNotFoundResponse(path, request);
     }
-  }
-
-  // Variant subdomain MCP discovery canonicalization. The MCP endpoint's
-  // canonical URL is apex (`https://worldmonitor.app/mcp`), and the Cloudflare
-  // apex→www redirect explicitly exempts `/mcp` so POST JSON-RPC calls aren't
-  // converted to GET. Variant subdomains would otherwise serve the same `/mcp`
-  // content as the apex, fragmenting discovery signals; redirect plain GET/HEAD
-  // requests to the apex canonical. GETs that carry MCP transport headers
-  // (`Last-Event-ID` or `Accept: text/event-stream`) are NOT redirected — they
-  // are protocol operations (SSE stream open or replay) and must reach the same
-  // host/instance that handled the POST handshake. POST/OPTIONS/etc. are also
-  // NOT redirected; they continue to the `/api/mcp` rewrite unchanged.
-  if (
-    path === '/mcp' &&
-    (request.method === 'GET' || request.method === 'HEAD') &&
-    VARIANT_HOST_MAP[host] &&
-    !request.headers.get('last-event-id') &&
-    !clientAcceptsSse(request)
-  ) {
-    // Built by hand rather than via Response.redirect() so the response can
-    // carry Vary. This redirect is decided by Accept and Last-Event-ID, and a
-    // 308 is cacheable by default (RFC 9110 §15.4.9) — without Vary a shared
-    // cache could store it and replay it to the SSE stream-open GET that must
-    // reach this host's transport instead.
-    return new Response(null, {
-      status: 308,
-      headers: {
-        Location: 'https://worldmonitor.app/mcp',
-        Vary: 'Accept, Last-Event-ID',
-        'Cache-Control': 'public, max-age=3600',
-      },
-    });
   }
 
   // Only apply bot filtering to /api/* paths.

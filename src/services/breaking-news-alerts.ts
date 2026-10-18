@@ -11,6 +11,11 @@ import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
 import { getClerkToken } from '@/services/clerk';
 import { SITE_VARIANT } from '@/config/variant';
 import { effectivePubDateMs } from '@/services/feed-date';
+import {
+  assessCorroboration,
+  evidenceFromItem,
+  type Corroboration,
+} from '@/utils/corroboration-flag';
 
 export interface BreakingAlert {
   id: string;
@@ -35,6 +40,8 @@ export interface BreakingAlert {
    * lookup. Absent/empty → relay renders title-only today.
    */
   description?: string;
+  /** Computed once at creation: an alert is an immutable snapshot, so it cannot drift. */
+  corroboration: Corroboration;
 }
 
 export interface AlertSettings {
@@ -295,6 +302,7 @@ export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
         origin: 'rss_alert',
         importanceScore: item.importanceScore,
         ...(item.snippet ? { description: item.snippet } : {}),
+        corroboration: assessCorroboration(evidenceFromItem(item)),
       };
     }
   }
@@ -320,14 +328,16 @@ export function dispatchOrefBreakingAlert(alerts: OrefAlert[]): void {
 
   if (isDuplicate(dedupeKey)) return;
 
+  const source = 'OREF Pikud HaOref';
   dispatchAlert({
     id: dedupeKey,
     headline,
-    source: 'OREF Pikud HaOref',
+    source,
     threatLevel: 'critical',
     timestamp: new Date(),
     origin: 'oref_siren',
     countryCode: 'IL',
+    corroboration: assessCorroboration(evidenceFromItem({ source })),
   });
 }
 

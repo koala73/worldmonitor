@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * IMD cyclone, port, coastal, and marine seeder (#7005).
+ * IMD marine bulletin seeder (#7005), parsed from IMD's public pages (#7730).
  *
  * Does not write the NWS/ECCC/SWIC weather-alerts key.
  */
@@ -11,7 +11,6 @@ import {
   IMD_CANONICAL_KEY,
   IMD_MAX_CONTENT_AGE_MIN,
   IMD_SOURCE_VERSION,
-  createImdProxyFetch,
   declareImdRecords,
   fetchImdCycloneMarine,
   imdAfterPublish,
@@ -47,8 +46,7 @@ async function fetchSnapshot() {
   } catch (err) {
     console.warn(`imd-cyclone-marine: last-good read failed: ${err.message || err}`);
   }
-  const fetchFn = createImdProxyFetch(process.env.PROXY_URL);
-  return fetchImdCycloneMarine({ userAgent: CHROME_UA, previous, fetchFn });
+  return fetchImdCycloneMarine({ userAgent: CHROME_UA, previous });
 }
 
 runSeed('weather', 'imd-cyclone-marine', IMD_CANONICAL_KEY, fetchSnapshot, {

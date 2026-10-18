@@ -250,7 +250,7 @@ describe('parseNarrativeJson', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('generateRegionalNarrative', () => {
-  function mockCall(text, providerName = 'groq', modelName = 'openai/gpt-oss-20b') {
+  function mockCall(text, providerName = 'openrouter', modelName = 'deepseek/deepseek-v4-flash') {
     return async () => ({ text, provider: providerName, model: modelName });
   }
 
@@ -270,8 +270,8 @@ describe('generateRegionalNarrative', () => {
       evidenceFixture,
       { callLlm: mockCall(JSON.stringify(validPayload)) },
     );
-    assert.equal(result.provider, 'groq');
-    assert.equal(result.model, 'openai/gpt-oss-20b');
+    assert.equal(result.provider, 'openrouter');
+    assert.equal(result.model, 'deepseek/deepseek-v4-flash');
     assert.equal(result.narrative.situation.text, 'Iran flexes naval posture near Hormuz.');
     assert.deepEqual(result.narrative.situation.evidence_ids, ['ev1']);
   });
@@ -435,24 +435,24 @@ describe('provider fallback on malformed response (P2 fix)', () => {
     watch_items: [],
   });
 
-  it('falls through when Groq returns prose and OpenRouter returns valid JSON', async () => {
+  it('falls through when paid OpenRouter returns prose and the free rung returns valid JSON', async () => {
     const callLlm = buildFallbackMock([
-      { text: 'Sure, here is a summary of the situation...', provider: 'groq', model: 'llama-3.3' },
-      { text: validPayload, provider: 'openrouter', model: 'google/gemini-2.5-flash' },
+      { text: 'Sure, here is a summary of the situation...', provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' },
+      { text: validPayload, provider: 'openrouter-free', model: 'google/gemma-4-26b-a4b-it:free' },
     ]);
     const result = await generateRegionalNarrative(menaRegion, stubSnapshot(), evidenceFixture, { callLlm });
-    assert.equal(result.provider, 'openrouter');
-    assert.equal(result.model, 'google/gemini-2.5-flash');
+    assert.equal(result.provider, 'openrouter-free');
+    assert.equal(result.model, 'google/gemma-4-26b-a4b-it:free');
     assert.equal(result.narrative.situation.text, 'Iran flexes naval posture.');
   });
 
-  it('falls through when Groq returns truncated JSON and OpenRouter succeeds', async () => {
+  it('falls through when paid OpenRouter returns truncated JSON and the free rung succeeds', async () => {
     const callLlm = buildFallbackMock([
-      { text: '{"situation": {"text": "Iran flexes nav', provider: 'groq', model: 'llama-3.3' },
-      { text: validPayload, provider: 'openrouter', model: 'google/gemini-2.5-flash' },
+      { text: '{"situation": {"text": "Iran flexes nav', provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' },
+      { text: validPayload, provider: 'openrouter-free', model: 'google/gemma-4-26b-a4b-it:free' },
     ]);
     const result = await generateRegionalNarrative(menaRegion, stubSnapshot(), evidenceFixture, { callLlm });
-    assert.equal(result.provider, 'openrouter');
+    assert.equal(result.provider, 'openrouter-free');
     assert.equal(result.narrative.situation.text, 'Iran flexes naval posture.');
   });
 
@@ -466,17 +466,17 @@ describe('provider fallback on malformed response (P2 fix)', () => {
       watch_items: [],
     });
     const callLlm = buildFallbackMock([
-      { text: allEmpty, provider: 'groq', model: 'llama-3.3' },
-      { text: validPayload, provider: 'openrouter', model: 'google/gemini-2.5-flash' },
+      { text: allEmpty, provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' },
+      { text: validPayload, provider: 'openrouter-free', model: 'google/gemma-4-26b-a4b-it:free' },
     ]);
     const result = await generateRegionalNarrative(menaRegion, stubSnapshot(), evidenceFixture, { callLlm });
-    assert.equal(result.provider, 'openrouter');
+    assert.equal(result.provider, 'openrouter-free');
   });
 
   it('returns empty narrative when every provider returns malformed output', async () => {
     const callLlm = buildFallbackMock([
-      { text: 'prose one', provider: 'groq', model: 'llama-3.3' },
-      { text: 'prose two', provider: 'openrouter', model: 'google/gemini-2.5-flash' },
+      { text: 'prose one', provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' },
+      { text: 'prose two', provider: 'openrouter-free', model: 'google/gemma-4-26b-a4b-it:free' },
     ]);
     const result = await generateRegionalNarrative(menaRegion, stubSnapshot(), evidenceFixture, { callLlm });
     assert.deepEqual(result.narrative, emptyNarrative());
@@ -507,7 +507,7 @@ describe('evidence validator scoped to prompt-visible slice (P2 fix)', () => {
       outlook_30d: { text: 'O.', evidence_ids: [] },
       watch_items: [],
     });
-    const callLlm = async () => ({ text: payload, provider: 'groq', model: 'llama-3.3' });
+    const callLlm = async () => ({ text: payload, provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' });
     const result = await generateRegionalNarrative(menaRegion, stubSnapshot(), many, { callLlm });
     // ev0 and ev14 are in the first-15 slice; ev16 is not.
     assert.deepEqual(result.narrative.situation.evidence_ids, ['ev0', 'ev14']);
@@ -532,7 +532,7 @@ describe('evidence validator scoped to prompt-visible slice (P2 fix)', () => {
       outlook_30d: { text: '', evidence_ids: [] },
       watch_items: [],
     });
-    const callLlm = async () => ({ text: payload, provider: 'groq', model: 'llama-3.3' });
+    const callLlm = async () => ({ text: payload, provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' });
     const result = await generateRegionalNarrative(menaRegion, stubSnapshot(), many, { callLlm });
     assert.deepEqual(result.narrative.situation.evidence_ids, ['ev0', 'ev14']);
   });
@@ -542,7 +542,7 @@ describe('narrative_model records actual provider output (P3 fix)', () => {
   it('passes the model value the default caller returned through to the meta', async () => {
     // Simulate the default caller picking up json.model (which may resolve
     // to a different concrete model than the one requested).
-    const actualModel = 'openai/gpt-oss-20b-build-1';
+    const actualModel = 'deepseek/deepseek-v4-flash-build-1';
     const payload = JSON.stringify({
       situation: { text: 'Test.', evidence_ids: [] },
       balance_assessment: { text: '', evidence_ids: [] },
@@ -551,7 +551,7 @@ describe('narrative_model records actual provider output (P3 fix)', () => {
       outlook_30d: { text: '', evidence_ids: [] },
       watch_items: [],
     });
-    const callLlm = async () => ({ text: payload, provider: 'groq', model: actualModel });
+    const callLlm = async () => ({ text: payload, provider: 'openrouter', model: actualModel });
     const result = await generateRegionalNarrative(menaRegion, stubSnapshot(), evidenceFixture, { callLlm });
     assert.equal(result.model, actualModel);
   });

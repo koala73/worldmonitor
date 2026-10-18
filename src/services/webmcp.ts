@@ -106,7 +106,7 @@ import {
   parseMapLayerCatalogArgs,
   type MapLayerCatalogSnapshot,
 } from './webmcp-map-layer-catalog';
-import type { SetPanelEnabledResult } from '../config/panel-enablement';
+import { SET_PANEL_ENABLED_ID_PATTERN, type SetPanelEnabledResult } from '../config/panel-enablement';
 import {
   MISSION_PRESET_APPLY_DENY_REASONS,
   MissionPresetCatalogError,
@@ -2212,7 +2212,7 @@ export function buildWebMcpTools(
             description: 'Dashboard panel ID, such as "markets" or "giving".',
             minLength: 1,
             maxLength: 96,
-            pattern: '^[a-z0-9][a-z0-9@_-]*$',
+            pattern: SET_PANEL_ENABLED_ID_PATTERN.source,
           },
           enabled: {
             type: 'boolean',

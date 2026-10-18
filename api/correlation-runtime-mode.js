@@ -41,6 +41,7 @@ async function readModeFromRedis() {
       console.warn('[correlation-runtime-mode] Upstash error entry; using legacy:', entry.error);
       captureSilentError(new Error(String(entry.error)), {
         tags: { route: 'api/correlation-runtime-mode', step: 'redis-error-entry' },
+        fingerprint: ['api/correlation-runtime-mode', 'redis-error-entry', 'Error'],
       });
       return 'legacy';
     }
@@ -59,6 +60,7 @@ async function readModeFromRedis() {
     console.warn('[correlation-runtime-mode] Redis read failed; using legacy:', error);
     captureSilentError(error, {
       tags: { route: 'api/correlation-runtime-mode', step: 'redis-read' },
+      fingerprint: ['api/correlation-runtime-mode', 'redis-read', error instanceof Error ? error.name : 'Error'],
     });
     return 'legacy';
   }

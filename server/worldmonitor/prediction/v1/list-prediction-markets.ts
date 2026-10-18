@@ -14,7 +14,7 @@ import {
 } from '../../../../src/generated/server/worldmonitor/prediction/v1/service_server';
 
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
-import { clampInt } from '../../../_shared/constants';
+import { resolvePageSize } from '../../../_shared/constants';
 import { getCachedJson } from '../../../_shared/redis';
 
 const BOOTSTRAP_KEY = 'prediction:markets-bootstrap:v1';
@@ -31,6 +31,7 @@ interface BootstrapMarket {
   url: string;
   endDate?: string;
   source?: 'kalshi' | 'polymarket';
+  displayUrl?: string;
 }
 
 interface BootstrapData {
@@ -81,7 +82,7 @@ function toProtoMarket(m: BootstrapMarket, category: string): PredictionMarket {
     title: m.title,
     yesPrice: (m.yesPrice ?? 50) / 100,
     volume: m.volume ?? 0,
-    url: m.url || '',
+    url: (m.source === 'kalshi' ? m.displayUrl ?? m.url : m.url) ?? '',
     closesAt: m.endDate ? Date.parse(m.endDate) : 0,
     category,
     source: m.source === 'kalshi' ? 'MARKET_SOURCE_KALSHI' as MarketSource : 'MARKET_SOURCE_POLYMARKET' as MarketSource,
@@ -95,7 +96,7 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
   try {
     const category = (req.category || '').slice(0, 50);
     const query = (req.query || '').slice(0, 100);
-    const limit = clampInt(req.pageSize, 50, 1, 100);
+    const limit = resolvePageSize(req.pageSize, 50, 100);
     const isCountryCategory = category.startsWith(COUNTRY_CATEGORY_PREFIX);
     const countryCode = isCountryCategory
       ? category.slice(COUNTRY_CATEGORY_PREFIX.length).trim().toUpperCase()

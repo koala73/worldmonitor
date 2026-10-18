@@ -47,7 +47,7 @@ See [CORS](/cors) for the origin patterns.
 
 ### Generate a key
 
-API-tier subscribers get a key automatically on subscription. To rotate, contact support.
+API Starter and API Business subscribers create their own `wm_` keys from **Settings → API Keys**. See [Find or replace your API key](/api-keys).
 
 ### Use it
 
@@ -101,5 +101,6 @@ From the browser, `premiumFetch()` (`src/services/premium-fetch.ts`) handles thi
 | Anonymous | Public reads only (conflicts, natural disasters, markets basics) |
 | Signed-in free | Same as anonymous + user preferences |
 | PRO | All endpoints, MCP, AI Brief, Shipping v2, Scenarios |
+| API Starter / API Business (`wm_` key) | Every Pro-gated REST route and MCP tool, within the plan's daily request allowance. API plans are entitlement tier 2, above the tier-1 gate these routes use. No dashboard seat on API Starter. |
 
 Tier is resolved from Convex on each call, so a subscription change takes effect on the next request (after cache invalidation).

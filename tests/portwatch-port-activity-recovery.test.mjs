@@ -5,6 +5,13 @@ import * as portwatchSeed from '../scripts/seed-portwatch-port-activity.mjs';
 
 const { orderColdFetchQueue } = portwatchSeed;
 const DAY = 86_400_000;
+// These rotation fixtures use epoch-relative cacheWrittenAt values, which are
+// far past MAX_CACHE_AGE_MS and therefore outside the expiry-priority tier.
+// Pin the clock so that stays a stated property of the test rather than an
+// accident of `now` defaulting to the wall clock: a fixture later given a
+// realistic 4-7-day-old cacheWrittenAt would silently start reordering, and
+// the failure would read as a rotation bug instead of a fixture one.
+const ROTATION_NOW = 60 * DAY;
 
 describe('PortWatch activity page validation', () => {
   const row = { attributes: { portid: 'p1', date: '2026-09-09', portcalls_tanker: 1 } };
@@ -306,7 +313,7 @@ describe('PortWatch cold-fetch recovery rotation', () => {
     const attempted = new Set();
 
     for (let run = 1; run <= 6; run += 1) {
-      const selected = orderColdFetchQueue(countries).slice(0, 30);
+      const selected = orderColdFetchQueue(countries, undefined, { now: ROTATION_NOW }).slice(0, 30);
       const attemptedAt = run * 1_000;
       for (const item of selected) {
         attempted.add(item.iso2);
@@ -326,7 +333,7 @@ describe('PortWatch cold-fetch recovery rotation', () => {
     const countries = Array.from({ length: 40 }, (_, index) =>
       cachedCountry(`C${String(index).padStart(2, '0')}`),
     );
-    const first = orderColdFetchQueue(countries).slice(0, 10);
+    const first = orderColdFetchQueue(countries, undefined, { now: ROTATION_NOW }).slice(0, 10);
     const firstIds = new Set(first.map((item) => item.iso2));
 
     for (const [index, item] of first.entries()) {
@@ -334,7 +341,7 @@ describe('PortWatch cold-fetch recovery rotation', () => {
       if (index >= 3) item.prevPayload.cacheWrittenAt = 1_000;
     }
 
-    const second = orderColdFetchQueue(countries).slice(0, 10);
+    const second = orderColdFetchQueue(countries, undefined, { now: ROTATION_NOW }).slice(0, 10);
     assert.ok(
       second.every((item) => !firstIds.has(item.iso2)),
       'failed attempts must rotate behind countries that have not received a slot',
@@ -464,7 +471,9 @@ describe('PortWatch last-good and gap reporting', () => {
     assert.equal(result, 'recovered');
     assert.equal(attempts, 2);
     assert.equal(sleepCalls.length, 1);
-    assert.equal(sleepCalls[0], 2_000);
+    // #8501 raised the cooldown from 2s, which was one token retry against an
+    // ArcGIS rate-limit window measured in minutes.
+    assert.equal(sleepCalls[0], 8_000);
   });
 
   it('does not retry unrelated ArcGIS failures', async () => {

@@ -1,6 +1,9 @@
 import {
+  PERSPECTIVE_LABEL_CAVEAT,
+  composeProvenanceSummary,
   computeCredibilityScore,
   describePropagandaBadge,
+  getProvenanceFacts,
   getSourcePropagandaRisk,
   getSourceTier,
   getSourceTierBadgeTitle,
@@ -8,6 +11,7 @@ import {
   resolveRegisteredTelegramSourceName,
   resolveTelegramSourceName,
 } from '@/config/feeds';
+import type { PropagandaRisk } from '@/types';
 import { escapeHtml } from '@/utils/sanitize';
 
 export { resolveRegisteredTelegramSourceName, resolveTelegramSourceName };
@@ -15,6 +19,7 @@ export { resolveRegisteredTelegramSourceName, resolveTelegramSourceName };
 export interface PrimarySourceProvenanceHtml {
   riskBadge: string;
   tierBadge: string;
+  facts: string;
 }
 
 export interface SourceProvenanceBadge {
@@ -26,6 +31,7 @@ export interface SourceProvenanceBadge {
 export interface PrimarySourceProvenanceBadges {
   risk: SourceProvenanceBadge | null;
   tier: SourceProvenanceBadge | null;
+  facts: SourceProvenanceBadge[];
 }
 
 /**
@@ -35,7 +41,8 @@ export interface PrimarySourceProvenanceBadges {
  */
 export function getPrimarySourceProvenanceBadges(sourceName: string): PrimarySourceProvenanceBadges {
   const sourceType = getSourceType(sourceName);
-  const riskDescription = describePropagandaBadge(getSourcePropagandaRisk(sourceName), sourceType);
+  const profile = getSourcePropagandaRisk(sourceName);
+  const riskDescription = describePropagandaBadge(profile, sourceType);
   const risk = riskDescription
     ? {
       className: `propaganda-badge ${riskDescription.risk}`,
@@ -54,7 +61,14 @@ export function getPrimarySourceProvenanceBadges(sourceName: string): PrimarySou
     }
     : null;
 
-  return { risk, tier: tierBadge };
+  const factTitle = `${composeProvenanceSummary(profile, sourceType)} ${PERSPECTIVE_LABEL_CAVEAT}`;
+  const facts = getProvenanceFacts(profile, sourceType).map((fact) => ({
+    className: `provenance-fact ${fact.kind}`,
+    title: factTitle,
+    label: fact.label,
+  }));
+
+  return { risk, tier: tierBadge, facts };
 }
 
 export function resolveCredibilityScore(
@@ -91,24 +105,64 @@ export function renderCredibilityBadge(
  * constructing the full virtualized NewsPanel component.
  */
 export function renderPrimarySourceProvenance(sourceName: string): PrimarySourceProvenanceHtml {
-  const { risk, tier } = getPrimarySourceProvenanceBadges(sourceName);
+  const { risk, tier, facts } = getPrimarySourceProvenanceBadges(sourceName);
   return {
     riskBadge: risk
-      ? `<span class="${risk.className}" title="${escapeHtml(risk.title)}">${risk.label}</span>`
+      ? `<span class="${risk.className}" title="${escapeHtml(risk.title)}">${escapeHtml(risk.label)}</span>`
       : '',
     tierBadge: tier
       ? `<span class="${tier.className}" title="${escapeHtml(tier.title)}">${tier.label}</span>`
       : '',
+    facts: facts
+      .map((fact) => `<span class="${fact.className}" title="${escapeHtml(fact.title)}">${escapeHtml(fact.label)}</span>`)
+      .join(''),
   };
 }
 
-/** Render the compact risk marker shown for corroborating sources. */
-export function renderCorroboratingSourceRisk(sourceName: string): string {
-  const description = describePropagandaBadge(
-    getSourcePropagandaRisk(sourceName),
-    getSourceType(sourceName),
-  );
-  return description
-    ? `<span class="propaganda-badge ${description.risk}" title="${escapeHtml(description.title)}">${description.shortLabel}</span>`
-    : '';
+/** A corroborating source's risk marker, ranked so a publisher with several feeds shows its most severe. */
+export interface CorroboratingRiskBadge extends SourceProvenanceBadge {
+  readonly severity: number;
+}
+
+/** State media above caution above unreviewed above a reviewed government marker above a perspective fact. */
+const RISK_SEVERITY: Readonly<Record<PropagandaRisk | 'fact', number>> = {
+  high: 4,
+  medium: 3,
+  unknown: 2,
+  low: 1,
+  fact: 0,
+};
+
+/** The compact risk marker shown beside a corroborating source; null when there is nothing to disclose. */
+export function getCorroboratingSourceRiskBadge(sourceName: string): CorroboratingRiskBadge | null {
+  const profile = getSourcePropagandaRisk(sourceName);
+  const sourceType = getSourceType(sourceName);
+  const description = describePropagandaBadge(profile, sourceType);
+  if (description) {
+    return {
+      className: `propaganda-badge ${description.risk}`,
+      title: description.title,
+      label: description.shortLabel,
+      severity: RISK_SEVERITY[description.risk],
+    };
+  }
+  if (getProvenanceFacts(profile, sourceType).length > 0) {
+    return {
+      className: 'provenance-fact-marker',
+      title: `${composeProvenanceSummary(profile, sourceType)} ${PERSPECTIVE_LABEL_CAVEAT}`,
+      label: '◐',
+      severity: RISK_SEVERITY.fact,
+    };
+  }
+  return null;
+}
+
+/** The most severe marker among a publisher's feeds; the first seen wins a tie. */
+export function mostSevereRiskBadge(sourceNames: readonly string[]): CorroboratingRiskBadge | null {
+  let worst: CorroboratingRiskBadge | null = null;
+  for (const name of sourceNames) {
+    const badge = getCorroboratingSourceRiskBadge(name);
+    if (badge && (worst === null || badge.severity > worst.severity)) worst = badge;
+  }
+  return worst;
 }

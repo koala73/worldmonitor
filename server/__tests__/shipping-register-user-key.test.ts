@@ -32,18 +32,53 @@ vi.mock('../_shared/api-key-rate-limit', () => ({
 const records = new Map<string, Record<string, unknown>>();
 const getCachedJson = vi.fn(async (key: string) => records.get(key) ?? null);
 const setCachedJson = vi.fn(async (key: string, value: Record<string, unknown>, _ttl: number) => { records.set(key, value); });
-const runRedisPipeline = vi.fn(async (commands: string[][]) => commands.map(command => {
-  if (command[0] === 'GET') {
-    const value = records.get(command[1]);
-    return { result: value == null ? null : typeof value === 'string' ? value : JSON.stringify(value) };
-  }
-  if (command[0] === 'SSCAN') return { result: ['0', []] };
-  if (command[0] === 'SET') {
-    records.set(command[1], JSON.parse(command[2]));
-    return { result: 'OK' };
+// Verb whose command the fake store rejects (e.g. OOM), or null for none.
+let failVerb: string | null = null;
+// Runs once before the next persist EVAL, standing in for a concurrent worker write.
+let beforePersist: (() => void) | null = null;
+const stored = (key: string) => {
+  const value = records.get(key);
+  return value == null ? null : typeof value === 'string' ? value : JSON.stringify(value);
+};
+function persistEval(command: string[]) {
+  const [, , , recordKey, ownerKey, allKey, expected, next, ttl, id] = command;
+  if (beforePersist) { const hook = beforePersist; beforePersist = null; hook(); }
+  expect(ttl).toBe(String(86400 * 30));
+  if (stored(recordKey) !== expected) return { result: 0 };
+  records.set(recordKey, JSON.parse(next));
+  for (const key of [ownerKey, allKey]) {
+    const members = (records.get(key) as { members?: string[] } | undefined)?.members ?? [];
+    if (!members.includes(id)) members.push(id);
+    records.set(key, { members });
   }
   return { result: 1 };
-}));
+}
+function pipelineResult(commands: string[][]) {
+  return commands.map(command => {
+    if (command[0] === failVerb) return { error: 'OOM command not allowed when used memory > maxmemory' };
+    if (command[0] === 'EVAL') return persistEval(command);
+    if (command[0] === 'GET') return { result: stored(command[1]) };
+    if (command[0] === 'SSCAN') return { result: ['0', []] };
+    if (command[0] === 'SET') {
+      records.set(command[1], JSON.parse(command[2]));
+      return { result: 'OK' };
+    }
+    if (command[0] === 'SADD') {
+      const members = (records.get(command[1]) as { members?: string[] } | undefined)?.members ?? [];
+      if (!members.includes(command[2])) members.push(command[2]);
+      records.set(command[1], { members });
+      return { result: 1 };
+    }
+    return { result: 1 };
+  });
+}
+const runRedisPipeline = vi.fn(async (commands: string[][]) => pipelineResult(commands));
+// MULTI/EXEC: a command rejected at queue time aborts EXEC, so nothing applies
+// and the REST helper returns [].
+const transactionResult = async (commands: string[][]) => (
+  commands.some(command => command[0] === failVerb) ? [] : pipelineResult(commands)
+);
+const runRedisTransaction = vi.fn(transactionResult);
 const registrationCommands = () => {
   const call = runRedisPipeline.mock.calls.find(([commands]) => (
     commands[0]?.[0] === 'SET' && String(commands[0][1]).startsWith('webhook:sub:')
@@ -54,6 +89,7 @@ const registrationCommands = () => {
 vi.mock('../_shared/redis', async (importOriginal) => ({
   ...await importOriginal<typeof import('../_shared/redis')>(),
   runRedisPipeline: (...args: [string[][]]) => runRedisPipeline(...args),
+  runRedisTransaction: (...args: [string[][]]) => runRedisTransaction(...args),
   getCachedJson: (key: string) => getCachedJson(key),
   setCachedJson: (key: string, value: Record<string, unknown>, ttl: number) => setCachedJson(key, value, ttl),
 }));
@@ -74,6 +110,12 @@ const request = (key?: string, extra: Record<string, string> = {}, body = payloa
 const context = { waitUntil: () => {} };
 beforeEach(() => {
   apiAccess = true; records.clear(); vi.clearAllMocks();
+  runRedisPipeline.mockReset();
+  runRedisPipeline.mockImplementation(async (commands: string[][]) => pipelineResult(commands));
+  runRedisTransaction.mockReset();
+  runRedisTransaction.mockImplementation(transactionResult);
+  failVerb = null;
+  beforePersist = null;
   vi.mocked(checkFailClosedScopedIpRateLimit).mockResolvedValue(null);
   validateUserApiKey.mockReset().mockImplementation(async (key: string) => key === keyA ? { userId: 'owner-a' } : key === keyB ? { userId: 'owner-b' } : null);
   vi.stubEnv('WORLDMONITOR_VALID_KEYS', 'enterprise-test');
@@ -93,12 +135,13 @@ for (const key of [keyA, keyB]) {
     expect(record).toMatchObject({ ...payload, ownerTag: hash(key), subscriberId: body.subscriberId, secret: body.secret, active: true });
     expect(commands[1]).toEqual(['SADD', `webhook:owner:${hash(key)}:v1`, body.subscriberId]);
     expect(commands[2]).toEqual(['EXPIRE', `webhook:owner:${hash(key)}:v1`, String(86400 * 30)]);
+    expect(commands[3]).toEqual(['SADD', 'webhook:all:v1', body.subscriberId]);
     expect(commands[0].slice(3)).toEqual(['EX', String(86400 * 30)]);
   });
 }
 
 test('revoked key cannot register using a forged identity or enterprise cookie', async () => {
-  const response = await gateway(request(invalidKey, { 'x-user-id': 'owner-a', Cookie: 'wm-pro-key=enterprise-test' }), context);
+  const response = await gateway(request(invalidKey, { 'x-user-id': 'owner-a', Cookie: '__Host-wm-pro-key=enterprise-test' }), context);
   expect(response.status).toBe(401);
   expect(runRedisPipeline).not.toHaveBeenCalled();
 });
@@ -133,7 +176,7 @@ test('validated user key still cannot register a private callback', async () => 
 });
 
 test('enterprise cookie keeps its owner with an anonymous header', async () => {
-  expect((await gateway(request('wms_anonymous', { Cookie: 'wm-pro-key=enterprise-test' }), context)).status).toBe(200);
+  expect((await gateway(request('wms_anonymous', { Cookie: '__Host-wm-pro-key=enterprise-test' }), context)).status).toBe(200);
   const commands = registrationCommands();
   expect(JSON.parse(commands[0][2]).ownerTag).toBe(hash('enterprise-test'));
   expect(commands[1][1]).toBe(`webhook:owner:${hash('enterprise-test')}:v1`);
@@ -167,11 +210,11 @@ test('gateway registrations support owner-only status, rotation and reactivation
     expect(body.secret).not.toBe(own.secret);
     const storageKey = `webhook:sub:${own.subscriberId}:v1`;
     expect(records.get(storageKey)?.secret).toBe(body.secret);
-    records.set(storageKey, { ...records.get(storageKey), active: false });
+    records.set(storageKey, { ...records.get(storageKey), active: false, failureCount: 5, deactivatedAt: '2026-10-01T00:00:00.000Z' });
     expect((await manage(own.subscriberId, 'reactivate', owner)).status).toBe(200);
-    expect(records.get(storageKey)).toMatchObject({ active: true, secret: body.secret, ownerTag: hash(owner) });
+    expect(records.get(storageKey)).toMatchObject({ active: true, failureCount: 0, secret: body.secret, ownerTag: hash(owner) });
+    expect(records.get(storageKey)).not.toHaveProperty('deactivatedAt');
     expect(await (await manage(own.subscriberId, '', owner)).json()).not.toHaveProperty('secret');
-    expect(setCachedJson.mock.calls.at(-1)?.[2]).toBe(86400 * 30);
   }
 });
 
@@ -184,6 +227,7 @@ for (const action of ['', 'rotate-secret', 'reactivate']) {
     );
     expect(validateUserApiKey).not.toHaveBeenCalled();
     expect(getCachedJson).not.toHaveBeenCalled();
+    expect(runRedisPipeline).not.toHaveBeenCalled();
     expect(setCachedJson).not.toHaveBeenCalled();
   });
   test(`management ${action || 'status'} rejects invalid, missing and unentitled keys before storage`, async () => {
@@ -192,10 +236,11 @@ for (const action of ['', 'rotate-secret', 'reactivate']) {
       expect(denied.status).toBe(401);
       expect(await denied.text()).not.toContain('gateway validation');
     }
-    expect((await manage('wh_test', action, invalidKey, { Cookie: 'wm-pro-key=enterprise-test' })).status).toBe(401);
+    expect((await manage('wh_test', action, invalidKey, { Cookie: '__Host-wm-pro-key=enterprise-test' })).status).toBe(401);
     apiAccess = false;
     expect((await manage('wh_test', action, keyA)).status).toBe(403);
     expect(getCachedJson).not.toHaveBeenCalled();
+    expect(runRedisPipeline).not.toHaveBeenCalled();
     expect(setCachedJson).not.toHaveBeenCalled();
   });
   test(`management ${action || 'status'} returns 503 on key lookup outage before storage`, async () => {
@@ -204,18 +249,109 @@ for (const action of ['', 'rotate-secret', 'reactivate']) {
     expect(response.status).toBe(503);
     expect(await response.text()).not.toContain('synthetic outage');
     expect(getCachedJson).not.toHaveBeenCalled();
+    expect(runRedisPipeline).not.toHaveBeenCalled();
     expect(setCachedJson).not.toHaveBeenCalled();
   });
   test(`management ${action || 'status'} preserves a premium recheck outage as 503`, async () => {
     validateUserApiKey.mockResolvedValueOnce({ userId: 'owner-a' }).mockRejectedValueOnce(new Error('synthetic outage'));
     expect((await manage('wh_test', action, keyA)).status).toBe(503);
     expect(getCachedJson).not.toHaveBeenCalled();
+    expect(runRedisPipeline).not.toHaveBeenCalled();
     expect(setCachedJson).not.toHaveBeenCalled();
   });
   test(`management ${action || 'status'} keeps enterprise cookie credential ownership`, async () => {
-    const extra = { Cookie: 'wm-pro-key=enterprise-test' };
+    const extra = { Cookie: '__Host-wm-pro-key=enterprise-test' };
     const own = await (await gateway(request('wms_anonymous', extra), context)).json();
     expect((await manage(own.subscriberId, action, 'wms_anonymous', extra)).status).toBe(200);
     expect(records.get(`webhook:sub:${own.subscriberId}:v1`)?.ownerTag).toBe(hash('enterprise-test'));
   });
 }
+
+test('management preflight allows POST', async () => {
+  const res = await actionHandler(new Request('https://www.worldmonitor.app/api/v2/shipping/webhooks/wh_test/rotate-secret', {
+    method: 'OPTIONS',
+    headers: { Origin: 'https://worldmonitor.app' },
+  }));
+  expect(res.status).toBe(204);
+  expect(res.headers.get('Access-Control-Allow-Methods')).toBe('POST, OPTIONS');
+});
+
+const persistCalls = () => runRedisPipeline.mock.calls
+  .map(([commands]) => commands[0])
+  .filter((command) => command?.[0] === 'EVAL');
+
+test('rotate-secret does not echo a secret the store did not confirm', async () => {
+  const own = await (await gateway(request(keyA), context)).json();
+  failVerb = 'EVAL';
+  const rotated = await manage(own.subscriberId, 'rotate-secret', keyA);
+  expect(rotated.status).toBe(503);
+  const text = await rotated.text();
+  expect(text).not.toMatch(/[a-f0-9]{64}/);
+  expect(records.get(`webhook:sub:${own.subscriberId}:v1`)?.secret).toBe(own.secret);
+});
+
+test('reactivate does not report active when the store write failed', async () => {
+  const own = await (await gateway(request(keyA), context)).json();
+  records.set(`webhook:sub:${own.subscriberId}:v1`, { ...records.get(`webhook:sub:${own.subscriberId}:v1`), active: false });
+  failVerb = 'EVAL';
+  const revived = await manage(own.subscriberId, 'reactivate', keyA);
+  expect(revived.status).toBe(503);
+  expect(await revived.json()).not.toMatchObject({ active: true });
+  expect(records.get(`webhook:sub:${own.subscriberId}:v1`)?.active).toBe(false);
+});
+
+test('rotate-secret writes the record and both indexes in one compare-and-set', async () => {
+  const own = await (await gateway(request(keyA), context)).json();
+  const before = stored(`webhook:sub:${own.subscriberId}:v1`);
+  const rotated = await manage(own.subscriberId, 'rotate-secret', keyA);
+  expect(rotated.status).toBe(200);
+  const [command] = persistCalls();
+  expect(command.slice(2, 9)).toEqual([
+    '3', `webhook:sub:${own.subscriberId}:v1`, `webhook:owner:${hash(keyA)}:v1`, 'webhook:all:v1',
+    before, stored(`webhook:sub:${own.subscriberId}:v1`), String(86400 * 30),
+  ]);
+  expect(command[9]).toBe(own.subscriberId);
+});
+
+for (const action of ['rotate-secret', 'reactivate']) {
+  test(`${action} retries against a worker write that landed after the handler read the record`, async () => {
+    const own = await (await gateway(request(keyA), context)).json();
+    const key = `webhook:sub:${own.subscriberId}:v1`;
+    records.set(key, { ...records.get(key), failureCount: 4 });
+    beforePersist = () => {
+      records.set(key, { ...records.get(key), active: false, failureCount: 5, deactivatedAt: '2026-10-17T12:00:00.000Z' });
+    };
+    const response = await manage(own.subscriberId, action, keyA);
+    expect(response.status).toBe(200);
+    expect(persistCalls()).toHaveLength(2);
+    const record = records.get(key)!;
+    if (action === 'rotate-secret') {
+      expect(record).toMatchObject({ active: false, failureCount: 5, secret: (await response.json()).secret });
+    } else {
+      expect(record).toMatchObject({ active: true, failureCount: 0 });
+      expect(record).not.toHaveProperty('deactivatedAt');
+    }
+  });
+}
+
+test('rotate-secret gives up with 503 when the record keeps changing', async () => {
+  const own = await (await gateway(request(keyA), context)).json();
+  const key = `webhook:sub:${own.subscriberId}:v1`;
+  const bump = () => {
+    records.set(key, { ...records.get(key), lastDeliveryAt: String(Math.random()) });
+    beforePersist = bump;
+  };
+  beforePersist = bump;
+  const rotated = await manage(own.subscriberId, 'rotate-secret', keyA);
+  expect(rotated.status).toBe(503);
+  expect(await rotated.text()).not.toMatch(/[a-f0-9]{64}/);
+  expect(records.get(key)?.secret).toBe(own.secret);
+  beforePersist = null;
+});
+
+test('rotate-secret answers 404 when the record expires between attempts', async () => {
+  const own = await (await gateway(request(keyA), context)).json();
+  const key = `webhook:sub:${own.subscriberId}:v1`;
+  beforePersist = () => { records.delete(key); };
+  expect((await manage(own.subscriberId, 'rotate-secret', keyA)).status).toBe(404);
+});

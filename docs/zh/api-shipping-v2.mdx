@@ -101,7 +101,7 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 
 - `subscriberId` —— `wh_` 前缀 + 24 个十六进制字符（12 个随机字节）。
 - `secret` —— 原始 64 字符小写十六进制（32 个随机字节）。没有 `whsec_` 前缀。请妥善保存 —— 服务器在轮换之前不会再次返回它。
-- **TTL**：订阅者记录和每所有者索引集均为 30 天。只有**重新注册**会通过原子管道刷新两者（对记录执行带 `EX` 的 `SET`，对所有者索引执行 `SADD` + `EXPIRE`）。`rotate-secret` 和 `reactivate` 仅刷新记录的 TTL —— 它们不会更改所有者索引集的过期时间，因此如果调用者在 30 天窗口内仅进行轮换或重新激活，所有者索引可能会独立过期。请重新注册以保持两者有效。
+- **TTL**：订阅者记录和每所有者索引集均为 30 天。注册通过非事务管道写入两者（对记录执行带 `EX` 的 `SET`，对所有者索引执行 `SADD` + `EXPIRE`，并对全局投递索引执行 `SADD`）。`rotate-secret` 和 `reactivate` 在一个事务中重写相同的键，因此也会刷新两者的 TTL。投递记账保留记录现有的 TTL，因此只接收投递的 webhook 仍会在最后一次注册、轮换或重新激活 30 天后过期。
 - 所有权通过调用者 API 密钥的 SHA-256 进行跟踪（绝非密钥 —— 以 `ownerTag` 形式存储）。
 
 认证：`X-WorldMonitor-Key`（forceKey: true）+ PRO。否则返回 `401` / `403`。
@@ -129,11 +129,11 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 
 ### `GET /api/v2/shipping/webhooks/{subscriberId}`
 
-单个 webhook 的状态读取。返回与 `GET /webhooks` 相同的记录结构（不含 `secret`）。未知则返回 `404`，由其他 API 密钥拥有则返回 `403`。
+单个 webhook 的状态读取。返回与 `GET /webhooks` 相同的记录结构（不含 `secret`），另加下文“投递 worker”一节说明的投递计数器 `failureCount`、`lastDeliveryAt` 和 `lastDeliveryStatus`。未知则返回 `404`，由其他 API 密钥拥有则返回 `403`。
 
 ### `POST /api/v2/shipping/webhooks/{subscriberId}/rotate-secret`
 
-生成并返回**新**密钥。记录的 `secret` 会被原地替换；旧密钥立即停止验证。
+生成并返回**新**密钥。记录的 `secret` 会被原地替换。轮换之后开始的投递使用新密钥签名；轮换时已在进行中的投递仍可能带有旧签名。
 
 ```json
 { "subscriberId": "wh_...", "secret": "new-64-char-hex", "rotatedAt": "2026-04-19T12:05:00Z" }
@@ -141,11 +141,41 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 
 ### `POST /api/v2/shipping/webhooks/{subscriberId}/reactivate`
 
-将记录上的 `active` 设为 `true`（在调查并修复导致停用的投递失败后使用）。
+将记录上的 `active` 设为 `true`，并将 `failureCount` 重置为 0（在调查并修复导致停用的投递失败后使用）。
 
 ```json
 { "subscriberId": "wh_...", "active": true }
 ```
+
+### 投递 worker
+
+一个 worker 每 5 分钟根据咽喉要道状态数据（与 `get-chokepoint-status` 相同的数据）评估每个活跃的 webhook。对于每个已订阅的咽喉要道，它将 `disruptionScore` 与 webhook 的 `alertThreshold` 进行比较。
+
+- 当 `disruptionScore >= alertThreshold` 时触发投递。每次向上越过阈值产生一次投递。分数降到阈值以下后，该咽喉要道重新进入待触发状态，下一次越过阈值会再次触发。
+- 分数中航行警告最多贡献 15 分，AIS 最多 15 分，通行异常贡献 10 分，缺失的输入计 0 分。投递之后，只有当分数加上投递时存在而现在缺失的各输入的最高分仍低于阈值时，该咽喉要道才会重新进入待触发状态。因此单纯的输入中断不会让它重新待触发，输入恢复后也不会再次触发同一次中断。
+- 如果 worker 首次评估某个 webhook 时咽喉要道已经达到或超过阈值，会产生一次投递。
+- 投递为至少一次。失败的投递保持待触发状态，只要分数仍达到或超过阈值，就会在下一个周期重试。重试沿用原来的 `X-WM-Delivery-Id` 和 `triggeredAt`，`score` 与 `details` 为当前值。若在投递成功前分数回落、重新进入待触发状态，该次越过会被放弃，下一次越过使用新的 id。
+- 失败指非 2xx 响应、15 秒内（含 DNS 解析）没有响应，或回调 URL 解析到私有或保留地址。某个 webhook 在一个周期内首次失败后，本周期不再向它投递，其余投递留到下一个周期，因此 `failureCount` 统计的是连续失败的周期数。达到 5 次（约 25 分钟的失败）后，worker 将 `active` 设为 `false` 并停止向该 webhook 投递。一次成功的投递会重置计数。`reactivate` 可恢复投递。
+- worker 在每次发送前重新读取 webhook，如果它已改变（例如在 `rotate-secret` 或 `reactivate` 之后），本周期即停止发送。下一个周期使用新的记录发送剩余的越过事件。
+
+`GET /api/v2/shipping/webhooks/{subscriberId}` 返回以下投递计数器：
+
+| 字段 | 含义 |
+| --- | --- |
+| `failureCount` | 投递连续失败的周期数。首次投递前及任何成功投递后为 `0`。 |
+| `lastDeliveryAt` | 最近一次投递尝试的 ISO-8601 时间，首次投递前为 `null`。 |
+| `lastDeliveryStatus` | 最近一次尝试的 HTTP 状态码；没有尝试或没有 HTTP 响应（超时、回调 URL 被拒绝、网络错误）时为 `null`。 |
+
+`reason` 字段说明分数背后最强的信号。按顺序取第一个匹配的行：
+
+| `reason` | 条件 |
+| --- | --- |
+| `ais_congestion_spike` | `aisDisruptions > 0` |
+| `navigational_warning` | `activeWarnings > 0` |
+| `transit_drop` | 今日通行计数可用且 `wowChangePct <= -25` |
+| `score_threshold` | 以上都不满足 |
+
+`details` 包含 `name`、`status`、`activeWarnings`、`aisDisruptions`、`congestionLevel`、`warRiskTier`、`wowChangePct`（今日通行计数不可用时为 `null`）、`previousScore`（上一次评估时的分数，首次评估为 `null`）和 `scoresFetchedAt`（咽喉要道数据的计算时间）。
 
 ### 投递格式
 
@@ -167,7 +197,7 @@ X-WM-Event: chokepoint.disruption
 }
 ```
 
-投递 worker 在每次发送前重新解析 `callbackUrl`，并针对 `PRIVATE_HOSTNAME_PATTERNS` 重新检查，以缓解 DNS 重绑定问题。投递为至少一次 —— 消费者必须通过 `X-WM-Delivery-Id` 处理重复项。
+投递 worker 在每次发送前重新解析 `callbackUrl`，拒绝私有、回环、链路本地和保留地址，并只连接到已验证的地址，以缓解 DNS 重绑定问题。投递为至少一次 —— 消费者必须通过 `X-WM-Delivery-Id` 处理重复项。
 
 ### 验证投递
 

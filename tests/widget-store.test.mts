@@ -32,6 +32,27 @@ function restoreGlobal(name: string, snapshot: GlobalSnapshot): void {
 
 const localStorageSnapshot = snapshotGlobal('localStorage');
 
+it('successful nonempty key setters enable access and notify subscribers', async () => {
+  const store = await loadWidgetStore();
+  let changes = 0;
+  const unsubscribe = store.subscribeWidgetAccess(() => { changes++; });
+  try {
+    assert.equal(await store.setWidgetKey('widget-fixture'), true);
+    assert.equal(store.isWidgetFeatureEnabled(), true);
+    assert.equal(changes, 1);
+    assert.equal(await store.setProKey('pro-fixture'), true);
+    assert.equal(store.isProWidgetEnabled(), true);
+    assert.equal(changes, 2);
+    assert.equal(await store.setWidgetKey(''), true);
+    assert.equal(await store.setProKey(''), true);
+    assert.equal(store.isWidgetFeatureEnabled(), false);
+    assert.equal(store.isProWidgetEnabled(), false);
+    assert.equal(changes, 4);
+  } finally {
+    unsubscribe();
+  }
+});
+
 afterEach(() => {
   restoreGlobal('localStorage', localStorageSnapshot);
 });
@@ -72,8 +93,8 @@ async function loadWidgetStore(): Promise<WidgetStore> {
       export function getEntitlementState() { return { planKey: 'pro' }; }
     `],
     ['browser-key-session-stub', `
-      export function clearLegacyKeyStorage() {}
-      export function migrateLegacyKeysToHttpOnlySession() { return Promise.resolve(); }
+      export function clearBrowserKeySession() { return Promise.resolve(true); }
+      export function migrateLegacyKeysToHttpOnlySession() { return Promise.resolve(true); }
       export function readLegacySessionKey() { return ''; }
     `],
   ]);

@@ -33,9 +33,11 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: workers/railway-reconcile-control/package-lock.json
       - name: Install
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Run unit tests
@@ -89,9 +91,11 @@ jobs:
           if [ "$current_main_sha" != "$GITHUB_SHA" ]; then
             echo "::notice::Current main advanced only outside the reconcile-control deployment closure."
           fi
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: workers/railway-reconcile-control/package-lock.json
       - name: Install
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Set control-plane secrets

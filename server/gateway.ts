@@ -1,3 +1,5 @@
+import { consumeSubRequestAdmission } from './_shared/sub-request-admission';
+import { hasCurrentEntitlementCoverage } from './_shared/entitlement-coverage';
 /**
  * Shared gateway logic for per-domain Vercel edge functions.
  *
@@ -14,7 +16,7 @@ import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin, isAllow
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '../src/shared/pro-fresh-rpc';
 // @ts-expect-error — JS module, no declaration file
-import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, validateApiKey } from '../api/_api-key.js';
+import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, getHeaderApiKey, validateApiKey } from '../api/_api-key.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeEqualSecret } from '../api/_crypto.js';
 // @ts-expect-error — JS module, no declaration file
@@ -24,12 +26,16 @@ import {
   checkRateLimit,
   checkEndpointRateLimit,
   checkFailClosedScopedIpRateLimit,
+  formatTrustedRateLimitPrincipal,
   hasEndpointRatePolicy,
+  RATE_LIMIT_DEGRADED_HEADERS,
+  TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER,
 } from './_shared/rate-limit';
 import {
   drainResponseHeaders,
   drainRetryableResponse,
   drainSuccessStatusOverride,
+  drainUnservedLlmResponse,
 } from './_shared/response-headers';
 import {
   appendDeprecationPolicyLink,
@@ -56,7 +62,7 @@ import {
 import { EMBED_KEY_RPC_PATHS } from '../shared/embed-panels';
 import { hasEmbedAccess } from '../shared/embed-access';
 import { checkProMcpAccess } from './_shared/pro-mcp-gate';
-import { resolveClerkSession } from './_shared/auth-session';
+import { resolveClerkSession, sessionVerificationUnavailableResponse } from './_shared/auth-session';
 import {
   INTERNAL_MCP_SIG_HEADER,
   INTERNAL_MCP_USER_ID_HEADER,
@@ -290,11 +296,13 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/aviation/v1/get-carrier-ops': 'slow',
   '/api/aviation/v1/get-flight-status': 'fast',
   '/api/aviation/v1/track-aircraft': 'no-store',
+  '/api/aviation/v1/list-aircraft-emergencies': 'no-store',
   '/api/aviation/v1/search-flight-prices': 'medium',
   '/api/aviation/v1/search-google-flights': 'no-store',
   '/api/aviation/v1/search-google-dates': 'medium',
   '/api/aviation/v1/list-aviation-news': 'slow',
   '/api/market/v1/get-country-stock-index': 'slow',
+  '/api/market/v1/get-price-history': 'static',
 
   '/api/natural/v1/list-natural-events': 'slow',
   '/api/wildfire/v1/list-fire-detections': 'static',
@@ -337,11 +345,14 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/conflict/v1/get-humanitarian-summary': 'daily',
   '/api/conflict/v1/list-iran-events': 'slow',
   '/api/displacement/v1/get-displacement-summary': 'daily',
+  '/api/displacement/v1/get-internal-displacement': 'daily',
   '/api/displacement/v1/get-population-exposure': 'daily',
   '/api/economic/v1/get-bis-policy-rates': 'daily',
   '/api/economic/v1/get-bis-exchange-rates': 'daily',
   '/api/economic/v1/get-bis-credit': 'daily',
   '/api/trade/v1/get-tariff-trends': 'daily',
+  '/api/trade/v1/get-bilateral-tariff': 'daily',
+  '/api/trade/v1/get-us-import-duty': 'daily',
   '/api/trade/v1/get-trade-flows': 'daily',
   '/api/trade/v1/get-trade-barriers': 'daily',
   '/api/trade/v1/get-trade-restrictions': 'daily',
@@ -356,6 +367,15 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/get-crude-inventories': 'daily',
   '/api/economic/v1/get-nat-gas-storage': 'daily',
   '/api/economic/v1/get-eu-yield-curve': 'daily',
+  // Daily macro seed. A miss returns unavailable:true, which the gateway
+  // already keeps out of the shared cache.
+  '/api/economic/v1/get-us-cpi-monthly': 'daily',
+  '/api/economic/v1/get-us-treasury-par-yield-curve': 'daily',
+  '/api/economic/v1/get-us-interest-rates': 'daily',
+  '/api/economic/v1/get-world-cpi-monthly': 'daily',
+  // Daily yield-curve bundle. A miss returns unavailable:true, which the
+  // gateway already keeps out of the shared cache.
+  '/api/economic/v1/get-government-yield-curve': 'daily',
   '/api/supply-chain/v1/get-critical-minerals': 'daily',
   '/api/supply-chain/v1/get-mineral-production': 'daily',
   '/api/military/v1/get-aircraft-details': 'static',
@@ -392,6 +412,13 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/supply-chain/v1/get-chokepoint-history': 'slow',
   '/api/news/v1/list-feed-digest': 'slow',
   '/api/news/v1/list-country-headlines': 'fast',
+  '/api/news/v1/list-label-changes': 'fast',
+  // #9093 operator queue: never cached, it is gated by a secret header.
+  '/api/news/v1/list-error-reports': 'no-store',
+  // #9094: per-claim fact-check lookup; the CDN key includes the claim.
+  '/api/news/v1/search-fact-checks': 'slow',
+  // /verify claim search over the feed caches; the CDN key includes the claim.
+  '/api/news/v1/search-claim-headlines': 'fast',
   '/api/intelligence/v1/get-country-facts': 'daily',
   '/api/intelligence/v1/list-security-advisories': 'slow',
   '/api/intelligence/v1/list-satellites': 'static',
@@ -529,6 +556,30 @@ export const PUBLIC_NO_AUTH_RPC_PATHS = new Set<string>([
   // throttle. Pinned by tests/leads-gateway-public.test.mts.
   '/api/leads/v1/submit-contact',
   '/api/leads/v1/register-interest',
+  // #9093 "Report an error": readers report without an account by design. The
+  // gates are the handler's honeypot and validation, a fail-closed per-IP
+  // endpoint limit (server/_shared/rate-limit.ts), and a bounded review queue
+  // that refuses rather than evicts. Reports are never applied automatically.
+  '/api/news/v1/submit-error-report',
+  // #9093 /trust page: public label history and today's counts. Read-only,
+  // public coverage metadata; a visitor who lands on /trust directly has no
+  // session cookie. Bounded by a per-IP endpoint limit and the 'fast' CDN tier.
+  '/api/news/v1/list-label-changes',
+  // #9093 operator review. The gate is TRUST_REVIEW_SECRET, checked in the
+  // handler (X-Trust-Review-Key, constant-time): unset → every call is 401.
+  // A browser session would add nothing an operator secret does not already
+  // prove, and the standalone review page has none. Fail-closed per-IP limits
+  // bound guessing; list-error-reports is no-store.
+  '/api/news/v1/list-error-reports',
+  '/api/news/v1/review-error-report',
+  // #9094 /verify: published fact-checks for a claim, cited with attribution.
+  // Free like /verify (owner decision), which needs no account; bounded by a
+  // fail-closed per-IP limit and a day-long per-claim cache of the upstream.
+  '/api/news/v1/search-fact-checks',
+  // /verify: the fresh headlines that share a claim's words, read from the
+  // RSS caches the digest already writes (no publisher fetch). Free like
+  // /verify; bounded by a per-IP limit and the 'fast' CDN tier.
+  '/api/news/v1/search-claim-headlines',
 ]);
 
 // Cacheable, non-premium RPC endpoints the Railway relay periodically warm-pings
@@ -760,28 +811,53 @@ function attachRequiredBboxDiagnosticHeaders(
   }
 }
 
-// `TRUSTED_USER_ID_HEADER` (a.k.a. `x-user-id`) is gateway-internal: the
-// gateway is the ONLY layer permitted to set it, and it must reflect an
+// `TRUSTED_USER_ID_HEADER` (a.k.a. `x-user-id`) and
+// `TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER` are gateway-internal: the gateway is
+// the ONLY layer permitted to set them, and each must reflect an
 // authenticated principal. Inbound client copies are stripped at handler
-// entry (see stripClientUserIdHeader); the authenticated value is re-
+// entry (see stripClientTrustedHeaders); the authenticated user id is re-
 // injected after Clerk / wm_ user-key / legacy bearer auth via
-// withAuthenticatedUserId. The internal-MCP block below has its own
-// strip-and-rebuild step that ALSO strips this header alongside
-// INTERNAL_MCP_VERIFIED_HEADER — both layers are defense-in-depth.
+// withAuthenticatedUserId, and the rate-limit principal is stamped once all
+// auth has resolved (see withTrustedRateLimitPrincipal).
+//
+// The sub-request header remains untrusted until its one-use Redis admission
+// is consumed. Presence alone never bypasses a gateway limit.
 function cloneRequestWithHeaders(request: Request, headers: Headers): Request {
   return new Request(request, { headers });
 }
 
-function stripClientUserIdHeader(request: Request): Request {
-  if (!request.headers.has(TRUSTED_USER_ID_HEADER)) return request;
+function stripClientTrustedHeaders(request: Request): Request {
+  if (
+    !request.headers.has(TRUSTED_USER_ID_HEADER) &&
+    !request.headers.has(TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER)
+  ) {
+    return request;
+  }
   const headers = new Headers(request.headers);
   headers.delete(TRUSTED_USER_ID_HEADER);
+  headers.delete(TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER);
   return cloneRequestWithHeaders(request, headers);
 }
 
 function withAuthenticatedUserId(request: Request, userId: string): Request {
   const headers = new Headers(request.headers);
   headers.set(TRUSTED_USER_ID_HEADER, userId);
+  return cloneRequestWithHeaders(request, headers);
+}
+
+// Stamped after auth resolution with the principal the gateway itself charged,
+// so a handler that re-dispatches sub-requests (the batch fan-out) charges the
+// same bucket a direct call would instead of guessing from raw credentials.
+function withTrustedRateLimitPrincipal(
+  request: Request,
+  userId: string,
+  scope: 'session' | 'api_key',
+): Request {
+  const headers = new Headers(request.headers);
+  headers.set(
+    TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER,
+    formatTrustedRateLimitPrincipal(userId, scope),
+  );
   return cloneRequestWithHeaders(request, headers);
 }
 
@@ -815,6 +891,15 @@ const GATEWAY_DIRECT_LLM_QUOTA_METHODS: Record<string, string> = {
 };
 
 const COUNTRY_INTEL_BRIEF_PATH = '/api/intelligence/v1/get-country-intel-brief';
+
+// A direct-LLM reservation that dispatch() has charged but not yet settled,
+// keyed by the request it was charged for. dispatch() releases it itself on
+// every unserved outcome it can see; this map exists for the one it cannot:
+// a throw after the handler returned (a rejecting response body stream, a
+// failed response construction), which leaves dispatch() without a return
+// value and the platform answering 500. The outer handler drains it on a
+// rejected dispatch and releases the slot there.
+const pendingDirectLlmReservations = new WeakMap<Request, () => Promise<void>>();
 
 function methodForGetEquivalentPolicy(method: string): string {
   return method === 'HEAD' ? 'GET' : method;
@@ -881,13 +966,35 @@ function markAuthErrorNoStore(response: Response): Response {
   return response;
 }
 
-function hasCredentialBearingHeader(request: Request): boolean {
-  return Boolean(
-    request.headers.get('Authorization') ||
-    request.headers.get('X-WorldMonitor-Key') ||
-    request.headers.get('X-Api-Key') ||
-    request.headers.get('Cookie'),
-  );
+/**
+ * Every request header the gateway or a sibling auth path treats as a
+ * credential (#8400). `hasCredentialBearingHeader` consumes this list so a
+ * new credential header cannot be added without appearing in the cache-tier
+ * guard. `register-interest.ts` desktop HMAC headers and `mcp-internal-hmac.ts`
+ * service-auth headers export their own constants and stay OUT: their
+ * verification is route-scoped (a single POST RPC, the internal-MCP
+ * pre-check) rather than consumed as a bearer by an auth path — per-principal
+ * bodies behind those MUST be no-store at the handler instead of relying on
+ * this audience overwrite.
+ *
+ * Exported so a divergence test can pin the list against the auth-path
+ * readers. When adding an entry here, extend the pinned literal in
+ * server/__tests__/gateway-credential-headers.test.ts.
+ */
+export const CREDENTIAL_BEARING_HEADERS = [
+  'Authorization',
+  'X-WorldMonitor-Key',
+  'X-Api-Key',
+  // Widget tester keys (validated in api/widget-agent.ts:273-274). Both are
+  // per-principal credentials like the operator keys above: X-Widget-Key
+  // unlocks basic, X-Pro-Key unlocks Pro-tier generation.
+  'X-Widget-Key',
+  'X-Pro-Key',
+  'Cookie',
+] as const;
+
+export function hasCredentialBearingHeader(request: Request): boolean {
+  return CREDENTIAL_BEARING_HEADERS.some((header) => Boolean(request.headers.get(header)));
 }
 
 async function isResilienceRankingSeedRefreshRequest(request: Request, pathname: string): Promise<boolean> {
@@ -948,7 +1055,7 @@ export function createDomainGateway(
       return buildMarkdownTwinResponse(originalRequest, originalPathname);
     }
 
-    let request = stripClientUserIdHeader(originalRequest);
+    let request = stripClientTrustedHeaders(originalRequest);
     const rawPathname = new URL(request.url).pathname;
     const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;
     const t0 = Date.now();
@@ -1125,13 +1232,15 @@ export function createDomainGateway(
     // Defense-in-depth: strip client-controlled copies of the trusted
     // internal-MCP markers BEFORE any other logic runs. The gateway is the
     // ONLY layer permitted to set `x-wm-mcp-internal-verified` /
-    // `x-user-id` (the latter is also set by verified session / user-key
-    // paths below). Without the strip step, an attacker
-    // who sends `x-wm-mcp-internal-verified: 1` from outside could spoof
-    // premium context to any handler that reads these markers via
-    // `isCallerPremium`. The strip MUST run regardless of whether the
-    // X-WM-MCP-Internal header is present, so that the legacy
-    // `validateApiKey` path also receives a sanitised request.
+    // `x-user-id` / the rate-limit principal stamp. Without the strip step,
+    // an attacker who sends `x-wm-mcp-internal-verified: 1` from outside
+    // could spoof premium context to any handler that reads these markers
+    // via `isCallerPremium`, and a forged principal stamp would let any
+    // caller name the bucket their fan-out is charged to. The strip MUST run
+    // regardless of whether the X-WM-MCP-Internal header is present, so that
+    // the legacy `validateApiKey` path also receives a sanitised request.
+    //
+    // Sub-request admission is verified separately before rate limiting.
     //
     // Mutation invariant: every subsequent request reconstruction in this
     // function must build from the (already-stripped) `request`, not from
@@ -1141,11 +1250,13 @@ export function createDomainGateway(
       const inboundHeaders = request.headers;
       if (
         inboundHeaders.has(INTERNAL_MCP_VERIFIED_HEADER) ||
-        inboundHeaders.has(TRUSTED_USER_ID_HEADER)
+        inboundHeaders.has(TRUSTED_USER_ID_HEADER) ||
+        inboundHeaders.has(TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER)
       ) {
         const stripped = new Headers(inboundHeaders);
         stripped.delete(INTERNAL_MCP_VERIFIED_HEADER);
         stripped.delete(TRUSTED_USER_ID_HEADER);
+        stripped.delete(TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER);
         // For GET/HEAD: no body to forward. For other methods: buffer the
         // body bytes and pass them to the new Request — `body: request.body`
         // (a ReadableStream) requires `duplex: 'half'` in Node's undici
@@ -1230,7 +1341,7 @@ export function createDomainGateway(
         // configuration incident (#7277).
         emitRequest(500, 'hmac_secret_unconfigured', null);
         return new Response(
-          JSON.stringify({ error: 'CONFIGURATION', detail: 'MCP_INTERNAL_HMAC_SECRET not configured' }),
+          JSON.stringify({ error: 'CONFIGURATION' }),
           { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
         );
       }
@@ -1361,6 +1472,14 @@ export function createDomainGateway(
       trusted.delete(INTERNAL_MCP_NONCE_HEADER);
       trusted.set(INTERNAL_MCP_VERIFIED_HEADER, getInternalMcpVerifiedNonce());
       trusted.set(TRUSTED_USER_ID_HEADER, verified.userId);
+      // The verified MCP caller is a confirmed paid principal: stamp the
+      // rate-limit principal here too, so a downstream fan-out (e.g. a batch
+      // issued through the MCP tool path) charges the verified userId bucket
+      // instead of silently downgrading to the caller's IP.
+      trusted.set(
+        TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER,
+        formatTrustedRateLimitPrincipal(verified.userId, 'session'),
+      );
       const rebuildInit: RequestInit = { method: request.method, headers: trusted };
       if (bodyBytes !== null) rebuildInit.body = bodyBytes;
       request = new Request(request.url, rebuildInit);
@@ -1428,6 +1547,10 @@ export function createDomainGateway(
     let directLlmDailyLimit: number | null | undefined;
     if (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution) {
       const session = await resolveClerkSession(request);
+      if (session && 'reason' in session) {
+        emitRequest(503, 'billing_verification_503', null);
+        return sessionVerificationUnavailableResponse(corsHeaders);
+      }
       sessionUserId = session?.userId ?? null;
       sessionRole = session?.role ?? null;
       usage.sessionUserId = sessionUserId;
@@ -1461,10 +1584,7 @@ export function createDomainGateway(
     // wm_ key is still an explicit authenticating credential and its owner must
     // pass the #4611 apiAccess gate.
     let isUserApiKey = false;
-    const wmKey =
-      request.headers.get('X-WorldMonitor-Key') ??
-      request.headers.get('X-Api-Key') ??
-      '';
+    const wmKey = getHeaderApiKey(request);
     const dockerSelfHostSessionAuthorized =
       isDockerSelfHostCountryBrief &&
       keyCheck.valid &&
@@ -1630,8 +1750,11 @@ export function createDomainGateway(
     // validateApiKey is strict-no-trust-of-headers per #3541 and would 401 every
     // Clerk-authenticated user who hasn't also minted a wms_ session token.
     // Override: routes that deliberately resolved a sessionUserId pass this layer.
+    // Never for a legacy Pro bearer route: a session proves identity, not Pro,
+    // and skipping that gate would hand a free account the premium handler.
     if (
       (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution) &&
+      !needsLegacyProBearerGate &&
       sessionUserId &&
       keyCheck.required &&
       !keyCheck.valid
@@ -1684,7 +1807,7 @@ export function createDomainGateway(
       recordUsageEntitlement(userKeyEntitlement);
       const apiAccessCovered = !!userKeyEntitlement &&
         userKeyEntitlement.features.apiAccess &&
-        (userKeyEntitlement.validUntil ?? 0) >= Date.now();
+        hasCurrentEntitlementCoverage(userKeyEntitlement);
       const billingDenial = denyForBillingVerification(
         userKeyEntitlement,
         corsHeaders,
@@ -1713,7 +1836,7 @@ export function createDomainGateway(
         );
       } else if (
         !userKeyEntitlement.features.apiAccess ||
-        (userKeyEntitlement.validUntil ?? 0) < Date.now()
+        !hasCurrentEntitlementCoverage(userKeyEntitlement)
       ) {
         emitRequest(403, 'tier_403', null);
         return createGatewayAuthErrorResponse(
@@ -1745,7 +1868,7 @@ export function createDomainGateway(
       hasProFreshCacheAccess =
         !!ent &&
         ent.features.tier >= 1 &&
-        ent.validUntil >= Date.now();
+        hasCurrentEntitlementCoverage(ent);
       if (hasProFreshCacheAccess) {
         rateLimitPrincipalUserId = sessionUserId;
       }
@@ -1791,14 +1914,14 @@ export function createDomainGateway(
             recordUsageEntitlement(ent);
             const proCovered = !!ent &&
               ent.features.tier >= 1 &&
-              ent.validUntil >= Date.now();
+              hasCurrentEntitlementCoverage(ent);
             const billingDenial = denyForBillingVerification(
               ent,
               corsHeaders,
               proCovered,
             );
             if (billingDenial) return billingDenial;
-            allowed = !!ent && ent.features.tier >= 1 && ent.validUntil >= Date.now();
+            allowed = !!ent && ent.features.tier >= 1 && hasCurrentEntitlementCoverage(ent);
           }
           if (!allowed) {
             emitRequest(403, 'tier_403', null);
@@ -1905,7 +2028,7 @@ export function createDomainGateway(
         );
         quotaEntitlements = ent;
         recordUsageEntitlement(ent);
-        if (ent && ent.features.tier >= 1 && ent.validUntil >= Date.now()) {
+        if (ent && ent.features.tier >= 1 && hasCurrentEntitlementCoverage(ent)) {
           rateLimitPrincipalUserId = sessionUserId;
         }
       }
@@ -2020,8 +2143,27 @@ export function createDomainGateway(
     // Gateway rate limiting — two-phase: endpoint-specific first, then global fallback.
     // Confirmed paid principals use per-user buckets; other traffic uses IP.
     //
+    // Only a single-use admission for this exact request waives the prepaid
+    // endpoint/global limit. Account meters and auth still run for every call.
+    const subRequestAdmission = await consumeSubRequestAdmission(request, rateLimitPrincipalUserId
+      ? formatTrustedRateLimitPrincipal(rateLimitPrincipalUserId, isUserApiKey ? 'api_key' : 'session')
+      : null);
+    if (subRequestAdmission === 'unavailable') {
+      const response = new Response(JSON.stringify({ error: 'Rate-limit service temporarily unavailable' }), {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          ...RATE_LIMIT_DEGRADED_HEADERS,
+          ...corsHeaders,
+        },
+      });
+      emitRequest(503, 'rate_limit_degraded', null);
+      return response;
+    }
+    const isServerSubRequest = subRequestAdmission === 'admitted';
     // Google searches need their tighter upstream budget even after MCP admission.
-    if (internalMcpVerified && (pathname === '/api/aviation/v1/search-google-flights'
+    if (!isServerSubRequest && internalMcpVerified && (pathname === '/api/aviation/v1/search-google-flights'
       || pathname === '/api/aviation/v1/search-google-dates')) {
       const endpointRlResponse = await checkEndpointRateLimit(request, pathname, corsHeaders, {
         principalUserId: request.headers.get(TRUSTED_USER_ID_HEADER)!,
@@ -2038,6 +2180,7 @@ export function createDomainGateway(
     // already enforced 50/day + 60/min per userId in api/mcp.ts. A second
     // limiter here would create misleading double-counting and could 429
     // legitimate Pro tool fetches that pass the upstream cap.
+    //
     if (!internalMcpVerified) {
       // These local provider lookups use the sidecar cache without Upstash.
       // Keep these exceptions exact-path; cloud requests retain the provider cap.
@@ -2046,7 +2189,7 @@ export function createDomainGateway(
           || pathname === '/api/military/v1/get-wingbits-live-flight'
           || pathname === '/api/imagery/v1/search-imagery'
           || pathname === '/api/webcam/v1/get-webcam-image');
-      const endpointRlResponse = isSidecarProviderLookup ? null : rateLimitPrincipalUserId
+      const endpointRlResponse = isServerSubRequest || isSidecarProviderLookup ? null : rateLimitPrincipalUserId
         ? await checkEndpointRateLimit(request, pathname, corsHeaders, {
             principalUserId: rateLimitPrincipalUserId,
             principalScope: isUserApiKey ? 'api_key' : 'session',
@@ -2198,7 +2341,7 @@ export function createDomainGateway(
         }
       }
 
-      if (!governedByApiKeyLayer && !hasEndpointRatePolicy(pathname)) {
+      if (!isServerSubRequest && !governedByApiKeyLayer && !hasEndpointRatePolicy(pathname)) {
         // WORLDMONITOR-12A: scope the bucket to the credential, not just the
         // user. An API key and a browser session resolve to the same Clerk id,
         // so without this a customer's own scraper drains the 600/min budget
@@ -2226,6 +2369,21 @@ export function createDomainGateway(
       emitRequest(400, 'malformed_request', null);
       return pendingPostToGetCompatError;
     }
+
+    // Held from reservation until the outcome is known. reserveDirectLlmQuota
+    // charges the caller's daily allowance up front (INCR before the handler
+    // runs); every path below that ends without serving an answer releases
+    // it through this handle instead of leaving the slot spent (#5147, and
+    // the same defect api/chat-analyst.ts fixed for its own reservation in
+    // #7217). rollback is idempotent, so calling it from more than one exit
+    // path is safe.
+    let directLlmRollback: (() => Promise<void>) | null = null;
+    const releaseDirectLlmReservation = async (): Promise<void> => {
+      const rollback = directLlmRollback;
+      directLlmRollback = null;
+      pendingDirectLlmReservations.delete(originalRequest);
+      if (rollback) await rollback();
+    };
 
     if (requiresDirectLlmQuota && !isEnterpriseAuth) {
       // The Docker principal is deliberately derived from nginx's trusted
@@ -2280,6 +2438,8 @@ export function createDomainGateway(
           );
           return response;
         }
+        directLlmRollback = reservation.rollback;
+        pendingDirectLlmReservations.set(originalRequest, reservation.rollback);
       }
     }
 
@@ -2295,17 +2455,24 @@ export function createDomainGateway(
         idempotencyKey: request.headers.get(IDEMPOTENCY_HEADER) ?? '',
         corsHeaders,
       });
+      // The peek above ran before the reservation, so these short-circuits
+      // only fire when a concurrent request for the same key completed in
+      // between. None of them executes the handler; give the slot back.
       switch (idempotency.kind) {
         case 'invalid':
+          await releaseDirectLlmReservation();
           emitRequest(400, 'idempotency_invalid', null);
           return idempotency.response;
         case 'replay':
+          await releaseDirectLlmReservation();
           emitRequest(idempotency.response.status, 'idempotent_replay', null);
           return idempotency.response;
         case 'conflict':
+          await releaseDirectLlmReservation();
           emitRequest(409, 'idempotency_conflict', null);
           return idempotency.response;
         case 'mismatch':
+          await releaseDirectLlmReservation();
           emitRequest(422, 'idempotency_mismatch', null);
           return idempotency.response;
         // 'disabled' (fail-open) and 'proceed' fall through to execution.
@@ -2318,7 +2485,18 @@ export function createDomainGateway(
     // without leaf handlers having to thread a usage hook through every call.
     let response: Response;
     const handlerCall = matchedHandler;
-    const requestForHandler = request;
+    // Handlers that re-dispatch sub-requests must charge the caller's own
+    // budget; the identity resolved above is the only trustworthy source for
+    // it, since raw credential headers are unvalidated at that point. Absent
+    // a resolved principal the marker stays unset and handlers fall back to
+    // the caller's IP, matching this gateway's own attribution.
+    const requestForHandler = rateLimitPrincipalUserId
+      ? withTrustedRateLimitPrincipal(
+          request,
+          rateLimitPrincipalUserId,
+          isUserApiKey ? 'api_key' : 'session',
+        )
+      : request;
     try {
       response = await runWithUsageScope(
         {
@@ -2338,19 +2516,35 @@ export function createDomainGateway(
       });
     }
 
-    // Merge CORS + handler side-channel headers into response
+    // Merge CORS + handler side-channel headers into response.
+    // Every side channel below is keyed by the Request object the handler
+    // wrote it on, which is requestForHandler: a stamped principal makes it
+    // a clone, so draining the pre-stamp request would silently drop every
+    // header, retryable marker and status override set by an authenticated
+    // caller's handler.
     const mergedHeaders = new Headers(response.headers);
     for (const [key, value] of Object.entries(corsHeaders)) {
       mergedHeaders.set(key, value);
     }
-    const extraHeaders = drainResponseHeaders(request);
+    const extraHeaders = drainResponseHeaders(requestForHandler);
     if (extraHeaders) {
       for (const [key, value] of Object.entries(extraHeaders)) {
         mergedHeaders.set(key, value);
       }
     }
     appendDeprecationPolicyLink(mergedHeaders);
-    const retryableResponse = drainRetryableResponse(request);
+    const retryableResponse = drainRetryableResponse(requestForHandler);
+
+    // Release the direct-LLM reservation when the request was not served: the
+    // handler threw (500 above), returned any 4xx/5xx, reported a retryable
+    // error inside a 200 envelope, or degraded to an empty LLM result and
+    // said so via markUnservedLlmResponse. A delivered answer, cached or
+    // partial, stays charged. Drained unconditionally so a marker set on a
+    // request that carried no reservation cannot leak into a later decision.
+    const unservedLlmResponse = drainUnservedLlmResponse(requestForHandler);
+    if (directLlmRollback && (response.status >= 400 || retryableResponse || unservedLlmResponse)) {
+      await releaseDirectLlmReservation();
+    }
     attachRequiredBboxDiagnosticHeaders(mergedHeaders, pathname, requiredBboxDiagnostic);
 
     // Handler side-channel status override (setSuccessStatusOverride): applied
@@ -2359,7 +2553,7 @@ export function createDomainGateway(
     // thrown ApiError statuses always win. GET success flows are excluded:
     // the ETag/304 + CDN-cache path below assumes 200. Always drained so a
     // set-but-unapplied override can't leak state.
-    const statusOverride = drainSuccessStatusOverride(request);
+    const statusOverride = drainSuccessStatusOverride(requestForHandler);
     const finalStatus =
       statusOverride !== undefined && request.method === 'POST' && response.status === 200
         ? statusOverride
@@ -2473,6 +2667,8 @@ export function createDomainGateway(
           }
         }
         if (!projection.ok) {
+          // The handler completed its work. A caller-controlled projection
+          // failure must not refund it and bypass the daily provider-spend cap.
           const errorBody = JSON.stringify(projection.envelope);
           emitRequest(400, 'malformed_request', null, errorBody.length);
           maybeAttachDevHealthHeader(mergedHeaders);
@@ -2569,7 +2765,20 @@ export function createDomainGateway(
   }
 
   return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
-    const response = await dispatch(originalRequest, ctx);
+    let response: Response;
+    try {
+      response = await dispatch(originalRequest, ctx);
+    } catch (err) {
+      // dispatch() threw after charging a direct-LLM reservation and before
+      // producing a response: nothing was served, so the slot goes back.
+      const rollback = pendingDirectLlmReservations.get(originalRequest);
+      if (rollback) {
+        pendingDirectLlmReservations.delete(originalRequest);
+        await rollback();
+      }
+      throw err;
+    }
+    pendingDirectLlmReservations.delete(originalRequest);
     return originalRequest.method === 'HEAD' ? toHeadResponse(response) : response;
   };
 }

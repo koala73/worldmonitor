@@ -1,4 +1,5 @@
-import jmespath from 'jmespath';
+import { searchBoundedJmespath } from './bounded-jmespath';
+import { stringifyWithinBudget } from './bounded-json';
 
 // Universal REST response projection — the gateway applies an optional
 // `?jmespath=<expr>` query parameter to any JSON GET response, mirroring the
@@ -90,7 +91,7 @@ export function projectJsonResponse(bodyStr: string, expr: string): ProjectJsonR
 
   let projected: unknown;
   try {
-    projected = jmespath.search(value, expr);
+    projected = searchBoundedJmespath(value, expr);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return {
@@ -102,10 +103,18 @@ export function projectJsonResponse(bodyStr: string, expr: string): ProjectJsonR
     };
   }
 
-  const text = JSON.stringify(projected);
-  // `jmespath.search` returns `undefined` when a path misses; JSON.stringify of
-  // that is the JS value `undefined`, not a document — coerce to `null` so the
-  // wire payload is always valid JSON.
-  const body = text === undefined ? 'null' : text;
-  return enforceRestProjectionOutputLimit(body, value);
+  // Size-check before serializing: a projection can share sub-objects, so its
+  // serialized form can be far larger than the value graph. A missed path
+  // (`undefined`) serializes as `null` so the payload is always valid JSON.
+  const bounded = stringifyWithinBudget(projected, REST_JMESPATH_MAX_OUTPUT_BYTES);
+  if (!bounded.ok) {
+    return {
+      ok: false,
+      envelope: {
+        _jmespath_error: `projection_too_large: ${bounded.minBytes} > ${REST_JMESPATH_MAX_OUTPUT_BYTES}`,
+        original_keys: originalKeys(value),
+      },
+    };
+  }
+  return enforceRestProjectionOutputLimit(bounded.text, value);
 }

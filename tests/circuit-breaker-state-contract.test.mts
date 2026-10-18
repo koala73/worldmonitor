@@ -96,6 +96,71 @@ test('concurrent callers wait for the same recovery probe', async () => {
   assert.equal(extraCalls, 0, 'a caller arriving during a recovery probe must not bypass half-open state');
 });
 
+test('two distinct keyed queries never share cache entries (#8354)', async () => {
+  clearAllCircuitBreakers();
+  const breaker = createCircuitBreaker<{ tag: string }>({
+    name: 'state-contract-distinct-keys',
+    maxFailures: 2,
+    cooldownMs: 20,
+    cacheTtlMs: 60_000,
+    persistCache: false,
+  });
+
+  const first = await breaker.execute(async () => ({ tag: 'query-A' }), { tag: 'fallback' }, { cacheKey: 'A' });
+  assert.deepEqual(first, { tag: 'query-A' });
+
+  // A different query's cache key must miss, not read the first query's entry.
+  let fetched = 0;
+  const second = await breaker.execute(
+    async () => {
+      fetched += 1;
+      return { tag: 'query-B' };
+    },
+    { tag: 'fallback' },
+    { cacheKey: 'B' },
+  );
+  assert.deepEqual(second, { tag: 'query-B' });
+  assert.equal(fetched, 1, 'the second query must fetch its own payload');
+
+  // The first key still serves its own payload.
+  const replay = await breaker.execute(
+    async () => ({ tag: 'must-not-run' }),
+    { tag: 'fallback' },
+    { cacheKey: 'A' },
+  );
+  assert.deepEqual(replay, { tag: 'query-A' });
+});
+
+test('cooldown serves only the caller own cached query, never another key entry (#8354)', async () => {
+  clearAllCircuitBreakers();
+  const breaker = createCircuitBreaker<{ tag: string }>({
+    name: 'state-contract-cooldown-keyed',
+    maxFailures: 1,
+    cooldownMs: 60_000,
+    cacheTtlMs: 60_000,
+    persistCache: false,
+  });
+
+  breaker.recordSuccess({ tag: 'query-A' }, 'A');
+  breaker.recordFailure('open cooldown');
+
+  // Same key: its own stale payload.
+  const own = await breaker.execute(
+    async () => { throw new Error('must not run on cooldown'); },
+    { tag: 'fallback-A' },
+    { cacheKey: 'A' },
+  );
+  assert.deepEqual(own, { tag: 'query-A' });
+
+  // Different key with no entry: the default, not the other query's payload.
+  const other = await breaker.execute(
+    async () => { throw new Error('must not run on cooldown'); },
+    { tag: 'fallback-B' },
+    { cacheKey: 'B' },
+  );
+  assert.deepEqual(other, { tag: 'fallback-B' });
+});
+
 test('a caller for another cache key waits for recovery, then runs its own fetch', async () => {
   clearAllCircuitBreakers();
   const breaker = createCircuitBreaker<number>({

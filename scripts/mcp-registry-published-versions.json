@@ -20,6 +20,54 @@
     "1.21.0": {
       "tools": 75,
       "manifestSha256": "10721ab9326c8cbee651aa6da67034fbe67d8d38cee37628ec336f01345b46bb"
+    },
+    "1.22.0": {
+      "tools": 77,
+      "manifestSha256": "a8507b8a2c6664cb0b104fb35137af71796b65b2ca3d665ca8c0d5450b2a874e"
+    },
+    "1.23.0": {
+      "tools": 78,
+      "manifestSha256": "f8bdb5c1ba55aea079d021ec730d76a5ce69357f587a61336266eef044db6614"
+    },
+    "1.24.0": {
+      "tools": 82,
+      "manifestSha256": "b9a06f28e7d69febe5fd6c873436cf96693dcde70cadad5012404e049573caf2"
+    },
+    "1.25.0": {
+      "tools": 84,
+      "manifestSha256": "f854b68643af780122236fe4eb4ced596f3cd01c89f1b6bc2e4cd3f4db119514"
+    },
+    "1.26.0": {
+      "tools": 86,
+      "manifestSha256": "3320ade37e1db7803d15f4ee58a48b41c6bf292f694cd744ab14fe91a89c06d5"
+    },
+    "1.27.0": {
+      "tools": 87,
+      "manifestSha256": "cb7ed3fe6b228521451d10449f1bf97f356f8994c9c07bbf645fb9cf213cea6e"
+    },
+    "1.28.0": {
+      "tools": 88,
+      "manifestSha256": "c24c2315b0bf4010dbfaa824c81c88f9cf4cde2f4828729b8657d12133a41b14"
+    },
+    "1.29.0": {
+      "tools": 89,
+      "manifestSha256": "804a68696407a6f0eba82969316805da7930419634b1520143d16950173e422b"
+    },
+    "1.30.0": {
+      "tools": 89,
+      "manifestSha256": "7c6458fe9d49816bda47a388f8f3f8c5f7e704f42563779b2358747ceb6a5b7e"
+    },
+    "1.31.0": {
+      "tools": 90,
+      "manifestSha256": "11582cec757cf8faf64774644b15c19196ba524ff4fc70a26683aec58fea966e"
+    },
+    "1.32.0": {
+      "tools": 93,
+      "manifestSha256": "e3c991220dc386d7c0788c51edf4a84917c08ff83d186928129df309f53458c6"
+    },
+    "1.33.0": {
+      "tools": 94,
+      "manifestSha256": "68b45483faff1018deff9e60f48fc3281eefb2173aa8e92ed6d134e59af5cbae"
     }
   }
 }

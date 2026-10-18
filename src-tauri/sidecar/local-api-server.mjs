@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import http, { createServer } from 'node:http';
 import https from 'node:https';
-import { createHmac } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import dns from 'node:dns/promises';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
@@ -22,6 +22,8 @@ const DESKTOP_AUTH_SECRET_ENV = 'WM_DESKTOP_SHARED_SECRET';
 const DESKTOP_AUTH_TIMESTAMP_HEADER = 'X-WorldMonitor-Desktop-Timestamp';
 const DESKTOP_AUTH_SIGNATURE_HEADER = 'X-WorldMonitor-Desktop-Signature';
 const LOCAL_API_TRANSPORT_HEADER = 'x-worldmonitor-local-token';
+const MAX_REGISTRATION_BODY_BYTES = 16 * 1024;
+const MAX_REGISTRATION_EMAIL_LENGTH = 254;
 
 // Monkey-patch globalThis.fetch to force IPv4 for HTTPS requests.
 // Node.js built-in fetch (undici) tries IPv6 first via Happy Eyeballs.
@@ -67,6 +69,15 @@ function buildSafeResponse(statusCode, statusText, headers, bodyBuffer) {
   const status = Number.isInteger(statusCode) ? statusCode : 500;
   const body = (status === 204 || status === 205 || status === 304) ? null : bodyBuffer;
   return new Response(body, { status, statusText, headers });
+}
+
+// Constant-time token check. Only the length can differ in timing, and the
+// token length is not secret; the content is compared with timingSafeEqual.
+function tokenMatches(candidate, expected) {
+  if (typeof candidate !== 'string' || !candidate) return false;
+  const a = Buffer.from(candidate, 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 function canonicalizeDesktopAuthPayload(payload) {
@@ -121,6 +132,18 @@ function releaseUpstreamSlot() {
   } else {
     _activeUpstream--;
   }
+}
+
+// JSON literal safe to interpolate into an inline <script>: escapes the
+// characters that can close the element or start an HTML comment.
+function jsonForScript(value) {
+  return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
+function isYahooFinanceHost(hostname) {
+  // URL keeps a DNS-absolute trailing dot, which still names the same host.
+  const host = hostname.endsWith('.') ? hostname.slice(0, -1) : hostname;
+  return host === 'finance.yahoo.com' || host.endsWith('.finance.yahoo.com');
 }
 
 // Global Yahoo Finance rate gate — shared across ALL handler bundles.
@@ -228,7 +251,7 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
   const safety = allowPrivateNetwork
     ? { safe: true, resolvedAddresses: [url.hostname] }
     : await assertSafeSidecarFetchUrl(url);
-  if (url.hostname.includes('finance.yahoo.com')) await sidecarYahooGate();
+  if (isYahooFinanceHost(url.hostname)) await sidecarYahooGate();
   const holdsUpstreamSlot = !sidecarSelfFetchOrigins.has(url.origin);
   if (holdsUpstreamSlot) await acquireUpstreamSlot();
   try {
@@ -312,7 +335,7 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
 };
 
 const ALLOWED_ENV_KEYS = new Set([
-  'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'EXA_API_KEYS', 'BRAVE_API_KEYS', 'SERPAPI_API_KEYS', 'FRED_API_KEY', 'EIA_API_KEY',
+  'OPENROUTER_API_KEY', 'EXA_API_KEYS', 'BRAVE_API_KEYS', 'SERPAPI_API_KEYS', 'FRED_API_KEY', 'EIA_API_KEY',
   'CLOUDFLARE_API_TOKEN', 'ACLED_ACCESS_TOKEN', 'URLHAUS_AUTH_KEY',
   'OTX_API_KEY', 'ABUSEIPDB_API_KEY', 'WINGBITS_API_KEY', 'WS_RELAY_URL',
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
@@ -363,30 +386,63 @@ const BLOCKED_IPV4_RANGES = [
   return [baseInt, mask];
 });
 
-function ipv4FromMappedIPv6(ip) {
+// Expand a valid IPv6 literal (any spelling, brackets optional) into its eight
+// 16-bit groups. WHATWG URL parsing canonicalizes first, so an embedded dotted
+// quad and a `::` run both come back as plain hextets.
+function ipv6Hextets(ip) {
   const normalized = String(ip).replace(/^\[|\]$/g, '');
   if (isIP(normalized) !== 6) return null;
 
-  let canonical = normalized;
+  let canonical;
   try {
     canonical = new URL(`http://[${normalized}]/`).hostname.slice(1, -1);
   } catch {
     return null;
   }
 
-  const match = canonical.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
-  if (!match) return null;
+  const [head, tail = ''] = canonical.split('::');
+  const headGroups = head ? head.split(':') : [];
+  const tailGroups = tail ? tail.split(':') : [];
+  const fill = canonical.includes('::') ? 8 - headGroups.length - tailGroups.length : 0;
+  if (fill < 0 || headGroups.length + tailGroups.length + fill !== 8) return null;
+  const groups = [...headGroups, ...Array(fill).fill('0'), ...tailGroups]
+    .map((group) => Number.parseInt(group, 16));
+  return groups.some((group) => !Number.isInteger(group) || group < 0 || group > 0xffff) ? null : groups;
+}
 
-  const high = Number.parseInt(match[1], 16);
-  const low = Number.parseInt(match[2], 16);
-  return [high >> 8, high & 0xff, low >> 8, low & 0xff].join('.');
+// IPv6 forms that carry an IPv4 address and are routed by a translator or a
+// tunnel: block them by the embedded IPv4, not the IPv6 prefix. Mirrors
+// api/_notification-webhook-ssrf.ts embeddedIpv4FromIpv6.
+function ipv4EmbeddedInIPv6(ip) {
+  const groups = ipv6Hextets(ip);
+  if (!groups) return null;
+  const [g0, g1, g2, g3, g4, g5, g6, g7] = groups;
+  const dotted = (hi, lo) => [hi >> 8, hi & 0xff, lo >> 8, lo & 0xff].join('.');
+  const zeroPrefix = g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0;
+
+  if (zeroPrefix && g5 === 0xffff) return dotted(g6, g7);                        // ::ffff:0:0/96 IPv4-mapped
+  if (g0 === 0x0064 && g1 === 0xff9b && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0) {
+    return dotted(g6, g7);                                                        // 64:ff9b::/96 NAT64
+  }
+  if (g0 === 0x2002) return dotted(g1, g2);                                       // 2002::/16 6to4
+  if (zeroPrefix && g5 === 0) return dotted(g6, g7);                              // ::/96 IPv4-compatible
+  return null;
+}
+
+// Teredo (2001::/32) tunnels to an arbitrary IPv4 chosen by the client, so no
+// embedded-address rule can vet it; the whole 2001::/32 block is reserved.
+function isTeredoIPv6(ip) {
+  const groups = ipv6Hextets(ip);
+  return !!groups && groups[0] === 0x2001 && groups[1] === 0;
 }
 
 function isPrivateIP(ip) {
-  // IPv4-mapped IPv6 — WHATWG URL parsing canonicalizes mapped literals to
-  // hexadecimal (for example, ::ffff:127.0.0.1 -> ::ffff:7f00:1), so
-  // normalize every valid IPv6 spelling before extracting the v4 portion.
-  const addr = ipv4FromMappedIPv6(ip) || ip;
+  // IPv6 literals that embed an IPv4 (mapped, NAT64, 6to4, compatible) are
+  // judged by that IPv4. WHATWG URL parsing canonicalizes mapped literals to
+  // hexadecimal (::ffff:127.0.0.1 -> ::ffff:7f00:1), so every valid spelling
+  // is normalized before the v4 portion is extracted.
+  if (isTeredoIPv6(ip)) return true;
+  const addr = ipv4EmbeddedInIPv6(ip) || ip;
 
   // IPv6 loopback
   if (addr === '::1' || addr === '::') return true;
@@ -1112,17 +1168,6 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
 
   try {
     switch (key) {
-    case 'GROQ_API_KEY': {
-      const response = await fetchWithTimeout('https://api.groq.com/openai/v1/models', {
-        headers: { Authorization: `Bearer ${value}`, 'User-Agent': CHROME_UA },
-      });
-      const text = await response.text();
-      if (isCloudflareChallenge403(response, text)) return ok('Groq key stored (Cloudflare blocked verification)');
-      if (isAuthFailure(response.status, text)) return fail('Groq rejected this key');
-      if (!response.ok) return fail(`Groq probe failed (${response.status})`);
-      return ok('Groq key verified');
-    }
-
     case 'OPENROUTER_API_KEY': {
       const response = await fetchWithTimeout('https://openrouter.ai/api/v1/models', {
         headers: { Authorization: `Bearer ${value}`, 'User-Agent': CHROME_UA },
@@ -1444,75 +1489,27 @@ async function dispatch(requestUrl, req, routes, context) {
     return handleLocalServiceStatus(context);
   }
 
-  // HLS proxy — exempt from auth because <video src="..."> cannot carry
-  // custom headers.  Proxies HLS manifests and segments from allowlisted CDN
-  // hosts, adding the required Referer header that browsers cannot set.
-  // Desktop-only (sidecar); web uses YouTube fallback.
-  if (requestUrl.pathname === '/api/hls-proxy') {
-    const ALLOWED_HLS_HOSTS = new Set(['cdn-ca2-na.lncnetworks.host']);
-    const upstreamRaw = requestUrl.searchParams.get('url');
-    if (!upstreamRaw) return new Response('Missing url param', { status: 400, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } });
-    let upstream;
-    try { upstream = new URL(upstreamRaw); } catch { return new Response('Invalid url', { status: 400, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } }); }
-    if (upstream.protocol !== 'https:' || !ALLOWED_HLS_HOSTS.has(upstream.hostname)) {
-      return new Response('Host not allowed', { status: 403, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } });
-    }
-    try {
-      const hlsResp = await new Promise((resolve, reject) => {
-        const reqOpts = {
-          hostname: upstream.hostname,
-          port: 443,
-          path: upstream.pathname + upstream.search,
-          method: 'GET',
-          headers: { 'Referer': 'https://livenewschat.eu/', 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
-          family: 4,
-        };
-        const r = https.request(reqOpts, (res) => {
-          const chunks = [];
-          res.on('data', c => chunks.push(c));
-          res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
-        });
-        r.on('error', reject);
-        r.setTimeout(10000, () => r.destroy(new Error('HLS upstream timeout')));
-        r.end();
-      });
-      if (hlsResp.status < 200 || hlsResp.status >= 300) {
-        return new Response(`Upstream ${hlsResp.status}`, { status: hlsResp.status, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } });
-      }
-      const ct = hlsResp.headers['content-type'] || '';
-      const isManifest = upstreamRaw.endsWith('.m3u8') || ct.includes('mpegurl') || ct.includes('x-mpegurl');
-      if (isManifest) {
-        const basePath = upstream.pathname.substring(0, upstream.pathname.lastIndexOf('/') + 1);
-        const baseOrigin = upstream.origin;
-        let manifest = hlsResp.body.toString('utf-8');
-        manifest = manifest.replace(/^(?!#)(\S+)/gm, (match) => {
-          const full = match.startsWith('http') ? match : `${baseOrigin}${basePath}${match}`;
-          return `/api/hls-proxy?url=${encodeURIComponent(full)}`;
-        });
-        manifest = manifest.replace(/URI="([^"]+)"/g, (_m, uri) => {
-          const full = uri.startsWith('http') ? uri : `${baseOrigin}${basePath}${uri}`;
-          return `URI="/api/hls-proxy?url=${encodeURIComponent(full)}"`;
-        });
-        return new Response(manifest, { status: 200, headers: { 'content-type': 'application/vnd.apple.mpegurl', 'cache-control': 'no-cache', ...makeCorsHeaders(req) } });
-      }
-      return new Response(hlsResp.body, { status: 200, headers: { 'content-type': ct || 'application/octet-stream', 'cache-control': 'no-cache', ...makeCorsHeaders(req) } });
-    } catch (e) {
-      context.logger.warn('[hls-proxy] error:', e.message);
-      return new Response('Proxy error', { status: 502, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } });
-    }
-  }
-
   // YouTube embed bridge — exempt from auth because iframe src cannot carry
   // Authorization headers.  Serves a minimal HTML page that loads the YouTube
   // IFrame Player API from a localhost origin (which YouTube accepts, unlike
   // tauri://localhost).  No sensitive data is exposed.
   if (requestUrl.pathname === '/api/youtube-embed') {
+    // Exactly one of videoId (that video) or channel (whatever the channel has live right now).
     const videoId = requestUrl.searchParams.get('videoId');
-    if (!videoId || !/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
+    const channel = requestUrl.searchParams.get('channel');
+    if ((videoId === null) === (channel === null)) {
+      return new Response('Pass exactly one of videoId or channel', { status: 400, headers: { 'content-type': 'text/plain' } });
+    }
+    if (videoId !== null && !/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
       return new Response('Invalid videoId', { status: 400, headers: { 'content-type': 'text/plain' } });
+    }
+    if (channel !== null && !/^UC[A-Za-z0-9_-]{22}$/.test(channel)) {
+      return new Response('Invalid channel', { status: 400, headers: { 'content-type': 'text/plain' } });
     }
     const autoplay = requestUrl.searchParams.get('autoplay') === '0' ? '0' : '1';
     const mute = requestUrl.searchParams.get('mute') === '0' ? '0' : '1';
+    // The caller's presentation decides the chrome; a tile that draws its own asks for none.
+    const controls = requestUrl.searchParams.get('controls') === '0' ? '0' : '1';
     const vq = ['small','medium','large','hd720','hd1080'].includes(requestUrl.searchParams.get('vq') || '') ? requestUrl.searchParams.get('vq') : '';
     const origin = `http://localhost:${context.port}`;
     // parentOrigin is the actual parent window origin (tauri://localhost, asset://localhost, etc.)
@@ -1522,13 +1519,15 @@ async function dispatch(requestUrl, req, routes, context) {
     const isAllowedParentOrigin = /^(tauri|asset):\/\/localhost$/.test(rawParentOrigin)
       || /^https?:\/\/localhost(:\d{1,5})?$/.test(rawParentOrigin)
       || /^https?:\/\/(?:[\w-]+\.)?tauri\.localhost(:\d{1,5})?$/.test(rawParentOrigin);
-    const safeVideoId = JSON.stringify(String(videoId));
-    const safeOrigin = JSON.stringify(origin);
-    const safeParentOrigin = JSON.stringify(isAllowedParentOrigin ? rawParentOrigin : null).replace(/</g, '\\u003c');
+    // A channel embeds as videoId 'live_stream' with a channel player var.
+    const safeVideoId = jsonForScript(videoId ?? 'live_stream');
+    const channelPlayerVar = channel ? `channel:${jsonForScript(channel)},` : '';
+    const safeOrigin = jsonForScript(origin);
+    const safeParentOrigin = jsonForScript(isAllowedParentOrigin ? rawParentOrigin : null);
     const bridgePostMessageScript = isAllowedParentOrigin
       ? `function postToParent(message){window.parent.postMessage(message,${safeParentOrigin})}`
       : 'function postToParent(){}';
-    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}#play-overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(0,0,0,0.15)}#play-overlay svg{width:72px;height:72px;opacity:0.9;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.5))}#play-overlay.hidden{display:none}</style></head><body><div id="player"></div><div id="play-overlay" class="hidden"><svg viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="#fff"/></svg></div><script>${bridgePostMessageScript}function tryStorageAccess(){if(document.requestStorageAccess){document.requestStorageAccess().catch(function(){})}}tryStorageAccess();var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncId,retryTimers=[];var obs=new MutationObserver(function(muts){for(var i=0;i<muts.length;i++){var nodes=muts[i].addedNodes;for(var j=0;j<nodes.length;j++){if(nodes[j].tagName==='IFRAME'){var a=nodes[j].getAttribute('allow')||'';if(a.indexOf('autoplay')===-1){nodes[j].setAttribute('allow','autoplay; encrypted-media; picture-in-picture; storage-access'+(a?'; '+a:''));console.log('[yt-embed] patched iframe allow=autoplay+storage-access')}obs.disconnect();return}}}});obs.observe(document.getElementById('player'),{childList:true,subtree:true});function hideOverlay(){overlay.classList.add('hidden')}function readMuted(){if(!player)return null;if(typeof player.isMuted==='function')return player.isMuted();if(typeof player.getVolume==='function')return player.getVolume()===0;return null}function stopMuteSync(){if(muteSyncId){clearInterval(muteSyncId);muteSyncId=null}}function startMuteSync(){if(muteSyncId)return;var last=readMuted();if(last!==null)postToParent({type:'yt-mute-state',muted:last});muteSyncId=setInterval(function(){var m=readMuted();if(m!==null&&m!==last){last=m;postToParent({type:'yt-mute-state',muted:m})}},500)}function tryAutoplay(){if(!player||!player.playVideo)return;try{player.mute();player.playVideo();console.log('[yt-embed] tryAutoplay: mute+play')}catch(e){}}function onYouTubeIframeAPIReady(){player=new YT.Player('player',{videoId:${safeVideoId},host:'https://www.youtube.com',playerVars:{autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:${safeOrigin},widget_referrer:${safeOrigin}},events:{onReady:function(){console.log('[yt-embed] onReady');postToParent({type:'yt-ready'});${vq ? `if(player.setPlaybackQuality)player.setPlaybackQuality(${JSON.stringify(vq)});` : ''}if(${autoplay}===1){tryAutoplay();retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},500));retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},1500));retryTimers.push(setTimeout(function(){if(!started){console.log('[yt-embed] autoplay failed after retries');postToParent({type:'yt-autoplay-failed'})}},2500))}startMuteSync()},onError:function(e){console.log('[yt-embed] error code='+e.data);stopMuteSync();postToParent({type:'yt-error',code:e.data})},onStateChange:function(e){postToParent({type:'yt-state',state:e.data});if(e.data===1||e.data===3){hideOverlay();started=true;retryTimers.forEach(clearTimeout);retryTimers=[]}}}})}setTimeout(function(){if(!started)overlay.classList.remove('hidden')},4000);window.addEventListener('message',function(e){if(!${isAllowedParentOrigin}||e.origin!==${safeParentOrigin}||e.source!==window.parent)return;if(!player||!player.getPlayerState)return;var m=e.data;if(!m||!m.type)return;switch(m.type){case'play':player.playVideo();break;case'pause':player.pauseVideo();break;case'mute':player.mute();break;case'unmute':player.unMute();break;case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break}});window.addEventListener('beforeunload',function(){stopMuteSync();obs.disconnect();retryTimers.forEach(clearTimeout)})<\/script></body></html>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}#play-overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(0,0,0,0.15)}#play-overlay svg{width:72px;height:72px;opacity:0.9;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.5))}#play-overlay.hidden{display:none}</style></head><body><div id="player"></div><div id="play-overlay" class="hidden"><svg viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="#fff"/></svg></div><script>${bridgePostMessageScript}function tryStorageAccess(){if(document.requestStorageAccess){document.requestStorageAccess().catch(function(){})}}tryStorageAccess();var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncId,retryTimers=[];var obs=new MutationObserver(function(muts){for(var i=0;i<muts.length;i++){var nodes=muts[i].addedNodes;for(var j=0;j<nodes.length;j++){if(nodes[j].tagName==='IFRAME'){var a=nodes[j].getAttribute('allow')||'';if(a.indexOf('autoplay')===-1){nodes[j].setAttribute('allow','autoplay; encrypted-media; picture-in-picture; storage-access'+(a?'; '+a:''));console.log('[yt-embed] patched iframe allow=autoplay+storage-access')}obs.disconnect();return}}}});obs.observe(document.getElementById('player'),{childList:true,subtree:true});function hideOverlay(){overlay.classList.add('hidden')}function readMuted(){if(!player)return null;if(typeof player.isMuted==='function')return player.isMuted();if(typeof player.getVolume==='function')return player.getVolume()===0;return null}function stopMuteSync(){if(muteSyncId){clearInterval(muteSyncId);muteSyncId=null}}function startMuteSync(){if(muteSyncId)return;var last=readMuted();if(last!==null)postToParent({type:'yt-mute-state',muted:last});muteSyncId=setInterval(function(){var m=readMuted();if(m!==null&&m!==last){last=m;postToParent({type:'yt-mute-state',muted:m})}},500)}function tryAutoplay(){if(!player||!player.playVideo)return;try{player.mute();player.playVideo();console.log('[yt-embed] tryAutoplay: mute+play')}catch(e){}}function postVideoData(){var d={},duration=null,state=null;try{d=player.getVideoData()||{}}catch(e){}try{duration=player.getDuration()}catch(e){}try{state=player.getPlayerState()}catch(e){}postToParent({type:'yt-video-data',videoId:d.video_id||'',isLive:typeof d.isLive==='boolean'?d.isLive:null,title:d.title||'',author:d.author||'',duration:typeof duration==='number'?duration:null,state:typeof state==='number'?state:null})}function onYouTubeIframeAPIReady(){player=new YT.Player('player',{videoId:${safeVideoId},host:'https://www.youtube.com',playerVars:{${channelPlayerVar}autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:${controls},modestbranding:1,enablejsapi:1,origin:${safeOrigin},widget_referrer:${safeOrigin}},events:{onReady:function(){console.log('[yt-embed] onReady');postToParent({type:'yt-ready'});${vq ? `if(player.setPlaybackQuality)player.setPlaybackQuality(${jsonForScript(vq)});` : ''}if(${autoplay}===1){tryAutoplay();retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},500));retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},1500));retryTimers.push(setTimeout(function(){if(!started){console.log('[yt-embed] autoplay failed after retries');postToParent({type:'yt-autoplay-failed'})}},2500))}startMuteSync()},onError:function(e){console.log('[yt-embed] error code='+e.data);stopMuteSync();postToParent({type:'yt-error',code:e.data})},onStateChange:function(e){postToParent({type:'yt-state',state:e.data});if(e.data===1||e.data===3){hideOverlay();started=true;retryTimers.forEach(clearTimeout);retryTimers=[]}}}})}setTimeout(function(){if(!started)overlay.classList.remove('hidden')},4000);window.addEventListener('message',function(e){if(!${isAllowedParentOrigin}||e.origin!==${safeParentOrigin}||e.source!==window.parent)return;if(!player||!player.getPlayerState)return;var m=e.data;if(!m||!m.type)return;switch(m.type){case'play':player.playVideo();break;case'pause':player.pauseVideo();break;case'mute':player.mute();break;case'unmute':player.unMute();break;case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break;case'probe':postVideoData();break}});window.addEventListener('beforeunload',function(){stopMuteSync();obs.disconnect();retryTimers.forEach(clearTimeout)})<\/script></body></html>`;
     return new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'permissions-policy': 'autoplay=*, encrypted-media=*, storage-access=(self "https://www.youtube.com")', ...makeCorsHeaders(req) } });
   }
 
@@ -1553,8 +1552,8 @@ async function dispatch(requestUrl, req, routes, context) {
   }
   const authHeader = req.headers.authorization || '';
   const transportToken = req.headers[LOCAL_API_TRANSPORT_HEADER] || '';
-  const hasTransportAuth = transportToken === expectedToken;
-  const hasLegacyAuth = authHeader === `Bearer ${expectedToken}`;
+  const hasTransportAuth = tokenMatches(transportToken, expectedToken);
+  const hasLegacyAuth = tokenMatches(authHeader, `Bearer ${expectedToken}`);
   if (!hasTransportAuth && !hasLegacyAuth) {
     context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
     return json({ error: 'Unauthorized' }, 401);
@@ -1639,14 +1638,35 @@ async function dispatch(requestUrl, req, routes, context) {
     }
     try {
       const body = await new Promise((resolve, reject) => {
+        if (Number(req.headers['content-length']) > MAX_REGISTRATION_BODY_BYTES) {
+          req.resume();
+          resolve(null);
+          return;
+        }
         const chunks = [];
-        req.on('data', c => chunks.push(c));
+        let bytes = 0;
+        const onData = (chunk) => {
+          bytes += chunk.length;
+          if (bytes > MAX_REGISTRATION_BODY_BYTES) {
+            chunks.length = 0;
+            req.off('data', onData);
+            req.resume();
+            resolve(null);
+            return;
+          }
+          chunks.push(chunk);
+        };
+        req.on('data', onData);
         req.on('end', () => resolve(Buffer.concat(chunks).toString()));
         req.on('error', reject);
       });
+      if (body === null) {
+        return json({ error: 'Request body too large' }, 413, { Connection: 'close' });
+      }
       const parsed = JSON.parse(body);
-      const email = parsed.email;
-      if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      const email = parsed?.email;
+      if (typeof email !== 'string' || email.length > MAX_REGISTRATION_EMAIL_LENGTH
+        || !/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(email)) {
         return json({ error: 'Invalid email address' }, 400);
       }
       const sharedSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
@@ -1693,13 +1713,13 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  // YouTube live detection — requires residential proxy (Railway relay).
-  // Direct fetch from sidecar fails (YouTube blocks datacenter IPs).
-  // Always proxy to cloud, bypassing the cloudFallback flag.
+  // YouTube video naming for channel management (oEmbed). The cloud edge handler owns the
+  // rate limit and the retired channel-detection answer, so always proxy to cloud,
+  // bypassing the cloudFallback flag.
   if (requestUrl.pathname === '/api/youtube/live') {
-    const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'youtube-live needs relay');
+    const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'youtube video names come from the cloud');
     if (cloudResponse) return cloudResponse;
-    return json({ error: 'YouTube live detection unavailable' }, 503);
+    return json({ error: 'YouTube video lookup unavailable' }, 503);
   }
 
   // RSS proxy — fetch public feeds with SSRF protection
@@ -1903,6 +1923,8 @@ async function dispatch(requestUrl, req, routes, context) {
 export const __testing__ = {
   isCloudPreferred,
   canCompress,
+  jsonForScript,
+  isYahooFinanceHost,
   setUpstreamIdleTimeoutMs(ms) {
     _upstreamIdleTimeoutMs = ms;
   },

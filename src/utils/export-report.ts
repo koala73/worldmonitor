@@ -22,6 +22,7 @@
 
 import type { ClusteredEvent, NewsItem } from '@/types';
 import type { ExportData } from './export';
+import { vesselTypeLabel } from './vessel-type-label';
 
 // Row caps keep a print job from ballooning to hundreds of pages. JSON export
 // remains the full-fidelity path; the report says so in its footer.
@@ -187,7 +188,7 @@ function intelligenceSections(intel: ExportData['intelligence']): string {
   const vessels = intel.military?.vessels ?? [];
   parts.push(section('Military vessels', ['Name', 'MMSI', 'Type', 'Country'],
     vessels.slice(0, MAX_GENERIC_ROWS).map((v) => [
-      textOrDash(v.name), textOrDash(v.mmsi), textOrDash(v.vesselType),
+      textOrDash(v.name), textOrDash(v.mmsi), textOrDash(vesselTypeLabel(v)),
       textOrDash(v.operatorCountry),
     ])));
 
