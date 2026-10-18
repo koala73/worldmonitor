@@ -168,9 +168,9 @@ test('a flagged country answers available:false without touching Redis or Yahoo'
   assert.deepEqual(requested, [], 'a known-dead symbol must not spend a Redis read or a Yahoo request');
 });
 
-test('an unknown country code is still rejected ahead of the flag check', async () => {
+test('a country with no tracked index is still rejected ahead of the flag check', async () => {
   const { getCountryStockIndex } = await import('../server/worldmonitor/market/v1/get-country-stock-index.ts');
-  const result = await getCountryStockIndex({} as never, { countryCode: 'XX' } as never);
+  const result = await getCountryStockIndex({} as never, { countryCode: 'BV' } as never);
   assert.equal(result.available, false);
-  assert.equal(result.code, 'XX');
+  assert.equal(result.code, 'BV');
 });

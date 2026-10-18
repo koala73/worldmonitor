@@ -22,13 +22,16 @@
  * bug this closes.
  */
 
-export const INTERNAL_SOURCE_TAG_PREFIXES = ['welcome', 'seo'] as const;
+// `agent` carries inbound agent links (`?ref=agent-claude`), recorded as the
+// sign-up source by shared/agent-client-source.js. Reserving it keeps an agent
+// link from ever being forwarded to Dodo as an affiliate code.
+export const INTERNAL_SOURCE_TAG_PREFIXES = ['welcome', 'seo', 'agent'] as const;
 
 /**
  * True when a referral value is one of our internal source tags rather than
  * a sharer's affiliate code.
  *
- * Matches the bare namespace (`welcome`, `seo`) and anything under it
+ * Matches the bare namespace (`welcome`, `seo`, `agent`) and anything under it
  * (`welcome-hero`, `seo-country`), case-insensitively. It deliberately does
  * NOT match a code that merely contains the word — `welcomehero` and
  * `partner-welcome-x` stay valid affiliate codes, because the reserved thing

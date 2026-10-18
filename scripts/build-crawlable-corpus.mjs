@@ -15,7 +15,13 @@ import {
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { writeResearchSection } from './build-research-reports.mjs';
+import { UMAMI_SCRIPT_TAG, writeResearchSection } from './build-research-reports.mjs';
+import {
+  COUNTRY_CENTROIDS_PATH,
+  TENSION_PAIRS_PATH,
+  renderCountryRelatedLinks,
+  selectRelatedCountries,
+} from './country-related-links.mjs';
 import {
   COMPARISONS_CONTENT_VERSION,
   COMPARISON_PAGES,
@@ -51,7 +57,7 @@ import {
   INDEXABLE_ROBOTS_CONTENT,
 } from '../shared/seo-robots.mjs';
 import { CII_COUNTRY_CODES } from '../shared/cii-weights.ts';
-import { getSovereignStatus } from './shared/rankable-universe.mjs';
+import { RANKABLE_UNIVERSE_SIZE, getSovereignStatus } from './shared/rankable-universe.mjs';
 // Single source with the browser copy: crawlable-live-tools.mjs is what gets
 // written verbatim to public/tools/live-tools.js, and importing it here is
 // side-effect-free in Node (its only module-scope statement is a
@@ -166,6 +172,10 @@ export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
 export const COMPARISON_PAGE_LASTMOD_PATHS = Object.freeze([
   'scripts/build-comparison-pages.mjs',
   'scripts/comparison-page-narratives.mjs',
+  'scripts/comparison-shortlist.mjs',
+  'shared/product-facts.generated.json',
+  'shared/product-catalog.generated.json',
+  'public/.well-known/mcp/server-card.json',
   SOURCE_ATTRIBUTION_MANIFEST_PATH,
   CHOKEPOINT_REGISTRY_PATH,
   RELATED_READING_PATH,
@@ -174,7 +184,7 @@ export const COMPARISON_PAGE_LASTMOD_PATHS = Object.freeze([
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-09-01';
-export const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-13';
+export const COUNTRY_PAGE_CONTENT_VERSION = '2026-10-16';
 export const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-12';
 // Exported so the #7533 guard test can recompute every family clock without
 // re-implementing the version constants themselves.
@@ -380,6 +390,49 @@ function readText(rootDir, relativePath) {
 
 function readJson(rootDir, relativePath) {
   return JSON.parse(readText(rootDir, relativePath));
+}
+
+/**
+ * The one public wording for resilience coverage: the ranked count is always
+ * stated against the universe it is drawn from, never on its own and never as
+ * the universe alone.
+ */
+export function resilienceCoveragePhrase({ ranked, universe }) {
+  return `structural resilience ranked for ${ranked} of ${universe} countries`;
+}
+
+/** Matches every statement written by resilienceCoveragePhrase, whatever its numbers. */
+export const RESILIENCE_COVERAGE_PATTERN = /structural resilience ranked for \d+ of \d+ countries/g;
+
+/**
+ * The single definition of resilience coverage. A snapshot lists every
+ * country in the rankable universe as either a ranked item or a greyed-out
+ * row, so ranked is the item count and universe is items plus greyed-out.
+ * The universe is cross-checked against the committed whitelist so a stale
+ * snapshot cannot publish the wrong total. The rankable universe (196) and the
+ * published ranking (170) are different facts and third-party coverage has
+ * conflated them, so public copy states both together.
+ */
+export function resilienceCoverageOf(snapshot) {
+  if (!Array.isArray(snapshot?.items) || snapshot.items.length === 0) {
+    throw new Error('the published resilience ranking snapshot must contain ranked items');
+  }
+  const ranked = snapshot.items.length;
+  const greyedOut = Array.isArray(snapshot.greyedOut) ? snapshot.greyedOut.length : 0;
+  const universe = ranked + greyedOut;
+  if (universe !== RANKABLE_UNIVERSE_SIZE) {
+    throw new Error(
+      `the published resilience snapshot covers ${universe} countries (${ranked} ranked + ${greyedOut} greyed out), `
+      + `but the rankable universe has ${RANKABLE_UNIVERSE_SIZE}`,
+    );
+  }
+  return { ranked, universe };
+}
+
+/** Coverage of the newest published resilience snapshot, with its capture date. */
+export function publishedRankedCountries(rootDir = DEFAULT_ROOT) {
+  const snapshot = readJson(rootDir, resolveLatestResilienceSnapshotPath(rootDir));
+  return { ...resilienceCoverageOf(snapshot), capturedAt: snapshot.capturedAt };
 }
 
 export function resolveLatestResilienceSnapshotPath(rootDir = DEFAULT_ROOT) {
@@ -1846,6 +1899,28 @@ export async function loadCorpusData({
     ...country,
     microstateTerritory: microstateTerritoryCodes.has(country.code),
   }));
+  // In-body related-country links, derived from the crisis registry, the GDELT
+  // tension pairs, bounding-box and centroid proximity and region. Only published country
+  // pages are candidates (scripts/country-related-links.mjs).
+  const relatedCountriesByCode = selectRelatedCountries({
+    countries,
+    bboxByCode: countryBboxByCode,
+    centroidByCode: readJson(rootDir, COUNTRY_CENTROIDS_PATH),
+    tensionPairs: readJson(rootDir, TENSION_PAIRS_PATH),
+    regionsByCode,
+    regionLabels: REGION_LABELS,
+  });
+  // Every page that states coverage reads this one pair. The country rows are
+  // built from the same snapshot, so their ranked rows must match it exactly,
+  // or the /countries/ table would list a different count than its copy.
+  const resilienceCoverage = resilienceCoverageOf(resilience);
+  const rankedRows = countries.filter((country) => country.rank != null).length;
+  if (rankedRows !== resilienceCoverage.ranked || countries.length !== resilienceCoverage.universe) {
+    throw new Error(
+      `the resilience country rows (${rankedRows} ranked of ${countries.length}) do not match the snapshot `
+      + `(${resilienceCoverage.ranked} of ${resilienceCoverage.universe})`,
+    );
+  }
   // Publish rules for the frozen developments (#7738, #7748), applied once
   // here so the page, its dataset download, its WebPage dateModified and the
   // coverage tripwire all read the same rows: a brief withheld for thin
@@ -1887,6 +1962,11 @@ export async function loadCorpusData({
     gitFileLastmod(rootDir, COUNTRY_REGIONS_PATH),
     gitFileLastmod(rootDir, MICROSTATE_TERRITORIES_PATH),
     gitFileLastmod(rootDir, RELATED_READING_PATH),
+    // Inputs of the related-country links (scripts/country-related-links.mjs).
+    gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH),
+    gitFileLastmod(rootDir, TENSION_PAIRS_PATH),
+    gitFileLastmod(rootDir, COUNTRY_CENTROIDS_PATH),
+    gitFileLastmod(rootDir, COUNTRY_BBOXES_PATH),
     COUNTRY_PAGE_CONTENT_VERSION,
   );
   const ciiCountriesLastmod = laterDate(
@@ -1986,6 +2066,8 @@ export async function loadCorpusData({
       liveToolsScript: LIVE_TOOLS_SCRIPT_PATH,
       countryBboxes: COUNTRY_BBOXES_PATH,
       crisisRegistry: CRISIS_REGISTRY_PATH,
+      tensionPairs: TENSION_PAIRS_PATH,
+      countryCentroids: COUNTRY_CENTROIDS_PATH,
       researchReports: RESEARCH_REPORTS_INDEX_PATH,
       useCases: 'scripts/build-use-cases.mjs',
       accuracy: ACCURACY_PAGE_SOURCE_PATH,
@@ -2015,10 +2097,12 @@ export async function loadCorpusData({
     sourceStats,
     sourceCatalog,
     resilience,
+    resilienceCoverage,
     ciiRanking,
     countries,
     countryBounds,
     countryBboxByCode,
+    relatedCountriesByCode,
     crises,
     chokepoints,
     chokepointObservation: {
@@ -2287,6 +2371,9 @@ function pageDocument({
       .card.domain:hover { border-color: var(--accent); text-decoration: none; }
       .related { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 0 20px; }
       .related a { display: inline-flex; align-items: center; min-height: 44px; }
+      .related-countries { list-style: none; padding: 0; margin: 12px 0 0; }
+      .related-countries li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+      .related-countries li:last-child { border-bottom: 0; }
       .source { margin-top: 34px; font-size: 13px; color: var(--muted); }
       table { border-collapse: collapse; width: 100%; margin-top: 16px; font-size: 14px; }
       .table-scroll { max-width: 100%; overflow-x: auto; }
@@ -2336,6 +2423,7 @@ function ciiMovementProperties(change24h, propertyName) {
 
 function renderCountryInstabilityIndexPage({
   ciiRanking,
+  resilienceCoverage,
   baseUrl,
   capturedAt,
   lastmod,
@@ -2399,7 +2487,7 @@ ${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeH
       </section>
       <h2>What the CII measures</h2>
       <p>CII combines a 40% structural baseline with 60% live event pressure. The event score weights conflict at 30%, unrest at 25%, information at 25%, and security at 20%. It also applies bounded boosts and conflict or advisory floors. Read the <a href="/docs/methodology/cii-risk-scores">CII ${escapeHtml(ciiRanking.methodologyVersion)} methodology</a> before using a score in an analysis.</p>
-      <p>CII measures short-term stress. The separate <a href="/countries/">Country Resilience Index</a> measures longer-term structural capacity across 196 countries. Do not combine the scores.</p>
+      <p>CII measures short-term stress. The separate <a href="/countries/">Country Resilience Index</a> measures longer-term structural capacity, with ${escapeHtml(resilienceCoveragePhrase(resilienceCoverage))}. Do not combine the scores.</p>
       <p>CII is a current-conditions score, not a forecast. Where World Monitor does forecast, the record and its methodology are published on the <a href="/accuracy/">forecast accuracy scorecard</a>.</p>
       <a class="cta" href="${escapeHtml(absoluteUrl(baseUrl, '/dashboard'))}">Open the live CII panel in World Monitor →</a>
       <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Source: World Monitor Country Instability Index snapshot, ${escapeHtml(prettyDate(capturedAt))}. Current results: <code>/api/intelligence/v1/get-risk-scores</code>.</p>`;
@@ -2471,12 +2559,12 @@ ${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeH
   return html;
 }
 
-function renderCountriesIndex({ countries, ciiRanking, baseUrl, capturedAt, lastmod, snapshotPath }) {
+function renderCountriesIndex({ countries, ciiRanking, resilienceCoverage, baseUrl, capturedAt, lastmod, snapshotPath }) {
   const path = '/countries/';
-  const description = `Browse World Monitor country risk pages with structural resilience across ${countries.length} countries and high-frequency instability scores for ${ciiRanking.entries.length} Tier-1 countries.`;
+  const description = `Browse World Monitor country risk pages: ${resilienceCoveragePhrase(resilienceCoverage)} and high-frequency instability scores for ${ciiRanking.entries.length} Tier-1 countries.`;
   const datasetId = `${absoluteUrl(baseUrl, path)}#dataset`;
   const rankedCountries = countries
-    .filter((country) => Number.isInteger(country.rank))
+    .filter((country) => country.rank != null)
     .sort((a, b) => a.rank - b.rank);
   const topRankedNames = rankedCountries.slice(0, 3).map((country) => country.name);
   const rankingYear = capturedAt.slice(0, 4);
@@ -3805,6 +3893,7 @@ export function renderCountryPage({
   country,
   relatedChokepoints = [],
   relatedReading = [],
+  relatedCountries = [],
   baseUrl,
   capturedAt,
   lastmod,
@@ -3908,6 +3997,7 @@ ${renderCountryDevelopments({ countryCode: country.code, countryName: country.na
         <div class="metric"><span>Confidence</span><strong>${country.lowConfidence ? 'Low' : 'Standard'}</strong></div>
       </section>${scoreDisclosure}
 ${analysis.html}
+${renderCountryRelatedLinks(country, relatedCountries, escapeHtml)}
 ${renderRelatedChokepoints(relatedChokepoints)}
 ${renderRelatedReading(relatedReading, escapeHtml)}
 ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
@@ -3915,7 +4005,8 @@ ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
       <p>The 0-100 index records the ${escapeHtml(prettyDate(capturedAt))} snapshot. See the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a> for dimensions, sources and confidence rules. Published revisions that affect ${escapeHtml(country.name)} are in the <a href="/docs/corrections">corrections log</a>.</p>
       <p class="snapshot-note">${escapeHtml(snapshotNote)}</p>
       <p>Use this dated reference with the live map for active alerts, conflict, market and energy signals. Neither score on this page is a forecast; where World Monitor does forecast, the graded record is on the <a href="/accuracy/">forecast accuracy scorecard</a>.</p>`}
-      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: World Monitor Country Resilience Index snapshot, ${escapeHtml(prettyDate(capturedAt))}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
+      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: World Monitor Country Resilience Index snapshot, ${escapeHtml(prettyDate(capturedAt))}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>
+      ${UMAMI_SCRIPT_TAG}`;
   const coreTitle = ciiEntry
     ? `${country.name} Instability Index & Country Risk`
     : `${country.name} Country Risk and Resilience`;
@@ -5476,6 +5567,7 @@ export async function buildCorpus({
     'country-instability-index/index.html',
     renderCountryInstabilityIndexPage({
       ciiRanking: data.ciiRanking,
+      resilienceCoverage: data.resilienceCoverage,
       baseUrl,
       capturedAt: data.livePulse.capturedAt,
       lastmod: data.lastmod.countryInstabilityIndex,
@@ -5497,6 +5589,7 @@ export async function buildCorpus({
     renderCountriesIndex({
       countries: data.countries,
       ciiRanking: data.ciiRanking,
+      resilienceCoverage: data.resilienceCoverage,
       baseUrl,
       capturedAt: data.resilience.capturedAt,
       lastmod: data.lastmod.countriesIndex,
@@ -5516,7 +5609,7 @@ export async function buildCorpus({
       ),
     }),
   );
-  const rankedCount = data.countries.filter((country) => country.rank != null).length;
+  const rankedCount = data.resilienceCoverage.ranked;
   let developmentsPageCount = 0;
   for (const country of data.countries) {
     const pagePath = `/countries/${country.slug}/`;
@@ -5530,6 +5623,7 @@ export async function buildCorpus({
         country,
         relatedChokepoints: chokepointPageLinks.byCountryCode.get(country.code),
         relatedReading: relatedReading.get(pagePath),
+        relatedCountries: data.relatedCountriesByCode?.get(country.code) || [],
         baseUrl,
         capturedAt: data.resilience.capturedAt,
         lastmod: ciiEntry

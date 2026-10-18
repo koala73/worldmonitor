@@ -45,31 +45,80 @@ const hintFor = (locales) =>
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
 const enFlat = flatten(readJson(join(LOCALES_DIR, 'en.json')));
 
-// How many values may still be the English source, per locale.
-//
-// Some English is correct: brand names, acronyms, product tiers ("Claude
-// Desktop", "MCP", "PostgreSQL"). So the check cannot be "zero" — but it also
-// cannot be a shared percentage. A 50%-of-catalog rule sounds strict and is
-// unreachable: at 582 shared keys it only fires above 291, so `ar` could gain
-// 251 raw-English values — 43% of the catalog — and still pass. Nothing that
-// can happen would trip it.
-//
-// These are each locale's real count plus 8 keys of headroom, so a normal PR
-// adding a few brand-heavy strings does not red CI while a genuine regression
-// does. They are ceilings: lower them as translations improve. If one legitimately
-// needs raising, that should be a visible line in a diff, not a silent drift.
-//
-// fa is the outlier by three orders of magnitude: 565 of its 582 values ARE the
-// English source. It is registered as a supported language but was never
-// translated (#5644). The baseline cannot detect that — those values genuinely
-// were "translated from" the current English, so they read as fresh — which is
-// exactly why this ceiling exists.
-const ENGLISH_CEILING = {
-  ar: 49, bg: 50, cs: 58, de: 61, el: 60, es: 53,
-  fa: 573, fr: 66, hi: 115, hr: 55, hu: 51, it: 61,
-  ja: 51, ko: 49, nl: 67, pl: 55, pt: 55, ro: 61,
-  ru: 51, sv: 61, sw: 45, th: 54, tr: 51, uk: 574, vi: 53, zh: 49,
-  'zh-TW': 49,
+const ENGLISH_ALLOWED_KEYS = new Set([
+  'nav.api',
+  'nav.pro',
+  'nav.enterprise',
+  'tiers.pro',
+  'tiers.enterprise',
+  'twoPath.entTitle',
+  'twoPath.proTitle',
+  'whatsNew.proTag',
+  'apiSection.business',
+  'apiSection.starter',
+  'pricingTable.apiRow',
+  'pricingTable.apiHeader',
+  'pricingTable.proHeader',
+  'pricingTable.freeHeader',
+  'pricingTable.f3',
+  'pricingTable.f10',
+  'pricingTable.f25',
+  'pricingTable.f40',
+  'pricingTable.f80',
+  'pricingTable.fBYOK',
+  'pricingTable.fSiemMcp',
+  'pricingTable.fWebhook',
+  'pricingTable.fRestWebhook',
+  'pricingTable.ai',
+  'welcome.pricing.proTitle',
+  'welcome.agents.resources.api',
+  'pricing.tiers.enterprise.features[8]',
+  'enterpriseShowcase.soc',
+]);
+
+const PENDING_ENGLISH_REVIEW_KEYS = new Set([
+  'meta.title',
+  'meta.ogTitle',
+  'welcome.nav.blog',
+  'welcome.live.liveBadge',
+  'welcome.nav.menu',
+  'welcome.pricing.freeTitle',
+  'welcome.hero.trustOpenSource',
+  'welcome.live.marketBest',
+  'welcome.live.trendStable',
+  'welcome.depth.s8l',
+  'welcome.moments.m2.c1',
+  'welcome.moments.m4.c3',
+  'welcome.agents.resources.mcp',
+  'welcome.agents.resources.agentView',
+  'welcome.agents.termTitle',
+  'pricingTable.fCloud',
+  'pricingTable.fStandard',
+  'pricingTable.fStandardCadence',
+  'pricingTable.deployment',
+  'pricingTable.dashboard',
+  'pricingTable.fCloudOnPrem',
+  'pricingTable.fLiveEdge',
+  'pricingTable.fWhiteLabel',
+  'pricingTable.fQuotes30s',
+  'pricingTable.f50panels',
+  'proShowcase.supplyChainLab',
+  'deliveryDesk.eyebrow',
+  'slackMock.elevated',
+  'pricing.axisCommercial',
+  'pricing.axisPersonal',
+  'hero.signalWord',
+  'whatsNew.eyebrow',
+  'pricing.tiers.proBusiness.features[4]',
+  'pricing.tiers.apiBusiness.features[2]',
+  'livePreview.iframeTitle',
+]);
+
+// Ceilings, not exact counts. Rewording an English value drops the count on its
+// own (the stale Persian copy stops matching the new English), so an exact count
+// would red every unrelated en.json copy edit. Lower the ceiling as fa improves.
+const TEMPORARY_LOCALE_EXEMPTIONS = {
+  fa: 388,
 };
 
 describe('pro locale freshness', () => {
@@ -144,33 +193,47 @@ describe('pro locale freshness', () => {
     assert.deepEqual(problems, [], 'pro locales are out of date. ' + hintFor(problemLocales));
   });
 
-  it('does not let a locale drift back toward untranslated English', () => {
-    // A locale whose values are the English source is not a translation; it
-    // renders as English while the language picker claims otherwise. This is a
-    // live failure mode, not a hypothetical: validateTranslation accepts a
-    // "translation" identical to its English source, so a truncated or degraded
-    // model reply that echoes the input is written to disk, counted as
-    // refreshed, and blessed by the next baseline advance.
-    const overBudget = [];
+  it('names only real catalog keys in the English allowlist and the review exemption', () => {
+    const overlap = [...ENGLISH_ALLOWED_KEYS].filter((key) => PENDING_ENGLISH_REVIEW_KEYS.has(key));
+    const missing = [...ENGLISH_ALLOWED_KEYS, ...PENDING_ENGLISH_REVIEW_KEYS].filter((key) => !(key in enFlat));
+    const idlePending = [];
+    for (const key of PENDING_ENGLISH_REVIEW_KEYS) {
+      const stillEnglish = LOCALES.some((locale) => {
+        if (locale in TEMPORARY_LOCALE_EXEMPTIONS) return false;
+        const file = join(LOCALES_DIR, locale + '.json');
+        if (!existsSync(file)) return false;
+        const flat = flatten(readJson(file));
+        return flat[key] === enFlat[key];
+      });
+      if (!stillEnglish) idlePending.push(key);
+    }
+    assert.deepEqual(
+      { overlap, missing, idlePending },
+      { overlap: [], missing: [], idlePending: [] },
+    );
+  });
+
+  it('rejects untranslated English outside the allowlist', () => {
+    const violations = [];
     for (const locale of LOCALES) {
       const file = join(LOCALES_DIR, locale + '.json');
       if (!existsSync(file)) continue;
       const flat = flatten(readJson(file));
-      const shared = Object.keys(flat).filter((key) => key in enFlat);
-      const english = shared.filter((key) => flat[key] === enFlat[key]);
-      const ceiling = ENGLISH_CEILING[locale];
-
-      if (ceiling === undefined) {
-        overBudget.push(
-          locale + ' has no entry in ENGLISH_CEILING — add one at its current count plus a little headroom',
-        );
-      } else if (english.length > ceiling) {
-        overBudget.push(
-          locale + ' has ' + english.length + '/' + shared.length + ' values identical to English, above its ceiling of ' +
-            ceiling + ' — translations regressed, or the ceiling needs a deliberate, reviewed raise',
-        );
+      const unexplained = Object.keys(flat)
+        .filter((key) => key in enFlat && flat[key] === enFlat[key])
+        .filter((key) => !ENGLISH_ALLOWED_KEYS.has(key) && !PENDING_ENGLISH_REVIEW_KEYS.has(key))
+        .sort();
+      const exemption = TEMPORARY_LOCALE_EXEMPTIONS[locale];
+      if (exemption !== undefined) {
+        if (unexplained.length > exemption) {
+          violations.push(
+            locale + ' has ' + unexplained.length + ' unlisted English values, above its ceiling of ' + exemption,
+          );
+        }
+        continue;
       }
+      for (const key of unexplained) violations.push(locale + ' ' + key);
     }
-    assert.deepEqual(overBudget, []);
+    assert.deepEqual(violations, []);
   });
 });

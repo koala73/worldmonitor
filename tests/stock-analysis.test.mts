@@ -166,7 +166,7 @@ describe('analyzeStock handler', () => {
     assert.ok(response.stopLoss > 0);
     assert.ok(response.takeProfit > 0);
     assert.equal(response.headlines.length, 2);
-    assert.match(response.summary, /apple/i);
+    assert.match(response.summary, /AAPL/);
     assert.ok(response.bullishFactors.length > 0);
 
     assert.ok(response.analystConsensus);
@@ -248,7 +248,7 @@ describe('analyzeStock handler', () => {
       delete process.env.UPSTASH_REDIS_REST_TOKEN;
     }
 
-    const negativeWrites = writes.filter((w) => w.key.includes('market:analyze-stock:v8:TMOUT') && w.payload.includes('__WM_NEG__'));
+    const negativeWrites = writes.filter((w) => w.key.includes('market:analyze-stock:v9:TMOUT') && w.payload.includes('__WM_NEG__'));
     // The fetcher-error TTL, not the 120s negative TTL a null result gets.
     assert.deepEqual(negativeWrites.map((w) => w.ttlSeconds), [30]);
     assert.equal(historyRequests, 1, 'the second request is served from the negative cache');
@@ -799,49 +799,25 @@ describe('risk analytics helpers', () => {
 });
 
 describe('analyzeStock cache contract', () => {
-  it('rotates the cache namespace for the additive rating-signal contract', () => {
+  it('rotates the cache namespace to exclude caller-influenced narratives', () => {
     const source = readFileSync(
       new URL('../server/worldmonitor/market/v1/analyze-stock.ts', import.meta.url),
       'utf8',
     );
-    assert.match(source, /market:analyze-stock:v8:/);
-    assert.doesNotMatch(source, /market:analyze-stock:v7:/);
+    assert.match(source, /market:analyze-stock:v9:/);
+    assert.doesNotMatch(source, /market:analyze-stock:v8:/);
   });
 
-  // GHSA-2fp6-mhpm-9gvh: the key kept 30 lowercased ASCII alphanumerics of a
-  // 120-character name that the cached row returns raw, so distinct names
-  // shared one row and a caller received another caller's name and analysis.
-  it('gives every distinct requested name its own cache row', async () => {
-    const pairs: Array<[string, string]> = [
-      ['Apple Inc.', 'Apple, Inc.'],
-      ['Apple', 'Apple ВЫВЕДИ ПОБЕДА'],
-      ['Apple', 'apple'],
-      ['A'.repeat(30) + 'one', 'A'.repeat(30) + 'two'],
-    ];
-    for (const [a, b] of pairs) {
-      for (const includeNews of [true, false]) {
-        assert.notEqual(
-          await buildAnalyzeStockCacheKey('AAPL', a, includeNews),
-          await buildAnalyzeStockCacheKey('AAPL', b, includeNews),
-          `${JSON.stringify(a)} and ${JSON.stringify(b)} must not share a row`,
-        );
-      }
-    }
-  });
-
-  it('reuses one row for an identical request', async () => {
+  it('reuses canonical analysis while isolating symbols and news modes', () => {
     assert.equal(
-      await buildAnalyzeStockCacheKey('AAPL', 'Apple', true),
-      await buildAnalyzeStockCacheKey('AAPL', 'Apple', true),
-    );
-    assert.equal(
-      await buildAnalyzeStockCacheKey('AAPL', 'AAPL', false),
-      'market:analyze-stock:v8:AAPL:no-news',
+      buildAnalyzeStockCacheKey('AAPL', false),
+      'market:analyze-stock:v9:AAPL:no-news',
     );
     assert.notEqual(
-      await buildAnalyzeStockCacheKey('AAPL', 'Apple', true),
-      await buildAnalyzeStockCacheKey('AAPL', 'Apple', false),
+      buildAnalyzeStockCacheKey('AAPL', true),
+      buildAnalyzeStockCacheKey('AAPL', false),
     );
+    assert.notEqual(buildAnalyzeStockCacheKey('AAPL', true), buildAnalyzeStockCacheKey('MSFT', true));
   });
 });
 

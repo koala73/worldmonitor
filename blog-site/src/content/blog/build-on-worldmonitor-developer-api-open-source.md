@@ -6,7 +6,7 @@ keywords: "open source intelligence API, OSINT API free, geopolitical data API, 
 audience: "Developers, data engineers, startup builders, academic researchers, open-source contributors"
 heroImage: "/blog/images/blog/build-on-worldmonitor-developer-api-open-source.jpg"
 pubDate: "2026-03-09"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-10-18"
 ---
 
 Most intelligence platforms are walled gardens. You pay for access, you use their interface, and if you want to build something custom, you're out of luck. The data is locked behind a UI.
@@ -48,7 +48,7 @@ World Monitor's API is organized into domain-specific services:
 |--------|---------------|
 | **Aviation** | Airport delays, flight tracking, airspace data |
 | **Climate** | Temperature anomalies, precipitation, sea level |
-| **Conflict** | [ACLED](https://acleddata.com/) events, [UCDP](https://ucdp.uu.se/) data, hotspot scoring |
+| **Conflict** | [UCDP](https://ucdp.uu.se/) events, hotspot scoring |
 | **Consumer Prices** | CPI and consumer-price intelligence |
 | **Cyber** | Threat feeds, C2 servers, malware URLs |
 | **Displacement** | UNHCR refugee and IDP data |
@@ -77,7 +77,7 @@ World Monitor's API is organized into domain-specific services:
 | **Supply Chain** | Chokepoints, critical minerals, route impact, pipelines |
 | **Thermal** | Thermal escalation and fire-hotspot detection |
 | **Trade** | WTO and US Treasury trade-policy intelligence |
-| **Unrest** | Social unrest from ACLED and GDELT |
+| **Unrest** | Social unrest from GDELT |
 | **Webcam** | Live public webcam feeds |
 | **Wildfire** | Wildfire tracking and perimeters |
 

@@ -2270,3 +2270,116 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     assert.equal(deliveryHeaders[0]['User-Agent'], 'worldmonitor-edge/1.0');
   });
 });
+
+describe('Vercel Connect public client, end to end', () => {
+  // https://vercel.com/docs/connect/providers: DCR with the exact callback
+  // below, token_endpoint_auth_method "none", PKCE S256, and the
+  // authorization_code + refresh_token grants.
+  const VERCEL_CONNECT = 'https://connect.vercel.com/callback';
+  const ENTERPRISE_KEY = 'enterprise-vercel-connect-key';
+  const ENV = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'WORLDMONITOR_VALID_KEYS'];
+
+  it('registers, authorizes, exchanges the code with PKCE, and refreshes, with expires_in on both grants', async () => {
+    const { redis, deps } = makeDeps();
+    const savedEnv = Object.fromEntries(ENV.map((k) => [k, process.env[k]]));
+    const savedFetch = globalThis.fetch;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
+    process.env.WORLDMONITOR_VALID_KEYS = ENTERPRISE_KEY;
+    globalThis.fetch = async (input, init = {}) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      assert.equal(url.origin, 'https://redis.test', `unexpected fetch ${url}`);
+      const [, op, rawKey] = url.pathname.split('/');
+      const reply = (result) => Response.json({ result });
+      if (op === 'get') return reply(redis.store.get(decodeURIComponent(rawKey)) ?? null);
+      if (op === 'getdel') {
+        const key = decodeURIComponent(rawKey);
+        const value = redis.store.get(key) ?? null;
+        redis.store.delete(key);
+        return reply(value);
+      }
+      const body = JSON.parse(init.body);
+      const pipeline = Array.isArray(body[0]);
+      const results = (pipeline ? body : [body]).map(([cmd, key, value]) => {
+        if (['eval', 'evalsha'].includes(cmd.toLowerCase())) return { result: [9, 10] };
+        assert.equal(cmd, 'SET');
+        redis.store.set(key, value);
+        return { result: 'OK' };
+      });
+      return Response.json(pipeline ? results : results[0]);
+    };
+
+    try {
+      const { default: registerHandler } = await import('../api/oauth/register.js');
+      const { default: authorizeHandler } = await import('../api/oauth/authorize.js');
+
+      const registered = await registerHandler(new Request('https://worldmonitor.app/oauth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_name: 'Vercel Connect',
+          redirect_uris: [VERCEL_CONNECT],
+          token_endpoint_auth_method: 'none',
+          grant_types: ['authorization_code', 'refresh_token'],
+          response_types: ['code'],
+        }),
+      }));
+      assert.equal(registered.status, 201);
+      const { client_id } = await registered.json();
+
+      const host = 'worldmonitor.app';
+      const authorizeUrl = new URL(`https://${host}/oauth/authorize`);
+      authorizeUrl.search = new URLSearchParams({
+        client_id,
+        redirect_uri: VERCEL_CONNECT,
+        response_type: 'code',
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: 'S256',
+        state: 'vercel_state',
+      }).toString();
+      const consentPage = await authorizeHandler(new Request(authorizeUrl, { headers: { host } }));
+      assert.equal(consentPage.status, 200, 'consent page renders for the Vercel Connect callback');
+      const cookie = (consentPage.headers.get('Set-Cookie') ?? '').split(';')[0];
+      const nonceKey = [...redis.store.keys()].find((k) => k.startsWith('oauth:nonce:'));
+      assert.ok(nonceKey, 'GET stores the nonce');
+
+      const consent = await authorizeHandler(new Request(`https://${host}/oauth/authorize`, {
+        method: 'POST',
+        headers: { host, origin: `https://${host}`, cookie, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ api_key: ENTERPRISE_KEY, _nonce: nonceKey.slice('oauth:nonce:'.length) }).toString(),
+      }));
+      assert.equal(consent.status, 302);
+      const callback = new URL(consent.headers.get('Location'));
+      assert.equal(callback.origin + callback.pathname, VERCEL_CONNECT);
+      assert.equal(callback.searchParams.get('state'), 'vercel_state');
+      assert.equal(callback.searchParams.get('iss'), `https://${host}`);
+      const code = callback.searchParams.get('code');
+      assert.ok(code);
+
+      const exchanged = await tokenHandler(makeReq('authorization_code', {
+        code, code_verifier: CODE_VERIFIER, client_id, redirect_uri: VERCEL_CONNECT,
+      }), deps);
+      assert.equal(exchanged.status, 200);
+      const tokens = await exchanged.json();
+      assert.equal(tokens.token_type, 'Bearer');
+      assert.equal(tokens.expires_in, TOKEN_TTL_SECONDS);
+      assert.ok(tokens.access_token);
+      assert.ok(tokens.refresh_token);
+
+      const refreshed = await tokenHandler(makeReq('refresh_token', {
+        refresh_token: tokens.refresh_token, client_id,
+      }), deps);
+      assert.equal(refreshed.status, 200);
+      const rotated = await refreshed.json();
+      assert.equal(rotated.token_type, 'Bearer');
+      assert.equal(rotated.expires_in, TOKEN_TTL_SECONDS);
+      assert.notEqual(rotated.refresh_token, tokens.refresh_token);
+    } finally {
+      globalThis.fetch = savedFetch;
+      for (const [k, v] of Object.entries(savedEnv)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+});

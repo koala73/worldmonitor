@@ -234,7 +234,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Δεν παρέχεται κατάσταση εκτίμησης και συμπλήρωσης τιμών"
     },
     "fiveFactorScorecard": {
       "title": "Σκορκαρντ Ανθεκτικότητας Πέντε Παράγοντων",
@@ -406,6 +407,7 @@
     "energy": "Ενέργεια & Πόροι",
     "gov": "Κυβέρνηση",
     "thinktanks": "Think Tanks",
+    "science": "Επιστήμη",
     "polymarket": "Προβλέψεις",
     "commodities": "Εμπορεύματα",
     "economic": "Οικονομικοί Δείκτες",
@@ -2939,6 +2941,7 @@
       "tier4OnlyHint": "Κάθε μέσο που αναφέρει αυτό είναι μια πηγή tier-4 (συγκεντρωτές και ιστολόγια). Αυτό περιγράφει την κάλυψη, όχι την ακρίβεια.",
       "rosterListed": "({{listed}} καταχωρημένα)",
       "rosterFeeds": "Ροές που εντοπίστηκαν: {{labels}}",
+      "rosterSameCopy": "Ίδιο κείμενο, μετράει μία φορά",
       "rosterLegend": "Τα επίπεδα κατατάσσουν τις πηγές· δεν κρίνουν αυτόν τον ισχυρισμό.",
       "tierDocsLink": "Πώς αποδίδονται τα επίπεδα",
       "tierChip": "T{{tier}}",

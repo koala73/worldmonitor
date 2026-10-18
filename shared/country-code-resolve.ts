@@ -47,6 +47,29 @@ const NAME_TO_ISO2: Record<string, string> =
   Object.assign(Object.create(null), COUNTRY_NAMES, EXTRA_ALIASES);
 const ISO3_MAP: Record<string, string> = Object.assign(Object.create(null), ISO3_TO_ISO2);
 
+/**
+ * Assigned ISO 3166-1 alpha-2 codes the geojson-derived maps lack, because the
+ * source geometry folds them into a parent (France's overseas departments,
+ * Norway's Svalbard, Australia's island territories). Without them a
+ * membership check would reject real places a user can ask about.
+ */
+const ASSIGNED_ISO2_OUTSIDE_GEOJSON = ['BQ', 'BV', 'CC', 'CX', 'GF', 'GP', 'MQ', 'RE', 'SJ', 'TK', 'YT'];
+
+/** Every assigned ISO 3166-1 alpha-2 code, plus XK (Kosovo), which the maps carry. */
+const ASSIGNED_ISO2: ReadonlySet<string> = new Set([
+  ...Object.values(ISO3_MAP),
+  ...ASSIGNED_ISO2_OUTSIDE_GEOJSON,
+]);
+
+/**
+ * Membership, not shape: `ZZ` matches `^[A-Z]{2}$` but names no country. Use at
+ * a handler boundary that would otherwise answer an unknown code with an
+ * empty record that reads as a real, quiet country.
+ */
+export function isAssignedCountryCode(code: string): boolean {
+  return ASSIGNED_ISO2.has(code);
+}
+
 /** The only shape any caller may receive — also the downstream proto's rule. */
 const ISO2_PATTERN = /^[A-Z]{2}$/;
 const ISO3_PATTERN = /^[A-Z]{3}$/;

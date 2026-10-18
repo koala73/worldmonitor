@@ -11,9 +11,11 @@
  *      stored at `oauth:nonce:<n>`).
  *   2. Resolve userId via Clerk JWKS verify. 401 on miss.
  *   3. Validate `oauth:nonce:<n>` exists (DO NOT consume — U5 consumes).
- *   4. Validate `oauth:client:<client_id>` exists.
- *   5. Re-validate the client's `redirect_uri` against the same
- *      allowlist DCR enforced (defense-in-depth).
+ *   4. Resolve the client: `oauth:client:<client_id>` for DCR, or the CIMD
+ *      document for a URL client_id (#9244).
+ *   5. Re-validate the client's `redirect_uri`: against the same allowlist
+ *      DCR enforced, or against the CIMD document and its host policy
+ *      (defense-in-depth).
  *   6. Check `getEntitlements(userId).features.tier >= 1` (Pro gate).
  *   7. Mint a HMAC-signed grant token over `{userId, nonce, exp:+5min}`
  *      and store a one-shot `mcp-grant:<n>` Redis record with the same
@@ -35,6 +37,8 @@
  *                                       no mcpAccess, expired, or malformed.
  *                                       Provider-confirmed ended coverage uses
  *                                       the restricted free-account path.
+ *   - BROWSER_MISMATCH             403  request lacks the browser-binding cookie
+ *                                       the nonce was minted with
  *   - NONCE_CLAIMED_BY_OTHER_USER  403  nonce already claimed by a different
  *                                       Clerk userId (anti-hijack — see F2)
  *   - TIER_VERIFICATION_UNAVAILABLE 503 entitlement could not be VERIFIED, or a
@@ -76,6 +80,10 @@ import {
 // @ts-expect-error — JS module, no declaration file
 import { isAllowedRedirectUri } from '../oauth/_redirect-uri.js';
 import { GrantConfigError, signGrant } from '../_mcp-grant-hmac';
+// @ts-expect-error — JS module, no declaration file
+import { requestMatchesOAuthBinding } from '../oauth/_browser-binding.js';
+// @ts-expect-error — JS module, no declaration file
+import { clientAllowsRedirectUri, resolveOAuthClient } from '../oauth/_client-metadata.js';
 
 // Fixed return URL — NOT user-controllable (anti-phishing).
 const AUTHORIZE_PRO_URL = 'https://api.worldmonitor.app/oauth/authorize-pro';
@@ -98,12 +106,14 @@ interface NonceData {
   redirect_uri: string;
   code_challenge: string;
   state?: string;
+  bind_hash?: string;
   created_at?: number;
 }
 
 interface ClientData {
   client_name?: string;
   redirect_uris?: unknown;
+  cimd?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +210,8 @@ export interface MintDeps {
   signGrant: (payload: { userId: string; nonce: string; exp: number }) => Promise<string>;
   /** Injectable for deterministic tests. */
   now: () => number;
+  /** Fetch for CIMD client metadata documents; defaults to the global fetch. */
+  fetchClientMetadata?: typeof fetch;
 }
 
 export async function mintGrantHandler(req: Request, deps: MintDeps): Promise<Response> {
@@ -237,22 +249,32 @@ export async function mintGrantHandler(req: Request, deps: MintDeps): Promise<Re
   if (!nonceData || typeof nonceData.client_id !== 'string' || typeof nonceData.redirect_uri !== 'string') {
     return jsonError('INVALID_NONCE', 'The authorization nonce is missing or expired.', 400);
   }
-
-  let clientData: ClientData | null;
-  try {
-    clientData = (await deps.redisGet(`oauth:client:${nonceData.client_id}`)) as ClientData | null;
-  } catch {
-    return jsonError('SERVICE_UNAVAILABLE', 'Authorization storage is temporarily unavailable.', 503);
+  // The nonce must be redeemed by the browser that started the flow; otherwise
+  // a forwarded /mcp-grant link would mint the victim's grant for the
+  // attacker's redirect_uri and state.
+  if (!(await requestMatchesOAuthBinding(req, nonceData))) {
+    return jsonError('BROWSER_MISMATCH', 'This authorization was started in a different browser. Start over from your MCP client in this browser.', 403);
   }
-  if (!clientData) {
+
+  const resolved = await resolveOAuthClient(nonceData.client_id, {
+    redisGet: deps.redisGet,
+    redisSetEx: deps.redisSetEx,
+    fetch: deps.fetchClientMetadata,
+  });
+  if (!resolved.ok) {
+    if (resolved.transient) {
+      return jsonError('SERVICE_UNAVAILABLE', 'Authorization storage is temporarily unavailable.', 503);
+    }
     return jsonError('UNKNOWN_CLIENT', 'The OAuth client is not registered.', 400);
   }
+  const clientData = resolved.client as ClientData;
 
-  // Defense-in-depth: re-validate the redirect_uri the nonce committed to
-  // is still on the allowlist (DCR allowlist could be tightened post-
-  // registration — fail closed).
-  const uris = Array.isArray(clientData.redirect_uris) ? clientData.redirect_uris : [];
-  if (!uris.includes(nonceData.redirect_uri) || !deps.isAllowedRedirectUri(nonceData.redirect_uri)) {
+  // Defense-in-depth: re-validate the redirect_uri the nonce committed to.
+  // DCR: still on the global allowlist (it could be tightened post-
+  // registration — fail closed). CIMD: still in the freshly resolved
+  // document and inside the CIMD host policy, which replaces that list.
+  if (!clientAllowsRedirectUri(clientData, nonceData.redirect_uri)
+    || (!clientData.cimd && !deps.isAllowedRedirectUri(nonceData.redirect_uri))) {
     return jsonError('INVALID_REDIRECT_URI', 'The redirect URI is no longer permitted.', 400);
   }
 

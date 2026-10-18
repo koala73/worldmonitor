@@ -25,7 +25,7 @@ import {
  * Root-relative paths: /pro is served from the same origin as /docs.
  */
 export const CheckoutConsent = () => (
-  <p className="mb-2.5 text-[10px] leading-relaxed text-wm-muted/80 text-center font-mono">
+  <p className="mb-2.5 text-xs leading-relaxed text-wm-muted/80 text-center font-mono">
     {CHECKOUT_CONSENT_LEAD}{' '}
     <a href={EULA_PATH} className="underline hover:text-wm-text transition-colors">
       {CHECKOUT_CONSENT_LICENSE_LABEL}

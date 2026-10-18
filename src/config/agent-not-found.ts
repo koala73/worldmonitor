@@ -13,6 +13,8 @@
  * skip the middleware matcher and fall through to public/404.html.
  */
 
+import { indexableLandingPassthroughPrefixes } from '../../shared/indexable-landing-locales';
+
 export const AGENT_NOT_FOUND_STATUS = 404 as const;
 export const AGENT_NOT_FOUND_CONTENT_TYPE = 'text/markdown; charset=utf-8';
 export const HUMAN_NOT_FOUND_CONTENT_TYPE = 'text/html; charset=utf-8';
@@ -178,8 +180,11 @@ export const AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES = [
   '/textures',
   '/tos',
   '/tools',
+  '/trust',
   '/use-cases',
+  '/verify',
   '/welcome',
+  ...indexableLandingPassthroughPrefixes(),
   '/zh',
   '/.well-known',
 ] as const;

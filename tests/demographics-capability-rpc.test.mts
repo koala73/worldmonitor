@@ -47,6 +47,15 @@ const SNAPSHOT = {
 };
 
 describe('GetDemographicsCapability transformation', () => {
+  test('carries supplied source status without classifying missing or unavailable observations', () => {
+    const snapshot = structuredClone(SNAPSHOT);
+    Object.assign(snapshot.countries.DE.ageStructure.medianAgeYears, { sourceStatus: 'Source status: Estimate' });
+    Object.assign(snapshot.countries.DE.education.stemGraduatesSharePercent, { sourceStatus: 'Source status: Imputation' });
+    const response = toDemographicsCapabilityResponse(snapshot, 'DE');
+    assert.equal(response.ageStructure.medianAgeYears.sourceStatus, 'Source status: Estimate');
+    assert.equal(response.ageStructure.oldAgeDependencyRatioPercent.sourceStatus, undefined);
+    assert.equal(response.education.stemGraduatesSharePercent.sourceStatus, undefined);
+  });
   test('normalizes ISO-2 and rejects invalid or missing country codes', () => {
     assert.equal(normalizeDemographicsCountryCode(' de '), 'DE');
     assert.equal(normalizeDemographicsCountryCode(''), null);

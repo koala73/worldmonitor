@@ -45,6 +45,7 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
   },
 }, {
   name: 'analyze_news_headlines',
+  title: 'Summarize or translate headlines',
   description: 'Summarize selected headlines or translate one headline into the target language specified by lang. Requires the same authenticated access as the dashboard service. Supply article snippets as bodies to ground summaries.',
   _outputBudgetBytes: 32768,
   _apiPaths: ['POST /api/news/v1/summarize-article'],

@@ -40,6 +40,9 @@ export interface RegisterWebhookRequest {
   callbackUrl: string;
   chokepointIds: string[];
   alertThreshold?: number;
+  eventType?: string;
+  countries: string[];
+  minLiveSignal?: number;
 }
 
 export interface RegisterWebhookResponse {
@@ -61,6 +64,9 @@ export interface WebhookSummary {
   alertThreshold: number;
   createdAt: string;
   active: boolean;
+  eventType: string;
+  countries: string[];
+  minLiveSignal: number;
 }
 
 export interface FieldViolation {

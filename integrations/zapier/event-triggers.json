@@ -1,0 +1,231 @@
+{
+  "schemaVersion": 1,
+  "description": "Surface-neutral registry of the push event triggers WorldMonitor delivers to API-key webhook subscribers (POST /api/v2/shipping/webhooks). Zapier triggers, the OpenAPI webhooks block and the delivery worker read this file; the MCP Events extension (#9268) will too. Mirrored byte-for-byte at scripts/shared/event-triggers.json (Railway rootDirectory=scripts) and integrations/zapier/event-triggers.json (Zapier bundles only its own folder).",
+  "subscription": {
+    "register": { "method": "POST", "path": "/api/v2/shipping/webhooks" },
+    "list": { "method": "GET", "path": "/api/v2/shipping/webhooks" },
+    "status": { "method": "GET", "path": "/api/v2/shipping/webhooks/{subscriberId}" },
+    "unsubscribe": { "method": "DELETE", "path": "/api/v2/shipping/webhooks/{subscriberId}" },
+    "auth": "X-WorldMonitor-Key with an API plan key (apiAccess entitlement)",
+    "ttlSeconds": 2592000,
+    "signature": {
+      "header": "X-WM-Signature",
+      "algorithm": "sha256=hex(HMAC-SHA256(key=secret, message=rawBody))",
+      "eventHeader": "X-WM-Event",
+      "deliveryIdHeader": "X-WM-Delivery-Id"
+    },
+    "evaluationSeconds": 300,
+    "failureCeiling": 5
+  },
+  "events": {
+    "chokepoint.disruption": {
+      "key": "chokepoint.disruption",
+      "label": "Chokepoint Disruption",
+      "noun": "Chokepoint Alert",
+      "description": "Triggers when a monitored maritime chokepoint's disruption score reaches the alert threshold while live signals (navigational warnings, AIS disruption, transit drop) sit at least minLiveSignal points above its standing threat level.",
+      "source": {
+        "redisKey": "supply_chain:chokepoints:v4",
+        "rpc": "/api/supply-chain/v1/get-chokepoint-status",
+        "refreshSeconds": 1800
+      },
+      "entity": { "field": "chokepointId", "listRpc": "/api/supply-chain/v1/get-chokepoint-status", "listField": "chokepoints" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "chokepointIds": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": [],
+            "description": "Chokepoint ids to watch. Empty subscribes to every registered chokepoint."
+          },
+          "alertThreshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 50,
+            "description": "Fire when disruptionScore >= alertThreshold. 50 is the red band. Standing threat levels: war zone 70 (Hormuz, Kerch), critical 40 (Bab el-Mandeb), high 30 (Suez), elevated 15 (Taiwan, Bosphorus), normal 0."
+          },
+          "minLiveSignal": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 40,
+            "default": 0,
+            "recommended": 15,
+            "description": "Also require disruptionScore minus the standing threat level to be at least this many points, so a chokepoint that sits permanently above the threshold does not fire once and go silent. 15 matches the in-app chokepoint_disruption alert rule; 0 keeps the legacy score-only behaviour."
+          }
+        }
+      },
+      "threshold": {
+        "field": "disruptionScore",
+        "operator": ">=",
+        "default": 50,
+        "liveSignalField": "disruptionScore - standingThreatLevel(warRiskTier)",
+        "liveSignalDefault": 0,
+        "liveSignalRecommended": 15
+      },
+      "cooldown": {
+        "type": "hysteresis",
+        "rearm": "disruptionScore < alertThreshold, after compensating for score inputs that were present at delivery and are missing now",
+        "minimumSeconds": 0,
+        "withLiveSignal": {
+          "rearm": "disruptionScore < alertThreshold - rearmScoreMargin or liveSignal < min(rearmLiveBelow, minLiveSignal), with the same compensation; the in-app chokepoint_disruption rule's hysteresis",
+          "rearmScoreMargin": 10,
+          "rearmLiveBelow": 5,
+          "minimumSeconds": 43200
+        }
+      },
+      "id": {
+        "field": "deliveryId",
+        "header": "X-WM-Delivery-Id",
+        "construction": "whd_ + 32 lowercase hex, minted once per upward crossing and kept across retries, so one disruption is one id"
+      },
+      "payloadSchema": {
+        "type": "object",
+        "required": ["subscriberId", "chokepointId", "score", "alertThreshold", "triggeredAt", "reason"],
+        "properties": {
+          "subscriberId": { "type": "string" },
+          "chokepointId": { "type": "string" },
+          "score": { "type": "number" },
+          "alertThreshold": { "type": "number" },
+          "triggeredAt": { "type": "string", "format": "date-time" },
+          "reason": { "type": "string", "enum": ["ais_congestion_spike", "navigational_warning", "transit_drop", "score_threshold"] },
+          "details": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "status": { "type": ["string", "null"] },
+              "activeWarnings": { "type": "integer" },
+              "aisDisruptions": { "type": "integer" },
+              "congestionLevel": { "type": ["string", "null"] },
+              "warRiskTier": { "type": ["string", "null"] },
+              "wowChangePct": { "type": ["number", "null"] },
+              "previousScore": { "type": ["number", "null"] },
+              "scoresFetchedAt": { "type": ["string", "null"] }
+            }
+          }
+        }
+      },
+      "sample": {
+        "subscriberId": "wh_041fef6d0657b56b75fb62cb",
+        "chokepointId": "suez",
+        "score": 35,
+        "alertThreshold": 0,
+        "triggeredAt": "2026-10-17T12:02:07.248Z",
+        "reason": "navigational_warning",
+        "details": {
+          "name": "Suez Canal",
+          "status": "yellow",
+          "activeWarnings": 1,
+          "aisDisruptions": 0,
+          "congestionLevel": "normal",
+          "warRiskTier": "WAR_RISK_TIER_HIGH",
+          "wowChangePct": null,
+          "previousScore": null,
+          "scoresFetchedAt": "2026-10-17T12:00:06.018Z"
+        }
+      }
+    },
+    "country.risk_surge": {
+      "key": "country.risk_surge",
+      "label": "Country Risk Surge",
+      "noun": "Risk Surge",
+      "description": "Triggers when a monitored country's Country Instability Index rises by at least riseThreshold points within 24 hours into the high band (70 or more), once per surge with a 24-hour cooldown per country.",
+      "source": {
+        "redisKey": "risk:scores:sebuf:v8",
+        "staleRedisKey": "risk:scores:sebuf:stale:v8",
+        "rpc": "/api/intelligence/v1/get-risk-scores",
+        "refreshSeconds": 480
+      },
+      "entity": { "field": "countryCode", "listRpc": "/api/intelligence/v1/get-risk-scores", "listField": "ciiScores" },
+      "countries": {
+        "US": "United States", "RU": "Russia", "CN": "China", "UA": "Ukraine", "IR": "Iran",
+        "IL": "Israel", "TW": "Taiwan", "KP": "North Korea", "SA": "Saudi Arabia", "TR": "Turkey",
+        "PL": "Poland", "DE": "Germany", "FR": "France", "GB": "United Kingdom", "IN": "India",
+        "PK": "Pakistan", "SY": "Syria", "YE": "Yemen", "MM": "Myanmar", "VE": "Venezuela",
+        "CU": "Cuba", "MX": "Mexico", "BR": "Brazil", "AE": "United Arab Emirates",
+        "KR": "South Korea", "IQ": "Iraq", "AF": "Afghanistan", "LB": "Lebanon",
+        "EG": "Egypt", "JP": "Japan", "QA": "Qatar"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[A-Z]{2}$" },
+            "default": [],
+            "description": "ISO 3166-1 alpha-2 codes among the monitored countries. Empty subscribes to all of them."
+          }
+        }
+      },
+      "threshold": {
+        "field": "dynamicScore",
+        "operator": ">=",
+        "riseThreshold": 15,
+        "floorField": "combinedScore",
+        "floor": 70,
+        "baselineGuard": "a reading whose staticBaseline differs from the previous evaluation is a methodology or baseline edit, not an event: it disarms the country until the 24-hour movement falls under rearmBelow",
+        "why": "Backtest on 90 days of 6-hourly archive readings (24 countries, 11,054 steps): a 10-point rise fires 2.9 times a day and tracks news-volume blips; 15 points fires 0.9 a day (median 1, p95 3). Checking all 48 fires at rise 15 and floor 50 against wire reports gave 17 true positives, 17 minor incidents and 14 false positives, every true positive in a country whose index sits in the high band; raising the floor to 70 keeps 15 of the 17 true positives and drops 5 false positives, and the baseline guard removes the static re-levellings (Brazil, Mexico 50 to 70) that produced 4 more non-events."
+      },
+      "cooldown": {
+        "type": "hysteresis",
+        "rearm": "dynamicScore < rearmBelow",
+        "rearmBelow": 5,
+        "minimumSeconds": 86400
+      },
+      "id": {
+        "field": "deliveryId",
+        "header": "X-WM-Delivery-Id",
+        "construction": "whd_ + 32 lowercase hex, minted once per surge per country and kept across retries"
+      },
+      "payloadSchema": {
+        "type": "object",
+        "required": ["subscriberId", "countryCode", "score", "delta24h", "triggeredAt", "reason"],
+        "properties": {
+          "subscriberId": { "type": "string" },
+          "countryCode": { "type": "string" },
+          "countryName": { "type": "string" },
+          "score": { "type": "number", "description": "Current combined Country Instability Index, 0-100." },
+          "previousScore": { "type": ["number", "null"], "description": "Score about 24 hours earlier (score minus delta24h)." },
+          "delta24h": { "type": "number", "description": "24-hour movement, the dynamicScore of get-risk-scores." },
+          "trend": { "type": "string" },
+          "advisoryLevel": { "type": ["string", "null"] },
+          "triggeredAt": { "type": "string", "format": "date-time" },
+          "reason": { "type": "string", "enum": ["risk_surge"] },
+          "details": {
+            "type": "object",
+            "properties": {
+              "riseThreshold": { "type": "number" },
+              "floor": { "type": "number" },
+              "staticBaseline": { "type": "number" },
+              "components": { "type": "object" },
+              "methodologyVersion": { "type": "string" },
+              "computedAt": { "type": ["number", "null"] },
+              "scoresFetchedAt": { "type": ["string", "null"] }
+            }
+          }
+        }
+      },
+      "sample": {
+        "subscriberId": "wh_041fef6d0657b56b75fb62cb",
+        "countryCode": "IR",
+        "countryName": "Iran",
+        "score": 84,
+        "previousScore": 60,
+        "delta24h": 24,
+        "trend": "TREND_DIRECTION_RISING",
+        "advisoryLevel": "do-not-travel",
+        "triggeredAt": "2026-10-01T04:49:00.000Z",
+        "reason": "risk_surge",
+        "details": {
+          "riseThreshold": 15,
+          "floor": 70,
+          "staticBaseline": 50,
+          "components": { "newsActivity": 24, "ciiContribution": 0, "geoConvergence": 10, "militaryActivity": 50 },
+          "methodologyVersion": "v8",
+          "computedAt": 1790830140000,
+          "scoresFetchedAt": "2026-10-01T04:49:00.000Z"
+        }
+      }
+    }
+  }
+}

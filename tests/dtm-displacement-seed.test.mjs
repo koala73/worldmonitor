@@ -190,12 +190,52 @@ describe('fetchDtmDisplacement', () => {
     assert.equal(calls.length, 1);
   });
 
-  it('fails when DTM rejects a query instead of dropping the country', async () => {
+  // DTM's country-list has advertised Burundi (BDI) since 2026-10-09 while
+  // every per-country endpoint answers 204 "No Country Code found" for it,
+  // which took the whole 54-country run down with it (health STALE_SEED).
+  it('drops a listed country whose query DTM answers 204 and keeps the rest', async () => {
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => warnings.push(args.join(' '));
+    try {
+      stub((url) => {
+        if (url.pathname.endsWith('/country-list')) return ok([{ admin0Pcode: 'BDI' }, { admin0Pcode: 'SDN' }]);
+        if (url.searchParams.get('Admin0Pcode') === 'BDI') {
+          return Response.json({ result: [], statusCode: 204, isSuccess: false, errorMessages: ['No Country Code found matching your query.'], totalRecordsCount: 0 });
+        }
+        return ok([row()]);
+      });
+      const data = await fetchDtmDisplacement({ apiKey: 'k' });
+      assert.equal(data.operations.length, 1);
+      assert.equal(data.operations[0].countryCode, 'SDN');
+      assert.ok(warnings.some((w) => /BDI/.test(w) && /No Country Code found/.test(w)), warnings.join('\n'));
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('still fails when DTM rejects a query with a non-204 status', async () => {
     stub((url) => {
-      if (url.pathname.endsWith('/country-list')) return ok([{ admin0Pcode: 'XXX' }]);
-      return Response.json({ result: [], statusCode: 204, isSuccess: false, errorMessages: ['No Country Code found matching your query.'], totalRecordsCount: 0 });
+      if (url.pathname.endsWith('/country-list')) return ok([{ admin0Pcode: 'SDN' }]);
+      return Response.json({ result: [], statusCode: 400, isSuccess: false, errorMessages: ['Invalid FromReportingDate.'], totalRecordsCount: 0 });
     });
-    await assert.rejects(fetchDtmDisplacement({ apiKey: 'k' }), /No Country Code found/);
+    await assert.rejects(fetchDtmDisplacement({ apiKey: 'k' }), /Invalid FromReportingDate/);
+  });
+
+  it('yields no operations when every listed country is refused, so validate rejects the run', async () => {
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      stub((url) => {
+        if (url.pathname.endsWith('/country-list')) return ok([{ admin0Pcode: 'BDI' }, { admin0Pcode: 'SDN' }]);
+        return Response.json({ result: [], statusCode: 204, isSuccess: false, errorMessages: ['No Country Code found matching your query.'], totalRecordsCount: 0 });
+      });
+      const data = await fetchDtmDisplacement({ apiKey: 'k' });
+      assert.equal(data.operations.length, 0);
+      assert.equal(validate(data), false);
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 
   it('fails on a truncated page', async () => {

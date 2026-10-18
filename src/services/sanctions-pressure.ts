@@ -53,9 +53,9 @@ export interface SanctionsPressureResult {
   entries: SanctionsEntry[];
 }
 
-// premiumFetch — listSanctionsPressure (the only method called here) is in
-// PREMIUM_RPC_PATHS. See src/services/supply-chain/index.ts for the pattern
-// and #3242 review HIGH(new) #1 for the bug class this prevents.
+// premiumFetch no-ops safely without credentials, so keeping it is harmless
+// now that listSanctionsPressure is free. See src/services/supply-chain/index.ts
+// for the pattern.
 const client = new SanctionsServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 const breaker = createCircuitBreaker<SanctionsPressureResult>({
   name: 'Sanctions Pressure',
@@ -194,13 +194,10 @@ export async function fetchSanctionsPressure(): Promise<SanctionsPressureResult>
     return result;
   }
 
-  // Anonymous (non-premium) users: do NOT call the Pro-gated RPC. The
-  // RPC at /api/sanctions/v1/list-sanctions-pressure is in
-  // PREMIUM_RPC_PATHS, so an anonymous client gets a deterministic 401
-  // and the breaker fallback returns emptyResult anyway — same outcome
-  // as us, minus the Sentry/console noise. Try the public bootstrap
-  // endpoint as a second-best read path and surface whatever it serves
-  // (or emptyResult on any failure).
+  // Anonymous (non-premium) users read the shared bootstrap copy. The RPC
+  // is free and serves the same seed, but the per-key bootstrap URL is the
+  // cheaper read for ordinary visitors. Surface whatever it serves (or
+  // emptyResult on any failure).
   if (!hasPremiumAccess()) {
     const cached = breaker.getCached();
     if (cached) {

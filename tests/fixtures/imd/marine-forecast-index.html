@@ -1,0 +1,592 @@
+<!-- Captured 2026-10-16 10:47 UTC from https://mausam.imd.gov.in/responsive/marine_forecast.php. Content: India Meteorological Department (IMD), reused with attribution under the RTI non-commercial terms. -->
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="">
+    <meta name="author" content="IMD_IT_TEAM">
+    <meta name="generator" content="IMD_GANGTOK">
+    <title>Marine Forecast | India Meteorological Department</title>
+   
+    <!-- Bootstrap core CSS -->
+		<link href="assets/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Amcharts export css -->
+		<link rel="stylesheet" href="https://www.amcharts.com/lib/3/plugins/export/export.css" type="text/css" media="all"/>  
+    <!-- Custom styles for this template -->
+    <link href="css/style.css" rel="stylesheet">
+    <link href="css/style-in.css" rel="stylesheet">
+		
+		<!-- Favicon -->
+		<link rel="shortcut icon" href="img/logo/imd_icon.ico">
+  </head>
+  <body>
+    <!-- header + navigation include -->
+		<!-- header -->
+<section class="header">
+	<!-- header top area -->
+	<div class="header-top">
+		<div class="container-xxl">
+			<div class="social-media">
+				<a href="https://www.facebook.com/India.Meteorological.Department/" target="new" class="sm-link facebook" title=""><i class="bi bi-facebook"></i></a>
+				<a href="https://www.youtube.com/channel/UC_qxTReoq07UVARm87CuyQw/featured?view_as=subscriber" target="new" class="sm-link youTube" title=""><i class="bi bi-youtube"></i></a>
+				<a href="https://twitter.com/Indiametdept" target="new" class="sm-link twitter" title=""><i class="bi bi-twitter"></i></a>
+				<a href="https://instagram.com/mausam_nwfc/" target="new" class="sm-link instagram" title=""><i class="bi bi-instagram"></i></a>
+				<a href="https://imdweather1875.wordpress.com/" target="new" class="sm-link instagram" title=""><i class="bi bi-chat-fill"></i></a>
+
+				<a href="/index.php" class="hindi">हिन्दी वेबसाईट</a>
+				<!-- <a href="?lang=hi" class="hindi">हिन्दी वेबसाईट</a> -->
+			</div>
+		</div>
+	</div>
+	<div class="container-xxl">
+		<div class="header-content">
+			<div class="logo-area">
+				<img src="img/logo/logo_emb.png" class="logo img-fluid" alt="EMBLEM">
+				<h4>India Meteorological Department</h4>
+				<h4>Ministry of Earth Sciences</h4>
+				<h4>Government of India</h4>
+			</div>
+			<div class="social-area">
+				<form class="d-flex form-inline" action="https://www.google.com/search" method="get" target="_blank" onsubmit="this.q.value = 'site:*.imd.gov.in ' + this.sr.value;return true;">
+							<input class="form-control rounded me-1" type="search" name="sr" id="sr" placeholder="Search here...">
+							<input class="form-control rounded me-1" type="hidden" name="q" id="q" placeholder="Search here...">
+							<button class="btn rounded" value="Search" name="Search" id="Search" type="submit"><i class="bi bi-search"></i></button>
+						</form>
+				<div class="clearfix"></div>
+			</div>
+			<div class="lmdlogo-area">
+				<img src="img/logo/imd_logo_a.webp" class="logo" alt="IMD_LOGO" />
+				<img src="img/logo/esso.png" class="logo-150-right img-fluid" alt="ESSO" style="height:85px;" />
+				<a href="https://mausam.imd.gov.in/event/" target="_blank" rel="noopener noreferrer"><img src="img/logo/imd150t.webp" class="logo-150-right img-fluid" alt="IMD_150" /></a>
+				<a href="https://2025.coop/" target="_blank" rel="noopener noreferrer"><img src="img/logo/iyc2025.png" class="logo-150-right img-fluid" alt="IYC 2025" /></a>
+
+			</div>
+		</div>
+		<div class="text-center">
+			<img src="img/logo/esso.png" class="logo-150-center-xs" alt="ESSO" />
+			<a href="https://mausam.imd.gov.in/event/" target="_blank" rel="noopener noreferrer"><img src="img/logo/imd150t.webp" class="logo-150-center-xs" alt="IMD_150" /></a>
+		</div>
+
+	</div>
+</section>
+<!-- header end -->
+
+<!-- navigation -->
+<section class="navigation">
+	<nav class="navbar navbar-expand-lg">
+		<div class="container-xxl">
+			<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavDropdown" aria-controls="navbarNavDropdown" aria-expanded="false" aria-label="Toggle navigation">
+				<i class="bi bi-stack"></i>
+			</button> <span class="visible-xs"><i class="bi bi-reply-fill"></i> Navigation Menu</span>
+			<div class="collapse navbar-collapse" id="navbarNavDropdown">
+				<ul class="navbar-nav w-100 justify-content-between">
+					<li class="nav-item">
+						<a class="nav-link" href="/">Home</a>
+					</li>
+					<li class="nav-item">
+						<a class="nav-link" href="departmentalweb.php">Departmental Websites</a>
+					</li>
+					<li class="nav-item dropdown">
+						<a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+							About IMD
+						</a>
+						<ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+							<li><a class="dropdown-item" href="history.php">History</a></li>
+							<li><a class="dropdown-item" href="mandate.php">Mandate</a></li>
+							<li><a class="dropdown-item" href="orgStructure.php">Organizational Structure</a></li>
+														<li><a class="dropdown-item" href="https://metnet.imd.gov.in/imdpis/imdweb_list_of_dgms.php" target="_blank" rel="noopener noreferrer">Ex DGM's of IMD</a></li>
+							<li><a class="dropdown-item" href="citizenCharter.php">Citizen's/Client's Charter</a></li>
+						</ul>
+					</li>
+					<li class="nav-item dropdown">
+						<a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+							People
+						</a>
+						<ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+														<li><a class="dropdown-item" href="people_minister_moes.php">Minister MoES</a></li>
+							<li><a class="dropdown-item" href="people_secretory_moes.php">Secretary MoES</a></li>
+							<li><a class="dropdown-item" href="people_dgm.php">DGM IMD</a></li>
+													</ul>
+					</li>
+					<li class="nav-item dropdown">
+						<a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+							Publications
+						</a>
+						<ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+							<li><a class="dropdown-item" href="rashtriyPanchang.php">Rashtriya Panchang</a></li>
+							<li><a class="dropdown-item" href="indianAstronomicalEphemeris.php">The Indian Astronomical Ephemeris</a></li>
+							<li><a class="dropdown-item" href="https://mausamjournal.imd.gov.in/index.php/MAUSAM" target="_blank" rel="noopener noreferrer">Mausam Journal</a></li>
+							<li><a class="dropdown-item" href="https://imdpune.gov.in/Reports/rainfall%20variability%20page/raintrend%20new.html" target="_blank" rel="noopener noreferrer">Observed Rainfall Trend over States</a></li>
+							<li><a class="dropdown-item" href="https://www.clivar.org/sites/default/files/documents/CLIVAR%20Exchanges%2079%20Monsoon%20Mission%20Final.pdf" target="_blank" rel="noopener noreferrer">CLIVAR Exchanges</a></li>
+							<li><a class="dropdown-item" href="https://internal.imd.gov.in/pages/severewx_mausam.php" target="_blank" rel="noopener noreferrer">Severe Weather Reports</a></li>
+							<li><a class="dropdown-item" href="https://metnet.imd.gov.in/phps/imdweb_imdnews.php" target="_blank" rel="noopener noreferrer">IMD News</a></li>
+							<li><a class="dropdown-item" href="https://metnet.imd.gov.in/imdrajbhasha/" target="_blank" rel="noopener noreferrer">मौसम मंजूषा</a></li>
+							<li><a class="dropdown-item" href="imdBroucher.php">IMD Brochure</a></li>
+														<li><a class="dropdown-item" href="https://metnet.imd.gov.in/phps/imdweb_imdarep.php" target="_blank" rel="noopener noreferrer">IMD Annual Report</a></li>
+							<li><a class="dropdown-item" href="/responsive/met1.php" rel="noopener noreferrer">MET Monograph</a></li>
+							<li><a class="dropdown-item" href="/imd_latest/contents/pdf/IMDposoco.pdf" target="_blank" rel="noopener noreferrer">Weather for Power System Operation</a></li>
+							<li><a class="dropdown-item" href="/imd_latest/contents/pdf/FD2022POEMBOOK.pdf" target="_blank" rel="noopener noreferrer">FD 2022 POEM BOOK</a></li>
+							<li><a class="dropdown-item" href="/imd_latest/contents/pdf/FD2022POSTERBOOK.pdf" target="_blank" rel="noopener noreferrer">FD 2022 POSTER BOOK</a></li>
+							<li><a class="dropdown-item" href="/imd_latest/contents/pdf/SOUVENIR.pdf" target="_blank" rel="noopener noreferrer">SOUVENIR</a></li>
+						</ul>
+					</li>
+					<li class="nav-item dropdown">
+						<a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+							SOP
+						</a>
+						<ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+							<li><a class="dropdown-item" href="/imd_latest/contents/pdf/aviation_sop.pdf" target="_blank" rel="noopener noreferrer">Aviation Meteorology</a></li>
+							<li><a class="dropdown-item" href="/imd_latest/contents/pdf/emrc_sop.pdf" target="_blank" title="Environment Monitoring & Research Centre" rel="noopener noreferrer">EMRC</a></li>
+							<li><a class="dropdown-item" href="/imd_latest/contents/pdf/gkms_sop.pdf" target="_blank" title="Gramin Krishi Mausam Sewa" rel="noopener noreferrer">GKMS</a></li>
+							<li><a class="dropdown-item" href="/imd_latest/contents/pdf/cyclone_sop.pdf" target="_blank" rel="noopener noreferrer">Cyclone Warning</a></li>
+							<li><a class="dropdown-item" href="/imd_latest/contents/pdf/training_sop.pdf" target="_blank" rel="noopener noreferrer">Training</a></li>
+							<li><a class="dropdown-item" href="/imd_latest/contents/pdf/forecasting_sop.pdf" target="_blank" rel="noopener noreferrer">Weather Forecasting & Warning Services</a></li>
+							<li><a class="dropdown-item" href="/imd_latest/contents/pdf/hydrology_sop.pdf" target="_blank" rel="noopener noreferrer">Hydrometeorological Services</a></li>
+							<li><a class="dropdown-item" href="/imd_latest/contents/pdf/nwp_sop.pdf" target="_blank" title="Numerical Weather Prediction" rel="noopener noreferrer">NWP</a></li>
+							<li><a class="dropdown-item" href="/imd_latest/contents/pdf/satmet_sop.pdf" target="_blank" rel="noopener noreferrer">Satellite Meteorology</a></li>
+						</ul>
+					</li>
+					<li class="nav-item dropdown">
+						<a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+							Services
+						</a>
+						<ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+							<li><a class="dropdown-item" href="servicesHydrological.php">Hydrometeorological Services in IMD</a></li>
+							<li><a class="dropdown-item" href="servicesMetAgriculture.php">Met. Services for Agriculture in India</a></li>
+							<li><a class="dropdown-item" href="servicesMetCivilAviation.php">Met. Services for Civil Aviation in India</a></li>
+							<li><a class="dropdown-item" href="servicesSatMet.php" title="Satellite Meteorology">SATMET Services</a></li>
+							<li><a class="dropdown-item" href="servicesDwrNetwork.php" title="Doppler Weather Radar">IMD DWR Network</a></li>
+							<li><a class="dropdown-item" href="servicesMetSurface.php">Surface Meteorological Instrumentataion</a></li>
+							<li><a class="dropdown-item" href="servicesMetUpperAir.php">Upper Air Meteorological Instrumentataion</a></li>
+							<li><a class="dropdown-item" href="servicesMetTeleComm.php">Meteorological Telecomm. in IMD</a></li>
+							<li><a class="dropdown-item" href="servicesMetEnvironment.php">Environmental Monitoring</a></li>
+							<li><a class="dropdown-item" href="servicesPosAstro.php">Positional Astronomy</a></li>
+							<li><a class="dropdown-item" href="https://imdpune.gov.in/training/index.php" target="_blank" rel="noopener noreferrer">WMO-Regional Training Institute</a></li>
+						</ul>
+					</li>
+					<li class="nav-item">
+						<a class="nav-link" href="https://internal.imd.gov.in/pages/press_release_mausam.php" target="_blank" rel="noopener noreferrer">Press Release</a>
+					</li>
+					
+					<li class="nav-item">
+						<a class="nav-link" href="contact.php">Contacts</a>
+					</li>
+					
+					<li class="nav-item dropdown">
+						<a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+							Local Forecast
+						</a>
+						<ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+							<li><a class="dropdown-item" href="https://city.imd.gov.in/" target="_blank" rel="noopener noreferrer">Local Weather Report & Forecast</a></li>
+							<li><a class="dropdown-item" href="https://mausamgram.imd.gov.in/" target="_blank" rel="noopener noreferrer">Weather At Your Location</a></li>
+							<!-- <li><a class="dropdown-item" href="https://internal.imd.gov.in/pages/city_weather_main_mausam.php?id=2" target="_blank" rel="noopener noreferrer">Capital Cities Forecast</a></li>
+									<li><a class="dropdown-item" href="https://internal.imd.gov.in/pages/city_weather_main_mausam.php?id=1" target="_blank" rel="noopener noreferrer">Smart Cities Forecast</a></li> -->
+						</ul>
+					</li>
+										<li class="nav-item">
+						<a class="nav-link" href="/event/" target="_blank" rel="noopener noreferrer">IMD@150</a>
+					</li>
+					<li class="nav-item">
+						<a class="nav-link" href="https://api.imd.gov.in" target="_blank" rel="noopener noreferrer">IMD API</a>
+					</li>
+
+					
+				</ul>
+			</div>
+		</div>
+	</nav>
+</section>
+<!-- navigation end -->
+		
+		<!-- main content -->
+		<section class="main-content">
+		
+			<!-- quick links  -->
+						<div class="quick-links">
+				<div class="container-xxl">
+					<div class="row g-0">
+						<div class="col-lg-3 col-sm-6">
+							<div class="ql-item">
+								<h2>Warnings</h2>
+								<!-- link for information -->
+								<a href="subDivisionWiseWarningGIS.php">Subdivisionwise</a>
+								&nbsp;|&nbsp;
+								<a href="districtWiseWarningGIS.php">Districtwise</a>
+							</div>
+						</div>
+						<div class="col-lg-3 col-sm-6">
+							<div class="ql-item">
+								<h2>Nowcast</h2>
+								<!-- link for information -->
+								<a href="districtWiseNowcastGIS.php">Districtwise</a>
+								&nbsp;|&nbsp;
+								<a href="stationWiseNowcastGIS.php">Stationwise</a>
+							</div>
+						</div>
+						<div class="col-lg-3 col-sm-6">
+							<div class="ql-item bg-qlinks-green">
+								<h2>Public Observation</h2>
+								<!-- link for information -->
+								(<a href="https://city.imd.gov.in/citywx/crowd/enter_th_datag_multilang.php" title="Download Mausam App for CrowdSource Observation" target="_blank" rel="noopener noreferrer">Multi Indian Languages</a>)
+								&nbsp;|&nbsp;
+								<a href="wxRealized.php" title="Temperature & Rainfall">Weather Realized</a>
+							</div>
+						</div>
+						<div class="col-lg-3 col-sm-6">
+							<div class="ql-item bg-qlinks-yellow lh-70 sub-menu">
+								<h2 class="text-dark">Specialized Forecast <i class="bi bi-sort-down"></i></h2>
+								<ul class="list-unstyled sp-items">
+									<li><a href="https://dss.imd.gov.in/dwr_img/GIS/amarnath_public_portal/amarnath_oper.html" target="_blank">Amarnath Yatra</a></li>
+									<li><a href="marine_forecast.php">Marine Forecast</a></li>
+									<li><a href="https://imdpune.gov.in/caui/health.pdf" target="_blank" rel="noopener noreferrer">Health Meteorological Bulletin</a></li>
+									<li><a href="https://internal.imd.gov.in/pages/tourism_forecast_mausam.php" target="_blank" rel="noopener noreferrer">Tourism Forecast</a></li>
+									<li><a href="http://srf.tropmet.res.in/srf/ts_prediction_system/index.php" target="_blank" rel="noopener noreferrer">Thunderstorm Prediction</a></li>
+																											<!--<li><a href="http://internal.imd.gov.in/pages/fogmain_mausam.php" target="_blank" rel="noopener noreferrer">Winter Weather Guidance</a></li>-->
+									<li><a href="flashFloodBulletin.php">Flash Flood Bulletin</a></li>			   
+									<li><a href="https://ews.tropmet.res.in/" target="_blank" rel="noopener noreferrer" title="AIR QUALITY EARLY WARNING SYSTEM">AQEWS</a></li>
+									<li><a href="https://nwp.imd.gov.in/silam_imd.php" target="_blank" rel="noopener noreferrer">Air Quality forecast</a></li>
+									<li><a href="https://nwp.imd.gov.in/enfuser_imd.php" target="_blank" rel="noopener noreferrer" title="Environmental Information Fusion Service">ENFUSER AQ</a></li>	   
+									<!-- <li><a href="http://safar.tropmet.res.in/" target="_blank" rel="noopener noreferrer" title="System of Air Quality and Weather Forecasting And Research">SAFAR</a></li> -->
+									<li><a href="https://internal.imd.gov.in/power/NRLDC/" target="_blank" rel="noopener noreferrer">Power Sector</a></li>
+									<!--<li><a href="http://14.139.247.5/power/NRLDC/" target="_blank" rel="noopener noreferrer">Power Sector</a></li>-->
+									<!-- <li><a href="pilgrimage_forecast.php">Pilgrimage Forecast</a></li> -->
+									<li><a href="https://dss.imd.gov.in/dwr_img/GIS/chardham_public_portal/char_dham_oper.html" target="_blank" rel="noopener noreferrer">Pilgrimage Forecast</a></li>
+									<li><a href="https://internal.imd.gov.in/section/nhac/dynamic/hmc.pdf" target="_blank" rel="noopener noreferrer">Mountain Weather Bulletin</a></li>
+									<li><a href="highwayForecast.php">Highway Forecast</a></li>
+																		<li><a href="https://dss.imd.gov.in/dwr_img/GIS/railway_dashboard/railway_monitoring.html" target="_blank" rel="noopener noreferrer">INDIAN RAILWAYS Forecast</a></li>
+								</ul>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div><!-- quick links end -->
+			
+			<!-- marquee content -->
+			<section class="mrq">
+				<div class="container-xxl">
+					<marquee direction="scroll" scrollamount="4" onmouseover="this.stop();" onmouseout="this.start();">
+						<!-- paragraps -->
+						<p><a href='/Forecast/marquee_data/ विज्ञप्ति 16.10.2026.pdf' style='color: #000000' target='_blank'>प्रेस विज्ञप्ति तारीखः 16 अक्टूबर, 2026</a></p><p><a href='/Forecast/marquee_data/Press Release 16-10-2026.pdf' style='color: #000000' target='_blank'>Press Release Date:16th October 2026</a></p><p><a href='/Forecast/marquee_data/ERF 15-10-26.pdf' style='color: #000000' target='_blank'>Current Weather Status and Extended Range Forecast for the next two weeks (15 to 28 October 2026)</a></p>					</marquee>
+				</div>
+			</section>
+			
+			<!-- inner page content area -->
+			<div class="inner-page-content">
+				<div class="container-xxl">
+					<!-- page title -->
+					<h3 class="ipc-title">Marine Forecast</h3>
+          <!-- Begin page content -->
+          <div class="default-block">
+            <div class="row g-3">
+              <div class="col-md-3">
+                <!-- slidey -->
+                
+                <div class="sidey">
+                  <ul class="list-group mlg">  
+                    
+                    <li class="has_submenu list-group-item">
+                      <a href="#">Fishermen warnings <i class="bi bi-plus-circle-fill"></i></a>
+                      <!-- Sub navigation -->
+                      <ul class="list-group slg">	
+                        
+                    <ul class="list-group slg">
+											<li><a href="#" class="has-link" data-link="link1">West Bengal Coast, Northwest Bay of Bengal, Northeast Bay of Bengal, North Andaman Sea, South Andaman Sea.</a></li>
+                      <li><a href="#" class="has-link" data-link="link2">South Odisha coast and North Odisha coast.</a></li>
+                      <li><a href="#" class="has-link" data-link="link3">North Andhra coast and South Andhra coast.</a></li>
+                      <li><a href="#" class="has-link" data-link="link4">North Tamil Nadu coast, South Tamil Nadu coast, Comorin Area, Maldives Area, Southeast Bay of Bengal, Southwest Bay of Bengal, West Central Bay of Bengal, and East Central Bay of Bengal.</a></li>
+                      <li><a href="#" class="has-link" data-link="link5">Kerala Coast, Karnataka Coast, Lakshadweep area, Southwest Arabian Sea and southeast Arabian Sea.</a></li>
+                      <li><a href="#" class="has-link" data-link="link6">North Maharashtra Coast, South Maharashtra coast, Goa coast, West Central Arabian Sea, East central Arabian Sea.</a></li>
+                      <li><a href="#" class="has-link" data-link="link7">North Gujarat Coast, South Gujarat Coast, northwest Arabian Sea, northeast Arabian Sea.</a></li>
+                      </ul>
+                    </ul>
+                    </li>
+										
+										<!--<li class="list-group-item"><a href="marine_forecast.php">Fishermen warnings</a></li>-->
+                    <li class="list-group-item"><a href="https://rsmcnewdelhi.imd.gov.in/port-warning.php" target="_new">Port Warnings</a></li>
+                    <li class="list-group-item"><a href="marine_forecast_3.php">Fishermen warning graphics</a></li>
+										
+										 <li class="has_submenu list-group-item">
+                      <a href="#">Sea Area Bulletins <i class="bi bi-plus-circle-fill"></i></a>
+                      <!-- Sub navigation -->
+                      <ul class="list-group slg">	
+                        
+                      <ul class="list-group slg">
+											<li><a href="../Forecast/seaarea_bulletin_new.php?id=1" target="_new">Bay of Bengal</a></li>
+                      <li><a href="../Forecast/seaarea_bulletin_new.php?id=4" target="_new">Arabian Sea</a></li>
+                                          
+                      </ul>
+                      
+                      </ul>
+                    </li>
+										
+                    <!--<li class="list-group-item"><a href="#" class="has-link" data-link="link41">Sea Area Bulletins</a></li>-->
+                  	<li class="list-group-item"><a href="coastal_observations.php">Observations</a></li>
+                    <li class="list-group-item"><a href="coastal_forecast.php">Coastal Weather Forecast</a></li>
+                   <!-- <li class="list-group-item"><a href="coastal_station_level_forecast.php">Coastal Station Forecast</a></li> -->
+					
+					
+                  </ul>
+                </div>              </div>
+              <div class="col-md-9">
+                <!-- slidy menu output -->
+                <div class="slidy-content-display" id="slidy-output">
+                  <!-- it's dynamic changes using scripts -->
+                 
+								 <a id="default-block-btn" target="_blank" href="../../backend/assets/acwc_mumbai_pdf/fisherman_(2)2.pdf" download="Fishermen-Marine-Forecast.pdf" ><i class="bi bi-download"></i></a><div class="position-relative"><a href="marine_forecast.php" class="position-absolute top-0 end-0 btn btn-link">Go Back</a></div><img src="../../backend/assets/pdf_to_img_acwc_mumbai/1_fisherman_6ad0a347e9b3b.png" style="width:100%"><img src="../../backend/assets/pdf_to_img_acwc_mumbai/2_fisherman_6ad0a348c8e4b.png" style="width:100%">								 
+                </div>
+              </div>
+            </div>
+          </div><!-- realised block end -->              
+				</div>
+			</div>
+			
+		</section>
+		<!-- main content end -->
+
+		<!-- footer include -->
+		<section class="footer border-top">
+	<div class="container-xxl">
+		<!-- footer widget -->
+		<div class="row">
+			<div class="col-lg-3 col-sm-6">
+				<!-- footer widget items -->
+				<div class="fw-item">
+					<!-- heading/title -->
+					<h3 class="fw-title">Forecasts</h3>
+					<!-- footer widget body -->
+					<div class="fw-body">
+						<ul class="list-unstyled">
+							<li><a href="http://internal.imd.gov.in/pages/city_weather_main_mausam.php" target="_blank" rel="noopener noreferrer">Urban Meteorological Services </a></li>
+							<li><a href="http://nwp.imd.gov.in/gfsproducts_cycle00_mausam.php" target="_blank">Short to Medium Range Model Guidance</a></li>
+							<li><a href="extendedRangeForecast.php">Extended Range Model Guidance</a></li>
+							<li><a href="seasonal_forecast.php">Seasonal Forecast</a></li>
+							<li><a href="quantPrecipForecast.php">Quantitative Precipitation Forecast</a></li>
+							<li><a href="https://cap-sources.s3.amazonaws.com/in-imd-en/rss.xml" target="_blank">Latest CAP Alerts</a></li>
+						</ul>
+					</div>
+					<br>
+					<div class="fw-body">
+						<h3 class="fw-title">for historical data related query</h3>
+
+						<div class="fw-body">
+							<p class="address">1. Mr. Ranjan Phukan, Sc. D<br>Contact No: <a href="tel:+919435669264">+91 9435669264</a>, ranjan.phukan[at]imd[dot]gov[dot]in
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="col-lg-3 col-sm-6">
+				<!-- footer widget items -->
+				<div class="fw-item">
+					<!-- heading/title -->
+					<h3 class="fw-title">Specialised products &amp; forecasts</h3>
+					<!-- footer widget body -->
+					<div class="fw-body">
+						<ul class="list-unstyled">
+							<li><a href="cycloneinformation.php">Cyclones</a> &nbsp;|&nbsp;
+								<a href="monsooninformation.php">Monsoon</a> &nbsp;|&nbsp;
+								<a href="satellite.php">Satellite</a><!-- <a href="https://www.mosdac.gov.in/" target="_new">Satellite</a>-->
+							</li>
+							<li><a href="radar.php">Radar</a> &nbsp;|&nbsp;
+								<a href="rainfallinformation.php">Rainfall</a> &nbsp;|&nbsp;
+								<a href="agromet_adv_ser_state_current.php">Agromet Advisories</a>
+							</li>
+							<li>MAUSAM : <a href="https://play.google.com/store/apps/details?id=com.imd.masuam" target="_blank" rel="noopener noreferrer"><img src="img/icons/android.png" alt="ANDROID"></a> &nbsp;|&nbsp;
+								<a href="https://apps.apple.com/us/app/id1522893967" target="_blank"><img src="img/icons/apple.png" alt="APPLE"></a> |
+								<a href="videos/mausam_app_v1.mp4" target="_blank" rel="noopener noreferrer">Video</a>
+							</li>
+							<li>Meghdoot Agro : <a href="https://play.google.com/store/apps/details?id=com.aas.meghdoot" target="_blank" rel="noopener noreferrer"><img src="img/icons/android.png" alt="ANDROID"></a> &nbsp;|&nbsp;
+								<a href="https://apps.apple.com/in/app/meghdoot/id1474048155" target="_blank" rel="noopener noreferrer"><img src="img/icons/apple.png" alt="APPLE"></a> |
+								<a href="videos/meghdoot_app.mp4" target="_blank" rel="noopener noreferrer">Video</a>
+							</li>
+							<!-- <li>Public Observation-IMD : <a href="https://play.google.com/store/apps/details?id=com.mausam.crowdsource" target="_blank" rel="noopener noreferrer"><img src="img/icons/android.png" alt="ANDROID"></a></a>&nbsp;|&nbsp;
+								<a href="https://apps.apple.com/in/app/public-observation-imd/id1618055762" target="_blank"><img src="img/icons/apple.png"></a> |
+								<a href="/imd_latest/weather_video/Crowd%20Sourcing%20Observation.mp4" target="_blank">Video</a>
+							</li> -->
+							<li>Damini Lightning : <a href="https://play.google.com/store/apps/details?id=com.lightening.live.damini" target="_blank" rel="noopener noreferrer"><img src="img/icons/android.png" alt="ANDROID"></a> &nbsp;|&nbsp;
+								<a href="https://itunes.apple.com/WebObjects/MZStore.woa/wa/viewSoftware?id=1502385645" target="_blank" rel="noopener noreferrer"><img src="img/icons/apple.png" alt="APPLE"></a>
+							</li>
+							<li>UMANG : <a href="https://play.google.com/store/apps/details?id=in.gov.umang.negd.g2c" target="_blank" rel="noopener noreferrer"><img src="img/icons/android.png" alt="ANDROID"></a> &nbsp;|&nbsp;
+								<a href="https://apps.apple.com/in/app/umang/id1236448857" target="_blank" rel="noopener noreferrer"><img src="img/icons/apple.png" alt="APPLE"></a>
+							</li>
+							<li><a href="https://dsp.imdpune.gov.in/" target="_blank" rel="noopener noreferrer"><b>Data Service Portal - Meteorological Data</b></a></li>
+						</ul>
+					</div>
+				</div>
+			</div>
+			<div class="col-lg-3 col-sm-6">
+				<!-- footer widget items -->
+				<div class="fw-item">
+					<!-- heading/title -->
+					<h3 class="fw-title">Miscellaneous</h3>
+					<!-- footer widget body -->
+					<div class="fw-body">
+						<ul class="list-unstyled">
+							<li>
+																<a href="citizenCharter.php">Citizen’s Charter</a> &nbsp;|&nbsp;
+								<a href="hindi_section.php" target="_blank" rel="noopener noreferrer">संगोष्ठी</a>
+							</li>
+							<li>
+								<a href="faq.php">Frequently Asked Questions</a>
+							</li>
+							<li><a href="https://internal.imd.gov.in/pages/rti_mausam.php" target="_blank" rel="noopener noreferrer">RTI</a> &nbsp;|&nbsp;
+								<a href="feedback/feedback.php" target="_blank" rel="noopener noreferrer">Feedback</a>&nbsp;|&nbsp;
+								<a href="/responsive/PoSH.php" target="_blank" rel="noopener noreferrer">Internal Complaint Committee</a>
+							</li>
+							<li><a href="https://shebox.wcd.gov.in/" target="_blank" rel="noopener noreferrer">Sexual Harassment complaint portal</a></li>
+
+							<li><a href="https://www.youtube.com/playlist?list=PLeEHd98fYDxjqoVoGRmyzQeJlIVClRQts">Weather Video</a> &nbsp;|&nbsp;
+								<a href="https://internal.imd.gov.in/advertisements/20260514_advt_119.pdf" target="_blank" rel="noopener noreferrer">GKMS News Letter</a>
+							</li>
+							<li><a href="/Forecast/login.php" target="_blank" rel="noopener noreferrer">Database Login</a> &nbsp;|&nbsp;
+								<a href="/backend/auth/login" target="_blank" rel="noopener noreferrer">Admin Login</a>
+							</li>
+							<li><a href="http://internal.imd.gov.in/pages/tenders_mausam.php" target="_blank" rel="noopener noreferrer">Tenders</a> &nbsp;|&nbsp;
+								<a href="https://internal.imd.gov.in/pages/recruits_mausam.php?id=1" target="_blank" rel="noopener noreferrer">WMO recruitment</a> &nbsp;|&nbsp;
+								<a href="https://internal.imd.gov.in/pages/advertisements_mausam.php" target="_blank" rel="noopener noreferrer">Circulars</a>
+							</li>
+							<li><a href="http://internal.imd.gov.in/pages/recruits_mausam.php" target="_blank" rel="noopener noreferrer">Recruitment</a> &nbsp;|&nbsp; <a href="https://internal.imd.gov.in/pages/recruits_mausam.php?id=2" target="_blank" rel="noopener noreferrer">Compassionate Appointment</a></li>
+							</li>
+							<li><a href="https://metnet.imd.gov.in/phps/imdweb_ip_main2.php" target=_blank>Immovable Property Return</a></li>
+							<li><a href="disclaimer.php">Disclaimer</a> &nbsp;|&nbsp;
+								<a href="sitemap.php">Sitemap</a>
+							</li>
+						</ul>
+					</div>
+				</div>
+			</div>
+			<div class="col-lg-3 col-sm-6">
+				<!-- footer widget items -->
+				<div class="fw-item">
+					<!-- heading/title -->
+					<h3 class="fw-title"><a href="contact.php">Contact Us</a></h3>
+					<!-- footer widget body -->
+					<div class="fw-body">
+						<p class="address">Office of Director General of Meteorology<br />
+							India Meteorological Department (IMD)<br />
+							Mausam Bhawan, Lodhi Road<br />
+							New Delhi - 110003</p><br>
+						<!-- heading/title -->
+						<h3 class="fw-title">Weather related query for Media</h3>
+						<h4 style="font-size:15px;">Query Time: 10:00am to 5:00pm</h4>
+
+						<!-- footer widget body -->
+						<div class="fw-body">
+							<p class="address">1. Dr. Naresh Kumar, Sc. F<br>Contact No: <a href="tel:+919968680077">+91 9968680077</a>, naresh.nhac[at]gmail[dot]com<br />
+								2. Dr. Akhil Srivastava, Sc. D<br>Contact No: <a href="tel:+918285281968">+91 8285281968</a>, akhil.srivastava[at]imd[dot]gov[dot]in<br /></p>
+						</div>
+						<!-- heading/title -->
+						<!--<h3 class="fw-title mt-4">Total Visits</h3>-->
+						<!-- footer widget body -->
+						<div class="fw-body">
+							<!-- visit count display -->
+													</div>
+					</div>
+				</div>
+			</div>
+			<!-- footer social media -->
+			<div class="social-media">
+				<a href="https://www.facebook.com/India.Meteorological.Department/" class="sm-link facebook" title=""><i class="bi bi-facebook"></i></a>
+				<a href="https://www.youtube.com/channel/UC_qxTReoq07UVARm87CuyQw/featured?view_as=subscriber" class="sm-link youTube" title=""><i class="bi bi-youtube"></i></a>
+				<a href="https://twitter.com/Indiametdept" class="sm-link twitter" title=""><i class="bi bi-twitter"></i></a>
+				<a href="https://instagram.com/mausam_nwfc/" target="new" class="sm-link instagram" title=""><i class="bi bi-instagram"></i></a>
+			</div>
+			<p class="copy-right">&copy; Copyright 2026, Developed by IT Team, India Meteorological Department<br />Ministry of Earth Sciences, New Delhi, India</p>
+		</div>
+</section>
+
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-157746104-1"></script>
+<script>
+	window.dataLayer = window.dataLayer || [];
+
+	function gtag() {
+		dataLayer.push(arguments);
+	}
+	gtag('js', new Date());
+
+	gtag('config', 'UA-157746104-1');
+</script>
+
+				
+		<!-- Scroll to top -->
+		<span class="totop"><a href="#"><i class="bi bi-arrow-up-circle-fill"></i></a></span> 
+	<!-- jQuery v1.11.3 -->
+    <script src="js/libs/jquery.min.js"></script>
+		
+		<!-- bootstrap js 5.0 -->
+    <script src="assets/js/bootstrap.bundle.min.js"></script>
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="js/main.js"></script>
+		
+    
+    <script>
+		$(document).ready(function(){
+								
+				$(".has_submenu > a").click(function(e){
+					e.preventDefault();
+					var menu_li = $(this).parent("li");
+					var menu_ul = $(this).next("ul");
+					
+					if(menu_li.hasClass("open")){
+						menu_ul.slideUp(150);
+						menu_li.removeClass("open");
+					} else {
+						$(".mlg > li > ul").slideUp(150);
+						$(".mlg > li").removeClass("open");
+						menu_ul.slideDown(150);
+						menu_li.addClass("open");
+					}
+				});
+        			
+				$(".has_insubmenu > a").click(function(e){
+					e.preventDefault();
+					var menu_li = $(this).parent("li");
+					var menu_ul = $(this).next("ul");
+					
+					if(menu_li.hasClass("open")){
+						menu_ul.slideUp(150);
+						menu_li.removeClass("open");
+					} else {
+						$(".slg > li > ul").slideUp(150);
+						$(".slg > li").removeClass("open");
+						menu_ul.slideDown(150);
+						menu_li.addClass("open");
+					}
+				});
+				
+    $(".has-link").on("click", function(e) {
+					e.preventDefault();
+					var openURL = $(this).data("link");
+          var display = $("#slidy-output");
+          var page = "";
+          switch(openURL) {
+            case 'link1': page = '<a id="default-block-btn" target="_blank" href=../backend/assets/acwc_kolkata_pdf/Fisherman_5.pdf download="Fishermen-Marine-Forecast.pdf" ><i class="bi bi-download"></i></a><div class="position-relative"><a href="marine_forecast.php" class="position-absolute top-0 end-0 btn btn-link">Go Back</a></div><img src="../../backend/assets/pdf_to_img_acwc/1_fisherman_6ad1bf353963d.png" style="width:100%">';
+              break;
+            case 'link2': page = '<a id="default-block-btn" target="_blank" href=../../backend/assets/cwc_pdf/fishermen-_08_01_2026.pdf download="Fishermen-Marine-Forecast.pdf" ><i class="bi bi-download"></i></a><div class="position-relative"><a href="marine_forecast.php" class="position-absolute top-0 end-0 btn btn-link">Go Back</a></div><img src="../../backend/assets/pdf_to_img_cwc/1_fishermen_6ad1d3e74e5ea.png" style="width:100%">';
+              break;
+            case 'link3': page = '<a id="default-block-btn" target="_blank" href="../../backend/assets/cwcv_pdf/FW16133027.pdf" download="Fishermen-Marine-Forecast.pdf" ><i class="bi bi-download"></i></a><div class="position-relative"><a href="marine_forecast.php" class="position-absolute top-0 end-0 btn btn-link">Go Back</a></div><img src="../../backend/assets/pdf_to_img_cwcv/1_FW161330_6ad1dace2be8f.png" style="width:100%">';
+              break;
+            case 'link4': page = '<a id="default-block-btn" target="_blank" href="../../backend/assets/acwcc_pdf/fishermen_(5).pdf" download="Fishermen-Marine-Forecast.pdf" ><i class="bi bi-download"></i></a><div class="position-relative"><a href="marine_forecast.php" class="position-absolute top-0 end-0 btn btn-link">Go Back</a></div><img src="../../backend/assets/pdf_to_img_acwcc/1_fishermen_6ad1c8d0d2b27.png" style="width:100%"><img src="../../backend/assets/pdf_to_img_acwcc/2_fishermen_6ad1c8d2b8e35.png" style="width:100%">';
+              break;
+            case 'link5': page = '<a id="default-block-btn" target="_blank" href="../../backend/assets/cwc_thiru_pdf/91c2da09f99731db2b6ed69d6775a189.pdf" download="Fishermen-Marine-Forecast.pdf" ><i class="bi bi-download"></i></a><div class="position-relative"><a href="marine_forecast.php" class="position-absolute top-0 end-0 btn btn-link">Go Back</a></div><img src="../../backend/assets/pdf_to_img_cwc_thiru/1_fishermen warning_6ad1ce198abfa.png" style="width:100%">';
+              break;
+            case 'link6': page = '<a id="default-block-btn" target="_blank" href="../../backend/assets/acwc_mumbai_pdf/fisherman_(2)2.pdf" download="Fishermen-Marine-Forecast.pdf" ><i class="bi bi-download"></i></a><div class="position-relative"><a href="marine_forecast.php" class="position-absolute top-0 end-0 btn btn-link">Go Back</a></div><img src="../../backend/assets/pdf_to_img_acwc_mumbai/1_fisherman_6ad0a347e9b3b.png" style="width:100%"><img src="../../backend/assets/pdf_to_img_acwc_mumbai/2_fisherman_6ad0a348c8e4b.png" style="width:100%">';
+              break;
+            case 'link7': page = '<a id="default-block-btn" target="_blank" href="../../backend/assets/cwc_ahmedabad_pdf/FISHERMEN_WARNING_1730hrs_IST_dt-15_10_2026_docx.pdf" download="Fishermen-Marine-Forecast.pdf"><i class="bi bi-download"></i></a><div class="position-relative"><a href="marine_forecast.php" class="position-absolute top-0 end-0 btn btn-link">Go Back</a></div><img src="../../backend/assets/pdf_to_img_cwc_ahmedabad/1_Fishermen warning_6ad1cf63905ce.png" style="width:100%"><img src="../../backend/assets/pdf_to_img_cwc_ahmedabad/2_Fishermen warning_6ad1cf658d67e.png" style="width:100%">';
+              break;
+            //case 'link41': page = '<p class="p-1"><strong>Sea Area Bulletins</strong></p><div class="fi-wrng"><div class="fi-wr-item"><a href="../Forecast/seaarea_bulletin_new.php?id=1" target="_new">Bay of Bengal</a><a href="../Forecast/seaarea_bulletin_new.php?id=4" target="_new">Arabian Sea</a></div></div>';
+             // break;
+            case 'link51': page = '<p class="p-1"><strong>Coastal Weather Forecast</strong></p><div class="fi-wrng"><div class="fi-wr-item"><a href="../Forecast/coastal_bulletin_new.php" target="_new">West Bengal Coast, Andaman and Nicobar Islands</a><a href="../Forecast/coastal_bulletin_new.php?id=6" target="_new">Tamil Nadu coast</a><a href="../Forecast/coastal_bulletin_new.php?id=4" target="_new">Maharashtra coast and Goa coast</a><a href="../Forecast/coastal_bulletin_new.php?id=5" target="_new">Odisha Coast</a><a href="../Forecast/coastal_bulletin_new.php?id=7" target="_new">Andhra Pradesh Coast</a><a href="../Forecast/coastal_bulletin_new.php?id=2" target="_new">Kerala coast, Karnataka Coast and Lakshadweep Islands</a><a href="../Forecast/coastal_bulletin_new.php?id=3" target="_new">Gujarat Coast</a></div></div>';
+              break;
+            default: page = '<a id="default-block-btn" target="_blank" href=../backend/assets/acwc_kolkata_pdf/Fisherman_5.pdf download="Fishermen-Marine-Forecast.pdf" ><i class="bi bi-download"></i></a><div class="position-relative"><a href="marine_forecast.php" class="position-absolute top-0 end-0 btn btn-link">Go Back</a></div><img src="../../backend/assets/pdf_to_img_acwc/1_fisherman_6ad1bf353963d.png" style="width:100%">';
+              break;
+          }
+					document.getElementById('slidy-output').scrollIntoView();
+          display.html(page);
+		});
+		
+		});
+    </script>  </body>
+</html>

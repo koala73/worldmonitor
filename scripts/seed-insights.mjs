@@ -824,6 +824,8 @@ export function normalizeDigestItemsForInsights(items) {
   return items.map(item => ({
     title: sanitizeTitle(item.title || item.headline || ''),
     source: item.source || item.feed || '',
+    // #9095: clusterItems compares title + lead to count same-copy outlets once.
+    ...(typeof item.snippet === 'string' && item.snippet.trim() !== '' ? { snippet: item.snippet } : {}),
     link: item.link || item.url || '',
     pubDate: item.pubDate || item.publishedAt || item.date || new Date().toISOString(),
     isAlert: item.isAlert || false,
@@ -1135,6 +1137,9 @@ async function fetchInsights() {
       // per-category cap; the digest's origin-aware publisher count is the
       // floor a single-publisher verdict has to respect.
       corroborationCount: story.corroborationCount ?? 0,
+      // #9095: publisher families in `sources` that carried the same copy;
+      // each group counts as one publisher wherever `sources` is judged.
+      ...(Array.isArray(story.sameCopy) && story.sameCopy.length > 0 ? { sameCopy: story.sameCopy } : {}),
       lastUpdated: story.lastUpdated,
       memberTitles: Array.isArray(story.memberTitles) ? story.memberTitles : [story.primaryTitle],
       sourceTier: story.sourceTier,

@@ -1,4 +1,4 @@
-import jmespath from 'jmespath';
+import { searchBoundedJmespath } from '../../server/_shared/bounded-jmespath';
 import { JMESPATH_MAX_EXPR_BYTES, JMESPATH_MAX_OUTPUT_BYTES } from './constants';
 import type { ApplyJmespathResult } from './types';
 import { utf8ByteLength } from './utils';
@@ -12,8 +12,8 @@ import { stringifyWithinBudget } from '../../server/_shared/bounded-json';
 // `dispatchToolsCall` covers both cache and RPC tools uniformly.
 //
 // The helper returns the wire-ready JSON string in `text` so dispatch can
-// write it straight into `content[0].text` without re-serializing. Two
-// gates protect the edge function — both fail soft, never throw.
+// write it straight into `content[0].text` without re-serializing. The gates
+// protect expression size, evaluation, and output size. All fail soft.
 // ---------------------------------------------------------------------------
 
 // Universal JMESPath projection (v1.4.0) — advertised on every tool (cache
@@ -43,7 +43,7 @@ function jmespathOriginalKeys(v: unknown): string[] {
 // Apply a JMESPath expression to a value. Always returns `{ text }`. Pure;
 // never throws. Identity path (no `exprArg`, empty string, non-string) skips
 // projection entirely and returns `JSON.stringify(value)`. See module-doc
-// for the two-gate contract.
+// for the projection limits.
 export function applyJmespath(value: unknown, exprArg: unknown): ApplyJmespathResult {
   if (typeof exprArg !== 'string' || exprArg.length === 0) {
     // `JSON.stringify(undefined)` returns the literal value `undefined`
@@ -66,7 +66,7 @@ export function applyJmespath(value: unknown, exprArg: unknown): ApplyJmespathRe
 
   let projected: unknown;
   try {
-    projected = jmespath.search(value, exprArg);
+    projected = searchBoundedJmespath(value, exprArg);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const envelope = {

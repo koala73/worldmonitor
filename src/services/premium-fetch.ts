@@ -81,6 +81,10 @@ export function reportServerError(
   // decision point. Reporting every browser-visible 503 again would turn one
   // Redis outage into a per-route, per-client Sentry flood.
   if (res.headers.get('X-RateLimit-Mode') === 'degraded') return;
+  // api/mcp-proxy relays a remote MCP server's timeout as its own 504 and
+  // already captured it server-side at warning. The remote server is the
+  // caller's choice, not our origin (WORLDMONITOR-17A).
+  if (res.headers.get('X-Wm-Upstream-Timeout') === '1') return;
   try {
     const href = input instanceof Request ? input.url : String(input);
     const path = new URL(href, globalThis.location?.href ?? 'https://worldmonitor.app').pathname;

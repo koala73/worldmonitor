@@ -38,11 +38,13 @@ const RATE_LIMIT_MAX = RATE_LIMIT_POLICY.limit;
 const RATE_LIMIT_WINDOW = RATE_LIMIT_POLICY.window;
 
 // Request headers worth forwarding to the upstream MCP transport. Everything
-// else (cookies, CF headers, x-forwarded-*) stays on our side.
+// else (cookies, CF headers, x-forwarded-*) stays on our side. `authorization`
+// is deliberately absent: the docs MCP is anonymous, and an MCP client that
+// reuses a WorldMonitor bearer for every path on this origin would otherwise
+// hand that credential to the third-party docs host.
 const FORWARDED_REQUEST_HEADERS = [
   'accept',
   'accept-language',
-  'authorization',
   'content-type',
   'last-event-id',
   'mcp-protocol-version',

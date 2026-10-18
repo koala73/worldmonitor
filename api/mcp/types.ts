@@ -57,6 +57,8 @@ export interface McpToolExecutionContext {
   readAccountAllowance?: () => Promise<import('./_account-allowance').McpAllowanceStatus>;
   panelRequest?: import('./panel-requests').PaidPanelAdmission;
   panelScope?: 'forecasts';
+  // Set only by dispatch for an original forecast read billed per tool call.
+  perToolForecastRead?: true;
   // Set only by dispatch after a dedicated paid country-panel read is authorized.
   countryPanelCode?: string;
   inboundHostClass: McpInboundHostClass;
@@ -69,7 +71,7 @@ export interface McpToolExecutionContext {
 // ---------------------------------------------------------------------------
 export interface BaseToolDef {
   name: string;
-  title?: string;
+  title: string;
   description: string;
   inputSchema: {
     type: string;
@@ -82,6 +84,13 @@ export interface BaseToolDef {
   // envelope instead of the oversized payload. Required so a new tool can't
   // be added without an explicit budget choice.
   _outputBudgetBytes: number;
+  // Optional reshaping for a response that would exceed `_outputBudgetBytes`:
+  // shed duplicate or bulky detail and record what was omitted, so the call
+  // still returns rows. Dispatch applies it only to an over-budget result and
+  // re-runs the caller's projection on the reshaped payload, so a projection
+  // that already fits still sees the original detail. Return the input
+  // unchanged when it cannot fit; the budget gate then answers as before.
+  _fitToBudget?: (result: Record<string, unknown>, budgetBytes: number, args: Record<string, unknown>) => Record<string, unknown>;
   // JMESPath expression extracting this tool's source list from its
   // UNPROJECTED payload. Declared by every tool whose `outputSchema` carries a
   // licence marker (`shared/attribution-rider.ts::LICENCE_MARKER_FIELDS`), and
@@ -341,7 +350,7 @@ export interface ApplyJmespathResult {
 // ---------------------------------------------------------------------------
 export interface PublicToolShape {
   name: string;
-  title?: string;
+  title: string;
   description: string;
   inputSchema: {
     type: string;
@@ -351,6 +360,7 @@ export interface PublicToolShape {
   };
   outputSchema: object;
   annotations: {
+    title: string;
     readOnlyHint: boolean;
     destructiveHint: boolean;
     idempotentHint: boolean;

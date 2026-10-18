@@ -23,10 +23,10 @@ import { EconomicServiceClient } from '@/services/generated-rpc-clients';
 
 // ---- Client + Circuit Breakers ----
 
-// premiumFetch for the whole client: 1 of ~16 methods (getNationalDebt) targets a
-// PREMIUM_RPC_PATHS path. globalThis.fetch here would 401 signed-in browser pros
-// on getNationalDebt with no WORLDMONITOR_API_KEY (gateway runs validateApiKey
-// with forceKey=true on premium paths). premiumFetch no-ops safely when no
+// premiumFetch for the whole client so any method that becomes a
+// PREMIUM_RPC_PATHS path keeps working for signed-in browser pros with no
+// WORLDMONITOR_API_KEY (gateway runs validateApiKey with forceKey=true on
+// premium paths). premiumFetch no-ops safely when no
 // credentials are available, so the public methods (FRED, BLS, energy, BIS,
 // EU, oil) keep working unchanged. See src/services/supply-chain/index.ts for
 // the same pattern + #3242 review HIGH(new) #1 for the bug class this prevents.
@@ -736,11 +736,9 @@ async function _fetchNationalDebt(): Promise<GetNationalDebtResponse> {
     }
   } catch { /* fall through to RPC */ }
 
-  // Anonymous (non-premium) users: do NOT call the Pro-gated RPC.
-  // /api/economic/v1/get-national-debt is in PREMIUM_RPC_PATHS, so the
-  // call deterministically 401s for an anonymous client and the breaker
-  // returns emptyNationalDebtFallback anyway — same outcome as us, minus
-  // the Sentry/console noise on every page load.
+  // Anonymous (non-premium) users stay on the shared bootstrap copy above.
+  // The RPC is free, but it serves the same seed, so a bootstrap miss would
+  // only repeat as an uncached per-visitor origin read on every page load.
   if (!hasPremiumAccess()) {
     return emptyNationalDebtFallback;
   }

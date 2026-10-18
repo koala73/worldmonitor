@@ -18,6 +18,7 @@ import {
   suggestNotFoundSection,
 } from '../src/config/agent-not-found.ts';
 import { CONTENT_CORPUS_PREFIXES } from '../scripts/discover-content-corpus-pages.mjs';
+import { indexableLandingPassthroughPrefixes } from '../shared/indexable-landing-locales.ts';
 
 const vercelConfig = JSON.parse(
   readFileSync(resolve(import.meta.dirname, '../vercel.json'), 'utf8'),
@@ -142,17 +143,23 @@ describe('agent-friendly 404s (orank agent-friendly-404)', () => {
   });
 
   it('does not intercept known product routes or mutating methods', () => {
-    for (const path of ['/', '/dashboard', '/stocks/AAPL', '/story', '/pro', '/docs/mcp', '/countries/united-states']) {
+    for (const path of ['/', '/dashboard', '/stocks/AAPL', '/story', '/pro', '/docs/mcp', '/countries/united-states', ...indexableLandingPassthroughPrefixes()]) {
       assert.equal(call(path, { accept: '*/*' }), undefined, `${path} must keep its vercel.json route`);
     }
     assert.equal(call('/some-path-that-does-not-exist', { method: 'POST', accept: '*/*' }), undefined);
   });
 
   it('404s leaked SPA guesses that used to soft-404 the dashboard (#6575, #6836)', async () => {
-    for (const path of ['/country-intel', '/security', '/trust']) {
+    for (const path of ['/country-intel', '/security']) {
       const res = call(path, { accept: '*/*' });
       assert.ok(res instanceof Response, `${path} must 404`);
       assert.equal(res.status, 404);
+    }
+  });
+
+  it('serves the /trust page (#9093), which used to be a leaked SPA guess', async () => {
+    for (const path of ['/trust', '/trust/', '/trust/review/']) {
+      assert.equal(call(path, { accept: '*/*' }), undefined, `${path} must reach its static page`);
     }
   });
 

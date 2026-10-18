@@ -31,7 +31,7 @@ import { PIPELINES } from '../shared/pipelines-data.ts';
 import { INTEL_HOTSPOTS } from '../shared/geo-data.ts';
 import { lngFacilityCount } from './_storage-facility-registry.mjs';
 import { SOURCE_DOMAINS } from './crawlable-sources-page.mjs';
-import { resolveLatestResilienceSnapshotPath } from './build-crawlable-corpus.mjs';
+import { publishedRankedCountries } from './build-crawlable-corpus.mjs';
 import {
   AI_SEARCH_COVERAGE_CLOSE,
   AI_SEARCH_COVERAGE_HEADING,
@@ -60,26 +60,11 @@ const RECONCILED_RE = /^Coverage reconciled: \d{4}-\d{2}-\d{2}\b.*$/m;
 const FACTS_RECONCILED_RE = /^Facts reconciled: \d{4}-\d{2}-\d{2}\b.*$/m;
 
 const read = (rootDir, relativePath) => readFileSync(join(rootDir, relativePath), 'utf8');
-const readJson = (rootDir, relativePath) => JSON.parse(read(rootDir, relativePath));
 const count = (value) => value.toLocaleString('en-US');
 
 /** UTC so a late-evening run in a +04:00 timezone cannot date as tomorrow. */
 export function todayUtc() {
   return new Date().toISOString().slice(0, 10);
-}
-
-/**
- * Countries in the latest published resilience ranking. The rankable universe
- * (196) and the published ranking (170) are different facts and third-party
- * coverage has conflated them, so ai-search.md states both with their
- * definitions attached.
- */
-export function publishedRankedCountries(rootDir = ROOT) {
-  const snapshot = readJson(rootDir, resolveLatestResilienceSnapshotPath(rootDir));
-  if (!Array.isArray(snapshot.items) || snapshot.items.length === 0) {
-    throw new Error('the published resilience ranking snapshot must contain ranked items');
-  }
-  return { ranked: snapshot.items.length, capturedAt: snapshot.capturedAt };
 }
 
 /**

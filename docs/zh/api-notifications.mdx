@@ -47,6 +47,18 @@ description: "World Monitor 通知系统 API 完整参考：涵盖通知渠道�
 
 - **幂等性**: `POST /api/notification-channels` 支持可选的 `Idempotency-Key`。使用相同 key 和相同请求体重试时,会重放原始响应,而不是再次应用渠道动作。 例外是成功的 webhook `set-channel`:其响应包含一次性签名密钥,因此不会被缓存,重试会重新注册该 URL 并签发新密钥。
 
+## 咽喉要道中断告警
+
+只有当规则的 `eventTypes` 明确列出 `chokepoint_disruption` 时,规则才会收到该事件。`eventTypes` 为空的规则(其他情况下表示接收所有事件类型)不会收到它。列出该类型也不会缩小规则的其他告警范围。
+
+- **触发时机**:每次 30 分钟的咽喉要道数据刷新之后检查。咽喉要道的 `disruptionScore` 由其常设威胁等级(战区 70、严重 40、高 30、升高 15、正常 0)加上实时信号(航行警告、AIS 中断、通行量下降)组成。当分数至少为 50(仪表盘上的红色区间),且实时信号至少贡献 15 分时触发告警。因此像霍尔木兹这样的战区咽喉要道会因新的动态而告警,而不会仅因常设等级告警。
+- **重新武装**:告警之后,只有当分数降到 40 以下或实时信号降到 5 分以下,且该次读数中航行警告和 AIS 数据源可用(若告警包含通行量下降,还需通行数据可用)时,才能再次告警。每个咽喉要道最多每 12 小时告警一次。
+- **严重级别**:始终为 `critical`。与其他队列事件一样,只投递给实时规则,不进入摘要。
+- **范围**:`chokepoints` 接受[咽喉要道注册表](/zh/methodology/chokepoints)中的 id(`suez`、`hormuz_strait`、`bab_el_mandeb`、`panama` 等),未知 id 会被丢弃;若列表中没有任何已知 id,则返回 `400 CHOKEPOINTS_INVALID`。列表为空或缺省表示所有咽喉要道。该事件不带国家信息,因此 `countries` 范围不会过滤它。
+- **载荷**:`title`、`source`(`Chokepoint Monitor`)、`chokepointId`、`chokepointName`、`disruptionScore`、`status`(`red`)、`activeWarnings`、`congestionLevel`、`triggeredAt`,以及标识一次告警、在中继重发时保持不变的 `coalesceKey`。Webhook 投递还会附带仪表盘 URL `link`。
+
+`POST /api/notify` 会拒绝该事件类型:只有中继会发布它。
+
 ## Webhook 投递契约
 
 当告警触发时,已注册的 webhook URL 将收到:

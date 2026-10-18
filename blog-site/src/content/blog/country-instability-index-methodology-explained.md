@@ -83,7 +83,7 @@ The three common index types answer different questions:
 | Index | Main question | Coverage and cadence |
 |-------|---------------|----------------------|
 | Country Instability Index (CII) | How much current stress is the country under? | 31 Tier-1 countries, updated continuously |
-| Country Resilience Index (CRI) | How well can the country absorb and recover from shocks? | 196-country public universe, refreshed every six hours |
+| Country Resilience Index (CRI) | How well can the country absorb and recover from shocks? | Ranked for 170 of 196 countries, refreshed every six hours |
 | Fragile States Index (FSI) | Which states show long-term structural fragility? | Broad global coverage, published annually |
 
 **It does not measure structural fragility.** That is the job of the Country Resilience Index, a separate 196-country model of structural capacity across 72 indicators, 21 active dimensions, and 6 domains, refreshed every six hours. CII is the fast clock (what is burning now); resilience is the slow clock (what breaks under fire). Reading them together is the [core of a sound country-risk workflow](/blog/posts/country-risk-monitoring-workflow-for-analysts/).

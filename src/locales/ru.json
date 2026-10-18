@@ -238,7 +238,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Статус оценки и заполнения пропусков не указан"
     },
     "fiveFactorScorecard": {
       "title": "Пятифакторная карта устойчивости",
@@ -410,6 +411,7 @@
     "energy": "Энергетика и ресурсы",
     "gov": "Правительство",
     "thinktanks": "Аналитические центры",
+    "science": "Наука",
     "polymarket": "Прогнозы",
     "commodities": "Сырьевые товары",
     "economic": "Экономические индикаторы",
@@ -2977,6 +2979,7 @@
       "tier4OnlyHint": "Все издания, сообщающие об этом, являются источниками уровня 4 (агрегаторы и блоги). Это описывает охват, а не точность.",
       "rosterListed": "({{listed}} в списке)",
       "rosterFeeds": "Ленты: {{labels}}",
+      "rosterSameCopy": "Один и тот же текст, учтён один раз",
       "rosterLegend": "Уровни классифицируют источники; они не оценивают это утверждение.",
       "tierDocsLink": "Как присваиваются уровни",
       "tierChip": "У{{tier}}",

@@ -132,6 +132,48 @@ describe('Edge Function no node: built-ins', () => {
   }
 });
 
+// Vercel's Node runtime compiles each file on its own and loads the result as
+// native ESM ("type": "module"), so a relative import must name the file it
+// resolves to. An extensionless `../server/_shared/x` bundles fine on Edge and
+// runs fine under tsx, then fails at module load in production with
+// ERR_MODULE_NOT_FOUND on every request. That is what reverted #7578 (GHSA-887j).
+// Walk each Node-runtime route's whole local import graph and require it.
+describe('Node-runtime routes load as native ESM', () => {
+  const nodeRuntimeRoutes = trackedApiSources
+    .filter((file) => ['api', 'api/oauth'].includes(dirname(file)))
+    .filter((file) => !/export\s+const\s+config\s*=\s*\{[^}]*\bruntime\s*:\s*['"]edge['"]/.test(readFileSync(join(root, file), 'utf-8')));
+
+  it('finds the Node-runtime routes, so the guard cannot pass vacuously', () => {
+    assert.ok(nodeRuntimeRoutes.includes('api/mcp-proxy.ts'), `found: ${nodeRuntimeRoutes.join(', ')}`);
+  });
+
+  for (const route of nodeRuntimeRoutes) {
+    it(`${route} names the file of every relative import in its graph`, async () => {
+      const { build } = await import('esbuild');
+      const { metafile } = await build({
+        entryPoints: [join(root, route)],
+        absWorkingDir: root,
+        bundle: true,
+        write: false,
+        metafile: true,
+        platform: 'node',
+        format: 'esm',
+        packages: 'external',
+        logLevel: 'silent',
+      });
+      const unresolvable = [];
+      for (const [file, input] of Object.entries(metafile.inputs)) {
+        for (const { original, external } of input.imports) {
+          if (!external && original?.startsWith('.') && !/\.(?:m?js|cjs)$/.test(original)) {
+            unresolvable.push(`${file}: '${original}'`);
+          }
+        }
+      }
+      assert.deepEqual(unresolvable, [], 'give each relative import its .js file name; a .ts source is imported as .js');
+    });
+  }
+});
+
 // AGENTS.md: legacy JS entries share code only through `_*.js` helpers or
 // packages. Importing another route entry couples two deployables and bundles
 // the whole sibling handler (#8305 briefly had authorize.js import register.js).
@@ -271,13 +313,16 @@ describe('api/slack/oauth/start.ts safety', () => {
 describe('api/slack/oauth/callback.ts safety', () => {
   const callbackPath = join(root, 'api', 'slack', 'oauth', 'callback.ts');
 
-  it("uses '*' as postMessage targetOrigin (works on all WM subdomains and previews)", () => {
+  it('posts the success message only to the opener origin stored with the state', () => {
     const src = readFileSync(callbackPath, 'utf-8');
     assert.ok(
-      src.includes("APP_ORIGIN = '*'"),
-      "callback.ts: postMessage targetOrigin must be '*' so it works on tech/finance/happy subdomains and " +
-      'preview deployments — a hardcoded origin would silently drop messages on all other origins. ' +
-      "Security comes from the e.origin check in the listener, not from targetOrigin.",
+      src.includes('postMessage(${msg},${safeJsonInScript(openerOrigin)})'),
+      'callback.ts: the connected message carries channel and workspace names, so it must target the ' +
+      "opener origin recorded by start (server/_shared/channel-oauth-state.ts), not '*'.",
+    );
+    assert.ok(
+      src.includes("callbackMatchesBrowser('slack', req, oauthState)"),
+      'callback.ts: must refuse a callback from a browser that did not call start',
     );
   });
 

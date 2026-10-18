@@ -144,7 +144,7 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       const tools = await getRegistry();
       const t = tools.find(t => t.name === 'get_cyber_threats');
       assert.ok(t, 'get_cyber_threats must be registered');
-      assert.deepEqual(Object.keys(t).sort(), ['_meta', 'annotations', 'description', 'inputSchema', 'name', 'outputSchema']);
+      assert.deepEqual(Object.keys(t).sort(), ['_meta', 'annotations', 'description', 'inputSchema', 'name', 'outputSchema', 'title']);
       assert.deepEqual(t._meta, {
         'worldmonitor/access': 'free-account',
         'worldmonitor/weight': 1,
@@ -391,17 +391,19 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
 
     // tools/list keeps only the first sentence, so a caveat placed later never
     // reaches a client that does not call describe_tool.
-    it('get_tariff_trends leads with its four-indicator bundle and points to the sibling tools in full', async () => {
+    it('get_tariff_trends advertises price and debt indicators without a tariff series', async () => {
       const tools = await getToolsList();
       const compressed = tools.find(t => t.name === 'get_tariff_trends').description;
       assert.ok(mod.utf8ByteLength(compressed) <= mod.TOOL_DESCRIPTION_MAX_BYTES);
       assert.match(compressed, /Big Mac/);
-      assert.match(compressed, /tariff/i);
-      assert.match(compressed, /schedule|current duty/i);
+      assert.match(compressed, /FAO/);
+      assert.match(compressed, /debt/i);
+      assert.doesNotMatch(compressed, /tariff/i);
       const full = await callDescribeTool('get_tariff_trends');
-      assert.match(full.description, /get_tariff_averages/);
-      assert.match(full.description, /get_bilateral_tariff/);
-      assert.match(full.description, /get_us_import_duty/);
+      assert.match(full.description, /Big Mac/);
+      assert.match(full.description, /FAO/);
+      assert.match(full.description, /debt/i);
+      assert.doesNotMatch(full.description, /tariff/i);
     });
 
     for (const name of ['get_tariff_averages', 'get_bilateral_tariff']) {
@@ -452,6 +454,17 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.equal(definition._budget_exceeded, undefined);
       assert.equal(definition.description, registered.description);
       assert.deepEqual({ ...definition, description: listed.description }, listed);
+    });
+
+    // describe_tool's own output budget must hold the largest full definition;
+    // otherwise that tool's describe_tool call returns _budget_exceeded.
+    it('describe_tool returns the full definition of every registered tool within its budget', async () => {
+      const overBudget = [];
+      for (const tool of TOOL_REGISTRY) {
+        const definition = await callDescribeTool(tool.name);
+        if (definition._budget_exceeded !== undefined) overBudget.push(tool.name);
+      }
+      assert.deepEqual(overBudget, []);
     });
 
     it('country output schema requires raw evidence only for the raw Signals section', async () => {

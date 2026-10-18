@@ -242,7 +242,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "لم تُقدَّم حالة التقدير وتعويض القيم المفقودة"
     },
     "fiveFactorScorecard": {
       "title": "بطاقة تقييم الصمود بخمسة عوامل",
@@ -414,6 +415,7 @@
     "energy": "الطاقة والموارد",
     "gov": "الحكومة",
     "thinktanks": "مراكز الأبحاث",
+    "science": "العلوم",
     "polymarket": "التنبؤات",
     "commodities": "السلع",
     "economic": "المؤشرات الاقتصادية",
@@ -3015,6 +3017,7 @@
       "tier4OnlyHint": "كل منفذ ينشر هذا هو مصدر من المستوى 4 (المجمّعات والمدونات). هذا يصف نطاق التغطية، وليس الدقة.",
       "rosterListed": "({{listed}} مدرجة)",
       "rosterFeeds": "الخلاصات التي شوهدت: {{labels}}",
+      "rosterSameCopy": "نفس النص، يُحتسب مرة واحدة",
       "rosterLegend": "المستويات ترتّب المصادر؛ ولا تحكم على هذا الادعاء.",
       "tierDocsLink": "كيفية تعيين المستويات",
       "tierChip": "T{{tier}}",

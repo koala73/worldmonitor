@@ -91,6 +91,7 @@ function installDeps(mod: {
   const relayCalls: RelayCall[] = [];
   installDnsFetch();
   mod.__setNotificationChannelsDepsForTests({
+    checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
     validateBearerToken: async () => ({ valid: true, userId: 'user-webhook-envelope' }),
     getEntitlements: async () => proShapedEntitlements(),
     fetch: async (input: string | URL | Request, init?: RequestInit) => {

@@ -91,6 +91,11 @@ describe('cors helper', () => {
       /(?:^|,\s*)X-RateLimit-Mode(?:,|$)/,
       'browser clients must be able to read limiter degradation (X-RateLimit-Mode)',
     );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)X-Wm-Upstream-Timeout(?:,|$)/,
+      'premium-fetch must read the mcp-proxy upstream-timeout marker cross-origin (WORLDMONITOR-17A)',
+    );
   });
 
   it('propagates exceptions (caller must wrap in fail-closed try/catch)', () => {

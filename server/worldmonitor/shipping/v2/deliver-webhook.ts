@@ -26,6 +26,24 @@ export interface WebhookDeliveryPayload {
   details?: Record<string, unknown>;
 }
 
+// `country.risk_surge` delivery body (X-WM-Event: country.risk_surge). The
+// registry entry shared/event-triggers.json#events.country.risk_surge and the
+// OpenAPI webhooks block mirror this shape; tests/openapi-webhooks-contract
+// pins them together.
+export interface RiskSurgeWebhookPayload {
+  subscriberId: string;
+  countryCode: string;
+  countryName?: string;
+  score: number;
+  previousScore?: number | null;
+  delta24h: number;
+  trend?: string;
+  advisoryLevel?: string | null;
+  triggeredAt: string;
+  reason: string;
+  details?: Record<string, unknown>;
+}
+
 export interface WebhookDeliveryOptions {
   event?: string;
   deliveryId?: string;
@@ -160,7 +178,7 @@ export async function assertWebhookDeliveryUrlSafe(
 
 export async function deliverShippingV2Webhook(
   record: WebhookRecord,
-  payload: WebhookDeliveryPayload,
+  payload: WebhookDeliveryPayload | RiskSurgeWebhookPayload,
   options: WebhookDeliveryOptions = {},
 ): Promise<WebhookDeliveryResult> {
   if (!record.active) {

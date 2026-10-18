@@ -43,4 +43,19 @@ describe('InsightsPanel server stories carry the corroboration pill (#6419)', ()
       story({ primaryTitle: 'capped', sources: ['Reuters World'], corroborationCount: 3 }),
     ])).toEqual(['Single publisher', 'Low-tier sources only', null, null]);
   });
+
+  it('counts the seeder\'s same-copy group once and says so in the publisher list (#9095)', () => {
+    const sources = ['EuroNews', 'Africanews'];
+    const renderer = Object.create(InsightsPanel.prototype) as StoryRenderer;
+    const host = document.createElement('div');
+    host.innerHTML = renderer.renderServerStories([
+      story({ primaryTitle: 'one copy', sources, corroborationCount: 1, sameCopy: [['label:africanews', 'label:euronews']] }),
+      story({ primaryTitle: 'two reports', sources, corroborationCount: 1 }),
+    ], null);
+    const [oneCopy, twoReports] = [...host.children];
+    expect(oneCopy!.querySelector('.corroboration-flag')?.textContent).toBe('Single publisher');
+    expect(oneCopy!.querySelector('.publisher-same-copy')?.textContent).toBe('Same copy, counted once');
+    expect(twoReports!.querySelector('.corroboration-flag')).toBeNull();
+    expect(twoReports!.querySelector('.publisher-same-copy')).toBeNull();
+  });
 });

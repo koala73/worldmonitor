@@ -110,6 +110,12 @@ function mountWidgetHtml(html) {
       this.childNodes.push(child);
       return child;
     }
+    contains(node) {
+      return node === this || this.childNodes.some((child) => child.contains(node));
+    }
+    focus() {
+      document.activeElement = this;
+    }
     set textContent(value) {
       this._text = value == null ? '' : String(value);
       this.childNodes = [];
@@ -155,6 +161,7 @@ function mountWidgetHtml(html) {
   const documentElement = new TestElement('html');
   const document = {
     documentElement,
+    activeElement: new TestElement('body'),
     getElementById: (id) => byId.get(id) ?? null,
     createTextNode: (text) => {
       const node = new TestElement('#text');
@@ -166,6 +173,18 @@ function mountWidgetHtml(html) {
       created.push(node);
       return node;
     },
+  };
+  document.createElementNS = (namespaceURI, tag) => {
+    const node = document.createElement(tag);
+    node.namespaceURI = namespaceURI;
+    node.tagName = String(tag);
+    return node;
+  };
+  const animationFrames = [];
+  let animationFrameId = 0;
+  const flushAnimationFrame = () => {
+    const callbacks = animationFrames.splice(0);
+    callbacks.forEach((callback) => callback(0));
   };
   const listeners = new Map();
   const posted = [];
@@ -190,16 +209,22 @@ function mountWidgetHtml(html) {
     isFinite,
     isNaN,
     getComputedStyle: () => ({ getPropertyValue: () => '' }),
+    requestAnimationFrame: (callback) => {
+      animationFrames.push(callback);
+      return ++animationFrameId;
+    },
   };
   const script = html.match(/<script>([\s\S]*)<\/script>/i)?.[1];
   assert.ok(script, 'served widget HTML must contain an executable script');
   vm.runInNewContext(script, context, { timeout: 1_000 });
+  flushAnimationFrame();
   assert.equal(typeof listeners.get('message'), 'function', 'widget must register its host message listener');
 
   return {
     posted,
     sendMessage(msg, fromParent = true) {
       listeners.get('message')({ source: fromParent ? parent : {}, data: { jsonrpc: '2.0', ...msg } });
+      flushAnimationFrame();
     },
     sendToolResult(structuredContent) {
       listeners.get('message')({
@@ -210,6 +235,7 @@ function mountWidgetHtml(html) {
           params: { result: { structuredContent } },
         },
       });
+      flushAnimationFrame();
     },
     text(id) {
       return byId.get(id)?.textContent ?? '';
