@@ -5,12 +5,12 @@
   "description": "Real-time global intelligence across conflict, markets, energy, trade, shipping and cyber.",
   "kind": "product",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.39.0",
+  "version": "1.40.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.39.0",
+    "version": "1.40.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server, with per-outlet source ratings and a publicly scored forecast record, serving real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
@@ -613,6 +613,14 @@
     {
       "name": "get_mcp_allowance",
       "description": "Read the authenticated account remaining MCP allowance and UTC reset time without spending a daily allocation. Includes free-account request-window status and whether REST shares the budget. No account selector or provider-data calls. Unavailable counter state returns an error.",
+      "_meta": {
+        "worldmonitor/access": "free-account",
+        "worldmonitor/category": "meta"
+      }
+    },
+    {
+      "name": "start_upgrade",
+      "description": "Return a personal checkout link for a paid self-serve plan, bound to the signed-in account. The allowance-exhausted, upgrade-required and quota-exceeded denials name the plan one step up in recommendedPlan. The user pays in a browser: the tool never charges and spends no daily allowance. Each call opens a new checkout session, counts toward a limit of 5 per account per 10 minutes, and records the account's acceptance of the Terms of Service, as the pricing page does. Once payment is confirmed the account allowance reports the paid limit, with no re-authorization. An account already holding a plan in the same family, a payment pending for under 15 minutes, or the checkout limit returns an error instead of a link.",
       "_meta": {
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "meta"

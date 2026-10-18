@@ -2502,6 +2502,23 @@ curl -s https://worldmonitor.app/mcp \
 - **API 共享：** `sharedWithRestApi` 表示计数器是否包含 REST 请求。影子模式的 API 计数器仍使用已售 API 上限。账户总数不能识别具体调用者。
 - **API 端点：** 无。工具与账户资源共用一个强制执行计数器读取器。响应为 `no-store`。
 
+### `start_upgrade`
+
+为已登录账户创建绑定该账户的付费套餐结账链接。当拒绝响应的 `error.data` 带有 `checkoutTool: "start_upgrade"` 时调用，并传入该拒绝中的 `recommendedPlan`。只有免费账户会收到 `checkoutTool`；付费调用方的拒绝只带 `recommendedPlan`，因为同一套餐系列内的升级通过账单门户完成。用户在浏览器中打开链接完成付款；此工具从不扣款，智能体也不接触付款信息。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `plan` | string | 是 | 取值之一：`pro_monthly`、`pro_annual`、`pro_business_monthly`、`pro_business_annual`、`api_starter`、`api_starter_annual`、`api_business`、`api_business_annual`。其他值返回 `-32602`，并在 `error.data.plans` 中列出可用值。 |
+
+**响应：** `{ checkoutUrl, plan, nextStep }`。每次调用都会创建新的结账会话。此工具不接受 `jmespath` 投影（返回 `-32602`）：投影运行前结账会话已经创建，投影可能丢掉唯一一份 `checkoutUrl`。
+
+- **访问：** `free-account`。要求绑定用户的 OAuth 或 `wm_…` 凭据。匿名调用返回常规的 `-32001` `no-account` 拒绝；运营方密钥返回 `-32002`。
+- **配额：** 不消耗每日额度，也不消耗免费账户调用次数，因此额度用尽后仍可调用。每分钟限流照常适用。
+- **结账路径：** 与定价页相同，因此账户结账限流以及已有订阅、待处理付款检查都适用。账户已持有同一系列的套餐时返回 `-32002`，`error.data.reason` 为 `"already-subscribed"`；从 Pro 升级到 Pro Business 需先取消 Pro，从 API Starter 升级到 API Business 则在账单门户中按比例变更。存在 15 分钟内的待处理付款时返回 `reason: "payment-in-progress"`。触发结账限流（每个账户每 10 分钟 5 个会话，与定价页共用）时返回 HTTP 429 的 `-32029`，并带 `Retry-After`。
+- **服务条款：** 创建会话时会记录该账户接受服务条款，与定价页相同。[服务条款](/zh/terms)将 MCP 请求视为接受。
+- **付款之后：** 付款 webhook 到达后，下一次 `get_mcp_allowance` 调用即报告付费套餐的额度，无需重新授权。
+- **API 端点：** 无。响应为 `no-store`。
+
 ### `describe_tool`
 
 按名称返回任何其他工具的完整定义 — 与其 `tools/list` 条目相同的 `description`、`inputSchema`（每个属性的描述）、`outputSchema`、`annotations` 和 `_meta`。自 v1.34.0 起，`tools/list` 在 1,024 字节的逐工具预算内完整返回每条描述，因此这是对单个工具的重读，而不再是获取完整文本的唯一途径（v1.5.0 至 v1.33.0 期间列表被截断为第一句，≤120 字节）。

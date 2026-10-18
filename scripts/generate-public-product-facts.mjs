@@ -28,6 +28,7 @@ import { PIPELINES } from '../shared/pipelines-data.ts';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 import { MCP_DOMAIN_SUMMARY, MCP_TAGS, MCP_TOOL_CATEGORIES, TOOL_CATEGORY_BY_NAME } from '../api/mcp/domains.ts';
 import { UI_RESOURCE_LIST_RESPONSE } from '../api/mcp/ui/registry.ts';
+import { FREE_ACCOUNT_CALLS_PER_DAY } from '../api/mcp/upgrade-constants.ts';
 import { publishedRankedCountries } from './build-crawlable-corpus.mjs';
 import { commandPaletteCommandCount } from './lib/command-palette-count.mjs';
 import { defaultOnLayerStats } from './lib/default-map-layer-count.mjs';
@@ -484,6 +485,9 @@ for (const path of new Set([
   transform(path, replacePreviousPrices);
 }
 
+/** The free-account MCP allowance, worded once for every pricing surface (#9144). */
+const FREE_ACCOUNT_MCP_LINE = `${FREE_ACCOUNT_CALLS_PER_DAY} cached-data MCP calls/day with a free account`;
+
 function pricingSummary() {
   const byKey = Object.fromEntries(plans.map((plan) => [plan.planKey, plan]));
   /** Catalog-derived dashboard-AI copy. `null` in the catalog means unlimited. */
@@ -506,7 +510,7 @@ function pricingSummary() {
         name: 'Free',
         price_usd_monthly: 0,
         signup_required: false,
-        features: ['global map coverage (Resilience is Pro)', 'curated feeds', 'country briefs', 'chokepoints', 'instability scores', 'watchlists', '3 dashboard tabs'],
+        features: ['global map coverage (Resilience is Pro)', 'curated feeds', 'country briefs', 'chokepoints', 'instability scores', 'watchlists', '3 dashboard tabs', FREE_ACCOUNT_MCP_LINE],
       },
       {
         name: 'Pro',
@@ -548,6 +552,10 @@ transform('public/pricing.md', (source) => {
   if (!next.includes(generatedNote)) {
     next = next.replace('# Pricing - World Monitor\n', `# Pricing - World Monitor\n\n${generatedNote}\n`);
   }
+  const freeMcp = `- MCP: ${FREE_ACCOUNT_MCP_LINE}; other MCP tools require a paid plan\n`;
+  next = /^- MCP: .* with a free account.*\n/m.test(next)
+    ? next.replace(/^- MCP: .* with a free account.*\n/m, freeMcp)
+    : next.replace(/(## Free\n[\s\S]*?^- Limits: .*\n)/m, `$1${freeMcp}`);
   return next.replace(
     /```json\n[\s\S]*?```/,
     `\`\`\`json\n${JSON.stringify(pricingSummary(), null, 2)}\n\`\`\``,

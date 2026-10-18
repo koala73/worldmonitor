@@ -58,6 +58,8 @@
     "sync:bootstrap-tier-keys:check": "node scripts/sync-bootstrap-tier-keys.mjs --check",
     "sync:live-video-channels": "node --import tsx scripts/sync-live-video-refresh-channels.mjs",
     "sync:live-video-channels:check": "node --import tsx scripts/sync-live-video-refresh-channels.mjs --check",
+    "sync:tui-catalog": "node --import tsx scripts/sync-tui-catalog.mjs",
+    "sync:tui-catalog:check": "node --import tsx scripts/sync-tui-catalog.mjs --check",
     "bundle:budgets": "node scripts/bundle-budgets.mjs",
     "bundle:check": "node scripts/bundle-budgets.mjs --check",
     "bundle:budgets:pro": "node scripts/bundle-budgets.mjs --surface pro",

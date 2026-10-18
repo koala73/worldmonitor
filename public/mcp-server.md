@@ -27,6 +27,8 @@ The server ships tools in these domains: <!-- mcp-domains:start -->markets, comm
 
 Call `get_mcp_allowance({})` to read the current verified account allowance when the host cannot read `worldmonitor://account/mcp-allowance`. It requires user-bound OAuth or `wm_…` credentials, accepts only optional `jmespath`, and rejects account selectors and `panel_request`. Status spends no daily allowance, remains available at the daily cap, and uses the shared 192/minute protocol bucket. Unreadable counters return an error rather than a zero snapshot. Check `sharedWithRestApi` before interpreting `used`; account totals may include REST traffic and do not identify individual callers.
 
+When a denial's `error.data` carries `checkoutTool: "start_upgrade"`, call `start_upgrade({plan})` with its `recommendedPlan` to get a personal checkout link for the signed-in account. The user pays in a browser; the tool never charges and spends no daily allowance. After payment, `get_mcp_allowance` reports the paid limit without re-authorization.
+
 ## MCP Apps
 
 World Monitor supports MCP Apps (`io.modelcontextprotocol/ui`) with interactive `ui://` app shells. The linked tools are `get_country_risk`, `get_world_brief`, `get_country_brief`, `get_market_data`, `get_chokepoint_status`, `get_news_intelligence`, `get_conflict_events`, `get_natural_disasters`, `get_prediction_markets`, `get_forecast_predictions`, `open_news_dashboard`, and `open_country_brief`; their UI resources are:

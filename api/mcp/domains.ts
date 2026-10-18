@@ -138,6 +138,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   // Meta: server utilities and NLP helpers, never quoted as a data domain
   get_sources: 'meta',
   get_mcp_allowance: 'meta',
+  start_upgrade: 'meta',
   describe_tool: 'meta',
   open_news_dashboard: 'meta',
   analyze_news_headlines: 'meta',

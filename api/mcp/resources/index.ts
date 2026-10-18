@@ -352,6 +352,8 @@ export async function buildResourceResponse(
   // Forwarded so a denial raised inside the dispatcher carries the same
   // WWW-Authenticate as the equivalent tools/call (#6716).
   resourceMetadataUrl?: string,
+  // Forwarded so a quota denial names the same upgrade plan (#9144).
+  planKey?: string,
 ): Promise<Response> {
   const outerId = body.id ?? null;
   const params = body.params as { uri?: unknown } | null;
@@ -406,6 +408,8 @@ export async function buildResourceResponse(
     budget,
     freeAccountAllowance,
     resourceMetadataUrl,
+    undefined,
+    planKey,
   );
 
   // Parse the dispatched body. dispatched.json() is safe — the dispatcher

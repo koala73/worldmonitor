@@ -30,6 +30,7 @@ import { McpSourceUnavailableError } from '../source-unavailable';
 import { FORECAST_THEATER_STATUSES, forecastTheaterReadSchema, parseForecastTheaterResult, unavailableForecastTheaters } from '../../../shared/forecast-theaters';
 import { readBoundedResponseBody, ResponseBodyTooLargeError } from '../bounded-body';
 import { utf8ByteLength } from '../utils';
+import { MCP_CHECKOUT_PLANS, START_UPGRADE_TOOL } from '../checkout';
 import filterParamContracts from '../../../shared/openapi-filter-param-contracts.json';
 import { normalizeCountry } from '../../../server/_shared/intel-history-client';
 import { normalizePassengerCount } from '../../../server/_shared/passenger-count';
@@ -3548,6 +3549,42 @@ export const RPC_TOOLS: ToolDef[] = [
     _execute: async (_params, _base, _context, execution) => {
       if (!execution?.readAccountAllowance) throw new Error('Account allowance reader is unavailable.');
       return execution.readAccountAllowance();
+    },
+    _apiPaths: [],
+  },
+  {
+    // #9144: hands the agent a personal checkout link. Dispatch creates the
+    // session through the same Convex relay as /api/create-checkout before
+    // this runs; `_execute` only returns it. Quota-exempt, so an agent can
+    // call it after the allowance is spent.
+    name: START_UPGRADE_TOOL,
+    title: 'Start a plan upgrade',
+    _outputBudgetBytes: 2048,
+    description: 'Return a personal checkout link for a paid self-serve plan, bound to the signed-in account. The allowance-exhausted, upgrade-required and quota-exceeded denials name the plan one step up in recommendedPlan. The user pays in a browser: the tool never charges and spends no daily allowance. Each call opens a new checkout session, counts toward a limit of 5 per account per 10 minutes, and records the account\'s acceptance of the Terms of Service, as the pricing page does. Once payment is confirmed the account allowance reports the paid limit, with no re-authorization. An account already holding a plan in the same family, a payment pending for under 15 minutes, or the checkout limit returns an error instead of a link.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        plan: {
+          type: 'string',
+          enum: [...MCP_CHECKOUT_PLANS],
+          description: 'Self-serve plan to buy, usually the recommendedPlan from a denial. Monthly and annual variants are separate values.',
+        },
+      },
+      required: ['plan'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        checkoutUrl: { type: 'string', format: 'uri' },
+        plan: { type: 'string' },
+        nextStep: { type: 'string' },
+      },
+      required: ['checkoutUrl', 'plan', 'nextStep'],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    _execute: async (_params, _base, _context, execution) => {
+      if (!execution?.startUpgradeResult) throw new Error('Checkout session is unavailable.');
+      return execution.startUpgradeResult;
     },
     _apiPaths: [],
   },

@@ -1054,6 +1054,7 @@ async function mcpHandlerInner(
   let budget: McpBudget | undefined;
   let burstPerMinute: number | undefined;
   let freeAccountAllowance = false;
+  let planKey: string | undefined;
   if (PUBLIC_MCP_METHODS.has(method) || isAnonResourceRead || isFreeTierToolCall) {
     if (hasCredentials(req)) {
       // Credentials presented on a public method are still validated so a
@@ -1125,6 +1126,7 @@ async function mcpHandlerInner(
     budget = preCheck.budget;
     burstPerMinute = preCheck.burstPerMinute;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
+    planKey = preCheck.planKey;
     const limited = method === 'tools/call' ? null : await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute, id);
     if (limited) {
       usage.phase = 'limit';
@@ -1222,6 +1224,7 @@ async function mcpHandlerInner(
         freeAccountAllowance,
         resourceMetadataUrl,
         burstPerMinute ?? MCP_DEFAULT_BURST_PER_MINUTE,
+        planKey,
       );
       classifyDispatchedUsage(usage, dispatched);
       return maybeStreamJsonRpcResponse(req, sseOwner, dispatched);
@@ -1339,6 +1342,7 @@ async function mcpHandlerInner(
           budget,
           freeAccountAllowance,
           resourceMetadataUrl,
+          planKey,
         );
         classifyDispatchedUsage(usage, resourceRes);
         return maybeStreamJsonRpcResponse(req, sseOwner, resourceRes);

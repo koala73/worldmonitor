@@ -3093,6 +3093,23 @@ Reads the existing allowance snapshot for the current verified account. Use this
 - **API sharing:** `sharedWithRestApi` reports whether the counter includes REST requests. Shadow-mode API counters retain the sold API ceiling. Account totals do not identify individual callers.
 - **API endpoints:** none. The tool and account resource use one shared enforcement-counter reader. Responses are `no-store`.
 
+### `start_upgrade`
+
+Creates a personal checkout link for a paid plan, bound to the signed-in account. Call it after a denial whose `error.data` carries `checkoutTool: "start_upgrade"`, passing that denial's `recommendedPlan`. Only free accounts get `checkoutTool`; a paid caller's denial names `recommendedPlan` alone, because moving up within the same plan family goes through the billing portal. The user opens the link and pays in a browser; the tool never charges and the agent never handles payment details.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `plan` | string | yes | One of `pro_monthly`, `pro_annual`, `pro_business_monthly`, `pro_business_annual`, `api_starter`, `api_starter_annual`, `api_business`, `api_business_annual`. Any other value returns `-32602` with the accepted list in `error.data.plans`. |
+
+**Response:** `{ checkoutUrl, plan, nextStep }`. Each call creates a new checkout session. The tool takes no `jmespath` projection (`-32602`): the session exists before a projection would run, so a projection could drop the only copy of `checkoutUrl`.
+
+- **Access:** `free-account`. Requires user-bound OAuth or `wm_…` credentials. Anonymous callers get the usual `-32001` `no-account` denial; operator keys get `-32002`.
+- **Quota:** spends no daily allowance and no free-account call, so it works after the allowance is exhausted. The per-minute limit still applies.
+- **Checkout path:** the same one the pricing page uses, so the per-account checkout limit and the existing-subscription and pending-payment guards apply. An account that already holds a plan in the same family gets `-32002` with `error.data.reason: "already-subscribed"`; Pro to Pro Business means cancelling Pro first, and API Starter to API Business is a prorated change in the billing portal. A payment pending for under 15 minutes returns `reason: "payment-in-progress"`. The checkout limit, 5 sessions per account per 10 minutes and shared with the pricing page, returns `-32029` at HTTP 429 with `Retry-After`.
+- **Terms of Service:** creating a session records the account's acceptance of the Terms, as the pricing page does. The [Terms](/terms) count an MCP request as acceptance.
+- **After payment:** once the payment webhook lands, the next `get_mcp_allowance` call reports the paid plan's limit. No re-authorization is needed.
+- **API endpoints:** none. Responses are `no-store`.
+
 ### `describe_tool`
 
 Returns the complete definition of any other tool by name — the same `description`, `inputSchema` (every property's description), `outputSchema`, `annotations` and `_meta` that its `tools/list` entry carries. Since v1.34.0 `tools/list` ships every description whole under a 1,024-byte per-tool budget, so this is a single-tool re-read rather than the only route to the full text (from v1.5.0 to v1.33.0 the listing was truncated to the first sentence, ≤120 bytes).
