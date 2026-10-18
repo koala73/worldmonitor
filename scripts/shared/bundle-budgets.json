@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 451137
+    "raw": 451859
   },
   "chunks": {
     "analytics": {
@@ -59,11 +59,11 @@
       "files": 1
     },
     "main": {
-      "raw": 131399,
+      "raw": 123139,
       "files": 1
     },
     "map-layer-definitions": {
-      "raw": 27289,
+      "raw": 27292,
       "files": 1
     },
     "panels": {
@@ -76,6 +76,10 @@
     },
     "safe-storage": {
       "raw": 1212,
+      "files": 1
+    },
+    "tab-store": {
+      "raw": 8979,
       "files": 1
     },
     "tauri-bridge": {
@@ -97,11 +101,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1438386
+      "raw": 1446871
     },
     "chunks": {
       "App": {
-        "raw": 909823,
+        "raw": 911076,
         "files": 1
       },
       "ai-flow-settings": {
@@ -113,7 +117,7 @@
         "files": 1
       },
       "base": {
-        "raw": 2460,
+        "raw": 2458,
         "files": 1
       },
       "cached-risk-scores": {
@@ -121,11 +125,11 @@
         "files": 1
       },
       "checkout": {
-        "raw": 13699,
+        "raw": 13742,
         "files": 1
       },
       "cloud-prefs-sync": {
-        "raw": 6944,
+        "raw": 6955,
         "files": 1
       },
       "continuous": {
@@ -145,7 +149,7 @@
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 121913,
+        "raw": 121971,
         "files": 1
       },
       "index": {
@@ -184,6 +188,10 @@
         "raw": 1280,
         "files": 1
       },
+      "settings-persistence": {
+        "raw": 7866,
+        "files": 1
+      },
       "source-provenance": {
         "raw": 88495,
         "files": 1
@@ -200,16 +208,12 @@
         "raw": 20925,
         "files": 1
       },
-      "sync-keys": {
-        "raw": 1178,
-        "files": 1
-      },
       "user-location": {
         "raw": 4744,
         "files": 1
       },
       "widget-store": {
-        "raw": 22581,
+        "raw": 23015,
         "files": 1
       }
     }
