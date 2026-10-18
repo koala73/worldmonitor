@@ -5318,7 +5318,11 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
     expect(claim.status).toBe("not_eligible");
   });
 
-  test("does not backfill onboarding after MCP setup", async () => {
+  test.each([
+    { label: "unused", lastUsedAt: undefined, status: "claimed" },
+    { label: "used", lastUsedAt: NOW, status: "not_eligible" },
+    { label: "used at epoch zero", lastUsedAt: 0, status: "not_eligible" },
+  ])("checks recorded use for a $label MCP token before backfill", async ({ lastUsedAt, status }) => {
     const t = convexTest(schema, modules);
     const activationKey = await seedSubscription(t, {
       planKey: "pro_annual",
@@ -5332,6 +5336,7 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
         userId: TEST_USER_ID,
         name: "Activated MCP client",
         createdAt: NOW,
+        lastUsedAt,
       });
     });
 
@@ -5344,7 +5349,7 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
       api.payments.billing.claimProActivationPresentation,
       { activationKey, claimNonce: "mcp-device" },
     );
-    expect(claim.status).toBe("not_eligible");
+    expect(claim.status).toBe(status);
   });
 
   test("keeps inactive delivery and revoked credentials eligible", async () => {
@@ -5385,6 +5390,7 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
         userId: TEST_USER_ID,
         name: "Revoked MCP client",
         createdAt: NOW,
+        lastUsedAt: NOW,
         revokedAt: NOW,
       });
     });
