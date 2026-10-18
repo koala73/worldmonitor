@@ -110,6 +110,7 @@ Military aircraft are tracked via multiple ADS-B networks. The primary source is
 
 - **Callsign matching**: Known military callsign patterns (RCH, REACH, DUKE, etc.)
 - **ICAO hex ranges**: Military aircraft use assigned hex code blocks by country
+- **Named-aircraft watchlist**: A vendored copy of the community [plane-alert-db](https://github.com/sdr-enthusiasts/plane-alert-db) (ODbL) is joined on the hex. A listed aircraft carries a `watchlist` block with its named operator, upstream category, registration and type beside the heuristic classification; the join never admits or reclassifies a flight on its own
 - **Altitude/speed profiles**: Unusual flight characteristics
 
 **Tracked Metrics**:
@@ -123,6 +124,20 @@ Military aircraft are tracked via multiple ADS-B networks. The primary source is
 - Formations (multiple military aircraft in proximity)
 - Unusual patterns (holding, reconnaissance orbits)
 - Chokepoint transits
+
+### Named-aircraft watchlist
+
+`scripts/data/plane-alert-watchlist.json` vendors the Mil and Gov groups of the sdr-enthusiasts plane-alert-db (air forces, navies, heads of state, coastguards, "Dictator Alert"), keyed on ICAO 24-bit hex. The seeder reads the committed file only; nothing fetches the list at runtime. The metadata block records the upstream file, its SHA-256, the retrieval date, the ODbL-1.0 database license and the attribution it requires, and the seeder's classification audit reports `watchlistMatched` and `watchlistMatchRate` per cycle.
+
+Refreshing the vendored copy:
+
+```bash
+node scripts/build-plane-alert-watchlist.mjs --check   # exit 1 when the committed JSON drifts from upstream
+node scripts/build-plane-alert-watchlist.mjs           # fetch upstream and rewrite the JSON, one aircraft per line
+node scripts/run-data-tests.mjs tests/plane-alert-watchlist.test.mjs
+```
+
+Review the refresh diff as added and removed hexes before committing it. The conversion drops rows outside the vendored groups and any hex that is not six hex characters, and refuses to run when upstream renames a required column. The drift check is on demand, not in CI, so the refresh stays a reviewed change rather than a network dependency of the test suite.
 
 ## Vessel Position History
 
