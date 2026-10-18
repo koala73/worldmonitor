@@ -1905,7 +1905,6 @@ http.route({
       referralCode?: string;
       attributionSource?: string;
       bypassPendingGuard?: boolean;
-      agentInitiated?: boolean;
     }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
@@ -1934,7 +1933,6 @@ http.route({
           referralCode: body.referralCode,
           attributionSource: body.attributionSource,
           bypassPendingGuard: body.bypassPendingGuard,
-          agentInitiated: body.agentInitiated === true,
         },
       );
       if (isCheckoutTimedOutOutcome(result)) {

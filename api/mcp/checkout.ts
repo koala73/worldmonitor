@@ -107,8 +107,9 @@ function readSubscription(value: unknown): McpCheckoutSubscription | null {
 /**
  * Production checkout relay. Identity comes from the verified MCP context, so
  * the userId sent here is the one the credential is bound to. No email is
- * sent: the activation webhook resolves it from the account's `users` row
- * when one exists, else from the email the user types at checkout.
+ * sent: the activation webhook reads it from the account's `users` row, which
+ * checkout creation writes along with the Terms acceptance record. The Terms
+ * count an MCP request as acceptance (docs/terms.mdx, "Accepting these Terms").
  */
 export async function relayMcpCheckout(
   input: { userId: string; productId: string },
@@ -132,7 +133,6 @@ export async function relayMcpCheckout(
         userId: input.userId,
         productId: input.productId,
         attributionSource: MCP_ATTRIBUTION_SOURCE,
-        agentInitiated: true,
       }),
       signal: AbortSignal.timeout(CHECKOUT_RELAY_TIMEOUT_MS),
     });
