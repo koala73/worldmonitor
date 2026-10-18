@@ -192,7 +192,8 @@ describe('direct country paid original reuse', () => {
         if (plan === 'operator') {
           assert.equal(result.response.status, 200);
           assert.equal(result.body.result.isError, undefined);
-          assert.equal(bundle.pipe.count, 0);
+          // Operator keys pay one unit of their own daily ceiling per call and never a panel admission.
+          assert.ok(bundle.pipe.ops.flat().filter(cmd => cmd[0] === 'EVAL').every(cmd => String(cmd[3]).includes('mcp:pro-usage:env_key:')));
         }
         rows.push({ plan, name, args, status: result.response.status, body: result.body, count: bundle.pipe.count });
       }

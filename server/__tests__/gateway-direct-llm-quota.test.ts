@@ -55,6 +55,7 @@ vi.mock("../_shared/usage", async (importOriginal) => {
 });
 
 import { createDomainGateway } from "../gateway";
+import { OPERATOR_KEY_DAILY_CEILINGS, operatorKeyQuotaPrincipal } from "../_shared/high-usage-alarm";
 import { getRequiredTier } from "../_shared/entitlement-check";
 import { createIntelligenceServiceRoutes } from "../../src/generated/server/worldmonitor/intelligence/v1/service_server";
 import { intelligenceHandler } from "../worldmonitor/intelligence/v1/handler";
@@ -517,6 +518,51 @@ describe("gateway direct LLM quota", () => {
     expect(reserveDirectLlmQuota).toHaveBeenCalledWith(
       expect.objectContaining({ userId: "user_pro" }),
     );
+  });
+
+  test("operator key classify-event reserves on its per-key bucket at the operator ceiling", async () => {
+    // Operator keys used to bypass this reservation entirely (unbounded spend
+    // on a leaked key). They now share widget-agent's wm:<sha256> bucket.
+    const calls = { classify: 0, deduct: 0, cache: 0 };
+    resolveClerkSession.mockResolvedValue(null);
+    validateApiKey.mockResolvedValue({
+      valid: true, required: true, kind: "enterprise", credential: "operator-test-key",
+    });
+
+    const res = await makeGateway(calls)(
+      req(`${CLASSIFY_PATH}?title=Novel%20headline`, {
+        headers: { "X-WorldMonitor-Key": "operator-test-key" },
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(200);
+    expect(calls.classify).toBe(1);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledWith(expect.objectContaining({
+      userId: await operatorKeyQuotaPrincipal("operator-test-key"),
+      limit: OPERATOR_KEY_DAILY_CEILINGS.directLlmCalls,
+    }));
+  });
+
+  test("operator key is refused once its direct-LLM ceiling is spent", async () => {
+    const calls = { classify: 0, deduct: 0, cache: 0 };
+    resolveClerkSession.mockResolvedValue(null);
+    validateApiKey.mockResolvedValue({
+      valid: true, required: true, kind: "enterprise", credential: "operator-test-key",
+    });
+    reserveDirectLlmQuota.mockResolvedValue({
+      ok: false, reason: "cap-exceeded", floor: OPERATOR_KEY_DAILY_CEILINGS.directLlmCalls, retryAfterSec: 60,
+    });
+
+    const res = await makeGateway(calls)(
+      req(`${CLASSIFY_PATH}?title=Novel%20headline`, {
+        headers: { "X-WorldMonitor-Key": "operator-test-key" },
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(429);
+    expect(calls.classify).toBe(0);
   });
 
   test("Pro bearer analyze-stock uses a principal-scoped endpoint bucket", async () => {

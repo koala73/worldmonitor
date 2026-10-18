@@ -35,6 +35,7 @@ import { resolveMcpBudget } from '../api/mcp/quota.ts';
 import { MCP_DEFAULT_BURST_PER_MINUTE, MCP_PROTOCOL_BURST_PER_MINUTE, resolveMcpBurstPerMinute } from '../api/mcp/auth.ts';
 import { PANEL_READ_LIMIT } from '../api/mcp/panel-requests.ts';
 import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
+import { OPERATOR_KEY_DAILY_CEILINGS } from '../server/_shared/high-usage-alarm.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -304,8 +305,10 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
     assert.equal(typeof notes, 'string', 'server-card rateLimits.notes must be a string');
     assert.match(notes, /identical on the OAuth and dashboard-issued wm_ API-key doors/i,
       'notes must disclose that both credential doors resolve the same budget');
-    assert.match(notes, /Legacy operator keys[\s\S]*outside this daily reservation path/i,
-      'notes must keep operator keys outside the daily reservation path');
+    assert.ok(
+      notes.includes(`Legacy operator keys explicitly allowlisted in WORLDMONITOR_VALID_KEYS reserve one unit per call against a separate ${OPERATOR_KEY_DAILY_CEILINGS.mcpUnits}/day ceiling per key.`),
+      'notes must publish the operator-key daily ceiling the dispatcher enforces',
+    );
     // This assertion used to be `doesNotMatch(/1,000|10,000/)`, banning those
     // numbers because the API tiers advertised MCP caps the meter never applied.
     // They are enforced now, so the ban inverts: an agent planning a workload

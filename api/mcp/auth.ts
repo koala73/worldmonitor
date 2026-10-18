@@ -686,10 +686,13 @@ async function checkMcpEntitlementGate(
   const burstPerMinute = resolveMcpBurstPerMinute(ent?.features?.planLimits?.mcpBurstRequestsPerMinute);
   const passed = (): McpPreCheckResult => ({
     ok: true,
-    budget: resolveMcpBudget(
-      ent?.features?.planLimits?.mcpCallsPerDay,
-      ent?.features?.planLimits?.apiRequestsPerDay,
-    ),
+    budget: {
+      ...resolveMcpBudget(
+        ent?.features?.planLimits?.mcpCallsPerDay,
+        ent?.features?.planLimits?.apiRequestsPerDay,
+      ),
+      ...((ent?.features?.tier ?? 0) >= 3 ? { enterprisePlan: true as const } : {}),
+    },
     burstPerMinute,
   });
   // Single-source Pro MCP decision. A current fallback entitlement still wins
@@ -808,7 +811,8 @@ export async function runContextPreChecks(
     // caller who correctly has no entitlement.
     return { ok: true };
   }
-  // env_key: operator-owned, ungated, and never metered by the daily counter.
+  // env_key: operator-owned and ungated. Its daily ceiling is reserved per key
+  // in dispatch (OPERATOR_KEY_DAILY_CEILINGS), not through an entitlement.
   return { ok: true };
 }
 

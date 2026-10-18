@@ -4218,7 +4218,7 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(pipe.count, 6, 'GHSA-hcq5: cache_all_null throws after execution, so the slot stays charged (no DECR refund)');
   });
 
-  it('happy: Starter+ env_key bearer → unaffected by daily INCR path; only 60/min sliding limit applies', async () => {
+  it('happy: env_key bearer charges one unit of its own operator ceiling, never the Pro counter', async () => {
     const { deps, pipe } = makeProDeps();
     // F6: stub cache reads so executeTool doesn't throw cache_all_null.
     process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
@@ -4227,8 +4227,9 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     const req = makeReq('POST', callBody('get_market_data'));
     const res = await mcpHandler(req, deps);
     assert.equal(res.status, 200);
-    assert.equal(pipe.count, 0, 'env_key path must NOT touch daily counter');
-    assert.equal(pipe.ops.length, 0);
+    assert.equal(pipe.count, 1, 'env_key path charges one unit per call');
+    assert.equal(pipe.ops.length, 1);
+    assert.match(String(pipe.ops[0][0][3]), /mcp:pro-usage:env_key:/, 'env_key path must NOT touch a Pro daily counter');
   });
 
   it('edge: Pro tool _execute fetch sends X-WM-MCP-Internal + X-WM-MCP-User-Id, no X-WorldMonitor-Key', async () => {

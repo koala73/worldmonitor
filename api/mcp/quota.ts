@@ -89,9 +89,14 @@ export function isRestEnforcementEnabled(): boolean {
  * When the flag flip becomes permanent, delete `counter` and the shadow branch
  * in `resolveMcpBudget`: no variant is renamed and no call site moves.
  */
-export type McpBudget =
+export type McpBudget = (
   | { allowance: 'mcp'; limit: number | null }
-  | { allowance: 'api'; counter: 'mcp' | 'api'; limit: number | null };
+  | { allowance: 'api'; counter: 'mcp' | 'api'; limit: number | null }
+) & {
+  /** A catalog Enterprise (tier 3) budget: its limit is a circuit breaker
+   *  that pages before it trips (server/_shared/high-usage-alarm.ts). */
+  enterprisePlan?: true;
+};
 
 /**
  * Resolve which budget a plan's MCP calls charge.

@@ -99,6 +99,11 @@ import {
   reserveDirectLlmQuota,
 } from './_shared/direct-llm-quota';
 import {
+  OPERATOR_KEY_DAILY_CEILINGS,
+  operatorKeyQuotaPrincipal,
+  reportHighUsageIfCrossed,
+} from './_shared/high-usage-alarm';
+import {
   deliverUsageEvents,
   buildRequestEvent,
   deriveRequestId,
@@ -2231,16 +2236,17 @@ export function createDomainGateway(
         let planKey = ''; // #4635 — hoisted for the informative 429 (ent is block-scoped below)
         if (isEnterpriseAuth) {
           perMinute = ENTERPRISE_API_RATE_LIMIT; // hardcoded — no entitlement row
-          allowance = -1; // unlimited daily / no ceiling
+          // A circuit-breaker ceiling, not a plan limit (high-usage-alarm.ts).
+          allowance = OPERATOR_KEY_DAILY_CEILINGS.restRequests;
           planKey = 'enterprise'; // top tier — named in the 429, but no upgrade_url
           usage.tier = 3; // enterprise tier — no entitlement row to read it from
           // (plan_key defaults to 'enterprise' in buildUsageIdentity)
-          // Enterprise burst is keyed PER KEY (not per account) by design:
-          // these are operator-issued WORLDMONITOR_VALID_KEYS with no shared
-          // userId, and unlimited daily — so there's no quota to multiply by
-          // minting keys, and each operator key gets its own 1,000/min budget
-          // rather than contending for one shared bucket. (User keys below key
-          // on userId so a customer can't multiply their allowance.)
+          // Enterprise burst and daily meter are keyed PER KEY (not per
+          // account) by design: these are operator-issued
+          // WORLDMONITOR_VALID_KEYS with no shared userId, so each operator key
+          // gets its own budget rather than contending for one shared bucket.
+          // (User keys below key on userId so a customer can't multiply their
+          // allowance.)
           identity = hashKeySync(enterpriseCredential);
         } else if (sessionUserId) {
           // Reuse the entitlement the #4611 gate above already resolved for this
@@ -2308,6 +2314,17 @@ export function createDomainGateway(
               pipeline: (cmds) => runRedisPipeline(cmds),
             });
             if (meter.metered) rollbackDailyMeter = meter.rollback;
+            // Tier-3 ceilings are circuit breakers; page well before one trips.
+            if (meter.metered && planKey === 'enterprise') {
+              reportHighUsageIfCrossed({
+                meter: 'rest',
+                credential: isEnterpriseAuth ? 'operator-key' : 'enterprise-plan',
+                principal: identity,
+                newCount: meter.count,
+                ceiling: allowance,
+                ctx,
+              });
+            }
             if (meter.overLimit) {
               if (enforce) {
                 await meter.rollback();
@@ -2391,7 +2408,7 @@ export function createDomainGateway(
       if (rollback) await rollback();
     };
 
-    if (requiresDirectLlmQuota && !isEnterpriseAuth) {
+    if (requiresDirectLlmQuota) {
       // The Docker principal is deliberately derived from nginx's trusted
       // X-Real-IP value (docker/nginx.conf stamps $remote_addr), not from the
       // freely mintable token: rotating sessions must not reset spend.
@@ -2399,36 +2416,45 @@ export function createDomainGateway(
       const dockerQuotaUserId = dockerSelfHostSessionAuthorized
         ? `docker:${hashKeySync(deriveIp(request) ?? 'unknown')}`
         : null;
-      const quotaUserId = sessionUserId ?? dockerQuotaUserId;
+      // Operator keys carry no account, so they are metered per key on the
+      // bucket api/widget-agent.ts already charges for the same key.
+      const operatorQuotaUserId = isEnterpriseAuth
+        ? await operatorKeyQuotaPrincipal(enterpriseCredential)
+        : null;
+      const quotaUserId = operatorQuotaUserId ?? sessionUserId ?? dockerQuotaUserId;
       if (!quotaUserId) {
         emitRequest(401, 'auth_401', null);
         return createGatewayAuthErrorResponse(401, 'Pro authentication required', corsHeaders);
       }
 
-      // Tier-1 legacy Clerk-role grants intentionally bypass the ordinary
-      // entitlement lookup. Re-read the cached row when available so Pro
-      // Business/API plans still receive their catalog-specific dashboard-AI
-      // allowance.
-      const ent = quotaEntitlements ?? (
-        sessionUserId
-          ? userKeyEntitlement !== undefined
-            ? userKeyEntitlement
-            : await getEntitlements(sessionUserId)
-          : null
-      );
-      if (ent) recordUsageEntitlement(ent);
-      // resolveActiveDirectLlmLimit — NOT the raw catalog read — decides this.
-      // A caller we cannot confirm as actively paid (free tier, lapsed row, no
-      // row, or a verification outage) must land on the unverified floor, never
-      // on the paid default: this endpoint spends real provider budget, and
-      // two of the DIRECT_LLM_GATEWAY_QUOTA_PATHS carry no tier gate at all.
-      directLlmDailyLimit = sessionUserId
-        ? resolveActiveDirectLlmLimit(ent)
-        : DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT;
+      let ent: CachedEntitlements | null = null;
+      if (isEnterpriseAuth) {
+        directLlmDailyLimit = OPERATOR_KEY_DAILY_CEILINGS.directLlmCalls;
+      } else {
+        // Tier-1 legacy Clerk-role grants intentionally bypass the ordinary
+        // entitlement lookup. Re-read the cached row when available so Pro
+        // Business/API plans still receive their catalog-specific dashboard-AI
+        // allowance.
+        ent = quotaEntitlements ?? (
+          sessionUserId
+            ? userKeyEntitlement !== undefined
+              ? userKeyEntitlement
+              : await getEntitlements(sessionUserId)
+            : null
+        );
+        if (ent) recordUsageEntitlement(ent);
+        // resolveActiveDirectLlmLimit — NOT the raw catalog read — decides this.
+        // A caller we cannot confirm as actively paid (free tier, lapsed row, no
+        // row, or a verification outage) must land on the unverified floor, never
+        // on the paid default: this endpoint spends real provider budget, and
+        // two of the DIRECT_LLM_GATEWAY_QUOTA_PATHS carry no tier gate at all.
+        directLlmDailyLimit = sessionUserId
+          ? resolveActiveDirectLlmLimit(ent)
+          : DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT;
+      }
 
-      // Enterprise subscription rows carry an explicit null allowance. Do not
-      // hit Redis for those unlimited callers; static enterprise keys already
-      // bypass this block above.
+      // `null` is unlimited. The catalog no longer sells it, but a malformed
+      // row can still resolve there; skip Redis for it rather than guess.
       if (directLlmDailyLimit !== null) {
         const reservation = await reserveDirectLlmQuota({
           userId: quotaUserId,
@@ -2443,6 +2469,16 @@ export function createDomainGateway(
             null,
           );
           return response;
+        }
+        if (isEnterpriseAuth || (ent?.features.tier ?? 0) >= 3) {
+          reportHighUsageIfCrossed({
+            meter: 'direct-llm',
+            credential: isEnterpriseAuth ? 'operator-key' : 'enterprise-plan',
+            principal: isEnterpriseAuth ? hashKeySync(enterpriseCredential) : quotaUserId,
+            newCount: reservation.newCount,
+            ceiling: directLlmDailyLimit,
+            ctx,
+          });
         }
         directLlmRollback = reservation.rollback;
         pendingDirectLlmReservations.set(originalRequest, reservation.rollback);

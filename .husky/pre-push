@@ -482,6 +482,7 @@ PROTO_INPUTS=(
   server/_shared/direct-llm-quota.ts
   server/_shared/entitlement-check.ts
   server/_shared/entitlement-coverage.ts
+  server/_shared/high-usage-alarm.ts
   server/_shared/idempotency.ts
   server/_shared/internal-auth.ts
   server/_shared/mcp-internal-hmac.ts

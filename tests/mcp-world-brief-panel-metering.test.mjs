@@ -183,6 +183,8 @@ describe('World Brief closed paid admission', () => {
       const body = await (await handler(request, bundle.deps)).json(); assert.equal(body.error, undefined);
       assert.equal(body.result.structuredContent.panelRequest, undefined);
     }
-    assert.equal(calls.length, 2); assert.equal(bundle.pipe.count, 0); assert.equal(cache(bundle).length, 0);
+    // Operator keys pay one unit of their own daily ceiling per call and never a panel admission.
+    assert.equal(calls.length, 2); assert.equal(bundle.pipe.count, 2); assert.equal(cache(bundle).length, 0);
+    assert.ok(bundle.pipe.ops.flat().filter(cmd => cmd[0] === 'EVAL').every(cmd => String(cmd[3]).includes('mcp:pro-usage:env_key:')));
   });
 });

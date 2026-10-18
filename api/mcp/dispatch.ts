@@ -11,6 +11,8 @@ import { isAppOwnedRedisKey } from '../_redis-key-ownership.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
+import { OPERATOR_KEY_DAILY_CEILINGS, reportHighUsageIfCrossed } from '../../server/_shared/high-usage-alarm';
+import { hashKeySync } from '../../server/_shared/usage-identity';
 import { readAccountAllowance } from './_account-allowance';
 import { applyPerMinuteLimit, getMcpBillingVerificationDenial, wwwAuthHeader } from './auth';
 import { BillingDenialError, RpcValidationError, ToolBackoffError } from './billing-denial';
@@ -753,6 +755,18 @@ export async function dispatchToolsCall(
         // Hard-cap correctness: NEVER dispatch on reservation failure.
         return quotaBackendUnavailableResponse(id, corsHeaders);
       }
+      if (budget?.enterprisePlan) {
+        reportHighUsageIfCrossed({
+          meter: 'mcp',
+          credential: 'enterprise-plan',
+          principal: context.userId,
+          newCount: reservation.newCount,
+          // reserveQuota prices only an `api` allowance at the tool weight.
+          weight: budget.allowance === 'api' ? toolWeight(tool) : 1,
+          ceiling: resolveDailyLimit(budget.limit) ?? 0,
+          ctx,
+        });
+      }
       // No caller-side rollback of the reservation: once we pass this point the
       // tool runs and the daily slot is charged for good (GHSA-hcq5). The only
       // rollback is INSIDE reserveQuota, for the pre-dispatch cap-exceeded case.
@@ -762,6 +776,42 @@ export async function dispatchToolsCall(
         reset.setUTCHours(24, 0, 0, 0);
         panelUsage = { used: reservation.newCount, limit, remaining: limit === null ? null : Math.max(0, limit - reservation.newCount), resetsAt: reset.toISOString(), unit: 'requests' };
       }
+    }
+  } else if (context.kind === 'env_key' && tool._freeTier !== true && !isMetadataTool) {
+    // Operator keys carry no account and used to skip the daily counter
+    // entirely, so one leaked key had no ceiling. They now reserve on their own
+    // per-key dedicated counter (one unit per call, as on Pro's) against a
+    // circuit breaker far above observed use. Panel admissions need a
+    // user-bound context, so none reach this branch.
+    //
+    // Unlike Pro this fails OPEN when the counter cannot be read, matching the
+    // env_key per-minute limiter: the ceiling guards against a leak, not a
+    // sold allowance, and these tools read cached data. Provider spend stays
+    // fail-closed in the direct-LLM quota the downstream gateway applies.
+    const principal = hashKeySync(context.apiKey);
+    const ceiling = OPERATOR_KEY_DAILY_CEILINGS.mcpUnits;
+    const reservation = deps.redisPipeline
+      ? await reserveQuota(`env_key:${principal}`, deps.redisPipeline, { allowance: 'mcp', limit: ceiling })
+      : null;
+    if (reservation && !reservation.ok && reservation.reason === 'cap-exceeded') {
+      return mcpDenialResponse(
+        { reason: 'quota-exceeded', limit: reservation.floor, sharedWithRestApi: false },
+        -32029,
+        429,
+        id,
+        corsHeaders,
+        { retryAfter: String(secondsUntilUtcMidnight()) },
+      );
+    }
+    if (reservation?.ok) {
+      reportHighUsageIfCrossed({
+        meter: 'mcp',
+        credential: 'operator-key',
+        principal,
+        newCount: reservation.newCount,
+        ceiling,
+        ctx,
+      });
     }
   }
 
