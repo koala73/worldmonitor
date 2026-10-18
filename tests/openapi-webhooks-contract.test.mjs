@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createHmac } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,8 @@ import {
   RISK_SURGE_WEBHOOK_EVENT,
   WEBHOOK_EVENTS,
   SIGNATURE_HEADER,
+  SIGNATURE_V2_HEADER,
+  TIMESTAMP_HEADER,
   EVENT_HEADER,
   DELIVERY_ID_HEADER,
 } from '../scripts/openapi-inject-webhooks.mjs';
@@ -69,10 +71,10 @@ describe('OpenAPI webhooks contract', () => {
     assert.ok(desc.includes('api-shipping-v2#delivery-format'), 'and point at the documented payload');
   });
 
-  it('documents the three branded delivery headers as required header params', () => {
+  it('documents the legacy and V2 delivery headers as required header params', () => {
     const headerParams = (webhook.parameters ?? []).filter((p) => p.in === 'header');
     const byName = new Map(headerParams.map((p) => [p.name, p]));
-    for (const name of [SIGNATURE_HEADER, EVENT_HEADER, DELIVERY_ID_HEADER]) {
+    for (const name of [SIGNATURE_HEADER, SIGNATURE_V2_HEADER, TIMESTAMP_HEADER, EVENT_HEADER, DELIVERY_ID_HEADER]) {
       const p = byName.get(name);
       assert.ok(p, `missing header parameter ${name}`);
       assert.equal(p.required, true, `${name} must be required`);
@@ -82,8 +84,11 @@ describe('OpenAPI webhooks contract', () => {
   });
 
   it('the signature header schema constrains the sha256=<hex> format', () => {
-    const sig = webhook.parameters.find((p) => p.name === SIGNATURE_HEADER);
-    assert.equal(sig.schema.pattern, '^sha256=[0-9a-f]{64}$');
+    for (const name of [SIGNATURE_HEADER, SIGNATURE_V2_HEADER]) {
+      const sig = webhook.parameters.find((p) => p.name === name);
+      assert.equal(sig.schema.pattern, '^sha256=[0-9a-f]{64}$');
+    }
+    assert.equal(webhook.parameters.find(p => p.name === TIMESTAMP_HEADER).schema.pattern, '^[0-9]+$');
   });
 
   it('the delivery id header schema constrains the whd_<32hex> format', () => {
@@ -94,7 +99,7 @@ describe('OpenAPI webhooks contract', () => {
   it('documents a verification recipe (HMAC-SHA256, constant-time compare)', () => {
     // The YAML block folds lines, so compare on single-spaced prose.
     const desc = (webhook.description ?? '').replace(/\s+/g, ' ');
-    for (const needle of ['HMAC-SHA256', 'constant time', 'secret', 'do not hex-decode']) {
+    for (const needle of ['HMAC-SHA256', 'constant time', 'secret', 'do not hex-decode', SIGNATURE_V2_HEADER, 'timestamp.deliveryId.event.rawRequestBody', '300 seconds', 'never fall back']) {
       assert.ok(desc.includes(needle), `webhook description must mention "${needle}"`);
     }
   });
@@ -140,9 +145,9 @@ describe('OpenAPI webhooks contract', () => {
 
   it('documented headers match what the delivery worker actually sends', () => {
     // The worker sends header names lowercase; the spec uses canonical casing.
-    const sent = [...deliverSrc.matchAll(/'(x-wm-[a-z-]+)'\s*:/g)].map((m) => m[1].toLowerCase());
+    const sent = [...deliverSrc.matchAll(/'(x-wm-[a-z0-9-]+)'\s*:/g)].map((m) => m[1].toLowerCase());
     const sentSet = new Set(sent);
-    for (const name of [SIGNATURE_HEADER, EVENT_HEADER, DELIVERY_ID_HEADER]) {
+    for (const name of [SIGNATURE_HEADER, SIGNATURE_V2_HEADER, TIMESTAMP_HEADER, EVENT_HEADER, DELIVERY_ID_HEADER]) {
       assert.ok(sentSet.has(name.toLowerCase()), `worker must send the ${name} header it documents`);
     }
   });
@@ -200,6 +205,61 @@ describe('webhook verification fixture (/.well-known/webhook-sample.json)', () =
   const fixture = JSON.parse(
     readFileSync(resolve(root, 'public/.well-known/webhook-sample.json'), 'utf8'),
   );
+  const guide = readFileSync(resolve(root, 'docs/api-shipping-v2.mdx'), 'utf8');
+  const example = guide.split('### Verifying deliveries')[1].match(/```js\n([\s\S]*?)\n```/)[1];
+  const verify = new Function('createHmac', 'timingSafeEqual', 'Buffer',
+    example.replace(/import .* from 'node:crypto';/, '') + '\nreturn verifyWorldMonitorWebhook;')(createHmac, timingSafeEqual, Buffer);
+  const headers = Object.fromEntries(Object.entries(fixture.headers).map(([name, value]) => [name.toLowerCase(), value]));
+  const sampleMs = Number(headers['x-wm-timestamp']) * 1000;
+
+  function signV2(body, values) {
+    return 'sha256=' + createHmac('sha256', fixture.secret)
+      .update(`${values['x-wm-timestamp']}.${values['x-wm-delivery-id']}.${values['x-wm-event']}.`)
+      .update(body).digest('hex');
+  }
+
+  it('the documented V2 verifier accepts the fixture at both tolerance boundaries', () => {
+    assert.equal(fixture.signatureV2, signV2(fixture.body, headers));
+    assert.equal(headers['x-wm-signature-v2'], fixture.signatureV2);
+    for (const drift of [-300_000, 0, 300_000]) {
+      assert.equal(verify(Buffer.from(fixture.body), headers, fixture.secret, sampleMs + drift), true);
+    }
+  });
+
+  it('rejects valid signatures outside the 300-second past and future window', () => {
+    for (const drift of [-301_000, 301_000]) {
+      assert.equal(verify(Buffer.from(fixture.body), headers, fixture.secret, sampleMs + drift), false);
+    }
+  });
+
+  it('rejects body, timestamp, delivery-id and event substitutions', () => {
+    assert.equal(verify(Buffer.from(fixture.body + ' '), headers, fixture.secret, sampleMs), false);
+    for (const [name, value] of [
+      ['x-wm-timestamp', String(sampleMs / 1000 + 1)],
+      ['x-wm-delivery-id', 'whd_' + 'a'.repeat(32)],
+      ['x-wm-event', 'country.risk_surge'],
+      ['x-wm-signature-v2', 'sha256=' + '0'.repeat(64)],
+    ]) {
+      assert.equal(verify(fixture.body, { ...headers, [name]: value }, fixture.secret, sampleMs), false, name);
+    }
+  });
+
+  it('rejects missing or malformed V2 headers without a legacy fallback', () => {
+    for (const name of ['x-wm-timestamp', 'x-wm-delivery-id', 'x-wm-event', 'x-wm-signature-v2']) {
+      for (const value of [undefined, '', ['duplicate', 'headers']]) {
+        assert.equal(verify(fixture.body, { ...headers, [name]: value }, fixture.secret, sampleMs), false, name);
+      }
+    }
+    for (const timestamp of ['NaN', 'Infinity', '1e9', '1783168496.5', '9007199254740992']) {
+      assert.equal(verify(fixture.body, { ...headers, 'x-wm-timestamp': timestamp }, fixture.secret, sampleMs), false);
+    }
+  });
+
+  it('rejects ambiguous delivery-id/event boundaries even with a matching HMAC', () => {
+    const values = { ...headers, 'x-wm-delivery-id': headers['x-wm-delivery-id'] + '.chokepoint', 'x-wm-event': 'disruption' };
+    assert.equal(signV2(fixture.body, values), headers['x-wm-signature-v2']);
+    assert.equal(verify(fixture.body, values, fixture.secret, sampleMs), false);
+  });
 
   it('the committed signature is the genuine HMAC-SHA256 of body keyed by secret', () => {
     const expected = 'sha256=' + createHmac('sha256', fixture.secret).update(fixture.body).digest('hex');

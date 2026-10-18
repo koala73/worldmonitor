@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import { describe, it } from 'node:test';
 
 import { deliverShippingV2Webhook } from '../server/worldmonitor/shipping/v2/deliver-webhook.ts';
@@ -32,6 +33,12 @@ const payload = {
   details: { name: 'Strait of Hormuz', activeWarnings: 3, previousScore: 41, wowChangePct: null },
 };
 const resolveHostname = async () => ['93.184.216.34'];
+const nowMs = Date.parse('2026-10-18T06:00:00.999Z');
+
+function signatureV2(body, headers) {
+  const message = `${headers['x-wm-timestamp']}.${headers['x-wm-delivery-id']}.${headers['x-wm-event']}.${body}`;
+  return 'sha256=' + createHmac('sha256', record.secret).update(message).digest('hex');
+}
 
 function capture() {
   const seen = [];
@@ -46,13 +53,13 @@ describe('shipping webhook delivery parity (TS sender vs Railway worker)', () =>
   it('sends the same URL, body, and headers for the same delivery', async () => {
     const ts = capture();
     const mjs = capture();
-    await deliverShippingV2Webhook(record, payload, { deliveryId: 'whd_parity', fetchImpl: ts.fetchImpl, resolveHostname });
-    const outcome = await deliverShippingWebhook(record, payload, { deliveryId: 'whd_parity', fetchImpl: mjs.fetchImpl, resolveHostname });
+    await deliverShippingV2Webhook(record, payload, { nowMs, deliveryId: 'whd_parity', fetchImpl: ts.fetchImpl, resolveHostname });
+    const outcome = await deliverShippingWebhook(record, payload, { nowMs, deliveryId: 'whd_parity', fetchImpl: mjs.fetchImpl, resolveHostname });
     assert.deepEqual(outcome, { ok: true, status: 204 });
     assert.deepEqual(mjs.seen, ts.seen);
     assert.equal(ts.seen.length, 1);
 
-    const built = buildShippingWebhookDelivery({ record, payload, deliveryId: 'whd_parity' });
+    const built = buildShippingWebhookDelivery({ record, payload, nowMs, deliveryId: 'whd_parity' });
     assert.equal(built.body, ts.seen[0].body);
     assert.deepEqual(built.headers, ts.seen[0].headers);
   });
@@ -73,13 +80,57 @@ describe('shipping webhook delivery parity (TS sender vs Railway worker)', () =>
     };
     const ts = capture();
     const mjs = capture();
-    await deliverShippingV2Webhook(record, riskPayload, { deliveryId: 'whd_parity2', event: 'country.risk_surge', fetchImpl: ts.fetchImpl, resolveHostname });
-    await deliverShippingWebhook(record, riskPayload, { deliveryId: 'whd_parity2', event: 'country.risk_surge', fetchImpl: mjs.fetchImpl, resolveHostname });
+    await deliverShippingV2Webhook(record, riskPayload, { nowMs, deliveryId: 'whd_parity2', event: 'country.risk_surge', fetchImpl: ts.fetchImpl, resolveHostname });
+    await deliverShippingWebhook(record, riskPayload, { nowMs, deliveryId: 'whd_parity2', event: 'country.risk_surge', fetchImpl: mjs.fetchImpl, resolveHostname });
     assert.deepEqual(mjs.seen, ts.seen);
     assert.equal(ts.seen[0].headers['x-wm-event'], 'country.risk_surge');
     // The default stays the chokepoint event for every caller that passes no event.
     assert.equal(buildShippingWebhookDelivery({ record, payload, deliveryId: 'x' }).headers['x-wm-event'], 'chokepoint.disruption');
   });
+
+  for (const [name, send] of [['API', deliverShippingV2Webhook], ['worker', deliverShippingWebhook]]) {
+    it(`${name} signs a generated delivery id and the current send time by default`, async () => {
+      const { seen, fetchImpl } = capture();
+      const before = Math.floor(Date.now() / 1000);
+      await send(record, payload, { fetchImpl, resolveHostname });
+      const { body, headers } = seen[0];
+      assert.match(headers['x-wm-delivery-id'], /^whd_[0-9a-f]{32}$/);
+      assert.ok(Number(headers['x-wm-timestamp']) >= before);
+      assert.ok(Number(headers['x-wm-timestamp']) <= Math.floor(Date.now() / 1000));
+      assert.equal(headers['x-wm-signature-v2'], signatureV2(body, headers));
+    });
+
+    for (const event of ['chokepoint.disruption', 'country.risk_surge']) {
+      it(`${name} authenticates timestamp, delivery id, event, and raw UTF-8 body for ${event}`, async () => {
+        const { seen, fetchImpl } = capture();
+        await send(record, { ...payload, reason: '航行警告' }, {
+          nowMs, deliveryId: 'whd_signed', event, fetchImpl, resolveHostname,
+        });
+        const { body, headers } = seen[0];
+        assert.equal(headers['x-wm-timestamp'], String(Math.floor(nowMs / 1000)));
+        assert.equal(headers['x-wm-signature-v2'], signatureV2(body, headers));
+        assert.equal(headers['x-wm-signature'], 'sha256=' + createHmac('sha256', record.secret).update(body).digest('hex'));
+        for (const [field, value] of [
+          ['x-wm-timestamp', String(Math.floor(nowMs / 1000) + 1)],
+          ['x-wm-delivery-id', 'whd_replayed'],
+          ['x-wm-event', event === 'country.risk_surge' ? 'chokepoint.disruption' : 'country.risk_surge'],
+        ]) {
+          assert.notEqual(headers['x-wm-signature-v2'], signatureV2(body, { ...headers, [field]: value }), field);
+        }
+        assert.notEqual(headers['x-wm-signature-v2'], signatureV2(body + ' ', headers));
+      });
+    }
+
+    it(`${name} refreshes the signed timestamp on a retry with the same delivery id`, async () => {
+      const { seen, fetchImpl } = capture();
+      for (const attemptMs of [nowMs, nowMs + 300_000]) {
+        await send(record, payload, { nowMs: attemptMs, deliveryId: 'whd_retry', fetchImpl, resolveHostname });
+      }
+      assert.equal(seen[0].headers['x-wm-delivery-id'], seen[1].headers['x-wm-delivery-id']);
+      assert.notEqual(seen[0].headers['x-wm-timestamp'], seen[1].headers['x-wm-timestamp']);
+      assert.notEqual(seen[0].headers['x-wm-signature-v2'], seen[1].headers['x-wm-signature-v2']);
+    });
+  }
 
   it('generates delivery ids in the documented whd_<32 hex> shape', () => {
     assert.match(makeDeliveryId(), /^whd_[0-9a-f]{32}$/);

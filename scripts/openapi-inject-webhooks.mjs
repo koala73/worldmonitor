@@ -4,10 +4,10 @@
  *
  * The ShippingV2Service lets partners register a `callbackUrl` (RegisterWebhook)
  * that WorldMonitor POSTs signed events to. The delivery worker
- * (server/worldmonitor/shipping/v2/deliver-webhook.ts) signs every POST with an
- * HMAC-SHA256 over the raw body, keyed by the subscription `secret`, and sends
- * it in a branded `X-WM-Signature` header (plus `X-WM-Event` /
- * `X-WM-Delivery-Id`). The sebuf `protoc-gen-openapiv3` plugin only emits the
+ * (server/worldmonitor/shipping/v2/deliver-webhook.ts) signs every POST with a
+ * versioned HMAC-SHA256 over the timestamp, delivery id, event and raw body.
+ * The legacy body-only signature remains available during receiver migration.
+ * The sebuf `protoc-gen-openapiv3` plugin only emits the
  * *inbound* request/response shapes it can see in the proto; it has no way to
  * describe an *outbound* callback, so the published spec references the HMAC
  * secret (RegisterWebhookResponse.secret) without ever naming the signature
@@ -17,7 +17,7 @@
  *
  * OpenAPI 3.1 models exactly this with a top-level `webhooks` object (a map of
  * named Path Item Objects describing requests the API *initiates*). This step
- * injects one `chokepoint.disruption` webhook documenting the three branded
+ * injects one `chokepoint.disruption` webhook documenting the branded
  * headers, the payload schema, and — crucially — the verification recipe, so a
  * consuming agent can confirm a delivery genuinely came from WorldMonitor.
  *
@@ -66,6 +66,8 @@ export const WEBHOOK_EVENTS = Object.freeze([WEBHOOK_EVENT, RISK_SURGE_WEBHOOK_E
 // are case-insensitive on the wire (the worker sends them lowercase); the spec
 // uses canonical casing. Kept here as the single source the contract test reads.
 export const SIGNATURE_HEADER = 'X-WM-Signature';
+export const SIGNATURE_V2_HEADER = 'X-WM-Signature-V2';
+export const TIMESTAMP_HEADER = 'X-WM-Timestamp';
 export const EVENT_HEADER = 'X-WM-Event';
 export const DELIVERY_ID_HEADER = 'X-WM-Delivery-Id';
 
@@ -89,19 +91,16 @@ const WEBHOOKS_BLOCK = `webhooks:
                 5 failed ticks deactivate the webhook. Full rules at
                 https://www.worldmonitor.app/docs/api-shipping-v2#delivery-worker.
 
-                Verification: the \`${SIGNATURE_HEADER}\` header is
-                \`sha256=<hex>\`, where \`<hex>\` is the lowercase hex HMAC-SHA256 of the
-                exact raw request body, keyed by the \`secret\` returned when you
-                registered the webhook. To verify, recompute
-                \`sha256=\` + hex(HMAC_SHA256(key=secret, message=rawRequestBody)) over
-                the bytes exactly as received (do not re-serialize the JSON) and
-                compare against \`${SIGNATURE_HEADER}\` in constant time. Use the
-                \`secret\` string verbatim as the HMAC key — do not hex-decode it.
-                Reject the delivery if the signatures differ.
-
-                Respond with any 2xx to acknowledge receipt; a non-2xx response or a
-                timeout marks the delivery failed. \`${DELIVERY_ID_HEADER}\` uniquely
-                identifies each delivery for idempotent processing.
+                Verify \`${SIGNATURE_V2_HEADER}\` in constant time against
+                \`sha256=\` + hex(HMAC-SHA256(key=secret,
+                message=timestamp.deliveryId.event.rawRequestBody)). Use the exact
+                header strings and raw body bytes. Use \`secret\` verbatim;
+                do not hex-decode it or re-serialize JSON. Reject missing or malformed
+                headers and timestamps more than 300 seconds in the past or future.
+                Require V2; never fall back to the legacy body-only signature.
+                Atomically dedupe verified delivery ids for the subscription lifetime.
+                Retries keep the id but refresh the timestamp and signature.
+                Respond with any 2xx to acknowledge receipt.
             operationId: ChokepointDisruptionWebhook
             security: []
             parameters:
@@ -109,12 +108,25 @@ const WEBHOOKS_BLOCK = `webhooks:
                   in: header
                   required: true
                   description: |-
-                      HMAC-SHA256 signature of the raw request body, keyed by the
-                      subscription \`secret\`, formatted as \`sha256=<lowercase-hex>\`.
+                      Legacy body-only HMAC-SHA256. No replay protection. Migrate to V2.
                   schema:
                       type: string
                       pattern: ^sha256=[0-9a-f]{64}$
                       example: sha256=2b8c0d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c
+                - name: ${SIGNATURE_V2_HEADER}
+                  in: header
+                  required: true
+                  description: HMAC-SHA256(secret, timestamp.deliveryId.event.rawRequestBody).
+                  schema:
+                      type: string
+                      pattern: ^sha256=[0-9a-f]{64}$
+                - name: ${TIMESTAMP_HEADER}
+                  in: header
+                  required: true
+                  description: Send time in Unix seconds. Accept within 300 seconds of the receiver clock.
+                  schema:
+                      type: string
+                      pattern: ^[0-9]+$
                 - name: ${EVENT_HEADER}
                   in: header
                   required: true

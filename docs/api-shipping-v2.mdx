@@ -232,7 +232,9 @@ The `reason` field names the strongest signal behind the score. The first matchi
 ```
 POST <callbackUrl>
 Content-Type: application/json
-X-WM-Signature: sha256=<HMAC-SHA256(body, secret)>
+X-WM-Signature: sha256=<legacy HMAC-SHA256(body, secret)>
+X-WM-Signature-V2: sha256=<HMAC-SHA256(timestamp.deliveryId.event.body, secret)>
+X-WM-Timestamp: <Unix seconds>
 X-WM-Delivery-Id: whd_<32 lowercase hex chars>
 X-WM-Event: chokepoint.disruption
 
@@ -275,34 +277,53 @@ A `country.risk_surge` delivery carries `X-WM-Event: country.risk_surge` and thi
 
 Both events share the headers and the signature scheme below. The [OpenAPI spec](https://www.worldmonitor.app/openapi.json) carries the delivery contract once under `webhooks` (`chokepoint.disruption`) and names `country.risk_surge` in the `X-WM-Event` header's enum; this page and the event registry hold the risk-surge payload schema.
 
-The delivery worker re-resolves `callbackUrl` before each send, refuses private, loopback, link-local, and reserved addresses, and connects only to the vetted address to mitigate DNS rebinding. Delivery is at-least-once — consumers must handle duplicates via `X-WM-Delivery-Id`.
+The delivery worker re-resolves `callbackUrl` before each send, refuses private, loopback, link-local, and reserved addresses, and connects only to the vetted address to mitigate DNS rebinding. Delivery is at-least-once. Verify the V2 signature and timestamp before you dedupe on `X-WM-Delivery-Id`.
 
 ### Verifying deliveries
 
-Every delivery is signed so you can confirm it genuinely came from WorldMonitor. `X-WM-Signature` is `sha256=<hex>`, where `<hex>` is the lowercase-hex **HMAC-SHA256 of the exact raw request body**, keyed by the `secret` returned at registration.
+Every delivery includes `X-WM-Signature-V2` and `X-WM-Timestamp`. The timestamp is the send time in Unix seconds. The V2 signature is `sha256=<hex>`, where `<hex>` is the lowercase-hex HMAC-SHA256 of `${timestamp}.${deliveryId}.${event}.${rawBody}`, keyed by the subscription `secret`.
 
-To verify: recompute `sha256=` + `hex(HMAC_SHA256(key=secret, message=rawBody))` over the bytes **exactly as received** (do not re-serialize the JSON), and compare against `X-WM-Signature` in constant time. Use the `secret` string **verbatim** as the HMAC key — do not hex-decode it. Reject the delivery if the signatures differ.
+Use the header values and the raw body bytes exactly as received. Do not re-serialize the JSON. Use the `secret` string verbatim as the HMAC key. Do not hex-decode it.
+
+Reject missing or malformed headers and timestamps more than **300 seconds** in the past or future. Compare the V2 signature in constant time. After verification, use the delivery ID as an idempotency key in your processing transaction. Ignore IDs you have already processed. Retain these IDs for the subscription lifetime so retries cannot repeat an action. Each retry keeps its delivery ID but gets a fresh timestamp and signature.
 
 ```js
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-// rawBody: the exact request body bytes; header: the X-WM-Signature value;
-// secret: the value returned by RegisterWebhook (used verbatim as the key).
-function verifyWorldMonitorWebhook(rawBody, header, secret) {
-  const expected = 'sha256=' + createHmac('sha256', secret).update(rawBody).digest('hex');
-  const a = Buffer.from(header ?? '');
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
+// headers uses lowercase names, as in Node's incoming request headers.
+function verifyWorldMonitorWebhook(rawBody, headers, secret, nowMs = Date.now()) {
+  const timestamp = headers['x-wm-timestamp'];
+  const deliveryId = headers['x-wm-delivery-id'];
+  const event = headers['x-wm-event'];
+  const signature = headers['x-wm-signature-v2'];
+  if (typeof timestamp !== 'string' || !/^\d+$/.test(timestamp)) return false;
+  if (typeof deliveryId !== 'string' || !/^whd_[0-9a-f]{32}$/.test(deliveryId)) return false;
+  if (!['chokepoint.disruption', 'country.risk_surge'].includes(event)) return false;
+  if (typeof signature !== 'string' || !/^sha256=[0-9a-f]{64}$/.test(signature)) return false;
+  const seconds = Number(timestamp);
+  if (!Number.isSafeInteger(seconds) || Math.abs(Math.floor(nowMs / 1000) - seconds) > 300) return false;
+  const expected = 'sha256=' + createHmac('sha256', secret)
+    .update(`${timestamp}.${deliveryId}.${event}.`)
+    .update(rawBody)
+    .digest('hex');
+  return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 }
 ```
 
-The signature contract is also published machine-readably as the `chokepoint.disruption` entry under `webhooks` in the [OpenAPI spec](https://www.worldmonitor.app/openapi.json).
+The verifier authenticates the request. Process only the event you subscribed to, and commit its action and processed delivery ID together.
+
+#### Migrate from the legacy signature
+
+`X-WM-Signature` remains available with its original body-only HMAC during migration. Existing subscriptions keep their secrets. Update receivers to require `X-WM-Signature-V2` and `X-WM-Timestamp`. Do not fall back to the legacy header when V2 verification fails or V2 headers are missing. The legacy signature does not protect the timestamp, event, or delivery ID and cannot prevent this replay attack. Removal of the legacy header requires a separate announced change.
+
+The [OpenAPI spec](https://www.worldmonitor.app/openapi.json) also describes these headers under `webhooks`.
 
 #### Test your verification against a signed sample
 
-A ready-to-verify sample delivery is published at [`/.well-known/webhook-sample.json`](https://www.worldmonitor.app/.well-known/webhook-sample.json). It carries a fixed sample `secret`, the exact raw `body` string, and the resulting `signature`. Recompute `sha256=` + `hex(HMAC_SHA256(key=secret, message=body))` over the exact bytes of `body` and confirm it equals `signature` — if it matches, your verification will accept real deliveries. (The sample `secret` is a fixture; each live subscription gets its own `secret` from RegisterWebhook.)
+[`/.well-known/webhook-sample.json`](https://www.worldmonitor.app/.well-known/webhook-sample.json) contains a fixed sample `secret`, the exact raw `body`, both signatures, and the signed headers. The sample timestamp is fixed. Use that timestamp as the test clock; a live receiver must reject the old sample at the current time.
 
 ```js
 const s = await (await fetch('https://www.worldmonitor.app/.well-known/webhook-sample.json')).json();
-verifyWorldMonitorWebhook(s.body, s.signature, s.secret); // → true
+const headers = Object.fromEntries(Object.entries(s.headers).map(([name, value]) => [name.toLowerCase(), value]));
+verifyWorldMonitorWebhook(Buffer.from(s.body), headers, s.secret, Number(headers['x-wm-timestamp']) * 1000); // true
 ```
