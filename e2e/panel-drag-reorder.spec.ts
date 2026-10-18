@@ -253,6 +253,8 @@ test.describe('monitor panel reload', () => {
       localStorage.setItem('wm-layer-warning-dismissed', 'true');
       localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
       localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+      localStorage.setItem('worldmonitor-panel-order-v1.9', 'done');
+      localStorage.setItem('worldmonitor-layout-reset-v2.5', 'done');
       localStorage.setItem('worldmonitor-panels', JSON.stringify(Object.fromEntries(
         Object.entries(ALL_PANELS).map(([key, config]) => [key, {
           ...config, enabled: panelOrder.includes(key),
@@ -271,7 +273,7 @@ test.describe('monitor panel reload', () => {
   test('restores saved keyword tags after a deferred mount and reload', async ({ page }, testInfo) => {
     await loadMonitorDashboard(page, ['live-news', 'live-webcams', 'monitors']);
     const panel = page.locator('.panel[data-panel="monitors"]');
-    await panel.scrollIntoViewIfNeeded();
+    await expect(async () => { await panel.scrollIntoViewIfNeeded(); }).toPass();
     await expect(panel.locator('.monitor-input')).toBeVisible();
     await expect(panel.locator('.monitor-tag')).toHaveText(['taiwan, strait×', 'shipping×']);
 
@@ -279,7 +281,7 @@ test.describe('monitor panel reload', () => {
     await panel.locator('.monitor-add-btn').click();
     await expect(panel.locator('.monitor-tag')).toHaveCount(3);
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await panel.scrollIntoViewIfNeeded();
+    await expect(async () => { await panel.scrollIntoViewIfNeeded(); }).toPass();
     await expect(panel.locator('.monitor-tag')).toHaveText(['taiwan, strait×', 'shipping×', 'energy×']);
     await panel.locator('.monitor-tag').last().locator('.monitor-tag-remove').click();
     await expect(panel.locator('.monitor-tag')).toHaveCount(2);
