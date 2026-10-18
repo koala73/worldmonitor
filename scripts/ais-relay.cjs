@@ -54,6 +54,16 @@ const { publishChokepointDisruptionAlerts } = require('./lib/chokepoint-disrupti
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle, xPollSlot } = require('./lib/x-poll-cycle.cjs');
 const { createGuardedLookup, SSRF_BLOCKED_ERROR_CODE } = require('./lib/notification-webhook-ssrf.cjs');
+// API fan-out of rss_alert / market_alert queue messages to the Shipping v2
+// webhook worker (news.breaking, market.move in shared/event-triggers.json).
+const {
+  API_FANOUT_EVENT_TYPES,
+  API_FANOUT_LIST_CAP,
+  API_FANOUT_LIST_KEY,
+  API_FANOUT_LIST_TTL_SECONDS,
+  API_FANOUT_TEE_SCRIPT,
+  occurrenceEventIdFor,
+} = require('./lib/occurrence-events.cjs');
 const {
   createXPostBudget,
   DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
@@ -868,6 +878,34 @@ function nwsVtec(p) {
   return vtec;
 }
 
+/**
+ * Second copy of a queued rss_alert / market_alert message for API-key webhook
+ * subscribers. The notification relay RPOPs wm:events:queue destructively, so
+ * the Shipping v2 worker drains its own list (wm:events:api:v1). One Lua round
+ * trip pushes, caps and expires it; a failure here never touches the queue
+ * publish that already succeeded, it only loses the event for API tenants.
+ */
+function teeApiFanout(eventType, msg) {
+  if (!UPSTASH_ENABLED) return;
+  upstashEval(API_FANOUT_TEE_SCRIPT, [API_FANOUT_LIST_KEY], [msg, API_FANOUT_LIST_CAP, API_FANOUT_LIST_TTL_SECONDS])
+    .then((result) => {
+      if (Number(result) !== 1) console.warn(`[Notify] API fan-out tee did not confirm (${eventType})`);
+    })
+    .catch((e) => console.warn(`[Notify] API fan-out tee failed (${eventType}):`, e?.message || e));
+}
+
+/** Quote fields the market.move webhook payload carries; the title stays the human line. */
+function marketMoveFields(assetClass, q) {
+  return {
+    assetClass,
+    symbol: String(q.symbol || q.name || '').toUpperCase(),
+    name: String(q.name || q.symbol || ''),
+    price: Number.isFinite(q.price) ? q.price : null,
+    changePct: q.change,
+    direction: q.change < 0 ? 'down' : 'up',
+  };
+}
+
 async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800 }) {
   try {
     // Include variant in dedup key so each variant can independently publish the same title
@@ -895,9 +933,18 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
       console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
       return true;
     }
-    const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt: Date.now() });
+    const publishedAt = Date.now();
+    const fanout = API_FANOUT_EVENT_TYPES.has(eventType);
+    // Stable per-story / per-move id for API subscribers (occurrence-events.cjs).
+    // The relay ignores it; it rides along in the queue message unchanged.
+    if (fanout && payload && typeof payload === 'object' && !payload.eventId) {
+      const eventId = occurrenceEventIdFor(eventType, payload, publishedAt);
+      if (eventId) payload = { ...payload, eventId };
+    }
+    const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt });
     const ok = await upstashLpush('wm:events:queue', msg);
     if (ok) {
+      if (fanout) teeApiFanout(eventType, msg);
       console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
       return true;
     } else {
@@ -3601,6 +3648,7 @@ async function seedMarketQuotes() {
         title: `${q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
         source: 'Equity Market',
         coalesceKey: marketAlertCoalesceKey('equity', q.symbol, dir, severity),
+        ...marketMoveFields('equity', q),
       },
       severity,
       variant: undefined,
@@ -3664,6 +3712,7 @@ async function seedCommodityQuotes() {
         title: `${q.name || q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
         source: 'Commodity Market',
         coalesceKey: marketAlertCoalesceKey('commodity', q.symbol || q.name, dir, severity),
+        ...marketMoveFields('commodity', q),
       },
       severity,
       variant: undefined,
@@ -4006,6 +4055,7 @@ async function seedCryptoQuotes() {
         title: `${q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
         source: 'Crypto Market',
         coalesceKey: marketAlertCoalesceKey('crypto', q.symbol || q.name, dir, severity),
+        ...marketMoveFields('crypto', q),
       },
       severity,
       variant: undefined,
@@ -5243,6 +5293,12 @@ async function seedClassifyForVariant(variant, seenTitles) {
             publishedAt: meta.publishedAt,
             importanceScore,
             corroborationCount: meta.corroborationCount ?? 1,
+            // Read by API webhook subscribers (news.breaking scope). Plural on
+            // purpose: the relay scopes rules on payload.countryCode and keeps
+            // rss_alert permissive-unattributed, so a singular field here would
+            // start silencing country-scoped Slack rules.
+            category,
+            countryCodes: matchCountryNamesInText(chunk[idx]),
           },
           severity: level,
           variant,

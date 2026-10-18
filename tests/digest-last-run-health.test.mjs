@@ -46,7 +46,7 @@ describe('digest-notifications last-run health heartbeat', () => {
     // (health reads the reason), then the run must fail loudly.
     const rulesFetch = sourceBetween(
       "const res = await fetch(`${CONVEX_SITE_URL}/relay/digest-rules`",
-      'if (!Array.isArray(rules) || rules.length === 0) {',
+      'if (!Array.isArray(rules)) {',
     );
     assert.match(
       rulesFetch,

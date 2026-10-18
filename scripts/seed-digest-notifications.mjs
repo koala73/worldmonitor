@@ -2115,7 +2115,18 @@ async function main() {
     process.exit(1);
   }
 
-  if (!Array.isArray(rules) || rules.length === 0) {
+  if (!Array.isArray(rules)) {
+    console.error('[digest] Malformed rules response: expected an array');
+    await writeDigestLastRunMeta({
+      startedAtMs: nowMs,
+      status: 'error',
+      errorReason: 'fetch_rules_malformed',
+    });
+    await flushPendingLlmEvents();
+    process.exit(1);
+  }
+
+  if (rules.length === 0) {
     console.log('[digest] No digest rules found — nothing to do');
     await writeDigestLastRunMeta({ startedAtMs: nowMs, sentCount: 0 });
     return;

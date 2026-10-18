@@ -22,19 +22,28 @@ function timeoutError() {
   return new DOMException('The operation was aborted due to timeout', 'TimeoutError');
 }
 
-function runDigest({ failingUsers }: { failingUsers: Set<string> }) {
+function runDigest({ failingUsers, rulesResponse, exitError }: {
+  failingUsers: Set<string>;
+  rulesResponse?: Response;
+  exitError?: Error;
+}) {
   const users = ['first', 'second', 'third'];
   const delivered: string[] = [];
   const metadata: any[] = [];
   const exits: number[] = [];
   const warnings: string[] = [];
+  const lifecycle: string[] = [];
   const stories = [{
     severity: 'critical', phase: 'developing', title: 'Synthetic alert', description: 'Synthetic details.',
     link: 'https://example.com/1', sources: ['Synthetic wire'],
   }];
   const run = runInNewContext(`${sendEmailSource}\n${mainSource}\nmain`, {
     Date, Map, Set, AbortSignal, Buffer,
-    process: { env: {}, exit: (code: number) => { exits.push(code); } },
+    process: { env: {}, exit: (code: number) => {
+      exits.push(code);
+      lifecycle.push('exit');
+      if (exitError) throw exitError;
+    } },
     console: { log() {}, warn: (...args: unknown[]) => { warnings.push(args.join(' ')); }, error() {} },
     DIGEST_EMAIL_MAX_HTML_BYTES, injectUnsubscribeFooterHtml, unsubscribeUrlFor,
     appendUnsubscribeText, listUnsubscribeHeaders, resend: {}, RESEND_FROM: 'brief@example.com',
@@ -42,7 +51,7 @@ function runDigest({ failingUsers }: { failingUsers: Set<string> }) {
     scanAndEnqueueWatchlistStoryEvents: async () => {},
     fetch: async (url: string, init: { body?: string }) => {
       if (url.endsWith('/relay/digest-rules')) {
-        return Response.json(users.map((userId) => ({ userId, variant: 'full', channels: ['email'] })));
+        return rulesResponse ?? Response.json(users.map((userId) => ({ userId, variant: 'full', channels: ['email'] })));
       }
       assert.ok(url.endsWith('/relay/channels'));
       const { userId } = JSON.parse(String(init.body));
@@ -58,7 +67,7 @@ function runDigest({ failingUsers }: { failingUsers: Set<string> }) {
       return stories;
     },
     shouldExitOnBriefFailures: () => false,
-    flushPendingLlmEvents: async () => {},
+    flushPendingLlmEvents: async () => { lifecycle.push('flush'); },
     AI_DIGEST_ENABLED: false,
     buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
     formatDigest: () => 'Synthetic digest',
@@ -70,10 +79,40 @@ function runDigest({ failingUsers }: { failingUsers: Set<string> }) {
       delivered.push(message.to);
       return { ok: true };
     },
-    writeDigestLastRunMeta: async (meta: unknown) => { metadata.push(meta); },
+    writeDigestLastRunMeta: async (meta: unknown) => { metadata.push(meta); lifecycle.push('metadata'); },
   });
-  return { run, delivered, metadata, exits, warnings };
+  return { run, delivered, metadata, exits, warnings, lifecycle };
 }
+
+test('a non-array rules response fails after recording metadata and flushing events', async (t) => {
+  for (const body of [{}, { rules: [] }, null, 'rules', 1, false]) {
+    await t.test(JSON.stringify(body), async () => {
+      const exitError = new Error('process exited');
+      const { run, delivered, metadata, exits, lifecycle } = runDigest({
+        failingUsers: new Set(), rulesResponse: Response.json(body), exitError,
+      });
+      await assert.rejects(run, (err) => err === exitError);
+      assert.deepEqual(exits, [1]);
+      assert.equal(metadata.length, 1);
+      assert.equal(metadata[0].status, 'error');
+      assert.equal(metadata[0].errorReason, 'fetch_rules_malformed');
+      assert.deepEqual(lifecycle, ['metadata', 'flush', 'exit']);
+      assert.deepEqual(delivered, []);
+    });
+  }
+});
+
+test('an empty rules array remains a healthy zero-work run', async () => {
+  const { run, delivered, metadata, exits } = runDigest({
+    failingUsers: new Set(), rulesResponse: Response.json([]),
+  });
+  await run();
+  assert.deepEqual(exits, []);
+  assert.deepEqual(delivered, []);
+  assert.equal(metadata.length, 1);
+  assert.equal(metadata[0].status, undefined);
+  assert.equal(metadata[0].sentCount, 0);
+});
 
 test('a timeout in one user\'s send does not stop the digests of later users', async () => {
   const { run, delivered, metadata, exits, warnings } = runDigest({ failingUsers: new Set(['first']) });

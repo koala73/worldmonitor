@@ -417,6 +417,49 @@ describe('ShippingV2Service handlers', () => {
       );
     });
 
+    it('news.breaking stores a normalized scope with the registry defaults and echoes nothing for threshold events', async () => {
+      const calls = stubRedisOk();
+      await registerWebhook(proCtx(), {
+        callbackUrl: 'https://93.184.216.34/wm',
+        chokepointIds: [],
+        countries: [],
+        eventType: 'news.breaking',
+        scope: { keywords: [' Hormuz ', 'tanker'], countries: ['ir'], categories: [], severityFloor: 'critical' },
+      });
+      const record = JSON.parse(calls[0][0][2]);
+      assert.equal(record.eventType, 'news.breaking');
+      assert.deepEqual(record.scope, {
+        keywords: ['hormuz', 'tanker'],
+        categories: [],
+        countries: ['IR'],
+        importanceFloor: 69,
+        severityFloor: 'critical',
+      });
+      assert.equal('minLiveSignal' in record, false);
+      assert.equal('countries' in record, false, 'top-level countries stays a risk-surge field');
+
+      const threshold = stubRedisOk();
+      await registerWebhook(proCtx(), { callbackUrl: 'https://93.184.216.34/wm', chokepointIds: [], countries: [], eventType: 'country.risk_surge', scope: { keywords: [] } });
+      assert.equal('scope' in JSON.parse(threshold[0][0][2]), false, 'a threshold record carries no scope');
+    });
+
+    it('rejects a scope key the event does not define, and any set scope on a threshold event', async () => {
+      stubRedisOk();
+      await assert.rejects(
+        () => registerWebhook(proCtx(), { callbackUrl: 'https://93.184.216.34/wm', chokepointIds: [], countries: [], eventType: 'news.breaking', scope: { symbols: ['VIX'] } }),
+        (err) => err instanceof ValidationError && err.violations[0].field === 'scope.symbols',
+      );
+      await assert.rejects(
+        () => registerWebhook(proCtx(), { callbackUrl: 'https://93.184.216.34/wm', chokepointIds: [], countries: [], eventType: 'market.move', scope: { minAbsPct: 3 } }),
+        (err) => err instanceof ValidationError && err.violations[0].field === 'scope.minAbsPct',
+      );
+      await assert.rejects(
+        () => registerWebhook(proCtx(), { callbackUrl: 'https://93.184.216.34/wm', chokepointIds: [], countries: [], scope: { keywords: ['iran'] } }),
+        (err) => err instanceof ValidationError && err.violations[0].field === 'scope',
+        'scope on a chokepoint subscription is a caller mistake, not silently ignored',
+      );
+    });
+
     it('minLiveSignal is stored for chokepoint.disruption, bounded, and refused for other events', async () => {
       const calls = stubRedisOk();
       await registerWebhook(proCtx(), { callbackUrl: 'https://93.184.216.34/wm', chokepointIds: ['hormuz_strait'], countries: [], minLiveSignal: 15 });
@@ -526,6 +569,37 @@ describe('ShippingV2Service handlers', () => {
       assert.equal(summary.eventType, 'chokepoint.disruption');
       assert.deepEqual(summary.countries, []);
       assert.equal(summary.minLiveSignal, 0);
+      assert.equal('scope' in summary, false, 'threshold records carry no scope');
+    });
+
+    it('echoes the stored scope of an occurrence-event record as registered', async () => {
+      const key = 'pro-test-key';
+      const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key));
+      const ownerTag = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+      const scope = { keywords: ['hormuz'], categories: [], countries: ['IR'], importanceFloor: 69, severityFloor: 'high' };
+      const record = {
+        subscriberId: 'wh_abc123456789012345678901',
+        ownerTag,
+        callbackUrl: 'https://hooks.example.com/wm',
+        chokepointIds: ['hormuz_strait'],
+        alertThreshold: 50,
+        createdAt: '2026-10-18T00:00:00.000Z',
+        active: true,
+        secret: 'must-not-be-in-response',
+        eventType: 'news.breaking',
+        scope,
+      };
+      globalThis.fetch = async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        if (body[0]?.[0] === 'SSCAN') return Response.json([{ result: ['0', []] }]);
+        if (body[0]?.[1]?.endsWith(':sweep')) return Response.json([{ result: body[0][0] === 'GET' ? null : 'OK' }]);
+        if (body.length === 1 && body[0][0] === 'SMEMBERS') return Response.json([{ result: [record.subscriberId] }]);
+        return Response.json(body.map(() => ({ result: JSON.stringify(record) })));
+      };
+      const res = await listWebhooks(proCtx(), {});
+      assert.equal(res.webhooks[0].eventType, 'news.breaking');
+      assert.deepEqual(res.webhooks[0].scope, scope);
+      assert.ok(!('secret' in res.webhooks[0]));
     });
   });
 

@@ -35455,8 +35455,9 @@ webhooks:
                   in: header
                   required: true
                   description: |-
-                      Always `chokepoint.disruption` for this body. A `country.risk_surge`
-                      subscription sends the same headers with the payload documented at
+                      Always `chokepoint.disruption` for this body. The other events
+                      (`country.risk_surge`, `news.breaking`, `market.move`) send the
+                      same headers and signature with the payloads documented at
                       https://www.worldmonitor.app/docs/api-shipping-v2#delivery-format.
                   schema:
                       type: string
@@ -56939,7 +56940,7 @@ components:
                 eventType:
                     type: string
                     maxLength: 64
-                    description: '`chokepoint.disruption` (default) or `country.risk_surge`.'
+                    description: A shared/event-triggers.json key; `chokepoint.disruption` when omitted.
                 countries:
                     type: array
                     items:
@@ -56951,12 +56952,57 @@ components:
                     minimum: 0
                     format: int32
                     description: '`chokepoint.disruption` live-signal floor; 0 = score only.'
+                scope:
+                    $ref: '#/components/schemas/worldmonitor_shipping_v2_WebhookScope'
             required:
                 - callbackUrl
             description: |-
                 RegisterWebhookRequest subscribes to one eventType (default
                  chokepoint.disruption). Wire shape is byte-compatible with the legacy
                  POST body.
+        worldmonitor_shipping_v2_WebhookScope:
+            type: object
+            properties:
+                keywords:
+                    type: array
+                    items:
+                        type: string
+                        description: 'news.breaking: whole-word terms, any-of, 1-20.'
+                categories:
+                    type: array
+                    items:
+                        type: string
+                        description: 'news.breaking: classifier categories.'
+                importanceFloor:
+                    type: integer
+                    format: int32
+                    description: 'news.breaking: importanceScore floor, 0-100 (default 69).'
+                severityFloor:
+                    type: string
+                    description: 'news.breaking: `critical` or `high` (default high).'
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: 'news.breaking: ISO2 codes; unattributed headlines never match.'
+                assetClasses:
+                    type: array
+                    items:
+                        type: string
+                        description: 'market.move: `equity`, `commodity`, `crypto`.'
+                symbols:
+                    type: array
+                    items:
+                        type: string
+                        description: 'market.move: quote symbols, 1-50.'
+                minAbsPct:
+                    type: number
+                    format: double
+                    description: 'market.move: |changePct| floor, 5-100 (default 10).'
+                direction:
+                    type: string
+                    description: 'market.move: `up`, `down` or `any` (default any).'
+            description: Per-event filters for occurrence events. Each key applies to the events named in its comment; the handler validates against shared/event-triggers.json and stores the defaults.
         worldmonitor_shipping_v2_RegisterWebhookResponse:
             type: object
             properties:
@@ -57013,6 +57059,8 @@ components:
                 minLiveSignal:
                     type: integer
                     format: int32
+                scope:
+                    $ref: '#/components/schemas/worldmonitor_shipping_v2_WebhookScope'
             description: |-
                 Single webhook record in the list response. `secret` is intentionally
                  omitted; use rotate-secret to obtain a new one.

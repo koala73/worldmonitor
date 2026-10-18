@@ -170,3 +170,47 @@ describe('shipping webhook delivery parity (TS sender vs Railway worker)', () =>
     assert.equal(webhookKey(record.subscriberId), shared.webhookKey(record.subscriberId));
   });
 });
+
+// Occurrence events (news.breaking, market.move) go through the same sender as
+// the threshold events, so they carry exactly the headers that sender builds,
+// signatures included. Pinned against buildShippingWebhookDelivery (with a
+// fixed send time) rather than a header list, so a signing change in the
+// shared sender reaches these events without a second edit here.
+describe('shipping webhook delivery parity: occurrence events', () => {
+  const nowMs = Date.parse('2026-10-17T18:45:16.000Z');
+  const bodies = {
+    'news.breaking': {
+      subscriberId: record.subscriberId, eventId: 'rss_' + '1'.repeat(32), title: 'Two tankers hit mines in Hormuz', source: 'RFE/RL',
+      link: 'https://www.rferl.org/a/1.html', publishedAt: '2026-10-17T18:31:00.000Z', severity: 'critical', importanceScore: 88, corroborationCount: 3,
+      category: 'conflict', countryCodes: ['IR'], variant: 'full', matchedKeywords: ['hormuz'], triggeredAt: '2026-10-17T18:45:16.000Z', reason: 'breaking_news',
+    },
+    'market.move': {
+      subscriberId: record.subscriberId, eventId: 'mkt_' + '2'.repeat(32), assetClass: 'equity', symbol: 'VIX', name: 'CBOE Volatility Index', price: 28.41,
+      changePct: 21.3, direction: 'up', severity: 'critical', source: 'Equity Market', publishedAt: '2026-10-17T17:46:47.000Z', triggeredAt: '2026-10-17T17:50:02.000Z', reason: 'large_move',
+    },
+  };
+
+  for (const [event, body] of Object.entries(bodies)) {
+    it(`${event}: the API and the worker send the same bytes and the shared sender's headers`, async () => {
+      const deliveryId = `whd_${event === 'news.breaking' ? 'a' : 'b'}${'0'.repeat(31)}`;
+      const ts = capture();
+      const mjs = capture();
+      await deliverShippingV2Webhook(record, body, { nowMs, deliveryId, event, fetchImpl: ts.fetchImpl, resolveHostname });
+      await deliverShippingWebhook(record, body, { nowMs, deliveryId, event, fetchImpl: mjs.fetchImpl, resolveHostname });
+      assert.deepEqual(mjs.seen, ts.seen);
+      const built = buildShippingWebhookDelivery({ record, payload: body, deliveryId, event, nowMs });
+      assert.equal(mjs.seen[0].body, built.body);
+      assert.deepEqual(mjs.seen[0].headers, built.headers);
+      assert.equal(mjs.seen[0].headers['x-wm-event'], event);
+      assert.equal(mjs.seen[0].headers['x-wm-delivery-id'], deliveryId);
+      assert.equal(JSON.parse(mjs.seen[0].body).eventId, body.eventId);
+      // X-WM-Signature-V2 binds this occurrence event's name, so a news.breaking
+      // delivery cannot be replayed to a market.move receiver.
+      const { headers: sent, body: raw } = mjs.seen[0];
+      assert.equal(sent['x-wm-timestamp'], String(Math.floor(nowMs / 1000)));
+      assert.equal(sent['x-wm-signature-v2'], signatureV2(raw, sent));
+      const otherEvent = event === 'news.breaking' ? 'market.move' : 'news.breaking';
+      assert.notEqual(sent['x-wm-signature-v2'], signatureV2(raw, { ...sent, 'x-wm-event': otherEvent }));
+    });
+  }
+});

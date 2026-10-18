@@ -2535,6 +2535,10 @@ export const GENERATED_MESSAGE_RULES = {
         "optional": true,
         "numberGte": 0,
         "numberLte": 40
+      },
+      "scope": {
+        "kind": "message",
+        "messageType": "worldmonitor.shipping.v2.WebhookScope"
       }
     }
   },
@@ -2558,6 +2562,45 @@ export const GENERATED_MESSAGE_RULES = {
       },
       "hs2": {
         "kind": "string",
+        "stringMaxBytes": 65536
+      }
+    }
+  },
+  "worldmonitor.shipping.v2.WebhookScope": {
+    "fields": {
+      "keywords": {
+        "kind": "string",
+        "repeated": true,
+        "stringMaxBytes": 65536
+      },
+      "categories": {
+        "kind": "string",
+        "repeated": true,
+        "stringMaxBytes": 65536
+      },
+      "severityFloor": {
+        "kind": "string",
+        "optional": true,
+        "stringMaxBytes": 65536
+      },
+      "countries": {
+        "kind": "string",
+        "repeated": true,
+        "stringMaxBytes": 65536
+      },
+      "assetClasses": {
+        "kind": "string",
+        "repeated": true,
+        "stringMaxBytes": 65536
+      },
+      "symbols": {
+        "kind": "string",
+        "repeated": true,
+        "stringMaxBytes": 65536
+      },
+      "direction": {
+        "kind": "string",
+        "optional": true,
         "stringMaxBytes": 65536
       }
     }

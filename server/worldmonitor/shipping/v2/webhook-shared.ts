@@ -2,6 +2,7 @@ import { ApiError } from '../../../../src/generated/server/worldmonitor/shipping
 import { CHOKEPOINT_REGISTRY } from '../../../_shared/chokepoint-registry';
 import { isBlockedResolvedAddress } from '../../../_shared/ip-address-classification';
 import eventTriggers from '../../../../shared/event-triggers.json';
+import type { StoredWebhookScope } from './webhook-scope';
 
 export const WEBHOOK_TTL = 86400 * 30; // 30 days
 // Every live subscriber, across owners. The delivery worker prunes ids whose
@@ -208,6 +209,12 @@ export interface WebhookRecord {
   countries?: string[];
   /** chokepoint.disruption live-signal floor; absent = 0 (score-only). */
   minLiveSignal?: number;
+  /**
+   * Occurrence-event filters (news.breaking, market.move), normalized with the
+   * registry defaults by normalizeWebhookScope at registration; absent on
+   * threshold events. Keys are the event's inputSchema property names.
+   */
+  scope?: StoredWebhookScope;
   failureCount?: number;
   lastDeliveryAt?: string;
   lastDeliveryStatus?: number | null;
