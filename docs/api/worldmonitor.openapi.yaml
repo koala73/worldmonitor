@@ -56940,7 +56940,7 @@ components:
                 eventType:
                     type: string
                     maxLength: 64
-                    description: '`chokepoint.disruption` (default) or `country.risk_surge`.'
+                    description: A shared/event-triggers.json key; `chokepoint.disruption` when omitted.
                 countries:
                     type: array
                     items:
@@ -56984,19 +56984,7 @@ components:
                     type: array
                     items:
                         type: string
-                        description: ISO2 codes (news.breaking, natural.hazard).
-                hazardTypes:
-                    type: array
-                    items:
-                        type: string
-                        description: 'natural.hazard: hazard types.'
-                minMagnitude:
-                    type: number
-                    format: double
-                    description: 'natural.hazard: earthquake magnitude floor, 4.5-9.5 (default 5.5).'
-                minAlertLevel:
-                    type: string
-                    description: 'natural.hazard: GDACS `Orange` or `Red` (default Orange).'
+                        description: 'news.breaking: ISO2 codes; unattributed headlines never match.'
                 assetClasses:
                     type: array
                     items:

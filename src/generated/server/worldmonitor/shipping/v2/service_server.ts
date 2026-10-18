@@ -52,9 +52,6 @@ export interface WebhookScope {
   importanceFloor?: number;
   severityFloor?: string;
   countries: string[];
-  hazardTypes: string[];
-  minMagnitude?: number;
-  minAlertLevel?: string;
   assetClasses: string[];
   symbols: string[];
   minAbsPct?: number;

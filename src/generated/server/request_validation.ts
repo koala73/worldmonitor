@@ -2588,16 +2588,6 @@ export const GENERATED_MESSAGE_RULES = {
         "repeated": true,
         "stringMaxBytes": 65536
       },
-      "hazardTypes": {
-        "kind": "string",
-        "repeated": true,
-        "stringMaxBytes": 65536
-      },
-      "minAlertLevel": {
-        "kind": "string",
-        "optional": true,
-        "stringMaxBytes": 65536
-      },
       "assetClasses": {
         "kind": "string",
         "repeated": true,
