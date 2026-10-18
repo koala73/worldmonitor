@@ -936,6 +936,9 @@ export interface ParseResult {
   // When upstream last confirmed this parse (a 200 or a 304). Absent on
   // entries written before background refresh; those simply age out.
   fetchedAt?: number;
+  // When the feed body was last parsed in full. A 304 renews fetchedAt but not
+  // this, so the parse-time date gates still rerun at least hourly.
+  parsedAt?: number;
   validators?: FeedValidators;
 }
 
@@ -1085,6 +1088,7 @@ export async function fetchAndParseRss(
       negativeCache: false,
     };
     result.fetchedAt = Date.now();
+    result.parsedAt = result.fetchedAt;
     // Relay responses carry the relay's validators, not the publisher's.
     if (source === 'direct' && direct.validators) result.validators = direct.validators;
     // Long cache only for healthy parses; short cache for zero-from-zero so
@@ -1135,7 +1139,12 @@ export async function refreshFeedCache(
   const locked = await setCachedJsonIfAbsent(`rss:feed-refresh-lock:v1:${variant}:${feed.url}`, 1, FEED_REFRESH_LOCK_S);
   if (!locked) return 'locked';
 
-  const direct = await fetchRssText(feed.url, signal, cached.validators);
+  // parseRssXml drops items dated too far ahead or behind *now*. An unchanged
+  // body can still change which items pass, so reparse it at least hourly, as
+  // the plain one-hour TTL used to.
+  const lastFullParse = cached.parsedAt ?? cached.fetchedAt ?? 0;
+  const conditional = Date.now() - lastFullParse < CACHE_TTL_HEALTHY_S * 1000;
+  const direct = await fetchRssText(feed.url, signal, conditional ? cached.validators : undefined);
   if (direct.notModified) {
     await setCachedJson(cacheKey, { ...cached, fetchedAt: Date.now() }, CACHE_TTL_HEALTHY_S);
     return 'not-modified';
@@ -1149,11 +1158,15 @@ export async function refreshFeedCache(
     source = 'relay';
   }
   const parsed = parseRssXml(text, feed, variant);
-  if (!parsed || parsed.parsedTotal === 0) return 'failed';
+  // parsedTotal counts titled entries before the date gates, so it can be
+  // positive with nothing usable. Only a parse with items replaces a healthy one.
+  if (!parsed || parsed.items.length === 0) return 'failed';
+  const now = Date.now();
   const result: ParseResult = {
     ...parsed,
     attempt: { source, failure: null, negativeCache: false },
-    fetchedAt: Date.now(),
+    fetchedAt: now,
+    parsedAt: now,
   };
   if (source === 'direct' && direct.validators) result.validators = direct.validators;
   await setCachedJson(cacheKey, result, CACHE_TTL_HEALTHY_S);

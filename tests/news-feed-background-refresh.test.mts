@@ -150,6 +150,35 @@ describe('feed cache background refresh', () => {
     }
   });
 
+  it('keeps the healthy parse when every refreshed entry fails the date gate', async () => {
+    const undated = `<?xml version="1.0"?><rss><channel><item><title>No date here</title><link>https://feeds.example.org/x</link></item></channel></rss>`;
+    install(() => new Response(undated, { status: 200 }));
+    const stale = await parsed(['Story'], { fetchedAt: Date.now() - 10 * 60_000 });
+    seed(stale);
+    assert.equal(await refreshFeedCache(FEED, VARIANT, stale), 'failed', 'titled but unusable entries are not a replacement');
+    assert.deepEqual(cachedEntry(), stale);
+  });
+
+  it('does a full GET once the last full parse is an hour old, so date-gated items get re-checked', async () => {
+    install(() => new Response(rss(['Story', 'Scheduled story now live']), { status: 200, headers: { etag: '"v1"' } }));
+    const hourOld = Date.now() - 61 * 60_000;
+    const stale = await parsed(['Story'], { fetchedAt: Date.now() - 10 * 60_000, parsedAt: hourOld, validators: { etag: '"v1"' } });
+    seed(stale);
+    assert.equal(await refreshFeedCache(FEED, VARIANT, stale), 'updated');
+    assert.equal(upstreamCalls[0]!.get('if-none-match'), null, 'unconditional, so an unchanged body is parsed again');
+    assert.equal(cachedEntry().items.length, 2);
+    assert.ok(cachedEntry().parsedAt! > hourOld);
+  });
+
+  it('keeps the full-parse time across 304s', async () => {
+    install(() => new Response(null, { status: 304 }));
+    const parsedAt = Date.now() - 30 * 60_000;
+    const stale = await parsed(['Story'], { fetchedAt: Date.now() - 10 * 60_000, parsedAt, validators: { etag: '"v1"' } });
+    seed(stale);
+    assert.equal(await refreshFeedCache(FEED, VARIANT, stale), 'not-modified');
+    assert.equal(cachedEntry().parsedAt, parsedAt);
+  });
+
   it('lets one refresher per feed run across concurrent builds', async () => {
     install(() => new Response(null, { status: 304 }));
     const stale = await parsed(['Story'], { fetchedAt: Date.now() - 10 * 60_000, validators: { etag: '"v1"' } });
