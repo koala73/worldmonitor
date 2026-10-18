@@ -513,6 +513,23 @@ export async function dispatchToolsCall(
   // jmespath only shapes the response after execution (and after any panel save),
   // so the strict reader contracts and the panel read scope must not see it.
   const forecastReaderArguments = forecastReader ? Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath')) : callArguments;
+  // A new panel allocation charges the same daily counter as a standalone call
+  // but skips that call's reservation below, so check the Enterprise alarm for
+  // it too, including when the request fails after the allocation was charged.
+  // A reused allocation charged nothing.
+  const reportPanelAllocation = () => {
+    if (panelRequest && !panelRequest.reused && budget?.enterprisePlan
+      && (context.kind === 'pro' || context.kind === 'user_key')) {
+      reportHighUsageIfCrossed({
+        meter: 'mcp',
+        credential: 'enterprise-plan',
+        principal: context.userId,
+        newCount: panelRequest.usage.used,
+        ceiling: resolveDailyLimit(budget.limit) ?? 0,
+        ctx,
+      });
+    }
+  };
   try {
     if (tool.name === 'get_country_brief' || tool.name === 'get_country_risk') {
       if (!dedicatedPanel && ('refresh' in callArguments || 'request_id' in callArguments)) throw new PanelRequestError('Country refresh controls require a paid panel allowance.', 'invalid');
@@ -680,6 +697,7 @@ export async function dispatchToolsCall(
       if (allowance && allowance.used > 0) panelUsage = { ...allowance, unit: 'requests' };
     }
   } catch (error) {
+    reportPanelAllocation();
     if (!(error instanceof PanelRequestError)) throw error;
     if (deferredBurst && !panelRead) {
       const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
@@ -689,20 +707,7 @@ export async function dispatchToolsCall(
     if (error.code === 'backend') return quotaBackendUnavailableResponse(id, corsHeaders);
     return rpcError(id, error.code === 'reads' ? -32029 : -32602, error.message, { ...corsHeaders, ...(error.retryAfter ? { 'Retry-After': String(error.retryAfter) } : {}) }, undefined, error.code === 'reads' ? 429 : 200);
   }
-  // A new panel allocation charges the same daily counter as a standalone call
-  // but skips that call's reservation below, so check the Enterprise alarm
-  // here too. A reused allocation charged nothing.
-  if (panelRequest && !panelRequest.reused && budget?.enterprisePlan
-    && (context.kind === 'pro' || context.kind === 'user_key')) {
-    reportHighUsageIfCrossed({
-      meter: 'mcp',
-      credential: 'enterprise-plan',
-      principal: context.userId,
-      newCount: panelRequest.usage.used,
-      ceiling: resolveDailyLimit(budget.limit) ?? 0,
-      ctx,
-    });
-  }
+  reportPanelAllocation();
 
   // user_key (#4859) consumes the same per-user daily budget as pro: cache
   // tools read Upstash directly (no downstream gateway metering), so an

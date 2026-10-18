@@ -195,6 +195,31 @@ describe('World Brief closed paid admission', () => {
       __setHighUsageReporterForTests(null);
     }
   });
+  it('raises the Enterprise alarm for a charged panel allocation even when the request then fails', async () => {
+    const reports = [];
+    __resetHighUsageAlarmForTests();
+    __setHighUsageReporterForTests((_error, opts) => { reports.push(opts); });
+    try {
+      const mcpCallsPerDay = 25_000, threshold = Math.ceil(mcpCallsPerDay * HIGH_USAGE_ALARM_FRACTION);
+      const getEntitlements = async () => ({ planKey: 'enterprise', features: { tier: 3, mcpAccess: true, apiAccess: true, planLimits: { apiRequestsPerDay: 100_000, mcpCallsPerDay, dashboardAiCallsPerDay: 25_000, mcpBurstRequestsPerMinute: 1_000 } }, validUntil: now + 86400000 });
+      const bundle = makeProDeps({ getEntitlements, pipelineOpts: { initialCount: threshold - 1 } });
+      // The admission EVAL charges the counter; every Redis call after it fails.
+      const pipeline = bundle.deps.redisPipeline; let admitted = false;
+      bundle.deps.redisPipeline = async (rows, ...args) => {
+        if (admitted) throw new Error('redis unavailable after admission');
+        const result = await pipeline(rows, ...args);
+        if (rows.some(row => row[0] === 'EVAL')) admitted = true;
+        return result;
+      };
+      const { body } = await invoke(bundle);
+      assert.ok(body.error || body.result?.isError, `the request must fail after admission: ${JSON.stringify(body)}`);
+      assert.equal(bundle.pipe.count, threshold, 'the allocation was charged');
+      assert.equal(reports.length, 1);
+      assert.equal(reports[0].extra.newCount, threshold);
+    } finally {
+      __setHighUsageReporterForTests(null);
+    }
+  });
   it('keeps the ordinary operator route outside paid admission', async () => {
     process.env.WORLDMONITOR_VALID_KEYS = 'world-brief-fixture-operator';
     const bundle = makeProDeps();
