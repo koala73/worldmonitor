@@ -234,6 +234,7 @@ export interface CountryBriefPanel {
   updateScore?(score: CountryScore | null, signals: CountrySignalCounts): void;
   isFallbackBrief?(): boolean;
   updateSignals?(signals: CountrySignalCounts, notes?: readonly string[]): void;
+  getSignalCounts?(): CountrySignalCounts | null;
   updateSignalDetails?(details: CountryDeepDiveSignalDetails): void;
   updateQualifiedCountrySignals?(value: import('../../shared/country-signal-observations').QualifiedCountrySignals): void;
   clearQualifiedCountrySignals?(): void;

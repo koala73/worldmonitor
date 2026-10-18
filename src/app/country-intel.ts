@@ -1349,7 +1349,11 @@ export class CountryIntelManager implements AppModule {
       });
     }
     const value = await loadQualifiedCountrySignals(this.qualifiedSource, code, signal, this.qualifiedMilitary.promise, this.qualifiedSignals);
-    if (!signal.aborted && page?.getCode() === code && revision === this.currentCountryPresentation?.refreshGeneration) this.qualifiedSignals = value;
+    if (!signal.aborted && page?.getCode() === code && revision === this.currentCountryPresentation?.refreshGeneration) {
+      this.qualifiedSignals = value;
+      const counts = page.getSignalCounts?.();
+      if (counts) page.updateSignals?.(counts, this.buildMilitarySummary(code, country).coverageNotes);
+    }
     return value;
   }
 

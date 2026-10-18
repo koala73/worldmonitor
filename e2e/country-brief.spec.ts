@@ -59,6 +59,7 @@ for (const width of [1280, 390]) for (const addedIds of [0, 5]) {
     await panel.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'Security', exact: true }).click();
     const signals = panel.locator('#cdp-section-signals');
     await expect(signals).toContainText(title);
+    await expect(signals).not.toContainText('Qualified country military observations are loading.');
     expect(qualifiedReads).toBeGreaterThan(0);
     await expect(signals.locator('.cdp-signal-item')).toContainText('OFAC / Canada SEMA');
     await expect(signals).not.toContainText('OFAC-linked');

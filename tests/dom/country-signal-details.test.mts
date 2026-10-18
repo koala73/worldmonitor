@@ -130,6 +130,25 @@ it('replaces website military loading with unavailable when the qualified milita
   } finally { loader.mockRestore(); }
 });
 
+it('removes the website Signals loading notice after qualified military work settles', async () => {
+  const panel = new CountryDeepDivePanel();
+  const signals = countrySignalsFromMilitary('IR');
+  const body = document.createElement('div');
+  Reflect.set(panel, 'signalsBody', body);
+  panel.updateSignals(signals, ['Qualified country military observations are loading.']);
+  const page = { signal: new AbortController().signal, getCode: () => 'IR', getName: () => 'Iran',
+    getSignalCounts: panel.getSignalCounts.bind(panel), updateSignals: panel.updateSignals.bind(panel), updateMilitaryActivity: vi.fn() };
+  const manager = new CountryIntelManager({ countryBriefPage: page, latestClusters: [], intelligenceCache: {} } as unknown as AppContext);
+  const loader = vi.spyOn(militaryActivity, 'loadHostCountryMilitaryActivity').mockRejectedValue(new Error('Controlled military failure'));
+  Reflect.set(manager, 'qualifiedSource', { settleMandatoryReads: async () => {},
+    countrySignals: async (_code: string, family: Parameters<typeof unavailableCountrySignal>[1]) => unavailableCountrySignal('IR', family, 'Controlled source failure') });
+  try {
+    await Reflect.get(manager, 'loadQualifiedCountrySignals').call(manager, 'IR');
+    expect(body.textContent).not.toContain('Qualified country military observations are loading.');
+    expect(body.textContent).toContain('Military observations could not be loaded. Retry or refresh to recover them.');
+  } finally { loader.mockRestore(); panel.hide(); }
+});
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason: Error) => void;
