@@ -4,8 +4,8 @@
  *
  * Source toggles apply to `ctx.disabledSources` on click — no draft/Save step
  * like panels — but nothing subscribed to that write, so a change first reached
- * the dashboard at RefreshScheduler's `news` tick (REFRESH_INTERVALS.feeds, 20
- * minutes) or on reload. `onSourcesChanged` is that subscription, and this file
+ * the dashboard at RefreshScheduler's `news` tick (REFRESH_INTERVALS.feeds)
+ * or on reload. `onSourcesChanged` is that subscription, and this file
  * pins the two halves of when it fires:
  *
  *   (a) toggled + closed              → fires exactly once, after teardown;
