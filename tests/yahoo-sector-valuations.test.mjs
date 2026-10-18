@@ -161,12 +161,32 @@ describe('requestCurlText', () => {
     assert.equal(result.status, 200);
     assert.equal(spawnedArgs.includes(secretProxy), false);
     assert.equal(spawnedArgs.some((arg) => arg.includes(secretCookie)), false);
-    assert.match(config, /proxy = "http:\/\/proxy-user:proxy-password@proxy\.example:10000"/);
+    assert.match(config, /proxy = "https:\/\/proxy-user:proxy-password@proxy\.example:10000"/);
     assert.match(config, /header = "Cookie: A3=private-cookie"/);
     assert.match(buildCurlConfig('https://query1.finance.yahoo.com/test', {
       proxy: secretProxy,
       headers: { Cookie: secretCookie },
     }), /url = "https:\/\/query1\.finance\.yahoo\.com\/test"/);
+  });
+
+  it('preserves the TLS scheme returned by the shared curl proxy resolver', () => {
+    assert.match(buildCurlConfig('https://query1.finance.yahoo.com/test', {
+      proxy: 'https://proxy-user:proxy-password@proxy.example:10000',
+    }), /^proxy = "https:\/\/proxy-user:proxy-password@proxy\.example:10000"\n/);
+  });
+
+  it('requires an explicit opt-in for a plain HTTP curl proxy', () => {
+    const options = { proxy: 'http://proxy-user:proxy-password@proxy.example:10000' };
+    const saved = process.env.PROXY_ALLOW_INSECURE_HTTP;
+    try {
+      process.env.PROXY_ALLOW_INSECURE_HTTP = '0';
+      assert.throws(() => buildCurlConfig('https://query1.finance.yahoo.com/test', options), /PROXY_ALLOW_INSECURE_HTTP=1/);
+      process.env.PROXY_ALLOW_INSECURE_HTTP = '1';
+      assert.match(buildCurlConfig('https://query1.finance.yahoo.com/test', options), /^proxy = "http:\/\//);
+    } finally {
+      if (saved === undefined) delete process.env.PROXY_ALLOW_INSECURE_HTTP;
+      else process.env.PROXY_ALLOW_INSECURE_HTTP = saved;
+    }
   });
 
   it('bounds proxy response buffering', async () => {
