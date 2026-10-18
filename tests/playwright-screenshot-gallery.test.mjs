@@ -141,15 +141,17 @@ describe('playwright screenshot gallery', () => {
     try {
       const results = join(root, 'test-results');
       mkdirSync(results);
-      writeFileSync(join(results, '01-payload.png'), '<script>alert(1)</script>');
-      await assert.rejects(buildGallery({
-        resultsDir: results,
-        outputDir: join(root, 'gallery'),
-        meta: {
-          attempt: 1, branch: 'main', createdAt: '2026-08-17T12:00:00.000Z', event: 'push',
-          id: '200', result: 'success', runNumber: 9, sha: '2222222',
-        },
-      }), /invalid PNG signature/);
+      for (const bytes of [Buffer.alloc(0), PNG_BYTES.subarray(0, 7), Buffer.from('<script>alert(1)</script>')]) {
+        writeFileSync(join(results, '01-payload.png'), bytes);
+        await assert.rejects(buildGallery({
+          resultsDir: results,
+          outputDir: join(root, 'gallery'),
+          meta: {
+            attempt: 1, branch: 'main', createdAt: '2026-08-17T12:00:00.000Z', event: 'push',
+            id: '200', result: 'success', runNumber: 9, sha: '2222222',
+          },
+        }), /invalid PNG signature/);
+      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -158,6 +158,12 @@ describe('E2E visual workflow contract', () => {
     assert.match(String(sync.run), /no PNG captures/);
     assert.match(String(sync.run), /--merge-history/);
     assert.match(String(sync.run), /chrome-gallery succeeded but the gallery artifact is missing/);
+    for (const [name, field] of Object.entries({
+      PLAYWRIGHT_RUN_ID: 'id', PLAYWRIGHT_RUN_ATTEMPT: 'run_attempt', PLAYWRIGHT_RUN_NUMBER: 'run_number',
+      PLAYWRIGHT_RUN_URL: 'html_url', PLAYWRIGHT_SHA: 'head_sha', PLAYWRIGHT_EVENT: 'event', PLAYWRIGHT_BRANCH: 'head_branch',
+    })) {
+      assert.equal(sync.env[name], '${{ github.event.workflow_run.' + field + ' }}');
+    }
   });
 
   it('accepts only canonical main runs from the expected workflow and event allowlist', () => {
@@ -223,7 +229,7 @@ else
 fi
 `, { mode: 0o755 });
       const sync = jobSteps(publish.jobs.publish).find((step) => step.id === 'sync');
-      const run = spawnSync('bash', ['-c', sync.run], {
+      const replay = () => spawnSync('bash', ['-c', sync.run], {
         cwd: directory,
         encoding: 'utf8',
         env: {
@@ -235,6 +241,7 @@ fi
           PLAYWRIGHT_RUN_URL: 'https://github.com/koala73/worldmonitor/actions/runs/200',
         },
       });
+      const run = replay();
       assert.equal(run.status, 0, run.stderr || run.stdout);
       assert.deepEqual(readdirSync(join(directory, 'uploaded')).sort(), ['history.json', 'index.html', 'screenshots']);
       assert.deepEqual(readdirSync(join(directory, 'uploaded/screenshots')).sort(), ['images', 'index.html']);
@@ -248,6 +255,12 @@ fi
       assert.equal(history[0].attempt, 2);
       assert.equal(history[0].result, 'success');
       assert.equal(history[0].screenshotCount, 1);
+      rmSync(join(directory, 'uploaded'), { recursive: true, force: true });
+      writeFileSync(join(directory, 'gallery/screenshots/images/payload.png'), '<script>artifact-payload</script>');
+      const invalid = replay();
+      assert.notEqual(invalid.status, 0);
+      assert.match(invalid.stderr, /invalid PNG signature/);
+      assert.equal(existsSync(join(directory, 'uploaded')), false);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
