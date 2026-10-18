@@ -104,18 +104,22 @@ describe('plan mapping', () => {
 });
 
 describe('denial checkout hints', () => {
-  it('names the plan and tool on the three upgradeable denials for a user-bound caller', () => {
-    const cases = [
-      [{ reason: 'allowance-exhausted', upgradeFrom: 'free' }, 'pro_monthly'],
-      [{ reason: 'upgrade-required', upgradeFrom: 'free' }, 'pro_monthly'],
-      [{ reason: 'quota-exceeded', limit: 50, sharedWithRestApi: false, upgradeFrom: 'pro_monthly' }, 'pro_business_monthly'],
-      [{ reason: 'quota-exceeded', limit: 1000, sharedWithRestApi: true, upgradeFrom: 'api_starter' }, 'api_business'],
-    ];
-    for (const [denial, plan] of cases) {
-      const { data } = buildMcpStructuredDenial(denial);
-      assert.equal(data.recommendedPlan, plan, denial.reason);
-      assert.equal(data.checkoutTool, 'start_upgrade');
+  it('names the plan and tool on the three upgradeable denials for a free account', () => {
+    for (const reason of ['allowance-exhausted', 'upgrade-required', 'quota-exceeded']) {
+      const { data } = buildMcpStructuredDenial({ reason, limit: 5, sharedWithRestApi: false, upgradeFrom: 'free' });
+      assert.equal(data.recommendedPlan, 'pro_monthly', reason);
+      assert.equal(data.checkoutTool, 'start_upgrade', reason);
       assert.equal(data.upgradeUrl, MCP_UPGRADE_URL, 'the static link stays for clients that cannot call tools');
+    }
+  });
+
+  it('names the plan but not the tool for a paid caller, whose step up the checkout guard refuses', () => {
+    // Pro -> Pro Business and API Starter -> API Business are the same billing
+    // family: a new checkout is refused while the current plan is active.
+    for (const [upgradeFrom, plan] of [['pro_monthly', 'pro_business_monthly'], ['pro_annual', 'pro_business_monthly'], ['api_starter', 'api_business']]) {
+      const { data } = buildMcpStructuredDenial({ reason: 'quota-exceeded', limit: 50, sharedWithRestApi: false, upgradeFrom });
+      assert.equal(data.recommendedPlan, plan, upgradeFrom);
+      assert.equal('checkoutTool' in data, false, upgradeFrom);
     }
   });
 
@@ -219,7 +223,7 @@ describe('start_upgrade tool', () => {
   });
 
   it('rejects an unknown plan or extra argument before any checkout', async () => {
-    for (const args of [{}, { plan: 'enterprise' }, { plan: 'free' }, { plan: 7 }, { plan: 'pro_monthly', userId: 'someone-else' }, { plan: 'pro_monthly', jmespath: 3 }]) {
+    for (const args of [{}, { plan: 'enterprise' }, { plan: 'free' }, { plan: 7 }, { plan: 'pro_monthly', userId: 'someone-else' }, { plan: 'pro_monthly', panel_request: {} }]) {
       const { deps, checkouts } = fixture();
       const called = await invoke(deps, upgrade(args));
       assert.equal(called.body.error?.code, -32602, JSON.stringify(args));
@@ -230,10 +234,15 @@ describe('start_upgrade tool', () => {
     assert.deepEqual(unknown.body.error.data.plans, [...MCP_CHECKOUT_PLANS]);
   });
 
-  it('projects the result like any other tool', async () => {
-    const { deps } = fixture();
-    const called = await invoke(deps, upgrade({ plan: 'pro_monthly', jmespath: 'checkoutUrl' }));
-    assert.equal(JSON.parse(called.body.result.content[0].text), 'https://checkout.dodopayments.com/session/cks_test');
+  it('refuses a jmespath projection before creating a session', async () => {
+    // The session and a checkout admission are spent before a projection would
+    // run, so a narrowing or broken expression would lose the only checkoutUrl.
+    for (const jmespath of ['plan', 'not a [valid', 3]) {
+      const { deps, checkouts } = fixture();
+      const called = await invoke(deps, upgrade({ plan: 'pro_monthly', jmespath }));
+      assert.equal(called.body.error?.code, -32602, String(jmespath));
+      assert.equal(checkouts.length, 0);
+    }
   });
 
   it('turns an existing subscription into a structured refusal with the right next step', async () => {
@@ -249,6 +258,18 @@ describe('start_upgrade tool', () => {
     const starter = fixture({ outcome: { kind: 'already-subscribed', message: 'exists', subscription: { ...subscription, planKey: 'api_starter' } } });
     const api = await invoke(starter.deps, upgrade({ plan: 'api_business' }));
     assert.match(api.body.error.data.nextStep, /prorated plan change/);
+
+    const same = fixture({ outcome: { kind: 'already-subscribed', message: 'exists', subscription: null } });
+    const plain = await invoke(same.deps, upgrade({ plan: 'pro_monthly' }));
+    assert.equal(plain.body.error.data.subscription, null);
+    assert.match(plain.body.error.data.nextStep, /already has this subscription/);
+  });
+
+  it('answers a product the relay no longer sells with the accepted plan list', async () => {
+    const { deps } = fixture({ outcome: { kind: 'invalid-product' } });
+    const called = await invoke(deps, upgrade({ plan: 'pro_monthly' }));
+    assert.equal(called.body.error.code, -32602);
+    assert.deepEqual(called.body.error.data.plans, [...MCP_CHECKOUT_PLANS]);
   });
 
   it('reports a pending payment without creating another session', async () => {
@@ -312,12 +333,27 @@ describe('denials raised by dispatch carry the hint', () => {
     assert.equal(denied.body.error.data.reason, 'quota-exceeded');
     assert.equal(denied.body.error.message, 'Daily MCP quota exceeded (50/day). Resets at next UTC midnight.');
     assert.equal(denied.body.error.data.recommendedPlan, 'pro_business_monthly');
-    assert.equal(denied.body.error.data.checkoutTool, 'start_upgrade');
+    assert.equal('checkoutTool' in denied.body.error.data, false);
 
     const top = fixture({ planKey: 'pro_business_monthly', pipelineOpts: { initialCount: 50 } });
     const topDenied = await invoke(top.deps, callBody(FREE_ACCOUNT_CACHE_TOOL.name, {}));
     assert.equal(topDenied.body.error.data.reason, 'quota-exceeded');
     assert.equal('recommendedPlan' in topDenied.body.error.data, false);
+  });
+
+  it('resources/read of a data template carries the same hint as the tool call', async () => {
+    // The country-risk template reads a subscription tool, so a free account
+    // meets upgrade-required here; a capped Pro caller meets quota-exceeded.
+    const { deps } = fixture({ planKey: 'free' });
+    const read = await invoke(deps, { jsonrpc: '2.0', id: 4, method: 'resources/read', params: { uri: 'worldmonitor://countries/us/risk' } });
+    assert.equal(read.body.error?.data?.reason, 'upgrade-required', JSON.stringify(read.body.error));
+    assert.equal(read.body.error.data.recommendedPlan, 'pro_monthly');
+    assert.equal(read.body.error.data.checkoutTool, 'start_upgrade');
+
+    const capped = fixture({ planKey: 'pro_monthly', pipelineOpts: { initialCount: 50 } });
+    const quota = await invoke(capped.deps, { jsonrpc: '2.0', id: 5, method: 'resources/read', params: { uri: 'worldmonitor://countries/us/risk' } });
+    assert.equal(quota.body.error?.data?.reason, 'quota-exceeded', JSON.stringify(quota.body.error));
+    assert.equal(quota.body.error.data.recommendedPlan, 'pro_business_monthly');
   });
 });
 

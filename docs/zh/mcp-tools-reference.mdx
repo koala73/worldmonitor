@@ -2504,13 +2504,13 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `start_upgrade`
 
-为已登录账户创建绑定该账户的付费套餐结账链接。当拒绝响应的 `error.data` 带有 `checkoutTool: "start_upgrade"` 时调用，并传入该拒绝中的 `recommendedPlan`。用户在浏览器中打开链接完成付款；此工具从不扣款，智能体也不接触付款信息。
+为已登录账户创建绑定该账户的付费套餐结账链接。当拒绝响应的 `error.data` 带有 `checkoutTool: "start_upgrade"` 时调用，并传入该拒绝中的 `recommendedPlan`。只有免费账户会收到 `checkoutTool`；付费调用方的拒绝只带 `recommendedPlan`，因为同一套餐系列内的升级通过账单门户完成。用户在浏览器中打开链接完成付款；此工具从不扣款，智能体也不接触付款信息。
 
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `plan` | string | 是 | 取值之一：`pro_monthly`、`pro_annual`、`pro_business_monthly`、`pro_business_annual`、`api_starter`、`api_starter_annual`、`api_business`、`api_business_annual`。其他值返回 `-32602`，并在 `error.data.plans` 中列出可用值。 |
 
-**响应：** `{ checkoutUrl, plan, nextStep }`。每次调用都会创建新的结账会话。
+**响应：** `{ checkoutUrl, plan, nextStep }`。每次调用都会创建新的结账会话。此工具不接受 `jmespath` 投影（返回 `-32602`）：投影运行前结账会话已经创建，投影可能丢掉唯一一份 `checkoutUrl`。
 
 - **访问：** `free-account`。要求绑定用户的 OAuth 或 `wm_…` 凭据。匿名调用返回常规的 `-32001` `no-account` 拒绝；运营方密钥返回 `-32002`。
 - **配额：** 不消耗每日额度，也不消耗免费账户调用次数，因此额度用尽后仍可调用。每分钟限流照常适用。

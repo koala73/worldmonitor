@@ -35,10 +35,8 @@ import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
 import {
   checkoutProductIdForPlan,
   MCP_CHECKOUT_PLANS,
-  relayMcpCheckout,
   START_UPGRADE_TOOL,
-  type McpCheckoutOutcome,
-  type McpCheckoutSubscription,
+  startUpgradeCheckout,
   type StartUpgradeResult,
 } from './checkout';
 import { filterConflictPanelEvents, isOrdinaryMarketDefault, presentConflictEvents, presentDefaultMarketData, projectConflictSourceObservation } from './registry/cache-tools';
@@ -410,90 +408,6 @@ function quotaBackendUnavailableResponse(
   );
 }
 
-const BILLING_PORTAL_HINT = 'worldmonitor.app → Settings → Manage Billing';
-
-function alreadySubscribedNextStep(subscription: McpCheckoutSubscription | null, plan: string): string {
-  const target = plan.startsWith('pro_business') ? 'pro_business' : plan.startsWith('api_business') ? 'api_business' : null;
-  const existing = subscription?.planKey ?? '';
-  if (target === 'pro_business' && (existing === 'pro_monthly' || existing === 'pro_annual')) {
-    return 'Pro and Pro Business are separate products, not a plan change. Ask the user to cancel Pro in the billing portal '
-      + `(${BILLING_PORTAL_HINT}); Pro access runs to the end of the paid term. Then call start_upgrade again.`;
-  }
-  if (target === 'api_business' && existing.startsWith('api_starter')) {
-    return `API Starter moves to API Business as a prorated plan change in the billing portal (${BILLING_PORTAL_HINT}), not through a new checkout.`;
-  }
-  return `This account already has this subscription. Manage or change it in the billing portal (${BILLING_PORTAL_HINT}).`;
-}
-
-/**
- * Create the `start_upgrade` checkout session (#9144), or the JSON-RPC refusal
- * for why it could not be created. Expected refusals (already subscribed,
- * payment pending, rate limited) are customer states, not errors, so only an
- * unavailable relay reaches Sentry.
- */
-async function startUpgradeCheckout(
-  deps: McpHandlerDeps,
-  userId: string,
-  plan: string,
-  productId: string,
-  id: unknown,
-  corsHeaders: Record<string, string>,
-  ctx?: { waitUntil: (p: Promise<unknown>) => void },
-): Promise<StartUpgradeResult | Response> {
-  let outcome: McpCheckoutOutcome;
-  try {
-    outcome = await (deps.createCheckout ?? relayMcpCheckout)({ userId, productId });
-  } catch (err) {
-    outcome = { kind: 'unavailable', cause: err instanceof Error ? err.name : 'Error' };
-  }
-  switch (outcome.kind) {
-    case 'created':
-      return {
-        checkoutUrl: outcome.checkoutUrl,
-        plan,
-        nextStep: 'Give checkoutUrl to the user to open in a browser and pay; this tool does not charge. '
-          + 'Once the payment is confirmed, get_mcp_allowance reports the paid limit with no re-authorization.',
-      };
-    case 'already-subscribed':
-      return rpcError(id, -32002, outcome.message, corsHeaders, {
-        reason: 'already-subscribed',
-        subscription: outcome.subscription,
-        nextStep: alreadySubscribedNextStep(outcome.subscription, plan),
-      });
-    case 'payment-in-progress':
-      return rpcError(id, -32002, outcome.message, corsHeaders, {
-        reason: 'payment-in-progress',
-        nextStep: 'Finish the checkout already open in the browser, or call start_upgrade again later; '
-          + 'an abandoned pending payment stops blocking new checkouts after a short window.',
-      });
-    case 'rate-limited':
-      return rpcError(
-        id,
-        -32029,
-        'Checkout is temporarily rate limited. Retry shortly.',
-        { ...corsHeaders, 'Retry-After': String(outcome.retryAfterSeconds) },
-        { reason: 'checkout-rate-limited', retryAfterSeconds: outcome.retryAfterSeconds },
-        429,
-      );
-    case 'invalid-product':
-      return rpcError(id, -32602, 'This plan is not available for checkout.', corsHeaders, { plans: MCP_CHECKOUT_PLANS });
-    case 'unavailable':
-      captureSilentError(new Error(`start_upgrade checkout unavailable: ${outcome.cause}`), {
-        tags: { route: 'api/mcp', step: 'start-upgrade', tool: START_UPGRADE_TOOL },
-        fingerprint: ['api/mcp', 'start-upgrade', outcome.cause],
-        ctx,
-      });
-      return rpcError(
-        id,
-        -32603,
-        'Checkout service temporarily unavailable. Retry in a moment.',
-        { ...corsHeaders, 'Retry-After': '5' },
-        undefined,
-        503,
-      );
-  }
-}
-
 export async function dispatchToolsCall(
   req: Request,
   context: McpAuthContext,
@@ -584,17 +498,19 @@ export async function dispatchToolsCall(
     if (context.kind !== 'pro' && context.kind !== 'user_key') {
       return rpcError(id, -32002, 'Starting an upgrade requires a user-bound credential.', corsHeaders);
     }
+    // No jmespath: the session (and a checkout admission) is spent before the
+    // projection would run, so a narrowing or broken expression would lose the
+    // only copy of checkoutUrl. The result is three small fields anyway.
     const upgradeArgs = p.arguments ?? {};
-    if (Object.keys(upgradeArgs).some(key => key !== 'plan' && key !== 'jmespath')
-      || (upgradeArgs.jmespath !== undefined && typeof upgradeArgs.jmespath !== 'string')) {
-      return rpcError(id, -32602, 'start_upgrade accepts only plan and the optional jmespath projection.', corsHeaders);
+    if (Object.keys(upgradeArgs).some(key => key !== 'plan')) {
+      return rpcError(id, -32602, 'start_upgrade accepts only plan; it takes no jmespath projection.', corsHeaders);
     }
     const plan = typeof upgradeArgs.plan === 'string' ? upgradeArgs.plan : '';
     const productId = checkoutProductIdForPlan(plan);
     if (!productId) {
       return rpcError(id, -32602, 'Unknown plan. Pass one of the self-serve plans listed in data.plans.', corsHeaders, { plans: MCP_CHECKOUT_PLANS });
     }
-    const upgrade = await startUpgradeCheckout(deps, context.userId, plan, productId, id, corsHeaders, ctx);
+    const upgrade = await startUpgradeCheckout(deps.createCheckout, context.userId, plan, productId, id, corsHeaders, ctx);
     if (upgrade instanceof Response) return upgrade;
     startUpgradeResult = upgrade;
   }

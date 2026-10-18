@@ -186,18 +186,18 @@ Content-Type: application/json
 }
 ```
 
-**Checkout hint.** `upgrade-required` from `api/mcp/dispatch.ts`, `allowance-exhausted` and `quota-exceeded` (both under `-32029` below) gain `recommendedPlan` and `checkoutTool` when the caller holds a user-bound credential and a self-serve plan sits one step up. `recommendedPlan` maps free → `pro_monthly`, Pro → `pro_business_monthly` and API Starter → `api_business`; `checkoutTool` is always `"start_upgrade"`. Pro Business, API Business, Enterprise, operator keys and anonymous callers get neither field. `message` and `upgradeUrl` are unchanged, so clients that cannot call tools keep the static link. The `upgrade-required` from the auth pre-check carries no hint, because that caller cannot reach any tool.
+**Checkout hint.** `upgrade-required` from `api/mcp/dispatch.ts`, `allowance-exhausted` and `quota-exceeded` (both under `-32029` below) gain `recommendedPlan` and `checkoutTool` when the caller holds a user-bound credential and a self-serve plan sits one step up. `recommendedPlan` maps free → `pro_monthly`, Pro → `pro_business_monthly` and API Starter → `api_business`. `checkoutTool` is `"start_upgrade"` and appears only for a free account, because only that caller can buy the plan through a new checkout: Pro → Pro Business needs Pro cancelled first, and API Starter → API Business is a prorated change in the billing portal, so a paid caller gets `recommendedPlan` alone. Pro Business, API Business, Enterprise, operator keys and anonymous callers get neither field. `message` and `upgradeUrl` are unchanged, so clients that cannot call tools keep the static link. The `upgrade-required` from the auth pre-check carries no hint, because that caller cannot reach any tool.
 
 **`start_upgrade` refusals.** The tool creates no checkout session in these cases. All are `-32002` inside **HTTP 200** with `data.reason` and `data.nextStep`:
 
 - `reason: "already-subscribed"` — the account already holds a plan in the same family. `data.subscription` gives `{planKey, displayName, status, currentPeriodEnd}`. Pro to Pro Business means cancelling Pro in the billing portal first; API Starter to API Business is a prorated change in the billing portal.
-- `reason: "payment-in-progress"` — a payment for the same tier group is still pending. Finish it in the browser or retry later.
+- `reason: "payment-in-progress"` — a payment for the same tier group is still pending. Finish it in the browser, or call again later: this one clears on its own.
 
 An operator key calling `start_upgrade` also gets `-32002` at HTTP 200, with message `Starting an upgrade requires a user-bound credential.` and no `data`.
 
 One `-32002` emission is different: `resources/read` of `worldmonitor://account/mcp-allowance` with a credential that is not user-bound returns `-32002` with message `Account allowance status requires a user-bound credential.` inside **HTTP 200** and with no `data` payload — it is a plain JSON-RPC error, not an entitlement denial.
 
-**What to do.** Do not retry and do not re-run OAuth — both will reproduce the same denial. Surface the state to the user: the subscription must be renewed (worldmonitor.app → Pricing) before MCP access resumes. Renewal takes effect within seconds of the provider webhook; no re-authentication is needed afterwards. While the same subscription is still being *verified* (provider re-check in flight), the server instead returns a retryable `-32603` at HTTP 503 with `X-Billing-Verification: renewal_verification_pending|renewal_verification_failed` and a dynamic `Retry-After` — see `-32603` below.
+**What to do.** For an entitlement denial (HTTP 403, or the HTTP 200 forms with `reason: "upgrade-required"` or `"lapsed-subscription"`), do not retry and do not re-run OAuth — both will reproduce the same denial. The `start_upgrade` refusals above are the exception: `payment-in-progress` clears once the pending payment completes or lapses, so a later call can succeed. Surface the state to the user: the subscription must be renewed (worldmonitor.app → Pricing) before MCP access resumes. Renewal takes effect within seconds of the provider webhook; no re-authentication is needed afterwards. While the same subscription is still being *verified* (provider re-check in flight), the server instead returns a retryable `-32603` at HTTP 503 with `X-Billing-Verification: renewal_verification_pending|renewal_verification_failed` and a dynamic `Retry-After` — see `-32603` below.
 
 ### `-32003` — Required data inputs unavailable
 
@@ -284,8 +284,7 @@ Two further per-minute limiters surface the same code: pre-auth `wm_…`-key **v
       "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel",
       "limit": 50,
       "sharedWithRestApi": false,
-      "recommendedPlan": "pro_business_monthly",
-      "checkoutTool": "start_upgrade"
+      "recommendedPlan": "pro_business_monthly"
     }
   }
 }

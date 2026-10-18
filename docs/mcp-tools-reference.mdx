@@ -3095,13 +3095,13 @@ Reads the existing allowance snapshot for the current verified account. Use this
 
 ### `start_upgrade`
 
-Creates a personal checkout link for a paid plan, bound to the signed-in account. Call it after a denial whose `error.data` carries `checkoutTool: "start_upgrade"`, passing that denial's `recommendedPlan`. The user opens the link and pays in a browser; the tool never charges and the agent never handles payment details.
+Creates a personal checkout link for a paid plan, bound to the signed-in account. Call it after a denial whose `error.data` carries `checkoutTool: "start_upgrade"`, passing that denial's `recommendedPlan`. Only free accounts get `checkoutTool`; a paid caller's denial names `recommendedPlan` alone, because moving up within the same plan family goes through the billing portal. The user opens the link and pays in a browser; the tool never charges and the agent never handles payment details.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `plan` | string | yes | One of `pro_monthly`, `pro_annual`, `pro_business_monthly`, `pro_business_annual`, `api_starter`, `api_starter_annual`, `api_business`, `api_business_annual`. Any other value returns `-32602` with the accepted list in `error.data.plans`. |
 
-**Response:** `{ checkoutUrl, plan, nextStep }`. Each call creates a new checkout session.
+**Response:** `{ checkoutUrl, plan, nextStep }`. Each call creates a new checkout session. The tool takes no `jmespath` projection (`-32602`): the session exists before a projection would run, so a projection could drop the only copy of `checkoutUrl`.
 
 - **Access:** `free-account`. Requires user-bound OAuth or `wm_…` credentials. Anonymous callers get the usual `-32001` `no-account` denial; operator keys get `-32002`.
 - **Quota:** spends no daily allowance and no free-account call, so it works after the allowance is exhausted. The per-minute limit still applies.

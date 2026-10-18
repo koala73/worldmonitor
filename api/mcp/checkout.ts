@@ -12,6 +12,9 @@
 
 import catalog from '../../shared/product-catalog.generated.json';
 import { MCP_ATTRIBUTION_SOURCE } from '../../shared/mcp-attribution';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../_sentry-edge.js';
+import { rpcError } from './rpc';
 
 export const START_UPGRADE_TOOL = 'start_upgrade';
 
@@ -104,7 +107,8 @@ function readSubscription(value: unknown): McpCheckoutSubscription | null {
 /**
  * Production checkout relay. Identity comes from the verified MCP context, so
  * the userId sent here is the one the credential is bound to. No email is
- * sent: the activation webhook falls back to the account's `users` row.
+ * sent: the activation webhook resolves it from the account's `users` row
+ * when one exists, else from the email the user types at checkout.
  */
 export async function relayMcpCheckout(
   input: { userId: string; productId: string },
@@ -165,4 +169,88 @@ export async function relayMcpCheckout(
     return { kind: 'invalid-product' };
   }
   return { kind: 'unavailable', cause: `relay-${response.status}` };
+}
+
+const BILLING_PORTAL_HINT = 'worldmonitor.app → Settings → Manage Billing';
+
+function alreadySubscribedNextStep(subscription: McpCheckoutSubscription | null, plan: string): string {
+  const target = plan.startsWith('pro_business') ? 'pro_business' : plan.startsWith('api_business') ? 'api_business' : null;
+  const existing = subscription?.planKey ?? '';
+  if (target === 'pro_business' && (existing === 'pro_monthly' || existing === 'pro_annual')) {
+    return 'Pro and Pro Business are separate products, not a plan change. Ask the user to cancel Pro in the billing portal '
+      + `(${BILLING_PORTAL_HINT}); Pro access runs to the end of the paid term. Then call start_upgrade again.`;
+  }
+  if (target === 'api_business' && existing.startsWith('api_starter')) {
+    return `API Starter moves to API Business as a prorated plan change in the billing portal (${BILLING_PORTAL_HINT}), not through a new checkout.`;
+  }
+  return `This account already has this subscription. Manage or change it in the billing portal (${BILLING_PORTAL_HINT}).`;
+}
+
+/**
+ * Create the `start_upgrade` checkout session (#9144), or the JSON-RPC refusal
+ * for why it could not be created. Expected refusals (already subscribed,
+ * payment pending, rate limited) are customer states, not errors, so only an
+ * unavailable relay reaches Sentry.
+ */
+export async function startUpgradeCheckout(
+  createCheckout: McpCreateCheckout | undefined,
+  userId: string,
+  plan: string,
+  productId: string,
+  id: unknown,
+  corsHeaders: Record<string, string>,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<StartUpgradeResult | Response> {
+  let outcome: McpCheckoutOutcome;
+  try {
+    outcome = await (createCheckout ?? relayMcpCheckout)({ userId, productId });
+  } catch (err) {
+    outcome = { kind: 'unavailable', cause: err instanceof Error ? err.name : 'Error' };
+  }
+  switch (outcome.kind) {
+    case 'created':
+      return {
+        checkoutUrl: outcome.checkoutUrl,
+        plan,
+        nextStep: 'Give checkoutUrl to the user to open in a browser and pay; this tool does not charge. '
+          + 'Once the payment is confirmed, get_mcp_allowance reports the paid limit with no re-authorization.',
+      };
+    case 'already-subscribed':
+      return rpcError(id, -32002, outcome.message, corsHeaders, {
+        reason: 'already-subscribed',
+        subscription: outcome.subscription,
+        nextStep: alreadySubscribedNextStep(outcome.subscription, plan),
+      });
+    case 'payment-in-progress':
+      return rpcError(id, -32002, outcome.message, corsHeaders, {
+        reason: 'payment-in-progress',
+        nextStep: 'Finish the checkout already open in the browser, or call start_upgrade again later; '
+          + 'an abandoned pending payment stops blocking new checkouts after a short window.',
+      });
+    case 'rate-limited':
+      return rpcError(
+        id,
+        -32029,
+        'Checkout is temporarily rate limited. Retry shortly.',
+        { ...corsHeaders, 'Retry-After': String(outcome.retryAfterSeconds) },
+        { reason: 'checkout-rate-limited', retryAfterSeconds: outcome.retryAfterSeconds },
+        429,
+      );
+    case 'invalid-product':
+      return rpcError(id, -32602, 'This plan is not available for checkout.', corsHeaders, { plans: MCP_CHECKOUT_PLANS });
+    case 'unavailable':
+      captureSilentError(new Error(`start_upgrade checkout unavailable: ${outcome.cause}`), {
+        tags: { route: 'api/mcp', step: 'start-upgrade', tool: START_UPGRADE_TOOL },
+        fingerprint: ['api/mcp', 'start-upgrade', outcome.cause],
+        ctx,
+      });
+      return rpcError(
+        id,
+        -32603,
+        'Checkout service temporarily unavailable. Retry in a moment.',
+        { ...corsHeaders, 'Retry-After': '5' },
+        undefined,
+        503,
+      );
+  }
 }

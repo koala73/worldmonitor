@@ -61,7 +61,12 @@ export type McpDenial =
       upgradeFrom?: string;
     };
 
-/** Present together, or not at all. */
+/**
+ * `checkoutTool` appears only beside a plan `start_upgrade` can sell this
+ * caller. A paid caller's step up is in the same billing family (Pro → Pro
+ * Business, API Starter → API Business), which the checkout guard refuses while
+ * the current plan is active: those denials name the plan and leave the tool out.
+ */
 interface McpCheckoutHint {
   recommendedPlan?: string;
   checkoutTool?: typeof START_UPGRADE_TOOL;
@@ -92,7 +97,8 @@ const UPGRADEABLE_REASONS: ReadonlySet<McpDenial['reason']> = new Set<McpUpgrade
 function checkoutHint(denial: McpDenial): McpCheckoutHint {
   if (!UPGRADEABLE_REASONS.has(denial.reason) || denial.upgradeFrom === undefined) return {};
   const recommendedPlan = recommendedPlanFor(denial.upgradeFrom);
-  return recommendedPlan === undefined ? {} : { recommendedPlan, checkoutTool: START_UPGRADE_TOOL };
+  if (recommendedPlan === undefined) return {};
+  return denial.upgradeFrom === 'free' ? { recommendedPlan, checkoutTool: START_UPGRADE_TOOL } : { recommendedPlan };
 }
 
 const DENIAL_COPY: Record<McpStaticDenialReason, { message: string; nextStep: string }> = {
