@@ -3675,4 +3675,5 @@ export const __testing__ = {
   MAX_DESCRIPTION_LEN,
   MIN_DESCRIPTION_LEN,
   FUTURE_DATE_TOLERANCE_MS,
+  normalizeTitle,
 };
