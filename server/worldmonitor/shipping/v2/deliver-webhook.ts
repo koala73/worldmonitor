@@ -44,6 +44,47 @@ export interface RiskSurgeWebhookPayload {
   details?: Record<string, unknown>;
 }
 
+// `news.breaking` delivery body (X-WM-Event: news.breaking). Built by
+// scripts/shipping-webhook-worker.mjs from a teed rss_alert queue message;
+// shared/event-triggers.json#events.news.breaking mirrors it and
+// tests/openapi-webhooks-contract pins the two together. Every field is
+// always present: nullable ones carry null, lists are empty when unknown.
+export interface NewsBreakingWebhookPayload {
+  subscriberId: string;
+  eventId: string;
+  title: string;
+  source: string;
+  link: string | null;
+  publishedAt: string;
+  severity: string;
+  importanceScore: number;
+  corroborationCount: number;
+  category: string | null;
+  countryCodes: string[];
+  variant: string | null;
+  matchedKeywords: string[];
+  triggeredAt: string;
+  reason: string;
+}
+
+// `market.move` delivery body (X-WM-Event: market.move), from a teed
+// market_alert queue message; same pinning as above.
+export interface MarketMoveWebhookPayload {
+  subscriberId: string;
+  eventId: string;
+  assetClass: string;
+  symbol: string;
+  name: string;
+  price: number | null;
+  changePct: number;
+  direction: string;
+  severity: string;
+  source: string;
+  publishedAt: string;
+  triggeredAt: string;
+  reason: string;
+}
+
 export interface WebhookDeliveryOptions {
   event?: string;
   deliveryId?: string;

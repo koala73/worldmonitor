@@ -184,6 +184,7 @@
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/main-module.mjs",
       "scripts/lib/notification-webhook-ssrf.cjs",
+      "scripts/lib/occurrence-events.cjs",
       "scripts/lib/shipping-webhook-delivery.mjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",

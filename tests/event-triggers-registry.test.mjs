@@ -16,6 +16,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const canonicalRaw = readFileSync(resolve(root, 'shared/event-triggers.json'), 'utf8');
 const registry = JSON.parse(canonicalRaw);
 const { marketEventId, rssEventId } = require('../scripts/lib/occurrence-events.cjs');
+const { normalizeTeeMessage, planTick } = await import('../scripts/shipping-webhook-worker.mjs');
 
 const events = Object.entries(registry.events);
 const occurrenceEvents = events.filter(([, event]) => event.kind === 'occurrence');
@@ -113,6 +114,39 @@ describe('occurrence events', () => {
     assert.equal(event.inputSchema.properties.severityFloor.default, 'high');
     assert.ok(sample.importanceScore >= event.inputSchema.properties.importanceFloor.default, 'the sample itself clears the default floor');
     assert.deepEqual(propertyNames(event.inputSchema).sort(), ['categories', 'countries', 'importanceFloor', 'keywords', 'severityFloor']);
+  });
+
+  it('the worker builds exactly the sample\'s field set for each occurrence event', () => {
+    const now = Date.parse('2026-10-17T18:45:16.000Z');
+    const record = (eventType) => ({
+      subscriberId: 'wh_041fef6d0657b56b75fb62cb', ownerTag: 'o', callbackUrl: 'https://hooks.example.com/wm',
+      chokepointIds: [], alertThreshold: 50, createdAt: '2026-10-01T00:00:00.000Z', active: true, secret: 'a'.repeat(64), eventType,
+    });
+    const news = registry.events['news.breaking'].sample;
+    const market = registry.events['market.move'].sample;
+    const occurrences = [
+      normalizeTeeMessage(JSON.stringify({
+        eventType: 'rss_alert', severity: news.severity, variant: news.variant, publishedAt: now - 60_000,
+        payload: { title: news.title, source: news.source, link: news.link, publishedAt: Date.parse(news.publishedAt), importanceScore: news.importanceScore, corroborationCount: news.corroborationCount, category: news.category, countryCodes: news.countryCodes },
+      }), now),
+      normalizeTeeMessage(JSON.stringify({
+        eventType: 'market_alert', severity: market.severity, publishedAt: Date.parse(market.publishedAt),
+        payload: { title: 'VIX: +21% surge', source: market.source, coalesceKey: 'market:equity:vix:surge:critical', assetClass: market.assetClass, symbol: market.symbol, name: market.name, price: market.price, changePct: market.changePct, direction: market.direction },
+      }), now),
+    ];
+    assert.ok(occurrences.every(Boolean));
+    const { deliveries } = planTick({
+      chokepoints: null, riskScores: null, occurrences,
+      records: [record('news.breaking'), record('market.move')],
+      states: new Map(), now, scoresFetchedAt: null, makeId: () => 'whd_fixed',
+    });
+    assert.equal(deliveries.length, 2);
+    for (const delivery of deliveries) {
+      const { sample } = registry.events[delivery.event];
+      assert.deepEqual(Object.keys(delivery.payload).sort(), Object.keys(sample).sort(), `${delivery.event}: worker payload keys drifted from the registry sample`);
+      assert.equal(delivery.payload.eventId, sample.eventId, `${delivery.event}: the worker derives the sample's eventId from the same message`);
+      assert.equal(delivery.payload.reason, sample.reason);
+    }
   });
 
   it('market.move: the sample eventId is the per-UTC-day coalesce-key hash', () => {
