@@ -150,7 +150,8 @@ export async function fetchShippingRates(): Promise<GetShippingRatesResponse> {
 
 function loadLiveChokepointStatus(forceRefresh = false): Promise<GetChokepointStatusResponse> {
   return chokepointBreaker.execute(async () => {
-    return client.getChokepointStatus({});
+    // Bounded because a stale entry waits for this request; at the deadline the saved reading is returned.
+    return client.getChokepointStatus({}, { signal: AbortSignal.timeout(10_000) });
   }, emptyChokepoints, {
     shouldCache: isCacheableChokepointStatus,
     forceRefresh,

@@ -33,4 +33,29 @@ describe('earthquake polling freshness', () => {
       'the next poll shows the new quake',
     );
   });
+
+  it('returns the saved list when the refresh stalls past its deadline', async () => {
+    let stall = false;
+    mock.method(globalThis, 'fetch', (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (!stall) return Promise.resolve(Response.json({ earthquakes: [quake('saved')] }));
+      return new Promise((_resolve, reject) => {
+        const signal = init?.signal;
+        if (signal?.aborted) reject(signal.reason);
+        signal?.addEventListener('abort', () => reject(signal.reason));
+      });
+    });
+    const deadline = new AbortController();
+    mock.method(AbortSignal, 'timeout', () => deadline.signal);
+    let now = Date.parse('2026-10-18T07:00:00Z');
+    mock.method(Date, 'now', () => now);
+
+    const { fetchEarthquakes } = await import(`../src/services/earthquakes.ts?t=${Date.now()}-stall`);
+    assert.deepEqual((await fetchEarthquakes()).map((q: { id: string }) => q.id), ['saved']);
+
+    stall = true;
+    now += REFRESH_INTERVALS.natural;
+    const poll = fetchEarthquakes();
+    deadline.abort(new DOMException('deadline', 'TimeoutError'));
+    assert.deepEqual((await poll).map((q: { id: string }) => q.id), ['saved'], 'a stalled refresh returns the saved list');
+  });
 });

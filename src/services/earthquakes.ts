@@ -19,6 +19,9 @@ const client = new SeismologyServiceClient(getRpcBaseUrl(), { fetch: (...args) =
 const breaker = createCircuitBreaker<ListEarthquakesResponse>({ name: 'Seismology', cacheTtlMs: 5 * 60 * 1000, persistCache: true });
 
 const emptyFallback: ListEarthquakesResponse = { earthquakes: [] };
+// The poll waits for a stale refresh, so a stalled request would hold back
+// the whole natural-events load. At the deadline the saved list is returned.
+const EARTHQUAKE_REQUEST_TIMEOUT_MS = 10_000;
 
 export async function fetchEarthquakes(): Promise<Earthquake[]> {
   const hydrated = getHydratedData('earthquakes') as ListEarthquakesResponse | undefined;
@@ -28,7 +31,10 @@ export async function fetchEarthquakes(): Promise<Earthquake[]> {
   }
 
   const response = await breaker.execute(async () => {
-    return client.listEarthquakes({ minMagnitude: 0, start: 0, end: 0, pageSize: 0, cursor: '' });
+    return client.listEarthquakes(
+      { minMagnitude: 0, start: 0, end: 0, pageSize: 0, cursor: '' },
+      { signal: AbortSignal.timeout(EARTHQUAKE_REQUEST_TIMEOUT_MS) },
+    );
   }, emptyFallback, { shouldCache: (r) => r.earthquakes.length > 0, staleRefreshMode: 'await' });
   return response.earthquakes as Earthquake[];
 }
