@@ -14,6 +14,7 @@ import {
   isEmbedLayerId,
   type EmbedLayerId,
 } from './embed-panels';
+import { stripTrailingSlashes } from './strip-trailing-slashes.js';
 
 export const EMBED_MAP_FRAME_PATH = '/api/embed/map-frame';
 
@@ -168,9 +169,7 @@ export function classifyPublicEmbedFrameRequest(
     return null;
   }
 
-  const pathname = url.pathname.length > 1
-    ? url.pathname.replace(/\/+$/, '')
-    : url.pathname;
+  const pathname = stripTrailingSlashes(url.pathname);
   if (pathname !== EMBED_MAP_FRAME_PATH) return null;
 
   return classifyPublicEmbedFrameSearch(url.search);

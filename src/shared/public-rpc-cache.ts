@@ -1,3 +1,5 @@
+import { stripTrailingSlashes } from '../../shared/strip-trailing-slashes.js';
+
 // Membership here is an ANONYMOUS-ACCESS decision, not a caching one: the
 // gateway consults isPublicSharedRpcRequest() before the tier gate, so a path
 // listed here is reachable with no credential whatever ENDPOINT_ENTITLEMENTS
@@ -101,7 +103,7 @@ export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'):
     return false;
   }
 
-  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
+  const pathname = stripTrailingSlashes(url.pathname);
   if (!PUBLIC_SHARED_RPC_PATHS.has(pathname)) return false;
 
   // Shape-check the caller's query, not the router's echo of the path segment.

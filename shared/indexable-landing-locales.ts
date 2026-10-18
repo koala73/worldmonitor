@@ -11,6 +11,8 @@
  * `id.json` dictionary.
  */
 
+import { stripTrailingSlashes } from './strip-trailing-slashes.js';
+
 export const INDEXABLE_LANDING_ORIGIN = 'https://www.worldmonitor.app' as const;
 
 export interface IndexableLandingLocale {
@@ -178,7 +180,7 @@ export function landingById(id: string): IndexableLandingLocale | undefined {
 export function landingByPath(pathname: string): IndexableLandingLocale | undefined {
   const raw = typeof pathname === 'string' ? pathname : '';
   if (raw === '' || raw === '/') return defaultLandingLocale();
-  const stripped = raw.replace(/\/+$/, '') || '/';
+  const stripped = stripTrailingSlashes(raw) || '/';
   if (stripped === '/') return defaultLandingLocale();
   if (stripped.includes('/', 1)) return undefined;
   const segment = stripped.slice(1);

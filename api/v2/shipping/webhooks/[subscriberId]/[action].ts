@@ -18,6 +18,7 @@ import { validateUserApiKey } from '../../../../../server/_shared/user-api-key';
 import { checkFailClosedScopedIpRateLimit } from '../../../../../server/_shared/rate-limit';
 import { resolvePremiumCallerIdentity } from '../../../../../server/_shared/premium-check';
 import { runRedisPipeline } from '../../../../../server/_shared/redis';
+import { stripTrailingSlashes } from '../../../../../shared/strip-trailing-slashes.js';
 import {
   ALL_INDEX_KEY,
   WEBHOOK_TTL,
@@ -84,7 +85,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const url = new URL(req.url);
-  const parts = url.pathname.replace(/\/+$/, '').split('/');
+  const parts = stripTrailingSlashes(url.pathname).split('/');
   const action = parts[parts.length - 1];
   const subscriberId = parts[parts.length - 2];
 

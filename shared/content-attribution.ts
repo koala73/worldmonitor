@@ -7,6 +7,8 @@
  * internal acquisition metadata can never be mistaken for a referral.
  */
 
+import { stripTrailingSlashes } from './strip-trailing-slashes.js';
+
 export const CONTENT_ATTRIBUTION_STORAGE_KEY = 'wm-content-attribution-v1';
 export const CONTENT_ATTRIBUTION_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 export const CONTENT_ATTRIBUTION_MAX_VALUE_LENGTH = 100;
@@ -250,7 +252,7 @@ export function parseContentAttribution(
 
 /** Keep scorecard page-family values closed even for crafted destination URLs. */
 export function inferLandingPageFamily(pathname: string): ContentLandingPageFamily {
-  const path = pathname.toLowerCase().replace(/\/+$/, '') || '/';
+  const path = stripTrailingSlashes(pathname.toLowerCase()) || '/';
   if (path === '/') return 'homepage';
   if (path === '/dashboard' || path.startsWith('/dashboard/')) return 'dashboard';
   if (path === '/pro' || path.startsWith('/pro/')) return 'pricing';

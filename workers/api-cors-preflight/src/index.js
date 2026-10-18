@@ -21,6 +21,7 @@ import {
   classifyPublicBootstrapRequest,
   classifyPublicBootstrapUrl,
 } from '../../../api/_bootstrap-public-tier.js';
+import { stripTrailingSlashes } from '../../../shared/strip-trailing-slashes.js';
 import { maybeShadowKvRead } from './kv-shadow.js';
 import { maybeServeBootstrapFromKv } from './kv-serve.js';
 
@@ -378,7 +379,7 @@ export default {
     const url = new URL(request.url);
 
     // Reject the retired premium URL before fetch can replay an older CDN response.
-    if (request.method !== 'OPTIONS' && url.pathname.replace(/\/+$/, '') === '/api/bootstrap'
+    if (request.method !== 'OPTIONS' && stripTrailingSlashes(url.pathname) === '/api/bootstrap'
       && url.searchParams.getAll('keys').some(value => value.split(',').some(key => key.trim() === 'wsbTickers'))) {
       return new Response(JSON.stringify({ error: 'Use the premium WSB RPC' }), {
         status: 401,

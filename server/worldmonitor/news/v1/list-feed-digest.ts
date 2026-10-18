@@ -83,6 +83,7 @@ import {
   isPublisherLink,
   linkHostname,
 } from '../../../../shared/publisher-link-gate.js';
+import { stripAttributionSuffix } from '../../../../shared/story-identity.js';
 // @ts-expect-error — JS module, no declaration file
 import { STORY_ALIAS_PUBLISH_SCRIPT } from '../../../../shared/story-alias-publish-script.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
@@ -1553,17 +1554,14 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
 
 // ── Story persistence tracking ────────────────────────────────────────────────
 
+const NORMALIZED_TITLE_SCAN = 2_000;
+
 function normalizeTitle(title: string): string {
-  // \p{L} = any Unicode letter; \p{N} = any Unicode number.
-  // The `u` flag is required for Unicode property escapes — without it \w
-  // matches only ASCII [A-Za-z0-9_], stripping all Arabic/CJK/Cyrillic chars
-  // and collapsing every non-Latin title to the same empty hash.
-  return title
-    .toLowerCase()
-    // Strip source attribution suffixes ("- Reuters", "- reuters.com", etc.)
-    // so the same story from different domains hashes identically.
-    .replace(/\s*[-\u2013\u2014]\s*[\w\s.]+\.(?:com|org|net|co\.uk)\s*$/, '')
-    .replace(/\s*[-\u2013\u2014]\s*(?:reuters|ap news|bbc|cnn|al jazeera|france 24|dw news|pbs newshour|cbs news|nbc|abc|associated press|the guardian|nos nieuws|tagesschau|cnbc|the national)\s*$/, '')
+  const stripped = stripAttributionSuffix(title.toLowerCase(), { allowPipe: false });
+  const bounded = stripped.length > NORMALIZED_TITLE_SCAN
+    ? stripped.slice(0, NORMALIZED_TITLE_SCAN)
+    : stripped;
+  return bounded
     .replace(/[^\p{L}\p{N}\s]/gu, '')
     .replace(/\s+/g, ' ')
     .trim()

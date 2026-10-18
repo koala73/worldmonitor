@@ -19,6 +19,7 @@ import type { WmSessionDeadReason } from './wm-session-copy';
 import { isPublicSharedRpcRequest } from '@/shared/public-rpc-cache';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { PUBLIC_WEATHER_BOOTSTRAP_KEY, bootstrapTierKeyNames } from '../../shared/bootstrap-tier-keys.js';
+import { stripTrailingSlashes } from '../../shared/strip-trailing-slashes.js';
 
 const STORAGE_KEY = 'wm-session-exp';
 // Refresh well before expiry so a half-loaded page doesn't fail mid-flight.
@@ -938,7 +939,7 @@ function isCredentiallessPublicDataRequest(
     return false;
   }
 
-  const pathname = parsed.pathname.length > 1 ? parsed.pathname.replace(/\/+$/, '') : parsed.pathname;
+  const pathname = stripTrailingSlashes(parsed.pathname);
   const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
   if (isPublicSharedRpcRequest(parsed, method)) return true;
   if (pathname !== '/api/bootstrap' || method.toUpperCase() !== 'GET') return false;

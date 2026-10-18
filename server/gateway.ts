@@ -14,6 +14,7 @@ import { hasCurrentEntitlementCoverage } from './_shared/entitlement-coverage';
 import { createRouter, toHeadResponse, type RouteDescriptor } from './router';
 import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache';
+import { stripTrailingSlashes } from '../shared/strip-trailing-slashes.js';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '../src/shared/pro-fresh-rpc';
 // @ts-expect-error — JS module, no declaration file
 import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, getHeaderApiKey, validateApiKey } from '../api/_api-key.js';
@@ -1057,7 +1058,7 @@ export function createDomainGateway(
 
     let request = stripClientTrustedHeaders(originalRequest);
     const rawPathname = new URL(request.url).pathname;
-    const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;
+    const pathname = stripTrailingSlashes(rawPathname);
     const t0 = Date.now();
 
     // Usage-telemetry identity inputs — accumulated as gateway auth resolution progresses.
