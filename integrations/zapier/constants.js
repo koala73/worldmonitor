@@ -2,7 +2,7 @@
 
 const BASE_URL = 'https://www.worldmonitor.app';
 const AUTH_HEADER = 'X-WorldMonitor-Key';
-const USER_AGENT = 'worldmonitor-zapier/1.1';
+const USER_AGENT = 'worldmonitor-zapier/1.2';
 
 const PATHS = {
   countryRisk: '/api/intelligence/v1/get-country-risk',
@@ -11,6 +11,10 @@ const PATHS = {
   diseaseOutbreaks: '/api/health/v1/list-disease-outbreaks',
   riskScores: '/api/intelligence/v1/get-risk-scores',
   webhooks: '/api/v2/shipping/webhooks',
+  feedDigest: '/api/news/v1/list-feed-digest',
+  marketQuotes: '/api/market/v1/list-market-quotes',
+  commodityQuotes: '/api/market/v1/list-commodity-quotes',
+  cryptoQuotes: '/api/market/v1/list-crypto-quotes',
 };
 
 // Surface-neutral event registry (shared/event-triggers.json at the repo

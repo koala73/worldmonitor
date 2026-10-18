@@ -816,7 +816,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_commodity_geo`
 
-全球矿业地点，含坐标、运营商、矿产类型和生产状态。覆盖全球 71 座主要矿山，涵盖黄金、白银、铜、锂、铀、煤和其他矿物。
+精选的静态清单，收录 71 座主要矿山，含坐标、国家、矿种、运营商、状态（producing、development、exploration），以及有记录时的年产量和产量排名标签。矿种：金、银、铜、锂、钴、稀土、镍、铂、钯、铁矿石和铀。它回答某种矿产在哪里开采、矿山由谁运营；不含国家产量总量、市场份额、冶炼或价格。`mineral` 为精确且区分大小写的匹配（"Gold"、"Rare Earths"）；`country` 为不区分大小写的子串匹配。
 
 **参数：**
 
@@ -1376,7 +1376,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_social_velocity`
 
-Reddit 地缘政治社交速度：来自 worldnews、geopolitics 及相关子版块的顶级帖子，含互动评分和趋势信号。
+r/worldnews 与 r/geopolitics 中 `velocityScore`（得分对数 × 点赞率 × 6 小时衰减）最高的 30 条帖子，含得分、点赞率、评论数和链接（字段 `url`）。中继约每 3 小时刷新一次，超过 9 小时标记为过期，与 `/api/health` 的预算一致。帖子是未经核实的用户投稿：该工具衡量公众关注度，而非事件本身。
 
 **参数（工具特定）：**
 
@@ -1387,7 +1387,7 @@ Reddit 地缘政治社交速度：来自 worldnews、geopolitics 及相关子版
 
 - **API 端点：** `GET /api/intelligence/v1/get-social-velocity`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **9 小时**（中继约每 3 小时刷新一次；与 `/api/health` 预算一致）。
 
 <CodeGroup>
 
@@ -2261,7 +2261,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_displacement_data`
 
-按国家分列的难民和国内流离失所者计数（UNHCR 年度数据）。
+UNHCR 单一报告年度的年度流离失所统计：全球总数、按来源国统计的难民、寻求庇护者、国内流离失所者和无国籍者，各庇护国收容总数，以及最大的来源国至庇护国难民流向。仅为年度存量数据，不含月度抵达或危机局势更新。UNHCR 发布当年数据前，快照为上一年数据，由 `summary.year` 标明。
 
 **参数（工具特定）：**
 

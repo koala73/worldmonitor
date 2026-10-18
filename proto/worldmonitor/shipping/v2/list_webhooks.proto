@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package worldmonitor.shipping.v2;
 
+import "worldmonitor/shipping/v2/register_webhook.proto";
+
 // ListWebhooksRequest has no fields — the owner is derived from the caller's
 // API-key fingerprint (SHA-256 of X-WorldMonitor-Key).
 message ListWebhooksRequest {}
@@ -20,6 +22,8 @@ message WebhookSummary {
   string event_type = 7;
   repeated string countries = 8;
   int32 min_live_signal = 9;
+  // Occurrence-event scope as stored (defaults applied); absent for threshold events.
+  WebhookScope scope = 10;
 }
 
 // ListWebhooksResponse wire shape preserved exactly: the `webhooks` field

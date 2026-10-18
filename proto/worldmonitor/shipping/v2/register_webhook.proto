@@ -31,7 +31,7 @@ message RegisterWebhookRequest {
     (buf.validate.field).int32.gte = 0,
     (buf.validate.field).int32.lte = 100
   ];
-  // `chokepoint.disruption` (default) or `country.risk_surge`.
+  // A shared/event-triggers.json key; `chokepoint.disruption` when omitted.
   optional string event_type = 4 [
     (buf.validate.field).string.max_len = 64
   ];
@@ -42,6 +42,30 @@ message RegisterWebhookRequest {
     (buf.validate.field).int32.gte = 0,
     (buf.validate.field).int32.lte = 40
   ];
+  // Occurrence-event scope (news.breaking, market.move); keys not defined for the event fail with 400.
+  WebhookScope scope = 7;
+}
+
+// Per-event filters for occurrence events. Each key applies to the events named in its comment; the handler validates against shared/event-triggers.json and stores the defaults.
+message WebhookScope {
+  // news.breaking: whole-word terms, any-of, 1-20.
+  repeated string keywords = 1;
+  // news.breaking: classifier categories.
+  repeated string categories = 2;
+  // news.breaking: importanceScore floor, 0-100 (default 69).
+  optional int32 importance_floor = 3;
+  // news.breaking: `critical` or `high` (default high).
+  optional string severity_floor = 4;
+  // news.breaking: ISO2 codes; unattributed headlines never match.
+  repeated string countries = 5;
+  // market.move: `equity`, `commodity`, `crypto`.
+  repeated string asset_classes = 9;
+  // market.move: quote symbols, 1-50.
+  repeated string symbols = 10;
+  // market.move: |changePct| floor, 5-100 (default 10).
+  optional double min_abs_pct = 11;
+  // market.move: `up`, `down` or `any` (default any).
+  optional string direction = 12;
 }
 
 // RegisterWebhookResponse wire shape preserved exactly — partners persist the

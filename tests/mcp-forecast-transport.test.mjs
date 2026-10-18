@@ -271,7 +271,7 @@ describe('published forecast reliability under the accuracy audit (#8990)', () =
     assert.equal(listed(AUDIT), forecastScorecardDescription(AUDIT));
     assert.equal(listed(null), forecastScorecardDescription(null));
     assert.ok(listed(AUDIT).startsWith('Forecast resolution scorecard, under audit since 2026-10-07 (issue 8990): its scores are unverified.'));
-    assert.ok(listed(null).startsWith('Forecast resolution scorecard (Brier, calibration, funnel); underAudit marks scores still under audit.'));
+    assert.ok(listed(null).startsWith('Forecast resolution scorecard: the accuracy record of WorldMonitor forecasts; underAudit marks scores still under audit.'));
     for (const override of [null, AUDIT]) assert.ok(Buffer.byteLength(listed(override)) <= TOOL_DESCRIPTION_MAX_BYTES, 'inside the tools/list description budget');
     const scorecardTool = TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_scorecard');
     assert.equal(scorecardTool.description, forecastScorecardDescription(FORECAST_ACCURACY_AUDIT_OVERRIDE));

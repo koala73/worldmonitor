@@ -15,6 +15,7 @@ import {
   requirePremiumRpcAccess,
 } from '../../../_shared/premium-check';
 import { pruneOwnerWebhookIndex } from './webhook-owner-index';
+import { isOccurrenceEvent, normalizeWebhookScope } from './webhook-scope';
 import { runRedisPipeline } from '../../../_shared/redis';
 import {
   ALL_INDEX_KEY,
@@ -110,6 +111,10 @@ export async function registerWebhook(
       { field: 'eventType', description: `Unknown eventType: ${eventType}. Expected one of ${[...VALID_EVENT_TYPES].join(', ')}` },
     ]);
   }
+  // Occurrence events (news.breaking, market.move) take their filters in
+  // `scope`, validated against the event's inputSchema in the registry with
+  // defaults stored on the record. Threshold events accept no scope.
+  const scope = normalizeWebhookScope(eventType, req.scope);
   const countries = Array.isArray(req.countries)
     ? [...new Set(req.countries.map((code) => String(code).trim().toUpperCase()).filter(Boolean))]
     : [];
@@ -154,6 +159,7 @@ export async function registerWebhook(
     eventType,
     ...(eventType === RISK_SURGE_EVENT_TYPE ? { countries } : {}),
     ...(minLiveSignal > 0 ? { minLiveSignal } : {}),
+    ...(isOccurrenceEvent(eventType) ? { scope } : {}),
   };
 
   const results = await runRedisPipeline([

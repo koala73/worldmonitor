@@ -76,7 +76,7 @@
     },
     {
       "name": "get_news_intelligence",
-      "description": "Return the seeded geopolitical threat-news snapshot: AI-classified top stories, GDELT intelligence signals by topic, cross-source signals (including physical-premium regime transitions) and government security advisories. Flagged stale after 30 minutes; live window only, not a historical index. Each top story carries corroboration metadata: uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, clustered headlines, credibilityScore (0-100 source reliability, distinct from importance), corroboration, and the publishers roster with declared tiers; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. topic, category, country, alerts_only, query and min_importance narrow the lists; limit caps each (default 30, 0 = no cap). Paid News Intelligence panels charge one opening allocation; repeat opens and filters reuse it.",
+      "description": "Return the seeded threat-news feed as individual items, not a written brief: AI-classified top stories, GDELT intelligence signals by topic, cross-source signals (including physical-premium regime transitions) and government security advisories. Flagged stale after 30 minutes; live window only, not a historical index. Each top story carries corroboration metadata: uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, clustered headlines, credibilityScore (0-100 source reliability, distinct from importance), corroboration, and the publishers roster; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. topic, category, country, alerts_only, query and min_importance narrow the lists; limit caps each (default 30, 0 = no cap). Paid News Intelligence panels charge one opening allocation; repeat opens and filters reuse it.",
       "_meta": {
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "geopolitical-security"
@@ -172,7 +172,7 @@
     },
     {
       "name": "get_displacement_data",
-      "description": "Refugee and IDP counts by country (UNHCR annual data).",
+      "description": "Return UNHCR annual displacement statistics for one reporting year (summary.year): global totals and per-country refugees, asylum seekers, IDPs and stateless people by origin, totals hosted by each asylum country, and the largest origin-to-asylum refugee flows, with centroid coordinates where known. Answers how many people a country has displaced or hosts. Annual stock figures only: no monthly arrivals, live crisis-situation updates or deaths, and no year selection; until UNHCR publishes the current year the snapshot holds the prior year, which summary.year names. Flagged stale after 60 hours. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. countries keeps rows whose origin or asylum country matches; limit caps the country and flow lists (default 30, 0 for no cap).",
       "_meta": {
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "humanitarian-displacement"
@@ -236,7 +236,7 @@
     },
     {
       "name": "get_tariff_trends",
-      "description": "Return the seeded price and debt indicator bundle: the Economist Big Mac index by country, the FAO Food Price Index and per-country national debt levels. Each sub-dataset has its own staleness budget (Big Mac a week, FAO and debt 60 days). No tariff rates: a dataset value of tariffs is rejected with a validation error. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects bigmac, fao-ffpi or national-debt; country narrows Big Mac and debt rows (alpha-2, alpha-3 or name); limit caps each list (default 30, 0 for no cap).",
+      "description": "Despite the name, carries no tariff data. Return the seeded price and debt indicator bundle: the Economist Big Mac index by country, the FAO Food Price Index and per-country national debt levels. Each sub-dataset has its own staleness budget (Big Mac a week, FAO and debt 60 days). No tariff rates: a dataset value of tariffs is rejected with a validation error. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects bigmac, fao-ffpi or national-debt; country narrows Big Mac and debt rows (alpha-2, alpha-3 or name); limit caps each list (default 30, 0 for no cap).",
       "_meta": {
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "trade-tariffs"
@@ -276,7 +276,7 @@
     },
     {
       "name": "get_forecast_predictions",
-      "description": "Return the published forecast list from the seeded cache: each forecast with id, domain, region, probability, scenario text and, for API readers, its case file. Flagged stale after 90 minutes; AI assessments, not guarantees. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. domain filters exactly (conflict, market, supply_chain, political, military, cyber, infrastructure), region by case-insensitive substring, limit caps the list (default 30, 0 for no cap). Paid interactive openings return the compact list with case files stripped (hasCaseFile marks them) plus a signed panelRequest; repeat openings reuse the five-minute admission and refresh needs a fresh request_id.",
+      "description": "Return the current published forecast list straight from the seeded cache, the lowest-cost read of open forecasts (paid panel openings also attach per-domain reliability and recent familyOutcomes, not the full accuracy scorecard): each forecast with id, domain, region, probability, scenario text and, for API readers, its case file. Flagged stale after 90 minutes; AI assessments, not guarantees. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. domain filters exactly (conflict, market, supply_chain, political, military, cyber, infrastructure), region by case-insensitive substring, limit caps the list (default 30, 0 for no cap). Paid interactive openings return the compact list with case files stripped (hasCaseFile marks them) plus a signed panelRequest; repeat openings reuse the five-minute admission and refresh needs a fresh request_id.",
       "_meta": {
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "ai-intelligence"
@@ -284,7 +284,7 @@
     },
     {
       "name": "get_forecast_case",
-      "description": "Read exactly one original published forecast case, including its full case file, by forecast ID and the exact generatedAt of the forecast list it came from. Returns generation_changed with no forecast when the published list has been regenerated since, and missing when the ID is not in the current generation. Dedicated MCP plans read it inside an open forecasts panel with its signed panel_request and no additional daily allocation; API plans read it without panel_request at the normal per-call charge. A single case exceeding the fixed response budget remains explicitly unavailable.",
+      "description": "Read exactly one original published forecast case, including its full case file, by forecast ID and the exact generatedAt of the forecast list it came from; no list and no accuracy scores. Returns generation_changed with no forecast when the published list has been regenerated since, and missing when the ID is not in the current generation. Dedicated MCP plans read it inside an open forecasts panel with its signed panel_request and no additional daily allocation; API plans read it without panel_request at the normal per-call charge. A single case exceeding the fixed response budget remains explicitly unavailable.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "ai-intelligence"
@@ -292,7 +292,7 @@
     },
     {
       "name": "get_forecast_scorecard",
-      "description": "Forecast resolution scorecard (Brier, calibration, funnel); underAudit marks scores still under audit. Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, familyOutcomes (the recent outcomes of each live forecast id), and horizonGrades (grades of the 24h/7d/30d projections, which are not probabilities). From schemaVersion 3, totals and funnel count published forecasts only; shadow bets appear in byGenerationOrigin.",
+      "description": "Forecast resolution scorecard: the accuracy record of WorldMonitor forecasts; underAudit marks scores still under audit. It grades published forecasts after they resolve: calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, familyOutcomes (the recent outcomes of each live forecast id), and horizonGrades (grades of the 24h/7d/30d projections, which are not probabilities). From schemaVersion 3, totals and funnel count published forecasts only; shadow bets appear in byGenerationOrigin. Past accuracy only: no open forecasts, current probabilities or case files, and nothing about countries. Flagged stale after 36 hours. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. Takes no filters.",
       "_meta": {
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "ai-intelligence"
@@ -300,7 +300,7 @@
     },
     {
       "name": "get_social_velocity",
-      "description": "Reddit geopolitical social velocity: top posts from worldnews, geopolitics, and related subreddits with engagement scores and trend signals.",
+      "description": "Return the 30 Reddit posts from r/worldnews and r/geopolitics with the highest velocityScore (log of score x upvote ratio x a 6-hour recency decay), each with title, subreddit, url (the Reddit permalink), score, upvoteRatio, numComments and createdAt. Measures what is drawing public attention on Reddit now, not what happened: posts are unverified user submissions with no classification or corroboration, there is no history beyond the current snapshot, and no other social platform is covered. Refreshed about every 3 hours, flagged stale after 9 hours. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. subreddit keeps worldnews or geopolitics; limit caps the list (default 30, 0 for no cap).",
       "_meta": {
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "geopolitical-security"
@@ -308,7 +308,7 @@
     },
     {
       "name": "get_temporal_anomalies",
-      "description": "Temporal anomaly watch: current event counts vs day-of-week and seasonal baselines, scored by z-score severity. Surfaces where activity is statistically abnormal right now — news velocity, satellite fire detections, and other tracked streams are compared against 90-day Welford baselines keyed by weekday and month, so a Tuesday in July is only compared to prior Tuesdays in July. Each anomaly carries the observed count, expected baseline count, z-score, multiplier, and a severity band (medium >= 1.5σ, high >= 2σ, critical >= 3σ). Filter by stream type, region, or minimum severity. An empty anomaly list with fresh data means activity is within normal bounds — that is itself signal.",
+      "description": "Temporal anomaly watch: current event counts vs day-of-week and seasonal baselines, scored by z-score severity. Surfaces where activity is statistically abnormal right now — news velocity, satellite fire detections, and other tracked streams are compared against 90-day Welford baselines keyed by weekday and month, so a Tuesday in July is only compared to prior Tuesdays in July. Each anomaly carries the observed count, expected baseline count, z-score, multiplier, and a severity band (medium >= 1.5σ, high >= 2σ, critical >= 3σ). Filter by stream type, region, or minimum severity. An empty anomaly list with fresh data means activity is within normal bounds — that is itself signal. Statistical deviations per stream only: no story content, no cross-domain alert rollup. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance.",
       "_meta": {
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "geopolitical-security"
@@ -356,7 +356,7 @@
     },
     {
       "name": "get_world_brief",
-      "description": "Return the citation-grounded world intelligence brief from the precomputed news:insights:v1 snapshot. The insights seeder applies corroboration, citation and hallucination gates before publishing; this reads that accepted result with no request-time LLM call, so the same snapshot is returned until the seeder republishes (about hourly). Each headline pairs with an index-aligned topStories entry carrying its corroboration evidence (uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, the publishers roster with declared tiers); corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Past the 60-minute freshness window the last-known-good snapshot is served with stale:true and ageMinutes, capped at 3 h old; older, absent or broken snapshots are reported unavailable. Requires a paid plan; one downstream read, weight 2 on API plans. Paid MCP openings consume one request allocation that loaded reuse shares.",
+      "description": "Return one written world brief, the hourly AI summary of top headlines rather than a story feed, from the precomputed news:insights:v1 snapshot. The insights seeder applies corroboration, citation and hallucination gates before publishing; this reads that accepted result with no request-time LLM call, so the same snapshot is returned until the seeder republishes. Each headline pairs with an index-aligned topStories entry carrying its corroboration evidence (uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, the publishers roster); corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Past the 60-minute freshness window the last-known-good snapshot is served with stale:true and ageMinutes, capped at 3 h old; older, absent or broken snapshots are reported unavailable. Requires a paid plan; one downstream read, weight 2 on API plans. Paid MCP openings consume one request allocation that loaded reuse shares.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "ai-intelligence"
@@ -364,7 +364,7 @@
     },
     {
       "name": "get_country_brief",
-      "description": "Generate a text-only AI assessment of one country: an LLM-written geopolitical and economic brief plus sources, groundingStories and digestCoverage. The brief is grounded on the live English news digest; each grounding story carries corroborationCount, corroboration.state (single-publisher, tier4-only, corroborated, unknown; coverage, not accuracy), mentionCount and storyPhase. When the digest is serving a retained (stale) snapshot the grounding is dropped and the brief is generated ungrounded unless allow_stale=true; digestCoverage reports which happened. Output is narrative text, not a structured dataset, and differs between calls. Requires a paid plan; two downstream fetches (digest and brief), weight 3 on API plans, 5-25 s. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one. Read-only.",
+      "description": "Generate a text-only AI assessment of one country: an LLM-written geopolitical and economic brief plus sources, groundingStories and digestCoverage. The brief is grounded on the live English news digest; each grounding story carries corroborationCount, corroboration.state (single-publisher, tier4-only, corroborated, unknown; coverage, not accuracy), mentionCount and storyPhase. When the digest is serving a retained (stale) snapshot the grounding is dropped and the brief is generated ungrounded unless allow_stale=true; digestCoverage reports which happened. Output is narrative prose that differs between calls: no numeric scores, no per-section datasets and no interactive view. Requires a paid plan; two downstream fetches (digest and brief), weight 3 on API plans, 5-25 s. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one. Read-only.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"
@@ -372,7 +372,7 @@
     },
     {
       "name": "get_country_risk",
-      "description": "Return the structured risk snapshot for one country: the Composite Instability Index at cii.combinedScore (0-100) with its four components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive and sanctionsCount. Numbers only, read from the seeded risk cache in under a second; no narrative and no LLM. upstreamUnavailable=true means a required upstream read failed and the whole response was withheld: zeroed fields are unknown, not calm. Requires a paid plan; one downstream fetch, weight 2 on API plans. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one. Read-only; idempotent within a cache window.",
+      "description": "Return the structured risk snapshot for one country: the Composite Instability Index at cii.combinedScore (0-100) with its four components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive and sanctionsCount. Index scores, advisory and sanctions fields only, read from the seeded risk cache in under a second: no narrative, no LLM, and no per-indicator resilience breakdown. upstreamUnavailable=true means a required upstream read failed and the whole response was withheld: zeroed fields are unknown, not calm. Requires a paid plan; one downstream fetch, weight 2 on API plans. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one. Read-only; idempotent within a cache window.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"
@@ -412,7 +412,7 @@
     },
     {
       "name": "get_resilience_indicators",
-      "description": "Explain one country's resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. Requires an ISO-2 country code and a WorldMonitor Pro subscription.",
+      "description": "Explain one country's resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. 51 indicators update annually; 11 move with current events (realtime or daily feeds such as the news threat score and Reddit velocity), so a short-term score change can come from those. Answers why a country scores as it does, indicator by indicator; carries no instability index, travel advisory, sanctions status, story list or narrative. Requires an ISO-2 country code and a WorldMonitor Pro subscription; weight 2 on API plans. Read-only.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"
@@ -476,7 +476,7 @@
     },
     {
       "name": "generate_forecasts",
-      "description": "Return the published AI forecasts, each with probability, scenarios, signals and a per-forecast case file, filtered server-side by domain and region. The list is produced by the forecasting pipeline on its own schedule (rule-based probabilities with LLM-written narrative, republished on the pipeline's own cadence); a call returns the latest published run and does not start a new one. An oversized response omits the case files and reports the omitted count in transportCoverage; a narrower domain or region filter returns them. Requires a paid plan; one downstream request, weight 2 on API plans. domain is one of conflict, market, supply_chain, political, military, cyber, infrastructure; region is free text such as \"Middle East\". Read-only.",
+      "description": "Return the published AI forecasts through the paid forecast API, filtered server-side by domain and region, each with probability, scenarios, signals and a per-forecast case file. Despite the name, a call generates nothing. The list is produced by the forecasting pipeline on its own schedule (rule-based probabilities with LLM-written narrative, republished on the pipeline's own cadence); a call returns the latest published run and does not start a new one. An oversized response omits the case files and reports the omitted count in transportCoverage; a narrower domain or region filter returns them. Requires a paid plan; one downstream request, weight 2 on API plans. domain is one of conflict, market, supply_chain, political, military, cyber, infrastructure; region is free text such as \"Middle East\". Read-only.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "ai-intelligence"
@@ -500,7 +500,7 @@
     },
     {
       "name": "get_commodity_geo",
-      "description": "Global mining sites with coordinates, operator, mineral type, and production status. Covers 71 major mines spanning gold, silver, copper, lithium, uranium, coal, and other minerals worldwide.",
+      "description": "Return a curated reference list of 71 major mine sites: name, coordinates, country, mineral, operator, status (producing, development, exploration), significance and, where recorded, annual output, a production-rank label and open-pit or underground. Answers where a mineral is mined and who operates a given mine. Static dataset bundled with the server, not live data: no national output totals, market shares, refining, prices or recent ownership changes, and mines outside the list are absent. Minerals: Gold, Silver, Copper, Lithium, Cobalt, Rare Earths, Nickel, Platinum, Palladium, Iron Ore and Uranium. Requires a paid plan; weight 2 on API plans. Read-only. Omit both filters for every site.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"
@@ -516,7 +516,7 @@
     },
     {
       "name": "get_supply_vulnerabilities",
-      "description": "Return country commodity supply risks, where an absent score means insufficient evidence, never zero risk. Returns one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance; read state and reasons to see why a score is absent.",
+      "description": "Return one country's commodity import-supply vulnerability portfolio, where an absent score means insufficient evidence, never zero risk. For each covered commodity: an absolute 0-100 score and band (low, moderate, high, critical) built from supplier concentration, chokepoint transit exposure including current route disruption, and stock buffers, plus coverage, staleness, methodology version and source provenance. Answers how exposed a country's commodity supply is and which component drives it. state (ok, stale_input, insufficient_data) and reasons explain every missing score, including redistribution_blocked. No prices, mine locations, production shares or cross-country ranking. upstreamUnavailable=true means the read failed. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"
@@ -572,7 +572,7 @@
     },
     {
       "name": "get_alert_digest",
-      "description": "Cross-domain alert digest: everything that tripped a threshold today, in one rollup. Sweeps seven seeded domains — country instability bands, military surge alerts, submarine-cable health, ongoing internet outages, temporal anomalies, thermal escalation zones, and shipping stress — and reports each trip with the severity vocabulary its own producer already uses; no thresholds are invented by this tool. Domains with data but no trips are listed as quiet, and domains whose caches are unavailable are listed separately so silence is never mistaken for calm. The weekly view adds direction, volatility, and anomaly flags derived from the persisted military-activity history plus the current temporal-anomaly snapshot. This is the fastest single call for what changed today.",
+      "description": "Cross-domain alert digest: everything that tripped a threshold today, in one rollup. Sweeps seven seeded domains — country instability bands, military surge alerts, submarine-cable health, ongoing internet outages, temporal anomalies, thermal escalation zones, and shipping stress — and reports each trip with the severity vocabulary its own producer already uses; no thresholds are invented by this tool. Domains with data but no trips are listed as quiet, and domains whose caches are unavailable are listed separately so silence is never mistaken for calm. The weekly view adds direction, volatility, and anomaly flags derived from the persisted military-activity history plus the current temporal-anomaly snapshot. A rollup of threshold trips across domains: no news stories, narrative, or full per-stream anomaly lists. Requires a paid plan; weight 2 on API plans. Read-only.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"
@@ -748,7 +748,7 @@
     },
     {
       "name": "open_country_brief",
-      "description": "Open the interactive WorldMonitor country brief for one country and return {countryCode, topic, panelRequest}; the host renders the embedded view, which then loads its assessment, source evidence, resilience, security, economy, resources and society sections progressively over the authenticated connection. The tool itself returns the resolved country and topic, not the section data. topic (default overview) selects which section group the view opens on. Requires a paid plan; weight 2 on API plans. On dedicated paid plans one country request covers the view's internal section loads, same-country opens reuse it for five minutes, and refresh with request_id starts a new request. Read-only.",
+      "description": "Open the interactive WorldMonitor country brief for one country and return {countryCode, topic, panelRequest}; the host renders the embedded view, which then loads its assessment, source evidence, resilience, security, economy, resources and society sections progressively over the authenticated connection. The tool itself returns only the resolved country and topic: no assessment text, scores or section data reach the caller. topic (default overview) selects which section group the view opens on. Requires a paid plan; weight 2 on API plans. On dedicated paid plans one country request covers the view's internal section loads, same-country opens reuse it for five minutes, and refresh with request_id starts a new request. Read-only.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"
@@ -756,7 +756,7 @@
     },
     {
       "name": "get_country_brief_section",
-      "description": "Read one named data section of a country brief and return {state: ready|locked|unavailable, section, value, retrievedAt, reason}. A dispatcher over 37 fixed readers selected by section: country facts and risk, energy and maritime, markets, trade, supply chain, resilience and demographics, defense, China signals, housing and IMF macro, military flights, AIS vessels, the USNI fleet report and signalsRaw; each oneOf branch documents one section. Each section takes its own arguments object (key names differ: country_code, countryCode or iso2; numeric M49 codes for trade; HS codes for products) and rejects unknown keys. flights pages 100 rows at a time through cursor. signalsRaw returns attributed earthquake, Internet-outage, travel-advisory and thermal samples and needs a verified same-country paid panel token; every other section works with an ordinary paid credential. Unavailable evidence is unknown, not zero. Requires a paid plan; one downstream read, weight 2 on API plans. Read-only.",
+      "description": "Read one named structured data section for a country, raw values without narrative, and return {state: ready|locked|unavailable, section, value, retrievedAt, reason}. 37 readers selected by section: country facts and risk, energy and maritime, markets, trade, supply chain, resilience and demographics, defense, China signals, housing and IMF macro, military flights, AIS vessels, the USNI fleet report and signalsRaw; each oneOf branch documents one section. Each section takes its own arguments object (key names differ: country_code, countryCode or iso2; numeric M49 codes for trade; HS codes for products) and rejects unknown keys. flights pages 100 rows at a time through cursor. signalsRaw returns attributed earthquake, Internet-outage, travel-advisory and thermal samples and needs a verified same-country paid panel token; every other section works with an ordinary paid credential. Unavailable evidence is unknown, not zero. Requires a paid plan; one downstream read, weight 2 on API plans.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"

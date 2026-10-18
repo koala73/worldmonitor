@@ -90,6 +90,31 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 - `callbackUrl` —— 必填，仅限 HTTPS，不得解析为私有/回环地址（注册时有 SSRF 防护）。
 - `chokepointIds` —— 可选。省略或传入空数组则订阅**所有**已注册的咽喉要道。未知 ID 返回 `400`。
 - `alertThreshold` —— 数值 0-100（默认 `50`）。超出此范围的值返回 `400` 校验响应，描述为 `alertThreshold must be between 0 and 100`。
+- `eventType` —— 可选。省略时为 `chokepoint.disruption`。事件及其阈值、冷却、载荷结构和 id 规则统一定义在事件注册表 [`shared/event-triggers.json`](https://github.com/koala73/worldmonitor/blob/main/shared/event-triggers.json) 中；[Zapier 集成](https://github.com/koala73/worldmonitor/tree/main/integrations/zapier)读取同一文件。
+
+| `eventType` | 类型 | 触发条件 | 范围字段 |
+| --- | --- | --- | --- |
+| `chokepoint.disruption`（默认） | 阈值 | 已订阅咽喉要道的 `disruptionScore` 达到 `alertThreshold`（设置了 `minLiveSignal` 时，实时信号还需高于其常态威胁等级至少该分数） | `chokepointIds`、`alertThreshold`、`minLiveSignal` |
+| `country.risk_surge` | 阈值 | 受监控国家的国家不稳定指数在 24 小时内上升 15 分或以上并进入高位区间（70 或以上），每个国家每次激增一次，24 小时冷却 | `countries` |
+| `news.breaking` | 事件 | WorldMonitor 新闻中继将某条标题分类为 critical 或 high，且通过订阅的重要性下限、严重性下限、关键词、类别和国家范围；每个报道链接一次 | `scope.keywords`、`scope.categories`、`scope.countries`、`scope.importanceFloor`、`scope.severityFloor` |
+| `market.move` | 事件 | 被跟踪的股票、大宗商品或加密货币报价当日波动至少 `minAbsPct` 个百分点；每个代码、方向和严重性区间每个 UTC 日一次 | `scope.assetClasses`、`scope.symbols`、`scope.minAbsPct`、`scope.direction` |
+
+阈值事件由 worker 每 5 分钟重新评估条件，一次越过投递一次。事件型（occurrence）事件只触发一次：每次投递携带 `eventId`（`news.breaking` 为 `rss_` + 报道规范链接的哈希，`market.move` 为 `mkt_` + 中继合并键按 UTC 日的哈希），每个订阅对同一 `eventId` 只分配一个 `X-WM-Delivery-Id`，取自第一个匹配其 `scope` 的副本（之后的副本，例如同一档位内更大的波动或改写后的标题，仍可送达此前未匹配的订阅）；投递仍是至少一次，重试可能重复，请按该 id 幂等处理。失败的投递在两小时内以相同的 `X-WM-Delivery-Id` 每 5 分钟重试，之后永久丢弃；停用的 webhook 若在两小时内重新激活，会在下一次检查时重试这些待投递项。每个订阅每小时最多 20 个、每天最多 100 个事件（含重试），跨入新小时的重试占用该小时的名额，名额已满时继续等待；超出上限的新事件在服务器端丢弃并计数，不会批量合并。它们的过滤条件放在请求体的 `scope` 对象中，服务器按注册表中该事件的 `inputSchema` 校验：事件未定义的键、阈值事件上的任何 `scope`、未知枚举值或超出范围的数值都会返回 `400`，字段名为 `scope.<key>`；省略的键在注册时写入默认值（`importanceFloor` 69、`severityFloor` high、`minAbsPct` 10、`direction` any）。`news.breaking` 的国家范围是严格的：中继无法归属国家的标题不会匹配任何国家范围。
+
+**请求**（突发新闻）：
+```json
+{
+  "callbackUrl": "https://hooks.example.com/news",
+  "eventType": "news.breaking",
+  "scope": {
+    "keywords": ["hormuz", "strait of hormuz"],
+    "categories": ["conflict", "military"],
+    "countries": ["IR"],
+    "importanceFloor": 69,
+    "severityFloor": "high"
+  }
+}
+```
 
 **响应（`200`）**：
 ```json
@@ -197,7 +222,9 @@ X-WM-Event: chokepoint.disruption
 }
 ```
 
-投递 worker 在每次发送前重新解析 `callbackUrl`，拒绝私有、回环、链路本地和保留地址，并只连接到已验证的地址，以缓解 DNS 重绑定问题。投递为至少一次 —— 消费者必须通过 `X-WM-Delivery-Id` 处理重复项。
+`news.breaking` 投递携带 `X-WM-Event: news.breaking`，请求体字段为 `subscriberId`、`eventId`、`title`、`source`、`link`、`publishedAt`、`severity`、`importanceScore`、`corroborationCount`、`category`、`countryCodes`、`variant`、`matchedKeywords`、`triggeredAt`、`reason`（始终为 `breaking_news`）。`market.move` 投递携带 `X-WM-Event: market.move`，字段为 `subscriberId`、`eventId`、`assetClass`、`symbol`、`name`、`price`、`changePct`（未取整）、`direction`、`severity`、`source`、`publishedAt`、`triggeredAt`、`reason`（始终为 `large_move`）。完整示例见[英文页面](/api-shipping-v2#delivery-format)和事件注册表中的 `sample`。
+
+所有事件共享相同的请求头和签名方案。投递 worker 在每次发送前重新解析 `callbackUrl`，拒绝私有、回环、链路本地和保留地址，并只连接到已验证的地址，以缓解 DNS 重绑定问题。投递为至少一次 —— 消费者必须通过 `X-WM-Delivery-Id` 处理重复项。
 
 ### 验证投递
 

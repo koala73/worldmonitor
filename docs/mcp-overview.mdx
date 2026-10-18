@@ -302,7 +302,7 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 | `get_consumer_prices` | Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires `country_code` (currently only `ae` is seeded). |
 | `get_procurement_opportunities` | Pro-gated canonical global procurement search; compact output defaults to 10 records and caps at 25. Keyword relevance is never bidding eligibility. |
 | `get_company_intelligence` | Verified per-company SEC intelligence: enrichment, timestamped signals, filing search, and market-wide material 8-K events. |
-| `get_commodity_geo` | 71 major mining sites worldwide (gold, silver, copper, lithium, uranium, coal). |
+| `get_commodity_geo` | 71 major mining sites worldwide (gold, silver, copper, lithium, cobalt, rare earths, nickel, platinum, palladium, iron ore, uranium). |
 | `get_mineral_production` | Who mines / refines a commodity (USGS MCS shares + HHI; BGS fill). |
 | `get_food_stocks` | USDA PSD cereal stocks-to-use per country (or `WORLD`) by marketing year, optional per-commodity filter. |
 | `get_demographics_capability` | Country age structure, education capacity, and industrial-workforce observations (UN WPP, UNESCO UIS, ILOSTAT). |
@@ -326,7 +326,7 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 | `get_sanctions_data` | OFAC SDN entities + sanctions pressure scores by country. |
 | `get_news_intelligence` | AI-classified threat news, GDELT signals, cross-source intel. |
 | `get_positive_events` | Diplomatic agreements, humanitarian aid, peace initiatives. |
-| `get_social_velocity` | Reddit r/worldnews + r/geopolitics top posts, engagement scores. |
+| `get_social_velocity` | Reddit r/worldnews + r/geopolitics top 30 posts ranked by velocity score. |
 | `get_china_decision_signals` | Bounded six-domain China summary with canonical provenance and explicit per-domain degradation; no detailed bilateral trade rows or operator health. |
 | `get_defense_industrial_base` | Per-country World Bank military expenditure, armed-forces size, and arms-trade indicators. |
 | `get_military_surge` | Per-theater aircraft postures, foreign-presence detections, and the flights seeder's own surge alerts. |
@@ -395,7 +395,7 @@ Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed 
 
 | Tool | Description |
 |------|-------------|
-| `get_displacement_data` | Refugee and IDP counts by country (UNHCR annual data). |
+| `get_displacement_data` | Refugee, asylum-seeker, IDP and stateless counts by country and top flows (UNHCR annual data). |
 
 ### AI intelligence
 

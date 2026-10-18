@@ -8,18 +8,29 @@
     "unsubscribe": { "method": "DELETE", "path": "/api/v2/shipping/webhooks/{subscriberId}" },
     "auth": "X-WorldMonitor-Key with an API plan key (apiAccess entitlement)",
     "ttlSeconds": 2592000,
+    "scopeField": "scope",
     "signature": {
       "header": "X-WM-Signature",
       "algorithm": "sha256=hex(HMAC-SHA256(key=secret, message=rawBody))",
       "eventHeader": "X-WM-Event",
-      "deliveryIdHeader": "X-WM-Delivery-Id"
+      "deliveryIdHeader": "X-WM-Delivery-Id",
+      "v2Header": "X-WM-Signature-V2",
+      "timestampHeader": "X-WM-Timestamp",
+      "v2Algorithm": "sha256=hex(HMAC-SHA256(key=secret, message=timestamp + '.' + deliveryId + '.' + event + '.' + rawBody))",
+      "toleranceSeconds": 300,
+      "note": "Every event, threshold or occurrence, goes through one sender (scripts/lib/shipping-webhook-delivery.mjs, mirrored by deliver-webhook.ts), so all of them carry the same headers. X-WM-Signature is the legacy body-only HMAC; X-WM-Signature-V2 also binds the X-WM-Timestamp send time, the delivery id and the event, so a captured delivery cannot be replayed under another id or outside the tolerance. Receivers require V2 and never fall back to the legacy header, which a captured delivery can be replayed under with a new id or with V2 stripped; the Zapier app (1.2.0) rejects any delivery without a valid V2."
     },
     "evaluationSeconds": 300,
-    "failureCeiling": 5
+    "failureCeiling": 5,
+    "kinds": {
+      "threshold": "The worker re-evaluates a condition against a feed every tick and keeps the delivery pending while the condition holds; one crossing is one delivery id.",
+      "occurrence": "A fire-once event: a subscription gets one delivery id per eventId, from the first copy that matches its scope (delivery stays at-least-once, so a retry can repeat it). A failed delivery is retried every tick under the same delivery id until retry.pendingTtlSeconds, then dropped for good. Per-subscription volume caps count the events POSTed per UTC hour and day, retries included; a retry over the cap waits, new events over it are dropped and counted. Scope fields travel in the `scope` object of the registration body."
+    }
   },
   "events": {
     "chokepoint.disruption": {
       "key": "chokepoint.disruption",
+      "kind": "threshold",
       "label": "Chokepoint Disruption",
       "noun": "Chokepoint Alert",
       "description": "Triggers when a monitored maritime chokepoint's disruption score reaches the alert threshold while live signals (navigational warnings, AIS disruption, transit drop) sit at least minLiveSignal points above its standing threat level.",
@@ -127,6 +138,7 @@
     },
     "country.risk_surge": {
       "key": "country.risk_surge",
+      "kind": "threshold",
       "label": "Country Risk Surge",
       "noun": "Risk Surge",
       "description": "Triggers when a monitored country's Country Instability Index rises by at least riseThreshold points within 24 hours into the high band (70 or more), once per surge with a 24-hour cooldown per country.",
@@ -225,6 +237,214 @@
           "computedAt": 1790830140000,
           "scoresFetchedAt": "2026-10-01T04:49:00.000Z"
         }
+      }
+    },
+    "news.breaking": {
+      "key": "news.breaking",
+      "kind": "occurrence",
+      "label": "Breaking News Alert",
+      "noun": "Breaking News Alert",
+      "description": "Triggers when WorldMonitor's news relay classifies a headline as critical or high and it clears the subscription's importance floor, severity floor, keywords, categories and countries, once per story link.",
+      "source": {
+        "channel": "wm:events:api:v1",
+        "producer": "scripts/ais-relay.cjs publishNotificationEvent (tee of the rss_alert queue message)",
+        "relayEventType": "rss_alert"
+      },
+      "categories": [
+        "conflict", "protest", "disaster", "diplomatic", "economic",
+        "terrorism", "cyber", "health", "environmental", "military",
+        "crime", "infrastructure", "tech", "general"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keywords": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 2, "maxLength": 64 },
+            "maxItems": 20,
+            "default": [],
+            "description": "Case-insensitive whole-word terms matched against the headline; a headline matches when it contains any of them. Empty applies no keyword filter."
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "conflict", "protest", "disaster", "diplomatic", "economic",
+                "terrorism", "cyber", "health", "environmental", "military",
+                "crime", "infrastructure", "tech", "general"
+              ]
+            },
+            "default": [],
+            "description": "Classifier categories to accept. Empty accepts every category."
+          },
+          "countries": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[A-Z]{2}$" },
+            "maxItems": 50,
+            "default": [],
+            "description": "ISO 3166-1 alpha-2 codes. A headline matches when the relay attributed it to one of them; a headline with no country attribution never matches a country scope. Empty applies no country filter."
+          },
+          "importanceFloor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 69,
+            "description": "Deliver when importanceScore >= importanceFloor. 69 is the watchlist-story floor; the critical band starts at 82."
+          },
+          "severityFloor": {
+            "type": "string",
+            "enum": ["critical", "high"],
+            "default": "high",
+            "description": "critical delivers critical headlines only; high delivers critical and high, which is every headline the relay queues."
+          }
+        }
+      },
+      "volume": {
+        "maxDeliveriesPerHour": 20,
+        "maxDeliveriesPerDay": 100,
+        "overflow": "dropped and counted per subscription, never batched",
+        "measured": "2026-10-18, 20.6 h of relay logs: 141 queued rss_alert messages a day, 135 distinct headlines (16 critical, 119 high), at most 10 in an hour"
+      },
+      "retry": { "pendingTtlSeconds": 7200 },
+      "dedupe": { "seenWindowSeconds": 86400 },
+      "id": {
+        "field": "deliveryId",
+        "header": "X-WM-Delivery-Id",
+        "construction": "whd_ + 32 lowercase hex, minted once per (subscription, eventId) and kept across retries",
+        "eventIdField": "eventId",
+        "eventIdConstruction": "rss_ + first 32 hex of sha256(canonical link: lowercase host + path, no query, fragment or trailing slash); when the headline carries no link, the same over the normalized title (lowercased, attribution suffix after ' - ' or ' | ' stripped, punctuation and whitespace collapsed). The relay publishes one copy per site variant; they share the id."
+      },
+      "payloadSchema": {
+        "type": "object",
+        "required": ["subscriberId", "eventId", "title", "source", "link", "publishedAt", "severity", "importanceScore", "corroborationCount", "category", "countryCodes", "variant", "matchedKeywords", "triggeredAt", "reason"],
+        "properties": {
+          "subscriberId": { "type": "string" },
+          "eventId": { "type": "string", "pattern": "^rss_[0-9a-f]{32}$" },
+          "title": { "type": "string" },
+          "source": { "type": "string" },
+          "link": { "type": ["string", "null"] },
+          "publishedAt": { "type": "string", "format": "date-time" },
+          "severity": { "type": "string", "enum": ["critical", "high"] },
+          "importanceScore": { "type": "number", "description": "Relay importance score, 0-100, recomputed from the classifier level." },
+          "corroborationCount": { "type": "integer", "description": "Publishers the relay merged into this story; 1 when unknown." },
+          "category": { "type": ["string", "null"], "description": "Classifier category, null for alert paths that carry none (Saudi Civil Defense posts)." },
+          "countryCodes": { "type": "array", "items": { "type": "string" }, "description": "ISO2 codes the relay attributed to the headline; empty when unattributed." },
+          "variant": { "type": ["string", "null"], "description": "Site variant whose feed set carried the headline (full, tech, finance, commodity, happy), null for non-variant paths." },
+          "matchedKeywords": { "type": "array", "items": { "type": "string" }, "description": "Subscription keywords found in the headline; empty when the subscription has no keywords." },
+          "triggeredAt": { "type": "string", "format": "date-time" },
+          "reason": { "type": "string", "enum": ["breaking_news"] }
+        }
+      },
+      "sample": {
+        "subscriberId": "wh_041fef6d0657b56b75fb62cb",
+        "eventId": "rss_17e006d328288631614def2e44e5a1c7",
+        "title": "Iran’s Guards Say Two Tankers Hit Mines In Strait Of Hormuz",
+        "source": "RFE/RL",
+        "link": "https://www.rferl.org/a/iran-guards-tankers-mines-hormuz/33560001.html",
+        "publishedAt": "2026-10-17T18:31:00.000Z",
+        "severity": "critical",
+        "importanceScore": 88,
+        "corroborationCount": 3,
+        "category": "conflict",
+        "countryCodes": ["IR"],
+        "variant": "full",
+        "matchedKeywords": ["hormuz"],
+        "triggeredAt": "2026-10-17T18:45:16.000Z",
+        "reason": "breaking_news"
+      }
+    },
+    "market.move": {
+      "key": "market.move",
+      "kind": "occurrence",
+      "label": "Large Market Move",
+      "noun": "Market Move",
+      "description": "Triggers when a tracked equity, commodity or crypto quote moves at least minAbsPct percent on the day; the relay publishes moves of 5 percent or more (10 for crypto), and a sustained move is delivered once per symbol, direction and severity band per UTC day.",
+      "source": {
+        "channel": "wm:events:api:v1",
+        "producer": "scripts/ais-relay.cjs publishNotificationEvent (tee of the market_alert queue message)",
+        "relayEventType": "market_alert"
+      },
+      "assetClasses": ["equity", "commodity", "crypto"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "assetClasses": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["equity", "commodity", "crypto"] },
+            "default": [],
+            "description": "Asset classes to accept. Empty accepts all three."
+          },
+          "symbols": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1, "maxLength": 24 },
+            "maxItems": 50,
+            "default": [],
+            "description": "Quote symbols as WorldMonitor lists them (upper-cased on registration). Empty accepts every tracked symbol."
+          },
+          "minAbsPct": {
+            "type": "number",
+            "minimum": 5,
+            "maximum": 100,
+            "default": 10,
+            "description": "Deliver when |changePct| >= minAbsPct. The relay only publishes moves of 5 percent or more (10 for crypto), so lower values change nothing; 10 is the relay's critical band for equities and commodities."
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["up", "down", "any"],
+            "default": "any",
+            "description": "Accept rises, falls, or both."
+          }
+        }
+      },
+      "volume": {
+        "maxDeliveriesPerHour": 20,
+        "maxDeliveriesPerDay": 100,
+        "overflow": "dropped and counted per subscription, never batched",
+        "measured": "2026-10-18, 20.6 h of relay logs: 41 queued market_alert messages, 2 distinct moves republished hourly (Newcastle Coal +8 percent, VIX +21 percent)"
+      },
+      "retry": { "pendingTtlSeconds": 7200 },
+      "dedupe": { "seenWindowSeconds": 86400 },
+      "id": {
+        "field": "deliveryId",
+        "header": "X-WM-Delivery-Id",
+        "construction": "whd_ + 32 lowercase hex, minted once per (subscription, eventId) and kept across retries",
+        "eventIdField": "eventId",
+        "eventIdConstruction": "mkt_ + first 32 hex of sha256(coalesceKey + '|' + UTC date of publication), where coalesceKey = market:<assetClass>:<symbol lowercased>:<surge|decline>:<severity> is the relay's hourly dedup key; a move that holds all day is one event, a move that escalates into the critical band is a second one."
+      },
+      "payloadSchema": {
+        "type": "object",
+        "required": ["subscriberId", "eventId", "assetClass", "symbol", "name", "price", "changePct", "direction", "severity", "source", "publishedAt", "triggeredAt", "reason"],
+        "properties": {
+          "subscriberId": { "type": "string" },
+          "eventId": { "type": "string", "pattern": "^mkt_[0-9a-f]{32}$" },
+          "assetClass": { "type": "string", "enum": ["equity", "commodity", "crypto"] },
+          "symbol": { "type": "string" },
+          "name": { "type": "string" },
+          "price": { "type": ["number", "null"], "description": "Last price in the quote's own unit; null when the feed carried none." },
+          "changePct": { "type": "number", "description": "Day change in percent, unrounded (8.4 means 8.4 percent)." },
+          "direction": { "type": "string", "enum": ["up", "down"] },
+          "severity": { "type": "string", "enum": ["critical", "high"], "description": "critical at 10 percent or more (20 for crypto), otherwise high." },
+          "source": { "type": "string", "description": "Equity Market, Commodity Market or Crypto Market." },
+          "publishedAt": { "type": "string", "format": "date-time", "description": "When the relay published the move." },
+          "triggeredAt": { "type": "string", "format": "date-time" },
+          "reason": { "type": "string", "enum": ["large_move"] }
+        }
+      },
+      "sample": {
+        "subscriberId": "wh_041fef6d0657b56b75fb62cb",
+        "eventId": "mkt_a8ba149319c17693b70869797fdaa17f",
+        "assetClass": "equity",
+        "symbol": "VIX",
+        "name": "CBOE Volatility Index",
+        "price": 28.41,
+        "changePct": 21.3,
+        "direction": "up",
+        "severity": "critical",
+        "source": "Equity Market",
+        "publishedAt": "2026-10-17T17:46:47.000Z",
+        "triggeredAt": "2026-10-17T17:50:02.000Z",
+        "reason": "large_move"
       }
     }
   }

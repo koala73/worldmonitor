@@ -80,10 +80,14 @@ Registers a webhook for one push event. Returns `200 OK`.
 
 The events, their thresholds, cooldowns, payload schemas and id rules are defined once in the event registry, [`shared/event-triggers.json`](https://github.com/koala73/worldmonitor/blob/main/shared/event-triggers.json). The [Zapier integration](https://github.com/koala73/worldmonitor/tree/main/integrations/zapier) reads the same file for its instant triggers.
 
-| `eventType` | Fires when | Scope fields |
-| --- | --- | --- |
-| `chokepoint.disruption` (default) | A subscribed chokepoint's `disruptionScore` reaches `alertThreshold` and, when `minLiveSignal` is set, its live signals sit at least that many points above the chokepoint's standing threat level | `chokepointIds`, `alertThreshold`, `minLiveSignal` |
-| `country.risk_surge` | A monitored country's Country Instability Index rises 15 or more points within 24 hours into the high band (70 or more), once per surge per country with a 24-hour cooldown | `countries` |
+| `eventType` | Kind | Fires when | Scope fields |
+| --- | --- | --- | --- |
+| `chokepoint.disruption` (default) | threshold | A subscribed chokepoint's `disruptionScore` reaches `alertThreshold` and, when `minLiveSignal` is set, its live signals sit at least that many points above the chokepoint's standing threat level | `chokepointIds`, `alertThreshold`, `minLiveSignal` |
+| `country.risk_surge` | threshold | A monitored country's Country Instability Index rises 15 or more points within 24 hours into the high band (70 or more), once per surge per country with a 24-hour cooldown | `countries` |
+| `news.breaking` | occurrence | WorldMonitor's news relay classifies a headline as critical or high and it clears the subscription's importance floor, severity floor, keywords, categories and countries; once per story link | `scope.keywords`, `scope.categories`, `scope.countries`, `scope.importanceFloor`, `scope.severityFloor` |
+| `market.move` | occurrence | A tracked equity, commodity or crypto quote moves at least `minAbsPct` percent on the day; once per symbol, direction and severity band per UTC day | `scope.assetClasses`, `scope.symbols`, `scope.minAbsPct`, `scope.direction` |
+
+Threshold events re-evaluate a condition every 5 minutes and deliver one crossing once. Occurrence events are fire-once: each event carries an `eventId`, and a subscription gets one `X-WM-Delivery-Id` per `eventId`; delivery is still at-least-once, so a retry can repeat it. See [Occurrence events](#occurrence-events).
 
 **Request** (chokepoint alerts):
 ```json
@@ -104,12 +108,44 @@ The events, their thresholds, cooldowns, payload schemas and id rules are define
 }
 ```
 
+**Request** (breaking news):
+```json
+{
+  "callbackUrl": "https://hooks.example.com/news",
+  "eventType": "news.breaking",
+  "scope": {
+    "keywords": ["hormuz", "strait of hormuz"],
+    "categories": ["conflict", "military"],
+    "countries": ["IR"],
+    "importanceFloor": 69,
+    "severityFloor": "high"
+  }
+}
+```
+
+**Request** (large market moves):
+```json
+{
+  "callbackUrl": "https://hooks.example.com/markets",
+  "eventType": "market.move",
+  "scope": {
+    "assetClasses": ["equity", "commodity"],
+    "symbols": ["VIX", "GC=F"],
+    "minAbsPct": 10,
+    "direction": "any"
+  }
+}
+```
+
 - `callbackUrl` — required, HTTPS only, must not resolve to a private/loopback address (SSRF guard at registration).
 - `eventType` — optional. `chokepoint.disruption` when omitted, so every body written before event types existed keeps its meaning. Unknown values return `400`.
 - `chokepointIds` — optional. Omitting or passing an empty array subscribes to **all** registered chokepoints. Unknown IDs return `400`.
 - `alertThreshold` — numeric 0-100 (default `50`). Values outside that range return a `400` validation response with description `alertThreshold must be between 0 and 100`.
 - `minLiveSignal` — optional, 0-40 (default `0`), `chokepoint.disruption` only. The score must also exceed the chokepoint's standing threat level (war zone 70, critical 40, high 30, elevated 15, normal 0) by at least this many points before a delivery fires. Without it a war-zone chokepoint that stands at 70 fires once at registration against a threshold of 50 and never again. `15` is what the in-app `chokepoint_disruption` alert rule uses and what the Zapier trigger sends by default.
 - `countries` — optional, `country.risk_surge` only: ISO 3166-1 alpha-2 codes among the monitored countries (the `countries` map in the registry). Empty subscribes to all of them; an unmonitored code or a `countries` list on another event returns `400`.
+- `scope` — occurrence events only; every key is optional and the defaults below are stored on the record at registration. A key the event does not define (`symbols` on `news.breaking`), any `scope` on a threshold event, an unknown enum value or an out-of-range number returns `400` naming the field as `scope.<key>`.
+  - `news.breaking`: `keywords` (1-20 terms, 2-64 characters, matched as whole words, case-insensitive, any-of; stored lower-cased), `categories` (any of `conflict`, `protest`, `disaster`, `diplomatic`, `economic`, `terrorism`, `cyber`, `health`, `environmental`, `military`, `crime`, `infrastructure`, `tech`, `general`), `countries` (ISO 3166-1 alpha-2, any country; a headline the relay could not attribute to a country never matches a country scope), `importanceFloor` (0-100, default `69`), `severityFloor` (`critical` or `high`, default `high`, which is every headline the relay queues).
+  - `market.move`: `assetClasses` (any of `equity`, `commodity`, `crypto`), `symbols` (1-50, stored upper-cased, as WorldMonitor lists them), `minAbsPct` (5-100, default `10`; the relay only publishes moves of 5 percent or more, 10 for crypto, so lower values change nothing), `direction` (`up`, `down` or `any`, default `any`).
 
 **Response (`200`)**:
 ```json
@@ -145,12 +181,24 @@ Lists the caller's registered webhooks (filtered by the SHA-256 owner tag of the
       "eventType": "chokepoint.disruption",
       "countries": [],
       "minLiveSignal": 15
+    },
+    {
+      "subscriberId": "wh_...",
+      "callbackUrl": "https://hooks.example.com/news",
+      "chokepointIds": ["hormuz_strait", "suez", "..."],
+      "alertThreshold": 50,
+      "createdAt": "2026-10-18T09:00:00Z",
+      "active": true,
+      "eventType": "news.breaking",
+      "countries": [],
+      "minLiveSignal": 0,
+      "scope": { "keywords": ["hormuz", "strait of hormuz"], "categories": ["conflict", "military"], "countries": ["IR"], "importanceFloor": 69, "severityFloor": "high" }
     }
   ]
 }
 ```
 
-The `secret` is intentionally omitted from list and status responses. Records registered before event types existed report `eventType: "chokepoint.disruption"`, `countries: []` and `minLiveSignal: 0`.
+The `secret` is intentionally omitted from list and status responses. Records registered before event types existed report `eventType: "chokepoint.disruption"`, `countries: []` and `minLiveSignal: 0`. `scope` appears only on occurrence-event records, as stored (defaults applied); `chokepointIds` and `alertThreshold` on those records are the registration defaults and are not used.
 
 <Note>
 The `{subscriberId}` sub-routes below are hand-written edge handlers, not generated gateway RPCs: they do not appear in the published OpenAPI spec (`ShippingV2Service`) or in generated clients, and their `403` message uses the literal `PRO subscription required` (all-caps), unlike the gateway routes' `Pro subscription required`.
@@ -202,7 +250,7 @@ For a `country.risk_surge` webhook, each country in scope is evaluated on the fe
 - `previousScore` in the delivery is `score - delta24h`, the index about 24 hours earlier.
 - The thresholds were chosen on a 90-day backtest of 6-hourly archived scores (24 countries) checked against wire reports: at a floor of 50, 48 fires gave 17 clear escalations, 17 minor incidents and 14 non-events, every clear escalation in a country already in the high band; the floor of 70 keeps 15 of those 17 and drops a third of the non-events, and the baseline guard removes the static re-levellings. Expect about 0.7 fires a day across all monitored countries, concentrated in countries with an active index (Iran, Ukraine, Russia in the backtest window); countries whose index sits flat (Yemen at 70, Saudi Arabia at 50 in the window) do not surge even during real escalations, so narrow the scope with `countries` where that matters. Changing the thresholds means editing the registry; the worker and this page are pinned to it by tests.
 
-For both events:
+For both threshold events:
 
 - Delivery is at-least-once. A failed delivery stays armed and is retried on the next tick while the event condition holds. A retry keeps the original `X-WM-Delivery-Id` and `triggeredAt`; the score fields carry the current values. A crossing that re-arms before it is delivered is dropped, and the next crossing gets a new id.
 - A failure is a non-2xx response, no response within 15 seconds (DNS resolution included), or a callback URL that resolves to a private or reserved address. A webhook's deliveries stop for the tick at its first failure and the rest wait for the next tick, so `failureCount` counts consecutive failed ticks. After 5 (about 25 minutes of failures) the worker sets `active: false` and stops delivering to that webhook. A successful delivery resets the count. `reactivate` resumes delivery.
@@ -226,6 +274,16 @@ The `reason` field names the strongest signal behind the score. The first matchi
 | `score_threshold` | None of the above |
 
 `details` carries `name`, `status`, `activeWarnings`, `aisDisruptions`, `congestionLevel`, `warRiskTier`, `wowChangePct` (`null` when today's transit counts are unavailable), `previousScore` (the score at the previous evaluation, `null` on the first), and `scoresFetchedAt` (when the chokepoint feed was computed).
+
+### Occurrence events
+
+`news.breaking` and `market.move` are not conditions the worker re-checks; they are things that happened once. The same worker drains, every 5 minutes, a copy of the news relay's `rss_alert` and `market_alert` messages (the relay tees them onto a second list as it queues them for in-app alerts) and matches each against every subscription's stored `scope`.
+
+- **One event, one delivery.** Every body carries an `eventId`. For `news.breaking` it is `rss_` + 32 hex of the story's canonical link (host and path, no query or fragment), so the same story reaching the relay through several site feeds, or under a reworded headline, is one event; a headline with no link hashes its normalized title instead. For `market.move` it is `mkt_` + 32 hex of the relay's coalesce key (`market:<assetClass>:<symbol>:<surge|decline>:<severity>`) per UTC day: the relay republishes a sustained move every hour, you receive it once a day per symbol, direction and severity band, and a move that escalates into the critical band is a second event. A subscription gets one `X-WM-Delivery-Id` per `eventId`, taken from the first copy that matches its `scope`: a later copy (a bigger move in the same band, a reworded headline) still reaches a subscription the earlier copies did not match, and never reaches one that already has the event. Delivery is at-least-once: if the worker stops after your endpoint accepted a POST but before it recorded the success, the next tick resends it under the same `X-WM-Delivery-Id`, so make processing idempotent on that id. Two subscriptions on the same event receive the same `eventId` under different `X-WM-Delivery-Id`s, which is the key to dedupe across Zaps or receivers.
+- **Retry and expiry.** A failed delivery (non-2xx, timeout, refused callback) is retried every 5 minutes under the same `X-WM-Delivery-Id` and body, with the same `failureCount` ceiling as threshold events (5 consecutive failed ticks deactivate the webhook). A delivery still pending two hours after it was first queued is dropped and never sent, and a later copy of that event does not restart it. A deactivated webhook keeps its pending deliveries: reactivated within those two hours, it retries them on the next tick under their original ids; older ones are dropped.
+- **Caps.** Each subscription receives at most 20 events an hour and 100 a day per event type (UTC buckets), retries included: a pending retry carried into a new hour takes one of that hour's slots and waits, still pending, while the hour is full. New events over the cap are dropped and counted on the server, not queued or batched. Narrow the scope (keywords, categories, countries, symbols, a higher `importanceFloor` or `minAbsPct`) rather than relying on the cap. Measured on 2026-10-18, the relay queues about 135 distinct headlines a day (16 critical) and a handful of distinct market moves.
+- **Severity and floors.** Only headlines the relay classified `critical` or `high` exist on this stream; `severityFloor: "critical"` keeps the critical band only. `importanceScore` is the relay's score (the critical band starts at 82); the default floor of 69 is the watchlist-story floor. `countryCodes` is what the relay attributed from the headline text (often empty); a country scope is strict and never receives unattributed headlines. `category` is `null` for alert paths with no classifier category (Saudi Civil Defense posts).
+- **Signing.** Occurrence deliveries go through the same sender as threshold events, so they carry the same headers and signatures; verify them as described in [Verifying deliveries](#verifying-deliveries), then dedupe on `X-WM-Delivery-Id` (one subscription) or `eventId` (across subscriptions).
 
 ### Delivery format
 
@@ -275,7 +333,49 @@ A `country.risk_surge` delivery carries `X-WM-Event: country.risk_surge` and thi
 }
 ```
 
-Both events share the headers and the signature scheme below. The [OpenAPI spec](https://www.worldmonitor.app/openapi.json) carries the delivery contract once under `webhooks` (`chokepoint.disruption`) and names `country.risk_surge` in the `X-WM-Event` header's enum; this page and the event registry hold the risk-surge payload schema.
+A `news.breaking` delivery carries `X-WM-Event: news.breaking` and this body (`reason` is always `breaking_news`; every field is present, nullable ones as `null`, lists empty when unknown):
+
+```json
+{
+  "subscriberId": "wh_...",
+  "eventId": "rss_17e006d328288631614def2e44e5a1c7",
+  "title": "Iran’s Guards Say Two Tankers Hit Mines In Strait Of Hormuz",
+  "source": "RFE/RL",
+  "link": "https://www.rferl.org/a/iran-guards-tankers-mines-hormuz/33560001.html",
+  "publishedAt": "2026-10-17T18:31:00Z",
+  "severity": "critical",
+  "importanceScore": 88,
+  "corroborationCount": 3,
+  "category": "conflict",
+  "countryCodes": ["IR"],
+  "variant": "full",
+  "matchedKeywords": ["hormuz"],
+  "triggeredAt": "2026-10-17T18:45:16Z",
+  "reason": "breaking_news"
+}
+```
+
+A `market.move` delivery carries `X-WM-Event: market.move` and this body (`reason` is always `large_move`; `changePct` is unrounded, `price` is `null` when the feed carried none):
+
+```json
+{
+  "subscriberId": "wh_...",
+  "eventId": "mkt_a8ba149319c17693b70869797fdaa17f",
+  "assetClass": "equity",
+  "symbol": "VIX",
+  "name": "CBOE Volatility Index",
+  "price": 28.41,
+  "changePct": 21.3,
+  "direction": "up",
+  "severity": "critical",
+  "source": "Equity Market",
+  "publishedAt": "2026-10-17T17:46:47Z",
+  "triggeredAt": "2026-10-17T17:50:02Z",
+  "reason": "large_move"
+}
+```
+
+All events share the headers and the signature scheme below. The [OpenAPI spec](https://www.worldmonitor.app/openapi.json) carries the delivery contract once under `webhooks` (`chokepoint.disruption`) and names the other events in the `X-WM-Event` header's description; this page and the event registry hold their payload schemas.
 
 The delivery worker re-resolves `callbackUrl` before each send, refuses private, loopback, link-local, and reserved addresses, and connects only to the vetted address to mitigate DNS rebinding. Delivery is at-least-once. Verify the V2 signature and timestamp before you dedupe on `X-WM-Delivery-Id`.
 

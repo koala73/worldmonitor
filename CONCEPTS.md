@@ -122,6 +122,18 @@ Detaching a path from its origin is where this turns dangerous. A target can be 
 
 Scheme is a separate axis, and its ordering is load-bearing: the scheme must be rejected *before* any origin comparison, because a blob URL reports its inner origin and would otherwise satisfy a same-origin test that the opaque schemes fail. Enforcement is asymmetric: the dispatcher refuses to put a target that is not plain https, or that carries embedded credentials, into the *push* payload, and the client independently refuses to act on one, so neither of those layers depends on the other being correct — but the text channels still render the raw target in their message body, where it is equally clickable and unchecked. A scheme guard on the push path is therefore not a guarantee about the target as a whole. See also: Alert Rule, Event Attribution, Variant Host.
 
+### Threshold Event
+
+A push event the webhook worker produces by re-evaluating a condition against a feed every tick (chokepoint disruption, country risk surge). The unit of delivery is a crossing: the worker keeps the crossing pending, under one delivery id, while the condition holds and a send has not succeeded, and re-arms by hysteresis once it subsides. Nothing is queued; a crossing that re-arms before it is delivered is simply gone, and the next crossing gets a new id. Its scope fields are top-level registration fields. See also: Occurrence Event, Event Id.
+
+### Occurrence Event
+
+A push event that happened once and has no condition to re-check (a breaking headline, a large market move, a natural hazard). The worker drains a copy of the producer's stream, matches each occurrence against every subscription's stored `scope`, and gives each subscription one delivery id per Event Id, from the first copy that matches that subscription's scope: the per-subscriber state remembers the Event Id as pending (with the body as first built, resent unchanged on retry) until it is delivered, then as a day-long tombstone so a replayed or republished copy is a no-op. Delivery stays at-least-once. A pending delivery older than the event's retry window is dropped, not delivered late, and leaves the same tombstone. Per-subscription hour and day caps count every event sent in the bucket, retries included; new events over a cap are dropped and counted rather than queued or batched. Its scope fields travel in the registration body's `scope` object, validated against the event's registry `inputSchema`. See also: Threshold Event, Event Id, Alert Rule.
+
+### Event Id
+
+The producer-side identity of an Occurrence Event, carried in every delivery beside the per-subscription delivery id. It is derived from what makes two copies the same event, not from the message that carried them: a story's canonical link (so the five site-variant copies and a reworded headline collapse), a market move's coalesce key per UTC day (so the relay's hourly republish of a sustained move is one event), a hazard feed's own record id. Two subscriptions on the same event receive the same Event Id under different delivery ids, which is what lets a receiver dedupe across subscriptions. A title hash is the fallback only when a story carries no link. See also: Occurrence Event.
+
 ## Product Analytics Collection
 
 ### Write Receipt
