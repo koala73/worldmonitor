@@ -13,6 +13,7 @@ import {
   cachedFetchJsonWithMeta,
   getCachedJson,
   setCachedJson,
+  setCachedJsonIfAbsent,
   getCachedJsonBatch,
   readCachedJson,
   runRedisPipeline,
@@ -42,6 +43,7 @@ import {
   type LastGoodRead,
 } from './_lastgood-store';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
+import { getUsageScope } from '../../../_shared/usage';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
 import {
@@ -820,32 +822,95 @@ export function looksLikeRssXml(text: string): boolean {
   return /<rss[\s>]|<feed[\s>]|<rdf:rdf[\s>]/.test(head);
 }
 
+/** HTTP validators from a direct 200, replayed as a conditional GET on refresh. */
+export interface FeedValidators {
+  etag?: string;
+  lastModified?: string;
+}
+
+interface RssTextResult {
+  text: string | null;
+  failure: FeedFetchAttempt['failure'];
+  /** True only for a 304 to a conditional request: the cached parse is still current. */
+  notModified?: boolean;
+  validators?: FeedValidators;
+}
+
+function responseValidators(resp: Response): FeedValidators | undefined {
+  const etag = resp.headers.get('etag') ?? undefined;
+  const lastModified = resp.headers.get('last-modified') ?? undefined;
+  return etag || lastModified ? { etag, lastModified } : undefined;
+}
+
 async function fetchRssText(
   url: string,
   signal: AbortSignal,
-): Promise<{ text: string | null; failure: FeedFetchAttempt['failure'] }> {
+  validators?: FeedValidators,
+): Promise<RssTextResult> {
   const { controller, cleanup, timedOut } = createTimeoutLinkedController(signal);
 
   try {
-    const resp = await fetch(url, {
-      headers: {
-        'User-Agent': CHROME_UA,
-        'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-      signal: controller.signal,
-    });
+    const headers: Record<string, string> = {
+      'User-Agent': CHROME_UA,
+      'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+    };
+    if (validators?.etag) headers['If-None-Match'] = validators.etag;
+    if (validators?.lastModified) headers['If-Modified-Since'] = validators.lastModified;
+    const resp = await fetch(url, { headers, signal: controller.signal });
+    if (resp.status === 304 && validators) return { text: null, failure: null, notModified: true };
     if (!resp.ok) return { text: null, failure: 'direct-error' };
     const text = await resp.text();
     // Defensive: upstream may return HTTP 200 with an HTML interstitial
     // (Cloudflare bot challenge, captcha page). Reject up front so the
     // caller's relay fallback fires instead of caching an empty parse.
     if (!looksLikeRssXml(text)) return { text: null, failure: 'direct-error' };
-    return { text, failure: null };
+    return { text, failure: null, validators: responseValidators(resp) };
   } catch {
     return {
       text: null,
       failure: timedOut() ? 'per-feed-timeout' : signal.aborted ? 'deadline-abort' : 'direct-error',
+    };
+  } finally {
+    cleanup();
+  }
+}
+
+interface RelayTextResult {
+  text: string | null;
+  attempted: boolean;
+  status: number | null;
+  failure: FeedFetchAttempt['failure'];
+  bodyShape: 'rss' | 'html-or-empty' | 'no-relay' | 'fetch-error';
+}
+
+/** The Railway relay leg: a different IP for feeds that block Vercel. */
+async function fetchViaRelay(url: string, signal: AbortSignal): Promise<RelayTextResult> {
+  const relayBase = getRelayBaseUrl();
+  if (!relayBase) return { text: null, attempted: false, status: null, failure: null, bodyShape: 'no-relay' };
+  const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(url)}`;
+  const { controller, cleanup, timedOut } = createTimeoutLinkedController(signal);
+  let status: number | null = null;
+  try {
+    const resp = await fetch(relayUrl, {
+      headers: getRelayHeaders({ Accept: RSS_ACCEPT }),
+      signal: controller.signal,
+    });
+    status = resp.status;
+    if (!resp.ok) return { text: null, attempted: true, status, failure: null, bodyShape: 'fetch-error' };
+    const relayText = await resp.text();
+    // Relay can also return CF-challenge HTML if the relay's IP is
+    // challenged — apply the same sniff to keep the cache clean.
+    return looksLikeRssXml(relayText)
+      ? { text: relayText, attempted: true, status, failure: null, bodyShape: 'rss' }
+      : { text: null, attempted: true, status, failure: null, bodyShape: 'html-or-empty' };
+  } catch {
+    return {
+      text: null,
+      attempted: true,
+      status,
+      failure: timedOut() ? 'per-feed-timeout' : signal.aborted ? 'deadline-abort' : 'relay-error',
+      bodyShape: 'fetch-error',
     };
   } finally {
     cleanup();
@@ -868,6 +933,10 @@ export interface ParseResult {
   // #7083: how the fetch leg of this attempt actually ended. Absent on
   // cache entries written before the field existed.
   attempt?: FeedFetchAttempt;
+  // When upstream last confirmed this parse (a 200 or a 304). Absent on
+  // entries written before background refresh; those simply age out.
+  fetchedAt?: number;
+  validators?: FeedValidators;
 }
 
 // Cache TTLs: a successful parse (parsedTotal > 0) caches for an hour to
@@ -942,13 +1011,16 @@ export async function fetchAndParseRss(
         // so cache hits keep the normal `empty` verdict.
         return { ...cached, attempt: cachedAttemptFrom(cached.attempt) };
       }
+      // Serve the cached parse now; confirm it with upstream after the
+      // response, so the next build sees new items without this one waiting.
+      if (isDueForRefresh(cached, Date.now())) scheduleFeedRefresh(feed, variant, cached);
       return cached;
     }
 
     // Try direct fetch first
     const direct = await fetchRssText(feed.url, signal);
     let text = direct.text;
-    let failure: FeedFetchAttempt['failure'] = direct.failure;
+    const failure: FeedFetchAttempt['failure'] = direct.failure;
     let source: 'direct' | 'relay' | 'both-failed' = text ? 'direct' : 'both-failed';
     let relayStatus: number | null = null;
     let relayFailure: FeedFetchAttempt['failure'] = null;
@@ -957,36 +1029,14 @@ export async function fetchAndParseRss(
 
     // Fallback: route through Railway relay (different IP, avoids Vercel blocks)
     if (!text) {
-      const relayBase = getRelayBaseUrl();
-      if (relayBase) {
-        relayAttempted = true;
-        relayBodyShape = 'fetch-error';
-        const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(feed.url)}`;
-        const { controller, cleanup, timedOut } = createTimeoutLinkedController(signal);
-        try {
-          const resp = await fetch(relayUrl, {
-            headers: getRelayHeaders({ Accept: RSS_ACCEPT }),
-            signal: controller.signal,
-          });
-          relayStatus = resp.status;
-          if (resp.ok) {
-            const relayText = await resp.text();
-            // Relay can also return CF-challenge HTML if the relay's IP is
-            // challenged — apply the same sniff to keep the cache clean.
-            if (looksLikeRssXml(relayText)) {
-              text = relayText;
-              source = 'relay';
-              relayBodyShape = 'rss';
-            } else {
-              relayBodyShape = 'html-or-empty';
-            }
-          }
-        } catch {
-          /* relay also failed */
-          relayFailure = timedOut() ? 'per-feed-timeout' : signal.aborted ? 'deadline-abort' : 'relay-error';
-        } finally {
-          cleanup();
-        }
+      const relay = await fetchViaRelay(feed.url, signal);
+      relayAttempted = relay.attempted;
+      relayBodyShape = relay.bodyShape;
+      relayStatus = relay.status;
+      relayFailure = relay.failure;
+      if (relay.text) {
+        text = relay.text;
+        source = 'relay';
       }
     }
 
@@ -1034,6 +1084,9 @@ export async function fetchAndParseRss(
       failure: null,
       negativeCache: false,
     };
+    result.fetchedAt = Date.now();
+    // Relay responses carry the relay's validators, not the publisher's.
+    if (source === 'direct' && direct.validators) result.validators = direct.validators;
     // Long cache only for healthy parses; short cache for zero-from-zero so
     // transient upstream issues don't sticky-fail for an hour.
     const ttl = result.parsedTotal > 0 ? CACHE_TTL_HEALTHY_S : CACHE_TTL_EMPTY_S;
@@ -1047,6 +1100,87 @@ export async function fetchAndParseRss(
       attempt: { source: 'direct', failure: 'direct-error', negativeCache: false },
     };
   }
+}
+
+// A healthy parse stays servable for CACHE_TTL_HEALTHY_S, but once it is this
+// old the next build that reads it also asks upstream, after its response, for
+// anything newer. A conditional GET makes the common "nothing new" answer a
+// bodiless 304.
+export const FEED_REFRESH_AFTER_MS = 5 * 60_000;
+// One refresher per feed across concurrent builds and isolates.
+const FEED_REFRESH_LOCK_S = 120;
+// Bounds a build's background fan-out; the rest wait for a free slot.
+const FEED_REFRESH_CONCURRENCY = 20;
+
+export type FeedRefreshOutcome = 'locked' | 'not-modified' | 'updated' | 'failed';
+
+export function isDueForRefresh(cached: ParseResult, now: number): boolean {
+  return cached.parsedTotal > 0
+    && typeof cached.fetchedAt === 'number'
+    && now - cached.fetchedAt >= FEED_REFRESH_AFTER_MS;
+}
+
+/**
+ * Re-confirms one cached feed parse with upstream. Never replaces a healthy
+ * parse with a failure or an empty body: those leave the entry to serve until
+ * it expires, when the foreground fetch path takes over as before.
+ */
+export async function refreshFeedCache(
+  feed: ServerFeed,
+  variant: string,
+  cached: ParseResult,
+  signal: AbortSignal = AbortSignal.timeout(FEED_TIMEOUT_MS * 2),
+): Promise<FeedRefreshOutcome> {
+  const cacheKey = rssFeedCacheKey(variant, feed.url);
+  const locked = await setCachedJsonIfAbsent(`rss:feed-refresh-lock:v1:${variant}:${feed.url}`, 1, FEED_REFRESH_LOCK_S);
+  if (!locked) return 'locked';
+
+  const direct = await fetchRssText(feed.url, signal, cached.validators);
+  if (direct.notModified) {
+    await setCachedJson(cacheKey, { ...cached, fetchedAt: Date.now() }, CACHE_TTL_HEALTHY_S);
+    return 'not-modified';
+  }
+  let text = direct.text;
+  let source: 'direct' | 'relay' = 'direct';
+  if (!text) {
+    const relay = await fetchViaRelay(feed.url, signal);
+    if (!relay.text) return 'failed';
+    text = relay.text;
+    source = 'relay';
+  }
+  const parsed = parseRssXml(text, feed, variant);
+  if (!parsed || parsed.parsedTotal === 0) return 'failed';
+  const result: ParseResult = {
+    ...parsed,
+    attempt: { source, failure: null, negativeCache: false },
+    fetchedAt: Date.now(),
+  };
+  if (source === 'direct' && direct.validators) result.validators = direct.validators;
+  await setCachedJson(cacheKey, result, CACHE_TTL_HEALTHY_S);
+  return 'updated';
+}
+
+let refreshesRunning = 0;
+const refreshQueue: Array<() => void> = [];
+
+async function withRefreshSlot<T>(task: () => Promise<T>): Promise<T> {
+  if (refreshesRunning >= FEED_REFRESH_CONCURRENCY) {
+    await new Promise<void>((resolve) => refreshQueue.push(resolve));
+  }
+  refreshesRunning += 1;
+  try {
+    return await task();
+  } finally {
+    refreshesRunning -= 1;
+    refreshQueue.shift()?.();
+  }
+}
+
+function scheduleFeedRefresh(feed: ServerFeed, variant: string, cached: ParseResult): void {
+  const refresh = withRefreshSlot(() => refreshFeedCache(feed, variant, cached)).catch(() => 'failed' as const);
+  const ctx = getUsageScope()?.ctx;
+  if (ctx) ctx.waitUntil(refresh);
+  else void refresh;
 }
 
 // Date-tag priority lists. RSS feeds typically carry <pubDate>; Atom carries
