@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Shipping v2 chokepoint disruption webhook delivery — always-on Railway service.
+ * Shipping v2 event webhook delivery — always-on Railway service.
  *
  * Railway config:
  *   - Service name: shipping-webhook-worker
@@ -11,19 +11,34 @@
  * Every tick reads the event feeds and, for each subscriber record, evaluates
  * the event it registered for (shared/event-triggers.json, mirrored at
  * scripts/shared/event-triggers.json):
- *   - `chokepoint.disruption`: compares each subscribed chokepoint's
- *     disruptionScore with the record's alertThreshold (and its live-signal
- *     floor, minLiveSignal) and POSTs one signed event per upward crossing.
- *   - `country.risk_surge`: fires once per country when the Country
- *     Instability Index rose by riseThreshold within 24 h above the floor,
- *     with a 24 h cooldown per country.
+ *   - `chokepoint.disruption` (threshold): compares each subscribed
+ *     chokepoint's disruptionScore with the record's alertThreshold (and its
+ *     live-signal floor, minLiveSignal) and POSTs one signed event per upward
+ *     crossing.
+ *   - `country.risk_surge` (threshold): fires once per country when the
+ *     Country Instability Index rose by riseThreshold within 24 h above the
+ *     floor, with a 24 h cooldown per country.
+ *   - `news.breaking`, `market.move` (occurrence): drains the API fan-out list
+ *     `wm:events:api:v1` that scripts/ais-relay.cjs tees its rss_alert and
+ *     market_alert queue messages onto (oldest 200 per tick), matches each
+ *     message against every subscriber's stored `scope`, and delivers one
+ *     POST per (subscriber, eventId). A failed delivery stays pending under
+ *     the same delivery id until retry.pendingTtlSeconds; per-subscription
+ *     caps (volume.maxDeliveriesPerHour/Day) count the events POSTed in each
+ *     UTC hour and day, retries included, and drop and count new overflow.
+ *     Each subscriber's `occ:<eventId>` field (pending, then a delivered or
+ *     expired tombstone for a day) is what stops a replayed, multi-variant or
+ *     republished copy from firing twice; `webhook:seen:<event>:v1` (sorted
+ *     set scored by first-seen ms) only counts those copies for the summary.
  * Delivery state per (subscriber, entity) lives in `webhook:state:<id>:v1`
- * (chokepoint ids and `cii:<CC>` fields share the hash); delivery counters
- * live on the subscriber record. Delivery is at-least-once.
+ * (chokepoint ids, `cii:<CC>`, `occ:<eventId>` and `occ-cap` fields share the
+ * hash); delivery counters live on the subscriber record. Delivery is
+ * at-least-once.
  */
 
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 
 import {
   CHROME_UA,
@@ -42,6 +57,14 @@ import {
   webhookKey,
 } from './lib/shipping-webhook-delivery.mjs';
 
+const require = createRequire(import.meta.url);
+// CJS so the relay publisher shares the exact id functions (and the list key).
+const {
+  API_FANOUT_LIST_KEY,
+  RELAY_EVENT_TO_OCCURRENCE,
+  occurrenceEventIdFor,
+} = require('./lib/occurrence-events.cjs');
+
 // Railway runs this file with rootDirectory=scripts, so the registry is read
 // from the scripts/shared mirror (tests/scripts-shared-mirror.test.mjs pins it
 // to shared/event-triggers.json).
@@ -50,6 +73,28 @@ export const EVENT_REGISTRY = JSON.parse(
 );
 export const CHOKEPOINT_EVENT = 'chokepoint.disruption';
 export const RISK_SURGE_EVENT = 'country.risk_surge';
+export const NEWS_EVENT = 'news.breaking';
+export const MARKET_EVENT = 'market.move';
+/** Per occurrence event: the caps, retry TTL and seen window the registry declares. */
+export const OCCURRENCE_RULES = Object.freeze(Object.fromEntries(
+  Object.entries(EVENT_REGISTRY.events)
+    .filter(([, event]) => event.kind === 'occurrence')
+    .map(([key, event]) => [key, Object.freeze({
+      maxPerHour: event.volume.maxDeliveriesPerHour,
+      maxPerDay: event.volume.maxDeliveriesPerDay,
+      pendingTtlMs: event.retry.pendingTtlSeconds * 1000,
+      seenWindowMs: event.dedupe.seenWindowSeconds * 1000,
+    })]),
+));
+export const FANOUT_LIST_KEY = API_FANOUT_LIST_KEY;
+/** Oldest messages drained per tick; the relay caps the list at 2,000. */
+export const FANOUT_DRAIN_MAX = 200;
+export const OCCURRENCE_STATE_PREFIX = 'occ:';
+export const OCCURRENCE_CAP_FIELD = 'occ-cap';
+/** A delivered occurrence stays in the state hash this long so a replay is a no-op. */
+export const DELIVERED_TOMBSTONE_MS = 24 * 3_600_000;
+const OCCURRENCE_REASONS = Object.freeze({ [NEWS_EVENT]: 'breaking_news', [MARKET_EVENT]: 'large_move' });
+const MARKET_ASSET_CLASSES = new Set(['equity', 'commodity', 'crypto']);
 const RISK_SURGE = EVENT_REGISTRY.events[RISK_SURGE_EVENT];
 export const RISK_SURGE_RULE = Object.freeze({
   rise: RISK_SURGE.threshold.riseThreshold,
@@ -111,8 +156,28 @@ export const STATUS_WRITE_SCRIPT = `${FENCE}redis.call('SET', KEYS[2], ARGV[2], 
 
 export const LOCK_RENEW_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('PEXPIRE', KEYS[1], ARGV[2]) end return 0";
 
+// Occurrence bookkeeping, all fenced like the writes above.
+// Removes expired pendings and old delivered tombstones from a state hash.
+export const STATE_HDEL_SCRIPT = `${FENCE}return redis.call('HDEL', KEYS[2], unpack(ARGV, 2))`;
+// Drops the ARGV[2] oldest fan-out messages (the tail; LPUSH adds at the head,
+// so the tail positions this tick read stay stable under concurrent pushes).
+export const FANOUT_TRIM_SCRIPT = `${FENCE}redis.call('LTRIM', KEYS[2], 0, -(tonumber(ARGV[2]) + 1)) return 1`;
+// Marks event ids seen (ZADD NX, score = first-seen ms), prunes ids older than
+// the cutoff ARGV[2], keeps the set alive for ARGV[3] seconds. ARGV[4..] are
+// score, member pairs.
+export const SEEN_ADD_SCRIPT = `${FENCE}redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', ARGV[2]) local added = 0 for i = 4, #ARGV - 1, 2 do added = added + redis.call('ZADD', KEYS[2], 'NX', ARGV[i], ARGV[i + 1]) end redis.call('EXPIRE', KEYS[2], ARGV[3]) return added`;
+
 export function stateKey(subscriberId) {
   return `webhook:state:${subscriberId}:v1`;
+}
+
+export function seenKey(event) {
+  return `webhook:seen:${event}:v1`;
+}
+
+/** State hash field for one occurrence event id. */
+export function occurrenceStateField(eventId) {
+  return `${OCCURRENCE_STATE_PREFIX}${eventId}`;
 }
 
 /** First match wins. */
@@ -269,12 +334,177 @@ export function parseStateHash(flat) {
   const state = {};
   if (!Array.isArray(flat)) return state;
   for (let i = 0; i + 1 < flat.length; i += 2) {
+    const field = flat[i];
     try {
       const value = JSON.parse(flat[i + 1]);
-      if (value && typeof value.armed === 'boolean') state[flat[i]] = value;
+      if (!value || typeof value !== 'object') continue;
+      if (typeof value.armed === 'boolean') state[field] = value;
+      else if (value.kind === 'occurrence' && typeof field === 'string' && field.startsWith(OCCURRENCE_STATE_PREFIX)) state[field] = value;
+      else if (field === OCCURRENCE_CAP_FIELD) state[field] = value;
     } catch { /* an unreadable field is treated as missing, which is armed */ }
   }
   return state;
+}
+
+function finiteNumber(value) {
+  const number = typeof value === 'string' && value.trim() ? Number(value) : value;
+  return typeof number === 'number' && Number.isFinite(number) ? number : null;
+}
+
+function isoFromMs(ms) {
+  return new Date(ms).toISOString();
+}
+
+/**
+ * Pure. One teed queue message ({eventType, payload, severity, variant?,
+ * publishedAt}) becomes an occurrence event with the delivery payload minus
+ * the per-subscription fields (subscriberId, matchedKeywords, triggeredAt,
+ * reason). Null for anything that is not a well-formed rss_alert or
+ * market_alert message. A pre-upgrade rss_alert without payload.eventId gets
+ * the same link-based id the relay now stamps; a market_alert without the
+ * quote fields is rejected (the relay added them in the same change as the tee).
+ */
+export function normalizeTeeMessage(raw, now = Date.now()) {
+  let msg = raw;
+  if (typeof raw === 'string') {
+    try {
+      msg = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (!msg || typeof msg !== 'object') return null;
+  const event = RELAY_EVENT_TO_OCCURRENCE[msg.eventType];
+  const payload = msg.payload;
+  if (!event || !payload || typeof payload !== 'object') return null;
+  const severity = msg.severity === 'critical' || msg.severity === 'high' ? msg.severity : null;
+  if (!severity) return null;
+  const publishedAt = finiteNumber(msg.publishedAt) ?? now;
+
+  if (event === NEWS_EVENT) {
+    const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+    if (!title) return null;
+    const eventId = typeof payload.eventId === 'string' && payload.eventId
+      ? payload.eventId
+      : occurrenceEventIdFor('rss_alert', payload, publishedAt);
+    const occurredMs = finiteNumber(payload.publishedAt) > 0 ? finiteNumber(payload.publishedAt) : publishedAt;
+    const corroboration = finiteNumber(payload.corroborationCount);
+    return {
+      event,
+      eventId,
+      publishedAt,
+      payload: {
+        eventId,
+        title,
+        source: typeof payload.source === 'string' ? payload.source : '',
+        link: typeof payload.link === 'string' && payload.link.trim() ? payload.link.trim() : null,
+        publishedAt: isoFromMs(occurredMs),
+        severity,
+        importanceScore: finiteNumber(payload.importanceScore) ?? 0,
+        corroborationCount: corroboration !== null && corroboration >= 1 ? Math.round(corroboration) : 1,
+        category: typeof payload.category === 'string' && payload.category ? payload.category : null,
+        countryCodes: Array.isArray(payload.countryCodes)
+          ? [...new Set(payload.countryCodes.filter((code) => typeof code === 'string').map((code) => code.toUpperCase()))]
+          : [],
+        variant: typeof msg.variant === 'string' && msg.variant ? msg.variant : null,
+      },
+    };
+  }
+
+  const changePct = finiteNumber(payload.changePct);
+  if (!MARKET_ASSET_CLASSES.has(payload.assetClass) || typeof payload.symbol !== 'string' || !payload.symbol.trim() || changePct === null) {
+    return null;
+  }
+  const eventId = typeof payload.eventId === 'string' && payload.eventId
+    ? payload.eventId
+    : occurrenceEventIdFor('market_alert', payload, publishedAt);
+  if (!eventId) return null;
+  const symbol = payload.symbol.trim().toUpperCase();
+  return {
+    event,
+    eventId,
+    publishedAt,
+    payload: {
+      eventId,
+      assetClass: payload.assetClass,
+      symbol,
+      name: typeof payload.name === 'string' && payload.name ? payload.name : symbol,
+      price: finiteNumber(payload.price),
+      changePct,
+      direction: payload.direction === 'down' || payload.direction === 'up' ? payload.direction : (changePct < 0 ? 'down' : 'up'),
+      severity,
+      source: typeof payload.source === 'string' ? payload.source : '',
+      publishedAt: isoFromMs(publishedAt),
+    },
+  };
+}
+
+function scopeList(value) {
+  return Array.isArray(value) ? value.filter((item) => typeof item === 'string' && item) : [];
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Whole-word, case-insensitive; a keyword may contain spaces ("strait of hormuz"). */
+export function keywordMatches(text, keyword) {
+  const pattern = new RegExp(`(?:^|[^\\p{L}\\p{N}])${escapeRegExp(keyword)}(?=$|[^\\p{L}\\p{N}])`, 'iu');
+  return pattern.test(String(text ?? ''));
+}
+
+/**
+ * Pure. Does an occurrence event fall inside a subscription's stored scope?
+ * Returns null when it does not, otherwise the per-subscription payload extras
+ * (matchedKeywords for news). The scope was normalized at registration with
+ * the registry defaults; a record with no scope at all filters nothing.
+ * Country scopes are strict: an event the relay could not attribute to a
+ * country never matches a country-scoped subscription (the in-app relay is
+ * deliberately permissive there; an automation that asked for Iran must not
+ * receive Brazil).
+ */
+export function matchOccurrence(record, occurrence) {
+  if (recordEventType(record) !== occurrence?.event) return null;
+  const scope = record.scope && typeof record.scope === 'object' ? record.scope : {};
+  const payload = occurrence.payload;
+  if (occurrence.event === NEWS_EVENT) {
+    const floor = finiteNumber(scope.importanceFloor) ?? 0;
+    if (payload.importanceScore < floor) return null;
+    if (scope.severityFloor === 'critical' && payload.severity !== 'critical') return null;
+    const categories = scopeList(scope.categories);
+    if (categories.length && !(payload.category && categories.includes(payload.category))) return null;
+    const countries = scopeList(scope.countries);
+    if (countries.length && !payload.countryCodes.some((code) => countries.includes(code))) return null;
+    const keywords = scopeList(scope.keywords);
+    const matchedKeywords = keywords.filter((keyword) => keywordMatches(payload.title, keyword));
+    if (keywords.length && !matchedKeywords.length) return null;
+    return { matchedKeywords };
+  }
+  if (occurrence.event === MARKET_EVENT) {
+    const assetClasses = scopeList(scope.assetClasses);
+    if (assetClasses.length && !assetClasses.includes(payload.assetClass)) return null;
+    const symbols = scopeList(scope.symbols);
+    if (symbols.length && !symbols.includes(payload.symbol)) return null;
+    const minAbsPct = finiteNumber(scope.minAbsPct) ?? 0;
+    if (Math.abs(payload.changePct) < minAbsPct) return null;
+    if ((scope.direction === 'up' || scope.direction === 'down') && payload.direction !== scope.direction) return null;
+    return {};
+  }
+  return null;
+}
+
+/** Hour and day buckets of the per-subscription delivery counters, reset on the UTC boundary. */
+export function nextCapState(previous, now) {
+  const hour = isoFromMs(now).slice(0, 13);
+  const day = hour.slice(0, 10);
+  const prior = previous && typeof previous === 'object' ? previous : {};
+  return {
+    hour,
+    hourCount: prior.hour === hour && Number.isSafeInteger(prior.hourCount) ? prior.hourCount : 0,
+    day,
+    dayCount: prior.day === day && Number.isSafeInteger(prior.dayCount) ? prior.dayCount : 0,
+    suppressed: Number.isSafeInteger(prior.suppressed) ? prior.suppressed : 0,
+  };
 }
 
 function planChokepointRecord({ record, previous, next, byId, now, triggeredAt, scoresFetchedAt, makeId, deliveries }) {
@@ -370,13 +600,111 @@ function planRiskSurgeRecord({ record, previous, next, ciiByCountry, now, trigge
 }
 
 /**
- * Pure. `records` are active, parsed subscriber records; `states` maps
- * subscriberId to its stored per-entity state. `chokepoints` or `riskScores`
- * may be null when that feed was unreadable this tick: records on that event
- * are then left untouched (no state write, nothing fired) while records on
- * the other event proceed.
+ * One subscriber on an occurrence event. Pending deliveries from earlier ticks
+ * are re-queued first (oldest first, same delivery id, stored payload); those
+ * past the event's pendingTtl are dropped and counted. Then each new
+ * occurrence that matches the scope and is not already known to this
+ * subscriber is queued under a fresh id, as long as the hour and day caps
+ * leave room; the overflow is counted as suppressed and never stored, so it is
+ * gone for good rather than delivered late. Delivered tombstones older than a
+ * day are pruned. `prune` collects the hash fields to HDEL.
  */
-export function planTick({ chokepoints, riskScores = null, records, states, now, scoresFetchedAt, riskFetchedAt = null, makeId = makeDeliveryId }) {
+function planOccurrenceRecord({ record, previous, next, prune, occurrences, now, triggeredAt, makeId, deliveries, counters }) {
+  const event = recordEventType(record);
+  const rule = OCCURRENCE_RULES[event];
+  const pendingRetries = [];
+  for (const [field, state] of Object.entries(previous)) {
+    if (!field.startsWith(OCCURRENCE_STATE_PREFIX) || state?.kind !== 'occurrence') continue;
+    if (state.pending) {
+      const age = now - Date.parse(state.pending.triggeredAt);
+      if (!(age < rule.pendingTtlMs) || !state.payload) {
+        // Never sent, and never sent later: the tombstone keeps a republish
+        // of the same event from starting over under a new delivery id.
+        next[field] = { kind: 'occurrence', event: state.event, eventId: state.eventId, firstSeenAt: state.firstSeenAt, expiredAt: isoFromMs(now) };
+        counters.expired += 1;
+        continue;
+      }
+      pendingRetries.push([field, state]);
+    } else if (now - Date.parse(state.deliveredAt ?? state.expiredAt) < DELIVERED_TOMBSTONE_MS) {
+      continue;
+    } else {
+      prune.push(field);
+      counters.pruned += 1;
+    }
+  }
+
+  // The caps count events POSTed in each UTC hour and day. A pending retry
+  // holds the slot of the bucket it was admitted (or last counted) in; carried
+  // into a new bucket it needs a slot there, and waits, still pending, when
+  // that bucket is full. Retries go first, oldest first, so the backlog drains
+  // before new events take the room.
+  const cap = nextCapState(previous[OCCURRENCE_CAP_FIELD], now);
+  const capBefore = JSON.stringify(cap);
+  pendingRetries.sort((a, b) => Date.parse(a[1].pending.triggeredAt) - Date.parse(b[1].pending.triggeredAt));
+  for (const [field, state] of pendingRetries) {
+    const admitted = isoFromMs(Date.parse(state.pending.triggeredAt));
+    const countedHour = state.pending.countedHour ?? admitted.slice(0, 13);
+    const countedDay = state.pending.countedDay ?? admitted.slice(0, 10);
+    const needsHour = countedHour !== cap.hour;
+    const needsDay = countedDay !== cap.day;
+    if ((needsHour && cap.hourCount >= rule.maxPerHour) || (needsDay && cap.dayCount >= rule.maxPerDay)) {
+      next[field] = state;
+      counters.deferred += 1;
+      continue;
+    }
+    if (needsHour) cap.hourCount += 1;
+    if (needsDay) cap.dayCount += 1;
+    const pending = { ...state.pending, countedHour: cap.hour, countedDay: cap.day };
+    next[field] = { ...state, pending, attempts: (Number.isSafeInteger(state.attempts) ? state.attempts : 0) + 1 };
+    deliveries.push({ record, event, stateField: field, sources: {}, deliveryId: pending.deliveryId, payload: state.payload });
+  }
+
+  for (const occurrence of occurrences) {
+    if (occurrence.event !== event) continue;
+    const field = occurrenceStateField(occurrence.eventId);
+    if (previous[field] || next[field]) continue;
+    const match = matchOccurrence(record, occurrence);
+    if (!match) continue;
+    counters.matched += 1;
+    if (cap.hourCount >= rule.maxPerHour || cap.dayCount >= rule.maxPerDay) {
+      cap.suppressed += 1;
+      counters.suppressed += 1;
+      continue;
+    }
+    cap.hourCount += 1;
+    cap.dayCount += 1;
+    const pending = { deliveryId: makeId(), triggeredAt };
+    const payload = {
+      subscriberId: record.subscriberId,
+      ...occurrence.payload,
+      ...(event === NEWS_EVENT ? { matchedKeywords: match.matchedKeywords } : {}),
+      triggeredAt,
+      reason: OCCURRENCE_REASONS[event],
+    };
+    next[field] = { kind: 'occurrence', event, eventId: occurrence.eventId, firstSeenAt: triggeredAt, attempts: 1, pending, payload };
+    deliveries.push({ record, event, stateField: field, sources: {}, deliveryId: pending.deliveryId, payload });
+  }
+  if (JSON.stringify(cap) !== capBefore || (previous[OCCURRENCE_CAP_FIELD] && previous[OCCURRENCE_CAP_FIELD].hour !== cap.hour)) {
+    next[OCCURRENCE_CAP_FIELD] = cap;
+  }
+}
+
+export function emptyOccurrenceCounters() {
+  return { drained: 0, unreadable: 0, duplicates: 0, matched: 0, suppressed: 0, deferred: 0, expired: 0, pruned: 0 };
+}
+
+/**
+ * Pure. `records` are active, parsed subscriber records; `states` maps
+ * subscriberId to its stored per-entity state. `chokepoints`, `riskScores` or
+ * `occurrences` may be null when that source was unreadable this tick:
+ * records on that event are then left untouched (no state write, nothing
+ * fired, pendings not retried) while records on the other events proceed.
+ * `occurrences` are the fan-out messages drained this tick, oldest first,
+ * copies included: a subscriber takes the first copy of an eventId that
+ * matches its scope and skips the rest through its `occ:` field; `prunes`
+ * maps a subscriberId to the state fields to HDEL.
+ */
+export function planTick({ chokepoints, riskScores = null, occurrences = null, records, states, now, scoresFetchedAt, riskFetchedAt = null, makeId = makeDeliveryId }) {
   const byId = new Map((chokepoints ?? [])
     .filter((cp) => typeof cp?.id === 'string' && Number.isFinite(cp.disruptionScore))
     .map((cp) => [cp.id, cp]));
@@ -386,6 +714,8 @@ export function planTick({ chokepoints, riskScores = null, records, states, now,
   const triggeredAt = new Date(now).toISOString();
   const deliveries = [];
   const nextStates = new Map();
+  const prunes = new Map();
+  const counters = emptyOccurrenceCounters();
   for (const record of records) {
     const previous = states.get(record.subscriberId) ?? {};
     const next = {};
@@ -396,12 +726,17 @@ export function planTick({ chokepoints, riskScores = null, records, states, now,
     } else if (eventType === RISK_SURGE_EVENT) {
       if (!riskScores) continue;
       planRiskSurgeRecord({ record, previous, next, ciiByCountry, now, triggeredAt, riskFetchedAt, makeId, deliveries });
+    } else if (OCCURRENCE_RULES[eventType]) {
+      if (!occurrences) continue;
+      const prune = [];
+      planOccurrenceRecord({ record, previous, next, prune, occurrences, now, triggeredAt, makeId, deliveries, counters });
+      if (prune.length) prunes.set(record.subscriberId, prune);
     } else {
       continue;
     }
     nextStates.set(record.subscriberId, next);
   }
-  return { deliveries, nextStates };
+  return { deliveries, nextStates, prunes, counters };
 }
 
 /** Pure. Applies one delivery outcome to the subscriber record. */
@@ -503,6 +838,57 @@ export async function readRiskScores({ redis, fetchImpl, env }) {
   if (!feed) return null;
   const computedAt = Math.max(0, ...feed.ciiScores.map((cii) => Number(cii?.computedAt) || 0));
   return { ...feed, source, fetchedAt: computedAt > 0 ? new Date(computedAt).toISOString() : null };
+}
+
+/**
+ * Drains the oldest FANOUT_DRAIN_MAX fan-out messages (the list tail; the relay
+ * LPUSHes at the head) and normalizes them, oldest first. Null when the list
+ * is unreadable, so occurrence records are skipped this tick the way a
+ * missing feed skips its event. The messages are trimmed only after the tick
+ * persisted its pending state (FANOUT_TRIM_SCRIPT), so a crash in between
+ * replays them, which the per-subscriber `occ:` fields make a no-op. If the relay's own cap trimmed the tail between the read and the
+ * trim, the trim can drop as many unread messages as were lost; that only
+ * happens after the worker has been away long enough to fill 2,000 messages.
+ */
+export async function readFanout({ redis, now = Date.now() }) {
+  let rows;
+  try {
+    rows = await redis([['LRANGE', FANOUT_LIST_KEY, String(-FANOUT_DRAIN_MAX), '-1']]);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(rows) || rows.length !== 1 || !rows[0] || rows[0].error) return null;
+  const messages = Array.isArray(rows[0].result) ? [...rows[0].result].reverse() : [];
+  const occurrences = [];
+  let unreadable = 0;
+  for (const raw of messages) {
+    const occurrence = normalizeTeeMessage(raw, now);
+    if (occurrence) occurrences.push(occurrence);
+    else unreadable += 1;
+  }
+  return { count: messages.length, occurrences, unreadable };
+}
+
+/**
+ * Counts the drained copies whose eventId was already seen, in an earlier
+ * tick (the global seen set) or earlier in this drain (the relay publishes one
+ * copy per site variant, and republishes a sustained market move hourly).
+ * Nothing is dropped here: whether a subscriber already has an eventId is
+ * settled by its own `occ:` field, so a later copy that newly clears one
+ * subscriber's scope (a bigger move, a reworded headline) still reaches it,
+ * while subscribers that already have the event skip it. Informational only.
+ */
+async function countSeen(redis, occurrences) {
+  const unique = new Map();
+  let duplicates = 0;
+  for (const occurrence of occurrences) {
+    const key = `${occurrence.event}\u0000${occurrence.eventId}`;
+    if (unique.has(key)) duplicates += 1;
+    else unique.set(key, occurrence);
+  }
+  const candidates = [...unique.values()];
+  const scores = await runBatched(redis, candidates, (occurrence) => ['ZSCORE', seenKey(occurrence.event), occurrence.eventId], 'seen read');
+  return duplicates + scores.filter((score) => score !== null && score !== undefined).length;
 }
 
 function assertRows(rows, expected, label) {
@@ -612,10 +998,12 @@ async function writeWorkerStatus(redis, fence, summary, now) {
     recordCount: summary.subscribers,
     sourceState: summary.sourceState,
     riskSourceState: summary.riskSourceState,
+    fanoutState: summary.fanoutState,
     deliveries: summary.deliveries,
     failures: summary.failures,
     deactivated: summary.deactivated,
     pruned: summary.pruned,
+    occurrences: summary.occurrences,
     scoresFetchedAt: summary.scoresFetchedAt,
     riskFetchedAt: summary.riskFetchedAt,
   };
@@ -624,6 +1012,7 @@ async function writeWorkerStatus(redis, fence, summary, now) {
     subscribers: summary.subscribers,
     deliveries: summary.deliveries,
     failures: summary.failures,
+    occurrences: summary.occurrences,
     scoresFetchedAt: summary.scoresFetchedAt,
     riskFetchedAt: summary.riskFetchedAt,
   };
@@ -659,25 +1048,28 @@ async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
   };
   const status = await readChokepointStatus({ redis, fetchImpl, env });
   const riskScores = await readRiskScores({ redis, fetchImpl, env });
+  const fanout = await readFanout({ redis, now: now() });
   const summary = {
     sourceState: 'ok',
     riskSourceState: riskScores ? 'ok' : 'error',
+    fanoutState: fanout ? 'ok' : 'error',
     subscribers: 0,
     deliveries: 0,
     failures: 0,
     deactivated: 0,
     pruned: 0,
     backfilled: 0,
+    occurrences: emptyOccurrenceCounters(),
     scoresFetchedAt: status?.fetchedAt || null,
     riskFetchedAt: riskScores?.fetchedAt || null,
     source: status?.source ?? null,
     riskSource: riskScores?.source ?? null,
   };
-  // Each event is evaluated against its own feed: a chokepoint outage must not
-  // hold back a country.risk_surge that could settle before the feed returns.
-  // Only when neither feed is readable is there nothing to do this tick.
+  // Each event is evaluated against its own source: a chokepoint outage must
+  // not hold back a country.risk_surge or a breaking-news delivery. Only when
+  // no source is readable is there nothing to do this tick.
   if (!status) summary.sourceState = 'error';
-  if (!status && !riskScores) {
+  if (!status && !riskScores && !fanout) {
     await writeWorkerStatus(redis, fence, summary, now);
     return summary;
   }
@@ -706,15 +1098,25 @@ async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
   const stateRows = await runBatched(redis, records, (record) => ['HGETALL', stateKey(record.subscriberId)], 'state read');
   const states = new Map(records.map((record, index) => [record.subscriberId, parseStateHash(stateRows[index])]));
 
-  const { deliveries, nextStates } = planTick({
+  let occurrences = null;
+  if (fanout) {
+    occurrences = fanout.occurrences;
+    summary.occurrences.drained = fanout.count;
+    summary.occurrences.unreadable = fanout.unreadable;
+    summary.occurrences.duplicates = await countSeen(redis, fanout.occurrences);
+  }
+
+  const { deliveries, nextStates, prunes, counters } = planTick({
     chokepoints: status?.chokepoints ?? null,
     riskScores,
+    occurrences,
     records,
     states,
     now: now(),
     scoresFetchedAt: summary.scoresFetchedAt,
     riskFetchedAt: summary.riskFetchedAt,
   });
+  for (const key of ['matched', 'suppressed', 'deferred', 'expired', 'pruned']) summary.occurrences[key] = counters[key];
 
   // Persist each crossing's delivery id before sending, so a tick that dies
   // after a send still retries under the same id.
@@ -744,8 +1146,15 @@ async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
     for (const { stateField, sources, outcome, at } of outcomes) {
       summary.deliveries += 1;
       if (outcome.ok) {
-        const { pending: _pending, ...delivered } = next[stateField];
-        next[stateField] = { ...delivered, armed: false, lastDeliveredAt: new Date(at).toISOString(), sources };
+        const current = next[stateField];
+        if (current?.kind === 'occurrence') {
+          // Delivered: keep a tombstone (no payload) so a replayed message is
+          // a no-op for this subscriber until it is pruned a day later.
+          next[stateField] = { kind: 'occurrence', event: current.event, eventId: current.eventId, firstSeenAt: current.firstSeenAt, deliveredAt: new Date(at).toISOString() };
+        } else {
+          const { pending: _pending, ...delivered } = current;
+          next[stateField] = { ...delivered, armed: false, lastDeliveredAt: new Date(at).toISOString(), sources };
+        }
       } else {
         summary.failures += 1;
       }
@@ -759,6 +1168,36 @@ async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
     if (fields.length) stateWrites.push(stateWrite(fence, subscriberId, fields));
   }
   assertFenced(await runBatched(redis, stateWrites, (command) => command, 'state write'));
+  assertFenced(await runBatched(redis, [...prunes], ([subscriberId, fields]) => [
+    'EVAL', STATE_HDEL_SCRIPT, '2', fence.key, stateKey(subscriberId), fence.token, ...fields,
+  ], 'state prune'));
+
+  // Every drained id is marked seen, matched or not, and only after the pending
+  // state above is durable; the list is trimmed last. A tick that dies before
+  // this point replays the same messages next tick.
+  if (fanout) {
+    const byEvent = new Map();
+    for (const occurrence of fanout.occurrences) {
+      if (!byEvent.has(occurrence.event)) byEvent.set(occurrence.event, new Map());
+      byEvent.get(occurrence.event).set(occurrence.eventId, occurrence.publishedAt);
+    }
+    const seenWrites = [...byEvent].map(([event, ids]) => {
+      const rule = OCCURRENCE_RULES[event];
+      const tickMs = now();
+      return [
+        'EVAL', SEEN_ADD_SCRIPT, '2', fence.key, seenKey(event),
+        fence.token, String(tickMs - rule.seenWindowMs), String(Math.ceil((rule.seenWindowMs * 2) / 1000)),
+        ...[...ids.keys()].flatMap((eventId) => [String(tickMs), eventId]),
+      ];
+    });
+    assertFenced(await runBatched(redis, seenWrites, (command) => command, 'seen write'));
+    if (fanout.count > 0) {
+      const [trimmed] = assertRows(await redis([[
+        'EVAL', FANOUT_TRIM_SCRIPT, '2', fence.key, FANOUT_LIST_KEY, fence.token, String(fanout.count),
+      ]]), 1, 'fan-out trim');
+      assertFenced([trimmed.result]);
+    }
+  }
   const swapped = assertFenced(await runBatched(redis, settledRecords, (record) => [
     'EVAL', RECORD_CAS_SCRIPT, '2', fence.key, webhookKey(record.subscriberId),
     fence.token, rawById.get(record.subscriberId), JSON.stringify(record),
@@ -854,10 +1293,14 @@ async function main() {
       if (result.skipped) {
         console.log('[shipping-webhook-worker] tick skipped: lock held elsewhere');
       } else {
+        const occ = result.occurrences ?? emptyOccurrenceCounters();
         console.log(
           `[shipping-webhook-worker] tick source=${result.source ?? 'none'} state=${result.sourceState} `
+          + `risk=${result.riskSourceState} fanout=${result.fanoutState} `
           + `subscribers=${result.subscribers} deliveries=${result.deliveries} failures=${result.failures} `
-          + `deactivated=${result.deactivated} pruned=${result.pruned} backfilled=${result.backfilled}`,
+          + `deactivated=${result.deactivated} pruned=${result.pruned} backfilled=${result.backfilled} `
+          + `occ.drained=${occ.drained} occ.duplicates=${occ.duplicates} occ.matched=${occ.matched} `
+          + `occ.suppressed=${occ.suppressed} occ.expired=${occ.expired}`,
         );
       }
     } catch (error) {

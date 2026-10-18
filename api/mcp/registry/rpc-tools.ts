@@ -1423,9 +1423,9 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_world_brief',
-    title: 'World intelligence brief',
+    title: 'Hourly AI world news brief',
     _outputBudgetBytes: 65536,
-    description: 'Return the citation-grounded world intelligence brief from the precomputed news:insights:v1 snapshot. The insights seeder applies corroboration, citation and hallucination gates before publishing; this reads that accepted result with no request-time LLM call, so the same snapshot is returned until the seeder republishes (about hourly). Each headline pairs with an index-aligned topStories entry carrying its corroboration evidence (uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, the publishers roster with declared tiers); corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Past the 60-minute freshness window the last-known-good snapshot is served with stale:true and ageMinutes, capped at 3 h old; older, absent or broken snapshots are reported unavailable. Requires a paid plan; one downstream read, weight 2 on API plans. Paid MCP openings consume one request allocation that loaded reuse shares.',
+    description: 'Return one written world brief, the hourly AI summary of top headlines rather than a story feed, from the precomputed news:insights:v1 snapshot. The insights seeder applies corroboration, citation and hallucination gates before publishing; this reads that accepted result with no request-time LLM call, so the same snapshot is returned until the seeder republishes. Each headline pairs with an index-aligned topStories entry carrying its corroboration evidence (uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, the publishers roster); corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Past the 60-minute freshness window the last-known-good snapshot is served with stale:true and ageMinutes, capped at 3 h old; older, absent or broken snapshots are reported unavailable. Requires a paid plan; one downstream read, weight 2 on API plans. Paid MCP openings consume one request allocation that loaded reuse shares.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1540,11 +1540,11 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_country_brief',
-    title: 'Country brief assessment',
+    title: 'AI-written country assessment (text)',
     // Two downstream fetches (brief + news digest for grounding).
     _weight: 3,
     _outputBudgetBytes: 65536,
-    description: 'Generate a text-only AI assessment of one country: an LLM-written geopolitical and economic brief plus sources, groundingStories and digestCoverage. The brief is grounded on the live English news digest; each grounding story carries corroborationCount, corroboration.state (single-publisher, tier4-only, corroborated, unknown; coverage, not accuracy), mentionCount and storyPhase. When the digest is serving a retained (stale) snapshot the grounding is dropped and the brief is generated ungrounded unless allow_stale=true; digestCoverage reports which happened. Output is narrative text, not a structured dataset, and differs between calls. Requires a paid plan; two downstream fetches (digest and brief), weight 3 on API plans, 5-25 s. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one. Read-only.',
+    description: 'Generate a text-only AI assessment of one country: an LLM-written geopolitical and economic brief plus sources, groundingStories and digestCoverage. The brief is grounded on the live English news digest; each grounding story carries corroborationCount, corroboration.state (single-publisher, tier4-only, corroborated, unknown; coverage, not accuracy), mentionCount and storyPhase. When the digest is serving a retained (stale) snapshot the grounding is dropped and the brief is generated ungrounded unless allow_stale=true; digestCoverage reports which happened. Output is narrative prose that differs between calls: no numeric scores, no per-section datasets and no interactive view. Requires a paid plan; two downstream fetches (digest and brief), weight 3 on API plans, 5-25 s. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1793,9 +1793,9 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_country_risk',
-    title: 'Country risk intelligence',
+    title: 'Country instability score, advisory and sanctions',
     _outputBudgetBytes: 262144,
-    description: 'Return the structured risk snapshot for one country: the Composite Instability Index at cii.combinedScore (0-100) with its four components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive and sanctionsCount. Numbers only, read from the seeded risk cache in under a second; no narrative and no LLM. upstreamUnavailable=true means a required upstream read failed and the whole response was withheld: zeroed fields are unknown, not calm. Requires a paid plan; one downstream fetch, weight 2 on API plans. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one. Read-only; idempotent within a cache window.',
+    description: 'Return the structured risk snapshot for one country: the Composite Instability Index at cii.combinedScore (0-100) with its four components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive and sanctionsCount. Index scores, advisory and sanctions fields only, read from the seeded risk cache in under a second: no narrative, no LLM, and no per-indicator resilience breakdown. upstreamUnavailable=true means a required upstream read failed and the whole response was withheld: zeroed fields are unknown, not calm. Requires a paid plan; one downstream fetch, weight 2 on API plans. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one. Read-only; idempotent within a cache window.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2257,7 +2257,7 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_resilience_indicators',
-    title: 'Country resilience indicators',
+    title: 'Resilience score breakdown by indicator',
     _outputBudgetBytes: 262144,
     // Raw values here are redistribution-permitted (decideIndicatorRawRedistribution
     // already dropped the rest), but only while accompanied by their source's
@@ -2266,7 +2266,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // `observationProvenance` is deliberately not selected because it is not
     // part of the licence claim.
     _attribution: 'indicators[].{indicatorId: id, retrievedAt: retrievedAt, sources: sources[].{key: key, name: name, attribution: attribution, license: license, url: url, licenseUrl: licenseUrl, attributionUrl: attributionUrl}}',
-    description: 'Explain one country\'s resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. Requires an ISO-2 country code and a WorldMonitor Pro subscription.',
+    description: 'Explain one country\'s resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. 51 indicators update annually; 11 move with current events (realtime or daily feeds such as the news threat score and Reddit velocity), so a short-term score change can come from those. Answers why a country scores as it does, indicator by indicator; carries no instability index, travel advisory, sanctions status, story list or narrative. Requires an ISO-2 country code and a WorldMonitor Pro subscription; weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2964,9 +2964,9 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'generate_forecasts',
-    title: 'Generate geopolitical forecasts',
+    title: 'Published forecasts filtered server-side',
     _outputBudgetBytes: 65536,
-    description: 'Return the published AI forecasts, each with probability, scenarios, signals and a per-forecast case file, filtered server-side by domain and region. The list is produced by the forecasting pipeline on its own schedule (rule-based probabilities with LLM-written narrative, republished on the pipeline\'s own cadence); a call returns the latest published run and does not start a new one. An oversized response omits the case files and reports the omitted count in transportCoverage; a narrower domain or region filter returns them. Requires a paid plan; one downstream request, weight 2 on API plans. domain is one of conflict, market, supply_chain, political, military, cyber, infrastructure; region is free text such as "Middle East". Read-only.',
+    description: 'Return the published AI forecasts through the paid forecast API, filtered server-side by domain and region, each with probability, scenarios, signals and a per-forecast case file. Despite the name, a call generates nothing. The list is produced by the forecasting pipeline on its own schedule (rule-based probabilities with LLM-written narrative, republished on the pipeline\'s own cadence); a call returns the latest published run and does not start a new one. An oversized response omits the case files and reports the omitted count in transportCoverage; a narrower domain or region filter returns them. Requires a paid plan; one downstream request, weight 2 on API plans. domain is one of conflict, market, supply_chain, political, military, cyber, infrastructure; region is free text such as "Middle East". Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3143,12 +3143,12 @@ export const RPC_TOOLS: ToolDef[] = [
     name: 'get_commodity_geo',
     title: 'Global mining sites',
     _outputBudgetBytes: 262144,
-    description: 'Global mining sites with coordinates, operator, mineral type, and production status. Covers 71 major mines spanning gold, silver, copper, lithium, uranium, coal, and other minerals worldwide.',
+    description: 'Return a curated reference list of 71 major mine sites: name, coordinates, country, mineral, operator, status (producing, development, exploration), significance and, where recorded, annual output, a production-rank label and open-pit or underground. Answers where a mineral is mined and who operates a given mine. Static dataset bundled with the server, not live data: no national output totals, market shares, refining, prices or recent ownership changes, and mines outside the list are absent. Minerals: Gold, Silver, Copper, Lithium, Cobalt, Rare Earths, Nickel, Platinum, Palladium, Iron Ore and Uranium. Requires a paid plan; weight 2 on API plans. Read-only. Omit both filters for every site.',
     inputSchema: {
       type: 'object',
       properties: {
-        mineral: { type: 'string', description: 'Filter by mineral type (e.g. "Gold", "Copper", "Lithium")' },
-        country: { type: 'string', description: 'Filter by country name (e.g. "Australia", "Chile")' },
+        mineral: { type: 'string', description: 'Exact, case-sensitive mineral name, e.g. "Gold", "Rare Earths", "Iron Ore". Other spellings return no sites.' },
+        country: { type: 'string', description: 'Case-insensitive substring of the country name, e.g. "Australia", "chile".' },
       },
       required: [],
     },
@@ -3239,11 +3239,11 @@ export const RPC_TOOLS: ToolDef[] = [
     // dispatch tests measure ~321 KiB, so 512 KiB preserves the evidence with
     // useful growth headroom instead of charging quota for a budget envelope.
     _outputBudgetBytes: 524288,
-    description: 'Return country commodity supply risks, where an absent score means insufficient evidence, never zero risk. Returns one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance; read state and reasons to see why a score is absent.',
+    description: 'Return one country\'s commodity import-supply vulnerability portfolio, where an absent score means insufficient evidence, never zero risk. For each covered commodity: an absolute 0-100 score and band (low, moderate, high, critical) built from supplier concentration, chokepoint transit exposure including current route disruption, and stock buffers, plus coverage, staleness, methodology version and source provenance. Answers how exposed a country\'s commodity supply is and which component drives it. state (ok, stale_input, insufficient_data) and reasons explain every missing score, including redistribution_blocked. No prices, mine locations, production shares or cross-country ranking. upstreamUnavailable=true means the read failed. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
-        country_code: { type: 'string', pattern: '^[A-Za-z]{2}$', description: 'ISO 3166-1 alpha-2 country code, such as AE, JP, or DE.' },
+        country_code: { type: 'string', pattern: '^[A-Za-z]{2}$', description: 'ISO 3166-1 alpha-2 code of the importing country, such as AE, JP, or DE.' },
       },
       required: ['country_code'],
     },

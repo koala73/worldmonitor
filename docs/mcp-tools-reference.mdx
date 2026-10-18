@@ -917,7 +917,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_commodity_geo`
 
-Global mining sites with coordinates, operator, mineral type, and production status. Covers 71 major mines spanning gold, silver, copper, lithium, uranium, coal, and other minerals worldwide.
+A curated, static list of 71 major mine sites with coordinates, country, mineral, operator, status (producing, development, exploration) and, where recorded, annual output and a production-rank label. Minerals: gold, silver, copper, lithium, cobalt, rare earths, nickel, platinum, palladium, iron ore and uranium. It answers where a mineral is mined and who operates a mine; it has no national output totals, market shares, refining or prices. `mineral` is an exact, case-sensitive match ("Gold", "Rare Earths"); `country` is a case-insensitive substring.
 
 **Parameters:**
 
@@ -1741,19 +1741,19 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_social_velocity`
 
-Reddit geopolitical social velocity: top posts from worldnews, geopolitics, and related subreddits with engagement scores and trend signals.
+The 30 posts from r/worldnews and r/geopolitics with the highest `velocityScore` (log of score × upvote ratio × a 6-hour recency decay), with score, upvote ratio, comment count and the permalink as `url`. The relay refreshes it about every 3 hours and the envelope flags it stale after 9 hours, the same budget as `/api/health`. Posts are unverified user submissions: the tool measures public attention, not events.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `subreddit` | string | Filter to one subreddit (e.g. "worldnews", "geopolitics"). |
+| `subreddit` | string | Keep one subreddit: "worldnews" or "geopolitics". |
 | `limit` | number | Cap the post list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/intelligence/v1/get-social-velocity`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** up to **9 h** before `stale: true` is flagged (the relay refreshes about every 3 h; same budget as `/api/health`).
 
 <CodeGroup>
 
@@ -2817,7 +2817,7 @@ Call `get_cross_border_arrivals({})` for the full public snapshot. `summary: tru
 
 ### `get_displacement_data`
 
-Refugee and IDP counts by country (UNHCR annual data).
+UNHCR annual displacement statistics for one reporting year: global totals, per-country refugees, asylum seekers, IDPs and stateless people by origin, totals hosted by each asylum country, and the largest origin-to-asylum refugee flows. Annual stock figures only, with no monthly arrivals or crisis-situation updates. Until UNHCR publishes the current year, the snapshot holds the prior year; `summary.year` names it.
 
 **Parameters (tool-specific):**
 

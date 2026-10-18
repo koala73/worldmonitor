@@ -265,7 +265,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_consumer_prices` | 各国消费者价格情报：30 天概览、品类级通胀、零售商价差（必需品篮子）、热门变动以及来源新鲜度。需要 `country_code`（目前仅填充了 `ae`）。 |
 | `get_procurement_opportunities` | 仅限 Pro 的规范全球采购搜索；紧凑输出默认 10 条、最多 25 条。关键词相关性绝不表示投标资格。 |
 | `get_company_intelligence` | 经 SEC 身份验证的逐公司情报：丰富化、带时间戳的信号、申报搜索与全市场重大 8-K 事件。 |
-| `get_commodity_geo` | 全球 71 个主要矿场（金、银、铜、锂、铀、煤）。 |
+| `get_commodity_geo` | 全球 71 个主要矿场（金、银、铜、锂、钴、稀土、镍、铂、钯、铁矿石、铀）。 |
 | `get_mineral_production` | 各国矿产开采/冶炼份额与 HHI（USGS MCS，BGS 补缺）。 |
 | `get_five_factor_scorecard` | 冻结版 v1 五因素韧性评分卡：食品、能源、人口结构、科技与国防。可查询一个国家、官方集团或已验证的自定义集团，并保留输入可用性与来源信息。 |
 | `list_five_factor_scorecards` | 紧凑列出各国五因素支柱评分、档位、覆盖率和数据不足原因。读取数值前必须检查 `hasScore`；若为 false，零值只是数据不足占位符。完整证据账本请使用单项评分卡工具。 |
@@ -287,7 +287,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_sanctions_data` | OFAC SDN 实体 + 各国制裁压力评分。 |
 | `get_news_intelligence` | AI 分类的威胁新闻、GDELT 信号、跨来源情报。 |
 | `get_positive_events` | 外交协议、人道主义援助、和平倡议。 |
-| `get_social_velocity` | Reddit r/worldnews + r/geopolitics 热门帖、互动评分。 |
+| `get_social_velocity` | Reddit r/worldnews + r/geopolitics 按速度评分排序的前 30 条帖子。 |
 | `get_china_decision_signals` | 保留规范溯源的六领域中国摘要，明确显示各领域降级；不暴露详细双边贸易行或 operator 健康信息。 |
 
 ### NLP 实用工具（按需）
@@ -342,7 +342,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 | 工具 | 描述 |
 |------|-------------|
-| `get_displacement_data` | 按国家统计的难民和 IDP 数量（UNHCR 年度数据）。 |
+| `get_displacement_data` | 按国家统计的难民、寻求庇护者、IDP 和无国籍者数量及主要流向（UNHCR 年度数据）。 |
 
 ### AI 情报
 

@@ -2,17 +2,21 @@
 
 This folder is a [Zapier Platform CLI](https://docs.zapier.com/integrations/build-cli/overview) app. It calls the public WorldMonitor REST API with an API key. It does not import browser, server, or Edge code from the rest of this repository.
 
-WorldMonitor users who already have an API Starter or API Business key can connect Zapier to instant chokepoint-disruption and country-risk-surge alerts, country risk, chokepoint status, latest conflict events, and new disease-outbreak alerts.
+WorldMonitor users who already have an API Starter or API Business key can connect Zapier to instant breaking-news, large-market-move, chokepoint-disruption and country-risk-surge alerts, keyword news search, the strategic risk overview, country risk, chokepoint status, latest conflict events, and new disease-outbreak alerts.
 
-The app is registered on Zapier as integration 248027 and `.zapierapprc` links this folder to it. Version 1.0.0 is pushed; 1.1.0 (this folder) is not yet. Pushing is an account step Elie does.
+The app is registered on Zapier as integration 248027 and `.zapierapprc` links this folder to it. Version 1.1.0 is pushed and every live Zap runs on it; 1.2.0 (this folder) is not pushed yet. Pushing is an account step Elie does, after the relay, the shipping webhook worker and the API sender are deployed and a real delivery of each new event has been observed carrying `X-WM-Signature-V2`; 1.2.0 accepts nothing else.
 
 ## What it calls
 
 | Zapier step | Kind | HTTP | Path |
 | --- | --- | --- | --- |
 | Account connection test | Auth | GET | `/api/intelligence/v1/get-country-risk?country_code=US` |
+| New Breaking News Alert | Instant (REST hook) trigger | POST, DELETE | `/api/v2/shipping/webhooks` with `eventType: news.breaking` and a `scope`; sample rows from GET `/api/news/v1/list-feed-digest?variant=full` |
+| New Large Market Move | Instant (REST hook) trigger | POST, DELETE | `/api/v2/shipping/webhooks` with `eventType: market.move` and a `scope`; sample rows from GET `/api/market/v1/list-market-quotes`, `list-commodity-quotes`, `list-crypto-quotes` |
 | New Chokepoint Disruption | Instant (REST hook) trigger | POST, DELETE | `/api/v2/shipping/webhooks` with `eventType: chokepoint.disruption`; sample rows from GET `/api/supply-chain/v1/get-chokepoint-status` |
 | New Country Risk Surge | Instant (REST hook) trigger | POST, DELETE | `/api/v2/shipping/webhooks` with `eventType: country.risk_surge`; sample rows from GET `/api/intelligence/v1/get-risk-scores` |
+| Find News by Keyword | Search | GET | `/api/news/v1/list-feed-digest?variant=` (keyword and category match run in the app; the API has no keyword parameter) |
+| Find Strategic Risk Overview | Search | GET | `/api/intelligence/v1/get-risk-scores` (`strategicRisks[0]` plus the five highest `ciiScores`) |
 | List Monitored Countries (fills the Countries dropdown) | Hidden trigger | none | Reads `event-triggers.json` |
 | Find Country Risk | Search | GET | `/api/intelligence/v1/get-country-risk` |
 | Find Chokepoint Status | Search | GET | `/api/supply-chain/v1/get-chokepoint-status` |
@@ -22,10 +26,15 @@ The app is registered on Zapier as integration 248027 and `.zapierapprc` links t
 
 ### Instant triggers
 
-The two instant triggers are REST hooks on the WorldMonitor event webhooks (`docs/api-shipping-v2.mdx`). They need an API plan key: `POST /api/v2/shipping/webhooks` requires the `apiAccess` entitlement.
+The four instant triggers are REST hooks on the WorldMonitor event webhooks (`docs/api-shipping-v2.mdx`). They need an API plan key: `POST /api/v2/shipping/webhooks` requires the `apiAccess` entitlement.
+
+Two kinds of event share the plumbing. Chokepoint disruption and country risk surge are threshold events: the server re-evaluates a condition every 5 minutes and one crossing is one delivery. Breaking news and large market move are occurrence events: each is delivered once per story or move (`eventId` in the body, `rss_` for a story link, `mkt_` for a symbol, direction and severity band per UTC day), a failed delivery is retried every 5 minutes under the same `X-WM-Delivery-Id` for two hours and then dropped, and each Zap receives at most 20 deliveries an hour and 100 a day (overflow is dropped and counted on the server, never batched). Their filters travel in the registration body's `scope` object, validated by the server against the event's `inputSchema` in the registry; a filter the event does not define is a 400 that the Zap editor shows verbatim.
+
+- New Breaking News Alert: `keywords` (whole words, any-of, up to 20), `categories` (the classifier's 14 categories), `countries` (ISO 3166-1 alpha-2; a headline the relay could not attribute to a country never matches a country filter), `importance_floor` (default 69), `severity_floor` (default high, which is every headline the relay queues). Deliveries carry `countryCodes` and `matchedKeywords`; sample rows come from the public digest, which has no country attribution, so their `countryCodes` is empty.
+- New Large Market Move: `asset_classes`, `symbols` (as WorldMonitor lists them, upper-cased), `min_abs_pct` (default 10; the relay only publishes moves of 5 percent or more, 10 for crypto), `direction`. Sample rows are the largest current moves and ignore the percent floor.
 
 - `performSubscribe` registers the Zap's target URL and returns `{ id, subscriberId, secret, eventType, expiration_date }`. Zapier stores it as `bundle.subscribeData`. `expiration_date` is 29 days out so Zapier re-subscribes before the server's 30-day subscription TTL.
-- `perform` recomputes `sha256=HMAC-SHA256(rawBody, secret)` over the exact bytes received and compares it with `X-WM-Signature` in constant time. A delivery that does not verify, or a Zap with no stored secret, raises an error instead of running the Zap. The row `id` is `X-WM-Delivery-Id`: the worker mints it once per crossing and reuses it on retries, so a later step can dedupe on it. Zapier itself does not dedupe REST-hook deliveries: a retried POST runs the Zap again with the same id. The server's per-subscriber hysteresis and cooldown decide what is sent.
+- `perform` requires `X-WM-Signature-V2` on every delivery: `sha256=HMAC-SHA256(secret, timestamp.deliveryId.event.rawBody)` over the exact header strings and body bytes, compared in constant time, with `X-WM-Timestamp` within 300 seconds of Zapier's clock and well-formed `X-WM-Delivery-Id` and `X-WM-Event`. There is no fallback to the legacy body-only `X-WM-Signature`: a delivery without V2, one that does not verify, a stale timestamp, or a Zap with no stored secret raises an error instead of running the Zap. Zaps on an earlier version keep that version's code until they are migrated to 1.2.0. The row `id` is `X-WM-Delivery-Id`: the worker mints it once per crossing and reuses it on retries, so a later step can dedupe on it. Zapier itself does not dedupe REST-hook deliveries: a retried POST runs the Zap again with the same id. The server's per-subscriber hysteresis and cooldown decide what is sent.
 - `performUnsubscribe` calls `DELETE /api/v2/shipping/webhooks/{subscriberId}`; a `404` (already gone) is not an error.
 - `performList` shapes live status rows exactly like a delivery so field mapping in the editor survives the switch to real events. Sample ids are `sample:<entity>:<feed time>`.
 
@@ -34,6 +43,8 @@ Event definitions (label, description, thresholds, cooldown, id rule, payload sc
 Defaults: New Chokepoint Disruption sends `alertThreshold` 50 and `minLiveSignal` 15 (the in-app alert rule's floor), both editable per Zap. With a live floor the server re-arms a chokepoint only once its score is 10 points under the threshold or its live signal is under 5, and refires at most once per 12 hours. New Country Risk Surge has no threshold inputs; the server rule is a 15-point rise within 24 hours into the high band (index 70 or more), once per surge with a 24-hour cooldown per country, chosen on a 90-day backtest (`docs/research/2026-10-17-zapier-event-triggers-backtest.md`).
 
 ### Searches and polling triggers
+
+Find News by Keyword downloads the digest for the chosen variant and matches the keyword (case-insensitive) and optional category in the app, since `list-feed-digest` takes only `variant` and `lang`; it returns the 25 most important matches, de-duplicated by link. Find Strategic Risk Overview returns one row from `get-risk-scores`: the global `strategicRisks[0]` (`level`, `score`, `factors`; `trend` is always `TREND_DIRECTION_UNSPECIFIED` today) plus the highest Country Instability Index readings as `topCountries` (its one input, Countries to Include, defaults to 5; Zapier requires every search to take an input), or no row when the API has no roll-up.
 
 Find Latest Conflict Events sends only `country`. The API accepts `start`, `end`, and `page_size` but ignores them, so the search does not offer them. It sorts by `dateStart` and returns the newest 25 events.
 
@@ -82,7 +93,7 @@ Validate runs Zapier's integration checks locally. All 27 pass. The one remainin
 
 `zapier-platform push` needs a Zapier developer login (`npx zapier-platform login`, or a deploy key). Do not run it in CI or from a pull request.
 
-To upload 1.1.0 (`push` reads `.zapierapprc`; do not run `zapier-platform register`, which would create a second integration):
+To upload 1.2.0 (`push` reads `.zapierapprc`; do not run `zapier-platform register`, which would create a second integration). Order: deploy the relay (API fan-out tee), the shipping webhook worker (occurrence pipeline) and the API sender; observe a real `news.breaking` and `market.move` delivery, each carrying `X-WM-Signature-V2` and `X-WM-Timestamp`; then push 1.2.0; then migrate existing Zaps to 1.2.0 (`npx zapier-platform migrate 1.1.0 1.2.0`). 1.2.0 rejects a delivery without V2, so it must not go out before the senders:
 
 ```bash
 cd integrations/zapier
@@ -98,6 +109,10 @@ To exercise the new triggers against production with a `wm_` key (read-only call
 npx zapier-platform invoke auth test
 npx zapier-platform invoke trigger chokepoint_disruption --inputData '{"chokepoint":"hormuz_strait"}'   # performList sample rows
 npx zapier-platform invoke trigger country_risk_surge --inputData '{"countries":["IR","UA"]}'         # performList sample rows
+npx zapier-platform invoke trigger news_breaking --inputData '{"keywords":["hormuz"],"importance_floor":"69"}'   # performList sample rows
+npx zapier-platform invoke trigger market_move --inputData '{"asset_classes":["equity","crypto"]}'              # performList sample rows
+npx zapier-platform invoke search find_news --inputData '{"keyword":"hormuz"}'
+npx zapier-platform invoke search strategic_risk_overview
 ```
 
 ## Zapier review checklist

@@ -814,7 +814,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_alert_digest',
-    title: 'Daily cross-domain alert digest',
+    title: 'Threshold alerts across domains today',
     _outputBudgetBytes: 131072,
     description:
       'Cross-domain alert digest: everything that tripped a threshold today, in one rollup. ' +
@@ -823,7 +823,8 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       'severity vocabulary its own producer already uses; no thresholds are invented by this tool. Domains with data but no ' +
       'trips are listed as quiet, and domains whose caches are unavailable are listed separately so silence is never mistaken ' +
       'for calm. The weekly view adds direction, volatility, and anomaly flags derived from the persisted military-activity ' +
-      'history plus the current temporal-anomaly snapshot. This is the fastest single call for what changed today.',
+      'history plus the current temporal-anomaly snapshot. A rollup of threshold trips across domains: no news stories, ' +
+      'narrative, or full per-stream anomaly lists. Requires a paid plan; weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {

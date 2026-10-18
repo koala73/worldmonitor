@@ -129,6 +129,23 @@ describe("Clerk account-deletion webhook", () => {
     expect(rows).toHaveLength(0);
   });
 
+  test("a malformed or empty secret is a server error, not a 401, and erases nothing", async () => {
+    // Before the shared verifier this threw out of atob/importKey, which
+    // Convex turns into a 500. Keep that: a misconfigured secret is ours to
+    // fix, and Svix keeps retrying a 5xx until it is fixed.
+    for (const secret of ["whsec_not*base64!", "whsec_"]) {
+      process.env.CLERK_WEBHOOK_SECRET = secret;
+      const t = convexTest(schema, modules);
+      const payload = deletedPayload();
+      await expect(
+        postClerkWebhook(t, { payload, signature: `v1,${await signPayload(payload)}` }),
+        secret,
+      ).rejects.toThrow("CLERK_WEBHOOK_SECRET is not a valid whsec_ secret");
+      const rows = await t.run(async (ctx) => ctx.db.query("accountDeletions").collect());
+      expect(rows, secret).toHaveLength(0);
+    }
+  });
+
   // The skew guard is the only replay defense on an irreversible erase, and it
   // had no coverage: an inverted comparison, a wrong divisor, or a deleted
   // check would all have shipped green. Each case below signs the SAME

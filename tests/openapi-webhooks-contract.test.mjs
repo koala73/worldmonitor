@@ -119,8 +119,15 @@ describe('OpenAPI webhooks contract', () => {
     }
   });
 
-  it('the registry payloadSchema matches each delivery payload interface (both events)', () => {
-    for (const [event, interfaceName] of [[WEBHOOK_EVENT, 'WebhookDeliveryPayload'], [RISK_SURGE_WEBHOOK_EVENT, 'RiskSurgeWebhookPayload']]) {
+  it('the registry payloadSchema matches each delivery payload interface (every event)', () => {
+    const interfaces = [
+      [WEBHOOK_EVENT, 'WebhookDeliveryPayload'],
+      [RISK_SURGE_WEBHOOK_EVENT, 'RiskSurgeWebhookPayload'],
+      ['news.breaking', 'NewsBreakingWebhookPayload'],
+      ['market.move', 'MarketMoveWebhookPayload'],
+    ];
+    assert.deepEqual(interfaces.map(([event]) => event).sort(), Object.keys(registry.events).sort(), 'every registry event pins a delivery interface');
+    for (const [event, interfaceName] of interfaces) {
       const fromRegistry = registry.events[event].payloadSchema;
       const fields = interfaceFields(interfaceName);
       assert.deepEqual(Object.keys(fromRegistry.properties).sort(), fields.map((f) => f.name).sort(), `${event}: registry properties drifted from ${interfaceName}`);

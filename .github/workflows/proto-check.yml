@@ -95,6 +95,7 @@ env:
     shared/decision-signal-provenance.ts
     shared/embed-access.ts
     shared/embed-panels.ts
+    shared/event-triggers.json
     shared/iso2-to-iso3.json
     shared/openapi-filter-param-contracts.json
     shared/source-provenance-declarations.ts
