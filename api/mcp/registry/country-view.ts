@@ -130,9 +130,9 @@ async function collectRawSignals(countryCode: string, base: string, context: Par
 
 export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
   name: 'open_country_brief',
-  title: 'WorldMonitor country brief',
+  title: 'Open the interactive country brief view',
   _subscriptionOnly: true,
-  description: 'Open the interactive WorldMonitor country brief for one country and return {countryCode, topic, panelRequest}; the host renders the embedded view, which then loads its assessment, source evidence, resilience, security, economy, resources and society sections progressively over the authenticated connection. The tool itself returns the resolved country and topic, not the section data. topic (default overview) selects which section group the view opens on. Requires a paid plan; weight 2 on API plans. On dedicated paid plans one country request covers the view\'s internal section loads, same-country opens reuse it for five minutes, and refresh with request_id starts a new request. Read-only.',
+  description: 'Open the interactive WorldMonitor country brief for one country and return {countryCode, topic, panelRequest}; the host renders the embedded view, which then loads its assessment, source evidence, resilience, security, economy, resources and society sections progressively over the authenticated connection. The tool itself returns only the resolved country and topic: no assessment text, scores or section data reach the caller. topic (default overview) selects which section group the view opens on. Requires a paid plan; weight 2 on API plans. On dedicated paid plans one country request covers the view\'s internal section loads, same-country opens reuse it for five minutes, and refresh with request_id starts a new request. Read-only.',
   _uiResourceUri: COUNTRY_VIEW_UI_URI,
   _openaiEntrypoints: [{ type: 'global' }, { type: 'thread' }],
   _outputBudgetBytes: 4096,
@@ -161,8 +161,8 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
   },
 }, {
   name: 'get_country_brief_section',
-  title: 'Country brief data section',
-  description: 'Read one named data section of a country brief and return {state: ready|locked|unavailable, section, value, retrievedAt, reason}. A dispatcher over 37 fixed readers selected by section: country facts and risk, energy and maritime, markets, trade, supply chain, resilience and demographics, defense, China signals, housing and IMF macro, military flights, AIS vessels, the USNI fleet report and signalsRaw; each oneOf branch documents one section. Each section takes its own arguments object (key names differ: country_code, countryCode or iso2; numeric M49 codes for trade; HS codes for products) and rejects unknown keys. flights pages 100 rows at a time through cursor. signalsRaw returns attributed earthquake, Internet-outage, travel-advisory and thermal samples and needs a verified same-country paid panel token; every other section works with an ordinary paid credential. Unavailable evidence is unknown, not zero. Requires a paid plan; one downstream read, weight 2 on API plans. Read-only.',
+  title: 'Structured country data, one section',
+  description: 'Read one named structured data section for a country, raw values without narrative, and return {state: ready|locked|unavailable, section, value, retrievedAt, reason}. 37 readers selected by section: country facts and risk, energy and maritime, markets, trade, supply chain, resilience and demographics, defense, China signals, housing and IMF macro, military flights, AIS vessels, the USNI fleet report and signalsRaw; each oneOf branch documents one section. Each section takes its own arguments object (key names differ: country_code, countryCode or iso2; numeric M49 codes for trade; HS codes for products) and rejects unknown keys. flights pages 100 rows at a time through cursor. signalsRaw returns attributed earthquake, Internet-outage, travel-advisory and thermal samples and needs a verified same-country paid panel token; every other section works with an ordinary paid credential. Unavailable evidence is unknown, not zero. Requires a paid plan; one downstream read, weight 2 on API plans.',
   _subscriptionOnly: true,
   _weight: 2,
   _outputBudgetBytes: COUNTRY_SECTION_BUDGET_BYTES,
