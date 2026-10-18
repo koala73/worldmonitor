@@ -53,10 +53,16 @@ describe('news digest freshness budget', () => {
       headers: { Origin: 'https://www.worldmonitor.app' },
     }));
     assert.equal(response.status, 200);
-    const cdn = response.headers.get('CDN-Cache-Control');
-    assert.ok(directive(cdn, 's-maxage') <= DIGEST_REDIS_TTL_S, `Vercel CDN: ${cdn}`);
-    const browserAndCf = response.headers.get('Cache-Control');
-    assert.ok(directive(browserAndCf, 's-maxage') <= DIGEST_REDIS_TTL_S, `Cloudflare: ${browserAndCf}`);
+    // stale-while-revalidate serves the old body on a healthy origin too, so it
+    // counts. stale-if-error does not: it only covers an origin failure, where
+    // an older digest beats an error page.
+    for (const [layer, header] of [
+      ['Vercel CDN', response.headers.get('CDN-Cache-Control')],
+      ['Cloudflare', response.headers.get('Cache-Control')],
+    ] as const) {
+      const served = directive(header, 's-maxage') + directive(header, 'stale-while-revalidate');
+      assert.ok(served <= DIGEST_REDIS_TTL_S, `${layer} serves one body for ${served} s: ${header}`);
+    }
   });
 
   it('polls the digest at least every 10 minutes', () => {
