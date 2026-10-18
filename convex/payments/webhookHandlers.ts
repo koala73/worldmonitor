@@ -93,8 +93,9 @@ async function verifyDodoSignature(
  * Why `internalMutation` and not `internalAction`: Convex auto-retries
  * failed actions per its scheduler retry policy, which would produce N
  * duplicate Sentry events per signature failure during outages.
- * Mutations are NOT auto-retried — exactly one Sentry event per failed
- * signature check. Don't "simplify" this to an action.
+ * Mutations are NOT auto-retried — exactly one Sentry event per scheduled
+ * report. Don't "simplify" this to an action. The caller schedules at most
+ * one report per cooldown (DODO_SIGNATURE_FAILURE_REPORT_COOLDOWN_MS).
  *
  * Without this, a botched secret rotation could 401 every Dodo webhook
  * silently for hours — same observability gap shape as the canary OCC
@@ -105,13 +106,108 @@ export const reportDodoSignatureFailure = internalMutation({
     webhookId: v.optional(v.string()),
     webhookTimestamp: v.optional(v.string()),
     errorMessage: v.string(),
+    suppressedSinceLastReport: v.optional(v.number()),
   },
-  handler: async (_ctx, { webhookId, webhookTimestamp, errorMessage }) => {
+  handler: async (_ctx, { webhookId, webhookTimestamp, errorMessage, suppressedSinceLastReport }) => {
+    const suppressed = suppressedSinceLastReport
+      ? ` (+${suppressedSinceLastReport} more since the last report)`
+      : "";
     throw new Error(
-      `[webhook] Dodo signature verification failed (webhookId=${webhookId ?? "<missing>"}, ts=${webhookTimestamp ?? "<missing>"}): ${errorMessage}`,
+      `[webhook] Dodo signature verification failed (webhookId=${webhookId ?? "<missing>"}, ts=${webhookTimestamp ?? "<missing>"}): ${errorMessage}${suppressed}`,
     );
   },
 });
+
+/**
+ * Largest body the webhook reads. Dodo deliveries are a few KB; without a cap
+ * an unauthenticated caller could make the handler buffer and HMAC up to
+ * Convex's 20 MB request limit per request. Enforced while streaming, so an
+ * oversize body is never fully buffered.
+ */
+export const DODO_WEBHOOK_MAX_BODY_BYTES = 1024 * 1024;
+
+/**
+ * Minimum gap between two scheduled signature-failure reports.
+ *
+ * The endpoint is unauthenticated, so without this every forged request cost
+ * a scheduler write plus a Sentry event — anyone could burn the Sentry quota.
+ * A botched secret rotation fails every real delivery continuously, so one
+ * report per window still surfaces it within minutes, and each report carries
+ * how many failures it stood in for.
+ */
+export const DODO_SIGNATURE_FAILURE_REPORT_COOLDOWN_MS = 10 * 60 * 1000;
+
+export interface DodoSignatureFailureReportGate {
+  lastReportedAt: number | null;
+  suppressed: number;
+}
+
+/**
+ * Decide whether this signature failure schedules a report. Mutates the gate.
+ *
+ * The gate lives in module scope, so it is per isolate: a burst spread over
+ * several isolates reports once per isolate per window. That bounds the cost,
+ * which is the point; an exact global count would need a database write on
+ * every forged request, the very amplification this removes.
+ */
+export function claimDodoSignatureFailureReport(
+  gate: DodoSignatureFailureReportGate,
+  now: number,
+): { report: boolean; suppressedSinceLastReport: number } {
+  if (
+    gate.lastReportedAt !== null &&
+    now - gate.lastReportedAt < DODO_SIGNATURE_FAILURE_REPORT_COOLDOWN_MS
+  ) {
+    gate.suppressed += 1;
+    return { report: false, suppressedSinceLastReport: 0 };
+  }
+  const suppressedSinceLastReport = gate.suppressed;
+  gate.lastReportedAt = now;
+  gate.suppressed = 0;
+  return { report: true, suppressedSinceLastReport };
+}
+
+const signatureFailureReportGate: DodoSignatureFailureReportGate = {
+  lastReportedAt: null,
+  suppressed: 0,
+};
+
+/** Clears the module-scope gate; tests share one module instance per file. */
+export function resetDodoSignatureFailureReportGate(): void {
+  signatureFailureReportGate.lastReportedAt = null;
+  signatureFailureReportGate.suppressed = 0;
+}
+
+/**
+ * The request body as text, or null once it exceeds `maxBytes`. Checks a
+ * declared Content-Length first, then counts streamed bytes, so neither a
+ * lying header nor a chunked upload gets past the cap.
+ */
+async function readBodyWithinLimit(request: Request, maxBytes: number): Promise<string | null> {
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) return null;
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
 
 /**
  * Custom webhook HTTP action for Dodo Payments.
@@ -138,8 +234,12 @@ export const webhookHandler = httpAction(async (ctx, request) => {
     return new Response("Missing required webhook headers", { status: 400 });
   }
 
-  // 3. Read raw body for signature verification
-  const body = await request.text();
+  // 3. Read raw body for signature verification, bounded before any crypto
+  const body = await readBodyWithinLimit(request, DODO_WEBHOOK_MAX_BODY_BYTES);
+  if (body === null) {
+    console.warn(`[webhook] Dodo webhook body over ${DODO_WEBHOOK_MAX_BODY_BYTES} bytes; refused`);
+    return new Response("Payload too large", { status: 413 });
+  }
 
   // Shared failure persistence: record the sanitized projection, then queue
   // the production ops signal after the row commits. Both the validation
@@ -231,6 +331,13 @@ export const webhookHandler = httpAction(async (ctx, request) => {
     // here MUST NOT block the 401 path. Without this guard, a thrown
     // `runAfter` would surface as an uncaught 500 to Dodo, triggering
     // exactly the retry-storm this whole pattern exists to prevent.
+    //
+    // Gated: the endpoint is unauthenticated, so one report per cooldown
+    // stands in for a burst (see claimDodoSignatureFailureReport).
+    const claim = claimDodoSignatureFailureReport(signatureFailureReportGate, Date.now());
+    if (!claim.report) {
+      return new Response("Invalid webhook signature", { status: 401 });
+    }
     try {
       await ctx.scheduler.runAfter(
         0,
@@ -239,6 +346,7 @@ export const webhookHandler = httpAction(async (ctx, request) => {
           webhookId: webhookId ?? undefined,
           webhookTimestamp: webhookTimestamp ?? undefined,
           errorMessage: error instanceof Error ? error.message : String(error),
+          suppressedSinceLastReport: claim.suppressedSinceLastReport,
         },
       );
     } catch (scheduleErr) {
