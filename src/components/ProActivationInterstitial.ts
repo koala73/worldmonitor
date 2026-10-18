@@ -994,7 +994,7 @@ function hasUsedPowerFeatureStrict(): boolean {
 const MCP_CLIENTS_SIGNAL_TIMEOUT_MS = 3_000;
 
 /**
- * Whether the subscriber has a connected, unrevoked MCP client (#5612). Bounded
+ * Whether the subscriber has used an unrevoked MCP client. Bounded
  * by `timeoutMs` and settled as soon as `signal` aborts: `listMcpClients` takes
  * no signal, so the race is what stops the flow waiting on it. Rejects on
  * failure, timeout or abort; the caller chooses what a failed read means.

@@ -564,6 +564,12 @@ describe('deriveSubscriptionKey (fire-once identity)', () => {
 });
 
 describe('fire-once record + TTL (KTD4)', () => {
+  it('preserves a not-eligible outcome through storage parsing', () => {
+    const record = computeFireOnceRecord('sub_x', NOW, 'not-eligible');
+    assert.deepEqual(record, { subscriptionKey: 'sub_x', shownAt: NOW, outcome: 'not-eligible' });
+    assert.deepEqual(parseFireOnceRecord(JSON.stringify(record)), record);
+  });
+
   it('computeFireOnceRecord captures the subscription key and shown time', () => {
     assert.deepEqual(computeFireOnceRecord('sub_x', NOW), {
       subscriptionKey: 'sub_x',
