@@ -90,6 +90,15 @@ impl Default for LocalApiState {
     }
 }
 
+impl LocalApiState {
+    fn live_port(&self) -> Result<u16, String> {
+        self.port
+            .lock()
+            .map_err(|_| "Failed to lock local API port".to_string())?
+            .ok_or_else(|| "Local API sidecar is not ready".to_string())
+    }
+}
+
 /// In-memory cache for keychain secrets. Populated once at startup to avoid
 /// repeated macOS Keychain prompts (each `Entry::get_password()` triggers one).
 struct SecretsCache {
@@ -1112,7 +1121,7 @@ mod sanitize_path_tests {
     use super::{
         build_time_sidecar_env_value, can_manage_renderer_secrets, configured_renderer_secret_keys,
         is_renderer_managed_secret_key, local_api_proxy_path_is_allowed, sanitize_path_for_node,
-        read_port_file, watch_for_late_sidecar_port, SidecarReadinessOutcome,
+        read_port_file, watch_for_late_sidecar_port, LocalApiState, SidecarReadinessOutcome,
         BUILD_TIME_SIDECAR_ENV_KEYS, DEFAULT_LOCAL_API_PORT, DESKTOP_SHARED_SECRET_KEY,
         SUPPORTED_SECRET_KEYS,
     };
@@ -1282,6 +1291,53 @@ mod sanitize_path_tests {
             let _ = child.wait();
         }
         let _ = fs::remove_dir_all(test_dir);
+    }
+
+    fn state_with_sidecar(child: Option<Child>, port: Option<u16>) -> LocalApiState {
+        let state = LocalApiState::default();
+        *state.child.lock().expect("lock child") = child;
+        *state.port.lock().expect("lock port") = port;
+        state
+    }
+
+    #[test]
+    fn live_port_rejects_exited_sidecar_and_clears_recorded_port() {
+        let mut child = delayed_sidecar_test_child();
+        child.kill().expect("kill sidecar test child");
+        child.wait().expect("reap sidecar test child");
+        let state = state_with_sidecar(Some(child), Some(46123));
+
+        assert_eq!(
+            state.live_port(),
+            Err("Local API sidecar is not ready".to_string())
+        );
+        assert_eq!(*state.port.lock().expect("lock port"), None);
+    }
+
+    #[test]
+    fn live_port_rejects_missing_sidecar_and_clears_recorded_port() {
+        let state = state_with_sidecar(None, Some(46123));
+
+        assert_eq!(
+            state.live_port(),
+            Err("Local API sidecar is not ready".to_string())
+        );
+        assert_eq!(*state.port.lock().expect("lock port"), None);
+    }
+
+    #[test]
+    fn live_port_returns_recorded_port_while_sidecar_is_alive() {
+        let child = delayed_sidecar_test_child();
+        let state = state_with_sidecar(Some(child), Some(47555));
+
+        assert_eq!(state.live_port(), Ok(47555));
+        assert_eq!(*state.port.lock().expect("lock port"), Some(47555));
+
+        let mut slot = state.child.lock().expect("lock child");
+        if let Some(mut child) = slot.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 }
 
