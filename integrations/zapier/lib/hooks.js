@@ -15,10 +15,15 @@ const DELIVERY_ID_HEADER = EVENT_REGISTRY.subscription.signature.deliveryIdHeade
  * (for signature verification in perform). WorldMonitor never returns the
  * secret again.
  */
-async function subscribe(z, bundle, { eventType, chokepointIds, alertThreshold, minLiveSignal, countries }) {
+async function subscribe(z, bundle, { eventType, chokepointIds, alertThreshold, minLiveSignal, countries, scope }) {
   const body = { callbackUrl: bundle.targetUrl, eventType, chokepointIds: chokepointIds || [], countries: countries || [] };
   if (Number.isFinite(alertThreshold)) body.alertThreshold = alertThreshold;
   if (Number.isFinite(minLiveSignal) && minLiveSignal > 0) body.minLiveSignal = minLiveSignal;
+  // Occurrence events (news.breaking, market.move) carry their filters in
+  // `scope`; the server validates the keys against the event's inputSchema and
+  // stores the registry defaults for anything left out. Threshold events send
+  // no scope, so their bodies stay byte-identical to 1.1.0.
+  if (scope && Object.keys(scope).length) body.scope = scope;
   const response = await z.request({ method: 'POST', url: `${BASE_URL}${PATHS.webhooks}`, body });
   const data = response.data || {};
   if (!data.subscriberId || !data.secret) {
@@ -108,6 +113,29 @@ function toInteger(value, fallback) {
   return Number.isInteger(n) ? n : fallback;
 }
 
+function toNumber(value, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/** A Zapier list input arrives as an array, or as one comma-separated string when mapped from a prior step. */
+function readList(value) {
+  const list = Array.isArray(value) ? value : typeof value === 'string' && value ? value.split(',') : [];
+  return [...new Set(list.map((item) => String(item).trim()).filter(Boolean))];
+}
+
+/** Scope fields stored by the server, keyed by the registry inputSchema property names. */
+function scopeFromInputs(inputs) {
+  const scope = {};
+  for (const [key, value] of Object.entries(inputs)) {
+    if (value === undefined || value === null || value === '') continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    scope[key] = value;
+  }
+  return scope;
+}
+
 module.exports = {
   SIGNATURE_HEADER,
   EVENT_HEADER,
@@ -118,4 +146,7 @@ module.exports = {
   headerValue,
   signatureMatches,
   toInteger,
+  toNumber,
+  readList,
+  scopeFromInputs,
 };

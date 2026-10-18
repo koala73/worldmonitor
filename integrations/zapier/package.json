@@ -1,6 +1,6 @@
 {
   "name": "worldmonitor-zapier",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "WorldMonitor is a real-time global intelligence dashboard for geopolitics, military activity, markets, climate, and maritime risk.",
   "main": "index.js",
