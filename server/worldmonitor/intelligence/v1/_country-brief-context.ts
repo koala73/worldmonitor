@@ -42,7 +42,7 @@ export interface CountryIntelCacheKeyOpts {
   countryCode: string;
   lang: string;
   isPremium: boolean;
-  /** 16-char SHA prefix of ordered sources (English default) or caller context; 'base' when absent. Premium-only. */
+  /** 16-char SHA prefix of effective sources and any used caller context; 'base' when absent. Premium-only. */
   contextHash: string;
   /** Full 64-char SHA-256 hex of the premium framework, or ''. Premium-only input. */
   frameworkHash: string;
@@ -64,9 +64,11 @@ export function deriveCountryIntelCacheKey(opts: CountryIntelCacheKeyOpts): stri
     // context could mint entries served to everyone).
     return `ci-sebuf:${version}:${opts.countryCode}:${opts.lang}:shared${energyTag}${energyImportTag}`;
   }
+  // Retire premium entries whose parsed sources could differ from their hashed context.
+  const premiumVersion = opts.lang === 'en' ? 'v13' : 'v10';
   const fw = opts.frameworkHash ? `:${opts.frameworkHash}` : '';
   const context = opts.lang === 'en' && !opts.frameworkHash ? `sources:${opts.contextHash}` : opts.contextHash;
-  return `ci-sebuf:${version}:${opts.countryCode}:${opts.lang}:${context}${fw}${energyTag}${energyImportTag}`;
+  return `ci-sebuf:${premiumVersion}:${opts.countryCode}:${opts.lang}:${context}${fw}${energyTag}${energyImportTag}`;
 }
 
 interface DigestItemForBrief {
