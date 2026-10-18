@@ -26,7 +26,8 @@ describe('earthquake polling freshness', () => {
     assert.deepEqual((await fetchEarthquakes()).map((q: { id: string }) => q.id), ['first']);
 
     served = [quake('first'), quake('new')];
-    now += REFRESH_INTERVALS.natural;
+    // The poll loop's default ±10% jitter can bring the next poll this close.
+    now += REFRESH_INTERVALS.natural * 0.9;
     assert.deepEqual(
       (await fetchEarthquakes()).map((q: { id: string }) => q.id),
       ['first', 'new'],

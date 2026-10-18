@@ -74,7 +74,7 @@ export const REFRESH_INTERVALS = {
   fuelShortages: 60 * 60 * 1000, // active shortage alerts can change intra-day
   energyDisruptions: 60 * 60 * 1000, // disruption log is low-volume but needs intra-day freshness
   energyRiskOverview: 15 * 60 * 1000, // mixed market + supply-chain overview; refresh more often than the underlying weekly registries
-  chokepointStrip: 10 * 60 * 1000, // matches the chokepoint client cache TTL; the status refreshes every 6 min
+  chokepointStrip: 10 * 60 * 1000, // the status refreshes every 6 min; the 5-min client cache never answers a poll
   macroTiles: 30 * 60 * 1000,
   fsi: 30 * 60 * 1000,
   yieldCurve: 30 * 60 * 1000,
