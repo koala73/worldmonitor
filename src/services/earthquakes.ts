@@ -12,7 +12,11 @@ export type Earthquake = ProtoEarthquake & {
 };
 
 const client = new SeismologyServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
-const breaker = createCircuitBreaker<ListEarthquakesResponse>({ name: 'Seismology', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
+// Shorter than the 10-minute natural poll, so every poll asks the server. A
+// longer TTL answered polls from the client cache and, once stale, showed the
+// old list while refreshing in the background: a new quake appeared one poll
+// late, up to two hours after USGS published it.
+const breaker = createCircuitBreaker<ListEarthquakesResponse>({ name: 'Seismology', cacheTtlMs: 5 * 60 * 1000, persistCache: true });
 
 const emptyFallback: ListEarthquakesResponse = { earthquakes: [] };
 
@@ -25,6 +29,6 @@ export async function fetchEarthquakes(): Promise<Earthquake[]> {
 
   const response = await breaker.execute(async () => {
     return client.listEarthquakes({ minMagnitude: 0, start: 0, end: 0, pageSize: 0, cursor: '' });
-  }, emptyFallback, { shouldCache: (r) => r.earthquakes.length > 0 });
+  }, emptyFallback, { shouldCache: (r) => r.earthquakes.length > 0, staleRefreshMode: 'await' });
   return response.earthquakes as Earthquake[];
 }

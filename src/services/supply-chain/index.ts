@@ -84,7 +84,8 @@ function vulnerabilityRequestSignal(callerSignal?: AbortSignal): AbortSignal {
 const client = new SupplyChainServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 
 const shippingBreaker = createCircuitBreaker<GetShippingRatesResponse>({ name: 'Shipping Rates', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
-const chokepointBreaker = createCircuitBreaker<GetChokepointStatusResponse>({ name: 'Chokepoint Status', cacheTtlMs: 90 * 60 * 1000, persistCache: true });
+// Equal to REFRESH_INTERVALS.chokepointStrip; the server status refreshes every 5 min.
+const chokepointBreaker = createCircuitBreaker<GetChokepointStatusResponse>({ name: 'Chokepoint Status', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const mineralsBreaker = createCircuitBreaker<GetCriticalMineralsResponse>({ name: 'Critical Minerals', cacheTtlMs: 24 * 60 * 60 * 1000, persistCache: true });
 const chinaCorridorBreaker = createCircuitBreaker<ChinaCorridorControlTowerResponse>({
   name: 'China Corridor Control Towers',
@@ -153,6 +154,8 @@ function loadLiveChokepointStatus(forceRefresh = false): Promise<GetChokepointSt
   }, emptyChokepoints, {
     shouldCache: isCacheableChokepointStatus,
     forceRefresh,
+    // A stale entry waits for the refresh instead of showing the old reading for another poll.
+    staleRefreshMode: 'await',
   });
 }
 
