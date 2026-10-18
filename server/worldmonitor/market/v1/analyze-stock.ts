@@ -1723,6 +1723,7 @@ async function buildAiOverlay(
           && typeof ratingNarrative === 'object'
           && ratingNarrative !== null
           && typeof (ratingNarrative as Record<string, unknown>).summary === 'string'
+          && ((ratingNarrative as Record<string, unknown>).summary as string).trim().length > 0
           && typeof (ratingNarrative as Record<string, unknown>).action === 'string'
           && (headlines.length === 0
             || (typeof parsed.newsSentiment === 'number' && Number.isFinite(parsed.newsSentiment)));

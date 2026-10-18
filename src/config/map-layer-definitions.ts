@@ -302,7 +302,7 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
     category: 'Maritime',
     purpose: 'Marks strategic waterways and chokepoints so disruption signals can be interpreted against fixed maritime geography.',
     source: 'WorldMonitor strategic-waterways registry with supply-chain chokepoint status overlays from AIS, NGA warnings, and PortWatch-derived feeds.',
-    freshness: 'Waterway locations are static; live chokepoint status is warm-pinged every 30 minutes and transit summaries refresh every 10 minutes when the relay/PortWatch path is healthy.',
+    freshness: 'Waterway locations are static; live chokepoint status is warm-pinged every 6 minutes and transit summaries refresh every 10 minutes when the relay/PortWatch path is healthy.',
     confidence: 'High for fixed geography; live disruption confidence depends on the companion AIS, NGA, and PortWatch feeds.',
     limitations: [
       'A visible chokepoint marker does not mean there is an active disruption.',
@@ -317,7 +317,7 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
     category: 'Maritime',
     purpose: 'Draws major container, energy, and bulk routes through strategic chokepoints for disruption-path reasoning.',
     source: 'WorldMonitor trade-route registry plus supply-chain chokepoint status and transit summaries.',
-    freshness: 'Route geometry is static. Chokepoint status is warm-pinged every 30 minutes and transit summaries refresh every 10 minutes through supply-chain caches and relay paths.',
+    freshness: 'Route geometry is static. Chokepoint status is warm-pinged every 6 minutes and transit summaries refresh every 10 minutes through supply-chain caches and relay paths.',
     confidence: 'Good for route-level exposure context; not a ship-level routing feed.',
     limitations: [
       'Routes are modeled corridors and may not match a specific voyage plan.',

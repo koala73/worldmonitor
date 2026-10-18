@@ -581,7 +581,9 @@ async function hasActivatedServerProFunctionality(
       rule.channels.some((channelType) => verifiedChannels.has(channelType)),
   );
   const hasApiSetup = apiKeys.some((key) => key.revokedAt === undefined);
-  const hasMcpSetup = mcpTokens.some((token) => token.revokedAt === undefined);
+  const hasMcpSetup = mcpTokens.some(
+    (token) => token.revokedAt === undefined && token.lastUsedAt !== undefined,
+  );
   return hasConfiguredDelivery || hasApiSetup || hasMcpSetup;
 }
 

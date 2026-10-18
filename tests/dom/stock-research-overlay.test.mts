@@ -229,6 +229,42 @@ describe('stock research overlay discloses AI-vs-template provenance (#5498)', (
     expect(analyzeSection()?.dataset.analysisProvenance).toBe('rules-fallback');
   });
 
+  it('labels the full-template response after blank model rating summaries as rules (#9338)', async () => {
+    const ratingSummary = 'BABA screens as hold with a bullish setup and a 60/100 score.';
+    analyzeStock.mockResolvedValue({
+      ...analysis(),
+      provider: 'rules',
+      model: '',
+      fallback: true,
+      ratingSummary,
+      summary: 'BABA screens as buy with a bullish setup and a 70/100 score.',
+      newsSentiment: undefined,
+    });
+    await openStockResearchOverlay('BABA');
+
+    expect(provenance()?.dataset.analysisProvenance).toBe('rules-fallback');
+    expect(provenance()?.textContent).toContain('Rules-based template');
+    expect(provenance()?.textContent).not.toMatch(/AI commentary ·/);
+    expect(analyzeSection()?.querySelectorAll('p')[1]?.textContent).toBe(ratingSummary);
+    expect(analyzeSection()?.querySelector('[data-news-overlay]')).toBeNull();
+  });
+
+  it('labels a recovered provider rating summary as model commentary (#9338)', async () => {
+    analyzeStock.mockResolvedValue({
+      ...analysis(),
+      provider: 'generic',
+      model: 'test-recovery-model',
+      ratingSummary: 'Model rating summary.',
+      summary: 'Model technical summary.',
+    });
+    await openStockResearchOverlay('BABA');
+
+    expect(provenance()?.dataset.analysisProvenance).toBe('model');
+    expect(provenance()?.textContent).toContain('AI commentary · generic (test-recovery-model)');
+    expect(analyzeSection()?.querySelectorAll('p')[1]?.textContent).toBe('Model rating summary.');
+    expect(analyzeSection()?.textContent).not.toContain('Rules-based template');
+  });
+
   it('labels model-generated commentary with its provider and model', async () => {
     analyzeStock.mockResolvedValue({ ...analysis(), provider: 'openrouter', model: 'meta-llama/llama-3.3-70b', fallback: false });
     await openStockResearchOverlay('AAPL');

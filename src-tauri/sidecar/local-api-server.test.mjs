@@ -141,6 +141,168 @@ test('routes seed-only displacement requests to cloud before a local empty 200',
   }
 });
 
+for (const failure of ['silent', 'trickle', 'refused']) {
+  test(`cloud-preferred requests use local fallback when cloud is ${failure}`, async () => {
+    const endpoint = '/api/displacement/v1/get-displacement-summary';
+    const hits = [];
+    const timers = new Set();
+    const remote = createServer((req, res) => {
+      hits.push(req.url);
+      if (failure === 'trickle') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.write('{');
+        const timer = setInterval(() => res.write(' '), 50);
+        timers.add(timer);
+        res.once('close', () => { clearInterval(timer); timers.delete(timer); });
+      }
+    });
+    const remotePort = await listen(remote);
+    if (failure === 'refused') await new Promise(resolve => remote.close(resolve));
+    const localApi = await setupApiDir({
+      'displacement/v1/get-displacement-summary.js': `export default async function handler(req) {
+        return Response.json({ source: 'local-empty', dataAvailable: false, body: await req.json() });
+      }`,
+    });
+    const app = await createLocalApiServer({
+      port: 0, apiDir: localApi.apiDir,
+      remoteBase: `http://127.0.0.1:${remotePort}`, cloudFallback: 'true', allowPrivateRemoteBase: true,
+      logger: { log() {}, warn() {}, error() {} },
+    });
+    const { port } = await app.start();
+    let deadline;
+    try {
+      const response = await Promise.race([
+        authFetch(`http://127.0.0.1:${port}${endpoint}`, {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"year":2025}',
+        }),
+        new Promise((_, reject) => {
+          deadline = setTimeout(() => reject(new Error('cloud attempt did not reach local fallback within 4s')), 4000);
+        }),
+      ]);
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { source: 'local-empty', dataAvailable: false, body: { year: 2025 } });
+      assert.deepEqual(hits, failure === 'refused' ? [] : [endpoint]);
+    } finally {
+      clearTimeout(deadline);
+      for (const timer of timers) clearInterval(timer);
+      remote.closeAllConnections();
+      if (remote.listening) await new Promise(resolve => remote.close(resolve));
+      await app.close();
+      await localApi.cleanup();
+    }
+  });
+}
+
+for (const allowPrivateRemoteBase of [false, true]) {
+  test(`cloud proxy preserves its configured base and SSRF guard with private opt-in ${allowPrivateRemoteBase}`, async () => {
+    const remote = await setupRemoteServer();
+    const localApi = await setupApiDir({
+      'displacement/v1/get-displacement-summary.js': 'export default () => Response.json({ source: "local-empty" });',
+    });
+    const app = await createLocalApiServer({
+      port: 0, apiDir: localApi.apiDir, remoteBase: `${remote.remoteBase}/cloud-prefix`,
+      cloudFallback: 'true', allowPrivateRemoteBase,
+      logger: { log() {}, warn() {}, error() {} },
+    });
+    const { port } = await app.start();
+    try {
+      const endpoint = '/api/displacement/v1/get-displacement-summary';
+      const response = await authFetch(`http://127.0.0.1:${port}${endpoint}?url=http://169.254.169.254/secret`);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.source, allowPrivateRemoteBase ? 'remote' : 'local-empty');
+      assert.deepEqual(remote.hits, allowPrivateRemoteBase ? [`/cloud-prefix${endpoint}`] : []);
+    } finally {
+      await app.close();
+      await localApi.cleanup();
+      await remote.close();
+    }
+  });
+}
+
+for (const localFailure of ['missing', 'error-response', 'throw']) {
+  test(`does not retry a timed-out cloud-preferred POST when the local handler is ${localFailure}`, async () => {
+    const endpoint = '/api/v2/shipping/webhooks';
+    let cloudCalls = 0;
+    const remote = createServer(() => { cloudCalls++; });
+    const remotePort = await listen(remote);
+    const handlers = {
+      'error-response': 'export default () => Response.json({ error: "unavailable" }, { status: 503 });',
+      throw: 'export default () => { throw new Error("local unavailable"); };',
+    };
+    const localApi = await setupApiDir(localFailure === 'missing' ? {} : {
+      'v2/shipping/webhooks.js': handlers[localFailure],
+    });
+    const app = await createLocalApiServer({
+      port: 0, apiDir: localApi.apiDir,
+      remoteBase: `http://127.0.0.1:${remotePort}`, cloudFallback: 'true', allowPrivateRemoteBase: true,
+      logger: { log() {}, warn() {}, error() {} },
+    });
+    const { port } = await app.start();
+    let deadline;
+    try {
+      const response = await Promise.race([
+        authFetch(`http://127.0.0.1:${port}${endpoint}`, {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"url":"https://example.com/hook"}',
+        }),
+        new Promise((_, reject) => {
+          deadline = setTimeout(() => reject(new Error('cloud-preferred POST was retried after its deadline')), 4000);
+        }),
+      ]);
+      assert.equal(response.status, { missing: 404, 'error-response': 503, throw: 502 }[localFailure]);
+      assert.equal(cloudCalls, 1, 'a POST may already have applied its side effect before the cloud response stalls');
+    } finally {
+      clearTimeout(deadline);
+      remote.closeAllConnections();
+      await new Promise(resolve => remote.close(resolve));
+      await app.close();
+      await localApi.cleanup();
+    }
+  });
+}
+
+test('cloud proxy cancels its upstream request when the desktop client disconnects', async () => {
+  let cloudRequest;
+  let cloudClosed;
+  const received = new Promise(resolve => { cloudRequest = resolve; });
+  const closed = new Promise(resolve => { cloudClosed = resolve; });
+  const remote = createServer((req, res) => {
+    res.once('close', cloudClosed);
+    cloudRequest();
+  });
+  const remotePort = await listen(remote);
+  const localApi = await setupApiDir({
+    'displacement/v1/get-displacement-summary.js': 'export default () => Response.json({ dataAvailable: false });',
+  });
+  const app = await createLocalApiServer({
+    port: 0, apiDir: localApi.apiDir,
+    remoteBase: `http://127.0.0.1:${remotePort}`, cloudFallback: 'true', allowPrivateRemoteBase: true,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const client = httpRequest(`http://127.0.0.1:${port}/api/displacement/v1/get-displacement-summary`, {
+    headers: { Authorization: `Bearer ${TEST_LOCAL_API_TOKEN}` },
+  });
+  client.on('error', () => {});
+  let deadline;
+  try {
+    const timeout = new Promise((_, reject) => {
+      deadline = setTimeout(() => reject(new Error('cloud proxy disconnect test did not settle within 1s')), 1000);
+    });
+    client.end();
+    await Promise.race([received, timeout]);
+    client.destroy();
+    await Promise.race([closed, timeout]);
+  } finally {
+    clearTimeout(deadline);
+    client.destroy();
+    remote.closeAllConnections();
+    await new Promise(resolve => remote.close(resolve));
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 // The sidecar default-denies when LOCAL_API_TOKEN is unset (security fix:
 // previously "unset" meant "auth disabled", which made any standalone run
 // an open local-HTTP proxy). Set a stable test token + an authFetch helper

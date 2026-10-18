@@ -37,7 +37,7 @@
       "source": {
         "redisKey": "supply_chain:chokepoints:v4",
         "rpc": "/api/supply-chain/v1/get-chokepoint-status",
-        "refreshSeconds": 1800
+        "refreshSeconds": 360
       },
       "entity": { "field": "chokepointId", "listRpc": "/api/supply-chain/v1/get-chokepoint-status", "listField": "chokepoints" },
       "inputSchema": {

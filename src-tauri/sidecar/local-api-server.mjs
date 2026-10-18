@@ -685,6 +685,8 @@ async function buildRouteTable(root) {
 }
 
 const REQUEST_BODY_CACHE = Symbol('requestBodyCache');
+// Leave time for local fallback within the frontend's 5s request budgets.
+const CLOUD_PROXY_TIMEOUT_MS = 3000;
 
 async function readBody(req) {
   if (Object.prototype.hasOwnProperty.call(req, REQUEST_BODY_CACHE)) {
@@ -717,7 +719,9 @@ function toHeaders(nodeHeaders, options = {}) {
 }
 
 async function proxyToCloud(requestUrl, req, remoteBase) {
-  const target = `${remoteBase}${requestUrl.pathname}${requestUrl.search}`;
+  const target = new URL(remoteBase);
+  target.pathname = `${target.pathname.replace(/\/$/, '')}${requestUrl.pathname}`;
+  target.search = requestUrl.search;
   const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
   const headers = toHeaders(req.headers, { stripOrigin: true });
   headers.delete(LOCAL_API_TRANSPORT_HEADER);
@@ -739,11 +743,20 @@ async function proxyToCloud(requestUrl, req, remoteBase) {
     const wmKey = process.env.WORLDMONITOR_API_KEY;
     if (wmKey) headers.set('X-WorldMonitor-Key', wmKey);
   }
-  return fetch(target, {
-    method: req.method,
-    headers,
-    body,
-  });
+  const clientAbort = new AbortController();
+  const onClientClose = () => clientAbort.abort();
+  req.socket.once('close', onClientClose);
+  if (req.socket.destroyed) clientAbort.abort();
+  try {
+    return await fetch(target, {
+      method: req.method,
+      headers,
+      body,
+      signal: AbortSignal.any([clientAbort.signal, AbortSignal.timeout(CLOUD_PROXY_TIMEOUT_MS)]),
+    });
+  } finally {
+    req.socket.off('close', onClientClose);
+  }
 }
 
 async function proxyRegisterInterestToCloud(requestUrl, req, context) {
@@ -1989,14 +2002,16 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  if (context.cloudFallback && isCloudPreferred(requestUrl.pathname)) {
+  const cloudPreferredAttempted = context.cloudFallback && isCloudPreferred(requestUrl.pathname);
+  if (cloudPreferredAttempted) {
     const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'cloud-preferred');
     if (cloudResponse) return cloudResponse;
   }
+  const allowCloudFallback = context.cloudFallback && !cloudPreferredAttempted;
 
   const modulePath = pickModule(requestUrl.pathname, routes);
   if (!modulePath || !existsSync(modulePath)) {
-    if (context.cloudFallback) {
+    if (allowCloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler missing');
       if (cloudResponse) return cloudResponse;
     }
@@ -2008,7 +2023,7 @@ async function dispatch(requestUrl, req, routes, context) {
     const mod = await importHandler(modulePath);
     if (typeof mod.default !== 'function') {
       logOnce(context.logger, requestUrl.pathname, 'invalid handler module');
-      if (context.cloudFallback) {
+      if (allowCloudFallback) {
         const cloudResponse = await tryCloudFallback(requestUrl, req, context, `invalid handler module`);
         if (cloudResponse) return cloudResponse;
       }
@@ -2042,14 +2057,14 @@ async function dispatch(requestUrl, req, routes, context) {
     const response = await mod.default(request);
     if (!(response instanceof Response)) {
       logOnce(context.logger, requestUrl.pathname, 'handler returned non-Response');
-      if (context.cloudFallback) {
+      if (allowCloudFallback) {
         const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler returned non-Response');
         if (cloudResponse) return cloudResponse;
       }
       return json({ error: 'Handler returned invalid response', endpoint: requestUrl.pathname }, 500);
     }
 
-    if (!response.ok && context.cloudFallback) {
+    if (!response.ok && allowCloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, `local status ${response.status}`);
       if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
     }
@@ -2058,7 +2073,7 @@ async function dispatch(requestUrl, req, routes, context) {
   } catch (error) {
     const reason = error.code === 'ERR_MODULE_NOT_FOUND' ? 'missing dependency' : error.message;
     logOnce(context.logger, requestUrl.pathname, reason);
-    if (context.cloudFallback) {
+    if (allowCloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, error);
       if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
     }
