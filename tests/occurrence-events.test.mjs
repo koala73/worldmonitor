@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { describe, it } from 'node:test';
 
@@ -49,6 +50,27 @@ describe('rssEventId', () => {
     const b = rssEventId(`${link}?variant=finance&utm_campaign=rss`, 'Two tankers hit mines in Hormuz, IRGC says');
     assert.equal(a, b);
     assert.match(a, /^rss_[0-9a-f]{32}$/);
+  });
+
+  it('collapses near-duplicate headlines of one story across all five classify variants to one id', () => {
+    // The relay classifies per variant (CLASSIFY_VARIANTS in ais-relay.cjs) and
+    // its classify cache is keyed by the exact title, so each reworded copy of
+    // a story is a separate LLM miss and a separate rss_alert publish. The feeds
+    // differ in tracking parameters, scheme, www, fragment and trailing slash.
+    const relay = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+    const variants = JSON.parse(relay.match(/const CLASSIFY_VARIANTS = (\[[^\]]*\]);/)[1].replace(/'/g, '"'));
+    assert.deepEqual(variants, ['full', 'tech', 'finance', 'happy', 'commodity']);
+    const copies = {
+      full: ['https://www.reuters.com/world/middle-east/tankers-hit-mines-hormuz-2026-10-17/', 'Two tankers hit mines in Strait of Hormuz, Iran\'s Guards say - Reuters'],
+      tech: ['https://reuters.com/world/middle-east/tankers-hit-mines-hormuz-2026-10-17?utm_source=rss&utm_medium=tech', 'Two tankers hit mines in Strait of Hormuz, Iran’s Guards say'],
+      finance: ['http://www.Reuters.com/world/middle-east/tankers-hit-mines-hormuz-2026-10-17#markets', 'Oil jumps as two tankers hit mines in Hormuz'],
+      happy: ['https://www.reuters.com/world/middle-east/tankers-hit-mines-hormuz-2026-10-17/?taid=abc', 'IRGC: two tankers struck mines in the Strait of Hormuz'],
+      commodity: ['https://www.reuters.com/world/middle-east/tankers-hit-mines-hormuz-2026-10-17', 'Tanker mine strikes in Hormuz | Reuters'],
+    };
+    assert.deepEqual(Object.keys(copies), variants);
+    const ids = new Set(variants.map((variant) => rssEventId(...copies[variant])));
+    assert.equal(ids.size, 1, 'five variant publishes of one story are one event');
+    assert.notEqual([...ids][0], rssEventId('https://www.reuters.com/world/middle-east/tankers-hit-mines-hormuz-follow-up/', copies.full[1]), 'a different article is a different event');
   });
 
   it('differs between two stories on one site', () => {

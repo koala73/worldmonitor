@@ -205,6 +205,21 @@ describe('planTick: occurrence records', () => {
     assert.equal(deliveries.length, 1);
   });
 
+  it('five site-variant publishes of one story under reworded headlines and link variants are one delivery', () => {
+    const base = 'https://www.rferl.org/a/iran-tankers/33560001.html';
+    const copies = [
+      ['full', base, 'Iran’s Guards Say Two Tankers Hit Mines In Strait Of Hormuz'],
+      ['tech', `${base}?utm_source=rss`, 'Two tankers hit mines in Hormuz, IRGC says'],
+      ['finance', base.replace('https://www.', 'http://'), 'Oil jumps after tankers hit mines in Hormuz'],
+      ['happy', `${base}#comments`, 'Tankers hit mines in Hormuz - RFE/RL'],
+      ['commodity', `${base}/`, 'IRGC: two tankers struck mines near Hormuz'],
+    ].map(([variant, link, title], i) => occ(rssMessage({ variant, link, title, publishedAt: NOW - (20 - i) * 60_000 })));
+    assert.equal(new Set(copies.map((m) => m.eventId)).size, 1);
+    const { deliveries } = plan({ records: [newsRecord()], occurrences: copies });
+    assert.equal(deliveries.length, 1);
+    assert.equal(deliveries[0].payload.variant, 'full', 'the first copy drained is the one delivered');
+  });
+
   it('an hourly republish of one market move is one event per UTC day, and a new day is a new event', () => {
     const hourly = [0, 1, 2, 3].map((h) => occ(marketMessage({ publishedAt: NOW - 5 * HOUR + h * HOUR })));
     assert.equal(new Set(hourly.map((m) => m.eventId)).size, 1);
