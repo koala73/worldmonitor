@@ -74,6 +74,7 @@ All notable changes to World Monitor are documented here. Subscribe via [RSS](ht
 
 ### Security
 
+- **`get_tariff_trends` no longer serves the US tariff series to free accounts** (#9301). The free-account MCP bundle read the same seeded US MFN payload that the Pro-only `GET /api/trade/v1/get-tariff-trends` serves. The bundle now carries only the Big Mac index, FAO Food Price Index and national debt. The tariff series stays available to Pro and API plans through `get_tariff_averages` (no partner or product group, reporter `840`). A call with `dataset: ["tariffs"]` returns Invalid params that names `get_tariff_averages`.
 - **CDN cache bypass closed**: `CDN-Cache-Control` header now only emitted for trusted origins (worldmonitor.app, Vercel previews, Tauri). No-origin server-side requests always invoke the edge function so `validateApiKey` runs, preventing a cached 200 from being served to external scrapers.
 - **Shipping v2 webhook tenant isolation (#3242)**: `POST /api/v2/shipping/webhooks` and `GET /api/v2/shipping/webhooks` now enforce `validateApiKey(req, { forceKey: true })`, matching the sibling `[subscriberId]{,/[action]}` routes. Without this gate, a Clerk-authenticated pro user with no API key would collapse into a shared `'anon'` fingerprint bucket and see/overwrite webhooks owned by other `'anon'`-bucket tenants.
 

@@ -211,7 +211,7 @@
     },
     {
       "name": "get_tariff_trends",
-      "description": "Global trade and pricing indicators: US MFN applied tariff trend (all-products average), Big Mac index, FAO Food Price Index, and per-country national debt levels.",
+      "description": "Price and debt indicators: Big Mac index, FAO Food Price Index, and per-country national debt levels.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }

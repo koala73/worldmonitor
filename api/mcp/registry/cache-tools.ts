@@ -3031,58 +3031,26 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_tariff_trends',
-    title: 'Tariff and trade price trends',
+    title: 'Price and debt indicators',
     _outputBudgetBytes: 131072,
-    description: 'Global trade and pricing indicators: US MFN applied tariff trend (all-products average), Big Mac index, FAO Food Price Index, and per-country national debt levels.',
+    description: 'Price and debt indicators: Big Mac index, FAO Food Price Index, and per-country national debt levels.',
     inputSchema: {
       type: 'object',
       properties: {
         dataset: {
           type: 'array',
-          items: { type: 'string', enum: ['tariffs', 'bigmac', 'fao-ffpi', 'national-debt'] },
+          items: { type: 'string', enum: ['bigmac', 'fao-ffpi', 'national-debt'] },
           description: 'Restrict the response to one or more sub-datasets. Omit for the full bundle.',
         },
         country: {
           type: 'string',
           description: 'Filter the per-country datasets to one ISO 3166-1 alpha-2 country code (e.g. "US"). It is translated to alpha-3 internally for the national-debt dataset; passing an alpha-3 code directly also works. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
         },
-        limit: { type: 'number', description: 'Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap). Tariff datapoints keep the most recent years; coverageStartYear/coverageEndYear describe the full seeded window.' },
+        limit: { type: 'number', description: 'Cap each list dataset (BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
-    // First cache key `trade:tariffs:v2:840` — last informative segment is the
-    // reporter code (bare digits → NON_LABEL drops it), so the walk would land
-    // on `tariffs`. Pin the historical `all` label via `_cacheLabels` so the
-    // dataset enum and postFilter map stay stable for callers.
     outputSchema: cacheEnvelope({
-      // WTO TP_A_0010: the US simple-average MFN applied rate across all
-      // products, one row per year, oldest first. There is no partner or
-      // HS-level breakdown: partnerCountry is always "World", productSector
-      // "All products", and boundRate 0 (not seeded).
-      all: {
-        type: ['object', 'null'],
-        properties: {
-          datapoints: { type: 'array', items: { type: 'object', properties: {
-            reportingCountry: { type: 'string' },
-            partnerCountry: { type: 'string' },
-            productSector: { type: 'string' },
-            year: { type: 'number' },
-            tariffRate: { type: ['number', 'null'] },
-            boundRate: { type: ['number', 'null'], description: 'Always 0: a placeholder, not an observed bound rate. Bound rates are not seeded.' },
-            indicatorCode: { type: 'string' },
-          } } },
-          // Customs duties / goods imports from FRED (BEA), when available.
-          effectiveTariffRate: { type: 'object', properties: {
-            sourceName: { type: 'string' },
-            sourceUrl: { type: 'string' },
-            observationPeriod: { type: 'string' },
-            updatedAt: { type: 'string' },
-            tariffRate: { type: 'number' },
-          } },
-          coverageStartYear: { type: 'number' },
-          coverageEndYear: { type: 'number' },
-        },
-      },
       bigmac: {
         type: ['object', 'null'],
         properties: { countries: { type: 'array', items: { type: 'object', properties: {
@@ -3099,6 +3067,12 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
+      const ds = argStrList(params.dataset);
+      // The US MFN series left this free-account bundle (#9301): its REST
+      // route is Pro, and get_tariff_averages serves it there.
+      if (ds.includes('tariffs')) {
+        throw new RpcValidationError('get_tariff_trends', [{ field: 'dataset', description: 'The tariffs dataset moved to get_tariff_averages (Pro). Choose bigmac, fao-ffpi or national-debt.' }]);
+      }
       const countries = resolveCountryFilter(params.country, 'country');
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (countries.length > 0) {
@@ -3111,40 +3085,20 @@ export const CACHE_TOOLS: ToolDef[] = [
         ];
         narrowNested(data, 'national-debt', 'entries', (e) => matchesCode(e.iso3, debtCodes));
       }
-      // Tariff datapoints are oldest-first; keep the most recent years.
-      // Truncate like capNested so a fractional limit below 1 keeps none
-      // (slice(-0) would keep all).
-      if (limit > 0) {
-        const n = Math.floor(limit);
-        mapNested(data, 'all', 'datapoints', (d) => (Array.isArray(d) ? (n > 0 ? d.slice(-n) : []) : d));
-      }
       capNested(data, 'bigmac', 'countries', limit);
       capNested(data, 'national-debt', 'entries', limit);
-      const ds = argStrList(params.dataset);
-      if (ds.length > 0) {
-        const map: Record<string, string> = { tariffs: 'all', bigmac: 'bigmac', 'fao-ffpi': 'fao-ffpi', 'national-debt': 'national-debt' };
-        return selectDatasets(data, compact(ds.map((d) => map[d])));
-      }
+      if (ds.length > 0) return selectDatasets(data, ds);
       return data;
     },
-    // 4-key bundle spanning trade + economic domains. Cadences span the 6h
-    // tariff cron (fleet seed-meta, maxStaleMin 420 inside TARIFF_TTL 480) to
-    // monthly (FAO / national debt). Per-key _freshnessChecks pulled from
-    // api/health.js::SEED_META so a slow monthly key doesn't drag the
-    // aggregate stale flag and a fast tariff outage isn't masked by a long FAO
-    // budget. The US reporter key is a canary payload; fleet freshness rides
-    // on seed-meta:trade:tariffs (#6316).
+    // 3-key economic bundle, weekly (Big Mac) to monthly (FAO / national
+    // debt). Per-key _freshnessChecks pulled from api/health.js::SEED_META so
+    // a slow monthly key doesn't drag the aggregate stale flag.
     _cacheKeys: [
-      'trade:tariffs:v2:840',          // US canary payload (label pinned to "all")
       'economic:bigmac:v1',            // BOOTSTRAP_KEYS::bigmac
       'economic:fao-ffpi:v1',          // BOOTSTRAP_KEYS::faoFoodPriceIndex
       'economic:national-debt:v1',     // BOOTSTRAP_KEYS::nationalDebt
     ],
-    _cacheLabels: {
-      'trade:tariffs:v2:840': 'all',
-    },
     _freshnessChecks: [
-      { key: 'seed-meta:trade:tariffs',               maxStaleMin: 420 },   // inside TARIFF_TTL 480
       { key: 'seed-meta:economic:bigmac',             maxStaleMin: 10080 }, // weekly seed; 7d
       { key: 'seed-meta:economic:fao-ffpi',           maxStaleMin: 86400 }, // monthly seed; 60d (2× interval)
       { key: 'seed-meta:economic:national-debt',      maxStaleMin: 86400 }, // monthly seed; 60d (2× interval)

@@ -482,19 +482,21 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_tariff_trends`
 
-全球贸易和价格指标：美国 MFN 适用关税趋势（全部产品平均；其他报告国、伙伴或产品组请使用 `get_tariff_averages`）、巨无霸指数、FAO 食品价格指数和各国国家债务水平。
+价格和债务指标：巨无霸指数、FAO 食品价格指数和各国国家债务水平。
+
+该工具保留原名以兼容现有调用方，但不再包含关税序列（#9301）。美国 MFN 关税趋势属于 Pro 数据：请调用 `get_tariff_averages`，报告国设为 `840`，不传伙伴和产品组。`dataset: ["tariffs"]` 会返回 Invalid params。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `dataset` | `array<string: tariffs / bigmac / fao-ffpi / national-debt>` | 将响应限制为一个或多个子数据集。省略则返回完整捆绑包。 |
+| `dataset` | `array<string: bigmac / fao-ffpi / national-debt>` | 将响应限制为一个或多个子数据集。省略则返回完整捆绑包。 |
 | `country` | string | 将按国家数据集筛选为一个 ISO 3166-1 alpha-2 国家代码（例如 "US"）。内部会为 national-debt 数据集转换为 alpha-3；直接传 alpha-3 代码也可。 |
-| `limit` | number | 将每个列表数据集（关税数据点、BigMac 国家、债务条目）限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `limit` | number | 将每个列表数据集（BigMac 国家、债务条目）限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
 - **API 端点：** `GET /api/economic/v1/get-fao-food-price-index`, `GET /api/economic/v1/get-national-debt`, `GET /api/economic/v1/list-bigmac-prices`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **9 小时**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 按子数据集计算 — BigMac **7 天**，FAO FFPI 和国家债务各 **60 天**。任一子数据集超出自身预算时，`stale` 即为 true。
 
 <CodeGroup>
 
@@ -545,7 +547,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_tariff_averages`
 
-一个国家按年份适用的平均关税。不传伙伴和产品组时，返回任一报告国的 WTO 全部产品 MFN 平均税率（`TP_A_0010`），不限于 `get_tariff_trends` 中的美国序列。传入非“世界”的伙伴或产品组时，返回来自 UNCTAD TRAINS（经 World Bank WITS）的实际适用平均税率：
+一个国家按年份适用的平均关税。不传伙伴和产品组时，返回任一报告国的 WTO 全部产品 MFN 平均税率（`TP_A_0010`），包括美国（`840`）。传入非“世界”的伙伴或产品组时，返回来自 UNCTAD TRAINS（经 World Bank WITS）的实际适用平均税率：
 
 - `tariffRate` 为简单平均（`AHS-SMPL-AVRG`），计入该伙伴可享受的优惠。
 - `weightedRate` 为进口加权平均（`AHS-WGHTD-AVRG`）。

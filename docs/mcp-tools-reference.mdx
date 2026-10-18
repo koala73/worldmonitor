@@ -489,20 +489,22 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_tariff_trends`
 
-Global trade and pricing indicators: US MFN applied tariff trend (all-products average; for another reporter, a partner or a product group use get_tariff_averages), Big Mac index, FAO Food Price Index, and per-country national debt levels.
+Price and debt indicators: Big Mac index, FAO Food Price Index, and per-country national debt levels.
+
+The tool keeps its name for existing callers, but it no longer carries a tariff series (#9301). The US MFN tariff trend is Pro data: call `get_tariff_averages` with reporter `840` and no partner or product group. `dataset: ["tariffs"]` returns Invalid params.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | `array<string: tariffs / bigmac / fao-ffpi / national-debt>` | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
+| `dataset` | `array<string: bigmac / fao-ffpi / national-debt>` | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
 | `country` | string | Filter the per-country datasets to one ISO 3166-1 alpha-2 country code (e.g. "US"). It is translated to alpha-3 internally for the national-debt dataset; passing an alpha-3 code directly also works. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
-| `limit` | number | Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap). Tariff datapoints keep the most recent years; coverageStartYear/coverageEndYear describe the full seeded window. |
+| `limit` | number | Cap each list dataset (BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/economic/v1/get-fao-food-price-index`, `GET /api/economic/v1/get-national-debt`, `GET /api/economic/v1/list-bigmac-prices`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** per sub-dataset — tariffs **7 h**, BigMac **7 d**, FAO FFPI and national debt **60 d** each. The single `stale` flag ORs all four checks: it flips as soon as any one sub-dataset exceeds its own budget, tariffs in practice being the tightest.
+- **Freshness budget:** per sub-dataset — BigMac **7 d**, FAO FFPI and national debt **60 d** each. The single `stale` flag ORs all three checks: it flips as soon as any one sub-dataset exceeds its own budget.
 
 <CodeGroup>
 
@@ -554,7 +556,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_tariff_averages`
 
-Average tariff one country applies, by year. With no partner and no product group it returns the WTO MFN average over all products (`TP_A_0010`) for any reporter, not only the US series in `get_tariff_trends`. With a partner other than World, or a product group, it returns the effectively applied average from UNCTAD TRAINS via World Bank WITS:
+Average tariff one country applies, by year. With no partner and no product group it returns the WTO MFN average over all products (`TP_A_0010`) for any reporter, the United States (`840`) included. With a partner other than World, or a product group, it returns the effectively applied average from UNCTAD TRAINS via World Bank WITS:
 
 - `tariffRate` is the simple average (`AHS-SMPL-AVRG`), counting preferences the partner qualifies for.
 - `weightedRate` is the import-weighted average (`AHS-WGHTD-AVRG`).

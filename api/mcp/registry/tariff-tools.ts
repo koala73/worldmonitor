@@ -7,8 +7,9 @@
  *   get_us_import_duty   -> GET /api/trade/v1/get-us-import-duty
  *
  * Each tool signs one gateway fetch and returns the route's answer unchanged,
- * so coverage, fault and caching rules live in the handlers only. The cached
- * `get_tariff_trends` bundle keeps serving the seeded US MFN series.
+ * so coverage, fault and caching rules live in the handlers only. The US MFN
+ * series is served here only: the free-account `get_tariff_trends` bundle
+ * dropped it (#9301).
  *
  * Upstream budget: these routes read WITS or USITC on a cache miss. Over MCP
  * that work is bounded by the caller's own metering (Pro daily quota, or 2
