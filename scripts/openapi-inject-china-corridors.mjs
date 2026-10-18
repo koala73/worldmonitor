@@ -479,13 +479,6 @@ function responseExample() {
     provenance: null,
   })));
 
-  // One corridor is a complete example of the shape: every corridor repeats the
-  // same node, condition, signal and provenance structure, so the other three
-  // reviewed corridors added ~15 KB of escaped payloadJson to every artifact
-  // without documenting anything new. public/openapi.json sits under a
-  // 950,000-byte scanner budget (docs/perf/openapi-bundle-capacity-2026-08-13.md),
-  // and this example was its single largest operation. The id enum on
-  // ChinaCorridorControlTower.id still names all four corridors.
   const corridorExamples = [
     {
       id: 'china-yangtze-river-delta',
@@ -506,7 +499,79 @@ function responseExample() {
         selectorId: 'port1188',
       },
     },
+    {
+      id: 'china-greater-bay-area',
+      name: 'Greater Bay Area',
+      description: 'Reviewed Pearl River Delta corridor connecting Guangdong, Hong Kong, and Macao-facing port, airport, and industrial gateways.',
+      boundary: [
+        { lat: 20.5, lon: 111.5 },
+        { lat: 20.5, lon: 115.8 },
+        { lat: 24.8, lon: 115.8 },
+        { lat: 24.8, lon: 111.5 },
+        { lat: 20.5, lon: 111.5 },
+      ],
+      node: {
+        id: 'china-node:gba-port-shekou',
+        name: 'Shekou Shenzhen',
+        lat: 22.47,
+        lon: 113.9,
+        selectorId: 'port1189',
+      },
+    },
+    {
+      id: 'china-bohai-rim',
+      name: 'Bohai Rim',
+      description: 'Reviewed northern maritime-industrial corridor spanning Beijing-Tianjin, Hebei, Shandong, Liaoning, and their major gateways.',
+      boundary: [
+        { lat: 35.5, lon: 116 },
+        { lat: 35.5, lon: 123.5 },
+        { lat: 42.2, lon: 123.5 },
+        { lat: 42.2, lon: 116 },
+        { lat: 35.5, lon: 116 },
+      ],
+      node: {
+        id: 'china-node:bohai-port-qingdao',
+        name: 'Qingdao',
+        lat: 36.07,
+        lon: 120.32,
+        selectorId: 'port1069',
+      },
+    },
+    {
+      id: 'china-western-land-sea-corridor',
+      name: 'Western Land-Sea Corridor',
+      description: 'Reviewed western corridor linking inland manufacturing hubs, Xinjiang land crossings, and Guangxi gateways to regional and maritime routes.',
+      boundary: [
+        { lat: 20.4, lon: 106.2 },
+        { lat: 20.4, lon: 110.4 },
+        { lat: 32.5, lon: 110.4 },
+        { lat: 47, lon: 91 },
+        { lat: 47, lon: 78.5 },
+        { lat: 41, lon: 78.5 },
+        { lat: 27, lon: 99.7 },
+        { lat: 22, lon: 105.8 },
+        { lat: 20.4, lon: 106.2 },
+      ],
+      node: {
+        id: 'china-node:western-port-qinzhou',
+        name: 'Qinzhou',
+        lat: 21.6788,
+        lon: 108.6383,
+        selectorId: 'port1071',
+      },
+    },
   ];
+  // The production parser (shared/china-corridor-control-towers.ts) accepts a
+  // payload only with every reviewed corridor and every signal family on each,
+  // so the example keeps all four. Two corridors carry the full observed port
+  // condition (signal plus provenance); the other two take the all-unavailable
+  // shape the parser also accepts, the same one
+  // createUnavailableChinaCorridorControlTowerResponse emits. Repeating the
+  // observed structure on every corridor put ~7 KB of escaped payloadJson into
+  // public/openapi.json for no extra documentation, and that artifact sits
+  // under a 950,000-byte scanner budget
+  // (docs/perf/openapi-bundle-capacity-2026-08-13.md).
+  const OBSERVED_CORRIDOR_EXAMPLES = 2;
   payload.corridors = corridorExamples.map((definition) => {
     const corridor = structuredClone(payload.corridors[0]);
     corridor.id = definition.id;
@@ -535,6 +600,17 @@ function responseExample() {
     port.provenance.claims.derivation.value.inputSignalIds = [signal.id];
     return corridor;
   });
+  for (const corridor of payload.corridors.slice(OBSERVED_CORRIDOR_EXAMPLES)) {
+    corridor.availability = 'unavailable';
+    corridor.conditions = corridor.conditions.map((condition) => ({
+      family: condition.family,
+      providerId: `provider:${condition.family}`,
+      availability: 'unavailable',
+      reason: 'No reviewed source observation is available in this example.',
+      sourceSignals: [],
+      provenance: null,
+    }));
+  }
   return {
     payloadJson: JSON.stringify(payload),
     generatedAt: payload.generatedAt,
