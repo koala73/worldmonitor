@@ -41,6 +41,7 @@ import { GAMMA_IRRADIATORS } from '@/config/irradiators';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { getCountryBbox, getCountriesGeoJson, getCountryAtCoordinates, getCountryNameByCode } from '@/services/country-geometry';
 import { escapeHtml } from '@/utils/sanitize';
+import { corroborationLabelHtml } from '@/utils/corroboration-flag';
 import { showLayerWarning } from '@/utils/layer-warning';
 import { isMobileDevice } from '@/utils';
 import { setGlobeMarkerLoad } from '@/bootstrap/globe-marker-probe';
@@ -375,6 +376,7 @@ interface NewsLocationMarker extends BaseMarker {
   article?: NewsLocationInput['article'];
   title: string;
   threatLevel: string;
+  corroboration?: NewsLocationInput['corroboration'];
 }
 interface FlashMarker extends BaseMarker {
   _kind: 'flash';
@@ -486,6 +488,7 @@ interface GlobeControlsLike {
   minDistance: number;
   maxDistance: number;
   enableDamping: boolean;
+  update(): boolean;
   addEventListener(type: string, listener: () => void): void;
   removeEventListener(type: string, listener: () => void): void;
 }
@@ -595,6 +598,7 @@ export class GlobeMap {
   private imageryFetchTimer: ReturnType<typeof setTimeout> | null = null;
   private imageryFetchVersion = 0;
   private controlsEndHandler: (() => void) | null = null;
+  private controlsStartHandler: (() => void) | null = null;
   private satBeamGroup: any = null;
   private tradeRouteSegments: TradeRouteSegment[] = [];
   private globePaths: GlobePath[] = [];
@@ -627,6 +631,7 @@ export class GlobeMap {
   private onLayerChangeCb: ((layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void) | null = null;
   private onStateChangeCb: ((state: MapContainerState) => void) | null = null;
   private viewportSettleTimer: ReturnType<typeof setTimeout> | null = null;
+  private viewportAnimationFrame: number | null = null;
   private viewportSettledPromise: Promise<boolean> = Promise.resolve(true);
   private resolveViewportSettled: ((completed: boolean) => void) | null = null;
   private viewportTarget: { lat: number; lng: number; altitude: number } | null = null;
@@ -737,6 +742,10 @@ export class GlobeMap {
     controls.maxDistance = 600;
     controls.enableDamping = !desktop;
 
+    this.controlsStartHandler = () => {
+      if (this.viewportTarget) this.settleViewportMovement(false);
+    };
+    controls.addEventListener('start', this.controlsStartHandler);
     this.controlsEndHandler = () => {
       // Snapshot before publishing state: a synchronous subscriber can start a
       // newer movement, and this old event must never settle that generation.
@@ -1681,8 +1690,10 @@ export class GlobeMap {
              `<br><span style="opacity:.5;">${esc(d.severity)} · ${esc(d.description.slice(0, 60))}</span>`;
     } else if (d._kind === 'newsLocation') {
       const tc = d.threatLevel === 'critical' ? '#ff2020' : d.threatLevel === 'high' ? '#ff6600' : (d.threatLevel === 'elevated' || d.threatLevel === 'medium') ? '#ffaa00' : '#44aaff';
+      const coverage = corroborationLabelHtml(d.corroboration);
       html = `<span style="color:${tc};font-weight:bold;">📰 ${esc(d.title.slice(0, 60))}</span>` +
-             `<br><span style="opacity:.5;">${esc(d.threatLevel)}</span>`;
+             `<br><span style="opacity:.5;">${esc(d.threatLevel)}</span>` +
+             (coverage ? `<br>${coverage}` : '');
     } else if (d._kind === 'satellite') {
       const sc = SAT_COUNTRY_COLORS[d.country] || '#ccccff';
       const altBand = d.alt < 2000 ? 'LEO' : d.alt < 35786 ? 'MEO' : 'GEO';
@@ -2963,6 +2974,10 @@ export class GlobeMap {
     target: { lat: number; lng: number; altitude: number },
     durationMs: number,
   ): number {
+    if (this.viewportAnimationFrame !== null) {
+      cancelAnimationFrame(this.viewportAnimationFrame);
+      this.viewportAnimationFrame = null;
+    }
     // Concrete renderer entry points (buttons, marker clicks and fitCountry)
     // can bypass MapContainer's facade token. Give every one its own promise so
     // a superseding local command resolves the older caller as interrupted.
@@ -3003,7 +3018,7 @@ export class GlobeMap {
     const longitudeDelta = target && pov
       ? Math.abs((((pov.lng - target.lng) + 540) % 360) - 180)
       : Number.POSITIVE_INFINITY;
-    const atTarget = Boolean(target && pov
+    const atTarget = Boolean(!this.renderPaused && !document.hidden && target && pov
       && Math.abs(pov.lat - target.lat) <= 0.0001
       && longitudeDelta <= 0.0001
       && Math.abs(pov.altitude - target.altitude) <= 0.001);
@@ -3033,13 +3048,13 @@ export class GlobeMap {
     generation = this.viewportMovementGeneration,
   ): void {
     if (generation !== this.viewportMovementGeneration) return;
+    if (this.viewportAnimationFrame !== null) {
+      cancelAnimationFrame(this.viewportAnimationFrame);
+      this.viewportAnimationFrame = null;
+    }
     if (this.viewportSettleTimer) {
       clearTimeout(this.viewportSettleTimer);
       this.viewportSettleTimer = null;
-    }
-    if (!this.destroyed && this.globe) {
-      this.reselectMarkersForViewport();
-      this.onStateChangeCb?.(this.getState());
     }
     this.viewportTarget = null;
     this.viewportSettleDeadline = 0;
@@ -3057,6 +3072,10 @@ export class GlobeMap {
       }
     }
     this.viewportAutoRotateBeforeMove = null;
+    if (!this.destroyed && this.globe) {
+      this.reselectMarkersForViewport();
+      this.onStateChangeCb?.(this.getState());
+    }
   }
 
   public whenViewportSettled(): Promise<boolean> {
@@ -3069,8 +3088,43 @@ export class GlobeMap {
   ): void {
     if (!this.globe) return;
     this.wakeGlobe();
-    this.markViewportMoving(target, durationMs);
-    this.globe.pointOfView(target, durationMs);
+    const controls = this.controls;
+    if (controls) {
+      const autoRotate = controls.autoRotate;
+      const enableDamping = controls.enableDamping;
+      controls.autoRotate = false;
+      controls.enableDamping = false;
+      try {
+        controls.update();
+      } finally {
+        controls.autoRotate = autoRotate;
+        controls.enableDamping = enableDamping;
+      }
+    }
+    const generation = this.markViewportMoving(target, durationMs);
+    const start = this.globe.pointOfView();
+    while (start.lng - target.lng > 180) start.lng -= 360;
+    while (start.lng - target.lng < -180) start.lng += 360;
+    const startedAt = performance.now();
+    const animate = () => {
+      if (generation !== this.viewportMovementGeneration || this.destroyed || !this.globe) return;
+      this.viewportAnimationFrame = null;
+      if (!this.renderPaused && !document.hidden) {
+        const progress = durationMs <= 0 ? 1 : Math.min(1, (performance.now() - startedAt) / durationMs);
+        const eased = progress < 0.5 ? 4 * progress ** 3 : 1 - (-2 * progress + 2) ** 3 / 2;
+        this.globe.pointOfView(progress === 1 ? target : {
+          lat: start.lat + (target.lat - start.lat) * eased,
+          lng: start.lng + (target.lng - start.lng) * eased,
+          altitude: start.altitude + (target.altitude - start.altitude) * eased,
+        }, 0);
+        if (progress === 1) {
+          this.trySettleViewportMovement(false, generation);
+          return;
+        }
+      }
+      this.viewportAnimationFrame = requestAnimationFrame(animate);
+    };
+    animate();
   }
 
   public setView(view: MapView, zoom?: number): void {
@@ -3549,6 +3603,7 @@ export class GlobeMap {
         article: d.article,
         title: d.title,
         threatLevel: d.threatLevel ?? 'info',
+        ...(d.corroboration ? { corroboration: d.corroboration } : {}),
       }));
     this.flushMarkers();
   }
@@ -4004,7 +4059,7 @@ export class GlobeMap {
     this.idleTimer = setTimeout(() => {
       if (this.destroyed || !this.globe || this.renderPaused) return;
       // Don't pause if auto-rotate is active (user expects continuous spin)
-      if (this.controls?.autoRotate) return;
+      if (this.controls?.autoRotate || this.viewportTarget) return;
       this.isGlobeAnimating = false;
       try { (this.globe as any).pauseAnimation?.(); } catch { /* best-effort */ }
     }, 3000);
@@ -4058,6 +4113,10 @@ export class GlobeMap {
     if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
     if (this.imageryFetchTimer) { clearTimeout(this.imageryFetchTimer); this.imageryFetchTimer = null; }
     this.imageryFetchVersion++;
+    if (this.controlsStartHandler && this.controls) {
+      this.controls.removeEventListener('start', this.controlsStartHandler);
+      this.controlsStartHandler = null;
+    }
     if (this.controlsEndHandler && this.controls) {
       this.controls.removeEventListener('end', this.controlsEndHandler);
       this.controlsEndHandler = null;

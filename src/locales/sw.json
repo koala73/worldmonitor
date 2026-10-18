@@ -303,7 +303,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Hali ya makadirio na ujazaji wa thamani zinazokosekana haijatolewa"
     },
     "fiveFactorScorecard": {
       "title": "Kadi ya Alama za Ustahimilivu ya Vipengele Vitano",
@@ -480,6 +481,7 @@
     "goldIntelligence": "Gold Intelligence",
     "gov": "Serikali",
     "thinktanks": "Fikiria Mizinga",
+    "science": "Sayansi",
     "polymarket": "Utabiri",
     "commodities": "Vyuma na Nyenzo",
     "economic": "Mkazo wa Macro",
@@ -3008,6 +3010,7 @@
       "tier4OnlyHint": "Kila chombo cha habari kinachoripoti hili ni chanzo cha kiwango cha 4 (tovuti za kukusanya habari na blogu). Hii inaeleza kiwango cha uripoti, si usahihi.",
       "rosterListed": "({{listed}} wameorodheshwa)",
       "rosterFeeds": "Milisho iliyoonekana: {{labels}}",
+      "rosterSameCopy": "Maandishi yaleyale, yamehesabiwa mara moja",
       "rosterLegend": "Viwango vinapanga vyanzo; havihukumu dai hili.",
       "tierDocsLink": "Jinsi viwango vinavyogawanywa",
       "tierChip": "T{{tier}}",

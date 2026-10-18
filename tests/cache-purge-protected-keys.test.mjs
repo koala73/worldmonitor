@@ -51,6 +51,7 @@ describe('cache-purge protects auth state', () => {
       keys: [
         'oauth:token:abc', 'oauth:refresh:def', 'oauth:client:c1', 'mcp-grant:n1',
         'wm:slack:oauth:s1', 'wm:discord:oauth:s2', 'rl:mcp:1',
+        'internal-mcp-replay:v1:deadbeef', 'webhook:sub:wh_abc:v1', 'webhook:owner:0123:v1',
         'news:digest:v1', 'entitlements:user_1',
       ],
     });
@@ -64,5 +65,29 @@ describe('cache-purge protects auth state', () => {
     assert.equal(res.status, 200);
     const { keys } = await res.json();
     assert.deepEqual(keys, ['oauth-cache:keep']);
+  });
+
+  // Replay nonces and shipping webhook records share the Redis with the
+  // caches. Purging the first re-opens the signed-request replay window;
+  // purging the second deletes customers' subscriptions and signing secrets.
+  it('never deletes internal-MCP replay nonces or shipping webhook records, even by broad pattern', async () => {
+    const savedFetch = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      if (url.startsWith('https://redis.test/scan/')) {
+        return Response.json({ result: ['0', [
+          'internal-mcp-replay:v1:deadbeef', 'webhook:sub:wh_abc:v1', 'webhook:owner:0123:v1', 'webhooks-cache:keep',
+        ]] });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    };
+    try {
+      const res = await purge({ patterns: ['w*', 'internal-*'] });
+      assert.equal(res.status, 200);
+      const { keys } = await res.json();
+      assert.deepEqual(keys, ['webhooks-cache:keep']);
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
   });
 });

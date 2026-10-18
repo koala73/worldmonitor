@@ -212,6 +212,7 @@ const ANALYSIS_STALE_DESCRIPTION = 'True when any contributing cache key fails i
 export const ANALYSIS_TOOLS: ToolDef[] = [
   {
     name: 'get_signal_convergence',
+    title: 'Geographic signal convergence',
     _outputBudgetBytes: 65536,
     description:
       'Geographic signal convergence: grid cells where protests, military activity, naval movements, and earthquakes co-occur. ' +
@@ -363,6 +364,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_focal_points',
+    title: 'News and map focal points',
     _outputBudgetBytes: 65536,
     description:
       'Focal-point detection: entities where news coverage and live map signals converge, ranked by multi-signal score. ' +
@@ -463,6 +465,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'simulate_infrastructure_cascade',
+    title: 'Simulate an infrastructure cascade',
     _outputBudgetBytes: 131072,
     description:
       'Infrastructure cascade simulation: what fails downstream when a cable, chokepoint, pipeline, or port is disrupted. ' +
@@ -550,15 +553,10 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_military_surge',
+    title: 'Military surge alerts',
     _outputBudgetBytes: 65536,
     description:
-      'Military surge watch: theater aircraft postures, foreign-presence detections, and seeder-computed surge alerts. ' +
-      'Runs the dashboard military-surge engine server-side over the seeded flight snapshot: per-theater posture summaries ' +
-      'count fighters, tankers, AWACS, reconnaissance, transports, bombers, and drones inside each theater boundary, with ' +
-      'trend context recovered from the persisted surge history and tracked-vessel counts merged from the theater-posture ' +
-      'cache. Foreign-presence detection flags operators flying far from their home region above per-operator thresholds. ' +
-      'The seeded_surges block carries the surge alerts the flights seeder computed against its own persisted baselines — ' +
-      'reported separately because that variant uses different thresholds than the snapshot engine. Filter with theater.',
+      'Return the military surge watch computed server-side over the seeded flight snapshot: per-theater posture summaries counting fighters, tankers, AWACS, reconnaissance, transports, bombers and drones inside each theater boundary with trend context from persisted surge history and tracked-vessel counts; foreign_presence detections (operators flying far from home above per-operator thresholds); and seeded_surges, the alerts the flights seeder computed against its own baselines (reported separately because it uses different thresholds). Inputs are flagged stale after 30 minutes; flight_count and the *_available flags report which inputs were present. Requires a paid plan; weight 2 on API plans. theater narrows by id or name substring. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -680,6 +678,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_population_exposure',
+    title: 'Population exposed to active events',
     _outputBudgetBytes: 65536,
     description:
       'Population exposure: estimated people within the impact radius of active earthquakes, wildfires, and conflict events. ' +
@@ -815,6 +814,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_alert_digest',
+    title: 'Daily cross-domain alert digest',
     _outputBudgetBytes: 131072,
     description:
       'Cross-domain alert digest: everything that tripped a threshold today, in one rollup. ' +
@@ -940,6 +940,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_hotspot_escalation',
+    title: 'Hotspot escalation scores',
     _outputBudgetBytes: 65536,
     description:
       'Hotspot escalation scores: the 29 curated intelligence hotspots ranked by dynamic escalation on a 1-5 scale. ' +

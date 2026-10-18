@@ -743,7 +743,10 @@ async function fetchNhc(fetchFn = globalThis.fetch) {
 
     const classification = NHC_STORM_TYPES[stormType] || classifyWind(windKt).classification;
     const typeLabel = NHC_STORM_TYPES[stormType] || stormType;
-    const title = `${typeLabel} ${stormName}`;
+    const comparableName = stormName.trim().toLowerCase();
+    const hasClassification = comparableName.startsWith(typeLabel.toLowerCase())
+      && /^\s/.test(comparableName.slice(typeLabel.length));
+    const title = hasClassification ? stormName : `${typeLabel} ${stormName}`;
 
     // Build forecast track from forecast points
     const forecastTrack = points.features

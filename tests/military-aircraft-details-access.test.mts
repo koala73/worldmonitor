@@ -10,6 +10,7 @@ import {
 } from '../server/_shared/rate-limit.ts';
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
 import { GENERATED_MESSAGE_RULES } from '../src/generated/server/request_validation.ts';
+import { validationFailure } from './helpers/validation-failure.mts';
 
 const AIRCRAFT_DETAILS_PATH = '/api/military/v1/get-aircraft-details';
 const BATCH_PATH = '/api/military/v1/get-aircraft-details-batch';
@@ -109,12 +110,7 @@ describe('Wingbits aircraft-details access contract', () => {
 
     await assert.rejects(
       () => getAircraftDetails(ctx({ 'X-WorldMonitor-Key': API_KEY }), { icao24: 'not-an-icao24' }),
-      (error: unknown) => {
-        const typed = error as { statusCode?: number; message?: string };
-        assert.equal(typed.statusCode, 400);
-        assert.equal(typed.message, 'icao24 must be a 6-character hexadecimal address');
-        return true;
-      },
+      validationFailure('icao24', /^icao24 must be a 6-character hexadecimal address$/),
     );
   });
 

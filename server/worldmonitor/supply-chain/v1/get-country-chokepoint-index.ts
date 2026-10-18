@@ -3,7 +3,9 @@ import type {
   GetCountryChokepointIndexRequest,
   GetCountryChokepointIndexResponse,
 } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 
+import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
 import { isCallerPremium } from '../../../_shared/premium-check';
 import { CHOKEPOINT_EXPOSURE_KEY } from '../../../_shared/cache-keys';
@@ -62,13 +64,20 @@ export async function getCountryChokepointIndex(
   ctx: ServerContext,
   req: GetCountryChokepointIndexRequest,
 ): Promise<GetCountryChokepointIndexResponse> {
+  // The gateway applies the proto's shape rule only. Check membership here,
+  // ahead of the premium gate as the gateway's 400 is, so an unassigned code
+  // such as ZZ gets a 400 instead of a cache read, a sentinel write and a 24h fill.
+  const iso2 = (req.iso2 ?? '').trim().toUpperCase();
+  if (!isAssignedCountryCode(iso2)) {
+    throw new ValidationError([{ field: 'iso2', description: 'iso2 must be an assigned ISO 3166-1 alpha-2 code, e.g. "IQ".' }]);
+  }
+
   const isPro = await isCallerPremium(ctx.request);
   if (!isPro) return emptyResponse(req.iso2, req.hs2 || '27');
 
-  const iso2 = req.iso2.trim().toUpperCase();
   const hs2 = (req.hs2?.trim() || '27').replace(/\D/g, '') || '27';
 
-  if (!/^[A-Z]{2}$/.test(iso2) || !/^\d{1,2}$/.test(hs2)) {
+  if (!/^\d{1,2}$/.test(hs2)) {
     return emptyResponse(req.iso2, req.hs2 || '27');
   }
 

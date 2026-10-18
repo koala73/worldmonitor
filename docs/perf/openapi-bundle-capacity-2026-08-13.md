@@ -123,6 +123,10 @@ Later passes in `scripts/build-openapi-json.mjs`, all JSON-only (the YAML keeps 
 
 The last one is boilerplate rather than repetition. It falls under step 3's "boilerplate that repeats verbatim", applied to response descriptions instead of operation descriptions. After it, the repeated structures the report still counts are dominated by the inline `jmespath` parameter copies, which `ensureInlineTypedInput` keeps on purpose for JSON-only scanners. Step 2 still needs scanner re-verification. The next operation will need step 2, or a scanner re-check of the budget.
 
+### Operations left out of the scanner bundle
+
+Step 2 has since landed: `Idempotency-Key` and `Idempotent-Replayed` are shared `components.headers` refs in the served JSON. With 320 bytes left, the owner decided (#9093) that endpoints built for WorldMonitor's own pages and for operators stay out of `public/openapi.json`. `SCANNER_BUNDLE_EXCLUDED_OPERATIONS` in `scripts/build-openapi-json.mjs` lists each one with its reason. An excluded operation is still served, still documented in its per-service spec and the YAML bundle, and still callable. Only this artifact omits it, so it costs no budget.
+
 ### Not on the table
 
 - Raising the 950,000-byte budget.

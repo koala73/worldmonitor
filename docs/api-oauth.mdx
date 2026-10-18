@@ -61,6 +61,8 @@ At most **8** `redirect_uris` per registration; more returns `400 invalid_reques
 
 **Client TTL**: 90 days sliding (every successful token exchange refreshes).
 
+**Client ID Metadata Documents**: instead of registering, a client on the [trusted list](/mcp-overview#client-id-metadata-documents) can use the HTTPS URL of its published metadata document as `client_id` on `/authorize` and `/token`. The AS metadata advertises `client_id_metadata_document_supported: true`. A URL `client_id` is resolved from that document; any other value is looked up as a registration.
+
 ### `GET /api/oauth/authorize`
 
 Starts the OAuth flow. Renders a consent page that redirects to Clerk for sign-in, then issues an authorization code bound to the caller's entitlement. The Pro sign-in leg of the consent flow is served by the sibling `GET /oauth/authorize-pro` (HTML; not called directly by clients). It admits Pro subscribers and confirmed free accounts; a provider-confirmed lapse is reclassified onto the free-account path, so authorization continues with a restricted, allowance-metered token. Retryable verification failures return `503`, while genuinely insufficient states such as an expired or disabled paid row without a confirmed lapse render the Pro-required page.
@@ -68,8 +70,8 @@ Starts the OAuth flow. Renders a consent page that redirects to Clerk for sign-i
 **Required query params**:
 
 - `response_type=code`
-- `client_id` — from DCR
-- `redirect_uri` — must match the one registered
+- `client_id` — from DCR, or a trusted Client ID Metadata Document URL
+- `redirect_uri` — must match the one registered, or one listed in the metadata document (loopback callbacks may use any port)
 - `code_challenge` — PKCE S256
 - `code_challenge_method=S256`
 - `state` — opaque

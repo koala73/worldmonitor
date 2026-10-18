@@ -46,6 +46,7 @@ import {
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import { withTimeout } from '@/utils/with-timeout';
+import { assessCorroboration, evidenceFromCluster } from '@/utils/corroboration-flag';
 import { fetchPredictionCandidates, reprioritizeMarketsForRegion as reprioritizePredictionMarketsForRegion } from '@/services/prediction';
 import {
   fetchEarthquakes,
@@ -2264,6 +2265,8 @@ export class DataLoaderManager implements AppModule {
           title: c.primaryTitle,
           threatLevel: c.threat?.level ?? 'info',
           timestamp: c.lastUpdated,
+          // #9213: the verdict the News panel shows for this cluster.
+          corroboration: assessCorroboration(evidenceFromCluster(c)),
         }));
       if (geoLocated.length > 0 || landed) {
         this.ctx.map?.setNewsLocations(geoLocated);
@@ -3164,7 +3167,7 @@ export class DataLoaderManager implements AppModule {
         portAlerts: [],
         marineBulletins: [],
         sourceName: 'India Meteorological Department',
-        sourceUrl: 'https://api.imd.gov.in/public/api_reference.html',
+        sourceUrl: 'https://mausam.imd.gov.in/responsive/marine_forecast.php',
       };
     }
   }

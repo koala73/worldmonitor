@@ -333,6 +333,10 @@
       "name": "seed-webcams"
     },
     {
+      "id": "a97fa619-a8f4-4244-9748-6c0f6c3eade3",
+      "name": "shipping-webhook-worker"
+    },
+    {
       "id": "67264e35-0b51-457b-984f-4ef20e36a117",
       "name": "simulation-worker"
     },
@@ -343,6 +347,10 @@
     {
       "id": "ad4184fa-51d1-487f-8b2b-61ebbdd9ab4d",
       "name": "umami-retention"
+    },
+    {
+      "id": "1f732679-760d-467b-bc36-4be3f45bc586",
+      "name": "verification-desk"
     }
   ]
 }

@@ -7462,9 +7462,38 @@ components:
                     type: integer
                     format: int64
                     description: 'Publication time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                threat:
+                    $ref: '#/components/schemas/ThreatClassification'
             description: |-
                 CountryCoverageHeadline is one country-relevant article from the coverage
                  feed, after the panel's first-mention country filter.
+        ThreatClassification:
+            type: object
+            properties:
+                level:
+                    type: string
+                    enum:
+                        - THREAT_LEVEL_UNSPECIFIED
+                        - THREAT_LEVEL_LOW
+                        - THREAT_LEVEL_MEDIUM
+                        - THREAT_LEVEL_HIGH
+                        - THREAT_LEVEL_CRITICAL
+                    description: ThreatLevel represents the assessed threat level of a news event.
+                category:
+                    type: string
+                    description: Event category.
+                confidence:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                    description: Confidence score (0.0 to 1.0).
+                source:
+                    type: string
+                    description: |-
+                        Classification source — "keyword", "keyword-historical-downgrade", or
+                         "llm".
+            description: ThreatClassification represents an AI-assessed threat level for a news item.
         CountryCoverageEvent:
             type: object
             properties:

@@ -207,7 +207,8 @@ paths:
                                       "callbackUrl": "https://example.com/worldmonitor-webhook"
                                       "chokepointIds":
                                           - "suez"
-                                      "createdAt": "2026-01-15T12:00:00Z"
+                                      "countries":
+                                          - "US"
                             schema:
                                 $ref: '#/components/schemas/ListWebhooksResponse'
                 "400":
@@ -309,7 +310,7 @@ paths:
                 - ShippingV2Service
             summary: RegisterWebhook
             description: |-
-                RegisterWebhook subscribes a callback URL to chokepoint disruption alerts.
+                RegisterWebhook subscribes a callback URL to one event type.
                  Returns the subscriberId and the raw HMAC secret — the secret is never
                  returned again except via rotate-secret. PRO-gated. Requires an active Pro subscription.
             operationId: RegisterWebhook
@@ -325,6 +326,8 @@ paths:
                             "callbackUrl": "https://example.com/worldmonitor-webhook"
                             "chokepointIds":
                                 - "suez"
+                            "eventType": "chokepoint.disruption"
+                            "minLiveSignal": 1
                         schema:
                             $ref: '#/components/schemas/RegisterWebhookRequest'
                 required: true
@@ -750,18 +753,28 @@ components:
                     maximum: 100
                     minimum: 0
                     format: int32
-                    description: |-
-                        Disruption-score threshold for delivery, 0-100. Default 50.
-                         proto3 `optional` so the handler can distinguish "partner explicitly sent
-                         0 (deliver every alert)" from "partner omitted the field (apply default
-                         50)". Without `optional`, both serialise to the proto3 scalar default of
-                         0 and the handler can't tell them apart — flagged in #3242 review.
+                    description: Disruption-score threshold for delivery, 0-100. Default 50; an explicit 0 delivers every alert.
+                eventType:
+                    type: string
+                    maxLength: 64
+                    description: '`chokepoint.disruption` (default) or `country.risk_surge`.'
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: '`country.risk_surge` scope: monitored ISO2 codes; empty = all.'
+                minLiveSignal:
+                    type: integer
+                    maximum: 40
+                    minimum: 0
+                    format: int32
+                    description: '`chokepoint.disruption` live-signal floor; 0 = score only.'
             required:
                 - callbackUrl
             description: |-
-                RegisterWebhookRequest creates a new chokepoint-disruption webhook
-                 subscription. Wire shape is byte-compatible with the pre-migration
-                 legacy POST body.
+                RegisterWebhookRequest subscribes to one eventType (default
+                 chokepoint.disruption). Wire shape is byte-compatible with the legacy
+                 POST body.
         RegisterWebhookResponse:
             type: object
             properties:
@@ -808,6 +821,16 @@ components:
                     description: ISO-8601 timestamp of registration.
                 active:
                     type: boolean
+                eventType:
+                    type: string
+                    description: As registered; see RegisterWebhookRequest.
+                countries:
+                    type: array
+                    items:
+                        type: string
+                minLiveSignal:
+                    type: integer
+                    format: int32
             description: |-
                 Single webhook record in the list response. `secret` is intentionally
                  omitted; use rotate-secret to obtain a new one.

@@ -8,6 +8,7 @@ import { __resetRateLimitForTest, ENDPOINT_RATE_POLICIES, FAIL_CLOSED_ENDPOINT_R
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { readLimiterRequest } from './helpers/upstash-limiter-wire.mjs';
 import { issueSessionToken } from '../api/_session.js';
+import { validationFailure } from './helpers/validation-failure.mts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -57,7 +58,7 @@ const providers = () => calls.filter(url => url.hostname === 'relay.example');
 
 test('invalid or oversized identifiers fail before cache or upstream I/O', async () => {
   for (const options of [{ icao24: 'abc123&lamin=0' }, { icao24: 'abc12' }, { icao24: 'gggggg' }, { icao24: 'a'.repeat(1000) }, { callsign: 'UAE/20' }, { callsign: 'UAE20&x=1' }, { callsign: 'ABCDEFGHI' }, { callsign: ' '.repeat(1000) + 'UAE20' }]) {
-    await assert.rejects(read(options), (error: unknown) => error instanceof ApiError && error.statusCode === 400);
+    await assert.rejects(read(options), validationFailure(Object.keys(options)[0]!));
     assert.equal(calls.length, 0);
   }
 });
@@ -230,7 +231,7 @@ test('both identifiers and identifiers with bbox are validated and admitted with
   assert.equal(both.positions[0]?.icao24, 'abc123');
   const withBbox = await read({ icao24: 'abc123', callsign: 'UAE', swLat: 24, swLon: 54, neLat: 26, neLon: 56 });
   assert.equal(withBbox.positions[0]?.icao24, 'abc123');
-  await assert.rejects(read({ icao24: 'bad', swLat: 24, swLon: 54, neLat: 26, neLon: 56 }), (error: unknown) => error instanceof ApiError && error.statusCode === 400);
+  await assert.rejects(read({ icao24: 'bad', swLat: 24, swLon: 54, neLat: 26, neLon: 56 }), validationFailure('icao24'));
 });
 test('verified MCP identifier calls cannot bypass the handler budget', async () => {
   const { signInternalMcpRequest, buildInternalMcpHeaders } = await import('../server/_shared/mcp-internal-hmac.ts');
@@ -349,7 +350,7 @@ test('normalized viewport coordinates determine both cache identity and relay qu
 
 test('nonfinite viewport coordinates reject before cache or provider work', async () => {
   for (const swLat of [NaN, Infinity, -Infinity]) {
-    await assert.rejects(read({ swLat, neLat: 26, swLon: 54, neLon: 56 }), (error: unknown) => error instanceof ApiError && error.statusCode === 400);
+    await assert.rejects(read({ swLat, neLat: 26, swLon: 54, neLon: 56 }), validationFailure('sw_lat', /finite viewport/));
     assert.equal(calls.length, 0);
   }
 });

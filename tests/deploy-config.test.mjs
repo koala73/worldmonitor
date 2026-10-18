@@ -5,6 +5,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { MACHINE_READABLE_URLS } from '../scripts/build-sitemap.mjs';
+import { nonDefaultLandingLocales } from '../shared/indexable-landing-locales.ts';
 import { dirname, join, relative, resolve } from 'node:path';
 function readFileSync(path, options) {
   const content = originalReadFileSync(path, options);
@@ -43,7 +44,12 @@ function parseRobotsGroups(source) {
   return groups;
 }
 import { fileURLToPath } from 'node:url';
-import { guardProBuiltOutput, shouldSkipProBuiltOutput, withoutUnbuiltProPaths } from './_lib/pro-built-output.mjs';
+import {
+  guardProBuiltOutput,
+  isProBuiltOutputPath,
+  shouldSkipProBuiltOutput,
+  withoutUnbuiltProPaths,
+} from './_lib/pro-built-output.mjs';
 import { CACHE_POLICY_HEADER_NAME, isSharedCacheable } from './helpers/shared-cache-policy.mjs';
 import {
   CONTENT_CORPUS_PREFIXES,
@@ -104,6 +110,7 @@ const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
   'settings.html',
   'live-channels.html',
   'mcp-grant.html',
+  'verify.html',
   'public/offline.html',
   'public/pro/index.html',
   'public/pro/welcome.html',
@@ -113,6 +120,7 @@ const GLOBAL_CSP_EXTERNAL_SCRIPT_HTML_FILES = [
   'settings.html',
   'live-channels.html',
   'mcp-grant.html',
+  'verify.html',
   'public/pro/index.html',
   'public/pro/welcome.html',
 ];
@@ -383,6 +391,11 @@ const KNOWN_FRAME_WILDCARDS = [
   'https://*.custom.hs.dodopayments.com',
 ];
 const OPEN_CSP_SOURCES = ['*', 'https:', 'http:', 'data:', 'blob:'];
+const findOpenDesktopScriptSources = (tokens) => tokens.filter((token) =>
+  token === "'unsafe-inline'" || token === "'unsafe-eval'" ||
+  OPEN_CSP_SOURCES.includes(token) ||
+  (token.includes('*') && token !== 'https://*.clerk.accounts.dev')
+);
 // Exported-by-hoisting so the guard's own negative test can drive it directly
 // rather than asserting through the real config, which cannot show a widening.
 const findOpenFrameSources = (tokens) => tokens.filter((token) => {
@@ -555,7 +568,7 @@ describe('crawlable content corpus deployment contracts', () => {
     );
     assert.equal(
       packageJson.scripts['build:sitemap'],
-      'node scripts/build-sitemap.mjs'
+      'node --import tsx scripts/build-sitemap.mjs'
     );
 
     for (const scriptName of ['build', 'build:full']) {
@@ -654,6 +667,7 @@ describe('crawlable content corpus deployment contracts', () => {
       'docs/docs.json',
       'scripts/build-comparison-pages.mjs',
       'scripts/comparison-page-narratives.mjs',
+      'scripts/comparison-shortlist.mjs',
       'scripts/unranked-country-inventory.mjs',
       'scripts/build-use-cases.mjs',
       'scripts/build-accuracy-page.mjs',
@@ -663,6 +677,9 @@ describe('crawlable content corpus deployment contracts', () => {
       'scripts/generate-inventory-facts.mjs',
       'scripts/docs-stats.mjs',
       'scripts/source-attribution.mjs',
+      'scripts/country-related-links.mjs',
+      'scripts/data/country-centroids.json',
+      'scripts/related-reading.mjs',
     ]) {
       assert.equal(vercelIgnoreSource.split(`'${path}'`).length - 1, 2, `${path} must trigger main and preview builds`);
     }
@@ -688,6 +705,7 @@ describe('crawlable content corpus deployment contracts', () => {
         'docs/docs.json',
         'scripts/build-comparison-pages.mjs',
       'scripts/comparison-page-narratives.mjs',
+      'scripts/comparison-shortlist.mjs',
         'scripts/unranked-country-inventory.mjs',
         'scripts/build-use-cases.mjs',
         'scripts/build-accuracy-page.mjs',
@@ -697,6 +715,9 @@ describe('crawlable content corpus deployment contracts', () => {
         'scripts/generate-inventory-facts.mjs',
         'scripts/docs-stats.mjs',
         'scripts/source-attribution.mjs',
+        'scripts/country-related-links.mjs',
+        'scripts/data/country-centroids.json',
+        'scripts/related-reading.mjs',
       ]) {
         const previous = git('rev-parse', 'HEAD').trim();
         mkdirSync(dirname(join(fixture, path)), { recursive: true });
@@ -1633,6 +1654,24 @@ describe('welcome landing page routing', () => {
     assertPublicHtmlEntryCache('/');
   });
 
+  it('gives indexable locale landings the same public HTML cache as the English homepage', () => {
+    // Last matching header wins. Without an explicit later rule, /es/ inherits
+    // the SPA catch-all `private, no-cache` instead of the homepage CDN policy.
+    // Two-letter locale ids stay out of that catch-all's prefix lookahead so
+    // `/debug` or `/archive` cannot be excluded by `de` / `ar`.
+    const homepageLink = effectiveHeader('/', 'Link');
+    for (const locale of nonDefaultLandingLocales()) {
+      assertPublicHtmlEntryCache(`/${locale.pathSegment}`);
+      assertPublicHtmlEntryCache(locale.canonicalPath);
+      assert.equal(effectiveHeader(locale.canonicalPath, 'Link'), homepageLink);
+      assert.equal(
+        effectiveCacheControl(`/${locale.pathSegment}/not-a-landing`),
+        'private, no-cache, must-revalidate',
+        `/${locale.pathSegment}/not-a-landing must stay on the SPA HTML cache policy`,
+      );
+    }
+  });
+
   it('requires revalidation for direct dashboard.html without disabling bfcache', () => {
     assertPublicHtmlEntryCache('/dashboard.html');
   });
@@ -2500,7 +2539,7 @@ describe('security header guardrails', () => {
       const location = locationBlock.match(/^ {4}location ([^{]+)\{/)?.[1].trim() ?? '<unknown>';
       assert.match(
         locationBlock,
-        /include \/etc\/nginx\/(?:embed_)?security_headers\.conf;/,
+        /include \/etc\/nginx\/(?:embed_|oauth_authorize_|youtube_embed_)?security_headers\.conf;/,
         `docker/nginx.conf.template ${location} must include an origin-keying header set`,
       );
     }
@@ -2510,7 +2549,7 @@ describe('security header guardrails', () => {
     const rules = vercelConfig.headers.filter((entry) =>
       entry.headers?.some((header) => header.key.toLowerCase() === 'origin-trial')
     );
-    assert.equal(rules.length, 3 + (WEBMCP_PRODUCTION_HOSTS.length - 1) * 2);
+    assert.equal(rules.length, 4 + (WEBMCP_PRODUCTION_HOSTS.length - 1) * 2);
 
     for (const host of WEBMCP_PRODUCTION_HOSTS) {
       const hostPattern = '^' + host.replaceAll('.', '\\.') + '$';
@@ -2518,11 +2557,11 @@ describe('security header guardrails', () => {
         rule.has?.some((condition) => condition.type === 'host' && condition.value === hostPattern)
       );
       const expectedSources = host === 'www.worldmonitor.app'
-        ? ['/', '/dashboard', '/dashboard.html']
+        ? ['/', '/(es|pt|ru|fr|de|ar)/', '/dashboard', '/dashboard.html']
         : ['/dashboard', '/dashboard.html'];
       assert.deepEqual(
         hostRules.map((rule) => rule.source).sort(),
-        expectedSources,
+        expectedSources.slice().sort(),
         host + ' must enroll only documents that directly return WebMCP HTML',
       );
       if (host === 'www.worldmonitor.app') {
@@ -2540,6 +2579,20 @@ describe('security header guardrails', () => {
           false,
           host + ' must not attach an Origin-Trial token to /?mode=agent',
         );
+        const landingRule = hostRules.find((rule) => rule.source === '/(es|pt|ru|fr|de|ar)/');
+        assert.ok(landingRule, host + ' must enroll prerendered locale landings');
+        assert.deepEqual(
+          landingRule.missing,
+          [{ type: 'query', key: 'mode', value: 'agent' }],
+          host + ' must exclude locale-landing ?mode=agent from enrollment',
+        );
+        for (const locale of nonDefaultLandingLocales()) {
+          assert.equal(headerRuleMatchesRequest(landingRule, { path: locale.canonicalPath, host }), true);
+          assert.equal(
+            headerRuleMatchesRequest(landingRule, { path: locale.canonicalPath, host, query: { mode: 'agent' } }),
+            false,
+          );
+        }
       }
       assert.equal(
         hostRules.some((rule) => headerRuleMatchesRequest(rule, { path: '/dashboard', host })),
@@ -2680,6 +2733,49 @@ describe('security header guardrails', () => {
     assert.ok(mediaSrc.includes('https:'), 'Tauri CSP media-src must allow https: for direct HLS CDN streams');
   });
 
+  it('desktop (Tauri) CSP admits the production Clerk Frontend API and Turnstile (#9134)', () => {
+    // loadClerkUmd() derives the script host from the publishable key, so a
+    // pk_live build loads clerk.browser.js and ui.browser.js from
+    // clerk.worldmonitor.app, not *.clerk.accounts.dev. Sign-up then loads
+    // Turnstile from challenges.cloudflare.com as a script and a frame.
+    const tauriConfig = JSON.parse(readFileSync(resolve(__dirname, '../src-tauri/tauri.conf.json'), 'utf-8'));
+    const tauriCsp = tauriConfig.app.security.csp;
+    const scriptSrc = getCspDirectiveTokens(tauriCsp, 'script-src');
+    const frameSrc = getCspDirectiveTokens(tauriCsp, 'frame-src');
+    for (const origin of ['https://clerk.worldmonitor.app', 'https://challenges.cloudflare.com']) {
+      assert.ok(scriptSrc.includes(origin), `Tauri CSP script-src must allow ${origin}`);
+      assert.ok(frameSrc.includes(origin), `Tauri CSP frame-src must allow ${origin}`);
+    }
+    assert.deepEqual(findOpenDesktopScriptSources(scriptSrc), [],
+      'Tauri CSP script-src must stay an exact-origin allowlist except for the known Clerk dev wildcard');
+  });
+
+  it('the desktop script-src guard rejects unsafe keywords and unapproved open sources', () => {
+    for (const widened of [
+      "'unsafe-inline'",
+      "'unsafe-eval'",
+      'https://*.example.com',
+      'http://*.example.com',
+      'https://*',
+      '*.example.com',
+      '*',
+      'https:',
+      'http:',
+      'data:',
+      'blob:',
+    ]) {
+      assert.deepEqual(findOpenDesktopScriptSources([widened]), [widened],
+        `guard must reject ${widened} in desktop script-src`);
+    }
+    assert.deepEqual(findOpenDesktopScriptSources([
+      "'self'",
+      "'wasm-unsafe-eval'",
+      'https://*.clerk.accounts.dev',
+      'https://clerk.worldmonitor.app',
+      'https://challenges.cloudflare.com',
+    ]), []);
+  });
+
   it('CSP connect-src does not contain localhost in production', () => {
     const csp = getHeaderValue('Content-Security-Policy');
     const connectSrc = csp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
@@ -2764,7 +2860,7 @@ describe('security header guardrails', () => {
     const scriptHashTokens = getCspDirectiveTokens(csp, 'script-src')
       .filter((token) => token.startsWith("'sha256-"));
     const committedFiles = GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES
-      .filter((file) => !file.startsWith('public/pro/'));
+      .filter((file) => !isProBuiltOutputPath(file));
     assert.ok(
       committedFiles.length > 0,
       'committed-HTML population is empty — this guard would pass vacuously',

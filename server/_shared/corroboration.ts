@@ -8,15 +8,24 @@
  */
 import {
   PUBLISHER_FAMILIES,
-  countPublisherFamilies,
   publisherFamilyFor,
   publisherNameForFamily,
 } from '../../shared/publisher-families.js';
+import { detectSyndication } from '../../shared/syndication.js';
 import { TIER_MEANING, declaredSourceTier, type DeclaredTier } from './source-tiers';
 
-/** What a caller holds about one claim. The variant says whether sibling members are visible. */
+/**
+ * What a caller holds about one claim. The variant says whether sibling members are visible.
+ * `sameCopy` lists publisher families whose items carry the same copy (#9095); each group
+ * counts as one publisher. It is set only by a caller that saw the items' text.
+ */
 export type ClaimEvidence =
-  | { readonly kind: 'grouped'; readonly labels: readonly string[]; readonly reportedPublishers: number | null }
+  | {
+    readonly kind: 'grouped';
+    readonly labels: readonly string[];
+    readonly reportedPublishers: number | null;
+    readonly sameCopy?: readonly (readonly string[])[];
+  }
   | { readonly kind: 'item'; readonly label: string; readonly reportedPublishers: number | null };
 
 export type Corroboration =
@@ -41,6 +50,29 @@ function claimLabels(evidence: ClaimEvidence): string[] {
     .filter((label) => publisherFamilyFor(label) !== '');
 }
 
+const isCuratedFamily = (family: string) => Object.prototype.hasOwnProperty.call(PUBLISHER_FAMILIES, family);
+
+/**
+ * The publisher a label counts as: its family, or the family a same-copy group
+ * it belongs to is named after (#9095): the group's curated publisher when it
+ * has one, so a reprint is listed under the publisher it copied. Merging only
+ * ever joins families, so this can lower the count and never raise it.
+ */
+function publisherKeyFor(evidence: ClaimEvidence): (label: string) => string {
+  const merged = new Map<string, string>();
+  if (evidence.kind === 'grouped') {
+    for (const group of evidence.sameCopy ?? []) {
+      const families = group.filter((family) => typeof family === 'string' && family !== '');
+      const key = families.find(isCuratedFamily) ?? families[0]!;
+      for (const family of families) if (!merged.has(family)) merged.set(family, key);
+    }
+  }
+  return (label) => {
+    const family = publisherFamilyFor(label);
+    return merged.get(family) ?? family;
+  };
+}
+
 /**
  * Rule, in order:
  *  - an item without a server count is unknown: one label says nothing about its siblings;
@@ -52,7 +84,7 @@ function claimLabels(evidence: ClaimEvidence): string[] {
  */
 export function assessCorroboration(evidence: ClaimEvidence): Corroboration {
   const labels = claimLabels(evidence);
-  const seen = countPublisherFamilies(labels);
+  const seen = new Set(labels.map(publisherKeyFor(evidence))).size;
   const reported = positiveCount(evidence.reportedPublishers);
   if (evidence.kind === 'item' && reported === null) return UNKNOWN;
   if (evidence.kind === 'grouped' && seen === 0) return UNKNOWN;
@@ -69,12 +101,14 @@ export function assessCorroboration(evidence: ClaimEvidence): Corroboration {
 /** One publisher family behind a claim, and the tier its seen labels declare. */
 export type Publisher = {
   readonly family: string;
-  /** The curated publisher name, or the feed label itself when no family is curated. */
+  /** The curated publisher name; otherwise the feed label the tier was read from, or the first label when none declares one. */
   readonly name: string;
   /** Best tier declared among this claim's labels in the family; null when none declares one. Never defaulted to 4. */
   readonly tier: DeclaredTier | null;
   /** Distinct labels seen, first-seen order: what the tier was read from. */
   readonly labels: readonly string[];
+  /** Present when this entry joins several families whose items carried the same copy (#9095). */
+  readonly sameCopy?: true;
 };
 
 /** Tier ascending, undeclared last, then name. */
@@ -88,32 +122,51 @@ const tierRank = (tier: DeclaredTier | null) => tier ?? 5;
  * A server count above it means publishers this caller cannot list.
  */
 export function publisherRoster(evidence: ClaimEvidence): PublisherRoster {
-  const byFamily = new Map<string, { labels: string[]; tier: DeclaredTier | null }>();
+  const keyFor = publisherKeyFor(evidence);
+  const byKey = new Map<string, { labels: string[]; tier: DeclaredTier | null; tierLabel: string | null; families: Set<string> }>();
   for (const label of claimLabels(evidence)) {
-    const family = publisherFamilyFor(label);
-    const entry = byFamily.get(family) ?? { labels: [], tier: null };
+    const key = keyFor(label);
+    const entry = byKey.get(key) ?? { labels: [], tier: null, tierLabel: null, families: new Set<string>() };
     if (!entry.labels.includes(label)) entry.labels.push(label);
+    entry.families.add(publisherFamilyFor(label));
     const tier = declaredSourceTier(label);
-    if (tier !== null && (entry.tier === null || tier < entry.tier)) entry.tier = tier;
-    byFamily.set(family, entry);
+    if (tier !== null && (entry.tier === null || tier < entry.tier)) {
+      entry.tier = tier;
+      entry.tierLabel = label;
+    }
+    byKey.set(key, entry);
   }
-  return [...byFamily].map(([family, { labels, tier }]): Publisher => ({
+  // An uncurated row is named after the label its tier came from, so the name
+  // and the tier describe one outlet.
+  return [...byKey].map(([family, { labels, tier, tierLabel, families }]): Publisher => ({
     family,
-    name: Object.prototype.hasOwnProperty.call(PUBLISHER_FAMILIES, family) ? publisherNameForFamily(family) : labels[0]!.trim(),
+    name: isCuratedFamily(family) ? publisherNameForFamily(family) : (tierLabel ?? labels[0]!).trim(),
     tier,
     labels,
+    ...(families.size > 1 ? { sameCopy: true as const } : {}),
   })).sort((a, b) => tierRank(a.tier) - tierRank(b.tier) || a.name.localeCompare(b.name, 'en'));
 }
 
 export function evidenceFromCluster(cluster: {
-  readonly allItems: readonly { readonly source: string; readonly corroborationCount?: number }[];
+  readonly allItems: readonly {
+    readonly source: string;
+    readonly corroborationCount?: number;
+    readonly title?: string;
+    readonly snippet?: string;
+  }[];
 }): ClaimEvidence {
   let reported: number | null = null;
   for (const item of cluster.allItems) {
     const count = positiveCount(item.corroborationCount);
     if (count !== null && (reported === null || count > reported)) reported = count;
   }
-  return { kind: 'grouped', labels: cluster.allItems.map((item) => item.source), reportedPublishers: reported };
+  const { groups } = detectSyndication(cluster.allItems, (item) => publisherFamilyFor(item.source));
+  return {
+    kind: 'grouped',
+    labels: cluster.allItems.map((item) => item.source),
+    reportedPublishers: reported,
+    ...(groups.length > 0 ? { sameCopy: groups.map((group) => group.families) } : {}),
+  };
 }
 
 /**
@@ -123,13 +176,29 @@ export function evidenceFromCluster(cluster: {
  * sources are legacy or malformed and contribute nothing.
  */
 export function evidenceFromStory(
-  story: { readonly sources?: unknown; readonly corroborationCount?: unknown },
+  story: { readonly sources?: unknown; readonly corroborationCount?: unknown; readonly sameCopy?: unknown },
 ): Extract<ClaimEvidence, { kind: 'grouped' }> {
   const labels = Array.isArray(story.sources)
     ? story.sources.filter((label): label is string => typeof label === 'string' && label.length > 0)
     : [];
   const count = typeof story.corroborationCount === 'number' ? story.corroborationCount : null;
-  return { kind: 'grouped', labels, reportedPublishers: positiveCount(count) };
+  // The seeder's same-copy groups (#9095). Only families present in `sources`
+  // can join, so a malformed group can lower the count of the labels shown
+  // here and never names a publisher that is not listed.
+  const present = new Set(labels.map(publisherFamilyFor));
+  const sameCopy = Array.isArray(story.sameCopy)
+    ? story.sameCopy
+      .map((group) => (Array.isArray(group)
+        ? [...new Set(group.filter((family): family is string => typeof family === 'string' && present.has(family)))]
+        : []))
+      .filter((group) => group.length > 1)
+    : [];
+  return {
+    kind: 'grouped',
+    labels,
+    reportedPublishers: positiveCount(count),
+    ...(sameCopy.length > 0 ? { sameCopy } : {}),
+  };
 }
 
 export function evidenceFromItem(item: { readonly source: string; readonly corroborationCount?: number }): ClaimEvidence {

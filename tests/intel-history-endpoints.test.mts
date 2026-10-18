@@ -36,6 +36,7 @@ import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
 import { getIntelTimeline } from '../server/worldmonitor/intelligence/v1/get-intel-timeline';
 import { getSimilarEvents } from '../server/worldmonitor/intelligence/v1/get-similar-events';
 import { searchIntelHistory } from '../server/worldmonitor/intelligence/v1/search-intel-history';
+import { validationFailure } from './helpers/validation-failure.mts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -179,7 +180,7 @@ describe('scope normalization', () => {
       from: -86_400_000,
       to: 0,
       limit: 0,
-    }), /from must be an integer/i);
+    }), validationFailure('from', /must be an integer/i));
     assert.equal(calls.length, 0);
   });
 
@@ -189,7 +190,7 @@ describe('scope normalization', () => {
     stubFetch({});
     await assert.rejects(
       getIntelTimeline(ctx, { domain: '   ', country: '  ', from: 0, to: 0, limit: 0 }),
-      /at least one of domain or country/i,
+      validationFailure('domain', /at least one of domain or country/i),
     );
     assert.equal(calls.length, 0, 'no upstream call for an unscoped read');
   });
@@ -197,14 +198,13 @@ describe('scope normalization', () => {
   it('rejects invalid domains, countries, inverted bounds, and excessive limits', async () => {
     stubFetch({});
     const invalidRequests = [
-      { domain: 'cyber', country: '', from: 0, to: 0, limit: 0 },
-      { domain: 'conflict', country: 'U1', from: 0, to: 0, limit: 0 },
-      { domain: 'conflict', country: '', from: 2, to: 1, limit: 0 },
-      { domain: 'conflict', country: '', from: 0, to: 0, limit: 201 },
-    ];
-    for (const request of invalidRequests) {
-      await assert.rejects(getIntelTimeline(ctx, request), (err: unknown) =>
-        (err as { statusCode?: number }).statusCode === 400);
+      ['domain', { domain: 'cyber', country: '', from: 0, to: 0, limit: 0 }],
+      ['country', { domain: 'conflict', country: 'U1', from: 0, to: 0, limit: 0 }],
+      ['from', { domain: 'conflict', country: '', from: 2, to: 1, limit: 0 }],
+      ['limit', { domain: 'conflict', country: '', from: 0, to: 0, limit: 201 }],
+    ] as const;
+    for (const [field, request] of invalidRequests) {
+      await assert.rejects(getIntelTimeline(ctx, request), validationFailure(field));
     }
     assert.equal(calls.length, 0);
   });
@@ -354,10 +354,10 @@ describe('searchIntelHistory handler', () => {
     stubFetch({});
     await assert.rejects(searchIntelHistory(ctx, {
       query: '', domain: '', country: '', from: 0, to: 0, limit: 0,
-    }), /query must be between/i);
+    }), validationFailure('query', /must be between/i));
     await assert.rejects(searchIntelHistory(ctx, {
       query: 'x'.repeat(501), domain: '', country: '', from: 0, to: 0, limit: 0,
-    }), /query must be between/i);
+    }), validationFailure('query', /must be between/i));
     assert.equal(calls.length, 0);
   });
   it('embeds the query and maps Convex records onto the proto shape', async () => {
@@ -434,7 +434,7 @@ describe('searchIntelHistory handler', () => {
     calls = [];
     await assert.rejects(
       searchIntelHistory(ctx, { query: 'ab', domain: '', country: '', from: 0, to: 0, limit: 999 }),
-      /limit must be an integer/i,
+      validationFailure('limit', /must be an integer/i),
     );
   });
 
@@ -562,16 +562,12 @@ describe('getIntelTimeline handler', () => {
     assert.deepEqual(convexCall?.body, { domain: 'conflict', limit: 50 });
   });
 
-  it('rejects an unscoped read with a 400-class ApiError before any upstream call', async () => {
+  it('rejects an unscoped read with a field-level validation error before any upstream call', async () => {
     stubFetch({});
 
     await assert.rejects(
       () => getIntelTimeline(ctx, { domain: '', country: '', from: 0, to: 0, limit: 0 }),
-      (err: unknown) => {
-        assert.equal((err as { statusCode?: number }).statusCode, 400);
-        assert.match((err as Error).message, /domain|country/i);
-        return true;
-      },
+      validationFailure('domain', /domain or country/i),
     );
     assert.equal(calls.length, 0);
   });
@@ -592,7 +588,7 @@ describe('getIntelTimeline handler', () => {
     calls = [];
     await assert.rejects(
       getIntelTimeline(ctx, { domain: 'energy', country: '', from: 0, to: 0, limit: 5_000 }),
-      /limit must be an integer/i,
+      validationFailure('limit', /must be an integer/i),
     );
   });
 
@@ -618,10 +614,10 @@ describe('getSimilarEvents handler', () => {
     stubFetch({});
     await assert.rejects(getSimilarEvents(ctx, {
       situation: 'short', domain: '', country: '', limit: 0,
-    }), /situation must be between/i);
+    }), validationFailure('situation', /must be between/i));
     await assert.rejects(getSimilarEvents(ctx, {
       situation: 'x'.repeat(1001), domain: '', country: '', limit: 0,
-    }), /situation must be between/i);
+    }), validationFailure('situation', /must be between/i));
     assert.equal(calls.length, 0);
   });
   it('embeds the situation text and echoes it back with the matches', async () => {
@@ -654,7 +650,7 @@ describe('getSimilarEvents handler', () => {
       domain: '',
       country: '',
       limit: 512,
-    }), /limit must be an integer/i);
+    }), validationFailure('limit', /must be an integer/i));
   });
 
   it('reports upstreamUnavailable when the embeddings provider fails', async () => {
@@ -811,4 +807,23 @@ describe('generated OpenAPI', () => {
       assert.ok(openApiJson.paths[path]?.[method], `${path} must be a ${method.toUpperCase()} operation`);
     });
   }
+});
+
+// captureSilentError is a no-op under NODE_TEST_CONTEXT, so pin the timeout
+// warning gate in source the same way api/miit-news.test.mjs does. Envelope
+// delivery for this gate is covered by tests/intel-history-sentry.test.mjs.
+describe('Sentry TimeoutError warning gate', () => {
+  it('downgrades AbortSignal.timeout captures on the Convex read path', () => {
+    const src = readFileSync(resolve(root, 'server/_shared/intel-history-client.ts'), 'utf8');
+    assert.match(src, /errName === 'AbortError' \|\| errName === 'TimeoutError'/);
+    assert.match(src, /isTransientTimeout \? \{ level: 'warning' \} : \{\}/);
+    assert.match(src, /stage: 'convex-read'/);
+  });
+
+  it('downgrades AbortSignal.timeout captures on the embeddings path', () => {
+    const src = readFileSync(resolve(root, 'server/_shared/intel-history-embed.ts'), 'utf8');
+    assert.match(src, /errName === 'AbortError' \|\| errName === 'TimeoutError'/);
+    assert.match(src, /isTransientTimeout \? \{ level: 'warning' \} : \{\}/);
+    assert.match(src, /stage: 'embed'/);
+  });
 });

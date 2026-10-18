@@ -76,20 +76,40 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 
 ### `POST /api/v2/shipping/webhooks`
 
-Registers a webhook for chokepoint disruption alerts. Returns `200 OK`.
+Registers a webhook for one push event. Returns `200 OK`.
 
-**Request**:
+The events, their thresholds, cooldowns, payload schemas and id rules are defined once in the event registry, [`shared/event-triggers.json`](https://github.com/koala73/worldmonitor/blob/main/shared/event-triggers.json). The [Zapier integration](https://github.com/koala73/worldmonitor/tree/main/integrations/zapier) reads the same file for its instant triggers.
+
+| `eventType` | Fires when | Scope fields |
+| --- | --- | --- |
+| `chokepoint.disruption` (default) | A subscribed chokepoint's `disruptionScore` reaches `alertThreshold` and, when `minLiveSignal` is set, its live signals sit at least that many points above the chokepoint's standing threat level | `chokepointIds`, `alertThreshold`, `minLiveSignal` |
+| `country.risk_surge` | A monitored country's Country Instability Index rises 15 or more points within 24 hours into the high band (70 or more), once per surge per country with a 24-hour cooldown | `countries` |
+
+**Request** (chokepoint alerts):
 ```json
 {
   "callbackUrl": "https://hooks.example.com/shipping-alerts",
   "chokepointIds": ["hormuz_strait", "suez", "bab_el_mandeb"],
-  "alertThreshold": 60
+  "alertThreshold": 60,
+  "minLiveSignal": 15
+}
+```
+
+**Request** (country risk surges):
+```json
+{
+  "callbackUrl": "https://hooks.example.com/risk-alerts",
+  "eventType": "country.risk_surge",
+  "countries": ["IR", "UA", "TW"]
 }
 ```
 
 - `callbackUrl` — required, HTTPS only, must not resolve to a private/loopback address (SSRF guard at registration).
+- `eventType` — optional. `chokepoint.disruption` when omitted, so every body written before event types existed keeps its meaning. Unknown values return `400`.
 - `chokepointIds` — optional. Omitting or passing an empty array subscribes to **all** registered chokepoints. Unknown IDs return `400`.
 - `alertThreshold` — numeric 0-100 (default `50`). Values outside that range return a `400` validation response with description `alertThreshold must be between 0 and 100`.
+- `minLiveSignal` — optional, 0-40 (default `0`), `chokepoint.disruption` only. The score must also exceed the chokepoint's standing threat level (war zone 70, critical 40, high 30, elevated 15, normal 0) by at least this many points before a delivery fires. Without it a war-zone chokepoint that stands at 70 fires once at registration against a threshold of 50 and never again. `15` is what the in-app `chokepoint_disruption` alert rule uses and what the Zapier trigger sends by default.
+- `countries` — optional, `country.risk_surge` only: ISO 3166-1 alpha-2 codes among the monitored countries (the `countries` map in the registry). Empty subscribes to all of them; an unmonitored code or a `countries` list on another event returns `400`.
 
 **Response (`200`)**:
 ```json
@@ -101,9 +121,9 @@ Registers a webhook for chokepoint disruption alerts. Returns `200 OK`.
 
 - `subscriberId` — `wh_` prefix + 24 hex chars (12 random bytes).
 - `secret` — raw 64-char lowercase hex (32 random bytes). There is no `whsec_` prefix. Persist it — the server never returns it again except on rotation.
-- **TTL**: 30 days on both the subscriber record and the per-owner index set. Only **re-registration** refreshes both, via a non-transactional pipeline (`SET` record with `EX`, `SADD` + `EXPIRE` on the owner index). `rotate-secret` and `reactivate` refresh the record's TTL only — they do not touch the owner-index set's expiry, so the owner index can expire independently if a caller only ever rotates or reactivates within a 30-day window. Re-register to keep both alive.
+- **TTL**: 30 days on both the subscriber record and the per-owner index set. Registration writes both with a non-transactional pipeline (`SET` record with `EX`, `SADD` + `EXPIRE` on the owner index, `SADD` on the global delivery index). `rotate-secret` and `reactivate` rewrite the same keys in one transaction, so they also refresh both TTLs. Delivery bookkeeping keeps the record's existing TTL, so a webhook that only receives deliveries still expires 30 days after its last registration, rotation, or reactivation.
 - Registration and listing each scan one owner-index page and check at most 100 subscriber records for expiry. Confirmed expired members are removed only if the record is still absent. Scan progress resumes on later calls. Redis may return more than 100 IDs in a scan page; listing still enumerates the full index. Redis read or cleanup failures return 503 and preserve ambiguous members.
-- Registration returns `503` if any of the three writes cannot be confirmed. Partial records or index entries can remain; a retry can create another registration. No rollback is guaranteed.
+- Registration returns `503` if any of its writes cannot be confirmed. Partial records or index entries can remain; a retry can create another registration. No rollback is guaranteed.
 - Ownership is tracked via SHA-256 of the caller's API key (never secret — stored as `ownerTag`).
 
 Auth: `X-WorldMonitor-Key` (forceKey: true) + PRO. Returns `401` / `403` otherwise.
@@ -121,25 +141,38 @@ Lists the caller's registered webhooks (filtered by the SHA-256 owner tag of the
       "chokepointIds": ["hormuz_strait", "suez"],
       "alertThreshold": 60,
       "createdAt": "2026-04-19T12:00:00Z",
-      "active": true
+      "active": true,
+      "eventType": "chokepoint.disruption",
+      "countries": [],
+      "minLiveSignal": 15
     }
   ]
 }
 ```
 
-The `secret` is intentionally omitted from list and status responses.
+The `secret` is intentionally omitted from list and status responses. Records registered before event types existed report `eventType: "chokepoint.disruption"`, `countries: []` and `minLiveSignal: 0`.
 
 <Note>
-The three `{subscriberId}` sub-routes below are hand-written edge handlers, not generated gateway RPCs: they do not appear in the published OpenAPI spec (`ShippingV2Service`) or in generated clients, and their `403` message uses the literal `PRO subscription required` (all-caps), unlike the gateway routes' `Pro subscription required`.
+The `{subscriberId}` sub-routes below are hand-written edge handlers, not generated gateway RPCs: they do not appear in the published OpenAPI spec (`ShippingV2Service`) or in generated clients, and their `403` message uses the literal `PRO subscription required` (all-caps), unlike the gateway routes' `Pro subscription required`.
 </Note>
 
 ### `GET /api/v2/shipping/webhooks/{subscriberId}`
 
-Status read for a single webhook. Returns the same record shape as in `GET /webhooks` (no `secret`). `404` if unknown, `403` if owned by a different API key.
+Status read for a single webhook. Returns the same record shape as in `GET /webhooks` (no `secret`) plus the delivery counters `failureCount`, `lastDeliveryAt`, and `lastDeliveryStatus` described under [Delivery worker](#delivery-worker). `404` if unknown, `403` if owned by a different API key.
+
+### `DELETE /api/v2/shipping/webhooks/{subscriberId}`
+
+Unsubscribes. Removes the record, its entries in the owner and delivery indexes, and the worker's per-entity delivery state in one compare-and-delete, so a later registration with the same scope starts armed. Zapier calls this when a Zap is turned off.
+
+```json
+{ "subscriberId": "wh_...", "deleted": true, "deletedAt": "2026-10-17T12:05:00Z" }
+```
+
+`404` if unknown or already removed (a second delete is a no-op), `403` if owned by a different API key, `409` if the record changed between the owner check and the delete (retry).
 
 ### `POST /api/v2/shipping/webhooks/{subscriberId}/rotate-secret`
 
-Generates and returns a **new** secret. The record's `secret` is replaced in place; the old secret stops validating immediately.
+Generates and returns a **new** secret. The record's `secret` is replaced in place. Deliveries started after the rotation are signed with the new secret; one already in flight when you rotate can still carry the old signature.
 
 ```json
 { "subscriberId": "wh_...", "secret": "new-64-char-hex", "rotatedAt": "2026-04-19T12:05:00Z" }
@@ -147,11 +180,52 @@ Generates and returns a **new** secret. The record's `secret` is replaced in pla
 
 ### `POST /api/v2/shipping/webhooks/{subscriberId}/reactivate`
 
-Flips `active: true` on the record (use after investigating and fixing a delivery failure that caused deactivation).
+Flips `active: true` on the record and resets `failureCount` to 0 (use after investigating and fixing the delivery failures that caused deactivation).
 
 ```json
 { "subscriberId": "wh_...", "active": true }
 ```
+
+### Delivery worker
+
+A worker evaluates every active webhook every 5 minutes. `chokepoint.disruption` webhooks are compared with the chokepoint status feed (the same data as `get-chokepoint-status`); `country.risk_surge` webhooks with the Country Instability Index feed (the same data as `get-risk-scores`, refreshed every 8 minutes). When one feed is unreadable for a tick, webhooks on the other event still run.
+
+For a `chokepoint.disruption` webhook, each subscribed chokepoint's `disruptionScore` is compared with the webhook's `alertThreshold`:
+
+- A delivery fires when `disruptionScore >= alertThreshold` and, with `minLiveSignal` set, when `disruptionScore` minus the chokepoint's standing threat level is at least `minLiveSignal`. Each upward crossing produces one delivery. Without `minLiveSignal` the chokepoint re-arms when its score drops below the threshold. With it, the chokepoint re-arms only when its score drops 10 points below the threshold or its live signal falls under 5 points (or under `minLiveSignal`, if that is lower), and it refires at most once per 12 hours. One navigational warning moves the score by 5 points, so a warning count that wobbles does not refire the alert. These are the in-app `chokepoint_disruption` rule's floors.
+- The score adds up to 15 points from navigational warnings, up to 15 from AIS, and 10 for a transit anomaly, and a missing input scores 0. After a delivery, the chokepoint re-arms only when the score (or live signal) plus the maximum of every input that was present at the delivery but is missing now is still below its re-arm floor. An input outage alone therefore does not re-arm it, and the input's recovery does not fire the same disruption again.
+- A chokepoint that already meets the threshold (and, with `minLiveSignal` set, the live floor) when the worker first evaluates a webhook produces one delivery.
+
+For a `country.risk_surge` webhook, each country in scope is evaluated on the feed's own 24-hour movement (`dynamicScore`, delivered as `delta24h`):
+
+- A delivery fires when `delta24h >= 15` and `combinedScore >= 70` (the high band), once per surge: the country then stays quiet until its 24-hour movement falls under 5 points, and a country is reported at most once per 24 hours even when it re-arms sooner. A high but flat index (Russia at 90 with no movement) is standing risk, not a surge, and never fires. A reading whose `staticBaseline` differs from the previous evaluation is a baseline or methodology edit, not an event: it disarms the country until the movement settles. A reading with no usable 24-hour movement (the feed reports `TREND_DIRECTION_UNSPECIFIED` when it has no prior snapshot) leaves the country's state as it was.
+- `previousScore` in the delivery is `score - delta24h`, the index about 24 hours earlier.
+- The thresholds were chosen on a 90-day backtest of 6-hourly archived scores (24 countries) checked against wire reports: at a floor of 50, 48 fires gave 17 clear escalations, 17 minor incidents and 14 non-events, every clear escalation in a country already in the high band; the floor of 70 keeps 15 of those 17 and drops a third of the non-events, and the baseline guard removes the static re-levellings. Expect about 0.7 fires a day across all monitored countries, concentrated in countries with an active index (Iran, Ukraine, Russia in the backtest window); countries whose index sits flat (Yemen at 70, Saudi Arabia at 50 in the window) do not surge even during real escalations, so narrow the scope with `countries` where that matters. Changing the thresholds means editing the registry; the worker and this page are pinned to it by tests.
+
+For both events:
+
+- Delivery is at-least-once. A failed delivery stays armed and is retried on the next tick while the event condition holds. A retry keeps the original `X-WM-Delivery-Id` and `triggeredAt`; the score fields carry the current values. A crossing that re-arms before it is delivered is dropped, and the next crossing gets a new id.
+- A failure is a non-2xx response, no response within 15 seconds (DNS resolution included), or a callback URL that resolves to a private or reserved address. A webhook's deliveries stop for the tick at its first failure and the rest wait for the next tick, so `failureCount` counts consecutive failed ticks. After 5 (about 25 minutes of failures) the worker sets `active: false` and stops delivering to that webhook. A successful delivery resets the count. `reactivate` resumes delivery.
+- The worker re-reads the webhook before each send and stops for the tick if it changed, for example after `rotate-secret` or `reactivate`. The next tick sends the remaining crossings with the new record.
+
+`GET /api/v2/shipping/webhooks/{subscriberId}` reports the delivery counters:
+
+| Field | Meaning |
+| --- | --- |
+| `failureCount` | Consecutive ticks whose delivery failed. `0` before the first delivery and after any success. |
+| `lastDeliveryAt` | ISO-8601 time of the last delivery attempt, or `null` before the first. |
+| `lastDeliveryStatus` | HTTP status of the last attempt, or `null` when there was no attempt or no HTTP response (timeout, refused callback URL, network error). |
+
+The `reason` field names the strongest signal behind the score. The first matching row wins:
+
+| `reason` | Condition |
+| --- | --- |
+| `ais_congestion_spike` | `aisDisruptions > 0` |
+| `navigational_warning` | `activeWarnings > 0` |
+| `transit_drop` | Today's transit counts are available and `wowChangePct <= -25` |
+| `score_threshold` | None of the above |
+
+`details` carries `name`, `status`, `activeWarnings`, `aisDisruptions`, `congestionLevel`, `warRiskTier`, `wowChangePct` (`null` when today's transit counts are unavailable), `previousScore` (the score at the previous evaluation, `null` on the first), and `scoresFetchedAt` (when the chokepoint feed was computed).
 
 ### Delivery format
 
@@ -173,7 +247,35 @@ X-WM-Event: chokepoint.disruption
 }
 ```
 
-The delivery worker re-resolves `callbackUrl` before each send and re-checks against `PRIVATE_HOSTNAME_PATTERNS` to mitigate DNS rebinding. Delivery is at-least-once — consumers must handle duplicates via `X-WM-Delivery-Id`.
+A `country.risk_surge` delivery carries `X-WM-Event: country.risk_surge` and this body (`reason` is always `risk_surge`):
+
+```json
+{
+  "subscriberId": "wh_...",
+  "countryCode": "IR",
+  "countryName": "Iran",
+  "score": 84,
+  "previousScore": 60,
+  "delta24h": 24,
+  "trend": "TREND_DIRECTION_RISING",
+  "advisoryLevel": "do-not-travel",
+  "triggeredAt": "2026-10-01T04:49:00Z",
+  "reason": "risk_surge",
+  "details": {
+    "riseThreshold": 15,
+    "floor": 70,
+    "staticBaseline": 50,
+    "components": { "newsActivity": 24, "ciiContribution": 0, "geoConvergence": 10, "militaryActivity": 50 },
+    "methodologyVersion": "v8",
+    "computedAt": 1790830140000,
+    "scoresFetchedAt": "2026-10-01T04:49:00Z"
+  }
+}
+```
+
+Both events share the headers and the signature scheme below. The [OpenAPI spec](https://www.worldmonitor.app/openapi.json) carries the delivery contract once under `webhooks` (`chokepoint.disruption`) and names `country.risk_surge` in the `X-WM-Event` header's enum; this page and the event registry hold the risk-surge payload schema.
+
+The delivery worker re-resolves `callbackUrl` before each send, refuses private, loopback, link-local, and reserved addresses, and connects only to the vetted address to mitigate DNS rebinding. Delivery is at-least-once — consumers must handle duplicates via `X-WM-Delivery-Id`.
 
 ### Verifying deliveries
 

@@ -2,6 +2,7 @@ import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
 import schema from "../schema";
+import { channelTypeValidator } from "../constants";
 import {
   deactivateChannel,
   deactivateChannelForUser,
@@ -75,16 +76,17 @@ async function seedEntitlement(
 }
 
 describe("notificationChannels — Convex entitlement gate", () => {
-  // Creation paths stay Pro-gated. Deletion/deactivation are internal and
+  // Creation paths stay Pro-gated (identity-scoped internals since the public
+  // surface was retired; production writes go through the edge relay). Deletion/deactivation are internal and
   // ungated — covered by the "live delete/deactivate" suite below (#8430).
   const guardedMutations: Array<[string, (asUser: TestUser) => Promise<unknown>]> = [
     ["setChannel", (asUser: TestUser) =>
-      asUser.mutation(api.notificationChannels.setChannel, {
+      asUser.mutation(internal.notificationChannels.setChannel, {
         channelType: "email",
         email: "free-user@example.com",
       })],
     ["createPairingToken", (asUser: TestUser) =>
-      asUser.mutation(api.notificationChannels.createPairingToken, {
+      asUser.mutation(internal.notificationChannels.createPairingToken, {
         variant: "full",
       })],
   ];
@@ -116,7 +118,7 @@ describe("notificationChannels — Convex entitlement gate", () => {
     await seedEntitlement(t);
     const asProUser = t.withIdentity(USER);
     const pairing = await asProUser.mutation(
-      api.notificationChannels.createPairingToken,
+      internal.notificationChannels.createPairingToken,
       { variant: "full" },
     );
     await t.mutation(internal.notificationChannels.stagePairingToken, { token: pairing.token, chatId: "12345" });
@@ -143,17 +145,17 @@ describe("notificationChannels — Convex entitlement gate", () => {
     expect(state.channels).toEqual([]);
   });
 
-  test("PRO callers retain access to every entitlement-gated public mutation", async () => {
+  test("PRO callers retain access to every entitlement-gated identity-scoped mutation", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t);
     const asProUser = t.withIdentity(USER);
 
-    await asProUser.mutation(api.notificationChannels.setChannel, {
+    await asProUser.mutation(internal.notificationChannels.setChannel, {
       channelType: "email",
       email: "pro-user@example.com",
     });
     const pairing = await asProUser.mutation(
-      api.notificationChannels.createPairingToken,
+      internal.notificationChannels.createPairingToken,
       { variant: "full" },
     );
     await t.mutation(internal.notificationChannels.stagePairingToken, { token: pairing.token, chatId: "12345" });
@@ -357,6 +359,97 @@ describe("notificationChannels — live delete/deactivate (ungated)", () => {
         userId: USER.subject,
       }),
     ).toMatchObject([{ channelType: "telegram", verified: false }]);
+  });
+
+  test("a Teams channel round-trips through set-channel, alert rules and relay deactivate (#9215)", async () => {
+    process.env.CONVEX_TENANT_RELAY_SECRET = "relay-secret";
+    process.env.CONVEX_NOTIFICATION_RELAY_SECRET = "delivery-secret";
+    const t = convexTest(schema, modules);
+    await seedEntitlement(t);
+    const post = (path: string, secret: string, body: Record<string, unknown>) => t.fetch(path, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    const set = await post("/relay/notification-channels", "relay-secret", {
+      action: "set-channel",
+      userId: USER.subject,
+      channelType: "teams",
+      webhookEnvelope: "v1:teams-envelope",
+      webhookSecret: "v1:secret-envelope",
+    });
+    expect(set.status).toBe(200);
+    await expect(set.json()).resolves.toMatchObject({ ok: true, isNew: true });
+
+    const rules = await post("/relay/notification-channels", "relay-secret", {
+      action: "set-alert-rules",
+      userId: USER.subject,
+      variant: "full",
+      enabled: true,
+      eventTypes: [],
+      sensitivity: "critical",
+      channels: ["teams"],
+    });
+    expect(rules.status).toBe(200);
+
+    const delivery = await (await post("/relay/channels", "delivery-secret", { userId: USER.subject })).json() as Array<Record<string, unknown>>;
+    const teams = delivery.find((c) => c.channelType === "teams");
+    expect(teams).toMatchObject({ channelType: "teams", webhookEnvelope: "v1:teams-envelope", verified: true });
+    expect(teams).not.toHaveProperty("webhookSecret");
+
+    const deactivate = await post("/relay/deactivate", "delivery-secret", { userId: USER.subject, channelType: "teams" });
+    expect(deactivate.status).toBe(200);
+    expect(
+      await t.query(notificationChannelFns.getChannelsByUserId, { userId: USER.subject }),
+    ).toMatchObject([{ channelType: "teams", verified: false }]);
+    await t.run(async (ctx) => {
+      const rule = await ctx.db
+        .query("alertRules")
+        .withIndex("by_user", (q) => q.eq("userId", USER.subject))
+        .unique();
+      expect(rule?.channels).toEqual(["teams"]);
+    });
+  });
+
+  test("relay deactivate turns off a generic webhook whose endpoint is gone (#9264)", async () => {
+    process.env.CONVEX_NOTIFICATION_RELAY_SECRET = "delivery-secret";
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("notificationChannels", {
+        userId: USER.subject,
+        channelType: "webhook",
+        webhookEnvelope: "v1:webhook-envelope",
+        verified: true,
+        linkedAt: Date.now(),
+      });
+    });
+
+    const response = await t.fetch("/relay/deactivate", {
+      method: "POST",
+      headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: USER.subject, channelType: "webhook" }),
+    });
+    expect(response.status).toBe(200);
+    expect(
+      await t.query(notificationChannelFns.getChannelsByUserId, { userId: USER.subject }),
+    ).toMatchObject([{ channelType: "webhook", verified: false }]);
+  });
+
+  test("relay deactivate accepts every channel type the schema stores, and nothing else", async () => {
+    process.env.CONVEX_NOTIFICATION_RELAY_SECRET = "delivery-secret";
+    const t = convexTest(schema, modules);
+    const deactivate = (channelType: string) => t.fetch("/relay/deactivate", {
+      method: "POST",
+      headers: { Authorization: "Bearer delivery-secret", "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: USER.subject, channelType }),
+    });
+    for (const { value } of channelTypeValidator.members) {
+      expect((await deactivate(value)).status, value).toBe(200);
+    }
+    for (const unknown of ["sms", "", "WEBHOOK", "__proto__"]) {
+      expect((await deactivate(unknown)).status, unknown).toBe(400);
+    }
   });
 
   test("deleteChannel and deactivateChannel are internal, not public", () => {
@@ -796,7 +889,7 @@ describe("notificationChannels — email ownership", () => {
   ])("public setter rejects missing or mismatched proof: %j", async ({ destination, ...claims }) => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t);
-    await expect(t.withIdentity({ ...USER, ...claims }).mutation(api.notificationChannels.setChannel, {
+    await expect(t.withIdentity({ ...USER, ...claims }).mutation(internal.notificationChannels.setChannel, {
       channelType: "email", email: destination,
     })).rejects.toThrow(/EMAIL_OWNERSHIP_REQUIRED/);
     expect(await t.query(notificationChannelFns.getChannelsByUserId, { userId: USER.subject })).toEqual([]);
@@ -814,7 +907,7 @@ describe("notificationChannels — email ownership", () => {
   test("verified identity email persists ownership proof", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t);
-    await t.withIdentity({ ...USER, email: "owner@example.com", emailVerified: true }).mutation(api.notificationChannels.setChannel, {
+    await t.withIdentity({ ...USER, email: "owner@example.com", emailVerified: true }).mutation(internal.notificationChannels.setChannel, {
       channelType: "email", email: "owner@example.com",
     });
     expect(await t.query(notificationChannelFns.getChannelsByUserId, { userId: USER.subject })).toMatchObject([

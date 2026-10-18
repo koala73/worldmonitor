@@ -166,7 +166,7 @@ describe('Railway deploy trigger lease-aware workflow', () => {
     assert.equal(upload.uses, 'actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f');
     assert.equal(upload.with.name, '${{ steps.evidence.outputs.artifact_name }}');
     const download = stepNamed('verifier', 'Download immutable reconciliation result');
-    assert.equal(download.uses, 'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c');
+    assert.equal(download.uses, 'actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333');
     assert.equal(download.with.name, '${{ needs.mutation.outputs.artifact_name }}');
     assert.match(String(job('verifier').if), /manifest_ready == 'true'/);
     assert.match(

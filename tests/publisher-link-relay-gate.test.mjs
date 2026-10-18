@@ -27,6 +27,13 @@ describe('publisher-link relay gate (#8398)', () => {
     assert.equal(gateRelayStoryLink('https://evil.example/phish', 'reuters'), '');
   });
 
+  it('keeps Sightline Media links for both of its feed labels', () => {
+    const link = 'https://www.militarytimes.com/news/your-military/2026/10/16/x/';
+    assert.equal(gateRelayStoryLink(link, 'Military Times'), link);
+    assert.equal(gateRelayStoryLink('https://www.defensenews.com/air/x', 'Defense News'), 'https://www.defensenews.com/air/x');
+    assert.equal(gateRelayStoryLink('https://www.defenseone.com/x', 'Defense News'), '');
+  });
+
   it('rejects lookalike suffixes', () => {
     assert.equal(gateRelayStoryLink('https://evilreuters.com/x', 'reuters'), '');
     assert.equal(gateRelayStoryLink('https://reuters.com.evil.com/x', 'reuters'), '');

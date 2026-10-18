@@ -72,6 +72,13 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Reuters World', url: rss('https://news.google.com/rss/search?q=site:reuters.com+world&hl=en-US&gl=US&ceid=US:en') },
     { name: 'CNN World', url: rss('https://news.google.com/rss/search?q=site:cnn.com+world+news+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Trump - Truth Social', url: rss('https://trumpstruth.org/feed') },
+    // Major publishers Google News World leads with and no feed carried
+    // (2026-10-16 audit). Last in the category, so the free-tier cap's
+    // declaration-order pick keeps every earlier source.
+    { name: 'New York Times World', url: rss('https://news.google.com/rss/search?q=site%3Anytimes.com%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Washington Post World', url: rss('https://news.google.com/rss/search?q=site%3Awashingtonpost.com%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'The Economist', url: rss('https://news.google.com/rss/search?q=site%3Aeconomist.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'The Independent', url: rss('https://news.google.com/rss/search?q=site%3Aindependent.co.uk%20world%20when%3A1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   us: [
     { name: 'Reuters US', url: rss('https://news.google.com/rss/search?q=site:reuters.com+US&hl=en-US&gl=US&ceid=US:en') },
@@ -269,8 +276,8 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     } },
     { name: 'Novaya Gazeta Europe', url: rss('https://novayagazeta.eu/feed/rss'), lang: 'ru' },
     { name: 'TASS', url: rss('https://news.google.com/rss/search?q=site:tass.com+OR+TASS+Russia+when:1d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'RT', url: rss('https://www.rt.com/rss/') },
-    { name: 'RT Russia', url: rss('https://www.rt.com/rss/russia/') },
+    { name: 'RT', url: rss('https://rt-english.com/rss/') },
+    { name: 'RT Russia', url: rss('https://rt-english.com/rss/russia/') },
     // English-language (no lang tag) — always EN-digest-reachable
     { name: 'Kyiv Independent', url: rss('https://news.google.com/rss/search?q=site:kyivindependent.com+when:3d&hl=en-US&gl=US&ceid=US:en') },
     // Ukraine depth pack (#5951) — local institutional + independent sources.
@@ -308,6 +315,9 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     // locale-scoped instead of default-enabling a 404 or mislabeled content.
     { name: 'NewsMaker', url: rss('https://newsmaker.md/feed'), lang: 'ru' },
     { name: 'Ziarul de Gardă', url: rss('https://www.zdg.md/feed/'), lang: 'ro' },
+    { name: 'Sky News', url: rss('https://news.google.com/rss/search?q=site%3Anews.sky.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'BBC UK', url: rss('https://feeds.bbci.co.uk/news/uk/rss.xml') },
+    { name: 'BBC Northern Ireland', url: rss('https://feeds.bbci.co.uk/news/northern_ireland/rss.xml') },
   ],
   middleeast: [
     { name: 'BBC Middle East', url: rss('https://feeds.bbci.co.uk/news/world/middle_east/rss.xml') },
@@ -343,6 +353,9 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Libya Herald', url: rss('https://libyaherald.com/rss.xml') },
     { name: 'Egypt Independent', url: rss('https://www.egyptindependent.com/feed/') },
     { name: 'Mada Masr', url: rss('https://news.google.com/rss/search?q=site%3Amadamasr.com%20when%3A30d&hl=en-US&gl=US&ceid=US:en') },
+    // Direct Times of Israel RSS returns 403 to cloud IPs; Google News does not.
+    { name: 'Times of Israel', url: rss('https://news.google.com/rss/search?q=site%3Atimesofisrael.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Middle East Eye', url: rss('https://news.google.com/rss/search?q=site%3Amiddleeasteye.net%20when%3A1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   tech: [
     { name: 'Hacker News', url: rss('https://hnrss.org/frontpage') },
@@ -562,12 +575,23 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     // consumes declaration order, so inserting earlier can evict an existing
     // source from persisted free-user selections.
     { name: 'Times of India', url: rss('https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms'), lang: 'en' },
+    { name: 'Japan Times', url: rss('https://news.google.com/rss/search?q=site%3Ajapantimes.co.jp%20when%3A1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   energy: [
     { name: 'Oil & Gas', url: rss('https://news.google.com/rss/search?q=(oil+price+OR+OPEC+OR+"natural+gas"+OR+pipeline+OR+LNG)+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Nuclear Energy', url: rss('https://news.google.com/rss/search?q=("nuclear+energy"+OR+"nuclear+power"+OR+uranium+OR+IAEA)+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Reuters Energy', url: rss('https://news.google.com/rss/search?q=site:reuters.com+(oil+OR+gas+OR+energy+OR+OPEC)+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Mining & Resources', url: rss('https://news.google.com/rss/search?q=(lithium+OR+"rare+earth"+OR+cobalt+OR+mining)+when:3d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+  // Science panel (2026-10-17 Google News World audit: science stories it
+  // carried, such as Nature's coral study and Reuters' Neanderthal report,
+  // reached no feed). Last category, so the free cap reaches it last.
+  science: [
+    { name: 'Reuters Science', url: rss('https://news.google.com/rss/search?q=site%3Areuters.com%20science%20when%3A2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Nature News', url: rss('https://www.nature.com/nature.rss') },
+    { name: 'BBC Science', url: rss('https://feeds.bbci.co.uk/news/science_and_environment/rss.xml') },
+    { name: 'Guardian Science', url: rss('https://www.theguardian.com/science/rss') },
+    { name: 'ScienceDaily', url: rss('https://www.sciencedaily.com/rss/all.xml') },
   ],
 };
 
@@ -1154,7 +1178,7 @@ export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: str
   africa: { labelKey: 'header.sourceRegionAfrica', feedKeys: ['africa'] },
   latam: { labelKey: 'header.sourceRegionLatAm', feedKeys: ['latam'] },
   asia: { labelKey: 'header.sourceRegionAsiaPacific', feedKeys: ['asia'] },
-  topical: { labelKey: 'header.sourceRegionTopical', feedKeys: ['energy', 'tech', 'ai', 'finance', 'layoffs', 'thinktanks'] },
+  topical: { labelKey: 'header.sourceRegionTopical', feedKeys: ['energy', 'tech', 'ai', 'finance', 'layoffs', 'thinktanks', 'science'] },
   intel: { labelKey: 'header.sourceRegionIntel', feedKeys: [] },
 
   // Tech variant regions
@@ -1453,6 +1477,43 @@ export const CURATED_REGIONAL_OPT_IN_SOURCES = [
   'France 24 Asia Pacific',
 ] as const;
 
+/**
+ * Major publishers Google News World leads with and no feed carried
+ * (2026-10-16 audit). EN default-on; listed last in their categories and not
+ * cap-protected, so the free-tier cap keeps every source it kept before.
+ */
+export const MAJOR_PUBLISHER_DEFAULT_SOURCES = [
+  'New York Times World',
+  'Washington Post World',
+  'The Economist',
+  'The Independent',
+  'Sky News',
+  'Times of Israel',
+  'Middle East Eye',
+  'Japan Times',
+] as const;
+
+/**
+ * The BBC's UK desk (2026-10-17 audit), default-on in EN like the major
+ * publishers above and, like them, listed last and not cap-protected.
+ * BBC Northern Ireland is in the catalog but opt-in.
+ */
+export const BBC_UK_DEFAULT_SOURCES = ['BBC UK'] as const;
+
+/**
+ * The Science panel's sources (2026-10-17 audit). The panel is opt-in, but its
+ * sources are EN default-on so it has content when enabled. The free-tier cap
+ * picks round-robin across categories, so a default free profile keeps Reuters
+ * Science and Nature News in place of Layoffs News and Foreign Affairs.
+ */
+export const SCIENCE_DEFAULT_SOURCES = [
+  'Reuters Science',
+  'Nature News',
+  'BBC Science',
+  'Guardian Science',
+  'ScienceDaily',
+] as const;
+
 /** Chronological feed introductions used to reconstruct untouched cap states. */
 export const REGIONAL_FEED_ROLLOUT_STAGES = [
   {
@@ -1544,6 +1605,36 @@ export const REGIONAL_FEED_ROLLOUT_STAGES = [
       ...CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES,
     ],
   },
+  {
+    introducedNames: [...MAJOR_PUBLISHER_DEFAULT_SOURCES],
+    protectedNames: [
+      ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+      ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
+      ...CANADA_EN_DEFAULT_SOURCES,
+      ...CRISIS_FLOOR_EN_DEFAULT_SOURCES,
+      ...CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES,
+    ],
+  },
+  {
+    introducedNames: [...BBC_UK_DEFAULT_SOURCES],
+    protectedNames: [
+      ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+      ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
+      ...CANADA_EN_DEFAULT_SOURCES,
+      ...CRISIS_FLOOR_EN_DEFAULT_SOURCES,
+      ...CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES,
+    ],
+  },
+  {
+    introducedNames: [...SCIENCE_DEFAULT_SOURCES],
+    protectedNames: [
+      ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+      ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
+      ...CANADA_EN_DEFAULT_SOURCES,
+      ...CRISIS_FLOOR_EN_DEFAULT_SOURCES,
+      ...CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES,
+    ],
+  },
 ] as const;
 
 /**
@@ -1603,7 +1694,8 @@ export function getStrategicDefaultSources(): Set<string> {
  * so it is fetched regardless of the user's UI language.
  */
 export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
-  politics: ['BBC World', 'Guardian World', 'AP News', 'Reuters World', 'CNN World'],
+  politics: ['BBC World', 'Guardian World', 'AP News', 'Reuters World', 'CNN World',
+    'New York Times World', 'Washington Post World', 'The Economist', 'The Independent'],
   // Canada pack (#5960/#6604/#6605): CBC News + CTV News + Toronto Star
   // default-on for North America keyCountry CA (floors.CA = 3). Globe and Mail
   // + Global News remain catalog opt-in (arctic pack). Remaining depth names
@@ -1622,9 +1714,11 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
     ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
     // Periphery packs (#5953) — Caucasus, Belarus/Moldova
     ...CAUCASUS_EN_DEFAULT_SOURCES,
+    'Sky News',
+    ...BBC_UK_DEFAULT_SOURCES,
   ],
 
-  middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'IRNA', 'Mehr News', 'Haaretz', 'Jerusalem Post', 'Ynetnews', 'Asharq News', 'The National', 'Yemen Online', 'Syria Direct', '+972 Magazine', 'Naharnet Lebanon', 'Libya Herald', 'Egypt Independent'],
+  middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'IRNA', 'Mehr News', 'Haaretz', 'Jerusalem Post', 'Ynetnews', 'Asharq News', 'The National', 'Yemen Online', 'Syria Direct', '+972 Magazine', 'Naharnet Lebanon', 'Libya Herald', 'Egypt Independent', 'Times of Israel', 'Middle East Eye'],
   africa: [
     'BBC Africa', 'News24', 'Africanews', 'Jeune Afrique', 'Africa News',
     'Premium Times', 'Channels TV', 'Sahel Crisis',
@@ -1635,7 +1729,7 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   asia: ['BBC Asia', 'The Diplomat', 'South China Morning Post', 'Reuters Asia', 'Reuters India', 'Nikkei Asia', 'CNA', 'Asia News', 'The Hindu',
     ...CENTRAL_ASIA_EN_DEFAULT_SOURCES,
     ...INDO_PACIFIC_EN_DEFAULT_SOURCES,
-    'Amu TV', 'The Daily Star',
+    'Amu TV', 'The Daily Star', 'Japan Times',
   ],
   tech: ['Hacker News', 'Ars Technica', 'The Verge', 'MIT Tech Review'],
   ai: ['AI News', 'VentureBeat AI', 'The Verge AI', 'MIT Tech Review', 'ArXiv AI'],
@@ -1645,6 +1739,7 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   thinktanks: ['Foreign Policy', 'Atlantic Council', 'Foreign Affairs', 'CSIS', 'RAND', 'Brookings', 'Carnegie', 'War on the Rocks', 'ISW'],
   crisis: ['CrisisWatch', 'IAEA', 'WHO', 'UNHCR'],
   energy: ['Oil & Gas', 'Nuclear Energy', 'Reuters Energy', 'Mining & Resources'],
+  science: [...SCIENCE_DEFAULT_SOURCES],
 };
 
 export const DEFAULT_ENABLED_INTEL: string[] = [

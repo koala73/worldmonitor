@@ -39,6 +39,7 @@ const OPTIONAL_FIELDS = new Set([
   'publishAtomically',
   'publishTransform',
   'emptyDataIsFailure',
+  'extendTtlOnFailure',
   'zeroIsValid',
   'populationMode',
   'cascadeGroup',

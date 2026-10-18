@@ -19,7 +19,8 @@ const INTERNET_PATHS = {
 
 export const PUBLIC_DOMAIN_TOOLS: ToolDef[] = [{
   name: 'get_gold_intelligence',
-  description: 'Read seeded gold intelligence: precious-metal futures quotes, cross-currency gold prices, COT positioning, session/returns/range, drivers, ETF holdings and central-bank reserves when available. Prices are USD per troy ounce unless a cross-currency row states its currency; returns/changes are percentages. Preserve unavailable: true and missing enrichment; placeholder zero prices are not confirmed zero observations. COT counts are decimal strings, ETF holdings tonnes/AUM USD, central-bank reserves tonnes. Each enrichment has its own observation date; updatedAt does not establish freshness of all sources. No trade or research snapshot is created.',
+  title: 'Gold market intelligence',
+  description: 'Return the seeded gold-market snapshot: precious-metal futures quotes, cross-currency gold prices, CFTC COT positioning, session returns and ranges, price drivers, ETF holdings and central-bank reserves when available. Prices are USD per troy ounce unless a cross-currency row states its currency; returns and changes are percentages; COT counts are decimal strings; ETF holdings are tonnes and AUM USD; reserves are tonnes. unavailable:true and missing enrichment blocks mark absent data, placeholder zero prices are not confirmed observations, and each enrichment carries its own observation date (updatedAt is not a freshness guarantee for every source). Takes no arguments. Requires a paid plan; one downstream fetch of seeded data, weight 2 on API plans. Read-only; no trade or research snapshot is created.',
   _outputBudgetBytes: 131072,
   inputSchema: { type: 'object', properties: {}, required: [] },
   outputSchema: { type: 'object', required: ['unavailable'], properties: {
@@ -60,12 +61,13 @@ export const PUBLIC_DOMAIN_TOOLS: ToolDef[] = [{
   _apiPaths: ['GET /api/market/v1/get-gold-intelligence'],
 }, {
   name: 'get_internet_activity',
+  title: 'Internet traffic anomalies and DDoS',
   description: 'Read Cloudflare Radar seeded traffic anomalies or global DDoS summaries. Traffic accepts optional country and returns at most limit matching anomalies (default 30, max 100); totalCount remains the upstream global count before filtering. DDoS protocol/vector percentages and target countries are global for dateRangeStart..dateRangeEnd and cannot be filtered by country. Each returned list is capped independently; truncated means at least one list was cut. Traffic timestamps are epoch milliseconds; endDate 0 means ongoing. A missing cache returns an error, while a valid empty list means no recorded rows. No load time is presented as source freshness.',
   _outputBudgetBytes: 131072,
   inputSchema: { type: 'object', properties: {
-    dataset: { type: 'string', enum: Object.keys(INTERNET_PATHS) },
+    dataset: { type: 'string', enum: Object.keys(INTERNET_PATHS), description: 'traffic returns Cloudflare Radar traffic anomalies (filterable by country); ddos returns the global DDoS protocol, vector and target-country summary.' },
     country: { type: 'string', description: `Traffic only. ${COUNTRY_ARG_HINT}` },
-    limit: { type: 'integer', minimum: 1, maximum: 100, default: 30 },
+    limit: { type: 'integer', minimum: 1, maximum: 100, default: 30, description: 'Maximum rows per returned list, 1-100; defaults to 30. Each list is capped independently.' },
   }, required: ['dataset'] },
   outputSchema: { type: 'object', required: ['dataset', 'data', 'truncated'], properties: {
     dataset: { type: 'string', enum: Object.keys(INTERNET_PATHS) }, truncated: { type: 'boolean' },

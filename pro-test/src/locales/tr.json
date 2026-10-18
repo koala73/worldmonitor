@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Ücretsiz Gerçek Zamanlı Global İstihbarat Panosu",
-      "description": "Haber olduğunda zaten biliyorsun. Çatışmalar, boğazlar, askeri uçuşlar, piyasalar, siber: AI analiziyle tek bir ücretsiz canlı harita. Kayıt yok.",
-      "ogTitle": "World Monitor — Haber olduğunda zaten biliyordun.",
-      "ogDescription": "Dünyanın ham sinyalleri — gemiler, jetler, sirenler, kablolar, piyasalar — AI ile birlikte tek bir ücretsiz canlı istihbarat haritasında ve bunlar bir şeye dönüştüğünde flaglenir. Ücretsiz, kayıt yok."
+      "title": "World Monitor: Ücretsiz jeopolitik istihbarat panosu",
+      "description": "World Monitor: gerçek zamanlı jeopolitik istihbarat panosu. Çatışmalar, gemiler, uçuşlar, piyasalar ve siber için ücretsiz canlı harita; API ve MCP ile.",
+      "ogTitle": "World Monitor: Ücretsiz jeopolitik istihbarat panosu",
+      "ogDescription": "World Monitor: gerçek zamanlı jeopolitik istihbarat panosu. Çatışmalar, gemiler, uçuşlar, piyasalar ve siber için ücretsiz canlı harita; API ve MCP ile."
     },
     "nav": {
       "useCases": "Korelasyonlar",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Ücretsiz global istihbarat panosu · şimdi canlı",
-      "headline1": "Haber olduğunda,",
-      "headline2": "zaten biliyordun.",
-      "sub": "Başlıklar gecikme. World Monitor, dünyanın ham sinyallerini — gemiler, jetler, sirenler, kablolar, piyasalar — tek bir canlı haritaya akıtır ve bunlar önemli bir şeye dönüştüğünde flaglemeyi yapan AI ile.",
+      "headline1": "Gerçek zamanlı jeopolitik",
+      "headline2": "istihbarat panosu",
+      "sub": "Haber olduğunda, zaten biliyordun.",
       "ctaPrimary": "Panoyu başlat",
       "ctaFree": "Ücretsiz · Kayıt yok · Saniyeler içinde yüklenir",
       "ctaSecondary": "İnsanlar bunu nasıl kullanıyor ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor açık kaynaklı bir Palantir değil",
       "asOf": "{{date}} itibarıyla",
       "whatIsTitle": "World Monitor Nedir?",
-      "whatIsBody": "World Monitor, 2M+ kişi tarafından kullanılan ücretsiz ($0), açık kaynaklı (AGPL-3.0) bir paneldir. {{feeds}} haber ve OSINT akışını {{providers}} atfedilen sağlayıcıdan {{mapLayers}} harita katmanı türüyle tek bir canlı dünya haritasına aktarır; jeopolitik, piyasalar, denizcilik, havacılık ve siber alanları kapsar. Bunları ilişkilendirerek yakınsayan olayları başlıklardan önce ortaya çıkarır. Her rakam kaynaklıdır ve her yöntem belgelenmiştir."
+      "whatIsBody": "World Monitor, 2M+ kişi tarafından kullanılan ücretsiz ($0), açık kaynaklı (AGPL-3.0) bir paneldir. {{feeds}} haber ve OSINT akışını {{providers}} atfedilen sağlayıcıdan {{mapLayers}} harita katmanı türüyle tek bir canlı dünya haritasına aktarır; jeopolitik, piyasalar, denizcilik, havacılık ve siber alanları kapsar. Bunları ilişkilendirerek yakınsayan olayları başlıklardan önce ortaya çıkarır. Her rakam kaynaklıdır ve her yöntem belgelenmiştir.",
+      "whatIsBestFor": "Canlı jeopolitik sinyallere ihtiyaç duyan analistler, gazeteciler, trader'lar ve geliştiriciler için ideal."
     },
     "live": {
       "eyebrow": "Şu anda canlı",
@@ -688,8 +689,8 @@
       "a9": "Evet — GitHub'da AGPL-3.0 altında açık kaynaklı: kodu okuyun, kendi sunucunuzda barındırın veya üzerine kurun. Windows, macOS ve Linux için yerel masaüstü uygulamaları ve duvar ekranları için Android TV uygulaması da mevcuttur.",
       "q10": "World Monitor neden Palantir değil?",
       "a10": "Palantir, bir kurumun kendi verilerini o kurum içinde operasyonel hale getirir. World Monitor ise ters yönden başlar: halka açık verileri toplar, normalleştirir, ilişkilendirir ve izler, ardından bu istihbarat katmanını ücretsiz bir pano ve açık kaynak kod aracılığıyla yayınlar. Farklı görev, farklı ürün.",
-      "q11": "Which World Monitor license do I need?",
-      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
+      "q11": "Hangi World Monitor lisansına ihtiyacım var?",
+      "a11": "Çıktıyı kimin kullanacağına göre seçin. Pro'nun kişisel lisansı, World Monitor'ı kendi araştırması ve kararları için kullanan bir kişi içindir. Pro Business, lisanslı bir kullanıcının bunu şirket veya müşteri işi, dahili araçlar ve raporlar için kullanmasına izin verir. API Starter, tek bir kuruluş içinde API kullanımını kapsar ve müşterilere yeniden dağıtım içermez. API Business, o kuruluşun World Monitor verilerini müşterileri için ürün ve hizmetlere gömmesine izin verir. Enterprise özel koltukları, White-label'ı ve deployment'ları kapsar. Bu abonelik lisansları, AGPL/MIT kaynak kodu lisanslarından ayrıdır. Tam koşullar: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} fiyat, veri, uyarılar ve AI erişimi hakkında net cevaplar. Kısa versiyonu: dashboard $0 tutarındadır, hesap gerektirmez ve kod AGPL-3.0 altında açık kaynaktır.",
       "q12": "Haberlere yansıyan küresel kriz ve aksaklıkları takip etmek için en iyi yazılım nedir?",
       "a12": "World Monitor ücretsiz ve açık kaynaklı bir seçenektir: adı belirtilen {{providers}} sağlayıcıdan gelen {{feeds}} haber ve OSINT akışını, {{mapLayers}} harita katmanı türüne sahip tek bir canlı dünya haritasında yayınlar; jeopolitik, piyasalar, denizcilik, havacılık ve siber alanları kapsar. Bunları ilişkilendirir, böylece aynı anda gelişen aksaklıklar manşetlere çıkmadan önce görünür hale gelir. Diğer araçlarla karşılaştırmak için worldmonitor.app/compare/best-geopolitical-risk-dashboards adresine bakın."

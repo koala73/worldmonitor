@@ -14,11 +14,18 @@ import "worldmonitor/aviation/v1/search_flight_prices.proto";
 import "worldmonitor/aviation/v1/search_google_flights.proto";
 import "worldmonitor/aviation/v1/search_google_dates.proto";
 import "worldmonitor/aviation/v1/track_aircraft.proto";
+import "worldmonitor/aviation/v1/list_aircraft_emergencies.proto";
 
 // AviationService provides APIs for flight delays, airport operations,
 // flight status, aircraft tracking, price search, and aviation news.
 service AviationService {
   option (sebuf.http.service_config) = {base_path: "/api/aviation/v1"};
+
+  // ListAircraftEmergencies returns reported 7500, 7600 and 7700 signals independently of military classification.
+  // The 200 schema describes the unprojected response. With jmespath, the result may instead be any JSON value, including an array, scalar, or null.
+  rpc ListAircraftEmergencies(ListAircraftEmergenciesRequest) returns (ListAircraftEmergenciesResponse) {
+    option (sebuf.http.config) = {path: "/list-aircraft-emergencies", method: HTTP_METHOD_GET};
+  }
 
   // ListAirportDelays retrieves current airport delay alerts.
   rpc ListAirportDelays(ListAirportDelaysRequest) returns (ListAirportDelaysResponse) {

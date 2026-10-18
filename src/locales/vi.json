@@ -232,7 +232,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Chưa cung cấp trạng thái ước tính và điền giá trị thiếu"
     },
     "fiveFactorScorecard": {
       "title": "Bảng điểm khả năng phục hồi 5 yếu tố",
@@ -404,6 +405,7 @@
     "energy": "Năng lượng & Tài nguyên",
     "gov": "Chính phủ",
     "thinktanks": "Viện Nghiên cứu",
+    "science": "Khoa học",
     "polymarket": "Dự đoán",
     "commodities": "Hàng hóa",
     "economic": "Chỉ số Kinh tế",
@@ -2920,6 +2922,7 @@
       "tier4OnlyHint": "Mọi cơ quan báo chí đưa tin về điều này đều là nguồn cấp 4 (các trang tổng hợp tin tức và blog). Điều này mô tả phạm vi báo chí, không phải độ chính xác.",
       "rosterListed": "({{listed}} được liệt kê)",
       "rosterFeeds": "Kênh tin đã thấy: {{labels}}",
+      "rosterSameCopy": "Cùng một nội dung, chỉ tính một lần",
       "rosterLegend": "Các cấp xếp hạng nguồn; chúng không đánh giá tuyên bố này.",
       "tierDocsLink": "Cách phân cấp",
       "tierChip": "C{{tier}}",

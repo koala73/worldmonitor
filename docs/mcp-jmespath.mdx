@@ -12,9 +12,10 @@ This page is the practical reference: a quick orientation, then twelve worked ex
 - Every tool advertises `jmespath` in its input schema, so you never have to check first. The expression root is the **full response envelope** — `{ cached_at, stale, data: { … } }` for cache tools — so most expressions start with `data.<key>` to reach the payload, and `cached_at` / `stale` are addressable from the same root when you want them.
 - **Hyphenated keys must be quoted with double quotes.** Most WorldMonitor tools have hyphenated cache keys (`stocks-bootstrap`, `ucdp-events`, `etf-flows`, `fear-greed`, `transit-summaries`). Use `data."stocks-bootstrap".quotes[*].symbol`, not `data.stocks-bootstrap.…`.
 - **Numbers and JSON literals go in backticks, strings in single quotes.** `[?deathsBest > \`5\`]` (numeric), `[?country == 'Iraq']` (string). Mixing them up silently parses the value as something else.
-- **Two server-side limits** keep edge functions healthy:
+- **Server-side limits** keep edge functions healthy:
   - Expression itself: ≤ **1024 bytes**.
   - Projected output: ≤ **256 KB**.
+  - Evaluation is checked before search. Expressions allow at most 128 AST nodes, 32 levels of AST nesting, eight pipe stages, and eight multiselects. The product of all multiselect widths and literal container widths must not exceed 64, including independent branches. An array's width is its length; an object's width is its number of keys. Empty containers count as one. These limits also cover repeated evaluation in maps and projections. `to_string()` is unavailable. Equality and inequality require at least one scalar literal operand, such as `country == 'Iraq'`. `join()` requires a literal string separator, such as `join(', ', names)`. `map()`, `sort_by()`, `min_by()`, and `max_by()` require explicit `&expression` references, such as `map(&name, rows)`; data objects and computed references are rejected.
 
   Failures return `{ _jmespath_error, original_keys, ... }` inside the normal result envelope — the tool call still succeeds at the JSON-RPC layer (no `isError: true`), and `original_keys` echoes the top-level keys of the unprojected response so the model can self-correct on the next call.
 - **A projection appears in two places.** `result.content[0].text` holds the projected value exactly as the examples below show it. `result.structuredContent` holds the same value as `{ "projection": <value> }`, because that field must be a JSON object and a projection can be a number, a string, an array or `null`.
@@ -26,7 +27,7 @@ The three response shapes used below are the captured fixtures under `tests/fixt
 The same projection is available on every REST `GET` operation. The gateway applies it to the JSON response server-side before returning it. Reuse the expressions you already know from MCP, with two differences:
 
 - **The expression root is the raw response body**, not an MCP `{ cached_at, stale, data }` envelope — so you project the payload directly (`compositeScore`, `keys(@)`) with no `data.` prefix.
-- **A bad, over-long, or over-expanding expression returns `HTTP 400`** with the same `{ _jmespath_error, original_keys }` body (the MCP transport soft-fails inside a 200 result instead). The ≤ 1024-byte expression limit and 256 KB projected-output cap are identical.
+- **A bad, unsafe, over-long, or over-expanding expression returns `HTTP 400`** with the same `{ _jmespath_error, original_keys }` body (the MCP transport soft-fails inside a 200 result instead). REST and MCP use the same evaluation rules, 1024-byte expression limit, and 256 KB projected-output cap.
 
 ```bash
 curl "https://api.worldmonitor.app/api/market/v1/get-fear-greed-index?jmespath=compositeScore" \
@@ -544,7 +545,7 @@ The recovery is always the same: **make the projection more selective**, or laye
 
 ### `_jmespath_error` — when the projection itself fails
 
-A JMESPath expression can fail three ways: the expression itself exceeds 1024 bytes, it's syntactically invalid, or it blows up the 256 KB output cap via a runaway multiselect-hash. In all cases you get this envelope back — note that `_jmespath_error` is a **string** (`<kind>: <details>`), not an object:
+A JMESPath expression can fail when it exceeds 1024 bytes, has invalid syntax, violates the evaluation rules above, or exceeds the 256 KB output cap via a runaway multiselect-hash. In all cases you get this envelope back. `_jmespath_error` is a **string** (`<kind>: <details>`), not an object:
 
 ```json
 {
@@ -568,7 +569,7 @@ Every cache tool also accepts a universal `summary: true` argument that returns 
 
 ### `describe_tool`
 
-When `tools/list` returns a compressed description that's ambiguous about a tool's response shape, call `describe_tool({ tool_name: "get_market_data" })` to fetch the full uncompressed definition. `describe_tool` is metadata-only and **exempt from the Pro daily quota** — use it freely while authoring projections. If the name is wrong, the response is `{ error: "unknown_tool", available: [...] }`, again with no quota cost.
+To re-read one tool's definition — its `outputSchema` included — without re-listing the whole catalog, call `describe_tool({ tool_name: "get_market_data" })`. `describe_tool` is metadata-only and **exempt from the Pro daily quota** — use it freely while authoring projections. If the name is wrong, the response is `{ error: "unknown_tool", available: [...] }`, again with no quota cost.
 
 ## See also
 

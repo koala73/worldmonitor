@@ -1,6 +1,8 @@
 ---
 name: verify-worldmonitor
 description: Verify WorldMonitor dashboard behavior with existing browser tests or a scoped manual drive. Use for panels, map layers, settings, search, country briefs, boot, or dashboard screenshots.
+metadata:
+  internal: true
 ---
 
 # Verify WorldMonitor

@@ -21,7 +21,8 @@ import { SIMILARITY_THRESHOLD, SUPPRESSED_TRENDING_TERMS, jaccardSimilarity, tok
 // #6428: `sourceCount` is the ARTICLE count and stays that way — ranking,
 // velocity and ISQ all read it as volume. Corroboration badges need a
 // publisher count, which is a different question and gets its own field.
-import { countPublisherFamilies } from './publisher-families.js';
+import { publisherFamilyFor } from './publisher-families.js';
+import { detectSyndication } from './syndication.js';
 
 export const MAX_CLUSTER_NEWS_ITEMS = 1000;
 
@@ -244,7 +245,7 @@ export function clusterNewsCore(items, getSourceTier) {
         ? { credibilityScore: primary.credibilityScore }
         : {}),
       sourceCount: cluster.length,
-      uniquePublisherCount: countPublisherFamilies(cluster.map(i => i.source)),
+      uniquePublisherCount: clusterPublisherCount(cluster),
       topSources,
       allItems: cluster,
       firstSeen: new Date(dates.reduce((min, d) => d < min ? d : min)),
@@ -275,4 +276,19 @@ export function topClusterKeywords(cluster, limit = 5) {
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, limit)
     .map(([token]) => token);
+}
+
+/**
+ * Publishers behind one story's items: publisher families by feed label, with
+ * families that carried the same copy counted once (#9095). Every path that
+ * builds or rebuilds a cluster's uniquePublisherCount from items that carry lead
+ * text must use this, so a merged cluster cannot add reprints back.
+ * scripts/_clustering.mjs (insights and brief leads) calls detectSyndication
+ * directly, because its entity bucket also needs the merged families.
+ *
+ * @param {readonly { source: string; title?: string; snippet?: string }[]} items
+ * @returns {number}
+ */
+export function clusterPublisherCount(items) {
+  return detectSyndication(items, (i) => publisherFamilyFor(i.source)).publishers;
 }

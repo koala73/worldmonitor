@@ -126,7 +126,7 @@ Don't try to memorise the grammar from scratch — head to the [JMESPath guide](
 - **Precomputed AI intelligence** — `get_world_brief` (citation-grounded dashboard snapshot; refreshed by the insights seeder).
 - **AI synthesis** (live LLM, slower — 1–4 s) — `get_country_brief`, `analyze_situation`, `generate_forecasts`.
 
-Full per-tool parameters, freshness budgets, and `curl` examples are in the [MCP Tools Reference](/mcp-tools-reference). When the compressed `tools/list` description is ambiguous about a specific tool, call `describe_tool` with `tool_name: "<name>"` for the full uncompressed definition — it's exempt from the Pro daily quota, so use it freely while exploring.
+Full per-tool parameters, freshness budgets, and `curl` examples are in the [MCP Tools Reference](/mcp-tools-reference). `tools/list` already carries each tool's complete description; to re-read one tool's definition without re-listing the catalog, call `describe_tool` with `tool_name: "<name>"` — it's exempt from the Pro daily quota, so use it freely while exploring.
 
 ## Troubleshooting and expectations
 
@@ -134,8 +134,8 @@ If an endpoint appears in the REST OpenAPI docs but does not appear as an MCP to
 
 To discover what MCP can call from your client:
 
-- Call `tools/list` for the current tool names and compressed descriptions.
-- Call `describe_tool` with `tool_name` when a `tools/list` entry is too short to choose confidently.
+- Call `tools/list` for the current tool names, complete descriptions and schemas.
+- Call `describe_tool` with `tool_name` to re-read one tool's definition without re-listing the catalog.
 - Use the [API coverage table](/mcp-overview#api-coverage) when you are starting from a REST method/path and want to know whether an exact MCP `_apiPaths` mapping exists.
 
 ## What just happened
@@ -143,7 +143,7 @@ To discover what MCP can call from your client:
 The MCP handshake is invisible from the chat side, but here's the sequence so you know where to look if something breaks:
 
 1. Claude Desktop reads `claude_desktop_config.json`, sees the WorldMonitor server, and on first use POSTs `initialize` to `https://worldmonitor.app/mcp`. The server responds with its capabilities, the negotiated protocol version (default `2025-06-18`, matching the static server card; clients pinned to `2025-03-26` still get `2025-03-26`), and a session-level `instructions` string that tells the model about the universal `jmespath` argument. Clients that advertise `text/event-stream` may receive this response as SSE with a resumable `Mcp-Session-Id` / `Last-Event-ID` cursor; clients that do not advertise SSE receive JSON. See [protocol negotiation](/mcp-overview#protocol-negotiation) and [Streamable HTTP responses](/mcp-overview#streamable-http-responses) for the rollout details.
-2. Claude Desktop calls `tools/list` and receives compressed tool descriptions (`≤120` bytes per tool). The compressed form keeps `tools/list` cheap; `describe_tool` returns the full definition on demand.
+2. Claude Desktop calls `tools/list` and receives each tool's complete description (at most 1,024 bytes per tool) with its input and output schemas; `describe_tool` returns the same definition for one tool on demand.
 3. When you ask a question that needs live data, Claude picks a tool, calls `tools/call`, and inlines the response into its reply. Cache-backed tools, including `get_world_brief`, return the accepted snapshot without a request-time LLM call; live LLM tools (`analyze_situation`, etc.) take 1–4 s.
 
 ## Server-side curl
@@ -153,7 +153,7 @@ Sign in to the [dashboard](https://www.worldmonitor.app/dashboard) with an API S
 ```bash
 export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # Replace with your API key
 
-# 1. List tools (compressed descriptions)
+# 1. List tools (complete descriptions)
 curl -s https://worldmonitor.app/mcp \
   -H "X-WorldMonitor-Key: $WM_KEY" \
   -H 'Content-Type: application/json' \

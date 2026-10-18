@@ -14,7 +14,8 @@ const MODES = {
 
 export const COST_SHOCK_TOOLS: ToolDef[] = [{
   name: 'get_supply_chain_cost_shock',
-  description: 'Model existing country energy exposure or multi-sector import costs for a chokepoint closure. Select energy or multi-sector mode, country and canonical chokepoint. Energy defaults to HS 27 mineral fuels; closure_days applies only to multi-sector and defaults to 30. Energy models cover only supported chokepoints. Preserve hasEnergyModel and unavailableReason; missing models or imports are not measured zero impacts. Sector costs are estimates in USD using seeded imports, freight/insurance assumptions and closure duration, not realized losses or forecasts. Uses existing subscription access and seeded computations; no scenario is saved.',
+  title: 'Chokepoint closure cost shock',
+  description: 'Model existing country energy exposure or multi-sector import costs for a chokepoint closure. Select energy or multi-sector mode, country and canonical chokepoint. Energy defaults to HS 27 mineral fuels; closure_days applies only to multi-sector and defaults to 30. Energy models cover only supported chokepoints. hasEnergyModel and unavailableReason mark missing models or imports, which are not measured zero impacts. Sector costs are estimates in USD using seeded imports, freight/insurance assumptions and closure duration, not realized losses or forecasts. Uses existing subscription access and seeded computations; no scenario is saved.',
   _outputBudgetBytes: 65536,
   inputSchema: {
     type: 'object',
@@ -75,15 +76,16 @@ export const COST_SHOCK_TOOLS: ToolDef[] = [{
   _apiPaths: Object.values(MODES).map(path => `GET ${path}`),
 }, {
   name: 'compute_energy_shock',
-  description: 'Compute the existing oil/gas supply-sensitivity scenario for a country and supported chokepoint. Set disruption_pct (10..100, default 100) and fuel_mode (oil/gas/both, default oil). Preserve dataAvailable, coverage flags, coverageLevel, limitations, degraded, chokepointConfidence and gasSensitivity.modelBasis. An unavailable source is not a zero deficit; assumed LNG routing sensitivity is not a measured live-flow shock. Product output/demand are thousand barrels/day, gas quantities are terajoules, storage is TWh and cover is days. Derived scenarios may be cached; no trade or saved user scenario is created.',
+  title: 'Energy supply shock scenario',
+  description: 'Compute the existing oil/gas supply-sensitivity scenario for a country and supported chokepoint. Set disruption_pct (10..100, default 100) and fuel_mode (oil/gas/both, default oil). Results carry dataAvailable, coverage flags, coverageLevel, limitations, degraded, chokepointConfidence and gasSensitivity.modelBasis. An unavailable source is not a zero deficit; assumed LNG routing sensitivity is not a measured live-flow shock. Product output/demand are thousand barrels/day, gas quantities are terajoules, storage is TWh and cover is days. Derived scenarios may be cached; no trade or saved user scenario is created.',
   _outputBudgetBytes: 65536,
   inputSchema: {
     type: 'object',
     properties: {
       country: { type: 'string', description: COUNTRY_ARG_HINT },
-      chokepoint_id: { type: 'string', enum: CHOKEPOINT_REGISTRY.filter(point => point.shockModelSupported).map(point => point.id) },
-      disruption_pct: { type: 'integer', minimum: 10, maximum: 100, default: 100 },
-      fuel_mode: { type: 'string', enum: ['oil', 'gas', 'both'], default: 'oil' },
+      chokepoint_id: { type: 'string', enum: CHOKEPOINT_REGISTRY.filter(point => point.shockModelSupported).map(point => point.id), description: 'Registry id of the disrupted chokepoint; only chokepoints with a supported shock model are listed.' },
+      disruption_pct: { type: 'integer', minimum: 10, maximum: 100, default: 100, description: 'Share of the chokepoint flow disrupted, 10-100 percent (default 100, a full closure).' },
+      fuel_mode: { type: 'string', enum: ['oil', 'gas', 'both'], default: 'oil', description: 'Which fuel sensitivity to compute: oil (default), gas or both.' },
     },
     required: ['country', 'chokepoint_id'],
   },

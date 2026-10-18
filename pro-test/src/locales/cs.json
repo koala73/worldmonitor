@@ -246,7 +246,7 @@
     "connectorsRow": "Konektory",
     "deployment": "Nasazení",
     "securityRow": "Zabezpečení",
-    "f5_15min": "5-15 min",
+    "f5_15min": "5-15 minut",
     "fLt60s": "<60 sekund",
     "fPerRequest": "Za požadavek",
     "fLiveEdge": "Live-edge",
@@ -271,7 +271,7 @@
     "fCloudOnPrem": "Cloud/on-prem/air-gap",
     "fStandard": "Standard",
     "fKeyAuth": "Auth klíčem",
-    "fSsoMfa": "SSO/MFA/RBAC/audit",
+    "fSsoMfa": "SSO/MFA/RBAC/auditní záznam",
     "noteBelow": "Jádro platformy zůstává zdarma. Placené plány odemykají equity research, makro analytiku, AI briefingy a organizační použití.",
     "f50plus": "Dostupné",
     "sourcesRow": "Zdroje",
@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Bezplatný dashboard globální zpravodajské služby v reálném čase",
-      "description": "Než se stane zprávou, už to víš. Konflikty, kritické průchody, vojenské lety, trhy, kybernetika: jedna bezplatná živá mapa s AI analýzou. Bez registrace.",
-      "ogTitle": "World Monitor — Když se to stane zprávou, už jste to věděli.",
-      "ogDescription": "Nezpracované signály světa — lodě, letadla, sirény, kabely, trhy — na jedné bezplatné živé zpravodajské mapě s AI, která upozorní, když se convergují. Zdarma, bez registrace."
+      "title": "World Monitor: Bezplatný geopolitický zpravodajský dashboard",
+      "description": "World Monitor: geopolitický zpravodajský dashboard v reálném čase. Bezplatná živá mapa konfliktů, lodní dopravy, letů, trhů a kybernetiky, s API a MCP serverem.",
+      "ogTitle": "World Monitor: Bezplatný geopolitický zpravodajský dashboard",
+      "ogDescription": "World Monitor: geopolitický zpravodajský dashboard v reálném čase. Bezplatná živá mapa konfliktů, lodní dopravy, letů, trhů a kybernetiky, s API a MCP serverem."
     },
     "nav": {
       "useCases": "Korelace",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Bezplatný dashboard globální zpravodajské služby · live nyní",
-      "headline1": "Když se to stane zprávou,",
-      "headline2": "už jste to věděli.",
-      "sub": "Titulky jsou zpoždění. World Monitor streamuje nezpracované signály světa — lodě, letadla, sirény, kabely, trhy — na jednu živou mapu s AI, která upozorní, když se convergují do něčeho, na čem záleží.",
+      "headline1": "Geopolitický zpravodajský dashboard",
+      "headline2": "v reálném čase",
+      "sub": "Když se to stane zprávou, už jste to věděli.",
       "ctaPrimary": "Otevřít dashboard",
       "ctaFree": "Zdarma · Bez registrace · Načte se během sekund",
       "ctaSecondary": "Podívejte se, jak to lidé používají ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor není open-source Palantir",
       "asOf": "K {{date}}",
       "whatIsTitle": "Co je World Monitor?",
-      "whatIsBody": "World Monitor je bezplatný ($0), open-source (AGPL-3.0) dashboard, který používá 2M+ lidí. Streamuje {{feeds}} zpravodajských a OSINT zdrojů z {{providers}} atribuovaných poskytovatelů na jednu živou mapu světa s {{mapLayers}} typy mapových vrstev, která pokrývá geopolitiku, trhy, námořní dopravu, letectví a kybernetiku. Koreluje je tak, aby se sbíhající se události objevily dříve než se dostanou na titulky. Každá údaj má uvedený zdroj a každá metoda je zdokumentovaná."
+      "whatIsBody": "World Monitor je bezplatný ($0), open-source (AGPL-3.0) dashboard, který používá 2M+ lidí. Streamuje {{feeds}} zpravodajských a OSINT zdrojů z {{providers}} atribuovaných poskytovatelů na jednu živou mapu světa s {{mapLayers}} typy mapových vrstev, která pokrývá geopolitiku, trhy, námořní dopravu, letectví a kybernetiku. Koreluje je tak, aby se sbíhající se události objevily dříve než se dostanou na titulky. Každá údaj má uvedený zdroj a každá metoda je zdokumentovaná.",
+      "whatIsBestFor": "Nejlépe se hodí pro analytiky, novináře, tradery a vývojáře, kteří potřebují živé geopolitické signály."
     },
     "live": {
       "eyebrow": "Live právě teď",
@@ -688,8 +689,8 @@
       "q6": "Proč bych měl důvěřovat upozornění?",
       "q10": "Proč není World Monitor Palantir?",
       "a10": "Palantir zprovozňuje vlastní data instituce uvnitř té instituce. World Monitor začíná z druhé strany: shromažďuje, normalizuje, koreluje a monitoruje data veřejného světa, poté publikuje tuto inteligenční vrstvu přes bezplatný dashboard a open-source kód. Jiná úloha, jiný produkt.",
-      "q11": "Which World Monitor license do I need?",
-      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
+      "q11": "Kterou licenci World Monitor potřebuji?",
+      "a11": "Vyberte podle toho, kdo bude výstup používat. Osobní licence Pro je pro jednu osobu, která používá World Monitor pro vlastní výzkum a rozhodnutí. Pro Business umožňuje jednomu licencovanému uživateli používat ho pro firemní nebo klientskou práci, interní nástroje a reporty. API Starter pokrývá použití API uvnitř jedné organizace, bez redistribuce zákazníkům. API Business umožňuje této organizaci vložit data World Monitor do produktů a služeb pro její zákazníky. Enterprise pokrývá vlastní místa, White-label a nasazení. Tyto licence předplatného jsou oddělené od licencí ke zdrojovému kódu AGPL/MIT. Úplné podmínky: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} přímých odpovědí na cenu, data, upozornění a přístup k AI. Stručně: dashboard stojí $0, nevyžaduje účet a kód je open source pod licencí AGPL-3.0.",
       "q12": "Jaký je nejlepší software pro sledování globálních krizí a otřesů ve zprávách?",
       "a12": "World Monitor je bezplatná možnost s otevřeným zdrojovým kódem: streamuje {{feeds}} zpravodajských a OSINT zdrojů od {{providers}} uvedených poskytovatelů na jednu živou mapu světa s {{mapLayers}} typy mapových vrstev, pokrývající geopolitiku, trhy, lodní dopravu, letectví a kybernetiku. Propojuje je tak, aby se souběžné otřesy ukázaly dříve, než se objeví v titulcích. Pokud jej chcete porovnat s jinými nástroji, podívejte se na worldmonitor.app/compare/best-geopolitical-risk-dashboards."

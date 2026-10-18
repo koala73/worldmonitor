@@ -1,4 +1,4 @@
-import { httpAction } from "./_generated/server";
+import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireEnv } from "./lib/env";
 import { BROADCAST_TRACKED_EVENT_TYPES } from "./broadcast/metrics";
@@ -19,8 +19,49 @@ type ResendWebhookEvent = {
     email_id?: string;
     broadcast_id?: string;
     unsubscribed?: boolean;
+    // Present on email.bounced. Resend documents type as Permanent,
+    // Transient or Undetermined, with subtypes such as General,
+    // MailboxFull or MessageTooLarge:
+    // https://resend.com/docs/webhooks/emails/bounced
+    // https://resend.com/docs/dashboard/emails/email-bounces
+    bounce?: {
+      type?: string;
+      subType?: string;
+      message?: string;
+    };
   };
 };
+
+export type BounceClass = "hard" | "soft" | "ignore";
+
+// Transient subtypes that describe our message rather than the mailbox.
+// They are logged but never count toward recipient suppression.
+const CONTENT_CAUSED_SUBTYPES: ReadonlySet<string> = new Set([
+  "messagetoolarge",
+  "contentrejected",
+  "attachmentrejected",
+]);
+
+/**
+ * Classify an email.bounced payload. Permanent (hard) bounces suppress at
+ * once. Transient and Undetermined bounces count as soft-bounce strikes.
+ * A payload without a bounce type keeps the pre-existing behaviour (treat
+ * as permanent), because Resend documents email.bounced as a permanent
+ * rejection and older payloads carried no bounce object.
+ */
+export function classifyBounce(
+  bounce: { type?: string; subType?: string } | undefined,
+): BounceClass {
+  const type = bounce?.type?.trim().toLowerCase();
+  if (!type || type === "permanent") return "hard";
+  // Resend's bounce-types page says "Transient"; its email.bounced field
+  // reference lists "Temporary" as an example value. Accept both.
+  if (type === "transient" || type === "temporary" || type === "undetermined") {
+    const subType = bounce?.subType?.trim().toLowerCase() ?? "";
+    return CONTENT_CAUSED_SUBTYPES.has(subType) ? "ignore" : "soft";
+  }
+  return "hard";
+}
 
 function maskEmail(email: string): string {
   const trimmed = email.trim();
@@ -35,6 +76,10 @@ function getSuppressionDetails(
   if (event.type === "email.bounced" || event.type === "email.complained") {
     const recipients = event.data?.to;
     if (!Array.isArray(recipients) || recipients.length === 0) return null;
+    // Soft bounces go through recordSoftBounce instead (see handler).
+    if (event.type === "email.bounced" && classifyBounce(event.data?.bounce) !== "hard") {
+      return null;
+    }
     return {
       recipients,
       reason: event.type === "email.bounced" ? "bounce" : "complaint",
@@ -115,6 +160,78 @@ async function verifySignature(
   return false;
 }
 
+function recipientsOf(event: ResendWebhookEvent): string[] {
+  const to = event.data?.to;
+  if (!Array.isArray(to)) return [];
+  return to.filter((r): r is string => typeof r === "string" && r.trim().length > 0);
+}
+
+/**
+ * Soft-bounce strikes and their reset. Returns a Response when the event was
+ * fully handled here (or failed and must be retried), otherwise null so the
+ * hard-suppression path runs. Policy and threshold live next to
+ * SOFT_BOUNCE_SUPPRESS_THRESHOLD in convex/emailSuppressions.ts.
+ */
+async function handleSoftBounceOrDelivery(
+  ctx: ActionCtx,
+  event: ResendWebhookEvent,
+): Promise<Response | null> {
+  if (event.type === "email.delivered") {
+    const deliveredAt = event.created_at
+      ? Date.parse(event.created_at) || Date.now()
+      : Date.now();
+    for (const email of recipientsOf(event)) {
+      try {
+        await ctx.runMutation(internal.emailSuppressions.clearSoftBounces, { email, deliveredAt });
+      } catch {
+        console.error(`[resend-webhook] Failed to clear soft bounces for ${maskEmail(email)}`);
+        return new Response("Internal processing error", { status: 500 });
+      }
+    }
+    return new Response(null, { status: 200 });
+  }
+
+  if (event.type !== "email.bounced") return null;
+  const bounceClass = classifyBounce(event.data?.bounce);
+  if (bounceClass === "hard") return null;
+
+  const subType = event.data?.bounce?.subType;
+  if (bounceClass === "ignore") {
+    console.log(`[resend-webhook] Content-caused soft bounce (${subType}); not counted`);
+    return new Response(null, { status: 200 });
+  }
+
+  const emailMessageId = event.data?.email_id ?? event.data?.id;
+  if (!emailMessageId) {
+    console.warn("[resend-webhook] Soft bounce without email_id; not counted");
+    return new Response(null, { status: 200 });
+  }
+  const occurredAt = event.created_at
+    ? Date.parse(event.created_at) || Date.now()
+    : Date.now();
+
+  for (const email of recipientsOf(event)) {
+    try {
+      const result = await ctx.runMutation(internal.emailSuppressions.recordSoftBounce, {
+        email,
+        emailMessageId,
+        bounceType: event.data?.bounce?.type ?? "unknown",
+        bounceSubType: subType,
+        occurredAt,
+        source: `resend-webhook:${emailMessageId}`,
+      });
+      console.log(
+        `[resend-webhook] Soft bounce ${maskEmail(email)} (${subType ?? "unknown"}): `
+        + `${result.ignored ? "ignored (stale, duplicate or already suppressed)" : result.suppressed ? "suppressed" : `strike ${result.strikes}`}`,
+      );
+    } catch {
+      console.error(`[resend-webhook] Failed to record soft bounce for ${maskEmail(email)}`);
+      return new Response("Internal processing error", { status: 500 });
+    }
+  }
+  return new Response(null, { status: 200 });
+}
+
 export const resendWebhookHandler = httpAction(async (ctx, request) => {
   const secret = requireEnv("RESEND_WEBHOOK_SECRET");
 
@@ -167,6 +284,9 @@ export const resendWebhookHandler = httpAction(async (ctx, request) => {
       occurredAt,
     });
   }
+
+  const softBounceResponse = await handleSoftBounceOrDelivery(ctx, event);
+  if (softBounceResponse) return softBounceResponse;
 
   const suppression = getSuppressionDetails(event);
   if (!suppression) {

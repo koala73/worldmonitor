@@ -303,7 +303,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "A becslés és imputáció állapota nincs megadva"
     },
     "fiveFactorScorecard": {
       "title": "Öt tényezős ellenállóképesség-pontszám",
@@ -480,6 +481,7 @@
     "goldIntelligence": "Arany Hírszerzés",
     "gov": "Kormányzat",
     "thinktanks": "Gondolkodótankok",
+    "science": "Tudomány",
     "polymarket": "Előrejelzések",
     "commodities": "Fémek & Anyagok",
     "economic": "Makro Stresszteszt",
@@ -3008,6 +3010,7 @@
       "tier4OnlyHint": "Minden erről beszámoló médium 4. szintű forrás (aggregátorok és blogok). Ez a lefedettséget jellemzi, nem a pontosságot.",
       "rosterListed": "({{listed}} felsorolva)",
       "rosterFeeds": "Látott hírcsatornák: {{labels}}",
+      "rosterSameCopy": "Azonos szöveg, egyszer számítva",
       "rosterLegend": "A szintek a forrásokat rangsorolják; nem ítélik meg ezt az állítást.",
       "tierDocsLink": "Hogyan történik a szintek meghatározása",
       "tierChip": "T{{tier}}",

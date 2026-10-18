@@ -10,7 +10,7 @@ const runnerPath = fileURLToPath(new URL('../scripts/run-railway-registry-sync.m
 const auditPath = fileURLToPath(new URL('../scripts/audit-railway-watch-paths.mjs', import.meta.url));
 const registry = JSON.parse(readFileSync(new URL('../scripts/railway-services.json', import.meta.url)));
 const fleet = JSON.parse(readFileSync(new URL('../scripts/railway-native-autodeploy-fleet.json', import.meta.url))).services;
-const imdId = fleet.find(({ name }) => name === 'seed-imd-cyclone-marine').id;
+const keyedId = fleet.find(({ name }) => name === 'seed-comtrade-bilateral-hs4').id;
 const otherId = fleet.find(({ name }) => name === 'seed-insights').id;
 const secret = 'fixture-secret-must-not-appear-in-output';
 
@@ -98,31 +98,31 @@ describe('Railway registry sync CLI with unavailable source credentials', () => 
     assert.deepEqual(fixture.read().edits, []);
   });
 
-  it('reports a removed IMD key without failing or applying an empty patch', (t) => {
+  it('reports a removed vendor key without failing or applying an empty patch', (t) => {
     const fixture = createFixture(t);
-    delete fixture.state.config.services[imdId].variables.IMD_API_KEY;
+    delete fixture.state.config.services[keyedId].variables.COMTRADE_API_KEYS;
     fixture.save();
     const result = fixture.run();
     assertSucceeded(result);
-    assert.match(result.stdout, /seed-imd-cyclone-marine.*IMD_API_KEY/);
+    assert.match(result.stdout, /seed-comtrade-bilateral-hs4.*COMTRADE_API_KEYS/);
     assert.match(result.stdout, /runtime prerequisites/i);
     assert.deepEqual(fixture.read().edits, []);
     const summary = readFileSync(fixture.summaryPath, 'utf8');
-    assert.match(summary, /seed-imd-cyclone-marine.*IMD_API_KEY/);
+    assert.match(summary, /seed-comtrade-bilateral-hs4.*COMTRADE_API_KEYS/);
     assert.match(summary, /not source health/i);
     assert.doesNotMatch(summary, new RegExp(secret));
   });
 
-  it('repairs and verifies other services with the IMD key absent, then becomes a no-op', (t) => {
+  it('repairs and verifies other services with the vendor key absent, then becomes a no-op', (t) => {
     const fixture = createFixture(t);
-    delete fixture.state.config.services[imdId].variables.IMD_API_KEY;
+    delete fixture.state.config.services[keyedId].variables.COMTRADE_API_KEYS;
     const expected = [...fixture.state.config.services[otherId].build.watchPatterns];
     fixture.state.config.services[otherId].build.watchPatterns = ['wrong-path'];
     fixture.save();
     assertSucceeded(fixture.run());
     const updated = fixture.read();
     assert.deepEqual(updated.edits, [{ services: { [otherId]: { build: { watchPatterns: expected } } } }]);
-    assert.equal(updated.config.services[imdId].variables.IMD_API_KEY, undefined);
+    assert.equal(updated.config.services[keyedId].variables.COMTRADE_API_KEYS, undefined);
     assert.deepEqual(updated.config.services[otherId].variables, fixture.state.config.services[otherId].variables);
     assertSucceeded(fixture.run());
     assert.equal(fixture.read().edits.length, 1);
@@ -130,17 +130,17 @@ describe('Railway registry sync CLI with unavailable source credentials', () => 
 
   it('retains the strict standalone readiness audit', (t) => {
     const fixture = createFixture(t);
-    delete fixture.state.config.services[imdId].variables.IMD_API_KEY;
+    delete fixture.state.config.services[keyedId].variables.COMTRADE_API_KEYS;
     fixture.save();
     const result = fixture.run(['--environment', 'production']);
     assert.equal(result.status, 2);
-    assert.match(result.stderr, /missing required environment IMD_API_KEY/);
+    assert.match(result.stderr, /missing required environment COMTRADE_API_KEYS/);
     assert.deepEqual(fixture.read().edits, []);
   });
 
   it('separates runtime prerequisites from configuration drift in JSON output', (t) => {
     const fixture = createFixture(t);
-    delete fixture.state.config.services[imdId].variables.IMD_API_KEY;
+    delete fixture.state.config.services[keyedId].variables.COMTRADE_API_KEYS;
     fixture.save();
     const result = fixture.run(['--apply', '--json']);
     assertSucceeded(result);
@@ -148,14 +148,14 @@ describe('Railway registry sync CLI with unavailable source credentials', () => 
     assert.deepEqual(report.drift, []);
     assert.equal(report.requiredEnvironmentEvaluated, true);
     assert.deepEqual(report.runtimePrerequisites, [{
-      service: 'seed-imd-cyclone-marine',
-      missingRequiredEnv: ['IMD_API_KEY'],
+      service: 'seed-comtrade-bilateral-hs4',
+      missingRequiredEnv: ['COMTRADE_API_KEYS'],
     }]);
   });
 
   it('still refuses a missing managed service when another source is unavailable', (t) => {
     const fixture = createFixture(t);
-    delete fixture.state.config.services[imdId].variables.IMD_API_KEY;
+    delete fixture.state.config.services[keyedId].variables.COMTRADE_API_KEYS;
     delete fixture.state.config.services[otherId];
     fixture.save();
     const result = fixture.run();
@@ -166,7 +166,7 @@ describe('Railway registry sync CLI with unavailable source credentials', () => 
 
   it('still refuses an unsafe root change when a source is unavailable', (t) => {
     const fixture = createFixture(t);
-    delete fixture.state.config.services[imdId].variables.IMD_API_KEY;
+    delete fixture.state.config.services[keyedId].variables.COMTRADE_API_KEYS;
     fixture.state.config.services[otherId].source.rootDirectory = 'wrong-root';
     fixture.save();
     const result = fixture.run();
@@ -178,7 +178,7 @@ describe('Railway registry sync CLI with unavailable source credentials', () => 
   for (const failure of ['failRead', 'failWrite', 'ignoreWrite']) {
     it(`does not hide ${failure} behind an unavailable source`, (t) => {
       const fixture = createFixture(t);
-      delete fixture.state.config.services[imdId].variables.IMD_API_KEY;
+      delete fixture.state.config.services[keyedId].variables.COMTRADE_API_KEYS;
       fixture.state.config.services[otherId].build.watchPatterns = ['wrong-path'];
       fixture.state[failure] = true;
       fixture.save();

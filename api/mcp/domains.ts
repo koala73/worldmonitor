@@ -146,6 +146,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   extract_entities: 'meta',
   get_news_clusters: 'meta',
   get_keyword_spikes: 'meta',
+  verify_claim: 'meta',
 };
 
 export const MCP_TAGS: readonly string[] = [

@@ -6,7 +6,7 @@ keywords: "Bloomberg Terminal alternative free, Palantir alternative open source
 audience: "Analysts evaluating tools, budget-conscious teams, procurement decision-makers, open-source advocates"
 heroImage: "/blog/images/blog/worldmonitor-vs-traditional-intelligence-tools.jpg"
 pubDate: "2026-03-11"
-modifiedDate: "2026-09-05"
+modifiedDate: "2026-10-18"
 ---
 
 [Quartz reported in 2022](https://qz.com/84961/this-is-how-much-a-bloomberg-terminal-costs) that a [Bloomberg Terminal](https://www.bloomberg.com/professional/products/bloomberg-terminal/) single subscription cost $24,000 per year. [Palantir](https://www.palantir.com/), [Dataminr](https://www.dataminr.com/), and [Recorded Future](https://www.recordedfuture.com/) use enterprise-negotiated licensing with no published list price.
@@ -115,7 +115,7 @@ The fundamental difference isn't any single feature. It's that World Monitor fus
 | Financial markets | Deep | Limited | No | No | Moderate |
 | Geopolitical events | Limited | Custom | Social only | Cyber focus | Deep |
 | Military tracking | No | Custom | No | No | ADS-B + AIS + USNI |
-| Conflict data | No | Custom | Social | Cyber | ACLED + UCDP + Telegram |
+| Conflict data | No | Custom | Social | Cyber | UCDP + GDELT + Telegram |
 | Infrastructure mapping | No | Custom | No | Partial | Cables, pipelines, ports, datacenters |
 | Natural disasters | No | Custom | Limited | No | USGS + NASA FIRMS + EONET |
 | AI analysis (local) | No | No | No | No | Ollama + LM Studio + browser ML |

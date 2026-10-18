@@ -132,6 +132,7 @@ export function outletRecord(name: string) {
 export const SOURCE_TOOLS: ToolDef[] = [
   {
     name: 'get_sources',
+    title: 'Source inventory',
     _outputBudgetBytes: 65536,
     // U7 roster (R7). The selection criterion is cheap to serve, cacheable,
     // low value to bulk-scrape, AND reliably fresh. This tool satisfies all
@@ -145,7 +146,7 @@ export const SOURCE_TOOLS: ToolDef[] = [
     // generic, so adding a screened tool later is this one line.
     _freeTier: true,
     description:
-      "WorldMonitor's live source inventory, for deciding whether and how far to trust what the other tools return. Two separate populations: `providers` are upstream hosts data is fetched from (with licence and attribution status), and `outlets` are named public source identities carrying an editorial tier plus propaganda-risk and source-type provenance. Platform channels include stable platform identities instead of pretending every source is a newsroom masthead. Defaults to `summary` (counts only); pass a view to enumerate. Static registry read — no network, no cache, always current with the deployed build.",
+      "WorldMonitor's live source inventory, for deciding whether and how far to trust what the other tools return. Two separate populations: `providers` are upstream hosts data is fetched from (with licence and attribution status), and `outlets` are named public source identities carrying an editorial tier plus propaganda-risk and source-type provenance. Platform channels include stable platform identities instead of pretending every source is a newsroom masthead. Defaults to `summary` (counts only); pass a view to enumerate. Static registry read — no network, no cache, always current with the deployed build. Credential-free: callable anonymously with no daily quota, under a separate ceiling of 10 unauthenticated calls per minute per IP.",
     inputSchema: {
       type: 'object',
       properties: {
