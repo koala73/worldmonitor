@@ -1388,14 +1388,22 @@ describe('resolveHasUsedPowerFeature (#5612)', () => {
     assert.equal(resolveHasUsedPowerFeature(3, []), true);
   });
 
-  it('counts a connected, unrevoked MCP client when no widget exists', () => {
-    assert.equal(resolveHasUsedPowerFeature(0, [{ revokedAt: undefined }]), true);
-    assert.equal(resolveHasUsedPowerFeature(0, [{ revokedAt: null }]), true);
-    assert.equal(resolveHasUsedPowerFeature(0, [{ revokedAt: 1_700_000_000_000 }, {}]), true);
+  it('counts a used, unrevoked MCP client when no widget exists', () => {
+    const used = { lastUsedAt: 1_700_000_000_000 };
+    assert.equal(resolveHasUsedPowerFeature(0, [used]), true);
+    assert.equal(resolveHasUsedPowerFeature(0, [{ ...used, revokedAt: null }]), true);
+    assert.equal(resolveHasUsedPowerFeature(0, [{ ...used, revokedAt: 1_700_000_100_000 }, used]), true);
+    assert.equal(resolveHasUsedPowerFeature(0, [{ lastUsedAt: 0 }]), true);
+  });
+
+  it('does not count authorized clients that have never been used', () => {
+    assert.equal(resolveHasUsedPowerFeature(0, [{}]), false);
+    assert.equal(resolveHasUsedPowerFeature(0, [{ revokedAt: null, lastUsedAt: null }]), false);
+    assert.equal(resolveHasUsedPowerFeature(0, [{ revokedAt: undefined, lastUsedAt: undefined }]), false);
   });
 
   it('does not count revoked clients, an empty list, or an unavailable read', () => {
-    assert.equal(resolveHasUsedPowerFeature(0, [{ revokedAt: 1_700_000_000_000 }]), false);
+    assert.equal(resolveHasUsedPowerFeature(0, [{ revokedAt: 1_700_000_100_000, lastUsedAt: 1_700_000_000_000 }]), false);
     assert.equal(resolveHasUsedPowerFeature(0, []), false);
     assert.equal(resolveHasUsedPowerFeature(0, null), false);
     assert.equal(resolveHasUsedPowerFeature(0), false);
