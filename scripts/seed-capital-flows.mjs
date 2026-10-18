@@ -35,6 +35,7 @@
 //     latest: { bopQuarter, bopYear, bisQuarter, pipYear },
 //     coverage: {...}, sources, method, seededAt }
 
+import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetchRaw, imfAuthHeaders, withRetry } from './_seed-utils.mjs';
 import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 import { sumGrossFlows, classifyCountry, nextQuarter } from './_capital-flow-episodes.mjs';
@@ -45,6 +46,10 @@ loadEnvFile(import.meta.url);
 const _proxyAuth = resolveProxyForConnect();
 
 export const CANONICAL_KEY = 'economic:capital-flows:v1';
+// Durable activation marker (no TTL). Until it exists, /api/health softens a
+// missing key to the on-demand warn, so the reader can ship before the weekly
+// bundle's first publish.
+export const CAPITAL_FLOWS_ACTIVATION_KEY = 'seed-activated:economic:capital-flows';
 export const CACHE_TTL = 100 * 24 * 3600; // quarterly sources; outlives a missed publish
 // Newest IMF BOP quarter is normally 1–2 quarters old. 12 months flags a frozen
 // feed after ~two missed quarterly releases.
@@ -598,6 +603,17 @@ export function capitalFlowsContentMeta(data) {
   return tokensToContentMeta(data?.latest?.bopNewestQuarter ?? data?.latest?.bopQuarter);
 }
 
+// Best-effort: a missed marker costs one more cycle of on-demand softening.
+async function markActivated() {
+  try {
+    const creds = getOptionalUpstashCreds();
+    if (!creds) return;
+    await upstashCommand(creds, ['SET', CAPITAL_FLOWS_ACTIVATION_KEY, '1']);
+  } catch (err) {
+    console.warn(`  WARN: activation marker write failed: ${err?.message || err}`);
+  }
+}
+
 if (process.argv[1]?.endsWith('seed-capital-flows.mjs')) {
   runSeed('economic', 'capital-flows', CANONICAL_KEY, fetchCapitalFlows, {
     validateFn: validate,
@@ -610,6 +626,7 @@ if (process.argv[1]?.endsWith('seed-capital-flows.mjs')) {
     maxStaleMin: 14400,
     contentMeta: capitalFlowsContentMeta,
     maxContentAgeMin: CAPITAL_FLOWS_MAX_CONTENT_AGE_MIN,
+    afterPublish: markActivated,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

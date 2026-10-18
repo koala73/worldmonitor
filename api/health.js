@@ -983,7 +983,19 @@ const SEED_META = {
   // plan 2026-04-25-004 Phase 2: financialSystemExposure component seeders.
   // Bundle: scripts/seed-bundle-macro.mjs (Codex R1 #5, Option A).
   wbExternalDebt:   { key: 'seed-meta:economic:wb-external-debt', maxStaleMin: 100800 }, // annual WB IDS publication; 70d threshold matches IMF cadence pattern
-  capitalFlows:     { key: 'seed-meta:economic:capital-flows',    maxStaleMin: 14400 }, // weekly macro-bundle seed of quarterly IMF BOP/PIP + BIS LBS; 10d = weekly interval + slack
+  // Weekly macro-bundle seed of quarterly IMF BOP/PIP + BIS LBS (#9394);
+  // 10d = weekly interval + slack. Activation marker bridges deploy-before-first-tick.
+  capitalFlows: {
+    key: 'seed-meta:economic:capital-flows',
+    maxStaleMin: 14400,
+    activationKey: 'seed-activated:economic:capital-flows',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 9394,
+      activationKey: 'seed-activated:economic:capital-flows',
+    },
+  },
   bisLbs:           { key: 'seed-meta:economic:bis-lbs',          maxStaleMin: 14400 }, // BIS LBS quarterly publication; 10d threshold = ~1× publish lag tolerance after macro bundle daily refresh
   fatfListing:      { key: 'seed-meta:economic:fatf-listing',     maxStaleMin: 60480 }, // FATF plenary 3×/year; 42d threshold = >1 plenary cycle (catches missed-update if cron silently fails)
   shippingRates:    { key: 'seed-meta:supply_chain:shipping',     maxStaleMin: 420 },
@@ -2095,6 +2107,8 @@ const ON_DEMAND_KEYS = new Set([
   // first successful publish.
   'dtmDisplacement',
   // Same bridge for the UNHCR cross-border movements (#9023).
+  // Deploy-before-first-tick bridge for the weekly capital-flows seed (#9394).
+  'capitalFlows',
   'crossBorderArrivals',
   // Same deploy-before-first-tick bridge as cbrRates for the two Canada
   // national-statistics seeders: bocValet (#6616) and statcanWds (#6676).
@@ -2243,6 +2257,8 @@ const ACTIVATION_MARKERS = {
   dtmDisplacement: SEED_META.dtmDisplacement.activationKey,
   // Written by scripts/seed-cross-border-arrivals.mjs in runSeed's afterPublish hook.
   crossBorderArrivals: SEED_META.crossBorderArrivals.activationKey,
+  // Written by scripts/seed-capital-flows.mjs in runSeed's afterPublish hook.
+  capitalFlows: SEED_META.capitalFlows.activationKey,
   bocValet: 'seed-activated:economic:boc-valet',
   statcanWds: 'seed-activated:economic:statcan-wds',
   // Written by scripts/seed-live-video-resolved.mjs in runSeed's afterPublish hook.
