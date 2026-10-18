@@ -146,8 +146,9 @@ paths:
                 - SanctionsService
             summary: LookupSanctionEntity
             description: |-
-                LookupSanctionEntity screens the seeded OFAC SDN, OFAC Consolidated and Canada SEMA lists
-                 by name, up to 10 retained aliases per entity, or an exact IMO identifier.
+                LookupSanctionEntity screens the seeded OFAC SDN, OFAC Consolidated, Canada SEMA and US
+                 Consolidated Screening List export-control lists by name, up to 10 retained aliases per
+                 entity, or an exact IMO identifier.
             operationId: LookupSanctionEntity
             parameters:
                 - name: q
@@ -555,7 +556,7 @@ components:
                     type: integer
                     format: int32
                     description: Maximum number of matching sanctioned entities to return.
-            description: LookupSanctionEntityRequest screens the seeded OFAC SDN, OFAC Consolidated and Canada SEMA index.
+            description: LookupSanctionEntityRequest screens the seeded OFAC SDN, OFAC Consolidated, Canada SEMA and US CSL index.
         LookupSanctionEntityResponse:
             type: object
             properties:

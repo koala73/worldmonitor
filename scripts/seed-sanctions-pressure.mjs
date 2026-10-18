@@ -11,6 +11,7 @@ import { projectCountrySanctions } from './shared/country-sanctions-signals.mjs'
 import { loadEnvFile, runSeed, verifySeedKey, readSeedSnapshot, writeExtraKeyWithMeta } from './_seed-utils.mjs';
 import { fetchOfacSourceResponse } from './_sanctions-source.mjs';
 import { buildSanctionsChanges } from './_sanctions-changes.mjs';
+import { CSL_ROW_ID, CSL_SOURCES, ingestCslEntries } from './_csl-sanctions.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { SANCTIONS_MAX_CONTENT_AGE_MIN, SANCTIONS_SOURCE_VERSION, SEMA_SOURCE, ingestSemaEntries, mergeSanctionEntries, ofacRegistrationToIdentifier, sanctionsListContentMeta } from './_sema-sanctions.mjs';
 
@@ -45,6 +46,8 @@ const ET_CODE = {
   SANCTIONS_ENTITY_TYPE_AIRCRAFT: 'aircraft',
   SANCTIONS_ENTITY_TYPE_INDIVIDUAL: 'individual',
   SANCTIONS_ENTITY_TYPE_ENTITY: 'entity',
+  // CSL rows carry no entity type; persons and companies share the lists.
+  SANCTIONS_ENTITY_TYPE_UNSPECIFIED: 'unspecified',
 };
 const DEFAULT_RECENT_LIMIT = 60;
 const PROGRAM_CODE_RE = /^[A-Z0-9][A-Z0-9-]{1,24}$/;
@@ -59,10 +62,15 @@ const OFAC_SOURCES = [
   { label: 'CONSOLIDATED', url: 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/cons_advanced.xml' },
 ];
 
+// Pressure, country counts and the pressure source health come from OFAC and
+// SEMA only; CSL export-control lists feed screening and the change feed.
+const PRESSURE_SOURCES = [...OFAC_SOURCES.map(({ label }) => label), SEMA_SOURCE];
+
 function validSourceId(source, id) {
-  return typeof id === 'string' && (source === SEMA_SOURCE
-    ? /^sema-ca:(?!unspecified:|xx:)[^:]+:[^:]+:[1-9]\d*$/.test(id)
-    : new RegExp(`^${source}:\\d+$`).test(id));
+  if (typeof id !== 'string') return false;
+  if (source === SEMA_SOURCE) return /^sema-ca:(?!unspecified:|xx:)[^:]+:[^:]+:[1-9]\d*$/.test(id);
+  if (CSL_SOURCES.includes(source)) return id.startsWith(`${source}:`) && CSL_ROW_ID.test(id.slice(source.length + 1));
+  return new RegExp(`^${source}:\\d+$`).test(id);
 }
 
 function validSourceRecords(source, records) {
@@ -75,6 +83,7 @@ function validSourceRecords(source, records) {
       || !Array.isArray(entry.sourceLists) || entry.sourceLists.length !== 1 || entry.sourceLists[0] !== source
       || !['countryCodes', 'countryNames', 'programs'].every(field => Array.isArray(entry[field]) && entry[field].every(v => typeof v === 'string'))
       || !['_aliases', '_identifiers'].every(field => entry[field] === undefined || (Array.isArray(entry[field]) && entry[field].every(v => typeof v === 'string')))
+      || !['_notice', '_url'].every(field => entry[field] === undefined || typeof entry[field] === 'string')
       || typeof entry.effectiveAt !== 'string' || !/^\d+$/.test(entry.effectiveAt)) return false;
     ids.add(entry.id);
     return true;
@@ -128,7 +137,8 @@ function selectSanctionsSourceSnapshot(source, result, previous, now) {
       retainedUntil: snapshot?.retainedUntil ?? null,
       publishedAt: snapshot?.publishedAt ?? null,
       recordCount: snapshot?.records.length ?? 0,
-      errorCode: valid ? null : source === SEMA_SOURCE ? 'SEMA_INGEST_FAILED' : 'OFAC_INGEST_FAILED',
+      errorCode: valid ? null : source === SEMA_SOURCE ? 'SEMA_INGEST_FAILED'
+        : CSL_SOURCES.includes(source) ? 'CSL_INGEST_FAILED' : 'OFAC_INGEST_FAILED',
     },
   };
 }
@@ -668,6 +678,15 @@ async function fetchSanctionsPressure() {
   outcomes[SEMA_SOURCE] = { records: sema.records, publishedAt: sema.publishedAtMs || 0,
     quarantinedCount: sema.error ? null : sema.quarantined.length, error: sema.error };
   if (sema.error) console.warn(`  SEMA fetch failed: ${sema.error}`);
+  // One bulk download covers all six CSL lists; a failed download fails each list.
+  const csl = await ingestCslEntries();
+  if (csl.error) console.warn(`  CSL fetch failed: ${csl.error}`);
+  for (const source of CSL_SOURCES) {
+    const list = csl.lists[source];
+    outcomes[source] = { records: list?.records ?? [], publishedAt: list?.publishedAt ?? 0, quarantinedCount: 0,
+      error: csl.error || (list ? list.error : 'CSL_LIST_MISSING') };
+    if (!csl.error && list?.error) console.warn(`  CSL ${source} unavailable: ${list.error}`);
+  }
 
   const now = Date.now();
   if (!validPressureClock(String(now)) || now + SOURCE_RETAIN_MS > 8640000000000000) {
@@ -702,7 +721,8 @@ async function fetchSanctionsPressure() {
   const semaError = _sourceHealth[SEMA_SOURCE].status === 'ok' ? null : sema.error || 'SEMA_INVALID_RECORD';
   const ofacEntries = OFAC_SOURCES.flatMap(({ label }) => _sourceSnapshots[label]?.records ?? []);
   const entries = mergeSanctionEntries({ ofac: ofacEntries, sema: semaEntries });
-  const datasetDate = Math.max(0, ...Object.values(_sourceSnapshots).map(snapshot => snapshot?.publishedAt ?? 0));
+  const datasetDate = Math.max(0, ...PRESSURE_SOURCES.map(source => _sourceSnapshots[source]?.publishedAt ?? 0));
+  const cslEntries = CSL_SOURCES.flatMap(source => _sourceSnapshots[source]?.records ?? []);
 
   if (hasPrevious) {
     for (const entry of entries) {
@@ -718,10 +738,10 @@ async function fetchSanctionsPressure() {
   const semaCount = semaEntries.length;
   const sdnCount = _sourceSnapshots.SDN?.records.length ?? 0;
   const consolidatedCount = _sourceSnapshots.CONSOLIDATED?.records.length ?? 0;
-  console.log(`  Merged: ${totalCount} total (${sdnCount} SDN + ${consolidatedCount} consolidated + ${semaCount} SEMA), ${newEntryCount} new, ${vesselCount} vessels, ${aircraftCount} aircraft`);
+  console.log(`  Merged: ${totalCount} total (${sdnCount} SDN + ${consolidatedCount} consolidated + ${semaCount} SEMA), ${newEntryCount} new, ${vesselCount} vessels, ${aircraftCount} aircraft; ${cslEntries.length} CSL screening rows`);
 
   // Keep lookup identities separate from the pressure display projection.
-  const _entityIndex = entries.map((e) => ({
+  const _entityIndex = [...entries, ...cslEntries].map((e) => ({
     id: e.id,
     name: e.name,
     et: ET_CODE[e.entityType] ?? 'entity',
@@ -747,7 +767,7 @@ async function fetchSanctionsPressure() {
       from: knownWindow ? previousState.observedAt : null,
       to: String(now),
     },
-    sourceHealth: Object.fromEntries(Object.entries(_sourceHealth).map(([source, health]) => [source, {
+    sourceHealth: Object.fromEntries(PRESSURE_SOURCES.map(source => [source, _sourceHealth[source]]).map(([source, health]) => [source, {
       status: health.status, lastAttemptAt: health.lastAttemptAt, lastSuccessAt: health.lastSuccessAt,
       retainedUntil: health.retainedUntil, publishedAt: health.publishedAt, recordCount: health.recordCount,
       errorCode: health.errorCode,
@@ -878,13 +898,20 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
     // Write entity lookup index with seed-meta so health.js can monitor it.
     // Uses writeExtraKeyWithMeta rather than extraKeys because runSeed's extraKeys
     // calls writeExtraKey (no meta), and we need a seed-meta key for health tracking.
+    const sourceHealth = data._sourceHealth;
     if (data._entityIndex) {
+      // Screening is the only published surface for the CSL lists, so their
+      // outages degrade the index's health instead of pressure's.
+      const cslFailed = CSL_SOURCES.filter(source => sourceHealth[source]?.status !== 'ok');
       await writeExtraKeyWithMeta(
         ENTITY_INDEX_KEY,
         data._entityIndex,
         CACHE_TTL,
         data._entityIndex.length,
         ENTITY_INDEX_META_KEY,
+        undefined,
+        undefined,
+        { sourceState: cslFailed.length ? 'error' : 'ok', errorCode: cslFailed.length ? 'CSL_INGEST_FAILED' : null, failedSources: cslFailed },
       );
     }
     // Write full ISO2→count map for per-country sanctions lookup (no top-12 truncation).
@@ -900,14 +927,13 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
     delete data._state;
     delete data._entityIndex;
     delete data._countryCounts;
-    const sourceHealth = data._sourceHealth;
-    const failedSources = Object.keys(sourceHealth).filter(source => sourceHealth[source].status !== 'ok');
+    const failedSources = PRESSURE_SOURCES.filter(source => sourceHealth[source].status !== 'ok');
     return {
       freshnessMetaPatch: {
         sourceState: failedSources.length ? 'error' : 'ok',
         errorCode: failedSources.includes(SEMA_SOURCE) ? 'SEMA_INGEST_FAILED' : failedSources.length ? 'OFAC_INGEST_FAILED' : null,
         failedSources,
-        sourceHealth,
+        sourceHealth: Object.fromEntries(PRESSURE_SOURCES.map(source => [source, sourceHealth[source]])),
       },
       completionState: failedSources.length ? 'DEGRADED' : 'OK',
     };

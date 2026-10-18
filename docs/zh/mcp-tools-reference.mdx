@@ -1356,7 +1356,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_sanctions_data`
 
-读取 OFAC SDN、OFAC Consolidated、加拿大 SEMA 制裁和国家压力评分。`screen` 支持名称、每个实体最多 10 个保留别名和精确 IMO 编号，返回 `score`、`matched_on`、`matched_text`；不要同时提供 `screen` 和 `changes_since_days`。`changes_since_days` 选择仅变更历史模式，返回指定天数内观测到的新增、移除和制裁项目变更。匹配结果仅供进一步向发布机构核实，不构成法律意见。每次调用权重为 1，不在请求时获取外部来源。
+读取 OFAC SDN、OFAC Consolidated、加拿大 SEMA 制裁和国家压力评分，并可筛查美国综合筛查清单（CSL）中的六个出口管制清单：BIS 实体清单、拒绝人员清单、未核实清单、军事最终用户清单，以及国务院 ITAR 禁止清单和防扩散制裁清单。压力评分只统计 OFAC 和 SEMA；CSL 条目的 `et` 为 `unspecified`，其变更事件带有 `notice`（《联邦公报》引用）和 `url`。`screen` 支持名称、每个实体最多 10 个保留别名和精确 IMO 编号，返回 `score`、`matched_on`、`matched_text`；不要同时提供 `screen` 和 `changes_since_days`。`changes_since_days` 选择仅变更历史模式，返回指定天数内观测到的新增、移除和制裁项目变更。匹配结果仅供进一步向发布机构核实，不构成法律意见。每次调用权重为 1，不在请求时获取外部来源。
 
 **参数（工具特定）：**
 

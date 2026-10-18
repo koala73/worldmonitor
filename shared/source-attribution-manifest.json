@@ -3025,6 +3025,20 @@
       ]
     },
     {
+      "host": "data.trade.gov",
+      "provider": "International Trade Administration (US Consolidated Screening List)",
+      "kind": "structured",
+      "observed": true,
+      "license": "US government work. The ITA Data API terms of service (developer.trade.gov/terms-of-service) require the notice: This product uses the International Trade Administration's Data API but is not endorsed or certified by the International Trade Administration.",
+      "attribution": "This product uses the International Trade Administration's Data API but is not endorsed or certified by the International Trade Administration. Verify listings against the Federal Register and the issuing agency.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_csl-sanctions.mjs"
+        }
+      ]
+    },
+    {
       "host": "data.unhcr.org",
       "provider": "data.unhcr.org",
       "kind": "structured",

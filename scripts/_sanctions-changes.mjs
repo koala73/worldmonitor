@@ -4,6 +4,7 @@ const EVENT_LIMIT = 10000;
 const ENTITY_TYPES = {
   SANCTIONS_ENTITY_TYPE_INDIVIDUAL: 'individual', SANCTIONS_ENTITY_TYPE_ENTITY: 'entity',
   SANCTIONS_ENTITY_TYPE_VESSEL: 'vessel', SANCTIONS_ENTITY_TYPE_AIRCRAFT: 'aircraft',
+  SANCTIONS_ENTITY_TYPE_UNSPECIFIED: 'unspecified',
 };
 const programs = row => [...new Set(row.programs)].sort();
 const validClock = value => Number.isSafeInteger(value) && value > 0;
@@ -21,7 +22,8 @@ function validateHistory(history, now) {
     || history.events.some(e => !validClock(e?.at) || e.at > history.fetchedAt
       || !['added', 'removed', 'amended'].includes(e.op)
       || !['list', 'id', 'name', 'et', 'effectiveAt'].every(k => typeof e[k] === 'string')
-      || !strings(e.cc) || !strings(e.pr) || e.prevPr !== undefined && !strings(e.prevPr))
+      || !strings(e.cc) || !strings(e.pr) || e.prevPr !== undefined && !strings(e.prevPr)
+      || ['notice', 'url'].some(k => e[k] !== undefined && typeof e[k] !== 'string'))
     || history.gaps.some(g => !validClock(g?.from) || !validClock(g.to) || g.from > g.to
       || g.to > history.fetchedAt || typeof g.list !== 'string'
       || !['retained', 'unavailable', 'held', 'baseline-unavailable'].includes(g.reason))) {
@@ -34,6 +36,9 @@ function changeEvent(row, list, op, at, previous) {
     at, effectiveAt: row.effectiveAt, op, list, id: row.id, name: row.name,
     et: ENTITY_TYPES[row.entityType], cc: row.countryCodes, pr: programs(row),
     ...(op === 'amended' ? { prevPr: programs(previous) } : {}),
+    // CSL rows carry the Federal Register citation and the issuing list's page.
+    ...(row._notice ? { notice: row._notice } : {}),
+    ...(row._url ? { url: row._url } : {}),
   };
 }
 

@@ -15,8 +15,9 @@ service SanctionsService {
     option (sebuf.http.config) = {path: "/list-sanctions-pressure", method: HTTP_METHOD_GET};
   }
 
-  // LookupSanctionEntity screens the seeded OFAC SDN, OFAC Consolidated and Canada SEMA lists
-  // by name, up to 10 retained aliases per entity, or an exact IMO identifier.
+  // LookupSanctionEntity screens the seeded OFAC SDN, OFAC Consolidated, Canada SEMA and US
+  // Consolidated Screening List export-control lists by name, up to 10 retained aliases per
+  // entity, or an exact IMO identifier.
   rpc LookupSanctionEntity(LookupSanctionEntityRequest) returns (LookupSanctionEntityResponse) {
     option (sebuf.http.config) = {path: "/lookup-sanction-entity", method: HTTP_METHOD_GET};
   }
