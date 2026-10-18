@@ -13,7 +13,7 @@ const own = { lat: 38, lon: -77, operatorCountry: 'US' };
 const foreign = { lat: 39, lon: -76, operatorCountry: 'United Kingdom' };
 const outside = { lat: 52, lon: 0, operatorCountry: 'US' };
 const flight = (id: string, item = own) => ({ id, location: { latitude: item.lat, longitude: item.lon }, operatorCountry: item.operatorCountry });
-function source(flights: ReturnType<typeof vi.fn>, aisAvailable = true) {
+function source(flights: (args: { cursor: string }, options: { signal: AbortSignal }) => unknown, aisAvailable = true) {
   return {
     countryFlightPage: (_code: string, _window: number, cursor: string, signal: AbortSignal) => flights({ cursor }, { signal }),
     military: { listMilitaryFlights: flights, getUSNIFleetReport: async () => ({}) },

@@ -42,6 +42,7 @@ import "worldmonitor/intelligence/v1/get_similar_events.proto";
 service IntelligenceService {
   option (sebuf.http.service_config) = {base_path: "/api/intelligence/v1"};
 
+  // Read one bounded country-qualified observation family or eligible flight page for the country panel, with source clocks and coverage.
   rpc GetCountrySignalObservations(GetCountrySignalObservationsRequest) returns (GetCountrySignalObservationsResponse) {
     option (sebuf.http.config) = {path: "/get-country-signal-observations", method: HTTP_METHOD_GET};
   }

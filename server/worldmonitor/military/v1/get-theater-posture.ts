@@ -37,7 +37,7 @@ export async function readTheaterPostureSnapshot(ctx: ServerContext, policy: { r
       return { state: 'observed' as const, status, theaters: value.theaters, provider: typeof value.provider === 'string' ? value.provider : null, sourceAt, retrievedAt: new Date().toISOString(), reason: null };
     } catch (error) { if (ctx.request.signal.aborted) throw error; }
   }
-  return { state: denied ? 'locked' as const : 'unavailable' as const, status: 'fallback' as const, theaters: [], provider: null, sourceAt: null, retrievedAt: new Date().toISOString(), reason: denied ? 'Provider redistribution is not established.' : 'Posture snapshot unavailable.' };
+  return markNoStoreFallbackResponse(ctx.request, { state: denied ? 'locked' as const : 'unavailable' as const, status: 'fallback' as const, theaters: [], provider: null, sourceAt: null, retrievedAt: new Date().toISOString(), reason: denied ? 'Provider redistribution is not established.' : 'Posture snapshot unavailable.' });
 }
 
 function projectAllowedPosture(

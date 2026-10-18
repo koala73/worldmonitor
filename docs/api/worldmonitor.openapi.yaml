@@ -14507,10 +14507,12 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountrySignalObservations
+            description: Read one bounded country-qualified observation family or eligible flight page for the country panel, with source clocks and coverage.
             operationId: GetCountrySignalObservations
             parameters:
                 - name: country_code
                   in: query
+                  description: Uppercase ISO 3166-1 alpha-2 country code.
                   required: false
                   example: "US"
                   schema:
@@ -14518,6 +14520,7 @@ paths:
                     pattern: '^[A-Z]{2}$'
                 - name: family
                   in: query
+                  description: Fixed source family or eligible flight page; unspecified is rejected.
                   required: false
                   example: "COUNTRY_SIGNAL_FAMILY_OUTAGES"
                   schema:
@@ -14533,6 +14536,7 @@ paths:
                         - 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE'
                 - name: window_index
                   in: query
+                  description: Country-derived flight viewport index, 0 or 1. Other families require 0.
                   required: false
                   example: 1
                   schema:
@@ -14540,6 +14544,7 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
+                  description: Prior eligible flight page cursor. Other families require an empty cursor.
                   required: false
                   example: "next-page-token"
                   schema:
@@ -46867,6 +46872,7 @@ components:
                 countryCode:
                     type: string
                     pattern: ^[A-Z]{2}$
+                    description: Uppercase ISO 3166-1 alpha-2 country code.
                 family:
                     type: string
                     enum:
@@ -46883,9 +46889,11 @@ components:
                 windowIndex:
                     type: integer
                     format: int32
+                    description: Country-derived flight viewport index, 0 or 1. Other families require 0.
                 cursor:
                     type: string
                     maxLength: 200
+                    description: Prior eligible flight page cursor. Other families require an empty cursor.
         worldmonitor_intelligence_v1_GetCountrySignalObservationsResponse:
             type: object
             properties:

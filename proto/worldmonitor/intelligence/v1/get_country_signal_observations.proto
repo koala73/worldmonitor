@@ -19,9 +19,13 @@ enum CountrySignalFamily {
 }
 
 message GetCountrySignalObservationsRequest {
+  // Uppercase ISO 3166-1 alpha-2 country code.
   string country_code = 1 [(buf.validate.field).string.pattern = "^[A-Z]{2}$", (sebuf.http.query) = {name: "country_code"}];
+  // Fixed source family or eligible flight page; unspecified is rejected.
   CountrySignalFamily family = 2 [(sebuf.http.query) = {name: "family"}];
+  // Country-derived flight viewport index, 0 or 1. Other families require 0.
   int32 window_index = 3 [(sebuf.http.query) = {name: "window_index"}];
+  // Prior eligible flight page cursor. Other families require an empty cursor.
   string cursor = 4 [(buf.validate.field).string.max_len = 200, (sebuf.http.query) = {name: "cursor"}];
 }
 

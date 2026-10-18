@@ -10,7 +10,7 @@ import { countrySignalsFromMilitary } from '@/services/country-signals';
 import type { loadHostCountryMilitaryActivity } from '@/services/country-military-activity';
 
 beforeAll(async () => { await initTestI18n(); });
-const military = () => Promise.resolve({ qualified: qualifiedFixtureOutcomes().at(-1)! } as Awaited<ReturnType<typeof loadHostCountryMilitaryActivity>>);
+const military = () => Promise.resolve({ qualified: qualifiedFixtureOutcomes().find(row => row.family === 'military')! } as Awaited<ReturnType<typeof loadHostCountryMilitaryActivity>>);
 it.each([401, 403])('clears prior family observations after actual website HTTP %i', async status => {
   const previous = projectQualifiedCountrySignals('IR', qualifiedFixtureOutcomes());
   vi.stubGlobal('fetch', vi.fn(async () => new Response('Denied', { status })));
@@ -29,7 +29,7 @@ it.each([401, 403])('clears prior observations through the actual MCP HTTP %i ca
   vi.stubGlobal('fetch', vi.fn(async () => new Response('Denied', { status })));
   try {
     const source = await createHostCountryBriefSource(async (_name, args) => {
-      const result = await tool._execute!(args, 'https://www.worldmonitor.app', { kind: 'pro', userId: 'controlled-user' }, { countryPanelCode: 'IR' });
+      const result = await tool._execute!(args as Record<string, unknown>, 'https://www.worldmonitor.app', { kind: 'pro', userId: 'controlled-user', mcpTokenId: 'controlled-token' }, { countryPanelCode: 'IR', inboundHostClass: 'www', downstreamOrigin: 'https://www.worldmonitor.app', downstreamOriginTag: 'controlled' });
       expect(result).toMatchObject({ state: 'locked' });
       return result;
     });
