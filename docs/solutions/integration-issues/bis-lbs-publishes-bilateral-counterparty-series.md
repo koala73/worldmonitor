@@ -1,5 +1,5 @@
 ---
-title: "BIS WS_LBS_D_PUB does publish bilateral counterparty-country series; the empty-position key collapses to 5J"
+title: "BIS WS_LBS_D_PUB does publish bilateral counterparty-country series"
 date: 2026-10-18
 category: integration-issues
 module: scripts/seed-bis-lbs.mjs
@@ -27,7 +27,7 @@ tags:
 
 ## Problem
 
-The header of `scripts/seed-bis-lbs.mjs` states that the BIS Locational Banking Statistics dataflow `WS_LBS_D_PUB` only exposes the counterparty country as the aggregate `5J`, and that this is why the seeder moved to `WS_CBS_PUB`. That is wrong for an explicit key. A live query on 2026-10-18 returned bilateral series by reporting country × counterparty country × counterparty sector through 2026-Q1.
+The header of `scripts/seed-bis-lbs.mjs` stated that the BIS Locational Banking Statistics dataflow `WS_LBS_D_PUB` only exposes the counterparty country as the aggregate `5J`, and that this is why the seeder moved to `WS_CBS_PUB`. That was wrong; the header now says so, and `scripts/seed-capital-flows.mjs` reads the bilateral series. A live query on 2026-10-18 returned bilateral series by reporting country × counterparty country × counterparty sector through 2026-Q1.
 
 ## Symptoms
 
@@ -36,17 +36,17 @@ The header of `scripts/seed-bis-lbs.mjs` states that the BIS Locational Banking 
 
 ## What Didn't Work
 
-- An empty `L_CP_COUNTRY` position in an LBS key returns the `5J` (all countries) aggregate. That is the probe the original comment generalised from. In LBS, empty does not expand to every counterparty the way it does in CBS.
+- The original probe behind the `seed-bis-lbs.mjs` comment is not recorded, so its exact key is unknown. It does not reproduce: on 2026-10-18 an empty `L_CP_COUNTRY` position (`Q.S.C.A.TO1.A.5J.A.GB.A..N`) returned 228 counterparty countries, not just `5J`.
 
 ## Solution
 
-Name the counterparty country explicitly. The LBS key has 12 dimensions (from `dataflow/BIS/WS_LBS_D_PUB/1.0?references=datastructure`):
+Query the counterparty dimension, named or empty. The LBS key has 12 dimensions (from `dataflow/BIS/WS_LBS_D_PUB/1.0?references=datastructure`):
 
 ```
 FREQ.L_MEASURE.L_POSITION.L_INSTR.L_DENOM.L_CURR_TYPE.L_PARENT_CTY.L_REP_BANK_TYPE.L_REP_CTY.L_CP_SECTOR.L_CP_COUNTRY.L_POS_TYPE
 ```
 
-Example: UAE non-bank and household deposits in banks in every reporting country, and UK-resident non-banks' deposits abroad, as stocks and adjusted flows:
+Example: non-bank and household deposits placed by UK and UAE residents in banks of every reporting country, as stocks and adjusted flows:
 
 ```
 https://stats.bis.org/api/v1/data/WS_LBS_D_PUB/Q.F+S.L.A.TO1.A.5J.A..N+H.GB+AE.N?startPeriod=2015-Q1
@@ -71,10 +71,10 @@ The UAE is **not** an LBS reporter (no `L_REP_CTY=AE` series exist). UAE residen
 
 ## Why This Works
 
-LBS publishes the counterparty breakdown as separate series keyed by an explicit counterparty code. The empty-position wildcard in this dataflow maps to the published aggregate rather than enumerating the codelist, so the original probe saw only `5J`.
+LBS publishes each reporter × counterparty × sector combination as its own series. Empty positions in the key act as wildcards on both the reporter and counterparty dimensions; `5A` (all reporting countries) and `5J` (all counterparties) are separate aggregate codes, not what an empty position returns.
 
 ## Prevention
 
-- Before declaring a BIS or IMF breakdown unavailable, run one query with every dimension pinned to a concrete code, not left empty.
+- Before declaring a BIS or IMF breakdown unavailable, record the exact key you probed and run it once with the dimension pinned to a concrete code and once left empty.
 - Methodology caveat for any capital-flight feature: under BPM6 a person changing residence is not a transaction. Their wealth moves through "other changes in volume" in the IIP, so wealth migration is invisible in BOP flows by construction. For the UK, gross flows of about $600B a quarter each way also swamp any such signal. Use micro sources (HMRC non-dom statistics, Companies House residency changes) for that question.
 - The Forbes-Warnock classifier (`scripts/_capital-flow-episodes.mjs`) back-tests at 9/15 on pre-registered crisis episodes (`node scripts/backtest-capital-flow-episodes.mjs`). It labels flight that takes the form of debt repayment as a stop (Russia 2014), so present its four states, not a single "flight" score.

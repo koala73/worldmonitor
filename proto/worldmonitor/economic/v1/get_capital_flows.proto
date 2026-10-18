@@ -1,0 +1,163 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// One side of the financial account, USD bn.
+message CapitalFlowComponents {
+  optional double fdi = 1;
+  optional double portfolio = 2;
+  optional double other = 3;
+  // Set only when all three are reported.
+  optional double total = 4;
+}
+
+// One period of gross BOP flows.
+message CapitalFlowPeriod {
+  // YYYY-Qn or YYYY.
+  string period = 1;
+  // Non-residents investing in the country.
+  CapitalFlowComponents inflows = 2;
+  // Residents investing abroad, ex reserves.
+  CapitalFlowComponents outflows = 3;
+  // Net errors and omissions, USD bn.
+  optional double errors_omissions = 4;
+}
+
+// A Forbes-Warnock (2012) episode.
+message CapitalFlowEpisode {
+  string start = 1;
+  // Equals the latest period while open.
+  string end = 2;
+  int32 quarters = 3;
+  double peak_z = 4;
+  string peak_period = 5;
+}
+
+// Episodes from the last 10 years.
+message CapitalFlowEpisodes {
+  repeated CapitalFlowEpisode surge = 1;
+  repeated CapitalFlowEpisode stop = 2;
+  repeated CapitalFlowEpisode flight = 3;
+  repeated CapitalFlowEpisode retrenchment = 4;
+}
+
+// Derived state at the latest quarter.
+message CapitalFlowState {
+  // surge, stop or empty.
+  string inflow = 1;
+  // flight, retrenchment or empty.
+  string outflow = 2;
+  optional double inflow_z = 3;
+  optional double outflow_z = 4;
+}
+
+// Gross flows over the trailing 4 quarters or latest year, USD bn.
+message CapitalFlowTotals {
+  optional double inflows_usd_bn = 1;
+  optional double outflows_usd_bn = 2;
+  optional double net_usd_bn = 3;
+  optional double inflows_pct_gdp = 4;
+  optional double outflows_pct_gdp = 5;
+  // Annual series only.
+  optional double inflows_yoy_pct = 6;
+  optional double outflows_yoy_pct = 7;
+}
+
+// IMF balance-of-payments view.
+message CapitalFlowBop {
+  // quarterly or annual (no state or episodes).
+  string frequency = 1;
+  string latest_period = 2;
+  CapitalFlowState state = 3;
+  CapitalFlowEpisodes episodes = 4;
+  CapitalFlowTotals totals = 5;
+  // 12 quarters or 6 years; needs include_series.
+  repeated CapitalFlowPeriod series = 6;
+}
+
+// Cross-border bank position, USD bn.
+message CapitalFlowPosition {
+  optional double stock_usd_bn = 1;
+  // Last 4 FX- and break-adjusted quarterly changes.
+  optional double flow_4q_usd_bn = 2;
+}
+
+// A ranked partner country, USD bn.
+message CapitalFlowCounterparty {
+  string country = 1;
+  optional double stock_usd_bn = 2;
+  optional double flow_4q_usd_bn = 3;
+}
+
+// BIS locational banking view.
+message CapitalFlowBank {
+  string latest_period = 1;
+  // Non-bank residents' deposits in all BIS reporting banks.
+  CapitalFlowPosition non_bank_deposits_abroad = 2;
+  CapitalFlowPosition household_deposits_abroad = 3;
+  CapitalFlowPosition non_bank_borrowing_from_abroad = 4;
+  // Largest holders of those deposits.
+  repeated CapitalFlowCounterparty top_bank_locations = 5;
+  bool reports_to_bis = 6;
+  // Reporters only: largest depositor countries.
+  repeated CapitalFlowCounterparty top_depositor_origins = 7;
+}
+
+// IMF portfolio-positions (mirror) view, USD bn.
+message CapitalFlowPortfolio {
+  int32 year = 1;
+  // Held by all reporting countries.
+  optional double foreign_holdings_usd_bn = 2;
+  // Same reporters a year earlier.
+  optional double foreign_holdings_prev_year_usd_bn = 3;
+  optional double change_pct = 4;
+  int32 reporter_count = 5;
+  repeated CapitalFlowCounterparty top_holders = 6;
+  optional double holdings_abroad_usd_bn = 7;
+  repeated CapitalFlowCounterparty top_destinations = 8;
+}
+
+// One country; a view is absent without source data.
+message CapitalFlowCountry {
+  string country = 1;
+  string iso3 = 2;
+  optional double gdp_usd_bn = 3;
+  int32 gdp_year = 4;
+  CapitalFlowBop bop = 5;
+  CapitalFlowBank bank = 6;
+  CapitalFlowPortfolio portfolio = 7;
+}
+
+// Newest period per source.
+message CapitalFlowLatest {
+  string bop_quarter = 1;
+  string bop_year = 2;
+  string bis_quarter = 3;
+  int32 pip_year = 4;
+}
+
+// GetCapitalFlowsRequest selects a country and detail.
+message GetCapitalFlowsRequest {
+  // Optional ISO 3166-1 alpha-2 filter.
+  string country = 1 [
+    (sebuf.http.query) = {name: "country"},
+    (buf.validate.field).string.max_len = 2
+  ];
+  // Include BOP series. Default false.
+  bool include_series = 2 [(sebuf.http.query) = {name: "include_series"}];
+}
+
+// Cross-country capital flows, USD bn.
+message GetCapitalFlowsResponse {
+  repeated CapitalFlowCountry countries = 1;
+  CapitalFlowLatest latest = 2;
+  string seeded_at = 3;
+  // True when the seeded dataset is unavailable. An empty country list is not zero flow.
+  bool unavailable = 4;
+  repeated string sources = 5;
+  // Method notes: bop, episodes, bank, portfolio, caveat.
+  map<string, string> method = 6;
+}

@@ -1,5 +1,6 @@
 import { screenSanctions } from '../../../server/_shared/sanctions-screen';
 import { projectSupplyChainData } from './_shipping-freight';
+import { CAPITAL_FLOWS_MAX_COUNTRIES, CAPITAL_FLOWS_SORTS, projectCapitalFlows, type CapitalFlowsSort } from './_capital-flows';
 import ISO2_TO_ISO3 from '../../../shared/iso2-to-iso3.js';
 import { MARKET_ASSET_CLASSES } from '../../../shared/panel-admission';
 import { normalizeSocialVelocity } from '../../_social-velocity.js';
@@ -3374,6 +3375,108 @@ export const CACHE_TOOLS: ToolDef[] = [
       "GET /api/economic/v1/get-fao-food-price-index",
       "GET /api/economic/v1/get-national-debt",
       "GET /api/economic/v1/list-bigmac-prices",
+    ],
+  },
+  {
+    name: 'get_capital_flows',
+    title: 'Cross-country capital flows',
+    _outputBudgetBytes: 131072,
+    description: 'Return where money enters and leaves about 230 economies, from official statistics. IMF balance of payments: gross inflows and outflows split into FDI, portfolio and other investment, quarterly or annual (e.g. UAE), with derived Forbes-Warnock states (surge or stop for inflows, flight or retrenchment for outflows) and z-scores. BIS: non-bank and household deposits held in foreign banks and the largest partner banking systems. IMF portfolio positions: who holds each country\'s securities. People changing residence are not a BOP flow. Quarterly sources lag 1 to 3 quarters; stale after 10 days or when the newest BOP quarter is over a year old. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. country (up to 10) returns full views, include_series adds the flows. Without country, a ranking by sort (default outflow_z) capped by limit (default 30, 0 for no cap).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country: {
+          type: 'array',
+          items: { type: 'string' },
+          maxItems: CAPITAL_FLOWS_MAX_COUNTRIES,
+          description: 'Countries to return in full: ISO 3166-1 alpha-2 (e.g. "GB"), alpha-3 ("ARE") or English names. Omit to get the cross-country ranking.',
+        },
+        include_series: { type: 'boolean', description: 'With country, also return the period-by-period BOP flows (12 quarters or 6 years). Default false.' },
+        sort: {
+          type: 'string',
+          enum: [...CAPITAL_FLOWS_SORTS],
+          description: 'Ranking field when country is omitted. outflow_z / inflow_z rank the latest Forbes-Warnock z-score; *_pct_gdp rank trailing gross flows as a share of GDP; net_usd_bn ranks inflows minus outflows; bank_deposits_abroad_flow_4q ranks the 4-quarter change in non-bank deposits held in foreign banks; foreign_portfolio_change_pct ranks the year-on-year change in foreign holdings of the country\'s securities. Default outflow_z.',
+        },
+        ascending: { type: 'boolean', description: 'Sort ascending instead of descending. Default false.' },
+        limit: { type: 'number', description: 'Cap the ranking to this many countries (default 30, pass 0 for no cap). Ignored with country.' },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      'capital-flows': {
+        type: ['object', 'null'],
+        properties: {
+          latest: { type: ['object', 'null'], properties: {
+            bopQuarter: { type: ['string', 'null'] }, bopNewestQuarter: { type: ['string', 'null'] }, bopYear: { type: ['string', 'null'] },
+            bisQuarter: { type: ['string', 'null'] }, pipYear: { type: ['number', 'null'] },
+          } },
+          coverage: { type: ['object', 'null'] },
+          units: { type: 'string' },
+          method: { type: ['object', 'null'], description: 'Method notes per view, including the caveat that wealth migration is not a BOP flow.' },
+          seededAt: { type: ['string', 'null'] },
+          countries: {
+            type: 'object',
+            description: 'Present when country is given. Keyed by alpha-2; null when the country has no data.',
+            additionalProperties: { type: ['object', 'null'], properties: {
+              iso2: { type: 'string' }, iso3: { type: ['string', 'null'] }, gdpUsdBn: { type: ['number', 'null'] },
+              bop: { type: ['object', 'null'], description: 'frequency quarterly carries state, episodes and trailing4q; annual carries latestYear and no episodes.' },
+              bank: { type: ['object', 'null'] },
+              portfolio: { type: ['object', 'null'] },
+            } },
+          },
+          sort: { type: 'string', enum: [...CAPITAL_FLOWS_SORTS] },
+          order: { type: 'string', enum: ['ascending', 'descending'] },
+          rankedCount: { type: 'integer', description: 'Countries with a value for the sort field, before limit.' },
+          ranking: {
+            type: 'array',
+            description: 'Present when country is omitted.',
+            items: {
+              type: 'object',
+              properties: {
+                country: { type: 'string' },
+                frequency: { type: ['string', 'null'], enum: ['quarterly', 'annual', null] },
+                latestPeriod: { type: ['string', 'null'] },
+                inflowState: { type: ['string', 'null'], enum: ['surge', 'stop', null] },
+                outflowState: { type: ['string', 'null'], enum: ['flight', 'retrenchment', null] },
+                inflowZ: { type: ['number', 'null'] }, outflowZ: { type: ['number', 'null'] },
+                inflowsUsdBn: { type: ['number', 'null'] }, outflowsUsdBn: { type: ['number', 'null'] }, netUsdBn: { type: ['number', 'null'] },
+                inflowsPctGdp: { type: ['number', 'null'] }, outflowsPctGdp: { type: ['number', 'null'] },
+                bankDepositsAbroadFlow4qUsdBn: { type: ['number', 'null'] },
+                foreignPortfolioChangePct: { type: ['number', 'null'] },
+              },
+              required: ['country', 'frequency', 'latestPeriod', 'inflowState', 'outflowState', 'inflowZ', 'outflowZ'],
+            },
+          },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params) => {
+      const countries = resolveCountryFilter(params.country, 'country');
+      if (countries.length > CAPITAL_FLOWS_MAX_COUNTRIES) {
+        throw new RpcValidationError('get_capital_flows', [{ field: 'country', description: `Pass at most ${CAPITAL_FLOWS_MAX_COUNTRIES} countries.` }]);
+      }
+      const sortArg = typeof params.sort === 'string' && params.sort ? params.sort : 'outflow_z';
+      if (!(CAPITAL_FLOWS_SORTS as readonly string[]).includes(sortArg)) {
+        throw new RpcValidationError('get_capital_flows', [{ field: 'sort', description: `Choose one of ${CAPITAL_FLOWS_SORTS.join(', ')}.` }]);
+      }
+      return projectCapitalFlows(data, {
+        countries,
+        includeSeries: argBool(params.include_series),
+        sort: sortArg as CapitalFlowsSort,
+        ascending: argBool(params.ascending),
+        // 0 = no cap; a negative limit falls back to the default rather than uncapping.
+        limit: (() => { const n = argNum(params.limit); return n == null || n < 0 ? DEFAULT_LIST_LIMIT : Math.floor(n); })(),
+      });
+    },
+    _cacheKeys: ['economic:capital-flows:v1'], // STANDALONE_KEYS::capitalFlows
+    _freshnessChecks: [
+      // Weekly macro-bundle seed; 10d matches api/health.js SEED_META.capitalFlows.
+      // honorContentAge: a frozen IMF BOP feed (newest quarter > 12 months) flags stale.
+      { key: 'seed-meta:economic:capital-flows', maxStaleMin: 14400, honorContentAge: true },
+    ],
+    _apiPaths: [
+      "GET /api/economic/v1/get-capital-flows",
     ],
   },
   {

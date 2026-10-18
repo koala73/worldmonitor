@@ -1,0 +1,618 @@
+#!/usr/bin/env node
+//
+// Cross-country capital flows — where money is leaving and where it is going.
+// Canonical key: economic:capital-flows:v1
+//
+// Three official sources, all free and keyless:
+//
+//   1. IMF Balance of Payments (IMF.STA/BOP, SDMX 3.0). Gross financial-account
+//      flows, ex reserves: inflows = L_NIL_T (non-residents' new claims on the
+//      country), outflows = A_NFA_T (residents' new claims abroad), each the sum
+//      of D_F (direct), P_F (portfolio) and O_F (other investment). Quarterly
+//      where reported, annual otherwise (the UAE and Qatar report annual only).
+//      Quarterly series are classified with Forbes & Warnock (2012) — see
+//      _capital-flow-episodes.mjs. Values are raw USD on the wire.
+//
+//   2. BIS Locational Banking Statistics (WS_LBS_D_PUB). Cross-border bank
+//      positions by reporting country × counterparty country × sector. An
+//      empty key position expands to every code, so the pair query leaves
+//      reporter and counterparty empty, and the totals query names reporter
+//      5A (all reporting countries). L_MEASURE F is the FX- and
+//      break-adjusted change, the right flow measure. Values are USD millions.
+//      Only ~30 jurisdictions report; deposits placed in non-reporters (the
+//      UAE among them) are invisible here.
+//
+//   3. IMF Portfolio Investment Positions (IMF.STA/PIP, formerly CPIS). Who
+//      holds whose securities. Summing every reporter's holdings OF a country
+//      gives the mirror measure of foreign portfolio money in that country.
+//
+// Everything is measured official data except the episode labels, which are
+// derived (basis: "derived"). Wealth migration — a person changing residence —
+// is not a BOP transaction under BPM6, so it does not appear in these flows.
+//
+// Output (USD billions throughout):
+//   { countries: { [iso2]: { iso2, iso3, bop, bank, portfolio } },
+//     latest: { bopQuarter, bopYear, bisQuarter, pipYear },
+//     coverage: {...}, sources, method, seededAt }
+
+import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetchRaw, imfAuthHeaders, withRetry } from './_seed-utils.mjs';
+import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
+import { sumGrossFlows, classifyCountry, nextQuarter } from './_capital-flow-episodes.mjs';
+import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
+
+loadEnvFile(import.meta.url);
+
+const _proxyAuth = resolveProxyForConnect();
+
+export const CANONICAL_KEY = 'economic:capital-flows:v1';
+export const CACHE_TTL = 100 * 24 * 3600; // quarterly sources; outlives a missed publish
+// Newest IMF BOP quarter is normally 1–2 quarters old. 12 months flags a frozen
+// feed after ~two missed quarterly releases.
+export const CAPITAL_FLOWS_MAX_CONTENT_AGE_MIN = 12 * 30 * DAY_MIN;
+
+const IMF_BASE = 'https://api.imf.org/external/sdmx/3.0/data/dataflow/IMF.STA';
+const BIS_BASE = 'https://stats.bis.org/api/v1/data/WS_LBS_D_PUB';
+const WB_GDP_URL = 'https://api.worldbank.org/v2/country/all/indicator/NY.GDP.MKTP.CD?format=json&per_page=500&mrv=3';
+
+// Quarters of BOP history fetched: Forbes-Warnock needs 8 quarters for one ΔC
+// value plus a 16–20 quarter window, and we report episodes from the last 10y.
+const BOP_HISTORY_YEARS = 16;
+const QUARTERLY_SERIES_KEPT = 12;
+const ANNUAL_SERIES_KEPT = 6;
+const EPISODE_LOOKBACK_YEARS = 10;
+const TOP_N = 5;
+// A country is "quarterly" only if its quarterly BOP is reasonably current.
+const QUARTERLY_STALE_YEARS = 2;
+
+const bn = (usd) => (Number.isFinite(usd) ? Math.round(usd / 1e7) / 100 : null); // raw USD → bn, 2dp
+const bnFromMillions = (m) => (Number.isFinite(m) ? Math.round(m / 10) / 100 : null);
+const pct = (x) => (Number.isFinite(x) ? Math.round(x * 100) / 100 : null);
+
+export function toIso2(iso3) {
+  if (typeof iso3 !== 'string' || !/^[A-Z]{3}$/.test(iso3)) return null;
+  return iso3ToIso2[iso3] ?? null;
+}
+
+const ISO2_SET = new Set(Object.values(iso3ToIso2));
+const ISO2_TO_ISO3 = Object.fromEntries(Object.entries(iso3ToIso2).map(([k, v]) => [v, k]));
+
+// BIS counterparty / reporter codes: ISO2 for countries, digit-bearing codes
+// for aggregates (5A, 5J, 1C …). Keep only real ISO2 countries.
+export function isBisCountry(code) {
+  return typeof code === 'string' && /^[A-Z]{2}$/.test(code) && ISO2_SET.has(code);
+}
+
+// ── HTTP ────────────────────────────────────────────────────────────────────
+
+async function fetchJson(url, { accept = 'application/json', timeoutMs = 120_000, headers = {} } = {}) {
+  return withRetry(async () => {
+    try {
+      const resp = await fetch(url, {
+        headers: { 'User-Agent': CHROME_UA, Accept: accept, ...headers },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url.split('?')[0]}`);
+      return await resp.json();
+    } catch (directErr) {
+      if (!_proxyAuth) throw directErr;
+      console.warn(`  direct fetch failed (${directErr.message}), retrying via proxy`);
+      const { buffer } = await httpsProxyFetchRaw(url, _proxyAuth, { accept, timeoutMs });
+      return JSON.parse(buffer.toString('utf8'));
+    }
+  }, 1, 3000); // 2 attempts; the bundle section budget is 300s
+}
+
+// ── SDMX parsing ────────────────────────────────────────────────────────────
+
+// IMF SDMX 3.0 JSON → [{ ...dimId: code, period, value }]
+export function parseImfSdmx(json) {
+  const ds = json?.data?.dataSets?.[0];
+  const st = json?.data?.structures?.[Number.isInteger(ds?.structure) ? ds.structure : 0];
+  if (!ds?.series || !st?.dimensions?.series) return [];
+  const dims = st.dimensions.series;
+  const tv = st.dimensions.observation?.[0]?.values ?? [];
+  const rows = [];
+  for (const [key, s] of Object.entries(ds.series)) {
+    const idx = key.split(':').map(Number);
+    const base = {};
+    for (let i = 0; i < dims.length; i++) base[dims[i].id] = dims[i].values[idx[i]]?.id;
+    for (const [oi, obs] of Object.entries(s.observations ?? {})) {
+      const raw = Array.isArray(obs) ? obs[0] : null;
+      if (raw == null || raw === '') continue;
+      const value = Number(raw);
+      if (!Number.isFinite(value)) continue;
+      const t = tv[Number(oi)];
+      rows.push({ ...base, period: t?.value ?? t?.id, value });
+    }
+  }
+  return rows;
+}
+
+// BIS SDMX-JSON 1.0 → [{ ...dimId: code, period, value }]
+export function parseBisSdmx(json) {
+  const ds = json?.data?.dataSets?.[0] ?? json?.dataSets?.[0];
+  const st = json?.data?.structure ?? json?.structure;
+  if (!ds?.series || !st?.dimensions?.series) return [];
+  const dims = st.dimensions.series;
+  const tv = st.dimensions.observation?.[0]?.values ?? [];
+  const rows = [];
+  for (const [key, s] of Object.entries(ds.series)) {
+    const idx = key.split(':').map(Number);
+    const base = {};
+    for (let i = 0; i < dims.length; i++) base[dims[i].id] = dims[i].values[idx[i]]?.id;
+    for (const [oi, obs] of Object.entries(s.observations ?? {})) {
+      const raw = Array.isArray(obs) ? obs[0] : null;
+      if (raw == null || raw === '' || raw === 'NaN') continue;
+      const value = Number(raw);
+      if (!Number.isFinite(value)) continue;
+      rows.push({ ...base, period: tv[Number(oi)]?.id, value });
+    }
+  }
+  return rows;
+}
+
+// ── BOP ─────────────────────────────────────────────────────────────────────
+
+function groupBy(rows, keyFn) {
+  const out = new Map();
+  for (const r of rows) {
+    const k = keyFn(r);
+    if (k == null) continue;
+    if (!out.has(k)) out.set(k, []);
+    out.get(k).push(r);
+  }
+  return out;
+}
+
+function componentTable(rows) {
+  // period → { in: {D_F,P_F,O_F}, out: {...}, eo }
+  const t = new Map();
+  for (const r of rows) {
+    if (!t.has(r.period)) t.set(r.period, { in: {}, out: {}, eo: null });
+    const cell = t.get(r.period);
+    if (r.INDICATOR === 'EO') { if (r.BOP_ACCOUNTING_ENTRY === 'NETCD_T') cell.eo = r.value; continue; }
+    if (r.BOP_ACCOUNTING_ENTRY === 'L_NIL_T') cell.in[r.INDICATOR] = r.value;
+    else if (r.BOP_ACCOUNTING_ENTRY === 'A_NFA_T') cell.out[r.INDICATOR] = r.value;
+  }
+  return t;
+}
+
+function flowRow(period, cell) {
+  const side = (o) => {
+    const complete = o.D_F != null && o.P_F != null && o.O_F != null;
+    return {
+      fdi: bn(o.D_F ?? NaN), portfolio: bn(o.P_F ?? NaN), other: bn(o.O_F ?? NaN),
+      total: complete ? bn(o.D_F + o.P_F + o.O_F) : null,
+    };
+  };
+  return { period, inflows: side(cell.in), outflows: side(cell.out), errorsOmissions: bn(cell.eo ?? NaN) };
+}
+
+function toEntryRows(rows) {
+  return rows
+    .filter((r) => r.BOP_ACCOUNTING_ENTRY === 'L_NIL_T' || r.BOP_ACCOUNTING_ENTRY === 'A_NFA_T')
+    .map((r) => ({ entry: r.BOP_ACCOUNTING_ENTRY, indicator: r.INDICATOR, period: r.period, value: r.value }));
+}
+
+// Sum of the last n values, only when their periods are consecutive quarters.
+function trailingSum(periods, series, n) {
+  if (series.length < n) return null;
+  const tail = series.slice(-n);
+  const tailPeriods = periods.slice(-n);
+  if (tail.some((v) => v == null)) return null;
+  for (let i = 1; i < n; i++) if (nextQuarter(tailPeriods[i - 1]) !== tailPeriods[i]) return null;
+  return Math.round(tail.reduce((s, v) => s + v, 0) * 100) / 100;
+}
+
+// The episode type still open at the latest quarter, among `types`.
+export function currentState(episodes, latestPeriod, types = ['surge', 'stop', 'flight', 'retrenchment']) {
+  for (const type of types) {
+    const ep = episodes[type].at(-1);
+    if (ep && ep.end === latestPeriod) return type;
+  }
+  return null;
+}
+
+function quarterYear(p) { return Number(String(p).slice(0, 4)); }
+
+export function buildBopCountry({ quarterlyRows = [], annualRows = [], gdpUsd = null, nowYear = new Date().getUTCFullYear() }) {
+  const qInflows = sumGrossFlows(toEntryRows(quarterlyRows), 'L_NIL_T');
+  const qOutflows = sumGrossFlows(toEntryRows(quarterlyRows), 'A_NFA_T');
+  const latestQ = [qInflows.periods.at(-1), qOutflows.periods.at(-1)].filter(Boolean).sort().at(0) ?? null;
+  const quarterlyUsable = latestQ && nowYear - quarterYear(latestQ) <= QUARTERLY_STALE_YEARS;
+
+  if (quarterlyUsable) {
+    // Classify both sides only up to the latest quarter they share, so state,
+    // z-scores, episodes and series all describe the same quarter.
+    const upTo = ({ periods, values }) => {
+      const n = periods.filter((p) => p <= latestQ).length;
+      return { periods: periods.slice(0, n), values: values.slice(0, n) };
+    };
+    const res = classifyCountry({ inflows: upTo(qInflows), outflows: upTo(qOutflows) });
+    const fromYear = nowYear - EPISODE_LOOKBACK_YEARS;
+    const episodes = {};
+    for (const t of ['surge', 'stop', 'flight', 'retrenchment']) {
+      episodes[t] = res[t].filter((e) => quarterYear(e.end) >= fromYear);
+    }
+    const table = componentTable(quarterlyRows);
+    const periods = [...table.keys()].filter((p) => p <= latestQ).sort();
+    const series = periods.slice(-QUARTERLY_SERIES_KEPT).map((p) => flowRow(p, table.get(p)));
+    const inTotals = periods.map((p) => flowRow(p, table.get(p)).inflows.total);
+    const outTotals = periods.map((p) => flowRow(p, table.get(p)).outflows.total);
+    const in4q = trailingSum(periods, inTotals, 4);
+    const out4q = trailingSum(periods, outTotals, 4);
+    const round = (z) => (z == null ? null : Math.round(z * 100) / 100);
+    return {
+      frequency: 'quarterly',
+      latestPeriod: latestQ,
+      state: {
+        inflow: currentState(res, latestQ, ['surge', 'stop']),
+        outflow: currentState(res, latestQ, ['flight', 'retrenchment']),
+        inflowZ: round(res.inflowZ.get(latestQ) ?? null),
+        outflowZ: round(res.outflowZ.get(latestQ) ?? null),
+        basis: 'derived',
+      },
+      episodes,
+      trailing4q: {
+        inflowsUsdBn: in4q,
+        outflowsUsdBn: out4q,
+        netUsdBn: in4q != null && out4q != null ? Math.round((in4q - out4q) * 100) / 100 : null,
+        inflowsPctGdp: in4q != null && gdpUsd ? pct((in4q * 1e9 * 100) / gdpUsd) : null,
+        outflowsPctGdp: out4q != null && gdpUsd ? pct((out4q * 1e9 * 100) / gdpUsd) : null,
+      },
+      series,
+    };
+  }
+
+  if (annualRows.length === 0) return null;
+  const table = componentTable(annualRows);
+  const periods = [...table.keys()].sort();
+  const rows = periods.map((p) => flowRow(p, table.get(p))).filter((r) => r.inflows.total != null || r.outflows.total != null);
+  if (rows.length === 0) return null;
+  const last = rows.at(-1);
+  const prior = rows.at(-2);
+  const prev = prior && Number(prior.period) === Number(last.period) - 1 ? prior : null;
+  const yoy = (a, b) => (a != null && b != null && b !== 0 ? pct(((a - b) / Math.abs(b)) * 100) : null);
+  return {
+    frequency: 'annual',
+    latestPeriod: last.period,
+    state: null,
+    episodes: null,
+    latestYear: {
+      inflowsUsdBn: last.inflows.total,
+      outflowsUsdBn: last.outflows.total,
+      netUsdBn: last.inflows.total != null && last.outflows.total != null ? Math.round((last.inflows.total - last.outflows.total) * 100) / 100 : null,
+      inflowsYoyPct: yoy(last.inflows.total, prev?.inflows.total),
+      outflowsYoyPct: yoy(last.outflows.total, prev?.outflows.total),
+      inflowsPctGdp: last.inflows.total != null && gdpUsd ? pct((last.inflows.total * 1e9 * 100) / gdpUsd) : null,
+      outflowsPctGdp: last.outflows.total != null && gdpUsd ? pct((last.outflows.total * 1e9 * 100) / gdpUsd) : null,
+    },
+    series: rows.slice(-ANNUAL_SERIES_KEPT),
+  };
+}
+
+// ── BIS LBS ─────────────────────────────────────────────────────────────────
+
+// Latest stock and trailing 4-quarter adjusted flow for one series of rows.
+// Rows hold one series (fixed dims) with L_MEASURE S and F mixed.
+export function stockAndFlow(rows) {
+  const stocks = rows.filter((r) => r.L_MEASURE === 'S').sort((a, b) => a.period.localeCompare(b.period));
+  const flows = rows.filter((r) => r.L_MEASURE === 'F').sort((a, b) => a.period.localeCompare(b.period));
+  const latest = stocks.at(-1) ?? null;
+  let flow4q = null;
+  if (flows.length >= 4) {
+    const tail = flows.slice(-4);
+    // Require 4 consecutive quarters ending at the latest flow quarter.
+    let ok = true;
+    for (let i = 1; i < 4; i++) if (nextQuarter(tail[i - 1].period) !== tail[i].period) ok = false;
+    // The flow window must end at the reported stock quarter.
+    if (latest && tail[3].period !== latest.period) ok = false;
+    if (ok) flow4q = tail.reduce((s, r) => s + r.value, 0);
+  }
+  return {
+    period: latest?.period ?? flows.at(-1)?.period ?? null,
+    stockUsdBn: latest ? bnFromMillions(latest.value) : null,
+    flow4qUsdBn: flow4q == null ? null : bnFromMillions(flow4q),
+  };
+}
+
+// totalsRows: reporter 5A × every counterparty, sectors N and H, positions L and C.
+// bilateralRows: every reporter × every counterparty, sector N, position L.
+export function buildBankByCountry(totalsRows, bilateralRows) {
+  const out = {};
+  const latestPeriods = [];
+
+  const totals = groupBy(totalsRows.filter((r) => r.L_REP_CTY === '5A' && isBisCountry(r.L_CP_COUNTRY)), (r) => r.L_CP_COUNTRY);
+  for (const [cp, rows] of totals) {
+    const pick = (pos, sector) => stockAndFlow(rows.filter((r) => r.L_POSITION === pos && r.L_CP_SECTOR === sector));
+    const deposits = pick('L', 'N');
+    const household = pick('L', 'H');
+    const borrowing = pick('C', 'N');
+    if (deposits.period) latestPeriods.push(deposits.period);
+    out[cp] = {
+      latestPeriod: deposits.period ?? borrowing.period,
+      nonBankDepositsAbroad: { stockUsdBn: deposits.stockUsdBn, flow4qUsdBn: deposits.flow4qUsdBn },
+      householdDepositsAbroad: { stockUsdBn: household.stockUsdBn, flow4qUsdBn: household.flow4qUsdBn },
+      nonBankBorrowingFromAbroad: { stockUsdBn: borrowing.stockUsdBn, flow4qUsdBn: borrowing.flow4qUsdBn },
+      topBankLocations: [],
+      reportsToBis: false,
+      topDepositorOrigins: [],
+    };
+  }
+
+  const pairs = groupBy(
+    bilateralRows.filter((r) => r.L_POSITION === 'L' && r.L_CP_SECTOR === 'N' && isBisCountry(r.L_REP_CTY) && isBisCountry(r.L_CP_COUNTRY) && r.L_REP_CTY !== r.L_CP_COUNTRY),
+    (r) => `${r.L_REP_CTY}|${r.L_CP_COUNTRY}`,
+  );
+  const byCp = new Map();
+  const byRep = new Map();
+  for (const [k, rows] of pairs) {
+    const [rep, cp] = k.split('|');
+    const sf = stockAndFlow(rows);
+    if (sf.stockUsdBn == null) continue;
+    if (!byCp.has(cp)) byCp.set(cp, []);
+    byCp.get(cp).push({ iso2: rep, ...sf });
+    if (!byRep.has(rep)) byRep.set(rep, []);
+    byRep.get(rep).push({ iso2: cp, ...sf });
+  }
+  const top = (list) => list
+    .sort((a, b) => b.stockUsdBn - a.stockUsdBn)
+    .slice(0, TOP_N)
+    .map(({ iso2, stockUsdBn, flow4qUsdBn }) => ({ iso2, stockUsdBn, flow4qUsdBn }));
+  for (const [cp, list] of byCp) {
+    if (out[cp]) out[cp].topBankLocations = top(list);
+  }
+  for (const [rep, list] of byRep) {
+    if (!out[rep]) continue;
+    out[rep].reportsToBis = true;
+    out[rep].topDepositorOrigins = top(list);
+  }
+  const latest = latestPeriods.sort().at(-1) ?? null;
+  return { byCountry: out, latestPeriod: latest };
+}
+
+// ── IMF PIP ─────────────────────────────────────────────────────────────────
+
+// rows: holder COUNTRY × COUNTERPART_COUNTRY, total portfolio assets (annual).
+export function buildPortfolioByCountry(rows) {
+  const clean = rows.filter((r) =>
+    r.ACCOUNTING_ENTRY === 'A' && r.INDICATOR === 'P_TOTINV_P_USD' && r.FREQUENCY === 'A' &&
+    toIso2(r.COUNTRY) && toIso2(r.COUNTERPART_COUNTRY) && r.COUNTRY !== r.COUNTERPART_COUNTRY);
+  const years = [...new Set(clean.map((r) => String(r.period)))].sort();
+  // The newest year is often partial (late reporters). Use the newest year whose
+  // reporter count is at least 80% of the prior year's.
+  const reporters = (y) => new Set(clean.filter((r) => String(r.period) === y).map((r) => r.COUNTRY)).size;
+  let year = years.at(-1) ?? null;
+  if (years.length >= 2 && reporters(years.at(-1)) < 0.8 * reporters(years.at(-2))) year = years.at(-2);
+  if (!year) return { byCountry: {}, year: null };
+  const prevYear = String(Number(year) - 1);
+
+  const out = {};
+  const ensure = (iso2) => (out[iso2] ??= {
+    year: Number(year), foreignHoldingsUsdBn: 0, foreignHoldingsPrevYearUsdBn: null, changePct: null,
+    reporterCount: 0, topHolders: [], holdingsAbroadUsdBn: null, topDestinations: [],
+  });
+  const holders = new Map();
+  const dests = new Map();
+  const prev = new Map();
+  for (const r of clean) {
+    const holder = toIso2(r.COUNTRY);
+    const issuer = toIso2(r.COUNTERPART_COUNTRY);
+    if (String(r.period) === year) {
+      if (!holders.has(issuer)) holders.set(issuer, []);
+      holders.get(issuer).push({ iso2: holder, usd: r.value });
+      if (!dests.has(holder)) dests.set(holder, []);
+      dests.get(holder).push({ iso2: issuer, usd: r.value });
+    } else if (String(r.period) === prevYear) {
+      // Same-reporter comparison: only holders that also report in `year`.
+      if (!prev.has(issuer)) prev.set(issuer, new Map());
+      prev.get(issuer).set(holder, r.value);
+    }
+  }
+  const top = (list) => list.filter((x) => x.usd > 0).sort((a, b) => b.usd - a.usd).slice(0, TOP_N).map((x) => ({ iso2: x.iso2, usdBn: bn(x.usd) }));
+  for (const [issuer, list] of holders) {
+    const o = ensure(issuer);
+    const total = list.reduce((s, x) => s + x.usd, 0);
+    o.foreignHoldingsUsdBn = bn(total);
+    o.reporterCount = list.length;
+    o.topHolders = top(list);
+    const p = prev.get(issuer);
+    if (p) {
+      const matched = list.filter((x) => p.has(x.iso2));
+      const cur = matched.reduce((s, x) => s + x.usd, 0);
+      const before = matched.reduce((s, x) => s + p.get(x.iso2), 0);
+      o.foreignHoldingsPrevYearUsdBn = bn(before);
+      o.changePct = before > 0 ? pct(((cur - before) / before) * 100) : null;
+    }
+  }
+  for (const [holder, list] of dests) {
+    const o = ensure(holder);
+    o.holdingsAbroadUsdBn = bn(list.reduce((s, x) => s + x.usd, 0));
+    o.topDestinations = top(list);
+  }
+  return { byCountry: out, year: Number(year) };
+}
+
+// ── GDP ─────────────────────────────────────────────────────────────────────
+
+export function parseWorldBankGdp(pages) {
+  const out = {};
+  for (const json of pages) {
+    for (const rec of json?.[1] ?? []) {
+      const iso2 = toIso2(rec?.countryiso3code);
+      if (!iso2 || rec?.value == null) continue;
+      const value = Number(rec.value);
+      const year = Number(rec.date);
+      if (!Number.isFinite(value) || value <= 0 || !Number.isFinite(year)) continue;
+      if (!out[iso2] || year > out[iso2].year) out[iso2] = { value, year };
+    }
+  }
+  return out;
+}
+
+async function fetchGdp() {
+  const first = await fetchJson(`${WB_GDP_URL}&page=1`, { timeoutMs: 30_000 });
+  const pages = [first];
+  const total = first?.[0]?.pages ?? 1;
+  for (let p = 2; p <= total; p++) pages.push(await fetchJson(`${WB_GDP_URL}&page=${p}`, { timeoutMs: 30_000 }));
+  return parseWorldBankGdp(pages);
+}
+
+// ── Assembly ────────────────────────────────────────────────────────────────
+
+export function assembleCapitalFlows({ bopQuarterlyRows, bopAnnualRows, bank, portfolio, gdp, nowYear = new Date().getUTCFullYear(), seededAt = new Date().toISOString() }) {
+  const qByIso3 = groupBy(bopQuarterlyRows, (r) => (toIso2(r.COUNTRY) ? r.COUNTRY : null));
+  const aByIso3 = groupBy(bopAnnualRows, (r) => (toIso2(r.COUNTRY) ? r.COUNTRY : null));
+  const iso2s = new Set([
+    ...[...qByIso3.keys(), ...aByIso3.keys()].map(toIso2),
+    ...Object.keys(bank.byCountry),
+    ...Object.keys(portfolio.byCountry),
+  ]);
+
+  const countries = {};
+  let quarterly = 0;
+  let annual = 0;
+  const bopQuarters = [];
+  const bopYears = [];
+  for (const iso2 of [...iso2s].filter(Boolean).sort()) {
+    const iso3 = ISO2_TO_ISO3[iso2] ?? null;
+    const bop = iso3
+      ? buildBopCountry({ quarterlyRows: qByIso3.get(iso3) ?? [], annualRows: aByIso3.get(iso3) ?? [], gdpUsd: gdp[iso2]?.value ?? null, nowYear })
+      : null;
+    if (bop?.frequency === 'quarterly') { quarterly++; bopQuarters.push(bop.latestPeriod); }
+    if (bop?.frequency === 'annual') { annual++; bopYears.push(bop.latestPeriod); }
+    const entry = {
+      iso2,
+      iso3,
+      gdpUsdBn: gdp[iso2] ? bn(gdp[iso2].value) : null,
+      gdpYear: gdp[iso2]?.year ?? null,
+      bop,
+      bank: bank.byCountry[iso2] ?? null,
+      portfolio: portfolio.byCountry[iso2] ?? null,
+    };
+    if (!entry.bop && !entry.bank && !entry.portfolio) continue;
+    countries[iso2] = entry;
+  }
+
+  // Mode of latest quarters: the "current" quarter most reporters have reached.
+  const mode = (list) => {
+    const counts = list.reduce((acc, p) => { acc[p] = (acc[p] || 0) + 1; return acc; }, {});
+    return Object.entries(counts).sort((a, b) => b[1] - a[1] || b[0].localeCompare(a[0]))[0]?.[0] ?? null;
+  };
+
+  return {
+    countries,
+    latest: {
+      bopQuarter: mode(bopQuarters),
+      bopNewestQuarter: bopQuarters.sort().at(-1) ?? null,
+      bopYear: mode(bopYears),
+      bisQuarter: bank.latestPeriod,
+      pipYear: portfolio.year,
+    },
+    coverage: {
+      countries: Object.keys(countries).length,
+      bopQuarterly: quarterly,
+      bopAnnualOnly: annual,
+      bisCounterparties: Object.keys(bank.byCountry).length,
+      bisReporters: Object.values(bank.byCountry).filter((b) => b.reportsToBis).length,
+      portfolioCountries: Object.keys(portfolio.byCountry).length,
+    },
+    units: 'USD billions',
+    method: {
+      bop: 'IMF BOP (BPM6) gross flows ex reserves: inflows = net incurrence of liabilities, outflows = net acquisition of financial assets; FDI + portfolio + other investment.',
+      episodes: 'Forbes & Warnock (2012): year-on-year change in the 4-quarter sum vs trailing 20-quarter mean; episode starts beyond 1 sd, must reach 2 sd, lasts more than one quarter. Inflows up = surge, down = stop; outflows up = flight, down = retrenchment. Derived, not reported.',
+      bank: 'BIS LBS cross-border positions of banks in all reporting countries vs residents of the country; flow = sum of last 4 FX- and break-adjusted quarterly changes. Non-reporting banking systems (e.g. UAE) are not covered.',
+      portfolio: 'IMF PIP (formerly CPIS) mirror: sum of every reporter\'s holdings of the country\'s securities; change compares the same reporters year on year.',
+      caveat: 'A person changing country of residence is not a BOP transaction under BPM6, so wealth migration does not appear in these flows.',
+    },
+    sources: [
+      `${IMF_BASE}/BOP`,
+      `${IMF_BASE}/PIP`,
+      BIS_BASE,
+      'https://api.worldbank.org/v2/country/all/indicator/NY.GDP.MKTP.CD',
+      'https://www.bis.org/statistics/bankstats.htm',
+    ],
+    seededAt,
+  };
+}
+
+export async function fetchCapitalFlows() {
+  const nowYear = new Date().getUTCFullYear();
+  const imfHeaders = imfAuthHeaders();
+  const bopQ = `${IMF_BASE}/BOP/+/*.A_NFA_T+L_NIL_T+NETCD_T.D_F+P_F+O_F+EO.USD.Q?c%5BTIME_PERIOD%5D=ge:${nowYear - BOP_HISTORY_YEARS}-Q1&dimensionAtObservation=TIME_PERIOD`;
+  const bopA = `${IMF_BASE}/BOP/+/*.A_NFA_T+L_NIL_T+NETCD_T.D_F+P_F+O_F+EO.USD.A?c%5BTIME_PERIOD%5D=ge:${nowYear - 10}&dimensionAtObservation=TIME_PERIOD`;
+  const pip = `${IMF_BASE}/PIP/+/*.A.P_TOTINV_P_USD.S1.S1.*.A?c%5BTIME_PERIOD%5D=ge:${nowYear - 4}&dimensionAtObservation=TIME_PERIOD`;
+  const bisStart = `${nowYear - 3}-Q1`;
+  const bisTotals = `${BIS_BASE}/Q.F+S.L+C.A.TO1.A.5J.A.5A.N+H..N?startPeriod=${bisStart}`;
+  const bisPairs = `${BIS_BASE}/Q.F+S.L.A.TO1.A.5J.A..N..N?startPeriod=${bisStart}`;
+  const bisAccept = 'application/vnd.sdmx.data+json;version=1.0.0';
+
+  // All five pulls run in parallel (three to api.imf.org, as seed-imf-external
+  // does). Measured 2026-10-18: PIP ~43s, BOP quarterly ~12s, BIS pairs ~14s.
+  // Worst case with one retry is 2 × 120s + backoff, inside the 300s section.
+  const imfJob = Promise.all([
+    fetchJson(bopQ, { headers: imfHeaders, timeoutMs: 90_000 }),
+    fetchJson(bopA, { headers: imfHeaders, timeoutMs: 90_000 }),
+    fetchJson(pip, { headers: imfHeaders, timeoutMs: 120_000 }),
+  ]).then(([q, a, p]) => ({ q: parseImfSdmx(q), a: parseImfSdmx(a), p: parseImfSdmx(p) }));
+  const bisJob = Promise.all([
+    fetchJson(bisTotals, { accept: bisAccept, timeoutMs: 60_000 }),
+    fetchJson(bisPairs, { accept: bisAccept, timeoutMs: 90_000 }),
+  ]).then(([totals, pairs]) => ({ totals: parseBisSdmx(totals), pairs: parseBisSdmx(pairs) }));
+  const [imf, bis, gdp] = await Promise.all([imfJob, bisJob, fetchGdp()]);
+  // A parse that yields nothing means the upstream shape changed; fail rather
+  // than publish a payload with a whole view silently missing.
+  const empty = Object.entries({ bopQuarterly: imf.q, bopAnnual: imf.a, pip: imf.p, bisTotals: bis.totals, bisPairs: bis.pairs })
+    .filter(([, rows]) => rows.length === 0).map(([name]) => name);
+  if (empty.length > 0) throw new Error(`capital-flows: upstream returned no rows for ${empty.join(', ')}`);
+  console.log(`  IMF BOP quarterly rows=${imf.q.length} annual rows=${imf.a.length}; PIP rows=${imf.p.length}; BIS totals rows=${bis.totals.length} pairs rows=${bis.pairs.length}; GDP countries=${Object.keys(gdp).length}`);
+
+  return assembleCapitalFlows({
+    bopQuarterlyRows: imf.q,
+    bopAnnualRows: imf.a,
+    bank: buildBankByCountry(bis.totals, bis.pairs),
+    portfolio: buildPortfolioByCountry(imf.p),
+    gdp,
+    nowYear,
+  });
+}
+
+// BOP quarterly covers ~160 economies and annual adds the rest; BIS and PIP
+// widen the union past 200. Floors reject a broken upstream, not normal gaps.
+export function validate(data) {
+  const c = data?.coverage;
+  return typeof data?.countries === 'object'
+    && Object.keys(data.countries).length >= 150
+    && (c?.bopQuarterly ?? 0) >= 80
+    && (c?.bopAnnualOnly ?? 0) >= 10
+    && (c?.bisCounterparties ?? 0) >= 100
+    && (c?.bisReporters ?? 0) >= 20
+    && (c?.portfolioCountries ?? 0) >= 100;
+}
+
+export function declareRecords(data) {
+  return Object.keys(data?.countries || {}).length;
+}
+
+export function capitalFlowsContentMeta(data) {
+  return tokensToContentMeta(data?.latest?.bopNewestQuarter ?? data?.latest?.bopQuarter);
+}
+
+if (process.argv[1]?.endsWith('seed-capital-flows.mjs')) {
+  runSeed('economic', 'capital-flows', CANONICAL_KEY, fetchCapitalFlows, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'imf-bop-pip+bis-lbs-v1',
+    recordCount: (data) => Object.keys(data?.countries ?? {}).length,
+    emptyDataIsFailure: true,
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 14400,
+    contentMeta: capitalFlowsContentMeta,
+    maxContentAgeMin: CAPITAL_FLOWS_MAX_CONTENT_AGE_MIN,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
+    console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}
