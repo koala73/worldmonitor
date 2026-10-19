@@ -1,3 +1,8 @@
+---
+title: "Activate daily country history"
+noindex: true
+---
+
 # Activate daily country history
 
 The repository registers `seed-country-history` as planned. Creating or deploying its Railway service requires operator approval.
