@@ -1328,13 +1328,14 @@ async function runNotamSideCar() {
     }
     if (notam.skipped) return; // no ICAO_API_KEY
     try {
-      await writeExtraKeyWithMeta(
+      const metaWritten = await writeExtraKeyWithMeta(
         NOTAM_KEY,
         { closedIcaos: notam.closedIcaos, restrictedIcaos: notam.restrictedIcaos, reasons: notam.reasons },
         NOTAM_TTL,
         notam.closedIcaos.length + notam.restrictedIcaos.length,
         NOTAM_META_KEY,
       );
+      if (!metaWritten) throw new Error(`${NOTAM_META_KEY} write returned a non-OK response`);
       console.log(`[NOTAM] wrote ${notam.closedIcaos.length} closures + ${notam.restrictedIcaos.length} restrictions to ${NOTAM_KEY}`);
     } catch (err) {
       await preserveLastGoodNotam(`write error: ${err?.message || err}`);

@@ -85,8 +85,13 @@ test('delays are measured over the same flights as the denominator', async () =>
 
 test('a departed flight counts as due even when its schedule is later than now', async () => {
   const rows = [
-    ...Array.from({ length: 12 }, () => flight('active', 10 * 60_000)),
-    ...Array.from({ length: 88 }, (_, i) => flight('scheduled', HOUR + i * 60_000)),
+    ...Array.from({ length: 12 }, (_, i) => flight('active', 10 * 60_000, { delay: i < 6 ? 20 : null })),
+    ...Array.from({ length: 88 }, (_, i) => flight('scheduled', HOUR + i * 60_000, { delay: i < 40 ? 30 : null })),
   ];
-  assert.equal(await classify(rows), null);
+  // Ignoring 'active' would leave no due flight and fall back to the whole
+  // page: 46/100 delayed at ~29min. Counting it gives 6/12 at 20min.
+  const alert = await classify(rows);
+  assert.equal(alert.totalFlights, 12);
+  assert.equal(alert.delayedFlightsPct, 50);
+  assert.equal(alert.avgDelayMinutes, 20);
 });

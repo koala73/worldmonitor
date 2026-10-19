@@ -110,6 +110,11 @@ function runAviation(overrides = {}) {
     });
     assert.ifError(result.error);
     assert.equal(result.signal, null, result.stderr);
+    // The fixture has no AVIATIONSTACK_API key, so the intl stage ends with its
+    // documented exit 75 (tests/aviation-graceful-fetch.test.mjs). Anything else
+    // means the run crashed somewhere, NOTAM side-car included.
+    assert.equal(result.status, 75, result.stdout + result.stderr);
+    assert.doesNotMatch(result.stdout + result.stderr, /FATAL/);
     const stateLine = result.stdout.split('\n').find(line => line.startsWith('FIXTURE_STATE='));
     assert.ok(stateLine, result.stdout + result.stderr);
     return { ...result, state: JSON.parse(stateLine.slice('FIXTURE_STATE='.length)) };
@@ -122,6 +127,7 @@ for (const mode of ['retired', 'html', 'badJson', 'notArray', 'fetchError', 'tim
   test(`ICAO ${mode} keeps last-good closures and lets seed-meta age into STALE`, () => {
     const { state, stdout, stderr } = runAviation({ TEST_ICAO_MODE: mode });
     assert.equal(state.icaoCalls, 1, stdout + stderr);
+    assert.match(stderr, /\[NOTAM\] ICAO fetch failed: .* kept last-good closures/);
     assert.equal(state.writes.includes(NOTAM_KEY), false, 'an upstream failure must not overwrite last-good closures');
     assert.equal(state.writes.includes(NOTAM_META_KEY), false, 'an upstream failure must not refresh seed-meta');
     assert.deepEqual(state.notam.closedIcaos, ['OEDF']);
@@ -141,6 +147,7 @@ for (const mode of ['retired', 'html', 'badJson', 'notArray', 'fetchError', 'tim
 test('ICAO failure past the health budget lets last-good closures expire', () => {
   const { state, stdout, stderr } = runAviation({ TEST_ICAO_MODE: 'retired', TEST_META_AGE_MIN: '241' });
   assert.equal(state.icaoCalls, 1, stdout + stderr);
+  assert.match(stderr, /past maxStaleMin 240; letting them expire/);
   assert.equal(state.writes.includes(NOTAM_KEY), false);
   assert.equal(state.writes.includes(NOTAM_META_KEY), false);
   assert.equal(state.expires.some(([key]) => key === NOTAM_KEY), false);
@@ -158,6 +165,7 @@ test('the seeder retention budget equals the health budget for notamClosures', a
 test('ICAO success publishes classified closures and fresh seed-meta', () => {
   const { state, stdout, stderr } = runAviation({ TEST_ICAO_MODE: 'ok' });
   assert.equal(state.icaoCalls, 1, stdout + stderr);
+  assert.match(stdout, /\[NOTAM\] wrote \d+ closures/);
   assert.deepEqual(state.notam.closedIcaos, ['OEJN']);
   assert.deepEqual(state.notam.restrictedIcaos, ['OEMA']);
   assert.equal(state.meta.recordCount, 2);
@@ -167,6 +175,7 @@ test('ICAO success publishes classified closures and fresh seed-meta', () => {
 test('ICAO success with no NOTAMs is a valid empty observation', () => {
   const { state, stdout, stderr } = runAviation({ TEST_ICAO_MODE: 'okEmpty' });
   assert.equal(state.icaoCalls, 1, stdout + stderr);
+  assert.match(stdout, /\[NOTAM\] wrote \d+ closures/);
   assert.deepEqual(state.notam, { closedIcaos: [], restrictedIcaos: [], reasons: {} });
   assert.equal(state.meta.recordCount, 0);
   assert.ok(state.meta.fetchedAt > state.initialFetchedAt);
