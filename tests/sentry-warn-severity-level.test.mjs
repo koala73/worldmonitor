@@ -28,7 +28,8 @@ function* sourceFiles(dir) {
 }
 
 function propertyNamed(objectLiteral, name) {
-  return objectLiteral.properties.find((p) => ts.isPropertyAssignment(p) && p.name.getText() === name);
+  return objectLiteral.properties.find((p) => ts.isPropertyAssignment(p)
+    && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) && p.name.text === name);
 }
 
 function stringValue(property) {
@@ -72,8 +73,10 @@ describe('warn-severity Sentry captures', () => {
       'deps.captureSilentError(err, { tags: { severity: `warn` } });',
       'captureSilentError(err, { level: "warning", tags: { severity: "warn" } });',
       "captureSilentError(err, { tags: { severity: 'info' } });",
+      "captureSilentError(err, { tags: { 'severity': 'warn' } });",
+      "captureSilentError(err, { 'level': 'warning', tags: { severity: 'warn' } });",
     ].join('\n');
-    assert.deepEqual(warnCapturesMissingLevel('fixture.ts', src), { lines: [1, 2, 3], checked: 4 });
+    assert.deepEqual(warnCapturesMissingLevel('fixture.ts', src), { lines: [1, 2, 3, 6], checked: 6 });
   });
 
   it('pass level: warning alongside the severity: warn tag', () => {
