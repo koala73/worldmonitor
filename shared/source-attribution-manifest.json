@@ -10525,6 +10525,9 @@
           "path": "scripts/china-coverage-health.mjs"
         },
         {
+          "path": "scripts/china-futures/shfe-notices.mjs"
+        },
+        {
           "path": "scripts/china-macro/calendar.mjs"
         },
         {
@@ -13816,6 +13819,26 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.shfe.com.cn",
+      "provider": "www.shfe.com.cn",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.shfe.com.cn and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "api/_china-futures-contract.js"
+        },
+        {
+          "path": "scripts/china-futures/contract.mjs"
+        },
+        {
+          "path": "scripts/china-futures/shfe-notices.mjs"
         }
       ]
     },

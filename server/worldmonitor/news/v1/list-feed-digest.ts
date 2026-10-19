@@ -874,6 +874,17 @@ export async function fetchAndParseRss(
   variant: string,
   signal: AbortSignal,
 ): Promise<ParseResult> {
+  // This opt-in feed is already collected and cached by our own Railway seed.
+  // Re-read its freshness on each build; never relay a relative internal URL.
+  if (feed.url === '/api/china-futures-news') {
+    const { readChinaFuturesRss } = await import('../../../../api/_china-futures-news.js');
+    const rss = signal.aborted ? null : await readChinaFuturesRss();
+    const parsed = rss && !signal.aborted ? parseRssXml(rss, feed, variant) : null;
+    return {
+      ...(parsed ?? { items: [], parsedTotal: 0, droppedUndated: 0 }),
+      attempt: { source: 'direct', failure: parsed ? null : signal.aborted ? 'deadline-abort' : 'direct-error', negativeCache: false },
+    };
+  }
   // v5 cache shape: identical struct to v4 but a new prefix invalidates
   // every pre-fix entry on deploy. v4 entries cached pre-PR contain
   // ParsedItems without the new isEphemeralLiveCoverage field. If a cache hit

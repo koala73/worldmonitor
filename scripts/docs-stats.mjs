@@ -639,6 +639,8 @@ const HEALTH_REGISTRY_ACCOUNTED_MUTATIONS = [
   // -1: the iran-events sunset drops the key unless IRAN_EVENTS_ENABLED=true,
   // which defaults to false — so the documented (production) registry omits it.
   'delete BOOTSTRAP_KEYS.iranEvents;',
+  // -1: the self-hosted SHFE source is absent from the default registry.
+  'delete STANDALONE_KEYS.chinaFuturesNotices;',
 ];
 
 const normalizeMutation = (line) => line.trim().replace(/\s+/g, ' ');
@@ -801,8 +803,13 @@ function parseHealthProbedKeys(rawSource = read('api/health.js')) {
   // identical set. computeStats stores only the counts: dumping 256 key names
   // into the committed stats.json would bury the claims it actually publishes.
   const effectiveBootstrap = [...bootstrapKeys, ...addedNames].filter((k) => k !== 'iranEvents');
+  if (!standaloneKeys.includes('chinaFuturesNotices')
+    || !/if \(process\.env\.CHINA_FUTURES_NEWS_ENABLED !== '1'\)/.test(source)) {
+    throw new Error('docs-stats: SHFE opt-in registration/default changed; update the documented registry');
+  }
+  const effectiveStandalone = standaloneKeys.filter((key) => key !== 'chinaFuturesNotices');
   const bootstrap = bootstrapKeys.length + addedMarkets - 1;
-  const standalone = standaloneKeys.length;
+  const standalone = effectiveStandalone.length;
   if (effectiveBootstrap.length !== bootstrap) {
     throw new Error(`docs-stats: internal — bootstrap arithmetic (${bootstrap}) disagrees with its key list (${effectiveBootstrap.length})`);
   }
@@ -811,7 +818,7 @@ function parseHealthProbedKeys(rawSource = read('api/health.js')) {
     standalone,
     total: bootstrap + standalone,
     bootstrapKeys: effectiveBootstrap,
-    standaloneKeys,
+    standaloneKeys: effectiveStandalone,
   };
 }
 

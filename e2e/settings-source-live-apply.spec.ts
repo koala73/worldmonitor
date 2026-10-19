@@ -67,6 +67,9 @@ async function installDigestAccounting(page: Page): Promise<DigestLog> {
         categories: {
           politics: { items: [] },
           intel: { items: [] },
+          ...(process.env.VITE_ENABLE_CHINA_FUTURES_NEWS === '1' ? {
+            asia: { items: [{ source: 'SHFE (China)', title: '上期所公告验收样本：铜仓库调整', link: 'https://www.shfe.com.cn/publicnotice/notice/202610/t20261019_833737.html', publishedAt: Date.now(), isAlert: false }] },
+          } : {}),
         },
         feedStatuses: {},
         generatedAt: new Date(0).toISOString(),
@@ -77,8 +80,8 @@ async function installDigestAccounting(page: Page): Promise<DigestLog> {
   return log;
 }
 
-async function seedProFullVariant(page: Page, returningProfile = false): Promise<void> {
-  await page.addInitScript((returning) => {
+async function seedProFullVariant(page: Page, returningProfile = false, chinaSource = false): Promise<void> {
+  await page.addInitScript(({ returning, chinaSource }) => {
     // Seed once per tab: addInitScript re-runs on every navigation, and a
     // re-seed would wipe the source preferences this spec sets from the UI.
     if (sessionStorage.getItem('__settings_source_live_apply_seeded__')) return;
@@ -96,11 +99,14 @@ async function seedProFullVariant(page: Page, returningProfile = false): Promise
     localStorage.setItem('wm-layer-warning-dismissed', 'true');
     localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
     localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+    if (chinaSource) {
+      localStorage.setItem('wm-locale-explicit', 'zh');
+    }
     if (returning) {
       localStorage.setItem('worldmonitor-sources-reduction-v3', 'done');
       localStorage.setItem('worldmonitor-disabled-feeds', '["user-choice"]');
     }
-  }, returningProfile);
+  }, { returning: returningProfile, chinaSource });
 }
 
 /**
@@ -181,6 +187,50 @@ async function disableFirstSources(page: Page, count: number): Promise<string[]>
 }
 
 test.describe('settings source live apply (#6380)', () => {
+  if (process.env.VITE_ENABLE_CHINA_FUTURES_NEWS === '1') {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      test(`SHFE opt-in preserves the original source controls and news panel at ${viewport.width}px`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await seedProFullVariant(page, false, true);
+        await bootUntilNewsSettles(page);
+        await page.setViewportSize(viewport);
+        if (viewport.width < 600) await page.locator('[data-mobile-tab="more"]').click();
+        const settings = viewport.width < 600 ? page.locator('#mobileMenuSettings') : page.locator('#unifiedSettingsBtn');
+        await settings.click();
+        await page.locator('#us-tab-panels').click();
+        const asia = page.locator('#usPanelToggles .panel-toggle-item[data-panel="asia"]');
+        if (!(await asia.evaluate((element) => element.classList.contains('active')))) {
+          await asia.click();
+          await page.locator('.panels-save-layout').click();
+        }
+        await page.locator('#us-tab-sources').click();
+        await page.locator('.sources-search input').fill('SHFE');
+        const source = page.locator('#usSourceToggles .source-toggle-item[data-source="SHFE (China)"]');
+        await expect(source).toBeVisible();
+        const active = await source.evaluate((element) => element.classList.contains('active'));
+        if (!active) await source.click();
+        await expect(source).toHaveClass(/\bactive\b/);
+        const sourceShot = testInfo.outputPath(`shfe-source-${viewport.width}.png`);
+        await page.screenshot({ path: sourceShot });
+        await testInfo.attach('SHFE in original source settings (controlled digest)', { path: sourceShot, contentType: 'image/png' });
+        await page.locator('.unified-settings-close').click();
+        if (viewport.width < 600) await page.locator('[data-mobile-tab="today"]').click();
+        // News panels mount when their existing lazy shell enters the viewport.
+        await page.locator('.panel[data-panel="asia"]').scrollIntoViewIfNeeded();
+        const article = page.locator('[data-panel="asia"] a').filter({ hasText: '上期所公告验收样本' }).first();
+        await expect(article).toBeVisible();
+        await expect(article).toHaveAttribute('href', 'https://www.shfe.com.cn/publicnotice/notice/202610/t20261019_833737.html');
+        await article.scrollIntoViewIfNeeded();
+        const newsShot = testInfo.outputPath(`shfe-news-${viewport.width}.png`);
+        await page.screenshot({ path: newsShot });
+        await testInfo.attach('SHFE in original Asia news panel (controlled digest)', { path: newsShot, contentType: 'image/png' });
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => document.documentElement.dataset.wmEventHandlersReady === 'true');
+        const disabled = await page.evaluate(() => JSON.parse(localStorage.getItem('worldmonitor-disabled-feeds') ?? '[]'));
+        expect(disabled).not.toContain('SHFE (China)');
+      });
+    }
+  }
   test('new curated regional sources stay opt-in for a returning Pro profile and retain a later choice', async ({ page }, testInfo) => {
     await seedProFullVariant(page, true);
     await bootUntilNewsSettles(page);

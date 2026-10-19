@@ -74,6 +74,8 @@ const MACRO_SECTIONS = [
   { label: 'World-CPI-Eurostat', script: 'seed-world-cpi-eurostat.mjs', seedMetaKey: 'economic:world-cpi-eurostat', canonicalKey: 'economic:world-cpi:eurostat:v1', completionMetaKey: 'seed-completion:economic:world-cpi-eurostat', intervalMs: DAY, timeoutMs: 180_000 },
   { label: 'World-CPI-JP', script: 'seed-world-cpi-estat.mjs', requiredEnv: ['ESTAT_APPID'], seedMetaKey: 'economic:world-cpi-estat', canonicalKey: 'economic:world-cpi:estat:v1', completionMetaKey: 'seed-completion:economic:world-cpi-estat', intervalMs: DAY, timeoutMs: 120_000 },
   { label: 'World-CPI-AU', script: 'seed-world-cpi-abs.mjs', seedMetaKey: 'economic:world-cpi-abs', canonicalKey: 'economic:world-cpi:abs:v1', completionMetaKey: 'seed-completion:economic:world-cpi-abs', intervalMs: DAY, timeoutMs: 120_000 },
+  // Opt-in personal-research source; preserve admission priority of existing jobs.
+  ...(process.env.CHINA_FUTURES_NEWS_ENABLED === '1' ? [{ label: 'SHFE-Notices', script: 'seed-china-futures-notices.mjs', seedMetaKey: 'news:china-futures:shfe:notices', canonicalKey: 'news:china-futures:shfe:notices:v1', completionMetaKey: 'seed-completion:news:china-futures:shfe:notices', intervalMs: 6 * HOUR, timeoutMs: 120_000 }] : []),
 ];
 
 // Education is normally last so a persistent failure in the new flag-dark
