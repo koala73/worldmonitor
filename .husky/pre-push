@@ -444,6 +444,7 @@ PROTO_INPUTS=(
   scripts/_html-entities.mjs
   scripts/apply-openapi-filter-param-schemas.mjs
   scripts/generate-request-validation.mjs
+  scripts/harden-generated-server-errors.mjs
   scripts/generate-scorecard-edge-mirrors.mjs
   scripts/lib/main-module.mjs
   scripts/lib/openapi-codegen.mjs
