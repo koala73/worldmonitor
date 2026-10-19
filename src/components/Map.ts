@@ -1184,6 +1184,7 @@ export class MapComponent {
     }, { signal });
 
     this.container.addEventListener('click', (e) => {
+      if (shouldIgnoreInteractionStart(e.target)) return;
       if (!this.onCountryClick) return;
       if (performance.now() - lastDragEndTime < 300) return;
       if (shouldSuppressCountryClick(countryClickGesture)) return;
