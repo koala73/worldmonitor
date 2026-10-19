@@ -1946,7 +1946,7 @@
       "sortBy": "Sort by",
       "sortNewest": "Newest",
       "sortRelevance": "Relevance",
-      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
+      "translationUnavailable": "Переклад недоступний. Перевірте налаштування постачальника ШІ та спробуйте ще раз."
     },
     "mobileNav": {
       "panelCategories": "Panel categories"

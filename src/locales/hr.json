@@ -1945,7 +1945,7 @@
       "sortBy": "Sortiraj po",
       "sortNewest": "Najnovije",
       "sortRelevance": "Relevantnost",
-      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
+      "translationUnavailable": "Prijevod nije dostupan. Provjerite postavke pružatelja AI usluge i pokušajte ponovno."
     },
     "export": {},
     "runtimeConfig": {},

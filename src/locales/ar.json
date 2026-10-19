@@ -1673,7 +1673,7 @@
       "sortBy": "ترتيب حسب",
       "sortNewest": "الأحدث",
       "sortRelevance": "الصلة",
-      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
+      "translationUnavailable": "الترجمة غير متاحة. تحقق من إعدادات مزود الذكاء الاصطناعي وحاول مرة أخرى."
     },
     "intelligenceFindings": {
       "badgeTitle": "نتائج استخباراتية",

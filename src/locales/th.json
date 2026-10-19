@@ -1790,7 +1790,7 @@
       "sortBy": "เรียงลำดับตาม",
       "sortNewest": "ล่าสุด",
       "sortRelevance": "ความเกี่ยวข้อง",
-      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
+      "translationUnavailable": "ไม่สามารถแปลได้ โปรดตรวจสอบการตั้งค่าผู้ให้บริการ AI แล้วลองอีกครั้ง"
     },
     "breakingNews": {
       "critical": "วิกฤต",

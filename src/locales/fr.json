@@ -1670,7 +1670,7 @@
       "sortBy": "Trier par",
       "sortNewest": "Plus récent",
       "sortRelevance": "Pertinence",
-      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
+      "translationUnavailable": "Traduction indisponible. Vérifiez les paramètres de votre fournisseur d’IA et réessayez."
     },
     "etfFlows": {
       "unavailable": "données de fonds négociés en bourse temporairement indisponibles",

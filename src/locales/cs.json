@@ -1781,7 +1781,7 @@
       "sortBy": "Seřadit podle",
       "sortNewest": "Nejnovější",
       "sortRelevance": "Relevance",
-      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
+      "translationUnavailable": "Překlad není k dispozici. Zkontrolujte nastavení poskytovatele AI a zkuste to znovu."
     },
     "breakingNews": {
       "critical": "KRITICKÉ",

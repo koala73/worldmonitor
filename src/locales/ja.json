@@ -1790,7 +1790,7 @@
       "sortBy": "並び替え",
       "sortNewest": "最新",
       "sortRelevance": "関連性",
-      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
+      "translationUnavailable": "翻訳できません。AIプロバイダーの設定を確認して、もう一度お試しください。"
     },
     "breakingNews": {
       "critical": "緊急",

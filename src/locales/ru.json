@@ -1802,7 +1802,7 @@
       "sortBy": "Сортировать по",
       "sortNewest": "Новейшие",
       "sortRelevance": "Релевантности",
-      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
+      "translationUnavailable": "Перевод недоступен. Проверьте настройки поставщика ИИ и повторите попытку."
     },
     "breakingNews": {
       "critical": "СРОЧНО",

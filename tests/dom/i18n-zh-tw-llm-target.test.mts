@@ -108,7 +108,7 @@ describe('headline translation target', () => {
       await panel.handleTranslate(button, 'Sanctions package agreed');
 
       const status = button.closest('.item')!.querySelector('[role="status"]');
-      expect(status?.textContent).toMatch(/AI provider settings/);
+      expect(status?.textContent).toBe('翻譯不可用。請檢查 AI 提供商設定並重試。');
       expect(button.textContent).toBe('文');
       expect(button.style.pointerEvents).toBe('auto');
       expect(button.closest('.item')!.querySelector('.item-title')!.textContent).toBe('Sanctions package agreed');

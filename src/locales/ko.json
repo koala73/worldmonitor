@@ -1790,7 +1790,7 @@
       "sortBy": "정렬 기준",
       "sortNewest": "최신순",
       "sortRelevance": "관련성",
-      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
+      "translationUnavailable": "번역을 사용할 수 없습니다. AI 제공업체 설정을 확인하고 다시 시도하세요."
     },
     "breakingNews": {
       "critical": "심각",

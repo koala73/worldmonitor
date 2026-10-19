@@ -1790,7 +1790,7 @@
       "sortBy": "排序方式",
       "sortNewest": "最新",
       "sortRelevance": "相關性",
-      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
+      "translationUnavailable": "翻譯不可用。請檢查 AI 提供商設定並重試。"
     },
     "breakingNews": {
       "critical": "緊急",
