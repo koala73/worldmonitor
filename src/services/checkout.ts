@@ -219,8 +219,6 @@ function savePendingCheckoutIntent(intent: PendingCheckoutIntent): void {
 }
 
 async function parseStoredDodoProductId(value: string): Promise<DodoProductId | null> {
-  // Dynamic on purpose. This module is on the eager dashboard graph, and
-  // tests/dashboard-eager-chunks.test.mjs keeps the products chunk off it.
   const { parseDodoProductId } = await import('@/config/products');
   return parseDodoProductId(value);
 }
