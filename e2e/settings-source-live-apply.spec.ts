@@ -80,8 +80,8 @@ async function installDigestAccounting(page: Page): Promise<DigestLog> {
   return log;
 }
 
-async function seedProFullVariant(page: Page, returningProfile = false, chinaSource = false): Promise<void> {
-  await page.addInitScript(({ returning, chinaSource }) => {
+async function seedFullVariant(page: Page, returningProfile = false, chinaSource = false, pro = true): Promise<void> {
+  await page.addInitScript(({ returning, chinaSource, pro }) => {
     // Seed once per tab: addInitScript re-runs on every navigation, and a
     // re-seed would wipe the source preferences this spec sets from the UI.
     if (sessionStorage.getItem('__settings_source_live_apply_seeded__')) return;
@@ -94,7 +94,7 @@ async function seedProFullVariant(page: Page, returningProfile = false, chinaSou
     // FREE_MAX_SOURCES (80) — the full variant ships well over that — and
     // persists the result to `disabledFeeds`. That is a source-set mutation this
     // spec did not make, arriving on the same clock as the one it measures.
-    localStorage.setItem('wm-pro-key', 'e2e-source-live-apply');
+    if (pro) localStorage.setItem('wm-pro-key', 'e2e-source-live-apply');
     // Overlays that would otherwise steal the click target.
     localStorage.setItem('wm-layer-warning-dismissed', 'true');
     localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
@@ -106,7 +106,7 @@ async function seedProFullVariant(page: Page, returningProfile = false, chinaSou
       localStorage.setItem('worldmonitor-sources-reduction-v3', 'done');
       localStorage.setItem('worldmonitor-disabled-feeds', '["user-choice"]');
     }
-  }, { returning: returningProfile, chinaSource });
+  }, { returning: returningProfile, chinaSource, pro });
 }
 
 /**
@@ -188,11 +188,22 @@ async function disableFirstSources(page: Page, count: number): Promise<string[]>
 
 test.describe('settings source live apply (#6380)', () => {
   if (process.env.VITE_ENABLE_CHINA_FUTURES_NEWS === '1') {
-    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
-      test(`SHFE opt-in preserves the original source controls and news panel at ${viewport.width}px`, async ({ page }, testInfo) => {
+    for (const { viewport, pro } of [
+      { viewport: { width: 1440, height: 1000 }, pro: true },
+      { viewport: { width: 390, height: 844 }, pro: true },
+      { viewport: { width: 1440, height: 1000 }, pro: false },
+    ]) {
+      test(`SHFE opt-in preserves the original source controls and news panel at ${viewport.width}px (${pro ? 'Pro' : 'Free'})`, async ({ page }, testInfo) => {
         await page.setViewportSize({ width: 1440, height: 1000 });
-        await seedProFullVariant(page, false, true);
-        await bootUntilNewsSettles(page);
+        await seedFullVariant(page, false, true, pro);
+        if (pro) {
+          await bootUntilNewsSettles(page);
+        } else {
+          await installDigestAccounting(page);
+          await page.goto('/', { waitUntil: 'domcontentloaded' });
+          await page.waitForFunction(() => document.documentElement.dataset.wmEventHandlersReady === 'true');
+          expect(await page.evaluate(() => localStorage.getItem('wm-pro-key'))).toBeNull();
+        }
         await page.setViewportSize(viewport);
         if (viewport.width < 600) await page.locator('[data-mobile-tab="more"]').click();
         const settings = viewport.width < 600 ? page.locator('#mobileMenuSettings') : page.locator('#unifiedSettingsBtn');
@@ -204,13 +215,15 @@ test.describe('settings source live apply (#6380)', () => {
           await page.locator('.panels-save-layout').click();
         }
         await page.locator('#us-tab-sources').click();
+        // Free users can exchange an enabled source within the existing 80-source cap.
+        if (!pro) await disableFirstSources(page, 1);
         await page.locator('.sources-search input').fill('SHFE');
         const source = page.locator('#usSourceToggles .source-toggle-item[data-source="SHFE (China)"]');
         await expect(source).toBeVisible();
         const active = await source.evaluate((element) => element.classList.contains('active'));
         if (!active) await source.click();
         await expect(source).toHaveClass(/\bactive\b/);
-        const sourceShot = testInfo.outputPath(`shfe-source-${viewport.width}.png`);
+        const sourceShot = testInfo.outputPath(`shfe-source-${pro ? 'pro' : 'free'}-${viewport.width}.png`);
         await page.screenshot({ path: sourceShot });
         await testInfo.attach('SHFE in original source settings (controlled digest)', { path: sourceShot, contentType: 'image/png' });
         await page.locator('.unified-settings-close').click();
@@ -221,7 +234,7 @@ test.describe('settings source live apply (#6380)', () => {
         await expect(article).toBeVisible();
         await expect(article).toHaveAttribute('href', 'https://www.shfe.com.cn/publicnotice/notice/202610/t20261019_833737.html');
         await article.scrollIntoViewIfNeeded();
-        const newsShot = testInfo.outputPath(`shfe-news-${viewport.width}.png`);
+        const newsShot = testInfo.outputPath(`shfe-news-${pro ? 'pro' : 'free'}-${viewport.width}.png`);
         await page.screenshot({ path: newsShot });
         await testInfo.attach('SHFE in original Asia news panel (controlled digest)', { path: newsShot, contentType: 'image/png' });
         await page.reload({ waitUntil: 'domcontentloaded' });
@@ -232,7 +245,7 @@ test.describe('settings source live apply (#6380)', () => {
     }
   }
   test('new curated regional sources stay opt-in for a returning Pro profile and retain a later choice', async ({ page }, testInfo) => {
-    await seedProFullVariant(page, true);
+    await seedFullVariant(page, true);
     await bootUntilNewsSettles(page);
     await openSourcesTab(page);
     for (const name of ['Guardian Africa', 'France 24 Africa', 'Guardian Caribbean', 'Guardian Pacific', 'France 24 Asia Pacific']) {
@@ -257,7 +270,7 @@ test.describe('settings source live apply (#6380)', () => {
   });
 
   test('toggling sources and closing Settings reloads news once, without a reload', async ({ page }) => {
-    await seedProFullVariant(page);
+    await seedFullVariant(page);
     const log = await bootUntilNewsSettles(page);
     // #6724: snapshot the count AFTER the boot check passes, so a late boot
     // digest is never charged to the toggle assertion below.
@@ -296,7 +309,7 @@ test.describe('settings source live apply (#6380)', () => {
   });
 
   test('closing Settings without touching sources issues no news load', async ({ page }) => {
-    await seedProFullVariant(page);
+    await seedFullVariant(page);
     const log = await bootUntilNewsSettles(page);
     // #6724: same baseline-delta pattern.
     const baseline = log.urls.length;
