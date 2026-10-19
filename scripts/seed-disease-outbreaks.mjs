@@ -47,8 +47,9 @@ const ECDC_NEWS_FEED = 'https://www.ecdc.europa.eu/en/taxonomy/term/1307/feed';
 // UN Geneva newsroom (Atom): WHO's Geneva press-briefing statements, titled
 // "<story> - WHO" among other UN agencies' items. WHO's 2026-10-06 risk
 // assessment of the Irkutsk case came only from a briefing, not a DON post.
-// The https URL answers 301 to this http one.
-const UNOG_NEWSROOM_FEED = 'http://www.unognewsroom.org/feed';
+// Fetched over https so no on-path host can forge WHO entries; /feed and the
+// http URL both answer 301 to this one (2026-10-19).
+const UNOG_NEWSROOM_FEED = 'https://www.unognewsroom.org/rss';
 // CIDRAP publishes per-disease feeds only (a combined `/news/64+49/rss` returns
 // just the first topic), so each outbreak-prone disease is its own request:
 // Ebola, viral hemorrhagic fever, avian influenza, mpox, cholera, measles,

@@ -446,8 +446,9 @@ const UNOG_ATOM = `<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www
 test('WHO briefings come from the UN Geneva newsroom feed', async (t) => {
   const feed = DISEASE_RSS_FEEDS.find(({ sourceName }) => sourceName === 'WHO briefing');
   assert.ok(feed, 'UN Geneva WHO briefing feed missing');
-  // https answers 301 to http; fetch the final URL directly.
-  assert.equal(feed.url, 'http://www.unognewsroom.org/feed');
+  // The feed is shared health intelligence; a cleartext first hop lets an
+  // on-path host forge WHO entries. /feed and http:// both 301 to this URL.
+  assert.equal(feed.url, 'https://www.unognewsroom.org/rss');
   const recent = new Date(Date.now() - 3_600_000).toISOString();
   t.mock.method(globalThis, 'fetch', async (input) => {
     const url = String(input);
@@ -486,7 +487,7 @@ test('dedup keeps one item per source for the same disease and country', async (
     const url = String(input);
     if (url.startsWith('https://www.who.int/')) return new Response(JSON.stringify({ value: [] }), { status: 200 });
     if (url === 'https://www.cidrap.umn.edu/news/88/rss') return new Response(cidrapXml, { status: 200 });
-    if (url === 'http://www.unognewsroom.org/feed') return new Response(unogXml, { status: 200 });
+    if (url === 'https://www.unognewsroom.org/rss') return new Response(unogXml, { status: 200 });
     if (url.endsWith('.js')) return new Response('not found', { status: 404 });
     return new Response('<rss><channel></channel></rss>', { status: 200 });
   });
