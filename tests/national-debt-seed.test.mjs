@@ -202,6 +202,78 @@ describe('country count with realistic fixture', () => {
   });
 });
 
+describe('current-year selection (IMF DataMapper parity)', () => {
+  // WEO October 2026 rows as the SDMX fetch returns them for weoYearWindow().
+  const NOW = new Date(Date.UTC(2026, 9, 19));
+  const debtPct = {
+    SDN: { '2025': 270, '2026': 334.410808, '2027': 274.123118 },
+    BHR: { '2025': 150, '2026': 162.844629, '2027': 150.327256 },
+    ITA: { '2025': 137.104554, '2026': 137.866401, '2027': 137.61663 },
+    LBN: { '2025': 139.413732 },
+    XFC: { '2027': 500 },
+  };
+  const gdp = {
+    SDN: { '2026': 40e9, '2027': 50e9 },
+    BHR: { '2026': 48e9, '2027': 52.5e9 },
+    ITA: { '2026': 2.4e12, '2027': 2.5e12 },
+    LBN: { '2025': 20e9 },
+    XFC: { '2027': 1e9 },
+  };
+  const deficit = {
+    BHR: { '2026': -6, '2027': -4 },
+    LBN: { '2025': -2 },
+  };
+  const byIso = (entries) => Object.fromEntries(entries.map(e => [e.iso3, e]));
+
+  it('uses the current year, not next year\'s forecast', () => {
+    const e = byIso(computeEntries(debtPct, gdp, deficit, null, NOW));
+    assert.equal(e.BHR.debtToGdp, 162.844629);
+    assert.equal(e.SDN.debtToGdp, 334.410808);
+    assert.equal(e.BHR.source, 'IMF WEO 2026');
+    assert.equal(e.BHR.baselineTs, Date.UTC(2026, 0, 1));
+  });
+
+  it('pairs debt % with GDP and deficit from the same year', () => {
+    const { BHR } = byIso(computeEntries(debtPct, gdp, deficit, null, NOW));
+    assert.equal(BHR.gdpUsd, 48e9);
+    assert.ok(Math.abs(BHR.debtUsd - 1.62844629 * 48e9) < 1);
+    assert.ok(Math.abs(BHR.perDayRate - 0.06 * 48e9 / 365.25) < 1e-6);
+  });
+
+  it('measures annual growth from last year to the current year', () => {
+    const { BHR } = byIso(computeEntries(debtPct, gdp, deficit, null, NOW));
+    assert.ok(Math.abs(BHR.annualGrowth - ((162.844629 - 150) / 150) * 100) < 1e-9);
+  });
+
+  it('labels a country without current-year data with the year it has', () => {
+    const { LBN } = byIso(computeEntries(debtPct, gdp, deficit, null, NOW));
+    assert.equal(LBN.debtToGdp, 139.413732);
+    assert.equal(LBN.source, 'IMF WEO 2025');
+    assert.equal(LBN.baselineTs, Date.UTC(2025, 0, 1));
+  });
+
+  it('never starts the live ticker in the future', () => {
+    for (const entry of computeEntries(debtPct, gdp, deficit, null, NOW)) {
+      assert.ok(entry.baselineTs <= NOW.getTime(), `${entry.iso3} baseline ${entry.baselineTs}`);
+    }
+  });
+
+  it('drops countries that only have forecast years', () => {
+    const e = byIso(computeEntries(debtPct, gdp, deficit, null, NOW));
+    assert.equal(e.XFC, undefined);
+  });
+
+  it('ranks Bahrain 4th behind Sudan, Japan and Singapore', () => {
+    const entries = computeEntries(
+      { ...debtPct, JPN: { '2026': 199.369134, '2027': 196.365546 }, SGP: { '2026': 166.419895, '2027': 167.13876 } },
+      { ...gdp, JPN: { '2026': 4e12 }, SGP: { '2026': 0.55e12 } },
+      deficit, null, NOW,
+    );
+    const ranked = entries.slice().sort((a, b) => b.debtToGdp - a.debtToGdp).map(e => e.iso3);
+    assert.deepEqual(ranked.slice(0, 4), ['SDN', 'JPN', 'SGP', 'BHR']);
+  });
+});
+
 describe('rolling WEO year window', () => {
   it('includes current year and spans prev 2 and next 1', () => {
     const now = new Date(Date.UTC(2026, 5, 1));
@@ -237,6 +309,7 @@ describe('IMF SDMX dollar contract', () => {
       gdp,
       { CHN: { '2027': -5 }, USA: { '2027': -5 } },
       null,
+      new Date(Date.UTC(2027, 5, 1)),
     );
     assert.deepEqual(entries.map(entry => entry.iso3).sort(), ['CHN', 'USA']);
     for (const entry of entries) {

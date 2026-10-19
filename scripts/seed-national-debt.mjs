@@ -42,40 +42,25 @@ async function fetchTreasury() {
   };
 }
 
-function deriveWeoYear(debtPctByCountry) {
-  let maxYear = 0;
-  for (const byYear of Object.values(debtPctByCountry || {})) {
-    for (const [yearStr, value] of Object.entries(byYear || {})) {
-      const y = Number(yearStr);
-      const v = Number(value);
-      if (Number.isFinite(y) && y > maxYear && Number.isFinite(v) && v > 0) {
-        maxYear = y;
-      }
-    }
-  }
-  return maxYear > 0 ? maxYear : null;
-}
-
-function latestYearWithValue(byYear) {
+// Latest year with a positive value, capped at maxYear. The cap keeps next
+// year's WEO forecast (fetched by weoYearWindow) from replacing the current
+// year, which is the figure IMF DataMapper ranks.
+function latestYearWithValue(byYear, maxYear) {
   if (!byYear) return null;
   let best = null;
   for (const [yearStr, value] of Object.entries(byYear)) {
     const y = Number(yearStr);
     const v = Number(value);
-    if (Number.isFinite(y) && Number.isFinite(v) && v > 0 && (best === null || y > best)) {
+    if (Number.isFinite(y) && y <= maxYear && Number.isFinite(v) && v > 0 && (best === null || y > best)) {
       best = y;
     }
   }
   return best;
 }
 
-export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCountry, treasuryOverride) {
+export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCountry, treasuryOverride, now = new Date()) {
   const SECONDS_PER_YEAR = 365.25 * 86400;
-  const weoYear = deriveWeoYear(debtPctByCountry);
-  const weoLabel = weoYear ? `IMF WEO ${weoYear}` : 'IMF WEO';
-  // Baseline = Jan 1 of the vintage year so the live ticker advances from a
-  // sensible anchor once a newer WEO vintage lands.
-  const BASELINE_TS = Date.UTC(weoYear ?? new Date().getUTCFullYear(), 0, 1);
+  const currentYear = now.getUTCFullYear();
 
   const entries = [];
 
@@ -85,10 +70,14 @@ export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCount
     const gdpByYear = gdpByCountry[iso3];
     if (!gdpByYear) continue;
 
-    const latestDebtYear = latestYearWithValue(debtByYear);
+    const latestDebtYear = latestYearWithValue(debtByYear, currentYear);
     if (latestDebtYear === null) continue;
+    const weoLabel = `IMF WEO ${latestDebtYear}`;
 
-    const gdpYear = latestYearWithValue(gdpByYear) ?? latestDebtYear;
+    const gdpYear = Number(gdpByYear[String(latestDebtYear)]) > 0
+      ? latestDebtYear
+      : latestYearWithValue(gdpByYear, currentYear);
+    if (gdpYear === null) continue;
     const gdpLatest = Number(gdpByYear[String(gdpYear)]);
     if (!Number.isFinite(gdpLatest) || gdpLatest <= 0) continue;
 
@@ -130,7 +119,8 @@ export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCount
       annualGrowth,
       perSecondRate,
       perDayRate,
-      baselineTs: BASELINE_TS,
+      // Jan 1 of the data year, so the live ticker never starts in the future.
+      baselineTs: Date.UTC(latestDebtYear, 0, 1),
       source: iso3 === 'USA' && treasuryOverride ? `${weoLabel} + US Treasury FiscalData` : weoLabel,
     });
   }
