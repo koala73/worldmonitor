@@ -1,3 +1,7 @@
+---
+noindex: true
+---
+
 # Cross-border movement sources
 
 Issue #9023 extends the ODP situation view with independently published route reports. Counts keep their source, date and measure. Stocks, arrivals, returnees, deaths and enforcement encounters must not be added together. Countries and situations can overlap.
