@@ -902,6 +902,7 @@
       "scripts/shared/physical-divergence-contract.js",
       "scripts/shared/physical-divergence-staleness.js",
       "scripts/shared/sovereign-status.json",
+      "scripts/shared/weo-fiscal-periods.json",
       "shared/iso2-to-iso3.json",
       "shared/iso3-to-iso2.json"
     ],
