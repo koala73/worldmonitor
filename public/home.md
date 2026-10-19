@@ -42,7 +42,7 @@ Users can compare these parts on one map and then open the underlying panels for
 
 - A global map with a shared catalog of conflict, military, infrastructure, environment, transport, and market layers
 - Curated news and OSINT feeds grouped by topic and product variant
-- CII v11 for 31 Tier-1 countries, resilience scores for the 196-country public rankable universe, and global live conflict tracking
+- CII v12 for 31 Tier-1 countries, resilience scores for the 196-country public rankable universe, and global live conflict tracking
 - Market quotes, sector heatmaps, macro indicators, and commodity context
 - Shipping chokepoints, ports, and vessel-transit intelligence
 - Aircraft, satellites, GPS interference, submarine cables, energy assets, and datacenters

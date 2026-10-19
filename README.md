@@ -67,7 +67,7 @@ The terminal dashboard runs the same live data in your shell: world map, news, m
 - **Dual map engine** — 3D globe (globe.gl) and WebGL flat map (deck.gl) with a shared map-layer catalog
 - **Panel inventory** — concrete panel implementations across specialized variants
 - **Cross-stream correlation** — military, economic, disaster, and escalation signal convergence
-- **[Country Instability Index (CII)](https://www.worldmonitor.app/country-instability-index/)** — live CII v11 scores, bands, and approximate 24-hour movement for 31 Tier-1 countries
+- **[Country Instability Index (CII)](https://www.worldmonitor.app/country-instability-index/)** — live CII v12 scores, bands, and approximate 24-hour movement for 31 Tier-1 countries
 - **Finance radar** — stock exchanges, commodities, crypto, and a market composite
 - **Local AI** — run everything with Ollama, no API keys required
 - **Site variants** from a single codebase (world, tech, finance, commodity, happy, energy)

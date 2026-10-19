@@ -51,7 +51,7 @@
 - **精选新闻源**，覆盖全球和区域类别，并由 AI 综合生成简报
 - **双地图引擎** — 3D 地球仪（globe.gl）和 WebGL 平面地图（deck.gl），使用共享地图图层目录
 - **跨信息流关联** — 汇聚军事、经济、灾害和升级信号
-- **国家不稳定指数（CII）** — 面向一级国家注册表的服务器权威 CII v11 压力评分
+- **国家不稳定指数（CII）** — 面向一级国家注册表的服务器权威 CII v12 压力评分
 - **金融雷达** — 证券交易所、大宗商品、加密货币，以及市场综合指标
 - **本地 AI** — 通过 Ollama 运行全部功能，无需 API 密钥
 - **站点变体**，均来自同一代码库（World Monitor、Tech Monitor、Finance Monitor、Commodity Monitor、Happy Monitor、Energy Monitor）
