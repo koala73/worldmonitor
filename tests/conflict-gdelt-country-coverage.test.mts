@@ -15,7 +15,11 @@ import {
   HAPI_CRISIS_COUNTRIES,
 } from '../scripts/seed-conflict-intel.mjs';
 
-const GULF_AND_LEVANT = ['SA', 'IR', 'IL', 'LB', 'QA', 'AE', 'KW', 'BH', 'OM', 'JO'];
+// The 20 priority conflict countries the gate started with (#5099).
+const LEGACY_PRIORITY = [
+  'AF', 'SY', 'UA', 'SD', 'SS', 'SO', 'CD', 'MM', 'YE', 'ET',
+  'IQ', 'PS', 'LY', 'ML', 'BF', 'NE', 'NG', 'CM', 'MZ', 'HT',
+];
 
 function exportRow(fipsCountry: string, id: string): string {
   const fields: string[] = Array(61).fill('');
@@ -31,19 +35,21 @@ function exportRow(fipsCountry: string, id: string): string {
 }
 
 describe('GDELT conflict country coverage', () => {
-  it('covers the Gulf and Levant states struck in the 2026 regional war', () => {
-    const missing = GULF_AND_LEVANT.filter((code) => !GDELT_COUNTRY_NAMES[code]);
-    assert.deepEqual(missing, []);
-  });
-
-  it('covers every country a public crisis tracker names', () => {
+  it('is exactly the legacy priority set plus every crisis-tracker country', () => {
     // A tracker page whose country the conflict feed never collects shows a
     // crisis with no conflict events. HAPI_CRISIS_COUNTRIES is read from
     // shared/crawlable-crises.json, so a new tracker fails here until its
-    // countries are added.
+    // countries are added, and nothing outside the two registries can be.
     assert.ok(HAPI_CRISIS_COUNTRIES.length > 0);
-    const missing = HAPI_CRISIS_COUNTRIES.filter((code) => !GDELT_COUNTRY_NAMES[code]);
-    assert.deepEqual(missing, []);
+    const expectedCodes = [...new Set([...LEGACY_PRIORITY, ...HAPI_CRISIS_COUNTRIES])].sort();
+    assert.deepEqual(Object.keys(GDELT_COUNTRY_NAMES).sort(), expectedCodes);
+  });
+
+  it('now covers the Gulf and Levant states the crisis trackers name', () => {
+    // The October 2026 Houthi strikes on Riyadh and Dammam produced no rows.
+    for (const code of ['SA', 'IR', 'IL', 'LB', 'QA', 'AE', 'KW', 'BH', 'OM']) {
+      assert.ok(GDELT_COUNTRY_NAMES[code], `${code} missing`);
+    }
   });
 
   it('names every country so the shared resolver maps it back to its own code', () => {
@@ -65,7 +71,7 @@ describe('GDELT conflict country coverage', () => {
   it('keeps bulk rows located in Saudi Arabia and the other added states', () => {
     // FIPS 10-4 codes, as GDELT writes ActionGeo_CountryCode.
     const fips: Record<string, string> = {
-      SA: 'SA', IR: 'IR', IS: 'IL', LE: 'LB', QA: 'QA', AE: 'AE', KU: 'KW', BA: 'BH', MU: 'OM', JO: 'JO',
+      SA: 'SA', IR: 'IR', IS: 'IL', LE: 'LB', QA: 'QA', AE: 'AE', KU: 'KW', BA: 'BH', MU: 'OM',
     };
     const csv = Object.keys(fips).map((code, i) => exportRow(code, String(1000 + i))).join('\n');
     const events = mapGdeltExportToConflictEvents(csv);
