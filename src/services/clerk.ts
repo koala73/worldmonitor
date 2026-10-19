@@ -566,14 +566,9 @@ async function startDesktopBrowserSignIn(openInApp: () => void): Promise<void> {
     start: (fapiHost) => invokeTauri('start_desktop_browser_sign_in', { fapiHost }),
     finish: () => invokeTauri('finish_desktop_browser_sign_in'),
     cancel: () => invokeTauri('cancel_desktop_browser_sign_in'),
-    hasSession: () => Boolean(clerk.session),
-    signOut: async () => {
-      clearClerkTokenCache();
-      // A callback replaces Clerk's navigation to afterSignOutUrl, which would
-      // reload the desktop window mid-flow.
-      await clerk.signOut(async () => {});
-    },
     reloadClient: async () => {
+      // Rust swapped in a new client; drop tokens minted for the old one.
+      clearClerkTokenCache();
       await clerk.client?.reload();
     },
     setActive: async (sessionId) => {

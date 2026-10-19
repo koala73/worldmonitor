@@ -3,9 +3,9 @@
  * `start_desktop_browser_sign_in` opens www.worldmonitor.app, waits for the
  * loopback redirect and exchanges the code for a Clerk ticket it keeps;
  * `finish_desktop_browser_sign_in` redeems that ticket through the relay. The
- * renderer never sees the verifier, code or ticket, and signs out an existing
- * session only between the two steps, so a failed or cancelled attempt leaves
- * it signed in. See docs/plans/2026-10-19-desktop-system-browser-sign-in.md.
+ * renderer never sees the verifier, code or ticket. Rust redeems the ticket
+ * on a fresh client and adopts it only on success, so a failed or cancelled
+ * attempt leaves an existing session signed in. See docs/plans/2026-10-19-desktop-system-browser-sign-in.md.
  */
 
 export interface BrowserSignInOutcome {
@@ -25,8 +25,6 @@ export interface BrowserSignInDeps {
   start(fapiHost: string): Promise<void>;
   finish(): Promise<BrowserSignInOutcome>;
   cancel(): Promise<void>;
-  hasSession(): boolean;
-  signOut(): Promise<void>;
   reloadClient(): Promise<void>;
   setActive(sessionId: string): Promise<void>;
   notify(message: string): void;
@@ -89,8 +87,8 @@ export async function runDesktopBrowserSignIn(deps: BrowserSignInDeps): Promise<
 
   let outcome: BrowserSignInOutcome;
   try {
-    // A ticket cannot be redeemed over an active session (`session_exists`).
-    if (deps.hasSession()) await deps.signOut();
+    // Rust redeems on a fresh client and swaps it in only on success, so an
+    // existing session survives any failure here.
     outcome = await deps.finish();
   } catch (error) {
     deps.notify(FAILURE_MESSAGES[reasonOf(error)] ?? 'Sign-in did not finish. Click Sign in to try again.');

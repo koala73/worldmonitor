@@ -297,6 +297,19 @@ pub fn parse_sign_in_response(body: &str) -> Result<SignInOutcome, String> {
     })
 }
 
+/// The ticket is redeemed on a fresh Clerk client, so an existing session is
+/// never signed out first (a client with a session refuses a ticket with
+/// `session_exists`). The new client replaces the stored one only when Clerk
+/// accepted the ticket and issued a client token; any failure leaves the
+/// user's current session exactly as it was.
+pub fn adopt_redeemed_client(
+    http_status: u16,
+    outcome: Option<&SignInOutcome>,
+    new_client_token: Option<&str>,
+) -> bool {
+    http_status < 400 && outcome.is_some() && new_client_token.is_some_and(|token| !token.trim().is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -485,6 +498,18 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(4), "within the per-connection budget");
         assert_eq!(waiter.join().unwrap(), Ok(CODE.to_string()));
         let _ = dripper.join();
+    }
+
+    #[test]
+    fn adopts_the_redeemed_client_only_when_clerk_accepted_the_ticket() {
+        let complete = SignInOutcome { status: "complete".into(), created_session_id: Some("s".into()), identifier: None };
+        let second = SignInOutcome { status: "needs_second_factor".into(), created_session_id: None, identifier: None };
+        assert!(adopt_redeemed_client(200, Some(&complete), Some("new-token")));
+        assert!(adopt_redeemed_client(200, Some(&second), Some("new-token")), "the in-app card continues on this client");
+        assert!(!adopt_redeemed_client(422, Some(&complete), Some("new-token")), "a refused ticket keeps the old session");
+        assert!(!adopt_redeemed_client(200, None, Some("new-token")), "an unreadable response keeps the old session");
+        assert!(!adopt_redeemed_client(200, Some(&complete), None), "no token to adopt keeps the old session");
+        assert!(!adopt_redeemed_client(200, Some(&complete), Some("  ")));
     }
 
     #[test]

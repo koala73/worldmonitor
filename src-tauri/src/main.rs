@@ -471,24 +471,16 @@ fn save_clerk_client_token(token: &ClerkClientToken) -> Result<(), String> {
         .map_err(|e| format!("Failed to store Clerk client: {e}"))
 }
 
-/// Sends one validated Frontend API request, attaching and capturing the
-/// stored client token. Shared by the renderer relay command and the browser
-/// sign-in flow, which redeems its ticket here.
-async fn send_clerk_fapi_request(
-    app: &AppHandle,
+/// Sends one validated Frontend API request with the given client token (or
+/// none) and returns the response plus the client token Clerk sent back. It
+/// touches no stored state.
+async fn send_fapi_with_token(
     state: &ClerkRelayState,
-    request: ClerkFapiRequest,
-) -> Result<ClerkFapiResponse, String> {
-    let validated = clerk_relay::validate_request(request)?;
-    let host = validated.url.host_str().unwrap_or_default().to_string();
-
-    // Held across the request so a rotated token from one response is never
-    // overwritten by a concurrent response that carried the older one.
-    let mut slot = state.token.lock().await;
-    let stored = slot.get_or_insert_with(load_clerk_client_token);
-
+    validated: clerk_relay::ValidatedRequest,
+    token: Option<&str>,
+) -> Result<(ClerkFapiResponse, Option<String>), String> {
     let mut outbound = state.http_client.request(validated.method, validated.url);
-    if let Some(token) = clerk_relay::token_for_host(stored.as_ref(), &host) {
+    if let Some(token) = token {
         outbound = outbound.header(reqwest::header::AUTHORIZATION, token);
     }
     if let Some(content_type) = validated.content_type {
@@ -498,7 +490,7 @@ async fn send_clerk_fapi_request(
         outbound = outbound.body(body);
     }
 
-    let response = outbound
+    let mut response = outbound
         .send()
         .await
         .map_err(|error| format!("Clerk request failed: {error}"))?;
@@ -513,16 +505,6 @@ async fn send_clerk_fapi_request(
     let content_type = header_text(reqwest::header::CONTENT_TYPE);
     let authorization = header_text(reqwest::header::AUTHORIZATION);
 
-    if let Some(next) = clerk_relay::next_stored_token(stored.as_ref(), &host, authorization.as_deref()) {
-        if let Err(err) = save_clerk_client_token(&next) {
-            // The session still works for this launch; only persistence failed.
-            append_desktop_log(app, "WARN", &err);
-        }
-        *stored = Some(next);
-    }
-    drop(slot);
-
-    let mut response = response;
     let mut bytes = Vec::new();
     while let Some(chunk) = response
         .chunk()
@@ -531,11 +513,45 @@ async fn send_clerk_fapi_request(
     {
         clerk_relay::append_capped(&mut bytes, &chunk, clerk_relay::MAX_RESPONSE_BODY_BYTES)?;
     }
-    Ok(ClerkFapiResponse {
-        status,
-        content_type,
-        body: String::from_utf8_lossy(&bytes).into_owned(),
-    })
+    Ok((
+        ClerkFapiResponse {
+            status,
+            content_type,
+            body: String::from_utf8_lossy(&bytes).into_owned(),
+        },
+        authorization,
+    ))
+}
+
+fn store_clerk_client_token(app: &AppHandle, slot: &mut Option<ClerkClientToken>, next: ClerkClientToken) {
+    if let Err(err) = save_clerk_client_token(&next) {
+        // The session still works for this launch; only persistence failed.
+        append_desktop_log(app, "WARN", &err);
+    }
+    *slot = Some(next);
+}
+
+/// Sends one validated Frontend API request with the stored client token and
+/// stores the token Clerk rotates in. Shared by the renderer relay command.
+async fn send_clerk_fapi_request(
+    app: &AppHandle,
+    state: &ClerkRelayState,
+    request: ClerkFapiRequest,
+) -> Result<ClerkFapiResponse, String> {
+    let validated = clerk_relay::validate_request(request)?;
+    let host = validated.url.host_str().unwrap_or_default().to_string();
+
+    // Held across the request so a rotated token from one response is never
+    // overwritten by a concurrent response that carried the older one.
+    let mut slot = state.token.lock().await;
+    let stored = slot.get_or_insert_with(load_clerk_client_token);
+    let token = clerk_relay::token_for_host(stored.as_ref(), &host).map(str::to_string);
+
+    let (response, authorization) = send_fapi_with_token(state, validated, token.as_deref()).await?;
+    if let Some(next) = clerk_relay::next_stored_token(stored.as_ref(), &host, authorization.as_deref()) {
+        store_clerk_client_token(app, stored, next);
+    }
+    Ok(response)
 }
 
 #[tauri::command]
@@ -676,23 +692,51 @@ async fn finish_desktop_browser_sign_in(
         .query()
         .unwrap_or_default()
         .to_string();
-    let redeemed = send_clerk_fapi_request(
+    let validated = clerk_relay::validate_request(ClerkFapiRequest {
+        host: fapi_host.clone(),
+        method: "POST".to_string(),
+        path: "/v1/client/sign_ins".to_string(),
+        content_type: Some("application/x-www-form-urlencoded".to_string()),
+        body: Some(body),
+    })?;
+
+    // Redeem on a fresh client (no token): the user's current session is
+    // never signed out, and a failure below leaves it untouched.
+    let (redeemed, new_token) = send_fapi_with_token(&relay, validated, None)
+        .await
+        .map_err(|_| "network_failed".to_string())?;
+    let outcome = desktop_sign_in::parse_sign_in_response(&redeemed.body).ok();
+    if !desktop_sign_in::adopt_redeemed_client(redeemed.status, outcome.as_ref(), new_token.as_deref()) {
+        return Err(if redeemed.status >= 400 { "sign_in_refused" } else { "exchange_failed" }.to_string());
+    }
+    let (Some(outcome), Some(new_token)) = (outcome, new_token) else {
+        return Err("exchange_failed".to_string());
+    };
+
+    let mut slot = relay.token.lock().await;
+    let stored = slot.get_or_insert_with(load_clerk_client_token);
+    let previous = clerk_relay::token_for_host(stored.as_ref(), &fapi_host).map(str::to_string);
+    store_clerk_client_token(
         &app,
-        &relay,
-        ClerkFapiRequest {
+        stored,
+        ClerkClientToken { host: fapi_host.clone(), token: new_token.trim().to_string() },
+    );
+    drop(slot);
+
+    // Best effort: end the replaced client and its sessions, as a sign-out
+    // would have. A failure only leaves that session to expire on its own.
+    if let Some(previous) = previous {
+        if let Ok(destroy) = clerk_relay::validate_request(ClerkFapiRequest {
             host: fapi_host,
             method: "POST".to_string(),
-            path: "/v1/client/sign_ins".to_string(),
-            content_type: Some("application/x-www-form-urlencoded".to_string()),
-            body: Some(body),
-        },
-    )
-    .await
-    .map_err(|_| "network_failed".to_string())?;
-    if redeemed.status >= 400 {
-        return Err("sign_in_refused".to_string());
+            path: "/v1/client?_method=DELETE".to_string(),
+            content_type: None,
+            body: None,
+        }) {
+            let _ = send_fapi_with_token(&relay, destroy, Some(&previous)).await;
+        }
     }
-    desktop_sign_in::parse_sign_in_response(&redeemed.body)
+    Ok(outcome)
 }
 
 #[tauri::command]

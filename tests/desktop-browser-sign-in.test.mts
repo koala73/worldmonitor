@@ -25,8 +25,6 @@ function deps(overrides: Partial<BrowserSignInDeps> = {}) {
     start: async (fapiHost) => { log.push(`start:${fapiHost}`); },
     finish: async () => { log.push('finish'); return COMPLETE; },
     cancel: async () => { log.push('cancel'); },
-    hasSession: () => false,
-    signOut: async () => { log.push('signOut'); },
     reloadClient: async () => { log.push('reload'); },
     setActive: async (sessionId) => { log.push(`setActive:${sessionId}`); },
     notify: (message) => { log.push(`notify:${message}`); },
@@ -55,19 +53,15 @@ describe('runDesktopBrowserSignIn', () => {
     ]);
   });
 
-  it('signs out an existing session only after the browser step succeeded', async () => {
-    const { deps: d, log } = deps({ hasSession: () => true });
-    await runDesktopBrowserSignIn(d);
-    assert.ok(log.indexOf('signOut') > log.indexOf('start:clerk.worldmonitor.app'));
-    assert.ok(log.indexOf('signOut') < log.indexOf('finish'));
-  });
-
-  it('keeps an existing session when the browser step fails or is cancelled', async () => {
-    for (const reason of ['cancelled', 'timed_out', 'invalid_grant', 'network_failed']) {
-      const { deps: d, log } = deps({ hasSession: () => true, start: async () => { throw reason; } });
+  it('never signs the user out: Rust redeems on a fresh client and swaps only on success', async () => {
+    for (const finish of [
+      async () => COMPLETE,
+      async () => { throw 'network_failed'; },
+      async () => { throw 'sign_in_refused'; },
+    ]) {
+      const { deps: d, log } = deps({ finish });
       await runDesktopBrowserSignIn(d);
-      assert.equal(log.includes('signOut'), false, reason);
-      assert.equal(log.includes('dismiss'), true, reason);
+      assert.equal(log.some((entry) => entry.includes('signOut')), false);
     }
   });
 
