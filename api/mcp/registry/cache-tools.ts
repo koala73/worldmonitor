@@ -350,6 +350,11 @@ function normalizeStoredCredibilityScore(
     : score;
 }
 
+// Snapshots written before countryCodes existed carry only countryCode.
+function storyCountryCodes(story: Record<string, unknown>): unknown[] {
+  return Array.isArray(story.countryCodes) ? story.countryCodes : [story.countryCode];
+}
+
 function addNewsSourceProvenance(value: unknown): unknown {
   if (!Array.isArray(value)) return value;
   return value.map((story) => {
@@ -1513,6 +1518,7 @@ export const CACHE_TOOLS: ToolDef[] = [
             } },
             category: { type: 'string' }, threatLevel: { type: 'string' },
             countryCode: { type: ['string', 'null'] }, isAlert: { type: 'boolean' },
+            countryCodes: { type: 'array', items: { type: 'string' }, description: 'Every country named in the headline, primary (countryCode) first. The country filter matches any of them.' },
             sourceProvenance: {
               type: 'object',
               properties: {
@@ -1575,7 +1581,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       if (topic) narrowNested(data, 'gdelt-intel', 'topics', (t) => argStr(t.id) === topic);
       if (category) narrowNested(data, 'insights', 'topStories', (s) => argStr(s.category) === category);
       if (countries.length > 0) {
-        narrowNested(data, 'insights', 'topStories', (s) => matchesCode(s.countryCode, countries));
+        narrowNested(data, 'insights', 'topStories', (s) => storyCountryCodes(s).some((code) => matchesCode(code, countries)));
         narrowNested(data, 'advisories-bootstrap', 'advisories', (a) => matchesCode(a.country, countries));
       }
       if (argBool(params.alerts_only)) narrowNested(data, 'insights', 'topStories', (s) => s.isAlert === true);

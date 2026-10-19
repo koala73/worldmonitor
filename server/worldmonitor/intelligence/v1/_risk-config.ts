@@ -17,7 +17,8 @@
 //      public-facing section so downstream users of the proto API see why score
 //      values or movement semantics may shift between deploys.
 //
-// Last reviewed: 2026-06-06 (v8 — fix dead UCDP conflict-floor attribution:
+// Last reviewed: 2026-10-19 (v9 — news credits every country a headline names;
+// v8 — fix dead UCDP conflict-floor attribution:
 // the scorer read non-existent `intensity_level`/`type_of_violence` fields, so
 // UCDP never applied a war/minor floor and never counted toward health coverage.
 // Now classifies via the cached feed's real `violenceType`/`deathsBest`/`dateStart`
@@ -29,7 +30,7 @@
  * Bump on coefficient or scoring-contract changes so API clients can detect
  * score or movement-semantics drift.
  */
-export const CII_FORMULA_VERSION = 'v8';
+export const CII_FORMULA_VERSION = 'v9';
 
 /**
  * Conflict event activity log curve used before fatality/civilian/strike boosts.

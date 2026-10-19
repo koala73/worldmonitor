@@ -12,6 +12,10 @@ const require = createRequire(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const countryNames = require(join(__dirname, 'country-names.json'));
+// City and region names → ISO2 (scripts/build-news-places.mjs). Only extractCountryCodes
+// reads it; extractCountryCode keeps country and alias names only.
+const newsPlaces = require(join(__dirname, 'news-places.json'));
+const MAX_PLACE_WORDS = 4;
 
 // City/region/capital aliases → ISO2 not covered by country-names.json
 const ALIAS_MAP = {
@@ -24,6 +28,7 @@ const ALIAS_MAP = {
   'pyongyang': 'KP', 'north korean': 'KP',
   'taipei': 'TW', 'taiwanese': 'TW',
   'riyadh': 'SA', 'saudi': 'SA',
+  'houthi': 'YE', 'houthis': 'YE', 'hezbollah': 'LB',
   'tel aviv': 'IL', 'israeli': 'IL',
   'gaza': 'PS', 'west bank': 'PS', 'palestinian': 'PS',
   'damascus': 'SY', 'syrian': 'SY',
@@ -91,14 +96,10 @@ for (const [alias, iso2] of Object.entries(ALIAS_MAP)) {
   LOOKUP[alias.toLowerCase()] = iso2;
 }
 
-/**
- * Extract the first matching ISO2 country code from a text string.
- * Returns null if no match found.
- * @param {string} text
- * @returns {string|null}
- */
-export function extractCountryCode(text) {
-  if (!text) return null;
+// Yields each ISO2 code in reading order. A multi-word match consumes its words, so
+// "south sudan" never also yields "sudan".
+function* scanCountryCodes(text, { places = false } = {}) {
+  if (!text) return;
   // Normalize uppercase `US` (country abbreviation) to `united states` before lowercasing,
   // so it survives the stopword pass. Lowercase `us` (pronoun) has no equivalent expansion
   // and is stopped by UNIGRAM_STOPWORDS. `\b` avoids matching inside words like "plus".
@@ -107,19 +108,77 @@ export function extractCountryCode(text) {
     .replace(/['.(),/-]/g, ' ');
 
   const words = normalized.split(/\s+/).filter(Boolean);
+  const placeWords = places ? words.map((w) => w.replace(/[^a-z]/g, '')) : null;
   for (let i = 0; i < words.length; i++) {
+    if (placeWords) {
+      const placeMatch = matchPlace(placeWords, i);
+      if (placeMatch) {
+        yield placeMatch.iso2;
+        i += placeMatch.length - 1;
+        continue;
+      }
+    }
     if (i < words.length - 1) {
       const left = words[i].replace(/[^a-z]/g, '');
       const right = words[i + 1].replace(/[^a-z]/g, '');
       if (left && right) {
         const bigram = `${left} ${right}`;
-        if (LOOKUP[bigram] && LOOKUP[bigram] !== 'XX') return LOOKUP[bigram];
+        if (LOOKUP[bigram]) {
+          if (LOOKUP[bigram] !== 'XX') yield LOOKUP[bigram];
+          i++;
+          continue;
+        }
       }
     }
     const clean = words[i].replace(/[^a-z]/g, '');
     if (clean.length < 2) continue;
     if (UNIGRAM_STOPWORDS.has(clean)) continue;
-    if (LOOKUP[clean] && LOOKUP[clean] !== 'XX') return LOOKUP[clean];
+    if (LOOKUP[clean] && LOOKUP[clean] !== 'XX') yield LOOKUP[clean];
+  }
+}
+
+// Longest place name starting at placeWords[start], unless a country or alias name starts there
+// too: "South Sudan" must stay a country even if a place shares its first word.
+function matchPlace(placeWords, start) {
+  for (let n = Math.min(MAX_PLACE_WORDS, placeWords.length - start); n >= 1; n--) {
+    const phrase = placeWords.slice(start, start + n);
+    if (phrase.some((w) => !w)) continue;
+    const name = phrase.join(' ');
+    if (LOOKUP[name]) return null;
+    if (newsPlaces[name]) return { iso2: newsPlaces[name], length: n };
   }
   return null;
+}
+
+/**
+ * Extract the first matching ISO2 country code from a text string.
+ * Returns null if no match found.
+ * @param {string} text
+ * @returns {string|null}
+ */
+export function extractCountryCode(text) {
+  for (const code of scanCountryCodes(text)) return code;
+  return null;
+}
+
+/**
+ * Every distinct ISO2 country code a text string names, by country, alias, city or
+ * region name, in reading order.
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function extractCountryCodes(text) {
+  return [...new Set(scanCountryCodes(stripPublisherSuffix(text), { places: true }))];
+}
+
+/**
+ * Drop a trailing " - The Washington Post" / " | U.S. Department of State" publisher
+ * credit, so the outlet's home country is not read as a country the story is about.
+ * Only a tail of six words or fewer counts as a credit.
+ * @param {string} text
+ * @returns {string}
+ */
+export function stripPublisherSuffix(text) {
+  if (!text) return text;
+  return text.replace(/\s+[-–—|]\s+([^-–—|]+)$/, (match, tail) => (tail.trim().split(/\s+/).length <= 6 ? '' : match));
 }

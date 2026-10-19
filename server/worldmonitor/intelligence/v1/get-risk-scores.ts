@@ -660,7 +660,7 @@ interface AuxiliarySources {
   advisories: { byCountry: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> } | null;
   // Per-country displaced population by ISO3 code (UNHCR — persists after ceasefires)
   displacedByIso3: Record<string, number>;
-  newsTopStories: Array<{ countryCode: string | null; threatLevel: string; primaryTitle: string }>;
+  newsTopStories: NewsTopStory[];
   // Per-country classified headline counts from relay seedClassify() — written to news:threat:summary:v1
   threatSummaryByCountry: Record<string, { critical: number; high: number; medium: number; low: number; info: number }> | null;
   // Phase 1 (CII unification) — additive signal sources, all backed by an existing Redis key.
@@ -672,6 +672,16 @@ interface AuxiliarySources {
   // Phase 2 (CII unification) — per-country military activity from intelligence:military-cii:v1
   // (written by scripts/seed-military-cii.mjs). Keyed by ISO2.
   militaryCii: Record<string, any> | null;
+}
+
+type NewsTopStory = { countryCode: string | null; countryCodes?: string[]; threatLevel: string; primaryTitle: string };
+
+// Every country a headline names: "Iran-backed Houthis ... after Riyadh airport attack"
+// is Saudi news as much as Iranian news. Snapshots written before countryCodes existed
+// carry only countryCode.
+function newsStoryCountries(story: NewsTopStory): string[] {
+  if (story.countryCodes?.length) return story.countryCodes;
+  return story.countryCode ? [story.countryCode] : [];
 }
 
 const NEWS_THREAT_WEIGHT: Record<string, number> = {
@@ -829,6 +839,9 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     : [];
   const newsTopStories = rawStories.map((s: any) => ({
     countryCode: typeof s.countryCode === 'string' ? s.countryCode : null,
+    countryCodes: Array.isArray(s.countryCodes)
+      ? s.countryCodes.filter((c: unknown): c is string => typeof c === 'string')
+      : [],
     threatLevel: typeof s.threatLevel === 'string' ? s.threatLevel.toLowerCase() : 'low',
     primaryTitle: typeof s.primaryTitle === 'string' ? s.primaryTitle : '',
   }));
@@ -1089,12 +1102,12 @@ export function computeCIIScores(
   for (const story of aux.newsTopStories) {
     const weight = NEWS_THREAT_WEIGHT[story.threatLevel] ?? 0;
     if (weight === 0) continue;
-    // Primary attribution via countryCode from seed-insights geo-extraction
-    let code: string | null = story.countryCode && data[story.countryCode] ? story.countryCode : null;
-    // Fallback: keyword match on title
-    if (!code) code = normalizeCountryName(story.primaryTitle);
-    const signals = code ? data[code] : undefined;
-    if (signals) signals.newsScore += weight;
+    const tracked = newsStoryCountries(story).filter((code) => data[code]);
+    if (tracked.length === 0) {
+      const titleCode = normalizeCountryName(story.primaryTitle);
+      if (titleCode && data[titleCode]) tracked.push(titleCode);
+    }
+    for (const code of tracked) data[code]!.newsScore += weight;
   }
 
   // --- News threat summary (from relay seedClassify — all classified headlines) ---
@@ -1350,7 +1363,7 @@ export function countCiiRealtimeSignalDensityCoverage(
     const weight = NEWS_THREAT_WEIGHT[String(story.threatLevel || '').toLowerCase()] ?? 0;
     if (weight <= 0) continue;
     if (
-      isTier1CountryCode(story.countryCode)
+      newsStoryCountries(story).some(isTier1CountryCode)
       || isTier1CountryCode(normalizeCountryName(story.primaryTitle))
     ) {
       coveredFamilies.add('news');

@@ -79,6 +79,9 @@ COPY scripts/shared/country-name-to-iso2.cjs ./scripts/shared/country-name-to-is
 # country-names.json backs the full name→ISO2 map (#5359 uniform country
 # scoping); required by country-name-to-iso2.cjs at startup.
 COPY scripts/shared/country-names.json ./scripts/shared/country-names.json
+# news-places.json maps city/region names to ISO2 for the classify threat
+# summary (threatSummaryCountries); required by ais-relay.cjs at startup.
+COPY scripts/shared/news-places.json ./scripts/shared/news-places.json
 # iso3-to-iso2.json maps WMO SWIC member `code` (ISO 3166-1 alpha-3) onto the
 # weather_alert countryCode. scripts/_weather-alert-select.mjs reads it at
 # import time; missing it is ERR_MODULE_NOT_FOUND / ENOENT at relay start.

@@ -58,7 +58,7 @@ WorldMonitor 确实做预测的地方，那份记录会公开发布。[预测准
 覆盖的国家是一份**策展的监测范围**，而非全部主权国家——参见[一级国家标准](#2-各国-baselinerisk-和-eventmultiplier)。CRI 覆盖更广的 196 国范围。
 
 <Note>
-**面向开发者。** CII 与战略风险汇总由 `GET /api/intelligence/v1/get-risk-scores`（proto `worldmonitor.intelligence.v1.GetRiskScoresResponse`）提供。每个 `CiiScore` 上传输的 `methodology_version` 字段记录了计算该评分时本文档所处的修订版本。当前版本为 **v8**——参见[版本历史](#版本历史)。
+**面向开发者。** CII 与战略风险汇总由 `GET /api/intelligence/v1/get-risk-scores`（proto `worldmonitor.intelligence.v1.GetRiskScoresResponse`）提供。每个 `CiiScore` 上传输的 `methodology_version` 字段记录了计算该评分时本文档所处的修订版本。当前版本为 **v9**——参见[版本历史](#版本历史)。
 </Note>
 
 ---
@@ -255,6 +255,17 @@ overallScore = min(100, round(weightedAvg * 0.70 + 15))             # banded to 
 任何更改服务端/API 各国基线、事件乘数、气候分区的国家归属、战略风险汇总系数、内联服务端公式字面量、受保护的顶级公式常量或 CII 移动语义的编辑，**必须**同时提升 `server/worldmonitor/intelligence/v1/_risk-config.ts` 中的 `CII_FORMULA_VERSION`、在同一提交中更新本文档，并新增一条公开 CHANGELOG 条目。保留服务端/API 评分的真相源重构不提升传输版本。`tests/cii-scoring.test.mts` 中的测试会强制本文档列出 `CURATED_COUNTRIES` 中的每一个国家代码。
 
 ## 版本历史
+
+> **v9（2026-10-19）。** 新闻归属现在计入标题中提到的每一个国家。
+> `news:insights:v1` 头条新增 `countryCodes`（标题中提到的所有国家，主 `countryCode`
+> 在前，并加入利雅得、吉达、达曼、多哈、迪拜、贝鲁特等海湾、也门与黎凡特城市别名），
+> 信息分量会把每条新闻的威胁权重计入列表中每个被追踪的国家。此前一条新闻只计入第一个
+> 被提到的国家，因此"伊朗支持的胡塞武装在利雅得机场遇袭后警告冲突将长期持续"只计入
+> 伊朗，从不计入沙特阿拉伯。中继的按国家威胁汇总保留受影响国家规则，当该规则找不到
+> 目标时，改为计入标题中提到的每个国家，而不是不计入任何国家。被他国主导的新闻所报道
+> 的国家（沙特阿拉伯、也门、黎巴嫩、海湾国家）的 `information` 会上升；风险评分缓存
+> 键族迁移至 `risk:scores:sebuf:v9`，发射的 `methodology_version` 现为 `v9`，固定于
+> `methodology_version` 的客户端应重新建立基线。
 
 > **v8（2026-06-06）。** 修复了失效的 UCDP 冲突下限归属。服务端
 > 评分器从缓存的 `conflict:ucdp-events:v1` 源读取了不存在的

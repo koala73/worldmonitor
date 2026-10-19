@@ -90,7 +90,7 @@ CRI covers the broader 196-country universe.
 `GET /api/intelligence/v1/get-risk-scores` (proto
 `worldmonitor.intelligence.v1.GetRiskScoresResponse`). The on-the-wire
 `methodology_version` field on every `CiiScore` records which revision of this
-document was active when the score was computed. The current version is **v8** —
+document was active when the score was computed. The current version is **v9** —
 see [Version history](#version-history).
 </Note>
 
@@ -414,6 +414,20 @@ refactors that preserve server/API scores do not bump the wire version. Tests in
 in `CURATED_COUNTRIES`.
 
 ## Version history
+
+> **v9 (2026-10-19).** News attribution credits every country a headline names.
+> `news:insights:v1` top stories now carry `countryCodes` (every country named,
+> primary `countryCode` first, with Gulf, Yemeni and Levantine city aliases such as
+> Riyadh, Jeddah, Dammam, Doha, Dubai and Beirut), and the information component
+> adds each story's threat weight to every tracked country in that list. Before
+> this, a story counted only for the first country named, so "Iran-backed Houthis
+> warn of long conflict after Riyadh airport attack" scored Iran and never Saudi
+> Arabia. The relay's per-country threat summary keeps its affected-country rule
+> and, when that rule finds no target, now credits every country named instead of
+> none. `information` rises for countries that are the object of news led by
+> another country (Saudi Arabia, Yemen, Lebanon, Gulf states); the risk-score cache
+> key family moved to `risk:scores:sebuf:v9` and emitted `methodology_version` is
+> now `v9`, so clients pinned on `methodology_version` should re-baseline.
 
 > **v8 (2026-06-06).** Fixed dead UCDP conflict-floor attribution. The server
 > scorer read non-existent `intensity_level` / `type_of_violence` fields from the

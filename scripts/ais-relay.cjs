@@ -4930,6 +4930,7 @@ const THREAT_COUNTRY_NAME_TO_ISO2 = {
   'tel aviv':'IL','gaza':'PS','damascus':'SY','sanaa':'YE','houthi':'YE',
   'kremlin':'RU','pentagon':'US','nato':'','irgc':'IR','hezbollah':'LB',
   'hamas':'PS','taliban':'AF','riyadh':'SA','ankara':'TR',
+  'saudi':'SA','houthis':'YE',
 };
 // Sort by name length desc so longer multi-word names match first (used for tie-breaking same position)
 const THREAT_COUNTRY_NAME_ENTRIES = Object.entries(THREAT_COUNTRY_NAME_TO_ISO2)
@@ -4959,6 +4960,52 @@ function matchCountryNamesInText(text) {
   }
   return [];
 }
+
+// City and region names -> ISO2 (scripts/build-news-places.mjs), longest phrase first.
+const NEWS_PLACES = require('./shared/news-places.json');
+const NEWS_PLACE_MAX_WORDS = 4;
+function placeCountriesInText(lower) {
+  const words = lower.normalize('NFKD').replace(/\p{Diacritic}/gu, '')
+    .split(/[\s'.(),/-]+/).map((w) => w.replace(/[^a-z]/g, ''));
+  const found = [];
+  for (let i = 0; i < words.length; i++) {
+    for (let n = Math.min(NEWS_PLACE_MAX_WORDS, words.length - i); n >= 1; n--) {
+      const phrase = words.slice(i, i + n);
+      if (phrase.some((w) => !w)) continue;
+      const iso2 = NEWS_PLACES[phrase.join(' ')];
+      if (!iso2) continue;
+      if (!found.includes(iso2)) found.push(iso2);
+      i += n - 1;
+      break;
+    }
+  }
+  return found;
+}
+
+// The threat summary feeds CII's information score, where a headline that names no
+// attack target still says something about every country it mentions: "Saudi Arabia
+// intercepts missile near Red Sea oil hub" has no target and used to count for nobody.
+// Alert routing keeps the strict single-country rule above.
+function threatSummaryCountries(text) {
+  const affected = matchCountryNamesInText(text);
+  if (affected.length > 0) return affected;
+  // Drop a trailing " - The Washington Post" credit so the outlet's country is not counted.
+  // Mirrors stripPublisherSuffix in scripts/shared/geo-extract.mjs.
+  let rest = text.replace(/\s+[-–—|]\s+([^-–—|]+)$/, (match, tail) => (tail.trim().split(/\s+/).length <= 6 ? '' : match))
+    .toLowerCase();
+  const found = [];
+  for (const { iso2, regex } of THREAT_COUNTRY_NAME_ENTRIES) {
+    if (!regex.test(rest)) continue;
+    if (!found.includes(iso2)) found.push(iso2);
+    // Blank the match so "sudan" cannot also fire inside "south sudan".
+    rest = rest.replace(new RegExp(regex.source, 'gi'), (m) => ' '.repeat(m.length));
+  }
+  for (const iso2 of placeCountriesInText(rest)) {
+    if (!found.includes(iso2)) found.push(iso2);
+  }
+  return found;
+}
+
 
 // v5 (2026-04-28): bumped from v4 in lockstep with
 // server/worldmonitor/intelligence/v1/_shared.ts and
@@ -5201,7 +5248,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     if (!CLASSIFY_VALID_LEVELS.includes(level)) continue;
     if (seenTitles.has(titleArr[i])) continue;
     seenTitles.add(titleArr[i]);
-    for (const code of matchCountryNamesInText(titleArr[i])) {
+    for (const code of threatSummaryCountries(titleArr[i])) {
       if (!byCountry[code]) byCountry[code] = emptyLevel();
       byCountry[code][level]++;
     }
@@ -5241,7 +5288,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
       // Attribute newly classified title to country stats (global dedup via seenTitles)
       if (!seenTitles.has(chunk[idx])) {
         seenTitles.add(chunk[idx]);
-        for (const code of matchCountryNamesInText(chunk[idx])) {
+        for (const code of threatSummaryCountries(chunk[idx])) {
           if (!byCountry[code]) byCountry[code] = emptyLevel();
           byCountry[code][level]++;
         }

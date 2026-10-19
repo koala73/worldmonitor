@@ -75,6 +75,9 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // input snapshot, including `deriveUcdpIntensityByRegion` literals. Live scores
   // now shift upward for UCDP conflict countries (e.g. UA/PK/MX gain a war floor).
   v8: '87fcd775ca953f849c686b8c229c7b1a662056c9751d5c902b811257a1735b5e',
+  // v9 credits every country a news headline names (countryCodes) in the
+  // information component instead of only the first-named country.
+  v9: '46b7a6dfa494fcec09fb3b941d047c79680266cee2f949e1cd5975a28cfc9bc3',
 };
 
 const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT', 'UCDP_CLASSIFICATION_WINDOW_MS'];
@@ -533,7 +536,7 @@ function emptyAux() {
     orefData: null as { activeAlertCount: number; historyCount24h: number } | null,
     advisories: null as { byCountry: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> } | null,
     displacedByIso3: {} as Record<string, number>,
-    newsTopStories: [] as Array<{ countryCode: string | null; threatLevel: string; primaryTitle: string }>,
+    newsTopStories: [] as Array<{ countryCode: string | null; countryCodes?: string[]; threatLevel: string; primaryTitle: string }>,
     threatSummaryByCountry: null as Record<string, { critical: number; high: number; medium: number; low: number; info: number }> | null,
     aviationAlerts: [] as any[],
     earthquakes: [] as any[],
@@ -1415,6 +1418,26 @@ describe('CII scoring', () => {
     assert.ok(withNews.components!.newsActivity > 0, 'newsActivity should be > 0 with critical story');
     assert.ok(withNews.combinedScore > withoutNews.combinedScore,
       `RU with critical news (${withNews.combinedScore}) should exceed baseline (${withoutNews.combinedScore})`);
+  });
+
+  it('newsTopStories credits every country a headline names, not only the first', () => {
+    const aux = emptyAux();
+    aux.newsTopStories = [{
+      countryCode: 'IR',
+      countryCodes: ['IR', 'YE', 'SA'],
+      threatLevel: 'critical',
+      primaryTitle: 'Iran-backed Houthis warn of long conflict after Riyadh airport attack',
+    }];
+    const scores = computeCIIScores([], aux);
+    for (const code of ['IR', 'YE', 'SA']) {
+      assert.ok(scoreFor(scores, code)!.components!.newsActivity > 0, `${code} newsActivity should be > 0`);
+    }
+  });
+
+  it('newsTopStories from snapshots without countryCodes still credit countryCode', () => {
+    const aux = emptyAux();
+    aux.newsTopStories = [{ countryCode: 'SA', threatLevel: 'high', primaryTitle: 'Riyadh airport closed' }];
+    assert.ok(scoreFor(computeCIIScores([], aux), 'SA')!.components!.newsActivity > 0);
   });
 
   it('threatSummaryByCountry boosts newsActivity for target country', () => {

@@ -26,6 +26,7 @@ import { ENTITY_REGISTRY } from '../shared/entity-registry.js';
 import { buildDependencyGraph, calculateCascade } from '../shared/analysis-infrastructure-cascade.ts';
 import { getTheaterPostureSummaries } from '../shared/analysis-military-surge.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
+import { CII_FORMULA_VERSION } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
 // Entered through the registry barrel, not `rpc-tools.ts` directly: rpc-tools
 // imports TOOL_REGISTRY back from the barrel, so importing it first hits the
 // cycle mid-initialisation ("Cannot access 'RPC_TOOLS' before initialization").
@@ -209,7 +210,7 @@ function analysisPayloads() {
         },
       ],
     },
-    'risk:scores:sebuf:v8': {
+    'risk:scores:sebuf:v9': {
       ciiScores: [
         { region: 'IR', combinedScore: 88 },
         { region: 'TW', combinedScore: 61 },
@@ -668,7 +669,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     {
       tool: 'get_focal_points',
       params: {},
-      keys: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v8'],
+      keys: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v9'],
     },
     {
       tool: 'get_military_surge',
@@ -684,7 +685,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
       tool: 'get_alert_digest',
       params: {},
       keys: [
-        'risk:scores:sebuf:v8',
+        'risk:scores:sebuf:v9',
         'military:surges:v1',
         'cable-health-v1',
         'infra:outages:v1',
@@ -698,7 +699,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
       params: {},
       keys: [
         'news:insights:v1',
-        'risk:scores:sebuf:v8',
+        'risk:scores:sebuf:v9',
         'military:flights:v1',
         'unrest:events:v1',
         'seismology:earthquakes:v1',
@@ -972,7 +973,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
         const latest = Number(bound) === day;
         const date = new Date((latest ? day : day - 31) * 86400000).toISOString().slice(0, 10);
         const score = key.endsWith(':IR') ? (latest ? 50 : 30) : key.endsWith(':US') ? (latest ? 20 : 30) : 20;
-        return { result: [JSON.stringify({ d: date, v: 'v8', s: score, u: 1, c: 2, m: 3, n: 4, t: latest ? now : (day - 31) * 86400000 })] };
+        return { result: [JSON.stringify({ d: date, v: CII_FORMULA_VERSION, s: score, u: 1, c: 2, m: 3, n: 4, t: latest ? now : (day - 31) * 86400000 })] };
       }));
     };
     const tool = findTool('get_alert_digest');
@@ -981,7 +982,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.ok(historyCommands.every(cmd => cmd[0] === 'ZRANGE' && cmd.slice(4).join(' ') === 'BYSCORE REV LIMIT 0 1'));
     const movers = result.data.weekly.cii_movers;
     assert.equal(movers.window_days, 30);
-    assert.equal(movers.methodology_version, 'v8');
+    assert.equal(movers.methodology_version, CII_FORMULA_VERSION);
     assert.equal(movers.risers[0].countryCode, 'IR');
     assert.equal(movers.risers[0].delta, 20);
     assert.equal(movers.fallers[0].countryCode, 'US');
@@ -1226,7 +1227,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
           globalThis.fetch = async (input, init) => {
             const commands = JSON.parse(String(init?.body ?? '[]'));
             if (commands[0]?.[0] !== 'ZRANGE') return redisFetch(input, init);
-            const point = JSON.stringify({ d: new Date(fetchedAt).toISOString().slice(0, 10), v: 'v8', s: 20, u: 1, c: 2, m: 3, n: 4, t: fetchedAt });
+            const point = JSON.stringify({ d: new Date(fetchedAt).toISOString().slice(0, 10), v: CII_FORMULA_VERSION, s: 20, u: 1, c: 2, m: 3, n: 4, t: fetchedAt });
             return Response.json(commands.map((_, index) => ({ result: index % 2 === 0 ? [point] : [] })));
           };
         }

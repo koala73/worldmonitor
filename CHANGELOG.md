@@ -6,6 +6,15 @@ All notable changes to World Monitor are documented here.
 
 ### Changed
 
+- **CII formula `v9`: news counts for every country a headline names** (2026-10-19).
+  Top stories in `news:insights:v1` now carry `countryCodes`, and the CII
+  information component credits each tracked country in it instead of only the
+  first country named, so "Iran-backed Houthis warn of long conflict after Riyadh
+  airport attack" now counts for Saudi Arabia and Yemen as well as Iran. The relay
+  threat summary credits every named country when no attack target is found.
+  `get_news_intelligence` returns `countryCodes` and its `country` filter matches
+  any of them. The risk-score cache key family moved to `risk:scores:sebuf:v9`
+  and emitted `methodology_version` is now `v9`, so clients should re-baseline.
 - **Forecast `projections` no longer returned** (2026-10-07; #8967).
   `GET /api/forecast/v1/get-forecasts`, the `forecast:predictions:v2` payload, and
   the `get_forecast_predictions` and `get_forecast_case` MCP tools no longer
