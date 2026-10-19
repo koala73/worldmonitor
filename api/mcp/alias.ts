@@ -281,7 +281,11 @@ function resolveFamily(family: SealedFamily, args: unknown): ResolvedCall {
       }),
     };
   }
-  const datasets = argStrList(isPlainObject(args) ? args.dataset : undefined);
+  const rawDataset = isPlainObject(args) ? args.dataset : undefined;
+  if (!isPrimitive(rawDataset) && !(Array.isArray(rawDataset) && rawDataset.every(isPrimitive))) {
+    return { kind: 'invalid', violations: [{ field: 'dataset', description: 'dataset must be a string or an array of strings.' }] };
+  }
+  const datasets = argStrList(rawDataset);
   const hasTariffs = datasets.includes('tariffs');
   const hasOther = datasets.some((dataset) => dataset !== 'tariffs');
   if (hasTariffs && hasOther) {
@@ -338,6 +342,9 @@ function translateUsMfn(record: Record<string, unknown>, proName: string): Trans
       }],
     };
   }
+  if (!isPrimitive(record.limit)) {
+    return { ok: false, violations: [{ field: 'limit', description: 'limit must be a number.' }] };
+  }
   const limit = limitFromRowCap(argNum(record.limit));
   return { ok: true, arguments: { reporter: '840', years: limit.servedAsYears }, limit };
 }
@@ -364,6 +371,10 @@ function apiPaths(tool: ToolDef): readonly string[] {
 
 function cacheKeys(tool: ToolDef): readonly string[] {
   return '_cacheKeys' in tool && Array.isArray(tool._cacheKeys) ? tool._cacheKeys : [];
+}
+
+function isPrimitive(value: unknown): boolean {
+  return value == null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

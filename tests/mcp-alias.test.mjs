@@ -113,6 +113,10 @@ function stderrOf(err) {
   return Buffer.isBuffer(raw) ? raw.toString('utf8') : String(raw);
 }
 
+function servedNames() {
+  return [...TOOL_ALIASES.callableNames()];
+}
+
 function readBaseNames() {
   const spec = process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : 'origin/main';
   let listed;
@@ -262,6 +266,38 @@ describe('MCP tool aliases', { concurrency: false }, () => {
     assert.equal(free.body.error.data.violations[0].field, 'dataset');
     assert.notEqual(free.body.error.data?.reason, 'upgrade-required');
     assert.equal(free.pipe.count, 0);
+  });
+
+  it('rejects a non-primitive dataset or limit as Invalid params before quota', async () => {
+    const cases = [
+      [{ dataset: [{ toString: 'x' }] }, 'dataset'],
+      [{ dataset: { toString: 'x' } }, 'dataset'],
+      [{ dataset: 'tariffs', limit: { toString: 'x' } }, 'limit'],
+      [{ dataset: 'tariffs', limit: [1] }, 'limit'],
+    ];
+    for (const [args, field] of cases) {
+      const reply = await call('get_tariff_trends', args);
+      assert.equal(reply.status, 200, JSON.stringify(args));
+      assert.equal(reply.body.error.code, -32602, JSON.stringify(args));
+      assert.equal(reply.body.error.data.violations[0].field, field);
+      assert.equal(reply.pipe.count, 0);
+      assert.equal(calls.length, 0);
+    }
+  });
+
+  it('serves a budget-exceeded envelope with the notice that a strict client accepts', async () => {
+    const originalBudget = tariffTool._outputBudgetBytes;
+    tariffTool._outputBudgetBytes = 64;
+    try {
+      const reply = await call('get_tariff_trends', { dataset: 'tariffs' });
+      const structured = reply.body.result.structuredContent;
+      assert.equal(structured._budget_exceeded, true);
+      assert.equal(structured.deprecation.replacement, 'get_tariff_averages');
+      assert.deepEqual(JSON.parse(reply.body.result.content[0].text), structured);
+      assertValid(advertised('get_tariff_averages'), structured, 'budget-exceeded alias');
+    } finally {
+      tariffTool._outputBudgetBytes = originalBudget;
+    }
   });
 
   it('denies a free-allowance tariffs alias the same way as get_tariff_averages', async () => {
@@ -543,13 +579,23 @@ describe('coverageGap', () => {
     assert.deepEqual(coverageGap(['keep', 'gone'], ['keep'], new Set(), new Set(['gone'])), []);
   });
 
+  it('counts a retired name as still served, since an alias or opt-out cannot name it', () => {
+    const listed = TOOL_REGISTRY.map((tool) => tool.name);
+    const retired = RETIRED_TOOLS.map((tool) => tool.name);
+    assert.ok(retired.length > 0);
+    assert.deepEqual(
+      coverageGap([...listed, ...retired], servedNames(), TOOL_ALIASES.aliasNames(), new Set(TOOL_ALIASES.optOuts().keys())),
+      [],
+    );
+  });
+
   it('matches the sorted registry and the base revision', () => {
     const current = TOOL_REGISTRY.map((tool) => tool.name).sort();
     const fixture = JSON.parse(readFileSync(path.join(repoRoot, FIXTURE), 'utf8'));
     assert.deepEqual(fixture, current);
     const previous = readBaseNames();
     assert.deepEqual(
-      coverageGap(previous, current, TOOL_ALIASES.aliasNames(), new Set(TOOL_ALIASES.optOuts().keys())),
+      coverageGap(previous, servedNames(), TOOL_ALIASES.aliasNames(), new Set(TOOL_ALIASES.optOuts().keys())),
       [],
     );
   });
