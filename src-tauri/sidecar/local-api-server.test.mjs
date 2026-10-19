@@ -6,6 +6,7 @@ import https from 'node:https';
 import { createHmac } from 'node:crypto';
 import dns from 'node:dns/promises';
 import { EventEmitter } from 'node:events';
+import { setTimeout as sleep } from 'node:timers/promises';
 import net from 'node:net';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import os from 'node:os';
@@ -112,21 +113,33 @@ test('keeps seed-owned commodity vulnerability snapshots cloud-preferred', async
 async function setupCloudAuthRemote() {
   const mints = [];
   const calls = [];
-  const server = createServer((req, res) => {
+  // Tests override these to simulate short-lived sessions, failed mints and a slow edge.
+  const behavior = { mint: () => ({ lifetimeMs: 12 * 60 * 60 * 1000 }), callDelayMs: 0 };
+  const server = createServer(async (req, res) => {
     const url = new URL(req.url || '/', 'http://127.0.0.1');
-    res.writeHead(200, { 'content-type': 'application/json' });
     if (url.pathname === '/api/wm-session') {
       mints.push({ method: req.method, origin: req.headers.origin, userAgent: req.headers['user-agent'] });
-      res.end(JSON.stringify({ ok: true, exp: Date.now() + 12 * 60 * 60 * 1000, token: `wms_minted_${mints.length}` }));
+      const { lifetimeMs, fail, delayMs = 0 } = behavior.mint(mints.length);
+      await sleep(delayMs);
+      if (fail) {
+        res.writeHead(503).end();
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, exp: Date.now() + lifetimeMs, token: `wms_minted_${mints.length}` }));
       return;
     }
     calls.push({ path: url.pathname, headers: req.headers });
+    await sleep(behavior.callDelayMs);
+    if (res.destroyed) return;
+    res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ source: 'remote' }));
   });
   const port = await listen(server);
   return {
     mints,
     calls,
+    behavior,
     remoteBase: `http://127.0.0.1:${port}`,
     close: () => new Promise(resolve => server.close(resolve)),
   };
@@ -191,6 +204,27 @@ test('a forwarded Pro bearer reaches the cloud with one cached anonymous session
       assert.equal(call.headers['x-worldmonitor-key'], 'wms_minted_1');
       assert.equal(call.headers['x-worldmonitor-user-authorization'], undefined);
     }
+  });
+});
+
+test('a valid session survives a failed refresh until it expires', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    // Two minutes left is inside the refresh margin, so the next request refreshes.
+    remote.behavior.mint = (n) => (n === 1 ? { lifetimeMs: 2 * 60 * 1000 } : { fail: true });
+    const headers = { 'X-WorldMonitor-User-Authorization': 'Bearer clerk-jwt' };
+    for (let i = 0; i < 3; i += 1) assert.equal((await authFetch(url, { headers })).status, 200);
+    assert.equal(remote.mints.length, 2, 'one refresh attempt, then the retry pause');
+    for (const call of remote.calls) assert.equal(call.headers['x-worldmonitor-key'], 'wms_minted_1');
+  });
+});
+
+test('session minting and the cloud fetch share one deadline', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    remote.behavior.mint = () => ({ lifetimeMs: 12 * 60 * 60 * 1000, delayMs: 2_500 });
+    remote.behavior.callDelayMs = 2_000;
+    const startedAt = Date.now();
+    await authFetch(url, { headers: { 'X-WorldMonitor-User-Authorization': 'Bearer clerk-jwt' } });
+    assert.ok(Date.now() - startedAt < 3_600, `took ${Date.now() - startedAt}ms`);
   });
 });
 

@@ -760,14 +760,16 @@ async function mintCloudSession(remoteBase) {
   }
 }
 
+// A failed refresh keeps the current session until it actually expires.
 async function getCloudSessionToken(context) {
   const now = Date.now();
   const cached = context.cloudSession;
-  if (cached?.token && cached.exp - now > CLOUD_SESSION_REFRESH_MARGIN_MS) return cached.token;
-  if (cached && !cached.token && cached.retryAt > now) return null;
+  const usable = cached?.token && cached.exp > now ? cached.token : null;
+  if (usable && cached.exp - now > CLOUD_SESSION_REFRESH_MARGIN_MS) return usable;
+  if (cached?.retryAt > now) return usable;
   context.cloudSessionMint ??= mintCloudSession(context.remoteBase).then((session) => {
-    context.cloudSession = session ?? { token: null, retryAt: Date.now() + CLOUD_SESSION_RETRY_MS };
-    return session?.token ?? null;
+    context.cloudSession = session ?? { ...cached, token: usable, retryAt: Date.now() + CLOUD_SESSION_RETRY_MS };
+    return session?.token ?? usable;
   }).finally(() => {
     context.cloudSessionMint = null;
   });
@@ -775,6 +777,9 @@ async function getCloudSessionToken(context) {
 }
 
 async function proxyToCloud(requestUrl, req, context) {
+  // One budget covers session minting and the fetch, so a cold session cannot
+  // stretch a request past the renderer's fallback timeout.
+  const deadline = AbortSignal.timeout(CLOUD_PROXY_TIMEOUT_MS);
   const target = cloudUrl(context.remoteBase, requestUrl.pathname);
   target.search = requestUrl.search;
   const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
@@ -807,7 +812,13 @@ async function proxyToCloud(requestUrl, req, context) {
   if (userBearer) {
     headers.set('Authorization', userBearer);
     if (!headers.has('X-WorldMonitor-Key')) {
-      const session = await getCloudSessionToken(context);
+      const session = await Promise.race([
+        getCloudSessionToken(context),
+        new Promise((resolve) => {
+          if (deadline.aborted) resolve(null);
+          else deadline.addEventListener('abort', () => resolve(null), { once: true });
+        }),
+      ]);
       if (session) headers.set('X-WorldMonitor-Key', session);
     }
   }
@@ -820,7 +831,7 @@ async function proxyToCloud(requestUrl, req, context) {
       method: req.method,
       headers,
       body,
-      signal: AbortSignal.any([clientAbort.signal, AbortSignal.timeout(CLOUD_PROXY_TIMEOUT_MS)]),
+      signal: AbortSignal.any([clientAbort.signal, deadline]),
     });
   } finally {
     req.socket.off('close', onClientClose);
