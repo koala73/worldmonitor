@@ -9,7 +9,7 @@ vi.mock('@/app/lazy-services', () => ({ getSignalAggregator: async () => ({ getC
 vi.mock('@/services/related-assets', () => ({ getNearbyInfrastructure: () => [], preloadInfrastructureTables: async () => {} }));
 import { CountryIntelManager } from '@/app/country-intel';
 import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
-import { projectCountryMilitaryActivity } from '@/services/country-military-activity';
+import { projectCountryMilitaryActivity, projectCountryMilitarySignalCounts } from '@/services/country-military-activity';
 import * as runtimeConfig from '@/services/runtime-config';
 import { initTestI18n } from './helpers/i18n.mts';
 function manager(military?: unknown) { return new CountryIntelManager({ latestClusters: [], intelligenceCache: military === undefined ? {} : { military } } as unknown as AppContext); }
@@ -108,13 +108,19 @@ describe('actual result-local USNI and flight observation state',()=>{
   vi.spyOn(runtimeConfig,'isFeatureAvailable').mockReturnValue(true);rpc.flight.mockResolvedValue({flights:[protoFlight('A1')],pagination:{nextCursor:'',totalCount:1}});const {fetchMilitaryFlights}=await import('@/services/military-flights');const first=await fetchMilitaryFlights();const second=await fetchMilitaryFlights();expect(first.dataState.mode).toBe('live');expect(second.dataState).toMatchObject({mode:'cached',timestamp:null});expect(second.flights).toBe(first.flights);expect(rpc.flight).toHaveBeenCalledOnce();
  });
 });
-it('legacy cache projections preserve confirmed empty, unknown cached negatives and supported partial positives',async()=>{
+it('keeps legacy cache projection semantics while website counts require a qualified owner',async()=>{
  const ctx={latestClusters:[],intelligenceCache:{military:empty()}} as unknown as AppContext;const m=new CountryIntelManager(ctx);
- let signals=await m.getCountrySignals('US','United States');expect(signals.militaryFlights).toBe(0);expect(signals.militaryVessels).toBe(0);expect(Reflect.get(m,'selectCountryMilitary').call(m,'US','United States').summary.foreignPresence).toBe(false);
- ctx.intelligenceCache.military=empty(cached,cached,false) as never;signals=await m.getCountrySignals('US','United States');expect(signals.militaryFlights).toBeNull();expect(signals.militaryVessels).toBeNull();expect(Reflect.get(m,'selectCountryMilitary').call(m,'US','United States').summary.foreignPresence).toBeNull();
- ctx.intelligenceCache.military={...empty(cached,cached,false),flights:[{lat:38,lon:-77,operatorCountry:'GB'}]} as never;signals=await m.getCountrySignals('US','United States');expect(signals.militaryFlights).toBe(1);const summary=Reflect.get(m,'selectCountryMilitary').call(m,'US','United States').summary;expect(summary.foreignPresence).toBe(true);expect(summary.coverageNotes.join(' ')).toMatch(/previous cached/);
- ctx.intelligenceCache.military={...empty(cached,cached,false),vessels:[{lat:38,lon:-77,operatorCountry:'GB'}],vesselCoverageNotes:['Partial fixture vessel coverage']} as never;signals=await m.getCountrySignals('US','United States');expect(signals.militaryVessels).toBe(1);const vesselSummary=Reflect.get(m,'selectCountryMilitary').call(m,'US','United States').summary;expect(vesselSummary.nearbyVessels).toBe(1);expect(vesselSummary.foreignPresence).toBe(true);expect(vesselSummary.coverageNotes).toContain('Partial fixture vessel coverage');
- ctx.intelligenceCache.military=undefined;expect((await m.getCountrySignals('US','United States')).militaryFlights).toBeNull();expect(Reflect.get(m,'selectCountryMilitary').call(m,'US','United States').summary.foreignPresence).toBeNull();
+ const legacy=()=>m.selectCountryMilitary('US','United States');
+ expect(legacy().signalCounts).toMatchObject({militaryFlights:0,militaryVessels:0});expect(legacy().summary.foreignPresence).toBe(false);
+ ctx.intelligenceCache.military=empty(cached,cached,false) as never;
+ expect(legacy().signalCounts).toMatchObject({militaryFlights:null,militaryVessels:null});expect(legacy().summary.foreignPresence).toBeNull();
+ ctx.intelligenceCache.military={...empty(cached,cached,false),flights:[{lat:38,lon:-77,operatorCountry:'GB'}]} as never;
+ expect(legacy().signalCounts.militaryFlights).toBe(1);expect(legacy().summary.foreignPresence).toBe(true);expect(legacy().summary.coverageNotes.join(' ')).toMatch(/previous cached/);
+ expect((await m.getCountrySignals('US','United States')).militaryFlights).toBeNull();
+ ctx.intelligenceCache.military={...empty(cached,cached,false),vessels:[{lat:38,lon:-77,operatorCountry:'GB'}],vesselCoverageNotes:['Partial fixture vessel coverage']} as never;
+ expect(legacy().signalCounts.militaryVessels).toBe(1);expect(legacy().summary.nearbyVessels).toBe(1);expect(legacy().summary.foreignPresence).toBe(true);expect(legacy().summary.coverageNotes).toContain('Partial fixture vessel coverage');
+ expect((await m.getCountrySignals('US','United States')).militaryVessels).toBeNull();
+ ctx.intelligenceCache.military=undefined;expect((await m.getCountrySignals('US','United States')).militaryFlights).toBeNull();expect(legacy().summary.foreignPresence).toBeNull();
 });
 
 
@@ -194,4 +200,158 @@ it('keeps the qualified military card independent of the legacy global cache', (
  Reflect.set(m,'qualifiedMilitarySummary',{code:'US',value:qualified});
  expect(read()).toBe(qualified);
  expect(Reflect.get(m,'buildMilitarySummary').call(m,'FR','France').foreignPresence).toBeNull();
+});
+
+import * as qualifiedMilitaryLoader from '@/services/country-military-activity';
+import { countrySignalsFromMilitary } from '@/services/country-signals';
+import { unavailableCountrySignal } from '../../shared/country-signal-observations';
+import { CountrySectionError } from '@/services/country-brief-error';
+type QualifiedMilitaryResult = Awaited<ReturnType<typeof qualifiedMilitaryLoader.loadHostCountryMilitaryActivity>>;
+const qualifiedCounts = { militaryFlights: 0, militaryFlightsInCountry: 0, militaryVessels: 93, militaryVesselsInCountry: 1 };
+function qualifiedResult(patch: Partial<QualifiedMilitaryResult> = {}): QualifiedMilitaryResult {
+ return { ownFlights: 0, foreignFlights: 0, nearbyVessels: 1, foreignPresence: false, nearestBases: [], coverage: 'complete',
+  coverageNotes: ['Controlled AIS snapshot 2026-10-19T01:53:39.344Z'], signalCounts: { ...qualifiedCounts }, deniedSignalFields: [],
+  qualified: { ...unavailableCountrySignal('CN','military','Controlled'), state: 'observed', partial: false, reason: null }, ...patch };
+}
+function ownerFixture() {
+ const panel = new CountryDeepDivePanel();
+ Reflect.set(panel,'currentCode','CN');
+ const body=document.createElement('div');Reflect.set(panel,'signalsBody',body);
+ panel.updateSignals({...countrySignalsFromMilitary('CN'), earthquakes:7});
+ let visible=true,code='CN'; const abort=new AbortController();
+ const page={signal:abort.signal,isVisible:()=>visible,getCode:()=>code,getName:()=>code==='CN'?'China':'France',
+  getSignalCounts:panel.getSignalCounts.bind(panel),updateSignals:vi.fn(panel.updateSignals.bind(panel)),
+  updateMilitaryActivity:vi.fn(),updateScore:vi.fn(),clearQualifiedCountrySignals:vi.fn(),syncCountryPremiumSectionsAccess:vi.fn()};
+ const ctx={countryBriefPage:page,latestClusters:[],intelligenceCache:{},isDestroyed:false};
+ const intel=new CountryIntelManager(ctx as unknown as AppContext);
+ const presentation={page,code:'CN',refreshGeneration:1,signalDetailsPending:false};
+ Reflect.set(intel,'currentCountryPresentation',presentation);
+ Reflect.set(intel,'qualifiedSource',{clearLoadedData:vi.fn(),settleMandatoryReads:async()=>{},countrySignals:async(_code:string,family:Parameters<typeof unavailableCountrySignal>[1])=>unavailableCountrySignal(_code,family,'Controlled')});
+ vi.spyOn(intel as any,'renderCountryEconomics').mockImplementation(()=>{});
+ const load=()=>Reflect.get(intel,'loadQualifiedCountrySignals').call(intel,code);
+ const refresh=async()=>{intel.refreshOpenBrief();await tick();};
+ const base=(earthquakes=7): Awaited<ReturnType<CountryIntelManager['getCountrySignals']>> =>({...countrySignalsFromMilitary(code,{militaryFlights:999,militaryFlightsInCountry:998,militaryVessels:997,militaryVesselsInCountry:996}),earthquakes} as Awaited<ReturnType<CountryIntelManager['getCountrySignals']>>);
+ return {intel,panel,body,page,ctx,presentation,abort,load,refresh,base,setHidden:()=>{visible=false;},setCountry:()=>{code='FR';},cleanup:()=>panel.hide()};
+}
+describe('website qualified military presentation owner',()=>{
+ it('publishes exact qualified near/contained counts, card and clocks without changing other chips',async()=>{
+  const h=ownerFixture(),value=qualifiedResult();vi.spyOn(qualifiedMilitaryLoader,'loadHostCountryMilitaryActivity').mockResolvedValue(value);
+  await h.load();
+  expect(h.page.updateMilitaryActivity).toHaveBeenLastCalledWith(expect.objectContaining({ownFlights:0,foreignFlights:0,nearbyVessels:1}));
+  expect(h.panel.getSignalCounts()).toMatchObject({...qualifiedCounts,earthquakes:7});
+  expect(h.body.textContent).toContain('Controlled AIS snapshot 2026-10-19T01:53:39.344Z');
+  expect(fetch).not.toHaveBeenCalled();h.cleanup();
+ });
+ it.each(['flights','vessels'] as const)('does not reuse a prior foreign %s positive after that family is confirmed empty',async family=>{
+  const h=ownerFixture();
+  const foreign=[{lat:35,lon:110,operatorCountry:'US'}];
+  const firstFlights=family==='flights'?foreign:[];
+  const firstVessels=family==='vessels'?foreign:[];
+  const first=qualifiedResult({...projectCountryMilitaryActivity('CN','China',firstFlights,firstVessels),signalCounts:projectCountryMilitarySignalCounts('CN',firstFlights,firstVessels)});
+  const flights=family==='flights'?[]:null;
+  const vessels=family==='vessels'?[]:null;
+  const next=qualifiedResult({...projectCountryMilitaryActivity('CN','China',flights,vessels),signalCounts:projectCountryMilitarySignalCounts('CN',flights,vessels),coverage:'partial',coverageNotes:['Current cleared-family snapshot; other family unavailable']});
+  const read=vi.spyOn(qualifiedMilitaryLoader,'loadHostCountryMilitaryActivity').mockResolvedValueOnce(first).mockResolvedValueOnce(next);
+  await h.load();expect(h.page.updateMilitaryActivity).toHaveBeenLastCalledWith(expect.objectContaining({foreignPresence:true}));
+  vi.spyOn(h.intel,'getCountrySignals').mockResolvedValue(h.base());await h.refresh();
+  expect(h.panel.getSignalCounts()).toMatchObject({militaryFlights:0,militaryFlightsInCountry:0,militaryVessels:0,militaryVesselsInCountry:0,earthquakes:7});
+  const card=h.page.updateMilitaryActivity.mock.lastCall![0];
+  expect(card).toMatchObject({ownFlights:0,foreignFlights:0,nearbyVessels:0});
+  expect(card.coverageNotes.join(' ')).toContain('not fresh');expect(card.coverageNotes.join(' ')).toContain('2026-10-19T01:53:39.344Z');
+  expect(card.foreignPresence).not.toBe(true);expect(render(card)).not.toContain('Foreign PresenceDetected');
+  expect(read).toHaveBeenCalledTimes(2);expect(fetch).not.toHaveBeenCalled();h.cleanup();
+ });
+ it.each(['flights','vessels'] as const)('preserves fresh permitted foreign presence when %s are denied',async deniedFamily=>{
+  const h=ownerFixture(),foreign=[{lat:35,lon:110,operatorCountry:'US'}];
+  const flights=deniedFamily==='flights'?null:foreign;
+  const vessels=deniedFamily==='vessels'?null:foreign;
+  const value=qualifiedResult({...projectCountryMilitaryActivity('CN','China',flights,vessels),signalCounts:projectCountryMilitarySignalCounts('CN',flights,vessels),deniedSignalFields:deniedFamily==='flights'?['militaryFlights','militaryFlightsInCountry']:['militaryVessels','militaryVesselsInCountry'],coverage:'partial'});
+  expect(value.foreignPresence).toBe(true);
+  vi.spyOn(qualifiedMilitaryLoader,'loadHostCountryMilitaryActivity').mockResolvedValue(value);await h.load();
+  expect(h.panel.getSignalCounts()).toMatchObject({...value.signalCounts,earthquakes:7});
+  const card=h.page.updateMilitaryActivity.mock.lastCall![0];
+  expect(card.foreignPresence).toBe(true);expect(render(card)).toContain('Foreign PresenceDetected');
+  expect(fetch).not.toHaveBeenCalled();h.cleanup();
+ });
+ it.each(['flights','vessels'] as const)('keeps qualified foreign %s presence and original clocks on full ordinary failure',async family=>{
+  const h=ownerFixture(),foreign=[{lat:35,lon:110,operatorCountry:'US'}];
+  const flights=family==='flights'?foreign:[],vessels=family==='vessels'?foreign:[];
+  const first=qualifiedResult({...projectCountryMilitaryActivity('CN','China',flights,vessels),signalCounts:projectCountryMilitarySignalCounts('CN',flights,vessels)});
+  const read=vi.spyOn(qualifiedMilitaryLoader,'loadHostCountryMilitaryActivity').mockResolvedValue(first);
+  await h.load();vi.spyOn(h.intel,'getCountrySignals').mockResolvedValue(h.base());
+  read.mockRejectedValue(new CountrySectionError('unavailable','Controlled full outage'));await h.refresh();
+  const card=h.page.updateMilitaryActivity.mock.lastCall![0];
+  expect(card.foreignPresence).toBe(true);expect(render(card)).toContain('Foreign PresenceDetected');
+  expect(h.panel.getSignalCounts()).toMatchObject({...first.signalCounts,earthquakes:7});
+  expect(card.coverageNotes.join(' ')).toContain('not fresh');expect(card.coverageNotes.join(' ')).toContain('2026-10-19T01:53:39.344Z');
+  expect(fetch).not.toHaveBeenCalled();h.cleanup();
+ });
+ it('preserves attributed retained foreign flights when vessels refresh empty',async()=>{
+  const h=ownerFixture(),foreign=[{lat:35,lon:110,operatorCountry:'US'}];
+  const first=qualifiedResult({...projectCountryMilitaryActivity('CN','China',foreign,[]),signalCounts:projectCountryMilitarySignalCounts('CN',foreign,[])});
+  const next=qualifiedResult({...projectCountryMilitaryActivity('CN','China',null,[]),signalCounts:projectCountryMilitarySignalCounts('CN',null,[]),coverage:'partial'});
+  vi.spyOn(qualifiedMilitaryLoader,'loadHostCountryMilitaryActivity').mockResolvedValueOnce(first).mockResolvedValueOnce(next);
+  await h.load();vi.spyOn(h.intel,'getCountrySignals').mockResolvedValue(h.base());await h.refresh();
+  const card=h.page.updateMilitaryActivity.mock.lastCall![0];expect(card).toMatchObject({foreignFlights:1,foreignPresence:true,nearbyVessels:0});
+  expect(render(card)).toContain('Foreign PresenceDetected');expect(card.coverageNotes.join(' ')).toContain('not fresh');
+  expect(fetch).not.toHaveBeenCalled();h.cleanup();
+ });
+ it('keeps legacy map positives out before qualified data and preserves qualified zero and licensed null',async()=>{
+  const h=ownerFixture();Reflect.set(h.intel,'selectCountryMilitary',()=>({signalCounts:{militaryFlights:999,militaryFlightsInCountry:998,militaryVessels:997,militaryVesselsInCountry:996}}));
+  expect(await h.intel.getCountrySignals('CN','China')).toMatchObject({militaryFlights:null,militaryVessels:null});
+  vi.spyOn(qualifiedMilitaryLoader,'loadHostCountryMilitaryActivity').mockResolvedValue(qualifiedResult({signalCounts:{militaryFlights:null,militaryFlightsInCountry:null,militaryVessels:0,militaryVesselsInCountry:0},ownFlights:null,foreignFlights:null,nearbyVessels:0,foreignPresence:null}));
+  await h.load();expect(h.panel.getSignalCounts()).toMatchObject({militaryFlights:null,militaryFlightsInCountry:null,militaryVessels:0,militaryVesselsInCountry:0});
+  expect(await h.intel.getCountrySignals('CN','China')).toMatchObject({militaryFlights:null,militaryVessels:0});h.cleanup();
+ });
+ it('keeps the qualified owner through base/score refresh, ordinary failure and subsequent recovery',async()=>{
+  const h=ownerFixture();const read=vi.spyOn(qualifiedMilitaryLoader,'loadHostCountryMilitaryActivity').mockResolvedValue(qualifiedResult());
+  await h.load();vi.spyOn(h.intel,'getCountrySignals').mockResolvedValue(h.base(12));
+  read.mockRejectedValue(new CountrySectionError('unavailable','Controlled outage'));await h.refresh();
+  expect(h.panel.getSignalCounts()).toMatchObject({...qualifiedCounts,earthquakes:12});
+  expect(h.page.updateMilitaryActivity).toHaveBeenLastCalledWith(expect.objectContaining({nearbyVessels:1}));
+  expect(h.body.textContent).toContain('not fresh');expect(h.body.textContent).toContain('2026-10-19T01:53:39.344Z');
+  read.mockResolvedValue(qualifiedResult({signalCounts:{...qualifiedCounts,militaryVessels:0,militaryVesselsInCountry:0},nearbyVessels:0}));await h.refresh();
+  expect(h.panel.getSignalCounts()).toMatchObject({militaryVessels:0,militaryVesselsInCountry:0,earthquakes:12});h.cleanup();
+ });
+ it.each(['locked','partial-flights','partial-vessels'] as const)('clears %s denied fields and never resurrects them on an ordinary failure',async mode=>{
+  const h=ownerFixture();const read=vi.spyOn(qualifiedMilitaryLoader,'loadHostCountryMilitaryActivity').mockResolvedValue(qualifiedResult());await h.load();
+  vi.spyOn(h.intel,'getCountrySignals').mockResolvedValue(h.base());
+  if(mode==='locked')read.mockRejectedValue(new CountrySectionError('locked','Controlled denied'));
+  else if(mode==='partial-flights')read.mockResolvedValue(qualifiedResult({signalCounts:{...qualifiedCounts,militaryFlights:null,militaryFlightsInCountry:null},ownFlights:null,foreignFlights:null,deniedSignalFields:['militaryFlights','militaryFlightsInCountry']}));
+  else read.mockResolvedValue(qualifiedResult({signalCounts:{...qualifiedCounts,militaryVessels:null,militaryVesselsInCountry:null},nearbyVessels:null,deniedSignalFields:['militaryVessels','militaryVesselsInCountry']}));
+  const expected={militaryFlights:mode==='partial-vessels'?0:null,militaryFlightsInCountry:mode==='partial-vessels'?0:null,militaryVessels:mode==='partial-flights'?93:null,militaryVesselsInCountry:mode==='partial-flights'?1:null,earthquakes:7};
+  await h.refresh();expect(h.panel.getSignalCounts()).toMatchObject(expected);
+  read.mockRejectedValue(new CountrySectionError('unavailable','Later outage'));await h.refresh();
+  expect(h.panel.getSignalCounts()).toMatchObject(expected);
+  expect(h.page.updateMilitaryActivity).toHaveBeenLastCalledWith(expect.objectContaining({ownFlights:mode==='partial-vessels'?0:null,foreignFlights:mode==='partial-vessels'?0:null,nearbyVessels:mode==='partial-flights'?1:null}));h.cleanup();
+ });
+ it.each((['abort','hide','country','page-new-signal','page-same-signal','signal-replaced','generation','destroy'] as const).flatMap(kind=>(['success','failure'] as const).map(outcome=>({kind,outcome}))))('suppresses stale counts/card/notes after $kind $outcome',async ({kind,outcome})=>{
+  const h=ownerFixture(),pending=deferred<QualifiedMilitaryResult>();vi.spyOn(qualifiedMilitaryLoader,'loadHostCountryMilitaryActivity').mockReturnValue(pending.promise);
+  const work=h.load().catch(()=>{});
+  if(kind==='abort')h.abort.abort();if(kind==='hide')h.setHidden();if(kind==='country')h.setCountry();
+  if(kind==='page-new-signal')h.ctx.countryBriefPage={...h.page,signal:new AbortController().signal};
+  if(kind==='page-same-signal')h.ctx.countryBriefPage={...h.page};
+  if(kind==='signal-replaced')h.page.signal=new AbortController().signal;
+  if(kind==='generation')h.presentation.refreshGeneration++;if(kind==='destroy')h.intel.destroy();
+  if(outcome==='success')pending.resolve(qualifiedResult());else pending.reject(new CountrySectionError('unavailable','Late failure'));await work;
+  expect(h.page.updateSignals).not.toHaveBeenCalled();expect(h.page.updateMilitaryActivity).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();h.cleanup();
+ });
+ it.each(['success','failure'] as const)('leaves the newer same-country refresh visible after older %s',async outcome=>{
+  const h=ownerFixture(),old=deferred<QualifiedMilitaryResult>(),next=deferred<QualifiedMilitaryResult>();
+  const read=vi.spyOn(qualifiedMilitaryLoader,'loadHostCountryMilitaryActivity').mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise);
+  const first=h.load();vi.spyOn(h.intel,'getCountrySignals').mockResolvedValue(h.base());await h.refresh();
+  next.resolve(qualifiedResult({signalCounts:{...qualifiedCounts,militaryVessels:2,militaryVesselsInCountry:0},nearbyVessels:0}));await tick();
+  if(outcome==='success')old.resolve(qualifiedResult());else old.reject(new CountrySectionError('unavailable','Older failure'));await first;expect(read).toHaveBeenCalledTimes(2);
+  expect(h.panel.getSignalCounts()).toMatchObject({militaryVessels:2,militaryVesselsInCountry:0});expect(h.page.updateMilitaryActivity).toHaveBeenLastCalledWith(expect.objectContaining({nearbyVessels:0}));h.cleanup();
+ });
+ it('clears the owner on access loss, suppresses pending pre-loss data, and recovers on access return',async()=>{
+  const h=ownerFixture(),pending=deferred<QualifiedMilitaryResult>();const read=vi.spyOn(qualifiedMilitaryLoader,'loadHostCountryMilitaryActivity').mockResolvedValueOnce(qualifiedResult()).mockReturnValueOnce(pending.promise);
+  await h.load();vi.spyOn(h.intel,'getCountrySignals').mockResolvedValue(h.base());await h.refresh();
+  Reflect.set(h.intel,'lastHadPremium',true);Reflect.set(h.intel,'getCountryController',()=>({refreshPremium(){}}));
+  read.mockRejectedValue(new CountrySectionError('locked','Access lost'));
+  Reflect.get(h.intel,'handlePremiumAccessTransition').call(h.intel,false);expect(h.panel.getSignalCounts()).toMatchObject({militaryFlights:null,militaryVessels:null});await tick();
+  pending.resolve(qualifiedResult());await tick();expect(h.panel.getSignalCounts()).toMatchObject({militaryFlights:null,militaryVessels:null});
+  read.mockResolvedValue(qualifiedResult());Reflect.get(h.intel,'handlePremiumAccessTransition').call(h.intel,true);await tick();
+  expect(h.panel.getSignalCounts()).toMatchObject(qualifiedCounts);h.cleanup();
+ });
 });
