@@ -388,13 +388,20 @@ describe('MCP tool aliases', { concurrency: false }, () => {
     assert.deepEqual(Object.keys(price.body.result.structuredContent.data), ['bigmac']);
   });
 
-  it('mirrors a jmespath notice into text and structuredContent', async () => {
+  it('keeps raw text for a non-object projection and mirrors the notice into an object one', async () => {
     const scalar = await call('get_tariff_trends', { dataset: 'tariffs', jmespath: 'datapoints[0].year' });
-    const scalarText = JSON.parse(scalar.body.result.content[0].text);
-    assert.deepEqual(scalarText, scalar.body.result.structuredContent);
-    assert.equal(scalarText.projection, 2023);
-    assert.equal(scalarText.deprecation.replacement, 'get_tariff_averages');
+    assert.equal(JSON.parse(scalar.body.result.content[0].text), 2023);
+    assert.equal(scalar.body.result.structuredContent.projection, 2023);
+    assert.equal(scalar.body.result.structuredContent.deprecation.replacement, 'get_tariff_averages');
     assertValid(advertised('get_tariff_averages'), scalar.body.result.structuredContent, 'scalar projection');
+
+    seedPriceBundle();
+    const list = await call('get_tariff_trends', { dataset: 'bigmac', jmespath: 'data.bigmac.countries[].code' });
+    const direct = await call('get_price_and_debt_indicators', { dataset: 'bigmac', jmespath: 'data.bigmac.countries[].code' });
+    assert.equal(list.body.result.content[0].text, direct.body.result.content[0].text);
+    assert.deepEqual(JSON.parse(list.body.result.content[0].text), ['US', 'DE']);
+    assert.equal(list.body.result.structuredContent.deprecation.replacement, 'get_price_and_debt_indicators');
+    assertValid(advertised('get_price_and_debt_indicators'), list.body.result.structuredContent, 'array projection');
 
     const object = await call('get_tariff_trends', { dataset: 'tariffs', jmespath: 'datapoints[0]' });
     const objectText = JSON.parse(object.body.result.content[0].text);

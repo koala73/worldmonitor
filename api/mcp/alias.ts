@@ -36,22 +36,15 @@ export type ResolvedCall =
   | { readonly kind: 'invalid'; readonly violations: readonly RpcValidationViolation[] }
   | { readonly kind: 'unknown' };
 
-export type AliasFamily =
-  | {
-      readonly kind: 'rename';
-      readonly name: string;
-      readonly target: string;
-      readonly translate: 'identity';
-    }
-  | {
-      readonly kind: 'dataset-split';
-      readonly name: string;
-      readonly param: 'dataset';
-      readonly proValue: 'tariffs';
-      readonly proTarget: string;
-      readonly restTarget: string;
-      readonly proTranslate: 'us-mfn-from-limit';
-    };
+export type AliasFamily = {
+  readonly kind: 'dataset-split';
+  readonly name: string;
+  readonly param: 'dataset';
+  readonly proValue: 'tariffs';
+  readonly proTarget: string;
+  readonly restTarget: string;
+  readonly proTranslate: 'us-mfn-from-limit';
+};
 
 export type AliasOptOut = { readonly name: string; readonly reason: string };
 
@@ -90,15 +83,7 @@ type Translation =
     }
   | { readonly ok: false; readonly violations: readonly RpcValidationViolation[] };
 
-type SealedRename = {
-  readonly kind: 'rename';
-  readonly name: string;
-  readonly target: ToolDef;
-  readonly replacements: readonly string[];
-  readonly hint: string;
-};
-
-type SealedDatasetSplit = {
+type SealedFamily = {
   readonly kind: 'dataset-split';
   readonly name: string;
   readonly pro: ToolDef;
@@ -106,8 +91,6 @@ type SealedDatasetSplit = {
   readonly replacements: readonly string[];
   readonly hint: string;
 };
-
-type SealedFamily = SealedRename | SealedDatasetSplit;
 
 export function loadToolAliases(
   registry: readonly ToolDef[],
@@ -135,19 +118,6 @@ export function sealAliases(
     seenAliases.add(family.name);
     if (registryByName.has(family.name) || retiredByName.has(family.name)) {
       fail(family.name, 'alias name is already callable');
-    }
-    if (family.kind === 'rename') {
-      const target = registryByName.get(family.target);
-      if (!target) fail(family.name, `unregistered target ${family.target}`);
-      aliasForTarget.set(target.name, family.name);
-      sealed.push({
-        kind: 'rename',
-        name: family.name,
-        target,
-        replacements: [target.name],
-        hint: `${family.name} now calls ${target.name}.`,
-      });
-      continue;
     }
     const pro = registryByName.get(family.proTarget);
     if (!pro) fail(family.name, `unregistered target ${family.proTarget}`);
@@ -183,8 +153,7 @@ export function sealAliases(
 
   const checked = new Set<string>();
   for (const family of sealed) {
-    const targets = family.kind === 'rename' ? [family.target] : [family.pro, family.rest];
-    for (const target of targets) {
+    for (const target of [family.pro, family.rest]) {
       if (checked.has(target.name)) continue;
       checked.add(target.name);
       const advertised = advertisedOutputSchema(target.outputSchema, { permitDeprecation: true });
@@ -269,18 +238,6 @@ export function deprecationNotice(input: {
 }
 
 function resolveFamily(family: SealedFamily, args: unknown): ResolvedCall {
-  if (family.kind === 'rename') {
-    return {
-      kind: 'alias',
-      tool: family.target,
-      arguments: identityArguments(args),
-      notice: deprecationNotice({
-        alias: family.name,
-        replacement: family.target.name,
-        message: `${family.name} now calls ${family.target.name}.`,
-      }),
-    };
-  }
   const rawDataset = isPlainObject(args) ? args.dataset : undefined;
   if (!isPrimitive(rawDataset) && !(Array.isArray(rawDataset) && rawDataset.every(isPrimitive))) {
     return { kind: 'invalid', violations: [{ field: 'dataset', description: 'dataset must be a string or an array of strings.' }] };

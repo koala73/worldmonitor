@@ -152,8 +152,8 @@ export function applyDeprecationNotice(
   } catch {
     parsed = undefined;
   }
-  const nextText = isPlainObject(parsed)
-    ? JSON.stringify({ ...parsed, deprecation: notice })
-    : JSON.stringify(structuredContent);
+  // A scalar or array projection keeps its raw text, as a direct call returns
+  // it; the notice still reaches the client through structuredContent.
+  const nextText = isPlainObject(parsed) ? JSON.stringify({ ...parsed, deprecation: notice }) : text;
   return { structuredContent, text: nextText };
 }

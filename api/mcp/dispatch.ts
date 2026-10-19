@@ -1041,6 +1041,12 @@ export async function dispatchToolsCall(
         ? `{"projection":${projectedText},"transportCoverage":${coverage}}`
         : `${text.slice(0, -1)},"transportCoverage":${coverage}}`;
     }
+    // Every tool advertises an `outputSchema`, so a strict client rejects a
+    // result without `structuredContent` before the model sees it (#8328). A
+    // soft-fail envelope is already an object in its own advertised branch. A
+    // payload reshaped by the caller — a `jmespath` projection, or a cache
+    // tool's `summary: true`, which turns lists into `{count, sample}` — is no
+    // longer the documented shape and is carried under `projection`.
     const summaryUsed = tool._execute === undefined && argBool(p.arguments?.summary);
     let structuredContent = buildStructuredContent(projectedValue, {
       reshaped: failed === undefined && (jmespathUsed || summaryUsed),
