@@ -15319,6 +15319,11 @@ paths:
             summary: GetCountryHistory
             description: Daily country snapshots with source versions, gaps and tier-limited depth.
             operationId: GetCountryHistory
+            security:
+                - {}
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: country
                   in: query
@@ -15377,7 +15382,7 @@ paths:
                                     - $ref: '#/components/schemas/ValidationError'
                                     - $ref: '#/components/schemas/JmespathProjectionError'
                 "401":
-                    description: Missing or invalid API key.
+                    description: Invalid supplied credentials. Omit credentials for seven-day access.
                     content:
                         application/json:
                             schema:

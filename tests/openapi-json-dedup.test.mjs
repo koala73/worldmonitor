@@ -490,7 +490,7 @@ describe('dedupeSharedSubtreeComponents (fixture)', () => {
 
   const expandSharedSubtrees = (spec) => {
     const names = Object.keys(spec.components.schemas)
-      .filter((name) => name.startsWith('WMShared'));
+      .filter((name) => name.startsWith(SHARED_SUBTREE_COMPONENT_PREFIX));
     expandLocalRefs(
       spec,
       new Map(names.map((name) => [`#/components/schemas/${name}`, spec.components.schemas[name]])),
@@ -507,7 +507,7 @@ describe('dedupeSharedSubtreeComponents (fixture)', () => {
 
     assert.equal(stats.groups, 1);
     assert.equal(stats.replacedRefs, 3, 'every site including the first becomes a ref');
-    const name = Object.keys(transformed.components.schemas).find((n) => n.startsWith('WMShared'));
+    const name = Object.keys(transformed.components.schemas).find((n) => n.startsWith(SHARED_SUBTREE_COMPONENT_PREFIX));
     assert.ok(name, 'the hoisted subtree lands in components.schemas');
     assert.deepEqual(
       transformed.components.schemas[name],
