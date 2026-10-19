@@ -21,6 +21,18 @@ clicks did not use that exclusion.
 hit testing. Controls retain their own actions. Clicks on the map surface still
 select countries.
 
+PR review identified another control surface, `.layer-explanation-popup`,
+that the existing selector omitted. The exclusion now covers its content too.
+The added DOM case failed before the selector change and passes afterward.
+The original map-surface positive control still passes.
+
+The browser check opened the conflict-layer explanation with its information
+button, clicked the purpose text, and closed the popup. Country-handler geometry
+reads fell from one to zero for that text click. The popup stayed open after
+the text click and its close button still worked. The local comparison is in
+`.claude/verify-evidence/2026-10-19_16-22-23-svg-explanation-baseline/`
+and `.claude/verify-evidence/2026-10-19_16-22-44-svg-explanation-fixed/`.
+
 ## Before and after proof
 
 The focused DOM test ran against the original code first. All ten control

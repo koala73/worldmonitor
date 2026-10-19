@@ -997,7 +997,7 @@ export class MapComponent {
       if (!(target instanceof Element)) return false;
       return Boolean(
         target.closest(
-          '.map-controls, .time-slider, .layer-toggles, .map-legend, .layer-help-popup, .map-popup, button, select, input, textarea, a'
+          '.map-controls, .time-slider, .layer-toggles, .map-legend, .layer-help-popup, .layer-explanation-popup, .map-popup, button, select, input, textarea, a'
         )
       );
     };
