@@ -323,18 +323,27 @@ export function buildMirrorSeries(rows, { production = new Map() } = {}) {
 }
 
 /**
- * Keep the exporter's largest buyers by volume and fold the rest into OTH,
- * so the per-country record stays small. The matched-basis comparison runs on
- * named reporters only.
+ * Keep the exporter's largest buyers and fold the rest into otherKbd, so the
+ * per-country record stays small. The matched-basis comparison runs on named
+ * reporters only, so buyers are ranked by volume over the 12 months ending at
+ * `endMonth` (the default current + prior windows): a heavy buyer that stopped
+ * filing (China after 2024-12) must not push out one that files through the
+ * windows being compared. All-time volume only breaks ties.
  */
-export function trimMirrorReporters(series, keep = MIRROR_TOP_REPORTERS) {
+export function trimMirrorReporters(series, keep = MIRROR_TOP_REPORTERS, endMonth = [...series.keys()].sort().at(-1)) {
+  const recentFrom = endMonth ? shiftMonth(endMonth, -11) : null;
+  const recent = new Map();
   const totals = new Map();
-  for (const record of series.values()) {
+  for (const [month, record] of series) {
     for (const [r, v] of Object.entries(record.reporters)) {
-      totals.set(r, (totals.get(r) ?? 0) + (v.crudeKbd ?? 0) + (v.productsKbd ?? 0));
+      const kbd = (v.crudeKbd ?? 0) + (v.productsKbd ?? 0);
+      totals.set(r, (totals.get(r) ?? 0) + kbd);
+      if (recentFrom && month >= recentFrom && month <= endMonth) recent.set(r, (recent.get(r) ?? 0) + kbd);
     }
   }
-  const top = new Set([...totals].sort((a, b) => b[1] - a[1]).slice(0, keep).map(([r]) => r));
+  const top = new Set([...totals.keys()]
+    .sort((a, b) => (recent.get(b) ?? 0) - (recent.get(a) ?? 0) || totals.get(b) - totals.get(a) || a.localeCompare(b))
+    .slice(0, keep));
   for (const record of series.values()) {
     const reporters = {};
     const other = {};
@@ -521,7 +530,8 @@ export function assembleCountry({ spec, eia, jodi, mirror, ais, nowMs, failed = 
     };
   });
 
-  const aisLast = newest(ais.months, (v) => v.complete);
+  // A complete month with no export total is not an observed loading.
+  const aisLast = newest(ais.months, (v) => v.complete && v.loadingsKbd !== null);
   const datasetAgeDays = ais.datasetMaxDate
     ? (nowMs - Date.parse(`${ais.datasetMaxDate}T00:00:00Z`)) / 86_400_000
     : null;
@@ -636,7 +646,7 @@ export async function fetchOilTradeSeries({ nowMs = Date.now() } = {}) {
     try {
       mirror = trimMirrorReporters(buildMirrorSeries(await fetchMirrorRows(spec, nowMs, index), {
         production: eia.get(spec.iso2) ?? new Map(),
-      }));
+      }), MIRROR_TOP_REPORTERS, lastCompleteMonth(nowMs));
     } catch (err) {
       countryFailed.add('mirror');
       unavailable.mirror.push(spec.iso2);

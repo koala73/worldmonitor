@@ -18,6 +18,7 @@ import {
   mirrorRowsFromComtrade,
   fetchJodiRows,
   carryForwardFailedSources,
+  trimMirrorReporters,
   assembleCountry,
   validate,
 } from '../scripts/seed-oil-trade-series.mjs';
@@ -381,6 +382,36 @@ describe('review findings (#9393)', () => {
     assert.ok(m.currentForYoy.kbd < m.current.kbd, 'the YoY current average covers Japan only');
     assert.equal(m.currentForYoy.monthsCovered, 6);
     assert.ok(Math.abs(m.yoyPct - ((m.currentForYoy.kbd - m.yearAgo.kbd) / m.yearAgo.kbd) * 100) < 1e-9);
+  });
+});
+
+describe('review findings, round 2 (#9393)', () => {
+  it('the buyer cap keeps recent filers over heavier buyers that stopped filing', () => {
+    const rows = [];
+    // Eight large buyers that filed only in the oldest months (China-style).
+    for (const r of ['AAA', 'BBB', 'CCC', 'DDD', 'EEE', 'FFF', 'GGG', 'HHH']) {
+      for (const m of monthRange('2024-10', '2025-03')) rows.push({ reporterISO: r, period: m.replace('-', ''), cmdCode: '2709', netWgt: 9e9 });
+    }
+    // A smaller buyer that files through both comparison windows.
+    for (const m of monthRange('2025-10', '2026-09')) rows.push({ reporterISO: 'JPN', period: m.replace('-', ''), cmdCode: '2709', netWgt: 1e9 });
+    const mirror = trimMirrorReporters(buildMirrorSeries(rows), 8, '2026-09');
+    assert.ok(mirror.get('2026-09').reporters.JPN, 'JPN must keep its own series');
+    const country = assembleCountry({
+      spec: OIL_TRADE_COUNTRIES.find((c) => c.iso2 === 'AE'), eia: new Map(), jodi: new Map(), mirror,
+      ais: { months: new Map(), datasetMaxDate: null }, nowMs: NOW,
+    });
+    assert.deepEqual(compareOilWindows(country, { nowMs: NOW }).metrics.mirrorCrudeImports.basis.reporters, ['JPN']);
+  });
+
+  it('AIS lastObserved is the newest complete month with a loading value', () => {
+    const ais = buildAisSeries([
+      { attributes: { year: 2026, month: 8, exportTankerT: 2_392_849, tankerCalls: 258, maxDate: '2026-08-31' } },
+      { attributes: { year: 2026, month: 9, exportTankerT: null, tankerCalls: null, maxDate: '2026-09-30' } },
+    ]);
+    const country = assembleCountry({
+      spec: OIL_TRADE_COUNTRIES.find((c) => c.iso2 === 'AE'), eia: new Map(), jodi: new Map(), mirror: new Map(), ais, nowMs: NOW,
+    });
+    assert.equal(country.sources.ais.lastObserved, '2026-08');
   });
 });
 
