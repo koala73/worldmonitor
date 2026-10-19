@@ -211,7 +211,7 @@ service EconomicService {
     option (sebuf.http.config) = {path: "/get-us-interest-rates", method: HTTP_METHOD_GET};
   }
 
-  // GetCapitalFlows returns cross-country gross capital flows (IMF BOP, with derived Forbes-Warnock surge, stop, flight and retrenchment states), BIS cross-border bank deposits and IMF portfolio holdings. Migration of people is not a BOP flow.
+  // GetCapitalFlows returns where money enters and leaves about 230 economies, and between any two, from official statistics. Per country: IMF balance-of-payments gross inflows and outflows by FDI, portfolio and other investment (quarterly where reported, annual otherwise) with derived Forbes and Warnock surge, stop, flight and retrenchment states; BIS cross-border deposits and borrowing of non-bank residents; IMF portfolio holdings of the country's securities; and IMF direct-investment positions. With country and counterpart: both directions of the pair across bank deposits and lending (with eight quarters of adjusted flows), portfolio holdings and direct investment (with both sides' figures), each leg marked reported, not_itemized or not_published. A person changing residence is not a balance-of-payments flow, so wealth migration does not appear.
   rpc GetCapitalFlows(GetCapitalFlowsRequest) returns (GetCapitalFlowsResponse) {
     option (sebuf.http.config) = {path: "/get-capital-flows", method: HTTP_METHOD_GET};
   }

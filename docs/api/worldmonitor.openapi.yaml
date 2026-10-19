@@ -11206,26 +11206,26 @@ paths:
             tags:
                 - EconomicService
             summary: GetCapitalFlows
-            description: GetCapitalFlows returns cross-country gross capital flows (IMF BOP, with derived Forbes-Warnock surge, stop, flight and retrenchment states), BIS cross-border bank deposits and IMF portfolio holdings. Migration of people is not a BOP flow.
+            description: 'GetCapitalFlows returns where money enters and leaves about 230 economies, and between any two, from official statistics. Per country: IMF balance-of-payments gross inflows and outflows by FDI, portfolio and other investment (quarterly where reported, annual otherwise) with derived Forbes and Warnock surge, stop, flight and retrenchment states; BIS cross-border deposits and borrowing of non-bank residents; IMF portfolio holdings of the country''s securities; and IMF direct-investment positions. With country and counterpart: both directions of the pair across bank deposits and lending (with eight quarters of adjusted flows), portfolio holdings and direct investment (with both sides'' figures), each leg marked reported, not_itemized or not_published. A person changing residence is not a balance-of-payments flow, so wealth migration does not appear.'
             operationId: GetCapitalFlows
             parameters:
                 - name: country
                   in: query
-                  description: Optional ISO 3166-1 alpha-2 filter.
+                  description: Optional ISO 3166-1 alpha-2 filter. When set, only that country is returned (and the counterpart, if given).
                   required: false
                   example: "US"
                   schema:
                     type: string
                 - name: include_series
                   in: query
-                  description: Include BOP series. Default false.
+                  description: When true, include each returned country's period-by-period BOP series. Defaults to false.
                   required: false
                   example: true
                   schema:
                     type: boolean
                 - name: counterpart
                   in: query
-                  description: Optional ISO 3166-1 alpha-2 partner; with country, returns the pair in both directions.
+                  description: Optional ISO 3166-1 alpha-2 partner. With country, the response adds pair (both directions) and the counterpart's own view. Ignored without country, and when equal to country.
                   required: false
                   example: "US"
                   schema:
@@ -44911,15 +44911,15 @@ components:
                 country:
                     type: string
                     maxLength: 2
-                    description: Optional ISO 3166-1 alpha-2 filter.
+                    description: Optional ISO 3166-1 alpha-2 filter. When set, only that country is returned (and the counterpart, if given).
                 includeSeries:
                     type: boolean
-                    description: Include BOP series. Default false.
+                    description: When true, include each returned country's period-by-period BOP series. Defaults to false.
                 counterpart:
                     type: string
                     maxLength: 2
-                    description: Optional ISO 3166-1 alpha-2 partner; with country, returns the pair in both directions.
-            description: GetCapitalFlowsRequest selects a country and detail.
+                    description: Optional ISO 3166-1 alpha-2 partner. With country, the response adds pair (both directions) and the counterpart's own view. Ignored without country, and when equal to country.
+            description: GetCapitalFlowsRequest selects countries, an optional counterpart, and detail.
         worldmonitor_economic_v1_GetCapitalFlowsResponse:
             type: object
             properties:
@@ -44931,6 +44931,7 @@ components:
                     $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowLatest'
                 seededAt:
                     type: string
+                    description: When the dataset was built, ISO 8601.
                 unavailable:
                     type: boolean
                     description: True when the seeded dataset is unavailable. An empty country list is not zero flow.
@@ -44938,14 +44939,15 @@ components:
                     type: array
                     items:
                         type: string
+                        description: Source URLs.
                 method:
                     type: object
                     additionalProperties:
                         type: string
-                    description: 'Method notes: bop, episodes, bank, portfolio, caveat.'
+                    description: 'Short method notes keyed by view: bop, episodes, bank, portfolio, fdi, pairs, caveat.'
                 pair:
                     $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPair'
-            description: Cross-country capital flows, USD bn.
+            description: GetCapitalFlowsResponse is cross-country capital-flow data from IMF and BIS official statistics. Amounts are USD billions.
         worldmonitor_economic_v1_GetCapitalFlowsResponse_MethodEntry:
             type: object
             properties:
@@ -44958,14 +44960,18 @@ components:
             properties:
                 country:
                     type: string
+                    description: ISO 3166-1 alpha-2 code.
                 iso3:
                     type: string
+                    description: ISO 3166-1 alpha-3 code.
                 gdpUsdBn:
                     type: number
                     format: double
+                    description: GDP used for percent-of-GDP figures, USD billions (World Bank, current US dollars).
                 gdpYear:
                     type: integer
                     format: int32
+                    description: Year of that GDP figure.
                 bop:
                     $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowBop'
                 bank:
@@ -44974,15 +44980,16 @@ components:
                     $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPortfolio'
                 fdi:
                     $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowFdi'
-            description: One country; a view is absent without source data.
+            description: CapitalFlowCountry carries every capital-flow view for one country. A view is absent when its source publishes nothing for the country.
         worldmonitor_economic_v1_CapitalFlowBop:
             type: object
             properties:
                 frequency:
                     type: string
-                    description: quarterly or annual (no state or episodes).
+                    description: quarterly when a current quarterly series exists, otherwise annual. Annual series carry no state and no episodes.
                 latestPeriod:
                     type: string
+                    description: 'Latest period in the series: YYYY-Qn or YYYY.'
                 state:
                     $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowState'
                 episodes:
@@ -44993,23 +45000,25 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPeriod'
-            description: IMF balance-of-payments view.
+            description: CapitalFlowBop is the IMF balance-of-payments view of one country.
         worldmonitor_economic_v1_CapitalFlowState:
             type: object
             properties:
                 inflow:
                     type: string
-                    description: surge, stop or empty.
+                    description: surge or stop when an inflow episode is open at the latest quarter; empty otherwise.
                 outflow:
                     type: string
-                    description: flight, retrenchment or empty.
+                    description: flight or retrenchment when an outflow episode is open at the latest quarter; empty otherwise.
                 inflowZ:
                     type: number
                     format: double
+                    description: 'Inflow z-score at the latest quarter: the change in four-quarter inflows against its trailing 20-quarter mean, in standard deviations. Beyond plus or minus 2 is an episode-level move.'
                 outflowZ:
                     type: number
                     format: double
-            description: Derived state at the latest quarter.
+                    description: Outflow z-score at the latest quarter, on the same basis.
+            description: CapitalFlowState is the episode classification at the latest quarter both sides report. Derived, not published by the source.
         worldmonitor_economic_v1_CapitalFlowEpisodes:
             type: object
             properties:
@@ -45029,56 +45038,66 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowEpisode'
-            description: Episodes from the last 10 years.
+            description: CapitalFlowEpisodes lists the episodes that ended within the last ten years, oldest first, by type.
         worldmonitor_economic_v1_CapitalFlowEpisode:
             type: object
             properties:
                 start:
                     type: string
+                    description: 'First quarter of the episode, YYYY-Qn: the first quarter the change in four-quarter flows moved more than one standard deviation from its trailing mean.'
                 end:
                     type: string
-                    description: Equals the latest period while open.
+                    description: Last quarter of the episode, YYYY-Qn. Equals the series' latest quarter while the episode is still open.
                 quarters:
                     type: integer
                     format: int32
+                    description: Number of quarters in the episode; always at least 2.
                 peakZ:
                     type: number
                     format: double
+                    description: Largest absolute z-score reached during the episode; always at least 2.
                 peakPeriod:
                     type: string
-            description: A Forbes-Warnock (2012) episode.
+                    description: Quarter of the peak z-score, YYYY-Qn.
+            description: CapitalFlowEpisode is one Forbes and Warnock (2012) episode on a quarterly series. Derived from reported flows, not published by the source.
         worldmonitor_economic_v1_CapitalFlowTotals:
             type: object
             properties:
                 inflowsUsdBn:
                     type: number
                     format: double
+                    description: Gross inflows over the window. Absent when any quarter in it is incomplete or the quarters are not consecutive.
                 outflowsUsdBn:
                     type: number
                     format: double
+                    description: Gross outflows over the window, on the same basis.
                 netUsdBn:
                     type: number
                     format: double
+                    description: Inflows minus outflows. Positive means the country took in more than it sent out.
                 inflowsPctGdp:
                     type: number
                     format: double
+                    description: Gross inflows as a percent of GDP.
                 outflowsPctGdp:
                     type: number
                     format: double
+                    description: Gross outflows as a percent of GDP.
                 inflowsYoyPct:
                     type: number
                     format: double
-                    description: Annual series only.
+                    description: Year-on-year change in gross inflows, percent. Annual series only, and only when the prior year is reported.
                 outflowsYoyPct:
                     type: number
                     format: double
-            description: Gross flows over the trailing 4 quarters or latest year, USD bn.
+                    description: Year-on-year change in gross outflows, percent, on the same basis.
+            description: CapitalFlowTotals summarizes gross flows over the trailing four quarters (quarterly series) or the latest year (annual series). USD billions unless the name ends in Pct or PctGdp.
         worldmonitor_economic_v1_CapitalFlowPeriod:
             type: object
             properties:
                 period:
                     type: string
-                    description: YYYY-Qn or YYYY.
+                    description: 'Period label: YYYY-Qn for quarterly series, YYYY for annual series.'
                 inflows:
                     $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowComponents'
                 outflows:
@@ -45086,30 +45105,34 @@ components:
                 errorsOmissions:
                     type: number
                     format: double
-                    description: Net errors and omissions, USD bn.
-            description: One period of gross BOP flows.
+                    description: Net errors and omissions, USD billions. Persistent negative values can indicate outflows the official categories do not record.
+            description: CapitalFlowPeriod is one period of gross balance-of-payments financial-account flows.
         worldmonitor_economic_v1_CapitalFlowComponents:
             type: object
             properties:
                 fdi:
                     type: number
                     format: double
+                    description: 'Direct investment: lasting-interest stakes of 10% or more, including reinvested earnings and intercompany debt.'
                 portfolio:
                     type: number
                     format: double
+                    description: 'Portfolio investment: equity and debt securities that are not direct investment.'
                 other:
                     type: number
                     format: double
+                    description: 'Other investment: loans, deposits, currency, trade credit and other accounts.'
                 total:
                     type: number
                     format: double
-                    description: Set only when all three are reported.
-            description: One side of the financial account, USD bn.
+                    description: Sum of the three categories. Set only when all three are reported for the period; a partial sum would read as a collapse.
+            description: CapitalFlowComponents splits one side of the financial account by functional category, in USD billions. A component is absent when the source does not report it for the period.
         worldmonitor_economic_v1_CapitalFlowBank:
             type: object
             properties:
                 latestPeriod:
                     type: string
+                    description: Latest quarter, YYYY-Qn.
                 nonBankDepositsAbroad:
                     $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPosition'
                 householdDepositsAbroad:
@@ -45122,55 +45145,62 @@ components:
                         $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowCounterparty'
                 publishesBilateral:
                     type: boolean
-                    description: True when its banks publish a by-counterparty breakdown.
+                    description: True when the country's own banks publish a by-counterparty breakdown to the BIS. Some reporting systems publish aggregates only.
                 topDepositorOrigins:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowCounterparty'
-            description: BIS locational banking view.
+            description: CapitalFlowBank is the BIS locational banking view of one country's residents.
         worldmonitor_economic_v1_CapitalFlowPosition:
             type: object
             properties:
                 stockUsdBn:
                     type: number
                     format: double
+                    description: Outstanding amount at the latest quarter.
                 flow4qUsdBn:
                     type: number
                     format: double
-                    description: Last 4 FX- and break-adjusted quarterly changes.
-            description: Cross-border bank position, USD bn.
+                    description: 'Sum of the last four FX- and break-adjusted quarterly changes: money moved, net of exchange-rate effects and reporting breaks. Positive means the position grew.'
+            description: CapitalFlowPosition is a cross-border bank position from BIS locational banking statistics, in USD billions.
         worldmonitor_economic_v1_CapitalFlowCounterparty:
             type: object
             properties:
                 country:
                     type: string
+                    description: ISO 3166-1 alpha-2 code of the partner.
                 stockUsdBn:
                     type: number
                     format: double
+                    description: Outstanding amount.
                 flow4qUsdBn:
                     type: number
                     format: double
-            description: A ranked partner country, USD bn.
+                    description: Four-quarter adjusted flow. Bank lists only.
+            description: CapitalFlowCounterparty is one partner country in a ranked bilateral list, in USD billions.
         worldmonitor_economic_v1_CapitalFlowPortfolio:
             type: object
             properties:
                 year:
                     type: integer
                     format: int32
+                    description: 'Reference year: the newest year at least 80% as well reported as the year before.'
                 foreignHoldingsUsdBn:
                     type: number
                     format: double
-                    description: Held by all reporting countries.
+                    description: Securities issued by residents of this country held by every reporting economy.
                 foreignHoldingsPrevYearUsdBn:
                     type: number
                     format: double
-                    description: Same reporters a year earlier.
+                    description: The same reporters' holdings a year earlier, so the change is like for like.
                 changePct:
                     type: number
                     format: double
+                    description: Change between the two, percent. Mixes new money with price and exchange-rate moves.
                 reporterCount:
                     type: integer
                     format: int32
+                    description: Number of reporting economies holding the country's securities.
                 topHolders:
                     type: array
                     items:
@@ -45178,20 +45208,23 @@ components:
                 holdingsAbroadUsdBn:
                     type: number
                     format: double
+                    description: The country's own holdings of foreign securities, when it reports them.
                 topDestinations:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowCounterparty'
-            description: IMF portfolio-positions (mirror) view, USD bn.
+            description: CapitalFlowPortfolio is the IMF portfolio-positions view of one country, from mirror data, in USD billions.
         worldmonitor_economic_v1_CapitalFlowFdi:
             type: object
             properties:
                 year:
                     type: integer
                     format: int32
+                    description: 'Reference year: the newest year at least 80% as well reported as the year before.'
                 inwardUsdBn:
                     type: number
                     format: double
+                    description: Direct investment in the country by all counterparts.
                 topInvestors:
                     type: array
                     items:
@@ -45199,40 +45232,49 @@ components:
                 outwardUsdBn:
                     type: number
                     format: double
+                    description: The country's direct investment abroad.
                 topDestinations:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowCounterparty'
-            description: IMF direct-investment positions as the country reports them, USD bn.
+            description: CapitalFlowFdi is the IMF direct-investment positions view of one country, as the country itself reports them, by immediate counterpart, in USD billions. Conduit economies carry large pass-through positions.
         worldmonitor_economic_v1_CapitalFlowLatest:
             type: object
             properties:
                 bopQuarter:
                     type: string
+                    description: Quarter most quarterly balance-of-payments reporters have reached, YYYY-Qn.
                 bopYear:
                     type: string
+                    description: Year most annual-only reporters have reached.
                 bisQuarter:
                     type: string
+                    description: Latest BIS banking quarter, YYYY-Qn.
                 pipYear:
                     type: integer
                     format: int32
+                    description: Portfolio-positions reference year.
                 fdiYear:
                     type: integer
                     format: int32
-            description: Newest period per source.
+                    description: Direct-investment positions reference year.
+            description: CapitalFlowLatest names the newest period of each source.
         worldmonitor_economic_v1_CapitalFlowPair:
             type: object
             properties:
                 country:
                     type: string
+                    description: ISO 3166-1 alpha-2 code of a, the requested country.
                 counterpart:
                     type: string
+                    description: ISO 3166-1 alpha-2 code of b, the counterpart.
                 bankPeriod:
                     type: string
-                    description: BIS quarter and IMF PIP year of the legs.
+                    description: BIS quarter of the bank legs, YYYY-Qn.
                 portfolioYear:
                     type: integer
                     format: int32
+                    description: IMF portfolio-positions year of the holding legs.
                 aDepositsInB:
                     $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
                 bDepositsInA:
@@ -45252,44 +45294,49 @@ components:
                 fdiYear:
                     type: integer
                     format: int32
-                    description: IMF DIP reference year.
-            description: Country and counterpart in both directions. a = country, b = counterpart.
+                    description: IMF direct-investment positions year of the FDI legs.
+            description: CapitalFlowPair carries a country (a) and a counterpart (b) in both directions across bank, portfolio and direct-investment channels.
         worldmonitor_economic_v1_CapitalFlowPairLeg:
             type: object
             properties:
                 status:
                     type: string
+                    description: 'reported: the reporting side published a current figure. not_itemized: the reporting side publishes bilateral data but has no current figure for this partner (zero, small, confidential, or a series that stopped); unknown, not zero. not_published: the reporting side publishes no bilateral breakdown.'
                 stockUsdBn:
                     type: number
                     format: double
+                    description: Outstanding position at the leg's reference period.
                 flow4qUsdBn:
                     type: number
                     format: double
-                    description: 'Bank legs: sum of the last 4 adjusted quarterly changes.'
+                    description: 'Bank legs: sum of the last four FX- and break-adjusted quarterly changes.'
                 prevYearUsdBn:
                     type: number
                     format: double
                     description: 'Portfolio legs: the same holding a year earlier.'
                 basis:
                     type: string
-                    description: 'FDI legs: investor or host, whichever side''s figure stock_usd_bn is.'
+                    description: 'FDI legs: investor when stock_usd_bn is the investor''s outward figure, host when only the host''s inward figure exists. Empty for other legs.'
                 counterpartReportUsdBn:
                     type: number
                     format: double
-                    description: 'FDI legs: the other side''s figure for the same position.'
+                    description: 'FDI legs: the other side''s figure for the same position. The two sides'' reports often differ.'
                 history:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairPoint'
-            description: 'One direction of a bilateral position, USD bn. status: reported; not_itemized (reporter has no current figure for this partner: zero, small, confidential or a stopped series); not_published (no bilateral data from the reporting side).'
+            description: CapitalFlowPairLeg is one direction of a bilateral position, in USD billions.
         worldmonitor_economic_v1_CapitalFlowPairPoint:
             type: object
             properties:
                 period:
                     type: string
+                    description: Quarter, YYYY-Qn.
                 usdBn:
                     type: number
                     format: double
+                    description: Adjusted flow in the quarter, USD billions. Positive means the position grew.
+            description: CapitalFlowPairPoint is one quarterly adjusted bank flow.
         worldmonitor_economic_v1_GetWorldCpiMonthlyRequest:
             type: object
             properties:
