@@ -8,9 +8,9 @@ import type {
   SeverityLevel,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
-import { readCrossBorderMovements } from '../../displacement/v1/get-cross-border-movements';
+import { CROSS_BORDER_SOURCES, projectCrossBorderSnapshots } from '../../displacement/v1/cross-border-data';
 import iso3ToIso2Json from '../../../../shared/iso3-to-iso2.json';
-import { getCachedJson, readCachedJson, setCachedJson, cachedFetchJsonWithMeta, runRedisPipeline } from '../../../_shared/redis';
+import { getCachedJson, readCachedJson, readCachedEnvelopeJson, setCachedJson, cachedFetchJsonWithMeta, runRedisPipeline } from '../../../_shared/redis';
 import { CLIMATE_ANOMALIES_KEY, CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
 import { CII_DAY_MS, parseCiiDailyPoints } from '../../../../shared/cii-daily-history';
 import { ciiCountryAt, ciiCountryForIso2, ciiIsLand } from '../../../../scripts/shared/cii-country-borders.mjs';
@@ -725,6 +725,8 @@ const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLower
 interface RiskInput {
   readonly key: string;
   readonly raw: boolean;
+  /** Preserve the producer clock for inputs with source-age gates. */
+  readonly envelope?: boolean;
 }
 
 /** Only the class is kept: a JSON SyntaxError message quotes the stored payload. */
@@ -758,7 +760,8 @@ function classifyReadFailure(error: unknown): RiskInputFailureClass {
  * waits for the rest to settle and throws, naming every failed key.
  */
 async function readRiskInputs(inputs: ReadonlyArray<RiskInput | null>): Promise<unknown[]> {
-  const results = await Promise.all(inputs.map((input) => (input ? readCachedJson(input.key, input.raw) : null)));
+  const results = await Promise.all(inputs.map(input => input
+    ? (input.envelope ? readCachedEnvelopeJson : readCachedJson)(input.key, input.raw) : null));
   const failures = inputs.flatMap((input, i) => {
     const result = results[i];
     return input && result?.status === 'error' ? [{ key: input.key, failure: classifyReadFailure(result.error) }] : [];
@@ -803,6 +806,8 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   // read has already thrown above, so it never masquerades as that.
   const displacementRaw = displacementCurrentRaw
     ?? (await readRiskInputs([{ key: `displacement:summary:v1:${currentYear - 1}`, raw: true }]))[0];
+  const borderSnapshots = await readRiskInputs(CROSS_BORDER_SOURCES.map(source => ({ key: source.key, raw: true, envelope: true })));
+  const borderMovements = projectCrossBorderSnapshots(Object.fromEntries(CROSS_BORDER_SOURCES.map((source, i) => [source.id, borderSnapshots[i]]))).movements;
   const arr = (v: any, field?: string, maxLen = 10000) => {
     let a: any[];
     if (field && v && Array.isArray(v[field])) a = v[field];
@@ -870,7 +875,7 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
       ? { byCountry: (advisoriesRaw as any).byCountry }
       : null,
     displacedByIso3,
-    crossBorderSurgeCountries: (await readCrossBorderMovements()).movements
+    crossBorderSurgeCountries: borderMovements
       .filter(m => m.kind === 'arrival' && m.surge && !m.stale)
       .flatMap(m => [m.countryCode, m.originCode]).filter(Boolean),
     newsTopStories,

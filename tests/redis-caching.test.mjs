@@ -1733,7 +1733,7 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
     { name: 'keeps an absent country zero in a populated sanctions map', counts: { US: 2 }, count: 0, unavailable: false },
     { name: 'preserves a positive China sanctions count', counts: { CN: 1390 }, count: 1390, unavailable: false },
     { name: 'fails closed for a missing sanctions count key', counts: null, count: 0, unavailable: true },
-    { name: 'fails closed for missing risk data with populated sanctions', counts: { CN: 1390 }, missingKey: 'risk:scores:sebuf:stale:v11', count: 0, unavailable: true },
+    { name: 'fails closed for missing risk data with populated sanctions', counts: { CN: 1390 }, missingKey: 'risk:scores:sebuf:stale:v12', count: 0, unavailable: true },
     { name: 'fails closed for missing advisory data with populated sanctions', counts: { CN: 1390 }, missingKey: 'intelligence:advisories:v1', count: 0, unavailable: true },
   ]) {
     it(scenario.name, async () => {
@@ -1749,7 +1749,7 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
       const originalFetch = globalThis.fetch;
       const readKeys = [];
       const redisValues = new Map([
-        ['risk:scores:sebuf:stale:v11', JSON.stringify({ ciiScores: [{ region: 'CN', combinedScore: 70, computedAt: 1700000000000 }] })],
+        ['risk:scores:sebuf:stale:v12', JSON.stringify({ ciiScores: [{ region: 'CN', combinedScore: 70, computedAt: 1700000000000 }] })],
         ['intelligence:advisories:v1', JSON.stringify({ byCountry: { CN: 'caution' }, byCountryName: { CN: 'China' } })],
         ['sanctions:country-counts:v1', scenario.counts === null ? undefined : JSON.stringify(scenario.counts)],
       ]);
@@ -1774,7 +1774,7 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
         assert.equal(result.cii?.combinedScore, scenario.unavailable ? undefined : 70);
         assert.equal(result.fetchedAt, scenario.unavailable ? 0 : 1700000000000);
         assert.equal(result.advisoryLevel, scenario.unavailable ? '' : 'caution');
-        assert.deepEqual(readKeys.toSorted(), ['risk:scores:sebuf:stale:v11', 'intelligence:advisories:v1', 'sanctions:country-counts:v1'].toSorted());
+        assert.deepEqual(readKeys.toSorted(), ['risk:scores:sebuf:stale:v12', 'intelligence:advisories:v1', 'sanctions:country-counts:v1'].toSorted());
       } finally {
         cleanup();
         globalThis.fetch = originalFetch;
@@ -1853,7 +1853,7 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
       const redis = createRequire(import.meta.url)(resolve(root, 'server/_shared/redis.ts'));
       redis.__resetKeyPrefixCacheForTests();
       const originalFetch = globalThis.fetch;
-      const riskKey = 'risk:scores:sebuf:stale:v11';
+      const riskKey = 'risk:scores:sebuf:stale:v12';
       const redisValues = new Map([
         [riskKey, JSON.stringify({ ciiScores: [{ region: 'US', combinedScore: 10, computedAt: 1700000000000 }] })],
         ['intelligence:advisories:v1', JSON.stringify({ byCountry: { US: 'normal', CA: 'normal' }, byCountryName: { CA: 'Canada' } })],
@@ -1897,7 +1897,7 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
     const restoreNow = withMockedNow(1_777_000_000_000);
     const originalFetch = globalThis.fetch;
     const redisValues = new Map([
-      ['risk:scores:sebuf:stale:v11', JSON.stringify({
+      ['risk:scores:sebuf:stale:v12', JSON.stringify({
         ciiScores: [{ region: 'US', combinedScore: 10, computedAt: 1_700_000_000_000 }],
       })],
       ['intelligence:advisories:v1', JSON.stringify({

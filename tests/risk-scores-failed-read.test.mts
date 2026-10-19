@@ -106,6 +106,34 @@ after(() => {
 });
 
 describe('risk-scores build with failed Redis reads', () => {
+  for (const key of ['displacement:cross-border:v1', 'displacement:border-uk:v1', 'displacement:border-cbp:v1']) {
+    it(`retains the last good scores when ${key} cannot be read`, async () => {
+      stubRedis({ failing: [key], stored: { [STALE_KEY]: JSON.stringify(stalePayload) } });
+      const response = await getRiskScores({} as never, {} as never);
+      assert.equal(response.stale, true);
+      assert.equal(response.degraded, true);
+      assert.equal(response.ciiScores[0]?.score, 77);
+      assert.deepEqual(published(), []);
+      assert.ok(rejectionRecord().some(record => record.value.includes(key)));
+    });
+  }
+
+  it('uses the original envelope clock when applying an arrival surge', async () => {
+    stubRedis();
+    const base = await getRiskScores({} as never, {} as never);
+    const baseScore = base.ciiScores.find(score => score.region === 'GB')!.combinedScore;
+    const now = Date.now() - 60_000;
+    for (const [age, boost] of [[0, 5], [3 * 86400000, 0]]) {
+      stubRedis({ stored: { 'displacement:border-uk:v1': JSON.stringify({
+        _seed: { fetchedAt: now - age },
+        data: { routes: [{ id: 'english-channel', name: 'English Channel', countryCode: 'GB', kind: 'arrival', measure: 'daily',
+          asOf: new Date(now - 86400000).toISOString().slice(0, 10), period: 'day', latestCount: 2000, last7Days: 14000, surge: true }] },
+      }) } });
+      const result = await getRiskScores({} as never, {} as never);
+      assert.equal(result.ciiScores.find(score => score.region === 'GB')!.combinedScore, baseScore + boost);
+    }
+  });
+
   it('publishes nothing when the signal-family reads error', async () => {
     stubRedis({ failing: SIGNAL_FAMILY_KEYS });
     await getRiskScores({} as never, {} as never);
