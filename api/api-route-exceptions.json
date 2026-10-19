@@ -843,6 +843,20 @@
       "removal_issue": null
     },
     {
+      "path": "api/desktop-auth/authorize.ts",
+      "category": "internal-helper",
+      "reason": "Desktop browser sign-in, browser half (#9396 follow-up). POST {code_challenge} from the Clerk-protected /desktop-sign-in page; returns a one-time code bound to the desktop's PKCE challenge, which the page hands to the desktop on a 127.0.0.1 loopback redirect (RFC 8252). Private plumbing of one first-party flow, not a product data API.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
+      "path": "api/desktop-auth/token.ts",
+      "category": "external-protocol",
+      "reason": "Desktop browser sign-in, desktop half (#9396 follow-up). POST {code, code_verifier}: an RFC 7636 PKCE code redemption that returns a single-use, 60-second Clerk sign-in ticket. Shape follows the OAuth native-app pattern (RFC 8252) rather than the sebuf contract.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/user/passkey-offer.ts",
       "category": "internal-helper",
       "reason": "Passkey-offer controller reservation endpoint. Clerk-authenticated; claims one of three account slots with Redis HSETNX so concurrent or stale browsers cannot lower or bypass the lifetime prompt cap. Clerk unsafe metadata remains a migration source and browser-readable terminal mirror. The unversioned response is private UI coordination state, not a product data API.",

@@ -52,6 +52,18 @@ export function isClerkAuthEnabled(): boolean {
 }
 
 let clerkInstance: ClerkInstance | null = null;
+/** True once Frontend API calls go through the desktop Rust relay (#9396). */
+let desktopRelayActive = false;
+const PRODUCTION_CLERK_FAPI_HOST = 'clerk.worldmonitor.app';
+
+/**
+ * Only production desktop builds sign in through the browser: the page and
+ * the sign-in ticket belong to the production Clerk instance. A development
+ * build (pk_test key) keeps the in-app card. Exported for testing.
+ */
+export function usesDesktopBrowserSignIn(desktopRelay: boolean, fapiHost: string): boolean {
+  return desktopRelay && fapiHost === PRODUCTION_CLERK_FAPI_HOST;
+}
 let loadPromise: Promise<void> | null = null;
 let loadScheduled = false;
 const pendingSubscribers: Array<() => void> = [];
@@ -289,6 +301,7 @@ export async function initClerk(): Promise<void> {
         const { installClerkDesktopRelay } = await import('@/services/clerk-desktop-relay');
         desktopRelay = installClerkDesktopRelay(clerkFapiHost(PUBLISHABLE_KEY));
       }
+      desktopRelayActive = desktopRelay;
       await loadClerkUmd(PUBLISHABLE_KEY);
       const clerk = getClerkInstance();
       if (!clerk) throw new Error('[clerk] window.Clerk unavailable after load');
@@ -515,16 +528,58 @@ function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
     if (action === 'open-sign-up' && signUpResumeHook?.(openClerk)) return;
     openClerk();
   };
-  if (clerkInstance) {
+  // Desktop: passkeys and Google cannot run in the WebView, so sign-in and
+  // sign-up happen on www.worldmonitor.app in the default browser, with the
+  // in-app card as the fallback.
+  const openForRuntime = (): void => {
+    if (PUBLISHABLE_KEY && usesDesktopBrowserSignIn(desktopRelayActive, clerkFapiHost(PUBLISHABLE_KEY))) {
+      void startDesktopBrowserSignIn(openSurface).catch(onFail('desktop-browser-sign-in'));
+      return;
+    }
     openSurface();
+  };
+  if (clerkInstance) {
+    openForRuntime();
     return;
   }
   // Deferred-load fast path: user clicked before the idle callback fired.
   // Force the load, then open once the SDK is live so the click never
   // silently no-ops.
   void initClerk()
-    .then(openSurface)
+    .then(openForRuntime)
     .catch(onFail('clerk-load-failed'));
+}
+
+let desktopBrowserSignIn: ((deps: import('@/services/desktop-browser-sign-in').BrowserSignInDeps) => Promise<unknown>) | null = null;
+
+async function startDesktopBrowserSignIn(openInApp: () => void): Promise<void> {
+  const clerk = clerkInstance;
+  if (!clerk || !PUBLISHABLE_KEY) return;
+  const [{ createSingleFlightSignIn }, { invokeTauri }, { showDesktopSignInWaiting }] = await Promise.all([
+    import('@/services/desktop-browser-sign-in'),
+    import('@/services/tauri-bridge'),
+    import('@/utils/desktop-sign-in-waiting'),
+  ]);
+  desktopBrowserSignIn ??= createSingleFlightSignIn(() => showToast('Finish signing in in your browser.', 6000));
+  await desktopBrowserSignIn({
+    fapiHost: clerkFapiHost(PUBLISHABLE_KEY),
+    start: (fapiHost) => invokeTauri('start_desktop_browser_sign_in', { fapiHost }),
+    finish: () => invokeTauri('finish_desktop_browser_sign_in'),
+    cancel: () => invokeTauri('cancel_desktop_browser_sign_in'),
+    reloadClient: async () => {
+      // Rust swapped in a new client; drop tokens minted for the old one.
+      clearClerkTokenCache();
+      await clerk.client?.reload();
+    },
+    setActive: async (sessionId) => {
+      await clerk.setActive({ session: sessionId });
+    },
+    notify: (message) => {
+      if (typeof document !== 'undefined') showToast(message, 6000);
+    },
+    openInApp,
+    showWaiting: showDesktopSignInWaiting,
+  });
 }
 
 /** Open the Clerk sign-in modal. */

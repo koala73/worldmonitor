@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 452483
+    "raw": 453402
   },
   "chunks": {
     "analytics": {
@@ -15,7 +15,7 @@
       "files": 1
     },
     "clerk": {
-      "raw": 20323,
+      "raw": 21242,
       "files": 1
     },
     "convex-client": {
@@ -97,11 +97,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1445486
+      "raw": 1452724
     },
     "chunks": {
       "App": {
-        "raw": 910099,
+        "raw": 917337,
         "files": 1
       },
       "ai-flow-settings": {

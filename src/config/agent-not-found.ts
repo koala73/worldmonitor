@@ -163,6 +163,7 @@ export const AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES = [
   '/map-styles',
   '/mcp',
   '/mcp-grant',
+  '/desktop-sign-in',
   '/oauth',
   '/pricing',
   '/privacy',

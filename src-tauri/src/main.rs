@@ -2,6 +2,7 @@
 
 mod cache_bounds;
 mod clerk_relay;
+mod desktop_sign_in;
 
 use std::collections::HashMap;
 use std::env;
@@ -470,26 +471,16 @@ fn save_clerk_client_token(token: &ClerkClientToken) -> Result<(), String> {
         .map_err(|e| format!("Failed to store Clerk client: {e}"))
 }
 
-#[tauri::command]
-async fn clerk_fapi_request(
-    webview: Webview,
-    app: AppHandle,
-    request: ClerkFapiRequest,
-    state: tauri::State<'_, ClerkRelayState>,
-) -> Result<ClerkFapiResponse, String> {
-    if !CLERK_RELAY_WINDOWS.contains(&webview.label()) {
-        return Err(format!("Clerk relay not allowed from window '{}'", webview.label()));
-    }
-    let validated = clerk_relay::validate_request(request)?;
-    let host = validated.url.host_str().unwrap_or_default().to_string();
-
-    // Held across the request so a rotated token from one response is never
-    // overwritten by a concurrent response that carried the older one.
-    let mut slot = state.token.lock().await;
-    let stored = slot.get_or_insert_with(load_clerk_client_token);
-
+/// Sends one validated Frontend API request with the given client token (or
+/// none) and returns the response plus the client token Clerk sent back. It
+/// touches no stored state.
+async fn send_fapi_with_token(
+    state: &ClerkRelayState,
+    validated: clerk_relay::ValidatedRequest,
+    token: Option<&str>,
+) -> Result<(ClerkFapiResponse, Option<String>), String> {
     let mut outbound = state.http_client.request(validated.method, validated.url);
-    if let Some(token) = clerk_relay::token_for_host(stored.as_ref(), &host) {
+    if let Some(token) = token {
         outbound = outbound.header(reqwest::header::AUTHORIZATION, token);
     }
     if let Some(content_type) = validated.content_type {
@@ -499,7 +490,7 @@ async fn clerk_fapi_request(
         outbound = outbound.body(body);
     }
 
-    let response = outbound
+    let mut response = outbound
         .send()
         .await
         .map_err(|error| format!("Clerk request failed: {error}"))?;
@@ -514,16 +505,6 @@ async fn clerk_fapi_request(
     let content_type = header_text(reqwest::header::CONTENT_TYPE);
     let authorization = header_text(reqwest::header::AUTHORIZATION);
 
-    if let Some(next) = clerk_relay::next_stored_token(stored.as_ref(), &host, authorization.as_deref()) {
-        if let Err(err) = save_clerk_client_token(&next) {
-            // The session still works for this launch; only persistence failed.
-            append_desktop_log(&app, "WARN", &err);
-        }
-        *stored = Some(next);
-    }
-    drop(slot);
-
-    let mut response = response;
     let mut bytes = Vec::new();
     while let Some(chunk) = response
         .chunk()
@@ -532,11 +513,236 @@ async fn clerk_fapi_request(
     {
         clerk_relay::append_capped(&mut bytes, &chunk, clerk_relay::MAX_RESPONSE_BODY_BYTES)?;
     }
-    Ok(ClerkFapiResponse {
-        status,
-        content_type,
-        body: String::from_utf8_lossy(&bytes).into_owned(),
+    Ok((
+        ClerkFapiResponse {
+            status,
+            content_type,
+            body: String::from_utf8_lossy(&bytes).into_owned(),
+        },
+        authorization,
+    ))
+}
+
+fn store_clerk_client_token(app: &AppHandle, slot: &mut Option<ClerkClientToken>, next: ClerkClientToken) {
+    if let Err(err) = save_clerk_client_token(&next) {
+        // The session still works for this launch; only persistence failed.
+        append_desktop_log(app, "WARN", &err);
+    }
+    *slot = Some(next);
+}
+
+/// Sends one validated Frontend API request with the stored client token and
+/// stores the token Clerk rotates in. Shared by the renderer relay command.
+async fn send_clerk_fapi_request(
+    app: &AppHandle,
+    state: &ClerkRelayState,
+    request: ClerkFapiRequest,
+) -> Result<ClerkFapiResponse, String> {
+    let validated = clerk_relay::validate_request(request)?;
+    let host = validated.url.host_str().unwrap_or_default().to_string();
+
+    // Held across the request so a rotated token from one response is never
+    // overwritten by a concurrent response that carried the older one.
+    let mut slot = state.token.lock().await;
+    let stored = slot.get_or_insert_with(load_clerk_client_token);
+    let token = clerk_relay::token_for_host(stored.as_ref(), &host).map(str::to_string);
+
+    let (response, authorization) = send_fapi_with_token(state, validated, token.as_deref()).await?;
+    if let Some(next) = clerk_relay::next_stored_token(stored.as_ref(), &host, authorization.as_deref()) {
+        store_clerk_client_token(app, stored, next);
+    }
+    Ok(response)
+}
+
+#[tauri::command]
+async fn clerk_fapi_request(
+    webview: Webview,
+    app: AppHandle,
+    request: ClerkFapiRequest,
+    state: tauri::State<'_, ClerkRelayState>,
+) -> Result<ClerkFapiResponse, String> {
+    if !CLERK_RELAY_WINDOWS.contains(&webview.label()) {
+        return Err(format!("Clerk relay not allowed from window '{}'", webview.label()));
+    }
+    send_clerk_fapi_request(&app, &state, request).await
+}
+
+#[derive(Default)]
+struct BrowserSignInState {
+    flows: Mutex<desktop_sign_in::FlowRegistry>,
+}
+
+impl BrowserSignInState {
+    fn with<T>(&self, f: impl FnOnce(&mut desktop_sign_in::FlowRegistry) -> T) -> Result<T, String> {
+        let mut flows = self.flows.lock().map_err(|_| "Sign-in state unavailable".to_string())?;
+        Ok(f(&mut flows))
+    }
+}
+
+#[derive(Deserialize)]
+struct DesktopTokenResponse {
+    ticket: Option<String>,
+    error: Option<String>,
+}
+
+fn require_relay_window(webview: &Webview) -> Result<(), String> {
+    if CLERK_RELAY_WINDOWS.contains(&webview.label()) {
+        Ok(())
+    } else {
+        Err(format!("Browser sign-in not allowed from window '{}'", webview.label()))
+    }
+}
+
+/// Step one of the browser sign-in: open www.worldmonitor.app, wait for the
+/// loopback callback, and exchange the code for a Clerk ticket. The ticket
+/// stays in Rust; `finish_desktop_browser_sign_in` redeems it. Splitting the
+/// two lets the renderer sign out an existing session only once this
+/// succeeded.
+#[tauri::command]
+async fn start_desktop_browser_sign_in(
+    webview: Webview,
+    fapi_host: String,
+    relay: tauri::State<'_, ClerkRelayState>,
+    sign_in: tauri::State<'_, BrowserSignInState>,
+) -> Result<(), String> {
+    require_relay_window(&webview)?;
+    if !desktop_sign_in::is_ticket_host(&fapi_host) {
+        return Err("unsupported_host".to_string());
+    }
+    let flag = sign_in.with(|flows| flows.begin(std::time::Instant::now()))?.map_err(str::to_string)?;
+    let result = run_browser_sign_in(&fapi_host, &flag, &relay, &sign_in).await;
+    if result.is_err() {
+        sign_in.with(|flows| flows.fail(&flag))?;
+    }
+    result
+}
+
+async fn run_browser_sign_in(
+    fapi_host: &str,
+    flag: &Arc<std::sync::atomic::AtomicBool>,
+    relay: &ClerkRelayState,
+    sign_in: &BrowserSignInState,
+) -> Result<(), String> {
+    let secrets = desktop_sign_in::FlowSecrets::generate();
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0))
+        .map_err(|_| "listener_failed".to_string())?;
+    let port = listener.local_addr().map_err(|_| "listener_failed".to_string())?.port();
+
+    // open_in_shell keeps the Linux LD_* scrubbing. Its error text includes
+    // the URL, which carries the flow's state, so it is discarded.
+    open_in_shell(&desktop_sign_in::sign_in_url(port, &secrets.state, &secrets.challenge))
+        .map_err(|_| "browser_failed".to_string())?;
+    sign_in.with(|flows| flows.opened(std::time::Instant::now()))?;
+
+    let state_for_wait = secrets.state.clone();
+    let deadline = std::time::Instant::now() + desktop_sign_in::FLOW_TIMEOUT;
+    let flag_for_wait = flag.clone();
+    let code = tauri::async_runtime::spawn_blocking(move || {
+        desktop_sign_in::wait_for_code(&listener, &state_for_wait, deadline, &flag_for_wait)
     })
+    .await
+    .map_err(|_| "listener_failed".to_string())?
+    .map_err(|error| match error {
+        desktop_sign_in::WaitError::Cancelled => "cancelled".to_string(),
+        desktop_sign_in::WaitError::TimedOut => "timed_out".to_string(),
+        desktop_sign_in::WaitError::Io(_) => "listener_failed".to_string(),
+    })?;
+    sign_in.with(|flows| flows.check(flag))?.map_err(str::to_string)?;
+
+    let user_agent = format!("WorldMonitor-Desktop/{} (desktop-auth)", env!("CARGO_PKG_VERSION"));
+    let exchange = relay
+        .http_client
+        .post(desktop_sign_in::TOKEN_ENDPOINT)
+        .header(reqwest::header::USER_AGENT, user_agent)
+        .json(&serde_json::json!({ "code": code, "code_verifier": secrets.verifier }))
+        .send()
+        .await
+        .map_err(|_| "network_failed".to_string())?;
+    let exchange_ok = exchange.status().is_success();
+    let token: DesktopTokenResponse = exchange.json().await.map_err(|_| "exchange_failed".to_string())?;
+    let ticket = match (exchange_ok, token.ticket, token.error) {
+        (true, Some(ticket), _) => ticket,
+        (_, _, Some(error)) => return Err(error),
+        _ => return Err("exchange_failed".to_string()),
+    };
+
+    sign_in
+        .with(|flows| flows.store_ticket(flag, fapi_host.to_string(), ticket, std::time::Instant::now()))?
+        .map_err(str::to_string)
+}
+
+/// Step two: redeem the pending ticket through the relay. Returns only the
+/// sign-in status, the new session id and the identifier.
+#[tauri::command]
+async fn finish_desktop_browser_sign_in(
+    webview: Webview,
+    app: AppHandle,
+    relay: tauri::State<'_, ClerkRelayState>,
+    sign_in: tauri::State<'_, BrowserSignInState>,
+) -> Result<desktop_sign_in::SignInOutcome, String> {
+    require_relay_window(&webview)?;
+    let (fapi_host, ticket) = sign_in
+        .with(|flows| flows.take_ticket(std::time::Instant::now()))?
+        .ok_or_else(|| "invalid_grant".to_string())?;
+    if !desktop_sign_in::is_ticket_host(&fapi_host) {
+        return Err("sign_in_refused".to_string());
+    }
+    let body = reqwest::Url::parse_with_params("http://x/", [("strategy", "ticket"), ("ticket", ticket.as_str())])
+        .map_err(|_| "exchange_failed".to_string())?
+        .query()
+        .unwrap_or_default()
+        .to_string();
+    let validated = clerk_relay::validate_request(ClerkFapiRequest {
+        host: fapi_host.clone(),
+        method: "POST".to_string(),
+        path: "/v1/client/sign_ins".to_string(),
+        content_type: Some("application/x-www-form-urlencoded".to_string()),
+        body: Some(body),
+    })?;
+
+    // Redeem on a fresh client (no token): the user's current session is
+    // never signed out, and a failure below leaves it untouched.
+    let (redeemed, new_token) = send_fapi_with_token(&relay, validated, None)
+        .await
+        .map_err(|_| "network_failed".to_string())?;
+    let outcome = desktop_sign_in::parse_sign_in_response(&redeemed.body).ok();
+    if !desktop_sign_in::adopt_redeemed_client(redeemed.status, outcome.as_ref(), new_token.as_deref()) {
+        return Err(if redeemed.status >= 400 { "sign_in_refused" } else { "exchange_failed" }.to_string());
+    }
+    let (Some(outcome), Some(new_token)) = (outcome, new_token) else {
+        return Err("exchange_failed".to_string());
+    };
+
+    let mut slot = relay.token.lock().await;
+    let stored = slot.get_or_insert_with(load_clerk_client_token);
+    let previous = clerk_relay::token_for_host(stored.as_ref(), &fapi_host).map(str::to_string);
+    store_clerk_client_token(
+        &app,
+        stored,
+        ClerkClientToken { host: fapi_host.clone(), token: new_token.trim().to_string() },
+    );
+    drop(slot);
+
+    // Best effort: end the replaced client and its sessions, as a sign-out
+    // would have. A failure only leaves that session to expire on its own.
+    if let Some(previous) = previous {
+        if let Ok(destroy) = clerk_relay::validate_request(ClerkFapiRequest {
+            host: fapi_host,
+            method: "POST".to_string(),
+            path: "/v1/client?_method=DELETE".to_string(),
+            content_type: None,
+            body: None,
+        }) {
+            let _ = send_fapi_with_token(&relay, destroy, Some(&previous)).await;
+        }
+    }
+    Ok(outcome)
+}
+
+#[tauri::command]
+fn cancel_desktop_browser_sign_in(webview: Webview, sign_in: tauri::State<'_, BrowserSignInState>) -> Result<(), String> {
+    require_relay_window(&webview)?;
+    sign_in.with(|flows| flows.cancel())
 }
 
 #[tauri::command]
@@ -2105,6 +2311,7 @@ fn main() {
         .manage(LocalApiState::default())
         .manage(SecretsCache::load_from_keychain())
         .manage(ClerkRelayState::default())
+        .manage(BrowserSignInState::default())
         .invoke_handler(tauri::generate_handler![
             list_configured_secret_keys,
             set_secret,
@@ -2126,7 +2333,10 @@ fn main() {
             open_url,
             open_youtube_login,
             fetch_polymarket,
-            clerk_fapi_request
+            clerk_fapi_request,
+            start_desktop_browser_sign_in,
+            finish_desktop_browser_sign_in,
+            cancel_desktop_browser_sign_in
         ])
         .setup(|app| {
             // Load persistent cache into memory (avoids 14MB file I/O on every IPC call)

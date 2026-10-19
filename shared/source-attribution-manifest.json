@@ -17,6 +17,9 @@
           "path": "scripts/profile-news-hybrid-clustering-7782-dashboard.mjs"
         },
         {
+          "path": "src/services/desktop-sign-in-page.ts"
+        },
+        {
           "path": "src/services/runtime.ts"
         }
       ]
@@ -579,6 +582,9 @@
       "attribution": "Excluded from the provider count: identity-control-plane request.",
       "status": "excluded",
       "references": [
+        {
+          "path": "api/_desktop-auth.ts"
+        },
         {
           "path": "api/user/passkey-offer.ts"
         },

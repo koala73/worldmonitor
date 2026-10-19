@@ -96,10 +96,10 @@ describe('shared country signal details', () => {
 
 it('retains same-country qualified observations after the website refresh resets military work', async () => {
   const previous = projectQualifiedCountrySignals('IR', qualifiedFixtureOutcomes());
-  const page = { signal: new AbortController().signal, getCode: () => 'IR', getName: () => 'Iran', updateMilitaryActivity: vi.fn() };
+  const page = { signal: new AbortController().signal, getCode: () => 'IR', getName: () => 'Iran', isVisible: () => true, updateMilitaryActivity: vi.fn() };
   const manager = new CountryIntelManager({ countryBriefPage: page, latestClusters: [], intelligenceCache: {} } as unknown as AppContext);
   const qualified = qualifiedFixtureOutcomes().find(row => row.family === 'military')!;
-  const loader = vi.spyOn(militaryActivity, 'loadHostCountryMilitaryActivity').mockResolvedValue({ qualified } as Awaited<ReturnType<typeof militaryActivity.loadHostCountryMilitaryActivity>>);
+  const loader = vi.spyOn(militaryActivity, 'loadHostCountryMilitaryActivity').mockResolvedValue({ qualified, ownFlights:null, foreignFlights:null, nearbyVessels:null, nearestBases:[], foreignPresence:null, coverage:'partial', signalCounts: {militaryFlights:null,militaryFlightsInCountry:null,militaryVessels:null,militaryVesselsInCountry:null}, deniedSignalFields:[], coverageNotes:[] } as Awaited<ReturnType<typeof militaryActivity.loadHostCountryMilitaryActivity>>);
   Reflect.set(manager, 'qualifiedSignals', previous);
   Reflect.set(manager, 'qualifiedMilitary', null);
   Reflect.set(manager, 'qualifiedSource', {
@@ -116,7 +116,7 @@ it('retains same-country qualified observations after the website refresh resets
 });
 
 it('replaces website military loading with unavailable when the qualified military load rejects', async () => {
-  const page = { signal: new AbortController().signal, getCode: () => 'IR', getName: () => 'Iran', updateMilitaryActivity: vi.fn() };
+  const page = { signal: new AbortController().signal, getCode: () => 'IR', getName: () => 'Iran', isVisible: () => true, updateMilitaryActivity: vi.fn() };
   const manager = new CountryIntelManager({ countryBriefPage: page, latestClusters: [], intelligenceCache: {} } as unknown as AppContext);
   const loader = vi.spyOn(militaryActivity, 'loadHostCountryMilitaryActivity').mockRejectedValue(new Error('Controlled infrastructure failure'));
   Reflect.set(manager, 'qualifiedSource', {
@@ -125,7 +125,7 @@ it('replaces website military loading with unavailable when the qualified milita
   });
   try {
     await Reflect.get(manager, 'loadQualifiedCountrySignals').call(manager, 'IR');
-    expect(page.updateMilitaryActivity).toHaveBeenCalledWith(null);
+    expect(page.updateMilitaryActivity).toHaveBeenCalledWith(expect.objectContaining({ownFlights:null,foreignFlights:null,nearbyVessels:null}));
     expect(Reflect.get(manager, 'buildMilitarySummary').call(manager, 'IR', 'Iran').coverageNotes.join(' ')).not.toContain('loading');
   } finally { loader.mockRestore(); }
 });
@@ -136,7 +136,7 @@ it('removes the website Signals loading notice after qualified military work set
   const body = document.createElement('div');
   Reflect.set(panel, 'signalsBody', body);
   panel.updateSignals(signals, ['Qualified country military observations are loading.']);
-  const page = { signal: new AbortController().signal, getCode: () => 'IR', getName: () => 'Iran',
+  const page = { signal: new AbortController().signal, getCode: () => 'IR', getName: () => 'Iran', isVisible: () => true,
     getSignalCounts: panel.getSignalCounts.bind(panel), updateSignals: panel.updateSignals.bind(panel), updateMilitaryActivity: vi.fn() };
   const manager = new CountryIntelManager({ countryBriefPage: page, latestClusters: [], intelligenceCache: {} } as unknown as AppContext);
   const loader = vi.spyOn(militaryActivity, 'loadHostCountryMilitaryActivity').mockRejectedValue(new Error('Controlled military failure'));
@@ -166,7 +166,7 @@ function lifecycle() {
   let code = 'FR';
   let visible = true;
   const signals = { ...countrySignalsFromMilitary('FR'), ...Object.fromEntries(Object.keys(countrySignalsFromMilitary('FR')).map(key => [key, key === 'isTier1' ? false : 0])) };
-  signals.militaryVessels = 141;
+  signals.earthquakes = 141;
   const page = {
     getCode: () => code, getName: () => code, isVisible: () => visible,
     show: (_name: string, nextCode: string) => { code = nextCode; panel.updateSignals(signals); },
@@ -226,10 +226,10 @@ describe('website Signals lifecycle', () => {
     const h = lifecycle();
     await h.open();
     snapshot.read.mockReturnValue([cluster('FR', [observation('radiation_anomaly', 'high', 2)])]);
-    h.signals.militaryVessels = 142;
+    h.signals.earthquakes = 142;
     h.manager.refreshOpenBrief();
     await vi.waitFor(() => expect(h.body.textContent).toContain('radiation_anomaly 2'));
-    expect(h.body.textContent).toContain('142 Naval Vessels');
+    expect(h.body.textContent).toContain('142 Earthquakes');
     expect(h.body.textContent).not.toContain('protest 1');
     expect(h.body.querySelector('.cdp-signal-breakdown')?.textContent).toContain('Critical1');
     h.panel.hide();
@@ -242,7 +242,7 @@ describe('website Signals lifecycle', () => {
     detailRead.mockRejectedValueOnce(new Error('Controlled detail outage'));
     if (mode === 'opening') await h.open(); else h.manager.refreshOpenBrief();
     await vi.waitFor(() => expect(h.body.textContent).toContain('Aggregate severity and recent high-severity observations are unavailable'));
-    expect(h.body.textContent).toContain('141 Naval Vessels');
+    expect(h.body.textContent).toContain('141 Earthquakes');
     expect(h.body.textContent).not.toContain('Loading top high-severity');
     expect(h.body.textContent).not.toContain('No recent high-severity signals');
     if (mode === 'opening') {
@@ -300,20 +300,23 @@ describe('website Signals lifecycle', () => {
       countPaints.push(h.body.querySelector('.cdp-signal-chips')?.textContent ?? '');
     });
     paint.yield.mockReturnValueOnce(yielded.promise);
-    Reflect.set(h.manager, 'getCountrySignals', vi.fn().mockResolvedValueOnce({ ...h.signals, militaryVessels: 141 }).mockResolvedValue({ ...h.signals, militaryVessels: 142 }));
+    Reflect.set(h.manager, 'getCountrySignals', vi.fn().mockResolvedValueOnce({ ...h.signals, earthquakes: 141 }).mockResolvedValue({ ...h.signals, earthquakes: 142 }));
     Reflect.set(h.manager, 'buildMilitarySummary', () => ({ coverageNotes: ['Current refresh coverage'] }));
     const opening = h.open({ onPresented: () => {
       snapshot.read.mockReturnValue([cluster('FR', [observation('radiation_anomaly', 'high', 7)])]);
       h.manager.refreshOpenBrief();
     } });
     await vi.waitFor(() => expect(h.body.textContent).toContain('radiation_anomaly 7'));
-    expect(h.body.textContent).toContain('142 Naval Vessels');
+    expect(h.body.textContent).toContain('142 Earthquakes');
+    const owned = { code:'FR', page:h.page, signalCounts:{militaryFlights:0,militaryFlightsInCountry:0,militaryVessels:93,militaryVesselsInCountry:1}, value:{ownFlights:0,foreignFlights:0,nearbyVessels:1,foreignPresence:false,nearestBases:[],coverage:'complete',coverageNotes:['Qualified refresh clock']} };
+    Reflect.set(h.manager,'qualifiedMilitarySummary',owned);
     yielded.resolve();
     await opening;
-    expect(h.body.textContent).toContain('142 Naval Vessels');
-    expect(h.body.textContent).not.toContain('141 Naval Vessels');
+    expect(h.body.textContent).toContain('142 Earthquakes');
+    expect(h.body.textContent).not.toContain('141 Earthquakes');
+    expect(Reflect.get(h.manager,'qualifiedMilitarySummary')).toBe(owned);
     expect(h.body.textContent).toContain('Current refresh coverage');
-    expect(countPaints).toEqual(['⚓ 142 Naval Vessels']);
+    expect(countPaints).toEqual(['✈️ Military Air unavailable⚓ Naval Vessels unavailable🌍 142 Earthquakes']);
     expect(h.body.textContent).toContain('radiation_anomaly 7');
     expect(h.body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical1High0Moderate0Low0');
     expect(h.assessment).toHaveBeenCalledOnce();
@@ -330,7 +333,7 @@ describe('website Signals lifecycle', () => {
     });
     Reflect.set(h.manager, 'getCountrySignals', vi.fn().mockResolvedValueOnce({ ...h.signals })
       .mockRejectedValueOnce(new Error('Controlled refresh counts outage'))
-      .mockResolvedValue({ ...h.signals, militaryVessels: 142 }));
+      .mockResolvedValue({ ...h.signals, earthquakes: 142 }));
     await h.open({ onPresented: () => h.manager.refreshOpenBrief() });
     expect(h.assessment).toHaveBeenCalledOnce();
     expect(h.page.updateBrief).toHaveBeenCalledWith(expect.objectContaining({ brief: 'Controlled assessment' }));
@@ -343,7 +346,7 @@ describe('website Signals lifecycle', () => {
     snapshot.read.mockReturnValue([]);
     h.manager.refreshOpenBrief();
     await vi.waitFor(() => expect(h.body.textContent).toContain('No recent high-severity signals'));
-    expect(h.body.textContent).toContain('142 Naval Vessels');
+    expect(h.body.textContent).toContain('142 Earthquakes');
     expect(h.body.querySelector('.cdp-signal-breakdown')?.textContent).toBe('Critical0High0Moderate0Low0');
     snapshot.read.mockReturnValue([cluster('FR', [observation('radiation_anomaly', 'high', 8)])]);
     h.manager.refreshOpenBrief();
@@ -372,13 +375,13 @@ describe('website Signals lifecycle', () => {
     await h.open();
     const pending = deferred<ReturnType<typeof projectCountrySignalDetails>>();
     const detailRead = vi.spyOn(h.manager as unknown as { buildSignalDetails: (code: string) => Promise<ReturnType<typeof projectCountrySignalDetails>> }, 'buildSignalDetails').mockReturnValueOnce(pending.promise);
-    Reflect.set(h.manager, 'getCountrySignals', vi.fn().mockResolvedValueOnce({ ...h.signals, militaryVessels: 142 }).mockRejectedValueOnce(new Error('Controlled overlapping counts outage')));
+    Reflect.set(h.manager, 'getCountrySignals', vi.fn().mockResolvedValueOnce({ ...h.signals, earthquakes: 142 }).mockRejectedValueOnce(new Error('Controlled overlapping counts outage')));
     h.manager.refreshOpenBrief();
     await vi.waitFor(() => expect(detailRead).toHaveBeenCalledOnce());
     expect(h.body.textContent).toContain('protest 1');
     h.manager.refreshOpenBrief();
     await vi.waitFor(() => expect(h.body.textContent).toContain('observations are unavailable'));
-    expect(h.body.textContent).toContain('142 Naval Vessels');
+    expect(h.body.textContent).toContain('142 Earthquakes');
     expect(h.body.textContent).not.toContain('Loading top high-severity');
     const before = h.body.textContent;
     if (outcome === 'success') pending.resolve(projectCountrySignalDetails([observation('protest', 'high', 6)]));
@@ -392,7 +395,7 @@ describe('website Signals lifecycle', () => {
   it.each(['country', 'presentation', 'hidden', 'destroyed', 'page', 'newer-refresh'] as const)('suppresses early count rejection after %s ownership change', async change => {
     const h = lifecycle();
     const counts = deferred<typeof h.signals>();
-    const read = vi.fn().mockResolvedValueOnce(h.signals).mockReturnValueOnce(counts.promise).mockResolvedValue({ ...h.signals, militaryVessels: 142 });
+    const read = vi.fn().mockResolvedValueOnce(h.signals).mockReturnValueOnce(counts.promise).mockResolvedValue({ ...h.signals, earthquakes: 142 });
     Reflect.set(h.manager, 'getCountrySignals', read);
     const opening = h.open({ onPresented: () => h.manager.refreshOpenBrief() });
     await vi.waitFor(() => expect(read.mock.calls.length).toBeGreaterThanOrEqual(2));

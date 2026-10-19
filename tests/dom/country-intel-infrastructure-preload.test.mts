@@ -254,7 +254,7 @@ describe('CountryIntelManager infrastructure preload barrier', () => {
     expect(militaryMocks.preloadMilitaryBases).toHaveBeenCalledOnce();
     expect(militaryUpdates[militaryUpdates.length - 1]).toEqual(expect.objectContaining({ ownFlights: null,foreignPresence:null }));
     militaryUpdates.length = 0;
-    Reflect.set(manager, 'qualifiedMilitarySummary', { code: 'US', value: { ownFlights: 1, foreignFlights: 0, nearbyVessels: 0, foreignPresence: false, nearestBases: [], coverage: 'complete', coverageNotes: [] } });
+    Reflect.set(manager, 'qualifiedMilitarySummary', { code: 'US', page: Reflect.get(manager,'ctx').countryBriefPage, signalCounts: {militaryFlights:1,militaryFlightsInCountry:1,militaryVessels:0,militaryVesselsInCountry:0}, value: { ownFlights: 1, foreignFlights: 0, nearbyVessels: 0, foreignPresence: false, nearestBases: [], coverage: 'complete', coverageNotes: [] } });
     await Promise.resolve();
     expect(militaryUpdates).toHaveLength(0);
     bases.resolve([]);
@@ -267,7 +267,7 @@ describe('CountryIntelManager infrastructure preload barrier', () => {
     const { manager, militaryUpdates, open } = createBriefHarness('US');
     await open();
     militaryUpdates.length = 0;
-    Reflect.set(manager, 'qualifiedMilitarySummary', { code: 'US', value: { ownFlights: 1, foreignFlights: 0, nearbyVessels: 0, foreignPresence: false, nearestBases: [], coverage: 'complete', coverageNotes: [] } });
+    Reflect.set(manager, 'qualifiedMilitarySummary', { code: 'US', page: Reflect.get(manager,'ctx').countryBriefPage, signalCounts: {militaryFlights:1,militaryFlightsInCountry:1,militaryVessels:0,militaryVesselsInCountry:0}, value: { ownFlights: 1, foreignFlights: 0, nearbyVessels: 0, foreignPresence: false, nearestBases: [], coverage: 'complete', coverageNotes: [] } });
 
     manager.refreshOpenMilitaryActivity();
 

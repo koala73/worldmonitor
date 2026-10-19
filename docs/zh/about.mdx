@@ -1,9 +1,101 @@
 ---
-title: "关于 World Monitor：开源 OSINT 仪表盘"
-description: "深入了解 World Monitor 背后的故事：由 Anghami 联合创始人 Elie Habib 独立打造的开源实时全球情报仪表盘，目前已被 190+ 个国家的记者、分析师、研究人员与政策制定者使用，聚合冲突、航运、能源与市场信号，让开源情报（OSINT）与地缘政治监测触手可及。"
+title: "关于 World Monitor"
+description: "World Monitor 是免费、开源的实时全球情报仪表盘，在一张实时地图上关联地缘政治、市场、能源、航运与网络安全信号，并提供警报、API 与 Pro AI 分析师。由 Anghami 联合创始人 Elie Habib 打造，190+ 个国家的 200 万+ 用户正在使用。"
 ---
 
-World Monitor 是一个免费的实时全球情报仪表盘。它将丰富的实时数据源——冲突事件、军用航班、船舶动向、卫星火点探测、市场数据、航运咽喉要道、互联网中断、网络信号和自然灾害——融合到一张实时的世界地图上，并在其上叠加 AI 分析。核心仪表盘对所有人开放，无需注册。
+{/* 规范版「关于」页面，与英文版 /about 保持同一结构。英文版的库存计数由 `npm run product:facts` 生成；本页刻意不写库存数字，因为没有生成器维护它们。Pro 价格由同一生成器的调价逻辑改写。 */}
+
+World Monitor 是一个免费、开源（AGPL-3.0）的实时全球情报仪表盘。它把世界的原始信号——船舶、飞机、卫星、警报、海底电缆、市场，以及经过来源标注的新闻与 OSINT 信息——汇聚到一张实时地图上，并在信号相互印证、形成真正重要的事件时发出提示。[超过 200 万用户](https://siliconcanals.com/sc-n-anghami-ceos-side-project-world-monitor-now-has-2-million-users-tracking-conflicts-in-real-time/)遍布 190+ 个国家，无需账户，也没有试用期限。
+
+每个数字都有出处，每种方法都有文档。等到它成为新闻时，你早已知晓。
+
+## 覆盖范围
+
+多数情报工具只呈现现实的一个切面：冲突地图、行情终端、船舶追踪器或天气信息。World Monitor 把这些切面放在同一界面上，让它们彼此解释。
+
+<CardGroup cols={2}>
+  <Card title="地缘政治与冲突" icon="globe" href="https://www.worldmonitor.app/countries/">
+    覆盖一级重点国家的国家不稳定指数、评分热点、兵力态势与升级监测、UCDP 与 ACLED 事件、Telegram 与 X 上的 OSINT、安全警告以及人口暴露评估。
+  </Card>
+  <Card title="市场与金融" icon="chart-line" href="https://finance.worldmonitor.app/dashboard">
+    股票、加密资产、多币种外汇压力、收益率曲线、市场宽度、持仓、ETF 资金流、稳定币锚定、财报与经济日历、SEC 文件、预测市场，以及新闻与市场的关联分析。
+  </Card>
+  <Card title="大宗商品与供应链" icon="ship" href="https://www.worldmonitor.app/chokepoints/">
+    基于实时 AIS 的海上咽喉要道监测与中断评分、贸易航线、运价指数、关键矿产集中度、黄金情报、粮食价格与贸易流。
+  </Card>
+  <Card title="能源" icon="bolt" href="https://energy.worldmonitor.app/dashboard">
+    霍尔木兹海峡贸易追踪、管道与储存状态、EIA 与 IEA 库存、欧盟天然气储量、多国燃油价格以及燃油短缺登记。
+  </Card>
+  <Card title="基础设施与网络安全" icon="network-wired" href="https://www.worldmonitor.app/dashboard">
+    海底电缆、级联模拟（推演下游会发生哪些故障）、互联网中断、DDoS、云服务状态与威胁指标。
+  </Card>
+  <Card title="灾害、气候与健康" icon="cloud-bolt" href="https://www.worldmonitor.app/dashboard">
+    地震、卫星火点探测、恶劣天气、气候异常、疾病暴发、空气质量、辐射与人口流离失所。
+  </Card>
+</CardGroup>
+
+地图本身可切换显示：冲突、军事活动、实时船舶与飞机、卫星、GPS 干扰、抗议、火灾、恶劣天气、网络中断、网络威胁、核设施、电缆、管道与 AI 数据中心，运行在 3D 地球仪与 WebGL 双引擎之上。
+
+## 工作方式
+
+World Monitor 没有新闻编辑室，也没有人工编辑。它依靠方法论。
+
+- **聚合胜于噪声。** 信号在浮现为警报之前，会与多个独立来源交叉核对。突发横幅必须通过严重度、时效与佐证的固定门槛，因此单一未经证实的报道不会变成头条。
+- **分级的来源层级。** 通讯社和官方渠道高于主要广播机构，后者又高于专业开源情报机构，并始终保留来源溯源。每个面板都会内联标注来源与时间戳。
+- **国家档案。** 点击任意国家，即可查看其不稳定评分及构成、带引用的 AI 简报、地图上的活跃信号以及 7 天时间线，并附有结构韧性排名。
+- **有记录可查的预测。** 公开的 AI 预测附带概率、置信度与时间范围，[公开记分卡](https://www.worldmonitor.app/accuracy/)记录其最终结果。
+- **AI 是叠加，而非替代。** 简报、风险评分与预测都由底层信号生成，而非出自聊天机器人的臆想。
+
+## 六个监测台，同一引擎
+
+同一平台，按主题调校。可在页眉栏中切换。
+
+| 监测台 | 关注内容 |
+| --- | --- |
+| [World Monitor](https://www.worldmonitor.app/dashboard) | 地缘政治、军事、冲突、基础设施 |
+| [Finance Monitor](https://finance.worldmonitor.app/dashboard) | 全球市场、交易、央行、海湾地区外国直接投资 |
+| [Commodity Monitor](https://commodity.worldmonitor.app/dashboard) | 采矿、金属、能源、供应链 |
+| [Energy Monitor](https://energy.worldmonitor.app/dashboard) | 能源安全、油气、咽喉要道、中断事件 |
+| [Tech Monitor](https://tech.worldmonitor.app/dashboard) | 初创公司、AI/ML、云、网络安全 |
+| [Happy Monitor](https://happy.worldmonitor.app/dashboard) | 正面新闻、突破、自然保护、可再生能源 |
+
+它可以在你工作的任何地方运行：
+
+- **网页**：[worldmonitor.app](https://www.worldmonitor.app/dashboard)，也可安装为支持离线地图瓦片的 PWA
+- **桌面**：适用于 Windows、macOS（Apple Silicon 与 Intel）和 Linux 的[原生应用](https://github.com/koala73/worldmonitor/releases/latest)，使用操作系统钥匙串存储密钥，并带有本地 API 边车
+- **终端**：全屏[终端仪表盘（TUI）](/zh/cli-dashboard)，提供同样的实时地图、新闻、市场、冲突、航运与网络安全信息，支持鼠标和配色主题，无需 API 密钥
+- **Android TV**：用于大屏展示
+- **自托管**：通过 [Docker 或 Vercel](/zh/getting-started) 部署，可借助 Ollama 使用本地 AI
+
+全部界面均已本地化，并为阿拉伯语和波斯语提供从右到左的布局。
+
+## 为智能体而建
+
+地图上的一切同样是 API。你的代码用实时数据做研究，而不是依赖训练数据中的记忆。
+
+- **[MCP 服务器](https://worldmonitor.app/mcp)**：完整的实时工具目录、Streamable HTTP、OAuth 或 API 密钥，每次调用都支持 JMESPath 投影
+- **[REST API](/zh/api-reference)**：统一的 OpenAPI 3.1 规范，一个密钥
+- **[官方 SDK](/zh/sdks)**：Python、JavaScript、Ruby 与 Go，零依赖
+- **[CLI](/zh/cli)**：在 shell 或流水线中调用任意工具
+- **签名 Webhook**：咽喉要道中断、国家风险激增、突发新闻、市场异动与自然灾害
+- **[智能体技能](https://www.worldmonitor.app/agent/)**：适用于 Claude、ChatGPT、Cursor 及任何 MCP 客户端
+
+## 免费版是观测站，Pro 是作战室
+
+免费仪表盘是完整的产品，而非试用：除结构韧性外的全部地图图层、全部六个监测台、国家简报、咽喉要道、级联分析、突发警报流程与关注列表。
+
+**[World Monitor Pro](https://www.worldmonitor.app/pro)** 起价每月 $39.99，增加决策层：
+
+- **WM Analyst**：跨实时服务、带引用的 AI 分析师
+- **Scenario Engine**（每小时运行）与 **Route Explorer**
+- **成本冲击与供应链压力测试**：覆盖咽喉要道、级联与脆弱性排名
+- **警报规则**：按国家、事件类型、严重度与咽喉要道设置，推送到 Slack、Microsoft Teams、Discord、Telegram、电子邮件、推送通知或签名 Webhook
+- **个人 AI 摘要**：每日、每日两次或每周
+- **情报记忆**：历史检索与相似事件查找
+- **自定义组件构建器**与**结构韧性**地图图层
+- **MCP 访问**：通过 OAuth 连接 Claude、ChatGPT 等 AI 客户端
+
+Pro Business 增加商业许可与数据导出。API 套餐增加 REST 与 SDK 密钥、调用配额和 Webhook，API Business 另含再分发权。Enterprise 增加 SSO、团队工作区、白标面板以及本地或隔离网络部署。参见[定价](https://www.worldmonitor.app/pro#pricing)与[许可范围](/zh/eula)。
 
 ## 起源
 
@@ -13,27 +105,13 @@ World Monitor 始于 2026 年 1 月的一个周末项目。Elie Habib——音�
 
 但它并未就此沉寂。随着 2026 年全球局势不断升级，该仪表盘在第一周就触达了数十万用户，此后更增长到遍布 [190+ 个国家的 200 万+ 用户](https://siliconcanals.com/sc-n-anghami-ceos-side-project-world-monitor-now-has-2-million-users-tracking-conflicts-in-real-time/)——其中大多数人远非通常的情报工具用户群体。如今它已是 GitHub 上星标最多的开源 OSINT 项目之一（[![GitHub Repo stars](https://img.shields.io/github/stars/koala73/worldmonitor)](https://github.com/koala73/worldmonitor/stargazers)）。
 
-## 它的独特之处
-
-World Monitor 没有新闻编辑室，也没有人工编辑。取而代之，它依靠方法论：
-
-- **聚合胜于噪声。** 任何信息在浮现为警报之前，都会与多个独立来源交叉核对，因此单一未经证实的报道不会变成头条。
-- **分级的来源层级。** 通讯社和官方渠道（路透社、美联社、五角大楼、联合国）的级别高于主要广播机构（BBC、半岛电视台），后者又高于专业的开源情报机构（Bellingcat）——并始终保持来源溯源可见。
-- **广度集于一处。** ADS-B 飞机应答机、AIS 海事位置、UCDP 冲突事件与 GDELT 报道、NASA 火点探测、GPS 干扰与中断数据、预测市场以及大宗商品价格，全部汇聚在同一个地球仪上。
-- **国家不稳定指数。** 每个国家都根据基线风险、动荡、安全事件和信息流速被评为 0–100 分，并实时调整。
-- **AI 是叠加，而非替代。** 自动化简报、国家风险和预测都由底层信号生成——而非出自聊天机器人的臆想。
-
-专门的变体将同一引擎聚焦于某个主题：[Tech](https://tech.worldmonitor.app/dashboard)、[Finance](https://finance.worldmonitor.app/dashboard)、[Commodity](https://commodity.worldmonitor.app/dashboard)、[Energy](https://energy.worldmonitor.app/dashboard) 和 [Happy](https://happy.worldmonitor.app/dashboard)（仅正面新闻）。
-
 ## 使命
 
-了解世界的态势感知不应需要一台五位数价格的终端。World Monitor 的目标是让可信的实时全球情报——那种通常只为政府、基金和新闻编辑室保留的情报——人人只需一个浏览器即可获取。
+了解世界的态势感知不应需要一台五位数价格的终端。World Monitor 的目标是让可信的实时全球情报——那种通常只为政府、基金和新闻编辑室保留的情报——人人只需一个浏览器即可获取，任何持有密钥的 AI 智能体也同样可以使用。
 
 ## 由谁打造
 
-World Monitor 由 [Elie Habib](https://x.com/eliehabib) 打造，他是 Anghami 的联合创始人兼 CEO——Anghami 是首家在纳斯达克上市的阿拉伯科技公司。[WIRED](https://www.wired.com/story/world-monitor-elie-habib/) 报道了他在 World Monitor 上的工作及其起源。
-
-该平台以 AGPL-3.0-only 开源——参见[许可证](/zh/license)和[商标政策](/zh/trademark-policy)。
+World Monitor 由 [Elie Habib](https://x.com/eliehabib) 打造，他是 Anghami 的联合创始人兼 CEO——Anghami 是首家在纳斯达克上市的阿拉伯科技公司。该平台以 AGPL-3.0-only 开源，参见[许可证](/zh/license)和[商标政策](/zh/trademark-policy)。官方维护的代码仓库是 [github.com/koala73/worldmonitor](https://github.com/koala73/worldmonitor)；其他副本与名称相近的产品均[与本项目无关](https://www.worldmonitor.app/world-monitor.md)。
 
 ## 媒体报道
 
@@ -48,9 +126,11 @@ World Monitor 由 [Elie Habib](https://x.com/eliehabib) 打造，他是 Anghami 
 
 ## 探索
 
-- [仪表盘](https://www.worldmonitor.app) — 实时地图
-- [Pro](https://www.worldmonitor.app/pro) — 更深入的信号、更多 AI 简报、一个研究助手
-- [文档](https://www.worldmonitor.app/docs/documentation) — API、MCP 与平台指南
+- [仪表盘](https://www.worldmonitor.app/dashboard) — 实时地图
+- [Pro](https://www.worldmonitor.app/pro) — 决策层
+- [文档](/zh/documentation) — API、MCP 与平台指南
+- [覆盖目录](https://www.worldmonitor.app/reference/coverage/) — 按名称列出每个面板、图层与工具
+- [数据来源](https://www.worldmonitor.app/sources/) — 全部经过标注的数据提供方
 - [GitHub](https://github.com/koala73/worldmonitor) — 源代码与问题追踪
 - [博客](https://www.worldmonitor.app/blog) — 分析与产品更新
 
