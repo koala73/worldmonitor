@@ -181,7 +181,10 @@ export function extractCountryCodes(text) {
  */
 export function extractStoryCountries(title) {
   const countryCodes = extractCountryCodes(title);
-  const countryCode = extractCountryCode(stripPublisherSuffix(title)) ?? countryCodes[0] ?? null;
+  // The strict name scan cannot see place names, so "New Mexico" reads as MX there; keep its
+  // pick only when the place-aware scan agrees the title names that country.
+  const strict = extractCountryCode(stripPublisherSuffix(title));
+  const countryCode = (strict && countryCodes.includes(strict) ? strict : countryCodes[0]) ?? null;
   if (!countryCode) return { countryCode, countryCodes };
   return { countryCode, countryCodes: [countryCode, ...countryCodes.filter((code) => code !== countryCode)] };
 }

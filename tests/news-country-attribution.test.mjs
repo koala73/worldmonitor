@@ -135,6 +135,10 @@ describe('extractStoryCountries (top-story countryCode + countryCodes)', () => {
     });
   });
 
+  it('does not take the primary country from a word inside a place name', () => {
+    assert.deepEqual(extractStoryCountries('New Mexico wildfire spreads'), { countryCode: 'US', countryCodes: ['US'] });
+  });
+
   it('returns null and an empty list for a title naming no country', () => {
     assert.deepEqual(extractStoryCountries('Markets rally as inflation cools'), { countryCode: null, countryCodes: [] });
   });
