@@ -2613,7 +2613,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       if (params.view === 'movements') {
         const result = projectCrossBorderSnapshots(Object.fromEntries(CROSS_BORDER_SOURCES.map(source => [source.id, data[source.id]])));
         const countries = resolveCountryFilter(params.countries, 'countries').map(code => code.toUpperCase());
-        const route = argStr(params.route)?.trim();
+        const route = typeof params.route === 'string' ? params.route.trim() : '';
         result.movements = result.movements.filter(m => (!countries.length || countries.includes(m.countryCode) || countries.includes(m.originCode)) && (!route || m.route === route));
         const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
         if (limit > 0) result.movements = result.movements.slice(0, limit);

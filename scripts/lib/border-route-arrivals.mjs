@@ -39,14 +39,24 @@ export function dailyRoute(points) {
 
 export function parseUkDaily(html) {
   const table = html.match(/<table\b[^>]*>[\s\S]*?<\/table>/i)?.[0];
-  if (!table || !/Migrants arrived/i.test(table)) throw new Error('missing Home Office arrivals table');
+  if (!table) throw new Error('missing Home Office arrivals table');
+  // Accept plain cells only; stripping markup can turn invalid input into a count.
+  const rows = [...table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].map(row =>
+    [...row[1].matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)].map(cell => cell[1].trim()));
+  const header = rows.find(cells => cells.includes('Date') && cells.includes('Migrants arrived'));
+  if (!header || header.filter(c => c === 'Date').length !== 1 || header.filter(c => c === 'Migrants arrived').length !== 1) throw new Error('missing Home Office arrivals headers');
+  const dateColumn = header.indexOf('Date');
+  const arrivalsColumn = header.indexOf('Migrants arrived');
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const points = [];
-  for (const row of table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
-    const cells = [...row[1].matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)].map(c => c[1].replace(/<[^>]*>/g, '').trim());
-    if (!/^\d{1,2} [A-Z][a-z]+ \d{4}$/.test(cells[0] ?? '')) continue;
-    const date = iso(Date.parse(`${cells[0]} 00:00:00 GMT`));
+  for (const cells of rows) {
+    if (cells === header) continue;
+    const parts = cells[dateColumn]?.match(/^(\d{1,2}) ([A-Z][a-z]+) (\d{4})$/);
+    const month = months.indexOf(parts?.[2]);
+    if (!parts || month < 0) throw new Error('invalid Home Office date');
+    const date = `${parts[3]}-${String(month + 1).padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
     if (!validDate(date)) throw new Error('invalid Home Office date');
-    points.push({ date, count: count(cells[1]) });
+    points.push({ date, count: count(cells[arrivalsColumn]) });
   }
   if (points.length !== 7 || new Set(points.map(p => p.date)).size !== 7) throw new Error('expected seven daily observations');
   return points.sort((a, b) => a.date.localeCompare(b.date));

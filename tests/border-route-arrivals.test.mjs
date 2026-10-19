@@ -31,6 +31,19 @@ test('Home Office parser selects migrants, not boats, and rejects missing or sup
   assert.throws(() => parseUkDaily('<html>unavailable</html>'), /table|observation/);
 });
 
+test('Home Office headers select arrival and date columns independently of their order', () => {
+  const html = '<table><tr><th>Boats arrived</th><th>Migrants arrived</th><th>Date</th></tr>'
+    + [12, 13, 14, 15, 16, 17, 18].map(d => `<tr><td>9</td><td>100</td><th>${d} October 2026</th></tr>`).join('') + '</table>';
+  assert.equal(parseUkDaily(html).at(-1).count, 100);
+});
+
+test('Home Office dates and counts reject impossible dates and embedded markup', () => {
+  const html = '<table><tr><th>Date</th><th>Migrants arrived</th></tr>'
+    + [12, 13, 14, 15, 16, 17, 18].map(d => `<tr><th>${d} October 2026</th><td>100</td></tr>`).join('') + '</table>';
+  assert.throws(() => parseUkDaily(html.replace('18 October 2026', '30 February 2026')), /date/);
+  assert.throws(() => parseUkDaily(html.replace('<td>100</td>', '<td><b>100</b></td>')), /count/);
+});
+
 test('CBP converts fiscal October, selects southwest only and counts enforcement events', () => {
   const csv = 'Fiscal Year,Month (abbv),Land Border Region,Encounter Count\n2026,OCT,Southwest Land Border,10\n2026,OCT,Southwest Land Border,2\n2026,OCT,Northern Land Border,500\n2026,SEP,Southwest Land Border,0\n';
   const points = parseCbp(csv);

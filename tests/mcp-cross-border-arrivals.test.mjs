@@ -179,3 +179,15 @@ test('movement view reads source envelopes independently and preserves explicit 
   assert.equal((await executeTool(annual, { view: 'movements', route: 'unknown' })).data.crossBorderMovements.movements.length, 0);
   assert.ok(ajv.validate(annual.outputSchema, result), ajv.errorsText());
 });
+
+test('movement route filters preserve the exact source ID case while trimming input', () => {
+  const tool = CACHE_TOOLS.find(t => t.name === 'get_displacement_data');
+  const stamp = Date.now() - 60000;
+  const data = { uk: { _seed: { fetchedAt: stamp }, data: { routes: [{
+    id: 'Channel-ID', countryCode: 'GB', kind: 'arrival', measure: 'daily',
+    asOf: new Date(stamp).toISOString().slice(0, 10), latestCount: 0,
+  }] } } };
+  const filter = route => tool._postFilter(data, { view: 'movements', route });
+  assert.equal(filter(' Channel-ID ').crossBorderMovements.movements.length, 1);
+  assert.equal(filter('channel-id').crossBorderMovements.movements.length, 0);
+});
