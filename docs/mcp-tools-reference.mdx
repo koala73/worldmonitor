@@ -1169,7 +1169,7 @@ Monthly oil supply and export series for 24 major exporting countries over the l
 | `country` | `array<string>` | Countries as ISO alpha-2, alpha-3 or English names (e.g. ["AE"], ["Saudi Arabia"]). Selected countries include their monthly rows. Omit for every covered country, comparison only. Unresolved inputs return Invalid params; a resolvable country outside the 24 covered returns no row. |
 | `window_months` | integer | Months per comparison window, ending at the last complete month (default 6: the last 6 complete months vs the 6 before, plus the same 6 months a year earlier). |
 
-The response uses the standard `cached_at`, `stale`, and `data` envelope. Four sources are reported side by side and never blended or summed:
+The response uses the standard `cached_at`, `stale`, and `data` envelope. Its sources are reported side by side and never blended or summed:
 
 - **production:** EIA Short-Term Energy Outlook crude oil and liquid fuels supply. Current to the last complete month; the two newest months are marked `provisional` because EIA revises them.
 - **jodi:** the country's own JODI-Oil filing of crude and total product exports. Values JODI has not assessed (assessment code 3) are reported values. The UAE has filed only placeholders since 2019, so its status is `not_reported`.

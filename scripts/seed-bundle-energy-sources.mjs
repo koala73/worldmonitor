@@ -10,7 +10,7 @@ await runBundle('energy-sources', [
   // Monthly production/export series per exporter (EIA STEO, JODI history,
   // Comtrade mirror imports, PortWatch AIS). Weekly so EIA's monthly STEO
   // release and buyers' late Comtrade filings land within days.
-  { label: 'Oil-Trade-Series', script: 'seed-oil-trade-series.mjs', seedMetaKey: 'energy:oil-trade-series', canonicalKey: 'energy:oil-trade-series:v1', intervalMs: 7 * DAY, timeoutMs: 600_000 },
+  { label: 'Oil-Trade-Series', script: 'seed-oil-trade-series.mjs', seedMetaKey: 'energy:oil-trade-series', canonicalKey: 'energy:oil-trade-series:v1', completionMetaKey: 'seed-completion:energy:oil-trade-series', intervalMs: 7 * DAY, timeoutMs: 600_000 },
   { label: 'OWID-Energy-Mix', script: 'seed-owid-energy-mix.mjs', seedMetaKey: 'economic:owid-energy-mix', expectedSourceVersion: OWID_SOURCE_VERSION, intervalMs: 35 * DAY, timeoutMs: 600_000 },
   { label: 'IEA-Oil-Stocks', script: 'seed-iea-oil-stocks.mjs', seedMetaKey: 'energy:iea-oil-stocks', canonicalKey: 'energy:iea-oil-stocks:v1:index', completionMetaKey: 'seed-completion:energy:iea-oil-stocks', intervalMs: 40 * DAY, timeoutMs: 300_000 },
   { label: 'EIA-Petroleum', script: 'seed-eia-petroleum.mjs', seedMetaKey: 'energy:eia-petroleum', canonicalKey: 'energy:eia-petroleum:v1', intervalMs: DAY, timeoutMs: 90_000 },
