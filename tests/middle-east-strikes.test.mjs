@@ -148,6 +148,14 @@ describe('gazetteer', () => {
     assert.equal(gazetteer.resolvePlace({ place: 'Eilat', iso2: 'YE' }).iso2, 'IL');
   });
 
+  it('plots maritime incidents at the strait, not the inland Iran centroid', () => {
+    const place = gazetteer.resolvePlace({ place: 'Strait of Hormuz', iso2: 'IR' });
+    assert.equal(place.name, 'Strait of Hormuz');
+    assert.notDeepEqual([place.lat, place.lon], gazetteer.COUNTRY_CENTROIDS.IR);
+    assert.equal(gazetteer.resolvePlace({ place: 'Sirik', iso2: 'IR' }).name, 'Sirik');
+    assert.equal(gazetteer.resolvePlace({ place: 'Jardan district, Shabwa', iso2: 'YE' }).name, 'Shabwah');
+  });
+
   it('keeps every country centroid inside its own bbox', () => {
     for (const [iso2, [lat, lon]] of Object.entries(gazetteer.COUNTRY_CENTROIDS)) {
       const box = COUNTRY_BBOX[iso2];
@@ -274,17 +282,34 @@ describe('GDELT backstop', () => {
       gdeltRow({ id: '3', geoType: '1', numSources: 9 }),
       gdeltRow({ id: '4', baseCode: '042', numSources: 9 }),
       gdeltRow({ id: '5', fips: 'UP', lat: 50.45, lon: 30.52, numSources: 9 }),
-      gdeltRow({ id: '6', fips: 'YM', lat: 15.35, lon: 44.21, numSources: 2, url: 'https://c.example/6', fullName: "Sanaa, Amanat al 'Asimah, Yemen" }),
+      gdeltRow({ id: '6', fips: 'YM', lat: 15.46, lon: 45.33, numSources: 2, url: 'https://c.example/6', fullName: 'Marib, Ma\'rib, Yemen' }),
     ].join('\n');
     const cands = strikes.mapGdeltExportToStrikeCandidates(csv);
-    assert.deepEqual(cands.map((c) => `${c.iso2}:${c.place}:${c.sources}`).sort(), ['SA:Jizan:3', 'YE:Sanaa:2'],
+    assert.deepEqual(cands.map((c) => `${c.iso2}:${c.place}:${c.sources}`).sort(), ['SA:Jizan:3', "YE:Ma'rib:2"],
       'country-level, non-force and out-of-theater rows are dropped; same place and bucket cluster');
     for (const c of cands) {
       assert.equal(c.src, 'gdelt');
       assert.equal(c.severity, 'moderate');
     }
     const events = strikes.deriveStrikeEvents(cands, NOW);
-    assert.deepEqual(events.map((e) => e.locationName), ['Jizan'], 'Sanaa has one URL and two mentions: below the source gate');
+    assert.deepEqual(events.map((e) => e.locationName), ['Jizan'], 'Marib has one URL and two mentions: below the source gate');
+  });
+
+  it('ignores rows geocoded to capital datelines', () => {
+    const csv = [
+      gdeltRow({ id: '1', lat: 24.69, lon: 46.72, numSources: 5, url: 'https://a.example/1', fullName: 'Riyadh, Ar Riyad, Saudi Arabia' }),
+      gdeltRow({ id: '2', lat: 24.7, lon: 46.7, numSources: 5, url: 'https://b.example/2', fullName: 'Riyadh, Ar Riyad, Saudi Arabia' }),
+      gdeltRow({ id: '3', fips: 'IR', lat: 35.69, lon: 51.42, numSources: 5, url: 'https://c.example/3', fullName: 'Tehran, Tehran, Iran' }),
+    ].join('\n');
+    assert.deepEqual(strikes.mapGdeltExportToStrikeCandidates(csv), []);
+  });
+
+  it('ignores Gaza coded as Israel and rows whose province GDELT could not resolve', () => {
+    const csv = [
+      gdeltRow({ id: '1', fips: 'IS', lat: 31.42, lon: 34.33, numSources: 5, url: 'https://a.example/1', fullName: 'Gaza, Israel (general), Israel' }),
+      gdeltRow({ id: '2', lat: 28.57, lon: 37.27, numSources: 5, url: 'https://b.example/2', fullName: 'Al-Azhar, Saudi Arabia (general), Saudi Arabia' }),
+    ].join('\n');
+    assert.deepEqual(strikes.mapGdeltExportToStrikeCandidates(csv), []);
   });
 
   it('accumulates sources for one incident across export files', () => {
@@ -421,6 +446,59 @@ describe('extraction cycle', () => {
     const quiet = await strikes.runStrikeCycle(harness().deps);
     assert.equal(quiet.healthy, true, 'a quiet window with a live poll is healthy');
     assert.equal(quiet.payload.events.length, 0);
+  });
+
+  function publishHarness(overrides = {}) {
+    const writes = { store: [], canonical: [], meta: [] };
+    const deps = {
+      now: NOW,
+      pendingItems: [post('SaudiDCD', 'Missile intercepted over Riyadh')],
+      readStore: async () => ({ ok: true, value: null }),
+      writeStore: async (s) => { writes.store.push(s); return true; },
+      writeCanonical: async (p, n) => { writes.canonical.push({ p, n }); return true; },
+      writeSeedMeta: async (m) => { writes.meta.push(m); },
+      readCache: async () => null,
+      writeCache: async () => {},
+      classify: async (texts) => texts.map((_, i) => ({ i, isStrike: true, kind: 'intercept', place: 'Riyadh', countryIso2: 'SA', severity: 'elevated' })),
+      loadGdelt: async (processed) => ({ candidates: [], processed, fetched: 0 }),
+      telegramPolledAt: NOW - MIN,
+      ...overrides,
+    };
+    return { deps, writes };
+  }
+
+  it('publishes canonical and seed-meta on a healthy cycle', async () => {
+    const { deps, writes } = publishHarness();
+    const out = await strikes.publishStrikeCycle(deps);
+    assert.equal(out.status, 'ok');
+    assert.equal(writes.canonical[0].n, 1);
+    assert.deepEqual(writes.meta, [{ fetchedAt: NOW, recordCount: 1, sourceVersion: 'telegram-strikes-v1' }]);
+    assert.deepEqual(out.doneIds, deps.pendingItems.map((i) => i.id));
+  });
+
+  it('skips the cycle entirely when the store read fails, so 72h of history is never overwritten', async () => {
+    const { deps, writes } = publishHarness({ readStore: async () => ({ ok: false, value: null }) });
+    const out = await strikes.publishStrikeCycle(deps);
+    assert.equal(out.status, 'store-read-failed');
+    assert.deepEqual([writes.store.length, writes.canonical.length, writes.meta.length], [0, 0, 0]);
+  });
+
+  it('keeps the data fresh but withholds seed-meta when Telegram stalls or the classifier dies', async () => {
+    for (const overrides of [{ telegramPolledAt: NOW - 2 * HOUR }, { classify: async () => null }]) {
+      const { deps, writes } = publishHarness(overrides);
+      const out = await strikes.publishStrikeCycle(deps);
+      assert.equal(out.status, 'degraded');
+      assert.equal(writes.canonical.length, 1);
+      assert.equal(writes.meta.length, 0, 'health must age into STALE_SEED');
+    }
+  });
+
+  it('withholds seed-meta and keeps posts pending when a Redis write fails', async () => {
+    const { deps, writes } = publishHarness({ writeStore: async () => false });
+    const out = await strikes.publishStrikeCycle(deps);
+    assert.equal(out.status, 'write-failed');
+    assert.equal(writes.meta.length, 0);
+    assert.deepEqual(out.doneIds, [], 'unpersisted posts are offered again next cycle');
   });
 
   it('keeps previously stored candidates and GDELT exports across cycles', async () => {

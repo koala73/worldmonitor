@@ -44,15 +44,13 @@ test('a vanished payload is never excused by fresh seed-meta', () => {
   assert.notEqual(classify({ present: false, metaAgeMin: 5, recordCount: 0 }), 'OK');
 });
 
-test('the relay withholds seed-meta on a degraded cycle', () => {
+test('the relay writes seed-meta only through the gated publish cycle', () => {
   const relay = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
   const start = relay.indexOf('async function seedMiddleEastStrikes(');
   const body = relay.slice(start, relay.indexOf('\nfunction startMiddleEastStrikesLoop(', start));
-  const degraded = body.indexOf('if (!result.healthy)');
-  const metaWrite = body.indexOf('middleEastStrikes.SEED_META_KEY');
-  assert.ok(degraded > 0 && metaWrite > degraded, 'seed-meta is written only after the health gate');
-  assert.match(body.slice(degraded, metaWrite), /return;/);
-  assert.match(body, /if \(storeReadFailed\)[\s\S]*?return;/, 'a failed store read must not overwrite 72h of history');
+  assert.match(body, /middleEastStrikes\.publishStrikeCycle\(\{/);
+  assert.equal(relay.split('middleEastStrikes.SEED_META_KEY, meta').length - 1, 1, 'one seed-meta writer, injected into publishStrikeCycle');
+  assert.match(body, /writeSeedMeta: \(meta\) => upstashSet\(middleEastStrikes\.SEED_META_KEY, meta,/);
 });
 
 test('seed-health marks the feed stale on the same budget', async () => {

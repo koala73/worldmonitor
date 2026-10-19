@@ -107,6 +107,15 @@ const SUPPLEMENT = [
   ['IR', 'Arak', 34.09, 49.69, 'أراك', 'اراک'],
   ['IR', 'Parchin', 35.52, 51.77, 'پارچین'],
   ['IR', 'Ahvaz', null, null, 'ahwaz', 'الأهواز', 'اهواز'],
+  // Maritime and coastal points: tanker and mine incidents otherwise fall back
+  // to the inland country centroid. The strait is filed under Iran because
+  // that is where the CII bbox lookup attributes its coordinates.
+  ['IR', 'Strait of Hormuz', 26.57, 56.25, 'hormuz strait', 'مضيق هرمز', 'تنگه هرمز'],
+  ['IR', 'Sirik', 26.52, 57.1, 'سیریک'],
+  ['IR', 'Kuhestak', 26.8, 57.03],
+  ['IR', 'Jask', 25.64, 57.77, 'جاسک'],
+  ['IR', 'Bandar Lengeh', 26.56, 54.88],
+  ['YE', 'Shabwah', null, null, 'shabwa', 'شبوة'],
   ['IQ', 'Baghdad', null, null, 'بغداد'],
   ['IQ', 'Erbil', null, null, 'arbil', 'أربيل', 'اربيل'],
   ['IQ', 'Ain al-Asad Air Base', 33.8, 42.44, 'ain al asad', 'al asad air base', 'عين الأسد'],

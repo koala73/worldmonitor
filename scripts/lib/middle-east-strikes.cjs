@@ -21,9 +21,10 @@
 //                           or editorial tier 4 publish only when an independent
 //                           group agrees about the same place within 2h.
 //   5. GDELT backstop       CAMEO 190/193/194/195 with a city-level ActionGeo in
-//                           the theater, at most 'moderate' severity, published
-//                           only with >=3 sources over >=2 URLs, and flagged by
-//                           the `gdelt:` id prefix and category 'gdelt'.
+//                           the theater, outside capital/dateline cities, at
+//                           most 'moderate' severity, published only with >=3
+//                           sources over >=2 URLs, and flagged by the `gdelt:`
+//                           id prefix and category 'gdelt'.
 //   6. dedupe + window      one event per country + place + 30-minute bucket,
 //                           72h rolling window.
 
@@ -301,6 +302,38 @@ const GDELT_STRIKE_CODES = Object.freeze({
 // ActionGeo_Type 3 = US city, 4 = world city. Country/ADM1-level (1, 2, 5) points are centroids.
 const GDELT_CITY_GEO_TYPES = new Set(['3', '4']);
 
+// GDELT geocodes many articles to their dateline city ("RIYADH (Reuters) -"),
+// so a capital collects every diplomatic and analysis story about the war: in
+// the 2026-10-19 dry run all 7 GDELT-only Saudi events were Riyadh datelines,
+// none a strike in Riyadh. Strikes on these cities still arrive via Telegram.
+const GDELT_DATELINE_CITIES = [
+  ['SA', 'Riyadh'], ['YE', 'Sanaa'], ['YE', 'Aden'], ['IR', 'Tehran'], ['IQ', 'Baghdad'], ['AE', 'Abu Dhabi'], ['AE', 'Dubai'],
+  ['IL', 'Jerusalem'], ['IL', 'Tel Aviv'], ['QA', 'Doha'], ['KW', 'Kuwait City'], ['BH', 'Manama'], ['OM', 'Muscat'],
+  ['LB', 'Beirut'], ['SY', 'Damascus'], ['JO', 'Amman'],
+].map(([iso2, name]) => {
+  const place = gazetteer.resolvePlace({ place: name, iso2 });
+  if (!place || place.countryLevel) throw new Error(`GDELT dateline city ${iso2}:${name} is not in the gazetteer`);
+  return place;
+});
+const GDELT_DATELINE_KM = 30;
+
+// Two more GDELT geocoding artifacts seen in the 2026-10-19 dry run:
+//  - "X, <Country> (general), <Country>": the province is unknown and the city
+//    match is often wrong ("Al-Azhar, Saudi Arabia (general)" at 28.57,37.27);
+//  - Gaza is coded as Israel ("Gaza, Israel (general), Israel"), which would
+//    plot Gaza strikes in Ashkelon. Palestine is outside this feed's scope.
+const GDELT_UNKNOWN_PROVINCE_RE = /\(general\)/i;
+const GAZA_BBOX = { minLat: 31.2, maxLat: 31.62, minLon: 34.2, maxLon: 34.58 };
+
+function isGaza(lat, lon) {
+  return lat >= GAZA_BBOX.minLat && lat <= GAZA_BBOX.maxLat && lon >= GAZA_BBOX.minLon && lon <= GAZA_BBOX.maxLon;
+}
+
+function isDatelineCity(iso2, lat, lon) {
+  return GDELT_DATELINE_CITIES.some((city) => city.iso2 === iso2
+    && gazetteer.distanceKm(lat, lon, city.lat, city.lon) <= GDELT_DATELINE_KM);
+}
+
 function gdeltStampToMs(stamp) {
   const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(String(stamp || ''));
   return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : Number.NaN;
@@ -323,6 +356,7 @@ function mapGdeltExportToStrikeCandidates(csv) {
     const lon = Number(f[57]);
     const ts = gdeltStampToMs(f[59]);
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(ts) || (lat === 0 && lon === 0)) continue;
+    if (isDatelineCity(iso2, lat, lon) || isGaza(lat, lon) || GDELT_UNKNOWN_PROVINCE_RE.test(f[52])) continue;
     const near = gazetteer.nearestPlace(lat, lon, iso2, GDELT_NEAREST_PLACE_KM);
     const placeKey = near ? near.key : `${iso2}:geo:${lat.toFixed(1)},${lon.toFixed(1)}`;
     const placeName = near ? near.name : (String(f[52]).split(',')[0].trim() || gazetteer.COUNTRY_NAMES[iso2]);
@@ -670,6 +704,45 @@ async function runStrikeCycle({
   };
 }
 
+/**
+ * The relay's whole cycle with its Redis I/O injected, so the publish rules
+ * are testable:
+ *   - a failed store read skips the cycle (writing would replace 72h of history);
+ *   - seed-meta advances only after the store and canonical writes succeed AND
+ *     the cycle is healthy, so a stalled poll or dead classifier reads STALE.
+ * readStore() resolves { ok, value }. Returns { status, doneIds, result }.
+ * doneIds are the posts the caller may stop re-offering (persisted or out of scope).
+ */
+async function publishStrikeCycle({
+  now, pendingItems, readStore, writeStore, writeCanonical, writeSeedMeta,
+  readCache, writeCache, classify, loadGdelt, telegramPolledAt,
+}) {
+  const stored = await readStore();
+  if (!stored?.ok) return { status: 'store-read-failed', doneIds: [], result: null };
+  const previousStore = stored.value;
+  const gdelt = await loadGdelt(previousStore?.gdeltExports || []);
+  const result = await runStrikeCycle({
+    now,
+    telegramItems: pendingItems,
+    previousStore,
+    readCache,
+    writeCache,
+    classify,
+    gdeltCandidates: gdelt.candidates,
+    gdeltExports: gdelt.processed,
+    telegramPolledAt,
+  });
+  result.stats.gdeltExportsFetched = gdelt.fetched || 0;
+  const storeOk = await writeStore(result.store);
+  const retry = new Set(result.pending.map((item) => item.id));
+  const doneIds = storeOk ? pendingItems.map((item) => item.id).filter((id) => !retry.has(id)) : [];
+  const canonicalOk = storeOk && await writeCanonical(result.payload, result.recordCount);
+  if (!storeOk || !canonicalOk) return { status: 'write-failed', doneIds, result };
+  if (!result.healthy) return { status: 'degraded', doneIds, result };
+  await writeSeedMeta({ fetchedAt: now, recordCount: result.recordCount, sourceVersion: SOURCE_VERSION });
+  return { status: 'ok', doneIds, result };
+}
+
 module.exports = {
   CANONICAL_KEY,
   STORE_KEY,
@@ -691,4 +764,5 @@ module.exports = {
   mergeCandidateStore,
   deriveStrikeEvents,
   runStrikeCycle,
+  publishStrikeCycle,
 };

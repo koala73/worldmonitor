@@ -5492,12 +5492,16 @@ const MIDDLE_EAST_STRIKES_STORE_TTL_S = 4 * 24 * 3600;
 const MIDDLE_EAST_STRIKES_META_TTL_S = 7 * 24 * 3600;
 const MIDDLE_EAST_STRIKES_PENDING_MAX = 1000;
 const MIDDLE_EAST_STRIKES_PENDING_MAX_AGE_MS = 12 * 3600 * 1000;
+const MIDDLE_EAST_STRIKES_DONE_MAX = 5000;
 const middleEastStrikePending = new Map();
+// Posts already classified (strike or not): the feed buffer re-offers them
+// every cycle for ~90 minutes, and each re-offer would cost a cache read.
+const middleEastStrikeDone = new Set();
 let middleEastStrikesInFlight = false;
 let middleEastGdeltBulkPromise = null;
 
 function noteMiddleEastStrikeItem(item) {
-  if (!MIDDLE_EAST_STRIKES_ENABLED || !item?.id || middleEastStrikePending.has(item.id)) return;
+  if (!MIDDLE_EAST_STRIKES_ENABLED || !item?.id || middleEastStrikePending.has(item.id) || middleEastStrikeDone.has(item.id)) return;
   if (!middleEastStrikes.prefilterStrikeText(item.text)) return;
   middleEastStrikePending.set(item.id, item);
   while (middleEastStrikePending.size > MIDDLE_EAST_STRIKES_PENDING_MAX) {
@@ -5528,20 +5532,22 @@ async function seedMiddleEastStrikes() {
       const ts = Date.parse(item.ts);
       if (!Number.isFinite(ts) || t0 - ts > MIDDLE_EAST_STRIKES_PENDING_MAX_AGE_MS) middleEastStrikePending.delete(id);
     }
-
-    let storeReadFailed = false;
-    const previousStore = await upstashGet(middleEastStrikes.STORE_KEY, () => { storeReadFailed = true; });
-    if (storeReadFailed) {
-      // Writing now would replace 72h of history with this cycle's posts alone.
-      console.warn('[MiddleEastStrikes] Candidate store read failed — skipping cycle');
-      return;
-    }
-    const gdelt = await loadMiddleEastStrikeGdelt(previousStore?.gdeltExports || []);
     const pendingItems = [...middleEastStrikePending.values()];
-    const result = await middleEastStrikes.runStrikeCycle({
-      now: Date.now(),
-      telegramItems: pendingItems,
-      previousStore,
+    const { status, doneIds, result } = await middleEastStrikes.publishStrikeCycle({
+      now: t0,
+      pendingItems,
+      readStore: async () => {
+        let ok = true;
+        const value = await upstashGet(middleEastStrikes.STORE_KEY, () => { ok = false; });
+        return { ok, value };
+      },
+      writeStore: (store) => upstashSet(middleEastStrikes.STORE_KEY, store, MIDDLE_EAST_STRIKES_STORE_TTL_S),
+      writeCanonical: (payload, recordCount) => envelopeWrite(middleEastStrikes.CANONICAL_KEY, payload, MIDDLE_EAST_STRIKES_CANONICAL_TTL_S, {
+        recordCount,
+        sourceVersion: middleEastStrikes.SOURCE_VERSION,
+        zeroOk: true,
+      }),
+      writeSeedMeta: (meta) => upstashSet(middleEastStrikes.SEED_META_KEY, meta, MIDDLE_EAST_STRIKES_META_TTL_S),
       readCache: (key) => upstashGet(key),
       writeCache: (key, value, ttl) => upstashSet(key, value, ttl),
       classify: (texts) => classifyFetchLlm(texts, middleEastStrikes.CLASSIFY_MAX_TEXT_CHARS, {
@@ -5549,37 +5555,24 @@ async function seedMiddleEastStrikes() {
         maxTokensPerItem: 60,
         label: 'MiddleEastStrikes',
       }),
-      gdeltCandidates: gdelt.candidates,
-      gdeltExports: gdelt.processed,
+      loadGdelt: loadMiddleEastStrikeGdelt,
       telegramPolledAt: telegramState.lastPollAt,
     });
-    const retry = new Set(result.pending.map((item) => item.id));
-    for (const item of pendingItems) if (!retry.has(item.id)) middleEastStrikePending.delete(item.id);
-
-    const storeOk = await upstashSet(middleEastStrikes.STORE_KEY, result.store, MIDDLE_EAST_STRIKES_STORE_TTL_S);
-    const canonicalOk = await envelopeWrite(middleEastStrikes.CANONICAL_KEY, result.payload, MIDDLE_EAST_STRIKES_CANONICAL_TTL_S, {
-      recordCount: result.recordCount,
-      sourceVersion: middleEastStrikes.SOURCE_VERSION,
-      zeroOk: true,
-    });
+    for (const id of doneIds) {
+      middleEastStrikePending.delete(id);
+      middleEastStrikeDone.add(id);
+    }
+    while (middleEastStrikeDone.size > MIDDLE_EAST_STRIKES_DONE_MAX) {
+      middleEastStrikeDone.delete(middleEastStrikeDone.values().next().value);
+    }
+    if (!result) {
+      console.warn(`[MiddleEastStrikes] ${status} — cycle skipped, seed-meta not advanced`);
+      return;
+    }
     const s = result.stats;
-    const summary = `${s.events} events, ${s.prefiltered} posts (${s.cacheHits} cached, ${s.classified} classified, ${s.retry} retry), ${s.gdeltCandidates} GDELT clusters from ${gdelt.fetched} exports, ${s.storeCandidates} stored`;
-    if (!storeOk || !canonicalOk) {
-      console.warn(`[MiddleEastStrikes] Redis write failed (store=${storeOk}, canonical=${canonicalOk}) — seed-meta not advanced; ${summary}`);
-      return;
-    }
-    if (!result.healthy) {
-      // Leave seed-meta alone so /api/health turns STALE instead of reporting a
-      // frozen feed as fresh.
-      console.warn(`[MiddleEastStrikes] Degraded (telegramLive=${s.telegramLive}, retry=${s.retry}) — seed-meta not advanced; ${summary}`);
-      return;
-    }
-    await upstashSet(middleEastStrikes.SEED_META_KEY, {
-      fetchedAt: Date.now(),
-      recordCount: result.recordCount,
-      sourceVersion: middleEastStrikes.SOURCE_VERSION,
-    }, MIDDLE_EAST_STRIKES_META_TTL_S);
-    console.log(`[MiddleEastStrikes] ${summary} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    const summary = `${s.events} events, ${s.prefiltered} posts (${s.cacheHits} cached, ${s.classified} classified, ${s.retry} retry), ${s.gdeltCandidates} GDELT clusters from ${s.gdeltExportsFetched} exports, ${s.storeCandidates} stored, telegramLive=${s.telegramLive}`;
+    if (status === 'ok') console.log(`[MiddleEastStrikes] ${summary} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    else console.warn(`[MiddleEastStrikes] ${status} — seed-meta not advanced; ${summary}`);
   } catch (e) {
     console.warn('[MiddleEastStrikes] Seed error:', e?.message || e);
   } finally {
