@@ -9,6 +9,8 @@
  */
 
 // @ts-expect-error JS module without declarations.
+import { getClientIp } from './_client-ip.js';
+// @ts-expect-error JS module without declarations.
 import { sha256Hex } from './_crypto.js';
 
 /** Code lifetime. The browser redirects to the desktop immediately. */
@@ -21,6 +23,7 @@ const CODE_RE = /^[A-Za-z0-9_-]{43}$/;
 const VERIFIER_RE = /^[A-Za-z0-9\-._~]{43,128}$/;
 const REDIS_TIMEOUT_MS = 3_000;
 const CLERK_TIMEOUT_MS = 5_000;
+const USER_AGENT = 'worldmonitor-gateway/1.0';
 
 export interface DesktopAuthCodeRecord {
   userId: string;
@@ -77,11 +80,9 @@ export function jsonResponse(
   });
 }
 
-export function clientIp(request: Request): string | null {
-  return request.headers.get('cf-connecting-ip')
-    ?? request.headers.get('x-real-ip')
-    ?? request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-    ?? null;
+/** Caller IP for audit lines, from the hardened extractor (no spoofable headers). */
+export function clientIp(request: Request): string {
+  return getClientIp(request);
 }
 
 /** One structured log line per decision. Never carries a code, verifier or ticket. */
@@ -107,7 +108,7 @@ export async function storeDesktopAuthCode(
   const { url, token } = redisConfig();
   const response = await fetch(`${url}/pipeline`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': USER_AGENT },
     body: JSON.stringify([['SET', key, JSON.stringify(record), 'EX', ttlSeconds, 'NX']]),
     signal: AbortSignal.timeout(REDIS_TIMEOUT_MS),
   });
@@ -121,7 +122,7 @@ export async function storeDesktopAuthCode(
 export async function takeDesktopAuthCode(key: string): Promise<DesktopAuthCodeRecord | null> {
   const { url, token } = redisConfig();
   const response = await fetch(`${url}/getdel/${encodeURIComponent(key)}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'User-Agent': USER_AGENT },
     signal: AbortSignal.timeout(REDIS_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error(`Redis HTTP ${response.status}`);
@@ -150,7 +151,7 @@ export async function mintClerkSignInTicket(userId: string): Promise<MintTicketR
     headers: {
       Authorization: `Bearer ${secret}`,
       'Content-Type': 'application/json',
-      'User-Agent': 'worldmonitor-gateway/1.0',
+      'User-Agent': USER_AGENT,
     },
     body: JSON.stringify({ user_id: userId, expires_in_seconds: DESKTOP_AUTH_TICKET_TTL_SECONDS }),
     signal: AbortSignal.timeout(CLERK_TIMEOUT_MS),

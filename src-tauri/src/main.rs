@@ -590,7 +590,7 @@ async fn start_desktop_browser_sign_in(
     sign_in: tauri::State<'_, BrowserSignInState>,
 ) -> Result<(), String> {
     require_relay_window(&webview)?;
-    if !clerk_relay::is_allowed_fapi_host(&fapi_host) {
+    if !desktop_sign_in::is_ticket_host(&fapi_host) {
         return Err("Unknown Clerk host".to_string());
     }
     let flag = sign_in.with(|flows| flows.begin(std::time::Instant::now()))?.map_err(str::to_string)?;
@@ -667,6 +667,9 @@ async fn finish_desktop_browser_sign_in(
     let (fapi_host, ticket) = sign_in
         .with(|flows| flows.take_ticket(std::time::Instant::now()))?
         .ok_or_else(|| "invalid_grant".to_string())?;
+    if !desktop_sign_in::is_ticket_host(&fapi_host) {
+        return Err("sign_in_refused".to_string());
+    }
     let body = reqwest::Url::parse_with_params("http://x/", [("strategy", "ticket"), ("ticket", ticket.as_str())])
         .map_err(|_| "exchange_failed".to_string())?
         .query()

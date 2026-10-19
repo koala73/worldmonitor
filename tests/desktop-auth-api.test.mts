@@ -21,7 +21,10 @@ import {
 } from '../api/desktop-auth/token.ts';
 import {
   DESKTOP_AUTH_CODE_TTL_SECONDS,
+  clientIp,
   desktopAuthCodeKey,
+  storeDesktopAuthCode,
+  takeDesktopAuthCode,
   type DesktopAuthCodeRecord,
 } from '../api/_desktop-auth.ts';
 
@@ -270,5 +273,40 @@ describe('POST /api/desktop-auth/token', () => {
     const serialized = JSON.stringify(events);
     assert.equal(serialized.includes(code), false);
     assert.equal(serialized.includes('ticket-for-user_123'), false);
+  });
+});
+
+describe('desktop-auth helpers', () => {
+  it('audits the hardened client IP, never a spoofable cf-connecting-ip or x-forwarded-for', () => {
+    const request = new Request('https://api.worldmonitor.app/api/desktop-auth/token', {
+      headers: {
+        'cf-connecting-ip': '203.0.113.9',
+        'x-forwarded-for': '198.51.100.7',
+        'x-real-ip': '192.0.2.44',
+      },
+    });
+    assert.equal(clientIp(request), '192.0.2.44');
+  });
+
+  it('identifies itself to Redis on both code operations', async () => {
+    const originalFetch = globalThis.fetch;
+    const saved = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    const agents: Array<string | null> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      agents.push(new Headers(init?.headers).get('user-agent'));
+      return Response.json(String(_input).includes('/pipeline') ? [{ result: 'OK' }] : { result: null });
+    }) as typeof fetch;
+    try {
+      await storeDesktopAuthCode('desktop-auth:code:x', { userId: 'u', codeChallenge: CHALLENGE }, 60);
+      await takeDesktopAuthCode('desktop-auth:code:x');
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (saved.url === undefined) delete process.env.UPSTASH_REDIS_REST_URL; else process.env.UPSTASH_REDIS_REST_URL = saved.url;
+      if (saved.token === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN; else process.env.UPSTASH_REDIS_REST_TOKEN = saved.token;
+    }
+    assert.equal(agents.length, 2);
+    for (const agent of agents) assert.match(agent ?? '', /worldmonitor/i);
   });
 });

@@ -24,9 +24,11 @@ pub const TOKEN_ENDPOINT: &str = "https://api.worldmonitor.app/api/desktop-auth/
 pub const FLOW_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 pub const START_COOLDOWN: Duration = Duration::from_secs(3);
 const MAX_REQUEST_BYTES: usize = 8 * 1024;
-/// Short, because connections are served one at a time and a browser's idle
-/// preconnect socket would otherwise hold up the real callback.
-const CONNECTION_READ_TIMEOUT: Duration = Duration::from_secs(1);
+/// Total time one connection may take to send its request head. Connections
+/// are served one at a time, so this bounds how long an idle preconnect
+/// socket or a peer dripping bytes can hold up the real callback, Cancel and
+/// the flow deadline.
+const CONNECTION_BUDGET: Duration = Duration::from_secs(1);
 /// A ticket lives 60 seconds on Clerk's side; redeem well inside that.
 pub const PENDING_TICKET_MAX_AGE: Duration = Duration::from_secs(50);
 const ACCEPT_POLL: Duration = Duration::from_millis(100);
@@ -45,6 +47,13 @@ fn random_token() -> String {
 
 pub fn pkce_challenge(verifier: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+}
+
+/// The sign-in ticket is a credential for the production Clerk instance, so it
+/// is only ever delivered to the production Frontend API, never to a
+/// renderer-chosen development instance the relay also allows.
+pub fn is_ticket_host(host: &str) -> bool {
+    host == crate::clerk_relay::PRODUCTION_FAPI_HOST
 }
 
 pub struct FlowSecrets {
@@ -120,12 +129,16 @@ Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
     let _ = stream.flush();
 }
 
-/// Reads the request head (up to the blank line), capped and time-limited.
+/// Reads the request head (up to the blank line), capped in size and in
+/// total time: the socket timeout alone applies per read, so a peer sending
+/// one byte at a time would otherwise never be cut off.
 fn read_head(stream: &mut TcpStream) -> Option<String> {
-    stream.set_read_timeout(Some(CONNECTION_READ_TIMEOUT)).ok()?;
+    let deadline = Instant::now() + CONNECTION_BUDGET;
     let mut buf = Vec::with_capacity(1024);
     let mut chunk = [0u8; 1024];
     loop {
+        let remaining = deadline.checked_duration_since(Instant::now()).filter(|d| !d.is_zero())?;
+        stream.set_read_timeout(Some(remaining)).ok()?;
         let n = stream.read(&mut chunk).ok()?;
         if n == 0 {
             return None;
@@ -435,6 +448,43 @@ mod tests {
         flows.store_ticket(&cancelled, "h".into(), "t3".into(), t0).unwrap();
         flows.cancel();
         assert_eq!(flows.take_ticket(t0), None, "cancel drops a pending ticket");
+    }
+
+    #[test]
+    fn delivers_the_ticket_only_to_the_production_frontend_api() {
+        assert!(is_ticket_host("clerk.worldmonitor.app"));
+        assert!(!is_ticket_host("attacker.clerk.accounts.dev"));
+        assert!(!is_ticket_host("evil.com"));
+    }
+
+    #[test]
+    fn a_dripping_connection_cannot_hold_the_listener() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let waiter = {
+            let cancel = cancel.clone();
+            std::thread::spawn(move || {
+                wait_for_code(&listener, STATE, Instant::now() + Duration::from_secs(20), &cancel)
+            })
+        };
+        // A peer that sends one byte every 200 ms never finishes its header.
+        let dripper = std::thread::spawn(move || {
+            let mut stream = TcpStream::connect(addr).unwrap();
+            for _ in 0..40 {
+                if stream.write_all(b"G").is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        });
+        std::thread::sleep(Duration::from_millis(100));
+        let started = Instant::now();
+        let real = send(addr, &format!("GET /callback?code={CODE}&state={STATE} HTTP/1.1\r\n\r\n"));
+        assert!(real.starts_with("HTTP/1.1 200"), "the real callback is served");
+        assert!(started.elapsed() < Duration::from_secs(4), "within the per-connection budget");
+        assert_eq!(waiter.join().unwrap(), Ok(CODE.to_string()));
+        let _ = dripper.join();
     }
 
     #[test]

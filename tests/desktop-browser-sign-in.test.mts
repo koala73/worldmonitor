@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  createSingleFlightSignIn,
   runDesktopBrowserSignIn,
   type BrowserSignInDeps,
   type BrowserSignInOutcome,
@@ -144,5 +145,28 @@ describe('runDesktopBrowserSignIn', () => {
     });
     assert.equal(await runDesktopBrowserSignIn(d), 'failed');
     assert.equal(log.some((entry) => entry.startsWith('setActive')), false);
+  });
+});
+
+describe('createSingleFlightSignIn', () => {
+  it('keeps one attempt alive through sign-out, redemption and activation', async () => {
+    let finishFirst: (outcome: BrowserSignInOutcome) => void = () => {};
+    const { deps: d, log } = deps({
+      finish: () => new Promise((resolve) => { finishFirst = resolve; }),
+    });
+    const busy: string[] = [];
+    const signIn = createSingleFlightSignIn(() => busy.push('busy'));
+
+    const first = signIn(d);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(await signIn(d), 'cancelled', 'a second click while one runs is refused');
+    assert.deepEqual(busy, ['busy']);
+    assert.equal(log.filter((entry) => entry.startsWith('start:')).length, 1);
+    assert.equal(log.filter((entry) => entry === 'waiting').length, 1, 'the live waiting bar is not replaced');
+
+    finishFirst(COMPLETE);
+    assert.equal(await first, 'signed_in');
+    const { deps: again } = deps();
+    assert.equal(await signIn(again), 'signed_in', 'a later click starts a new attempt');
   });
 });

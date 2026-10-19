@@ -112,3 +112,27 @@ export async function runDesktopBrowserSignIn(deps: BrowserSignInDeps): Promise<
   deps.notify(outcome.identifier ? `Signed in as ${outcome.identifier}` : 'Signed in');
   return 'signed_in';
 }
+
+/**
+ * One renderer attempt at a time, from the first click through sign-out,
+ * redemption and activation. A second click while one runs would otherwise
+ * clear the first attempt's pending ticket in Rust after it already signed
+ * the user out, and replace its waiting bar.
+ */
+export function createSingleFlightSignIn(
+  onBusy: () => void,
+): (deps: BrowserSignInDeps) => Promise<BrowserSignInResult> {
+  let running = false;
+  return async (deps) => {
+    if (running) {
+      onBusy();
+      return 'cancelled';
+    }
+    running = true;
+    try {
+      return await runDesktopBrowserSignIn(deps);
+    } finally {
+      running = false;
+    }
+  };
+}

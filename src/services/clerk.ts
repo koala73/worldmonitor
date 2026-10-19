@@ -540,15 +540,18 @@ function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
     .catch(onFail('clerk-load-failed'));
 }
 
+let desktopBrowserSignIn: ((deps: import('@/services/desktop-browser-sign-in').BrowserSignInDeps) => Promise<unknown>) | null = null;
+
 async function startDesktopBrowserSignIn(openInApp: () => void): Promise<void> {
   const clerk = clerkInstance;
   if (!clerk || !PUBLISHABLE_KEY) return;
-  const [{ runDesktopBrowserSignIn }, { invokeTauri }, { showDesktopSignInWaiting }] = await Promise.all([
+  const [{ createSingleFlightSignIn }, { invokeTauri }, { showDesktopSignInWaiting }] = await Promise.all([
     import('@/services/desktop-browser-sign-in'),
     import('@/services/tauri-bridge'),
     import('@/utils/desktop-sign-in-waiting'),
   ]);
-  await runDesktopBrowserSignIn({
+  desktopBrowserSignIn ??= createSingleFlightSignIn(() => showToast('Finish signing in in your browser.', 6000));
+  await desktopBrowserSignIn({
     fapiHost: clerkFapiHost(PUBLISHABLE_KEY),
     start: (fapiHost) => invokeTauri('start_desktop_browser_sign_in', { fapiHost }),
     finish: () => invokeTauri('finish_desktop_browser_sign_in'),
