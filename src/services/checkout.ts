@@ -396,6 +396,7 @@ export async function resumePendingCheckout(options?: {
   if (!isCurrentIntent()) return false;
   if (!productId) {
     clearPendingCheckoutIntent();
+    renderCheckoutErrorSurface(classifySyntheticCheckoutError('invalid_product'), false, intent.checkoutContext);
     return false;
   }
 

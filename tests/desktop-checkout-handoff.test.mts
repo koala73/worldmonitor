@@ -340,12 +340,15 @@ describe('pending checkout resume', () => {
     assert.equal(sessionStorage.getItem(PENDING_CHECKOUT_KEY), null);
   });
 
-  it('drops a plan key without starting checkout', async () => {
+  it('drops a plan key and explains recovery without starting checkout', async () => {
     resetHarness(false);
     sessionStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(pendingIntent('pro_monthly')));
     const checkout = await loadCheckoutModule();
     assert.equal(await checkout.resumePendingCheckout(), false);
     assert.equal(globalThis.__desktopCheckoutHarness.requestBodies.length, 0);
+    assert.deepEqual(globalThis.__desktopCheckoutHarness.errorToasts, [
+      "That product isn't available. Please refresh and try again.",
+    ]);
     assert.equal(sessionStorage.getItem(PENDING_CHECKOUT_KEY), null);
   });
 
