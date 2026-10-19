@@ -2892,6 +2892,19 @@ test('dyad health is pending before activation and strict afterward', () => {
 });
 
 
+test('GDELT country-events health is pending before activation and strict afterward', () => {
+  const name = 'gdeltCountryEvents';
+  const key = STANDALONE_KEYS[name];
+  assert.equal(key, 'gdelt:bulk:country-events:v1');
+  assert.ok(ON_DEMAND_KEYS.has(name));
+  assert.equal(__testing__.ACTIVATION_MARKERS[name], SEED_META[name].activationKey);
+  assert.equal(classifyKey(name, key, { allowOnDemand: true },
+    makeCtx({ activationStates: { [name]: false } })).status, 'EMPTY_ON_DEMAND');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true },
+    makeCtx({ activationStates: { [name]: true } })).status, 'EMPTY');
+});
+
+
 test('calibration map uses its declared activation marker before the first resolver run', () => {
   const name = 'forecastCalibrationMap';
   const entry = classifyKey(name, STANDALONE_KEYS[name], { allowOnDemand: true },

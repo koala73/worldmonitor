@@ -227,7 +227,7 @@ Strategic Risk 与国家不稳定指数（CII）评分在服务端预计算，�
 
 `GetRiskScores` RPC 处理器（`get-risk-scores.ts`）：
 
-1. 从 ACLED 拉取近期的抗议/骚乱/战斗/爆炸/针对平民的暴力数据。
+1. 从 ACLED 拉取近期的抗议/骚乱/战斗/爆炸/针对平民的暴力数据。当 ACLED 不返回事件时（WorldMonitor 没有 ACLED 访问权限），冲突与动荡改为读取 `gdelt:bulk:country-events:v1` 中的 GDELT 升级项。
 2. 从 Redis 拉取辅助数据源，包括 UCDP 冲突、中断、气候、网络威胁、火灾、GPS 干扰、伊朗事件、OREF 警报、警示、流离失所、机密新闻摘要、航空警报、地震、制裁以及军事/AIS CII 聚合数据。
 3. 使用 [CII Risk Scoring Methodology](/zh/methodology/cii-risk-scores) 中记录的共享系数表为 31 个 Tier-1 国家计算 CII v10 评分。
 4. 从按权重排名前 5 的 CII 评分推导 Strategic Risk。
@@ -243,8 +243,8 @@ Strategic Risk 与国家不稳定指数（CII）评分在服务端预计算，�
 
 | 子组成 | 权重 | 评分依据 |
 |---------------|--------|---------|
-| Unrest | 25% | ACLED 抗议/骚乱、抗议致死人数、高严重度动乱与中断严重度 |
-| Conflict | 30% | 按权重加权的 ACLED 战斗/爆炸/针对平民的暴力、致死人数、伊朗打击严重度与 OREF 警报压力 |
+| Unrest | 25% | ACLED 抗议/骚乱、抗议致死人数、高严重度动乱与中断严重度；ACLED 不返回事件时加入 GDELT 抗议升级项 |
+| Conflict | 30% | 按权重加权的 ACLED 战斗/爆炸/针对平民的暴力、致死人数、伊朗打击严重度与 OREF 警报压力；ACLED 不返回事件时加入 GDELT 冲突升级项 |
 | Security | 20% | 军用航班、军用舰船、航空关闭/延误与 GPS/GNSS 干扰 |
 | Information | 25% | 机密新闻头条与按国家归因的威胁摘要 |
 
@@ -294,6 +294,7 @@ Strategic Risk = (Σ CII[i] × weight[i]) / 3.5 × 0.7 + 15
 | 来源 | Redis 键 | 用途 |
 |--------|-----------|----------|
 | ACLED | 通过 API 实时拉取 | 抗议、骚乱、战斗、爆炸、针对平民的暴力、致死人数 |
+| GDELT 国家事件 | `gdelt:bulk:country-events:v1` | 相对各国 28 天中位数的冲突与动荡升级，仅在 ACLED 不返回事件时使用 |
 | UCDP | `conflict:ucdp-events:v1` | 战争/轻度冲突下限 |
 | 中断 | `infra:outages:v1` | Unrest 中断加成 |
 | 气候 | `climate:anomalies:v2` | 气候严重度加成 |
@@ -319,4 +320,4 @@ Strategic Risk = (Σ CII[i] × weight[i]) / 3.5 × 0.7 + 15
 
 RPC 在 `GetRiskScoresResponse` 上暴露兜底状态：过期缓存响应会设置 `degraded=true` 与 `stale=true`；仅冷启动基线响应会设置 `degraded=true` 与 `stale=false`。新鲜/缓存命中响应将两个标志都设为 `false`。
 
-中继的 CII warm-ping 循环在 `scripts/ais-relay.cjs` 中处于活跃状态：它每 8 分钟调用一次 `/api/intelligence/v1/get-risk-scores`，由 RPC 处理器刷新实时/过期缓存状态，并在返回评分时写入 `seed-meta:intelligence:risk-scores` 以供健康监测。该 seed-meta 的 `recordCount` 反映的是实时信号密度覆盖率，而非原始 feed 可用性：它统计 CII 刷新中出现的、与评分相关的 Tier-1 冲突（ACLED 或 UCDP）、新闻与网络信号族。因此，安静但新鲜的实时 feed 可能产生 `COVERAGE_PARTIAL`；按来源的新鲜度仍以 feed 心跳视图为准。
+中继的 CII warm-ping 循环在 `scripts/ais-relay.cjs` 中处于活跃状态：它每 8 分钟调用一次 `/api/intelligence/v1/get-risk-scores`，由 RPC 处理器刷新实时/过期缓存状态，并在返回评分时写入 `seed-meta:intelligence:risk-scores` 以供健康监测。该 seed-meta 的 `recordCount` 反映的是实时信号密度覆盖率，而非原始 feed 可用性：它统计 CII 刷新中出现的、与评分相关的 Tier-1 冲突（ACLED、UCDP，或 ACLED 不返回事件时的实时 GDELT 基线）、新闻与网络信号族。因此，安静但新鲜的实时 feed 可能产生 `COVERAGE_PARTIAL`；按来源的新鲜度仍以 feed 心跳视图为准。
