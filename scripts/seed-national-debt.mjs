@@ -4,7 +4,7 @@ import { loadEnvFile, CHROME_UA, runSeed, imfSdmxFetchIndicator } from './_seed-
 
 loadEnvFile(import.meta.url);
 
-const TREASURY_URL = 'https://api.fiscaldata.treasury.gov/services/api/v1/accounting/od/debt_to_penny?fields=record_date,tot_pub_debt_out_amt&sort=-record_date&page[size]=1';
+const TREASURY_URL = 'https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v2/accounting/od/debt_to_penny?fields=record_date,tot_pub_debt_out_amt&sort=-record_date&page[size]=1';
 
 const CANONICAL_KEY = 'economic:national-debt:v1';
 // 65 days — must exceed health.js SEED_META.nationalDebt.maxStaleMin (60d) so
@@ -27,7 +27,7 @@ function isAggregate(code) {
   return AGGREGATE_CODES.has(code) || TERRITORY_CODES.has(code) || code.endsWith('Q');
 }
 
-async function fetchTreasury() {
+export async function fetchTreasury() {
   const resp = await fetch(TREASURY_URL, {
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
     signal: AbortSignal.timeout(15_000),

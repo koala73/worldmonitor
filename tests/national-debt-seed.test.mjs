@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { imfSdmxFetchIndicator } from '../scripts/_seed-utils.mjs';
 
 // Import only the pure compute function (no Redis, no fetch side-effects)
-import { computeEntries, weoYearWindow } from '../scripts/seed-national-debt.mjs';
+import { computeEntries, fetchTreasury, weoYearWindow } from '../scripts/seed-national-debt.mjs';
 
 const BASELINE_TS = Date.UTC(2024, 0, 1);
 
@@ -153,6 +153,14 @@ describe('US Treasury override', () => {
     assert.equal(entries.length, 1);
     assert.ok(Math.abs(entries[0].debtUsd - treasuryDebtUsd) < 1e6, `debtUsd should be Treasury value`);
     assert.ok(entries[0].source.includes('Treasury'), 'source should mention Treasury');
+  });
+
+  it('reads debt to the penny from the fiscal_service v2 endpoint (v1 returns 404)', async (t) => {
+    t.mock.method(globalThis, 'fetch', async (url) => {
+      assert.match(String(url), /\/services\/api\/fiscal_service\/v2\/accounting\/od\/debt_to_penny\?/);
+      return Response.json({ data: [{ record_date: '2026-10-15', tot_pub_debt_out_amt: '40388317675071.91' }] });
+    });
+    assert.deepEqual(await fetchTreasury(), { date: '2026-10-15', debtUsd: 40388317675071.91 });
   });
 
   it('falls back to IMF when Treasury returns null', () => {
