@@ -577,13 +577,27 @@ test('fetchDiseaseOutbreaks publishes reports that name only a detected disease'
 
 test('Atom links accept single-quoted href', async () => {
   const atom = `<feed><entry><title>Cholera update - WHO</title><link href='https://www.unognewsroom.org/story/en/9/cholera'/><updated>2026-10-05T10:00:00Z</updated><summary>Cholera in Sudan.</summary></entry></feed>`;
-  const items = await fetchRssItems('http://www.unognewsroom.org/feed', 'WHO briefing', {
+  const items = await fetchRssItems('https://www.unognewsroom.org/rss', 'WHO briefing', {
     titleSuffix: ' - WHO',
     fetchImpl: async () => new Response(atom, { status: 200 }),
   });
   assert.equal(items.length, 1);
   assert.equal(items[0].link, 'https://www.unognewsroom.org/story/en/9/cholera');
   assert.equal(items[0].title, 'Cholera update');
+});
+
+// fetch follows https -> http redirects, so a publisher that downgrades would
+// hand the cleartext body to the parser.
+test('a feed redirected to plain http is dropped', async () => {
+  const atom = `<feed><entry><title>Cholera update - WHO</title><link href="https://www.unognewsroom.org/story/en/9/cholera"/><updated>2026-10-05T10:00:00Z</updated><summary>Cholera in Sudan.</summary></entry></feed>`;
+  const downgraded = (finalUrl) => async () => {
+    const response = new Response(atom, { status: 200 });
+    Object.defineProperty(response, 'url', { value: finalUrl });
+    return response;
+  };
+  const opts = { titleSuffix: ' - WHO' };
+  assert.deepEqual(await fetchRssItems('https://www.unognewsroom.org/rss', 'WHO briefing', { ...opts, fetchImpl: downgraded('http://www.unognewsroom.org/rss') }), []);
+  assert.equal((await fetchRssItems('https://www.unognewsroom.org/rss', 'WHO briefing', { ...opts, fetchImpl: downgraded('https://www.unognewsroom.org/rss') })).length, 1);
 });
 
 test('MERS and hantavirus are detected as whole words', () => {

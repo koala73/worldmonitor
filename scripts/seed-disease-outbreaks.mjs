@@ -121,6 +121,8 @@ export async function fetchRssItems(url, sourceName, { fetchImpl = globalThis.fe
       signal: AbortSignal.timeout(15000),
     });
     if (!resp.ok) { console.warn(`[Disease] ${sourceName} HTTP ${resp.status}`); return []; }
+    // fetch follows a redirect from https to http; a cleartext body could be forged.
+    if (resp.url && !resp.url.startsWith('https:')) { console.warn(`[Disease] ${sourceName} redirected to non-https ${resp.url}`); return []; }
     const xml = await resp.text();
     const bounded = xml.length > RSS_MAX_BYTES ? xml.slice(0, RSS_MAX_BYTES) : xml;
     const items = [];
