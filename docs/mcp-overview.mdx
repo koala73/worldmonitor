@@ -8,7 +8,7 @@ WorldMonitor exposes its intelligence stack as a [Model Context Protocol](https:
 To compare data coverage and access options, see [MCP servers for geopolitical data](https://www.worldmonitor.app/compare/mcp-servers-for-geopolitical-data/).
 
 <Tip>
-**New here?** The [MCP Quickstart](/mcp-quickstart) is a five-minute path from zero to a real tool call in Claude Desktop. Come back to this page for auth modes, plans, OAuth setup, and the full tool catalog.
+**New here?** The [MCP Quickstart](/mcp-quickstart) is the shortest path: paste one address into Claude, ChatGPT, Codex or Cursor and sign in, no API key needed. Come back to this page for auth modes, plans, OAuth setup, and the full tool catalog.
 </Tip>
 
 <Note>
@@ -224,28 +224,51 @@ Exceeding any limit returns HTTP `429` with a `Retry-After` header.
 
 ## Client setup
 
-### Claude Desktop
+Step-by-step setup with screenshots for Claude, ChatGPT, Codex, Claude Code and Cursor is in the [MCP Quickstart](/mcp-quickstart).
 
-`~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) — use the remote MCP entry:
+### Claude (desktop app, claude.ai, mobile)
+
+Add via **Customize → Connectors → + Add → Add custom connector**:
+
+- Name: `WorldMonitor`
+- URL: `https://worldmonitor.app/mcp`
+
+Keep the detected sign-in settings and click **Add**, then sign in. Connectors belong to your Claude account, so Claude web, Claude Desktop and the mobile apps use the same one. On Team and Enterprise, an owner adds it first under **Organization settings → Connectors**. Claude Desktop's `claude_desktop_config.json` launches local (stdio) servers only, so a remote `url` entry there is not a supported way to connect; use the connector, or the `mcp-remote` bridge below.
+
+### The `mcp-remote` bridge (stdio-only clients)
+
+Stdio-only MCP clients connect through the [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge:
 
 ```json
 {
   "mcpServers": {
     "worldmonitor": {
-      "url": "https://worldmonitor.app/mcp"
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://worldmonitor.app/mcp", "--header", "X-WorldMonitor-Key:wm_YOUR_KEY"]
     }
   }
 }
 ```
 
-Claude Desktop handles the OAuth flow automatically on first connection.
+- **With an API key, pass it as a header.** A request that carries a valid key is not challenged; an invalid, expired or revoked key gets `401`. Use the single-argument form `X-WorldMonitor-Key:wm_…` with **no space after the colon** — it sidesteps client/`npx` argument-escaping bugs with spaces inside `args` (documented by `mcp-remote` for Cursor and Claude Desktop on Windows).
+- **Prefer OAuth?** Omit `--header`. The server answers `mcp-remote`'s opening `initialize` with the `401` challenge, which opens its browser consent flow at connect time (dynamic client registration works on both `worldmonitor.app` and `www.worldmonitor.app`). A free account can complete it; subscription tools then depend on your plan.
 
-### Claude web (claude.ai)
+### Codex
 
-Add via **Settings → Connectors → Add custom connector**:
+```bash
+codex mcp add worldmonitor --url https://worldmonitor.app/mcp
+codex mcp login worldmonitor
+```
 
-- Name: `WorldMonitor`
-- URL: `https://worldmonitor.app/mcp`
+The CLI, the IDE extension and the Codex app read the same `~/.codex/config.toml`.
+
+### Claude Code
+
+```bash
+claude mcp add --transport http worldmonitor https://worldmonitor.app/mcp
+```
+
+Then run `/mcp` inside Claude Code and choose **Authenticate**.
 
 ### Cursor
 
@@ -630,6 +653,19 @@ Tool responses use the standard MCP content block format:
 
 For cache tools, the JSON payload includes `cached_at` (ISO timestamp of the oldest contributing data point) and `stale` (boolean — `true` when any contributing seed exceeded its per-key freshness budget) so the model can reason about freshness.
 
+A few more fields appear only when relevant:
+
+- `activationUnknown: true` when a content-freshness activation marker could not be read, so `stale` was computed without knowing whether the producer has ever published.
+- `freshnessUnknown: true` when a freshness record could not be read, so `stale` is `true` because freshness is unknown, not because the data is known to be old.
+- `unreadable` (a list of `data` labels) when some cache reads failed. Those sections are `null` because they could not be read, not because the dataset is empty, and retrying shortly usually fills them.
+- `contentFreshnessPendingUntil` (ISO timestamp) when a never-published seed is inside its deployment grace window. Content-age checks start counting against `stale` after that deadline.
+
+Cache tools cap list and map fields at 30 items when `limit` is omitted; pass `limit: 0` only when you need the full payload, and project it with [`jmespath`](/mcp-jmespath) to keep the response small.
+
+### Telemetry (for operators)
+
+Every `tools/call` emits a structured telemetry line tagged `mcp.toolcall` with latency, payload bytes (pre and post JMESPath), `jmespath_used`, and `budget_exceeded`. `initialize` emits `mcp.tools_list_emitted` with tool-count and tools-list byte metrics. Caller-facing behaviour is unaffected.
+
 ## Data freshness
 
 All cache tools read from Redis keys written by Railway cron seeders. Typical freshness:
@@ -664,7 +700,7 @@ Triage from the outside in: HTTP status → JSON-RPC code → soft envelope. The
 ## Related
 
 - [WebMCP](/webmcp) — experimental, tab-bound tools that operate the visible WorldMonitor website
-- [MCP Quickstart](/mcp-quickstart) — five-minute zero-to-first-call walkthrough
+- [MCP Quickstart](/mcp-quickstart) — connect Claude, ChatGPT, Codex or Cursor in about a minute
 - [JMESPath guide](/mcp-jmespath) — projection grammar + 12 worked examples
 - [MCP Tools Reference](/mcp-tools-reference) — per-tool parameters and `curl` examples
 - [MCP Error Catalog](/mcp-error-catalog) — every JSON-RPC code, HTTP status, and soft envelope the server emits

@@ -6,7 +6,7 @@ description: "通过 Model Context Protocol 将 Claude、Cursor 及其他兼容 
 WorldMonitor 将其情报栈作为 [Model Context Protocol](https://modelcontextprotocol.io) 服务器对外开放，因此任何兼容 MCP 的客户端（Claude Desktop、Claude web、Cursor、MCP Inspector、自定义 agent）都可以将实时数据直接拉取到模型上下文中。其工具覆盖以下领域：市场、大宗商品与宏观经济；能源；冲突、国家风险、制裁、网络威胁与咽喉要道；海运、航空与供应链；气候与自然灾害；健康信号；流离失所与人道危机；AI 简报、预测与情报历史；关税与贸易政策。
 
 <Tip>
-**初次使用？** [MCP 快速入门](/zh/mcp-quickstart) 是一条从零到在 Claude Desktop 中完成真实工具调用的五分钟路径。如需认证模式、套餐、OAuth 配置和完整工具目录，请回到本页查看。
+**初次使用？** [MCP 快速入门](/zh/mcp-quickstart) 是把 Claude、ChatGPT、Codex 或 Cursor 接入 WorldMonitor 的最短路径：粘贴一个地址并登录，无需 API key。如需认证模式、套餐、OAuth 配置和完整工具目录，请回到本页查看。
 </Tip>
 
 <Note>
@@ -187,28 +187,51 @@ WorldMonitor 还会在 Settings 中显示当前的 MCP 套餐限额通知，并�
 
 ## 客户端配置
 
-### Claude Desktop
+在 [MCP 快速入门](/zh/mcp-quickstart) 中可以找到 Claude、ChatGPT、Codex、Claude Code 与 Cursor 的分步配置与截图。
 
-`~/Library/Application Support/Claude/claude_desktop_config.json`（macOS） —— 使用远程 MCP 条目：
+### Claude（桌面应用、claude.ai、移动端）
+
+通过 **Customize → Connectors → + Add → Add custom connector** 添加：
+
+- 名称：`WorldMonitor`
+- URL：`https://worldmonitor.app/mcp`
+
+保留自动检测到的登录设置并点击 **Add**，然后登录。连接器属于你的 Claude 账户，因此 Claude 网页版、Claude Desktop 与移动应用共用同一个连接器。在 Team 与 Enterprise 上，需先由所有者在 **Organization settings → Connectors** 中添加。Claude Desktop 的 `claude_desktop_config.json` 只启动本地（stdio）服务器，在其中写入远程 `url` 条目并不是受支持的连接方式；请使用连接器，或下文的 `mcp-remote` 桥接。
+
+### `mcp-remote` 桥接（仅支持 stdio 的客户端）
+
+仅支持 stdio 的 MCP 客户端可通过 [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) 桥接连接：
 
 ```json
 {
   "mcpServers": {
     "worldmonitor": {
-      "url": "https://worldmonitor.app/mcp"
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://worldmonitor.app/mcp", "--header", "X-WorldMonitor-Key:wm_YOUR_KEY"]
     }
   }
 }
 ```
 
-Claude Desktop 会在首次连接时自动处理 OAuth 流程。
+- **使用 API key 时，以请求头传递。** 携带有效 key 的请求不会收到质询；无效、过期或已撤销的 key 返回 `401`。请使用单参数形式 `X-WorldMonitor-Key:wm_…`，**冒号后不要加空格**，以避开客户端与 `npx` 在 `args` 中处理空格的转义问题。
+- **更想用 OAuth？** 省略 `--header`。服务器会对 `mcp-remote` 的首个 `initialize` 返回 `401` 质询，从而在连接时打开浏览器授权流程。免费账户即可完成；订阅工具取决于你的套餐。
 
-### Claude web (claude.ai)
+### Codex
 
-通过 **Settings → Connectors → Add custom connector** 添加：
+```bash
+codex mcp add worldmonitor --url https://worldmonitor.app/mcp
+codex mcp login worldmonitor
+```
 
-- 名称：`WorldMonitor`
-- URL：`https://worldmonitor.app/mcp`
+CLI、IDE 扩展与 Codex 应用读取同一份 `~/.codex/config.toml`。
+
+### Claude Code
+
+```bash
+claude mcp add --transport http worldmonitor https://worldmonitor.app/mcp
+```
+
+然后在 Claude Code 中运行 `/mcp` 并选择 **Authenticate**。
 
 ### Cursor
 
@@ -566,6 +589,19 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 对于缓存工具，JSON payload 包含 `cached_at`（最旧贡献数据点的 ISO 时间戳）和 `stale`（布尔值 —— 当任意贡献 seed 超出其 per-key 新鲜度预算时为 `true`），以便模型可对新鲜度进行推理。
+
+以下字段仅在相关时出现：
+
+- `activationUnknown: true`：无法读取内容新鲜度激活标记，因此计算 `stale` 时不知道生产程序是否发布过。
+- `freshnessUnknown: true`：无法读取新鲜度记录，因此 `stale` 为 `true` 是因为新鲜度未知，而不是已知数据过旧。
+- `unreadable`（`data` 标签列表）：部分缓存读取失败。这些部分为 `null` 是因为无法读取，而不是数据集为空，稍后重试通常可补全。
+- `contentFreshnessPendingUntil`（ISO 时间戳）：从未发布过的 seed 处于部署宽限期内。该截止时间之后，内容年龄检查才开始计入 `stale`。
+
+省略 `limit` 时，缓存工具会把列表和映射字段截断为 30 项；只有确实需要完整 payload 时才传 `limit: 0`，并用 [`jmespath`](/zh/mcp-jmespath) 投影以控制响应大小。
+
+### 遥测（面向运维）
+
+每次 `tools/call` 都会输出一条标记为 `mcp.toolcall` 的结构化遥测记录，包含延迟、payload 字节数（JMESPath 前后）、`jmespath_used` 与 `budget_exceeded`。`initialize` 会输出 `mcp.tools_list_emitted`，包含工具数量与 tools-list 字节指标。调用方可见的行为不受影响。
 
 ## 数据新鲜度
 
