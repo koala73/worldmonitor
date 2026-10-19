@@ -103,9 +103,10 @@ function* scanCountryCodes(text, { places = false } = {}) {
   // Normalize uppercase `US` (country abbreviation) to `united states` before lowercasing,
   // so it survives the stopword pass. Lowercase `us` (pronoun) has no equivalent expansion
   // and is stopped by UNIGRAM_STOPWORDS. `\b` avoids matching inside words like "plus".
-  const normalized = text.replace(/\bUS\b/g, 'United States')
+  // Every non-letter separates words, so "Kharkiv’s" and "Mosul–Aleppo" still name places.
+  const normalized = text.replace(/\bU\.S\.(?:A\.)?/g, 'United States ').replace(/\bUS\b/g, 'United States')
     .normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
-    .replace(/['.(),/-]/g, ' ');
+    .replace(/[^a-z\s]+/g, ' ');
 
   const words = normalized.split(/\s+/).filter(Boolean);
   const placeWords = places ? words.map((w) => w.replace(/[^a-z]/g, '')) : null;
@@ -172,13 +173,40 @@ export function extractCountryCodes(text) {
 }
 
 /**
- * Drop a trailing " - The Washington Post" / " | U.S. Department of State" publisher
- * credit, so the outlet's home country is not read as a country the story is about.
- * Only a tail of six words or fewer counts as a credit.
+ * A top story's countries: the primary countryCode (first country or alias name, the
+ * long-standing rule) and every country the title names, primary first. Both ignore a
+ * trailing publisher credit.
+ * @param {string} title
+ * @returns {{ countryCode: string|null, countryCodes: string[] }}
+ */
+export function extractStoryCountries(title) {
+  const countryCodes = extractCountryCodes(title);
+  const countryCode = extractCountryCode(stripPublisherSuffix(title)) ?? countryCodes[0] ?? null;
+  if (!countryCode) return { countryCode, countryCodes };
+  return { countryCode, countryCodes: [countryCode, ...countryCodes.filter((code) => code !== countryCode)] };
+}
+
+// A tail naming a country is a credit only when it also reads like an outlet name.
+export const PUBLISHER_CREDIT_WORDS = /\b(?:post|times|news|journal|herald|tribune|guardian|telegraph|gazette|press|reuters|bloomberg|jazeera|bbc|cnn|nbc|cbs|npr|afp|tv|television|radio|daily|weekly|observer|independent|monitor|chronicle|express|mail|standard|insider|magazine|media|network|wire|agency|today|online)\b|\.(?:com|org|net|gov)\b/i;
+// Only the end of a title can hold a credit; searching a bounded tail keeps the match
+// linear on whitespace-heavy titles.
+const CREDIT_TAIL_CHARS = 120;
+
+/**
+ * Drop a trailing " - The Washington Post" / " | Al Jazeera" publisher credit, so the
+ * outlet's home country is not read as a country the story is about. A tail of six words
+ * or fewer is a credit when it reads like an outlet name or names no country; "India –
+ * Pakistan tensions rise" keeps its ending.
  * @param {string} text
  * @returns {string}
  */
 export function stripPublisherSuffix(text) {
   if (!text) return text;
-  return text.replace(/\s+[-–—|]\s+([^-–—|]+)$/, (match, tail) => (tail.trim().split(/\s+/).length <= 6 ? '' : match));
+  const tailStart = Math.max(0, text.length - CREDIT_TAIL_CHARS);
+  const credit = /\s[-–—|]\s+([^-–—|]+)$/.exec(text.slice(tailStart));
+  if (!credit) return text;
+  const tail = credit[1].trim();
+  if (tail.split(/\s+/).length > 6) return text;
+  const isCredit = PUBLISHER_CREDIT_WORDS.test(tail) || scanCountryCodes(tail, { places: true }).next().done;
+  return isCredit ? text.slice(0, tailStart + credit.index) : text;
 }

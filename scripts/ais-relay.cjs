@@ -4964,20 +4964,31 @@ function matchCountryNamesInText(text) {
 // City and region names -> ISO2 (scripts/build-news-places.mjs), longest phrase first.
 const NEWS_PLACES = require('./shared/news-places.json');
 const NEWS_PLACE_MAX_WORDS = 4;
-function placeCountriesInText(lower) {
-  const words = lower.normalize('NFKD').replace(/\p{Diacritic}/gu, '')
-    .split(/[\s'.(),/-]+/).map((w) => w.replace(/[^a-z]/g, ''));
+// Mirrors stripPublisherSuffix in scripts/shared/geo-extract.mjs.
+const THREAT_PUBLISHER_CREDIT_WORDS = /\b(?:post|times|news|journal|herald|tribune|guardian|telegraph|gazette|press|reuters|bloomberg|jazeera|bbc|cnn|nbc|cbs|npr|afp|tv|television|radio|daily|weekly|observer|independent|monitor|chronicle|express|mail|standard|insider|magazine|media|network|wire|agency|today|online)\b|\.(?:com|org|net|gov)\b/i;
+const THREAT_CREDIT_TAIL_CHARS = 120;
+// Every country a lowercased, diacritic-free text names. Place phrases resolve first and are
+// blanked, so "new mexico" is US, not MX; country names are then blanked as they match, so
+// "sudan" cannot also fire inside "south sudan".
+function countriesNamedInText(lower) {
+  const tokens = [...lower.matchAll(/[a-z]+/g)];
   const found = [];
-  for (let i = 0; i < words.length; i++) {
-    for (let n = Math.min(NEWS_PLACE_MAX_WORDS, words.length - i); n >= 1; n--) {
-      const phrase = words.slice(i, i + n);
-      if (phrase.some((w) => !w)) continue;
-      const iso2 = NEWS_PLACES[phrase.join(' ')];
+  let rest = lower;
+  for (let i = 0; i < tokens.length; i++) {
+    for (let n = Math.min(NEWS_PLACE_MAX_WORDS, tokens.length - i); n >= 1; n--) {
+      const iso2 = NEWS_PLACES[tokens.slice(i, i + n).map((t) => t[0]).join(' ')];
       if (!iso2) continue;
       if (!found.includes(iso2)) found.push(iso2);
+      const end = tokens[i + n - 1].index + tokens[i + n - 1][0].length;
+      rest = rest.slice(0, tokens[i].index) + ' '.repeat(end - tokens[i].index) + rest.slice(end);
       i += n - 1;
       break;
     }
+  }
+  for (const { iso2, regex } of THREAT_COUNTRY_NAME_ENTRIES) {
+    if (!regex.test(rest)) continue;
+    if (!found.includes(iso2)) found.push(iso2);
+    rest = rest.replace(new RegExp(regex.source, 'gi'), (m) => ' '.repeat(m.length));
   }
   return found;
 }
@@ -4989,21 +5000,20 @@ function placeCountriesInText(lower) {
 function threatSummaryCountries(text) {
   const affected = matchCountryNamesInText(text);
   if (affected.length > 0) return affected;
+  // Uppercase US/UK are the countries; lowercase "us" stays the pronoun.
+  let lower = text.replace(/\bU\.S\.(?:A\.)?/g, 'United States ').replace(/\bU\.K\./g, 'United Kingdom ')
+    .replace(/\bUS\b/g, 'United States').replace(/\bUK\b/g, 'United Kingdom')
+    .normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase();
   // Drop a trailing " - The Washington Post" credit so the outlet's country is not counted.
-  // Mirrors stripPublisherSuffix in scripts/shared/geo-extract.mjs.
-  let rest = text.replace(/\s+[-–—|]\s+([^-–—|]+)$/, (match, tail) => (tail.trim().split(/\s+/).length <= 6 ? '' : match))
-    .toLowerCase();
-  const found = [];
-  for (const { iso2, regex } of THREAT_COUNTRY_NAME_ENTRIES) {
-    if (!regex.test(rest)) continue;
-    if (!found.includes(iso2)) found.push(iso2);
-    // Blank the match so "sudan" cannot also fire inside "south sudan".
-    rest = rest.replace(new RegExp(regex.source, 'gi'), (m) => ' '.repeat(m.length));
+  const tailStart = Math.max(0, lower.length - THREAT_CREDIT_TAIL_CHARS);
+  const credit = /\s[-–—|]\s+([^-–—|]+)$/.exec(lower.slice(tailStart));
+  if (credit) {
+    const tail = credit[1].trim();
+    const isCredit = tail.split(/\s+/).length <= 6
+      && (THREAT_PUBLISHER_CREDIT_WORDS.test(tail) || countriesNamedInText(tail).length === 0);
+    if (isCredit) lower = lower.slice(0, tailStart + credit.index);
   }
-  for (const iso2 of placeCountriesInText(rest)) {
-    if (!found.includes(iso2)) found.push(iso2);
-  }
-  return found;
+  return countriesNamedInText(lower);
 }
 
 

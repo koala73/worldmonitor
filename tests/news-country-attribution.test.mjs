@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { describe, it } from 'node:test';
 
-import { extractCountryCode, extractCountryCodes } from '../scripts/shared/geo-extract.mjs';
+import { extractCountryCode, extractCountryCodes, extractStoryCountries } from '../scripts/shared/geo-extract.mjs';
 
 const RELAY_SOURCE = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
 
@@ -80,6 +80,30 @@ describe('extractCountryCodes (seed-insights top stories)', () => {
     );
   });
 
+  it('keeps a dash-separated ending that is headline content, not a publisher credit', () => {
+    assert.deepEqual(extractCountryCodes('India – Pakistan tensions rise after border clash'), ['IN', 'PK']);
+    assert.deepEqual(extractCountryCodes('Peace talks resume — Ukraine and Russia'), ['UA', 'RU']);
+    assert.deepEqual(extractCountryCodes('Live updates – Israel strikes Gaza'), ['IL', 'PS']);
+    assert.deepEqual(extractCountryCodes('Drone strike hits Kharkiv power plant - The Washington Post'), ['UA']);
+    assert.deepEqual(extractCountryCodes('Ceasefire holds in Gaza - Al Jazeera'), ['PS']);
+    assert.deepEqual(extractCountryCodes('Floods hit Lahore - Times of India'), ['PK']);
+    assert.deepEqual(extractCountryCodes('Public Schedule – October 19, 2026 - U.S. Department of State (.gov)'), []);
+  });
+
+  it('strips a credit from a very long title in linear time', () => {
+    const title = `x${' '.repeat(60_000)}y`;
+    const started = performance.now();
+    extractCountryCodes(title);
+    relay.threatSummaryCountries(title);
+    assert.ok(performance.now() - started < 1000, 'publisher-credit match must not backtrack quadratically');
+  });
+
+  it('reads U.S. and splits places joined by dashes, ampersands or curly apostrophes', () => {
+    assert.deepEqual(extractCountryCodes('U.S. sanctions target Caracas officials'), ['US', 'VE']);
+    assert.deepEqual(extractCountryCodes('Kharkiv\u2019s power grid hit again'), ['UA']);
+    assert.deepEqual(extractCountryCodes('Mosul–Aleppo road reopens'), ['IQ', 'SY']);
+  });
+
   it('leaves extractCountryCode on country and alias names only', () => {
     assert.equal(extractCountryCode('Drone strike hits Kharkiv power plant overnight'), null);
   });
@@ -93,6 +117,26 @@ describe('extractCountryCodes (seed-insights top stories)', () => {
     assert.deepEqual(extractCountryCodes('NATO ministers meet as the EU responds'), []);
     assert.deepEqual(extractCountryCodes('Markets rally as inflation cools'), []);
     assert.deepEqual(extractCountryCodes(''), []);
+  });
+});
+
+describe('extractStoryCountries (top-story countryCode + countryCodes)', () => {
+  it('puts the primary country first in countryCodes', () => {
+    assert.deepEqual(extractStoryCountries('Missile hits Dammam airport after Houthi attack'), {
+      countryCode: 'YE',
+      countryCodes: ['YE', 'SA'],
+    });
+  });
+
+  it('never takes the primary country from a publisher credit', () => {
+    assert.deepEqual(extractStoryCountries('Drone strike hits Kharkiv power plant - The Washington Post'), {
+      countryCode: 'UA',
+      countryCodes: ['UA'],
+    });
+  });
+
+  it('returns null and an empty list for a title naming no country', () => {
+    assert.deepEqual(extractStoryCountries('Markets rally as inflation cools'), { countryCode: null, countryCodes: [] });
   });
 });
 
@@ -112,6 +156,31 @@ describe('relay threat summary attribution', () => {
     assert.deepEqual(relay.threatSummaryCountries('Overnight attack on Kharkiv leaves city without power'), ['UA']);
     assert.deepEqual(relay.threatSummaryCountries('Brent crude climbs as Meta shares slide'), []);
     assert.deepEqual(relay.threatSummaryCountries('Tehran seeks to punish Trump with oil price pain - The Washington Post'), ['IR']);
+  });
+
+  it('keeps headline endings that name a country', () => {
+    assert.deepEqual(
+      [...relay.threatSummaryCountries('Iran warns Israel — Saudi Arabia calls for restraint')].sort(),
+      ['IL', 'IR', 'SA'],
+    );
+    assert.deepEqual([...relay.threatSummaryCountries('Peace talks resume — Ukraine and Russia')].sort(), ['RU', 'UA']);
+  });
+
+  it('reads the US and UK abbreviations but not the pronoun', () => {
+    assert.deepEqual([...relay.threatSummaryCountries('US and UK agree to expand sanctions')].sort(), ['GB', 'US']);
+    assert.deepEqual(relay.threatSummaryCountries('U.S. envoy lands for talks'), ['US']);
+    assert.deepEqual(relay.threatSummaryCountries('Tell us what you think about the budget'), []);
+    assert.deepEqual(relay.threatSummaryCountries('Public Schedule – October 19, 2026 - U.S. Department of State (.gov)'), []);
+  });
+
+  it('resolves a place phrase before a country name inside it', () => {
+    assert.deepEqual(relay.threatSummaryCountries('New Mexico wildfire spreads'), ['US']);
+    assert.deepEqual(extractCountryCodes('New Mexico wildfire spreads'), ['US']);
+  });
+
+  it('splits places joined by dashes or ampersands', () => {
+    assert.deepEqual([...relay.threatSummaryCountries('Mosul–Aleppo road reopens')].sort(), ['IQ', 'SY']);
+    assert.deepEqual([...relay.threatSummaryCountries('Kharkiv & Odesa lose power')], ['UA']);
   });
 
   it('falls back to every country named when no attack verb points at one', () => {
