@@ -111,13 +111,32 @@ export function mergeCountryEventsBuckets(previous, batches, nowMs = Date.now())
 
 // Past days that are missing or incomplete and that the live merge can no
 // longer touch (strictly before the cursor's day), newest first.
+/** The day's 15-minute export stamps, through `cursor` when the cursor falls on that day. */
+export function countryEventsDayStamps(date, cursor = '') {
+  const stamps = dyadDayExportTimestamps(date);
+  return typeof cursor === 'string' && cursor.startsWith(date.replaceAll('-', ''))
+    ? stamps.filter((stamp) => stamp <= cursor)
+    : stamps;
+}
+
+function expectedCohorts(date, cursor) {
+  return countryEventsDayStamps(date, cursor).length;
+}
+
+// Days missing cohorts that the live merge can no longer add, newest first:
+// any past day short of 96, and the cursor's own day when it holds fewer
+// cohorts than were published through the cursor. The live downloader keeps
+// only the newest 8 cohorts per tick, so an outage longer than 2h leaves a
+// hole in today that only a rebuild from the archive can fill.
 function repairableDates(snapshot, nowMs) {
   const cursor = snapshot?.cursor ?? '';
   if (!/^\d{14}$/.test(cursor)) return [];
   const cursorDate = `${cursor.slice(0, 4)}-${cursor.slice(4, 6)}-${cursor.slice(6, 8)}`;
-  return historyWindow(nowMs)
-    .slice(1)
-    .filter((date) => date < cursorDate && snapshot.days?.[date]?.cohorts !== COHORTS_PER_DAY);
+  return historyWindow(nowMs).filter((date) => {
+    const cohorts = snapshot.days?.[date]?.cohorts ?? 0;
+    if (date < cursorDate) return cohorts !== COHORTS_PER_DAY;
+    return date === cursorDate && cohorts < expectedCohorts(date, cursor);
+  });
 }
 
 export function planCountryEventsRepair(snapshot, nowMs, maxDays) {
@@ -130,15 +149,18 @@ export function planCountryEventsRepair(snapshot, nowMs, maxDays) {
     .slice(0, Math.max(0, maxDays));
 }
 
-/** Sum one UTC day from exactly its 96 source cohorts; replaces the stored day. */
-export function rebuildCountryEventsDay(date, batches) {
-  const expected = new Set(dyadDayExportTimestamps(date));
+/**
+ * Sum one UTC day from exactly its source cohorts (all 96, or those through
+ * `cursor` for the cursor's own day); the result replaces the stored day.
+ */
+export function rebuildCountryEventsDay(date, batches, cursor = '') {
+  const expected = new Set(countryEventsDayStamps(date, cursor));
   const seen = new Set(batches.map((batch) => batch.timestamp));
-  if (batches.length !== COHORTS_PER_DAY || seen.size !== COHORTS_PER_DAY
+  if (batches.length !== expected.size || seen.size !== expected.size
     || [...seen].some((timestamp) => !expected.has(timestamp))) {
-    throw new Error(`Country-conflict rebuild for ${date} needs its 96 distinct cohorts`);
+    throw new Error(`Country-events rebuild for ${date} needs its ${expected.size} distinct cohorts`);
   }
-  const day = { cohorts: COHORTS_PER_DAY, countries: {} };
+  const day = { cohorts: expected.size, countries: {} };
   for (const batch of batches) addCounts(day.countries, batch.countries);
   return day;
 }
@@ -147,7 +169,7 @@ export function replaceCountryEventsDays(snapshot, rebuilt, nowMs, failures = {}
   const eligible = new Set(repairableDates(snapshot, nowMs));
   const days = structuredClone(snapshot.days ?? {});
   for (const [date, day] of Object.entries(rebuilt ?? {})) {
-    if (eligible.has(date) && day?.cohorts === COHORTS_PER_DAY) days[date] = day;
+    if (eligible.has(date) && day?.cohorts === expectedCohorts(date, snapshot.cursor)) days[date] = day;
   }
   const { repairFailures: previousFailures, ...rest } = snapshot;
   const stillRepairable = new Set(repairableDates({ ...snapshot, days }, nowMs));
@@ -174,13 +196,27 @@ function median(values) {
  */
 export function summarizeCountryEvents(snapshot, nowMs = Date.now()) {
   const days = snapshot?.days ?? {};
-  const today = days[utcDate(nowMs)];
+  const todayDate = utcDate(nowMs);
+  const today = days[todayDate];
   const yesterday = days[utcDate(nowMs - DAY_MS)];
+  const cursor = typeof snapshot?.cursor === 'string' ? snapshot.cursor : '';
+  // The window is today's cohorts published through the cursor plus the
+  // matching tail of yesterday. The split comes from the clock (the cursor),
+  // never from how many cohorts today happens to hold: after an outage that
+  // would fill today's hole with yesterday's articles.
+  const todayExpected = cursor.startsWith(todayDate.replaceAll('-', ''))
+    ? expectedCohorts(todayDate, cursor)
+    : 0;
   const todayCohorts = Math.min(COHORTS_PER_DAY, today?.cohorts ?? 0);
-  const yesterdayShare = yesterday?.cohorts > 0
-    ? Math.min(1, (COHORTS_PER_DAY - todayCohorts) / yesterday.cohorts)
+  const yesterdayNeeded = COHORTS_PER_DAY - Math.max(todayExpected, todayCohorts);
+  const yesterdayShare = yesterday?.cohorts > 0 && yesterdayNeeded > 0
+    ? Math.min(1, yesterdayNeeded / yesterday.cohorts)
     : 0;
   const currentCohorts = todayCohorts + Math.round(yesterdayShare * (yesterday?.cohorts ?? 0));
+  // Complete only when every cohort of the window was observed. Anything less
+  // is unknown, and the CII scores it as nothing rather than as calm.
+  const currentComplete = todayCohorts >= todayExpected
+    && (yesterdayNeeded <= 0 || yesterday?.cohorts === COHORTS_PER_DAY);
   const baselineDates = Array.from(
     { length: COUNTRY_EVENTS_BASELINE_DAYS },
     (_, i) => utcDate(nowMs - (i + 2) * DAY_MS),
@@ -210,6 +246,7 @@ export function summarizeCountryEvents(snapshot, nowMs = Date.now()) {
   return {
     byCountry,
     currentCohorts,
+    currentComplete,
     baselineDays: baselineDates.length,
     baselineReady,
     minBaselineDays: COUNTRY_EVENTS_MIN_BASELINE_DAYS,

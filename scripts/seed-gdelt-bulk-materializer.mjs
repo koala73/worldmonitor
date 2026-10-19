@@ -12,6 +12,7 @@ import {
 } from './_gdelt-dyad-tension.mjs';
 import { GDELT_BULK_COUNTRY_EVENTS_KEY, GDELT_BULK_DYAD_KEY } from './_gdelt-bulk-contract.mjs';
 import {
+  countryEventsDayStamps,
   mergeCountryEventsBuckets,
   parseCountryEventsExport,
   planCountryEventsRepair,
@@ -326,6 +327,7 @@ async function repairExportDays({
   dates,
   parse,
   rebuild,
+  stampsFor = dyadDayExportTimestamps,
   nowMs,
   fetchImpl,
   maxDays,
@@ -363,7 +365,7 @@ async function repairExportDays({
   for (const date of dates) {
     if (downloaded >= maxDays) break;
     if (signal?.aborted || clock() >= deadlineAt) { count('over_budget'); break; }
-    const stamps = dyadDayExportTimestamps(date);
+    const stamps = stampsFor(date);
     // A suffix range can start mid-day; only a tail that begins before the
     // day proves a missing cohort is an upstream gap. Dates run newest first,
     // so every later date predates the tail too.
@@ -429,10 +431,12 @@ export async function repairCountryEventsHistory({
   deadlineAt = Infinity,
   clock = Date.now,
 }) {
+  // Today is rebuilt through the cursor only; later cohorts are the live merge's.
   return repairExportDays({
     dates: planCountryEventsRepair(snapshot, nowMs, 30),
     parse: (csv) => ({ countries: parseCountryEventsExport(csv) }),
-    rebuild: rebuildCountryEventsDay,
+    rebuild: (date, batches) => rebuildCountryEventsDay(date, batches, snapshot.cursor),
+    stampsFor: (date) => countryEventsDayStamps(date, snapshot.cursor),
     nowMs, fetchImpl, maxDays, into, failures, signal, deadlineAt, clock,
   });
 }

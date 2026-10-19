@@ -686,14 +686,16 @@ function parseGdeltEscalationSignal(raw: unknown): GdeltEscalationSignal | null 
 
 /**
  * The per-country GDELT summary (scripts/_gdelt-country-events.mjs), or null
- * when it is missing, malformed, has no baseline yet, or is older than
+ * when it is missing, malformed, has no baseline yet, has an incomplete
+ * current window, or is older than
  * CII_GDELT_ESCALATION_MAX_AGE_MS (a stopped materializer must not freeze a spike).
  */
 export function gdeltCountryEventsFromSeed(raw: unknown, nowMs: number): GdeltCountryEvents | null {
   if (!raw || typeof raw !== 'object') return null;
-  const { byCountry, baselineReady, updatedAt } = raw as Record<string, unknown>;
+  const { byCountry, baselineReady, currentComplete, updatedAt } = raw as Record<string, unknown>;
   if (!byCountry || typeof byCountry !== 'object' || Array.isArray(byCountry)) return null;
-  if (baselineReady !== true) return null;
+  // A current window missing cohorts (materializer outage) is unknown, not calm.
+  if (baselineReady !== true || currentComplete !== true) return null;
   const age = nowMs - safeNum(updatedAt);
   if (!(age <= CII_GDELT_ESCALATION_MAX_AGE_MS)) return null;
   const rows: Record<string, GdeltCountryEventsRow> = {};

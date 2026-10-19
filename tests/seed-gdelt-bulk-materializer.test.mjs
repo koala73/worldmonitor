@@ -1486,10 +1486,23 @@ describe('dyad history repair', async () => {
 
   it('repairs a country-events day from the 96 source exports', async () => {
     const source = repairSource(['2026-09-27']);
-    const snapshot = { cursor: live.cursor, days: {} };
+    // Today already holds every cohort through the cursor, so the past day is next.
+    const snapshot = { cursor: live.cursor, days: { '2026-09-28': { cohorts: 70, countries: {} } } };
     const result = await repairCountryEventsHistory({ snapshot, nowMs: repairNow, fetchImpl: source.fetchImpl, maxDays: 1 });
     assert.deepEqual(Object.keys(result.days), ['2026-09-27']);
     assert.equal(result.days['2026-09-27'].cohorts, 96);
     assert.deepEqual(result.outcomes, { repaired: 1 });
+  });
+
+  it('recovers today\'s cohorts an outage skipped, through the cursor only', async () => {
+    // The live downloader kept only the newest 8 cohorts after an outage, so
+    // today holds 8 of the 70 published through the 17:15 cursor.
+    const source = repairSource(['2026-09-28']);
+    const snapshot = { cursor: live.cursor, days: { '2026-09-28': { cohorts: 8, countries: {} } } };
+    const result = await repairCountryEventsHistory({ snapshot, nowMs: repairNow, fetchImpl: source.fetchImpl, maxDays: 1 });
+    assert.deepEqual(result.outcomes, { repaired: 1 });
+    assert.equal(result.days['2026-09-28'].cohorts, 70);
+    assert.equal(source.requests.filter((url) => url.endsWith('.export.CSV.zip')).length, 70,
+      'only the cohorts through the cursor are downloaded');
   });
 });

@@ -51,7 +51,7 @@ function seed(byCountry: Record<string, { conflict?: Signal; protest?: Signal }>
   const rows = Object.fromEntries(Object.entries(byCountry).map(([code, row]) => [
     code, { conflict: row.conflict ?? QUIET, protest: row.protest ?? QUIET },
   ]));
-  return { byCountry: rows, baselineReady: true, updatedAt: NOW - 10 * 60_000, ...extra };
+  return { byCountry: rows, baselineReady: true, currentComplete: true, updatedAt: NOW - 10 * 60_000, ...extra };
 }
 
 function aux(snapshot: unknown = null) {
@@ -116,6 +116,15 @@ describe('CII Conflict and Unrest from GDELT escalation while ACLED is dark', ()
     assert.deepEqual(components(stale, 'FR'), { conflict: 0, unrest: 0 });
   });
 
+  it('scores nothing from an incomplete current window, which is unknown rather than calm', () => {
+    // After a materializer outage today's window is missing cohorts; scoring it
+    // would compare a partial day with a full-day norm.
+    const spike = { SA: { conflict: CONFLICT.SA_OCT12 } };
+    assert.equal(components(seed(spike, { currentComplete: false }), 'SA').conflict, 0);
+    assert.equal(components(seed(spike, { currentComplete: undefined }), 'SA').conflict, 0);
+    assert.ok(components(seed(spike), 'SA').conflict >= 40);
+  });
+
   it('does not apply eventMultiplier, which is reserved for verified events', () => {
     // SA carries 2.0 and QA 0.8; the same escalation scores the same.
     const snapshot = seed({ SA: { conflict: CONFLICT.SA_OCT12 }, QA: { conflict: CONFLICT.SA_OCT12 } });
@@ -143,6 +152,7 @@ describe('CII Conflict and Unrest from GDELT escalation while ACLED is dark', ()
         IL: { conflict: { current: 5, baselineMedian: null } },
       },
       baselineReady: true,
+      currentComplete: true,
       updatedAt: NOW,
     }, NOW);
     assert.deepEqual(Object.keys(parsed?.byCountry ?? {}).sort(), ['IL', 'SA']);

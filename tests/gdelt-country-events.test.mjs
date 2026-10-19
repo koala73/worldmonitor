@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  countryEventsDayStamps,
   COUNTRY_EVENTS_MIN_BASELINE_DAYS,
   COUNTRY_EVENTS_REPAIR_BACKOFF_MS,
   mergeCountryEventsBuckets,
@@ -79,9 +80,13 @@ describe('mergeCountryEventsBuckets', () => {
 
 describe('country-events repair planning', () => {
   const now = Date.parse('2026-10-12T20:00:00Z');
-  const snapshot = { cursor: '20261012194500', days: { '2026-10-11': fullDay({}) } };
+  // Today holds every cohort published through the 19:45 cursor (80).
+  const snapshot = {
+    cursor: '20261012194500',
+    days: { '2026-10-12': { cohorts: 80, countries: {} }, '2026-10-11': fullDay({}) },
+  };
 
-  it('plans the incomplete past days newest first, never today', () => {
+  it('plans the incomplete past days newest first, and not a complete today', () => {
     const plan = planCountryEventsRepair(snapshot, now, 3);
     assert.deepEqual(plan, ['2026-10-10', '2026-10-09', '2026-10-08']);
   });
@@ -99,7 +104,33 @@ describe('country-events repair planning', () => {
     assert.deepEqual(day, { cohorts: 96, countries: { SA: [192, 96, 0] } });
     const replaced = replaceCountryEventsDays(snapshot, { '2026-10-10': day, '2026-10-12': day }, now);
     assert.equal(replaced.days['2026-10-10'].countries.SA[1], 96);
-    assert.equal(replaced.days['2026-10-12'], undefined, 'the live day is never replaced');
+    assert.equal(replaced.days['2026-10-12'].cohorts, 80, 'a complete live day is never replaced');
+  });
+
+  // The live downloader keeps only the newest 8 cohorts per kind, so an outage
+  // longer than 2h leaves a hole in today that the cursor has already passed.
+  it('plans today when an outage left it short of the cohorts through the cursor', () => {
+    const outage = {
+      cursor: '20261012194500', // 80 cohorts of today are published through 19:45
+      days: {
+        '2026-10-12': { cohorts: 8, countries: { SA: [80, 40, 0] } },
+        '2026-10-11': fullDay({}),
+      },
+    };
+    assert.deepEqual(planCountryEventsRepair(outage, now, 2), ['2026-10-12', '2026-10-10']);
+    assert.deepEqual(planCountryEventsRepair({ ...outage, days: { ...outage.days, '2026-10-12': { cohorts: 80, countries: {} } } }, now, 1), ['2026-10-10']);
+  });
+
+  it('rebuilds today from exactly its cohorts through the cursor and replaces the short bucket', () => {
+    const cursor = '20261012194500';
+    const stamps = countryEventsDayStamps('2026-10-12', cursor);
+    assert.equal(stamps.length, 80);
+    assert.equal(stamps.at(-1), cursor);
+    const day = rebuildCountryEventsDay('2026-10-12', stamps.map((timestamp) => ({ timestamp, countries: { SA: [1, 1, 0] } })), cursor);
+    assert.deepEqual(day, { cohorts: 80, countries: { SA: [80, 80, 0] } });
+    assert.throws(() => rebuildCountryEventsDay('2026-10-12', stamps.slice(1).map((timestamp) => ({ timestamp, countries: {} })), cursor));
+    const outage = { cursor, days: { '2026-10-12': { cohorts: 8, countries: { SA: [8, 8, 0] } } } };
+    assert.equal(replaceCountryEventsDays(outage, { '2026-10-12': day }, now).days['2026-10-12'].cohorts, 80);
   });
 });
 
@@ -128,6 +159,27 @@ describe('summarizeCountryEvents', () => {
       conflict: { current: 400, baselineMedian: 400 },
       protest: { current: 80, baselineMedian: 80 },
     });
+  });
+
+  it('never passes yesterday off as today after an outage', () => {
+    // An outage dropped 64 of today's 72 published cohorts; the 8 kept carry a
+    // spike. The current window is incomplete, not yesterday's quiet average.
+    const snapshot = history();
+    snapshot.days[dayOf(now)] = { cohorts: 8, countries: { SA: [80, 60, 0], US: [400, 30, 5] } };
+    const summary = summarizeCountryEvents(snapshot, now);
+    assert.equal(summary.currentComplete, false);
+    assert.equal(summary.currentCohorts, 8 + 24, 'only the cohorts actually observed');
+  });
+
+  it('marks a complete current window as complete', () => {
+    const summary = summarizeCountryEvents(history(), now);
+    assert.equal(summary.currentComplete, true);
+  });
+
+  it('marks the window incomplete when the yesterday share it borrows is itself short', () => {
+    const snapshot = history();
+    snapshot.days[dayOf(now - DAY)] = { cohorts: 60, countries: { SA: [100, 20, 1] } };
+    assert.equal(summarizeCountryEvents(snapshot, now).currentComplete, false);
   });
 
   it('has no baseline until three weeks of complete days exist', () => {

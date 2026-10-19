@@ -162,7 +162,10 @@ Component details that are easy to miss:
   is not applied. A war or protest movement at its usual tempo scores 0 here;
   UCDP floors carry chronic wars. The terms are 0 until 21 complete baseline
   days exist (the materializer backfills them from the GDELT archive, two days
-  per 15-minute tick) and when the snapshot is more than 6 hours old. Once the
+  per 15-minute tick), when the snapshot is more than 6 hours old, and when the
+  current 24-hour window is missing cohorts (after a materializer outage, until
+  the materializer rebuilds the gap from the archive): a partial window is
+  unknown, not calm. Once the
   ACLED path returns events, both terms are 0, so a credentialed deployment
   never counts the same activity twice.
 - **Conflict OREF boost**: for Israel only, active OREF rocket-alert pressure
