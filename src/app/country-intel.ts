@@ -1390,7 +1390,7 @@ export class CountryIntelManager implements AppModule {
         if (latest) page.updateSignals?.({ ...latest, ...signalCounts }, value.coverageNotes);
       };
       void promise.then(summary => publish(summary, summary.signalCounts, summary.deniedSignalFields), error => {
-        publish({ ownFlights: null, foreignFlights: null, nearbyVessels: null, nearestBases: [], foreignPresence: null,
+        publish({ ownFlights: null, foreignFlights: null, nearbyVessels: null, nearestBases: projectCountryMilitaryActivity(code, country, null, null).nearestBases, foreignPresence: null,
           coverage: 'partial', coverageNotes: ['Military observations could not be loaded. Retry or refresh to recover them.'] },
         { militaryFlights: null, militaryFlightsInCountry: null, militaryVessels: null, militaryVesselsInCountry: null },
         error instanceof CountrySectionError && error.state === 'locked' ? ['militaryFlights', 'militaryFlightsInCountry', 'militaryVessels', 'militaryVesselsInCountry'] : []);
@@ -1518,7 +1518,7 @@ export class CountryIntelManager implements AppModule {
     const posturePanel = this.ctx.panels['strategic-posture'] as StrategicPosturePanel | undefined;
     const postures = posturePanel?.getPostures() || [];
     const aggregator = await getSignalAggregator();
-    const signals = await this.getCountrySignals(code, name);
+    const signals = { ...await this.getCountrySignals(code, name), ...this.selectCountryMilitary(code, name).signalCounts };
     const cluster = aggregator.getCountryClusters().find(c => c.country === code);
     const regional = aggregator.getRegionalConvergence().filter(r => r.countries.includes(code));
     const convergence = cluster ? {

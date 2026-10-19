@@ -4,13 +4,15 @@ const rpc = vi.hoisted(() => ({flight:vi.fn(),usni:vi.fn(),persistent:new Map()}
 vi.mock('@/services/generated-rpc-clients',async(importOriginal)=>({...await importOriginal<typeof import('@/services/generated-rpc-clients')>(),MilitaryServiceClient:class {listMilitaryFlights(req:unknown){return rpc.flight(req);}getUSNIFleetReport(){return rpc.usni();}}}));
 vi.mock('@/services/persistent-cache',()=>({getPersistentCache:async(key:string)=>rpc.persistent.get(key)??null,setPersistentCache:async(key:string,data:unknown)=>{rpc.persistent.set(key,{data,updatedAt:Date.now()});},deletePersistentCache:async(key:string)=>{rpc.persistent.delete(key);},deletePersistentCacheByPrefix:async(prefix:string)=>{for(const key of rpc.persistent.keys())if(key.startsWith(prefix))rpc.persistent.delete(key);}}));
 vi.mock('@/services/wingbits',()=>({checkWingbitsStatus:async()=>false,getAircraftDetailsBatch:async()=>new Map(),analyzeAircraftDetails:()=>({})}));
-const snapshot = vi.hoisted(() => ({ read: vi.fn() }));
-vi.mock('@/app/lazy-services', () => ({ getSignalAggregator: async () => ({ getCountryClusters: snapshot.read }) }));
-vi.mock('@/services/related-assets', () => ({ getNearbyInfrastructure: () => [], preloadInfrastructureTables: async () => {} }));
+const snapshot = vi.hoisted(() => ({ read: vi.fn(), nearby: vi.fn(), story: vi.fn() }));
+vi.mock('@/app/lazy-services', () => ({ getSignalAggregator: async () => ({ getCountryClusters: snapshot.read, getRegionalConvergence: () => [] }) }));
+vi.mock('@/services/related-assets', () => ({ getNearbyInfrastructure: (...args: unknown[]) => snapshot.nearby(...args), preloadInfrastructureTables: async () => {} }));
+vi.mock('@/components/StoryModal', () => ({ openStoryModal: snapshot.story }));
 import { CountryIntelManager } from '@/app/country-intel';
 import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
 import { projectCountryMilitaryActivity, projectCountryMilitarySignalCounts } from '@/services/country-military-activity';
 import * as runtimeConfig from '@/services/runtime-config';
+import { dataFreshness } from '@/services/data-freshness';
 import { initTestI18n } from './helpers/i18n.mts';
 function manager(military?: unknown) { return new CountryIntelManager({ latestClusters: [], intelligenceCache: military === undefined ? {} : { military } } as unknown as AppContext); }
 function summary(military?: unknown, code='CA', country='Canada') { const m=manager(military); return Reflect.get(m,'selectCountryMilitary').call(m,code,country).summary; }
@@ -23,7 +25,7 @@ const live={mode:'live',timestamp:1791296400000,offline:false};
 const cached={mode:'cached',timestamp:1791292800000,offline:false};
 function empty(flightDataState=live,vesselDataState=live,confirmed=true) { return {flights:[],flightClusters:[],vessels:[],vesselClusters:[],flightDataState,vesselDataState,vesselNegativeEvidenceConfirmed:confirmed}; }
 beforeAll(initTestI18n);
-beforeEach(()=>{ snapshot.read.mockReset().mockReturnValue([]);vi.stubGlobal('fetch',vi.fn(()=>{throw Error('Offline preparation forbids fetch');})); });
+beforeEach(()=>{ snapshot.read.mockReset().mockReturnValue([]);snapshot.nearby.mockReset().mockReturnValue([]);snapshot.story.mockReset();vi.stubGlobal('fetch',vi.fn(()=>{throw Error('Offline preparation forbids fetch');})); });
 it('required red: absent cache must render unavailable and unknown',()=>{
  const value=summary();
  expect(value).toMatchObject({ownFlights:null,foreignFlights:null,nearbyVessels:null,foreignPresence:null});
@@ -234,6 +236,29 @@ function ownerFixture() {
  return {intel,panel,body,page,ctx,presentation,abort,load,refresh,base,setHidden:()=>{visible=false;},setCountry:()=>{code='FR';},cleanup:()=>panel.hide()};
 }
 describe('website qualified military presentation owner',()=>{
+ it('keeps story military figures independent of an unopened or different qualified brief',async()=>{
+  vi.spyOn(dataFreshness,'hasSufficientData').mockReturnValue(true);
+  const military={...empty(),flights:[{lat:35,lon:110,operatorCountry:'CN'}],vessels:[{lat:35,lon:110,operatorCountry:'US'}]};
+  const ctx={latestClusters:[{primaryTitle:'China fixture',allItems:[],sourceCount:1}],latestPredictions:[],intelligenceCache:{military},panels:{}};
+  const intel=new CountryIntelManager(ctx as unknown as AppContext);
+  for(const code of [null,'CN','FR']) {
+   Reflect.set(intel,'qualifiedMilitarySummary',code?{code,page:undefined,value:{},signalCounts:{militaryFlights:99,militaryFlightsInCountry:99,militaryVessels:98,militaryVesselsInCountry:98}}:null);
+   await intel.openCountryStory('CN','China');
+   expect(snapshot.story).toHaveBeenLastCalledWith(expect.objectContaining({signals:expect.objectContaining({militaryFlights:1,militaryVessels:1})}));
+  }
+  expect(fetch).not.toHaveBeenCalled();
+ });
+ it.each(['unavailable','locked'] as const)('preserves static nearest bases when a qualified read is %s',async state=>{
+  const h=ownerFixture();
+  snapshot.nearby.mockReturnValue([{id:'fixture-base',name:'Controlled base',distanceKm:12}]);
+  const bases=projectCountryMilitaryActivity('CN','China',null,null).nearestBases;
+  const read=vi.spyOn(qualifiedMilitaryLoader,'loadHostCountryMilitaryActivity').mockResolvedValueOnce(qualifiedResult({nearestBases:bases})).mockRejectedValueOnce(new CountrySectionError(state,'Controlled failure'));
+  await h.load();
+  vi.spyOn(h.intel,'getCountrySignals').mockResolvedValue(h.base());await h.refresh();
+  expect(h.page.updateMilitaryActivity.mock.lastCall![0].nearestBases).toEqual(bases);
+  if(state==='locked')expect(h.panel.getSignalCounts()).toMatchObject({militaryFlights:null,militaryVessels:null});
+  expect(read).toHaveBeenCalledTimes(2);expect(fetch).not.toHaveBeenCalled();h.cleanup();
+ });
  it('publishes exact qualified near/contained counts, card and clocks without changing other chips',async()=>{
   const h=ownerFixture(),value=qualifiedResult();vi.spyOn(qualifiedMilitaryLoader,'loadHostCountryMilitaryActivity').mockResolvedValue(value);
   await h.load();
