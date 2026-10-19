@@ -1,5 +1,5 @@
 // Places a coordinate in a Tier-1 CII country using real borders
-// (scripts/shared/cii-country-borders.json, generated from the Natural Earth
+// (scripts/shared/cii-country-borders.data.mjs, generated from the Natural Earth
 // 1:50m map by scripts/generate-cii-country-borders.mjs).
 //
 // Shared by the CII scorer (server/worldmonitor/intelligence/v1/get-risk-scores.ts)
@@ -12,7 +12,7 @@
 // a fire on a beach the 1:50m coastline cuts off still counts, and returns
 // null when that nearest coast is not Tier-1. Farther out is null.
 
-import borders from './cii-country-borders.json' with { type: 'json' };
+import borders from './cii-country-borders.data.mjs';
 
 /** Territorial sea: 12 nautical miles. */
 export const CII_COASTAL_WATERS_KM = 22.224;

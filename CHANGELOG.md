@@ -6,6 +6,23 @@ All notable changes to World Monitor are documented here.
 
 ### Changed
 
+- **CII formula `v11`: a sustained crisis scores, and geo events follow real borders, worldwide** (2026-10-19).
+  v10 scored GDELT conflict and protest coverage only against each country's own
+  28-day median, so a month-long campaign raised its own norm and read as calm
+  (Saudi Arabia's Conflict term was 0 on Oct 19). Each GDELT term is now the
+  larger of that escalation and a sustained level, the conflict- or
+  protest-coded share of the country's articles over the last seven complete
+  days, which is 0 at the noise floor every country carries (14% conflict, 2%
+  protest) and needs at least 200 articles. The shared GDELT cap rises from 50
+  to 70. Replayed to Oct 19: Yemen Conflict 68, Saudi Arabia 41, Israel 25; the
+  US, GB and China stay at 0. Separately, fires, GPS jamming, earthquakes,
+  climate anomalies, strikes and military flights and vessels are now placed by
+  point-in-polygon against Natural Earth 1:50m borders instead of overlapping
+  bounding boxes, which had put Jizan in Yemen, Bahrain in Saudi Arabia, Kuwait
+  City in Iraq and Baltic GPS jamming in Russia and had dropped Hawaii and
+  Alaska. Strike events carry their `countryCode`. `combinedScore` values move
+  both ways; the risk-score cache key family moved to `risk:scores:sebuf:v11`
+  and emitted `methodology_version` is now `v11`, so clients should re-baseline.
 - **CII formula `v10`: GDELT escalation stands in for ACLED in Conflict and Unrest** (2026-10-19).
   Without ACLED access the ACLED event terms were 0 for every country, so the
   October 2026 Riyadh strikes and France's nationwide riots never reached the

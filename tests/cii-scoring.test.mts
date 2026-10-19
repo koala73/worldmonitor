@@ -24,6 +24,11 @@ import {
   CII_GDELT_ESCALATION_MAX_AGE_MS,
   CII_GDELT_ESCALATION_SATURATION,
   CII_GDELT_ESCALATION_SMOOTHING,
+  CII_GDELT_LEVEL_CONFLICT_FLOOR,
+  CII_GDELT_LEVEL_CONFLICT_SATURATION,
+  CII_GDELT_LEVEL_MIN_ARTICLES,
+  CII_GDELT_LEVEL_PROTEST_FLOOR,
+  CII_GDELT_LEVEL_PROTEST_SATURATION,
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_SCALE_FACTOR,
   STRATEGIC_RISK_SCALE_FLOOR,
@@ -87,6 +92,10 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // v10 adds the GDELT escalation terms to Conflict and Unrest while ACLED is
   // dark; the snapshot now guards their curve constants too.
   v10: '1f5bd9fab6b5e2a33395bad5d2a7e7e56f3bb71f8393dc0bf9f083ba6e3d956c',
+  // v11 adds the sustained GDELT level (and raises the shared GDELT cap to 70)
+  // and places coordinates by real borders; the snapshot now guards the level
+  // constants and the generated border file, so regenerating borders bumps the version.
+  v11: '06b0cefc7bb0ac2233e91d23159f14a9f6a26115ec905165e066b80b8e4c4853',
 };
 
 const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT', 'UCDP_CLASSIFICATION_WINDOW_MS'];
@@ -1763,6 +1772,11 @@ describe('CII scoring', () => {
         CII_GDELT_ESCALATION_MAX_AGE_MS,
         CII_GDELT_ESCALATION_SATURATION,
         CII_GDELT_ESCALATION_SMOOTHING,
+        CII_GDELT_LEVEL_CONFLICT_FLOOR,
+        CII_GDELT_LEVEL_CONFLICT_SATURATION,
+        CII_GDELT_LEVEL_MIN_ARTICLES,
+        CII_GDELT_LEVEL_PROTEST_FLOOR,
+        CII_GDELT_LEVEL_PROTEST_SATURATION,
         STRATEGIC_RISK_POSITIONAL_DECAY,
         STRATEGIC_RISK_SCALE_FACTOR,
         STRATEGIC_RISK_SCALE_FLOOR,
@@ -1771,6 +1785,8 @@ describe('CII scoring', () => {
       scoreFormulaLiterals,
       scoreHelperInputs,
       scoreLevelCutoffs: extractScoreLevelCutoffs(cachedRiskSource, 'getScoreLevel'),
+      // Coordinate attribution: which Tier-1 country a fire, jamming hex, quake or strike scores to.
+      countryBordersSha256: createHash('sha256').update(readRepoFile('scripts/shared/cii-country-borders.data.mjs')).digest('hex'),
     };
 
     assert.equal(

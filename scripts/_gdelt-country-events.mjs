@@ -10,7 +10,10 @@
 // on every static measure tried (raw outlets, conflict share, war-only CAMEO
 // codes). Protest coverage has the same skew. Comparing each country with its
 // own recent norm removes that media-volume bias, so this module keeps counts
-// for all countries and lets the CII score the excess.
+// for all countries and lets the CII score the excess. A crisis that lasts
+// weeks raises that norm, so each country also carries its raw counts for the
+// seven complete days through yesterday (`week`); the CII scores the share of
+// them that is conflict- or protest-coded, where media volume cancels out.
 //
 // Same day-bucket and repair design as _gdelt-dyad-tension.mjs: the live tick
 // adds new 15-minute cohorts behind a cursor; past days that are missing or
@@ -36,6 +39,10 @@ export const COUNTRY_EVENTS_BASELINE_DAYS = 28;
 export const COUNTRY_EVENTS_HISTORY_DAYS = COUNTRY_EVENTS_BASELINE_DAYS + 2;
 // A baseline needs three weeks of complete days; fewer is not a norm.
 export const COUNTRY_EVENTS_MIN_BASELINE_DAYS = 21;
+// The sustained level reads the seven days through yesterday; it needs five
+// of them complete.
+export const COUNTRY_EVENTS_WEEK_DAYS = 7;
+export const COUNTRY_EVENTS_MIN_WEEK_DAYS = 5;
 // Same backoff as dyad repair: a failed day waits 24 runs before a retry.
 export const COUNTRY_EVENTS_REPAIR_BACKOFF_MS = 6 * 60 * 60 * 1000;
 
@@ -222,11 +229,20 @@ export function summarizeCountryEvents(snapshot, nowMs = Date.now()) {
     (_, i) => utcDate(nowMs - (i + 2) * DAY_MS),
   ).filter((date) => days[date]?.cohorts === COHORTS_PER_DAY);
   const baselineReady = baselineDates.length >= COUNTRY_EVENTS_MIN_BASELINE_DAYS;
+  // Sustained level: raw counts over the complete days among the seven through
+  // yesterday. The CII scores the conflict and protest share of them, so a
+  // long campaign that has raised its own median still reads as one.
+  const weekDates = Array.from(
+    { length: COUNTRY_EVENTS_WEEK_DAYS },
+    (_, i) => utcDate(nowMs - (i + 1) * DAY_MS),
+  ).filter((date) => days[date]?.cohorts === COHORTS_PER_DAY);
+  const weekReady = weekDates.length >= COUNTRY_EVENTS_MIN_WEEK_DAYS;
 
   const codes = new Set([
     ...Object.keys(today?.countries ?? {}),
     ...Object.keys(yesterday?.countries ?? {}),
     ...baselineDates.flatMap((date) => Object.keys(days[date].countries ?? {})),
+    ...weekDates.flatMap((date) => Object.keys(days[date].countries ?? {})),
   ]);
   const signal = (iso2, field) => {
     const current = (today?.countries?.[iso2]?.[field] ?? 0)
@@ -236,12 +252,23 @@ export function summarizeCountryEvents(snapshot, nowMs = Date.now()) {
       : null;
     return { current: Math.round(current * 10) / 10, baselineMedian };
   };
+  const weekTotals = (iso2) => {
+    if (!weekReady) return null;
+    const total = Array(COUNTER_FIELDS).fill(0);
+    for (const date of weekDates) {
+      const values = days[date].countries?.[iso2];
+      if (Array.isArray(values)) values.forEach((value, i) => { total[i] += Number(value) || 0; });
+    }
+    return { articles: total[0], conflict: total[CONFLICT], protest: total[PROTEST] };
+  };
   const byCountry = {};
   for (const iso2 of [...codes].sort()) {
     const conflict = signal(iso2, CONFLICT);
     const protest = signal(iso2, PROTEST);
-    if (!conflict.current && !conflict.baselineMedian && !protest.current && !protest.baselineMedian) continue;
-    byCountry[iso2] = { conflict, protest };
+    const week = weekTotals(iso2);
+    if (!conflict.current && !conflict.baselineMedian && !protest.current && !protest.baselineMedian
+      && !week?.conflict && !week?.protest) continue;
+    byCountry[iso2] = { conflict, protest, week };
   }
   return {
     byCountry,
@@ -250,5 +277,8 @@ export function summarizeCountryEvents(snapshot, nowMs = Date.now()) {
     baselineDays: baselineDates.length,
     baselineReady,
     minBaselineDays: COUNTRY_EVENTS_MIN_BASELINE_DAYS,
+    weekDays: weekDates.length,
+    weekReady,
+    minWeekDays: COUNTRY_EVENTS_MIN_WEEK_DAYS,
   };
 }

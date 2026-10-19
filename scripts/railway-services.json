@@ -1879,7 +1879,7 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-military-cii.mjs",
-      "scripts/shared/cii-country-borders.json",
+      "scripts/shared/cii-country-borders.data.mjs",
       "scripts/shared/cii-country-borders.mjs",
       "scripts/shared/compare-and-delete-script.cjs"
     ],

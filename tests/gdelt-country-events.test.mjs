@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   countryEventsDayStamps,
   COUNTRY_EVENTS_MIN_BASELINE_DAYS,
+  COUNTRY_EVENTS_MIN_WEEK_DAYS,
   COUNTRY_EVENTS_REPAIR_BACKOFF_MS,
   mergeCountryEventsBuckets,
   parseCountryEventsExport,
@@ -154,11 +155,47 @@ describe('summarizeCountryEvents', () => {
     assert.deepEqual(summary.byCountry.SA, {
       conflict: { current: 30 + 40 * 24 / 96, baselineMedian: 10 },
       protest: { current: 6 + 2 * 24 / 96, baselineMedian: 2 },
+      week: { articles: 200 + 6 * 100, conflict: 40 + 6 * 10, protest: 7 * 2 },
     });
     assert.deepEqual(summary.byCountry.US, {
       conflict: { current: 400, baselineMedian: 400 },
       protest: { current: 80, baselineMedian: 80 },
+      week: { articles: 7 * 5000, conflict: 7 * 400, protest: 7 * 80 },
     });
+  });
+
+  it('sums the seven complete days through yesterday for the sustained level', () => {
+    // A long campaign raises its own 28-day median, so escalation alone reads
+    // it as calm; the share of a week's coverage that is conflict does not.
+    const summary = summarizeCountryEvents(history(), now);
+    assert.equal(summary.weekDays, 7);
+    assert.equal(summary.weekReady, true);
+    assert.equal(summary.minWeekDays, COUNTRY_EVENTS_MIN_WEEK_DAYS);
+    // Today's partial day is not part of the week.
+    assert.equal(summary.byCountry.SA.week.articles, 800);
+  });
+
+  it('leaves an incomplete day out of the week, and has no week under the minimum of complete days', () => {
+    const snapshot = history();
+    snapshot.days[dayOf(now - DAY)] = { cohorts: 60, countries: { SA: [999, 999, 999] } };
+    const summary = summarizeCountryEvents(snapshot, now);
+    assert.equal(summary.weekDays, 6);
+    assert.deepEqual(summary.byCountry.SA.week, { articles: 600, conflict: 60, protest: 12 });
+
+    for (let i = 2; i <= 3; i++) snapshot.days[dayOf(now - i * DAY)].cohorts = 95;
+    const short = summarizeCountryEvents(snapshot, now);
+    assert.equal(short.weekDays, COUNTRY_EVENTS_MIN_WEEK_DAYS - 1);
+    assert.equal(short.weekReady, false);
+    assert.equal(short.byCountry.SA.week, null);
+  });
+
+  it('keeps a country whose only signal is its week', () => {
+    // No conflict or protest today, yesterday or in the baseline, but the week
+    // before yesterday still reports them: the level needs that row.
+    const snapshot = history();
+    snapshot.days[dayOf(now - 3 * DAY)].countries.YE = [50, 20, 0];
+    const summary = summarizeCountryEvents(snapshot, now);
+    assert.deepEqual(summary.byCountry.YE.week, { articles: 50, conflict: 20, protest: 0 });
   });
 
   it('never passes yesterday off as today after an outage', () => {

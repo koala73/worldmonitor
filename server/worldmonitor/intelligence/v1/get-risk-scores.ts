@@ -24,6 +24,11 @@ import {
   CII_GDELT_ESCALATION_MAX_AGE_MS,
   CII_GDELT_ESCALATION_SATURATION,
   CII_GDELT_ESCALATION_SMOOTHING,
+  CII_GDELT_LEVEL_CONFLICT_FLOOR,
+  CII_GDELT_LEVEL_CONFLICT_SATURATION,
+  CII_GDELT_LEVEL_MIN_ARTICLES,
+  CII_GDELT_LEVEL_PROTEST_FLOOR,
+  CII_GDELT_LEVEL_PROTEST_SATURATION,
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_SCALE_FACTOR,
   STRATEGIC_RISK_SCALE_FLOOR,
@@ -361,7 +366,7 @@ interface CountrySignals {
   fatalities: number;
   protestFatalities: number;
   conflictFatalities: number;
-  /** GDELT escalation over the country's own norm, already scored 0..CII_GDELT_ESCALATION_CAP. */
+  /** GDELT term, 0..CII_GDELT_ESCALATION_CAP: max(escalation over the country's own norm, sustained level). */
   gdeltConflictEscalation: number;
   gdeltUnrestEscalation: number;
   ucdpWar: boolean;
@@ -509,9 +514,17 @@ export interface GdeltEscalationSignal {
   baselineMedian: number | null;
 }
 
+/** Distinct articles of the seven complete days through yesterday, and how many were coded. */
+export interface GdeltCountryWeek {
+  articles: number;
+  conflict: number;
+  protest: number;
+}
+
 export interface GdeltCountryEventsRow {
   conflict: GdeltEscalationSignal | null;
   protest: GdeltEscalationSignal | null;
+  week: GdeltCountryWeek | null;
 }
 
 export interface GdeltCountryEvents {
@@ -530,15 +543,25 @@ function parseGdeltEscalationSignal(raw: unknown): GdeltEscalationSignal | null 
   };
 }
 
+function parseGdeltCountryWeek(raw: unknown): GdeltCountryWeek | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { articles, conflict, protest } = raw as Record<string, unknown>;
+  const count = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+  if (!count(articles) || !count(conflict) || !count(protest)) return null;
+  if (conflict > articles || protest > articles) return null;
+  return { articles, conflict, protest };
+}
+
 /**
  * The per-country GDELT summary (scripts/_gdelt-country-events.mjs), or null
  * when it is missing, malformed, has no baseline yet, has an incomplete
  * current window, or is older than
  * CII_GDELT_ESCALATION_MAX_AGE_MS (a stopped materializer must not freeze a spike).
+ * A row's week is null unless the snapshot reports weekReady.
  */
 export function gdeltCountryEventsFromSeed(raw: unknown, nowMs: number): GdeltCountryEvents | null {
   if (!raw || typeof raw !== 'object') return null;
-  const { byCountry, baselineReady, currentComplete, updatedAt } = raw as Record<string, unknown>;
+  const { byCountry, baselineReady, currentComplete, weekReady, updatedAt } = raw as Record<string, unknown>;
   if (!byCountry || typeof byCountry !== 'object' || Array.isArray(byCountry)) return null;
   // A current window missing cohorts (materializer outage) is unknown, not calm.
   if (baselineReady !== true || currentComplete !== true) return null;
@@ -549,7 +572,8 @@ export function gdeltCountryEventsFromSeed(raw: unknown, nowMs: number): GdeltCo
     if (!/^[A-Z]{2}$/.test(code) || !row || typeof row !== 'object') continue;
     const conflict = parseGdeltEscalationSignal((row as Record<string, unknown>).conflict);
     const protest = parseGdeltEscalationSignal((row as Record<string, unknown>).protest);
-    if (conflict || protest) rows[code] = { conflict, protest };
+    const week = weekReady === true ? parseGdeltCountryWeek((row as Record<string, unknown>).week) : null;
+    if (conflict || protest || week) rows[code] = { conflict, protest, week };
   }
   return { byCountry: rows };
 }
@@ -562,6 +586,19 @@ export function gdeltEscalationScore(signal: GdeltEscalationSignal | undefined |
   if (!(ratio > CII_GDELT_ESCALATION_DEADBAND)) return 0;
   const scaled = Math.log(ratio / CII_GDELT_ESCALATION_DEADBAND)
     / Math.log(CII_GDELT_ESCALATION_SATURATION / CII_GDELT_ESCALATION_DEADBAND);
+  return Math.round(Math.min(CII_GDELT_ESCALATION_CAP, scaled * CII_GDELT_ESCALATION_CAP));
+}
+
+/**
+ * 0..CII_GDELT_ESCALATION_CAP from the share of a week's coverage that is
+ * conflict- or protest-coded; see CII_GDELT_LEVEL_* for the curve and its calibration.
+ */
+export function gdeltLevelScore(week: GdeltCountryWeek | undefined | null, field: 'conflict' | 'protest'): number {
+  if (!week || !(week.articles >= CII_GDELT_LEVEL_MIN_ARTICLES)) return 0;
+  const floor = field === 'conflict' ? CII_GDELT_LEVEL_CONFLICT_FLOOR : CII_GDELT_LEVEL_PROTEST_FLOOR;
+  const saturation = field === 'conflict' ? CII_GDELT_LEVEL_CONFLICT_SATURATION : CII_GDELT_LEVEL_PROTEST_SATURATION;
+  const scaled = (week[field] / week.articles - floor) / (saturation - floor);
+  if (!(scaled > 0)) return 0;
   return Math.round(Math.min(CII_GDELT_ESCALATION_CAP, scaled * CII_GDELT_ESCALATION_CAP));
 }
 
@@ -871,8 +908,16 @@ export function computeCIIScores(
   if (acled.length === 0) {
     for (const [code, row] of Object.entries(aux.gdeltCountryEvents?.byCountry ?? {})) {
       if (!data[code]) continue;
-      data[code].gdeltConflictEscalation = gdeltEscalationScore(row.conflict);
-      data[code].gdeltUnrestEscalation = gdeltEscalationScore(row.protest);
+      // One signal read two ways (a spike over the norm, or a sustained level):
+      // the larger counts, never the sum.
+      data[code].gdeltConflictEscalation = Math.max(
+        gdeltEscalationScore(row.conflict),
+        gdeltLevelScore(row.week, 'conflict'),
+      );
+      data[code].gdeltUnrestEscalation = Math.max(
+        gdeltEscalationScore(row.protest),
+        gdeltLevelScore(row.week, 'protest'),
+      );
     }
   }
 
