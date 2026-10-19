@@ -1735,8 +1735,9 @@ test('allows only Docker mode to fetch configured private Redis REST origin', as
   }
 });
 
-test('allows only Docker mode to fetch configured private LLM origins', async () => {
+test('allows Docker LLM origins and only the configured Ollama origin on desktop', async () => {
   const envSnapshot = {
+    LOCAL_API_MODE: process.env.LOCAL_API_MODE,
     LLM_API_URL: process.env.LLM_API_URL,
     OLLAMA_API_URL: process.env.OLLAMA_API_URL,
     UNCONFIGURED_PRIVATE_URL: process.env.UNCONFIGURED_PRIVATE_URL,
@@ -1779,6 +1780,7 @@ test('allows only Docker mode to fetch configured private LLM origins', async ()
   });
 
   async function runProbes(mode, envKeys) {
+    process.env.LOCAL_API_MODE = mode;
     const app = await createLocalApiServer({
       port: 0,
       apiDir: localApi.apiDir,
@@ -1816,15 +1818,20 @@ test('allows only Docker mode to fetch configured private LLM origins', async ()
       }
     }
 
-    const desktopResponses = await runProbes('desktop-sidecar', envKeys);
+    const desktopResponses = await runProbes('tauri-sidecar', envKeys);
     for (const [index, envKey] of envKeys.entries()) {
       const desktopResponse = desktopResponses[index];
+      if (envKey === 'OLLAMA_API_URL') {
+        assert.equal(desktopResponse.status, 200, envKey);
+        assert.deepEqual(await desktopResponse.json(), { ok: true });
+        continue;
+      }
       assert.equal(desktopResponse.status, 502, envKey);
       const desktopBody = await desktopResponse.json();
       assert.equal(desktopBody.error, 'Local handler error');
       assert.match(desktopBody.reason, /SSRF blocked/);
     }
-    assert.equal(handlerHits, 2, 'only Docker handler probes should reach the upstream');
+    assert.equal(handlerHits, 3, 'Docker providers and desktop Ollama should reach the upstream');
 
     process.env.LLM_API_URL = 'not-a-url';
     process.env.OLLAMA_API_URL = '://also-not-a-url';

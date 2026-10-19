@@ -1519,6 +1519,16 @@ export function createDomainGateway(
     // have one response contract for every caller.
     const isPublicNoAuthRpc = PUBLIC_NO_AUTH_RPC_PATHS.has(pathname)
       || isPublicSharedRpcRequest(request.url, request.method);
+    // The sidecar verifies its native transport token before dispatch. Local
+    // Ollama translation needs neither cloud identity nor a Redis spend budget.
+    let isSidecarOllamaTranslation = false;
+    if (process.env.LOCAL_API_MODE === 'tauri-sidecar'
+      && request.method === 'POST' && pathname === '/api/news/v1/summarize-article') {
+      try {
+        const body = await request.clone().json() as { provider?: unknown; mode?: unknown };
+        isSidecarOllamaTranslation = body.provider === 'ollama' && body.mode === 'translate';
+      } catch { /* malformed requests retain the normal authentication path */ }
+    }
     const seedRefreshVerified = await isResilienceRankingSeedRefreshRequest(request, pathname);
     const relayWarmPingVerified = await isRelayWarmPingRequest(request, pathname);
     // Resolve the quota policy against the route POST compatibility will use.
@@ -1585,7 +1595,7 @@ export function createDomainGateway(
     // request). Telemetry stays attributed via the verified userId set
     // above; entitlement re-check (`features.tier ≥ 1 && mcpAccess`) was
     // already performed before flipping `internalMcpVerified = true`.
-    let keyCheck: { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user'; credential?: string } = internalMcpVerified || isPublicNoAuthRpc || seedRefreshVerified || relayWarmPingVerified
+    let keyCheck: { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user'; credential?: string } = internalMcpVerified || isPublicNoAuthRpc || seedRefreshVerified || relayWarmPingVerified || isSidecarOllamaTranslation
       ? { valid: true, required: false }
       : ((await validateApiKey(request, {
           forceKey: ((isTierGated && !sessionUserId) || needsLegacyProBearerGate)
@@ -2205,7 +2215,7 @@ export function createDomainGateway(
           || pathname === '/api/military/v1/get-wingbits-live-flight'
           || pathname === '/api/imagery/v1/search-imagery'
           || pathname === '/api/webcam/v1/get-webcam-image');
-      const endpointRlResponse = isServerSubRequest || isSidecarProviderLookup ? null : rateLimitPrincipalUserId
+      const endpointRlResponse = isServerSubRequest || isSidecarProviderLookup || isSidecarOllamaTranslation ? null : rateLimitPrincipalUserId
         ? await checkEndpointRateLimit(request, pathname, corsHeaders, {
             principalUserId: rateLimitPrincipalUserId,
             principalScope: isUserApiKey ? 'api_key' : 'session',

@@ -1789,7 +1789,8 @@
       "sourceCoverageHint": "Đang hiển thị {{covered}} trong {{total}} nguồn đã bật — bảng này luân phiên các nguồn của nó sau mỗi lần làm mới",
       "sortBy": "Sắp xếp theo",
       "sortNewest": "Mới nhất",
-      "sortRelevance": "Mức độ liên quan"
+      "sortRelevance": "Mức độ liên quan",
+      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
     },
     "breakingNews": {
       "critical": "NGHIÊM TRỌNG",

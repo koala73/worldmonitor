@@ -1672,7 +1672,8 @@
       "sourceCoverageHint": "يعرض {{covered}} من أصل {{total}} مصدرًا مفعّلًا — تتناوب هذه اللوحة على مصادرها مع كل تحديث",
       "sortBy": "ترتيب حسب",
       "sortNewest": "الأحدث",
-      "sortRelevance": "الصلة"
+      "sortRelevance": "الصلة",
+      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
     },
     "intelligenceFindings": {
       "badgeTitle": "نتائج استخباراتية",

@@ -1789,7 +1789,8 @@
       "sourceCoverageHint": "已显示 {{total}} 个已启用来源中的 {{covered}} 个 — 该面板每次刷新会轮换抓取不同来源",
       "sortBy": "排序方式",
       "sortNewest": "最新",
-      "sortRelevance": "相关性"
+      "sortRelevance": "相关性",
+      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
     },
     "breakingNews": {
       "critical": "紧急",

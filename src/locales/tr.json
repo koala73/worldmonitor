@@ -1793,7 +1793,8 @@
       "sourceCoverageHint": "Etkin {{total}} kaynaktan {{covered}} tanesi gösteriliyor — bu panel her yenilemede kaynaklarını sırayla çekiyor",
       "sortBy": "Sırala",
       "sortNewest": "En Yeni",
-      "sortRelevance": "İlgili"
+      "sortRelevance": "İlgili",
+      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
     },
     "breakingNews": {
       "critical": "KRİTİK",

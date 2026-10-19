@@ -1298,7 +1298,8 @@
       "sourceCoverageHint": "Mostrando {{covered}} de {{total}} fuentes activas — este panel va rotando sus fuentes en cada actualización",
       "sortBy": "Ordenar por",
       "sortNewest": "Más reciente",
-      "sortRelevance": "Relevancia"
+      "sortRelevance": "Relevancia",
+      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
     },
     "countryBrief": {
       "shareStory": "Compartir historia",

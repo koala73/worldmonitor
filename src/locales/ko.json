@@ -1789,7 +1789,8 @@
       "sourceCoverageHint": "활성화된 {{total}}개 소스 중 {{covered}}개 표시 중 — 이 패널은 새로 고칠 때마다 소스를 번갈아 가져옵니다",
       "sortBy": "정렬 기준",
       "sortNewest": "최신순",
-      "sortRelevance": "관련성"
+      "sortRelevance": "관련성",
+      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
     },
     "breakingNews": {
       "critical": "심각",

@@ -1945,7 +1945,8 @@
       "sourceCoverageHint": "Showing {{covered}} of {{total}} enabled sources — this panel rotates through its sources on each refresh",
       "sortBy": "Sort by",
       "sortNewest": "Newest",
-      "sortRelevance": "Relevance"
+      "sortRelevance": "Relevance",
+      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
     },
     "mobileNav": {
       "panelCategories": "Panel categories"

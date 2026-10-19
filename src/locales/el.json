@@ -1793,7 +1793,8 @@
       "sourceCoverageHint": "Εμφανίζονται {{covered}} από {{total}} ενεργές πηγές — αυτός ο πίνακας εναλλάσσει τις πηγές του σε κάθε ανανέωση",
       "sortBy": "Ταξινόμηση κατά",
       "sortNewest": "Πιο πρόσφατα",
-      "sortRelevance": "Σχετικότητα"
+      "sortRelevance": "Σχετικότητα",
+      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
     },
     "breakingNews": {
       "critical": "ΚΡΙΣΙΜΟ",

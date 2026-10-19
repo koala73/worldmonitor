@@ -1935,7 +1935,8 @@
       "sourceCoverageHint": "نمایش {{covered}} از {{total}} منبع فعال — این پنل در هر بازخوانی منابع خود را به نوبت می‌خواند",
       "sortBy": "Sort by",
       "sortNewest": "Newest",
-      "sortRelevance": "Relevance"
+      "sortRelevance": "Relevance",
+      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
     },
     "mobileNav": {
       "panelCategories": "دسته‌بندی پنل‌ها"

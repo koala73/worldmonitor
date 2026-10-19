@@ -756,7 +756,8 @@
       "sourceCoverageHint": "A mostrar {{covered}} de {{total}} fontes ativas — este painel alterna entre as suas fontes a cada atualização",
       "sortBy": "Ordenar por",
       "sortNewest": "Mais recente",
-      "sortRelevance": "Relevância"
+      "sortRelevance": "Relevância",
+      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
     },
     "countryBrief": {
       "shareStory": "Compartilhar história",

@@ -1789,7 +1789,8 @@
       "sourceCoverageHint": "有効な {{total}} 件のソースのうち {{covered}} 件を表示中 — このパネルは更新のたびにソースを入れ替えて取得します",
       "sortBy": "並び替え",
       "sortNewest": "最新",
-      "sortRelevance": "関連性"
+      "sortRelevance": "関連性",
+      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
     },
     "breakingNews": {
       "critical": "緊急",

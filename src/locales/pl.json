@@ -1264,7 +1264,8 @@
       "sourceCoverageHint": "Pokazano {{covered}} z {{total}} włączonych źródeł — ten panel przy każdym odświeżeniu zmienia pobierane źródła",
       "sortBy": "Sortuj wg",
       "sortNewest": "Najnowsze",
-      "sortRelevance": "Trafność"
+      "sortRelevance": "Trafność",
+      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
     },
     "countryBrief": {
       "shareStory": "Podziel się historią",

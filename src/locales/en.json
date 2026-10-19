@@ -1925,6 +1925,7 @@
     },
     "newsPanel": {
       "close": "Close",
+      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again.",
       "summarize": "Summarize this panel",
       "generatingSummary": "Generating summary...",
       "summaryError": "Could not generate summary",

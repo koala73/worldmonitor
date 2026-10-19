@@ -755,7 +755,8 @@
       "sourceCoverageHint": "Toont {{covered}} van {{total}} ingeschakelde bronnen — dit paneel wisselt bij elke verversing van bron",
       "sortBy": "Sorteren op",
       "sortNewest": "Nieuwste",
-      "sortRelevance": "Relevantie"
+      "sortRelevance": "Relevantie",
+      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
     },
     "countryBrief": {
       "shareStory": "Deel verhaal",

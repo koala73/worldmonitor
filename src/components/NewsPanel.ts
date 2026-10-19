@@ -348,13 +348,18 @@ export class NewsPanel extends Panel {
     if (!titleEl) return;
 
     const originalText = titleEl.textContent || '';
+    const item = element.closest('.item');
+    item?.querySelector('.item-translation-error')?.remove();
 
     // Visual feedback
     setTrustedHtml(element, trustedHtml('...', "legacy direct innerHTML migration"));
     element.style.pointerEvents = 'none';
 
     try {
-      const translated = await this.newsServices.translateText(text, currentLang);
+      const translated = await this.newsServices.translateText(text, currentLang).catch((e) => {
+        console.error('Translation failed', e);
+        return null;
+      });
       if (!this.element?.isConnected) return;
       if (translated) {
         titleEl.textContent = translated;
@@ -364,12 +369,12 @@ export class NewsPanel extends Panel {
         element.classList.add('translated');
       } else {
         setTrustedHtml(element, trustedHtml('文', "legacy direct innerHTML migration"));
-        // Shake animation or error state could be added here
+        const error = document.createElement('span');
+        error.className = 'item-translation-error';
+        error.setAttribute('role', 'status');
+        error.textContent = t('components.newsPanel.translationUnavailable');
+        item?.appendChild(error);
       }
-    } catch (e) {
-      if (!this.element?.isConnected) return;
-      console.error('Translation failed', e);
-      setTrustedHtml(element, trustedHtml('文', "legacy direct innerHTML migration"));
     } finally {
       if (element.isConnected) {
         element.style.pointerEvents = 'auto';

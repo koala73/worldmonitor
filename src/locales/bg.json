@@ -1793,7 +1793,8 @@
       "sourceCoverageHint": "Показва {{covered}} от {{total}} активни източника — този панел редува източниците си при всяко обновяване",
       "sortBy": "Сортиране по",
       "sortNewest": "Най-нови",
-      "sortRelevance": "Релевантност"
+      "sortRelevance": "Релевантност",
+      "translationUnavailable": "Translation unavailable. Check your AI provider settings and try again."
     },
     "breakingNews": {
       "critical": "КРИТИЧНО",
