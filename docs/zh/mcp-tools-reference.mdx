@@ -520,6 +520,43 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_capital_flows`
+
+返回约 230 个经济体资金的流入与流出,以及任意两个经济体之间的资金往来,数据来自官方统计。IMF 国际收支:总流入与总流出,按 FDI、证券投资和其他投资拆分,按国家为季度或年度数据,并附推导的 Forbes-Warnock 状态(流入为 surge 或 stop,流出为 flight 或 retrenchment)及 z 分数。按国家和按国家对:BIS 跨境银行存款与贷款、IMF 证券投资持有和 IMF 直接投资头寸。居民身份变更不是国际收支流量。来源滞后 1–3 个季度(FDI 约 2 年);10 天未更新或最新国际收支季度超过一年时标记为过期。缓存读取:API 套餐权重 1,计入已登录账户的免费额度。country(最多 10 个)返回完整视图;counterpart 增加每个国家对的双向数据,每个分项标注 reported、not_itemized 或 not_published。不指定 country 时,对具备排序指标的国家排名(默认 outflow_z;仅有年度数据的序列没有该指标),按 limit 截断(默认 30,传 0 不限)。
+
+适用于任意经济体和任意国家对:传入多个 `country` 进行比较,加上 `counterpart` 获取双边明细,或省略 `country`,对具备所选 `sort` 指标的经济体排名(默认 `outflow_z` 不含仅有年度数据、没有 z 分数的序列)。阶段标签按 Forbes 与 Warnock(2012)方法由已报告的流量推导。各视图、分项和状态的说明见[资本流动方法论](/zh/methodology/capital-flows)。
+
+**参数(工具专用):**
+
+| 名称 | 类型 | 说明 |
+|------|------|-------------|
+| `country` | `array<string>` | 返回完整视图的国家:ISO 3166-1 alpha-2、alpha-3 或英文名称。省略则返回跨国排名。 |
+| `include_series` | boolean | 与 country 一起使用时,同时返回逐期国际收支流量(12 个季度或 6 年)。默认 false。 |
+| `counterpart` | string | 与 country 一起使用的对手国(alpha-2、alpha-3 或名称)。返回 pairs[]:双方非银行在对方银行的存款和双向银行贷款(存量、四季度流量、八个季度历史),双方对彼此证券的持有,以及带双方数字的双向直接投资,另加对手国自身的视图。 |
+| `sort` | `string: outflow_z / inflow_z / outflows_pct_gdp / inflows_pct_gdp / net_usd_bn / bank_deposits_abroad_flow_4q / foreign_portfolio_change_pct` | 省略 country 时的排名字段。默认 outflow_z。 |
+| `ascending` | boolean | 升序排列。默认 false。 |
+| `limit` | number | 排名最多返回的国家数(默认 30,传 0 表示不限)。传入 country 时忽略。 |
+
+- **API 端点:** `GET /api/economic/v1/get-capital-flows`
+- **访问:** `free-account` — 任何已登录账户均可调用;免费账户消耗每日免费额度,Pro 调用消耗每日配额。支持通用 `summary` 参数。
+- **类型:** 缓存读取 — 从 Redis 亚秒级响应。
+- **新鲜度预算:** 距上次每周种子 **10 天**,另有内容时效检查:最新 IMF 国际收支季度超过 12 个月时 `stale` 变为 true。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_capital_flows","arguments":{"country":["DE"],"counterpart":"JP"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_wto_trade_flows`
 
 查询一个报告国与世界之间、可配置年份窗口内的 WTO 商品贸易流量。数据来自 WTO `ITS_MTV_AX`（出口）和 `ITS_MTV_AM`（进口）指标，每 6 小时播种一次；该工具读取与仪表板相同的播种快照，不会在每次请求时调用 WTO。

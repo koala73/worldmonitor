@@ -857,6 +857,7 @@ const cloudPreferredExact = new Set([
   '/api/economic/v1/get-bis-exchange-rates',
   '/api/economic/v1/get-bis-policy-rates',
   '/api/economic/v1/get-bls-series',
+  '/api/economic/v1/get-capital-flows',
   '/api/economic/v1/get-china-macro-snapshot',
   '/api/economic/v1/get-crude-inventories',
   '/api/economic/v1/get-ecb-fx-rates',

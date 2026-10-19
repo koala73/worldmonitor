@@ -827,6 +827,7 @@
     "service": "seed-bundle-macro",
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
+      "scripts/_capital-flow-episodes.mjs",
       "scripts/_china-macro-contract.mjs",
       "scripts/_content-age-helpers.mjs",
       "scripts/_eurostat-utils.mjs",
@@ -858,6 +859,7 @@
       "scripts/seed-bis-data.mjs",
       "scripts/seed-bis-extended.mjs",
       "scripts/seed-bis-lbs.mjs",
+      "scripts/seed-capital-flows.mjs",
       "scripts/seed-bls-series.mjs",
       "scripts/seed-boc-valet.mjs",
       "scripts/seed-bundle-macro.mjs",
