@@ -6722,6 +6722,7 @@ paths:
             parameters:
                 - name: country_code
                   in: query
+                  description: ISO alpha-2 filter.
                   required: false
                   example: "US"
                   schema:
@@ -42912,6 +42913,7 @@ components:
                 countryCode:
                     type: string
                     pattern: ^[A-Za-z]{2}$
+                    description: ISO alpha-2 filter.
                 route:
                     type: string
                     maxLength: 120

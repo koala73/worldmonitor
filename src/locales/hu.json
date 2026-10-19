@@ -1908,7 +1908,12 @@
       "latestChange": "Legutóbbi változás",
       "accelerating": "Gyorsul",
       "inDays": "{{days}} nap alatt",
-      "crossBorderNote": "ENSZ Menekültügyi Ügynökség Operatív Adatportál: olyan emberek, akik az egyes krízisekben átlépték a határokat, a legutóbbi országjelentésekből. A helyzetek átfedésben vannak, ezért nem összegzik őket."
+      "crossBorderNote": "ENSZ Menekültügyi Ügynökség Operatív Adatportál: olyan emberek, akik az egyes krízisekben átlépték a határokat, a legutóbbi országjelentésekből. A helyzetek átfedésben vannak, ezért nem összegzik őket.",
+      "last7And30": "Utolsó 7 / 30 nap",
+      "staleReport": "Elavult jelentés",
+      "reported": "Létszám",
+      "period": "Időszak",
+      "movementNote": "Minden sor megőrzi a forrását, a jelentés dátumát és a mérőszámát. Az állomány, az érkezések és a határellenőrzési események különböző mérőszámok. A források átfedhetik egymást; ne adja össze az értékeiket. A WorldMonitor ezt a nézetet a hivatkozott forrásokból állítja elő; ez nem jelent szolgáltatói jóváhagyást."
     },
     "climate": {
       "noAnomalies": "Nem észleltek jelentős anomáliákat",

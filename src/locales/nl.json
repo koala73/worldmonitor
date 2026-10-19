@@ -1101,7 +1101,12 @@
       "latestChange": "Laatste verandering",
       "accelerating": "Versnelt",
       "inDays": "in {{days}} dagen",
-      "crossBorderNote": "VN-Vluchtelingenagentschap Operational Data Portal: personen die grenzen overstaken in elke crisis, vanuit de meest recente landverslagen. Situaties overlappen, dus worden niet bij elkaar opgeteld."
+      "crossBorderNote": "VN-Vluchtelingenagentschap Operational Data Portal: personen die grenzen overstaken in elke crisis, vanuit de meest recente landverslagen. Situaties overlappen, dus worden niet bij elkaar opgeteld.",
+      "last7And30": "Laatste 7 / 30 dagen",
+      "staleReport": "Verouderd rapport",
+      "reported": "Aantal",
+      "period": "Periode",
+      "movementNote": "Elke rij behoudt de bron, rapportdatum en meeteenheid. Populaties, aankomsten en grenscontrole-incidenten zijn verschillende metingen. Bronnen kunnen overlappen; tel hun aantallen niet op. WorldMonitor leidt deze weergave af van de gekoppelde bronnen; dit houdt geen goedkeuring door de aanbieders in."
     },
     "populationExposure": {
       "totalAffected": "Totaal getroffen",

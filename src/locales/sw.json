@@ -1908,7 +1908,12 @@
       "latestChange": "Mabadiliko ya hivi karibuni",
       "accelerating": "Inaongezeka kwa kasi",
       "inDays": "ndani ya siku {{days}}",
-      "crossBorderNote": "Kituo cha Data cha UN Refugee Agency: watu waliokutana na mpaka katika azma kila moja, kutokana na ripoti za nchi za karibuni. Matatizo yanaingiliana, kwa hivyo hayajumlishwa pamoja."
+      "crossBorderNote": "Kituo cha Data cha UN Refugee Agency: watu waliokutana na mpaka katika azma kila moja, kutokana na ripoti za nchi za karibuni. Matatizo yanaingiliana, kwa hivyo hayajumlishwa pamoja.",
+      "last7And30": "Siku 7 / 30 zilizopita",
+      "staleReport": "Ripoti iliyopitwa na wakati",
+      "reported": "Idadi",
+      "period": "Kipindi",
+      "movementNote": "Kila safu huhifadhi chanzo chake, tarehe ya ripoti na kipimo. Idadi ya watu waliopo, waliowasili na matukio ya udhibiti wa mipaka ni vipimo tofauti. Vyanzo vinaweza kuhesabu watu wale wale; usijumlishe idadi zao. WorldMonitor huunda mwonekano huu kutoka vyanzo vilivyounganishwa; hii haimaanishi uidhinishaji na watoa data."
     },
     "climate": {
       "noAnomalies": "Hakuna hitilafu muhimu zilizogunduliwa",

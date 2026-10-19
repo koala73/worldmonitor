@@ -1630,7 +1630,12 @@
       "latestChange": "Último cambio",
       "accelerating": "Acelerando",
       "inDays": "en {{days}} días",
-      "crossBorderNote": "Portal de Datos Operacionales de la Agencia de la ONU para los Refugiados: personas que cruzaron fronteras en cada crisis, de los últimos reportes de países. Las situaciones se superponen, por lo que no se suman."
+      "crossBorderNote": "Portal de Datos Operacionales de la Agencia de la ONU para los Refugiados: personas que cruzaron fronteras en cada crisis, de los últimos reportes de países. Las situaciones se superponen, por lo que no se suman.",
+      "last7And30": "Últimos 7 / 30 días",
+      "staleReport": "Informe desactualizado",
+      "reported": "Cantidad",
+      "period": "Período",
+      "movementNote": "Cada fila conserva su fuente, fecha de informe y medida. Las poblaciones, las llegadas y los encuentros fronterizos son medidas distintas. Las fuentes pueden solaparse; no sume sus cifras. WorldMonitor elabora esta vista a partir de las fuentes enlazadas; esto no implica el respaldo de los proveedores."
     },
     "populationExposure": {
       "totalAffected": "Total de afectados",

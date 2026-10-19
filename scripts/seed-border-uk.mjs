@@ -1,3 +1,6 @@
 #!/usr/bin/env node
-import { runBorderSource } from './lib/border-route-sources.mjs';
-await runBorderSource('uk', import.meta.url);
+import { loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { fetchBorderSource, routeSeedOptions } from './lib/border-route-sources.mjs';
+loadEnvFile(import.meta.url);
+await runSeed('displacement', 'border-uk', 'displacement:border-uk:v1',
+  () => fetchBorderSource('uk'), routeSeedOptions('uk'));

@@ -1766,7 +1766,12 @@
       "latestChange": "Son değişim",
       "accelerating": "Hızlanıyor",
       "inDays": "{{days}} günde",
-      "crossBorderNote": "BM Mülteci Ajansı Operasyonel Veri Portalı: her krizde sınırları geçen insanlar, en son ülke raporlarından. Durumlar çakışabilir, bu nedenle toplanmaz."
+      "crossBorderNote": "BM Mülteci Ajansı Operasyonel Veri Portalı: her krizde sınırları geçen insanlar, en son ülke raporlarından. Durumlar çakışabilir, bu nedenle toplanmaz.",
+      "last7And30": "Son 7 / 30 gün",
+      "staleReport": "Güncelliğini yitirmiş rapor",
+      "reported": "Sayı",
+      "period": "Dönem",
+      "movementNote": "Her satır kaynağını, rapor tarihini ve ölçüsünü korur. Mevcut nüfus, varışlar ve sınır denetimi olayları farklı ölçülerdir. Kaynaklar örtüşebilir; sayılarını toplamayın. WorldMonitor bu görünümü bağlantılı kaynaklardan türetir; bu, sağlayıcıların onayını ima etmez."
     },
     "climate": {
       "noAnomalies": "Onemli anomali tespit edilmedi",

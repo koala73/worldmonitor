@@ -1770,7 +1770,12 @@
       "latestChange": "Ultima modificare",
       "accelerating": "În accelerare",
       "inDays": "în {{days}} zile",
-      "crossBorderNote": "Portalul de date operaționale al Agenției ONU pentru Refugiați: persoanele care au traversat granițe în fiecare criză, din cele mai recente rapoarte ale țărilor. Situațiile se suprapun, deci nu sunt adăugate împreună."
+      "crossBorderNote": "Portalul de date operaționale al Agenției ONU pentru Refugiați: persoanele care au traversat granițe în fiecare criză, din cele mai recente rapoarte ale țărilor. Situațiile se suprapun, deci nu sunt adăugate împreună.",
+      "last7And30": "Ultimele 7 / 30 de zile",
+      "staleReport": "Raport învechit",
+      "reported": "Număr",
+      "period": "Perioadă",
+      "movementNote": "Fiecare rând păstrează sursa, data raportului și măsura. Populațiile, sosirile și evenimentele de control la frontieră sunt măsuri diferite. Sursele se pot suprapune; nu adunați numerele lor. WorldMonitor derivă această vizualizare din sursele indicate; aceasta nu implică susținerea furnizorilor."
     },
     "climate": {
       "noAnomalies": "Nu au fost detectate anomalii semnificative",

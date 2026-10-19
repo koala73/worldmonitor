@@ -1101,7 +1101,12 @@
       "latestChange": "Senaste förändring",
       "accelerating": "Accelererar",
       "inDays": "på {{days}} dagar",
-      "crossBorderNote": "UNHCR:s driftdataportal: människor som korsade gränser i varje kris, från de senaste landsrapporterna. Situationer överlappar varandra, så de läggs inte till tillsammans."
+      "crossBorderNote": "UNHCR:s driftdataportal: människor som korsade gränser i varje kris, från de senaste landsrapporterna. Situationer överlappar varandra, så de läggs inte till tillsammans.",
+      "last7And30": "Senaste 7 / 30 dagarna",
+      "staleReport": "Inaktuell rapport",
+      "reported": "Antal",
+      "period": "Period",
+      "movementNote": "Varje rad behåller sin källa, sitt rapportdatum och sitt mått. Bestånd, ankomster och gränskontrollhändelser är olika mått. Källor kan överlappa; summera inte deras antal. WorldMonitor tar fram denna vy från de länkade källorna; det innebär inget stöd från leverantörerna."
     },
     "populationExposure": {
       "totalAffected": "Totalt påverkad",

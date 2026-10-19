@@ -46,6 +46,7 @@ message CrossBorderSourceStatus {
 }
 
 message GetCrossBorderMovementsRequest {
+  // ISO alpha-2 filter.
   string country_code = 1 [
     (sebuf.http.query) = {name: "country_code"},
     (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,

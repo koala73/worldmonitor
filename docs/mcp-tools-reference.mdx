@@ -2906,19 +2906,23 @@ Call `get_cross_border_arrivals({})` for the full public snapshot. `summary: tru
 
 ### `get_displacement_data`
 
-UNHCR annual displacement statistics for one reporting year: global totals, per-country refugees, asylum seekers, IDPs and stateless people by origin, totals hosted by each asylum country, and the largest origin-to-asylum refugee flows. Annual stock figures only, with no monthly arrivals or crisis-situation updates. Until UNHCR publishes the current year, the snapshot holds the prior year; `summary.year` names it.
+Defaults to UNHCR annual displacement statistics for one reporting year: global totals, per-country refugees, asylum seekers, IDPs and stateless people by origin, totals hosted by each asylum country, and the largest origin-to-asylum refugee flows. Until UNHCR publishes the current year, the annual snapshot holds the prior year; `summary.year` names it.
+
+Use `view: "movements"` for source-dated UNHCR operational reports, UK daily arrivals and CBP monthly encounters. Each row keeps its source, measure, report date, license and transformation notice. Encounter counts are enforcement events, not unique people. Sources can overlap; do not add their counts. Source status distinguishes missing, partial and stale data; absent windows do not mean zero. Retain the attribution rider when projecting results. No provider endorsement is implied.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
+| `view` | string: annual / movements | Default annual. movements returns source-dated operational movement reports. |
+| `route` | string | Exact route or situation ID in the movements view. |
 | `countries` | `array<string>` | Country names, ISO alpha-2, or alpha-3 codes to keep (e.g. ["Syria","UA","AFG"]). Matches both per-country totals and origin/asylum flows. Omit for all. Unresolved inputs return Invalid params. |
 | `limit` | number | Cap the per-country and top-flow lists to at most this many items (default 30, pass 0 for no cap). |
 
-- **API endpoints:** `GET /api/displacement/v1/get-displacement-summary`
+- **API endpoints:** `GET /api/displacement/v1/get-displacement-summary`, `GET /api/displacement/v1/get-cross-border-movements`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **2.5 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** annual data is stale after **2.5 d**. Movement feeds have a 48-hour fetch budget, plus independent report-age budgets: 45 days for ODP, 3 days for UK arrivals and 75 days for CBP monthly reports. Check each row and source status.
 
 <CodeGroup>
 

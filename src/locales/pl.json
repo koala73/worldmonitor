@@ -1542,7 +1542,12 @@
       "latestChange": "Ostatnia zmiana",
       "accelerating": "Przyspiesza",
       "inDays": "w ciągu {{days}} dni",
-      "crossBorderNote": "Portal Danych Operacyjnych Agencji ONZ ds. Uchodźców: osoby, które przekroczyły granice w każdym kryzysie, z najnowszych raportów krajowych. Sytuacje nakładają się, dlatego nie są dodawane razem."
+      "crossBorderNote": "Portal Danych Operacyjnych Agencji ONZ ds. Uchodźców: osoby, które przekroczyły granice w każdym kryzysie, z najnowszych raportów krajowych. Sytuacje nakładają się, dlatego nie są dodawane razem.",
+      "last7And30": "Ostatnie 7 / 30 dni",
+      "staleReport": "Nieaktualny raport",
+      "reported": "Liczba",
+      "period": "Okres",
+      "movementNote": "Każdy wiersz zachowuje źródło, datę raportu i rodzaj pomiaru. Stany ludności, przybycia i zdarzenia kontroli granicznej to różne miary. Źródła mogą się pokrywać; nie sumuj ich wartości. WorldMonitor opracowuje ten widok na podstawie podanych źródeł; nie oznacza to poparcia ze strony dostawców."
     },
     "populationExposure": {
       "totalAffected": "Całkowita liczba dotkniętych",

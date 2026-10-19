@@ -1762,7 +1762,12 @@
       "latestChange": "最新變化",
       "accelerating": "加速中",
       "inDays": "{{days}}天內",
-      "crossBorderNote": "聯合國難民署運算元據門戶：各危機中越過邊境的人數，來自最新國家報告。情況重疊，因此不相加。"
+      "crossBorderNote": "聯合國難民署運算元據門戶：各危機中越過邊境的人數，來自最新國家報告。情況重疊，因此不相加。",
+      "last7And30": "最近7天 / 30天",
+      "staleReport": "報告已過期",
+      "reported": "數量",
+      "period": "期間",
+      "movementNote": "每行保留其來源、報告日期和衡量指標。存量人口、抵達人數和邊境執法事件是不同指標。來源可能重疊，請勿將其計數相加。WorldMonitor 根據連結的來源生成此檢視，並不意味著獲得任何資料提供方的認可。"
     },
     "climate": {
       "noAnomalies": "未檢測到顯著異常",

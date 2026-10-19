@@ -1,5 +1,5 @@
 import { dailyRoute, monthlyRoute, parseUkDaily, parseUkOds, parseCbp } from './border-route-arrivals.mjs';
-import { loadEnvFile, runSeed, withRetry } from '../_seed-utils.mjs';
+import { withRetry } from '../_seed-utils.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from '../_upstash-rest.mjs';
 
 const UK = 'https://www.gov.uk';
@@ -80,10 +80,9 @@ export function routeSeedOptions(id) {
   };
 }
 
-export async function runBorderSource(id, moduleUrl) {
-  loadEnvFile(moduleUrl);
-  await runSeed('displacement', `border-${id}`, `displacement:border-${id}:v1`, async () => ({
+export async function fetchBorderSource(id) {
+  return {
     ...await FETCHERS[id](), source: BORDER_SOURCES[id].name, sourceUrl: BORDER_SOURCES[id].url,
     license: BORDER_SOURCES[id].license, licenseUrl: BORDER_SOURCES[id].licenseUrl,
-  }), routeSeedOptions(id));
+  };
 }

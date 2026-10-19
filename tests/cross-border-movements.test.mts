@@ -51,13 +51,15 @@ test('a report on the final day completes that month while a mid-month report do
   const source = structuredClone(odp);
   const country = source.situations[0]!.flows[0]!.countries[0]!;
   Object.assign(source.situations[0]!.flows[0]!, { kind: 'arrival', measure: 'monthly' });
-  Object.assign(country, { date: '2026-09-30', individuals: 78128, months: [{ month: '2026-10', individuals: 349 }, { month: '2026-09', individuals: 12033 }, { month: '2026-08', individuals: 11676 }] });
+  Object.assign(country, { date: '2026-09-30', individuals: 78128, accelerating: true, months: [{ month: '2026-10', individuals: 349 }, { month: '2026-09', individuals: 12033 }, { month: '2026-08', individuals: 11676 }] });
   let result = projectCrossBorderSnapshots({ odp: envelope(source) }, NOW);
   assert.equal(result.movements[0]?.period, '2026-09');
   assert.equal(result.movements[0]?.count, 12033);
+  assert.equal(result.movements[0]?.surge, true);
   country.date = '2026-09-06';
   result = projectCrossBorderSnapshots({ odp: envelope(source) }, NOW);
   assert.equal(result.movements[0]?.period, '2026-08');
+  assert.equal(result.movements[0]?.surge, false, 'September acceleration cannot label the older August observation');
 });
 
 test('stock deltas retain their original interval rather than becoming new arrivals', () => {

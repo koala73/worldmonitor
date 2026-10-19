@@ -41,6 +41,9 @@ export function projectCrossBorderSnapshots(snapshots: Record<string, unknown>, 
       const location = situation ? object(raw.location) : raw;
       const latitude = finite(location.latitude);
       const longitude = finite(location.longitude);
+      const fetchedDate = new Date(fetchedAt);
+      // The ODP writer judges acceleration for the month before its fetch.
+      const surgeMonth = new Date(Date.UTC(fetchedDate.getUTCFullYear(), fetchedDate.getUTCMonth(), 0)).toISOString().slice(0, 7);
       const months = list(raw.months).filter(m => /^\d{4}-(0[1-9]|1[0-2])$/.test(text(m.month)) && nonnegative(m.individuals));
       const month = months.sort((a, b) => text(b.month).localeCompare(text(a.month))).find(m => text(m.month) < new Date(fetchedAt).toISOString().slice(0, 7)
         && Date.UTC(Number(text(m.month).slice(0, 4)), Number(text(m.month).slice(5)), 0) <= contentAt);
@@ -57,7 +60,8 @@ export function projectCrossBorderSnapshots(snapshots: Record<string, unknown>, 
         stockChangeSince: stock && reportTime(object(raw.change).since) ? text(object(raw.change).since) : '',
         last7Days: nonnegative(raw.last7Days) ? raw.last7Days : undefined,
         last30Days: nonnegative(raw.last30Days) ? raw.last30Days : undefined,
-        changePct: finite(raw.changePct), surge: !stale && kind === 'arrival' && ['daily', 'monthly'].includes(text(situation ? flow?.measure : raw.measure)) && (raw.surge === true || raw.accelerating === true), stale,
+        changePct: finite(raw.changePct), surge: !stale && kind === 'arrival' && ['daily', 'monthly'].includes(text(situation ? flow?.measure : raw.measure))
+          && (situation ? month?.month === surgeMonth && raw.accelerating === true : raw.surge === true), stale,
         source: source.name, sourceUrl: text(situation?.sourceUrl) || source.url, license: source.license, licenseUrl: source.licenseUrl,
         notice: 'WorldMonitor derives and normalizes this view from the linked sources. No provider endorsement. Contains public sector information licensed under the Open Government Licence v3.0 where the source is UK Home Office.',
         location: latitude !== undefined && longitude !== undefined && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 ? { latitude, longitude } : undefined,

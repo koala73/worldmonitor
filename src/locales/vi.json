@@ -1762,7 +1762,12 @@
       "latestChange": "Thay đổi gần nhất",
       "accelerating": "Đang tăng tốc",
       "inDays": "trong {{days}} ngày",
-      "crossBorderNote": "Cổng thông tin Dữ liệu Hoạt động của Cơ quan Tị nạn Liên hợp quốc: những người đã vượt qua biên giới trong mỗi cuộc khủng hoảng, từ các báo cáo quốc gia mới nhất. Các tình huống trùng lặp, vì vậy chúng không được cộng lại với nhau."
+      "crossBorderNote": "Cổng thông tin Dữ liệu Hoạt động của Cơ quan Tị nạn Liên hợp quốc: những người đã vượt qua biên giới trong mỗi cuộc khủng hoảng, từ các báo cáo quốc gia mới nhất. Các tình huống trùng lặp, vì vậy chúng không được cộng lại với nhau.",
+      "last7And30": "7 / 30 ngày qua",
+      "staleReport": "Báo cáo đã cũ",
+      "reported": "Số lượng",
+      "period": "Kỳ",
+      "movementNote": "Mỗi hàng giữ nguyên nguồn, ngày báo cáo và chỉ số. Số dân tại một thời điểm, số người đến và số sự kiện kiểm soát biên giới là các chỉ số khác nhau. Các nguồn có thể trùng lặp; không cộng số liệu của chúng. WorldMonitor tạo chế độ xem này từ các nguồn được liên kết; điều này không hàm ý sự chứng thực của nhà cung cấp."
     },
     "climate": {
       "noAnomalies": "Không phát hiện bất thường đáng kể",

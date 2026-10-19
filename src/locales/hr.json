@@ -1917,7 +1917,12 @@
       "latestChange": "Posljednja promjena",
       "accelerating": "Ubrzava se",
       "inDays": "u {{days}} dana",
-      "crossBorderNote": "UN Agencija za izbjeglice portal operacijskih podataka: osobe koje su prekrile granice u svakoj krizi, iz najnovijih izvještaja zemlje. Situacije se preklapaju, tako da se ne zbrajaju zajedno."
+      "crossBorderNote": "UN Agencija za izbjeglice portal operacijskih podataka: osobe koje su prekrile granice u svakoj krizi, iz najnovijih izvještaja zemlje. Situacije se preklapaju, tako da se ne zbrajaju zajedno.",
+      "last7And30": "Zadnjih 7 / 30 dana",
+      "staleReport": "Zastarjelo izvješće",
+      "reported": "Broj",
+      "period": "Razdoblje",
+      "movementNote": "Svaki redak zadržava svoj izvor, datum izvješća i mjeru. Broj prisutnih osoba, dolasci i događaji granične kontrole različite su mjere. Izvori se mogu preklapati; ne zbrajajte njihove brojeve. WorldMonitor izvodi ovaj prikaz iz povezanih izvora; to ne podrazumijeva odobrenje pružatelja."
     },
     "climate": {
       "noAnomalies": "Nisu detektirane značajne anomalije",

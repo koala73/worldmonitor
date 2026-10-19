@@ -1762,7 +1762,12 @@
       "latestChange": "最新变化",
       "accelerating": "加速中",
       "inDays": "{{days}}天内",
-      "crossBorderNote": "联合国难民署操作数据门户：各危机中越过边境的人数，来自最新国家报告。情况重叠，因此不相加。"
+      "crossBorderNote": "联合国难民署操作数据门户：各危机中越过边境的人数，来自最新国家报告。情况重叠，因此不相加。",
+      "last7And30": "最近7天 / 30天",
+      "staleReport": "报告已过期",
+      "reported": "数量",
+      "period": "期间",
+      "movementNote": "每行保留其来源、报告日期和衡量指标。存量人口、抵达人数和边境执法事件是不同指标。来源可能重叠，请勿将其计数相加。WorldMonitor 根据链接的来源生成此视图，并不意味着获得任何数据提供方的认可。"
     },
     "climate": {
       "noAnomalies": "未检测到显著异常",

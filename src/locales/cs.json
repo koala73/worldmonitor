@@ -1753,7 +1753,12 @@
       "latestChange": "Poslední změna",
       "accelerating": "Zrychluje se",
       "inDays": "za {{days}} dní",
-      "crossBorderNote": "Operační datový portál Úřadu vysokého komisaře Spojených národů pro uprchlíky: osoby, které překročily hranice v každé krizi, z nejnovějších zpráv zemí. Situace se překrývají, proto se nesčítají dohromady."
+      "crossBorderNote": "Operační datový portál Úřadu vysokého komisaře Spojených národů pro uprchlíky: osoby, které překročily hranice v každé krizi, z nejnovějších zpráv zemí. Situace se překrývají, proto se nesčítají dohromady.",
+      "last7And30": "Posledních 7 / 30 dní",
+      "staleReport": "Zastaralá zpráva",
+      "reported": "Počet",
+      "period": "Období",
+      "movementNote": "Každý řádek zachovává zdroj, datum zprávy a druh měření. Stavové počty, příjezdy a události hraničních kontrol jsou různá měření. Zdroje se mohou překrývat; jejich počty nesčítejte. WorldMonitor tento přehled odvozuje z odkazovaných zdrojů; neznamená to podporu ze strany poskytovatelů."
     },
     "climate": {
       "noAnomalies": "Nebyly zjištěny žádné významné anomálie",

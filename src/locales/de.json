@@ -1627,7 +1627,12 @@
       "latestChange": "Letzte Veränderung",
       "accelerating": "Beschleunigt",
       "inDays": "in {{days}} Tagen",
-      "crossBorderNote": "Operatives Datenportal des Flüchtlingshilfswerks der Vereinten Nationen: Menschen, die in jeder Krise Grenzen überquert haben, aus den neuesten Länderberichten. Situationen überschneiden sich, daher werden sie nicht addiert."
+      "crossBorderNote": "Operatives Datenportal des Flüchtlingshilfswerks der Vereinten Nationen: Menschen, die in jeder Krise Grenzen überquert haben, aus den neuesten Länderberichten. Situationen überschneiden sich, daher werden sie nicht addiert.",
+      "last7And30": "Letzte 7 / 30 Tage",
+      "staleReport": "Veralteter Bericht",
+      "reported": "Anzahl",
+      "period": "Zeitraum",
+      "movementNote": "Jede Zeile behält ihre Quelle, ihr Berichtsdatum und ihre Messgröße. Bestände, Ankünfte und Grenzkontrollereignisse sind verschiedene Messgrößen. Quellen können sich überschneiden; addieren Sie ihre Zahlen nicht. WorldMonitor leitet diese Ansicht aus den verlinkten Quellen ab; dies bedeutet keine Billigung durch die Anbieter."
     },
     "populationExposure": {
       "totalAffected": "Insgesamt betroffen",
