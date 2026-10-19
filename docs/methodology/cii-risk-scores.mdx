@@ -172,13 +172,15 @@ Component details that are easy to miss:
   protest movement (France, 7.9%). Each term is
   `max(escalation, level)`, never their sum. The cap of 70 matches the ACLED
   activity term the GDELT terms stand in for; a capped term moves
-  `combinedScore` by at most 12.6 (Conflict) or 10.5 (Unrest). The terms are 0 until 21 complete baseline
-  days exist (the materializer backfills them from the GDELT archive, two days
-  per 15-minute tick), when the snapshot is more than 6 hours old, and when the
-  current 24-hour window is missing cohorts (after a materializer outage, until
-  the materializer rebuilds the gap from the archive): a partial window is
-  unknown, not calm. The level is also 0 until five of the seven days through
-  yesterday are complete. Once the
+  `combinedScore` by at most 12.6 (Conflict) or 10.5 (Unrest). Both readings
+  are 0 when the snapshot is more than 6 hours old. Escalation is also 0 until
+  21 complete baseline days exist (the materializer backfills them from the
+  GDELT archive, two days per 15-minute tick) and when the current 24-hour
+  window is missing cohorts (after a materializer outage, until the
+  materializer rebuilds the gap from the archive): a partial window is unknown,
+  not calm. The level reads complete days only, so it needs neither: it is 0
+  only until five of the seven days through yesterday are complete, and it
+  scores from the first days after deploy while the baseline backfills. Once the
   ACLED path returns events, both terms are 0, so a credentialed deployment
   never counts the same activity twice.
 - **Coordinate attribution**: fires, GPS-jamming hexes, earthquakes, climate

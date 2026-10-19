@@ -244,15 +244,31 @@ describe('CII Conflict and Unrest from the sustained GDELT level while ACLED is 
     assert.equal(components(seed({ SA: { conflict: spike, week: WEEK.SA_OCT19 } }), 'SA').conflict, Math.max(escalation, level));
   });
 
-  it('keeps every GDELT gate: ACLED live, stale, no baseline, incomplete window, no week', () => {
+  it('gates the level on ACLED being dark, a fresh snapshot and a ready week', () => {
     const row = { SA: { week: WEEK.SA_OCT19 } };
     assert.ok(components(seed(row), 'SA').conflict > 0);
     const acled = [{ country: 'Ukraine', event_type: 'Battles', fatalities: 0, daysAgo: 0 }];
     assert.equal(components(seed(row), 'SA', acled).conflict, 0);
     assert.equal(components(seed(row, { updatedAt: NOW - CII_GDELT_ESCALATION_MAX_AGE_MS - 1 }), 'SA').conflict, 0);
-    assert.equal(components(seed(row, { baselineReady: false }), 'SA').conflict, 0);
-    assert.equal(components(seed(row, { currentComplete: false }), 'SA').conflict, 0);
     assert.equal(components(seed(row, { weekReady: false }), 'SA').conflict, 0);
+  });
+
+  it('scores the level before the 21-day baseline exists, while escalation waits for it', () => {
+    // Production on deploy day: the materializer had 7 of the 21 baseline days,
+    // so baselineReady was false, but the seven days through yesterday were
+    // complete. The level reads only those days; escalation needs the norm.
+    const spike = { current: 173, baselineMedian: 52 }; // Riyadh, Oct 12
+    const early = seed({ SA: { conflict: spike, week: WEEK.SA_OCT19 } }, { baselineReady: false });
+    assert.equal(components(early, 'SA').conflict, gdeltLevelScore(WEEK.SA_OCT19, 'conflict'));
+    assert.ok(components(early, 'SA').conflict > 0);
+    // The level reads complete days only, so an incomplete current window does not void it.
+    const outage = seed({ SA: { conflict: spike, week: WEEK.SA_OCT19 } }, { currentComplete: false });
+    assert.equal(components(outage, 'SA').conflict, gdeltLevelScore(WEEK.SA_OCT19, 'conflict'));
+    // Escalation alone (no week) still needs the baseline and a complete window.
+    assert.equal(components(seed({ SA: { conflict: spike } }, { baselineReady: false }), 'SA').conflict, 0);
+    assert.equal(components(seed({ SA: { conflict: spike } }, { currentComplete: false }), 'SA').conflict, 0);
+    // A week-only snapshot is a live GDELT input for realtime conflict coverage.
+    assert.equal(countCiiRealtimeSignalDensityCoverage([], aux(early), NOW), 1);
   });
 
   it('reads exactly what the materializer publishes', () => {

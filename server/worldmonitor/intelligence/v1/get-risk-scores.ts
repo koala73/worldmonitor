@@ -579,25 +579,30 @@ function parseGdeltCountryWeek(raw: unknown): GdeltCountryWeek | null {
 
 /**
  * The per-country GDELT summary (scripts/_gdelt-country-events.mjs), or null
- * when it is missing, malformed, has no baseline yet, has an incomplete
- * current window, or is older than
- * CII_GDELT_ESCALATION_MAX_AGE_MS (a stopped materializer must not freeze a spike).
- * A row's week is null unless the snapshot reports weekReady.
+ * when it is missing, malformed, older than CII_GDELT_ESCALATION_MAX_AGE_MS
+ * (a stopped materializer must not freeze a spike), or has nothing scoreable.
+ * The two readings are gated separately:
+ * - escalation (conflict/protest) needs the 21-day baseline and a complete
+ *   current window; without them they are null.
+ * - the sustained level (week) needs only weekReady: it reads complete days,
+ *   so it scores from deploy day, before the baseline has backfilled.
  */
 export function gdeltCountryEventsFromSeed(raw: unknown, nowMs: number): GdeltCountryEvents | null {
   if (!raw || typeof raw !== 'object') return null;
   const { byCountry, baselineReady, currentComplete, weekReady, updatedAt } = raw as Record<string, unknown>;
   if (!byCountry || typeof byCountry !== 'object' || Array.isArray(byCountry)) return null;
   // A current window missing cohorts (materializer outage) is unknown, not calm.
-  if (baselineReady !== true || currentComplete !== true) return null;
+  const escalationReady = baselineReady === true && currentComplete === true;
+  const levelReady = weekReady === true;
+  if (!escalationReady && !levelReady) return null;
   const age = nowMs - safeNum(updatedAt);
   if (!(age <= CII_GDELT_ESCALATION_MAX_AGE_MS)) return null;
   const rows: Record<string, GdeltCountryEventsRow> = {};
   for (const [code, row] of Object.entries(byCountry as Record<string, unknown>)) {
     if (!/^[A-Z]{2}$/.test(code) || !row || typeof row !== 'object') continue;
-    const conflict = parseGdeltEscalationSignal((row as Record<string, unknown>).conflict);
-    const protest = parseGdeltEscalationSignal((row as Record<string, unknown>).protest);
-    const week = weekReady === true ? parseGdeltCountryWeek((row as Record<string, unknown>).week) : null;
+    const conflict = escalationReady ? parseGdeltEscalationSignal((row as Record<string, unknown>).conflict) : null;
+    const protest = escalationReady ? parseGdeltEscalationSignal((row as Record<string, unknown>).protest) : null;
+    const week = levelReady ? parseGdeltCountryWeek((row as Record<string, unknown>).week) : null;
     if (conflict || protest || week) rows[code] = { conflict, protest, week };
   }
   return { byCountry: rows };
