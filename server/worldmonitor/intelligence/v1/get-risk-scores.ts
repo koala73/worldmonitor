@@ -12,6 +12,7 @@ import iso3ToIso2Json from '../../../../shared/iso3-to-iso2.json';
 import { getCachedJson, readCachedJson, setCachedJson, cachedFetchJsonWithMeta, runRedisPipeline } from '../../../_shared/redis';
 import { CLIMATE_ANOMALIES_KEY, CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
 import { CII_DAY_MS, parseCiiDailyPoints } from '../../../../shared/cii-daily-history';
+import { ciiCountryAt, ciiCountryForIso2 } from '../../../../scripts/shared/cii-country-borders.mjs';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
 import {
@@ -92,42 +93,6 @@ const COUNTRY_KEYWORDS: Record<string, string[]> = {
   QA: ['qatar', 'qatari', 'doha', 'al jazeera'],
 };
 
-// Exported so the seed-military-cii.mjs drift-guard test can assert its re-embedded copy
-// stays in sync (scripts/ cannot import from server/ at runtime, but tests can).
-export const COUNTRY_BBOX: Record<string, { minLat: number; maxLat: number; minLon: number; maxLon: number }> = {
-  US: { minLat: 24.5, maxLat: 49.4, minLon: -125.0, maxLon: -66.9 },
-  RU: { minLat: 41.2, maxLat: 81.9, minLon: 19.6, maxLon: 180.0 },
-  CN: { minLat: 18.2, maxLat: 53.6, minLon: 73.5, maxLon: 135.1 },
-  UA: { minLat: 44.4, maxLat: 52.4, minLon: 22.1, maxLon: 40.2 },
-  IR: { minLat: 25.1, maxLat: 39.8, minLon: 44.0, maxLon: 63.3 },
-  IL: { minLat: 29.5, maxLat: 33.3, minLon: 34.3, maxLon: 35.9 },
-  TW: { minLat: 21.9, maxLat: 25.3, minLon: 120.0, maxLon: 122.0 },
-  KP: { minLat: 37.7, maxLat: 43.0, minLon: 124.3, maxLon: 130.7 },
-  SA: { minLat: 16.4, maxLat: 32.2, minLon: 34.6, maxLon: 55.7 },
-  TR: { minLat: 36.0, maxLat: 42.1, minLon: 26.0, maxLon: 44.8 },
-  PL: { minLat: 49.0, maxLat: 54.8, minLon: 14.1, maxLon: 24.2 },
-  DE: { minLat: 47.3, maxLat: 55.1, minLon: 5.9, maxLon: 15.0 },
-  FR: { minLat: 41.4, maxLat: 51.1, minLon: -5.1, maxLon: 9.6 },
-  GB: { minLat: 49.9, maxLat: 60.9, minLon: -8.2, maxLon: 1.8 },
-  IN: { minLat: 6.7, maxLat: 35.5, minLon: 68.1, maxLon: 97.4 },
-  PK: { minLat: 23.7, maxLat: 37.1, minLon: 60.9, maxLon: 77.8 },
-  SY: { minLat: 32.3, maxLat: 37.3, minLon: 35.7, maxLon: 42.4 },
-  YE: { minLat: 12.1, maxLat: 19.0, minLon: 42.5, maxLon: 54.5 },
-  MM: { minLat: 9.8, maxLat: 28.5, minLon: 92.2, maxLon: 101.2 },
-  VE: { minLat: 0.6, maxLat: 12.2, minLon: -73.4, maxLon: -59.8 },
-  CU: { minLat: 19.8, maxLat: 23.3, minLon: -85.0, maxLon: -74.1 },
-  MX: { minLat: 14.5, maxLat: 32.7, minLon: -118.4, maxLon: -86.7 },
-  BR: { minLat: -33.7, maxLat: 5.3, minLon: -73.9, maxLon: -34.8 },
-  AE: { minLat: 22.6, maxLat: 26.1, minLon: 51.6, maxLon: 56.4 },
-  KR: { minLat: 33.1, maxLat: 38.6, minLon: 125.1, maxLon: 131.9 },
-  IQ: { minLat: 29.1, maxLat: 37.4, minLon: 38.8, maxLon: 48.6 },
-  AF: { minLat: 29.4, maxLat: 38.5, minLon: 60.5, maxLon: 75.0 },
-  LB: { minLat: 33.1, maxLat: 34.7, minLon: 35.1, maxLon: 36.6 },
-  EG: { minLat: 22.0, maxLat: 31.7, minLon: 24.7, maxLon: 36.9 },
-  JP: { minLat: 24.4, maxLat: 45.5, minLon: 122.9, maxLon: 153.0 },
-  QA: { minLat: 24.5, maxLat: 26.2, minLon: 50.7, maxLon: 51.7 },
-};
-
 const ADVISORY_LEVELS_FALLBACK: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> = {
   // These floors are score-affecting methodology inputs; new country additions
   // must go through a formula-version/docs changelog batch.
@@ -188,131 +153,6 @@ export function normalizeCountryName(text: string): string | null {
   return null;
 }
 
-const BBOX_BY_AREA = Object.entries(COUNTRY_BBOX)
-  .map(([code, b]) => ({ code, ...b, area: (b.maxLat - b.minLat) * (b.maxLon - b.minLon) }))
-  .sort((a, b) => a.area - b.area);
-
-type CountryBBoxCandidate = (typeof BBOX_BY_AREA)[number];
-
-function isInsideBBox(b: CountryBBoxCandidate, lat: number, lon: number): boolean {
-  return lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon;
-}
-
-function isNorthOfApproxUsMxBorder(lat: number, lon: number): boolean {
-  // Coarse segmented US/MX border approximation inside the shared bbox overlap.
-  if (lon <= -114.70) return lat >= 32.53; // California / Baja California
-  if (lon <= -111.05) return lat >= 31.33; // Arizona / Sonora
-  if (lon <= -106.45) return lat >= 31.73; // New Mexico / Chihuahua
-
-  const rioGrandeChord: Array<[number, number]> = [
-    [-106.45, 31.73], // El Paso / Ciudad Juarez
-    [-104.40, 29.60], // Big Bend / Ojinaga
-    [-100.95, 29.37], // Del Rio / Ciudad Acuna
-    [-100.50, 28.72], // Eagle Pass / Piedras Negras
-    [-99.50, 27.50],  // Laredo / Nuevo Laredo
-    [-98.20, 26.22],  // McAllen / Reynosa
-    [-97.50, 25.89],  // Brownsville / Matamoros
-  ];
-  for (let i = 1; i < rioGrandeChord.length; i++) {
-    const [prevLon, prevLat] = rioGrandeChord[i - 1]!;
-    const [nextLon, nextLat] = rioGrandeChord[i]!;
-    if (lon <= nextLon) {
-      const progress = (lon - prevLon) / (nextLon - prevLon);
-      const borderLat = prevLat + progress * (nextLat - prevLat);
-      return lat >= borderLat;
-    }
-  }
-  const borderLat = 25.89;
-  return lat >= borderLat;
-}
-
-function isWestOfApproxPlUaBorder(lat: number, lon: number): boolean {
-  const border: Array<[number, number]> = [
-    [22.70, 49.05], // Bieszczady / Zakarpattia
-    [23.05, 50.05], // Przemysl / Lviv corridor
-    [23.65, 51.50], // Bug River north of Lublin
-  ];
-  if (lat <= border[0]![1]) return lon <= border[0]![0];
-  for (let i = 1; i < border.length; i++) {
-    const [prevLon, prevLat] = border[i - 1]!;
-    const [nextLon, nextLat] = border[i]!;
-    if (lat <= nextLat) {
-      const progress = (lat - prevLat) / (nextLat - prevLat);
-      const borderLon = prevLon + progress * (nextLon - prevLon);
-      return lon <= borderLon;
-    }
-  }
-  return lon <= border[border.length - 1]![0];
-}
-
-function isKnownNonTier1BBoxGap(lat: number, lon: number, candidates: CountryBBoxCandidate[]): boolean {
-  // Jordan is not a Tier-1 CII country. Its rectangle overlaps Saudi Arabia's
-  // broad bbox; fail closed only when SA is the sole tracked-country candidate.
-  // If a tighter Tier-1 bbox also matches, keep the normal attribution path.
-  return candidates.length === 1
-    && candidates[0]!.code === 'SA'
-    && lat >= 30.8
-    && lat <= 32.6
-    && lon >= 35.4
-    && lon <= 37.4;
-}
-
-function resolveKnownBBoxOverlap(lat: number, lon: number, candidates: CountryBBoxCandidate[]): string | null {
-  const codes = new Set(candidates.map((candidate) => candidate.code));
-
-  if (codes.has('KP') && codes.has('CN') && codes.has('RU') && lat < 42.5) return 'KP';
-  if (codes.has('PL') && codes.has('UA')) return isWestOfApproxPlUaBorder(lat, lon) ? 'PL' : 'UA';
-  if (codes.has('CN') && codes.has('IN') && lat >= 28.5 && lat <= 32.0 && lon >= 89.0 && lon <= 93.5) return 'CN';
-  if (codes.has('TR') && codes.has('SY') && lat >= 36.6 && lat <= 37.6 && lon >= 36.0 && lon <= 38.8) return 'TR';
-  if (codes.has('IR') && codes.has('IQ') && lat >= 33.4 && lat <= 35.2 && lon >= 45.5 && lon <= 48.6) return 'IR';
-  if (codes.has('PK') && codes.has('AF') && lat >= 29.4 && lat <= 31.5 && lon >= 65.0 && lon <= 68.2) return 'PK';
-  if (codes.has('SA') && codes.has('EG') && lat >= 27.5 && lat <= 29.6 && lon >= 35.0 && lon <= 37.1) return 'SA';
-  if (codes.has('SA') && codes.has('IR') && lat >= 25.0 && lat <= 27.8 && lon >= 48.0 && lon <= 51.5) return 'SA';
-  if (codes.has('CN') && codes.has('MM') && lat >= 23.5 && lat <= 25.0 && lon >= 97.3 && lon <= 98.4) return 'CN';
-  if (codes.has('CN') && codes.has('RU') && lat >= 50.5 && lat <= 51.5 && lon >= 127.8 && lon <= 129.6) return 'RU';
-
-  if (codes.has('US') && codes.has('MX')) {
-    return isNorthOfApproxUsMxBorder(lat, lon) ? 'US' : 'MX';
-  }
-  if (codes.has('SY') && codes.has('LB')) {
-    if (lon >= 36.35 || (lat <= 33.75 && lon >= 36.05)) return 'SY';
-    return 'LB';
-  }
-  if (codes.has('RU') && codes.has('UA')) {
-    if ((lat >= 50.25 && lon >= 35.6) || (lon >= 38.7 && lat < 47.8)) return 'RU';
-    return 'UA';
-  }
-  if (codes.has('IN') && codes.has('PK')) {
-    if (lon >= 75.20 || (lon >= 74.75 && lat <= 32.10)) return 'IN';
-    return 'PK';
-  }
-  if (codes.has('CN') && codes.has('RU')) {
-    if (lon >= 132.0 && lat >= 42.40) return 'RU';
-    if (lon >= 131.65 && lat <= 44.10) return 'RU';
-    if (lon >= 126.80 && lon <= 128.20 && lat >= 50.27) return 'RU';
-    return 'CN';
-  }
-  if (codes.has('RU') && codes.has('JP')) {
-    return lat >= 45.25 && lon >= 142.00 ? 'RU' : 'JP';
-  }
-  if (codes.has('KP') && codes.has('KR')) {
-    const westernDmzLat = 37.75;
-    const easternDmzLat = 38.35;
-    const progress = Math.min(1, Math.max(0, (lon - 126.0) / 2.5));
-    const borderLat = westernDmzLat + progress * (easternDmzLat - westernDmzLat);
-    return lat >= borderLat ? 'KP' : 'KR';
-  }
-  if (codes.has('JP') && codes.has('KR')) {
-    if (lat <= 34.85 && lon >= 129.20) return 'JP';
-    return 'KR';
-  }
-  if (codes.has('SA') && codes.has('YE')) {
-    return lat >= 17.35 ? 'SA' : 'YE';
-  }
-
-  return null;
-}
-
 function climateSeverityScore(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   const normalized = String(value || '').toLowerCase();
@@ -338,17 +178,23 @@ export function climateCountriesForAnomaly(anomaly: any): string[] {
   return [...countries].filter((code) => code in TIER1_COUNTRIES);
 }
 
-// Exported so scripts/seed-military-cii.mjs's re-embedded copy can be cross-checked
-// for parity in tests/seed-military-cii-table-drift.test.mts. The seed cannot import
-// from server/ under Railway nixpacks packaging.
-export function geoToCountry(lat: number, lon: number): string | null {
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  const candidates = BBOX_BY_AREA.filter((b) => isInsideBBox(b, lat, lon));
-  if (candidates.length === 0) return null;
-  if (isKnownNonTier1BBoxGap(lat, lon, candidates)) return null;
-  // Preserve the previous smallest-area bbox tie-break for overlap pairs that
-  // do not yet have an explicit border heuristic.
-  return resolveKnownBBoxOverlap(lat, lon, candidates) ?? candidates[0]!.code;
+// Real borders (scripts/shared/cii-country-borders.mjs, generated from the
+// Natural Earth 1:50m map), shared with scripts/seed-military-cii.mjs so the
+// military seeder places flights and vessels exactly as the scorer does.
+// Points on non-Tier-1 land, or more than 12 nautical miles offshore, are null.
+export const geoToCountry: (lat: number, lon: number) => string | null = ciiCountryAt;
+
+// A strike event that carries its country (the Middle East strike feed sets
+// countryCode from its gazetteer) scores there, including at sea where no
+// polygon reaches; a non-Tier-1 country scores nowhere. Older events without
+// it fall back to their coordinates, then to the country named in the text.
+function strikeEventCountry(s: any): string | null {
+  if (typeof s?.countryCode === 'string' && /^[A-Za-z]{2}$/.test(s.countryCode.trim())) {
+    return ciiCountryForIso2(s.countryCode);
+  }
+  const lat = safeNum(s?.lat || s?.latitude);
+  const lon = safeNum(s?.lon || s?.longitude);
+  return geoToCountry(lat, lon) || normalizeCountryName(s?.title || s?.location || '');
 }
 
 function safeNum(v: unknown): number {
@@ -1118,7 +964,10 @@ export function computeCIIScores(
     const mag = safeNonNegativeNum(eq.magnitude);
     if (mag < 5.5) continue;
     if (safeNum(eq.occurredAt) < eqCutoff) continue;
-    const code = geoToCountry(safeNum(eq.location?.latitude), safeNum(eq.location?.longitude));
+    // Offshore beyond coastal waters, take the country USGS names after the
+    // last comma ("151 km E of Namie, Japan"); bounding boxes used to reach these.
+    const code = geoToCountry(safeNum(eq.location?.latitude), safeNum(eq.location?.longitude))
+      || normalizeCountryName(String(eq.place || '').split(',').pop() || '');
     if (!code || !data[code]) continue;
     if (mag >= 7.5) data[code].earthquakeSevereCount++;
     else if (mag >= 6.5) data[code].earthquakeMajorCount++;
@@ -1170,9 +1019,7 @@ export function computeCIIScores(
 
   // --- Iran strikes with severity ---
   for (const s of aux.iranEvents) {
-    const lat = safeNum(s.lat || s.latitude);
-    const lon = safeNum(s.lon || s.longitude);
-    const code = geoToCountry(lat, lon) || normalizeCountryName(s.title || s.location || '');
+    const code = strikeEventCountry(s);
     if (!code || !data[code]) continue;
     data[code].iranStrikes++;
     const sev = String(s.severity || '').toLowerCase();

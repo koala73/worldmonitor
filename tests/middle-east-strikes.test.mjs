@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { deflateRawSync } from 'node:zlib';
 import { TELEGRAM_CHANNEL_TRUST } from '../shared/telegram-channel-trust.ts';
 import { GDELT_FIPS_TO_ISO2 } from '../scripts/_gdelt-country-codes.mjs';
-import { COUNTRY_BBOX, geoToCountry } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
+import { geoToCountry } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
 
 const require = createRequire(import.meta.url);
 const gazetteer = require('../scripts/lib/middle-east-strikes-gazetteer.cjs');
@@ -118,9 +118,8 @@ describe('gazetteer', () => {
         assert.equal(place.iso2, iso2);
         assert.equal(place.countryLevel, undefined, `${name} must resolve to the city, not a centroid`);
         assert.notDeepEqual([place.lat, place.lon], IRAN_CENTROID);
-        const box = COUNTRY_BBOX[iso2];
-        assert.ok(place.lat >= box.minLat && place.lat <= box.maxLat && place.lon >= box.minLon && place.lon <= box.maxLon,
-          `${name} (${place.lat},${place.lon}) must fall inside the ${iso2} bbox`);
+        assert.equal(geoToCountry(place.lat, place.lon), iso2,
+          `${name} (${place.lat},${place.lon}) must score to ${iso2}`);
       }
     });
   }
@@ -165,12 +164,15 @@ describe('gazetteer', () => {
     assert.equal(gazetteer.resolvePlace({ place: 'Jardan district, Shabwa', iso2: 'YE' }).name, 'Shabwah');
   });
 
-  it('scores every CII-tracked country centroid to its own country', () => {
-    // KW, BH, OM and JO are not CII-tracked; the bbox lookup has no rectangle
-    // for them, so their attribution is a known consumer gap (see the PR).
+  it('scores every CII-tracked country centroid to its own country, and no other centroid', () => {
     for (const iso2 of ['SA', 'YE', 'IR', 'IQ', 'AE', 'IL', 'QA', 'LB', 'SY']) {
       const [lat, lon] = gazetteer.COUNTRY_CENTROIDS[iso2];
       assert.equal(geoToCountry(lat, lon), iso2, `${iso2} centroid`);
+    }
+    // Not CII-tracked: their events must not land on a neighbour's row.
+    for (const iso2 of ['KW', 'BH', 'OM', 'JO']) {
+      const [lat, lon] = gazetteer.COUNTRY_CENTROIDS[iso2];
+      assert.equal(geoToCountry(lat, lon), null, `${iso2} centroid`);
     }
   });
 
@@ -273,7 +275,8 @@ describe('dedupe and window', () => {
 
   it('emits the conflict:iran-events:v1 event schema', () => {
     const [event] = strikes.deriveStrikeEvents([candidate('SaudiDCD', cls({ place: 'Riyadh', kind: 'intercept', severity: 'elevated' }))], NOW);
-    assert.deepEqual(Object.keys(event).sort(), ['category', 'id', 'latitude', 'locationName', 'longitude', 'severity', 'sourceUrl', 'timestamp', 'title'].sort());
+    assert.deepEqual(Object.keys(event).sort(), ['category', 'countryCode', 'id', 'latitude', 'locationName', 'longitude', 'severity', 'sourceUrl', 'timestamp', 'title'].sort());
+    assert.equal(event.countryCode, 'SA', 'the CII scores an event by the country it carries');
     assert.equal(event.category, 'defense');
     assert.equal(typeof event.timestamp, 'number');
     assert.equal(event.severity, 'elevated');
@@ -358,6 +361,7 @@ describe('GDELT backstop', () => {
     const csv = [gdeltRow({ id: '1', numSources: 3, url: 'https://a.example/1' }), gdeltRow({ id: '2', numSources: 1, url: 'https://b.example/2' })].join('\n');
     const [event] = strikes.deriveStrikeEvents(strikes.mapGdeltExportToStrikeCandidates(csv), NOW);
     assert.match(event.id, /^gdelt:SA:/);
+    assert.equal(event.countryCode, 'SA');
     assert.equal(event.category, 'gdelt');
     assert.equal(event.severity, 'moderate');
   });

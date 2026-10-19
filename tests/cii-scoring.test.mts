@@ -654,7 +654,7 @@ describe('CII signal wiring', () => {
       'bare Korean remains ambiguous and must not resolve to KR/KP');
   });
 
-  it('geoToCountry disambiguates known overlapping bboxes with deterministic border heuristics', () => {
+  it('geoToCountry places border-region cities by real borders (1:50m map)', () => {
     assert.equal(geoToCountry(33.5138, 36.2765), 'SY', 'Damascus must resolve to Syria, not Lebanon');
     assert.equal(geoToCountry(29.7604, -95.3698), 'US', 'southern US coordinates must resolve to US, not Mexico');
     assert.equal(geoToCountry(33.5904, 130.4017), 'JP', 'Fukuoka must resolve to Japan, not South Korea');
@@ -667,9 +667,11 @@ describe('CII signal wiring', () => {
 
     assert.equal(geoToCountry(32.7157, -117.1611), 'US', 'San Diego remains US');
     assert.equal(geoToCountry(32.5149, -117.0382), 'MX', 'Tijuana remains Mexico');
-    assert.equal(geoToCountry(31.7619, -106.4850), 'US', 'El Paso remains US');
+    // The 1:50m Rio Grande runs ~1-2 km north of the river through downtown El Paso
+    // and Brownsville, so these probes sit a few km inland.
+    assert.equal(geoToCountry(31.8600, -106.4400), 'US', 'northeast El Paso remains US');
     assert.equal(geoToCountry(31.6904, -106.4245), 'MX', 'Ciudad Juarez remains Mexico');
-    assert.equal(geoToCountry(25.9017, -97.4975), 'US', 'Brownsville remains US');
+    assert.equal(geoToCountry(25.9500, -97.5000), 'US', 'north Brownsville remains US');
     assert.equal(geoToCountry(27.4763, -99.5164), 'MX', 'Nuevo Laredo must resolve to Mexico, not Texas');
     assert.equal(geoToCountry(28.6916, -100.5409), 'MX', 'Piedras Negras must resolve to Mexico, not Texas');
     assert.equal(geoToCountry(29.3232, -100.9522), 'MX', 'Ciudad Acuna must resolve to Mexico, not Texas');
@@ -702,12 +704,13 @@ describe('CII signal wiring', () => {
     assert.equal(geoToCountry(52.9721, 122.5386), 'CN', 'Mohe must resolve to China, not Russia');
     assert.equal(geoToCountry(45.8038, 126.5350), 'CN', 'Harbin remains China');
     assert.equal(geoToCountry(46.9591, 142.7380), 'RU', 'Yuzhno-Sakhalinsk must resolve to Russia, not Japan');
-    assert.equal(geoToCountry(45.4500, 142.0500), 'RU', 'southern Sakhalin inside the JP bbox must resolve to Russia');
+    assert.equal(geoToCountry(46.6300, 142.7800), 'RU', 'Korsakov, southern Sakhalin, must resolve to Russia');
     assert.equal(geoToCountry(44.3500, 142.4600), 'JP', 'north Hokkaido must resolve to Japan, not Russia');
     assert.equal(geoToCountry(45.4150, 141.6730), 'JP', 'Wakkanai remains Japan');
     assert.equal(geoToCountry(43.0618, 141.3545), 'JP', 'Sapporo remains Japan');
-    assert.equal(geoToCountry(31.8560, 35.4590), 'IL', 'Jordan fail-closed gap must not mask tighter IL bbox attribution');
-    assert.equal(geoToCountry(32.4500, 36.1000), 'SY', 'Jordan fail-closed gap must not mask Syria bbox attribution');
+    assert.equal(geoToCountry(31.8560, 35.4590), 'IL', 'Jericho (West Bank) counts toward the Israel row');
+    assert.equal(geoToCountry(32.6200, 36.1000), 'SY', 'Daraa remains Syria next to the Jordan border');
+    assert.equal(geoToCountry(32.4500, 36.1000), null, 'northern Jordan is not a Tier-1 CII country');
     assert.equal(geoToCountry(31.9539, 35.9106), null, 'Amman must fail closed because Jordan is not a Tier-1 CII country');
   });
 
@@ -827,6 +830,28 @@ describe('CII signal wiring', () => {
     assert.ok(withAux, 'computeCIIScores handles the aux sources without throwing');
     assert.ok(withAux!.combinedScore > base!.combinedScore,
       'earthquake + sanctions feed earthquakeBoost + sanctionsBoost in the blend');
+  });
+
+  it('an offshore earthquake scores to the country USGS names in its place', () => {
+    // 150 km off Honshu: beyond the 12-nautical-mile coastal waters, so no
+    // border reaches it, but USGS names the country after the last comma.
+    const nowMs = Date.UTC(2026, 9, 19);
+    const base = scoreFor(computeCIIScores([], emptyAux(), { nowMs }), 'JP')!;
+    const offshore = emptyAux();
+    offshore.earthquakes = [{
+      magnitude: 7.1, occurredAt: nowMs - 3_600_000, place: '151 km E of Namie, Japan',
+      location: { latitude: 37.5, longitude: 142.9 },
+    }];
+    assert.ok(scoreFor(computeCIIScores([], offshore, { nowMs }), 'JP')!.combinedScore > base.combinedScore);
+    // A region with no country, and a country named only mid-string, score nowhere.
+    const remote = emptyAux();
+    remote.earthquakes = [
+      { magnitude: 7.1, occurredAt: nowMs - 3_600_000, place: 'South Sandwich Islands region', location: { latitude: -58, longitude: -26 } },
+      { magnitude: 7.1, occurredAt: nowMs - 3_600_000, place: 'off the coast of Japan trench, Pacific Ocean', location: { latitude: 30, longitude: 160 } },
+    ];
+    const remoteScores = computeCIIScores([], remote, { nowMs });
+    const baseScores = computeCIIScores([], emptyAux(), { nowMs });
+    for (const s of remoteScores) assert.equal(s.combinedScore, scoreFor(baseScores, s.region)!.combinedScore, s.region);
   });
 
   it('earthquake lookback honors injected CII scorer clock', () => {
@@ -1180,6 +1205,40 @@ describe('CII scoring', () => {
     assert.ok(scoreFor(scored, 'SA')!.combinedScore > scoreFor(baseline, 'SA')!.combinedScore,
       `SA ${scoreFor(scored, 'SA')!.combinedScore} must exceed ${scoreFor(baseline, 'SA')!.combinedScore}`);
     assert.equal(scoreFor(scored, 'IR')!.combinedScore, scoreFor(baseline, 'IR')!.combinedScore, 'the strike must not land on Iran');
+  });
+
+  it('a strike event scores to the country it carries, even at sea', () => {
+    const require = createRequire(import.meta.url);
+    const strikes = require('../scripts/lib/middle-east-strikes.cjs');
+    const now = Date.now();
+    const post = { id: 'saudidcd:7002', channel: 'saudidcd', url: 'https://t.me/SaudiDCD/7002', ts: new Date(now - 600_000).toISOString(), text: 'Tanker struck in the Strait of Hormuz' };
+    const candidate = strikes.buildTelegramCandidate(post, { isStrike: true, kind: 'strike', place: 'Strait of Hormuz', countryIso2: 'IR', severity: 'high' }, now);
+    const [event] = strikes.deriveStrikeEvents([candidate], now);
+    assert.equal(event.countryCode, 'IR');
+    const withStrike = emptyAux();
+    withStrike.iranEvents = [event];
+    const baseline = computeCIIScores([], emptyAux());
+    const scored = computeCIIScores([], withStrike);
+    assert.ok(scoreFor(scored, 'IR')!.components!.geoConvergence > scoreFor(baseline, 'IR')!.components!.geoConvergence,
+      'open water in the strait is in no country polygon; the event\'s countryCode must carry it to Iran');
+  });
+
+  it('a strike event\'s country wins over its coordinates, and a non-Tier-1 country scores nowhere', () => {
+    const baseline = computeCIIScores([], emptyAux());
+    const conflictOf = (scores: ReturnType<typeof computeCIIScores>, code: string) => scoreFor(scores, code)!.components!.geoConvergence;
+    // Gaza's coordinates and its PS code both count toward the Israel row.
+    const gaza = emptyAux();
+    gaza.iranEvents = [{ latitude: 31.5, longitude: 34.47, countryCode: 'PS', severity: 'high', title: 'Strike in Gaza City' }];
+    assert.ok(conflictOf(computeCIIScores([], gaza), 'IL') > conflictOf(baseline, 'IL'));
+    // Kuwait is not Tier-1: neither Iraq nor Iran (the old bounding-box answers) may absorb it.
+    const kuwait = emptyAux();
+    kuwait.iranEvents = [{ latitude: 29.3759, longitude: 47.9774, countryCode: 'KW', severity: 'high', title: 'Drone strike near Kuwait City, Iraq border' }];
+    const kuwaitScores = computeCIIScores([], kuwait);
+    for (const code of ['IQ', 'IR', 'SA']) assert.equal(conflictOf(kuwaitScores, code), conflictOf(baseline, code), code);
+    // An explicit Tier-1 code beats the coordinates (a centroid fallback, a geocoding slip).
+    const coded = emptyAux();
+    coded.iranEvents = [{ latitude: 26.2235, longitude: 50.5876, countryCode: 'SA', severity: 'high' }];
+    assert.ok(conflictOf(computeCIIScores([], coded), 'SA') > conflictOf(baseline, 'SA'));
   });
 
   it('IL scores higher than MX with active conflict signals', () => {
