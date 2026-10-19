@@ -3,6 +3,13 @@
   "schema_version": 1,
   "exceptions": [
     {
+      "path": "api/china-futures-news.js",
+      "category": "non-json",
+      "reason": "Projects the fixed SHFE notice seed into RSS/XML for the existing browser and server feed readers. Success responses use application/rss+xml; this RSS transport cannot use a JSON proto envelope and never triggers upstream collection.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/miit-news.js",
       "category": "non-json",
       "reason": "Adapts the fixed official MIIT dated news listing to RSS/XML for the existing browser and server feed readers. Success responses use application/rss+xml; the RSS transport cannot use a JSON proto envelope.",
