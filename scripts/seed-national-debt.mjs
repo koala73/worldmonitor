@@ -70,16 +70,14 @@ export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCount
     const gdpByYear = gdpByCountry[iso3];
     if (!gdpByYear) continue;
 
-    const latestDebtYear = latestYearWithValue(debtByYear, currentYear);
+    // Only years with GDP too, so debt % is never multiplied by another year's GDP.
+    const debtWithGdp = Object.fromEntries(
+      Object.entries(debtByYear || {}).filter(([year]) => Number(gdpByYear[year]) > 0),
+    );
+    const latestDebtYear = latestYearWithValue(debtWithGdp, currentYear);
     if (latestDebtYear === null) continue;
     const weoLabel = `IMF WEO ${latestDebtYear}`;
-
-    const gdpYear = Number(gdpByYear[String(latestDebtYear)]) > 0
-      ? latestDebtYear
-      : latestYearWithValue(gdpByYear, currentYear);
-    if (gdpYear === null) continue;
-    const gdpLatest = Number(gdpByYear[String(gdpYear)]);
-    if (!Number.isFinite(gdpLatest) || gdpLatest <= 0) continue;
+    const gdpLatest = Number(gdpByYear[String(latestDebtYear)]);
 
     const effectiveDebtPct = Number(debtByYear[String(latestDebtYear)]);
     const prevYear = String(latestDebtYear - 1);
@@ -88,10 +86,15 @@ export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCount
 
     const gdpUsd = gdpLatest;
     let debtUsd = (effectiveDebtPct / 100) * gdpUsd;
+    // Jan 1 of the data year, so the live ticker never starts in the future.
+    let baselineTs = Date.UTC(latestDebtYear, 0, 1);
 
-    // Override USA with live Treasury data when available
+    // Override USA with live Treasury data when available. That total is
+    // already current as of its record date, so the ticker accrues from there.
     if (iso3 === 'USA' && treasuryOverride && treasuryOverride.debtUsd > 0) {
       debtUsd = treasuryOverride.debtUsd;
+      const recordTs = Date.parse(treasuryOverride.date);
+      if (Number.isFinite(recordTs) && recordTs <= now.getTime()) baselineTs = recordTs;
     }
 
     let annualGrowth = 0;
@@ -119,8 +122,7 @@ export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCount
       annualGrowth,
       perSecondRate,
       perDayRate,
-      // Jan 1 of the data year, so the live ticker never starts in the future.
-      baselineTs: Date.UTC(latestDebtYear, 0, 1),
+      baselineTs,
       source: iso3 === 'USA' && treasuryOverride ? `${weoLabel} + US Treasury FiscalData` : weoLabel,
     });
   }

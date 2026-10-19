@@ -63,7 +63,7 @@ describe('computeEntries formula', () => {
 describe('source label derives year from SDMX response', () => {
   it('uses max year present when 2025 is returned', () => {
     const debtPct = { GBR: { '2024': '100', '2025': '102' } };
-    const gdp = { GBR: { '2024': 3_100_000_000_000 } };
+    const gdp = { GBR: { '2024': 3_100_000_000_000, '2025': 3_200_000_000_000 } };
 
     const entries = computeEntries(debtPct, gdp, {}, null);
     assert.equal(entries[0].source, 'IMF WEO 2025');
@@ -79,14 +79,14 @@ describe('source label derives year from SDMX response', () => {
 
   it('combines WEO year with Treasury label for USA override', () => {
     const debtPct = { USA: { '2024': '120', '2025': '124' } };
-    const gdp = { USA: { '2024': 28_000_000_000_000 } };
+    const gdp = { USA: { '2024': 28_000_000_000_000, '2025': 29_000_000_000_000 } };
     const entries = computeEntries(debtPct, gdp, {}, { debtUsd: 36e12, date: '2025-01-01' });
     assert.equal(entries[0].source, 'IMF WEO 2025 + US Treasury FiscalData');
   });
 
   it('tracks future WEO vintages (2026) when SDMX returns them', () => {
     const debtPct = { DEU: { '2024': '66', '2026': '68' } };
-    const gdp = { DEU: { '2024': 4_500_000_000_000 } };
+    const gdp = { DEU: { '2024': 4_500_000_000_000, '2026': 4_800_000_000_000 } };
     const entries = computeEntries(debtPct, gdp, {}, null);
     assert.equal(entries.length, 1);
     assert.equal(entries[0].source, 'IMF WEO 2026');
@@ -256,6 +256,31 @@ describe('current-year selection (IMF DataMapper parity)', () => {
     for (const entry of computeEntries(debtPct, gdp, deficit, null, NOW)) {
       assert.ok(entry.baselineTs <= NOW.getTime(), `${entry.iso3} baseline ${entry.baselineTs}`);
     }
+  });
+
+  it('steps back to the latest year that has both debt % and GDP', () => {
+    const entries = computeEntries(
+      { GBR: { '2025': 100, '2026': 102 } },
+      { GBR: { '2025': 3e12 } },
+      { GBR: { '2025': -4, '2026': -5 } },
+      null, NOW,
+    );
+    assert.equal(entries[0].debtToGdp, 100);
+    assert.equal(entries[0].debtUsd, 3e12);
+    assert.equal(entries[0].source, 'IMF WEO 2025');
+    assert.ok(Math.abs(entries[0].perDayRate - 0.04 * 3e12 / 365.25) < 1e-6);
+  });
+
+  it('starts the US ticker at the Treasury record date when Treasury overrides debt', () => {
+    const entries = computeEntries(
+      { USA: { '2026': 125 } },
+      { USA: { '2026': 31e12 } },
+      { USA: { '2026': -6 } },
+      { debtUsd: 38e12, date: '2026-10-16' },
+      NOW,
+    );
+    assert.equal(entries[0].debtUsd, 38e12);
+    assert.equal(entries[0].baselineTs, Date.UTC(2026, 9, 16));
   });
 
   it('drops countries that only have forecast years', () => {
