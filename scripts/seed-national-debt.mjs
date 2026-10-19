@@ -86,8 +86,11 @@ export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCount
 
     const gdpUsd = gdpLatest;
     let debtUsd = (effectiveDebtPct / 100) * gdpUsd;
-    // Jan 1 of the data year, so the live ticker never starts in the future.
-    let baselineTs = Date.UTC(latestDebtYear, 0, 1);
+    // WEO gross debt is the stock at the END of the data year and already
+    // includes that year's deficit, so anchor it at year end. Before then the
+    // ticker interpolates up to it (negative elapsed time) instead of adding
+    // the year's deficit a second time.
+    let baselineTs = Date.UTC(latestDebtYear + 1, 0, 1);
 
     // Override USA with live Treasury data when available. That total is
     // already current as of its record date, so the ticker accrues from there.

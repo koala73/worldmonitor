@@ -116,7 +116,7 @@ export const nationalDebtPage = Object.freeze({
     });
   },
   explainer: `      <h2>How the clock is estimated</h2>
-      <p>World Monitor starts from each country's government debt-to-GDP ratio and GDP in the IMF World Economic Outlook, anchored at January 1 of the data year. A country running a deficit accrues debt at its projected annual deficit spread evenly over the year; a country in surplus does not tick upward. When US Treasury FiscalData is available, it replaces the IMF figure for the United States. The result is an estimate, not an official count: official debt figures move in steps when governments borrow and repay.</p>
+      <p>World Monitor starts from each country's government debt-to-GDP ratio and GDP in the IMF World Economic Outlook, which measures debt at the end of the data year. A country running a deficit accrues debt at its projected annual deficit spread evenly over the year, reaching the IMF figure on December 31; a country in surplus does not tick upward. When US Treasury FiscalData is available, it replaces the IMF figure for the United States. The result is an estimate, not an official count: official debt figures move in steps when governments borrow and repay.</p>
       <h2>What counts as government debt</h2>
       <p>The IMF measure is general government gross debt: central, state and local government and social security funds. It is broader than the US "debt subject to limit" and is not netted against government-held assets.</p>`,
 });

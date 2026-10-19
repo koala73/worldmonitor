@@ -90,7 +90,7 @@ CRI covers the broader 196-country universe.
 `GET /api/intelligence/v1/get-risk-scores` (proto
 `worldmonitor.intelligence.v1.GetRiskScoresResponse`). The on-the-wire
 `methodology_version` field on every `CiiScore` records which revision of this
-document was active when the score was computed. The current version is **v10** —
+document was active when the score was computed. The current version is **v11** —
 see [Version history](#version-history).
 </Note>
 
@@ -103,8 +103,8 @@ exposed on the wire as `CiiComponents`:
 
 | Wire field | Editorial meaning |
 |---|---|
-| `cii_contribution` (**U**nrest) | Civil disorder pressure: ACLED protests + riots, fatalities from those events, confirmed internet/power outages, and a high-severity unrest boost. While ACLED returns no events, a GDELT protest-escalation term (below) stands in for the ACLED event terms. Reflects pre-violent friction. |
-| `geo_convergence` (**C**onflict) | Kinetic activity: ACLED battles, explosions/remote violence, and violence-against-civilians events, plus Iran-region strike intensity and Israel OREF alert pressure. Event activity is log-scaled before the component cap so moderate and extreme event volumes remain ordered; square-root fatality scaling prevents single-event saturation. While ACLED returns no events, a GDELT conflict-escalation term (below) stands in for the ACLED event terms. |
+| `cii_contribution` (**U**nrest) | Civil disorder pressure: ACLED protests + riots, fatalities from those events, confirmed internet/power outages, and a high-severity unrest boost. While ACLED returns no events, a GDELT protest term (escalation or sustained level, below) stands in for the ACLED event terms. Reflects pre-violent friction. |
+| `geo_convergence` (**C**onflict) | Kinetic activity: ACLED battles, explosions/remote violence, and violence-against-civilians events, plus Iran-region strike intensity and Israel OREF alert pressure. Event activity is log-scaled before the component cap so moderate and extreme event volumes remain ordered; square-root fatality scaling prevents single-event saturation. While ACLED returns no events, a GDELT conflict term (escalation or sustained level, below) stands in for the ACLED event terms. |
 | `military_activity` (**S**ecurity) | Hard-security tempo near the country: military flight activity, military vessel activity, aviation disruptions (closures/delays), and GPS-jamming hex density. Foreign military presence is weighted ×2. |
 | `news_activity` (**I**nformation) | Information-environment pressure: weighted count of classified critical/high/medium news headlines geo-attributed to the country. |
 
@@ -151,23 +151,54 @@ Component details that are easy to miss:
   country; Unrest counts CAMEO 14 protest events. Each signal compares the last
   24 hours (`current`) with the median day of the 28 complete days before
   yesterday (`baselineMedian`):
-  `r = (current + 20) / (baselineMedian + 20)`, term
-  `= 0` when `r <= 1.25`, else `min(50, log(r / 1.25) / log(3 / 1.25) * 50)`.
+  `r = (current + 20) / (baselineMedian + 20)`, escalation
+  `= 0` when `r <= 1.25`, else `min(70, log(r / 1.25) / log(3 / 1.25) * 70)`.
   Scoring against each country's own norm is deliberate: GDELT volume is mostly
   media volume, and the US files about 800 conflict-coded articles on an
   ordinary weekday against Ukraine's 55, so a shared absolute scale would rank
-  the US above a war. The `+20` smoothing damps small countries, the `1.25`
-  deadband absorbs the weekday news cycle, and the cap of 50 keeps a news-coded
-  signal with no fatality field below the verified-event range. `eventMultiplier`
-  is not applied. A war or protest movement at its usual tempo scores 0 here;
-  UCDP floors carry chronic wars. The terms are 0 until 21 complete baseline
-  days exist (the materializer backfills them from the GDELT archive, two days
-  per 15-minute tick), when the snapshot is more than 6 hours old, and when the
-  current 24-hour window is missing cohorts (after a materializer outage, until
-  the materializer rebuilds the gap from the archive): a partial window is
-  unknown, not calm. Once the
+  the US above a war. The `+20` smoothing damps small countries and the `1.25`
+  deadband absorbs the weekday news cycle. `eventMultiplier` is not applied.
+  Escalation alone reads a crisis that lasts weeks as calm, because the crisis
+  raises its own median, so each term also has a **sustained level**: the share
+  of the country's distinct articles over the seven complete days through
+  yesterday (`week`) that is conflict-coded (Conflict) or protest-coded
+  (Unrest). As a share, media volume cancels out. Conflict level
+  `= min(70, max(0, (share - 0.14) / (0.40 - 0.14)) * 70)`; Unrest level
+  `= min(70, max(0, (share - 0.02) / (0.08 - 0.02)) * 70)`; both are 0 when the
+  week holds fewer than 200 articles. The floors sit at the share every country
+  carries (GDELT codes US crime and policing as conflict, 11-13.5% every week of
+  the Sep-Oct 2026 replay; protest coding runs about 1% almost everywhere); the
+  saturation points are a country at war (Yemen, 28-43%) and a nationwide
+  protest movement (France, 7.9%). Each term is
+  `max(escalation, level)`, never their sum. The cap of 70 matches the ACLED
+  activity term the GDELT terms stand in for; a capped term moves
+  `combinedScore` by at most 12.6 (Conflict) or 10.5 (Unrest). Both readings
+  are 0 when the snapshot is more than 6 hours old. Escalation is also 0 until
+  21 complete baseline days exist (the materializer backfills them from the
+  GDELT archive, two days per 15-minute tick) and when the current 24-hour
+  window is missing cohorts (after a materializer outage, until the
+  materializer rebuilds the gap from the archive): a partial window is unknown,
+  not calm. The level reads complete days only, so it needs neither: it is 0
+  only until five of the seven days through yesterday are complete, and it
+  scores from the first days after deploy while the baseline backfills. Once the
   ACLED path returns events, both terms are 0, so a credentialed deployment
   never counts the same activity twice.
+- **Coordinate attribution**: fires, GPS-jamming hexes, earthquakes, climate
+  anomalies, strike events, and military flights and vessels are placed in a
+  Tier-1 country by point-in-polygon against real borders
+  (`scripts/shared/cii-country-borders.data.mjs`, generated from the Natural Earth
+  1:50m map the dashboard ships). A point on any other country's land counts
+  for no Tier-1 country; a point at sea counts for the nearest coast within 12
+  nautical miles, and for no country farther out. Crimea counts as Ukraine and
+  Gaza and the West Bank toward the Israel row; France is metropolitan France
+  and Corsica. Strike events that carry a `countryCode` score to that country
+  (so a tanker hit in open water still counts), and an offshore earthquake
+  beyond coastal waters takes the country USGS names after the last comma of
+  its place ("151 km E of Namie, Japan") when that text is exactly a country
+  name, never an ocean or region; a quake on non-Tier-1 land counts for no
+  Tier-1 country, whatever town USGS names. Accuracy is
+  the 1:50m map's: within about 2 km of a land border, twin cities such as El
+  Paso and Ciudad Juárez can land on the wrong side.
 - **Conflict OREF boost**: for Israel only, active OREF rocket-alert pressure
   adds `25 + min(25, activeAlertCount * 5)` inside the Conflict component, so
   the component-level OREF contribution is capped at `+50`. This is separate
@@ -440,6 +471,30 @@ refactors that preserve server/API scores do not bump the wire version. Tests in
 in `CURATED_COUNTRIES`.
 
 ## Version history
+
+> **v11 (2026-10-19).** Two changes, both worldwide. First, a long-running crisis
+> now scores, not only a spike. v10's GDELT terms compared each country with its
+> own 28-day median, so a month of strikes on Saudi Arabia raised its own norm
+> and left its Conflict term at 0. Each GDELT term is now the larger of that
+> escalation and a sustained level: the conflict- or protest-coded share of the
+> country's articles over the seven complete days through yesterday, 0 at the
+> noise floor every country carries (14% conflict, 2% protest) and saturating at
+> a country at war (40%) or a nationwide protest movement (8%), with at least
+> 200 articles required. The shared cap rises from 50 to 70, the ACLED activity
+> cap these terms stand in for. Replayed to Oct 19, 2026: Yemen Conflict 0 -> 68,
+> Saudi Arabia 0 -> 41, Israel 0 -> 25, while the US, GB and China stay at 0 on
+> both terms and score the same under either cap. Second, coordinates are placed
+> by real borders instead of overlapping bounding boxes, which had put Jizan in
+> Yemen, Bahrain and Al Udeid in Saudi Arabia, Kuwait City in Iraq, western
+> Jordan in Israel, Nogales (Arizona) in Mexico, Baltic and Finnish GPS jamming
+> in Russia and fires in western Iran in Iraq, and had dropped Hawaii and Alaska
+> (see Component details). Strike events carry their country. The military
+> seeder uses the same border module as the scorer. `combinedScore` values move
+> in both directions: up where a crisis is sustained, down where a neighbour's
+> fires, flights or jamming had been attributed to the country. The risk-score
+> cache key family moved to `risk:scores:sebuf:v11` and emitted
+> `methodology_version` is now `v11`, so clients pinned on `methodology_version`
+> should re-baseline.
 
 > **v10 (2026-10-19).** Conflict and Unrest get a live input again. WorldMonitor
 > has no ACLED access, so the ACLED event terms in both components were 0 for

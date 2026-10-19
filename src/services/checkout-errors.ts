@@ -201,12 +201,12 @@ export function classifyThrownCheckoutError(caught: unknown): CheckoutError {
 }
 
 /**
- * Classify a synthetic "no Clerk session" or "no token" condition.
+ * Classify a locally detected checkout failure.
  * These don't correspond to an HTTP response, but should still flow
  * through the taxonomy so the toast copy stays consistent.
  */
 export function classifySyntheticCheckoutError(
-  kind: 'unauthorized' | 'session_expired',
+  kind: 'unauthorized' | 'session_expired' | 'invalid_product',
 ): CheckoutError {
   return {
     code: kind,

@@ -12,6 +12,7 @@ import iso3ToIso2Json from '../../../../shared/iso3-to-iso2.json';
 import { getCachedJson, readCachedJson, setCachedJson, cachedFetchJsonWithMeta, runRedisPipeline } from '../../../_shared/redis';
 import { CLIMATE_ANOMALIES_KEY, CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
 import { CII_DAY_MS, parseCiiDailyPoints } from '../../../../shared/cii-daily-history';
+import { ciiCountryAt, ciiCountryForIso2, ciiIsLand } from '../../../../scripts/shared/cii-country-borders.mjs';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
 import {
@@ -23,6 +24,11 @@ import {
   CII_GDELT_ESCALATION_MAX_AGE_MS,
   CII_GDELT_ESCALATION_SATURATION,
   CII_GDELT_ESCALATION_SMOOTHING,
+  CII_GDELT_LEVEL_CONFLICT_FLOOR,
+  CII_GDELT_LEVEL_CONFLICT_SATURATION,
+  CII_GDELT_LEVEL_MIN_ARTICLES,
+  CII_GDELT_LEVEL_PROTEST_FLOOR,
+  CII_GDELT_LEVEL_PROTEST_SATURATION,
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_SCALE_FACTOR,
   STRATEGIC_RISK_SCALE_FLOOR,
@@ -92,42 +98,6 @@ const COUNTRY_KEYWORDS: Record<string, string[]> = {
   QA: ['qatar', 'qatari', 'doha', 'al jazeera'],
 };
 
-// Exported so the seed-military-cii.mjs drift-guard test can assert its re-embedded copy
-// stays in sync (scripts/ cannot import from server/ at runtime, but tests can).
-export const COUNTRY_BBOX: Record<string, { minLat: number; maxLat: number; minLon: number; maxLon: number }> = {
-  US: { minLat: 24.5, maxLat: 49.4, minLon: -125.0, maxLon: -66.9 },
-  RU: { minLat: 41.2, maxLat: 81.9, minLon: 19.6, maxLon: 180.0 },
-  CN: { minLat: 18.2, maxLat: 53.6, minLon: 73.5, maxLon: 135.1 },
-  UA: { minLat: 44.4, maxLat: 52.4, minLon: 22.1, maxLon: 40.2 },
-  IR: { minLat: 25.1, maxLat: 39.8, minLon: 44.0, maxLon: 63.3 },
-  IL: { minLat: 29.5, maxLat: 33.3, minLon: 34.3, maxLon: 35.9 },
-  TW: { minLat: 21.9, maxLat: 25.3, minLon: 120.0, maxLon: 122.0 },
-  KP: { minLat: 37.7, maxLat: 43.0, minLon: 124.3, maxLon: 130.7 },
-  SA: { minLat: 16.4, maxLat: 32.2, minLon: 34.6, maxLon: 55.7 },
-  TR: { minLat: 36.0, maxLat: 42.1, minLon: 26.0, maxLon: 44.8 },
-  PL: { minLat: 49.0, maxLat: 54.8, minLon: 14.1, maxLon: 24.2 },
-  DE: { minLat: 47.3, maxLat: 55.1, minLon: 5.9, maxLon: 15.0 },
-  FR: { minLat: 41.4, maxLat: 51.1, minLon: -5.1, maxLon: 9.6 },
-  GB: { minLat: 49.9, maxLat: 60.9, minLon: -8.2, maxLon: 1.8 },
-  IN: { minLat: 6.7, maxLat: 35.5, minLon: 68.1, maxLon: 97.4 },
-  PK: { minLat: 23.7, maxLat: 37.1, minLon: 60.9, maxLon: 77.8 },
-  SY: { minLat: 32.3, maxLat: 37.3, minLon: 35.7, maxLon: 42.4 },
-  YE: { minLat: 12.1, maxLat: 19.0, minLon: 42.5, maxLon: 54.5 },
-  MM: { minLat: 9.8, maxLat: 28.5, minLon: 92.2, maxLon: 101.2 },
-  VE: { minLat: 0.6, maxLat: 12.2, minLon: -73.4, maxLon: -59.8 },
-  CU: { minLat: 19.8, maxLat: 23.3, minLon: -85.0, maxLon: -74.1 },
-  MX: { minLat: 14.5, maxLat: 32.7, minLon: -118.4, maxLon: -86.7 },
-  BR: { minLat: -33.7, maxLat: 5.3, minLon: -73.9, maxLon: -34.8 },
-  AE: { minLat: 22.6, maxLat: 26.1, minLon: 51.6, maxLon: 56.4 },
-  KR: { minLat: 33.1, maxLat: 38.6, minLon: 125.1, maxLon: 131.9 },
-  IQ: { minLat: 29.1, maxLat: 37.4, minLon: 38.8, maxLon: 48.6 },
-  AF: { minLat: 29.4, maxLat: 38.5, minLon: 60.5, maxLon: 75.0 },
-  LB: { minLat: 33.1, maxLat: 34.7, minLon: 35.1, maxLon: 36.6 },
-  EG: { minLat: 22.0, maxLat: 31.7, minLon: 24.7, maxLon: 36.9 },
-  JP: { minLat: 24.4, maxLat: 45.5, minLon: 122.9, maxLon: 153.0 },
-  QA: { minLat: 24.5, maxLat: 26.2, minLon: 50.7, maxLon: 51.7 },
-};
-
 const ADVISORY_LEVELS_FALLBACK: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> = {
   // These floors are score-affecting methodology inputs; new country additions
   // must go through a formula-version/docs changelog batch.
@@ -188,131 +158,6 @@ export function normalizeCountryName(text: string): string | null {
   return null;
 }
 
-const BBOX_BY_AREA = Object.entries(COUNTRY_BBOX)
-  .map(([code, b]) => ({ code, ...b, area: (b.maxLat - b.minLat) * (b.maxLon - b.minLon) }))
-  .sort((a, b) => a.area - b.area);
-
-type CountryBBoxCandidate = (typeof BBOX_BY_AREA)[number];
-
-function isInsideBBox(b: CountryBBoxCandidate, lat: number, lon: number): boolean {
-  return lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon;
-}
-
-function isNorthOfApproxUsMxBorder(lat: number, lon: number): boolean {
-  // Coarse segmented US/MX border approximation inside the shared bbox overlap.
-  if (lon <= -114.70) return lat >= 32.53; // California / Baja California
-  if (lon <= -111.05) return lat >= 31.33; // Arizona / Sonora
-  if (lon <= -106.45) return lat >= 31.73; // New Mexico / Chihuahua
-
-  const rioGrandeChord: Array<[number, number]> = [
-    [-106.45, 31.73], // El Paso / Ciudad Juarez
-    [-104.40, 29.60], // Big Bend / Ojinaga
-    [-100.95, 29.37], // Del Rio / Ciudad Acuna
-    [-100.50, 28.72], // Eagle Pass / Piedras Negras
-    [-99.50, 27.50],  // Laredo / Nuevo Laredo
-    [-98.20, 26.22],  // McAllen / Reynosa
-    [-97.50, 25.89],  // Brownsville / Matamoros
-  ];
-  for (let i = 1; i < rioGrandeChord.length; i++) {
-    const [prevLon, prevLat] = rioGrandeChord[i - 1]!;
-    const [nextLon, nextLat] = rioGrandeChord[i]!;
-    if (lon <= nextLon) {
-      const progress = (lon - prevLon) / (nextLon - prevLon);
-      const borderLat = prevLat + progress * (nextLat - prevLat);
-      return lat >= borderLat;
-    }
-  }
-  const borderLat = 25.89;
-  return lat >= borderLat;
-}
-
-function isWestOfApproxPlUaBorder(lat: number, lon: number): boolean {
-  const border: Array<[number, number]> = [
-    [22.70, 49.05], // Bieszczady / Zakarpattia
-    [23.05, 50.05], // Przemysl / Lviv corridor
-    [23.65, 51.50], // Bug River north of Lublin
-  ];
-  if (lat <= border[0]![1]) return lon <= border[0]![0];
-  for (let i = 1; i < border.length; i++) {
-    const [prevLon, prevLat] = border[i - 1]!;
-    const [nextLon, nextLat] = border[i]!;
-    if (lat <= nextLat) {
-      const progress = (lat - prevLat) / (nextLat - prevLat);
-      const borderLon = prevLon + progress * (nextLon - prevLon);
-      return lon <= borderLon;
-    }
-  }
-  return lon <= border[border.length - 1]![0];
-}
-
-function isKnownNonTier1BBoxGap(lat: number, lon: number, candidates: CountryBBoxCandidate[]): boolean {
-  // Jordan is not a Tier-1 CII country. Its rectangle overlaps Saudi Arabia's
-  // broad bbox; fail closed only when SA is the sole tracked-country candidate.
-  // If a tighter Tier-1 bbox also matches, keep the normal attribution path.
-  return candidates.length === 1
-    && candidates[0]!.code === 'SA'
-    && lat >= 30.8
-    && lat <= 32.6
-    && lon >= 35.4
-    && lon <= 37.4;
-}
-
-function resolveKnownBBoxOverlap(lat: number, lon: number, candidates: CountryBBoxCandidate[]): string | null {
-  const codes = new Set(candidates.map((candidate) => candidate.code));
-
-  if (codes.has('KP') && codes.has('CN') && codes.has('RU') && lat < 42.5) return 'KP';
-  if (codes.has('PL') && codes.has('UA')) return isWestOfApproxPlUaBorder(lat, lon) ? 'PL' : 'UA';
-  if (codes.has('CN') && codes.has('IN') && lat >= 28.5 && lat <= 32.0 && lon >= 89.0 && lon <= 93.5) return 'CN';
-  if (codes.has('TR') && codes.has('SY') && lat >= 36.6 && lat <= 37.6 && lon >= 36.0 && lon <= 38.8) return 'TR';
-  if (codes.has('IR') && codes.has('IQ') && lat >= 33.4 && lat <= 35.2 && lon >= 45.5 && lon <= 48.6) return 'IR';
-  if (codes.has('PK') && codes.has('AF') && lat >= 29.4 && lat <= 31.5 && lon >= 65.0 && lon <= 68.2) return 'PK';
-  if (codes.has('SA') && codes.has('EG') && lat >= 27.5 && lat <= 29.6 && lon >= 35.0 && lon <= 37.1) return 'SA';
-  if (codes.has('SA') && codes.has('IR') && lat >= 25.0 && lat <= 27.8 && lon >= 48.0 && lon <= 51.5) return 'SA';
-  if (codes.has('CN') && codes.has('MM') && lat >= 23.5 && lat <= 25.0 && lon >= 97.3 && lon <= 98.4) return 'CN';
-  if (codes.has('CN') && codes.has('RU') && lat >= 50.5 && lat <= 51.5 && lon >= 127.8 && lon <= 129.6) return 'RU';
-
-  if (codes.has('US') && codes.has('MX')) {
-    return isNorthOfApproxUsMxBorder(lat, lon) ? 'US' : 'MX';
-  }
-  if (codes.has('SY') && codes.has('LB')) {
-    if (lon >= 36.35 || (lat <= 33.75 && lon >= 36.05)) return 'SY';
-    return 'LB';
-  }
-  if (codes.has('RU') && codes.has('UA')) {
-    if ((lat >= 50.25 && lon >= 35.6) || (lon >= 38.7 && lat < 47.8)) return 'RU';
-    return 'UA';
-  }
-  if (codes.has('IN') && codes.has('PK')) {
-    if (lon >= 75.20 || (lon >= 74.75 && lat <= 32.10)) return 'IN';
-    return 'PK';
-  }
-  if (codes.has('CN') && codes.has('RU')) {
-    if (lon >= 132.0 && lat >= 42.40) return 'RU';
-    if (lon >= 131.65 && lat <= 44.10) return 'RU';
-    if (lon >= 126.80 && lon <= 128.20 && lat >= 50.27) return 'RU';
-    return 'CN';
-  }
-  if (codes.has('RU') && codes.has('JP')) {
-    return lat >= 45.25 && lon >= 142.00 ? 'RU' : 'JP';
-  }
-  if (codes.has('KP') && codes.has('KR')) {
-    const westernDmzLat = 37.75;
-    const easternDmzLat = 38.35;
-    const progress = Math.min(1, Math.max(0, (lon - 126.0) / 2.5));
-    const borderLat = westernDmzLat + progress * (easternDmzLat - westernDmzLat);
-    return lat >= borderLat ? 'KP' : 'KR';
-  }
-  if (codes.has('JP') && codes.has('KR')) {
-    if (lat <= 34.85 && lon >= 129.20) return 'JP';
-    return 'KR';
-  }
-  if (codes.has('SA') && codes.has('YE')) {
-    return lat >= 17.35 ? 'SA' : 'YE';
-  }
-
-  return null;
-}
-
 function climateSeverityScore(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   const normalized = String(value || '').toLowerCase();
@@ -338,17 +183,55 @@ export function climateCountriesForAnomaly(anomaly: any): string[] {
   return [...countries].filter((code) => code in TIER1_COUNTRIES);
 }
 
-// Exported so scripts/seed-military-cii.mjs's re-embedded copy can be cross-checked
-// for parity in tests/seed-military-cii-table-drift.test.mts. The seed cannot import
-// from server/ under Railway nixpacks packaging.
-export function geoToCountry(lat: number, lon: number): string | null {
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  const candidates = BBOX_BY_AREA.filter((b) => isInsideBBox(b, lat, lon));
-  if (candidates.length === 0) return null;
-  if (isKnownNonTier1BBoxGap(lat, lon, candidates)) return null;
-  // Preserve the previous smallest-area bbox tie-break for overlap pairs that
-  // do not yet have an explicit border heuristic.
-  return resolveKnownBBoxOverlap(lat, lon, candidates) ?? candidates[0]!.code;
+// Real borders (scripts/shared/cii-country-borders.mjs, generated from the
+// Natural Earth 1:50m map), shared with scripts/seed-military-cii.mjs so the
+// military seeder places flights and vessels exactly as the scorer does.
+// Points on non-Tier-1 land, or more than 12 nautical miles offshore, are null.
+export const geoToCountry: (lat: number, lon: number) => string | null = ciiCountryAt;
+
+// An earthquake scores where its epicentre is. Offshore beyond coastal waters,
+// where bounding boxes used to reach, it takes the country USGS names after the
+// last comma ("151 km E of Namie, Japan") when that text is exactly a country
+// name: never an ocean or region ("Southern Indian Ocean" is not India), and
+// never for an epicentre on non-Tier-1 land, which counts for no Tier-1 country
+// even when USGS describes it from a town across the border.
+function earthquakeCountry(eq: any): string | null {
+  const lat = safeNum(eq?.location?.latitude);
+  const lon = safeNum(eq?.location?.longitude);
+  const code = geoToCountry(lat, lon);
+  if (code || ciiIsLand(lat, lon)) return code;
+  const place = String(eq?.place || '');
+  const comma = place.lastIndexOf(',');
+  return comma < 0 ? null : countryNamedExactly(place.slice(comma + 1));
+}
+
+// Country names only, not news keywords: USGS writes US states after the comma
+// ("Washington") and COUNTRY_KEYWORDS carries cities and leaders.
+const COUNTRY_NAME_ALIASES: Record<string, string> = {
+  'united states of america': 'US', usa: 'US', 'russian federation': 'RU',
+  turkiye: 'TR', burma: 'MM', uae: 'AE', uk: 'GB', 'great britain': 'GB',
+  'republic of korea': 'KR', 'democratic people s republic of korea': 'KP',
+};
+const COUNTRY_NAME_TO_CODE: Map<string, string> = new Map([
+  ...Object.entries(TIER1_COUNTRIES).map(([code, name]) => [normalizeForCountryMatch(name), code] as [string, string]),
+  ...Object.entries(COUNTRY_NAME_ALIASES).map(([name, code]) => [normalizeForCountryMatch(name), code] as [string, string]),
+]);
+
+function countryNamedExactly(text: string): string | null {
+  return COUNTRY_NAME_TO_CODE.get(normalizeForCountryMatch(text)) ?? null;
+}
+
+// A strike event that carries its country (the Middle East strike feed sets
+// countryCode from its gazetteer) scores there, including at sea where no
+// polygon reaches; a non-Tier-1 country scores nowhere. Older events without
+// it fall back to their coordinates, then to the country named in the text.
+function strikeEventCountry(s: any): string | null {
+  if (typeof s?.countryCode === 'string' && /^[A-Za-z]{2}$/.test(s.countryCode.trim())) {
+    return ciiCountryForIso2(s.countryCode);
+  }
+  const lat = safeNum(s?.lat || s?.latitude);
+  const lon = safeNum(s?.lon || s?.longitude);
+  return geoToCountry(lat, lon) || normalizeCountryName(s?.title || s?.location || '');
 }
 
 function safeNum(v: unknown): number {
@@ -515,7 +398,7 @@ interface CountrySignals {
   fatalities: number;
   protestFatalities: number;
   conflictFatalities: number;
-  /** GDELT escalation over the country's own norm, already scored 0..CII_GDELT_ESCALATION_CAP. */
+  /** GDELT term, 0..CII_GDELT_ESCALATION_CAP: max(escalation over the country's own norm, sustained level). */
   gdeltConflictEscalation: number;
   gdeltUnrestEscalation: number;
   ucdpWar: boolean;
@@ -663,9 +546,17 @@ export interface GdeltEscalationSignal {
   baselineMedian: number | null;
 }
 
+/** Distinct articles of the seven complete days through yesterday, and how many were coded. */
+export interface GdeltCountryWeek {
+  articles: number;
+  conflict: number;
+  protest: number;
+}
+
 export interface GdeltCountryEventsRow {
   conflict: GdeltEscalationSignal | null;
   protest: GdeltEscalationSignal | null;
+  week: GdeltCountryWeek | null;
 }
 
 export interface GdeltCountryEvents {
@@ -684,26 +575,42 @@ function parseGdeltEscalationSignal(raw: unknown): GdeltEscalationSignal | null 
   };
 }
 
+function parseGdeltCountryWeek(raw: unknown): GdeltCountryWeek | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { articles, conflict, protest } = raw as Record<string, unknown>;
+  const count = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+  if (!count(articles) || !count(conflict) || !count(protest)) return null;
+  if (conflict > articles || protest > articles) return null;
+  return { articles, conflict, protest };
+}
+
 /**
  * The per-country GDELT summary (scripts/_gdelt-country-events.mjs), or null
- * when it is missing, malformed, has no baseline yet, has an incomplete
- * current window, or is older than
- * CII_GDELT_ESCALATION_MAX_AGE_MS (a stopped materializer must not freeze a spike).
+ * when it is missing, malformed, older than CII_GDELT_ESCALATION_MAX_AGE_MS
+ * (a stopped materializer must not freeze a spike), or has nothing scoreable.
+ * The two readings are gated separately:
+ * - escalation (conflict/protest) needs the 21-day baseline and a complete
+ *   current window; without them they are null.
+ * - the sustained level (week) needs only weekReady: it reads complete days,
+ *   so it scores from deploy day, before the baseline has backfilled.
  */
 export function gdeltCountryEventsFromSeed(raw: unknown, nowMs: number): GdeltCountryEvents | null {
   if (!raw || typeof raw !== 'object') return null;
-  const { byCountry, baselineReady, currentComplete, updatedAt } = raw as Record<string, unknown>;
+  const { byCountry, baselineReady, currentComplete, weekReady, updatedAt } = raw as Record<string, unknown>;
   if (!byCountry || typeof byCountry !== 'object' || Array.isArray(byCountry)) return null;
   // A current window missing cohorts (materializer outage) is unknown, not calm.
-  if (baselineReady !== true || currentComplete !== true) return null;
+  const escalationReady = baselineReady === true && currentComplete === true;
+  const levelReady = weekReady === true;
+  if (!escalationReady && !levelReady) return null;
   const age = nowMs - safeNum(updatedAt);
   if (!(age <= CII_GDELT_ESCALATION_MAX_AGE_MS)) return null;
   const rows: Record<string, GdeltCountryEventsRow> = {};
   for (const [code, row] of Object.entries(byCountry as Record<string, unknown>)) {
     if (!/^[A-Z]{2}$/.test(code) || !row || typeof row !== 'object') continue;
-    const conflict = parseGdeltEscalationSignal((row as Record<string, unknown>).conflict);
-    const protest = parseGdeltEscalationSignal((row as Record<string, unknown>).protest);
-    if (conflict || protest) rows[code] = { conflict, protest };
+    const conflict = escalationReady ? parseGdeltEscalationSignal((row as Record<string, unknown>).conflict) : null;
+    const protest = escalationReady ? parseGdeltEscalationSignal((row as Record<string, unknown>).protest) : null;
+    const week = levelReady ? parseGdeltCountryWeek((row as Record<string, unknown>).week) : null;
+    if (conflict || protest || week) rows[code] = { conflict, protest, week };
   }
   return { byCountry: rows };
 }
@@ -716,6 +623,19 @@ export function gdeltEscalationScore(signal: GdeltEscalationSignal | undefined |
   if (!(ratio > CII_GDELT_ESCALATION_DEADBAND)) return 0;
   const scaled = Math.log(ratio / CII_GDELT_ESCALATION_DEADBAND)
     / Math.log(CII_GDELT_ESCALATION_SATURATION / CII_GDELT_ESCALATION_DEADBAND);
+  return Math.round(Math.min(CII_GDELT_ESCALATION_CAP, scaled * CII_GDELT_ESCALATION_CAP));
+}
+
+/**
+ * 0..CII_GDELT_ESCALATION_CAP from the share of a week's coverage that is
+ * conflict- or protest-coded; see CII_GDELT_LEVEL_* for the curve and its calibration.
+ */
+export function gdeltLevelScore(week: GdeltCountryWeek | undefined | null, field: 'conflict' | 'protest'): number {
+  if (!week || !(week.articles >= CII_GDELT_LEVEL_MIN_ARTICLES)) return 0;
+  const floor = field === 'conflict' ? CII_GDELT_LEVEL_CONFLICT_FLOOR : CII_GDELT_LEVEL_PROTEST_FLOOR;
+  const saturation = field === 'conflict' ? CII_GDELT_LEVEL_CONFLICT_SATURATION : CII_GDELT_LEVEL_PROTEST_SATURATION;
+  const scaled = (week[field] / week.articles - floor) / (saturation - floor);
+  if (!(scaled > 0)) return 0;
   return Math.round(Math.min(CII_GDELT_ESCALATION_CAP, scaled * CII_GDELT_ESCALATION_CAP));
 }
 
@@ -1025,8 +945,16 @@ export function computeCIIScores(
   if (acled.length === 0) {
     for (const [code, row] of Object.entries(aux.gdeltCountryEvents?.byCountry ?? {})) {
       if (!data[code]) continue;
-      data[code].gdeltConflictEscalation = gdeltEscalationScore(row.conflict);
-      data[code].gdeltUnrestEscalation = gdeltEscalationScore(row.protest);
+      // One signal read two ways (a spike over the norm, or a sustained level):
+      // the larger counts, never the sum.
+      data[code].gdeltConflictEscalation = Math.max(
+        gdeltEscalationScore(row.conflict),
+        gdeltLevelScore(row.week, 'conflict'),
+      );
+      data[code].gdeltUnrestEscalation = Math.max(
+        gdeltEscalationScore(row.protest),
+        gdeltLevelScore(row.week, 'protest'),
+      );
     }
   }
 
@@ -1118,7 +1046,7 @@ export function computeCIIScores(
     const mag = safeNonNegativeNum(eq.magnitude);
     if (mag < 5.5) continue;
     if (safeNum(eq.occurredAt) < eqCutoff) continue;
-    const code = geoToCountry(safeNum(eq.location?.latitude), safeNum(eq.location?.longitude));
+    const code = earthquakeCountry(eq);
     if (!code || !data[code]) continue;
     if (mag >= 7.5) data[code].earthquakeSevereCount++;
     else if (mag >= 6.5) data[code].earthquakeMajorCount++;
@@ -1170,9 +1098,7 @@ export function computeCIIScores(
 
   // --- Iran strikes with severity ---
   for (const s of aux.iranEvents) {
-    const lat = safeNum(s.lat || s.latitude);
-    const lon = safeNum(s.lon || s.longitude);
-    const code = geoToCountry(lat, lon) || normalizeCountryName(s.title || s.location || '');
+    const code = strikeEventCountry(s);
     if (!code || !data[code]) continue;
     data[code].iranStrikes++;
     const sev = String(s.severity || '').toLowerCase();

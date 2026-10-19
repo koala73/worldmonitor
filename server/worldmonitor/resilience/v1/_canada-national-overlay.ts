@@ -12,6 +12,7 @@ export type ImfMacroLike = {
   currentAccountPct?: number | null;
   govRevenuePct?: number | null;
   year?: number | null;
+  periods?: { govRevenuePct?: number | null; currentAccountPct?: number | null } | null;
 };
 
 export type ImfLaborLike = {

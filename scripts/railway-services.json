@@ -1879,6 +1879,8 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-military-cii.mjs",
+      "scripts/shared/cii-country-borders.data.mjs",
+      "scripts/shared/cii-country-borders.mjs",
       "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "scripts/seed-military-cii.mjs (header docblock declares rootDirectory: scripts and */10 cron)"

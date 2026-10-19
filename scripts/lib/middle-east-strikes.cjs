@@ -608,6 +608,9 @@ function deriveStrikeEvents(candidates, now) {
       latitude: rep.lat,
       longitude: rep.lon,
       locationName: rep.place,
+      // The country the gazetteer placed the incident in. The CII scores the event
+      // by it: a tanker hit in open water is in no country polygon.
+      countryCode: rep.iso2,
       timestamp: start,
       severity: incidentSeverity(telegram),
     });
@@ -649,6 +652,7 @@ function deriveStrikeEvents(candidates, now) {
       latitude: first.lat,
       longitude: first.lon,
       locationName: first.place,
+      countryCode: first.iso2,
       timestamp: first.ts,
       severity: 'moderate',
     });
