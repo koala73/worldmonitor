@@ -271,7 +271,11 @@ export function buildEnergyExposure(data: unknown): string {
       : [];
     if (!entries.length) continue;
     const formatted = entries
-      .map((e) => `${sanitizeForPromptLine(safeStr(e.name))} ${typeof e.share === 'number' ? e.share.toFixed(0) : '?'}%`)
+      .map((e) => {
+        // The header year is the newest row's; OWID rows lag by country.
+        const older = typeof e.year === 'number' && typeof year === 'number' && e.year < year ? ` (${e.year})` : '';
+        return `${sanitizeForPromptLine(safeStr(e.name))} ${typeof e.share === 'number' ? e.share.toFixed(0) : '?'}%${older}`;
+      })
       .join(', ');
     lines.push(`${label}: ${formatted}`);
   }

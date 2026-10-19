@@ -5,8 +5,10 @@ import { imfSdmxFetchIndicator } from '../scripts/_seed-utils.mjs';
 
 // Import only the pure compute function (no Redis, no fetch side-effects)
 import { computeEntries, fetchTreasury, weoYearWindow } from '../scripts/seed-national-debt.mjs';
+import { debtAt } from '../scripts/live-pages/national-debt.mjs';
 
-const BASELINE_TS = Date.UTC(2024, 0, 1);
+// WEO gross debt is an end-of-year stock, so 2024 data is anchored at the end of 2024.
+const BASELINE_TS = Date.UTC(2025, 0, 1);
 
 describe('computeEntries formula', () => {
   it('calculates debt_usd from IMF debt % and GDP dollars', () => {
@@ -51,7 +53,7 @@ describe('computeEntries formula', () => {
     assert.ok(Math.abs(deu.annualGrowth - 10) < 0.01, `annualGrowth=${deu.annualGrowth}`);
   });
 
-  it('sets correct baseline_ts (2024-01-01 UTC)', () => {
+  it('sets correct baseline_ts (end of 2024 UTC)', () => {
     const debtPct = { GBR: { '2024': '100' } };
     const gdp = { GBR: { '2024': 3_100_000_000_000 } };
 
@@ -238,7 +240,7 @@ describe('current-year selection (IMF DataMapper parity)', () => {
     assert.equal(e.BHR.debtToGdp, 162.844629);
     assert.equal(e.SDN.debtToGdp, 334.410808);
     assert.equal(e.BHR.source, 'IMF WEO 2026');
-    assert.equal(e.BHR.baselineTs, Date.UTC(2026, 0, 1));
+    assert.equal(e.BHR.baselineTs, Date.UTC(2027, 0, 1));
   });
 
   it('pairs debt % with GDP and deficit from the same year', () => {
@@ -257,13 +259,19 @@ describe('current-year selection (IMF DataMapper parity)', () => {
     const { LBN } = byIso(computeEntries(debtPct, gdp, deficit, null, NOW));
     assert.equal(LBN.debtToGdp, 139.413732);
     assert.equal(LBN.source, 'IMF WEO 2025');
-    assert.equal(LBN.baselineTs, Date.UTC(2025, 0, 1));
+    assert.equal(LBN.baselineTs, Date.UTC(2026, 0, 1));
   });
 
-  it('never starts the live ticker in the future', () => {
-    for (const entry of computeEntries(debtPct, gdp, deficit, null, NOW)) {
-      assert.ok(entry.baselineTs <= NOW.getTime(), `${entry.iso3} baseline ${entry.baselineTs}`);
-    }
+  it('counts the data year\'s deficit once: the ticker reaches the year-end stock on Dec 31', () => {
+    // GGXWDG_NGDP is debt at the END of the year, so it already contains that
+    // year's deficit. The ticker must interpolate up to it, not add the deficit on top.
+    const { BHR } = byIso(computeEntries(debtPct, gdp, deficit, null, NOW));
+    const yearEndStock = 1.62844629 * 48e9;
+    const yearDeficit = 0.06 * 48e9;
+    assert.ok(Math.abs(debtAt(BHR, Date.UTC(2027, 0, 1)) - yearEndStock) < 1);
+    // 365.25-day accrual year vs 365-day 2026: allow 0.1% of the deficit.
+    assert.ok(Math.abs(debtAt(BHR, Date.UTC(2026, 0, 1)) - (yearEndStock - yearDeficit)) < yearDeficit * 1e-3);
+    assert.ok(debtAt(BHR, NOW.getTime()) < yearEndStock);
   });
 
   it('does not accrue another year\'s deficit when the data year has none', () => {
@@ -332,8 +340,8 @@ describe('rolling WEO year window', () => {
     assert.equal(entries.length, 1);
     assert.equal(entries[0].source, 'IMF WEO 2026');
     assert.ok(Math.abs(entries[0].debtToGdp - 112) < 0.001);
-    // baseline should track the vintage year, not be pinned to 2024
-    assert.equal(entries[0].baselineTs, Date.UTC(2026, 0, 1));
+    // baseline should track the data year's end, not be pinned to 2024
+    assert.equal(entries[0].baselineTs, Date.UTC(2027, 0, 1));
   });
 });
 
