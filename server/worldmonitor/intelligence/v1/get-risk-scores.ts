@@ -18,6 +18,11 @@ import {
   CII_CONFLICT_ACTIVITY_CAP,
   CII_CONFLICT_ACTIVITY_PIVOT,
   CII_FORMULA_VERSION,
+  CII_GDELT_ESCALATION_CAP,
+  CII_GDELT_ESCALATION_DEADBAND,
+  CII_GDELT_ESCALATION_MAX_AGE_MS,
+  CII_GDELT_ESCALATION_SATURATION,
+  CII_GDELT_ESCALATION_SMOOTHING,
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_SCALE_FACTOR,
   STRATEGIC_RISK_SCALE_FLOOR,
@@ -510,6 +515,9 @@ interface CountrySignals {
   fatalities: number;
   protestFatalities: number;
   conflictFatalities: number;
+  /** GDELT escalation over the country's own norm, already scored 0..CII_GDELT_ESCALATION_CAP. */
+  gdeltConflictEscalation: number;
+  gdeltUnrestEscalation: number;
   ucdpWar: boolean;
   ucdpMinor: boolean;
   outageTotalCount: number;
@@ -561,6 +569,8 @@ function emptySignals(): CountrySignals {
   return {
     protests: 0, riots: 0, battles: 0, explosions: 0, civilianViolence: 0,
     fatalities: 0, protestFatalities: 0, conflictFatalities: 0,
+    gdeltConflictEscalation: 0,
+    gdeltUnrestEscalation: 0,
     ucdpWar: false, ucdpMinor: false,
     outageTotalCount: 0, outageMajorCount: 0, outagePartialCount: 0,
     climateSeverity: 0,
@@ -648,6 +658,65 @@ async function fetchACLEDEvents(): Promise<Array<{ country: string; event_type: 
   return [...recent.map(toRow), ...older.map(toRow)];
 }
 
+export interface GdeltEscalationSignal {
+  current: number;
+  baselineMedian: number | null;
+}
+
+export interface GdeltCountryEventsRow {
+  conflict: GdeltEscalationSignal | null;
+  protest: GdeltEscalationSignal | null;
+}
+
+export interface GdeltCountryEvents {
+  byCountry: Record<string, GdeltCountryEventsRow>;
+}
+
+function parseGdeltEscalationSignal(raw: unknown): GdeltEscalationSignal | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { current, baselineMedian } = raw as Record<string, unknown>;
+  if (typeof current !== 'number' || !Number.isFinite(current) || current < 0) return null;
+  return {
+    current,
+    baselineMedian: typeof baselineMedian === 'number' && Number.isFinite(baselineMedian) && baselineMedian >= 0
+      ? baselineMedian
+      : null,
+  };
+}
+
+/**
+ * The per-country GDELT summary (scripts/_gdelt-country-events.mjs), or null
+ * when it is missing, malformed, has no baseline yet, or is older than
+ * CII_GDELT_ESCALATION_MAX_AGE_MS (a stopped materializer must not freeze a spike).
+ */
+export function gdeltCountryEventsFromSeed(raw: unknown, nowMs: number): GdeltCountryEvents | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { byCountry, baselineReady, updatedAt } = raw as Record<string, unknown>;
+  if (!byCountry || typeof byCountry !== 'object' || Array.isArray(byCountry)) return null;
+  if (baselineReady !== true) return null;
+  const age = nowMs - safeNum(updatedAt);
+  if (!(age <= CII_GDELT_ESCALATION_MAX_AGE_MS)) return null;
+  const rows: Record<string, GdeltCountryEventsRow> = {};
+  for (const [code, row] of Object.entries(byCountry as Record<string, unknown>)) {
+    if (!/^[A-Z]{2}$/.test(code) || !row || typeof row !== 'object') continue;
+    const conflict = parseGdeltEscalationSignal((row as Record<string, unknown>).conflict);
+    const protest = parseGdeltEscalationSignal((row as Record<string, unknown>).protest);
+    if (conflict || protest) rows[code] = { conflict, protest };
+  }
+  return { byCountry: rows };
+}
+
+/** 0..CII_GDELT_ESCALATION_CAP; see the constant's note for the curve and its calibration. */
+export function gdeltEscalationScore(signal: GdeltEscalationSignal | undefined | null): number {
+  if (!signal || signal.baselineMedian == null) return 0;
+  const ratio = (signal.current + CII_GDELT_ESCALATION_SMOOTHING)
+    / (signal.baselineMedian + CII_GDELT_ESCALATION_SMOOTHING);
+  if (!(ratio > CII_GDELT_ESCALATION_DEADBAND)) return 0;
+  const scaled = Math.log(ratio / CII_GDELT_ESCALATION_DEADBAND)
+    / Math.log(CII_GDELT_ESCALATION_SATURATION / CII_GDELT_ESCALATION_DEADBAND);
+  return Math.round(Math.min(CII_GDELT_ESCALATION_CAP, scaled * CII_GDELT_ESCALATION_CAP));
+}
+
 interface AuxiliarySources {
   ucdpEvents: any[];
   outages: any[];
@@ -672,6 +741,9 @@ interface AuxiliarySources {
   // Phase 2 (CII unification) — per-country military activity from intelligence:military-cii:v1
   // (written by scripts/seed-military-cii.mjs). Keyed by ISO2.
   militaryCii: Record<string, any> | null;
+  // Per-country GDELT conflict and protest volume against each country's own baseline;
+  // scored only while ACLED is dark.
+  gdeltCountryEvents: GdeltCountryEvents | null;
 }
 
 type NewsTopStory = { countryCode: string | null; countryCodes?: string[]; threatLevel: string; primaryTitle: string };
@@ -716,6 +788,7 @@ function emptyAuxiliarySources(): AuxiliarySources {
     sanctionsCountryCounts: null,
     temporalAnomalies: [],
     militaryCii: null,
+    gdeltCountryEvents: null,
   };
 }
 
@@ -772,7 +845,7 @@ async function readRiskInputs(inputs: ReadonlyArray<RiskInput | null>): Promise<
 
 async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const currentYear = new Date().getFullYear();
-  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementCurrentRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw] = await readRiskInputs([
+  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementCurrentRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw, countryEventsRaw] = await readRiskInputs([
     { key: 'conflict:ucdp-events:v1', raw: true },
     { key: 'infra:outages:v1', raw: true },
     { key: CLIMATE_ANOMALIES_KEY, raw: true },
@@ -799,6 +872,8 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     // production snapshot instead of the one this deployment rebuilt.
     { key: 'temporal:anomalies:v1', raw: false },
     { key: 'intelligence:military-cii:v1', raw: true },
+    // Per-country GDELT conflict/protest counts and baselines (seed-gdelt-bulk-materializer.mjs).
+    { key: 'gdelt:bulk:country-events:v1', raw: true },
   ]);
   // The previous year covers a year not yet seeded. An errored current-year
   // read has already thrown above, so it never masquerades as that.
@@ -881,6 +956,7 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     militaryCii: militaryCiiRaw && typeof militaryCiiRaw === 'object' && (militaryCiiRaw as any).byCountry
       ? (militaryCiiRaw as any).byCountry
       : null,
+    gdeltCountryEvents: gdeltCountryEventsFromSeed(countryEventsRaw, Date.now()),
   };
 }
 
@@ -941,6 +1017,15 @@ export function computeCIIScores(
       data[code].conflictFatalities += fat;
     }
     data[code].fatalities += fat;
+  }
+
+  // --- GDELT conflict and protest escalation (only while ACLED is dark) ---
+  if (acled.length === 0) {
+    for (const [code, row] of Object.entries(aux.gdeltCountryEvents?.byCountry ?? {})) {
+      if (!data[code]) continue;
+      data[code].gdeltConflictEscalation = gdeltEscalationScore(row.conflict);
+      data[code].gdeltUnrestEscalation = gdeltEscalationScore(row.protest);
+    }
   }
 
   // --- UCDP ---
@@ -1141,7 +1226,9 @@ export function computeCIIScores(
     // severityBoost (Phase 3b / C1) — ported from the frontend calcUnrestScore.
     const unrestSeverityBoost = Math.min(20, d.highSeverityUnrest * 10 * multiplier);
     const outageBoost = Math.min(50, d.outageTotalCount * 30 + d.outageMajorCount * 15 + d.outagePartialCount * 5);
-    const unrest = Math.min(100, Math.round(unrestBase + unrestFatalityBoost + unrestSeverityBoost + outageBoost));
+    const unrest = Math.min(100, Math.round(
+      unrestBase + unrestFatalityBoost + unrestSeverityBoost + outageBoost + d.gdeltUnrestEscalation,
+    ));
 
     // --- Conflict score (ported from frontend calcConflictScore) ---
     const conflictActivityRaw = (d.battles * 3 + d.explosions * 4 + d.civilianViolence * 5) * multiplier;
@@ -1156,7 +1243,10 @@ export function computeCIIScores(
     const orefBoost = (code === 'IL' && d.orefAlertCount > 0)
       ? 25 + Math.min(25, d.orefAlertCount * 5)
       : 0;
-    const conflict = Math.min(100, acledScore + fatalityScore + civilianBoost + strikeBoost + orefBoost);
+    const conflict = Math.min(
+      100,
+      acledScore + fatalityScore + civilianBoost + strikeBoost + orefBoost + d.gdeltConflictEscalation,
+    );
 
     // --- Security score (Phase 3b / decision C3 — full 4-input calcSecurityScore) ---
     // Was GPS-only (issue #3738). Now flights + vessels + aviation + GPS, matching the
@@ -1355,7 +1445,10 @@ export function countCiiRealtimeSignalDensityCoverage(
   // whenever ACLED was thin even though UCDP was fully healthy.
   const acledCoversTier1 = (acled ?? []).some((ev) => isTier1CountryCode(normalizeCountryName(ev.country)));
   const ucdpCoversTier1 = deriveUcdpIntensityByRegion(aux?.ucdpEvents, nowMs).size > 0;
-  if (acledCoversTier1 || ucdpCoversTier1) {
+  // GDELT stands in for ACLED only while the ACLED path is empty, as in computeCIIScores.
+  const gdeltCoversTier1 = !(acled ?? []).length
+    && Object.keys(aux?.gdeltCountryEvents?.byCountry ?? {}).some(isTier1CountryCode);
+  if (acledCoversTier1 || ucdpCoversTier1 || gdeltCoversTier1) {
     coveredFamilies.add('conflict');
   }
 

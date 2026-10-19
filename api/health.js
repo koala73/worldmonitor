@@ -419,6 +419,9 @@ const STANDALONE_KEYS = {
   // evicted or stale index stays invisible until the next weekly freeze.
   gdeltCountryArticles: 'gdelt:bulk:country-articles:v1',
   gdeltDyadTension: 'gdelt:bulk:dyad-tension:v1',
+  // Per-country GDELT conflict counts and own-baseline medians, read only by the
+  // CII conflict component (get-risk-scores), so monitored here.
+  gdeltCountryEvents: 'gdelt:bulk:country-events:v1',
   chinaCoverage:      CHINA_COVERAGE_SUMMARY_KEY,
   // Control-plane heartbeat only. Convex owns every durable scan lease,
   // checkpoint, receipt, and replay decision; this Redis value is disposable.
@@ -1241,6 +1244,16 @@ const SEED_META = {
     cutover: {
       mode: 'activation-marker', fromKey: null, issue: 8676,
       activationKey: 'seed-activated:gdelt:bulk:dyad-tension',
+    },
+  },
+  // Same materializer tick; pending until its first country-events publish
+  // writes the durable marker, strict after it. The 32-day data TTL outlives this gate.
+  gdeltCountryEvents: {
+    key: 'seed-meta:gdelt:bulk:country-events', maxStaleMin: 45,
+    activationKey: 'seed-activated:gdelt:bulk:country-events',
+    cutover: {
+      mode: 'activation-marker', fromKey: null, issue: 7582,
+      activationKey: 'seed-activated:gdelt:bulk:country-events',
     },
   },
   // Same materializer tick as gdeltIntel; the 2-day data TTL outlives this

@@ -273,6 +273,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred to a future expanded intelligence tool. Not in v1 brainstorm inventory.'],
   ['gdelt:bulk:dyad-tension:v1',
     'intermediate: daily event buckets and replay cursor for get-pizzint-status tension scores; that dashboard endpoint remains deferred to a future expanded intelligence tool.'],
+  ['gdelt:bulk:country-events:v1',
+    'intermediate: per-country daily GDELT conflict/protest buckets and baselines that feed the CII Conflict and Unrest components; agents read the result through the risk-score tools.'],
   ['intelligence:wsb-tickers:v1',
     'deferred: companion to get_social_velocity (Reddit r/wallstreetbets sentiment). Future expanded social-sentiment tool would bundle this with reddit feed.'],
   ['intelligence:telegram-feed:v1',

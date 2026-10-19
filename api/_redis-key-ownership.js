@@ -33,9 +33,9 @@ const APP_OWNED_KEYS = Object.freeze([
   // seed-meta:intelligence:risk-scores").
   'temporal:anomalies:v1', // infrastructure/v1/list-temporal-anomalies
   'seed-meta:temporal:anomalies',
-  'risk:scores:sebuf:v9', // intelligence/v1/get-risk-scores (live + stale fallback + meta)
-  'risk:scores:sebuf:stale:v9',
-  'risk:scores:sebuf:rejected:v9',
+  'risk:scores:sebuf:v10', // intelligence/v1/get-risk-scores (live + stale fallback + meta)
+  'risk:scores:sebuf:stale:v10',
+  'risk:scores:sebuf:rejected:v10',
   'seed-meta:intelligence:risk-scores',
   'risk:scores:history:index',
   'seed-meta:intelligence:risk-scores-history',

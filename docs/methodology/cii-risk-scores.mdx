@@ -90,7 +90,7 @@ CRI covers the broader 196-country universe.
 `GET /api/intelligence/v1/get-risk-scores` (proto
 `worldmonitor.intelligence.v1.GetRiskScoresResponse`). The on-the-wire
 `methodology_version` field on every `CiiScore` records which revision of this
-document was active when the score was computed. The current version is **v9** —
+document was active when the score was computed. The current version is **v10** —
 see [Version history](#version-history).
 </Note>
 
@@ -103,8 +103,8 @@ exposed on the wire as `CiiComponents`:
 
 | Wire field | Editorial meaning |
 |---|---|
-| `cii_contribution` (**U**nrest) | Civil disorder pressure: ACLED protests + riots, fatalities from those events, confirmed internet/power outages, and a high-severity unrest boost. Reflects pre-violent friction. |
-| `geo_convergence` (**C**onflict) | Kinetic activity: ACLED battles, explosions/remote violence, and violence-against-civilians events, plus Iran-region strike intensity and Israel OREF alert pressure. Event activity is log-scaled before the component cap so moderate and extreme event volumes remain ordered; square-root fatality scaling prevents single-event saturation. |
+| `cii_contribution` (**U**nrest) | Civil disorder pressure: ACLED protests + riots, fatalities from those events, confirmed internet/power outages, and a high-severity unrest boost. While ACLED returns no events, a GDELT protest-escalation term (below) stands in for the ACLED event terms. Reflects pre-violent friction. |
+| `geo_convergence` (**C**onflict) | Kinetic activity: ACLED battles, explosions/remote violence, and violence-against-civilians events, plus Iran-region strike intensity and Israel OREF alert pressure. Event activity is log-scaled before the component cap so moderate and extreme event volumes remain ordered; square-root fatality scaling prevents single-event saturation. While ACLED returns no events, a GDELT conflict-escalation term (below) stands in for the ACLED event terms. |
 | `military_activity` (**S**ecurity) | Hard-security tempo near the country: military flight activity, military vessel activity, aviation disruptions (closures/delays), and GPS-jamming hex density. Foreign military presence is weighted ×2. |
 | `news_activity` (**I**nformation) | Information-environment pressure: weighted count of classified critical/high/medium news headlines geo-attributed to the country. |
 
@@ -142,6 +142,29 @@ Component details that are easy to miss:
   the per-strike term and once in the high-severity term. This feed is a
   theatre-intensity input, not a full armed-conflict casualty source; ACLED and
   UCDP remain the general conflict anchors.
+- **GDELT escalation terms (Conflict and Unrest)**: WorldMonitor has no ACLED
+  access, so the ACLED terms above are 0 in production. While the ACLED API
+  returns no events, each component instead adds a GDELT term read from
+  `gdelt:bulk:country-events:v1`, which the bulk materializer builds from the
+  15-minute GDELT event exports for every country. Conflict counts distinct
+  articles reporting CAMEO 18/19/20 material-conflict events located in the
+  country; Unrest counts CAMEO 14 protest events. Each signal compares the last
+  24 hours (`current`) with the median day of the 28 complete days before
+  yesterday (`baselineMedian`):
+  `r = (current + 20) / (baselineMedian + 20)`, term
+  `= 0` when `r <= 1.25`, else `min(50, log(r / 1.25) / log(3 / 1.25) * 50)`.
+  Scoring against each country's own norm is deliberate: GDELT volume is mostly
+  media volume, and the US files about 800 conflict-coded articles on an
+  ordinary weekday against Ukraine's 55, so a shared absolute scale would rank
+  the US above a war. The `+20` smoothing damps small countries, the `1.25`
+  deadband absorbs the weekday news cycle, and the cap of 50 keeps a news-coded
+  signal with no fatality field below the verified-event range. `eventMultiplier`
+  is not applied. A war or protest movement at its usual tempo scores 0 here;
+  UCDP floors carry chronic wars. The terms are 0 until 21 complete baseline
+  days exist (the materializer backfills them from the GDELT archive, two days
+  per 15-minute tick) and when the snapshot is more than 6 hours old. Once the
+  ACLED path returns events, both terms are 0, so a credentialed deployment
+  never counts the same activity twice.
 - **Conflict OREF boost**: for Israel only, active OREF rocket-alert pressure
   adds `25 + min(25, activeAlertCount * 5)` inside the Conflict component, so
   the component-level OREF contribution is capped at `+50`. This is separate
@@ -414,6 +437,25 @@ refactors that preserve server/API scores do not bump the wire version. Tests in
 in `CURATED_COUNTRIES`.
 
 ## Version history
+
+> **v10 (2026-10-19).** Conflict and Unrest get a live input again. WorldMonitor
+> has no ACLED access, so the ACLED event terms in both components were 0 for
+> every country: the October 2026 Houthi strikes on Riyadh and France's
+> nationwide riots left Saudi Conflict and French Unrest at 0. While the ACLED
+> API returns no events, each component now adds a GDELT escalation term read
+> from `gdelt:bulk:country-events:v1`, which the GDELT bulk materializer builds
+> for every country: the last 24 hours of material-conflict (CAMEO 18/19/20) or
+> protest (CAMEO 14) articles against the country's own 28-day median, 0 up to
+> a 1.25x ratio and capped at 50 (see Component details). Replayed
+> September-October 2026 exports put the Riyadh strike day at Conflict 44 and
+> France's riots at Unrest 50, while the US and GB stay at 0. A war or protest
+> movement at its usual tempo scores 0 on these terms. They stay 0 until the
+> materializer has backfilled 21 baseline days from the GDELT archive (about
+> three hours after deploy) and switch off when the ACLED path returns events.
+> The health conflict family also counts a live GDELT baseline. `combinedScore`
+> values rise for countries in an escalation; the risk-score cache key family
+> moved to `risk:scores:sebuf:v10` and emitted `methodology_version` is now
+> `v10`, so clients pinned on `methodology_version` should re-baseline.
 
 > **v9 (2026-10-19).** News attribution credits every country a headline names.
 > `news:insights:v1` top stories now carry `countryCodes` (every country named,

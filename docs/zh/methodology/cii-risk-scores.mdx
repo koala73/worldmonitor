@@ -58,7 +58,7 @@ WorldMonitor 确实做预测的地方，那份记录会公开发布。[预测准
 覆盖的国家是一份**策展的监测范围**，而非全部主权国家——参见[一级国家标准](#2-各国-baselinerisk-和-eventmultiplier)。CRI 覆盖更广的 196 国范围。
 
 <Note>
-**面向开发者。** CII 与战略风险汇总由 `GET /api/intelligence/v1/get-risk-scores`（proto `worldmonitor.intelligence.v1.GetRiskScoresResponse`）提供。每个 `CiiScore` 上传输的 `methodology_version` 字段记录了计算该评分时本文档所处的修订版本。当前版本为 **v9**——参见[版本历史](#版本历史)。
+**面向开发者。** CII 与战略风险汇总由 `GET /api/intelligence/v1/get-risk-scores`（proto `worldmonitor.intelligence.v1.GetRiskScoresResponse`）提供。每个 `CiiScore` 上传输的 `methodology_version` 字段记录了计算该评分时本文档所处的修订版本。当前版本为 **v10**——参见[版本历史](#版本历史)。
 </Note>
 
 ---
@@ -98,6 +98,7 @@ composite = baseline * 0.4
 - **动荡严重性加成**：高严重性 ACLED 动荡事件（例如骚乱）在 Unrest 分量内添加 `min(20, highSeverityUnrest * 10 * eventMultiplier)`。
 - **冲突平民加成**：针对平民的暴力事件在对数缩放的冲突活动和死亡条款后添加 `min(10, civilianViolence * 3)`。
 - **伊朗地区打击加成**：地理编码的伊朗事件打击，或来自同一源的标题/位置回退匹配，在 Conflict 分量内添加 `min(50, iranStrikes * 3 + highSeverityStrikes * 5)`。高和关键严重性打击因此计两次：一次在每打击项中，一次在高严重性项中。该源是战区强度输入，而非完整的武装冲突伤亡来源；ACLED 和 UCDP 仍是一般冲突锚点。
+- **GDELT 升级项（冲突与动荡）**：WorldMonitor 没有 ACLED 访问权限，因此上方的 ACLED 项在生产环境中为 0。当 ACLED API 不返回事件时，两个分量各自增加一个读取 `gdelt:bulk:country-events:v1` 的 GDELT 项。冲突统计位于该国的 CAMEO 18/19/20 实质冲突事件的不同文章数，动荡统计 CAMEO 14 抗议事件。每个信号将过去 24 小时（`current`）与昨天之前 28 个完整日的日中位数（`baselineMedian`）比较：`r = (current + 20) / (baselineMedian + 20)`，`r <= 1.25` 时为 0，否则为 `min(50, log(r / 1.25) / log(3 / 1.25) * 50)`。以各国自身常态为基准是有意为之：GDELT 体量主要反映媒体体量，美国在普通工作日约有 800 篇冲突编码文章，而乌克兰约 55 篇。不应用 `eventMultiplier`。基线不足 21 个完整日或快照超过 6 小时时为 0；ACLED 路径返回事件时两项均为 0。
 - **冲突 OREF 加成**：仅对以色列，活跃 OREF 火箭警报压力在 Conflict 分量内添加 `25 + min(25, activeAlertCount * 5)`，因此分量级 OREF 贡献上限为 `+50`。这与上方列出的复合 `orefBlendBoost` 项分开，后者也仅限以色列且上限为 `+25`。
 - **信息严重性处理**：已分类的头条报道使用权重 `critical = 4`、`high = 2`、`medium/elevated = 1`、`moderate/low = 0.5` 和 `info = 0`。各国威胁摘要信息流使用 `critical = 4`、`high = 2`、`medium = 1`、`low = 0.5` 和 `info = 0`，该威胁摘要子评分上限为 `20`；合并的 Information 分量上限为 `100`。
 
@@ -255,6 +256,19 @@ overallScore = min(100, round(weightedAvg * 0.70 + 15))             # banded to 
 任何更改服务端/API 各国基线、事件乘数、气候分区的国家归属、战略风险汇总系数、内联服务端公式字面量、受保护的顶级公式常量或 CII 移动语义的编辑，**必须**同时提升 `server/worldmonitor/intelligence/v1/_risk-config.ts` 中的 `CII_FORMULA_VERSION`、在同一提交中更新本文档，并新增一条公开 CHANGELOG 条目。保留服务端/API 评分的真相源重构不提升传输版本。`tests/cii-scoring.test.mts` 中的测试会强制本文档列出 `CURATED_COUNTRIES` 中的每一个国家代码。
 
 ## 版本历史
+
+> **v10（2026-10-19）。** 冲突与动荡分量重新获得实时输入。WorldMonitor 没有
+> ACLED 访问权限，因此两个分量中的 ACLED 事件项对所有国家都为 0：2026 年 10 月胡塞
+> 武装对利雅得的袭击和法国全国性骚乱都没有让沙特的冲突分量或法国的动荡分量离开 0。
+> 当 ACLED API 不返回事件时，两个分量各自增加一个 GDELT 升级项，读取 GDELT 批量
+> 物化器为所有国家构建的 `gdelt:bulk:country-events:v1`：过去 24 小时的实质冲突
+> （CAMEO 18/19/20）或抗议（CAMEO 14）文章数，与该国自身 28 天中位数相比，比值不超过
+> 1.25 时为 0，上限为 50。回放 2026 年 9-10 月的数据，利雅得遇袭当天冲突项为 44，
+> 法国骚乱的动荡项为 50，美国和英国保持为 0。按常态节奏进行的战争或抗议在这两项上
+> 为 0。物化器从 GDELT 存档回填 21 天基线（部署后约三小时）之前这两项为 0，ACLED
+> 路径返回事件时自动关闭。处于升级中的国家 `combinedScore` 会上升；风险评分缓存键族
+> 迁移至 `risk:scores:sebuf:v10`，发射的 `methodology_version` 现为 `v10`，固定于
+> `methodology_version` 的客户端应重新建立基线。
 
 > **v9（2026-10-19）。** 新闻归属现在计入标题中提到的每一个国家。
 > `news:insights:v1` 头条新增 `countryCodes`（标题中提到的所有国家，主 `countryCode`

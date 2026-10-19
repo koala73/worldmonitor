@@ -229,7 +229,7 @@ Strategic Risk 与国家不稳定指数（CII）评分在服务端预计算，�
 
 1. 从 ACLED 拉取近期的抗议/骚乱/战斗/爆炸/针对平民的暴力数据。
 2. 从 Redis 拉取辅助数据源，包括 UCDP 冲突、中断、气候、网络威胁、火灾、GPS 干扰、伊朗事件、OREF 警报、警示、流离失所、机密新闻摘要、航空警报、地震、制裁以及军事/AIS CII 聚合数据。
-3. 使用 [CII Risk Scoring Methodology](/zh/methodology/cii-risk-scores) 中记录的共享系数表为 31 个 Tier-1 国家计算 CII v9 评分。
+3. 使用 [CII Risk Scoring Methodology](/zh/methodology/cii-risk-scores) 中记录的共享系数表为 31 个 Tier-1 国家计算 CII v10 评分。
 4. 从按权重排名前 5 的 CII 评分推导 Strategic Risk。
 5. 将结果缓存到 Redis，使用与当前 CII 公式版本绑定的带版本号的 live 与 stale 键。
 

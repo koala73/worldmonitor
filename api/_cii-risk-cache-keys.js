@@ -1,7 +1,7 @@
 export const CII_RISK_SCORE_CACHE_KEYS = Object.freeze({
-  live: 'risk:scores:sebuf:v9',
-  stale: 'risk:scores:sebuf:stale:v9',
-  trendHistoryPrefix: 'risk:scores:sebuf:trend-history:v9',
+  live: 'risk:scores:sebuf:v10',
+  stale: 'risk:scores:sebuf:stale:v10',
+  trendHistoryPrefix: 'risk:scores:sebuf:trend-history:v10',
   dailyHistoryPrefix: 'risk:scores:history:',
   dailyHistoryIndex: 'risk:scores:history:index',
   dailyHistoryMeta: 'seed-meta:intelligence:risk-scores-history',

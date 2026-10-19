@@ -18,6 +18,11 @@ import {
   CII_CONFLICT_ACTIVITY_CAP,
   CII_CONFLICT_ACTIVITY_PIVOT,
   CII_FORMULA_VERSION,
+  CII_GDELT_ESCALATION_CAP,
+  CII_GDELT_ESCALATION_DEADBAND,
+  CII_GDELT_ESCALATION_MAX_AGE_MS,
+  CII_GDELT_ESCALATION_SATURATION,
+  CII_GDELT_ESCALATION_SMOOTHING,
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_SCALE_FACTOR,
   STRATEGIC_RISK_SCALE_FLOOR,
@@ -78,6 +83,9 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // v9 credits every country a news headline names (countryCodes) in the
   // information component instead of only the first-named country.
   v9: '46b7a6dfa494fcec09fb3b941d047c79680266cee2f949e1cd5975a28cfc9bc3',
+  // v10 adds the GDELT escalation terms to Conflict and Unrest while ACLED is
+  // dark; the snapshot now guards their curve constants too.
+  v10: '1f5bd9fab6b5e2a33395bad5d2a7e7e56f3bb71f8393dc0bf9f083ba6e3d956c',
 };
 
 const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT', 'UCDP_CLASSIFICATION_WINDOW_MS'];
@@ -1673,6 +1681,11 @@ describe('CII scoring', () => {
       riskConfig: {
         CII_CONFLICT_ACTIVITY_CAP,
         CII_CONFLICT_ACTIVITY_PIVOT,
+        CII_GDELT_ESCALATION_CAP,
+        CII_GDELT_ESCALATION_DEADBAND,
+        CII_GDELT_ESCALATION_MAX_AGE_MS,
+        CII_GDELT_ESCALATION_SATURATION,
+        CII_GDELT_ESCALATION_SMOOTHING,
         STRATEGIC_RISK_POSITIONAL_DECAY,
         STRATEGIC_RISK_SCALE_FACTOR,
         STRATEGIC_RISK_SCALE_FLOOR,

@@ -6,6 +6,17 @@ All notable changes to World Monitor are documented here.
 
 ### Changed
 
+- **CII formula `v10`: GDELT escalation stands in for ACLED in Conflict and Unrest** (2026-10-19).
+  Without ACLED access the ACLED event terms were 0 for every country, so the
+  October 2026 Riyadh strikes and France's nationwide riots never reached the
+  index. While the ACLED API returns no events, Conflict and Unrest each add a
+  term of up to 50 points scored from GDELT material-conflict and protest
+  coverage against each country's own 28-day median, so heavily covered
+  countries such as the US and GB do not score on ordinary news days. New
+  standalone health dataset `gdeltCountryEvents` (`gdelt:bulk:country-events:v1`).
+  `combinedScore` values rise for countries in an escalation; the risk-score
+  cache key family moved to `risk:scores:sebuf:v10` and emitted
+  `methodology_version` is now `v10`, so clients should re-baseline.
 - **CII formula `v9`: news counts for every country a headline names** (2026-10-19).
   Top stories in `news:insights:v1` now carry `countryCodes`, and the CII
   information component credits each tracked country in it instead of only the
