@@ -52,6 +52,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/alias.ts",
+      "category": "external-protocol",
+      "reason": "MCP tool-alias table and resolve() for renamed tools/call names. Not an HTTP route. Same external-protocol constraint as the MCP dispatcher.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/auth.ts",
       "category": "external-protocol",
       "reason": "MCP auth resolution (Bearer + X-WorldMonitor-Key), Pro pre-checks, rate-limiter init, and PRODUCTION_DEPS bundle for the MCP handler. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
