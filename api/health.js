@@ -409,6 +409,7 @@ const BOOTSTRAP_KEYS = {
 // sweep so the canadaAlerts probe grades the data clients actually receive.
 const STANDALONE_KEYS = {
   sanctionsChanges: 'sanctions:changes:v1',
+  chinaFuturesNotices: 'news:china-futures:shfe:notices:v1',
   predictionCountryMarkets: 'prediction:markets-country-index:v1',
   // US HTS chapter 99 duty index (catalog; coverage shards are versioned by
   // release under trade:us-hts:coverage:v1). Read only by get-us-import-duty.
@@ -732,6 +733,7 @@ const STANDALONE_KEYS = {
 const FIVE_FACTOR_SCORECARD_READ_MODEL_KEY = 'scorecard:five-factor:v1:read-model';
 
 const SEED_META = {
+  chinaFuturesNotices: { key: 'seed-meta:news:china-futures:shfe:notices', maxStaleMin: 1440, minRecordCount: 1 },
   // scripts/seed-conflict-intel.mjs cron runs every 15min, while HAPI is gated
   // to one bulk refresh every 2h. Bounded above by
   // HAPI_TTL (360min / 6h) — the per-country data key's own Redis TTL — not
@@ -2078,6 +2080,12 @@ for (const market of CONSUMER_PRICE_HEALTH_MARKETS) {
 if (!IRAN_EVENTS_ENABLED) {
   delete BOOTSTRAP_KEYS.iranEvents;
   delete SEED_META.iranEvents;
+}
+
+// Self-hosted opt-in source: an intentionally disabled worker is not an outage.
+if (process.env.CHINA_FUTURES_NEWS_ENABLED !== '1') {
+  delete STANDALONE_KEYS.chinaFuturesNotices;
+  delete SEED_META.chinaFuturesNotices;
 }
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).

@@ -33,6 +33,7 @@
 
 const PUBLISHER_LINK_DOMAINS = {
   'miit': ['miit.gov.cn'],
+  'shfe': ['shfe.com.cn'],
   'a16z': ['a16z.com'],
   'ap-news': ['apnews.com'],
   'arxiv': ['arxiv.org'],
@@ -113,6 +114,7 @@ function isPublisherLink(link, expectedHosts) {
 // therefore blanks at the gate (fail-closed).
 const PUBLISHER_LINK_LABELS = {
   "miit (china)": "miit",
+  "shfe (china)": "shfe",
   "a16z blog": "a16z",
   "a16z insights": "a16z",
   "a16z podcast": "a16z",

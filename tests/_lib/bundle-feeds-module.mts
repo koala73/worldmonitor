@@ -30,6 +30,8 @@ export interface BundleFeedsModuleOptions {
    *  different src entry (e.g. a component module) to reuse the same stub +
    *  defines for a sibling bundle. */
   entryPoint?: string;
+  /** Explicit public build flags for opt-in catalog tests. */
+  env?: Record<string, string>;
 }
 
 export async function bundleFeedsModule<T>(opts: BundleFeedsModuleOptions): Promise<T> {
@@ -70,6 +72,7 @@ export async function bundleFeedsModule<T>(opts: BundleFeedsModuleOptions): Prom
         BASE_URL: '/',
         VITE_VARIANT: 'full',
         VITE_RSS_DIRECT_TO_RELAY: 'false',
+        ...opts.env,
       }),
     },
   });

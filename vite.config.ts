@@ -780,14 +780,15 @@ function miitNewsPlugin(): Plugin {
     name: 'miit-news',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
-        if (req.url?.split('?')[0] !== '/api/miit-news') return next();
+        const route = req.url?.split('?')[0];
+        if (route !== '/api/miit-news' && route !== '/api/china-futures-news') return next();
         if (req.method !== 'GET' && req.method !== 'HEAD') {
           res.statusCode = 405;
           res.end();
           return;
         }
         try {
-          const { default: handler } = await server.ssrLoadModule('/api/miit-news.js');
+          const { default: handler } = await server.ssrLoadModule(`${route}.js`);
           const headers = new Headers();
           if (typeof req.headers.origin === 'string') headers.set('Origin', req.headers.origin);
           const response: Response = await handler(new Request(`http://localhost${req.url}`, { headers }));

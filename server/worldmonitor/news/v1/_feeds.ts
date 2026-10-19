@@ -404,6 +404,8 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Xinhua', url: gn('site:xinhuanet.com OR Xinhua when:1d'), deadlinePriority: 100 },
       { name: 'Asahi Shimbun', url: 'https://www.asahi.com/rss/asahi/newsheadlines.rdf', lang: 'ja', strategicDefault: true },
       { name: 'MIIT (China)', url: 'https://api.worldmonitor.app/api/miit-news', lang: 'zh', strategicDefault: true, deadlinePriority: 100 },
+      ...(process.env.CHINA_FUTURES_NEWS_ENABLED === '1'
+        ? [{ name: 'SHFE (China)', url: '/api/china-futures-news', lang: 'zh', deadlinePriority: 100 }] : []),
       { name: 'MOFCOM (China)', url: gnLocale('site:mofcom.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh', strategicDefault: true, deadlinePriority: 100 },
       { name: 'Bangkok Post', url: gn('site:bangkokpost.com when:1d'), lang: 'th', strategicDefault: true },
       { name: 'VnExpress', url: 'https://vnexpress.net/rss/tin-moi-nhat.rss', lang: 'vi', strategicDefault: true },
