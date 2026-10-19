@@ -18,6 +18,8 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import Ajv2020 from 'ajv/dist/2020.js';
 
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
+import { TOOL_ALIASES } from '../api/mcp/registry/index.ts';
+import { DEPRECATION_NOTICE_SCHEMA } from '../api/mcp/structured-content.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -98,7 +100,14 @@ describe('tools/call returns structuredContent a strict client accepts (#8328)',
       const schema = publicTools.get(tool.name).outputSchema;
       assert.equal(schema.type, 'object', `${tool.name}: root type`);
       assert.ok(Array.isArray(schema.anyOf) && schema.anyOf.length >= 2, `${tool.name}: anyOf`);
-      assert.deepEqual(schema.anyOf[0], JSON.parse(JSON.stringify(tool.outputSchema)), `${tool.name}: documented shape must stay intact as anyOf[0]`);
+      const expected = JSON.parse(JSON.stringify(tool.outputSchema));
+      if (TOOL_ALIASES.targetNames().has(tool.name)) {
+        expected.properties = {
+          ...expected.properties,
+          deprecation: JSON.parse(JSON.stringify(DEPRECATION_NOTICE_SCHEMA)),
+        };
+      }
+      assert.deepEqual(schema.anyOf[0], expected, `${tool.name}: documented shape must stay intact as anyOf[0]`);
     }
   });
 

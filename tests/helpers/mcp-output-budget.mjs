@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 import { utf8ByteLength } from '../../api/mcp.ts';
 import { presentDefaultMarketData } from '../../api/mcp/registry/cache-tools.ts';
-import { findCallableTool } from '../../api/mcp/registry/index.ts';
+import { TOOL_ALIASES } from '../../api/mcp/registry/index.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const FIXTURES_DIR = path.resolve(HERE, '..', 'fixtures', 'jmespath-samples');
@@ -100,7 +100,8 @@ export function runBudgetChecks() {
   const rows = [];
   for (const { file, tool: toolName } of FIXTURES) {
     // Retired tools are still callable, so their response budget still holds.
-    const tool = findCallableTool(toolName);
+    const resolved = TOOL_ALIASES.resolve(toolName, {});
+    const tool = resolved.kind === 'registered' || resolved.kind === 'retired' ? resolved.tool : undefined;
     if (!tool) {
       rows.push({ file, tool: toolName, status: 'missing-tool', budget: null, observed: null });
       continue;

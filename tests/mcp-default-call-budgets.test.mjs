@@ -8,10 +8,14 @@ import assert from 'node:assert/strict';
 import { Ratelimit } from '@upstash/ratelimit';
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 import { readFixture } from './helpers/mcp-output-budget.mjs';
-import { findCallableTool } from '../api/mcp/registry/index.ts';
+import { TOOL_ALIASES } from '../api/mcp/registry/index.ts';
 
 // generate_forecasts is retired (unlisted) but still callable, so its cases stay.
-const budgetOf = name => findCallableTool(name)._outputBudgetBytes;
+const budgetOf = name => {
+  const resolved = TOOL_ALIASES.resolve(name, {});
+  if (resolved.kind !== 'registered' && resolved.kind !== 'retired') throw new Error(`not callable: ${name}`);
+  return resolved.tool._outputBudgetBytes;
+};
 const apiDeps = () => makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: {
   tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' },
 }, validUntil: Date.now() + 86400000 }) });
