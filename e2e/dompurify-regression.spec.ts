@@ -8,6 +8,31 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/tests/sanitizer-harness');
 });
 
+test('panel errors display hostile exception text without creating elements', async ({ page }, testInfo) => {
+  const result = await page.evaluate(async () => {
+    const modulePath = '/src/components/Panel.ts';
+    const { Panel } = await import(/* @vite-ignore */ modulePath);
+    const panel = new Panel({ id: 'exception-text-probe', title: 'Error text safety' });
+    document.body.append(panel.getElement());
+    const payload = '<img src=x onerror="window.__exceptionExecuted=true"> <b>private & detail</b>';
+    panel.showError(new Error(payload).message);
+    const message = document.querySelector('.panel-error-msg')!;
+    const result = {
+      text: message.textContent,
+      elements: message.childElementCount,
+      executed: Reflect.get(window, '__exceptionExecuted') === true,
+    };
+    return result;
+  });
+  expect(result).toEqual({
+    text: '<img src=x onerror="window.__exceptionExecuted=true"> <b>private & detail</b>',
+    elements: 0,
+    executed: false,
+  });
+  await page.addStyleTag({ content: 'body { background: #161b22; color: #e6edf3; font: 16px system-ui; padding: 24px; } .panel { max-width: 620px; padding: 24px; border: 1px solid #6e7681; } .panel-header { margin-bottom: 24px; } .panel-error-msg { white-space: pre-wrap; overflow-wrap: anywhere; }' });
+  await page.screenshot({ path: testInfo.outputPath('exception-text.png') });
+});
+
 for (const hook of ['afterSanitizeElements', 'afterSanitizeAttributes'] as const) {
   // GHSA-p98j-92pf-mc4p requires checking the retained descendant, not just the returned root.
   test(`${hook} neutralizes event handlers in a detached subtree`, async ({ page }) => {
