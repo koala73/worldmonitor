@@ -785,10 +785,9 @@
       "alertTitle": {
         "configured": "Desktop postavke konfigurisane",
         "needsKeys": "Konfiguriši API ključeve da otključaš funkcije",
-        "some": "Neke funkcije trebaju API ključeve"
+        "some": "Neke funkcije trebaju API ključeve",
+        "pro": "World Monitor Pro je aktivan"
       },
-      "reserveEarlyAccess": "Rezerviši Rani Pristup",
-      "skipSetup": "Preskoči postavljanje — jedna World Monitor licenca otključava sve. Pridruži se listi čekanja za rani pristup.",
       "summary": {
         "desktop": "Desktop režim",
         "web": "Web režim (samo čitanje, kredencijali upravljani serverom)",
@@ -816,7 +815,10 @@
         "NASA_FIRMS_API_KEY": "Sustav za upravljanje informacijama o požarima.",
         "OLLAMA_API_URL": "npr. http://127.0.0.1:11434 (Ollama) ili http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-kompatibilan endpoint.",
         "OLLAMA_MODEL": "npr. llama3.1:8b — tag modela za summarizaciju."
-      }
+      },
+      "proCloud": "Značajke bez lokalnog API ključa koriste World Monitor cloud podatke.",
+      "skipSetupPro": "Preskoči postavu: prijavite se s World Monitor Pro za korištenje cloud podataka umjesto svojih API ključeva.",
+      "getPro": "Uzmi World Monitor Pro"
     },
     "settingsWindow": {
       "shellTitle": "Postavke Svjetskog monitoringa",

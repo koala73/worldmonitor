@@ -781,10 +781,9 @@
       "alertTitle": {
         "configured": "Asztali beállítások konfigurálva",
         "needsKeys": "Konfiguráld az API-kulcsokat a funkciók feloldásához",
-        "some": "Néhány funkció API-kulcsokat igényel"
+        "some": "Néhány funkció API-kulcsokat igényel",
+        "pro": "A World Monitor Pro aktív"
       },
-      "reserveEarlyAccess": "Foglalj korai hozzáférést",
-      "skipSetup": "Hagyj ki a beállítást — egy World Monitor licenc mindent feloldja. Csatlakozz a várólistához a korai hozzáféréshez.",
       "summary": {
         "desktop": "Asztali mód",
         "web": "Web mód (csak olvasható, szerveren kezelt hitelesítés)",
@@ -812,7 +811,10 @@
         "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System.",
         "OLLAMA_API_URL": "pl. http://127.0.0.1:11434 (Ollama) vagy http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-kompatibilis végpont.",
         "OLLAMA_MODEL": "pl. llama3.1:8b — összegzéshez használandó modelltag."
-      }
+      },
+      "proCloud": "Az API-kulcs nélküli funkciók a World Monitor felhőadatait használják.",
+      "skipSetupPro": "Hagyja ki a beállítást: jelentkezzen be a World Monitor Pro segítségével a felhőadatok használatához a saját API-kulcsok helyett.",
+      "getPro": "World Monitor Pro beszerzése"
     },
     "settingsWindow": {
       "shellTitle": "World Monitor beállítások",

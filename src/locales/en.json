@@ -781,10 +781,12 @@
       "alertTitle": {
         "configured": "Desktop settings configured",
         "needsKeys": "Configure API keys to unlock features",
-        "some": "Some features need API keys"
+        "some": "Some features need API keys",
+        "pro": "World Monitor Pro is active"
       },
-      "reserveEarlyAccess": "Reserve Your Early Access",
-      "skipSetup": "Skip the setup — a single World Monitor license unlocks everything. Join the waitlist for early access.",
+      "proCloud": "Features without a local API key use World Monitor cloud data.",
+      "skipSetupPro": "Skip the setup: sign in with World Monitor Pro to use cloud data instead of your own API keys.",
+      "getPro": "Get World Monitor Pro",
       "summary": {
         "desktop": "Desktop mode",
         "web": "Web mode (read-only, server-managed credentials)",

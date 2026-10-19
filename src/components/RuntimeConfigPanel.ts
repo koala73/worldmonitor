@@ -17,6 +17,7 @@ import {
 } from '@/services/runtime-config';
 import { escapeHtml } from '@/utils/sanitize';
 import { isDesktopRuntime } from '@/services/runtime';
+import { isEntitled, onEntitlementChange } from '@/services/entitlements';
 import { openExternalUrl } from '@/services/external-navigation';
 import { fetchOllamaModels as fetchOllamaModelsFromService } from '@/services/ollama-models';
 import { t } from '@/services/i18n';
@@ -33,6 +34,7 @@ interface RuntimeConfigPanelOptions {
 
 export class RuntimeConfigPanel extends Panel {
   private unsubscribe: (() => void) | null = null;
+  private unsubscribeEntitlement: (() => void) | null = null;
   private readonly mode: 'full' | 'alert';
   private readonly buffered: boolean;
   private readonly featureFilter?: RuntimeFeatureId[];
@@ -47,6 +49,7 @@ export class RuntimeConfigPanel extends Panel {
     this.buffered = options.buffered ?? false;
     this.featureFilter = options.featureFilter;
     this.unsubscribe = subscribeRuntimeConfig(() => this.render());
+    this.unsubscribeEntitlement = onEntitlementChange(() => this.render());
     this.render();
   }
 
@@ -158,6 +161,8 @@ export class RuntimeConfigPanel extends Panel {
   public destroy(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.unsubscribeEntitlement?.();
+    this.unsubscribeEntitlement = null;
   }
 
   private setEffectiveVisibility(visible: boolean): void {
@@ -234,20 +239,27 @@ export class RuntimeConfigPanel extends Panel {
         return;
       }
 
-      const alertTitle = t(`modals.runtimeConfig.alertTitle.${alertState}`);
-      const alertClass = missingFeatures > 0 ? 'warn' : 'ok';
+      // Pro supplies cloud data for features without a local key, so a Pro
+      // desktop gets confirmation instead of a key-setup prompt and upsell.
+      const pro = isEntitled();
+      const shownState = pro ? 'pro' : alertState;
+      const alertTitle = t(`modals.runtimeConfig.alertTitle.${shownState}`);
+      const alertClass = pro || missingFeatures === 0 ? 'ok' : 'warn';
+      const proOffer = pro
+        ? `<p class="runtime-alert-skip">${t('modals.runtimeConfig.proCloud')}</p>`
+        : `<p class="runtime-alert-skip">${t('modals.runtimeConfig.skipSetupPro')}</p>
+          <button type="button" class="runtime-early-access-btn" data-get-pro>
+            ${t('modals.runtimeConfig.getPro')}
+          </button>`;
 
       this.setEffectiveVisibility(true);
       setTrustedHtml(this.content, trustedHtml(`
-        <section class="runtime-alert runtime-alert-${alertClass}" data-alert-state="${alertState}">
+        <section class="runtime-alert runtime-alert-${alertClass}" data-alert-state="${shownState}">
           <h3>${alertTitle}</h3>
           <p>
             ${availableFeatures}/${totalFeatures} ${t('modals.runtimeConfig.summary.available')}${configuredCount > 0 ? ` · ${configuredCount} ${t('modals.runtimeConfig.summary.secrets')}` : ''}.
           </p>
-          <p class="runtime-alert-skip">${t('modals.runtimeConfig.skipSetup')}</p>
-          <button type="button" class="runtime-early-access-btn" data-early-access>
-            ${t('modals.runtimeConfig.reserveEarlyAccess')}
-          </button>
+          ${proOffer}
         </section>
       `, "legacy direct innerHTML migration"));
       this.attachListeners();
@@ -369,7 +381,7 @@ export class RuntimeConfigPanel extends Panel {
     if (!isDesktopRuntime()) return;
 
     if (this.mode === 'alert') {
-      this.content.querySelector<HTMLButtonElement>('[data-early-access]')?.addEventListener('click', () => {
+      this.content.querySelector<HTMLButtonElement>('[data-get-pro]')?.addEventListener('click', () => {
         const url = 'https://www.worldmonitor.app/pro';
         void openExternalUrl(url);
       });

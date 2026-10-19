@@ -781,10 +781,9 @@
       "alertTitle": {
         "configured": "Mipangilio ya Eneo-kazi imesanidiwa",
         "needsKeys": "Sanidi vitufe vya API ili kufungua vipengele",
-        "some": "Baadhi ya vipengele vinahitaji funguo za API"
+        "some": "Baadhi ya vipengele vinahitaji funguo za API",
+        "pro": "World Monitor Pro imefungwa"
       },
-      "reserveEarlyAccess": "Hifadhi Ufikiaji Wako wa Mapema",
-      "skipSetup": "Ruka usanidi - leseni moja ya World Monitor itafungua kila kitu. Jiunge na orodha ya wanaosubiri ili upate ufikiaji wa mapema.",
       "summary": {
         "desktop": "Hali ya eneo-kazi",
         "web": "Hali ya wavuti (kusoma pekee, vitambulisho vinavyodhibitiwa na seva)",
@@ -812,7 +811,10 @@
         "NASA_FIRMS_API_KEY": "Taarifa za Moto kwa Mfumo wa Usimamizi wa Rasilimali.",
         "OLLAMA_API_URL": "k.m. http://127.0.0.1:11434 (Ollama) au http://127.0.0.1:1234/v1 (LM Studio) - Mwisho unaoendana na OpenAI.",
         "OLLAMA_MODEL": "k.m. llama3.1:8b - lebo ya mfano ya kutumia kwa muhtasari."
-      }
+      },
+      "proCloud": "Vipengele bila ufunguo wa API wa ndani hutumia data ya wingu la World Monitor.",
+      "skipSetupPro": "Ruka usanidi: ingia kwa World Monitor Pro ili kutumia data ya wingu badala ya ufunguo wako wa API.",
+      "getPro": "Pata World Monitor Pro"
     },
     "settingsWindow": {
       "shellTitle": "Mipangilio ya Ufuatiliaji Ulimwenguni",

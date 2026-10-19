@@ -781,10 +781,9 @@
       "alertTitle": {
         "configured": "Desktop settings configured",
         "needsKeys": "Configure API keys to unlock features",
-        "some": "Some features need API keys"
+        "some": "Some features need API keys",
+        "pro": "World Monitor Pro فعال است"
       },
-      "reserveEarlyAccess": "Reserve Your Early Access",
-      "skipSetup": "Skip the setup — a single World Monitor license unlocks everything. Join the waitlist for early access.",
       "summary": {
         "desktop": "Desktop mode",
         "web": "Web mode (read-only, server-managed credentials)",
@@ -812,7 +811,10 @@
         "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
-      }
+      },
+      "proCloud": "ویژگی‌هایی که کلید API محلی ندارند از داده‌های ابری World Monitor استفاده می‌کنند.",
+      "skipSetupPro": "از راه‌اندازی صرف‌نظر کنید: برای استفاده از داده‌های ابری به جای کلیدهای API خود، با World Monitor Pro وارد شوید.",
+      "getPro": "دریافت World Monitor Pro"
     },
     "settingsWindow": {
       "shellTitle": "World Monitor Settings",

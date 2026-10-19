@@ -712,9 +712,9 @@
       "alertTitle": {
         "configured": "Masaustu ayarlari yapilandirildi",
         "needsKeys": "Ozellikleri etkinlestirmek icin API anahtarlarini yapilandiriniz",
-        "some": "Bazi ozellikler API anahtari gerektiriyor"
+        "some": "Bazi ozellikler API anahtari gerektiriyor",
+        "pro": "World Monitor Pro etkin"
       },
-      "skipSetup": "Kurulumu atlayın — tek bir World Monitor lisansı her şeyi açar. Erken erişim için bekleme listesine katılın.",
       "summary": {
         "desktop": "Masaustu modu",
         "web": "Web modu (salt okunur, sunucu tarafli kimlik bilgileri)",
@@ -743,7 +743,9 @@
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "reserveEarlyAccess": "Erken Erişimi Rezerve Edin"
+      "proCloud": "Yerel API anahtarı olmayan özellikler World Monitor bulut verilerini kullanır.",
+      "skipSetupPro": "Kurulumu atlayın: Kendi API anahtarlarınız yerine bulut verilerini kullanmak için World Monitor Pro ile oturum açın.",
+      "getPro": "World Monitor Pro'yu edinin"
     },
     "settingsWindow": {
       "validating": "API anahtarlari dogrulaniyor...",

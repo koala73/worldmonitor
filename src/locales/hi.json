@@ -781,10 +781,9 @@
       "alertTitle": {
         "configured": "डेस्कटॉप सेटिंग्स सेट की गईं",
         "needsKeys": "फीचर्स अनलॉक करने के लिए API की सेट करें",
-        "some": "कुछ फीचर API की चाहते हैं"
+        "some": "कुछ फीचर API की चाहते हैं",
+        "pro": "World Monitor Pro सक्रिय है"
       },
-      "reserveEarlyAccess": "जल्दी एक्सेस रिजर्व करें",
-      "skipSetup": "सेटअप छोड़ें — एक World Monitor लाइसेंस सब अनलॉक करता है। जल्दी एक्सेस के लिए इंतजार सूची में शामिल हों।",
       "summary": {
         "desktop": "डेस्कटॉप मोड",
         "web": "वेब मोड (सिर्फ पढ़ने के लिए, सर्वर-प्रबंधित क्रेडेंशियल्स)",
@@ -812,7 +811,10 @@
         "NASA_FIRMS_API_KEY": "फायर सूचना सिस्टम के लिए।",
         "OLLAMA_API_URL": "जैसे http://127.0.0.1:11434 (Ollama) या http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-संगत एन्डपॉइंट।",
         "OLLAMA_MODEL": "जैसे llama3.1:8b — सारांश के लिए मॉडल टैग।"
-      }
+      },
+      "proCloud": "स्थानीय API कुंजी के बिना फीचर World Monitor क्लाउड डेटा का उपयोग करते हैं।",
+      "skipSetupPro": "सेटअप छोड़ें: World Monitor Pro के साथ साइन इन करें ताकि आप अपनी API कुंजियों की जगह क्लाउड डेटा का उपयोग कर सकें।",
+      "getPro": "World Monitor Pro प्राप्त करें"
     },
     "settingsWindow": {
       "shellTitle": "World Monitor सेटिंग्स",

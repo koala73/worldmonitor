@@ -712,9 +712,9 @@
       "alertTitle": {
         "configured": "Desktop-Einstellungen konfiguriert",
         "needsKeys": "Konfigurieren Sie API-Schlüssel, um Funktionen freizuschalten",
-        "some": "Für einige Funktionen sind API-Schlüssel erforderlich"
+        "some": "Für einige Funktionen sind API-Schlüssel erforderlich",
+        "pro": "World Monitor Pro ist aktiv"
       },
-      "skipSetup": "Überspringen Sie das Setup — eine einzige World Monitor-Lizenz schaltet alles frei. Tragen Sie sich in die Warteliste ein, um frühzeitigen Zugang zu erhalten.",
       "summary": {
         "desktop": "Desktop-Modus",
         "web": "Webmodus (schreibgeschützt, serververwaltete Anmeldeinformationen)",
@@ -743,7 +743,9 @@
         "OLLAMA_API_URL": "z. B. http://127.0.0.1:11434 (Ollama) oder http://127.0.0.1:1234/v1 (LM Studio) – OpenAI-kompatibler Endpunkt.",
         "OLLAMA_MODEL": "z. B. llama3.1:8b – Modell-Tag, das für die Zusammenfassung verwendet wird."
       },
-      "reserveEarlyAccess": "Frühen Zugriff reservieren"
+      "proCloud": "Funktionen ohne lokalen API-Schlüssel nutzen World Monitor Cloud-Daten.",
+      "skipSetupPro": "Setup überspringen: Melden Sie sich mit World Monitor Pro an, um Cloud-Daten statt Ihrer eigenen API-Schlüssel zu nutzen.",
+      "getPro": "World Monitor Pro erwerben"
     },
     "countryIntel": {
       "identifying": "Land wird identifiziert...",

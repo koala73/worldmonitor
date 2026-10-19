@@ -314,7 +314,8 @@
       "alertTitle": {
         "configured": "Bureaubladinstellingen geconfigureerd",
         "needsKeys": "Configureer API-sleutels om functies te ontgrendelen",
-        "some": "Voor sommige functies zijn API-sleutels nodig"
+        "some": "Voor sommige functies zijn API-sleutels nodig",
+        "pro": "World Monitor Pro is actief"
       },
       "summary": {
         "desktop": "Desktop-modus",
@@ -344,8 +345,9 @@
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "skipSetup": "Sla de configuratie over — een enkele World Monitor-licentie ontgrendelt alles. Meld u aan voor de wachtlijst voor vroege toegang.",
-      "reserveEarlyAccess": "Reserveer Vroege Toegang"
+      "proCloud": "Functies zonder lokale API-sleutel gebruiken World Monitor cloudgegevens.",
+      "skipSetupPro": "Sla de setup over: meld je aan met World Monitor Pro om cloudgegevens te gebruiken in plaats van je eigen API-sleutels.",
+      "getPro": "World Monitor Pro ophalen"
     },
     "countryIntel": {
       "identifying": "Land identificeren...",

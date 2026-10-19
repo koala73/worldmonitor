@@ -712,9 +712,9 @@
       "alertTitle": {
         "configured": "Ρυθμίσεις desktop διαμορφώθηκαν",
         "needsKeys": "Ρυθμίστε API keys για ξεκλείδωμα λειτουργιών",
-        "some": "Ορισμένες λειτουργίες χρειάζονται API keys"
+        "some": "Ορισμένες λειτουργίες χρειάζονται API keys",
+        "pro": "Το World Monitor Pro είναι ενεργό"
       },
-      "skipSetup": "Παραλείψτε τη ρύθμιση — μία μόνο άδεια World Monitor ξεκλειδώνει τα πάντα. Γραφτείτε στη λίστα αναμονής για πρώιμη πρόσβαση.",
       "summary": {
         "desktop": "Λειτουργία desktop",
         "web": "Λειτουργία web (μόνο ανάγνωση, διαχειριζόμενα διαπιστευτήρια)",
@@ -743,7 +743,9 @@
         "OLLAMA_API_URL": "π.χ. http://127.0.0.1:11434 (Ollama) ή http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-συμβατό endpoint.",
         "OLLAMA_MODEL": "π.χ. llama3.1:8b — ετικέτα μοντέλου για περίληψη."
       },
-      "reserveEarlyAccess": "Κρατήστε Πρόωρη Πρόσβαση"
+      "proCloud": "Τα χαρακτηριστικά χωρίς τοπικό κλειδί API χρησιμοποιούν δεδομένα από το cloud του World Monitor.",
+      "skipSetupPro": "Παραλείψτε την ρύθμιση: συνδεθείτε με το World Monitor Pro για να χρησιμοποιήσετε δεδομένα από το cloud αντί για τα δικά σας κλειδιά API.",
+      "getPro": "Αποκτήστε το World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "Επικύρωση API keys...",

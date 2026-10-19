@@ -315,7 +315,8 @@
       "alertTitle": {
         "configured": "Configurações da área de trabalho configuradas",
         "needsKeys": "Configure chaves de API para desbloquear recursos",
-        "some": "Alguns recursos precisam de chaves de API"
+        "some": "Alguns recursos precisam de chaves de API",
+        "pro": "World Monitor Pro está ativo"
       },
       "summary": {
         "desktop": "Modo área de trabalho",
@@ -345,8 +346,9 @@
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "skipSetup": "Pule a configuração — uma única licença World Monitor desbloqueia tudo. Junte-se à lista de espera para acesso antecipado.",
-      "reserveEarlyAccess": "Reserve seu Acesso Antecipado"
+      "proCloud": "Recursos sem uma chave de API local usam dados da nuvem do World Monitor.",
+      "skipSetupPro": "Pule a configuração: faça login com World Monitor Pro para usar dados da nuvem em vez de suas próprias chaves de API.",
+      "getPro": "Obter World Monitor Pro"
     },
     "countryIntel": {
       "identifying": "Identificando país...",

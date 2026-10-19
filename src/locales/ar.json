@@ -724,7 +724,8 @@
       "alertTitle": {
         "configured": "تم تهيئة إعدادات سطح المكتب",
         "needsKeys": "قم بتهيئة مفاتيح API لتفعيل الميزات",
-        "some": "بعض الميزات تحتاج مفاتيح API"
+        "some": "بعض الميزات تحتاج مفاتيح API",
+        "pro": "World Monitor Pro نشط"
       },
       "summary": {
         "desktop": "وضع سطح المكتب",
@@ -754,8 +755,9 @@
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "skipSetup": "تخطَّ الإعداد — ترخيص واحد لـ World Monitor يفتح كل شيء. انضم إلى قائمة الانتظار للحصول على وصول مبكر.",
-      "reserveEarlyAccess": "احجز وصولك المبكر"
+      "proCloud": "المميزات التي لا تحتوي على مفتاح API محلي تستخدم بيانات World Monitor السحابية.",
+      "skipSetupPro": "تخطَّ الإعداد: سجّل الدخول باستخدام World Monitor Pro لاستخدام البيانات السحابية بدلاً من مفاتيح API الخاصة بك.",
+      "getPro": "احصل على World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "جارٍ التحقق من مفاتيح API...",

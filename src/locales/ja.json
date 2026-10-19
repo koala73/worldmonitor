@@ -709,9 +709,9 @@
       "alertTitle": {
         "configured": "デスクトップ設定が構成済",
         "needsKeys": "機能を有効にするためAPIキーを設定してください",
-        "some": "一部の機能にAPIキーが必要"
+        "some": "一部の機能にAPIキーが必要",
+        "pro": "World Monitor Pro がアクティブです"
       },
-      "skipSetup": "セットアップをスキップ — World Monitorライセンス1つですべてが利用可能になります。早期アクセスのウェイトリストにご参加ください。",
       "summary": {
         "desktop": "デスクトップモード",
         "web": "Webモード（読み取り専用、サーバー管理の認証情報）",
@@ -740,7 +740,9 @@
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "reserveEarlyAccess": "アーリーアクセスを予約"
+      "proCloud": "ローカル API キーがないフィーチャーは World Monitor クラウドデータを使用します。",
+      "skipSetupPro": "セットアップをスキップ: World Monitor Pro でサインインして、独自の API キーの代わりにクラウドデータを使用します。",
+      "getPro": "World Monitor Pro を入手"
     },
     "settingsWindow": {
       "validating": "APIキーを検証中...",

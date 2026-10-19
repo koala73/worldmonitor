@@ -715,7 +715,8 @@
       "alertTitle": {
         "configured": "Paramètres de bureau configurés",
         "needsKeys": "Configurez les clés API pour débloquer les fonctionnalités",
-        "some": "Certaines fonctionnalités nécessitent des clés API"
+        "some": "Certaines fonctionnalités nécessitent des clés API",
+        "pro": "World Monitor Pro est actif"
       },
       "summary": {
         "desktop": "Mode Bureau",
@@ -745,8 +746,9 @@
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "skipSetup": "Passez la configuration — une seule licence World Monitor débloque tout. Rejoignez la liste d'attente pour un accès anticipé.",
-      "reserveEarlyAccess": "Réservez votre accès anticipé"
+      "proCloud": "Les fonctionnalités sans clé API locale utilisent les données cloud de World Monitor.",
+      "skipSetupPro": "Ignorez la configuration : connectez-vous avec World Monitor Pro pour utiliser les données cloud au lieu de vos propres clés API.",
+      "getPro": "Obtenir World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "Validation des clés API...",

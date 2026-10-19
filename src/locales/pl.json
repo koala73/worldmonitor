@@ -718,7 +718,8 @@
       "alertTitle": {
         "configured": "Skonfigurowano ustawienia pulpitu",
         "needsKeys": "Skonfiguruj klucze API, aby odblokować funkcje",
-        "some": "Niektóre funkcje wymagają kluczy API"
+        "some": "Niektóre funkcje wymagają kluczy API",
+        "pro": "World Monitor Pro jest aktywny"
       },
       "summary": {
         "desktop": "Tryb pulpitu",
@@ -748,8 +749,9 @@
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "skipSetup": "Pomiń konfigurację — jedna licencja World Monitor odblokowuje wszystko. Dołącz do listy oczekujących, aby uzyskać wczesny dostęp.",
-      "reserveEarlyAccess": "Zarezerwuj wczesny dostęp"
+      "proCloud": "Funkcje bez lokalnego klucza API korzystają z danych chmury World Monitor.",
+      "skipSetupPro": "Pomiń konfigurację: zaloguj się za pomocą World Monitor Pro, aby używać danych z chmury zamiast własnych kluczy API.",
+      "getPro": "Pobierz World Monitor Pro"
     },
     "countryIntel": {
       "identifying": "Identyfikacja kraju...",

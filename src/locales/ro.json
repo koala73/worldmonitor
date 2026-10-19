@@ -715,9 +715,9 @@
       "alertTitle": {
         "configured": "Setări desktop configurate",
         "needsKeys": "Configurați cheile API pentru a debloca funcțiile",
-        "some": "Unele funcții necesită chei API"
+        "some": "Unele funcții necesită chei API",
+        "pro": "World Monitor Pro este activ"
       },
-      "skipSetup": "Omiteți configurarea — o singură licență World Monitor deblochează totul. Alăturați-vă listei de așteptare pentru acces anticipat.",
       "summary": {
         "desktop": "Modul desktop",
         "web": "Mod web (numai citire, acreditări gestionate de server)",
@@ -746,7 +746,9 @@
         "OLLAMA_API_URL": "de ex. http://127.0.0.1:11434 (Ollama) sau http://127.0.0.1:1234/v1 (LM Studio) — punct final compatibil cu OpenAI.",
         "OLLAMA_MODEL": "de ex. llama3.1:8b — etichetă model de utilizat pentru rezumat."
       },
-      "reserveEarlyAccess": "Rezervați Accesul Timpuriu"
+      "proCloud": "Funcțiile fără o cheie API locală utilizează datele cloud World Monitor.",
+      "skipSetupPro": "Omiteți configurarea: conectați-vă cu World Monitor Pro pentru a utiliza datele cloud în loc de propriile chei API.",
+      "getPro": "Obțineți World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "Se validează cheile API...",

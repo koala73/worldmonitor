@@ -715,9 +715,9 @@
       "alertTitle": {
         "configured": "Impostazioni del desktop configurate",
         "needsKeys": "Configura le chiavi API per sbloccare funzionalità",
-        "some": "Alcune funzionalità richiedono chiavi API"
+        "some": "Alcune funzionalità richiedono chiavi API",
+        "pro": "World Monitor Pro è attivo"
       },
-      "skipSetup": "Salta la configurazione — una singola licenza World Monitor sblocca tutto. Iscriviti alla lista d'attesa per l'accesso anticipato.",
       "summary": {
         "desktop": "Modalità desktop",
         "web": "Modalità Web (credenziali di sola lettura, gestite dal server)",
@@ -746,7 +746,9 @@
         "OLLAMA_API_URL": "es. http://127.0.0.1:11434 (Ollama) o http://127.0.0.1:1234/v1 (LM Studio) — endpoint compatibile OpenAI.",
         "OLLAMA_MODEL": "es. llama3.1:8b — tag modello da usare per la sintesi."
       },
-      "reserveEarlyAccess": "Prenota l'accesso anticipato"
+      "proCloud": "Le funzioni senza una chiave API locale utilizzano i dati cloud di World Monitor.",
+      "skipSetupPro": "Salta la configurazione: accedi con World Monitor Pro per utilizzare i dati cloud invece delle tue chiavi API.",
+      "getPro": "Ottieni World Monitor Pro"
     },
     "countryIntel": {
       "identifying": "Identificazione del paese...",

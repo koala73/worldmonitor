@@ -106,6 +106,134 @@ test('keeps seed-owned commodity vulnerability snapshots cloud-preferred', async
   }
 });
 
+// The cloud edge 403s short or library user agents, and the gateway accepts a
+// Pro desktop only with the same pair a Pro browser sends: an anonymous wms_
+// session plus the user's Clerk bearer (#9396).
+async function setupCloudAuthRemote() {
+  const mints = [];
+  const calls = [];
+  const server = createServer((req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (url.pathname === '/api/wm-session') {
+      mints.push({ method: req.method, origin: req.headers.origin, userAgent: req.headers['user-agent'] });
+      res.end(JSON.stringify({ ok: true, exp: Date.now() + 12 * 60 * 60 * 1000, token: `wms_minted_${mints.length}` }));
+      return;
+    }
+    calls.push({ path: url.pathname, headers: req.headers });
+    res.end(JSON.stringify({ source: 'remote' }));
+  });
+  const port = await listen(server);
+  return {
+    mints,
+    calls,
+    remoteBase: `http://127.0.0.1:${port}`,
+    close: () => new Promise(resolve => server.close(resolve)),
+  };
+}
+
+async function withCloudAuthSidecar(run) {
+  const endpoint = '/api/displacement/v1/get-displacement-summary';
+  const remote = await setupCloudAuthRemote();
+  const localApi = await setupApiDir({
+    'displacement/v1/get-displacement-summary.js': 'export default () => Response.json({ source: "local-empty" });',
+  });
+  const originalProductKey = process.env.WORLDMONITOR_API_KEY;
+  const originalVersion = process.env.LOCAL_API_APP_VERSION;
+  delete process.env.WORLDMONITOR_API_KEY;
+  process.env.LOCAL_API_APP_VERSION = '9.8.7';
+  const app = await createLocalApiServer({
+    port: 0, apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase, cloudFallback: 'true', allowPrivateRemoteBase: true,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  try {
+    await run({ remote, url: `http://127.0.0.1:${port}${endpoint}` });
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+    if (originalProductKey === undefined) delete process.env.WORLDMONITOR_API_KEY;
+    else process.env.WORLDMONITOR_API_KEY = originalProductKey;
+    if (originalVersion === undefined) delete process.env.LOCAL_API_APP_VERSION;
+    else process.env.LOCAL_API_APP_VERSION = originalVersion;
+  }
+}
+
+for (const rendererUserAgent of [undefined, 'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15']) {
+  test(`cloud requests carry the sidecar user agent when the renderer sent ${rendererUserAgent ? 'a WebView UA' : 'none'}`, async () => {
+    await withCloudAuthSidecar(async ({ remote, url }) => {
+      const response = await authFetch(url, rendererUserAgent ? { headers: { 'User-Agent': rendererUserAgent } } : {});
+      assert.equal(response.status, 200);
+      assert.equal(remote.calls[0].headers['user-agent'], 'WorldMonitor-Desktop/9.8.7 (sidecar)');
+    });
+  });
+}
+
+test('a signed-out desktop sends no user credential and mints no session', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    assert.equal((await authFetch(url)).status, 200);
+    assert.equal(remote.mints.length, 0);
+    assert.equal(remote.calls[0].headers.authorization, undefined);
+    assert.equal(remote.calls[0].headers['x-worldmonitor-key'], undefined);
+  });
+});
+
+test('a forwarded Pro bearer reaches the cloud with one cached anonymous session', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    const headers = { 'X-WorldMonitor-User-Authorization': 'Bearer clerk-jwt' };
+    assert.equal((await authFetch(url, { headers })).status, 200);
+    assert.equal((await authFetch(url, { headers })).status, 200);
+    assert.deepEqual(remote.mints, [{ method: 'POST', origin: 'https://worldmonitor.app', userAgent: 'WorldMonitor-Desktop/9.8.7 (sidecar)' }]);
+    for (const call of remote.calls) {
+      assert.equal(call.headers.authorization, 'Bearer clerk-jwt');
+      assert.equal(call.headers['x-worldmonitor-key'], 'wms_minted_1');
+      assert.equal(call.headers['x-worldmonitor-user-authorization'], undefined);
+    }
+  });
+});
+
+test('a configured product key wins over the minted session', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    process.env.WORLDMONITOR_API_KEY = 'desktop-product-key';
+    const headers = { 'X-WorldMonitor-User-Authorization': 'Bearer clerk-jwt' };
+    assert.equal((await authFetch(url, { headers })).status, 200);
+    assert.equal(remote.mints.length, 0);
+    assert.equal(remote.calls[0].headers['x-worldmonitor-key'], 'desktop-product-key');
+    assert.equal(remote.calls[0].headers.authorization, 'Bearer clerk-jwt');
+  });
+});
+
+test('local handlers never see the forwarded user credential', async () => {
+  const localApi = await setupApiDir({
+    'header-check.js': `export default (req) => Response.json({
+      userAuthorization: req.headers.get('x-worldmonitor-user-authorization'),
+    });`,
+  });
+  const app = await createLocalApiServer({ port: 0, apiDir: localApi.apiDir, logger: { log() {}, warn() {}, error() {} } });
+  const { port } = await app.start();
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/header-check`, {
+      headers: { 'X-WorldMonitor-User-Authorization': 'Bearer clerk-jwt' },
+    });
+    assert.deepEqual(await response.json(), { userAuthorization: null });
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('a forwarded user credential that is not a bearer is dropped', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    const headers = { 'X-WorldMonitor-User-Authorization': 'Basic Zm9vOmJhcg==' };
+    assert.equal((await authFetch(url, { headers })).status, 200);
+    assert.equal(remote.mints.length, 0);
+    assert.equal(remote.calls[0].headers.authorization, undefined);
+    assert.equal(remote.calls[0].headers['x-worldmonitor-user-authorization'], undefined);
+  });
+});
+
 test('routes seed-only displacement requests to cloud before a local empty 200', async () => {
   const endpoint = '/api/displacement/v1/get-displacement-summary';
   const seeded = { summary: { year: 2025, countries: [{ code: 'SYR' }], topFlows: [] }, fetchedAt: 123456, dataAvailable: true };

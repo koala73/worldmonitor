@@ -257,6 +257,7 @@ import {
   resetEntitlementState,
   resetEntitlementVerification,
 } from '@/services/entitlements';
+import { watchDesktopCloudAccess } from '@/services/desktop-cloud-auth';
 import { initSubscriptionWatch, destroySubscriptionWatch, openBillingPortal } from '@/services/billing';
 import {
   captureBillingPortalIntentFromUrl,
@@ -348,6 +349,7 @@ export class App {
   private unsubAiFlow: (() => void) | null = null;
   private unsubFreeTier: (() => void) | null = null;
   private unsubEntitlementPremiumLoaders: (() => void) | null = null;
+  private unsubDesktopCloudAccess: (() => void) | null = null;
   /**
    * Boot epoch for optional local-AI continuations (#7779). destroy() bumps
    * it first so a stale detached continuation from a torn-down App can never
@@ -2688,6 +2690,11 @@ export class App {
       _prevHadPremium = nowPremium;
     };
     this.unsubEntitlementPremiumLoaders = onEntitlementChange(() => firePremiumLoaders());
+    if (isDesktopRuntime()) {
+      // Desktop cloud data rides the Pro credential (#9396). Requests sent
+      // before it existed got 401s and tripped panel breakers, so start clean.
+      this.unsubDesktopCloudAccess = watchDesktopCloudAccess(() => window.location.reload());
+    }
     this.unsubFreeTier = subscribeAuthState((session) => {
       const userId = session.user?.id ?? null;
       const accountTransition = (
@@ -3629,6 +3636,7 @@ export class App {
       this.unsubAiFlow?.();
       this.unsubFreeTier?.();
       this.unsubEntitlementPremiumLoaders?.();
+      this.unsubDesktopCloudAccess?.();
       this.freeTierGate.cancelFallback();
       mlWorker.terminate();
       this.state.findingsBadge?.destroy();
@@ -4067,12 +4075,12 @@ export class App {
     // PRO-gated: the isNearViewport check is a visibility gate, not an entitlement gate,
     // so without hasPremiumAccess() here we'd still hit the 6 WTO RPCs every poll for
     // free users once the panel scrolled into view.
-    if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity' || SITE_VARIANT === 'energy') {
-      this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => hasPremiumAccess() && this.isPanelNearViewport('trade-policy'));
-      this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), REFRESH_INTERVALS.supplyChain, () => this.isPanelNearViewport('supply-chain'));
-      this.refreshScheduler.scheduleRefresh('chinaCorridors', () => this.dataLoader.loadChinaCorridors(), REFRESH_INTERVALS.chinaCorridors, () => this.isPanelNearViewport('china-corridors'));
-      this.refreshScheduler.scheduleRefresh('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast(), REFRESH_INTERVALS.chinaActivityNowcast, () => this.isPanelNearViewport('china-activity-nowcast'));
-    }
+    // Not variant-gated: a user can add these panels to any variant, and each
+    // condition already requires the panel on screen (#9396).
+    this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => hasPremiumAccess() && this.isPanelNearViewport('trade-policy'));
+    this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), REFRESH_INTERVALS.supplyChain, () => this.isPanelNearViewport('supply-chain'));
+    this.refreshScheduler.scheduleRefresh('chinaCorridors', () => this.dataLoader.loadChinaCorridors(), REFRESH_INTERVALS.chinaCorridors, () => this.isPanelNearViewport('china-corridors'));
+    this.refreshScheduler.scheduleRefresh('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast(), REFRESH_INTERVALS.chinaActivityNowcast, () => this.isPanelNearViewport('china-activity-nowcast'));
 
     this.refreshScheduler.scheduleRefresh(
       'cross-source-signals',

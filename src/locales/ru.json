@@ -718,9 +718,9 @@
       "alertTitle": {
         "configured": "Настройки рабочего стола сконфигурированы",
         "needsKeys": "Настройте API-ключи для разблокировки функций",
-        "some": "Некоторым функциям требуются API-ключи"
+        "some": "Некоторым функциям требуются API-ключи",
+        "pro": "World Monitor Pro активен"
       },
-      "skipSetup": "Пропустить настройку — одна лицензия World Monitor открывает всё. Запишитесь в лист ожидания для раннего доступа.",
       "summary": {
         "desktop": "Режим рабочего стола",
         "web": "Веб-режим (только чтение, серверные учётные данные)",
@@ -749,7 +749,9 @@
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "reserveEarlyAccess": "Зарезервировать ранний доступ"
+      "proCloud": "Функции без локального ключа API используют облачные данные World Monitor.",
+      "skipSetupPro": "Пропустить настройку: войдите с World Monitor Pro, чтобы использовать облачные данные вместо собственных ключей API.",
+      "getPro": "Получить World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "Проверка API-ключей...",

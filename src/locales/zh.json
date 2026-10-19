@@ -709,9 +709,9 @@
       "alertTitle": {
         "configured": "桌面端设置已配置",
         "needsKeys": "配置API密钥以解锁功能",
-        "some": "部分功能需要API密钥"
+        "some": "部分功能需要API密钥",
+        "pro": "World Monitor Pro 已激活"
       },
-      "skipSetup": "跳过设置 — 一个World Monitor许可证即可解锁全部功能。加入候补名单抢先体验。",
       "summary": {
         "desktop": "桌面模式",
         "web": "网页模式（只读，服务器管理凭证）",
@@ -740,7 +740,9 @@
         "OLLAMA_API_URL": "例如 http://127.0.0.1:11434 (Ollama) 或 http://127.0.0.1:1234/v1 (LM Studio) — OpenAI 兼容端点。",
         "OLLAMA_MODEL": "例如 llama3.1:8b — 用于摘要的模型标签。"
       },
-      "reserveEarlyAccess": "预留早期访问权限"
+      "proCloud": "没有本地 API 密钥的功能使用 World Monitor 云数据。",
+      "skipSetupPro": "跳过设置：使用 World Monitor Pro 登录以使用云数据，而不是您自己的 API 密钥。",
+      "getPro": "获取 World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "正在验证API密钥...",

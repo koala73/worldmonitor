@@ -715,9 +715,9 @@
       "alertTitle": {
         "configured": "Configuraciones de escritorio configuradas",
         "needsKeys": "Configurar claves API para desbloquear funciones",
-        "some": "Algunas funciones necesitan claves API"
+        "some": "Algunas funciones necesitan claves API",
+        "pro": "World Monitor Pro está activo"
       },
-      "skipSetup": "Omita la configuración — una sola licencia de World Monitor lo desbloquea todo. Únase a la lista de espera para acceso anticipado.",
       "summary": {
         "desktop": "Modo escritorio",
         "web": "Modo web (credenciales administradas por el servidor de solo lectura)",
@@ -746,7 +746,9 @@
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "reserveEarlyAccess": "Reserva tu acceso anticipado"
+      "proCloud": "Las funciones sin una clave API local utilizan datos en la nube de World Monitor.",
+      "skipSetupPro": "Omite la configuración: inicia sesión con World Monitor Pro para usar datos en la nube en lugar de tus propias claves API.",
+      "getPro": "Obtén World Monitor Pro"
     },
     "countryIntel": {
       "identifying": "Identificando el país...",

@@ -2036,6 +2036,7 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         .env("LOCAL_API_DATA_DIR", &data_dir)
         .env("LOCAL_API_MODE", "tauri-sidecar")
         .env("LOCAL_API_CLOUD_FALLBACK", "true")
+        .env("LOCAL_API_APP_VERSION", env!("CARGO_PKG_VERSION"))
         .env("LOCAL_API_TOKEN", &local_api_token)
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_file_err));

@@ -718,9 +718,9 @@
       "alertTitle": {
         "configured": "Nastavení desktopu nakonfigurováno",
         "needsKeys": "Pro odemknutí funkcí nakonfigurujte klíče API",
-        "some": "Některé funkce vyžadují klíče API"
+        "some": "Některé funkce vyžadují klíče API",
+        "pro": "World Monitor Pro je aktivní"
       },
-      "skipSetup": "Přeskočit nastavení — jedna licence World Monitor odemkne vše. Zapište se na čekací listinu pro předběžný přístup.",
       "summary": {
         "desktop": "Desktopový režim",
         "web": "Webový režim (pouze pro čtení, přihlašovací údaje spravuje server)",
@@ -749,7 +749,9 @@
         "OLLAMA_API_URL": "např. http://127.0.0.1:11434 (Ollama) nebo http://127.0.0.1:1234/v1 (LM Studio) — koncový bod kompatibilní s OpenAI.",
         "OLLAMA_MODEL": "např. llama3.1:8b — značka modelu k použití pro sumarizaci."
       },
-      "reserveEarlyAccess": "Rezervujte si ranný přístup"
+      "proCloud": "Funkce bez místního API klíče používají data z cloudu World Monitor.",
+      "skipSetupPro": "Přeskočit nastavení: přihlaste se k World Monitor Pro a používejte cloudová data místo vlastních API klíčů.",
+      "getPro": "Získat World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "Ověřování klíčů API...",

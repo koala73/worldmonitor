@@ -718,15 +718,74 @@ function toHeaders(nodeHeaders, options = {}) {
   return headers;
 }
 
-async function proxyToCloud(requestUrl, req, remoteBase) {
+// The renderer forwards a signed-in Pro user's Clerk bearer under its own
+// header: `Authorization` on the renderer → sidecar hop carries the sidecar
+// token, so the user credential cannot share it (#9396).
+const CLOUD_USER_AUTHORIZATION_HEADER = 'x-worldmonitor-user-authorization';
+const CLOUD_BEARER_SHAPE = /^Bearer [A-Za-z0-9._~+/-]+=*$/;
+const CLOUD_SESSION_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+const CLOUD_SESSION_RETRY_MS = 30 * 1000;
+
+// The cloud edge 403s missing, short, and library user agents. The renderer's
+// hop arrives through Rust with none, and a WebView UA would misreport the caller.
+function cloudUserAgent() {
+  return `WorldMonitor-Desktop/${process.env.LOCAL_API_APP_VERSION || 'unknown'} (sidecar)`;
+}
+
+function cloudUrl(remoteBase, pathname) {
   const target = new URL(remoteBase);
-  target.pathname = `${target.pathname.replace(/\/$/, '')}${requestUrl.pathname}`;
+  target.pathname = `${target.pathname.replace(/\/$/, '')}${pathname}`;
+  return target;
+}
+
+// The gateway authenticates a Pro browser by an anonymous wms_ session plus
+// the Clerk bearer; the bearer alone is ignored on routes that are not
+// tier-gated. Mint the session the way a browser does and reuse it until
+// close to expiry. A failed mint is retried after a pause, not per request.
+async function mintCloudSession(remoteBase) {
+  try {
+    const response = await fetch(cloudUrl(remoteBase, '/api/wm-session'), {
+      method: 'POST',
+      headers: { Origin: 'https://worldmonitor.app', 'User-Agent': cloudUserAgent() },
+      signal: AbortSignal.timeout(CLOUD_PROXY_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    if (typeof payload?.token !== 'string' || !payload.token.startsWith('wms_') || !Number.isFinite(payload.exp)) {
+      return null;
+    }
+    return { token: payload.token, exp: payload.exp };
+  } catch {
+    return null;
+  }
+}
+
+async function getCloudSessionToken(context) {
+  const now = Date.now();
+  const cached = context.cloudSession;
+  if (cached?.token && cached.exp - now > CLOUD_SESSION_REFRESH_MARGIN_MS) return cached.token;
+  if (cached && !cached.token && cached.retryAt > now) return null;
+  context.cloudSessionMint ??= mintCloudSession(context.remoteBase).then((session) => {
+    context.cloudSession = session ?? { token: null, retryAt: Date.now() + CLOUD_SESSION_RETRY_MS };
+    return session?.token ?? null;
+  }).finally(() => {
+    context.cloudSessionMint = null;
+  });
+  return context.cloudSessionMint;
+}
+
+async function proxyToCloud(requestUrl, req, context) {
+  const target = cloudUrl(context.remoteBase, requestUrl.pathname);
   target.search = requestUrl.search;
   const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
   const headers = toHeaders(req.headers, { stripOrigin: true });
   headers.delete(LOCAL_API_TRANSPORT_HEADER);
   // Strip sidecar auth token — meaningless to cloud API.
   headers.delete('Authorization');
+  const userAuthorization = headers.get(CLOUD_USER_AUTHORIZATION_HEADER) ?? '';
+  headers.delete(CLOUD_USER_AUTHORIZATION_HEADER);
+  const userBearer = CLOUD_BEARER_SHAPE.test(userAuthorization) ? userAuthorization : '';
+  headers.set('User-Agent', cloudUserAgent());
   // Strip conditional headers so cloud always returns fresh 200, not 304.
   // The browser may have stale ETags from previous sessions with empty data.
   headers.delete('If-None-Match');
@@ -742,6 +801,15 @@ async function proxyToCloud(requestUrl, req, remoteBase) {
   if (!headers.has('X-WorldMonitor-Key')) {
     const wmKey = process.env.WORLDMONITOR_API_KEY;
     if (wmKey) headers.set('X-WorldMonitor-Key', wmKey);
+  }
+  // Only a signed-in Pro desktop forwards a bearer, so a signed-out desktop
+  // keeps today's keyless behaviour and never mints a session.
+  if (userBearer) {
+    headers.set('Authorization', userBearer);
+    if (!headers.has('X-WorldMonitor-Key')) {
+      const session = await getCloudSessionToken(context);
+      if (session) headers.set('X-WorldMonitor-Key', session);
+    }
   }
   const clientAbort = new AbortController();
   const onClientClose = () => clientAbort.abort();
@@ -778,6 +846,7 @@ async function proxyRegisterInterestToCloud(requestUrl, req, context) {
   const body = JSON.stringify(normalizedPayload);
   const headers = toHeaders(req.headers, { stripOrigin: true });
   headers.delete(LOCAL_API_TRANSPORT_HEADER);
+  headers.delete(CLOUD_USER_AUTHORIZATION_HEADER);
   headers.delete('Authorization');
   headers.delete('If-None-Match');
   headers.delete('If-Modified-Since');
@@ -1159,7 +1228,7 @@ async function tryCloudFallback(requestUrl, req, context, reason) {
     }
   }
   try {
-    const resp = await proxyToCloud(requestUrl, req, context.remoteBase);
+    const resp = await proxyToCloud(requestUrl, req, context);
     if (!resp.ok) {
       context.logger.warn(`[local-api] cloud returned ${resp.status} for ${requestUrl.pathname}`);
     }
@@ -2046,6 +2115,7 @@ async function dispatch(requestUrl, req, routes, context) {
     // not expose it to route handlers, where Authorization is caller identity
     // (OAuth bearer) and X-WorldMonitor-Key is the caller's API key.
     hdrs.delete(LOCAL_API_TRANSPORT_HEADER);
+    hdrs.delete(CLOUD_USER_AUTHORIZATION_HEADER);
     if (hdrs.get('Authorization') === `Bearer ${expectedToken}`) {
       hdrs.delete('Authorization');
     }

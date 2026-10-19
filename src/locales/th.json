@@ -709,9 +709,9 @@
       "alertTitle": {
         "configured": "ตั้งค่าเดสก์ท็อปแล้ว",
         "needsKeys": "กรุณาตั้งค่า API key เพื่อปลดล็อกฟีเจอร์",
-        "some": "บางฟีเจอร์ต้องการ API key"
+        "some": "บางฟีเจอร์ต้องการ API key",
+        "pro": "World Monitor Pro ทำงานอยู่"
       },
-      "skipSetup": "ข้ามการตั้งค่า — ใบอนุญาต World Monitor ใบเดียวปลดล็อกทุกอย่าง เข้าร่วมรายชื่อรอเพื่อรับการเข้าถึงก่อน",
       "summary": {
         "desktop": "โหมดเดสก์ท็อป",
         "web": "โหมดเว็บ (อ่านอย่างเดียว, ข้อมูลรับรองจากเซิร์ฟเวอร์)",
@@ -740,7 +740,9 @@
         "OLLAMA_API_URL": "เช่น http://127.0.0.1:11434 (Ollama) หรือ http://127.0.0.1:1234/v1 (LM Studio) — จุดปลายทางที่เข้ากันได้กับ OpenAI",
         "OLLAMA_MODEL": "เช่น llama3.1:8b — แท็กโมเดลที่ใช้สำหรับการสรุป"
       },
-      "reserveEarlyAccess": "จองสิทธิ์เข้าถึงก่อน"
+      "proCloud": "ฟีเจอร์ที่ไม่มี API key ในเครื่องจะใช้ข้อมูล World Monitor cloud",
+      "skipSetupPro": "ข้ามการตั้งค่า: ลงชื่อเข้าใช้ World Monitor Pro เพื่อใช้ cloud data แทน API key ของคุณเอง",
+      "getPro": "รับ World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "กำลังตรวจสอบ API key...",

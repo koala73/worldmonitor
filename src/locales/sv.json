@@ -314,7 +314,8 @@
       "alertTitle": {
         "configured": "Skrivbordsinställningar konfigurerade",
         "needsKeys": "Konfigurera API-nycklar för att låsa upp funktioner",
-        "some": "Vissa funktioner behöver API-nycklar"
+        "some": "Vissa funktioner behöver API-nycklar",
+        "pro": "World Monitor Pro är aktivt"
       },
       "summary": {
         "desktop": "Skrivbordsläge",
@@ -344,8 +345,9 @@
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "skipSetup": "Hoppa över installationen — en enda World Monitor-licens låser upp allt. Gå med i väntelistan för tidig tillgång.",
-      "reserveEarlyAccess": "Reservera din tidig åtkomst"
+      "proCloud": "Funktioner utan lokal API-nyckel använder World Monitor cloud-data.",
+      "skipSetupPro": "Hoppa över installationen: logga in med World Monitor Pro för att använda cloud-data istället för dina egna API-nycklar.",
+      "getPro": "Skaffa World Monitor Pro"
     },
     "countryIntel": {
       "identifying": "Identifierar land...",

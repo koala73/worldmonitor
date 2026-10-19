@@ -709,9 +709,9 @@
       "alertTitle": {
         "configured": "Đã cấu hình cài đặt desktop",
         "needsKeys": "Cấu hình khóa API để mở khóa tính năng",
-        "some": "Một số tính năng cần khóa API"
+        "some": "Một số tính năng cần khóa API",
+        "pro": "World Monitor Pro đang hoạt động"
       },
-      "skipSetup": "Bỏ qua cài đặt — một giấy phép World Monitor mở khóa tất cả. Tham gia danh sách chờ để truy cập sớm.",
       "summary": {
         "desktop": "Chế độ desktop",
         "web": "Chế độ web (chỉ đọc, thông tin xác thực do máy chủ quản lý)",
@@ -740,7 +740,9 @@
         "OLLAMA_API_URL": "Ví dụ: http://127.0.0.1:11434 (Ollama) hoặc http://127.0.0.1:1234/v1 (LM Studio) — endpoint tương thích OpenAI.",
         "OLLAMA_MODEL": "Ví dụ: llama3.1:8b — thẻ mô hình dùng để tóm tắt."
       },
-      "reserveEarlyAccess": "Đặt trước quyền truy cập sớm"
+      "proCloud": "Các tính năng không có khóa API cục bộ sử dụng dữ liệu đám mây World Monitor.",
+      "skipSetupPro": "Bỏ qua thiết lập: đăng nhập bằng World Monitor Pro để sử dụng dữ liệu đám mây thay vì khóa API của riêng bạn.",
+      "getPro": "Nhận World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "Đang xác thực khóa API...",
