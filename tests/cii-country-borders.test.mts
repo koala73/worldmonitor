@@ -101,6 +101,15 @@ const BORDER_CASES: Case[] = [
   ['Santa Elena de Uairen, Venezuela', 4.6, -61.11, 'VE'],
   ['Havana', 23.1136, -82.3666, 'CU'],
   ['Key West', 24.55, -81.8, 'US'],
+  // Russia's mainland crosses the antimeridian: a naive ray cast flips whole
+  // latitude bands (Karelia read as nothing, Finnish Lapland as Russia).
+  ['Louhi, Russian Karelia', 66.08, 33.03, 'RU'],
+  ['Kalevala, Russian Karelia', 65.2, 31.16, 'RU'],
+  ['Kuusamo, Finland (not Tier-1)', 65.96, 29.19, null],
+  ['Salla, Finland (not Tier-1)', 66.83, 28.67, null],
+  ['Anadyr, Chukotka', 64.73, 177.5, 'RU'],
+  ['Uelen, Chukotka east of the antimeridian', 66.16, -169.8, 'RU'],
+  ['Norilsk', 69.35, 88.2, 'RU'],
   // Non-Tier-1 land and open sea
   ['Gibraltar', 36.14, -5.35, null],
   ['Basel, Switzerland', 47.56, 7.59, null],
@@ -116,6 +125,20 @@ describe('geoToCountry places points by real borders, worldwide', () => {
       assert.equal(seedGeoToCountry(lat, lon), expected, `military seeder at (${lat}, ${lon})`);
     });
   }
+
+  it('places every Tier-1 capital in its own country', () => {
+    const CAPITALS: Record<string, [number, number]> = {
+      US: [38.9, -77.04], RU: [55.75, 37.62], CN: [39.9, 116.4], UA: [50.45, 30.52], IR: [35.69, 51.39],
+      IL: [32.08, 34.78], TW: [25.03, 121.56], KP: [39.02, 125.75], SA: [24.71, 46.68], TR: [39.93, 32.86],
+      PL: [52.23, 21.01], DE: [52.52, 13.4], FR: [48.86, 2.35], GB: [51.51, -0.13], IN: [28.61, 77.21],
+      PK: [33.68, 73.05], SY: [33.51, 36.28], YE: [15.37, 44.19], MM: [19.76, 96.08], VE: [10.49, -66.88],
+      CU: [23.11, -82.37], MX: [19.43, -99.13], BR: [-15.79, -47.88], AE: [24.45, 54.38], KR: [37.57, 126.98],
+      IQ: [33.31, 44.36], AF: [34.53, 69.17], LB: [33.89, 35.5], EG: [30.04, 31.24], JP: [35.68, 139.69],
+      QA: [25.29, 51.53],
+    };
+    assert.deepEqual(Object.keys(CAPITALS).sort(), Object.keys(TIER1_COUNTRIES).sort());
+    for (const [code, [lat, lon]] of Object.entries(CAPITALS)) assert.equal(geoToCountry(lat, lon), code, code);
+  });
 
   it('treats a point within 12 nautical miles of a Tier-1 coast as that country', () => {
     // Off Jeddah's port and off the Japanese coast near Sendai, both outside the 1:50m land.

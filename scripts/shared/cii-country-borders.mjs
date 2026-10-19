@@ -36,6 +36,11 @@ function decodeArcs({ arcs, transform }) {
   });
 }
 
+// Russia's mainland ring crosses the antimeridian (Chukotka). Read raw, its
+// 180 -> -180 edges span the whole map and flip ray-cast parity across entire
+// latitude bands (Karelia read as sea, Finnish Lapland as Russia). Each ring is
+// unwrapped into continuous longitudes, so it may extend past +-180, and a
+// point is also tested 360 degrees east and west.
 function buildRing(ringArcs, arcs) {
   const ring = [];
   for (const index of ringArcs) {
@@ -43,8 +48,14 @@ function buildRing(ringArcs, arcs) {
     for (let i = ring.length ? 1 : 0; i < points.length; i++) ring.push(points[i]);
   }
   const flat = new Float64Array(ring.length * 2);
+  let offset = 0;
   ring.forEach(([lon, lat], i) => {
-    flat[i * 2] = lon;
+    if (i > 0) {
+      const previous = ring[i - 1][0];
+      if (lon - previous > 180) offset -= 360;
+      else if (previous - lon > 180) offset += 360;
+    }
+    flat[i * 2] = lon + offset;
     flat[i * 2 + 1] = lat;
   });
   return flat;
@@ -101,12 +112,15 @@ function inRing(lon, lat, ring) {
 }
 
 function inPolygon(polygon, lon, lat) {
-  if (lon < polygon.minLon || lon > polygon.maxLon || lat < polygon.minLat || lat > polygon.maxLat) return false;
-  if (!inRing(lon, lat, polygon.rings[0])) return false;
-  for (let r = 1; r < polygon.rings.length; r++) {
-    if (inRing(lon, lat, polygon.rings[r])) return false;
+  if (lat < polygon.minLat || lat > polygon.maxLat) return false;
+  for (const x of [lon, lon + 360, lon - 360]) {
+    if (x < polygon.minLon || x > polygon.maxLon) continue;
+    if (!inRing(x, lat, polygon.rings[0])) continue;
+    let inHole = false;
+    for (let r = 1; r < polygon.rings.length && !inHole; r++) inHole = inRing(x, lat, polygon.rings[r]);
+    if (!inHole) return true;
   }
-  return true;
+  return false;
 }
 
 /** Squared distance in km² from the point to the nearest edge of the ring (local flat projection). */
@@ -147,13 +161,15 @@ export function ciiCountryAt(lat, lon) {
   let bestCode = null;
   let bestDistanceSq = CII_COASTAL_WATERS_KM * CII_COASTAL_WATERS_KM;
   for (const polygon of ALL_POLYGONS) {
-    if (lon < polygon.minLon - marginLon || lon > polygon.maxLon + marginLon
-      || lat < polygon.minLat - marginLat || lat > polygon.maxLat + marginLat) continue;
-    for (const ring of polygon.rings) {
-      const d = ringDistanceSq(ring, lon, lat, kx, ky);
-      if (d < bestDistanceSq) {
-        bestDistanceSq = d;
-        bestCode = polygon.code;
+    if (lat < polygon.minLat - marginLat || lat > polygon.maxLat + marginLat) continue;
+    for (const x of [lon, lon + 360, lon - 360]) {
+      if (x < polygon.minLon - marginLon || x > polygon.maxLon + marginLon) continue;
+      for (const ring of polygon.rings) {
+        const d = ringDistanceSq(ring, x, lat, kx, ky);
+        if (d < bestDistanceSq) {
+          bestDistanceSq = d;
+          bestCode = polygon.code;
+        }
       }
     }
   }
