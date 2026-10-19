@@ -1451,7 +1451,9 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['aviation:delays-bootstrap:v2'],
-    _freshnessChecks: [{ key: 'seed-meta:aviation:faa', maxStaleMin: 90 }],
+    // The aggregate's own meta, as api/health.js flightDelays reads it (#6987).
+    // seed-meta:aviation:faa counts the FAA side-car only.
+    _freshnessChecks: [{ key: 'seed-meta:aviation:delays-bootstrap', maxStaleMin: 90 }],
     _apiPaths: [],
   },
   {

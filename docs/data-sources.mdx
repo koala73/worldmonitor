@@ -653,6 +653,8 @@ Airports across the Americas, Europe, Asia-Pacific, MENA, and Africa are continu
 
 **NOTAM closure detection** targets MENA airports where airspace closures due to military activity or security events carry strategic significance. Detection uses two methods: ICAO Q-code matching (aerodrome/airspace closure codes `FA`, `AH`, `AL`, `AW`, `AC`, `AM` combined with closure qualifiers `LC`, `AS`, `AU`, `XX`, `AW`) and free-text regex scanning for closure keywords (`AD CLSD`, `AIRPORT CLOSED`, `AIRSPACE CLOSED`). When a NOTAM closure is detected, it overrides any existing delay alert for that airport with a `severe/closure` classification.
 
+Only a JSON array from ICAO counts as a NOTAM observation, and an empty array is a valid "no closures" result. An HTTP error, an HTML page, malformed or non-array JSON, a timeout, or ICAO's `Reach call limit` quota response leaves `seed-meta:aviation:notam` untouched. The seeder keeps renewing the last closure list while it is within the 240-minute `notamClosures` health budget. After that, `/api/health` reports the feed stale, the seeder stops renewing the list, and it expires at its 2-hour TTL instead of being shown as current.
+
 **Severity thresholds**: Average delay ≥15min or ≥15% delayed flights = minor; ≥30min/30% = moderate; ≥45min/45% = major; ≥60min/60% = severe. Cancellation rate ≥80% with ≥10 flights = closure. All results are cached for 30 minutes in Redis. When no AviationStack API key is configured, the system generates probabilistic simulated delays for demonstration — rush-hour windows and high-traffic airports receive higher delay probability.
 
 ### Aviation Intelligence Panel

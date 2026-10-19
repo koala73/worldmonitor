@@ -81,6 +81,9 @@ export const BOOTSTRAP_META_KEY = 'seed-meta:aviation:delays-bootstrap';
 const INTL_TTL      = 10_800; // 3h — survives ~5 consecutive missed 30min cron ticks
 const FAA_TTL       = 7_200;  // 2h
 const NOTAM_TTL     = 7_200;  // 2h
+// Must equal api/health.js SEED_META.notamClosures.maxStaleMin: last-good
+// closures stop being retained once health would call them stale.
+const NOTAM_MAX_STALE_MIN = 240;
 export const NEWS_TTL = 2_400;  // 40min
 const BOOTSTRAP_TTL = 7_200;  // 2h — matches FAA/NOTAM; survives ~4 missed cron ticks
 
@@ -732,55 +735,43 @@ const NOTAM_CLOSURE_QCODES = new Set(['FA', 'AH', 'AL', 'AW', 'AC', 'AM']);
 // classifier.
 const NOTAM_RESTRICTION_QCODES = new Set(['RA', 'RO']);
 
-// Returns: Array of NOTAMs on success, null on quota exhaustion, [] on other errors.
-async function fetchIcaoNotams() {
-  const apiKey = process.env.ICAO_API_KEY;
-  if (!apiKey) return [];
+// Returns the NOTAM array only for a real JSON-array answer. Every other outcome
+// — quota ("Reach call limit"), non-2xx (the retired route answers 404 "Invalid
+// API Call"), an HTML challenge, bad or non-array JSON, a timeout, a network
+// error — throws, so the side-car keeps last-good instead of publishing an
+// empty closure list as a fresh observation.
+async function fetchIcaoNotams(apiKey) {
   const locations = NOTAM_LIST.join(',');
-  const url = `${ICAO_NOTAM_URL}?api_key=${apiKey}&format=json&locations=${locations}`;
-  try {
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(30_000),
-    });
-    const body = await resp.text();
-    if (/reach call limit/i.test(body) || /quota.?exceed/i.test(body)) {
-      console.warn('[NOTAM] ICAO quota exhausted ("Reach call limit")');
-      return null;
-    }
-    if (!resp.ok) {
-      console.warn(`[NOTAM] ICAO HTTP ${resp.status}`);
-      return [];
-    }
-    const ct = resp.headers.get('content-type') || '';
-    if (ct.includes('text/html')) {
-      console.warn('[NOTAM] ICAO returned HTML (challenge page)');
-      return [];
-    }
-    try {
-      const data = JSON.parse(body);
-      return Array.isArray(data) ? data : [];
-    } catch {
-      console.warn('[NOTAM] Invalid JSON from ICAO');
-      return [];
-    }
-  } catch (err) {
-    console.warn(`[NOTAM] Fetch error: ${err?.message || err}`);
-    return [];
+  const url = `${ICAO_NOTAM_URL}?api_key=${encodeURIComponent(apiKey)}&format=json&locations=${locations}`;
+  const resp = await fetch(url, {
+    headers: { 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(30_000),
+  });
+  const body = await resp.text();
+  if (/reach call limit/i.test(body) || /quota.?exceed/i.test(body)) {
+    throw new Error(`ICAO quota exhausted (HTTP ${resp.status} "Reach call limit")`);
   }
+  if (!resp.ok) throw new Error(`ICAO HTTP ${resp.status}: ${body.slice(0, 120)}`);
+  const ct = resp.headers.get('content-type') || '';
+  if (ct.includes('text/html')) throw new Error('ICAO returned HTML (challenge page)');
+  let data;
+  try {
+    data = JSON.parse(body);
+  } catch {
+    throw new Error('ICAO returned invalid JSON');
+  }
+  if (!Array.isArray(data)) throw new Error(`ICAO returned non-array JSON: ${body.slice(0, 120)}`);
+  return data;
 }
 
 async function seedNotamClosures() {
-  if (!process.env.ICAO_API_KEY) {
+  const apiKey = process.env.ICAO_API_KEY;
+  if (!apiKey) {
     console.log('[NOTAM] No ICAO_API_KEY — skipping');
-    return { closedIcaos: [], restrictedIcaos: [], reasons: {}, quotaExhausted: false, skipped: true };
+    return { closedIcaos: [], restrictedIcaos: [], reasons: {}, skipped: true };
   }
   const t0 = Date.now();
-  const notams = await fetchIcaoNotams();
-  if (notams === null) {
-    // Quota exhausted — don't blank the key; signal upstream to touch TTL.
-    return { closedIcaos: [], restrictedIcaos: [], reasons: {}, quotaExhausted: true, skipped: false };
-  }
+  const notams = await fetchIcaoNotams(apiKey);
 
   const now = Math.floor(Date.now() / 1000);
   const closedSet = new Set();
@@ -813,7 +804,7 @@ async function seedNotamClosures() {
   const closedIcaos = [...closedSet];
   const restrictedIcaos = [...restrictedSet];
   console.log(`[NOTAM] ${notams.length} raw NOTAMs, ${closedIcaos.length} closures, ${restrictedIcaos.length} restrictions in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  return { closedIcaos, restrictedIcaos, reasons, quotaExhausted: false, skipped: false };
+  return { closedIcaos, restrictedIcaos, reasons, skipped: false };
 }
 
 // ─── Section 4: Aviation RSS news prewarmer ──────────────────────────────────
@@ -1286,24 +1277,39 @@ async function runFaaSideCar() {
   });
 }
 
+// Failure path for the NOTAM side-car. seed-meta:aviation:notam.fetchedAt is the
+// last HEALTHY fetch, never the last attempt: it is not rewritten here (and its
+// TTL is not touched, so it cannot be shortened into an early miss), so
+// api/health.js notamClosures ages into STALE_SEED once maxStaleMin passes. The
+// last-good closure list keeps serving only while it is inside that same budget;
+// past it, the data key is left to expire rather than presenting days-old
+// closures as current. Mirrors runSeed's graceful-failure contract.
+async function preserveLastGoodNotam(reason) {
+  let ageMin = null;
+  try {
+    const fetchedAt = (await upstashGet(NOTAM_META_KEY))?.fetchedAt;
+    if (typeof fetchedAt === 'number' && Number.isFinite(fetchedAt)) ageMin = (Date.now() - fetchedAt) / 60_000;
+  } catch { /* unknown age — treat as out of budget */ }
+  if (ageMin !== null && ageMin <= NOTAM_MAX_STALE_MIN) {
+    try { await extendExistingTtl([NOTAM_KEY], NOTAM_TTL); } catch {}
+    console.warn(`[NOTAM] ${reason} — kept last-good closures (${Math.round(ageMin)}min old); seed-meta not refreshed`);
+  } else {
+    const age = ageMin === null ? 'unknown age' : `${Math.round(ageMin)}min old`;
+    console.warn(`[NOTAM] ${reason} — last-good closures (${age}) are past maxStaleMin ${NOTAM_MAX_STALE_MIN}; letting them expire`);
+  }
+}
+
 async function runNotamSideCar() {
   await withLock('aviation:notam', async () => {
+    let notam;
     try {
-      const notam = await seedNotamClosures();
-      if (notam.skipped) return; // no ICAO_API_KEY
-      if (notam.quotaExhausted) {
-        // ICAO quota exhausted ("Reach call limit") — preserve the last known
-        // closure list by refreshing the data-key TTL + writing fresh meta
-        // with quotaExhausted=true. Keeps api/health.js (maxStaleMin: 240)
-        // green through the 24h backoff window. Matches pre-strip
-        // ais-relay.cjs:2805-2808 byte-for-byte.
-        try { await extendExistingTtl([NOTAM_KEY], NOTAM_TTL); } catch {}
-        try {
-          await upstashSet(NOTAM_META_KEY, { fetchedAt: Date.now(), recordCount: 0, quotaExhausted: true }, 604_800);
-        } catch (e) { console.warn(`[NOTAM] meta write error: ${e?.message || e}`); }
-        console.log(`[NOTAM] ICAO quota exhausted — extended data TTL + wrote fresh meta (quotaExhausted=true)`);
-        return;
-      }
+      notam = await seedNotamClosures();
+    } catch (err) {
+      await preserveLastGoodNotam(`ICAO fetch failed: ${err?.message || err}`);
+      return;
+    }
+    if (notam.skipped) return; // no ICAO_API_KEY
+    try {
       await writeExtraKeyWithMeta(
         NOTAM_KEY,
         { closedIcaos: notam.closedIcaos, restrictedIcaos: notam.restrictedIcaos, reasons: notam.reasons },
@@ -1312,12 +1318,12 @@ async function runNotamSideCar() {
         NOTAM_META_KEY,
       );
       console.log(`[NOTAM] wrote ${notam.closedIcaos.length} closures + ${notam.restrictedIcaos.length} restrictions to ${NOTAM_KEY}`);
-      try { await dispatchNotamNotifications(notam.closedIcaos, notam.reasons); }
-      catch (e) { console.warn(`[NOTAM] notify error: ${e?.message || e}`); }
     } catch (err) {
-      console.warn(`[NOTAM] fetch/write error: ${err?.message || err} — extending TTL`);
-      try { await extendExistingTtl([NOTAM_KEY, NOTAM_META_KEY], NOTAM_TTL); } catch {}
+      await preserveLastGoodNotam(`write error: ${err?.message || err}`);
+      return;
     }
+    try { await dispatchNotamNotifications(notam.closedIcaos, notam.reasons); }
+    catch (e) { console.warn(`[NOTAM] notify error: ${e?.message || e}`); }
   });
 }
 
