@@ -878,6 +878,10 @@ describe('CII signal wiring', () => {
       quake('Off coast of Central America', 10, -95),
       quake('412 km S of Port Blair, Indian Ocean', 8, 92.5),
       quake('61 km NE of Jurm, Afghanistan', 37.49, 71.55),
+      // Review on #9421: a news keyword is not a country name. USGS writes US
+      // states after the comma, and 'washington' is a US news keyword.
+      quake('180 km W of Neah Bay, Washington', 48.2, -127.2),
+      quake('300 km E of Hachijo-jima, Tokyo', 33.0, 143.0),
     ]) {
       const aux = emptyAux();
       aux.earthquakes = [eq];

@@ -205,13 +205,20 @@ function earthquakeCountry(eq: any): string | null {
   return comma < 0 ? null : countryNamedExactly(place.slice(comma + 1));
 }
 
+// Country names only, not news keywords: USGS writes US states after the comma
+// ("Washington") and COUNTRY_KEYWORDS carries cities and leaders.
+const COUNTRY_NAME_ALIASES: Record<string, string> = {
+  'united states of america': 'US', usa: 'US', 'russian federation': 'RU',
+  turkiye: 'TR', burma: 'MM', uae: 'AE', uk: 'GB', 'great britain': 'GB',
+  'republic of korea': 'KR', 'democratic people s republic of korea': 'KP',
+};
+const COUNTRY_NAME_TO_CODE: Map<string, string> = new Map([
+  ...Object.entries(TIER1_COUNTRIES).map(([code, name]) => [normalizeForCountryMatch(name), code] as [string, string]),
+  ...Object.entries(COUNTRY_NAME_ALIASES).map(([name, code]) => [normalizeForCountryMatch(name), code] as [string, string]),
+]);
+
 function countryNamedExactly(text: string): string | null {
-  const normalized = normalizeForCountryMatch(text);
-  if (!normalized) return null;
-  for (const [code, keywords] of Object.entries(COUNTRY_KEYWORDS_NORMALIZED)) {
-    if (keywords.includes(normalized)) return code;
-  }
-  return null;
+  return COUNTRY_NAME_TO_CODE.get(normalizeForCountryMatch(text)) ?? null;
 }
 
 // A strike event that carries its country (the Middle East strike feed sets
