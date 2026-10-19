@@ -21,6 +21,7 @@ import { showCheckoutFailureBanner } from '@/components/checkout-failure-banner'
 
 function saveAttempt(productId: string) {
   saveCheckoutAttempt({
+    version: 2,
     productId,
     startedAt: Date.now(),
     context: resolveCheckoutContext({ surface: 'dashboard' }),
