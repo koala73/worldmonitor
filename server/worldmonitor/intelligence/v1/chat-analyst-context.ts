@@ -273,7 +273,12 @@ export function buildEnergyExposure(data: unknown): string {
     const formatted = entries
       .map((e) => {
         // The header year is the newest row's; OWID rows lag by country.
-        const older = typeof e.year === 'number' && typeof year === 'number' && e.year < year ? ` (${e.year})` : '';
+        // Rows from a payload seeded before rows carried a year are undated.
+        let older = '';
+        if (typeof year === 'number') {
+          if (typeof e.year !== 'number') older = ' (year n/a)';
+          else if (e.year < year) older = ` (${e.year})`;
+        }
         return `${sanitizeForPromptLine(safeStr(e.name))} ${typeof e.share === 'number' ? e.share.toFixed(0) : '?'}%${older}`;
       })
       .join(', ');
