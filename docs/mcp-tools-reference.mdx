@@ -498,7 +498,7 @@ curl -s https://worldmonitor.app/mcp \
 
 Return the seeded price and debt indicator bundle: the Economist Big Mac index by country, the FAO Food Price Index and per-country national debt levels. Each sub-dataset has its own staleness budget (Big Mac a week, FAO and debt 60 days). No tariff rates: a dataset value of tariffs is rejected with a validation error. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects bigmac, fao-ffpi or national-debt; country narrows Big Mac and debt rows (alpha-2, alpha-3 or name); limit caps each list (default 30, 0 for no cap).
 
-Formerly `get_tariff_trends`; that name still works when called directly. The bundle has carried no tariff series since #9301. The US MFN tariff trend is Pro data: call `get_tariff_averages` with reporter `840` and no partner or product group. `dataset: ["tariffs"]` returns Invalid params.
+Formerly `get_tariff_trends`. A call to that old name with only the tariffs dataset runs `get_tariff_averages` and returns the US MFN series. Any other dataset on the old name still returns this bundle. This bundle has carried no tariff series since #9301. The US MFN series is Pro data. Call `get_tariff_averages` with reporter `840` and no partner or product group. `dataset: ["tariffs"]` on this tool returns Invalid params.
 
 **Parameters (tool-specific):**
 

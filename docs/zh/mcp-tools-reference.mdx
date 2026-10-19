@@ -491,7 +491,7 @@ curl -s https://worldmonitor.app/mcp \
 
 价格和债务指标：巨无霸指数、FAO 食品价格指数和各国国家债务水平。
 
-原名 `get_tariff_trends`，直接调用旧名仍然有效。自 #9301 起该捆绑包不含关税序列。美国 MFN 关税趋势属于 Pro 数据：请调用 `get_tariff_averages`，报告国设为 `840`，不传伙伴和产品组。`dataset: ["tariffs"]` 会返回 Invalid params。
+原名 `get_tariff_trends`。旧名上仅含 tariffs 的调用会运行 `get_tariff_averages` 并返回美国 MFN 序列。旧名上的其他数据集仍返回本捆绑包。自 #9301 起本捆绑包不含关税序列。美国 MFN 序列属于 Pro 数据。请调用 `get_tariff_averages`，报告国设为 `840`，不传伙伴和产品组。在本工具上使用 `dataset: ["tariffs"]` 会返回 Invalid params。
 
 **参数（工具特定）：**
 
