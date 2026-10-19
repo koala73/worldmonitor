@@ -1,3 +1,4 @@
+import { CROSS_BORDER_SOURCES, projectCrossBorderSnapshots } from '../../../server/worldmonitor/displacement/v1/cross-border-data';
 import { screenSanctions } from '../../../server/_shared/sanctions-screen';
 import { projectSupplyChainData } from './_shipping-freight';
 import { CAPITAL_FLOW_PAIR_LEG_SCHEMA, CAPITAL_FLOWS_MAX_COUNTRIES, CAPITAL_FLOWS_PAIRS_LABEL, CAPITAL_FLOWS_SORTS, projectCapitalFlows, type CapitalFlowsSort } from './_capital-flows';
@@ -2565,10 +2566,12 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_displacement_data',
     title: 'Refugee and displacement counts',
     _outputBudgetBytes: 131072,
-    description: 'Return UNHCR annual displacement statistics for one reporting year (summary.year): global totals and per-country refugees, asylum seekers, IDPs and stateless people by origin, totals hosted by each asylum country, and the largest origin-to-asylum refugee flows, with centroid coordinates where known. Answers how many people a country has displaced or hosts. Annual stock figures only: no monthly arrivals, live crisis-situation updates or deaths, and no year selection; until UNHCR publishes the current year the snapshot holds the prior year, which summary.year names. Flagged stale after 60 hours. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. countries keeps rows whose origin or asylum country matches; limit caps the country and flow lists (default 30, 0 for no cap).',
+    description: 'Return UNHCR annual displacement statistics for one reporting year (summary.year): global totals and per-country refugees, asylum seekers, IDPs and stateless people by origin, totals hosted by each asylum country, and the largest origin-to-asylum refugee flows, with centroid coordinates where known. Answers how many people a country has displaced or hosts. Defaults to annual stock figures. Use view=movements for dated UNHCR operational reports, UK daily arrivals and CBP monthly encounters, each with its own source status. Encounters are enforcement events, not unique people. Sources overlap and must not be summed. route filters the movements view by exact route/situation ID. No year selection; until UNHCR publishes the current year the snapshot holds the prior year, which summary.year names. Flagged stale after 60 hours. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. countries keeps rows whose origin or asylum country matches; limit caps the country and flow lists (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
+        view: { type: 'string', enum: ['annual', 'movements'], description: 'Default annual. movements returns source-dated operational movement reports.' },
+        route: { type: 'string', maxLength: 120, description: 'Exact route or situation ID in the movements view.' },
         countries: {
           type: 'array',
           items: { type: 'string' },
@@ -2578,7 +2581,9 @@ export const CACHE_TOOLS: ToolDef[] = [
       },
       required: [],
     },
+    _attribution: 'data.crossBorderMovements.movements[].{source: source, sourceUrl: sourceUrl, license: license, licenseUrl: licenseUrl, notice: notice}',
     outputSchema: cacheEnvelope({
+      crossBorderMovements: { type: 'object', properties: { movements: { type: 'array', items: { type: 'object', properties: { id: {type: 'string'}, route: {type: 'string'}, kind: {type: 'string'}, measure: {type: 'string'}, countryCode: {type: 'string'}, originCode: {type: 'string'}, asOf: {type: 'string'}, count: {type: 'number'}, last7Days: {type: 'number'}, last30Days: {type: 'number'}, changePct: {type: 'number'}, stockChange: {type: 'number'}, stockChangeSince: {type: 'string'}, surge: {type: 'boolean'}, stale: {type: 'boolean'}, source: {type: 'string'}, sourceUrl: {type: 'string'}, license: {type: 'string'}, licenseUrl: {type: 'string'}, notice: {type: 'string'} } } }, sources: {type: 'array', items: {type: 'object'}}, dataAvailable: {type: 'boolean'} } },
       summary: {
         type: ['object', 'null'],
         properties: {
@@ -2605,6 +2610,15 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
+      if (params.view === 'movements') {
+        const result = projectCrossBorderSnapshots(Object.fromEntries(CROSS_BORDER_SOURCES.map(source => [source.id, data[source.id]])));
+        const countries = resolveCountryFilter(params.countries, 'countries').map(code => code.toUpperCase());
+        const route = argStr(params.route)?.trim();
+        result.movements = result.movements.filter(m => (!countries.length || countries.includes(m.countryCode) || countries.includes(m.originCode)) && (!route || m.route === route));
+        const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
+        if (limit > 0) result.movements = result.movements.slice(0, limit);
+        return { crossBorderMovements: result };
+      }
       hoistDisplacementSeed(data);
       const countries = resolveCountryFilter(params.countries, 'countries');
       const codes = [...countries, ...compact(countries.map((code) => ISO2_TO_ISO3[code.toUpperCase()]?.toLowerCase()))];
@@ -2623,13 +2637,15 @@ export const CACHE_TOOLS: ToolDef[] = [
     // is intentionally excluded — the executeTool label-walk would strip the
     // year segment from both keys and collide on the same `summary` label,
     // causing the second result to overwrite the first.
-    _cacheKeys: [`displacement:summary:v1:${new Date().getUTCFullYear()}`],
-    _freshnessChecks: [{ key: 'seed-meta:displacement:summary', maxStaleMin: 3600 }],
+    _cacheKeys: [`displacement:summary:v1:${new Date().getUTCFullYear()}`, ...CROSS_BORDER_SOURCES.map(source => source.key)],
+    _cacheLabels: Object.fromEntries(CROSS_BORDER_SOURCES.map(source => [source.key, source.id])),
+    _freshnessChecks: [{ key: 'seed-meta:displacement:summary', maxStaleMin: 3600 }, ...CROSS_BORDER_SOURCES.map(source => ({ key: `seed-meta:${source.key.replace(/:v1$/, '')}`, maxStaleMin: 2880, honorContentAge: true }))],
     // Audit miss: handler uses cachedFetchJson with a year-suffixed key the
     // audit's regex couldn't statically resolve. The op IS covered by this
     // tool — same underlying displacement:summary:v1:<year> cache.
     _apiPaths: [
       'GET /api/displacement/v1/get-displacement-summary',
+      'GET /api/displacement/v1/get-cross-border-movements',
     ],
   },
   {

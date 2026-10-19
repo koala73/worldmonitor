@@ -2316,6 +2316,9 @@ export class DeckGLMap {
     if (mapLayers.displacement && this.crossBorderArrivals && this.crossBorderArrivals.points.length > 0) {
       layers.push(this.createCrossBorderPointsLayer(this.crossBorderArrivals.points));
     }
+    if (mapLayers.displacement && this.crossBorderArrivals?.deaths?.length) {
+      layers.push(this.createCrossBorderPointsLayer(this.crossBorderArrivals.deaths, true));
+    }
     if (mapLayers.displacement && this.internalDisplacement) {
       if (this.internalDisplacement.routes.length > 0) layers.push(this.createInternalDisplacementRoutesLayer(this.internalDisplacement.routes));
       if (this.internalDisplacement.regions.length > 0) layers.push(this.createInternalDisplacementRegionsLayer(this.internalDisplacement.regions));
@@ -5157,13 +5160,14 @@ export class DeckGLMap {
       }
       case 'ais-disruptions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>AIS ${text(obj.type || t('components.deckgl.tooltip.disruption'))}</strong><br/>${text(obj.severity)} ${t('popups.severity')}<br/>${text(obj.description)}</div>` };
+      case 'cross-border-deaths-layer':
       case 'cross-border-points-layer': {
         const change = obj.change !== null && obj.change !== 0
           ? `<br/>${obj.change > 0 ? '+' : ''}${numericLabel(obj.change)} ${t('components.deckgl.tooltip.sinceDate', { date: text(obj.changeSince) })}`
           : '';
-        const lastMonth = obj.lastMonth !== null ? `<br/>${numericLabel(obj.lastMonth)} ${t('components.deckgl.tooltip.lastMonth')}` : '';
+        const lastMonth = obj.period ? `<br/>${text(obj.period)}` : obj.lastMonth !== null ? `<br/>${numericLabel(obj.lastMonth)} ${t('components.deckgl.tooltip.lastMonth')}` : '';
         const accelerating = obj.accelerating ? `<br/><strong>${t('components.displacement.accelerating')}</strong>` : '';
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.country)}</strong><br/>${text(obj.label)}: ${numericLabel(obj.individuals)}${lastMonth}${change}${accelerating}<br/>${text(obj.situation)} · ${text(obj.date)}<br/>${t('components.deckgl.tooltip.sourceUnhcrOdp')}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.country)}</strong><br/>${text(obj.label)}: ${numericLabel(obj.individuals)}${lastMonth}${change}${accelerating}<br/>${text(obj.situation)} · ${text(obj.date)}<br/>${text(obj.source || t('components.deckgl.tooltip.sourceUnhcrOdp'))}${obj.measure ? ` · ${text(obj.measure)}` : ''}${obj.last30Days !== undefined ? ' · 30d' : ''}</div>` };
       }
       case 'internal-displacement-regions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}, ${text(obj.countryName)}</strong><br/>${numericLabel(obj.idps)} ${t('components.deckgl.tooltip.internallyDisplaced')}<br/>${text(obj.operation)} · ${text(obj.reportingDate)}<br/>${t('components.deckgl.tooltip.sourceIomDtm')}</div>` };
@@ -6678,15 +6682,17 @@ export class DeckGLMap {
 
   // UNHCR people who crossed into each receiving country. Area scales with the
   // count; an accelerating country gets a thicker ring.
-  private createCrossBorderPointsLayer(points: CrossBorderPoint[]): ScatterplotLayer<CrossBorderPoint> {
+  private createCrossBorderPointsLayer(points: CrossBorderPoint[], deaths = false): ScatterplotLayer<CrossBorderPoint> {
     const light = getCurrentTheme() === 'light';
     const fill = (d: CrossBorderPoint): [number, number, number, number] => {
+      if (deaths) return [230, 70, 70, 180];
+      if (d.changePct !== undefined) return d.changePct >= 0 ? [240, 100, 60, 140] : [60, 180, 150, 140];
       if (d.kind === 'return') return light ? [30, 130, 80, 110] : [80, 210, 140, 100];
       if (d.kind === 'arrival') return light ? [20, 110, 170, 120] : [70, 180, 240, 110];
       return light ? [120, 60, 170, 110] : [180, 130, 255, 100];
     };
     return new ScatterplotLayer<CrossBorderPoint>({
-      id: 'cross-border-points-layer',
+      id: deaths ? 'cross-border-deaths-layer' : 'cross-border-points-layer',
       data: points,
       getPosition: (d) => [d.lon, d.lat],
       getRadius: (d) => Math.sqrt(d.individuals) * 70,

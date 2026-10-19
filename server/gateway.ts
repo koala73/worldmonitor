@@ -352,6 +352,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/conflict/v1/list-iran-events': 'slow',
   '/api/displacement/v1/get-displacement-summary': 'daily',
   '/api/displacement/v1/get-internal-displacement': 'daily',
+  '/api/displacement/v1/get-cross-border-movements': 'daily',
   '/api/displacement/v1/get-population-exposure': 'daily',
   '/api/economic/v1/get-bis-policy-rates': 'daily',
   '/api/economic/v1/get-bis-exchange-rates': 'daily',

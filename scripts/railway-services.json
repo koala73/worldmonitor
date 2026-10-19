@@ -807,12 +807,16 @@
       "scripts/data/country-centroids.json",
       "scripts/data/dtm-admin1-points.json",
       "scripts/data/outbreak-places.json",
+      "scripts/lib/border-route-arrivals.mjs",
+      "scripts/lib/border-route-sources.mjs",
       "scripts/lib/country-centroid.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/main-module.mjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
+      "scripts/seed-border-cbp.mjs",
+      "scripts/seed-border-uk.mjs",
       "scripts/seed-bundle-health.mjs",
       "scripts/seed-china-coverage-health.mjs",
       "scripts/seed-cross-border-arrivals.mjs",
@@ -824,9 +828,9 @@
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-name-to-iso2.cjs",
       "scripts/shared/country-names.json",
-      "scripts/shared/news-places.json",
       "scripts/shared/geo-extract.mjs",
-      "scripts/shared/iso3-to-iso2.json"
+      "scripts/shared/iso3-to-iso2.json",
+      "scripts/shared/news-places.json"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-9-seed-bundle-health"
   },

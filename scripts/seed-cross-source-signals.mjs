@@ -33,6 +33,7 @@ const SOURCE_KEYS = [
   'infra:outages:v1',
   'wildfire:fires:v1',
   `displacement:summary:v1:${new Date().getFullYear()}`,
+  'displacement:border-uk:v1',
   'forecast:predictions:v2',
   'gdelt:intel:tone:military',
   'gdelt:intel:tone:nuclear',
@@ -59,6 +60,7 @@ const SOURCE_MAX_AGE_MIN = Object.freeze({
   'radiation:observations:v1': 30,
   'infra:outages:v1': 30,
   'wildfire:fires:v1': 360,
+  'displacement:border-uk:v1': 2880,
   'forecast:predictions:v2': 90,
   'weather:alerts:v1': 45,
   'market:physical-divergence:v1': 2160,
@@ -695,22 +697,22 @@ function extractWildfireEscalation(d) {
   return signals.slice(0, 2);
 }
 
-// Intentionally silent, and documented as such rather than "fixed".
-//
-// This extractor was written against a `crises[]` array carrying
-// `newDisplacements` and `trend`. displacement:summary:v1:<year> has never
-// published that shape: the writer emits an annual UNHCR *stock* —
-// `summary.countries[]` with code/name/refugees/idps/totalDisplaced
-// (seed-displacement-summary.mjs:175) — and carries no flow, delta or trend
-// field anywhere in the payload.
-//
-// So this is not a field-name mismatch that a rename fixes. A surge is a flow,
-// and choosing a totalDisplaced cutoff to stand in for one would be inventing a
-// calibration rather than repairing a read — the opposite of what the rest of
-// this change does. It stays silent until the signal is either sourced from a
-// flow series or redefined as a stock-level signal. See #5870.
-function extractDisplacementSurge() {
-  return [];
+// Only the daily arrival series has a complete weekly baseline. Annual stocks
+// and monthly encounters cannot stand in for newly arriving people.
+function extractDisplacementSurge(d) {
+  const routes = d['displacement:border-uk:v1']?.routes;
+  if (!Array.isArray(routes)) return [];
+  return routes.flatMap(route => {
+    const detectedAt = Date.parse(route.asOf);
+    if (route.kind !== 'arrival' || route.surge !== true || !Number.isFinite(detectedAt)
+      || detectedAt > Date.now() || Date.now() - detectedAt > 3 * 86400000
+      || !(route.last7Days >= 1000) || !/^[A-Z]{2}$/.test(route.countryCode)) return [];
+    return [{ id: `displacement:${route.id}`, type: 'CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE',
+      theater: weatherTheaterForCountry(route.countryCode), severity: scoreTier(BASE_WEIGHT.CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE),
+      severityScore: BASE_WEIGHT.CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE,
+      summary: `${route.name}: ${route.last7Days.toLocaleString('en-US')} arrivals in seven days, source-confirmed arrival surge (UK Home Office)`,
+      detectedAt, contributingTypes: [], signalCount: 0 }];
+  });
 }
 
 function extractForecastDeterioration(d) {

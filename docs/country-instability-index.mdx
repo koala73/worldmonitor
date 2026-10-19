@@ -1,6 +1,6 @@
 ---
 title: "Country Instability Index"
-description: "Real-time CII v11 stability scoring for 31 Tier-1 countries — combines baseline risk with unrest, conflict, security, and information signals."
+description: "Real-time CII v12 stability scoring for 31 Tier-1 countries — combines baseline risk with unrest, conflict, security, and information signals."
 ---
 The Country Instability Index (CII) maintains a high-frequency instability
 score for the 31 Tier-1 countries tracked by the Strategic Risk API. Rather
@@ -12,7 +12,7 @@ event pressure and publishes the result through the server-side
   Compare current scores, bands, and approximate 24-hour movement for all 31 Tier-1 countries.
 </Card>
 
-For the full v11 formula, coefficient table, and change history, see
+For the full v12 formula, coefficient table, and change history, see
 [CII Risk Scoring Methodology](/methodology/cii-risk-scores). This page is
 the operator-facing overview.
 
@@ -133,7 +133,7 @@ Gaza text-attribution caveat, and per-country `baselineRisk` /
 
 CII scores are computed server-side by `GET /api/intelligence/v1/get-risk-scores`
 and cached in Redis. The live cache is versioned by the current
-`methodology_version` (`v11`), with a stale-cache key used as a fallback during
+`methodology_version` (`v12`), with a stale-cache key used as a fallback during
 upstream outages.
 
 The Railway relay process also runs an active CII warm-ping loop every 8

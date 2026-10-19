@@ -1908,7 +1908,12 @@
       "latestChange": "Latest change",
       "accelerating": "Accelerating",
       "inDays": "in {{days}} days",
-      "crossBorderNote": "UN Refugee Agency Operational Data Portal: people who crossed borders in each crisis, from the latest country reports. Situations overlap, so they are not added together."
+      "last7And30": "Last 7d / 30d",
+      "staleReport": "Stale report",
+      "reported": "Count",
+      "period": "Period",
+      "crossBorderNote": "UN Refugee Agency Operational Data Portal: people who crossed borders in each crisis, from the latest country reports. Situations overlap, so they are not added together.",
+      "movementNote": "Each row keeps its source, report date and measure. Stocks, arrivals and encounter events are different measures. Sources can overlap; do not add their counts. WorldMonitor derives this view from the linked sources; no provider endorsement is implied."
     },
     "climate": {
       "noAnomalies": "No significant anomalies detected",

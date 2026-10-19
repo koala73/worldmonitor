@@ -6,6 +6,7 @@ All notable changes to World Monitor are documented here.
 
 ### Changed
 
+- **Cross-border movements and CII formula `v12`**: add separately dated UK daily arrivals and CBP monthly encounters beside UNHCR ODP reports, with source health, country/route API filters, an opt-in MCP movement view, and distinct death markers. Fresh source-confirmed arrival surges add five CII points once per explicitly named country. Stock, encounters, deaths, and stale reports do not trigger this boost. `combinedScore` can rise by five points. The risk-score cache key family moves to `risk:scores:sebuf:v12` and emitted `methodology_version` moves to `v12`. Additional route sources remain blocked by permission or access, so global coverage acceptance is incomplete.
 - **CII formula `v11`: a sustained crisis scores, and geo events follow real borders, worldwide** (2026-10-19).
   v10 scored GDELT conflict and protest coverage only against each country's own
   28-day median, so a month-long campaign raised its own norm and read as calm

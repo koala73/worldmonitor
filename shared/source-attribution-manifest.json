@@ -2786,6 +2786,20 @@
       ]
     },
     {
+      "host": "creativecommons.org",
+      "provider": "creativecommons.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
+        }
+      ]
+    },
+    {
       "host": "cryptoslate.com",
       "provider": "cryptoslate.com",
       "kind": "feed",
@@ -3064,12 +3078,15 @@
       "provider": "data.unhcr.org",
       "kind": "structured",
       "observed": true,
-      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
-      "attribution": "Credit data.unhcr.org and link to the original upstream API/dataset.",
-      "status": "terms-review",
+      "license": "ODP footer states datasets are CC BY 4.0 (observed 2026-10-19).",
+      "attribution": "UNHCR Operational Data Portal; link the situation and CC BY 4.0. WorldMonitor normalizes and derives the view. No UNHCR endorsement.",
+      "status": "reviewed",
       "references": [
         {
           "path": "scripts/seed-cross-border-arrivals.mjs"
+        },
+        {
+          "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
         }
       ]
     },
@@ -11599,6 +11616,23 @@
       ]
     },
     {
+      "host": "www.cbp.gov",
+      "provider": "www.cbp.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "US government public-domain work unless otherwise noted. Copyright notice reviewed 2026-10-19 for the Nationwide Encounters CSV.",
+      "attribution": "Credit US Customs and Border Protection and link to the Nationwide Encounters source. Encounters are enforcement events, not unique people.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/border-route-sources.mjs"
+        },
+        {
+          "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
+        }
+      ]
+    },
+    {
       "host": "www.cbr.ru",
       "provider": "www.cbr.ru",
       "kind": "structured",
@@ -12655,15 +12689,21 @@
       "provider": "www.gov.uk",
       "kind": "feed+structured",
       "observed": true,
-      "license": "Provider terms for this feed publisher; verify before redistribution",
-      "attribution": "Credit www.gov.uk and link to the original feed publisher.",
+      "license": "GOV.UK Open Government Licence v3.0 for Home Office small-boat arrival statistics; other publishers on this host retain their source terms.",
+      "attribution": "Credit the issuing department and original dataset. Home Office arrivals: Contains public sector information licensed under the Open Government Licence v3.0.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "scripts/lib/border-route-sources.mjs"
+        },
         {
           "path": "scripts/seed-fuel-prices.mjs"
         },
         {
           "path": "scripts/seed-security-advisories.mjs"
+        },
+        {
+          "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
         },
         {
           "path": "src/config/feeds.ts"
@@ -13355,6 +13395,23 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.nationalarchives.gov.uk",
+      "provider": "www.nationalarchives.gov.uk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/lib/border-route-sources.mjs"
+        },
+        {
+          "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
         }
       ]
     },

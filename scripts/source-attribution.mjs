@@ -1019,6 +1019,8 @@ const DYNAMIC_HOSTS = [
 ];
 
 const EXCLUDED_HOSTS = new Set([
+  'creativecommons.org',
+  'www.nationalarchives.gov.uk',
   'test',
   'test.dodopayments.com',
   'live.dodopayments.com',

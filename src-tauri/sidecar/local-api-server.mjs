@@ -933,6 +933,7 @@ const cloudPreferredExact = new Set([
   '/api/aviation/v1/get-airport-ops-summary',
   '/api/displacement/v1/get-displacement-summary',
   '/api/displacement/v1/get-internal-displacement',
+  '/api/displacement/v1/get-cross-border-movements',
   '/api/economic/v1/get-bis-credit',
   '/api/economic/v1/get-bis-exchange-rates',
   '/api/economic/v1/get-bis-policy-rates',

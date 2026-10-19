@@ -126,9 +126,9 @@ test('projection keeps the license, credit and transformation notice', async () 
 
 test('annual displacement default contract stays annual', () => {
   const annual = CACHE_TOOLS.find(t => t.name === 'get_displacement_data');
-  assert.deepEqual(Object.keys(annual.inputSchema.properties), ['countries', 'limit']);
-  assert.deepEqual(annual._cacheKeys, [`displacement:summary:v1:${new Date().getUTCFullYear()}`]);
-  assert.deepEqual(annual._freshnessChecks, [{ key: 'seed-meta:displacement:summary', maxStaleMin: 3600 }]);
+  assert.deepEqual(Object.keys(annual.inputSchema.properties), ['view', 'route', 'countries', 'limit']);
+  assert.deepEqual(annual._cacheKeys.filter(key => key.startsWith('displacement:summary:')), [`displacement:summary:v1:${new Date().getUTCFullYear()}`]);
+  assert.deepEqual(annual._freshnessChecks.filter(check => check.key === 'seed-meta:displacement:summary'), [{ key: 'seed-meta:displacement:summary', maxStaleMin: 3600 }]);
 });
 
 test('summaries keep attribution and source URLs with and without projection', async () => {
@@ -157,4 +157,25 @@ test('summaries keep attribution and source URLs with and without projection', a
       assert.ok(ajv.validate(tool.outputSchema, value.projection), ajv.errorsText());
     }
   }
+});
+
+
+test('movement view reads source envelopes independently and preserves explicit zero with country and route filters', async () => {
+  const annual = CACHE_TOOLS.find(t => t.name === 'get_displacement_data');
+  const stamp = Date.now() - 60000;
+  const asOf = new Date(stamp).toISOString().slice(0, 10);
+  installRedis({
+    'displacement:border-uk:v1': { _seed: { fetchedAt: stamp }, data: { routes: [{ id: 'english-channel', name: 'Channel', countryCode: 'GB', kind: 'arrival', measure: 'daily', asOf, latestCount: 0, last7Days: 0, last30Days: 3, period: 'day', surge: false }] } },
+    'seed-meta:displacement:border-uk': { fetchedAt: stamp, recordCount: 1 },
+  });
+  const result = await executeTool(annual, { view: 'movements', countries: ['United Kingdom'], route: 'english-channel', limit: 0 });
+  const data = result.data.crossBorderMovements;
+  assert.equal(data.movements.length, 1);
+  assert.equal(data.movements[0].count, 0);
+  assert.equal(data.movements[0].last7Days, 0);
+  assert.equal(data.sources.find(s => s.id === 'odp').status, 'unavailable');
+  assert.equal(data.movements[0].license, 'Open Government Licence v3.0');
+  assert.equal((await executeTool(annual, { view: 'movements', countries: ['US'] })).data.crossBorderMovements.movements.length, 0);
+  assert.equal((await executeTool(annual, { view: 'movements', route: 'unknown' })).data.crossBorderMovements.movements.length, 0);
+  assert.ok(ajv.validate(annual.outputSchema, result), ajv.errorsText());
 });

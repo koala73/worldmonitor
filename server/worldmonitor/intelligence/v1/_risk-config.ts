@@ -17,7 +17,7 @@
 //      public-facing section so downstream users of the proto API see why score
 //      values or movement semantics may shift between deploys.
 //
-// Last reviewed: 2026-10-19 (v11 — real country borders replace bounding boxes for geo
+// Last reviewed: 2026-10-19 (v12 adds a bounded fresh arrival surge boost; v11 — real country borders replace bounding boxes for geo
 // events, and a sustained GDELT level joins escalation (cap 50 -> 70); v10 — GDELT
 // escalation stands in for ACLED in Conflict
 // and Unrest while ACLED is dark; v9 — news credits every country a headline names;
@@ -33,7 +33,7 @@
  * Bump on coefficient or scoring-contract changes so API clients can detect
  * score or movement-semantics drift.
  */
-export const CII_FORMULA_VERSION = 'v11';
+export const CII_FORMULA_VERSION = 'v12';
 
 /**
  * Conflict event activity log curve used before fatality/civilian/strike boosts.

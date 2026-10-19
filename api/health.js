@@ -535,6 +535,8 @@ const STANDALONE_KEYS = {
   displacement:          `displacement:summary:v1:${new Date().getUTCFullYear()}`,
   displacementPrev:      `displacement:summary:v1:${new Date().getUTCFullYear() - 1}`,
   dtmDisplacement:       'displacement:dtm:v1',
+  borderUk: 'displacement:border-uk:v1',
+  borderCbp: 'displacement:border-cbp:v1',
   acledIntel:            'conflict:acled:v1:all:0:0',
   satellites:            'intelligence:satellites:tle:v1',
   portwatch:             'supply_chain:portwatch:v1',
@@ -1562,6 +1564,8 @@ const SEED_META = {
   // UNHCR Operational Data Portal situations (seed-cross-border-arrivals.mjs,
   // daily health bundle, #9023). 48h = two missed ticks; report age is
   // checked by maxContentAgeMin.
+  borderUk: { key: 'seed-meta:displacement:border-uk', maxStaleMin: 2880, activationKey: 'seed-activated:displacement:border-uk', cutover: { mode: 'activation-marker', fromKey: null, issue: 9023, activationKey: 'seed-activated:displacement:border-uk' } },
+  borderCbp: { key: 'seed-meta:displacement:border-cbp', maxStaleMin: 2880, activationKey: 'seed-activated:displacement:border-cbp', cutover: { mode: 'activation-marker', fromKey: null, issue: 9023, activationKey: 'seed-activated:displacement:border-cbp' } },
   crossBorderArrivals: {
     key: 'seed-meta:displacement:cross-border',
     maxStaleMin: 2880,
@@ -2142,7 +2146,7 @@ const ON_DEMAND_KEYS = new Set([
   // Same bridge for the UNHCR cross-border movements (#9023).
   // Deploy-before-first-tick bridge for the weekly capital-flows seed (#9394).
   'capitalFlows',
-  'crossBorderArrivals',
+  'crossBorderArrivals', 'borderUk', 'borderCbp',
   // Same deploy-before-first-tick bridge as cbrRates for the two Canada
   // national-statistics seeders: bocValet (#6616) and statcanWds (#6676).
   // Softening lifts once the durable activation marker exists.
@@ -2293,6 +2297,8 @@ const ACTIVATION_MARKERS = {
   oilTradeSeries: SEED_META.oilTradeSeries.activationKey,
   // Written by scripts/seed-cross-border-arrivals.mjs in runSeed's afterPublish hook.
   crossBorderArrivals: SEED_META.crossBorderArrivals.activationKey,
+  borderUk: SEED_META.borderUk.activationKey,
+  borderCbp: SEED_META.borderCbp.activationKey,
   // Written by scripts/seed-capital-flows.mjs in runSeed's afterPublish hook.
   capitalFlows: SEED_META.capitalFlows.activationKey,
   bocValet: 'seed-activated:economic:boc-valet',

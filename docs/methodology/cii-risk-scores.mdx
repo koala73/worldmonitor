@@ -90,7 +90,7 @@ CRI covers the broader 196-country universe.
 `GET /api/intelligence/v1/get-risk-scores` (proto
 `worldmonitor.intelligence.v1.GetRiskScoresResponse`). The on-the-wire
 `methodology_version` field on every `CiiScore` records which revision of this
-document was active when the score was computed. The current version is **v11** —
+document was active when the score was computed. The current version is **v12** —
 see [Version history](#version-history).
 </Note>
 
@@ -121,6 +121,7 @@ composite = baseline * 0.4
           + advisoryBoost     (≤ 15)
           + orefBlendBoost    (IL only, ≤ 25)
           + displacementBoost (≤ 20)
+          + crossBorderArrivalSurgeBoost (0 or 5)
           + newsUrgencyBoost  (≤  5)
           + earthquakeBoost   (≤ 25)
           + sanctionsBoost    (≤ 14)
@@ -471,6 +472,19 @@ refactors that preserve server/API scores do not bump the wire version. Tests in
 in `CURATED_COUNTRIES`.
 
 ## Version history
+
+> **v12 (2026-10-19).** A fresh source-confirmed cross-border arrival surge adds
+> five points once to each explicitly named receiving or origin country. The
+> reader checks both the original fetch clock (48 hours) and each report clock
+> (3 days for UK daily arrivals, 45 days for UNHCR ODP). Annual stocks, returns,
+> deaths, border encounters, unavailable feeds and stale reports do not qualify.
+> Overlapping routes never multiply this boost. UK daily surge detection compares
+> the last complete seven-day total with prior complete weekly windows over 90 days
+> (at least three), requires either more than 10,000 arrivals or at least 1,000 arrivals and twice the median. ODP uses
+> its existing source-confirmed monthly arrival acceleration. These are editorial
+> alert rules, not a claim of unique people or a statistical forecast. The cache
+> family and emitted `methodology_version` move to `v12`.
+>
 
 > **v11 (2026-10-19).** Two changes, both worldwide. First, a long-running crisis
 > now scores, not only a spike. v10's GDELT terms compared each country with its

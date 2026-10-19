@@ -8,6 +8,7 @@ import type {
   SeverityLevel,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
+import { readCrossBorderMovements } from '../../displacement/v1/get-cross-border-movements';
 import iso3ToIso2Json from '../../../../shared/iso3-to-iso2.json';
 import { getCachedJson, readCachedJson, setCachedJson, cachedFetchJsonWithMeta, runRedisPipeline } from '../../../_shared/redis';
 import { CLIMATE_ANOMALIES_KEY, CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
@@ -651,6 +652,7 @@ interface AuxiliarySources {
   advisories: { byCountry: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> } | null;
   // Per-country displaced population by ISO3 code (UNHCR — persists after ceasefires)
   displacedByIso3: Record<string, number>;
+  crossBorderSurgeCountries?: string[];
   newsTopStories: NewsTopStory[];
   // Per-country classified headline counts from relay seedClassify() — written to news:threat:summary:v1
   threatSummaryByCountry: Record<string, { critical: number; high: number; medium: number; low: number; info: number }> | null;
@@ -868,6 +870,9 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
       ? { byCountry: (advisoriesRaw as any).byCountry }
       : null,
     displacedByIso3,
+    crossBorderSurgeCountries: (await readCrossBorderMovements()).movements
+      .filter(m => m.kind === 'arrival' && m.surge && !m.stale)
+      .flatMap(m => [m.countryCode, m.originCode]).filter(Boolean),
     newsTopStories,
     threatSummaryByCountry,
     aviationAlerts: arr(aviationRaw, 'alerts'),
@@ -1263,6 +1268,7 @@ export function computeCIIScores(
       + advisoryBoost
       + orefBlendBoost
       + displacementBoost
+      + (aux.crossBorderSurgeCountries?.includes(code) ? 5 : 0)
       + newsUrgencyBoost
       + earthquakeBoost
       + sanctionsBoost

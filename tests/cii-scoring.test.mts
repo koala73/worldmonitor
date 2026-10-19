@@ -96,6 +96,7 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // and places coordinates by real borders; the snapshot now guards the level
   // constants and the generated border file, so regenerating borders bumps the version.
   v11: '06b0cefc7bb0ac2233e91d23159f14a9f6a26115ec905165e066b80b8e4c4853',
+  v12: '759ad27588457fa761780f29b72014456d043e4234ffb692b5d1665c67806e42',
 };
 
 const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT', 'UCDP_CLASSIFICATION_WINDOW_MS'];
@@ -554,6 +555,7 @@ function emptyAux() {
     orefData: null as { activeAlertCount: number; historyCount24h: number } | null,
     advisories: null as { byCountry: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> } | null,
     displacedByIso3: {} as Record<string, number>,
+    crossBorderSurgeCountries: [] as string[],
     newsTopStories: [] as Array<{ countryCode: string | null; countryCodes?: string[]; threatLevel: string; primaryTitle: string }>,
     threatSummaryByCountry: null as Record<string, { critical: number; high: number; medium: number; low: number; info: number }> | null,
     aviationAlerts: [] as any[],
@@ -2696,4 +2698,14 @@ describe('CII scoring', () => {
     );
   });
 
+});
+
+
+it('fresh arrival surge gives one bounded boost to a named country', () => {
+  const base = computeCIIScores([], emptyAux());
+  const aux = emptyAux();
+  aux.crossBorderSurgeCountries = ['GB', 'GB'];
+  const result = computeCIIScores([], aux);
+  assert.equal(scoreFor(result, 'GB')!.combinedScore, scoreFor(base, 'GB')!.combinedScore + 5);
+  assert.equal(scoreFor(result, 'US')!.combinedScore, scoreFor(base, 'US')!.combinedScore);
 });

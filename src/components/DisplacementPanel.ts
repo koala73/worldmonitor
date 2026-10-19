@@ -258,32 +258,40 @@ export class DisplacementPanel extends Panel {
       let change = '—';
       let period = '';
       if (s.lastMonth) {
-        change = signed(s.lastMonth.individuals);
+        change = formatPopulation(s.lastMonth.individuals);
         period = s.lastMonth.month;
       } else if (s.latestChange) {
         change = signed(s.latestChange.delta);
         period = s.latestChange.days ? t('components.displacement.inDays', { days: String(s.latestChange.days) }) : '';
       }
       const badge = s.accelerating ? ` <span class="disp-badge disp-crisis">${t('components.displacement.accelerating')}</span>` : '';
-      const detail = [s.asOf, s.topCountries.join(', ')].filter(Boolean).join(' · ');
+      const detail = [s.asOf, s.kind, s.measure, s.stale ? t('components.displacement.staleReport') : '', s.topCountries.join(', ')].filter(Boolean).join(' · ');
+      const source = s.source || 'UNHCR Operational Data Portal';
+      const sourceLink = /^https:\/\//.test(s.sourceUrl) ? `<a href="${escapeHtml(s.sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source)}</a>` : escapeHtml(source);
+      const windows = s.last7Days !== undefined || s.last30Days !== undefined
+        ? `${s.last7Days === undefined ? '—' : s.last7Days.toLocaleString('en-US')} / ${s.last30Days === undefined ? '—' : s.last30Days.toLocaleString('en-US')}` : '';
+      if (windows) { change = windows; period = t('components.displacement.last7And30'); }
+      if (s.changePct !== undefined) period += ` (${s.changePct > 0 ? '+' : ''}${s.changePct.toFixed(0)}%)`;
       return `<tr class="disp-row" data-lat="${s.lat ?? ''}" data-lon="${s.lon ?? ''}" tabindex="0">
-          <td class="disp-name">${escapeHtml(s.name)}${badge}<div class="disp-operation">${escapeHtml(detail)}</div></td>
+          <td class="disp-name">${escapeHtml(s.name)}${badge}<div class="disp-operation">${escapeHtml(detail)}</div><div class="disp-operation">${sourceLink}</div></td>
           <td class="disp-round">${escapeHtml(change)}${period ? `<div class="disp-operation">${escapeHtml(period)}</div>` : ''}</td>
           <td class="disp-count">${formatPopulation(s.total)}</td>
         </tr>`;
     }).join('');
+    const statuses = this.crossBorderData?.sources?.map(source => `${source.name}: ${source.status}`).join(' · ');
     return `
-        <table class="disp-table">
+        ${statuses ? `<div class="disp-source-note">${escapeHtml(statuses)}</div>` : ''}
+        <table class="disp-table disp-movements-table">
           <thead>
             <tr>
               <th scope="col">${t('components.displacement.situation')}</th>
-              <th scope="col" class="disp-round">${t('components.displacement.latestChange')}</th>
-              <th scope="col" class="disp-count">${t('components.displacement.total')}</th>
+              <th scope="col" class="disp-round">${t('components.displacement.period')}</th>
+              <th scope="col" class="disp-count">${t('components.displacement.reported')}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
-        <div class="disp-source-note">${escapeHtml(t('components.displacement.crossBorderNote'))}</div>`;
+        <div class="disp-source-note">${escapeHtml(t('components.displacement.movementNote'))}</div>`;
   }
 
   // One row per IOM DTM operation. Operations in a country can overlap, so

@@ -125,11 +125,15 @@ async function executeCacheTool(
   // while folding the failure into null would read an unreadable seed-meta as
   // "never seeded" and an unreadable data key as an empty section.
   const historyMode = params.changes_since_days !== undefined;
+  const displacementView = tool.name === 'get_displacement_data';
+  const movementMode = displacementView && params.view === 'movements';
+  const selectedKeys = displacementView ? tool._cacheKeys.filter(key => key.startsWith('displacement:summary:') !== movementMode) : tool._cacheKeys;
   const cacheKeys = tool.name === 'get_sanctions_data'
-    ? tool._cacheKeys.filter(key => (key === 'sanctions:changes:v1') === historyMode) : tool._cacheKeys;
-  const reads = cacheKeys.map((k) => settleRead((panel !== undefined ? readRawJsonFromUpstash : readJsonFromUpstash)(k, 3_000, !isAppOwnedRedisKey(k))));
+    ? tool._cacheKeys.filter(key => (key === 'sanctions:changes:v1') === historyMode) : selectedKeys;
+  const reads = cacheKeys.map((k) => settleRead((panel !== undefined || movementMode ? readRawJsonFromUpstash : readJsonFromUpstash)(k, 3_000, !isAppOwnedRedisKey(k))));
+  const selectedChecks = displacementView ? tool._freshnessChecks.filter(check => (check.key === 'seed-meta:displacement:summary') !== movementMode) : tool._freshnessChecks;
   const freshnessChecks = tool.name === 'get_sanctions_data'
-    ? tool._freshnessChecks.filter(check => (check.key === 'seed-meta:sanctions:changes') === historyMode) : tool._freshnessChecks;
+    ? tool._freshnessChecks.filter(check => (check.key === 'seed-meta:sanctions:changes') === historyMode) : selectedChecks;
   const metaReads = freshnessChecks.map((check) => settleRead(readJsonFromUpstash(check.key, 3_000, !isAppOwnedRedisKey(check.key))));
   // #6080 deployment-order grace. Only checks declaring a content contract pay
   // for this read, so it is one extra command on get_chokepoint_status and

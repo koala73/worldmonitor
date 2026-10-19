@@ -172,8 +172,26 @@ describe('Cross-border tab', () => {
     expect(nigeria![1]!.textContent).toContain(`+${formatPopulation(46171)}`);
     expect(nigeria![1]!.textContent).toContain(tt('components.displacement.inDays', { days: '31' }));
     expect(nigeria![2]!.textContent).toBe(formatPopulation(472619));
-    expect(med![1]!.textContent).toContain(`+${formatPopulation(12033)}`);
+    expect(med![1]!.textContent).toContain(formatPopulation(12033));
+    expect(med![1]!.textContent).not.toContain('+');
     expect(med![1]!.textContent).toContain('2026-09');
     expect(med![2]!.textContent).toBe(formatPopulation(78128));
+  });
+});
+
+describe('operational cross-border rows', () => {
+  it('keeps an explicit zero, source/date, period windows and the measure on each row', async () => {
+    mount();
+    panel.setCrossBorderData({ situations: [{ id: 'uk', name: 'English Channel', source: 'UK Home Office', sourceUrl: 'https://www.gov.uk/', asOf: '2026-10-18', accelerating: false, outflow: 0, total: 0, lastMonth: null, latestChange: null, topCountries: [], countryCodes: ['GB'], kind: 'arrival', measure: 'daily', last7Days: 0, last30Days: 3455, changePct: 118.3 }], points: [], sources: [{ id: 'uk', name: 'UK Home Office', status: 'ok', fetchedAt: 1, contentAt: 1, maxContentAgeMin: 4320 }] });
+    await flush();
+    const row = rows()[0]!;
+    expect(row.textContent).toContain('2026-10-18');
+    expect(row.textContent).toContain('arrival');
+    expect(row.textContent).toContain('daily');
+    expect(row.querySelector('a')?.getAttribute('href')).toBe('https://www.gov.uk/');
+    expect(row.querySelector('.disp-count')?.textContent).toBe('0');
+    expect(row.querySelector('.disp-round')?.textContent).toContain('0 / 3,455');
+    expect(row.textContent).toContain('+118%');
+    expect(panel.getElement().textContent).toContain('UK Home Office: ok');
   });
 });

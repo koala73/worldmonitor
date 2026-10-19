@@ -1042,3 +1042,20 @@ describe('extractDisplacementSurge is intentionally silent', () => {
     }), []);
   });
 });
+
+describe('operational cross-border arrival surges', () => {
+  it('fires for a fresh source-confirmed arrival surge and stays silent for flat, stale, stock and encounter data', () => {
+    const asOf = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const route = { id: 'english-channel', name: 'Channel', kind: 'arrival', countryCode: 'GB', asOf, surge: true, last7Days: 7000 };
+    const data = { 'displacement:border-uk:v1': { routes: [route] } };
+    const signals = extractDisplacementSurge(data);
+    assert.equal(signals.length, 1);
+    assert.equal(signals[0].type, 'CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE');
+    assert.equal(signals[0].detectedAt, Date.parse(asOf));
+    assert.ok(Number.isFinite(signals[0].severityScore));
+    assert.match(signals[0].summary, /7,000 arrivals/);
+    for (const patch of [{ surge: false }, { kind: 'encounter' }, { kind: 'outflow' }, { asOf: '2020-01-01' }]) {
+      assert.deepEqual(extractDisplacementSurge({ 'displacement:border-uk:v1': { routes: [{ ...route, ...patch }] } }), []);
+    }
+  });
+});

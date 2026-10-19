@@ -8,5 +8,7 @@ await runBundle('health', [
   { label: 'VPD-Tracker', script: 'seed-vpd-tracker.mjs', seedMetaKey: 'health:vpd-tracker', canonicalKey: 'health:vpd-tracker:realtime:v1', completionMetaKey: 'seed-completion:health:vpd-tracker', intervalMs: DAY, timeoutMs: 300_000 },
   { label: 'Displacement', script: 'seed-displacement-summary.mjs', seedMetaKey: 'displacement:summary', intervalMs: DAY, timeoutMs: 300_000 },
   { label: 'Cross-Border-Arrivals', script: 'seed-cross-border-arrivals.mjs', seedMetaKey: 'displacement:cross-border', canonicalKey: 'displacement:cross-border:v1', completionMetaKey: 'seed-completion:displacement:cross-border', intervalMs: DAY, timeoutMs: 300_000 },
+  { label: 'Border-UK', script: 'seed-border-uk.mjs', seedMetaKey: 'displacement:border-uk', canonicalKey: 'displacement:border-uk:v1', completionMetaKey: 'seed-completion:displacement:border-uk', intervalMs: DAY, timeoutMs: 180_000 },
+  { label: 'Border-CBP', script: 'seed-border-cbp.mjs', seedMetaKey: 'displacement:border-cbp', canonicalKey: 'displacement:border-cbp:v1', completionMetaKey: 'seed-completion:displacement:border-cbp', intervalMs: DAY, timeoutMs: 180_000 },
   { label: 'DTM-Displacement', script: 'seed-dtm-displacement.mjs', seedMetaKey: 'displacement:dtm', canonicalKey: 'displacement:dtm:v1', completionMetaKey: 'seed-completion:displacement:dtm', intervalMs: DAY, timeoutMs: 180_000 },
 ]);
