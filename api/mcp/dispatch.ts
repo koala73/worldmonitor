@@ -471,8 +471,6 @@ export async function dispatchToolsCall(
   const tool = resolved.tool;
   const notice = resolved.kind === 'alias' ? resolved.notice : null;
   const aliasArguments = resolved.kind === 'alias' ? resolved.arguments : undefined;
-  // The log keeps the name the client sent so leftover alias traffic stays
-  // visible. Weight, entitlement, and execution use `tool`.
   const telemetryTool = resolved.kind === 'alias' ? p.name : tool.name;
 
   // U7 fail-closed guard (defence in depth). A `free` principal is minted in
@@ -1043,14 +1041,6 @@ export async function dispatchToolsCall(
         ? `{"projection":${projectedText},"transportCoverage":${coverage}}`
         : `${text.slice(0, -1)},"transportCoverage":${coverage}}`;
     }
-    // Every tool advertises an `outputSchema`, so a strict client rejects a
-    // result without `structuredContent` before the model sees it (#8328). A
-    // soft-fail envelope is already an object in its own advertised branch. A
-    // payload reshaped by the caller — a `jmespath` projection, or a cache
-    // tool's `summary: true`, which turns lists into `{count, sample}` — is no
-    // longer the documented shape and is carried under `projection`. The
-    // notice is applied before the byte measurement so it counts toward the
-    // budget.
     const summaryUsed = tool._execute === undefined && argBool(p.arguments?.summary);
     let structuredContent = buildStructuredContent(projectedValue, {
       reshaped: failed === undefined && (jmespathUsed || summaryUsed),
@@ -1115,8 +1105,6 @@ export async function dispatchToolsCall(
         budget_bytes: outputBudget,
         actual_bytes: textBytes,
         hint,
-        // The budget envelope replaces the body. The notice still has to sit
-        // on the object a strict client validates.
         ...(notice ? { deprecation: notice } : {}),
       };
       return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify(envelope) }], structuredContent: envelope, ...(panelUsage ? { _meta: { 'worldmonitor/usage': panelUsage } } : {}) }, corsHeaders);

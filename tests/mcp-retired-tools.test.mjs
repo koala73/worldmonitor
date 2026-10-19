@@ -1,8 +1,3 @@
-// A retired own-definition leaves every published surface (tools/list,
-// describe_tool, the server card, docs) but stays callable under its old
-// name. generate_forecasts was retired because it read the same published
-// list as get_forecast_predictions while its name claimed it started a
-// forecast run. get_tariff_trends is an alias, not a copied ToolDef.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

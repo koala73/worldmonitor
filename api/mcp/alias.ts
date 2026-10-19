@@ -136,47 +136,38 @@ export function sealAliases(
     if (registryByName.has(family.name) || retiredByName.has(family.name)) {
       fail(family.name, 'alias name is already callable');
     }
-    // Read the tag as a string so a row from outside the union still fails here.
-    const kind = family.kind as string;
-    if (kind === 'rename') {
-      const rename = family as Extract<AliasFamily, { kind: 'rename' }>;
-      if ((rename.translate as string) !== 'identity') fail(rename.name, `unknown translate tag ${String(rename.translate)}`);
-      const target = registryByName.get(rename.target);
-      if (!target) fail(rename.name, `unregistered target ${rename.target}`);
-      aliasForTarget.set(target.name, rename.name);
+    if (family.kind === 'rename') {
+      const target = registryByName.get(family.target);
+      if (!target) fail(family.name, `unregistered target ${family.target}`);
+      aliasForTarget.set(target.name, family.name);
       sealed.push({
         kind: 'rename',
-        name: rename.name,
+        name: family.name,
         target,
         replacements: [target.name],
-        hint: `${rename.name} now calls ${target.name}.`,
+        hint: `${family.name} now calls ${target.name}.`,
       });
       continue;
     }
-    if (kind !== 'dataset-split') fail(family.name, `unknown translate tag ${kind}`);
-    const split = family as Extract<AliasFamily, { kind: 'dataset-split' }>;
-    if ((split.param as string) !== 'dataset' || (split.proValue as string) !== 'tariffs' || (split.proTranslate as string) !== 'us-mfn-from-limit') {
-      fail(split.name, `unknown translate tag ${String(split.proTranslate)}`);
-    }
-    const pro = registryByName.get(split.proTarget);
-    if (!pro) fail(split.name, `unregistered target ${split.proTarget}`);
-    if (accessOf(pro) !== 'subscription') fail(split.name, `${pro.name} is not subscription`);
-    if (!apiPaths(pro).includes(TARIFF_ROUTE)) fail(split.name, `${pro.name} does not list ${TARIFF_ROUTE}`);
-    const rest = registryByName.get(split.restTarget);
-    if (!rest) fail(split.name, `unregistered target ${split.restTarget}`);
-    if (pro.name === rest.name) fail(split.name, 'pro target and rest target are the same');
-    if (apiPaths(rest).includes(TARIFF_ROUTE)) fail(split.name, `${rest.name} still lists ${TARIFF_ROUTE}`);
+    const pro = registryByName.get(family.proTarget);
+    if (!pro) fail(family.name, `unregistered target ${family.proTarget}`);
+    if (accessOf(pro) !== 'subscription') fail(family.name, `${pro.name} is not subscription`);
+    if (!apiPaths(pro).includes(TARIFF_ROUTE)) fail(family.name, `${pro.name} does not list ${TARIFF_ROUTE}`);
+    const rest = registryByName.get(family.restTarget);
+    if (!rest) fail(family.name, `unregistered target ${family.restTarget}`);
+    if (pro.name === rest.name) fail(family.name, 'pro target and rest target are the same');
+    if (apiPaths(rest).includes(TARIFF_ROUTE)) fail(family.name, `${rest.name} still lists ${TARIFF_ROUTE}`);
     const tariffKey = cacheKeys(rest).find((key) => key.startsWith(TARIFF_CACHE_PREFIX));
-    if (tariffKey) fail(split.name, `${rest.name} cache key ${tariffKey} uses ${TARIFF_CACHE_PREFIX}`);
-    aliasForTarget.set(pro.name, split.name);
-    aliasForTarget.set(rest.name, split.name);
+    if (tariffKey) fail(family.name, `${rest.name} cache key ${tariffKey} uses ${TARIFF_CACHE_PREFIX}`);
+    aliasForTarget.set(pro.name, family.name);
+    aliasForTarget.set(rest.name, family.name);
     sealed.push({
       kind: 'dataset-split',
-      name: split.name,
+      name: family.name,
       pro,
       rest,
       replacements: [pro.name, rest.name],
-      hint: `${split.name} is not listed. A dataset of ${split.proValue} calls ${pro.name}. Any other dataset calls ${rest.name}.`,
+      hint: `${family.name} is not listed. A dataset of ${family.proValue} calls ${pro.name}. Any other dataset calls ${rest.name}.`,
     });
   }
 
@@ -261,7 +252,6 @@ export function deprecationNotice(input: {
   let limit: DeprecationNotice['limit'];
   if (input.limit !== undefined) {
     const servedAsYears = input.limit.servedAsYears;
-    // years 0 is the route default of 10, so it must not be stamped as a served lookback.
     if (!Number.isInteger(servedAsYears) || servedAsYears < 1 || servedAsYears > 30) {
       throw new Error('deprecation notice servedAsYears must be an integer from 1 to 30; years 0 is the route default of 10');
     }
@@ -355,7 +345,6 @@ function translateUsMfn(record: Record<string, unknown>, proName: string): Trans
 function limitFromRowCap(requested: number | null): NonNullable<DeprecationNotice['limit']> {
   if (requested === null) return { requested, servedAsYears: 30, mismatch: 'omitted-was-newest-30' };
   if (requested <= 0 || requested > 30) {
-    // years 0 is the route default of 10, so a non-positive limit cannot be forwarded as 0.
     return {
       requested,
       servedAsYears: 30,

@@ -1,5 +1,3 @@
-// Alias behavior for get_tariff_trends: the handler arguments, the Pro gate,
-// the deprecation notice, and the registry-name coverage guard.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';

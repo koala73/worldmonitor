@@ -3654,12 +3654,6 @@ export const RPC_TOOLS: ToolDef[] = [
   },
 ];
 
-// Retired tools stay callable under their old name but are absent from
-// tools/list, describe_tool, the server card and the docs. dispatch resolves
-// generate_forecasts through TOOL_ALIASES; aliases are not ToolDef copies.
-// generate_forecasts read the same published list as get_forecast_predictions
-// (both reach forecast:predictions:v2) while its name claimed it started a
-// forecast run; retired in MCP server 1.37.0.
 export const RETIRED_RPC_TOOLS: ToolDef[] = [
   {
     name: 'generate_forecasts',

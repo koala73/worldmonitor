@@ -47,11 +47,6 @@ export type McpPhase =
   | 'migration'  // a product-host alias was refused before auth or dispatch
   | 'ok';        // served (JSON-RPC-level errors still ride HTTP 200 → ok)
 
-/**
- * Callable name lookup — cardinality bound for tool_name (#8403). Alias names
- * stay recorded so leftover callers show up in Axiom. Names outside this set
- * stay null.
- */
 const REGISTERED_TOOL_NAMES: ReadonlySet<string> = TOOL_ALIASES.callableNames();
 
 /**
@@ -103,15 +98,6 @@ export function createMcpUsage(): McpUsage {
   };
 }
 
-/**
- * Record the JSON-RPC method (and, for tools/call, a registry-bounded tool
- * name) on the usage accumulator. Call once the envelope has been parsed —
- * before auth branches that may return early — so Axiom can distinguish
- * initialize / tools/list / tools/call without joining anything (#8403).
- *
- * Both fields are cardinality-bounded: methods outside SERVED_RPC_METHODS map
- * to `_unregistered`; tool names outside the callable set stay null.
- */
 export function setUsageRpc(
   usage: McpUsage,
   method: string,

@@ -37,7 +37,6 @@ const NON_DOCUMENTED_BRANCHES: readonly object[] = [
   { required: ['_jmespath_error'] },
 ];
 
-/** Optional root notice on an alias target. Nested objects, including `coverage`, are not given this key. */
 export const DEPRECATION_NOTICE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -81,17 +80,12 @@ export function advertisedOutputSchema(
   return { type: 'object', anyOf };
 }
 
-/** Add the notice schema at the root of one `anyOf` branch. `additionalProperties` stays as the branch authored it. */
 export function permitDeprecationRoot(branch: object): object {
   const record = isPlainObject(branch) ? branch : {};
   const properties = isPlainObject(record.properties) ? record.properties : {};
   return { ...record, properties: { ...properties, deprecation: DEPRECATION_NOTICE_SCHEMA } };
 }
 
-/**
- * True when every advertised branch accepts the notice at its root and nowhere
- * deeper. Reference equality keeps a cloned notice schema from counting.
- */
 export function schemaAdmitsNotice(advertised: object): boolean {
   if (!isPlainObject(advertised) || !Array.isArray(advertised.anyOf) || advertised.anyOf.length === 0) return false;
   for (const branch of advertised.anyOf) {
@@ -136,7 +130,6 @@ export function buildStructuredContent(
   return { projection: value ?? null };
 }
 
-/** Write `notice` on the root of `structuredContent` and mirror it into `content[0].text`. A second call overwrites that key. */
 export function applyDeprecationNotice(
   structured: Record<string, unknown>,
   text: string,
