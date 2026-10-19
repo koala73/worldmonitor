@@ -178,7 +178,7 @@ describe('getDesktopCloudAuthorization', () => {
 });
 
 describe('proxyLocalApiRequest user credential', () => {
-  const invoke = vi.fn(async () => ({ status: 200, headers: {}, body: [] }));
+  const invoke = vi.fn(async (_cmd: string, _args: unknown) => ({ status: 200, headers: {}, body: [] }));
   beforeEach(() => {
     invoke.mockClear();
     vi.stubGlobal('__TAURI_INTERNALS__', { invoke });
