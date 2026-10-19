@@ -76,6 +76,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_supply_chain_cost_shock: 'energy',
   get_energy_intelligence: 'energy',
   get_energy_storage: 'energy',
+  get_oil_trade_series: 'energy',
   // Geopolitical & security
   get_conflict_events: 'geopolitical-security',
   get_toronto_reported_occurrences: 'geopolitical-security',

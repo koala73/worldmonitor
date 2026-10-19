@@ -729,6 +729,9 @@
         },
         {
           "path": "scripts/seed-fuel-prices.mjs"
+        },
+        {
+          "path": "scripts/seed-oil-trade-series.mjs"
         }
       ]
     },
@@ -2662,6 +2665,9 @@
       "references": [
         {
           "path": "scripts/seed-comtrade-bilateral-hs4.mjs"
+        },
+        {
+          "path": "scripts/seed-oil-trade-series.mjs"
         },
         {
           "path": "scripts/seed-recovery-import-hhi.mjs"
@@ -7719,6 +7725,9 @@
       "references": [
         {
           "path": "scripts/build-chokepoint-transit-snapshot.mjs"
+        },
+        {
+          "path": "scripts/seed-oil-trade-series.mjs"
         }
       ]
     },
@@ -8866,6 +8875,9 @@
       "references": [
         {
           "path": "scripts/build-chokepoint-transit-snapshot.mjs"
+        },
+        {
+          "path": "scripts/seed-oil-trade-series.mjs"
         },
         {
           "path": "scripts/seed-portwatch-chokepoints-ref.mjs"
@@ -12140,12 +12152,15 @@
     {
       "host": "www.eia.gov",
       "provider": "www.eia.gov",
-      "kind": "feed",
+      "kind": "feed+structured",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.eia.gov and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "scripts/seed-oil-trade-series.mjs"
+        },
         {
           "path": "src/config/feeds.ts"
         }
@@ -12943,6 +12958,9 @@
         },
         {
           "path": "scripts/seed-jodi-oil.mjs"
+        },
+        {
+          "path": "scripts/seed-oil-trade-series.mjs"
         }
       ]
     },

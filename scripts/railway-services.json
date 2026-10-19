@@ -727,6 +727,7 @@
     "service": "seed-bundle-energy-sources",
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
+      "scripts/_content-age-helpers.mjs",
       "scripts/_country-resolver.mjs",
       "scripts/_energy-disruption-registry.mjs",
       "scripts/_fuel-shortage-registry.mjs",
@@ -737,6 +738,7 @@
       "scripts/_seed-envelope-source.mjs",
       "scripts/_seed-utils.mjs",
       "scripts/_storage-facility-registry.mjs",
+      "scripts/_upstash-rest.mjs",
       "scripts/data/energy-crisis-policies.json",
       "scripts/data/energy-disruptions.json",
       "scripts/data/fuel-shortages.json",
@@ -758,6 +760,7 @@
       "scripts/seed-iea-oil-stocks.mjs",
       "scripts/seed-jodi-gas.mjs",
       "scripts/seed-jodi-oil.mjs",
+      "scripts/seed-oil-trade-series.mjs",
       "scripts/seed-owid-energy-mix.mjs",
       "scripts/seed-pipelines-gas.mjs",
       "scripts/seed-pipelines-oil.mjs",
@@ -769,6 +772,7 @@
       "scripts/shared/jodi-content-age.mjs",
       "scripts/shared/jodi-demand-change.mjs",
       "scripts/shared/jodi-measurement-fields.json",
+      "scripts/shared/oil-trade-windows.js",
       "shared/country-names.json",
       "shared/iso3-to-iso2.json"
     ],
