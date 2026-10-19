@@ -979,6 +979,7 @@ const cloudPreferredExact = new Set([
   '/api/intelligence/v1/compute-energy-shock',
   '/api/intelligence/v1/get-china-decision-signals',
   '/api/intelligence/v1/get-country-energy-profile',
+  '/api/intelligence/v1/get-country-history',
   '/api/intelligence/v1/get-country-port-activity',
   '/api/intelligence/v1/get-country-risk',
   '/api/intelligence/v1/get-gdelt-topic-timeline',

@@ -39,6 +39,8 @@ describe('handler classifier', () => {
     assert.equal(classifyRpcHandler("const data = await getCachedJson(KEY); return wtoFetch(q);").seedOnly, false);
     assert.equal(classifyRpcHandler("const rows = await getCachedJsonBatch(keys); const x = fredFetchJson(u);").seedOnly, false);
     assert.equal(classifyRpcHandler("await cachedFetchJson(key, ttl, fetcher);").seedOnly, false);
+    assert.equal(classifyRpcHandler("return runRedisPipeline([['ZRANGEBYSCORE', KEY, 0, 10]], true);").seedOnly, true);
+    assert.equal(classifyRpcHandler("return runRedisPipeline([['SET', KEY, value]], true);").seedOnly, false);
   });
 
   it('treats readRequiredSeed as a Redis read (#8360)', () => {
@@ -107,6 +109,9 @@ describe('route derivation from the generated route tables', () => {
 });
 
 describe('sidecar cloud-preferred coverage of seed-only routes', () => {
+  it('routes daily country history to its cloud archive', () => {
+    assert.ok(isAlwaysCloudPreferred('/api/intelligence/v1/get-country-history', decl));
+  });
   it('cloud-prefers every seed-only route regardless of WS_RELAY_URL', () => {
     const uncovered = seedOnlyRoutes
       .filter((r) => !isAlwaysCloudPreferred(r.route, decl))

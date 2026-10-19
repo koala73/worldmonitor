@@ -3,13 +3,14 @@ import { afterEach, test } from 'node:test';
 import { countryHistoryDays, bindCountryHistoryAccess } from '../server/_shared/country-history-access';
 import { getCountryHistory } from '../server/worldmonitor/intelligence/v1/get-country-history';
 import { getFeaturesForPlan, mergeEntitlementFeatures } from '../convex/lib/entitlements';
+import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
 
 const now = Date.now();
 const day = Math.floor(now / 86400000);
 const row = (offset = 0, version = 'v11') => ({ countryCode: 'US', date: new Date((day + offset) * 86400000).toISOString().slice(0, 10), capturedAt: now + offset * 86400000, cii: { score: 25, version, observedAt: now + offset * 86400000 }, topEvents: [], keySignals: [] });
 const fetchOriginal = globalThis.fetch;
 const envOriginal = { ...process.env };
-afterEach(() => { globalThis.fetch = fetchOriginal; process.env = { ...envOriginal }; });
+afterEach(() => { globalThis.fetch = fetchOriginal; process.env = { ...envOriginal }; __resetKeyPrefixCacheForTests(); });
 
 test('catalog and legacy read-time merge give free 7, Pro 90, API and Enterprise 365 days', () => {
   for (const [plan, expected] of [['free', 7], ['pro_monthly', 90], ['api_starter', 365], ['enterprise', 365]] as const) {
@@ -26,7 +27,8 @@ test('catalog and legacy read-time merge give free 7, Pro 90, API and Enterprise
 });
 
 test('reader clamps before Redis, preserves gaps and annotates formula breaks', async () => {
-  Object.assign(process.env, { UPSTASH_REDIS_REST_URL: 'https://history.test', UPSTASH_REDIS_REST_TOKEN: 'fixture' });
+  Object.assign(process.env, { VERCEL_ENV: 'preview', VERCEL_GIT_COMMIT_SHA: 'fixture-preview', UPSTASH_REDIS_REST_URL: 'https://history.test', UPSTASH_REDIS_REST_TOKEN: 'fixture' });
+  __resetKeyPrefixCacheForTests();
   const commands: unknown[][][] = [];
   globalThis.fetch = (async (_url, init) => {
     const batch = JSON.parse(String(init?.body));
@@ -40,6 +42,8 @@ test('reader clamps before Redis, preserves gaps and annotates formula breaks', 
   assert.equal(result.effectiveDays, 7);
   assert.equal(result.points.length, 3);
   assert.equal(result.points[1].ciiVersionBreak, true);
+  assert.equal(commands[0][0][1], 'history:country:US');
+  assert.equal(commands[0][1][1], 'seed-meta:history:country');
   assert.equal(commands[0][0][2], day - 6);
   bindCountryHistoryAccess(request, 90);
   const paid = await getCountryHistory(ctx, { country: 'US', days: 365 });

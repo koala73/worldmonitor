@@ -45,7 +45,7 @@ export const getCountryHistory: IntelligenceServiceHandler['getCountryHistory'] 
     const results = await runRedisPipeline([
       ['ZRANGEBYSCORE', `history:country:${country}`, start, Math.floor(now / DAY), 'LIMIT', 0, 365],
       ['GET', 'seed-meta:history:country'],
-    ]);
+    ], true);
     if (results.length !== 2 || results.some(result => result.error) || !Array.isArray(results[0]?.result) || typeof results[1]?.result !== 'string') return base;
     const meta = JSON.parse(results[1].result);
     if (typeof meta.fetchedAt !== 'number' || !Number.isFinite(meta.fetchedAt) || meta.fetchedAt <= 0 || meta.fetchedAt > now || !(meta.recordCount > 0)) return base;
