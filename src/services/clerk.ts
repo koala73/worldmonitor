@@ -287,6 +287,25 @@ function loadClerkUmd(publishableKey: string): Promise<void> {
  * (mcp-grant page bootstrap, getClerkToken on first authenticated request).
  * Idempotent — repeated calls return the same in-flight promise.
  */
+/**
+ * Clerk's modal renders internal steps ("Use another method") as anchors whose
+ * href is a virtual-router path such as `/CLERK-ROUTER/VIRTUAL/sign-in/factor-one`.
+ * Clerk's React handler cancels the click and routes inside the modal, but a
+ * click stopped before it reaches React (1Password's passkey prompt does this)
+ * lets the browser follow the href to a 404. Cancel only the default action on
+ * the window capture phase; propagation is untouched, so Clerk still routes.
+ */
+export function installClerkVirtualLinkGuard(target: Window): () => void {
+  const guard = (event: MouseEvent) => {
+    const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+    if (anchor instanceof HTMLAnchorElement && anchor.pathname.startsWith('/CLERK-ROUTER/')) {
+      event.preventDefault();
+    }
+  };
+  target.addEventListener('click', guard, true);
+  return () => target.removeEventListener('click', guard, true);
+}
+
 export async function initClerk(): Promise<void> {
   if (clerkInstance) return;
   if (loadPromise) return loadPromise;
@@ -319,6 +338,7 @@ export async function initClerk(): Promise<void> {
         ...clerkRuntimeLoadOptions(desktopRelay),
       } as Parameters<typeof clerk.load>[0]);
       clerkInstance = clerk;
+      installClerkVirtualLinkGuard(window);
       attachPendingSubscribers();
     } catch (e) {
       loadPromise = null; // allow retry on next call

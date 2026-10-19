@@ -1606,6 +1606,16 @@ describe('welcome landing page routing', () => {
     assert.equal(redirect.permanent, true);
   });
 
+  it('sends a followed Clerk virtual-router href back to the dashboard instead of a 404', () => {
+    const redirect = firstRedirectFor({
+      host: 'www.worldmonitor.app',
+      path: '/CLERK-ROUTER/VIRTUAL/sign-in/factor-one',
+    });
+    assert.ok(redirect, 'expected a redirect for /CLERK-ROUTER/*');
+    assert.equal(redirect.destination, '/dashboard');
+    assert.equal(redirect.permanent, false);
+  });
+
   it('redirects direct /index.html requests to / permanently', () => {
     const redirect = vercelConfig.redirects.find((r) => r.source === '/index.html');
     assert.ok(redirect, 'expected a redirect for /index.html');
