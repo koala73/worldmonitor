@@ -590,6 +590,19 @@ curl -s https://worldmonitor.app/mcp \
 
 对于缓存工具，JSON payload 包含 `cached_at`（最旧贡献数据点的 ISO 时间戳）和 `stale`（布尔值 —— 当任意贡献 seed 超出其 per-key 新鲜度预算时为 `true`），以便模型可对新鲜度进行推理。
 
+以下字段仅在相关时出现：
+
+- `activationUnknown: true`：无法读取内容新鲜度激活标记，因此计算 `stale` 时不知道生产程序是否发布过。
+- `freshnessUnknown: true`：无法读取新鲜度记录，因此 `stale` 为 `true` 是因为新鲜度未知，而不是已知数据过旧。
+- `unreadable`（`data` 标签列表）：部分缓存读取失败。这些部分为 `null` 是因为无法读取，而不是数据集为空，稍后重试通常可补全。
+- `contentFreshnessPendingUntil`（ISO 时间戳）：从未发布过的 seed 处于部署宽限期内。该截止时间之后，内容年龄检查才开始计入 `stale`。
+
+省略 `limit` 时，缓存工具会把列表和映射字段截断为 30 项；只有确实需要完整 payload 时才传 `limit: 0`，并用 [`jmespath`](/zh/mcp-jmespath) 投影以控制响应大小。
+
+### 遥测（面向运维）
+
+每次 `tools/call` 都会输出一条标记为 `mcp.toolcall` 的结构化遥测记录，包含延迟、payload 字节数（JMESPath 前后）、`jmespath_used` 与 `budget_exceeded`。`initialize` 会输出 `mcp.tools_list_emitted`，包含工具数量与 tools-list 字节指标。调用方可见的行为不受影响。
+
 ## 数据新鲜度
 
 所有缓存工具都从由 Railway cron seeder 写入的 Redis key 读取。典型新鲜度：

@@ -132,7 +132,8 @@ Perplexity、Mistral Le Chat、Grok、Microsoft 365 Copilot、VS Code、Gemini C
 | 免费账户 | 来源列表与少量缓存数据集 | 5 次调用 |
 | Pro | 全部工具 | 50 次调用 |
 | Pro Business | 全部工具 | 250 次调用 |
-| API Starter、Business、Enterprise | 全部工具，与 REST 额度共享 | 你的套餐 API 额度 |
+| API Starter、API Business | 全部工具，与 REST 额度共享 | 1,000 或 10,000 单位（多数调用消耗 1–2） |
+| Enterprise | 全部工具 | 25,000 次 |
 
 一次调用指助手向 World Monitor 发出的一次请求。额度在 UTC 00:00 重置。可在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 升级。完整限制见 [MCP Server 参考](/zh/mcp-overview)。
 
@@ -142,7 +143,7 @@ Perplexity、Mistral Le Chat、Grok、Microsoft 365 Copilot、VS Code、Gemini C
 - **Claude 显示 "Connection has expired"。** 约一周未使用后登录会失效。打开 **Customize → Connectors → World Monitor** 并点击 **Reconnect**。
 - **通行密钥提示后 World Monitor 窗口一直在加载。** 通行密钥步骤被取消或超时。刷新窗口重新登录，或改用邮箱验证码。
 - **没收到验证码邮件。** 检查垃圾邮件或隔离区，企业邮件过滤有时会拦下它。
-- **助手提示需要订阅。** 你的账户是免费套餐。升级后断开并重新连接，让助手获取新套餐。
+- **助手提示需要订阅。** 你的账户是免费套餐。升级后再问一次即可。新套餐约一分钟内生效，无需重新连接。
 - **助手没有使用 World Monitor。** 确认该对话中连接器已开启，并在问题中提到 World Monitor。
 
 ## 面向开发者：脚本与 API 密钥
