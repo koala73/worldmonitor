@@ -456,7 +456,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // rather than silently skipped, so the count can only go down. Each is the
   // same defect class -- schema key never written by the producer:
   const KNOWN_PHANTOM_ROW_FIELDS = new Set([
-    // Serves `locationName` (+ latitude/longitude) -- scripts/seed-iran-events.mjs.
+    // Serves `locationName` (+ latitude/longitude) -- scripts/lib/middle-east-strikes.cjs (ais-relay).
     'get_conflict_events.data.iran-events.events[].country',
     'get_conflict_events.data.iran-events.events[].location',
     // Serves staticBaseline/dynamicScore/combinedScore, never a flat `score`.

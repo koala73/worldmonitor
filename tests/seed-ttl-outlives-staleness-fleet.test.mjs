@@ -97,7 +97,6 @@ const KNOWN_VIOLATIONS = new Set([
   'seed-imf-growth.mjs',
   'seed-imf-labor.mjs',
   'seed-imf-macro.mjs',
-  'seed-iran-events.mjs',
   'seed-market-quotes.mjs',
   'seed-portwatch-chokepoints-ref.mjs',
   'seed-portwatch-disruptions.mjs',

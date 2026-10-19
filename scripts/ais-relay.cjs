@@ -51,6 +51,7 @@ const {
 const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { SAUDI_CIVIL_DEFENSE, MAX_POST_CHARS, publishSaudiCivilDefenseAlerts } = require('./lib/saudi-civil-defense-alerts.cjs');
 const { publishChokepointDisruptionAlerts } = require('./lib/chokepoint-disruption-alerts.cjs');
+const middleEastStrikes = require('./lib/middle-east-strikes.cjs');
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle, xPollSlot } = require('./lib/x-poll-cycle.cjs');
 const { createGuardedLookup, SSRF_BLOCKED_ERROR_CODE } = require('./lib/notification-webhook-ssrf.cjs');
@@ -2133,6 +2134,9 @@ async function pollTelegramOnce() {
         if (!msg.message) { mediaSkipped++; continue; }
         const item = normalizeTelegramMessage(msg, channel);
         newItems.push(item);
+        // The 200-item feed buffer turns over in ~90 minutes; strike candidates
+        // are captured here so none age out before the 10-minute extractor runs.
+        noteMiddleEastStrikeItem(item);
         if (!telegramState.cursorByHandle[handle] || msg.id > telegramState.cursorByHandle[handle]) {
           telegramState.cursorByHandle[handle] = msg.id;
         }
@@ -5088,18 +5092,20 @@ const CLASSIFY_LLM_PROVIDERS = [
   },
 ];
 
-function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBody, timeout, maxTextChars = 200) {
+// options.systemPrompt / options.maxTokensPerItem let another index-aligned
+// classifier (the Middle East strike extractor) reuse this provider chain.
+function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBody, timeout, maxTextChars = 200, options = {}) {
   return new Promise((resolve) => {
     const sanitized = titles.map((t) => t.replace(/[\n\r]/g, ' ').replace(/\|/g, '/').slice(0, maxTextChars).trim());
     const prompt = sanitized.map((t, i) => `${i}|${t}`).join('\n');
     const bodyStr = JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: CLASSIFY_SYSTEM_PROMPT },
+        { role: 'system', content: options.systemPrompt || CLASSIFY_SYSTEM_PROMPT },
         { role: 'user', content: prompt },
       ],
       temperature: 0,
-      max_tokens: titles.length * 40,
+      max_tokens: titles.length * (options.maxTokensPerItem || 40),
       ...extraBody,
     });
 
@@ -5133,7 +5139,7 @@ function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBo
   });
 }
 
-async function classifyFetchLlm(titles, maxTextChars = 200) {
+async function classifyFetchLlm(titles, maxTextChars = 200, options = {}) {
   for (const provider of CLASSIFY_LLM_PROVIDERS) {
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;
@@ -5142,11 +5148,11 @@ async function classifyFetchLlm(titles, maxTextChars = 200) {
     const model = typeof provider.model === 'function' ? provider.model() : provider.model;
     const headers = provider.headers(envVal);
 
-    const result = await classifyFetchLlmSingle(titles, envVal, apiUrl, model, headers, provider.extraBody || {}, provider.timeout, maxTextChars);
+    const result = await classifyFetchLlmSingle(titles, envVal, apiUrl, model, headers, provider.extraBody || {}, provider.timeout, maxTextChars, options);
     if (result) {
       return result;
     }
-    console.warn(`[Classify] ${provider.name} failed, trying next provider...`);
+    console.warn(`[${options.label || 'Classify'}] ${provider.name} failed, trying next provider...`);
   }
   return null;
 }
@@ -5469,6 +5475,131 @@ async function startClassifySeedLoop() {
   const activeProviders = CLASSIFY_LLM_PROVIDERS.filter((p) => !!process.env[p.envKey]).map((p) => p.name);
   console.log(`[Classify] Seed loop starting (interval ${CLASSIFY_SEED_INTERVAL_MS / 1000 / 60}min, providers:${activeProviders.length ? activeProviders.join(',') : 'none'})`);
   startBootSeedLoop('Classify', 'seed-meta:classify', CLASSIFY_SEED_INTERVAL_MS, seedClassify, (e) => console.warn('[Classify] Initial seed error:', e?.message || e), (e) => console.warn('[Classify] Seed error:', e?.message || e));
+}
+
+// ─────────────────────────────────────────────────────────────
+// Middle East strike feed — Telegram + GDELT -> conflict:iran-events:v1
+// (logic and tests: scripts/lib/middle-east-strikes.cjs). Replaces the manual
+// LiveUAMap dump. Off unless IRAN_EVENTS_ENABLED=true, the same switch every
+// reader of the key honours (api/health.js, api/bootstrap.js, ...).
+// ─────────────────────────────────────────────────────────────
+const MIDDLE_EAST_STRIKES_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
+const MIDDLE_EAST_STRIKES_INTERVAL_MS = 10 * 60 * 1000;
+// Canonical outlives the 72h window it carries; health's 45-minute seed-meta
+// budget (api/health.js SEED_META.iranEvents) is what alarms on a dead loop.
+const MIDDLE_EAST_STRIKES_CANONICAL_TTL_S = 72 * 3600;
+const MIDDLE_EAST_STRIKES_STORE_TTL_S = 4 * 24 * 3600;
+const MIDDLE_EAST_STRIKES_META_TTL_S = 7 * 24 * 3600;
+const MIDDLE_EAST_STRIKES_PENDING_MAX = 1000;
+const MIDDLE_EAST_STRIKES_PENDING_MAX_AGE_MS = 12 * 3600 * 1000;
+const middleEastStrikePending = new Map();
+let middleEastStrikesInFlight = false;
+let middleEastGdeltBulkPromise = null;
+
+function noteMiddleEastStrikeItem(item) {
+  if (!MIDDLE_EAST_STRIKES_ENABLED || !item?.id || middleEastStrikePending.has(item.id)) return;
+  if (!middleEastStrikes.prefilterStrikeText(item.text)) return;
+  middleEastStrikePending.set(item.id, item);
+  while (middleEastStrikePending.size > MIDDLE_EAST_STRIKES_PENDING_MAX) {
+    middleEastStrikePending.delete(middleEastStrikePending.keys().next().value);
+  }
+}
+
+async function loadMiddleEastStrikeGdelt(processed) {
+  // Lazy and caught: a missing module degrades to a Telegram-only cycle
+  // instead of an unhandled rejection at relay start.
+  middleEastGdeltBulkPromise ??= import('./_conflict-gdelt-bulk.mjs');
+  try {
+    const bulk = await middleEastGdeltBulkPromise;
+    return await middleEastStrikes.fetchGdeltStrikeCandidates({ bulk, processed });
+  } catch (e) {
+    console.warn('[MiddleEastStrikes] GDELT backstop unavailable:', e?.message || e);
+    return { candidates: [], processed, errors: [String(e?.message || e)], fetched: 0 };
+  }
+}
+
+async function seedMiddleEastStrikes() {
+  if (middleEastStrikesInFlight) return;
+  middleEastStrikesInFlight = true;
+  const t0 = Date.now();
+  try {
+    for (const item of telegramState.items) noteMiddleEastStrikeItem(item);
+    for (const [id, item] of middleEastStrikePending) {
+      const ts = Date.parse(item.ts);
+      if (!Number.isFinite(ts) || t0 - ts > MIDDLE_EAST_STRIKES_PENDING_MAX_AGE_MS) middleEastStrikePending.delete(id);
+    }
+
+    let storeReadFailed = false;
+    const previousStore = await upstashGet(middleEastStrikes.STORE_KEY, () => { storeReadFailed = true; });
+    if (storeReadFailed) {
+      // Writing now would replace 72h of history with this cycle's posts alone.
+      console.warn('[MiddleEastStrikes] Candidate store read failed — skipping cycle');
+      return;
+    }
+    const gdelt = await loadMiddleEastStrikeGdelt(previousStore?.gdeltExports || []);
+    const pendingItems = [...middleEastStrikePending.values()];
+    const result = await middleEastStrikes.runStrikeCycle({
+      now: Date.now(),
+      telegramItems: pendingItems,
+      previousStore,
+      readCache: (key) => upstashGet(key),
+      writeCache: (key, value, ttl) => upstashSet(key, value, ttl),
+      classify: (texts) => classifyFetchLlm(texts, middleEastStrikes.CLASSIFY_MAX_TEXT_CHARS, {
+        systemPrompt: middleEastStrikes.STRIKE_CLASSIFIER_PROMPT,
+        maxTokensPerItem: 60,
+        label: 'MiddleEastStrikes',
+      }),
+      gdeltCandidates: gdelt.candidates,
+      gdeltExports: gdelt.processed,
+      telegramPolledAt: telegramState.lastPollAt,
+    });
+    const retry = new Set(result.pending.map((item) => item.id));
+    for (const item of pendingItems) if (!retry.has(item.id)) middleEastStrikePending.delete(item.id);
+
+    const storeOk = await upstashSet(middleEastStrikes.STORE_KEY, result.store, MIDDLE_EAST_STRIKES_STORE_TTL_S);
+    const canonicalOk = await envelopeWrite(middleEastStrikes.CANONICAL_KEY, result.payload, MIDDLE_EAST_STRIKES_CANONICAL_TTL_S, {
+      recordCount: result.recordCount,
+      sourceVersion: middleEastStrikes.SOURCE_VERSION,
+      zeroOk: true,
+    });
+    const s = result.stats;
+    const summary = `${s.events} events, ${s.prefiltered} posts (${s.cacheHits} cached, ${s.classified} classified, ${s.retry} retry), ${s.gdeltCandidates} GDELT clusters from ${gdelt.fetched} exports, ${s.storeCandidates} stored`;
+    if (!storeOk || !canonicalOk) {
+      console.warn(`[MiddleEastStrikes] Redis write failed (store=${storeOk}, canonical=${canonicalOk}) — seed-meta not advanced; ${summary}`);
+      return;
+    }
+    if (!result.healthy) {
+      // Leave seed-meta alone so /api/health turns STALE instead of reporting a
+      // frozen feed as fresh.
+      console.warn(`[MiddleEastStrikes] Degraded (telegramLive=${s.telegramLive}, retry=${s.retry}) — seed-meta not advanced; ${summary}`);
+      return;
+    }
+    await upstashSet(middleEastStrikes.SEED_META_KEY, {
+      fetchedAt: Date.now(),
+      recordCount: result.recordCount,
+      sourceVersion: middleEastStrikes.SOURCE_VERSION,
+    }, MIDDLE_EAST_STRIKES_META_TTL_S);
+    console.log(`[MiddleEastStrikes] ${summary} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (e) {
+    console.warn('[MiddleEastStrikes] Seed error:', e?.message || e);
+  } finally {
+    middleEastStrikesInFlight = false;
+  }
+}
+
+function startMiddleEastStrikesLoop() {
+  if (!MIDDLE_EAST_STRIKES_ENABLED) {
+    console.log('[MiddleEastStrikes] Disabled (IRAN_EVENTS_ENABLED is not true)');
+    return;
+  }
+  if (!UPSTASH_ENABLED) {
+    console.log('[MiddleEastStrikes] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[MiddleEastStrikes] Loop starting (interval ${MIDDLE_EAST_STRIKES_INTERVAL_MS / 60000}min)`);
+  startBootSeedLoop('MiddleEastStrikes', middleEastStrikes.SEED_META_KEY, MIDDLE_EAST_STRIKES_INTERVAL_MS, seedMiddleEastStrikes,
+    (e) => console.warn('[MiddleEastStrikes] Initial seed error:', e?.message || e),
+    (e) => console.warn('[MiddleEastStrikes] Seed error:', e?.message || e));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -15202,6 +15333,7 @@ server.listen(PORT, () => {
   startChokepointWarmPingLoop();
   startCableHealthWarmPingLoop();
   startClassifySeedLoop();
+  startMiddleEastStrikesLoop();
   startServiceStatusesSeedLoop();
   startTheaterPostureSeedLoop();
 

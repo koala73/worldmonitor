@@ -286,9 +286,10 @@ function fenceHealthMutations(commands, token) {
     : [op, key, ...args]);
 }
 
-// Iran-events domain sunset (war ended 2026-07). Default OFF everywhere; set
-// IRAN_EVENTS_ENABLED=true to restore the whole domain. Mirrors the backend
-// *_ENABLED env idiom (server/worldmonitor/resilience/v1/_shared.ts).
+// Middle East strike feed (conflict:iran-events:v1, produced by ais-relay from
+// Telegram + GDELT). Default OFF everywhere; IRAN_EVENTS_ENABLED=true enables
+// the producer and every reader. Mirrors the backend *_ENABLED env idiom
+// (server/worldmonitor/resilience/v1/_shared.ts).
 const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
 
 const BOOTSTRAP_KEYS = {
@@ -1013,7 +1014,7 @@ const SEED_META = {
     activationKey: CII_RISK_SCORE_CACHE_KEYS.dailyHistoryActivation,
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9354, activationKey: CII_RISK_SCORE_CACHE_KEYS.dailyHistoryActivation },
   },
-  iranEvents:       { key: 'seed-meta:conflict:iran-events',      maxStaleMin: 20160 }, // manual seed from LiveUAMap; 20160 = 14d = 2× weekly cadence
+  iranEvents:       { key: 'seed-meta:conflict:iran-events',      maxStaleMin: 45 }, // ais-relay Middle East strike loop (Telegram + GDELT) every 10min; 45 = 4 missed ticks. The relay withholds seed-meta when the Telegram poll is stale or the classifier fails, so either outage turns STALE_SEED rather than reading a frozen feed as fresh.
   ucdpEvents:       { key: 'seed-meta:conflict:ucdp-events',      maxStaleMin: 420 },
   ucdpEventsBootstrap: { key: 'seed-meta:conflict:ucdp-events-bootstrap', maxStaleMin: 420 }, // Same cron. Monitored separately because the bootstrap tier now hydrates from the compact projection, and a transform/write failure there must not hide behind a healthy canonical key (#5300).
   acledIntel:       { key: 'seed-meta:conflict:acled-intel',      maxStaleMin: 38 }, // conflict:acled:v1:all:0:0, now ACLED-or-GDELT fallback for the forecast EMA input (#5099).
@@ -2072,9 +2073,9 @@ for (const market of CONSUMER_PRICE_HEALTH_MARKETS) {
   };
 }
 
-// Iran-events sunset: when disabled (default), drop it from all health
-// classification so the deliberately-dormant manual seed can't raise
-// STALE_SEED (present-but-stale) or EMPTY (absent). Re-enabling restores both.
+// Middle East strike feed: when disabled (default), the relay producer does
+// not run, so drop the key from all health classification; otherwise it would
+// raise STALE_SEED or EMPTY for a feed that is off by design. Re-enabling restores both.
 if (!IRAN_EVENTS_ENABLED) {
   delete BOOTSTRAP_KEYS.iranEvents;
   delete SEED_META.iranEvents;
@@ -2674,6 +2675,10 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   'sanctionsChanges',
   'forecastArchive',
   'naturalEvents',
+  // A 72h window with no corroborated strike is a quiet theater, not a failed
+  // publish: the relay writes {events: []} every healthy tick, so a MISSING
+  // canonical key still reads EMPTY.
+  'iranEvents',
   // A current List query can validly return no Posts. The relay still writes
   // the canonical snapshot, so a missing xFeed key remains a hard failure.
   'xFeed',

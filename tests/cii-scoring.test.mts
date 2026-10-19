@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { readFileSync as originalReadFileSync } from 'node:fs';
 function readFileSync(path: any, options?: any): any {
   const content = originalReadFileSync(path, options);
@@ -1154,6 +1155,23 @@ describe('CII scoring', () => {
     const lowSev = scoreFor(computeCIIScores([], aux2), 'IL')!;
     assert.ok(highSev.combinedScore >= lowSev.combinedScore,
       `High severity strike (${highSev.combinedScore}) should be >= low (${lowSev.combinedScore})`);
+  });
+
+  it('a Saudi strike from the Middle East strike feed raises SA, not Iran', () => {
+    const require = createRequire(import.meta.url);
+    const strikes = require('../scripts/lib/middle-east-strikes.cjs');
+    const now = Date.now();
+    const post = { id: 'saudidcd:7001', channel: 'saudidcd', url: 'https://t.me/SaudiDCD/7001', ts: new Date(now - 600_000).toISOString(), text: 'Projectile debris fell in Riyadh' };
+    const candidate = strikes.buildTelegramCandidate(post, { isStrike: true, kind: 'strike', place: 'Riyadh', countryIso2: 'SA', severity: 'high' }, now);
+    const events = strikes.deriveStrikeEvents([candidate], now);
+    assert.equal(events.length, 1);
+    const withStrike = emptyAux();
+    withStrike.iranEvents = events;
+    const baseline = computeCIIScores([], emptyAux());
+    const scored = computeCIIScores([], withStrike);
+    assert.ok(scoreFor(scored, 'SA')!.combinedScore > scoreFor(baseline, 'SA')!.combinedScore,
+      `SA ${scoreFor(scored, 'SA')!.combinedScore} must exceed ${scoreFor(baseline, 'SA')!.combinedScore}`);
+    assert.equal(scoreFor(scored, 'IR')!.combinedScore, scoreFor(baseline, 'IR')!.combinedScore, 'the strike must not land on Iran');
   });
 
   it('IL scores higher than MX with active conflict signals', () => {
