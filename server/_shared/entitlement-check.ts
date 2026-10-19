@@ -46,6 +46,7 @@ export interface CachedEntitlements {
   planKey: string;
   features: {
     tier: number;
+    historyDays?: number;
     apiAccess: boolean;
     apiRateLimit: number;
     maxDashboards: number;

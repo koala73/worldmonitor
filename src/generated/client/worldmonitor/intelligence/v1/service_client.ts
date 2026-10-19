@@ -188,6 +188,47 @@ export interface EventClassification {
   entities: string[];
 }
 
+export interface GetCountryHistoryRequest {
+  country: string;
+  days: number;
+}
+
+export interface GetCountryHistoryResponse {
+  country: string;
+  requestedDays: number;
+  allowedDays: number;
+  effectiveDays: number;
+  returnedDays: number;
+  points: CountryHistoryPoint[];
+  upstreamUnavailable: boolean;
+  stale: boolean;
+  fetchedAt: number;
+}
+
+export interface CountryHistoryPoint {
+  date: string;
+  capturedAt: number;
+  cii?: CountryHistoryScore;
+  resilience?: CountryHistoryScore;
+  topEvents: CountryHistoryEvent[];
+  keySignals: string[];
+  ciiVersionBreak: boolean;
+  resilienceVersionBreak: boolean;
+}
+
+export interface CountryHistoryScore {
+  score: number;
+  version: string;
+  observedAt: number;
+}
+
+export interface CountryHistoryEvent {
+  title: string;
+  link: string;
+  source: string;
+  category: string;
+}
+
 export interface GetCountryRiskRequest {
   countryCode: string;
 }
@@ -1430,6 +1471,32 @@ export class IntelligenceServiceClient {
     }
 
     return await resp.json() as ClassifyEventResponse;
+  }
+
+  async getCountryHistory(req: GetCountryHistoryRequest, options?: IntelligenceServiceCallOptions): Promise<GetCountryHistoryResponse> {
+    let path = "/api/intelligence/v1/get-country-history";
+    const params = new URLSearchParams();
+    if (req.country != null && req.country !== "") params.set("country", String(req.country));
+    if (req.days != null && req.days !== 0) params.set("days", String(req.days));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCountryHistoryResponse;
   }
 
   async getCountryRisk(req: GetCountryRiskRequest, options?: IntelligenceServiceCallOptions): Promise<GetCountryRiskResponse> {

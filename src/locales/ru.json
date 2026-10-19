@@ -3853,5 +3853,27 @@
       "description": "Включить источники по Ирану, Израилю, странам Залива и курдским регионам"
     },
     "unavailable": "Пакет {{preset}} недоступен при текущем наборе панелей"
+  },
+  "countryHistory": {
+    "title": "Daily country history",
+    "loading": "Loading daily history…",
+    "window": "Window",
+    "days": "{{days}} days",
+    "observed": "{{count}} snapshots in {{days}} days",
+    "legend": "CII (amber): higher means more instability. Resilience (green): higher means more capacity. Dots mark days with selected headlines.",
+    "chart": "Daily CII and resilience scores. Gaps and formula changes break the lines.",
+    "selectDate": "{{date}}, {{count}} selected headlines",
+    "empty": "No daily snapshots in this window. History accumulates after activation.",
+    "unavailable": "History is temporarily unavailable. Try again.",
+    "retry": "Retry",
+    "stale": "The last successful daily capture is over 36 hours old.",
+    "break": "Formula or observation gap. Compare scores only within the same formula.",
+    "partial": "News coverage was partial at capture time.",
+    "resilience": "Resilience",
+    "ciiMissing": "CII unavailable",
+    "resilienceMissing": "Resilience unavailable",
+    "noEvents": "No selected headlines were captured for this date. This does not prove no events occurred.",
+    "unlock90": "Unlock 90 days with Pro",
+    "unlock365": "Unlock 365 days with an API plan"
   }
 }

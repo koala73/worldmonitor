@@ -977,6 +977,7 @@ describe('planned Railway service lifecycle', () => {
     // made rather than a way to quiet a red gate.
     //
     const expectedPlannedServices = [
+      'seed-country-history',
       // seed-bundle-canada is deliberately ABSENT now: all six members merged
       // (#6669, #6672, #6674 and the roads stack) and the Railway service was
       // provisioned, so it is a live cron and belongs in the audit. Leaving it

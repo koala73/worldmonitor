@@ -20,6 +20,7 @@ export interface EntitlementState {
   planKey: string;
   features: {
     tier: number;
+    historyDays?: number;
     apiAccess: boolean;
     apiRateLimit: number;
     planLimits?: {

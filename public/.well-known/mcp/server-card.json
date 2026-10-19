@@ -35,6 +35,14 @@
   },
   "tools": [
     {
+      "name": "get_country_history",
+      "description": "Read cached daily country CII, resilience and linked headlines. Account depth: Pro 90 days; API/Enterprise 365. Starts at activation; gaps and formula breaks remain explicit. One request. Large outputs retain one headline per day, marked events_reduced_for_output_budget.",
+      "_meta": {
+        "worldmonitor/access": "subscription",
+        "worldmonitor/category": "geopolitical-security"
+      }
+    },
+    {
       "name": "get_toronto_reported_occurrences",
       "description": "Return Toronto Police Service Major Crime Indicators rows: reported occurrences with offence, division, neighbourhood, approximate coordinates and report dates, from the seeded open-data extract (flagged stale after 2 weeks). Retrospective reported crime only; not live dispatch, and coordinates are approximate by design. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. division, neighbourhood and offence are case-insensitive substring filters; limit returns 1-100 rows (default 50). Attribution rides with every projection.",
       "_meta": {

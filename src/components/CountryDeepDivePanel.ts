@@ -16,6 +16,7 @@ import {
 import { getCountryCentroid, ME_STRIKE_BOUNDS } from '@/services/country-geometry';
 import type { CountryScore } from '@/services/country-instability';
 import { t } from '@/services/i18n';
+import { CountryHistory } from './CountryHistory';
 import { getCountryInfrastructure } from '@/services/related-assets';
 import type { PredictionMarket } from '@/services/prediction';
 import type { AssetType, NewsItem, RelatedAsset } from '@/types';
@@ -3320,6 +3321,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const bodyGrid = this.el('div', 'cdp-grid');
     const [signalsCard, signalBody] = this.sectionCard('signals', t('countryBrief.activeSignals'));
     const [timelineCard, timelineBody] = this.sectionCard('timeline', t('countryBrief.timeline'));
+    let historyCard: HTMLElement | undefined;
+    if (this.source?.mode !== 'host') {
+      const [card, body] = this.sectionCard('history', t('countryHistory.title'));
+      historyCard = card;
+      new CountryHistory(body, code, this.signal);
+    }
     const [newsCard, newsBody] = this.sectionCard('news', t('countryBrief.topNews'));
     const [militaryCard, militaryBody] = this.sectionCard('military', t('countryBrief.militaryActivity'));
     const [infraCard, infraBody] = this.sectionCard('infrastructure', t('countryBrief.infrastructure'));
@@ -3469,7 +3476,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(fiveFactorScorecardCard, factsCard, ...(chinaSummaryCard ? [chinaSummaryCard] : []), signalsCard, timelineCard, newsCard, militaryCard, sanctionsCard, economicCard, housingCard, debtCard, comtradeCard, tariffCard, tradeCard, costShockCalcCard, productImportsCard, marketsCard, energyCard, maritimeCard, commodityVulnerabilityCard, foodStocksCard, infraCard, demographicsCard);
+    bodyGrid.append(fiveFactorScorecardCard, factsCard, ...(chinaSummaryCard ? [chinaSummaryCard] : []), signalsCard, timelineCard, ...(historyCard ? [historyCard] : []), newsCard, militaryCard, sanctionsCard, economicCard, housingCard, debtCard, comtradeCard, tariffCard, tradeCard, costShockCalcCard, productImportsCard, marketsCard, energyCard, maritimeCard, commodityVulnerabilityCard, foodStocksCard, infraCard, demographicsCard);
     const lead = this.el('div', 'cdp-overview-lead');
     lead.append(briefCard, summaryGrid);
     shell.append(header, lead, bodyGrid);

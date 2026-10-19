@@ -188,6 +188,47 @@ export interface EventClassification {
   entities: string[];
 }
 
+export interface GetCountryHistoryRequest {
+  country: string;
+  days: number;
+}
+
+export interface GetCountryHistoryResponse {
+  country: string;
+  requestedDays: number;
+  allowedDays: number;
+  effectiveDays: number;
+  returnedDays: number;
+  points: CountryHistoryPoint[];
+  upstreamUnavailable: boolean;
+  stale: boolean;
+  fetchedAt: number;
+}
+
+export interface CountryHistoryPoint {
+  date: string;
+  capturedAt: number;
+  cii?: CountryHistoryScore;
+  resilience?: CountryHistoryScore;
+  topEvents: CountryHistoryEvent[];
+  keySignals: string[];
+  ciiVersionBreak: boolean;
+  resilienceVersionBreak: boolean;
+}
+
+export interface CountryHistoryScore {
+  score: number;
+  version: string;
+  observedAt: number;
+}
+
+export interface CountryHistoryEvent {
+  title: string;
+  link: string;
+  source: string;
+  category: string;
+}
+
 export interface GetCountryRiskRequest {
   countryCode: string;
 }
@@ -1327,6 +1368,7 @@ export interface IntelligenceServiceHandler {
   getRiskScores(ctx: ServerContext, req: GetRiskScoresRequest): Promise<GetRiskScoresResponse>;
   getPizzintStatus(ctx: ServerContext, req: GetPizzintStatusRequest): Promise<GetPizzintStatusResponse>;
   classifyEvent(ctx: ServerContext, req: ClassifyEventRequest): Promise<ClassifyEventResponse>;
+  getCountryHistory(ctx: ServerContext, req: GetCountryHistoryRequest): Promise<GetCountryHistoryResponse>;
   getCountryRisk(ctx: ServerContext, req: GetCountryRiskRequest): Promise<GetCountryRiskResponse>;
   getCountryIntelBrief(ctx: ServerContext, req: GetCountryIntelBriefRequest): Promise<GetCountryIntelBriefResponse>;
   getCountryCoverage(ctx: ServerContext, req: GetCountryCoverageRequest): Promise<GetCountryCoverageResponse>;
@@ -1538,6 +1580,54 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.classifyEvent(ctx, body);
           return new Response(JSON.stringify(result as ClassifyEventResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/get-country-history",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetCountryHistoryRequest = {
+            country: params.get("country") ?? "",
+            days: Number(params.get("days") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getCountryHistory", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getCountryHistory(ctx, body);
+          return new Response(JSON.stringify(result as GetCountryHistoryResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

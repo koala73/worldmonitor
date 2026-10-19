@@ -1,4 +1,5 @@
 import { consumeSubRequestAdmission } from './_shared/sub-request-admission';
+import { bindCountryHistoryAccess, countryHistoryDays } from './_shared/country-history-access';
 import { hasCurrentEntitlementCoverage } from './_shared/entitlement-coverage';
 /**
  * Shared gateway logic for per-domain Vercel edge functions.
@@ -394,6 +395,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/market/v1/list-etf-flows': 'slow',
   '/api/research/v1/list-hackernews-items': 'slow',
   '/api/intelligence/v1/get-country-risk': 'slow',
+  '/api/intelligence/v1/get-country-history': 'no-store',
   // get-country-coverage is premium-gated via PREMIUM_RPC_PATHS, so the gateway
   // short-circuits to 'slow-browser' before consulting this map — same as
   // get-regional-snapshot below. This entry exists to satisfy the parity
@@ -1517,6 +1519,7 @@ export function createDomainGateway(
     // Classification ignores attached credentials because a Vercel cache hit
     // happens before this function sees them; the public URL must therefore
     // have one response contract for every caller.
+    const isCountryHistoryRpc = pathname === '/api/intelligence/v1/get-country-history';
     const isPublicNoAuthRpc = PUBLIC_NO_AUTH_RPC_PATHS.has(pathname)
       || isPublicSharedRpcRequest(request.url, request.method);
     const seedRefreshVerified = await isResilienceRankingSeedRefreshRequest(request, pathname);
@@ -1561,7 +1564,7 @@ export function createDomainGateway(
     let sessionRole: 'free' | 'pro' | null = null;
     let quotaEntitlements: CachedEntitlements | null = null;
     let directLlmDailyLimit: number | null | undefined;
-    if (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution) {
+    if (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution || (isCountryHistoryRpc && !internalMcpVerified && request.headers.has('Authorization'))) {
       const session = await resolveClerkSession(request);
       if (session && 'reason' in session) {
         emitRequest(503, 'billing_verification_503', null);
@@ -1769,7 +1772,7 @@ export function createDomainGateway(
     // Never for a legacy Pro bearer route: a session proves identity, not Pro,
     // and skipping that gate would hand a free account the premium handler.
     if (
-      (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution) &&
+      (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution || isCountryHistoryRpc) &&
       !needsLegacyProBearerGate &&
       sessionUserId &&
       keyCheck.required &&
@@ -1888,6 +1891,10 @@ export function createDomainGateway(
       if (hasProFreshCacheAccess) {
         rateLimitPrincipalUserId = sessionUserId;
       }
+    }
+
+    if (isCountryHistoryRpc && !keyCheck.valid && !wmKey && !request.headers.has('Authorization')) {
+      keyCheck = { valid: true, required: false };
     }
 
     if (keyCheck.required && !keyCheck.valid) {
@@ -2544,6 +2551,13 @@ export function createDomainGateway(
           isUserApiKey ? 'api_key' : 'session',
         )
       : request;
+    if (isCountryHistoryRpc) {
+      const userId = sessionUserId ?? usage.sessionUserId;
+      const ent = userId ? (userKeyEntitlement ?? quotaEntitlements ?? await getEntitlements(userId)) : null;
+      const denial = ent?.verificationUnavailable ? getBillingVerificationDenial(ent, corsHeaders) : null;
+      if (denial) return denial;
+      bindCountryHistoryAccess(requestForHandler, isEnterpriseAuth ? 365 : countryHistoryDays(ent));
+    }
     try {
       response = await runWithUsageScope(
         {

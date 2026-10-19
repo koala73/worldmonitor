@@ -7,6 +7,7 @@ import { issueSessionToken } from '../api/_session.js';
 import { createDomainGateway } from '../server/gateway.ts';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '../src/shared/pro-fresh-rpc.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
+import { getCountryHistory } from '../server/worldmonitor/intelligence/v1/get-country-history';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_ENV = {
@@ -46,6 +47,9 @@ const handler = createDomainGateway(
     handler: async () => new Response('{"ok":true}', { status: 200 }),
   })),
 );
+
+const historyPath = '/api/intelligence/v1/get-country-history';
+const historyHandler = createDomainGateway([{ method: 'GET', path: historyPath, handler: async request => Response.json(await getCountryHistory({ request, pathParams: {}, headers: {} }, { country: 'US', days: 365 })) }]);
 
 function entitlement(planKey: string, tier: number, validUntil = Date.now() + 60_000): Entitlement {
   return {
@@ -138,6 +142,10 @@ before(async () => {
       });
     }
     if (url.startsWith(process.env.UPSTASH_REDIS_REST_URL ?? '\0')) {
+      const commands = JSON.parse(String(init?.body ?? '[]'));
+      if (commands[0]?.[0] === 'ZRANGEBYSCORE' && commands[0]?.[1] === 'history:country:US') {
+        return Response.json([{ result: [] }, { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 196 }) }]);
+      }
       return redis.fetchImpl(input, init);
     }
     return ORIGINAL_FETCH(input, init);
@@ -151,6 +159,31 @@ after(async () => {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
+});
+
+describe('country history verified retention', () => {
+  it('serves anonymous seven-day history and ignores spoofed tier/user headers', async () => {
+    const response = await historyHandler(request(historyPath, { 'x-user-id': 'paid-user', 'x-history-days': '365' }));
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).effectiveDays, 7);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    assertPrivateCache(response);
+  });
+
+  it('uses verified Pro/API plans, then clamps expired plans back to free', async () => {
+    for (const [user, tier, validUntil, expected] of [
+      ['history-pro', 1, Date.now() + 60000, 90],
+      ['history-api', 2, Date.now() + 60000, 365],
+      ['history-expired', 1, Date.now() - 60000, 7],
+    ] as const) {
+      entitlements.set(user, entitlement(tier === 2 ? 'api_starter' : 'pro_monthly', tier, validUntil));
+      const response = await historyHandler(request(historyPath, { Authorization: `Bearer ${await signToken(user)}` }));
+      assert.equal(response.status, 200, user);
+      assert.equal((await response.json()).effectiveDays, expected, user);
+      assert.equal(response.headers.get('Cache-Control'), 'no-store');
+      assertPrivateCache(response);
+    }
+  });
 });
 
 describe('Pro-only market freshness cache contract', () => {
