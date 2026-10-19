@@ -6986,6 +6986,578 @@
       "asOf": "2026-01-15T08:18:47.749Z"
     }
   },
+  "liveTopics": {
+    "fear-and-greed-index": {
+      "asOf": "2026-01-15T00:03:14.876Z",
+      "score": 56.8,
+      "label": "Neutral",
+      "previousScore": 56.8,
+      "categories": [
+        {
+          "label": "Sentiment",
+          "score": 34,
+          "weightPct": 10,
+          "partial": false
+        },
+        {
+          "label": "Volatility",
+          "score": 67,
+          "weightPct": 10,
+          "partial": false
+        },
+        {
+          "label": "Positioning",
+          "score": 50,
+          "weightPct": 15,
+          "partial": false
+        },
+        {
+          "label": "Trend",
+          "score": 55,
+          "weightPct": 10,
+          "partial": false
+        },
+        {
+          "label": "Breadth",
+          "score": 45,
+          "weightPct": 10,
+          "partial": false
+        },
+        {
+          "label": "Momentum",
+          "score": 66,
+          "weightPct": 10,
+          "partial": false
+        },
+        {
+          "label": "Liquidity",
+          "score": 63,
+          "weightPct": 15,
+          "partial": false
+        },
+        {
+          "label": "Credit",
+          "score": 68,
+          "weightPct": 10,
+          "partial": false
+        },
+        {
+          "label": "Macro",
+          "score": 66,
+          "weightPct": 5,
+          "partial": false
+        },
+        {
+          "label": "Cross-asset",
+          "score": 60,
+          "weightPct": 5,
+          "partial": false
+        }
+      ],
+      "cnn": {
+        "score": 18,
+        "label": "Extreme Fear"
+      },
+      "aaii": {
+        "bull": 39,
+        "bear": 42
+      },
+      "vix": 19.99
+    },
+    "internet-outages": {
+      "asOf": "2026-01-15T04:45:12.907Z",
+      "total": 13,
+      "ongoing": 1,
+      "countries": 8,
+      "oldest": "2025-12-20T18:45:00.000Z",
+      "outages": [
+        {
+          "country": "Namibia",
+          "severity": "Nationwide",
+          "cause": "Power outage",
+          "detectedAt": "2026-01-10T23:30:00.000Z",
+          "ongoing": false,
+          "description": "A NamPower substation fault caused a power outage and a significant drop in Internet traffic across central, coastal and southern Namibia.",
+          "link": "https://x.com/CloudflareRadar/status/2111030130885677404"
+        },
+        {
+          "country": "Uruguay",
+          "severity": "Regional",
+          "cause": "Cable cut",
+          "detectedAt": "2026-01-09T19:00:00.000Z",
+          "ongoing": false,
+          "description": "Fiber optic cuts on ANTEL's (AS6057) national backbone caused a near-total loss of its HTTP request traffic in eastern Uruguay.",
+          "link": "https://x.com/CloudflareRadar/status/2110310890503372955"
+        },
+        {
+          "country": "Iraq",
+          "severity": "Regional",
+          "cause": "Government directed",
+          "detectedAt": "2026-01-06T02:45:00.000Z",
+          "ongoing": false,
+          "description": "Exam shutdown",
+          "link": "https://radar.cloudflare.com/outage-center"
+        },
+        {
+          "country": "Panama",
+          "severity": "Nationwide",
+          "cause": "Natural disaster",
+          "detectedAt": "2026-01-05T18:00:00.000Z",
+          "ongoing": false,
+          "description": "A magnitude 7.7 earthquake caused a significant drop in Internet traffic across Panama",
+          "link": "https://x.com/CloudflareRadar/status/2108654882206990551"
+        },
+        {
+          "country": "Iraq",
+          "severity": "Regional",
+          "cause": "Government directed",
+          "detectedAt": "2026-01-04T03:30:00.000Z",
+          "ongoing": false,
+          "description": "Exam shutdown",
+          "link": "https://radar.cloudflare.com/outage-center"
+        },
+        {
+          "country": "Russian Federation",
+          "severity": "Network",
+          "cause": "Military action",
+          "detectedAt": "2026-01-03T22:30:00.000Z",
+          "ongoing": true,
+          "description": "Yandex, Russia's biggest internet company, shut down its data centers in Sasovo, Ryazan, and later in Vladimir after drone strikes damaged both facilities.",
+          "link": "https://x.com/CloudflareRadar/status/2108122893028671604"
+        },
+        {
+          "country": "Iraq",
+          "severity": "Regional",
+          "cause": "Government directed",
+          "detectedAt": "2026-01-02T02:45:00.000Z",
+          "ongoing": false,
+          "description": "Exam shutdown",
+          "link": "https://radar.cloudflare.com/outage-center"
+        },
+        {
+          "country": "Iraq",
+          "severity": "Regional",
+          "cause": "Government directed",
+          "detectedAt": "2025-12-31T02:45:00.000Z",
+          "ongoing": false,
+          "description": "Exam shutdown",
+          "link": "https://radar.cloudflare.com/outage-center"
+        },
+        {
+          "country": "Haiti",
+          "severity": "Network",
+          "cause": "Cable cut",
+          "detectedAt": "2025-12-30T13:30:00.000Z",
+          "ongoing": false,
+          "description": "Fiber optic cable damage on Route Nationale #1 caused a complete loss of Internet traffic from Digicel (AS27653), Haiti's largest mobile operator.",
+          "link": "https://x.com/CloudflareRadar/status/2107094371652813271"
+        },
+        {
+          "country": "Swaziland",
+          "severity": "Nationwide",
+          "cause": "Power outage",
+          "detectedAt": "2025-12-26T11:00:00.000Z",
+          "ongoing": false,
+          "description": "Planned power outages by the Eswatini Electricity Company caused a significant drop in HTTP traffic in Eswatini, with the Manzini region most affected.",
+          "link": "https://x.com/CloudflareRadar/status/2105047625523204457"
+        },
+        {
+          "country": "Iraq",
+          "severity": "Regional",
+          "cause": "Government directed",
+          "detectedAt": "2025-12-25T03:30:00.000Z",
+          "ongoing": false,
+          "description": "Exam shutdown (special round started Sep 26 and runs through Oct 10)",
+          "link": "https://radar.cloudflare.com/outage-center"
+        },
+        {
+          "country": "Iraq",
+          "severity": "Regional",
+          "cause": "Government directed",
+          "detectedAt": "2025-12-23T03:30:00.000Z",
+          "ongoing": false,
+          "description": "Exam shutdown (special round started Sep 26 and runs through Oct 10)",
+          "link": "https://radar.cloudflare.com/outage-center"
+        },
+        {
+          "country": "Guyana",
+          "severity": "Network",
+          "cause": "Cable cut",
+          "detectedAt": "2025-12-20T18:45:00.000Z",
+          "ongoing": false,
+          "description": "A cut fibre-optic cable caused a significant drop in Internet traffic from One Communications (AS19863) in Guyana.",
+          "link": "https://x.com/CloudflareRadar/status/2103049216960393689"
+        }
+      ]
+    },
+    "prediction-markets": {
+      "asOf": "2026-01-15T04:52:01.254Z",
+      "total": 50,
+      "totalVolumeUsd": 457878888.5686689,
+      "markets": [
+        {
+          "title": "Will the U.S. invade Iran before 2027?",
+          "yesPct": 15.5,
+          "volumeUsd": 74633084.953796,
+          "closes": "Jan 1, 2027",
+          "source": "Polymarket",
+          "url": "https://polymarket.com/event/will-the-us-invade-iran-before-2027"
+        },
+        {
+          "title": "Will there be no change in Fed interest rates after the October 2026 meeting?",
+          "yesPct": 87.5,
+          "volumeUsd": 47029027.486568004,
+          "closes": "Oct 29, 2026",
+          "source": "Polymarket",
+          "url": "https://polymarket.com/event/fed-decision-in-october-20260617190323537"
+        },
+        {
+          "title": "Will Mojtaba Khamenei be head of state in Iran end of 2026?",
+          "yesPct": 87.3,
+          "volumeUsd": 40253996.322324,
+          "closes": "Dec 31, 2026",
+          "source": "Polymarket",
+          "url": "https://polymarket.com/event/iran-leader-end-of-2026"
+        },
+        {
+          "title": "Israel x Iran ceasefire continues through October 31?",
+          "yesPct": 86.5,
+          "volumeUsd": 36895968.806813,
+          "closes": "Oct 31, 2026",
+          "source": "Polymarket",
+          "url": "https://polymarket.com/event/israel-x-iran-ceasefire-continues-throughptptpt-20260716224448963"
+        },
+        {
+          "title": "Iran leadership change by December 31?",
+          "yesPct": 11.5,
+          "volumeUsd": 27556017.533545025,
+          "closes": "Jan 1, 2027",
+          "source": "Polymarket",
+          "url": "https://polymarket.com/event/iran-leadership-change-by"
+        },
+        {
+          "title": "Will the Citrini scenario happen?: Yes",
+          "yesPct": 20,
+          "volumeUsd": 25941790.15,
+          "closes": "Jul 1, 2028",
+          "source": "Kalshi",
+          "url": "https://kalshi.com/markets/kxcitrini"
+        },
+        {
+          "title": "US-Iran Final Nuclear Deal by December 31, 2026?",
+          "yesPct": 11.5,
+          "volumeUsd": 20051884.284372997,
+          "closes": "Jan 1, 2027",
+          "source": "Polymarket",
+          "url": "https://polymarket.com/event/us-iran-final-nuclear-deal-by-20260621201254412"
+        },
+        {
+          "title": "Bab el-Mandeb Strait effectively closed by December 31?",
+          "yesPct": 17.5,
+          "volumeUsd": 17284804.385341004,
+          "closes": "Jan 1, 2027",
+          "source": "Polymarket",
+          "url": "https://polymarket.com/event/bab-el-mandeb-strait-effectively-closed-by"
+        },
+        {
+          "title": "US x Iran ceasefire continues through October 31?",
+          "yesPct": 82.5,
+          "volumeUsd": 17036217.746899,
+          "closes": "Oct 31, 2026",
+          "source": "Polymarket",
+          "url": "https://polymarket.com/event/us-iran-ceasefire-continues-throughptptpt"
+        },
+        {
+          "title": "Strait of Hormuz traffic returns to normal by December 31?",
+          "yesPct": 12.5,
+          "volumeUsd": 15063364.890931001,
+          "closes": "Jan 1, 2027",
+          "source": "Polymarket",
+          "url": "https://polymarket.com/event/strait-of-hormuz-traffic-returns-to-normal-by-december-31"
+        },
+        {
+          "title": "2028 Democratic presidential nominee: Gavin Newsom",
+          "yesPct": 15,
+          "volumeUsd": 10865736.75,
+          "closes": "Nov 7, 2028",
+          "source": "Kalshi",
+          "url": "https://kalshi.com/markets/kxpresnomd"
+        },
+        {
+          "title": "Russia x Ukraine ceasefire agreement by December 31, 2026?",
+          "yesPct": 13.5,
+          "volumeUsd": 8806459.231813004,
+          "closes": "Jan 1, 2027",
+          "source": "Polymarket",
+          "url": "https://polymarket.com/event/russia-x-ukraine-ceasefire-agreement-by"
+        },
+        {
+          "title": "Anthropic IPO before 2027?",
+          "yesPct": 73.5,
+          "volumeUsd": 7537274.186793996,
+          "closes": "Jan 1, 2027",
+          "source": "Polymarket",
+          "url": "https://polymarket.com/event/ipos-before-2027"
+        },
+        {
+          "title": "Mojtaba Khamenei seen in public by December 31?",
+          "yesPct": 17.5,
+          "volumeUsd": 7468491.508367002,
+          "closes": "Jan 1, 2027",
+          "source": "Polymarket",
+          "url": "https://polymarket.com/event/mojtaba-khamenei-public-appearance-by"
+        },
+        {
+          "title": "Predict.fun FDV above $300M one day after launch?",
+          "yesPct": 89,
+          "volumeUsd": 7092522.757267,
+          "closes": "Jan 1, 2028",
+          "source": "Polymarket",
+          "url": "https://polymarket.com/event/predictfun-fdv-above-one-day-after-launch"
+        }
+      ]
+    },
+    "national-debt-clock": {
+      "asOf": "2026-01-15T04:54:20.887Z",
+      "seededAt": "2026-01-12T16:15:45.749Z",
+      "countryCount": 185,
+      "worldDebtUsd": 127351052866010.44,
+      "us": {
+        "iso3": "USA",
+        "debtUsd": 43747925040275.83,
+        "debtToGdp": 128.658741,
+        "perSecondUsd": 84737.29275134791,
+        "source": "IMF WEO 2027",
+        "name": "United States"
+      },
+      "top": [
+        {
+          "iso3": "USA",
+          "debtUsd": 43747925040275.83,
+          "debtToGdp": 128.658741,
+          "perSecondUsd": 84737.29275134791,
+          "source": "IMF WEO 2027",
+          "name": "United States"
+        },
+        {
+          "iso3": "CHN",
+          "debtUsd": 24621263634499.297,
+          "debtToGdp": 109.124714,
+          "perSecondUsd": 60707.27306878816,
+          "source": "IMF WEO 2027",
+          "name": "China"
+        },
+        {
+          "iso3": "JPN",
+          "debtUsd": 8729815286467.983,
+          "debtToGdp": 196.365546,
+          "perSecondUsd": 2995.363777932255,
+          "source": "IMF WEO 2027",
+          "name": "Japan"
+        },
+        {
+          "iso3": "GBR",
+          "debtUsd": 4549649704059.276,
+          "debtToGdp": 102.499392,
+          "perSecondUsd": 4322.91039314858,
+          "source": "IMF WEO 2027",
+          "name": "United Kingdom"
+        },
+        {
+          "iso3": "FRA",
+          "debtUsd": 4331763786493.5757,
+          "debtToGdp": 120.422321,
+          "perSecondUsd": 6040.3565880636515,
+          "source": "IMF WEO 2027",
+          "name": "France"
+        },
+        {
+          "iso3": "ITA",
+          "debtUsd": 3775607487623.704,
+          "debtToGdp": 137.61663,
+          "perSecondUsd": 2470.4525867104608,
+          "source": "IMF WEO 2027",
+          "name": "Italy"
+        },
+        {
+          "iso3": "DEU",
+          "debtUsd": 3712939486405.9087,
+          "debtToGdp": 66.946024,
+          "perSecondUsd": 8335.152322253969,
+          "source": "IMF WEO 2027",
+          "name": "Germany"
+        },
+        {
+          "iso3": "IND",
+          "debtUsd": 3584420261532.4253,
+          "debtToGdp": 81.273587,
+          "perSecondUsd": 10380.548983823977,
+          "source": "IMF WEO 2027",
+          "name": "India"
+        },
+        {
+          "iso3": "CAN",
+          "debtUsd": 2940270459794.5747,
+          "debtToGdp": 113.38906,
+          "perSecondUsd": 2006.1746850084546,
+          "source": "IMF WEO 2027",
+          "name": "Canada"
+        },
+        {
+          "iso3": "BRA",
+          "debtUsd": 2709081769126.5513,
+          "debtToGdp": 99.291091,
+          "perSecondUsd": 6792.254735018335,
+          "source": "IMF WEO 2027",
+          "name": "Brazil"
+        }
+      ]
+    },
+    "treasury-yield-curve": {
+      "asOf": "2026-01-12T00:00:00.000Z",
+      "points": [
+        {
+          "key": "oneMonth",
+          "label": "1 month",
+          "pct": 4.12
+        },
+        {
+          "key": "oneAndAHalfMonth",
+          "label": "1.5 months",
+          "pct": 4.14
+        },
+        {
+          "key": "twoMonth",
+          "label": "2 months",
+          "pct": 4.17
+        },
+        {
+          "key": "threeMonth",
+          "label": "3 months",
+          "pct": 4.26
+        },
+        {
+          "key": "fourMonth",
+          "label": "4 months",
+          "pct": 4.32
+        },
+        {
+          "key": "sixMonth",
+          "label": "6 months",
+          "pct": 4.34
+        },
+        {
+          "key": "oneYear",
+          "label": "1 year",
+          "pct": 4.46
+        },
+        {
+          "key": "twoYear",
+          "label": "2 years",
+          "pct": 4.74
+        },
+        {
+          "key": "threeYear",
+          "label": "3 years",
+          "pct": 4.82
+        },
+        {
+          "key": "fiveYear",
+          "label": "5 years",
+          "pct": 4.89
+        },
+        {
+          "key": "sevenYear",
+          "label": "7 years",
+          "pct": 4.98
+        },
+        {
+          "key": "tenYear",
+          "label": "10 years",
+          "pct": 5.09
+        },
+        {
+          "key": "twentyYear",
+          "label": "20 years",
+          "pct": 5.47
+        },
+        {
+          "key": "thirtyYear",
+          "label": "30 years",
+          "pct": 5.43
+        }
+      ],
+      "tenYear": 5.09,
+      "twoYear": 4.74,
+      "threeMonth": 4.26,
+      "thirtyYear": 5.43,
+      "tenTwoBp": 35,
+      "tenThreeMonthBp": 83
+    },
+    "crude-oil-inventories": {
+      "asOf": "2026-01-05T00:00:00.000Z",
+      "crudeMb": 415.6,
+      "crudeChangeMb": -8.557,
+      "sprMb": 283,
+      "sprChangeMb": 0,
+      "refineryMbpd": 16.6,
+      "natGasBcf": 3567,
+      "euGas": {
+        "date": "2026-01-12T00:00:00.000Z",
+        "fillPct": 74.3
+      },
+      "weeks": [
+        {
+          "period": "2026-01-05",
+          "crudeMb": 415.6,
+          "changeMb": -8.557,
+          "sprMb": 283
+        },
+        {
+          "period": "2025-12-29",
+          "crudeMb": 424.1,
+          "changeMb": -3.186,
+          "sprMb": 283
+        },
+        {
+          "period": "2025-12-22",
+          "crudeMb": 427.3,
+          "changeMb": 0.922,
+          "sprMb": 283.8
+        },
+        {
+          "period": "2025-12-15",
+          "crudeMb": 426.4,
+          "changeMb": 2.969,
+          "sprMb": 284.6
+        },
+        {
+          "period": "2025-12-08",
+          "crudeMb": 423.4,
+          "changeMb": -0.64,
+          "sprMb": 285
+        },
+        {
+          "period": "2025-12-01",
+          "crudeMb": 424.1,
+          "changeMb": -0.391,
+          "sprMb": 285.4
+        },
+        {
+          "period": "2025-11-24",
+          "crudeMb": 424.5,
+          "changeMb": -4.45,
+          "sprMb": 286.6
+        },
+        {
+          "period": "2025-11-17",
+          "crudeMb": 428.9,
+          "changeMb": 0.095,
+          "sprMb": 289.7
+        }
+      ]
+    }
+  },
   "crises": {
     "iran-israel-escalation": {
       "state": "ready",
@@ -7806,7 +8378,9 @@
     "forecastScorecardCaptured": true,
     "forecastScorecardRetained": false,
     "forecastScorecardFailureCode": "",
-    "forecastScorecardScored": 490
+    "forecastScorecardScored": 490,
+    "liveTopicCount": 6,
+    "liveTopicErrorCount": 0
   },
   "errors": {
     "countries": [
@@ -7925,7 +8499,8 @@
         "message": "brief response carried no source citation"
       }
     ],
-    "forecastScorecard": []
+    "forecastScorecard": [],
+    "liveTopics": []
   },
   "forecastScorecard": {
     "attemptedAt": "2026-01-15",
