@@ -103,7 +103,8 @@ export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCount
     }
 
     const deficitByYear = deficitPctByCountry[iso3];
-    const deficitPct2024 = deficitByYear ? Number(deficitByYear[String(latestDebtYear)] ?? deficitByYear[prevYear]) : NaN;
+    // Same year as debt and GDP only; no deficit for that year means no accrual.
+    const deficitPct2024 = deficitByYear ? Number(deficitByYear[String(latestDebtYear)]) : NaN;
     let perSecondRate = 0;
     let perDayRate = 0;
     // Only accrue when running a deficit (GGXCNL_NGDP < 0 = net borrower).

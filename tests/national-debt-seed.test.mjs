@@ -266,6 +266,17 @@ describe('current-year selection (IMF DataMapper parity)', () => {
     }
   });
 
+  it('does not accrue another year\'s deficit when the data year has none', () => {
+    const entries = computeEntries(
+      { GBR: { '2026': 102 } },
+      { GBR: { '2026': 3.2e12 } },
+      { GBR: { '2025': -4 } },
+      null, NOW,
+    );
+    assert.equal(entries[0].perSecondRate, 0);
+    assert.equal(entries[0].perDayRate, 0);
+  });
+
   it('steps back to the latest year that has both debt % and GDP', () => {
     const entries = computeEntries(
       { GBR: { '2025': 100, '2026': 102 } },
