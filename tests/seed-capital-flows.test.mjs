@@ -18,7 +18,15 @@ import {
   toIso2,
   validate,
   capitalFlowsContentMeta,
+  buildBankPairs,
+  buildPortfolioPairs,
+  buildFdi,
+  emptyUpstreams,
+  publishTransform,
+  pairsPayload,
+  declarePairRecords,
   CANONICAL_KEY,
+  PAIRS_KEY,
 } from '../scripts/seed-capital-flows.mjs';
 import { nextQuarter } from '../scripts/_capital-flow-episodes.mjs';
 
@@ -173,7 +181,7 @@ describe('BIS bank positions', () => {
     assert.equal(ae.householdDepositsAbroad.stockUsdBn, 80.4);
     assert.equal(ae.nonBankBorrowingFromAbroad.stockUsdBn, 120);
     assert.deepEqual(ae.topBankLocations.map((x) => x.iso2), ['GB', 'CH', 'US']);
-    assert.equal(ae.reportsToBis, false, 'UAE is not a BIS reporter');
+    assert.equal(ae.publishesBilateral, false, 'UAE banks publish no bilateral breakdown');
   });
 });
 
@@ -228,7 +236,7 @@ describe('assembleCapitalFlows + validate', () => {
     const data = assembleCapitalFlows({
       bopQuarterlyRows: bopRows('GBR', periods, (i) => 100 + wobble(i), (i) => 100 + wobble(i)),
       bopAnnualRows: bopRows('ARE', ['2024', '2025'], () => 120, () => 180, 'A'),
-      bank: { byCountry: { AE: { reportsToBis: false }, GB: { reportsToBis: true } }, latestPeriod: '2026-Q1' },
+      bank: { byCountry: { AE: { publishesBilateral: false }, GB: { publishesBilateral: true } }, latestPeriod: '2026-Q1' },
       portfolio: { byCountry: { AE: { year: 2025 } }, year: 2025 },
       gdp: { GB: { value: 4e12, year: 2025 } },
       nowYear: 2026,
@@ -238,7 +246,7 @@ describe('assembleCapitalFlows + validate', () => {
     assert.equal(data.countries.GB.bop.frequency, 'quarterly');
     assert.equal(data.countries.AE.bop.frequency, 'annual');
     assert.equal(data.countries.GB.gdpUsdBn, 4000);
-    assert.deepEqual(data.latest, { bopQuarter: '2026-Q2', bopNewestQuarter: '2026-Q2', bopYear: '2025', bisQuarter: '2026-Q1', pipYear: 2025 });
+    assert.deepEqual(data.latest, { bopQuarter: '2026-Q2', bopNewestQuarter: '2026-Q2', bopYear: '2025', bisQuarter: '2026-Q1', pipYear: 2025, fdiYear: null });
     assert.equal(data.coverage.bopQuarterly, 1);
     assert.equal(data.coverage.bisReporters, 1);
     assert.equal(data.units, 'USD billions');
@@ -249,8 +257,12 @@ describe('assembleCapitalFlows + validate', () => {
 
   it('validate accepts a full-coverage payload', () => {
     const countries = Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`C${i}`, {}]));
-    assert.equal(validate({ countries, coverage: { bopQuarterly: 140, bopAnnualOnly: 50, bisCounterparties: 200, bisReporters: 30, portfolioCountries: 200 } }), true);
-    assert.equal(validate({ countries, coverage: { bopQuarterly: 10, bopAnnualOnly: 50, bisCounterparties: 200, bisReporters: 30, portfolioCountries: 200 } }), false);
+    const full = { bopQuarterly: 140, bopAnnualOnly: 50, bisCounterparties: 200, bisReporters: 30, portfolioCountries: 200, bankPairReporters: 30, portfolioPairHolders: 79, fdiPairReporters: 106 };
+    assert.equal(validate({ countries, coverage: full }), true);
+    assert.equal(validate({ countries, coverage: { ...full, bopQuarterly: 10 } }), false);
+    assert.equal(validate({ countries, coverage: { ...full, bankPairReporters: 0 } }), false, 'empty bank matrix');
+    assert.equal(validate({ countries, coverage: { ...full, portfolioPairHolders: 0 } }), false, 'empty portfolio matrix');
+    assert.equal(validate({ countries, coverage: { ...full, fdiPairReporters: 0 } }), false, 'empty FDI matrix');
   });
 
   it('uses the v1 canonical key', () => {
@@ -296,9 +308,109 @@ describe('review regressions', () => {
 
   it('validate rejects a payload missing the annual BOP or the BIS bilateral view', () => {
     const countries = Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`C${i}`, {}]));
-    const ok = { bopQuarterly: 140, bopAnnualOnly: 50, bisCounterparties: 200, bisReporters: 30, portfolioCountries: 200 };
+    const ok = { bopQuarterly: 140, bopAnnualOnly: 50, bisCounterparties: 200, bisReporters: 30, portfolioCountries: 200, bankPairReporters: 30, portfolioPairHolders: 79, fdiPairReporters: 106 };
     assert.equal(validate({ countries, coverage: ok }), true);
     assert.equal(validate({ countries, coverage: { ...ok, bopAnnualOnly: 0 } }), false);
     assert.equal(validate({ countries, coverage: { ...ok, bisReporters: 0 } }), false);
+  });
+});
+
+describe('bilateral matrices', () => {
+  const S = (period, value, extra) => ({ L_MEASURE: 'S', period, value, ...extra });
+  const F = (period, value, extra) => ({ L_MEASURE: 'F', period, value, ...extra });
+  const pos = (rep, cp, position) => ({ L_REP_CTY: rep, L_CP_COUNTRY: cp, L_POSITION: position, L_CP_SECTOR: 'N' });
+
+  it('buildBankPairs keeps deposits and lending per reporter × counterparty, in USD bn', () => {
+    const q = ['2025-Q2', '2025-Q3', '2025-Q4', '2026-Q1'];
+    const rows = [
+      S('2026-Q1', 7150, pos('FR', 'SG', 'L')), ...q.map((p) => F(p, 337.5, pos('FR', 'SG', 'L'))),
+      S('2026-Q1', 13950, pos('FR', 'SG', 'C')),
+      S('2026-Q1', 900, pos('GB', 'FR', 'L')),
+      S('2026-Q1', 5, pos('FR', 'FR', 'L')), // self-pair dropped
+      S('2026-Q1', 5, pos('5A', 'SG', 'L')), // aggregate reporter dropped
+      { ...S('2026-Q1', 5, pos('FR', 'SG', 'L')), L_CP_SECTOR: 'B' }, // banks sector ignored
+    ];
+    const out = buildBankPairs(rows);
+    assert.equal(out.period, '2026-Q1');
+    assert.deepEqual(out.quarters, ['2024-Q2', '2024-Q3', '2024-Q4', '2025-Q1', '2025-Q2', '2025-Q3', '2025-Q4', '2026-Q1']);
+    assert.deepEqual(out.reporters, ['FR', 'GB']);
+    assert.deepEqual(out.byReporter.FR.SG.slice(0, 4), [7.15, 1.35, 13.95, null]);
+    assert.deepEqual(out.byReporter.FR.SG[4], [null, null, null, null, 0.34, 0.34, 0.34, 0.34], 'deposit flows aligned to quarters');
+    assert.equal(out.byReporter.FR.SG[5], null, 'no lending flows reported');
+    assert.deepEqual(out.byReporter.GB.FR, [0.9, null, null, null, null, null]);
+    assert.equal(out.byReporter.FR.FR, undefined);
+  });
+
+  it('buildPortfolioPairs keeps holder × issuer with the prior-year holding', () => {
+    const row = (holder, issuer, period, usdBn) => ({ COUNTRY: holder, ACCOUNTING_ENTRY: 'A', INDICATOR: 'P_TOTINV_P_USD', SECTOR: 'S1', COUNTERPART_SECTOR: 'S1', COUNTERPART_COUNTRY: issuer, FREQUENCY: 'A', period, value: usdBn * 1e9 });
+    const out = buildPortfolioPairs([
+      row('FRA', 'SGP', '2025', 4.4), row('FRA', 'SGP', '2024', 2.81),
+      row('SGP', 'USA', '2025', 924.67),
+      row('USA', 'FRA', '2025', 500),
+    ]);
+    assert.equal(out.year, 2025);
+    assert.deepEqual(out.holders, ['FR', 'SG', 'US']);
+    assert.deepEqual(out.byHolder.FR.SG, [4.4, 2.81]);
+    assert.deepEqual(out.byHolder.SG.US, [924.67, null]);
+    assert.equal(out.byHolder.SG.FR, undefined, 'Singapore does not itemize France');
+  });
+
+  it('publishTransform strips the matrices from the canonical key; pairsPayload carries them', () => {
+    const data = { countries: { FR: {} }, pairs: { bank: { reporters: ['FR'], byReporter: {} }, portfolio: { holders: ['FR', 'SG'], byHolder: {} } }, seededAt: 't' };
+    assert.equal('pairs' in publishTransform(data), false);
+    assert.deepEqual(publishTransform(data).countries, { FR: {} });
+    assert.deepEqual(pairsPayload(data), { bank: data.pairs.bank, portfolio: data.pairs.portfolio, seededAt: 't' });
+    assert.equal(declarePairRecords(pairsPayload(data)), 3, 'runSeed passes the transformed extra-key payload');
+    assert.equal(PAIRS_KEY, 'economic:capital-flows:pairs:v1');
+  });
+});
+
+describe('buildFdi (IMF DIP)', () => {
+  const row = (rep, cp, indicator, period, usdBn, dv = 'O') => ({ COUNTRY: rep, DV_TYPE: dv, INDICATOR: indicator, COUNTERPART_COUNTRY: cp, FREQUENCY: 'A', period, value: usdBn * 1e9 });
+  const IN = 'INWD_D_NETLA_FALL_ALL';
+  const OUT = 'OTWD_D_NETAL_FALL_ALL';
+  it('keeps each reporter\'s inward and outward positions by counterpart, and per-country tops', () => {
+    const rows = [
+      row('AAA', 'BBB', IN, '2024', 0), // unknown ISO3s are dropped below
+      row('USA', 'CHE', OUT, '2024', 212.9), row('USA', 'CHE', IN, '2024', 358.15),
+      row('CHE', 'USA', OUT, '2024', 370.33), row('CHE', 'USA', IN, '2024', 186.8),
+      row('USA', 'GBR', IN, '2024', 742.74), row('USA', 'GBR', OUT, '2024', 1024.6),
+      row('USA', 'CHE', OUT, '2024', 999, 'SCC'), // counterpart-derived copy ignored
+      row('USA', 'G001', IN, '2024', 5000), // aggregate dropped
+      row('USA', 'CHE', OUT, '2023', 200), row('CHE', 'USA', OUT, '2023', 360),
+    ];
+    const { pairs, byCountry } = buildFdi(rows);
+    assert.equal(pairs.year, 2024);
+    assert.deepEqual(pairs.reporters, ['CH', 'US']);
+    assert.deepEqual(pairs.byReporter.US.CH, [358.15, 212.9]);
+    assert.deepEqual(pairs.byReporter.CH.US, [186.8, 370.33]);
+    assert.equal(byCountry.US.inwardUsdBn, 1100.89);
+    assert.deepEqual(byCountry.US.topInvestors.map((x) => x.iso2), ['GB', 'CH']);
+    assert.deepEqual(byCountry.US.topDestinations.map((x) => x.iso2), ['GB', 'CH']);
+  });
+});
+
+describe('pair review regressions', () => {
+  const S = (period, value, extra) => ({ L_MEASURE: 'S', period, value, ...extra });
+  const F = (period, value, extra) => ({ L_MEASURE: 'F', period, value, ...extra });
+  const pos = (rep, cp, position) => ({ L_REP_CTY: rep, L_CP_COUNTRY: cp, L_POSITION: position, L_CP_SECTOR: 'N' });
+  it('a bank pair whose series ended before the latest quarter carries no current stock or flow', () => {
+    const rows = [
+      S('2026-Q1', 900, pos('GB', 'FR', 'L')),
+      S('2025-Q3', 5000, pos('CH', 'FR', 'L')),
+      ...['2024-Q4', '2025-Q1', '2025-Q2', '2025-Q3'].map((p) => F(p, 250, pos('CH', 'FR', 'L'))),
+    ];
+    const out = buildBankPairs(rows);
+    assert.equal(out.period, '2026-Q1');
+    assert.equal(out.byReporter.CH.FR[0], null, 'stale stock dropped');
+    assert.equal(out.byReporter.CH.FR[1], null, 'stale flow dropped');
+    assert.deepEqual(out.byReporter.CH.FR[4], [null, null, 0.25, 0.25, 0.25, 0.25, null, null], 'history kept with its own quarters');
+  });
+});
+
+describe('emptyUpstreams', () => {
+  it('names each empty pull, including one half of a split request', () => {
+    assert.deepEqual(emptyUpstreams({ dipInward: [{}], dipOutward: [], bisPairs: [{}] }), ['dipOutward']);
+    assert.deepEqual(emptyUpstreams({ a: [{}] }), []);
   });
 });

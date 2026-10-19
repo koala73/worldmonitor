@@ -11223,6 +11223,13 @@ paths:
                   example: true
                   schema:
                     type: boolean
+                - name: counterpart
+                  in: query
+                  description: Optional ISO 3166-1 alpha-2 partner; with country, returns the pair in both directions.
+                  required: false
+                  example: "US"
+                  schema:
+                    type: string
                 - name: jmespath
                   in: query
                   description: |-
@@ -11249,7 +11256,7 @@ paths:
                                         "nonBankDepositsAbroad":
                                             "flow4qUsdBn": 1.5
                                             "stockUsdBn": 1.5
-                                        "reportsToBis": true
+                                        "publishesBilateral": true
                                       "bop":
                                           "episodes":
                                               "flight":
@@ -11297,18 +11304,69 @@ paths:
                                               "outflow": "example"
                                               "outflowZ": 1.5
                                       "country": "US"
+                                      "fdi":
+                                          "inwardUsdBn": 1.5
+                                          "outwardUsdBn": 1.5
+                                          "topDestinations":
+                                              - "country": "US"
+                                                "flow4qUsdBn": 1.5
+                                                "stockUsdBn": 1.5
+                                          "topInvestors":
+                                              - "country": "US"
+                                                "flow4qUsdBn": 1.5
+                                                "stockUsdBn": 1.5
+                                          "year": 1
                                       "gdpUsdBn": 1.5
-                                      "gdpYear": 1
                                 "latest":
                                     "bisQuarter": "2026-Q1"
                                     "bopQuarter": "2026-Q1"
                                     "bopYear": "example"
+                                    "fdiYear": 1
                                     "pipYear": 1
                                 "method":
                                     "exampleKey": "example"
+                                "pair":
+                                    "aBorrowingFromB":
+                                        "basis": "example"
+                                        "counterpartReportUsdBn": 1
+                                        "flow4qUsdBn": 1.5
+                                        "history":
+                                            - "period": "2026-Q1"
+                                              "usdBn": 1.5
+                                        "prevYearUsdBn": 1.5
+                                    "aDepositsInB":
+                                        "basis": "example"
+                                        "counterpartReportUsdBn": 1
+                                        "flow4qUsdBn": 1.5
+                                        "history":
+                                            - "period": "2026-Q1"
+                                              "usdBn": 1.5
+                                        "prevYearUsdBn": 1.5
+                                    "aFdiInB":
+                                        "basis": "example"
+                                        "counterpartReportUsdBn": 1
+                                        "flow4qUsdBn": 1.5
+                                        "history":
+                                            - "period": "2026-Q1"
+                                              "usdBn": 1.5
+                                        "prevYearUsdBn": 1.5
+                                    "aHoldingsOfB":
+                                        "basis": "example"
+                                        "counterpartReportUsdBn": 1
+                                        "flow4qUsdBn": 1.5
+                                        "history":
+                                            - "period": "2026-Q1"
+                                              "usdBn": 1.5
+                                        "prevYearUsdBn": 1.5
+                                    "bBorrowingFromA":
+                                        "basis": "example"
+                                        "counterpartReportUsdBn": 1
+                                        "flow4qUsdBn": 1.5
+                                        "history":
+                                            - "period": "2026-Q1"
+                                              "usdBn": 1.5
+                                        "prevYearUsdBn": 1.5
                                 "seededAt": "2026-01-15T12:00:00Z"
-                                "sources":
-                                    - "example"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_economic_v1_GetCapitalFlowsResponse'
                 "400":
@@ -44857,6 +44915,10 @@ components:
                 includeSeries:
                     type: boolean
                     description: Include BOP series. Default false.
+                counterpart:
+                    type: string
+                    maxLength: 2
+                    description: Optional ISO 3166-1 alpha-2 partner; with country, returns the pair in both directions.
             description: GetCapitalFlowsRequest selects a country and detail.
         worldmonitor_economic_v1_GetCapitalFlowsResponse:
             type: object
@@ -44881,6 +44943,8 @@ components:
                     additionalProperties:
                         type: string
                     description: 'Method notes: bop, episodes, bank, portfolio, caveat.'
+                pair:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPair'
             description: Cross-country capital flows, USD bn.
         worldmonitor_economic_v1_GetCapitalFlowsResponse_MethodEntry:
             type: object
@@ -44908,6 +44972,8 @@ components:
                     $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowBank'
                 portfolio:
                     $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPortfolio'
+                fdi:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowFdi'
             description: One country; a view is absent without source data.
         worldmonitor_economic_v1_CapitalFlowBop:
             type: object
@@ -45054,8 +45120,9 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowCounterparty'
-                reportsToBis:
+                publishesBilateral:
                     type: boolean
+                    description: True when its banks publish a by-counterparty breakdown.
                 topDepositorOrigins:
                     type: array
                     items:
@@ -45116,6 +45183,27 @@ components:
                     items:
                         $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowCounterparty'
             description: IMF portfolio-positions (mirror) view, USD bn.
+        worldmonitor_economic_v1_CapitalFlowFdi:
+            type: object
+            properties:
+                year:
+                    type: integer
+                    format: int32
+                inwardUsdBn:
+                    type: number
+                    format: double
+                topInvestors:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowCounterparty'
+                outwardUsdBn:
+                    type: number
+                    format: double
+                topDestinations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowCounterparty'
+            description: IMF direct-investment positions as the country reports them, USD bn.
         worldmonitor_economic_v1_CapitalFlowLatest:
             type: object
             properties:
@@ -45128,7 +45216,80 @@ components:
                 pipYear:
                     type: integer
                     format: int32
+                fdiYear:
+                    type: integer
+                    format: int32
             description: Newest period per source.
+        worldmonitor_economic_v1_CapitalFlowPair:
+            type: object
+            properties:
+                country:
+                    type: string
+                counterpart:
+                    type: string
+                bankPeriod:
+                    type: string
+                    description: BIS quarter and IMF PIP year of the legs.
+                portfolioYear:
+                    type: integer
+                    format: int32
+                aDepositsInB:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
+                bDepositsInA:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
+                aBorrowingFromB:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
+                bBorrowingFromA:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
+                aHoldingsOfB:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
+                bHoldingsOfA:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
+                aFdiInB:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
+                bFdiInA:
+                    $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairLeg'
+                fdiYear:
+                    type: integer
+                    format: int32
+                    description: IMF DIP reference year.
+            description: Country and counterpart in both directions. a = country, b = counterpart.
+        worldmonitor_economic_v1_CapitalFlowPairLeg:
+            type: object
+            properties:
+                status:
+                    type: string
+                stockUsdBn:
+                    type: number
+                    format: double
+                flow4qUsdBn:
+                    type: number
+                    format: double
+                    description: 'Bank legs: sum of the last 4 adjusted quarterly changes.'
+                prevYearUsdBn:
+                    type: number
+                    format: double
+                    description: 'Portfolio legs: the same holding a year earlier.'
+                basis:
+                    type: string
+                    description: 'FDI legs: investor or host, whichever side''s figure stock_usd_bn is.'
+                counterpartReportUsdBn:
+                    type: number
+                    format: double
+                    description: 'FDI legs: the other side''s figure for the same position.'
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_economic_v1_CapitalFlowPairPoint'
+            description: 'One direction of a bilateral position, USD bn. status: reported; not_itemized (reporter has no current figure for this partner: zero, small, confidential or a stopped series); not_published (no bilateral data from the reporting side).'
+        worldmonitor_economic_v1_CapitalFlowPairPoint:
+            type: object
+            properties:
+                period:
+                    type: string
+                usdBn:
+                    type: number
+                    format: double
         worldmonitor_economic_v1_GetWorldCpiMonthlyRequest:
             type: object
             properties:

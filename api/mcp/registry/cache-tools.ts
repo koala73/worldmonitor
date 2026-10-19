@@ -1,6 +1,6 @@
 import { screenSanctions } from '../../../server/_shared/sanctions-screen';
 import { projectSupplyChainData } from './_shipping-freight';
-import { CAPITAL_FLOWS_MAX_COUNTRIES, CAPITAL_FLOWS_SORTS, projectCapitalFlows, type CapitalFlowsSort } from './_capital-flows';
+import { CAPITAL_FLOW_PAIR_LEG_SCHEMA, CAPITAL_FLOWS_MAX_COUNTRIES, CAPITAL_FLOWS_PAIRS_LABEL, CAPITAL_FLOWS_SORTS, projectCapitalFlows, type CapitalFlowsSort } from './_capital-flows';
 import ISO2_TO_ISO3 from '../../../shared/iso2-to-iso3.js';
 import { MARKET_ASSET_CLASSES } from '../../../shared/panel-admission';
 import { normalizeSocialVelocity } from '../../_social-velocity.js';
@@ -3381,7 +3381,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_capital_flows',
     title: 'Cross-country capital flows',
     _outputBudgetBytes: 131072,
-    description: 'Return where money enters and leaves about 230 economies, from official statistics. IMF balance of payments: gross inflows and outflows split into FDI, portfolio and other investment, quarterly or annual (e.g. UAE), with derived Forbes-Warnock states (surge or stop for inflows, flight or retrenchment for outflows) and z-scores. BIS: non-bank and household deposits held in foreign banks and the largest partner banking systems. IMF portfolio positions: who holds each country\'s securities. People changing residence are not a BOP flow. Quarterly sources lag 1 to 3 quarters; stale after 10 days or when the newest BOP quarter is over a year old. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. country (up to 10) returns full views, include_series adds the flows. Without country, a ranking by sort (default outflow_z) capped by limit (default 30, 0 for no cap).',
+    description: 'Return where money enters and leaves about 230 economies, and between any two, from official statistics. IMF balance of payments: gross inflows and outflows split into FDI, portfolio and other investment, quarterly or annual by country, with derived Forbes-Warnock states (surge or stop for inflows, flight or retrenchment for outflows) and z-scores. Per country and per pair: BIS cross-border bank deposits and lending, IMF portfolio holdings and IMF direct-investment positions. People changing residence are not a BOP flow. Sources lag 1 to 3 quarters (FDI about 2 years); stale after 10 days or when the newest BOP quarter is over a year old. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. country (up to 10) returns full views; counterpart adds both directions of each pair, each leg marked reported, not_itemized or not_published. Without country, a ranking by sort (default outflow_z) capped by limit (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3392,6 +3392,10 @@ export const CACHE_TOOLS: ToolDef[] = [
           description: 'Countries to return in full: ISO 3166-1 alpha-2 (e.g. "GB"), alpha-3 ("ARE") or English names. Omit to get the cross-country ranking.',
         },
         include_series: { type: 'boolean', description: 'With country, also return the period-by-period BOP flows (12 quarters or 6 years). Default false.' },
+        counterpart: {
+          type: 'string',
+          description: 'With country, a partner country (alpha-2, alpha-3 or name). Returns pairs[]: deposits each side\'s non-banks hold in the other\'s banks and bank lending each way (stock, 4-quarter flow, 8 quarters of history), each side\'s holdings of the other\'s securities, and direct investment each way with both sides\' figures, plus the counterpart\'s own view.',
+        },
         sort: {
           type: 'string',
           enum: [...CAPITAL_FLOWS_SORTS],
@@ -3408,7 +3412,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         properties: {
           latest: { type: ['object', 'null'], properties: {
             bopQuarter: { type: ['string', 'null'] }, bopNewestQuarter: { type: ['string', 'null'] }, bopYear: { type: ['string', 'null'] },
-            bisQuarter: { type: ['string', 'null'] }, pipYear: { type: ['number', 'null'] },
+            bisQuarter: { type: ['string', 'null'] }, pipYear: { type: ['number', 'null'] }, fdiYear: { type: ['number', 'null'] },
           } },
           coverage: { type: ['object', 'null'] },
           units: { type: 'string' },
@@ -3422,7 +3426,25 @@ export const CACHE_TOOLS: ToolDef[] = [
               bop: { type: ['object', 'null'], description: 'frequency quarterly carries state, episodes and trailing4q; annual carries latestYear and no episodes.' },
               bank: { type: ['object', 'null'] },
               portfolio: { type: ['object', 'null'] },
+              fdi: { type: ['object', 'null'], description: 'IMF direct-investment positions as the country reports them, by immediate counterpart.' },
             } },
+          },
+          pairs: {
+            type: 'array',
+            description: 'Present with counterpart: one entry per country (a) against the counterpart (b); null when the pair matrices are unavailable.',
+            items: {
+              type: ['object', 'null'],
+              properties: {
+                country: { type: 'string' }, counterpart: { type: 'string' },
+                bankPeriod: { type: 'string' }, portfolioYear: { type: 'integer' },
+                aDepositsInB: CAPITAL_FLOW_PAIR_LEG_SCHEMA, bDepositsInA: CAPITAL_FLOW_PAIR_LEG_SCHEMA,
+                aBorrowingFromB: CAPITAL_FLOW_PAIR_LEG_SCHEMA, bBorrowingFromA: CAPITAL_FLOW_PAIR_LEG_SCHEMA,
+                aHoldingsOfB: CAPITAL_FLOW_PAIR_LEG_SCHEMA, bHoldingsOfA: CAPITAL_FLOW_PAIR_LEG_SCHEMA,
+                aFdiInB: CAPITAL_FLOW_PAIR_LEG_SCHEMA, bFdiInA: CAPITAL_FLOW_PAIR_LEG_SCHEMA,
+                fdiYear: { type: 'integer' },
+              },
+              required: ['country', 'counterpart', 'aDepositsInB', 'bDepositsInA', 'aBorrowingFromB', 'bBorrowingFromA', 'aHoldingsOfB', 'bHoldingsOfA', 'aFdiInB', 'bFdiInA'],
+            },
           },
           sort: { type: 'string', enum: [...CAPITAL_FLOWS_SORTS] },
           order: { type: 'string', enum: ['ascending', 'descending'] },
@@ -3460,8 +3482,16 @@ export const CACHE_TOOLS: ToolDef[] = [
       if (!(CAPITAL_FLOWS_SORTS as readonly string[]).includes(sortArg)) {
         throw new RpcValidationError('get_capital_flows', [{ field: 'sort', description: `Choose one of ${CAPITAL_FLOWS_SORTS.join(', ')}.` }]);
       }
+      const counterpart = resolveCountryFilter(params.counterpart, 'counterpart');
+      if (counterpart.length > 0 && countries.length === 0) {
+        throw new RpcValidationError('get_capital_flows', [{ field: 'counterpart', description: 'counterpart needs at least one country.' }]);
+      }
+      if (counterpart.length > 1) {
+        throw new RpcValidationError('get_capital_flows', [{ field: 'counterpart', description: 'Pass one counterpart.' }]);
+      }
       return projectCapitalFlows(data, {
         countries,
+        counterpart: counterpart[0],
         includeSeries: argBool(params.include_series),
         sort: sortArg as CapitalFlowsSort,
         ascending: argBool(params.ascending),
@@ -3469,7 +3499,10 @@ export const CACHE_TOOLS: ToolDef[] = [
         limit: (() => { const n = argNum(params.limit); return n == null || n < 0 ? DEFAULT_LIST_LIMIT : Math.floor(n); })(),
       });
     },
-    _cacheKeys: ['economic:capital-flows:v1'], // STANDALONE_KEYS::capitalFlows
+    // The pair matrices (~280 KB) are written by the same seeder run; the
+    // projection drops them unless a counterpart is asked for.
+    _cacheKeys: ['economic:capital-flows:v1', 'economic:capital-flows:pairs:v1'], // STANDALONE_KEYS::capitalFlows
+    _cacheLabels: { 'economic:capital-flows:pairs:v1': CAPITAL_FLOWS_PAIRS_LABEL },
     _freshnessChecks: [
       // Weekly macro-bundle seed; 10d matches api/health.js SEED_META.capitalFlows.
       // honorContentAge: a frozen IMF BOP feed (newest quarter > 12 months) flags stale.

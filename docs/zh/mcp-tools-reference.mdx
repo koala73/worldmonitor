@@ -522,24 +522,25 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_capital_flows`
 
-Return where money enters and leaves about 230 economies, from official statistics. IMF balance of payments: gross inflows and outflows split into FDI, portfolio and other investment, quarterly or annual (e.g. UAE), with derived Forbes-Warnock states (surge or stop for inflows, flight or retrenchment for outflows) and z-scores. BIS: non-bank and household deposits held in foreign banks and the largest partner banking systems. IMF portfolio positions: who holds each country's securities. People changing residence are not a BOP flow. Quarterly sources lag 1 to 3 quarters; stale after 10 days or when the newest BOP quarter is over a year old. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. country (up to 10) returns full views, include_series adds the flows. Without country, a ranking by sort (default outflow_z) capped by limit (default 30, 0 for no cap).
+Return where money enters and leaves about 230 economies, and between any two, from official statistics. IMF balance of payments: gross inflows and outflows split into FDI, portfolio and other investment, quarterly or annual by country, with derived Forbes-Warnock states (surge or stop for inflows, flight or retrenchment for outflows) and z-scores. Per country and per pair: BIS cross-border bank deposits and lending, IMF portfolio holdings and IMF direct-investment positions. People changing residence are not a BOP flow. Sources lag 1 to 3 quarters (FDI about 2 years); stale after 10 days or when the newest BOP quarter is over a year old. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. country (up to 10) returns full views; counterpart adds both directions of each pair, each leg marked reported, not_itemized or not_published. Without country, a ranking by sort (default outflow_z) capped by limit (default 30, 0 for no cap).
 
-跨国比较：传入多个 `country`（例如 `["GB", "AE", "CH", "SG"]`）进行对比，或省略 `country` 以对所有经济体排名。阶段标签按 Forbes 与 Warnock（2012）方法由已报告的流量推导，并非 IMF 发布。
+适用于任意经济体和任意国家对:传入多个 `country` 进行比较,加上 `counterpart` 获取双边明细,或省略 `country` 对所有经济体排名。阶段标签按 Forbes 与 Warnock(2012)方法由已报告的流量推导。各视图、分项和状态的说明见[资本流动方法论](/zh/methodology/capital-flows)。
 
-**参数（工具专用）：**
+**参数(工具专用):**
 
 | 名称 | 类型 | 说明 |
 |------|------|-------------|
-| `country` | `array<string>` | 返回完整视图的国家：ISO 3166-1 alpha-2（如 "GB"）、alpha-3（"ARE"）或英文名称。省略则返回跨国排名。 |
-| `include_series` | boolean | 与 country 一起使用时，同时返回逐期国际收支流量（12 个季度或 6 年）。默认 false。 |
+| `country` | `array<string>` | 返回完整视图的国家:ISO 3166-1 alpha-2、alpha-3 或英文名称。省略则返回跨国排名。 |
+| `include_series` | boolean | 与 country 一起使用时,同时返回逐期国际收支流量(12 个季度或 6 年)。默认 false。 |
+| `counterpart` | string | 与 country 一起使用的对手国(alpha-2、alpha-3 或名称)。返回 pairs[]:双方非银行在对方银行的存款和双向银行贷款(存量、四季度流量、八个季度历史),双方对彼此证券的持有,以及带双方数字的双向直接投资,另加对手国自身的视图。 |
 | `sort` | `string: outflow_z / inflow_z / outflows_pct_gdp / inflows_pct_gdp / net_usd_bn / bank_deposits_abroad_flow_4q / foreign_portfolio_change_pct` | 省略 country 时的排名字段。默认 outflow_z。 |
 | `ascending` | boolean | 升序排列。默认 false。 |
-| `limit` | number | 排名最多返回的国家数（默认 30，传 0 表示不限）。传入 country 时忽略。 |
+| `limit` | number | 排名最多返回的国家数(默认 30,传 0 表示不限)。传入 country 时忽略。 |
 
-- **API 端点：** `GET /api/economic/v1/get-capital-flows`
-- **访问：** `free-account` — 任何已登录账户均可调用；免费账户消耗每日免费额度，Pro 调用消耗每日配额。支持通用 `summary` 参数。
-- **类型：** 缓存读取 — 从 Redis 亚秒级响应。
-- **新鲜度预算：** 距上次每周种子 **10 天**，另有内容时效检查：最新 IMF 国际收支季度超过 12 个月时 `stale` 变为 true。
+- **API 端点:** `GET /api/economic/v1/get-capital-flows`
+- **访问:** `free-account` — 任何已登录账户均可调用;免费账户消耗每日免费额度,Pro 调用消耗每日配额。支持通用 `summary` 参数。
+- **类型:** 缓存读取 — 从 Redis 亚秒级响应。
+- **新鲜度预算:** 距上次每周种子 **10 天**,另有内容时效检查:最新 IMF 国际收支季度超过 12 个月时 `stale` 变为 true。
 
 <CodeGroup>
 
@@ -550,7 +551,7 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_capital_flows","arguments":{"country":["GB","AE"]}}
+    "params":{"name":"get_capital_flows","arguments":{"country":["DE"],"counterpart":"JP"}}
   }'
 ```
 

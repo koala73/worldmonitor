@@ -7,8 +7,30 @@
 //   - without: a compact ranking of every country, sorted by `sort` and capped
 //     by `limit`, so an agent can ask "where is capital leaving fastest".
 
+import { buildCapitalFlowPair } from '../../../server/worldmonitor/economic/v1/capital-flows';
+
 export const CAPITAL_FLOWS_LABEL = 'capital-flows';
+export const CAPITAL_FLOWS_PAIRS_LABEL = 'capital-flows-pairs';
 export const CAPITAL_FLOWS_MAX_COUNTRIES = 10;
+
+/** JSON Schema for one direction of a pair (CapitalFlowPairLeg). */
+export const CAPITAL_FLOW_PAIR_LEG_SCHEMA = {
+  type: 'object',
+  properties: {
+    status: { type: 'string', enum: ['reported', 'not_itemized', 'not_published'], description: 'not_itemized: the reporting side publishes bilateral data but has no current figure for this partner (zero, small, confidential or a stopped series). not_published: the reporting side publishes no bilateral breakdown.' },
+    stockUsdBn: { type: 'number' },
+    flow4qUsdBn: { type: 'number', description: 'Bank legs: last 4 FX- and break-adjusted quarterly changes.' },
+    prevYearUsdBn: { type: 'number', description: 'Portfolio legs: the same holding a year earlier.' },
+    basis: { type: 'string', enum: ['investor', 'host'], description: 'FDI legs: whose report stockUsdBn is.' },
+    counterpartReportUsdBn: { type: 'number', description: 'FDI legs: the other side\'s figure for the same position.' },
+    history: {
+      type: 'array',
+      description: 'Bank legs: adjusted quarterly flows, oldest first (up to 8 quarters).',
+      items: { type: 'object', properties: { period: { type: 'string' }, usdBn: { type: 'number' } }, required: ['period', 'usdBn'] },
+    },
+  },
+  required: ['status'],
+} as const;
 
 export const CAPITAL_FLOWS_SORTS = [
   'outflow_z',
@@ -79,14 +101,37 @@ const SORT_FIELD: Record<CapitalFlowsSort, keyof CapitalFlowsRankingRow> = {
 
 export interface CapitalFlowsProjectionArgs {
   countries: string[]; // lower-case ISO2, already resolved
+  counterpart?: string; // lower-case ISO2, already resolved
   includeSeries: boolean;
   sort: CapitalFlowsSort;
   ascending: boolean;
   limit: number; // 0 = no cap
 }
 
-/** Replace data['capital-flows'] with the country detail or the ranking. Mutates and returns `data`. */
+const PAIR_LEGS = ['aDepositsInB', 'bDepositsInA', 'aBorrowingFromB', 'bBorrowingFromA', 'aHoldingsOfB', 'bHoldingsOfA', 'aFdiInB', 'bFdiInA'] as const;
+
+// Drop the proto defaults (empty basis, empty history) that carry no meaning.
+function compactPair(pair: ReturnType<typeof buildCapitalFlowPair>): Json | null {
+  if (!pair) return null;
+  const out: Json = { ...pair };
+  for (const key of PAIR_LEGS) {
+    const leg = pair[key];
+    if (!leg) continue;
+    const compact: Json = { ...leg };
+    if (!leg.basis) delete compact.basis;
+    if (!leg.history?.length) delete compact.history;
+    out[key] = compact;
+  }
+  return out;
+}
+
+/**
+ * Replace data['capital-flows'] with the country detail, the pair view or the
+ * ranking, and drop the raw pair matrices. Mutates and returns `data`.
+ */
 export function projectCapitalFlows(data: Json, args: CapitalFlowsProjectionArgs): Json {
+  const pairsRaw = data[CAPITAL_FLOWS_PAIRS_LABEL];
+  delete data[CAPITAL_FLOWS_PAIRS_LABEL];
   const payload = obj(data[CAPITAL_FLOWS_LABEL]);
   if (!payload) return data;
   const map = obj(payload.countries) ?? {};
@@ -99,18 +144,24 @@ export function projectCapitalFlows(data: Json, args: CapitalFlowsProjectionArgs
   };
 
   if (args.countries.length > 0) {
-    const countries: Json = {};
-    for (const code of args.countries.slice(0, CAPITAL_FLOWS_MAX_COUNTRIES)) {
-      const iso2 = code.toUpperCase();
+    const partner = args.counterpart?.toUpperCase();
+    const view = (iso2: string): Json | null => {
       const entry = obj(map[iso2]);
-      if (!entry) { countries[iso2] = null; continue; }
+      if (!entry) return null;
       const bop = obj(entry.bop);
-      countries[iso2] = {
-        ...entry,
-        bop: bop ? { ...bop, series: args.includeSeries ? bop.series ?? [] : undefined } : null,
-      };
-    }
+      return { ...entry, bop: bop ? { ...bop, series: args.includeSeries ? bop.series ?? [] : undefined } : null };
+    };
+    const requested = args.countries.slice(0, CAPITAL_FLOWS_MAX_COUNTRIES).map((code) => code.toUpperCase());
+    const countries: Json = {};
+    // With a counterpart, its own view comes back too so both sides read in one call.
+    for (const iso2 of partner ? [...requested, partner] : requested) countries[iso2] = view(iso2);
     out.countries = countries;
+    if (partner) {
+      // null when the pair matrices are missing; otherwise each leg carries its own status.
+      out.pairs = requested
+        .filter((iso2) => iso2 !== partner)
+        .map((iso2) => compactPair(buildCapitalFlowPair(pairsRaw, iso2, partner)));
+    }
   } else {
     const field = SORT_FIELD[args.sort];
     const rows = Object.keys(map).sort().map((iso2) => rankingRow(iso2, map[iso2]));

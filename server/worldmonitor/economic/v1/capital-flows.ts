@@ -5,6 +5,9 @@ import type {
   CapitalFlowCounterparty,
   CapitalFlowCountry,
   CapitalFlowEpisode,
+  CapitalFlowFdi,
+  CapitalFlowPair,
+  CapitalFlowPairLeg,
   CapitalFlowPeriod,
   CapitalFlowPortfolio,
   CapitalFlowPosition,
@@ -14,6 +17,8 @@ import type {
 
 // Written by scripts/seed-capital-flows.mjs.
 export const CAPITAL_FLOWS_KEY = 'economic:capital-flows:v1';
+// Full bilateral matrices, same producer.
+export const CAPITAL_FLOWS_PAIRS_KEY = 'economic:capital-flows:pairs:v1';
 
 type Json = Record<string, unknown>;
 
@@ -95,7 +100,7 @@ function bank(v: unknown): CapitalFlowBank | undefined {
     householdDepositsAbroad: position(o.householdDepositsAbroad),
     nonBankBorrowingFromAbroad: position(o.nonBankBorrowingFromAbroad),
     topBankLocations: counterparties(o.topBankLocations),
-    reportsToBis: o.reportsToBis === true,
+    publishesBilateral: o.publishesBilateral === true,
     topDepositorOrigins: counterparties(o.topDepositorOrigins),
   };
 }
@@ -115,19 +120,117 @@ function portfolio(v: unknown): CapitalFlowPortfolio | undefined {
   };
 }
 
+function fdi(v: unknown): CapitalFlowFdi | undefined {
+  const o = obj(v);
+  if (!o) return undefined;
+  return {
+    year: int(o.year),
+    inwardUsdBn: num(o.inwardUsdBn),
+    topInvestors: counterparties(o.topInvestors),
+    outwardUsdBn: num(o.outwardUsdBn),
+    topDestinations: counterparties(o.topDestinations),
+  };
+}
+
 export function unavailableCapitalFlows(): GetCapitalFlowsResponse {
-  return { countries: [], latest: undefined, seededAt: '', unavailable: true, sources: [], method: {} };
+  return { countries: [], latest: undefined, seededAt: '', unavailable: true, sources: [], method: {}, pair: undefined };
+}
+
+type Cell = (number | null)[];
+
+/**
+ * Both directions between country a and counterpart b from the pair matrices.
+ * A leg is not_published when the reporting side (the bank location, or the
+ * portfolio holder) does not publish a bilateral breakdown, not_itemized when
+ * it publishes but has no current figure for this partner (not itemized, or
+ * a series that stopped before the latest period), and reported otherwise.
+ * Returns undefined when the pairs payload is missing or malformed.
+ */
+export function buildCapitalFlowPair(raw: unknown, a: string, b: string): CapitalFlowPair | undefined {
+  const root = obj(raw);
+  const bank = obj(root?.bank);
+  const portfolio = obj(root?.portfolio);
+  const fdiPairs = obj(root?.fdi);
+  if (!root || (!bank && !portfolio && !fdiPairs)) return undefined;
+  const A = a.trim().toUpperCase();
+  const B = b.trim().toUpperCase();
+  const bankReporters = new Set(arr(bank?.reporters).filter((x): x is string => typeof x === 'string'));
+  const holders = new Set(arr(portfolio?.holders).filter((x): x is string => typeof x === 'string'));
+  const byReporter = obj(bank?.byReporter) ?? {};
+  const byHolder = obj(portfolio?.byHolder) ?? {};
+  const fdiReporters = new Set(arr(fdiPairs?.reporters).filter((x): x is string => typeof x === 'string'));
+  const byFdiReporter = obj(fdiPairs?.byReporter) ?? {};
+  const quarters = arr(bank?.quarters).map(str);
+
+  // Deposits/lending sit on the books of `rep`'s banks against `cp`'s non-banks.
+  const bankLeg = (rep: string, cp: string, idx: 0 | 2): CapitalFlowPairLeg => {
+    if (!bankReporters.has(rep)) return { status: 'not_published', basis: '', history: [] };
+    const cell = arr(obj(byReporter[rep])?.[cp]) as Cell;
+    const stock = num(cell[idx]);
+    if (stock === undefined) return { status: 'not_itemized', basis: '', history: [] };
+    const flows = arr(cell[idx === 0 ? 4 : 5]);
+    const history = quarters.flatMap((period, i) => {
+      const usdBn = num(flows[i]);
+      return period && usdBn !== undefined ? [{ period, usdBn }] : [];
+    });
+    return { status: 'reported', stockUsdBn: stock, flow4qUsdBn: num(cell[idx + 1]), basis: '', history };
+  };
+  const holdingLeg = (holder: string, issuer: string): CapitalFlowPairLeg => {
+    if (!holders.has(holder)) return { status: 'not_published', basis: '', history: [] };
+    const cell = arr(obj(byHolder[holder])?.[issuer]) as Cell;
+    const stock = num(cell[0]);
+    if (stock === undefined) return { status: 'not_itemized', basis: '', history: [] };
+    return { status: 'reported', stockUsdBn: stock, prevYearUsdBn: num(cell[1]), basis: '', history: [] };
+  };
+  // investor's direct investment in host. The investor reports it as outward
+  // (cell[1]), the host as inward (cell[0]); prefer the investor's figure and
+  // keep the host's beside it, since the two often disagree.
+  const fdiLeg = (investor: string, host: string): CapitalFlowPairLeg => {
+    const investorFigure = fdiReporters.has(investor) ? num(arr(obj(byFdiReporter[investor])?.[host])[1]) : undefined;
+    const hostFigure = fdiReporters.has(host) ? num(arr(obj(byFdiReporter[host])?.[investor])[0]) : undefined;
+    if (investorFigure === undefined && hostFigure === undefined) {
+      const status = fdiReporters.has(investor) || fdiReporters.has(host) ? 'not_itemized' : 'not_published';
+      return { status, basis: '', history: [] };
+    }
+    return investorFigure !== undefined
+      ? { status: 'reported', stockUsdBn: investorFigure, basis: 'investor', counterpartReportUsdBn: hostFigure, history: [] }
+      : { status: 'reported', stockUsdBn: hostFigure, basis: 'host', counterpartReportUsdBn: undefined, history: [] };
+  };
+
+  return {
+    country: A,
+    counterpart: B,
+    bankPeriod: str(bank?.period),
+    portfolioYear: int(portfolio?.year),
+    aDepositsInB: bankLeg(B, A, 0),
+    bDepositsInA: bankLeg(A, B, 0),
+    aBorrowingFromB: bankLeg(B, A, 2),
+    bBorrowingFromA: bankLeg(A, B, 2),
+    aHoldingsOfB: holdingLeg(A, B),
+    bHoldingsOfA: holdingLeg(B, A),
+    aFdiInB: fdiLeg(A, B),
+    bFdiInA: fdiLeg(B, A),
+    fdiYear: int(fdiPairs?.year),
+  };
 }
 
 /** Map the seeded payload to the RPC response, optionally narrowed to one ISO2 country. */
-export function buildCapitalFlowsResponse(raw: unknown, country: string, includeSeries: boolean): GetCapitalFlowsResponse {
+export function buildCapitalFlowsResponse(
+  raw: unknown,
+  country: string,
+  includeSeries: boolean,
+  pairQuery?: { counterpart: string; pairsRaw: unknown },
+): GetCapitalFlowsResponse {
   const root = obj(raw);
   const map = obj(root?.countries);
   if (!root || !map) return unavailableCapitalFlows();
   const wanted = country.trim().toUpperCase();
+  const partner = pairQuery?.counterpart.trim().toUpperCase() ?? '';
+  // With a pair query, return both countries' own views alongside the pair.
+  const selected = new Set([wanted, wanted && partner ? partner : ''].filter(Boolean));
   const keys = Object.keys(map).sort();
   const countries: CapitalFlowCountry[] = [];
-  for (const iso2 of wanted ? keys.filter((k) => k === wanted) : keys) {
+  for (const iso2 of wanted ? keys.filter((k) => selected.has(k)) : keys) {
     const c = obj(map[iso2]);
     if (!c) continue;
     countries.push({
@@ -138,6 +241,7 @@ export function buildCapitalFlowsResponse(raw: unknown, country: string, include
       bop: bop(c.bop, includeSeries),
       bank: bank(c.bank),
       portfolio: portfolio(c.portfolio),
+      fdi: fdi(c.fdi),
     });
   }
   const latest = obj(root.latest);
@@ -145,10 +249,12 @@ export function buildCapitalFlowsResponse(raw: unknown, country: string, include
   for (const [k, v] of Object.entries(obj(root.method) ?? {})) if (typeof v === 'string') method[k] = v;
   return {
     countries,
-    latest: latest ? { bopQuarter: str(latest.bopQuarter), bopYear: str(latest.bopYear), bisQuarter: str(latest.bisQuarter), pipYear: int(latest.pipYear) } : undefined,
+    latest: latest ? { bopQuarter: str(latest.bopQuarter), bopYear: str(latest.bopYear), bisQuarter: str(latest.bisQuarter), pipYear: int(latest.pipYear), fdiYear: int(latest.fdiYear) } : undefined,
     seededAt: str(root.seededAt),
     unavailable: false,
     sources: arr(root.sources).filter((s): s is string => typeof s === 'string'),
     method,
+    // No self-pair: the matrices never hold a country against itself.
+    pair: wanted && partner && wanted !== partner && pairQuery ? buildCapitalFlowPair(pairQuery.pairsRaw, wanted, partner) : undefined,
   };
 }

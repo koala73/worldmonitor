@@ -101,7 +101,8 @@ message CapitalFlowBank {
   CapitalFlowPosition non_bank_borrowing_from_abroad = 4;
   // Largest holders of those deposits.
   repeated CapitalFlowCounterparty top_bank_locations = 5;
-  bool reports_to_bis = 6;
+  // True when its banks publish a by-counterparty breakdown.
+  bool publishes_bilateral = 6;
   // Reporters only: largest depositor countries.
   repeated CapitalFlowCounterparty top_depositor_origins = 7;
 }
@@ -120,6 +121,15 @@ message CapitalFlowPortfolio {
   repeated CapitalFlowCounterparty top_destinations = 8;
 }
 
+// IMF direct-investment positions as the country reports them, USD bn.
+message CapitalFlowFdi {
+  int32 year = 1;
+  optional double inward_usd_bn = 2;
+  repeated CapitalFlowCounterparty top_investors = 3;
+  optional double outward_usd_bn = 4;
+  repeated CapitalFlowCounterparty top_destinations = 5;
+}
+
 // One country; a view is absent without source data.
 message CapitalFlowCountry {
   string country = 1;
@@ -129,6 +139,7 @@ message CapitalFlowCountry {
   CapitalFlowBop bop = 5;
   CapitalFlowBank bank = 6;
   CapitalFlowPortfolio portfolio = 7;
+  CapitalFlowFdi fdi = 8;
 }
 
 // Newest period per source.
@@ -137,6 +148,51 @@ message CapitalFlowLatest {
   string bop_year = 2;
   string bis_quarter = 3;
   int32 pip_year = 4;
+  int32 fdi_year = 5;
+}
+
+// One direction of a bilateral position, USD bn. status: reported; not_itemized (reporter has no current figure for this partner: zero, small, confidential or a stopped series); not_published (no bilateral data from the reporting side).
+message CapitalFlowPairLeg {
+  string status = 1;
+  optional double stock_usd_bn = 2;
+  // Bank legs: sum of the last 4 adjusted quarterly changes.
+  optional double flow_4q_usd_bn = 3;
+  // Portfolio legs: the same holding a year earlier.
+  optional double prev_year_usd_bn = 4;
+  // FDI legs: investor or host, whichever side's figure stock_usd_bn is.
+  string basis = 5;
+  // FDI legs: the other side's figure for the same position.
+  optional double counterpart_report_usd_bn = 6;
+  // Bank legs: adjusted quarterly flows, oldest first; quarters without a figure are omitted.
+  repeated CapitalFlowPairPoint history = 7;
+}
+
+message CapitalFlowPairPoint {
+  string period = 1;
+  double usd_bn = 2;
+}
+
+// Country and counterpart in both directions. a = country, b = counterpart.
+message CapitalFlowPair {
+  string country = 1;
+  string counterpart = 2;
+  // BIS quarter and IMF PIP year of the legs.
+  string bank_period = 3;
+  int32 portfolio_year = 4;
+  // a's non-bank residents' deposits in b's banks.
+  CapitalFlowPairLeg a_deposits_in_b = 5;
+  CapitalFlowPairLeg b_deposits_in_a = 6;
+  // b's banks' lending to a's non-banks.
+  CapitalFlowPairLeg a_borrowing_from_b = 7;
+  CapitalFlowPairLeg b_borrowing_from_a = 8;
+  // a's holdings of b's securities.
+  CapitalFlowPairLeg a_holdings_of_b = 9;
+  CapitalFlowPairLeg b_holdings_of_a = 10;
+  // a's direct investment in b.
+  CapitalFlowPairLeg a_fdi_in_b = 11;
+  CapitalFlowPairLeg b_fdi_in_a = 12;
+  // IMF DIP reference year.
+  int32 fdi_year = 13;
 }
 
 // GetCapitalFlowsRequest selects a country and detail.
@@ -148,6 +204,11 @@ message GetCapitalFlowsRequest {
   ];
   // Include BOP series. Default false.
   bool include_series = 2 [(sebuf.http.query) = {name: "include_series"}];
+  // Optional ISO 3166-1 alpha-2 partner; with country, returns the pair in both directions.
+  string counterpart = 3 [
+    (sebuf.http.query) = {name: "counterpart"},
+    (buf.validate.field).string.max_len = 2
+  ];
 }
 
 // Cross-country capital flows, USD bn.
@@ -160,4 +221,6 @@ message GetCapitalFlowsResponse {
   repeated string sources = 5;
   // Method notes: bop, episodes, bank, portfolio, caveat.
   map<string, string> method = 6;
+  // Present when country and counterpart are both set.
+  CapitalFlowPair pair = 7;
 }

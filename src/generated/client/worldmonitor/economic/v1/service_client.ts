@@ -969,6 +969,7 @@ export interface UsInterestRateObservation {
 export interface GetCapitalFlowsRequest {
   country: string;
   includeSeries: boolean;
+  counterpart: string;
 }
 
 export interface GetCapitalFlowsResponse {
@@ -978,6 +979,7 @@ export interface GetCapitalFlowsResponse {
   unavailable: boolean;
   sources: string[];
   method: Record<string, string>;
+  pair?: CapitalFlowPair;
 }
 
 export interface CapitalFlowCountry {
@@ -988,6 +990,7 @@ export interface CapitalFlowCountry {
   bop?: CapitalFlowBop;
   bank?: CapitalFlowBank;
   portfolio?: CapitalFlowPortfolio;
+  fdi?: CapitalFlowFdi;
 }
 
 export interface CapitalFlowBop {
@@ -1051,7 +1054,7 @@ export interface CapitalFlowBank {
   householdDepositsAbroad?: CapitalFlowPosition;
   nonBankBorrowingFromAbroad?: CapitalFlowPosition;
   topBankLocations: CapitalFlowCounterparty[];
-  reportsToBis: boolean;
+  publishesBilateral: boolean;
   topDepositorOrigins: CapitalFlowCounterparty[];
 }
 
@@ -1077,11 +1080,51 @@ export interface CapitalFlowPortfolio {
   topDestinations: CapitalFlowCounterparty[];
 }
 
+export interface CapitalFlowFdi {
+  year: number;
+  inwardUsdBn?: number;
+  topInvestors: CapitalFlowCounterparty[];
+  outwardUsdBn?: number;
+  topDestinations: CapitalFlowCounterparty[];
+}
+
 export interface CapitalFlowLatest {
   bopQuarter: string;
   bopYear: string;
   bisQuarter: string;
   pipYear: number;
+  fdiYear: number;
+}
+
+export interface CapitalFlowPair {
+  country: string;
+  counterpart: string;
+  bankPeriod: string;
+  portfolioYear: number;
+  aDepositsInB?: CapitalFlowPairLeg;
+  bDepositsInA?: CapitalFlowPairLeg;
+  aBorrowingFromB?: CapitalFlowPairLeg;
+  bBorrowingFromA?: CapitalFlowPairLeg;
+  aHoldingsOfB?: CapitalFlowPairLeg;
+  bHoldingsOfA?: CapitalFlowPairLeg;
+  aFdiInB?: CapitalFlowPairLeg;
+  bFdiInA?: CapitalFlowPairLeg;
+  fdiYear: number;
+}
+
+export interface CapitalFlowPairLeg {
+  status: string;
+  stockUsdBn?: number;
+  flow4qUsdBn?: number;
+  prevYearUsdBn?: number;
+  basis: string;
+  counterpartReportUsdBn?: number;
+  history: CapitalFlowPairPoint[];
+}
+
+export interface CapitalFlowPairPoint {
+  period: string;
+  usdBn: number;
 }
 
 export interface GetWorldCpiMonthlyRequest {
@@ -2002,6 +2045,7 @@ export class EconomicServiceClient {
     const params = new URLSearchParams();
     if (req.country != null && req.country !== "") params.set("country", String(req.country));
     if (req.includeSeries) params.set("include_series", String(req.includeSeries));
+    if (req.counterpart != null && req.counterpart !== "") params.set("counterpart", String(req.counterpart));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {

@@ -9,7 +9,7 @@
 //      flows, ex reserves: inflows = L_NIL_T (non-residents' new claims on the
 //      country), outflows = A_NFA_T (residents' new claims abroad), each the sum
 //      of D_F (direct), P_F (portfolio) and O_F (other investment). Quarterly
-//      where reported, annual otherwise (the UAE and Qatar report annual only).
+//      where reported, annual otherwise (some economies report annual only).
 //      Quarterly series are classified with Forbes & Warnock (2012) — see
 //      _capital-flow-episodes.mjs. Values are raw USD on the wire.
 //
@@ -19,12 +19,18 @@
 //      reporter and counterparty empty, and the totals query names reporter
 //      5A (all reporting countries). L_MEASURE F is the FX- and
 //      break-adjusted change, the right flow measure. Values are USD millions.
-//      Only ~30 jurisdictions report; deposits placed in non-reporters (the
-//      UAE among them) are invisible here.
+//      Only ~30 jurisdictions publish a bilateral breakdown; deposits placed in
+//      the others are invisible here.
 //
 //   3. IMF Portfolio Investment Positions (IMF.STA/PIP, formerly CPIS). Who
 //      holds whose securities. Summing every reporter's holdings OF a country
 //      gives the mirror measure of foreign portfolio money in that country.
+//
+//   4. IMF Direct Investment Positions (IMF.STA/DIP, formerly CDIS). FDI
+//      positions by immediate counterpart, reported by both sides of a pair.
+//
+// Bilateral matrices for all three bilateral sources go to PAIRS_KEY so any
+// country pair can be read in both directions.
 //
 // Everything is measured official data except the episode labels, which are
 // derived (basis: "derived"). Wealth migration — a person changing residence —
@@ -46,6 +52,8 @@ loadEnvFile(import.meta.url);
 const _proxyAuth = resolveProxyForConnect();
 
 export const CANONICAL_KEY = 'economic:capital-flows:v1';
+// Full bilateral matrices (bank and portfolio), read for country-pair queries.
+export const PAIRS_KEY = 'economic:capital-flows:pairs:v1';
 // Durable activation marker (no TTL). Until it exists, /api/health softens a
 // missing key to the on-demand warn, so the reader can ship before the weekly
 // bundle's first publish.
@@ -322,7 +330,7 @@ export function stockAndFlow(rows) {
 }
 
 // totalsRows: reporter 5A × every counterparty, sectors N and H, positions L and C.
-// bilateralRows: every reporter × every counterparty, sector N, position L.
+// bilateralRows: every reporter × every counterparty, sector N, positions L and C.
 export function buildBankByCountry(totalsRows, bilateralRows) {
   const out = {};
   const latestPeriods = [];
@@ -340,7 +348,7 @@ export function buildBankByCountry(totalsRows, bilateralRows) {
       householdDepositsAbroad: { stockUsdBn: household.stockUsdBn, flow4qUsdBn: household.flow4qUsdBn },
       nonBankBorrowingFromAbroad: { stockUsdBn: borrowing.stockUsdBn, flow4qUsdBn: borrowing.flow4qUsdBn },
       topBankLocations: [],
-      reportsToBis: false,
+      publishesBilateral: false,
       topDepositorOrigins: [],
     };
   }
@@ -369,26 +377,107 @@ export function buildBankByCountry(totalsRows, bilateralRows) {
   }
   for (const [rep, list] of byRep) {
     if (!out[rep]) continue;
-    out[rep].reportsToBis = true;
+    // True only when the country's banks publish a by-counterparty breakdown;
+    // some reporting systems publish aggregates only.
+    out[rep].publishesBilateral = true;
     out[rep].topDepositorOrigins = top(list);
   }
   const latest = latestPeriods.sort().at(-1) ?? null;
   return { byCountry: out, latestPeriod: latest };
 }
 
+// Full bank matrix: byReporter[rep][cp] = [depositsStock, depositsFlow4q,
+// lendingStock, lendingFlow4q] in USD bn, where deposits are rep-located
+// banks' liabilities to cp's non-banks and lending their claims on them.
+// `reporters` lists systems that publish at least one bilateral position, so a
+// reader can tell "no position" from "not published".
+//
+// `quarters` lists the last PAIR_HISTORY_QUARTERS quarters ending at `period`;
+// cells [4] and [5] are the deposit and lending adjusted flows for those
+// quarters, aligned to `quarters`, null where not reported.
+export const PAIR_HISTORY_QUARTERS = 8;
+
+export function buildBankPairs(bilateralRows) {
+  const rows = bilateralRows.filter((r) => r.L_CP_SECTOR === 'N' && (r.L_POSITION === 'L' || r.L_POSITION === 'C')
+    && isBisCountry(r.L_REP_CTY) && isBisCountry(r.L_CP_COUNTRY) && r.L_REP_CTY !== r.L_CP_COUNTRY);
+  const grouped = groupBy(rows, (r) => `${r.L_REP_CTY}|${r.L_CP_COUNTRY}`);
+  const stockPeriods = rows.filter((r) => r.L_MEASURE === 'S').map((r) => r.period).sort();
+  const period = stockPeriods.at(-1) ?? null;
+  const quarters = [];
+  if (period) {
+    let q = period;
+    for (let i = 0; i < PAIR_HISTORY_QUARTERS; i++) {
+      quarters.unshift(q);
+      const [y, n] = q.split('-Q').map(Number);
+      q = n === 1 ? `${y - 1}-Q4` : `${y}-Q${n - 1}`;
+    }
+  }
+  const history = (list) => {
+    const byPeriod = new Map(list.filter((r) => r.L_MEASURE === 'F').map((r) => [r.period, r.value]));
+    const values = quarters.map((p) => (byPeriod.has(p) ? bnFromMillions(byPeriod.get(p)) : null));
+    return values.some((v) => v != null) ? values : null;
+  };
+  const byReporter = {};
+  for (const [k, list] of grouped) {
+    const [rep, cp] = k.split('|');
+    const depRows = list.filter((r) => r.L_POSITION === 'L');
+    const lendRows = list.filter((r) => r.L_POSITION === 'C');
+    // A leg whose series ended before the matrix quarter has no current
+    // position; keep its history (labelled by quarter) but not a stock or flow
+    // that would read as current.
+    const current = (sf) => (sf.period === period ? sf : { stockUsdBn: null, flow4qUsdBn: null });
+    const dep = current(stockAndFlow(depRows));
+    const lend = current(stockAndFlow(lendRows));
+    const depHistory = history(depRows);
+    const lendHistory = history(lendRows);
+    if (dep.stockUsdBn == null && lend.stockUsdBn == null && !depHistory && !lendHistory) continue;
+    (byReporter[rep] ??= {})[cp] = [dep.stockUsdBn, dep.flow4qUsdBn, lend.stockUsdBn, lend.flow4qUsdBn, depHistory, lendHistory];
+  }
+  return { period, quarters, reporters: Object.keys(byReporter).sort(), byReporter };
+}
+
 // ── IMF PIP ─────────────────────────────────────────────────────────────────
 
 // rows: holder COUNTRY × COUNTERPART_COUNTRY, total portfolio assets (annual).
-export function buildPortfolioByCountry(rows) {
-  const clean = rows.filter((r) =>
+function cleanPipRows(rows) {
+  return rows.filter((r) =>
     r.ACCOUNTING_ENTRY === 'A' && r.INDICATOR === 'P_TOTINV_P_USD' && r.FREQUENCY === 'A' &&
     toIso2(r.COUNTRY) && toIso2(r.COUNTERPART_COUNTRY) && r.COUNTRY !== r.COUNTERPART_COUNTRY);
+}
+
+// The newest year is often partial (late reporters). Use the newest year whose
+// reporter count is at least 80% of the prior year's.
+function selectPipYear(clean) {
   const years = [...new Set(clean.map((r) => String(r.period)))].sort();
-  // The newest year is often partial (late reporters). Use the newest year whose
-  // reporter count is at least 80% of the prior year's.
   const reporters = (y) => new Set(clean.filter((r) => String(r.period) === y).map((r) => r.COUNTRY)).size;
   let year = years.at(-1) ?? null;
   if (years.length >= 2 && reporters(years.at(-1)) < 0.8 * reporters(years.at(-2))) year = years.at(-2);
+  return year;
+}
+
+// Full portfolio matrix: byHolder[holder][issuer] = [usdBn, prevYearUsdBn|null].
+// `holders` lists economies reporting holdings in the reference year.
+export function buildPortfolioPairs(rows) {
+  const clean = cleanPipRows(rows);
+  const year = selectPipYear(clean);
+  if (!year) return { year: null, holders: [], byHolder: {} };
+  const prevYear = String(Number(year) - 1);
+  const byHolder = {};
+  const prev = new Map();
+  for (const r of clean) {
+    if (String(r.period) === prevYear) prev.set(`${r.COUNTRY}|${r.COUNTERPART_COUNTRY}`, r.value);
+  }
+  for (const r of clean) {
+    if (String(r.period) !== year) continue;
+    const before = prev.get(`${r.COUNTRY}|${r.COUNTERPART_COUNTRY}`);
+    (byHolder[toIso2(r.COUNTRY)] ??= {})[toIso2(r.COUNTERPART_COUNTRY)] = [bn(r.value), before == null ? null : bn(before)];
+  }
+  return { year: Number(year), holders: Object.keys(byHolder).sort(), byHolder };
+}
+
+export function buildPortfolioByCountry(rows) {
+  const clean = cleanPipRows(rows);
+  const year = selectPipYear(clean);
   if (!year) return { byCountry: {}, year: null };
   const prevYear = String(Number(year) - 1);
 
@@ -438,6 +527,51 @@ export function buildPortfolioByCountry(rows) {
   return { byCountry: out, year: Number(year) };
 }
 
+// ── IMF DIP ─────────────────────────────────────────────────────────────────
+
+// rows: reporting COUNTRY × COUNTERPART_COUNTRY, DV_TYPE O (the reporter's own
+// figures), INWD_D_NETLA_FALL_ALL (direct investment in the reporter by the
+// counterpart) and OTWD_D_NETAL_FALL_ALL (the reporter's direct investment in
+// the counterpart), annual positions in raw USD.
+//
+// Pairs: byReporter[rep][cp] = [inwardFromCp, outwardToCp] in USD bn, for the
+// newest year at least 80% as well reported as the year before. Both sides of a
+// pair report the same position, and they disagree, so readers keep both.
+// Countries: total inward/outward positions with the largest investors and
+// destinations, as the country itself reports them.
+//
+// Conduit economies (Luxembourg, the Netherlands, Ireland and others) carry
+// large pass-through positions through special-purpose entities; these are
+// immediate-counterpart figures, not ultimate investors.
+export function buildFdi(rows) {
+  const clean = rows.filter((r) => (r.DV_TYPE ?? 'O') === 'O' && toIso2(r.COUNTRY) && toIso2(r.COUNTERPART_COUNTRY)
+    && r.COUNTRY !== r.COUNTERPART_COUNTRY
+    && (r.INDICATOR === 'INWD_D_NETLA_FALL_ALL' || r.INDICATOR === 'OTWD_D_NETAL_FALL_ALL'));
+  const year = selectPipYear(clean);
+  if (!year) return { pairs: { year: null, reporters: [], byReporter: {} }, byCountry: {} };
+  const byReporter = {};
+  for (const r of clean) {
+    if (String(r.period) !== year) continue;
+    const cell = ((byReporter[toIso2(r.COUNTRY)] ??= {})[toIso2(r.COUNTERPART_COUNTRY)] ??= [null, null]);
+    cell[r.INDICATOR === 'INWD_D_NETLA_FALL_ALL' ? 0 : 1] = bn(r.value);
+  }
+  const byCountry = {};
+  const top = (entries) => entries.filter(([, v]) => v != null && v > 0).sort((a, b) => b[1] - a[1]).slice(0, TOP_N).map(([iso2, usdBn]) => ({ iso2, usdBn }));
+  const sum = (entries) => Math.round(entries.reduce((s, [, v]) => s + (v ?? 0), 0) * 100) / 100;
+  for (const [rep, cps] of Object.entries(byReporter)) {
+    const inward = Object.entries(cps).map(([cp, c]) => [cp, c[0]]).filter(([, v]) => v != null);
+    const outward = Object.entries(cps).map(([cp, c]) => [cp, c[1]]).filter(([, v]) => v != null);
+    byCountry[rep] = {
+      year: Number(year),
+      inwardUsdBn: inward.length ? sum(inward) : null,
+      topInvestors: top(inward),
+      outwardUsdBn: outward.length ? sum(outward) : null,
+      topDestinations: top(outward),
+    };
+  }
+  return { pairs: { year: Number(year), reporters: Object.keys(byReporter).sort(), byReporter }, byCountry };
+}
+
 // ── GDP ─────────────────────────────────────────────────────────────────────
 
 export function parseWorldBankGdp(pages) {
@@ -465,13 +599,14 @@ async function fetchGdp() {
 
 // ── Assembly ────────────────────────────────────────────────────────────────
 
-export function assembleCapitalFlows({ bopQuarterlyRows, bopAnnualRows, bank, portfolio, gdp, nowYear = new Date().getUTCFullYear(), seededAt = new Date().toISOString() }) {
+export function assembleCapitalFlows({ bopQuarterlyRows, bopAnnualRows, bank, portfolio, fdi = { byCountry: {} }, pairs = null, gdp, nowYear = new Date().getUTCFullYear(), seededAt = new Date().toISOString() }) {
   const qByIso3 = groupBy(bopQuarterlyRows, (r) => (toIso2(r.COUNTRY) ? r.COUNTRY : null));
   const aByIso3 = groupBy(bopAnnualRows, (r) => (toIso2(r.COUNTRY) ? r.COUNTRY : null));
   const iso2s = new Set([
     ...[...qByIso3.keys(), ...aByIso3.keys()].map(toIso2),
     ...Object.keys(bank.byCountry),
     ...Object.keys(portfolio.byCountry),
+    ...Object.keys(fdi.byCountry),
   ]);
 
   const countries = {};
@@ -494,8 +629,9 @@ export function assembleCapitalFlows({ bopQuarterlyRows, bopAnnualRows, bank, po
       bop,
       bank: bank.byCountry[iso2] ?? null,
       portfolio: portfolio.byCountry[iso2] ?? null,
+      fdi: fdi.byCountry[iso2] ?? null,
     };
-    if (!entry.bop && !entry.bank && !entry.portfolio) continue;
+    if (!entry.bop && !entry.bank && !entry.portfolio && !entry.fdi) continue;
     countries[iso2] = entry;
   }
 
@@ -513,26 +649,35 @@ export function assembleCapitalFlows({ bopQuarterlyRows, bopAnnualRows, bank, po
       bopYear: mode(bopYears),
       bisQuarter: bank.latestPeriod,
       pipYear: portfolio.year,
+      fdiYear: pairs?.fdi?.year ?? null,
     },
     coverage: {
       countries: Object.keys(countries).length,
       bopQuarterly: quarterly,
       bopAnnualOnly: annual,
       bisCounterparties: Object.keys(bank.byCountry).length,
-      bisReporters: Object.values(bank.byCountry).filter((b) => b.reportsToBis).length,
+      bisReporters: Object.values(bank.byCountry).filter((b) => b.publishesBilateral).length,
+      bankPairReporters: pairs?.bank?.reporters?.length ?? 0,
+      portfolioPairHolders: pairs?.portfolio?.holders?.length ?? 0,
+      fdiPairReporters: pairs?.fdi?.reporters?.length ?? 0,
       portfolioCountries: Object.keys(portfolio.byCountry).length,
     },
     units: 'USD billions',
+    // Raw-only: publishTransform moves this to PAIRS_KEY.
+    pairs,
     method: {
       bop: 'IMF BOP (BPM6) gross flows ex reserves: inflows = net incurrence of liabilities, outflows = net acquisition of financial assets; FDI + portfolio + other investment.',
       episodes: 'Forbes & Warnock (2012): year-on-year change in the 4-quarter sum vs trailing 20-quarter mean; episode starts beyond 1 sd, must reach 2 sd, lasts more than one quarter. Inflows up = surge, down = stop; outflows up = flight, down = retrenchment. Derived, not reported.',
-      bank: 'BIS LBS cross-border positions of banks in all reporting countries vs residents of the country; flow = sum of last 4 FX- and break-adjusted quarterly changes. Non-reporting banking systems (e.g. UAE) are not covered.',
+      bank: 'BIS LBS cross-border positions of banks in all reporting countries vs residents of the country; flow = sum of last 4 FX- and break-adjusted quarterly changes. Deposits placed in banking systems that publish no bilateral breakdown are not visible.',
       portfolio: 'IMF PIP (formerly CPIS) mirror: sum of every reporter\'s holdings of the country\'s securities; change compares the same reporters year on year.',
+      fdi: 'IMF DIP (formerly CDIS) direct-investment positions by immediate counterpart, as the country reports them. Conduit economies carry large pass-through positions; these are not ultimate investors.',
+      pairs: 'Pair legs: bank deposits and lending are reported by the bank location; portfolio holdings by the holder; FDI by both sides, which often disagree, so both figures are kept. not_itemized means the reporting side omits that partner (zero, small or confidential); not_published means it publishes no bilateral breakdown.',
       caveat: 'A person changing country of residence is not a BOP transaction under BPM6, so wealth migration does not appear in these flows.',
     },
     sources: [
       `${IMF_BASE}/BOP`,
       `${IMF_BASE}/PIP`,
+      `${IMF_BASE}/DIP`,
       BIS_BASE,
       'https://api.worldbank.org/v2/country/all/indicator/NY.GDP.MKTP.CD',
       'https://www.bis.org/statistics/bankstats.htm',
@@ -541,15 +686,24 @@ export function assembleCapitalFlows({ bopQuarterlyRows, bopAnnualRows, bank, po
   };
 }
 
+// A parse that yields nothing means the upstream shape changed; fail rather
+// than publish a payload with a whole view silently missing. Each request is
+// checked on its own, so one empty half of a split pull cannot hide behind
+// the other.
+export function emptyUpstreams(parsed) {
+  return Object.entries(parsed).filter(([, rows]) => !Array.isArray(rows) || rows.length === 0).map(([name]) => name);
+}
+
 export async function fetchCapitalFlows() {
   const nowYear = new Date().getUTCFullYear();
   const imfHeaders = imfAuthHeaders();
   const bopQ = `${IMF_BASE}/BOP/+/*.A_NFA_T+L_NIL_T+NETCD_T.D_F+P_F+O_F+EO.USD.Q?c%5BTIME_PERIOD%5D=ge:${nowYear - BOP_HISTORY_YEARS}-Q1&dimensionAtObservation=TIME_PERIOD`;
   const bopA = `${IMF_BASE}/BOP/+/*.A_NFA_T+L_NIL_T+NETCD_T.D_F+P_F+O_F+EO.USD.A?c%5BTIME_PERIOD%5D=ge:${nowYear - 10}&dimensionAtObservation=TIME_PERIOD`;
   const pip = `${IMF_BASE}/PIP/+/*.A.P_TOTINV_P_USD.S1.S1.*.A?c%5BTIME_PERIOD%5D=ge:${nowYear - 4}&dimensionAtObservation=TIME_PERIOD`;
+  const dip = (indicator) => `${IMF_BASE}/DIP/+/*.O.${indicator}.*.A?c%5BTIME_PERIOD%5D=ge:${nowYear - 4}&dimensionAtObservation=TIME_PERIOD`;
   const bisStart = `${nowYear - 3}-Q1`;
   const bisTotals = `${BIS_BASE}/Q.F+S.L+C.A.TO1.A.5J.A.5A.N+H..N?startPeriod=${bisStart}`;
-  const bisPairs = `${BIS_BASE}/Q.F+S.L.A.TO1.A.5J.A..N..N?startPeriod=${bisStart}`;
+  const bisPairs = `${BIS_BASE}/Q.F+S.L+C.A.TO1.A.5J.A..N..N?startPeriod=${bisStart}`;
   const bisAccept = 'application/vnd.sdmx.data+json;version=1.0.0';
 
   // All five pulls run in parallel (three to api.imf.org, as seed-imf-external
@@ -559,24 +713,33 @@ export async function fetchCapitalFlows() {
     fetchJson(bopQ, { headers: imfHeaders, timeoutMs: 90_000 }),
     fetchJson(bopA, { headers: imfHeaders, timeoutMs: 90_000 }),
     fetchJson(pip, { headers: imfHeaders, timeoutMs: 120_000 }),
-  ]).then(([q, a, p]) => ({ q: parseImfSdmx(q), a: parseImfSdmx(a), p: parseImfSdmx(p) }));
+    // DIP is split by indicator: one request for both took >4 minutes.
+    fetchJson(dip('INWD_D_NETLA_FALL_ALL'), { headers: imfHeaders, timeoutMs: 120_000 }),
+    fetchJson(dip('OTWD_D_NETAL_FALL_ALL'), { headers: imfHeaders, timeoutMs: 120_000 }),
+  ]).then(([q, a, p, dIn, dOut]) => {
+    const inward = parseImfSdmx(dIn);
+    const outward = parseImfSdmx(dOut);
+    return { q: parseImfSdmx(q), a: parseImfSdmx(a), p: parseImfSdmx(p), dIn: inward, dOut: outward, d: [...inward, ...outward] };
+  });
   const bisJob = Promise.all([
     fetchJson(bisTotals, { accept: bisAccept, timeoutMs: 60_000 }),
     fetchJson(bisPairs, { accept: bisAccept, timeoutMs: 90_000 }),
   ]).then(([totals, pairs]) => ({ totals: parseBisSdmx(totals), pairs: parseBisSdmx(pairs) }));
   const [imf, bis, gdp] = await Promise.all([imfJob, bisJob, fetchGdp()]);
-  // A parse that yields nothing means the upstream shape changed; fail rather
-  // than publish a payload with a whole view silently missing.
-  const empty = Object.entries({ bopQuarterly: imf.q, bopAnnual: imf.a, pip: imf.p, bisTotals: bis.totals, bisPairs: bis.pairs })
-    .filter(([, rows]) => rows.length === 0).map(([name]) => name);
+  const empty = emptyUpstreams({
+    bopQuarterly: imf.q, bopAnnual: imf.a, pip: imf.p, dipInward: imf.dIn, dipOutward: imf.dOut, bisTotals: bis.totals, bisPairs: bis.pairs,
+  });
   if (empty.length > 0) throw new Error(`capital-flows: upstream returned no rows for ${empty.join(', ')}`);
   console.log(`  IMF BOP quarterly rows=${imf.q.length} annual rows=${imf.a.length}; PIP rows=${imf.p.length}; BIS totals rows=${bis.totals.length} pairs rows=${bis.pairs.length}; GDP countries=${Object.keys(gdp).length}`);
 
+  const fdi = buildFdi(imf.d);
   return assembleCapitalFlows({
     bopQuarterlyRows: imf.q,
     bopAnnualRows: imf.a,
     bank: buildBankByCountry(bis.totals, bis.pairs),
     portfolio: buildPortfolioByCountry(imf.p),
+    fdi,
+    pairs: { bank: buildBankPairs(bis.pairs), portfolio: buildPortfolioPairs(imf.p), fdi: fdi.pairs },
     gdp,
     nowYear,
   });
@@ -592,7 +755,25 @@ export function validate(data) {
     && (c?.bopAnnualOnly ?? 0) >= 10
     && (c?.bisCounterparties ?? 0) >= 100
     && (c?.bisReporters ?? 0) >= 20
-    && (c?.portfolioCountries ?? 0) >= 100;
+    && (c?.portfolioCountries ?? 0) >= 100
+    && (c?.bankPairReporters ?? 0) >= 20
+    && (c?.portfolioPairHolders ?? 0) >= 50
+    && (c?.fdiPairReporters ?? 0) >= 50;
+}
+
+// The canonical key carries per-country views; the matrices go to PAIRS_KEY.
+export function publishTransform(data) {
+  const { pairs: _pairs, ...rest } = data ?? {};
+  return rest;
+}
+
+export function pairsPayload(data) {
+  return { ...(data?.pairs ?? { bank: null, portfolio: null, fdi: null }), seededAt: data?.seededAt ?? null };
+}
+
+export function declarePairRecords(data) {
+  // runSeed hands extra-key declarers the TRANSFORMED payload (pairsPayload).
+  return (data?.bank?.reporters?.length ?? 0) + (data?.portfolio?.holders?.length ?? 0) + (data?.fdi?.reporters?.length ?? 0);
 }
 
 export function declareRecords(data) {
@@ -626,6 +807,13 @@ if (process.argv[1]?.endsWith('seed-capital-flows.mjs')) {
     maxStaleMin: 14400,
     contentMeta: capitalFlowsContentMeta,
     maxContentAgeMin: CAPITAL_FLOWS_MAX_CONTENT_AGE_MIN,
+    publishTransform,
+    extraKeys: [{
+      key: PAIRS_KEY,
+      ttl: CACHE_TTL,
+      transform: pairsPayload,
+      declareRecords: declarePairRecords,
+    }],
     afterPublish: markActivated,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
