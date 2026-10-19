@@ -522,9 +522,9 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_capital_flows`
 
-Return where money enters and leaves about 230 economies, and between any two, from official statistics. IMF balance of payments: gross inflows and outflows split into FDI, portfolio and other investment, quarterly or annual by country, with derived Forbes-Warnock states (surge or stop for inflows, flight or retrenchment for outflows) and z-scores. Per country and per pair: BIS cross-border bank deposits and lending, IMF portfolio holdings and IMF direct-investment positions. People changing residence are not a BOP flow. Sources lag 1 to 3 quarters (FDI about 2 years); stale after 10 days or when the newest BOP quarter is over a year old. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. country (up to 10) returns full views; counterpart adds both directions of each pair, each leg marked reported, not_itemized or not_published. Without country, a ranking by sort (default outflow_z) capped by limit (default 30, 0 for no cap).
+返回约 230 个经济体资金的流入与流出,以及任意两个经济体之间的资金往来,数据来自官方统计。IMF 国际收支:总流入与总流出,按 FDI、证券投资和其他投资拆分,按国家为季度或年度数据,并附推导的 Forbes-Warnock 状态(流入为 surge 或 stop,流出为 flight 或 retrenchment)及 z 分数。按国家和按国家对:BIS 跨境银行存款与贷款、IMF 证券投资持有和 IMF 直接投资头寸。居民身份变更不是国际收支流量。来源滞后 1–3 个季度(FDI 约 2 年);10 天未更新或最新国际收支季度超过一年时标记为过期。缓存读取:API 套餐权重 1,计入已登录账户的免费额度。country(最多 10 个)返回完整视图;counterpart 增加每个国家对的双向数据,每个分项标注 reported、not_itemized 或 not_published。不指定 country 时,对具备排序指标的国家排名(默认 outflow_z;仅有年度数据的序列没有该指标),按 limit 截断(默认 30,传 0 不限)。
 
-适用于任意经济体和任意国家对:传入多个 `country` 进行比较,加上 `counterpart` 获取双边明细,或省略 `country` 对所有经济体排名。阶段标签按 Forbes 与 Warnock(2012)方法由已报告的流量推导。各视图、分项和状态的说明见[资本流动方法论](/zh/methodology/capital-flows)。
+适用于任意经济体和任意国家对:传入多个 `country` 进行比较,加上 `counterpart` 获取双边明细,或省略 `country`,对具备所选 `sort` 指标的经济体排名(默认 `outflow_z` 不含仅有年度数据、没有 z 分数的序列)。阶段标签按 Forbes 与 Warnock(2012)方法由已报告的流量推导。各视图、分项和状态的说明见[资本流动方法论](/zh/methodology/capital-flows)。
 
 **参数(工具专用):**
 

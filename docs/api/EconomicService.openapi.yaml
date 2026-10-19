@@ -4374,7 +4374,7 @@ paths:
                   in: query
                   description: Optional ISO 3166-1 alpha-2 partner. With country, the response adds pair (both directions) and the counterpart's own view. Ignored without country, and when equal to country.
                   required: false
-                  example: "US"
+                  example: "DE"
                   schema:
                     type: string
                 - name: jmespath
@@ -4480,7 +4480,7 @@ paths:
                                         "history":
                                             - "period": "2026-Q1"
                                               "usdBn": 1.5
-                                        "prevYearUsdBn": 1.5
+                                        "instrument": "example"
                                     "aDepositsInB":
                                         "basis": "example"
                                         "counterpartReportUsdBn": 1
@@ -4488,7 +4488,7 @@ paths:
                                         "history":
                                             - "period": "2026-Q1"
                                               "usdBn": 1.5
-                                        "prevYearUsdBn": 1.5
+                                        "instrument": "example"
                                     "aFdiInB":
                                         "basis": "example"
                                         "counterpartReportUsdBn": 1
@@ -4496,7 +4496,7 @@ paths:
                                         "history":
                                             - "period": "2026-Q1"
                                               "usdBn": 1.5
-                                        "prevYearUsdBn": 1.5
+                                        "instrument": "example"
                                     "aHoldingsOfB":
                                         "basis": "example"
                                         "counterpartReportUsdBn": 1
@@ -4504,7 +4504,7 @@ paths:
                                         "history":
                                             - "period": "2026-Q1"
                                               "usdBn": 1.5
-                                        "prevYearUsdBn": 1.5
+                                        "instrument": "example"
                                     "bBorrowingFromA":
                                         "basis": "example"
                                         "counterpartReportUsdBn": 1
@@ -4512,8 +4512,8 @@ paths:
                                         "history":
                                             - "period": "2026-Q1"
                                               "usdBn": 1.5
-                                        "prevYearUsdBn": 1.5
-                                "seededAt": "2026-01-15T12:00:00Z"
+                                        "instrument": "example"
+                                "seededAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/GetCapitalFlowsResponse'
                 "400":
@@ -7272,8 +7272,9 @@ components:
                 latest:
                     $ref: '#/components/schemas/CapitalFlowLatest'
                 seededAt:
-                    type: string
-                    description: When the dataset was built, ISO 8601.
+                    type: integer
+                    format: int64
+                    description: 'When the dataset was built, Unix epoch milliseconds. 0 when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
                 unavailable:
                     type: boolean
                     description: True when the seeded dataset is unavailable. An empty country list is not zero flow.
@@ -7612,7 +7613,7 @@ components:
                     description: ISO 3166-1 alpha-2 code of b, the counterpart.
                 bankPeriod:
                     type: string
-                    description: BIS quarter of the bank legs, YYYY-Qn.
+                    description: BIS quarter of the bank legs, YYYY-Qn. Portfolio and FDI legs carry their own years below.
                 portfolioYear:
                     type: integer
                     format: int32
@@ -7667,6 +7668,9 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/CapitalFlowPairPoint'
+                instrument:
+                    type: string
+                    description: 'Bank legs: loans_deposits (BIS instrument G) normally; all_instruments (instrument A, which adds debt securities) for a reporting system that publishes no loans-and-deposits breakdown. Empty for other legs.'
             description: CapitalFlowPairLeg is one direction of a bilateral position, in USD billions.
         CapitalFlowPairPoint:
             type: object

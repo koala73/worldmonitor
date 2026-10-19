@@ -975,7 +975,7 @@ export interface GetCapitalFlowsRequest {
 export interface GetCapitalFlowsResponse {
   countries: CapitalFlowCountry[];
   latest?: CapitalFlowLatest;
-  seededAt: string;
+  seededAt: number;
   unavailable: boolean;
   sources: string[];
   method: Record<string, string>;
@@ -1120,6 +1120,7 @@ export interface CapitalFlowPairLeg {
   basis: string;
   counterpartReportUsdBn?: number;
   history: CapitalFlowPairPoint[];
+  instrument: string;
 }
 
 export interface CapitalFlowPairPoint {

@@ -690,6 +690,9 @@ function stringExample(name, schema = {}, context = {}) {
   if (description.includes('iata')) return constrainedString(key.includes('destination') || key.includes('arrival') ? 'LHR' : 'JFK', schema);
   if (description.includes('iso 4217') || key.includes('currency')) return constrainedString('USD', schema);
   if (description.includes('iso 639') || key === 'lang' || key.includes('locale')) return constrainedString('en', schema);
+  // A partner country must differ from the primary country example (US), or
+  // the sample request describes a self-pair that returns no pair.
+  if (key === 'counterpart' && description.includes('iso 3166')) return constrainedString('DE', schema);
   if (description.includes('iso 3166') || key.includes('marketcode')) return constrainedString('US', schema);
   if (description.includes('wto member code')) return constrainedString(key.includes('partner') ? '156' : '840', schema);
   if (description.includes('world bank indicator code')) return constrainedString('NY.GDP.MKTP.CD', schema);

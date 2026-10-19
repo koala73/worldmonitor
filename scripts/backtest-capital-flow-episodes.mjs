@@ -8,7 +8,7 @@
 // The KNOWN table was fixed before the first run; do not tune it to the
 // classifier's output. Misses are reported, not hidden.
 
-import { imfAuthHeaders } from './_seed-utils.mjs';
+import { CHROME_UA, imfAuthHeaders } from './_seed-utils.mjs';
 import { sumGrossFlows, classifyCountry } from './_capital-flow-episodes.mjs';
 
 const URL =
@@ -42,7 +42,7 @@ function shift(p, d) {
 }
 
 async function fetchRows() {
-  const r = await fetch(URL, { headers: { Accept: 'application/json', ...imfAuthHeaders() }, signal: AbortSignal.timeout(300_000) });
+  const r = await fetch(URL, { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json', ...imfAuthHeaders() }, signal: AbortSignal.timeout(300_000) });
   if (!r.ok) throw new Error(`IMF BOP HTTP ${r.status}`);
   const json = await r.json();
   const st = json.data.structures[0];

@@ -53,8 +53,11 @@ function fixture() {
     portfolio: { byCountry: { AE: { year: 2025, foreignHoldingsUsdBn: 201.5, foreignHoldingsPrevYearUsdBn: 171.9, changePct: 17.22, reporterCount: 70, topHolders: [{ iso2: 'US', usdBn: 51.1 }], holdingsAbroadUsdBn: null, topDestinations: [] } }, year: 2025 },
     gdp: { GB: { value: 4e12, year: 2025 }, AE: { value: 552e9, year: 2024 }, TR: { value: 1.6e12, year: 2025 }, US: { value: 3.08e13, year: 2025 } },
     nowYear: 2026,
+    seededAt: SEEDED_AT,
   });
 }
+
+const SEEDED_AT = '2026-10-18T19:00:00.000Z';
 
 const PAIRS = {
   bank: { period: '2026-Q1', quarters: ['2025-Q4', '2026-Q1'], reporters: ['GB', 'US'], byReporter: { GB: { AE: [44.8, 5.9, 65.8, 11.8], US: [900, 10, 1200, 5, [4, 6], null] }, US: { GB: [700, 20, 800, 9] } } },
@@ -154,12 +157,12 @@ describe('get_capital_flows', () => {
     const [ae, us] = cf.pairs;
     assert.equal(ae.country, 'AE');
     assert.equal(ae.counterpart, 'GB');
-    assert.deepEqual(ae.aDepositsInB, { status: 'reported', stockUsdBn: 44.8, flow4qUsdBn: 5.9 });
+    assert.deepEqual(ae.aDepositsInB, { status: 'reported', stockUsdBn: 44.8, flow4qUsdBn: 5.9, instrument: 'loans_deposits' });
     assert.deepEqual(ae.bDepositsInA, { status: 'not_published' }, 'UAE banks publish no bilateral data');
     assert.deepEqual(ae.bHoldingsOfA, { status: 'reported', stockUsdBn: 7.1, prevYearUsdBn: 5.3 });
     assert.deepEqual(ae.aHoldingsOfB, { status: 'not_published' });
-    assert.deepEqual(us.aDepositsInB, { status: 'reported', stockUsdBn: 900, flow4qUsdBn: 10, history: [{ period: '2025-Q4', usdBn: 4 }, { period: '2026-Q1', usdBn: 6 }] });
-    assert.deepEqual(us.bDepositsInA, { status: 'reported', stockUsdBn: 700, flow4qUsdBn: 20 }, 'empty basis and history are dropped');
+    assert.deepEqual(us.aDepositsInB, { status: 'reported', stockUsdBn: 900, flow4qUsdBn: 10, history: [{ period: '2025-Q4', usdBn: 4 }, { period: '2026-Q1', usdBn: 6 }], instrument: 'loans_deposits' });
+    assert.deepEqual(us.bDepositsInA, { status: 'reported', stockUsdBn: 700, flow4qUsdBn: 20, instrument: 'loans_deposits' }, 'empty basis and history are dropped');
     // US FDI in GB: the US reports 980 outward; GB reports 742.74 inward from the US.
     assert.deepEqual(us.aFdiInB, { status: 'reported', stockUsdBn: 980, basis: 'investor', counterpartReportUsdBn: 742.74 });
     assert.deepEqual(us.bFdiInA, { status: 'reported', stockUsdBn: 1024.6, basis: 'investor', counterpartReportUsdBn: 700 });
@@ -171,6 +174,11 @@ describe('get_capital_flows', () => {
   it('a counterpart equal to the country produces no self-pair', async () => {
     const cf = (await run({ country: ['GB'], counterpart: 'GB' })).data['capital-flows'];
     assert.deepEqual(cf.pairs, []);
+  });
+
+  it('pairs are null when the matrices come from a different seed run', async () => {
+    const cf = (await run({ country: ['GB'], counterpart: 'US' }, fixture(), { ...PAIRS, seededAt: '2026-10-11T19:00:00.000Z' })).data['capital-flows'];
+    assert.deepEqual(cf.pairs, [null]);
   });
 
   it('pairs are null when the matrices are missing', async () => {

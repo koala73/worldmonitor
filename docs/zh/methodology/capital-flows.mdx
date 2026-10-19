@@ -25,11 +25,11 @@ _本方法论由 World Monitor 创始人 [Elie Habib](https://www.worldmonitor.a
 | 视图 | 来源 | 指标 | 频率 | 典型滞后 |
 |------|------|------|------|----------|
 | `bop` | IMF 国际收支(`IMF.STA/BOP`) | 总流入与总流出:直接投资、证券投资和其他投资,不含储备 | 有季度数据时为季度,否则为年度 | 1–2 个季度 |
-| `bank` | BIS 本地银行统计(`WS_LBS_D_PUB`) | 该国非银行居民的跨境存款和借款 | 季度 | 约 2 个季度 |
+| `bank` | BIS 本地银行统计(`WS_LBS_D_PUB`) | 该国非银行居民的跨境贷款与存款(工具 G,不含债务证券) | 季度 | 约 2 个季度 |
 | `portfolio` | IMF 按对手经济体划分的证券投资头寸(`IMF.STA/PIP`,原 CPIS) | 各报告经济体持有该国证券的情况 | 年度 | 9–12 个月 |
 | `fdi` | IMF 按对手经济体划分的直接投资头寸(`IMF.STA/DIP`,原 CDIS) | 按直接对手方划分的对内和对外直接投资头寸,以该国自身报告为准 | 年度 | 约 2 年 |
 
-所有金额均为美元,单位十亿。占 GDP 的比例使用世界银行最新的现价美元 GDP。
+银行头寸以最新 BIS 季度为准;更早停止的序列记为缺失。所有金额均为美元,单位十亿。占 GDP 的比例使用世界银行最新的现价美元 GDP。
 
 ### 总额而非净额
 
@@ -65,7 +65,7 @@ _本方法论由 World Monitor 创始人 [Elie Habib](https://www.worldmonitor.a
 | `aHoldingsOfB`、`bHoldingsOfA` | 一方持有另一方证券 | 持有方 | 存量及上一年同一持仓 |
 | `aFdiInB`、`bFdiInA` | 一方对另一方的直接投资 | 双方 | 投资方的数字,以及东道方对同一头寸的数字 |
 
-银行流量是 BIS 的*经汇率和断点调整*的变化。它剔除了汇率变动和报告断点,因此反映的是资金移动而非估值。证券投资和直接投资数字是头寸;两年之间的变化混合了新增资金与价格、汇率变动。
+银行分项使用 BIS 的*贷款与存款*工具,因此银行发行或持有的债务证券不计入存款或贷款。少数报告体系只按*全部工具*发布双边明细;其分项使用该口径并标注 `instrument: all_instruments`,其余银行分项均标注 `instrument: loans_deposits`。银行流量是 BIS 的*经汇率和断点调整*的变化。它剔除了汇率变动和报告断点,因此反映的是资金移动而非估值。证券投资和直接投资数字是头寸;两年之间的变化混合了新增资金与价格、汇率变动。
 
 ### 分项状态
 
@@ -100,7 +100,7 @@ curl -s "https://api.worldmonitor.app/api/economic/v1/get-capital-flows?country=
   -H "X-WorldMonitor-Key: $WM_KEY"
 ```
 
-**MCP。** `get_capital_flows` 最多返回 10 个国家的完整视图;加上 `counterpart` 后,每个国家增加一对数据。不指定国家时,按 `sort` 对所有经济体排名:最新的流出或流入 z 分数、流量占 GDP 的比例、净流量、境外存款的四季度变化,或外国证券持有的变化。参见 [MCP 工具参考](/zh/mcp-tools-reference#get_capital_flows)。
+**MCP。** `get_capital_flows` 最多返回 10 个国家的完整视图;加上 `counterpart` 后,每个国家增加一对数据。不指定国家时,对具备所选 `sort` 指标的经济体排名(默认 `outflow_z` 不含仅有年度数据、没有 z 分数的序列):最新的流出或流入 z 分数、流量占 GDP 的比例、净流量、境外存款的四季度变化,或外国证券持有的变化。参见 [MCP 工具参考](/zh/mcp-tools-reference#get_capital_flows)。
 
 ## 新鲜度
 

@@ -25,11 +25,11 @@ Each country carries up to four views. A view is absent when its source publishe
 | View | Source | Measure | Frequency | Typical lag |
 |------|--------|---------|-----------|-------------|
 | `bop` | IMF Balance of Payments (`IMF.STA/BOP`) | Gross inflows and outflows: direct, portfolio and other investment, excluding reserves | Quarterly where reported, otherwise annual | 1–2 quarters |
-| `bank` | BIS Locational Banking Statistics (`WS_LBS_D_PUB`) | Cross-border deposits and borrowing of the country's non-bank residents | Quarterly | about 2 quarters |
+| `bank` | BIS Locational Banking Statistics (`WS_LBS_D_PUB`) | Cross-border loans and deposits of the country's non-bank residents (instrument G; excludes debt securities) | Quarterly | about 2 quarters |
 | `portfolio` | IMF Portfolio Investment Positions (`IMF.STA/PIP`, formerly CPIS) | Holdings of the country's securities by every reporting economy | Annual | 9–12 months |
 | `fdi` | IMF Direct Investment Positions (`IMF.STA/DIP`, formerly CDIS) | Inward and outward direct-investment positions by immediate counterpart, as the country reports them | Annual | about 2 years |
 
-All amounts are US dollars, in billions. Shares of GDP use the latest World Bank GDP in current US dollars.
+Bank positions are as of the latest BIS quarter; a series that stopped earlier is reported as absent. All amounts are US dollars, in billions. Shares of GDP use the latest World Bank GDP in current US dollars.
 
 ### Gross, not net
 
@@ -65,7 +65,7 @@ Ask for a country and a counterpart and you get both directions between them. In
 | `aHoldingsOfB`, `bHoldingsOfA` | One side's holdings of the other side's securities | The holder | Stock and the same holding a year earlier |
 | `aFdiInB`, `bFdiInA` | One side's direct investment in the other | Both sides | The investor's figure, and the host's figure for the same position |
 
-Bank flows are the BIS *FX- and break-adjusted* changes. They remove exchange-rate moves and reporting breaks, so they read as money moved rather than valuation. Portfolio and FDI figures are positions; a change between two years mixes new money with price and exchange-rate moves.
+Bank legs use the BIS *loans and deposits* instrument, so banks' debt securities (issued or held) are not counted as deposits or lending. A few reporting systems publish their bilateral breakdown only for *all instruments*; their legs use that measure and say so in `instrument: all_instruments`, while every other bank leg carries `instrument: loans_deposits`. Bank flows are the BIS *FX- and break-adjusted* changes. They remove exchange-rate moves and reporting breaks, so they read as money moved rather than valuation. Portfolio and FDI figures are positions; a change between two years mixes new money with price and exchange-rate moves.
 
 ### Leg status
 
@@ -100,7 +100,7 @@ curl -s "https://api.worldmonitor.app/api/economic/v1/get-capital-flows?country=
   -H "X-WorldMonitor-Key: $WM_KEY"
 ```
 
-**MCP.** `get_capital_flows` returns full views for up to 10 countries; with `counterpart` it adds one pair per country. Without a country it ranks every economy by `sort`: the latest outflow or inflow z-score, flows as a share of GDP, net flows, the four-quarter change in deposits held abroad, or the change in foreign portfolio holdings. See the [MCP tools reference](/mcp-tools-reference#get_capital_flows).
+**MCP.** `get_capital_flows` returns full views for up to 10 countries; with `counterpart` it adds one pair per country. Without a country it ranks the economies that have the chosen `sort` metric (the default `outflow_z` leaves out annual-only series, which have no z-score): the latest outflow or inflow z-score, flows as a share of GDP, net flows, the four-quarter change in deposits held abroad, or the change in foreign portfolio holdings. See the [MCP tools reference](/mcp-tools-reference#get_capital_flows).
 
 ## Freshness
 

@@ -67,18 +67,18 @@ describe('buildCapitalFlowPair', () => {
     assert.equal(pair?.bankPeriod, '2026-Q1');
     assert.equal(pair?.portfolioYear, 2025);
     // SG non-banks' deposits sit in FR banks, which publish.
-    assert.deepEqual(pair?.aDepositsInB, { status: 'reported', stockUsdBn: 7.15, flow4qUsdBn: 1.35, basis: '', history: [] });
-    assert.deepEqual(pair?.aBorrowingFromB, { status: 'reported', stockUsdBn: 13.95, flow4qUsdBn: -1.49, basis: '', history: [] });
+    assert.deepEqual(pair?.aDepositsInB, { status: 'reported', stockUsdBn: 7.15, flow4qUsdBn: 1.35, basis: '', history: [], instrument: 'loans_deposits' });
+    assert.deepEqual(pair?.aBorrowingFromB, { status: 'reported', stockUsdBn: 13.95, flow4qUsdBn: -1.49, basis: '', history: [], instrument: 'loans_deposits' });
     // FR non-banks' deposits in SG banks: SG banks publish no bilateral data.
     assert.equal(pair?.bDepositsInA?.status, 'not_published');
     assert.equal(pair?.bBorrowingFromA?.status, 'not_published');
     // SG reports holdings, but not of FR; FR reports its SG holdings.
     assert.equal(pair?.aHoldingsOfB?.status, 'not_itemized');
-    assert.deepEqual(pair?.bHoldingsOfA, { status: 'reported', stockUsdBn: 4.4, prevYearUsdBn: 2.81, basis: '', history: [] });
+    assert.deepEqual(pair?.bHoldingsOfA, { status: 'reported', stockUsdBn: 4.4, prevYearUsdBn: 2.81, basis: '', history: [], instrument: '' });
     // SG's FDI in FR: SG reports no outward figure, FR reports 12 inward → host basis.
-    assert.deepEqual(pair?.aFdiInB, { status: 'reported', stockUsdBn: 12, basis: 'host', counterpartReportUsdBn: undefined, history: [] });
+    assert.deepEqual(pair?.aFdiInB, { status: 'reported', stockUsdBn: 12, basis: 'host', counterpartReportUsdBn: undefined, history: [], instrument: '' });
     // FR's FDI in SG: FR reports 30 outward, SG reports 33 inward → both kept.
-    assert.deepEqual(pair?.bFdiInA, { status: 'reported', stockUsdBn: 30, basis: 'investor', counterpartReportUsdBn: 33, history: [] });
+    assert.deepEqual(pair?.bFdiInA, { status: 'reported', stockUsdBn: 30, basis: 'investor', counterpartReportUsdBn: 33, history: [], instrument: '' });
     assert.equal(pair?.fdiYear, 2024);
   });
 
@@ -88,6 +88,18 @@ describe('buildCapitalFlowPair', () => {
     assert.deepEqual(pair?.aDepositsInB?.history, [{ period: '2025-Q4', usdBn: 1.88 }]);
     assert.deepEqual(pair?.aBorrowingFromB?.history, []);
     assert.equal(pair?.aFdiInB?.status, 'not_published', 'no FDI matrix');
+  });
+
+  it('a stale bank leg is not_itemized but keeps the quarters it reported', () => {
+    const raw = { bank: { period: '2026-Q1', quarters: ['2025-Q4', '2026-Q1'], reporters: ['US'], byReporter: { US: { CH: [null, null, null, null, [1.5, null], null] } } } };
+    const leg = buildCapitalFlowPair(raw, 'CH', 'US')?.aDepositsInB;
+    assert.equal(leg?.status, 'not_itemized');
+    assert.deepEqual(leg?.history, [{ period: '2025-Q4', usdBn: 1.5 }]);
+  });
+
+  it('labels bank legs from an all-instruments reporter', () => {
+    const raw = { bank: { period: '2026-Q1', quarters: [], reporters: ['JP'], allInstrumentReporters: ['JP'], byReporter: { JP: { CH: [3, 0.1, 4, 0.2] } } } };
+    assert.equal(buildCapitalFlowPair(raw, 'CH', 'JP')?.aDepositsInB?.instrument, 'all_instruments');
   });
 
   it('is undefined without a pairs payload', () => {
@@ -103,6 +115,7 @@ describe('buildCapitalFlowPair', () => {
     assert.equal(res.pair?.aDepositsInB?.status, 'not_itemized', 'GB banks publish but do not itemize AE here');
     assert.equal(buildCapitalFlowsResponse(SEED, 'AE', false).pair, undefined);
     assert.equal(buildCapitalFlowsResponse(SEED, 'AE', false, { counterpart: 'ae', pairsRaw: PAIRS }).pair, undefined, 'no self-pair');
+    assert.equal(buildCapitalFlowsResponse(SEED, 'AE', false, { counterpart: 'GB', pairsRaw: { ...PAIRS, seededAt: '2026-10-11T00:00:00.000Z' } }).pair, undefined, 'pairs from another seed run');
   });
 });
 

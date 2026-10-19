@@ -221,6 +221,8 @@ message CapitalFlowPairLeg {
   optional double counterpart_report_usd_bn = 6;
   // Bank legs: FX- and break-adjusted quarterly flows for up to the last eight quarters, oldest first. Quarters without a figure are omitted.
   repeated CapitalFlowPairPoint history = 7;
+  // Bank legs: loans_deposits (BIS instrument G) normally; all_instruments (instrument A, which adds debt securities) for a reporting system that publishes no loans-and-deposits breakdown. Empty for other legs.
+  string instrument = 8;
 }
 
 // CapitalFlowPairPoint is one quarterly adjusted bank flow.
@@ -237,7 +239,7 @@ message CapitalFlowPair {
   string country = 1;
   // ISO 3166-1 alpha-2 code of b, the counterpart.
   string counterpart = 2;
-  // BIS quarter of the bank legs, YYYY-Qn.
+  // BIS quarter of the bank legs, YYYY-Qn. Portfolio and FDI legs carry their own years below.
   string bank_period = 3;
   // IMF portfolio-positions year of the holding legs.
   int32 portfolio_year = 4;
@@ -283,8 +285,8 @@ message GetCapitalFlowsResponse {
   repeated CapitalFlowCountry countries = 1;
   // Newest period per source.
   CapitalFlowLatest latest = 2;
-  // When the dataset was built, ISO 8601.
-  string seeded_at = 3;
+  // When the dataset was built, Unix epoch milliseconds. 0 when unavailable.
+  int64 seeded_at = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // True when the seeded dataset is unavailable. An empty country list is not zero flow.
   bool unavailable = 4;
   // Source URLs.

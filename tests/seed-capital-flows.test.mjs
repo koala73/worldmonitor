@@ -22,6 +22,7 @@ import {
   buildPortfolioPairs,
   buildFdi,
   emptyUpstreams,
+  selectBankInstrument,
   publishTransform,
   pairsPayload,
   declarePairRecords,
@@ -412,5 +413,70 @@ describe('emptyUpstreams', () => {
   it('names each empty pull, including one half of a split request', () => {
     assert.deepEqual(emptyUpstreams({ dipInward: [{}], dipOutward: [], bisPairs: [{}] }), ['dipOutward']);
     assert.deepEqual(emptyUpstreams({ a: [{}] }), []);
+  });
+});
+
+describe('PR review regressions (#9395)', () => {
+  const S = (period, value, extra) => ({ L_MEASURE: 'S', period, value, ...extra });
+  const tot = (pos, sector, cp, period, s) => S(period, s, { L_REP_CTY: '5A', L_POSITION: pos, L_CP_SECTOR: sector, L_CP_COUNTRY: cp });
+
+  it('quarterly state uses the latest quarter BOTH sides report completely', () => {
+    const periods = quarters('2014-Q1', 50); // to 2026-Q2
+    const rows = bopRows('GBR', periods, (i) => 100 + wobble(i), (i) => 100 + wobble(i))
+      // inflows lack 2026-Q1 (incomplete) but have 2026-Q2; outflows end 2026-Q1
+      .filter((r) => !(r.period === '2026-Q1' && r.BOP_ACCOUNTING_ENTRY === 'L_NIL_T' && r.INDICATOR === 'P_F'))
+      .filter((r) => !(r.period === '2026-Q2' && r.BOP_ACCOUNTING_ENTRY === 'A_NFA_T'));
+    const bop = buildBopCountry({ quarterlyRows: rows, gdpUsd: 4e12, nowYear: 2026 });
+    assert.equal(bop.latestPeriod, '2025-Q4', 'last quarter complete on both sides');
+    assert.ok(bop.state.inflowZ != null && bop.state.outflowZ != null);
+  });
+
+  it('a country that only holds securities abroad has null, not zero, foreign holdings', () => {
+    const row = (holder, issuer, period, usdBn) => ({ COUNTRY: holder, ACCOUNTING_ENTRY: 'A', INDICATOR: 'P_TOTINV_P_USD', SECTOR: 'S1', COUNTERPART_SECTOR: 'S1', COUNTERPART_COUNTRY: issuer, FREQUENCY: 'A', period, value: usdBn * 1e9 });
+    const { byCountry } = buildPortfolioByCountry([row('USA', 'GBR', '2025', 10), row('FRA', 'GBR', '2025', 5)]);
+    assert.equal(byCountry.US.foreignHoldingsUsdBn, null);
+    assert.equal(byCountry.US.reporterCount, 0);
+    assert.equal(byCountry.GB.foreignHoldingsUsdBn, 15);
+  });
+
+  it('country bank view drops positions and partners older than the latest BIS quarter', () => {
+    const totals = [tot('L', 'N', 'FR', '2026-Q1', 1000), tot('L', 'H', 'FR', '2025-Q2', 300), tot('C', 'N', 'FR', '2026-Q1', 2000)];
+    const pair = (rep, period, s) => S(period, s, { L_REP_CTY: rep, L_POSITION: 'L', L_CP_SECTOR: 'N', L_CP_COUNTRY: 'FR' });
+    const { byCountry, latestPeriod } = buildBankByCountry(totals, [pair('GB', '2026-Q1', 50), pair('CH', '2025-Q2', 900)]);
+    assert.equal(latestPeriod, '2026-Q1');
+    assert.equal(byCountry.FR.nonBankDepositsAbroad.stockUsdBn, 1);
+    assert.equal(byCountry.FR.householdDepositsAbroad.stockUsdBn, null, 'stale household series');
+    assert.deepEqual(byCountry.FR.topBankLocations.map((x) => x.iso2), ['GB'], 'stale partner dropped');
+  });
+});
+
+describe('one-sided quarterly series', () => {
+  it('stays quarterly on the side that is complete when the other never is', () => {
+    const periods = quarters('2014-Q1', 50);
+    // outflows never carry direct investment, so they are never complete
+    const rows = bopRows('TZA', periods, (i) => 10 + wobble(i), (i) => 10 + wobble(i))
+      .filter((r) => !(r.BOP_ACCOUNTING_ENTRY === 'A_NFA_T' && r.INDICATOR === 'D_F'));
+    const bop = buildBopCountry({ quarterlyRows: rows, gdpUsd: 1e11, nowYear: 2026 });
+    assert.equal(bop.frequency, 'quarterly');
+    assert.equal(bop.latestPeriod, '2026-Q2');
+    assert.ok(bop.state.inflowZ != null);
+    assert.equal(bop.state.outflowZ, null);
+    assert.equal(bop.trailing4q.outflowsUsdBn, null);
+  });
+});
+
+describe('bank instrument choice', () => {
+  const S = (period, value, extra) => ({ L_MEASURE: 'S', period, value, ...extra });
+  const row = (rep, cp, instr, s) => S('2026-Q1', s, { L_REP_CTY: rep, L_CP_COUNTRY: cp, L_POSITION: 'L', L_CP_SECTOR: 'N', L_INSTR: instr });
+  it('uses loans and deposits where published and all instruments only as a named fallback', () => {
+    const rows = [row('FR', 'DE', 'G', 500), row('FR', 'DE', 'A', 700), row('JP', 'DE', 'A', 300)];
+    const { rows: kept, allInstrumentReporters } = selectBankInstrument(rows);
+    assert.deepEqual(kept.map((r) => `${r.L_REP_CTY}:${r.L_INSTR}`), ['FR:G', 'JP:A']);
+    assert.deepEqual([...allInstrumentReporters], ['JP']);
+    const pairs = buildBankPairs(rows);
+    assert.deepEqual(pairs.reporters, ['FR', 'JP']);
+    assert.deepEqual(pairs.allInstrumentReporters, ['JP']);
+    assert.equal(pairs.byReporter.FR.DE[0], 0.5, 'G figure, not A');
+    assert.equal(pairs.byReporter.JP.DE[0], 0.3);
   });
 });

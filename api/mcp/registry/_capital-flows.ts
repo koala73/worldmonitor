@@ -4,10 +4,13 @@
 // budget, so the tool never returns it whole:
 //   - with `country`: the full per-country views for up to 10 countries
 //     (BOP series only when include_series is true);
-//   - without: a compact ranking of every country, sorted by `sort` and capped
-//     by `limit`, so an agent can ask "where is capital leaving fastest".
+//   - without: a compact ranking of the countries that have the `sort` metric
+//     (the default outflow_z excludes annual-only series, which carry no
+//     z-score), capped by `limit`, so an agent can ask "where is capital
+//     leaving fastest";
+//   - with `country` and `counterpart`: both directions of each pair as well.
 
-import { buildCapitalFlowPair } from '../../../server/worldmonitor/economic/v1/capital-flows';
+import { buildCapitalFlowPair, sameSeedRun } from '../../../server/worldmonitor/economic/v1/capital-flows';
 
 export const CAPITAL_FLOWS_LABEL = 'capital-flows';
 export const CAPITAL_FLOWS_PAIRS_LABEL = 'capital-flows-pairs';
@@ -22,6 +25,7 @@ export const CAPITAL_FLOW_PAIR_LEG_SCHEMA = {
     flow4qUsdBn: { type: 'number', description: 'Bank legs: last 4 FX- and break-adjusted quarterly changes.' },
     prevYearUsdBn: { type: 'number', description: 'Portfolio legs: the same holding a year earlier.' },
     basis: { type: 'string', enum: ['investor', 'host'], description: 'FDI legs: whose report stockUsdBn is.' },
+    instrument: { type: 'string', enum: ['loans_deposits', 'all_instruments'], description: 'Bank legs: loans_deposits normally; all_instruments (adds debt securities) where the reporting banking system publishes no loans-and-deposits breakdown.' },
     counterpartReportUsdBn: { type: 'number', description: 'FDI legs: the other side\'s figure for the same position.' },
     history: {
       type: 'array',
@@ -119,6 +123,7 @@ function compactPair(pair: ReturnType<typeof buildCapitalFlowPair>): Json | null
     if (!leg) continue;
     const compact: Json = { ...leg };
     if (!leg.basis) delete compact.basis;
+    if (!leg.instrument) delete compact.instrument;
     if (!leg.history?.length) delete compact.history;
     out[key] = compact;
   }
@@ -158,9 +163,12 @@ export function projectCapitalFlows(data: Json, args: CapitalFlowsProjectionArgs
     out.countries = countries;
     if (partner) {
       // null when the pair matrices are missing; otherwise each leg carries its own status.
+      // Matrices from a different seed run than the views (one write failed)
+      // are not mixed in: those pairs come back null.
+      const fresh = sameSeedRun(payload, pairsRaw);
       out.pairs = requested
         .filter((iso2) => iso2 !== partner)
-        .map((iso2) => compactPair(buildCapitalFlowPair(pairsRaw, iso2, partner)));
+        .map((iso2) => (fresh ? compactPair(buildCapitalFlowPair(pairsRaw, iso2, partner)) : null));
     }
   } else {
     const field = SORT_FIELD[args.sort];
