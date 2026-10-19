@@ -51,6 +51,20 @@ test('unavailable, malformed and stale source snapshots cannot become daily hist
   ]) assert.throws(() => composeCountrySnapshots({ ...inputs(), ...change }));
 });
 
+test('headline selection requires qualified names for ambiguous countries', () => {
+  const data = inputs();
+  data.countries = ['GE', 'JO', 'TR', 'GN', 'CG'];
+  data.digest.categories.politics.items = [
+    'Georgia (U.S. state) election', 'Michael Jordan speaks', 'Turkey recipes', 'Papua New Guinea alert', 'Democratic Republic of the Congo talks',
+    'Republic of Georgia talks', 'Kingdom of Jordan talks', 'Turkiye talks', 'Guinea Conakry talks', 'Congo Brazzaville talks',
+  ].map((title, index) => ({ title, link: `https://example.com/${index}`, source: 'Example', publishedAt: now - 1000 }));
+  const rows = composeCountrySnapshots(data);
+  for (const [index, row] of rows.entries()) {
+    assert.equal(row.topEvents.length, 1, row.countryCode);
+    assert.equal(row.topEvents[0].link, `https://example.com/${index + 5}`);
+  }
+});
+
 test('publisher atomically replaces dates, trims retention and stamps health only on confirmed writes', async () => {
   const calls = [];
   const snapshots = composeCountrySnapshots(inputs());
@@ -68,18 +82,25 @@ test('publisher atomically replaces dates, trims retention and stamps health onl
   await assert.rejects(publishCountrySnapshots('https://redis.test', 'fixture', snapshots, now, async () => ({ result: 1 })), /unconfirmed/);
 });
 
-test('real Redis publication is idempotent, retains 365 days and leaves all countries and health unchanged on a type error', async () => {
+const redisServer = process.env.REDIS_SERVER_BIN || 'redis-server';
+const redisCli = process.env.REDIS_CLI_BIN || 'redis-cli';
+const redisAvailable = [redisServer, redisCli].every(binary => {
+  const version = spawnSync(binary, ['--version'], { encoding: 'utf8' });
+  return version.status === 0 && Number(version.stdout.match(/\b(\d+)\.\d+/)?.[1]) >= 7;
+});
+
+test('real Redis publication is idempotent, retains 365 days and leaves all countries and health unchanged on a type error', { skip: !redisAvailable && 'Redis server and CLI 7+ required' }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'country-history-'));
   const socket = join(dir, 'redis.sock');
-  const started = spawnSync('redis-server', ['--port', '0', '--unixsocket', socket, '--save', '', '--appendonly', 'no', '--daemonize', 'yes', '--pidfile', join(dir, 'pid'), '--logfile', join(dir, 'log')]);
+  const started = spawnSync(redisServer, ['--port', '0', '--unixsocket', socket, '--save', '', '--appendonly', 'no', '--daemonize', 'yes', '--pidfile', join(dir, 'pid'), '--logfile', join(dir, 'log')]);
   assert.equal(started.status, 0);
   const cmd = (...args) => {
-    const result = spawnSync('redis-cli', ['-s', socket, '--json', ...args.map(String)], { encoding: 'utf8' });
+    const result = spawnSync(redisCli, ['-s', socket, '--json', ...args.map(String)], { encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
     return JSON.parse(result.stdout);
   };
   try {
-    for (let i = 0; i < 100 && !spawnSync('redis-cli', ['-s', socket, 'PING']).stdout?.includes('PONG'); i++) {
+    for (let i = 0; i < 100 && !spawnSync(redisCli, ['-s', socket, 'PING']).stdout?.includes('PONG'); i++) {
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
     }
     const command = async (_url, _token, args) => ({ result: cmd(...args) });
@@ -103,7 +124,7 @@ test('real Redis publication is idempotent, retains 365 days and leaves all coun
     assert.equal(JSON.parse(cmd('ZRANGE', 'history:country:US', -1, -1)[0]).cii.score, 40);
     assert.equal(cmd('TTL', 'seed-activated:history:country'), -1);
   } finally {
-    spawnSync('redis-cli', ['-s', socket, 'SHUTDOWN', 'NOSAVE']);
+    spawnSync(redisCli, ['-s', socket, 'SHUTDOWN', 'NOSAVE']);
     rmSync(dir, { recursive: true, force: true });
   }
 });

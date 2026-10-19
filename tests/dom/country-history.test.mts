@@ -27,6 +27,8 @@ describe('daily country history', () => {
     (mount.querySelector('[data-history-date="2026-10-17"]') as HTMLButtonElement).click();
     expect(mount.querySelector('.country-history-detail')?.textContent).toContain('CII 0');
     expect(mount.querySelector('svg path')).toBeNull();
+    expect(mount.querySelectorAll('svg [tabindex="0"]')).toHaveLength(0);
+    expect(mount.querySelectorAll('[data-history-date]')).toHaveLength(2);
     widget.destroy();
   });
 

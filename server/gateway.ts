@@ -2553,7 +2553,7 @@ export function createDomainGateway(
       : request;
     if (isCountryHistoryRpc) {
       const userId = sessionUserId ?? usage.sessionUserId;
-      const ent = userId ? (userKeyEntitlement ?? quotaEntitlements ?? await getEntitlements(userId)) : null;
+      const ent = !isEnterpriseAuth && userId ? (userKeyEntitlement ?? quotaEntitlements ?? await getEntitlements(userId)) : null;
       const denial = ent?.verificationUnavailable ? getBillingVerificationDenial(ent, corsHeaders) : null;
       if (denial) return denial;
       bindCountryHistoryAccess(requestForHandler, isEnterpriseAuth ? 365 : countryHistoryDays(ent));

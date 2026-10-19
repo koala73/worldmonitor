@@ -21,6 +21,7 @@
   "get_country_brief",
   "get_country_brief_section",
   "get_country_coverage",
+  "get_country_history",
   "get_country_macro",
   "get_country_risk",
   "get_cross_border_arrivals",

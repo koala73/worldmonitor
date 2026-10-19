@@ -48,7 +48,7 @@ message GetCountryHistoryResponse {
   repeated CountryHistoryPoint points = 6;
   // True on failed reads or before activation.
   bool upstream_unavailable = 7;
-  // True after 36 hours without publication.
+  // True if unavailable or over 36 hours since publication.
   bool stale = 8;
   int64 fetched_at = 9 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }

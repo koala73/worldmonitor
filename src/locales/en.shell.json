@@ -926,8 +926,6 @@
     "deleteTabAria": "Delete tab {{name}}",
     "tabNameAria": "Tab name"
   },
-  "preferences": {
-    "panelFontScale": "Text size",
-    "followGlobalFontScale": "Use global"
-  }
+  "preferences":{"panelFontScale":"Text size","followGlobalFontScale":"Use global"},
+  "countryHistory":{"title":"Daily country history"}
 }

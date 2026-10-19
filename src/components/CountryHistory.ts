@@ -146,7 +146,7 @@ export class CountryHistory {
         circle.setAttribute('r', point.topEvents.length ? '4' : '2');
         circle.setAttribute('class', `country-history-${kind}`);
         circle.setAttribute('role', 'button');
-        circle.setAttribute('tabindex', '0');
+        circle.setAttribute('tabindex', '-1');
         circle.setAttribute('aria-label', t('countryHistory.selectDate', { date: point.date, count: point.topEvents.length }));
         const selectDate = () => this.mount.querySelector<HTMLButtonElement>(`[data-history-date="${point.date}"]`)?.click();
         circle.addEventListener('click', selectDate);

@@ -7889,7 +7889,7 @@ components:
                     description: True on failed reads or before activation.
                 stale:
                     type: boolean
-                    description: True after 36 hours without publication.
+                    description: True if unavailable or over 36 hours since publication.
                 fetchedAt:
                     type: integer
                     format: int64

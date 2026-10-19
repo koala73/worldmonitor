@@ -18,6 +18,7 @@ const ORIGINAL_ENV = {
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
   VERCEL_ENV: process.env.VERCEL_ENV,
+  WORLDMONITOR_VALID_KEYS: process.env.WORLDMONITOR_VALID_KEYS,
 };
 
 type Entitlement = {
@@ -35,6 +36,7 @@ type Entitlement = {
 };
 
 const entitlements = new Map<string, Entitlement | null>();
+let entitlementReads = 0;
 let privateKey: CryptoKey;
 let jwksServer: Server;
 let jwksPort = 0;
@@ -135,7 +137,9 @@ before(async () => {
           ? input.href
           : input.url;
     if (url.endsWith('/api/internal-entitlements')) {
+      entitlementReads++;
       const body = JSON.parse(String(init?.body ?? '{}')) as { userId?: string };
+      if (body.userId === 'history-enterprise-outage') return Response.json({}, { status: 503 });
       return new Response(JSON.stringify(entitlements.get(body.userId ?? '') ?? null), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -182,6 +186,23 @@ describe('country history verified retention', () => {
       assert.equal((await response.json()).effectiveDays, expected, user);
       assert.equal(response.headers.get('Cache-Control'), 'no-store');
       assertPrivateCache(response);
+    }
+  });
+
+  it('keeps enterprise-key history available with a bearer whose entitlement service is unavailable', async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = 'history-enterprise-fixture';
+    const reads = entitlementReads;
+    try {
+      const response = await historyHandler(request(historyPath, {
+        'X-WorldMonitor-Key': 'history-enterprise-fixture',
+        Authorization: `Bearer ${await signToken('history-enterprise-outage')}`,
+      }));
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).allowedDays, 365);
+      assert.equal(entitlementReads, reads);
+    } finally {
+      if (ORIGINAL_ENV.WORLDMONITOR_VALID_KEYS === undefined) delete process.env.WORLDMONITOR_VALID_KEYS;
+      else process.env.WORLDMONITOR_VALID_KEYS = ORIGINAL_ENV.WORLDMONITOR_VALID_KEYS;
     }
   });
 });

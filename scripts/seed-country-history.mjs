@@ -7,6 +7,14 @@ import { listRankableCountries } from './shared/rankable-universe.mjs';
 
 const DAY = 86400000;
 const COUNTRY_NAMES = JSON.parse(readFileSync(new URL('./shared/country-names.json', import.meta.url), 'utf8'));
+const AMBIGUOUS_HEADLINE_NAMES = new Set(['georgia', 'jordan', 'chad', 'turkey', 'guinea', 'congo', 'republic of the congo']);
+const QUALIFIED_HEADLINE_NAMES = {
+  GE: ['country of georgia', 'republic of georgia'],
+  JO: ['kingdom of jordan'],
+  TD: ['republic of chad'],
+  TR: ['republic of turkey'],
+  GN: ['guinea conakry'],
+};
 const RISK_KEY = 'risk:scores:sebuf:stale:v11';
 const RANKING_KEY = 'resilience:ranking:v29';
 const DIGEST_KEY = 'news:digest:v1:full:en';
@@ -36,7 +44,8 @@ export function composeCountrySnapshots({ countries, risk, ranking, digest, now 
   return countries.map(countryCode => {
     const cii = scores.get(countryCode);
     const res = resilience.get(countryCode);
-    const names = Object.entries(COUNTRY_NAMES).filter(([, code]) => code === countryCode).map(([name]) => ` ${words(name)} `);
+    const names = [...Object.entries(COUNTRY_NAMES).filter(([name, code]) => code === countryCode && !AMBIGUOUS_HEADLINE_NAMES.has(name)).map(([name]) => name),
+      ...(QUALIFIED_HEADLINE_NAMES[countryCode] ?? [])].map(name => ` ${words(name)} `);
     const seen = new Set();
     const topEvents = events.filter(item => {
       if (seen.has(item.link) || !names.some(name => ` ${words(item.title)} `.includes(name))) return false;
@@ -101,5 +110,7 @@ async function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch(error => { console.error('[country-history]', error.message); process.exitCode = 1; });
+  const startedAt = Date.now();
+  main().then(() => console.log(`=== Done (${Date.now() - startedAt}ms) ===`))
+    .catch(error => { console.error('[country-history]', error.message); process.exitCode = 1; });
 }

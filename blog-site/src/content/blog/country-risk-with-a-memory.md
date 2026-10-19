@@ -4,6 +4,7 @@ description: "How daily country snapshots help analysts compare CII, resilience 
 metaTitle: "Daily country history and risk trends | World Monitor"
 keywords: "country risk history, CII timeline, resilience history, daily country snapshots"
 audience: "Country-risk analysts and monitoring teams"
+heroImage: "/blog/images/blog/country-risk-monitoring-workflow-for-analysts.jpg"
 pubDate: "2026-10-19"
 ---
 
@@ -35,3 +36,20 @@ Both preserve source versions and observation gaps.
 
 The [daily country history methodology](/docs/methodology/country-history) explains the snapshot fields, selection rules and comparison limits.
 Full map playback and historical article bodies remain outside this feature.
+
+For a repeatable investigation, use the [country-risk monitoring workflow](/blog/posts/country-risk-monitoring-workflow-for-analysts/) to select a question before comparing dates.
+The archive groups dates in UTC and retains each score's source time. [RFC 3339](https://www.rfc-editor.org/rfc/rfc3339) explains why timestamps need an explicit relationship to UTC for interoperable comparisons.
+
+## Frequently Asked Questions
+
+**Does a 365-day plan include a full year of observations immediately?**
+
+No. The plan permits a 365-day window, but the archive returns only dates captured after activation. Missing days remain missing.
+
+**Can I compare scores across a formula change?**
+
+Compare changes within one formula version. The chart breaks the line at formula changes and observation gaps so they do not appear as measured daily changes.
+
+**Does a day without headlines mean that nothing happened?**
+
+No. It means no eligible headline was stored by this selection process. The archive is a dated record of selected observations, not a complete event census.
