@@ -94,8 +94,10 @@ export function showCheckoutFailureBanner(rawStatus: string): void {
       }
       let succeeded = false;
       try {
-        succeeded = await startCheckout(
-          attempt.productId,
+        const { parseDodoProductId } = await import('@/config/products');
+        const productId = parseDodoProductId(attempt.productId);
+        succeeded = productId !== null && await startCheckout(
+          productId,
           {
             referralCode: attempt.referralCode,
             discountCode: attempt.discountCode,

@@ -11,6 +11,7 @@
  * UI code calls startCheckout(productId) -- everything else is internal.
  */
 
+import type { DodoProductId } from '@/config/products';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { openBillingPortal, prereserveBillingPortalTab } from './billing';
 import { getCurrentClerkUser, getClerkToken, openSignIn } from './clerk';
@@ -215,6 +216,13 @@ function savePendingCheckoutIntent(intent: PendingCheckoutIntent): void {
   }
 }
 
+async function parseStoredDodoProductId(value: string): Promise<DodoProductId | null> {
+  // Dynamic on purpose. This module is on the eager dashboard graph, and
+  // tests/dashboard-eager-chunks.test.mjs keeps the products chunk off it.
+  const { parseDodoProductId } = await import('@/config/products');
+  return parseDodoProductId(value);
+}
+
 function clearPendingCheckoutIntent(): void {
   try {
     sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
@@ -369,9 +377,15 @@ export async function resumePendingCheckout(options?: {
     return false;
   }
 
-  console.log(`[checkout] resumePendingCheckout: starting checkout for ${intent.productId}`);
+  const productId = await parseStoredDodoProductId(intent.productId);
+  if (!productId) {
+    clearPendingCheckoutIntent();
+    return false;
+  }
+
+  console.log(`[checkout] resumePendingCheckout: starting checkout for ${productId}`);
   const success = await startCheckout(
-    intent.productId,
+    productId,
     {
       referralCode: intent.referralCode,
       discountCode: intent.discountCode,
@@ -433,7 +447,7 @@ async function isProBusinessCheckoutTarget(productId: string): Promise<boolean> 
  * Falls back to /pro page on any failure.
  */
 export async function startCheckout(
-  productId: string,
+  productId: DodoProductId,
   options?: {
     discountCode?: string;
     referralCode?: string;
