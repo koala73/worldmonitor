@@ -54,6 +54,16 @@ export function isClerkAuthEnabled(): boolean {
 let clerkInstance: ClerkInstance | null = null;
 /** True once Frontend API calls go through the desktop Rust relay (#9396). */
 let desktopRelayActive = false;
+const PRODUCTION_CLERK_FAPI_HOST = 'clerk.worldmonitor.app';
+
+/**
+ * Only production desktop builds sign in through the browser: the page and
+ * the sign-in ticket belong to the production Clerk instance. A development
+ * build (pk_test key) keeps the in-app card. Exported for testing.
+ */
+export function usesDesktopBrowserSignIn(desktopRelay: boolean, fapiHost: string): boolean {
+  return desktopRelay && fapiHost === PRODUCTION_CLERK_FAPI_HOST;
+}
 let loadPromise: Promise<void> | null = null;
 let loadScheduled = false;
 const pendingSubscribers: Array<() => void> = [];
@@ -522,7 +532,7 @@ function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
   // sign-up happen on www.worldmonitor.app in the default browser, with the
   // in-app card as the fallback.
   const openForRuntime = (): void => {
-    if (desktopRelayActive && PUBLISHABLE_KEY) {
+    if (PUBLISHABLE_KEY && usesDesktopBrowserSignIn(desktopRelayActive, clerkFapiHost(PUBLISHABLE_KEY))) {
       void startDesktopBrowserSignIn(openSurface).catch(onFail('desktop-browser-sign-in'));
       return;
     }

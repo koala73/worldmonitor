@@ -47,8 +47,9 @@ const FAILURE_MESSAGES: Record<string, string> = {
   upstream_unavailable: TRY_AGAIN_SOON,
   network_failed: TRY_AGAIN_SOON,
 };
-/** The browser route is unusable on this machine; the in-app card still works. */
-const USE_IN_APP = new Set(['browser_failed', 'listener_failed']);
+/** The browser route is unusable here; the in-app card still works. */
+const USE_IN_APP = new Set(['browser_failed', 'listener_failed', 'unsupported_host']);
+
 
 function reasonOf(error: unknown): string {
   if (typeof error === 'string') return error;
@@ -75,7 +76,9 @@ export async function runDesktopBrowserSignIn(deps: BrowserSignInDeps): Promise<
       return 'cancelled';
     }
     if (USE_IN_APP.has(reason)) {
-      deps.notify('Could not open your browser. Sign in here instead.');
+      deps.notify(reason === 'unsupported_host'
+        ? 'Sign in here instead.'
+        : 'Could not open your browser. Sign in here instead.');
       deps.openInApp();
       return 'fallback';
     }

@@ -202,3 +202,12 @@ describe('clerkRuntimeLoadOptions', () => {
     assert.deepEqual(clerkRuntimeLoadOptions(false), {});
   });
 });
+
+describe('usesDesktopBrowserSignIn', () => {
+  it('sends only production desktop builds through the browser', async () => {
+    const { usesDesktopBrowserSignIn } = await import('../src/services/clerk.ts');
+    assert.equal(usesDesktopBrowserSignIn(true, 'clerk.worldmonitor.app'), true);
+    assert.equal(usesDesktopBrowserSignIn(true, 'happy-otter-12.clerk.accounts.dev'), false, 'dev builds use the in-app card');
+    assert.equal(usesDesktopBrowserSignIn(false, 'clerk.worldmonitor.app'), false, 'the web never does');
+  });
+});

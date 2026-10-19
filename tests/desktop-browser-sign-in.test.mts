@@ -93,7 +93,7 @@ describe('runDesktopBrowserSignIn', () => {
   });
 
   it('offers the in-app card when the browser cannot be used', async () => {
-    for (const reason of ['browser_failed', 'listener_failed']) {
+    for (const reason of ['browser_failed', 'listener_failed', 'unsupported_host']) {
       const { deps: d, log } = deps({ start: async () => { throw reason; } });
       assert.equal(await runDesktopBrowserSignIn(d), 'fallback', reason);
       assert.ok(log.includes('openInApp'), reason);

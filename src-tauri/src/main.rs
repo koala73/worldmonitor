@@ -591,7 +591,7 @@ async fn start_desktop_browser_sign_in(
 ) -> Result<(), String> {
     require_relay_window(&webview)?;
     if !desktop_sign_in::is_ticket_host(&fapi_host) {
-        return Err("Unknown Clerk host".to_string());
+        return Err("unsupported_host".to_string());
     }
     let flag = sign_in.with(|flows| flows.begin(std::time::Instant::now()))?.map_err(str::to_string)?;
     let result = run_browser_sign_in(&fapi_host, &flag, &relay, &sign_in).await;
@@ -612,8 +612,9 @@ async fn run_browser_sign_in(
         .map_err(|_| "listener_failed".to_string())?;
     let port = listener.local_addr().map_err(|_| "listener_failed".to_string())?.port();
 
-    // Never format the URL into an error: it carries the flow's state.
-    opener::open(desktop_sign_in::sign_in_url(port, &secrets.state, &secrets.challenge))
+    // open_in_shell keeps the Linux LD_* scrubbing. Its error text includes
+    // the URL, which carries the flow's state, so it is discarded.
+    open_in_shell(&desktop_sign_in::sign_in_url(port, &secrets.state, &secrets.challenge))
         .map_err(|_| "browser_failed".to_string())?;
     sign_in.with(|flows| flows.opened(std::time::Instant::now()))?;
 
