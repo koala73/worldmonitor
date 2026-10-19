@@ -45,6 +45,7 @@ describe('SVG country click routing', () => {
     '<div class="layer-toggles"><label><input type="checkbox"></label></div>',
     '<div class="map-legend"><span>Legend</span></div>',
     '<div class="layer-help-popup"><span>Help</span></div>',
+    '<div class="layer-explanation-popup"><div class="layer-explanation-content"><span>Explanation</span></div></div>',
     '<div class="map-popup"><span>Details</span></div>',
     '<button><span>Action</span></button>',
     '<select><option>Region</option></select>',
