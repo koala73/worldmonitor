@@ -57,7 +57,7 @@ import { COUNTRY_BRIEF_UI_URI, COUNTRY_RISK_UI_URI, WORLD_BRIEF_UI_URI } from '.
 import { CII_HISTORY_OUTPUT_SCHEMA, ciiHistoryDays, readCountryCiiHistory } from '../_cii-history';
 import { CII_FORMULA_VERSION } from '../../../server/worldmonitor/intelligence/v1/_risk-config';
 import { ANALYSIS_TOOLS } from './analysis-tools';
-import { buildPublicTool, TOOL_REGISTRY } from './index';
+import { buildPublicTool, TOOL_ALIASES, TOOL_REGISTRY } from './index';
 import { COMPANY_INTEL_TOOL } from './company-intel-tools';
 import { tradeCountryCode } from './tariff-tools';
 
@@ -3618,9 +3618,10 @@ export const RPC_TOOLS: ToolDef[] = [
         inputSchema: { type: 'object' },
         outputSchema: { type: 'object' },
         annotations: { type: 'object' },
-        error: { type: 'string', enum: ['missing_tool_name', 'unknown_tool'], description: 'Present only on user-input failure.' },
+        error: { type: 'string', enum: ['missing_tool_name', 'unknown_tool', 'retired_alias'], description: 'Present only on user-input failure.' },
         hint: { type: 'string' },
         requested: { type: 'string' },
+        replacements: { type: 'array', items: { type: 'string' } },
         available: { type: 'array', items: { type: 'string' } },
       },
     },
@@ -3629,6 +3630,15 @@ export const RPC_TOOLS: ToolDef[] = [
       const name = params.tool_name;
       if (typeof name !== 'string' || name.length === 0) {
         return { error: 'missing_tool_name', hint: 'Pass tool_name as a non-empty string matching a tool from tools/list.' };
+      }
+      const alias = TOOL_ALIASES.describe(name);
+      if (alias) {
+        return {
+          error: 'retired_alias',
+          requested: name,
+          replacements: [...alias.replacements],
+          hint: alias.hint,
+        };
       }
       const tool = TOOL_REGISTRY.find((t) => t.name === name);
       if (!tool) {
@@ -3645,10 +3655,11 @@ export const RPC_TOOLS: ToolDef[] = [
 ];
 
 // Retired tools stay callable under their old name but are absent from
-// tools/list, describe_tool, the server card and the docs (dispatch resolves
-// them through findCallableTool). generate_forecasts read the same published
-// list as get_forecast_predictions (both reach forecast:predictions:v2) while
-// its name claimed it started a forecast run; retired in MCP server 1.37.0.
+// tools/list, describe_tool, the server card and the docs. dispatch resolves
+// generate_forecasts through TOOL_ALIASES; aliases are not ToolDef copies.
+// generate_forecasts read the same published list as get_forecast_predictions
+// (both reach forecast:predictions:v2) while its name claimed it started a
+// forecast run; retired in MCP server 1.37.0.
 export const RETIRED_RPC_TOOLS: ToolDef[] = [
   {
     name: 'generate_forecasts',

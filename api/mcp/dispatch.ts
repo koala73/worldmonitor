@@ -40,10 +40,10 @@ import {
   type StartUpgradeResult,
 } from './checkout';
 import { filterConflictPanelEvents, isOrdinaryMarketDefault, presentConflictEvents, presentDefaultMarketData, projectConflictSourceObservation } from './registry/cache-tools';
-import { findCallableTool, isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_REGISTRY } from './registry/index';
+import { isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_ALIASES, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
-import { buildStructuredContent } from './structured-content';
+import { applyDeprecationNotice, buildStructuredContent } from './structured-content';
 import {
   emitTelemetry,
   principalIdForLog,
@@ -451,8 +451,8 @@ export async function dispatchToolsCall(
   if (!p || typeof p.name !== 'string') {
     return rpcError(id, -32602, 'Invalid params: missing tool name', corsHeaders);
   }
-  const tool = findCallableTool(p.name);
-  if (!tool) {
+  const resolved = TOOL_ALIASES.resolve(p.name, p.arguments);
+  if (resolved.kind === 'unknown') {
     if (deferredBurst) {
       const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
       if (limited) return limited;
@@ -461,6 +461,19 @@ export async function dispatchToolsCall(
     // handler.ts method echo (see a2a.ts Greptile #4824 precedent).
     return rpcError(id, -32602, `Unknown tool: ${p.name.slice(0, 100)}`, corsHeaders);
   }
+  if (resolved.kind === 'invalid') {
+    if (deferredBurst) {
+      const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
+      if (limited) return limited;
+    }
+    return rpcError(id, -32602, 'Invalid params', corsHeaders, { violations: resolved.violations });
+  }
+  const tool = resolved.tool;
+  const notice = resolved.kind === 'alias' ? resolved.notice : null;
+  const aliasArguments = resolved.kind === 'alias' ? resolved.arguments : undefined;
+  // The log keeps the name the client sent so leftover alias traffic stays
+  // visible. Weight, entitlement, and execution use `tool`.
+  const telemetryTool = resolved.kind === 'alias' ? p.name : tool.name;
 
   // U7 fail-closed guard (defence in depth). A `free` principal is minted in
   // exactly one place — the handler's free-tier branch, after matching this
@@ -922,7 +935,7 @@ export async function dispatchToolsCall(
       if (panelRead?.panel === 'forecasts') execution.panelScope = 'forecasts';
       if (perToolForecastRead) execution.perToolForecastRead = true;
       if (tool._execute) result = await tool._execute(
-        dedicatedPanel && (tool.name === 'get_country_brief' || tool.name === 'get_country_risk') ? sourceArguments : forecastReaderArguments,
+        aliasArguments ?? (dedicatedPanel && (tool.name === 'get_country_brief' || tool.name === 'get_country_risk') ? sourceArguments : forecastReaderArguments),
         execution.downstreamOrigin,
         context,
         execution,
@@ -931,7 +944,7 @@ export async function dispatchToolsCall(
         const sourceTool = tool.name === 'get_conflict_events' && dedicatedPanel
           ? { ...tool, _postFilter: filterConflictPanelEvents }
           : tool;
-        result = await executeTool(sourceTool, forecastReader ? forecastReaderArguments : execution.panelScope === 'forecasts' ? Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'summary')) : sourceArguments, undefined, execution);
+        result = await executeTool(sourceTool, aliasArguments ?? (forecastReader ? forecastReaderArguments : execution.panelScope === 'forecasts' ? Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'summary')) : sourceArguments), undefined, execution);
       }
     }
     if (panelRead && panelRead.cached === undefined) {
@@ -1030,6 +1043,25 @@ export async function dispatchToolsCall(
         ? `{"projection":${projectedText},"transportCoverage":${coverage}}`
         : `${text.slice(0, -1)},"transportCoverage":${coverage}}`;
     }
+    // Every tool advertises an `outputSchema`, so a strict client rejects a
+    // result without `structuredContent` before the model sees it (#8328). A
+    // soft-fail envelope is already an object in its own advertised branch. A
+    // payload reshaped by the caller — a `jmespath` projection, or a cache
+    // tool's `summary: true`, which turns lists into `{count, sample}` — is no
+    // longer the documented shape and is carried under `projection`. The
+    // notice is applied before the byte measurement so it counts toward the
+    // budget.
+    const summaryUsed = tool._execute === undefined && argBool(p.arguments?.summary);
+    let structuredContent = buildStructuredContent(projectedValue, {
+      reshaped: failed === undefined && (jmespathUsed || summaryUsed),
+      rider,
+    });
+    if (fitCoverage !== undefined) structuredContent = { ...structuredContent, transportCoverage: fitCoverage };
+    if (notice) {
+      const applied = applyDeprecationNotice(structuredContent, text, notice);
+      structuredContent = applied.structuredContent;
+      text = applied.text;
+    }
     const latencyMs = Date.now() - tStart;
     // Budget gate: always compute byte length for the budget check. This
     // replaces the previous telemetry-only perf gate for the post-JMESPath
@@ -1058,7 +1090,7 @@ export async function dispatchToolsCall(
         bytesPre = textBytes;
       }
       emitTelemetry('mcp.toolcall', {
-        tool: tool.name,
+        tool: telemetryTool,
         auth_kind: context.kind,
         user_id: principalIdForLog(context),
         latency_ms: latencyMs,
@@ -1083,23 +1115,14 @@ export async function dispatchToolsCall(
         budget_bytes: outputBudget,
         actual_bytes: textBytes,
         hint,
+        // The budget envelope replaces the body. The notice still has to sit
+        // on the object a strict client validates.
+        ...(notice ? { deprecation: notice } : {}),
       };
       return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify(envelope) }], structuredContent: envelope, ...(panelUsage ? { _meta: { 'worldmonitor/usage': panelUsage } } : {}) }, corsHeaders);
     }
     if (forecastSnapshotToSave && panelRead) await panelRead.save(forecastSnapshotToSave);
 
-    // Every tool advertises an `outputSchema`, so a strict client rejects a
-    // result without `structuredContent` before the model sees it (#8328). A
-    // soft-fail envelope is already an object in its own advertised branch. A
-    // payload reshaped by the caller — a `jmespath` projection, or a cache
-    // tool's `summary: true`, which turns lists into `{count, sample}` — is no
-    // longer the documented shape and is carried under `projection`.
-    const summaryUsed = tool._execute === undefined && argBool(p.arguments?.summary);
-    const builtContent = buildStructuredContent(projectedValue, {
-      reshaped: failed === undefined && (jmespathUsed || summaryUsed),
-      rider,
-    });
-    const structuredContent = fitCoverage === undefined ? builtContent : { ...builtContent, transportCoverage: fitCoverage };
     return rpcOk(id, { content: [{ type: 'text', text }], structuredContent, ...(panelUsage ? { _meta: { 'worldmonitor/usage': panelUsage } } : {}) }, corsHeaders);
   } catch (err: unknown) {
     // `latency_ms` is time-in-tool (from tStart, captured after the quota
@@ -1155,7 +1178,7 @@ export async function dispatchToolsCall(
       ...(isClient4xx || isExpectedDenial || isExpectedSourceOutage ? { level: 'warning' as const } : {}),
     });
     emitTelemetry('mcp.toolcall', {
-      tool: tool.name,
+      tool: telemetryTool,
       auth_kind: context.kind,
       user_id: principalIdForLog(context),
       latency_ms: latencyMs,

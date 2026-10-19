@@ -1,3 +1,4 @@
+import { loadToolAliases } from '../alias';
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../constants';
 import { JMESPATH_SCHEMA } from '../jmespath';
 import { advertisedOutputSchema } from '../structured-content';
@@ -22,28 +23,9 @@ import { TARIFF_TOOLS } from './tariff-tools';
 // last so extracting it from rpc-tools.ts left every other tool's position
 // unchanged. SOURCE_TOOLS is appended after it for the same reason.
 export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS, ...NEWS_DASHBOARD_TOOLS, ...MACRO_TOOLS, ...STOCK_TOOLS, ...COST_SHOCK_TOOLS, ...PUBLIC_DOMAIN_TOOLS, ...COUNTRY_VIEW_TOOLS, ...TARIFF_TOOLS];
-// Retired tools: callable under their old name so hard-coded clients keep
-// working, but never listed. Every published surface (tools/list,
-// describe_tool, the server card, docs, A2A) reads TOOL_REGISTRY only; the
-// tools/call dispatcher resolves names through findCallableTool.
-// A renamed tool keeps its old name as an alias of the renamed definition.
-const RENAMED_TOOLS: Record<string, string> = {
-  // Renamed in MCP server 1.39.0: no tariff data since #9301.
-  get_tariff_trends: 'get_price_and_debt_indicators',
-};
-export const RETIRED_TOOLS: ToolDef[] = [
-  ...RETIRED_RPC_TOOLS,
-  ...Object.entries(RENAMED_TOOLS).map(([oldName, current]) => {
-    const tool = TOOL_REGISTRY.find((t) => t.name === current);
-    if (!tool) throw new Error(`Renamed tool ${oldName} points at unregistered ${current}`);
-    return { ...tool, name: oldName };
-  }),
-];
-
-export function findCallableTool(name: string): ToolDef | undefined {
-  return TOOL_REGISTRY.find((tool) => tool.name === name)
-    ?? RETIRED_TOOLS.find((tool) => tool.name === name);
-}
+// Own-definition retirements stay callable and unlisted. A renamed call is an
+// alias (api/mcp/alias.ts), not a second ToolDef.
+export const RETIRED_TOOLS: ToolDef[] = [...RETIRED_RPC_TOOLS];
 
 export const FREE_TIER_TOOL_NAMES: ReadonlySet<string> = new Set(
   TOOL_REGISTRY.filter((tool) => tool._freeTier === true).map((tool) => tool.name),
@@ -91,6 +73,8 @@ export function toolAccess(tool: ToolDef): McpAccessClass {
   if (isQuotaExemptMetadataTool(tool)) return 'free-account';
   return tool._execute === undefined ? 'free-account' : 'subscription';
 }
+
+export const TOOL_ALIASES = loadToolAliases(TOOL_REGISTRY, RETIRED_TOOLS, toolAccess);
 
 // Public shape for tools/list — strips internal _-prefixed fields, adds MCP
 // annotations, and injects the universal `summary` flag (issue #3678) into
@@ -186,7 +170,9 @@ export function buildPublicTool(
     // Advertised as `anyOf [documented shape, projection / soft-envelope
     // shapes]` so the `structuredContent` every call returns validates in a
     // strict client whatever the response kind (api/mcp/structured-content.ts).
-    outputSchema: advertisedOutputSchema(structuredClone(tool.outputSchema)),
+    outputSchema: advertisedOutputSchema(structuredClone(tool.outputSchema), {
+      permitDeprecation: TOOL_ALIASES.targetNames().has(tool.name),
+    }),
     // Per-tool annotations declared on each registry entry (v1.7.0).
     // Deep-cloned so a mutating client can't poison the registry literal —
     // matches the inputSchema.properties + outputSchema treatment above.
