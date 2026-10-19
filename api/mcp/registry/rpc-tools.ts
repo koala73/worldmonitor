@@ -1547,7 +1547,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // Two downstream fetches (brief + news digest for grounding).
     _weight: 3,
     _outputBudgetBytes: 65536,
-    description: 'Generate a text-only AI assessment of one country: an LLM-written geopolitical and economic brief plus sources, groundingStories and digestCoverage. The brief is grounded on the live English news digest; each grounding story carries corroborationCount, corroboration.state (single-publisher, tier4-only, corroborated, unknown; coverage, not accuracy), mentionCount and storyPhase. When the digest is serving a retained (stale) snapshot the grounding is dropped and the brief is generated ungrounded unless allow_stale=true; digestCoverage reports which happened. Output is narrative prose that differs between calls: no numeric scores, no per-section datasets and no interactive view. Requires a paid plan; two downstream fetches (digest and brief), weight 3 on API plans, 5-25 s. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one. Read-only.',
+    description: 'Return a text-only AI assessment of one country with sources, groundingStories and digestCoverage. The default shares the server-accepted assessment, citations and original generation time with the website. Explicit framework or allow_stale requests can use personalized digest context. groundingStories and digestCoverage describe the separately read English digest, not the identity of the accepted assessment. Each story carries corroborationCount, corroboration.state (single-publisher, tier4-only, corroborated, unknown; coverage, not accuracy), mentionCount and storyPhase. Stale local digest context is withheld unless allow_stale=true. No per-section datasets or interactive view. Requires a paid plan; two downstream fetches (digest and brief), weight 3 on API plans, 5-25 s. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one but does not force AI generation. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1734,9 +1734,10 @@ export const RPC_TOOLS: ToolDef[] = [
       // compatibility path promotes scalar JSON body fields for this GET handler.
       const briefPayload: { country_code: string; framework: string; context?: string } = {
         country_code: countryCode,
-        framework: String(params.framework ?? ''),
+        framework: String(params.framework ?? '').trim(),
       };
-      if (contextSnapshot) briefPayload.context = contextSnapshot;
+      const personalized = !!briefPayload.framework || params.allow_stale === true;
+      if (personalized && contextSnapshot) briefPayload.context = contextSnapshot;
       const briefBody = JSON.stringify(briefPayload);
       const briefAuth = await buildAuthHeaders(context, 'POST', briefUrl, briefBody);
       const res = await fetchMcpDownstream(briefUrl, {
@@ -1773,11 +1774,9 @@ export const RPC_TOOLS: ToolDef[] = [
       }
       const result = await res.json() as Record<string, unknown>;
       const resultSources = collectMcpBriefSources(Array.isArray(result.sources) ? result.sources as DigestItemForBrief[] : [], 6);
-      // groundingStories stays [] when the 2 s digest fetch failed above, which
-      // is the honest signal: the brief was written without that grounding.
       return {
         ...result,
-        sources: (resultSources.length > 0 ? resultSources : sources).map(source => ({
+        sources: (resultSources.length > 0 || !personalized ? resultSources : sources).map(source => ({
           ...source,
           sourceProvenance: briefSourceProvenance(source.source),
         })),

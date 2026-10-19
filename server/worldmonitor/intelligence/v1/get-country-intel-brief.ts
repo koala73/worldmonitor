@@ -9,7 +9,7 @@ import { ValidationError } from '../../../../src/generated/server/worldmonitor/i
 
 import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
 import { countryDisplayName } from '../../../../shared/country-mention.js';
-import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson, cachedFetchJsonWithMeta, getCachedJson, setCachedJsonIfAbsent } from '../../../_shared/redis';
 import { displayNameForIso2 } from '../../../_shared/country-normalize';
 import { UPSTREAM_TIMEOUT_MS, TIER1_COUNTRIES, sha256Hex } from './_shared';
 import { callLlm } from '../../../_shared/llm';
@@ -375,7 +375,8 @@ export async function getCountryIntelBrief(
   }
   empty.sources = sources;
 
-  const frameworkRaw = isPremium && typeof req.framework === 'string' ? req.framework.slice(0, 2000) : '';
+  const frameworkRaw = isPremium && typeof req.framework === 'string' ? req.framework.trim().slice(0, 2000) : '';
+  const sharedDefault = isPremium && !contextSnapshot && !frameworkRaw;
 
   // Read energy data early so both source years can invalidate cached briefs.
   // Prefer the spine for the OWID mix and use the direct mix key on a miss.
@@ -408,7 +409,7 @@ export async function getCountryIntelBrief(
   const energyImportYear = importDependency.available ? String(importDependency.year) : '';
 
   let cacheContext = '';
-  if (isPremium) {
+  if (isPremium && !sharedDefault) {
     cacheContext = lang === 'en' && !frameworkRaw
       ? JSON.stringify(sources.filter(source => isBriefRelevantTitle(source.title)))
       : JSON.stringify({ contextSnapshot, sources });
@@ -472,12 +473,12 @@ Rules:
 
   let result: GetCountryIntelBriefResponse | null = null;
   try {
-    result = await cachedFetchJson<GetCountryIntelBriefResponse>(cacheKey, INTEL_CACHE_TTL, async () => {
+    const fetchBrief = async (): Promise<GetCountryIntelBriefResponse | null> => {
       // Grounding is resolved inside the fetcher so shared-path callers pay
       // the digest read only on a cache miss (once per country+lang per TTL).
       let promptContext = contextSnapshot;
       let entrySources = sources;
-      if (!isPremium) {
+      if (!isPremium || sharedDefault) {
         const shared = await fetchSharedCountryContext(req.countryCode.toUpperCase());
         promptContext = shared.contextSnapshot;
         entrySources = shared.sources;
@@ -615,7 +616,7 @@ Rules:
         console.warn(`[country-intel] GROUNDING MEASURE: brief for ${req.countryCode} names no source anchor`);
       }
 
-      return {
+      const candidate: GetCountryIntelBriefResponse = {
         countryCode: req.countryCode,
         countryName,
         brief: citationCheck.text,
@@ -624,7 +625,16 @@ Rules:
         sources: entrySources,
         evidence: rendered?.evidence ?? [],
       };
-    });
+      if (!sharedDefault) return candidate;
+      if (await setCachedJsonIfAbsent(cacheKey, candidate, INTEL_CACHE_TTL)) return candidate;
+      return await getCachedJson(cacheKey) as GetCountryIntelBriefResponse | null;
+    };
+    result = sharedDefault
+      ? (await cachedFetchJsonWithMeta(cacheKey, INTEL_CACHE_TTL, fetchBrief, 120, {
+          cachePositiveResult: false,
+          cacheFailures: false,
+        })).data
+      : await cachedFetchJson(cacheKey, INTEL_CACHE_TTL, fetchBrief);
   } catch {
     return unserved();
   }
@@ -635,7 +645,7 @@ Rules:
     markUnservedLlmResponse(ctx.request);
     return { ...empty, countryName };
   }
-  if (!isPremium) {
+  if (!isPremium || sharedDefault) {
     // Shared entries carry server-derived sources; never backfill them with
     // this caller's parsed context (the brief text didn't see it).
     return { ...result, sources: Array.isArray(result.sources) ? result.sources : [] };

@@ -687,9 +687,7 @@ export class CountryIntelManager implements AppModule {
           briefResult = await this.fetchCountryIntelBrief(code, contextSnapshot, countryFw?.systemPromptAppend ?? '');
           if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
           briefText = briefResult.brief;
-          if (briefResult.sources.length > 0) {
-            briefSources = briefResult.sources;
-          }
+          briefSources = briefResult.sources;
         } catch { /* server unreachable */ }
 
         if (briefText) {
@@ -869,12 +867,12 @@ export class CountryIntelManager implements AppModule {
     const lang = getCurrentLanguage();
     const params = new URLSearchParams({ country_code: code, lang });
     const trimmed = contextSnapshot.trim();
-    if (trimmed.length > 0) {
-      // 3800 chars ≈ ~950 tokens; raised from 2200 to include infra context. Monitor p95 LLM latency if timeouts increase.
+    const trimmedFramework = framework.trim().slice(0, 2000);
+    if (trimmedFramework && trimmed.length > 0) {
       params.set('context', trimmed.slice(0, 3800));
     }
-    if (framework) {
-      params.set('framework', framework.slice(0, 2000));
+    if (trimmedFramework) {
+      params.set('framework', trimmedFramework);
     }
 
     const resp = await premiumFetch(toApiUrl(`/api/intelligence/v1/get-country-intel-brief?${params.toString()}`), {
