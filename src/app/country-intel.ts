@@ -633,7 +633,7 @@ export class CountryIntelManager implements AppModule {
         }
 
         const groundingNews = filteredNews.slice(0, 15);
-        let briefSources = collectBriefSources(groundingNews, 6);
+        const briefSources = collectBriefSources(groundingNews, 6);
         const headlines = groundingNews.map((n) => n.title);
         if (headlines.length) context.headlines = headlines;
         if (briefSources.length) context.briefSources = briefSources;
@@ -687,7 +687,6 @@ export class CountryIntelManager implements AppModule {
           briefResult = await this.fetchCountryIntelBrief(code, contextSnapshot, countryFw?.systemPromptAppend ?? '');
           if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
           briefText = briefResult.brief;
-          briefSources = briefResult.sources;
         } catch { /* server unreachable */ }
 
         if (briefText) {
@@ -695,7 +694,7 @@ export class CountryIntelManager implements AppModule {
             brief: briefText,
             country,
             code,
-            sources: briefSources,
+            sources: briefResult?.sources ?? [],
             evidence: briefResult?.evidence,
             generatedAt: briefResult?.generatedAt,
             cached: briefResult?.cached,
@@ -867,12 +866,12 @@ export class CountryIntelManager implements AppModule {
     const lang = getCurrentLanguage();
     const params = new URLSearchParams({ country_code: code, lang });
     const trimmed = contextSnapshot.trim();
-    const trimmedFramework = framework.trim().slice(0, 2000);
-    if (trimmedFramework && trimmed.length > 0) {
+    const effectiveFramework = framework.slice(0, 2000);
+    if (effectiveFramework && trimmed.length > 0) {
       params.set('context', trimmed.slice(0, 3800));
     }
-    if (trimmedFramework) {
-      params.set('framework', trimmedFramework);
+    if (effectiveFramework) {
+      params.set('framework', effectiveFramework);
     }
 
     const resp = await premiumFetch(toApiUrl(`/api/intelligence/v1/get-country-intel-brief?${params.toString()}`), {

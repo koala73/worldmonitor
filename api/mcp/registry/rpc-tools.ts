@@ -1734,7 +1734,7 @@ export const RPC_TOOLS: ToolDef[] = [
       // compatibility path promotes scalar JSON body fields for this GET handler.
       const briefPayload: { country_code: string; framework: string; context?: string } = {
         country_code: countryCode,
-        framework: String(params.framework ?? '').trim(),
+        framework: String(params.framework ?? ''),
       };
       const personalized = !!briefPayload.framework || params.allow_stale === true;
       if (personalized && contextSnapshot) briefPayload.context = contextSnapshot;

@@ -8,6 +8,16 @@ const coverageMocks = vi.hoisted(() => ({
   createPanel: vi.fn(),
   premiumFetch: vi.fn(),
   activeFramework: vi.fn(),
+  summarize: vi.fn(),
+  localSummaryAvailable: false,
+}));
+
+vi.mock('@/services/ml-worker', () => ({
+  mlWorker: {
+    get isAvailable() { return coverageMocks.localSummaryAvailable; },
+    isModelLoaded: (model: string) => coverageMocks.localSummaryAvailable && model.startsWith('summarization'),
+    summarize: (...args: unknown[]) => coverageMocks.summarize(...args),
+  },
 }));
 
 vi.mock('@/services/premium-fetch', () => ({
@@ -212,6 +222,8 @@ describe('CountryIntelManager lazy coverage headlines', () => {
     coverageMocks.premiumFetch.mockReset();
     coverageMocks.premiumFetch.mockRejectedValue(new Error('offline'));
     coverageMocks.activeFramework.mockReset().mockReturnValue(null);
+    coverageMocks.localSummaryAvailable = false;
+    coverageMocks.summarize.mockReset();
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
   });
 
@@ -252,6 +264,23 @@ describe('CountryIntelManager lazy coverage headlines', () => {
     const url = new URL(String(briefCall[0]), 'https://worldmonitor.app');
     expect(url.searchParams.get('framework')).toBe('Focus on energy.');
     expect(url.searchParams.get('context')).toContain('United States energy policy');
+  });
+
+  it.each([200, 503])('keeps browser source links on a local fallback after HTTP %s without an accepted brief', async (status) => {
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    coverageMocks.localSummaryAvailable = true;
+    coverageMocks.summarize.mockResolvedValue(['Local summary of the two United States headlines.']);
+    coverageMocks.premiumFetch.mockImplementation(async (input: unknown) => {
+      if (!String(input).includes('/get-country-intel-brief?')) throw new Error('offline');
+      return new Response(JSON.stringify({ brief: '', sources: [] }), { status });
+    });
+    const headlines = [newsItem('United States energy policy'), newsItem('United States trade policy')];
+    const harness = createBriefHarness(headlines, { realBriefFetch: true });
+    await harness.open();
+    await vi.waitFor(() => expect(harness.briefUpdates).toContainEqual(expect.objectContaining({
+      brief: 'Local summary of the two United States headlines.', fallback: true,
+      sources: headlines.map(item => expect.objectContaining({ url: item.link })),
+    })));
   });
 
   it('keeps coverage alive on close but aborts it when another brief opens', async () => {

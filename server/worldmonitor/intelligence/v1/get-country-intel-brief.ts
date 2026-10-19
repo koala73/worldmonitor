@@ -375,7 +375,7 @@ export async function getCountryIntelBrief(
   }
   empty.sources = sources;
 
-  const frameworkRaw = isPremium && typeof req.framework === 'string' ? req.framework.trim().slice(0, 2000) : '';
+  const frameworkRaw = isPremium && typeof req.framework === 'string' ? req.framework.slice(0, 2000) : '';
   const sharedDefault = isPremium && !contextSnapshot && !frameworkRaw;
 
   // Read energy data early so both source years can invalidate cached briefs.
