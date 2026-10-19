@@ -7,6 +7,8 @@ export declare const CII_COASTAL_WATERS_KM: number;
 export declare const CII_BORDER_COUNTRIES: readonly string[];
 /** Tier-1 row for an ISO2-tagged event: itself, its attributed row (PS -> IL), or null. */
 export declare function ciiCountryForIso2(iso2: unknown): string | null;
+/** True on land in the border file (Tier-1, or non-Tier-1 land near a Tier-1 country). */
+export declare function ciiIsLand(lat: number, lon: number): boolean;
 /**
  * ISO2 of the Tier-1 country at (lat, lon), or null when the point is on
  * non-Tier-1 land, farther than 12 nautical miles offshore, or not a number.

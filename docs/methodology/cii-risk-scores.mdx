@@ -191,7 +191,10 @@ Component details that are easy to miss:
   Gaza and the West Bank toward the Israel row; France is metropolitan France
   and Corsica. Strike events that carry a `countryCode` score to that country
   (so a tanker hit in open water still counts), and an offshore earthquake
-  beyond coastal waters takes the country USGS names in its place. Accuracy is
+  beyond coastal waters takes the country USGS names after the last comma of
+  its place ("151 km E of Namie, Japan") when that text is exactly a country
+  name, never an ocean or region; a quake on non-Tier-1 land counts for no
+  Tier-1 country, whatever town USGS names. Accuracy is
   the 1:50m map's: within about 2 km of a land border, twin cities such as El
   Paso and Ciudad Juárez can land on the wrong side.
 - **Conflict OREF boost**: for Israel only, active OREF rocket-alert pressure

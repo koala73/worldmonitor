@@ -144,6 +144,16 @@ function ringDistanceSq(ring, lon, lat, kx, ky) {
 }
 
 /**
+ * True when (lat, lon) is on land in the border file: any Tier-1 country, or
+ * non-Tier-1 land near one. Land far from every Tier-1 country is not in the
+ * file and reads as false.
+ */
+export function ciiIsLand(lat, lon) {
+  if (typeof lat !== 'number' || typeof lon !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  return ALL_POLYGONS.some((polygon) => inPolygon(polygon, lon, lat));
+}
+
+/**
  * ISO2 of the Tier-1 country at (lat, lon), or null when the point is on
  * non-Tier-1 land, farther than 12 nautical miles offshore, or not a number.
  */

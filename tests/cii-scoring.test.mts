@@ -863,6 +863,31 @@ describe('CII signal wiring', () => {
     for (const s of remoteScores) assert.equal(s.combinedScore, scoreFor(baseScores, s.region)!.combinedScore, s.region);
   });
 
+  it('never reads an ocean or region name, or a quake on non-Tier-1 land, as a Tier-1 country', () => {
+    // Review on #9421: 'Southern Indian Ocean' matched India's 'indian'; a comma-free
+    // 'Off coast of Central America' matched 'america'; and a Tajik epicentre that
+    // USGS describes from the nearest Afghan town is on non-Tier-1 land, which
+    // counts for no Tier-1 country.
+    const nowMs = Date.UTC(2026, 9, 19);
+    const quake = (place: string, latitude: number, longitude: number) => ({
+      magnitude: 7.5, occurredAt: nowMs - 3_600_000, place, location: { latitude, longitude },
+    });
+    const baseScores = computeCIIScores([], emptyAux(), { nowMs });
+    for (const eq of [
+      quake('Southern Indian Ocean', -40, 70),
+      quake('Off coast of Central America', 10, -95),
+      quake('412 km S of Port Blair, Indian Ocean', 8, 92.5),
+      quake('61 km NE of Jurm, Afghanistan', 37.49, 71.55),
+    ]) {
+      const aux = emptyAux();
+      aux.earthquakes = [eq];
+      const scores = computeCIIScores([], aux, { nowMs });
+      for (const s of scores) {
+        assert.equal(s.combinedScore, scoreFor(baseScores, s.region)!.combinedScore, `${eq.place}: ${s.region}`);
+      }
+    }
+  });
+
   it('earthquake lookback honors injected CII scorer clock', () => {
     const nowMs = Date.UTC(2020, 0, 10);
     const base = scoreFor(computeCIIScores([], emptyAux(), { nowMs }), 'US')!;

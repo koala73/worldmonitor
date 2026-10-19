@@ -12,7 +12,7 @@ import iso3ToIso2Json from '../../../../shared/iso3-to-iso2.json';
 import { getCachedJson, readCachedJson, setCachedJson, cachedFetchJsonWithMeta, runRedisPipeline } from '../../../_shared/redis';
 import { CLIMATE_ANOMALIES_KEY, CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
 import { CII_DAY_MS, parseCiiDailyPoints } from '../../../../shared/cii-daily-history';
-import { ciiCountryAt, ciiCountryForIso2 } from '../../../../scripts/shared/cii-country-borders.mjs';
+import { ciiCountryAt, ciiCountryForIso2, ciiIsLand } from '../../../../scripts/shared/cii-country-borders.mjs';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
 import {
@@ -188,6 +188,31 @@ export function climateCountriesForAnomaly(anomaly: any): string[] {
 // military seeder places flights and vessels exactly as the scorer does.
 // Points on non-Tier-1 land, or more than 12 nautical miles offshore, are null.
 export const geoToCountry: (lat: number, lon: number) => string | null = ciiCountryAt;
+
+// An earthquake scores where its epicentre is. Offshore beyond coastal waters,
+// where bounding boxes used to reach, it takes the country USGS names after the
+// last comma ("151 km E of Namie, Japan") when that text is exactly a country
+// name: never an ocean or region ("Southern Indian Ocean" is not India), and
+// never for an epicentre on non-Tier-1 land, which counts for no Tier-1 country
+// even when USGS describes it from a town across the border.
+function earthquakeCountry(eq: any): string | null {
+  const lat = safeNum(eq?.location?.latitude);
+  const lon = safeNum(eq?.location?.longitude);
+  const code = geoToCountry(lat, lon);
+  if (code || ciiIsLand(lat, lon)) return code;
+  const place = String(eq?.place || '');
+  const comma = place.lastIndexOf(',');
+  return comma < 0 ? null : countryNamedExactly(place.slice(comma + 1));
+}
+
+function countryNamedExactly(text: string): string | null {
+  const normalized = normalizeForCountryMatch(text);
+  if (!normalized) return null;
+  for (const [code, keywords] of Object.entries(COUNTRY_KEYWORDS_NORMALIZED)) {
+    if (keywords.includes(normalized)) return code;
+  }
+  return null;
+}
 
 // A strike event that carries its country (the Middle East strike feed sets
 // countryCode from its gazetteer) scores there, including at sea where no
@@ -1009,10 +1034,7 @@ export function computeCIIScores(
     const mag = safeNonNegativeNum(eq.magnitude);
     if (mag < 5.5) continue;
     if (safeNum(eq.occurredAt) < eqCutoff) continue;
-    // Offshore beyond coastal waters, take the country USGS names after the
-    // last comma ("151 km E of Namie, Japan"); bounding boxes used to reach these.
-    const code = geoToCountry(safeNum(eq.location?.latitude), safeNum(eq.location?.longitude))
-      || normalizeCountryName(String(eq.place || '').split(',').pop() || '');
+    const code = earthquakeCountry(eq);
     if (!code || !data[code]) continue;
     if (mag >= 7.5) data[code].earthquakeSevereCount++;
     else if (mag >= 6.5) data[code].earthquakeMajorCount++;
