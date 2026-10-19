@@ -7,6 +7,8 @@ export interface OilWindowMetric {
   current: OilWindowAverage;
   prior: OilWindowAverage;
   yearAgo: OilWindowAverage;
+  /** The current-window average yoyPct compares with yearAgo (mirror metrics: on basis.yoyReporters). */
+  currentForYoy: OilWindowAverage;
   changePct: number | null;
   yoyPct: number | null;
   complete: boolean;

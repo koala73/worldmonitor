@@ -23,7 +23,7 @@
 // not cover is null, never zero, and every source carries its newest observed
 // month and a status (ok, stale, not_reported, unavailable).
 
-import { loadEnvFile, CHROME_UA, runSeed, withRetry, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, withRetry, resolveProxyForConnect, httpsProxyFetchRaw, readSeedSnapshot } from './_seed-utils.mjs';
 import { DAY_MIN } from './_content-age-helpers.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { fetchYearCsv, parseObsValue } from './seed-jodi-oil.mjs';
@@ -113,6 +113,14 @@ const SOURCE_INFO = {
   },
 };
 
+/** A finite number, or null for null, undefined, blank or non-numeric input. */
+function presentNumber(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 // ── EIA STEO ────────────────────────────────────────────────────────────────
 
 /**
@@ -130,8 +138,9 @@ export function buildEiaSeries(rows, nowMs) {
   for (const row of rows ?? []) {
     const iso2 = bySeries.get(row?.seriesId);
     const month = typeof row?.period === 'string' ? row.period.slice(0, 7) : null;
-    const mbd = Number(row?.value);
-    if (!iso2 || !month || month > end || !Number.isFinite(mbd) || mbd < 0) continue;
+    // Number(null) and Number('') are 0: an absent value must stay absent.
+    const mbd = presentNumber(row?.value);
+    if (!iso2 || !month || month > end || mbd === null || mbd < 0) continue;
     if (!out.has(iso2)) out.set(iso2, new Map());
     out.get(iso2).set(month, { kbd: Math.round(mbd * 1000), provisional: month >= provisionalFrom });
   }
@@ -221,23 +230,31 @@ function filterJodiCsv(text, wanted) {
   return rows;
 }
 
-async function fetchJodiRows(nowMs) {
+/**
+ * Every year file the 24-month window needs. A year that is not published yet
+ * (the current year in early January) or fails is skipped: the months it would
+ * hold show up as a stale lastObserved, not as lost history for prior years.
+ * Throws only when no file loads at all.
+ */
+export async function fetchJodiRows(nowMs, { fetchYear = fetchYearCsv } = {}) {
   const wanted = new Set(OIL_TRADE_COUNTRIES.map((c) => c.iso2));
   const year = new Date(nowMs).getUTCFullYear();
   const years = [year, year - 1, year - 2];
   const rows = [];
+  let loaded = 0;
   // Sequential: each file is 5-26 MB and only the filtered rows are kept.
   for (const kind of ['primary', 'secondary']) {
     for (const y of years) {
-      const result = await fetchYearCsv(kind, y);
+      const result = await fetchYear(kind, y);
       if (!result.ok) {
-        if (y === year) throw new Error(`JODI ${kind}/${y} unavailable: ${result.error}`);
         console.warn(`  JODI ${kind}/${y} unavailable: ${result.error}`);
         continue;
       }
+      loaded++;
       rows.push(...filterJodiCsv(result.text, wanted));
     }
   }
+  if (loaded === 0) throw new Error('no JODI year file could be loaded');
   return rows;
 }
 
@@ -419,14 +436,14 @@ export function buildAisSeries(features) {
     const maxDate = a.maxDate.slice(0, 10);
     if (!datasetMaxDate || maxDate > datasetMaxDate) datasetMaxDate = maxDate;
     const complete = maxDate === `${month}-${String(monthDays(month)).padStart(2, '0')}`;
-    const tonnes = Number(a.exportTankerT);
+    const tonnes = presentNumber(a.exportTankerT);
     months.set(month, {
       complete,
-      tankerCalls: Number.isFinite(Number(a.tankerCalls)) ? Number(a.tankerCalls) : null,
-      exportTankerKt: Number.isFinite(tonnes) ? tonnes / 1000 : null,
+      tankerCalls: presentNumber(a.tankerCalls),
+      exportTankerKt: tonnes === null ? null : tonnes / 1000,
       // A partial month has no rate: dividing part-month tonnes by the full
       // month (or by a guessed day count) would invent a number.
-      loadingsKbd: complete && Number.isFinite(tonnes) ? (tonnes * CRUDE_BBL_PER_TONNE) / monthDays(month) / 1000 : null,
+      loadingsKbd: complete && tonnes !== null ? (tonnes * CRUDE_BBL_PER_TONNE) / monthDays(month) / 1000 : null,
     });
   }
   return { months, datasetMaxDate };
@@ -530,6 +547,41 @@ export function assembleCountry({ spec, eia, jodi, mirror, ais, nowMs, failed = 
 const countriesWithCurrentProduction = (data) =>
   Object.values(data?.countries ?? {}).filter((c) => c?.sources?.production?.status === 'ok').length;
 
+const SOURCE_COLUMNS = ['production', 'jodi', 'mirror', 'ais'];
+
+/** Re-index month-aligned columns from the previous series onto the current months. */
+function realignColumns(value, prevMonths, months) {
+  if (Array.isArray(value)) {
+    const byMonth = new Map(prevMonths.map((m, i) => [m, value[i] ?? null]));
+    return months.map((m) => byMonth.get(m) ?? null);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, realignColumns(v, prevMonths, months)]));
+  }
+  return value;
+}
+
+/**
+ * For each source that failed this run, keep the previous publish's months
+ * (realigned to this run's window) instead of publishing nulls over them.
+ * The source stays `unavailable`, and lastObserved keeps the month it was
+ * last actually seen, so the gap is reported rather than hidden or erased.
+ */
+export function carryForwardFailedSources(current, previous) {
+  if (!previous?.from || !previous?.to || !current?.from || !current?.to) return current;
+  const months = monthRange(current.from, current.to);
+  const prevMonths = monthRange(previous.from, previous.to);
+  const out = { ...current, sources: { ...current.sources } };
+  for (const source of SOURCE_COLUMNS) {
+    const status = current.sources?.[source]?.status;
+    const prevSource = previous.sources?.[source];
+    if (status !== 'unavailable' || !prevSource?.lastObserved || !previous[source]) continue;
+    out[source] = realignColumns(previous[source], prevMonths, months);
+    out.sources[source] = { ...current.sources[source], lastObserved: prevSource.lastObserved, carriedForward: true };
+  }
+  return out;
+}
+
 export function validate(data) {
   return countriesWithCurrentProduction(data) >= MIN_COUNTRIES_WITH_PRODUCTION;
 }
@@ -553,6 +605,8 @@ export function contentMeta(data) {
 }
 
 export async function fetchOilTradeSeries({ nowMs = Date.now() } = {}) {
+  // Best effort: a failed source keeps these months instead of being nulled.
+  const previous = await readSeedSnapshot(OIL_TRADE_CANONICAL_KEY).catch(() => null);
   const failed = { production: false, jodi: false };
   let eia = new Map();
   let jodi = new Map();
@@ -604,7 +658,7 @@ export async function fetchOilTradeSeries({ nowMs = Date.now() } = {}) {
       nowMs,
       failed: countryFailed,
     });
-    countries[spec.iso2] = compactCountry(country);
+    countries[spec.iso2] = carryForwardFailedSources(compactCountry(country), previous?.countries?.[spec.iso2]);
     const s = country.sources;
     console.log(`  ${spec.iso2}: production ${s.production.status}@${s.production.lastObserved ?? '-'}`
       + ` jodi ${s.jodi.status}@${s.jodi.lastObserved ?? '-'} mirror ${s.mirror.status}@${s.mirror.lastObserved ?? '-'}`

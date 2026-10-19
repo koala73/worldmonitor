@@ -16,6 +16,8 @@ import {
   buildMirrorSeries,
   buildAisSeries,
   mirrorRowsFromComtrade,
+  fetchJodiRows,
+  carryForwardFailedSources,
   assembleCountry,
   validate,
 } from '../scripts/seed-oil-trade-series.mjs';
@@ -309,6 +311,76 @@ describe('mirrored module', () => {
     const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
     assert.equal(read('shared/oil-trade-windows.js'), read('scripts/shared/oil-trade-windows.js'));
     assert.equal(read('shared/oil-trade-windows.d.ts'), read('scripts/shared/oil-trade-windows.d.ts'));
+  });
+});
+
+describe('review findings (#9393)', () => {
+  it('a null or blank EIA value is absent, not zero', () => {
+    const series = buildEiaSeries([
+      { seriesId: 'PAPR_TC', period: '2026-08', value: null },
+      { seriesId: 'PAPR_TC', period: '2026-07', value: '' },
+      { seriesId: 'PAPR_TC', period: '2026-06', value: ' ' },
+      { seriesId: 'PAPR_TC', period: '2026-05', value: '2.9561' },
+    ], NOW).get('AE');
+    assert.deepEqual([...series.keys()], ['2026-05']);
+  });
+
+  it('a null PortWatch export total is absent, not zero', () => {
+    const ais = buildAisSeries([{ attributes: { year: 2026, month: 9, exportTankerT: null, tankerCalls: null, maxDate: '2026-09-30' } }]);
+    const sep = ais.months.get('2026-09');
+    assert.equal(sep.loadingsKbd, null);
+    assert.equal(sep.exportTankerKt, null);
+    assert.equal(sep.tankerCalls, null);
+  });
+
+  it('JODI keeps prior-year history when the current-year files are not published yet', async () => {
+    const csv = (rows) => ['REF_AREA,TIME_PERIOD,ENERGY_PRODUCT,FLOW_BREAKDOWN,UNIT_MEASURE,OBS_VALUE,ASSESSMENT_CODE', ...rows].join('\n');
+    const fetchYear = async (kind, year) => (year === 2026
+      ? { ok: false, text: '', error: 'HTTP 404' }
+      : { ok: true, text: kind === 'primary' ? csv([`SA,${year}-12,CRUDEOIL,TOTEXPSB,KBD,6988.3871,3`]) : csv([]) });
+    const rows = await fetchJodiRows(Date.parse('2026-01-05T00:00:00Z'), { fetchYear });
+    assert.ok(rows.some((r) => r.REF_AREA === 'SA' && r.TIME_PERIOD === '2025-12'));
+  });
+
+  it('JODI fails only when no year file loads at all', async () => {
+    const fetchYear = async () => ({ ok: false, text: '', error: 'HTTP 503' });
+    await assert.rejects(() => fetchJodiRows(NOW, { fetchYear }), /no JODI year file/);
+  });
+
+  it('a failed source keeps its last good months from the previous publish, marked unavailable', () => {
+    const spec = OIL_TRADE_COUNTRIES.find((c) => c.iso2 === 'AE');
+    const PREV = Date.parse('2026-09-20T12:00:00Z'); // previous publish: series ran to 2026-08
+    const mirrorRows = monthRange('2025-10', '2026-08').map((m) => ({ reporterISO: 'JPN', period: m.replace('-', ''), cmdCode: '2709', netWgt: 3.4e9 }));
+    const previous = compactCountry(assembleCountry({
+      spec, eia: new Map(), jodi: new Map(), mirror: buildMirrorSeries(mirrorRows),
+      ais: { months: new Map(), datasetMaxDate: null }, nowMs: PREV,
+    }));
+    const current = compactCountry(assembleCountry({
+      spec, eia: buildEiaSeries(eiaRows('PAPR_TC', EIA_AE), NOW).get('AE'), jodi: new Map(), mirror: new Map(),
+      ais: { months: new Map(), datasetMaxDate: null }, nowMs: NOW, failed: new Set(['mirror']),
+    }));
+    const merged = expandCountry(carryForwardFailedSources(current, previous));
+    assert.equal(merged.sources.mirror.status, 'unavailable');
+    assert.equal(merged.sources.mirror.lastObserved, '2026-08', 'the last good observation month survives');
+    assert.ok(merged.months.find((m) => m.month === '2026-08').mirror.reporters.JPN.crudeKbd > 0, 'months shift by one and still align');
+    assert.equal(merged.months.find((m) => m.month === '2026-09').mirror, null, 'nothing is invented past the old series');
+    assert.equal(merged.months.find((m) => m.month === '2026-09').production.kbd, 4437, 'healthy sources are untouched');
+  });
+
+  it('mirror metrics return the current-window average behind yoyPct', () => {
+    const rows = [];
+    for (const m of monthRange('2025-04', '2026-09')) rows.push({ reporterISO: 'JPN', period: m.replace('-', ''), cmdCode: '2709', netWgt: 3.4e9 });
+    for (const m of monthRange('2025-10', '2026-09')) rows.push({ reporterISO: 'IND', period: m.replace('-', ''), cmdCode: '2709', netWgt: 2.2e9 });
+    const country = assembleCountry({
+      spec: OIL_TRADE_COUNTRIES.find((c) => c.iso2 === 'AE'), eia: new Map(), jodi: new Map(),
+      mirror: buildMirrorSeries(rows), ais: { months: new Map(), datasetMaxDate: null }, nowMs: NOW,
+    });
+    const m = compareOilWindows(country, { nowMs: NOW }).metrics.mirrorCrudeImports;
+    assert.deepEqual(m.basis.reporters, ['IND', 'JPN']);
+    assert.deepEqual(m.basis.yoyReporters, ['JPN'], 'India did not file a year ago');
+    assert.ok(m.currentForYoy.kbd < m.current.kbd, 'the YoY current average covers Japan only');
+    assert.equal(m.currentForYoy.monthsCovered, 6);
+    assert.ok(Math.abs(m.yoyPct - ((m.currentForYoy.kbd - m.yearAgo.kbd) / m.yearAgo.kbd) * 100) < 1e-9);
   });
 });
 

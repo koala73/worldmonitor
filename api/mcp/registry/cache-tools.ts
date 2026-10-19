@@ -2979,7 +2979,7 @@ export const CACHE_TOOLS: ToolDef[] = [
               type: 'object',
               properties: {
                 iso2: { type: 'string' }, iso3: { type: 'string' }, name: { type: 'string' },
-                sources: { type: 'object', description: 'Per source: name, url, measure, status (ok, stale, not_reported, unavailable), lastObserved month.' },
+                sources: { type: 'object', description: 'Per source: name, url, measure, status (ok, stale, not_reported, unavailable), lastObserved month. carriedForward marks an unavailable source still showing its previous publish\'s months.' },
                 comparison: {
                   type: 'object',
                   properties: {
@@ -2987,7 +2987,7 @@ export const CACHE_TOOLS: ToolDef[] = [
                     windows: { type: 'object', description: 'current, prior and yearAgo as {from, to} months.' },
                     metrics: {
                       type: 'object',
-                      description: 'production, jodiCrudeExports, jodiProductExports, mirrorCrudeImports, mirrorProductImports, aisTankerLoadings. Each: current/prior/yearAgo {kbd, monthsCovered} day-weighted over covered months (kbd null when none), changePct vs prior, yoyPct, complete (both windows fully covered), and for mirror metrics basis.reporters.',
+                      description: 'production, jodiCrudeExports, jodiProductExports, mirrorCrudeImports, mirrorProductImports, aisTankerLoadings. Each: current/prior/yearAgo {kbd, monthsCovered} day-weighted over covered months (kbd null when none), changePct vs prior, yoyPct (currentForYoy vs yearAgo; for mirror metrics on basis.yoyReporters), complete (both windows fully covered), and for mirror metrics basis.reporters.',
                     },
                   },
                 },

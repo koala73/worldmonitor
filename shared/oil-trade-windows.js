@@ -87,6 +87,9 @@ function compareMetric(byMonth, windows, getter, n) {
     current,
     prior,
     yearAgo,
+    // The current average yoyPct compares against yearAgo. For these metrics it
+    // is current itself; mirror metrics can use a different buyer basis.
+    currentForYoy: current,
     changePct: pctChange(current.kbd, prior.kbd),
     yoyPct: pctChange(current.kbd, yearAgo.kbd),
     complete: current.monthsCovered === n && prior.monthsCovered === n,
@@ -149,6 +152,8 @@ function compareMirror(byMonth, windows, field, n) {
     current,
     prior,
     yearAgo,
+    // yoyPct compares this against yearAgo, on basis.yoyReporters.
+    currentForYoy: currentYoy,
     changePct: pctChange(current.kbd, prior.kbd),
     yoyPct: pctChange(currentYoy.kbd, yearAgo.kbd),
     complete: current.monthsCovered === n && prior.monthsCovered === n,
