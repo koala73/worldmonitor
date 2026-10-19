@@ -45,6 +45,10 @@ interface HarnessState {
   toasts: string[];
   errorToasts: string[];
   responseBody: string;
+  productLoad: Promise<void>;
+  onProductLoad: () => void;
+  onAuthState: (state: { user: { id: string } | null }) => void;
+  signInCalls: number;
 }
 
 declare global {
@@ -122,6 +126,10 @@ function resetHarness(
     toasts: [],
     errorToasts: [],
     responseBody: JSON.stringify({ checkout_url: HOSTED_CHECKOUT_URL }),
+    productLoad: Promise.resolve(),
+    onProductLoad: () => {},
+    onAuthState: () => {},
+    signInCalls: 0,
     ...overrides,
   };
 
@@ -202,7 +210,7 @@ const stubSources: Record<string, string> = {
   './clerk': `
     export const getCurrentClerkUser = () => globalThis.__desktopCheckoutHarness.currentUser;
     export const getClerkToken = async () => 'tok_test';
-    export const openSignIn = () => {};
+    export const openSignIn = () => { globalThis.__desktopCheckoutHarness.signInCalls++; };
   `,
   './analytics': `
     export const trackCheckoutStart = (_productId, _authed, surface, _attribution, context) => (
@@ -210,7 +218,17 @@ const stubSources: Record<string, string> = {
     );
   `,
   './auth-state': `
-    export const subscribeAuthState = () => () => {};
+    export const subscribeAuthState = (listener) => {
+      const h = globalThis.__desktopCheckoutHarness;
+      h.onAuthState = listener;
+      listener({ user: h.currentUser });
+      return () => {};
+    };
+  `,
+  '@/config/products': `
+    globalThis.__desktopCheckoutHarness.onProductLoad();
+    await globalThis.__desktopCheckoutHarness.productLoad;
+    export * from './src/config/products.ts';
   `,
   './checkout-attempt': `
     export const saveCheckoutAttempt = () => {};
@@ -266,13 +284,16 @@ const harnessPlugin: Plugin = {
 
 async function loadCheckoutModule(): Promise<{
   startCheckout: (productId: string) => Promise<boolean>;
+  resumePendingCheckout: () => Promise<boolean>;
+  initCheckoutWatchers: () => void;
+  capturePendingCheckoutIntentFromUrl: () => unknown;
   DESKTOP_CHECKOUT_HANDOFF_MESSAGE: string;
 }> {
   const result = await build({
     absWorkingDir: process.cwd(),
     stdin: {
       contents:
-        `export { startCheckout, DESKTOP_CHECKOUT_HANDOFF_MESSAGE } from './src/services/checkout.ts';`,
+        `export { startCheckout, resumePendingCheckout, initCheckoutWatchers, capturePendingCheckoutIntentFromUrl, DESKTOP_CHECKOUT_HANDOFF_MESSAGE } from './src/services/checkout.ts';`,
       resolveDir: process.cwd(),
       loader: 'ts',
     },
@@ -287,6 +308,108 @@ async function loadCheckoutModule(): Promise<{
   const dataUrl = `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`;
   return await import(`${dataUrl}#${Date.now()}-${Math.random()}`);
 }
+
+const PENDING_CHECKOUT_KEY = 'wm-pending-checkout';
+const PRODUCT_ID = 'pdt_0Nbtt71uObulf7fGXhQup';
+
+function pendingIntent(productId = PRODUCT_ID) {
+  return { productId, savedByUserId: 'user_1', savedAt: Date.now() };
+}
+
+async function deferredResume() {
+  resetHarness(false);
+  const h = globalThis.__desktopCheckoutHarness;
+  const load = Promise.withResolvers<void>();
+  const started = Promise.withResolvers<void>();
+  h.productLoad = load.promise;
+  h.onProductLoad = started.resolve;
+  const checkout = await loadCheckoutModule();
+  checkout.initCheckoutWatchers();
+  sessionStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(pendingIntent()));
+  const result = checkout.resumePendingCheckout();
+  await started.promise;
+  return { h, checkout, load, result };
+}
+
+describe('pending checkout resume', () => {
+  it('resumes a current catalog product and clears the intent on success', async () => {
+    const { h, load, result } = await deferredResume();
+    load.resolve();
+    assert.equal(await result, true);
+    assert.equal(h.requestBodies[0]?.productId, PRODUCT_ID);
+    assert.equal(sessionStorage.getItem(PENDING_CHECKOUT_KEY), null);
+  });
+
+  it('drops a plan key and explains recovery without starting checkout', async () => {
+    resetHarness(false);
+    sessionStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(pendingIntent('pro_monthly')));
+    const checkout = await loadCheckoutModule();
+    assert.equal(await checkout.resumePendingCheckout(), false);
+    assert.equal(globalThis.__desktopCheckoutHarness.requestBodies.length, 0);
+    assert.deepEqual(globalThis.__desktopCheckoutHarness.errorToasts, [
+      "That product isn't available. Please refresh and try again.",
+    ]);
+    assert.equal(sessionStorage.getItem(PENDING_CHECKOUT_KEY), null);
+  });
+
+  for (const nextUser of [null, { id: 'user_2', email: 'second@example.com' }]) {
+    it(`aborts when the account changes to ${nextUser?.id ?? 'signed out'} during product loading`, async () => {
+      const { h, load, result } = await deferredResume();
+      h.currentUser = nextUser;
+      h.onAuthState({ user: nextUser });
+      load.resolve();
+      assert.equal(await result, false);
+      assert.equal(h.requestBodies.length, 0);
+      assert.equal(h.signInCalls, 0);
+      assert.equal(sessionStorage.getItem(PENDING_CHECKOUT_KEY), null);
+    });
+  }
+
+  it('does not revive a checkout after sign-out and sign-in to the same account', async () => {
+    const { h, load, result } = await deferredResume();
+    const user = h.currentUser;
+    h.currentUser = null;
+    h.onAuthState({ user: null });
+    h.currentUser = user;
+    h.onAuthState({ user });
+    load.resolve();
+    assert.equal(await result, false);
+    assert.equal(h.requestBodies.length, 0);
+    assert.equal(sessionStorage.getItem(PENDING_CHECKOUT_KEY), null);
+  });
+
+  it('leaves a replacement intent intact while the previous product is loading', async () => {
+    const { h, checkout, load, result } = await deferredResume();
+    window.location.href = `https://tech.worldmonitor.app/dashboard?checkoutProduct=${PRODUCT_ID}&checkoutDiscount=new-discount`;
+    checkout.capturePendingCheckoutIntentFromUrl();
+    const replacement = sessionStorage.getItem(PENDING_CHECKOUT_KEY);
+    load.resolve();
+    assert.equal(await result, false);
+    assert.equal(h.requestBodies.length, 0);
+    assert.equal(sessionStorage.getItem(PENDING_CHECKOUT_KEY), replacement);
+  });
+
+  it('reports a failed products load and keeps the intent for retry', async () => {
+    const { h, load, result } = await deferredResume();
+    const saved = sessionStorage.getItem(PENDING_CHECKOUT_KEY);
+    load.reject(new TypeError('Failed to fetch dynamically imported module'));
+    assert.equal(await result, false);
+    assert.equal(h.requestBodies.length, 0);
+    assert.equal(h.errorToasts.length, 1);
+    assert.match(h.errorToasts[0]!, /temporarily unavailable/i);
+    assert.equal(sessionStorage.getItem(PENDING_CHECKOUT_KEY), saved);
+  });
+
+  it('does not show a product-load error for an intent canceled by sign-out', async () => {
+    const { h, load, result } = await deferredResume();
+    h.currentUser = null;
+    h.onAuthState({ user: null });
+    load.reject(new TypeError('Failed to fetch dynamically imported module'));
+    assert.equal(await result, false);
+    assert.deepEqual(h.errorToasts, []);
+    assert.equal(sessionStorage.getItem(PENDING_CHECKOUT_KEY), null);
+  });
+});
 
 describe('startCheckout on desktop (#5911)', () => {
   it('opens the hosted checkout in the OS browser instead of replacing the app', async () => {
