@@ -3,6 +3,7 @@ import { test, expect, HYDRATED_MARKET } from './country-brief-fixtures';
 import { captureImfPeriods, type ImfPeriodScenario } from './country-brief-fixtures';
 import { readFile, writeFile } from 'node:fs/promises';
 import { installCountryBriefDesignData, installDecisionBriefData, installCommodityBriefData } from './country-brief-design-fixtures';
+import type { CountrySignalOutcome } from '../shared/country-signal-observations';
 
 const recording = process.env.CI ? 'on-first-retry' : 'retain-on-failure';
 
@@ -10,25 +11,41 @@ for (const width of [1280, 390]) for (const addedIds of [0, 5]) {
   test(`mixed-source sanctions attribution ${addedIds} added IDs ${width}`, async ({ page, countryBrief }, testInfo) => {
     void countryBrief;
     await page.setViewportSize({ width, height: 900 });
-    const title = addedIds > 0
-      ? '5 designation IDs added since the prior snapshot for China (OFAC / Canada SEMA)'
-      : '50 sanctions designations tied to China (OFAC / Canada SEMA)';
+    const title = `50 sanctions designations; ${addedIds} additions since prior snapshot`;
     const entries = Array.from({ length: 50 }, (_, index) => ({
       id: `${index < 25 ? 'SDN' : 'sema-ca'}:${index}`, name: `Controlled mixed-source entity ${index}`,
       sourceLists: [index < 25 ? 'SDN' : 'sema-ca'], programs: [],
       countryCodes: ['CN'], countryNames: ['China'], entityType: 'SANCTIONS_ENTITY_TYPE_ENTITY',
       effectiveAt: '1577836800000', isNew: index >= 25 && index < 25 + addedIds,
     }));
+    const sanctions = { entries, totalCount: 50, sdnCount: 25, consolidatedCount: 0,
+      semaCount: 25, newEntryCount: addedIds, vesselCount: 0, aircraftCount: 0,
+      countries: [{ countryCode: 'CN', countryName: 'China', entryCount: 50,
+        newEntryCount: addedIds, vesselCount: 0, aircraftCount: 0 }], programs: [],
+      fetchedAt: String(Date.now()), datasetDate: '1577836800000' };
     let reads = 0;
+    let qualifiedReads = 0;
+    await page.route('**/api/intelligence/v1/get-country-signal-observations?*', async route => {
+      const params = new URL(route.request().url()).searchParams;
+      if (params.get('family') !== 'COUNTRY_SIGNAL_FAMILY_SANCTIONS') return route.fallback();
+      expect(params.get('country_code')).toBe('CN');
+      qualifiedReads++;
+      const snapshotAt = new Date(Number(sanctions.fetchedAt)).toISOString();
+      const outcome: CountrySignalOutcome = { countryCode: 'CN', family: 'sanctions', state: 'observed',
+        observations: [{ id: 'CN:sanctions', family: 'sanctions', type: 'sanctions_pressure', severity: 'high',
+          title, source: 'OFAC / Canada SEMA', eventAt: null, snapshotAt, timeBasis: 'snapshot' }],
+        snapshotAt, retrievedAt: snapshotAt, computedAt: null, observationWindow: null,
+        scope: 'Controlled country-coded sanctions observations', attribution: 'OFAC / Canada SEMA',
+        partial: false, sampleBeforeCountryFilter: false, reason: null,
+        matchedRows: 1, sampledRows: 1, omittedRows: 0 };
+      await route.fulfill({ json: { countryCode: 'CN', family: 'COUNTRY_SIGNAL_FAMILY_SANCTIONS', windowIndex: 0,
+        outcomeJson: JSON.stringify(outcome) } });
+    });
     await page.route('**/api/bootstrap?*', async route => {
       const keys = new URL(route.request().url()).searchParams.get('keys') ?? '';
       if (!keys.split(',').includes('sanctionsPressure')) return route.fallback();
       reads++;
-      await route.fulfill({ json: { data: { sanctionsPressure: { entries, totalCount: 50, sdnCount: 25, consolidatedCount: 0,
-        semaCount: 25, newEntryCount: addedIds, vesselCount: 0, aircraftCount: 0,
-        countries: [{ countryCode: 'CN', countryName: 'China', entryCount: 50,
-          newEntryCount: addedIds, vesselCount: 0, aircraftCount: 0 }], programs: [],
-        fetchedAt: String(Date.now()), datasetDate: '1577836800000' } }, missing: [] } });
+      await route.fulfill({ json: { data: { sanctionsPressure: sanctions }, missing: [] } });
     });
     await page.goto('/dashboard?layers=sanctions');
     await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
@@ -42,6 +59,9 @@ for (const width of [1280, 390]) for (const addedIds of [0, 5]) {
     await panel.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'Security', exact: true }).click();
     const signals = panel.locator('#cdp-section-signals');
     await expect(signals).toContainText(title);
+    await expect(signals).not.toContainText('Qualified country military observations are loading.');
+    expect(qualifiedReads).toBeGreaterThan(0);
+    await expect(signals.locator('.cdp-signal-item')).toContainText('OFAC / Canada SEMA');
     await expect(signals).not.toContainText('OFAC-linked');
     await expect(signals).not.toContainText('new OFAC');
     await signals.scrollIntoViewIfNeeded();
@@ -50,7 +70,7 @@ for (const width of [1280, 390]) for (const addedIds of [0, 5]) {
     expect(clipped).toBe(false);
     await signals.screenshot({ path: testInfo.outputPath(`controlled-mixed-source-${addedIds}-added-${width}-signals.png`) });
     await page.screenshot({ path: testInfo.outputPath(`controlled-mixed-source-${addedIds}-added-${width}-viewport.png`) });
-    await writeFile(testInfo.outputPath('sanctions-fixture.json'), JSON.stringify({ mode: 'controlled mixed OFAC / Canada SEMA', addedIds, width, entries, title, reads }, null, 2));
+    await writeFile(testInfo.outputPath('sanctions-fixture.json'), JSON.stringify({ mode: 'controlled mixed OFAC / Canada SEMA through qualified RPC', addedIds, width, entries, title, reads, qualifiedReads }, null, 2));
   });
 }
 

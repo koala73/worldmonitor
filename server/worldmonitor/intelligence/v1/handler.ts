@@ -2,6 +2,7 @@ import type { IntelligenceServiceHandler } from '../../../../src/generated/serve
 
 import { getRiskScores } from './get-risk-scores';
 import { getCountryRisk } from './get-country-risk';
+import { getCountrySignalObservations } from './get-country-signal-observations';
 import { getPizzintStatus } from './get-pizzint-status';
 import { classifyEvent } from './classify-event';
 import { getCountryIntelBrief } from './get-country-intel-brief';
@@ -36,6 +37,7 @@ import { getIntelTimeline } from './get-intel-timeline';
 import { getSimilarEvents } from './get-similar-events';
 
 export const intelligenceHandler: IntelligenceServiceHandler = {
+  getCountrySignalObservations,
   getRiskScores,
   getCountryRisk,
   getPizzintStatus,

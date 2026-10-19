@@ -140,7 +140,7 @@ async function registryFanOut(tool, helpers = SIGNING_HELPERS) {
     let maximum = 0;
     try {
       for (const [section, reader] of Object.entries(COUNTRY_READERS)) {
-        const values = { ...required, ...({ housing: { keys: 'bisDsr,bisPropertyResidential,bisPropertyCommercial' }, imf: { keys: 'imfMacro,imfGrowth,imfLabor,imfExternal' } }[section] ?? {}) };
+        const values = { ...required, ...({ countrySignals: { family: 'COUNTRY_SIGNAL_FAMILY_OUTAGES' }, housing: { keys: 'bisDsr,bisPropertyResidential,bisPropertyCommercial' }, imf: { keys: 'imfMacro,imfGrowth,imfLabor,imfExternal' } }[section] ?? {}) };
         const args = Object.fromEntries(Object.entries(reader.args.shape).filter(([, schema]) => !schema.safeParse(undefined).success).map(([field]) => {
           assert.ok(field in values, `${section}.${field} needs a valid runtime fan-out fixture`);
           return [field, values[field]];
@@ -156,9 +156,10 @@ async function registryFanOut(tool, helpers = SIGNING_HELPERS) {
           return Response.json(key ? { data: { [key]: {} }, missing: [] } : {});
         };
         const pending = tool._execute({ section, arguments: args }, 'https://example.test', { kind: 'env_key', apiKey: 'weight-test' });
-        if (section === 'signalsRaw') {
-          await assert.rejects(pending, error => error.name === 'RpcValidationError' && error.violations.some(value => value.field === 'panel_request' && /verified paid country panel/i.test(value.description)));
-          assert.equal(calls, 0, 'ordinary API cannot enter the four-read collector');
+        if (section === 'signalsRaw' || section === 'countrySignals') {
+          const reason = section === 'countrySignals' ? /verified same-country panel/i : /verified paid country panel/i;
+          await assert.rejects(pending, error => error.name === 'RpcValidationError' && error.violations.some(value => value.field === 'panel_request' && reason.test(value.description)));
+          assert.equal(calls, 0, 'ordinary API cannot enter a paid country panel collector');
         } else {
           await pending;
           assert.equal(signed, reader.path === '/api/bootstrap' ? 0 : 1, section);

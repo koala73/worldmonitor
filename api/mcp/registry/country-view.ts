@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { COUNTRY_SIGNAL_BYTES, countrySignalResponseSchema, countrySignalOutcomeSchema } from '../../../shared/country-signal-observations';
 import { RAW_SIGNAL_READS, RAW_SIGNAL_FAMILIES, RAW_SIGNAL_BODY_BYTES, RAW_SIGNAL_ENVELOPE_BYTES, failedRawSignal, validateRawSignal, assembleRawSignals, type RawSignalsValue } from '../../../shared/country-raw-signals';
 import { COUNTRY_READERS, countryReaderSchema, countryViewSchema, panelAdmissionSchema, type CountryReader } from '../../../shared/country-brief-host';
 import { BRIEF_TOPICS } from '../../../shared/country-brief-sections';
@@ -23,6 +24,7 @@ const HS2 = 'Two-digit HS chapter: 10 cereals, 27 fuels, 29 organic chemicals, 3
 const CHOKEPOINT_ID = 'Chokepoint registry id as a lowercase slug, e.g. "hormuz_strait".';
 const FIXED_EMPTY = 'Fixed to the empty string: this reader returns every value and accepts no narrowing.';
 const COUNTRY_SECTION_DOCS: Record<CountryReader, { summary: string; args: Record<string, string> }> = {
+  countrySignals: { summary: 'One bounded country-qualified source family or eligible flight page. Requires a verified same-country panel.', args: { country_code: ISO2, family: 'Fixed source family enum; one source per request.', window_index: 'Country-derived flight window index, 0 or 1; otherwise 0.', cursor: 'Prior eligible flight page cursor, at most 200 characters; otherwise empty.' } },
   signalsRaw: { summary: 'Attributed raw signal samples for one country: earthquakes, Internet outages, travel advisories and thermal escalations, each with scope, snapshot time and attribution. Needs a verified same-country paid panel token.', args: { country_code: `${ISO2} Must equal the country of the verified panel token.` } },
   flights: { summary: 'Military flight observations inside a bounding box, 100 per page, with provider attribution.', args: { ne_lat: 'North-east corner latitude of the bounding box in degrees (-90 to 90).', ne_lon: 'North-east corner longitude of the bounding box in degrees (-180 to 180).', sw_lat: 'South-west corner latitude of the bounding box in degrees (-90 to 90).', sw_lon: 'South-west corner longitude of the bounding box in degrees (-180 to 180).', page_size: 'Fixed page size of 100 rows.', operator: 'Fixed to the unspecified operator filter; no operator narrowing is available.', aircraft_type: 'Fixed to the unspecified aircraft-type filter; no type narrowing is available.', cursor: 'Opaque cursor from the previous page\'s pagination block; empty string for the first page.' } },
   vessels: { summary: 'Live AIS vessel snapshot with connection status, snapshot time, density zones and disruptions; unavailable when the snapshot is older than one hour.', args: { ne_lat: 'Fixed to 0: the reader returns the global snapshot rather than a box query.', ne_lon: 'Fixed to 0: the reader returns the global snapshot rather than a box query.', sw_lat: 'Fixed to 0: the reader returns the global snapshot rather than a box query.', sw_lon: 'Fixed to 0: the reader returns the global snapshot rather than a box query.', include_candidates: 'Fixed to "true": candidate vessel matches are included in the snapshot.' } },
@@ -225,6 +227,33 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
     const reader = COUNTRY_READERS[section];
     const args = reader.args.safeParse(parsed.data.arguments);
     if (!args.success) throw new RpcValidationError('get_country_brief_section', [{ field: 'arguments', description: 'Invalid arguments for this country section.' }]);
+    if (section === 'countrySignals') {
+      const values = args.data as { country_code: string; family: string; window_index: number; cursor: string };
+      if (execution?.countryPanelCode !== values.country_code) throw new RpcValidationError('get_country_brief_section', [{ field: 'panel_request', description: 'Country Signals require a verified same-country panel read.' }]);
+      const deadline = AbortSignal.timeout(15_000);
+      const query = new URLSearchParams(Object.entries(values).map(([key, value]) => [key, String(value)]));
+      const url = `${base}${reader.path}?${query}`;
+      const headers = await beforeSignalsDeadline(buildAuthHeaders(context, 'GET', url, null), deadline);
+      deadline.throwIfAborted();
+      const pending = fetchMcpDownstream(url, { headers: { ...headers, 'User-Agent': 'WorldMonitor-MCP/1.0' }, signal: deadline }, execution);
+      void pending.then(response => { if (deadline.aborted) void response.body?.cancel().catch(() => {}); }, () => {});
+      const response = await beforeSignalsDeadline(pending, deadline);
+      throwIfBillingDenial(response, section);
+      if (response.status === 401 || response.status === 403) {
+        void response.body?.cancel().catch(() => {});
+        return { state: 'locked', section, reason: 'This connection is not authorized for this section.' };
+      }
+      const body = response.body?.pipeThrough(new TransformStream<Uint8Array, Uint8Array>(), { signal: deadline });
+      const bytes = await beforeSignalsDeadline(readBoundedResponseBody({ headers: response.headers, body }, COUNTRY_SIGNAL_BYTES), deadline);
+      deadline.throwIfAborted();
+      if (!response.ok) throw new Error(`Country Signals HTTP ${response.status}`);
+      const value = countrySignalResponseSchema.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)));
+      if (value.countryCode !== values.country_code || value.family !== values.family || value.windowIndex !== values.window_index) throw new Error('Country signal response identity mismatch');
+      if (values.family === 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE') { if (!value.flightPage || value.outcomeJson) throw new Error('Invalid flight page'); }
+      else { const outcome = countrySignalOutcomeSchema.parse(JSON.parse(value.outcomeJson)); if (outcome.countryCode !== values.country_code || `COUNTRY_SIGNAL_FAMILY_${outcome.family.toUpperCase()}` !== values.family) throw new Error('Country family identity mismatch'); }
+      deadline.throwIfAborted();
+      return { section, state: 'ready', value, retrievedAt: new Date().toISOString() };
+    }
     if (section === 'signalsRaw') {
       const countryCode = (args.data as { country_code: string }).country_code;
       if (execution?.countryPanelCode !== countryCode) throw new RpcValidationError('get_country_brief_section', [{ field: 'panel_request', description: 'Raw Signals require a verified paid country panel read.' }]);

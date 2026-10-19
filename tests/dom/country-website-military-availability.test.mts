@@ -13,7 +13,7 @@ import { projectCountryMilitaryActivity } from '@/services/country-military-acti
 import * as runtimeConfig from '@/services/runtime-config';
 import { initTestI18n } from './helpers/i18n.mts';
 function manager(military?: unknown) { return new CountryIntelManager({ latestClusters: [], intelligenceCache: military === undefined ? {} : { military } } as unknown as AppContext); }
-function summary(military?: unknown, code='CA', country='Canada') { const m=manager(military); return Reflect.get(m,'buildMilitarySummary').call(m,code,country); }
+function summary(military?: unknown, code='CA', country='Canada') { const m=manager(military); return Reflect.get(m,'selectCountryMilitary').call(m,code,country).summary; }
 function render(value: ReturnType<typeof projectCountryMilitaryActivity>) {
  const panel=new CountryDeepDivePanel(),body=document.createElement('div');
  Reflect.set(panel,'militaryBody',body);Reflect.set(panel,'currentMilitarySummary',value);Reflect.get(panel,'renderMilitaryActivity').call(panel);
@@ -108,13 +108,13 @@ describe('actual result-local USNI and flight observation state',()=>{
   vi.spyOn(runtimeConfig,'isFeatureAvailable').mockReturnValue(true);rpc.flight.mockResolvedValue({flights:[protoFlight('A1')],pagination:{nextCursor:'',totalCount:1}});const {fetchMilitaryFlights}=await import('@/services/military-flights');const first=await fetchMilitaryFlights();const second=await fetchMilitaryFlights();expect(first.dataState.mode).toBe('live');expect(second.dataState).toMatchObject({mode:'cached',timestamp:null});expect(second.flights).toBe(first.flights);expect(rpc.flight).toHaveBeenCalledOnce();
  });
 });
-it('both manager projections preserve confirmed empty, unknown cached negatives and supported partial positives',async()=>{
+it('legacy cache projections preserve confirmed empty, unknown cached negatives and supported partial positives',async()=>{
  const ctx={latestClusters:[],intelligenceCache:{military:empty()}} as unknown as AppContext;const m=new CountryIntelManager(ctx);
- let signals=await m.getCountrySignals('US','United States');expect(signals.militaryFlights).toBe(0);expect(signals.militaryVessels).toBe(0);expect(Reflect.get(m,'buildMilitarySummary').call(m,'US','United States').foreignPresence).toBe(false);
- ctx.intelligenceCache.military=empty(cached,cached,false) as never;signals=await m.getCountrySignals('US','United States');expect(signals.militaryFlights).toBeNull();expect(signals.militaryVessels).toBeNull();expect(Reflect.get(m,'buildMilitarySummary').call(m,'US','United States').foreignPresence).toBeNull();
- ctx.intelligenceCache.military={...empty(cached,cached,false),flights:[{lat:38,lon:-77,operatorCountry:'GB'}]} as never;signals=await m.getCountrySignals('US','United States');expect(signals.militaryFlights).toBe(1);const summary=Reflect.get(m,'buildMilitarySummary').call(m,'US','United States');expect(summary.foreignPresence).toBe(true);expect(summary.coverageNotes.join(' ')).toMatch(/previous cached/);
- ctx.intelligenceCache.military={...empty(cached,cached,false),vessels:[{lat:38,lon:-77,operatorCountry:'GB'}],vesselCoverageNotes:['Partial fixture vessel coverage']} as never;signals=await m.getCountrySignals('US','United States');expect(signals.militaryVessels).toBe(1);const vesselSummary=Reflect.get(m,'buildMilitarySummary').call(m,'US','United States');expect(vesselSummary.nearbyVessels).toBe(1);expect(vesselSummary.foreignPresence).toBe(true);expect(vesselSummary.coverageNotes).toContain('Partial fixture vessel coverage');
- ctx.intelligenceCache.military=undefined;expect((await m.getCountrySignals('US','United States')).militaryFlights).toBeNull();expect(Reflect.get(m,'buildMilitarySummary').call(m,'US','United States').foreignPresence).toBeNull();
+ let signals=await m.getCountrySignals('US','United States');expect(signals.militaryFlights).toBe(0);expect(signals.militaryVessels).toBe(0);expect(Reflect.get(m,'selectCountryMilitary').call(m,'US','United States').summary.foreignPresence).toBe(false);
+ ctx.intelligenceCache.military=empty(cached,cached,false) as never;signals=await m.getCountrySignals('US','United States');expect(signals.militaryFlights).toBeNull();expect(signals.militaryVessels).toBeNull();expect(Reflect.get(m,'selectCountryMilitary').call(m,'US','United States').summary.foreignPresence).toBeNull();
+ ctx.intelligenceCache.military={...empty(cached,cached,false),flights:[{lat:38,lon:-77,operatorCountry:'GB'}]} as never;signals=await m.getCountrySignals('US','United States');expect(signals.militaryFlights).toBe(1);const summary=Reflect.get(m,'selectCountryMilitary').call(m,'US','United States').summary;expect(summary.foreignPresence).toBe(true);expect(summary.coverageNotes.join(' ')).toMatch(/previous cached/);
+ ctx.intelligenceCache.military={...empty(cached,cached,false),vessels:[{lat:38,lon:-77,operatorCountry:'GB'}],vesselCoverageNotes:['Partial fixture vessel coverage']} as never;signals=await m.getCountrySignals('US','United States');expect(signals.militaryVessels).toBe(1);const vesselSummary=Reflect.get(m,'selectCountryMilitary').call(m,'US','United States').summary;expect(vesselSummary.nearbyVessels).toBe(1);expect(vesselSummary.foreignPresence).toBe(true);expect(vesselSummary.coverageNotes).toContain('Partial fixture vessel coverage');
+ ctx.intelligenceCache.military=undefined;expect((await m.getCountrySignals('US','United States')).militaryFlights).toBeNull();expect(Reflect.get(m,'selectCountryMilitary').call(m,'US','United States').summary.foreignPresence).toBeNull();
 });
 
 
@@ -184,4 +184,14 @@ it('actual panel nullable contract preserves unknown counts and coverage through
   expect(body.textContent).toContain('Military observations unavailable in fixture');
   panel.hide();
   expect(fetch).not.toHaveBeenCalled();
+});
+
+it('keeps the qualified military card independent of the legacy global cache', () => {
+ const m=manager(empty());
+ const read=()=>Reflect.get(m,'buildMilitarySummary').call(m,'US','United States');
+ expect(read()).toMatchObject({ownFlights:null,foreignFlights:null,nearbyVessels:null,foreignPresence:null});
+ const qualified={ownFlights:2,foreignFlights:1,nearbyVessels:null,foreignPresence:true,nearestBases:[],coverage:'partial',coverageNotes:['Controlled qualified source']};
+ Reflect.set(m,'qualifiedMilitarySummary',{code:'US',value:qualified});
+ expect(read()).toBe(qualified);
+ expect(Reflect.get(m,'buildMilitarySummary').call(m,'FR','France').foreignPresence).toBeNull();
 });

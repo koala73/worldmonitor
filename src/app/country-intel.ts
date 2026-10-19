@@ -19,7 +19,8 @@ import { yieldToMain } from '@/utils/after-paint';
 import { effectivePubDateMs } from '@/services/feed-date';
 import type { CountryCoverageEvent } from '@/services/country-coverage';
 import { reconcileCountryTimelineIncidents } from '../../shared/country-timeline-events';
-import { projectCountrySignalDetails } from '../../shared/country-signal-details';
+import { loadHostCountryMilitaryActivity } from '@/services/country-military-activity';
+import type { QualifiedCountrySignals } from '../../shared/country-signal-observations';
 import {
   COUNTRY_ALIASES,
   countryTermIndex,
@@ -159,6 +160,10 @@ export class CountryIntelManager implements AppModule {
   private lastHadPremium = false;
   private currentCountryPresentation: CountryPresentation | null = null;
   private countryController: CountryBriefController | null = null;
+  private qualifiedSource = createWebsiteCountryBriefSource();
+  private qualifiedMilitary: { code: string; signal: AbortSignal; promise: ReturnType<typeof loadHostCountryMilitaryActivity> } | null = null;
+  private qualifiedSignals: QualifiedCountrySignals | null = null;
+  private qualifiedMilitarySummary: { code: string; value: CountryDeepDiveMilitarySummary } | null = null;
   private countryControllerPage: AppContext['countryBriefPage'] = null;
   private countryBriefPageLoading: Promise<boolean> | null = null;
   private currentCoverageEvents: CountryCoverageEvent[] = [];
@@ -214,13 +219,19 @@ export class CountryIntelManager implements AppModule {
   private handlePremiumAccessTransition(nowPremium: boolean): void {
     if (nowPremium === this.lastHadPremium) return;
     this.lastHadPremium = nowPremium;
+    this.qualifiedSignals = null;
+    this.qualifiedMilitary = null;
+    this.qualifiedMilitarySummary = null;
+    this.qualifiedSource.clearLoadedData();
 
     const page = this.ctx.countryBriefPage;
     const openCode = page?.getCode();
     if (!page?.isVisible() || !openCode || openCode === '__loading__' || openCode === '__error__') return;
 
     page.syncCountryPremiumSectionsAccess?.(nowPremium);
+    page.clearQualifiedCountrySignals?.();
     this.getCountryController(page).refreshPremium();
+    this.refreshOpenBrief();
   }
 
   private handleCountryBriefOpenError(err: unknown): void {
@@ -312,7 +323,7 @@ export class CountryIntelManager implements AppModule {
   private getCountryController(page: NonNullable<AppContext['countryBriefPage']>): CountryBriefController {
     if (!this.countryController || this.countryControllerPage !== page) {
       this.countryController?.dispose();
-      this.countryController = new CountryBriefController(createWebsiteCountryBriefSource(), page);
+      this.countryController = new CountryBriefController(this.qualifiedSource, page);
       this.countryControllerPage = page;
     }
     return this.countryController;
@@ -498,27 +509,9 @@ export class CountryIntelManager implements AppModule {
           }
         });
       }
-      const militarySummary = this.buildMilitarySummary(code, country);
-      page.updateMilitaryActivity?.(militarySummary);
-      if (signalGeneration === presentation.refreshGeneration) {
-        page.updateSignals?.(signals, militarySummary.coverageNotes);
-        try {
-          const signalDetails = await this.buildSignalDetails(code);
-          if (token === this.briefRequestToken && this.isCurrentPresentation(presentation) && signalGeneration === presentation.refreshGeneration) {
-            presentation.signalDetailsPending = false;
-            page.updateSignalDetails?.(signalDetails);
-          }
-        } catch (err) {
-          console.warn('[CountryBrief] signal details unavailable:', err);
-          if (token === this.briefRequestToken && this.isCurrentPresentation(presentation) && signalGeneration === presentation.refreshGeneration) {
-            presentation.signalDetailsPending = false;
-            page.setSectionFailure?.('signals', 'unavailable', 'Aggregate severity and recent high-severity observations are unavailable.');
-          }
-        }
-      }
-      if (!this.isCurrentPresentation(presentation)) return;
-      this.renderCountryEconomics(presentation);
-
+      this.qualifiedSource.clearLoadedData();
+      this.qualifiedMilitary = null;
+      this.qualifiedMilitarySummary = null;
       const { stockPromise } = this.getCountryController(page).hydrate(code, country, {
         stock: stock => {
           if (!this.isCurrentPresentation(presentation)) return;
@@ -531,6 +524,27 @@ export class CountryIntelManager implements AppModule {
           this.renderCountryEconomics(presentation);
         },
       });
+      const militarySummary = this.buildMilitarySummary(code, country);
+      page.updateMilitaryActivity?.(militarySummary);
+      if (signalGeneration === presentation.refreshGeneration) {
+        page.updateSignals?.(signals, militarySummary.coverageNotes);
+        try {
+          const signalDetails = await this.buildSignalDetails(code);
+          if (token === this.briefRequestToken && this.isCurrentPresentation(presentation) && signalGeneration === presentation.refreshGeneration) {
+            presentation.signalDetailsPending = false;
+            if (signalDetails) page.updateSignalDetails?.(signalDetails);
+            if (this.qualifiedSignals?.countryCode === code) page.updateQualifiedCountrySignals?.(this.qualifiedSignals);
+          }
+        } catch (err) {
+          console.warn('[CountryBrief] signal details unavailable:', err);
+          if (token === this.briefRequestToken && this.isCurrentPresentation(presentation) && signalGeneration === presentation.refreshGeneration) {
+            presentation.signalDetailsPending = false;
+            page.setSectionFailure?.('signals', 'unavailable', 'Aggregate severity and recent high-severity observations are unavailable.');
+          }
+        }
+      }
+      if (!this.isCurrentPresentation(presentation)) return;
+      this.renderCountryEconomics(presentation);
 
       const filteredNews = this.ctx.allNews.filter((item) => (
         CountryIntelManager.isCountryHeadline(item.title, country, code)
@@ -781,6 +795,9 @@ export class CountryIntelManager implements AppModule {
     const presentation = this.currentCountryPresentation;
     if (!presentation || !this.isCurrentPresentation(presentation)) return;
     const { page, code } = presentation;
+    this.qualifiedSource.clearLoadedData();
+    this.qualifiedMilitary = null;
+    this.qualifiedMilitarySummary = null;
     const name = TIER1_COUNTRIES[code] ?? CountryIntelManager.resolveCountryName(code);
     const generation = ++presentation.refreshGeneration;
     void this.getCountrySignals(code, name)
@@ -802,7 +819,8 @@ export class CountryIntelManager implements AppModule {
           const details = await this.buildSignalDetails(code);
           if (this.isCurrentPresentation(presentation) && generation === presentation.refreshGeneration) {
             presentation.signalDetailsPending = false;
-            page.updateSignalDetails?.(details);
+            if (details) page.updateSignalDetails?.(details);
+            if (this.qualifiedSignals?.countryCode === code) page.updateQualifiedCountrySignals?.(this.qualifiedSignals);
           }
         } catch (err) {
           console.warn('[CountryBrief] signal details unavailable:', err);
@@ -1308,9 +1326,38 @@ export class CountryIntelManager implements AppModule {
     return 1;
   }
 
-  private async buildSignalDetails(code: string): Promise<CountryDeepDiveSignalDetails> {
-    const cluster = (await getSignalAggregator()).getCountryClusters().find((entry) => entry.country === code);
-    return projectCountrySignalDetails(cluster?.signals ?? []);
+  private async buildSignalDetails(code: string): Promise<CountryDeepDiveSignalDetails | null> {
+    const value = await this.loadQualifiedCountrySignals(code);
+    return value.details;
+  }
+
+  private async loadQualifiedCountrySignals(code: string): Promise<QualifiedCountrySignals> {
+    const page = this.ctx.countryBriefPage;
+    const signal = page?.signal ?? new AbortController().signal;
+    const country = page?.getName() ?? CountryIntelManager.resolveCountryName(code);
+    const revision = this.currentCountryPresentation?.refreshGeneration;
+    if (!this.qualifiedMilitary || this.qualifiedMilitary.code !== code || this.qualifiedMilitary.signal !== signal) {
+      if (this.qualifiedSignals?.countryCode !== code) this.qualifiedSignals = null;
+      const promise = loadHostCountryMilitaryActivity(this.qualifiedSource, code, country, signal);
+      this.qualifiedMilitary = { code, signal, promise };
+      void promise.then(summary => { if (!signal.aborted && page?.getCode() === code && revision === this.currentCountryPresentation?.refreshGeneration) { this.qualifiedMilitarySummary = { code, value: summary }; page.updateMilitaryActivity?.(summary); } }, () => {
+        if (!signal.aborted && page?.getCode() === code && revision === this.currentCountryPresentation?.refreshGeneration) {
+          this.qualifiedMilitarySummary = { code, value: { ownFlights: null, foreignFlights: null, nearbyVessels: null, nearestBases: [], foreignPresence: null, coverage: 'partial', coverageNotes: ['Military observations could not be loaded. Retry or refresh to recover them.'] } };
+          page.updateMilitaryActivity?.(null);
+        }
+      });
+    }
+    const military = this.qualifiedMilitary.promise;
+    const previous = this.qualifiedSignals;
+    const { loadQualifiedCountrySignals } = await import('@/services/country-signal-projection');
+    signal.throwIfAborted();
+    const value = await loadQualifiedCountrySignals(this.qualifiedSource, code, signal, military, previous);
+    if (!signal.aborted && page?.getCode() === code && revision === this.currentCountryPresentation?.refreshGeneration) {
+      this.qualifiedSignals = value;
+      const counts = page.getSignalCounts?.();
+      if (counts) page.updateSignals?.(counts, this.buildMilitarySummary(code, country).coverageNotes);
+    }
+    return value;
   }
 
   private selectCountryMilitary(code: string, country: string) {
@@ -1346,8 +1393,8 @@ export class CountryIntelManager implements AppModule {
     return { signalCounts, summary: { ...summary, coverageNotes, coverage: flightConfirmed && vesselConfirmed ? 'complete' as const : 'partial' as const } };
   }
 
-  private buildMilitarySummary(code: string, country: string): CountryDeepDiveMilitarySummary {
-    return this.selectCountryMilitary(code, country).summary;
+  private buildMilitarySummary(code: string, _country: string): CountryDeepDiveMilitarySummary {
+    return this.qualifiedMilitarySummary?.code === code ? this.qualifiedMilitarySummary.value : { ownFlights: null, foreignFlights: null, nearbyVessels: null, nearestBases: [], foreignPresence: null, coverage: 'partial', coverageNotes: ['Qualified country military observations are loading.'] };
   }
 
   private buildEconomicIndicators(
