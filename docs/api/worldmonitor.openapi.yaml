@@ -45470,7 +45470,7 @@ components:
                     description: 'Portfolio legs: the same holding a year earlier.'
                 basis:
                     type: string
-                    description: 'FDI legs: investor when stock_usd_bn is the investor''s outward figure, host when only the host''s inward figure exists. Empty for other legs.'
+                    description: 'FDI legs: investor when stockUsdBn is the investor''s outward figure, host when only the host''s inward figure exists. Empty for other legs.'
                 counterpartReportUsdBn:
                     type: number
                     format: double

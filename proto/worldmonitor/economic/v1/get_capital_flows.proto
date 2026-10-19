@@ -97,7 +97,7 @@ message CapitalFlowBop {
   CapitalFlowEpisodes episodes = 4;
   // Trailing four quarters (quarterly) or the latest year (annual).
   CapitalFlowTotals totals = 5;
-  // Recent periods, oldest first: 12 quarters or 6 years. Empty unless include_series is true.
+  // Recent periods, oldest first: 12 quarters or 6 years. Empty unless the include_series query parameter is true.
   repeated CapitalFlowPeriod series = 6;
 }
 
@@ -215,7 +215,7 @@ message CapitalFlowPairLeg {
   optional double flow_4q_usd_bn = 3;
   // Portfolio legs: the same holding a year earlier.
   optional double prev_year_usd_bn = 4;
-  // FDI legs: investor when stock_usd_bn is the investor's outward figure, host when only the host's inward figure exists. Empty for other legs.
+  // FDI legs: investor when stockUsdBn is the investor's outward figure, host when only the host's inward figure exists. Empty for other legs.
   string basis = 5;
   // FDI legs: the other side's figure for the same position. The two sides' reports often differ.
   optional double counterpart_report_usd_bn = 6;
