@@ -61,3 +61,20 @@ test('bounds streamed responses even when content-length is absent', async () =>
   const body = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(1_000_001)); controller.close(); } });
   await assert.rejects(fetchShfeNotices({ now, fetchImpl: async () => new Response(body, { headers: { 'Content-Type': 'text/html' } }) }), /size limit/);
 });
+
+test('passes provider retry policy to runSeed without shortening Retry-After', async () => {
+  for (const [status, retryAfter, nonRetryable, retryAfterMs] of [
+    [403, null, true, undefined],
+    [429, '2', false, 2000],
+    [429, '1200', true, 1_200_000],
+    [503, '30', true, 30_000],
+  ]) {
+    const headers = retryAfter ? { 'Retry-After': retryAfter } : {};
+    await assert.rejects(fetchShfeNotices({ fetchImpl: async () => new Response('unavailable', { status, headers }) }), (error) => {
+      assert.equal(error.status, status);
+      assert.equal(error.nonRetryable, nonRetryable);
+      assert.equal(error.retryAfterMs, retryAfterMs);
+      return true;
+    });
+  }
+});

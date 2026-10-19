@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { decodeHtmlEntities } from '../_html-entities.mjs';
+import { httpRetryError } from '../_seed-utils.mjs';
 
 export const SHFE_NOTICES_URL = 'https://www.shfe.com.cn/publicnotice/notice/';
 export const SHFE_SOURCE_ID = 'cn-shfe-notices';
@@ -61,12 +62,16 @@ export function parseShfeNotices(html, now = Date.now()) {
 }
 
 export async function fetchShfeNotices({ fetchImpl = (...args) => globalThis.fetch(...args), now = Date.now() } = {}) {
+  const startedAt = Date.now();
   const response = await fetchImpl(SHFE_NOTICES_URL, {
     headers: { 'User-Agent': 'WorldMonitor/1.0 (+https://worldmonitor.app)', Accept: 'text/html' },
     redirect: 'error',
     signal: AbortSignal.timeout(15_000),
   });
-  if (!response.ok) throw new Error(`SHFE HTTP ${response.status}`);
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw httpRetryError(response, { remainingBudgetMs: Math.max(0, 15_000 - (Date.now() - startedAt)) });
+  }
   if (!/^text\/html(?:;|$)/i.test(response.headers.get('content-type') ?? '')) throw new Error('SHFE expected HTML');
   if (Number(response.headers.get('content-length')) > MAX_BYTES) {
     await response.body?.cancel();
