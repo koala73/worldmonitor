@@ -5509,6 +5509,8 @@ const middleEastStrikePending = new Map();
 // Posts already classified (strike or not): the feed buffer re-offers them
 // every cycle for ~90 minutes, and each re-offer would cost a cache read.
 const middleEastStrikeDone = new Set();
+const MIDDLE_EAST_STRIKES_MAX_MISSES = 3;
+const middleEastStrikeMisses = new Map();
 let middleEastStrikesInFlight = false;
 let middleEastGdeltBulkPromise = null;
 
@@ -5517,7 +5519,9 @@ function noteMiddleEastStrikeItem(item) {
   if (!middleEastStrikes.prefilterStrikeText(item.text)) return;
   middleEastStrikePending.set(item.id, item);
   while (middleEastStrikePending.size > MIDDLE_EAST_STRIKES_PENDING_MAX) {
-    middleEastStrikePending.delete(middleEastStrikePending.keys().next().value);
+    const evicted = middleEastStrikePending.keys().next().value;
+    middleEastStrikePending.delete(evicted);
+    middleEastStrikeMisses.delete(evicted);
   }
 }
 
@@ -5549,7 +5553,7 @@ async function seedMiddleEastStrikes() {
     for (const item of telegramState.items) noteMiddleEastStrikeItem(item);
     for (const [id, item] of middleEastStrikePending) {
       const ts = Date.parse(item.ts);
-      if (!Number.isFinite(ts) || t0 - ts > MIDDLE_EAST_STRIKES_PENDING_MAX_AGE_MS) middleEastStrikePending.delete(id);
+      if (!Number.isFinite(ts) || t0 - ts > MIDDLE_EAST_STRIKES_PENDING_MAX_AGE_MS) { middleEastStrikePending.delete(id); middleEastStrikeMisses.delete(id); }
     }
     const pendingItems = [...middleEastStrikePending.values()];
     const { status, doneIds, result } = await middleEastStrikes.publishStrikeCycle({
@@ -5579,7 +5583,25 @@ async function seedMiddleEastStrikes() {
     });
     for (const id of doneIds) {
       middleEastStrikePending.delete(id);
+      middleEastStrikeMisses.delete(id);
       middleEastStrikeDone.add(id);
+    }
+    // A post the classifier keeps answering around (it answers the batch but
+    // never this index) is dropped after a few cycles, so one poison post
+    // cannot hold the feed unhealthy. A dead provider chain is not counted:
+    // those posts wait for the classifier to come back.
+    if (result && !result.classifierFailed) {
+      for (const item of result.pending) {
+        const misses = (middleEastStrikeMisses.get(item.id) || 0) + 1;
+        if (misses < MIDDLE_EAST_STRIKES_MAX_MISSES) {
+          middleEastStrikeMisses.set(item.id, misses);
+          continue;
+        }
+        console.warn(`[MiddleEastStrikes] Dropping ${item.id}: unclassified after ${misses} answered cycles`);
+        middleEastStrikePending.delete(item.id);
+        middleEastStrikeMisses.delete(item.id);
+        middleEastStrikeDone.add(item.id);
+      }
     }
     while (middleEastStrikeDone.size > MIDDLE_EAST_STRIKES_DONE_MAX) {
       middleEastStrikeDone.delete(middleEastStrikeDone.values().next().value);

@@ -149,6 +149,12 @@ describe('gazetteer', () => {
 
   it('prefers the gazetteer country when the classifier names the attacker instead', () => {
     assert.equal(gazetteer.resolvePlace({ place: 'Eilat', iso2: 'YE' }).iso2, 'IL');
+    assert.equal(gazetteer.resolvePlace({ place: 'Eilat' }).iso2, 'IL', 'no country given');
+  });
+
+  it('keeps an impact the classifier placed outside the theater out of it', () => {
+    assert.equal(gazetteer.resolvePlace({ place: 'Tripoli', iso2: 'LY' }), null);
+    assert.equal(gazetteer.resolvePlace({ place: 'Tripoli', iso2: 'LB' }).iso2, 'LB');
   });
 
   it('plots maritime incidents at the strait, not the inland Iran centroid', () => {
@@ -537,6 +543,17 @@ describe('extraction cycle', () => {
       classify: async () => [],
     }).deps);
     assert.equal(useless.healthy, false, 'an answer with nothing usable is a classifier failure');
+    const partial = await strikes.runStrikeCycle(harness({
+      telegramItems: [post('SaudiDCD', 'Missile intercepted over Riyadh'), post('SaudiDCD', 'Drone debris fell in Jizan')],
+      classify: async () => [{ i: 0, isStrike: true, kind: 'intercept', place: 'Riyadh', countryIso2: 'SA', severity: 'elevated' }],
+    }).deps);
+    assert.equal(partial.healthy, false, 'an unanswered post is not a healthy cycle');
+    assert.equal(partial.pending.length, 1);
+    let calls = 0;
+    const many = Array.from({ length: 45 }, (_, i) => post('SaudiDCD', `Missile intercepted over Riyadh, wave ${i}`));
+    const dead = await strikes.runStrikeCycle(harness({ telegramItems: many, classify: async () => { calls += 1; return null; } }).deps);
+    assert.equal(calls, 1, 'a dead provider chain is not retried batch after batch inside one cycle');
+    assert.equal(dead.pending.length, 45);
     const quiet = await strikes.runStrikeCycle(harness().deps);
     assert.equal(quiet.healthy, true, 'a quiet window with a live poll is healthy');
     assert.equal(quiet.payload.events.length, 0);
@@ -550,7 +567,7 @@ describe('extraction cycle', () => {
       readStore: async () => ({ ok: true, value: null }),
       writeStore: async (s) => { writes.store.push(s); return true; },
       writeCanonical: async (p, n) => { writes.canonical.push({ p, n }); return true; },
-      writeSeedMeta: async (m) => { writes.meta.push(m); },
+      writeSeedMeta: async (m) => { writes.meta.push(m); return true; },
       readCache: async () => null,
       writeCache: async () => {},
       classify: async (texts) => texts.map((_, i) => ({ i, isStrike: true, kind: 'intercept', place: 'Riyadh', countryIso2: 'SA', severity: 'elevated' })),
@@ -585,6 +602,11 @@ describe('extraction cycle', () => {
       assert.equal(writes.canonical.length, 1);
       assert.equal(writes.meta.length, 0, 'health must age into STALE_SEED');
     }
+  });
+
+  it('reports a failed seed-meta write instead of ok', async () => {
+    const { deps } = publishHarness({ writeSeedMeta: async () => false });
+    assert.equal((await strikes.publishStrikeCycle(deps)).status, 'write-failed');
   });
 
   it('withholds seed-meta and keeps posts pending when a Redis write fails', async () => {

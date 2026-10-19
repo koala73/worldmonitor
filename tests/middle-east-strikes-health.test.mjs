@@ -53,6 +53,12 @@ test('the relay writes seed-meta only through the gated publish cycle', () => {
   assert.match(body, /writeSeedMeta: \(meta\) => upstashSet\(middleEastStrikes\.SEED_META_KEY, meta,/);
 });
 
+test('a poison post is dropped after answered cycles, but a dead classifier never drops posts', () => {
+  const relay = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+  assert.match(relay, /if \(result && !result\.classifierFailed\) \{\s*for \(const item of result\.pending\)/);
+  assert.match(relay, /const MIDDLE_EAST_STRIKES_MAX_MISSES = 3;/);
+});
+
 test('Telegram freshness counts only polls that read at least one channel', () => {
   // A FLOOD_WAIT on the first channel, or every channel erroring, still ends a
   // poll cycle; it must not keep the strike feed's seed-meta fresh.

@@ -710,13 +710,19 @@ async function runStrikeCycle({
     } catch {
       raw = null;
     }
+    // A failed batch ends the pass: the relay walks every provider (30s
+    // timeouts) per batch, so continuing through a dead chain would hold the
+    // store and canonical writes for many minutes. Misses stay in `retry`.
     if (!Array.isArray(raw)) {
       classifierFailed = true;
-      continue;
+      break;
     }
     const parsed = parseStrikeClassifications(raw, batch.length);
     // An answer with nothing usable ([] or wrong indexes) is a failure too.
-    if (!parsed.some(Boolean)) classifierFailed = true;
+    if (!parsed.some(Boolean)) {
+      classifierFailed = true;
+      break;
+    }
     for (let i = 0; i < batch.length; i++) {
       if (!parsed[i]) continue;
       results.set(batch[i], parsed[i]);
@@ -745,7 +751,11 @@ async function runStrikeCycle({
     store: merged,
     payload: { events, scrapedAt: now },
     recordCount: events.length,
-    healthy: telegramLive && !(classifierFailed && retry.length > 0),
+    // Any post left unclassified (failed batch or a partial answer) makes the
+    // cycle unhealthy. The relay drops a post after a few failed cycles, so one
+    // poison post cannot hold the feed stale for its whole 12h pending life.
+    healthy: telegramLive && retry.length === 0,
+    classifierFailed,
     pending: retry,
     stats: {
       prefiltered: pending.length,
@@ -796,7 +806,8 @@ async function publishStrikeCycle({
   const canonicalOk = storeOk && await writeCanonical(result.payload, result.recordCount);
   if (!storeOk || !canonicalOk) return { status: 'write-failed', doneIds, result };
   if (!result.healthy) return { status: 'degraded', doneIds, result };
-  await writeSeedMeta({ fetchedAt: now, recordCount: result.recordCount, sourceVersion: SOURCE_VERSION });
+  const metaOk = await writeSeedMeta({ fetchedAt: now, recordCount: result.recordCount, sourceVersion: SOURCE_VERSION });
+  if (!metaOk) return { status: 'write-failed', doneIds, result };
   return { status: 'ok', doneIds, result };
 }
 

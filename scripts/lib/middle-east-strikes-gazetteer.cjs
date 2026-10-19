@@ -375,6 +375,9 @@ function countryPlace(iso2) {
  */
 function resolvePlace({ place, iso2, text } = {}) {
   const country = FOCUS_SET.has(iso2) ? iso2 : null;
+  // A valid country code outside the theater means the impact was located
+  // there ("Tripoli, LY"); it is not a hint to search the theater for the name.
+  if (!country && typeof iso2 === 'string' && /^[A-Z]{2}$/.test(iso2)) return null;
   if (place && namesPalestinianPlace(place)) return null;
   if (place) {
     if (country) {
