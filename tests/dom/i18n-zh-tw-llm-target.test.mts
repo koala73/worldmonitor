@@ -97,6 +97,27 @@ function headlineRow(): HTMLElement {
 }
 
 describe('headline translation target', () => {
+  it('disables translation and ignores duplicate activation while a request runs', async () => {
+    await useChineseCatalogue('zh-TW');
+    const panel = newPanel();
+    const button = headlineRow() as HTMLButtonElement;
+    let complete!: (value: string) => void;
+    translateText.mockImplementationOnce(() => new Promise<string>((resolve) => { complete = resolve; }));
+
+    const pending = panel.handleTranslate(button, 'Sanctions package agreed');
+    const disabledWhilePending = button.disabled;
+    await panel.handleTranslate(button, 'Sanctions package agreed');
+    const requestsWhilePending = translateText.mock.calls.length;
+    complete('翻譯結果');
+    await pending;
+
+    expect(disabledWhilePending).toBe(true);
+    expect(requestsWhilePending).toBe(1);
+    expect(button.disabled).toBe(false);
+    expect(button.closest('.item')!.querySelector('[role="status"]')).toBeNull();
+    expect(button.closest('.item')!.querySelector('.item-title')!.textContent).toBe('翻譯結果');
+  });
+
   for (const failure of ['empty', 'rejected']) {
     it(`shows an actionable error for ${failure} translation and clears it on retry`, async () => {
       await useChineseCatalogue('zh-TW');

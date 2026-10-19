@@ -338,6 +338,7 @@ export class NewsPanel extends Panel {
   }
 
   private async handleTranslate(element: HTMLElement, text: string): Promise<void> {
+    if (element.hasAttribute('disabled')) return;
     // Target language for the translation, so the full tag — same reason as
     // handleSummarize above. The `en` short-circuit is unaffected: no tag that
     // resolves to a Chinese catalogue equals 'en'.
@@ -353,6 +354,7 @@ export class NewsPanel extends Panel {
 
     // Visual feedback
     setTrustedHtml(element, trustedHtml('...', "legacy direct innerHTML migration"));
+    element.setAttribute('disabled', '');
     element.style.pointerEvents = 'none';
 
     try {
@@ -377,6 +379,7 @@ export class NewsPanel extends Panel {
       }
     } finally {
       if (element.isConnected) {
+        element.removeAttribute('disabled');
         element.style.pointerEvents = 'auto';
       }
     }
