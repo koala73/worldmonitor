@@ -304,7 +304,7 @@ const SEVERITY_MAP = {
 
 const AVIATION_BATCH_CONCURRENCY = 10;
 const AVIATION_MIN_FLIGHTS_FOR_CLOSURE = 10;
-const RESOLVED_STATUSES = new Set(['cancelled', 'landed', 'active', 'arrived', 'diverted']);
+const DEPARTED_STATUSES = new Set(['landed', 'active', 'arrived', 'diverted']);
 
 // ─── Inline Upstash helpers (LPUSH + SETNX + GET/SET) ────────────────────────
 // These aren't in _seed-utils.mjs (which focuses on SET/GET/EXPIRE). Pattern
@@ -485,18 +485,36 @@ function aviationAggregateFlights(iata, flights) {
   const meta = AIRPORT_META[iata];
   if (!meta) return null;
 
-  let delayed = 0, cancelled = 0, totalDelay = 0, resolved = 0;
+  // The cancellation rate is measured over flights that were due by now
+  // (scheduled departure passed, or already departed), so future 'scheduled'
+  // rows do not dilute a mid-day closure (#1209). It must not be measured over
+  // "resolved" rows: AviationStack's first page for a busy hub is the day's
+  // LATEST departures, so a page with no departed flight left only advance
+  // cancellations as "resolved" — cancelled/cancelled = 100%, and RUH read as
+  // closed (22/22) after it reopened. Delays are counted over the same flights
+  // as the denominator; counting every row against a resolved-only total once
+  // reported "179% delayed". Too few due flights → the whole page.
+  const now = Date.now();
+  const page = { flights: 0, cancelled: 0, delayed: 0, totalDelay: 0 };
+  const dueOnly = { flights: 0, cancelled: 0, delayed: 0, totalDelay: 0 };
   for (const f of flights) {
-    if (RESOLVED_STATUSES.has(f.flight_status || '')) resolved++;
-    if (f.flight_status === 'cancelled') cancelled++;
-    if (f.departure?.delay && f.departure.delay > 0) {
-      delayed++;
-      totalDelay += f.departure.delay;
+    const status = f.flight_status || '';
+    const scheduledAt = Date.parse(f.departure?.scheduled ?? '');
+    const isDue = DEPARTED_STATUSES.has(status) || (Number.isFinite(scheduledAt) && scheduledAt <= now);
+    const delay = f.departure?.delay > 0 ? f.departure.delay : 0;
+    for (const bucket of isDue ? [page, dueOnly] : [page]) {
+      bucket.flights++;
+      if (status === 'cancelled') bucket.cancelled++;
+      if (delay > 0) {
+        bucket.delayed++;
+        bucket.totalDelay += delay;
+      }
     }
   }
 
-  const total = resolved >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE ? resolved : flights.length;
-  const cancelledPct = (cancelled / total) * 100;
+  const sample = dueOnly.flights >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE ? dueOnly : page;
+  const { flights: total, cancelled: cancelledCount, delayed, totalDelay } = sample;
+  const cancelledPct = (cancelledCount / total) * 100;
   const delayedPct = (delayed / total) * 100;
   const avgDelay = delayed > 0 ? Math.round(totalDelay / delayed) : 0;
 
@@ -535,7 +553,7 @@ function aviationAggregateFlights(iata, flights) {
     severity: SEVERITY_MAP[severity] || 'FLIGHT_DELAY_SEVERITY_NORMAL',
     avgDelayMinutes: avgDelay,
     delayedFlightsPct: Math.round(delayedPct),
-    cancelledFlights: cancelled,
+    cancelledFlights: cancelledCount,
     totalFlights: total,
     reason,
     source: 'FLIGHT_DELAY_SOURCE_AVIATIONSTACK',
