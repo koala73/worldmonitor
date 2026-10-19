@@ -282,6 +282,7 @@ function buildTelegramCandidate(item, classification, now) {
     lon: place.lon,
     ts,
     title: cleanTitle(item.text),
+    textHash: createHash('sha256').update(cleanTitle(item.text)).digest('hex').slice(0, 16),
     url: typeof item.url === 'string' ? item.url : '',
   };
 }
@@ -456,10 +457,6 @@ function bucketOf(ts) {
   return Math.floor(ts / BUCKET_MS);
 }
 
-function incidentKey(c) {
-  return `${c.iso2}|${c.placeKey}|${bucketOf(c.ts)}`;
-}
-
 function isValidCandidate(c) {
   return c && typeof c.id === 'string' && (c.src === 'telegram' || c.src === 'gdelt')
     && typeof c.iso2 === 'string' && typeof c.placeKey === 'string'
@@ -475,25 +472,58 @@ function normalizeStore(store) {
   };
 }
 
+function placeKeyOf(c) {
+  return `${c.iso2}|${c.placeKey}`;
+}
+
+function groupByPlace(cands) {
+  const byPlace = new Map();
+  for (const c of cands) {
+    const key = placeKeyOf(c);
+    if (!byPlace.has(key)) byPlace.set(key, []);
+    byPlace.get(key).push(c);
+  }
+  return byPlace;
+}
+
+// Incidents: a new incident starts when a report lands more than 30 minutes
+// after the current incident's first report. Anchoring on the first report
+// keeps the event id stable as later reports join it. Telegram and GDELT are
+// sessioned separately so a GDELT row can never shift a Telegram event's id.
+function sessionize(members) {
+  const sorted = [...members].sort((a, b) => (a.ts - b.ts) || a.id.localeCompare(b.id));
+  const sessions = [];
+  let current = null;
+  for (const c of sorted) {
+    if (!current || c.ts - current.start > BUCKET_MS) {
+      current = { start: c.ts, members: [] };
+      sessions.push(current);
+    }
+    current.members.push(c);
+  }
+  return sessions;
+}
+
 function mergeCandidateStore(previous, additions, now) {
   const store = normalizeStore(previous);
   const byId = new Map();
   for (const c of [...store.candidates, ...(additions || [])]) {
     if (isValidCandidate(c) && inWindow(c.ts, now)) byId.set(c.id, c);
   }
-  // Drop GDELT clusters that never gathered enough sources once late coverage
-  // has had time to arrive; keep anything Telegram might still need as support.
-  const gdeltByIncident = new Map();
-  for (const c of byId.values()) {
-    if (c.src !== 'gdelt') continue;
-    const key = incidentKey(c);
-    if (!gdeltByIncident.has(key)) gdeltByIncident.set(key, []);
-    gdeltByIncident.get(key).push(c);
-  }
-  for (const group of gdeltByIncident.values()) {
-    const oldest = Math.min(...group.map((c) => c.ts));
-    if (now - oldest > GDELT_PENDING_TTL_MS && !gdeltSupport(group).qualifies) {
-      for (const c of group) byId.delete(c.id);
+  // Drop GDELT rows that never reached the source gate once late coverage has
+  // had time to arrive. Keep, using the same sessions deriveStrikeEvents
+  // publishes from, any session that qualifies, and any row a stored Telegram
+  // report at the same place could still lean on for corroboration.
+  const all = [...byId.values()];
+  const telegramByPlace = groupByPlace(all.filter((c) => c.src === 'telegram'));
+  for (const [place, members] of groupByPlace(all.filter((c) => c.src === 'gdelt'))) {
+    const telegram = telegramByPlace.get(place) || [];
+    for (const session of sessionize(members)) {
+      if (now - session.start <= GDELT_PENDING_TTL_MS || gdeltSupport(session.members).qualifies) continue;
+      for (const c of session.members) {
+        const supportsTelegram = telegram.some((t) => Math.abs(t.ts - c.ts) <= CORROBORATION_WINDOW_MS);
+        if (!supportsTelegram) byId.delete(c.id);
+      }
     }
   }
   const candidates = [...byId.values()].sort((a, b) => b.ts - a.ts).slice(0, MAX_STORE_CANDIDATES);
@@ -504,17 +534,31 @@ function standsAlone(c) {
   return c.src === 'telegram' && (c.cls === 'official' || (c.cls === 'independent' && c.kind !== 'claim'));
 }
 
+// Independence groups among Telegram reports. A word-for-word repost carries
+// the group of its earliest copy: two channels forwarding one IRGC statement
+// are one voice, not two.
+function independenceGroups(telegram) {
+  const groupByText = new Map();
+  const groups = new Set();
+  for (const c of [...telegram].sort((a, b) => a.ts - b.ts)) {
+    const key = c.textHash || c.id;
+    if (!groupByText.has(key)) groupByText.set(key, c.group);
+    groups.add(groupByText.get(key));
+  }
+  return groups;
+}
+
 /**
- * A Telegram incident publishes when one report stands alone, or when two
- * independence groups agree and at least one of them reports an observed
- * event (not only a claim). GDELT counts as one group, once it has enough sources.
+ * Corroboration for an incident with no stand-alone member: two independence
+ * groups agree about the place within 2h and at least one of them reports an
+ * observed event (not only a claim). GDELT counts as one group once it has
+ * enough sources.
  */
 function isCorroborated(support) {
   const telegram = support.filter((c) => c.src === 'telegram');
-  if (telegram.some(standsAlone)) return true;
   const gdelt = support.filter((c) => c.src === 'gdelt');
   const gdeltCounts = gdelt.length > 0 && gdeltSupport(gdelt).qualifies;
-  const groups = new Set(telegram.map((c) => c.group));
+  const groups = independenceGroups(telegram);
   if (gdeltCounts) groups.add('gdelt');
   const observed = gdeltCounts || telegram.some((c) => c.kind !== 'claim');
   return groups.size >= 2 && observed;
@@ -531,41 +575,31 @@ function maxSeverity(cands) {
   return cands.reduce((best, c) => (SEVERITY_RANK[c.severity] > SEVERITY_RANK[best] ? c.severity : best), 'moderate');
 }
 
+// Severity comes from the reports that carry the incident: the stand-alone
+// ones when present. A corroborated propaganda-only incident is capped at
+// 'high' — agreement that something happened is not agreement on the toll.
+function incidentSeverity(telegram) {
+  const trusted = telegram.filter(standsAlone);
+  if (trusted.length) return maxSeverity(trusted);
+  const severity = maxSeverity(telegram);
+  return SEVERITY_RANK[severity] > SEVERITY_RANK.high ? 'high' : severity;
+}
+
 function deriveStrikeEvents(candidates, now) {
   const valid = (candidates || []).filter((c) => isValidCandidate(c) && inWindow(c.ts, now));
-  const byPlace = new Map();
-  for (const c of valid) {
-    const placeKey = `${c.iso2}|${c.placeKey}`;
-    if (!byPlace.has(placeKey)) byPlace.set(placeKey, []);
-    byPlace.get(placeKey).push(c);
-  }
-  // Incidents: per place, a new incident starts when a report lands more than
-  // 30 minutes after the current incident's first report. Anchoring on the
-  // first report keeps the event id stable as later reports join it.
+  const byPlace = groupByPlace(valid);
   const incidents = [];
   for (const members of byPlace.values()) {
-    members.sort((a, b) => (a.ts - b.ts) || a.id.localeCompare(b.id));
-    let current = null;
-    for (const c of members) {
-      if (!current || c.ts - current.start > BUCKET_MS) {
-        current = { start: c.ts, members: [] };
-        incidents.push(current);
-      }
-      current.members.push(c);
+    for (const src of ['telegram', 'gdelt']) {
+      for (const session of sessionize(members.filter((c) => c.src === src))) incidents.push({ src, ...session });
     }
   }
+  incidents.sort((a, b) => a.start - b.start);
 
   const events = [];
   const published = [];
-  for (const { members } of incidents) {
-    const telegram = members.filter((c) => c.src === 'telegram');
-    if (!telegram.length) continue;
-    const start = Math.min(...telegram.map((c) => c.ts));
-    const support = byPlace.get(`${telegram[0].iso2}|${telegram[0].placeKey}`)
-      .filter((c) => Math.abs(c.ts - start) <= CORROBORATION_WINDOW_MS);
-    if (!isCorroborated(support)) continue;
-    const rep = representative(telegram);
-    published.push({ iso2: rep.iso2, lat: rep.lat, lon: rep.lon, ts: start });
+  const publish = (rep, telegram, start) => {
+    published.push({ iso2: rep.iso2, placeKey: rep.placeKey, lat: rep.lat, lon: rep.lon, ts: start });
     events.push({
       id: `tg:${rep.iso2}:${rep.placeKey}:${bucketOf(start) * BUCKET_MS}`,
       title: rep.title,
@@ -575,22 +609,41 @@ function deriveStrikeEvents(candidates, now) {
       longitude: rep.lon,
       locationName: rep.place,
       timestamp: start,
-      severity: maxSeverity(telegram),
+      severity: incidentSeverity(telegram),
     });
+  };
+  const telegramIncidents = incidents.filter((i) => i.src === 'telegram');
+  // Pass 1: incidents carried by their own stand-alone report.
+  const pending = [];
+  for (const incident of telegramIncidents) {
+    if (incident.members.some(standsAlone)) publish(representative(incident.members), incident.members, incident.start);
+    else pending.push(incident);
+  }
+  // Pass 2: incidents that need agreement. Support may come from other reports
+  // at the place within 2h, but an incident that a published event already
+  // covers folds into it instead of becoming a second dot.
+  for (const incident of pending) {
+    const first = incident.members[0];
+    const support = byPlace.get(placeKeyOf(first)).filter((c) => Math.abs(c.ts - incident.start) <= CORROBORATION_WINDOW_MS);
+    if (!isCorroborated(support)) continue;
+    const covered = published.some((p) => p.iso2 === first.iso2 && p.placeKey === first.placeKey
+      && Math.abs(p.ts - incident.start) <= CORROBORATION_WINDOW_MS);
+    if (covered) continue;
+    publish(representative(incident.members), incident.members, incident.start);
   }
 
-  for (const { members } of incidents) {
-    if (members.some((c) => c.src === 'telegram')) continue;
-    const support = gdeltSupport(members);
+  for (const incident of incidents) {
+    if (incident.src !== 'gdelt') continue;
+    const support = gdeltSupport(incident.members);
     if (!support.qualifies) continue;
-    const first = [...members].sort((a, b) => a.ts - b.ts)[0];
+    const first = incident.members[0];
     const folded = published.some((p) => p.iso2 === first.iso2
       && Math.abs(p.ts - first.ts) <= GDELT_FOLD_WINDOW_MS
       && gazetteer.distanceKm(p.lat, p.lon, first.lat, first.lon) <= GDELT_FOLD_KM);
     if (folded) continue;
     events.push({
       id: `gdelt:${first.iso2}:${first.placeKey}:${bucketOf(first.ts) * BUCKET_MS}`,
-      title: `GDELT: ${first.label || 'Military force'} reported near ${first.place}, ${gazetteer.COUNTRY_NAMES[first.iso2]} (${support.sources} sources)`,
+      title: `GDELT: ${first.label || 'Military force'} reported near ${first.place}, ${gazetteer.COUNTRY_NAMES[first.iso2]} (${support.urls} articles)`,
       category: 'gdelt',
       sourceUrl: first.urls?.[0] || '',
       latitude: first.lat,
@@ -601,7 +654,9 @@ function deriveStrikeEvents(candidates, now) {
     });
   }
 
-  return events.sort((a, b) => (b.timestamp - a.timestamp) || a.id.localeCompare(b.id)).slice(0, MAX_EVENTS);
+  const unique = new Map();
+  for (const event of events) if (!unique.has(event.id)) unique.set(event.id, event);
+  return [...unique.values()].sort((a, b) => (b.timestamp - a.timestamp) || a.id.localeCompare(b.id)).slice(0, MAX_EVENTS);
 }
 
 // ---------------------------------------------------------------------------
@@ -660,6 +715,8 @@ async function runStrikeCycle({
       continue;
     }
     const parsed = parseStrikeClassifications(raw, batch.length);
+    // An answer with nothing usable ([] or wrong indexes) is a failure too.
+    if (!parsed.some(Boolean)) classifierFailed = true;
     for (let i = 0; i < batch.length; i++) {
       if (!parsed[i]) continue;
       results.set(batch[i], parsed[i]);

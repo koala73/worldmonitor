@@ -51,7 +51,14 @@ const {
 const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { SAUDI_CIVIL_DEFENSE, MAX_POST_CHARS, publishSaudiCivilDefenseAlerts } = require('./lib/saudi-civil-defense-alerts.cjs');
 const { publishChokepointDisruptionAlerts } = require('./lib/chokepoint-disruption-alerts.cjs');
-const middleEastStrikes = require('./lib/middle-east-strikes.cjs');
+// Loaded defensively: the gazetteer validates its data files at require time,
+// and a bad regenerated data file must disable only this feed, not the relay.
+let middleEastStrikes = null;
+try {
+  middleEastStrikes = require('./lib/middle-east-strikes.cjs');
+} catch (e) {
+  console.error('[MiddleEastStrikes] Module failed to load — strike feed disabled:', e?.message || e);
+}
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle, xPollSlot } = require('./lib/x-poll-cycle.cjs');
 const { createGuardedLookup, SSRF_BLOCKED_ERROR_CODE } = require('./lib/notification-webhook-ssrf.cjs');
@@ -1214,6 +1221,7 @@ const telegramState = {
   cursorByHandle: Object.create(null),
   items: [],
   lastPollAt: 0,
+  lastSuccessfulPollAt: 0,
   lastError: null,
   startedAt: Date.now(),
 };
@@ -2184,6 +2192,10 @@ async function pollTelegramOnce() {
   }
 
   telegramState.lastPollAt = Date.now();
+  // lastPollAt advances on every cycle, including one that a FLOOD_WAIT or a
+  // dead session ended with zero channels read. Freshness consumers (the
+  // Middle East strike feed's seed-meta gate) need the last cycle that read data.
+  if (channelsPolled > 0) telegramState.lastSuccessfulPollAt = telegramState.lastPollAt;
   const elapsed = ((Date.now() - pollStart) / 1000).toFixed(1);
   console.log(`[Relay] Telegram poll: ${channelsPolled}/${channels.length} channels, ${newItems.length} new msgs, ${telegramState.items.length} total, ${channelsFailed} errors, ${mediaSkipped} media-only skipped (${elapsed}s)`);
 
@@ -5501,7 +5513,7 @@ let middleEastStrikesInFlight = false;
 let middleEastGdeltBulkPromise = null;
 
 function noteMiddleEastStrikeItem(item) {
-  if (!MIDDLE_EAST_STRIKES_ENABLED || !item?.id || middleEastStrikePending.has(item.id) || middleEastStrikeDone.has(item.id)) return;
+  if (!MIDDLE_EAST_STRIKES_ENABLED || !middleEastStrikes || !item?.id || middleEastStrikePending.has(item.id) || middleEastStrikeDone.has(item.id)) return;
   if (!middleEastStrikes.prefilterStrikeText(item.text)) return;
   middleEastStrikePending.set(item.id, item);
   while (middleEastStrikePending.size > MIDDLE_EAST_STRIKES_PENDING_MAX) {
@@ -5513,8 +5525,15 @@ async function loadMiddleEastStrikeGdelt(processed) {
   // Lazy and caught: a missing module degrades to a Telegram-only cycle
   // instead of an unhandled rejection at relay start.
   middleEastGdeltBulkPromise ??= import('./_conflict-gdelt-bulk.mjs');
+  let bulk;
   try {
-    const bulk = await middleEastGdeltBulkPromise;
+    bulk = await middleEastGdeltBulkPromise;
+  } catch (e) {
+    middleEastGdeltBulkPromise = null; // a cached rejection would disable GDELT until restart
+    console.warn('[MiddleEastStrikes] GDELT module failed to load:', e?.message || e);
+    return { candidates: [], processed, errors: [String(e?.message || e)], fetched: 0 };
+  }
+  try {
     return await middleEastStrikes.fetchGdeltStrikeCandidates({ bulk, processed });
   } catch (e) {
     console.warn('[MiddleEastStrikes] GDELT backstop unavailable:', e?.message || e);
@@ -5556,7 +5575,7 @@ async function seedMiddleEastStrikes() {
         label: 'MiddleEastStrikes',
       }),
       loadGdelt: loadMiddleEastStrikeGdelt,
-      telegramPolledAt: telegramState.lastPollAt,
+      telegramPolledAt: telegramState.lastSuccessfulPollAt,
     });
     for (const id of doneIds) {
       middleEastStrikePending.delete(id);
@@ -5583,6 +5602,10 @@ async function seedMiddleEastStrikes() {
 function startMiddleEastStrikesLoop() {
   if (!MIDDLE_EAST_STRIKES_ENABLED) {
     console.log('[MiddleEastStrikes] Disabled (IRAN_EVENTS_ENABLED is not true)');
+    return;
+  }
+  if (!middleEastStrikes) {
+    console.error('[MiddleEastStrikes] Disabled (module failed to load; see the startup error) — health will report STALE');
     return;
   }
   if (!UPSTASH_ENABLED) {

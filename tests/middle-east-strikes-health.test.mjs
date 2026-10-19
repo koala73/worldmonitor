@@ -53,6 +53,15 @@ test('the relay writes seed-meta only through the gated publish cycle', () => {
   assert.match(body, /writeSeedMeta: \(meta\) => upstashSet\(middleEastStrikes\.SEED_META_KEY, meta,/);
 });
 
+test('Telegram freshness counts only polls that read at least one channel', () => {
+  // A FLOOD_WAIT on the first channel, or every channel erroring, still ends a
+  // poll cycle; it must not keep the strike feed's seed-meta fresh.
+  const relay = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+  assert.match(relay, /if \(channelsPolled > 0\) telegramState\.lastSuccessfulPollAt = telegramState\.lastPollAt;/);
+  assert.match(relay, /telegramPolledAt: telegramState\.lastSuccessfulPollAt,/);
+  assert.doesNotMatch(relay, /telegramPolledAt: telegramState\.lastPollAt\b/);
+});
+
 test('seed-health marks the feed stale on the same budget', async () => {
   const src = readFileSync(new URL('../api/seed-health.js', import.meta.url), 'utf8');
   const interval = Number(/'conflict:iran-events':\s*\{[^}]*intervalMin:\s*(\d+)/.exec(src)?.[1]);

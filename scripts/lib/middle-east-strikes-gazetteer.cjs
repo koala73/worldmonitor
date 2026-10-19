@@ -32,20 +32,33 @@ const COUNTRY_CENTROIDS = Object.freeze({
 // Where a post says something happened, in the languages the curated channels
 // post in. Location terms only: actor names (Houthi, IRGC) are anchors, not places.
 const COUNTRY_TERMS = Object.freeze({
-  SA: ['saudi arabia', 'saudi', 'ksa', 'السعودية', 'السعودي'],
-  YE: ['yemen', 'yemeni', 'اليمن', 'اليمني'],
+  SA: ['saudi arabia', 'saudi', 'ksa', 'السعودية', 'السعودي', 'عربستان'],
+  YE: ['yemen', 'yemeni', 'اليمن', 'اليمني', 'یمن'],
   IR: ['iran', 'iranian', 'إيران', 'ايران', 'ایران'],
-  IQ: ['iraq', 'iraqi', 'العراق'],
-  AE: ['uae', 'united arab emirates', 'emirates', 'emirati', 'الإمارات', 'الامارات'],
-  IL: ['israel', 'israeli', 'إسرائيل', 'اسرائيل'],
+  IQ: ['iraq', 'iraqi', 'العراق', 'عراق'],
+  AE: ['uae', 'united arab emirates', 'emirates', 'emirati', 'الإمارات', 'الامارات', 'امارات'],
+  IL: ['israel', 'israeli', 'إسرائيل', 'اسرائيل', 'اسرائیل'],
   QA: ['qatar', 'qatari', 'قطر'],
-  KW: ['kuwait', 'kuwaiti', 'الكويت'],
-  BH: ['bahrain', 'bahraini', 'البحرين'],
+  KW: ['kuwait', 'kuwaiti', 'الكويت', 'کویت'],
+  BH: ['bahrain', 'bahraini', 'البحرين', 'بحرین'],
   OM: ['oman', 'omani'],
   LB: ['lebanon', 'lebanese', 'لبنان'],
-  SY: ['syria', 'syrian', 'سوريا'],
-  JO: ['jordan', 'jordanian', 'الأردن', 'الاردن'],
+  SY: ['syria', 'syrian', 'سوريا', 'سورية', 'سوریه'],
+  JO: ['jordan', 'jordanian', 'الأردن', 'الاردن', 'اردن'],
 });
+
+// Gazetteer names that are also ordinary English words. They resolve when a
+// classifier names them as the place, but never from free-text scanning
+// ("a hail of drones" is not Ha'il).
+const FREE_TEXT_STOPWORDS = new Set(['hail', 'salt', 'as salt', 'duma', 'tyre']);
+
+// Palestinian places are outside this feed. Without this, a classifier that
+// files a Gaza strike under Israel would plot it at the Israel centroid.
+const PALESTINE_TERMS = [
+  'gaza', 'gaza city', 'gaza strip', 'khan yunis', 'khan younis', 'rafah', 'jabalia', 'jabalya', 'deir al balah',
+  'deir el balah', 'nuseirat', 'beit lahia', 'beit hanoun', 'west bank', 'jenin', 'nablus', 'tulkarm', 'ramallah',
+  'hebron', 'bethlehem', 'qalqilya', 'غزة', 'خان يونس', 'رفح', 'جباليا', 'دير البلح', 'النصيرات', 'الضفة الغربية', 'جنين', 'نابلس', 'طولكرم', 'رام الله',
+];
 
 // Anchor-only terms: they put a post in the theater but say nothing about where.
 const THEATER_TERMS = Object.freeze([
@@ -116,6 +129,7 @@ const SUPPLEMENT = [
   ['IR', 'Jask', 25.64, 57.77, 'جاسک'],
   ['IR', 'Bandar Lengeh', 26.56, 54.88],
   ['YE', 'Shabwah', null, null, 'shabwa', 'شبوة'],
+  ['YE', 'Ibb', 13.97, 44.18, 'إب'],
   ['IQ', 'Baghdad', null, null, 'بغداد'],
   ['IQ', 'Erbil', null, null, 'arbil', 'أربيل', 'اربيل'],
   ['IQ', 'Ain al-Asad Air Base', 33.8, 42.44, 'ain al asad', 'al asad air base', 'عين الأسد'],
@@ -218,7 +232,9 @@ function buildIndex() {
         byPoint.set(pointKey, place);
         places.push(place);
       }
-      if (!place.name && !ADMIN_AREA_RE.test(name)) place.name = name;
+      // Shortest non-admin name: a city shares its point with an unsuffixed
+      // province row ("Nineveh" for Mosul, "Northern Borders" for Arar).
+      if (!ADMIN_AREA_RE.test(name) && (!place.name || name.length < place.name.length)) place.name = name;
       register(place, [name]);
     }
   }
@@ -275,8 +291,14 @@ function buildMatcher(terms) {
 
 const PLACE_MATCHERS = new Map(FOCUS_COUNTRIES.map((iso2) => [
   iso2,
-  buildMatcher([...INDEX.byCountry.get(iso2).keys()]),
+  buildMatcher([...INDEX.byCountry.get(iso2).keys()].filter((term) => !FREE_TEXT_STOPWORDS.has(term))),
 ]));
+const PALESTINE_MATCHER = buildMatcher(PALESTINE_TERMS.map(normalizePlaceName));
+
+function namesPalestinianPlace(text) {
+  const normalized = normalizePlaceName(text);
+  return Boolean(normalized && firstMatch(PALESTINE_MATCHER, normalized));
+}
 const COUNTRY_MATCHERS = new Map(FOCUS_COUNTRIES.map((iso2) => [
   iso2,
   buildMatcher(COUNTRY_TERMS[iso2].map(normalizePlaceName)),
@@ -348,10 +370,12 @@ function countryPlace(iso2) {
  *      named the attacker's country, say);
  *   3. the post text, scanned for the reported country's places;
  *   4. the reported country's centroid.
- * Returns null when nothing ties the report to a focus country.
+ * Returns null when nothing ties the report to a focus country, or when the
+ * place is Palestinian (out of scope) rather than a fallback centroid.
  */
 function resolvePlace({ place, iso2, text } = {}) {
   const country = FOCUS_SET.has(iso2) ? iso2 : null;
+  if (place && namesPalestinianPlace(place)) return null;
   if (place) {
     if (country) {
       const hit = lookupExact(place, country) || findPlaceInText(place, country);
@@ -367,6 +391,9 @@ function resolvePlace({ place, iso2, text } = {}) {
     const hit = findPlaceInText(text, country);
     if (hit) return hit;
   }
+  // Nothing in the theater was named; a Palestinian place in the post means
+  // the classifier filed a Gaza or West Bank strike under a neighbour.
+  if (text && namesPalestinianPlace(text)) return null;
   return country ? countryPlace(country) : null;
 }
 
