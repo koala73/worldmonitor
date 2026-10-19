@@ -7,6 +7,33 @@ import type { CountrySignalOutcome } from '../shared/country-signal-observations
 
 const recording = process.env.CI ? 'on-first-retry' : 'retain-on-failure';
 
+for (const [language, width, label] of [['fr', 1280, 'Débloquez 90 jours avec Pro'], ['ar', 390, 'افتح سجل 90 يومًا مع Pro']] as const) {
+  test(`daily country history localizes ${language} at ${width}`, async ({ page, countryBrief }, testInfo) => {
+    void countryBrief;
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/api/intelligence/v1/get-country-history?*', route => route.fulfill({ json: {
+      country: 'UA', requestedDays: 7, allowedDays: 7, effectiveDays: 7, returnedDays: 1,
+      upstreamUnavailable: false, stale: false, fetchedAt: Date.now(),
+      points: [{ date: '2026-10-19', capturedAt: Date.UTC(2026, 9, 19, 0, 30),
+        cii: { score: 62, version: 'v11', observedAt: Date.UTC(2026, 9, 19) },
+        resilience: { score: 47, version: 'v29:pc', observedAt: Date.UTC(2026, 9, 19) },
+        topEvents: [], keySignals: [], ciiVersionBreak: false, resilienceVersionBreak: false }],
+    } }));
+    await page.goto(`/dashboard?country=UA&expanded=1&lang=${language}`);
+    const panel = page.locator('#country-deep-dive-panel');
+    await expect(panel).toHaveAttribute('aria-hidden', 'false');
+    await panel.locator('[data-topic="security"]').click();
+    const history = page.locator('#cdp-section-history');
+    await history.scrollIntoViewIfNeeded();
+    await expect(history.locator('.panel-locked-cta')).toHaveText(label);
+    expect(await history.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await expect(page.locator('html')).toHaveCSS('direction', language === 'ar' ? 'rtl' : 'ltr');
+    const path = testInfo.outputPath(`history-${language}-${width}.png`);
+    await history.screenshot({ path });
+    await testInfo.attach(language, { path, contentType: 'image/png' });
+  });
+}
+
 for (const width of [1280, 390]) {
   test(`daily country history ${width} preserves gaps, event click-through and failure recovery`, async ({ page, countryBrief }, testInfo) => {
     void countryBrief;
