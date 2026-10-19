@@ -307,7 +307,13 @@ pub fn adopt_redeemed_client(
     outcome: Option<&SignInOutcome>,
     new_client_token: Option<&str>,
 ) -> bool {
-    http_status < 400 && outcome.is_some() && new_client_token.is_some_and(|token| !token.trim().is_empty())
+    let usable_outcome = outcome.is_some_and(|outcome| {
+        // A completed sign-in must have produced a session to activate;
+        // other statuses (e.g. needs_second_factor) continue in the app.
+        outcome.status != "complete"
+            || outcome.created_session_id.as_deref().is_some_and(|id| !id.trim().is_empty())
+    });
+    http_status < 400 && usable_outcome && new_client_token.is_some_and(|token| !token.trim().is_empty())
 }
 
 #[cfg(test)]
@@ -510,6 +516,13 @@ mod tests {
         assert!(!adopt_redeemed_client(200, None, Some("new-token")), "an unreadable response keeps the old session");
         assert!(!adopt_redeemed_client(200, Some(&complete), None), "no token to adopt keeps the old session");
         assert!(!adopt_redeemed_client(200, Some(&complete), Some("  ")));
+
+        // A "complete" sign-in with no session would end the old session and
+        // leave the renderer nothing to activate.
+        for missing in [None, Some("".to_string()), Some("  ".to_string())] {
+            let sessionless = SignInOutcome { status: "complete".into(), created_session_id: missing, identifier: None };
+            assert!(!adopt_redeemed_client(200, Some(&sessionless), Some("new-token")));
+        }
     }
 
     #[test]
