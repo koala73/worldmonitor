@@ -577,7 +577,7 @@ paths:
             parameters:
                 - name: country
                   in: query
-                  description: Assigned ISO 3166-1 alpha-2 country. Empty archives remain empty.
+                  description: Assigned ISO alpha-2 country code.
                   required: true
                   example: "US"
                   schema:
@@ -586,8 +586,8 @@ paths:
                 - name: days
                   in: query
                   description: |-
-                    UTC calendar days including today. Defaults to 7. The server clamps to
-                     the verified caller's retention depth, free 7, Pro 90, API/Enterprise 365.
+                    UTC days including today; 0 defaults to 7.
+                     Verified limits: free 7, Pro 90, API/Enterprise 365.
                   required: false
                   example: 7
                   schema:
@@ -7848,14 +7848,14 @@ components:
                 country:
                     type: string
                     pattern: ^[A-Z]{2}$
-                    description: Assigned ISO 3166-1 alpha-2 country. Empty archives remain empty.
+                    description: Assigned ISO alpha-2 country code.
                 days:
                     type: integer
                     minimum: 0
                     format: int32
                     description: |-
-                        UTC calendar days including today. Defaults to 7. The server clamps to
-                         the verified caller's retention depth, free 7, Pro 90, API/Enterprise 365.
+                        UTC days including today; 0 defaults to 7.
+                         Verified limits: free 7, Pro 90, API/Enterprise 365.
             required:
                 - country
         GetCountryHistoryResponse:
@@ -7881,10 +7881,10 @@ components:
                         $ref: '#/components/schemas/CountryHistoryPoint'
                 upstreamUnavailable:
                     type: boolean
-                    description: Missing or failed storage reads must never be interpreted as quiet days.
+                    description: True on failed reads or before activation.
                 stale:
                     type: boolean
-                    description: True when the last successful daily archive publication is over 36h old.
+                    description: True after 36 hours without publication.
                 fetchedAt:
                     type: integer
                     format: int64
@@ -7912,9 +7912,7 @@ components:
                         type: string
                 ciiVersionBreak:
                     type: boolean
-                    description: |-
-                        Breaks include missing calendar days, missing scores and version changes.
-                         Consumers must not join a trend line across a break.
+                    description: Do not join trends across missing dates, absent scores or formula changes.
                 resilienceVersionBreak:
                     type: boolean
         CountryHistoryScore:
@@ -7925,7 +7923,7 @@ components:
                     format: double
                 version:
                     type: string
-                    description: Exact source methodology/cache identity at capture time.
+                    description: Source formula/cache identity.
                 observedAt:
                     type: integer
                     format: int64
