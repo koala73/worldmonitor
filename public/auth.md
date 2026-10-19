@@ -67,11 +67,11 @@ POST /oauth/register  {"client_name":"My Agent","redirect_uris":["https://claude
 → 201 {"client_id":"…","token_endpoint_auth_method":"none","grant_types":["authorization_code","refresh_token"]}
 ```
 
-`redirect_uris` are allowlisted (hosted client callbacks + `http://localhost` /
-`http://127.0.0.1` on any port). Clients are public — no secret; use PKCE
-(`S256`). **API-key path:** start at <https://www.worldmonitor.app/pro>, then use
-the signed-in dashboard's API Keys settings to self-issue or revoke keys — no
-registration call.
+`redirect_uris` are allowlisted (hosted callbacks, loopback on any port). Or use
+a [listed](https://www.worldmonitor.app/docs/mcp-overview#client-id-metadata-documents)
+metadata document URL as `client_id`. No secret; PKCE `S256`.
+**API keys:** self-issue or revoke them in the dashboard's API Keys settings at
+<https://www.worldmonitor.app/pro>.
 
 ## Claim
 

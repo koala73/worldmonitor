@@ -1,5 +1,6 @@
 import { sanitizeBootstrapValue } from './_bootstrap-public-payload.js';
 import { validateImfDataset } from './_imf-dataset.js';
+import { stripTrailingSlashes } from './_strip-trailing-slashes.js';
 import { waitUntil as vercelWaitUntil } from '@vercel/functions';
 
 import {
@@ -18,6 +19,7 @@ import {
   validateApiKey,
 } from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
+import { checkRateLimit } from './_rate-limit.js';
 import {
   checkBootstrapUserApiKeyRateLimit,
   isCanonicalUserApiKey,
@@ -185,7 +187,7 @@ export function isAnonymousWeatherBootstrapRequest(req) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return false;
 
   const url = new URL(req.url);
-  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
+  const pathname = stripTrailingSlashes(url.pathname);
   if (pathname !== '/api/bootstrap') return false;
 
   const params = Array.from(url.searchParams.keys());
@@ -499,6 +501,9 @@ function successCacheHeaders(requestedTier, authKind, cors, onDemandKey = null) 
   };
 }
 
+const SESSION_BOOTSTRAP_RATE_SCOPE = 'bootstrap-session';
+const SESSION_BOOTSTRAP_RATE_LIMIT = 120;
+
 export default async function handler(req, ctx) {
   // no-store because this rejection is decided by the Origin header, which no
   // cache layer here keys on (CF ignores Vary — see TIER_CACHE above). Without
@@ -515,6 +520,18 @@ export default async function handler(req, ctx) {
 
   const auth = await validateBootstrapAuth(req, cors);
   if (!auth.ok) return auth.response;
+  // Anonymous wms_ sessions are free to mint and their reads are no-store, so
+  // every request is a full Redis read plus egress. Give them a per-address
+  // budget well above a dashboard boot; wm_ user keys have their own limiter.
+  if (auth.kind === 'session') {
+    const limited = await checkRateLimit(req, cors, {
+      ctx,
+      scope: SESSION_BOOTSTRAP_RATE_SCOPE,
+      limit: SESSION_BOOTSTRAP_RATE_LIMIT,
+      window: '60 s',
+    });
+    if (limited) return limited;
+  }
 
   const url = new URL(req.url);
   const tier = url.searchParams.get('tier');

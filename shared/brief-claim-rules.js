@@ -6,6 +6,22 @@
 
 import { extractNumericFacts } from './brief-llm-core.js';
 
+export function sanctionsEvidenceGrounded(text, headlineCount, evidence) {
+  const sanctions = evidence.filter(item => item.kind === 'sanctions');
+  if (sanctions.length === 0) return true;
+  const normalize = value => value.replace(/\s+/g, ' ').trim();
+  return headlineCount === 0 && evidence.length === 1
+    && normalize(text) === normalize(sanctions[0].factText);
+}
+
+export function energyEvidenceGrounded(text, headlineCount, evidence) {
+  const energy = evidence.filter(item => item.kind === 'energy');
+  if (energy.length === 0) return true;
+  const normalize = value => value.replace(/\s+/g, ' ').trim();
+  return headlineCount === 0 && evidence.length === 1
+    && normalize(text) === normalize(energy[0].factText);
+}
+
 // The date forms evidence fact texts use ("Sep 23, 2026", "Aug 29, 2026")
 // plus ISO dates. Blanked before numbers are read, so a date's day or year
 // can never license a score ("23 of 100" off an "as of Sep 23" as-of).
@@ -22,11 +38,16 @@ const dateFacts = (text) => [...extractNumericFacts(text)].filter((fact) => fact
  * number must be the cited item's own value (the first number in `value`),
  * and a numeric claim may cite only one item that carries a value: with two,
  * "28" and "62.3" could trade places between metrics and still pass.
+ * Energy observations instead bind every number through their complete exact
+ * fact text, including its provenance year.
  *
  * @param {string} claim
  * @param {Array<{ value: string, factText: string }>} cited
  */
 export function evidenceNumbersGrounded(claim, cited) {
+  // The complete energy atom also binds its provenance year, which is not
+  // the metric value. Exact matching cannot license a spliced number.
+  if (cited.some(item => item.kind === 'energy')) return energyEvidenceGrounded(claim, 0, cited);
   const citedDates = new Set(cited.flatMap((item) => dateFacts(item.factText)));
   const claimDates = (claim.match(DATE_TEXT_RE) || []).flatMap((date) => dateFacts(date));
   if (claimDates.some((fact) => !citedDates.has(fact))) return false;

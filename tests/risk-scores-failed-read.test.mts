@@ -69,6 +69,9 @@ function stubRedis({ failing = [], stored = {} }: RedisStub = {}): void {
     const commands: unknown[][] = Array.isArray(body[0]) ? body : [body];
     for (const command of commands) {
       if (command[0] === 'SET') writes.push({ key: String(command[1]), value: String(command[2]) });
+      if (command[0] === 'EVAL' && String(command[1]).includes('cii_history_wrong_type')) {
+        writes.push({ key: 'risk:scores:history:IR', value: String(command[1]) });
+      }
     }
     return Response.json(Array.isArray(body[0]) ? commands.map(() => ({ result: 'OK' })) : { result: 'OK' });
   }) as typeof fetch;
@@ -83,7 +86,7 @@ const stalePayload = {
 
 const writtenKeys = () => writes.map((write) => write.key);
 const published = () => writtenKeys().filter((key) => (
-  (key.startsWith('risk:scores:sebuf') && key !== REJECTED_KEY) || key === SEED_META_KEY
+  (key.startsWith('risk:scores:') && key !== REJECTED_KEY) || key === SEED_META_KEY
 ));
 const rejectionRecord = () => writes.filter((write) => write.key === REJECTED_KEY);
 
@@ -113,6 +116,7 @@ describe('risk-scores build with failed Redis reads', () => {
     stubRedis();
     await getRiskScores({} as never, {} as never);
     assert.ok(published().includes(SEED_META_KEY), 'a real empty build still stamps seed-meta');
+    assert.ok(published().includes('risk:scores:history:IR'), 'the real fresh leader build also publishes daily history');
   });
 
   it('publishes nothing when a single non-count source read errors', async () => {

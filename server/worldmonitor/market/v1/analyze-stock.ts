@@ -12,7 +12,6 @@ import type {
 import { callLlm } from '../../../_shared/llm';
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { CHROME_UA, yahooGate } from '../../../_shared/constants';
-import { sha256Hex } from '../../../_shared/hash';
 import { UPSTREAM_TIMEOUT_MS, sanitizeSymbol } from './_shared';
 import { storeStockAnalysisSnapshot } from './premium-stock-store';
 import { searchRecentStockHeadlines } from './stock-news-search';
@@ -1724,6 +1723,7 @@ async function buildAiOverlay(
           && typeof ratingNarrative === 'object'
           && ratingNarrative !== null
           && typeof (ratingNarrative as Record<string, unknown>).summary === 'string'
+          && ((ratingNarrative as Record<string, unknown>).summary as string).trim().length > 0
           && typeof (ratingNarrative as Record<string, unknown>).action === 'string'
           && (headlines.length === 0
             || (typeof parsed.newsSentiment === 'number' && Number.isFinite(parsed.newsSentiment)));
@@ -1985,19 +1985,12 @@ export type AnalyzeStockOptions = {
   now?: Date;
 };
 
-// The cached row returns `name` verbatim and feeds it to the LLM, so the key
-// must cover the whole name. A lossy form let distinct names share one row
-// across callers (GHSA-2fp6-mhpm-9gvh).
-export async function buildAnalyzeStockCacheKey(
+export function buildAnalyzeStockCacheKey(
   symbol: string,
-  name: string,
   includeNews: boolean,
-): Promise<string> {
-  const nameSuffix = name !== symbol ? `:${(await sha256Hex(name)).slice(0, 32)}` : '';
-  // v7 -> v8: expose the fundamentals-blended rating through the additive
-  // ratingSignal field while preserving the legacy technical signal/signalScore
-  // pair for already-loaded web, desktop, and API clients.
-  return `market:analyze-stock:v8:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
+): string {
+  // v9 excludes narratives generated from caller-supplied labels (#9287).
+  return `market:analyze-stock:v9:${symbol}:${includeNews ? 'news' : 'no-news'}`;
 }
 
 export async function analyzeStock(
@@ -2010,9 +2003,9 @@ export async function analyzeStock(
     return buildEmptyAnalysisResponse('', '', false);
   }
 
-  const name = (req.name || symbol).trim().slice(0, 120) || symbol;
+  const callerName = (req.name || symbol).trim().slice(0, 120) || symbol;
   const includeNews = req.includeNews === true;
-  const cacheKey = await buildAnalyzeStockCacheKey(symbol, name, includeNews);
+  const cacheKey = buildAnalyzeStockCacheKey(symbol, includeNews);
 
   const fetchFreshAnalysis = async (): Promise<AnalyzeStockResponse | null> => {
     const [historyOutcome, analystData] = await Promise.all([
@@ -2044,7 +2037,7 @@ export async function analyzeStock(
       ? getUsEquitySessionAt(options.now)
       : '';
     const [rawHeadlines, dividend, extendedQuote, earningsCalendar] = await Promise.all([
-      includeNews ? searchRecentStockHeadlines(symbol, name, NEWS_LIMIT).then((r) => r.headlines) : Promise.resolve([]),
+      includeNews ? searchRecentStockHeadlines(symbol, '', NEWS_LIMIT).then((r) => r.headlines) : Promise.resolve([]),
       fetchDividendProfile(symbol, technical.currentPrice),
       (marketSession === 'pre' || marketSession === 'post')
         ? fetchExtendedHoursQuote(symbol, marketSession)
@@ -2054,7 +2047,7 @@ export async function analyzeStock(
     const headlines = alignStockHeadlines(rawHeadlines, marketSession !== '');
     const overlays = await buildAiOverlay(
       symbol,
-      name,
+      symbol,
       technical,
       headlines,
       analystData.fundamentals,
@@ -2066,7 +2059,7 @@ export async function analyzeStock(
     const earnings = selectEarningsForSymbol(earningsCalendar, symbol, (options.now ?? new Date()).toISOString().slice(0, 10));
     const response = buildAnalysisResponse({
       symbol,
-      name,
+      name: symbol,
       currency: history.currency || 'USD',
       technical,
       headlines,
@@ -2078,6 +2071,7 @@ export async function analyzeStock(
       ratingSignal,
       includeNews,
       analysisAt,
+      analysisId: `stock:${STOCK_ANALYSIS_ENGINE_VERSION}:${symbol}:${crypto.randomUUID()}:${includeNews ? 'news' : 'core'}`,
       generatedAt: new Date().toISOString(),
       dividend,
       marketSession,
@@ -2105,7 +2099,7 @@ export async function analyzeStock(
     cached = null;
   }
 
-  if (cached) return cached;
+  if (cached) return { ...cached, name: callerName };
 
-  return buildEmptyAnalysisResponse(symbol, name, includeNews);
+  return buildEmptyAnalysisResponse(symbol, callerName, includeNews);
 }

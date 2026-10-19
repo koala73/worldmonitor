@@ -5,7 +5,11 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { TOOL_REGISTRY, toolAccess, toolWeight } from '../api/mcp/registry/index.ts';
+import Ajv2020 from 'ajv/dist/2020.js';
+
+import { TOOL_REGISTRY, buildPublicTool, toolAccess, toolWeight } from '../api/mcp/registry/index.ts';
+import { applyJmespath } from '../api/mcp/jmespath.ts';
+import { buildStructuredContent } from '../api/mcp/structured-content.ts';
 import { RpcValidationError } from '../api/mcp/billing-denial.ts';
 import { tradeCountryCode } from '../api/mcp/registry/tariff-tools.ts';
 import { M49_TO_WTO_CODE, PRODUCT_GROUPS, witsCountry } from '../server/worldmonitor/trade/v1/_tradestats-tariff.ts';
@@ -25,6 +29,23 @@ const averages = tool('get_tariff_averages');
 const bilateral = tool('get_bilateral_tariff');
 const usDuty = tool('get_us_import_duty');
 const CTX = { kind: 'env_key', apiKey: 'test' } as Parameters<typeof averages._execute>[2];
+
+const SCHEDULE_COVERAGE = {
+  rateBasis: 'SCHEDULE',
+  includesUnilateralDuties: false,
+  excludedDutyTypes: ['SECTION_301', 'SECTION_232', 'IEEPA', 'ANTI_DUMPING', 'COUNTERVAILING'],
+};
+const US_DUTY_COVERAGE = {
+  dataset: 'USITC_HTS',
+  rateBasis: 'CURRENT_DUTY',
+  includesUnilateralDuties: true,
+  excludedDutyTypes: ['IEEPA', 'ANTI_DUMPING', 'COUNTERVAILING'],
+};
+const BASE_ONLY_EXCLUDED = ['SECTION_301', 'SECTION_232', 'IEEPA', 'ANTI_DUMPING', 'COUNTERVAILING'];
+const US_SEE_ALSO = {
+  tool: 'get_us_import_duty',
+  reason: 'Schedule rates leave out Section 301 and 232 duties; get_us_import_duty returns the US duty in force, including them.',
+};
 
 let requested: URL[] = [];
 let reply: () => Response;
@@ -122,7 +143,10 @@ describe('get_tariff_averages', () => {
     assert.equal(url.searchParams.get('partner_country'), '156');
     assert.equal(url.searchParams.get('product_sector'), 'Textiles');
     assert.equal(url.searchParams.get('years'), '5');
-    assert.deepEqual(result, wire, 'the route answer is returned unchanged');
+    assert.deepEqual(result, {
+      ...wire,
+      coverage: { ...SCHEDULE_COVERAGE, dataset: 'WITS_TRAINS', latestYear: 2023, seeAlso: US_SEE_ALSO },
+    }, 'the route answer is returned unchanged, plus coverage');
   });
 
   it('defaults to the US MFN series: no partner, no group, no years', async () => {
@@ -180,10 +204,13 @@ describe('get_tariff_averages', () => {
     await rejectsWith(averages._execute({ years: 2.5 }, BASE, CTX, {}), 'years');
   });
 
-  it('relays a coverage answer unchanged', async () => {
+  it('relays a coverage answer unchanged, plus coverage with no vintage', async () => {
     const wire = { datapoints: [], fetchedAt: '', upstreamUnavailable: false, unavailableReason: 'TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED' };
     reply = () => json(wire);
-    assert.deepEqual(await averages._execute({ partner: '158' }, BASE, CTX, {}), wire);
+    assert.deepEqual(await averages._execute({ partner: '158' }, BASE, CTX, {}), {
+      ...wire,
+      coverage: { ...SCHEDULE_COVERAGE, dataset: 'WITS_TRAINS', seeAlso: US_SEE_ALSO },
+    });
   });
 
   it('turns a gateway 400 with violations into Invalid params', async () => {
@@ -230,7 +257,7 @@ describe('get_us_import_duty', () => {
     assert.equal(url.pathname, '/api/trade/v1/get-us-import-duty');
     assert.equal(url.searchParams.get('hs_code'), '87038000');
     assert.equal(url.searchParams.get('partner_country'), '156');
-    assert.deepEqual(result, wire);
+    assert.deepEqual(result, { ...wire, coverage: { ...US_DUTY_COVERAGE, asOf: '2026 Revision 21' } });
   });
 
   it('accepts 6, 8 and 10 digits and rejects the rest without a fetch', async () => {
@@ -241,5 +268,145 @@ describe('get_us_import_duty', () => {
     requested = [];
     await rejectsWith(usDuty._execute({ hs_code: '8703800', partner: '156' }, BASE, CTX, {}), 'hs_code');
     await rejectsWith(usDuty._execute({ hs_code: '870380', partner: '' }, BASE, CTX, {}), 'partner');
+  });
+});
+
+// Every successful answer says which dataset answered, whether it is a schedule
+// rate or the duty in force, which duties it leaves out and when it stops, so
+// an agent cannot present a 2023 schedule rate as today's US duty.
+describe('coverage on tariff answers', () => {
+  const MFN_WIRE = {
+    datapoints: [
+      { reportingCountry: '840', partnerCountry: 'World', productSector: 'All products', year: 2022, tariffRate: 3.3, boundRate: 0, indicatorCode: 'TP_A_0010', weightedRate: 0 },
+      { reportingCountry: '840', partnerCountry: 'World', productSector: 'All products', year: 2023, tariffRate: 3.3, boundRate: 0, indicatorCode: 'TP_A_0010', weightedRate: 0 },
+    ],
+    fetchedAt: '2026-10-10T00:00:00.000Z',
+    upstreamUnavailable: false,
+    unavailableReason: '',
+    coverageStartYear: 1996,
+    coverageEndYear: 2023,
+  };
+
+  it('averages, reporter omitted, no partner: WTO MFN schedule with the coverage end year and a pointer to the US duty', async () => {
+    reply = () => json(MFN_WIRE);
+    const result = await averages._execute({}, BASE, CTX, {}) as Record<string, unknown>;
+    assert.deepEqual(result.coverage, { ...SCHEDULE_COVERAGE, dataset: 'WTO_MFN', latestYear: 2023, seeAlso: US_SEE_ALSO });
+  });
+
+  it('averages with World as partner is still the MFN series', async () => {
+    reply = () => json(MFN_WIRE);
+    const result = await averages._execute({ reporter: 'US', partner: 'World' }, BASE, CTX, {}) as { coverage: { dataset: string } };
+    assert.equal(result.coverage.dataset, 'WTO_MFN');
+  });
+
+  it('averages for Germany with a partner: WITS TRAINS and no pointer to the US-only tool', async () => {
+    reply = () => json(MFN_WIRE);
+    const result = await averages._execute({ reporter: '276', partner: 'China' }, BASE, CTX, {}) as Record<string, unknown>;
+    assert.deepEqual(result.coverage, { ...SCHEDULE_COVERAGE, dataset: 'WITS_TRAINS', latestYear: 2023 });
+  });
+
+  it('averages with a product group only is WITS TRAINS', async () => {
+    reply = () => json(MFN_WIRE);
+    const result = await averages._execute({ product_group: 'Food' }, BASE, CTX, {}) as { coverage: { dataset: string } };
+    assert.equal(result.coverage.dataset, 'WITS_TRAINS');
+  });
+
+  it('averages without coverageEndYear takes the newest datapoint year', async () => {
+    const { coverageEndYear: _end, coverageStartYear: _start, ...wire } = MFN_WIRE;
+    reply = () => json({ ...wire, datapoints: [...wire.datapoints].reverse() });
+    const result = await averages._execute({ reporter: '276' }, BASE, CTX, {}) as { coverage: { latestYear?: number } };
+    assert.equal(result.coverage.latestYear, 2023);
+  });
+
+  it('bilateral with the US as reporter: the answering year and a pointer to the US duty', async () => {
+    const wire = { reportingCountry: '840', partnerCountry: '156', hsCode: '870380', year: 2021, basis: 'APPLIED_TARIFF_BASIS_MFN', unavailableReason: '' };
+    reply = () => json(wire);
+    const result = await bilateral._execute({ reporter: '840', partner: '156', hs_code: '870380' }, BASE, CTX, {});
+    assert.deepEqual(result, { ...wire, coverage: { ...SCHEDULE_COVERAGE, dataset: 'WITS_TRAINS', latestYear: 2021, seeAlso: US_SEE_ALSO } });
+  });
+
+  it('bilateral with the EU as reporter carries no pointer to the US-only tool', async () => {
+    reply = () => json({ reportingCountry: '918', partnerCountry: '156', hsCode: '870380', year: 2023 });
+    const result = await bilateral._execute({ reporter: 'EU', partner: '156', hs_code: '870380' }, BASE, CTX, {}) as Record<string, unknown>;
+    assert.deepEqual(result.coverage, { ...SCHEDULE_COVERAGE, dataset: 'WITS_TRAINS', latestYear: 2023 });
+  });
+
+  it('bilateral NOT_COVERED is relayed with its reason, plus coverage with no vintage', async () => {
+    const wire = { reportingCountry: '840', partnerCountry: '158', hsCode: '870380', year: 0, upstreamUnavailable: false, unavailableReason: 'BILATERAL_TARIFF_UNAVAILABLE_REASON_NOT_COVERED' };
+    reply = () => json(wire);
+    const result = await bilateral._execute({ reporter: '840', partner: '158', hs_code: '870380' }, BASE, CTX, {});
+    assert.deepEqual(result, { ...wire, coverage: { ...SCHEDULE_COVERAGE, dataset: 'WITS_TRAINS', seeAlso: US_SEE_ALSO } });
+  });
+
+  it('US duty: current duty with Section 301/232, the HTS release as vintage, and no pointer', async () => {
+    reply = () => json({ hsCode: '870380', partnerCountry: '156', htsRelease: '2026 Revision 21', lines: [], additionalDutiesLoaded: true });
+    const result = await usDuty._execute({ hs_code: '870380', partner: '156' }, BASE, CTX, {}) as Record<string, unknown>;
+    assert.deepEqual(result.coverage, { ...US_DUTY_COVERAGE, asOf: '2026 Revision 21' });
+  });
+
+  it('US duty answered from base rates only does not claim the unilateral duties', async () => {
+    reply = () => json({ hsCode: '870380', partnerCountry: '156', htsRelease: '', lines: [], additionalDutiesLoaded: false });
+    const result = await usDuty._execute({ hs_code: '870380', partner: '156' }, BASE, CTX, {}) as Record<string, unknown>;
+    assert.deepEqual(result.coverage, { ...US_DUTY_COVERAGE, includesUnilateralDuties: false, excludedDutyTypes: BASE_ONLY_EXCLUDED });
+  });
+
+  it('US duty without an additionalDutiesLoaded flag fails closed to base rates only', async () => {
+    reply = () => json({ hsCode: '870380', partnerCountry: '156', htsRelease: '', lines: [] });
+    const result = await usDuty._execute({ hs_code: '870380', partner: '156' }, BASE, CTX, {}) as Record<string, unknown>;
+    assert.deepEqual(result.coverage, { ...US_DUTY_COVERAGE, includesUnilateralDuties: false, excludedDutyTypes: BASE_ONLY_EXCLUDED });
+  });
+
+  // An outage is relayed as a 200 with upstreamUnavailable: true. The body
+  // answers nothing, so coverage must not describe it as if it did.
+  const OUTAGES: Array<[typeof averages, Record<string, unknown>, string]> = [
+    [averages, {}, 'TARIFF_TREND_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE'],
+    [bilateral, { reporter: '840', partner: '156', hs_code: '870380' }, 'BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE'],
+    [usDuty, { hs_code: '870380', partner: '156' }, 'US_IMPORT_DUTY_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE'],
+  ];
+  for (const [t, args, reason] of OUTAGES) {
+    it(`${t.name}: a 200 upstream outage is relayed without coverage`, async () => {
+      const wire = { upstreamUnavailable: true, unavailableReason: reason };
+      reply = () => json(wire);
+      const result = await t._execute(args, BASE, CTX, {});
+      assert.deepEqual(result, wire);
+    });
+  }
+
+  it('a gateway 5xx still rejects on every tool, so no partial answer carries coverage', async () => {
+    reply = () => json({ error: 'boom' }, 502);
+    await assert.rejects(bilateral._execute({ reporter: '840', partner: '156', hs_code: '870380' }, BASE, CTX, {}));
+    await assert.rejects(usDuty._execute({ hs_code: '870380', partner: '156' }, BASE, CTX, {}));
+  });
+
+  it('each schema declares coverage as optional and every emitted answer validates against it', async () => {
+    const ajv = new Ajv2020({ strict: false });
+    const cases: Array<[typeof averages, Record<string, unknown>, unknown]> = [
+      [averages, {}, MFN_WIRE],
+      [bilateral, { reporter: '840', partner: '156', hs_code: '870380' }, { reportingCountry: '840', year: 2021 }],
+      [usDuty, { hs_code: '870380', partner: '156' }, { htsRelease: '2026 Revision 21', lines: [], additionalDutiesLoaded: true }],
+    ];
+    for (const [t, args, wire] of cases) {
+      const schema = t.outputSchema as { properties: Record<string, { type?: string }>; required?: string[] };
+      assert.equal(schema.properties.coverage?.type, 'object', t.name);
+      assert.ok(!(schema.required ?? []).includes('coverage'), `${t.name}: coverage must stay optional`);
+      reply = () => json(wire);
+      const result = await t._execute(args, BASE, CTX, {});
+      const validate = ajv.compile(buildPublicTool(t, { compressDescriptions: false }).outputSchema);
+      assert.ok(validate(result), `${t.name}: ${JSON.stringify(validate.errors)}`);
+      // A coverage key the schema does not name is rejected.
+      const bad = { ...(result as Record<string, unknown>), coverage: { ...(result as { coverage: object }).coverage, extra: 1 } };
+      assert.equal(ajv.compile(t.outputSchema)(bad), false, `${t.name}: coverage must be closed`);
+    }
+  });
+
+  it('a jmespath projection drops coverage and still validates against the advertised schema', async () => {
+    reply = () => json(MFN_WIRE);
+    const result = await averages._execute({}, BASE, CTX, {});
+    const { value, failed } = applyJmespath(result, 'datapoints[0]');
+    assert.equal(failed, undefined);
+    assert.equal((value as Record<string, unknown>).coverage, undefined);
+    const structured = buildStructuredContent(value, { reshaped: true, rider: null });
+    const validate = new Ajv2020({ strict: false }).compile(buildPublicTool(averages, { compressDescriptions: false }).outputSchema);
+    assert.ok(validate(structured), JSON.stringify(validate.errors));
   });
 });

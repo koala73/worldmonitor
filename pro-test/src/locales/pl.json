@@ -158,7 +158,7 @@
     "riskMonitoringDesc": "Globalna punktacja ryzyka, analiza scenariuszy i ocena ryzyka geopolitycznego. Wykrywanie konwergencji między sygnałami rynkowymi i politycznymi.",
     "morningBriefs": "Osobiste stanowisko wywiadowcze",
     "morningBriefsDesc": "Do 30 rankingowanych artykułów na podsumowanie, zdeduplikowane w źródłach. Wybierz częstotliwość codziennie, dwa razy dziennie lub tygodniowo — lub alerty w czasie rzeczywistym dla krytycznych zdarzeń. Ocena AI i sygnały do obserwacji dostarczone na Slack, Discord, Telegram, Email lub webhook. Nie biuletyn — analityk.",
-    "oneKey": "Live Services, 1 Key",
+    "oneKey": "Usługi na żywo, 1 klucz",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky i więcej — wszystkie aktywne, bez osobnych rejestracji.",
     "deliveryLabel": "Wybierz, jak wywiad Cię znajdzie",
     "supplyChainLab": "Laboratorium stresu łańcucha dostaw",
@@ -246,7 +246,7 @@
     "connectorsRow": "Konektory",
     "deployment": "Wdrożenie",
     "securityRow": "Bezpieczeństwo",
-    "f5_15min": "5-15 min",
+    "f5_15min": "5-15 minut",
     "fLt60s": "<60 sekund",
     "fPerRequest": "Na żądanie",
     "fLiveEdge": "Live-edge",
@@ -257,7 +257,7 @@
     "fAgentsPersonas": "Agenci + persony",
     "fDailyFlash": "Codziennie + flash",
     "fTeamDist": "Dystrybucja zespołowa",
-    "fSlackTgWa": "Slack/Discord/TG/Email/Webhook",
+    "fSlackTgWa": "Slack/Discord/TG/e-mail/Webhook",
     "fWebhook": "Webhook",
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
@@ -451,17 +451,17 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Darmowy pulpit rozpowszechniania inteligencji w czasie rzeczywistym",
-      "description": "Zanim stanie się wiadomością, Ty już będziesz wiedzieć. Konflikty, gardła logistyczne, loty wojskowe, rynki, cyber: jedna darmowa mapa na żywo z analizą AI. Bez rejestracji.",
-      "ogTitle": "World Monitor — Kiedy to staje się wiadomością, ty już o tym wiesz.",
-      "ogDescription": "Surowe sygnały świata — statki, odrzutowce, syreny, kable, rynki — na jednej darmowej żywej mapie inteligencji, z AI, które flaguje ich zbieżności. Darmowe, bez rejestracji."
+      "title": "World Monitor: Darmowy panel wywiadu geopolitycznego",
+      "description": "World Monitor: panel wywiadu geopolitycznego w czasie rzeczywistym. Darmowa mapa na żywo: konflikty, żegluga, loty, rynki i cyberzagrożenia, z API i MCP.",
+      "ogTitle": "World Monitor: Darmowy panel wywiadu geopolitycznego",
+      "ogDescription": "World Monitor: panel wywiadu geopolitycznego w czasie rzeczywistym. Darmowa mapa na żywo: konflikty, żegluga, loty, rynki i cyberzagrożenia, z API i MCP."
     },
     "nav": {
       "useCases": "Korelacje",
       "firstFive": "Pierwsze 5 minut",
       "depth": "Głębia",
       "pricing": "Cennik",
-      "faq": "FAQ",
+      "faq": "Częste pytania",
       "docs": "Dokumentacja",
       "launch": "Uruchom pulpit",
       "blog": "Blog",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Darmowy globalny pulpit inteligencji · dostępny teraz",
-      "headline1": "Kiedy to staje się wiadomością,",
-      "headline2": "ty już o tym wiesz.",
-      "sub": "Nagłówki to opóźnienie. World Monitor transmituje surowe sygnały świata — statki, odrzutowce, syreny, kable, rynki — na jedną żywą mapę, z AI, które flaguje ich zbieżności w coś, co się liczy.",
+      "headline1": "Panel wywiadu geopolitycznego",
+      "headline2": "w czasie rzeczywistym",
+      "sub": "Kiedy to staje się wiadomością, ty już o tym wiesz.",
       "ctaPrimary": "Uruchom pulpit",
       "ctaFree": "Darmowe · Bez rejestracji · Wczytuje się w sekundy",
       "ctaSecondary": "Zobacz, jak go używają ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor nie jest open-source'owym Palantir",
       "asOf": "Stan na {{date}}",
       "whatIsTitle": "Czym jest World Monitor?",
-      "whatIsBody": "World Monitor to darmowy ($0), open-source'owy (AGPL-3.0) dashboard używany przez 2M+ osób. Transmituje {{feeds}} kanałów wiadomości i OSINT ze {{providers}} przypisanych dostawców na jedną żywą mapę świata z {{mapLayers}} typami warstw mapy, obejmującymi geopolitykę, rynki, transport morski, lotnictwo i cyber. Koreluje je, aby zbieżne zdarzenia wyświetliły się przed nagłówkami. Każda liczba jest udokumentowana wraz ze źródłem i metodą."
+      "whatIsBody": "World Monitor to darmowy ($0), open-source'owy (AGPL-3.0) dashboard używany przez 2M+ osób. Transmituje {{feeds}} kanałów wiadomości i OSINT ze {{providers}} przypisanych dostawców na jedną żywą mapę świata z {{mapLayers}} typami warstw mapy, obejmującymi geopolitykę, rynki, transport morski, lotnictwo i cyber. Koreluje je, aby zbieżne zdarzenia wyświetliły się przed nagłówkami. Każda liczba jest udokumentowana wraz ze źródłem i metodą.",
+      "whatIsBestFor": "Najlepszy dla analityków, dziennikarzy, traderów i deweloperów, którzy potrzebują geopolitycznych sygnałów na żywo."
     },
     "live": {
       "eyebrow": "Na żywo teraz",
@@ -688,8 +689,8 @@
       "a9": "Tak — open source na AGPL-3.0 na GitHub: przeczytaj kod, samodzielnie go hostuj, lub na nim buduj. Natywne aplikacje desktopowe dla Windows, macOS i Linux są również dostępne, a także aplikacja Android TV do wyświetlaczy ściennych.",
       "q10": "Dlaczego World Monitor nie jest Palantir?",
       "a10": "Palantir sprawia, że własne dane instytucji stają się operacyjne w ramach tej instytucji. World Monitor zaczyna od drugiej strony: zbiera, normalizuje, koreluje i monitoruje dane z publicznej domeny, następnie publikuje tę warstwę analizy poprzez bezpłatny dashboard i kod open-source. Inne zadanie, inny produkt.",
-      "q11": "Which World Monitor license do I need?",
-      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
+      "q11": "Której licencji World Monitor potrzebuję?",
+      "a11": "Wybierz według tego, kto będzie korzystał z wyniku. Licencja osobista Pro jest dla jednej osoby, która używa World Monitor do własnych badań i decyzji. Pro Business pozwala jednemu licencjonowanemu użytkownikowi używać go do pracy dla firmy lub klienta, narzędzi wewnętrznych i raportów. API Starter obejmuje użycie API w jednej organizacji, bez redystrybucji dla klientów. API Business pozwala tej organizacji osadzić dane World Monitor w produktach i usługach dla jej klientów. Enterprise obejmuje własne miejsca, White-label i wdrożenia. Te licencje subskrypcyjne są oddzielone od licencji kodu źródłowego AGPL/MIT. Pełne warunki: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} prostych odpowiedzi na pytania o cenę, dane, alerty i dostęp do AI. Krótko mówiąc: dashboard kosztuje $0, nie wymaga konta i kod jest open source na licencji AGPL-3.0.",
       "q12": "Jakie jest najlepsze oprogramowanie do śledzenia globalnych kryzysów i zakłóceń w wiadomościach?",
       "a12": "World Monitor to darmowa opcja open source: przesyła {{feeds}} strumieni wiadomości i OSINT od {{providers}} wymienionych z nazwy dostawców na jedną mapę świata na żywo z {{mapLayers}} typami warstw mapy, obejmując geopolitykę, rynki, żeglugę, lotnictwo i cyberbezpieczeństwo. Łączy je ze sobą, aby zbiegające się zakłócenia wychodziły na jaw, zanim trafią na nagłówki. Aby porównać go z innymi narzędziami, zobacz worldmonitor.app/compare/best-geopolitical-risk-dashboards."

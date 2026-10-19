@@ -73,7 +73,8 @@ describe('root dependency cache (#8710)', () => {
   });
 
   for (const [workflowText, jobIds] of [
-    [testWorkflow, ['unit-shards', 'unit-built-output', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'variant-smoke-pro-webmcp', 'resilience-validation-smoke']],
+    [testWorkflow, ['docs-stats', 'unit-shards', 'unit-built-output', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'variant-smoke-pro-webmcp', 'resilience-validation-smoke']],
+    [read(resolve(workflowsDir, 'perf-style-layout-budget.yml')), ['measure']],
     [lintCodeWorkflow, ['biome', 'markdown']],
     [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck']],
   ] as const) {
@@ -632,7 +633,7 @@ describe('live cache sweep deployment timing', () => {
       ['schedule', '', '', '', true],
       ['workflow_dispatch', '', '', '', true],
     ]) {
-      const github = { event_name: event, event: event === 'deployment_status' ? {
+      const github = { event_name: event, repository: 'koala73/worldmonitor', event: event === 'deployment_status' ? {
         deployment_status: { state },
         deployment: { environment, creator: { login: creator } },
       } : {} };
@@ -867,7 +868,7 @@ describe('CI workflow coverage', () => {
     );
     assert.match(
       openPrStep,
-      /git commit -m "chore\(corpus\): refresh[^\n]+\n[\s\S]*npm run build:sitemap\n\s+git add public\/sitemap\.xml public\/sitemap-main\.xml\n[\s\S]*git commit -m "chore\(corpus\): align[^\n]+\n[\s\S]*node scripts\/build-sitemap\.mjs --check\n\s+git push/,
+      /git commit -m "chore\(corpus\): refresh[^\n]+\n[\s\S]*npm run build:sitemap\n\s+git add public\/sitemap\.xml public\/sitemap-main\.xml\n[\s\S]*git commit -m "chore\(corpus\): align[^\n]+\n[\s\S]*node --import tsx scripts\/build-sitemap\.mjs --check\n\s+git push/,
       'publish the sitemap only after regenerating its dates from committed material sources',
     );
   });
@@ -1449,7 +1450,7 @@ describe('CI workflow coverage', () => {
       };
       const admitted = Object.entries(jobs).filter(([, job]) => {
         const expression = (job as { if: string }).if.replace(/^\$\{\{\s*|\s*\}\}$/g, '');
-        return runInNewContext(expression, { github: { event_name: event }, needs, always: () => true });
+        return runInNewContext(expression, { github: { event_name: event, repository: 'koala73/worldmonitor' }, needs, always: () => true });
       }).map(([name]) => name);
       assert.deepEqual(admitted, completion ? ['evaluate-direct'] : ['discover', 'recover', 'evaluate', 'gate'], event);
     }
@@ -1479,7 +1480,7 @@ describe('CI workflow coverage', () => {
     assert.match(jobs.recover?.if ?? '', /always\(\).*needs\.discover\.result == 'success'/);
     assert.match(jobs.evaluate?.if ?? '', /always\(\).*needs\.recover\.result == 'success'.*outputs\.count != '0'/);
     assert.match(jobs.invalidate?.if ?? '', /needs\.discover\.result == 'success'.*outputs\.count != '0'/);
-    assert.equal(jobs.gate?.if, "${{ always() && github.event_name != 'workflow_run' }}");
+    assert.equal(jobs.gate?.if, "${{ (always() && github.event_name != 'workflow_run') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}");
 
     for (const name of ['invalidate', 'evaluate', 'evaluate-direct']) {
       assert.equal(jobs[name]?.concurrency?.group, 'deploy-gate-${{ matrix.sha }}', `${name} must own the SHA lock`);
@@ -1645,7 +1646,7 @@ describe('CI workflow coverage', () => {
     assert.match(markdownJob, /\n {4}needs: changes\n/);
     assert.match(
       markdownJob,
-      /\n {4}if: needs\.changes\.outputs\.markdown == 'true'\n/,
+      /\n {4}if: \$\{\{ \(needs\.changes\.outputs\.markdown == 'true'\) && \(github\.event_name != 'schedule' \|\| github\.repository == 'koala73\/worldmonitor'\) \}\}\n/,
       'markdown lint must skip on PRs that touch no markdown; the gate counts skipped as passing',
     );
     assert.match(markdownJob, /\n {6}- run: npm run lint:md\n/);
@@ -1969,7 +1970,7 @@ describe('CI workflow coverage', () => {
     assert.match(securityAuditWorkflow, /\n {4}name: security-audit\n/, 'security-audit.yml must publish a security-audit check run');
     assert.match(
       securityAuditWorkflow,
-      /if:\s*\$\{\{\s*always\(\)\s*\}\}/,
+      /if:\s*\$\{\{\s*\(always\(\)\)\s*&&\s*\(github\.event_name != 'schedule' \|\| github\.repository == 'koala73\/worldmonitor'\)\s*\}\}/,
       'security-audit.yml must always publish the aggregate check',
     );
     assert.match(
@@ -2336,5 +2337,39 @@ describe('gated workflows evict superseded PR runs (#8443)', () => {
       true,
       'PR-number-only plus ${{ true }} must still fail the helper — expression cancel is unconditional unless it is the PR-only form',
     );
+  });
+});
+
+describe('scheduled workflows run only in the upstream repository', () => {
+  // A public repo's forks inherit every cron. Forks that enable Actions then
+  // probe production on our schedule: one day of MCP smoke traffic came from
+  // ~1,600 runner IPs against ~17 upstream runs. Push, PR and manual runs in
+  // forks stay allowed; only the fork's own schedule is skipped.
+  const FORK_GUARD = "github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor'";
+
+  it('every job in a scheduled workflow carries the fork guard', () => {
+    const missing: string[] = [];
+    for (const name of readdirSync(workflowsDir).filter((n) => n.endsWith('.yml') || n.endsWith('.yaml'))) {
+      const workflow = YAML.parse(read(resolve(workflowsDir, name)));
+      const on = workflow.on ?? workflow[true as unknown as string];
+      if (!on || typeof on !== 'object' || !('schedule' in on)) continue;
+      for (const [jobId, job] of Object.entries(workflow.jobs as Record<string, { if?: unknown }>)) {
+        if (!String(job.if ?? '').includes(FORK_GUARD)) missing.push(`${name}#${jobId}`);
+      }
+    }
+    assert.deepEqual(missing, [], `add \`(${FORK_GUARD})\` to the job-level if of: ${missing.join(', ')}`);
+  });
+
+  it('skips only a fork\'s own scheduled run', () => {
+    const cases: Array<[string, string, boolean]> = [
+      ['schedule', 'koala73/worldmonitor', true],
+      ['schedule', 'someone/worldmonitor', false],
+      ['push', 'someone/worldmonitor', true],
+      ['pull_request', 'someone/worldmonitor', true],
+      ['workflow_dispatch', 'someone/worldmonitor', true],
+    ];
+    for (const [event_name, repository, expected] of cases) {
+      assert.equal(runInNewContext(FORK_GUARD, { github: { event_name, repository } }), expected, `${event_name} in ${repository}`);
+    }
   });
 });

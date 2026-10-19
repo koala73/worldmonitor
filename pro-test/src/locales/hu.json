@@ -271,7 +271,7 @@
     "fCloudOnPrem": "Felhő/on-prem/air-gap",
     "fStandard": "Standard",
     "fKeyAuth": "Kulcsalapú auth",
-    "fSsoMfa": "SSO/MFA/RBAC/audit",
+    "fSsoMfa": "SSO/MFA/RBAC/auditnapló",
     "noteBelow": "Az alapplatform ingyenes marad. A fizetős csomagok részvénykutatást, makróanalitikát, AI-briefeket és szervezeti használatot nyitnak meg.",
     "f50plus": "Elérhető",
     "sourcesRow": "Források",
@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Ingyenes valós idejű globális hírszerzési irányítópult",
-      "description": "Mire hír lesz belőle, már tudtál róla. Konfliktusok, szoros pontok, katonai repülések, piacok, kibernetika: egy ingyenes élő térkép mesterséges intelligencia-elemzéssel. Regisztráció nélkül.",
-      "ogTitle": "World Monitor — Amíg hír lesz, már tudtad.",
-      "ogDescription": "A világ nyers jelei — hajók, repülőgépek, szirénák, kábelek, piacok — egy ingyenes élő hírszerzési térképen, AI-val, amely akkor jelöl meg, amikor összefolynak. Ingyenes, nincs regisztráció."
+      "title": "World Monitor: Ingyenes geopolitikai hírszerző irányítópult",
+      "description": "World Monitor: valós idejű geopolitikai hírszerzési irányítópult. Ingyenes élő térkép: konfliktusok, hajózás, járatok, piacok és kiber, API-val és MCP-vel.",
+      "ogTitle": "World Monitor: Ingyenes geopolitikai hírszerző irányítópult",
+      "ogDescription": "World Monitor: valós idejű geopolitikai hírszerzési irányítópult. Ingyenes élő térkép: konfliktusok, hajózás, járatok, piacok és kiber, API-val és MCP-vel."
     },
     "nav": {
       "useCases": "Korrelációk",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Ingyenes globális hírszerzési irányítópult · most élő",
-      "headline1": "Amíg hír lesz,",
-      "headline2": "már tudtad.",
-      "sub": "A hírek csak a késés. A World Monitor a világ nyers jeleit streameli — hajók, repülőgépek, szirénák, kábelek, piacok — egy élő térképre, AI-val, amely jelöli, amikor összefolynak valamivé, ami számít.",
+      "headline1": "Valós idejű geopolitikai",
+      "headline2": "hírszerzési irányítópult",
+      "sub": "Amíg hír lesz, már tudtad.",
       "ctaPrimary": "Irányítópult indítása",
       "ctaFree": "Ingyenes · Nincs regisztráció · Másodpercek alatt betölt",
       "ctaSecondary": "Nézd meg, hogyan használják az emberek ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "A WorldMonitor nem nyílt forráskódú Palantir",
       "asOf": "Állapot: {{date}}",
       "whatIsTitle": "Mi az a World Monitor?",
-      "whatIsBody": "A World Monitor egy ingyenes ($0), nyílt forráskódú (AGPL-3.0) műszerfal, amelyet 2M+ ember használ. {{feeds}} hír- és OSINT-forrást közvetít {{providers}} attribútummal ellátott szolgáltatótól egyetlen élő világtérképre {{mapLayers}} térképréteg-típussal, amely geopolitikát, piacokat, hajózást, repülést és kiberterületet fed le. Korrelálja őket, így az összefutó események a hírcímek előtt kerülnek felszínre. Minden adat forrásolt és minden módszer dokumentált."
+      "whatIsBody": "A World Monitor egy ingyenes ($0), nyílt forráskódú (AGPL-3.0) műszerfal, amelyet 2M+ ember használ. {{feeds}} hír- és OSINT-forrást közvetít {{providers}} attribútummal ellátott szolgáltatótól egyetlen élő világtérképre {{mapLayers}} térképréteg-típussal, amely geopolitikát, piacokat, hajózást, repülést és kiberterületet fed le. Korrelálja őket, így az összefutó események a hírcímek előtt kerülnek felszínre. Minden adat forrásolt és minden módszer dokumentált.",
+      "whatIsBestFor": "Elemzőknek, újságíróknak, kereskedőknek és fejlesztőknek ideális, akiknek élő geopolitikai jelzésekre van szükségük."
     },
     "live": {
       "eyebrow": "Most élő",
@@ -688,8 +689,8 @@
       "a9": "Igen — nyílt forráskód az AGPL-3.0 alatt a GitHubon: olvasd el a kódot, hostold saját magad, vagy építs rá. Natív asztali alkalmazások Windows, macOS és Linux rendszerre érhetők el, valamint Android TV-alkalmazás falra szerelt kijelzőkhöz.",
       "q10": "Miért nem a World Monitor a Palantir?",
       "a10": "A Palantir egy intézmény saját adatait működteti az adott intézményen belül. A World Monitor az ellenkező végről indul: összegyűjt, normalizál, korrelál és nyomon követ nyilvános adatokat, majd ezt az intelligencia réteget egy ingyenes irányítópulton és nyílt forráskódú kódok révén közzéteszi. Más feladat, más termék.",
-      "q11": "Which World Monitor license do I need?",
-      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
+      "q11": "Melyik World Monitor-licenc kell nekem?",
+      "a11": "Aszerint válassz, ki fogja használni az eredményt. A Pro személyes licence egy személynek szól, aki a World Monitort a saját kutatásához és döntéseihez használja. A Pro Business egy licencelt felhasználónak engedi, hogy céges vagy ügyfélmunkára, belső eszközökre és jelentésekre használja. Az API Starter egy szervezeten belüli API-használatot fed le, ügyfeleknek való továbbadás nélkül. Az API Business lehetővé teszi, hogy az a szervezet a World Monitor adatait termékekbe és szolgáltatásokba ágyazza az ügyfelei számára. Az Enterprise egyedi férőhelyeket, White-labelt és telepítéseket fed le. Ezek az előfizetéses licencek külön állnak az AGPL/MIT forráskód-licencektől. Teljes feltételek: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} egyenes válasz az árra, adatokra, riasztásokra és az AI hozzáférésre. Röviden: a dashboard $0-ba kerül, nem igényel fiókot, és a kód nyílt forráskódú AGPL-3.0 alatt.",
       "q12": "Mi a legjobb szoftver a hírekben szereplő globális válságok és zavarok nyomon követésére?",
       "a12": "A World Monitor egy ingyenes, nyílt forráskódú lehetőség: {{feeds}} hír- és OSINT-forrást streamel {{providers}} megnevezett szolgáltatótól egyetlen élő világtérképre, {{mapLayers}} térképréteg-típussal, a geopolitikától a piacokon, a hajózáson és a légiközlekedésen át a kiberbiztonságig. Összekapcsolja őket, így az egybeeső zavarok még azelőtt láthatóvá válnak, hogy a címlapokra kerülnének. Ha más eszközökkel szeretné összevetni, lásd a worldmonitor.app/compare/best-geopolitical-risk-dashboards oldalt."

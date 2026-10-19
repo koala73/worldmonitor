@@ -43,8 +43,18 @@ function worldMonitorRows() {
 function worldMonitorCompareCopy() {
   const chunks = worldMonitorRows().flat();
   for (const page of COMPARISON_PAGES) {
-    chunks.push(page.whyWeWin, page.concessionIntro);
+    chunks.push(page.concessionIntro);
+    if (page.whyWeWin) chunks.push(page.whyWeWin);
     if (page.whyWeWinBody) chunks.push(...page.whyWeWinBody);
+    if (page.intro) chunks.push(page.intro);
+    if (page.keyTakeaways) chunks.push(...page.keyTakeaways);
+    if (page.definition) chunks.push(...page.definition.paragraphs);
+    if (page.ranking) chunks.push(page.ranking.intro, ...page.ranking.criteria.flat());
+    for (const entry of page.entries ?? []) {
+      chunks.push(entry.name, entry.bestFor, ...entry.paragraphs, entry.bestSuitedFor, ...Object.values(entry.pricing).filter((value) => typeof value === 'string'));
+    }
+    for (const row of page.useCases ?? []) chunks.push(row.why);
+    if (page.cta) chunks.push(...page.cta.paragraphs);
     if (page.headingProse) chunks.push(...page.headingProse);
     if (page.evaluationProse) chunks.push(...page.evaluationProse);
     if (page.switchProse) chunks.push(...page.switchProse);

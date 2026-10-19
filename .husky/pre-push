@@ -474,12 +474,15 @@ PROTO_INPUTS=(
   scripts/shared/iso2-to-region.json
   server/_shared/api-key-rate-limit.ts
   server/_shared/auth-session.ts
+  server/_shared/bounded-jmespath.ts
+  server/_shared/bounded-json.ts
   server/_shared/cache-contract.ts
   server/_shared/client-ip.ts
   server/_shared/deprecation-policy.ts
   server/_shared/direct-llm-quota.ts
   server/_shared/entitlement-check.ts
   server/_shared/entitlement-coverage.ts
+  server/_shared/high-usage-alarm.ts
   server/_shared/idempotency.ts
   server/_shared/internal-auth.ts
   server/_shared/mcp-internal-hmac.ts
@@ -503,6 +506,7 @@ PROTO_INPUTS=(
   server/worldmonitor/consumer-prices/v1/get-consumer-price-basket-series.ts
   server/worldmonitor/consumer-prices/v1/_selection.ts
   server/worldmonitor/supply-chain/v1/scenario-templates.ts
+  shared/aircraft-emergencies.ts
   shared/attribution-rider.ts
   shared/compare-and-delete-script.cjs
   shared/china-corridor-control-towers.ts
@@ -514,6 +518,7 @@ PROTO_INPUTS=(
   shared/decision-signal-provenance.ts
   shared/embed-access.ts
   shared/embed-panels.ts
+  shared/event-triggers.json
   shared/iso2-to-iso3.json
   shared/openapi-filter-param-contracts.json
   shared/source-provenance-declarations.ts

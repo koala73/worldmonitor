@@ -45,7 +45,19 @@ description: "World Monitor 通知系统 API 完整参考：涵盖通知渠道�
 
 客户端在向用户暴露失败之前,应至少按 `Retry-After` 重试一次该 `503` —— 仪表盘自身的服务层(`src/services/notification-channels.ts`)会执行且仅执行一次有界重试。对 `entitlement_verification_unavailable` 而言,早于 `Retry-After` 的重试是无意义的:该结果在服务端会被短时负缓存,提前重试只会拿到同一个结果。另外两个 `renewal_verification_*` 代码不会被负缓存,但其延迟对应真实的计费提供方复核或冷却期,因此提前重试同样只会得到相同状态。
 
-- **幂等性**: `POST /api/notification-channels` 支持可选的 `Idempotency-Key`。使用相同 key 和相同请求体重试时,会重放原始响应,而不是再次应用渠道动作。
+- **幂等性**: `POST /api/notification-channels` 支持可选的 `Idempotency-Key`。使用相同 key 和相同请求体重试时,会重放原始响应,而不是再次应用渠道动作。 例外是成功的 webhook `set-channel`:其响应包含一次性签名密钥,因此不会被缓存,重试会重新注册该 URL 并签发新密钥。
+
+## 咽喉要道中断告警
+
+只有当规则的 `eventTypes` 明确列出 `chokepoint_disruption` 时,规则才会收到该事件。`eventTypes` 为空的规则(其他情况下表示接收所有事件类型)不会收到它。列出该类型也不会缩小规则的其他告警范围。
+
+- **触发时机**:每次 6 分钟的咽喉要道数据刷新之后检查。咽喉要道的 `disruptionScore` 由其常设威胁等级(战区 70、严重 40、高 30、升高 15、正常 0)加上实时信号(航行警告、AIS 中断、通行量下降)组成。当分数至少为 50(仪表盘上的红色区间),且实时信号至少贡献 15 分时触发告警。因此像霍尔木兹这样的战区咽喉要道会因新的动态而告警,而不会仅因常设等级告警。
+- **重新武装**:告警之后,只有当分数降到 40 以下或实时信号降到 5 分以下,且该次读数中航行警告和 AIS 数据源可用(若告警包含通行量下降,还需通行数据可用)时,才能再次告警。每个咽喉要道最多每 12 小时告警一次。
+- **严重级别**:始终为 `critical`。与其他队列事件一样,只投递给实时规则,不进入摘要。
+- **范围**:`chokepoints` 接受[咽喉要道注册表](/zh/methodology/chokepoints)中的 id(`suez`、`hormuz_strait`、`bab_el_mandeb`、`panama` 等),未知 id 会被丢弃;若列表中没有任何已知 id,则返回 `400 CHOKEPOINTS_INVALID`。列表为空或缺省表示所有咽喉要道。该事件不带国家信息,因此 `countries` 范围不会过滤它。
+- **载荷**:`title`、`source`(`Chokepoint Monitor`)、`chokepointId`、`chokepointName`、`disruptionScore`、`status`(`red`)、`activeWarnings`、`congestionLevel`、`triggeredAt`,以及标识一次告警、在中继重发时保持不变的 `coalesceKey`。Webhook 投递还会附带仪表盘 URL `link`。
+
+`POST /api/notify` 会拒绝该事件类型:只有中继会发布它。
 
 ## Webhook 投递契约
 
@@ -54,21 +66,59 @@ description: "World Monitor 通知系统 API 完整参考：涵盖通知渠道�
 - **Method**: `POST`
 - **Headers**:
   - `Content-Type: application/json`
-  - `X-WM-Signature: sha256=<HMAC-SHA256(body, channelSecret)>`
-  - `X-WM-Delivery-Id: <ulid>`
-  - `X-WM-Event: <event-name>`
-- **Body**(信封 v1):
+  - `X-WM-Delivery-Id: <uuid>`,每次投递尝试唯一
+  - `X-WM-Event: <eventType>`,与请求体中的 `eventType` 相同
+  - `X-WM-Timestamp: <unix 秒>`
+  - `X-WM-Signature: sha256=<hex HMAC-SHA256(signingSecret, timestamp + "." + deliveryId + "." + rawBody)>`
+- **Body**(信封 v1)。通知中继发出的实时告警:
   ```json
   {
-    "envelope": 1,
-    "event": "brief_ready",
-    "deliveryId": "01HX...",
-    "occurredAt": "2026-04-19T06:00:00Z",
-    "data": { "issueDate": "2026-04-19", "magazineUrl": "..." }
+    "version": "1",
+    "eventType": "rss_alert",
+    "severity": "high",
+    "timestamp": 1776578400000,
+    "payload": { "title": "...", "source": "...", "link": "https://..." },
+    "variant": "full"
+  }
+  ```
+  摘要生产者发出的摘要:
+  ```json
+  {
+    "version": "1",
+    "eventType": "digest",
+    "stories": [{ "title": "...", "severity": "high", "phase": "...", "sources": ["..."] }],
+    "summary": "...",
+    "storyCount": 12
   }
   ```
 
-签名校验:`hmac_sha256(rawBody, channelSecret) == X-WM-Signature[7:]`。
+### 签名密钥
+
+每次通过 `set-channel` 保存 webhook URL 时,响应都会包含一个新的 `signingSecret`(`whsec_...`)。它只返回一次,服务端仅保存加密副本。再次保存该 URL 会签发新密钥并使旧密钥失效,这也是轮换密钥的方式。
+
+### 校验投递
+
+1. 在解析之前读取原始请求体。
+2. 计算 `hex(HMAC-SHA256(signingSecret, X-WM-Timestamp + "." + X-WM-Delivery-Id + "." + rawBody))`。
+3. 除非 `X-WM-Signature` 为 `sha256=` 加上恰好 64 个十六进制字符,否则拒绝该投递;然后使用常量时间比较,将这些字节与你计算的结果比较。
+4. 拒绝 `X-WM-Timestamp` 与本地时钟相差超过 5 分钟的投递,并按 `X-WM-Delivery-Id` 去重。
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+function verify(rawBody, headers, signingSecret) {
+  const ts = headers['x-wm-timestamp'];
+  const id = headers['x-wm-delivery-id'];
+  const sig = headers['x-wm-signature'] ?? '';
+  if (!ts || !id || Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false;
+  const match = /^sha256=([0-9a-f]{64})$/.exec(sig);
+  if (!match) return false;
+  const expected = createHmac('sha256', signingSecret).update(`${ts}.${id}.${rawBody}`).digest();
+  return timingSafeEqual(Buffer.from(match[1], 'hex'), expected);
+}
+```
+
+在引入签名之前注册的 webhook 没有密钥,投递时不带 `X-WM-Signature`。设置页会将其标记为 **Unsigned**;移除后重新添加该 URL 即可获得密钥。
 
 <Warning>
 信封版本在**两个生产者之间共享**(`notification-relay`、`seed-digest-notifications`)。升级版本需协同更新。

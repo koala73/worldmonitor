@@ -32,7 +32,7 @@ This is the API-section companion to the site-wide briefing at https://www.world
 - **Country risk and resilience.** `get_country_risk`. Key-free sample: `https://www.worldmonitor.app/sandbox/get-resilience-score.json`. The live REST route requires an API key.
 - **"Does this event move markets?"** — `get_conflict_events`, `get_sanctions_data`, `get_chokepoint_status`, `get_market_data`, `get_maritime_activity`.
 - **Commodity & supply-chain disruption** — `get_supply_chain_data`, `get_energy_intelligence`, `get_commodity_geo`, `get_maritime_activity`.
-- **Forecasting & prediction markets** — `generate_forecasts`, `get_forecast_predictions`, `get_prediction_markets`.
+- **Forecasting & prediction markets** — `get_forecast_predictions`, `get_forecast_scorecard`, `get_prediction_markets`.
 - **Tool discovery** — `describe_tool` returns the full uncompressed definition for any tool name (quota-exempt).
 - **Source discovery & trust** — `get_sources` reports what the data is drawn from and how far to trust it: upstream providers with licence and attribution status, and named outlets with editorial tier plus propaganda-risk provenance. It needs no credentials, consumes no daily quota, and has a separate fail-closed anonymous limit of 10/minute/IP. An undeclared tier reports `null`, never a defaulted number.
 - **Bulk reads (batch).** Send `POST /api/batch/v1/execute` to the authenticated REST base. The body `{"operations": [{"id": "a", "path": "/api/market/v1/get-fear-greed-index"}]}` runs up to 20 documented GET operations concurrently. Add a `?jmespath=` projection to each operation to keep each body small.

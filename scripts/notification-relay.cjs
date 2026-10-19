@@ -2,12 +2,25 @@
 
 const { createHash } = require('node:crypto');
 const { Resend } = require('resend');
+const { appendUnsubscribeText, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
+const { sendResendEmail } = require('./lib/resend-send.cjs');
 const { decrypt } = require('./lib/crypto.cjs');
 const {
   assertNotificationWebhookDeliveryUrlSafe,
   postJsonWithPinnedAddress,
 } = require('./lib/notification-webhook-ssrf.cjs');
+const {
+  buildWebhookDeliveryHeaders,
+  resolveWebhookSigningSecret,
+} = require('./lib/notification-webhook-signing.cjs');
+const {
+  buildTeamsAlertPayload,
+  buildTeamsNoticePayload,
+  buildTeamsNoticePayloads,
+  sendTeamsPayload,
+} = require('./lib/notification-teams.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
+const { corroborationFromItemCount, corroborationText } = require('./lib/corroboration-text.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
 const ISO2_TO_REGION = require('./shared/iso2-to-region.json');
@@ -378,11 +391,31 @@ function resolveQuietAction(rule, severity) {
 }
 
 const QUIET_HELD_TTL = 86400; // 24h — held events expire if never drained
+// Held queues are per user and fed by /api/notify, so they need a hard cap:
+// without one a single account could grow its list for a whole quiet window
+// and make the wake-up drain fetch and parse all of it in the shared relay.
+// The newest events win; a batch message never lists more than this anyway.
+const QUIET_HELD_MAX = 100;
 
 async function holdEvent(userId, variant, eventJson) {
   const key = `digest:quiet-held:${userId}:${variant}`;
   await upstashRest('RPUSH', key, eventJson);
+  await upstashRest('LTRIM', key, String(-QUIET_HELD_MAX), '-1');
   await upstashRest('EXPIRE', key, String(QUIET_HELD_TTL));
+}
+
+/**
+ * One line per held alert, shared by the text batch and the Teams card.
+ * Titles get the same boundary as formatMessage: held events include
+ * relay-originated ones that never passed /api/notify, so raw titles here
+ * would bypass the field guarantee (issue #8397). #9213: each line carries the
+ * story's coverage token when known.
+ */
+function formatHeldAlertLines(events) {
+  return events.map((ev) => {
+    const coverage = formatEventCoverage(ev);
+    return `[${String(ev.severity ?? 'high').toUpperCase()}] ${formatEventTitle(ev)}${coverage ? ` · ${coverage}` : ''}`;
+  });
 }
 
 // Delivers (or discards) the held queue for a single user+variant.
@@ -393,7 +426,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
   const len = await upstashRest('LLEN', key);
   if (!len || len === 0) return;
 
-  const items = await upstashRest('LRANGE', key, '0', '-1');
+  const items = await upstashRest('LRANGE', key, String(-QUIET_HELD_MAX), '-1');
   if (!Array.isArray(items) || items.length === 0) return;
 
   const parsedEvents = items.map(i => { try { return JSON.parse(i); } catch { return null; } }).filter(Boolean);
@@ -405,14 +438,8 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
   }
   if (events.length === 0) { await upstashRest('DEL', key); return; }
 
-  const lines = [`WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''} from quiet hours`, ''];
-  for (const ev of events) {
-    // Shape held titles with the same boundary as formatMessage: held events
-    // include relay-originated ones that never passed /api/notify, so raw
-    // titles here would bypass the field guarantee (issue #8397).
-    const heldTitle = formatEventTitle(ev);
-    lines.push(`[${String(ev.severity ?? 'high').toUpperCase()}] ${heldTitle}`);
-  }
+  const heldLines = formatHeldAlertLines(events);
+  const lines = [`WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''} from quiet hours`, '', ...heldLines];
   lines.push('', 'View full dashboard → worldmonitor.app');
   const text = lines.join('\n');
   const subject = `WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''}`;
@@ -444,7 +471,13 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
       if (ch.channelType === 'telegram' && ch.chatId) ok = await sendTelegram(userId, ch.chatId, text);
       else if (ch.channelType === 'slack' && ch.webhookEnvelope) ok = await sendSlack(userId, ch.webhookEnvelope, text);
       else if (ch.channelType === 'discord' && ch.webhookEnvelope) ok = await sendDiscord(userId, ch.webhookEnvelope, text);
-      else if (ch.channelType === 'email' && ch.email) ok = await sendEmail(ch.email, subject, text);
+      else if (ch.channelType === 'teams' && ch.webhookEnvelope) ok = await sendTeamsCards(userId, ch.webhookEnvelope, buildTeamsNoticePayloads({
+        title: lines[0],
+        lines: heldLines,
+        link: NOTIFY_DASHBOARD_URL,
+        linkTitle: 'Open dashboard',
+      }));
+      else if (ch.channelType === 'email' && ch.email) ok = await sendEmail(ch.email, subject, text, unsubscribeUrlFor(ch, 'alerts'));
       else if (ch.channelType === 'webhook' && ch.webhookEnvelope) ok = await sendWebhook(userId, ch.webhookEnvelope, {
         eventType: 'quiet_hours_batch',
         severity: 'info',
@@ -461,9 +494,10 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
             title: formatEventTitle(ev),
             source: formatEventSource(ev),
             link: formatEventLinkForPush(ev),
+            ...(eventCorroboration(ev) ? { corroboration: eventCorroboration(ev) } : {}),
           })),
         },
-      });
+      }, ch.webhookSecret);
       else if (ch.channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
         ok = await sendWebPush(userId, ch, {
           title: `WorldMonitor · ${events.length} held alert${events.length === 1 ? '' : 's'}`,
@@ -724,23 +758,76 @@ async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
   return true;
 }
 
-// ── Delivery: Email ───────────────────────────────────────────────────────────
+// ── Delivery: Microsoft Teams ─────────────────────────────────────────────────
 
-async function sendEmail(email, subject, text) {
-  if (!resend) { console.warn('[relay] RESEND_API_KEY not set — skipping email'); return false; }
+async function sendTeams(userId, webhookEnvelope, payload) {
+  let webhookUrl;
   try {
-    await resend.emails.send({ from: RESEND_FROM, to: email, subject, text });
-    return true;
+    webhookUrl = decrypt(webhookEnvelope);
   } catch (err) {
-    console.warn('[relay] Resend send failed:', err.message);
+    console.warn(`[relay] Teams decrypt failed for ${userId}:`, err.message);
     return false;
   }
+  const result = await sendTeamsPayload(webhookUrl, payload, { userAgent: 'worldmonitor-relay/1.0' });
+  if (result.gone) {
+    console.warn(`[relay] Teams workflow gone (${result.status}) for ${userId} — deactivating`);
+    await deactivateChannel(userId, 'teams');
+    return false;
+  }
+  if (!result.ok) {
+    console.warn(`[relay] Teams send failed for ${userId}: ${result.error}`);
+    return false;
+  }
+  console.log(`[relay] Teams delivered to ${userId}`);
+  return true;
 }
 
-async function sendWebhook(userId, webhookEnvelope, event) {
+/**
+ * Post every card of a split notice in order. Delivered only when all of
+ * them are: a partly delivered quiet-hours batch keeps its held queue, so a
+ * retry may repeat earlier cards but never drops an alert.
+ */
+async function sendTeamsCards(userId, webhookEnvelope, payloads) {
+  for (const payload of payloads) {
+    if (!(await sendTeams(userId, webhookEnvelope, payload))) return false;
+  }
+  return payloads.length > 0;
+}
+
+/** Adaptive Card for a realtime event, shaped by the same field helpers as the text sinks. */
+function buildTeamsAlertForEvent(event, impact) {
+  const rawCountry = event.payload?.countryCode ?? event.payload?.country ?? event.country;
+  return buildTeamsAlertPayload({
+    title: formatEventTitle(event),
+    severity: event.severity ?? 'high',
+    countryCode: typeof rawCountry === 'string' && rawCountry.trim() ? normalizeEventCountryCode(rawCountry) : null,
+    source: formatEventSource(event),
+    coverage: corroborationText(eventCorroboration(event)),
+    description: NOTIFY_RELAY_INCLUDE_SNIPPET ? truncateForDisplay(formatEventDescription(event), SNIPPET_TELEGRAM_MAX) : '',
+    link: event.payload?.link ?? event.payload?.url,
+    eventType: sanitizeNotificationTitle(event.eventType),
+    impact,
+  });
+}
+
+// ── Delivery: Email ───────────────────────────────────────────────────────────
+
+async function sendEmail(email, subject, text, unsubscribeUrl) {
+  const payload = { from: RESEND_FROM, to: email, subject, text };
+  if (unsubscribeUrl !== undefined) {
+    payload.text = appendUnsubscribeText(text, unsubscribeUrl, 'Unsubscribe from alert emails');
+    payload.headers = listUnsubscribeHeaders(unsubscribeUrl);
+  }
+  const result = await sendResendEmail(resend, payload, { logPrefix: '[relay]' });
+  return result.ok;
+}
+
+async function sendWebhook(userId, webhookEnvelope, event, webhookSecretEnvelope) {
   let url;
+  let signingSecret;
   try {
     url = decrypt(webhookEnvelope);
+    signingSecret = resolveWebhookSigningSecret(decrypt, webhookSecretEnvelope);
   } catch (err) {
     console.warn(`[relay] Webhook decrypt failed for ${userId}:`, err.message);
     return false;
@@ -774,7 +861,11 @@ async function sendWebhook(userId, webhookEnvelope, event) {
     const resp = await postJsonWithPinnedAddress(
       safeUrl,
       payload,
-      { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
+      {
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-relay/1.0',
+        ...buildWebhookDeliveryHeaders({ body: payload, eventType: event.eventType, secret: signingSecret }),
+      },
       resolvedAddresses,
     );
     if (resp.status === 404 || resp.status === 410 || resp.status === 403) {
@@ -1018,12 +1109,15 @@ function normalizeEventCountryCode(raw) {
 //    via event.userId.
 //  - watchlist_story_alert: scoped by ticker (eventMatchesTickerScope), not
 //    by country — an explicit per-rule opt-in that country scope must not veto.
+//  - chokepoint_disruption: same reasoning, scoped by chokepoint
+//    (eventMatchesChokepointScope) and opt-in only (#9217).
 const PERMISSIVE_UNATTRIBUTED_EVENT_TYPES = new Set([
   'rss_alert',
   'keyword_spike',
   'hotspot_escalation',
   'military_surge',
   'watchlist_story_alert',
+  'chokepoint_disruption',
 ]);
 
 function isPermissiveUnattributedEvent(event) {
@@ -1123,6 +1217,7 @@ function eventMatchesCountryScope(event, rule) {
 // ── Watchlist story alerts (#4922 item e / U3) ───────────────────────────────
 
 const WATCHLIST_STORY_EVENT_TYPE = 'watchlist_story_alert';
+const CHOKEPOINT_DISRUPTION_EVENT_TYPE = 'chokepoint_disruption';
 
 /**
  * Per-rule eventTypes gate, extracted from the inline matching expression so
@@ -1145,7 +1240,13 @@ function ruleMatchesEventType(rule, event) {
   if (event?.eventType === WATCHLIST_STORY_EVENT_TYPE) {
     return rule.eventTypes.includes(WATCHLIST_STORY_EVENT_TYPE);
   }
-  const broadcastTypes = rule.eventTypes.filter((t) => t !== WATCHLIST_STORY_EVENT_TYPE);
+  // Same opt-in contract as the watchlist row (#9217): a wildcard rule never
+  // receives it, and opting in does not narrow the rule's other alerts.
+  if (event?.eventType === CHOKEPOINT_DISRUPTION_EVENT_TYPE) {
+    return rule.eventTypes.includes(CHOKEPOINT_DISRUPTION_EVENT_TYPE);
+  }
+  const broadcastTypes = rule.eventTypes.filter((t) => t !== WATCHLIST_STORY_EVENT_TYPE)
+    .filter((t) => t !== CHOKEPOINT_DISRUPTION_EVENT_TYPE);
   return broadcastTypes.length === 0 || broadcastTypes.includes(event.eventType);
 }
 
@@ -1173,6 +1274,31 @@ function eventMatchesTickerScope(event, rule) {
   if (eventTickers.length === 0) return false;
   const ruleSet = new Set(rule.tickers.map((t) => String(t).toUpperCase()));
   return eventTickers.some((t) => ruleSet.has(String(t).toUpperCase()));
+}
+
+/**
+ * Narrows `chokepoint_disruption` to the rule's chokepoints. Unlike tickers,
+ * an empty/absent list means every chokepoint: the eventTypes opt-in already
+ * makes the event explicit, and "alert me on any chokepoint" is the common
+ * choice. Every other event type passes through untouched.
+ */
+function eventMatchesChokepointScope(event, rule) {
+  if (event?.eventType !== CHOKEPOINT_DISRUPTION_EVENT_TYPE) return true;
+  if (!Array.isArray(rule.chokepoints) || rule.chokepoints.length === 0) return true;
+  const chokepointId = event?.payload?.chokepointId;
+  return typeof chokepointId === 'string' && rule.chokepoints.includes(chokepointId);
+}
+
+/**
+ * Web push tag: a later push with the same tag replaces the earlier one in the
+ * tray. Chokepoint alerts carry the chokepoint so two crossings in one tick
+ * both stay visible.
+ */
+function webPushTagFor(event, userId) {
+  const chokepointId = event?.eventType === CHOKEPOINT_DISRUPTION_EVENT_TYPE ? event?.payload?.chokepointId : null;
+  return typeof chokepointId === 'string' && chokepointId
+    ? `${event.eventType}:${chokepointId}:${userId}`
+    : `${event.eventType}:${userId}`;
 }
 
 function shouldNotify(rule, event) {
@@ -1253,10 +1379,40 @@ function formatMessage(event) {
     if (snippet) parts.push(`> ${truncateForDisplay(snippet, SNIPPET_TELEGRAM_MAX)}`);
   }
   const source = formatEventSource(event);
-  if (source) parts.push(`Source: ${source}`);
+  const coverage = formatEventCoverage(event);
+  if (source) parts.push(`Source: ${source}${coverage ? ` · ${coverage}` : ''}`);
+  else if (coverage) parts.push(coverage);
   const link = formatEventLinkForText(event);
   if (link) parts.push(link);
   return parts.join('\n');
+}
+
+/**
+ * #9213: the story's corroboration, as assessCorroboration gives a digest item
+ * with this publisher count, or null when unknown. Only relay-originated
+ * events carry a count: /api/notify strips it from caller-submitted events,
+ * and a caller cannot claim coverage, so those are always null.
+ */
+function eventCorroboration(event) {
+  if (event.userId) return null;
+  return corroborationFromItemCount(event.payload?.corroborationCount);
+}
+
+/**
+ * The one token every text channel shows, e.g. "Coverage: single publisher".
+ * Coverage, not accuracy: it counts publishers and never says a claim is true.
+ */
+function formatEventCoverage(event) {
+  const text = corroborationText(eventCorroboration(event));
+  return text ? `Coverage: ${text}` : '';
+}
+
+/** Web push body: the message's first line after the title, with the coverage token. */
+function formatPushBody(deliveryText, event) {
+  const firstLine = (deliveryText || '').split('\n')[1] || '';
+  const coverage = formatEventCoverage(event);
+  if (!coverage || firstLine.includes(coverage)) return firstLine;
+  return firstLine ? `${firstLine} · ${coverage}` : coverage;
 }
 
 /**
@@ -1335,6 +1491,10 @@ function shapeEventForWebhook(event) {
   if (payload.url !== undefined) payload.url = link;
   const description = formatEventDescription(event);
   if (description) payload.description = description; else delete payload.description;
+  // #9213: the verdict as a stable field, derived here from the count, never
+  // forwarded from the caller's payload.
+  const corroboration = eventCorroboration(event);
+  if (corroboration) payload.corroboration = corroboration; else delete payload.corroboration;
   return { ...event, payload };
 }
 
@@ -1392,6 +1552,13 @@ async function processWelcome(event) {
     await sendSlack(userId, ch.webhookEnvelope, text);
   } else if (channelType === 'discord' && ch.webhookEnvelope) {
     await sendDiscord(userId, ch.webhookEnvelope, text);
+  } else if (channelType === 'teams' && ch.webhookEnvelope) {
+    await sendTeams(userId, ch.webhookEnvelope, buildTeamsNoticePayload({
+      title: '✅ WorldMonitor connected',
+      lines: ["You'll receive alerts here when events match your alert rules."],
+      link: NOTIFY_DASHBOARD_URL,
+      linkTitle: 'Open WorldMonitor',
+    }));
   } else if (channelType === 'email' && ch.email) {
     await sendEmail(ch.email, 'WorldMonitor Notifications Connected', text);
   } else if (channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
@@ -1580,6 +1747,7 @@ async function processEvent(event) {
     shouldNotify(r, event) &&
     eventMatchesCountryScope(event, r) &&
     eventMatchesTickerScope(event, r) &&
+    eventMatchesChokepointScope(event, r) &&
     (!event.variant || !r.variant || r.variant === event.variant) &&
     (!event.userId || r.userId === event.userId)
   );
@@ -1594,6 +1762,7 @@ async function processEvent(event) {
     shouldNotify(r, event) &&
     !eventMatchesCountryScope(event, r) &&
     eventMatchesTickerScope(event, r) &&
+    eventMatchesChokepointScope(event, r) &&
     (!event.variant || !r.variant || r.variant === event.variant) &&
     (!event.userId || r.userId === event.userId)
   ).length;
@@ -1702,9 +1871,13 @@ async function processEvent(event) {
     if (verifiedChannels.length === 0) continue;
 
     let deliveryText = text;
+    let impactText = '';
     if (AI_IMPACT_ENABLED) {
       const impact = sanitizeImpactText(await generateEventImpact(event, rule));
-      if (impact) deliveryText = `${text}\n\n— Impact —\n${impact}`;
+      if (impact) {
+        impactText = impact;
+        deliveryText = `${text}\n\n— Impact —\n${impact}`;
+      }
     }
 
     for (const ch of verifiedChannels) {
@@ -1715,10 +1888,12 @@ async function processEvent(event) {
           await sendSlack(rule.userId, ch.webhookEnvelope, deliveryText);
         } else if (ch.channelType === 'discord' && ch.webhookEnvelope) {
           await sendDiscord(rule.userId, ch.webhookEnvelope, deliveryText);
+        } else if (ch.channelType === 'teams' && ch.webhookEnvelope) {
+          await sendTeams(rule.userId, ch.webhookEnvelope, buildTeamsAlertForEvent(event, impactText));
         } else if (ch.channelType === 'email' && ch.email) {
-          await sendEmail(ch.email, subject, deliveryText);
+          await sendEmail(ch.email, subject, deliveryText, unsubscribeUrlFor(ch, 'alerts'));
         } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
-          await sendWebhook(rule.userId, ch.webhookEnvelope, shapeEventForWebhook(event));
+          await sendWebhook(rule.userId, ch.webhookEnvelope, shapeEventForWebhook(event), ch.webhookSecret);
         } else if (ch.channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
           // Web push carries short payloads (Chrome caps at ~4KB and
           // auto-truncates longer ones anyway). Use title + first line
@@ -1728,12 +1903,11 @@ async function processEvent(event) {
           // (review finding: raw title/link bypassed the new sanitizers;
           // `payload.url` is a second, edge-unvalidated link field, so the
           // link wins and url is only a fallback before classification).
-          const firstLine = (deliveryText || '').split('\n')[1] || '';
           await sendWebPush(rule.userId, ch, {
             title: formatEventTitle(event, 'WorldMonitor'),
-            body: firstLine,
+            body: formatPushBody(deliveryText, event),
             url: formatEventLinkForPush(event),
-            tag: `${event.eventType}:${rule.userId}`,
+            tag: webPushTagFor(event, rule.userId),
             eventType: event.eventType,
           });
         }
@@ -1819,6 +1993,8 @@ module.exports = {
   processEvent,
   safePushClickUrl,
   sendTelegram,
+  // Exported so the signing suite drives the real delivery path.
+  sendWebhook,
   checkDedup,
   upstashDedupSetNx,
   eventMatchesCountryScope,
@@ -1836,6 +2012,8 @@ module.exports = {
   // tests previously kept hand-copied mirrors of these, which cannot fail when
   // the real ones change.
   eventMatchesTickerScope,
+  eventMatchesChokepointScope,
+  webPushTagFor,
   ruleMatchesEventType,
   // Exported so the effective-sensitivity coercion and the importance-score
   // threshold ladder are exercised directly rather than grepped from source.
@@ -1850,12 +2028,19 @@ module.exports = {
   formatEventDescription,
   formatEventLinkForText,
   formatEventLinkForPush,
+  formatEventCoverage,
+  formatPushBody,
   shapeEventForWebhook,
   sanitizeImpactText,
   escapeSlackText,
   escapeDiscordText,
   buildSlackMessagePayload,
   buildDiscordMessagePayload,
+  buildTeamsAlertForEvent,
+  formatHeldAlertLines,
+  sendTeams,
   processWelcome,
   popNextEvent,
+  holdEvent,
+  QUIET_HELD_MAX,
 };

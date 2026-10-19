@@ -11,7 +11,7 @@
       "displayName": "World Monitor MCP server",
       "type": "application/mcp-server-card+json",
       "url": "https://worldmonitor.app/.well-known/mcp/server-card.json",
-      "description": "Live global-intelligence MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
+      "description": "Live global-intelligence MCP server with real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
       "tags": [
         "news-and-intelligence",
         "news",
@@ -31,7 +31,7 @@
         "get_chokepoint_status",
         "get_supply_chain_data",
         "analyze_situation",
-        "generate_forecasts"
+        "get_forecast_predictions"
       ],
       "representativeQueries": [
         "what is happening in the Red Sea right now",

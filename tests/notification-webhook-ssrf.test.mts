@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import {
   assertNotificationWebhookRegistrationUrlSafe,
   blockedNotificationWebhookUrlReason,
+  blockedTeamsWebhookUrlReason,
   isBlockedNotificationResolvedAddress,
 } from '../api/_notification-webhook-ssrf';
 
@@ -16,6 +17,7 @@ const scriptSsrf = require('../scripts/lib/notification-webhook-ssrf.cjs') as {
     resolveHostname?: (hostname: string) => Promise<string[]>,
   ) => Promise<{ url: URL; resolvedAddresses: string[] }>;
   blockedNotificationWebhookUrlReason: (rawUrl: string) => string | null;
+  blockedTeamsWebhookUrlReason: (rawUrl: string) => string | null;
   isBlockedResolvedAddress: (address: string) => boolean;
   responseFromNode: (
     statusCode: number,
@@ -97,6 +99,14 @@ describe('notification webhook SSRF guard', () => {
       'fc00::1',
       'ff02::1',
       '2001:db8::1234',
+      // Teredo 2001::/32 and the rest of the 2001::/23 IETF block
+      '2001::1',
+      '2001:0:4136:e378:8000:63bf:3fff:fdd2',
+      '2001:1ff:ffff::1',
+      // IPv4-translated (SIIT) ::ffff:0:0:0/96
+      '::ffff:0:7f00:1',
+      '::ffff:0:127.0.0.1',
+      '::ffff:0:a9fe:a9fe',
     ];
     for (const address of blockedAddresses) {
       assert.equal(isBlockedNotificationResolvedAddress(address), true, `api helper must block ${address}`);
@@ -109,6 +119,9 @@ describe('notification webhook SSRF guard', () => {
       '2002:5db8:d822::',
       // NAT64 wrapping a public IPv4 (93.184.216.34) must still be allowed
       '64:ff9b::5db8:d822',
+      // SIIT wrapping a public IPv4, and the first global unicast after 2001::/23
+      '::ffff:0:5db8:d822',
+      '2001:200::1',
     ]) {
       assert.equal(isBlockedNotificationResolvedAddress(address), false, `api helper must allow ${address}`);
       assert.equal(scriptSsrf.isBlockedResolvedAddress(address), false, `script helper must allow ${address}`);
@@ -161,7 +174,7 @@ describe('notification webhook SSRF guard', () => {
     const dotted = (o: number[]) => o.join('.');
     const hexPair = (o: number[]) => `${((o[0]! << 8) | o[1]!).toString(16)}:${((o[2]! << 8) | o[3]!).toString(16)}`;
     const ipv4Prefixes = [[0], [10], [100, 64], [100, 127], [127], [169, 254], [172, 16], [172, 31], [192, 0, 0], [192, 0, 2], [192, 88, 99], [192, 168], [198, 18], [198, 19], [198, 51, 100], [203, 0, 113], [224], [255], [93, 184]];
-    const ipv6Prefixes = ['fc00', 'fdff', 'fe80', 'febf', 'fec0', 'ffff', 'ff02', '2001:db8', '2001:0db8', '64:ff9b:1', '64:ff9b:2', '64:ff9b:0:0:0:0', '100:0:0:0', '100:0:0:1', '2002', '2606:2800', '0:0:0:0:0:ffff', '0:0:0:0:0:0'];
+    const ipv6Prefixes = ['fc00', 'fdff', 'fe80', 'febf', 'fec0', 'ffff', 'ff02', '2001:db8', '2001:0db8', '64:ff9b:1', '64:ff9b:2', '64:ff9b:0:0:0:0', '100:0:0:0', '100:0:0:1', '2002', '2606:2800', '0:0:0:0:0:ffff', '0:0:0:0:0:0', '0:0:0:0:ffff:0', '2001:0', '2001:1ff', '2001:200'];
     const specialIpv4 = () => {
       const o = octets();
       ipv4Prefixes[next(ipv4Prefixes.length)]!.forEach((value, i) => { o[i] = value; });
@@ -177,6 +190,7 @@ describe('notification webhook SSRF guard', () => {
       const candidates = [
         dotted(specialIpv4()),
         `::ffff:${embed}`,
+        `::ffff:0:${embed}`,
         `64:ff9b::${embed}`,
         `64:ff9b:1::${embed}`,
         `::${embed}`,
@@ -311,5 +325,50 @@ describe('notification webhook SSRF guard', () => {
       assert.equal(response.status, status);
       assert.equal(await response.text(), '');
     }
+  });
+
+  // Teams channel (#9215): the URL must be a Microsoft Workflows webhook.
+  // Hosts per Microsoft Learn: Workflows "When a Teams webhook request is
+  // received" triggers issue *.environment.api.powerplatform.com URLs under
+  // /powerautomate/automations/direct/ (the Logic Apps *.logic.azure.com
+  // form is still documented for the trigger); webhook.office.com connectors
+  // were retired in May 2026.
+  test('Teams helper accepts only Microsoft Workflows webhook URLs, with parity', () => {
+    const allowed = [
+      'https://default0123456789abcdef0123456789abcd.ef.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/0a1b2c3d4e5f/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=abc',
+      'https://abc.12.environment.api.powerplatform.com/powerautomate/automations/direct/cu/20/workflows/0a1b/triggers/manual/paths/invoke?api-version=1&sig=abc',
+      'https://prod-27.westus.logic.azure.com:443/workflows/0a1b2c/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=abc',
+    ];
+    for (const url of allowed) {
+      assert.equal(blockedTeamsWebhookUrlReason(url), null, `api helper must allow ${url}`);
+      assert.equal(scriptSsrf.blockedTeamsWebhookUrlReason(url), null, `script helper must allow ${url}`);
+    }
+    const rejected = [
+      '',
+      'not a url',
+      'http://abc.12.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/x',
+      'https://example.com/powerautomate/automations/direct/workflows/x',
+      'https://hooks.slack.com/services/T/B/x',
+      'https://environment.api.powerplatform.com/powerautomate/automations/direct/workflows/x',
+      'https://abc.environment.api.powerplatform.com.evil.example/powerautomate/automations/direct/workflows/x',
+      'https://abcenvironment.api.powerplatform.com/powerautomate/automations/direct/workflows/x',
+      'https://evil.example/abc.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/x',
+      'https://user:pw@abc.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/x',
+      'https://abc.environment.api.powerplatform.com:8443/powerautomate/automations/direct/workflows/x',
+      'https://abc.environment.api.powerplatform.com/api/other',
+      'https://prod-27.westus.logic.azure.com/admin',
+      'https://40.112.243.0/workflows/x/triggers/manual/paths/invoke',
+      'https://[2603:1030::1]/powerautomate/automations/direct/workflows/x',
+      'https://169.254.169.254/workflows/x',
+      'https://contoso.webhook.office.com/webhookb2/abc@def/IncomingWebhook/x/y',
+      'https://outlook.office.com/webhook/abc',
+      `https://abc.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/${'x'.repeat(5000)}`,
+    ];
+    for (const url of rejected) {
+      assert.ok(blockedTeamsWebhookUrlReason(url), `api helper must reject ${url}`);
+      assert.ok(scriptSsrf.blockedTeamsWebhookUrlReason(url), `script helper must reject ${url}`);
+      assert.equal(blockedTeamsWebhookUrlReason(url), scriptSsrf.blockedTeamsWebhookUrlReason(url), `same reason for ${url}`);
+    }
+    assert.match(String(blockedTeamsWebhookUrlReason('https://contoso.webhook.office.com/webhookb2/x')), /retired/i);
   });
 });

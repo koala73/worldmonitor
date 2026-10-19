@@ -26,7 +26,7 @@ import {
   type WaitUntilCtx,
 } from '../../server/_shared/usage';
 import type { AuthKind } from '../../server/_shared/usage-identity';
-import { TOOL_REGISTRY } from './registry/index';
+import { RETIRED_TOOLS, TOOL_REGISTRY } from './registry/index';
 import type { McpAuthContext } from './types';
 
 // Which stage of the /mcp funnel produced the terminal Response. Set by the
@@ -47,9 +47,13 @@ export type McpPhase =
   | 'migration'  // a product-host alias was refused before auth or dispatch
   | 'ok';        // served (JSON-RPC-level errors still ride HTTP 200 → ok)
 
-/** Registry name lookup — cardinality bound for tool_name (#8403). */
+/**
+ * Registry name lookup — cardinality bound for tool_name (#8403). Retired
+ * names stay recorded so their remaining callers show up in Axiom before the
+ * alias is removed.
+ */
 const REGISTERED_TOOL_NAMES: ReadonlySet<string> = new Set(
-  TOOL_REGISTRY.map((tool) => tool.name),
+  [...TOOL_REGISTRY, ...RETIRED_TOOLS].map((tool) => tool.name),
 );
 
 /**

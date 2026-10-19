@@ -21,6 +21,7 @@
  */
 
 import { guardMetadataMethod, resolveMetadataOrigin } from './_agent-metadata';
+import { stripTrailingSlashes } from '../shared/strip-trailing-slashes.js';
 
 export const config = { runtime: 'edge' };
 
@@ -39,7 +40,7 @@ const RESOURCE_PATHS = new Set(['mcp', 'api/mcp']);
 
 function resolveResourcePath(req: Request): string | null {
   const url = new URL(req.url);
-  const path = url.pathname.replace(/\/+$/, '');
+  const path = stripTrailingSlashes(url.pathname);
   // The origin-wide well-known URL names the origin, whatever query a caller
   // appends to it. Only the rewrite's own destination carries a resource flag.
   if (path.endsWith('/.well-known/oauth-protected-resource')) return '';
@@ -51,7 +52,7 @@ function resolveResourcePath(req: Request): string | null {
   if (flag !== null) return RESOURCE_PATHS.has(flag) ? `/${flag}` : null;
   // Only a suffix under the well-known URI names a specific resource. Anything
   // else — including the rewrite destination path — is the origin-wide document.
-  const suffix = url.pathname.replace(/\/+$/, '').match(/\/oauth-protected-resource\/(.+)$/)?.[1];
+  const suffix = path.match(/\/oauth-protected-resource\/(.+)$/)?.[1];
   if (suffix === undefined) return '';
   return RESOURCE_PATHS.has(suffix) ? `/${suffix}` : null;
 }

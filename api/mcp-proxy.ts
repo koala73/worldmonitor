@@ -1,21 +1,22 @@
 // @ts-nocheck — Migrated from .js to .ts to import server-side auth helpers
 // (PR #3768 review). Most of the body remains JS-shaped; types can be added
 // incrementally.
+import { Agent } from 'undici';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
-import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check';
-import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification';
-import { buildUsageIdentity } from '../server/_shared/usage-identity';
+import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check.js';
+import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification.js';
+import { buildUsageIdentity } from '../server/_shared/usage-identity.js';
 import {
   readBoundedRequestBody,
   readBoundedResponseBody,
   RequestBodyTooLargeError,
   ResponseBodyTooLargeError,
-} from './mcp/bounded-body';
-import { MAX_JSON_RPC_BODY_BYTES, MAX_MCP_PROXY_RESPONSE_BYTES } from './mcp/body-limits';
-import { McpProxyJsonDepthError, parseMcpProxyJson } from './mcp/bounded-json';
-import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp } from '../server/_shared/rate-limit';
-import { captureSilentError } from './_sentry-edge.js';
+} from './mcp/bounded-body.js';
+import { MAX_JSON_RPC_BODY_BYTES, MAX_MCP_PROXY_RESPONSE_BYTES } from './mcp/body-limits.js';
+import { McpProxyJsonDepthError, parseMcpProxyJson } from './mcp/bounded-json.js';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp, rateLimitKeyForIp } from '../server/_shared/rate-limit.js';
+import { captureSilentError } from './_sentry-node.js';
 import {
   buildRequestEvent,
   deriveAcceptLanguage,
@@ -31,9 +32,17 @@ import {
   deriveSentryTraceId,
   deriveUserAgent,
   emitUsageEvents,
-} from '../server/_shared/usage';
+} from '../server/_shared/usage.js';
 
-export const config = { runtime: 'edge' };
+// Node, not Edge (GHSA-887j): only Node lets the upstream socket be pinned to
+// the DoH-vetted address. Two earlier moves were reverted after production
+// 500s. #4749 exported a Web handler as `default`, which Vercel's Node runtime
+// calls as (req, res). #7578 shipped extensionless relative imports, which
+// native ESM cannot load once Vercel compiles each file separately
+// (ERR_MODULE_NOT_FOUND on every request). So this route exports per-method
+// Web handlers and NO default (a default export makes Vercel ignore them),
+// and every relative import in its graph names its `.js` file.
+export const config = { runtime: 'nodejs' };
 
 // Per-IP rate limit for the MCP proxy (issue #3805 defense-in-depth).
 // 30/min/IP is generous for normal MCP polling (most clients refresh every
@@ -43,7 +52,7 @@ export const config = { runtime: 'edge' };
 //
 // PR #3821 r2: source the limit from ENDPOINT_RATE_POLICIES so the
 // `enforce-rate-limit-policies` audit can see this endpoint. mcp-proxy is a
-// top-level Vercel Edge Function (not gateway-routed), so it can't use
+// top-level Vercel function (not gateway-routed), so it can't use
 // `checkEndpointRateLimit`; we keep `checkScopedRateLimit` for in-handler
 // enforcement but the *policy* lives in the registry. Single source of
 // truth — tweak the limit there, this handler picks it up.
@@ -70,6 +79,11 @@ function logProxyCall(entry: {
   status: number;
   duration_ms: number;
   upstream_status?: number | null;
+  // JSON-RPC error code the remote server answered with on HTTP 200, when
+  // it did. Those rejections no longer reach Sentry (WORLDMONITOR-172), so
+  // this row is where a proxy-wide regression (every server answering
+  // -32602 to our initialize) would show.
+  upstream_rpc_code?: number | null;
 }): void {
   // Structured audit log (#3805). Mirrors the `[name] { ...fields }` shape
   // used by api/cache-purge.js so the existing log-ingest tooling parses it
@@ -249,14 +263,25 @@ export class McpProxyUpstreamError extends Error {
     this.name = 'McpProxyUpstreamError';
     // HTTP status the remote MCP server answered with, when it answered.
     this.upstreamStatus = options?.upstreamStatus ?? null;
+    // The remote server answered the request with a JSON-RPC `error` object
+    // (HTTP 200). `upstreamRpcCode` carries its numeric code for the audit
+    // log; the message is caller-chosen server output and is not retained.
+    const rpcError = options?.upstreamRpcError;
+    this.upstreamRpcRejected = rpcError !== undefined && rpcError !== null;
+    this.upstreamRpcCode = Number.isInteger(rpcError?.code) ? rpcError.code : null;
   }
 }
 
-// The remote server refused the credentials the CALLER supplied (a panel saved
-// without its key, an expired token). That is the caller's configuration, not
-// a proxy defect, so it stays out of Sentry and lives in the audit log
-// (WORLDMONITOR-172).
-const UPSTREAM_CREDENTIAL_REJECTIONS = new Set([401, 403]);
+/** The remote server answered `{ error }` for `step` — its decision, carried whole. */
+function upstreamRpcRejection(step, rpcError) {
+  return new McpProxyUpstreamError(`${step} error: MCP server rejected request`, { upstreamRpcError: rpcError });
+}
+
+// The remote server refused the CALLER: its credentials (a panel saved without
+// its key, an expired token) or its quota (429, a keyless panel polling past
+// the free tier). That is the caller's configuration, not a proxy defect, so
+// it stays out of Sentry and lives in the audit log (WORLDMONITOR-172).
+const UPSTREAM_CALLER_REJECTIONS = new Set([401, 403, 429]);
 
 export function proxyFailureFor(error) {
   const message = error instanceof Error ? error.message : String(error);
@@ -273,18 +298,58 @@ export function proxyFailureFor(error) {
     // Sentry grouping key. Every proxy error class sets `this.name`, so this
     // separates expected upstream failures from unknown proxy defects.
     errorClass: isTimeout ? 'timeout' : (error instanceof Error ? error.name : 'Error'),
+    // A JSON-RPC `error` answered on HTTP 200 is the same class as a 401/403:
+    // the remote server's verdict on the caller's own request (a keyless panel
+    // past its free quota, an unknown tool). One search.parallel.ai panel
+    // produced 226 such events in two weeks (WORLDMONITOR-172 regrowth). The
+    // audit log keeps the JSON-RPC code instead.
     report: !(error instanceof McpProxyUpstreamError
-      && UPSTREAM_CREDENTIAL_REJECTIONS.has(error.upstreamStatus)),
+      && (UPSTREAM_CALLER_REJECTIONS.has(error.upstreamStatus) || error.upstreamRpcRejected)),
   };
 }
 
+// Resolve-then-connect in one step (GHSA-887j). The host is resolved through
+// DoH and vetted here, and the socket is pinned to that vetted address through
+// the dispatcher's lookup hook, so no later DNS answer can redirect it. The URL
+// hostname still drives TLS SNI, certificate validation and Host; only the
+// address is pinned. Every upstream request goes through this function.
 async function fetchMcpUpstream(input, init) {
+  const url = new URL(input);
+  const { resolvedAddresses } = await assertServerUrlSafe(url, init?.signal);
+  const dispatcher = pinnedDispatcher(resolvedAddresses);
   try {
-    return await fetch(input, init);
+    return await fetch(url.toString(), { ...init, dispatcher });
   } catch (error) {
     if (proxyFailureFor(error).isTimeout) throw error;
     throw new McpProxyUpstreamError('MCP server request failed', { cause: error });
+  } finally {
+    // Graceful: an in-flight response body (an SSE stream) finishes first.
+    // One dispatcher per request, so a pooled socket can never be handed to a
+    // request whose own lookup it did not go through.
+    dispatcher.close().catch(() => {});
   }
+}
+
+function pinnedDispatcher(resolvedAddresses) {
+  // Prefer an A answer (Vercel Node functions egress over IPv4). Every
+  // candidate was classified by assertServerUrlSafe; re-checking the one we
+  // connect to keeps the pin self-contained.
+  const address = resolvedAddresses.find((candidate) => !candidate.includes(':')) ?? resolvedAddresses[0];
+  if (!address) throw new McpProxySsrfError('serverUrl DNS resolution returned no addresses');
+  if (isBlockedResolvedAddress(address)) throwBlockedAddress(address);
+  const family = address.includes(':') ? 6 : 4;
+  return new Agent({ connect: { lookup: pinnedLookup(address, family) } });
+}
+
+// net.connect calls lookup with `{ all: true }` when autoSelectFamily is on (the
+// Node default) and with the single-address callback otherwise. Answer both, so
+// a change of Node default cannot silently unpin the socket.
+function pinnedLookup(address, family) {
+  return (_hostname, options, callback) => {
+    const done = typeof options === 'function' ? options : callback;
+    if (options && typeof options === 'object' && options.all) done(null, [{ address, family }]);
+    else done(null, address, family);
+  };
 }
 
 // Generic message surfaced to the caller when a serverUrl resolves to a
@@ -372,18 +437,6 @@ async function assertServerUrlSafe(url, signal) {
   return { url, resolvedAddresses };
 }
 
-// Vercel Edge fetch does not expose a Node-style lookup/socket hook, so this
-// proxy CANNOT pin the TLS connection to a previously vetted address. There is
-// no way to guarantee that the IP we validated is the IP fetch() ultimately
-// connects to; a DNS answer can change between our resolve and fetch's own
-// resolve. This re-resolve-and-recheck immediately before every outbound
-// dispatch NARROWS that DNS-rebinding window but does not close it. The
-// residual rebind window is an ACCEPTED limitation of the Edge runtime (no
-// socket-level pin available) — documented, not fixed here (P2, issue #5061).
-async function revalidateBeforeFetch(url, signal) {
-  await assertServerUrlSafe(url, signal);
-}
-
 function buildInitPayload() {
   return {
     jsonrpc: '2.0',
@@ -408,20 +461,43 @@ async function validateServerUrl(raw) {
   }
 }
 
-// Cloud-metadata gate headers (GHSA-887j, Edge-safe defence-in-depth): GCP
+// Cloud-metadata gate headers (GHSA-887j defence in depth): GCP
 // `Metadata-Flavor: Google`, Azure `Metadata: true`, AWS IMDSv2
-// `X-aws-ec2-metadata-token[-ttl-seconds]`. The proxy never forwards them, so
-// even if a DNS rebind slipped a fetch onto 169.254.169.254 the credential-less
-// request is refused by the metadata service. Matched case-insensitively. (The
-// full socket-pin fix that closes resolve!=connect is a Node-runtime follow-up;
-// this Edge mitigation kills the demonstrated PoC without a runtime switch;
-// the accepted residual and migration trade-off are tracked in issue #5061.)
+// `X-aws-ec2-metadata-token[-ttl-seconds]`. The socket pin already keeps a
+// rebind off 169.254.169.254; never forwarding these means a credentialed
+// metadata request cannot be assembled even if the pin were bypassed. Matched
+// case-insensitively.
 const DENIED_FORWARD_HEADERS = new Set([
   'metadata-flavor',
   'metadata',
   'x-aws-ec2-metadata-token',
   'x-aws-ec2-metadata-token-ttl-seconds',
 ]);
+
+// Hop-by-hop, authority and transport headers a caller must never set on the
+// upstream request. Edge's fetch() dropped them silently as forbidden header
+// names. Node's fetch forwards TE, Trailer and Proxy-* as given and throws on
+// Transfer-Encoding, Keep-Alive, Upgrade, Expect and a mismatched
+// Content-Length, so without this filter a caller header could smuggle
+// transport semantics or fail an otherwise valid request.
+const HOP_BY_HOP_FORWARD_HEADERS = new Set([
+  'host',
+  'content-length',
+  'transfer-encoding',
+  'connection',
+  'keep-alive',
+  'te',
+  'trailer',
+  'upgrade',
+  'expect',
+  'accept-encoding',
+]);
+
+function isForbiddenForwardHeader(lowerName) {
+  return DENIED_FORWARD_HEADERS.has(lowerName)
+    || HOP_BY_HOP_FORWARD_HEADERS.has(lowerName)
+    || lowerName.startsWith('proxy-');
+}
 
 function buildHeaders(customHeaders) {
   const h = {
@@ -435,14 +511,7 @@ function buildHeaders(customHeaders) {
         // Strip CRLF to prevent header injection
         const safeKey = k.replace(/[\r\n]/g, '');
         const safeVal = v.replace(/[\r\n]/g, '');
-        // Hop-by-hop / authority headers (Host, Content-Length, Connection, TE,
-        // Trailer, Upgrade, Keep-Alive, Transfer-Encoding, Proxy-*) are NOT
-        // filtered here: on the Edge runtime the spec-compliant `fetch()` treats
-        // them as forbidden header names and silently drops them, so they never
-        // reach the upstream. (The Node-runtime socket-pin follow-up uses raw
-        // `http.request`, which does NOT auto-drop them, so that PR must add an
-        // explicit hop-by-hop filter — see #5061.)
-        if (safeKey && !DENIED_FORWARD_HEADERS.has(safeKey.toLowerCase())) {
+        if (safeKey && !isForbiddenForwardHeader(safeKey.trim().toLowerCase())) {
           h[safeKey] = safeVal;
         }
       }
@@ -453,13 +522,11 @@ function buildHeaders(customHeaders) {
 
 // --- Streamable HTTP transport (MCP 2025-03-26) ---
 
-// Bounded redirect follow. `redirect: 'manual'` below stays load-bearing: the
-// Edge runtime cannot pin a TLS connection to a vetted address, so every
-// dispatch re-resolves the host through assertServerUrlSafe. Letting `fetch()`
-// follow a redirect on its own would hand an upstream a way to bounce this
-// proxy onto an internal address without that re-check. So we follow at most
-// ONE hop by hand, and only after the Location clears the same guard the
-// original serverUrl did.
+// Bounded redirect follow. `redirect: 'manual'` below stays load-bearing: each
+// dispatch vets and pins only the host it was given, so letting `fetch()`
+// follow a redirect on its own would let an upstream bounce this proxy onto an
+// unvetted address. So we follow at most ONE hop by hand, and the next
+// dispatch vets and pins the Location's host the same way.
 //
 // Vendors do move a published MCP endpoint and leave a permanent redirect
 // behind (a shipped preset went dark this way — every call died on the 308
@@ -516,7 +583,6 @@ async function postJson(url, body, headers, sessionId) {
   // dispatch gets.
   const signal = AbortSignal.timeout(TIMEOUT_MS);
   for (let hop = 0; ; hop++) {
-    await revalidateBeforeFetch(target, signal);
     signal.throwIfAborted();
     const resp = await fetchMcpUpstream(target.toString(), {
       method: 'POST',
@@ -593,14 +659,14 @@ async function mcpListTools(serverUrl, customHeaders) {
   if (!initResp.ok) throw new McpProxyUpstreamError(`Initialize failed: HTTP ${initResp.status}`, { upstreamStatus: initResp.status });
   const sessionId = initResp.headers.get('Mcp-Session-Id') || initResp.headers.get('mcp-session-id');
   const initData = await parseJsonRpcResponse(initResp);
-  if (initData.error) throw new McpProxyUpstreamError('Initialize error: MCP server rejected request');
+  if (initData.error) throw upstreamRpcRejection('Initialize', initData.error);
   await sendInitialized(sessionUrl, headers, sessionId);
   const { response: listResp } = await postJson(sessionUrl, {
     jsonrpc: '2.0', id: 2, method: 'tools/list', params: {},
   }, headers, sessionId);
   if (!listResp.ok) throw new McpProxyUpstreamError(`tools/list failed: HTTP ${listResp.status}`, { upstreamStatus: listResp.status });
   const listData = await parseJsonRpcResponse(listResp);
-  if (listData.error) throw new McpProxyUpstreamError('tools/list error: MCP server rejected request');
+  if (listData.error) throw upstreamRpcRejection('tools/list', listData.error);
   return listData.result?.tools || [];
 }
 
@@ -611,7 +677,7 @@ async function mcpCallTool(serverUrl, toolName, toolArgs, customHeaders) {
   if (!initResp.ok) throw new McpProxyUpstreamError(`Initialize failed: HTTP ${initResp.status}`, { upstreamStatus: initResp.status });
   const sessionId = initResp.headers.get('Mcp-Session-Id') || initResp.headers.get('mcp-session-id');
   const initData = await parseJsonRpcResponse(initResp);
-  if (initData.error) throw new McpProxyUpstreamError('Initialize error: MCP server rejected request');
+  if (initData.error) throw upstreamRpcRejection('Initialize', initData.error);
   await sendInitialized(sessionUrl, headers, sessionId);
   const { response: callResp } = await postJson(sessionUrl, {
     jsonrpc: '2.0', id: 3, method: 'tools/call',
@@ -619,7 +685,7 @@ async function mcpCallTool(serverUrl, toolName, toolArgs, customHeaders) {
   }, headers, sessionId);
   if (!callResp.ok) throw new McpProxyUpstreamError(`tools/call failed: HTTP ${callResp.status}`, { upstreamStatus: callResp.status });
   const callData = await parseJsonRpcResponse(callResp);
-  if (callData.error) throw new McpProxyUpstreamError('tools/call error: MCP server rejected request');
+  if (callData.error) throw upstreamRpcRejection('tools/call', callData.error);
   return callData.result;
 }
 
@@ -655,7 +721,6 @@ class SseSession {
   }
 
   async connect() {
-    await revalidateBeforeFetch(new URL(this._sseUrl));
     const resp = await fetchMcpUpstream(this._sseUrl, {
       headers: { ...this._headers, Accept: 'text/event-stream', 'Cache-Control': 'no-cache' },
       redirect: 'manual',
@@ -769,7 +834,6 @@ class SseSession {
       }
     }, SSE_RPC_TIMEOUT_MS);
     try {
-      await revalidateBeforeFetch(new URL(this._endpointUrl));
       const postResp = await fetchMcpUpstream(this._endpointUrl, {
         method: 'POST',
         headers: { ...this._headers, 'Content-Type': 'application/json' },
@@ -789,8 +853,7 @@ class SseSession {
   }
 
   async notify(method, params) {
-    await revalidateBeforeFetch(new URL(this._endpointUrl));
-    const response = await fetch(this._endpointUrl, {
+    const response = await fetchMcpUpstream(this._endpointUrl, {
       method: 'POST',
       headers: { ...this._headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', method, params }),
@@ -815,10 +878,10 @@ async function mcpListToolsSse(serverUrl, customHeaders) {
       capabilities: {},
       clientInfo: { name: 'worldmonitor', version: '1.0' },
     });
-    if (initResp.error) throw new McpProxyUpstreamError('Initialize error: MCP server rejected request');
+    if (initResp.error) throw upstreamRpcRejection('Initialize', initResp.error);
     await session.notify('notifications/initialized', {});
     const listResp = await session.send(2, 'tools/list', {});
-    if (listResp.error) throw new McpProxyUpstreamError('tools/list error: MCP server rejected request');
+    if (listResp.error) throw upstreamRpcRejection('tools/list', listResp.error);
     return listResp.result?.tools || [];
   } finally {
     session.close();
@@ -835,10 +898,10 @@ async function mcpCallToolSse(serverUrl, toolName, toolArgs, customHeaders) {
       capabilities: {},
       clientInfo: { name: 'worldmonitor', version: '1.0' },
     });
-    if (initResp.error) throw new McpProxyUpstreamError('Initialize error: MCP server rejected request');
+    if (initResp.error) throw upstreamRpcRejection('Initialize', initResp.error);
     await session.notify('notifications/initialized', {});
     const callResp = await session.send(2, 'tools/call', { name: toolName, arguments: toolArgs || {} });
-    if (callResp.error) throw new McpProxyUpstreamError('tools/call error: MCP server rejected request');
+    if (callResp.error) throw upstreamRpcRejection('tools/call', callResp.error);
     return callResp.result;
   } finally {
     session.close();
@@ -911,7 +974,7 @@ async function handleCallTool(req: Request, cors: Record<string, string>, meta: 
   return jsonResponse({ result }, 200, cors);
 }
 
-export default async function handler(req, ctx) {
+export async function handler(req, ctx) {
   const startedAt = Date.now();
   if (isDisallowedOrigin(req)) {
     emitProxyUsage(req, 403, Date.now() - startedAt, ctx);
@@ -966,7 +1029,7 @@ export default async function handler(req, ctx) {
   // without a Redis round-trip). This endpoint is already premium-auth gated,
   // so Redis-degraded scoped limits intentionally stay availability-first;
   // checkScopedRateLimit logs/Sentry-captures the degraded path.
-  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, ip);
+  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, rateLimitKeyForIp(ip));
   if (!scoped.allowed) {
     const retryAfter = Math.max(1, Math.ceil((scoped.reset - Date.now()) / 1000));
     logProxyCall({
@@ -1003,6 +1066,7 @@ export default async function handler(req, ctx) {
 
   let response: Response;
   let upstreamStatus: number | null = null;
+  let upstreamRpcCode: number | null = null;
   try {
     if (req.method === 'GET') {
       response = await handleListTools(req, cors, meta);
@@ -1018,7 +1082,10 @@ export default async function handler(req, ctx) {
       || err instanceof McpProxyJsonDepthError
       ? err.message : 'MCP proxy request failed';
     const failure = proxyFailureFor(err);
-    if (err instanceof McpProxyUpstreamError) upstreamStatus = err.upstreamStatus;
+    if (err instanceof McpProxyUpstreamError) {
+      upstreamStatus = err.upstreamStatus;
+      upstreamRpcCode = err.upstreamRpcCode;
+    }
     // Until now this catch swallowed EVERY handler fault into a 422/422-shaped
     // JSON body with no Sentry event, so a genuine proxy defect was visible
     // only to the caller who hit it. Capture it.
@@ -1039,10 +1106,16 @@ export default async function handler(req, ctx) {
       });
     }
     // Return 422 (not 502) so Cloudflare proxy does not replace our JSON body with its own HTML error page
+    //
+    // The 504 is OUR relay of the remote MCP server's timeout, already captured
+    // above at warning. `X-Wm-Upstream-Timeout` lets premium-fetch's origin-5xx
+    // canary skip it instead of re-reporting it from every browser as an
+    // origin `API 504` error (WORLDMONITOR-17A). Exposed cross-origin via
+    // EXPOSED_HEADERS in api/_cors.js.
     response = jsonResponse(
       { error: failure.isTimeout ? 'MCP server timed out' : msg },
       failure.isTimeout ? 504 : 422,
-      cors,
+      failure.isTimeout ? { ...cors, 'X-Wm-Upstream-Timeout': '1' } : cors,
     );
   }
 
@@ -1055,8 +1128,15 @@ export default async function handler(req, ctx) {
     status: response.status,
     duration_ms: Date.now() - started,
     upstream_status: upstreamStatus,
+    upstream_rpc_code: upstreamRpcCode,
   });
   emitProxyUsage(req, response.status, Date.now() - startedAt, ctx, callerIdentity);
 
   return response;
 }
+
+// The pinned-transport building blocks, for tests that prove on real sockets
+// that the dispatcher connects to the vetted address and nowhere else.
+export const __testing__ = { pinnedLookup, pinnedDispatcher };
+
+export { handler as GET, handler as POST, handler as OPTIONS };

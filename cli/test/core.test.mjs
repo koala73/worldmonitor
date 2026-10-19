@@ -237,7 +237,7 @@ describe('run', () => {
 
   it('prints help with no command', async () => {
     const io = collect();
-    const code = await run([], { ...io, env: {} });
+    const code = await run([], { ...io, env: {}, isTTY: false });
     assert.equal(code, 0);
     assert.match(io.out, /USAGE/);
   });
@@ -358,4 +358,64 @@ describe('run', () => {
     const plan = planRequest(parseArgs(['get', '/api/health']), { baseUrl: base + '///' });
     assert.equal(plan.url, new URL(base + '/api/health').href);
   }
+});
+
+describe('dashboard dispatch', () => {
+  it('launches the TUI for a bare command on a TTY and for `tui`', async () => {
+    const launches = [];
+    const io = { isTTY: true, launchTui: async (args) => { launches.push(args); return 0; }, stdout() {}, stderr() {}, env: { WORLDMONITOR_API_KEY: 'wm_k' } };
+    assert.equal(await run([], io), 0);
+    assert.equal(await run(['tui', '--theme', 'matrix', '--no-anim'], io), 0);
+    assert.equal(launches.length, 2);
+    assert.equal(launches[1].options.theme, 'matrix');
+    assert.equal(launches[1].options.noAnim, true);
+    assert.equal(launches[1].config.apiKey, 'wm_k');
+  });
+  it('prints help for a bare command without a TTY and refuses `tui` there', async () => {
+    let out = '';
+    let err = '';
+    const io = { isTTY: false, env: {}, stdout: (s) => (out += s), stderr: (s) => (err += s), launchTui: async () => 0 };
+    assert.equal(await run([], io), 0);
+    assert.match(out, /USAGE/);
+    assert.equal(await run(['tui'], io), 2);
+    assert.match(err, /interactive terminal/);
+  });
+  it('routes `web` to the web launcher with its flags', async () => {
+    let got = null;
+    const io = { isTTY: true, env: {}, stdout() {}, stderr() {}, runWeb: async (args) => { got = args; return 0; } };
+    assert.equal(await run(['web', '--hosted', '--port', '4000', '--no-open'], io), 0);
+    assert.equal(got.options.hosted, true);
+    assert.equal(got.options.port, '4000');
+    assert.equal(got.options.noOpen, true);
+  });
+  it('prints help for `tui --help` and `web --help` without launching anything', async () => {
+    let out = '';
+    let launched = 0;
+    const io = { isTTY: true, env: {}, stdout: (s) => (out += s), stderr() {}, launchTui: async () => ++launched, runWeb: async () => ++launched };
+    for (const argv of [['--help'], ['help'], ['tui', '--help'], ['dashboard', '-h'], ['web', '--help']]) {
+      out = '';
+      assert.equal(await run(argv, io), 0, argv.join(' '));
+      assert.match(out, /USAGE/, argv.join(' '));
+    }
+    assert.equal(launched, 0);
+  });
+  it('reports a launcher failure through the CLI error handler', async () => {
+    let err = '';
+    const boom = async () => {
+      throw new Error('terminal went away');
+    };
+    const io = { isTTY: true, env: {}, stdout() {}, stderr: (s) => (err += s), launchTui: boom, runWeb: boom };
+    assert.equal(await run(['tui'], io), 1);
+    assert.equal(await run(['web'], io), 1);
+    assert.equal(err, 'Error: terminal went away\nError: terminal went away\n');
+  });
+  it('keeps dashboard flags out of other commands so they still reach the API', async () => {
+    const p = parseArgs(['get', '/api/rss-proxy', '--url', 'https://example.com/feed', '--port', '8080', '--theme', 'dark']);
+    assert.deepEqual(p.params, { url: 'https://example.com/feed', port: '8080', theme: 'dark' });
+    assert.equal(p.options.url, undefined);
+    const io = collect();
+    const { fetchImpl, calls } = stubFetch({ body: '{"ok":true}' });
+    assert.equal(await run(['get', '/api/rss-proxy', '--url', 'https://example.com/feed'], { ...io, fetch: fetchImpl, env: {} }), 0);
+    assert.equal(new URL(calls[0].url).searchParams.get('url'), 'https://example.com/feed');
+  });
 });

@@ -246,7 +246,7 @@
     "connectorsRow": "Conectori",
     "deployment": "Deployment",
     "securityRow": "Securitate",
-    "f5_15min": "5-15 min",
+    "f5_15min": "5-15 minute",
     "fLt60s": "<60 secunde",
     "fPerRequest": "Per cerere",
     "fLiveEdge": "Live-edge",
@@ -257,7 +257,7 @@
     "fAgentsPersonas": "Agenți + personalități",
     "fDailyFlash": "Zilnic + flash",
     "fTeamDist": "Distribuție echipă",
-    "fSlackTgWa": "Slack/Discord/TG/Email/Webhook",
+    "fSlackTgWa": "Slack/Discord/TG/e-mail/Webhook",
     "fWebhook": "Webhook",
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
@@ -271,7 +271,7 @@
     "fCloudOnPrem": "Cloud/on-prem/air-gap",
     "fStandard": "Standard",
     "fKeyAuth": "Auth cu cheie",
-    "fSsoMfa": "SSO/MFA/RBAC/audit",
+    "fSsoMfa": "SSO/MFA/RBAC/jurnal de audit",
     "noteBelow": "Platforma de bază rămâne gratuită. Planurile plătite deblochează equity research, analitică macro, briefinguri IA și utilizare organizațională.",
     "f50plus": "Disponibil",
     "sourcesRow": "Surse",
@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Tabloul de bord gratuit de inteligență globală în timp real",
-      "description": "Până când devine știre, tu deja știai. Conflicte, puncte critice, zboruri militare, piețe, cyber: o hartă live gratuită cu analiză AI. Fără înregistrare.",
-      "ogTitle": "World Monitor — Până când devine știre, deja știai.",
-      "ogDescription": "Semnalele brute ale lumii — nave, avioane, sirene, cabluri, piețe — pe o singură hartă de inteligență în direct, cu AI care marchează când se converg. Gratuit, fără înregistrare."
+      "title": "World Monitor: tablou de bord geopolitic gratuit",
+      "description": "World Monitor: tablou de bord de informații geopolitice în timp real. Hartă live gratuită: conflicte, transport maritim, zboruri, piețe și cyber, cu API și MCP.",
+      "ogTitle": "World Monitor: tablou de bord geopolitic gratuit",
+      "ogDescription": "World Monitor: tablou de bord de informații geopolitice în timp real. Hartă live gratuită: conflicte, transport maritim, zboruri, piețe și cyber, cu API și MCP."
     },
     "nav": {
       "useCases": "Corelații",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Tabloul de bord gratuit de inteligență globală · live acum",
-      "headline1": "Până când devine știre,",
-      "headline2": "deja știai.",
-      "sub": "Știrile sunt decalajul. World Monitor transmite semnalele brute ale lumii — nave, avioane, sirene, cabluri, piețe — pe o singură hartă în direct, cu AI care marchează când se converg într-ceva care conține.",
+      "headline1": "Tablou de bord de informații geopolitice",
+      "headline2": "în timp real",
+      "sub": "Până când devine știre, deja știai.",
       "ctaPrimary": "Lansați tabloul de bord",
       "ctaFree": "Gratuit · Fără înregistrare · Se încarcă în secunde",
       "ctaSecondary": "Vedeți cum îl folosesc oamenii ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor nu este un Palantir open-source",
       "asOf": "Din {{date}}",
       "whatIsTitle": "Ce este World Monitor?",
-      "whatIsBody": "World Monitor este un dashboard gratuit ($0), open-source (AGPL-3.0) folosit de 2M+ persoane. Transmite {{feeds}} fluxuri de știri și OSINT de la {{providers}} furnizori atribuiți pe o hartă mondială live unificată cu {{mapLayers}} tipuri de straturi de hartă, acoperind geopolitică, piețe, transport maritim, aviație și cyber. Le corelează pentru ca evenimentele convergente să apară înaintea știrilor. Fiecare cifră este sursa și fiecare metodă documentată."
+      "whatIsBody": "World Monitor este un dashboard gratuit ($0), open-source (AGPL-3.0) folosit de 2M+ persoane. Transmite {{feeds}} fluxuri de știri și OSINT de la {{providers}} furnizori atribuiți pe o hartă mondială live unificată cu {{mapLayers}} tipuri de straturi de hartă, acoperind geopolitică, piețe, transport maritim, aviație și cyber. Le corelează pentru ca evenimentele convergente să apară înaintea știrilor. Fiecare cifră este sursa și fiecare metodă documentată.",
+      "whatIsBestFor": "Ideal pentru analiști, jurnaliști, traderi și dezvoltatori care au nevoie de semnale geopolitice în timp real."
     },
     "live": {
       "eyebrow": "Live chiar acum",
@@ -688,8 +689,8 @@
       "a9": "Da — open source sub AGPL-3.0 pe GitHub: citește codul, auto-găzduiește-l sau construiește pe baza lui. Aplicații desktop native pentru Windows, macOS și Linux sunt disponibile, plus o aplicație Android TV pentru afișaje pe perete.",
       "q10": "De ce World Monitor nu este Palantir?",
       "a10": "Palantir face datele proprii ale unei instituții operaționale în cadrul acesteia. World Monitor pornește de la celălalt capăt: adună, normalizează, corelează și monitorizează datele din domeniul public, apoi publică acel strat de inteligență printr-un tablou de bord gratuit și cod open-source. Sarcini diferite, produse diferite.",
-      "q11": "Which World Monitor license do I need?",
-      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
+      "q11": "De ce licență World Monitor am nevoie?",
+      "a11": "Alege după cine va folosi rezultatul. Licența personală Pro este pentru o persoană care folosește World Monitor pentru propria cercetare și propriile decizii. Pro Business permite unui utilizator licențiat să îl folosească pentru munca de firmă sau de client, unelte interne și rapoarte. API Starter acoperă folosirea API în interiorul unei organizații, fără redistribuire către clienți. API Business permite acelei organizații să încorporeze datele World Monitor în produse și servicii pentru clienții săi. Enterprise acoperă locuri personalizate, White-label și deployment-uri. Aceste licențe de abonament sunt separate de licențele de cod sursă AGPL/MIT. Termeni completi: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} răspunsuri directe despre preț, date, alerte și acces AI. Pe scurt: dashboard-ul costă $0, nu necesită cont și codul este open source sub AGPL-3.0.",
       "q12": "Care este cel mai bun software pentru monitorizarea crizelor și perturbărilor globale din știri?",
       "a12": "World Monitor este o opțiune gratuită și open source: transmite {{feeds}} fluxuri de știri și OSINT de la {{providers}} furnizori identificați pe o singură hartă live a lumii cu {{mapLayers}} tipuri de straturi de hartă, acoperind geopolitică, piețe, transport maritim, aviație și securitate cibernetică. Le corelează astfel încât perturbările care coincid să iasă la iveală înainte să ajungă în titluri. Pentru a o compara cu alte instrumente, consultați worldmonitor.app/compare/best-geopolitical-risk-dashboards."

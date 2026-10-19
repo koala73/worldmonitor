@@ -1,22 +1,19 @@
 /**
- * IMD cyclone, port, coastal, and marine products (#7005).
+ * IMD marine bulletins from the public mausam.imd.gov.in pages (#7005, #7730).
  *
  * Not district/nowcast (#7004) and not NDMA SACHET (#7002).
  * Products stay typed. They are not merged into weather:alerts:v1.
  *
- * Live fetch requires an API key and IMD account credentials. Disabled is not all-clear.
+ * The IMD API binds each key to one IPv4, which Railway egress cannot satisfy,
+ * so cyclone track, wind radii and cone (API-only) stay disabled: GDACS
+ * tropical cyclones in seed-natural-events cover the North Indian Ocean.
+ * Disabled is not all-clear.
  */
 
-import { createRequire } from 'node:module';
+import { CHROME_UA } from '../_seed-utils.mjs';
 
-import { CHROME_UA, roundGeoCoordinate } from '../_seed-utils.mjs';
-
-const require = createRequire(import.meta.url);
-const { parseProxyConfig, proxyFetch } = require('../_proxy-utils.cjs');
-
-export const IMD_HOST = 'api.imd.gov.in';
-export const IMD_API_ORIGIN = 'https://api.imd.gov.in';
-export const IMD_OAUTH_TOKEN_URL = `${IMD_API_ORIGIN}/api/oauth/token.php`;
+export const IMD_BULLETIN_HOST = 'mausam.imd.gov.in';
+export const IMD_FORECAST_BASE = `https://${IMD_BULLETIN_HOST}/Forecast`;
 export const IMD_API_REFERENCE_URL = 'https://api.imd.gov.in/public/api_reference.html';
 export const IMD_RSMC_URL = 'https://rsmcnewdelhi.imd.gov.in/';
 export const IMD_PORT_WARNING_PAGE = 'https://rsmcnewdelhi.imd.gov.in/port-warning.php';
@@ -24,69 +21,92 @@ export const IMD_SEA_BULLETIN_PAGE = 'https://mausam.imd.gov.in/responsive/marin
 export const IMD_COASTAL_BULLETIN_PAGE = 'https://mausam.imd.gov.in/responsive/coastal_forecast.php';
 export const IMD_SOURCE_NAME = 'India Meteorological Department';
 export const IMD_CANONICAL_KEY = 'weather:imd-cyclone-marine:v1';
-export const IMD_SOURCE_VERSION = 'imd-cyclone-marine-v1';
-export const IMD_MAX_BYTES = 2 * 1024 * 1024;
+export const IMD_SOURCE_VERSION = 'imd-public-bulletins-v1';
+export const IMD_MAX_BYTES = 512 * 1024;
 export const IMD_TIMEOUT_MS = 15_000;
-export const IMD_MAX_CONTENT_AGE_MIN = 3 * 24 * 60;
+export const IMD_PAGE_DELAY_MS = 1_000;
+// Sea-area bulletins are issued twice a day and coastal bulletins daily.
+export const IMD_MAX_CONTENT_AGE_MIN = 36 * 60;
 export const IMD_COUNTRY = 'IN';
 
+const MAX_FIELD_CHARS = 4_000;
+const MAX_FUTURE_VALIDITY_MS = 12 * 60 * 60 * 1000;
+const MAX_FUTURE_ISSUE_MS = 10 * 60 * 1000;
+
+const SEA_AREA_FIELDS = Object.freeze(['wind', 'weather', 'visibility', 'seaCondition']);
+const COASTAL_AREA_FIELDS = Object.freeze([...SEA_AREA_FIELDS, 'portSignal', 'stormSurgeWarning']);
+
+/**
+ * Bulletin page IDs were read from the index pages on 2026-10-16
+ * (tests/fixtures/imd/*-index.html). Unlisted sea-area IDs return the Bay of
+ * Bengal bulletin, and NAVTEX copies redirect to a login page.
+ */
 export const IMD_PRODUCTS = Object.freeze({
   cycloneTrack: Object.freeze({
     id: 'cycloneTrack',
     kind: 'cyclone-track',
-    path: '/api/v1/cyclone_track',
-    schema: 'documented',
     sourceUrl: IMD_RSMC_URL,
+    disabledReason: 'API_ONLY_COVERED_BY_GDACS',
   }),
   cycloneWind: Object.freeze({
     id: 'cycloneWind',
     kind: 'cyclone-wind',
-    path: '/api/v1/cyclone_wind',
-    schema: 'documented',
     sourceUrl: IMD_RSMC_URL,
-    geometryKind: 'forecast-wind-radii',
+    disabledReason: 'API_ONLY_COVERED_BY_GDACS',
   }),
   cycloneCou: Object.freeze({
     id: 'cycloneCou',
     kind: 'cyclone-cone',
-    path: '/api/v1/cyclone_cou',
-    schema: 'documented',
     sourceUrl: IMD_RSMC_URL,
-    geometryKind: 'cone-of-uncertainty',
+    disabledReason: 'API_ONLY_COVERED_BY_GDACS',
   }),
   portWarning: Object.freeze({
     id: 'portWarning',
     kind: 'port-warning',
-    path: '/api/v1/portwarning',
-    schema: 'documented',
     sourceUrl: IMD_PORT_WARNING_PAGE,
+    disabledReason: 'PDF_ONLY_PORT_SIGNALS_IN_COASTAL_BULLETINS',
   }),
   seaBulletin: Object.freeze({
     id: 'seaBulletin',
     kind: 'sea-area-bulletin',
-    path: '/api/v1/seabulletin',
-    schema: 'documented',
     sourceUrl: IMD_SEA_BULLETIN_PAGE,
+    title: 'Sea Area Bulletin',
+    requiresStormWarning: true,
+    areaFields: SEA_AREA_FIELDS,
+    pages: Object.freeze([
+      Object.freeze({ key: 'bay-of-bengal', url: `${IMD_FORECAST_BASE}/seaarea_bulletin_new.php?id=1` }),
+      Object.freeze({ key: 'arabian-sea', url: `${IMD_FORECAST_BASE}/seaarea_bulletin_new.php?id=4` }),
+    ]),
   }),
   coastalBulletin: Object.freeze({
     id: 'coastalBulletin',
     kind: 'coastal-bulletin',
-    path: '/api/v1/coastalbulletin',
-    schema: 'documented',
     sourceUrl: IMD_COASTAL_BULLETIN_PAGE,
+    title: 'Coastal Weather Bulletin',
+    requiresStormWarning: false,
+    areaFields: COASTAL_AREA_FIELDS,
+    pages: Object.freeze([
+      Object.freeze({ key: 'west-bengal-andaman-nicobar', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php` }),
+      Object.freeze({ key: 'kerala-karnataka-lakshadweep', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php?id=2` }),
+      Object.freeze({ key: 'gujarat', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php?id=3` }),
+      Object.freeze({ key: 'maharashtra-goa', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php?id=4` }),
+      Object.freeze({ key: 'odisha', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php?id=5` }),
+      Object.freeze({ key: 'tamil-nadu', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php?id=6` }),
+      Object.freeze({ key: 'andhra-pradesh', url: `${IMD_FORECAST_BASE}/coastal_bulletin_new.php?id=7` }),
+    ]),
   }),
   fishermenWarning: Object.freeze({
     id: 'fishermenWarning',
     kind: 'fishermen-warning',
-    path: '/api/v1/fishermenwarning',
-    schema: 'undocumented',
-    sourceUrl: IMD_API_REFERENCE_URL,
-    disabledReason: 'INDEXED_WITHOUT_FIELD_REFERENCE',
+    sourceUrl: IMD_SEA_BULLETIN_PAGE,
+    disabledReason: 'PDF_ONLY',
   }),
 });
 
 export const IMD_PRODUCT_IDS = Object.freeze(Object.keys(IMD_PRODUCTS));
+export const IMD_BULLETIN_PRODUCT_IDS = Object.freeze(IMD_PRODUCT_IDS.filter((id) => IMD_PRODUCTS[id].pages));
 
+// The RTI non-commercial terms cover the public bulletin pages as well as the API.
 export const IMD_RIGHTS_DECISION = Object.freeze({
   status: 'reviewed',
   redistribution: 'validated',
@@ -100,44 +120,62 @@ export const IMD_RIGHTS_DECISION = Object.freeze({
   ]),
 });
 
-const NIL_RE = /^(?:nil(?:\s+at\s+all\s+ports)?|n\/?a|none|no\s+warning|-)?$/i;
-const WIND_THRESHOLDS_KT = Object.freeze(['27kt', '34kt', '50kt', '64kt']);
-
-/** Gazetteer precision only — not official IMD polygons. */
+/** Gazetteer precision only, keyed by the area captions IMD prints. Not official IMD polygons. */
 export const IMD_AREA_CENTROIDS = Object.freeze({
-  mumbai: [72.85, 18.95],
-  kandla: [70.22, 23.03],
-  mundra: [69.71, 22.74],
-  chennai: [80.29, 13.08],
-  kolkata: [88.31, 22.55],
-  visakhapatnam: [83.29, 17.69],
-  kochi: [76.27, 9.97],
-  cochin: [76.27, 9.97],
-  paradip: [86.67, 20.26],
-  tuticorin: [78.17, 8.75],
-  mangalore: [74.83, 12.92],
-  mormugao: [73.80, 15.40],
-  ennore: [80.33, 13.26],
-  haldia: [88.06, 22.03],
-  'port blair': [92.74, 11.67],
-  'south west bay': [84.0, 12.0],
-  'bay of bengal': [88.0, 15.0],
-  'andaman sea': [94.0, 10.0],
-  'arabian sea': [68.0, 15.0],
-  'south tamilnadu coast': [78.5, 8.5],
-  'west coast': [72.5, 15.0],
-  'east coast': [84.0, 16.0],
+  'north west bay': [87.0, 19.5],
+  'north east bay': [90.5, 19.5],
+  'west central bay': [84.5, 16.0],
+  'east central bay': [89.0, 16.0],
+  'south west bay': [83.0, 11.0],
+  'south east bay': [88.5, 11.0],
+  'north andaman sea': [95.5, 13.0],
+  'south andaman sea': [96.0, 8.5],
+  'north west arabian sea': [62.0, 20.0],
+  'north east arabian sea': [67.5, 20.5],
+  'west central arabian sea': [60.0, 15.0],
+  'east central arabian sea': [68.0, 15.0],
+  'south west arabian sea': [58.0, 8.5],
+  'south east arabian sea': [70.0, 9.0],
+  'lakshadweep area': [72.8, 10.5],
+  'maldives area': [73.3, 3.5],
+  'andaman area': [92.7, 11.7],
+  'west bengal coast': [88.2, 21.7],
+  'karnataka coast': [74.6, 13.8],
+  'north kerala coast': [75.6, 11.5],
+  'south kerala coast': [76.4, 9.3],
+  'north gujrath coast': [69.5, 22.6],
+  'south gujrath coast': [71.0, 20.9],
+  'north maharashtra coast': [72.8, 19.0],
+  'south maharashtra and goa coast': [73.6, 16.0],
+  'north odisha coast': [86.9, 20.7],
+  'south odisha coast': [85.0, 19.4],
+  'north tamilnadu coast': [80.2, 12.5],
+  'south tamilnadu coast': [78.8, 9.0],
+  'north andhra coast': [83.3, 17.7],
+  'south andhra coast': [80.5, 15.5],
 });
 
-export function imdProductUrl(product) {
-  return `${IMD_API_ORIGIN}${product.path}`;
+const NIL_PHRASES = new Set([
+  '', '-', 'nil', 'nil at all ports', 'nil at all port', 'n/a', 'na', 'none', 'no warning', 'no storm warning',
+]);
+
+function normalizeLabel(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[\s.]+$/, '');
 }
 
-export function isAllowedImdHost(url) {
+export function isNilText(value) {
+  return NIL_PHRASES.has(normalizeLabel(value));
+}
+
+export function lookupAreaCentroid(name) {
+  return IMD_AREA_CENTROIDS[normalizeLabel(name)] || null;
+}
+
+export function isAllowedImdUrl(url) {
   try {
     const parsed = new URL(url);
     return parsed.protocol === 'https:'
-      && parsed.hostname.toLowerCase() === IMD_HOST
+      && parsed.hostname.toLowerCase() === IMD_BULLETIN_HOST
       && (parsed.port === '' || parsed.port === '443')
       && parsed.username === ''
       && parsed.password === '';
@@ -146,468 +184,363 @@ export function isAllowedImdHost(url) {
   }
 }
 
-export function isNilText(value) {
-  return NIL_RE.test(String(value || '').trim());
-}
-
-export function asFiniteNumber(value) {
-  if ((typeof value !== 'number' && typeof value !== 'string')
-    || (typeof value === 'string' && value.trim() === '')) return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-}
-
-export function validLonLat(lon, lat) {
-  return Number.isFinite(lon) && Number.isFinite(lat)
-    && lat >= -90 && lat <= 90
-    && lon >= -180 && lon <= 180;
-}
-
-export function parseImdTrackDateTime(raw) {
-  const match = String(raw || '').trim().match(/^(\d{2})\.(\d{2})\.(\d{2})\/(\d{2})(\d{2})$/);
-  if (!match) return null;
-  const year = Number(match[3]) + (Number(match[3]) >= 70 ? 1900 : 2000);
-  const ms = Date.UTC(year, Number(match[2]) - 1, Number(match[1]), Number(match[4]), Number(match[5]));
-  return Number.isFinite(ms) ? ms : null;
-}
-
-export function parseImdDateTime(raw, { assumeIst = false } = {}) {
-  const text = String(raw || '').trim();
-  if (!text) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-    const ms = Date.parse(assumeIst ? `${text}T00:00:00+05:30` : `${text}T00:00:00Z`);
-    return Number.isFinite(ms) ? ms : null;
-  }
-  const isoish = text.includes('T') ? text : text.replace(' ', 'T');
-  if (/Z$|[+-]\d{2}:?\d{2}$/.test(isoish)) {
-    const ms = Date.parse(isoish);
-    return Number.isFinite(ms) ? ms : null;
-  }
-  const ms = Date.parse(`${isoish}${assumeIst ? '+05:30' : 'Z'}`);
-  return Number.isFinite(ms) ? ms : null;
-}
-
-export function lookupAreaCentroid(name) {
-  const key = String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
-  if (!key) return null;
-  if (IMD_AREA_CENTROIDS[key]) return IMD_AREA_CENTROIDS[key];
-  for (const [label, pair] of Object.entries(IMD_AREA_CENTROIDS)) {
-    if (key.includes(label) || label.includes(key)) return pair;
-  }
-  return null;
-}
-
-export function imdApiKey(env = process.env) {
-  const key = String(env.IMD_API_KEY || '').trim();
-  return key || null;
-}
-
-export function imdApiEmail(env = process.env) {
-  const email = String(env.IMD_API_EMAIL || '').trim();
-  return email || null;
-}
-
-export function imdApiPassword(env = process.env) {
-  const password = String(env.IMD_API_PASSWORD || '');
-  return password.trim() ? password : null;
-}
-
-function imdApiKeyHeader(env = process.env) {
-  return String(env.IMD_API_KEY_HEADER || 'X-API-Key').trim() || 'X-API-Key';
-}
-
-function imdLiveFetchDisabledReason(env = process.env) {
-  const key = imdApiKey(env);
-  if (!key) return 'IMD_API_KEY_MISSING';
-  if (!/^[\u0009\u0020-\u007E\u0080-\u00FF]+$/.test(key)) return 'IMD_API_KEY_INVALID';
-  const email = imdApiEmail(env);
-  if (!email) return 'IMD_API_EMAIL_MISSING';
-  if (!/^[^\u0000-\u001F\u007F]+$/u.test(email)) return 'IMD_API_EMAIL_INVALID';
-  const password = imdApiPassword(env);
-  if (!password) return 'IMD_API_PASSWORD_MISSING';
-  if (!/^[^\u0000-\u001F\u007F]+$/u.test(password)) return 'IMD_API_PASSWORD_INVALID';
-  return /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(imdApiKeyHeader(env))
-    ? null
-    : 'IMD_API_KEY_HEADER_INVALID';
-}
-
-export function imdLiveFetchEnabled(env = process.env) {
-  return imdLiveFetchDisabledReason(env) === null;
-}
-
-function field(row, ...names) {
-  if (!row || typeof row !== 'object') return '';
-  for (const name of names) {
-    if (row[name] != null && String(row[name]).trim() !== '') return row[name];
-  }
-  const keys = Object.keys(row);
-  for (const name of names) {
-    const match = keys.find((key) => key.toLowerCase().replace(/[\s_]+/g, '') === name.toLowerCase().replace(/[\s_]+/g, ''));
-    if (match != null && row[match] != null && String(row[match]).trim() !== '') return row[match];
-  }
-  return '';
-}
-
 function slug(value) {
   return String(value || '')
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'unknown';
 }
 
-function roundPair(lon, lat) {
-  return [roundGeoCoordinate(lon), roundGeoCoordinate(lat)];
-}
+const NAMED_ENTITIES = Object.freeze({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' });
 
-export function validateLonLatRing(ring) {
-  if (!Array.isArray(ring) || ring.length < 3) return null;
-  const out = [];
-  for (const pair of ring) {
-    if (!Array.isArray(pair) || pair.length < 2) return null;
-    const lon = asFiniteNumber(pair[0]);
-    const lat = asFiniteNumber(pair[1]);
-    if (!validLonLat(lon, lat)) return null;
-    out.push(roundPair(lon, lat));
-  }
-  return out;
-}
-
-export function parseMultiPolygon(geometry) {
-  if (!geometry || typeof geometry !== 'object') return null;
-  const type = String(geometry.type || '').trim();
-  if (type !== 'MultiPolygon' && type !== 'Polygon') return null;
-  const raw = geometry.coordinates;
-  if (!Array.isArray(raw) || raw.length === 0) return null;
-  const polygons = type === 'Polygon' ? [raw] : raw;
-  const out = [];
-  for (const polygon of polygons) {
-    if (!Array.isArray(polygon) || polygon.length === 0) return null;
-    const rings = [];
-    for (const ring of polygon) {
-      const validated = validateLonLatRing(ring);
-      if (!validated) return null;
-      rings.push(validated);
+function decodeEntities(text) {
+  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity) => {
+    if (entity[0] === '#') {
+      const code = entity[1] === 'x' || entity[1] === 'X'
+        ? Number.parseInt(entity.slice(2), 16)
+        : Number.parseInt(entity.slice(1), 10);
+      return Number.isInteger(code) && code > 0 && code <= 0x10FFFF ? String.fromCodePoint(code) : ' ';
     }
-    out.push(rings);
-  }
-  return out;
+    return NAMED_ENTITIES[entity.toLowerCase()] ?? match;
+  });
 }
 
-export function parseCycloneTrackPoint(row, pointKind) {
-  if (pointKind !== 'observed' && pointKind !== 'forecast') return null;
-  const lat = asFiniteNumber(field(row, 'lat', 'Latitude'));
-  const lon = asFiniteNumber(field(row, 'lon', 'Longitude', 'lng'));
-  if (!validLonLat(lon, lat)) return null;
-  const rawTime = field(row, 'Date/Time', 'DateTime', 'datetime');
-  const at = parseImdTrackDateTime(rawTime);
-  const name = String(field(row, 'CYCLONE_NAME', 'Cyclone_Name', 'name') || '').trim();
-  const category = String(field(row, 'Category', 'category') || '').trim();
-  const windKt = asFiniteNumber(field(row, 'MSW (kt)', 'MSW_kt', 'mswKt'));
-  const meanMswKmph = asFiniteNumber(field(row, 'Mean MSW (kmph)', 'Mean_MSW_kmph'));
-  const mswRangeKmph = String(field(row, 'MSW range (kmph)', 'MSW_range_kmph') || '').trim();
-  const hour = String(field(row, 'Hour', 'hour') || '').trim();
-  return {
-    product: 'cycloneTrack',
-    kind: 'cyclone-track',
-    pointKind,
-    geometryKind: pointKind === 'observed' ? 'observed-position' : 'forecast-position',
-    id: `imd-cyclone-${slug(name)}-${pointKind}-${slug(rawTime || hour)}`,
-    stormName: name,
-    category,
-    lat: roundGeoCoordinate(lat),
-    lon: roundGeoCoordinate(lon),
-    at,
-    rawTime,
-    hour,
-    windKt,
-    meanMswKmph,
-    mswRangeKmph,
-    countryCode: IMD_COUNTRY,
-    issuedBy: 'RSMC New Delhi / IMD',
-    sourceName: IMD_SOURCE_NAME,
-    sourceUrl: IMD_RSMC_URL,
-    source: 'imd-cyclone-track',
-  };
+function htmlText(html) {
+  return decodeEntities(String(html).replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]*>/g, ' '))
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-export function parseCycloneTrackPayload(payload) {
-  const data = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
-  if (!data || typeof data !== 'object') {
-    throw new TypeError('cyclone_track payload is missing data');
-  }
-  const observed = Array.isArray(data.observed) ? data.observed : [];
-  const forecast = Array.isArray(data.forecast) ? data.forecast : [];
-  const records = [];
-  for (const row of observed) {
-    const point = parseCycloneTrackPoint(row, 'observed');
-    if (point) records.push(point);
-  }
-  for (const row of forecast) {
-    const point = parseCycloneTrackPoint(row, 'forecast');
-    if (point) records.push(point);
-  }
-  return records;
+// Comments and script/style blocks never carry bulletin text. They are cut
+// with an index scan instead of a one-pass regex replace: each cut re-checks
+// the seam, so nested input like `<scr<script></script>ipt>` cannot rebuild a
+// block, and an unterminated block drops everything after it, as a browser would.
+const NON_CONTENT_BLOCKS = Object.freeze([
+  Object.freeze({ open: '<!--', close: '-->', tag: false }),
+  Object.freeze({ open: '<script', close: '</script>', tag: true }),
+  Object.freeze({ open: '<style', close: '</style>', tag: true }),
+]);
+const LONGEST_BLOCK_OPEN = Math.max(...NON_CONTENT_BLOCKS.map((block) => block.open.length));
+
+// ASCII-only lowercasing keeps every index aligned with the original string.
+function asciiLower(text) {
+  return text.replace(/[A-Z]/g, (char) => char.toLowerCase());
 }
 
-export function parseCycloneWindPayload(payload) {
-  const data = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
-  if (!data || typeof data !== 'object') {
-    throw new TypeError('cyclone_wind payload is missing data');
-  }
-  const records = [];
-  for (const threshold of WIND_THRESHOLDS_KT) {
-    const geometry = data[threshold];
-    if (geometry == null) continue;
-    const polygons = parseMultiPolygon(geometry);
-    if (!polygons) {
-      throw new TypeError(`cyclone_wind ${threshold} is not a valid MultiPolygon`);
+function firstNonContentBlock(lower, from) {
+  let first = null;
+  for (const block of NON_CONTENT_BLOCKS) {
+    let at = lower.indexOf(block.open, from);
+    while (at !== -1 && block.tag && /\w/.test(lower[at + block.open.length] ?? '')) {
+      at = lower.indexOf(block.open, at + 1);
     }
-    const kt = Number.parseInt(threshold, 10);
-    records.push({
-      product: 'cycloneWind',
-      kind: 'cyclone-wind',
-      geometryKind: 'forecast-wind-radii',
-      id: `imd-cyclone-wind-${threshold}`,
-      thresholdKt: Number.isFinite(kt) ? kt : null,
-      thresholdLabel: threshold,
-      polygons,
-      countryCode: IMD_COUNTRY,
-      issuedBy: 'RSMC New Delhi / IMD',
-      sourceName: IMD_SOURCE_NAME,
-      sourceUrl: IMD_RSMC_URL,
-      source: 'imd-cyclone-wind',
-    });
+    if (at !== -1 && (!first || at < first.at)) first = { at, block };
   }
-  return records;
+  return first;
 }
 
-export function parseCycloneCouPayload(payload) {
-  const data = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
-  const polygons = parseMultiPolygon(data);
-  if (!polygons) throw new TypeError('cyclone_cou payload is not a valid MultiPolygon');
-  return [{
-    product: 'cycloneCou',
-    kind: 'cyclone-cone',
-    geometryKind: 'cone-of-uncertainty',
-    id: 'imd-cyclone-cou',
-    polygons,
-    countryCode: IMD_COUNTRY,
-    issuedBy: 'RSMC New Delhi / IMD',
-    sourceName: IMD_SOURCE_NAME,
-    sourceUrl: IMD_RSMC_URL,
-    source: 'imd-cyclone-cou',
-  }];
+export function stripNonContentBlocks(html) {
+  let text = String(html || '');
+  let from = 0;
+  for (;;) {
+    const lower = asciiLower(text);
+    const hit = firstNonContentBlock(lower, from);
+    if (!hit) return text;
+    const closeAt = lower.indexOf(hit.block.close, hit.at + hit.block.open.length);
+    const end = closeAt === -1 ? text.length : closeAt + hit.block.close.length;
+    text = text.slice(0, hit.at) + text.slice(end);
+    // Only an opener that straddles the cut can be new; rescan from just before it.
+    from = Math.max(0, hit.at - LONGEST_BLOCK_OPEN);
+  }
 }
 
-export function parsePortWarningRow(row) {
-  const portId = String(field(row, 'Port Id', 'Port_Id', 'PortId', 'Id') || '').trim();
-  const portName = String(field(row, 'Port Name', 'Port_Name', 'PortName') || '').trim();
-  const warning = String(field(row, 'Warning', 'warning') || '').trim();
-  const issuedBy = String(field(row, 'Issued By', 'Issued_By', 'IssuedBy') || '').trim();
-  const dateOfIssue = String(field(row, 'Date of Issue', 'Date_of_Issue', 'Date') || '').trim();
-  if (!portId && !portName) return null;
-  const issuedAt = parseImdDateTime(dateOfIssue, { assumeIst: true });
-  const centroid = lookupAreaCentroid(portName);
-  const nil = isNilText(warning);
+class ImdBulletinParseError extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+  }
+}
+
+function fail(code) {
+  throw new ImdBulletinParseError(code);
+}
+
+function boundedText(value) {
+  if (value.length > MAX_FIELD_CHARS) fail('BULLETIN_FIELD_TOO_LONG');
+  return value;
+}
+
+function utcHourOf(date, hour) {
+  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const h = Number(hour);
+  if (!match || !Number.isInteger(h) || h < 0 || h > 23) return null;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const ms = Date.UTC(year, month - 1, day, h);
+  const check = new Date(ms);
+  return check.getUTCFullYear() === year && check.getUTCMonth() === month - 1 && check.getUTCDate() === day ? ms : null;
+}
+
+function parseValidity(headerText) {
+  const match = headerText.match(
+    /Valid\s+for\s+(\d{1,2})\s*hrs?\s+from\s+(\d{1,2})\s*UTC\s+of\s+(\d{4}-\d{2}-\d{2})\s+to\s+(\d{1,2})\s*UTC\s+of\s+(\d{4}-\d{2}-\d{2})/i,
+  );
+  if (!match) fail('BULLETIN_VALIDITY_MISSING');
+  const validityHours = Number(match[1]);
+  const validFrom = utcHourOf(match[3], match[2]);
+  const validUntil = utcHourOf(match[5], match[4]);
+  if (validFrom == null || validUntil == null || validityHours < 1 || validityHours > 48
+    || validUntil - validFrom !== validityHours * 60 * 60 * 1000) {
+    fail('BULLETIN_VALIDITY_INCONSISTENT');
+  }
+  return { validFrom, validUntil, validityHours };
+}
+
+function parseIssueTime(value) {
+  const match = value.match(/^(\d{1,2}):(\d{2})\s*IST\s+of\s+(\d{4})-(\d{2})-(\d{2})$/i);
+  if (!match) fail('BULLETIN_ISSUE_TIME_MISSING');
+  const ms = Date.parse(`${match[3]}-${match[4]}-${match[5]}T${match[1].padStart(2, '0')}:${match[2]}:00+05:30`);
+  if (!Number.isFinite(ms)) fail('BULLETIN_ISSUE_TIME_MISSING');
+  return ms;
+}
+
+const BULLETIN_LABELS = Object.freeze({
+  'ttt warning': 'stormWarning',
+  'synoptic situation': 'synopticSituation',
+  'time of issue': 'timeOfIssue',
+});
+
+const AREA_LABELS = Object.freeze({
+  wind: 'wind',
+  weather: 'weather',
+  visibility: 'visibility',
+  'sea condition': 'seaCondition',
+  'port signal': 'portSignal',
+  'storm surge/tidal warning': 'stormSurgeWarning',
+});
+
+function tableRows(tableHtml) {
+  const rows = [];
+  for (const row of tableHtml.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const cells = [...row[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map((cell) => htmlText(cell[1]));
+    if (cells.length >= 2) rows.push([normalizeLabel(cells[0]), boundedText(cells[1])]);
+  }
+  return rows;
+}
+
+/**
+ * Parse one public IMD sea-area or coastal bulletin page. Throws an error whose
+ * `code` names the first structural check that failed, so a changed layout
+ * fails closed instead of publishing partial fields.
+ */
+export function parseImdBulletinHtml(html, productId) {
+  const spec = IMD_PRODUCTS[productId];
+  if (!spec?.pages) throw new Error(`UNKNOWN_IMD_BULLETIN_PRODUCT:${productId}`);
+  const body = stripNonContentBlocks(html);
+  const firstTable = body.search(/<table\b/i);
+  if (firstTable === -1) fail('BULLETIN_AREAS_MISSING');
+  const headerText = htmlText(body.slice(0, firstTable));
+  if (!headerText.toLowerCase().includes(spec.title.toLowerCase())) fail('BULLETIN_TITLE_MISSING');
+  const validity = parseValidity(headerText);
+  const office = headerText.match(/\b(A?CWC(?:\s+[A-Z]+)+)\s*\//);
+
+  const bulletin = {};
+  const areas = [];
+  for (const table of body.slice(firstTable).matchAll(/<table\b[^>]*>([\s\S]*?)<\/table>/gi)) {
+    if (/<table\b/i.test(table[1])) fail('BULLETIN_NESTED_TABLE');
+    const caption = table[1].match(/<caption\b[^>]*>([\s\S]*?)<\/caption>/i);
+    const rows = tableRows(table[1]);
+    if (caption) {
+      const area = { name: boundedText(htmlText(caption[1])) };
+      for (const [label, value] of rows) {
+        if (AREA_LABELS[label]) area[AREA_LABELS[label]] = value;
+      }
+      areas.push(area);
+      continue;
+    }
+    for (const [label, value] of rows) {
+      if (BULLETIN_LABELS[label]) bulletin[BULLETIN_LABELS[label]] = value;
+    }
+  }
+
+  if (areas.length === 0) fail('BULLETIN_AREAS_MISSING');
+  for (const area of areas) {
+    if (!area.name || spec.areaFields.some((field) => !area[field])) fail('BULLETIN_AREA_INCOMPLETE');
+  }
+  if (spec.requiresStormWarning && !bulletin.stormWarning) fail('BULLETIN_STORM_WARNING_MISSING');
+  if (!bulletin.synopticSituation) fail('BULLETIN_SYNOPTIC_MISSING');
+  if (!office) fail('BULLETIN_OFFICE_MISSING');
+  const issuedAt = parseIssueTime(bulletin.timeOfIssue || '');
+
   return {
-    product: 'portWarning',
-    kind: 'port-warning',
-    id: `imd-port-${slug(portId || portName)}-${slug(dateOfIssue)}`,
-    portId,
-    portName,
-    issuedBy,
-    dateOfIssue,
+    issuedBy: office[1],
     issuedAt,
-    warning,
-    isNil: nil,
-    isWarning: !nil,
-    centroid,
-    lon: centroid ? centroid[0] : null,
-    lat: centroid ? centroid[1] : null,
-    countryCode: IMD_COUNTRY,
-    sourceName: IMD_SOURCE_NAME,
-    sourceUrl: IMD_PORT_WARNING_PAGE,
-    source: 'imd-port-warning',
+    ...validity,
+    stormWarning: bulletin.stormWarning || '',
+    synopticSituation: bulletin.synopticSituation,
+    areas,
   };
 }
 
-export function parsePortWarningPayload(payload) {
-  const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : payload ? [payload] : [];
-  return rows.map(parsePortWarningRow).filter(Boolean);
+function compactUtcHour(ms) {
+  return new Date(ms).toISOString().slice(0, 13).replace(/\D/g, '');
 }
 
-function parseMarineBulletinRow(row, product) {
-  const spec = IMD_PRODUCTS[product];
-  const id = String(field(row, 'Id', 'ID') || '').trim();
-  const layer = String(field(row, 'Layer', 'layer') || '').trim();
-  const issuedBy = String(field(row, 'Issued by', 'Issued_by', 'IssuedBy') || '').trim();
-  const dateOfObservation = String(field(row, 'Date of Observation', 'Date_of_Observation') || '').trim();
-  const validFromRaw = String(field(row, 'Valid From', 'Valid_From', 'ValidFrom') || '').trim();
-  const validityHours = asFiniteNumber(field(row, 'Validity', 'validity'));
-  const tttWarning = String(field(row, 'TTT Warning', 'TTT_Warning', 'TTTWarning') || '').trim();
-  const wind = String(field(row, 'Wind', 'wind') || '').trim();
-  const visibility = String(field(row, 'Visibility', 'visibility') || '').trim();
-  const seaCondition = String(field(row, 'Sea Condition', 'Sea_Condition', 'seaCondition') || '').trim();
-  const weather = String(field(row, 'Weather', 'weather') || '').trim();
-  const synoptic = String(field(row, 'Synoptic Situation', 'Synoptic_Situation') || '').trim();
-  const portSignal = String(field(row, 'Port Signal', 'Port_Signal', 'PortSignal') || '').trim();
-  const updateTime = String(field(row, 'Update Time', 'Update_Time', 'UpdateTime') || '').trim();
-  const validFrom = parseImdDateTime(validFromRaw, { assumeIst: true });
-  const updatedAt = parseImdDateTime(updateTime, { assumeIst: true });
-  const expiresAt = validFrom != null && validityHours != null && validityHours > 0
-    ? validFrom + validityHours * 60 * 60 * 1000
-    : null;
-  const centroid = lookupAreaCentroid(layer);
-  const tttNil = isNilText(tttWarning);
-  const portSignalNil = isNilText(portSignal);
-  if (!id && !layer) return null;
-  return {
-    product,
-    kind: spec.kind,
-    id: `imd-${product}-${slug(id || layer)}-${slug(validFromRaw || dateOfObservation)}`,
-    bulletinId: id,
-    area: layer,
-    issuedBy,
-    dateOfObservation,
-    validFromRaw,
-    validFrom,
-    validityHours,
-    expiresAt,
-    updatedAt,
-    tttWarning,
-    hasTttWarning: !tttNil,
-    wind,
-    visibility,
-    seaCondition,
-    weather,
-    synopticSituation: synoptic,
-    portSignal: portSignal || null,
-    hasPortSignal: product === 'coastalBulletin' && !portSignalNil,
-    isForecastBulletin: true,
-    centroid,
-    lon: centroid ? centroid[0] : null,
-    lat: centroid ? centroid[1] : null,
-    countryCode: IMD_COUNTRY,
-    sourceName: IMD_SOURCE_NAME,
-    sourceUrl: spec.sourceUrl,
-    source: `imd-${spec.kind}`,
-  };
-}
-
-export function parseSeaBulletinPayload(payload) {
-  const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : payload ? [payload] : [];
-  return rows.map((row) => parseMarineBulletinRow(row, 'seaBulletin')).filter(Boolean);
-}
-
-export function parseCoastalBulletinPayload(payload) {
-  const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : payload ? [payload] : [];
-  return rows.map((row) => parseMarineBulletinRow(row, 'coastalBulletin')).filter(Boolean);
-}
-
-export function parseImdProductPayload(productId, payload) {
-  switch (productId) {
-    case 'cycloneTrack': return parseCycloneTrackPayload(payload);
-    case 'cycloneWind': return parseCycloneWindPayload(payload);
-    case 'cycloneCou': return parseCycloneCouPayload(payload);
-    case 'portWarning': return parsePortWarningPayload(payload);
-    case 'seaBulletin': return parseSeaBulletinPayload(payload);
-    case 'coastalBulletin': return parseCoastalBulletinPayload(payload);
-    case 'fishermenWarning':
-      throw new Error('FISHERMEN_WARNING_SCHEMA_UNDOCUMENTED');
-    default:
-      throw new Error(`UNKNOWN_IMD_PRODUCT:${productId}`);
-  }
-}
-
-function recordStamp(record) {
-  const stamp = record?.updatedAt ?? record?.issuedAt ?? record?.at ?? record?.validFrom;
-  return Number.isFinite(stamp) ? stamp : null;
-}
-
-function isImdGeometryProduct(product) {
-  return product === 'cycloneWind' || product === 'cycloneCou';
-}
-
-export function stampImdGeometryRecords(records, nowMs) {
-  return (records || []).map((record) => {
-    if (!isImdGeometryProduct(record?.product)) return record;
-    if (recordStamp(record) != null) return record;
-    return { ...record, updatedAt: nowMs };
+export function bulletinRecords(bulletin, productId, page) {
+  const spec = IMD_PRODUCTS[productId];
+  const hasTttWarning = !isNilText(bulletin.stormWarning);
+  return bulletin.areas.map((area) => {
+    const centroid = lookupAreaCentroid(area.name);
+    const portSignal = area.portSignal || null;
+    const stormSurgeWarning = area.stormSurgeWarning || null;
+    return {
+      product: productId,
+      kind: spec.kind,
+      id: `imd-${productId}-${page.key}-${slug(area.name)}-${compactUtcHour(bulletin.validFrom)}`,
+      page: page.key,
+      area: area.name,
+      issuedBy: bulletin.issuedBy,
+      issuedAt: bulletin.issuedAt,
+      validFrom: bulletin.validFrom,
+      validityHours: bulletin.validityHours,
+      expiresAt: bulletin.validUntil,
+      tttWarning: bulletin.stormWarning,
+      hasTttWarning,
+      wind: area.wind,
+      visibility: area.visibility,
+      seaCondition: area.seaCondition,
+      weather: area.weather,
+      synopticSituation: bulletin.synopticSituation,
+      portSignal,
+      hasPortSignal: portSignal != null && !isNilText(portSignal),
+      stormSurgeWarning,
+      hasStormSurgeWarning: stormSurgeWarning != null && !isNilText(stormSurgeWarning),
+      isForecastBulletin: true,
+      centroid,
+      lon: centroid ? centroid[0] : null,
+      lat: centroid ? centroid[1] : null,
+      countryCode: IMD_COUNTRY,
+      sourceName: IMD_SOURCE_NAME,
+      sourceUrl: page.url,
+      source: `imd-${spec.kind}`,
+    };
   });
 }
 
 export function dropExpiredRecords(records, nowMs = Date.now()) {
   const horizon = nowMs - IMD_MAX_CONTENT_AGE_MIN * 60 * 1000;
-  return (records || []).filter((record) => {
-    if (record?.expiresAt != null && Number.isFinite(record.expiresAt) && record.expiresAt <= nowMs) {
-      return false;
+  return (records || []).filter((record) => Number.isFinite(record?.expiresAt)
+    && record.expiresAt > nowMs
+    && Number.isFinite(record.issuedAt)
+    && record.issuedAt >= horizon);
+}
+
+function isWarningRecord(record) {
+  return record.hasTttWarning || record.hasPortSignal || record.hasStormSurgeWarning;
+}
+
+function isFutureDated(bulletin, now) {
+  return bulletin.validFrom > now + MAX_FUTURE_VALIDITY_MS || bulletin.issuedAt > now + MAX_FUTURE_ISSUE_MS;
+}
+
+/**
+ * Classify one page at `now`. A bulletin whose window has ended is `expired`:
+ * IMD replied and the page parsed, but nothing on it is current.
+ */
+function evaluatePage(productId, page, result, previousRecords, now) {
+  const failure = result?.status !== 'parsed' ? result?.reason || 'FETCH_FAILED'
+    : isFutureDated(result.bulletin, now) ? 'BULLETIN_FUTURE_DATED' : null;
+  if (!failure) {
+    const { bulletin } = result;
+    const timing = { issuedAt: bulletin.issuedAt, validFrom: bulletin.validFrom, validUntil: bulletin.validUntil };
+    if (bulletin.validUntil <= now) {
+      return { health: { status: 'expired', reason: null, ...timing }, records: [], carried: false };
     }
-    const stamp = recordStamp(record);
-    if (isImdGeometryProduct(record?.product) && stamp == null) return false;
-    if (stamp != null && stamp < horizon) return false;
-    return true;
-  });
-}
-
-export function dedupeRecords(records) {
-  const byId = new Map();
-  for (const record of records || []) {
-    if (!record?.id) continue;
-    const existing = byId.get(record.id);
-    const stamp = recordStamp(record) ?? 0;
-    const existingStamp = recordStamp(existing) ?? 0;
-    if (!existing || stamp >= existingStamp) byId.set(record.id, record);
+    return {
+      health: { status: 'ok', reason: null, ...timing },
+      records: dropExpiredRecords(bulletinRecords(bulletin, productId, page), now),
+      carried: false,
+    };
   }
-  return [...byId.values()];
-}
-
-function productHealth({
-  status,
-  reason = null,
-  recordCount = 0,
-  warningCount = 0,
-  carried = false,
-  requestCount = 0,
-} = {}) {
+  const carried = dropExpiredRecords(previousRecords.filter((record) => record?.page === page.key), now);
   return {
-    status,
-    reason,
-    recordCount,
-    warningCount,
-    carried,
-    requestCount,
-    emptyMeans: status === 'ok' && recordCount === 0 ? 'no-active-product' : null,
+    health: { status: 'failed', reason: failure },
+    records: carried,
+    carried: carried.length > 0,
   };
 }
 
-export function emptyProductHealth(productId, status, reason) {
-  return productHealth({ status, reason, recordCount: 0, warningCount: 0, requestCount: 0 });
+function productStatus(pageHealth) {
+  const statuses = Object.values(pageHealth).map((page) => page.status);
+  if (statuses.every((status) => status !== 'failed')) return 'ok';
+  return statuses.some((status) => status !== 'failed') ? 'partial' : 'failed';
 }
 
-function warningCountFor(productId, records) {
-  if (productId === 'portWarning') return records.filter((row) => row.isWarning).length;
-  if (productId === 'seaBulletin' || productId === 'coastalBulletin') {
-    return records.filter((row) => row.hasTttWarning || row.hasPortSignal).length;
-  }
-  if (productId === 'cycloneTrack') return records.filter((row) => row.pointKind === 'observed' || row.pointKind === 'forecast').length;
-  return records.length;
+function disabledProductHealth(spec) {
+  return {
+    status: 'disabled',
+    reason: spec.disabledReason,
+    recordCount: 0,
+    warningCount: 0,
+    carried: false,
+    requestCount: 0,
+    emptyMeans: null,
+  };
 }
 
-export function buildDisabledSnapshot({ now = Date.now(), reason = 'IMD_API_KEY_MISSING' } = {}) {
+const PREVIOUS_LIST = Object.freeze({ seaBulletin: 'seaBulletins', coastalBulletin: 'coastalBulletins' });
+
+/**
+ * Build the cache envelope from per-page results:
+ * `pageResults[productId][pageKey]` is `{ status: 'parsed', bulletin }` or
+ * `{ status: 'failed', reason }`. A failed page carries its own last-good
+ * records from `previous`; other pages are unaffected.
+ */
+export function assembleImdSnapshot({ pageResults = {}, previous = null, now = Date.now() } = {}) {
   const products = {};
+  const failedProducts = [];
+  const lists = { seaBulletins: [], coastalBulletins: [] };
+
   for (const id of IMD_PRODUCT_IDS) {
-    const undocumented = IMD_PRODUCTS[id].schema === 'undocumented';
-    products[id] = emptyProductHealth(
-      id,
-      undocumented ? 'disabled' : 'disabled',
-      undocumented ? IMD_PRODUCTS[id].disabledReason : reason,
-    );
+    const spec = IMD_PRODUCTS[id];
+    if (!spec.pages) {
+      products[id] = disabledProductHealth(spec);
+      continue;
+    }
+    const previousRecords = Array.isArray(previous?.[PREVIOUS_LIST[id]]) ? previous[PREVIOUS_LIST[id]] : [];
+    const pages = {};
+    const records = [];
+    let carried = false;
+    for (const page of spec.pages) {
+      const evaluated = evaluatePage(id, page, pageResults[id]?.[page.key], previousRecords, now);
+      pages[page.key] = evaluated.health;
+      records.push(...evaluated.records);
+      carried ||= evaluated.carried;
+    }
+    const status = productStatus(pages);
+    if (status !== 'ok') failedProducts.push(id);
+    lists[PREVIOUS_LIST[id]] = records;
+    products[id] = {
+      status,
+      reason: status === 'ok' ? null : 'BULLETIN_PAGE_FAILED',
+      recordCount: records.length,
+      warningCount: records.filter(isWarningRecord).length,
+      carried,
+      requestCount: spec.pages.length,
+      emptyMeans: status === 'ok' && records.length === 0 ? 'no-current-bulletin' : null,
+      pages,
+    };
   }
-  return decorateSnapshotSurfaces({
-    coverageState: 'disabled',
-    skipReason: reason,
+
+  const pageStatuses = IMD_BULLETIN_PRODUCT_IDS.flatMap((id) => Object.values(products[id].pages).map((page) => page.status));
+  let coverageState = 'ok';
+  if (pageStatuses.every((status) => status === 'failed')) coverageState = 'unavailable';
+  else if (failedProducts.length > 0) coverageState = 'degraded';
+
+  const snapshot = {
+    coverageState,
+    skipReason: coverageState === 'ok' ? null : failedProducts.join(','),
     rights: { ...IMD_RIGHTS_DECISION },
     generatedAt: now,
     products,
@@ -615,584 +548,209 @@ export function buildDisabledSnapshot({ now = Date.now(), reason = 'IMD_API_KEY_
     windRadii: [],
     cones: [],
     portWarnings: [],
-    seaBulletins: [],
-    coastalBulletins: [],
+    seaBulletins: lists.seaBulletins,
+    coastalBulletins: lists.coastalBulletins,
     fishermenWarnings: [],
-    records: [],
-    failedProducts: [],
-    sourceName: IMD_SOURCE_NAME,
-    sourceUrl: IMD_API_REFERENCE_URL,
-    attribution: IMD_RIGHTS_DECISION.attribution,
-  });
-}
-
-function groupRecords(records) {
-  const cyclones = records.filter((row) => row.product === 'cycloneTrack');
-  const windRadii = records.filter((row) => row.product === 'cycloneWind');
-  const cones = records.filter((row) => row.product === 'cycloneCou');
-  const portWarnings = records.filter((row) => row.product === 'portWarning');
-  const seaBulletins = records.filter((row) => row.product === 'seaBulletin');
-  const coastalBulletins = records.filter((row) => row.product === 'coastalBulletin');
-  return { cyclones, windRadii, cones, portWarnings, seaBulletins, coastalBulletins };
-}
-
-export function assembleImdSnapshot({
-  productResults,
-  previous = null,
-  now = Date.now(),
-  rights = IMD_RIGHTS_DECISION,
-} = {}) {
-  const products = {};
-  const failedProducts = [];
-  const collected = [];
-  const previousByProduct = {
-    cycloneTrack: previous?.cyclones || [],
-    cycloneWind: previous?.windRadii || [],
-    cycloneCou: previous?.cones || [],
-    portWarning: previous?.portWarnings || [],
-    seaBulletin: previous?.seaBulletins || [],
-    coastalBulletin: previous?.coastalBulletins || [],
-    fishermenWarning: previous?.fishermenWarnings || [],
-  };
-
-  for (const id of IMD_PRODUCT_IDS) {
-    const spec = IMD_PRODUCTS[id];
-    const result = productResults?.[id];
-    if (spec.schema === 'undocumented') {
-      products[id] = emptyProductHealth(id, 'disabled', spec.disabledReason);
-      continue;
-    }
-    if (!result) {
-      products[id] = emptyProductHealth(id, 'disabled', 'NOT_REQUESTED');
-      continue;
-    }
-    if (result.status === 'ok') {
-      const records = dedupeRecords(dropExpiredRecords(stampImdGeometryRecords(result.records || [], now), now));
-      collected.push(...records);
-      products[id] = productHealth({
-        status: 'ok',
-        recordCount: records.length,
-        warningCount: warningCountFor(id, records),
-        requestCount: 1,
-      });
-      continue;
-    }
-    failedProducts.push(id);
-    const carried = dropExpiredRecords(previousByProduct[id] || [], now);
-    collected.push(...carried);
-    products[id] = productHealth({
-      status: 'failed',
-      reason: result.reason || 'FETCH_FAILED',
-      recordCount: carried.length,
-      warningCount: warningCountFor(id, carried),
-      carried: carried.length > 0,
-      requestCount: result.requestCount ?? 1,
-    });
-  }
-
-  const grouped = groupRecords(collected);
-  const anyOk = IMD_PRODUCT_IDS.some((id) => products[id]?.status === 'ok');
-  const anyFailed = failedProducts.length > 0;
-  let coverageState = 'ok';
-  if (!anyOk && anyFailed) coverageState = 'unavailable';
-  else if (anyFailed) coverageState = 'degraded';
-  else if (!anyOk) coverageState = 'disabled';
-
-  return decorateSnapshotSurfaces({
-    coverageState,
-    skipReason: coverageState === 'ok' ? null : failedProducts.join(',') || 'NO_PRODUCTS',
-    rights: { ...rights },
-    generatedAt: now,
-    products,
-    ...grouped,
-    fishermenWarnings: [],
-    records: collected,
+    records: [...lists.seaBulletins, ...lists.coastalBulletins],
     failedProducts,
     sourceName: IMD_SOURCE_NAME,
-    sourceUrl: IMD_API_REFERENCE_URL,
+    sourceUrl: IMD_SEA_BULLETIN_PAGE,
     attribution: IMD_RIGHTS_DECISION.attribution,
-  });
-}
-
-function decorateSnapshotSurfaces(snapshot) {
+  };
   return {
     ...snapshot,
-    cycloneEvents: cycloneEventsFromSnapshot(snapshot),
-    portAlerts: weatherAlertsFromSnapshot(snapshot),
+    cycloneEvents: [],
+    portAlerts: [],
     marineBulletins: marineBulletinsFromSnapshot(snapshot),
   };
 }
 
-async function readBoundedJsonResponse(response, maxBytes = IMD_MAX_BYTES) {
-  const chunks = [];
-  let size = 0;
+async function readBoundedText(response, maxBytes) {
+  const declared = Number(response.headers?.get?.('content-length'));
+  if (Number.isFinite(declared) && declared > maxBytes) fail('BULLETIN_RESPONSE_TOO_LARGE');
   if (!response.body || typeof response.body.getReader !== 'function') {
     const text = await response.text();
-    const bytes = Buffer.byteLength(text, 'utf8');
-    if (bytes > maxBytes) throw new Error(`IMD_RESPONSE_TOO_LARGE:${bytes}`);
-    return JSON.parse(text);
+    if (Buffer.byteLength(text, 'utf8') > maxBytes) fail('BULLETIN_RESPONSE_TOO_LARGE');
+    return text;
   }
   const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > maxBytes) throw new Error(`IMD_RESPONSE_TOO_LARGE:${size}`);
-    chunks.push(value);
-  }
-  return JSON.parse(new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)))));
-}
-
-export async function fetchApprovedImdJson(url, {
-  fetchFn = globalThis.fetch,
-  userAgent = CHROME_UA,
-  maxBytes = IMD_MAX_BYTES,
-  timeoutMs = IMD_TIMEOUT_MS,
-  apiKey = null,
-  apiKeyHeader = 'X-API-Key',
-  apiToken = null,
-} = {}) {
-  if (!isAllowedImdHost(url)) throw new Error('UNTRUSTED_SOURCE_HOST');
-  const headers = { Accept: 'application/json', 'User-Agent': userAgent };
-  if (apiKey) headers[apiKeyHeader] = apiKey;
-  if (apiToken) headers.Authorization = `Bearer ${apiToken}`;
-  const response = await fetchFn(url, {
-    headers,
-    redirect: 'error',
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) {
-    const err = new Error(`HTTP ${response.status}`);
-    err.httpStatus = response.status;
-    throw err;
-  }
-  return readBoundedJsonResponse(response, maxBytes);
-}
-
-export function createImdProxyFetch(rawProxyUrl, { proxyFetchFn = proxyFetch } = {}) {
-  const proxyUrl = String(rawProxyUrl || '').trim();
-  if (!proxyUrl) throw new Error('IMD_PROXY_URL_MISSING');
-  const proxyConfig = parseProxyConfig(proxyUrl);
-  if (!proxyConfig || proxyConfig.tls !== true) throw new Error('IMD_PROXY_URL_INVALID');
-  return async (url, init = {}) => {
-    if (!isAllowedImdHost(url)) throw new Error('UNTRUSTED_SOURCE_HOST');
-    const headers = init.headers || {};
-    const response = await proxyFetchFn(url, proxyConfig, {
-      accept: headers.Accept || headers.accept || '*/*',
-      headers,
-      method: init.method || 'GET',
-      body: init.body ?? null,
-      maxResponseBytes: IMD_MAX_BYTES,
-      timeoutMs: IMD_TIMEOUT_MS,
-      signal: init.signal,
-    });
-    const responseHeaders = {};
-    if (response.contentType) responseHeaders['Content-Type'] = response.contentType;
-    if (response.location) responseHeaders.Location = response.location;
-    const status = Number(response.status) || 502;
-    const body = status === 204 || status === 205 || status === 304
-      ? null
-      : (response.buffer || Buffer.alloc(0));
-    return new Response(body, { status, headers: responseHeaders });
-  };
-}
-
-const IMD_DIAGNOSTIC_CODES = new Set([
-  'EAI_AGAIN', 'ECONNABORTED', 'ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH',
-  'ENETUNREACH', 'ENOTFOUND', 'EPIPE', 'ETIMEDOUT', 'UND_ERR_CONNECT',
-  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET', 'SELF_SIGNED_CERT_IN_CHAIN',
-  'DEPTH_ZERO_SELF_SIGNED_CERT', 'CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
-  'ERR_TLS_CERT_ALTNAME_INVALID', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
-]);
-const IMD_PROXY_STAGES = new Set([
-  'proxy_connection', 'proxy_connect', 'target_tls', 'response_headers', 'response_body',
-]);
-
-function logImdAuthFailure(error) {
-  try {
-    let code = 'UNKNOWN';
-    let cause = error;
-    for (let depth = 0; cause && depth < 4; depth++, cause = cause.cause) {
-      const candidate = cause.code;
-      if (IMD_DIAGNOSTIC_CODES.has(candidate)) { code = candidate; break; }
+    if (size > maxBytes) {
+      await reader.cancel().catch(() => {});
+      fail('BULLETIN_RESPONSE_TOO_LARGE');
     }
-    const details = error?.proxyFailure;
-    const candidateStage = details?.stage;
-    const stage = IMD_PROXY_STAGES.has(candidateStage) ? candidateStage : null;
-    const httpStatus = details?.httpStatus;
-    const proxyConnectStatus = details?.proxyConnectStatus;
-    console.warn(JSON.stringify({
-      event: 'imd_auth_failure', code,
-      ...(stage ? { stage } : {}),
-      ...(stage === 'response_body' && Number.isInteger(httpStatus) && httpStatus >= 100 && httpStatus <= 599
-        ? { httpStatus } : {}),
-      ...(['proxy_connect', 'target_tls'].includes(stage)
-        && Number.isInteger(proxyConnectStatus) && proxyConnectStatus >= 100 && proxyConnectStatus <= 599
-        ? { proxyConnectStatus } : {}),
-    }));
-  } catch { /* Diagnostics must not change the authentication result. */ }
+    chunks.push(Buffer.from(value));
+  }
+  return new TextDecoder('utf-8').decode(Buffer.concat(chunks));
 }
 
-function imdAuthFailureReason(err) {
-  const message = String(err?.message || '');
-  if (err?.proxyConnect === true && Number.isInteger(err?.status)) {
-    return `IMD_PROXY_CONNECT_HTTP_${err.status}`;
-  }
-  if (/^IMD_AUTH_HTTP_[1-5]\d{2}$/.test(message)) return message;
-  if (err?.name === 'AbortError' || err?.name === 'TimeoutError') return 'IMD_AUTH_TIMEOUT';
-  if (err?.code === 'RESPONSE_TOO_LARGE') return 'IMD_AUTH_RESPONSE_TOO_LARGE';
-  if (/^IMD_RESPONSE_TOO_LARGE:\d+$/.test(message)) return 'IMD_AUTH_RESPONSE_TOO_LARGE';
-  if (message === 'IMD_AUTH_RESPONSE_INVALID') return message;
-  return 'IMD_AUTH_FAILED';
-}
-
-async function mintImdApiToken({
-  email,
-  password,
-  fetchFn = globalThis.fetch,
-  userAgent = CHROME_UA,
-  maxBytes = IMD_MAX_BYTES,
-  timeoutMs = IMD_TIMEOUT_MS,
-}) {
-  try {
-    const response = await fetchFn(IMD_OAUTH_TOKEN_URL, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        'User-Agent': userAgent,
-      },
-      body: JSON.stringify({ email, password }),
-      redirect: 'error',
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!response.ok) throw new Error(`IMD_AUTH_HTTP_${response.status}`);
-    let payload;
-    try {
-      payload = await readBoundedJsonResponse(response, maxBytes);
-    } catch (err) {
-      if (/^IMD_RESPONSE_TOO_LARGE:\d+$/.test(String(err?.message || ''))) throw err;
-      throw new Error('IMD_AUTH_RESPONSE_INVALID');
-    }
-    const accessToken = typeof payload?.access_token === 'string' ? payload.access_token : '';
-    const tokenType = typeof payload?.token_type === 'string' ? payload.token_type.trim() : '';
-    const expiresIn = Number(payload?.expires_in);
-    if (
-      !/^[\u0021-\u007E]+$/.test(accessToken)
-      || tokenType.toLowerCase() !== 'bearer'
-      || !Number.isFinite(expiresIn)
-      || expiresIn <= 0
-    ) {
-      throw new Error('IMD_AUTH_RESPONSE_INVALID');
-    }
-    return { token: accessToken, error: null };
-  } catch (err) {
-    logImdAuthFailure(err);
-    return { token: null, error: imdAuthFailureReason(err) };
-  }
-}
-
-function imdFetchFailureReason(err) {
-  const message = String(err?.message || '');
-  if (err?.proxyConnect === true && Number.isInteger(err?.status)) {
-    return `IMD_PROXY_CONNECT_HTTP_${err.status}`;
-  }
-  if (err?.code === 'RESPONSE_TOO_LARGE') return 'IMD_RESPONSE_TOO_LARGE';
-  if (
-    /^HTTP \d{3}$/.test(message)
-    || message === 'UNTRUSTED_SOURCE_HOST'
-    || /^IMD_RESPONSE_TOO_LARGE:\d+$/.test(message)
-  ) {
-    return message;
-  }
+function pageFailureReason(err) {
+  if (err instanceof ImdBulletinParseError) return err.code;
   if (err?.name === 'AbortError' || err?.name === 'TimeoutError') return 'IMD_FETCH_TIMEOUT';
+  if (/^HTTP \d{3}$/.test(String(err?.message || ''))) return err.message;
   return 'IMD_FETCH_FAILED';
 }
 
-export async function fetchImdProduct(productId, options = {}) {
-  const spec = IMD_PRODUCTS[productId];
-  if (!spec) throw new Error(`UNKNOWN_IMD_PRODUCT:${productId}`);
-  if (spec.schema === 'undocumented') {
-    return { status: 'disabled', reason: spec.disabledReason, records: [], requestCount: 0 };
-  }
+export async function fetchImdBulletinPage(productId, page, {
+  fetchFn = globalThis.fetch,
+  userAgent = CHROME_UA,
+  maxBytes = IMD_MAX_BYTES,
+  timeoutMs = IMD_TIMEOUT_MS,
+} = {}) {
+  if (!isAllowedImdUrl(page.url)) return { status: 'failed', reason: 'UNTRUSTED_SOURCE_HOST' };
   try {
-    const payload = await fetchApprovedImdJson(imdProductUrl(spec), options);
-    const records = parseImdProductPayload(productId, payload);
-    return { status: 'ok', records, requestCount: 1 };
+    const response = await fetchFn(page.url, {
+      headers: { Accept: 'text/html', 'User-Agent': userAgent },
+      redirect: 'error',
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const html = await readBoundedText(response, maxBytes);
+    return { status: 'parsed', bulletin: parseImdBulletinHtml(html, productId) };
   } catch (err) {
-    return { status: 'failed', reason: imdFetchFailureReason(err), records: [], requestCount: 1 };
+    return { status: 'failed', reason: pageFailureReason(err) };
   }
 }
 
+const defaultSleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
 export async function fetchImdCycloneMarine({
-  env = process.env,
   fetchFn = globalThis.fetch,
   previous = null,
   now = Date.now(),
   userAgent = CHROME_UA,
+  delayMs = IMD_PAGE_DELAY_MS,
+  sleep = defaultSleep,
 } = {}) {
-  const disabledReason = imdLiveFetchDisabledReason(env);
-  if (disabledReason) {
-    return buildDisabledSnapshot({ now, reason: disabledReason });
-  }
-  const apiKey = imdApiKey(env);
-  const auth = await mintImdApiToken({
-    email: imdApiEmail(env),
-    password: imdApiPassword(env),
-    fetchFn,
-    userAgent,
-  });
-  if (auth.error) {
-    const productResults = {};
-    for (const id of IMD_PRODUCT_IDS) {
-      if (IMD_PRODUCTS[id].schema === 'documented') {
-        productResults[id] = { status: 'failed', reason: auth.error, records: [], requestCount: 0 };
-      }
+  const pageResults = {};
+  let first = true;
+  for (const id of IMD_BULLETIN_PRODUCT_IDS) {
+    pageResults[id] = {};
+    for (const page of IMD_PRODUCTS[id].pages) {
+      if (!first) await sleep(delayMs);
+      first = false;
+      pageResults[id][page.key] = await fetchImdBulletinPage(id, page, { fetchFn, userAgent });
     }
-    return assembleImdSnapshot({ productResults, previous, now });
   }
-  const apiKeyHeader = imdApiKeyHeader(env);
-  const productResults = {};
-  await Promise.all(IMD_PRODUCT_IDS.map(async (id) => {
-    productResults[id] = await fetchImdProduct(id, {
-      fetchFn,
-      userAgent,
-      apiKey,
-      apiKeyHeader,
-      apiToken: auth.token,
-    });
-  }));
-  return assembleImdSnapshot({ productResults, previous, now });
+  return assembleImdSnapshot({ pageResults, previous, now });
 }
 
-export function cycloneEventsFromSnapshot(snapshot) {
-  const points = snapshot?.cyclones || [];
-  if (points.length === 0) return [];
-  const byStorm = new Map();
-  for (const point of points) {
-    const key = slug(point.stormName || 'unnamed');
-    if (!byStorm.has(key)) byStorm.set(key, []);
-    byStorm.get(key).push(point);
-  }
-  const cones = snapshot?.cones || [];
-  const windRadii = snapshot?.windRadii || [];
-  const events = [];
-  for (const [stormKey, stormPoints] of byStorm) {
-    const observed = stormPoints.filter((row) => row.pointKind === 'observed').sort((a, b) => (a.at || 0) - (b.at || 0));
-    const forecast = stormPoints.filter((row) => row.pointKind === 'forecast').sort((a, b) => (a.at || 0) - (b.at || 0));
-    const latestObserved = observed[observed.length - 1] || forecast[0];
-    if (!latestObserved) continue;
-    events.push({
-      id: `imd-cyclone-${stormKey}`,
-      title: `${latestObserved.category || 'Cyclone'} ${latestObserved.stormName}`.trim(),
-      description: `IMD RSMC New Delhi · observed ${observed.length} · forecast ${forecast.length}`,
-      category: 'severeStorms',
-      categoryTitle: 'Tropical Cyclone',
-      lat: latestObserved.lat,
-      lon: latestObserved.lon,
-      date: latestObserved.at || snapshot.generatedAt,
-      closed: false,
-      stormId: stormKey,
-      stormName: latestObserved.stormName,
-      basin: 'NI',
-      classification: latestObserved.category,
-      windKt: latestObserved.windKt,
-      sourceName: IMD_SOURCE_NAME,
-      sourceUrl: IMD_RSMC_URL,
-      pastTrack: observed.map((row) => ({
-        lat: row.lat,
-        lon: row.lon,
-        windKt: row.windKt || 0,
-        timestamp: row.at || 0,
-        geometryKind: 'observed-position',
-      })),
-      forecastTrack: forecast.map((row, index) => ({
-        lat: row.lat,
-        lon: row.lon,
-        hour: Number(row.hour) || (index + 1) * 12,
-        windKt: row.windKt || 0,
-        category: 0,
-        geometryKind: 'forecast-position',
-      })),
-      conePolygon: cones[0]?.polygons?.[0] ? cones[0].polygons.map((poly) => poly[0]) : [],
-      coneGeometryKind: 'cone-of-uncertainty',
-      windRadii: windRadii.map((band) => ({
-        thresholdKt: band.thresholdKt,
-        thresholdLabel: band.thresholdLabel,
-        polygons: band.polygons,
-        geometryKind: 'forecast-wind-radii',
-      })),
-      agencyObservations: [{
-        agency: 'IMD',
-        agencyId: stormKey,
-        observedAt: latestObserved.at || snapshot.generatedAt,
-        lat: latestObserved.lat,
-        lon: latestObserved.lon,
-        windKt: latestObserved.windKt,
-        classification: latestObserved.category,
-        status: 'active',
-        sourceName: IMD_SOURCE_NAME,
-        sourceUrl: IMD_RSMC_URL,
-      }],
-    });
-  }
-  return events;
+const WARNING_FIELDS = Object.freeze([
+  Object.freeze({ flag: 'hasTttWarning', text: 'tttWarning', label: 'TTT' }),
+  Object.freeze({ flag: 'hasPortSignal', text: 'portSignal', label: 'Port signal' }),
+  Object.freeze({ flag: 'hasStormSurgeWarning', text: 'stormSurgeWarning', label: 'Storm surge/tidal' }),
+]);
+
+function activeWarnings(record) {
+  return WARNING_FIELDS.filter((field) => record[field.flag]);
 }
 
 function marineSeverity(record) {
-  if (record.isWarning || record.hasTttWarning || record.hasPortSignal) return 'Severe';
+  if (record.hasTttWarning || record.hasPortSignal) return 'Severe';
+  if (record.hasStormSurgeWarning) return 'Moderate';
   return 'Minor';
 }
 
-export function weatherAlertsFromSnapshot(snapshot) {
-  const alerts = [];
-  for (const row of snapshot?.portWarnings || []) {
-    if (!row.isWarning) continue;
-    alerts.push({
+export function marineBulletinsFromSnapshot(snapshot) {
+  return [...(snapshot?.seaBulletins || []), ...(snapshot?.coastalBulletins || [])].map((row) => {
+    const warnings = activeWarnings(row);
+    return {
       id: row.id,
-      event: 'IMD Port Warning',
+      event: row.kind === 'coastal-bulletin' ? 'IMD Coastal Bulletin' : 'IMD Sea Area Bulletin',
       severity: marineSeverity(row),
-      headline: `${row.portName || row.portId}: ${row.warning}`,
-      description: row.warning,
-      areaDesc: row.portName || row.portId,
-      onset: row.issuedAt || snapshot.generatedAt,
-      expires: row.issuedAt ? row.issuedAt + 24 * 60 * 60 * 1000 : snapshot.generatedAt + 24 * 60 * 60 * 1000,
+      headline: `${row.area}: ${warnings.length > 0
+        ? `${warnings[0].label}: ${row[warnings[0].text]}`
+        : (row.weather || row.seaCondition || 'Marine bulletin')}`,
+      description: [
+        warnings.length > 1 && `Active: ${warnings.map((field) => field.label).join(', ')}`,
+        ...warnings.map((field) => `${field.label}: ${row[field.text]}`),
+        warnings.length > 0 && row.weather && `Weather: ${row.weather}`,
+        row.wind && `Wind: ${row.wind}`,
+        row.visibility && `Visibility: ${row.visibility}`,
+        row.seaCondition && `Sea: ${row.seaCondition}`,
+      ].filter(Boolean).join(' · '),
+      areaDesc: row.area,
+      onset: row.validFrom,
+      expires: row.expiresAt,
       coordinates: row.centroid ? [row.centroid] : [],
       centroid: row.centroid || undefined,
       countryCode: IMD_COUNTRY,
       source: row.source,
-      productKind: 'imd-port-warning',
+      productKind: row.kind,
       issuedBy: row.issuedBy,
+      wind: row.wind,
+      visibility: row.visibility,
+      seaState: row.seaCondition,
       sourceUrl: row.sourceUrl,
       geometryPrecision: row.centroid ? 'point' : undefined,
-    });
-  }
-  return alerts;
+      isForecastBulletin: true,
+    };
+  });
 }
 
-export function marineBulletinsFromSnapshot(snapshot) {
-  return [...(snapshot?.seaBulletins || []), ...(snapshot?.coastalBulletins || [])].map((row) => ({
-    id: row.id,
-    event: row.kind === 'coastal-bulletin' ? 'IMD Coastal Bulletin' : 'IMD Sea Area Bulletin',
-    severity: marineSeverity(row),
-    headline: `${row.area}: ${row.hasTttWarning ? row.tttWarning : (row.weather || row.seaCondition || 'Marine bulletin')}`,
-    description: [
-      row.wind && `Wind: ${row.wind}`,
-      row.visibility && `Visibility: ${row.visibility}`,
-      row.seaCondition && `Sea: ${row.seaCondition}`,
-      row.tttWarning && `TTT: ${row.tttWarning}`,
-      row.portSignal && `Port signal: ${row.portSignal}`,
-    ].filter(Boolean).join(' · '),
-    areaDesc: row.area,
-    onset: row.validFrom || row.updatedAt || snapshot.generatedAt,
-    expires: row.expiresAt || snapshot.generatedAt + 12 * 60 * 60 * 1000,
-    coordinates: row.centroid ? [row.centroid] : [],
-    centroid: row.centroid || undefined,
-    countryCode: IMD_COUNTRY,
-    source: row.source,
-    productKind: row.kind,
-    issuedBy: row.issuedBy,
-    wind: row.wind,
-    visibility: row.visibility,
-    seaState: row.seaCondition,
-    sourceUrl: row.sourceUrl,
-    geometryPrecision: row.centroid ? 'point' : undefined,
-    isForecastBulletin: true,
-  }));
+function validBulletinRecord(row) {
+  return row && typeof row === 'object'
+    && typeof row.id === 'string' && row.id
+    && typeof row.area === 'string' && row.area
+    && Number.isFinite(row.validFrom) && Number.isFinite(row.expiresAt) && row.expiresAt > row.validFrom
+    && Number.isFinite(row.issuedAt);
 }
 
 export function validateImdEnvelope(data) {
   if (!data || typeof data !== 'object') return false;
-  if (!Array.isArray(data.cyclones) || !Array.isArray(data.portWarnings)
-    || !Array.isArray(data.seaBulletins) || !Array.isArray(data.coastalBulletins)
-    || !Array.isArray(data.windRadii) || !Array.isArray(data.cones)
-    || !Array.isArray(data.cycloneEvents) || !Array.isArray(data.portAlerts)
-    || !Array.isArray(data.marineBulletins)
-    || !data.products || typeof data.products !== 'object') {
-    return false;
+  for (const key of ['cyclones', 'windRadii', 'cones', 'portWarnings', 'seaBulletins', 'coastalBulletins',
+    'cycloneEvents', 'portAlerts', 'marineBulletins']) {
+    if (!Array.isArray(data[key])) return false;
   }
+  if (!data.products || typeof data.products !== 'object') return false;
   for (const id of IMD_PRODUCT_IDS) {
     if (!data.products[id] || typeof data.products[id].status !== 'string') return false;
   }
-  const cones = data.cones || [];
-  if (cones.some((row) => row.geometryKind !== 'cone-of-uncertainty')) return false;
-  const winds = data.windRadii || [];
-  if (winds.some((row) => row.geometryKind !== 'forecast-wind-radii')) return false;
-  const tracks = data.cyclones || [];
-  if (tracks.some((row) => row.pointKind !== 'observed' && row.pointKind !== 'forecast')) return false;
-  return true;
+  return [...data.seaBulletins, ...data.coastalBulletins].every(validBulletinRecord);
 }
 
 export function declareImdRecords(data) {
   if (!data || typeof data !== 'object') return 0;
-  if (data.coverageState === 'disabled') return 0;
-  return (data.cyclones?.length || 0)
-    + (data.windRadii?.length || 0)
-    + (data.cones?.length || 0)
-    + (data.portWarnings?.length || 0)
-    + (data.seaBulletins?.length || 0)
-    + (data.coastalBulletins?.length || 0);
+  return (data.seaBulletins?.length || 0) + (data.coastalBulletins?.length || 0);
+}
+
+function parsedPages(data) {
+  return IMD_BULLETIN_PRODUCT_IDS.flatMap((id) => Object.values(data?.products?.[id]?.pages || {}))
+    .filter((page) => page.status === 'ok' || page.status === 'expired');
 }
 
 /**
- * Activation proves this IMD deployment has received at least one documented
- * product response. A valid empty/NIL response counts; carried last-good data,
- * disabled products, and a total auth/product failure do not.
+ * Activation proves this deployment parsed at least one bulletin page from
+ * IMD in this run. An expired page counts; carried last-good records do not.
  */
 export function shouldActivateImdSnapshot(data) {
-  return IMD_PRODUCT_IDS.some((id) => (
-    IMD_PRODUCTS[id].schema === 'documented'
-    && data?.products?.[id]?.status === 'ok'
-  ));
+  return parsedPages(data).length > 0;
 }
 
+/** Content age is the age of IMD's newest parsed or served bulletin, by its time of issue. */
 export function imdContentMeta(data, nowMs = Date.now()) {
-  const stamps = [];
-  const bags = [
-    data?.cyclones,
-    data?.portWarnings,
-    data?.seaBulletins,
-    data?.coastalBulletins,
-  ];
-  for (const bag of bags) {
-    for (const row of bag || []) {
-      for (const key of ['at', 'issuedAt', 'updatedAt', 'validFrom']) {
-        const value = row?.[key];
-        if (Number.isFinite(value) && value > 0 && value <= nowMs + 60 * 60 * 1000) stamps.push(value);
-      }
-    }
-  }
+  const stamps = [
+    ...parsedPages(data).map((page) => page.issuedAt),
+    ...(data?.seaBulletins || []).map((row) => row?.issuedAt),
+    ...(data?.coastalBulletins || []).map((row) => row?.issuedAt),
+  ].filter((value) => Number.isFinite(value) && value > 0 && value <= nowMs);
   if (stamps.length === 0) return null;
   return { newestItemAt: Math.max(...stamps), oldestItemAt: Math.min(...stamps) };
 }
 
 export function imdAfterPublish(data) {
-  if (data?.coverageState === 'disabled') {
-    return {
-      freshnessMetaPatch: {
-        sourceState: 'unavailable',
-        errorCode: data.skipReason || 'IMD_API_KEY_MISSING',
-        coverageState: 'disabled',
-      },
-    };
-  }
-  if (data?.coverageState === 'degraded') {
+  if (data?.coverageState === 'degraded' || data?.coverageState === 'unavailable') {
     return {
       freshnessMetaPatch: {
         sourceState: 'degraded',
-        errorCode: 'IMD_PRODUCT_PARTIAL',
+        errorCode: data.coverageState === 'degraded' ? 'IMD_PRODUCT_PARTIAL' : 'IMD_PRODUCTS_UNAVAILABLE',
         failedProducts: data.failedProducts,
-        coverageState: 'degraded',
-      },
-    };
-  }
-  if (data?.coverageState === 'unavailable') {
-    return {
-      freshnessMetaPatch: {
-        sourceState: 'degraded',
-        errorCode: 'IMD_PRODUCTS_UNAVAILABLE',
-        failedProducts: data.failedProducts,
-        coverageState: 'unavailable',
+        coverageState: data.coverageState,
       },
     };
   }

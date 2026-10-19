@@ -39,6 +39,13 @@ describe('World Monitor brand-identity page', () => {
     assert.match(body, /\|\s*Locality\s*\|\s*Dubai\s*\|/);
     assert.match(body, /\|\s*Country\s*\|\s*AE \(United Arab Emirates\)\s*\|/);
     assert.match(body, /does not publish a street address or telephone number/i);
+    assert.match(body, /## Not World Monitor[\s\S]*world-monitor\.com[\s\S]*worldmonitorintel\.com/, 'brand page must name the same-name sites answer engines confuse with it');
+    // The digest email footer linked x.com/worldmonitorapp, an unregistered handle,
+    // while every sameAs list names x.com/worldmonitorai.
+    // The digest HTML template lives in scripts/lib/digest-email-html.mjs.
+    const digest = read('scripts/seed-digest-notifications.mjs') + read('scripts/lib/digest-email-html.mjs');
+    assert.doesNotMatch(digest, /x\.com\/worldmonitorapp\b/, 'digest footer must not link the unregistered X handle');
+    assert.match(digest, /href="https:\/\/x\.com\/worldmonitorai"/, 'digest footer must link the official X account');
     assert.doesNotMatch(body, /streetAddress|tel:|\bfaxNumber\b|\+\d{8,}/);
     assert.doesNotMatch(body, /\|\s*Telephone\s*\|/i);
     assert.doesNotMatch(body, /\|\s*Street\s*\|/i);

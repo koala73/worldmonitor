@@ -717,7 +717,35 @@ const PANEL_REQUEST_READ_SCRIPT = [
   'return {1, n}',
 ].join('\n');
 
+// Pinned copy of CII_DAILY_WRITE_LUA in server/worldmonitor/intelligence/v1/get-risk-scores.ts.
+const CII_DAILY_HISTORY_WRITE_SCRIPT = [
+  "",
+  "local count = #KEYS - 3",
+  "local day = tonumber(ARGV[1])",
+  "local ttl = tonumber(ARGV[2])",
+  "local captured = tonumber(ARGV[3])",
+  "for i, key in ipairs(KEYS) do",
+  "  local kind = redis.call('TYPE', key).ok",
+  "  local expected = i <= count and 'zset' or 'string'",
+  "  if kind ~= 'none' and kind ~= expected then return redis.error_reply('cii_history_wrong_type') end",
+  "end",
+  "local previous = redis.call('GET', KEYS[count + 2])",
+  "if previous and tonumber(cjson.decode(previous).fetchedAt) > captured then return 0 end",
+  "for i = 1, count do",
+  "  redis.call('ZREMRANGEBYSCORE', KEYS[i], day, day)",
+  "  redis.call('ZADD', KEYS[i], day, ARGV[5 + i])",
+  "  redis.call('ZREMRANGEBYSCORE', KEYS[i], '-inf', day - 365)",
+  "  redis.call('EXPIRE', KEYS[i], ttl)",
+  "end",
+  "redis.call('SET', KEYS[count + 1], ARGV[4], 'EX', ttl)",
+  "redis.call('SET', KEYS[count + 2], ARGV[5], 'EX', ttl + 86400)",
+  "redis.call('SET', KEYS[count + 3], captured)",
+  "return count",
+  "",
+].join('\n');
+
 const ALLOWED_EVAL_SCRIPTS = new Set([
+  CII_DAILY_HISTORY_WRITE_SCRIPT,
   PANEL_REQUEST_RESERVE_SCRIPT,
   PANEL_REQUEST_READ_SCRIPT,
   PIZZINT_HISTORY_WRITE_SCRIPT,

@@ -20,6 +20,8 @@
 *Could not find public function for 'accountDeletion/sideEffects:beginExternalAttempt'*
 *Could not find public function for 'accountDeletion/sideEffects:recordExternalFailure'*
 *Could not find public function for 'accountDeletion/sideEffects:runExternalErase'*
+*Could not find public function for 'agentSources:countBySource'*
+*Could not find public function for 'agentSources:pageSources'*
 *Could not find public function for 'alertRules:getAlertRulesByUserId'*
 *Could not find public function for 'alertRules:getByEnabled'*
 *Could not find public function for 'alertRules:getDigestRules'*
@@ -139,9 +141,13 @@
 *Could not find public function for 'companyMonitoring/orchestration:scheduleCompanySources'*
 *Could not find public function for 'contactMessages:submit'*
 *Could not find public function for 'emailSuppressions:bulkSuppress'*
+*Could not find public function for 'emailSuppressions:clearSoftBounces'*
 *Could not find public function for 'emailSuppressions:isEmailSuppressed'*
+*Could not find public function for 'emailSuppressions:pruneSoftBounceData'*
+*Could not find public function for 'emailSuppressions:recordSoftBounce'*
 *Could not find public function for 'emailSuppressions:remove'*
 *Could not find public function for 'emailSuppressions:suppress'*
+*Could not find public function for 'emailUnsubscribe:applyUnsubscribe'*
 *Could not find public function for 'embedKeys:touchKeyLastUsed'*
 *Could not find public function for 'embedKeys:validateKeyByHash'*
 *Could not find public function for 'entitlements:getEntitlementsByUserId'*
@@ -165,6 +171,7 @@
 *Could not find public function for 'mcpProTokens:touchProMcpTokenLastUsed'*
 *Could not find public function for 'mcpProTokens:validateProMcpToken'*
 *Could not find public function for 'notificationChannels:claimPairingToken'*
+*Could not find public function for 'notificationChannels:createPairingToken'*
 *Could not find public function for 'notificationChannels:createPairingTokenForUser'*
 *Could not find public function for 'notificationChannels:deactivateChannel'*
 *Could not find public function for 'notificationChannels:deactivateChannelForUser'*
@@ -172,10 +179,12 @@
 *Could not find public function for 'notificationChannels:deleteChannelForUser'*
 *Could not find public function for 'notificationChannels:getChannelsByUserId'*
 *Could not find public function for 'notificationChannels:queueChannelWelcome'*
+*Could not find public function for 'notificationChannels:setChannel'*
 *Could not find public function for 'notificationChannels:setChannelForUser'*
 *Could not find public function for 'notificationChannels:setDiscordOAuthChannelForUser'*
 *Could not find public function for 'notificationChannels:setSlackOAuthChannelForUser'*
 *Could not find public function for 'notificationChannels:setWebPushChannelForUser'*
+*Could not find public function for 'notificationChannels:stagePairingToken'*
 *Could not find public function for 'payments/backfillCustomerNormalizedEmail:backfill'*
 *Could not find public function for 'payments/backfillCustomerNormalizedEmail:countPending'*
 *Could not find public function for 'payments/billing:applyDodoSubscriptionReconciliation'*
@@ -220,6 +229,7 @@
 *Could not find public function for 'payments/seedProductPlans:seedProductPlans'*
 *Could not find public function for 'payments/subscriptionEmails:canSendBillingEmail'*
 *Could not find public function for 'payments/subscriptionEmails:getDunningContext'*
+*Could not find public function for 'payments/subscriptionEmails:hasOpenDunningHold'*
 *Could not find public function for 'payments/subscriptionEmails:recordDunningStepSent'*
 *Could not find public function for 'payments/subscriptionEmails:reserveResendSlot'*
 *Could not find public function for 'payments/subscriptionEmails:runDunningScan'*
@@ -233,7 +243,9 @@
 *Could not find public function for 'payments/unattributedPayments:getUnattributedRow'*
 *Could not find public function for 'payments/unattributedPayments:listUnresolvedUnattributed'*
 *Could not find public function for 'payments/unattributedPayments:notifyUnattributedPayment'*
+*Could not find public function for 'payments/webhookHandlers:getLastDodoSignatureFailureReportAt'*
 *Could not find public function for 'payments/webhookHandlers:reportDodoSignatureFailure'*
+*Could not find public function for 'payments/webhookHandlers:scheduleDodoSignatureFailureReport'*
 *Could not find public function for 'payments/webhookMutations:_seedFailureSummary'*
 *Could not find public function for 'payments/webhookMutations:attributeUnattributedPayment'*
 *Could not find public function for 'payments/webhookMutations:getWebhookFailureDiagnostics'*

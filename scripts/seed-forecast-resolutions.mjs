@@ -18,11 +18,12 @@ import { createHash } from 'node:crypto';
 
 import { CHROME_UA, getRedisCredentials, loadEnvFile, redisCommand, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { PROBABILITY_TRAIL_KEY, stampResolutionTrajectories } from './_forecast-probability-trail.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, serializeR2JsonBody, sha256Hex } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, resolveHorizonSpec, extractMetricValue, extractMetricObservation, selectResolutionFeed, shapeResolutionFeeds, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
 import { firstTimelySample, isLivePointRead, LATE_READ_MAX_LAG_MS, LATE_READ_VOID_REASON, isSingleMarketVenue, marketQuestionIdentity, voidsOnFirstRead } from './_forecast-resolution-eval.mjs';
 import { chokepointHardContract, FROZEN_JUDGED_QUESTION_DOMAINS, SPEC_ORIGIN_HARD_DOWNGRADED, CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, CYBER_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED, scoredHorizonKeys } from './_forecast-resolution.mjs';
-import { buildFamilyOutcomes, buildPublicReceipts, computeScorecard, DEFAULT_JUDGED_SLA_MS, hardSlaMs, RESOLVER_CYCLE_MS, DEFAULT_ROLLING_WINDOW_DAYS, isDuplicateWindow, isHorizonEntry, isPlaceholderBet, isPublishedOriginEntry, isWithheldEntry } from './_forecast-scorecard.mjs';
+import { buildFamilyOutcomes, buildPublicForecastArchive, buildPublicReceipts, computeScorecard, DEFAULT_JUDGED_SLA_MS, hardSlaMs, RESOLVER_CYCLE_MS, DEFAULT_ROLLING_WINDOW_DAYS, isDuplicateWindow, isHorizonEntry, isPlaceholderBet, isPublishedOriginEntry, isWithheldEntry } from './_forecast-scorecard.mjs';
 import { evaluateCalibrationShadow, resolveCalibrationMapForRun } from './_forecast-calibration.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
 import { updateMarketSettlements } from './_forecast-market-settlements.mjs';
@@ -51,6 +52,9 @@ export { JUDGED_EVIDENCE_GRACE_MS };
 export const HISTORY_KEY = 'forecast:predictions:history:v1';
 export const RESOLUTIONS_KEY = 'forecast:resolutions:v1';
 export const SCORECARD_KEY = 'forecast:scorecard:v1';
+export const FORECAST_ARCHIVE_KEY = 'forecast:archive:v1';
+export const FORECAST_ARCHIVE_META_KEY = 'seed-meta:forecast:archive';
+export const FORECAST_ARCHIVE_ACTIVATION_KEY = 'seed-activated:forecast:archive';
 export const RESOLUTIONS_META_KEY = 'seed-meta:forecast:resolutions';
 export const SCORECARD_META_KEY = 'seed-meta:forecast:scorecard';
 export const SCORECARD_TTL_SECONDS = 7 * 24 * 60 * 60;
@@ -273,6 +277,7 @@ export function processResolutionCycle(existingLedger, historySnapshots, feedsBy
   const ingested = ingestHistory(existingLedger, historySnapshots, nowMs);
   samplePendingEntries(ingested, feedsByKey, nowMs);
   const receipts = resolveDueEntries(ingested, feedsByKey, nowMs);
+  stampResolutionTrajectories(ingested, options.probabilityTrail, nowMs);
   // Drop terminal entries that are already receipted to R2 and outside the
   // rolling scorecard window, keeping the persistent ledger bounded (#5067). Runs after
   // resolveDueEntries so entries resolved this cycle (resolvedAt === nowMs, not
@@ -287,6 +292,7 @@ export async function processResolutionCycleWithJudges(existingLedger, historySn
   samplePendingEntries(ingested, feedsByKey, nowMs);
   const receipts = resolveDueEntries(ingested, feedsByKey, nowMs);
   receipts.push(...await resolvePendingJudgedEntries(ingested, newsArchive, nowMs, options));
+  stampResolutionTrajectories(ingested, options.probabilityTrail, nowMs);
   const ledger = pruneArchivedTerminalEntries(ingested, nowMs);
   const scorecard = buildScorecard(ledger, nowMs, options.calibrationMap ?? null);
   return { ledger, receipts, scorecard };
@@ -3193,15 +3199,22 @@ async function markCalibrationMapActivated() {
   }
 }
 
+export async function markForecastArchiveActivated() {
+  const { url, token } = getRedisCredentials();
+  const result = await redisCommand(url, token, ['SET', FORECAST_ARCHIVE_ACTIVATION_KEY, '1']);
+  if (result?.result !== 'OK') throw new Error('Forecast archive activation marker write failed');
+}
+
 async function buildLedgerForRun(runState) {
   const nowMs = Date.now();
-  const [existingLedger, history, betsHistory] = await Promise.all([
+  const [existingLedger, history, betsHistory, probabilityTrail] = await Promise.all([
     readRedisJson(RESOLUTIONS_KEY),
     readForecastHistory(200),
     readBetsHistory(200).catch((err) => {
       console.warn(`  [forecast-resolutions] bets shadow stream unavailable: ${err?.message || err}`);
       return [];
     }),
+    readRedisJson(PROBABILITY_TRAIL_KEY).then(value => unwrapEnvelope(value).data),
   ]);
   const historySnapshots = [...history, ...betsHistory];
   const preLedger = ingestHistory(existingLedger || {}, historySnapshots, nowMs);
@@ -3216,7 +3229,8 @@ async function buildLedgerForRun(runState) {
   const judgedOptions = buildLiveJudgedOptions(nowMs);
   const judgedArchive = await readJudgedNewsArchiveForLedger(preLedger, nowMs, judgedOptions);
   runState.archiveReadable = Boolean(judgedArchive?.available) && !judgedArchive?.incomplete;
-  const result = await processResolutionCycleWithJudges(preLedger, [], feeds, judgedArchive, nowMs, judgedOptions);
+  const result = await processResolutionCycleWithJudges(preLedger, [], feeds, judgedArchive, nowMs, { ...judgedOptions, probabilityTrail });
+  runState.publicArchive = buildPublicForecastArchive(result.ledger, nowMs);
   const receiptsForArchive = collectUnarchivedReceipts(result.ledger);
   const archivedReceipts = await appendR2Receipts(receiptsForArchive);
   markReceiptsArchived(result.ledger, archivedReceipts, Date.now());
@@ -3417,6 +3431,12 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     lockTtlMs: 180_000,
     fetchPhaseTimeoutMs: 150_000,
     extraKeys: [{
+      key: FORECAST_ARCHIVE_KEY,
+      ttl: SCORECARD_TTL_SECONDS,
+      transform: () => runState.publicArchive,
+      declareRecords: archive => archive.rows.length,
+      metaKey: FORECAST_ARCHIVE_META_KEY,
+    }, {
       key: SCORECARD_KEY,
       ttl: SCORECARD_TTL_SECONDS,
       transform: (ledger) => buildScorecardForRun(ledger, runState),
@@ -3434,6 +3454,8 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
       allowMissingOnSkip: true,
     }],
     afterPublish: async (ledger) => {
+      try { await markForecastArchiveActivated(); }
+      catch (err) { console.warn(`  [ForecastArchive] Activation marker write failed: ${err.message}`); }
       if (runState.map) await markCalibrationMapActivated();
       return buildJudgedLaneAfterPublish(ledger, Date.now(), runState);
     },

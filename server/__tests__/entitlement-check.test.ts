@@ -74,10 +74,10 @@ function makeEntitlements(tier: number, planKey = "free") {
         apiRequestsPerDay: tier >= 2 ? 1_000 : 0,
         apiBurstRequestsPerMinute: tier >= 2 ? 60 : 0,
         // Third field to join the cache-staleness gate, for the same reason as
-        // the two above. An apiAccess plan carrying a NUMERIC mcpCallsPerDay is
-        // a pre-marker row by construction: the catalog gives the API tiers the
-        // shared-budget marker and enterprise `null`, so that pairing cannot
-        // occur in production. A tier-only factory reaches the API tiers at
+        // the two above. A tier-2 apiAccess plan carrying a NUMERIC
+        // mcpCallsPerDay is a pre-marker row by construction: the catalog gives
+        // the API tiers the shared-budget marker. Enterprise (tier 3) carries a
+        // numeric fair-use ceiling and is exempt from that check. A tier-only factory reaches the API tiers at
         // tier >= 2, so they take the marker here.
         mcpCallsPerDay: tier >= 2 ? "shared-api-budget" : (tier >= 1 ? 50 : 0),
         dashboardAiCallsPerDay: tier >= 1 ? 500 : 0,
@@ -820,6 +820,48 @@ describe("gateway entitlement check", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  test("an Enterprise entry with its numeric MCP ceiling is served from cache", async () => {
+    // Enterprise carries apiAccess AND a numeric mcpCallsPerDay (its fair-use
+    // ceiling). The pre-marker check must not read that as a stale API-tier
+    // entry, or every Enterprise request pays a Convex round-trip.
+    const enterprise = makeEntitlements(3, "enterprise");
+    enterprise.features.planLimits = {
+      ...enterprise.features.planLimits,
+      apiRequestsPerDay: 100_000,
+      mcpCallsPerDay: 25_000,
+      dashboardAiCallsPerDay: 25_000,
+    };
+    vi.mocked(getCachedJson).mockResolvedValueOnce(enterprise);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const result = await getEntitlements("user_enterprise_cached");
+
+      expect(result?.planKey).toBe("enterprise");
+      expect(fetchMock).toHaveBeenCalledTimes(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("a pre-marker API-tier entry with a numeric MCP limit is still stale", async () => {
+    const preMarker = makeEntitlements(2, "api_starter");
+    preMarker.features.planLimits = { ...preMarker.features.planLimits, mcpCallsPerDay: 1_000 };
+    vi.mocked(getCachedJson).mockResolvedValueOnce(preMarker);
+
+    const result = await withConvexEntitlementResponse(
+      makeEntitlements(2, "api_starter"),
+      async () => {
+        const entitlements = await getEntitlements("user_pre_marker");
+        expect(fetch).toHaveBeenCalledTimes(1);
+        return entitlements;
+      },
+    );
+
+    expect(result?.features.planLimits?.mcpCallsPerDay).toBe("shared-api-budget");
   });
 
   test("#6105 cache: entry WITHOUT planLimits.dashboardAiCallsPerDay is stale and refetches", async () => {

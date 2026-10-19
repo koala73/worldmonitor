@@ -37,4 +37,14 @@ message PredictionMarket {
   // Source platform (Polymarket, Kalshi, etc.).
   MarketSource source = 8;
   reserved 9;
+  // Upstream 24-hour Yes price change on the probability scale. Absent if unavailable.
+  optional double yes_price_change_24h = 10 [
+    (buf.validate.field).double.gte = -1,
+    (buf.validate.field).double.lte = 1
+  ];
+  // Upstream 7-day Yes price change on the probability scale. Polymarket only.
+  optional double yes_price_change_7d = 11 [
+    (buf.validate.field).double.gte = -1,
+    (buf.validate.field).double.lte = 1
+  ];
 }

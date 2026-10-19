@@ -24,6 +24,8 @@ export interface PredictionMarket {
   closesAt: number;
   category: string;
   source: MarketSource;
+  yesPriceChange24h?: number;
+  yesPriceChange7d?: number;
 }
 
 export interface PaginationResponse {

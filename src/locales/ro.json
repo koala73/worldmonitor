@@ -236,7 +236,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Starea estimării și imputării nu este furnizată"
     },
     "fiveFactorScorecard": {
       "title": "Scor de reziliență pe cinci factori",
@@ -408,6 +409,7 @@
     "energy": "Energie & Resurse",
     "gov": "Guvernul",
     "thinktanks": "Think Tank-uri",
+    "science": "Știință",
     "polymarket": "Predicții",
     "commodities": "Mărfuri",
     "economic": "Indicatori Economici",
@@ -2958,6 +2960,7 @@
       "tier4OnlyHint": "Fiecare publicație care raportează aceasta este o sursă de nivel 4 (site-uri agregatoare și bloguri). Aceasta descrie acoperirea de presă, nu acuratețea.",
       "rosterListed": "({{listed}} listați)",
       "rosterFeeds": "Fluxuri văzute: {{labels}}",
+      "rosterSameCopy": "Același text, numărat o singură dată",
       "rosterLegend": "Nivelurile clasifică sursele; ele nu judecă această afirmație.",
       "tierDocsLink": "Cum sunt atribuite nivelurile",
       "tierChip": "T{{tier}}",

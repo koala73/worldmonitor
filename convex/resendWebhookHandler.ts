@@ -1,6 +1,7 @@
-import { httpAction } from "./_generated/server";
+import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireEnv } from "./lib/env";
+import { verifySvixSignature } from "./lib/svixVerify";
 import { BROADCAST_TRACKED_EVENT_TYPES } from "./broadcast/metrics";
 
 const BROADCAST_TRACKED_SET: ReadonlySet<string> = new Set(
@@ -19,8 +20,49 @@ type ResendWebhookEvent = {
     email_id?: string;
     broadcast_id?: string;
     unsubscribed?: boolean;
+    // Present on email.bounced. Resend documents type as Permanent,
+    // Transient or Undetermined, with subtypes such as General,
+    // MailboxFull or MessageTooLarge:
+    // https://resend.com/docs/webhooks/emails/bounced
+    // https://resend.com/docs/dashboard/emails/email-bounces
+    bounce?: {
+      type?: string;
+      subType?: string;
+      message?: string;
+    };
   };
 };
+
+export type BounceClass = "hard" | "soft" | "ignore";
+
+// Transient subtypes that describe our message rather than the mailbox.
+// They are logged but never count toward recipient suppression.
+const CONTENT_CAUSED_SUBTYPES: ReadonlySet<string> = new Set([
+  "messagetoolarge",
+  "contentrejected",
+  "attachmentrejected",
+]);
+
+/**
+ * Classify an email.bounced payload. Permanent (hard) bounces suppress at
+ * once. Transient and Undetermined bounces count as soft-bounce strikes.
+ * A payload without a bounce type keeps the pre-existing behaviour (treat
+ * as permanent), because Resend documents email.bounced as a permanent
+ * rejection and older payloads carried no bounce object.
+ */
+export function classifyBounce(
+  bounce: { type?: string; subType?: string } | undefined,
+): BounceClass {
+  const type = bounce?.type?.trim().toLowerCase();
+  if (!type || type === "permanent") return "hard";
+  // Resend's bounce-types page says "Transient"; its email.bounced field
+  // reference lists "Temporary" as an example value. Accept both.
+  if (type === "transient" || type === "temporary" || type === "undetermined") {
+    const subType = bounce?.subType?.trim().toLowerCase() ?? "";
+    return CONTENT_CAUSED_SUBTYPES.has(subType) ? "ignore" : "soft";
+  }
+  return "hard";
+}
 
 function maskEmail(email: string): string {
   const trimmed = email.trim();
@@ -35,6 +77,10 @@ function getSuppressionDetails(
   if (event.type === "email.bounced" || event.type === "email.complained") {
     const recipients = event.data?.to;
     if (!Array.isArray(recipients) || recipients.length === 0) return null;
+    // Soft bounces go through recordSoftBounce instead (see handler).
+    if (event.type === "email.bounced" && classifyBounce(event.data?.bounce) !== "hard") {
+      return null;
+    }
     return {
       recipients,
       reason: event.type === "email.bounced" ? "bounce" : "complaint",
@@ -52,67 +98,76 @@ function getSuppressionDetails(
   return { recipients: [email], reason: "unsubscribe" };
 }
 
-async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.generateKey(
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const [sigA, sigB] = await Promise.all([
-    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(a)),
-    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(b)),
-  ]);
-  const aArr = new Uint8Array(sigA);
-  const bArr = new Uint8Array(sigB);
-  let diff = 0;
-  for (let i = 0; i < aArr.length; i++) diff |= aArr[i]! ^ bArr[i]!;
-  return diff === 0;
+function recipientsOf(event: ResendWebhookEvent): string[] {
+  const to = event.data?.to;
+  if (!Array.isArray(to)) return [];
+  return to.filter((r): r is string => typeof r === "string" && r.trim().length > 0);
 }
 
-async function verifySignature(
-  payload: string,
-  headers: Headers,
-  secret: string,
-): Promise<boolean> {
-  const msgId = headers.get("svix-id");
-  const timestamp = headers.get("svix-timestamp");
-  const signature = headers.get("svix-signature");
-
-  if (!msgId || !timestamp || !signature) return false;
-
-  const ts = Number(timestamp);
-  if (!Number.isFinite(ts)) return false;
-  if (Math.abs(Date.now() / 1000 - ts) > 300) return false;
-
-  const toSign = `${msgId}.${timestamp}.${payload}`;
-  const secretBytes = Uint8Array.from(atob(secret.replace("whsec_", "")), (c) =>
-    c.charCodeAt(0),
-  );
-
-  const key = await crypto.subtle.importKey(
-    "raw",
-    secretBytes,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(toSign),
-  );
-  const expected = btoa(String.fromCharCode(...new Uint8Array(sig)));
-
-  const signatures = signature.split(" ");
-  for (const s of signatures) {
-    const parts = s.split(",");
-    if (parts.length !== 2) continue;
-    const [version, val] = parts;
-    if (version !== "v1" || !val) continue;
-    if (await timingSafeEqualStrings(val, expected)) return true;
+/**
+ * Soft-bounce strikes and their reset. Returns a Response when the event was
+ * fully handled here (or failed and must be retried), otherwise null so the
+ * hard-suppression path runs. Policy and threshold live next to
+ * SOFT_BOUNCE_SUPPRESS_THRESHOLD in convex/emailSuppressions.ts.
+ */
+async function handleSoftBounceOrDelivery(
+  ctx: ActionCtx,
+  event: ResendWebhookEvent,
+): Promise<Response | null> {
+  if (event.type === "email.delivered") {
+    const deliveredAt = event.created_at
+      ? Date.parse(event.created_at) || Date.now()
+      : Date.now();
+    for (const email of recipientsOf(event)) {
+      try {
+        await ctx.runMutation(internal.emailSuppressions.clearSoftBounces, { email, deliveredAt });
+      } catch {
+        console.error(`[resend-webhook] Failed to clear soft bounces for ${maskEmail(email)}`);
+        return new Response("Internal processing error", { status: 500 });
+      }
+    }
+    return new Response(null, { status: 200 });
   }
-  return false;
+
+  if (event.type !== "email.bounced") return null;
+  const bounceClass = classifyBounce(event.data?.bounce);
+  if (bounceClass === "hard") return null;
+
+  const subType = event.data?.bounce?.subType;
+  if (bounceClass === "ignore") {
+    console.log(`[resend-webhook] Content-caused soft bounce (${subType}); not counted`);
+    return new Response(null, { status: 200 });
+  }
+
+  const emailMessageId = event.data?.email_id ?? event.data?.id;
+  if (!emailMessageId) {
+    console.warn("[resend-webhook] Soft bounce without email_id; not counted");
+    return new Response(null, { status: 200 });
+  }
+  const occurredAt = event.created_at
+    ? Date.parse(event.created_at) || Date.now()
+    : Date.now();
+
+  for (const email of recipientsOf(event)) {
+    try {
+      const result = await ctx.runMutation(internal.emailSuppressions.recordSoftBounce, {
+        email,
+        emailMessageId,
+        bounceType: event.data?.bounce?.type ?? "unknown",
+        bounceSubType: subType,
+        occurredAt,
+        source: `resend-webhook:${emailMessageId}`,
+      });
+      console.log(
+        `[resend-webhook] Soft bounce ${maskEmail(email)} (${subType ?? "unknown"}): `
+        + `${result.ignored ? "ignored (stale, duplicate or already suppressed)" : result.suppressed ? "suppressed" : `strike ${result.strikes}`}`,
+      );
+    } catch {
+      console.error(`[resend-webhook] Failed to record soft bounce for ${maskEmail(email)}`);
+      return new Response("Internal processing error", { status: 500 });
+    }
+  }
+  return new Response(null, { status: 200 });
 }
 
 export const resendWebhookHandler = httpAction(async (ctx, request) => {
@@ -120,8 +175,13 @@ export const resendWebhookHandler = httpAction(async (ctx, request) => {
 
   const rawBody = await request.text();
 
-  const valid = await verifySignature(rawBody, request.headers, secret);
-  if (!valid) {
+  const verified = await verifySvixSignature(rawBody, request.headers, secret);
+  if (!verified.ok) {
+    // A secret we cannot decode is our misconfiguration, not a bad delivery:
+    // throw so Convex answers 500 and reports it, and Svix keeps retrying.
+    if (verified.reason === "malformed_secret") {
+      throw new Error("[resend-webhook] RESEND_WEBHOOK_SECRET is not a valid whsec_ secret");
+    }
     console.warn("[resend-webhook] Invalid signature");
     return new Response("Invalid signature", { status: 401 });
   }
@@ -139,7 +199,7 @@ export const resendWebhookHandler = httpAction(async (ctx, request) => {
   // delivery as at-most-once).
   const broadcastId = event.data?.broadcast_id;
   if (broadcastId && BROADCAST_TRACKED_SET.has(event.type)) {
-    // svix-id is guaranteed non-null here: verifySignature returns false
+    // svix-id is guaranteed non-null here: verifySvixSignature fails
     // (and we 401'd above) if any of svix-id / svix-timestamp /
     // svix-signature were absent. Non-null assert rather than re-guard.
     const svixId = request.headers.get("svix-id") as string;
@@ -167,6 +227,9 @@ export const resendWebhookHandler = httpAction(async (ctx, request) => {
       occurredAt,
     });
   }
+
+  const softBounceResponse = await handleSoftBounceOrDelivery(ctx, event);
+  if (softBounceResponse) return softBounceResponse;
 
   const suppression = getSuppressionDetails(event);
   if (!suppression) {

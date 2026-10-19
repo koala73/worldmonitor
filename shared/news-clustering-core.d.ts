@@ -29,6 +29,8 @@ export interface NewsItemCore {
   credibilityScore?: number;
   /** Server digest's origin-aware publisher-family count for the item's story. */
   corroborationCount?: number;
+  /** Lead text; with the title, it is what same-copy detection compares (#9095). */
+  snippet?: string;
 }
 
 export type NewsItemWithTier = NewsItemCore & { tier: number };
@@ -57,6 +59,10 @@ export interface ClusteredEventCore {
 }
 
 export declare const MAX_CLUSTER_NEWS_ITEMS: number;
+
+export declare function clusterPublisherCount(
+  items: readonly { source: string; title?: string; snippet?: string }[],
+): number;
 
 export declare const PROTO_TO_THREAT_LEVEL: Record<string, ThreatLevel>;
 

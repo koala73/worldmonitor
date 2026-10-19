@@ -12,7 +12,7 @@ import type {
 import { ApiError, ValidationError } from '../../../../src/generated/server/worldmonitor/leads/v1/service_server';
 import { getClientIp, verifyTurnstile } from '../../../_shared/turnstile';
 import { validateEmail } from '../../../_shared/email-validation';
-import { checkScopedRateLimit } from '../../../_shared/rate-limit';
+import { checkScopedRateLimit, rateLimitKeyForIp } from '../../../_shared/rate-limit';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_EMAIL_LENGTH = 320;
@@ -172,6 +172,8 @@ async function sendConfirmationEmail(email: string, referralCode: string): Promi
       body: JSON.stringify({
         from: 'World Monitor <noreply@worldmonitor.app>',
         to: [email],
+        // noreply@ is unattended; route replies to a human inbox.
+        reply_to: 'support@worldmonitor.app',
         subject: "You\u2019re on the World Monitor Pro waitlist",
         html: `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
@@ -321,7 +323,7 @@ export async function registerInterest(
       DESKTOP_RATE_SCOPE,
       DESKTOP_RATE_LIMIT,
       DESKTOP_RATE_WINDOW,
-      ip,
+      rateLimitKeyForIp(ip),
     );
     if (scoped.degraded) {
       throw new ApiError(503, 'Rate-limit service temporarily unavailable', '');

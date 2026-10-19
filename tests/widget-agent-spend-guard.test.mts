@@ -7,6 +7,9 @@ process.env.WORLDMONITOR_VALID_KEYS = 'browser-test-key,second-enterprise-key';
 process.env.RELAY_SHARED_SECRET = 'server-only-relay-secret';
 
 const { default: handler, __setWidgetAgentSpendDepsForTests } = await import('../api/widget-agent.ts');
+const { OPERATOR_KEY_DAILY_CEILINGS } = await import('../server/_shared/high-usage-alarm.ts');
+// Operator keys share one per-key direct-LLM ceiling with the gateway and chat-analyst.
+const OPERATOR_LIMIT = OPERATOR_KEY_DAILY_CEILINGS.directLlmCalls;
 
 const originalFetch = globalThis.fetch;
 let relayFetches = 0;
@@ -60,8 +63,8 @@ describe('widget-agent spend guard', () => {
         pipelineCalls += 1;
         const op = String(commands[0]?.[0] ?? '');
         ops.push(op);
-        if (op === 'DECR') return [{ result: 50 }];
-        return [{ result: 51 }, { result: 1 }];
+        if (op === 'DECR') return [{ result: OPERATOR_LIMIT }];
+        return [{ result: OPERATOR_LIMIT + 1 }, { result: 1 }];
       },
     });
 
@@ -71,7 +74,7 @@ describe('widget-agent spend guard', () => {
     assert.ok(res.headers.get('Retry-After'));
     const body = await res.json() as { error?: string; limit?: number };
     assert.equal(body.error, 'Direct LLM daily quota exceeded');
-    assert.equal(body.limit, 50);
+    assert.equal(body.limit, OPERATOR_LIMIT);
     assert.deepEqual(ops, ['INCR', 'DECR']);
     assert.equal(relayFetches, 0);
   });

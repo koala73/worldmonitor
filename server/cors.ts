@@ -8,6 +8,8 @@
 // App-serving hosts only; sibling vendor hosts do not inherit browser trust.
 // Keep aligned with convex/payments/returnUrlOrigin.ts and CORS parity tests.
 const APP_ORIGIN_PATTERN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
+const MAX_ORIGIN_BYTES = 300;
+const ORIGIN_ENCODER = new TextEncoder();
 
 const PRODUCTION_PATTERNS: RegExp[] = [
   APP_ORIGIN_PATTERN,
@@ -63,6 +65,10 @@ const EXPOSED_HEADERS = [
   // Fail-open limiter degradation marker. Parity with api/_cors.js (#7270):
   // the Limit/Remaining/Reset triplet is not enough for browser JS to read Mode.
   'X-RateLimit-Mode',
+  // api/mcp-proxy marks the 504 it relays for a remote MCP server timeout so
+  // premium-fetch's origin-5xx canary can skip it (WORLDMONITOR-17A). Parity
+  // with api/_cors.js.
+  'X-Wm-Upstream-Timeout',
   // IETF draft-ietf-httpapi-ratelimit-headers fields — emitted by the
   // per-account API-key limiter; docs/usage-rate-limits.mdx tells browser
   // clients to self-throttle on these, so they must be readable cross-origin
@@ -84,6 +90,12 @@ const EXPOSED_HEADERS = [
   'Sunset',
 ].join(', ');
 
+function stripTrailingDnsDots(hostname: string): string {
+  let end = hostname.length;
+  while (end > 0 && hostname[end - 1] === '.') end--;
+  return hostname.slice(0, end);
+}
+
 /**
  * Strip trailing DNS dots before allowlist match so
  * `https://tech.worldmonitor.app.` is treated as first-party (#6411).
@@ -93,7 +105,7 @@ function originForAllowlistMatch(origin: string): string {
   if (!origin) return '';
   try {
     const url = new URL(origin);
-    const host = url.hostname.replace(/\.+$/, '');
+    const host = stripTrailingDnsDots(url.hostname);
     if (!host || host === url.hostname) return origin;
     url.hostname = host;
     return url.origin;
@@ -112,7 +124,7 @@ function isWorldMonitorGoogleTranslateOrigin(origin: string): boolean {
   try {
     const url = new URL(origin);
     if (url.protocol !== 'https:' || url.port !== '') return false;
-    const host = url.hostname.replace(/\.+$/, '');
+    const host = stripTrailingDnsDots(url.hostname);
     const suffix = '.translate.goog';
     if (!host.endsWith(suffix)) return false;
     const encoded = host.slice(0, -suffix.length);
@@ -125,7 +137,8 @@ function isWorldMonitorGoogleTranslateOrigin(origin: string): boolean {
 }
 
 export function isAllowedOrigin(origin: string): boolean {
-  if (!origin) return false;
+  if (!origin || origin.length > MAX_ORIGIN_BYTES
+    || ORIGIN_ENCODER.encode(origin).byteLength > MAX_ORIGIN_BYTES) return false;
   if (isWorldMonitorGoogleTranslateOrigin(origin)) return true;
   const candidate = originForAllowlistMatch(origin);
   return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(candidate));

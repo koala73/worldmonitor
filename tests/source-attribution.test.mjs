@@ -562,6 +562,24 @@ function writeUrlModule(path, host) {
   writeFileSync(path, `const SOURCE_URL = 'https://${host}/v1/data';\nexport const url = SOURCE_URL;\n`);
 }
 
+test('a gn() site: search after a URL on the same line is scanned; a commented-out one is not', () => {
+  const fixture = makeFixtureCheckout();
+  try {
+    const feedsPath = join(fixture.dir, 'server/worldmonitor/news/v1/_feeds.ts');
+    mkdirSync(dirname(feedsPath), { recursive: true });
+    writeFileSync(feedsPath, [
+      "{ name: 'Native', url: 'https://native.example/rss', depthUrl: gn('site:depth.example when:2d') },",
+      "// { name: 'Retired', url: gn('site:retired.example when:1d') },",
+      '',
+    ].join('\n'));
+    const hosts = scanUpstreamHosts(fixture.dir).map((entry) => entry.host);
+    assert.ok(hosts.includes('depth.example'), 'the scheme in an earlier URL is not a comment');
+    assert.ok(!hosts.includes('retired.example'), 'a commented-out feed stays out of the inventory');
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('the source walk ignores generated inventory modules and compiled handler siblings', () => {
   const fixture = makeFixtureCheckout();
   try {

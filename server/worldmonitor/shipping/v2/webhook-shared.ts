@@ -1,8 +1,29 @@
+import { ApiError } from '../../../../src/generated/server/worldmonitor/shipping/v2/service_server';
 import { CHOKEPOINT_REGISTRY } from '../../../_shared/chokepoint-registry';
 import { isBlockedResolvedAddress } from '../../../_shared/ip-address-classification';
+import eventTriggers from '../../../../shared/event-triggers.json';
+import type { StoredWebhookScope } from './webhook-scope';
 
 export const WEBHOOK_TTL = 86400 * 30; // 30 days
+// Every live subscriber, across owners. The delivery worker prunes ids whose
+// record has expired, so this set carries no TTL.
+export const ALL_INDEX_KEY = 'webhook:all:v1';
+export const DELIVERY_FAILURE_CEILING = 5;
 export const VALID_CHOKEPOINT_IDS = new Set(CHOKEPOINT_REGISTRY.map(c => c.id));
+
+// The event registry (shared/event-triggers.json) is the one surface-neutral
+// definition of every push event: Zapier, the OpenAPI webhooks block and the
+// Railway worker read the same file. Records written before event types
+// existed carry no eventType and mean the default.
+export const DEFAULT_EVENT_TYPE = 'chokepoint.disruption';
+export const RISK_SURGE_EVENT_TYPE = 'country.risk_surge';
+export const VALID_EVENT_TYPES = new Set(Object.keys(eventTriggers.events));
+export const MIN_LIVE_SIGNAL_MAX = 40;
+export const RISK_SURGE_COUNTRIES = new Set(Object.keys(eventTriggers.events['country.risk_surge'].countries));
+
+export function recordEventType(record: Pick<WebhookRecord, 'eventType'>): string {
+  return record.eventType ?? DEFAULT_EVENT_TYPE;
+}
 
 // Private IP ranges + known cloud metadata hostnames blocked at registration
 // and again immediately before webhook delivery. Registration-time checks are
@@ -154,13 +175,20 @@ export function ownerIndexKey(ownerHash: string): string {
   return `webhook:owner:${ownerHash}:v1`;
 }
 
-/** SHA-256 hash of the resolved API credential — used as ownerTag and owner index key. Never secret. */
+/**
+ * SHA-256 hash of the resolved API credential — used as ownerTag and owner index key. Never secret.
+ *
+ * Every caller runs `validateApiKey(req, { forceKey: true })` first, so a
+ * missing credential here is a wiring bug, not a tenant. It used to fall back
+ * to the literal `'anon'`, which would have folded every such caller into one
+ * shared owner bucket; throwing keeps that failure loud instead of silent.
+ */
 export async function callerFingerprint(req: Request, resolvedCredential?: string): Promise<string> {
   const key = resolvedCredential
     ?? req.headers.get('X-WorldMonitor-Key')
     ?? req.headers.get('X-Api-Key')
     ?? '';
-  if (!key) return 'anon';
+  if (!key) throw new ApiError(401, 'API key required', '');
   const encoded = new TextEncoder().encode(key);
   const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -175,4 +203,21 @@ export interface WebhookRecord {
   createdAt: string;
   active: boolean;
   secret: string;
+  /** Registry key; absent on records written before event types existed (= chokepoint.disruption). */
+  eventType?: string;
+  /** country.risk_surge scope; empty or absent = every monitored country. */
+  countries?: string[];
+  /** chokepoint.disruption live-signal floor; absent = 0 (score-only). */
+  minLiveSignal?: number;
+  /**
+   * Occurrence-event filters (news.breaking, market.move), normalized with the
+   * registry defaults by normalizeWebhookScope at registration; absent on
+   * threshold events. Keys are the event's inputSchema property names.
+   */
+  scope?: StoredWebhookScope;
+  failureCount?: number;
+  lastDeliveryAt?: string;
+  lastDeliveryStatus?: number | null;
+  lastDeliveryError?: string;
+  deactivatedAt?: string;
 }

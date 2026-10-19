@@ -1,7 +1,11 @@
+import { screenSanctions } from '../../../server/_shared/sanctions-screen';
+import { projectSupplyChainData } from './_shipping-freight';
+import { CAPITAL_FLOW_PAIR_LEG_SCHEMA, CAPITAL_FLOWS_MAX_COUNTRIES, CAPITAL_FLOWS_PAIRS_LABEL, CAPITAL_FLOWS_SORTS, projectCapitalFlows, type CapitalFlowsSort } from './_capital-flows';
 import ISO2_TO_ISO3 from '../../../shared/iso2-to-iso3.js';
 import { MARKET_ASSET_CLASSES } from '../../../shared/panel-admission';
 import { normalizeSocialVelocity } from '../../_social-velocity.js';
 import { projectNaturalEventsRetention } from '../../_natural-events-dashboard.js';
+import { presentNaturalDisastersPanel } from '../_natural-disasters-reuse';
 import { CHINA_MACRO_REQUIRED_SERIES } from '../../../shared/china-macro-contract.js';
 import {
   normalizeChinaMacroObservations,
@@ -27,7 +31,7 @@ import {
 } from '../../../server/_shared/corroboration';
 import { getSourceTier } from '../../../server/_shared/source-tiers';
 import { FLOW_SOURCE_WIRE_VALUES, narrowFlowSource } from '../../../server/_shared/flow-source';
-import { selectMarketAlertScorecard, selectScorecardFields } from '../../../server/worldmonitor/forecast/v1/scorecard-fields';
+import { RECEIPT_FIELDS, selectMarketAlertScorecard, selectScorecardFields } from '../../../server/worldmonitor/forecast/v1/scorecard-fields';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { torontoSafetySourceById } from '../../../shared/toronto-safety.js';
 import { accuracyAuditOverride, forecastAccuracyAudit, type ForecastAccuracyAudit } from '../../../shared/forecast-accuracy-audit.js';
@@ -60,6 +64,7 @@ import {
   summarizeData,
 } from '../filters';
 import { resolveCountryFilter } from '../_country-args';
+import { compareOilWindows, expandCountry } from '../../../shared/oil-trade-windows.js';
 import { RpcValidationError } from '../billing-denial';
 import type { ConflictSourceObservation, FreshnessCheck, ToolDef } from '../types';
 import { forecastCaseReadSchema, forecastPanelAdmissionSchema } from '../../../shared/panel-admission';
@@ -80,6 +85,15 @@ import {
   NEWS_INTELLIGENCE_UI_URI,
   PREDICTION_MARKETS_UI_URI,
 } from '../ui/registry';
+
+function sanctionsChangesCursor(value: unknown): { fetchedAt?: number; offset: number } {
+  if (value === undefined) return { offset: 0 };
+  const match = typeof value === 'string' && value.length <= 64 && /^([1-9]\d{0,15}):(0|[1-9]\d{0,4})$/.exec(value);
+  if (!match || !Number.isSafeInteger(Number(match[1])) || Number(match[2]) > 10000) {
+    throw new RpcValidationError('get_sanctions_data', [{ field: 'changes_cursor', description: 'Use nextCursor from the previous history page.' }]);
+  }
+  return { fetchedAt: Number(match[1]), offset: Number(match[2]) };
+}
 
 // Eurostat uses EL for Greece and also publishes these two non-country geos.
 function resolveEurostatCountryFilter(raw: unknown): string[] {
@@ -525,6 +539,42 @@ export function presentDefaultMarketData(result: Record<string, unknown>, budget
   return presented;
 }
 
+// `records` repeats seaBulletins + coastalBulletins verbatim, and the
+// alert-shaped lists re-encode the raw product lists for the dashboard, so
+// those copies are trimmed before any original bulletin.
+const IMD_TRIM_ORDER = [
+  'records', 'marineBulletins', 'portAlerts', 'cycloneEvents',
+  'coastalBulletins', 'seaBulletins', 'portWarnings', 'cones', 'windRadii', 'cyclones',
+] as const;
+
+export function fitImdToBudget(result: Record<string, unknown>, budgetBytes: number): Record<string, unknown> {
+  const data = result.data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return result;
+  const source = (data as Record<string, unknown>).imd_cyclone_marine;
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return result;
+  const presented = structuredClone(result);
+  const snapshot = (presented.data as Record<string, unknown>).imd_cyclone_marine as Record<string, unknown>;
+  const collections: Record<string, { original_count: number; returned_count: number; omitted_count: number; omission_reason: 'output_budget' }> = {};
+  const size = () => utf8ByteLength(JSON.stringify(presented));
+  for (const key of IMD_TRIM_ORDER) {
+    if (size() <= budgetBytes) break;
+    const rows = snapshot[key];
+    if (!Array.isArray(rows) || rows.length === 0) continue;
+    const kept: unknown[] = [];
+    snapshot[key] = kept;
+    const coverage = { original_count: rows.length, returned_count: 0, omitted_count: rows.length, omission_reason: 'output_budget' as const };
+    collections[key] = coverage;
+    presented.transportCoverage = { count_scope: 'post_filter_snapshot', collections };
+    for (const row of rows) {
+      kept.push(row);
+      if (size() > budgetBytes) { kept.pop(); break; }
+    }
+    coverage.returned_count = kept.length;
+    coverage.omitted_count = rows.length - kept.length;
+  }
+  return size() <= budgetBytes ? presented : result;
+}
+
 const FORECAST_VOID_REASONS = new Set([
   'no_establishable_metric', 'value_source_never_settled', 'count_source_window_not_retained',
   'unsupported_window', 'unsupported_metric_key', 'not_hard_spec', 'missing_threshold',
@@ -620,7 +670,7 @@ export function forecastReliability(data: Record<string, unknown>, domains: stri
   };
 }
 
-const FORECAST_SCORECARD_DESCRIPTION = 'Forecast resolution scorecard with calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, familyOutcomes (the recent outcomes of each live forecast id), and horizonGrades (grades of the 24h/7d/30d projections, which are not probabilities). From schemaVersion 3, totals and funnel count published forecasts only; shadow bets appear in byGenerationOrigin.';
+const FORECAST_SCORECARD_DESCRIPTION = 'It grades published forecasts after they resolve: calibration, Brier/log score with Brier 95% intervals, domain and generation-origin breakdowns, the matured-to-scored funnel, pending/judged resolution counts, receipts for the newest resolved forecasts, familyOutcomes (the recent outcomes of each live forecast id), and horizonGrades (grades of the 24h/7d/30d projections, which are not probabilities). From schemaVersion 3, totals and funnel count published forecasts only; shadow bets appear in byGenerationOrigin. Past accuracy only: no open forecasts, current probabilities or case files, and nothing about countries. Flagged stale after 36 hours. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. view=archive lists resolved forecasts; domain, outcome, forecast_id, before and limit filter/page it. Trajectories require forecast_id.';
 
 /**
  * The first sentence is the one tools/list keeps, so it names the tool's
@@ -631,8 +681,8 @@ const FORECAST_SCORECARD_DESCRIPTION = 'Forecast resolution scorecard with calib
 export function forecastScorecardDescription(configured?: ForecastAccuracyAudit | null): string {
   const override = accuracyAuditOverride(configured);
   const lead = override
-    ? `Forecast resolution scorecard, under audit since ${override.since} (issue ${override.issue}): do not quote its scores.`
-    : 'Forecast resolution scorecard (Brier, calibration, funnel); check underAudit before quoting scores.';
+    ? `Forecast resolution scorecard, under audit since ${override.since} (issue ${override.issue}): its scores are unverified.`
+    : 'Forecast resolution scorecard: the accuracy record of WorldMonitor forecasts; underAudit marks scores still under audit.';
   return `${lead} ${FORECAST_SCORECARD_DESCRIPTION}`;
 }
 
@@ -647,15 +697,107 @@ export function projectForecastScorecard(data: Record<string, unknown>, audit: F
   };
 }
 
+function forecastRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function forecastPoints(value: unknown, limit: number): [string, number][] {
+  return Array.isArray(value) ? value.filter((p): p is [string, number] => Array.isArray(p) && p.length === 2
+    && typeof p[0] === 'string' && Number.isFinite(Date.parse(p[0])) && typeof p[1] === 'number'
+    && Number.isFinite(p[1]) && p[1] >= 0 && p[1] <= 1).slice(-limit) : [];
+}
+
+function attachForecastHistory(data: Record<string, unknown>, includeHistory: boolean) {
+  const node = forecastRecord(data.predictions);
+  if (!Array.isArray(node?.predictions)) return;
+  const trail = forecastRecord(data.probabilityTrail);
+  const segments = trail?.generatedAt === node.generatedAt ? forecastRecord(trail?.forecasts) : null;
+  node.predictions = node.predictions.map(value => {
+    const row = forecastRecord(value);
+    if (!row) return value;
+    const segment = forecastRecord(segments?.[String(row.id)]);
+    const matching = segment?.region === row.region ? segment : null;
+    const points = forecastPoints(matching?.points, 120);
+    const now = Number(node.generatedAt);
+    const change = (days: number) => {
+      const prior = [...points].reverse().find(([at]) => Date.parse(at) <= now - days * 86_400_000);
+      return prior && typeof row.probability === 'number' && Number.isFinite(row.probability)
+        ? Math.round((row.probability - prior[1]) * 1e6) / 1e6 : null;
+    };
+    const { history: _history, ...published } = row;
+    return { ...published, firstSeenAt: matching?.firstSeenAt ?? null, firstSeenProbability: matching?.firstSeenProbability ?? null,
+      change24h: change(1), change7d: change(7), ...(includeHistory ? { history: points } : {}) };
+  });
+}
+
+function projectForecastArchive(value: unknown, metaValue: unknown) {
+  const archive = forecastRecord(value);
+  if (!Array.isArray(archive?.rows)) return null;
+  const meta = forecastRecord(metaValue);
+  const fetchedAt = Number(meta?.fetchedAt);
+  const fields = [...RECEIPT_FIELDS, 'forecastId', 'domain', 'region', 'lane', 'deadline', 'firstSeenAt', 'lastSeenAt'];
+  return { generatedAt: archive.generatedAt, rollingWindowDays: archive.rollingWindowDays,
+    stale: !Number.isFinite(fetchedAt) || fetchedAt <= 0 || Date.now() - fetchedAt > 2160 * 60_000 || meta?.status === 'error',
+    rows: archive.rows.flatMap(value => {
+      const row = forecastRecord(value);
+      if (!row || !['YES', 'NO', 'VOID'].includes(String(row.outcome)) || typeof row.resolvedAt !== 'number') return [];
+      const safe: Record<string, unknown> = {};
+      for (const field of fields) if (row[field] === null || ['string', 'number'].includes(typeof row[field])) safe[field] = row[field];
+      const evidence = forecastRecord(row.evidence);
+      if (evidence && Number.isInteger(evidence.selectionVersion)) safe.evidence = { selectionVersion: evidence.selectionVersion };
+      if (Array.isArray(row.trajectory)) safe.trajectory = forecastPoints(row.trajectory, 30);
+      return [safe];
+    }) };
+}
+
+function filterForecastScorecard(data: Record<string, unknown>, params: Record<string, unknown>) {
+  const { forecastArchive, ...summary } = data;
+  if (params.view === undefined || params.view === 'summary') return summary;
+  if (params.view !== 'archive') throw new RpcValidationError('get_forecast_scorecard', [{ field: 'view', description: 'Expected summary or archive.' }]);
+  const limit = params.limit ?? 25;
+  const continuation = typeof params.before === 'string' ? /^(\d+):(\d+)$/.exec(params.before) : null;
+  const before = continuation ? Number(continuation[1]) : params.before;
+  const offset = continuation ? Number(continuation[2]) : 0;
+  if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 50
+    || before !== undefined && (typeof before !== 'number' || !Number.isFinite(before))
+    || !Number.isSafeInteger(offset) || offset < 0
+    || params.outcome !== undefined && !['YES', 'NO', 'VOID'].includes(String(params.outcome))) {
+    throw new RpcValidationError('get_forecast_scorecard', [{ field: 'before', description: 'Use a resolvedAt timestamp or nextBefore cursor, limit 1-50 and outcome YES, NO or VOID.' }]);
+  }
+  const archive = forecastArchive as ReturnType<typeof projectForecastArchive>;
+  if (!archive) return { underAudit: data.underAudit, archive: null };
+  const rows = archive.rows.filter(row => (!params.domain || argStr(row.domain) === argStr(params.domain))
+    && (!params.outcome || row.outcome === params.outcome) && (!params.forecast_id || row.forecastId === params.forecast_id)
+    && (before === undefined || Number(row.resolvedAt) < Number(before) || !!continuation && row.resolvedAt === before))
+    .sort((a, b) => Number(b.resolvedAt) - Number(a.resolvedAt) || String(a.forecastId).localeCompare(String(b.forecastId))
+      || Number(a.deadline) - Number(b.deadline) || Number(a.firstSeenAt) - Number(b.firstSeenAt) || String(a.question).localeCompare(String(b.question)))
+    .filter((row, index) => !continuation || row.resolvedAt !== before || index >= offset);
+  const page = rows.slice(0, limit).map(row => {
+    const { trajectory, ...receipt } = row;
+    return params.forecast_id ? { ...receipt, ...(trajectory === undefined ? {} : { trajectory }) } : receipt;
+  });
+  const result = { underAudit: data.underAudit, archive: { generatedAt: archive.generatedAt, rollingWindowDays: archive.rollingWindowDays, stale: archive.stale,
+    rows: page, nextBefore: null as string | null } };
+  // Leave envelope room inside the fixed tool budget, including family trajectories.
+  while (page.length > 1 && utf8ByteLength(JSON.stringify(result)) > 60_000) page.pop();
+  if (page.length < rows.length) {
+    const at = page[page.length - 1]!.resolvedAt;
+    const seen = page.filter(row => row.resolvedAt === at).length + (continuation && at === before ? offset : 0);
+    result.archive.nextBefore = `${at}:${seen}`;
+  }
+  return result;
+}
+
 export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_toronto_reported_occurrences',
+    title: 'Toronto reported crime occurrences',
     _outputBudgetBytes: 65536,
     // TPS rows are licensed for reuse with attribution. Extract it from the
     // cache envelope so a projection over `records` cannot leave the rows
     // without the licence assertion that permits redistributing them.
     _attribution: 'data.reported_occurrences.{attribution: attribution, source: source, fetchedAt: fetchedAt}',
-    description: 'Bounded Toronto Police Service Major Crime Indicators rows. Retrospective reported occurrences only; coordinates are approximate and this is not live dispatch.',
+    description: 'Return Toronto Police Service Major Crime Indicators rows: reported occurrences with offence, division, neighbourhood, approximate coordinates and report dates, from the seeded open-data extract (flagged stale after 2 weeks). Retrospective reported crime only; not live dispatch, and coordinates are approximate by design. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. division, neighbourhood and offence are case-insensitive substring filters; limit returns 1-100 rows (default 50). Attribution rides with every projection.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -700,6 +842,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_toronto_calls_attended',
+    title: 'Toronto police calls attended',
     _outputBudgetBytes: 65536,
     // Read AFTER `_postFilter`, which rewrites `attribution` from the source
     // descriptor — a pre-CKAN cached blob still carries the retired
@@ -766,8 +909,9 @@ export const CACHE_TOOLS: ToolDef[] = [
     // snapshot, it does not request new instruments. Documented in
     // docs/finance-data.mdx § Client parity.
     name: 'get_market_data',
+    title: 'Market quotes and commodity prices',
     _outputBudgetBytes: 131072,
-    description: 'Real-time equity quotes, commodity prices, SGE physical-vs-COMEX premiums, physical-divergence regimes and trends, crypto, FX, sectors with explicit valuation coverage, ETF flows, and Gulf markets. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers. Dedicated paid plans open or reuse one market panel allocation across curated filters. Explicit refresh requires request_id and charges one new allocation; API plans retain per-tool billing.',
+    description: 'Return the seeded market snapshot: equity, commodity, crypto and Gulf-market quotes, SGE physical-vs-COMEX premiums, physical-divergence regimes, sector performance with explicit valuation coverage, ETF flows and the Fear & Greed index. Quotes are flagged stale after 30 minutes. Covers the curated symbol universe only: symbols filters that snapshot and cannot look up arbitrary tickers. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. asset_class selects classes, limit caps each per-class list (default 30, 0 for no cap). Dedicated paid plans open or reuse one market panel allocation across filters; refresh with request_id starts a new one. API plans retain per-tool billing.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1140,9 +1284,10 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_conflict_events',
+    title: 'Armed conflict and unrest events',
     _uiResourceUri: CONFLICT_EVENTS_UI_URI,
     _outputBudgetBytes: CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES,
-    description: 'Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide. Dedicated paid connections use one panel allocation across openings and filters. Explicit refresh with a request_id starts one new allocation; the same ID retries it. Authorized panel_request reads include current usage when confirmed; unknown usage omits the numeric notice. API and free allowances retain per-tool billing and reject paid controls.',
+    description: 'Return the seeded conflict snapshot: active armed-conflict events (UCDP and Iran tracker) and unrest events with coordinates, fatalities and dates, plus country risk scores. UCDP data is flagged stale after 30 minutes, unrest after 2 hours. Event-level records; no narrative or forecasts. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country matches event country names and the alpha-2 code on risk scores; min_fatalities drops events below a count; limit caps each list (default 30, 0 for no cap). Dedicated paid connections reuse one panel allocation across openings and filters; refresh with request_id starts a new one; authorized panel_request reads report current usage when confirmed. API and free allowances retain per-tool billing and reject paid controls.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1266,8 +1411,9 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_aviation_status',
+    title: 'Airport delays and airspace closures',
     _outputBudgetBytes: 131072,
-    description: 'Airport delays, NOTAM airspace closures, and tracked military aircraft. Covers FAA delay data and active airspace restrictions.',
+    description: 'Return the seeded airport disruption snapshot: one alert row per monitored airport (about 85 major airports worldwide) with iata, name, country and severity, built from AviationStack delay aggregates for international hubs, FAA ASWS delays for US airports and ICAO NOTAM closures. Seeded about every 30 minutes and flagged stale after 90. The snapshot holds every monitored airport, so most rows are severity "normal" unless disrupted_only=true, and the default limit of 30 returns only part of it (0 for the whole list). Airport-level status only; no fares, schedules or flight tracks. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country is a case-insensitive name substring, iata selects one airport, limit caps the list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1310,9 +1456,10 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_news_intelligence',
+    title: 'Threat news stories and signals',
     _uiResourceUri: NEWS_INTELLIGENCE_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals including physical-premium regime transitions, and security advisories from WorldMonitor\'s intelligence layer. Each top story carries full corroboration metadata — uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, the contributing outlet names, every clustered headline, credibilityScore (0-100 source reliability, distinct from importance), corroboration, and the publishers roster with each publisher\'s declared tier; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Paid News Intelligence panels charge one opening allocation; repeat and filters reuse a closed source-bounded admission.',
+    description: 'Return the seeded threat-news feed as individual items, not a written brief: AI-classified top stories, GDELT intelligence signals by topic, cross-source signals (including physical-premium regime transitions) and government security advisories. Flagged stale after 30 minutes; live window only, not a historical index. Each top story carries corroboration metadata: uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, clustered headlines, credibilityScore (0-100 source reliability, distinct from importance), corroboration, and the publishers roster; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. topic, category, country, alerts_only, query and min_importance narrow the lists; limit caps each (default 30, 0 = no cap). Paid News Intelligence panels charge one opening allocation; repeat opens and filters reuse it.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1477,9 +1624,10 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_natural_disasters',
+    title: 'Earthquakes, wildfires and natural hazards',
     _uiResourceUri: NATURAL_DISASTERS_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Pro panels charge one allocation per opening; repeated views reuse the admission. Snapshot reuse is bounded by source clocks and known health, not complete provider coverage. Oversized paid panels may simplify or omit public geometry and regional detail, with explicit transportCoverage counts; API allowance reads retain full detail.',
+    description: 'Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Pro panels charge one allocation per opening; repeated views reuse the admission. Snapshot reuse is bounded by source clocks and known health, not complete provider coverage. An oversized response simplifies or omits storm geometry and regional detail, with explicit transportCoverage counts; a jmespath projection that fits returns the original detail.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1579,6 +1727,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       }
       return data;
     },
+    _fitToBudget: (result, budgetBytes, args) => presentNaturalDisastersPanel(result, budgetBytes, argBool(args.summary)),
     _cacheKeys: [
       'seismology:earthquakes:v1',
       'wildfire:fires:v1',
@@ -1593,8 +1742,9 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_military_posture',
+    title: 'Theater military posture',
     _outputBudgetBytes: 131072,
-    description: 'Theater posture assessment and military risk scores. Reflects aggregated military positioning and escalation signals across global theaters.',
+    description: 'Return the seeded theater posture assessment: for each global theater (Iran, Taiwan, Baltic, Korea and others) a posture level, military risk score and the aggregated positioning and escalation signals behind it. Flagged stale after 2 hours; theater-level summaries only, no individual aircraft or vessel tracks. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. theater is a case-insensitive id substring, posture_level filters one level exactly, limit caps the list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1643,8 +1793,9 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_cyber_threats',
+    title: 'Cyber threat intelligence',
     _outputBudgetBytes: 131072,
-    description: 'Active cyber threat intelligence: malware IOCs (URLhaus, Feodotracker), CISA known exploited vulnerabilities, and active command-and-control infrastructure.',
+    description: 'Return the seeded cyber-threat snapshot: malware indicators of compromise (URLhaus, Feodo Tracker), CISA Known Exploited Vulnerabilities and active command-and-control infrastructure, each with type, severity, country when known, and first-seen time. Flagged stale after 4 hours. Indicator feeds only; no incident narratives or attribution analysis. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. threat_type is a case-insensitive substring (malware, vulnerability, c2); min_severity keeps known severities at or above a level; country drops threats without a country; limit caps the list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1697,6 +1848,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_economic_data',
+    title: 'Rates, economic calendars and fuel prices',
     _outputBudgetBytes: 131072,
     description: 'Read cached rates, calendars and fuel prices with official-only 12-series China macro (no proxies, see launchReady). Includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, Bank of Russia official rates (RUB per 1 unit of each listed currency, plus the CBR key policy rate), EU yield curves, US federal spending awards, earnings, COT positioning, BIS household debt service ratios, and BIS residential/commercial property prices. Optional China macro data has official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Requested datasets may be unavailable or stale; this tool reads cached data and does not fetch fresh upstream releases.',
     inputSchema: {
@@ -1895,6 +2047,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_country_macro',
+    title: 'Country macroeconomic indicators',
     _outputBudgetBytes: 131072,
     description: 'Per-country macroeconomic indicators from IMF WEO (~210 countries, monthly cadence). Bundles fiscal/external balance (inflation, current account, gov revenue/expenditure/primary balance, CPI), growth & per-capita (real GDP growth, GDP/capita USD & PPP, savings & investment rates, savings-investment gap), labor & demographics (unemployment, population), and external trade (current account USD, import/export volume % changes). Latest available year per series. Use for country-level economic screening, peer benchmarking, and stagflation/imbalance flags. NOTE: export/import LEVELS in USD (exportsUsd, importsUsd, tradeBalanceUsd) are returned as null — WEO retracted broad coverage for BX/BM indicators in 2026-04; use currentAccountUsd or volume changes (import/exportVolumePctChg) instead.',
     inputSchema: {
@@ -1943,6 +2096,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_eu_housing_cycle',
+    title: 'EU house price index',
     _outputBudgetBytes: 131072,
     description: 'Eurostat annual house price index (prc_hpi_a, base 2015=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes the latest value, prior value, date, unit, and a 10-year sparkline series. Complements BIS WS_SPP with broader EU coverage for the Housing cycle tile.',
     inputSchema: {
@@ -1982,6 +2136,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_eu_quarterly_gov_debt',
+    title: 'EU quarterly government debt',
     _outputBudgetBytes: 131072,
     description: 'Eurostat quarterly general government gross debt (gov_10q_ggdebt, %GDP) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, quarter label, and an 8-quarter sparkline series. Provides fresher debt-trajectory signal than annual IMF GGXWDG_NGDP for EU panels.',
     inputSchema: {
@@ -2021,8 +2176,9 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_eu_industrial_production',
+    title: 'EU industrial production',
     _outputBudgetBytes: 131072,
-    description: 'Eurostat monthly industrial production index (sts_inpr_m, NACE B-D industry excl. construction, SCA, base 2021=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, month label, and a 12-month sparkline series. Leading indicator of real-economy activity used by the "Real economy pulse" sparkline.',
+    description: 'Return the Eurostat monthly industrial production index (sts_inpr_m: NACE B-D industry excluding construction, seasonally and calendar adjusted, 2021=100) for the 27 EU members plus the EA20 and EU27_2020 aggregates. Each country entry has the latest value, prior value, month label and a 12-month series. Monthly data; the seed is flagged stale after 5 days. Covers the EU industrial index only; no other production or GDP measures. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. countries uses Eurostat geo codes (ISO alpha-2 except EL for Greece); limit caps the country map when no filter is given (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2060,9 +2216,10 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_prediction_markets',
+    title: 'Prediction markets',
     _uiResourceUri: PREDICTION_MARKETS_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'Prediction markets: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. Contracts include current probabilities. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance. Dedicated paid connections use one panel allocation across openings and filters. Explicit refresh with a request_id starts one new allocation; the same ID retries it. API allowances retain per-tool billing.',
+    description: 'Return seeded prediction-market contracts from multiple venues with current probabilities, grouped into three buckets: geopolitical (including elections), tech (AI, crypto, science) and finance (economics, plus the untagged fallback for non-geopolitical records). Flagged stale when the seed is older than 90 minutes. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. query matches titles case-insensitively; limit caps each bucket (default 30, 0 for no cap). Dedicated paid connections reuse one panel allocation across openings and filters; refresh with a request_id starts a new one and the same ID retries it. API allowances retain per-tool billing. change24h/change7d are percentage-point moves (7d: Polymarket only); sort=move_24h|move_7d ranks by absolute move.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2073,6 +2230,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         },
         query: { type: 'string', description: 'Keep only markets whose title contains this text (case-insensitive).' },
         source: { type: 'string', enum: ['kalshi', 'polymarket'], description: 'Filter to one prediction-market source. Kalshi currently provides no classifier tags, so source=kalshi with category=tech returns no records.' },
+        sort: { type: 'string', enum: ['rank', 'move_24h', 'move_7d'], default: 'rank', description: 'Order each bucket by seed rank or absolute 24h/7d move before limiting. Missing moves go last.' },
         limit: { type: 'number', description: 'Cap each category bucket to at most this many markets (default 30, pass 0 for no cap).' },
         panel_request: { type: 'string', description: 'Paid prediction panel receipt. Reuse for internal curated reads without another daily allocation.' },
         refresh: { type: 'boolean', description: 'Paid panel only. Start a new allocation with request_id; retry the same ID to reuse it.' },
@@ -2086,16 +2244,22 @@ export const CACHE_TOOLS: ToolDef[] = [
         properties: {
           geopolitical: { type: 'array', items: { type: 'object', properties: {
             title: { type: 'string' }, yesPrice: { type: 'number', minimum: 0, maximum: 100 },
+            change24h: { type: 'number', minimum: -100, maximum: 100 },
+            change7d: { type: 'number', minimum: -100, maximum: 100 },
             source: { type: 'string' }, volume: { type: 'number' }, url: { type: 'string' },
             endDate: { type: 'string' }, regions: { type: 'array', items: { type: 'string' } },
           } } },
           tech: { type: 'array', items: { type: 'object', properties: {
             title: { type: 'string' }, yesPrice: { type: 'number', minimum: 0, maximum: 100 },
+            change24h: { type: 'number', minimum: -100, maximum: 100 },
+            change7d: { type: 'number', minimum: -100, maximum: 100 },
             source: { type: 'string' }, volume: { type: 'number' }, url: { type: 'string' },
             endDate: { type: 'string' }, regions: { type: 'array', items: { type: 'string' } },
           } } },
           finance: { type: 'array', items: { type: 'object', properties: {
             title: { type: 'string' }, yesPrice: { type: 'number', minimum: 0, maximum: 100 },
+            change24h: { type: 'number', minimum: -100, maximum: 100 },
+            change7d: { type: 'number', minimum: -100, maximum: 100 },
             source: { type: 'string' }, volume: { type: 'number' }, url: { type: 'string' },
             endDate: { type: 'string' }, regions: { type: 'array', items: { type: 'string' } },
           } } },
@@ -2112,9 +2276,20 @@ export const CACHE_TOOLS: ToolDef[] = [
       const query = argStr(params.query);
       const source = argStr(params.source);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
+      const sort = argStr(params.sort);
+      const changeField = sort === 'move_24h' ? 'change24h' : sort === 'move_7d' ? 'change7d' : null;
       for (const b of buckets) {
         if (query) narrowNested(data, 'markets-bootstrap', b, (m) => ciIncludes(m.title, query));
         if (source) narrowNested(data, 'markets-bootstrap', b, (m) => argStr(m.source) === source);
+        if (changeField) {
+          const node = bootstrap as Record<string, unknown>;
+          node[b] = [...node[b] as Record<string, unknown>[]].sort((a, b) => {
+            const aMove = a[changeField];
+            const bMove = b[changeField];
+            return (typeof bMove === 'number' && Number.isFinite(bMove) ? Math.abs(bMove) : -1)
+              - (typeof aMove === 'number' && Number.isFinite(aMove) ? Math.abs(aMove) : -1);
+          });
+        }
         capNested(data, 'markets-bootstrap', b, limit);
       }
       if (category && buckets.includes(category)) {
@@ -2134,16 +2309,21 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_sanctions_data',
+    title: 'Sanctions lists and pressure scores',
     _subscriptionOnly: true,
     _outputBudgetBytes: 131072,
-    description: 'OFAC SDN sanctioned entities list and sanctions pressure scores by country. Useful for compliance screening and geopolitical pressure analysis.',
+    description: 'Screen OFAC SDN, OFAC Consolidated, Canada SEMA and six US Consolidated Screening List export-control lists (BIS Entity, Denied Persons, Unverified, Military End User; State ITAR debarred, nonproliferation), or read country pressure and designation changes. Pressure counts OFAC and SEMA only; CSL rows have et unspecified, and their events carry notice (Federal Register citation) and url. screen matches names, up to 10 aliases and exact IMO IDs, returning score/matched_on/matched_text; query filters primary names. changes_since_days (1-90) selects history only, paged by changes_cursor, max 100 events/page. Gaps include held diffs above 5% removals; history keeps 90 days/10,000 events (truncatedBefore marks cap loss). Seeded every 6 hours, stale after 12 hours; no live fetch. Subscription required, weight 1. Matches are leads to confirm with the issuing agency, not legal advice.',
     inputSchema: {
       type: 'object',
       properties: {
         country: { type: 'string', description: 'Filter sanctioned entities and pressure scores to one ISO 3166-1 alpha-2 country code. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.' },
-        entity_type: { type: 'string', description: 'Filter to one entity type (case-insensitive substring, e.g. "vessel", "aircraft", "person", "entity").' },
+        entity_type: { type: 'string', description: 'Filter to one entity type (case-insensitive substring, e.g. "vessel", "aircraft", "individual", "entity"; CSL rows are "unspecified").' },
         query: { type: 'string', description: 'Keep only sanctioned entities whose name contains this text (case-insensitive).' },
-        limit: { type: 'number', description: 'Cap the entity list and recent pressure entries to at most this many items (default 30, pass 0 for no cap).' },
+        screen: { type: 'string', minLength: 2, maxLength: 200, description: 'Screen a name, alias or IMO identifier against the seeded lists (2-200 characters). Omit changes_since_days for entity screening.' },
+        min_score: { type: 'number', minimum: 0, maximum: 100, default: 70, description: 'Minimum screening score from 0 to 100 (default 70); applies only with screen.' },
+        changes_since_days: { type: 'integer', minimum: 1, maximum: 90, description: 'Select history only for the last 1-90 days. Country, entity_type and query filter events; gaps remain visible on every page.' },
+        changes_cursor: { type: 'string', maxLength: 64, description: 'Continue from changes.nextCursor with the same filters. Restart if the seeded history changed.' },
+        limit: { type: 'number', description: 'List cap, default 30; 0 removes the cap except in history mode, where pages contain at most 100 events and may be smaller to fit the response budget.' },
       },
       required: [],
     },
@@ -2156,7 +2336,11 @@ export const CACHE_TOOLS: ToolDef[] = [
         items: { type: 'object', properties: {
           // Up to three ISO country codes per entity (scripts/seed-sanctions-pressure.mjs).
           name: { type: 'string' }, cc: { type: 'array', items: { type: 'string' } }, et: { type: 'string' },
-          addr: { type: 'string' },
+          id: { type: 'string' }, pr: { type: 'array', items: { type: 'string' } },
+          al: { type: 'array', maxItems: 10, items: { type: 'string' } },
+          ids: { type: 'array', items: { type: 'string' } }, sl: { type: 'array', items: { type: 'string' } },
+          score: { type: 'number', minimum: 0, maximum: 100 },
+          matched_on: { enum: ['name', 'alias', 'identifier'] }, matched_text: { type: 'string' },
         } },
       },
       pressure: {
@@ -2170,13 +2354,82 @@ export const CACHE_TOOLS: ToolDef[] = [
           } } },
         },
       },
+      changes: {
+        type: ['object', 'null'],
+        properties: {
+          version: { type: 'number' }, fetchedAt: { type: 'number' }, truncatedBefore: { type: 'number' },
+          matchingEvents: { type: 'integer' }, nextCursor: { type: 'string', description: 'Continue with changes_cursor; empty when complete. Keep the same filters.' },
+          events: { type: 'array', items: { type: 'object', properties: {
+            at: { type: 'number' }, effectiveAt: { type: 'string' },
+            op: { type: 'string', enum: ['added', 'removed', 'amended'] },
+            list: { type: 'string' }, id: { type: 'string' }, name: { type: 'string' }, et: { type: 'string' },
+            cc: { type: 'array', items: { type: 'string' } }, pr: { type: 'array', items: { type: 'string' } },
+            prevPr: { type: 'array', items: { type: 'string' } },
+            notice: { type: 'string', description: 'Federal Register citation (CSL lists only).' },
+            url: { type: 'string', description: 'Issuing list page (CSL lists only).' },
+          } } },
+          gaps: { type: 'array', items: { type: 'object', properties: {
+            list: { type: 'string' }, from: { type: 'number' }, to: { type: 'number' },
+            reason: { type: 'string', enum: ['retained', 'unavailable', 'held', 'baseline-unavailable'] },
+          } } },
+        },
+      },
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
+      if (params.screen !== undefined && (typeof params.screen !== 'string'
+        || params.screen.trim().length < 2 || params.screen.trim().length > 200)) {
+        throw new RpcValidationError('get_sanctions_data', [{ field: 'screen', description: 'Expected 2-200 characters.' }]);
+      }
+      if (params.min_score !== undefined && (typeof params.min_score !== 'number'
+        || !Number.isFinite(params.min_score) || params.min_score < 0 || params.min_score > 100)) {
+        throw new RpcValidationError('get_sanctions_data', [{ field: 'min_score', description: 'Expected a score from 0 to 100.' }]);
+      }
       const countries = resolveCountryFilter(params.country, 'country');
       const etype = argStr(params.entity_type);
       const query = argStr(params.query);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
+      const days = params.changes_since_days;
+      if (days !== undefined && params.screen !== undefined) {
+        throw new RpcValidationError('get_sanctions_data', [{ field: 'screen', description: 'Use screen without changes_since_days; history supports query.' }]);
+      }
+      const cursor = sanctionsChangesCursor(params.changes_cursor);
+      if (days === undefined && params.changes_cursor !== undefined) {
+        throw new RpcValidationError('get_sanctions_data', [{ field: 'changes_cursor', description: 'Requires changes_since_days.' }]);
+      }
+      if (days !== undefined && (typeof days !== 'number' || !Number.isInteger(days) || days < 1 || days > 90)) {
+        throw new RpcValidationError('get_sanctions_data', [{ field: 'changes_since_days', description: 'Expected an integer from 1 to 90.' }]);
+      }
+      if (days === undefined) delete data.changes;
+      else {
+        const snapshotAt = (data.changes as { fetchedAt?: number } | null)?.fetchedAt;
+        const since = (snapshotAt ?? Date.now()) - (days as number) * 86400000;
+        narrowNested(data, 'changes', 'events', e => typeof e.at === 'number' && e.at >= since
+          && (!countries.length || matchesCode(e.cc, countries))
+          && (!etype || ciIncludes(e.et, etype)) && (!query || ciIncludes(e.name, query)));
+        narrowNested(data, 'changes', 'gaps', gap => typeof gap.to === 'number' && gap.to >= since);
+        const changes = data.changes;
+        if (changes && typeof changes === 'object' && !Array.isArray(changes)) {
+          const log = changes as Record<string, unknown>;
+          delete log.sourceFetchedAt;
+          delete log.heldSources;
+          if (cursor.fetchedAt !== undefined && cursor.fetchedAt !== log.fetchedAt) {
+            throw new RpcValidationError('get_sanctions_data', [{ field: 'changes_cursor', description: 'History changed; restart without the cursor.' }]);
+          }
+          if (Array.isArray(log.events)) {
+            log.events.sort((a, b) => Number(b.at) - Number(a.at));
+            const total = log.events.length;
+            if (cursor.offset > total) {
+              throw new RpcValidationError('get_sanctions_data', [{ field: 'changes_cursor', description: 'Cursor is outside the filtered history.' }]);
+            }
+            const size = limit === 0 ? 100 : Math.max(1, Math.min(100, Math.trunc(limit)));
+            const page = log.events.slice(cursor.offset, cursor.offset + size);
+            log.events = page;
+            log.matchingEvents = total;
+            log.nextCursor = cursor.offset + page.length < total ? `${log.fetchedAt}:${cursor.offset + page.length}` : '';
+          }
+        }
+      }
       if (countries.length > 0) {
         narrowArray(data, 'entities', (e) => matchesCode(e.cc, countries));
         narrowNested(data, 'pressure', 'entries', (e) => matchesCode(e.countryCodes, countries));
@@ -2187,12 +2440,32 @@ export const CACHE_TOOLS: ToolDef[] = [
         narrowNested(data, 'pressure', 'entries', (e) => ciIncludes(e.entityType, etype));
       }
       if (query) narrowArray(data, 'entities', (e) => ciIncludes(e.name, query));
+      if (typeof params.screen === 'string' && Array.isArray(data.entities)) {
+        data.entities = screenSanctions(data.entities, params.screen.trim(), argNum(params.min_score) ?? 70);
+      }
       capArrays(data, limit);
       capNested(data, 'pressure', 'entries', limit);
       return data;
     },
-    _cacheKeys: ['sanctions:entities:v1', 'sanctions:pressure:v1'],
-    _freshnessChecks: [{ key: 'seed-meta:sanctions:entities', maxStaleMin: 1440 }],
+    _fitToBudget: (result, budgetBytes, args) => {
+      if (args.changes_since_days === undefined) return result;
+      const presented = structuredClone(result);
+      const data = presented.data as Record<string, unknown> | undefined;
+      const log = data?.changes as Record<string, unknown> | null | undefined;
+      if (!log || !Array.isArray(log.events)) return result;
+      const { offset } = sanctionsChangesCursor(args.changes_cursor);
+      while (log.events.length > 1 && utf8ByteLength(JSON.stringify(presented)) > budgetBytes) {
+        log.events.pop();
+        log.nextCursor = `${log.fetchedAt}:${offset + log.events.length}`;
+      }
+      return presented;
+    },
+    _cacheKeys: ['sanctions:entities:v1', 'sanctions:pressure:v1', 'sanctions:changes:v1'],
+    _freshnessChecks: [
+      { key: 'seed-meta:sanctions:entities', maxStaleMin: 720 },
+      { key: 'seed-meta:sanctions:pressure', maxStaleMin: 720 },
+      { key: 'seed-meta:sanctions:changes', maxStaleMin: 720 },
+    ],
     _apiPaths: [
       "GET /api/sanctions/v1/list-sanctions-pressure",
       "GET /api/sanctions/v1/lookup-sanction-entity",
@@ -2200,8 +2473,9 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_cross_border_arrivals',
+    title: 'Cross-border refugee arrivals',
     _outputBudgetBytes: 262144,
-    description: 'UNHCR Operational Data Portal cross-border displacement situations, arrivals and returns. Public cached aggregates with source dates and partial unavailable situation IDs. Situations overlap: never sum them into a global total. Stock totals and monthly arrivals are different measures. Not annual UNHCR statistics or IOM DTM. No request-time provider fetch.',
+    description: 'Return UNHCR Operational Data Portal cross-border displacement situations: per-situation arrival and return counts, stock totals, source dates and the IDs of situations that were unavailable at seed time. Flagged stale after 2 days; no request-time provider fetch. Situations overlap, so they are never summed into a global total; stock totals and monthly arrivals are different measures; this is not UNHCR annual statistics or IOM DTM. Takes no filters. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. Attribution and source URLs ride with every projection.',
     inputSchema: { type: 'object', properties: {}, required: [] },
     outputSchema: cacheEnvelope({
       crossBorderArrivals: {
@@ -2281,8 +2555,9 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_displacement_data',
+    title: 'Refugee and displacement counts',
     _outputBudgetBytes: 131072,
-    description: 'Refugee and IDP counts by country (UNHCR annual data).',
+    description: 'Return UNHCR annual displacement statistics for one reporting year (summary.year): global totals and per-country refugees, asylum seekers, IDPs and stateless people by origin, totals hosted by each asylum country, and the largest origin-to-asylum refugee flows, with centroid coordinates where known. Answers how many people a country has displaced or hosts. Annual stock figures only: no monthly arrivals, live crisis-situation updates or deaths, and no year selection; until UNHCR publishes the current year the snapshot holds the prior year, which summary.year names. Flagged stale after 60 hours. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. countries keeps rows whose origin or asylum country matches; limit caps the country and flow lists (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2351,6 +2626,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_health_signals',
+    title: 'Disease outbreaks and air quality',
     _outputBudgetBytes: 131072,
     description: 'Active disease outbreaks (WHO/ECDC etc.) and global air-quality station readings (OpenAQ/WAQI PM2.5). For health-risk screening.',
     inputSchema: {
@@ -2436,8 +2712,9 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_energy_intelligence',
+    title: 'Energy supply, prices and disruptions',
     _outputBudgetBytes: 131072,
-    description: 'Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), national natural-gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies. Gas-storage observations include country fill percentage, stored TWh and observation date; _countries is only a coverage index. Null observations mean unavailable, not zero.',
+    description: 'Return the seeded energy bundle: EIA petroleum stocks, Ember electricity prices and generation mix, GIE national gas storage (fill percentage, stored TWh, observation date per country), fuel shortages, active energy disruptions, government crisis policies, fossil-electricity share and World Bank renewable share. Each sub-dataset carries its own seed time and staleness budget (gas storage and electricity are flagged stale after 2 days, crisis policies only after many months). _countries is a coverage index only, and null observations mean unavailable, not zero. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects sub-datasets, country narrows the country-keyed ones, limit caps each list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2571,6 +2848,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_energy_storage',
+    title: 'Gas and crude storage levels',
     _outputBudgetBytes: 65536,
     description: 'EU gas storage and US gas/crude inventories with dated history. Seeded GIE AGSI+ and EIA data, not live quotes. Gas is in TWh or billion cubic feet; crude is in million barrels. Null datasets or weekly changes mean unavailable, not zero. Freshness covers all three sources, including when selecting a subset.',
     inputSchema: {
@@ -2666,9 +2944,101 @@ export const CACHE_TOOLS: ToolDef[] = [
     ],
   },
   {
-    name: 'get_climate_data',
+    name: 'get_oil_trade_series',
+    title: 'Oil production and export series by country',
     _outputBudgetBytes: 131072,
-    description: 'Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normals), climate-relevant disaster alerts (ReliefWeb/GDACS/FIRMS), atmospheric CO2 trend (NOAA Mauna Loa), air quality (OpenAQ/WAQI PM2.5 stations), Arctic sea ice extent and ocean heat indicators (NSIDC/NOAA), weather alerts, and climate news.',
+    description: 'Monthly oil supply and export series for 24 major exporters over 24 complete months, comparing the last N complete months with the N before and a year earlier (default N=6), e.g. UAE oil exports, last 6 months vs the 6 before. Four sources, never blended: production (EIA STEO liquids supply, revisable estimates); jodi (the country\'s own JODI crude and product exports; the UAE has filed none since 2019); mirror (Comtrade imports declared by buyers, a lagging sample compared only on buyers in basis.reporters); ais (PortWatch tanker loadings, an index that undercounts, not an export total). Uncovered months are null, never zero; each source has status and lastObserved. Weekly seed, stale after 14 days. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. country adds monthly rows; window_months sets N (1-12).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Countries as ISO alpha-2, alpha-3 or English names (e.g. ["AE"], ["Saudi Arabia"]). Selected countries include their monthly rows. Omit for every covered country, comparison only. Unresolved inputs return Invalid params; a resolvable country outside the 24 covered returns no row.',
+        },
+        window_months: {
+          type: 'integer', minimum: 1, maximum: 12,
+          description: 'Months per comparison window, ending at the last complete month (default 6: the last 6 complete months vs the 6 before, plus the same 6 months a year earlier).',
+        },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      oilTradeSeries: {
+        type: ['object', 'null'],
+        properties: {
+          generatedAt: { type: 'string', description: 'Seed time.' },
+          throughMonth: { type: 'string', description: 'Last complete month at seed time.' },
+          windowMonths: { type: 'integer' },
+          conversion: { type: 'object', properties: { crudeBblPerTonne: { type: 'number' }, productsBblPerTonne: { type: 'number' } } },
+          unavailable: { type: 'object', description: 'Countries whose mirror or ais fetch failed at seed time. Unavailable, not zero.', properties: {
+            mirror: { type: 'array', items: { type: 'string' } }, ais: { type: 'array', items: { type: 'string' } },
+          } },
+          countries: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                iso2: { type: 'string' }, iso3: { type: 'string' }, name: { type: 'string' },
+                sources: { type: 'object', description: 'Per source: name, url, measure, status (ok, stale, not_reported, unavailable), lastObserved month. carriedForward marks an unavailable source still showing its previous publish\'s months.' },
+                comparison: {
+                  type: 'object',
+                  properties: {
+                    windowMonths: { type: 'integer' },
+                    windows: { type: 'object', description: 'current, prior and yearAgo as {from, to} months.' },
+                    metrics: {
+                      type: 'object',
+                      description: 'production, jodiCrudeExports, jodiProductExports, mirrorCrudeImports, mirrorProductImports, aisTankerLoadings. Each: current/prior/yearAgo {kbd, monthsCovered} day-weighted over covered months (kbd null when none), changePct vs prior, yoyPct (currentForYoy vs yearAgo; for mirror metrics on basis.yoyReporters), complete (both windows fully covered), and for mirror metrics basis.reporters.',
+                    },
+                  },
+                },
+                months: {
+                  type: 'array',
+                  description: 'Present only for selected countries. One row per month; a source block is null for a month it does not cover.',
+                  items: { type: 'object', properties: {
+                    month: { type: 'string' },
+                    production: { type: ['object', 'null'], properties: { kbd: { type: 'number' }, provisional: { type: 'boolean' } } },
+                    jodi: { type: ['object', 'null'], properties: { crudeExportsKbd: { type: ['number', 'null'] }, productExportsKbd: { type: ['number', 'null'] }, crudeProductionKbd: { type: ['number', 'null'] } } },
+                    mirror: { type: ['object', 'null'], properties: { crudeKbd: { type: ['number', 'null'] }, productsKbd: { type: ['number', 'null'] }, reporters: { type: 'object' }, otherKbd: { type: ['object', 'null'] } } },
+                    ais: { type: ['object', 'null'], properties: { complete: { type: 'boolean' }, loadingsKbd: { type: ['number', 'null'] }, exportTankerKt: { type: ['number', 'null'] }, tankerCalls: { type: ['number', 'null'] } } },
+                  } },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _cacheKeys: ['energy:oil-trade-series:v1'],
+    _cacheLabels: { 'energy:oil-trade-series:v1': 'oilTradeSeries' },
+    _freshnessChecks: [{ key: 'seed-meta:energy:oil-trade-series', maxStaleMin: 20160, minRecordCount: 18, honorContentAge: true }],
+    _apiPaths: [],
+    _postFilter: (data, params) => {
+      const payload = data.oilTradeSeries;
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return data;
+      const stored = (payload as { countries?: unknown }).countries;
+      if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return data;
+      const selected = resolveCountryFilter(params.country, 'country').map((code) => code.toUpperCase());
+      const rawWindow = argNum(params.window_months);
+      const windowMonths = rawWindow !== null && Number.isInteger(rawWindow) && rawWindow >= 1 && rawWindow <= 12 ? rawWindow : 6;
+      const nowMs = Date.now();
+      const countries = Object.values(stored as Record<string, Record<string, unknown>>)
+        .filter((c) => selected.length === 0 || selected.includes(String(c?.iso2)))
+        .map((c) => {
+          const expanded = expandCountry(c);
+          const { months, from: _from, to: _to, ...rest } = expanded;
+          const comparison = compareOilWindows(expanded, { nowMs, windowMonths });
+          return selected.length > 0 ? { ...rest, comparison, months } : { ...rest, comparison };
+        });
+      return { ...data, oilTradeSeries: { ...payload, windowMonths, countries } };
+    },
+  },
+  {
+    name: 'get_climate_data',
+    title: 'Climate anomalies and disasters',
+    _outputBudgetBytes: 131072,
+    description: 'Return the seeded climate bundle: temperature and precipitation anomalies against 30-year WMO normals, climate-relevant disaster alerts (ReliefWeb, GDACS, FIRMS), the NOAA Mauna Loa CO2 trend, OpenAQ/WAQI PM2.5 station readings, NSIDC/NOAA Arctic sea-ice extent and ocean-heat indicators, active weather alerts and climate news. Each sub-dataset carries its own seed time and staleness budget (anomalies are flagged stale after 2 h, CO2 and sea ice after 2 days). Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects sub-datasets, country narrows the disaster and air-quality lists, limit caps each list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2737,16 +3107,14 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_imd_cyclone_marine',
+    title: 'India cyclone and marine bulletins',
     _outputBudgetBytes: 65536,
     // IMD bulletins are reusable with attribution to the issuing office. The
     // snapshot carries it inline; the rider keeps it attached when a caller
-    // projects only `cyclones` or `portWarnings`.
+    // projects only `seaBulletins` or `coastalBulletins`.
     _attribution: 'data.imd_cyclone_marine.{attribution: attribution, sourceName: sourceName, sourceUrl: sourceUrl}',
     description:
-      'Bounded India Meteorological Department cyclone tracks, forecast wind radii, cones of uncertainty, and official port / sea-area / coastal bulletins. ' +
-      'Not merged into weather:alerts:v1. Live fetch requires IMD_API_KEY plus IMD_API_EMAIL and IMD_API_PASSWORD to mint a short-lived JWT for each run. ' +
-      'Read coverageState on every call: disabled means the IMD credentials are missing or invalid, degraded is a partial product failure, unavailable means no usable IMD snapshot, and ok is live. ' +
-      'Empty lists with disabled, degraded, or unavailable coverage are not an India all-clear.',
+      'Return India Meteorological Department sea-area and coastal marine bulletins from the public mausam.imd.gov.in pages: storm warnings, port signals, storm-surge and tidal warnings, wind, visibility and sea state per area with each bulletin\'s validity window. Flagged stale after 45 minutes; not merged into the global weather alerts. IMD cyclone track, wind-radii and cone products are API-only and disabled (GDACS covers North Indian Ocean cyclones in the natural-events data); port and fishermen warning PDFs are not parsed. coverageState reports bulletin coverage: ok is live, degraded means some pages failed and their last-good records were carried, unavailable means no page was readable; per-page status is under products.<id>.pages, and empty lists under degraded or unavailable coverage are not an all-clear. An oversized response trims lists from the end and reports each trimmed list in transportCoverage. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2759,7 +3127,8 @@ export const CACHE_TOOLS: ToolDef[] = [
       },
       required: [],
     },
-    outputSchema: cacheEnvelope({
+    outputSchema: (() => {
+      const schema = cacheEnvelope({
       imd_cyclone_marine: {
         type: ['object', 'null'],
         properties: {
@@ -2789,8 +3158,21 @@ export const CACHE_TOOLS: ToolDef[] = [
         },
         required: ['coverageState'],
       },
-    }),
+      }) as { properties: Record<string, unknown> };
+      return { ...schema, properties: { ...schema.properties, transportCoverage: {
+        type: 'object', required: ['count_scope', 'collections'], properties: {
+          count_scope: { const: 'post_filter_snapshot' },
+          collections: { type: 'object', additionalProperties: { type: 'object', required: [
+            'original_count', 'returned_count', 'omitted_count', 'omission_reason',
+          ], properties: {
+            original_count: { type: 'integer', minimum: 0 }, returned_count: { type: 'integer', minimum: 0 },
+            omitted_count: { type: 'integer', minimum: 0 }, omission_reason: { const: 'output_budget' },
+          } } },
+        },
+      } } };
+    })(),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _fitToBudget: fitImdToBudget,
     _postFilter: (data, params) => {
       let snapshot = data.imd_cyclone_marine;
       // A legacy or corrupt cache value must not look like an India all-clear.
@@ -2843,8 +3225,9 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_infrastructure_status',
+    title: 'Internet outages and cloud status',
     _outputBudgetBytes: 131072,
-    description: 'Internet infrastructure health: Cloudflare Radar outages and service status for major cloud providers and internet services.',
+    description: 'Return the seeded Internet infrastructure snapshot: Cloudflare Radar national and regional outages with start time, severity and cause, plus service status for major cloud providers and Internet services. Flagged stale after 30 minutes. Connectivity incidents only; no traffic volumes, DDoS data or physical infrastructure. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country and severity are case-insensitive substring filters; limit caps the outage list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2880,15 +3263,17 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_supply_chain_data',
+    title: 'Freight rates, supply-chain pressure and trade flows',
+    _subscriptionOnly: true,
     _outputBudgetBytes: 131072,
-    description: 'Dry bulk shipping stress index, customs revenue flows, and COMTRADE bilateral trade data. Tracks global supply chain pressure and trade disruptions.',
+    description: 'Return seeded supply-chain pressure and trade data: freight-rate indices, the NY Fed GSCPI, a BDRY and carrier-equity shipping-stress proxy, monthly customs revenue and UN COMTRADE flows. Freight includes FRED levels and history, plus SSE change percentages, direction and z-scores against stored prior observations, with at least 12 baseline points. SSE raw levels and Baltic indices are excluded. GSCPI is monthly, in standard deviations, and subject to revision. Customs revenue is stale after 2 days; freight after 7 hours; GSCPI after 2 days. Requires a paid plan; no live fetch, weight 1 on API plans. dataset selects shipping_stress, customs-revenue, flows, freight-rates or gscpi; commodity and reporter filter flows. limit caps lists, with newest GSCPI months kept chronological (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
         dataset: {
           type: 'array',
-          items: { type: 'string', enum: ['shipping_stress', 'customs-revenue', 'flows'] },
-          description: 'Restrict the response to one or more sub-datasets (dry-bulk shipping stress / customs revenue / COMTRADE flows). Omit for all.',
+          items: { type: 'string', enum: ['shipping_stress', 'customs-revenue', 'flows', 'freight-rates', 'gscpi'] },
+          description: 'Restrict the response to one or more sub-datasets (equity shipping-stress proxy, customs revenue, COMTRADE flows, freight rates, GSCPI). Omit for all.',
         },
         commodity: {
           type: 'string',
@@ -2898,7 +3283,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           type: 'string',
           description: 'Filter COMTRADE flows to one reporter by numeric reporter code or reporter name (e.g. "156" or "China").',
         },
-        limit: { type: 'number', description: 'Cap each list dataset (carriers, months, flows) to at most this many items (default 30, pass 0 for no cap).' },
+        limit: { type: 'number', description: 'Cap each list dataset (carriers, months, flows, freight indices and GSCPI observations) to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -2922,6 +3307,45 @@ export const CACHE_TOOLS: ToolDef[] = [
           partner: { type: 'string' }, value: { type: ['number', 'null'] },
         } } } },
       },
+      'freight-rates': {
+        type: ['object', 'null'],
+        properties: {
+          fetchedAt: { type: ['string', 'null'] },
+          indices: { type: 'array', items: {
+            type: 'object',
+            properties: {
+              indexId: { type: 'string', enum: ['PCU483111483111', 'TSIFRGHT', 'SCFI', 'CCFI'] },
+              name: { type: 'string' }, source: { type: 'string' }, unit: { type: 'string' },
+              frequency: { type: 'string', enum: ['monthly', 'weekly'] },
+              observationDate: { type: ['string', 'null'] },
+              periodChangePct: { type: ['number', 'null'] },
+              periodChangeBasis: { type: ['string', 'null'] }, priorPeriodDate: { type: ['string', 'null'] },
+              zScore: { type: ['number', 'null'], description: 'Population z-score against stored observations excluding the latest. Null with fewer than 12 baseline points or zero variance.' },
+              baselinePoints: { type: 'integer' }, baselineStart: { type: ['string', 'null'] },
+              direction: { type: ['string', 'null'], enum: ['up', 'down', 'flat', null] },
+              currentValue: { type: ['number', 'null'], description: 'FRED series only.' },
+              history: { type: 'array', description: 'FRED series only.', items: { type: 'object', properties: {
+                date: { type: 'string' }, value: { type: 'number' },
+              } } },
+            },
+            required: ['indexId', 'source', 'frequency', 'observationDate', 'periodChangePct', 'zScore', 'baselinePoints', 'baselineStart', 'direction'],
+            additionalProperties: false,
+          } },
+        },
+      },
+      gscpi: {
+        type: ['object', 'null'],
+        description: 'Federal Reserve Bank of New York Global Supply Chain Pressure Index. Monthly values are subject to revision.',
+        properties: {
+          source: { type: 'string' }, sourceUrl: { type: 'string' },
+          series: { type: 'object', properties: {
+            series_id: { type: 'string' }, title: { type: 'string' }, units: { type: 'string' }, frequency: { type: 'string' },
+            observations: { type: 'array', items: { type: 'object', properties: {
+              date: { type: 'string' }, value: { type: 'number' },
+            } } },
+          } },
+        },
+      },
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
@@ -2937,72 +3361,56 @@ export const CACHE_TOOLS: ToolDef[] = [
       capNested(data, 'shipping_stress', 'carriers', limit);
       capNested(data, 'customs-revenue', 'months', limit);
       capNested(data, 'flows', 'flows', limit);
+      capNested(data, 'freight-rates', 'indices', limit);
+      const series = (data.gscpi as { series?: { observations?: unknown[] } } | null)?.series;
+      if (series?.observations && limit > 0) {
+        const count = Math.floor(limit);
+        series.observations = count > 0 ? series.observations.slice(-count) : [];
+      }
       return selectDatasets(data, argStrList(params.dataset));
     },
+    _project: projectSupplyChainData,
+    _cacheLabels: { 'supply_chain:shipping:v2': 'freight-rates', 'economic:fred:v1:GSCPI:0': 'gscpi' },
     _cacheKeys: [
       'supply_chain:shipping_stress:v1',
       'trade:customs-revenue:v1',
       'comtrade:flows:v1',
+      'supply_chain:shipping:v2',
+      'economic:fred:v1:GSCPI:0',
     ],
-    _freshnessChecks: [{ key: 'seed-meta:trade:customs-revenue', maxStaleMin: 2880 }],
+    _freshnessChecks: [
+      { key: 'seed-meta:trade:customs-revenue', maxStaleMin: 2880 },
+      { key: 'seed-meta:supply_chain:shipping', maxStaleMin: 420, honorContentAge: true },
+      { key: 'seed-meta:economic:gscpi', maxStaleMin: 2880 },
+    ],
     _apiPaths: [
       "GET /api/supply-chain/v1/get-shipping-stress",
       "GET /api/trade/v1/get-customs-revenue",
+      "GET /api/supply-chain/v1/get-shipping-rates",
     ],
   },
   {
-    name: 'get_tariff_trends',
+    name: 'get_price_and_debt_indicators',
+    title: 'Big Mac, food price and debt indicators',
     _outputBudgetBytes: 131072,
-    description: 'Global trade and pricing indicators: US MFN applied tariff trend (all-products average; for another reporter, a partner or a product group use get_tariff_averages), Big Mac index, FAO Food Price Index, and per-country national debt levels.',
+    description: 'Return the seeded price and debt indicator bundle: the Economist Big Mac index by country, the FAO Food Price Index and per-country national debt levels. Each sub-dataset has its own staleness budget (Big Mac a week, FAO and debt 60 days). No tariff rates: a dataset value of tariffs is rejected with a validation error. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects bigmac, fao-ffpi or national-debt; country narrows Big Mac and debt rows (alpha-2, alpha-3 or name); limit caps each list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
         dataset: {
           type: 'array',
-          items: { type: 'string', enum: ['tariffs', 'bigmac', 'fao-ffpi', 'national-debt'] },
+          items: { type: 'string', enum: ['bigmac', 'fao-ffpi', 'national-debt'] },
           description: 'Restrict the response to one or more sub-datasets. Omit for the full bundle.',
         },
         country: {
           type: 'string',
           description: 'Filter the per-country datasets to one ISO 3166-1 alpha-2 country code (e.g. "US"). It is translated to alpha-3 internally for the national-debt dataset; passing an alpha-3 code directly also works. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
         },
-        limit: { type: 'number', description: 'Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap). Tariff datapoints keep the most recent years; coverageStartYear/coverageEndYear describe the full seeded window.' },
+        limit: { type: 'number', description: 'Cap each list dataset (BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
-    // First cache key `trade:tariffs:v2:840` — last informative segment is the
-    // reporter code (bare digits → NON_LABEL drops it), so the walk would land
-    // on `tariffs`. Pin the historical `all` label via `_cacheLabels` so the
-    // dataset enum and postFilter map stay stable for callers.
     outputSchema: cacheEnvelope({
-      // WTO TP_A_0010: the US simple-average MFN applied rate across all
-      // products, one row per year, oldest first. There is no partner or
-      // HS-level breakdown: partnerCountry is always "World", productSector
-      // "All products", and boundRate 0 (not seeded).
-      all: {
-        type: ['object', 'null'],
-        properties: {
-          datapoints: { type: 'array', items: { type: 'object', properties: {
-            reportingCountry: { type: 'string' },
-            partnerCountry: { type: 'string' },
-            productSector: { type: 'string' },
-            year: { type: 'number' },
-            tariffRate: { type: ['number', 'null'] },
-            boundRate: { type: ['number', 'null'], description: 'Always 0: a placeholder, not an observed bound rate. Bound rates are not seeded.' },
-            indicatorCode: { type: 'string' },
-          } } },
-          // Customs duties / goods imports from FRED (BEA), when available.
-          effectiveTariffRate: { type: 'object', properties: {
-            sourceName: { type: 'string' },
-            sourceUrl: { type: 'string' },
-            observationPeriod: { type: 'string' },
-            updatedAt: { type: 'string' },
-            tariffRate: { type: 'number' },
-          } },
-          coverageStartYear: { type: 'number' },
-          coverageEndYear: { type: 'number' },
-        },
-      },
       bigmac: {
         type: ['object', 'null'],
         properties: { countries: { type: 'array', items: { type: 'object', properties: {
@@ -3019,6 +3427,12 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
+      const ds = argStrList(params.dataset);
+      // The US MFN series left this free-account bundle (#9301): its REST
+      // route is Pro, and get_tariff_averages serves it there.
+      if (ds.includes('tariffs')) {
+        throw new RpcValidationError('get_price_and_debt_indicators', [{ field: 'dataset', description: 'The tariffs dataset moved to get_tariff_averages (Pro). Choose bigmac, fao-ffpi or national-debt.' }]);
+      }
       const countries = resolveCountryFilter(params.country, 'country');
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (countries.length > 0) {
@@ -3031,40 +3445,20 @@ export const CACHE_TOOLS: ToolDef[] = [
         ];
         narrowNested(data, 'national-debt', 'entries', (e) => matchesCode(e.iso3, debtCodes));
       }
-      // Tariff datapoints are oldest-first; keep the most recent years.
-      // Truncate like capNested so a fractional limit below 1 keeps none
-      // (slice(-0) would keep all).
-      if (limit > 0) {
-        const n = Math.floor(limit);
-        mapNested(data, 'all', 'datapoints', (d) => (Array.isArray(d) ? (n > 0 ? d.slice(-n) : []) : d));
-      }
       capNested(data, 'bigmac', 'countries', limit);
       capNested(data, 'national-debt', 'entries', limit);
-      const ds = argStrList(params.dataset);
-      if (ds.length > 0) {
-        const map: Record<string, string> = { tariffs: 'all', bigmac: 'bigmac', 'fao-ffpi': 'fao-ffpi', 'national-debt': 'national-debt' };
-        return selectDatasets(data, compact(ds.map((d) => map[d])));
-      }
+      if (ds.length > 0) return selectDatasets(data, ds);
       return data;
     },
-    // 4-key bundle spanning trade + economic domains. Cadences span the 6h
-    // tariff cron (fleet seed-meta, maxStaleMin 420 inside TARIFF_TTL 480) to
-    // monthly (FAO / national debt). Per-key _freshnessChecks pulled from
-    // api/health.js::SEED_META so a slow monthly key doesn't drag the
-    // aggregate stale flag and a fast tariff outage isn't masked by a long FAO
-    // budget. The US reporter key is a canary payload; fleet freshness rides
-    // on seed-meta:trade:tariffs (#6316).
+    // 3-key economic bundle, weekly (Big Mac) to monthly (FAO / national
+    // debt). Per-key _freshnessChecks pulled from api/health.js::SEED_META so
+    // a slow monthly key doesn't drag the aggregate stale flag.
     _cacheKeys: [
-      'trade:tariffs:v2:840',          // US canary payload (label pinned to "all")
       'economic:bigmac:v1',            // BOOTSTRAP_KEYS::bigmac
       'economic:fao-ffpi:v1',          // BOOTSTRAP_KEYS::faoFoodPriceIndex
       'economic:national-debt:v1',     // BOOTSTRAP_KEYS::nationalDebt
     ],
-    _cacheLabels: {
-      'trade:tariffs:v2:840': 'all',
-    },
     _freshnessChecks: [
-      { key: 'seed-meta:trade:tariffs',               maxStaleMin: 420 },   // inside TARIFF_TTL 480
       { key: 'seed-meta:economic:bigmac',             maxStaleMin: 10080 }, // weekly seed; 7d
       { key: 'seed-meta:economic:fao-ffpi',           maxStaleMin: 86400 }, // monthly seed; 60d (2× interval)
       { key: 'seed-meta:economic:national-debt',      maxStaleMin: 86400 }, // monthly seed; 60d (2× interval)
@@ -3076,9 +3470,145 @@ export const CACHE_TOOLS: ToolDef[] = [
     ],
   },
   {
-    name: 'get_chokepoint_status',
+    name: 'get_capital_flows',
+    title: 'Cross-country capital flows',
     _outputBudgetBytes: 131072,
-    description: 'Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical 13-chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc. Paid openings use one signed chokepoint panel allocation; repeated views reuse complete requested source subsets while partial sources remain retryable. Different source subsets may reacquire data under the same allocation. Explicit refresh requires a request_id UUID and spends one new allocation; same-UUID retry is idempotent. API/free accounts retain per-tool accounting.',
+    description: 'Return where money enters and leaves about 230 economies, and between any two, from official statistics. IMF balance of payments: gross inflows and outflows split into FDI, portfolio and other investment, quarterly or annual by country, with derived Forbes-Warnock states (surge or stop for inflows, flight or retrenchment for outflows) and z-scores. Per country and per pair: BIS cross-border bank deposits and lending, IMF portfolio holdings and IMF direct-investment positions. People changing residence are not a BOP flow. Sources lag 1-3 quarters (FDI ~2 years); stale after 10 days or when the newest BOP quarter is over a year old. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. country (max 10) returns full views; counterpart adds both directions of each pair, each leg marked reported, not_itemized or not_published. Without country, a ranking of countries that have the sort metric (default outflow_z; annual-only series have none) capped by limit (default 30, 0 for no cap).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country: {
+          type: 'array',
+          items: { type: 'string' },
+          maxItems: CAPITAL_FLOWS_MAX_COUNTRIES,
+          description: 'Countries to return in full: ISO 3166-1 alpha-2 (e.g. "GB"), alpha-3 ("ARE") or English names. Omit to get the cross-country ranking.',
+        },
+        include_series: { type: 'boolean', description: 'With country, also return the period-by-period BOP flows (12 quarters or 6 years). Default false.' },
+        counterpart: {
+          type: 'string',
+          description: 'With country, a partner country (alpha-2, alpha-3 or name). Returns pairs[]: deposits each side\'s non-banks hold in the other\'s banks and bank lending each way (stock, 4-quarter flow, 8 quarters of history), each side\'s holdings of the other\'s securities, and direct investment each way with both sides\' figures, plus the counterpart\'s own view.',
+        },
+        sort: {
+          type: 'string',
+          enum: [...CAPITAL_FLOWS_SORTS],
+          description: 'Ranking field when country is omitted. outflow_z / inflow_z rank the latest Forbes-Warnock z-score; *_pct_gdp rank trailing gross flows as a share of GDP; net_usd_bn ranks inflows minus outflows; bank_deposits_abroad_flow_4q ranks the 4-quarter change in non-bank deposits held in foreign banks; foreign_portfolio_change_pct ranks the year-on-year change in foreign holdings of the country\'s securities. Default outflow_z.',
+        },
+        ascending: { type: 'boolean', description: 'Sort ascending instead of descending. Default false.' },
+        limit: { type: 'number', description: 'Cap the ranking to this many countries (default 30, pass 0 for no cap). Ignored with country.' },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      'capital-flows': {
+        type: ['object', 'null'],
+        properties: {
+          latest: { type: ['object', 'null'], properties: {
+            bopQuarter: { type: ['string', 'null'] }, bopNewestQuarter: { type: ['string', 'null'] }, bopYear: { type: ['string', 'null'] },
+            bisQuarter: { type: ['string', 'null'] }, pipYear: { type: ['number', 'null'] }, fdiYear: { type: ['number', 'null'] },
+          } },
+          coverage: { type: ['object', 'null'] },
+          units: { type: 'string' },
+          method: { type: ['object', 'null'], description: 'Method notes per view, including the caveat that wealth migration is not a BOP flow.' },
+          seededAt: { type: ['string', 'null'] },
+          countries: {
+            type: 'object',
+            description: 'Present when country is given. Keyed by alpha-2; null when the country has no data.',
+            additionalProperties: { type: ['object', 'null'], properties: {
+              iso2: { type: 'string' }, iso3: { type: ['string', 'null'] }, gdpUsdBn: { type: ['number', 'null'] },
+              bop: { type: ['object', 'null'], description: 'frequency quarterly carries state, episodes and trailing4q; annual carries latestYear and no episodes.' },
+              bank: { type: ['object', 'null'] },
+              portfolio: { type: ['object', 'null'] },
+              fdi: { type: ['object', 'null'], description: 'IMF direct-investment positions as the country reports them, by immediate counterpart.' },
+            } },
+          },
+          pairs: {
+            type: 'array',
+            description: 'Present with counterpart: one entry per country (a) against the counterpart (b); null when the pair matrices are unavailable or from a different seed run.',
+            items: {
+              type: ['object', 'null'],
+              properties: {
+                country: { type: 'string' }, counterpart: { type: 'string' },
+                bankPeriod: { type: 'string' }, portfolioYear: { type: 'integer' },
+                aDepositsInB: CAPITAL_FLOW_PAIR_LEG_SCHEMA, bDepositsInA: CAPITAL_FLOW_PAIR_LEG_SCHEMA,
+                aBorrowingFromB: CAPITAL_FLOW_PAIR_LEG_SCHEMA, bBorrowingFromA: CAPITAL_FLOW_PAIR_LEG_SCHEMA,
+                aHoldingsOfB: CAPITAL_FLOW_PAIR_LEG_SCHEMA, bHoldingsOfA: CAPITAL_FLOW_PAIR_LEG_SCHEMA,
+                aFdiInB: CAPITAL_FLOW_PAIR_LEG_SCHEMA, bFdiInA: CAPITAL_FLOW_PAIR_LEG_SCHEMA,
+                fdiYear: { type: 'integer' },
+              },
+              required: ['country', 'counterpart', 'aDepositsInB', 'bDepositsInA', 'aBorrowingFromB', 'bBorrowingFromA', 'aHoldingsOfB', 'bHoldingsOfA', 'aFdiInB', 'bFdiInA'],
+            },
+          },
+          sort: { type: 'string', enum: [...CAPITAL_FLOWS_SORTS] },
+          order: { type: 'string', enum: ['ascending', 'descending'] },
+          rankedCount: { type: 'integer', description: 'Countries with a value for the sort field, before limit.' },
+          ranking: {
+            type: 'array',
+            description: 'Present when country is omitted.',
+            items: {
+              type: 'object',
+              properties: {
+                country: { type: 'string' },
+                frequency: { type: ['string', 'null'], enum: ['quarterly', 'annual', null] },
+                latestPeriod: { type: ['string', 'null'] },
+                inflowState: { type: ['string', 'null'], enum: ['surge', 'stop', null] },
+                outflowState: { type: ['string', 'null'], enum: ['flight', 'retrenchment', null] },
+                inflowZ: { type: ['number', 'null'] }, outflowZ: { type: ['number', 'null'] },
+                inflowsUsdBn: { type: ['number', 'null'] }, outflowsUsdBn: { type: ['number', 'null'] }, netUsdBn: { type: ['number', 'null'] },
+                inflowsPctGdp: { type: ['number', 'null'] }, outflowsPctGdp: { type: ['number', 'null'] },
+                bankDepositsAbroadFlow4qUsdBn: { type: ['number', 'null'] },
+                foreignPortfolioChangePct: { type: ['number', 'null'] },
+              },
+              required: ['country', 'frequency', 'latestPeriod', 'inflowState', 'outflowState', 'inflowZ', 'outflowZ'],
+            },
+          },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params) => {
+      const countries = resolveCountryFilter(params.country, 'country');
+      if (countries.length > CAPITAL_FLOWS_MAX_COUNTRIES) {
+        throw new RpcValidationError('get_capital_flows', [{ field: 'country', description: `Pass at most ${CAPITAL_FLOWS_MAX_COUNTRIES} countries.` }]);
+      }
+      const sortArg = typeof params.sort === 'string' && params.sort ? params.sort : 'outflow_z';
+      if (!(CAPITAL_FLOWS_SORTS as readonly string[]).includes(sortArg)) {
+        throw new RpcValidationError('get_capital_flows', [{ field: 'sort', description: `Choose one of ${CAPITAL_FLOWS_SORTS.join(', ')}.` }]);
+      }
+      const counterpart = resolveCountryFilter(params.counterpart, 'counterpart');
+      if (counterpart.length > 0 && countries.length === 0) {
+        throw new RpcValidationError('get_capital_flows', [{ field: 'counterpart', description: 'counterpart needs at least one country.' }]);
+      }
+      if (counterpart.length > 1) {
+        throw new RpcValidationError('get_capital_flows', [{ field: 'counterpart', description: 'Pass one counterpart.' }]);
+      }
+      return projectCapitalFlows(data, {
+        countries,
+        counterpart: counterpart[0],
+        includeSeries: argBool(params.include_series),
+        sort: sortArg as CapitalFlowsSort,
+        ascending: argBool(params.ascending),
+        // 0 = no cap; a negative limit falls back to the default rather than uncapping.
+        limit: (() => { const n = argNum(params.limit); return n == null || n < 0 ? DEFAULT_LIST_LIMIT : Math.floor(n); })(),
+      });
+    },
+    // The pair matrices (~280 KB) are written by the same seeder run; the
+    // projection drops them unless a counterpart is asked for.
+    _cacheKeys: ['economic:capital-flows:v1', 'economic:capital-flows:pairs:v1'], // STANDALONE_KEYS::capitalFlows
+    _cacheLabels: { 'economic:capital-flows:pairs:v1': CAPITAL_FLOWS_PAIRS_LABEL },
+    _freshnessChecks: [
+      // Weekly macro-bundle seed; 10d matches api/health.js SEED_META.capitalFlows.
+      // honorContentAge: a frozen IMF BOP feed (newest quarter > 12 months) flags stale.
+      { key: 'seed-meta:economic:capital-flows', maxStaleMin: 14400, honorContentAge: true },
+    ],
+    _apiPaths: [
+      "GET /api/economic/v1/get-capital-flows",
+    ],
+  },
+  {
+    name: 'get_chokepoint_status',
+    title: 'Maritime chokepoint status',
+    _outputBudgetBytes: 131072,
+    description: 'Return the seeded maritime chokepoint snapshot: per-chokepoint vessel transit counts at 10-minute cadence, rolling transit summaries, a port-country coverage index, oil and gas flow aggregates, baselines and the canonical 13-chokepoint registry (Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama and others). Transit data is flagged stale after 30 minutes. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. chokepoint narrows transit-summaries, chokepoint_transits, chokepoint-baselines and chokepoint-flows by case-insensitive substring ("hormuz"), leaving ref and _countries unfiltered; dataset selects sub-datasets; limit caps the baselines list and _countries index (default 30, 0 for no cap) while keyed maps are not capped. Paid openings use one chokepoint panel allocation; repeat views reuse it, refresh with a request_id UUID spends a new one and the same UUID retries it. API and free accounts retain per-tool accounting.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3087,7 +3617,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         request_id: { type: 'string', description: 'UUID for an explicit paid refresh; retry the same UUID to reuse that allocation.' },
         chokepoint: {
           type: 'string',
-          description: 'Filter to one chokepoint — matches by case-insensitive substring across the differing identifiers used by each dataset (e.g. "hormuz" matches "hormuz_strait", "Strait of Hormuz").',
+          description: 'Filter to one chokepoint — matches by case-insensitive substring in transit-summaries, chokepoint_transits, chokepoint-baselines and chokepoint-flows (e.g. "hormuz" matches "hormuz_strait", "Strait of Hormuz"). ref and _countries are not filtered by it.',
         },
         dataset: {
           type: 'array',
@@ -3097,7 +3627,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           },
           description: 'Restrict the response to one or more sub-datasets. Omit for the full bundle.',
         },
-        limit: { type: 'number', description: 'Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped — use the `chokepoint` filter instead.' },
+        limit: { type: 'number', description: 'Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped; the `chokepoint` filter narrows all of them except ref.' },
       },
       required: [],
     },
@@ -3291,14 +3821,14 @@ export const CACHE_TOOLS: ToolDef[] = [
       { key: 'seed-meta:energy:chokepoint-flows',          maxStaleMin: 720 },            // 6h cron; 12h = 2× interval
     ],
     _apiPaths: [
-      "GET /api/intelligence/v1/get-country-port-activity",
       "GET /api/supply-chain/v1/get-chokepoint-status",
     ],
   },
   {
     name: 'get_positive_events',
+    title: 'Positive geopolitical events',
     _outputBudgetBytes: 131072,
-    description: 'Positive geopolitical events: diplomatic agreements, humanitarian aid, development milestones, and peace initiatives worldwide.',
+    description: 'Return the seeded map of positive-news locations: each entry is a place (name, latitude, longitude) with the count of positive-toned GDELT bulk reports that mention it, a category classified from report keywords (science-health, nature-wildlife, climate-wins, innovation-tech, humanity-kindness, culture-community) and the timestamp of the latest report. Location buckets, not individual stories: there are no titles, article text or source URLs, and a bucket needs at least 3 reports before it appears. Seeded from the GDELT bulk feed and flagged stale after 1 h. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. category selects one of the six buckets; limit caps the list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3335,8 +3865,9 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_radiation_data',
+    title: 'Radiation monitoring readings',
     _outputBudgetBytes: 131072,
-    description: 'Radiation observation levels from global monitoring stations. Flags anomalous readings that may indicate nuclear incidents.',
+    description: 'Return the seeded radiation monitoring snapshot: gamma dose-rate readings from public monitoring stations worldwide with station, country, value, unit, time and a severity flag (normal, elevated, spike) that marks anomalous readings. Flagged stale after 30 minutes. Station observations only; an elevated reading is a flag for review, not a confirmed nuclear incident. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country is a case-insensitive name substring; anomalous_only drops normal readings; limit caps the list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3376,8 +3907,9 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_research_signals',
+    title: 'Technology and research signals',
     _outputBudgetBytes: 131072,
-    description: 'Tech and research event signals: emerging technology events bootstrap data from curated research feeds.',
+    description: 'Return the seeded technology and research event list: upcoming and recent conferences, earnings dates, IPOs and other tech events from curated feeds such as Techmeme and dev.events, each with type, source, date and link. Flagged stale after 8 hours. Calendar-style event signals only; no papers, patents or funding data. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. type selects conference, earnings, ipo or other; source filters one feed; limit caps the list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3417,15 +3949,17 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_forecast_predictions',
+    title: 'Published forecast list (cached)',
     _uiResourceUri: FORECASTS_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'Open WorldMonitor’s interactive forecasts with local domain/region filters and original case analysis. Paid ChatGPT openings return the compact list and a signed panelRequest; expand Analysis to read an original case using get_forecast_case under the same allocation. Repeated openings reuse the five-minute admission; explicit refresh requires a fresh request_id. API callers retain the full published forecast result. AI assessments are not guarantees.',
+    description: 'Return the current published forecast list from the seeded cache (paid panel openings also attach per-domain reliability and recent familyOutcomes, not the full accuracy scorecard): each forecast with id, domain, region, probability, scenario text and, for API readers, its case file. Flagged stale after 90 minutes; AI assessments, not guarantees. Rows include firstSeenAt, firstSeenProbability, change24h and change7d. include_history adds up to 30 days of probability points and caps the list at 10. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. domain filters exactly (conflict, market, supply_chain, political, military, cyber, infrastructure), region by case-insensitive substring, limit caps the list (default 30, 0 for no cap). Paid interactive openings return the compact list with case files stripped (hasCaseFile marks them) plus a signed panelRequest; repeat openings reuse the five-minute admission and refresh needs a fresh request_id.',
     inputSchema: {
       type: 'object',
       properties: {
-        domain: { type: 'string', description: 'Filter to one forecast domain (exact, case-insensitive — e.g. "shipping", "energy", "macro").' },
+        domain: { type: 'string', description: 'Filter to one forecast domain (exact, case-insensitive): conflict, market, supply_chain, political, military, cyber, infrastructure.' },
         region: { type: 'string', description: 'Filter to one region/theater (case-insensitive substring).' },
         limit: { type: 'number', description: 'Paid interactive panel: integers 1–30, default 30. Ordinary API readers may use 0 for no cap.' },
+        include_history: { type: 'boolean', description: 'Attach up to 120 probability points per forecast, up to 30 days. Caps rows at 10. Omitted in panel openings.' },
         refresh: { type: 'boolean', description: 'Request a new paid panel snapshot; requires a fresh request_id.' },
         request_id: { type: 'string', description: 'Unique idempotency identifier for an explicit refresh.' },
         panel_request: { type: 'string', description: 'Signed forecast panel receipt for a bounded internal list replay.' },
@@ -3448,6 +3982,9 @@ export const CACHE_TOOLS: ToolDef[] = [
         properties: { predictions: { type: 'array', items: { type: 'object', properties: {
           domain: { type: 'string' }, region: { type: 'string' },
           probability: { type: ['number', 'null'] }, title: { type: 'string' },
+          firstSeenAt: { type: ['string', 'null'] }, firstSeenProbability: { type: ['number', 'null'] },
+          change24h: { type: ['number', 'null'] }, change7d: { type: ['number', 'null'] },
+          history: { type: 'array', maxItems: 120, items: { type: 'array', prefixItems: [{ type: 'string' }, { type: 'number' }], minItems: 2, maxItems: 2 } },
         } } } },
       },
       }) as { properties: Record<string, unknown> };
@@ -3459,7 +3996,11 @@ export const CACHE_TOOLS: ToolDef[] = [
       const region = argStr(params.region);
       if (domain) narrowNested(data, 'predictions', 'predictions', (p) => argStr(p.domain) === domain);
       if (region) narrowNested(data, 'predictions', 'predictions', (p) => ciIncludes(p.region, region));
-      capNested(data, 'predictions', 'predictions', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
+      const panelOpening = execution?.panelScope === 'forecasts' || !!(execution?.panelRequest && 'panel' in execution.panelRequest && execution.panelRequest.panel === 'forecasts');
+      const includeHistory = params.include_history === true && !panelOpening;
+      const requestedLimit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
+      capNested(data, 'predictions', 'predictions', includeHistory ? Math.min(requestedLimit > 0 ? requestedLimit : 10, 10) : requestedLimit);
+      attachForecastHistory(data, includeHistory);
       if (execution?.panelScope === 'forecasts' || execution?.panelRequest && 'panel' in execution.panelRequest && execution.panelRequest.panel === 'forecasts') {
         const source = data.predictions;
         if (source && typeof source === 'object' && !Array.isArray(source)) {
@@ -3488,28 +4029,33 @@ export const CACHE_TOOLS: ToolDef[] = [
         const familyOutcomes = forecastFamilyOutcomes(data, ids);
         return { predictions: data.predictions, reliability: forecastReliability(data, domains), ...(familyOutcomes === undefined ? {} : { familyOutcomes }) };
       }
+      const rows = forecastRecord(data.predictions)?.predictions;
+      if (includeHistory && Array.isArray(rows)) {
+        while (rows.length > 1 && utf8ByteLength(JSON.stringify({ predictions: data.predictions })) > 128_000) rows.pop();
+      }
       return { predictions: data.predictions };
     },
-    _cacheKeys: ['forecast:predictions:v2', 'forecast:scorecard:v1', 'seed-meta:forecast:scorecard'],
-    _cacheLabels: { 'forecast:predictions:v2': 'predictions', 'forecast:scorecard:v1': 'scorecard', 'seed-meta:forecast:scorecard': 'scorecardMeta' },
-    _freshnessChecks: [{ key: 'seed-meta:forecast:predictions', maxStaleMin: 90 }],
+    _cacheKeys: ['forecast:predictions:v2', 'forecast:scorecard:v1', 'seed-meta:forecast:scorecard', 'forecast:probability-trail:v1'],
+    _cacheLabels: { 'forecast:predictions:v2': 'predictions', 'forecast:scorecard:v1': 'scorecard', 'seed-meta:forecast:scorecard': 'scorecardMeta', 'forecast:probability-trail:v1': 'probabilityTrail' },
+    _freshnessChecks: [{ key: 'seed-meta:forecast:predictions', maxStaleMin: 90 }, { key: 'seed-meta:forecast:probability-trail', maxStaleMin: 90 }],
     _apiPaths: [
       "GET /api/forecast/v1/get-forecasts",
     ],
   },
   {
     name: 'get_forecast_case',
+    title: 'One forecast case file by ID',
     _subscriptionOnly: true,
     _outputBudgetBytes: 131072,
-    description: 'Read exactly one original published forecast case after expanding Analysis in the interactive forecasts panel. Requires its signed panel_request and exact list generated_at; no additional daily allocation. Changed generation requires reopening the forecast list. A single case exceeding the fixed response budget remains explicitly unavailable.',
+    description: 'Read exactly one original published forecast case, including its full case file, by forecast ID and the exact generatedAt of the forecast list it came from; no list and no accuracy scores. Returns generation_changed with no forecast when the published list has been regenerated since, and missing when the ID is not in the current generation. Dedicated MCP plans read it inside an open forecasts panel with its signed panel_request and no additional daily allocation; API plans read it without panel_request at the normal per-call charge. A single case exceeding the fixed response budget remains explicitly unavailable.',
     inputSchema: {
       type: 'object',
       properties: {
-        forecast_id: { type: 'string', minLength: 1, maxLength: 160, description: 'Exact original forecast ID from the loaded list.' },
-        generated_at: { type: 'string', minLength: 1, maxLength: 64, description: 'Exact String(generatedAt) from the loaded list.' },
-        panel_request: { type: 'string', minLength: 1, maxLength: 160, description: 'Signed forecast panel receipt.' },
+        forecast_id: { type: 'string', minLength: 1, maxLength: 160, description: 'Exact original forecast ID from the forecast list.' },
+        generated_at: { type: 'string', minLength: 1, maxLength: 64, description: 'Exact String(generatedAt) of the forecast list the ID came from.' },
+        panel_request: { type: 'string', minLength: 1, maxLength: 160, description: 'Signed forecasts panel receipt. Required on dedicated MCP plans; not accepted on API plans.' },
       },
-      required: ['forecast_id', 'generated_at', 'panel_request'],
+      required: ['forecast_id', 'generated_at'],
     },
     outputSchema: cacheEnvelope({ forecastCase: { type: 'object', properties: {
       status: { type: 'string', enum: ['ready', 'missing', 'unavailable', 'generation_changed'] },
@@ -3518,7 +4064,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }, required: ['status', 'generatedAt', 'forecast'] } }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params, execution) => {
-      if (execution?.panelScope !== 'forecasts') throw new RpcValidationError('get_forecast_case', [{ field: 'panel_request', description: 'A verified forecast panel admission is required.' }]);
+      if (execution?.panelScope !== 'forecasts' && execution?.perToolForecastRead !== true) throw new RpcValidationError('get_forecast_case', [{ field: 'panel_request', description: 'A verified forecast panel admission is required.' }]);
       const parsed = forecastCaseReadSchema.safeParse(params);
       if (!parsed.success) throw new RpcValidationError('get_forecast_case', [{ field: 'forecast_id', description: 'Provide an exact forecast ID and list generation.' }]);
       const source = data.predictions;
@@ -3536,14 +4082,28 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_forecast_scorecard',
+    title: 'Forecast accuracy scorecard',
     _outputBudgetBytes: 65536,
     description: forecastScorecardDescription(),
     inputSchema: {
       type: 'object',
-      properties: {},
+      properties: {
+        view: { type: 'string', enum: ['summary', 'archive'], description: 'Summary by default, or resolved forecast archive.' },
+        domain: { type: 'string', description: 'Exact forecast domain for archive rows.' },
+        outcome: { type: 'string', enum: ['YES', 'NO', 'VOID'], description: 'Archive outcome filter.' },
+        forecast_id: { type: 'string', minLength: 1, maxLength: 160, description: 'Exact family ID; includes its trajectories.' },
+        before: { type: ['number', 'string'], description: 'Exclusive resolvedAt timestamp in milliseconds, or the nextBefore continuation from the previous page.' },
+        limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Maximum archive rows, default 25; output budget may shorten a page.' },
+      },
       required: [],
     },
     outputSchema: cacheEnvelope({
+      archive: { type: ['object', 'null'], properties: {
+        generatedAt: { type: 'number' }, rollingWindowDays: { type: 'number' },
+        stale: { type: 'boolean' },
+        rows: { type: 'array', maxItems: 50, items: { type: 'object' } },
+        nextBefore: { type: ['string', 'null'] },
+      } },
       underAudit: {
         type: ['object', 'null'],
         description: 'Set while the accuracy record is under audit: the scores below are unreliable and must not be quoted as a verdict. Without a manual override, it clears once the headline is measurable and the scorecard is fresh.',
@@ -3591,9 +4151,10 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     // The seed-meta clock decides staleness, and a stale scorecard holds the audit (#8990).
-    _cacheKeys: ['forecast:scorecard:v1', 'correlation:market-alerts:scorecard:v1', 'seed-meta:forecast:scorecard'],
-    _cacheLabels: { 'correlation:market-alerts:scorecard:v1': 'marketAlerts', 'seed-meta:forecast:scorecard': 'scorecardMeta' },
-    _project: (data) => projectForecastScorecard(data),
+    _cacheKeys: ['forecast:scorecard:v1', 'correlation:market-alerts:scorecard:v1', 'seed-meta:forecast:scorecard', 'forecast:archive:v1', 'seed-meta:forecast:archive'],
+    _cacheLabels: { 'correlation:market-alerts:scorecard:v1': 'marketAlerts', 'seed-meta:forecast:scorecard': 'scorecardMeta', 'forecast:archive:v1': 'forecastArchive', 'seed-meta:forecast:archive': 'archiveMeta' },
+    _project: (data) => ({ ...projectForecastScorecard(data), ...(data.forecastArchive ? { forecastArchive: projectForecastArchive(data.forecastArchive, data.archiveMeta) } : {}) }),
+    _postFilter: filterForecastScorecard,
     _freshnessChecks: [{ key: 'seed-meta:forecast:scorecard', maxStaleMin: 2160 }],
     _apiPaths: [
       "GET /api/forecast/v1/get-forecast-scorecard",
@@ -3605,12 +4166,13 @@ export const CACHE_TOOLS: ToolDef[] = [
   // -------------------------------------------------------------------------
   {
     name: 'get_social_velocity',
+    title: 'Reddit geopolitical activity',
     _outputBudgetBytes: 131072,
-    description: 'Reddit geopolitical social velocity: top posts from worldnews, geopolitics, and related subreddits with engagement scores and trend signals.',
+    description: 'Return the 30 Reddit posts from r/worldnews and r/geopolitics with the highest velocityScore (log of score x upvote ratio x a 6-hour recency decay), each with title, subreddit, url (the Reddit permalink), score, upvoteRatio, numComments and createdAt. Measures what is drawing public attention on Reddit now, not what happened: posts are unverified user submissions with no classification or corroboration, there is no history beyond the current snapshot, and no other social platform is covered. Refreshed about every 3 hours, flagged stale after 9 hours. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. subreddit keeps worldnews or geopolitics; limit caps the list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
-        subreddit: { type: 'string', description: 'Filter to one subreddit (e.g. "worldnews", "geopolitics").' },
+        subreddit: { type: 'string', description: 'Keep one subreddit: "worldnews" or "geopolitics".' },
         limit: { type: 'number', description: 'Cap the post list to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
@@ -3619,9 +4181,10 @@ export const CACHE_TOOLS: ToolDef[] = [
       reddit: {
         type: ['object', 'null'],
         properties: { posts: { type: 'array', items: { type: 'object', properties: {
-          subreddit: { type: 'string' }, title: { type: 'string' },
+          id: { type: 'string' }, subreddit: { type: 'string' }, title: { type: 'string' },
           score: { type: ['number', 'null'] }, url: { type: 'string' }, createdAt: { type: ['string', 'number'] },
-        } } } },
+          upvoteRatio: { type: 'number' }, numComments: { type: 'number' }, velocityScore: { type: 'number' },
+        } } }, fetchedAt: { type: 'number' } },
       },
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -3633,7 +4196,8 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['intelligence:social:reddit:v1'],
-    _freshnessChecks: [{ key: 'seed-meta:intelligence:social-reddit', maxStaleMin: 30 }],
+    // Mirrors api/health.js SEED_META.socialVelocity: the relay seeds every 3h.
+    _freshnessChecks: [{ key: 'seed-meta:intelligence:social-reddit', maxStaleMin: 540 }],
     _apiPaths: [
       "GET /api/intelligence/v1/get-social-velocity",
     ],
@@ -3641,6 +4205,7 @@ export const CACHE_TOOLS: ToolDef[] = [
 
   {
     name: 'get_temporal_anomalies',
+    title: 'Unusual event activity vs baseline',
     _outputBudgetBytes: 65536,
     description:
       'Temporal anomaly watch: current event counts vs day-of-week and seasonal baselines, scored by z-score severity. ' +
@@ -3648,7 +4213,9 @@ export const CACHE_TOOLS: ToolDef[] = [
       'streams are compared against 90-day Welford baselines keyed by weekday and month, so a Tuesday in July is only compared ' +
       'to prior Tuesdays in July. Each anomaly carries the observed count, expected baseline count, z-score, multiplier, and a ' +
       'severity band (medium >= 1.5σ, high >= 2σ, critical >= 3σ). Filter by stream type, region, or minimum severity. An empty ' +
-      'anomaly list with fresh data means activity is within normal bounds — that is itself signal.',
+      'anomaly list with fresh data means activity is within normal bounds — that is itself signal. Statistical deviations ' +
+      'per stream only: no story content, no cross-domain alert rollup. Seeded-cache read: weight 1 on API plans, included in ' +
+      'the signed-in free allowance.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3713,6 +4280,7 @@ export const CACHE_TOOLS: ToolDef[] = [
 
   {
     name: 'get_test_site_seismicity',
+    title: 'Nuclear test-site seismic activity',
     _outputBudgetBytes: 65536,
     description:
       'Nuclear test-site seismic monitor: USGS earthquakes near known test sites scored for proliferation concern. ' +

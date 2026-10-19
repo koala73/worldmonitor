@@ -143,6 +143,16 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     notes: "Bounce/complaint (and other) suppressions stay so we do not re-mail",
   },
   {
+    target: "emailSoftBounces",
+    action: "skip",
+    notes: "No userId index; keyed by email, cleared on delivery or suppression and pruned after the 30-day window",
+  },
+  {
+    target: "emailSoftBounceResets",
+    action: "skip",
+    notes: "No userId index; keyed by email, removed on suppression and pruned after the 30-day window",
+  },
+  {
     target: "companyMonitoringAccounts",
     action: "delegate",
     notes: "markOwnerDeleted / advanceAccountPurge",

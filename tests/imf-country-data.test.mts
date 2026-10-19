@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   buildImfEconomicIndicators,
   buildCountryInflationRows,
+  selectImfCountryBundle,
   type ImfCountryBundle,
   type ImfMacroEntry,
 } from '../src/services/imf-country-data.ts';
@@ -20,6 +21,62 @@ function bundle(overrides: Partial<ImfCountryBundle> = {}): ImfCountryBundle {
 }
 
 describe('buildImfEconomicIndicators (panel rendering)', () => {
+  it('discloses all seven metric periods without inferring an IMF release', () => {
+    const data = bundle({
+      growth: { realGdpGrowthPct: 0, gdpPerCapitaUsd: 12345, year: 2099, periods: { realGdpGrowthPct: 2026, gdpPerCapitaUsd: 2025 } },
+      macro: { inflationPct: 1.2, primaryBalancePct: -7, govExpenditurePct: 40, govRevenuePct: 30, year: 2099, periods: { inflationPct: 2026, primaryBalancePct: 2025, govExpenditurePct: 2024, govRevenuePct: 2023 } },
+      labor: { unemploymentPct: 5.1, year: 2099, periods: { unemploymentPct: 2022 } },
+      fetchedAt: Date.UTC(2099, 1, 1),
+    } as unknown as Partial<ImfCountryBundle>);
+    const rows = buildImfEconomicIndicators(data);
+    assert.deepEqual(rows.map(row => row.source), [2026, 2026, 2022, 2025, 2025, 2024, 2023].map(year => `IMF WEO · Year ${year} · IMF release not supplied`));
+    assert.equal(rows[0].value, '+0.0%');
+  });
+  it('keeps valid metrics when explicit period metadata is missing or malformed', () => {
+    for (const periods of [undefined, null, [], '2026', true, {}, { inflationPct: null }, ...['2026', true, [], NaN, Infinity, 2026.5, 1899, 2201].map(inflationPct => ({ inflationPct }))]) {
+      const data = bundle({ macro: { inflationPct: 0, year: 2026, latestYear: 2026, seededAt: '2026-10-16', sourceVersion: 'imf-sdmx-weo-2026', periods } } as unknown as Partial<ImfCountryBundle>);
+      assert.equal(buildImfEconomicIndicators(data)[0].source, 'IMF WEO · Year not supplied · IMF release not supplied');
+      assert.equal(buildImfEconomicIndicators(data)[0].value, '+0.0%');
+    }
+    for (const year of [1900, 2200]) {
+      const data = bundle({ macro: { inflationPct: 1, periods: { inflationPct: year } } } as unknown as Partial<ImfCountryBundle>);
+      assert.equal(buildImfEconomicIndicators(data)[0].source, `IMF WEO · Year ${year} · IMF release not supplied`);
+    }
+  });
+  it('discloses each metric release from its own theme without naming an edition', () => {
+    const data = selectImfCountryBundle({
+      imfGrowth: {
+        countries: { US: { realGdpGrowthPct: 2, gdpPerCapitaUsd: 900, periods: { realGdpGrowthPct: 2026, gdpPerCapitaUsd: 2026 } } },
+        releases: { realGdpGrowthPct: { publishedAt: '2026-10-13T02:00:00Z', updatedAt: '2026-10-13T09:00:00Z' }, gdpPerCapitaUsd: { publishedAt: '2026-10-13T02:00:00Z', updatedAt: null } },
+      },
+      imfMacro: {
+        countries: { US: { inflationPct: 3, govRevenuePct: 30, periods: { inflationPct: 2026, govRevenuePct: 2025 } } },
+        releases: { inflationPct: { publishedAt: '2025-10-14T13:00:00Z', updatedAt: '2025-11-19T21:00:00Z' }, govRevenuePct: { publishedAt: null, updatedAt: '2025-11-19T21:00:00Z' } },
+      },
+      imfLabor: {
+        countries: { US: { unemploymentPct: 4, periods: { unemploymentPct: 2026 } } },
+        releases: { unemploymentPct: { publishedAt: '2026-04-14T13:00:00Z', updatedAt: '2026-04-14T20:00:00Z' }, realGdpGrowthPct: { publishedAt: '2000-01-01T00:00:00Z', updatedAt: null } },
+      },
+    } as never, 'us', 0);
+    assert.deepEqual(buildImfEconomicIndicators(data).map(row => [row.label, row.source]), [
+      ['Real GDP Growth', 'IMF WEO · Year 2026 · IMF published 2026-10-13'],
+      ['CPI Inflation', 'IMF WEO · Year 2026 · IMF published 2025-10-14, updated 2025-11-19'],
+      ['Unemployment', 'IMF WEO · Year 2026 · IMF published 2026-04-14'],
+      ['GDP / Capita', 'IMF WEO · Year 2026 · IMF published 2026-10-13'],
+      ['Gov Revenue', 'IMF WEO · Year 2025 · IMF updated 2025-11-19, publication date not supplied'],
+    ]);
+  });
+  it('keeps the release unknown when bootstrap release metadata is missing or malformed', () => {
+    for (const releases of [undefined, null, [], 'x', { inflationPct: null }, { inflationPct: [] }, { inflationPct: 'x' }, ...[42, '', '13/10/2026', '2026', '2026-13-40', '2026-02-30T00:00:00Z', '2026-10-13Tjunk', { en: '2026-10-13' }].map(publishedAt => ({ inflationPct: { publishedAt, updatedAt: publishedAt } }))]) {
+      const data = selectImfCountryBundle({ imfMacro: { countries: { US: { inflationPct: 1, periods: { inflationPct: 2026 } } }, releases } } as never, 'US', 0);
+      assert.equal(buildImfEconomicIndicators(data)[0].source, 'IMF WEO · Year 2026 · IMF release not supplied', JSON.stringify(releases));
+    }
+  });
+  it('selects one country across themes for both bundle readers', () => {
+    const data = selectImfCountryBundle({ imfExternal: { countries: { AE: { exportsUsd: 5 } } } } as never, 'ae', 7);
+    assert.deepEqual(data, { macro: null, growth: null, labor: null, external: { exportsUsd: 5 }, releases: { macro: {}, growth: {}, labor: {} }, fetchedAt: 7 });
+  });
+
   it('returns no rows when no IMF data is present', () => {
     assert.deepEqual(buildImfEconomicIndicators(bundle()), []);
   });
@@ -50,7 +107,7 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
     assert.equal(rows[2].value, '4.2%');
     assert.equal(rows[2].trend, 'up'); // <5% unemployment is good
     assert.equal(rows[3].value, '$78.5k');
-    for (const row of rows) assert.equal(row.source, 'IMF WEO');
+    for (const row of rows) assert.equal(row.source, 'IMF WEO · Year not supplied · IMF release not supplied');
   });
 
   it('flags stagflation: rising inflation + contracting growth', () => {
@@ -106,7 +163,7 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
     const spend = rows.find(r => r.label === 'Public Spending')!;
     assert.equal(spend.value, '57.2% GDP');
     assert.equal(spend.trend, 'flat');
-    assert.equal(spend.source, 'IMF WEO');
+    assert.equal(spend.source, 'IMF WEO · Year not supplied · IMF release not supplied');
   });
 
   it('renders gov revenue %GDP with a flat trend', () => {
@@ -120,7 +177,7 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
     const rev = rows.find(r => r.label === 'Gov Revenue')!;
     assert.equal(rev.value, '32.5% GDP');
     assert.equal(rev.trend, 'flat');
-    assert.equal(rev.source, 'IMF WEO');
+    assert.equal(rev.source, 'IMF WEO · Year not supplied · IMF release not supplied');
   });
 
   it('marks meaningful primary surplus (>+1) with an upward trend and signed value', () => {
@@ -134,7 +191,7 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
     const pb = rows.find(r => r.label === 'Primary Balance')!;
     assert.equal(pb.value, '+2.1% GDP');
     assert.equal(pb.trend, 'up');
-    assert.equal(pb.source, 'IMF WEO');
+    assert.equal(pb.source, 'IMF WEO · Year not supplied · IMF release not supplied');
   });
 
   it('keeps primary balance flat for small surplus (between 0 and +1)', () => {

@@ -37,6 +37,7 @@ import {
 } from '../scripts/_prediction-classify.mjs';
 import { filterAndScore } from '../scripts/_prediction-scoring.mjs';
 import * as predictionScoring from '../scripts/_prediction-scoring.mjs';
+import * as countryIndex from '../scripts/_prediction-country-index.mjs';
 import predictionTags from '../scripts/data/prediction-tags.json' with { type: 'json' };
 import filterParamContracts from '../shared/openapi-filter-param-contracts.json' with { type: 'json' };
 import fixture from './fixtures/prediction-markets-raw-candidates.json' with { type: 'json' };
@@ -52,7 +53,7 @@ describe('Kalshi public landing and market identity', () => {
   const body = seed.slice(seed.indexOf('function kalshiTitle('), seed.indexOf('async function fetchKalshiCountryMarkets('));
   const event = {
     title: 'Where will Trump and Putin next meet?', series_ticker: 'KXPUTINDJTLOCATION', event_ticker: 'KXPUTINDJTLOCATION-29',
-    markets: [{ ticker: 'KXPUTINDJTLOCATION-29-PRC', event_ticker: 'KXPUTINDJTLOCATION-29', yes_sub_title: 'China', last_price_dollars: '0.70', volume_fp: '30000', market_type: 'binary', status: 'active' }],
+    markets: [{ ticker: 'KXPUTINDJTLOCATION-29-PRC', event_ticker: 'KXPUTINDJTLOCATION-29', yes_sub_title: 'China', last_price_dollars: '0.70', previous_price_dollars: '0.68', volume_fp: '30000', market_type: 'binary', status: 'active' }],
   };
   const subject = new Function(...Object.keys(predictionScoring), 'fetchKalshiEvents', `${body}\nreturn { kalshiCountryCandidate, fetchKalshiMarkets };`)(
     ...Object.values(predictionScoring), async () => ({ events: [event], complete: true }),
@@ -67,6 +68,8 @@ describe('Kalshi public landing and market identity', () => {
       assert.equal(row.source, 'kalshi');
     }
     assert.equal(result.countryCandidates[0].eventKey, 'kalshi:KXPUTINDJTLOCATION-29');
+    assert.equal(result.featured[0].change24h, 2);
+    assert.equal('change7d' in result.featured[0], false);
   });
 
   it('does not infer a series from a market ticker when provenance is absent or malformed', () => {
@@ -102,6 +105,54 @@ describe('Kalshi public landing and market identity', () => {
     }
   });
 
+});
+
+describe('upstream moves through the real seed and pool builders', () => {
+  it('keeps the selected Polymarket contract moves and leaves public country-index fields unchanged', async () => {
+    const seed = readFileSync(new URL('../scripts/seed-prediction-markets.mjs', import.meta.url), 'utf8');
+    const body = seed.slice(seed.indexOf('async function fetchAllPredictions()'), seed.indexOf('export function declareRecords'));
+    const deps = {
+      ...predictionScoring, ...countryIndex, buildBootstrapPools,
+      GEOPOLITICAL_TAGS: ['geopolitics'], TECH_TAGS: [], FINANCE_TAGS: [],
+      GAMMA_BASE: 'https://fixture.invalid', CHROME_UA: 'test', FETCH_TIMEOUT: 100, TAG_DELAY_MS: 0,
+      sleep: async () => {}, console: { log() {}, warn() {} },
+      fetchKalshiMarkets: async () => ({ featured: [], countryCandidates: [], complete: true }),
+      fetchKalshiCountryMarkets: async () => ({ countryCandidates: [], complete: true }),
+      fetchPolymarketEventsByTag: async () => [{
+        id: 'fixture', title: 'Will China GDP grow?', slug: 'china-gdp-move-fixture', volume: 100_000, tags: [{ slug: 'geopolitics' }],
+        markets: [
+          { question: 'Will China GDP grow above 5%?', volume: 50_000, outcomePrices: '["0.7","0.3"]', oneDayPriceChange: '-0.007', oneWeekPriceChange: 0 },
+          { question: 'Will China GDP grow above 6%?', volume: 10_000, outcomePrices: '["0.6","0.4"]', oneDayPriceChange: 0.9, oneWeekPriceChange: 0.8 },
+        ],
+      }, {
+        id: 'unknown', title: 'Will Iran GDP grow?', slug: 'iran-gdp-move-fixture', volume: 100_000, tags: [{ slug: 'geopolitics' }],
+        markets: [{ question: 'Will Iran GDP grow?', volume: 50_000, outcomePrices: '["0.7","0.3"]' }],
+      }],
+    };
+    const subject = new Function(...Object.keys(deps), `${body}\nreturn fetchAllPredictions;`)(...Object.values(deps));
+    const result = await subject();
+    const selected = result.geopolitical.find(row => row.title === 'Will China GDP grow above 5%?');
+    assert.equal(selected.change24h, -0.7);
+    assert.equal(selected.change7d, 0);
+    const unknown = result.geopolitical.find(row => row.title === 'Will Iran GDP grow?');
+    assert.equal('change24h' in unknown, false);
+    assert.equal('change7d' in unknown, false);
+    assert.ok(result.countryMarkets.CN.length > 0);
+    assert.equal('change24h' in result.countryMarkets.CN[0], false);
+    assert.equal('change7d' in result.countryMarkets.CN[0], false);
+  });
+
+  it('retains optional moves across all three ranked pools', () => {
+    const rows = RAW.map(row => ({ ...row, change24h: -2.5, change7d: 0 }));
+    const result = buildBootstrapPools(rows, { now: FIXTURE_NOW });
+    for (const bucket of Object.values(result.pools)) {
+      assert.ok(bucket.length > 0);
+      for (const row of bucket) {
+        assert.equal(row.change24h, -2.5);
+        assert.equal(row.change7d, 0);
+      }
+    }
+  });
 });
 
 // The seeder's REAL pool-building path — buildBootstrapPools is what

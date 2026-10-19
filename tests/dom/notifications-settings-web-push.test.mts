@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChannelsData } from '@/services/notification-channels';
+import { IncompatibleDeliveryError } from '@/services/notification-channels';
 
 import { initTestI18n, tt } from './helpers/i18n.mts';
 
@@ -15,6 +16,8 @@ const channelMocks = vi.hoisted(() => ({
   saveAlertRules: vi.fn(),
   deleteChannel: vi.fn(),
   setEmailChannel: vi.fn(),
+  startSlackOAuth: vi.fn(),
+  startDiscordOAuth: vi.fn(),
 }));
 
 vi.mock('@/services/push-notifications', () => ({
@@ -30,8 +33,8 @@ vi.mock('@/services/notification-channels', () => ({
   createPairingToken: vi.fn(),
   setEmailChannel: channelMocks.setEmailChannel,
   setWebhookChannel: vi.fn(),
-  startSlackOAuth: vi.fn(),
-  startDiscordOAuth: vi.fn(),
+  startSlackOAuth: channelMocks.startSlackOAuth,
+  startDiscordOAuth: channelMocks.startDiscordOAuth,
   deleteChannel: channelMocks.deleteChannel,
   setQuietHours: vi.fn(),
   setDigestSettings: vi.fn(),
@@ -474,6 +477,36 @@ describe('notification Settings browser push', () => {
 });
 
 
+describe('legacy alert-rule delivery rejection', () => {
+  it('reveals the sensitivity hint with server guidance after an autosave is rejected', async () => {
+    const message = 'Choose a digest cadence to receive High or All events.';
+    channelMocks.saveAlertRules.mockRejectedValueOnce(new IncompatibleDeliveryError(message));
+    const container = await mount({
+      channels: [],
+      alertRules: [{
+        variant: 'full', enabled: true, eventTypes: [], sensitivity: 'all', channels: [], digestMode: 'daily',
+      }],
+    });
+    const hint = container.querySelector<HTMLElement>('#usSensitivityHint')!;
+    expect(hint.style.display).toBe('none');
+    vi.useFakeTimers();
+    try {
+      const sensitivity = container.querySelector<HTMLSelectElement>('#usNotifSensitivity')!;
+      sensitivity.value = 'high';
+      sensitivity.dispatchEvent(new Event('change', { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(channelMocks.saveAlertRules).toHaveBeenCalledWith(
+        expect.objectContaining({ sensitivity: 'high' }), expect.any(AbortSignal),
+      );
+      expect(hint.style.display).toBe('');
+      expect(hint.textContent).toBe(message);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('email connection recovery', () => {
   it('saves the email rule after linking succeeds', async () => {
     const container = await mount();
@@ -489,4 +522,40 @@ describe('email connection recovery', () => {
     await vi.waitFor(() => expect(container.textContent).toContain('Verify your account email, then try again.'));
     expect(channelMocks.saveAlertRules).not.toHaveBeenCalled();
   });
+});
+
+describe('channel OAuth popup binding', () => {
+  for (const provider of ['Slack', 'Discord'] as const) {
+    it(`${provider} opens the popup during the click and sends the secret only in a POST form`, async () => {
+      const container = await mount();
+      const popupDocument = document.implementation.createHTMLDocument();
+      const popup = { document: popupDocument, closed: false, close: vi.fn() };
+      const open = vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window);
+      const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {});
+      let complete!: (value: unknown) => void;
+      const start = provider === 'Slack' ? channelMocks.startSlackOAuth : channelMocks.startDiscordOAuth;
+      start.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+      container.querySelector<HTMLButtonElement>(`#usConnect${provider}`)!.click();
+      expect(open).toHaveBeenCalledWith('', `${provider.toLowerCase()}-oauth`, expect.any(String));
+      expect(submit).not.toHaveBeenCalled();
+      const url = `https://api.worldmonitor.app/api/channel-oauth-bind?provider=${provider.toLowerCase()}&state=test`;
+      complete({ oauthUrl: 'https://provider.test', browserBinding: { url, token: 'binding-secret' } });
+      await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+      const form = popupDocument.querySelector('form')!;
+      expect(form.method.toLowerCase()).toBe('post');
+      expect(form.action).toBe(url);
+      expect(form.action).not.toContain('binding-secret');
+      expect(form.querySelector<HTMLInputElement>('input[name="token"]')!.value).toBe('binding-secret');
+    });
+
+    it(`${provider} reports a blocked popup before it starts OAuth`, async () => {
+      const container = await mount();
+      vi.spyOn(window, 'open').mockReturnValue(null);
+      const start = provider === 'Slack' ? channelMocks.startSlackOAuth : channelMocks.startDiscordOAuth;
+      start.mockClear();
+      container.querySelector<HTMLButtonElement>(`#usConnect${provider}`)!.click();
+      expect(start).not.toHaveBeenCalled();
+      expect(container.textContent).toContain('Popup blocked. Allow popups for this site, then try again.');
+    });
+  }
 });

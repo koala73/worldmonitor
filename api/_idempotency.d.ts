@@ -20,6 +20,7 @@ export type StandaloneIdempotencyOutcome =
       kind: 'proceed';
       key: string;
       store: (status: number, body: ArrayBuffer, contentType: string | null) => Promise<void>;
+      release: () => Promise<void>;
     };
 
 export type StandaloneIdempotencyPeekOutcome =
@@ -48,6 +49,12 @@ export function beginStandaloneIdempotency(args: {
 }): Promise<StandaloneIdempotencyOutcome>;
 
 export function completeStandaloneIdempotency(
+  idempotency: StandaloneIdempotencyOutcome | null,
+  response: Response,
+): Promise<Response>;
+
+/** Release a claimed key without caching the response, so it is never replayed. */
+export function abandonStandaloneIdempotency(
   idempotency: StandaloneIdempotencyOutcome | null,
   response: Response,
 ): Promise<Response>;

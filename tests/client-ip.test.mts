@@ -3,10 +3,14 @@ import { describe, it, afterEach } from 'node:test';
 
 import {
   getClientIp as getServerClientIp,
+  getClientRateLimitKey as getServerClientRateLimitKey,
+  rateLimitKeyForIp as serverRateLimitKeyForIp,
   resetEdgeProofMismatchWarnedForTest as resetServer,
 } from '../server/_shared/client-ip.ts';
 import {
   getClientIp as getApiClientIp,
+  getClientRateLimitKey as getApiClientRateLimitKey,
+  rateLimitKeyForIp as apiRateLimitKeyForIp,
   resetEdgeProofMismatchWarnedForTest as resetApi,
 } from '../api/_client-ip.js';
 
@@ -176,5 +180,33 @@ describe('client-IP proof-mismatch canary (#6431)', () => {
         delete process.env.CF_EDGE_PROOF_SECRET;
       }
     }
+  });
+});
+
+describe('rateLimitKeyForIp groups IPv6 clients by /64', () => {
+  for (const [name, fn] of [['server', serverRateLimitKeyForIp], ['api', apiRateLimitKeyForIp]] as const) {
+    it(`${name}: same /64 shares a bucket, IPv4 and junk are unchanged`, () => {
+      assert.equal(fn('2001:db8:1:2:aaaa:bbbb:cccc:dddd'), '2001:db8:1:2::/64');
+      assert.equal(fn('2001:DB8:1:2::1'), '2001:db8:1:2::/64');
+      assert.equal(fn('2001:db8:0001:0002:0:0:0:1'), '2001:db8:1:2::/64');
+      assert.notEqual(fn('2001:db8:1:3::1'), fn('2001:db8:1:2::1'));
+      assert.equal(fn('fe80::1%eth0'), 'fe80:0:0:0::/64');
+      assert.equal(fn('::ffff:192.0.2.1'), '192.0.2.1');
+      assert.equal(fn('0:0:0:0:0:ffff:192.0.2.1'), '192.0.2.1');
+      assert.equal(fn('::ffff:c000:201'), '192.0.2.1');
+      assert.equal(fn('::FFFF:CB00:7107'), '203.0.113.7');
+      assert.notEqual(fn('::ffff:c000:201'), fn('::ffff:cb00:7107'));
+      assert.equal(fn('::ffff:999.0.2.1'), '::ffff:999.0.2.1');
+      assert.equal(fn('203.0.113.7'), '203.0.113.7');
+      assert.equal(fn('unknown'), 'unknown');
+      assert.equal(fn('1::2::3'), '1::2::3');
+      assert.equal(fn('1:2:3:4:5:6:7:8:9'), '1:2:3:4:5:6:7:8:9');
+    });
+  }
+
+  it('getClientRateLimitKey applies the grouping to the resolved client IP', () => {
+    const req = new Request('https://worldmonitor.app/api/test', { headers: { 'x-real-ip': '2001:db8:1:2::99' } });
+    assert.equal(getServerClientRateLimitKey(req), '2001:db8:1:2::/64');
+    assert.equal(getApiClientRateLimitKey(req), '2001:db8:1:2::/64');
   });
 });

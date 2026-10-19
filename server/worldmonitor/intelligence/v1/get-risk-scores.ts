@@ -9,8 +9,9 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import iso3ToIso2Json from '../../../../shared/iso3-to-iso2.json';
-import { getCachedJson, readCachedJson, setCachedJson, cachedFetchJsonWithMeta } from '../../../_shared/redis';
-import { CLIMATE_ANOMALIES_KEY } from '../../../_shared/cache-keys';
+import { getCachedJson, readCachedJson, setCachedJson, cachedFetchJsonWithMeta, runRedisPipeline } from '../../../_shared/redis';
+import { CLIMATE_ANOMALIES_KEY, CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
+import { CII_DAY_MS, parseCiiDailyPoints } from '../../../../shared/cii-daily-history';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
 import {
@@ -23,6 +24,7 @@ import {
   STRATEGIC_RISK_TOP_N,
 } from './_risk-config';
 import {
+  CII_COUNTRY_CODES,
   CII_BASELINE_RISK,
   CII_EVENT_MULTIPLIER,
   DEFAULT_CII_BASELINE_RISK,
@@ -1451,6 +1453,8 @@ export function filterRiskScoresResponse(
 // scripts/seed-forecasts.mjs, scripts/regional-snapshot/*. The seed-meta key
 // (`seed-meta:intelligence:risk-scores`) is unchanged — that's freshness tracking,
 // not the payload itself.
+// Daily history deliberately lives outside the versioned sebuf family. Each
+// member carries its methodology so a formula bump preserves the old series.
 const RISK_CACHE_KEY = `risk:scores:sebuf:${CII_FORMULA_VERSION}`;
 const RISK_STALE_CACHE_KEY = `risk:scores:sebuf:stale:${CII_FORMULA_VERSION}`;
 const RISK_TREND_HISTORY_CACHE_KEY_PREFIX = `risk:scores:sebuf:trend-history:${CII_FORMULA_VERSION}`;
@@ -1566,6 +1570,58 @@ async function persistCiiTrendSnapshot(response: GetRiskScoresResponse): Promise
   );
 }
 
+// Replacement and the heartbeat must be atomic. A plain pipeline can interleave
+// two ZREM/ZADD pairs or stamp health after a failed country write.
+const CII_DAILY_WRITE_LUA = `
+local count = #KEYS - 3
+local day = tonumber(ARGV[1])
+local ttl = tonumber(ARGV[2])
+local captured = tonumber(ARGV[3])
+for i, key in ipairs(KEYS) do
+  local kind = redis.call('TYPE', key).ok
+  local expected = i <= count and 'zset' or 'string'
+  if kind ~= 'none' and kind ~= expected then return redis.error_reply('cii_history_wrong_type') end
+end
+local previous = redis.call('GET', KEYS[count + 2])
+if previous and tonumber(cjson.decode(previous).fetchedAt) > captured then return 0 end
+for i = 1, count do
+  redis.call('ZREMRANGEBYSCORE', KEYS[i], day, day)
+  redis.call('ZADD', KEYS[i], day, ARGV[5 + i])
+  redis.call('ZREMRANGEBYSCORE', KEYS[i], '-inf', day - 365)
+  redis.call('EXPIRE', KEYS[i], ttl)
+end
+redis.call('SET', KEYS[count + 1], ARGV[4], 'EX', ttl)
+redis.call('SET', KEYS[count + 2], ARGV[5], 'EX', ttl + 86400)
+redis.call('SET', KEYS[count + 3], captured)
+return count
+`;
+
+export async function persistCiiDailyHistory(response: GetRiskScoresResponse): Promise<void> {
+  if (response.stale || response.degraded || response.ciiScores.length !== CII_COUNTRY_CODES.length) return;
+  const scores = new Map(response.ciiScores.map(score => [score.region, score]));
+  const members = CII_COUNTRY_CODES.map(code => {
+    const score = scores.get(code);
+    return JSON.stringify({
+      d: score?.computedAt ? new Date(score.computedAt).toISOString().slice(0, 10) : '',
+      v: score?.methodologyVersion, s: score?.combinedScore,
+      u: score?.components?.ciiContribution, c: score?.components?.geoConvergence,
+      m: score?.components?.militaryActivity, n: score?.components?.newsActivity, t: score?.computedAt,
+    });
+  });
+  const capturedAt = Math.max(...response.ciiScores.map(score => score.computedAt));
+  if (!Number.isFinite(capturedAt) || parseCiiDailyPoints(members, capturedAt).invalid
+    || response.ciiScores.some(score => score.computedAt !== capturedAt)) return;
+  const keys = CII_RISK_SCORE_CACHE_KEYS;
+  const results = await runRedisPipeline([[
+    'EVAL', CII_DAILY_WRITE_LUA, CII_COUNTRY_CODES.length + 3,
+    ...CII_COUNTRY_CODES.map(code => `${keys.dailyHistoryPrefix}${code}`), keys.dailyHistoryIndex, keys.dailyHistoryMeta, keys.dailyHistoryActivation,
+    Math.floor(capturedAt / CII_DAY_MS), 400 * 86400, capturedAt,
+    JSON.stringify({ date: new Date(capturedAt).toISOString().slice(0, 10), methodologyVersion: response.ciiScores[0]!.methodologyVersion, countries: CII_COUNTRY_CODES }),
+    JSON.stringify({ fetchedAt: capturedAt, recordCount: CII_COUNTRY_CODES.length }), ...members,
+  ]]);
+  if (results.length !== 1 || results[0]?.error) console.warn('[cii] daily history write unconfirmed');
+}
+
 /**
  * Awaited because a serverless runtime may drop a promise still pending after
  * the response; it runs only on the rejection path and never throws.
@@ -1610,6 +1666,7 @@ async function persistFreshRiskScorePayload(
   const writes: Array<Promise<unknown>> = [
     setCachedJson(RISK_STALE_CACHE_KEY, freshResult, RISK_STALE_TTL),
     persistCiiTrendSnapshot(freshResult),
+    persistCiiDailyHistory(freshResult),
     setCachedJson(
       'seed-meta:intelligence:risk-scores',
       { fetchedAt: Date.now(), recordCount: realtimeSignalDensityCoverageCount },

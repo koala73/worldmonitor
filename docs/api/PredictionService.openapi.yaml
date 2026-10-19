@@ -397,6 +397,18 @@ components:
                         - MARKET_SOURCE_POLYMARKET
                         - MARKET_SOURCE_KALSHI
                     description: Source platform for prediction market data.
+                yesPriceChange24h:
+                    type: number
+                    maximum: 1
+                    minimum: -1
+                    format: double
+                    description: Upstream 24-hour Yes price change on the probability scale. Absent if unavailable.
+                yesPriceChange7d:
+                    type: number
+                    maximum: 1
+                    minimum: -1
+                    format: double
+                    description: Upstream 7-day Yes price change on the probability scale. Polymarket only.
             required:
                 - id
             description: PredictionMarket represents a prediction market contract.

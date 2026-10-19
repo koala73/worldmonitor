@@ -1,0 +1,1333 @@
+{
+  "generatedFrom": [
+    "src/config/live-video-sources.ts",
+    "src/services/live-channels.ts",
+    "src/components/LiveWebcamsPanel.ts",
+    "public/data/countries-110m.json"
+  ],
+  "channels": [
+    {
+      "id": "bloomberg",
+      "name": "Bloomberg",
+      "handle": "@markets",
+      "region": "na",
+      "geo": null,
+      "sources": [
+        "https://bloomberg.com/media-manifest/streams/us.m3u8",
+        "https://www.youtube.com/watch?v=QB5BNdBFujE",
+        "https://www.youtube.com/channel/UCIALMKvObZNtJ6AmdCLP7Lg"
+      ]
+    },
+    {
+      "id": "yahoo",
+      "name": "Yahoo Finance",
+      "handle": "@YahooFinance",
+      "region": "na",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=KQp-e_XQnDE"
+      ]
+    },
+    {
+      "id": "cnn",
+      "name": "CNN",
+      "handle": "@CNN",
+      "region": "na",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=GotlA1KKWoo"
+      ]
+    },
+    {
+      "id": "fox-news",
+      "name": "Fox News",
+      "handle": "@FoxNews",
+      "region": "na",
+      "geo": null,
+      "sources": [
+        "https://247preview.foxnews.com/hls/live/2020027/fncv3preview/primary.m3u8"
+      ]
+    },
+    {
+      "id": "newsmax",
+      "name": "Newsmax",
+      "handle": "@NewsmaxTV",
+      "region": "na",
+      "geo": null,
+      "sources": [
+        "https://n1ctsota.akamaized.net/hls/live/2113880/Live_1/index.m3u8",
+        "https://nmxlive.akamaized.net/hls/live/529965/Live_1/index.m3u8",
+        "https://www.youtube.com/watch?v=RNNFrG4KbH0"
+      ]
+    },
+    {
+      "id": "abc-news",
+      "name": "ABC News",
+      "handle": "@ABCNews",
+      "region": "na",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCBi2mrWuNuyYy4gbM6fU18Q"
+      ]
+    },
+    {
+      "id": "cbs-news",
+      "name": "CBS News",
+      "handle": "@CBSNews",
+      "region": "na",
+      "geo": null,
+      "sources": [
+        "https://cbsn-us.cbsnstream.cbsnews.com/out/v1/55a8648e8f134e82a470f83d562deeca/master.m3u8"
+      ]
+    },
+    {
+      "id": "nbc-news",
+      "name": "NBC News",
+      "handle": "@NBCNews",
+      "region": "na",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCeY0bbntWzzVIaj2z3QigXg"
+      ]
+    },
+    {
+      "id": "cbc-news",
+      "name": "CBC News",
+      "handle": "@CBCNews",
+      "region": "na",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCuFFtHWoLl5fauMMD5Ww2jA"
+      ]
+    },
+    {
+      "id": "ctv-news",
+      "name": "CTV News",
+      "handle": null,
+      "region": "na",
+      "geo": null,
+      "sources": []
+    },
+    {
+      "id": "reuters-tv",
+      "name": "Reuters TV",
+      "handle": null,
+      "region": "na",
+      "geo": null,
+      "sources": []
+    },
+    {
+      "id": "nasa",
+      "name": "Sen Space Live",
+      "handle": "@NASA",
+      "region": "na",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=fO9e9jnhYK8"
+      ]
+    },
+    {
+      "id": "sky",
+      "name": "SkyNews",
+      "handle": "@SkyNews",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://linear901-oo-hls0-prd-gtm.delivery.skycdp.com/17501/sde-fast-skynews/master.m3u8",
+        "https://www.youtube.com/watch?v=xDWQ3LkccY8"
+      ]
+    },
+    {
+      "id": "euronews",
+      "name": "Euronews",
+      "handle": "@euronews",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=pykpO5kQJ98",
+        "https://dash4.antik.sk/live/test_euronews/playlist.m3u8"
+      ]
+    },
+    {
+      "id": "dw",
+      "name": "DW",
+      "handle": "@DWNews",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://dwamdstream103.akamaized.net/hls/live/2015526/dwstream103/master.m3u8",
+        "https://www.youtube.com/watch?v=LuKwFajn37U",
+        "https://www.youtube.com/channel/UCknLrEdhRCp1aegoMqRaCZg"
+      ]
+    },
+    {
+      "id": "france24",
+      "name": "France 24",
+      "handle": "@FRANCE24",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://amg00106-france24-france24-samsunguk-qvpp8.amagi.tv/playlist/amg00106-france24-france24-samsunguk/playlist.m3u8",
+        "https://www.youtube.com/watch?v=HvZt-nh9sGg"
+      ]
+    },
+    {
+      "id": "bbc-news",
+      "name": "BBC News",
+      "handle": "@BBCNews",
+      "region": "eu",
+      "geo": [
+        "GB"
+      ],
+      "sources": [
+        "https://vs-hls-push-uk.live.fastly.md.bbci.co.uk/x=4/i=urn:bbc:pips:service:bbc_news_channel_hd/iptv_hd_abr_v1.m3u8"
+      ]
+    },
+    {
+      "id": "gb-news",
+      "name": "GB News",
+      "handle": null,
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://live-gbnews.simplestreamcdn.com/live5/gbnews/bitrate1.isml/manifest.m3u8"
+      ]
+    },
+    {
+      "id": "the-guardian",
+      "name": "The Guardian",
+      "handle": null,
+      "region": "eu",
+      "geo": null,
+      "sources": []
+    },
+    {
+      "id": "france24-en",
+      "name": "France 24 English",
+      "handle": "@France24_en",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=HvZt-nh9sGg"
+      ]
+    },
+    {
+      "id": "rtve",
+      "name": "RTVE 24H",
+      "handle": "@RTVENoticias",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://rtvelivestream.rtve.es/rtvesec/24h/24h_main_dvr.m3u8"
+      ]
+    },
+    {
+      "id": "phoenix",
+      "name": "Phoenix",
+      "handle": null,
+      "region": "eu",
+      "geo": [
+        "DE",
+        "AT",
+        "CH"
+      ],
+      "sources": [
+        "https://zdf-hls-19.akamaized.net/hls/live/2016502/de/veryhigh/master.m3u8"
+      ]
+    },
+    {
+      "id": "rtp3",
+      "name": "RTP3",
+      "handle": null,
+      "region": "eu",
+      "geo": [
+        "PT",
+        "BR"
+      ],
+      "sources": [
+        "https://streaming-live.rtp.pt/livetvhlsDVR/rtpnHDdvr.smil/playlist.m3u8?DVR="
+      ]
+    },
+    {
+      "id": "trt-haber",
+      "name": "TRT Haber",
+      "handle": "@trthaber",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://tv-trthaber.medya.trt.com.tr/master.m3u8",
+        "https://www.youtube.com/channel/UCBgTP2LOFVPmq15W-RH-WXA"
+      ]
+    },
+    {
+      "id": "ntv-turkey",
+      "name": "NTV",
+      "handle": "@NTV",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=pqq5c6k70kk"
+      ]
+    },
+    {
+      "id": "cnn-turk",
+      "name": "CNN TURK",
+      "handle": "@cnnturk",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCV6zcRug6Hqp1UX_FdyUeBg"
+      ]
+    },
+    {
+      "id": "tv-rain",
+      "name": "TV Rain",
+      "handle": "@tvrain",
+      "region": "eu",
+      "geo": null,
+      "sources": []
+    },
+    {
+      "id": "rt",
+      "name": "RT",
+      "handle": null,
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://rt-glb.rttv.com/dvr/rtnews/playlist.m3u8"
+      ]
+    },
+    {
+      "id": "tvp-info",
+      "name": "TVP Info",
+      "handle": "@tvpinfo",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=3jKb-uThfrg"
+      ]
+    },
+    {
+      "id": "telewizja-republika",
+      "name": "Telewizja Republika",
+      "handle": "@Telewizja_Republika",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=dzntyCTgJMQ"
+      ]
+    },
+    {
+      "id": "cnn-brasil",
+      "name": "CNN Brasil",
+      "handle": "@CNNbrasil",
+      "region": "latam",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCvdwhh_fDyWccR42-rReZLw"
+      ]
+    },
+    {
+      "id": "jovem-pan",
+      "name": "Jovem Pan News",
+      "handle": "@jovempannews",
+      "region": "latam",
+      "geo": null,
+      "sources": []
+    },
+    {
+      "id": "record-news",
+      "name": "Record News",
+      "handle": "@RecordNews",
+      "region": "latam",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCuiLR4p6wQ3xLEm15pEn1Xw"
+      ]
+    },
+    {
+      "id": "band-jornalismo",
+      "name": "Band Jornalismo",
+      "handle": "@BandJornalismo",
+      "region": "latam",
+      "geo": null,
+      "sources": []
+    },
+    {
+      "id": "tn-argentina",
+      "name": "TN (Todo Noticias)",
+      "handle": "@todonoticias",
+      "region": "latam",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=cb12KmMMDJA"
+      ]
+    },
+    {
+      "id": "c5n",
+      "name": "C5N",
+      "handle": "@c5n",
+      "region": "latam",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCFgk2Q2mVO1BklRQhSv6p0w"
+      ]
+    },
+    {
+      "id": "milenio",
+      "name": "MILENIO",
+      "handle": "@MILENIO",
+      "region": "latam",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=oPy8a-TCjzA"
+      ]
+    },
+    {
+      "id": "noticias-caracol",
+      "name": "Noticias Caracol",
+      "handle": "@NoticiasCaracol",
+      "region": "latam",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UC2Xq2PK-got3Rtz9ZJ32hLQ"
+      ]
+    },
+    {
+      "id": "ntn24",
+      "name": "NTN24",
+      "handle": "@NTN24",
+      "region": "latam",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCEJs1fTF3KszRJGxJY14VrA"
+      ]
+    },
+    {
+      "id": "t13",
+      "name": "T13",
+      "handle": "@T13_cl",
+      "region": "latam",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCsRnhjcUCR78Q3Ud6OXCTNg"
+      ]
+    },
+    {
+      "id": "dw-espanol",
+      "name": "DW Español",
+      "handle": null,
+      "region": "latam",
+      "geo": null,
+      "sources": [
+        "https://dwamdstream104.akamaized.net/hls/live/2015530/dwstream104/stream04/streamPlaylist.m3u8"
+      ]
+    },
+    {
+      "id": "rt-espanol",
+      "name": "RT Español",
+      "handle": null,
+      "region": "latam",
+      "geo": null,
+      "sources": [
+        "https://rt-esp.rttv.com/dvr/rtesp/playlist.m3u8"
+      ]
+    },
+    {
+      "id": "cgtn-espanol",
+      "name": "CGTN Español",
+      "handle": null,
+      "region": "latam",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCd94YCD7yp6d-YZSRYWyeFA"
+      ]
+    },
+    {
+      "id": "tbs-news",
+      "name": "TBS NEWS DIG",
+      "handle": "@tbsnewsdig",
+      "region": "asia",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=Anr15FA9OCI"
+      ]
+    },
+    {
+      "id": "ann-news",
+      "name": "ANN News",
+      "handle": "@ANNnewsCH",
+      "region": "asia",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=coYw-eVU0Ks"
+      ]
+    },
+    {
+      "id": "ntv-news",
+      "name": "NTV News (Japan)",
+      "handle": "@ntv_news",
+      "region": "asia",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=t9kwjZBLI-A"
+      ]
+    },
+    {
+      "id": "cti-news",
+      "name": "CTI News (Taiwan)",
+      "handle": "@中天新聞CtiNews",
+      "region": "asia",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=-YExqG4Llcw"
+      ]
+    },
+    {
+      "id": "wion",
+      "name": "WION",
+      "handle": "@WION",
+      "region": "asia",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=X-7LAkvfA5s"
+      ]
+    },
+    {
+      "id": "ndtv",
+      "name": "NDTV 24x7",
+      "handle": "@NDTV",
+      "region": "asia",
+      "geo": null,
+      "sources": [
+        "https://ndtvindiaelemarchana.akamaized.net/hls/live/2003679/ndtvindia/master.m3u8"
+      ]
+    },
+    {
+      "id": "cgtn",
+      "name": "CGTN",
+      "handle": null,
+      "region": "asia",
+      "geo": null,
+      "sources": [
+        "https://english-livebkali.cgtn.com/live/encgtn.m3u8",
+        "https://www.youtube.com/watch?v=0i7n3r01L2U"
+      ]
+    },
+    {
+      "id": "cna-asia",
+      "name": "CNA (NewsAsia)",
+      "handle": "@channelnewsasia",
+      "region": "asia",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=XWq5kBlakcQ"
+      ]
+    },
+    {
+      "id": "nhk-world",
+      "name": "NHK World Japan",
+      "handle": "@NHKWORLDJAPAN",
+      "region": "asia",
+      "geo": null,
+      "sources": [
+        "https://masterpl.hls.nhkworld.jp/hls/w/live/master.m3u8",
+        "https://www.youtube.com/channel/UCSPEjw8F2nQDtmUKPFNF7_A"
+      ]
+    },
+    {
+      "id": "arirang-news",
+      "name": "Arirang News",
+      "handle": "@ArirangCoKrArirangNEWS",
+      "region": "asia",
+      "geo": null,
+      "sources": [
+        "https://amdlive-ch01-ctnd-com.akamaized.net/arirang_1ch/smil:arirang_1ch.smil/playlist.m3u8"
+      ]
+    },
+    {
+      "id": "india-today",
+      "name": "India Today",
+      "handle": "@indiatoday",
+      "region": "asia",
+      "geo": null,
+      "sources": [
+        "https://indiatodaylive.akamaized.net/hls/live/2014320/indiatoday/indiatodaylive/playlist.m3u8",
+        "https://www.youtube.com/watch?v=sYZtOFzM78M"
+      ]
+    },
+    {
+      "id": "abp-news",
+      "name": "ABP News",
+      "handle": "@ABPNews",
+      "region": "asia",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCRWFSbif-RFENbBrSiez1DA"
+      ]
+    },
+    {
+      "id": "alarabiya",
+      "name": "AlArabiya",
+      "handle": "@AlArabiya",
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://live.alarabiya.net/alarabiapublish/alarabiya.smil/playlist.m3u8",
+        "https://www.youtube.com/watch?v=n7eQejkXbnM"
+      ]
+    },
+    {
+      "id": "aljazeera",
+      "name": "AlJazeera",
+      "handle": "@AlJazeeraEnglish",
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://live-hls-apps-aje-fa.getaj.net/AJE/index.m3u8",
+        "https://www.youtube.com/watch?v=gCNeDWCI0vo",
+        "https://www.youtube.com/channel/UCNye-wNBqNL5ZzHSJj3l8Bg"
+      ]
+    },
+    {
+      "id": "al-hadath",
+      "name": "Al Hadath",
+      "handle": "@AlHadath",
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://av.alarabiya.net/alarabiapublish/alhadath.smil/playlist.m3u8"
+      ]
+    },
+    {
+      "id": "sky-news-arabia",
+      "name": "Sky News Arabia",
+      "handle": "@skynewsarabia",
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://live-stream.skynewsarabia.com/c-horizontal-channel/horizontal-stream/index.m3u8"
+      ]
+    },
+    {
+      "id": "trt-world",
+      "name": "TRT World",
+      "handle": "@TRTWorld",
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://tv-trtworld.medya.trt.com.tr/master.m3u8"
+      ]
+    },
+    {
+      "id": "iran-intl",
+      "name": "Iran International",
+      "handle": "@IranIntl",
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://live.livetvstream.co.uk/LS-63503-4/index.m3u8",
+        "https://www.youtube.com/watch?v=5JDxjsAVaGk"
+      ]
+    },
+    {
+      "id": "cgtn-arabic",
+      "name": "CGTN Arabic",
+      "handle": "@CGTNArabic",
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCQmJk0ErE_FiorcLBsDKORA"
+      ]
+    },
+    {
+      "id": "kan-11",
+      "name": "Kan 11",
+      "handle": "@KAN11NEWS",
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://kancdn.medonecdn.net/livehls/oil/kancdn-live/live/kan11/live.livx/playlist.m3u8"
+      ]
+    },
+    {
+      "id": "i24-news",
+      "name": "i24NEWS (Israel)",
+      "handle": "@i24NEWS_HE",
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://i24newshebrew-cdn.encoders.immergo.tv/master.m3u8"
+      ]
+    },
+    {
+      "id": "asharq-news",
+      "name": "Asharq News",
+      "handle": "@asharqnews",
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=f6VpkfV7m4Y"
+      ]
+    },
+    {
+      "id": "aljazeera-arabic",
+      "name": "AlJazeera Arabic",
+      "handle": "@AljazeeraChannel",
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://live-hls-web-aja.getaj.net/AJA/index.m3u8",
+        "https://www.youtube.com/watch?v=bNyUyrR0PHo"
+      ]
+    },
+    {
+      "id": "aljazeera-mubasher",
+      "name": "Al Jazeera Mubasher",
+      "handle": null,
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://live-hls-web-ajm.getaj.net/AJM/index.m3u8"
+      ]
+    },
+    {
+      "id": "alarabiya-business",
+      "name": "Al Arabiya Business",
+      "handle": null,
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://live.alarabiya.net/alarabiapublish/aswaaq.smil/playlist.m3u8"
+      ]
+    },
+    {
+      "id": "al-qahera-news",
+      "name": "Al Qahera News",
+      "handle": null,
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCktyejXTxWaKfrgp1Oq7CMQ"
+      ]
+    },
+    {
+      "id": "press-tv",
+      "name": "Press TV",
+      "handle": null,
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://live.presstv.co.uk/hls/presstv.m3u8"
+      ]
+    },
+    {
+      "id": "dw-arabic",
+      "name": "DW Arabic",
+      "handle": null,
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://dwamdstream103.akamaized.net/hls/live/2015526/dwstream103/index.m3u8"
+      ]
+    },
+    {
+      "id": "rt-arabic",
+      "name": "RT Arabic",
+      "handle": null,
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://rt-arb.rttv.com/dvr/rtarab/playlist.m3u8"
+      ]
+    },
+    {
+      "id": "rudaw",
+      "name": "Rudaw",
+      "handle": null,
+      "region": "me",
+      "geo": null,
+      "sources": [
+        "https://live.rudaw.net/hls/rudaw-tv/master.m3u8",
+        "https://www.youtube.com/channel/UCAUHoE2Ykw0sguyi5AjhrjQ"
+      ]
+    },
+    {
+      "id": "africanews",
+      "name": "Africanews",
+      "handle": "@africanews",
+      "region": "africa",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UC1_E8NeF5QHY2dtdLRBCCLA"
+      ]
+    },
+    {
+      "id": "channels-tv",
+      "name": "Channels TV",
+      "handle": "@ChannelsTelevision",
+      "region": "africa",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCEXGDNclvmg6RW0vipJYsTQ"
+      ]
+    },
+    {
+      "id": "ktn-news",
+      "name": "KTN News",
+      "handle": "@ktnnews_kenya",
+      "region": "africa",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCKVsdeoHExltrWMuK0hOWmg"
+      ]
+    },
+    {
+      "id": "enca",
+      "name": "eNCA",
+      "handle": "@encanews",
+      "region": "africa",
+      "geo": null,
+      "sources": []
+    },
+    {
+      "id": "sabc-news",
+      "name": "SABC News",
+      "handle": "@SABCDigitalNews",
+      "region": "africa",
+      "geo": null,
+      "sources": [
+        "https://sabconetanw.cdn.mangomolo.com/news/smil:news.stream.smil/chunklist_b250000_t64MjQwcA==.m3u8",
+        "https://sabconetanw.cdn.mangomolo.com/news/smil:news.stream.smil/playlist.m3u8"
+      ]
+    },
+    {
+      "id": "arise-news",
+      "name": "Arise News",
+      "handle": "@AriseNewsChannel",
+      "region": "africa",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCyEJX-kSj0kOOCS7Qlq2G7g"
+      ]
+    },
+    {
+      "id": "welt",
+      "name": "WELT",
+      "handle": "@WELTVideoTV",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCZMsvbAhhRblVGXmEXW8TSA"
+      ]
+    },
+    {
+      "id": "tagesschau24",
+      "name": "Tagesschau24",
+      "handle": "@tagesschau",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://tagesschau.akamaized.net/hls/live/2020115/tagesschau/tagesschau_1/master.m3u8"
+      ]
+    },
+    {
+      "id": "euronews-fr",
+      "name": "Euronews FR",
+      "handle": "@euronewsfr",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=NiRIbKwAejk"
+      ]
+    },
+    {
+      "id": "euronews-gr",
+      "name": "Euronews GR",
+      "handle": "@euronewsgr",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UC8HJZNfDPoySgW9DN3YGNaA"
+      ]
+    },
+    {
+      "id": "skai-tv",
+      "name": "SKAI TV",
+      "handle": "@skaigr",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://skai-live.siliconweb.com/media/cambria4/index.m3u8"
+      ]
+    },
+    {
+      "id": "ert-news",
+      "name": "ERT News",
+      "handle": "@ertgr",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://ert-ucdn.broadpeak-aas.com/bpk-tv/ERTNews/default/index.m3u8"
+      ]
+    },
+    {
+      "id": "france24-fr",
+      "name": "France 24 FR",
+      "handle": "@France24_fr",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/watch?v=a47ckXKZjxI"
+      ]
+    },
+    {
+      "id": "france-info",
+      "name": "France Info",
+      "handle": "@franceinfo",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://www.youtube.com/channel/UCO6K_kkdP-lnSCiO3tPx7WA"
+      ]
+    },
+    {
+      "id": "bfmtv",
+      "name": "BFMTV",
+      "handle": "@BFMTV",
+      "region": "eu",
+      "geo": null,
+      "sources": [
+        "https://live-cdn-stream-euw1.bfmtv.bct.nextradiotv.com/master.m3u8",
+        "https://www.youtube.com/channel/UCXwDLMDV86ldKoFVc_g8P0g"
+      ]
+    },
+    {
+      "id": "tv5monde-info",
+      "name": "TV5 Monde Info",
+      "handle": "@TV5MONDEInfo",
+      "region": "eu",
+      "geo": [
+        "FR",
+        "BE",
+        "CH",
+        "CA"
+      ],
+      "sources": [
+        "https://ott.tv5monde.com/Content/HLS/Live/channel(info)/index.m3u8"
+      ]
+    },
+    {
+      "id": "nrk1",
+      "name": "NRK1",
+      "handle": "@nrk",
+      "region": "eu",
+      "geo": [
+        "NO"
+      ],
+      "sources": [
+        "https://nrk-nrk1.akamaized.net/21/0/hls/nrk_1/playlist.m3u8"
+      ]
+    },
+    {
+      "id": "abc-news-au",
+      "name": "ABC News Australia",
+      "handle": "@abcnewsaustralia",
+      "region": "oc",
+      "geo": null,
+      "sources": [
+        "https://abc-iview-mediapackagestreams-2.akamaized.net/out/v1/6e1cc6d25ec0480ea099a5399d73bc4b/index.m3u8",
+        "https://www.youtube.com/watch?v=vOTiJkg1voo"
+      ]
+    }
+  ],
+  "regions": [
+    {
+      "key": "na",
+      "label": "North America",
+      "channelIds": [
+        "bloomberg",
+        "yahoo",
+        "cnn",
+        "fox-news",
+        "newsmax",
+        "abc-news",
+        "cbs-news",
+        "nbc-news",
+        "cbc-news",
+        "ctv-news",
+        "reuters-tv",
+        "nasa"
+      ]
+    },
+    {
+      "key": "eu",
+      "label": "Europe",
+      "channelIds": [
+        "sky",
+        "euronews",
+        "dw",
+        "france24",
+        "bbc-news",
+        "gb-news",
+        "the-guardian",
+        "france24-en",
+        "phoenix",
+        "rtp3",
+        "welt",
+        "rtve",
+        "trt-haber",
+        "ntv-turkey",
+        "cnn-turk",
+        "tv-rain",
+        "rt",
+        "tvp-info",
+        "telewizja-republika",
+        "tagesschau24",
+        "euronews-fr",
+        "euronews-gr",
+        "skai-tv",
+        "ert-news",
+        "france24-fr",
+        "france-info",
+        "bfmtv",
+        "tv5monde-info",
+        "nrk1"
+      ]
+    },
+    {
+      "key": "latam",
+      "label": "Latin America",
+      "channelIds": [
+        "cnn-brasil",
+        "jovem-pan",
+        "record-news",
+        "band-jornalismo",
+        "tn-argentina",
+        "c5n",
+        "milenio",
+        "noticias-caracol",
+        "ntn24",
+        "t13",
+        "dw-espanol",
+        "rt-espanol",
+        "cgtn-espanol"
+      ]
+    },
+    {
+      "key": "asia",
+      "label": "Asia",
+      "channelIds": [
+        "tbs-news",
+        "ann-news",
+        "ntv-news",
+        "cti-news",
+        "cgtn",
+        "wion",
+        "ndtv",
+        "cna-asia",
+        "nhk-world",
+        "arirang-news",
+        "india-today",
+        "abp-news"
+      ]
+    },
+    {
+      "key": "me",
+      "label": "Middle East",
+      "channelIds": [
+        "alarabiya",
+        "aljazeera",
+        "al-hadath",
+        "sky-news-arabia",
+        "trt-world",
+        "iran-intl",
+        "press-tv",
+        "cgtn-arabic",
+        "kan-11",
+        "i24-news",
+        "asharq-news",
+        "aljazeera-arabic",
+        "aljazeera-mubasher",
+        "alarabiya-business",
+        "al-qahera-news",
+        "dw-arabic",
+        "rt-arabic",
+        "rudaw"
+      ]
+    },
+    {
+      "key": "africa",
+      "label": "Africa",
+      "channelIds": [
+        "africanews",
+        "channels-tv",
+        "ktn-news",
+        "enca",
+        "sabc-news",
+        "arise-news"
+      ]
+    },
+    {
+      "key": "oc",
+      "label": "Oceania",
+      "channelIds": [
+        "abc-news-au"
+      ]
+    }
+  ],
+  "defaultChannelIds": [
+    "bloomberg",
+    "sky",
+    "euronews",
+    "dw",
+    "cnn",
+    "france24",
+    "alarabiya",
+    "aljazeera"
+  ],
+  "webcams": [
+    {
+      "id": "jerusalem",
+      "city": "Jerusalem",
+      "country": "Israel",
+      "region": "middle-east",
+      "sources": [
+        "https://www.youtube.com/watch?v=zp6LNSoq000"
+      ]
+    },
+    {
+      "id": "middle-east",
+      "city": "Middle East",
+      "country": "Multi",
+      "region": "middle-east",
+      "sources": [
+        "https://www.youtube.com/watch?v=AkqGOcpDvZU"
+      ]
+    },
+    {
+      "id": "tel-aviv",
+      "city": "Tel Aviv",
+      "country": "Israel",
+      "region": "middle-east",
+      "sources": []
+    },
+    {
+      "id": "mecca",
+      "city": "Mecca",
+      "country": "Saudi Arabia",
+      "region": "middle-east",
+      "sources": [
+        "https://www.youtube.com/watch?v=eC4LfEVxvKg"
+      ]
+    },
+    {
+      "id": "istanbul",
+      "city": "Istanbul",
+      "country": "Turkey",
+      "region": "middle-east",
+      "sources": [
+        "https://www.youtube.com/watch?v=bbVe5h7X3uw"
+      ]
+    },
+    {
+      "id": "medina",
+      "city": "Medina",
+      "country": "Saudi Arabia",
+      "region": "middle-east",
+      "sources": [
+        "https://www.youtube.com/watch?v=naaOMgZbIHQ"
+      ]
+    },
+    {
+      "id": "beirut-mtv",
+      "city": "Beirut",
+      "country": "Lebanon",
+      "region": "middle-east",
+      "sources": []
+    },
+    {
+      "id": "kyiv",
+      "city": "Ukraine",
+      "country": "Ukraine",
+      "region": "europe",
+      "sources": [
+        "https://www.youtube.com/watch?v=e2gC37ILQmk"
+      ]
+    },
+    {
+      "id": "paris",
+      "city": "Paris",
+      "country": "France",
+      "region": "europe",
+      "sources": [
+        "https://www.youtube.com/watch?v=-xzg3wujOVM"
+      ]
+    },
+    {
+      "id": "st-petersburg",
+      "city": "St. Petersburg",
+      "country": "Russia",
+      "region": "europe",
+      "sources": [
+        "https://www.youtube.com/watch?v=CjtIYbmVfck"
+      ]
+    },
+    {
+      "id": "london",
+      "city": "London",
+      "country": "UK",
+      "region": "europe",
+      "sources": [
+        "https://www.youtube.com/watch?v=zMCea32gpmg"
+      ]
+    },
+    {
+      "id": "washington",
+      "city": "Washington DC",
+      "country": "USA",
+      "region": "americas",
+      "sources": [
+        "https://www.youtube.com/watch?v=oDCAAfOSqvA"
+      ]
+    },
+    {
+      "id": "new-york",
+      "city": "New York",
+      "country": "USA",
+      "region": "americas",
+      "sources": [
+        "https://www.youtube.com/watch?v=JQ_jwk_7OVE",
+        "https://www.youtube.com/watch?v=VGnFLdQW39A"
+      ]
+    },
+    {
+      "id": "los-angeles",
+      "city": "Los Angeles",
+      "country": "USA",
+      "region": "americas",
+      "sources": [
+        "https://www.youtube.com/watch?v=EO_1LWqsCNE"
+      ]
+    },
+    {
+      "id": "miami",
+      "city": "Miami",
+      "country": "USA",
+      "region": "americas",
+      "sources": [
+        "https://www.youtube.com/watch?v=WT69M210Z18",
+        "https://www.youtube.com/watch?v=bi7B4EmyHHs",
+        "https://www.youtube.com/watch?v=4fzzp0XVPoA"
+      ]
+    },
+    {
+      "id": "taipei",
+      "city": "Taipei",
+      "country": "Taiwan",
+      "region": "asia",
+      "sources": [
+        "https://www.youtube.com/watch?v=z_fY1pj1VBw"
+      ]
+    },
+    {
+      "id": "shanghai",
+      "city": "Shanghai",
+      "country": "China",
+      "region": "asia",
+      "sources": [
+        "https://www.youtube.com/watch?v=Z-g8M1QGKbg"
+      ]
+    },
+    {
+      "id": "tokyo",
+      "city": "Tokyo",
+      "country": "Japan",
+      "region": "asia",
+      "sources": [
+        "https://www.youtube.com/watch?v=_k-5U7IeK8g"
+      ]
+    },
+    {
+      "id": "seoul",
+      "city": "Seoul",
+      "country": "South Korea",
+      "region": "asia",
+      "sources": [
+        "https://www.youtube.com/watch?v=vk5BHoDxXf0"
+      ]
+    },
+    {
+      "id": "sydney",
+      "city": "Sydney",
+      "country": "Australia",
+      "region": "asia",
+      "sources": [
+        "https://www.youtube.com/watch?v=5uZa3-RMFos"
+      ]
+    },
+    {
+      "id": "iss-earth",
+      "city": "ISS Earth View",
+      "country": "Space",
+      "region": "space",
+      "sources": [
+        "https://www.youtube.com/watch?v=M3HKLzjvKPc"
+      ]
+    },
+    {
+      "id": "nasa-live",
+      "city": "NASA TV",
+      "country": "Space",
+      "region": "space",
+      "sources": [
+        "https://www.youtube.com/watch?v=awQzjn72bI0"
+      ]
+    },
+    {
+      "id": "space-x",
+      "city": "SpaceX",
+      "country": "Space",
+      "region": "space",
+      "sources": [
+        "https://www.youtube.com/watch?v=mhJRzQsLZGg",
+        "https://www.youtube.com/watch?v=Jm8wRjD3xVA"
+      ]
+    },
+    {
+      "id": "space-walk",
+      "city": "Space",
+      "country": "Space",
+      "region": "space",
+      "sources": [
+        "https://www.youtube.com/watch?v=fO9e9jnhYK8"
+      ]
+    }
+  ],
+  "webcamGridPriority": [
+    "jerusalem",
+    "middle-east",
+    "kyiv",
+    "washington",
+    "taipei",
+    "tel-aviv",
+    "beirut-mtv",
+    "mecca",
+    "istanbul",
+    "medina",
+    "st-petersburg",
+    "tokyo",
+    "los-angeles",
+    "sydney",
+    "iss-earth"
+  ],
+  "map": {
+    "width": 480,
+    "height": 200,
+    "lonMin": -180,
+    "lonMax": 180,
+    "latMin": -58,
+    "latMax": 84,
+    "bits": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB///8AAAA/////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/////AAHn///gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////Af////////P/gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB8f///+P//////////8AAAAAAAAAAAAAAwAAAAAAAAD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/7///w///////////AAAAAAAA//AAAAEAAAAAAAAAH/gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB/+//wAP/////////+AAAAAAP/wAAAAAAAAAAAAAAAB/gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYB8Yf7//gf//////////8AAAAAAD/wAAAAAAAAAAAAAAAAAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4ACIAB/+B///////////8AAAAAAA/jwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPgAAAAAH/wAD//////////+AAAAAAAeAAAAAAAAAAAAAAAAAAD4AAAAAAAAAAAAAAAAAAAAAAAAAAAAB/AGADj+f/4AH//////////gAAAAAAAAAAAAAAAAAAHwAAAAAAP/+AAAAAAAAAAAAAAAAAAAAAAAAAAAAA/j4fwPAAAAAAD////////8AAAAAAAAAAAAAAAAAf4AAAAAD////wAAAAH+AAAAAAAAAAAAAAAAAAAAAA+fwHnn//gAAAA////////4AAAAAAAAAAAAAAAAP8AAAAAH/////gAAAAH/nwAAAAAAAAAAAAAAAAAABADAAAAAOAAAAAAP///////8AAAAAAAAAAAAAAAAPAAAAAAf////4AAAAAAAAAAAAAAAAAAAAAAAAAAAH/gAACT+CAwAAAAH///////4AAAAAAAAAAAAAAAA+AAAAA///////mAIAAAMAAAAAAAAAAAAAAAAAAAAP+cA0Hj4e/fAAAAD//////+AAAAAAAAAAAAAAAAB4AAEAB/////////v4AAAAAAAAAAAAAAAAAAAAAAAfz/+8P5g//PgAAAB//////4AAAAAAAAAAAAAAAADwAAPiM//////////8AA//AAAAAAAAAAAAAAAAAAAPn//8B7g///4AAAD///////AAAAAAAAAAAAAAAAHwAA/P///////////8Mi//4AAAAAAgAAAB9AAAAAAAD//+AH4f///wAAAP/////zgAAAAAAAAAP4AAAAB8AB/n/////////////////fwAAADAAAA///4AAAGAAP//4H8B///+AAB//////+AAAAAAAAAD/8AAAAAAAB/n//////////////////4AAAAAAAD/////g//3wf//h9+A+A//AAAz/////4AAAAAAAAA///4AAAAAPh/v////////////////////x/8gAA///////////58IAA+w/Af8AAAH/////AAAAAAAAAD////wAABAn+Pj///////////////////////8AAP//////////4A/gd/x+Bz/wAAf///+AAAAAAAAAAP////+Bwf////z////////////////////////AAH////////////////7/Bh/+AA////8AAAAAAAAAAf/////jj/////n/////////////////////////AA/////////////////8AD//gAf///wAAAAAAAAAA////z/B//////P///////////////////////P/h/////////////////+AAH+PgAf//8AAD38AAAAAB//v/8A///////////////////////////////B8B/////////////////9wD//CAAP//AAAA//AAAAAH/+D/+B///////////////////////////////AMAKf///////////////5+D3/4AAP//AAAAf8AAAAAP/8P/+f//////////////////////////////4AAAAP//////////////+DzgA/4AAH/+AAAAPgAAAAA//4//////////////////////////////////8AAAP///////////////+AAAAfcAAD/8AAAAAAAAAAD//h//////////////////////////////////+AAAP///////////////wAMTkDgAAB/4AAAAAAAAAAf//D///////////////////////////////3//wAAAf///////////////gAAD/AAAAA/4AAAAAAAAAAf/+B//////////////////////////////nn/8AAAAP//3////////////AAAD/4AAAAf4AAAAAAAAAAf/+D/////////////////////////////8GP/gAAABn//vh///////////AAAB/4AAAAAwAAAAAAAAAAf//g8P///////////////////////////4A/yAAAAAA/+MAA//////////AAAD/4GAAAAAAAAAAAAAAAf//AGf//////////////////////////jwDwAAAAAAAv+AAAf/////////wAAH/+PAAAAAAAAAAAAAAAfH+Af/////////////////////////4AAAHgAAAAAAAA8AAAAf////////wAAB///gAAAAAAAAAAABgAAH8AP/////////////////////////gAAAfAAAAAAAABzgAAAP////////4AAA///wAAAAAAAAAAAD4AAT8Bv/////////////////////////AAAB/wAAAAAAAHAAAAAH/////////wAA///wAAAAAAAAAAAD4ABz8D/////////////////////////8AAAD/gAAAAAAAeAAAAAD/////////8AB///4AAAAAAAAAAADwABzgD/////////////////////////4AAAD/AAAAAAADgAAAAAB//////////4D///8AAAAAAAAAAAB8ABmAD/////////////////////////gAAAH/AAAAAAAIAAAAAAA//////////8P////wAAAAAAAAAAceABwDv/////////////////////////wAAAD+AAAAAAAAAAAAAAMf/////////8H////wAAAAAAAAAB8PAB/////////////////////////////gAAD8AAAAAAAAAAAAAAEP/////////+H////8AAAAAAAAAA8/A//////////////////////////////2AAD4AAAAAAAAAAAAAACH/////////+H////8AAAAAAAAAB4/w//////////////////////////////2AADgAAAAAAAAAAAAAAAH//////////H////4AAAAAAAAAAh/x//////////////////////////////2AABAAAAAAAAAAAAAAAAD//////////////+IAAAAAAAAAAA/v//////////////////////////////iAAAAAAAAAAAAAAAAAAAHf////////////x8YAAAAAAAAAABAP//////////////////////////////jAAAAAAAAAAAAAAAAAAABn////////////BgcAAAAAAAAAAAE///////////////////////////////nAAAAAAAAAAAAAAAAAAAA7///////////88A/AAAAAAAAAAAT///////////////////////////////mAAAAAAAAAAAAAAAAAAAAJ///////////74B/gAAAAAAAAAA////////////////////////////////EAAAAAAAAAAAAAAAAAAAAN///////////34ACwAAAAAAAAAAP//////////////////////////////+GAAAAAAAAAAAAAAAAAAAAH////////////+AAgAAAAAAAAAAH////////n//h//////////////////+GAAAAAAAAAAAAAAAAAAAAH////////////+sAAAAAAAAAAAAD//////8GH/+B//////////////////8EAAAAAAAAAAAAAAAAAAAAH/////////////4AAAAAAAAAAAAD//8///4f//4F//////////////////4EAAAAAAAAAAAAAAAAAAAAH////////////OAAAAAAAAAAAAAD//8P//wMP/wP//////////////////wGAAAAAAAAAAAAAAAAAAAAH///////////4MAAAAAAAAAAAAAD/+OH//wAD/4P//////////////////gHwAAAAAAAAAAAAAAAAAAAP///////////wAAAAAAAAAAAAA//+IPB//gAA/4P/////////////////2AfgAAAAAAAAAAAAAAAAAAAP///////////wAAAAAAAAAAAAA//8Angf/gAAf8D/////////////////gA+AAAAAAAAAAAAAAAAAAAAP///////////4AAAAAAAAAAAAA//8Aj8P/gfAP+C////////////////+AAQAAAAAAAAAAAAAAAAAAAAP//////////9AAAAAAAAAAAAAA//gAA+P/3/6//Af///////////////+AAYAAAAAAAAAAAAAAAAAAAAP//////////4AAAAAAAAAAAAAA//ABgNvR/////j//////////////8f8AAYAAAAAAAAAAAAAAAAAAAAH//////////4AAAAAAAAAAAAAA//ABgEHh/////B//////////////4xwAAYAAAAAAAAAAAAAAAAAAAAH//////////wAAAAAAAAAAAAAB//AAAGHg////+A//////////////gB4AA4AAAAAAAAAAAAAAAAAAAAD/////////+QAAAAAAAAAAAAAA/+AAAMDx////+A//////////////gD8AAwAAAAAAAAAAAAAAAAAAAAB//////////AAAAAAAAAAAAAAA/8AABwDg/////A//////////////7AcADwAAAAAAAAAAAAAAAAAAAAB//////////gAAAAAAAAAAAAAAH4D/4ABgf////7///////////////AeAPwAAAAAAAAAAAAAAAAAAAAA//////////gAAAAAAAAAAAAAACA//wAAAAA//////////////////+AeAfwAAAAAAAAAAAAAAAAAAAAAf/////////gAAAAAAAAAAAAAADj//4AAcAI//////////////////4AcH/gAAAAAAAAAAAAAAAAAAAAAf////////+AAAAAAAAAAAAAAAH///wAAAAA//////////////////8AQP+AAAAAAAAAAAAAAAAAAAAAAD////////8AAAAAAAAAAAAAAAP///wAAAAB//////////////////+AA3wAAAAAAAAAAAAAAAAAAAAAAB////////wAAAAAAAAAAAAAAA////4AAAAB//////////////////+AB8AAAAAAAAAAAAAAAAAAAAAAAA////////gAAAAAAAAAAAAAAA/////gHgAD///////////////////ABwAAAAAAAAAAAAAAAAAAAAAAAA////////AAAAAAAAAAAAAAAB/////4P4AD///////////////////AAgAAAAAAAAAAAAAAAAAAAAAAAAZ//////+AAAAAAAAAAAAAAAB/////8H/3X///////////////////gAAAAAAAAAAAAAAAAAAAAAAAAAAZ//////+AAAAAAAAAAAAAAAB//////v//////////////////////AAAAAAAAAAAAAAAAAAAAAAAAAAAM////vgnAAAAAAAAAAAAAAAB////////////8f///////////////gAAAAAAAAAAAAAAAAAAAAAAAAAAG///+AADAAAAAAAAAAAAAAAD////////////8P///////////////gAAAAAAAAAAAAAAAAAAAAAAAAAACf//4AADgAAAAAAAAAAAAAAH////////////+P///////////////AAAAAAAAAAAAAAAAAAAAAAAAAAAHH//wAADgAAAAAAAAAAAAAA//////////5//+D//////////////+AAAAAAAAAAAAAAAAAAAAAAAAAAADn//wAADmAAAAAAAAAAAAAA//////////4///hz/////////////8AAAAAAAAAAAAAAAAAAAAAAAAAAAAj//wAABgAAAAAAAAAAAAAB//////////4f//gD/////////////8AAAAAAAAAAAAAAAAAAAAAAAAAAAAx//wAAAgAAAAAAAAAAAAAD//////////8f//oIf////////////4AAAAAAAAAAAAAAAAAAAAAAAAAAAAw//wAAAAAAAAAAAAAAAAAD//////////+P//4YAB///////////xAAAAAAAAAAAAAAAAAAAAAAAAAAAAIf/wAAACAAAAAAAAAAAAAH///////////H///8AA///////////jAAAAAAAAAAAAAAAAAAAAAAAAAAAAEP/wAAAAAAAAAAAAAAAAAP//////////+D////gAP//////////DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/wAAJwAAAAAAAAAAAAAP///////////D////wAH////v////4CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/wAAQeAAAAAAAAAAAAAf///////////j////gAH///+H////AAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAD/wA8AHgAAAAAAAAAAAAf///////////z////gADf//wH//+MAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/4B8AB4AAAAAAAAAAAAP///////////h///+AAAf//wH//8IAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAD/4B4AADwAAAAAAAAAAAP///////////w///+AAAf//AB//4cAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAB/8D4AAB8AAAAAAAAAAAP///////////wf//+AAAf/+AB//4YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//f4ADHqwAAAAAAAAAAP///////////4f//4AAAf/8AA//8AABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH//wAAAAAAAAAAAAAAAP///////////4P//wAAAP/4AA//8AABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD//wAAAAAAAAAAAAAAAP///////////8H//AAAAP/wAA//+AADgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/wAAAAAAAAAAAAAAAP///////////8H/8AAAAP/gAAz//AADgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/wAAAAAAAAAAAAAAP///////////+H/4AAAAP+AAAD//gADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/4AAAAAAAAAAAAAAf////////////H/AAAAAH+AAAD//gADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/4AAAAAAAAAAAAAAf////////////n+AAAAAH+AAAB//wABwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf4AAAAAAAAAAAAAAP////////////zgAAAAAD+AAABn/wABYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD4AAAAAAAAAAAAAAP////////////6AAAAAAD+AAABv/wABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABwAAoAAAAAAAAAAAP////////////8AQAAAAD8AAABh/wAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAHMAAAAAAAAAAAD////////////8DwAAAAB8AAAAh/gAATAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4AffzoAAAAAAAAAD////////////+/wAAAAB8AAABAeAAEKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8Aff/wAAAAAAAAAB//////////////wAAAAA4AAABAMAAIYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMc/f/4AAAAAAAAAA//////////////gAAAAA5AAABgIAAQBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHn///8AAAAAAAAAA//////////////gAAAAATgAABwAAAALgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAj////AAAAAAAAAAf/////////////AAAAAADgAAAwAAAAfgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD////AAAAAAAAAAP/////////////AAAAAADgAAAYAAAAGgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB////gAAAAAAAAAH//8//////////AAAAAABAAAAMAABgCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB/////gAAAAAAAAB//Af////////+AAAAAAAAAAAOAADwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB/////wAAAAAAAAA8EAf////////8AAAAAAAAAAcPAAHwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB/////8AAAAAAAAAAAAA////////8AAAAAAAAAAOPAAPgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB/////8AAAAAAAAAAAAAf///////4AAAAAAAAAAHnAAfgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////8AAAAAAAAAAAAAf///////wAAAAAAAAAADnAB/gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/////+AAAAAAAAAAAAAf///////gAAAAAAAAAAB9gD/gAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/////+AAAAAAAAAAAAA///////+AAAAAAAAAAAA+gf/wCMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/////+AAAAAAAAAAAAA///////8AAAAAAAAAAAA+Af/j8MAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf//////AAAAAAAAAAAAA///////4AAAAAAAAAAAAfAf/gAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf//////oAAAAAAAAAAAA///////wAAAAAAAAAAAAPAP/kQAeAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA////////AAAAAAAAAAAA///////wAAAAAAAAAAAAPgH+HgAeAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA////////gAAAAAAAAAAAf//////AAAAAAAAAAAAAHwH+HAACPAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf////////gAAAAAAAAAAf//////AAAAAAAAAAAAAH4H+NgGPf4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////////4AAAAAAAAAAP/////+AAAAAAAAAAAAAD4AGFgAF//ABAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////////8AAAAAAAAAAH/////+AAAAAAAAAAAAAB4AACwAA//wCAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////////+AAAAAAAAAAD/////8AAAAAAAAAAAAAAYAAGQAAH/4GAAAAAAAAAAAAAAAAAAAAAAAAAAAA//////////gAAAAAAAAAD/////8AAAAAAAAAAAAAAIAAAAABD/88IAAAAAAAAAAAAAAAAAAAAAAAAAAAf/////////gAAAAAAAAAB/////8AAAAAAAAAAAAAAHgAAAAAB/+AEAAAAAAAAAAAAAAAAAAAAAAAAAAAP/////////wAAAAAAAAAB/////+AAAAAAAAAAAAAAD/AAAAAB/8ABAAAAAAAAAAAAAAAAAAAAAAAAAAAP/////////gAAAAAAAAAB/////8AAAAAAAAAAAAAAAH4AAAAD/OAAIAAAAAAAAAAAAAAAAAAAAAAAAAAH/////////gAAAAAAAAAA/////8AAAAAAAAAAAAAAAAI7xgAAeHAACAAAAAAAAAAAAAAAAAAAAAAAAAAH/////////gAAAAAAAAAB/////+AAAAAAAAAAAAAAAAAAGAAAADgAEAAAAAAAAAAAAAAAAAAAAAAAAAAD/////////AAAAAAAAAAA/////+AAAAAAAAAAAAAAAAACEAAAABwAAAAAAAAAAAAAAAAAAAAAAAAAAAAD////////+AAAAAAAAAAA//////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB////////8AAAAAAAAAAA//////AAAAAAAAAAAAAAAAAAAAMAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB////////8AAAAAAAAAAA//////ABAAAAAAAAAAAAAAAAAAPQGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA////////4AAAAAAAAAAB//////ABAAAAAAAAAAAAAAAAAA/wGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA////////wAAAAAAAAAAB//////ABgAAAAAAAAAAAAAAAAB/gGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA////////wAAAAAAAAAAD//////ADgAAAAAAAAAAAAAAAAx/gHgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf///////wAAAAAAAAAAD//////AHgAAAAAAAAAAAAAAAB//gHwAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAH///////wAAAAAAAAAAD//////APAAAAAAAAAAAAAAAAD//wHwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD///////wAAAAAAAAAAD/////+B/AAAAAAAAAAAAAAAAH//8PwAAAAQABAAAAAAAAAAAAAAAAAAAAAAAA///////wAAAAAAAAAAD/////4B/AAAAAAAAAAAAAAAAf///P4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf//////wAAAAAAAAAAD/////gB/AAAAAAAAAAAAAAAAf////4AAAAAAMAAAAAAAAAAAAAAAAAAAAAAAAP//////gAAAAAAAAAAD/////AB/AAAAAAAAAAAAAAAA/////4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//////gAAAAAAAAAAB////+AB+AAAAAAAAAAAAAAAA/////8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//////gAAAAAAAAAAB////8AB+AAAAAAAAAAAAAAAH//////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH//////AAAAAAAAAAAA////8AB+AAAAAAAAAAAAAAA///////AAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAH//////AAAAAAAAAAAA////+AD8AAAAAAAAAAAAAAD///////gAADAAAAAAAAAAAAAAAAAAAAAAAAAAAP/////+AAAAAAAAAAAAf///+AD8AAAAAAAAAAAAAAH///////gAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAP/////8AAAAAAAAAAAAf///+AD8AAAAAAAAAAAAAAP///////4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/////AAAAAAAAAAAAAf///+AD4AAAAAAAAAAAAAAP///////4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP////8AAAAAAAAAAAAAf///+AD4AAAAAAAAAAAAAAf///////8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP////wAAAAAAAAAAAAAP///4AB4AAAAAAAAAAAAAAP///////+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP////wAAAAAAAAAAAAAP///gAAAAAAAAAAAAAAAAAP////////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP////gAAAAAAAAAAAAAP///wAAAAAAAAAAAAAAAAAf////////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP////gAAAAAAAAAAAAAP///wAAAAAAAAAAAAAAAAAP////////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf////gAAAAAAAAAAAAAH///gAAAAAAAAAAAAAAAAAP////////gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf////gAAAAAAAAAAAAAD///gAAAAAAAAAAAAAAAAAH////////gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf////AAAAAAAAAAAAAAD///AAAAAAAAAAAAAAAAAAH////////gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf///+AAAAAAAAAAAAAAB//+AAAAAAAAAAAAAAAAAAH////////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf///+AAAAAAAAAAAAAAB//+AAAAAAAAAAAAAAAAAAD////////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf///8AAAAAAAAAAAAAAA//8AAAAAAAAAAAAAAAAAAD////////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf///4AAAAAAAAAAAAAAA//4AAAAAAAAAAAAAAAAAAD//wD////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf///wAAAAAAAAAAAAAAA//wAAAAAAAAAAAAAAAAAAD/8AB///+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA////gAAAAAAAAAAAAAAA//AAAAAAAAAAAAAAAAAAAD/4AA7//8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA///fAAAAAAAAAAAAAAAAeAAAAAAAAAAAAAAAAAAAAH8AAA3//4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA///gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABwAAAF//4AAAAIAAAAAAAAAAAAAAAAAAAAAAAAB///wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD//wAAAAGAAAAAAAAAAAAAAAAAAAAAAAAB///wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//wAAAACAAAAAAAAAAAAAAAAAAAAAAAAD///wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/wAAAABAAAAAAAAAAAAAAAAAAAAAAAAD///gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/gAAAABkAAAAAAAAAAAAAAAAAAAAAAAD///AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADcAAAAAB8AAAAAAAAAAAAAAAAAAAAAAAD//gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADwAAAAAAAAAAAAAAAAAAAAAAAD//gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABwAAAAAAAAAAAAAAAAAAAAAAAD//gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAH/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAfAAAAAdgAAAAAAAAAAAAAAAAAAAAAAAH/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPAAAAAcAAAAAAAAAAAAAAAAAAAAAAAAF/+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOAAAAA4AAAAAAAAAAAAAAAAAAAAAAAAB/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAADwAAAAAAAAAAAAAAAAAAAAAAAAD/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPgAAAAAAAAAAAAAAAAAAAAAAAAH/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAfAAAAAAAAAAAAAAAAAAAAAAAAAP/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/AAAAAAAAAAAAAAAAAAAAAAAAAP/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOAAAAAAAAAAAAAAAAAAAAAAAAAH/gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+AHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH2AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFuAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  }
+}

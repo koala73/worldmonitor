@@ -234,7 +234,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Status zu Schätzung und Imputation nicht angegeben"
     },
     "fiveFactorScorecard": {
       "title": "Fünf-Faktor-Resilienz-Scorecard",
@@ -405,6 +406,7 @@
     "energy": "Energie & Ressourcen",
     "gov": "Regierung",
     "thinktanks": "Denkfabriken",
+    "science": "Wissenschaft",
     "polymarket": "Vorhersagen",
     "commodities": "Rohstoffe",
     "economic": "Makro-Stress",
@@ -2939,6 +2941,7 @@
       "tier4OnlyHint": "Jedes Medium, das darüber berichtet, ist eine Tier-4-Quelle (Aggregatoren und Blogs). Dies beschreibt die Berichterstattung, nicht die Genauigkeit.",
       "rosterListed": "({{listed}} aufgeführt)",
       "rosterFeeds": "Gesehene Feeds: {{labels}}",
+      "rosterSameCopy": "Gleicher Text, einmal gezählt",
       "rosterLegend": "Tiers ordnen Quellen ein; sie beurteilen diese Aussage nicht.",
       "tierDocsLink": "Wie Tiers vergeben werden",
       "tierChip": "T{{tier}}",

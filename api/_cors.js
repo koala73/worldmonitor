@@ -1,6 +1,8 @@
 // App-serving hosts only; sibling vendor hosts do not inherit browser trust.
 // Keep aligned with convex/payments/returnUrlOrigin.ts and CORS parity tests.
 const APP_ORIGIN_PATTERN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
+const MAX_ORIGIN_BYTES = 300;
+const ORIGIN_ENCODER = new TextEncoder();
 
 export function isHostedAppOrigin(origin) {
   return typeof origin === 'string' && APP_ORIGIN_PATTERN.test(origin);
@@ -70,6 +72,9 @@ const EXPOSED_HEADERS = [
   // `response.headers.get('X-RateLimit-Mode')` null for cross-origin JS
   // even though the header is on the wire (#7270).
   'X-RateLimit-Mode',
+  // api/mcp-proxy marks the 504 it relays for a remote MCP server timeout so
+  // premium-fetch's origin-5xx canary can skip it (WORLDMONITOR-17A).
+  'X-Wm-Upstream-Timeout',
   'X-WorldMonitor-Bbox',
   'X-WorldMonitor-Bbox-Missing',
   'X-WorldMonitor-Bbox-Invalid',
@@ -82,6 +87,12 @@ const EXPOSED_HEADERS = [
   'Sunset',
 ].join(', ');
 
+function stripTrailingDnsDots(hostname) {
+  let end = hostname.length;
+  while (end > 0 && hostname[end - 1] === '.') end--;
+  return hostname.slice(0, end);
+}
+
 /**
  * Browsers occasionally emit the FQDN form of a hostname (trailing DNS dot),
  * e.g. `https://tech.worldmonitor.app.`. Allowlist patterns are anchored at `$`,
@@ -93,7 +104,7 @@ function originForAllowlistMatch(origin) {
   if (!origin) return '';
   try {
     const url = new URL(origin);
-    const host = url.hostname.replace(/\.+$/, '');
+    const host = stripTrailingDnsDots(url.hostname);
     if (!host || host === url.hostname) return origin;
     url.hostname = host;
     return url.origin;
@@ -113,7 +124,7 @@ function isWorldMonitorGoogleTranslateOrigin(origin) {
   try {
     const url = new URL(origin);
     if (url.protocol !== 'https:' || url.port !== '') return false;
-    const host = url.hostname.replace(/\.+$/, '');
+    const host = stripTrailingDnsDots(url.hostname);
     const suffix = '.translate.goog';
     if (!host.endsWith(suffix)) return false;
     const encoded = host.slice(0, -suffix.length);
@@ -126,7 +137,8 @@ function isWorldMonitorGoogleTranslateOrigin(origin) {
 }
 
 function isAllowedOrigin(origin) {
-  if (!origin) return false;
+  if (!origin || origin.length > MAX_ORIGIN_BYTES
+    || ORIGIN_ENCODER.encode(origin).byteLength > MAX_ORIGIN_BYTES) return false;
   if (isWorldMonitorGoogleTranslateOrigin(origin)) return true;
   const candidate = originForAllowlistMatch(origin);
   return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(candidate));

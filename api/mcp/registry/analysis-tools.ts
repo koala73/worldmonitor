@@ -1,6 +1,7 @@
 import { RpcValidationError } from '../billing-denial';
 import { requireCountryCode } from '../_country-args';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
+import { CII_MOVERS_OUTPUT_SCHEMA, ciiHistoryDays, readCiiMovers } from '../_cii-history';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { buildAlertDigest, buildWeeklyTrends } from '../../../shared/analysis-alert-digest';
 import {
@@ -212,6 +213,7 @@ const ANALYSIS_STALE_DESCRIPTION = 'True when any contributing cache key fails i
 export const ANALYSIS_TOOLS: ToolDef[] = [
   {
     name: 'get_signal_convergence',
+    title: 'Geographic signal convergence',
     _outputBudgetBytes: 65536,
     description:
       'Geographic signal convergence: grid cells where protests, military activity, naval movements, and earthquakes co-occur. ' +
@@ -363,6 +365,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_focal_points',
+    title: 'News and map focal points',
     _outputBudgetBytes: 65536,
     description:
       'Focal-point detection: entities where news coverage and live map signals converge, ranked by multi-signal score. ' +
@@ -463,6 +466,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'simulate_infrastructure_cascade',
+    title: 'Simulate an infrastructure cascade',
     _outputBudgetBytes: 131072,
     description:
       'Infrastructure cascade simulation: what fails downstream when a cable, chokepoint, pipeline, or port is disrupted. ' +
@@ -550,15 +554,10 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_military_surge',
+    title: 'Military surge alerts',
     _outputBudgetBytes: 65536,
     description:
-      'Military surge watch: theater aircraft postures, foreign-presence detections, and seeder-computed surge alerts. ' +
-      'Runs the dashboard military-surge engine server-side over the seeded flight snapshot: per-theater posture summaries ' +
-      'count fighters, tankers, AWACS, reconnaissance, transports, bombers, and drones inside each theater boundary, with ' +
-      'trend context recovered from the persisted surge history and tracked-vessel counts merged from the theater-posture ' +
-      'cache. Foreign-presence detection flags operators flying far from their home region above per-operator thresholds. ' +
-      'The seeded_surges block carries the surge alerts the flights seeder computed against its own persisted baselines — ' +
-      'reported separately because that variant uses different thresholds than the snapshot engine. Filter with theater.',
+      'Return the military surge watch computed server-side over the seeded flight snapshot: per-theater posture summaries counting fighters, tankers, AWACS, reconnaissance, transports, bombers and drones inside each theater boundary with trend context from persisted surge history and tracked-vessel counts; foreign_presence detections (operators flying far from home above per-operator thresholds); and seeded_surges, the alerts the flights seeder computed against its own baselines (reported separately because it uses different thresholds). Inputs are flagged stale after 30 minutes; flight_count and the *_available flags report which inputs were present. Requires a paid plan; weight 2 on API plans. theater narrows by id or name substring. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -680,6 +679,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_population_exposure',
+    title: 'Population exposed to active events',
     _outputBudgetBytes: 65536,
     description:
       'Population exposure: estimated people within the impact radius of active earthquakes, wildfires, and conflict events. ' +
@@ -815,6 +815,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_alert_digest',
+    title: 'Threshold alerts across domains today',
     _outputBudgetBytes: 131072,
     description:
       'Cross-domain alert digest: everything that tripped a threshold today, in one rollup. ' +
@@ -823,11 +824,13 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       'severity vocabulary its own producer already uses; no thresholds are invented by this tool. Domains with data but no ' +
       'trips are listed as quiet, and domains whose caches are unavailable are listed separately so silence is never mistaken ' +
       'for calm. The weekly view adds direction, volatility, and anomaly flags derived from the persisted military-activity ' +
-      'history plus the current temporal-anomaly snapshot. This is the fastest single call for what changed today.',
+      'history plus the current temporal-anomaly snapshot. movers_days (7-90, default 7) adds daily CII risers and fallers in weekly view. A rollup of threshold trips across domains: no news stories, ' +
+      'narrative, or full per-stream anomaly lists. Requires a paid plan; weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
         view: { type: 'string', enum: ['today', 'weekly'], description: 'today lists current threshold trips (default); weekly adds trend context.' },
+        movers_days: { type: 'integer', minimum: 7, maximum: 90, default: 7, description: 'Weekly view only. Rank CII rises and falls over this many UTC days (7-90, default 7).' },
       },
       required: [],
     },
@@ -849,6 +852,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
                 trends: { type: 'array', items: { type: 'object' } },
                 current_anomalies: { type: 'array', items: { type: 'object' } },
                 history_available: { type: 'boolean' },
+                cii_movers: CII_MOVERS_OUTPUT_SCHEMA,
                 note: { type: 'string' },
               },
             },
@@ -861,6 +865,8 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params) => {
       const view = typeof params.view === 'string' ? params.view : 'today';
+      const moversDays = ciiHistoryDays(params.movers_days, 'movers_days');
+      if (moversDays !== undefined && view !== 'weekly') throw new RpcValidationError('movers_days', [{ field: 'movers_days', description: 'Valid only with view: weekly.' }]);
       const keys: string[] = [
         CII_RISK_SCORE_CACHE_KEYS.live,
         'military:surges:v1',
@@ -882,6 +888,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         { key: 'seed-meta:thermal:escalation', maxStaleMin: 360 },
         { key: 'seed-meta:supply_chain:shipping_stress', maxStaleMin: 45 },
       ];
+      if (view === 'weekly') checks.push({ key: CII_RISK_SCORE_CACHE_KEYS.dailyHistoryMeta, maxStaleMin: 30, minRecordCount: 31 });
       const {
         payloads: [riskScores, surges, cableHealth, outages, temporal, thermal, stress, historyPayload],
         freshness,
@@ -908,6 +915,11 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       let weekly: Record<string, unknown> | null = null;
       const unavailable = [...digest.unavailable];
       if (view === 'weekly') {
+        const cii = await readCiiMovers(moversDays ?? 7, now);
+        freshness.unavailable_inputs.push(...cii.unavailableInputs);
+        freshness.failed_inputs.push(...cii.failedInputs);
+        freshness.stale ||= cii.unavailableInputs.length > 0;
+        if (!cii.available || freshness.unavailable_inputs.includes(CII_RISK_SCORE_CACHE_KEYS.dailyHistoryMeta)) unavailable.push('cii_history');
         const historyAvailable = historyPayload !== null;
         if (!historyAvailable) unavailable.push('military_history');
         const activity = surgeHistoryToActivityHistory(historyPayload);
@@ -919,7 +931,8 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
           trends: buildWeeklyTrends(series, now),
           current_anomalies: anomaliesToDigestInput(temporal),
           history_available: historyAvailable,
-          note: 'weekly trends derive from the persisted military-activity history; other domains publish no whole-feed history caches yet',
+          cii_movers: cii.movers,
+          note: 'weekly trends use military-activity history; CII movers use UTC daily closes with actual baseline dates, matching methodologies and no interpolation; other domains have no whole-feed history caches',
         };
       }
       return {
@@ -940,6 +953,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_hotspot_escalation',
+    title: 'Hotspot escalation scores',
     _outputBudgetBytes: 65536,
     description:
       'Hotspot escalation scores: the 29 curated intelligence hotspots ranked by dynamic escalation on a 1-5 scale. ' +

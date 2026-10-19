@@ -3,7 +3,7 @@ export const config = { runtime: 'edge' };
 // @ts-expect-error -- JS module, no declaration file
 import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
 import { readJsonFromUpstash, setCachedData } from '../_upstash-json.js';
-import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp, scopedTooManyRequestsResponse } from '../../server/_shared/rate-limit';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientRateLimitKey, scopedTooManyRequestsResponse } from '../../server/_shared/rate-limit';
 
 const ALLOWED_AGENTSKILLS_HOSTS = new Set(['agentskills.io', 'www.agentskills.io', 'api.agentskills.io']);
 
@@ -74,7 +74,7 @@ export default async function handler(
   // checkScopedRateLimit) must not break skill import.
   const proofDenied = checkIpScopedEdgeProof(req, corsHeaders);
   if (proofDenied) return proofDenied;
-  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, getClientIp(req));
+  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, getClientRateLimitKey(req));
   if (!scoped.allowed) {
     // Shared builder, not a hand-rolled subset: it emits the IETF RateLimit-*
     // fields alongside the legacy X-RateLimit-* trio, so this route's 429
@@ -104,7 +104,10 @@ export default async function handler(
     return Response.json({ error: 'Invalid URL' }, { status: 400, headers: corsHeaders });
   }
 
-  if (!ALLOWED_AGENTSKILLS_HOSTS.has(skillUrl.hostname)) {
+  // https on the default port only. The cache key below is host + path, so an
+  // http:// or :port variant of an allowlisted host would otherwise share the
+  // https entry and could seed it with a response fetched over plaintext.
+  if (!ALLOWED_AGENTSKILLS_HOSTS.has(skillUrl.hostname) || skillUrl.protocol !== 'https:' || skillUrl.port !== '') {
     return Response.json({ error: 'Only agentskills.io URLs are supported.' }, { status: 400, headers: corsHeaders });
   }
 

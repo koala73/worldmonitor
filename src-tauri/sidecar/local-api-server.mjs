@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import http, { createServer } from 'node:http';
 import https from 'node:https';
-import { createHmac } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import dns from 'node:dns/promises';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
@@ -22,6 +22,8 @@ const DESKTOP_AUTH_SECRET_ENV = 'WM_DESKTOP_SHARED_SECRET';
 const DESKTOP_AUTH_TIMESTAMP_HEADER = 'X-WorldMonitor-Desktop-Timestamp';
 const DESKTOP_AUTH_SIGNATURE_HEADER = 'X-WorldMonitor-Desktop-Signature';
 const LOCAL_API_TRANSPORT_HEADER = 'x-worldmonitor-local-token';
+const MAX_REGISTRATION_BODY_BYTES = 16 * 1024;
+const MAX_REGISTRATION_EMAIL_LENGTH = 254;
 
 // Monkey-patch globalThis.fetch to force IPv4 for HTTPS requests.
 // Node.js built-in fetch (undici) tries IPv6 first via Happy Eyeballs.
@@ -67,6 +69,15 @@ function buildSafeResponse(statusCode, statusText, headers, bodyBuffer) {
   const status = Number.isInteger(statusCode) ? statusCode : 500;
   const body = (status === 204 || status === 205 || status === 304) ? null : bodyBuffer;
   return new Response(body, { status, statusText, headers });
+}
+
+// Constant-time token check. Only the length can differ in timing, and the
+// token length is not secret; the content is compared with timingSafeEqual.
+function tokenMatches(candidate, expected) {
+  if (typeof candidate !== 'string' || !candidate) return false;
+  const a = Buffer.from(candidate, 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 function canonicalizeDesktopAuthPayload(payload) {
@@ -375,30 +386,63 @@ const BLOCKED_IPV4_RANGES = [
   return [baseInt, mask];
 });
 
-function ipv4FromMappedIPv6(ip) {
+// Expand a valid IPv6 literal (any spelling, brackets optional) into its eight
+// 16-bit groups. WHATWG URL parsing canonicalizes first, so an embedded dotted
+// quad and a `::` run both come back as plain hextets.
+function ipv6Hextets(ip) {
   const normalized = String(ip).replace(/^\[|\]$/g, '');
   if (isIP(normalized) !== 6) return null;
 
-  let canonical = normalized;
+  let canonical;
   try {
     canonical = new URL(`http://[${normalized}]/`).hostname.slice(1, -1);
   } catch {
     return null;
   }
 
-  const match = canonical.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
-  if (!match) return null;
+  const [head, tail = ''] = canonical.split('::');
+  const headGroups = head ? head.split(':') : [];
+  const tailGroups = tail ? tail.split(':') : [];
+  const fill = canonical.includes('::') ? 8 - headGroups.length - tailGroups.length : 0;
+  if (fill < 0 || headGroups.length + tailGroups.length + fill !== 8) return null;
+  const groups = [...headGroups, ...Array(fill).fill('0'), ...tailGroups]
+    .map((group) => Number.parseInt(group, 16));
+  return groups.some((group) => !Number.isInteger(group) || group < 0 || group > 0xffff) ? null : groups;
+}
 
-  const high = Number.parseInt(match[1], 16);
-  const low = Number.parseInt(match[2], 16);
-  return [high >> 8, high & 0xff, low >> 8, low & 0xff].join('.');
+// IPv6 forms that carry an IPv4 address and are routed by a translator or a
+// tunnel: block them by the embedded IPv4, not the IPv6 prefix. Mirrors
+// api/_notification-webhook-ssrf.ts embeddedIpv4FromIpv6.
+function ipv4EmbeddedInIPv6(ip) {
+  const groups = ipv6Hextets(ip);
+  if (!groups) return null;
+  const [g0, g1, g2, g3, g4, g5, g6, g7] = groups;
+  const dotted = (hi, lo) => [hi >> 8, hi & 0xff, lo >> 8, lo & 0xff].join('.');
+  const zeroPrefix = g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0;
+
+  if (zeroPrefix && g5 === 0xffff) return dotted(g6, g7);                        // ::ffff:0:0/96 IPv4-mapped
+  if (g0 === 0x0064 && g1 === 0xff9b && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0) {
+    return dotted(g6, g7);                                                        // 64:ff9b::/96 NAT64
+  }
+  if (g0 === 0x2002) return dotted(g1, g2);                                       // 2002::/16 6to4
+  if (zeroPrefix && g5 === 0) return dotted(g6, g7);                              // ::/96 IPv4-compatible
+  return null;
+}
+
+// Teredo (2001::/32) tunnels to an arbitrary IPv4 chosen by the client, so no
+// embedded-address rule can vet it; the whole 2001::/32 block is reserved.
+function isTeredoIPv6(ip) {
+  const groups = ipv6Hextets(ip);
+  return !!groups && groups[0] === 0x2001 && groups[1] === 0;
 }
 
 function isPrivateIP(ip) {
-  // IPv4-mapped IPv6 — WHATWG URL parsing canonicalizes mapped literals to
-  // hexadecimal (for example, ::ffff:127.0.0.1 -> ::ffff:7f00:1), so
-  // normalize every valid IPv6 spelling before extracting the v4 portion.
-  const addr = ipv4FromMappedIPv6(ip) || ip;
+  // IPv6 literals that embed an IPv4 (mapped, NAT64, 6to4, compatible) are
+  // judged by that IPv4. WHATWG URL parsing canonicalizes mapped literals to
+  // hexadecimal (::ffff:127.0.0.1 -> ::ffff:7f00:1), so every valid spelling
+  // is normalized before the v4 portion is extracted.
+  if (isTeredoIPv6(ip)) return true;
+  const addr = ipv4EmbeddedInIPv6(ip) || ip;
 
   // IPv6 loopback
   if (addr === '::1' || addr === '::') return true;
@@ -641,6 +685,8 @@ async function buildRouteTable(root) {
 }
 
 const REQUEST_BODY_CACHE = Symbol('requestBodyCache');
+// Leave time for local fallback within the frontend's 5s request budgets.
+const CLOUD_PROXY_TIMEOUT_MS = 3000;
 
 async function readBody(req) {
   if (Object.prototype.hasOwnProperty.call(req, REQUEST_BODY_CACHE)) {
@@ -673,7 +719,9 @@ function toHeaders(nodeHeaders, options = {}) {
 }
 
 async function proxyToCloud(requestUrl, req, remoteBase) {
-  const target = `${remoteBase}${requestUrl.pathname}${requestUrl.search}`;
+  const target = new URL(remoteBase);
+  target.pathname = `${target.pathname.replace(/\/$/, '')}${requestUrl.pathname}`;
+  target.search = requestUrl.search;
   const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
   const headers = toHeaders(req.headers, { stripOrigin: true });
   headers.delete(LOCAL_API_TRANSPORT_HEADER);
@@ -695,11 +743,20 @@ async function proxyToCloud(requestUrl, req, remoteBase) {
     const wmKey = process.env.WORLDMONITOR_API_KEY;
     if (wmKey) headers.set('X-WorldMonitor-Key', wmKey);
   }
-  return fetch(target, {
-    method: req.method,
-    headers,
-    body,
-  });
+  const clientAbort = new AbortController();
+  const onClientClose = () => clientAbort.abort();
+  req.socket.once('close', onClientClose);
+  if (req.socket.destroyed) clientAbort.abort();
+  try {
+    return await fetch(target, {
+      method: req.method,
+      headers,
+      body,
+      signal: AbortSignal.any([clientAbort.signal, AbortSignal.timeout(CLOUD_PROXY_TIMEOUT_MS)]),
+    });
+  } finally {
+    req.socket.off('close', onClientClose);
+  }
 }
 
 async function proxyRegisterInterestToCloud(requestUrl, req, context) {
@@ -786,21 +843,171 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
 // These routes read seed-owned Redis snapshots that the local sidecar does not
 // hold. They must stay cloud-preferred even when a desktop configures WS relay;
 // relay availability does not provide Upstash credentials to local handlers.
+// Seed-only RPC routes in families that also have live handlers (#5906); the
+// whole-family cases are in cloudPreferredSeedOnlyPrefixes below.
+// tests/sidecar-cloud-preferred-seed-only.test.mjs derives this set from the
+// generated route tables and fails when an entry is not a real RPC path, when
+// its handler reaches an upstream itself, or when a seed-only route is missing.
 const cloudPreferredExact = new Set([
-  '/api/intelligence/v1/list-wsb-tickers',
-  '/api/displacement/v1/get-displacement-summary',
   '/api/bootstrap',
+  '/api/aviation/v1/get-airport-ops-summary',
+  '/api/displacement/v1/get-displacement-summary',
+  '/api/displacement/v1/get-internal-displacement',
+  '/api/economic/v1/get-bis-credit',
+  '/api/economic/v1/get-bis-exchange-rates',
+  '/api/economic/v1/get-bis-policy-rates',
+  '/api/economic/v1/get-bls-series',
+  '/api/economic/v1/get-capital-flows',
+  '/api/economic/v1/get-china-macro-snapshot',
+  '/api/economic/v1/get-crude-inventories',
+  '/api/economic/v1/get-ecb-fx-rates',
+  '/api/economic/v1/get-economic-calendar',
+  '/api/economic/v1/get-economic-stress',
+  '/api/economic/v1/get-energy-capacity',
+  '/api/economic/v1/get-energy-crisis-policies',
+  '/api/economic/v1/get-energy-prices',
+  '/api/economic/v1/get-eu-fsi',
+  '/api/economic/v1/get-eu-gas-storage',
+  '/api/economic/v1/get-eu-yield-curve',
+  '/api/economic/v1/get-eurostat-country-data',
+  '/api/economic/v1/get-fao-food-price-index',
+  '/api/economic/v1/get-fred-series',
+  '/api/economic/v1/get-fred-series-batch',
+  '/api/economic/v1/get-government-yield-curve',
+  '/api/economic/v1/get-macro-signals',
+  '/api/economic/v1/get-nat-gas-storage',
+  '/api/economic/v1/get-national-debt',
+  '/api/economic/v1/get-oil-inventories',
+  '/api/economic/v1/get-oil-stocks-analysis',
+  '/api/economic/v1/get-us-cpi-monthly',
+  '/api/economic/v1/get-us-interest-rates',
+  '/api/economic/v1/get-us-treasury-par-yield-curve',
+  '/api/economic/v1/get-world-cpi-monthly',
+  '/api/economic/v1/list-bigmac-prices',
+  '/api/economic/v1/list-fuel-prices',
+  '/api/economic/v1/list-global-tenders',
+  '/api/economic/v1/list-grocery-basket-prices',
+  '/api/forecast/v1/get-forecasts',
+  '/api/forecast/v1/get-simulation-outcome',
+  '/api/forecast/v1/get-simulation-package',
+  '/api/infrastructure/v1/get-bootstrap-data',
+  '/api/infrastructure/v1/get-temporal-baseline',
+  '/api/infrastructure/v1/list-internet-ddos-attacks',
+  '/api/infrastructure/v1/list-internet-outages',
+  '/api/infrastructure/v1/list-internet-traffic-anomalies',
+  '/api/infrastructure/v1/list-temporal-anomalies',
+  '/api/intelligence/v1/compute-energy-shock',
+  '/api/intelligence/v1/get-china-decision-signals',
+  '/api/intelligence/v1/get-country-energy-profile',
+  '/api/intelligence/v1/get-country-port-activity',
+  '/api/intelligence/v1/get-country-risk',
+  '/api/intelligence/v1/get-gdelt-topic-timeline',
+  '/api/intelligence/v1/get-pizzint-status',
+  '/api/intelligence/v1/get-regional-brief',
+  '/api/intelligence/v1/get-regional-snapshot',
+  '/api/intelligence/v1/get-social-velocity',
+  '/api/intelligence/v1/list-cross-source-signals',
+  '/api/intelligence/v1/list-gps-interference',
+  '/api/intelligence/v1/list-market-implications',
+  '/api/intelligence/v1/list-material-events',
+  '/api/intelligence/v1/list-satellites',
+  '/api/intelligence/v1/list-security-advisories',
+  '/api/intelligence/v1/list-wsb-tickers',
+  '/api/market/v1/get-cot-positioning',
+  '/api/market/v1/get-fear-greed-index',
+  '/api/market/v1/get-gold-intelligence',
+  '/api/market/v1/get-hyperliquid-flow',
+  '/api/market/v1/get-market-breadth-history',
+  '/api/market/v1/get-physical-divergence-index',
+  '/api/market/v1/get-physical-premiums',
+  '/api/market/v1/get-sector-summary',
+  '/api/market/v1/list-ai-tokens',
+  '/api/market/v1/list-commodity-quotes',
+  '/api/market/v1/list-crypto-sectors',
+  '/api/market/v1/list-defi-tokens',
+  '/api/market/v1/list-earnings-calendar',
+  '/api/market/v1/list-etf-flows',
+  '/api/market/v1/list-gulf-quotes',
+  '/api/market/v1/list-other-tokens',
   '/api/military/v1/get-defense-industrial-base',
-  '/api/supply-chain/v1/get-country-vulnerabilities',
+  '/api/military/v1/get-theater-posture',
+  '/api/military/v1/get-usni-fleet-report',
+  '/api/military/v1/list-defense-patents',
+  '/api/news/v1/summarize-article-cache',
+  '/api/research/v1/list-arxiv-papers',
+  '/api/research/v1/list-hackernews-items',
+  '/api/research/v1/list-trending-repos',
+  '/api/resilience/v1/get-demographics-capability',
+  '/api/resilience/v1/get-food-stocks',
+  '/api/resilience/v1/get-runtime-manifest',
+  '/api/scenario/v1/get-scenario-status',
+  '/api/supply-chain/v1/get-bypass-options',
   '/api/supply-chain/v1/get-chokepoint-dependencies',
+  '/api/supply-chain/v1/get-chokepoint-history',
+  '/api/supply-chain/v1/get-country-vulnerabilities',
+  '/api/supply-chain/v1/get-fuel-shortage-detail',
+  '/api/supply-chain/v1/get-mineral-production',
+  '/api/supply-chain/v1/get-multi-sector-cost-shock',
+  '/api/supply-chain/v1/get-pipeline-detail',
+  '/api/supply-chain/v1/get-shipping-rates',
+  '/api/supply-chain/v1/get-shipping-stress',
+  '/api/supply-chain/v1/get-storage-facility-detail',
+  '/api/supply-chain/v1/list-energy-disruptions',
+  '/api/supply-chain/v1/list-fuel-shortages',
+  '/api/supply-chain/v1/list-pipelines',
+  '/api/supply-chain/v1/list-storage-facilities',
   '/api/supply-chain/v1/list-vulnerability-rankings',
+  '/api/trade/v1/get-customs-revenue',
+  '/api/trade/v1/get-tariff-trends',
+  '/api/trade/v1/get-trade-barriers',
+  '/api/trade/v1/get-trade-flows',
+  '/api/trade/v1/get-trade-restrictions',
+  '/api/trade/v1/list-comtrade-flows',
+  '/api/v2/shipping/route-intelligence',
+  '/api/webcam/v1/list-webcams',
 ]);
+// Route families whose EVERY handler only reads seed-owned Redis (#5906). The
+// sidecar never holds Upstash credentials (UPSTASH_* is not in
+// ALLOWED_ENV_KEYS), a Redis miss degrades to an empty 200, and an empty 200
+// never trips the `!response.ok` cloud fallback — so served locally these
+// families render blank panels with no error anywhere. Always cloud,
+// WS_RELAY_URL or not. A family that gains a live handler moves to exact
+// entries; the contract test above enforces that.
+const cloudPreferredSeedOnlyPrefixes = [
+  '/api/climate/v1/',
+  '/api/conflict/v1/',
+  '/api/consumer-prices/v1/',
+  '/api/cyber/v1/',
+  '/api/health/v1/',
+  '/api/natural/v1/',
+  '/api/positive-events/v1/',
+  '/api/prediction/v1/',
+  '/api/radiation/v1/',
+  '/api/safety/v1/',
+  '/api/sanctions/v1/',
+  '/api/seismology/v1/',
+  '/api/thermal/v1/',
+  '/api/unrest/v1/',
+  '/api/wildfire/v1/',
+];
 const cloudPreferredAlwaysPrefixes = ['/api/scorecard/v1/'];
+
+// Versioned route families (api/v{N}/{domain}) the desktop deliberately never
+// bundles — scripts/build-sidecar-handlers.mjs refuses to build an undeclared
+// one, and its CLOUD_ONLY_ROUTE_FAMILIES must list exactly these (#5907).
+// Routed to the cloud on purpose, WS_RELAY_URL or not: route-intelligence reads
+// seed-owned Redis (empty 200 locally, so `!ok` fallback never fires) and the
+// webhook family is Pro-gated + server-persisted, so the gate lives upstream.
+// Before this list the family reached the cloud only via the 404 "handler
+// missing" fallback — undeclared, and invisible when cloudFallback is off.
+const cloudOnlyRouteFamilyPrefixes = ['/api/v2/shipping/'];
 
 function isCloudPreferred(pathname) {
   if (cloudPreferred.has(pathname)) return true;
   if (cloudPreferredExact.has(pathname)) return true;
   return cloudPreferredAlwaysPrefixes.some(p => pathname.startsWith(p))
+    || cloudPreferredSeedOnlyPrefixes.some(p => pathname.startsWith(p))
+    || cloudOnlyRouteFamilyPrefixes.some(p => pathname.startsWith(p))
     || cloudPreferredPrefixes.some(p => pathname.startsWith(p));
 }
 
@@ -1508,8 +1715,8 @@ async function dispatch(requestUrl, req, routes, context) {
   }
   const authHeader = req.headers.authorization || '';
   const transportToken = req.headers[LOCAL_API_TRANSPORT_HEADER] || '';
-  const hasTransportAuth = transportToken === expectedToken;
-  const hasLegacyAuth = authHeader === `Bearer ${expectedToken}`;
+  const hasTransportAuth = tokenMatches(transportToken, expectedToken);
+  const hasLegacyAuth = tokenMatches(authHeader, `Bearer ${expectedToken}`);
   if (!hasTransportAuth && !hasLegacyAuth) {
     context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
     return json({ error: 'Unauthorized' }, 401);
@@ -1594,14 +1801,35 @@ async function dispatch(requestUrl, req, routes, context) {
     }
     try {
       const body = await new Promise((resolve, reject) => {
+        if (Number(req.headers['content-length']) > MAX_REGISTRATION_BODY_BYTES) {
+          req.resume();
+          resolve(null);
+          return;
+        }
         const chunks = [];
-        req.on('data', c => chunks.push(c));
+        let bytes = 0;
+        const onData = (chunk) => {
+          bytes += chunk.length;
+          if (bytes > MAX_REGISTRATION_BODY_BYTES) {
+            chunks.length = 0;
+            req.off('data', onData);
+            req.resume();
+            resolve(null);
+            return;
+          }
+          chunks.push(chunk);
+        };
+        req.on('data', onData);
         req.on('end', () => resolve(Buffer.concat(chunks).toString()));
         req.on('error', reject);
       });
+      if (body === null) {
+        return json({ error: 'Request body too large' }, 413, { Connection: 'close' });
+      }
       const parsed = JSON.parse(body);
-      const email = parsed.email;
-      if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      const email = parsed?.email;
+      if (typeof email !== 'string' || email.length > MAX_REGISTRATION_EMAIL_LENGTH
+        || !/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(email)) {
         return json({ error: 'Invalid email address' }, 400);
       }
       const sharedSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
@@ -1775,14 +2003,16 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  if (context.cloudFallback && isCloudPreferred(requestUrl.pathname)) {
+  const cloudPreferredAttempted = context.cloudFallback && isCloudPreferred(requestUrl.pathname);
+  if (cloudPreferredAttempted) {
     const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'cloud-preferred');
     if (cloudResponse) return cloudResponse;
   }
+  const allowCloudFallback = context.cloudFallback && !cloudPreferredAttempted;
 
   const modulePath = pickModule(requestUrl.pathname, routes);
   if (!modulePath || !existsSync(modulePath)) {
-    if (context.cloudFallback) {
+    if (allowCloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler missing');
       if (cloudResponse) return cloudResponse;
     }
@@ -1794,7 +2024,7 @@ async function dispatch(requestUrl, req, routes, context) {
     const mod = await importHandler(modulePath);
     if (typeof mod.default !== 'function') {
       logOnce(context.logger, requestUrl.pathname, 'invalid handler module');
-      if (context.cloudFallback) {
+      if (allowCloudFallback) {
         const cloudResponse = await tryCloudFallback(requestUrl, req, context, `invalid handler module`);
         if (cloudResponse) return cloudResponse;
       }
@@ -1828,14 +2058,14 @@ async function dispatch(requestUrl, req, routes, context) {
     const response = await mod.default(request);
     if (!(response instanceof Response)) {
       logOnce(context.logger, requestUrl.pathname, 'handler returned non-Response');
-      if (context.cloudFallback) {
+      if (allowCloudFallback) {
         const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler returned non-Response');
         if (cloudResponse) return cloudResponse;
       }
       return json({ error: 'Handler returned invalid response', endpoint: requestUrl.pathname }, 500);
     }
 
-    if (!response.ok && context.cloudFallback) {
+    if (!response.ok && allowCloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, `local status ${response.status}`);
       if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
     }
@@ -1844,7 +2074,7 @@ async function dispatch(requestUrl, req, routes, context) {
   } catch (error) {
     const reason = error.code === 'ERR_MODULE_NOT_FOUND' ? 'missing dependency' : error.message;
     logOnce(context.logger, requestUrl.pathname, reason);
-    if (context.cloudFallback) {
+    if (allowCloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, error);
       if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
     }

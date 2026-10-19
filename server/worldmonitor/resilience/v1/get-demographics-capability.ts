@@ -93,7 +93,8 @@ function observation(raw: unknown, rule: MetricRule): CapabilityObservation {
   ) {
     return unavailableObservation();
   }
-  return { available: true, value, year, source, unit };
+  const sourceStatus = typeof raw.sourceStatus === 'string' ? raw.sourceStatus.trim() : '';
+  return { available: true, value, year, source, unit, ...(sourceStatus ? { sourceStatus } : {}) };
 }
 
 function hasObservation(observations: CapabilityObservation[]): boolean {

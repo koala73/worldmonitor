@@ -7,7 +7,7 @@ import { resolveBearerToContext } from '../_oauth-token.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from '../_crypto.js';
 // @ts-expect-error — JS module, no declaration file
-import { getClientIp, hasCloudflareTransitProof } from '../_client-ip.js';
+import { getClientRateLimitKey, hasCloudflareTransitProof } from '../_client-ip.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { redisPipeline as rawRedisPipeline } from '../_upstash-json.js';
@@ -43,6 +43,7 @@ import type {
 import { emitMcpRateLimitHit } from './telemetry';
 import { FREE_ACCOUNT_CALLS_PER_DAY } from './upgrade-constants';
 import { buildMcpStructuredDenial, type McpStaticDenialReason } from './upgrade';
+import { relayMcpCheckout } from './checkout';
 
 // ---------------------------------------------------------------------------
 // Rate limiters
@@ -210,6 +211,7 @@ export const PRODUCTION_DEPS: McpHandlerDeps = {
   // quota.ts / free-account-allowance.ts (their envPrefix), so the pipeline
   // must send them verbatim rather than prefixing again (#7674).
   redisPipeline: (commands, timeoutMs, raw = true) => rawRedisPipeline(commands, timeoutMs, raw),
+  createCheckout: (input) => relayMcpCheckout(input),
 };
 
 // ---------------------------------------------------------------------------
@@ -686,11 +688,15 @@ async function checkMcpEntitlementGate(
   const burstPerMinute = resolveMcpBurstPerMinute(ent?.features?.planLimits?.mcpBurstRequestsPerMinute);
   const passed = (): McpPreCheckResult => ({
     ok: true,
-    budget: resolveMcpBudget(
-      ent?.features?.planLimits?.mcpCallsPerDay,
-      ent?.features?.planLimits?.apiRequestsPerDay,
-    ),
+    budget: {
+      ...resolveMcpBudget(
+        ent?.features?.planLimits?.mcpCallsPerDay,
+        ent?.features?.planLimits?.apiRequestsPerDay,
+      ),
+      ...((ent?.features?.tier ?? 0) >= 3 ? { enterprisePlan: true as const } : {}),
+    },
     burstPerMinute,
+    ...(typeof ent?.planKey === 'string' ? { planKey: ent.planKey } : {}),
   });
   // Single-source Pro MCP decision. A current fallback entitlement still wins
   // over billing uncertainty; this caller keeps the JSON-RPC denial rendering.
@@ -726,6 +732,9 @@ async function checkMcpEntitlementGate(
       budget: { allowance: 'mcp', limit: FREE_ACCOUNT_CALLS_PER_DAY },
       burstPerMinute,
       freeAccountAllowance: true,
+      // A confirmed lapse keeps its old paid plan key on the row, but the
+      // caller is on the free allowance now, so it is upgraded as free.
+      planKey: 'free',
     };
   }
 
@@ -808,7 +817,8 @@ export async function runContextPreChecks(
     // caller who correctly has no entitlement.
     return { ok: true };
   }
-  // env_key: operator-owned, ungated, and never metered by the daily counter.
+  // env_key: operator-owned and ungated. Its daily ceiling is reserved per key
+  // in dispatch (OPERATOR_KEY_DAILY_CEILINGS), not through an entitlement.
   return { ok: true };
 }
 
@@ -919,7 +929,7 @@ export async function applyAnonDiscoveryLimit(
   if (!rl) return null;
   let denied = false;
   try {
-    const { success } = await rl.limit(`ip:${getClientIp(req)}`);
+    const { success } = await rl.limit(`ip:${getClientRateLimitKey(req)}`);
     denied = !success;
   } catch { /* graceful degradation */ }
   // Outside the fail-open catch — see `applyPerMinuteLimit`'s env_key branch.
@@ -1042,7 +1052,7 @@ export async function applyFreeTierLimit(
     return freeTierRateLimitDegradedResponse(id, headers);
   }
   try {
-    const result = await rl.limit(`ip:${getClientIp(req)}`);
+    const result = await rl.limit(`ip:${getClientRateLimitKey(req)}`);
     // @upstash/ratelimit can resolve a timeout as success:true rather than
     // rejecting. Treat that as unavailable, not as verified headroom.
     if (result.reason === 'timeout') {

@@ -17,6 +17,8 @@ message PortActivityEntry {
   double import_tanker_dwt  = 7;
   double export_tanker_dwt  = 8;
   bool   anomaly_signal     = 9;
+  // Absent on older cached payloads. Zero means no calls in the prior window.
+  optional int32 prev_tanker_calls_30d = 10;
 }
 
 message CountryPortActivityResponse {

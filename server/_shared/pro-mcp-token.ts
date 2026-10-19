@@ -23,7 +23,7 @@
  * do NOT need a `touchProMcpTokenLastUsedFireAndForget` helper here.
  */
 
-import { deleteRedisKey } from './redis';
+import { deleteRedisKey } from './redis.js';
 
 /** Negative-cache TTL: 60s — short enough that a re-issued tokenId (vanishingly
  *  rare given Convex IDs) becomes resolvable promptly, long enough to suppress
@@ -258,7 +258,10 @@ export async function issueProMcpTokenForUser(
  * via the OAuth flow anyway). Use {@link validateProMcpTokenOrNull} for
  * that — it wraps this and maps `revoked|transient → null`.
  */
-export async function validateProMcpToken(tokenId: string): Promise<ProMcpValidateUnion> {
+export async function validateProMcpToken(
+  tokenId: string,
+  options: { recordUsage?: boolean } = {},
+): Promise<ProMcpValidateUnion> {
   if (!tokenId) return { ok: 'revoked' };
 
   // Step 1: negative-cache short-circuit.
@@ -273,7 +276,7 @@ export async function validateProMcpToken(tokenId: string): Promise<ProMcpValida
     resp = await fetch(`${env.siteUrl}/api/internal-validate-pro-mcp-token`, {
       method: 'POST',
       headers: convexHeaders(env.sharedSecret),
-      body: JSON.stringify({ tokenId }),
+      body: JSON.stringify({ tokenId, recordUsage: options.recordUsage }),
       signal: AbortSignal.timeout(CONVEX_TIMEOUT_MS),
     });
   } catch (err) {
@@ -489,7 +492,7 @@ export function envPrefix(): string {
  * Seconds remaining until the next UTC midnight — used for the
  * `Retry-After` header on -32029 quota-exceeded responses.
  */
-export { secondsUntilUtcMidnight } from './api-key-rate-limit';
+export { secondsUntilUtcMidnight } from './api-key-rate-limit.js';
 
 /** Hard cap per UTC day for Pro MCP `tools/call`s. Plan default. */
 export const PRO_DAILY_QUOTA_LIMIT = 50;

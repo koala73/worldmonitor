@@ -234,7 +234,7 @@ function assertAllowedRedirect(url) {
   // Apply the same www-normalization as the initial domain check so that
   // canonical redirects (e.g. apex -> www) are not incorrectly rejected when
   // only one form is in the allowlist.
-  if (!isAllowedDomain(url.hostname)) {
+  if (!isAllowedDomain(url.hostname) || url.port !== '') {
     throw new RssProxyPolicyError('Redirect to disallowed domain');
   }
 }
@@ -286,7 +286,8 @@ export default async function handler(req, ctx) {
 
     // Security: Check if domain is allowed (normalize www prefix)
     const hostname = parsedUrl.hostname;
-    if (!isAllowedDomain(hostname)) {
+    // The allowlist names hosts, not services: only their default ports.
+    if (!isAllowedDomain(hostname) || parsedUrl.port !== '') {
       return jsonResponse({ error: 'Domain not allowed' }, 403, corsHeaders);
     }
 

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { HMAC_SECRET, makeProDeps, proReq, callBody } from './helpers/mcp-pro-deps.mjs';
 import { admitNewsPanel, authorizePanelRead } from '../api/mcp/panel-requests.ts';
 import { dailyCounterKey } from '../server/_shared/pro-mcp-token.ts';
+import { __resetHighUsageAlarmForTests, __setHighUsageReporterForTests, HIGH_USAGE_ALARM_FRACTION } from '../server/_shared/high-usage-alarm.ts';
 
 const originalFetch = globalThis.fetch, OriginalDate = Date, originalEnv = { ...process.env };
 const context = { kind: 'pro', userId: 'user_pro_xyz', mcpTokenId: 'k57mcptokenid' };
@@ -175,6 +176,50 @@ describe('World Brief closed paid admission', () => {
     assert.equal((await invoke(free, { refresh: true })).response.status, 403); assert.equal(free.pipe.count, 0);
     assert.equal(calls.length, 0);
   });
+  it('raises the Enterprise high-usage alarm when a new panel allocation crosses it, not on reuse', async () => {
+    const reports = [];
+    __resetHighUsageAlarmForTests();
+    __setHighUsageReporterForTests((_error, opts) => { reports.push(opts); });
+    try {
+      const mcpCallsPerDay = 25_000, threshold = Math.ceil(mcpCallsPerDay * HIGH_USAGE_ALARM_FRACTION);
+      const getEntitlements = async () => ({ planKey: 'enterprise', features: { tier: 3, mcpAccess: true, apiAccess: true, planLimits: { apiRequestsPerDay: 100_000, mcpCallsPerDay, dashboardAiCallsPerDay: 25_000, mcpBurstRequestsPerMinute: 1_000 } }, validUntil: now + 86400000 });
+      const bundle = makeProDeps({ getEntitlements, pipelineOpts: { initialCount: threshold - 1 } });
+      assert.equal(value(await invoke(bundle)).panelRequest.panel, 'world-brief');
+      assert.equal(bundle.pipe.count, threshold);
+      await invoke(bundle);
+      assert.equal(bundle.pipe.count, threshold, 'the second opening reuses the allocation');
+      assert.equal(reports.length, 1);
+      assert.deepEqual(reports[0].tags, { route: 'high-usage-alarm', meter: 'mcp', credential: 'enterprise-plan' });
+      assert.equal(reports[0].extra.newCount, threshold);
+    } finally {
+      __setHighUsageReporterForTests(null);
+    }
+  });
+  it('raises the Enterprise alarm for a charged panel allocation even when the request then fails', async () => {
+    const reports = [];
+    __resetHighUsageAlarmForTests();
+    __setHighUsageReporterForTests((_error, opts) => { reports.push(opts); });
+    try {
+      const mcpCallsPerDay = 25_000, threshold = Math.ceil(mcpCallsPerDay * HIGH_USAGE_ALARM_FRACTION);
+      const getEntitlements = async () => ({ planKey: 'enterprise', features: { tier: 3, mcpAccess: true, apiAccess: true, planLimits: { apiRequestsPerDay: 100_000, mcpCallsPerDay, dashboardAiCallsPerDay: 25_000, mcpBurstRequestsPerMinute: 1_000 } }, validUntil: now + 86400000 });
+      const bundle = makeProDeps({ getEntitlements, pipelineOpts: { initialCount: threshold - 1 } });
+      // The admission EVAL charges the counter; every Redis call after it fails.
+      const pipeline = bundle.deps.redisPipeline; let admitted = false;
+      bundle.deps.redisPipeline = async (rows, ...args) => {
+        if (admitted) throw new Error('redis unavailable after admission');
+        const result = await pipeline(rows, ...args);
+        if (rows.some(row => row[0] === 'EVAL')) admitted = true;
+        return result;
+      };
+      const { body } = await invoke(bundle);
+      assert.ok(body.error || body.result?.isError, `the request must fail after admission: ${JSON.stringify(body)}`);
+      assert.equal(bundle.pipe.count, threshold, 'the allocation was charged');
+      assert.equal(reports.length, 1);
+      assert.equal(reports[0].extra.newCount, threshold);
+    } finally {
+      __setHighUsageReporterForTests(null);
+    }
+  });
   it('keeps the ordinary operator route outside paid admission', async () => {
     process.env.WORLDMONITOR_VALID_KEYS = 'world-brief-fixture-operator';
     const bundle = makeProDeps();
@@ -183,6 +228,8 @@ describe('World Brief closed paid admission', () => {
       const body = await (await handler(request, bundle.deps)).json(); assert.equal(body.error, undefined);
       assert.equal(body.result.structuredContent.panelRequest, undefined);
     }
-    assert.equal(calls.length, 2); assert.equal(bundle.pipe.count, 0); assert.equal(cache(bundle).length, 0);
+    // Operator keys pay one unit of their own daily ceiling per call and never a panel admission.
+    assert.equal(calls.length, 2); assert.equal(bundle.pipe.count, 2); assert.equal(cache(bundle).length, 0);
+    assert.ok(bundle.pipe.ops.flat().filter(cmd => cmd[0] === 'EVAL').every(cmd => String(cmd[3]).includes('mcp:pro-usage:env_key:')));
   });
 });

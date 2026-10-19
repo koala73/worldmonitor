@@ -303,7 +303,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "وضعیت برآورد و جایگذاری مقادیر گمشده ارائه نشده است"
     },
     "fiveFactorScorecard": {
       "title": "کارت امتیازدهی تاب‌آوری پنج‌عاملی",
@@ -480,6 +481,7 @@
     "goldIntelligence": "Gold Intelligence",
     "gov": "Government",
     "thinktanks": "Think Tanks",
+    "science": "علم",
     "polymarket": "Predictions",
     "commodities": "Metals & Materials",
     "economic": "Macro Stress",
@@ -3008,6 +3010,7 @@
       "tier4OnlyHint": "هر رسانه‌ای که این خبر را گزارش می‌کند یک منبع رتبه ۴ است (تجمیع‌کنندگان و وبلاگ‌ها). این توصیف دامنه پوشش است، نه دقت.",
       "rosterListed": "({{listed}} در فهرست)",
       "rosterFeeds": "خوراک‌های مشاهده‌شده: {{labels}}",
+      "rosterSameCopy": "متن یکسان، یک بار شمرده شد",
       "rosterLegend": "درجه‌بندی منابع را مشخص می‌کند؛ درستی این ادعا را قضاوت نمی‌کند.",
       "tierDocsLink": "نحوه تخصیص درجه‌بندی",
       "tierChip": "T{{tier}}",

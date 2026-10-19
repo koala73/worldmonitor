@@ -99,6 +99,46 @@ function metaSetAttempts(resource) {
   ).length;
 }
 
+test('forecast trail metadata failures preserve later dashboard and history publication', async () => {
+  const { FORECAST_EXTRA_KEYS } = await import('../scripts/seed-forecasts.mjs');
+  const trail = FORECAST_EXTRA_KEYS.find(key => key.key === 'forecast:probability-trail:v1');
+  const cases = ['http', 'command', 'transport'].flatMap(failure => [[failure, false], [failure, true]]);
+  for (const [failure, critical] of cases) {
+    const extra = critical ? { ...trail, metaCritical: true } : trail;
+    const events = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      const body = opts.body ? JSON.parse(opts.body) : null;
+      if (String(url).includes('/get/')) return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
+      if (String(url).endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
+      if (body?.[0] === 'SET') {
+        events.push(body[1]);
+        if (body[1] === trail.metaKey) {
+          if (failure === 'http') return new Response('unavailable', { status: 503 });
+          if (failure === 'command') return jsonResponse({ error: 'ERR unavailable' });
+          throw abortError();
+        }
+      }
+      return jsonResponse({ result: 'OK' });
+    };
+    const { exitCode, threw } = await runWithExitTrap(() => runSeed('test', 'trail-failure', 'test:trail-failure:v1',
+      async () => ({ items: [1], probabilityTrail: { generatedAt: Date.now(), forecasts: { id: {} } } }), {
+        ttlSeconds: 3600, declareRecords: data => data.items.length, sourceVersion: 'test', schemaVersion: 1,
+        publishTransform: data => ({ items: data.items }),
+        extraKeys: [extra, { key: 'test:dashboard:v1', transform: data => ({ items: data.items }) }],
+        afterPublish: async () => { events.push('resolver-history'); },
+      }));
+    if (critical) {
+      assert.ok(threw, `${failure} remains fatal for an explicitly critical metadata key`);
+      assert.equal(events.includes('resolver-history'), false);
+    } else {
+      assert.equal(threw, null, failure);
+      assert.equal(exitCode, 0, failure);
+      assert.ok(events.includes('test:dashboard:v1'), failure);
+      assert.ok(events.includes('resolver-history'), failure);
+    }
+  }
+});
+
 test('successful bundled run writes the dedicated completion marker last', async () => {
   const originalFetchForCompletion = globalThis.fetch;
   const events = [];

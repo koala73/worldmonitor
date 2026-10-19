@@ -26,16 +26,29 @@ import { getCompleteLayerCatalogKeys } from '../src/config/map-layer-definitions
 import { INTEL_HOTSPOTS } from '../shared/geo-data.ts';
 import { PIPELINES } from '../shared/pipelines-data.ts';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
+import { MCP_DOMAIN_SUMMARY, MCP_TAGS, MCP_TOOL_CATEGORIES, TOOL_CATEGORY_BY_NAME } from '../api/mcp/domains.ts';
 import { UI_RESOURCE_LIST_RESPONSE } from '../api/mcp/ui/registry.ts';
-import { publishedRankedCountries } from './build-ai-search.mjs';
+import { FREE_ACCOUNT_CALLS_PER_DAY } from '../api/mcp/upgrade-constants.ts';
+import { publishedRankedCountries } from './build-crawlable-corpus.mjs';
 import { commandPaletteCommandCount } from './lib/command-palette-count.mjs';
 import { defaultOnLayerStats } from './lib/default-map-layer-count.mjs';
+import {
+  AGENT_CARD_DOMAIN_SURFACE,
+  JSON_DOMAIN_SURFACES,
+  MARKDOWN_DOMAIN_SURFACES,
+  SERVER_CARD_DOMAIN_SURFACE,
+  renderJsonDomainSurface,
+  renderMarkdownDomainSurface,
+} from './lib/mcp-domain-summary.mjs';
 import { lngFacilityCount } from './_storage-facility-registry.mjs';
 import { computeStats } from './docs-stats.mjs';
 import { loadManifest, scanUpstreamHosts, sourceAttributionStats } from './source-attribution.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CHECK = process.argv.includes('--check');
+// Newest published resilience snapshot: the depth band's ranked slot and the
+// {ranked, universe} pair the blog glossary interpolates read this one value.
+const resilience = publishedRankedCountries(ROOT);
 const failures = [];
 
 const read = (path) => readFileSync(join(ROOT, path), 'utf8');
@@ -160,6 +173,10 @@ const facts = {
   plans,
   heroProofStats,
   depthProofStats: buildDepthProofStats(heroProofStats),
+  // Resilience ranking coverage from the newest published snapshot, so copy
+  // that cannot run the snapshot helper (the blog glossary) can still state
+  // "{ranked} of {universe} countries" without hard-coding either number.
+  resilienceCoverage: { ranked: resilience.ranked, universe: resilience.universe },
 };
 
 /**
@@ -195,7 +212,7 @@ function buildDepthProofStats(hero) {
     ...hero,
     chokepoints: CHOKEPOINT_REGISTRY.length,
     instabilityCountries: stats.tier1Countries,
-    resilienceRanked: publishedRankedCountries(ROOT).ranked,
+    resilienceRanked: resilience.ranked,
     submarineCables: UNDERSEA_CABLES.length,
     pipelinesLng: PIPELINES.length + lngFacilityCount(),
     aiDatacenters: AI_DATA_CENTERS.length,
@@ -333,7 +350,8 @@ transform('public/.well-known/agent-card.json', (source) => {
   if ([...source.matchAll(/\b\d+-tool catalog\b/g)].length !== 1) {
     throw new Error('agent-card must contain exactly one N-tool catalog claim');
   }
-  return source.replace(/\b\d+-tool catalog\b/, `${TOOL_REGISTRY.length}-tool catalog`);
+  const next = source.replace(/\b\d+-tool catalog\b/, `${TOOL_REGISTRY.length}-tool catalog`);
+  return renderJsonDomainSurface(next, AGENT_CARD_DOMAIN_SURFACE, MCP_DOMAIN_SUMMARY);
 });
 
 // The server card is the machine-readable tool catalog consumed by docs-stats
@@ -377,13 +395,32 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
     'get_country_risk → country-risk-v3.html',
   );
   card.metadata.mcpApps.uiResources = UI_RESOURCE_LIST_RESPONSE.map(resource => resource.uri);
-  card.tools = TOOL_REGISTRY.map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    _meta: { 'worldmonitor/access': toolAccess(tool) },
-  }));
-  return json(card);
+  // Categories and tags come from api/mcp/domains.ts. The per-tool category is
+  // card-only; the live tools/list _meta stays access + weight (no wire change).
+  card.toolCategories = MCP_TOOL_CATEGORIES.map((category) => category.id);
+  card.tags = [...MCP_TAGS];
+  card.tools = TOOL_REGISTRY.map((tool) => {
+    const category = TOOL_CATEGORY_BY_NAME[tool.name];
+    if (!category) throw new Error(`${tool.name} has no category in api/mcp/domains.ts`);
+    return {
+      name: tool.name,
+      description: tool.description,
+      _meta: { 'worldmonitor/access': toolAccess(tool), 'worldmonitor/category': category },
+    };
+  });
+  return renderJsonDomainSurface(json(card), SERVER_CARD_DOMAIN_SURFACE, MCP_DOMAIN_SUMMARY);
 });
+
+// The domain list on the other discovery surfaces. The card and agent-card
+// rows render inside their own transforms above, because a second transform
+// of the same file would read the unwritten original in --check mode.
+for (const surface of JSON_DOMAIN_SURFACES) {
+  if (surface === SERVER_CARD_DOMAIN_SURFACE || surface === AGENT_CARD_DOMAIN_SURFACE) continue;
+  transform(surface.path, (source) => renderJsonDomainSurface(source, surface, MCP_DOMAIN_SUMMARY));
+}
+for (const surface of MARKDOWN_DOMAIN_SURFACES) {
+  transform(surface.path, (source) => renderMarkdownDomainSurface(source, surface, MCP_DOMAIN_SUMMARY));
+}
 
 // Keep lifecycle cleanup here. Inventory totals in these locale files are not
 // generator-owned acceptance criteria.
@@ -437,6 +474,7 @@ for (const path of new Set([
   'public/pricing.md',
   'docs/pricing.mdx',
   'docs/zh/pricing.mdx',
+  'docs/zh/about.mdx',
   'docs/api-commerce.mdx',
   'docs/zh/api-commerce.mdx',
   'blog-site/src/content/blog/free-vs-paid-real-time-intelligence-dashboards.md',
@@ -447,6 +485,45 @@ for (const path of new Set([
 ])) {
   transform(path, replacePreviousPrices);
 }
+
+/**
+ * docs/about.mdx is the canonical product description directories lift (#9405),
+ * so its inventory figures restate the measured depth-band stats. Each phrase
+ * must occur exactly `occurrences` times: copy that drifts from the wording
+ * fails here instead of going stale. `keys` fill the phrase's leading numerals
+ * in order; later digits (the "1" in "Tier-1") are left alone.
+ */
+const ABOUT_FACT_PHRASES = [
+  { pattern: /\b\d+ news and OSINT feeds from \d+ attributed providers\b/g, occurrences: 1, keys: ['feeds', 'providers'] },
+  { pattern: /\ball \d+ attributed providers\b/g, occurrences: 1, keys: ['providers'] },
+  { pattern: /\b\d+ (?:toggleable )?layer types\b/g, occurrences: 2, keys: ['mapLayers'] },
+  { pattern: /\b\d+ Tier-1 countries\b/g, occurrences: 1, keys: ['instabilityCountries'] },
+  { pattern: /\b\d+ scored hotspots\b/g, occurrences: 1, keys: ['hotspots'] },
+  { pattern: /\b\d+ live-AIS maritime chokepoints\b/g, occurrences: 1, keys: ['chokepoints'] },
+  { pattern: /\b\d+ subsea cables\b/g, occurrences: 1, keys: ['submarineCables'] },
+];
+
+function restateAboutFacts(source, stats) {
+  let result = source;
+  for (const { pattern, occurrences, keys } of ABOUT_FACT_PHRASES) {
+    const found = result.match(pattern)?.length ?? 0;
+    if (found !== occurrences) {
+      throw new Error(`docs/about.mdx: expected ${occurrences} match(es) of ${pattern}, found ${found}`);
+    }
+    result = result.replace(pattern, (phrase) => {
+      let slot = 0;
+      return phrase.replace(/\d+/g, (digits) => (slot < keys.length ? String(stats[keys[slot++]]) : digits));
+    });
+  }
+  return result;
+}
+
+// One transform per file: a second one would read the unwritten original in
+// --check mode, so the Pro price rewrite rides along here.
+transform('docs/about.mdx', (source) => restateAboutFacts(replacePreviousPrices(source), facts.depthProofStats));
+
+/** The free-account MCP allowance, worded once for every pricing surface (#9144). */
+const FREE_ACCOUNT_MCP_LINE = `${FREE_ACCOUNT_CALLS_PER_DAY} cached-data MCP calls/day with a free account`;
 
 function pricingSummary() {
   const byKey = Object.fromEntries(plans.map((plan) => [plan.planKey, plan]));
@@ -470,7 +547,7 @@ function pricingSummary() {
         name: 'Free',
         price_usd_monthly: 0,
         signup_required: false,
-        features: ['global map coverage (Resilience is Pro)', 'curated feeds', 'country briefs', 'chokepoints', 'instability scores', 'watchlists', '3 dashboard tabs'],
+        features: ['global map coverage (Resilience is Pro)', 'curated feeds', 'country briefs', 'chokepoints', 'instability scores', 'watchlists', '3 dashboard tabs', FREE_ACCOUNT_MCP_LINE],
       },
       {
         name: 'Pro',
@@ -512,6 +589,10 @@ transform('public/pricing.md', (source) => {
   if (!next.includes(generatedNote)) {
     next = next.replace('# Pricing - World Monitor\n', `# Pricing - World Monitor\n\n${generatedNote}\n`);
   }
+  const freeMcp = `- MCP: ${FREE_ACCOUNT_MCP_LINE}; other MCP tools require a paid plan\n`;
+  next = /^- MCP: .* with a free account.*\n/m.test(next)
+    ? next.replace(/^- MCP: .* with a free account.*\n/m, freeMcp)
+    : next.replace(/(## Free\n[\s\S]*?^- Limits: .*\n)/m, `$1${freeMcp}`);
   return next.replace(
     /```json\n[\s\S]*?```/,
     `\`\`\`json\n${JSON.stringify(pricingSummary(), null, 2)}\n\`\`\``,

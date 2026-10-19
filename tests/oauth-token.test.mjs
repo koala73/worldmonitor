@@ -35,6 +35,8 @@ import {
   rawRedisFinalizeRefreshAttempt,
   rawRedisProtectFailedRefreshAttempt,
   rawRedisRestoreRefreshAttempt,
+  persistRefreshFamilyPointer,
+  restoreRefreshAttempt,
 } from '../api/oauth/_refresh-recovery.ts';
 import {
   resolveBearerToContext,
@@ -103,6 +105,8 @@ async function ensureFixtures() {
 function makeRedis() {
   const store = new Map();
   const ops = [];
+  // Remaining refresh-token lifetimes (ms) a test can seed; the claim reports them.
+  const refreshTtlMs = new Map();
   const parseStored = (value) => {
     if (typeof value !== 'string') return value;
     try { return JSON.parse(value); } catch { return null; }
@@ -110,6 +114,7 @@ function makeRedis() {
   return {
     store,
     ops,
+    refreshTtlMs,
     redisGetDel: async (key) => {
       ops.push({ kind: 'getdel', key });
       const v = store.get(key);
@@ -152,7 +157,13 @@ function makeRedis() {
         }
         store.set(attemptKey, attemptValue);
         store.set(refreshKey, attemptMarker);
-        return { kind: 'consumed', refreshData, attemptValue };
+        const ttlMs = refreshTtlMs.get(refreshToken);
+        return {
+          kind: 'consumed',
+          refreshData,
+          attemptValue,
+          expiresAtMs: ttlMs === undefined ? null : Date.now() + ttlMs,
+        };
       }
       return {
         kind: 'miss',
@@ -160,9 +171,9 @@ function makeRedis() {
         familyId: parseStored(store.get(pointerKey))?.family_id ?? parseStored(store.get(pointerKey)) ?? null,
       };
     },
-    redisRestoreRefreshAttempt: async (refreshToken, attemptValue, refreshData, familyId) => {
+    redisRestoreRefreshAttempt: async (refreshToken, attemptValue, refreshData, familyId, expiresAtMs) => {
       const attemptKey = `oauth:famattempt:${refreshToken}`;
-      ops.push({ kind: 'restore-refresh-attempt', refreshToken, attemptValue });
+      ops.push({ kind: 'restore-refresh-attempt', refreshToken, attemptValue, expiresAtMs });
       if (store.get(attemptKey) !== attemptValue) return false;
       store.set(`oauth:refresh:${refreshToken}`, JSON.stringify(refreshData));
       if (familyId) store.set(`oauth:famptr:${refreshToken}`, JSON.stringify(familyId));
@@ -317,6 +328,45 @@ it('preserves dashboard key identity through code exchange and refresh', async (
 });
 
 describe('OAuth Redis refresh-attempt production contract', () => {
+  it('preserves the Redis expiry of a subsecond token without adding response latency', async () => {
+    const realFetch = globalThis.fetch;
+    const savedUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const savedToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    try {
+      for (const expiry of [Date.now() + 400, 0, -1]) {
+        globalThis.fetch = async () => new Response(JSON.stringify({
+          result: [1, JSON.stringify({ family_id: 'fam-subsecond' }), expiry],
+        }));
+        const result = await rawRedisBeginRefreshAttempt('rt-subsecond', 'attempt-subsecond');
+        assert.equal(result.expiresAtMs, expiry === -1 ? null : expiry);
+      }
+    } finally {
+      globalThis.fetch = realFetch;
+      if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = savedUrl;
+      if (savedToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = savedToken;
+    }
+  });
+
+  it('passes the original expiry to Redis even when recovery runs after it', async () => {
+    for (const expiry of [Date.now() + 400, Date.now() - 1, 0]) {
+      let receivedExpiry;
+      const deps = {
+        redisRestoreRefreshAttempt: async (_token, _attempt, _data, _family, deadline) => {
+          receivedExpiry = deadline;
+          return true;
+        },
+      };
+      assert.equal(await restoreRefreshAttempt(
+        deps, 'rt-expiry', '{}', {}, 'fam-expiry', 'client-validation', expiry,
+      ), true);
+      assert.equal(receivedExpiry, expiry);
+    }
+  });
+
   it('atomically consumes a refresh token and creates a short-lived attempt', async () => {
     const realFetch = globalThis.fetch;
     const savedUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -326,7 +376,7 @@ describe('OAuth Redis refresh-attempt production contract', () => {
     const calls = [];
     globalThis.fetch = async (url, init) => {
       calls.push({ url: String(url), init });
-      return new Response(JSON.stringify({ result: [1, JSON.stringify({ family_id: 'fam-contract' })] }), {
+      return new Response(JSON.stringify({ result: [1, JSON.stringify({ family_id: 'fam-contract' }), 1700000000400] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -334,11 +384,13 @@ describe('OAuth Redis refresh-attempt production contract', () => {
 
     try {
       const result = await rawRedisBeginRefreshAttempt('rt-contract', 'attempt-contract');
-      assert.deepEqual(result, {
+      const { expiresAtMs, ...rest } = result;
+      assert.deepEqual(rest, {
         kind: 'consumed',
         refreshData: { family_id: 'fam-contract' },
         attemptValue: JSON.stringify({ attempt_id: 'attempt-contract' }),
       });
+      assert.equal(expiresAtMs, 1700000000400);
       assert.equal(calls[0].url, 'https://test.upstash.io/');
       assert.equal(calls[0].init.method, 'POST');
       assert.equal(calls[0].init.headers.Authorization, 'Bearer test-token');
@@ -353,6 +405,8 @@ describe('OAuth Redis refresh-attempt production contract', () => {
       assert.equal(command[6], JSON.stringify({ attempt_id: 'attempt-contract' }));
       assert.deepEqual(JSON.parse(command[7]), { kind: 'refresh_attempt', attempt_id: 'attempt-contract' });
       assert.equal(command[8], REFRESH_ATTEMPT_TTL_SECONDS);
+      assert.match(command[1], /local ttl = redis\.call\('PTTL', KEYS\[1\]\)/);
+      assert.match(command[1], /return \{1, value, expiresAt\}/);
     } finally {
       globalThis.fetch = realFetch;
       if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
@@ -385,6 +439,7 @@ describe('OAuth Redis refresh-attempt production contract', () => {
           attemptValue,
           { family_id: 'fam-contract' },
           'fam-contract',
+          1700000000400,
         ),
         true,
       );
@@ -399,6 +454,11 @@ describe('OAuth Redis refresh-attempt production contract', () => {
         'oauth:famattempt:rt-contract',
       ]);
       assert.equal(restore[8], JSON.stringify('fam-contract'));
+      assert.equal(restore[10], 1700000000400);
+      assert.match(restore[1], /local expiresAt = tonumber\(ARGV\[5\]\)/);
+      assert.match(restore[1], /redis\.call\('PTTL', KEYS\[2\]\)/);
+      assert.match(restore[1], /'PX', ttl\)/);
+      assert.doesNotMatch(restore[1], /'EX', ARGV\[4\]\)/);
 
       const finalize = JSON.parse(calls[1].init.body);
       assert.deepEqual(finalize.slice(2, 5), [
@@ -426,6 +486,34 @@ describe('OAuth Redis refresh-attempt production contract', () => {
       if (savedToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
       else process.env.UPSTASH_REDIS_REST_TOKEN = savedToken;
     }
+  });
+});
+
+describe('persistRefreshFamilyPointer keeps the presented token lifetime', () => {
+  it('creates a missing pointer with the full TTL and never resets an existing TTL', async () => {
+    const seen = [];
+    const ok = await persistRefreshFamilyPointer({
+      // Real Redis answers null to SET NX when the pointer already exists.
+      redisPipeline: async (commands) => {
+        seen.push(...commands);
+        return [{ result: null }, { result: 'OK' }];
+      },
+    }, 'rt-aged', 'fam-aged');
+    assert.equal(ok, true);
+    assert.deepEqual(seen, [
+      ['SET', 'oauth:famptr:rt-aged', JSON.stringify('fam-aged'), 'EX', REFRESH_TTL_SECONDS, 'NX'],
+      ['SET', 'oauth:famptr:rt-aged', JSON.stringify('fam-aged'), 'XX', 'KEEPTTL'],
+    ]);
+  });
+
+  it('fails closed when the overwrite does not land', async () => {
+    assert.equal(await persistRefreshFamilyPointer({
+      redisPipeline: async () => [{ result: 'OK' }, { result: null }],
+    }, 'rt-x', 'fam-x'), false);
+    assert.equal(await persistRefreshFamilyPointer({
+      redisPipeline: async () => [{ result: null }, { error: 'ERR' }],
+    }, 'rt-x', 'fam-x'), false);
+    assert.equal(await persistRefreshFamilyPointer({ redisPipeline: async () => null }, 'rt-x', 'fam-x'), false);
   });
 });
 
@@ -630,7 +718,14 @@ describe('U6 tokenHandler — authorization_code (legacy)', () => {
 describe('U6 tokenHandler — refresh_token (Pro)', () => {
   it('Pro refresh preserves kind, userId, mcpTokenId, scope, family_id', async () => {
     await ensureFixtures();
-    const { redis, deps } = makeDeps();
+    let validationOptions;
+    const { redis, deps } = makeDeps({
+      validateProMcpToken: async (tokenId, options) => {
+        assert.equal(tokenId, MCP_TOKEN_ID);
+        validationOptions = options;
+        return { ok: 'valid', userId: USER_ID };
+      },
+    });
     const FAMILY = 'family_original_xxx';
     redis.store.set('oauth:refresh:rt-1', {
       kind: 'pro',
@@ -651,6 +746,7 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
       deps,
     );
     assert.equal(resp.status, 200);
+    assert.deepEqual(validationOptions, { recordUsage: false });
     const body = await resp.json();
     assert.equal(body.scope, 'mcp_pro');
     assert.equal(body.refresh_token, 'uuid_0202');
@@ -1128,6 +1224,31 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     assert.equal(resp.headers.get('Retry-After'), '5');
     assert.ok(redis.store.has('oauth:refresh:rt-transient'));
     assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-transient', FAMILY, REFRESH_TTL_SECONDS);
+  });
+
+  it('a transient failure restores the token with its remaining lifetime, not a fresh one', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps({ validateProMcpToken: async () => ({ ok: 'transient' }) });
+    redis.store.set('oauth:refresh:rt-aged', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: 'fam_aged',
+    });
+    redis.refreshTtlMs.set('rt-aged', 90_000);
+    const before = Date.now();
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    const resp = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-aged', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(resp.status, 503);
+    const restore = redis.ops.find((op) => op.kind === 'restore-refresh-attempt');
+    assert.ok(restore, 'the token must be restored');
+    assert.ok(restore.expiresAtMs >= before + 90_000 && restore.expiresAtMs <= Date.now() + 90_000);
   });
 
   it('a failed transient restore protects the attempt so retry cannot revoke sibling sessions', async () => {
@@ -2155,5 +2276,118 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     assert.equal(events[0].route, '/api/oauth/token');
     assert.equal(deliveryHeaders.length, 1);
     assert.equal(deliveryHeaders[0]['User-Agent'], 'worldmonitor-edge/1.0');
+  });
+});
+
+describe('Vercel Connect public client, end to end', () => {
+  // https://vercel.com/docs/connect/providers: DCR with the exact callback
+  // below, token_endpoint_auth_method "none", PKCE S256, and the
+  // authorization_code + refresh_token grants.
+  const VERCEL_CONNECT = 'https://connect.vercel.com/callback';
+  const ENTERPRISE_KEY = 'enterprise-vercel-connect-key';
+  const ENV = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'WORLDMONITOR_VALID_KEYS'];
+
+  it('registers, authorizes, exchanges the code with PKCE, and refreshes, with expires_in on both grants', async () => {
+    const { redis, deps } = makeDeps();
+    const savedEnv = Object.fromEntries(ENV.map((k) => [k, process.env[k]]));
+    const savedFetch = globalThis.fetch;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
+    process.env.WORLDMONITOR_VALID_KEYS = ENTERPRISE_KEY;
+    globalThis.fetch = async (input, init = {}) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      assert.equal(url.origin, 'https://redis.test', `unexpected fetch ${url}`);
+      const [, op, rawKey] = url.pathname.split('/');
+      const reply = (result) => Response.json({ result });
+      if (op === 'get') return reply(redis.store.get(decodeURIComponent(rawKey)) ?? null);
+      if (op === 'getdel') {
+        const key = decodeURIComponent(rawKey);
+        const value = redis.store.get(key) ?? null;
+        redis.store.delete(key);
+        return reply(value);
+      }
+      const body = JSON.parse(init.body);
+      const pipeline = Array.isArray(body[0]);
+      const results = (pipeline ? body : [body]).map(([cmd, key, value]) => {
+        if (['eval', 'evalsha'].includes(cmd.toLowerCase())) return { result: [9, 10] };
+        assert.equal(cmd, 'SET');
+        redis.store.set(key, value);
+        return { result: 'OK' };
+      });
+      return Response.json(pipeline ? results : results[0]);
+    };
+
+    try {
+      const { default: registerHandler } = await import('../api/oauth/register.js');
+      const { default: authorizeHandler } = await import('../api/oauth/authorize.js');
+
+      const registered = await registerHandler(new Request('https://worldmonitor.app/oauth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_name: 'Vercel Connect',
+          redirect_uris: [VERCEL_CONNECT],
+          token_endpoint_auth_method: 'none',
+          grant_types: ['authorization_code', 'refresh_token'],
+          response_types: ['code'],
+        }),
+      }));
+      assert.equal(registered.status, 201);
+      const { client_id } = await registered.json();
+
+      const host = 'worldmonitor.app';
+      const authorizeUrl = new URL(`https://${host}/oauth/authorize`);
+      authorizeUrl.search = new URLSearchParams({
+        client_id,
+        redirect_uri: VERCEL_CONNECT,
+        response_type: 'code',
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: 'S256',
+        state: 'vercel_state',
+      }).toString();
+      const consentPage = await authorizeHandler(new Request(authorizeUrl, { headers: { host } }));
+      assert.equal(consentPage.status, 200, 'consent page renders for the Vercel Connect callback');
+      const cookie = (consentPage.headers.get('Set-Cookie') ?? '').split(';')[0];
+      const nonceKey = [...redis.store.keys()].find((k) => k.startsWith('oauth:nonce:'));
+      assert.ok(nonceKey, 'GET stores the nonce');
+
+      const consent = await authorizeHandler(new Request(`https://${host}/oauth/authorize`, {
+        method: 'POST',
+        headers: { host, origin: `https://${host}`, cookie, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ api_key: ENTERPRISE_KEY, _nonce: nonceKey.slice('oauth:nonce:'.length) }).toString(),
+      }));
+      assert.equal(consent.status, 302);
+      const callback = new URL(consent.headers.get('Location'));
+      assert.equal(callback.origin + callback.pathname, VERCEL_CONNECT);
+      assert.equal(callback.searchParams.get('state'), 'vercel_state');
+      assert.equal(callback.searchParams.get('iss'), `https://${host}`);
+      const code = callback.searchParams.get('code');
+      assert.ok(code);
+
+      const exchanged = await tokenHandler(makeReq('authorization_code', {
+        code, code_verifier: CODE_VERIFIER, client_id, redirect_uri: VERCEL_CONNECT,
+      }), deps);
+      assert.equal(exchanged.status, 200);
+      const tokens = await exchanged.json();
+      assert.equal(tokens.token_type, 'Bearer');
+      assert.equal(tokens.expires_in, TOKEN_TTL_SECONDS);
+      assert.ok(tokens.access_token);
+      assert.ok(tokens.refresh_token);
+
+      const refreshed = await tokenHandler(makeReq('refresh_token', {
+        refresh_token: tokens.refresh_token, client_id,
+      }), deps);
+      assert.equal(refreshed.status, 200);
+      const rotated = await refreshed.json();
+      assert.equal(rotated.token_type, 'Bearer');
+      assert.equal(rotated.expires_in, TOKEN_TTL_SECONDS);
+      assert.notEqual(rotated.refresh_token, tokens.refresh_token);
+    } finally {
+      globalThis.fetch = savedFetch;
+      for (const [k, v] of Object.entries(savedEnv)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
   });
 });

@@ -23,6 +23,7 @@ import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check';
 import { checkRateLimit } from '../server/_shared/rate-limit';
 import { runRedisPipeline } from '../server/_shared/redis';
 import { DIRECT_LLM_DAILY_QUOTA_LIMIT, reserveDirectLlmQuota } from '../server/_shared/direct-llm-quota';
+import { reportHighUsageIfCrossed } from '../server/_shared/high-usage-alarm';
 import { assembleAnalystContext } from '../server/worldmonitor/intelligence/v1/chat-analyst-context';
 import { buildAnalystSystemPrompt } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt';
 import { buildActionEvents } from '../server/worldmonitor/intelligence/v1/chat-analyst-actions';
@@ -246,11 +247,21 @@ export default async function handler(req: Request): Promise<Response> {
     // content; failures and client aborts before the first delta release the
     // slot, while a delivered partial answer remains charged.
     if (!premiumIdentity.quotaExempt && premiumIdentity.directLlmDailyLimit !== null) {
+      const operatorKey = premiumIdentity.kind === 'enterprise';
       const reservation = await reserveDirectLlmQuota({
-        userId: premiumIdentity.userId,
+        userId: operatorKey ? premiumIdentity.quotaUserId : premiumIdentity.userId,
         limit: premiumIdentity.directLlmDailyLimit,
         pipeline: (cmds) => runRedisPipeline(cmds, true),
       });
+      if (reservation.ok && (operatorKey || premiumIdentity.enterprisePlan)) {
+        reportHighUsageIfCrossed({
+          meter: 'direct-llm',
+          credential: operatorKey ? 'operator-key' : 'enterprise-plan',
+          principal: operatorKey ? premiumIdentity.alarmPrincipal : premiumIdentity.userId,
+          newCount: reservation.newCount,
+          ceiling: premiumIdentity.directLlmDailyLimit,
+        });
+      }
       if (!reservation.ok) {
         return directLlmQuotaError(
           reservation.reason === 'cap-exceeded' ? 429 : 503,

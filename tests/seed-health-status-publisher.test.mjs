@@ -19,6 +19,7 @@ const publisher = resolve(repoRoot, 'scripts/update-seed-health-statuses.mjs');
 const HEAD = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const ANCESTOR = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 const STATUS_ANCHOR = 'cccccccccccccccccccccccccccccccccccccccc';
+const NEXT_ANCHOR = 'dddddddddddddddddddddddddddddddddddddddd';
 const WRITER = 'github-actions[bot]';
 
 const failure = {
@@ -32,11 +33,12 @@ function aggregate(checkedAt) {
     state: 'pending',
     description: `1 source incident remains active; observed ${checkedAt}`,
     creator: { login: WRITER },
+    created_at: checkedAt,
   };
 }
 
 function trusted(status) {
-  return { ...status, creator: { login: WRITER } };
+  return { created_at: checkedAt(-300_000), ...status, creator: { login: WRITER } };
 }
 
 function checkedAt(offsetMs = 0) {
@@ -69,6 +71,11 @@ function runPublisher({
   observationOverride,
   statusSha = HEAD,
   ancestryValid = true,
+  nextStatuses = [],
+  successors = [NEXT_ANCHOR, HEAD],
+  gitDirectory,
+  observedSha = HEAD,
+  statusesBySha = {},
 }) {
   const tempDir = mkdtempSync(join(repoRoot, '.tmp-seed-status-publisher-'));
   const fakeBin = join(tempDir, 'bin');
@@ -82,12 +89,19 @@ function runPublisher({
     writeFileSync(join(statusesDir, `${HEAD}.json`), JSON.stringify(headStatuses));
     writeFileSync(join(statusesDir, `${ANCESTOR}.json`), JSON.stringify(ancestorStatuses));
     writeFileSync(join(statusesDir, `${STATUS_ANCHOR}.json`), JSON.stringify(statusStatuses));
+    writeFileSync(join(statusesDir, `${NEXT_ANCHOR}.json`), JSON.stringify(nextStatuses));
+    for (const [sha, statuses] of Object.entries(statusesBySha)) {
+      writeFileSync(join(statusesDir, `${sha}.json`), JSON.stringify(statuses));
+    }
     writeFileSync(postLog, '');
     writeFileSync(join(fakeBin, 'git'), [
       '#!/bin/sh',
       'case "$1" in',
       '  log)',
       `    printf '%s\\n%s\\n' '${HEAD}' '${ANCESTOR}'`,
+      '    ;;',
+      '  rev-list)',
+      `    printf '%s\\n' ${successors.map(sha => `'${sha}'`).join(' ')}`,
       '    ;;',
       '  merge-base)',
       '    [ "$2" = "--is-ancestor" ] || exit 91',
@@ -124,16 +138,17 @@ function runPublisher({
       '',
     ].join('\n'));
     chmodSync(join(fakeBin, 'git'), 0o755);
+    if (gitDirectory) rmSync(join(fakeBin, 'git'));
     chmodSync(join(fakeBin, 'gh'), 0o755);
 
     const args = [
       publisher,
-      '--sha', HEAD,
+      '--sha', observedSha,
       '--status-sha', statusSha,
       '--report', reportPath,
     ];
     const result = spawnSync(process.execPath, args, {
-      cwd: repoRoot,
+      cwd: gitDirectory ?? repoRoot,
       encoding: 'utf8',
       env: {
         ...process.env,
@@ -153,6 +168,246 @@ function runPublisher({
 }
 
 describe('seed health status publisher', () => {
+  it('rotates only to descendants when the anchor entered through a second parent', () => {
+    const gitDirectory = mkdtempSync(join(repoRoot, '.tmp-seed-status-history-'));
+    const git = (args, input = '') => {
+      const result = spawnSync('git', args, {
+        cwd: gitDirectory, input, encoding: 'utf8',
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: 'Seed publisher test', GIT_AUTHOR_EMAIL: 'seed@example.test',
+          GIT_COMMITTER_NAME: 'Seed publisher test', GIT_COMMITTER_EMAIL: 'seed@example.test',
+        },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      return result.stdout.trim();
+    };
+    try {
+      git(['init', '--quiet']);
+      const tree = git(['hash-object', '-t', 'tree', '--stdin', '-w']);
+      const root = git(['commit-tree', tree], 'root');
+      const beforeMerge = git(['commit-tree', tree, '-p', root], 'main before merge');
+      const anchor = git(['commit-tree', tree, '-p', root], 'side anchor');
+      const merge = git(['commit-tree', tree, '-p', beforeMerge, '-p', anchor], 'merge anchor');
+      const observedSha = git(['commit-tree', tree, '-p', merge], 'monitored revision');
+      const result = runPublisher({
+        gitDirectory, observedSha, statusSha: anchor,
+        blocking: [{ name: 'example', status: 'STALE_SEED' }],
+        statusesBySha: {
+          [anchor]: [...Array.from({ length: 900 }, () => aggregate(checkedAt(-120_000))), trusted(failure)],
+          [beforeMerge]: [], [merge]: [],
+        },
+      });
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, new RegExp(`"statusSha": "${merge}"`));
+      assert.match(result.posts, new RegExp(`/statuses/${merge}`));
+      assert.doesNotMatch(result.posts, new RegExp(`/statuses/(${beforeMerge}|${observedSha})`));
+    } finally {
+      rmSync(gitDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('moves a full operational anchor to its historical successor without a duplicate incident', () => {
+    const previousAt = checkedAt(-120_000);
+    const result = runPublisher({
+      blocking: [{ name: 'example', status: 'STALE_SEED' }],
+      statusSha: STATUS_ANCHOR,
+      statusStatuses: [
+        trusted(failure),
+        ...Array.from({ length: 900 }, () => aggregate(previousAt)),
+      ],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, new RegExp(`"statusSha": "${NEXT_ANCHOR}"`));
+    assert.match(result.stdout, /"newOrChangedFailures": \[\]/);
+    assert.match(result.posts, new RegExp(`/statuses/${NEXT_ANCHOR}`));
+    assert.doesNotMatch(result.posts, new RegExp(`/statuses/(${STATUS_ANCHOR}|${HEAD})`));
+    assert.ok(result.posts.indexOf('context=ingestion/seed/example')
+      < result.posts.indexOf('context=ingestion/seed/acceptance'));
+  });
+
+  it('keeps a completed successor quiet after rollover', () => {
+    const result = runPublisher({
+      blocking: [{ name: 'example', status: 'STALE_SEED' }],
+      statusSha: STATUS_ANCHOR,
+      statusStatuses: Array.from({ length: 900 }, () => aggregate(checkedAt(-120_000))),
+      nextStatuses: [aggregate(checkedAt(-60_000)), trusted(failure)],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.posts, '');
+  });
+
+  it('preserves recovery and new incident alerts when an anchor fills', () => {
+    const result = runPublisher({
+      blocking: [{ name: 'new-source', status: 'SEED_ERROR' }],
+      statusSha: STATUS_ANCHOR,
+      statusStatuses: [aggregate(checkedAt(-120_000)),
+        ...Array.from({ length: 900 }, () => trusted(failure))],
+    });
+
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stdout, /"newOrChangedFailures": \[\s*"ingestion\/seed\/new-source"\s*\]/);
+    assert.match(result.posts, /state=success -f context=ingestion\/seed\/example/);
+    assert.match(result.posts, /state=failure -f context=ingestion\/seed\/new-source/);
+    assert.doesNotMatch(result.posts, new RegExp(`/statuses/(${STATUS_ANCHOR}|${HEAD})`));
+  });
+
+  it('retains the completed observation clock across rollover', () => {
+    const previousAt = checkedAt(-60_000);
+    const result = runPublisher({
+      blocking: [],
+      observedAt: checkedAt(-120_000),
+      statusSha: STATUS_ANCHOR,
+      statusStatuses: Array.from({ length: 900 }, () => aggregate(previousAt)),
+    });
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /is not newer than completed projection/);
+    assert.equal(result.posts, '');
+  });
+
+  it('fails before writes if a full anchor has no historical successor', () => {
+    const result = runPublisher({
+      blocking: [],
+      statusSha: STATUS_ANCHOR,
+      statusStatuses: Array.from({ length: 900 }, () => aggregate(checkedAt(-120_000))),
+      successors: [HEAD],
+    });
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /no historical seed status anchor has capacity/);
+    assert.equal(result.posts, '');
+  });
+
+  it('rejects an untrusted successor before any rollover writes', () => {
+    const result = runPublisher({
+      blocking: [],
+      statusSha: STATUS_ANCHOR,
+      statusStatuses: Array.from({ length: 900 }, () => aggregate(checkedAt(-120_000))),
+      nextStatuses: [{ ...aggregate(checkedAt(-60_000)), creator: { login: 'other-writer' } }],
+    });
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /was not created by trusted writer/);
+    assert.equal(result.posts, '');
+  });
+
+  it('carries incident state and the completed clock through multiple full and partial anchors', () => {
+    const previousAt = checkedAt(-120_000);
+    for (const stale of [true, false]) {
+      const result = runPublisher({
+        blocking: [{ name: 'example', status: 'STALE_SEED' }],
+        observedAt: checkedAt(stale ? -180_000 : -60_000),
+        statusSha: STATUS_ANCHOR,
+        statusStatuses: [...Array.from({ length: 900 }, () => aggregate(previousAt)), trusted(failure)],
+        nextStatuses: Array.from({ length: 900 }, () => trusted(failure)),
+        ancestorStatuses: [trusted(failure)],
+        successors: [NEXT_ANCHOR, ANCESTOR, HEAD],
+      });
+
+      if (stale) {
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /is not newer than completed projection/);
+        assert.equal(result.posts, '');
+      } else {
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /"newOrChangedFailures": \[\]/);
+        assert.match(result.posts, new RegExp(`/statuses/${ANCESTOR}`));
+        assert.match(result.posts, /context=ingestion\/seed\/acceptance/);
+        assert.doesNotMatch(result.posts, new RegExp(`/statuses/(${STATUS_ANCHOR}|${NEXT_ANCHOR}|${HEAD})`));
+      }
+    }
+  });
+
+  it('replaces an older completed successor without restoring its incidents or clock', () => {
+    const priorAt = checkedAt(-120_000);
+    const oldAt = checkedAt(-240_000);
+    for (const stale of [true, false]) {
+      const result = runPublisher({
+        blocking: [{ name: 'example', status: 'STALE_SEED' }],
+        observedAt: checkedAt(stale ? -180_000 : -60_000),
+        statusSha: STATUS_ANCHOR,
+        statusStatuses: [...Array.from({ length: 900 }, () => aggregate(priorAt)), trusted(failure)],
+        nextStatuses: [trusted({
+          context: 'ingestion/seed/acceptance', state: 'success',
+          description: `ingestion operational acceptance passed; observed ${oldAt}`,
+        }), trusted({ ...failure, state: 'success', description: 'recovered; no longer reported' })],
+      });
+
+      if (stale) {
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /is not newer than completed projection/);
+        assert.equal(result.posts, '');
+      } else {
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /"newOrChangedFailures": \[\]/);
+        assert.match(result.posts, new RegExp(`/statuses/${NEXT_ANCHOR}`));
+        assert.match(result.posts, /state=failure -f context=ingestion\/seed\/example/);
+      }
+    }
+  });
+
+  it('preserves newer incident state and clock over an older partial successor', () => {
+    for (const stale of [true, false]) {
+      const result = runPublisher({
+        blocking: stale ? [] : [{ name: 'example', status: 'STALE_SEED' }],
+        observedAt: checkedAt(stale ? -180_000 : -60_000), statusSha: STATUS_ANCHOR,
+        statusStatuses: [...Array.from({ length: 900 }, () => aggregate(checkedAt(-120_000))), trusted(failure)],
+        nextStatuses: [
+          trusted({ ...failure, state: 'success', description: 'recovered; no longer reported', created_at: checkedAt(-180_000) }),
+          aggregate(checkedAt(-240_000)),
+        ],
+      });
+
+      if (stale) {
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /is not newer than completed projection/);
+        assert.equal(result.posts, '');
+      } else {
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /"newOrChangedFailures": \[\]/);
+        assert.match(result.posts, /state=failure -f context=ingestion\/seed\/example/);
+      }
+    }
+  });
+
+  it('resumes newer partial writes despite an older successor completion marker', () => {
+    const result = runPublisher({
+      blocking: [{ name: 'new-source', status: 'STALE_SEED' }],
+      statusSha: STATUS_ANCHOR,
+      statusStatuses: [...Array.from({ length: 900 }, () => aggregate(checkedAt(-120_000))), trusted(failure)],
+      nextStatuses: [
+        trusted({ ...failure, context: 'ingestion/seed/new-source', created_at: checkedAt(-60_000) }),
+        aggregate(checkedAt(-240_000)),
+      ],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /"newOrChangedFailures": \[\]/);
+    assert.match(result.posts, /state=success -f context=ingestion\/seed\/example/);
+  });
+
+  it('fails before writes when conflicting partial publication order is unknown', () => {
+    const priorAt = checkedAt(-120_000);
+    for (const createdAt of [undefined, 'not-a-time', priorAt]) {
+      const result = runPublisher({
+        blocking: [], statusSha: STATUS_ANCHOR,
+        statusStatuses: [...Array.from({ length: 900 }, () => aggregate(priorAt)), trusted(failure)],
+        nextStatuses: [
+          trusted({ ...failure, state: 'success', description: 'recovered; no longer reported', created_at: createdAt }),
+          aggregate(checkedAt(-240_000)),
+        ],
+      });
+
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /cannot order partial seed status/);
+      assert.equal(result.posts, '');
+    }
+  });
+
   it('keeps an unchanged incident off a new monitored revision', () => {
     const firstAt = checkedAt(-120_000);
     const repeated = runPublisher({

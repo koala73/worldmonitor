@@ -7,6 +7,12 @@ public/blog/
 # filename carries a content hash) and a staleness class when someone changed
 # pro-test/src without rebuilding.
 public/pro/
+public/es/
+public/pt/
+public/ru/
+public/fr/
+public/de/
+public/ar/
 public/countries/
 public/country-instability-index/
 public/chokepoints/
@@ -30,6 +36,10 @@ docs/generated/entitlement-crosswalk.json
 *.log
 .env
 .env.local
+# Any other dotenv variant (.env.production, .env.staging, ...) is a credential
+# file by default; only the committed examples are tracked.
+.env.*
+!.env.example
 # Local plaintext env exports/backups (including tool-specific suffixes).
 .env*.bak*
 .env*-bak*

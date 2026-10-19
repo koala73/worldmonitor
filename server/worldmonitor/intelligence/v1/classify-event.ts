@@ -6,8 +6,8 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { cachedFetchJson } from '../../../_shared/redis';
-import { markNoCacheResponse } from '../../../_shared/response-headers';
-import { UPSTREAM_TIMEOUT_MS, buildClassifyCacheKey } from './_shared';
+import { markNoCacheResponse, markUnservedLlmResponse } from '../../../_shared/response-headers';
+import { CLASSIFY_VALID_CATEGORIES, CLASSIFY_VALID_LEVELS, UPSTREAM_TIMEOUT_MS, buildClassifyCacheKey, isValidClassifyHit } from './_shared';
 import { callLlm } from '../../../_shared/llm';
 
 // ========================================================================
@@ -15,12 +15,8 @@ import { callLlm } from '../../../_shared/llm';
 // ========================================================================
 
 const CLASSIFY_CACHE_TTL = 86400;
-const VALID_LEVELS = ['critical', 'high', 'medium', 'low', 'info'];
-const VALID_CATEGORIES = [
-  'conflict', 'protest', 'disaster', 'diplomatic', 'economic',
-  'terrorism', 'cyber', 'health', 'environmental', 'military',
-  'crime', 'infrastructure', 'tech', 'general',
-];
+const VALID_LEVELS: readonly string[] = CLASSIFY_VALID_LEVELS;
+const VALID_CATEGORIES: readonly string[] = CLASSIFY_VALID_CATEGORIES;
 
 // Same model as the relay's classify seed (scripts/ais-relay.cjs), which writes the
 // same `classify:sebuf:v6` rows. Against 413 blind-judged headlines, this prompt on
@@ -51,7 +47,11 @@ export async function classifyEvent(
   // Input sanitization (M-14 fix): limit title length
   const MAX_TITLE_LEN = 500;
   const title = typeof req.title === 'string' ? req.title.slice(0, MAX_TITLE_LEN) : '';
-  if (!title) { markNoCacheResponse(ctx.request); return { classification: undefined }; }
+  if (!title) {
+    markNoCacheResponse(ctx.request);
+    markUnservedLlmResponse(ctx.request);
+    return { classification: undefined };
+  }
 
   const cacheKey = await buildClassifyCacheKey(title);
 
@@ -162,10 +162,18 @@ Return: {"level":"...","category":"..."}`;
     );
   } catch {
     markNoCacheResponse(ctx.request);
+    markUnservedLlmResponse(ctx.request);
     return { classification: undefined };
   }
 
-  if (!cached?.level || !cached?.category) { markNoCacheResponse(ctx.request); return { classification: undefined }; }
+  // A hit is validated like a fresh answer. The fetcher above only ever
+  // stores enum values, but the row is shared Redis JSON that any writer could
+  // replace, and the category is rendered by the dashboard.
+  if (!cached?.level || !cached?.category || !isValidClassifyHit(cached)) {
+    markNoCacheResponse(ctx.request);
+    markUnservedLlmResponse(ctx.request);
+    return { classification: undefined };
+  }
 
   return {
     classification: {

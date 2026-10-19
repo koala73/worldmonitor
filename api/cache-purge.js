@@ -11,7 +11,19 @@ const MAX_PATTERNS = 3;
 const MAX_DELETIONS = 200;
 const MAX_SCAN_ITERATIONS = 5;
 
-const BLOCKLIST_PREFIXES = ['rl:', '__'];
+// Never purgeable, by key or pattern. Besides rate-limit counters, this is the
+// OAuth and connector auth state: deleting it is not a cache refresh but a
+// token revocation (or a replay-protection reset), so a leaked relay secret
+// must not be able to log every MCP client out.
+// `internal-mcp-replay:` holds the nonces that make a signed internal-MCP
+// request single-use (server/gateway.ts), so purging it re-opens the replay
+// window. `webhook:` holds customers' shipping webhook subscriptions and their
+// signing secrets (server/worldmonitor/shipping/v2/webhook-shared.ts); that is
+// durable tenant data, not a cache.
+const BLOCKLIST_PREFIXES = [
+  'rl:', '__', 'oauth:', 'mcp-grant:', 'wm:slack:oauth:', 'wm:discord:oauth:',
+  'internal-mcp-replay:', 'webhook:', 'desktop-auth:',
+];
 const DURABLE_DATA_PREFIXES = ['military:bases:', 'conflict:iran-events:', 'conflict:ucdp-events:'];
 
 function getKeyPrefix() {

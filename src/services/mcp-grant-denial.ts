@@ -63,6 +63,8 @@ const MESSAGES: Record<string, string> = {
   INSUFFICIENT_TIER: 'A WorldMonitor Pro subscription is required to authorize MCP clients.',
   NONCE_CLAIMED_BY_OTHER_USER:
     'This authorization request has already been claimed by another account. Start over from your MCP client.',
+  BROWSER_MISMATCH:
+    'This authorization was started in a different browser. Start over from your MCP client in this browser. If someone sent you this link, do not approve it.',
   CONFIGURATION_ERROR: 'MCP authorization is temporarily unavailable. Please try again later.',
   SERVICE_UNAVAILABLE: 'The authorization service is temporarily unavailable. Please try again in a moment.',
   TIER_VERIFICATION_UNAVAILABLE:
@@ -82,6 +84,7 @@ const TITLES: Record<string, string> = {
   INVALID_REDIRECT_URI: 'Redirect destination not allowed',
   INSUFFICIENT_TIER: 'Pro subscription required',
   NONCE_CLAIMED_BY_OTHER_USER: 'Claimed by another account',
+  BROWSER_MISMATCH: 'Started in a different browser',
   CONFIGURATION_ERROR: 'Authorization temporarily unavailable',
   SERVICE_UNAVAILABLE: 'Authorization temporarily unavailable',
   TIER_VERIFICATION_UNAVAILABLE: 'Verifying your subscription',
@@ -198,4 +201,25 @@ export function routeGrantContextDenial(
   if (denial === 'terminal') return 'terminal';
   if (mintPhase !== 'idle') return 'preserve_consent';
   return retriesRemaining > 0 ? 'retry' : 'show_retry';
+}
+
+/** The client fields of a `/api/internal/mcp-grant-context` 200 response. */
+export interface GrantClientContext {
+  client_name: string;
+  redirect_host: string;
+  /** CIMD clients only: the host that published the client metadata document. */
+  client_host?: string;
+  /** CIMD clients only: this authorization goes to a localhost callback. */
+  localhost_redirect?: boolean;
+}
+
+/**
+ * #9244: what the consent card adds for a CIMD client. A DCR context carries
+ * neither field, so it renders exactly as before.
+ */
+export function grantClientDisplay(ctx: GrantClientContext): { clientIdHost: string | null; showLocalhostWarning: boolean } {
+  return {
+    clientIdHost: typeof ctx.client_host === 'string' && ctx.client_host ? ctx.client_host : null,
+    showLocalhostWarning: ctx.localhost_redirect === true,
+  };
 }

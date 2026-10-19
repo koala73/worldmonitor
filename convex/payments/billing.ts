@@ -20,6 +20,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { resolveUserId, requireUserId } from "../lib/auth";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import { ANON_ID_V4_REGEX, verifyAnonClaimToken } from "../lib/identitySigning";
+import { ResendSendError, sendResendEmail } from "../lib/resendEmail";
 import { PLAN_PRECEDENCE, PRODUCT_CATALOG, resolveProductToPlan } from "../config/productCatalog";
 import { proActivationStepIdValidator } from "../constants";
 import {
@@ -580,7 +581,9 @@ async function hasActivatedServerProFunctionality(
       rule.channels.some((channelType) => verifiedChannels.has(channelType)),
   );
   const hasApiSetup = apiKeys.some((key) => key.revokedAt === undefined);
-  const hasMcpSetup = mcpTokens.some((token) => token.revokedAt === undefined);
+  const hasMcpSetup = mcpTokens.some(
+    (token) => token.revokedAt === undefined && token.lastUsedAt !== undefined,
+  );
   return hasConfiguredDelivery || hasApiSetup || hasMcpSetup;
 }
 
@@ -3032,7 +3035,6 @@ export const STUCK_PAYMENT_RECONCILIATION_BATCH_SIZE = 25;
 export const STUCK_PAYMENT_CUSTOMER_EMAIL_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_STUCK_PAYMENT_RECONCILIATION_BATCH_SIZE = 100;
 const MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS = 500;
-const RESEND_EMAILS_URL = "https://api.resend.com/emails";
 const STUCK_PAYMENT_EMAIL_FROM = "World Monitor <noreply@worldmonitor.app>";
 const STUCK_PAYMENT_SUPPORT_EMAIL = "support@worldmonitor.app";
 // Bound the Resend POST so a hung socket can't stall the batch (a known repo
@@ -3134,6 +3136,7 @@ async function retrieveDodoPayment(dodoPaymentId: string): Promise<unknown> {
 }
 
 async function sendStuckPaymentEmail(
+  ctx: Pick<ActionCtx, "runQuery">,
   payment: DodoPaymentLookup,
   planKey: string | undefined,
 ): Promise<"customer_notified" | "ops_notified"> {
@@ -3160,25 +3163,30 @@ async function sendStuckPaymentEmail(
       <p>If you already completed payment, you can ignore this email or contact <a href="mailto:${safeSupportEmail}">${safeSupportEmail}</a>.</p>
     </div>`;
 
-  const res = await fetch(RESEND_EMAILS_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
+  // Shared helper: checks local suppression (this sender used to skip it)
+  // and keeps reply_to on support@.
+  let result;
+  try {
+    result = await sendResendEmail(ctx, {
+      apiKey,
       from: STUCK_PAYMENT_EMAIL_FROM,
-      to: [email],
+      to: email,
       subject: "Complete your World Monitor checkout",
       html,
-      reply_to: STUCK_PAYMENT_SUPPORT_EMAIL,
-    }),
-    signal: AbortSignal.timeout(STUCK_PAYMENT_RESEND_TIMEOUT_MS),
-  });
-
-  if (!res.ok) {
+      replyTo: STUCK_PAYMENT_SUPPORT_EMAIL,
+      purpose: "transactional",
+      timeoutMs: STUCK_PAYMENT_RESEND_TIMEOUT_MS,
+    });
+  } catch (err) {
+    // Network errors propagate (the caller counts them as emailFailed);
+    // a non-2xx response falls back to the ops path, as before.
+    if (!(err instanceof ResendSendError)) throw err;
     // Log the status only — the response body can echo the recipient email.
-    console.warn(`[billing/reconciliation] Resend stuck-payment email failed with HTTP ${res.status}.`);
+    console.warn(`[billing/reconciliation] Resend stuck-payment email failed with HTTP ${err.status}.`);
+    return "ops_notified";
+  }
+  if (!result.sent) {
+    console.log("[billing/reconciliation] Stuck-payment customer email skipped: recipient is suppressed.");
     return "ops_notified";
   }
 
@@ -3687,7 +3695,7 @@ export const reconcileStuckPendingPayments = internalAction({
       // Phase — send the customer "continue checkout" email.
       let emailResult: "customer_notified" | "ops_notified";
       try {
-        emailResult = await sendStuckPaymentEmail(dodoPayment, candidate.planKey);
+        emailResult = await sendStuckPaymentEmail(ctx, dodoPayment, candidate.planKey);
       } catch (err) {
         // sentry-coverage-ok: reportFailure schedules a throwing mutation. The
         // claimed ops_notified marker stands, so the next run won't re-email.

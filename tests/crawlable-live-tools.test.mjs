@@ -15,7 +15,12 @@ import {
   loadCiiRanking,
   loadCountryRisk,
   loadHazards,
+  cancelPizzIntRefresh,
+  loadPizzInt,
   militaryFlightsViewModel,
+  pizzIntRefreshDelay,
+  pizzIntViewModel,
+  resumePizzIntRefresh,
   pointInBounds,
   publishedTransitCountLabel,
   requestLiveJson,
@@ -2002,5 +2007,243 @@ describe('crawlable live intelligence view models', () => {
       url: '/tools/natural-hazard-pulse/?country=JP',
       dashboardLink: '/dashboard?country=JP&expanded=1',
     });
+  });
+});
+
+describe('Pentagon Pizza Index live reading', () => {
+  const UPDATED = NOW - 10 * 60_000;
+
+  function venue(overrides) {
+    return {
+      placeId: overrides.name,
+      address: '',
+      currentPopularity: 40,
+      percentageOfUsual: 100,
+      hasBaseline: true,
+      noLiveSignal: false,
+      isSpike: false,
+      dataSource: 'besttime',
+      recordedAt: new Date(UPDATED).toISOString(),
+      dataFreshness: 'DATA_FRESHNESS_FRESH',
+      isClosedNow: false,
+      ...overrides,
+    };
+  }
+
+  function payload(overrides = {}, venues = null) {
+    return {
+      pizzint: {
+        defconLevel: 4,
+        defconLabel: 'Above Normal',
+        aggregateActivity: 52,
+        activeSpikes: 1,
+        locationsMonitored: 6,
+        locationsOpen: 4,
+        updatedAt: UPDATED,
+        dataFreshness: 'DATA_FRESHNESS_FRESH',
+        locations: venues ?? [
+          venue({ name: 'Spike Pizza', percentageOfUsual: 190, isSpike: true }),
+          venue({ name: 'Busy Pizza', percentageOfUsual: 142 }),
+          venue({ name: 'Quiet Pizza', percentageOfUsual: 64 }),
+          venue({ name: 'Usual Pizza', percentageOfUsual: 108 }),
+          venue({ name: 'Closed Pizza', isClosedNow: true, currentPopularity: 0, percentageOfUsual: 0 }),
+          venue({ name: 'Dark Pizza', noLiveSignal: true, currentPopularity: 0, percentageOfUsual: 0 }),
+          venue({ name: 'Live-only Pizza', hasBaseline: false, percentageOfUsual: 0 }),
+          venue({ name: 'Empty Pizza', percentageOfUsual: 0 }),
+        ],
+        ...overrides,
+      },
+      tensionPairs: [],
+    };
+  }
+
+  it('labels the level and every venue the way the dashboard header does', () => {
+    const view = pizzIntViewModel(payload(), NOW);
+    assert.equal(view.available, true);
+    assert.equal(view.level, '4');
+    assert.equal(view.label, 'Above Normal');
+    assert.equal(view.updatedAt, UPDATED);
+    assert.deepEqual(view.venues, [
+      { name: 'Spike Pizza', status: 'Spike +90%' },
+      { name: 'Busy Pizza', status: '+42% vs usual' },
+      { name: 'Quiet Pizza', status: '−36% vs usual' },
+      { name: 'Usual Pizza', status: 'Normal' },
+      { name: 'Closed Pizza', status: 'Closed' },
+      { name: 'Dark Pizza', status: 'No data' },
+      { name: 'Live-only Pizza', status: 'No baseline' },
+      // A valid zero against a known forecast is a measured -100%, not missing.
+      { name: 'Empty Pizza', status: '−100% vs usual' },
+    ]);
+  });
+
+  it('takes the activity label from the level, not the payload text', () => {
+    const view = pizzIntViewModel(payload({ defconLevel: 1, defconLabel: 'anything' }), NOW);
+    assert.equal(view.level, '1');
+    assert.equal(view.label, 'Maximum Activity');
+  });
+
+  it('reports no current reading when the seed has expired', () => {
+    // The relay publishes nothing without a live reading, so the seed expires
+    // and the API answers with tension pairs only (observed 2026-10-16).
+    const view = pizzIntViewModel({ tensionPairs: [] }, NOW);
+    assert.equal(view.available, false);
+    assert.equal(view.level, '—');
+    assert.equal(view.label, 'No current reading');
+    assert.deepEqual(view.venues, []);
+  });
+
+  it('needs a fresh open venue before a level counts as current', () => {
+    // The relay publishes closed-only polls (tests/pizzint-seed-publication.test.mjs)
+    // but does not treat them as live; the page FAQ promises the same rule.
+    const closedOnly = payload({ defconLevel: 5 }, [
+      venue({ name: 'Closed A', isClosedNow: true, currentPopularity: 0, percentageOfUsual: 0 }),
+      venue({ name: 'Closed B', isClosedNow: true, currentPopularity: 0, percentageOfUsual: 0 }),
+      venue({ name: 'Dark C', noLiveSignal: true, currentPopularity: 0, percentageOfUsual: 0 }),
+      venue({ name: 'Stale D', dataFreshness: 'DATA_FRESHNESS_STALE', percentageOfUsual: 120 }),
+    ]);
+    assert.equal(pizzIntViewModel(closedOnly, NOW).available, false);
+  });
+
+  it('marks a stale venue row as no data inside a current reading', () => {
+    const view = pizzIntViewModel(payload({}, [
+      venue({ name: 'Fresh Pizza', percentageOfUsual: 130 }),
+      venue({ name: 'Stale Pizza', dataFreshness: 'DATA_FRESHNESS_STALE', percentageOfUsual: 150 }),
+      venue({ name: 'Stale Closed', dataFreshness: 'DATA_FRESHNESS_STALE', isClosedNow: true }),
+    ]), NOW);
+    assert.equal(view.available, true);
+    assert.deepEqual(view.venues.map((row) => row.status), ['+30% vs usual', 'No data', 'No data']);
+  });
+
+  it('refreshes before a shown reading outlives its age limit', () => {
+    const fresh = { available: true, updatedAt: NOW - 55 * 60_000 };
+    assert.equal(pizzIntRefreshDelay(fresh, NOW), 5 * 60_000);
+    assert.equal(pizzIntRefreshDelay({ available: true, updatedAt: NOW - 60_000 }, NOW), 15 * 60_000);
+    assert.equal(pizzIntRefreshDelay({ available: false, updatedAt: null }, NOW), 15 * 60_000);
+    // A reading 30 s from its limit reloads then, not after the 1-minute floor.
+    assert.equal(pizzIntRefreshDelay({ available: true, updatedAt: NOW - (60 * 60_000 - 30_000) }, NOW), 30_000);
+    // Never a tight loop, even for a reading already at its limit.
+    assert.equal(pizzIntRefreshDelay({ available: true, updatedAt: NOW - 70 * 60_000 }, NOW), 60_000);
+  });
+
+  it('does not present a stale or old reading as current', () => {
+    assert.equal(pizzIntViewModel(payload({ dataFreshness: 'DATA_FRESHNESS_STALE' }), NOW).available, false);
+    assert.equal(pizzIntViewModel(payload({ updatedAt: NOW - 61 * 60_000 }), NOW).available, false);
+    assert.equal(pizzIntViewModel(payload({ locationsMonitored: 0 }, []), NOW).available, false);
+  });
+
+  it('rejects a malformed level instead of guessing one', () => {
+    assert.throws(() => pizzIntViewModel(payload({ defconLevel: 0 }), NOW));
+    assert.throws(() => pizzIntViewModel(payload({ defconLevel: '3' }), NOW));
+    assert.throws(() => pizzIntViewModel({ pizzint: 'busy' }, NOW));
+  });
+
+  function pizzaTool() {
+    const window = new Window({ url: 'https://www.worldmonitor.app/blog/glossary/pentagon-pizza-index/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-pizzint data-state="loading">
+        <span data-live-status>Loading the live level…</span>
+        <p data-live-fallback>The live level loads in your browser.</p>
+        <div data-live-grid hidden aria-busy="true">
+          <strong data-pizzint-level>—</strong>
+          <span data-pizzint-label></span>
+          <ul data-pizzint-venues></ul>
+        </div>
+        <time data-live-updated></time>
+        <button type="button" data-live-refresh>Refresh</button>
+      </section>
+    `;
+    return document.querySelector('[data-live-pizzint]');
+  }
+
+  async function withFetch(handler, run) {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = handler;
+    try {
+      await run();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  it('hydrates the level, venues, and UTC stamp through the session-gated route', async () => {
+    const tool = pizzaTool();
+    const fresh = payload({ updatedAt: Date.now() - 5 * 60_000 });
+    const requested = [];
+    await withFetch(async (url) => {
+      requested.push(String(url));
+      if (String(url).includes('get-pizzint-status')) {
+        return { ok: true, status: 200, json: async () => fresh };
+      }
+      return anonymousSessionResponse();
+    }, () => loadPizzInt(tool));
+
+    assert.deepEqual(requested, ['/api/wm-session', '/api/intelligence/v1/get-pizzint-status']);
+    assert.equal(tool.dataset.state, 'ready');
+    assert.equal(tool.querySelector('[data-live-status]').textContent, 'Live reading');
+    assert.equal(tool.querySelector('[data-pizzint-level]').textContent, '4');
+    assert.equal(tool.querySelector('[data-pizzint-level]').hidden, false);
+    assert.equal(tool.querySelector('[data-pizzint-label]').textContent, 'Above Normal');
+    assert.equal(tool.querySelector('[data-live-grid]').hidden, false);
+    assert.equal(tool.querySelector('[data-live-fallback]').hidden, true);
+    const venues = [...tool.querySelectorAll('[data-pizzint-venues] li')].map((item) => item.textContent);
+    assert.equal(venues[0], 'Spike Pizza · Spike +90%');
+    assert.equal(venues.length, 8);
+    assert.match(tool.querySelector('[data-live-updated]').textContent, /^Updated .+ UTC$/);
+  });
+
+  it('says plainly when no venue is reporting', async () => {
+    const tool = pizzaTool();
+    await withFetch(async (url) => (String(url).includes('get-pizzint-status')
+      ? { ok: true, status: 200, json: async () => ({ tensionPairs: [] }) }
+      : anonymousSessionResponse()), () => loadPizzInt(tool));
+
+    assert.equal(tool.dataset.state, 'empty');
+    assert.equal(tool.querySelector('[data-live-status]').textContent, 'Live feed checked');
+    assert.equal(tool.querySelector('[data-pizzint-level]').hidden, true);
+    assert.equal(tool.querySelector('[data-pizzint-label]').textContent, 'No current reading');
+    assert.match(
+      tool.querySelector('[data-pizzint-venues] li').textContent,
+      /No venue is reporting live busyness right now/,
+    );
+    // Dated by the check itself, never by an expired reading.
+    assert.match(tool.querySelector('[data-live-updated]').textContent, /^Checked .+ UTC$/);
+  });
+
+  it('reloads an overdue reading when a background tab becomes visible', async () => {
+    const tool = pizzaTool();
+    let statusRequests = 0;
+    const handler = async (url) => {
+      if (String(url).includes('get-pizzint-status')) {
+        statusRequests += 1;
+        return { ok: true, status: 200, json: async () => payload({ updatedAt: Date.now() - 5 * 60_000 }) };
+      }
+      return anonymousSessionResponse();
+    };
+    await withFetch(handler, async () => {
+      await loadPizzInt(tool);
+      assert.equal(statusRequests, 1);
+      // Not yet due: nothing to do on resume.
+      resumePizzIntRefresh(tool, Date.now());
+      assert.equal(statusRequests, 1);
+      // Throttled timers in a hidden tab: the refresh is overdue on return.
+      resumePizzIntRefresh(tool, Date.now() + 16 * 60_000);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      assert.equal(statusRequests, 2);
+    });
+    cancelPizzIntRefresh(tool);
+  });
+
+  it('marks the reading unavailable when the request fails', async () => {
+    const tool = pizzaTool();
+    await withFetch(async () => {
+      throw new Error('offline');
+    }, () => loadPizzInt(tool));
+
+    assert.equal(tool.dataset.state, 'error');
+    assert.equal(tool.querySelector('[data-live-status]').textContent, 'Temporarily unavailable');
+    assert.equal(tool.querySelector('[data-pizzint-level]').hidden, true);
+    assert.equal(tool.querySelector('[data-pizzint-label]').textContent, 'Unavailable');
+    assert.equal(tool.querySelector('[data-pizzint-venues]').children.length, 0);
   });
 });

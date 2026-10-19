@@ -39,8 +39,15 @@ async function dtmGet(path, apiKey) {
     if (!resp.ok) throw new Error(`DTM ${path}: HTTP ${resp.status}`);
     const body = await resp.json();
     // DTM answers 200 with isSuccess=false for a bad query, and isSuccess=true
-    // with an empty result when a country has no rounds in the window.
-    if (body?.isSuccess !== true) throw nonRetryable(`DTM ${path}: ${(body?.errorMessages ?? []).join('; ') || 'isSuccess=false'}`);
+    // with an empty result when a country has no rounds in the window. It also
+    // lists countries its per-country endpoints refuse (Burundi since
+    // 2026-10-09: statusCode 204, "No Country Code found"); that 204 is "no
+    // data for this country", not a query bug, so the caller may skip it.
+    if (body?.isSuccess !== true) {
+      const err = nonRetryable(`DTM ${path}: ${(body?.errorMessages ?? []).join('; ') || 'isSuccess=false'}`);
+      err.noContent = Number(body?.statusCode) === 204;
+      throw err;
+    }
     const result = Array.isArray(body.result) ? body.result : [];
     const total = Number(body.totalRecordsCount);
     if (Number.isFinite(total) && total > result.length) throw nonRetryable(`DTM ${path}: truncated, ${result.length} of ${total} rows`);
@@ -179,7 +186,12 @@ export async function fetchDtmDisplacement({ apiKey = process.env.DTM_API_KEY, n
   await Promise.all(Array.from({ length: FETCH_CONCURRENCY }, async () => {
     while (queue.length > 0) {
       const pcode = queue.shift();
-      rows.push(...await dtmGet(`admin1?Admin0Pcode=${pcode}&FromReportingDate=${from}`, apiKey));
+      try {
+        rows.push(...await dtmGet(`admin1?Admin0Pcode=${pcode}&FromReportingDate=${from}`, apiKey));
+      } catch (err) {
+        if (!err?.noContent) throw err;
+        console.warn(`  WARN: DTM lists ${pcode} but refuses its admin1 query, skipping: ${err.message}`);
+      }
     }
   }));
 

@@ -237,7 +237,8 @@ export function publishPulseFreshness(verdict, {
   }
 
   const pages = gh(['api', '--paginate', '--slurp', `repos/${repository}/issues?state=open&per_page=100`]);
-  const existing = pages.flat().find((issue) => !issue.pull_request && issue.title === ISSUE_TITLE);
+  const existing = pages.flat().find((issue) => !issue.pull_request
+    && issue.title === ISSUE_TITLE && issue.user?.login === 'github-actions[bot]');
   if (!verdict.alert) {
     if (!existing) return { alert: false };
     // A comment notifies subscribers; a body PATCH does not. Closing on

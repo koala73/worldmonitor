@@ -10,6 +10,7 @@ export const forecastPanelReadSchema = z.object({
   domain: z.string().trim().max(80).default(''),
   region: z.string().trim().max(80).default(''),
   limit: z.number().int().min(1).max(30).default(30),
+  include_history: z.boolean().optional().transform(() => undefined),
 }).strict();
 export const forecastPanelViewSchema = forecastPanelReadSchema.extend({
   refresh: z.boolean().default(false), request_id: z.string().uuid().optional(),
@@ -41,6 +42,7 @@ export type PanelUsage = z.infer<typeof panelReceiptSchema>['usage'];
 export const predictionPanelAdmissionSchema = panelReceiptSchema.extend({ panel: z.literal('predictions') });
 export type PredictionPanelAdmission = z.infer<typeof predictionPanelAdmissionSchema>;
 export const predictionPanelReadSchema = z.object({
+  sort: z.enum(['rank', 'move_24h', 'move_7d']).default('rank'),
   category: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined).pipe(z.enum(['geopolitical', 'tech', 'finance']).optional()),
   source: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined).pipe(z.enum(['kalshi', 'polymarket']).optional()),
   query: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined),

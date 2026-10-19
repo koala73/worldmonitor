@@ -187,7 +187,7 @@
     {
       "path": "api/mcp/registry/nlp-tools.ts",
       "category": "external-protocol",
-      "reason": "MCP TOOL_REGISTRY on-demand NLP tool entries (classify_event, extract_entities, get_news_clusters, get_keyword_spikes). Extracted from rpc-tools.ts so the registry file is not also the home of digest adaptation, entity aggregation, and story-accumulator key knowledge; same external-protocol constraint as its sibling registry modules.",
+      "reason": "MCP TOOL_REGISTRY on-demand NLP tool entries (classify_event, extract_entities, get_news_clusters, get_keyword_spikes, verify_claim). Extracted from rpc-tools.ts so the registry file is not also the home of digest adaptation, entity aggregation, and story-accumulator key knowledge; same external-protocol constraint as its sibling registry modules.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -248,9 +248,23 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/domains.ts",
+      "category": "internal-helper",
+      "reason": "One source for each MCP tool's category, the server card toolCategories and tags, and the domain list the discovery surfaces quote. Read at build time by scripts/generate-public-product-facts.mjs and by tests; exports no HTTP route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/upgrade.ts",
       "category": "external-protocol",
       "reason": "MCP paid-funnel (#6716) structured denial builders and upgrade-URL re-exports. Part of the streamable-HTTP MCP surface — not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/checkout.ts",
+      "category": "external-protocol",
+      "reason": "MCP start_upgrade tool (#9144): plan mapping and the server-side relay to the existing Convex create-checkout action, with its JSON-RPC refusal mapping. Part of the streamable-HTTP MCP surface — not a JSON data API.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -299,7 +313,7 @@
     {
       "path": "api/mcp/utils.ts",
       "category": "external-protocol",
-      "reason": "MCP utf8ByteLength + compressDescription — UTF-8 byte counting and tools/list description compression. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "reason": "MCP utf8ByteLength + compressDescription — UTF-8 byte counting and the tools/list description-cap backstop. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -503,6 +517,13 @@
       "path": "api/agent-auth.ts",
       "category": "external-protocol",
       "reason": "RFC 9728 agent-auth discovery challenge at /agent/auth. Returns 401 + WWW-Authenticate: Bearer resource_metadata=... (host-derived PRM pointer) so a GET-probing agent/scanner discovers the auth flow — /mcp's bare GET must stay 405 for the SSE handshake. Response is an auth challenge, not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/channel-oauth-bind.ts",
+      "category": "external-protocol",
+      "reason": "OAuth popup form target. Sets the browser binding after a one-time secret check and returns an HTML navigation to Slack or Discord.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -819,6 +840,20 @@
       "category": "internal-helper",
       "reason": "Settings-UI revoke action for Pro MCP tokens (plan 2026-05-10-001 U9). Clerk-authenticated; forwards the verified-from-JWT userId to Convex /api/internal-revoke-pro-mcp-token (in-mutation tenancy gate validates `row.userId === userId`), then writes the `pro-mcp-token-neg:<tokenId>` sentinel so any in-flight bearer is invalidated within the 60s neg-cache window. Calls the internal HTTP route rather than the public mutation to (a) avoid ConvexHttpClient's no-default-timeout foot-gun (memory `convex-httpclient-no-default-timeout-bypasses-typed-503`) and (b) atomically pair with the cache-invalidation step. Plain `{tokenId}` request / `{ok:true}` response — modeling as a sebuf RPC would over-engineer a single-button settings action.",
       "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/desktop-auth/authorize.ts",
+      "category": "internal-helper",
+      "reason": "Desktop browser sign-in, browser half (#9396 follow-up). POST {code_challenge} from the Clerk-protected /desktop-sign-in page; returns a one-time code bound to the desktop's PKCE challenge, which the page hands to the desktop on a 127.0.0.1 loopback redirect (RFC 8252). Private plumbing of one first-party flow, not a product data API.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
+      "path": "api/desktop-auth/token.ts",
+      "category": "external-protocol",
+      "reason": "Desktop browser sign-in, desktop half (#9396 follow-up). POST {code, code_verifier}: an RFC 7636 PKCE code redemption that returns a single-use, 60-second Clerk sign-in ticket. Shape follows the OAuth native-app pattern (RFC 8252) rather than the sebuf contract.",
+      "owner": "@koala73",
       "removal_issue": null
     },
     {

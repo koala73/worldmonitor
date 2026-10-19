@@ -9,7 +9,7 @@
 // user API key. A small REST escape hatch (`health`, `get <path>`) and an
 // OpenAPI listing (`list`) round it out for host-relative and self-hosted use.
 
-export const VERSION = '0.1.3';
+export const VERSION = '0.2.0';
 
 // Cloudflare's WAF challenges generic library User-Agents (node, curl,
 // python-requests, empty) on the API edge, so we always identify ourselves.
@@ -171,6 +171,23 @@ export function parseArgs(argv) {
 
   const command = positionals.shift();
   return { command, positionals, options, params };
+}
+
+// Dashboard-only flags (`tui`, `web`, bare `worldmonitor`). They stay out of
+// the global flag tables so `--url`, `--port` and `--theme` keep reaching the
+// API as parameters on every other command; the dashboard launchers read them
+// from `params` here instead.
+const DASHBOARD_VALUE_FLAGS = { theme: 'theme', fps: 'fps', port: 'port', url: 'url' };
+const DASHBOARD_BOOL_FLAGS = { 'no-anim': 'noAnim', 'no-animations': 'noAnim', hosted: 'hosted', 'no-open': 'noOpen' };
+
+export function dashboardOptions({ options = {}, params = {} } = {}) {
+  const out = { ...options };
+  for (const [name, value] of Object.entries(params)) {
+    const key = name.toLowerCase();
+    if (DASHBOARD_VALUE_FLAGS[key] && value !== true) out[DASHBOARD_VALUE_FLAGS[key]] = String(value);
+    else if (DASHBOARD_BOOL_FLAGS[key]) out[DASHBOARD_BOOL_FLAGS[key]] = value !== 'false';
+  }
+  return out;
 }
 
 // Read defaults from the environment so keys and hosts don't have to be passed
@@ -346,7 +363,17 @@ export function renderListing(rows) {
 export const HELP = `worldmonitor — command-line client for the World Monitor global-intelligence API
 
 USAGE
+  worldmonitor                       Open the terminal dashboard (TUI)
+  worldmonitor web                   Open the original web dashboard
   worldmonitor <command> [arguments] [--flags]
+
+DASHBOARD
+  tui                      Interactive terminal dashboard: news, markets, conflict,
+                           cyber, climate, predictions, live TV, intel, system
+                           (--theme <id>, --no-anim, --fps <n>; no key required)
+  web                      Original web dashboard: starts the Vite dev server in a
+                           repository checkout, otherwise opens worldmonitor.app
+                           (--hosted, --port <n>, --no-open, --url <url>)
 
 DATA COMMANDS (MCP tools/call — need --api-key except call get_sources)
   world                    Live global situation brief

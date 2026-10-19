@@ -11,6 +11,16 @@ import {
 import { getRootlessDocsDestination } from './src/config/docs-root-redirects';
 import agentRequestPolicy from './shared/agent-request-policy.json';
 import { isMcpAliasRequest, normalizeMcpHost } from './shared/mcp-host-policy';
+import { chokepointStatusViewModel } from './scripts/crawlable-live-tools.mjs';
+import {
+  chokepointPulseRecord,
+  renderChokepointLiveSection,
+  replaceChokepointLiveSection,
+} from './scripts/crawlable-chokepoint-live.mjs';
+import { liveTopicPageForPath, liveTopicReading } from './scripts/live-pages/index.mjs';
+import { replaceLiveSection } from './scripts/live-pages/common.mjs';
+
+type LiveTopicPage = NonNullable<ReturnType<typeof liveTopicPageForPath>>;
 
 const AGENT_UA = new RegExp(`(?:^|[^a-z0-9-])(?:${agentRequestPolicy.userAgents.join('|')})(?:$|[^a-z0-9-])`, 'i');
 
@@ -286,6 +296,12 @@ export default function middleware(request: Request) {
     if (!isKnownPublicPagePath(path)) {
       return originNotFoundResponse(path, request);
     }
+
+    if (isLiveHtmlRequest(request, url)) {
+      if (CHOKEPOINT_PAGE_PATH.test(url.pathname)) return liveChokepointPage(url);
+      const topic = liveTopicPageForPath(url.pathname);
+      if (topic) return liveTopicPage(url, topic);
+    }
   }
 
   // Only apply bot filtering to /api/* paths.
@@ -378,6 +394,133 @@ function docsResponseHeaders(upstream: Response, host: string): Headers {
   }
   headers.set('vary', [...varyParts].join(', '));
   return headers;
+}
+
+// Chokepoint pages are built from a weekly pulse snapshot. Crawlers run no
+// hydrate script, so an answer engine asking "is Hormuz open right now?" read
+// that week-old capture. Full-document GETs get the built page with its live
+// section re-rendered from the current public reading; any failure serves the
+// built page unchanged.
+const CHOKEPOINT_PAGE_PATH = /^\/chokepoints\/[a-z0-9-]+\/$/;
+// The inner fetch of the built page uses this query marker so it skips this
+// branch. A URL rather than a header keeps the built and live variants under
+// different cache keys; a shared cache never answers a page request with the
+// built copy. A client that sends it only receives the built page.
+const BUILT_PAGE_PARAM = 'wm-built';
+const LIVE_PAGE_FETCH_TIMEOUT_MS = 4_000;
+// The reading refreshes every few minutes; the built page's hour-long browser
+// cache would hold it for an hour.
+const LIVE_PAGE_CACHE_CONTROL = 'public, max-age=300, must-revalidate';
+const LIVE_PAGE_CDN_CACHE_CONTROL = 'public, s-maxage=300, stale-while-revalidate=60';
+// Must pass the /api/* bot gate below: no BOT_UA token, at least 10 chars.
+const LIVE_PAGE_USER_AGENT = 'Mozilla/5.0 (compatible; WorldMonitorLivePages/1.0)';
+const CHOKEPOINT_STATUS_PUBLIC_PATH = '/api/supply-chain/v1/get-chokepoint-status?public=1';
+
+function decodeAttribute(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+function sectionAttribute(html: string, name: string): string | null {
+  const match = html.match(new RegExp(`<section[^>]*\\sdata-live-chokepoint\\b[^>]*\\s${name}="([^"]*)"`));
+  return match ? decodeAttribute(match[1] ?? '') : null;
+}
+
+const passThroughToOrigin = () => new Response(null, { headers: { 'x-middleware-next': '1' } });
+
+function isLiveHtmlRequest(request: Request, url: URL): boolean {
+  if (request.method !== 'GET' || url.searchParams.has(BUILT_PAGE_PARAM)) return false;
+  const accept = request.headers.get('accept');
+  return !accept || (acceptQuality(accept, 'text/html', true) ?? 0) > 0;
+}
+
+async function fetchPublicReading(url: URL, statusPath: string): Promise<unknown> {
+  const status = await fetch(new URL(statusPath, url), {
+    headers: { accept: 'application/json', 'user-agent': LIVE_PAGE_USER_AGENT },
+    signal: AbortSignal.timeout(LIVE_PAGE_FETCH_TIMEOUT_MS),
+  });
+  if (!status.ok) throw new Error(`public reading ${status.status}`);
+  return status.json();
+}
+
+/**
+ * Serves the built page with its live section re-rendered by `render`, which
+ * returns the new HTML or null to keep the built reading. Any failure serves
+ * the built page; a missing built page falls through to the origin.
+ */
+async function liveHtmlPage(url: URL, kind: string, render: (html: string) => Promise<string | null>): Promise<Response> {
+  let page: Response;
+  let html: string;
+  const builtUrl = new URL(url.pathname, url);
+  builtUrl.searchParams.set(BUILT_PAGE_PARAM, '1');
+  try {
+    page = await fetch(builtUrl, {
+      headers: { accept: 'text/html', 'user-agent': LIVE_PAGE_USER_AGENT },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(LIVE_PAGE_FETCH_TIMEOUT_MS),
+    });
+    if (page.status !== 200) return passThroughToOrigin();
+    html = await page.text();
+  } catch {
+    return passThroughToOrigin();
+  }
+
+  const headers = new Headers(page.headers);
+  // fetch() already decoded the body; framing headers do not describe the new string.
+  for (const name of ['content-encoding', 'content-length', 'transfer-encoding', 'connection']) {
+    headers.delete(name);
+  }
+  // Also on the fallback, so a browser re-asks once the reading recovers.
+  headers.set('cache-control', LIVE_PAGE_CACHE_CONTROL);
+  headers.set('cdn-cache-control', LIVE_PAGE_CDN_CACHE_CONTROL);
+  headers.set('vercel-cdn-cache-control', LIVE_PAGE_CDN_CACHE_CONTROL);
+  const builtPage = () => new Response(html, { status: 200, headers });
+
+  try {
+    const live = await render(html);
+    if (live === null) return builtPage();
+    headers.set('x-wm-live-page', kind);
+    // The built file's validators describe a different body.
+    headers.delete('etag');
+    headers.delete('last-modified');
+    return new Response(live, { status: 200, headers });
+  } catch {
+    return builtPage();
+  }
+}
+
+function liveChokepointPage(url: URL): Promise<Response> {
+  return liveHtmlPage(url, 'chokepoint', async (html) => {
+    const id = sectionAttribute(html, 'data-chokepoint-id');
+    const displayName = sectionAttribute(html, 'data-chokepoint-name');
+    if (!id || !displayName) return null;
+    // Missing row, stale snapshot, or out-of-range score: the view model throws
+    // rather than return a reading it cannot vouch for.
+    const view = chokepointStatusViewModel(await fetchPublicReading(url, CHOKEPOINT_STATUS_PUBLIC_PATH), id);
+    const section = renderChokepointLiveSection({
+      chokepoint: {
+        id,
+        displayName,
+        transitMeasurementNote: sectionAttribute(html, 'data-transit-measurement-note') ?? '',
+      },
+      pulse: chokepointPulseRecord(view),
+      live: true,
+    });
+    return replaceChokepointLiveSection(html, section);
+  });
+}
+
+function liveTopicPage(url: URL, topic: LiveTopicPage): Promise<Response> {
+  return liveHtmlPage(url, topic.slug, async (html) => {
+    const record = liveTopicReading(topic, await fetchPublicReading(url, topic.statusPath));
+    // An unpublishable reading (stale, empty) keeps the built page's dated one.
+    if (record === null) return null;
+    return replaceLiveSection(html, topic.slug, topic.renderSection(record, { live: true }));
+  });
 }
 
 async function proxyDocsLocaleHtml(request: Request, url: URL, host: string): Promise<Response> {

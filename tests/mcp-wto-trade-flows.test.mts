@@ -96,6 +96,38 @@ describe('get_wto_trade_flows', () => {
     assert.deepEqual(result.flows, []);
   });
 
+  it('maps an ISO2 reporter to the UN M49 code the seed is keyed by', async () => {
+    // The flow seed keys reporters by UN M49 (India 356, France 250), not the
+    // WTO member codes the tariff seed uses (699, 251): measured live 2026-10-16.
+    for (const [input, m49] of [['US', '840'], ['us', '840'], ['CN', '156'], ['IN', '356'], ['FR', '250'], [' DE ', '276']] as const) {
+      requestedUrl = '';
+      const result = await tool._execute({ reporter: input }, BASE, CTX, {});
+      assert.match(requestedUrl, new RegExp(`reporting_country=${m49}(&|$)`), `${input} -> ${m49}`);
+      assert.equal(result.unavailableReason, 'TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED');
+    }
+  });
+
+  it('passes a 3-digit M49 reporter through unchanged', async () => {
+    for (const code of ['840', '356', '250']) {
+      requestedUrl = '';
+      await tool._execute({ reporter: code }, BASE, CTX, {});
+      assert.match(requestedUrl, new RegExp(`reporting_country=${code}(&|$)`));
+    }
+  });
+
+  it('rejects an unknown ISO2 reporter without an upstream request', async () => {
+    const result = await tool._execute({ reporter: 'QQ' }, BASE, CTX, {});
+    assert.equal(requestedUrl, '');
+    assert.equal(result.unavailableReason, 'TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST');
+  });
+
+  it('advertises ISO2 as well as M49 in the reporter schema', () => {
+    const reporter = tool.inputSchema.properties.reporter as { pattern?: string; description: string };
+    assert.equal(reporter.pattern, undefined);
+    assert.match(reporter.description, /ISO 3166-1 alpha-2/);
+    assert.match(reporter.description, /M49/);
+  });
+
   it('rejects years outside the public input contract', async () => {
     const result = await tool._execute({ years: 31 }, BASE, CTX, {});
     assert.equal(requestedUrl, '', 'invalid input must not issue an upstream request');

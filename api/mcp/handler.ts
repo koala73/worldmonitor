@@ -44,6 +44,7 @@ import {
 } from './skill-extension/index';
 import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from './ui/registry';
 import { emitTelemetry, principalIdForLog } from './telemetry';
+import { classifyAgentClientHints, sanitizeClientName } from '../../shared/agent-client-source';
 import { hashKeySync } from '../../server/_shared/usage-identity';
 import { createMcpUsage, emitMcpRequestEvent, setUsageContext, setUsageRpc, type McpUsage } from './usage';
 import { safeJsonRpcId, utf8ByteLength } from './utils';
@@ -184,6 +185,13 @@ const MAX_SSE_REPLAY_RESPONSE_BYTES = 128 * 1024;
 const MAX_SSE_REPLAY_SESSION_BYTES = 256 * 1024;
 const MAX_SSE_REPLAY_TOTAL_BYTES = 4 * 1024 * 1024;
 const MAX_SSE_SESSIONS = 500;
+// The store is shared by every caller in the isolate. A per-owner cap keeps
+// one principal from cycling sessions to push everyone else's replay buffers
+// out of the global LRU.
+const MAX_SSE_SESSIONS_PER_OWNER = 20;
+// Twenty full sessions would still exceed the shared byte budget, so each
+// owner also has its own byte budget and evicts its own oldest replay first.
+const MAX_SSE_REPLAY_OWNER_BYTES = 1024 * 1024;
 const MAX_SSE_STREAMS_PER_SESSION = 25;
 const mcpSseStreamsBySession = new Map<string, StoredSseSession>();
 let mcpSseReplayBytes = 0;
@@ -270,6 +278,40 @@ function evictOldestSseStream(exceptSessionId?: string): boolean {
   return false;
 }
 
+function ownerReplayBytes(owner: string): number {
+  let bytes = 0;
+  for (const session of mcpSseStreamsBySession.values()) {
+    if (session.owner === owner) bytes += sessionReplayBytes(session.streams);
+  }
+  return bytes;
+}
+
+function evictOldestOwnedSseStream(owner: string): boolean {
+  for (const session of mcpSseStreamsBySession.values()) {
+    if (session.owner !== owner) continue;
+    const streamId = session.streams.keys().next().value;
+    if (!streamId) continue;
+    const stream = session.streams.get(streamId);
+    if (!stream) continue;
+    session.streams.delete(streamId);
+    mcpSseReplayBytes -= stream.bytes;
+    return true;
+  }
+  return false;
+}
+
+// Test-only view of the in-isolate replay store.
+export const __sseReplayStoreForTest = {
+  reset(): void {
+    mcpSseStreamsBySession.clear();
+    mcpSseReplayBytes = 0;
+  },
+  store: (sessionId: string, streamId: string, data: string, owner: string): boolean =>
+    storeSseStream(sessionId, streamId, [{ id: `${streamId}:1`, data }], owner),
+  ownerBytes: ownerReplayBytes,
+  totalBytes: (): number => mcpSseReplayBytes,
+};
+
 /**
  * Claims `sessionId` for `owner`, or returns null when another owner already
  * claimed it. `initialize` calls this before content negotiation so a JSON
@@ -279,6 +321,17 @@ function evictOldestSseStream(exceptSessionId?: string): boolean {
 function claimSseSession(sessionId: string, owner: string): StoredSseSession | null {
   const existing = mcpSseStreamsBySession.get(sessionId);
   if (existing) return existing.owner === owner ? existing : null;
+
+  let ownedSessions = 0;
+  let oldestOwnedSessionId: string | undefined;
+  for (const [id, stored] of mcpSseStreamsBySession) {
+    if (stored.owner !== owner) continue;
+    ownedSessions += 1;
+    oldestOwnedSessionId ??= id;
+  }
+  if (ownedSessions >= MAX_SSE_SESSIONS_PER_OWNER && oldestOwnedSessionId) {
+    deleteSseSession(oldestOwnedSessionId);
+  }
 
   const session: StoredSseSession = { owner, streams: new Map() };
   mcpSseStreamsBySession.set(sessionId, session);
@@ -308,6 +361,9 @@ function storeSseStream(sessionId: string, streamId: string, events: StoredSseEv
     const oldest = streams.get(oldestStreamId);
     streams.delete(oldestStreamId);
     if (oldest) mcpSseReplayBytes -= oldest.bytes;
+  }
+  while (ownerReplayBytes(owner) + bytes > MAX_SSE_REPLAY_OWNER_BYTES && evictOldestOwnedSseStream(owner)) {
+    // Spend this owner's own budget before touching anyone else's replay.
   }
   while (mcpSseReplayBytes + bytes > MAX_SSE_REPLAY_TOTAL_BYTES && evictOldestSseStream(sessionId)) {
     // Evict least-recently-stored entries until this bounded replay fits.
@@ -998,6 +1054,7 @@ async function mcpHandlerInner(
   let budget: McpBudget | undefined;
   let burstPerMinute: number | undefined;
   let freeAccountAllowance = false;
+  let planKey: string | undefined;
   if (PUBLIC_MCP_METHODS.has(method) || isAnonResourceRead || isFreeTierToolCall) {
     if (hasCredentials(req)) {
       // Credentials presented on a public method are still validated so a
@@ -1069,6 +1126,7 @@ async function mcpHandlerInner(
     budget = preCheck.budget;
     burstPerMinute = preCheck.burstPerMinute;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
+    planKey = preCheck.planKey;
     const limited = method === 'tools/call' ? null : await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute, id);
     if (limited) {
       usage.phase = 'limit';
@@ -1095,12 +1153,18 @@ async function mcpHandlerInner(
       // full JSON-RPC envelope (jsonrpc/id/protocolVersion/capabilities add
       // fixed overhead). UA is sliced to 256 chars: a pathological 32 KB
       // custom UA would otherwise inflate every emitted line for that session.
+      const clientUserAgent = (req.headers.get('User-Agent') ?? '').slice(0, 256);
+      const clientName = sanitizeClientName(
+        (body.params as { clientInfo?: { name?: unknown } } | null | undefined)?.clientInfo?.name,
+      );
       emitTelemetry('mcp.tools_list_emitted', {
         auth_kind: context?.kind ?? 'anon',
         user_id: context ? principalIdForLog(context) : 'anon',
         tools_array_bytes: TOOL_LIST_BYTES,
         tool_count: TOOL_LIST_RESPONSE.length,
-        client_user_agent: (req.headers.get('User-Agent') ?? '').slice(0, 256),
+        client_user_agent: clientUserAgent,
+        client_name: clientName,
+        client_source: classifyAgentClientHints([clientName, clientUserAgent]),
       });
       return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, {
         protocolVersion: negotiatedVersion,
@@ -1160,6 +1224,7 @@ async function mcpHandlerInner(
         freeAccountAllowance,
         resourceMetadataUrl,
         burstPerMinute ?? MCP_DEFAULT_BURST_PER_MINUTE,
+        planKey,
       );
       classifyDispatchedUsage(usage, dispatched);
       return maybeStreamJsonRpcResponse(req, sseOwner, dispatched);
@@ -1277,6 +1342,7 @@ async function mcpHandlerInner(
           budget,
           freeAccountAllowance,
           resourceMetadataUrl,
+          planKey,
         );
         classifyDispatchedUsage(usage, resourceRes);
         return maybeStreamJsonRpcResponse(req, sseOwner, resourceRes);

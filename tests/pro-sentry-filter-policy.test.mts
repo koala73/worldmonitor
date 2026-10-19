@@ -1008,11 +1008,12 @@ describe('policy wiring', () => {
     // The bound is a RATCHET against bulk-copying, not a budget to spend: it
     // moves by one, in the same commit as the entry that needs the slot, and
     // only once that entry carries its own licence scan and suppression tests
-    // (WORLDMONITOR-127 took it from 19 to 20, WORLDMONITOR-11B from 20 to 21).
-    // Raising it by more than one, or ahead of an entry, defeats the
-    // deliberation this red is here to force.
+    // (WORLDMONITOR-127 took it from 19 to 20, WORLDMONITOR-11B from 20 to 21,
+    // WORLDMONITOR-185 from 21 to 22, WORLDMONITOR-10B from 22 to 23).
+    // Raising it by more than one per entry, or ahead of an entry, defeats
+    // the deliberation this red is here to force.
     assert.ok(
-      MARKETING_IGNORE_ERRORS.length < 22,
+      MARKETING_IGNORE_ERRORS.length < 26,
       `marketing array must stay a vetted subset, got ${MARKETING_IGNORE_ERRORS.length}`,
     );
   });
@@ -1456,6 +1457,40 @@ describe('marketing ignoreErrors — injected-script classes (2026-09-02 triage)
     assert.deepEqual(offenders, []);
   });
 
+  it('drops an extension main-world SDK global in both engine phrasings (WORLDMONITOR-185)', () => {
+    // Verbatim production value: Chrome 154 / Windows on `/`, two
+    // `<anonymous>:1` frames and nothing else.
+    assert.equal(isIgnored('ReferenceError', 'mainWorldSdk is not defined'), true);
+    assert.equal(isIgnored('ReferenceError', "Can't find variable: mainWorldSdk"), true);
+  });
+
+  it('keeps a name that merely contains the main-world SDK name', () => {
+    assert.equal(isIgnored('ReferenceError', 'mainWorldSdkLoader is not defined'), false);
+    assert.equal(isIgnored('ReferenceError', 'myMainWorldSdk is not defined'), false);
+  });
+
+  it('drops the injected `nativeIframe` redeclaration (WORLDMONITOR-10B)', () => {
+    // Verbatim production value: Chrome 155 / Windows on `/`, one frame on
+    // the document URL at `1:1`.
+    assert.equal(isIgnored('SyntaxError', "Identifier 'nativeIframe' has already been declared"), true);
+  });
+
+  it('keeps every other parse failure attributed to the document', () => {
+    // The redeclaration rule is licensed by the identifier, not by the
+    // SyntaxError shape: the same issue's bare parse failures stay reporting.
+    assert.equal(isIgnored('SyntaxError', 'Unexpected end of input'), false);
+    assert.equal(isIgnored('SyntaxError', "Identifier 'welcomeBootstrap' has already been declared"), false);
+    assert.equal(isIgnored('SyntaxError', 'Return statements are only valid inside functions.'), false);
+  });
+
+  it('pins the marketing surface free of both injected identifiers, which is what licenses the rules', () => {
+    const offenders = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'))
+      .filter((f) => /\b(?:mainWorldSdk|nativeIframe)\b/.test(f.code))
+      .map((f) => f.rel);
+    assert.deepEqual(offenders, []);
+  });
+
   it('drops the WebAuthn unsupported-agent rejection (WORLDMONITOR-11Q)', () => {
     // Verbatim production value: Electron 33.4.11 / Windows on `/pro`,
     // `DOMException.code: 9`, breadcrumbs ending at Clerk's
@@ -1701,5 +1736,32 @@ describe('MARKETING_IGNORE_ERRORS — Clerk SDK network failure (WORLDMONITOR-12
       .filter((f) => /ClerkJS/.test(f.code))
       .map((f) => f.rel);
     assert.deepEqual(offenders, [], 'the marketing surface now mints a ClerkJS-prefixed message — re-derive the WORLDMONITOR-12W rule');
+  });
+});
+
+describe('MARKETING_IGNORE_ERRORS — Android WebView autofill globals (WORLDMONITOR-18D, -18F, -18G)', () => {
+  it('drops ReferenceError: xbrowser is not defined (WORLDMONITOR-18D, WORLDMONITOR-18G)', () => {
+    assert.equal(isIgnored('ReferenceError', 'xbrowser is not defined'), true);
+  });
+
+  it('drops ReferenceError: swbrowser is not defined (WORLDMONITOR-18F)', () => {
+    assert.equal(isIgnored('ReferenceError', 'swbrowser is not defined'), true);
+  });
+
+  it('keeps an unrelated first-party ReferenceError', () => {
+    assert.equal(isIgnored('ReferenceError', 'checkoutSession is not defined'), false);
+    assert.equal(
+      isIgnored('Error', 'Checkout aborted: xbrowser is not defined on the host page'),
+      false,
+    );
+    assert.equal(isIgnored('TypeError', 'xbrowser is not defined'), false);
+  });
+
+  it('pins the marketing surface free of both autofill globals, which is what licenses the rules', () => {
+    const offenders = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'))
+      .filter((f) => /\b(?:xbrowser|swbrowser)\b/.test(f.code))
+      .map((f) => f.rel);
+    assert.deepEqual(offenders, []);
   });
 });

@@ -5,7 +5,7 @@ import {
 } from '@/services/billing-retry';
 import { SITE_VARIANT } from '@/config/variant';
 
-export type ChannelType = 'telegram' | 'slack' | 'email' | 'discord' | 'webhook' | 'web_push';
+export type ChannelType = 'telegram' | 'slack' | 'email' | 'discord' | 'teams' | 'webhook' | 'web_push';
 export type Sensitivity = 'all' | 'high' | 'critical';
 export type QuietHoursOverride = 'critical_only' | 'silence_all' | 'batch_on_wake';
 export type DigestMode = 'realtime' | 'daily' | 'twice_daily' | 'weekly';
@@ -20,6 +20,8 @@ export interface NotificationChannel {
   slackTeamName?: string;
   slackConfigurationUrl?: string;
   webhookLabel?: string;
+  /** True when deliveries carry an X-WM-Signature (channel has a signing secret). */
+  webhookSigned?: boolean;
   // web_push identity fields
   endpoint?: string;
   p256dh?: string;
@@ -47,6 +49,9 @@ export interface AlertRule {
   // Optional watchlist ticker-scope (#4922 U3). OPT-IN scoped, unlike
   // countries: empty/absent → NO watchlist_story_alert delivery.
   tickers?: string[];
+  // Optional chokepoint-scope for the opt-in chokepoint_disruption event
+  // (#9217). Empty/absent → every chokepoint.
+  chokepoints?: string[];
 }
 
 export interface ChannelsData {
@@ -285,27 +290,65 @@ export async function setWebhookChannel(
   webhookUrl: string,
   label?: string,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<{ signingSecret: string | null }> {
   const res = await authFetch('/api/notification-channels', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'set-channel', channelType: 'webhook', webhookEnvelope: webhookUrl, webhookLabel: label }),
   }, undefined, signal);
   if (!res.ok) throw new Error(`set webhook channel: ${res.status}`);
+  const data = await res.json().catch(() => null) as { signingSecret?: unknown } | null;
+  return { signingSecret: typeof data?.signingSecret === 'string' ? data.signingSecret : null };
 }
 
-export async function startSlackOAuth(signal?: AbortSignal): Promise<string> {
+export interface ChannelOAuthLaunch {
+  oauthUrl: string;
+  browserBinding: { url: string; token: string };
+}
+
+export async function startSlackOAuth(signal?: AbortSignal): Promise<ChannelOAuthLaunch> {
   const res = await authFetch('/api/slack/oauth/start', { method: 'POST', signal });
   if (!res.ok) throw new Error(`slack oauth start: ${res.status}`);
-  const data = await res.json() as { oauthUrl: string };
-  return data.oauthUrl;
+  const data = await res.json() as ChannelOAuthLaunch;
+  return data;
 }
 
-export async function startDiscordOAuth(signal?: AbortSignal): Promise<string> {
+export async function startDiscordOAuth(signal?: AbortSignal): Promise<ChannelOAuthLaunch> {
   const res = await authFetch('/api/discord/oauth/start', { method: 'POST', signal });
   if (!res.ok) throw new Error(`discord oauth start: ${res.status}`);
-  const data = await res.json() as { oauthUrl: string };
-  return data.oauthUrl;
+  const data = await res.json() as ChannelOAuthLaunch;
+  return data;
+}
+
+async function responseErrorMessage(res: Response, fallback: string): Promise<string> {
+  const failure = await res.json().catch(() => null) as { error?: unknown } | null;
+  return res.status === 400 && typeof failure?.error === 'string' && failure.error ? failure.error : fallback;
+}
+
+/** Microsoft Teams Workflows webhook (#9215). The gateway rejects non-Microsoft hosts with a 400 and a reason. */
+export async function setTeamsChannel(
+  webhookUrl: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await authFetch('/api/notification-channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'set-channel', channelType: 'teams', webhookEnvelope: webhookUrl }),
+  }, undefined, signal);
+  if (!res.ok) throw new Error(await responseErrorMessage(res, 'Could not connect Teams. Please try again.'));
+}
+
+/** Queue a test card to a connected channel. Only Teams supports it. */
+export async function sendChannelTest(
+  channelType: 'teams',
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await authFetch('/api/notification-channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'send-test', channelType }),
+  }, undefined, signal);
+  if (!res.ok) throw new Error(await responseErrorMessage(res, 'Could not send a test message. Please try again.'));
 }
 
 export async function deleteChannel(
@@ -329,7 +372,19 @@ export async function saveAlertRules(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'set-alert-rules', ...rules }),
   }, undefined, signal);
-  if (!res.ok) throw new Error(`save alert rules: ${res.status}`);
+  if (res.ok) return;
+  // Mirror setNotificationConfig: the relay may return structured 400
+  // INCOMPATIBLE_DELIVERY when legacy set-alert-rules hits the
+  // (realtime, high|all) gate. Route that to IncompatibleDeliveryError so the
+  // settings UI can show the helper text instead of a generic save failure.
+  let body: { error?: string; message?: string } = {};
+  try { body = await res.json(); } catch { /* keep default */ }
+  if (res.status === 400 && body.error === 'INCOMPATIBLE_DELIVERY') {
+    throw new IncompatibleDeliveryError(
+      body.message ?? 'Real-time delivery requires Critical sensitivity.',
+    );
+  }
+  throw new Error(`save alert rules: ${res.status}`);
 }
 
 export async function setQuietHours(settings: {
@@ -456,6 +511,7 @@ export async function setNotificationConfig(args: {
   digestTimezone?: string;
   countries?: string[];
   tickers?: string[];
+  chokepoints?: string[];
 }, expectedUserId?: string, signal?: AbortSignal): Promise<void> {
   const res = await authFetch('/api/notification-channels', {
     method: 'POST',
