@@ -1,6 +1,6 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { installStaleBundleCheck } from '../src/bootstrap/stale-bundle-check.ts';
+import { _setFetchBeforeWindowPatchesForTests, installStaleBundleCheck } from '../src/bootstrap/stale-bundle-check.ts';
 import {
   _resetSentryDeferStateForTests,
   _setSentryLoaderForTests,
@@ -75,6 +75,8 @@ function makeEnv(initial: Partial<{ ok: boolean; status: number; body: string }>
   };
 }
 
+const USE_PRODUCTION_FETCH = Symbol('production-fetch');
+
 function install(
   env: FakeEnv,
   currentHash = 'sha-running-bundle',
@@ -82,13 +84,9 @@ function install(
   wedgeAfterDeferrals?: number,
   /** true leaves the module's own Sentry reporter in place instead of the recording fake. */
   useDefaultReporter = false,
-  /**
-   * `'global'` leaves `fetch` unset so the module resolves its production
-   * fetch. A function replaces the fake.
-   */
-  fetchImpl?: 'global' | typeof globalThis.fetch,
+  fetchImpl?: typeof globalThis.fetch | typeof USE_PRODUCTION_FETCH,
 ) {
-  const injectedFetch = fetchImpl === 'global'
+  const injectedFetch = fetchImpl === USE_PRODUCTION_FETCH
     ? undefined
     : fetchImpl ?? (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
@@ -726,24 +724,34 @@ describe('installStaleBundleCheck', () => {
   });
 
   it('a one-sided then on the live fetch does not leave an unhandled rejection from focus or the interval', async () => {
-    const previous = globalThis.fetch;
+    const previousFetch = globalThis.fetch;
+    let calls = 0;
+    const previousSnapshot = _setFetchBeforeWindowPatchesForTests(async () => {
+      calls += 1;
+      if (calls === 1) throw new TypeError('Failed to fetch');
+      return new Response('sha-newer-deploy');
+    });
     globalThis.fetch = (() => {
       const rejected = Promise.reject(new TypeError('Failed to fetch'));
-      // A wrapper that observes success and returns the original promise.
-      // The derived promise rejects with nobody waiting on it.
+      // Observes success only, then returns the original promise. The derived
+      // promise rejects with nobody waiting on it.
       rejected.then(() => {});
       return rejected;
     }) as typeof globalThis.fetch;
     try {
       const messages = await rejectionMessagesDuring(async () => {
-        install(env, 'sha-running-bundle', 0, undefined, false, 'global');
+        install(env, 'sha-running-bundle', 0, undefined, false, USE_PRODUCTION_FETCH);
         await fireFocus(env);
+        assert.equal(env.reloadCalls, 0);
         env.clock.tick(1);
         await fireInterval(env);
       });
       assert.deepEqual(messages, []);
+      assert.equal(calls, 2, 'focus and the next interval both reach the pre-patch fetch');
+      assert.equal(env.reloadCalls, 1, 'a real hash change still reloads');
     } finally {
-      globalThis.fetch = previous;
+      globalThis.fetch = previousFetch;
+      _setFetchBeforeWindowPatchesForTests(previousSnapshot);
     }
   });
 });
