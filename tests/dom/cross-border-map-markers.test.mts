@@ -43,10 +43,14 @@ describe('cross-border map markers', () => {
     expect(arrivals.getAttribute('aria-label')).toContain('2026-10-19');
     expect(deaths.classList.contains('cross-border-death')).toBe(true);
     expect(deaths.textContent).toBe('×');
-    expect(deaths.style.background).not.toBe(arrivals.style.background);
-    expect(parseFloat(arrivals.style.width)).toBeGreaterThan(parseFloat(deaths.style.width));
-    expect(arrivals.style.borderWidth).toBe('3px');
-    expect(deaths.style.borderWidth).toBe('1px');
+    const arrivalDot = arrivals.querySelector<HTMLElement>('.cross-border-dot')!;
+    const deathDot = deaths.querySelector<HTMLElement>('.cross-border-dot')!;
+    expect(deathDot.style.background).not.toBe(arrivalDot.style.background);
+    expect(parseFloat(arrivalDot.style.width)).toBeGreaterThan(parseFloat(deathDot.style.width));
+    expect(arrivalDot.style.borderWidth).toBe('3px');
+    expect(deathDot.style.borderWidth).toBe('1px');
+    expect(parseFloat(deaths.style.width)).toBeGreaterThanOrEqual(24);
+    expect(parseFloat(deathDot.style.width)).toBe(10);
   });
 
   it('keeps external labels as text and drops unsafe source links', () => {

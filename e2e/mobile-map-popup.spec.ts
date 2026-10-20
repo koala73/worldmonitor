@@ -61,8 +61,8 @@ for (const deviceConfig of MOBILE_DEVICE_MATRIX) {
       await page.evaluate(() => {
         const point = {
           situation: 'test', label: 'Controlled arrivals', kind: 'arrival' as const, country: 'ES',
-          individuals: 2500, date: '2026-10-19', change: null, changeSince: '', lastMonth: null,
-          accelerating: true, lat: 40, lon: -4, measure: 'daily', last30Days: 2500,
+          individuals: 2300, date: '2026-10-19', change: null, changeSince: '', lastMonth: null,
+          accelerating: true, lat: 40, lon: -4, measure: 'daily', last30Days: 2300,
           source: 'Controlled publisher', sourceUrl: 'https://example.com/report',
         };
         (window as HarnessWindow).__mobileMapIntegrationHarness!.setCrossBorderArrivals({
@@ -77,8 +77,12 @@ for (const deviceConfig of MOBILE_DEVICE_MATRIX) {
       expect(arrivalBox).not.toBeNull();
       expect(deathBox).not.toBeNull();
       expect(deathBox!.x + deathBox!.width).toBeLessThanOrEqual(arrivalBox!.x);
+      const arrivalDot = await page.locator('.cross-border-point .cross-border-dot').boundingBox();
+      const deathDot = await page.locator('.cross-border-death .cross-border-dot').boundingBox();
+      expect(deathBox!.width).toBeGreaterThan(deathDot!.width);
+      expect(deathDot!.width).toBeLessThan(arrivalDot!.width);
       await page.locator('.cross-border-point').tap();
-      await expect(popup).toContainText('2,500');
+      await expect(popup).toContainText('2,300');
       await expect(popup).toContainText('2026-10-19');
       await expect(popup).toContainText('Controlled publisher');
       await expect(popup.locator('a')).toHaveAttribute('href', 'https://example.com/report');

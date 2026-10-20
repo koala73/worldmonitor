@@ -34,8 +34,14 @@ export function createCrossBorderMarker(point: CrossBorderPoint): HTMLButtonElem
   const marker = document.createElement('button');
   marker.type = 'button';
   marker.className = `cross-border-marker cross-border-${death ? 'death' : 'point'}`;
-  marker.style.cssText = `width:${size}px;height:${size}px;min-width:24px;min-height:24px;border-radius:50%;padding:0;color:var(--text-primary);background:${color};border-width:${point.accelerating ? 3 : 1}px;border-style:solid;border-color:${point.accelerating ? '#ff4646' : 'var(--text-primary)'};cursor:pointer;pointer-events:auto;font-weight:bold`;
-  marker.textContent = death ? '×' : '';
+  const hitSize = Math.max(24, size);
+  marker.style.cssText = `width:${hitSize}px;height:${hitSize}px;padding:0;border:0;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;pointer-events:auto`;
+  const dot = document.createElement('span');
+  dot.className = 'cross-border-dot';
+  dot.setAttribute('aria-hidden', 'true');
+  dot.style.cssText = `box-sizing:border-box;width:${size}px;height:${size}px;border-radius:50%;color:var(--text-primary);background:${color};border-width:${point.accelerating ? 3 : 1}px;border-style:solid;border-color:${point.accelerating ? '#ff4646' : 'var(--text-primary)'};display:flex;align-items:center;justify-content:center;font-weight:bold`;
+  dot.textContent = death ? '×' : '';
+  marker.appendChild(dot);
   marker.setAttribute('aria-label', `${point.label}: ${point.individuals.toLocaleString()} · ${point.kind} · ${point.date}`);
   return marker;
 }
