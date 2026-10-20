@@ -3,6 +3,8 @@ import { afterEach, describe, it } from 'node:test';
 
 import {
   buildEvents,
+  isAllowedHdxUrl,
+  normalizeEvents,
   contentMeta,
   fetchIduDisplacement,
   MAX_MISSING_COUNTRIES,
@@ -78,8 +80,8 @@ describe('buildEvents', () => {
 
   it('keeps the last 180 days only, because the files reach back to 2025', () => {
     const events = buildEvents([
-      row({ id: 'old', displacement_date: '2026-04-22' }),
-      row({ id: 'edge', displacement_date: '2026-04-23' }),
+      row({ id: 'old', displacement_date: '2026-04-23' }),
+      row({ id: 'edge', displacement_date: '2026-04-24' }),
       row({ id: 'future', displacement_date: '2026-10-21' }),
     ], { nowMs: NOW });
     assert.deepEqual(events.map((e) => e.id), ['edge']);
@@ -107,7 +109,7 @@ describe('buildEvents', () => {
 });
 
 describe('summarizeCountries', () => {
-  const events = (rows) => buildEvents(rows, { nowMs: NOW });
+  const events = (rows) => normalizeEvents(rows, { nowMs: NOW });
 
   it('flags a surge when the last 30 days reach three times the monthly baseline', () => {
     // Baseline: 15,000 over the 150 days before the window = 3,000 a month.
@@ -139,12 +141,63 @@ describe('summarizeCountries', () => {
     assert.equal(sdn.surge, false);
   });
 
-  it('counts newly reported figures by publication date, whatever the displacement date', () => {
+  it('counts newly reported figures over the last 7 dates by publication date', () => {
     const [sdn] = summarizeCountries(events([
       row({ id: 'late', displacement_date: '2026-08-01', created_at: '2026-10-14T00:00:00Z', figure: '700' }),
-      row({ id: 'old', displacement_date: '2026-10-01', created_at: '2026-10-12T00:00:00Z', figure: '300' }),
+      row({ id: 'old', displacement_date: '2026-10-01', created_at: '2026-10-13T23:59:59Z', figure: '300' }),
     ]), { nowMs: NOW });
     assert.equal(sdn.newlyReported7d, 700);
+  });
+
+  it('counts a figure published this week for a displacement older than the window, without adding it to the baseline', () => {
+    const [sdn] = summarizeCountries(events([
+      row({ id: 'ancient', displacement_date: '2025-12-01', created_at: '2026-10-19T00:00:00Z', figure: '40000' }),
+    ]), { nowMs: NOW });
+    assert.equal(sdn.newlyReported7d, 40000);
+    assert.equal(sdn.baselineMonthly, 0);
+    assert.equal(sdn.displaced30d, 0);
+    assert.equal(sdn.surge, false);
+  });
+
+  it('leaves out countries with nothing in the window and nothing newly reported', () => {
+    assert.deepEqual(summarizeCountries(events([
+      row({ displacement_date: '2025-12-01', created_at: '2026-01-01T00:00:00Z' }),
+    ]), { nowMs: NOW }), []);
+  });
+
+  it('splits the 30 recent dates from the 150 baseline dates at 2026-09-21', () => {
+    const [sdn] = summarizeCountries(events([
+      row({ id: 'recent', displacement_date: '2026-09-21', figure: '100' }),
+      row({ id: 'baseline', displacement_date: '2026-09-20', figure: '500' }),
+      row({ id: 'first', displacement_date: '2026-04-24', figure: '1000' }),
+      row({ id: 'outside', displacement_date: '2026-04-23', figure: '99999', created_at: '2026-05-01T00:00:00Z' }),
+    ]), { nowMs: NOW });
+    assert.equal(sdn.displaced30d, 100);
+    assert.equal(sdn.baselineMonthly, 300); // (500 + 1000) / 5 months
+  });
+});
+
+describe('isAllowedHdxUrl', () => {
+  it('accepts HDX and its S3 file store over https', () => {
+    assert.equal(isAllowedHdxUrl('https://data.humdata.org/dataset/x/resource/y/download/sdn_idmc_idu_events.csv'), true);
+    assert.equal(isAllowedHdxUrl('https://s3.us-east-1.amazonaws.com/hdx-production-filestore/resources/y/sdn.csv?Signature=z'), true);
+  });
+
+  it('refuses other hosts, schemes, ports, credentials and buckets', () => {
+    for (const url of [
+      'http://data.humdata.org/x.csv',
+      'https://data.humdata.org:8443/x.csv',
+      'https://user:pw@data.humdata.org/x.csv',
+      'https://data.humdata.org.evil.test/x.csv',
+      'https://169.254.169.254/latest/meta-data/',
+      'https://localhost/x.csv',
+      'https://s3.us-east-1.amazonaws.com/other-bucket/x.csv',
+      'file:///etc/passwd',
+      '',
+      undefined,
+    ]) {
+      assert.equal(isAllowedHdxUrl(url), false, String(url));
+    }
   });
 });
 
@@ -168,7 +221,7 @@ describe('fetchIduDisplacement', () => {
   const originalWarn = console.warn;
   afterEach(() => { globalThis.fetch = originalFetch; console.warn = originalWarn; });
 
-  const pkg = (iso3, url = `https://hdx.test/${iso3}.csv`) => ({
+  const pkg = (iso3, url = `https://data.humdata.org/dl/${iso3}.csv`) => ({
     name: `${iso3}-idmc-idu-events`,
     resources: url ? [{ format: 'CSV', url }] : [],
   });
@@ -179,26 +232,30 @@ describe('fetchIduDisplacement', () => {
       const url = String(input);
       calls.push(url);
       if (url.includes('package_search')) return Response.json({ success: true, result: { count, results: packages } });
-      if (url in files) return files[url] instanceof Response ? files[url] : new Response(files[url]);
+      if (url in files) {
+        const file = typeof files[url] === 'function' ? files[url]() : files[url];
+        return file instanceof Response ? file : new Response(file);
+      }
       return new Response('missing', { status: 404 });
     };
     return calls;
   }
+  const redirect = (location) => () => new Response(null, { status: 302, headers: { location } });
 
   it('reads every IDU dataset of the IDMC organisation and ignores its other datasets', async () => {
     const calls = stub(
-      [pkg('sdn'), pkg('afg'), { name: 'idmc-idp-data-sdn', resources: [{ format: 'CSV', url: 'https://hdx.test/idp.csv' }] }],
+      [pkg('sdn'), pkg('afg'), { name: 'idmc-idp-data-sdn', resources: [{ format: 'CSV', url: 'https://data.humdata.org/dl/idp.csv' }] }],
       {
-        'https://hdx.test/sdn.csv': csv([row()]),
-        'https://hdx.test/afg.csv': csv([row({ id: '9', iso3: 'AFG', country: 'Afghanistan' })]),
+        'https://data.humdata.org/dl/sdn.csv': csv([row()]),
+        'https://data.humdata.org/dl/afg.csv': csv([row({ id: '9', iso3: 'AFG', country: 'Afghanistan' })]),
       },
     );
     const data = await fetchIduDisplacement({ nowMs: NOW });
     const search = new URL(calls[0]);
     assert.equal(search.searchParams.get('fq'), 'organization:international-displacement-monitoring-centre-idmc');
-    assert.ok(!calls.includes('https://hdx.test/idp.csv'));
+    assert.ok(!calls.includes('https://data.humdata.org/dl/idp.csv'));
     assert.deepEqual(data.countries.map((c) => c.countryCode).sort(), ['AFG', 'SDN']);
-    assert.equal(data.windowFrom, '2026-04-23');
+    assert.equal(data.windowFrom, '2026-04-24');
     assert.deepEqual(data.missingCountries, []);
   });
 
@@ -212,8 +269,8 @@ describe('fetchIduDisplacement', () => {
     stub(
       [pkg('sdn'), pkg('afg', null), pkg('eth'), pkg('yem')],
       {
-        'https://hdx.test/sdn.csv': csv([row()]),
-        'https://hdx.test/eth.csv': 'id,country\n1,Ethiopia',
+        'https://data.humdata.org/dl/sdn.csv': csv([row()]),
+        'https://data.humdata.org/dl/eth.csv': 'id,country\n1,Ethiopia',
       },
     );
     const data = await fetchIduDisplacement({ nowMs: NOW });
@@ -225,5 +282,67 @@ describe('fetchIduDisplacement', () => {
     console.warn = () => {};
     stub([pkg('sdn', null), pkg('afg', null), pkg('eth', null), pkg('yem', null)], {});
     await assert.rejects(fetchIduDisplacement({ nowMs: NOW }), /4 of 4 country files failed \(AFG, ETH, SDN, YEM\)/);
+  });
+
+  it('follows the download redirect to the HDX file store', async () => {
+    const s3 = 'https://s3.us-east-1.amazonaws.com/hdx-production-filestore/resources/r/sdn.csv?Signature=s';
+    const calls = stub([pkg('sdn')], {
+      'https://data.humdata.org/dl/sdn.csv': redirect(s3),
+      [s3]: csv([row()]),
+    });
+    const data = await fetchIduDisplacement({ nowMs: NOW });
+    assert.equal(data.events.length, 1);
+    assert.ok(calls.includes(s3));
+  });
+
+  it('never requests a resource URL or redirect target outside HDX', async () => {
+    console.warn = () => {};
+    const calls = stub([pkg('sdn'), pkg('afg', 'http://169.254.169.254/latest/meta-data/')], {
+      'https://data.humdata.org/dl/sdn.csv': redirect('http://10.0.0.5/internal'),
+    });
+    const data = await fetchIduDisplacement({ nowMs: NOW });
+    assert.deepEqual(data.missingCountries, ['AFG', 'SDN']);
+    assert.ok(calls.every((url) => url.startsWith('https://data.humdata.org/')), calls.join(' '));
+  });
+
+  it('picks the first HDX-hosted CSV when a dataset also lists an off-site one', async () => {
+    stub([{
+      name: 'sdn-idmc-idu-events',
+      resources: [
+        { format: 'CSV', url: 'https://mirror.example.org/sdn.csv' },
+        { format: 'CSV', url: 'https://data.humdata.org/dl/sdn.csv' },
+      ],
+    }], { 'https://data.humdata.org/dl/sdn.csv': csv([row()]) });
+    const data = await fetchIduDisplacement({ nowMs: NOW });
+    assert.deepEqual(data.missingCountries, []);
+    assert.equal(data.events.length, 1);
+  });
+
+  it('retries a download whose body breaks mid-stream', async () => {
+    const previousDelay = process.env.WM_SEED_RETRY_DELAY_MS;
+    process.env.WM_SEED_RETRY_DELAY_MS = '0';
+    console.warn = () => {};
+    let attempts = 0;
+    try {
+      stub([pkg('sdn')], {
+        'https://data.humdata.org/dl/sdn.csv': () => {
+          attempts += 1;
+          if (attempts > 1) return csv([row()]);
+          return new Response(new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('id,country'));
+              controller.error(new Error('socket hang up'));
+            },
+          }));
+        },
+      });
+      const data = await fetchIduDisplacement({ nowMs: NOW });
+      assert.equal(attempts, 2);
+      assert.equal(data.events.length, 1);
+      assert.deepEqual(data.missingCountries, []);
+    } finally {
+      if (previousDelay === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
+      else process.env.WM_SEED_RETRY_DELAY_MS = previousDelay;
+    }
   });
 });

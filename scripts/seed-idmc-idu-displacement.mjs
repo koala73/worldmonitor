@@ -26,6 +26,7 @@ const SEARCH_ROWS = 1000;
 const CACHE_TTL_SECONDS = 3 * 24 * 60 * 60;
 const FETCH_CONCURRENCY = 6;
 const REQUEST_TIMEOUT_MS = 60_000;
+const MAX_REDIRECTS = 3;
 // Largest file was 4.3 MB (PER) on 2026-10-20.
 const MAX_CSV_BYTES = 32 * 1024 * 1024;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -44,26 +45,57 @@ const REQUIRED_COLUMNS = [
   'displacement_date', 'event_id', 'event_name', 'created_at',
 ];
 
-async function getWithTimeout(url) {
+function nonRetryable(message) {
+  const err = new Error(message);
+  err.nonRetryable = true;
+  return err;
+}
+
+// Resource URLs come from HDX metadata, so every hop is checked: HDX itself,
+// or the S3 file store its download links redirect to.
+export function isAllowedHdxUrl(value) {
+  let url;
+  try { url = new URL(value); } catch { return false; }
+  if (url.protocol !== 'https:' || url.port !== '' || url.username || url.password) return false;
+  if (url.hostname === 'data.humdata.org') return true;
+  return /^s3(\.[a-z0-9-]+)?\.amazonaws\.com$/.test(url.hostname) && url.pathname.startsWith('/hdx-production-filestore/');
+}
+
+// Reads the body inside the retry so a dropped connection mid-download is
+// retried like a failed request.
+async function hdxGet(url, read) {
   return withRetry(async () => {
-    const resp = await fetch(url, {
-      headers: { Accept: 'application/json, text/csv', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-    if (!resp.ok) {
-      const err = new Error(`HDX ${url}: HTTP ${resp.status}`);
-      // A missing or forbidden resource stays that way within one run.
-      err.nonRetryable = resp.status >= 400 && resp.status < 500 && resp.status !== 429;
-      throw err;
+    let current = url;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      if (!isAllowedHdxUrl(current)) throw nonRetryable(`HDX: refusing ${hop ? 'redirect to ' : ''}${current}`);
+      const resp = await fetch(current, {
+        headers: { Accept: 'application/json, text/csv', 'User-Agent': CHROME_UA },
+        redirect: 'manual',
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      if (resp.status >= 300 && resp.status < 400) {
+        await resp.body?.cancel().catch(() => {});
+        const location = resp.headers.get('location');
+        if (!location) throw nonRetryable(`HDX ${current}: HTTP ${resp.status} without Location`);
+        current = new URL(location, current).href;
+        continue;
+      }
+      if (!resp.ok) {
+        const err = new Error(`HDX ${current}: HTTP ${resp.status}`);
+        // A missing or forbidden resource stays that way within one run.
+        err.nonRetryable = resp.status >= 400 && resp.status < 500 && resp.status !== 429;
+        throw err;
+      }
+      return read(resp, current);
     }
-    return resp;
+    throw nonRetryable(`HDX ${url}: more than ${MAX_REDIRECTS} redirects`);
   }, 2, 2000);
 }
 
 /** Lists the IDU event datasets and their CSV resource. */
 export async function listIduDatasets() {
   const query = new URLSearchParams({ fq: `organization:${HDX_ORGANIZATION}`, rows: String(SEARCH_ROWS) });
-  const body = await (await getWithTimeout(`${HDX_SEARCH_URL}?${query}`)).json();
+  const body = await hdxGet(`${HDX_SEARCH_URL}?${query}`, (resp) => resp.json());
   if (body?.success !== true) throw new Error('HDX package_search returned success=false');
   const { count, results } = body.result ?? {};
   if (!Array.isArray(results)) throw new Error('HDX package_search returned no results array');
@@ -73,19 +105,21 @@ export async function listIduDatasets() {
   for (const pkg of results) {
     const match = DATASET_NAME.exec(pkg?.name ?? '');
     if (!match) continue;
-    const csv = (pkg.resources ?? []).find((r) => String(r?.format ?? '').toUpperCase() === 'CSV' && r?.url);
+    const csv = (pkg.resources ?? [])
+      .find((r) => String(r?.format ?? '').toUpperCase() === 'CSV' && isAllowedHdxUrl(r?.url));
     datasets.push({ countryCode: match[1].toUpperCase(), url: csv?.url ?? null });
   }
   return datasets;
 }
 
 async function fetchCsv(url) {
-  const resp = await getWithTimeout(url);
-  const length = Number(resp.headers.get('content-length'));
-  if (Number.isFinite(length) && length > MAX_CSV_BYTES) throw new Error(`HDX ${url}: ${length} bytes exceeds ${MAX_CSV_BYTES}`);
-  const text = await resp.text();
-  if (text.length > MAX_CSV_BYTES) throw new Error(`HDX ${url}: body exceeds ${MAX_CSV_BYTES} bytes`);
-  return text;
+  return hdxGet(url, async (resp, finalUrl) => {
+    const length = Number(resp.headers.get('content-length'));
+    if (Number.isFinite(length) && length > MAX_CSV_BYTES) throw nonRetryable(`HDX ${finalUrl}: ${length} bytes exceeds ${MAX_CSV_BYTES}`);
+    const text = await resp.text();
+    if (text.length > MAX_CSV_BYTES) throw nonRetryable(`HDX ${finalUrl}: body exceeds ${MAX_CSV_BYTES} bytes`);
+    return text;
+  });
 }
 
 export function parseIduCsv(text) {
@@ -103,20 +137,21 @@ export function parseIduCsv(text) {
 
 const isoDate = (value) => (/^\d{4}-\d{2}-\d{2}/.test(value ?? '') ? value.slice(0, 10) : '');
 const daysAgo = (nowMs, days) => new Date(nowMs - days * DAY_MS).toISOString().slice(0, 10);
+// First date of the last `days` calendar dates, today included.
+const windowStart = (nowMs, days) => daysAgo(nowMs, days - 1);
 const text = (value) => String(value ?? '').trim();
 
 /**
- * Normalizes IDU rows into events inside the window. Only "Recommended figure"
- * rows count: "Triangulation" rows cross-check the same displacement.
+ * Normalizes IDU rows into events of any date up to today. Only "Recommended
+ * figure" rows count: "Triangulation" rows cross-check the same displacement.
  */
-export function buildEvents(rows, { nowMs = Date.now() } = {}) {
-  const from = daysAgo(nowMs, WINDOW_DAYS);
+export function normalizeEvents(rows, { nowMs = Date.now() } = {}) {
   const today = daysAgo(nowMs, 0);
   const events = [];
   for (const row of rows) {
     if (text(row?.role) !== 'Recommended figure') continue;
     const displacementDate = isoDate(row.displacement_date);
-    if (!displacementDate || displacementDate < from || displacementDate > today) continue;
+    if (!displacementDate || displacementDate > today) continue;
     const figure = Number(row.figure);
     const latitude = Number(row.latitude);
     const longitude = Number(row.longitude);
@@ -148,13 +183,27 @@ export function buildEvents(rows, { nowMs = Date.now() } = {}) {
   return events.sort((a, b) => b.displacementDate.localeCompare(a.displacementDate) || b.figure - a.figure);
 }
 
-/** Per-country totals and the surge flag. */
+/** Events displaced in the last WINDOW_DAYS dates; the files reach back to 2025. */
+export function buildEvents(rows, { nowMs = Date.now() } = {}) {
+  const from = windowStart(nowMs, WINDOW_DAYS);
+  return normalizeEvents(rows, { nowMs }).filter((ev) => ev.displacementDate >= from);
+}
+
+/**
+ * Per-country totals and the surge flag, from events of any date: a figure
+ * IDMC published this week counts as newly reported even when the
+ * displacement itself is older than the window.
+ */
 export function summarizeCountries(events, { nowMs = Date.now() } = {}) {
-  const recentFrom = daysAgo(nowMs, RECENT_DAYS);
-  const reportedFrom = daysAgo(nowMs, NEWLY_REPORTED_DAYS);
+  const from = windowStart(nowMs, WINDOW_DAYS);
+  const recentFrom = windowStart(nowMs, RECENT_DAYS);
+  const reportedFrom = windowStart(nowMs, NEWLY_REPORTED_DAYS);
   const baselineMonths = (WINDOW_DAYS - RECENT_DAYS) / 30;
   const byCountry = new Map();
   for (const ev of events) {
+    const inWindow = ev.displacementDate >= from;
+    const newlyReported = ev.createdAt >= reportedFrom;
+    if (!inWindow && !newlyReported) continue;
     let c = byCountry.get(ev.countryCode);
     if (!c) {
       c = {
@@ -175,10 +224,10 @@ export function summarizeCountries(events, { nowMs = Date.now() } = {}) {
       c.events30d += 1;
       if (ev.displacementType === 'Conflict') c.conflict30d += ev.figure;
       else if (ev.displacementType === 'Disaster') c.disaster30d += ev.figure;
-    } else {
+    } else if (inWindow) {
       c.baselineTotal += ev.figure;
     }
-    if (ev.createdAt >= reportedFrom) c.newlyReported7d += ev.figure;
+    if (newlyReported) c.newlyReported7d += ev.figure;
     if (ev.displacementDate > c.latestDisplacementDate) c.latestDisplacementDate = ev.displacementDate;
   }
   return [...byCountry.values()]
@@ -216,13 +265,15 @@ export async function fetchIduDisplacement({ nowMs = Date.now() } = {}) {
     throw new Error(`IDU: ${missingCountries.length} of ${datasets.length} country files failed (${missingCountries.sort().join(', ')})`);
   }
 
-  const events = buildEvents(rows, { nowMs });
-  const countries = summarizeCountries(events, { nowMs });
+  const allEvents = normalizeEvents(rows, { nowMs });
+  const windowFrom = windowStart(nowMs, WINDOW_DAYS);
+  const events = allEvents.filter((ev) => ev.displacementDate >= windowFrom);
+  const countries = summarizeCountries(allEvents, { nowMs });
   const surges = countries.filter((c) => c.surge).map((c) => c.countryCode);
-  console.log(`  IDU: ${datasets.length} datasets, ${rows.length} rows, ${events.length} events in ${countries.length} countries since ${daysAgo(nowMs, WINDOW_DAYS)}; surges: ${surges.join(', ') || 'none'}`);
+  console.log(`  IDU: ${datasets.length} datasets, ${rows.length} rows, ${events.length} events in ${countries.length} countries since ${windowFrom}; surges: ${surges.join(', ') || 'none'}`);
   return {
     source: 'IDMC Internal Displacement Updates (via HDX)',
-    windowFrom: daysAgo(nowMs, WINDOW_DAYS),
+    windowFrom,
     missingCountries: missingCountries.sort(),
     countries,
     events,
