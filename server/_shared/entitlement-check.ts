@@ -219,7 +219,7 @@ const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';
 let _didWarnMissingConvexSharedSecret = false;
 let _didWarnMissingConvexSiteUrl = false;
 
-function getConvexSharedSecret(): string {
+export function getConvexSharedSecret(): string {
   const secret = process.env.CONVEX_SERVER_SHARED_SECRET ?? '';
   if (!secret && !_didWarnMissingConvexSharedSecret) {
     _didWarnMissingConvexSharedSecret = true;
@@ -234,7 +234,7 @@ function getConvexSharedSecret(): string {
  * fallback with no signal from this module. The warning keeps that deployment
  * defect visible alongside the gateway's explicit unconfigured-backend log.
  */
-function getConvexSiteUrl(): string {
+export function getConvexSiteUrl(): string {
   const siteUrl = process.env.CONVEX_SITE_URL ?? '';
   if (!siteUrl && !_didWarnMissingConvexSiteUrl) {
     _didWarnMissingConvexSiteUrl = true;
@@ -343,7 +343,7 @@ export function __negativeCacheSizeForTests(): number {
 // Environment-aware Redis key prefix (P2-3)
 // ---------------------------------------------------------------------------
 
-const ENV_PREFIX = process.env.DODO_PAYMENTS_ENVIRONMENT === 'live_mode' ? 'live' : 'test';
+export const ENV_PREFIX = process.env.DODO_PAYMENTS_ENVIRONMENT === 'live_mode' ? 'live' : 'test';
 
 // Cache TTL: 15 min — short enough that subscription expiry is reflected promptly (P2-5)
 const ENTITLEMENT_CACHE_TTL_SECONDS = 900;

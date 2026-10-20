@@ -390,6 +390,24 @@ export async function internalEntitlementsHttpHandler(
     });
 }
 
+export async function internalAiRoutingPolicyHttpHandler(
+  ctx: ActionCtx,
+  request: Request,
+): Promise<Response> {
+  const providedSecret = request.headers.get("x-convex-shared-secret") ?? "";
+  const expectedSecret = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
+  if (!expectedSecret || !(await timingSafeEqualStrings(providedSecret, expectedSecret))) {
+    return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  }
+  const body = await parseJsonObjectBody<{ userId?: unknown }>(request);
+  if (!body) return Response.json({ error: "INVALID_JSON" }, { status: 400 });
+  if (typeof body.userId !== "string" || body.userId.length === 0 || body.userId.length > 256) {
+    return Response.json({ error: "MISSING_USER_ID" }, { status: 400 });
+  }
+  const policy = await ctx.runQuery(internal.entitlements.getAiRoutingPolicyByUserId, { userId: body.userId });
+  return Response.json({ policy }, { status: 200 });
+}
+
 const http = httpRouter();
 
 // Only the edge contact handler may write leads after its public abuse checks.
@@ -443,6 +461,12 @@ http.route({
   path: "/api/internal-entitlements",
   method: "POST",
   handler: httpAction(internalEntitlementsHttpHandler),
+});
+
+http.route({
+  path: "/api/internal-ai-routing-policy",
+  method: "POST",
+  handler: httpAction(internalAiRoutingPolicyHttpHandler),
 });
 
 http.route({

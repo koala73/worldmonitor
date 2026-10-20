@@ -25,7 +25,8 @@ import {
   markUnservedLlmResponse,
   setResponseHeader,
 } from '../../../_shared/response-headers';
-import { stripThinkingTags } from '../../../_shared/llm';
+import { callLlm, resolveProviderChain, stripThinkingTags } from '../../../_shared/llm';
+import { aiRoutingCacheSuffix, resolveAiRouting, toLlmRoutingPolicy } from '../../../_shared/ai-routing-policy';
 import { buildLlmCallEvent, deliverUsageEvents } from '../../../_shared/usage';
 import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
 
@@ -84,7 +85,15 @@ export async function summarizeArticle(
 ): Promise<SummarizeArticleResponse> {
   const premiumIdentity = await resolvePremiumCallerIdentity(ctx.request);
   const isPremium = premiumIdentity.isPremium;
-  const { provider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
+  const { provider: requestedProvider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
+  // A restricted caller's request is served by their first allowed provider,
+  // whatever provider the client fallback chain named; the default chain is
+  // never reached (ai-routing-policy.ts).
+  const aiRouting = await resolveAiRouting(ctx.request);
+  const routingPolicy = toLlmRoutingPolicy(aiRouting);
+  const provider = routingPolicy
+    ? (resolveProviderChain({ forcedProvider: requestedProvider, routingPolicy })[0] ?? '')
+    : requestedProvider;
   const systemAppend = isPremium && typeof req.systemAppend === 'string' ? req.systemAppend : '';
   const requiresPremium = mode !== 'translate';
   // Every empty-summary envelope below (denied, skipped, rejected, failed)
@@ -187,6 +196,8 @@ export async function summarizeArticle(
   const skipReasons: Record<string, string> = {
     ollama: 'OLLAMA_API_URL not configured',
     openrouter: 'OPENROUTER_API_KEY not configured',
+    anthropic: 'ANTHROPIC_API_KEY not configured',
+    '': 'No AI provider is available under this account\'s AI routing policy',
   };
 
   const credentials = getProviderCredentials(provider);
@@ -222,7 +233,7 @@ export async function summarizeArticle(
   }
 
   try {
-    const cacheKey = await getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang, systemAppend || undefined, bodies);
+    const cacheKey = `${await getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang, systemAppend || undefined, bodies)}${aiRoutingCacheSuffix(aiRouting)}`;
 
     // Single atomic call — source tracking happens inside cachedFetchJsonWithMeta,
     // eliminating the TOCTOU race between a separate getCachedJson and cachedFetchJson.
@@ -303,6 +314,27 @@ export async function summarizeArticle(
         const effectiveSystemPrompt = sanitizedAppend
           ? `${systemPrompt}\n\n---\n\n${sanitizedAppend}`
           : systemPrompt;
+
+        const rejectsSummary = (text: string): boolean => ['brief', 'analysis'].includes(mode)
+          && (text.length < 20 || hasReasoningPreamble(text));
+
+        if (provider === 'anthropic') {
+          // The OpenAI-format fetch below does not speak the Messages API;
+          // callLlm owns the Anthropic adapter, its telemetry and model health.
+          const result = await callLlm({
+            messages: [
+              { role: 'system', content: effectiveSystemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            maxTokens: 100,
+            timeoutMs: 25_000,
+            provider,
+            routingPolicy,
+            stage: 'summarize-article',
+            validate: (text) => !rejectsSummary(text),
+          });
+          return result ? { summary: result.content, model: result.model, tokens: result.tokens } : null;
+        }
 
         const llmStartMs = Date.now();
         const llmPromptChars = effectiveSystemPrompt.length + userPrompt.length;

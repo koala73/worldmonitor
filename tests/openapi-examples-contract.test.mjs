@@ -54,8 +54,12 @@ const CURATED = (() => {
   const llmSrc = readFileSync(resolve(root, 'server/_shared/llm.ts'), 'utf8');
   const llmProviderChain = llmSrc.match(/const PROVIDER_CHAIN = \[([\s\S]*?)\] as const;/);
   assert.ok(llmProviderChain, 'expected PROVIDER_CHAIN in server/_shared/llm.ts');
-  assert.match(llmSrc, /export type LlmProviderName = typeof PROVIDER_CHAIN\[number\];/);
-  const llmProviders = new Set([...llmProviderChain[1].matchAll(/'([^']+)'/g)].map((m) => m[1]));
+  // Opt-in providers (reachable only by name, e.g. through a customer AI
+  // routing policy) are still valid LlmProviderName values.
+  const llmOptInProviders = llmSrc.match(/const OPT_IN_PROVIDERS = \[([\s\S]*?)\] as const;/);
+  assert.ok(llmOptInProviders, 'expected OPT_IN_PROVIDERS in server/_shared/llm.ts');
+  assert.match(llmSrc, /export type LlmProviderName = typeof PROVIDER_CHAIN\[number\] \| typeof OPT_IN_PROVIDERS\[number\];/);
+  const llmProviders = new Set([...`${llmProviderChain[1]}${llmOptInProviders[1]}`.matchAll(/'([^']+)'/g)].map((m) => m[1]));
   assert.ok(llmProviders.size > 0, 'expected at least one provider in PROVIDER_CHAIN');
   const gdeltSrc = readFileSync(resolve(root, 'scripts/seed-gdelt-intel.mjs'), 'utf8');
   const gdeltTopics = new Set([...gdeltSrc.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]));

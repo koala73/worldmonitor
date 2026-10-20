@@ -150,7 +150,10 @@
 *Could not find public function for 'emailUnsubscribe:applyUnsubscribe'*
 *Could not find public function for 'embedKeys:touchKeyLastUsed'*
 *Could not find public function for 'embedKeys:validateKeyByHash'*
+*Could not find public function for 'entitlements:clearAiRoutingPolicy'*
+*Could not find public function for 'entitlements:getAiRoutingPolicyByUserId'*
 *Could not find public function for 'entitlements:getEntitlementsByUserId'*
+*Could not find public function for 'entitlements:setAiRoutingPolicy'*
 *Could not find public function for 'followedCountries:_dedupeCountryLocks'*
 *Could not find public function for 'followedCountries:_dedupeShards'*
 *Could not find public function for 'followedCountries:_seedCountryLocks'*
@@ -217,6 +220,7 @@
 *Could not find public function for 'payments/billing:verifyRecentlyStaleSubscriptionOnDemand'*
 *Could not find public function for 'payments/businessSeats:sendBusinessInviteEmail'*
 *Could not find public function for 'payments/businessSeats:sendTeamAccessEndedEmail'*
+*Could not find public function for 'payments/cacheActions:deleteAiRoutingPolicyCache'*
 *Could not find public function for 'payments/cacheActions:deleteEntitlementCache'*
 *Could not find public function for 'payments/cacheActions:invalidateUserApiKeyCaches'*
 *Could not find public function for 'payments/cacheActions:resyncEntitlementCacheFromDb'*

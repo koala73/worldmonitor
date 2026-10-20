@@ -834,6 +834,18 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_validUntil", ["validUntil"]),
 
+  // Customer AI routing restriction (contractual, e.g. "Anthropic only").
+  // Kept out of `entitlements.features` on purpose: billing webhooks rewrite
+  // that object, and a compliance control must not ride on it. When a row
+  // exists, the edge uses `allowedProviders` as the whole LLM provider chain
+  // for this user's own input (server/_shared/ai-routing-policy.ts).
+  aiRoutingPolicies: defineTable({
+    userId: v.string(),
+    allowedProviders: v.array(v.string()),
+    reason: v.string(),
+    updatedAt: v.number(),
+  }).index("by_userId", ["userId"]),
+
   apiUsageRollups: defineTable({
     userId: v.string(),
     planKey: v.string(),
