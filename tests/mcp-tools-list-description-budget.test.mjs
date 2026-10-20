@@ -680,12 +680,16 @@ describe('api/mcp.ts — tools/list description budget (v1.34.0)', () => {
       assert.match(card.name, /^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/, 'top-level name must be reverse-DNS (Server Card schema)');
 
       // tools[] must be a name+description projection of the live registry,
-      // plus the same access marker tools/list emits and the card-only
-      // category from api/mcp/domains.ts, in the same order.
+      // plus the same access marker and MCP Apps link tools/list emits and the
+      // card-only category from api/mcp/domains.ts, in the same order.
       const expected = TOOL_REGISTRY.map((t) => ({
         name: t.name,
         description: t.description,
-        _meta: { 'worldmonitor/access': toolAccess(t), 'worldmonitor/category': TOOL_CATEGORY_BY_NAME[t.name] },
+        _meta: {
+          ...(t._uiResourceUri ? { ui: { resourceUri: t._uiResourceUri } } : {}),
+          'worldmonitor/access': toolAccess(t),
+          'worldmonitor/category': TOOL_CATEGORY_BY_NAME[t.name],
+        },
       }));
       assert.deepEqual(
         card.tools,
