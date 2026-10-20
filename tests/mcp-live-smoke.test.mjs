@@ -137,8 +137,9 @@ test('the smoke CLI does not report unstarted probes after the run budget expire
 
 // Answers every probe the way production should. `onTransportList` lets a test
 // take over the keyless `tools/list` on /mcp, the check that broke on a
-// connection cut mid-body in production (run 39392466642).
-function createHealthyFixtureServer({ onTransportList } = {}) {
+// connection cut mid-body in production (run 39392466642). `skillFor` and
+// `onAuthMd` override the advertised agent_auth.skill and the /auth.md answer.
+function createHealthyFixtureServer({ onTransportList, skillFor = (origin) => `${origin}/auth.md`, onAuthMd } = {}) {
   return createServer(async (req, res) => {
     const origin = `http://${req.headers.host}`;
     const body = req.method === 'POST' ? await readRequestBody(req) : '';
@@ -226,11 +227,12 @@ function createHealthyFixtureServer({ onTransportList } = {}) {
         issuer: origin,
         registration_endpoint: `${origin}/oauth/register`,
         token_endpoint: `${origin}/oauth/token`,
-        agent_auth: { skill: `${origin}/auth.md` },
+        agent_auth: { skill: skillFor(origin) },
       });
       return;
     }
     if (req.url === '/auth.md' && req.method === 'GET') {
+      if (onAuthMd?.(req, res)) return;
       res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' }).end('# auth.md\n');
       return;
     }
@@ -328,6 +330,29 @@ test('an HTTP status failure is never retried', async () => {
   assert.equal(exitCode, 1);
   assert.equal(transportListRequests(report).length, 1);
   assert.match(report.failures[0].detail, /expected HTTP 200, got 503/);
+});
+
+test('fails when agent_auth.skill is not the issuer origin /auth.md', async () => {
+  const server = createHealthyFixtureServer({ skillFor: () => 'https://www.worldmonitor.app/auth.md' });
+  const { exitCode, report } = await runSmokeAgainst(server, 'wm-mcp-live-smoke-skill-host-');
+
+  assert.equal(exitCode, 1);
+  assert.deepEqual(report.failures.map((failure) => failure.check), ['agent_auth skill']);
+  assert.match(report.failures[0].detail, /expected http:\/\/127\.0\.0\.1:\d+\/auth\.md/);
+});
+
+test('fails when the issuer /auth.md redirects instead of serving markdown', async () => {
+  const server = createHealthyFixtureServer({
+    onAuthMd: (_req, res) => {
+      res.writeHead(301, { location: 'https://www.worldmonitor.app/auth.md' }).end();
+      return true;
+    },
+  });
+  const { exitCode, report } = await runSmokeAgainst(server, 'wm-mcp-live-smoke-skill-redirect-');
+
+  assert.equal(exitCode, 1);
+  assert.deepEqual(report.failures.map((failure) => failure.check), ['agent_auth skill']);
+  assert.match(report.failures[0].detail, /expected 200 markdown, got 301/);
 });
 
 test('the smoke CLI writes a zero-failure report after every expected check succeeds', async () => {

@@ -75,9 +75,9 @@ export default function handler(req: Request): Response {
     authorization_response_iss_parameter_supported: true,
     agent_auth: {
       skill: authSkillUrl(origin),
-      // auth.md v0.2 renamed register_uri to identity_endpoint. Both are
-      // served so readers of either revision find the registration endpoint.
-      identity_endpoint: `${origin}/oauth/register`,
+      // Not identity_endpoint: auth.md v0.2 defines that as a POST taking
+      // {"type":"anonymous"} and returning an identity_assertion. This is
+      // RFC 7591 client registration, which the pre-v0.2 key describes.
       register_uri: `${origin}/oauth/register`,
       claim_uri: `${origin}/oauth/authorize`,
       identity_types_supported: ['anonymous'],

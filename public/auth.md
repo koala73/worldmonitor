@@ -31,7 +31,7 @@ Discover the authentication requirements:
    { "issuer": "https://worldmonitor.app",
      "agent_auth": {
        "skill": "https://worldmonitor.app/auth.md",
-       "identity_endpoint": "https://worldmonitor.app/oauth/register",
+       "register_uri": "https://worldmonitor.app/oauth/register",
        "claim_uri": "https://worldmonitor.app/oauth/authorize",
        "identity_types_supported": ["anonymous"],
        "anonymous": { "credential_types_supported": ["access_token"],
@@ -59,8 +59,7 @@ credentials — there is no identity or token-exchange endpoint.
 
 ## Register
 
-**RFC 7591 Dynamic Client Registration** at the `identity_endpoint`
-(pre-v0.2: `register_uri`):
+**RFC 7591 Dynamic Client Registration** at the `register_uri`:
 
 ```
 POST /oauth/register  {"client_name":"My Agent","redirect_uris":["https://claude.ai/api/mcp/auth_callback"]}

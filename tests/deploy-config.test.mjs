@@ -3905,10 +3905,11 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
       // Scanners require skill == <issuer>/auth.md. The apex serves it because
       // /auth.md is exempt from the Cloudflare apex→www 301 (ARCHITECTURE.md §2).
       assert.equal(json.agent_auth.skill, `https://${host}/auth.md`, `skill is the issuer's /auth.md for ${host}`);
-      // auth.md v0.2 names the registration endpoint identity_endpoint; the
-      // pre-v0.2 register_uri alias stays for older readers.
-      assert.equal(json.agent_auth.identity_endpoint, `https://${host}/oauth/register`);
       assert.equal(json.agent_auth.register_uri, `https://${host}/oauth/register`);
+      // auth.md v0.2's identity_endpoint takes {"type":"anonymous"} and returns
+      // an identity_assertion; /oauth/register is RFC 7591 DCR, so it must not
+      // be advertised under that key.
+      assert.equal(json.agent_auth.identity_endpoint, undefined);
       assert.deepEqual(json.agent_auth.identity_types_supported, ['anonymous']);
       // Only `access_token` — an api_key is user-minted (carries a user
       // identity), so it is not an anonymous-registration credential.
@@ -3955,7 +3956,6 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
       assert.equal(asJson.issuer, 'https://worldmonitor.app', `AS must not reflect spoofed host ${host}`);
       assert.equal(asJson.token_endpoint, 'https://worldmonitor.app/oauth/token', `AS token_endpoint must not carry spoofed host ${host}`);
       assert.equal(asJson.agent_auth.register_uri, 'https://worldmonitor.app/oauth/register');
-      assert.equal(asJson.agent_auth.identity_endpoint, 'https://worldmonitor.app/oauth/register');
       assert.equal(asJson.agent_auth.claim_uri, 'https://worldmonitor.app/oauth/authorize', `AS claim_uri must not carry spoofed host ${host}`);
       assert.equal(asJson.agent_auth.anonymous.claim_uri, 'https://worldmonitor.app/oauth/authorize');
     }
