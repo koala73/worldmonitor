@@ -50,11 +50,11 @@ if (userBearer) headers.set('Authorization', userBearer);
 if (!headers.has('X-WorldMonitor-Key')) { /* mint + attach session, same shared deadline */ }
 ```
 
-Order of precedence is unchanged: a configured `WORLDMONITOR_API_KEY` or a key sent by the renderer still wins. A failed mint waits `CLOUD_SESSION_RETRY_MS` before retrying, and meanwhile the request goes out keyless.
+Order of precedence is unchanged: a configured `WORLDMONITOR_API_KEY` or a key sent by the renderer still wins. A failed mint waits `CLOUD_SESSION_RETRY_MS` before retrying. Meanwhile the request still carries the cached session if one exists and hasn't expired. It goes out keyless only when there is no usable cached session.
 
 ## Why This Works
 
-A desktop with an anonymous session now has the same access as an anonymous web visitor, and no more. `validateCredential` in `api/_api-key.js` rejects a session token whenever `forceKey` is set, so tier-gated routes stay closed to it.
+A signed-out desktop request, which carries only the anonymous session, now has the same access as an anonymous web visitor, and no more. A signed-in Pro desktop sends its Clerk bearer alongside the session, and the gateway authorizes those requests by the bearer, as it does for a Pro browser. `validateCredential` in `api/_api-key.js` rejects a session token whenever `forceKey` is set, so tier-gated routes stay closed to it.
 
 Production check, sidecar run keyless against `https://api.worldmonitor.app`: `list-ucdp-events`, `list-climate-anomalies`, `get-usni-fleet-report` and `list-temporal-anomalies` all went from 401 on main to 200 with the fix.
 

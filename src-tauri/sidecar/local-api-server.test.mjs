@@ -242,6 +242,16 @@ test('session minting and the cloud fetch share one deadline', async () => {
   });
 });
 
+test('a renderer-supplied key wins over the minted session on a signed-out desktop', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    process.env.WORLDMONITOR_API_KEY = 'desktop-product-key';
+    assert.equal((await authFetch(url, { headers: { 'X-WorldMonitor-Key': 'wm_renderer_key' } })).status, 200);
+    assert.equal(remote.mints.length, 0);
+    assert.equal(remote.calls[0].headers['x-worldmonitor-key'], 'wm_renderer_key');
+    assert.equal(remote.calls[0].headers.authorization, undefined);
+  });
+});
+
 test('a configured product key wins over the minted session', async () => {
   await withCloudAuthSidecar(async ({ remote, url }) => {
     process.env.WORLDMONITOR_API_KEY = 'desktop-product-key';
