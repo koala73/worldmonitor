@@ -1,9 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { GlobeMap } from '@/components/GlobeMap';
 import { MapContainer } from '@/components/MapContainer';
 import { MapPopup } from '@/components/MapPopup';
 import { createCrossBorderMarker, renderCrossBorderDetails } from '@/components/cross-border-marker';
 import type { CrossBorderData, CrossBorderPoint } from '@/services/displacement';
+import { initTestI18n } from './helpers/i18n.mts';
+
+beforeAll(initTestI18n);
 
 const arrival: CrossBorderPoint = {
   situation: 'test-route', label: 'Controlled arrivals', kind: 'arrival', country: 'ES',
@@ -58,6 +61,23 @@ describe('cross-border map markers', () => {
     expect(element.textContent).toContain('0 · arrival · daily');
     expect(element.textContent).toContain('30d · 0%');
     expect(element.textContent).not.toContain('Accelerating');
+  });
+
+  it.each([1250, -1250, 0])('shows a stock change of %s with its starting date', (change) => {
+    const element = document.createElement('div');
+    element.innerHTML = renderCrossBorderDetails({ ...arrival, kind: 'outflow', measure: 'population-stock',
+      last30Days: undefined, changePct: undefined, change, changeSince: '2026-09-01' });
+    expect(element.textContent).toContain(`${change > 0 ? '+' : ''}${change.toLocaleString()} since 2026-09-01`);
+  });
+
+  it('escapes the stock change date and omits an absent change', () => {
+    const point = { ...arrival, change: 100, changeSince: '<img src=x onerror=alert(1)>' };
+    const element = document.createElement('div');
+    element.innerHTML = renderCrossBorderDetails(point);
+    expect(element.querySelector('img')).toBeNull();
+    expect(element.textContent).toContain(`+100 since ${point.changeSince}`);
+    element.innerHTML = renderCrossBorderDetails({ ...point, change: null });
+    expect(element.textContent).not.toContain('since');
   });
 
   for (const renderer of ['svg', 'globe', 'deck'] as const) {

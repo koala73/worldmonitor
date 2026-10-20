@@ -23,8 +23,12 @@ export function createCrossBorderMarker(point: CrossBorderPoint): HTMLButtonElem
 export function renderCrossBorderDetails(point: CrossBorderPoint): string {
   const period = point.last30Days !== undefined ? '30d' : point.period;
   const change = point.changePct !== undefined ? ` · ${point.changePct > 0 ? '+' : ''}${point.changePct.toFixed(0)}%` : '';
+  const stockChange = point.change !== null
+    ? `<br>${point.change > 0 ? '+' : ''}${point.change.toLocaleString()}${point.changeSince ? ` ${t('components.deckgl.tooltip.sinceDate', { date: escapeHtml(point.changeSince) })}` : ''}`
+    : '';
   return `<strong>${escapeHtml(point.label)}</strong><br>${point.individuals.toLocaleString()} · ${escapeHtml(point.kind)} · ${escapeHtml(point.measure ?? '')}`
     + `${period ? `<br>${escapeHtml(period)}${change}` : ''}`
+    + stockChange
     + `<br>${escapeHtml(point.country)} · ${escapeHtml(point.date)}`
     + `<br>${escapeHtml(point.source || t('components.deckgl.tooltip.sourceUnhcrOdp'))}`
     + `${point.accelerating ? `<br><strong>${t('components.displacement.accelerating')}</strong>` : ''}`
