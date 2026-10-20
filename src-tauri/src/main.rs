@@ -230,6 +230,7 @@ fn reconcile_vault_json(
     };
     let warning = match primary.set_password(&json) {
         Ok(()) => {
+            // Both copies now match, so a failed delete is harmless.
             let _ = entry.delete_credential();
             None
         }
@@ -273,9 +274,21 @@ fn write_vault_json(
     match primary.set_password(json) {
         Ok(()) => {
             if let Some(entry) = fallback {
-                // NoEntry is the normal case; anything else only leaves a
-                // stale session copy that the platform store now shadows.
-                let _ = entry.delete_credential();
+                // NoEntry is the normal case. A session copy that cannot be
+                // deleted would be promoted over this save on the next load
+                // (see reconcile_vault_json), so make it match instead.
+                match entry.delete_credential() {
+                    Ok(()) | Err(keyring::Error::NoEntry) => {}
+                    Err(delete_err) => {
+                        if let Err(set_err) = entry.set_password(json) {
+                            eprintln!(
+                                "[tauri] WARN: could not delete ({delete_err}) or update \
+                                 ({set_err}) the Linux kernel session keyring copy of the API \
+                                 key vault; the next launch may restore older API keys."
+                            );
+                        }
+                    }
+                }
             }
             Ok(VaultStorage::SecretStore)
         }
@@ -1789,6 +1802,20 @@ mod secret_vault_tests {
         assert_eq!(storage, VaultStorage::SecretStore);
         assert_eq!(primary.get_password().unwrap(), "{\"A\":\"1\"}");
         assert!(matches!(fallback.get_password(), Err(Error::NoEntry)));
+    }
+
+    #[test]
+    fn write_overwrites_session_keyring_copy_when_its_delete_fails() {
+        // A stale session copy would be promoted over the newer platform save
+        // on the next launch, so a failed delete must leave matching data.
+        let primary = mock_entry_with("{\"A\":\"1\",\"B\":\"2\"}");
+        let fallback = mock_entry_with("{\"A\":\"1\",\"B\":\"2\"}");
+        fail_next_call(&fallback, platform_failure("permission denied"));
+        let storage = write_vault_json("{\"B\":\"2\"}", &primary, Some(&fallback)).unwrap();
+        assert_eq!(storage, VaultStorage::SecretStore);
+        let read = read_vault_json(&primary, Some(&fallback));
+        assert_eq!(read.json.as_deref(), Some("{\"B\":\"2\"}"));
+        assert_eq!(primary.get_password().unwrap(), "{\"B\":\"2\"}");
     }
 
     #[test]
