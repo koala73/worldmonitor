@@ -6,7 +6,7 @@ canonical: "https://www.worldmonitor.app/sdks.md"
 
 # World Monitor SDKs
 
-Last updated: September 8, 2026
+Last updated: October 20, 2026
 
 World Monitor ships official client libraries in four language ecosystems so you can script country briefs, risk scores, market data, and every registered [MCP tool](https://www.worldmonitor.app/mcp-server.md) without writing an HTTP integration. All of them are **zero-dependency**, MCP-first mirrors of the [`worldmonitor` npm CLI](https://www.worldmonitor.app/docs/cli), with a small REST escape hatch for host-relative and self-hosted use.
 
@@ -30,6 +30,12 @@ The Go SDK is the module `github.com/koala73/worldmonitor/sdk/go`, with package 
 - Install with `go get github.com/koala73/worldmonitor/sdk/go` from your Go project.
 
 Go publishes versions through repository tags (`sdk/go/vX.Y.Z`) and the module proxy. A successful proxy lookup confirms release availability; pkg.go.dev search confirms search visibility. See [how pkg.go.dev adds packages](https://pkg.go.dev/about#adding-a-package).
+
+## Rust SDK preparation
+
+The Rust SDK in [`sdk/rust/`](https://github.com/koala73/worldmonitor/tree/main/sdk/rust) is prepared for its first crates.io release. It is not yet published. The intended crate name is `worldmonitor`. Use a local path dependency until registry installation is verified.
+
+This blocking client supports public MCP listings, any MCP tool through `call_tool`, country risk, and host-relative REST requests. It uses `reqwest` with Rustls and `serde_json`. The [Rust README](https://github.com/koala73/worldmonitor/blob/main/sdk/rust/README.md) includes examples. The [release runbook](https://github.com/koala73/worldmonitor/blob/main/sdk/rust/RELEASING.md) covers account setup, the first publish, trusted publishing, and discovery checks.
 
 ## Shared design
 

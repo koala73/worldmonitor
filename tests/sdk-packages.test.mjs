@@ -79,6 +79,55 @@ describe('Go SDK module (sdk/go → pkg.go.dev)', () => {
   });
 });
 
+describe('Rust SDK package (sdk/rust, prepared for crates.io)', () => {
+  const manifest = read('sdk/rust/Cargo.toml');
+  const source = read('sdk/rust/src/lib.rs');
+
+  it('declares official identity and registry discovery metadata', () => {
+    assert.match(manifest, /^name = "worldmonitor"$/m);
+    assert.match(manifest, /^homepage = "https:\/\/worldmonitor\.app"$/m);
+    assert.match(manifest, /^repository = "https:\/\/github\.com\/koala73\/worldmonitor"$/m);
+    assert.match(manifest, /^license = "MIT"$/m);
+    assert.match(manifest, /^keywords = .*"osint".*"mcp"/m);
+    assert.ok(existsSync(join(ROOT, 'sdk/rust/LICENSE')));
+    assert.ok(existsSync(join(ROOT, 'sdk/rust/Cargo.lock')));
+    assert.match(source, /env!\("CARGO_PKG_VERSION"\)/);
+    assert.match(source, /worldmonitor-rust\//);
+  });
+
+  it('keeps unpublished status explicit on SDK discovery pages', () => {
+    for (const path of ['sdk/rust/README.md', 'docs/sdks.mdx', 'public/sdks.md']) {
+      assert.match(read(path), /not yet published/i, path);
+    }
+  });
+
+  it('runs native tests and verifies the package in pull request CI', () => {
+    const wf = read('.github/workflows/rust-sdk.yml');
+    assert.match(wf, /pull_request:/);
+    assert.match(wf, /cargo test --locked/);
+    assert.match(wf, /cargo package --locked/);
+    assert.doesNotMatch(wf, /id-token: write|CARGO_REGISTRY_TOKEN/);
+  });
+
+  it('requires an explicit release dispatch and publishes the verified commit with OIDC', () => {
+    const wf = read('.github/workflows/publish-rust.yml');
+    assert.match(wf, /workflow_dispatch:/);
+    assert.doesNotMatch(wf, /^  (push|pull_request):/m);
+    assert.match(wf, /dry_run:[\s\S]*?default: true/);
+    assert.match(wf, /github\.repository == 'koala73\/worldmonitor' && github\.ref == 'refs\/heads\/main'/);
+    assert.match(wf, /git merge-base --is-ancestor HEAD origin\/main/);
+    assert.match(wf, /Tag and crate version differ/);
+    assert.match(wf, /cargo publish --locked --dry-run/);
+    assert.match(wf, /needs: verify/);
+    assert.match(wf, /if: \$\{\{ !inputs\.dry_run \}\}/);
+    assert.match(wf, /ref: \$\{\{ needs\.verify\.outputs\.commit \}\}/);
+    assert.match(wf, /environment: crates-io/);
+    assert.match(wf, /rust-lang\/crates-io-auth-action@[0-9a-f]{40}/);
+    assert.match(wf, /id-token: write/);
+    assert.doesNotMatch(wf, /secrets\./);
+  });
+});
+
 describe('SDK publish workflows', () => {
   it('publish-python.yml releases sdk/python on py-v* tags via OIDC', () => {
     const wf = read('.github/workflows/publish-python.yml');

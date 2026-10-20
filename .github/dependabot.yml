@@ -88,3 +88,13 @@ updates:
       cargo-security:
         applies-to: security-updates
         patterns: ["*"]
+
+  - package-ecosystem: "cargo"
+    directory: "/sdk/rust"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      cargo-security:
+        applies-to: security-updates
+        patterns: ["*"]
