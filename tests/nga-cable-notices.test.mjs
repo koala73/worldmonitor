@@ -71,6 +71,30 @@ describe('NGA cable notices — ship matcher', () => {
   it('does not treat M/V as a cable ship without cable-work wording', () => {
     assert.equal(extractCableShipName('M/V EVER GIVEN AGROUND NEAR CABLE AREA'), null);
   });
+
+  it('rejects grounding notices whose only cable reference is a location', () => {
+    assert.equal(isCableRelatedNotice('M/V EVER GIVEN AGROUND NEAR CABLE AREA'), false);
+    assert.equal(isCableRelatedNotice('M/V EVER GIVEN DAMAGED WITHIN CABLE AREAS'), false);
+  });
+
+  it('does not emit an advisory for an incidental reference even when a cable name matches', () => {
+    const signals = processNgaSignals([{
+      text: 'M/V EVER GIVEN AGROUND NEAR CABLE AREA. MAREA.', issueDate: '181200Z OCT 2026',
+    }], NOW);
+    assert.deepEqual(signals, []);
+  });
+
+  it('keeps cable work and fault or damage subjects alongside location references', () => {
+    for (const text of [
+      'CABLE OPERATIONS IN CABLE AREA',
+      'FAULT REPORTED ON SUBMARINE CABLE MAREA',
+      'CABLE DAMAGE REPORTED IN CABLE AREA NEAR MAREA',
+      'DAMAGE TO MAREA CABLE IN CABLE AREA',
+    ]) assert.equal(isCableRelatedNotice(text), true, text);
+    assert.ok(processNgaSignals([{
+      text: 'FAULT REPORTED ON SUBMARINE CABLE MAREA', issueDate: '181200Z OCT 2026',
+    }], NOW).some(signal => signal.kind === 'operator_fault'));
+  });
 });
 
 describe('NGA cable notices — staleness', () => {
