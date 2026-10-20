@@ -27,6 +27,7 @@ import {
   extractCommodityShock,
   extractCyberEscalation,
   extractDisplacementSurge,
+  extractInternalDisplacementSurge,
   extractEarthquakeSignificant,
   extractForecastDeterioration,
   extractGpsJamming,
@@ -543,6 +544,25 @@ const FIXTURES = [
       }],
     },
   },
+  {
+    // seed-idmc-idu-displacement.mjs (contract mode). detectedAt is the latest
+    // displacement date: IDMC publishes weeks late, so the read clock would lie.
+    extractor: extractInternalDisplacementSurge,
+    expectTheater: 'East Asia',
+    expectDetectedAt: (p) => Date.parse(`${p.countries[0].latestDisplacementDate}T00:00:00Z`),
+    key: 'displacement:idmc-idu:v1',
+    enveloped: true,
+    payload: {
+      source: 'IDMC Internal Displacement Updates (via HDX)',
+      windowFrom: '2026-04-24',
+      missingCountries: [],
+      countries: [{
+        countryCode: 'PHL', countryName: 'Philippines', displaced30d: 759032, conflict30d: 51276, disaster30d: 707756,
+        events30d: 13, newlyReported7d: 0, latestDisplacementDate: '2026-10-01', baselineMonthly: 189566, surge: true,
+      }],
+      events: [],
+    },
+  },
 ];
 
 // extractDisplacementSurge is deliberately absent from FIXTURES: its key
@@ -1040,6 +1060,40 @@ describe('extractDisplacementSurge is intentionally silent', () => {
     assert.deepEqual(extractDisplacementSurge({
       [`displacement:summary:v1:${new Date().getFullYear()}`]: asReadByTheSeeder(seedEnvelope(payload)),
     }), []);
+  });
+});
+
+describe('IDMC internal displacement surges', () => {
+  const country = (overrides) => ({
+    countryCode: 'PHL', countryName: 'Philippines', displaced30d: 759032, latestDisplacementDate: '2026-10-01',
+    baselineMonthly: 189566, surge: true, ...overrides,
+  });
+  const read = (countries) => extractInternalDisplacementSurge({ 'displacement:idmc-idu:v1': { countries } });
+
+  it('names the lag, the 30-day total and the multiple of the usual month', () => {
+    const [signal] = read([country({})]);
+    assert.equal(signal.id, 'displacement-idu:PHL');
+    assert.equal(signal.type, 'CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE');
+    assert.equal(signal.summary, 'Philippines: 759,032 people displaced inside the country in 30 days (4.0x its monthly average), latest 2026-10-01 (IDMC, published with a lag of weeks)');
+    assert.equal('displaced30d' in signal, false, 'the sort field never reaches the published signal');
+  });
+
+  it('stays silent for non-surges, unknown codes, small totals and undated or future rows', () => {
+    for (const patch of [{ surge: false }, { countryCode: 'XXX' }, { displaced30d: 4999 }, { latestDisplacementDate: '' }, { latestDisplacementDate: '2999-01-01' }]) {
+      assert.deepEqual(read([country(patch)]), [], JSON.stringify(patch));
+    }
+    assert.deepEqual(extractInternalDisplacementSurge({}), []);
+  });
+
+  it('keeps the five largest surges', () => {
+    const codes = ['PHL', 'ETH', 'VNM', 'CMR', 'THA', 'GHA'];
+    const signals = read(codes.map((code, i) => country({ countryCode: code, countryName: code, displaced30d: 10_000 * (i + 1) })));
+    assert.deepEqual(signals.map((s) => s.id), ['GHA', 'THA', 'CMR', 'VNM', 'ETH'].map((c) => `displacement-idu:${c}`));
+  });
+
+  it('runs on every aggregation and reads the IDMC key', () => {
+    assert.ok(EXTRACTORS.includes(extractInternalDisplacementSurge));
+    assert.ok(SOURCE_KEYS.includes('displacement:idmc-idu:v1'));
   });
 });
 
