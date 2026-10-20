@@ -25,6 +25,10 @@ const rows = [
 ] as const;
 
 const originalParent = window.parent;
+// Section reads the host never answers, so the close-view case below always
+// finds them in flight instead of depending on how far the first case got.
+const heldSections = new Set(['demographics', 'factors']);
+const heldReads: string[] = [];
 afterAll(async () => {
   window.dispatchEvent(new Event('pagehide'));
   await new Promise(resolve => setTimeout(resolve, 0));
@@ -41,9 +45,11 @@ it('carries coverage through managed boot and the actual parent bridge to real p
   localStorage.setItem('worldmonitor-language', 'en');
   vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('No network in controlled host regression'); }));
   const calls: string[] = [];
-  const host = { postMessage: vi.fn((message: { id?: number; method?: string; params?: { name?: string } }) => {
+  const host = { postMessage: vi.fn((message: { id?: number; method?: string; params?: { name?: string; arguments?: { section?: string } } }) => {
     if (message.id === undefined) return;
     calls.push(message.method === 'tools/call' ? message.params!.name! : message.method!);
+    const section = message.params?.arguments?.section;
+    if (message.params?.name === 'get_country_brief_section' && section && heldSections.has(section)) { heldReads.push(section); return; }
     const result = message.method === 'ui/initialize'
       ? { hostCapabilities: { serverTools: {} }, hostContext: { theme: 'dark' } }
       : message.params?.name === 'get_country_coverage'
@@ -93,6 +99,7 @@ it('carries coverage through managed boot and the actual parent bridge to real p
 // under load it landed after vitest closed the worker RPC
 // (EnvironmentTeardownError: Closing rpc while "onUserConsoleLog" was pending).
 it('closing the view cancels in-flight section reads without logging them as failures', async () => {
+  await vi.waitFor(() => expect([...new Set(heldReads)].sort()).toEqual(['demographics', 'factors']));
   const warn = vi.spyOn(console, 'warn');
   window.dispatchEvent(new Event('pagehide'));
   await new Promise(resolve => setTimeout(resolve, 50));
