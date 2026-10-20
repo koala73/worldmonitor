@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { composeCountrySnapshots, publishCountrySnapshots } from '../scripts/seed-country-history.mjs';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../api/_cii-risk-cache-keys.js';
 
@@ -65,6 +66,57 @@ test('headline selection requires qualified names for ambiguous countries', () =
   }
 });
 
+test('headlines match complete country names without assigning nested names to another country', () => {
+  const data = inputs();
+  data.countries = ['SD', 'SS', 'KR', 'KP', 'WS', 'AS'];
+  data.digest.categories.politics.items = [
+    'South Sudan signs peace agreement', 'Democratic Republic of Korea announces talks',
+    'American Samoa reports flooding', 'South Sudan and Sudan resume talks', 'Samoa reports flooding',
+  ].map((title, index) => ({ title, link: `https://example.com/${index}`, source: 'Example', publishedAt: now - 1000 }));
+  const rows = new Map(composeCountrySnapshots(data).map(row => [row.countryCode, row]));
+  for (const [code, titles] of [
+    ['SD', ['South Sudan and Sudan resume talks']],
+    ['SS', ['South Sudan signs peace agreement', 'South Sudan and Sudan resume talks']],
+    ['KR', []], ['KP', ['Democratic Republic of Korea announces talks']],
+    ['WS', ['Samoa reports flooding']], ['AS', ['American Samoa reports flooding']],
+  ]) assert.deepEqual(rows.get(code).topEvents.map(event => event.title), titles, code);
+});
+
+test('the daily executable recovers transient source reads and bounds permanent failures', () => {
+  const entry = new URL('../scripts/seed-country-history.mjs', import.meta.url);
+  for (const [status, recover, expectedReads, expectedExit] of [[503, true, 2, 0], [503, false, 3, 1], [401, false, 1, 1]]) {
+    const script = `
+      let reads = 0, writes = 0;
+      const data = ${JSON.stringify(inputs())};
+      const shift = Date.now() - data.now;
+      data.risk.ciiScores[0].computedAt += shift;
+      data.ranking.fetchedAt = new Date(Date.now()).toISOString();
+      data.digest.generatedAt = new Date(Date.now()).toISOString();
+      globalThis.fetch = async (_url, init) => {
+        const args = JSON.parse(init.body);
+        if (args[0] === 'MGET') {
+          reads++;
+          if (!${recover} || reads === 1) return new Response('fixture failure', { status: ${status} });
+          return Response.json({ result: [data.risk, data.ranking, data.digest].map(JSON.stringify) });
+        }
+        if (args[0] !== 'EVAL') throw new Error('unexpected command');
+        writes++;
+        return Response.json({ result: args[2] - 3 });
+      };
+      process.on('exit', () => console.log(JSON.stringify({ reads, writes })));
+      process.argv[1] = ${JSON.stringify(fileURLToPath(entry))};
+      await import(${JSON.stringify(entry.href)});
+    `;
+    const result = spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
+      encoding: 'utf8', timeout: 5000,
+      env: { ...process.env, NODE_ENV: 'test', NODE_TEST_CONTEXT: 'child-v8', WM_ALLOW_ENV_LOAD_IN_TESTS: '0', WM_SEED_RETRY_DELAY_MS: '0', UPSTASH_REDIS_REST_URL: 'https://fixture.invalid', UPSTASH_REDIS_REST_TOKEN: 'fixture' },
+    });
+    assert.equal(result.status, expectedExit, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout.trim().split('\n').at(-1)), { reads: expectedReads, writes: recover ? 1 : 0 });
+    assert.equal(result.stdout.includes('=== Done ('), recover);
+  }
+});
+
 test('publisher atomically replaces dates, trims retention and stamps health only on confirmed writes', async () => {
   const calls = [];
   const snapshots = composeCountrySnapshots(inputs());
@@ -114,6 +166,16 @@ test('real Redis publication is idempotent, retains 365 days and leaves all coun
     await publish(now + 1000, 40);
     assert.equal(cmd('ZCARD', 'history:country:US'), 2);
     assert.equal(JSON.parse(cmd('ZRANGE', 'history:country:US', -1, -1)[0]).cii.score, 40);
+    let attempts = 0;
+    const snapshots = composeCountrySnapshots(inputs());
+    await publishCountrySnapshots('', '', snapshots, now + 1000, async (_url, _token, args) => {
+      const result = cmd(...args);
+      if (++attempts === 1) throw new Error('fixture lost acknowledgement');
+      return { result };
+    });
+    assert.equal(attempts, 2);
+    assert.equal(cmd('ZCARD', 'history:country:US'), 2);
+    assert.equal(JSON.parse(cmd('ZRANGE', 'history:country:US', -1, -1)[0]).cii.score, 0);
     const meta = cmd('GET', 'seed-meta:history:country');
     await assert.rejects(publish(now + 500, 50), /unconfirmed/);
     assert.equal(cmd('GET', 'seed-meta:history:country'), meta);
@@ -121,7 +183,7 @@ test('real Redis publication is idempotent, retains 365 days and leaves all coun
     cmd('SET', 'history:country:FR', 'wrong-type');
     await assert.rejects(publish(now + 2000, 60));
     assert.equal(cmd('GET', 'seed-meta:history:country'), meta);
-    assert.equal(JSON.parse(cmd('ZRANGE', 'history:country:US', -1, -1)[0]).cii.score, 40);
+    assert.equal(JSON.parse(cmd('ZRANGE', 'history:country:US', -1, -1)[0]).cii.score, 0);
     assert.equal(cmd('TTL', 'seed-activated:history:country'), -1);
   } finally {
     spawnSync(redisCli, ['-s', socket, 'SHUTDOWN', 'NOSAVE']);

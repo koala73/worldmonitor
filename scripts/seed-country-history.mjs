@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { getRedisCredentials, loadEnvFile, redisCommand } from './_seed-utils.mjs';
+import { getRedisCredentials, loadEnvFile, redisCommand, withRetry, SEED_REDIS_RETRY_ATTEMPTS } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { listRankableCountries } from './shared/rankable-universe.mjs';
 
@@ -46,9 +46,14 @@ export function composeCountrySnapshots({ countries, risk, ranking, digest, now 
     const res = resilience.get(countryCode);
     const names = [...Object.entries(COUNTRY_NAMES).filter(([name, code]) => code === countryCode && !AMBIGUOUS_HEADLINE_NAMES.has(name)).map(([name]) => name),
       ...(QUALIFIED_HEADLINE_NAMES[countryCode] ?? [])].map(name => ` ${words(name)} `);
+    const exclusions = Object.entries(COUNTRY_NAMES)
+      .filter(([name, code]) => code !== countryCode && names.some(alias => ` ${words(name)} `.includes(alias)))
+      .map(([name]) => words(name));
     const seen = new Set();
     const topEvents = events.filter(item => {
-      if (seen.has(item.link) || !names.some(name => ` ${words(item.title)} `.includes(name))) return false;
+      let title = ` ${words(item.title)} `;
+      for (const phrase of exclusions) title = title.split(phrase).join(' ');
+      if (seen.has(item.link) || !names.some(name => title.includes(name))) return false;
       seen.add(item.link);
       return true;
     }).slice(0, 5).filter(item => item.link.length <= 1024).map(item => ({ title: item.title.slice(0, 300), link: item.link, source: item.source.slice(0, 100), category: item.category.slice(0, 100) }));
@@ -88,11 +93,11 @@ return count
 export async function publishCountrySnapshots(url, token, snapshots, now, command = redisCommand) {
   if (!snapshots.length) throw new Error('country history cannot publish an empty universe');
   const keys = [...snapshots.map(row => `history:country:${row.countryCode}`), 'history:country:index', 'seed-meta:history:country', 'seed-activated:history:country'];
-  const result = await command(url, token, ['EVAL', COUNTRY_HISTORY_WRITE_LUA, keys.length, ...keys,
+  const result = await withRetry(() => command(url, token, ['EVAL', COUNTRY_HISTORY_WRITE_LUA, keys.length, ...keys,
     Math.floor(now / DAY), now,
     JSON.stringify({ date: new Date(now).toISOString().slice(0, 10), countries: snapshots.map(row => row.countryCode) }),
     JSON.stringify({ fetchedAt: now, recordCount: snapshots.length }), ...snapshots.map(row => JSON.stringify(row)),
-  ]);
+  ]), SEED_REDIS_RETRY_ATTEMPTS - 1);
   if (result.result !== snapshots.length) throw new Error('country history publication unconfirmed');
 }
 
@@ -100,7 +105,7 @@ async function main() {
   loadEnvFile(import.meta.url);
   const { url, token } = getRedisCredentials();
   if (!url || !token) throw new Error('Redis credentials are required');
-  const { result } = await redisCommand(url, token, ['MGET', RISK_KEY, RANKING_KEY, DIGEST_KEY]);
+  const { result } = await withRetry(() => redisCommand(url, token, ['MGET', RISK_KEY, RANKING_KEY, DIGEST_KEY]), SEED_REDIS_RETRY_ATTEMPTS - 1);
   if (!Array.isArray(result) || result.length !== 3) throw new Error('country history input read failed');
   const [risk, ranking, digest] = result.map(raw => unwrapEnvelope(raw).data);
   const now = Date.now();
