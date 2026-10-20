@@ -54,7 +54,9 @@ RUN npm run build:pro && npx tsc && npx vite build
 # bundles over the tracked api/*.js files, so it runs on a copy: /src keeps the
 # real source that tests import and the scan reads.
 RUN mkdir -p /opt/worldmonitor-runtime \
-    && tar -C /src --exclude=./.git --exclude='*/node_modules' --exclude=./node_modules -cf - . \
+    && tar -C /src --exclude=./.git --exclude='*/node_modules' --exclude=./node_modules \
+         --exclude=./tests --exclude=./e2e --exclude=./docs --exclude=./dist \
+         --exclude=./blog-site --exclude=./demos --exclude=./src-tauri/target -cf - . \
        | tar -C /opt/worldmonitor-runtime -xf - \
     && ln -s /src/node_modules /opt/worldmonitor-runtime/node_modules \
     && node /opt/worldmonitor-runtime/docker/build-handlers.mjs
