@@ -5,12 +5,12 @@
   "description": "Real-time global intelligence across conflict, markets, energy, trade, shipping and cyber.",
   "kind": "product",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.43.0",
+  "version": "1.44.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.43.0",
+    "version": "1.44.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server, with per-outlet source ratings and a publicly scored forecast record, serving real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
@@ -196,15 +196,7 @@
     },
     {
       "name": "get_energy_intelligence",
-      "description": "Return the seeded energy bundle: EIA petroleum stocks, Ember electricity prices and generation mix, GIE national gas storage (fill percentage, stored TWh, observation date per country), fuel shortages, active energy disruptions, government crisis policies, fossil-electricity share and World Bank renewable share. Each sub-dataset carries its own seed time and staleness budget (gas storage and electricity are flagged stale after 2 days, crisis policies only after many months). _countries is a coverage index only, and null observations mean unavailable, not zero. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects sub-datasets, country narrows the country-keyed ones, limit caps each list (default 30, 0 for no cap).",
-      "_meta": {
-        "worldmonitor/access": "free-account",
-        "worldmonitor/category": "energy"
-      }
-    },
-    {
-      "name": "get_energy_storage",
-      "description": "EU gas storage and US gas/crude inventories with dated history. Seeded GIE AGSI+ and EIA data, not live quotes. Gas is in TWh or billion cubic feet; crude is in million barrels. Null datasets or weekly changes mean unavailable, not zero. Freshness covers all three sources, including when selecting a subset.",
+      "description": "Return the seeded energy bundle: EIA petroleum stocks, Ember electricity prices and generation mix, GIE national gas storage (fill percentage, stored TWh, observation date per country), fuel shortages, active energy disruptions, government crisis policies, fossil-electricity share, World Bank renewable share, and dated histories of EU gas storage (TWh), US gas storage (bcf) and US commercial crude stocks (million barrels). Each sub-dataset carries its own seed time and staleness budget (gas storage and electricity are flagged stale after 2 days, crisis policies only after many months). _countries is a coverage index only, and null observations mean unavailable, not zero. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects sub-datasets, country narrows the country-keyed ones, limit caps each list (default 30, 0 for no cap).",
       "_meta": {
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "energy"
@@ -236,7 +228,7 @@
     },
     {
       "name": "get_infrastructure_status",
-      "description": "Return the seeded Internet infrastructure snapshot: Cloudflare Radar national and regional outages with start time, severity and cause, plus service status for major cloud providers and Internet services. Flagged stale after 30 minutes. Connectivity incidents only; no traffic volumes, DDoS data or physical infrastructure. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country and severity are case-insensitive substring filters; limit caps the outage list (default 30, 0 for no cap).",
+      "description": "Return the seeded Cloudflare Radar Internet snapshot: outages (national and regional, with start time, severity and cause, plus cloud and Internet service status), traffic anomalies (epoch ms, end 0 means ongoing, totalCount is global before filtering) and the global DDoS protocol, vector and target-country summary. Outages are stale after 30 minutes, traffic and DDoS after 60. Empty lists mean no recorded rows. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects datasets (default all); country (ISO code or English name) filters outages and traffic, never DDoS; severity filters outages; limit caps each list (default 30, 0 for no cap).",
       "_meta": {
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "movement-infrastructure"
@@ -760,14 +752,6 @@
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"
-      }
-    },
-    {
-      "name": "get_internet_activity",
-      "description": "Read Cloudflare Radar seeded traffic anomalies or global DDoS summaries. Traffic accepts optional country and returns at most limit matching anomalies (default 30, max 100); totalCount remains the upstream global count before filtering. DDoS protocol/vector percentages and target countries are global for dateRangeStart..dateRangeEnd and cannot be filtered by country. Each returned list is capped independently; truncated means at least one list was cut. Traffic timestamps are epoch milliseconds; endDate 0 means ongoing. A missing cache returns an error, while a valid empty list means no recorded rows. No load time is presented as source freshness.",
-      "_meta": {
-        "worldmonitor/access": "subscription",
-        "worldmonitor/category": "movement-infrastructure"
       }
     },
     {

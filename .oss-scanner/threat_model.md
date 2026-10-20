@@ -120,10 +120,11 @@ Redis, Convex and upstream fetches.
     LOCAL_API_RESOURCE_DIR=/opt/worldmonitor-runtime \
     node src-tauri/sidecar/local-api-server.mjs &
   curl -H "x-worldmonitor-local-token: $LOCAL_API_TOKEN" \
-    http://127.0.0.1:46123/api/local-status
+    http://127.0.0.1:46123/api/product-catalog
   ```
 
-  Without the header, the server answers 401. Handlers that need Redis or
+  Without the header, the server answers 401. In this mode the native
+  administration routes (`/api/local-*`) always return 403. Handlers that need Redis or
   upstream data return degraded responses offline. Auth, validation, CORS and
   routing logic still run. With no DNS, the SSRF guard rejects every outbound
   feed URL with 403 `Could not resolve hostname`. Exercise fetch paths through

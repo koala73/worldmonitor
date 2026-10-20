@@ -2970,9 +2970,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(payload.cached_at, null, 'mixed-validity meta yields cached_at=null per evaluateFreshness contract');
   });
 
-  // --- get_energy_intelligence (U3: 9-key energy bundle) ---
+  // --- get_energy_intelligence (U3: energy bundle, storage histories merged in from get_energy_storage) ---
 
-  it('get_energy_intelligence returns 9-slice data on cache hit when every per-key meta is within budget', async () => {
+  it('get_energy_intelligence returns 12-slice data on cache hit when every per-key meta is within budget', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
 
@@ -2985,6 +2985,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const crisisPolicyPayload = { policies: [{ country: 'DE', kind: 'price-cap' }] };
     const fossilSharePayload = { countries: [{ iso: 'PL', fossilSharePct: 73 }] };
     const renewablePayload = { countries: [{ iso: 'IS', renewablePct: 84 }] };
+    const euGasPayload = { fillPct: 82, history: [{ date: '2026-09-28', fillPct: 82, gasTwh: 880 }] };
+    const natGasPayload = { latestPeriod: '2026-09-25', weeks: [{ period: '2026-09-25', storBcf: 3100, weeklyChangeBcf: 0 }] };
+    const crudePayload = { latestPeriod: '2026-09-25', weeks: [{ period: '2026-09-25', stocksMb: 420, weeklyChangeMb: -2 }] };
 
     // Budgets: eiaPetroleum=4320min, electricity-prices=2880, ember=2880, gas-storage=2880,
     // fuel-shortages=2880, disruptions=20160, crisis-policies=~400d, fossil-share=11520, renewable=10080.
@@ -3014,6 +3017,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       ['energy:crisis-policies:v1', crisisPolicyPayload],
       ['resilience:fossil-electricity-share:v1', fossilSharePayload],
       ['economic:worldbank-renewable:v1', renewablePayload],
+      ['economic:eu-gas-storage:v1', euGasPayload],
+      ['economic:nat-gas-storage:v1', natGasPayload],
+      ['economic:crude-inventories:v1', crudePayload],
       ['seed-meta:energy:eia-petroleum', meta(eiaFetchedAt)],
       ['seed-meta:energy:electricity-prices', meta(electricityFetchedAt)],
       ['seed-meta:energy:ember', meta(emberFetchedAt)],
@@ -3023,6 +3029,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       ['seed-meta:energy:crisis-policies', meta(crisisPolicyFetchedAt)],
       ['seed-meta:resilience:fossil-electricity-share', meta(fossilShareFetchedAt)],
       ['seed-meta:economic:worldbank-renewable:v1', meta(renewableFetchedAt)],
+      ['seed-meta:economic:eu-gas-storage', meta(gasStorageFetchedAt)],
+      ['seed-meta:economic:nat-gas-storage', meta(disruptionsFetchedAt)],
+      ['seed-meta:economic:crude-inventories', meta(disruptionsFetchedAt)],
     ]);
     globalThis.fetch = async (url) => {
       const u = url.toString();
@@ -3045,7 +3054,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const body = await res.json();
     assert.ok(body.result?.content, 'result.content must be present');
     const payload = JSON.parse(body.result.content[0].text);
-    assert.equal(payload.stale, false, 'all 9 metas within their per-key budgets must yield stale=false');
+    assert.equal(payload.stale, false, 'all 12 metas within their per-key budgets must yield stale=false');
     assert.equal(payload.cached_at, new Date(crisisPolicyFetchedAt).toISOString(), 'cached_at reflects oldest valid fetchedAt (crisis-policies, 30d old, within ~400d budget)');
     // Label-walk slice names per NON_LABEL=/^(v\d+|\d+|stale|sebuf)$/:
     assert.deepEqual(payload.data['eia-petroleum'], eiaPayload);
@@ -3057,6 +3066,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.deepEqual(payload.data['crisis-policies'], crisisPolicyPayload);
     assert.deepEqual(payload.data['fossil-electricity-share'], fossilSharePayload);
     assert.deepEqual(payload.data['worldbank-renewable'], renewablePayload);
+    assert.deepEqual(payload.data['eu-gas-storage'], euGasPayload);
+    assert.deepEqual(payload.data['nat-gas-storage'], natGasPayload);
+    assert.deepEqual(payload.data['crude-inventories'], crudePayload);
   });
 
   it('get_energy_intelligence marks aggregate stale when one slow-cadence key is past budget while fast keys are fresh', async () => {

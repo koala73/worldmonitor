@@ -8,6 +8,10 @@ All notable changes to World Monitor are documented here. Subscribe via [RSS](ht
 
 <Update label="Unreleased" description="Unreleased" tags={["Trade", "Intelligence", "Search", "Supply Chain", "Maritime", "Security", "MCP"]}>
 
+### Changed
+
+- **Two MCP tool pairs merged; both old names keep working** (MCP server 1.44.0; 95 tools; #9432). `get_energy_storage` is now the `eu-gas-storage`, `nat-gas-storage` and `crude-inventories` datasets of `get_energy_intelligence`, with the same fields and units. `get_internet_activity` is now the `traffic` and `ddos` datasets of `get_infrastructure_status`, read from the seeded cache at weight 1 and open to signed-in free accounts instead of Pro only. Calls to either old name run the replacement and add a `deprecation` object naming it; a dataset the old tool never served is rejected. Through the old internet name the response is the cache envelope instead of `{dataset, data, truncated}`. `get_infrastructure_status` `country` now takes an ISO code or English name and selects exactly that country (so `DE` no longer matches Bangladesh); a name fragment such as `united` that resolves to no country now returns Invalid params before any allowance is spent, and the `stale` flag on both tools covers every merged source. The merge frees 682 bytes of the `tools/list` description budget.
+
 ### Fixed
 
 - **`get_tariff_trends` with a tariffs-only dataset returns the US MFN series again.** The old name stays off `tools/list`. That call runs Pro `get_tariff_averages` for reporter `840`. Any other dataset still returns `get_price_and_debt_indicators`. A free account gets the same Pro denial as a direct call to `get_tariff_averages`. A successful response through the old name includes a `deprecation` object in `structuredContent` that names the tool that ran. The text carries it too, except for a `jmespath` projection that returns an array or scalar, whose text stays the raw value. `dataset: ["tariffs"]` on `get_price_and_debt_indicators` still returns Invalid params.

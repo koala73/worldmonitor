@@ -50,7 +50,7 @@ Hosts discover the links through `_meta.ui.resourceUri` in `tools/list`, enumera
 
 ## Authentication
 
-`get_gold_intelligence` preserves gold quotes and optional COT, ETF and central-bank enrichment with individual observation dates; `unavailable` and absent enrichment remain explicit. `get_internet_activity` reads traffic anomalies (optional country) or global DDoS summaries with `limit` 1..100, default 30. The traffic `totalCount` is global before filtering; DDoS percentages are not country-filtered. Both require subscription access and make one signed downstream GET, charged at weight 2 on API allowances (the MCP request plus the downstream request). Missing internet snapshots return an error; valid empty snapshots retain empty lists.
+`get_gold_intelligence` preserves gold quotes and optional COT, ETF and central-bank enrichment with individual observation dates; `unavailable` and absent enrichment remain explicit. It requires subscription access and makes one signed downstream GET, charged at weight 2 on API allowances (the MCP request plus the downstream request). `get_infrastructure_status` reads Cloudflare Radar outages, traffic anomalies and global DDoS summaries from the seeded cache; the traffic `totalCount` is global before filtering and DDoS percentages are not country-filtered. The retired `get_internet_activity` and `get_energy_storage` names still answer with a `deprecation` notice that names their replacements.
 
 - **Connecting an MCP client:** an `initialize` with no credentials gets `401` with a `WWW-Authenticate` challenge, which starts your client's OAuth sign-in. A free account is enough.
 - **`tools/list` and other stateless discovery calls:** anonymous, no key.

@@ -75,7 +75,6 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   compute_energy_shock: 'energy',
   get_supply_chain_cost_shock: 'energy',
   get_energy_intelligence: 'energy',
-  get_energy_storage: 'energy',
   get_oil_trade_series: 'energy',
   // Geopolitical & security
   get_conflict_events: 'geopolitical-security',
@@ -116,7 +115,6 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_infrastructure_status: 'movement-infrastructure',
   search_flights: 'movement-infrastructure',
   search_flight_prices_by_date: 'movement-infrastructure',
-  get_internet_activity: 'movement-infrastructure',
   // Environment & science
   get_climate_data: 'environment-science',
   get_imd_cyclone_marine: 'environment-science',
