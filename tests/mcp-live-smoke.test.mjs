@@ -135,8 +135,11 @@ test('the smoke CLI does not report unstarted probes after the run budget expire
   }
 });
 
-test('the smoke CLI writes a zero-failure report after every expected check succeeds', async () => {
-  const server = createServer(async (req, res) => {
+// Answers every probe the way production should. `onTransportList` lets a test
+// take over the keyless `tools/list` on /mcp, the check that broke on a
+// connection cut mid-body in production (run 39392466642).
+function createHealthyFixtureServer({ onTransportList } = {}) {
+  return createServer(async (req, res) => {
     const origin = `http://${req.headers.host}`;
     const body = req.method === 'POST' ? await readRequestBody(req) : '';
     let rpc = null;
@@ -167,6 +170,7 @@ test('the smoke CLI writes a zero-failure report after every expected check succ
           'www-authenticate': `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource${documentPath}"`,
         });
       } else if (rpc.method === 'tools/list') {
+        if (onTransportList?.(req, res)) return;
         sendJson(res, 200, { jsonrpc: '2.0', id: rpc.id, result: { tools: [{ name: 'fixture' }] } });
       } else if (rpc.method === 'tools/call') {
         const value = { source: 'fixture' };
@@ -235,6 +239,93 @@ test('the smoke CLI writes a zero-failure report after every expected check succ
     }
     res.writeHead(404).end();
   });
+}
+
+// Sends headers and part of the body, then drops the socket: undici surfaces
+// this as `TypeError: terminated` while the smoke reads the body.
+function cutResponseMidBody(res) {
+  res.writeHead(200, { 'content-type': 'application/json', 'content-length': '4096' });
+  res.write('{"jsonrpc":"2.0","result":{"tools":[');
+  setTimeout(() => res.socket.destroy(), 20);
+}
+
+async function runSmokeAgainst(server, reportPrefix) {
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const reportDir = mkdtempSync(join(tmpdir(), reportPrefix));
+  const reportPath = join(reportDir, 'report.json');
+  try {
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const child = spawn(process.execPath, ['scripts/mcp-live-smoke.mjs', '--report', reportPath], {
+      cwd: process.cwd(),
+      env: { ...process.env, MCP_SMOKE_HOSTS: origin, MCP_SMOKE_VARIANT_HOSTS: '' },
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    const [exitCode] = await once(child, 'close');
+    return { exitCode, stdout, stderr, report: JSON.parse(readFileSync(reportPath, 'utf8')) };
+  } finally {
+    server.close();
+    await once(server, 'close');
+    rmSync(reportDir, { recursive: true, force: true });
+  }
+}
+
+function transportListRequests(report) {
+  return report.requests.filter((request) => request.pathname === '/mcp' && request.rpcMethod === 'tools/list');
+}
+
+test('a connection cut mid-body is retried once and does not fail the run', async () => {
+  let cuts = 0;
+  const server = createHealthyFixtureServer({
+    onTransportList: (_req, res) => {
+      if (cuts >= 1) return false;
+      cuts += 1;
+      cutResponseMidBody(res);
+      return true;
+    },
+  });
+  const { exitCode, stdout, stderr, report } = await runSmokeAgainst(server, 'wm-mcp-live-smoke-retry-');
+
+  assert.equal(exitCode, 0, `${stdout}\n${stderr}`);
+  assert.deepEqual(report.failures, []);
+  assert.deepEqual(transportListRequests(report).map((request) => request.outcome), ['transport_error', 'response']);
+  assert.match(stdout, /retrying once after a transport error/);
+});
+
+test('a connection cut on the retry as well still fails the check', async () => {
+  const server = createHealthyFixtureServer({
+    onTransportList: (_req, res) => {
+      cutResponseMidBody(res);
+      return true;
+    },
+  });
+  const { exitCode, report } = await runSmokeAgainst(server, 'wm-mcp-live-smoke-retry-fail-');
+
+  assert.equal(exitCode, 1);
+  assert.equal(transportListRequests(report).length, 2);
+  assert.deepEqual(report.failures.map((failure) => failure.check), ['tools/list on /mcp (keyless, no initialize → 200)']);
+  assert.match(report.failures[0].detail, /HANG\/transport error/);
+});
+
+test('an HTTP status failure is never retried', async () => {
+  const server = createHealthyFixtureServer({
+    onTransportList: (_req, res) => {
+      sendJson(res, 503, { error: 'fixture outage' });
+      return true;
+    },
+  });
+  const { exitCode, report } = await runSmokeAgainst(server, 'wm-mcp-live-smoke-no-retry-');
+
+  assert.equal(exitCode, 1);
+  assert.equal(transportListRequests(report).length, 1);
+  assert.match(report.failures[0].detail, /expected HTTP 200, got 503/);
+});
+
+test('the smoke CLI writes a zero-failure report after every expected check succeeds', async () => {
+  const server = createHealthyFixtureServer();
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const reportDir = mkdtempSync(join(tmpdir(), 'wm-mcp-live-smoke-success-'));

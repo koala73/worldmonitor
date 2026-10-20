@@ -142,6 +142,7 @@ if (process.env.MCP_SMOKE_PROXY_HOSTS !== undefined) {
 }
 
 const TIMEOUT_MS = 15_000;
+const TRANSPORT_RETRIES = 1;
 // The workflow job has a 12 minute hard limit. Keep the request walk within
 // ten minutes so normal failure handling can write its report and GitHub can
 // upload it before the job is terminated. A request is never started unless
@@ -217,13 +218,31 @@ const requestTimedFetch = createTimedFetch({
   onRecord: (record) => requests.push(record),
 });
 
-async function timedFetch(...args) {
+function assertRunBudgetFitsRequest() {
   const remainingMs = runDeadlineAt === null ? 0 : runDeadlineAt - Date.now();
   if (remainingMs < TIMEOUT_MS) {
     runBudgetError ??= new RunBudgetExhaustedError(remainingMs);
     throw runBudgetError;
   }
-  return requestTimedFetch(...args);
+}
+
+// A connection dropped before or during the response (`fetch failed`,
+// `terminated`) is retried once: on the shared GitHub runner egress these
+// blips red the scheduled run about weekly with production healthy. Every
+// attempt is still recorded in the report. A timeout is a HANG and an HTTP
+// status is an answer, so neither is retried.
+async function timedFetch(...args) {
+  for (let attempt = 1; ; attempt += 1) {
+    assertRunBudgetFitsRequest();
+    try {
+      return await requestTimedFetch(...args);
+    } catch (err) {
+      const record = requests.at(-1);
+      const retryable = record?.outcome === 'transport_error' && record.stage !== 'parse';
+      if (attempt > TRANSPORT_RETRIES || !retryable) throw err;
+      console.log(`  ↻ [${safeUrlLabel(args[0])}] retrying once after a transport error: ${formatSafeError(err)}`);
+    }
+  }
 }
 
 let nextId = 1;
