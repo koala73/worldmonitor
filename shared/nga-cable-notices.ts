@@ -42,7 +42,8 @@ const GENERIC_SHIP_PATTERNS = [
 /** True when the warning text concerns subsea cables (and is not a seismic streamer notice). */
 export function isCableRelatedNotice(text: string): boolean {
   const upper = text.toUpperCase();
-  if (!CABLE_KEYWORDS.some((kw) => upper.includes(kw))) return false;
+  const subject = upper.replace(/\bCABLE\s+AREAS?\b/g, '');
+  if (!CABLE_KEYWORDS.some((kw) => subject.includes(kw))) return false;
   if (SEISMIC_STREAMER_RE.test(upper) && !CABLE_WORK_RE.test(upper)) return false;
   return true;
 }
