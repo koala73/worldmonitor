@@ -1,7 +1,7 @@
 {
   "name": "world-monitor",
   "private": true,
-  "version": "2.11.1",
+  "version": "2.11.2",
   "license": "AGPL-3.0-only",
   "allowScripts": {
     "@bufbuild/buf": true,
