@@ -105,7 +105,7 @@ export function parseCsv(text) {
  * @returns {Array<Record<keyof typeof CSV_COLUMNS, string>>}
  */
 export function parsePlaneAlertCsv(text) {
-  const [header, ...rows] = parseCsv(text.replace(/^﻿/, ''));
+  const [header, ...rows] = parseCsv(text.replace(/^\uFEFF/, ''));
   if (!header) throw new Error('plane-alert-db.csv is empty');
   const index = {};
   for (const [key, name] of Object.entries(CSV_COLUMNS)) {

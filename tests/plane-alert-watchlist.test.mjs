@@ -66,9 +66,9 @@ describe('vendored plane-alert watchlist', () => {
 
 describe('plane-alert CSV conversion', () => {
   it('parses quoted commas, doubled quotes, CRLF line endings and a BOM', () => {
-    const rows = parseCsv('﻿a,b\r\n"x, y","say ""hi"""\n1,2\r\n');
-    assert.deepEqual(rows, [['﻿a', 'b'], ['x, y', 'say "hi"'], ['1', '2']]);
-    const records = parsePlaneAlertCsv('﻿' + fixtureCsv);
+    const rows = parseCsv('\uFEFFa,b\r\n"x, y","say ""hi"""\n1,2\r\n');
+    assert.deepEqual(rows, [['\uFEFFa', 'b'], ['x, y', 'say "hi"'], ['1', '2']]);
+    const records = parsePlaneAlertCsv('\uFEFF' + fixtureCsv);
     assert.equal(records[0].operator, 'Operator, With Comma');
     assert.equal(records[0].type, 'Boeing "Jumbo" 747');
     assert.equal(records.length, 7);
