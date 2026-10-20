@@ -210,28 +210,53 @@ const SESSION_KEYRING_SAVE_WARNING: &str = "Secret Service is unavailable, so AP
 to the Linux kernel session keyring. They will be lost on reboot. Install and unlock a Secret \
 Service provider (GNOME Keyring or KWallet) to keep them.";
 
-fn read_vault_json(primary: &Entry, fallback: Option<&Entry>) -> VaultRead {
-    let read_fallback = |storage: VaultStorage, warning: Option<String>| VaultRead {
-        json: fallback.and_then(|entry| entry.get_password().ok()),
-        storage,
-        warning,
-    };
-    match primary.get_password() {
-        Ok(json) => VaultRead {
-            json: Some(json),
+/// Called when the Secret Service is reachable. A kernel keyring vault only
+/// exists if a save failed over to it (every successful platform save deletes
+/// it), so it is always newer than the platform vault: move it back into the
+/// Secret Service so changes made during an outage, deletions included, win.
+fn reconcile_vault_json(
+    primary_json: Option<String>,
+    primary: &Entry,
+    fallback: Option<&Entry>,
+) -> VaultRead {
+    let Some((entry, json)) =
+        fallback.and_then(|entry| entry.get_password().ok().map(|json| (entry, json)))
+    else {
+        return VaultRead {
+            json: primary_json,
             storage: VaultStorage::SecretStore,
             warning: None,
-        },
-        // A vault saved to the kernel keyring while the Secret Service was down
-        // stays readable for the rest of the session; the next save moves it.
-        Err(keyring::Error::NoEntry) => read_fallback(VaultStorage::SecretStore, None),
-        Err(err) if fallback.is_some() && is_secret_service_unavailable(&err) => read_fallback(
-            VaultStorage::SessionKeyring,
-            Some(format!(
+        };
+    };
+    let warning = match primary.set_password(&json) {
+        Ok(()) => {
+            let _ = entry.delete_credential();
+            None
+        }
+        Err(err) => Some(format!(
+            "Could not move API keys from the Linux kernel session keyring back to the \
+             Secret Service: {err}"
+        )),
+    };
+    VaultRead {
+        json: Some(json),
+        storage: VaultStorage::SecretStore,
+        warning,
+    }
+}
+
+fn read_vault_json(primary: &Entry, fallback: Option<&Entry>) -> VaultRead {
+    match primary.get_password() {
+        Ok(json) => reconcile_vault_json(Some(json), primary, fallback),
+        Err(keyring::Error::NoEntry) => reconcile_vault_json(None, primary, fallback),
+        Err(err) if fallback.is_some() && is_secret_service_unavailable(&err) => VaultRead {
+            json: fallback.and_then(|entry| entry.get_password().ok()),
+            storage: VaultStorage::SessionKeyring,
+            warning: Some(format!(
                 "Secret Service is unavailable ({err}); reading API keys from the Linux kernel \
                  session keyring, which does not survive a reboot."
             )),
-        ),
+        },
         Err(err) => VaultRead {
             json: None,
             storage: VaultStorage::SecretStore,
@@ -1673,8 +1698,7 @@ mod secret_vault_tests {
     #[test]
     fn read_uses_platform_store_when_available() {
         let primary = mock_entry_with("{\"A\":\"1\"}");
-        let fallback = mock_entry_with("{\"B\":\"2\"}");
-        let read = read_vault_json(&primary, Some(&fallback));
+        let read = read_vault_json(&primary, Some(&mock_entry()));
         assert_eq!(read.json.as_deref(), Some("{\"A\":\"1\"}"));
         assert_eq!(read.storage, VaultStorage::SecretStore);
         assert!(read.warning.is_none());
@@ -1702,12 +1726,45 @@ mod secret_vault_tests {
 
     #[test]
     fn read_recovers_session_keyring_vault_when_platform_store_has_no_entry() {
-        // Keys saved while the Secret Service was down stay readable for the
-        // rest of the session once it comes back.
+        // Keys saved while the Secret Service was down are moved into it once
+        // it comes back.
+        let primary = mock_entry();
         let fallback = mock_entry_with("{\"B\":\"2\"}");
-        let read = read_vault_json(&mock_entry(), Some(&fallback));
+        let read = read_vault_json(&primary, Some(&fallback));
         assert_eq!(read.json.as_deref(), Some("{\"B\":\"2\"}"));
         assert_eq!(read.storage, VaultStorage::SecretStore);
+        assert_eq!(primary.get_password().unwrap(), "{\"B\":\"2\"}");
+        assert!(matches!(fallback.get_password(), Err(Error::NoEntry)));
+    }
+
+    #[test]
+    fn read_prefers_newer_session_keyring_vault_over_stale_platform_vault() {
+        // The Secret Service dropped mid-session, a key was deleted (saved to
+        // the kernel keyring only), and the Secret Service is back on restart.
+        // The deleted key must not come back from the stale platform vault.
+        let primary = mock_entry_with("{\"A\":\"1\",\"B\":\"2\"}");
+        let fallback = mock_entry_with("{\"B\":\"2\"}");
+        let read = read_vault_json(&primary, Some(&fallback));
+        assert_eq!(read.json.as_deref(), Some("{\"B\":\"2\"}"));
+        assert_eq!(read.storage, VaultStorage::SecretStore);
+        assert_eq!(primary.get_password().unwrap(), "{\"B\":\"2\"}");
+        assert!(matches!(fallback.get_password(), Err(Error::NoEntry)));
+    }
+
+    #[test]
+    fn read_keeps_session_keyring_vault_when_promotion_fails() {
+        let primary = mock_entry_with("{\"A\":\"1\",\"B\":\"2\"}");
+        let fallback = mock_entry_with("{\"B\":\"2\"}");
+        // get succeeds, then the promoting set fails.
+        let read = {
+            let json = primary.get_password().unwrap();
+            assert_eq!(json, "{\"A\":\"1\",\"B\":\"2\"}");
+            fail_next_call(&primary, platform_failure("permission denied"));
+            super::reconcile_vault_json(Some(json), &primary, Some(&fallback))
+        };
+        assert_eq!(read.json.as_deref(), Some("{\"B\":\"2\"}"));
+        assert_eq!(fallback.get_password().unwrap(), "{\"B\":\"2\"}");
+        assert!(read.warning.is_some());
     }
 
     #[test]
