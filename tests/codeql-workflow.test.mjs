@@ -91,6 +91,15 @@ test('scan jobs use selected languages, least privilege, and stable categories',
   }
 });
 
+test('Dependabot updates all CodeQL actions together', () => {
+  const dependabot = YAML.parse(readFileSync(new URL('../.github/dependabot.yml', import.meta.url), 'utf8'));
+  const actions = dependabot.updates.find(update => update['package-ecosystem'] === 'github-actions');
+  const group = actions.groups?.codeql;
+  assert.ok(group, 'CodeQL actions need a shared update group');
+  assert.deepEqual(group.patterns, ['github/codeql-action/*']);
+  assert.equal(group['applies-to'] ?? 'version-updates', 'version-updates');
+});
+
 test('default-branch runs prune stale overlay-base caches with the only actions: write grant', () => {
   const prune = workflow.jobs['prune-overlay-bases'];
   assert.ok(prune, 'prune-overlay-bases job exists');
