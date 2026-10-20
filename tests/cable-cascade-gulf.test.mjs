@@ -73,6 +73,26 @@ describe('cable cascade — chokepoint cut zone', () => {
     assert.equal(result.dataQuality?.estimated, true);
   });
 
+  it('combines small country hits before applying the impact cutoff', () => {
+    const ids = ['cable:falcon', 'cable:tata_tgn_gulf'];
+    for (const id of ids) {
+      assert.deepEqual(calculateCascade(graph, id, 0.2).countriesAffected, []);
+    }
+
+    const result = calculateMultiCascade(graph, ids, 0.2);
+    const qa = result.countriesAffected.find(c => c.country === 'QA');
+    assert.ok(qa, 'two 0.03 hits must retain Qatar after their combined 0.06 clears the cutoff');
+    assert.equal(qa.impactLevel, 'low');
+    assert.ok(result.affectedNodes.some(hit => hit.node.id === 'country:QA'));
+    assert.deepEqual(calculateMultiCascade(graph, ids, 0.1).countriesAffected, []);
+    assert.deepEqual(calculateMultiCascade(graph, [ids[0], ids[0]], 0.2).countriesAffected, []);
+  });
+
+  it('rejects the whole cut when any requested node is unknown', () => {
+    assert.equal(calculateMultiCascade(graph, ['cable:falcon', 'cable:nope']), null);
+    assert.equal(calculateMultiCascade(graph, ['cable:nope', 'cable:falcon']), null);
+  });
+
   it('alternatives never include a cut cable and rank zone-avoiding cables first', () => {
     const cut = getCablesThroughChokepoint(graph, HORMUZ);
     const result = calculateMultiCascade(graph, cut, 1, 'Hormuz');

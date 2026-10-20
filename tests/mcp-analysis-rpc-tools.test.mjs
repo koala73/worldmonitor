@@ -845,6 +845,19 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.ok(catalogNodes.every((node) => !node.id.startsWith('country-')));
   });
 
+  it('rejects a multi-cut containing both known and unknown node ids', async () => {
+    installUpstashStub(analysisPayloads());
+    const tool = findTool('simulate_infrastructure_cascade');
+    const result = await tool._execute(
+      { source_ids: ['cable:sea-me-we-5', 'cable:misspelled'] }, '', {}, {},
+    );
+
+    assert.match(result.error ?? '', /unknown.*cable:misspelled/i);
+    assert.equal(result.data.cascade, null);
+    assert.equal(result.data.catalog, null);
+    for (const key of tool.outputSchema.required) assert.ok(key in result);
+  });
+
   it('keeps the static cascade catalog and chokepoint simulations available without cable data', async () => {
     installUpstashStub(analysisPayloads(), {
       misses: ['infrastructure:submarine-cables:v1'],

@@ -1,0 +1,78 @@
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+const script = fileURLToPath(new URL('../scripts/check-submarine-cable-gaps.mjs', import.meta.url));
+
+function runGapScan(mode) {
+  const dir = mkdtempSync(join(tmpdir(), 'wm-cable-gaps-'));
+  const out = join(dir, 'report.md');
+  writeFileSync(out, 'last complete report');
+  try {
+    const result = spawnSync(process.execPath, ['--input-type=module', '--eval', `
+      process.argv = [process.execPath, ${JSON.stringify(script)}, '--out', ${JSON.stringify(out)}];
+      const mode = ${JSON.stringify(mode)};
+      globalThis.fetch = async (input) => {
+        if (String(input).endsWith('/all.json')) {
+          if (mode === 'catalog-http') return Response.json({}, { status: 503 });
+          if (mode === 'catalog-shape') return Response.json({ error: 'unavailable' });
+          return Response.json([{ id: 'fixture-missing-cable', name: 'Fixture cable' }]);
+        }
+        if (mode === 'network') throw new Error('fixture connection failure');
+        if (mode === 'http') return Response.json({ message: 'rate limited' }, { status: 429 });
+        if (mode === 'json') return new Response('<html>not JSON</html>');
+        if (mode === 'shape') return Response.json({ name: 'Fixture cable' });
+        return Response.json({
+          name: 'Fixture cable', is_planned: false, rfs_year: 2020, length: '100 km',
+          landing_points: mode === 'empty' ? [] : [{ country: 'Country A' }, { country: 'Country B' }],
+        });
+      };
+      await import(${JSON.stringify(new URL('../scripts/check-submarine-cable-gaps.mjs', import.meta.url).href)});
+    `], {
+      encoding: 'utf8',
+      env: { ...process.env, NODE_ENV: 'test', WM_ALLOW_ENV_LOAD_IN_TESTS: '0' },
+      timeout: 10_000,
+    });
+    assert.ifError(result.error);
+    return { ...result, report: readFileSync(out, 'utf8') };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+describe('submarine cable gap CLI', () => {
+  it('writes a complete report when every detail request succeeds', () => {
+    const result = runGapScan('valid');
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.report, /Missing in-service cables landing in 2\+ countries: 1/);
+    assert.match(result.report, /fixture-missing-cable \| Fixture cable/);
+  });
+
+  it('accepts a confirmed empty result', () => {
+    const result = runGapScan('empty');
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.report, /Missing in-service cables landing in 2\+ countries: 0/);
+  });
+
+  for (const mode of ['network', 'http', 'json', 'shape']) {
+    it(`fails without overwriting a complete report on ${mode} detail failures`, () => {
+      const result = runGapScan(mode);
+      assert.notEqual(result.status, 0, result.stderr);
+      assert.equal(result.report, 'last complete report');
+      assert.match(result.stderr, /incomplete/i);
+      assert.match(result.stderr, /fixture-missing-cable/);
+    });
+  }
+
+  for (const mode of ['catalog-http', 'catalog-shape']) {
+    it(`fails without overwriting a complete report on ${mode} failures`, () => {
+      const result = runGapScan(mode);
+      assert.notEqual(result.status, 0, result.stderr);
+      assert.equal(result.report, 'last complete report');
+    });
+  }
+});
