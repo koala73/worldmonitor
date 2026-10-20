@@ -14,7 +14,7 @@ Running the app entirely against your own API keys and local sources needs no pl
 ### Desktop Application (Tauri)
 
 - **Native desktop app** for macOS, Windows, and Linux — packages the full dashboard with a local Node.js sidecar that runs the supported API handler catalog locally
-- **OS keychain integration** — API keys stored in the system credential manager (macOS Keychain, Windows Credential Manager), never in plaintext files
+- **OS keychain integration** — API keys stored in the system credential manager (macOS Keychain, Windows Credential Manager, Linux Secret Service), never in plaintext files
 - **Token-authenticated sidecar** — a unique session token prevents other local processes from accessing the sidecar on localhost. Generated per launch using randomized hashing
 - **Cloud fallback** — when a local API handler fails or is missing, requests transparently fall through to the cloud deployment (worldmonitor.app) with origin headers stripped
 - **Settings window** — dedicated configuration UI (Cmd+,) with three tabs: **LLMs** (Ollama endpoint, model selection, OpenRouter), **API Keys** (the supported data-source credential catalog with per-key validation), and **Debug & Logs** (traffic log, verbose mode, log files). Each tab runs an independent verification pipeline — saving in the LLMs tab doesn't block API Keys validation
@@ -104,7 +104,7 @@ The Tauri desktop app wraps the dashboard in a native window (macOS, Windows, Li
 
 ## Secret Management
 
-API keys are stored in the operating system's credential manager (macOS Keychain, Windows Credential Manager) — never in plaintext config files. All secrets are consolidated into a single JSON vault entry in the keychain, so app startup requires exactly one OS authorization prompt regardless of how many keys are configured.
+API keys are stored in the operating system's credential manager (macOS Keychain, Windows Credential Manager, or the Secret Service such as GNOME Keyring or KWallet on Linux) — never in plaintext config files. On Linux sessions with no Secret Service provider, keys are kept in the kernel session keyring instead, which lasts only until reboot (a warning is written to `desktop.log`). All secrets are consolidated into a single JSON vault entry in the keychain, so app startup requires exactly one OS authorization prompt regardless of how many keys are configured.
 
 At sidecar launch, the vault is read, parsed, and injected as environment variables. Empty or whitespace-only values are skipped. Secrets can also be updated at runtime without restarting the sidecar: saving a key in the Settings window triggers a `POST /api/local-env-update` call that hot-patches `process.env` so handlers pick up the new value immediately.
 
