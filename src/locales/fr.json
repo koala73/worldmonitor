@@ -1658,7 +1658,9 @@
       "conflict": "Conflit",
       "disaster": "Catastrophe",
       "surge": "Pic",
-      "recentNote": "IDMC : personnes déplacées dans leur pays au cours des 30 derniers jours. L'IDMC publie un chiffre en médiane trois semaines après le déplacement, de sorte que les semaines récentes se remplissent tardivement. « Nouveau cette semaine » compte les chiffres publiés au cours des 7 derniers jours. Pic : au moins 5 000 personnes et trois fois la moyenne mensuelle des cinq mois précédents."
+      "recentNote": "IDMC : personnes déplacées dans leur pays au cours des 30 derniers jours. L'IDMC publie un chiffre en médiane trois semaines après le déplacement, de sorte que les semaines récentes se remplissent tardivement. « Nouveau cette semaine » compte les chiffres publiés au cours des 7 derniers jours. Pic : au moins 5 000 personnes et trois fois la moyenne mensuelle des cinq mois précédents.",
+      "recentAsOf": "Données au {{date}}.",
+      "recentMissing": "Aucune donnée cette fois de {{countries}} ; leurs fichiers n'ont pas pu être chargés, ce qui ne signifie pas un déplacement nul."
     },
     "climate": {
       "noAnomalies": "Aucune anomalie significative détectée",

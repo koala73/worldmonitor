@@ -1644,7 +1644,9 @@
       "conflict": "Konflikt",
       "disaster": "Katastrophe",
       "surge": "Anstieg",
-      "recentNote": "IDMC: Personen, die in den letzten 30 Tagen innerhalb ihres Landes vertrieben wurden. IDMC veröffentlicht Zahlen im Median drei Wochen nach der Vertreibung, daher werden aktuelle Wochen später erfasst. „Neu diese Woche\" zählt Zahlen, die in den letzten 7 Tagen veröffentlicht wurden. Anstieg: mindestens 5.000 Personen und das Dreifache des monatlichen Durchschnitts der vorherigen fünf Monate."
+      "recentNote": "IDMC: Personen, die in den letzten 30 Tagen innerhalb ihres Landes vertrieben wurden. IDMC veröffentlicht Zahlen im Median drei Wochen nach der Vertreibung, daher werden aktuelle Wochen später erfasst. „Neu diese Woche\" zählt Zahlen, die in den letzten 7 Tagen veröffentlicht wurden. Anstieg: mindestens 5.000 Personen und das Dreifache des monatlichen Durchschnitts der vorherigen fünf Monate.",
+      "recentAsOf": "Daten vom {{date}}.",
+      "recentMissing": "Diesmal keine Daten für {{countries}}: Ihre Dateien konnten nicht geladen werden. Das heißt nicht, dass niemand vertrieben wurde."
     },
     "populationExposure": {
       "totalAffected": "Insgesamt betroffen",

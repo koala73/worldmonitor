@@ -1778,7 +1778,9 @@
       "conflict": "Xung đột",
       "disaster": "Thảm họa",
       "surge": "Bùng phát",
-      "recentNote": "IDMC: những người phải rời bỏ nơi ở nhưng vẫn ở trong nước mình trong 30 ngày qua. IDMC công bố số liệu trung vị khoảng ba tuần sau khi người dân phải di dời, nên các tuần gần đây được cập nhật muộn. Mới trong tuần này đếm các số liệu được công bố trong 7 ngày qua. Bùng phát: ít nhất 5.000 người và gấp ba lần mức trung bình hằng tháng của năm tháng trước đó."
+      "recentNote": "IDMC: những người phải rời bỏ nơi ở nhưng vẫn ở trong nước mình trong 30 ngày qua. IDMC công bố số liệu trung vị khoảng ba tuần sau khi người dân phải di dời, nên các tuần gần đây được cập nhật muộn. Mới trong tuần này đếm các số liệu được công bố trong 7 ngày qua. Bùng phát: ít nhất 5.000 người và gấp ba lần mức trung bình hằng tháng của năm tháng trước đó.",
+      "recentAsOf": "Dữ liệu tính đến {{date}}.",
+      "recentMissing": "Không có dữ liệu từ {{countries}} lần này; tệp của họ không tải được, điều này không có nghĩa là không có người di cư."
     },
     "climate": {
       "noAnomalies": "Không phát hiện bất thường đáng kể",

@@ -1118,7 +1118,9 @@
       "conflict": "Conflict",
       "disaster": "Ramp",
       "surge": "Toename",
-      "recentNote": "IDMC: mensen ontheemd binnen hun eigen land in de laatste 30 dagen. IDMC publiceert een cijfer gemiddeld drie weken na de ontheemding, dus recente weken worden later ingevuld. Nieuw deze week telt cijfers gepubliceerd in de afgelopen 7 dagen. Toename: ten minste 5.000 mensen en drie keer het maandelijkse gemiddelde van de voorgaande vijf maanden."
+      "recentNote": "IDMC: mensen ontheemd binnen hun eigen land in de laatste 30 dagen. IDMC publiceert een cijfer gemiddeld drie weken na de ontheemding, dus recente weken worden later ingevuld. Nieuw deze week telt cijfers gepubliceerd in de afgelopen 7 dagen. Toename: ten minste 5.000 mensen en drie keer het maandelijkse gemiddelde van de voorgaande vijf maanden.",
+      "recentAsOf": "Gegevens per {{date}}.",
+      "recentMissing": "Geen gegevens dit keer van {{countries}}; hun bestanden konden niet worden geladen, wat niet nul verplaatsing betekent."
     },
     "populationExposure": {
       "totalAffected": "Totaal getroffen",

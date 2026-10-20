@@ -183,9 +183,9 @@ const displacementEventsBreaker = createCircuitBreaker<DisplacementEventsData>({
 export async function fetchDisplacementEvents(): Promise<DisplacementEventsData> {
   return displacementEventsBreaker.execute(async () => {
     const data = toDisplacementEventsData(await ensureHydrated('idmcIduDisplacement'));
-    if (data.points.length === 0) throw new Error('IDMC displacement events unavailable');
+    if (data.points.length === 0 && data.countries.length === 0) throw new Error('IDMC displacement events unavailable');
     return data;
-  }, EMPTY_DISPLACEMENT_EVENTS, { shouldCache: (r) => r.points.length > 0 });
+  }, EMPTY_DISPLACEMENT_EVENTS, { shouldCache: (r) => r.points.length > 0 || r.countries.length > 0 });
 }
 
 // ─── Cross-border movements (UNHCR Operational Data Portal) ───

@@ -110,6 +110,8 @@ export class DisplacementPanel extends Panel {
 
   public setEventsData(data: DisplacementEventsData): void {
     this.eventsData = data;
+    // UNHCR owns the header count once it arrives.
+    if (!this.data) this.setCount(data.countries.length);
     this.renderContent();
   }
 
@@ -128,7 +130,7 @@ export class DisplacementPanel extends Panel {
     }
     const events = this.eventsData;
     if (events) {
-      sources.push({ id: 'recent', label: t('components.displacement.recent'), render: () => this.renderRecentTable(events.countries) });
+      sources.push({ id: 'recent', label: t('components.displacement.recent'), render: () => this.renderRecentTable(events) });
     }
     const internal = this.internalData;
     if (internal) {
@@ -305,8 +307,8 @@ export class DisplacementPanel extends Panel {
   }
 
   // One row per country with IDMC figures in the last 30 days or published this week.
-  private renderRecentTable(allCountries: DisplacementEventCountrySummary[]): string {
-    let countries = allCountries;
+  private renderRecentTable(events: DisplacementEventsData): string {
+    let countries: DisplacementEventCountrySummary[] = events.countries;
     const followedOnlyActive = this.followedOnlyChip?.isActive() === true;
     if (followedOnlyActive) {
       countries = countries.filter(c => {
@@ -343,7 +345,15 @@ export class DisplacementPanel extends Panel {
           </thead>
           <tbody>${rows}</tbody>
         </table>
-        <div class="disp-source-note">${escapeHtml(t('components.displacement.recentNote'))}</div>`;
+        <div class="disp-source-note">${escapeHtml(this.recentNote(events))}</div>`;
+  }
+
+  private recentNote(events: DisplacementEventsData): string {
+    return [
+      t('components.displacement.recentNote'),
+      events.asOf ? t('components.displacement.recentAsOf', { date: events.asOf }) : '',
+      events.missingCountries.length ? t('components.displacement.recentMissing', { countries: events.missingCountries.join(', ') }) : '',
+    ].filter(Boolean).join(' ');
   }
 
   // One row per IOM DTM operation. Operations in a country can overlap, so

@@ -1647,7 +1647,9 @@
       "conflict": "Conflitto",
       "disaster": "Disastro",
       "surge": "Picco",
-      "recentNote": "IDMC: persone sfollate all'interno del proprio paese negli ultimi 30 giorni. IDMC pubblica una cifra in media tre settimane dopo lo sfollamento, quindi le settimane recenti si riempiono in ritardo. Nuovi questa settimana conta le cifre pubblicate negli ultimi 7 giorni. Picco: almeno 5.000 persone e tre volte la media mensile dei cinque mesi precedenti."
+      "recentNote": "IDMC: persone sfollate all'interno del proprio paese negli ultimi 30 giorni. IDMC pubblica una cifra in media tre settimane dopo lo sfollamento, quindi le settimane recenti si riempiono in ritardo. Nuovi questa settimana conta le cifre pubblicate negli ultimi 7 giorni. Picco: almeno 5.000 persone e tre volte la media mensile dei cinque mesi precedenti.",
+      "recentAsOf": "Dati al {{date}}.",
+      "recentMissing": "Nessun dato in questo momento da {{countries}}; i loro file non si sono caricati, il che non significa zero sfollati."
     },
     "populationExposure": {
       "totalAffected": "Totale esposto",

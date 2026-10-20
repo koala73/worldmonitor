@@ -1933,7 +1933,9 @@
       "conflict": "Konflikt",
       "disaster": "Katastrofa",
       "surge": "Skok",
-      "recentNote": "IDMC: ljudi raseljeni u svojoj zemlji u posljednjih 30 dana. IDMC objavljuje podatke prosječno tri tjedna nakon raseljavanja, pa se nedavni tjedni popunjavaju kasnije. Novo ovaj tjedan broji podatke objavljene u posljednjih 7 dana. Skok: najmanje 5.000 ljudi i tri puta veći od mjesečnog prosjeka prethodnih pet mjeseci."
+      "recentNote": "IDMC: ljudi raseljeni u svojoj zemlji u posljednjih 30 dana. IDMC objavljuje podatke prosječno tri tjedna nakon raseljavanja, pa se nedavni tjedni popunjavaju kasnije. Novo ovaj tjedan broji podatke objavljene u posljednjih 7 dana. Skok: najmanje 5.000 ljudi i tri puta veći od mjesečnog prosjeka prethodnih pet mjeseci.",
+      "recentAsOf": "Podaci od {{date}}.",
+      "recentMissing": "Nema podataka ovaj put od {{countries}}; njihove datoteke se nisu učitale, što ne znači nula premještanja."
     },
     "climate": {
       "noAnomalies": "Nisu detektirane značajne anomalije",

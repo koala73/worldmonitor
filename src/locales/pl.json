@@ -1559,7 +1559,9 @@
       "conflict": "Konflikt",
       "disaster": "Katastrofa",
       "surge": "Nagły wzrost",
-      "recentNote": "IDMC: osoby wysiedlone w granicach ich kraju w ostatnich 30 dnach. IDMC publikuje dane medianę trzy tygodnie po wysiedleniu, więc ostatnie tygodnie są uzupełniane z opóźnieniem. Nowe w tym tygodniu liczy dane opublikowane w ciągu ostatnich 7 dni. Nagły wzrost: co najmniej 5000 osób i trzy razy średnia miesięczna z pięciu poprzednich miesięcy."
+      "recentNote": "IDMC: osoby wysiedlone w granicach ich kraju w ostatnich 30 dnach. IDMC publikuje dane medianę trzy tygodnie po wysiedleniu, więc ostatnie tygodnie są uzupełniane z opóźnieniem. Nowe w tym tygodniu liczy dane opublikowane w ciągu ostatnich 7 dni. Nagły wzrost: co najmniej 5000 osób i trzy razy średnia miesięczna z pięciu poprzednich miesięcy.",
+      "recentAsOf": "Dane z {{date}}.",
+      "recentMissing": "Brak danych tym razem z {{countries}}; ich pliki nie załadowały się, co nie oznacza zerowego przemieszczenia."
     },
     "populationExposure": {
       "totalAffected": "Całkowita liczba dotkniętych",

@@ -1782,7 +1782,9 @@
       "conflict": "Çatışma",
       "disaster": "Afet",
       "surge": "Ani Artış",
-      "recentNote": "IDMC: son 30 gün içinde ülkeleri içinde yerinden edilmiş kişiler. IDMC, yerinden edilmeden ortalama üç hafta sonra bir rakam yayımlar; bu nedenle son haftalar geç dolmaktadır. Bu haftanın yenileri son 7 gün içinde yayımlanmış rakamları sayar. Ani Artış: en az 5.000 kişi ve önceki beş ayın aylık ortalamasının üç katı."
+      "recentNote": "IDMC: son 30 gün içinde ülkeleri içinde yerinden edilmiş kişiler. IDMC, yerinden edilmeden ortalama üç hafta sonra bir rakam yayımlar; bu nedenle son haftalar geç dolmaktadır. Bu haftanın yenileri son 7 gün içinde yayımlanmış rakamları sayar. Ani Artış: en az 5.000 kişi ve önceki beş ayın aylık ortalamasının üç katı.",
+      "recentAsOf": "Veriler {{date}} tarihine aittir.",
+      "recentMissing": "Bu kez {{countries}} için veri yok; dosyaları yüklenemedi. Bu, yerinden edilme olmadığı anlamına gelmez."
     },
     "climate": {
       "noAnomalies": "Onemli anomali tespit edilmedi",

@@ -56,8 +56,22 @@ test('points keep located figures, largest first, with the country name and conf
   ]);
 });
 
+test('carries failed country files and the snapshot date for the panel note', () => {
+  const data = toDisplacementEventsData({ ...snapshot, missingCountries: ['AFG', 'YEM', 7] });
+  assert.deepEqual(data.missingCountries, ['AFG', 'YEM']);
+  // windowFrom is the first of 180 dates ending on the snapshot date.
+  assert.equal(data.asOf, '2026-10-20');
+  assert.equal(toDisplacementEventsData({ ...snapshot, windowFrom: 'bad' }).asOf, '');
+});
+
+test('country totals without located figures still reach the panel', () => {
+  const data = toDisplacementEventsData({ ...snapshot, events: [event({ location: undefined })] });
+  assert.deepEqual(data.points, []);
+  assert.deepEqual(data.countries.map((c) => c.countryCode), ['PHL']);
+});
+
 test('a missing or malformed snapshot maps to empty data', () => {
-  const empty = { countries: [], points: [] };
+  const empty = { countries: [], points: [], missingCountries: [], asOf: '' };
   for (const value of [undefined, null, 'x', {}, { countries: [] }, { events: [] }, { countries: {}, events: [] }]) {
     assert.deepEqual(toDisplacementEventsData(value), empty);
   }

@@ -608,6 +608,8 @@
   "components.displacement.origins": "Origins",
   "components.displacement.period": "Period",
   "components.displacement.recent": "Recent",
+  "components.displacement.recentAsOf": "Data as of {{date}}.",
+  "components.displacement.recentMissing": "No data this time from {{countries}}; their files failed to load, which is not zero displacement.",
   "components.displacement.recentNote": "IDMC: people displaced within their country in the last 30 days. IDMC publishes a figure a median of three weeks after the displacement, so recent weeks fill in late. New this week counts figures published in the last 7 days. Surge: at least 5,000 people and three times the monthly average of the previous five months.",
   "components.displacement.refugees": "Refugees",
   "components.displacement.reported": "Count",

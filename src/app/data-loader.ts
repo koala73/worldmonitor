@@ -3640,7 +3640,7 @@ export class DataLoaderManager implements AppModule {
       tasks.push((async () => {
         try {
           const events = await fetchDisplacementEvents();
-          if (events.points.length === 0) return;
+          if (events.points.length === 0 && events.countries.length === 0) return;
           this.callPanel('displacement', 'setEventsData', events);
           if (this.ctx.mapLayers.displacement) {
             this.ctx.map?.setDisplacementEvents(events);

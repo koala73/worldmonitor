@@ -32,9 +32,24 @@ export interface DisplacementEventCountrySummary {
 export interface DisplacementEventsData {
   countries: DisplacementEventCountrySummary[];
   points: DisplacementEventPoint[];
+  /** ISO3 codes whose file failed at seed time: no data, not zero displacement. */
+  missingCountries: string[];
+  /** YYYY-MM-DD the snapshot covers up to; empty when unknown. */
+  asOf: string;
 }
 
-export const EMPTY_DISPLACEMENT_EVENTS: DisplacementEventsData = { countries: [], points: [] };
+export const EMPTY_DISPLACEMENT_EVENTS: DisplacementEventsData = { countries: [], points: [], missingCountries: [], asOf: '' };
+
+// The seeder's window is the 180 dates ending on the snapshot date
+// (WINDOW_DAYS in scripts/seed-idmc-idu-displacement.mjs), and bootstrap strips
+// the seed envelope, so this is the one date the browser has.
+const WINDOW_DAYS = 180;
+function snapshotDate(windowFrom: unknown): string {
+  if (typeof windowFrom !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(windowFrom)) return '';
+  const start = Date.parse(`${windowFrom}T00:00:00Z`);
+  if (!Number.isFinite(start)) return '';
+  return new Date(start + (WINDOW_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
+}
 
 type Row = Record<string, unknown>;
 const str = (value: unknown): string => (typeof value === 'string' ? value : '');
@@ -49,7 +64,7 @@ const rows = (value: unknown): Row[] => (Array.isArray(value) ? value.filter((v)
  */
 export function toDisplacementEventsData(snapshot: unknown): DisplacementEventsData {
   if (!snapshot || typeof snapshot !== 'object') return EMPTY_DISPLACEMENT_EVENTS;
-  const { countries: rawCountries, events: rawEvents } = snapshot as Row;
+  const { countries: rawCountries, events: rawEvents, missingCountries, windowFrom } = snapshot as Row;
   if (!Array.isArray(rawCountries) || !Array.isArray(rawEvents)) return EMPTY_DISPLACEMENT_EVENTS;
 
   const focus = new Map<string, { figure: number; lat: number; lon: number }>();
@@ -96,5 +111,10 @@ export function toDisplacementEventsData(snapshot: unknown): DisplacementEventsD
     .sort((a, b) => Number(b.surge) - Number(a.surge) || b.displaced30d - a.displaced30d || b.newlyReported7d - a.newlyReported7d);
   // Largest first, so small circles are drawn on top of big ones.
   points.sort((a, b) => b.figure - a.figure);
-  return { countries, points };
+  return {
+    countries,
+    points,
+    missingCountries: Array.isArray(missingCountries) ? missingCountries.filter((c): c is string => typeof c === 'string') : [],
+    asOf: snapshotDate(windowFrom),
+  };
 }

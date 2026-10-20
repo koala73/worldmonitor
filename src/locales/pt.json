@@ -1119,7 +1119,9 @@
       "conflict": "Conflito",
       "disaster": "Desastre",
       "surge": "Pico",
-      "recentNote": "IDMC: pessoas deslocadas dentro de seu país nos últimos 30 dias. O IDMC publica um número mediano de três semanas após o deslocamento, portanto semanas recentes são preenchidas tardiamente. Novo esta semana conta números publicados nos últimos 7 dias. Pico: pelo menos 5.000 pessoas e três vezes a média mensal dos cinco meses anteriores."
+      "recentNote": "IDMC: pessoas deslocadas dentro de seu país nos últimos 30 dias. O IDMC publica um número mediano de três semanas após o deslocamento, portanto semanas recentes são preenchidas tardiamente. Novo esta semana conta números publicados nos últimos 7 dias. Pico: pelo menos 5.000 pessoas e três vezes a média mensal dos cinco meses anteriores.",
+      "recentAsOf": "Dados de {{date}}.",
+      "recentMissing": "Sem dados desta vez de {{countries}}; seus arquivos falharam ao carregar, o que não significa deslocamento zero."
     },
     "populationExposure": {
       "totalAffected": "Total afetado",

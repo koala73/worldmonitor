@@ -233,11 +233,27 @@ describe('Recent tab (IDMC)', () => {
     expect(phl![1]!.textContent).toBe('—');
     expect(phl![2]!.textContent).toBe(formatPopulation(759032));
     expect(cod![0]!.querySelector('.disp-badge')).toBeNull();
-    expect(panel.getElement().querySelector('.disp-source-note')?.textContent).toBe(tt('components.displacement.recentNote'));
+    expect(panel.getElement().querySelector('.disp-source-note')?.textContent).toContain(tt('components.displacement.recentNote'));
     rows()[1]!.click();
     expect(onClick).not.toHaveBeenCalled();
     rows()[0]!.click();
     expect(onClick).toHaveBeenCalledWith(14.16, 121.35);
+  });
+
+  it('counts IDMC countries when UNHCR never arrived, and names failed files and the data date', async () => {
+    mount();
+    panel.setEventsData(toDisplacementEventsData({
+      countries: [country('PHL', 'Philippines', { displaced30d: 759032, surge: true })],
+      events: [],
+      windowFrom: '2026-04-24',
+      missingCountries: ['AFG', 'YEM'],
+    }));
+    await flush();
+    expect(panel.getElement().querySelector('.panel-count')?.textContent).toBe('1');
+    const note = panel.getElement().querySelector('.disp-source-note')?.textContent ?? '';
+    expect(note).toContain(tt('components.displacement.recentNote'));
+    expect(note).toContain(tt('components.displacement.recentAsOf', { date: '2026-10-20' }));
+    expect(note).toContain(tt('components.displacement.recentMissing', { countries: 'AFG, YEM' }));
   });
 
   it('keeps its tab when UNHCR data arrives later', async () => {

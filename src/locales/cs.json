@@ -1769,7 +1769,9 @@
       "conflict": "Konflikt",
       "disaster": "Katastrofa",
       "surge": "Nárůst",
-      "recentNote": "IDMC: osoby vysídlené v rámci své země během posledních 30 dní. IDMC zveřejňuje údaje v průměru tři týdny po vysídlení, takže nedávné týdny se doplňují se zpožděním. Nové tento týden počítá údaje zveřejněné v posledních 7 dnech. Nárůst: nejméně 5 000 osob a třikrát měsíční průměr z předchozích pěti měsíců."
+      "recentNote": "IDMC: osoby vysídlené v rámci své země během posledních 30 dní. IDMC zveřejňuje údaje v průměru tři týdny po vysídlení, takže nedávné týdny se doplňují se zpožděním. Nové tento týden počítá údaje zveřejněné v posledních 7 dnech. Nárůst: nejméně 5 000 osob a třikrát měsíční průměr z předchozích pěti měsíců.",
+      "recentAsOf": "Data k {{date}}.",
+      "recentMissing": "Tentokrát žádná data od {{countries}}; jejich soubory se nepodařilo načíst, což neznamená nulové přesídlení."
     },
     "climate": {
       "noAnomalies": "Nebyly zjištěny žádné významné anomálie",
