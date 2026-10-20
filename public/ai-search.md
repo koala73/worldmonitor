@@ -67,7 +67,7 @@ Coverage reconciled: 2026-10-20. Every figure below is generated from this repos
 - 31 countries scored by the Country Instability Index (CII v11)
 - 196-country rankable universe for the Country Resilience Index, of which 170 are ranked in the published snapshot captured 2026-08-29
 - 13 maritime chokepoints with AIS-based transit intelligence
-- 88 submarine cable routes
+- 98 submarine cable routes
 - 159 pipelines and LNG assets
 - 313 AI datacenters mapped
 - 29 scored geopolitical hotspots
