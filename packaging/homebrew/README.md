@@ -15,6 +15,6 @@ brew audit --strict --online worldmonitor/distribution-test/worldmonitor
 brew style worldmonitor/distribution-test/worldmonitor
 ```
 
-The formula test checks both command aliases and calls the real anonymous `get_sources` API with a 15-second timeout. It requires no API key. API errors, timeouts, and invalid responses fail the test. Network access is allowed during testing and denied during build and post-install.
+The formula test checks both command aliases and calls the real anonymous `get_sources` API without an API key. CLI 0.2.0 applies its 15-second timeout until response headers arrive. Homebrew's five-minute deadline bounds the complete test, including response-body reads. API errors, timeouts, and invalid responses fail the test. Network access is allowed during testing and denied during build and post-install.
 
 After a CLI release reaches npm, use the exact registry archive URL and calculate its SHA-256 checksum. Update the formula in Homebrew through a version PR. Keep this submission copy synchronized until the initial Homebrew PR is accepted. After acceptance, the Homebrew formula is authoritative.
