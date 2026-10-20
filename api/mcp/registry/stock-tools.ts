@@ -53,6 +53,39 @@ const BACKTEST_SCHEMA = {
   },
 };
 
+function stockResearchArguments(params: Record<string, unknown>) {
+  const invalid = (field: string, description: string): never => {
+    throw new RpcValidationError('get_stock_research', [{ field, description }]);
+  };
+  const operation = params.operation;
+  if (typeof operation !== 'string' || !Object.prototype.hasOwnProperty.call(OPERATIONS, operation)) {
+    invalid('operation', 'Select a supported stock research operation.');
+  }
+  const selected = operation as keyof typeof OPERATIONS;
+  const single = selected === 'analysis' || selected === 'backtest';
+  const rawSymbols = params.symbols;
+  if (!Array.isArray(rawSymbols) || rawSymbols.length < 1 || rawSymbols.length > 50 || (single && rawSymbols.length !== 1)) {
+    invalid('symbols', 'Use exactly one symbol for analysis/backtest, or 1 through 50 for stored results.');
+  }
+  const symbols = (rawSymbols as unknown[]).map(raw => {
+    if (typeof raw !== 'string' || !/^[A-Z0-9^][A-Z0-9.^=-]{0,31}$/i.test(raw.trim())) {
+      invalid('symbols', 'Each symbol must contain 1 through 32 ticker characters.');
+    }
+    return (raw as string).trim().toUpperCase();
+  });
+  const news = selected === 'analysis' || selected === 'history';
+  if (params.include_news !== undefined && (!news || typeof params.include_news !== 'boolean')) {
+    invalid('include_news', 'A boolean news option is supported for analysis/history only.');
+  }
+  if (params.limit_per_symbol !== undefined && selected !== 'history') invalid('limit_per_symbol', 'This option is only supported for history.');
+  if (params.eval_window_days !== undefined && news) invalid('eval_window_days', 'This option is only supported for backtest/stored-backtests.');
+  const limit = params.limit_per_symbol ?? 4;
+  const window = params.eval_window_days ?? 10;
+  if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 32) invalid('limit_per_symbol', 'Expected an integer from 1 through 32.');
+  if (typeof window !== 'number' || !Number.isInteger(window) || window < 3 || window > 30) invalid('eval_window_days', 'Expected an integer from 3 through 30.');
+  return { selected, single, symbols, news, limit, window };
+}
+
 export const STOCK_TOOLS: ToolDef[] = [{
   name: 'get_stock_research',
   title: 'Stock research',
@@ -83,36 +116,9 @@ export const STOCK_TOOLS: ToolDef[] = [{
     },
   },
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  _validateArgs: params => { stockResearchArguments(params); },
   _execute: async (params, base, context, execution) => {
-    const invalid = (field: string, description: string): never => {
-      throw new RpcValidationError('get_stock_research', [{ field, description }]);
-    };
-    const operation = params.operation;
-    if (typeof operation !== 'string' || !Object.prototype.hasOwnProperty.call(OPERATIONS, operation)) {
-      invalid('operation', 'Select a supported stock research operation.');
-    }
-    const selected = operation as keyof typeof OPERATIONS;
-    const single = selected === 'analysis' || selected === 'backtest';
-    const rawSymbols = params.symbols;
-    if (!Array.isArray(rawSymbols) || rawSymbols.length < 1 || rawSymbols.length > 50 || (single && rawSymbols.length !== 1)) {
-      invalid('symbols', 'Use exactly one symbol for analysis/backtest, or 1 through 50 for stored results.');
-    }
-    const symbols = (rawSymbols as unknown[]).map(raw => {
-      if (typeof raw !== 'string' || !/^[A-Z0-9^][A-Z0-9.^=-]{0,31}$/i.test(raw.trim())) {
-        invalid('symbols', 'Each symbol must contain 1 through 32 ticker characters.');
-      }
-      return (raw as string).trim().toUpperCase();
-    });
-    const news = selected === 'analysis' || selected === 'history';
-    if (params.include_news !== undefined && (!news || typeof params.include_news !== 'boolean')) {
-      invalid('include_news', 'A boolean news option is supported for analysis/history only.');
-    }
-    if (params.limit_per_symbol !== undefined && selected !== 'history') invalid('limit_per_symbol', 'This option is only supported for history.');
-    if (params.eval_window_days !== undefined && news) invalid('eval_window_days', 'This option is only supported for backtest/stored-backtests.');
-    const limit = params.limit_per_symbol ?? 4;
-    const window = params.eval_window_days ?? 10;
-    if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 32) invalid('limit_per_symbol', 'Expected an integer from 1 through 32.');
-    if (typeof window !== 'number' || !Number.isInteger(window) || window < 3 || window > 30) invalid('eval_window_days', 'Expected an integer from 3 through 30.');
+    const { selected, single, symbols, news, limit, window } = stockResearchArguments(params);
     const query = new URLSearchParams();
     if (single) query.set('symbol', symbols[0]!);
     else symbols.forEach(symbol => query.append('symbols', symbol));

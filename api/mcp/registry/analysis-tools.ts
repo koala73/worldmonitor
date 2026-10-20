@@ -210,6 +210,26 @@ function resolveLimit(raw: unknown, fallback: number): number {
 // declare honorContentAge.
 const ANALYSIS_STALE_DESCRIPTION = 'True when any contributing cache key fails its freshness contract: fetched longer ago than its per-key maxStaleMin budget, below a declared minRecordCount, or — for keys that declare a content-age contract — carrying upstream observations older than maxContentAgeMin even though the fetch itself is recent. A recent cached_at with stale:true means the fetch is current but the underlying data has stopped advancing, so refetching will not help.';
 
+function focalPointCountry(params: Record<string, unknown>): string {
+  const rawCountry = params.country_code;
+  const countryCode = rawCountry == null || (typeof rawCountry === 'string' && !rawCountry.trim())
+    ? '' : requireCountryCode(rawCountry, 'get-focal-points');
+  if (countryCode && getSharedEntityIndex().byId.get(countryCode)?.type !== 'country') {
+    throw new RpcValidationError('get-focal-points', [{
+      field: 'country_code',
+      description: `No focal-point coverage for ${countryCode}: that country is absent from the entity registry.`,
+    }]);
+  }
+  return countryCode;
+}
+
+function alertDigestArguments(params: Record<string, unknown>) {
+  const view = typeof params.view === 'string' ? params.view : 'today';
+  const moversDays = ciiHistoryDays(params.movers_days, 'movers_days');
+  if (moversDays !== undefined && view !== 'weekly') throw new RpcValidationError('movers_days', [{ field: 'movers_days', description: 'Valid only with view: weekly.' }]);
+  return { view, moversDays };
+}
+
 export const ANALYSIS_TOOLS: ToolDef[] = [
   {
     name: 'get_signal_convergence',
@@ -365,6 +385,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_focal_points',
+    _validateArgs: params => { focalPointCountry(params); },
     title: 'News and map focal points',
     _outputBudgetBytes: 65536,
     description:
@@ -412,16 +433,8 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params) => {
-      const rawCountry = params.country_code;
-      const countryCode = rawCountry == null || (typeof rawCountry === 'string' && !rawCountry.trim())
-        ? '' : requireCountryCode(rawCountry, 'get-focal-points');
+      const countryCode = focalPointCountry(params);
       const index = getSharedEntityIndex();
-      if (countryCode && index.byId.get(countryCode)?.type !== 'country') {
-        throw new RpcValidationError('get-focal-points', [{
-          field: 'country_code',
-          description: `No focal-point coverage for ${countryCode}: that country is absent from the entity registry.`,
-        }]);
-      }
       const limit = resolveLimit(params.limit, 10);
       const keys = ['news:insights:v1', 'intelligence:cross-source-signals:v1', CII_RISK_SCORE_CACHE_KEYS.live];
       const checks: FreshnessCheck[] = [
@@ -863,10 +876,9 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       required: ['cached_at', 'stale', 'data'],
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _validateArgs: alertDigestArguments,
     _execute: async (params) => {
-      const view = typeof params.view === 'string' ? params.view : 'today';
-      const moversDays = ciiHistoryDays(params.movers_days, 'movers_days');
-      if (moversDays !== undefined && view !== 'weekly') throw new RpcValidationError('movers_days', [{ field: 'movers_days', description: 'Valid only with view: weekly.' }]);
+      const { view, moversDays } = alertDigestArguments(params);
       const keys: string[] = [
         CII_RISK_SCORE_CACHE_KEYS.live,
         'military:surges:v1',

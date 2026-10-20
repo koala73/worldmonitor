@@ -34,6 +34,7 @@ import { MCP_CHECKOUT_PLANS, START_UPGRADE_TOOL } from '../checkout';
 import filterParamContracts from '../../../shared/openapi-filter-param-contracts.json';
 import { normalizeCountry } from '../../../server/_shared/intel-history-client';
 import { normalizePassengerCount } from '../../../server/_shared/passenger-count';
+import { normalizeFoodStocksCommodity } from '../../../server/worldmonitor/resilience/v1/_food-stocks-query';
 import {
   CORROBORATION_OUTPUT_SCHEMA,
   PUBLISHER_ROSTER_OUTPUT_PROPERTIES,
@@ -631,6 +632,36 @@ function assertIntelHistoryCountry(label: string, country: string): void {
   }
 }
 
+function intelTimelineScope(params: Record<string, unknown>) {
+  const domain = typeof params.domain === 'string' ? params.domain.trim() : '';
+  const country = normalizeCountry(params.country);
+  assertIntelHistoryCountry('get-intel-timeline', country);
+  const cursor = params.cursor ?? '';
+  if (typeof cursor !== 'string' || cursor.length > 4096) {
+    throw new RpcValidationError('get-intel-timeline', [{
+      field: 'cursor', description: 'cursor must be a string of at most 4096 characters',
+    }]);
+  }
+  if (!domain && !country) {
+    throw new RpcValidationError('get-intel-timeline', [
+      { field: 'domain', description: 'Required unless country is set. One of conflict, military, or energy.' },
+      { field: 'country', description: 'Required unless domain is set. ISO 3166-1 alpha-2, uppercase (e.g. UA).' },
+    ]);
+  }
+  return { domain, country, cursor };
+}
+
+function foodStocksCountry(params: Record<string, unknown>): string {
+  const country = typeof params.country_code === 'string' ? params.country_code.trim().toUpperCase() : '';
+  if (!/^(?:[A-Z]{2}|WORLD|WLD|_WORLD)$/.test(country)) {
+    throw new RpcValidationError('get-food-stocks', [{
+      field: 'country_code',
+      description: 'country_code is required and must be a 2-letter ISO 3166-1 alpha-2 code or WORLD',
+    }]);
+  }
+  return country;
+}
+
 function procurementPageSize(value: unknown): number {
   return Number.isInteger(value) && (value as number) > 0
     ? Math.min(PROCUREMENT_TOOL_MAX_PAGE_SIZE, value as number)
@@ -1070,6 +1101,7 @@ const VULNERABILITY_COMPONENTS_OUTPUT_SCHEMA = {
 export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_defense_industrial_base',
+    _validateArgs: params => { requireCountryCode(params.country_code, 'get-defense-industrial-base'); },
     title: 'Defense industrial base',
     _outputBudgetBytes: 16_384,
     description: 'Return one country\'s defense industrial base: the latest World Bank military-capacity indicators (spending, personnel, arms trade) and SIPRI-derived five-year major-weapons supplier shares with a concentration measure, answering who supplies the country\'s arms and how dependent it is on them. Values are annual and carry their observation year; SIPRI TIV is a transfer-volume index, not currency. Requires a paid plan; one downstream fetch of seeded data, weight 2 on API plans. country_code is ISO 3166-1 alpha-2 (UA, DE, IN). Read-only.',
@@ -1543,6 +1575,7 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_country_brief',
+    _validateArgs: params => { requireCountryCode(params.country_code, 'get-country-brief'); },
     title: 'AI-written country assessment (text)',
     // Two downstream fetches (brief + news digest for grounding).
     _weight: 3,
@@ -1795,6 +1828,7 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_country_risk',
+    _validateArgs: params => { requireCountryCode(params.country_code, 'get-country-risk'); },
     title: 'Country instability score, advisory and sanctions',
     _outputBudgetBytes: 262144,
     description: 'Return the structured risk snapshot for one country: the Composite Instability Index at cii.combinedScore (0-100) with its four components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive and sanctionsCount. Index scores, advisory and sanctions fields only, read from the seeded risk cache in under a second: no narrative, no LLM, and no per-indicator resilience breakdown. upstreamUnavailable=true means a required upstream read failed and the whole response was withheld: zeroed fields are unknown, not calm. Requires a paid plan; one downstream fetch, weight 2 on API plans. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one. Read-only; idempotent within a cache window. history_days (1-90) adds ciiHistory: one UTC daily close per day, the change over the span, and methodology breaks.',
@@ -1886,6 +1920,7 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_country_coverage',
+    _validateArgs: params => { requireCountryCode(params.country_code, 'get-country-coverage'); },
     title: 'Country coverage timeline',
     // No _weight override: _execute signs one gateway fetch, so the derived
     // default of 2 is already correct. The fan-out to two coverage feeds and
@@ -2083,6 +2118,14 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_food_stocks',
+    _validateArgs: params => {
+      foodStocksCountry(params);
+      if (normalizeFoodStocksCommodity(typeof params.commodity === 'string' ? params.commodity : '') === null) {
+        throw new RpcValidationError('get-food-stocks', [{
+          field: 'commodity', description: 'commodity must be one of wheat, corn, rice, soybeans, barley, palmOil',
+        }]);
+      }
+    },
     title: 'Cereal stocks-to-use ratios',
     _outputBudgetBytes: 131072,
     description: 'USDA PSD cereal stocks-to-use by marketing year. Ask for a country (ISO-2) plus optional commodity (wheat, corn, rice, soybeans, barley, palmOil), or country_code=WORLD for the global balance. Returns ending stocks, production, use, and the stocks-to-use ratio. Marketing years are not calendar years and must not be compared across countries as if they were.',
@@ -2151,13 +2194,7 @@ export const RPC_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _coverageKeys: ['resilience:food-stocks:v1', 'seed-meta:resilience:food-stocks'],
     _execute: async (params, base, context, execution) => {
-      const countryCode = typeof params.country_code === 'string' ? params.country_code.trim().toUpperCase() : '';
-      if (!/^(?:[A-Z]{2}|WORLD|WLD|_WORLD)$/.test(countryCode)) {
-        throw new RpcValidationError('get-food-stocks', [{
-          field: 'country_code',
-          description: 'country_code is required and must be a 2-letter ISO 3166-1 alpha-2 code or WORLD',
-        }]);
-      }
+      const countryCode = foodStocksCountry(params);
       const q = new URLSearchParams({ countryCode });
       if (params.commodity) q.set('commodity', String(params.commodity).trim());
       const qs = q.toString();
@@ -3211,6 +3248,7 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_supply_vulnerabilities',
+    _validateArgs: params => { requireCountryCode(params.country_code, 'get-supply-vulnerabilities'); },
     title: 'Commodity supply risks',
     // No `_attribution`: enforceCommodityRedistributionPolicy has already
     // blanked score/band/source-concentration and dropped every
@@ -3227,7 +3265,7 @@ export const RPC_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        country_code: { type: 'string', pattern: '^[A-Za-z]{2}$', description: 'ISO 3166-1 alpha-2 code of the importing country, such as AE, JP, or DE.' },
+        country_code: { type: 'string', description: `Importing country. ${COUNTRY_ARG_HINT}` },
       },
       required: ['country_code'],
     },
@@ -3329,6 +3367,7 @@ export const RPC_TOOLS: ToolDef[] = [
   ...ANALYSIS_TOOLS,
   {
     name: 'search_intel_history',
+    _validateArgs: params => { assertIntelHistoryCountry('search-intel-history', normalizeCountry(params.country)); },
     title: 'Search past intelligence events',
     // 16 full records fit this tool's 128 KiB output ceiling with headroom.
     _outputBudgetBytes: 131072,
@@ -3381,6 +3420,7 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_intel_timeline',
+    _validateArgs: params => { intelTimelineScope(params); },
     title: 'Intelligence event timeline',
     // 40 full records fit this tool's 256 KiB output ceiling with headroom.
     _outputBudgetBytes: 262144,
@@ -3414,27 +3454,7 @@ export const RPC_TOOLS: ToolDef[] = [
       // violations (RpcValidationError) and saves the round-trip; the handler
       // stays the enforcing authority. A plain Error would land as -32603 +
       // Sentry error (WORLDMONITOR-10Y).
-      const domain = typeof params.domain === 'string' ? params.domain.trim() : '';
-      const country = normalizeCountry(params.country);
-      assertIntelHistoryCountry('get-intel-timeline', country);
-      const cursor = params.cursor ?? '';
-      if (typeof cursor !== 'string' || cursor.length > 4096) {
-        throw new RpcValidationError('get-intel-timeline', [{
-          field: 'cursor', description: 'cursor must be a string of at most 4096 characters',
-        }]);
-      }
-      if (!domain && !country) {
-        throw new RpcValidationError('get-intel-timeline', [
-          {
-            field: 'domain',
-            description: 'Required unless country is set. One of conflict, military, or energy.',
-          },
-          {
-            field: 'country',
-            description: 'Required unless domain is set. ISO 3166-1 alpha-2, uppercase (e.g. UA).',
-          },
-        ]);
-      }
+      const { domain, country, cursor } = intelTimelineScope(params);
 
       const query = new URLSearchParams();
       addStringParam(query, 'domain', domain);
@@ -3465,6 +3485,7 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_similar_events',
+    _validateArgs: params => { assertIntelHistoryCountry('get-similar-events', normalizeCountry(params.country)); },
     title: 'Historical precedents for a situation',
     // Eight full records fit this tool's 64 KiB output ceiling with headroom.
     _outputBudgetBytes: 65536,

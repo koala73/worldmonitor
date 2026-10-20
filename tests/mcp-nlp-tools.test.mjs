@@ -517,11 +517,11 @@ describe('#5697 NLP MCP tools', () => {
 
     it('rejects missing and oversized text without reaching the route', async () => {
       const missing = await callTool('classify_event', {});
-      assert.match(missing.result.error, /text is required/);
-      assert.equal(missing.result.classification, null, 'error envelopes keep the required member present');
+      assert.equal(missing.body.error?.code, -32602);
+      assert.equal(missing.pipe.count, 0);
       const oversized = await callTool('classify_event', { text: 'x'.repeat(501) });
-      assert.match(oversized.result.error, /500-character limit/);
-      assert.equal(oversized.result.classification, null);
+      assert.equal(oversized.body.error?.code, -32602);
+      assert.equal(oversized.pipe.count, 0);
       assert.equal(requests.length, 0, 'validation failures must not fetch');
     });
 
@@ -602,13 +602,9 @@ describe('#5697 NLP MCP tools', () => {
 
     it('rejects oversized text and non-string text while honoring its own outputSchema', async () => {
       for (const args of [{ text: 'y'.repeat(2049) }, { text: 42 }]) {
-        const { result } = await callTool('extract_entities', args);
-        assert.ok(result.error, `expected a validation error for ${JSON.stringify(args)}`);
-        // outputSchema declares mode/entities/patternEntities required — a bare
-        // {error} envelope breaks schema-validating agent clients.
-        assert.equal(result.mode, 'text');
-        assert.deepEqual(result.entities, []);
-        assert.deepEqual(result.patternEntities, []);
+        const { body, pipe } = await callTool('extract_entities', args);
+        assert.equal(body.error?.code, -32602);
+        assert.equal(pipe.count, 0);
       }
       assert.equal(requests.length, 0);
     });
@@ -696,10 +692,9 @@ describe('#5697 NLP MCP tools', () => {
 
     it('rejects an unknown digest variant without fetching', async () => {
       const requestCount = requests.length;
-      const { result } = await callTool('extract_entities', { variant: 'finance' });
-      assert.equal(result.mode, 'headlines');
-      assert.equal(result.headlineCount, 0);
-      assert.match(result.error, /variant must be one of: full, tech/);
+      const { body, pipe } = await callTool('extract_entities', { variant: 'finance' });
+      assert.equal(body.error?.code, -32602);
+      assert.equal(pipe.count, 0);
       assert.equal(requests.length, requestCount);
     });
 
@@ -779,7 +774,7 @@ describe('#5697 NLP MCP tools', () => {
       }, {});
     });
 
-    it('returns a corrective note when category is unknown', async () => {
+    it('rejects an unknown category before charging', async () => {
       await withDigestCategories({
         politics: {
           items: [
@@ -792,14 +787,10 @@ describe('#5697 NLP MCP tools', () => {
           ],
         },
       }, async () => {
-        const { result } = await callTool('extract_entities', { category: 'commodity' });
-        assert.equal(result.mode, 'headlines');
-        assert.equal(result.headlineCount, 0);
-        assert.equal(result.category, 'commodity');
-        assert.match(result.note, /Unknown digest category "commodity"/);
-        assert.match(result.note, /commodities/);
-        assert.match(result.note, /politics/);
-        assert.deepEqual(result.entities, []);
+        const { body, pipe } = await callTool('extract_entities', { category: 'commodity' });
+        assert.equal(body.error?.code, -32602);
+        assert.equal(body.error.data.violations[0].field, 'category');
+        assert.equal(pipe.count, 0);
       });
     });
   });
@@ -1024,10 +1015,9 @@ describe('#5697 NLP MCP tools', () => {
 
     it('rejects an unknown clustering variant without fetching', async () => {
       const requestCount = requests.length;
-      const { result } = await callTool('get_news_clusters', { variant: 'finance' });
-      assert.deepEqual(result.clusters, []);
-      assert.equal(result.headlineCount, 0);
-      assert.match(result.error, /variant must be one of: full, tech/);
+      const { body, pipe } = await callTool('get_news_clusters', { variant: 'finance' });
+      assert.equal(body.error?.code, -32602);
+      assert.equal(pipe.count, 0);
       assert.equal(requests.length, requestCount);
     });
 
@@ -1076,7 +1066,7 @@ describe('#5697 NLP MCP tools', () => {
       });
     });
 
-    it('returns a corrective note when category is unknown', async () => {
+    it('rejects an unknown category before charging', async () => {
       await withDigestCategories({
         finance: {
           items: [
@@ -1084,13 +1074,10 @@ describe('#5697 NLP MCP tools', () => {
           ],
         },
       }, async () => {
-        const { result } = await callTool('get_news_clusters', { category: 'markets' });
-        assert.equal(result.headlineCount, 0);
-        assert.equal(result.totalClusters, 0);
-        assert.equal(result.category, 'markets');
-        assert.deepEqual(result.clusters, []);
-        assert.match(result.note, /Unknown digest category "markets"/);
-        assert.match(result.note, /finance/);
+        const { body, pipe } = await callTool('get_news_clusters', { category: 'markets' });
+        assert.equal(body.error?.code, -32602);
+        assert.equal(body.error.data.violations[0].field, 'category');
+        assert.equal(pipe.count, 0);
       });
     });
 
@@ -1406,15 +1393,12 @@ describe('#5697 NLP MCP tools', () => {
       assert.match(result.note, /accumulator unavailable or empty/);
     });
 
-    it('clamps malformed window/min_count/limit params to defaults', async () => {
+    it('rejects malformed window/min_count/limit params before charging', async () => {
       seedAccumulator();
-      const { result } = await callTool('get_keyword_spikes', { window_hours: 99.5, min_count: -3, limit: 'many' });
-      assert.equal(result.window_hours, 2, 'non-integer window falls back to the default');
-      // The cache key embeds the clamped minCount, so it proves the clamp
-      // applied rather than the raw -3 reaching the spike math.
-      assert.deepEqual([...upstashState.storedPayloads.keys()], ['intelligence:keyword-spikes:mcp:v3:2h:2'],
-        'out-of-range integer min_count clamps to the schema minimum (2); the raw -3 must never reach the spike math');
-      assert.ok(result.spikes.length <= 10, 'non-integer limit falls back to the default 10');
+      const { body, pipe } = await callTool('get_keyword_spikes', { window_hours: 99.5, min_count: -3, limit: 'many' });
+      assert.equal(body.error?.code, -32602);
+      assert.equal(pipe.count, 0);
+      assert.deepEqual([...upstashState.storedPayloads.keys()], []);
     });
 
     it('fetches a separately bounded baseline cohort when the newest 800 rows are all recent', async () => {

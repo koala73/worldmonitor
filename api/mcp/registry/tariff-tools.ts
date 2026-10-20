@@ -226,6 +226,10 @@ function coverageSchema(vintage: 'latestYear' | 'asOf'): Record<string, unknown>
 export const TARIFF_TOOLS: ToolDef[] = [
   {
     name: 'get_tariff_averages',
+    _validateArgs: params => {
+      if (params.reporter !== undefined && params.reporter !== '') tradeCountryCode(params.reporter, 'get-tariff-averages', 'reporter', { allowEu: true });
+      if (params.partner !== undefined && params.partner !== '') tradeCountryCode(params.partner, 'get-tariff-averages', 'partner', { allowWorld: true });
+    },
     title: 'Average tariff rates',
     _outputBudgetBytes: 65536,
     description: 'Average tariff a country applies by year: schedule rates through 2023, no Section 301/232 duties. Optionally limited to one partner\'s goods and/or one product group. With no partner and no product group it is the WTO MFN average over all products (TP_A_0010) for any reporter. With a partner other than World, or a product group, it is the effectively applied average from UNCTAD TRAINS via World Bank WITS: tariffRate is the simple average (AHS-SMPL-AVRG, preferences counted), weightedRate the import-weighted one. Series run from about 1990 to 2023 for most reporters; US preferences are reported only through 2021. These are schedule rates: Section 301, 232 and other unilateral duties are NOT included. unavailableReason NOT_COVERED is a coverage answer; UPSTREAM_UNAVAILABLE is a fault worth retrying later.',
@@ -304,6 +308,11 @@ export const TARIFF_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_bilateral_tariff',
+    _validateArgs: params => {
+      tradeCountryCode(params.reporter, 'get-bilateral-tariff', 'reporter', { allowEu: true });
+      tradeCountryCode(params.partner, 'get-bilateral-tariff', 'partner');
+      hsDigits(params.hs_code, 'get-bilateral-tariff', /^[0-9]{6}$/, '6 digits');
+    },
     title: 'Product tariff between two countries',
     _outputBudgetBytes: 65536,
     description: 'Tariff on one HS6 product between two countries: schedule rate through 2023, no Section 301/232 duties. The rate one country applies to one 6-digit HS product from one partner, for one year, from UNCTAD TRAINS via World Bank WITS. appliedRate is what the partner pays: the best preferential rate it qualifies for, else MFN (basis says which). mfnRate and preferentialRate are reported separately, with mfnAveRate an ad valorem equivalent where the MFN duty is specific. EU members answer from the EU schedule (filingReporter 918). Year 0 means the latest year with data. Schedule rates only: Section 301, 232, anti-dumping and other unilateral duties are NOT included, and TRAINS has no US preferences after 2021 and no US data after 2023. NOT_COVERED is a coverage answer; UPSTREAM_UNAVAILABLE is a fault.',
@@ -374,6 +383,10 @@ export const TARIFF_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_us_import_duty',
+    _validateArgs: params => {
+      tradeCountryCode(params.partner, 'get-us-import-duty', 'partner');
+      hsDigits(params.hs_code, 'get-us-import-duty', /^[0-9]{6}([0-9]{2}){0,2}$/, '6, 8 or 10 digits');
+    },
     title: 'US import duty for a product',
     _outputBudgetBytes: 131072,
     description: 'Return the current US import duty for one product from one country: the live USITC Harmonized Tariff Schedule rates for each 8-digit line under hs_code, plus the chapter 99 Section 301 and 232 duties in force. Each additional duty has a status of APPLIES, CONDITIONAL (condition says what decides it), EXEMPT or SCHEDULED; estimatedRate adds only APPLIES duties to the base rate, and estimateComplete is false when a specific duty, a condition or an unresolved preference program leaves it open. IEEPA, anti-dumping and countervailing duties are not included; additionalDutiesLoaded=false means only base rates were available. Requires a paid plan; one live USITC lookup, weight 2 on API plans. hs_code is 6, 8 or 10 digits; partner is an alpha-2, alpha-3, M49 code or country name. Read-only.',

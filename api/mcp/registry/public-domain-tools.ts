@@ -17,6 +17,13 @@ const INTERNET_PATHS = {
   ddos: '/api/infrastructure/v1/list-internet-ddos-attacks',
 } as const;
 
+function internetCountry(params: Record<string, unknown>): string | undefined {
+  if (params.dataset === 'ddos' && params.country !== undefined) {
+    throw new RpcValidationError('get_internet_activity', [{ field: 'country', description: 'DDoS summaries are global; country filtering is only supported for traffic.' }]);
+  }
+  return params.country === undefined ? undefined : requireCountryCode(params.country, 'get_internet_activity', 'country');
+}
+
 export const PUBLIC_DOMAIN_TOOLS: ToolDef[] = [{
   name: 'get_gold_intelligence',
   title: 'Gold market intelligence',
@@ -61,6 +68,7 @@ export const PUBLIC_DOMAIN_TOOLS: ToolDef[] = [{
   _apiPaths: ['GET /api/market/v1/get-gold-intelligence'],
 }, {
   name: 'get_internet_activity',
+  _validateArgs: params => { internetCountry(params); },
   title: 'Internet traffic anomalies and DDoS',
   description: 'Read Cloudflare Radar seeded traffic anomalies or global DDoS summaries. Traffic accepts optional country and returns at most limit matching anomalies (default 30, max 100); totalCount remains the upstream global count before filtering. DDoS protocol/vector percentages and target countries are global for dateRangeStart..dateRangeEnd and cannot be filtered by country. Each returned list is capped independently; truncated means at least one list was cut. Traffic timestamps are epoch milliseconds; endDate 0 means ongoing. A missing cache returns an error, while a valid empty list means no recorded rows. No load time is presented as source freshness.',
   _outputBudgetBytes: 131072,
@@ -88,8 +96,7 @@ export const PUBLIC_DOMAIN_TOOLS: ToolDef[] = [{
     const invalid = (field: string, description: string): never => { throw new RpcValidationError('get_internet_activity', [{ field, description }]); };
     if (typeof params.dataset !== 'string' || !Object.prototype.hasOwnProperty.call(INTERNET_PATHS, params.dataset)) invalid('dataset', 'Select traffic or ddos.');
     const dataset = params.dataset as keyof typeof INTERNET_PATHS;
-    if (dataset === 'ddos' && params.country !== undefined) invalid('country', 'DDoS summaries are global; country filtering is only supported for traffic.');
-    const country = params.country === undefined ? undefined : requireCountryCode(params.country, 'get_internet_activity', 'country');
+    const country = internetCountry(params);
     const limit = params.limit ?? 30;
     if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 100) invalid('limit', 'Expected an integer from 1 through 100.');
     const url = `${base}${INTERNET_PATHS[dataset]}${country ? `?country=${country}` : ''}`;

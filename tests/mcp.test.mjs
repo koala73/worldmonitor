@@ -2484,17 +2484,16 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(payload.error, 'Country not yet supported. Available: ae');
   });
 
-  it('get_consumer_prices returns result-level error when country_code is missing', async () => {
+  it('get_consumer_prices returns Invalid params when country_code is missing', async () => {
     const res = await handler(makeReq('POST', {
       jsonrpc: '2.0', id: 303, method: 'tools/call',
       params: { name: 'get_consumer_prices', arguments: {} },
     }));
     assert.equal(res.status, 200);
     const body = await res.json();
-    assert.ok(body.result?.content, 'missing country_code must return a result, not -32603');
-    assert.equal(body.error, undefined);
-    const payload = JSON.parse(body.result.content[0].text);
-    assert.equal(payload.error, 'country_code is required');
+    assert.equal(body.result, undefined);
+    assert.equal(body.error?.code, -32602);
+    assert.equal(body.error.data.violations[0].field, 'country_code');
   });
 
   it('get_consumer_prices throws cache_all_null (→ -32603) when every 5 cache reads return null', async () => {

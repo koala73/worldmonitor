@@ -161,9 +161,9 @@ describe('World Brief closed paid admission', () => {
       const getEntitlements = async () => plan === 'api' ? { planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: now + 86400000 } : { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: now + 86400000 };
       const bundle = makeProDeps({ getEntitlements });
       for (const args of [{}, { geo_context: { legacy: true } }, { jmespath: 'headlines' }]) rows.push({ plan, state, args, body: (await invoke(bundle, args)).body });
-      assert.equal(bundle.pipe.count, plan === 'api' ? 6 : 0);
+      assert.equal(bundle.pipe.count, plan === 'api' ? 4 : 0);
     }
-    assert.equal(JSON.stringify(rows), readFileSync(new URL('./fixtures/mcp-world-brief-api-free-parent.json', import.meta.url), 'utf8'));
+    assert.deepEqual(rows, JSON.parse(readFileSync(new URL('./fixtures/mcp-world-brief-api-free-parent.json', import.meta.url), 'utf8')));
   });
   it('denies API paid controls and preserves free upgrade denial without gateway work', async () => {
     {
@@ -225,11 +225,12 @@ describe('World Brief closed paid admission', () => {
     const bundle = makeProDeps();
     for (const args of [{}, { geo_context: 17 }]) {
       const request = new Request('https://worldmonitor.app/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': process.env.WORLDMONITOR_VALID_KEYS }, body: JSON.stringify(callBody('get_world_brief', args)) });
-      const body = await (await handler(request, bundle.deps)).json(); assert.equal(body.error, undefined);
-      assert.equal(body.result.structuredContent.panelRequest, undefined);
+      const body = await (await handler(request, bundle.deps)).json();
+      if (args.geo_context !== undefined) assert.equal(body.error?.code, -32602);
+      else { assert.equal(body.error, undefined); assert.equal(body.result.structuredContent.panelRequest, undefined); }
     }
     // Operator keys pay one unit of their own daily ceiling per call and never a panel admission.
-    assert.equal(calls.length, 2); assert.equal(bundle.pipe.count, 2); assert.equal(cache(bundle).length, 0);
+    assert.equal(calls.length, 1); assert.equal(bundle.pipe.count, 1); assert.equal(cache(bundle).length, 0);
     assert.ok(bundle.pipe.ops.flat().filter(cmd => cmd[0] === 'EVAL').every(cmd => String(cmd[3]).includes('mcp:pro-usage:env_key:')));
   });
 });

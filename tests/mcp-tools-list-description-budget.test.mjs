@@ -366,6 +366,7 @@ describe('api/mcp.ts — tools/list description budget (v1.34.0)', () => {
       }));
       const body = await res.json();
       assert.equal(res.status, 200);
+      if (tool_name === undefined) return body;
       assert.equal(body.error, undefined, `describe_tool returned JSON-RPC error: ${JSON.stringify(body.error)}`);
       return JSON.parse(body.result.content[0].text);
     }
@@ -605,9 +606,10 @@ describe('api/mcp.ts — tools/list description budget (v1.34.0)', () => {
       assert.ok(env.available.includes('describe_tool'));
     });
 
-    it('describe_tool({}) returns {error: "missing_tool_name"}', async () => {
+    it('describe_tool({}) returns Invalid params', async () => {
       const env = await callDescribeTool(undefined);
-      assert.equal(env.error, 'missing_tool_name');
+      assert.equal(env.error?.code, -32602);
+      assert.equal(env.error.data.violations[0].field, 'tool_name');
     });
 
     // ============================================================

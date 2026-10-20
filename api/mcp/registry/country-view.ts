@@ -4,6 +4,7 @@ import { RAW_SIGNAL_READS, RAW_SIGNAL_FAMILIES, RAW_SIGNAL_BODY_BYTES, RAW_SIGNA
 import { COUNTRY_READERS, countryReaderSchema, countryViewSchema, panelAdmissionSchema, type CountryReader } from '../../../shared/country-brief-host';
 import { BRIEF_TOPICS } from '../../../shared/country-brief-sections';
 import { resolveCountryCode } from '../../../shared/country-code-resolve';
+import { normalizeFoodStocksCommodity } from '../../../server/worldmonitor/resilience/v1/_food-stocks-query';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk, BillingDenialError, RpcValidationError, throwIfBillingDenial } from '../billing-denial';
 import { readBoundedResponseBody } from '../bounded-body';
@@ -12,6 +13,26 @@ import type { ToolDef } from '../types';
 import { COUNTRY_VIEW_UI_URI } from '../ui/news-dashboard-app';
 
 const COUNTRY_SECTION_BUDGET_BYTES = 524288;
+
+function countryViewArguments(params: Record<string, unknown>) {
+  const parsed = countryViewSchema.safeParse(Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'jmespath')));
+  const countryCode = parsed.success ? resolveCountryCode(parsed.data.country_code) : null;
+  if (!parsed.success || !countryCode) throw new RpcValidationError('open_country_brief', [{ field: 'country_code', description: 'Supply a recognized country and topic.' }]);
+  return { countryCode, topic: parsed.data.topic };
+}
+
+function countrySectionArguments(params: Record<string, unknown>) {
+  const parsed = countryReaderSchema.safeParse(Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'jmespath')));
+  if (!parsed.success) throw new RpcValidationError('get_country_brief_section', [{ field: 'section', description: 'Unknown country section reader.' }]);
+  const { section } = parsed.data;
+  const reader = COUNTRY_READERS[section];
+  const args = reader.args.safeParse(parsed.data.arguments);
+  if (!args.success) throw new RpcValidationError('get_country_brief_section', [{ field: 'arguments', description: 'Invalid arguments for this country section.' }]);
+  if (section === 'food' && 'commodity' in args.data && normalizeFoodStocksCommodity(args.data.commodity) === null) {
+    throw new RpcValidationError('get_country_brief_section', [{ field: 'arguments.commodity', description: 'Supply a supported food commodity.' }]);
+  }
+  return { parsed, section, reader, args };
+}
 
 // What each section reader returns and what its arguments mean. The zod
 // schemas in shared/country-brief-host.ts carry the constraints; the prose
@@ -65,7 +86,7 @@ const COUNTRY_SECTION_DOCS: Record<CountryReader, { summary: string; args: Recor
 };
 
 function describedSectionArguments(section: CountryReader): Record<string, unknown> {
-  const schema = z.toJSONSchema(COUNTRY_READERS[section].args) as Record<string, unknown>;
+  const schema = z.toJSONSchema(COUNTRY_READERS[section].args, { io: 'input' }) as Record<string, unknown>;
   const docs = COUNTRY_SECTION_DOCS[section];
   const properties = { ...((schema.properties as Record<string, Record<string, unknown>> | undefined) ?? {}) };
   for (const field of Object.keys(properties)) {
@@ -155,11 +176,9 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
     required: ['countryCode', 'topic'],
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  _validateArgs: countryViewArguments,
   _execute: async (params, _base, _context, execution) => {
-    const parsed = countryViewSchema.safeParse(Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'jmespath')));
-    const countryCode = parsed.success ? resolveCountryCode(parsed.data.country_code) : null;
-    if (!parsed.success || !countryCode) throw new RpcValidationError('open_country_brief', [{ field: 'country_code', description: 'Supply a recognized country and topic.' }]);
-    return { countryCode, topic: parsed.data.topic, ...(execution?.panelRequest ? { panelRequest: execution.panelRequest } : {}) };
+    return { ...countryViewArguments(params), ...(execution?.panelRequest ? { panelRequest: execution.panelRequest } : {}) };
   },
 }, {
   name: 'get_country_brief_section',
@@ -178,9 +197,13 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
       arguments: { type: 'object', additionalProperties: { type: ['string', 'number', 'boolean'] }, description: 'Arguments for the chosen section, as the matching oneOf branch defines them (key names differ per section and unknown keys are rejected). Omit for sections that take none.' },
     },
     required: ['section'],
-    oneOf: (Object.keys(COUNTRY_READERS) as CountryReader[]).map((section) => ({
-      properties: { section: { const: section, description: COUNTRY_SECTION_DOCS[section].summary }, arguments: describedSectionArguments(section) },
-    })),
+    oneOf: (Object.keys(COUNTRY_READERS) as CountryReader[]).map((section) => {
+      const args = describedSectionArguments(section);
+      return {
+        properties: { section: { const: section, description: COUNTRY_SECTION_DOCS[section].summary }, arguments: args },
+        ...((args.required as string[] | undefined)?.length ? { required: ['arguments'] } : {}),
+      };
+    }),
   },
   outputSchema: {
     type: 'object',
@@ -220,13 +243,9 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
     ],
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  _validateArgs: countrySectionArguments,
   _execute: async (params, base, context, execution) => {
-    const parsed = countryReaderSchema.safeParse(Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'jmespath')));
-    if (!parsed.success) throw new RpcValidationError('get_country_brief_section', [{ field: 'section', description: 'Unknown country section reader.' }]);
-    const { section } = parsed.data;
-    const reader = COUNTRY_READERS[section];
-    const args = reader.args.safeParse(parsed.data.arguments);
-    if (!args.success) throw new RpcValidationError('get_country_brief_section', [{ field: 'arguments', description: 'Invalid arguments for this country section.' }]);
+    const { parsed, section, reader, args } = countrySectionArguments(params);
     if (section === 'countrySignals') {
       const values = args.data as { country_code: string; family: string; window_index: number; cursor: string };
       if (execution?.countryPanelCode !== values.country_code) throw new RpcValidationError('get_country_brief_section', [{ field: 'panel_request', description: 'Country Signals require a verified same-country panel read.' }]);
