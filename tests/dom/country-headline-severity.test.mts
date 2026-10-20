@@ -87,3 +87,15 @@ it('carries coverage through managed boot and the actual parent bridge to real p
   expect(document.body.textContent).toContain('coverage:events: empty');
   expect(article('Copper inventories').querySelector('.cdp-news-meta')?.textContent).toContain('2h');
 });
+
+// Closing the view aborts in-flight section reads. A cancelled read is not a
+// failure: logging it put a console call on a timer after the test body, and
+// under load it landed after vitest closed the worker RPC
+// (EnvironmentTeardownError: Closing rpc while "onUserConsoleLog" was pending).
+it('closing the view cancels in-flight section reads without logging them as failures', async () => {
+  const warn = vi.spyOn(console, 'warn');
+  window.dispatchEvent(new Event('pagehide'));
+  await new Promise(resolve => setTimeout(resolve, 50));
+  const cancelled = warn.mock.calls.filter(args => args.some(arg => (arg as { name?: string } | null)?.name === 'AbortError'));
+  expect(cancelled.map(([label]) => label)).toEqual([]);
+});
