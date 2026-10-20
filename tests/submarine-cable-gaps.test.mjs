@@ -20,12 +20,17 @@ function runGapScan(mode) {
         if (String(input).endsWith('/all.json')) {
           if (mode === 'catalog-http') return Response.json({}, { status: 503 });
           if (mode === 'catalog-shape') return Response.json({ error: 'unavailable' });
-          return Response.json([{ id: 'fixture-missing-cable', name: 'Fixture cable' }]);
+          const cables = [{ id: 'fixture-missing-cable', name: 'Fixture cable' }];
+          if (mode === 'partial') cables.push({ id: 'fixture-unreadable-cable', name: 'Unreadable cable' });
+          return Response.json(cables);
         }
         if (mode === 'network') throw new Error('fixture connection failure');
         if (mode === 'http') return Response.json({ message: 'rate limited' }, { status: 429 });
         if (mode === 'json') return new Response('<html>not JSON</html>');
         if (mode === 'shape') return Response.json({ name: 'Fixture cable' });
+        if (mode === 'partial' && String(input).includes('fixture-unreadable-cable')) {
+          throw new Error('fixture connection failure');
+        }
         return Response.json({
           name: 'Fixture cable', is_planned: false, rfs_year: 2020, length: '100 km',
           landing_points: mode === 'empty' ? [] : [{ country: 'Country A' }, { country: 'Country B' }],
@@ -75,4 +80,13 @@ describe('submarine cable gap CLI', () => {
       assert.equal(result.report, 'last complete report');
     });
   }
+
+  it('rejects a partial scan even when another cable was read successfully', () => {
+    const result = runGapScan('partial');
+    assert.notEqual(result.status, 0, result.stderr);
+    assert.equal(result.report, 'last complete report');
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, /Incomplete cable gap scan \(1 failed\)/);
+    assert.match(result.stderr, /fixture-unreadable-cable/);
+  });
 });

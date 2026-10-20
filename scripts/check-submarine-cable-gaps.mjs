@@ -12,26 +12,42 @@ const minCountries = args.includes('--min-countries') ? Number(args[args.indexOf
 const UA = { 'User-Agent': 'Mozilla/5.0 (worldmonitor cable gap check)' };
 
 const curated = new Set(CABLE_REGIONS.flatMap((r) => r.ids));
-const all = await (await fetch(`${BASE}/cable/all.json`, { headers: UA })).json();
+const catalogResponse = await fetch(`${BASE}/cable/all.json`, { headers: UA });
+if (!catalogResponse.ok) throw new Error(`Cable catalog HTTP ${catalogResponse.status}`);
+const all = await catalogResponse.json();
+if (!Array.isArray(all) || all.some((c) => typeof c?.id !== 'string' || !c.id.trim())) {
+  throw new Error('Invalid cable catalog');
+}
 const candidates = all.filter((c) => !curated.has(c.id));
 
 const gaps = [];
+const failures = [];
 const queue = [...candidates];
 async function worker() {
   while (queue.length) {
     const c = queue.shift();
     try {
       const res = await fetch(`${BASE}/cable/${c.id}.json`, { headers: UA });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json();
+      if (!d || typeof d.name !== 'string' || !Array.isArray(d.landing_points)
+        || d.landing_points.some((lp) => typeof lp?.country !== 'string' || !lp.country.trim())) {
+        throw new Error('Invalid cable detail');
+      }
       if (d.is_planned) continue;
       if (d.rfs_year && d.rfs_year > new Date().getUTCFullYear()) continue;
-      const countries = [...new Set((d.landing_points ?? []).map((lp) => lp.country).filter(Boolean))];
+      const countries = [...new Set(d.landing_points.map((lp) => lp.country))];
       if (countries.length < minCountries) continue;
       gaps.push({ id: c.id, name: d.name, rfs: d.rfs_year ?? null, length: d.length ?? '', countries });
-    } catch { /* skip unreadable entries */ }
+    } catch (error) {
+      failures.push(`${c.id}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 }
 await Promise.all(Array.from({ length: 8 }, worker));
+if (failures.length > 0) {
+  throw new Error(`Incomplete cable gap scan (${failures.length} failed):\n${failures.join('\n')}`);
+}
 
 const lengthKm = (s) => Number(String(s).replace(/[^0-9.]/g, '')) || 0;
 gaps.sort((a, b) => b.countries.length - a.countries.length || lengthKm(b.length) - lengthKm(a.length));

@@ -689,11 +689,11 @@ interface PropagatedNode {
 
 /**
  * Breadth-first propagation from one source. A node is only marked visited once
- * an edge actually reaches it above the 0.05 cutoff, so a weak edge (e.g. a small
+ * an edge actually reaches it above the cutoff, so a weak edge (e.g. a small
  * `serves` share) no longer blocks a stronger edge to the same node (e.g. the
  * same cable's `lands_at` edge).
  */
-function propagate(graph: DependencyGraph, sourceId: string, disruptionLevel: number): Map<string, PropagatedNode> {
+function propagate(graph: DependencyGraph, sourceId: string, disruptionLevel: number, countryImpactCutoff: number): Map<string, PropagatedNode> {
   const reached = new Map<string, PropagatedNode>();
   const visited = new Set<string>([sourceId]);
   const queue: { nodeId: string; depth: number; path: string[] }[] = [{ nodeId: sourceId, depth: 0, path: [sourceId] }];
@@ -711,7 +711,8 @@ function propagate(graph: DependencyGraph, sourceId: string, disruptionLevel: nu
       if (visited.has(edge.to)) continue;
 
       const impactStrength = edge.strength * disruptionLevel * (1 - (edge.redundancy || 0));
-      if (!graph.nodes.has(edge.to) || impactStrength < 0.05) continue;
+      const target = graph.nodes.get(edge.to);
+      if (!target || impactStrength < (target.type === 'country' ? countryImpactCutoff : 0.05)) continue;
       visited.add(edge.to);
 
       reached.set(edge.to, {
@@ -744,7 +745,7 @@ function buildResult(
   const capacityByCountry = new Map<string, number>();
 
   for (const sid of sourceIds) {
-    for (const [nodeId, hit] of propagate(graph, sid, disruptionLevel)) {
+    for (const [nodeId, hit] of propagate(graph, sid, disruptionLevel, sourceIds.length > 1 ? 0 : 0.05)) {
       if (sourceSet.has(nodeId)) continue;
       const node = graph.nodes.get(nodeId)!;
       const prev = merged.get(nodeId);
@@ -765,6 +766,7 @@ function buildResult(
   const affectedNodes: CascadeAffectedNode[] = [];
   const countriesAffected: CascadeCountryImpact[] = [];
   for (const [nodeId, hit] of merged) {
+    if (hit.strength < 0.05) continue;
     const node = graph.nodes.get(nodeId)!;
     const impactLevel = categorizeImpact(hit.strength);
     affectedNodes.push({
@@ -814,7 +816,7 @@ export function calculateCascade(
 /**
  * Simultaneous cut of several nodes (e.g. every cable through Hormuz). Per-country
  * impacts and capacity losses add up across the cut set; other nodes keep their
- * strongest hit. Returns null when no id is known.
+ * strongest hit. Returns null when the cut is empty or any id is unknown.
  */
 export function calculateMultiCascade(
   graph: DependencyGraph,
@@ -822,8 +824,8 @@ export function calculateMultiCascade(
   disruptionLevel: number = 1.0,
   label?: string,
 ): CascadeResult | null {
-  const ids = [...new Set(sourceIds)].filter(id => graph.nodes.has(id));
-  if (ids.length === 0) return null;
+  const ids = [...new Set(sourceIds)];
+  if (ids.length === 0 || ids.some(id => !graph.nodes.has(id))) return null;
   if (ids.length === 1 && !label) return calculateCascade(graph, ids[0]!, disruptionLevel);
   const source: InfrastructureNode = {
     id: `cut:${ids.join('+')}`,

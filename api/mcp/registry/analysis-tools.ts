@@ -499,7 +499,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
           type: 'array',
           items: { type: 'string' },
           maxItems: 50,
-          description: 'Cut several nodes at once (e.g. a list of cable ids); per-country impacts add up across the cut. Ignored when source_id is given.',
+          description: 'Cut several nodes at once (e.g. a list of cable ids); all ids must be known and per-country impacts add up across the cut. Ignored when source_id is given.',
         },
         cut_cables_through: {
           type: 'string',
@@ -566,7 +566,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
             ...freshness,
             data: { catalog: null, cascade: null, stats },
             error: sourceIds.length > 0
-              ? 'none of source_ids is a known node id — call without arguments for the full catalog'
+              ? `unknown source_ids: ${sourceIds.filter(id => !graph.nodes.has(id)).join(', ')} — call without arguments for the full catalog`
               : `no cable crosses "${cutChokepoint}" or it is not a known chokepoint id`,
           };
         }
