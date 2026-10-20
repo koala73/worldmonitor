@@ -379,6 +379,7 @@ Runs before every `git push`:
 5. Markdown lint
 6. MDX lint (Mintlify compatibility)
 7. Version sync check
+8. Documentation contracts (`npm run docs:check`) when workflows, the CI/CD table, the docs checker, or the hook change
 
 **Source files**: `tests/`, `e2e/`, `playwright.config.ts`, `.husky/pre-push`
 
@@ -436,6 +437,8 @@ Runs before every `git push`:
 | `publish-python.yml` | `py-v*` tag, manual | Tests and publishes the `worldmonitor-sdk` PyPI package (`sdk/python/`) via OIDC trusted publishing (no token) with attestations |
 | `publish-ruby.yml` | `gem-v*` tag, manual | Tests and publishes the `worldmonitor` gem (`sdk/ruby/`) via RubyGems OIDC trusted publishing (no token) |
 | `publish-go.yml` | `sdk/go/v*` tag, manual | Vets/tests the Go SDK module (`sdk/go/`) at the tag and warms proxy.golang.org so the version is go-gettable and indexed on pkg.go.dev |
+| `rust-sdk.yml` | Path-filtered PR, push to main | Formats, lints, tests, packages, and builds documentation for the Rust SDK (`sdk/rust/`) |
+| `publish-rust.yml` | Manual from main, existing `rust-vX.Y.Z` tag | Defaults to a dry run. Verifies tag version and main ancestry, then optionally publishes the exact verified Rust SDK commit through crates.io OIDC. The first release requires a manual maintainer publish |
 | `publish-mcp-registry.yml` | Push to main (manifest inputs), daily cron, published release, manual | Derives the public MCP Registry manifest from the server card, validates it with the pinned publisher, and publishes it through the `mcp-registry-publish` environment; publication is idempotent and fails closed when a published version's payload changed |
 | `test-linux-app.yml` | Twice-weekly schedule (Mon/Thu 05:23 UTC), manual | Desktop Canary (Linux): installed-app build + launch, hard-fails on crashed app, unreachable sidecar, or blank render (#5902) |
 

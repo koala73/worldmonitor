@@ -563,6 +563,11 @@ if [ ! -f node_modules/.package-lock.json ]; then
   npm ci --cache "$npm_config_cache" --prefer-offline || exit 1
 fi
 
+if changed '^(\.github/workflows/[^/]+\.ya?ml|ARCHITECTURE\.md|scripts/docs-stats\.mjs|\.husky/pre-push)$'; then
+  echo "Checking workflow documentation contracts..."
+  npm run docs:check || exit 1
+fi
+
 if changed '^(src/|tests/|e2e/|middleware|index\.html|vite\.config|scripts/|types/)'; then
   if gate_cached typecheck "${TYPECHECK_INPUTS[@]}"; then
     echo "Type check skipped (these exact inputs already passed; rm $GATE_INPUT_CACHE/typecheck to force)."
