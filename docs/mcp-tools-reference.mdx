@@ -2925,7 +2925,7 @@ Call `get_cross_border_arrivals({})` for the full public snapshot. `summary: tru
 
 Defaults to UNHCR annual displacement statistics for one reporting year: global totals, per-country refugees, asylum seekers, IDPs and stateless people by origin, totals hosted by each asylum country, and the largest origin-to-asylum refugee flows. Until UNHCR publishes the current year, the annual snapshot holds the prior year; `summary.year` names it.
 
-Use `view: "movements"` for source-dated UNHCR operational reports, UK daily arrivals and CBP monthly encounters. Each row keeps its source, measure, report date, license and transformation notice. Encounter counts are enforcement events, not unique people. Sources can overlap; do not add their counts. Source status distinguishes missing, partial and stale data; absent windows do not mean zero. Retain the attribution rider when projecting results. No provider endorsement is implied.
+Use `view: "movements"` for source-dated UNHCR operational reports, UK daily arrivals, CBP monthly encounters, Frontex monthly detections and Panama monthly Darién arrivals. Each row keeps its source, measure, report date, license and transformation notice. Encounter and detection counts are events, not unique people. Sources can overlap; do not add their counts. Source status distinguishes missing, partial and stale data; absent windows do not mean zero. Retain the attribution rider when projecting results. No provider endorsement is implied.
 
 **Parameters (tool-specific):**
 
@@ -2939,7 +2939,7 @@ Use `view: "movements"` for source-dated UNHCR operational reports, UK daily arr
 - **API endpoints:** `GET /api/displacement/v1/get-displacement-summary`, `GET /api/displacement/v1/get-cross-border-movements`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** annual data is stale after **2.5 d**. Movement feeds have a 48-hour fetch budget, plus independent report-age budgets: 45 days for ODP, 3 days for UK arrivals and 75 days for CBP monthly reports. Check each row and source status.
+- **Freshness budget:** annual data is stale after **2.5 d**. Movement feeds have a 48-hour fetch budget, plus independent report-age budgets: 45 days for ODP, 3 days for UK arrivals and 75 days for CBP, Frontex and Panama monthly reports. Sources proven never activated do not stale the aggregate; unreadable activation markers fail closed. Check each row and source status.
 
 <CodeGroup>
 

@@ -347,6 +347,7 @@ paths:
                   example: "example"
                   schema:
                     type: string
+                    maxLength: 120
                 - name: jmespath
                   in: query
                   description: |-

@@ -191,3 +191,35 @@ test('movement route filters preserve the exact source ID case while trimming in
   assert.equal(filter(' Channel-ID ').crossBorderMovements.movements.length, 1);
   assert.equal(filter('channel-id').crossBorderMovements.movements.length, 0);
 });
+
+test('movement freshness excludes proven inactive sources but retains activated and unreadable failures', async () => {
+  const annual = CACHE_TOOLS.find(t => t.name === 'get_displacement_data');
+  const stamp = Date.now() - 60000;
+  const fixtures = {
+    [KEY]: { _seed: { fetchedAt: stamp }, data: { situations: [snapshot.situations[0]] } },
+    [META]: { fetchedAt: stamp },
+    'displacement:border-uk:v1': { _seed: { fetchedAt: stamp }, data: { routes: [{ id: 'english-channel', countryCode: 'GB', kind: 'arrival', measure: 'daily', asOf: new Date(stamp).toISOString().slice(0, 10), latestCount: 0 }] } },
+    'seed-meta:displacement:border-uk': { fetchedAt: stamp },
+  };
+  installRedis(fixtures);
+  const fresh = await executeTool(annual, { view: 'movements' });
+  assert.equal(fresh.stale, false);
+  assert.equal(fresh.cached_at, new Date(stamp).toISOString());
+  assert.equal(fresh.data.crossBorderMovements.sources.find(s => s.id === 'panama').status, 'unavailable');
+  installRedis({ ...fixtures, 'seed-activated:displacement:border-panama': 1 });
+  const missingActive = await executeTool(annual, { view: 'movements' });
+  assert.equal(missingActive.stale, true);
+  assert.equal(missingActive.cached_at, null);
+  assert.ok(missingActive.data.crossBorderMovements.movements.some(m => m.route === 'english-channel'));
+  installRedis({ ...fixtures, 'seed-meta:displacement:border-panama': { fetchedAt: stamp, status: 'error' } });
+  assert.equal((await executeTool(annual, { view: 'movements' })).stale, true);
+  const redis = installRedis(fixtures);
+  globalThis.fetch = async (input, init) => {
+    const commands = JSON.parse(init?.body ?? '[]');
+    if (Array.isArray(commands[0]) && commands.some(c => c[0] === 'EXISTS')) return new Response('unavailable', { status: 500 });
+    return redis.fetchImpl(input, init);
+  };
+  const unknown = await executeTool(annual, { view: 'movements' });
+  assert.equal(unknown.stale, true);
+  assert.equal(unknown.activationUnknown, true);
+});

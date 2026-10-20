@@ -198,9 +198,15 @@ async function executeCacheTool(
   // still live, or MCP briefly disagrees with the health surfaces at the exact
   // instant the deadline passes. `now` stays injectable as a test seam.
   const evaluatedAt = now ?? Date.now();
+  const freshnessIndices = freshnessChecks.flatMap((check, index) =>
+    movementMode && check.contentFreshnessActivationKey
+      && activationStates.get(check.contentFreshnessActivationKey) === false
+      && metas[index] == null && results[index] == null && dataReads[index]!.ok
+      ? [] : [index]);
+  freshnessUnknown = freshnessIndices.some(index => !metaOutcomes[index]!.ok);
   let { cached_at, stale, contentFreshnessPendingUntil } = evaluateFreshness(
-    freshnessChecks,
-    metas,
+    freshnessIndices.map(index => freshnessChecks[index]!),
+    freshnessIndices.map(index => metas[index]),
     evaluatedAt,
     activationStates,
   );

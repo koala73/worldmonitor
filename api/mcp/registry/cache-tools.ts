@@ -2660,7 +2660,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     // causing the second result to overwrite the first.
     _cacheKeys: [`displacement:summary:v1:${new Date().getUTCFullYear()}`, ...CROSS_BORDER_SOURCES.map(source => source.key)],
     _cacheLabels: Object.fromEntries(CROSS_BORDER_SOURCES.map(source => [source.key, source.id])),
-    _freshnessChecks: [{ key: 'seed-meta:displacement:summary', maxStaleMin: 3600 }, ...CROSS_BORDER_SOURCES.map(source => ({ key: `seed-meta:${source.key.replace(/:v1$/, '')}`, maxStaleMin: 2880, honorContentAge: true }))],
+    _freshnessChecks: [{ key: 'seed-meta:displacement:summary', maxStaleMin: 3600 }, ...CROSS_BORDER_SOURCES.map(source => ({ key: `seed-meta:${source.key.replace(/:v1$/, '')}`, maxStaleMin: 2880, honorContentAge: true, ...(source.id === 'odp' ? {} : { contentFreshnessActivationKey: `seed-activated:displacement:border-${source.id}` }) }))],
     // Audit miss: handler uses cachedFetchJson with a year-suffixed key the
     // audit's regex couldn't statically resolve. The op IS covered by this
     // tool — same underlying displacement:summary:v1:<year> cache.
