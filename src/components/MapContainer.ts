@@ -1264,12 +1264,13 @@ export class MapContainer {
     }
   }
 
-  // Like the DTM layer, cross-border points are drawn by deck.gl only.
   public setCrossBorderArrivals(data: CrossBorderData): void {
     this.cachedCrossBorderArrivals = data;
-    if (this.useGlobe) return;
+    if (this.useGlobe) { this.globeMap?.setCrossBorderArrivals(data); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.setCrossBorderArrivals(data);
+    } else {
+      this.svgMap?.setCrossBorderArrivals(data);
     }
   }
 

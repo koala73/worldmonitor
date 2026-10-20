@@ -64,7 +64,8 @@ import type { MapContainerState, MapView, TimeRange } from './MapContainer';
 import type { CountryClickPayload } from './DeckGLMap';
 import type { WeatherAlert } from '@/services/weather';
 import { type IranEvent, getIranEventHexColor } from '@/services/conflict';
-import type { DisplacementFlow } from '@/services/displacement';
+import type { CrossBorderData, CrossBorderPoint, DisplacementFlow } from '@/services/displacement';
+import { createCrossBorderMarker, crossBorderMarkerOffsets, renderCrossBorderDetails } from './cross-border-marker';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { SatellitePosition } from '@/services/satellites';
@@ -230,6 +231,11 @@ interface DisplacementMarker extends BaseMarker {
   origin: string;
   asylum: string;
   refugees: number;
+}
+interface CrossBorderMarker extends BaseMarker {
+  _kind: 'crossBorder';
+  point: CrossBorderPoint;
+  offset: [number, number];
 }
 interface ClimateMarker extends BaseMarker {
   _kind: 'climate';
@@ -472,7 +478,7 @@ type GlobeMarker =
   | ConflictMarker | HotspotMarker | FlightMarker | VesselMarker | ClusterMarker
   | WeatherMarker | NaturalMarker | IranMarker | OutageMarker | TrafficAnomalyMarker | DdosHitMarker
   | CyberMarker | FireMarker | ProtestMarker
-  | UcdpMarker | DisplacementMarker | ClimateMarker | GpsJamMarker | TechMarker
+  | UcdpMarker | DisplacementMarker | CrossBorderMarker | ClimateMarker | GpsJamMarker | TechMarker
   | ConflictZoneMarker | MilBaseMarker | NuclearSiteMarker | IrradiatorSiteMarker | SpaceportSiteMarker
   | EarthquakeMarker | RadiationMarker | EconomicMarker | DatacenterMarker | WaterwayMarker | MineralMarker
   | FlightDelayMarker | NotamRingMarker | CableAdvisoryMarker | RepairShipMarker | AisDisruptionMarker
@@ -552,6 +558,7 @@ export class GlobeMap {
   private protestMarkers: ProtestMarker[] = [];
   private ucdpMarkers: UcdpMarker[] = [];
   private displacementMarkers: DisplacementMarker[] = [];
+  private crossBorderMarkers: CrossBorderMarker[] = [];
   private climateMarkers: ClimateMarker[] = [];
   private gpsJamMarkers: GpsJamMarker[] = [];
   private techMarkers: TechMarker[] = [];
@@ -1213,6 +1220,9 @@ export class GlobeMap {
           <div style="position:absolute;inset:0;border-radius:50%;background:rgba(255,100,0,0.85);border:1.5px solid rgba(255,160,80,0.9);box-shadow:0 0 5px 2px rgba(255,100,0,0.5);"></div>
         </div>`), "legacy direct innerHTML migration"));
       el.title = `${d.sideA} vs ${d.sideB}`;
+    } else if (d._kind === 'crossBorder') {
+      el.style.translate = `${d.offset[0]}px ${d.offset[1]}px`;
+      el.appendChild(createCrossBorderMarker(d.point));
     } else if (d._kind === 'displacement') {
       setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:#88bbff;text-shadow:0 0 4px #88bbff88;">👥</div>`), "legacy direct innerHTML migration"));
       el.title = `${d.origin} → ${d.asylum}`;
@@ -1363,6 +1373,14 @@ export class GlobeMap {
   }
 
   private handleMarkerClick(d: GlobeMarker, anchor: HTMLElement): void {
+    if (d._kind === 'crossBorder' && this.popup) {
+      const rect = anchor.getBoundingClientRect();
+      const containerRect = this.container.getBoundingClientRect();
+      this.hideTooltip();
+      this.popup.show({ type: 'crossBorder', data: d.point,
+        x: rect.left - containerRect.left + rect.width / 2, y: rect.top - containerRect.top });
+      return;
+    }
     if (d._kind === 'hotspot' && this.onHotspotClickCb) {
       this.onHotspotClickCb({
         id: d.id,
@@ -1588,6 +1606,8 @@ export class GlobeMap {
       html = `<span style="color:#88bbff;font-weight:bold;">👥 Displacement</span>` +
              `<br><span style="opacity:.7;">${esc(d.origin)} → ${esc(d.asylum)}</span>` +
              `<br><span style="opacity:.5;">Refugees: ${d.refugees.toLocaleString()}</span>`;
+    } else if (d._kind === 'crossBorder') {
+      html = renderCrossBorderDetails(d.point);
     } else if (d._kind === 'climate') {
       const tc = d.type === 'warm' ? '#ff4400' : d.type === 'cold' ? '#44aaff' : '#88ff88';
       html = `<span style="color:${tc};font-weight:bold;">🌡 ${esc(d.type.toUpperCase())}</span>` +
@@ -2262,7 +2282,10 @@ export class GlobeMap {
     if (this.layers.fires) add('fires', this.fireMarkers, { rank: m => (m._kind === 'fire' ? m.brightness : 0) });
     if (this.layers.protests) add('protests', this.protestMarkers);
     if (this.layers.ucdpEvents) add('ucdpEvents', this.ucdpMarkers, { rank: m => (m._kind === 'ucdp' ? m.deaths : 0) });
-    if (this.layers.displacement) add('displacement', this.displacementMarkers);
+    if (this.layers.displacement) {
+      add('displacement', this.displacementMarkers);
+      add('displacement', this.crossBorderMarkers);
+    }
     if (this.layers.climate) add('climate', this.climateMarkers);
     if (this.layers.gpsJamming) add('gpsJamming', this.gpsJamMarkers);
     if (this.layers.satellites) {
@@ -3686,6 +3709,14 @@ export class GlobeMap {
         asylum: f.asylumName ?? f.asylumCode,
         refugees: f.refugees ?? 0,
       }));
+    this.flushMarkers();
+  }
+  public setCrossBorderArrivals(data: CrossBorderData): void {
+    const points = [...data.points, ...(data.deaths ?? [])];
+    const offsets = crossBorderMarkerOffsets(points);
+    this.crossBorderMarkers = points.map(point => ({
+      _kind: 'crossBorder', _lat: point.lat, _lng: point.lon, point, offset: offsets.get(point)!,
+    }));
     this.flushMarkers();
   }
   public setClimateAnomalies(anomalies: ClimateAnomaly[]): void {
