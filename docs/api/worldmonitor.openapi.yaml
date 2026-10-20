@@ -6722,7 +6722,7 @@ paths:
             parameters:
                 - name: country_code
                   in: query
-                  description: ISO alpha-2 filter.
+                  description: Two letters; no ISO assignment check.
                   required: false
                   example: "US"
                   schema:
@@ -43057,7 +43057,7 @@ components:
                 countryCode:
                     type: string
                     pattern: ^[A-Za-z]{2}$
-                    description: ISO alpha-2 filter.
+                    description: Two letters; no ISO assignment check.
                 route:
                     type: string
                     maxLength: 120
@@ -43069,13 +43069,14 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_displacement_v1_CrossBorderMovement'
+                    maxItems: 5000
                 sources:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_displacement_v1_CrossBorderSourceStatus'
+                    maxItems: 5
                 dataAvailable:
                     type: boolean
-                    description: False when all sources are unavailable.
         worldmonitor_displacement_v1_CrossBorderMovement:
             type: object
             properties:
@@ -43087,7 +43088,7 @@ components:
                     type: string
                 kind:
                     type: string
-                    description: arrival, outflow, return, encounter, or death. Encounters are events, not unique people.
+                    description: arrival/outflow/return/encounter/death; encounters are not unique people.
                 measure:
                     type: string
                     description: stock, monthly, daily, or incident.

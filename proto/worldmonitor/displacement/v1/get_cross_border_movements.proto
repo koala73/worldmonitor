@@ -11,7 +11,7 @@ message CrossBorderMovement {
   string id = 1;
   string route = 2;
   string name = 3;
-  // arrival, outflow, return, encounter, or death. Encounters are events, not unique people.
+  // arrival/outflow/return/encounter/death; encounters are not unique people.
   string kind = 4;
   // stock, monthly, daily, or incident.
   string measure = 5;
@@ -46,7 +46,7 @@ message CrossBorderSourceStatus {
 }
 
 message GetCrossBorderMovementsRequest {
-  // ISO alpha-2 filter.
+  // Two letters; no ISO assignment check.
   string country_code = 1 [
     (sebuf.http.query) = {name: "country_code"},
     (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
@@ -57,8 +57,7 @@ message GetCrossBorderMovementsRequest {
 }
 
 message GetCrossBorderMovementsResponse {
-  repeated CrossBorderMovement movements = 1;
-  repeated CrossBorderSourceStatus sources = 2;
-  // False when all sources are unavailable.
+  repeated CrossBorderMovement movements = 1 [(buf.validate.field).repeated.max_items = 5000];
+  repeated CrossBorderSourceStatus sources = 2 [(buf.validate.field).repeated.max_items = 5];
   bool data_available = 3;
 }

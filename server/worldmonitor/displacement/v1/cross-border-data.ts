@@ -9,6 +9,8 @@ export const CROSS_BORDER_SOURCES = [
   { id: 'panama', key: 'displacement:border-panama:v1', name: 'Panama Servicio Nacional de Migración', url: 'https://www.migracion.gob.pa/estadisticas/', license: 'Used with permission', licenseUrl: 'https://www.migracion.gob.pa/estadisticas/', maxContentAgeMin: 75 * 1440 },
 ] as const;
 
+export const CROSS_BORDER_SOURCE_MOVEMENT_LIMIT = 1000;
+
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const list = (value: unknown): Record<string, unknown>[] => Array.isArray(value) ? value.map(object) : [];
 const text = (value: unknown): string => typeof value === 'string' ? value : '';
@@ -40,6 +42,7 @@ export function projectCrossBorderSnapshots(snapshots: Record<string, unknown>, 
       const stock = flow?.measure === 'stock';
       const kind = text(situation ? flow?.kind : raw.kind);
       if (!nonnegative(situation ? raw.individuals : raw.latestCount) || !contentAt || contentAt > now || !['arrival', 'outflow', 'return', 'encounter', 'death'].includes(kind)) { rejectedRows++; return; }
+      if (movements.length - start >= CROSS_BORDER_SOURCE_MOVEMENT_LIMIT) { rejectedRows++; return; }
       const location = situation ? object(raw.location) : raw;
       const latitude = finite(location.latitude);
       const longitude = finite(location.longitude);

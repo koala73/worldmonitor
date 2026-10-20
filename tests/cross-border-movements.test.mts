@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { projectCrossBorderSnapshots } from '../server/worldmonitor/displacement/v1/cross-border-data.ts';
+import { readFileSync } from 'node:fs';
+import { projectCrossBorderSnapshots, CROSS_BORDER_SOURCES, CROSS_BORDER_SOURCE_MOVEMENT_LIMIT } from '../server/worldmonitor/displacement/v1/cross-border-data.ts';
 const NOW = Date.parse('2026-10-19T00:00:00Z');
 const envelope = (data: unknown, fetchedAt = NOW - 60_000) => ({ _seed: { fetchedAt }, data });
 const uk = { routes: [{ id: 'english-channel', name: 'English Channel', kind: 'arrival', measure: 'daily', countryCode: 'GB', asOf: '2026-10-18', period: 'day', latestCount: 0, last7Days: 0, last30Days: 3000, surge: false, latitude: 51, longitude: 1 }] };
@@ -86,4 +87,28 @@ test('Frontex report expiry preserves the figure without hiding a healthy Panama
   assert.equal(result.sources.find(s => s.id === 'panama')?.status, 'ok');
   assert.equal(result.movements[1]?.count, 0);
   assert.equal(result.movements[1]?.stale, false);
+});
+
+
+test('movement limits are per source and expose truncation without hiding another source', () => {
+  const row = uk.routes[0]!;
+  const routes = Array.from({ length: CROSS_BORDER_SOURCE_MOVEMENT_LIMIT + 1 }, (_, i) => ({ ...row, id: `route-${i}` }));
+  const snapshots = Object.fromEntries(CROSS_BORDER_SOURCES.filter(s => s.id !== 'odp').map(s => [s.id, envelope({ routes })]));
+  snapshots.odp = envelope({ situations: [{ id: 'many', flows: [{ kind: 'outflow', measure: 'stock', countries: routes.map((_, i) => ({ iso2: 'TD', date: '2026-10-18', individuals: i })) }] }] });
+  let result = projectCrossBorderSnapshots(snapshots, NOW);
+  assert.equal(result.movements.length, 5000);
+  assert.equal(result.sources.length, 5);
+  const spec = JSON.parse(readFileSync(new URL('../docs/api/DisplacementService.openapi.json', import.meta.url), 'utf8'));
+  const properties = spec.components.schemas.GetCrossBorderMovementsResponse.properties;
+  assert.equal(properties.movements.maxItems, result.movements.length);
+  assert.equal(properties.sources.maxItems, result.sources.length);
+  assert.ok(result.sources.every(s => s.status === 'partial'));
+  result = projectCrossBorderSnapshots({ uk: snapshots.uk, panama: envelope({ routes: [{ ...row, id: 'darien-gap', countryCode: 'PA', asOf: '2026-09-30', latestCount: 71 }] }) }, NOW);
+  assert.equal(result.movements.length, 1001);
+  assert.equal(result.movements.at(-1)?.count, 71);
+  assert.equal(result.sources.find(s => s.id === 'uk')?.status, 'partial');
+  assert.equal(result.sources.find(s => s.id === 'panama')?.status, 'ok');
+  assert.equal(result.sources.find(s => s.id === 'uk')?.fetchedAt, NOW - 60000);
+  const exact = projectCrossBorderSnapshots({ uk: envelope({ routes: routes.slice(0, 1000) }) }, NOW);
+  assert.equal(exact.sources.find(s => s.id === 'uk')?.status, 'ok');
 });

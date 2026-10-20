@@ -97,3 +97,16 @@ test('map adapter separates deaths, drops stale markers and avoids summing overl
   assert.deepEqual(data.deaths?.map(p => p.individuals), [5]);
   assert.equal(data.deaths?.[0]?.sourceUrl, movement.sourceUrl);
 });
+
+
+test('country filter accepts letter shape without claiming ISO assignment validation', async () => {
+  const now = Date.now();
+  const asOf = new Date(now - 86400000).toISOString().slice(0, 10);
+  const redis = installRedis({ 'displacement:border-uk:v1': { _seed: { fetchedAt: now }, data: { routes: [{ id: 'english-channel', kind: 'arrival', measure: 'daily', countryCode: 'GB', latestCount: 0, asOf }] } } });
+  globalThis.fetch = redis.fetchImpl;
+  assert.equal((await route.handler(new Request(`${url}?country_code=gB`))).status, 200);
+  const unknown = await route.handler(new Request(`${url}?country_code=ZZ`));
+  assert.equal(unknown.status, 200);
+  assert.deepEqual((await unknown.json()).movements, []);
+  assert.equal((await route.handler(new Request(`${url}?country_code=123`))).status, 400);
+});
