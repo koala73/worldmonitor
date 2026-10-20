@@ -3819,5 +3819,27 @@
       "description": "Iránnal, Izraellel, az Öböllel és a kurd régiókkal kapcsolatos források engedélyezése"
     },
     "unavailable": "A(z) {{preset}} csomag a jelenlegi panelekkel nem érhető el"
+  },
+  "countryHistory": {
+    "title": "Az ország napi előzményei",
+    "loading": "Napi előzmények betöltése…",
+    "window": "Időszak",
+    "days": "{{days}} nap",
+    "observed": "{{count}} pillanatkép {{days}} nap alatt",
+    "legend": "CII (borostyán): a magasabb érték nagyobb instabilitást jelent. Ellenálló képesség (zöld): a magasabb érték nagyobb kapacitást jelent. A pontok a kiválasztott hírcímeket tartalmazó napokat jelölik.",
+    "chart": "Napi CII- és ellenállóképesség-értékek. A hiányok és a képletváltozások megszakítják a vonalakat.",
+    "selectDate": "{{date}}, {{count}} kiválasztott hírcím",
+    "empty": "Ebben az időszakban nincsenek napi pillanatképek. Az előzmények az aktiválás után gyűlnek.",
+    "unavailable": "Az előzmények átmenetileg nem érhetők el. Próbálja újra.",
+    "retry": "Újra",
+    "stale": "Az utolsó sikeres napi rögzítés több mint 36 órája történt.",
+    "break": "Képletváltozás vagy megfigyelési hiány. Csak azonos képlettel számolt értékeket hasonlítson össze.",
+    "partial": "A hírek lefedettsége részleges volt a rögzítéskor.",
+    "resilience": "Ellenálló képesség",
+    "ciiMissing": "A CII nem érhető el",
+    "resilienceMissing": "Az ellenálló képesség nem érhető el",
+    "noEvents": "Erre a napra nem rögzítettek kiválasztott hírcímeket. Ez nem bizonyítja az események hiányát.",
+    "unlock90": "90 nap feloldása Pro csomaggal",
+    "unlock365": "365 nap feloldása API-csomaggal"
   }
 }

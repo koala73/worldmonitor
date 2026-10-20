@@ -822,6 +822,7 @@ export default defineSchema({
     planKey: v.string(),
     features: v.object({
       tier: v.number(),
+      historyDays: v.optional(v.number()),
       maxDashboards: v.number(),
       apiAccess: v.boolean(),
       apiRateLimit: v.number(),

@@ -30,7 +30,8 @@ export function getFeaturesForPlan(planKey: string): PlanFeatures {
 /** Merge stored per-user overrides with newly added catalog defaults. */
 export function mergeEntitlementFeatures(
   planKey: string,
-  storedFeatures: Omit<PlanFeatures, "planLimits"> & {
+  storedFeatures: Omit<PlanFeatures, "planLimits" | "historyDays"> & {
+    historyDays?: number;
     planLimits?: Partial<NonNullable<PlanFeatures["planLimits"]>>;
   },
 ): PlanFeatures {

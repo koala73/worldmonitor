@@ -1,5 +1,6 @@
 import { CROSS_BORDER_SOURCES, projectCrossBorderSnapshots } from '../../../server/worldmonitor/displacement/v1/cross-border-data';
 import { screenSanctions } from '../../../server/_shared/sanctions-screen';
+import { COUNTRY_HISTORY_TOOL } from './country-history-tool';
 import { projectSupplyChainData } from './_shipping-freight';
 import { CAPITAL_FLOW_PAIR_LEG_SCHEMA, CAPITAL_FLOWS_MAX_COUNTRIES, CAPITAL_FLOWS_PAIRS_LABEL, CAPITAL_FLOWS_SORTS, projectCapitalFlows, type CapitalFlowsSort } from './_capital-flows';
 import ISO2_TO_ISO3 from '../../../shared/iso2-to-iso3.js';
@@ -795,6 +796,7 @@ function filterForecastScorecard(data: Record<string, unknown>, params: Record<s
 }
 
 export const CACHE_TOOLS: ToolDef[] = [
+  COUNTRY_HISTORY_TOOL,
   {
     name: 'get_toronto_reported_occurrences',
     title: 'Toronto reported crime occurrences',

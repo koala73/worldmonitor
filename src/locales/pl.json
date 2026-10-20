@@ -3859,5 +3859,27 @@
       "description": "Włącz źródła dotyczące Iranu, Izraela, Zatoki i regionów kurdyjskich"
     },
     "unavailable": "Preset {{preset}} nie jest dostępny przy obecnych panelach"
+  },
+  "countryHistory": {
+    "title": "Dzienna historia kraju",
+    "loading": "Ładowanie dziennej historii…",
+    "window": "Okres",
+    "days": "{{days}} dni",
+    "observed": "{{count}} zapisów w ciągu {{days}} dni",
+    "legend": "CII (bursztynowy): wyższa wartość oznacza większą niestabilność. Odporność (zielony): wyższa wartość oznacza większy potencjał. Punkty oznaczają dni z wybranymi nagłówkami.",
+    "chart": "Dzienne wyniki CII i odporności. Luki i zmiany formuły przerywają linie.",
+    "selectDate": "{{date}}, {{count}} wybranych nagłówków",
+    "empty": "Brak dziennych zapisów w tym okresie. Historia gromadzi się po aktywacji.",
+    "unavailable": "Historia jest chwilowo niedostępna. Spróbuj ponownie.",
+    "retry": "Spróbuj ponownie",
+    "stale": "Ostatni udany dzienny zapis ma ponad 36 godzin.",
+    "break": "Zmiana formuły lub luka w obserwacjach. Porównuj tylko wyniki obliczone tą samą formułą.",
+    "partial": "W chwili zapisu zakres wiadomości był niepełny.",
+    "resilience": "Odporność",
+    "ciiMissing": "CII niedostępny",
+    "resilienceMissing": "Odporność niedostępna",
+    "noEvents": "Dla tej daty nie zapisano wybranych nagłówków. Nie dowodzi to braku zdarzeń.",
+    "unlock90": "Odblokuj 90 dni z Pro",
+    "unlock365": "Odblokuj 365 dni z planem API"
   }
 }

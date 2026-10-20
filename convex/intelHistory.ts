@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { isInvalidPaginationCursorError } from "./paginationCursor";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import {
@@ -711,12 +712,20 @@ export const timeline = internalQuery({
     const scoped = needsPostFilter
       ? query.filter((q) => q.eq(q.field("country"), args.country))
       : query;
-    const result = await scoped.paginate({
-      cursor: args.cursor || null,
-      numItems: limit,
-      maximumRowsRead: scanLimit,
-      maximumBytesRead: 2_000_000,
-    });
+    let result;
+    try {
+      result = await scoped.paginate({
+        cursor: args.cursor || null,
+        numItems: limit,
+        maximumRowsRead: scanLimit,
+        maximumBytesRead: 2_000_000,
+      });
+    } catch (err) {
+      if (isInvalidPaginationCursorError(err)) {
+        return { records: [], partial: false, nextCursor: "", error: "INVALID_CURSOR" as const };
+      }
+      throw err;
+    }
 
     return {
       records: result.page.map(projectRecord),

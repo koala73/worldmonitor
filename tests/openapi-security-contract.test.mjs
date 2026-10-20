@@ -21,6 +21,20 @@ import {
 // assertions fail and flag the drop.
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const COUNTRY_HISTORY_PATH = '/api/intelligence/v1/get-country-history';
+
+it('country history publishes anonymous, API-key and bearer alternatives with 401 only for supplied credentials', () => {
+  const specs = [
+    JSON.parse(readFileSync(resolve(root, 'docs/api/IntelligenceService.openapi.json'), 'utf8')),
+    loadYaml(readFileSync(resolve(root, 'docs/api/IntelligenceService.openapi.yaml'), 'utf8')),
+    loadYaml(readFileSync(resolve(root, 'docs/api/worldmonitor.openapi.yaml'), 'utf8')),
+  ];
+  for (const spec of specs) {
+    const op = spec.paths[COUNTRY_HISTORY_PATH].get;
+    assert.deepEqual(op.security, [{}, { WorldMonitorKey: [] }, { ApiKeyHeader: [] }, { BearerAuth: [] }]);
+    assert.match(op.responses['401'].description, /Invalid supplied credentials/);
+  }
+});
 const apiDir = resolve(root, 'docs/api');
 const protoWorldmonitorDir = resolve(root, 'proto/worldmonitor');
 
@@ -30,7 +44,7 @@ const protoWorldmonitorDir = resolve(root, 'proto/worldmonitor');
 // values catches any regenerate that drops an injection.
 const PUBLIC_PATHS = readPublicNoAuthPaths();
 const ENDPOINT_ENTITLEMENTS = readEndpointEntitlements();
-const BEARER_AUTH_PATHS = new Set([...ENDPOINT_ENTITLEMENTS.keys(), ...readPremiumRpcPaths()]);
+const BEARER_AUTH_PATHS = new Set([...ENDPOINT_ENTITLEMENTS.keys(), ...readPremiumRpcPaths(), COUNTRY_HISTORY_PATH]);
 // Legacy-Pro-gated paths NOT covered by the newer ENDPOINT_ENTITLEMENTS tier
 // map. These carry a "Pro subscription required" 403 (gateway
 // needsLegacyProBearerGate). Entitlement paths are subtracted so the stricter
@@ -424,7 +438,9 @@ function assertAuthContract(spec, label) {
         '#/components/schemas/UnauthorizedError',
         `${opLabel}: 401 must reference UnauthorizedError`,
       );
-      if (acceptsBearer) {
+      if (path === COUNTRY_HISTORY_PATH) {
+        assert.deepEqual(op.security, [{}, { WorldMonitorKey: [] }, { ApiKeyHeader: [] }, { BearerAuth: [] }]);
+      } else if (acceptsBearer) {
         assertSecurityNames(op.security, BEARER_SECURITY_NAMES, opLabel);
       } else {
         assert.equal(op.security, undefined, `${opLabel}: should inherit API-key root security`);
@@ -577,7 +593,9 @@ describe('OpenAPI security contract', () => {
               `${file}: ${label} 401 must reference UnauthorizedError`,
             );
 
-            if (acceptsBearer) {
+            if (path === COUNTRY_HISTORY_PATH) {
+              assert.deepEqual(op.security, [{}, { WorldMonitorKey: [] }, { ApiKeyHeader: [] }, { BearerAuth: [] }]);
+            } else if (acceptsBearer) {
               assertSecurityNames(op.security, BEARER_SECURITY_NAMES, `${file}: ${label}`);
             } else {
               assert.equal(op.security, undefined, `${file}: ${label} should inherit API-key root security`);

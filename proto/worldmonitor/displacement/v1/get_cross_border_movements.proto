@@ -6,7 +6,7 @@ import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/geo.proto";
 
-// Source-dated report. Do not sum overlapping measures.
+// Dated report. Do not sum measures.
 message CrossBorderMovement {
   string id = 1;
   string route = 2;

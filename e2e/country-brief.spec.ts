@@ -7,6 +7,91 @@ import type { CountrySignalOutcome } from '../shared/country-signal-observations
 
 const recording = process.env.CI ? 'on-first-retry' : 'retain-on-failure';
 
+for (const [language, width, label] of [['fr', 1280, 'Débloquez 90 jours avec Pro'], ['ar', 390, 'افتح سجل 90 يومًا مع Pro']] as const) {
+  test(`daily country history localizes ${language} at ${width}`, async ({ page, countryBrief }, testInfo) => {
+    void countryBrief;
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/api/intelligence/v1/get-country-history?*', route => route.fulfill({ json: {
+      country: 'UA', requestedDays: 7, allowedDays: 7, effectiveDays: 7, returnedDays: 1,
+      upstreamUnavailable: false, stale: false, fetchedAt: Date.now(),
+      points: [{ date: '2026-10-19', capturedAt: Date.UTC(2026, 9, 19, 0, 30),
+        cii: { score: 62, version: 'v11', observedAt: Date.UTC(2026, 9, 19) },
+        resilience: { score: 47, version: 'v29:pc', observedAt: Date.UTC(2026, 9, 19) },
+        topEvents: [], keySignals: [], ciiVersionBreak: false, resilienceVersionBreak: false }],
+    } }));
+    await page.goto(`/dashboard?country=UA&expanded=1&lang=${language}`);
+    const panel = page.locator('#country-deep-dive-panel');
+    await expect(panel).toHaveAttribute('aria-hidden', 'false');
+    await panel.locator('[data-topic="security"]').click();
+    const history = page.locator('#cdp-section-history');
+    await history.scrollIntoViewIfNeeded();
+    await expect(history.locator('.panel-locked-cta')).toHaveText(label);
+    expect(await history.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await expect(page.locator('html')).toHaveCSS('direction', language === 'ar' ? 'rtl' : 'ltr');
+    const path = testInfo.outputPath(`history-${language}-${width}.png`);
+    await history.screenshot({ path });
+    await testInfo.attach(language, { path, contentType: 'image/png' });
+  });
+}
+
+for (const width of [1280, 390]) {
+  test(`daily country history ${width} preserves gaps, event click-through and failure recovery`, async ({ page, countryBrief }, testInfo) => {
+    void countryBrief;
+    await page.setViewportSize({ width, height: 900 });
+    let unavailable = true;
+    let reads = 0;
+    await page.route('**/api/intelligence/v1/get-country-history?*', async route => {
+      const params = new URL(route.request().url()).searchParams;
+      expect(params.get('country')).toBe('UA');
+      expect(params.get('days')).toBe('7');
+      reads++;
+      await route.fulfill({ json: {
+        country: 'UA', requestedDays: 7, allowedDays: 7, effectiveDays: 7, returnedDays: 3,
+        upstreamUnavailable: unavailable, stale: false, fetchedAt: Date.now(),
+        points: [17, 18, 19].map((day, index) => ({
+          date: `2026-10-${day}`, capturedAt: Date.UTC(2026, 9, day, 0, 30),
+          cii: { score: 50 + index * 6, version: index === 2 ? 'v11' : 'v10', observedAt: Date.UTC(2026, 9, day) },
+          resilience: { score: 45 + index, version: 'v29:pc', observedAt: Date.UTC(2026, 9, day) },
+          topEvents: [{ title: `Controlled Ukraine reporting for October ${day}`, link: `https://example.com/ukraine-${day}`, source: 'Controlled publisher', category: 'politics' }],
+          keySignals: [], ciiVersionBreak: index === 2, resilienceVersionBreak: false,
+        })),
+      } });
+    });
+    await page.goto('/dashboard?country=UA&expanded=1');
+    await expectCountry(page);
+    const openHistory = async () => {
+      await page.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'Security', exact: true }).click();
+      await page.locator('#cdp-section-history').scrollIntoViewIfNeeded();
+    };
+    const captureHistory = async (state: string) => {
+      const path = testInfo.outputPath(`history-${state}-${width}.png`);
+      await page.locator('#cdp-section-history').screenshot({ path });
+      await testInfo.attach(state, { path, contentType: 'image/png' });
+    };
+    await openHistory();
+    const history = page.locator('#cdp-section-history');
+    await expect(history).toContainText('History is temporarily unavailable');
+    await captureHistory('unavailable');
+    unavailable = false;
+    await history.getByRole('button', { name: 'Retry', exact: true }).click();
+    await expect(history.locator('a[href="https://example.com/ukraine-19"]')).toBeVisible();
+    await expect(history).toContainText('Formula or observation gap');
+    await expect(history.locator('.panel-locked-cta')).toHaveText('Unlock 90 days with Pro');
+    await history.locator('svg circle.country-history-resilience').first().click();
+    await expect(history.locator('.country-history-detail')).toContainText('2026-10-17');
+    await expect(history.locator('a[href="https://example.com/ukraine-17"]')).toBeVisible();
+    await expect(history.locator('a[href="https://example.com/ukraine-17"]')).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(await history.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await history.locator('[data-history-date="2026-10-19"]').click();
+    await captureHistory('recovered');
+    expect(reads).toBe(2);
+    await page.reload();
+    await expectCountry(page);
+    await openHistory();
+    await expect(history.locator('.country-history-detail')).toContainText('2026-10-19');
+  });
+}
+
 for (const width of [1280, 390]) for (const addedIds of [0, 5]) {
   test(`mixed-source sanctions attribution ${addedIds} added IDs ${width}`, async ({ page, countryBrief }, testInfo) => {
     void countryBrief;
@@ -343,7 +428,7 @@ test('limited country coverage stays navigable and China keeps its own section',
   await expect(panel.locator('#cdp-section-factors')).toContainText('Five-factor scorecard unavailable.');
   await expect(panel.locator('.cdp-scorecard-score')).toHaveCount(0);
   await panel.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'All sections', exact: true }).click();
-  await expect(panel.locator('[data-brief-section]:visible')).toHaveCount(23);
+  await expect(panel.locator('[data-brief-section]:visible')).toHaveCount(24);
   await expect(panel.locator('#cdp-section-facts')).not.toContainText('Washington');
   await expect(panel.locator('#cdp-section-assessment')).not.toContainText('UNITED STATES');
   for (const id of ['maritime', 'trade', 'scenario']) {
@@ -354,14 +439,14 @@ test('limited country coverage stays navigable and China keeps its own section',
   await expect(panel.locator('#cdp-section-housing')).toBeHidden();
   await expect(panel.locator('#cdp-section-assessment')).toBeVisible();
   await panel.getByRole('button', { name: 'Full brief', exact: true }).click();
-  await expect(panel.locator('[data-brief-section]:visible')).toHaveCount(23);
+  await expect(panel.locator('[data-brief-section]:visible')).toHaveCount(24);
   await expect(panel.locator('#cdp-section-housing')).toBeVisible();
   await page.goto('/dashboard?country=CN&expanded=1');
   await expect(panel.locator('.cdp-country-name')).toHaveText('China');
   await expect(panel.locator('#cdp-section-china')).toBeVisible();
   await expect(panel.locator('.cdp-scorecard-score')).toHaveCount(0);
   await panel.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'All sections', exact: true }).click();
-  await expect(panel.locator('[data-brief-section]:visible')).toHaveCount(24);
+  await expect(panel.locator('[data-brief-section]:visible')).toHaveCount(25);
   await testInfo.attach('china-sections', { body: await page.screenshot({ path: testInfo.outputPath('china-sections.png') }), contentType: 'image/png' });
   expect(data.countriesRequested).toContain('LS');
   expect(data.countriesRequested).toContain('CN');

@@ -3819,5 +3819,27 @@
       "description": "İran, İsrail, Körfez ve Kürt bölgelerine ilişkin kaynakları etkinleştirir"
     },
     "unavailable": "{{preset}} ön ayarı mevcut panellerinizle kullanılamıyor"
+  },
+  "countryHistory": {
+    "title": "Ülkenin günlük geçmişi",
+    "loading": "Günlük geçmiş yükleniyor…",
+    "window": "Dönem",
+    "days": "{{days}} gün",
+    "observed": "{{days}} günde {{count}} anlık görüntü",
+    "legend": "CII (kehribar): yüksek değer daha fazla istikrarsızlık demektir. Dayanıklılık (yeşil): yüksek değer daha fazla kapasite demektir. Noktalar seçili başlıkların bulunduğu günleri gösterir.",
+    "chart": "Günlük CII ve dayanıklılık puanları. Boşluklar ve formül değişiklikleri çizgileri keser.",
+    "selectDate": "{{date}}, {{count}} seçili başlık",
+    "empty": "Bu dönemde günlük anlık görüntü yok. Geçmiş, etkinleştirmeden sonra birikir.",
+    "unavailable": "Geçmiş geçici olarak kullanılamıyor. Tekrar deneyin.",
+    "retry": "Tekrar dene",
+    "stale": "Son başarılı günlük kayıt 36 saatten eski.",
+    "break": "Formül değişikliği veya gözlem boşluğu. Yalnızca aynı formülle hesaplanan puanları karşılaştırın.",
+    "partial": "Kayıt sırasında haber kapsamı kısmi düzeydeydi.",
+    "resilience": "Dayanıklılık",
+    "ciiMissing": "CII kullanılamıyor",
+    "resilienceMissing": "Dayanıklılık kullanılamıyor",
+    "noEvents": "Bu tarih için seçili başlık kaydedilmedi. Bu, hiç olay yaşanmadığını kanıtlamaz.",
+    "unlock90": "Pro ile 90 günlük geçmişi açın",
+    "unlock365": "API planıyla 365 günlük geçmişi açın"
   }
 }

@@ -54,6 +54,19 @@ test('daily CII history monitors its string index and requires a build within 30
   }
 });
 
+test('country archive health activates once and detects a stopped daily cron', () => {
+  const name = 'countryHistory', key = STANDALONE_KEYS[name];
+  assert.equal(__testing__.ACTIVATION_MARKERS[name], 'seed-activated:history:country');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({ activationStates: { [name]: false } })).status, 'EMPTY_ON_DEMAND');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({ activationStates: { [name]: true } })).status, 'EMPTY');
+  for (const [age, status] of [[0, 'OK'], [2161, 'STALE_SEED']]) {
+    assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({
+      activationStates: { [name]: true }, strens: { [key]: 256 },
+      metaValues: { [SEED_META[name].key]: seedMeta({ fetchedAt: NOW - age * ONE_MIN_MS, recordCount: 196 }) },
+    })).status, status);
+  }
+});
+
 test('daily CII health is pending only before its first confirmed publication', () => {
   const name = 'riskScoresHistory';
   const key = STANDALONE_KEYS[name];

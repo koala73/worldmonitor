@@ -644,6 +644,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // gateway response is not what they return.
   // --------------------------------------------------------------------
   const VERBATIM_PASSTHROUGH_TOOLS = [
+    'get_country_history',
     'analyze_news_headlines',
     'analyze_situation',
     'get_chokepoint_dependencies',

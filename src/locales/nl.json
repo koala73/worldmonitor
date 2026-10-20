@@ -3819,5 +3819,27 @@
       "description": "Bronnen over Iran, Israël, de Golf en Koerdische regio's inschakelen"
     },
     "unavailable": "Preset {{preset}} is niet beschikbaar met je huidige panelen"
+  },
+  "countryHistory": {
+    "title": "Dagelijkse landgeschiedenis",
+    "loading": "Daggeschiedenis laden…",
+    "window": "Periode",
+    "days": "{{days}} dagen",
+    "observed": "{{count}} momentopnamen in {{days}} dagen",
+    "legend": "CII (amber): hoger betekent meer instabiliteit. Veerkracht (groen): hoger betekent meer capaciteit. Punten markeren dagen met geselecteerde koppen.",
+    "chart": "Dagelijkse CII- en veerkrachtscores. Hiaten en formulewijzigingen onderbreken de lijnen.",
+    "selectDate": "{{date}}, {{count}} geselecteerde koppen",
+    "empty": "Geen dagelijkse momentopnamen in deze periode. Geschiedenis wordt opgebouwd na activering.",
+    "unavailable": "De geschiedenis is tijdelijk niet beschikbaar. Probeer opnieuw.",
+    "retry": "Opnieuw proberen",
+    "stale": "De laatste geslaagde dagelijkse vastlegging is meer dan 36 uur oud.",
+    "break": "Formulewijziging of waarnemingshiaat. Vergelijk alleen scores met dezelfde formule.",
+    "partial": "De nieuwsdekking was onvolledig bij de vastlegging.",
+    "resilience": "Veerkracht",
+    "ciiMissing": "CII niet beschikbaar",
+    "resilienceMissing": "Veerkracht niet beschikbaar",
+    "noEvents": "Voor deze datum zijn geen geselecteerde koppen vastgelegd. Dit bewijst niet dat er geen gebeurtenissen waren.",
+    "unlock90": "Ontgrendel 90 dagen met Pro",
+    "unlock365": "Ontgrendel 365 dagen met een API-abonnement"
   }
 }

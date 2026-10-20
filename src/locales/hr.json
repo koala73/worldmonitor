@@ -3850,5 +3850,27 @@
       "description": "Omogućite izvore o Iranu, Izraelu, Zaljevu i kurdskim regijama"
     },
     "unavailable": "Paket {{preset}} nije dostupan s vašim trenutačnim panelima"
+  },
+  "countryHistory": {
+    "title": "Dnevna povijest zemlje",
+    "loading": "Učitavanje dnevne povijesti…",
+    "window": "Razdoblje",
+    "days": "{{days}} dana",
+    "observed": "{{count}} snimki u {{days}} dana",
+    "legend": "CII (jantarno): više vrijednosti znače veću nestabilnost. Otpornost (zeleno): više vrijednosti znače veći kapacitet. Točke označavaju dane s odabranim naslovima.",
+    "chart": "Dnevne ocjene CII-ja i otpornosti. Praznine i promjene formule prekidaju crte.",
+    "selectDate": "{{date}}, {{count}} odabranih naslova",
+    "empty": "Nema dnevnih snimki u ovom razdoblju. Povijest se prikuplja nakon aktivacije.",
+    "unavailable": "Povijest je privremeno nedostupna. Pokušajte ponovno.",
+    "retry": "Pokušaj ponovno",
+    "stale": "Posljednja uspješna dnevna snimka starija je od 36 sati.",
+    "break": "Promjena formule ili praznina u opažanjima. Uspoređujte samo ocjene s istom formulom.",
+    "partial": "Pokrivenost vijestima bila je djelomična pri snimanju.",
+    "resilience": "Otpornost",
+    "ciiMissing": "CII nije dostupan",
+    "resilienceMissing": "Otpornost nije dostupna",
+    "noEvents": "Za ovaj datum nisu zabilježeni odabrani naslovi. To ne dokazuje da nije bilo događaja.",
+    "unlock90": "Otključajte 90 dana uz Pro",
+    "unlock365": "Otključajte 365 dana uz API paket"
   }
 }

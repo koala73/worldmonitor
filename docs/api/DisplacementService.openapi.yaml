@@ -1123,7 +1123,7 @@ components:
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
                 stockChangeSince:
                     type: string
-            description: Source-dated report. Do not sum overlapping measures.
+            description: Dated report. Do not sum measures.
         CrossBorderSourceStatus:
             type: object
             properties:

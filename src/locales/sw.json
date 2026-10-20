@@ -3819,5 +3819,27 @@
       "label": "Middle East Flashpoints",
       "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
     }
+  },
+  "countryHistory": {
+    "title": "Historia ya kila siku ya nchi",
+    "loading": "Inapakia historia ya kila siku…",
+    "window": "Kipindi",
+    "days": "Siku {{days}}",
+    "observed": "Picha {{count}} katika siku {{days}}",
+    "legend": "CII (kahawia ya kaharabu): thamani kubwa inaonyesha kutokuwa na utulivu zaidi. Ustahimilivu (kijani): thamani kubwa inaonyesha uwezo zaidi. Nukta zinaonyesha siku zenye vichwa vya habari vilivyochaguliwa.",
+    "chart": "Alama za kila siku za CII na ustahimilivu. Mapengo na mabadiliko ya fomula hukatiza mistari.",
+    "selectDate": "{{date}}, vichwa vya habari {{count}} vilivyochaguliwa",
+    "empty": "Hakuna picha za kila siku katika kipindi hiki. Historia hukusanywa baada ya kuwezeshwa.",
+    "unavailable": "Historia haipatikani kwa muda. Jaribu tena.",
+    "retry": "Jaribu tena",
+    "stale": "Rekodi ya mwisho ya kila siku iliyofanikiwa ina zaidi ya saa 36.",
+    "break": "Mabadiliko ya fomula au pengo la uchunguzi. Linganisha alama zinazotumia fomula sawa pekee.",
+    "partial": "Habari hazikufunikwa kikamilifu wakati wa kurekodi.",
+    "resilience": "Ustahimilivu",
+    "ciiMissing": "CII haipatikani",
+    "resilienceMissing": "Ustahimilivu haupatikani",
+    "noEvents": "Hakuna vichwa vya habari vilivyochaguliwa vilivyorekodiwa kwa tarehe hii. Hii haithibitishi kwamba hakuna matukio yaliyotokea.",
+    "unlock90": "Fungua siku 90 kwa Pro",
+    "unlock365": "Fungua siku 365 kwa mpango wa API"
   }
 }

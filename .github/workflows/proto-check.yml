@@ -56,6 +56,7 @@ env:
     server/_shared/bounded-json.ts
     server/_shared/cache-contract.ts
     server/_shared/client-ip.ts
+    server/_shared/country-history-access.ts
     server/_shared/deprecation-policy.ts
     server/_shared/direct-llm-quota.ts
     server/_shared/entitlement-check.ts

@@ -218,6 +218,7 @@ const EXCLUDED_BOOTSTRAP_KEYS = {
 
 const EXCLUDED_RPC_ROUTES = {
   "/api/displacement/v1/get-cross-border-movements": "Requires source attribution and per-source freshness; use the cross-border displacement panel",
+  "/api/intelligence/v1/get-country-history": "Daily archive is planned and activation-gated; use the country history panel after activation",
   "/api/intelligence/v1/get-country-signal-observations": "Requires an authenticated country panel; unavailable to the anonymous widget session",
   "/api/aviation/v1/get-carrier-ops": "Pro-only (401 for the anonymous widget session)",
   "/api/aviation/v1/get-flight-status": "Pro-only (401 for the anonymous widget session)",
