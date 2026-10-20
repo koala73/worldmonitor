@@ -184,11 +184,25 @@ for (const rendererUserAgent of [undefined, 'Mozilla/5.0 (Macintosh) AppleWebKit
   });
 }
 
-test('a signed-out desktop sends no user credential and mints no session', async () => {
+// A keyless cloud call is a 401 since #3541, which left signed-out desktops
+// with empty panels (#7548). They authenticate like an anonymous browser.
+test('a signed-out desktop sends one cached anonymous session and no user credential', async () => {
   await withCloudAuthSidecar(async ({ remote, url }) => {
     assert.equal((await authFetch(url)).status, 200);
-    assert.equal(remote.mints.length, 0);
-    assert.equal(remote.calls[0].headers.authorization, undefined);
+    assert.equal((await authFetch(url)).status, 200);
+    assert.deepEqual(remote.mints, [{ method: 'POST', origin: 'https://worldmonitor.app', userAgent: 'WorldMonitor-Desktop/9.8.7 (sidecar)' }]);
+    for (const call of remote.calls) {
+      assert.equal(call.headers.authorization, undefined);
+      assert.equal(call.headers['x-worldmonitor-key'], 'wms_minted_1');
+    }
+  });
+});
+
+test('a signed-out desktop still reaches the cloud keyless when minting fails', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    remote.behavior.mint = () => ({ fail: true });
+    assert.equal((await authFetch(url)).status, 200);
+    assert.equal(remote.mints.length, 1);
     assert.equal(remote.calls[0].headers['x-worldmonitor-key'], undefined);
   });
 });
@@ -228,6 +242,16 @@ test('session minting and the cloud fetch share one deadline', async () => {
   });
 });
 
+test('a renderer-supplied key wins over the minted session on a signed-out desktop', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    process.env.WORLDMONITOR_API_KEY = 'desktop-product-key';
+    assert.equal((await authFetch(url, { headers: { 'X-WorldMonitor-Key': 'wm_renderer_key' } })).status, 200);
+    assert.equal(remote.mints.length, 0);
+    assert.equal(remote.calls[0].headers['x-worldmonitor-key'], 'wm_renderer_key');
+    assert.equal(remote.calls[0].headers.authorization, undefined);
+  });
+});
+
 test('a configured product key wins over the minted session', async () => {
   await withCloudAuthSidecar(async ({ remote, url }) => {
     process.env.WORLDMONITOR_API_KEY = 'desktop-product-key';
@@ -262,8 +286,8 @@ test('a forwarded user credential that is not a bearer is dropped', async () => 
   await withCloudAuthSidecar(async ({ remote, url }) => {
     const headers = { 'X-WorldMonitor-User-Authorization': 'Basic Zm9vOmJhcg==' };
     assert.equal((await authFetch(url, { headers })).status, 200);
-    assert.equal(remote.mints.length, 0);
     assert.equal(remote.calls[0].headers.authorization, undefined);
+    assert.equal(remote.calls[0].headers['x-worldmonitor-key'], 'wms_minted_1');
     assert.equal(remote.calls[0].headers['x-worldmonitor-user-authorization'], undefined);
   });
 });
@@ -273,6 +297,7 @@ test('routes seed-only displacement requests to cloud before a local empty 200',
   const seeded = { summary: { year: 2025, countries: [{ code: 'SYR' }], topFlows: [] }, fetchedAt: 123456, dataAvailable: true };
   const hits = [];
   const remote = createServer((req, res) => {
+    if (answerSessionMint(req, res)) return;
     hits.push(req.url);
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify(seeded));
@@ -309,6 +334,7 @@ for (const failure of ['silent', 'trickle', 'refused']) {
     const hits = [];
     const timers = new Set();
     const remote = createServer((req, res) => {
+      if (answerSessionMint(req, res)) return;
       hits.push(req.url);
       if (failure === 'trickle') {
         res.writeHead(200, { 'content-type': 'application/json' });
@@ -386,7 +412,9 @@ for (const localFailure of ['missing', 'error-response', 'throw']) {
   test(`does not retry a timed-out cloud-preferred POST when the local handler is ${localFailure}`, async () => {
     const endpoint = '/api/v2/shipping/webhooks';
     let cloudCalls = 0;
-    const remote = createServer(() => { cloudCalls++; });
+    const remote = createServer((req, res) => {
+      if (!answerSessionMint(req, res)) cloudCalls++;
+    });
     const remotePort = await listen(remote);
     const handlers = {
       'error-response': 'export default () => Response.json({ error: "unavailable" }, { status: 503 });',
@@ -429,6 +457,7 @@ test('cloud proxy cancels its upstream request when the desktop client disconnec
   const received = new Promise(resolve => { cloudRequest = resolve; });
   const closed = new Promise(resolve => { cloudClosed = resolve; });
   const remote = createServer((req, res) => {
+    if (answerSessionMint(req, res)) return;
     res.once('close', cloudClosed);
     cloudRequest();
   });
@@ -779,11 +808,21 @@ function mockHttpsRequestOnce({ statusCode, headers, body }) {
   };
 }
 
+// Every keyless cloud call mints an anonymous session first (#7548). Fake
+// clouds answer it at once so their assertions still see the proxied request.
+function answerSessionMint(req, res) {
+  if (!new URL(req.url || '/', 'http://127.0.0.1').pathname.endsWith('/api/wm-session')) return false;
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ ok: true, exp: Date.now() + 60 * 60 * 1000, token: 'wms_test' }));
+  return true;
+}
+
 async function setupRemoteServer() {
   const hits = [];
   const origins = [];
   const headers = [];
   const server = createServer((req, res) => {
+    if (answerSessionMint(req, res)) return;
     const url = new URL(req.url || '/', 'http://127.0.0.1');
     hits.push(url.pathname);
     origins.push(req.headers.origin || null);
@@ -956,6 +995,7 @@ test('falls back to cloud when cloudFallback is enabled and local handler return
 test('preserves POST body when cloud fallback is triggered after local non-OK response', async () => {
   const remoteBodies = [];
   const remote = createServer((req, res) => {
+    if (answerSessionMint(req, res)) return;
     const chunks = [];
     req.on('data', (chunk) => chunks.push(chunk));
     req.on('end', () => {
