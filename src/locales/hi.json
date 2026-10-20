@@ -1691,6 +1691,8 @@
       "capacityPercent": "{{percent}}% क्षमता",
       "noCountryImpacts": "कोई देश प्रभावित नहीं पाया गया",
       "alternativeRoutes": "वैकल्पिक मार्ग",
+      "sharesCutZone": "वही जलडमरूमध्य",
+      "estimateNote": "अनुमान: केबल क्षमता और रिडंडेंसी अनुमानित हैं, मापी नहीं गई हैं।",
       "countriesAffected": "प्रभावित देश ({{count}})",
       "links": "लिंक",
       "selectInfrastructureHint": "कैस्केड प्रभाव विश्लेषण के लिए इन्फ्रास्ट्रक्चर चुनें",

@@ -1545,6 +1545,8 @@
       "capacityPercent": "ความจุ {{percent}}%",
       "noCountryImpacts": "ไม่พบผลกระทบต่อประเทศ",
       "alternativeRoutes": "เส้นทางทางเลือก",
+      "sharesCutZone": "ช่องแคบเดียวกัน",
+      "estimateNote": "ค่าประมาณ: ความจุและความซ้ำซ้อนของสายเคเบิลเป็นค่าประมาณ ไม่ได้วัดจริง",
       "countriesAffected": "ประเทศที่ได้รับผลกระทบ ({{count}})",
       "links": "ลิงก์",
       "selectInfrastructureHint": "เลือกโครงสร้างพื้นฐานเพื่อวิเคราะห์ผลกระทบลูกโซ่",

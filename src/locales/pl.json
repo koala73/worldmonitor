@@ -1462,6 +1462,8 @@
       "capacityPercent": "{{percent}}% pojemności",
       "noCountryImpacts": "Nie wykryto wpływu na kraj",
       "alternativeRoutes": "Trasy alternatywne",
+      "sharesCutZone": "ta sama cieśnina",
+      "estimateNote": "Szacunek: przepustowość i redundancja kabli są przybliżone, nie zmierzone.",
       "countriesAffected": "Kraje, których to dotyczy ({{count}})",
       "links": "spinki do mankietów",
       "selectInfrastructureHint": "Wybierz infrastrukturę, aby przeanalizować wpływ kaskady",

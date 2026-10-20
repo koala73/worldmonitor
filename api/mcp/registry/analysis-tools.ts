@@ -23,6 +23,8 @@ import { GeoConvergenceEngine, getLocationName } from '../../../shared/analysis-
 import {
   buildDependencyGraph,
   calculateCascade,
+  calculateChokepointCableCut,
+  calculateMultiCascade,
   getGraphStats,
 } from '../../../shared/analysis-infrastructure-cascade';
 import {
@@ -470,16 +472,26 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     _outputBudgetBytes: 131072,
     description:
       'Infrastructure cascade simulation: what fails downstream when a cable, chokepoint, pipeline, or port is disrupted. ' +
-      'Builds the dashboard dependency graph server-side from the seeded TeleGeography submarine-cable table plus the curated ' +
-      'pipeline, port, and maritime-chokepoint registries, then runs breadth-first failure propagation from the chosen source ' +
-      'node. Results include every affected node with its degraded capacity share, per-country impact categories, redundancy ' +
-      'candidates, and graph statistics. Call with no source_id to receive the catalog of simulatable node ids grouped by ' +
-      'type; disruption_level scales the initial failure from partial (0.1) to total (1, the default). Chained capacity math ' +
-      'multiplies along paths, so distant impacts shrink realistically instead of cascading at full strength.',
+      'Builds the dependency graph from the seeded TeleGeography submarine-cable table plus curated pipeline, port, and ' +
+      'chokepoint registries, then propagates the failure breadth-first. Results list affected nodes, per-country impact ' +
+      'levels, alternative cables (ranked by whether they avoid the chokepoints the cut cables cross), and graph stats. ' +
+      'Call with no arguments for the catalog of node ids. source_ids or cut_cables_through (a chokepoint id) model a ' +
+      'simultaneous multi-cable cut, e.g. every cable through Hormuz. disruption_level ranges 0.1 to 1 (default 1). ' +
+      'Cable results are estimates (capacity shares from landing counts, redundancy assumed); see cascade.dataQuality.',
     inputSchema: {
       type: 'object',
       properties: {
         source_id: { type: 'string', description: 'Node id to disrupt (see the no-argument catalog for valid ids).' },
+        source_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          maxItems: 50,
+          description: 'Cut several nodes at once (e.g. a list of cable ids); per-country impacts add up across the cut. Ignored when source_id is given.',
+        },
+        cut_cables_through: {
+          type: 'string',
+          description: 'Chokepoint id (e.g. "chokepoint:hormuz_strait"): cut every cable whose route crosses it. Ignored when source_id or source_ids is given.',
+        },
         disruption_level: { type: 'number', description: 'Initial failure severity between 0.1 and 1 (default 1).' },
       },
       required: [],
@@ -518,6 +530,36 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       const stats = getGraphStats(graph);
 
       const sourceId = typeof params.source_id === 'string' ? params.source_id.trim() : '';
+      const sourceIds = Array.isArray(params.source_ids)
+        ? params.source_ids.filter((id): id is string => typeof id === 'string').map((id) => id.trim()).filter(Boolean).slice(0, 50)
+        : [];
+      const cutChokepoint = typeof params.cut_cables_through === 'string' ? params.cut_cables_through.trim() : '';
+      const rawLevel = Number(params.disruption_level ?? 1);
+      const disruptionLevel = Math.min(1, Math.max(0.1, Number.isFinite(rawLevel) ? rawLevel : 1));
+
+      if (!sourceId && (sourceIds.length > 0 || cutChokepoint)) {
+        const cascade = sourceIds.length > 0
+          ? calculateMultiCascade(graph, sourceIds, disruptionLevel)
+          : calculateChokepointCableCut(graph, cutChokepoint, disruptionLevel);
+        if (!cascade) {
+          if (cablesPayload === null) {
+            throw new McpSourceUnavailableError(
+              'The submarine-cable catalog is unavailable',
+              freshness.unavailable_inputs,
+              freshness.failed_inputs,
+            );
+          }
+          return {
+            ...freshness,
+            data: { catalog: null, cascade: null, stats },
+            error: sourceIds.length > 0
+              ? 'none of source_ids is a known node id — call without arguments for the full catalog'
+              : `no cable crosses "${cutChokepoint}" or it is not a known chokepoint id`,
+          };
+        }
+        return { ...freshness, data: { catalog: null, cascade, stats } };
+      }
+
       if (!sourceId) {
         const catalog: Record<string, Array<{ id: string; name: string }>> = {};
         for (const node of graph.nodes.values()) {
@@ -544,8 +586,6 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         };
       }
 
-      const rawLevel = Number(params.disruption_level ?? 1);
-      const disruptionLevel = Math.min(1, Math.max(0.1, Number.isFinite(rawLevel) ? rawLevel : 1));
       const cascade = calculateCascade(graph, sourceId, disruptionLevel);
       return { ...freshness, data: { catalog: null, cascade, stats } };
     },

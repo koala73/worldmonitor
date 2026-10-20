@@ -1553,6 +1553,8 @@
       "capacityPercent": "{{percent}}% capacitate",
       "noCountryImpacts": "Nu s-a detectat niciun impact asupra țării",
       "alternativeRoutes": "Trasee alternative",
+      "sharesCutZone": "aceeași strâmtoare",
+      "estimateNote": "Estimare: capacitatea și redundanța cablurilor sunt aproximate, nu măsurate.",
       "countriesAffected": "Țări afectate ({{count}})",
       "links": "link-uri",
       "selectInfrastructureHint": "Selectați infrastructura pentru a analiza impactul în cascadă",

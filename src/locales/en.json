@@ -1691,6 +1691,8 @@
       "capacityPercent": "{{percent}}% capacity",
       "noCountryImpacts": "No country impacts detected",
       "alternativeRoutes": "Alternative Routes",
+      "sharesCutZone": "same chokepoint",
+      "estimateNote": "Estimated: cable capacity and redundancy are approximated, not measured.",
       "countriesAffected": "Countries Affected ({{count}})",
       "links": "links",
       "selectInfrastructureHint": "Select infrastructure to analyze cascade impact",

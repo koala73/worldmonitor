@@ -1545,6 +1545,8 @@
       "capacityPercent": "容量{{percent}}%",
       "noCountryImpacts": "国への影響未検出",
       "alternativeRoutes": "代替ルート",
+      "sharesCutZone": "同じチョークポイント",
+      "estimateNote": "推定値：ケーブルの容量と冗長性は概算であり、実測値ではありません。",
       "countriesAffected": "影響を受ける国（{{count}}）",
       "links": "リンク",
       "selectInfrastructureHint": "カスケード影響を分析するインフラを選択",

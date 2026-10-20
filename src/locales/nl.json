@@ -943,6 +943,8 @@
       "capacityPercent": "{{percent}}% capaciteit",
       "noCountryImpacts": "Er zijn geen landeneffecten gedetecteerd",
       "alternativeRoutes": "Alternatieve routes",
+      "sharesCutZone": "zelfde zeestraat",
+      "estimateNote": "Schatting: kabelcapaciteit en redundantie zijn benaderd, niet gemeten.",
       "countriesAffected": "Betrokken landen ({{count}})",
       "links": "koppelingen",
       "selectInfrastructureHint": "Selecteer infrastructuur om de cascade-impact te analyseren",

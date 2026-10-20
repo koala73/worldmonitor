@@ -1545,6 +1545,8 @@
       "capacityPercent": "{{percent}}% 용량",
       "noCountryImpacts": "국가 영향 감지되지 않음",
       "alternativeRoutes": "대체 경로",
+      "sharesCutZone": "동일한 해협",
+      "estimateNote": "추정치: 케이블 용량과 이중화는 근사값이며 측정값이 아닙니다.",
       "countriesAffected": "영향받는 국가 ({{count}})",
       "links": "링크",
       "selectInfrastructureHint": "연쇄 영향 분석을 위한 인프라를 선택하세요",

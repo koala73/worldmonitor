@@ -16336,6 +16336,19 @@ a.prediction-link:hover {
   font-weight: bold;
 }
 
+.cascade-redundancy-zone {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--yellow, #e0b000);
+  margin-right: 6px;
+}
+
+.cascade-estimate-note {
+  margin-top: 8px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim, #888);
+  font-style: italic;
+}
+
 /* Strategic Risk Panel */
 .strategic-risk-panel {
   display: flex;

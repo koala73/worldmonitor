@@ -1545,6 +1545,8 @@
       "capacityPercent": "{{percent}}%容量",
       "noCountryImpacts": "未檢測到國家影響",
       "alternativeRoutes": "替代路線",
+      "sharesCutZone": "同一咽喉要道",
+      "estimateNote": "估算值：電纜容量和冗餘均為近似值，並非實測。",
       "countriesAffected": "受影響國家（{{count}}）",
       "links": "條鏈路",
       "selectInfrastructureHint": "選擇基礎設施以分析級聯影響",

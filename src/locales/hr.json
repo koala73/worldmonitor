@@ -1700,6 +1700,8 @@
       "capacityPercent": "{{percent}}% kapaciteta",
       "noCountryImpacts": "Nema otkrivenih utjecaja na zemlje",
       "alternativeRoutes": "Alternativne rute",
+      "sharesCutZone": "isti tjesnac",
+      "estimateNote": "Procjena: kapacitet i redundancija kabela su približni, nisu izmjereni.",
       "countriesAffected": "Zahvaćene zemlje ({{count}})",
       "links": "linkovi",
       "selectInfrastructureHint": "Odaberi infrastrukturu za analizu kaskadnog utjecaja",

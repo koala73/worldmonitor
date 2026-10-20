@@ -1496,6 +1496,8 @@
       "capacityPercent": "{{percent}}% capacità",
       "noCountryImpacts": "Nessun impatto sui paesi rilevato",
       "alternativeRoutes": "Rotte alternative",
+      "sharesCutZone": "stesso stretto",
+      "estimateNote": "Stima: capacità e ridondanza dei cavi sono approssimate, non misurate.",
       "countriesAffected": "Paesi interessati ({{count}})",
       "links": "collegamenti",
       "selectInfrastructureHint": "Seleziona un’infrastruttura per analizzare l’impatto a cascata",

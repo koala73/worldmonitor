@@ -1549,6 +1549,8 @@
       "capacityPercent": "%{{percent}} kapasite",
       "noCountryImpacts": "Ulke etkisi tespit edilmedi",
       "alternativeRoutes": "Alternatif Rotalar",
+      "sharesCutZone": "aynı boğaz",
+      "estimateNote": "Tahmini: kablo kapasitesi ve yedeklilik ölçülmemiş, yaklaşık değerlerdir.",
       "countriesAffected": "Etkilenen Ulkeler ({{count}})",
       "links": "baglanti",
       "selectInfrastructureHint": "Domino etkisini analiz etmek icin altyapi secin",

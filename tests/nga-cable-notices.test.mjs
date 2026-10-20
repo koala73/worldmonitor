@@ -1,0 +1,76 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import {
+  extractCableShipName,
+  isCableRelatedNotice,
+  isFreshNotice,
+  NGA_CABLE_NOTICE_MAX_AGE_DAYS,
+} from '../shared/nga-cable-notices.ts';
+import { processNgaSignals } from '../server/worldmonitor/infrastructure/v1/get-cable-health.ts';
+
+// Real NGA HYDROPAC 2939/23 text (Persian Gulf, Bahrain).
+const BAHRAIN_MV = `PERSIAN GULF.
+BAHRAIN.
+DNC 10.
+1. CABLE OPERATIONS IN PROGRESS UNTIL FURTHER NOTICE
+   BY M/V HALL-1, M/V ABS, OCEAN-10 BARGE,
+   M/V OCEAN CAT AND TUG OCEAN ALONG TRACKLINE JOINING
+   25-46.59N 050-37.04E, 25-47.89N 050-34.07E,
+   25-44.47N 050-37.68E, 25-42.04N 050-44.08E,
+   25-41.95N 050-45.27E.
+   500 METER BERTH REQUESTED.`;
+
+// Real NGA HYDROLANT 827/24 text: a seismic streamer survey, not cable work.
+const SEISMIC = `IRISH SEA.
+ENGLAND.
+DNC 20.
+SURVEY OPERATIONS IN PROGRESS UNTIL
+FURTHER NOTICE BY M/V SW AMUNDSEN
+TOWING SEVEN 2200 METER LONG CABLES
+IN AREA BOUND BY
+54-04.00N 003-46.00W, 53-54.00N 003-23.00W.`;
+
+const NOW = Date.UTC(2026, 9, 20, 4, 0);
+const DAY = 86_400_000;
+
+describe('NGA cable notices — ship matcher', () => {
+  it('catches M/V vessels in cable-operations warnings', () => {
+    assert.equal(isCableRelatedNotice(BAHRAIN_MV), true);
+    assert.equal(extractCableShipName(BAHRAIN_MV), 'HALL-1');
+  });
+
+  it('still catches CABLESHIP / CABLE SHIP names', () => {
+    assert.equal(extractCableShipName('CABLESHIP LEON THEVENIN ON STATION'), 'LEON THEVENIN ON STATION');
+    assert.ok(extractCableShipName('CABLE SHIP ILE DE BATZ REPAIRING SUBMARINE CABLE'));
+  });
+
+  it('ignores seismic survey vessels towing streamer cables', () => {
+    assert.equal(isCableRelatedNotice(SEISMIC), false);
+    assert.equal(extractCableShipName(SEISMIC), null);
+  });
+
+  it('does not treat M/V as a cable ship without cable-work wording', () => {
+    assert.equal(extractCableShipName('M/V EVER GIVEN AGROUND NEAR CABLE AREA'), null);
+  });
+});
+
+describe('NGA cable notices — staleness', () => {
+  it('rejects undated and old notices', () => {
+    assert.equal(isFreshNotice(0, NOW), false);
+    assert.equal(isFreshNotice(Number.NaN, NOW), false);
+    assert.equal(isFreshNotice(NOW - (NGA_CABLE_NOTICE_MAX_AGE_DAYS + 1) * DAY, NOW), false);
+    assert.equal(isFreshNotice(NOW - 2 * DAY, NOW), true);
+  });
+
+  it('processNgaSignals drops stale notices and keeps fresh M/V cable operations as repair activity', () => {
+    const stale = processNgaSignals([{ text: BAHRAIN_MV, issueDate: '132159Z SEP 2023' }], NOW);
+    assert.equal(stale.length, 0);
+
+    const fresh = processNgaSignals([{ text: BAHRAIN_MV, issueDate: '181200Z OCT 2026' }], NOW);
+    assert.ok(fresh.some(s => s.kind === 'repair_activity'), 'fresh M/V cable operations count as repair activity');
+
+    const seismic = processNgaSignals([{ text: SEISMIC, issueDate: '181200Z OCT 2026' }], NOW);
+    assert.equal(seismic.length, 0);
+  });
+});

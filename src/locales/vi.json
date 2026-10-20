@@ -1545,6 +1545,8 @@
       "capacityPercent": "{{percent}}% công suất",
       "noCountryImpacts": "Không phát hiện tác động quốc gia",
       "alternativeRoutes": "Tuyến Thay thế",
+      "sharesCutZone": "cùng eo biển",
+      "estimateNote": "Ước tính: dung lượng và khả năng dự phòng của cáp là giá trị gần đúng, không phải đo thực tế.",
       "countriesAffected": "Quốc gia bị Ảnh hưởng ({{count}})",
       "links": "liên kết",
       "selectInfrastructureHint": "Chọn hạ tầng để phân tích tác động chuỗi",

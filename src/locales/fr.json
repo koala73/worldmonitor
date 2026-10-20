@@ -1504,6 +1504,8 @@
       "capacityPercent": "Capacité {{percent}}%",
       "noCountryImpacts": "Aucun impact pays détecté",
       "alternativeRoutes": "Itinéraires alternatifs",
+      "sharesCutZone": "même détroit",
+      "estimateNote": "Estimation : la capacité et la redondance des câbles sont approximatives, non mesurées.",
       "countriesAffected": "Pays concernés ({{count}})",
       "links": "liens",
       "selectInfrastructureHint": "Sélectionnez l’infrastructure pour analyser l’impact en cascade",

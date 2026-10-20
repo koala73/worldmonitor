@@ -1496,6 +1496,8 @@
       "capacityPercent": "{{percent}}% capacidad",
       "noCountryImpacts": "No se detectaron impactos en el país",
       "alternativeRoutes": "Rutas alternativas",
+      "sharesCutZone": "mismo estrecho",
+      "estimateNote": "Estimación: la capacidad y la redundancia de los cables son aproximadas, no medidas.",
       "countriesAffected": "Países afectados ({{count}})",
       "links": "campo de golf",
       "selectInfrastructureHint": "Seleccionar infraestructura para analizar el impacto en cascada",

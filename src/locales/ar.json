@@ -1507,6 +1507,8 @@
       "capacityPercent": "{{percent}}% من السعة",
       "noCountryImpacts": "لم يتم رصد تأثيرات على الدول",
       "alternativeRoutes": "مسارات بديلة",
+      "sharesCutZone": "نفس نقطة الاختناق",
+      "estimateNote": "تقديري: سعة الكابلات والتكرار تقريبية وليست مقيسة.",
       "countriesAffected": "الدول المتأثرة ({{count}})",
       "links": "روابط",
       "selectInfrastructureHint": "اختر بنية تحتية لتحليل التأثير المتتالي",

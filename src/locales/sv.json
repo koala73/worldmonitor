@@ -943,6 +943,8 @@
       "capacityPercent": "{{percent}}% kapacitet",
       "noCountryImpacts": "Inga landspåverkan har upptäckts",
       "alternativeRoutes": "Alternativa rutter",
+      "sharesCutZone": "samma sund",
+      "estimateNote": "Uppskattning: kabelkapacitet och redundans är approximerade, inte uppmätta.",
       "countriesAffected": "Berörda länder ({{count}})",
       "links": "länkar",
       "selectInfrastructureHint": "Välj infrastruktur för att analysera kaskadeffekter",

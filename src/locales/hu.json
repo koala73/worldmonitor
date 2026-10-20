@@ -1691,6 +1691,8 @@
       "capacityPercent": "{{percent}}% kapacitás",
       "noCountryImpacts": "Nem észleltek országra gyakorolt hatásokat",
       "alternativeRoutes": "Alternatív útvonalak",
+      "sharesCutZone": "ugyanaz a szoros",
+      "estimateNote": "Becslés: a kábelkapacitás és a redundancia közelítő, nem mért érték.",
       "countriesAffected": "Érintett országok ({{count}})",
       "links": "linkek",
       "selectInfrastructureHint": "Az infrastruktúra kiválasztásával elemezze a kaszkád hatást",

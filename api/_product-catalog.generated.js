@@ -178,7 +178,7 @@ export const PUBLIC_PRODUCT_FACTS = {
     "chokepoints": 13,
     "instabilityCountries": 31,
     "resilienceRanked": 170,
-    "submarineCables": 86,
+    "submarineCables": 88,
     "pipelinesLng": 159,
     "aiDatacenters": 313,
     "hotspots": 29,

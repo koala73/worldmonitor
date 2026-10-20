@@ -1701,6 +1701,8 @@
       "capacityPercent": "{{percent}}% capacity",
       "noCountryImpacts": "No country impacts detected",
       "alternativeRoutes": "Alternative Routes",
+      "sharesCutZone": "та сама протока",
+      "estimateNote": "Оцінка: пропускна здатність і резервування кабелів наближені, а не виміряні.",
       "countriesAffected": "Countries Affected ({{count}})",
       "links": "links",
       "selectInfrastructureHint": "Select infrastructure to analyze cascade impact",

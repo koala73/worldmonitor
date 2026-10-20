@@ -1691,6 +1691,8 @@
       "capacityPercent": "{{percent}}% capacity",
       "noCountryImpacts": "No country impacts detected",
       "alternativeRoutes": "Alternative Routes",
+      "sharesCutZone": "همان تنگه",
+      "estimateNote": "برآورد: ظرفیت و افزونگی کابل‌ها تقریبی است، نه اندازه‌گیری‌شده.",
       "countriesAffected": "Countries Affected ({{count}})",
       "links": "links",
       "selectInfrastructureHint": "Select infrastructure to analyze cascade impact",

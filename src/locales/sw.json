@@ -1691,6 +1691,8 @@
       "capacityPercent": "Uwezo wa {{percent}}%.",
       "noCountryImpacts": "Hakuna athari za nchi zilizogunduliwa",
       "alternativeRoutes": "Njia Mbadala",
+      "sharesCutZone": "mlango-bahari uleule",
+      "estimateNote": "Makadirio: uwezo wa nyaya na njia mbadala ni wa kukadiria, si wa kupimwa.",
       "countriesAffected": "Nchi Zilizoathirika ({{count}})",
       "links": "viungo",
       "selectInfrastructureHint": "Chagua miundombinu ya kuchanganua athari ya mteremko",

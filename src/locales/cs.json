@@ -1536,6 +1536,8 @@
       "capacityPercent": "Kapacita {{percent}} %",
       "noCountryImpacts": "Nezjištěny žádné dopady na země",
       "alternativeRoutes": "Alternativní trasy",
+      "sharesCutZone": "stejný průliv",
+      "estimateNote": "Odhad: kapacita a redundance kabelů jsou přibližné, nikoli naměřené.",
       "countriesAffected": "Zasažené země ({{count}})",
       "links": "spojení",
       "selectInfrastructureHint": "Vyberte infrastrukturu pro analýzu kaskádového dopadu",

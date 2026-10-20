@@ -2151,6 +2151,40 @@ export const UNDERSEA_CABLES: UnderseaCable[] = [
 
   // === HYPERSCALER / STRATEGIC ===
   {
+    id: 'uae_iran',
+    name: 'UAE-Iran',
+    points: [[56.3, 25.1], [56.9, 25.1], [57.6, 25.2], [57.8, 25.7]],
+    major: true,
+    rfsYear: 1992,
+    owners: ['Telecommunication Infrastructure Company of Iran', 'e&'],
+    landingPoints: [
+      { country: 'IR', countryName: 'Iran', city: 'Jask', lat: 25.68, lon: 57.8 },
+      { country: 'AE', countryName: 'United Arab Emirates', city: 'Fujairah', lat: 25.12, lon: 56.33 },
+    ],
+    countriesServed: [
+      { country: 'IR', capacityShare: 0.30, isRedundant: true },
+      { country: 'AE', capacityShare: 0.30, isRedundant: true },
+    ],
+  },
+  {
+    id: 'kuwait_iran',
+    name: 'Kuwait-Iran',
+    points: [[50, 29.4], [50.3, 29.2], [49.5, 29.3], [49.5, 29.1], [48, 29.4], [48.5, 29.3], [49.5, 29.3], [50, 29.4], [50.5, 29.6]],
+    major: true,
+    rfsYear: 2005,
+    owners: ['Kuwait Ministry of Communications', 'Telecommunication Infrastructure Company of Iran'],
+    landingPoints: [
+      { country: 'IR', countryName: 'Iran', city: 'Ganaveh', lat: 29.57, lon: 50.52 },
+      { country: 'IR', countryName: 'Iran', city: 'Khark Island', lat: 29.25, lon: 50.31 },
+      { country: 'IR', countryName: 'Iran', city: 'Soroosh Platform', lat: 29.07, lon: 49.48 },
+      { country: 'KW', countryName: 'Kuwait', city: 'Kuwait City', lat: 29.37, lon: 47.97 },
+    ],
+    countriesServed: [
+      { country: 'IR', capacityShare: 0.30, isRedundant: true },
+      { country: 'KW', capacityShare: 0.30, isRedundant: true },
+    ],
+  },
+  {
     id: 'project_waterworth',
     name: 'Project Waterworth',
     points: [[-78.9, 33.7], [74.7, -5.5], [73.2, 12.3], [72, 13.5], [153.5, -12.5], [33.5, -32.1], [30.9, -30.1]],

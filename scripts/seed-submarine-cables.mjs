@@ -80,6 +80,7 @@ export const CABLE_REGIONS = [
     ids: [
       'falcon', 'tata-tgn-gulf', 'fiber-optic-gulf-fog', 'omranepeg',
       'gulf-bridge-international-cable-systemmiddle-east-north-africa-cable-system-gbicsmena',
+      'uae-iran', 'kuwait-iran',
     ],
   },
   {

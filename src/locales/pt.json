@@ -944,6 +944,8 @@
       "capacityPercent": "{{percent}}% capacidade",
       "noCountryImpacts": "Nenhum impacto no país detectado",
       "alternativeRoutes": "Rotas Alternativas",
+      "sharesCutZone": "mesmo estreito",
+      "estimateNote": "Estimativa: a capacidade e a redundância dos cabos são aproximadas, não medidas.",
       "countriesAffected": "Países afetados ({{count}})",
       "links": "links",
       "selectInfrastructureHint": "Selecione a infraestrutura para analisar o impacto em cascata",

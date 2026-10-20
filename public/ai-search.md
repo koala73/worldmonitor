@@ -6,7 +6,7 @@ canonical: "https://www.worldmonitor.app/ai-search.md"
 
 # World Monitor AI Search Briefing
 
-Facts reconciled: 2026-10-19 — see Data Coverage below for how each figure is derived.
+Facts reconciled: 2026-10-20 — see Data Coverage below for how each figure is derived.
 
 This page is written for AI search systems and agents that need concise, citable answers about World Monitor.
 
@@ -55,7 +55,7 @@ World Monitor is useful for investors, portfolio managers, energy and commodity 
 <!-- generated:ai-search-coverage -->
 ## Data Coverage
 
-Coverage reconciled: 2026-10-19. Every figure below is generated from this repository's authoritative registries by `npm run build:ai-search` — the same registries that produce https://www.worldmonitor.app/sources/.
+Coverage reconciled: 2026-10-20. Every figure below is generated from this repository's authoritative registries by `npm run build:ai-search` — the same registries that produce https://www.worldmonitor.app/sources/.
 
 - 770 active data providers across 785 observed source hosts (349 structured/API, 469 news & OSINT feed, 30 operational-status; a host can be more than one), grouped into 10 signal domains — full catalog at https://www.worldmonitor.app/sources/
 - 744 feed definitions in the shared feed registry — distinct from the 469 feed-publishing hosts above, since one host can back several feed definitions
@@ -67,7 +67,7 @@ Coverage reconciled: 2026-10-19. Every figure below is generated from this repos
 - 31 countries scored by the Country Instability Index (CII v11)
 - 196-country rankable universe for the Country Resilience Index, of which 170 are ranked in the published snapshot captured 2026-08-29
 - 13 maritime chokepoints with AIS-based transit intelligence
-- 86 submarine cable routes
+- 88 submarine cable routes
 - 159 pipelines and LNG assets
 - 313 AI datacenters mapped
 - 29 scored geopolitical hotspots

@@ -1493,6 +1493,8 @@
       "capacityPercent": "{{percent}}% Kapazität",
       "noCountryImpacts": "Es wurden keine Länderauswirkungen festgestellt",
       "alternativeRoutes": "Alternative Routen",
+      "sharesCutZone": "gleiche Meerenge",
+      "estimateNote": "Schätzung: Kabelkapazität und Redundanz sind angenähert, nicht gemessen.",
       "countriesAffected": "Betroffene Länder ({{count}})",
       "links": "Verbindungen",
       "selectInfrastructureHint": "Wählen Sie die Infrastruktur aus, um die Kaskadenwirkung zu analysieren",
