@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Lists in-service international submarine cables in TeleGeography's open data
 // (submarinecablemap.com) that are missing from the curated CABLE_REGIONS list.
-// Usage: node scripts/check-submarine-cable-gaps.mjs [--out docs/plans/submarine-cable-gaps.md] [--min-countries 2]
+// Usage: node scripts/check-submarine-cable-gaps.mjs [--out scripts/data/submarine-cable-gaps.md] [--min-countries 2]
 import { writeFileSync } from 'node:fs';
 import { CABLE_REGIONS } from './seed-submarine-cables.mjs';
 

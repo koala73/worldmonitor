@@ -1,6 +1,6 @@
 # Submarine cable gaps vs TeleGeography
 
-Generated 2026-10-20 by `node scripts/check-submarine-cable-gaps.mjs --out docs/plans/submarine-cable-gaps.md`.
+Generated 2026-10-20 by `node scripts/check-submarine-cable-gaps.mjs --out scripts/data/submarine-cable-gaps.md`.
 Source: https://www.submarinecablemap.com/api/v3/cable/all.json (+ per-cable detail). Curated list: 98 cables. TeleGeography: 712 cables.
 Missing in-service cables landing in 2+ countries: 235. Sorted by country count, then length.
 To add one: append its slug to CABLE_REGIONS in scripts/seed-submarine-cables.mjs and mirror the seeded entry in src/config/geo-map.ts.
