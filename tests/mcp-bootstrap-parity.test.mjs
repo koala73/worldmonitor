@@ -225,8 +225,6 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: meta-only health probe for the sharded Treasury par curve. GetUsTreasuryParYieldCurve serves the series; the history is too large for the composite economic cache tool (#8480).'],
   ['displacement:dtm:v1',
     'deferred: IOM DTM region-level displacement served by GetInternalDisplacement. A follow-up adds it to get_displacement_data, whose output is shaped around UNHCR country totals.'],
-  ['displacement:idmc-idu:v1',
-    'deferred: IDMC Internal Displacement Updates events and per-country surge flags (#9014). No RPC or map consumer yet; a follow-up serves them alongside the DTM regions.'],
   ['seed-meta:economic:us-interest-rates',
     'operational: meta-only health probe for the sharded Fed funds, Treasury yield, and SOFR history. GetUsInterestRates serves the series; the history is too large for the composite economic cache tool (#8485).'],
   ['seed-meta:economic:world-cpi-imf',

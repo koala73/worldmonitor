@@ -544,7 +544,9 @@ const STANDALONE_KEYS = {
   borderCbp: 'displacement:border-cbp:v1',
   borderFrontex: 'displacement:border-frontex:v1',
   borderPanama: 'displacement:border-panama:v1',
-  idmcIduDisplacement:   'displacement:idmc-idu:v1',
+  // Seeded by seed-idmc-idu-displacement (#9014); read by the displacement
+  // panel and map layer through the on-demand bootstrap URL, and by MCP.
+  idmcIduDisplacement: BOOTSTRAP_CACHE_KEYS.idmcIduDisplacement,
   acledIntel:            'conflict:acled:v1:all:0:0',
   satellites:            'intelligence:satellites:tle:v1',
   portwatch:             'supply_chain:portwatch:v1',

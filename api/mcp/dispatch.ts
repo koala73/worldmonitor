@@ -126,13 +126,16 @@ async function executeCacheTool(
   // while folding the failure into null would read an unreadable seed-meta as
   // "never seeded" and an unreadable data key as an empty section.
   const historyMode = params.changes_since_days !== undefined;
+  // get_displacement_data reads, and is judged stale on, only the selected view's dataset.
   const displacementView = tool.name === 'get_displacement_data';
-  const movementMode = displacementView && params.view === 'movements';
-  const selectedKeys = displacementView ? tool._cacheKeys.filter(key => key.startsWith('displacement:summary:') !== movementMode) : tool._cacheKeys;
+  const selectedView = params.view === 'movements' || params.view === 'events' ? params.view : 'annual';
+  const viewOfKey = (key: string) => key.includes('displacement:summary') ? 'annual' : key.includes('displacement:idmc-idu') ? 'events' : 'movements';
+  const movementMode = displacementView && selectedView === 'movements';
+  const selectedKeys = displacementView ? tool._cacheKeys.filter(key => viewOfKey(key) === selectedView) : tool._cacheKeys;
   const cacheKeys = tool.name === 'get_sanctions_data'
     ? tool._cacheKeys.filter(key => (key === 'sanctions:changes:v1') === historyMode) : selectedKeys;
   const reads = cacheKeys.map((k) => settleRead((panel !== undefined || movementMode ? readRawJsonFromUpstash : readJsonFromUpstash)(k, 3_000, !isAppOwnedRedisKey(k))));
-  const selectedChecks = displacementView ? tool._freshnessChecks.filter(check => (check.key === 'seed-meta:displacement:summary') !== movementMode) : tool._freshnessChecks;
+  const selectedChecks = displacementView ? tool._freshnessChecks.filter(check => viewOfKey(check.key) === selectedView) : tool._freshnessChecks;
   const freshnessChecks = tool.name === 'get_sanctions_data'
     ? tool._freshnessChecks.filter(check => (check.key === 'seed-meta:sanctions:changes') === historyMode) : selectedChecks;
   const metaReads = freshnessChecks.map((check) => settleRead(readJsonFromUpstash(check.key, 3_000, !isAppOwnedRedisKey(check.key))));
