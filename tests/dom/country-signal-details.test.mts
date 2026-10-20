@@ -3,7 +3,7 @@ import type { AppContext } from '@/app/app-context';
 import type { CountrySignalCluster, GeoSignal } from '@/services/signal-aggregator';
 import { projectCountrySignalDetails } from '../../shared/country-signal-details';
 import { projectQualifiedCountrySignals, unavailableCountrySignal } from '../../shared/country-signal-observations';
-import { qualifiedFixtureOutcomes } from '../fixtures/qualified-country-signals';
+import { qualifiedFixtureOutcomes } from '../../src/e2e/fixtures/qualified-country-signals';
 import * as militaryActivity from '@/services/country-military-activity';
 
 const snapshot = vi.hoisted(() => ({ read: vi.fn() }));

@@ -472,6 +472,7 @@ export async function dispatchToolsCall(
   const tool = resolved.tool;
   const notice = resolved.kind === 'alias' ? resolved.notice : null;
   const aliasArguments = resolved.kind === 'alias' ? resolved.arguments : undefined;
+  const aliasArgumentsShape = resolved.kind === 'alias' ? resolved.argumentsShape : undefined;
   const telemetryTool = resolved.kind === 'alias' ? p.name : tool.name;
 
   // U7 fail-closed guard (defence in depth). A `free` principal is minted in
@@ -559,9 +560,10 @@ export async function dispatchToolsCall(
   // Panel allocation can also spend quota, so reject caller-input errors
   // before entering either the panel or standalone reservation path.
   try {
-    // Aliases retain legacy argument shapes and validate their translated values.
-    if (aliasArguments) tool._validateArgs?.(aliasArguments);
-    else validateToolArgs(tool, p.arguments === undefined ? {} : p.arguments);
+    // Legacy-shaped alias arguments only pass the target's refinements; every
+    // other call, including a target-shaped alias, meets the full input schema.
+    if (aliasArguments && aliasArgumentsShape === 'legacy') tool._validateArgs?.(aliasArguments);
+    else validateToolArgs(tool, aliasArguments ?? (p.arguments === undefined ? {} : p.arguments));
   } catch (error) {
     if (!(error instanceof RpcValidationError)) throw error;
     if (deferredBurst) {

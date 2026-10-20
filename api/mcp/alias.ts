@@ -31,12 +31,17 @@ export type ResolvedCall =
       readonly kind: 'alias';
       readonly tool: ToolDef;
       readonly arguments: Record<string, unknown>;
+      // 'target' arguments satisfy the target's input schema; 'legacy' ones keep
+      // the retired tool's shape and only pass the target's refinements.
+      readonly argumentsShape: 'target' | 'legacy';
       readonly notice: DeprecationNotice;
     }
   | { readonly kind: 'invalid'; readonly violations: readonly RpcValidationViolation[] }
   | { readonly kind: 'unknown' };
 
-export type AliasFamily = {
+export type AliasFamily = DatasetSplitFamily | MergeFamily;
+
+type DatasetSplitFamily = {
   readonly kind: 'dataset-split';
   readonly name: string;
   readonly param: 'dataset';
@@ -44,6 +49,14 @@ export type AliasFamily = {
   readonly proTarget: string;
   readonly restTarget: string;
   readonly proTranslate: 'us-mfn-from-limit';
+};
+
+// A retired tool whose datasets now live, under the same names, on another tool.
+type MergeFamily = {
+  readonly kind: 'merge';
+  readonly name: string;
+  readonly target: string;
+  readonly datasets: readonly string[];
 };
 
 export type AliasOptOut = { readonly name: string; readonly reason: string };
@@ -70,6 +83,18 @@ const PRODUCTION_FAMILIES: readonly AliasFamily[] = [
     restTarget: 'get_price_and_debt_indicators',
     proTranslate: 'us-mfn-from-limit',
   },
+  {
+    kind: 'merge',
+    name: 'get_energy_storage',
+    target: 'get_energy_intelligence',
+    datasets: ['eu-gas-storage', 'nat-gas-storage', 'crude-inventories'],
+  },
+  {
+    kind: 'merge',
+    name: 'get_internet_activity',
+    target: 'get_infrastructure_status',
+    datasets: ['traffic', 'ddos'],
+  },
 ];
 
 const PRODUCTION_OPT_OUTS: readonly AliasOptOut[] = [];
@@ -88,6 +113,13 @@ type SealedFamily = {
   readonly name: string;
   readonly pro: ToolDef;
   readonly rest: ToolDef;
+  readonly replacements: readonly string[];
+  readonly hint: string;
+} | {
+  readonly kind: 'merge';
+  readonly name: string;
+  readonly target: ToolDef;
+  readonly datasets: readonly string[];
   readonly replacements: readonly string[];
   readonly hint: string;
 };
@@ -118,6 +150,25 @@ export function sealAliases(
     seenAliases.add(family.name);
     if (registryByName.has(family.name) || retiredByName.has(family.name)) {
       fail(family.name, 'alias name is already callable');
+    }
+    if (family.kind === 'merge') {
+      const target = registryByName.get(family.target);
+      if (!target) fail(family.name, `unregistered target ${family.target}`);
+      const offered = datasetEnum(target);
+      const missing = family.datasets.filter((dataset) => !offered.includes(dataset));
+      if (family.datasets.length === 0 || missing.length > 0) {
+        fail(family.name, `${target.name} does not offer dataset ${missing.join(', ') || '(none declared)'}`);
+      }
+      aliasForTarget.set(target.name, family.name);
+      sealed.push({
+        kind: 'merge',
+        name: family.name,
+        target,
+        datasets: family.datasets,
+        replacements: [target.name],
+        hint: `${family.name} is not listed. Call ${target.name} with dataset ${family.datasets.join(', ')}.`,
+      });
+      continue;
     }
     const pro = registryByName.get(family.proTarget);
     if (!pro) fail(family.name, `unregistered target ${family.proTarget}`);
@@ -153,7 +204,7 @@ export function sealAliases(
 
   const checked = new Set<string>();
   for (const family of sealed) {
-    for (const target of [family.pro, family.rest]) {
+    for (const target of family.kind === 'merge' ? [family.target] : [family.pro, family.rest]) {
       if (checked.has(target.name)) continue;
       checked.add(target.name);
       const advertised = advertisedOutputSchema(target.outputSchema, { permitDeprecation: true });
@@ -238,6 +289,7 @@ export function deprecationNotice(input: {
 }
 
 function resolveFamily(family: SealedFamily, args: unknown): ResolvedCall {
+  if (family.kind === 'merge') return resolveMerge(family, args);
   const rawDataset = isPlainObject(args) ? args.dataset : undefined;
   if (!isPrimitive(rawDataset) && !(Array.isArray(rawDataset) && rawDataset.every(isPrimitive))) {
     return { kind: 'invalid', violations: [{ field: 'dataset', description: 'dataset must be a string or an array of strings.' }] };
@@ -259,6 +311,7 @@ function resolveFamily(family: SealedFamily, args: unknown): ResolvedCall {
       kind: 'alias',
       tool: family.rest,
       arguments: identityArguments(args),
+      argumentsShape: 'legacy',
       notice: deprecationNotice({
         alias: family.name,
         replacement: family.rest.name,
@@ -273,6 +326,7 @@ function resolveFamily(family: SealedFamily, args: unknown): ResolvedCall {
     kind: 'alias',
     tool: family.pro,
     arguments: translated.arguments,
+    argumentsShape: 'legacy',
     notice: deprecationNotice({
       alias: family.name,
       replacement: family.pro.name,
@@ -280,6 +334,40 @@ function resolveFamily(family: SealedFamily, args: unknown): ResolvedCall {
       limit: translated.limit,
     }),
   };
+}
+
+function resolveMerge(family: Extract<SealedFamily, { kind: 'merge' }>, args: unknown): ResolvedCall {
+  if (args !== undefined && !isPlainObject(args)) {
+    return { kind: 'invalid', violations: [{ field: 'arguments', description: 'arguments must be an object.' }] };
+  }
+  const record = args ?? {};
+  const raw = record.dataset;
+  const listed = typeof raw === 'string' ? [raw]
+    : Array.isArray(raw) && raw.every((value) => typeof value === 'string') ? raw : raw === undefined ? [] : null;
+  const requested = listed?.length === 0 ? [...family.datasets] : listed;
+  if (requested === null || requested.some((dataset) => !family.datasets.includes(dataset))) {
+    return {
+      kind: 'invalid',
+      violations: [{ field: 'dataset', description: `dataset must be one or more of ${family.datasets.join(', ')}.` }],
+    };
+  }
+  return {
+    kind: 'alias',
+    tool: family.target,
+    arguments: { ...record, dataset: requested },
+    argumentsShape: 'target',
+    notice: deprecationNotice({
+      alias: family.name,
+      replacement: family.target.name,
+      message: `${family.name} now calls ${family.target.name} with dataset ${requested.join(', ')}. Call ${family.target.name} directly.`,
+    }),
+  };
+}
+
+function datasetEnum(tool: ToolDef): readonly string[] {
+  const dataset = (tool.inputSchema as { properties?: Record<string, { items?: { enum?: unknown } }> }).properties?.dataset;
+  const values = dataset?.items?.enum;
+  return Array.isArray(values) ? values.filter((value): value is string => typeof value === 'string') : [];
 }
 
 function translateUsMfn(record: Record<string, unknown>, proName: string): Translation {

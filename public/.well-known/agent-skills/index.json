@@ -7,7 +7,7 @@
       "type": "skill-md",
       "description": "Model oil or gas supply shock exposure for a country and chokepoint. Use when the user asks how an energy disruption could affect fuel supply, strategic cover, or product deficits.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/assess-energy-shock/SKILL.md",
-      "digest": "sha256:3f6091444376692dc11b7cb8ac25b1870e4d1f44c02391c0317d12bba40ca228"
+      "digest": "sha256:c5005d90e35a24dc1649dc6553b9613b631cb9c705b21d5cb6ae6f49a201e201"
     },
     {
       "name": "check-airport-delays",
@@ -119,7 +119,7 @@
       "type": "skill-md",
       "description": "Retrieve detected internet outages (Cloudflare Radar) with country, cause, severity, and time bounds. Use when the user asks whether a country's internet is down, throttled, or experiencing a shutdown.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/monitor-internet-outages/SKILL.md",
-      "digest": "sha256:ae6b10e17a23f3b8c5fa650a6cbbb2a192deee714960dea95d86acf58ecf3ab2"
+      "digest": "sha256:c8a182334a91aeea01ee031284277d36bb379763873eb9b67ca98521be3f9050"
     },
     {
       "name": "monitor-supply-chain-stress",

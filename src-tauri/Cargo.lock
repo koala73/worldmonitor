@@ -5259,7 +5259,7 @@ dependencies = [
 
 [[package]]
 name = "world-monitor"
-version = "2.11.1"
+version = "2.11.2"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.2.17",

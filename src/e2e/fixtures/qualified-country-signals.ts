@@ -1,4 +1,4 @@
-import { projectCountrySignalFamily, unavailableCountrySignal, type CountrySignalOutcome } from '../../shared/country-signal-observations';
+import { projectCountrySignalFamily, unavailableCountrySignal, type CountrySignalOutcome } from '../../../shared/country-signal-observations';
 
 export const qualifiedFixtureTime = 1792324800000;
 export const qualifiedFixtureCode = 'IR';

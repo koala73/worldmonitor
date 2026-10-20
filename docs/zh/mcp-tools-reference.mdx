@@ -933,17 +933,17 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_energy_intelligence`
 
-能源供应、价格、存储、中断和政策：EIA 石油库存、电力价格（Ember）、天然气存储（GIE）、燃料短缺、化石和可再生能源份额、活跃能源中断、政府危机政策。
+能源供应、价格、存储、中断和政策：EIA 石油库存、电力价格（Ember）、各国天然气存储（GIE）、燃料短缺、化石和可再生能源份额、活跃能源中断、政府危机政策，以及欧盟天然气总存储、美国天然气存储和美国商业原油库存的带日期历史。原 `get_energy_storage` 已并入本工具，旧名称仍可调用并返回 `deprecation` 提示。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `dataset` | `array<string: eia-petroleum / electricity / ember / gas-storage / fuel-shortages / disruptions / crisis-policies / fossil-share / renewable>` | 将响应限制为一个或多个能源子数据集。省略则返回完整捆绑包。 |
+| `dataset` | `array<string: eia-petroleum / electricity / ember / gas-storage / fuel-shortages / disruptions / crisis-policies / fossil-share / renewable / eu-gas-storage / nat-gas-storage / crude-inventories>` | 将响应限制为一个或多个能源子数据集。省略则返回完整捆绑包。 |
 | `country` | string | 将按国家键控的数据集（Ember 电力组合、天然气存储、燃料短缺、能源中断、化石份额）筛选为一个 ISO 3166-1 alpha-2 代码。 |
-| `limit` | number | 将每个含列表的能源切片（危机政策、电力地区、天然气存储国家、世界银行可再生能源历史/地区）限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `limit` | integer | 将每个含列表的能源切片（危机政策、电力地区、天然气存储国家、世界银行可再生能源历史/地区、按新到旧排列的存储和库存历史）限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
-- **API 端点：** `GET /api/economic/v1/get-energy-crisis-policies`, `GET /api/supply-chain/v1/get-fuel-shortage-detail`, `GET /api/supply-chain/v1/list-energy-disruptions`, `GET /api/supply-chain/v1/list-fuel-shortages`
+- **API 端点：** `GET /api/economic/v1/get-energy-crisis-policies`, `GET /api/supply-chain/v1/get-fuel-shortage-detail`, `GET /api/supply-chain/v1/list-energy-disruptions`, `GET /api/supply-chain/v1/list-fuel-shortages`, `GET /api/economic/v1/get-eu-gas-storage`, `GET /api/economic/v1/get-nat-gas-storage`, `GET /api/economic/v1/get-crude-inventories`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **3 天**（由 seeder cron 的预期间隔设定）。
 
@@ -2052,19 +2052,20 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_infrastructure_status`
 
-互联网基础设施健康：Cloudflare Radar 故障和主要云提供商及互联网服务的服务状态。
+Cloudflare Radar 互联网快照，分三个数据集：`outages`（故障及主要云提供商和互联网服务的状态）、`traffic`（流量异常，`totalCount` 为筛选前的全球总数）和 `ddos`（全球 DDoS 协议、向量和目标国家摘要）。原 `get_internet_activity` 已并入本工具，旧名称仍可调用并返回 `deprecation` 提示。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `country` | string | 按名称筛选为一个国家（不区分大小写的子串）。 |
+| `dataset` | `array<string: outages / traffic / ddos>` | 将响应限制为故障、流量异常或 DDoS 摘要。省略则返回全部三个。 |
+| `country` | string | 按 ISO 3166-1 alpha-2 或 alpha-3 代码或英文国家名称筛选故障和流量异常。无法解析的输入返回 Invalid params。DDoS 摘要为全球数据，仅请求 DDoS 时传入 `country` 会返回 Invalid params。 |
 | `severity` | string | 筛选为一种故障严重度（不区分大小写的子串）。 |
-| `limit` | number | 将故障列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `limit` | integer | 将每个列表（故障、异常、DDoS 协议、向量和目标国家）限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
-- **API 端点：** `GET /api/infrastructure/v1/list-internet-outages`
+- **API 端点：** `GET /api/infrastructure/v1/list-internet-outages`, `GET /api/infrastructure/v1/list-internet-traffic-anomalies`, `GET /api/infrastructure/v1/list-internet-ddos-attacks`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 故障 **30 分钟**，流量异常和 DDoS **60 分钟**；任一数据集超出预算即标记 `stale: true`。
 
 <CodeGroup>
 

@@ -64,7 +64,8 @@ import {
   selectDatasets,
   summarizeData,
 } from '../filters';
-import { resolveCountryFilter } from '../_country-args';
+import { COUNTRY_ARG_HINT, resolveCountryFilter } from '../_country-args';
+import { resolveCountryCode } from '../../../shared/country-code-resolve';
 import { compareOilWindows, expandCountry } from '../../../shared/oil-trade-windows.js';
 import { RpcValidationError } from '../billing-denial';
 import type { ConflictSourceObservation, FreshnessCheck, ToolDef } from '../types';
@@ -2745,7 +2746,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     _validateArgs: params => { resolveCountryFilter(params.country, 'country'); },
     title: 'Energy supply, prices and disruptions',
     _outputBudgetBytes: 131072,
-    description: 'Return the seeded energy bundle: EIA petroleum stocks, Ember electricity prices and generation mix, GIE national gas storage (fill percentage, stored TWh, observation date per country), fuel shortages, active energy disruptions, government crisis policies, fossil-electricity share and World Bank renewable share. Each sub-dataset carries its own seed time and staleness budget (gas storage and electricity are flagged stale after 2 days, crisis policies only after many months). _countries is a coverage index only, and null observations mean unavailable, not zero. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects sub-datasets, country narrows the country-keyed ones, limit caps each list (default 30, 0 for no cap).',
+    description: 'Return the seeded energy bundle: EIA petroleum stocks, Ember electricity prices and generation mix, GIE national gas storage (fill percentage, stored TWh, observation date per country), fuel shortages, active energy disruptions, government crisis policies, fossil-electricity share, World Bank renewable share, and dated histories of EU gas storage (TWh), US gas storage (bcf) and US commercial crude stocks (million barrels). Each sub-dataset carries its own seed time and staleness budget (gas storage and electricity are flagged stale after 2 days, crisis policies only after many months). _countries is a coverage index only, and null observations mean unavailable, not zero. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects sub-datasets, country narrows the country-keyed ones, limit caps each list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2753,7 +2754,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           type: 'array',
           items: {
             type: 'string',
-            enum: ['eia-petroleum', 'electricity', 'ember', 'gas-storage', 'fuel-shortages', 'disruptions', 'crisis-policies', 'fossil-share', 'renewable'],
+            enum: ['eia-petroleum', 'electricity', 'ember', 'gas-storage', 'fuel-shortages', 'disruptions', 'crisis-policies', 'fossil-share', 'renewable', 'eu-gas-storage', 'nat-gas-storage', 'crude-inventories'],
           },
           description: 'Restrict the response to one or more energy sub-datasets. Omit for the full bundle.',
         },
@@ -2761,7 +2762,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           type: 'string',
           description: 'Filter the country-keyed datasets (Ember electricity mix, gas storage, fuel shortages, energy disruptions, fossil-share) to one ISO 3166-1 alpha-2 code. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.',
         },
-        limit: { type: 'number', description: 'Cap each list-bearing energy slice (crisis-policies, electricity regions, gas-storage countries, World Bank renewable history/regions) to at most this many items (default 30, pass 0 for no cap).' },
+        limit: { type: 'integer', minimum: 0, description: 'Cap each list-bearing energy slice (crisis-policies, electricity regions, gas-storage countries, World Bank renewable history/regions, newest-first storage and inventory histories) to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -2803,101 +2804,6 @@ export const CACHE_TOOLS: ToolDef[] = [
         historicalData: { type: 'array', items: { type: 'object' } },
         regions: { type: 'array', items: { type: 'object' } },
       } },
-    }),
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _postFilter: (data, params) => {
-      const countries = resolveCountryFilter(params.country, 'country');
-      if (countries.length > 0) {
-        data._all = pickMapKeys(data._all, countries);
-        data['gas-storage'] = pickMapKeys(data['gas-storage'], countries);
-        pickNestedMap(data, 'fossil-electricity-share', 'countries', countries);
-        // energy:gas-storage:v1:_countries is a string[] of ISO2 codes — match
-        // the entry directly; the `?.iso2` fallback tolerates an object shape.
-        narrowArray(data, '_countries', (c) => matchesCode(c, countries) || matchesCode(c?.iso2, countries));
-        mapNested(data, 'fuel-shortages', 'shortages', (m) => filterMapValues(m, (s) => matchesCode(s.country, countries)));
-        mapNested(data, 'disruptions', 'events', (m) => filterMapValues(m, (e) => matchesCode(e.countries, countries)));
-      }
-      const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
-      capNested(data, 'crisis-policies', 'policies', limit);
-      capNested(data, 'index', 'regions', limit);
-      capNested(data, 'worldbank-renewable', 'historicalData', limit);
-      capNested(data, 'worldbank-renewable', 'regions', limit);
-      // _countries is a top-level string[] — capArrays handles top-level arrays;
-      // in the energy bundle it's the only such array, so no collateral damage.
-      capArrays(data, limit);
-      if (limit > 0 && data['gas-storage'] && typeof data['gas-storage'] === 'object') {
-        data['gas-storage'] = Object.fromEntries(Object.entries(data['gas-storage']).slice(0, limit));
-      }
-      const ds = argStrList(params.dataset);
-      if (ds.length > 0) {
-        const map: Record<string, string> = {
-          'eia-petroleum': 'eia-petroleum', electricity: 'index', ember: '_all', 'gas-storage': '_countries',
-          'fuel-shortages': 'fuel-shortages', disruptions: 'disruptions', 'crisis-policies': 'crisis-policies',
-          'fossil-share': 'fossil-electricity-share', renewable: 'worldbank-renewable',
-        };
-        const selected = compact(ds.map((d) => map[d]));
-        if (ds.includes('gas-storage')) selected.push('gas-storage');
-        return selectDatasets(data, selected);
-      }
-      return data;
-    },
-    // Broad 10-key energy bundle mirroring get_economic_data. Cadences span
-    // hourly (electricity prices) to annual (World Bank renewable share); use
-    // _freshnessChecks with per-key maxStaleMin pulled from
-    // api/health.js::SEED_META so a slow-cadence key doesn't drag the
-    // aggregate stale flag unnecessarily.
-    _cacheKeys: [
-      'energy:eia-petroleum:v1',                  // STANDALONE_KEYS::eiaPetroleum
-      'energy:electricity:v1:index',              // BOOTSTRAP_KEYS::electricityPrices
-      'energy:ember:v1:_all',                     // STANDALONE_KEYS::emberElectricity
-      'energy:gas-storage:v1:_countries',         // BOOTSTRAP_KEYS::gasStorageCountries
-      'energy:gas-storage:v1:all',
-      'energy:fuel-shortages:v1',                 // STANDALONE_KEYS::fuelShortages
-      'energy:disruptions:v1',                    // STANDALONE_KEYS::energyDisruptions
-      'energy:crisis-policies:v1',                // STANDALONE_KEYS::energyCrisisPolicies
-      'resilience:fossil-electricity-share:v1',   // STANDALONE_KEYS::fossilElectricityShare
-      'economic:worldbank-renewable:v1',          // BOOTSTRAP_KEYS::renewableEnergy
-    ],
-    _cacheLabels: { 'energy:gas-storage:v1:all': 'gas-storage' },
-    _freshnessChecks: [
-      { key: 'seed-meta:energy:eia-petroleum',                  maxStaleMin: 4320 },   // daily bundle; 72h = 3× interval
-      { key: 'seed-meta:energy:electricity-prices',             maxStaleMin: 3000 },   // one snapshot per UTC day, tried at 14/17/20/23 UTC; two days + 2h margin
-      { key: 'seed-meta:energy:ember',                          maxStaleMin: 2880 },   // daily cron (08:00 UTC); 48h = 2× interval
-      { key: 'seed-meta:energy:gas-storage-countries',          maxStaleMin: 2880 },   // daily cron at 10:30 UTC; 48h = 2× interval
-      { key: 'seed-meta:energy:fuel-shortages',                 maxStaleMin: 2880 },   // 2d — daily cron × 2 headroom
-      { key: 'seed-meta:energy:disruptions',                    maxStaleMin: 20160 },  // 14d — weekly cron × 2 headroom
-      { key: 'seed-meta:energy:crisis-policies',                maxStaleMin: 60 * 24 * 400 }, // ~400d static registry
-      { key: 'seed-meta:resilience:fossil-electricity-share',   maxStaleMin: 11520 },  // ~8d (annual WB-style cadence)
-      { key: 'seed-meta:economic:worldbank-renewable:v1',       maxStaleMin: 10080 },  // 7d WB weekly-cron annual data
-    ],
-    _apiPaths: [
-      "GET /api/economic/v1/get-energy-crisis-policies",
-      "GET /api/supply-chain/v1/get-fuel-shortage-detail",
-      "GET /api/supply-chain/v1/list-energy-disruptions",
-      "GET /api/supply-chain/v1/list-fuel-shortages",
-    ],
-  },
-  {
-    name: 'get_energy_storage',
-    title: 'Gas and crude storage levels',
-    _outputBudgetBytes: 65536,
-    description: 'EU gas storage and US gas/crude inventories with dated history. Seeded GIE AGSI+ and EIA data, not live quotes. Gas is in TWh or billion cubic feet; crude is in million barrels. Null datasets or weekly changes mean unavailable, not zero. Freshness covers all three sources, including when selecting a subset.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        dataset: {
-          type: 'array',
-          items: { type: 'string', enum: ['eu-gas-storage', 'nat-gas-storage', 'crude-inventories'] },
-          description: 'Select EU gas storage, US natural gas storage, or US crude inventories. Omit for all three.',
-        },
-        limit: {
-          type: 'integer', minimum: 0,
-          description: 'Maximum observations per history, newest first. Default 30; 0 returns all available seeded observations.',
-        },
-      },
-      required: [],
-    },
-    outputSchema: cacheEnvelope({
       'eu-gas-storage': {
         type: ['object', 'null'],
         properties: {
@@ -2942,33 +2848,85 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const datasets = ['eu-gas-storage', 'nat-gas-storage', 'crude-inventories'];
-      if (params.dataset !== undefined && (!Array.isArray(params.dataset)
-        || params.dataset.some((value) => !datasets.includes(value)))) {
-        throw new RpcValidationError('get_energy_storage', [{ field: 'dataset', description: 'Expected an array of supported storage datasets.' }]);
-      }
-      if (params.limit !== undefined && (typeof params.limit !== 'number'
-        || !Number.isSafeInteger(params.limit) || params.limit < 0)) {
-        throw new RpcValidationError('get_energy_storage', [{ field: 'limit', description: 'Expected a non-negative integer.' }]);
+      const countries = resolveCountryFilter(params.country, 'country');
+      if (countries.length > 0) {
+        data._all = pickMapKeys(data._all, countries);
+        data['gas-storage'] = pickMapKeys(data['gas-storage'], countries);
+        pickNestedMap(data, 'fossil-electricity-share', 'countries', countries);
+        // energy:gas-storage:v1:_countries is a string[] of ISO2 codes — match
+        // the entry directly; the `?.iso2` fallback tolerates an object shape.
+        narrowArray(data, '_countries', (c) => matchesCode(c, countries) || matchesCode(c?.iso2, countries));
+        mapNested(data, 'fuel-shortages', 'shortages', (m) => filterMapValues(m, (s) => matchesCode(s.country, countries)));
+        mapNested(data, 'disruptions', 'events', (m) => filterMapValues(m, (e) => matchesCode(e.countries, countries)));
       }
       const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
+      capNested(data, 'crisis-policies', 'policies', limit);
+      capNested(data, 'index', 'regions', limit);
+      capNested(data, 'worldbank-renewable', 'historicalData', limit);
+      capNested(data, 'worldbank-renewable', 'regions', limit);
       capNested(data, 'eu-gas-storage', 'history', limit);
       capNested(data, 'nat-gas-storage', 'weeks', limit);
       capNested(data, 'crude-inventories', 'weeks', limit);
-      const selected = argStrList(params.dataset);
-      return selected.length > 0 ? selectDatasets(data, selected) : data;
+      // _countries is a top-level string[] — capArrays handles top-level arrays;
+      // in the energy bundle it's the only such array, so no collateral damage.
+      capArrays(data, limit);
+      if (limit > 0 && data['gas-storage'] && typeof data['gas-storage'] === 'object') {
+        data['gas-storage'] = Object.fromEntries(Object.entries(data['gas-storage']).slice(0, limit));
+      }
+      const ds = argStrList(params.dataset);
+      if (ds.length > 0) {
+        const map: Record<string, string> = {
+          'eia-petroleum': 'eia-petroleum', electricity: 'index', ember: '_all', 'gas-storage': '_countries',
+          'fuel-shortages': 'fuel-shortages', disruptions: 'disruptions', 'crisis-policies': 'crisis-policies',
+          'fossil-share': 'fossil-electricity-share', renewable: 'worldbank-renewable',
+          'eu-gas-storage': 'eu-gas-storage', 'nat-gas-storage': 'nat-gas-storage', 'crude-inventories': 'crude-inventories',
+        };
+        const selected = compact(ds.map((d) => map[d]));
+        if (ds.includes('gas-storage')) selected.push('gas-storage');
+        return selectDatasets(data, selected);
+      }
+      return data;
     },
+    // Broad 13-key energy bundle mirroring get_economic_data. Cadences span
+    // hourly (electricity prices) to annual (World Bank renewable share); use
+    // _freshnessChecks with per-key maxStaleMin pulled from
+    // api/health.js::SEED_META so a slow-cadence key doesn't drag the
+    // aggregate stale flag unnecessarily.
     _cacheKeys: [
+      'energy:eia-petroleum:v1',                  // STANDALONE_KEYS::eiaPetroleum
+      'energy:electricity:v1:index',              // BOOTSTRAP_KEYS::electricityPrices
+      'energy:ember:v1:_all',                     // STANDALONE_KEYS::emberElectricity
+      'energy:gas-storage:v1:_countries',         // BOOTSTRAP_KEYS::gasStorageCountries
+      'energy:gas-storage:v1:all',
+      'energy:fuel-shortages:v1',                 // STANDALONE_KEYS::fuelShortages
+      'energy:disruptions:v1',                    // STANDALONE_KEYS::energyDisruptions
+      'energy:crisis-policies:v1',                // STANDALONE_KEYS::energyCrisisPolicies
+      'resilience:fossil-electricity-share:v1',   // STANDALONE_KEYS::fossilElectricityShare
+      'economic:worldbank-renewable:v1',          // BOOTSTRAP_KEYS::renewableEnergy
       'economic:eu-gas-storage:v1',
       'economic:nat-gas-storage:v1',
       'economic:crude-inventories:v1',
     ],
+    _cacheLabels: { 'energy:gas-storage:v1:all': 'gas-storage' },
     _freshnessChecks: [
-      { key: 'seed-meta:economic:eu-gas-storage', maxStaleMin: 2880 },
-      { key: 'seed-meta:economic:nat-gas-storage', maxStaleMin: 20160 },
-      { key: 'seed-meta:economic:crude-inventories', maxStaleMin: 20160 },
+      { key: 'seed-meta:energy:eia-petroleum',                  maxStaleMin: 4320 },   // daily bundle; 72h = 3× interval
+      { key: 'seed-meta:energy:electricity-prices',             maxStaleMin: 3000 },   // one snapshot per UTC day, tried at 14/17/20/23 UTC; two days + 2h margin
+      { key: 'seed-meta:energy:ember',                          maxStaleMin: 2880 },   // daily cron (08:00 UTC); 48h = 2× interval
+      { key: 'seed-meta:energy:gas-storage-countries',          maxStaleMin: 2880 },   // daily cron at 10:30 UTC; 48h = 2× interval
+      { key: 'seed-meta:energy:fuel-shortages',                 maxStaleMin: 2880 },   // 2d — daily cron × 2 headroom
+      { key: 'seed-meta:energy:disruptions',                    maxStaleMin: 20160 },  // 14d — weekly cron × 2 headroom
+      { key: 'seed-meta:energy:crisis-policies',                maxStaleMin: 60 * 24 * 400 }, // ~400d static registry
+      { key: 'seed-meta:resilience:fossil-electricity-share',   maxStaleMin: 11520 },  // ~8d (annual WB-style cadence)
+      { key: 'seed-meta:economic:worldbank-renewable:v1',       maxStaleMin: 10080 },  // 7d WB weekly-cron annual data
+      { key: 'seed-meta:economic:eu-gas-storage',               maxStaleMin: 2880 },
+      { key: 'seed-meta:economic:nat-gas-storage',              maxStaleMin: 20160 },
+      { key: 'seed-meta:economic:crude-inventories',            maxStaleMin: 20160 },
     ],
     _apiPaths: [
+      "GET /api/economic/v1/get-energy-crisis-policies",
+      "GET /api/supply-chain/v1/get-fuel-shortage-detail",
+      "GET /api/supply-chain/v1/list-energy-disruptions",
+      "GET /api/supply-chain/v1/list-fuel-shortages",
       'GET /api/economic/v1/get-eu-gas-storage',
       'GET /api/economic/v1/get-nat-gas-storage',
       'GET /api/economic/v1/get-crude-inventories',
@@ -3257,15 +3215,20 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_infrastructure_status',
-    title: 'Internet outages and cloud status',
+    title: 'Internet outages, traffic anomalies, DDoS and cloud status',
     _outputBudgetBytes: 131072,
-    description: 'Return the seeded Internet infrastructure snapshot: Cloudflare Radar national and regional outages with start time, severity and cause, plus service status for major cloud providers and Internet services. Flagged stale after 30 minutes. Connectivity incidents only; no traffic volumes, DDoS data or physical infrastructure. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country and severity are case-insensitive substring filters; limit caps the outage list (default 30, 0 for no cap).',
+    description: 'Return the seeded Cloudflare Radar Internet snapshot: outages (national and regional, with start time, severity and cause, plus cloud and Internet service status), traffic anomalies (epoch ms, end 0 means ongoing, totalCount is global before filtering) and the global DDoS protocol, vector and target-country summary. Outages are stale after 30 minutes, traffic and DDoS after 60. Empty lists mean no recorded rows. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects datasets (default all); country (ISO code or English name) filters outages and traffic, never DDoS; severity filters outages; limit caps each list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
-        country: { type: 'string', description: 'Filter to one country by name (case-insensitive substring).' },
+        dataset: {
+          type: 'array',
+          items: { type: 'string', enum: ['outages', 'traffic', 'ddos'] },
+          description: 'Restrict the response to outages, traffic anomalies or the DDoS summary. Omit for all three.',
+        },
+        country: { type: 'string', description: `Filter outages and traffic anomalies to one country. ${COUNTRY_ARG_HINT} Unresolved inputs return Invalid params. DDoS summaries are global, so a DDoS-only call with country returns Invalid params.` },
         severity: { type: 'string', description: 'Filter to one outage severity (case-insensitive substring).' },
-        limit: { type: 'number', description: 'Cap the outage list to at most this many items (default 30, pass 0 for no cap).' },
+        limit: { type: 'integer', minimum: 0, description: 'Cap each list (outages, anomalies, DDoS protocols, vectors and target countries) to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -3277,20 +3240,68 @@ export const CACHE_TOOLS: ToolDef[] = [
           startTime: { type: 'string' }, description: { type: 'string' },
         } } } },
       },
+      'traffic-anomalies': {
+        type: ['object', 'null'],
+        properties: {
+          anomalies: { type: 'array', items: { type: 'object', properties: {
+            uuid: { type: 'string' }, type: { type: 'string' }, status: { type: 'string' },
+            startDate: { type: 'number' }, endDate: { type: 'number', description: '0 means ongoing.' },
+            asn: { type: 'string' }, asnName: { type: 'string' }, locationCode: { type: 'string' }, locationName: { type: 'string' },
+            latitude: { type: 'number' }, longitude: { type: 'number' },
+          } } },
+          totalCount: { type: 'integer', description: 'Global anomaly count before the country filter and limit.' },
+        },
+      },
+      ddos: {
+        type: ['object', 'null'],
+        properties: {
+          protocol: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, percentage: { type: 'number' } } } },
+          vector: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, percentage: { type: 'number' } } } },
+          dateRangeStart: { type: 'string' }, dateRangeEnd: { type: 'string' },
+          topTargetLocations: { type: 'array', items: { type: 'object', properties: {
+            countryCode: { type: 'string' }, countryName: { type: 'string' }, percentage: { type: 'number' },
+            latitude: { type: 'number' }, longitude: { type: 'number' },
+          } } },
+        },
+      },
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _postFilter: (data, params) => {
-      const country = argStr(params.country);
-      const severity = argStr(params.severity);
-      if (country) narrowNested(data, 'outages', 'outages', (o) => ciIncludes(o.country, country));
-      if (severity) narrowNested(data, 'outages', 'outages', (o) => ciIncludes(o.severity, severity));
-      capNested(data, 'outages', 'outages', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
-      return data;
+    _validateArgs: (params) => {
+      resolveCountryFilter(params.country, 'country');
+      const datasets = argStrList(params.dataset);
+      if (params.country !== undefined && datasets.length > 0 && datasets.every((dataset) => dataset === 'ddos')) {
+        throw new RpcValidationError('get_infrastructure_status', [{ field: 'country', description: 'DDoS summaries are global; country filters outages and traffic only.' }]);
+      }
     },
-    _cacheKeys: ['infra:outages:v1'],
-    _freshnessChecks: [{ key: 'seed-meta:infra:outages', maxStaleMin: 30 }],
+    _postFilter: (data, params) => {
+      const [country] = resolveCountryFilter(params.country, 'country').map((code) => code.toUpperCase());
+      const severity = argStr(params.severity);
+      const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
+      const traffic = data['traffic-anomalies'] as { anomalies?: unknown; totalCount?: number } | null | undefined;
+      if (traffic && Array.isArray(traffic.anomalies)) traffic.totalCount = traffic.anomalies.length;
+      if (country) {
+        // Outage rows carry only a country name, so resolve it to compare codes.
+        narrowNested(data, 'outages', 'outages', (o) => resolveCountryCode(o.country) === country);
+        narrowNested(data, 'traffic-anomalies', 'anomalies', (a) => a.locationCode === country);
+      }
+      if (severity) narrowNested(data, 'outages', 'outages', (o) => ciIncludes(o.severity, severity));
+      capNested(data, 'outages', 'outages', limit);
+      capNested(data, 'traffic-anomalies', 'anomalies', limit);
+      for (const list of ['protocol', 'vector', 'topTargetLocations']) capNested(data, 'ddos', list, limit);
+      if (data.ddos && typeof data.ddos === 'object') delete (data.ddos as Record<string, unknown>)._targetLocationsDegraded;
+      const selected = argStrList(params.dataset).map((dataset) => dataset === 'traffic' ? 'traffic-anomalies' : dataset);
+      return selected.length > 0 ? selectDatasets(data, selected) : data;
+    },
+    _cacheKeys: ['infra:outages:v1', 'cf:radar:traffic-anomalies:v1', 'cf:radar:ddos:v1'],
+    _freshnessChecks: [
+      { key: 'seed-meta:infra:outages', maxStaleMin: 30 },
+      { key: 'seed-meta:cf:radar:traffic-anomalies', maxStaleMin: 60 },
+      { key: 'seed-meta:cf:radar:ddos', maxStaleMin: 60 },
+    ],
     _apiPaths: [
       "GET /api/infrastructure/v1/list-internet-outages",
+      'GET /api/infrastructure/v1/list-internet-traffic-anomalies',
+      'GET /api/infrastructure/v1/list-internet-ddos-attacks',
     ],
   },
   {

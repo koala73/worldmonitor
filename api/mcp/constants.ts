@@ -352,7 +352,10 @@ export const SERVER_NAME = 'worldmonitor';
 // Bumped 1.40.0 → 1.41.0 for get_oil_trade_series (94 → 95 tools).
 // Bumped 1.41.0 → 1.42.0 for get_capital_flows (95 → 96 tools).
 // Bumped 1.42.0 → 1.43.0 for get_country_history (96 → 97 tools).
-export const SERVER_VERSION = '1.43.0';
+// Bumped 1.43.0 → 1.44.0 when get_energy_storage and get_internet_activity
+// merged into get_energy_intelligence and get_infrastructure_status (97 → 95
+// tools); both old names stay callable as aliases.
+export const SERVER_VERSION = '1.44.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
