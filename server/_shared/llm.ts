@@ -622,6 +622,8 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
           }
           record(false, 'empty');
         } catch (err) {
+          // sentry-coverage-ok: provider failures are expected fallback signals;
+          // record() emits the bounded per-attempt telemetry before the chain continues.
           clearTimeout(timeoutId);
           if (hasContent) {
             // Partial stream — close without done so the client sees it as truncated, not success
