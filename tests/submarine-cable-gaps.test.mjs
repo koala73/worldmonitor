@@ -8,15 +8,16 @@ import { fileURLToPath } from 'node:url';
 
 const script = fileURLToPath(new URL('../scripts/check-submarine-cable-gaps.mjs', import.meta.url));
 
-function runGapScan(mode) {
+function runGapScan(mode, cliArgs) {
   const dir = mkdtempSync(join(tmpdir(), 'wm-cable-gaps-'));
   const out = join(dir, 'report.md');
   writeFileSync(out, 'last complete report');
   try {
     const result = spawnSync(process.execPath, ['--input-type=module', '--eval', `
-      process.argv = [process.execPath, ${JSON.stringify(script)}, '--out', ${JSON.stringify(out)}];
+      process.argv = [process.execPath, ${JSON.stringify(script)}, ...${JSON.stringify(cliArgs ?? ['--out', out])}];
       const mode = ${JSON.stringify(mode)};
       globalThis.fetch = async (input) => {
+        if (mode === 'invalid-args') console.error('unexpected-fetch');
         if (String(input).endsWith('/all.json')) {
           if (mode === 'catalog-http') return Response.json({}, { status: 503 });
           if (mode === 'catalog-shape') return Response.json({ error: 'unavailable' });
@@ -39,6 +40,7 @@ function runGapScan(mode) {
       await import(${JSON.stringify(new URL('../scripts/check-submarine-cable-gaps.mjs', import.meta.url).href)});
     `], {
       encoding: 'utf8',
+      cwd: dir,
       env: { ...process.env, NODE_ENV: 'test', WM_ALLOW_ENV_LOAD_IN_TESTS: '0' },
       timeout: 10_000,
     });
@@ -50,6 +52,20 @@ function runGapScan(mode) {
 }
 
 describe('submarine cable gap CLI', () => {
+  for (const args of [
+    ['--out'], ['--out', '--min-countries', '2'],
+    ['--min-countries'], ['--min-countries', 'abc'], ['--min-countries', '0'],
+    ['--min-countries', '-1'], ['--min-countries', '1.5'], ['--min-countries', 'Infinity'],
+  ]) {
+    it(`rejects invalid options before fetching: ${args.join(' ')}`, () => {
+      const result = runGapScan('invalid-args', args);
+      assert.notEqual(result.status, 0, result.stderr);
+      assert.equal(result.report, 'last complete report');
+      assert.equal(result.stdout, '');
+      assert.doesNotMatch(result.stderr, /unexpected-fetch/);
+    });
+  }
+
   it('writes a complete report when every detail request succeeds', () => {
     const result = runGapScan('valid');
     assert.equal(result.status, 0, result.stderr);

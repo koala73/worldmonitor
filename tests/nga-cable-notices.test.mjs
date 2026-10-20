@@ -41,8 +41,20 @@ describe('NGA cable notices — ship matcher', () => {
   });
 
   it('still catches CABLESHIP / CABLE SHIP names', () => {
-    assert.equal(extractCableShipName('CABLESHIP LEON THEVENIN ON STATION'), 'LEON THEVENIN ON STATION');
-    assert.ok(extractCableShipName('CABLE SHIP ILE DE BATZ REPAIRING SUBMARINE CABLE'));
+    assert.equal(extractCableShipName('CABLESHIP LEON THEVENIN ON STATION'), 'LEON THEVENIN');
+    assert.equal(extractCableShipName('CABLE SHIP ILE DE BATZ REPAIRING SUBMARINE CABLE'), 'ILE DE BATZ');
+  });
+
+  it('recognizes fiber-optic repair vessels and emits repair activity', () => {
+    const notice = BAHRAIN_MV.replace('CABLE OPERATIONS', 'FIBER OPTIC REPAIR');
+    assert.equal(isCableRelatedNotice(notice), true);
+    assert.equal(extractCableShipName(notice), 'HALL-1');
+    assert.ok(processNgaSignals([{ text: notice, issueDate: '181200Z OCT 2026' }], NOW)
+      .some(signal => signal.kind === 'repair_activity'));
+  });
+
+  it('stops generic vessel names before operational wording', () => {
+    assert.equal(extractCableShipName('CABLE REPAIR BY M/V LEON THEVENIN ON STATION'), 'LEON THEVENIN');
   });
 
   it('ignores seismic survey vessels towing streamer cables', () => {
@@ -61,6 +73,13 @@ describe('NGA cable notices — staleness', () => {
     assert.equal(isFreshNotice(Number.NaN, NOW), false);
     assert.equal(isFreshNotice(NOW - (NGA_CABLE_NOTICE_MAX_AGE_DAYS + 1) * DAY, NOW), false);
     assert.equal(isFreshNotice(NOW - 2 * DAY, NOW), true);
+  });
+
+  it('allows five minutes of clock skew but rejects future-dated warnings', () => {
+    assert.equal(isFreshNotice(NOW + 5 * 60_000, NOW), true);
+    assert.equal(isFreshNotice(NOW + 6 * 60_000, NOW), false);
+    assert.equal(isFreshNotice(NOW + DAY, NOW), false);
+    assert.deepEqual(processNgaSignals([{ text: BAHRAIN_MV, issueDate: '200500Z OCT 2026' }], NOW), []);
   });
 
   it('processNgaSignals drops stale notices and keeps fresh M/V cable operations as repair activity', () => {
