@@ -11,7 +11,8 @@
 # Layout:       see .oss-scanner/threat_model.md ("How to exercise it").
 # =============================================================================
 
-FROM node:24-bookworm
+# node:24-bookworm (multi-arch index), pinned per tests/ci-workflow-coverage.test.mts.
+FROM node:24-bookworm@sha256:14078204b6bb268c107ceff6d3c43f45a888105e5c2b18b14c32b3409d93a1b0
 
 ENV DEBIAN_FRONTEND=noninteractive \
     NODE_OPTIONS=--max-old-space-size=8192 \
@@ -49,17 +50,10 @@ RUN npm ci --prefix scripts \
 # Typecheck and build the frontend into dist/, as the root Dockerfile does.
 RUN npm run build:pro && npx tsc && npx vite build
 
-# The local API server (src-tauri/sidecar/local-api-server.mjs) loads
-# esbuild bundles of the handlers. docker/build-handlers.mjs writes those
-# bundles over the tracked api/*.js files, so it runs on a copy: /src keeps the
-# real source that tests import and the scan reads.
-RUN mkdir -p /opt/worldmonitor-runtime \
-    && tar -C /src --exclude=./.git --exclude='*/node_modules' --exclude=./node_modules \
-         --exclude=./tests --exclude=./e2e --exclude=./docs --exclude=./dist \
-         --exclude=./blog-site --exclude=./demos --exclude=./src-tauri/target -cf - . \
-       | tar -C /opt/worldmonitor-runtime -xf - \
-    && ln -s /src/node_modules /opt/worldmonitor-runtime/node_modules \
-    && node /opt/worldmonitor-runtime/docker/build-handlers.mjs
+# The local API server (src-tauri/sidecar/local-api-server.mjs) loads esbuild
+# bundles of the handlers. The script bundles them in a copy at
+# /opt/worldmonitor-runtime so /src keeps the real source.
+RUN sh .oss-scanner/build-runtime.sh
 
 # Desktop shell. Fetch every crate so the offline scan can read and rebuild
 # them; a failing check warns instead of aborting the image.

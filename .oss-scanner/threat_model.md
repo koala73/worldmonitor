@@ -110,13 +110,23 @@ Redis, Convex and upstream fetches.
 - Convex functions (auth, billing, API keys) under `convex-test`:
   `npm run test:convex`.
 - DOM-level rendering tests: `npm run test:dom`.
-- Run the API locally: `cd /opt/worldmonitor-runtime && LOCAL_API_MODE=docker
-  LOCAL_API_PORT=46123 LOCAL_API_RESOURCE_DIR=/opt/worldmonitor-runtime
-  node src-tauri/sidecar/local-api-server.mjs`. After patching `/src`, re-copy
-  the changed file and rerun `node docker/build-handlers.mjs` there. Probe it with
-  `curl http://127.0.0.1:46123/api/...`. Handlers that need Redis or
-  upstream data return degraded responses offline. Auth, validation, CORS and
-  routing logic still runs.
+- Run the API locally. The server rejects every request unless
+  `LOCAL_API_TOKEN` is set and sent back in `x-worldmonitor-local-token`:
+
+  ```sh
+  export LOCAL_API_TOKEN=scan-local-token
+  cd /opt/worldmonitor-runtime && LOCAL_API_MODE=docker LOCAL_API_PORT=46123 \
+    LOCAL_API_RESOURCE_DIR=/opt/worldmonitor-runtime \
+    node src-tauri/sidecar/local-api-server.mjs &
+  curl -H "x-worldmonitor-local-token: $LOCAL_API_TOKEN" \
+    'http://127.0.0.1:46123/api/rss-proxy?url=https://feeds.bbci.co.uk/news/world/rss.xml'
+  ```
+
+  Handlers that need Redis or upstream data return degraded responses
+  offline; auth, validation, CORS and routing logic still run. The runtime
+  copy holds bundles, which inline the helpers they import. After patching
+  `/src`, run `sh /src/.oss-scanner/build-runtime.sh` to recreate the copy
+  from source, then restart the server.
 - Rust: `cargo check --offline --manifest-path src-tauri/Cargo.toml`.
 
 ## How we rate severity
@@ -157,8 +167,9 @@ adjacent `*.test.mjs`) that fails before the fix.
   that serve only public data (out of scope per `SECURITY.md`).
 - Inaccurate, biased or false content from upstream feeds, unless it becomes
   code execution or crosses a trust boundary.
-- API keys or tokens that appear in tests, fixtures or `.env.example`. They
-  are placeholders.
+- Obvious placeholder keys and tokens in tests, fixtures and `.env.example`
+  (dummy strings such as `test-key`, `sk-test-...`, `xxx`). Report any value
+  there that looks like a live credential.
 - Prompt injection that only changes LLM-generated text shown to the same user
   who supplied the input.
 - Vulnerabilities in third-party services we call (report them upstream), and
