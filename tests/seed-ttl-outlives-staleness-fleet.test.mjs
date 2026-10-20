@@ -129,23 +129,62 @@ function resolveValue(expr, src, depth = 0) {
 // health.js is the source of truth for a key's staleness gate: metaKey -> maxStaleMin.
 // An extraKey's gate is NOT the seeder's own canonical maxStaleMin — it is whatever
 // health registered for that projection's metaKey, which is frequently different.
-function readHealthStalenessGates() {
-  const health = readFileSync(join(SCRIPTS, '..', 'api', 'health.js'), 'utf8');
+function readHealthStalenessGates(health = readFileSync(join(SCRIPTS, '..', 'api', 'health.js'), 'utf8')) {
   const gates = {};
-  for (const m of health.matchAll(/key:\s*'(seed-meta:[^']+)'\s*,\s*maxStaleMin:\s*([\d_]+)/g)) {
+  let parsed = 0;
+  // Read maxStaleMin from the SAME object literal as the key, at that object's own
+  // depth, so field order and interposed (even nested-object) properties do not matter.
+  for (const m of health.matchAll(/\bkey:\s*'(seed-meta:[^']+)'/g)) {
     const key = m[1];
-    const gate = Number(m[2].replace(/_/g, ''));
+    const start = enclosingObjectStart(health, m.index);
+    if (start < 0) continue;
+    const staleExpr = topLevelProperty(health, start, 'maxStaleMin');
+    if (staleExpr == null) continue;
+    const gate = resolveValue(staleExpr, health);
+    if (!Number.isFinite(gate)) continue;
+    parsed += 1;
     // A seed-meta key can be registered under more than one health name (7 are today).
     // Take the LARGEST gate: that is the binding constraint for "the data must outlive
     // the gate", so a future divergence cannot silently pick the laxer one.
     gates[key] = Math.max(gates[key] ?? 0, gate);
   }
-  // Coverage must not rot silently. The regex needs `key: '…', maxStaleMin: <digits>`
-  // adjacent, so a constant, a reordered field, or an interposed property would be
-  // skipped WITHOUT failing — and a gate we cannot see is a gate we cannot enforce.
-  // Compare against UNIQUE declared keys, not raw occurrences (those 7 duplicates).
-  const declared = new Set([...health.matchAll(/key:\s*'(seed-meta:[^']+)'/g)].map((m) => m[1])).size;
-  return { gates, parsed: Object.keys(gates).length, declared };
+  // Coverage must not rot silently. A gate whose maxStaleMin cannot be found in its
+  // object or resolved to a number is skipped — and a gate we cannot see is a gate we
+  // cannot enforce, so the count check below fails loudly instead.
+  const declared = [...health.matchAll(/\bkey:\s*'(seed-meta:[^']+)'/g)].length;
+  return { gates, parsed, declared };
+}
+
+// Return the raw expression of `name:` declared directly on the object literal that
+// opens at `start` (depth 1 only; nested objects/arrays are stepped over), or null.
+function topLevelProperty(src, start, name) {
+  let depth = 0;
+  let prev = '{'; // last significant (non-whitespace) char outside strings/comments
+  const re = new RegExp(`^${name}\\s*:\\s*([^,}\\n]+)`);
+  for (let i = start; i < src.length; i += 1) {
+    const c = src[i];
+    if (c === '{' || c === '[' || c === '(') depth += 1;
+    else if (c === '}' || c === ']' || c === ')') {
+      depth -= 1;
+      if (depth === 0) return null;
+    } else if (c === "'" || c === '"' || c === '`') {
+      const end = src.indexOf(c, i + 1);
+      if (end < 0) return null;
+      i = end;
+      prev = c;
+      continue;
+    } else if (c === '/' && src[i + 1] === '/') {
+      const end = src.indexOf('\n', i);
+      i = end < 0 ? src.length : end - 1;
+      continue;
+    }
+    if (depth === 1 && (prev === '{' || prev === ',') && /[A-Za-z_$]/.test(c)) {
+      const mm = src.slice(i, i + 200).match(re);
+      if (mm) return mm[1];
+    }
+    if (!/\s/.test(c)) prev = c;
+  }
+  return null;
 }
 
 // Walk backwards to the `{` that ENCLOSES idx at depth 0, stepping over nested literals.
@@ -243,6 +282,26 @@ test('the allowlist does not rot — every frozen entry is still a real violatio
   const actual = new Set(violations.map((v) => v.file));
   const retired = [...KNOWN_VIOLATIONS].filter((f) => !actual.has(f));
   assert.deepEqual(retired, [], 'these seeders now satisfy the invariant — delete them from KNOWN_VIOLATIONS');
+});
+
+test('duplicate health keys cannot hide an unparsed gate declaration', () => {
+  for (const gates of ['10, UNRESOLVED', 'UNRESOLVED, 10']) {
+    const health = gates.split(', ').map((gate, i) => `entry${i}: { key: 'seed-meta:duplicate', maxStaleMin: ${gate} }`).join(',\n');
+    const result = readHealthStalenessGates(`const entries = { ${health} };`);
+    assert.equal(result.declared, 2);
+    assert.equal(result.parsed, 1);
+    assert.notEqual(result.parsed, result.declared);
+  }
+});
+
+test('duplicate health declarations all count and retain the largest gate', () => {
+  const result = readHealthStalenessGates(`const entries = {
+    first: { key: 'seed-meta:duplicate', maxStaleMin: 10 },
+    second: { key: 'seed-meta:duplicate', maxStaleMin: 20 },
+  };`);
+  assert.equal(result.parsed, 2);
+  assert.equal(result.declared, 2);
+  assert.equal(result.gates['seed-meta:duplicate'], 20);
 });
 
 test('every health staleness gate is actually parsed — coverage cannot rot', () => {

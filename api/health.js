@@ -1803,6 +1803,7 @@ const SEED_META = {
   },
   oecdLtRates: {
     key: 'seed-meta:economic:oecd-lt-rates',
+    requireContentFreshness: { countries: ['DE', 'JP', 'GB', 'CA', 'AU', 'CH', 'NO', 'SE', 'IT', 'ES', 'KR', 'MX', 'ZA', 'PL', 'NL', 'BE', 'AT', 'PT', 'IE', 'FI', 'DK', 'GR', 'CZ', 'HU', 'CL', 'FR', 'US'], budgetMinutes: 80 * 24 * 60 },
     maxStaleMin: 60 * 24 * 21, // weekly section; 21d = 3x interval, matches monthly data cadence
     activationKey: 'seed-activated:economic:oecd-lt-rates',
     cutover: {
@@ -3642,18 +3643,18 @@ function classifyKey(name, redisKey, opts, ctx) {
   // meta.maxContentAgeMin); legacy seeders without it skip this branch.
   // 2026-05-04 health-readiness plan, Sprint 1.
   else if (contentAge && contentAge.contentStale) status = 'STALE_CONTENT';
-  // Pre-breach lead time (reader policy, see CONTENT_AGE_PREWARNING_RATIO in
-  // api/_content-age.js). Fires only after every hard fault declined and
-  // before COVERAGE_MARGIN_LOW, which is informational: an approaching time
-  // breach outranks a thin-but-passing cohort. Rides the compact pending lane
-  // via the STATUS_COUNTS/healthStatusBucket pattern — visible, non-blocking.
-  else if (contentAge && contentAge.preWarning) status = 'CONTENT_AGE_PREWARNING';
   // Shares STALE_CONTENT with the newestItemAt branch above: both mean "the
   // producer is healthy and correctly sized, but the data itself is older than
   // its content budget". Here the stale unit is a country rather than the
   // whole corpus, and the named entities are on the wire so an operator sees
   // the stale source family instead of a generic warning.
   else if (contentFreshness?.contentStale) status = 'STALE_CONTENT';
+  // Pre-breach lead time (reader policy, see CONTENT_AGE_PREWARNING_RATIO in
+  // api/_content-age.js). Fires only after every hard fault declined and
+  // before COVERAGE_MARGIN_LOW, which is informational: an approaching time
+  // breach outranks a thin-but-passing cohort. Rides the compact pending lane
+  // via the STATUS_COUNTS/healthStatusBucket pattern — visible, non-blocking.
+  else if (contentAge && contentAge.preWarning) status = 'CONTENT_AGE_PREWARNING';
   // Last in the chain, and only reachable when every fault branch above
   // declined: this says "nothing is wrong, but a pool is close to its floor".
   // Placing it here is what keeps it from masking a real verdict — a stale or

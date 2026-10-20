@@ -18,6 +18,9 @@ export const OECD_LT_MARKETS = {
 };
 
 export const OECD_LT_TENOR = '10y';
+export const OECD_LT_MAX_CONTENT_AGE_MIN = 80 * 24 * 60;
+
+import { periodTokenToMs, tokensToContentMeta } from '../../_content-age-helpers.mjs';
 
 import { normalizeDateLabel, parseYieldNumber } from './model.mjs';
 
@@ -53,4 +56,37 @@ export function declareOecdRecords(payload) {
   const countries = payload?.countries;
   if (!countries || typeof countries !== 'object') return 0;
   return Object.values(countries).reduce((sum, entry) => sum + (Array.isArray(entry?.curves) ? entry.curves.length : 0), 0);
+}
+
+// Only each market's current observation participates; historical curve rows
+// remain available to readers but cannot make the current snapshot stale.
+export function oecdLatestContentMeta(data) {
+  return tokensToContentMeta(Object.values(data?.countries ?? {})
+    .map((entry) => entry?.curves?.at(-1)?.date));
+}
+
+export function oecdContentFreshness(data, now = Date.now()) {
+  const countries = Object.keys(OECD_LT_MARKETS);
+  const observations = countries.map((country) => ({
+    country,
+    at: periodTokenToMs(data?.countries?.[country]?.curves?.at(-1)?.date),
+  }));
+  const unknown = observations.filter(({ at }) => at === null);
+  const stale = observations.filter(({ at }) => at !== null
+    && (at > now || now - at >= OECD_LT_MAX_CONTENT_AGE_MIN * 60_000));
+  const oldest = observations.filter(({ at }) => at !== null)
+    .sort((a, b) => a.at - b.at)[0];
+  return {
+    coveredCount: countries.length,
+    freshCount: countries.length - unknown.length - stale.length,
+    staleCount: stale.length,
+    unknownCount: unknown.length,
+    staleCountries: stale.map(({ country }) => country),
+    criticalCountries: countries,
+    criticalFreshCount: countries.length - unknown.length - stale.length,
+    criticalStaleCountries: [...stale, ...unknown].map(({ country }) => country),
+    criticalMissingCountries: unknown.length,
+    criticalOldestObservedAt: oldest?.at ?? null,
+    criticalOldestObservedCountry: oldest?.country ?? null,
+  };
 }
