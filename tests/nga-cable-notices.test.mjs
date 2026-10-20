@@ -57,6 +57,12 @@ describe('NGA cable notices — ship matcher', () => {
     assert.equal(extractCableShipName('CABLE REPAIR BY M/V LEON THEVENIN ON STATION'), 'LEON THEVENIN');
   });
 
+  for (const suffix of ['IN AREA BOUND BY', 'ALONG TRACKLINE JOINING']) {
+    it(`stops generic vessel names before ${suffix}`, () => {
+      assert.equal(extractCableShipName(`CABLE REPAIR BY M/V NEXUS ${suffix}`), 'NEXUS');
+    });
+  }
+
   it('ignores seismic survey vessels towing streamer cables', () => {
     assert.equal(isCableRelatedNotice(SEISMIC), false);
     assert.equal(extractCableShipName(SEISMIC), null);
