@@ -30,8 +30,8 @@ Discover the authentication requirements:
    ```json
    { "issuer": "https://worldmonitor.app",
      "agent_auth": {
-       "skill": "https://www.worldmonitor.app/auth.md",
-       "register_uri": "https://worldmonitor.app/oauth/register",
+       "skill": "https://worldmonitor.app/auth.md",
+       "identity_endpoint": "https://worldmonitor.app/oauth/register",
        "claim_uri": "https://worldmonitor.app/oauth/authorize",
        "identity_types_supported": ["anonymous"],
        "anonymous": { "credential_types_supported": ["access_token"],
@@ -55,12 +55,12 @@ asserting a user identity; a human consents interactively at authorization (see
 
 **`identity_assertion` is not supported.** No pre-issued identity assertion (e.g.
 an `urn:ietf:params:oauth:token-type:id-jag` id-jag token) is exchanged for
-credentials — there is no identity or token-exchange endpoint. Identity is always
-established interactively.
+credentials — there is no identity or token-exchange endpoint.
 
 ## Register
 
-**RFC 7591 Dynamic Client Registration** at the `register_uri`:
+**RFC 7591 Dynamic Client Registration** at the `identity_endpoint`
+(pre-v0.2: `register_uri`):
 
 ```
 POST /oauth/register  {"client_name":"My Agent","redirect_uris":["https://claude.ai/api/mcp/auth_callback"]}

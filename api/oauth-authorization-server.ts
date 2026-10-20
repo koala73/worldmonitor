@@ -24,8 +24,8 @@
  * PKCE (S256) flow to obtain a bearer access token — no pre-asserted user
  * identity (identity is established interactively during authorization). WM does
  * not implement ID-JAG identity assertion endpoints, so only `anonymous` is
- * advertised. The `skill` field points at the published /auth.md on a host that
- * serves it without a redirect (www for the apex; see `authSkillUrl`).
+ * advertised. The `skill` field points at the published /auth.md on the issuer
+ * origin, which serves it without a redirect (see `authSkillUrl`).
  *
  * `claim_uri` completes the anonymous method: an anonymously-registered agent's
  * credential is *claimed* (bound to a human owner) at authorization time — the
@@ -75,6 +75,9 @@ export default function handler(req: Request): Response {
     authorization_response_iss_parameter_supported: true,
     agent_auth: {
       skill: authSkillUrl(origin),
+      // auth.md v0.2 renamed register_uri to identity_endpoint. Both are
+      // served so readers of either revision find the registration endpoint.
+      identity_endpoint: `${origin}/oauth/register`,
       register_uri: `${origin}/oauth/register`,
       claim_uri: `${origin}/oauth/authorize`,
       identity_types_supported: ['anonymous'],

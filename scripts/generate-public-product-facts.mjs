@@ -397,6 +397,8 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
   card.metadata.mcpApps.uiResources = UI_RESOURCE_LIST_RESPONSE.map(resource => resource.uri);
   // Categories and tags come from api/mcp/domains.ts. The per-tool category is
   // card-only; the live tools/list _meta stays access + weight (no wire change).
+  // ui.resourceUri mirrors the live MCP Apps link so a scanner that cannot
+  // authenticate still sees which tools render an app.
   card.toolCategories = MCP_TOOL_CATEGORIES.map((category) => category.id);
   card.tags = [...MCP_TAGS];
   card.tools = TOOL_REGISTRY.map((tool) => {
@@ -405,7 +407,11 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
     return {
       name: tool.name,
       description: tool.description,
-      _meta: { 'worldmonitor/access': toolAccess(tool), 'worldmonitor/category': category },
+      _meta: {
+        ...(tool._uiResourceUri ? { ui: { resourceUri: tool._uiResourceUri } } : {}),
+        'worldmonitor/access': toolAccess(tool),
+        'worldmonitor/category': category,
+      },
     };
   });
   return renderJsonDomainSurface(json(card), SERVER_CARD_DOMAIN_SURFACE, MCP_DOMAIN_SUMMARY);

@@ -223,9 +223,15 @@ function createHealthyFixtureServer({ onTransportList } = {}) {
     }
     if (req.url === '/.well-known/oauth-authorization-server' && req.method === 'GET') {
       sendJson(res, 200, {
+        issuer: origin,
         registration_endpoint: `${origin}/oauth/register`,
         token_endpoint: `${origin}/oauth/token`,
+        agent_auth: { skill: `${origin}/auth.md` },
       });
+      return;
+    }
+    if (req.url === '/auth.md' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' }).end('# auth.md\n');
       return;
     }
     if ((req.url === '/oauth/register' || req.url === '/oauth/token') && req.method === 'POST') {

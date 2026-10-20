@@ -132,6 +132,7 @@
     { "source": "/robots.txt", "has": [{ "type": "host", "value": "^api\\.worldmonitor\\.app$" }], "destination": "/robots.api.txt" },
     { "source": "/robots.txt", "destination": "/robots.www.txt" },
     { "source": "/docs/mcp", "destination": "/api/docs-mcp" },
+    { "source": "/docs/mcp/server-card", "destination": "/.well-known/mcp/docs-server-card.json" },
     { "source": "/docs/:match*", "destination": "https://worldmonitor.mintlify.dev/docs/:match*" },
     { "source": "/", "has": [{ "type": "query", "key": "mode", "value": "agent" }], "destination": "/agent-view.json" },
     { "source": "/", "has": [{ "type": "host", "value": "^(?:www\\.)?worldmonitor\\.app$" }], "destination": "/pro/welcome.html" },
@@ -259,6 +260,14 @@
     {
       "source": "/.well-known/(.*)",
       "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
+      ]
+    },
+    {
+      "source": "/docs/mcp/server-card",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json; charset=utf-8" },
         { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "Cache-Control", "value": "public, max-age=3600" }
       ]
