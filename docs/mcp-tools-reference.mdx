@@ -2903,11 +2903,13 @@ Defaults to UNHCR annual displacement statistics for one reporting year: global 
 
 Use `view: "movements"` for source-dated UNHCR operational reports, UK daily arrivals, CBP monthly encounters, Frontex monthly detections and Panama monthly Darién arrivals. Each row keeps its source, measure, report date, license and transformation notice. Encounter and detection counts are events, not unique people. Sources can overlap; do not add their counts. Source status distinguishes missing, partial and stale data; absent windows do not mean zero. Retain the attribution rider when projecting results. No provider endorsement is implied.
 
+Use `view: "events"` for IDMC Internal Displacement Updates in `iduEvents`: per-country people displaced inside their country in the last 30 days (split into conflict and disaster), `newlyReported7d` (figures IDMC published in the last 7 days, whatever the displacement date), a `surge` flag (at least 5,000 people and three times the monthly mean of the 150 days before), and the located IDMC figures from the last 180 days, newest first, at most 100 per call. IDMC publishes a figure a median of three weeks after the displacement, so the latest weeks are incomplete.
+
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `view` | string: annual / movements | Default annual. movements returns source-dated operational movement reports. |
+| `view` | string: annual / movements / events | Default annual. movements returns source-dated operational movement reports. events returns IDMC internal displacement in iduEvents. |
 | `route` | string | Exact route or situation ID in the movements view. |
 | `countries` | `array<string>` | Country names, ISO alpha-2, or alpha-3 codes to keep (e.g. ["Syria","UA","AFG"]). Matches both per-country totals and origin/asylum flows. Omit for all. Unresolved inputs return Invalid params. |
 | `limit` | number | Cap the per-country and top-flow lists to at most this many items (default 30, pass 0 for no cap). |
@@ -2915,7 +2917,7 @@ Use `view: "movements"` for source-dated UNHCR operational reports, UK daily arr
 - **API endpoints:** `GET /api/displacement/v1/get-displacement-summary`, `GET /api/displacement/v1/get-cross-border-movements`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** annual data is stale after **2.5 d**. Movement feeds have a 48-hour fetch budget, plus independent report-age budgets: 45 days for ODP, 3 days for UK arrivals and 75 days for CBP, Frontex and Panama monthly reports. Sources proven never activated do not stale the aggregate; unreadable activation markers fail closed. Check each row and source status.
+- **Freshness budget:** annual data is stale after **2.5 d**. Movement feeds have a 48-hour fetch budget, plus independent report-age budgets: 45 days for ODP, 3 days for UK arrivals and 75 days for CBP, Frontex and Panama monthly reports. Sources proven never activated do not stale the aggregate; unreadable activation markers fail closed. Check each row and source status. IDMC events are stale after **2 d**.
 
 <CodeGroup>
 

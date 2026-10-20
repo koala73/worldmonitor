@@ -1287,7 +1287,9 @@
         "sourceIomDtm": "Source : IOM DTM",
         "sinceDate": "depuis le {{date}}",
         "lastMonth": "le mois dernier",
-        "sourceUnhcrOdp": "Source : Portail de données opérationnelles du HCR"
+        "sourceUnhcrOdp": "Source : Portail de données opérationnelles du HCR",
+        "displaced": "déplacés",
+        "sourceIdmc": "Source : IDMC"
       },
       "layerHelp": {
         "title": "Guide des couches de carte",
@@ -1649,7 +1651,16 @@
       "staleReport": "Rapport périmé",
       "reported": "Nombre",
       "period": "Période",
-      "movementNote": "Chaque ligne conserve sa source, la date du rapport et sa mesure. Les effectifs, les arrivées et les événements de contrôle frontalier sont des mesures distinctes. Les sources peuvent se recouper ; ne cumulez pas leurs chiffres. WorldMonitor établit cette vue à partir des sources liées ; cela ne suppose aucun soutien des fournisseurs."
+      "movementNote": "Chaque ligne conserve sa source, la date du rapport et sa mesure. Les effectifs, les arrivées et les événements de contrôle frontalier sont des mesures distinctes. Les sources peuvent se recouper ; ne cumulez pas leurs chiffres. WorldMonitor établit cette vue à partir des sources liées ; cela ne suppose aucun soutien des fournisseurs.",
+      "recent": "Récent",
+      "last30Days": "Les 30 derniers jours",
+      "newThisWeek": "Nouveau cette semaine",
+      "conflict": "Conflit",
+      "disaster": "Catastrophe",
+      "surge": "Pic",
+      "recentNote": "IDMC : personnes déplacées dans leur pays au cours des 30 derniers jours. L'IDMC publie un chiffre en médiane trois semaines après le déplacement, de sorte que les semaines récentes se remplissent tardivement. « Nouveau cette semaine » compte les chiffres publiés au cours des 7 derniers jours. Pic : au moins 5 000 personnes et trois fois la moyenne mensuelle des cinq mois précédents.",
+      "recentAsOf": "Données au {{date}}.",
+      "recentMissing": "Aucune donnée cette fois de {{countries}} ; leurs fichiers n'ont pas pu être chargés, ce qui ne signifie pas un déplacement nul."
     },
     "climate": {
       "noAnomalies": "Aucune anomalie significative détectée",

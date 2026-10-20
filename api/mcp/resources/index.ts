@@ -48,6 +48,7 @@ import type {
 } from '../types';
 import { TOOL_REGISTRY, toolAccess } from '../registry/index';
 import { dispatchToolsCall } from '../dispatch';
+import type { McpUsage } from '../usage';
 import { evaluateFreshness } from '../freshness';
 import type { McpBudget } from '../quota';
 import { readAccountAllowance } from '../_account-allowance';
@@ -354,6 +355,8 @@ export async function buildResourceResponse(
   resourceMetadataUrl?: string,
   // Forwarded so a quota denial names the same upgrade plan (#9144).
   planKey?: string,
+  // Forwarded so the request's wm_api_usage row records the tool outcome (#9431).
+  usage?: McpUsage,
 ): Promise<Response> {
   const outerId = body.id ?? null;
   const params = body.params as { uri?: unknown } | null;
@@ -410,6 +413,7 @@ export async function buildResourceResponse(
     resourceMetadataUrl,
     undefined,
     planKey,
+    usage,
   );
 
   // Parse the dispatched body. dispatched.json() is safe — the dispatcher

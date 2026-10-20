@@ -1182,7 +1182,9 @@
         "sourceIomDtm": "Quelle: IOM DTM",
         "sinceDate": "seit {{date}}",
         "lastMonth": "letzten Monat",
-        "sourceUnhcrOdp": "Quelle: UNHCR Operational Data Portal"
+        "sourceUnhcrOdp": "Quelle: UNHCR Operational Data Portal",
+        "displaced": "Vertriebene",
+        "sourceIdmc": "Quelle: IDMC"
       },
       "layerHelp": {
         "title": "Leitfaden zu Kartenebenen",
@@ -1635,7 +1637,16 @@
       "staleReport": "Veralteter Bericht",
       "reported": "Anzahl",
       "period": "Zeitraum",
-      "movementNote": "Jede Zeile behält ihre Quelle, ihr Berichtsdatum und ihre Messgröße. Bestände, Ankünfte und Grenzkontrollereignisse sind verschiedene Messgrößen. Quellen können sich überschneiden; addieren Sie ihre Zahlen nicht. WorldMonitor leitet diese Ansicht aus den verlinkten Quellen ab; dies bedeutet keine Billigung durch die Anbieter."
+      "movementNote": "Jede Zeile behält ihre Quelle, ihr Berichtsdatum und ihre Messgröße. Bestände, Ankünfte und Grenzkontrollereignisse sind verschiedene Messgrößen. Quellen können sich überschneiden; addieren Sie ihre Zahlen nicht. WorldMonitor leitet diese Ansicht aus den verlinkten Quellen ab; dies bedeutet keine Billigung durch die Anbieter.",
+      "recent": "Kürzlich",
+      "last30Days": "Letzte 30 Tage",
+      "newThisWeek": "Neu diese Woche",
+      "conflict": "Konflikt",
+      "disaster": "Katastrophe",
+      "surge": "Anstieg",
+      "recentNote": "IDMC: Personen, die in den letzten 30 Tagen innerhalb ihres Landes vertrieben wurden. IDMC veröffentlicht Zahlen im Median drei Wochen nach der Vertreibung, daher werden aktuelle Wochen später erfasst. „Neu diese Woche\" zählt Zahlen, die in den letzten 7 Tagen veröffentlicht wurden. Anstieg: mindestens 5.000 Personen und das Dreifache des monatlichen Durchschnitts der vorherigen fünf Monate.",
+      "recentAsOf": "Daten vom {{date}}.",
+      "recentMissing": "Diesmal keine Daten für {{countries}}: Ihre Dateien konnten nicht geladen werden. Das heißt nicht, dass niemand vertrieben wurde."
     },
     "populationExposure": {
       "totalAffected": "Insgesamt betroffen",

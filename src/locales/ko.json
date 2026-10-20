@@ -1330,7 +1330,9 @@
         "sourceIomDtm": "출처: IOM DTM",
         "sinceDate": "{{date}} 이후",
         "lastMonth": "지난달",
-        "sourceUnhcrOdp": "출처: UNHCR 운영 데이터 포털"
+        "sourceUnhcrOdp": "출처: UNHCR 운영 데이터 포털",
+        "displaced": "실향민",
+        "sourceIdmc": "출처: IDMC"
       },
       "layerHelp": {
         "title": "지도 레이어 가이드",
@@ -1769,7 +1771,16 @@
       "staleReport": "오래된 보고서",
       "reported": "수치",
       "period": "기간",
-      "movementNote": "각 행은 출처, 보고 날짜와 측정 기준을 유지합니다. 특정 시점의 인구, 도착자 수와 국경 단속 사건 수는 서로 다른 지표입니다. 출처 간에 중복이 있을 수 있으므로 수치를 합산하지 마세요. WorldMonitor는 연결된 출처에서 이 보기를 생성하며, 이는 제공 기관의 지지를 뜻하지 않습니다."
+      "movementNote": "각 행은 출처, 보고 날짜와 측정 기준을 유지합니다. 특정 시점의 인구, 도착자 수와 국경 단속 사건 수는 서로 다른 지표입니다. 출처 간에 중복이 있을 수 있으므로 수치를 합산하지 마세요. WorldMonitor는 연결된 출처에서 이 보기를 생성하며, 이는 제공 기관의 지지를 뜻하지 않습니다.",
+      "recent": "최근",
+      "last30Days": "지난 30일",
+      "newThisWeek": "이번 주 신규",
+      "conflict": "분쟁",
+      "disaster": "재해",
+      "surge": "급증",
+      "recentNote": "IDMC: 지난 30일간 국내 실향민. IDMC는 실향 발생 후 중앙값 3주 뒤에 통계를 발표하므로 최근 주간 데이터는 늦게 입력됩니다. 이번 주 신규는 지난 7일간 발표된 통계를 집계합니다. 급증: 최소 5,000명 이상이며 지난 5개월 월평균의 3배 이상.",
+      "recentAsOf": "{{date}} 기준 데이터입니다.",
+      "recentMissing": "{{countries}}에서 이번에 데이터를 받지 못했습니다. 파일 로드에 실패했으므로 국내이동이 없다는 뜻은 아닙니다."
     },
     "climate": {
       "noAnomalies": "중대한 이상 감지되지 않음",

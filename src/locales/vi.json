@@ -1330,7 +1330,9 @@
         "sourceIomDtm": "Nguồn: IOM DTM",
         "sinceDate": "kể từ {{date}}",
         "lastMonth": "tháng trước",
-        "sourceUnhcrOdp": "Nguồn: Cổng dữ liệu hoạt động của UNHCR"
+        "sourceUnhcrOdp": "Nguồn: Cổng dữ liệu hoạt động của UNHCR",
+        "displaced": "người phải rời bỏ nơi ở",
+        "sourceIdmc": "Nguồn: IDMC"
       },
       "layerHelp": {
         "title": "Hướng dẫn Lớp Bản đồ",
@@ -1769,7 +1771,16 @@
       "staleReport": "Báo cáo đã cũ",
       "reported": "Số lượng",
       "period": "Kỳ",
-      "movementNote": "Mỗi hàng giữ nguyên nguồn, ngày báo cáo và chỉ số. Số dân tại một thời điểm, số người đến và số sự kiện kiểm soát biên giới là các chỉ số khác nhau. Các nguồn có thể trùng lặp; không cộng số liệu của chúng. WorldMonitor tạo chế độ xem này từ các nguồn được liên kết; điều này không hàm ý sự chứng thực của nhà cung cấp."
+      "movementNote": "Mỗi hàng giữ nguyên nguồn, ngày báo cáo và chỉ số. Số dân tại một thời điểm, số người đến và số sự kiện kiểm soát biên giới là các chỉ số khác nhau. Các nguồn có thể trùng lặp; không cộng số liệu của chúng. WorldMonitor tạo chế độ xem này từ các nguồn được liên kết; điều này không hàm ý sự chứng thực của nhà cung cấp.",
+      "recent": "Gần đây",
+      "last30Days": "30 ngày qua",
+      "newThisWeek": "Mới trong tuần này",
+      "conflict": "Xung đột",
+      "disaster": "Thảm họa",
+      "surge": "Bùng phát",
+      "recentNote": "IDMC: những người phải rời bỏ nơi ở nhưng vẫn ở trong nước mình trong 30 ngày qua. IDMC công bố số liệu trung vị khoảng ba tuần sau khi người dân phải di dời, nên các tuần gần đây được cập nhật muộn. Mới trong tuần này đếm các số liệu được công bố trong 7 ngày qua. Bùng phát: ít nhất 5.000 người và gấp ba lần mức trung bình hằng tháng của năm tháng trước đó.",
+      "recentAsOf": "Dữ liệu tính đến {{date}}.",
+      "recentMissing": "Không có dữ liệu từ {{countries}} lần này; tệp của họ không tải được, điều này không có nghĩa là không có người di cư."
     },
     "climate": {
       "noAnomalies": "Không phát hiện bất thường đáng kể",

@@ -1327,7 +1327,9 @@
         "sourceIomDtm": "Zdroj: IOM DTM",
         "sinceDate": "od {{date}}",
         "lastMonth": "minulý měsíc",
-        "sourceUnhcrOdp": "Zdroj: Portál operačních dat UNHCR"
+        "sourceUnhcrOdp": "Zdroj: Portál operačních dat UNHCR",
+        "displaced": "vysídleno",
+        "sourceIdmc": "Zdroj: IDMC"
       },
       "layerHelp": {
         "title": "Průvodce mapovými vrstvami",
@@ -1760,7 +1762,16 @@
       "staleReport": "Zastaralá zpráva",
       "reported": "Počet",
       "period": "Období",
-      "movementNote": "Každý řádek zachovává zdroj, datum zprávy a druh měření. Stavové počty, příjezdy a události hraničních kontrol jsou různá měření. Zdroje se mohou překrývat; jejich počty nesčítejte. WorldMonitor tento přehled odvozuje z odkazovaných zdrojů; neznamená to podporu ze strany poskytovatelů."
+      "movementNote": "Každý řádek zachovává zdroj, datum zprávy a druh měření. Stavové počty, příjezdy a události hraničních kontrol jsou různá měření. Zdroje se mohou překrývat; jejich počty nesčítejte. WorldMonitor tento přehled odvozuje z odkazovaných zdrojů; neznamená to podporu ze strany poskytovatelů.",
+      "recent": "Nedávné",
+      "last30Days": "Posledních 30 dní",
+      "newThisWeek": "Nové tento týden",
+      "conflict": "Konflikt",
+      "disaster": "Katastrofa",
+      "surge": "Nárůst",
+      "recentNote": "IDMC: osoby vysídlené v rámci své země během posledních 30 dní. IDMC zveřejňuje údaje v průměru tři týdny po vysídlení, takže nedávné týdny se doplňují se zpožděním. Nové tento týden počítá údaje zveřejněné v posledních 7 dnech. Nárůst: nejméně 5 000 osob a třikrát měsíční průměr z předchozích pěti měsíců.",
+      "recentAsOf": "Data k {{date}}.",
+      "recentMissing": "Tentokrát žádná data od {{countries}}; jejich soubory se nepodařilo načíst, což neznamená nulové přesídlení."
     },
     "climate": {
       "noAnomalies": "Nebyly zjištěny žádné významné anomálie",

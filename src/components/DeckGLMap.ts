@@ -53,7 +53,7 @@ import type { GpsJamHex } from '@/services/gps-interference';
 import { fetchImageryScenes } from '@/services/imagery';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
-import type { CrossBorderData, CrossBorderPoint, DisplacementFlow, InternalDisplacementData, InternalDisplacementRegion, InternalDisplacementRoute } from '@/services/displacement';
+import type { CrossBorderData, CrossBorderPoint, DisplacementEventPoint, DisplacementEventsData, DisplacementFlow, InternalDisplacementData, InternalDisplacementRegion, InternalDisplacementRoute } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { RadiationObservation } from '@/services/radiation';
@@ -649,6 +649,7 @@ export class DeckGLMap {
   private displacementFlows: DisplacementFlow[] = [];
   private internalDisplacement: InternalDisplacementData | null = null;
   private crossBorderArrivals: CrossBorderData | null = null;
+  private displacementEvents: DisplacementEventsData | null = null;
   private gpsJammingHexes: GpsJamHexWithPolygon[] = [];
   private gpsJammingLoadSeq = 0;
   private climateAnomalies: ClimateAnomaly[] = [];
@@ -2312,6 +2313,9 @@ export class DeckGLMap {
     // Displacement flows arc layer
     if (mapLayers.displacement && this.displacementFlows.length > 0) {
       layers.push(this.createDisplacementArcsLayer());
+    }
+    if (mapLayers.displacement && this.displacementEvents && this.displacementEvents.points.length > 0) {
+      layers.push(this.createDisplacementEventsLayer(this.displacementEvents.points));
     }
     if (mapLayers.displacement && this.crossBorderArrivals && this.crossBorderArrivals.points.length > 0) {
       layers.push(this.createCrossBorderPointsLayer(this.crossBorderArrivals.points));
@@ -5169,6 +5173,10 @@ export class DeckGLMap {
         const accelerating = obj.accelerating ? `<br/><strong>${t('components.displacement.accelerating')}</strong>` : '';
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.country)}</strong><br/>${text(obj.label)}: ${numericLabel(obj.individuals)}${lastMonth}${change}${accelerating}<br/>${text(obj.situation)} · ${text(obj.date)}<br/>${text(obj.source || t('components.deckgl.tooltip.sourceUnhcrOdp'))}${obj.measure ? ` · ${text(obj.measure)}` : ''}${obj.last30Days !== undefined ? ' · 30d' : ''}</div>` };
       }
+      case 'displacement-events-layer': {
+        const kind = obj.conflict ? t('components.displacement.conflict') : text(obj.hazardType);
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.locationName || obj.countryName)}</strong><br/>${numericLabel(obj.figure)} ${t('components.deckgl.tooltip.displaced')} · ${kind}<br/>${text(obj.eventName)}<br/>${text(obj.displacementDate)}<br/>${t('components.deckgl.tooltip.sourceIdmc')}</div>` };
+      }
       case 'internal-displacement-regions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}, ${text(obj.countryName)}</strong><br/>${numericLabel(obj.idps)} ${t('components.deckgl.tooltip.internallyDisplaced')}<br/>${text(obj.operation)} · ${text(obj.reportingDate)}<br/>${t('components.deckgl.tooltip.sourceIomDtm')}</div>` };
       case 'internal-displacement-routes-layer':
@@ -6707,6 +6715,29 @@ export class DeckGLMap {
     });
   }
 
+  // IDMC figures by location over the last 180 days: red for conflict, blue for
+  // disaster. Area scales with the figure; most are under 100 people.
+  private createDisplacementEventsLayer(points: DisplacementEventPoint[]): ScatterplotLayer<DisplacementEventPoint> {
+    const light = getCurrentTheme() === 'light';
+    return new ScatterplotLayer<DisplacementEventPoint>({
+      id: 'displacement-events-layer',
+      data: points,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => Math.sqrt(d.figure) * 60,
+      radiusMinPixels: 2,
+      radiusMaxPixels: 36,
+      getFillColor: (d) => d.conflict
+        ? (light ? [190, 30, 45, 110] : [255, 80, 90, 100])
+        : (light ? [30, 90, 180, 110] : [90, 160, 255, 100]),
+      getLineColor: (d) => d.conflict
+        ? (light ? [150, 20, 30, 200] : [255, 140, 150, 190])
+        : (light ? [20, 60, 140, 200] : [150, 200, 255, 190]),
+      stroked: true,
+      lineWidthMinPixels: 1,
+      pickable: true,
+    });
+  }
+
   // IOM DTM internally displaced people by region. Area scales with the count.
   private createInternalDisplacementRegionsLayer(regions: InternalDisplacementRegion[]): ScatterplotLayer<InternalDisplacementRegion> {
     const light = getCurrentTheme() === 'light';
@@ -7426,6 +7457,11 @@ export class DeckGLMap {
 
   public setCrossBorderArrivals(data: CrossBorderData): void {
     this.crossBorderArrivals = data;
+    this.render();
+  }
+
+  public setDisplacementEvents(data: DisplacementEventsData): void {
+    this.displacementEvents = data;
     this.render();
   }
 

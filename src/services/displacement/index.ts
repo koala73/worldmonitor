@@ -8,11 +8,14 @@ import type {
 import { createCircuitBreaker, getCSSColor } from '@/utils';
 import { DisplacementServiceClient } from '@/services/generated-rpc-clients';
 import { publicRpcFetch } from '@/services/public-rpc-fetch';
+import { ensureHydrated } from '@/services/bootstrap';
 import { EMPTY_INTERNAL_DISPLACEMENT, toInternalDisplacementData, type InternalDisplacementData } from './internal';
 import { toMovementData, type CrossBorderData } from './cross-border';
+import { EMPTY_DISPLACEMENT_EVENTS, toDisplacementEventsData, type DisplacementEventsData } from './idu-events';
 
 export * from './internal';
 export * from './cross-border';
+export * from './idu-events';
 
 // ─── Consumer-friendly types (matching legacy shape exactly) ───
 
@@ -166,6 +169,23 @@ export async function fetchInternalDisplacement(): Promise<InternalDisplacementD
       .getInternalDisplacement({ countryCode: '' });
     return toInternalDisplacementData(response);
   }, EMPTY_INTERNAL_DISPLACEMENT, { shouldCache: (r) => r.operations.length > 0 });
+}
+
+// ─── Internal displacement events (IDMC) ───
+
+const displacementEventsBreaker = createCircuitBreaker<DisplacementEventsData>({
+  name: 'IDMC Displacement Events',
+  cacheTtlMs: 30 * 60 * 1000,
+  persistCache: true,
+});
+
+// On-demand bootstrap key: fetched only when the panel or map layer needs it.
+export async function fetchDisplacementEvents(): Promise<DisplacementEventsData> {
+  return displacementEventsBreaker.execute(async () => {
+    const data = toDisplacementEventsData(await ensureHydrated('idmcIduDisplacement'));
+    if (data.points.length === 0 && data.countries.length === 0) throw new Error('IDMC displacement events unavailable');
+    return data;
+  }, EMPTY_DISPLACEMENT_EVENTS, { shouldCache: (r) => r.points.length > 0 || r.countries.length > 0 });
 }
 
 // ─── Cross-border movements (UNHCR Operational Data Portal) ───

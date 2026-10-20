@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
-import type { UnhcrSummary, CountryDisplacement, CrossBorderData, CrossBorderSituation, InternalDisplacementData, InternalDisplacementOperation } from '@/services/displacement';
+import type { UnhcrSummary, CountryDisplacement, CrossBorderData, CrossBorderSituation, DisplacementEventCountrySummary, DisplacementEventsData, InternalDisplacementData, InternalDisplacementOperation } from '@/services/displacement';
 import { formatPopulation } from '@/services/displacement';
 import { t } from '@/services/i18n';
 import { renderFollowedOnlyChip, type FollowedOnlyChipHandle } from '@/utils/followed-only-chip';
@@ -10,12 +10,13 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { bindActivationKeys } from '@/utils/activation';
 
 
-type DisplacementTab = 'origins' | 'hosts' | 'internal' | 'crossBorder';
+type DisplacementTab = 'origins' | 'hosts' | 'recent' | 'internal' | 'crossBorder';
 
 export class DisplacementPanel extends Panel {
   private data: UnhcrSummary | null = null;
   private internalData: InternalDisplacementData | null = null;
   private crossBorderData: CrossBorderData | null = null;
+  private eventsData: DisplacementEventsData | null = null;
   private activeTab: DisplacementTab = 'origins';
   private onCountryClick?: (lat: number, lon: number) => void;
   private followedOnlyChip: FollowedOnlyChipHandle | null = null;
@@ -84,7 +85,7 @@ export class DisplacementPanel extends Panel {
   }
 
   protected override updateFreshnessBadge(): void {
-    super.updateFreshnessBadge(this.activeTab === 'internal' || this.activeTab === 'crossBorder' ? null : undefined);
+    super.updateFreshnessBadge(this.activeTab === 'origins' || this.activeTab === 'hosts' ? undefined : null);
   }
 
   public setCountryClickHandler(handler: (lat: number, lon: number) => void): void {
@@ -107,18 +108,29 @@ export class DisplacementPanel extends Panel {
     this.renderContent();
   }
 
-  // Any one source counts: a later UNHCR failure must not replace DTM or portal tabs with an error.
-  public hasData(): boolean {
-    return this.data !== null || this.internalData !== null || this.crossBorderData !== null;
+  public setEventsData(data: DisplacementEventsData): void {
+    this.eventsData = data;
+    // UNHCR owns the header count once it arrives.
+    if (!this.data) this.setCount(data.countries.length);
+    this.renderContent();
   }
 
-  // UNHCR yearly data, IOM DTM and the UNHCR portal load independently; each
+  // Any one source counts: a later UNHCR failure must not replace DTM, IDMC or portal tabs with an error.
+  public hasData(): boolean {
+    return this.data !== null || this.internalData !== null || this.crossBorderData !== null || this.eventsData !== null;
+  }
+
+  // UNHCR yearly data, IDMC, IOM DTM and the UNHCR portal load independently; each
   // tab renders as soon as its own data is there.
   private renderContent(): void {
     const sources: { id: DisplacementTab; label: string; render?: () => string }[] = [];
     if (this.data) {
       sources.push({ id: 'origins', label: t('components.displacement.origins') });
       sources.push({ id: 'hosts', label: t('components.displacement.hosts') });
+    }
+    const events = this.eventsData;
+    if (events) {
+      sources.push({ id: 'recent', label: t('components.displacement.recent'), render: () => this.renderRecentTable(events) });
     }
     const internal = this.internalData;
     if (internal) {
@@ -292,6 +304,56 @@ export class DisplacementPanel extends Panel {
           <tbody>${rows}</tbody>
         </table>
         <div class="disp-source-note">${escapeHtml(t('components.displacement.movementNote'))}</div>`;
+  }
+
+  // One row per country with IDMC figures in the last 30 days or published this week.
+  private renderRecentTable(events: DisplacementEventsData): string {
+    let countries: DisplacementEventCountrySummary[] = events.countries;
+    const followedOnlyActive = this.followedOnlyChip?.isActive() === true;
+    if (followedOnlyActive) {
+      countries = countries.filter(c => {
+        const code = toIso2(c.countryCode ?? '');
+        return code ? isFollowed(code) : false;
+      });
+    }
+    if (countries.length === 0) {
+      const emptyMsg = followedOnlyActive
+        ? 'No items in your followed countries. Add countries by tapping the star, or turn off this filter.'
+        : t('common.noDataShort');
+      return `<div class="panel-empty">${escapeHtml(emptyMsg)}</div>`;
+    }
+    const rows = countries.slice(0, 40).map(c => {
+      const badge = c.surge ? ` <span class="disp-badge disp-crisis">${t('components.displacement.surge')}</span>` : '';
+      const split = [
+        c.conflict30d > 0 ? `${t('components.displacement.conflict')} ${formatPopulation(c.conflict30d)}` : '',
+        c.disaster30d > 0 ? `${t('components.displacement.disaster')} ${formatPopulation(c.disaster30d)}` : '',
+      ].filter(Boolean).join(' · ');
+      return `<tr class="disp-row" data-lat="${c.lat ?? ''}" data-lon="${c.lon ?? ''}" tabindex="0">
+          <td class="disp-name">${escapeHtml(c.countryName)}${badge}${split ? `<div class="disp-operation">${escapeHtml(split)}</div>` : ''}</td>
+          <td class="disp-round">${c.newlyReported7d > 0 ? formatPopulation(c.newlyReported7d) : '—'}</td>
+          <td class="disp-count">${formatPopulation(c.displaced30d)}</td>
+        </tr>`;
+    }).join('');
+    return `
+        <table class="disp-table">
+          <thead>
+            <tr>
+              <th scope="col">${t('components.displacement.country')}</th>
+              <th scope="col" class="disp-round">${t('components.displacement.newThisWeek')}</th>
+              <th scope="col" class="disp-count">${t('components.displacement.last30Days')}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="disp-source-note">${escapeHtml(this.recentNote(events))}</div>`;
+  }
+
+  private recentNote(events: DisplacementEventsData): string {
+    return [
+      t('components.displacement.recentNote'),
+      events.asOf ? t('components.displacement.recentAsOf', { date: events.asOf }) : '',
+      events.missingCountries.length ? t('components.displacement.recentMissing', { countries: events.missingCountries.join(', ') }) : '',
+    ].filter(Boolean).join(' ');
   }
 
   // One row per IOM DTM operation. Operations in a country can overlap, so

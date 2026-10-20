@@ -643,7 +643,9 @@
         "sourceIomDtm": "Fonte: IOM DTM",
         "sinceDate": "desde {{date}}",
         "lastMonth": "no mês passado",
-        "sourceUnhcrOdp": "Fonte: Portal de Dados Operacionais do ACNUR"
+        "sourceUnhcrOdp": "Fonte: Portal de Dados Operacionais do ACNUR",
+        "displaced": "deslocados",
+        "sourceIdmc": "Fonte: IDMC"
       },
       "layerHelp": {
         "title": "Guia de camadas de mapa",
@@ -1110,7 +1112,16 @@
       "staleReport": "Relatório desatualizado",
       "reported": "Quantidade",
       "period": "Período",
-      "movementNote": "Cada linha mantém a sua fonte, data do relatório e medida. Os totais populacionais, as chegadas e os eventos de controlo fronteiriço são medidas distintas. As fontes podem sobrepor-se; não some as suas contagens. O WorldMonitor produz esta vista a partir das fontes ligadas; isto não implica o apoio dos fornecedores."
+      "movementNote": "Cada linha mantém a sua fonte, data do relatório e medida. Os totais populacionais, as chegadas e os eventos de controlo fronteiriço são medidas distintas. As fontes podem sobrepor-se; não some as suas contagens. O WorldMonitor produz esta vista a partir das fontes ligadas; isto não implica o apoio dos fornecedores.",
+      "recent": "Recente",
+      "last30Days": "Últimos 30 dias",
+      "newThisWeek": "Novo esta semana",
+      "conflict": "Conflito",
+      "disaster": "Desastre",
+      "surge": "Pico",
+      "recentNote": "IDMC: pessoas deslocadas dentro de seu país nos últimos 30 dias. O IDMC publica um número mediano de três semanas após o deslocamento, portanto semanas recentes são preenchidas tardiamente. Novo esta semana conta números publicados nos últimos 7 dias. Pico: pelo menos 5.000 pessoas e três vezes a média mensal dos cinco meses anteriores.",
+      "recentAsOf": "Dados de {{date}}.",
+      "recentMissing": "Sem dados desta vez de {{countries}}; seus arquivos falharam ao carregar, o que não significa deslocamento zero."
     },
     "populationExposure": {
       "totalAffected": "Total afetado",

@@ -124,7 +124,7 @@ import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import type { CorrelationSignal } from '@/services/correlation';
 import { fetchConflictEvents, fetchUcdpEvents, fetchIranEvents } from '@/services/conflict';
-import { fetchCrossBorderArrivals, fetchInternalDisplacement, fetchUnhcrPopulation } from '@/services/displacement';
+import { fetchCrossBorderArrivals, fetchDisplacementEvents, fetchInternalDisplacement, fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { fetchImdCycloneMarine } from '@/services/imd-cyclone-marine';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
@@ -3634,6 +3634,19 @@ export class DataLoaderManager implements AppModule {
           }
         } catch (error) {
           console.error('[Intelligence] UNHCR cross-border fetch failed:', error);
+        }
+      })());
+      // About 2.5 MB of IDMC events (250 KB gzipped), so it waits for the same switch.
+      tasks.push((async () => {
+        try {
+          const events = await fetchDisplacementEvents();
+          if (events.points.length === 0 && events.countries.length === 0) return;
+          this.callPanel('displacement', 'setEventsData', events);
+          if (this.ctx.mapLayers.displacement) {
+            this.ctx.map?.setDisplacementEvents(events);
+          }
+        } catch (error) {
+          console.error('[Intelligence] IDMC displacement events fetch failed:', error);
         }
       })());
     }

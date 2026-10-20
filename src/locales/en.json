@@ -1497,7 +1497,9 @@
         "sourceIomDtm": "Source: IOM DTM",
         "sinceDate": "since {{date}}",
         "lastMonth": "last month",
-        "sourceUnhcrOdp": "Source: UNHCR Operational Data Portal"
+        "sourceUnhcrOdp": "Source: UNHCR Operational Data Portal",
+        "displaced": "displaced",
+        "sourceIdmc": "Source: IDMC"
       },
       "layerHelp": {
         "title": "Map Layers Guide",
@@ -1937,7 +1939,16 @@
       "reported": "Count",
       "period": "Period",
       "crossBorderNote": "UN Refugee Agency Operational Data Portal: people who crossed borders in each crisis, from the latest country reports. Situations overlap, so they are not added together.",
-      "movementNote": "Each row keeps its source, report date and measure. Stocks, arrivals and encounter events are different measures. Sources can overlap; do not add their counts. WorldMonitor derives this view from the linked sources; no provider endorsement is implied."
+      "movementNote": "Each row keeps its source, report date and measure. Stocks, arrivals and encounter events are different measures. Sources can overlap; do not add their counts. WorldMonitor derives this view from the linked sources; no provider endorsement is implied.",
+      "recent": "Recent",
+      "last30Days": "Last 30 days",
+      "newThisWeek": "New this week",
+      "conflict": "Conflict",
+      "disaster": "Disaster",
+      "surge": "Surge",
+      "recentNote": "IDMC: people displaced within their country in the last 30 days. IDMC publishes a figure a median of three weeks after the displacement, so recent weeks fill in late. New this week counts figures published in the last 7 days. Surge: at least 5,000 people and three times the monthly average of the previous five months.",
+      "recentAsOf": "Data as of {{date}}.",
+      "recentMissing": "No data this time from {{countries}}; their files failed to load, which is not zero displacement."
     },
     "climate": {
       "noAnomalies": "No significant anomalies detected",

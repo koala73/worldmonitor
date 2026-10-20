@@ -642,7 +642,9 @@
         "sourceIomDtm": "Bron: IOM DTM",
         "sinceDate": "sinds {{date}}",
         "lastMonth": "vorige maand",
-        "sourceUnhcrOdp": "Bron: UNHCR Operational Data Portal"
+        "sourceUnhcrOdp": "Bron: UNHCR Operational Data Portal",
+        "displaced": "ontheemd",
+        "sourceIdmc": "Bron: IDMC"
       },
       "layerHelp": {
         "title": "Gids voor kaartlagen",
@@ -1109,7 +1111,16 @@
       "staleReport": "Verouderd rapport",
       "reported": "Aantal",
       "period": "Periode",
-      "movementNote": "Elke rij behoudt de bron, rapportdatum en meeteenheid. Populaties, aankomsten en grenscontrole-incidenten zijn verschillende metingen. Bronnen kunnen overlappen; tel hun aantallen niet op. WorldMonitor leidt deze weergave af van de gekoppelde bronnen; dit houdt geen goedkeuring door de aanbieders in."
+      "movementNote": "Elke rij behoudt de bron, rapportdatum en meeteenheid. Populaties, aankomsten en grenscontrole-incidenten zijn verschillende metingen. Bronnen kunnen overlappen; tel hun aantallen niet op. WorldMonitor leidt deze weergave af van de gekoppelde bronnen; dit houdt geen goedkeuring door de aanbieders in.",
+      "recent": "Recent",
+      "last30Days": "Laatste 30 dagen",
+      "newThisWeek": "Nieuw deze week",
+      "conflict": "Conflict",
+      "disaster": "Ramp",
+      "surge": "Toename",
+      "recentNote": "IDMC: mensen ontheemd binnen hun eigen land in de laatste 30 dagen. IDMC publiceert een cijfer gemiddeld drie weken na de ontheemding, dus recente weken worden later ingevuld. Nieuw deze week telt cijfers gepubliceerd in de afgelopen 7 dagen. Toename: ten minste 5.000 mensen en drie keer het maandelijkse gemiddelde van de voorgaande vijf maanden.",
+      "recentAsOf": "Gegevens per {{date}}.",
+      "recentMissing": "Geen gegevens dit keer van {{countries}}; hun bestanden konden niet worden geladen, wat niet nul verplaatsing betekent."
     },
     "populationExposure": {
       "totalAffected": "Totaal getroffen",

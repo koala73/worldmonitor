@@ -1185,7 +1185,9 @@
         "sourceIomDtm": "Fuente: IOM DTM",
         "sinceDate": "desde {{date}}",
         "lastMonth": "el mes pasado",
-        "sourceUnhcrOdp": "Fuente: Portal de Datos Operacionales de ACNUR"
+        "sourceUnhcrOdp": "Fuente: Portal de Datos Operacionales de ACNUR",
+        "displaced": "desplazados",
+        "sourceIdmc": "Fuente: IDMC"
       },
       "layerHelp": {
         "title": "Guía de capas de mapas",
@@ -1638,7 +1640,16 @@
       "staleReport": "Informe desactualizado",
       "reported": "Cantidad",
       "period": "Período",
-      "movementNote": "Cada fila conserva su fuente, fecha de informe y medida. Las poblaciones, las llegadas y los encuentros fronterizos son medidas distintas. Las fuentes pueden solaparse; no sume sus cifras. WorldMonitor elabora esta vista a partir de las fuentes enlazadas; esto no implica el respaldo de los proveedores."
+      "movementNote": "Cada fila conserva su fuente, fecha de informe y medida. Las poblaciones, las llegadas y los encuentros fronterizos son medidas distintas. Las fuentes pueden solaparse; no sume sus cifras. WorldMonitor elabora esta vista a partir de las fuentes enlazadas; esto no implica el respaldo de los proveedores.",
+      "recent": "Reciente",
+      "last30Days": "Últimos 30 días",
+      "newThisWeek": "Nuevos esta semana",
+      "conflict": "Conflicto",
+      "disaster": "Desastre",
+      "surge": "Pico",
+      "recentNote": "IDMC: personas desplazadas dentro de su país en los últimos 30 días. IDMC publica una cifra con una mediana de tres semanas después del desplazamiento, por lo que las semanas recientes se completan más tarde. Nuevos esta semana cuenta las cifras publicadas en los últimos 7 días. Pico: al menos 5.000 personas y tres veces el promedio mensual de los cinco meses anteriores.",
+      "recentAsOf": "Datos al {{date}}.",
+      "recentMissing": "Sin datos en esta ocasión de {{countries}}; sus archivos no se cargaron, lo que no significa desplazamiento cero."
     },
     "populationExposure": {
       "totalAffected": "Total de afectados",

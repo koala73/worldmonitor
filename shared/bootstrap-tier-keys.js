@@ -72,6 +72,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   imdCycloneMarine: 'weather:imd-cyclone-marine:v1',
   liveVideoResolved: 'live-video:resolved:v1',
   crossBorderArrivals: 'displacement:cross-border:v1',
+  idmcIduDisplacement: 'displacement:idmc-idu:v1',
   canadaRoads: 'infra:ontario-511:v1',
   albertaRoads: 'infra:alberta-511:v1',
   manitobaRoads: 'infra:manitoba-511:v1',
@@ -247,6 +248,9 @@ const ON_DEMAND_KEY_NAMES = new Set([
   // Legacy ODP bootstrap/widget contract. The dashboard uses the source-dated
   // movement RPC; retain this on-demand key until legacy clients migrate.
   'crossBorderArrivals',
+  // IDMC internal displacement events (#9014), about 2.5 MB, read by the
+  // displacement panel and map layer only when they are open.
+  'idmcIduDisplacement',
 ]);
 
 /**

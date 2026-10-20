@@ -1330,7 +1330,9 @@
         "sourceIomDtm": "来源：IOM DTM",
         "sinceDate": "自{{date}}起",
         "lastMonth": "上月",
-        "sourceUnhcrOdp": "来源：联合国难民署业务数据门户"
+        "sourceUnhcrOdp": "来源：联合国难民署业务数据门户",
+        "displaced": "人流离失所",
+        "sourceIdmc": "来源：IDMC"
       },
       "layerHelp": {
         "title": "地图图层指南",
@@ -1769,7 +1771,16 @@
       "staleReport": "报告已过期",
       "reported": "数量",
       "period": "期间",
-      "movementNote": "每行保留其来源、报告日期和衡量指标。存量人口、抵达人数和边境执法事件是不同指标。来源可能重叠，请勿将其计数相加。WorldMonitor 根据链接的来源生成此视图，并不意味着获得任何数据提供方的认可。"
+      "movementNote": "每行保留其来源、报告日期和衡量指标。存量人口、抵达人数和边境执法事件是不同指标。来源可能重叠，请勿将其计数相加。WorldMonitor 根据链接的来源生成此视图，并不意味着获得任何数据提供方的认可。",
+      "recent": "最近",
+      "last30Days": "过去30天",
+      "newThisWeek": "本周新增",
+      "conflict": "冲突",
+      "disaster": "灾害",
+      "surge": "激增",
+      "recentNote": "IDMC：过去30天内在本国流离失所的人口。IDMC通常在流离失所后三周发布数据，因此最近几周的数据会延迟填入。本周新增计算过去7天内发布的数据。激增：至少5000人，且是过去五个月月均值的三倍及以上。",
+      "recentAsOf": "数据截至 {{date}}。",
+      "recentMissing": "{{countries}} 本期无数据；其文件加载失败，这并不表示零流离失所。"
     },
     "climate": {
       "noAnomalies": "未检测到显著异常",

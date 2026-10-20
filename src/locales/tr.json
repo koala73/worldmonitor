@@ -1333,7 +1333,9 @@
         "sourceIomDtm": "Kaynak: IOM DTM",
         "sinceDate": "{{date}} tarihinden beri",
         "lastMonth": "geçen ay",
-        "sourceUnhcrOdp": "Kaynak: BMMYK Operasyonel Veri Portalı"
+        "sourceUnhcrOdp": "Kaynak: BMMYK Operasyonel Veri Portalı",
+        "displaced": "yerinden edilmiş",
+        "sourceIdmc": "Kaynak: IDMC"
       },
       "layerHelp": {
         "title": "Harita Katmanlari Rehberi",
@@ -1773,7 +1775,16 @@
       "staleReport": "Güncelliğini yitirmiş rapor",
       "reported": "Sayı",
       "period": "Dönem",
-      "movementNote": "Her satır kaynağını, rapor tarihini ve ölçüsünü korur. Mevcut nüfus, varışlar ve sınır denetimi olayları farklı ölçülerdir. Kaynaklar örtüşebilir; sayılarını toplamayın. WorldMonitor bu görünümü bağlantılı kaynaklardan türetir; bu, sağlayıcıların onayını ima etmez."
+      "movementNote": "Her satır kaynağını, rapor tarihini ve ölçüsünü korur. Mevcut nüfus, varışlar ve sınır denetimi olayları farklı ölçülerdir. Kaynaklar örtüşebilir; sayılarını toplamayın. WorldMonitor bu görünümü bağlantılı kaynaklardan türetir; bu, sağlayıcıların onayını ima etmez.",
+      "recent": "Yakın dönem",
+      "last30Days": "Son 30 gün",
+      "newThisWeek": "Bu haftanın yenileri",
+      "conflict": "Çatışma",
+      "disaster": "Afet",
+      "surge": "Ani Artış",
+      "recentNote": "IDMC: son 30 gün içinde ülkeleri içinde yerinden edilmiş kişiler. IDMC, yerinden edilmeden ortalama üç hafta sonra bir rakam yayımlar; bu nedenle son haftalar geç dolmaktadır. Bu haftanın yenileri son 7 gün içinde yayımlanmış rakamları sayar. Ani Artış: en az 5.000 kişi ve önceki beş ayın aylık ortalamasının üç katı.",
+      "recentAsOf": "Veriler {{date}} tarihine aittir.",
+      "recentMissing": "Bu kez {{countries}} için veri yok; dosyaları yüklenemedi. Bu, yerinden edilme olmadığı anlamına gelmez."
     },
     "climate": {
       "noAnomalies": "Onemli anomali tespit edilmedi",
