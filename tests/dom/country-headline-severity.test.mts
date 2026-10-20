@@ -31,6 +31,13 @@ const originalParent = window.parent;
 // map holds exactly the held reads still open.
 const heldSections = new Set(['demographics', 'factors']);
 const heldInFlight = new Map<number, string>();
+// The host asks for a same-country refresh: `refresh` rides on the tool input,
+// and the tool result that follows opens the view.
+function refreshView(): void {
+  const send = (data: object) => window.dispatchEvent(new MessageEvent('message', { source: window.parent, data: { jsonrpc: '2.0', ...data } }));
+  send({ method: 'ui/notifications/tool-input', params: { arguments: { country_code: 'NO', topic: 'overview', refresh: true } } });
+  send({ method: 'ui/notifications/tool-result', params: { result: { structuredContent: { countryCode: 'NO', topic: 'overview' } } } });
+}
 afterAll(async () => {
   window.dispatchEvent(new Event('pagehide'));
   await new Promise(resolve => setTimeout(resolve, 0));
@@ -102,6 +109,8 @@ it('carries coverage through managed boot and the actual parent bridge to real p
 // under load it landed after vitest closed the worker RPC
 // (EnvironmentTeardownError: Closing rpc while "onUserConsoleLog" was pending).
 it('closing the view cancels in-flight section reads without logging them as failures', async () => {
+  // Start this case's own reads: a refresh re-requests both held sections.
+  refreshView();
   await vi.waitFor(() => expect([...new Set(heldInFlight.values())].sort()).toEqual(['demographics', 'factors']));
   const warn = vi.spyOn(console, 'warn');
   try {

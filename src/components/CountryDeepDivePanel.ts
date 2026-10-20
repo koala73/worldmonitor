@@ -3600,7 +3600,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         t,
       ));
     } catch (error) {
-      const aborted = (error as { name?: string })?.name === 'AbortError' || signal.aborted;
+      const aborted = (error as { name?: string })?.name === 'AbortError' || signal.aborted || !stillCurrent();
       if (!aborted) {
         console.warn('[CountryDeepDivePanel] demographics capability load failed', error);
         this.captureCountryDeepDiveLoadFailure(error, code, {
