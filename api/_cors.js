@@ -47,6 +47,10 @@ const EXPOSED_HEADERS = [
   'Retry-After',
   'Idempotency-Key',
   'Idempotent-Replayed',
+  // Poll URL on a gateway 202 Accepted async job (#4810). The Worker stamps
+  // this list over every api.worldmonitor.app response, so it must be here
+  // for browser agents to read it, not only in server/cors.ts.
+  'Location',
   // Billing-verification denials (server/_shared/entitlement-check.ts) carry
   // the reason here alongside `Retry-After`. Docs advertise the header
   // (docs/usage-errors.mdx) but it was not exposed, so a cross-origin browser

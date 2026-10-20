@@ -224,6 +224,23 @@ describe('RFC 9745 / RFC 8594 lifecycle headers are readable cross-origin', () =
   }
 });
 
+/**
+ * The per-header suites above only guard the headers someone remembered to
+ * list. #9140 added X-Wm-Upstream-Timeout to api/_cors.js and server/cors.ts
+ * but not to the Worker, which overwrites Expose-Headers on every
+ * api.worldmonitor.app response. Browsers could not read the marker, so
+ * premium-fetch kept reporting relayed MCP timeouts (Sentry WORLDMONITOR-17A).
+ * Every surface must expose exactly the set api/_cors.js does.
+ */
+describe('every CORS surface exposes the same header set', () => {
+  const canonical = [...new Set(exposedHeaders(getCorsHeadersJs(corsRequest())))].sort();
+  for (const [label, build] of CORS_SURFACES) {
+    it(`${label} matches api/_cors.js getCorsHeaders`, () => {
+      assert.deepEqual([...new Set(exposedHeaders(build()))].sort(), canonical);
+    });
+  }
+});
+
 describe('IETF RateLimit headers are readable across every CORS surface', () => {
   const IETF_RATE_LIMIT_HEADERS = [
     'RateLimit',
