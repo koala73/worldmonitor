@@ -180,26 +180,37 @@ export function toCrossBorderData(payload: unknown): CrossBorderData {
   };
 }
 
-export function toMovementData(payload: import('@/generated/client/worldmonitor/displacement/v1/service_client').GetCrossBorderMovementsResponse): CrossBorderData {
+export function toMovementData(payload: import('@/generated/client/worldmonitor/displacement/v1/service_client').GetCrossBorderMovementsResponse, now = Date.now()): CrossBorderData {
   const situations: CrossBorderSituation[] = [];
   const points: CrossBorderPoint[] = [];
   const deaths: CrossBorderPoint[] = [];
+  const sources = payload.sources.map(source => ({
+    ...source,
+    status: source.status !== 'unavailable' && (now - source.fetchedAt > 48 * 3600000
+      || now - source.contentAt > source.maxContentAgeMin * 60000) ? 'stale' : source.status,
+  }));
+  const bySource = new Map(sources.map(source => [source.name, source]));
   for (const movement of payload.movements) {
     const { location } = movement;
+    const source = bySource.get(movement.source);
+    const reportAt = Date.parse(movement.asOf);
+    const stale = movement.stale || !source || ['stale', 'unavailable'].includes(source.status)
+      || !Number.isFinite(reportAt) || now - reportAt > source.maxContentAgeMin * 60000;
+    const surge = movement.surge && !stale;
     const item: CrossBorderSituation = {
       id: movement.id, name: movement.name, sourceUrl: movement.sourceUrl, source: movement.source,
-      asOf: movement.asOf, accelerating: movement.surge, outflow: movement.kind === 'outflow' ? movement.count : 0,
+      asOf: movement.asOf, accelerating: surge, outflow: movement.kind === 'outflow' ? movement.count : 0,
       total: movement.count, lastMonth: movement.measure === 'monthly' ? { month: movement.period, individuals: movement.count } : null,
       latestChange: movement.stockChange !== undefined ? { delta: movement.stockChange, days: movement.stockChangeSince ? Math.round((Date.parse(movement.asOf) - Date.parse(movement.stockChangeSince)) / 86400000) : null } : null, topCountries: [], countryCodes: [movement.countryCode, movement.originCode].filter(Boolean),
       lat: location?.latitude, lon: location?.longitude, last7Days: movement.last7Days, last30Days: movement.last30Days,
-      changePct: movement.changePct, measure: movement.measure, kind: movement.kind, stale: movement.stale,
+      changePct: movement.changePct, measure: movement.measure, kind: movement.kind, stale,
     };
     situations.push(item);
-    if (!location || movement.stale || movement.count === 0 && !(movement.last30Days! > 0)) continue;
+    if (!location || stale || movement.count === 0 && !(movement.last30Days! > 0)) continue;
     const point: CrossBorderPoint = {
       situation: movement.route, label: movement.name, country: movement.countryCode, kind: movement.kind as CrossBorderFlowKind,
       individuals: movement.last30Days ?? movement.count, date: movement.asOf, change: movement.stockChange ?? null, changeSince: movement.stockChangeSince,
-      lastMonth: movement.measure === 'monthly' ? movement.count : null, accelerating: movement.surge,
+      lastMonth: movement.measure === 'monthly' ? movement.count : null, accelerating: surge,
       lat: location.latitude, lon: location.longitude, source: movement.source, sourceUrl: movement.sourceUrl,
       changePct: movement.changePct, last30Days: movement.last30Days, measure: movement.measure, period: movement.period,
     };
@@ -214,5 +225,5 @@ export function toMovementData(payload: import('@/generated/client/worldmonitor/
     if (!previous || point.individuals > previous.individuals) stockPoints.set(key, point);
     return false;
   });
-  return { situations, points: [...routePoints, ...stockPoints.values()], deaths, sources: payload.sources };
+  return { situations, points: [...routePoints, ...stockPoints.values()], deaths, sources };
 }

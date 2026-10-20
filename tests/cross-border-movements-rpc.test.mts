@@ -51,8 +51,9 @@ test('only the unfiltered aggregate is shared publicly', () => {
 });
 
 test('map adapter separates deaths, drops stale markers and avoids summing overlapping stocks', () => {
+  const now = Date.parse('2026-10-19T12:00:00Z');
   const movement = { id: 'a', route: 'a', name: 'A', kind: 'outflow', measure: 'stock', countryCode: 'TD', originCode: 'SD', asOf: '2026-10-18', period: '', count: 100, stockChange: 20, stockChangeSince: '2026-10-04', stale: false, surge: false, source: 'UNHCR', sourceUrl: 'https://data.unhcr.org/', license: 'CC BY 4.0', licenseUrl: '', notice: 'Derived view', location: { latitude: 15, longitude: 19 } };
-  const data = toMovementData({ sources: [], dataAvailable: true, movements: [movement, { ...movement, id: 'overlap', count: 80 }, { ...movement, id: 'stale', count: 500, stale: true }, { ...movement, id: 'death', kind: 'death', measure: 'monthly', count: 5 }] });
+  const data = toMovementData({ sources: [{ id: 'odp', name: 'UNHCR', status: 'ok', fetchedAt: now, contentAt: Date.parse(movement.asOf), maxContentAgeMin: 45 * 1440 }], dataAvailable: true, movements: [movement, { ...movement, id: 'overlap', count: 80 }, { ...movement, id: 'stale', count: 500, stale: true }, { ...movement, id: 'death', kind: 'death', measure: 'monthly', count: 5 }] }, now);
   assert.equal(data.situations.length, 4);
   assert.deepEqual(data.situations[0]?.latestChange, { delta: 20, days: 14 });
   assert.equal(data.points[0]?.change, 20);
