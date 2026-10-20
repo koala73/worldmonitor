@@ -54,7 +54,7 @@ export function extractCableShipName(text: string): string | null {
     : DEDICATED_SHIP_PATTERNS;
   for (const pattern of patterns) {
     const match = text.match(pattern);
-    const name = match?.[1]?.split(/\n|,|\b(?:ON\s+STATION|REPAIRING|LAYING|WORKING|COMMENCED)\b/i)[0]?.trim().replace(/\s+/g, ' ');
+    const name = match?.[1]?.split(/\n|,|\b(?:ON\s+STATION|REPAIRING|LAYING|WORKING|COMMENCED|IN\s+AREA|ALONG\s+TRACKLINE)\b/i)[0]?.trim().replace(/\s+/g, ' ');
     if (name && name.length > 2 && !/^(THE|AND|FOR|WITH)$/i.test(name)) return name;
   }
   return null;
