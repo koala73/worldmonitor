@@ -29,6 +29,7 @@ const DEFAULT_LOCAL_API_PORT: u16 = 46123;
 const SIDECAR_PORT_RECOVERY_TIMEOUT_MS: u64 = 30_000;
 const MAX_LOCAL_API_PROXY_BYTES: usize = 16 * 1024 * 1024;
 const KEYRING_SERVICE: &str = "world-monitor";
+const SECRETS_VAULT_KEYRING_ACCOUNT: &str = "secrets-vault";
 const CLERK_CLIENT_KEYRING_ACCOUNT: &str = "clerk-client";
 const CLERK_RELAY_WINDOWS: [&str; 1] = ["main"];
 const LOCAL_API_LOG_FILE: &str = "local-api.log";
@@ -134,6 +135,8 @@ impl LocalApiState {
 /// repeated macOS Keychain prompts (each `Entry::get_password()` triggers one).
 struct SecretsCache {
     secrets: Mutex<HashMap<String, String>>,
+    /// Logged to desktop.log once the app handle exists.
+    load_warning: Option<String>,
 }
 
 /// In-memory mirror of persistent-cache.json. The file can grow to 10+ MB,
@@ -147,11 +150,162 @@ struct PersistentCache {
     flush_scheduled: Mutex<bool>,
 }
 
+/// Where the secrets vault currently lives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VaultStorage {
+    /// The platform store: macOS Keychain, Windows Credential Manager, or the
+    /// Linux Secret Service.
+    SecretStore,
+    /// The Linux kernel session keyring, used only when the Secret Service is
+    /// unreachable. It does not survive a reboot.
+    SessionKeyring,
+}
+
+struct VaultRead {
+    json: Option<String>,
+    storage: VaultStorage,
+    /// Never contains secret values, only keyring error text.
+    warning: Option<String>,
+}
+
+/// True when the keyring error means no Secret Service provider is reachable
+/// over D-Bus (for example no gnome-keyring or KWallet on a minimal desktop).
+fn is_secret_service_unavailable(err: &keyring::Error) -> bool {
+    let mut current: Option<&(dyn std::error::Error + 'static)> = Some(err);
+    while let Some(error) = current {
+        let message = error.to_string().to_ascii_lowercase();
+        if message.contains("no dbus session or secret service provider found")
+            || (message.contains("dbus")
+                && (message.contains("not activatable")
+                    || message.contains("not provided by any .service files")
+                    || message.contains("serviceunknown")
+                    || message.contains("has no owner")
+                    || message.contains("unable to autolaunch a dbus-daemon")
+                    || message.contains("failed to connect to socket")))
+        {
+            return true;
+        }
+        current = error.source();
+    }
+    false
+}
+
+/// The kernel keyring entry that stands in for the Secret Service. It links
+/// into the session and per-user persistent keyrings, so it lasts for the
+/// login session (and briefly after logout) but never survives a reboot.
+#[cfg(target_os = "linux")]
+fn session_keyring_entry(account: &str) -> Option<Entry> {
+    keyring::keyutils::KeyutilsCredential::new_with_target(None, KEYRING_SERVICE, account)
+        .map(|credential| Entry::new_with_credential(Box::new(credential)))
+        .map_err(|err| eprintln!("[tauri] Linux kernel keyring unavailable: {err}"))
+        .ok()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn session_keyring_entry(_account: &str) -> Option<Entry> {
+    None
+}
+
+const SESSION_KEYRING_SAVE_WARNING: &str = "Secret Service is unavailable, so API keys were saved \
+to the Linux kernel session keyring. They will be lost on reboot. Install and unlock a Secret \
+Service provider (GNOME Keyring or KWallet) to keep them.";
+
+/// Called when the Secret Service is reachable. A kernel keyring vault only
+/// exists if a save failed over to it (every successful platform save deletes
+/// it), so it is always newer than the platform vault: move it back into the
+/// Secret Service so changes made during an outage, deletions included, win.
+fn reconcile_vault_json(
+    primary_json: Option<String>,
+    primary: &Entry,
+    fallback: Option<&Entry>,
+) -> VaultRead {
+    let Some((entry, json)) =
+        fallback.and_then(|entry| entry.get_password().ok().map(|json| (entry, json)))
+    else {
+        return VaultRead {
+            json: primary_json,
+            storage: VaultStorage::SecretStore,
+            warning: None,
+        };
+    };
+    let warning = match primary.set_password(&json) {
+        Ok(()) => {
+            let _ = entry.delete_credential();
+            None
+        }
+        Err(err) => Some(format!(
+            "Could not move API keys from the Linux kernel session keyring back to the \
+             Secret Service: {err}"
+        )),
+    };
+    VaultRead {
+        json: Some(json),
+        storage: VaultStorage::SecretStore,
+        warning,
+    }
+}
+
+fn read_vault_json(primary: &Entry, fallback: Option<&Entry>) -> VaultRead {
+    match primary.get_password() {
+        Ok(json) => reconcile_vault_json(Some(json), primary, fallback),
+        Err(keyring::Error::NoEntry) => reconcile_vault_json(None, primary, fallback),
+        Err(err) if fallback.is_some() && is_secret_service_unavailable(&err) => VaultRead {
+            json: fallback.and_then(|entry| entry.get_password().ok()),
+            storage: VaultStorage::SessionKeyring,
+            warning: Some(format!(
+                "Secret Service is unavailable ({err}); reading API keys from the Linux kernel \
+                 session keyring, which does not survive a reboot."
+            )),
+        },
+        Err(err) => VaultRead {
+            json: None,
+            storage: VaultStorage::SecretStore,
+            warning: Some(format!("Could not read API keys from the system keychain: {err}")),
+        },
+    }
+}
+
+fn write_vault_json(
+    json: &str,
+    primary: &Entry,
+    fallback: Option<&Entry>,
+) -> Result<VaultStorage, String> {
+    match primary.set_password(json) {
+        Ok(()) => {
+            if let Some(entry) = fallback {
+                // NoEntry is the normal case; anything else only leaves a
+                // stale session copy that the platform store now shadows.
+                let _ = entry.delete_credential();
+            }
+            Ok(VaultStorage::SecretStore)
+        }
+        Err(err) => match fallback {
+            Some(entry) if is_secret_service_unavailable(&err) => {
+                entry.set_password(json).map_err(|fallback_err| {
+                    format!(
+                        "Failed to write vault: {err}; kernel keyring fallback also failed: \
+                         {fallback_err}"
+                    )
+                })?;
+                Ok(VaultStorage::SessionKeyring)
+            }
+            _ => Err(format!("Failed to write vault: {err}")),
+        },
+    }
+}
+
 impl SecretsCache {
     fn load_from_keychain() -> Self {
         // Try consolidated vault first — single keychain prompt
-        if let Ok(entry) = Entry::new(KEYRING_SERVICE, "secrets-vault") {
-            if let Ok(json) = entry.get_password() {
+        let mut load_warning = None;
+        if let Ok(entry) = Entry::new(KEYRING_SERVICE, SECRETS_VAULT_KEYRING_ACCOUNT) {
+            let fallback = session_keyring_entry(SECRETS_VAULT_KEYRING_ACCOUNT);
+            let read = read_vault_json(&entry, fallback.as_ref());
+            if let Some(warning) = &read.warning {
+                eprintln!("[tauri] {warning}");
+            }
+            load_warning = read.warning;
+            if let Some(json) = read.json {
                 if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&json) {
                     let secrets: HashMap<String, String> = map
                         .into_iter()
@@ -162,8 +316,17 @@ impl SecretsCache {
                         .collect();
                     return SecretsCache {
                         secrets: Mutex::new(secrets),
+                        load_warning,
                     };
                 }
+            }
+            if read.storage == VaultStorage::SessionKeyring {
+                // Legacy per-key entries live in the same unreachable Secret
+                // Service, so skip the migration below.
+                return SecretsCache {
+                    secrets: Mutex::new(HashMap::new()),
+                    load_warning,
+                };
             }
         }
 
@@ -184,7 +347,7 @@ impl SecretsCache {
         // Write consolidated vault and clean up individual entries
         if !secrets.is_empty() {
             if let Ok(json) = serde_json::to_string(&secrets) {
-                if let Ok(vault_entry) = Entry::new(KEYRING_SERVICE, "secrets-vault") {
+                if let Ok(vault_entry) = Entry::new(KEYRING_SERVICE, SECRETS_VAULT_KEYRING_ACCOUNT) {
                     if vault_entry.set_password(&json).is_ok() {
                         for key in SUPPORTED_SECRET_KEYS.iter() {
                             if let Ok(entry) = Entry::new(KEYRING_SERVICE, key) {
@@ -198,6 +361,7 @@ impl SecretsCache {
 
         SecretsCache {
             secrets: Mutex::new(secrets),
+            load_warning,
         }
     }
 }
@@ -285,15 +449,13 @@ struct SecretValidationResponse {
     payload: Value,
 }
 
-fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
+fn save_vault(cache: &HashMap<String, String>) -> Result<VaultStorage, String> {
     let json =
         serde_json::to_string(cache).map_err(|e| format!("Failed to serialize vault: {e}"))?;
-    let entry = Entry::new(KEYRING_SERVICE, "secrets-vault")
+    let entry = Entry::new(KEYRING_SERVICE, SECRETS_VAULT_KEYRING_ACCOUNT)
         .map_err(|e| format!("Keyring init failed: {e}"))?;
-    entry
-        .set_password(&json)
-        .map_err(|e| format!("Failed to write vault: {e}"))?;
-    Ok(())
+    let fallback = session_keyring_entry(SECRETS_VAULT_KEYRING_ACCOUNT);
+    write_vault_json(&json, &entry, fallback.as_ref())
 }
 
 fn generate_local_token() -> String {
@@ -459,7 +621,14 @@ impl Default for ClerkRelayState {
 
 fn load_clerk_client_token() -> Option<ClerkClientToken> {
     let entry = Entry::new(KEYRING_SERVICE, CLERK_CLIENT_KEYRING_ACCOUNT).ok()?;
-    let json = entry.get_password().ok()?;
+    let json = match entry.get_password() {
+        Ok(json) => json,
+        Err(keyring::Error::NoEntry) => return None,
+        Err(err) => {
+            eprintln!("[tauri] Could not read the saved sign-in from the system keychain: {err}");
+            return None;
+        }
+    };
     serde_json::from_str(&json).ok()
 }
 
@@ -779,7 +948,7 @@ fn update_renderer_secret_cache(
     cache: &SecretsCache,
     key: &str,
     value: Option<&str>,
-) -> Result<(), String> {
+) -> Result<VaultStorage, String> {
     let mut secrets = cache
         .secrets
         .lock()
@@ -794,9 +963,16 @@ fn update_renderer_secret_cache(
             proposed.remove(key);
         }
     }
-    save_vault(&proposed)?;
+    let storage = save_vault(&proposed)?;
     *secrets = proposed;
-    Ok(())
+    Ok(storage)
+}
+
+fn log_session_keyring_save(webview: &Webview, storage: VaultStorage) {
+    if storage == VaultStorage::SessionKeyring {
+        eprintln!("[tauri] {SESSION_KEYRING_SAVE_WARNING}");
+        append_desktop_log(&webview.app_handle(), "WARN", SESSION_KEYRING_SAVE_WARNING);
+    }
 }
 
 async fn sync_renderer_secret_to_sidecar(
@@ -835,7 +1011,8 @@ async fn set_secret(
         return Err(format!("Unsupported secret key: {key}"));
     }
     let value = (!value.trim().is_empty()).then(|| value.trim().to_string());
-    update_renderer_secret_cache(&cache, &key, value.as_deref())?;
+    let storage = update_renderer_secret_cache(&cache, &key, value.as_deref())?;
+    log_session_keyring_save(&webview, storage);
     sync_renderer_secret_to_sidecar(&state, &key, value.as_deref()).await;
     Ok(())
 }
@@ -851,7 +1028,8 @@ async fn delete_secret(
     if !is_renderer_managed_secret_key(&key) {
         return Err(format!("Unsupported secret key: {key}"));
     }
-    update_renderer_secret_cache(&cache, &key, None)?;
+    let storage = update_renderer_secret_cache(&cache, &key, None)?;
+    log_session_keyring_save(&webview, storage);
     sync_renderer_secret_to_sidecar(&state, &key, None).await;
     Ok(())
 }
@@ -1448,6 +1626,228 @@ fn sidecar_env_value(key: &str) -> Option<String> {
     build_time_sidecar_env_value(key)
         .map(ToString::to_string)
         .or_else(|| std::env::var(key).ok().filter(|value| !value.trim().is_empty()))
+}
+
+#[cfg(test)]
+mod secret_vault_tests {
+    use super::{
+        is_secret_service_unavailable, read_vault_json, write_vault_json, VaultStorage,
+    };
+    use keyring::mock::MockCredential;
+    use keyring::{Entry, Error};
+
+    fn mock_entry() -> Entry {
+        Entry::new_with_credential(Box::new(MockCredential::default()))
+    }
+
+    fn mock_entry_with(secret: &str) -> Entry {
+        let entry = mock_entry();
+        entry.set_password(secret).expect("seed mock entry");
+        entry
+    }
+
+    /// Mock errors are returned once, by the next call on the entry.
+    fn fail_next_call(entry: &Entry, err: Error) {
+        entry
+            .get_credential()
+            .downcast_ref::<MockCredential>()
+            .expect("mock credential")
+            .set_error(err);
+    }
+
+    fn platform_failure(message: &str) -> Error {
+        Error::PlatformFailure(message.to_string().into())
+    }
+
+    fn service_unavailable() -> Error {
+        platform_failure("DBus error: The name is not activatable")
+    }
+
+    #[test]
+    fn classifies_missing_secret_service_as_unavailable() {
+        for message in [
+            // dbus-broker (Fedora, Arch) with no provider installed
+            "DBus error: The name is not activatable",
+            // dbus-daemon (Debian, Ubuntu) with no provider installed
+            "DBus error: The name org.freedesktop.secrets was not provided by any .service files",
+            "DBus error: The name org.freedesktop.secrets has no owner",
+            // dbus-secret-service's own Unavailable variant
+            "No DBus session or Secret Service provider found",
+            // no session bus at all (headless, some Wayland sessions)
+            "DBus error: Unable to autolaunch a dbus-daemon without a $DISPLAY for X11",
+            "DBus error: Failed to connect to socket /run/user/1000/bus: No such file or directory",
+        ] {
+            assert!(
+                is_secret_service_unavailable(&platform_failure(message)),
+                "should be unavailable: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn other_keyring_errors_are_not_unavailable() {
+        assert!(!is_secret_service_unavailable(&Error::NoEntry));
+        assert!(!is_secret_service_unavailable(&platform_failure(
+            "Platform secure storage failure: permission denied"
+        )));
+        assert!(!is_secret_service_unavailable(&Error::NoStorageAccess(
+            "Secret Service: object locked".to_string().into()
+        )));
+    }
+
+    #[test]
+    fn read_uses_platform_store_when_available() {
+        let primary = mock_entry_with("{\"A\":\"1\"}");
+        let read = read_vault_json(&primary, Some(&mock_entry()));
+        assert_eq!(read.json.as_deref(), Some("{\"A\":\"1\"}"));
+        assert_eq!(read.storage, VaultStorage::SecretStore);
+        assert!(read.warning.is_none());
+    }
+
+    #[test]
+    fn read_falls_back_to_session_keyring_when_secret_service_is_unavailable() {
+        let primary = mock_entry();
+        fail_next_call(&primary, service_unavailable());
+        let fallback = mock_entry_with("{\"B\":\"2\"}");
+        let read = read_vault_json(&primary, Some(&fallback));
+        assert_eq!(read.json.as_deref(), Some("{\"B\":\"2\"}"));
+        assert_eq!(read.storage, VaultStorage::SessionKeyring);
+        assert!(read.warning.as_deref().unwrap_or("").contains("Secret Service"));
+    }
+
+    #[test]
+    fn read_with_unavailable_secret_service_and_empty_session_keyring_is_empty() {
+        let primary = mock_entry();
+        fail_next_call(&primary, service_unavailable());
+        let read = read_vault_json(&primary, Some(&mock_entry()));
+        assert!(read.json.is_none());
+        assert_eq!(read.storage, VaultStorage::SessionKeyring);
+    }
+
+    #[test]
+    fn read_recovers_session_keyring_vault_when_platform_store_has_no_entry() {
+        // Keys saved while the Secret Service was down are moved into it once
+        // it comes back.
+        let primary = mock_entry();
+        let fallback = mock_entry_with("{\"B\":\"2\"}");
+        let read = read_vault_json(&primary, Some(&fallback));
+        assert_eq!(read.json.as_deref(), Some("{\"B\":\"2\"}"));
+        assert_eq!(read.storage, VaultStorage::SecretStore);
+        assert_eq!(primary.get_password().unwrap(), "{\"B\":\"2\"}");
+        assert!(matches!(fallback.get_password(), Err(Error::NoEntry)));
+    }
+
+    #[test]
+    fn read_prefers_newer_session_keyring_vault_over_stale_platform_vault() {
+        // The Secret Service dropped mid-session, a key was deleted (saved to
+        // the kernel keyring only), and the Secret Service is back on restart.
+        // The deleted key must not come back from the stale platform vault.
+        let primary = mock_entry_with("{\"A\":\"1\",\"B\":\"2\"}");
+        let fallback = mock_entry_with("{\"B\":\"2\"}");
+        let read = read_vault_json(&primary, Some(&fallback));
+        assert_eq!(read.json.as_deref(), Some("{\"B\":\"2\"}"));
+        assert_eq!(read.storage, VaultStorage::SecretStore);
+        assert_eq!(primary.get_password().unwrap(), "{\"B\":\"2\"}");
+        assert!(matches!(fallback.get_password(), Err(Error::NoEntry)));
+    }
+
+    #[test]
+    fn read_keeps_session_keyring_vault_when_promotion_fails() {
+        let primary = mock_entry_with("{\"A\":\"1\",\"B\":\"2\"}");
+        let fallback = mock_entry_with("{\"B\":\"2\"}");
+        // get succeeds, then the promoting set fails.
+        let read = {
+            let json = primary.get_password().unwrap();
+            assert_eq!(json, "{\"A\":\"1\",\"B\":\"2\"}");
+            fail_next_call(&primary, platform_failure("permission denied"));
+            super::reconcile_vault_json(Some(json), &primary, Some(&fallback))
+        };
+        assert_eq!(read.json.as_deref(), Some("{\"B\":\"2\"}"));
+        assert_eq!(fallback.get_password().unwrap(), "{\"B\":\"2\"}");
+        assert!(read.warning.is_some());
+    }
+
+    #[test]
+    fn read_warns_without_fallback_on_other_errors() {
+        let primary = mock_entry();
+        fail_next_call(
+            &primary,
+            Error::NoStorageAccess("Secret Service: object locked".to_string().into()),
+        );
+        let fallback = mock_entry_with("{\"B\":\"2\"}");
+        let read = read_vault_json(&primary, Some(&fallback));
+        assert!(read.json.is_none());
+        assert_eq!(read.storage, VaultStorage::SecretStore);
+        assert!(read.warning.as_deref().unwrap_or("").contains("object locked"));
+    }
+
+    #[test]
+    fn write_uses_platform_store_and_clears_session_keyring_copy() {
+        let primary = mock_entry();
+        let fallback = mock_entry_with("{\"old\":\"x\"}");
+        let storage = write_vault_json("{\"A\":\"1\"}", &primary, Some(&fallback)).unwrap();
+        assert_eq!(storage, VaultStorage::SecretStore);
+        assert_eq!(primary.get_password().unwrap(), "{\"A\":\"1\"}");
+        assert!(matches!(fallback.get_password(), Err(Error::NoEntry)));
+    }
+
+    #[test]
+    fn write_falls_back_to_session_keyring_when_secret_service_is_unavailable() {
+        let primary = mock_entry();
+        fail_next_call(&primary, service_unavailable());
+        let fallback = mock_entry();
+        let storage = write_vault_json("{\"A\":\"1\"}", &primary, Some(&fallback)).unwrap();
+        assert_eq!(storage, VaultStorage::SessionKeyring);
+        assert_eq!(fallback.get_password().unwrap(), "{\"A\":\"1\"}");
+        assert!(matches!(primary.get_password(), Err(Error::NoEntry)));
+    }
+
+    #[test]
+    fn write_fails_on_other_errors_without_touching_session_keyring() {
+        let primary = mock_entry();
+        fail_next_call(&primary, platform_failure("permission denied"));
+        let fallback = mock_entry();
+        let err = write_vault_json("{\"A\":\"1\"}", &primary, Some(&fallback)).unwrap_err();
+        assert!(err.contains("Failed to write vault"), "{err}");
+        assert!(matches!(fallback.get_password(), Err(Error::NoEntry)));
+    }
+
+    #[test]
+    fn write_fails_when_secret_service_is_unavailable_and_no_fallback_exists() {
+        let primary = mock_entry();
+        fail_next_call(&primary, service_unavailable());
+        assert!(write_vault_json("{\"A\":\"1\"}", &primary, None).is_err());
+    }
+
+    /// Exercises the real kernel keyring on Linux CI runners.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn session_keyring_entry_round_trips_on_linux() {
+        let account = format!("secrets-vault-test-{}", std::process::id());
+        let entry = super::session_keyring_entry(&account).expect("kernel keyring available");
+        entry.set_password("{\"A\":\"1\"}").expect("write session keyring");
+        assert_eq!(entry.get_password().unwrap(), "{\"A\":\"1\"}");
+        entry.delete_credential().expect("delete session keyring entry");
+    }
+
+    /// On a Linux box without a Secret Service provider (such as a CI runner),
+    /// the real keyring error must be classified as unavailable.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn real_secret_service_failure_is_classified_on_linux() {
+        let account = format!("secrets-vault-probe-{}", std::process::id());
+        let entry = Entry::new(super::KEYRING_SERVICE, &account).expect("entry");
+        match entry.set_password("probe") {
+            Ok(()) => {
+                // A Secret Service is running here; nothing to classify.
+                let _ = entry.delete_credential();
+            }
+            Err(err) => assert!(
+                is_secret_service_unavailable(&err),
+                "unclassified Secret Service error: {err}"
+            ),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -2340,6 +2740,10 @@ fn main() {
             cancel_desktop_browser_sign_in
         ])
         .setup(|app| {
+            if let Some(warning) = app.state::<SecretsCache>().load_warning.as_deref() {
+                append_desktop_log(&app.handle(), "WARN", warning);
+            }
+
             // Load persistent cache into memory (avoids 14MB file I/O on every IPC call)
             let cache_path = cache_file_path(&app.handle()).unwrap_or_default();
             app.manage(PersistentCache::load(&cache_path));

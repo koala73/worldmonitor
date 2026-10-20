@@ -1151,7 +1151,9 @@
         "sourceIomDtm": "Źródło: IOM DTM",
         "sinceDate": "od {{date}}",
         "lastMonth": "w zeszłym miesiącu",
-        "sourceUnhcrOdp": "Źródło: Portal danych operacyjnych UNHCR"
+        "sourceUnhcrOdp": "Źródło: Portal danych operacyjnych UNHCR",
+        "displaced": "wysiedleni",
+        "sourceIdmc": "Źródło: IDMC"
       },
       "layerHelp": {
         "title": "Przewodnik po warstwach mapy",
@@ -1550,7 +1552,16 @@
       "staleReport": "Nieaktualny raport",
       "reported": "Liczba",
       "period": "Okres",
-      "movementNote": "Każdy wiersz zachowuje źródło, datę raportu i rodzaj pomiaru. Stany ludności, przybycia i zdarzenia kontroli granicznej to różne miary. Źródła mogą się pokrywać; nie sumuj ich wartości. WorldMonitor opracowuje ten widok na podstawie podanych źródeł; nie oznacza to poparcia ze strony dostawców."
+      "movementNote": "Każdy wiersz zachowuje źródło, datę raportu i rodzaj pomiaru. Stany ludności, przybycia i zdarzenia kontroli granicznej to różne miary. Źródła mogą się pokrywać; nie sumuj ich wartości. WorldMonitor opracowuje ten widok na podstawie podanych źródeł; nie oznacza to poparcia ze strony dostawców.",
+      "recent": "Ostatnie",
+      "last30Days": "Ostatnie 30 dni",
+      "newThisWeek": "Nowe w tym tygodniu",
+      "conflict": "Konflikt",
+      "disaster": "Katastrofa",
+      "surge": "Nagły wzrost",
+      "recentNote": "IDMC: osoby wysiedlone w granicach ich kraju w ostatnich 30 dnach. IDMC publikuje dane medianę trzy tygodnie po wysiedleniu, więc ostatnie tygodnie są uzupełniane z opóźnieniem. Nowe w tym tygodniu liczy dane opublikowane w ciągu ostatnich 7 dni. Nagły wzrost: co najmniej 5000 osób i trzy razy średnia miesięczna z pięciu poprzednich miesięcy.",
+      "recentAsOf": "Dane z {{date}}.",
+      "recentMissing": "Brak danych tym razem z {{countries}}; ich pliki nie załadowały się, co nie oznacza zerowego przemieszczenia."
     },
     "populationExposure": {
       "totalAffected": "Całkowita liczba dotkniętych",

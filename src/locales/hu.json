@@ -1475,7 +1475,9 @@
         "sourceIomDtm": "Forrás: IOM DTM",
         "sinceDate": "{{date}} óta",
         "lastMonth": "a múlt hónapban",
-        "sourceUnhcrOdp": "Forrás: az UNHCR operatív adatportálja"
+        "sourceUnhcrOdp": "Forrás: az UNHCR operatív adatportálja",
+        "displaced": "lakóhelyét elhagyni kényszerült",
+        "sourceIdmc": "Forrás: IDMC"
       },
       "layerHelp": {
         "title": "Térképrétegek útmutatója",
@@ -1915,7 +1917,16 @@
       "staleReport": "Elavult jelentés",
       "reported": "Létszám",
       "period": "Időszak",
-      "movementNote": "Minden sor megőrzi a forrását, a jelentés dátumát és a mérőszámát. Az állomány, az érkezések és a határellenőrzési események különböző mérőszámok. A források átfedhetik egymást; ne adja össze az értékeiket. A WorldMonitor ezt a nézetet a hivatkozott forrásokból állítja elő; ez nem jelent szolgáltatói jóváhagyást."
+      "movementNote": "Minden sor megőrzi a forrását, a jelentés dátumát és a mérőszámát. Az állomány, az érkezések és a határellenőrzési események különböző mérőszámok. A források átfedhetik egymást; ne adja össze az értékeiket. A WorldMonitor ezt a nézetet a hivatkozott forrásokból állítja elő; ez nem jelent szolgáltatói jóváhagyást.",
+      "recent": "Közelmúlt",
+      "last30Days": "Utolsó 30 nap",
+      "newThisWeek": "Ezen a héten új",
+      "conflict": "Konfliktus",
+      "disaster": "Katasztrófa",
+      "surge": "Megugrás",
+      "recentNote": "IDMC: az elmúlt 30 napban országukon belül lakóhelyük elhagyására kényszerült emberek. Az IDMC egy adatot medián értékben három héttel a kitelepülés után tesz közzé, így a legutóbbi hetek adatai később töltődnek fel. Az „Ezen a héten új” az elmúlt 7 napban közzétett adatokat számolja. Megugrás: legalább 5000 ember és az előző öt hónap havi átlagának háromszorosa.",
+      "recentAsOf": "Adatok {{date}} szerint.",
+      "recentMissing": "Most nincs adat innen: {{countries}}; a fájljaik betöltése nem sikerült, ez nem jelent nulla kitelepítést."
     },
     "climate": {
       "noAnomalies": "Nem észleltek jelentős anomáliákat",

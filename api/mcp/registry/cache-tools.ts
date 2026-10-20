@@ -132,6 +132,9 @@ function resolveEurostatCountryFilter(raw: unknown): string[] {
   });
 }
 
+// IDMC rows per events-view call: 100 full rows stay well inside the output budget.
+const IDU_EVENTS_MAX = 100;
+
 // The UNHCR seeder stores `{ summary: { year, globalTotals, countries, topFlows } }`.
 // executeTool then files that value under the cache-key label `summary`, so the
 // lists live at `data.summary.summary.*`. Hoist the inner object so `limit`,
@@ -2585,14 +2588,19 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_displacement_data',
-    _validateArgs: params => { resolveCountryFilter(params.countries, 'countries'); },
+    _validateArgs: params => {
+      resolveCountryFilter(params.countries, 'countries');
+      if (params.view !== undefined && params.view !== 'annual' && params.view !== 'movements' && params.view !== 'events') {
+        throw new RpcValidationError('get_displacement_data', [{ field: 'view', description: 'Expected "annual", "movements" or "events".' }]);
+      }
+    },
     title: 'Refugee and displacement counts',
     _outputBudgetBytes: 131072,
-    description: 'Read UNHCR annual displacement stocks for summary.year: global totals, per-country refugees, asylum seekers, IDPs and stateless people by origin, hosted totals and major origin-to-asylum flows with known centroids. Defaults to annual; no year selection, and the latest published year may be prior. Annual data stale after 60 hours. view=movements returns dated UNHCR reports, UK arrivals, CBP encounters, Frontex detections and Panama Darién arrivals with separate source health. Encounters are events, not unique people. Sources overlap; do not sum. route selects an exact movement route/situation ID. countries matches origin or asylum. limit caps lists (default 30, 0 for all projected rows). Read-only seeded cache; API weight 1, included in signed-in free allowance.',
+    description: 'Read UNHCR annual displacement stocks for summary.year: global totals, per-country refugees, asylum seekers, IDPs and stateless people by origin, hosted totals and major origin-to-asylum flows with known centroids. Defaults to annual; no year selection, and the latest published year may be prior. Annual data stale after 60 hours. view=movements returns dated UNHCR reports, UK arrivals, CBP encounters, Frontex detections and Panama Darién arrivals with separate source health. Encounters are events, not unique people. Sources overlap; do not sum. route selects an exact movement route/situation ID. view=events returns IDMC internal displacement: per-country 30-day totals (conflict/disaster), newlyReported7d, surge vs prior 150 days, and located figures from 180 days; IDMC posts ~3 weeks late; stale after 48 hours. countries matches origin or asylum. limit caps lists (default 30, 0 for all projected rows; events stay capped at 100). Read-only seeded cache; API weight 1, included in signed-in free allowance.',
     inputSchema: {
       type: 'object',
       properties: {
-        view: { type: 'string', enum: ['annual', 'movements'], description: 'Default annual. movements returns source-dated operational movement reports.' },
+        view: { type: 'string', enum: ['annual', 'movements', 'events'], description: 'Default annual. movements returns source-dated operational movement reports. events returns IDMC internal displacement in iduEvents.' },
         route: { type: 'string', maxLength: 120, description: 'Exact route or situation ID in the movements view.' },
         countries: {
           type: 'array',
@@ -2603,8 +2611,37 @@ export const CACHE_TOOLS: ToolDef[] = [
       },
       required: [],
     },
-    _attribution: 'data.crossBorderMovements.movements[].{source: source, sourceUrl: sourceUrl, license: license, licenseUrl: licenseUrl, notice: notice}',
+    _attribution: 'data.crossBorderMovements.movements[].{source: source, sourceUrl: sourceUrl, license: license, licenseUrl: licenseUrl, notice: notice} || data.iduEvents.attribution',
     outputSchema: cacheEnvelope({
+      iduEvents: {
+        type: ['object', 'null'],
+        description: 'Present with view "events".',
+        properties: {
+          source: { type: 'string' },
+          windowFrom: { type: 'string', description: 'First displacement date (YYYY-MM-DD) in events.' },
+          missingCountries: { type: 'array', items: { type: 'string' }, description: 'ISO3 codes whose file failed at seed time. Partial failure, not zero displacement.' },
+          countries: { type: 'array', items: { type: 'object', properties: {
+            countryCode: { type: 'string' }, countryName: { type: 'string' },
+            displaced30d: { type: 'number' }, conflict30d: { type: 'number' }, disaster30d: { type: 'number' }, events30d: { type: 'number' },
+            newlyReported7d: { type: 'number', description: 'Figures published in the last 7 days, whatever the displacement date.' },
+            latestDisplacementDate: { type: 'string' },
+            baselineMonthly: { type: 'number', description: 'Monthly mean of the 150 days before the 30-day window.' },
+            surge: { type: 'boolean', description: 'displaced30d is at least 5,000 and 3x baselineMonthly.' },
+          } } },
+          events: { type: 'array', items: { type: 'object', properties: {
+            id: { type: 'string' }, countryCode: { type: 'string' }, countryName: { type: 'string' },
+            displacementType: { type: 'string', enum: ['Conflict', 'Disaster'] }, figure: { type: 'number' }, qualifier: { type: 'string' },
+            displacementDate: { type: 'string' }, startDate: { type: 'string' }, endDate: { type: 'string' },
+            eventId: { type: 'string' }, eventName: { type: 'string' }, category: { type: 'string' }, hazardType: { type: 'string' },
+            locationName: { type: 'string' }, locationAccuracy: { type: 'string' }, sources: { type: 'string' },
+            createdAt: { type: 'string', description: 'Date IDMC published the figure.' },
+            location: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
+          } } },
+          attribution: { type: 'object', properties: {
+            source: { type: 'string' }, sourceUrl: { type: 'string' }, hdxUrl: { type: 'string' }, license: { type: 'string' }, licenseUrl: { type: 'string' },
+          } },
+        },
+      },
       crossBorderMovements: { type: 'object', properties: { movements: { type: 'array', items: { type: 'object', properties: { id: {type: 'string'}, route: {type: 'string'}, kind: {type: 'string'}, measure: {type: 'string'}, countryCode: {type: 'string'}, originCode: {type: 'string'}, asOf: {type: 'string'}, count: {type: 'number'}, last7Days: {type: 'number'}, last30Days: {type: 'number'}, changePct: {type: 'number'}, stockChange: {type: 'number'}, stockChangeSince: {type: 'string'}, surge: {type: 'boolean'}, stale: {type: 'boolean'}, source: {type: 'string'}, sourceUrl: {type: 'string'}, license: {type: 'string'}, licenseUrl: {type: 'string'}, notice: {type: 'string'} } } }, sources: {type: 'array', items: {type: 'object'}}, dataAvailable: {type: 'boolean'} } },
       summary: {
         type: ['object', 'null'],
@@ -2648,10 +2685,25 @@ export const CACHE_TOOLS: ToolDef[] = [
       if (codes.length > 0) {
         narrowNested(data, 'summary', 'countries', (c) => matchesCode(c.code, codes));
         narrowNested(data, 'summary', 'topFlows', (f) => matchesCode(f.originCode, codes) || matchesCode(f.asylumCode, codes));
+        narrowNested(data, 'iduEvents', 'countries', (c) => matchesCode(c.countryCode, codes));
+        narrowNested(data, 'iduEvents', 'events', (e) => matchesCode(e.countryCode, codes));
       }
       capNested(data, 'summary', 'countries', limit);
       capNested(data, 'summary', 'topFlows', limit);
+      capNested(data, 'iduEvents', 'countries', limit);
+      capNested(data, 'iduEvents', 'events', limit > 0 ? Math.min(limit, IDU_EVENTS_MAX) : IDU_EVENTS_MAX);
       return data;
+    },
+    _project: (data) => {
+      const snapshot = data.iduEvents;
+      if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return data;
+      return { ...data, iduEvents: { ...snapshot, attribution: {
+        source: 'Internal Displacement Monitoring Centre (IDMC), Internal Displacement Updates',
+        sourceUrl: 'https://www.internal-displacement.org/',
+        hdxUrl: 'https://data.humdata.org/organization/international-displacement-monitoring-centre-idmc',
+        license: 'CC BY-IGO',
+        licenseUrl: 'https://creativecommons.org/licenses/by/3.0/igo/',
+      } } };
     },
     // Dynamic-year key resolved once at module evaluation — mirrors the
     // STANDALONE_KEYS pattern in api/health.js:147. The UNHCR seeder publishes
@@ -2659,9 +2711,10 @@ export const CACHE_TOOLS: ToolDef[] = [
     // is intentionally excluded — the executeTool label-walk would strip the
     // year segment from both keys and collide on the same `summary` label,
     // causing the second result to overwrite the first.
-    _cacheKeys: [`displacement:summary:v1:${new Date().getUTCFullYear()}`, ...CROSS_BORDER_SOURCES.map(source => source.key)],
-    _cacheLabels: Object.fromEntries(CROSS_BORDER_SOURCES.map(source => [source.key, source.id])),
-    _freshnessChecks: [{ key: 'seed-meta:displacement:summary', maxStaleMin: 3600 }, ...CROSS_BORDER_SOURCES.map(source => ({ key: `seed-meta:${source.key.replace(/:v1$/, '')}`, maxStaleMin: 2880, honorContentAge: true, ...(source.id === 'odp' ? {} : { contentFreshnessActivationKey: `seed-activated:displacement:border-${source.id}` }) }))],
+    _cacheKeys: [`displacement:summary:v1:${new Date().getUTCFullYear()}`, 'displacement:idmc-idu:v1', ...CROSS_BORDER_SOURCES.map(source => source.key)],
+    _cacheLabels: { 'displacement:idmc-idu:v1': 'iduEvents', ...Object.fromEntries(CROSS_BORDER_SOURCES.map(source => [source.key, source.id])) },
+    // The events budget matches SEED_META.idmcIduDisplacement in api/health.js.
+    _freshnessChecks: [{ key: 'seed-meta:displacement:summary', maxStaleMin: 3600 }, { key: 'seed-meta:displacement:idmc-idu', maxStaleMin: 2880, minRecordCount: 500 }, ...CROSS_BORDER_SOURCES.map(source => ({ key: `seed-meta:${source.key.replace(/:v1$/, '')}`, maxStaleMin: 2880, honorContentAge: true, ...(source.id === 'odp' ? {} : { contentFreshnessActivationKey: `seed-activated:displacement:border-${source.id}` }) }))],
     // Audit miss: handler uses cachedFetchJson with a year-suffixed key the
     // audit's regex couldn't statically resolve. The op IS covered by this
     // tool — same underlying displacement:summary:v1:<year> cache.

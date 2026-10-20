@@ -1483,7 +1483,9 @@
         "sourceIomDtm": "Izvor: IOM DTM",
         "sinceDate": "od {{date}}",
         "lastMonth": "prošli mjesec",
-        "sourceUnhcrOdp": "Izvor: UNHCR-ov portal operativnih podataka"
+        "sourceUnhcrOdp": "Izvor: UNHCR-ov portal operativnih podataka",
+        "displaced": "raseljeni",
+        "sourceIdmc": "Izvor: IDMC"
       },
       "layerHelp": {
         "title": "Vodič slojeva mape",
@@ -1924,7 +1926,16 @@
       "staleReport": "Zastarjelo izvješće",
       "reported": "Broj",
       "period": "Razdoblje",
-      "movementNote": "Svaki redak zadržava svoj izvor, datum izvješća i mjeru. Broj prisutnih osoba, dolasci i događaji granične kontrole različite su mjere. Izvori se mogu preklapati; ne zbrajajte njihove brojeve. WorldMonitor izvodi ovaj prikaz iz povezanih izvora; to ne podrazumijeva odobrenje pružatelja."
+      "movementNote": "Svaki redak zadržava svoj izvor, datum izvješća i mjeru. Broj prisutnih osoba, dolasci i događaji granične kontrole različite su mjere. Izvori se mogu preklapati; ne zbrajajte njihove brojeve. WorldMonitor izvodi ovaj prikaz iz povezanih izvora; to ne podrazumijeva odobrenje pružatelja.",
+      "recent": "Nedavno",
+      "last30Days": "Posljednjih 30 dana",
+      "newThisWeek": "Novo ovaj tjedan",
+      "conflict": "Konflikt",
+      "disaster": "Katastrofa",
+      "surge": "Skok",
+      "recentNote": "IDMC: ljudi raseljeni u svojoj zemlji u posljednjih 30 dana. IDMC objavljuje podatke prosječno tri tjedna nakon raseljavanja, pa se nedavni tjedni popunjavaju kasnije. Novo ovaj tjedan broji podatke objavljene u posljednjih 7 dana. Skok: najmanje 5.000 ljudi i tri puta veći od mjesečnog prosjeka prethodnih pet mjeseci.",
+      "recentAsOf": "Podaci od {{date}}.",
+      "recentMissing": "Nema podataka ovaj put od {{countries}}; njihove datoteke se nisu učitale, što ne znači nula premještanja."
     },
     "climate": {
       "noAnomalies": "Nisu detektirane značajne anomalije",

@@ -46,10 +46,10 @@ import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
 import { applyDeprecationNotice, buildStructuredContent } from './structured-content';
 import {
-  emitTelemetry,
   principalIdForLog,
   telemetryEnabled,
 } from './telemetry';
+import { recordToolCall, setUsageDescribeMiss, type McpUsage } from './usage';
 import type {
   CacheToolDef,
   ConflictSourceObservation,
@@ -126,13 +126,16 @@ async function executeCacheTool(
   // while folding the failure into null would read an unreadable seed-meta as
   // "never seeded" and an unreadable data key as an empty section.
   const historyMode = params.changes_since_days !== undefined;
+  // get_displacement_data reads, and is judged stale on, only the selected view's dataset.
   const displacementView = tool.name === 'get_displacement_data';
-  const movementMode = displacementView && params.view === 'movements';
-  const selectedKeys = displacementView ? tool._cacheKeys.filter(key => key.startsWith('displacement:summary:') !== movementMode) : tool._cacheKeys;
+  const selectedView = params.view === 'movements' || params.view === 'events' ? params.view : 'annual';
+  const viewOfKey = (key: string) => key.includes('displacement:summary') ? 'annual' : key.includes('displacement:idmc-idu') ? 'events' : 'movements';
+  const movementMode = displacementView && selectedView === 'movements';
+  const selectedKeys = displacementView ? tool._cacheKeys.filter(key => viewOfKey(key) === selectedView) : tool._cacheKeys;
   const cacheKeys = tool.name === 'get_sanctions_data'
     ? tool._cacheKeys.filter(key => (key === 'sanctions:changes:v1') === historyMode) : selectedKeys;
   const reads = cacheKeys.map((k) => settleRead((panel !== undefined || movementMode ? readRawJsonFromUpstash : readJsonFromUpstash)(k, 3_000, !isAppOwnedRedisKey(k))));
-  const selectedChecks = displacementView ? tool._freshnessChecks.filter(check => (check.key === 'seed-meta:displacement:summary') !== movementMode) : tool._freshnessChecks;
+  const selectedChecks = displacementView ? tool._freshnessChecks.filter(check => viewOfKey(check.key) === selectedView) : tool._freshnessChecks;
   const freshnessChecks = tool.name === 'get_sanctions_data'
     ? tool._freshnessChecks.filter(check => (check.key === 'seed-meta:sanctions:changes') === historyMode) : selectedChecks;
   const metaReads = freshnessChecks.map((check) => settleRead(readJsonFromUpstash(check.key, 3_000, !isAppOwnedRedisKey(check.key))));
@@ -442,6 +445,9 @@ export async function dispatchToolsCall(
   // The caller's entitlement plan key (#9144), so a denial can name the plan
   // one step up. Omitted → denials carry no checkout hint.
   planKey?: string,
+  // The request's wm_api_usage row (#9431). Omitted → only the mcp.toolcall
+  // console line is emitted.
+  usage?: McpUsage,
 ): Promise<Response> {
   const id = body.id ?? null;
   // Only a user-bound caller can call start_upgrade, so only they get a
@@ -1017,10 +1023,9 @@ export async function dispatchToolsCall(
     // inside the normal response, so a bad expression is a *user* error after
     // a successful dispatch, not a thrown system error. Genuine tool-execution
     // throws (e.g. `cache_all_null`) still hit the catch below. Single
-    // JSON.stringify per request when
-    // telemetry is off; one extra stringify when MCP_TELEMETRY is enabled
-    // so we can report `bytes_pre_jmespath` separately from the projected
-    // size.
+    // JSON.stringify per request when neither MCP_TELEMETRY nor a usage row
+    // is present; otherwise a projected call stringifies once more so we can
+    // report `bytes_pre_jmespath` separately from the projected size.
     if (tool.name === 'get_market_data' && tool._execute === undefined && isOrdinaryMarketDefault(p.arguments ?? {})
       && result && typeof result === 'object') {
       result = presentDefaultMarketData(result as Record<string, unknown>, tool._outputBudgetBytes);
@@ -1096,7 +1101,11 @@ export async function dispatchToolsCall(
     const textBytes = Math.max(utf8ByteLength(text), forecastCompletedBytes);
     const outputBudget = tool._outputBudgetBytes;
     const budgetExceeded = textBytes > outputBudget;
-    if (telemetryEnabled()) {
+    if (usage && tool.name === 'describe_tool' && result && typeof result === 'object'
+      && (result as { error?: unknown }).error === 'unknown_tool') {
+      setUsageDescribeMiss(usage, callArguments.tool_name);
+    }
+    if (telemetryEnabled() || usage) {
       let bytesPre: number;
       if (jmespathUsed) {
         // Telemetry stringify must never escape into the outer catch — a
@@ -1113,7 +1122,7 @@ export async function dispatchToolsCall(
       } else {
         bytesPre = textBytes;
       }
-      emitTelemetry('mcp.toolcall', {
+      recordToolCall(usage, {
         tool: telemetryTool,
         auth_kind: context.kind,
         user_id: principalIdForLog(context),
@@ -1199,7 +1208,7 @@ export async function dispatchToolsCall(
       fingerprint: mcpErrorFingerprint('tool-execution', tool.name, err),
       ...(isClient4xx || isExpectedDenial || isExpectedSourceOutage ? { level: 'warning' as const } : {}),
     });
-    emitTelemetry('mcp.toolcall', {
+    recordToolCall(usage, {
       tool: telemetryTool,
       auth_kind: context.kind,
       user_id: principalIdForLog(context),

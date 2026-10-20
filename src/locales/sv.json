@@ -642,7 +642,9 @@
         "sourceIomDtm": "Källa: IOM DTM",
         "sinceDate": "sedan {{date}}",
         "lastMonth": "förra månaden",
-        "sourceUnhcrOdp": "Källa: UNHCR:s portal för operativa data"
+        "sourceUnhcrOdp": "Källa: UNHCR:s portal för operativa data",
+        "displaced": "fördrivna",
+        "sourceIdmc": "Källa: IDMC"
       },
       "layerHelp": {
         "title": "Kartlagerguide",
@@ -1109,7 +1111,16 @@
       "staleReport": "Inaktuell rapport",
       "reported": "Antal",
       "period": "Period",
-      "movementNote": "Varje rad behåller sin källa, sitt rapportdatum och sitt mått. Bestånd, ankomster och gränskontrollhändelser är olika mått. Källor kan överlappa; summera inte deras antal. WorldMonitor tar fram denna vy från de länkade källorna; det innebär inget stöd från leverantörerna."
+      "movementNote": "Varje rad behåller sin källa, sitt rapportdatum och sitt mått. Bestånd, ankomster och gränskontrollhändelser är olika mått. Källor kan överlappa; summera inte deras antal. WorldMonitor tar fram denna vy från de länkade källorna; det innebär inget stöd från leverantörerna.",
+      "recent": "Nyligen",
+      "last30Days": "Senaste 30 dagarna",
+      "newThisWeek": "Nytt denna vecka",
+      "conflict": "Konflikt",
+      "disaster": "Katastrof",
+      "surge": "Topp",
+      "recentNote": "IDMC: personer som förflyttats inom sitt land under de senaste 30 dagarna. IDMC publicerar en siffra i median tre veckor efter förflyttningen, så nyliga veckor fylls i sent. Nytt denna vecka räknar siffror som publicerats under de senaste 7 dagarna. Topp: minst 5 000 personer och tre gånger det månatliga genomsnittet från de föregående fem månaderna.",
+      "recentAsOf": "Data per {{date}}.",
+      "recentMissing": "Ingen data denna gång från {{countries}}; deras filer misslyckades att läsas in, vilket inte betyder noll förskjutning."
     },
     "populationExposure": {
       "totalAffected": "Totalt påverkad",

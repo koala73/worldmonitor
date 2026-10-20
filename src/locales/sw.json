@@ -1475,7 +1475,9 @@
         "sourceIomDtm": "Chanzo: IOM DTM",
         "sinceDate": "tangu {{date}}",
         "lastMonth": "mwezi uliopita",
-        "sourceUnhcrOdp": "Chanzo: Tovuti ya Data za Kiutendaji ya UNHCR"
+        "sourceUnhcrOdp": "Chanzo: Tovuti ya Data za Kiutendaji ya UNHCR",
+        "displaced": "waliokimbia makazi",
+        "sourceIdmc": "Chanzo: IDMC"
       },
       "layerHelp": {
         "title": "Mwongozo wa Tabaka za Ramani",
@@ -1915,7 +1917,16 @@
       "staleReport": "Ripoti iliyopitwa na wakati",
       "reported": "Idadi",
       "period": "Kipindi",
-      "movementNote": "Kila safu huhifadhi chanzo chake, tarehe ya ripoti na kipimo. Idadi ya watu waliopo, waliowasili na matukio ya udhibiti wa mipaka ni vipimo tofauti. Vyanzo vinaweza kuhesabu watu wale wale; usijumlishe idadi zao. WorldMonitor huunda mwonekano huu kutoka vyanzo vilivyounganishwa; hii haimaanishi uidhinishaji na watoa data."
+      "movementNote": "Kila safu huhifadhi chanzo chake, tarehe ya ripoti na kipimo. Idadi ya watu waliopo, waliowasili na matukio ya udhibiti wa mipaka ni vipimo tofauti. Vyanzo vinaweza kuhesabu watu wale wale; usijumlishe idadi zao. WorldMonitor huunda mwonekano huu kutoka vyanzo vilivyounganishwa; hii haimaanishi uidhinishaji na watoa data.",
+      "recent": "Hivi karibuni",
+      "last30Days": "Siku 30 za mwisho",
+      "newThisWeek": "Mpya wiki hii",
+      "conflict": "Mgogoro",
+      "disaster": "Janga",
+      "surge": "Mlipuko",
+      "recentNote": "IDMC: watu waliohama ndani ya nchi yao katika siku 30 za mwisho. IDMC hutoa takwimu wastani wa wiki tatu baada ya uhamiaji, hivyo wiki za hivi karibuni zijaza na chelewa. Mpya wiki hii inakokotoa takwimu zilizochapishwa katika siku 7 za mwisho. Mlipuko: angalau watu 5,000 na mara tatu ya wastani wa kila mwezi wa miezi mitano iliyopita.",
+      "recentAsOf": "Data hadi {{date}}.",
+      "recentMissing": "Hakuna data wakati huu kutoka {{countries}}; faili zao hazikupakiwa. Hii haimaanishi kuwa hakuna watu waliokimbia makazi."
     },
     "climate": {
       "noAnomalies": "Hakuna hitilafu muhimu zilizogunduliwa",

@@ -1,5 +1,5 @@
 /**
- * UNHCR Displacement panel, Internal (IOM DTM) tab (#9014).
+ * UNHCR Displacement panel: Internal (IOM DTM), Cross-border and Recent (IDMC) tabs (#9014).
  *
  * The DTM tab must not depend on UNHCR: the two sources load independently, so
  * a UNHCR outage would otherwise hide DTM data the panel already holds. A row
@@ -10,6 +10,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import { toInternalDisplacementData } from '@/services/displacement/internal';
 import { toCrossBorderData } from '@/services/displacement/cross-border';
+import { toDisplacementEventsData } from '@/services/displacement/idu-events';
 import { formatPopulation } from '@/services/displacement';
 import { dataFreshness } from '@/services/data-freshness';
 import type { GetInternalDisplacementResponse } from '@/generated/client/worldmonitor/displacement/v1/service_client';
@@ -193,5 +194,77 @@ describe('operational cross-border rows', () => {
     expect(row.querySelector('.disp-round')?.textContent).toContain('0 / 3,455');
     expect(row.textContent).toContain('+118%');
     expect(panel.getElement().textContent).toContain('UK Home Office: ok');
+  });
+});
+
+describe('Recent tab (IDMC)', () => {
+  const country = (countryCode: string, countryName: string, overrides: Record<string, unknown>) => ({
+    countryCode, countryName, displaced30d: 0, conflict30d: 0, disaster30d: 0, events30d: 0,
+    newlyReported7d: 0, latestDisplacementDate: '2026-10-01', baselineMonthly: 0, surge: false, ...overrides,
+  });
+  const EVENTS = toDisplacementEventsData({
+    countries: [
+      country('COD', 'DR Congo', { displaced30d: 57000, conflict30d: 57000, events30d: 4 }),
+      country('PHL', 'Philippines', { displaced30d: 759032, conflict30d: 51276, disaster30d: 707756, events30d: 13, surge: true }),
+      country('SDN', 'Sudan', {}),
+    ],
+    events: [
+      { id: '1', countryCode: 'PHL', displacementType: 'Disaster', figure: 399403, displacementDate: '2026-09-25', createdAt: '2026-09-25',
+        eventName: 'Philippines: Storm', hazardType: 'Storm', locationName: 'Calabarzon, Philippines', location: { latitude: 14.16, longitude: 121.35 } },
+    ],
+    windowFrom: '2026-04-24',
+    missingCountries: [],
+  });
+
+  it('lists surging countries first with the conflict/disaster split, and leaves out quiet ones', async () => {
+    mount();
+    const onClick = vi.fn();
+    panel.setCountryClickHandler(onClick);
+    panel.setEventsData(EVENTS);
+    await flush();
+    expect(panel.getElement().querySelector<HTMLElement>('[data-tab="recent"]')?.classList.contains('active')).toBe(true);
+    const [phl, cod, ...rest] = rows().map((row) => Array.from(row.querySelectorAll('td')));
+    expect(rest).toHaveLength(0);
+    expect(phl![0]!.firstChild?.textContent?.trim()).toBe('Philippines');
+    expect(phl![0]!.querySelector('.disp-badge')?.textContent).toBe(tt('components.displacement.surge'));
+    expect(phl![0]!.querySelector('.disp-operation')?.textContent).toBe(
+      `${tt('components.displacement.conflict')} ${formatPopulation(51276)} · ${tt('components.displacement.disaster')} ${formatPopulation(707756)}`,
+    );
+    expect(phl![1]!.textContent).toBe('—');
+    expect(phl![2]!.textContent).toBe(formatPopulation(759032));
+    expect(cod![0]!.querySelector('.disp-badge')).toBeNull();
+    expect(panel.getElement().querySelector('.disp-source-note')?.textContent).toContain(tt('components.displacement.recentNote'));
+    rows()[1]!.click();
+    expect(onClick).not.toHaveBeenCalled();
+    rows()[0]!.click();
+    expect(onClick).toHaveBeenCalledWith(14.16, 121.35);
+  });
+
+  it('counts IDMC countries when UNHCR never arrived, and names failed files and the data date', async () => {
+    mount();
+    panel.setEventsData(toDisplacementEventsData({
+      countries: [country('PHL', 'Philippines', { displaced30d: 759032, surge: true })],
+      events: [],
+      windowFrom: '2026-04-24',
+      missingCountries: ['AFG', 'YEM'],
+    }));
+    await flush();
+    expect(panel.getElement().querySelector('.panel-count')?.textContent).toBe('1');
+    const note = panel.getElement().querySelector('.disp-source-note')?.textContent ?? '';
+    expect(note).toContain(tt('components.displacement.recentNote'));
+    expect(note).toContain(tt('components.displacement.recentAsOf', { date: '2026-10-20' }));
+    expect(note).toContain(tt('components.displacement.recentMissing', { countries: 'AFG, YEM' }));
+  });
+
+  it('keeps its tab when UNHCR data arrives later', async () => {
+    mount();
+    panel.setEventsData(EVENTS);
+    panel.setData({ year: 2026, globalTotals: { refugees: 1, asylumSeekers: 0, idps: 0, stateless: 0, total: 1 }, countries: [], topFlows: [] });
+    await flush();
+    const tabIds = Array.from(panel.getElement().querySelectorAll<HTMLElement>('.panel-tab')).map((tab) => tab.dataset.tab);
+    expect(tabIds).toEqual(['origins', 'hosts', 'recent']);
+    panel.getElement().querySelector<HTMLElement>('[data-tab="recent"]')!.click();
+    await flush();
+    expect(rows()).toHaveLength(2);
   });
 });

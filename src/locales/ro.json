@@ -1336,7 +1336,9 @@
         "sourceIomDtm": "Sursa: IOM DTM",
         "sinceDate": "din {{date}}",
         "lastMonth": "luna trecută",
-        "sourceUnhcrOdp": "Sursa: Portalul de date operaționale al UNHCR"
+        "sourceUnhcrOdp": "Sursa: Portalul de date operaționale al UNHCR",
+        "displaced": "strămutați",
+        "sourceIdmc": "Sursă: IDMC"
       },
       "layerHelp": {
         "title": "Ghid pentru straturi de hartă",
@@ -1777,7 +1779,16 @@
       "staleReport": "Raport învechit",
       "reported": "Număr",
       "period": "Perioadă",
-      "movementNote": "Fiecare rând păstrează sursa, data raportului și măsura. Populațiile, sosirile și evenimentele de control la frontieră sunt măsuri diferite. Sursele se pot suprapune; nu adunați numerele lor. WorldMonitor derivă această vizualizare din sursele indicate; aceasta nu implică susținerea furnizorilor."
+      "movementNote": "Fiecare rând păstrează sursa, data raportului și măsura. Populațiile, sosirile și evenimentele de control la frontieră sunt măsuri diferite. Sursele se pot suprapune; nu adunați numerele lor. WorldMonitor derivă această vizualizare din sursele indicate; aceasta nu implică susținerea furnizorilor.",
+      "recent": "Recent",
+      "last30Days": "Ultimele 30 de zile",
+      "newThisWeek": "Nou această săptămână",
+      "conflict": "Conflict",
+      "disaster": "Dezastru",
+      "surge": "Creștere bruscă",
+      "recentNote": "IDMC: persoane strămutate în interiorul țării lor în ultimele 30 de zile. IDMC publică o cifră într-o medie de trei săptămâni după strămutare, deci săptămânile recente se completează mai târziu. Nou această săptămână numără cifrele publicate în ultimele 7 zile. Creștere bruscă: cel puțin 5.000 de persoane și de trei ori media lunară din precedentele cinci luni.",
+      "recentAsOf": "Date de {{date}}.",
+      "recentMissing": "Fără date în acest moment de la {{countries}}; fișierele lor nu s-au încărcat, ceea ce nu înseamnă deplasare zero."
     },
     "climate": {
       "noAnomalies": "Nu au fost detectate anomalii semnificative",
