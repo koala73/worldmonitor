@@ -4,7 +4,7 @@
 //
 // The key name and event schema are unchanged from the retired manual
 // LiveUAMap dump (proto/worldmonitor/conflict/v1/list_iran_events.proto), so
-// every consumer (map layer, CII strikeBoost, country brief, MCP) keeps working.
+// every consumer (map layer, CII strike pressure, country brief, MCP) keeps working.
 //
 // Pipeline, all pure except the injected I/O:
 //   1. prefilterStrikeText  deterministic EN/AR/FA strike vocabulary AND a
@@ -664,6 +664,97 @@ function deriveStrikeEvents(candidates, now) {
 }
 
 // ---------------------------------------------------------------------------
+// 7. Strike pressure: 30 days of per-country daily tallies
+// ---------------------------------------------------------------------------
+//
+// The canonical key carries a 72h window; the CII needs to know whether a
+// country has been hit day after day for weeks (CII v12 strike pressure). The
+// tally keeps, per country and UTC day, the largest severity count any
+// published window has shown for that day. It does not track event ids: an id
+// carries the 30-minute bucket of its session's first report, and sessions
+// re-partition when a late report with an earlier time arrives or the first
+// report leaves the window, so counting ids would count one incident twice.
+// Each day sits wholly inside the 72h window for about two days, so the
+// largest window view of it includes every late report. A later report that
+// raises an incident's severity raises the day's weighted total, so it
+// replaces the stored count rather than adding to it. The CII applies the
+// weights again (CII_STRIKE_SEVERITY_WEIGHTS, pinned to these by a test) and
+// the time decay.
+
+const PRESSURE_KEY = 'conflict:strike-pressure:v1';
+const PRESSURE_SEED_META_KEY = 'seed-meta:conflict:strike-pressure';
+const PRESSURE_ACTIVATION_KEY = 'seed-activated:conflict:strike-pressure';
+const PRESSURE_SOURCE_VERSION = 'strike-pressure-v1';
+const DAY_MS = 24 * HOUR_MS;
+const PRESSURE_DAYS = 30;
+// Tally layout per country and day, most severe first, and the weights that
+// decide which of two views of a day is the larger.
+const PRESSURE_SEVERITIES = ['critical', 'high', 'elevated', 'moderate'];
+const PRESSURE_WEIGHTS = Object.freeze({ critical: 4, high: 2, elevated: 1, moderate: 0.5 });
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ISO2_RE = /^[A-Z]{2}$/;
+
+function utcDay(ms) {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function isTally(value) {
+  return Array.isArray(value) && value.length === PRESSURE_SEVERITIES.length
+    && value.every((n) => Number.isInteger(n) && n >= 0);
+}
+
+function tallyWeight(tally) {
+  return PRESSURE_SEVERITIES.reduce((sum, severity, i) => sum + tally[i] * PRESSURE_WEIGHTS[severity], 0);
+}
+
+function normalizePressure(previous, oldest) {
+  const days = {};
+  const storedDays = previous?.days && typeof previous.days === 'object' && !Array.isArray(previous.days) ? previous.days : {};
+  for (const [date, byCountry] of Object.entries(storedDays)) {
+    if (!DATE_RE.test(date) || date < oldest || !byCountry || typeof byCountry !== 'object') continue;
+    for (const [iso2, tally] of Object.entries(byCountry)) {
+      if (ISO2_RE.test(iso2) && isTally(tally) && tallyWeight(tally) > 0) (days[date] ??= {})[iso2] = [...tally];
+    }
+  }
+  return days;
+}
+
+/**
+ * Fold one published 72h window into the 30-day tally: per country and day,
+ * the window's severity counts replace the stored ones when they weigh more.
+ * Idempotent: republishing a window never changes the tally.
+ */
+function mergeStrikePressure(previous, events, now) {
+  const oldest = utcDay(now - (PRESSURE_DAYS - 1) * DAY_MS);
+  const days = normalizePressure(previous, oldest);
+  const windowDays = {};
+  for (const event of Array.isArray(events) ? events : []) {
+    const iso2 = event?.countryCode;
+    const severity = event?.severity;
+    const ts = event?.timestamp;
+    if (typeof event?.id !== 'string' || !event.id) continue;
+    if (!ISO2_RE.test(iso2 ?? '') || !PRESSURE_SEVERITIES.includes(severity)) continue;
+    if (!Number.isFinite(ts) || ts > now + FUTURE_SKEW_MS) continue;
+    // At the window's old edge an incident loses its first report and is
+    // re-dated to its next one, at most one session (30 minutes) later, which
+    // can be the next UTC day. Earlier cycles counted it whole, so the edge is
+    // skipped rather than counted again on another day.
+    if (ts < now - WINDOW_MS + BUCKET_MS) continue;
+    const day = utcDay(ts);
+    if (day < oldest) continue;
+    const tally = ((windowDays[day] ??= {})[iso2] ??= PRESSURE_SEVERITIES.map(() => 0));
+    tally[PRESSURE_SEVERITIES.indexOf(severity)] += 1;
+  }
+  for (const [day, byCountry] of Object.entries(windowDays)) {
+    for (const [iso2, tally] of Object.entries(byCountry)) {
+      const stored = days[day]?.[iso2];
+      if (!stored || tallyWeight(tally) > tallyWeight(stored)) (days[day] ??= {})[iso2] = tally;
+    }
+  }
+  return { version: 1, days, updatedAt: now };
+}
+
+// ---------------------------------------------------------------------------
 // Cycle
 // ---------------------------------------------------------------------------
 
@@ -781,10 +872,38 @@ async function runStrikeCycle({
  *   - a failed store read skips the cycle (writing would replace 72h of history);
  *   - seed-meta advances only after the store and canonical writes succeed AND
  *     the cycle is healthy, so a stalled poll or dead classifier reads STALE.
- * readStore() resolves { ok, value }. Returns { status, doneIds, result }.
+ * readStore() resolves { ok, value }. Returns { status, doneIds, result, pressureStatus }.
  * doneIds are the posts the caller may stop re-offering (persisted or out of scope).
+ *
+ * With readPressure/writePressure/writePressureMeta, every written window is
+ * also added to the 30-day strike-pressure tally. The tally never fails the
+ * feed: a failed read skips the tally (writing would replace 30 days), and its
+ * seed-meta advances only on a healthy cycle, like the feed's own.
  */
 async function publishStrikeCycle({
+  now, pendingItems, readStore, writeStore, writeCanonical, writeSeedMeta,
+  readCache, writeCache, classify, loadGdelt, telegramPolledAt,
+  readPressure, writePressure, writePressureMeta,
+}) {
+  const outcome = await publishStrikeWindow({
+    now, pendingItems, readStore, writeStore, writeCanonical, writeSeedMeta,
+    readCache, writeCache, classify, loadGdelt, telegramPolledAt,
+  });
+  if (!readPressure || !writePressure) return outcome;
+  const { result } = outcome;
+  if (!result || !outcome.canonicalWritten) return { ...outcome, pressureStatus: 'skipped' };
+  const stored = await Promise.resolve(readPressure()).catch(() => null);
+  if (!stored?.ok) return { ...outcome, pressureStatus: 'read-failed' };
+  const pressure = mergeStrikePressure(stored.value, result.payload.events, now);
+  if (!await Promise.resolve(writePressure(pressure)).catch(() => false)) return { ...outcome, pressureStatus: 'write-failed' };
+  if (!result.healthy) return { ...outcome, pressureStatus: 'degraded' };
+  const recordCount = Object.values(pressure.days).reduce((sum, byCountry) => sum + Object.keys(byCountry).length, 0);
+  const metaOk = await Promise.resolve(writePressureMeta?.({ fetchedAt: now, recordCount, sourceVersion: PRESSURE_SOURCE_VERSION }))
+    .catch(() => false);
+  return { ...outcome, pressureStatus: metaOk ? 'ok' : 'write-failed' };
+}
+
+async function publishStrikeWindow({
   now, pendingItems, readStore, writeStore, writeCanonical, writeSeedMeta,
   readCache, writeCache, classify, loadGdelt, telegramPolledAt,
 }) {
@@ -808,11 +927,11 @@ async function publishStrikeCycle({
   const retry = new Set(result.pending.map((item) => item.id));
   const doneIds = storeOk ? pendingItems.map((item) => item.id).filter((id) => !retry.has(id)) : [];
   const canonicalOk = storeOk && await writeCanonical(result.payload, result.recordCount);
-  if (!storeOk || !canonicalOk) return { status: 'write-failed', doneIds, result };
-  if (!result.healthy) return { status: 'degraded', doneIds, result };
+  if (!storeOk || !canonicalOk) return { status: 'write-failed', doneIds, result, canonicalWritten: false };
+  if (!result.healthy) return { status: 'degraded', doneIds, result, canonicalWritten: true };
   const metaOk = await writeSeedMeta({ fetchedAt: now, recordCount: result.recordCount, sourceVersion: SOURCE_VERSION });
-  if (!metaOk) return { status: 'write-failed', doneIds, result };
-  return { status: 'ok', doneIds, result };
+  if (!metaOk) return { status: 'write-failed', doneIds, result, canonicalWritten: true };
+  return { status: 'ok', doneIds, result, canonicalWritten: true };
 }
 
 module.exports = {
@@ -837,4 +956,12 @@ module.exports = {
   deriveStrikeEvents,
   runStrikeCycle,
   publishStrikeCycle,
+  PRESSURE_KEY,
+  PRESSURE_SEED_META_KEY,
+  PRESSURE_ACTIVATION_KEY,
+  PRESSURE_SOURCE_VERSION,
+  PRESSURE_DAYS,
+  PRESSURE_SEVERITIES,
+  PRESSURE_WEIGHTS,
+  mergeStrikePressure,
 };

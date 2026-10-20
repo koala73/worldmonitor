@@ -329,7 +329,7 @@ paths:
             tags:
                 - DisplacementService
             summary: GetCrossBorderMovements
-            description: Dated movements. 200 schema is unprojected; jmespath may return any JSON (array/scalar/null), with {data, _attribution} when attributed.
+            description: 200 describes unprojected movements; jmespath returns any JSON (array/scalar/null), with {data, _attribution} if attributed.
             operationId: GetCrossBorderMovements
             parameters:
                 - name: country_code

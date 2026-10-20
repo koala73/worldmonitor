@@ -6717,7 +6717,7 @@ paths:
             tags:
                 - DisplacementService
             summary: GetCrossBorderMovements
-            description: Dated movements. 200 schema is unprojected; jmespath may return any JSON (array/scalar/null), with {data, _attribution} when attributed.
+            description: 200 describes unprojected movements; jmespath returns any JSON (array/scalar/null), with {data, _attribution} if attributed.
             operationId: GetCrossBorderMovements
             parameters:
                 - name: country_code
@@ -48308,7 +48308,7 @@ components:
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: Armed-conflict contribution from ACLED events, fatalities, civilian violence, strikes, and OREF alerts (0-100).
+                    description: Armed-conflict contribution from ACLED events, fatalities, civilian violence, GDELT conflict coverage, and OREF alerts (0-100).
                 militaryActivity:
                     type: number
                     maximum: 100

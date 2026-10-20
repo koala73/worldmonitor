@@ -24,7 +24,7 @@ service DisplacementService {
     option (sebuf.http.config) = {path: "/get-internal-displacement", method: HTTP_METHOD_GET};
   }
 
-  // Dated movements. 200 schema is unprojected; jmespath may return any JSON (array/scalar/null), with {data, _attribution} when attributed.
+  // 200 describes unprojected movements; jmespath returns any JSON (array/scalar/null), with {data, _attribution} if attributed.
   rpc GetCrossBorderMovements(GetCrossBorderMovementsRequest) returns (GetCrossBorderMovementsResponse) {
     option (sebuf.http.config) = {path: "/get-cross-border-movements", method: HTTP_METHOD_GET};
   }

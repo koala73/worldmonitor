@@ -629,3 +629,174 @@ describe('extraction cycle', () => {
     assert.equal(second.payload.scrapedAt, NOW);
   });
 });
+
+describe('strike pressure tally (conflict:strike-pressure:v1)', () => {
+  const DAY = 24 * HOUR;
+  const ev = (id, countryCode, severity, ageMs, extra = {}) => ({
+    id, countryCode, severity, timestamp: NOW - ageMs, title: id, category: 'airstrike', ...extra,
+  });
+  const window = [
+    ev('tg:SA:SA:riyadh:1', 'SA', 'high', 2 * HOUR),
+    ev('tg:SA:SA:najran:2', 'SA', 'elevated', 3 * HOUR),
+    ev('tg:SA:SA:jizan:3', 'SA', 'critical', 30 * HOUR),
+    ev('gdelt:YE:YE:sanaa:4', 'YE', 'moderate', 5 * HOUR),
+  ];
+
+  it('tallies published events per country, UTC day of the event and severity', () => {
+    const out = strikes.mergeStrikePressure(null, window, NOW);
+    assert.equal(out.version, 1);
+    assert.equal(out.updatedAt, NOW);
+    // [critical, high, elevated, moderate]
+    assert.deepEqual(out.days['2026-10-19'], { SA: [0, 1, 1, 0], YE: [0, 0, 0, 1] });
+    assert.deepEqual(out.days['2026-10-18'], { SA: [1, 0, 0, 0] });
+  });
+
+  it('never counts an event twice when the 72h window is republished every cycle', () => {
+    let state = strikes.mergeStrikePressure(null, window, NOW);
+    for (let i = 1; i <= 5; i++) state = strikes.mergeStrikePressure(state, window, NOW + i * 10 * MIN);
+    assert.deepEqual(state.days['2026-10-19'], { SA: [0, 1, 1, 0], YE: [0, 0, 0, 1] });
+    assert.deepEqual(state.days['2026-10-18'], { SA: [1, 0, 0, 0] });
+  });
+
+  // Event ids are not stable across cycles: an id carries the 30-minute bucket
+  // of its session's first report, and sessions re-partition when a late post
+  // with an earlier timestamp arrives or the oldest post leaves the window.
+  // The tally must count what the window shows, not every id it ever saw.
+  const at = Date.parse('2026-10-15T10:00:00Z');
+  const riyadh = (id, ts) => ({
+    id, src: 'telegram', cls: 'official', kind: 'strike', severity: 'high', iso2: 'SA', placeKey: 'riyadh',
+    place: 'Riyadh', lat: 24.7, lon: 46.7, ts, title: id, url: '', handle: 'h', group: 'g',
+  });
+
+  it('does not count a re-partitioned incident twice when a late report with an earlier time arrives', () => {
+    const cands = [riyadh('a', at + 10 * MIN), riyadh('b', at + 35 * MIN)];
+    const first = strikes.deriveStrikeEvents(cands, at + 2 * HOUR);
+    assert.equal(first.length, 1);
+    let state = strikes.mergeStrikePressure(null, first, at + 2 * HOUR);
+    const late = strikes.deriveStrikeEvents([...cands, riyadh('z', at - 15 * MIN)], at + 2 * HOUR + 10 * MIN);
+    assert.equal(late.length, 2, 'the late post splits the incident into two sessions');
+    state = strikes.mergeStrikePressure(state, late, at + 2 * HOUR + 10 * MIN);
+    assert.deepEqual(state.days['2026-10-15'], { SA: [0, 2, 0, 0] });
+  });
+
+  it('does not count an incident again when its first report leaves the 72h window and its id moves', () => {
+    const cands = [riyadh('a', at + 25 * MIN), riyadh('b', at + 40 * MIN), riyadh('c', at + 60 * MIN)];
+    let state = null;
+    for (const now of [at + 2 * HOUR, at + 72 * HOUR + 26 * MIN, at + 72 * HOUR + 41 * MIN]) {
+      state = strikes.mergeStrikePressure(state, strikes.deriveStrikeEvents(cands, now), now);
+    }
+    assert.deepEqual(state.days['2026-10-15'], { SA: [0, 2, 0, 0] });
+  });
+
+  it('does not move an incident to the next day when its first report, just before midnight, leaves the window', () => {
+    // 23:55 and 00:10 form one incident dated 23:55; at 72h the 23:55 report
+    // leaves and the 00:10 report alone would be re-dated to the next day.
+    const midnight = Date.parse('2026-10-16T00:00:00Z');
+    const cands = [riyadh('a', midnight - 5 * MIN), riyadh('b', midnight + 10 * MIN)];
+    let state = null;
+    for (const now of [midnight + 2 * HOUR, midnight - 5 * MIN + 72 * HOUR + MIN, midnight - 5 * MIN + 72 * HOUR + 11 * MIN]) {
+      state = strikes.mergeStrikePressure(state, strikes.deriveStrikeEvents(cands, now), now);
+    }
+    assert.deepEqual(state.days, { '2026-10-15': { SA: [0, 1, 0, 0] } });
+  });
+
+  it('moves an event to its higher severity when later reports raise it, and never lowers it', () => {
+    const first = strikes.mergeStrikePressure(null, [ev('tg:SA:SA:riyadh:1', 'SA', 'elevated', HOUR)], NOW);
+    const raised = strikes.mergeStrikePressure(first, [ev('tg:SA:SA:riyadh:1', 'SA', 'critical', HOUR)], NOW);
+    assert.deepEqual(raised.days['2026-10-19'], { SA: [1, 0, 0, 0] });
+    const lowered = strikes.mergeStrikePressure(raised, [ev('tg:SA:SA:riyadh:1', 'SA', 'high', HOUR)], NOW);
+    assert.deepEqual(lowered.days['2026-10-19'], { SA: [1, 0, 0, 0] });
+  });
+
+  it('keeps 30 days of tallies after the events leave the 72h window, then drops the oldest day', () => {
+    let state = strikes.mergeStrikePressure(null, window, NOW);
+    // Ten days on, the window holds none of these events; the tallies stay.
+    state = strikes.mergeStrikePressure(state, [], NOW + 10 * DAY);
+    assert.deepEqual(state.days['2026-10-19'], { SA: [0, 1, 1, 0], YE: [0, 0, 0, 1] });
+    state = strikes.mergeStrikePressure(state, [], NOW + 30 * DAY);
+    assert.equal(state.days['2026-10-19'], undefined);
+    assert.equal(state.days['2026-10-18'], undefined);
+  });
+
+  it('ignores events it cannot place: no country, unknown severity, future or ancient timestamps', () => {
+    const out = strikes.mergeStrikePressure(null, [
+      ev('a', 'Saudi', 'high', HOUR),
+      ev('b', 'SA', 'catastrophic', HOUR),
+      ev('c', 'SA', 'high', -2 * HOUR),
+      ev('d', 'SA', 'high', 40 * DAY),
+      { ...ev('e', 'SA', 'high', HOUR), timestamp: 'yesterday' },
+      ev('', 'SA', 'high', HOUR),
+      null,
+    ], NOW);
+    assert.deepEqual(out.days, {});
+  });
+
+  it('survives a malformed stored snapshot without throwing or keeping garbage', () => {
+    const out = strikes.mergeStrikePressure({ days: { 'not-a-date': { SA: [1, 0, 0, 0] }, '2026-10-18': { SA: 'x', YE: [0, 1, 0, 0] } }, events: [] }, [], NOW);
+    assert.deepEqual(out.days, { '2026-10-18': { YE: [0, 1, 0, 0] } });
+  });
+
+  function pressureHarness(overrides = {}) {
+    const writes = { store: [], canonical: [], meta: [], pressure: [], pressureMeta: [] };
+    const deps = {
+      now: NOW,
+      pendingItems: [post('SaudiDCD', 'Missile intercepted over Riyadh')],
+      readStore: async () => ({ ok: true, value: null }),
+      writeStore: async (s) => { writes.store.push(s); return true; },
+      writeCanonical: async (p, n) => { writes.canonical.push({ p, n }); return true; },
+      writeSeedMeta: async (m) => { writes.meta.push(m); return true; },
+      readCache: async () => null,
+      writeCache: async () => {},
+      classify: async (texts) => texts.map((_, i) => ({ i, isStrike: true, kind: 'intercept', place: 'Riyadh', countryIso2: 'SA', severity: 'elevated' })),
+      loadGdelt: async (processed) => ({ candidates: [], processed, fetched: 0 }),
+      telegramPolledAt: NOW - MIN,
+      readPressure: async () => ({ ok: true, value: null }),
+      writePressure: async (p) => { writes.pressure.push(p); return true; },
+      writePressureMeta: async (m) => { writes.pressureMeta.push(m); return true; },
+      ...overrides,
+    };
+    return { deps, writes };
+  }
+
+  it('adds each published window to the tally and advances its seed-meta on a healthy cycle', async () => {
+    const { deps, writes } = pressureHarness();
+    const out = await strikes.publishStrikeCycle(deps);
+    assert.equal(out.status, 'ok');
+    assert.equal(out.pressureStatus, 'ok');
+    assert.deepEqual(writes.pressure[0].days['2026-10-19'], { SA: [0, 0, 1, 0] });
+    assert.deepEqual(writes.pressureMeta, [{ fetchedAt: NOW, recordCount: 1, sourceVersion: 'strike-pressure-v1' }]);
+  });
+
+  it('never overwrites 30 days of tallies after a failed read, and keeps the feed publishing', async () => {
+    const { deps, writes } = pressureHarness({ readPressure: async () => ({ ok: false, value: null }) });
+    const out = await strikes.publishStrikeCycle(deps);
+    assert.equal(out.status, 'ok', 'the strike feed itself is unaffected');
+    assert.equal(out.pressureStatus, 'read-failed');
+    assert.deepEqual([writes.pressure.length, writes.pressureMeta.length], [0, 0]);
+  });
+
+  it('records the events of a degraded cycle but withholds the tally seed-meta', async () => {
+    const { deps, writes } = pressureHarness({ telegramPolledAt: NOW - 2 * HOUR });
+    const out = await strikes.publishStrikeCycle(deps);
+    assert.equal(out.status, 'degraded');
+    assert.equal(out.pressureStatus, 'degraded');
+    assert.equal(writes.pressure.length, 1);
+    assert.equal(writes.pressureMeta.length, 0);
+  });
+
+  it('does not touch the tally when the canonical window was not written', async () => {
+    const { deps, writes } = pressureHarness({ writeCanonical: async () => false });
+    const out = await strikes.publishStrikeCycle(deps);
+    assert.equal(out.status, 'write-failed');
+    assert.equal(out.pressureStatus, 'skipped');
+    assert.equal(writes.pressure.length, 0);
+  });
+
+  it('reports a failed tally write without failing the feed', async () => {
+    const { deps, writes } = pressureHarness({ writePressure: async () => false });
+    const out = await strikes.publishStrikeCycle(deps);
+    assert.equal(out.status, 'ok');
+    assert.equal(out.pressureStatus, 'write-failed');
+    assert.equal(writes.pressureMeta.length, 0);
+  });
+});

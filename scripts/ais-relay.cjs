@@ -5502,6 +5502,9 @@ const MIDDLE_EAST_STRIKES_INTERVAL_MS = 10 * 60 * 1000;
 const MIDDLE_EAST_STRIKES_CANONICAL_TTL_S = 72 * 3600;
 const MIDDLE_EAST_STRIKES_STORE_TTL_S = 4 * 24 * 3600;
 const MIDDLE_EAST_STRIKES_META_TTL_S = 7 * 24 * 3600;
+// The 30-day strike-pressure tally (CII v12) outlives its window by 5 days, so
+// a relay outage shorter than that loses no history.
+const MIDDLE_EAST_STRIKE_PRESSURE_TTL_S = 35 * 24 * 3600;
 const MIDDLE_EAST_STRIKES_PENDING_MAX = 1000;
 const MIDDLE_EAST_STRIKES_PENDING_MAX_AGE_MS = 12 * 3600 * 1000;
 const MIDDLE_EAST_STRIKES_DONE_MAX = 5000;
@@ -5556,7 +5559,7 @@ async function seedMiddleEastStrikes() {
       if (!Number.isFinite(ts) || t0 - ts > MIDDLE_EAST_STRIKES_PENDING_MAX_AGE_MS) { middleEastStrikePending.delete(id); middleEastStrikeMisses.delete(id); }
     }
     const pendingItems = [...middleEastStrikePending.values()];
-    const { status, doneIds, result } = await middleEastStrikes.publishStrikeCycle({
+    const { status, doneIds, result, pressureStatus } = await middleEastStrikes.publishStrikeCycle({
       now: t0,
       pendingItems,
       readStore: async () => {
@@ -5580,6 +5583,19 @@ async function seedMiddleEastStrikes() {
       }),
       loadGdelt: loadMiddleEastStrikeGdelt,
       telegramPolledAt: telegramState.lastSuccessfulPollAt,
+      readPressure: async () => {
+        let ok = true;
+        const value = await upstashGet(middleEastStrikes.PRESSURE_KEY, () => { ok = false; });
+        return { ok, value };
+      },
+      writePressure: (pressure) => upstashSet(middleEastStrikes.PRESSURE_KEY, pressure, MIDDLE_EAST_STRIKE_PRESSURE_TTL_S),
+      writePressureMeta: async (meta) => {
+        if (!await upstashSet(middleEastStrikes.PRESSURE_SEED_META_KEY, meta, MIDDLE_EAST_STRIKES_META_TTL_S)) return false;
+        // Durable, no TTL: health reads the key as pending until the first
+        // healthy tally publish and strict afterwards (api/health.js ACTIVATION_MARKERS).
+        await upstashEval("return redis.call('SET', KEYS[1], ARGV[1])", [middleEastStrikes.PRESSURE_ACTIVATION_KEY], [String(t0)]);
+        return true;
+      },
     });
     for (const id of doneIds) {
       middleEastStrikePending.delete(id);
@@ -5611,7 +5627,7 @@ async function seedMiddleEastStrikes() {
       return;
     }
     const s = result.stats;
-    const summary = `${s.events} events, ${s.prefiltered} posts (${s.cacheHits} cached, ${s.classified} classified, ${s.retry} retry), ${s.gdeltCandidates} GDELT clusters from ${s.gdeltExportsFetched} exports, ${s.storeCandidates} stored, telegramLive=${s.telegramLive}`;
+    const summary = `${s.events} events, ${s.prefiltered} posts (${s.cacheHits} cached, ${s.classified} classified, ${s.retry} retry), ${s.gdeltCandidates} GDELT clusters from ${s.gdeltExportsFetched} exports, ${s.storeCandidates} stored, telegramLive=${s.telegramLive}, pressure=${pressureStatus}`;
     if (status === 'ok') console.log(`[MiddleEastStrikes] ${summary} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     else console.warn(`[MiddleEastStrikes] ${status} — seed-meta not advanced; ${summary}`);
   } catch (e) {
