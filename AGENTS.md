@@ -46,6 +46,8 @@ Merge, auto-merge, and deployment require explicit authorization in the current 
 | CI workflows | `.github/workflows/`; [CI/CD table](ARCHITECTURE.md#11-cicd) | Add or update each workflow's table entry. Run `npm run docs:check` and validate the changed workflow before pushing. The pre-push hook enforces the documentation check for workflow changes |
 | Tests and documentation | `tests/`, `e2e/`, `docs/`; [verification guide](CONTRIBUTING.md#verify-the-changed-path) | Relevant existing test or docs check, `git diff --check` |
 
+For public documents and API collections, use `https://www.worldmonitor.app` for website and documentation links. Keep MCP and OAuth endpoint identities on the apex host. Run `node --test tests/agent-corpus-canonical-host.test.mjs` after changing published URLs.
+
 ## Landmarks
 
 Grep the named symbol. Do not scan these files top to bottom.

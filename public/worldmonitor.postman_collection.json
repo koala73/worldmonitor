@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "WorldMonitor Quickstart",
-    "description": "Try the official WorldMonitor global intelligence API.\n\nStart with **1. No key required** to discover MCP tools and inspect the source catalog. Anonymous get_sources calls allow 10 requests per minute per IP.\n\nFor **2. REST examples**, get a subscription API key at https://worldmonitor.app/pro and set `apiKey` in your private fork or local environment. Never put a real key in a public or shared variable. Requests in this folder are skipped while the key is blank. HTTP 401 or 403 indicates an authentication or entitlement failure, and HTTP 429 indicates a rate limit.\n\nThe REST requests follow the final public OpenAPI specification at https://www.worldmonitor.app/openapi.json. Import that URL separately for the complete reference.\n\nDocumentation: https://worldmonitor.app/docs/usage-quickstart\nSource: https://github.com/koala73/worldmonitor\nLicense: MIT",
+    "description": "Try the official WorldMonitor global intelligence API.\n\nStart with **1. No key required** to discover MCP tools and inspect the source catalog. Anonymous get_sources calls allow 10 requests per minute per IP.\n\nFor **2. REST examples**, get a subscription API key at https://www.worldmonitor.app/pro and set `apiKey` in your private fork or local environment. Never put a real key in a public or shared variable. Requests in this folder are skipped while the key is blank. HTTP 401 or 403 indicates an authentication or entitlement failure, and HTTP 429 indicates a rate limit.\n\nThe REST requests follow the final public OpenAPI specification at https://www.worldmonitor.app/openapi.json. Import that URL separately for the complete reference.\n\nDocumentation: https://www.worldmonitor.app/docs/usage-quickstart\nSource: https://github.com/koala73/worldmonitor\nLicense: MIT",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -55,7 +55,7 @@
             "header": [
               {
                 "key": "User-Agent",
-                "value": "worldmonitor-postman/1.0 (+https://worldmonitor.app)"
+                "value": "worldmonitor-postman/1.0 (+https://www.worldmonitor.app)"
               },
               {
                 "key": "Accept",
@@ -109,7 +109,7 @@
             "header": [
               {
                 "key": "User-Agent",
-                "value": "worldmonitor-postman/1.0 (+https://worldmonitor.app)"
+                "value": "worldmonitor-postman/1.0 (+https://www.worldmonitor.app)"
               },
               {
                 "key": "Accept",
@@ -182,7 +182,7 @@
             "header": [
               {
                 "key": "User-Agent",
-                "value": "worldmonitor-postman/1.0 (+https://worldmonitor.app)"
+                "value": "worldmonitor-postman/1.0 (+https://www.worldmonitor.app)"
               },
               {
                 "key": "Accept",
@@ -207,7 +207,7 @@
                 }
               ]
             },
-            "description": "Get composite country risk intelligence. Requires a subscription API key. See https://worldmonitor.app/docs/usage-auth."
+            "description": "Get composite country risk intelligence. Requires a subscription API key. See https://www.worldmonitor.app/docs/usage-auth."
           },
           "event": [
             {
@@ -229,7 +229,7 @@
             "header": [
               {
                 "key": "User-Agent",
-                "value": "worldmonitor-postman/1.0 (+https://worldmonitor.app)"
+                "value": "worldmonitor-postman/1.0 (+https://www.worldmonitor.app)"
               },
               {
                 "key": "Accept",
@@ -276,7 +276,7 @@
             "header": [
               {
                 "key": "User-Agent",
-                "value": "worldmonitor-postman/1.0 (+https://worldmonitor.app)"
+                "value": "worldmonitor-postman/1.0 (+https://www.worldmonitor.app)"
               },
               {
                 "key": "Accept",
