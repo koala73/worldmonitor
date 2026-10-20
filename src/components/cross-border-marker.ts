@@ -1,0 +1,32 @@
+import type { CrossBorderPoint } from '@/services/displacement';
+import { t } from '@/services/i18n';
+import { escapeHtml } from '@/utils/sanitize';
+import { renderPopupSourceLinks } from './map-popup-source-links';
+
+export function createCrossBorderMarker(point: CrossBorderPoint): HTMLButtonElement {
+  const death = point.kind === 'death';
+  let color = '#b482ff';
+  if (death) color = '#e64646';
+  else if (point.changePct !== undefined) color = point.changePct >= 0 ? '#f0643c' : '#3cb496';
+  else if (point.kind === 'return') color = '#50d28c';
+  else if (point.kind === 'arrival') color = '#46b4f0';
+  const size = Math.min(40, Math.max(10, Math.sqrt(point.individuals) * 0.5));
+  const marker = document.createElement('button');
+  marker.type = 'button';
+  marker.className = `cross-border-marker cross-border-${death ? 'death' : 'point'}`;
+  marker.style.cssText = `width:${size}px;height:${size}px;min-width:24px;min-height:24px;border-radius:50%;padding:0;color:var(--text-primary);background:${color};border-width:${point.accelerating ? 3 : 1}px;border-style:solid;border-color:${point.accelerating ? '#ff4646' : 'var(--text-primary)'};cursor:pointer;pointer-events:auto;font-weight:bold`;
+  marker.textContent = death ? '×' : '';
+  marker.setAttribute('aria-label', `${point.label}: ${point.individuals.toLocaleString()} · ${point.kind} · ${point.date}`);
+  return marker;
+}
+
+export function renderCrossBorderDetails(point: CrossBorderPoint): string {
+  const period = point.last30Days !== undefined ? '30d' : point.period;
+  const change = point.changePct !== undefined ? ` · ${point.changePct > 0 ? '+' : ''}${point.changePct.toFixed(0)}%` : '';
+  return `<strong>${escapeHtml(point.label)}</strong><br>${point.individuals.toLocaleString()} · ${escapeHtml(point.kind)} · ${escapeHtml(point.measure ?? '')}`
+    + `${period ? `<br>${escapeHtml(period)}${change}` : ''}`
+    + `<br>${escapeHtml(point.country)} · ${escapeHtml(point.date)}`
+    + `<br>${escapeHtml(point.source || t('components.deckgl.tooltip.sourceUnhcrOdp'))}`
+    + `${point.accelerating ? `<br><strong>${t('components.displacement.accelerating')}</strong>` : ''}`
+    + renderPopupSourceLinks(point.sourceUrl ? [point.sourceUrl] : []);
+}
