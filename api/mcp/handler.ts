@@ -1225,6 +1225,7 @@ async function mcpHandlerInner(
         resourceMetadataUrl,
         burstPerMinute ?? MCP_DEFAULT_BURST_PER_MINUTE,
         planKey,
+        usage,
       );
       classifyDispatchedUsage(usage, dispatched);
       return maybeStreamJsonRpcResponse(req, sseOwner, dispatched);
@@ -1343,6 +1344,7 @@ async function mcpHandlerInner(
           freeAccountAllowance,
           resourceMetadataUrl,
           planKey,
+          usage,
         );
         classifyDispatchedUsage(usage, resourceRes);
         return maybeStreamJsonRpcResponse(req, sseOwner, resourceRes);

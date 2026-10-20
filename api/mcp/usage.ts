@@ -27,6 +27,7 @@ import {
 } from '../../server/_shared/usage';
 import type { AuthKind } from '../../server/_shared/usage-identity';
 import { TOOL_ALIASES } from './registry/index';
+import { emitTelemetry } from './telemetry';
 import type { McpAuthContext } from './types';
 
 // Which stage of the /mcp funnel produced the terminal Response. Set by the
@@ -73,6 +74,28 @@ const SERVED_RPC_METHODS: ReadonlySet<string> = new Set([
 /** Fixed bucket for methods outside SERVED_RPC_METHODS — one cardinality slot. */
 const UNREGISTERED_RPC_METHOD = '_unregistered';
 
+const REQUESTED_TOOL_PATTERN = /^[a-z0-9_.-]{1,64}$/;
+/** Fixed bucket for a requested name outside REQUESTED_TOOL_PATTERN — one cardinality slot. */
+const INVALID_REQUESTED_TOOL = '<invalid>';
+
+/**
+ * Reduce a client-chosen tool name to a log-safe identifier (#9431): trimmed,
+ * lowercased, `[a-z0-9_.-]{1,64}`, or the fixed `<invalid>` bucket. Only the
+ * name is ever recorded, never arguments or other request content.
+ */
+export function sanitizeRequestedTool(raw: unknown): string {
+  if (typeof raw !== 'string') return INVALID_REQUESTED_TOOL;
+  const name = raw.trim().toLowerCase();
+  return REQUESTED_TOOL_PATTERN.test(name) ? name : INVALID_REQUESTED_TOOL;
+}
+
+/** Outcome of the tool that ran, mirrored from its mcp.toolcall line (#9431). */
+export interface McpToolOutcome {
+  errorKind: string | null;
+  resultBytes: number;
+  jmespathUsed: boolean;
+}
+
 export interface McpUsage {
   phase: McpPhase;
   authKind: AuthKind;
@@ -84,6 +107,10 @@ export interface McpUsage {
   rpcMethod: string | null;
   /** tools/call name when it is callable (registry, alias, or retired); never raw client input (#8403). */
   toolName: string | null;
+  /** Sanitized name of a tool the caller asked for that this server does not serve (#9431). */
+  requestedTool: string | null;
+  /** Set by recordToolCall when a tool ran; null otherwise (#9431). */
+  toolOutcome: McpToolOutcome | null;
 }
 
 export function createMcpUsage(): McpUsage {
@@ -95,6 +122,8 @@ export function createMcpUsage(): McpUsage {
     skip: false,
     rpcMethod: null,
     toolName: null,
+    requestedTool: null,
+    toolOutcome: null,
   };
 }
 
@@ -104,13 +133,52 @@ export function setUsageRpc(
   toolCallName?: unknown,
 ): void {
   usage.rpcMethod = SERVED_RPC_METHODS.has(method) ? method : UNREGISTERED_RPC_METHOD;
+  usage.requestedTool = null;
   if (usage.rpcMethod !== 'tools/call') {
     usage.toolName = null;
     return;
   }
-  usage.toolName = typeof toolCallName === 'string' && REGISTERED_TOOL_NAMES.has(toolCallName)
-    ? toolCallName
-    : null;
+  if (typeof toolCallName === 'string' && REGISTERED_TOOL_NAMES.has(toolCallName)) {
+    usage.toolName = toolCallName;
+    return;
+  }
+  usage.toolName = null;
+  usage.requestedTool = sanitizeRequestedTool(toolCallName);
+}
+
+/** describe_tool answered `unknown_tool` for this name (#9431). */
+export function setUsageDescribeMiss(usage: McpUsage, requestedName: unknown): void {
+  usage.requestedTool = sanitizeRequestedTool(requestedName);
+}
+
+/** The mcp.toolcall line, keyed exactly as MCP_TOOLCALL_TELEMETRY_KEYS allows. */
+export interface McpToolCallLine {
+  tool: string;
+  auth_kind: string;
+  user_id: string;
+  latency_ms: number;
+  bytes_pre_jmespath: number;
+  bytes_post_jmespath: number;
+  jmespath_used: boolean;
+  jmespath_failed: string | null;
+  ok: boolean;
+  error_kind?: 'client_4xx' | 'source_unavailable' | 'server_error';
+  budget_exceeded: boolean;
+}
+
+/**
+ * The one recording point for a tool that ran: emits the `mcp.toolcall`
+ * console line and copies its outcome onto the request's wm_api_usage row,
+ * so the two can never disagree (#9431).
+ */
+export function recordToolCall(usage: McpUsage | undefined, line: McpToolCallLine): void {
+  emitTelemetry('mcp.toolcall', { ...line });
+  if (!usage) return;
+  usage.toolOutcome = {
+    errorKind: line.error_kind ?? null,
+    resultBytes: line.bytes_pre_jmespath,
+    jmespathUsed: line.jmespath_used,
+  };
 }
 
 /** Attribute the resolved principal. env_key principals are operator keys —
@@ -237,6 +305,14 @@ export function emitMcpRequestEvent(
       reason: mcpReasonFor(usage.phase, res.status),
       rpcMethod: usage.rpcMethod,
       toolName: usage.toolName,
+      // Cardinality bound (#8403): requested_tool is client-chosen, so it is
+      // written only for authenticated callers. Anonymous tools/call traffic
+      // is almost all scanners that fail auth anyway; letting it in would let
+      // anyone mint unbounded values in the Axiom dimension.
+      requestedTool: usage.authKind === 'anon' ? null : usage.requestedTool,
+      toolErrorKind: usage.toolOutcome?.errorKind ?? null,
+      toolResultBytes: usage.toolOutcome?.resultBytes ?? null,
+      toolJmespath: usage.toolOutcome?.jmespathUsed ?? null,
     });
     emitUsageEvents(ctx, [event]);
   } catch {
