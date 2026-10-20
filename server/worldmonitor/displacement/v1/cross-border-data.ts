@@ -5,6 +5,8 @@ export const CROSS_BORDER_SOURCES = [
   { id: 'odp', key: 'displacement:cross-border:v1', name: 'UNHCR Operational Data Portal', url: 'https://data.unhcr.org/', license: 'CC BY 4.0', licenseUrl: 'https://creativecommons.org/licenses/by/4.0/', maxContentAgeMin: 45 * 1440 },
   { id: 'uk', key: 'displacement:border-uk:v1', name: 'UK Home Office', url: 'https://www.gov.uk/government/publications/migrants-detected-crossing-the-english-channel-in-small-boats', license: 'Open Government Licence v3.0', licenseUrl: 'https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/', maxContentAgeMin: 3 * 1440 },
   { id: 'cbp', key: 'displacement:border-cbp:v1', name: 'US Customs and Border Protection', url: 'https://www.cbp.gov/document/stats/nationwide-encounters', license: 'US public domain', licenseUrl: 'https://www.cbp.gov/site-policy-notices/copyright-notice', maxContentAgeMin: 75 * 1440 },
+  { id: 'frontex', key: 'displacement:border-frontex:v1', name: 'Frontex', url: 'https://www.frontex.europa.eu/what-we-do/monitoring-and-risk-analysis/migratory-map/', license: 'Used with permission', licenseUrl: 'https://www.frontex.europa.eu/legal-disclaimer/', maxContentAgeMin: 75 * 1440 },
+  { id: 'panama', key: 'displacement:border-panama:v1', name: 'Panama Servicio Nacional de Migración', url: 'https://www.migracion.gob.pa/estadisticas/', license: 'Used with permission', licenseUrl: 'https://www.migracion.gob.pa/estadisticas/', maxContentAgeMin: 75 * 1440 },
 ] as const;
 
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -63,7 +65,11 @@ export function projectCrossBorderSnapshots(snapshots: Record<string, unknown>, 
         changePct: finite(raw.changePct), surge: !stale && kind === 'arrival' && ['daily', 'monthly'].includes(text(situation ? flow?.measure : raw.measure))
           && (situation ? month?.month === surgeMonth && raw.accelerating === true : raw.surge === true), stale,
         source: source.name, sourceUrl: text(situation?.sourceUrl) || source.url, license: source.license, licenseUrl: source.licenseUrl,
-        notice: 'WorldMonitor derives and normalizes this view from the linked sources. No provider endorsement. Contains public sector information licensed under the Open Government Licence v3.0 where the source is UK Home Office.',
+        notice: source.id === 'frontex'
+          ? 'Source: Frontex. Used with permission. Counts are detections, not unique people. WorldMonitor aggregates nationality and border-type rows by route. No provider endorsement.'
+          : source.id === 'panama'
+            ? 'Source: Servicio Nacional de Migración, Panamá. Used with permission. WorldMonitor extracts complete monthly Darién arrival totals from the official report. Figures are preliminary and subject to revision. No provider endorsement.'
+            : 'WorldMonitor derives and normalizes this view from the linked sources. No provider endorsement. Contains public sector information licensed under the Open Government Licence v3.0 where the source is UK Home Office.',
         location: latitude !== undefined && longitude !== undefined && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 ? { latitude, longitude } : undefined,
       });
       status.contentAt = Math.max(status.contentAt, contentAt);

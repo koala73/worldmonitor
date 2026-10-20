@@ -106,7 +106,7 @@ after(() => {
 });
 
 describe('risk-scores build with failed Redis reads', () => {
-  for (const key of ['displacement:cross-border:v1', 'displacement:border-uk:v1', 'displacement:border-cbp:v1']) {
+  for (const key of ['displacement:cross-border:v1', 'displacement:border-uk:v1', 'displacement:border-cbp:v1', 'displacement:border-frontex:v1', 'displacement:border-panama:v1']) {
     it(`retains the last good scores when ${key} cannot be read`, async () => {
       stubRedis({ failing: [key], stored: { [STALE_KEY]: JSON.stringify(stalePayload) } });
       const response = await getRiskScores({} as never, {} as never);

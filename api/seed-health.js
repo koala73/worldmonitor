@@ -97,6 +97,8 @@ const SEED_DOMAINS = {
   'displacement:summary':     { key: 'seed-meta:displacement:summary',     intervalMin: 360 },
   'displacement:border-uk': { key: 'seed-meta:displacement:border-uk', intervalMin: 1440, activationKey: 'seed-activated:displacement:border-uk' },
   'displacement:border-cbp': { key: 'seed-meta:displacement:border-cbp', intervalMin: 1440, activationKey: 'seed-activated:displacement:border-cbp' },
+  'displacement:border-frontex': { key: 'seed-meta:displacement:border-frontex', intervalMin: 1440, activationKey: 'seed-activated:displacement:border-frontex' },
+  'displacement:border-panama': { key: 'seed-meta:displacement:border-panama', intervalMin: 1440, activationKey: 'seed-activated:displacement:border-panama' },
   'economic:energy-prices':   { key: 'seed-meta:economic:energy-prices',   intervalMin: 75 },
   // Independent hourly producer from scripts/seed-fred-rates.mjs. This
   // operator-only endpoint stays strict; api/health.js owns the bounded

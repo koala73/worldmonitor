@@ -12462,6 +12462,23 @@
       ]
     },
     {
+      "host": "www.frontex.europa.eu",
+      "provider": "www.frontex.europa.eu",
+      "kind": "structured",
+      "observed": true,
+      "license": "Used with permission; repository owner confirmed reuse permission on 2026-10-20.",
+      "attribution": "Credit Frontex and link to https://www.frontex.europa.eu/what-we-do/monitoring-and-risk-analysis/migratory-map/. Counts are detections, not unique people. No endorsement implied.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/border-route-sources.mjs"
+        },
+        {
+          "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
+        }
+      ]
+    },
+    {
       "host": "www.ft.com",
       "provider": "www.ft.com",
       "kind": "feed",
@@ -13228,6 +13245,23 @@
       "references": [
         {
           "path": "scripts/seed-fuel-prices.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.migracion.gob.pa",
+      "provider": "www.migracion.gob.pa",
+      "kind": "structured",
+      "observed": true,
+      "license": "Used with permission; repository owner confirmed reuse permission on 2026-10-20.",
+      "attribution": "Servicio Nacional de Migración, Panamá. https://www.migracion.gob.pa/estadisticas/. Figures are preliminary and subject to revision.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/border-route-sources.mjs"
+        },
+        {
+          "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
         }
       ]
     },

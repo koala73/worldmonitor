@@ -29,7 +29,7 @@ test('new source health stays pending before activation and follows the same 48-
   const pending = await health(false);
   const fresh = await health(true, 2880);
   const stale = await health(true, 2881);
-  for (const [id, name] of [['uk', 'borderUk'], ['cbp', 'borderCbp']]) {
+  for (const [id, name] of [['uk', 'borderUk'], ['cbp', 'borderCbp'], ['frontex', 'borderFrontex'], ['panama', 'borderPanama']]) {
     assert.equal(__testing__.STANDALONE_KEYS[name], `displacement:border-${id}:v1`);
     assert.equal(__testing__.SEED_META[name].maxStaleMin, 2880);
     assert.equal(pending.seeds[`displacement:border-${id}`].status, 'pending-activation');

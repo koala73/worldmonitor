@@ -72,3 +72,18 @@ test('stock deltas retain their original interval rather than becoming new arriv
   assert.equal(result.movements[0]?.last7Days, undefined);
   assert.equal(result.movements[0]?.surge, false);
 });
+
+test('Frontex report expiry preserves the figure without hiding a healthy Panama zero', () => {
+  const row = { id: 'route', name: 'Route', kind: 'encounter', measure: 'monthly', countryCode: '', asOf: '2026-07-31', latestCount: 100, surge: true };
+  const result = projectCrossBorderSnapshots({
+    frontex: envelope({ routes: [row] }),
+    panama: envelope({ routes: [{ ...row, id: 'darien-gap', kind: 'arrival', countryCode: 'PA', asOf: '2026-09-30', latestCount: 0 }] }),
+  }, NOW);
+  assert.equal(result.sources.find(s => s.id === 'frontex')?.status, 'stale');
+  assert.equal(result.movements[0]?.count, 100);
+  assert.equal(result.movements[0]?.stale, true);
+  assert.equal(result.movements[0]?.surge, false);
+  assert.equal(result.sources.find(s => s.id === 'panama')?.status, 'ok');
+  assert.equal(result.movements[1]?.count, 0);
+  assert.equal(result.movements[1]?.stale, false);
+});
