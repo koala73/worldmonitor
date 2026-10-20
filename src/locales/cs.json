@@ -238,7 +238,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Stav odhadu a imputace nebyl poskytnut"
     },
     "fiveFactorScorecard": {
       "title": "Pětifaktorová rezilienční tabulka",
@@ -410,6 +411,7 @@
     "energy": "Energie a zdroje",
     "gov": "Vláda",
     "thinktanks": "Think-tanky",
+    "science": "Věda",
     "polymarket": "Predikce",
     "commodities": "Komodity",
     "economic": "Ekonomické ukazatele",
@@ -716,9 +718,9 @@
       "alertTitle": {
         "configured": "Nastavení desktopu nakonfigurováno",
         "needsKeys": "Pro odemknutí funkcí nakonfigurujte klíče API",
-        "some": "Některé funkce vyžadují klíče API"
+        "some": "Některé funkce vyžadují klíče API",
+        "pro": "World Monitor Pro je aktivní"
       },
-      "skipSetup": "Přeskočit nastavení — jedna licence World Monitor odemkne vše. Zapište se na čekací listinu pro předběžný přístup.",
       "summary": {
         "desktop": "Desktopový režim",
         "web": "Webový režim (pouze pro čtení, přihlašovací údaje spravuje server)",
@@ -747,7 +749,9 @@
         "OLLAMA_API_URL": "např. http://127.0.0.1:11434 (Ollama) nebo http://127.0.0.1:1234/v1 (LM Studio) — koncový bod kompatibilní s OpenAI.",
         "OLLAMA_MODEL": "např. llama3.1:8b — značka modelu k použití pro sumarizaci."
       },
-      "reserveEarlyAccess": "Rezervujte si ranný přístup"
+      "proCloud": "Funkce bez místního API klíče používají data z cloudu World Monitor.",
+      "skipSetupPro": "Přeskočit nastavení: přihlaste se k World Monitor Pro a používejte cloudová data místo vlastních API klíčů.",
+      "getPro": "Získat World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "Ověřování klíčů API...",
@@ -1279,7 +1283,7 @@
         "commodityHubs": "Komoditní centra",
         "gulfInvestments": "Investice Rady pro spolupráci v Zálivu",
         "tradeRoutes": "Obchodní cesty",
-        "iranAttacks": "Útoky Íránu",
+        "iranAttacks": "Útoky na Blízkém východě",
         "gpsJamming": "Rušení navigace",
         "dayNight": "Den/Noc",
         "ciiChoropleth": "Nestabilita zemí",
@@ -1323,7 +1327,9 @@
         "sourceIomDtm": "Zdroj: IOM DTM",
         "sinceDate": "od {{date}}",
         "lastMonth": "minulý měsíc",
-        "sourceUnhcrOdp": "Zdroj: Portál operačních dat UNHCR"
+        "sourceUnhcrOdp": "Zdroj: Portál operačních dat UNHCR",
+        "displaced": "vysídleno",
+        "sourceIdmc": "Zdroj: IDMC"
       },
       "layerHelp": {
         "title": "Průvodce mapovými vrstvami",
@@ -1532,6 +1538,8 @@
       "capacityPercent": "Kapacita {{percent}} %",
       "noCountryImpacts": "Nezjištěny žádné dopady na země",
       "alternativeRoutes": "Alternativní trasy",
+      "sharesCutZone": "stejný průliv",
+      "estimateNote": "Odhad: kapacita a redundance kabelů jsou přibližné, nikoli naměřené.",
       "countriesAffected": "Zasažené země ({{count}})",
       "links": "spojení",
       "selectInfrastructureHint": "Vyberte infrastrukturu pro analýzu kaskádového dopadu",
@@ -1749,7 +1757,21 @@
       "latestChange": "Poslední změna",
       "accelerating": "Zrychluje se",
       "inDays": "za {{days}} dní",
-      "crossBorderNote": "Operační datový portál Úřadu vysokého komisaře Spojených národů pro uprchlíky: osoby, které překročily hranice v každé krizi, z nejnovějších zpráv zemí. Situace se překrývají, proto se nesčítají dohromady."
+      "crossBorderNote": "Operační datový portál Úřadu vysokého komisaře Spojených národů pro uprchlíky: osoby, které překročily hranice v každé krizi, z nejnovějších zpráv zemí. Situace se překrývají, proto se nesčítají dohromady.",
+      "last7And30": "Posledních 7 / 30 dní",
+      "staleReport": "Zastaralá zpráva",
+      "reported": "Počet",
+      "period": "Období",
+      "movementNote": "Každý řádek zachovává zdroj, datum zprávy a druh měření. Stavové počty, příjezdy a události hraničních kontrol jsou různá měření. Zdroje se mohou překrývat; jejich počty nesčítejte. WorldMonitor tento přehled odvozuje z odkazovaných zdrojů; neznamená to podporu ze strany poskytovatelů.",
+      "recent": "Nedávné",
+      "last30Days": "Posledních 30 dní",
+      "newThisWeek": "Nové tento týden",
+      "conflict": "Konflikt",
+      "disaster": "Katastrofa",
+      "surge": "Nárůst",
+      "recentNote": "IDMC: osoby vysídlené v rámci své země během posledních 30 dní. IDMC zveřejňuje údaje v průměru tři týdny po vysídlení, takže nedávné týdny se doplňují se zpožděním. Nové tento týden počítá údaje zveřejněné v posledních 7 dnech. Nárůst: nejméně 5 000 osob a třikrát měsíční průměr z předchozích pěti měsíců.",
+      "recentAsOf": "Data k {{date}}.",
+      "recentMissing": "Tentokrát žádná data od {{countries}}; jejich soubory se nepodařilo načíst, což neznamená nulové přesídlení."
     },
     "climate": {
       "noAnomalies": "Nebyly zjištěny žádné významné anomálie",
@@ -1776,7 +1798,8 @@
       "sourceCoverageHint": "Zobrazeno {{covered}} z {{total}} zapnutých zdrojů — tento panel své zdroje při každé aktualizaci střídá",
       "sortBy": "Seřadit podle",
       "sortNewest": "Nejnovější",
-      "sortRelevance": "Relevance"
+      "sortRelevance": "Relevance",
+      "translationUnavailable": "Překlad není k dispozici. Zkontrolujte nastavení poskytovatele AI a zkuste to znovu."
     },
     "breakingNews": {
       "critical": "KRITICKÉ",
@@ -2977,6 +3000,7 @@
       "tier4OnlyHint": "Všechny portály, které o tom podávají zprávu, jsou zdroje tier-4 (agregátory a blogy). Toto popisuje pokrytí, nikoli přesnost.",
       "rosterListed": "({{listed}} uvedeno)",
       "rosterFeeds": "Zobrazené kanály: {{labels}}",
+      "rosterSameCopy": "Stejný text, započítán jednou",
       "rosterLegend": "Úrovně klasifikují zdroje; nehodnotí toto tvrzení.",
       "tierDocsLink": "Jak se přiřazují úrovně",
       "tierChip": "T{{tier}}",
@@ -3848,5 +3872,27 @@
       "description": "Povolit zdroje z Íránu, Izraele, oblasti Perského zálivu a kurdských regionů"
     },
     "unavailable": "Balíček {{preset}} není s aktuálními panely dostupný"
+  },
+  "countryHistory": {
+    "title": "Denní historie země",
+    "loading": "Načítání denní historie…",
+    "window": "Období",
+    "days": "{{days}} dní",
+    "observed": "{{count}} snímků za {{days}} dní",
+    "legend": "CII (jantarová): vyšší hodnota znamená větší nestabilitu. Odolnost (zelená): vyšší hodnota znamená větší kapacitu. Body označují dny s vybranými titulky.",
+    "chart": "Denní skóre CII a odolnosti. Mezery a změny vzorce přerušují čáry.",
+    "selectDate": "{{date}}, {{count}} vybraných titulků",
+    "empty": "V tomto období nejsou denní snímky. Historie se hromadí po aktivaci.",
+    "unavailable": "Historie je dočasně nedostupná. Zkuste to znovu.",
+    "retry": "Zkusit znovu",
+    "stale": "Poslední úspěšný denní záznam je starší než 36 hodin.",
+    "break": "Změna vzorce nebo mezera v pozorování. Porovnávejte pouze skóre se stejným vzorcem.",
+    "partial": "Zpravodajské pokrytí bylo při záznamu neúplné.",
+    "resilience": "Odolnost",
+    "ciiMissing": "CII není k dispozici",
+    "resilienceMissing": "Odolnost není k dispozici",
+    "noEvents": "Pro toto datum nebyly zaznamenány vybrané titulky. To nedokazuje, že se nic nestalo.",
+    "unlock90": "Odemkněte 90 dní s Pro",
+    "unlock365": "Odemkněte 365 dní s tarifem API"
   }
 }

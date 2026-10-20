@@ -35,7 +35,7 @@ import {
 } from '../server/_shared/rate-limit';
 
 const VALID_SEVERITIES = new Set(['critical', 'high', 'medium', 'low', 'info']);
-const INTERNAL_EVENT_TYPES = new Set(['flush_quiet_held', 'channel_welcome', 'watchlist_story_alert']);
+const INTERNAL_EVENT_TYPES = new Set(['flush_quiet_held', 'channel_welcome', 'watchlist_story_alert', 'chokepoint_disruption']);
 
 // Publishes create relay-side delivery obligations and LPUSH onto the SHARED
 // wm:events:queue, so unlike low-stakes reads this limiter must bound both

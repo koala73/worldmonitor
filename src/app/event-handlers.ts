@@ -2242,7 +2242,7 @@ export class EventHandlerManager implements AppModule {
       // Sources are applied to ctx.disabledSources on click, but DataLoader
       // only re-reads that set when a load runs — so before this, a source
       // toggle first showed up at RefreshScheduler's `news` tick,
-      // REFRESH_INTERVALS.feeds = 20 minutes away, or on reload (#6380).
+      // the next REFRESH_INTERVALS.feeds tick, or on reload (#6380).
       //
       // No invalidateNewsHydration() here, deliberately: DataLoader's news gate
       // keys its work-list signature on ctx.disabledSources

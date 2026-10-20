@@ -40,7 +40,7 @@ Read them as a chain: FAO tells you global food inputs are rising; tariff and fr
 
 ## For developers and agents
 
-The `get_consumer_prices` MCP tool (UAE today) returns the overview, category inflation, retailer spread, and movers in one structured call; the consumer-prices REST endpoints expose the same series, and `get_tariff_trends` adds the Big Mac, FAO, and fiscal context. For [macro traders](/blog/posts/geopolitics-to-markets-pipeline-macro-traders-worldmonitor/), shelf-price velocity is an inflation nowcast; for journalists, "bread rose 11% across four chains in three weeks" is a story with receipts.
+The `get_consumer_prices` MCP tool (UAE today) returns the overview, category inflation, retailer spread, and movers in one structured call; the consumer-prices REST endpoints expose the same series, and `get_price_and_debt_indicators` adds the Big Mac, FAO, and fiscal context. For [macro traders](/blog/posts/geopolitics-to-markets-pipeline-macro-traders-worldmonitor/), shelf-price velocity is an inflation nowcast; for journalists, "bread rose 11% across four chains in three weeks" is a story with receipts.
 
 ## Limits
 

@@ -18,6 +18,7 @@ import {
   validateSitemapEntries,
   validateSitemapIndex,
 } from '../scripts/build-sitemap.mjs';
+import { INDEXABLE_LANDING_LOCALES, landingHreflangCluster } from '../shared/indexable-landing-locales.ts';
 import { gitFileLastmod } from '../scripts/build-crawlable-corpus.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -48,6 +49,9 @@ describe('root sitemap generator', () => {
 
     const locations = STATIC_ROUTE_MANIFEST.map((route) => route.loc);
     assert.ok(locations.includes(`${SITE_ORIGIN}/`));
+    for (const locale of INDEXABLE_LANDING_LOCALES) {
+      assert.ok(locations.includes(`${SITE_ORIGIN}${locale.canonicalPath}`), locale.canonicalPath);
+    }
     assert.ok(locations.includes(`${SITE_ORIGIN}/dashboard`));
     assert.ok(locations.includes(`${SITE_ORIGIN}/pro`));
     assert.ok(locations.includes('https://worldmonitor.app/mcp'));
@@ -121,6 +125,19 @@ describe('root sitemap generator', () => {
       assert.match(first, /<lastmod>2026-05-28<\/lastmod>/);
       assert.match(first, /<lastmod>2026-07-20<\/lastmod>/);
       assert.doesNotMatch(first, /<changefreq>|<priority>/);
+      assert.match(first, /xmlns:xhtml="http:\/\/www.w3.org\/1999\/xhtml"/);
+      for (const alternate of landingHreflangCluster()) {
+        assert.match(
+          first,
+          new RegExp(
+            `<xhtml:link rel="alternate" hreflang="${alternate.hreflang}" href="${alternate.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"/>`,
+          ),
+        );
+      }
+      assert.doesNotMatch(
+        first.slice(first.indexOf(`${SITE_ORIGIN}/dashboard`)),
+        /<xhtml:link[\s\S]*https:\/\/www\.worldmonitor\.app\/dashboard/,
+      );
       assert.doesNotMatch(first, /worldmonitor\.app\/blog/);
       assert.doesNotMatch(first, /worldmonitor\.app\/docs/);
 

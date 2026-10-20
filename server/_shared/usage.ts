@@ -17,7 +17,7 @@ import type { AuthKind } from './usage-identity';
 // client-ip (NOT rate-limit): this module is in the Railway seeders' static
 // import closure via redis.ts, and rate-limit.ts pulls @upstash/* packages
 // that seeder containers do not install (#5231).
-import { getClientIp, hasCloudflareTransitProof, UNKNOWN_CLIENT_IP } from './client-ip';
+import { getClientIp, hasCloudflareTransitProof, UNKNOWN_CLIENT_IP } from './client-ip.js';
 
 const AXIOM_DATASET = 'wm_api_usage';
 // US region endpoint. EU workspaces would use api.eu.axiom.co.
@@ -171,6 +171,16 @@ export interface RequestEvent {
   // tool. null on non-MCP routes and on MCP requests that never parsed a body.
   rpc_method: string | null;
   tool_name: string | null;
+  // #9431 — MCP demand and outcome attribution. All null on REST rows.
+  // requested_tool: a name the caller asked for that this server does not
+  // serve (tools/call miss or describe_tool miss), sanitized to
+  // [a-z0-9_.-]{1,64} or the '<invalid>' bucket, and only written for
+  // authenticated callers. The tool_* fields mirror the mcp.toolcall line:
+  // null when no tool ran.
+  requested_tool: string | null;
+  tool_error_kind: string | null;
+  tool_result_bytes: number | null;
+  tool_jmespath: boolean | null;
 }
 
 export interface UpstreamEvent {
@@ -283,6 +293,14 @@ export function buildRequestEvent(p: {
   rpcMethod?: string | null;
   /** Registry-bounded tools/call name; null when unknown/non-call (#8403). */
   toolName?: string | null;
+  /** Sanitized name of a tool this server does not serve (#9431). */
+  requestedTool?: string | null;
+  /** mcp.toolcall error_kind; null on success or when no tool ran (#9431). */
+  toolErrorKind?: string | null;
+  /** mcp.toolcall bytes_pre_jmespath (-1 = unmeasured); null when no tool ran (#9431). */
+  toolResultBytes?: number | null;
+  /** Whether a JMESPath projection was requested; null when no tool ran (#9431). */
+  toolJmespath?: boolean | null;
 }): RequestEvent {
   return {
     _time: new Date().toISOString(),
@@ -317,6 +335,10 @@ export function buildRequestEvent(p: {
     reason: p.reason,
     rpc_method: p.rpcMethod ?? null,
     tool_name: p.toolName ?? null,
+    requested_tool: p.requestedTool ?? null,
+    tool_error_kind: p.toolErrorKind ?? null,
+    tool_result_bytes: p.toolResultBytes ?? null,
+    tool_jmespath: p.toolJmespath ?? null,
   };
 }
 

@@ -90,6 +90,34 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 - `callbackUrl` —— 必填，仅限 HTTPS，不得解析为私有/回环地址（注册时有 SSRF 防护）。
 - `chokepointIds` —— 可选。省略或传入空数组则订阅**所有**已注册的咽喉要道。未知 ID 返回 `400`。
 - `alertThreshold` —— 数值 0-100（默认 `50`）。超出此范围的值返回 `400` 校验响应，描述为 `alertThreshold must be between 0 and 100`。
+- `eventType` —— 可选。省略时为 `chokepoint.disruption`。事件及其阈值、冷却、载荷结构和 id 规则统一定义在事件注册表 [`shared/event-triggers.json`](https://github.com/koala73/worldmonitor/blob/main/shared/event-triggers.json) 中；[Zapier 集成](https://github.com/koala73/worldmonitor/tree/main/integrations/zapier)读取同一文件。
+
+| `eventType` | 类型 | 触发条件 | 范围字段 |
+| --- | --- | --- | --- |
+| `chokepoint.disruption`（默认） | 阈值 | 已订阅咽喉要道的 `disruptionScore` 达到 `alertThreshold`（设置了 `minLiveSignal` 时，实时信号还需高于其常态威胁等级至少该分数） | `chokepointIds`、`alertThreshold`、`minLiveSignal` |
+| `country.risk_surge` | 阈值 | 受监控国家的国家不稳定指数在 24 小时内上升 15 分或以上并进入高位区间（70 或以上），每个国家每次激增一次，24 小时冷却 | `countries` |
+| `news.breaking` | 事件 | WorldMonitor 新闻中继将某条标题分类为 critical 或 high，且通过订阅的重要性下限、严重性下限、关键词、类别和国家范围；每个报道链接一次 | `scope.keywords`、`scope.categories`、`scope.countries`、`scope.importanceFloor`、`scope.severityFloor` |
+| `market.move` | 事件 | 被跟踪的股票、大宗商品或加密货币报价当日波动至少 `minAbsPct` 个百分点；每个代码、方向和严重性区间每个 UTC 日一次 | `scope.assetClasses`、`scope.symbols`、`scope.minAbsPct`、`scope.direction` |
+| `natural.hazard` | 事件 | WorldMonitor 首次看到一次地震（USGS、加拿大地震局）或一次风暴、野火、洪水、火山等自然事件（NASA EONET、GDACS、美国国家飓风中心、西太平洋气旋），且通过订阅的灾害类型、震级、警报级别和国家范围；每个灾害一次 | `scope.hazardTypes`、`scope.minMagnitude`、`scope.minAlertLevel`、`scope.countries` |
+
+阈值事件由 worker 每 5 分钟重新评估条件，一次越过投递一次。事件型（occurrence）事件只触发一次：每次投递携带 `eventId`（`news.breaking` 为 `rss_` + 报道规范链接的哈希，`market.move` 为 `mkt_` + 中继合并键按 UTC 日的哈希，`natural.hazard` 为 `eq:` 或 `nat:` + 数据源自身的 id，美国国家飓风中心的 id 去掉公告编号，GDACS 红色事件追加 `:red`），每个订阅对同一 `eventId` 只分配一个 `X-WM-Delivery-Id`，取自第一个匹配其 `scope` 的副本（之后的副本，例如同一档位内更大的波动或改写后的标题，仍可送达此前未匹配的订阅）；投递仍是至少一次，重试可能重复，请按该 id 幂等处理。失败的投递在两小时内（`natural.hazard` 为一天）以相同的 `X-WM-Delivery-Id` 每 5 分钟重试，之后永久丢弃；停用的 webhook 若在该时限内重新激活，会在下一次检查时重试这些待投递项。每个订阅每小时最多 20 个、每天最多 100 个事件（`natural.hazard` 为 30 和 150；含重试），跨入新小时的重试占用该小时的名额，名额已满时继续等待；超出上限的新事件在服务器端丢弃并计数，不会批量合并。它们的过滤条件放在请求体的 `scope` 对象中，服务器按注册表中该事件的 `inputSchema` 校验：事件未定义的键、阈值事件上的任何 `scope`、未知枚举值或超出范围的数值都会返回 `400`，字段名为 `scope.<key>`；省略的键在注册时写入默认值（`importanceFloor` 69、`severityFloor` high、`minAbsPct` 10、`direction` any、`minMagnitude` 5.5、`minAlertLevel` Orange）。`news.breaking` 的国家范围是严格的：中继无法归属国家的标题不会匹配任何国家范围。
+
+`natural.hazard`：某个 id 首次出现在地震或自然事件数据中，且事件时间在过去 24 小时（地震）或 72 小时（其他灾害）内、未被机构关闭时，才算新灾害；更早或已关闭的 id 只记为已见，不投递。GDACS 事件在 WorldMonitor 首次以橙色或红色看到时即为新事件，不论 GDACS 何时开立；从橙色升级为红色是第二个事件（`eventId` 以 `:red` 结尾），橙色和红色范围都会收到；红色回落为橙色不算新事件。香港天文台的警告信号不作为灾害投递：其 id 标识的是信号而非风暴，风暴本身由气旋数据提供。计划烧除也不投递：标题为 “Prescribed Fire … RX” 的 EONET 野火是计划内的烧除，会被跳过。worker 第一次读取某个数据源时会记录当前所有 id 而不投递任何内容，因此订阅只会收到订阅之后出现的灾害；此后该数据源永久标记为已读取，即使已见 id 全部过期（例如 NHC 非风暴季），下一个灾害仍会投递；若已见记录丢失，仍在新事件时间窗口内的灾害可能会再投递一次。其他机构对已见灾害的副本不算新灾害：与已见地震相差 120 秒、150 公里和 0.6 级以内、且已见地震来自另一机构或已从数据中消失的地震（数据中同时列出的两次地震仍分别投递），或名称与已见风暴相同的风暴。首次看到后震级被修订而越过 `minMagnitude` 的地震不会投递。`minMagnitude` 只作用于地震；`minAlertLevel` 只作用于 GDACS 事件（WorldMonitor 只存储 Orange 和 Red，`Orange` 接受全部，`Red` 只接受 GDACS 标为 Red 的事件；西太平洋气旋没有级别，只通过 `Orange`）。`countryCodes` 取机构文本中点名的国家，否则取包含该点的最小国家边界框（法国和美国使用围绕其领土的边界框，因为其公布的边界框覆盖大片海洋），否则为空；离岸的点可能被归入沿海国家；国家范围是严格的，未定位到国家的灾害不会匹配。自然事件数据中的地震行（GDACS）会被跳过，因为地震数据已包含同一批地震。
+
+**请求**（突发新闻）：
+```json
+{
+  "callbackUrl": "https://hooks.example.com/news",
+  "eventType": "news.breaking",
+  "scope": {
+    "keywords": ["hormuz", "strait of hormuz"],
+    "categories": ["conflict", "military"],
+    "countries": ["IR"],
+    "importanceFloor": 69,
+    "severityFloor": "high"
+  }
+}
+```
 
 **响应（`200`）**：
 ```json
@@ -101,7 +129,7 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 
 - `subscriberId` —— `wh_` 前缀 + 24 个十六进制字符（12 个随机字节）。
 - `secret` —— 原始 64 字符小写十六进制（32 个随机字节）。没有 `whsec_` 前缀。请妥善保存 —— 服务器在轮换之前不会再次返回它。
-- **TTL**：订阅者记录和每所有者索引集均为 30 天。只有**重新注册**会通过原子管道刷新两者（对记录执行带 `EX` 的 `SET`，对所有者索引执行 `SADD` + `EXPIRE`）。`rotate-secret` 和 `reactivate` 仅刷新记录的 TTL —— 它们不会更改所有者索引集的过期时间，因此如果调用者在 30 天窗口内仅进行轮换或重新激活，所有者索引可能会独立过期。请重新注册以保持两者有效。
+- **TTL**：订阅者记录和每所有者索引集均为 30 天。注册通过非事务管道写入两者（对记录执行带 `EX` 的 `SET`，对所有者索引执行 `SADD` + `EXPIRE`，并对全局投递索引执行 `SADD`）。`rotate-secret` 和 `reactivate` 在一个事务中重写相同的键，因此也会刷新两者的 TTL。投递记账保留记录现有的 TTL，因此只接收投递的 webhook 仍会在最后一次注册、轮换或重新激活 30 天后过期。
 - 所有权通过调用者 API 密钥的 SHA-256 进行跟踪（绝非密钥 —— 以 `ownerTag` 形式存储）。
 
 认证：`X-WorldMonitor-Key`（forceKey: true）+ PRO。否则返回 `401` / `403`。
@@ -129,11 +157,11 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 
 ### `GET /api/v2/shipping/webhooks/{subscriberId}`
 
-单个 webhook 的状态读取。返回与 `GET /webhooks` 相同的记录结构（不含 `secret`）。未知则返回 `404`，由其他 API 密钥拥有则返回 `403`。
+单个 webhook 的状态读取。返回与 `GET /webhooks` 相同的记录结构（不含 `secret`），另加下文“投递 worker”一节说明的投递计数器 `failureCount`、`lastDeliveryAt` 和 `lastDeliveryStatus`。未知则返回 `404`，由其他 API 密钥拥有则返回 `403`。
 
 ### `POST /api/v2/shipping/webhooks/{subscriberId}/rotate-secret`
 
-生成并返回**新**密钥。记录的 `secret` 会被原地替换；旧密钥立即停止验证。
+生成并返回**新**密钥。记录的 `secret` 会被原地替换。轮换之后开始的投递使用新密钥签名；轮换时已在进行中的投递仍可能带有旧签名。
 
 ```json
 { "subscriberId": "wh_...", "secret": "new-64-char-hex", "rotatedAt": "2026-04-19T12:05:00Z" }
@@ -141,11 +169,41 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 
 ### `POST /api/v2/shipping/webhooks/{subscriberId}/reactivate`
 
-将记录上的 `active` 设为 `true`（在调查并修复导致停用的投递失败后使用）。
+将记录上的 `active` 设为 `true`，并将 `failureCount` 重置为 0（在调查并修复导致停用的投递失败后使用）。
 
 ```json
 { "subscriberId": "wh_...", "active": true }
 ```
+
+### 投递 worker
+
+一个 worker 每 5 分钟根据咽喉要道状态数据（与 `get-chokepoint-status` 相同的数据）评估每个活跃的 webhook。对于每个已订阅的咽喉要道，它将 `disruptionScore` 与 webhook 的 `alertThreshold` 进行比较。
+
+- 当 `disruptionScore >= alertThreshold` 时触发投递。每次向上越过阈值产生一次投递。分数降到阈值以下后，该咽喉要道重新进入待触发状态，下一次越过阈值会再次触发。
+- 分数中航行警告最多贡献 15 分，AIS 最多 15 分，通行异常贡献 10 分，缺失的输入计 0 分。投递之后，只有当分数加上投递时存在而现在缺失的各输入的最高分仍低于阈值时，该咽喉要道才会重新进入待触发状态。因此单纯的输入中断不会让它重新待触发，输入恢复后也不会再次触发同一次中断。
+- 如果 worker 首次评估某个 webhook 时咽喉要道已经达到或超过阈值，会产生一次投递。
+- 投递为至少一次。失败的投递保持待触发状态，只要分数仍达到或超过阈值，就会在下一个周期重试。重试沿用原来的 `X-WM-Delivery-Id` 和 `triggeredAt`，`score` 与 `details` 为当前值。若在投递成功前分数回落、重新进入待触发状态，该次越过会被放弃，下一次越过使用新的 id。
+- 失败指非 2xx 响应、15 秒内（含 DNS 解析）没有响应，或回调 URL 解析到私有或保留地址。某个 webhook 在一个周期内首次失败后，本周期不再向它投递，其余投递留到下一个周期，因此 `failureCount` 统计的是连续失败的周期数。达到 5 次（约 25 分钟的失败）后，worker 将 `active` 设为 `false` 并停止向该 webhook 投递。一次成功的投递会重置计数。`reactivate` 可恢复投递。
+- worker 在每次发送前重新读取 webhook，如果它已改变（例如在 `rotate-secret` 或 `reactivate` 之后），本周期即停止发送。下一个周期使用新的记录发送剩余的越过事件。
+
+`GET /api/v2/shipping/webhooks/{subscriberId}` 返回以下投递计数器：
+
+| 字段 | 含义 |
+| --- | --- |
+| `failureCount` | 投递连续失败的周期数。首次投递前及任何成功投递后为 `0`。 |
+| `lastDeliveryAt` | 最近一次投递尝试的 ISO-8601 时间，首次投递前为 `null`。 |
+| `lastDeliveryStatus` | 最近一次尝试的 HTTP 状态码；没有尝试或没有 HTTP 响应（超时、回调 URL 被拒绝、网络错误）时为 `null`。 |
+
+`reason` 字段说明分数背后最强的信号。按顺序取第一个匹配的行：
+
+| `reason` | 条件 |
+| --- | --- |
+| `ais_congestion_spike` | `aisDisruptions > 0` |
+| `navigational_warning` | `activeWarnings > 0` |
+| `transit_drop` | 今日通行计数可用且 `wowChangePct <= -25` |
+| `score_threshold` | 以上都不满足 |
+
+`details` 包含 `name`、`status`、`activeWarnings`、`aisDisruptions`、`congestionLevel`、`warRiskTier`、`wowChangePct`（今日通行计数不可用时为 `null`）、`previousScore`（上一次评估时的分数，首次评估为 `null`）和 `scoresFetchedAt`（咽喉要道数据的计算时间）。
 
 ### 投递格式
 
@@ -167,7 +225,9 @@ X-WM-Event: chokepoint.disruption
 }
 ```
 
-投递 worker 在每次发送前重新解析 `callbackUrl`，并针对 `PRIVATE_HOSTNAME_PATTERNS` 重新检查，以缓解 DNS 重绑定问题。投递为至少一次 —— 消费者必须通过 `X-WM-Delivery-Id` 处理重复项。
+`news.breaking` 投递携带 `X-WM-Event: news.breaking`，请求体字段为 `subscriberId`、`eventId`、`title`、`source`、`link`、`publishedAt`、`severity`、`importanceScore`、`corroborationCount`、`category`、`countryCodes`、`variant`、`matchedKeywords`、`triggeredAt`、`reason`（始终为 `breaking_news`）。`market.move` 投递携带 `X-WM-Event: market.move`，字段为 `subscriberId`、`eventId`、`assetClass`、`symbol`、`name`、`price`、`changePct`（未取整）、`direction`、`severity`、`source`、`publishedAt`、`triggeredAt`、`reason`（始终为 `large_move`）。`natural.hazard` 投递携带 `X-WM-Event: natural.hazard`，字段为 `subscriberId`、`eventId`、`hazardType`、`title`、`source`、`sourceUrl`、`lat`、`lon`、`countryCodes`、`occurredAt`、`magnitude`、`depthKm`、`nearTestSite`、`alertLevel`、`stormName`、`stormCategory`、`windKt`、`triggeredAt`、`reason`（始终为 `new_hazard`）。完整示例见[英文页面](/api-shipping-v2#delivery-format)和事件注册表中的 `sample`。
+
+所有事件共享相同的请求头和签名方案。投递 worker 在每次发送前重新解析 `callbackUrl`，拒绝私有、回环、链路本地和保留地址，并只连接到已验证的地址，以缓解 DNS 重绑定问题。投递为至少一次 —— 消费者必须通过 `X-WM-Delivery-Id` 处理重复项。
 
 ### 验证投递
 

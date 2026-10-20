@@ -29,10 +29,12 @@ jobs:
         id: meta
         with:
           images: ghcr.io/koala73/worldmonitor
+          # `latest` follows a release tag, whether it arrives as a release event
+          # or as the dispatch build-desktop.yml sends (its publish raises none).
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
             type=sha,prefix=sha-
 
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7

@@ -11,6 +11,7 @@ import {
   USER_AGENT,
   UsageError,
   VERSION,
+  dashboardOptions,
   formatOutput,
   parseArgs,
   planRequest,
@@ -59,12 +60,46 @@ export async function run(argv, io = {}) {
   const stdout = io.stdout || ((s) => process.stdout.write(s));
   const stderr = io.stderr || ((s) => process.stderr.write(s));
 
+  const fail = (err) => {
+    if (err instanceof UsageError) {
+      stderr(`Error: ${err.message}\n`);
+      return 2;
+    }
+    stderr(`Error: ${err && err.message ? err.message : String(err)}\n`);
+    return 1;
+  };
+
   const parsed = parseArgs(argv);
   const { command, options } = parsed;
 
   if (options.version) {
     stdout(`${VERSION}\n`);
     return 0;
+  }
+  // A bare `worldmonitor` on an interactive terminal opens the dashboard; in a
+  // pipe or script it keeps printing help so existing automation is unchanged.
+  const interactive = io.isTTY !== undefined ? io.isTTY : Boolean(process.stdout.isTTY && process.stdin.isTTY);
+  // `--help` always prints help, even after `tui` or `web`.
+  const wantsTui = !options.help && (command === 'tui' || command === 'dashboard' || (!command && interactive));
+  if (wantsTui) {
+    if (!interactive && !env.WM_TUI_FORCE) {
+      stderr('The dashboard needs an interactive terminal. Run `worldmonitor tui` from a terminal, or see --help.\n');
+      return 2;
+    }
+    try {
+      const launch = io.launchTui || (await import('./tui/index.mjs')).launchTui;
+      return await launch({ options: dashboardOptions(parsed), config: resolveConfig(env), env, fetchImpl: io.fetch });
+    } catch (err) {
+      return fail(err);
+    }
+  }
+  if (command === 'web' && !options.help) {
+    try {
+      const runWeb = io.runWeb || (await import('./tui/web.mjs')).runWeb;
+      return await runWeb({ options: dashboardOptions(parsed), stdout, stderr, env });
+    } catch (err) {
+      return fail(err);
+    }
   }
   if (options.help || !command || command === 'help') {
     stdout(`${HELP}\n`);
@@ -129,12 +164,7 @@ export async function run(argv, io = {}) {
     stdout(`${formatOutput(value, options)}\n`);
     return 0;
   } catch (err) {
-    if (err instanceof UsageError) {
-      stderr(`Error: ${err.message}\n`);
-      return 2;
-    }
-    stderr(`Error: ${err && err.message ? err.message : String(err)}\n`);
-    return 1;
+    return fail(err);
   }
 }
 

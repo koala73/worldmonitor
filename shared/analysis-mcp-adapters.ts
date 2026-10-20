@@ -347,7 +347,7 @@ export function crossSourceSignalsToSignalSummary(
 }
 
 /**
- * `risk:scores:sebuf:v8` -> the `MilitarySurgeCiiLookup` contract, also used as
+ * `risk:scores:sebuf:v13` -> the `MilitarySurgeCiiLookup` contract, also used as
  * per-focal-point CII context. `region` on a CII row is the ISO-2 country code.
  */
 export function riskScoresToCiiLookup(payload: unknown): (countryCode: string) => number | null {

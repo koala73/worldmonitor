@@ -33,13 +33,23 @@ describe('country view MCP boundary', () => {
   });
   const invoke = async (name, args) => {
     const deps = makeProDeps();
-    if (name === 'get_country_brief_section' && args.section === 'signalsRaw') {
+    if (name === 'get_country_brief_section' && ['signalsRaw', 'countrySignals'].includes(args.section)) {
       const opened = await (await handler(proReq('POST', callBody('open_country_brief', { country_code: args.arguments.country_code })), deps.deps)).json();
       args = { ...args, panel_request: opened.result.structuredContent.panelRequest.token };
     }
     const response = await handler(proReq('POST', callBody(name, args)), deps.deps);
     return { response, body: await response.json(), deps };
   };
+  for (const deniedStatus of [401, 403]) it(`normalizes actual countrySignals HTTP ${deniedStatus} as locked`, async () => {
+    status = deniedStatus;
+    const { body } = await invoke('get_country_brief_section', { section: 'countrySignals', arguments: { country_code: 'US', family: 'COUNTRY_SIGNAL_FAMILY_RADIATION' } });
+    assert.equal(body.result?.structuredContent.state, 'locked', JSON.stringify(body));
+    headers = { 'X-Billing-Verification': 'subscription_lapsed' };
+    status = 403;
+    const billing = await invoke('get_country_brief_section', { section: 'countrySignals', arguments: { country_code: 'US', family: 'COUNTRY_SIGNAL_FAMILY_RADIATION' } });
+    assert.equal(billing.response.status, 403);
+    assert.equal(billing.body.error.data.code, 'subscription_lapsed');
+  });
   it('opens a validated view without changing the narrative tool or fetching an assessment', async () => {
     const { body } = await invoke('open_country_brief', { country_code: 'USA', topic: 'resources' });
     assert.equal(body.result.structuredContent.countryCode, 'US');
@@ -51,6 +61,43 @@ describe('country view MCP boundary', () => {
     assert.equal(requests.length, 0);
     const invalid = await invoke('open_country_brief', { country_code: 'not-a-country' });
     assert.equal(invalid.body.error.code, -32602);
+  });
+
+  it('bounds country-qualified bodies and checks source country before return', async () => {
+    const family = 'COUNTRY_SIGNAL_FAMILY_SANCTIONS';
+    const { unavailableCountrySignal } = await import('../shared/country-signal-observations');
+    const outcome = unavailableCountrySignal('US', 'sanctions', 'Source unavailable');
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), init });
+      return new Response(JSON.stringify({ countryCode: 'US', family, windowIndex: 0, outcomeJson: JSON.stringify(outcome) }));
+    };
+    const { body } = await invoke('get_country_brief_section', { section: 'countrySignals', arguments: { country_code: 'US', family } });
+    assert.equal(body.result.structuredContent.state, 'ready');
+    assert.equal(requests.length, 1);
+    assert.ok(requests[0].init.signal instanceof AbortSignal);
+    globalThis.fetch = async () => new Response('x'.repeat(131073));
+    const overflow = await invoke('get_country_brief_section', { section: 'countrySignals', arguments: { country_code: 'US', family } });
+    assert.ok(overflow.body.error);
+    globalThis.fetch = async () => new Response(JSON.stringify({ countryCode: 'FR', family, windowIndex: 0, outcomeJson: JSON.stringify(outcome) }));
+    const mismatch = await invoke('get_country_brief_section', { section: 'countrySignals', arguments: { country_code: 'US', family } });
+    assert.ok(mismatch.body.error);
+  });
+  it('does not save or replay an ephemeral country family through the panel cache', async () => {
+    const bundle = makeProDeps();
+    const opened = await (await handler(proReq('POST', callBody('open_country_brief', { country_code: 'US' })), bundle.deps)).json();
+    const token = opened.result.structuredContent.panelRequest.token;
+    const { unavailableCountrySignal } = await import('../shared/country-signal-observations');
+    let reads = 0;
+    globalThis.fetch = async () => { reads++; return Response.json({ countryCode: 'US', family: 'COUNTRY_SIGNAL_FAMILY_SANCTIONS', windowIndex: 0, outcomeJson: JSON.stringify(unavailableCountrySignal('US', 'sanctions', 'Controlled unavailable source')) }); };
+    const args = { section: 'countrySignals', arguments: { country_code: 'US', family: 'COUNTRY_SIGNAL_FAMILY_SANCTIONS' }, panel_request: token };
+    for (let i = 0; i < 2; i++) {
+      const result = await (await handler(proReq('POST', callBody('get_country_brief_section', args)), bundle.deps)).json();
+      assert.equal(result.result.structuredContent.state, 'ready');
+    }
+    assert.equal(reads, 2);
+    assert.equal([...bundle.pipe.store].filter(([key]) => key.includes(':data:')).length, 0);
+    assert.equal(Number([...bundle.pipe.store].find(([key]) => key.endsWith(':reads'))[1]), 2);
+    assert.equal(bundle.pipe.count, 1);
   });
   it('rejects raw Signals outside verified paid country reads before fetch or allowance reservation', async () => {
     const args = { section: 'signalsRaw', arguments: { country_code: 'US' } };
@@ -230,6 +277,28 @@ describe('country view MCP boundary', () => {
     assert.equal(result.value.sources.outages.state, 'locked');
     assert.equal(result.value.sources.outages.records, null);
     assert.equal(result.value.sources.earthquakes.state, 'unavailable');
+  });
+  for (const stall of ['signing', 'fetch', 'body']) it(`bounds the country-qualified ${stall} phase with the same deadline`, async t => {
+    const { COUNTRY_VIEW_TOOLS } = await import('../api/mcp/registry/country-view.ts');
+    const tool = COUNTRY_VIEW_TOOLS.find(tool => tool.name === 'get_country_brief_section');
+    const deadline = new AbortController(); const timeout = AbortSignal.timeout;
+    let deadlines = 0, cancelled = false, started;
+    const phaseStarted = new Promise(resolve => { started = resolve; });
+    t.mock.method(AbortSignal, 'timeout', ms => ms === 15000 ? (deadlines++, deadline.signal) : timeout(ms));
+    if (stall === 'signing') t.mock.method(crypto.subtle, 'sign', async () => { started(); return new Promise(() => {}); });
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), init }); started();
+      if (stall === 'fetch') return new Promise(() => {});
+      return new Response(new ReadableStream({ cancel() { cancelled = true; } }));
+    };
+    const pending = tool._execute({ section: 'countrySignals', arguments: { country_code: 'US', family: 'COUNTRY_SIGNAL_FAMILY_OUTAGES' } }, 'https://api.worldmonitor.app', { kind: 'pro', userId: PRO_USER_ID }, { countryPanelCode: 'US' });
+    const rejected = assert.rejects(pending, /Qualified deadline expired/);
+    await phaseStarted;
+    deadline.abort(new DOMException('Qualified deadline expired', 'TimeoutError'));
+    await rejected;
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(deadlines, 1); assert.equal(requests.length, stall === 'signing' ? 0 : 1);
+    if (stall === 'body') assert.equal(cancelled, true);
   });
   for (const stall of ['fetch', 'body']) it(`uses one shared deadline for a stalled ${stall} and never starts the queued fourth after expiry`, async t => {
     const deadline = new AbortController(); const timeout = AbortSignal.timeout; let deadlines = 0; let cancelledBodies = 0;

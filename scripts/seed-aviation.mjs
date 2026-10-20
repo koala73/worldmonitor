@@ -39,6 +39,7 @@ import {
   releaseLock,
   getRedisCredentials,
   readCanonicalValue,
+  markPreservableFetchFailure,
 } from './_seed-utils.mjs';
 import notificationDedup from './shared/notification-dedup.cjs';
 import countryNameMap from './shared/country-name-to-iso2.cjs';
@@ -80,6 +81,9 @@ export const BOOTSTRAP_META_KEY = 'seed-meta:aviation:delays-bootstrap';
 const INTL_TTL      = 10_800; // 3h — survives ~5 consecutive missed 30min cron ticks
 const FAA_TTL       = 7_200;  // 2h
 const NOTAM_TTL     = 7_200;  // 2h
+// Must equal api/health.js SEED_META.notamClosures.maxStaleMin: last-good
+// closures stop being retained once health would call them stale.
+const NOTAM_MAX_STALE_MIN = 240;
 export const NEWS_TTL = 2_400;  // 40min
 const BOOTSTRAP_TTL = 7_200;  // 2h — matches FAA/NOTAM; survives ~4 missed cron ticks
 
@@ -256,7 +260,7 @@ export const AIRPORTS = [
 ];
 
 // Derived per-source views (built once at module load)
-const AVIATIONSTACK_LIST = AIRPORTS.filter(a => a.sources.includes('aviationstack'));
+export const AVIATIONSTACK_LIST = AIRPORTS.filter(a => a.sources.includes('aviationstack'));
 const FAA_LIST           = AIRPORTS.filter(a => a.sources.includes('faa')).map(a => a.iata);
 const NOTAM_LIST         = AIRPORTS.filter(a => a.sources.includes('notam')).map(a => a.icao);
 const AVIATIONSTACK_IATAS = new Set(AVIATIONSTACK_LIST.map(a => a.iata));
@@ -300,7 +304,7 @@ const SEVERITY_MAP = {
 
 const AVIATION_BATCH_CONCURRENCY = 10;
 const AVIATION_MIN_FLIGHTS_FOR_CLOSURE = 10;
-const RESOLVED_STATUSES = new Set(['cancelled', 'landed', 'active', 'arrived', 'diverted']);
+const DEPARTED_STATUSES = new Set(['landed', 'active', 'arrived', 'diverted']);
 
 // ─── Inline Upstash helpers (LPUSH + SETNX + GET/SET) ────────────────────────
 // These aren't in _seed-utils.mjs (which focuses on SET/GET/EXPIRE). Pattern
@@ -422,6 +426,17 @@ function aviationDetermineSeverity(avgDelay, delayedPct) {
   return 'normal';
 }
 
+// AviationStack answers a rejected key with HTTP 401/403 or one of these error
+// codes. They are configuration errors, not provider outages, so they must not
+// ride out on last-good with exit 0 (see fetchIntl).
+const AVIATIONSTACK_AUTH_ERROR_CODES = new Set([
+  'invalid_access_key',
+  'missing_access_key',
+  'inactive_user',
+  'function_access_restricted',
+  'https_access_restricted',
+]);
+
 async function fetchAviationStackSingle(
   apiKey,
   airport,
@@ -438,12 +453,14 @@ async function fetchAviationStackSingle(
     });
     if (!resp.ok) {
       logger.warn(`[Aviation] ${iata}: HTTP ${resp.status}`);
-      return { iata, status: 'failed', alert: null, flightCount: 0 };
+      const authFailed = resp.status === 401 || resp.status === 403;
+      return { iata, status: 'failed', alert: null, flightCount: 0, authFailed };
     }
     const json = await resp.json();
     if (json.error) {
       logger.warn(`[Aviation] ${iata}: ${json.error.message}`);
-      return { iata, status: 'failed', alert: null, flightCount: 0 };
+      const authFailed = AVIATIONSTACK_AUTH_ERROR_CODES.has(json.error.code);
+      return { iata, status: 'failed', alert: null, flightCount: 0, authFailed };
     }
     const flights = Array.isArray(json?.data) ? json.data : [];
     if (flights.length === 0) {
@@ -468,18 +485,36 @@ function aviationAggregateFlights(iata, flights) {
   const meta = AIRPORT_META[iata];
   if (!meta) return null;
 
-  let delayed = 0, cancelled = 0, totalDelay = 0, resolved = 0;
+  // The cancellation rate is measured over flights that were due by now
+  // (scheduled departure passed, or already departed), so future 'scheduled'
+  // rows do not dilute a mid-day closure (#1209). It must not be measured over
+  // "resolved" rows: AviationStack's first page for a busy hub is the day's
+  // LATEST departures, so a page with no departed flight left only advance
+  // cancellations as "resolved" — cancelled/cancelled = 100%, and RUH read as
+  // closed (22/22) after it reopened. Delays are counted over the same flights
+  // as the denominator; counting every row against a resolved-only total once
+  // reported "179% delayed". Too few due flights → the whole page.
+  const now = Date.now();
+  const page = { flights: 0, cancelled: 0, delayed: 0, totalDelay: 0 };
+  const dueOnly = { flights: 0, cancelled: 0, delayed: 0, totalDelay: 0 };
   for (const f of flights) {
-    if (RESOLVED_STATUSES.has(f.flight_status || '')) resolved++;
-    if (f.flight_status === 'cancelled') cancelled++;
-    if (f.departure?.delay && f.departure.delay > 0) {
-      delayed++;
-      totalDelay += f.departure.delay;
+    const status = f.flight_status || '';
+    const scheduledAt = Date.parse(f.departure?.scheduled ?? '');
+    const isDue = DEPARTED_STATUSES.has(status) || (Number.isFinite(scheduledAt) && scheduledAt <= now);
+    const delay = f.departure?.delay > 0 ? f.departure.delay : 0;
+    for (const bucket of isDue ? [page, dueOnly] : [page]) {
+      bucket.flights++;
+      if (status === 'cancelled') bucket.cancelled++;
+      if (delay > 0) {
+        bucket.delayed++;
+        bucket.totalDelay += delay;
+      }
     }
   }
 
-  const total = resolved >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE ? resolved : flights.length;
-  const cancelledPct = (cancelled / total) * 100;
+  const sample = dueOnly.flights >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE ? dueOnly : page;
+  const { flights: total, cancelled: cancelledCount, delayed, totalDelay } = sample;
+  const cancelledPct = (cancelledCount / total) * 100;
   const delayedPct = (delayed / total) * 100;
   const avgDelay = delayed > 0 ? Math.round(totalDelay / delayed) : 0;
 
@@ -518,7 +553,7 @@ function aviationAggregateFlights(iata, flights) {
     severity: SEVERITY_MAP[severity] || 'FLIGHT_DELAY_SEVERITY_NORMAL',
     avgDelayMinutes: avgDelay,
     delayedFlightsPct: Math.round(delayedPct),
-    cancelledFlights: cancelled,
+    cancelledFlights: cancelledCount,
     totalFlights: total,
     reason,
     source: 'FLIGHT_DELAY_SOURCE_AVIATIONSTACK',
@@ -540,7 +575,7 @@ export async function seedIntlDelays({
   const t0 = Date.now();
   const alerts = [];
   const coverage = [];
-  let succeeded = 0, failed = 0, omitted = 0;
+  let succeeded = 0, failed = 0, omitted = 0, authFailed = 0;
 
   for (let i = 0; i < airports.length; i += AVIATION_BATCH_CONCURRENCY) {
     const chunk = airports.slice(i, i + AVIATION_BATCH_CONCURRENCY);
@@ -556,6 +591,7 @@ export async function seedIntlDelays({
           flightCount: r.value.flightCount,
           updatedAt: Date.now(),
         });
+        if (r.value.authFailed) authFailed++;
         if (r.value.status === 'failed') failed++;
         else if (r.value.status === 'omitted') omitted++;
         else succeeded++;
@@ -570,7 +606,7 @@ export async function seedIntlDelays({
   const unavailable = failed + omitted;
   const healthy = airports.length < 5 || unavailable <= succeeded;
   logger.log(`[Intl] ${alerts.length} alerts (${succeeded} covered, ${omitted} omitted, ${failed} failed, healthy: ${healthy}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  return { alerts, coverage, healthy, skipped: false };
+  return { alerts, coverage, healthy, skipped: false, authFailed };
 }
 
 export async function runChinaAviationStackSmoke({
@@ -717,55 +753,43 @@ const NOTAM_CLOSURE_QCODES = new Set(['FA', 'AH', 'AL', 'AW', 'AC', 'AM']);
 // classifier.
 const NOTAM_RESTRICTION_QCODES = new Set(['RA', 'RO']);
 
-// Returns: Array of NOTAMs on success, null on quota exhaustion, [] on other errors.
-async function fetchIcaoNotams() {
-  const apiKey = process.env.ICAO_API_KEY;
-  if (!apiKey) return [];
+// Returns the NOTAM array only for a real JSON-array answer. Every other outcome
+// — quota ("Reach call limit"), non-2xx (the retired route answers 404 "Invalid
+// API Call"), an HTML challenge, bad or non-array JSON, a timeout, a network
+// error — throws, so the side-car keeps last-good instead of publishing an
+// empty closure list as a fresh observation.
+async function fetchIcaoNotams(apiKey) {
   const locations = NOTAM_LIST.join(',');
-  const url = `${ICAO_NOTAM_URL}?api_key=${apiKey}&format=json&locations=${locations}`;
-  try {
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(30_000),
-    });
-    const body = await resp.text();
-    if (/reach call limit/i.test(body) || /quota.?exceed/i.test(body)) {
-      console.warn('[NOTAM] ICAO quota exhausted ("Reach call limit")');
-      return null;
-    }
-    if (!resp.ok) {
-      console.warn(`[NOTAM] ICAO HTTP ${resp.status}`);
-      return [];
-    }
-    const ct = resp.headers.get('content-type') || '';
-    if (ct.includes('text/html')) {
-      console.warn('[NOTAM] ICAO returned HTML (challenge page)');
-      return [];
-    }
-    try {
-      const data = JSON.parse(body);
-      return Array.isArray(data) ? data : [];
-    } catch {
-      console.warn('[NOTAM] Invalid JSON from ICAO');
-      return [];
-    }
-  } catch (err) {
-    console.warn(`[NOTAM] Fetch error: ${err?.message || err}`);
-    return [];
+  const url = `${ICAO_NOTAM_URL}?api_key=${encodeURIComponent(apiKey)}&format=json&locations=${locations}`;
+  const resp = await fetch(url, {
+    headers: { 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(30_000),
+  });
+  const body = await resp.text();
+  if (/reach call limit/i.test(body) || /quota.?exceed/i.test(body)) {
+    throw new Error(`ICAO quota exhausted (HTTP ${resp.status} "Reach call limit")`);
   }
+  if (!resp.ok) throw new Error(`ICAO HTTP ${resp.status}: ${body.slice(0, 120)}`);
+  const ct = resp.headers.get('content-type') || '';
+  if (ct.includes('text/html')) throw new Error('ICAO returned HTML (challenge page)');
+  let data;
+  try {
+    data = JSON.parse(body);
+  } catch {
+    throw new Error('ICAO returned invalid JSON');
+  }
+  if (!Array.isArray(data)) throw new Error(`ICAO returned non-array JSON: ${body.slice(0, 120)}`);
+  return data;
 }
 
 async function seedNotamClosures() {
-  if (!process.env.ICAO_API_KEY) {
+  const apiKey = process.env.ICAO_API_KEY;
+  if (!apiKey) {
     console.log('[NOTAM] No ICAO_API_KEY — skipping');
-    return { closedIcaos: [], restrictedIcaos: [], reasons: {}, quotaExhausted: false, skipped: true };
+    return { closedIcaos: [], restrictedIcaos: [], reasons: {}, skipped: true };
   }
   const t0 = Date.now();
-  const notams = await fetchIcaoNotams();
-  if (notams === null) {
-    // Quota exhausted — don't blank the key; signal upstream to touch TTL.
-    return { closedIcaos: [], restrictedIcaos: [], reasons: {}, quotaExhausted: true, skipped: false };
-  }
+  const notams = await fetchIcaoNotams(apiKey);
 
   const now = Math.floor(Date.now() / 1000);
   const closedSet = new Set();
@@ -798,7 +822,7 @@ async function seedNotamClosures() {
   const closedIcaos = [...closedSet];
   const restrictedIcaos = [...restrictedSet];
   console.log(`[NOTAM] ${notams.length} raw NOTAMs, ${closedIcaos.length} closures, ${restrictedIcaos.length} restrictions in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  return { closedIcaos, restrictedIcaos, reasons, quotaExhausted: false, skipped: false };
+  return { closedIcaos, restrictedIcaos, reasons, skipped: false };
 }
 
 // ─── Section 4: Aviation RSS news prewarmer ──────────────────────────────────
@@ -1271,38 +1295,54 @@ async function runFaaSideCar() {
   });
 }
 
+// Failure path for the NOTAM side-car. seed-meta:aviation:notam.fetchedAt is the
+// last HEALTHY fetch, never the last attempt: it is not rewritten here (and its
+// TTL is not touched, so it cannot be shortened into an early miss), so
+// api/health.js notamClosures ages into STALE_SEED once maxStaleMin passes. The
+// last-good closure list keeps serving only while it is inside that same budget;
+// past it, the data key is left to expire rather than presenting days-old
+// closures as current. Mirrors runSeed's graceful-failure contract.
+async function preserveLastGoodNotam(reason) {
+  let ageMin = null;
+  try {
+    const fetchedAt = (await upstashGet(NOTAM_META_KEY))?.fetchedAt;
+    if (typeof fetchedAt === 'number' && Number.isFinite(fetchedAt)) ageMin = (Date.now() - fetchedAt) / 60_000;
+  } catch { /* unknown age — treat as out of budget */ }
+  if (ageMin !== null && ageMin <= NOTAM_MAX_STALE_MIN) {
+    try { await extendExistingTtl([NOTAM_KEY], NOTAM_TTL); } catch {}
+    console.warn(`[NOTAM] ${reason} — kept last-good closures (${Math.round(ageMin)}min old); seed-meta not refreshed`);
+  } else {
+    const age = ageMin === null ? 'unknown age' : `${Math.round(ageMin)}min old`;
+    console.warn(`[NOTAM] ${reason} — last-good closures (${age}) are past maxStaleMin ${NOTAM_MAX_STALE_MIN}; letting them expire`);
+  }
+}
+
 async function runNotamSideCar() {
   await withLock('aviation:notam', async () => {
+    let notam;
     try {
-      const notam = await seedNotamClosures();
-      if (notam.skipped) return; // no ICAO_API_KEY
-      if (notam.quotaExhausted) {
-        // ICAO quota exhausted ("Reach call limit") — preserve the last known
-        // closure list by refreshing the data-key TTL + writing fresh meta
-        // with quotaExhausted=true. Keeps api/health.js (maxStaleMin: 240)
-        // green through the 24h backoff window. Matches pre-strip
-        // ais-relay.cjs:2805-2808 byte-for-byte.
-        try { await extendExistingTtl([NOTAM_KEY], NOTAM_TTL); } catch {}
-        try {
-          await upstashSet(NOTAM_META_KEY, { fetchedAt: Date.now(), recordCount: 0, quotaExhausted: true }, 604_800);
-        } catch (e) { console.warn(`[NOTAM] meta write error: ${e?.message || e}`); }
-        console.log(`[NOTAM] ICAO quota exhausted — extended data TTL + wrote fresh meta (quotaExhausted=true)`);
-        return;
-      }
-      await writeExtraKeyWithMeta(
+      notam = await seedNotamClosures();
+    } catch (err) {
+      await preserveLastGoodNotam(`ICAO fetch failed: ${err?.message || err}`);
+      return;
+    }
+    if (notam.skipped) return; // no ICAO_API_KEY
+    try {
+      const metaWritten = await writeExtraKeyWithMeta(
         NOTAM_KEY,
         { closedIcaos: notam.closedIcaos, restrictedIcaos: notam.restrictedIcaos, reasons: notam.reasons },
         NOTAM_TTL,
         notam.closedIcaos.length + notam.restrictedIcaos.length,
         NOTAM_META_KEY,
       );
+      if (!metaWritten) throw new Error(`${NOTAM_META_KEY} write returned a non-OK response`);
       console.log(`[NOTAM] wrote ${notam.closedIcaos.length} closures + ${notam.restrictedIcaos.length} restrictions to ${NOTAM_KEY}`);
-      try { await dispatchNotamNotifications(notam.closedIcaos, notam.reasons); }
-      catch (e) { console.warn(`[NOTAM] notify error: ${e?.message || e}`); }
     } catch (err) {
-      console.warn(`[NOTAM] fetch/write error: ${err?.message || err} — extending TTL`);
-      try { await extendExistingTtl([NOTAM_KEY, NOTAM_META_KEY], NOTAM_TTL); } catch {}
+      await preserveLastGoodNotam(`write error: ${err?.message || err}`);
+      return;
     }
+    try { await dispatchNotamNotifications(notam.closedIcaos, notam.reasons); }
+    catch (e) { console.warn(`[NOTAM] notify error: ${e?.message || e}`); }
   });
 }
 
@@ -1325,9 +1365,10 @@ async function runNewsSideCar() {
 // contract-mode envelope, retry-on-throw, graceful TTL-extend on failure,
 // seed-meta freshness. When intl is unhealthy we throw to force runSeed into
 // its catch path — which extends the INTL_KEY + seed-meta:aviation:intl TTLs
-// and exits 0 without touching afterPublish. Consumers keep serving the
-// last-good snapshot. FAA/NOTAM/news already ran via their side-cars and are
-// independent — an intl outage does NOT freeze their freshness.
+// and exits 0 only for a provider outage while Redis confirms last-good
+// retention within maxStaleMin, without touching afterPublish. FAA/NOTAM/news
+// already ran via their side-cars and are independent — an intl outage does
+// NOT freeze their freshness.
 
 // Quota guard: returns true when the last successful intl publish is younger
 // than INTL_MIN_REFRESH_MIN, meaning we can serve last-good and skip the paid
@@ -1450,7 +1491,9 @@ export async function fetchIntl() {
   if (!result.healthy || result.skipped) {
     const why = result.skipped
       ? 'no AVIATIONSTACK_API key'
-      : 'systemic fetch failure (failures > successes)';
+      : result.authFailed > 0
+        ? `AviationStack rejected the key on ${result.authFailed} airport(s)`
+        : 'systemic fetch failure (failures > successes)';
     // nonRetryable is load-bearing for the budget cap. Without it, runSeed's
     // withRetry re-runs fetchIntl up to 4x on an unhealthy tick, and EACH run
     // sweeps the FULL airport list again — so a degraded upstream costs up to
@@ -1461,6 +1504,10 @@ export async function fetchIntl() {
     // reservation. We lose nothing: the seeder already re-runs every cron tick.
     const err = new Error(`intl unpublishable: ${why}`);
     err.nonRetryable = true;
+    // Only a real provider outage may ride out on last-good with exit 0. A
+    // missing or rejected key is a configuration error and must keep crashing
+    // the cron.
+    if (!result.skipped && !(result.authFailed > 0)) markPreservableFetchFailure(err);
     throw err;
   }
 
@@ -1583,6 +1630,7 @@ async function main() {
     afterPublish: afterPublishIntl,
     maxStaleMin: 90,
     zeroIsValid: true,
+    allowPreservedFetchFailure: true,
   });
 }
 

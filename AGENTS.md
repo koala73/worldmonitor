@@ -43,7 +43,10 @@ Merge, auto-merge, and deployment require explicit authorization in the current 
 | Data workers and cache | `scripts/`, `server/_shared/`; [health contracts](docs/health-endpoints.mdx) | Producer and reader checks with fixtures; separately record live freshness evidence when required |
 | Proto and generated clients | `proto/`, `src/generated/`; [code generation](CONTRIBUTING.md#working-with-sebuf-rpc-framework) | `make generate` requires buf + sebuf v0.11.1 plugins; verify generated diff |
 | Desktop and sidecar | `src-tauri/`; [architecture](ARCHITECTURE.md) | Focused Rust checks or `npm run test:sidecar` |
+| CI workflows | `.github/workflows/`; [CI/CD table](ARCHITECTURE.md#11-cicd) | Add or update each workflow's table entry. Run `npm run docs:check` and validate the changed workflow before pushing. The pre-push hook enforces the documentation check for workflow changes |
 | Tests and documentation | `tests/`, `e2e/`, `docs/`; [verification guide](CONTRIBUTING.md#verify-the-changed-path) | Relevant existing test or docs check, `git diff --check` |
+
+For public documents and API collections, use `https://www.worldmonitor.app` for website and documentation links. Keep MCP and OAuth endpoint identities on the apex host. Run `node --test tests/agent-corpus-canonical-host.test.mjs` after changing published URLs.
 
 ## Landmarks
 
@@ -88,3 +91,5 @@ The browser import direction is `types -> config -> services -> components -> ap
 - Read [documented solutions](docs/solutions/) when the affected area has a prior fix — organized by category directory (`security-issues/`, `logic-errors/`, `conventions/`, …) with YAML frontmatter (`module`, `component`, `problem_type`, `tags`) to grep. Use [CONCEPTS.md](CONCEPTS.md) for shared terms and [design philosophy](docs/architecture.mdx) for design decisions.
 
 Run the smallest meaningful proof first. Preserve useful regression coverage. Run heavy checks sequentially. Report failures honestly. Keep locally verified, PR ready, merged, deployed, observed in production, and acceptance complete as separate claims.
+
+A green pre-push hook proves only its local checks. After pushing, monitor required CI on the exact PR head. Repair relevant failures on the existing branch and verify the new head. Do not report CI success while required checks are failed or pending. Inspect the failed job's first actionable error before retrying or changing code.

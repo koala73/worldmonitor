@@ -4,6 +4,7 @@ import Module, { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { DIGEST_EMAIL_MAX_HTML_BYTES } from '../scripts/lib/digest-email-html.mjs';
 
 const require = createRequire(import.meta.url);
 const savedEnv = { ...process.env };
@@ -81,6 +82,7 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       'main', 'sendTelegram', 'sanitizeTelegramHtml', 'truncateTelegramHtml',
     ].map(productionFunction).join('\n') + '\nmain', {
       Date, Map, Set, Intl, AbortSignal, process: { env: {} }, console: { log() {}, warn() {} },
+      DIGEST_EMAIL_MAX_HTML_BYTES,
       CONVEX_SITE_URL: 'https://convex.test', RELAY_SECRET: 'fake', DIGEST_LOOKBACK_MS: 86400000,
       TELEGRAM_BOT_TOKEN: 'fake', TELEGRAM_MAX_LEN: 4096, AI_DIGEST_ENABLED: false,
       scanAndEnqueueWatchlistStoryEvents: async () => {},
@@ -97,9 +99,9 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       getLastSentAt: async () => 0, isDue: () => true, isUserPro: async () => true,
       digestWindowStartMs: () => 0, buildDigest: async () => [{ title: 'Synthetic alert' }],
       buildDigestDeliveryPlan: ({ rawStories }: any) => ({ formatterStories: rawStories, cooldownIterableStories: [], sourceCountByClusterId: new Map() }),
-      formatDigest: () => 'Synthetic alert', formatDigestHtml: () => '<p>Synthetic alert</p>',
-      buildChannelBodies: (text: string) => ({ text, telegramText: text }),
-      injectEmailSummary: (html: string) => html, injectBriefCta: (html: string) => html,
+      formatDigest: () => 'Synthetic alert',
+      renderDigestEmailHtml: () => ({ html: '<p>Synthetic alert</p>', bytes: 0, truncated: false, shownStories: 1 }),
+      buildChannelBodies: (lists: any) => ({ text: lists.plain, telegramText: lists.telegram }),
       subjectForBrief: () => 'Synthetic alert', issueSlotInTz: () => 'test-slot',
       emitCooldownShadowLog: () => {}, upstashRest: async () => 'OK',
       shouldExitOnBriefFailures: () => false,

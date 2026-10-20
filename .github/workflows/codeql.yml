@@ -22,6 +22,7 @@ permissions:
 
 jobs:
   changes:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     name: codeql-changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -76,7 +77,7 @@ jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     needs: changes
-    if: needs.changes.outputs.languages != '[]'
+    if: ${{ (needs.changes.outputs.languages != '[]') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -96,11 +97,11 @@ jobs:
         with:
           go-version-file: sdk/go/go.mod
           cache: false
-      - uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+      - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.language == 'go' && 'autobuild' || 'none' }}
-      - uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+      - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
         with:
           category: /language:${{ matrix.language }}
 
@@ -109,7 +110,7 @@ jobs:
   # and cache eviction is least-recently-accessed, so stale bases push out hot caches.
   prune-overlay-bases:
     needs: analyze
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    if: ${{ (!cancelled() && github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -119,7 +120,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: '24'
       - run: node .github/scripts/prune-codeql-overlay-bases.mjs --ref "$GITHUB_REF"

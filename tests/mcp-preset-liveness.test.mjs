@@ -258,11 +258,28 @@ if (process.argv.includes('--paginate')) {
     const calls = [];
     publishFindings(report, { repository: 'owner/repo', gh: (args, payload) => {
       calls.push({ args, payload });
-      return args.includes('--paginate') ? [[{ title: ISSUE_TITLE, number: 2, pull_request: {} }], [{ title: ISSUE_TITLE, number: 3 }]] : {};
+      return args.includes('--paginate') ? [[
+        { title: ISSUE_TITLE, number: 2, pull_request: {}, user: { login: 'github-actions[bot]' } },
+        { title: ISSUE_TITLE, number: 4, user: { login: 'outsider' } },
+        { title: ISSUE_TITLE, number: 5 },
+      ], [{ title: ISSUE_TITLE, number: 3, user: { login: 'github-actions[bot]' } }]] : {};
     } });
     assert.ok(calls[1].args.includes('PATCH'));
     assert.ok(calls[1].args.includes('repos/owner/repo/issues/3'));
     assert.equal(calls.length, 2);
+  });
+
+  it('creates a bot issue when only outside or unidentified authors use the title', () => {
+    for (const user of [{ login: 'outsider' }, undefined]) {
+      const calls = [];
+      const result = publishFindings(report, { repository: 'owner/repo', gh: (args, payload) => {
+        calls.push({ args, payload });
+        return args.includes('--paginate') ? [[{ title: ISSUE_TITLE, number: 4, user }]] : {};
+      } });
+      assert.equal(result.action, 'created');
+      assert.ok(calls[1].args.includes('POST'));
+      assert.ok(calls[1].args.includes('repos/owner/repo/issues'));
+    }
   });
 
   it('creates nothing for healthy probes and fails visibly on missing/partial reports or API errors', () => {

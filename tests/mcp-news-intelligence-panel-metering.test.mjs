@@ -63,7 +63,7 @@ describe('News Intelligence closed paid admission', () => {
     assert.equal(bundle.pipe.count, 1, 'one allocation for opening/repeat'); assert.equal(fetched.length, 7);
     const receipt = value(first).panelRequest; assert.equal(receipt.panel, 'news-intelligence');
     assert.equal(first.body.result._meta['worldmonitor/usage'].remaining, 49);
-    for (const [args, titles] of [[{ country: 'USA' }, ['US trade talks']], [{ category: 'CYBER' }, ['Japan cyber update']], [{ query: 'trade', min_importance: '80', alerts_only: 'true', limit: 0 }, ['US trade talks']], [{ limit: 1.9 }, ['US trade talks']]]) {
+    for (const [args, titles] of [[{ country: 'USA' }, ['US trade talks']], [{ category: 'cyber' }, ['Japan cyber update']], [{ query: 'trade', min_importance: 80, alerts_only: true, limit: 0 }, ['US trade talks']], [{ limit: 1.9 }, ['US trade talks']]]) {
       assert.deepEqual(value(await invoke(bundle, args)).data.insights.topStories.map(row => row.primaryTitle), titles);
     }
     assert.equal(value(await invoke(bundle, { summary: true })).data.insights.topStories.count, 2);
@@ -154,7 +154,9 @@ describe('News Intelligence closed paid admission', () => {
         ? { planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: now + 86400000 }
         : { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: now + 86400000 };
       const bundle = makeProDeps({ getEntitlements });
-      for (const args of [{}, { country: 'US', min_importance: '80', alerts_only: 'true', limit: 0 }, { summary: true, jmespath: '@' }]) rows.push({ plan, args, body: (await invoke(bundle, args)).body });
+      const invalid = await invoke(bundle, { country: 'US', min_importance: '80', alerts_only: 'true' });
+      assert.equal(invalid.body.error?.code, -32602); assert.equal(bundle.pipe.count, 0);
+      for (const args of [{}, { country: 'US', min_importance: 80, alerts_only: true, limit: 0 }, { summary: true, jmespath: '@' }]) rows.push({ plan, args, body: (await invoke(bundle, args)).body });
       assert.equal(bundle.pipe.count, 3);
     }
     if (process.env.NEWS_INTELLIGENCE_CAPTURE) writeFileSync(process.env.NEWS_INTELLIGENCE_CAPTURE, JSON.stringify(rows));

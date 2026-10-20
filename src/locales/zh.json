@@ -232,7 +232,8 @@
       "trainedIndustrialWorkforce": "工业劳动力合计",
       "manufacturingShare": "制造业就业",
       "source": "来源：{{sources}}。",
-      "retained": "{{stage}} 数据沿用上次成功刷新的结果。"
+      "retained": "{{stage}} 数据沿用上次成功刷新的结果。",
+      "statusNotSupplied": "未提供估计和缺失值填补状态"
     },
     "fiveFactorScorecard": {
       "title": "五维韧性记分卡",
@@ -404,6 +405,7 @@
     "energy": "能源与资源",
     "gov": "政府",
     "thinktanks": "智库",
+    "science": "科学",
     "polymarket": "预测",
     "commodities": "大宗商品",
     "economic": "经济指标",
@@ -707,9 +709,9 @@
       "alertTitle": {
         "configured": "桌面端设置已配置",
         "needsKeys": "配置API密钥以解锁功能",
-        "some": "部分功能需要API密钥"
+        "some": "部分功能需要API密钥",
+        "pro": "World Monitor Pro 已激活"
       },
-      "skipSetup": "跳过设置 — 一个World Monitor许可证即可解锁全部功能。加入候补名单抢先体验。",
       "summary": {
         "desktop": "桌面模式",
         "web": "网页模式（只读，服务器管理凭证）",
@@ -738,7 +740,9 @@
         "OLLAMA_API_URL": "例如 http://127.0.0.1:11434 (Ollama) 或 http://127.0.0.1:1234/v1 (LM Studio) — OpenAI 兼容端点。",
         "OLLAMA_MODEL": "例如 llama3.1:8b — 用于摘要的模型标签。"
       },
-      "reserveEarlyAccess": "预留早期访问权限"
+      "proCloud": "没有本地 API 密钥的功能使用 World Monitor 云数据。",
+      "skipSetupPro": "跳过设置：使用 World Monitor Pro 登录以使用云数据，而不是您自己的 API 密钥。",
+      "getPro": "获取 World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "正在验证API密钥...",
@@ -1282,7 +1286,7 @@
         "commodityHubs": "大宗商品枢纽",
         "gulfInvestments": "海湾合作委员会投资",
         "tradeRoutes": "贸易航线",
-        "iranAttacks": "伊朗袭击",
+        "iranAttacks": "中东袭击",
         "gpsJamming": "导航干扰",
         "ciiChoropleth": "国家不稳定性",
         "dayNight": "昼/夜",
@@ -1326,7 +1330,9 @@
         "sourceIomDtm": "来源：IOM DTM",
         "sinceDate": "自{{date}}起",
         "lastMonth": "上月",
-        "sourceUnhcrOdp": "来源：联合国难民署业务数据门户"
+        "sourceUnhcrOdp": "来源：联合国难民署业务数据门户",
+        "displaced": "人流离失所",
+        "sourceIdmc": "来源：IDMC"
       },
       "layerHelp": {
         "title": "地图图层指南",
@@ -1541,6 +1547,8 @@
       "capacityPercent": "{{percent}}%容量",
       "noCountryImpacts": "未检测到国家影响",
       "alternativeRoutes": "替代路线",
+      "sharesCutZone": "同一咽喉要道",
+      "estimateNote": "估算值：电缆容量和冗余均为近似值，并非实测。",
       "countriesAffected": "受影响国家（{{count}}）",
       "links": "条链路",
       "selectInfrastructureHint": "选择基础设施以分析级联影响",
@@ -1758,7 +1766,21 @@
       "latestChange": "最新变化",
       "accelerating": "加速中",
       "inDays": "{{days}}天内",
-      "crossBorderNote": "联合国难民署操作数据门户：各危机中越过边境的人数，来自最新国家报告。情况重叠，因此不相加。"
+      "crossBorderNote": "联合国难民署操作数据门户：各危机中越过边境的人数，来自最新国家报告。情况重叠，因此不相加。",
+      "last7And30": "最近7天 / 30天",
+      "staleReport": "报告已过期",
+      "reported": "数量",
+      "period": "期间",
+      "movementNote": "每行保留其来源、报告日期和衡量指标。存量人口、抵达人数和边境执法事件是不同指标。来源可能重叠，请勿将其计数相加。WorldMonitor 根据链接的来源生成此视图，并不意味着获得任何数据提供方的认可。",
+      "recent": "最近",
+      "last30Days": "过去30天",
+      "newThisWeek": "本周新增",
+      "conflict": "冲突",
+      "disaster": "灾害",
+      "surge": "激增",
+      "recentNote": "IDMC：过去30天内在本国流离失所的人口。IDMC通常在流离失所后三周发布数据，因此最近几周的数据会延迟填入。本周新增计算过去7天内发布的数据。激增：至少5000人，且是过去五个月月均值的三倍及以上。",
+      "recentAsOf": "数据截至 {{date}}。",
+      "recentMissing": "{{countries}} 本期无数据；其文件加载失败，这并不表示零流离失所。"
     },
     "climate": {
       "noAnomalies": "未检测到显著异常",
@@ -1785,7 +1807,8 @@
       "sourceCoverageHint": "已显示 {{total}} 个已启用来源中的 {{covered}} 个 — 该面板每次刷新会轮换抓取不同来源",
       "sortBy": "排序方式",
       "sortNewest": "最新",
-      "sortRelevance": "相关性"
+      "sortRelevance": "相关性",
+      "translationUnavailable": "翻译不可用。请检查 AI 提供商设置并重试。"
     },
     "breakingNews": {
       "critical": "紧急",
@@ -2920,6 +2943,7 @@
       "tier4OnlyHint": "报道此事的所有媒体都是第4级来源（聚合器和博客）。这反映的是覆盖范围，而非准确性。",
       "rosterListed": "（已列出{{listed}}家）",
       "rosterFeeds": "所见订阅源：{{labels}}",
+      "rosterSameCopy": "相同稿件，只计一次",
       "rosterLegend": "分级用于为来源排序，并不判断此说法的真伪。",
       "tierDocsLink": "分级如何分配",
       "tierChip": "T{{tier}}",
@@ -3788,5 +3812,27 @@
       "description": "启用伊朗、以色列、海湾和库尔德地区来源"
     },
     "unavailable": "当前面板无法使用{{preset}}预设"
+  },
+  "countryHistory": {
+    "title": "国家每日历史",
+    "loading": "正在加载每日历史…",
+    "window": "时间范围",
+    "days": "{{days}} 天",
+    "observed": "{{days}} 天内有 {{count}} 条快照",
+    "legend": "CII（琥珀色）：数值越高，越不稳定。韧性（绿色）：数值越高，应对能力越强。圆点标记包含精选新闻标题的日期。",
+    "chart": "每日 CII 和韧性评分。观测缺口和公式变化会使曲线中断。",
+    "selectDate": "{{date}}，{{count}} 条精选标题",
+    "empty": "此时间范围内没有每日快照。历史记录在启用后逐日积累。",
+    "unavailable": "历史记录暂时不可用，请重试。",
+    "retry": "重试",
+    "stale": "距离上次成功的每日采集已超过 36 小时。",
+    "break": "存在公式变化或观测缺口。请仅比较使用相同公式的评分。",
+    "partial": "采集时新闻覆盖不完整。",
+    "resilience": "韧性",
+    "ciiMissing": "CII 不可用",
+    "resilienceMissing": "韧性不可用",
+    "noEvents": "此日期未采集到精选新闻标题。这不代表没有事件发生。",
+    "unlock90": "使用 Pro 解锁 90 天历史",
+    "unlock365": "使用 API 套餐解锁 365 天历史"
   }
 }

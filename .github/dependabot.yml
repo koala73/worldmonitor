@@ -4,6 +4,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      codeql:
+        patterns: ["github/codeql-action/*"]
 
   - package-ecosystem: "docker"
     directory: "/"
@@ -83,6 +86,16 @@ updates:
     schedule:
       interval: "weekly"
     # Same reasoning as the npm entry above: security updates only.
+    open-pull-requests-limit: 0
+    groups:
+      cargo-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: "cargo"
+    directory: "/sdk/rust"
+    schedule:
+      interval: "weekly"
     open-pull-requests-limit: 0
     groups:
       cargo-security:

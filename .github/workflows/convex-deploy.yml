@@ -10,10 +10,17 @@ name: Convex Deploy
 # `WORLDMONITOR-PD` kept growing because Convex prod was still running the old
 # string-data throws.
 #
-# Setup required (one-time): add `CONVEX_DEPLOY_KEY` to the repo's GitHub
-# Actions secrets. Generate via `npx convex deploy --once-create-deploy-key`
-# against the prod deployment, or via the Convex dashboard → Settings →
-# Deploy Keys → "Production: deploy" scope.
+# Setup required (one-time), in this order:
+#   1. Create the `convex-production` GitHub environment and set its deployment
+#      branches to "Selected branches" with `main` as the only rule. A new
+#      environment allows every branch, and `workflow_dispatch` can run a
+#      branch-edited copy of this workflow, so without the rule the key is
+#      readable from any branch.
+#   2. Add `CONVEX_DEPLOY_KEY` as a secret of that environment, not as a
+#      repository secret, which any workflow on any branch can read.
+# Generate the key via `npx convex deploy --once-create-deploy-key` against the
+# prod deployment, or via the Convex dashboard → Settings → Deploy Keys →
+# "Production: deploy" scope.
 
 on:
   push:
@@ -136,6 +143,7 @@ jobs:
           if git diff --name-only "$BEFORE" "$AFTER" -- \
               'convex/' \
               'shared/checkout-errors.ts' \
+              'shared/chokepoint-alert-ids.ts' \
               'shared/cloud-preferences-contract.ts' \
               'shared/pinned-webcams.ts' \
               'shared/mcp-attribution.ts' \
@@ -143,6 +151,7 @@ jobs:
               'shared/company-monitoring-evidence.ts' \
               'shared/embed-access.ts' \
               'shared/legal.ts' \
+              'shared/agent-client-source.js' \
               'scripts/lib/company-monitoring-classification.mjs' \
               'src/utils/country-codes.ts' | grep -q .; then
             echo "convex=true" >> "$GITHUB_OUTPUT"
@@ -155,9 +164,17 @@ jobs:
     if: needs.changes.outputs.convex == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # CONVEX_DEPLOY_KEY lives in this environment, whose deployment branch
+    # policy admits only `main`. As a repository secret it was readable by a
+    # run on any branch, including one that edits this file to run on itself.
+    # `deployment: false` keeps the secret scoping without a deployment record
+    # per push. Pinned by tests/convex-deploy-key-scope.test.mjs.
+    environment:
+      name: convex-production
+      deployment: false
     # Deliberately READ-ONLY (the workflow default). This job runs `npm ci`,
-    # whose dependency lifecycle scripts are third-party code, so it must never
-    # hold a repo-write credential — see the `record-baseline` job below.
+    # whose dependency code is third-party, so it must never hold a repo-write
+    # credential — see the `record-baseline` job below.
     outputs:
       deployed: ${{ steps.deploy.outcome }}
     steps:
@@ -166,11 +183,16 @@ jobs:
           # Belt and braces with the read-only permission above: no ambient
           # credential in .git/config while third-party install code runs.
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           cache: 'npm'
-      - run: npm ci --no-audit --no-fund
+      # No lifecycle scripts: an install script would run before the deploy
+      # step and could rewrite `node_modules/.bin/convex`, which then runs with
+      # the deploy key. `convex deploy` needs none of them — its esbuild loads
+      # the platform binary from the optional dependency without its
+      # postinstall, and convex/ imports nothing the root postinstall generates.
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - id: deploy
         name: Convex deploy (prod)
         # `--yes` skips the interactive "Are you sure?" prompt. The deploy
@@ -254,15 +276,19 @@ jobs:
       )
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Same key scope and no-install-scripts rule as `deploy` above.
+    environment:
+      name: convex-production
+      deployment: false
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           cache: 'npm'
-      - run: npm ci --no-audit --no-fund
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Repair stale on_hold derived state (idempotent)
         run: npx convex run --prod payments/repairStaleOnHoldDerivedState:run
         env:

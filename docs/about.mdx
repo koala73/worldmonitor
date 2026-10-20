@@ -1,39 +1,117 @@
 ---
-title: "About World Monitor: open-source OSINT dashboard"
-description: "The story behind World Monitor, the open-source real-time global intelligence dashboard built by Anghami co-founder Elie Habib and live in 190+ countries, with structural resilience ranked for 170."
+title: "About World Monitor"
+description: "World Monitor is a free, open-source real-time global intelligence dashboard that correlates geopolitics, markets, energy, shipping and cyber on one live map, with alerts, an API and a Pro AI analyst. Built by Anghami co-founder Elie Habib, used by 2M+ people in 190+ countries."
 ---
 
-World Monitor is a free, real-time global intelligence dashboard. It fuses a broad catalog of live data feeds — conflict events, military flights, ship movements, satellite fire detections, market data, shipping chokepoints, internet outages, cyber signals, and natural disasters — into a single live map of the world, with AI analysis layered on top. The core dashboard is open to everyone, with no signup.
+{/* Canonical About. The lead paragraph is the "Full About" version of the canonical description; the one-liner lives in `description:` above. Inventory counters (feeds, providers, layer types, Tier-1 countries, hotspots, chokepoints, cables) and the Pro price are rewritten by `npm run product:facts` (`restateAboutFacts`), and its `--check` fails when they drift or their wording changes. The two resilience-coverage statements are rewritten by `npm run resilience:coverage`, and the 190+ reach sentence is pinned by `scripts/docs-stats.mjs`. */}
+
+World Monitor is a free, open-source (AGPL-3.0) real-time global intelligence dashboard. It fuses the world's raw signals — ships, aircraft, satellites, sirens, cables, markets and 469 news and OSINT feeds from 773 attributed providers — onto one live map with 58 layer types, and flags when they converge into something that matters. Over [2 million people](https://siliconcanals.com/sc-n-anghami-ceos-side-project-world-monitor-now-has-2-million-users-tracking-conflicts-in-real-time/) in 190+ countries use it, with no account and no trial clock.
+
+Every figure is sourced and every method documented. By the time it's news, you already knew.
+
+## What it covers
+
+Most intelligence tools show one slice of reality: a conflict map, a market terminal, a ship tracker, a weather feed. World Monitor puts the slices on one surface so they can explain each other.
+
+<CardGroup cols={2}>
+  <Card title="Geopolitics and conflict" icon="globe" href="https://www.worldmonitor.app/countries/">
+    Country Instability Index for 31 Tier-1 countries, 29 scored hotspots, force-posture and escalation monitors, UCDP and ACLED events, Telegram and X OSINT, security advisories and population exposure.
+  </Card>
+  <Card title="Markets and finance" icon="chart-line" href="https://finance.worldmonitor.app/dashboard">
+    Equities, crypto, FX stress for 45 currencies, the yield curve, breadth, positioning, ETF flows, stablecoin pegs, earnings and economic calendars, SEC filings, prediction markets and news-to-market correlation.
+  </Card>
+  <Card title="Commodities and supply chains" icon="ship" href="https://www.worldmonitor.app/chokepoints/">
+    13 live-AIS maritime chokepoints with disruption scoring, trade routes, freight indices, critical-mineral concentration, gold intelligence, food prices and trade flows.
+  </Card>
+  <Card title="Energy" icon="bolt" href="https://energy.worldmonitor.app/dashboard">
+    A Hormuz trade tracker, pipeline and storage status, EIA and IEA inventories, EU gas storage, fuel prices in 30+ countries and a fuel-shortage registry.
+  </Card>
+  <Card title="Infrastructure and cyber" icon="network-wired" href="https://www.worldmonitor.app/dashboard">
+    98 subsea cables, cascade simulation of what fails downstream, internet outages, DDoS, cloud status and threat indicators.
+  </Card>
+  <Card title="Hazards, climate and health" icon="cloud-bolt" href="https://www.worldmonitor.app/dashboard">
+    Earthquakes, satellite fire detections, severe weather, climate anomalies, disease outbreaks, air quality, radiation and displacement.
+  </Card>
+</CardGroup>
+
+On the map itself: conflicts, military activity, live ships and aircraft, satellites, GPS jamming, protests, fires, severe weather, outages, cyber threats, nuclear sites, cables, pipelines and AI datacenters, as 58 toggleable layer types on a dual 3D-globe and WebGL engine.
+
+## How it works
+
+World Monitor has no newsroom and no human editors. It leans on method.
+
+- **Convergence over noise.** Signals are cross-checked across independent sources before anything surfaces as an alert. A breaking banner has to clear fixed gates on severity, age and corroboration, so a single unverified report doesn't become a headline.
+- **A tiered source hierarchy.** Wire services and official channels rank above major broadcasters, which rank above specialist open-source outlets, with provenance kept visible. Every panel cites its sources and timestamps inline.
+- **Country dossiers.** Click any country for its instability score and components, a cited AI brief, the active signals on the map and a 7-day timeline, with structural resilience ranked for 170 of 196 countries over 72 indicators.
+- **Forecasts with a record.** Published AI forecasts carry a probability, confidence and horizon, and a [public scorecard](https://www.worldmonitor.app/accuracy/) records how they resolved.
+- **AI on top, not instead.** Briefs, risk scores and forecasts are generated from the underlying signals, not from a chatbot's imagination.
+
+## Six monitors, one engine
+
+The same platform, tuned to a theme. Switch between them from the header bar.
+
+| Monitor | What it tracks |
+| --- | --- |
+| [World Monitor](https://www.worldmonitor.app/dashboard) | Geopolitics, military, conflicts, infrastructure |
+| [Finance Monitor](https://finance.worldmonitor.app/dashboard) | Global markets, trading, central banks, Gulf FDI |
+| [Commodity Monitor](https://commodity.worldmonitor.app/dashboard) | Mining, metals, energy, supply chains |
+| [Energy Monitor](https://energy.worldmonitor.app/dashboard) | Energy security, oil and gas, chokepoints, disruptions |
+| [Tech Monitor](https://tech.worldmonitor.app/dashboard) | Startups, AI/ML, cloud, cybersecurity |
+| [Happy Monitor](https://happy.worldmonitor.app/dashboard) | Positive news, breakthroughs, conservation, renewables |
+
+It runs wherever you work:
+
+- **Web** at [worldmonitor.app](https://www.worldmonitor.app/dashboard), and as an installable PWA with offline map tiles
+- **Desktop** as a [native app](https://github.com/koala73/worldmonitor/releases/latest) for Windows, macOS (Apple Silicon and Intel) and Linux, with OS-keychain key storage and a local API sidecar
+- **Terminal** as a full-screen [terminal dashboard (TUI)](/cli-dashboard) with the same live map, news, markets, conflict, shipping and cyber feeds, mouse support and colour themes, no API key required
+- **Android TV** for wall displays
+- **Self-hosted** via [Docker or Vercel](/getting-started), with local AI through Ollama
+
+All of it is localized, with right-to-left layouts for Arabic and Persian.
+
+## Built for agents
+
+Everything on the map is also an API. Your code researches with live data instead of training-data memories.
+
+- **[MCP server](https://worldmonitor.app/mcp)** with the full live tool catalog, Streamable HTTP, OAuth or API key, JMESPath projection on every call
+- **[REST API](/api-reference)** on one OpenAPI 3.1 spec, one key
+- **[Official SDKs](/sdks)** for Python, JavaScript, Ruby and Go, zero-dependency
+- **[CLI](/cli)** that scripts any tool from a shell or pipeline
+- **Signed webhooks** for chokepoint disruptions, country risk surges, breaking news, market moves and natural hazards
+- **[Agent skills](https://www.worldmonitor.app/agent/)** for Claude, ChatGPT, Cursor and any MCP client
+
+## Free is the observatory. Pro is the operations room.
+
+The free dashboard is a full product, not a trial: every map layer except Resilience, all six monitors, country briefs, chokepoints, cascade analysis, the breaking-alert pipeline and watchlists.
+
+**[World Monitor Pro](https://www.worldmonitor.app/pro)**, from $39.99 a month, adds the decision layer:
+
+- **WM Analyst**, a cited AI analyst across live services
+- **Scenario Engine** that runs hourly, and **Route Explorer**
+- **Cost-shock and supply-chain stress tests** across chokepoints, cascades and vulnerability rankings
+- **Alert rules** by country, event type, severity and chokepoint, delivered to Slack, Microsoft Teams, Discord, Telegram, email, push or signed webhook
+- **Personal AI digest**, daily, twice-daily or weekly
+- **Intel memory** with historical search and similar-event lookup
+- **Custom widget builder** and the **Resilience** map layer
+- **MCP access** for Claude, ChatGPT and other AI clients over OAuth
+
+Pro Business adds a commercial licence and data export. API plans add REST and SDK keys, quota and webhooks, and API Business adds redistribution rights. Enterprise adds SSO, team workspaces, white-label panels and on-premises or air-gapped deployment. See [pricing](https://www.worldmonitor.app/pro#pricing) and the [licence scope](/eula).
 
 ## Origin
 
 {/* Traction: 2M+ users cited from Silicon Canals; country reach matches homepage/llms.txt (190+); GitHub stars render live via shields.io (GitHub API). */}
 
-World Monitor began in January 2026 as a weekend project. Elie Habib — co-founder and CEO of the music-streaming platform Anghami — built the first version in a matter of days to see whether a day's worth of chaotic geopolitical news could be made legible on one map. He posted it once and moved on.
+World Monitor began in January 2026 as a weekend project. Elie Habib, co-founder and CEO of the music-streaming platform Anghami, built the first version in a matter of days to see whether a day's worth of chaotic geopolitical news could be made legible on one map. He posted it once and moved on.
 
-It didn't stay quiet. As global events escalated through 2026, the dashboard reached hundreds of thousands of users in its first week and has since grown to [2M+ people](https://siliconcanals.com/sc-n-anghami-ceos-side-project-world-monitor-now-has-2-million-users-tracking-conflicts-in-real-time/) who live in 190+ countries, with structural resilience ranked for 170 — most of them well outside the usual intelligence-tooling audience. It is now one of the most-starred open-source OSINT projects on GitHub ([![GitHub Repo stars](https://img.shields.io/github/stars/koala73/worldmonitor)](https://github.com/koala73/worldmonitor/stargazers)).
-
-## What makes it different
-
-World Monitor has no newsroom and no human editors. Instead it leans on method:
-
-- **Convergence over noise.** Signals are cross-checked against multiple independent sources before anything surfaces as an alert, so a single unverified report doesn't become a headline.
-- **A tiered source hierarchy.** Wire services and official channels (Reuters, AP, the Pentagon, the UN) rank above major broadcasters (BBC, Al Jazeera), which rank above specialist open-source outlets (Bellingcat) — with provenance kept visible.
-- **Breadth in one place.** ADS-B aircraft transponders, AIS maritime positions, ACLED and UCDP conflict datasets, NASA fire detections, GPS-jamming and outage data, prediction markets, and commodity prices all sit on the same globe.
-- **A Country Instability Index.** Every country is scored 0–100 from baseline risk, unrest, security events, and information velocity, adjusted in real time.
-- **AI on top, not instead.** Automated briefings, country risk, and forecasts are generated from the underlying signals — not from a chatbot's imagination.
-
-Specialized variants point the same engine at a theme: [Tech](https://tech.worldmonitor.app/dashboard), [Finance](https://finance.worldmonitor.app/dashboard), [Commodity](https://commodity.worldmonitor.app/dashboard), [Energy](https://energy.worldmonitor.app/dashboard), and [Happy](https://happy.worldmonitor.app/dashboard) (positive news only).
+It didn't stay quiet. As global events escalated through 2026, the dashboard reached hundreds of thousands of users in its first week and has since grown past two million people who live in 190+ countries, with structural resilience ranked for 170 of 196 countries. Most of those users sit well outside the usual intelligence-tooling audience. It is now one of the most-starred open-source OSINT projects on GitHub ([![GitHub Repo stars](https://img.shields.io/github/stars/koala73/worldmonitor)](https://github.com/koala73/worldmonitor/stargazers)).
 
 ## Mission
 
-Situational awareness of the world shouldn't require a five-figure terminal. World Monitor's goal is to make credible, real-time global intelligence — the kind normally reserved for governments, funds, and newsrooms — accessible to anyone with a browser.
+Situational awareness of the world shouldn't require a five-figure terminal. World Monitor's goal is to make credible, real-time global intelligence, the kind normally reserved for governments, funds and newsrooms, accessible to anyone with a browser, and to any AI agent with a key.
 
 ## Who builds it
 
-World Monitor is built by [Elie Habib](https://x.com/eliehabib), co-founder and CEO of Anghami — the first Arab technology company to list on NASDAQ. His work on World Monitor and its origins were covered by [WIRED](https://www.wired.com/story/world-monitor-elie-habib/).
-
-The platform is open source under AGPL-3.0-only — see the [License](/license) and [Trademark Policy](/trademark-policy).
+World Monitor is built by [Elie Habib](https://x.com/eliehabib), co-founder and CEO of Anghami, the first Arab technology company to list on Nasdaq. The platform is open source under AGPL-3.0-only; see the [License](/license) and [Trademark Policy](/trademark-policy). The maintained repository is [github.com/koala73/worldmonitor](https://github.com/koala73/worldmonitor); other copies and similarly named products are [not affiliated](https://www.worldmonitor.app/world-monitor.md).
 
 ## In the press
 
@@ -48,9 +126,11 @@ The platform is open source under AGPL-3.0-only — see the [License](/license) 
 
 ## Explore
 
-- [Dashboard](https://www.worldmonitor.app) — the live map
-- [Pro](https://www.worldmonitor.app/pro) — deeper signal, more AI briefings, a research assistant
-- [Documentation](https://www.worldmonitor.app/docs/documentation) — API, MCP, and platform guides
+- [Dashboard](https://www.worldmonitor.app/dashboard) — the live map
+- [Pro](https://www.worldmonitor.app/pro) — the decision layer
+- [Documentation](/documentation) — API, MCP and platform guides
+- [Coverage catalog](https://www.worldmonitor.app/reference/coverage/) — every panel, layer and tool by name
+- [Sources](https://www.worldmonitor.app/sources/) — all 773 attributed providers
 - [GitHub](https://github.com/koala73/worldmonitor) — source and issues
 - [Blog](https://www.worldmonitor.app/blog) — analysis and product updates
 

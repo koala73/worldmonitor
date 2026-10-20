@@ -5259,14 +5259,16 @@ dependencies = [
 
 [[package]]
 name = "world-monitor"
-version = "2.10.0"
+version = "2.11.2"
 dependencies = [
+ "base64 0.22.1",
  "getrandom 0.2.17",
  "keyring",
  "opener",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
 ]

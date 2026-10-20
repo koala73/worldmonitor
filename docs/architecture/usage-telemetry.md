@@ -33,6 +33,8 @@ Two event types in dataset `wm_api_usage`:
 | `duration_ms`      | `412`                                     | wall-clock at the gateway                    |
 | `req_bytes`, `res_bytes` |                                     | `res_bytes` is null when Content-Length is absent (chunked/SSE); never coerce missing → 0 (#8403) |
 | `rpc_method`, `tool_name` | `"tools/call"`, `"get_market_data"` | MCP only (#8403). Served JSON-RPC methods only (`_unregistered` otherwise) + registry-bounded tool; null on REST and on MCP rows that never parsed a body |
+| `requested_tool`   | `"get_vessel_track"`, `"<invalid>"`       | MCP only (#9431). The tool a caller asked for that the server does not serve: a `tools/call` whose name is not callable (`tool_name` stays null) or a `describe_tool` that answered `unknown_tool` (`tool_name` is `describe_tool`). Trimmed and lowercased; a name outside `[a-z0-9_.-]{1,64}`, or a non-string, lands in the single `<invalid>` bucket. Written only when `auth_kind` is not `anon`: anonymous calls are almost all scanners that fail auth, and keeping them out bounds the dimension's cardinality (#8403). Only the name is recorded, never arguments. Null everywhere else |
+| `tool_error_kind`, `tool_result_bytes`, `tool_jmespath` | `"server_error"`, `1420`, `false` | MCP only (#9431). Outcome of the tool that ran, copied from the same call's `mcp.toolcall` log line: `error_kind` (`client_4xx` \| `source_unavailable` \| `server_error`, null on success), `bytes_pre_jmespath` (payload size before any projection; `-1` when it could not be measured, `0` on a failed call) and `jmespath_used`. A data-bearing template `resources/read` also runs a tool, so its row carries these fields with `rpc_method` `resources/read` and `tool_name` null. All three are null when no tool ran (refused, unknown tool, any other method) and on REST |
 | `customer_id`      | Clerk user ID, org ID, enterprise slug, or static `widget` label | `null` only for anon                |
 | `principal_id`     | user ID or **hash** of API/widget key     | never the raw secret                         |
 | `auth_kind`        | `clerk_jwt` \| `user_api_key` \| `enterprise_api_key` \| `widget_key` \| `mcp_oauth` \| `anon` | MCP OAuth bearer (`api/mcp`) is distinct from dashboard `clerk_jwt` |
@@ -304,6 +306,20 @@ add an entry to `RPC_CACHE_TIER` in `server/gateway.ts`.
 | where n > 100
 | order by n desc
 ```
+
+### MCP tools callers ask for that we do not serve (#9431)
+
+```kusto
+['wm_api_usage']
+| where event_type == "request" and domain == "mcp" and isnotnull(requested_tool) and _time > ago(14d)
+| summarize calls = count(), callers = dcount(principal_id) by requested_tool, auth_kind
+| order by callers desc, calls desc
+```
+
+`enterprise_api_key` rows come from operator env keys, which carry no
+`principal_id` (so `callers` is 0 for them). Add
+`| where auth_kind != "enterprise_api_key"` to see customer demand only. The
+keyless MCP live smoke is `anon` and never writes `requested_tool`.
 
 ### Authorization-failure fan-out per identity (#8406)
 

@@ -24,7 +24,7 @@ export const DIGEST_ACCUMULATOR_KEY_PREFIX = 'digest:accumulator:v1:';
  * Story tracking keys — written by list-feed-digest.ts, read by digest cron (E2).
  * All keys use 32-char SHA-256 hex prefix of the normalised title as ${titleHash}.
  *
- *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore/lang/description/publishedAt/entityCorroborationCount/isOpinion/isFeelGood/isEphemeralLiveCoverage/category/anchorEligible (always-written)
+ *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore/lang/description/publishedAt/entityCorroborationCount/isOpinion/isFeelGood/isEphemeralLiveCoverage/category/anchorEligible (always-written); corrState (full/en label history, #9093) and corroboration:${variant}:${lang} (the verdict that variant served, `state|publishers` or `unknown`, #9213)
  *   story:sources:v1:${titleHash}   Set    feed IDs (SADD per appearance)
  *   story:peak:v1:${titleHash}      ZSet   single member "peak", score = highest importanceScore (ZADD GT)
  *   digest:accumulator:v1:${variant}:${lang} ZSet  member=titleHash, score=lastSeen_ms (updated every appearance)
@@ -78,9 +78,13 @@ export const SIMULATION_PACKAGE_LATEST_KEY = 'forecast:simulation-package:latest
  * api/_cii-risk-cache-keys.js and scripts/_cii-risk-cache-keys.mjs aligned.
  */
 export const CII_RISK_SCORE_CACHE_KEYS = {
-  live: 'risk:scores:sebuf:v8',
-  stale: 'risk:scores:sebuf:stale:v8',
-  trendHistoryPrefix: 'risk:scores:sebuf:trend-history:v8',
+  live: 'risk:scores:sebuf:v13',
+  stale: 'risk:scores:sebuf:stale:v13',
+  trendHistoryPrefix: 'risk:scores:sebuf:trend-history:v13',
+  dailyHistoryPrefix: 'risk:scores:history:',
+  dailyHistoryIndex: 'risk:scores:history:index',
+  dailyHistoryMeta: 'seed-meta:intelligence:risk-scores-history',
+  dailyHistoryActivation: 'seed-activated:intelligence:risk-scores-history',
 } as const;
 export const CLIMATE_ANOMALIES_KEY = 'climate:anomalies:v2';
 export const CLIMATE_AIR_QUALITY_KEY = 'climate:air-quality:v1';

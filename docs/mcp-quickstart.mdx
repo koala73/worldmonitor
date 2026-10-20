@@ -1,205 +1,169 @@
 ---
 title: "MCP Quickstart"
-description: "Connect Claude Desktop to World Monitor via MCP and make your first real intelligence call in five minutes — install, auth, and first query."
+description: "Connect Claude, ChatGPT, Codex or Cursor to World Monitor in about a minute: paste one address, sign in with your World Monitor account, and ask a question. No API key needed."
 ---
 
-WorldMonitor exposes a live tool registry — markets, conflict events, maritime chokepoints, aviation, climate, AI briefs, and China decision signals — over the [Model Context Protocol](https://modelcontextprotocol.io). This page is the shortest path from zero to a useful response inside Claude. Everything else in the [MCP Server reference](/mcp-overview) is optional reading once this works.
+World Monitor plugs into your AI assistant as a connector. You paste one address, sign in with your World Monitor account, and the assistant can answer from live data covering {/* mcp-domains:start */}markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy{/* mcp-domains:end */}.
 
-## 1. Choose free source discovery or a subscription
+<Info>
+**The address to paste:** `https://worldmonitor.app/mcp`
 
-Anyone can call `get_sources` without credentials — the [`worldmonitor` CLI](/cli) and the SDKs do exactly that. An MCP client such as Claude, Cursor or Grok signs in when it connects: the server answers its opening handshake with the challenge that opens the sign-in window, and a free account is enough. It is the sole credential-free, daily-quota-free data tool, with a separate fail-closed ceiling of 10 anonymous calls/minute/IP. Every other data tool is subscription-gated. For those tools, you need one of:
+There is no API key to copy and nothing to install. You sign in with the same email you use on worldmonitor.app.
+</Info>
 
-- **Pro** — sign in with your WorldMonitor account, no key to manage. 50 quota-consuming calls per UTC day.
-- **API Starter / Business / Enterprise** — paste a user-issued `wm_…` key in your client, or use the same OAuth flow as Pro. Dashboard-issued keys share a 60 requests/minute/user bucket and use the 50 quota-consuming calls/UTC day default. OAuth allowances are plan-resolved; API Starter and API Business currently use that same default, while enterprise OAuth can be unlimited. REST/API plan allowances remain separate.
+## Claude
 
-Upgrade or generate a key at [worldmonitor.app/pro](https://www.worldmonitor.app/pro). The rest of this guide assumes Claude Desktop + OAuth (the simplest path); if you'd rather paste a `wm_…` key into a `curl` script, jump to [Server-side curl](#server-side-curl) at the bottom.
+Works in the Claude desktop app, on claude.ai and in the mobile apps. You add the connector once and every Claude app on your account can use it.
 
-## 2. Add the server to Claude Desktop
+<Steps>
+  <Step title="Open Add custom connector">
+    In Claude, open **Customize → Connectors**, click **+ Add**, then **Add custom connector**.
 
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or the Windows equivalent at `%APPDATA%\Claude\claude_desktop_config.json` and add the `worldmonitor` entry:
+    <Frame>
+      <img src="/images/mcp/claude-add-menu.webp" alt="Claude Customize page, Connectors tab, with the + Add menu open on Add custom connector" />
+    </Frame>
+  </Step>
+  <Step title="Paste the address">
+    Name it `World Monitor` and paste `https://worldmonitor.app/mcp`. Click **Continue**. Claude detects the right sign-in settings on the next screen, so just click **Add**.
+
+    <Frame>
+      <img width="520" src="/images/mcp/claude-add-dialog.webp" alt="Add custom connector dialog with the name World Monitor and the URL https://worldmonitor.app/mcp filled in" />
+    </Frame>
+  </Step>
+  <Step title="Sign in with World Monitor">
+    A World Monitor window opens. Click **Sign in with WorldMonitor Pro**, sign in with your email code or passkey, then click **Authorize**.
+
+    <Columns cols={2}>
+      <Frame>
+        <img src="/images/mcp/consent.webp" alt="World Monitor window: Claude wants access, with a Sign in with WorldMonitor Pro button" />
+      </Frame>
+      <Frame>
+        <img src="/images/mcp/authorize.webp" alt="World Monitor window after sign-in, showing the signed-in account and an Authorize button" />
+      </Frame>
+    </Columns>
+  </Step>
+  <Step title="Turn it on in a chat">
+    In a new chat, click **+**, open **Connectors**, and check that World Monitor is switched on.
+
+    <Frame>
+      <img width="474" src="/images/mcp/claude-enable-in-chat.webp" alt="Claude chat + menu with Connectors open and the World Monitor toggle switched on" />
+    </Frame>
+  </Step>
+  <Step title="Ask a question">
+    Ask in plain language. The first time Claude uses each World Monitor tool it asks permission. Choose **Always allow** so it stops asking.
+
+    <Frame>
+      <img src="/images/mcp/claude-approve-tool.webp" alt="Claude asking permission to use get_market_data from World Monitor, with Deny, Always allow and Allow once buttons" />
+    </Frame>
+    <Frame>
+      <img src="/images/mcp/claude-answer.webp" alt="Claude's answer summarising oil, gold, US and Asian index moves from World Monitor data" />
+    </Frame>
+  </Step>
+</Steps>
+
+<Note>
+On Claude Team and Enterprise, an owner first adds the connector under **Organization settings → Connectors**. Members then click **Connect** next to it in **Customize → Connectors**. Claude's Free plan allows one custom connector.
+</Note>
+
+## ChatGPT
+
+<Steps>
+  <Step title="Add the server">
+    Open **Plugins**, click **+**, and choose **Add custom MCP server**. Name it `World Monitor`, paste `https://worldmonitor.app/mcp`, choose **OAuth** for authentication, and confirm.
+  </Step>
+  <Step title="Sign in and ask">
+    Sign in with your World Monitor account in the window that opens, then pick World Monitor from the **+** menu in a chat.
+  </Step>
+</Steps>
+
+ChatGPT moves this menu between releases and some plans or workspaces turn custom servers off. If you don't see it, follow [OpenAI's guide to custom MCP servers](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt).
+
+## Codex
+
+Run two commands. The second opens your browser to sign in.
+
+```bash
+codex mcp add worldmonitor --url https://worldmonitor.app/mcp
+codex mcp login worldmonitor
+```
+
+The Codex app, the CLI and the IDE extension share this setup.
+
+## Claude Code
+
+```bash
+claude mcp add --transport http worldmonitor https://worldmonitor.app/mcp
+```
+
+Then type `/mcp` in Claude Code, pick `worldmonitor`, and choose **Authenticate**.
+
+## Cursor
+
+[Add World Monitor to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=worldmonitor&config=eyJ1cmwiOiJodHRwczovL3dvcmxkbW9uaXRvci5hcHAvbWNwIn0=) with one click, or put this in `~/.cursor/mcp.json`:
 
 ```json
 {
   "mcpServers": {
-    "worldmonitor": {
-      "url": "https://worldmonitor.app/mcp"
-    }
+    "worldmonitor": { "url": "https://worldmonitor.app/mcp" }
   }
 }
 ```
 
-Restart Claude Desktop. The first time you mention WorldMonitor in a chat, Claude pops the OAuth consent screen — click **Sign in with WorldMonitor Pro**, authenticate in your browser, and the token is stored locally by Claude. No API key ever touches your filesystem.
+Cursor shows **Needs login** next to the server under **Settings → MCP**. Click it to sign in.
 
-<Tip>
-Cursor, Claude web, and MCP Inspector use the same URL. See [client setup](/mcp-overview#client-setup) for the exact config field per client.
-</Tip>
+## Other apps
 
-### Alternative: the `mcp-remote` bridge
+Perplexity, Mistral Le Chat, Grok, Microsoft 365 Copilot, VS Code, Gemini CLI and most other assistants that support MCP take the same address as a custom connector or remote server. See [client setup](/mcp-overview#client-setup) for per-app notes.
 
-Older Claude Desktop builds — and any stdio-only MCP client — connect through the [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge instead of the native `url` field:
+## Questions to try
 
-```json
-{
-  "mcpServers": {
-    "worldmonitor": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://worldmonitor.app/mcp", "--header", "X-WorldMonitor-Key:wm_YOUR_KEY"]
-    }
-  }
-}
-```
+- _Draft a duty-of-care brief for our staff in Riyadh using today's World Monitor data._
+- _Compare the US, UK and Australian travel advisories for the Gulf states. Which changed most recently?_
+- _Is anything disrupting flights or shipping through the Strait of Hormuz right now?_
+- _Give me a country brief on Venezuela with the main risks for the next two weeks._
+- _How are oil, gold and the main equity indices moving today, and why?_
 
-Two things matter with this setup:
+The assistant picks the right World Monitor tools on its own. Answers carry timestamps, so you can see how fresh the data is.
 
-- **With an API key, pass it as a header.** A request that carries a valid key is not challenged; an invalid, expired or revoked key gets `401`. Use the single-argument form `X-WorldMonitor-Key:wm_…` with **no space after the colon** — it sidesteps client/`npx` argument-escaping bugs with spaces inside `args` (documented by `mcp-remote` for Cursor and Claude Desktop on Windows).
-- **Prefer OAuth?** Omit `--header`. The server answers `mcp-remote`'s opening `initialize` with the `401` challenge, which opens its browser consent flow at connect time — the path `mcp-remote` handles most reliably (dynamic client registration works on both `worldmonitor.app` and `www.worldmonitor.app`). A free account can complete it; subscription tools then depend on your plan.
+## What your plan includes
 
-## 3. Ask your first question
+| Plan | What the assistant can use | Daily allowance |
+| --- | --- | --- |
+| Free account | Source listing and a small set of cached datasets | 5 calls |
+| Pro | Every tool | 50 calls |
+| Pro Business | Every tool | 250 calls |
+| API Starter, API Business | Every tool, shared with your REST budget | 1,000 or 10,000 units (most calls cost 1–2) |
+| Enterprise | Every tool | 25,000 calls |
 
-Open a new chat in Claude Desktop and try:
+A call is one request from the assistant to World Monitor. Allowances reset at 00:00 UTC. Upgrade at [worldmonitor.app/pro](https://www.worldmonitor.app/pro). Full limits are in [plans and limits](/mcp-overview#plans-&-limits).
 
-> _What's the current US equity market sentiment and which sectors are leading or lagging today?_
+## If something goes wrong
 
-Claude will pick `get_market_data` from the WorldMonitor toolset, call it with no arguments, and answer in plain English. The raw tool response is a single bootstrap bundle covering quotes, sector ETFs, crypto, gulf quotes, ETF flows, and the WorldMonitor fear-greed composite. Because cache tools default-cap list/map fields at 30 items when `limit` is omitted, this first response is intentionally compact; pass `limit: 0` only when you genuinely need the full 200+ quote / ~100 KB market bundle. Typical latency: **300–800 ms** (cache read from Redis, no upstream API call).
+- **The sign-in window never opened.** Remove the connector and add it again, then click **Connect**. Pop-up blockers can stop the window.
+- **Claude says "Connection has expired".** The sign-in lapses after about a week without use. Open **Customize → Connectors → World Monitor** and click **Reconnect**.
+- **The World Monitor window keeps loading after a passkey prompt.** The passkey step was cancelled or timed out. Reload the window and sign in again, or use the email code.
+- **The code email didn't arrive.** Check spam or quarantine. Corporate filters sometimes hold it.
+- **The assistant says it needs a subscription.** Your account is on the free plan. Upgrade, then ask again; there's no need to reconnect. The new plan usually applies within a minute, and at most 15 minutes later.
+- **The assistant doesn't use World Monitor.** Make sure the connector is switched on for that chat, and mention World Monitor in your question.
 
-Behind the scenes, the tool call looks like this:
+## For developers: scripts and API keys
 
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tools/call",
-  "params": { "name": "get_market_data", "arguments": {} }
-}
-```
-
-And the response is a standard MCP content block — a single text block whose `text` field is the JSON payload:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "content": [
-      { "type": "text", "text": "{\"cached_at\":\"2026-05-17T10:34:00.852Z\",\"stale\":false,\"data\":{\"stocks-bootstrap\":{...},\"sectors\":{...},\"fear-greed\":{...}}}" }
-    ]
-  }
-}
-```
-
-Two payload-level fields you'll see on every cache tool:
-
-- `cached_at` — ISO timestamp of the oldest contributing data point. Use this to reason about how fresh the answer is.
-- `stale` — `true` when any contributing seed exceeded its freshness budget. Tells the model when to caveat its answer.
-
-A few more fields appear only when relevant:
-- `activationUnknown: true` when a content-freshness activation marker could not be read, so `stale` was computed without knowing whether the producer has ever published.
-- `freshnessUnknown: true` when a freshness record could not be read, so `stale` is `true` because freshness is unknown, not because the data is known to be old.
-- `unreadable` (a list of `data` labels) when some cache reads failed. Those sections are `null` because they could not be read, not because the dataset is empty, and retrying shortly usually fills them.
-- `contentFreshnessPendingUntil` (ISO timestamp) when a never-published seed is inside its deployment grace window. Content-age checks start counting against `stale` after that deadline.
-
-## 4. Trim the response (when it matters)
-
-Broad cache calls can still be large even with their default list caps. That's fine for one call, but if you're chaining several reads inside a longer conversation, you'll burn context fast. Every tool accepts an optional `jmespath` argument that projects the response server-side **before** it crosses the wire:
-
-```json
-{
-  "name": "get_market_data",
-  "arguments": {
-    "jmespath": "data.\"stocks-bootstrap\".quotes[?symbol=='AAPL' || symbol=='MSFT'].{s:symbol,p:price,chg:change}"
-  }
-}
-```
-
-Same call, ~120 bytes of response instead of the broader default-capped market bundle. JMESPath cuts payload by **80–95%** for typical projections. If you disable the default cap with `limit: 0`, projection becomes even more important because `get_market_data` can return the full 200+ quote / ~100 KB bundle.
-
-Don't try to memorise the grammar from scratch — head to the [JMESPath guide](/mcp-jmespath) for the 12 worked examples covering filters, projections, multiselect-hash, and the rest of the slices you'll actually use.
-
-## 5. Browse the full tool catalog
-
-`get_market_data` is one of the registered tools. The rest cover:
-
-- **Geopolitical & security** — `get_conflict_events`, `get_country_risk`, `get_military_posture`, `get_cyber_threats`, `get_sanctions_data`, `get_news_intelligence`.
-- **Movement & infrastructure** — `get_chokepoint_status`, `get_maritime_activity`, `get_airspace`, `get_aviation_status`, `search_flights`.
-- **Energy & macro** — `get_energy_intelligence`, `get_economic_data`, `get_country_macro`, `get_tariff_trends`, `get_eu_housing_cycle`, `get_eu_quarterly_gov_debt`, `get_eu_industrial_production`.
-- **Environment & health** — `get_climate_data`, `get_natural_disasters`, `get_radiation_data`, `get_health_signals`.
-- **Precomputed AI intelligence** — `get_world_brief` (citation-grounded dashboard snapshot; refreshed by the insights seeder).
-- **AI synthesis** (live LLM, slower — 1–4 s) — `get_country_brief`, `analyze_situation`, `generate_forecasts`.
-
-Full per-tool parameters, freshness budgets, and `curl` examples are in the [MCP Tools Reference](/mcp-tools-reference). When the compressed `tools/list` description is ambiguous about a specific tool, call `describe_tool` with `tool_name: "<name>"` for the full uncompressed definition — it's exempt from the Pro daily quota, so use it freely while exploring.
-
-## Troubleshooting and expectations
-
-If an endpoint appears in the REST OpenAPI docs but does not appear as an MCP tool, that is usually intentional. MCP exposes curated agent-safe tools, not every REST operation. Some REST routes are excluded because they mutate state, invoke per-call LLM work, fetch paid or high-cardinality upstream data on cache miss, or need manual cache-key mapping.
-
-To discover what MCP can call from your client:
-
-- Call `tools/list` for the current tool names and compressed descriptions.
-- Call `describe_tool` with `tool_name` when a `tools/list` entry is too short to choose confidently.
-- Use the [API coverage table](/mcp-overview#api-coverage) when you are starting from a REST method/path and want to know whether an exact MCP `_apiPaths` mapping exists.
-
-## What just happened
-
-The MCP handshake is invisible from the chat side, but here's the sequence so you know where to look if something breaks:
-
-1. Claude Desktop reads `claude_desktop_config.json`, sees the WorldMonitor server, and on first use POSTs `initialize` to `https://worldmonitor.app/mcp`. The server responds with its capabilities, the negotiated protocol version (default `2025-06-18`, matching the static server card; clients pinned to `2025-03-26` still get `2025-03-26`), and a session-level `instructions` string that tells the model about the universal `jmespath` argument. Clients that advertise `text/event-stream` may receive this response as SSE with a resumable `Mcp-Session-Id` / `Last-Event-ID` cursor; clients that do not advertise SSE receive JSON. See [protocol negotiation](/mcp-overview#protocol-negotiation) and [Streamable HTTP responses](/mcp-overview#streamable-http-responses) for the rollout details.
-2. Claude Desktop calls `tools/list` and receives compressed tool descriptions (`≤120` bytes per tool). The compressed form keeps `tools/list` cheap; `describe_tool` returns the full definition on demand.
-3. When you ask a question that needs live data, Claude picks a tool, calls `tools/call`, and inlines the response into its reply. Cache-backed tools, including `get_world_brief`, return the accepted snapshot without a request-time LLM call; live LLM tools (`analyze_situation`, etc.) take 1–4 s.
-
-## Server-side curl
-
-Sign in to the [dashboard](https://www.worldmonitor.app/dashboard) with an API Starter or higher plan. Select **Settings → API Keys** to create a key for scripts.
+Scripts and servers can call the same endpoint with a `wm_…` key from an API Starter or higher plan. Create one in the [dashboard](https://www.worldmonitor.app/dashboard) under **Settings → API Keys**.
 
 ```bash
 export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # Replace with your API key
 
-# 1. List tools (compressed descriptions)
 curl -s https://worldmonitor.app/mcp \
   -H "X-WorldMonitor-Key: $WM_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-
-# 2. Call a cache tool
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":2,
-    "method":"tools/call",
-    "params":{"name":"get_market_data","arguments":{}}
-  }'
-
-# 3. Same call with a JMESPath projection (much smaller response).
-# Heredoc keeps the single-quoted JMESPath string literals readable —
-# wrapping the JSON in -d '...' would collide with the inner quotes.
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  --data-binary @- <<'EOF'
-{
-  "jsonrpc":"2.0","id":3,
-  "method":"tools/call",
-  "params":{
-    "name":"get_market_data",
-    "arguments":{
-      "jmespath":"data.\"stocks-bootstrap\".quotes[?symbol=='AAPL' || symbol=='MSFT'].{s:symbol,p:price}"
-    }
-  }
-}
-EOF
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_market_data","arguments":{}}}'
 ```
 
-The `wm_…` user API key goes in `X-WorldMonitor-Key`, **not** as a `Bearer` token — sending it as a bearer fails OAuth resolution and returns `401 invalid_token`. If you already have an OAuth access token from `/api/oauth/token`, use `Authorization: Bearer $TOKEN` instead and drop the `X-WorldMonitor-Key` header.
+Send the key in `X-WorldMonitor-Key`, not as a bearer token; a key sent as a bearer returns `401 invalid_token`. If you hold an OAuth access token from `/api/oauth/token`, send `Authorization: Bearer $TOKEN` instead.
 
-## Where to go next
+Next steps for builders:
 
-- **[JMESPath guide](/mcp-jmespath)** — projection grammar with 12 worked examples against real response shapes. Read this before your second day of MCP use; it will pay for itself in saved tokens within an hour.
-- **[MCP Tools Reference](/mcp-tools-reference)** — per-tool parameters, freshness budgets, API endpoint mapping, and `curl` examples for every tool.
-- **[MCP Server reference](/mcp-overview)** — auth modes, OAuth setup, plans & quotas, error codes, and freshness model.
-- **[Command-line client](/cli)** — prefer a shell? `npx worldmonitor tools` drives the same tools from your terminal or a script, no integration to write.
-- **[Official SDKs](/sdks)** — prefer a library? Zero-dependency clients for Python (`pip install worldmonitor-sdk`), Ruby (`gem install worldmonitor`), and Go (`go get github.com/koala73/worldmonitor/sdk/go`) call the same tools with language-native helpers.
-- **[Authentication overview](/authentication)** — when to use an API key in `X-WorldMonitor-Key` vs. OAuth vs. browser session.
-
-## Operational note (for ops, not callers)
-
-Every `tools/call` emits a structured telemetry line tagged `mcp.toolcall` with latency, payload bytes (pre and post JMESPath), `jmespath_used`, and `budget_exceeded`. `initialize` emits `mcp.tools_list_emitted` with tool-count and tools-list byte metrics. Pipe Vercel / log-drain consumers at these lines if you want real P95 and payload-size tracking. Caller-facing behaviour is unaffected.
+- **[MCP Server reference](/mcp-overview)**: authentication, the `mcp-remote` bridge, protocol details, response fields and errors.
+- **[MCP Tools Reference](/mcp-tools-reference)**: every tool's parameters, freshness and examples.
+- **[JMESPath guide](/mcp-jmespath)**: trim large responses server-side before they reach the model.
+- **[Command-line client](/cli)** and **[SDKs](/sdks)**: the same tools from a terminal, Python, Ruby or Go.

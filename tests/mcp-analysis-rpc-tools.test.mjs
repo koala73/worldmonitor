@@ -26,6 +26,7 @@ import { ENTITY_REGISTRY } from '../shared/entity-registry.js';
 import { buildDependencyGraph, calculateCascade } from '../shared/analysis-infrastructure-cascade.ts';
 import { getTheaterPostureSummaries } from '../shared/analysis-military-surge.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
+import { CII_FORMULA_VERSION } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
 // Entered through the registry barrel, not `rpc-tools.ts` directly: rpc-tools
 // imports TOOL_REGISTRY back from the barrel, so importing it first hits the
 // cycle mid-initialisation ("Cannot access 'RPC_TOOLS' before initialization").
@@ -209,7 +210,7 @@ function analysisPayloads() {
         },
       ],
     },
-    'risk:scores:sebuf:v8': {
+    'risk:scores:sebuf:v13': {
       ciiScores: [
         { region: 'IR', combinedScore: 88 },
         { region: 'TW', combinedScore: 61 },
@@ -668,7 +669,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     {
       tool: 'get_focal_points',
       params: {},
-      keys: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v8'],
+      keys: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v13'],
     },
     {
       tool: 'get_military_surge',
@@ -684,7 +685,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
       tool: 'get_alert_digest',
       params: {},
       keys: [
-        'risk:scores:sebuf:v8',
+        'risk:scores:sebuf:v13',
         'military:surges:v1',
         'cable-health-v1',
         'infra:outages:v1',
@@ -698,7 +699,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
       params: {},
       keys: [
         'news:insights:v1',
-        'risk:scores:sebuf:v8',
+        'risk:scores:sebuf:v13',
         'military:flights:v1',
         'unrest:events:v1',
         'seismology:earthquakes:v1',
@@ -844,6 +845,19 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.ok(catalogNodes.every((node) => !node.id.startsWith('country-')));
   });
 
+  it('rejects a multi-cut containing both known and unknown node ids', async () => {
+    installUpstashStub(analysisPayloads());
+    const tool = findTool('simulate_infrastructure_cascade');
+    const result = await tool._execute(
+      { source_ids: ['cable:sea-me-we-5', 'cable:misspelled'] }, '', {}, {},
+    );
+
+    assert.match(result.error ?? '', /unknown.*cable:misspelled/i);
+    assert.equal(result.data.cascade, null);
+    assert.equal(result.data.catalog, null);
+    for (const key of tool.outputSchema.required) assert.ok(key in result);
+  });
+
   it('keeps the static cascade catalog and chokepoint simulations available without cable data', async () => {
     installUpstashStub(analysisPayloads(), {
       misses: ['infrastructure:submarine-cables:v1'],
@@ -934,7 +948,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.equal(distant.data.alerts.length, 0);
   });
 
-  it('reads every composite payload and freshness record in one Redis pipeline', async () => {
+  it('reads weekly payload metadata together and bounds movers to one separate pipeline', async () => {
     installUpstashStub(analysisPayloads());
     const redisFetch = globalThis.fetch;
     let pipelineCalls = 0;
@@ -946,7 +960,52 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
 
     await findTool('get_alert_digest')._execute({ view: 'weekly' }, '', {}, {});
 
-    assert.equal(pipelineCalls, 1);
+    assert.equal(pipelineCalls, 2);
+  });
+
+  it('rejects movers_days for today and enforces whole weekly depths from 7 to 90', async () => {
+    const tool = findTool('get_alert_digest');
+    for (const args of [{ movers_days: 30 }, { view: 'today', movers_days: 7 }, ...[6, 91, 7.5, '30', null].map(movers_days => ({ view: 'weekly', movers_days }))]) {
+      await assert.rejects(() => tool._execute(args, '', {}, {}), /movers_days/);
+    }
+  });
+
+  it('returns weekly movers from 62 bounded preview-owned reads and includes history freshness', async () => {
+    const now = Date.now(), day = Math.floor(now / 86400000);
+    const metaKey = 'seed-meta:intelligence:risk-scores-history';
+    installUpstashStub({ ...analysisPayloads(), [metaKey]: { fetchedAt: now, recordCount: 31 } });
+    const redisFetch = globalThis.fetch;
+    let historyCommands = [];
+    let historyFails = false;
+    globalThis.fetch = async (input, init) => {
+      const commands = JSON.parse(String(init?.body ?? '[]'));
+      if (commands[0]?.[0] !== 'ZRANGE') return redisFetch(input, init);
+      historyCommands = commands;
+      return Response.json(commands.map(([verb, key, bound]) => {
+        if (historyFails) return { error: 'simulated history outage' };
+        const latest = Number(bound) === day;
+        const date = new Date((latest ? day : day - 31) * 86400000).toISOString().slice(0, 10);
+        const score = key.endsWith(':IR') ? (latest ? 50 : 30) : key.endsWith(':US') ? (latest ? 20 : 30) : 20;
+        return { result: [JSON.stringify({ d: date, v: CII_FORMULA_VERSION, s: score, u: 1, c: 2, m: 3, n: 4, t: latest ? now : (day - 31) * 86400000 })] };
+      }));
+    };
+    const tool = findTool('get_alert_digest');
+    const result = await tool._execute({ view: 'weekly', movers_days: 30 }, '', {}, {});
+    assert.equal(historyCommands.length, 62);
+    assert.ok(historyCommands.every(cmd => cmd[0] === 'ZRANGE' && cmd.slice(4).join(' ') === 'BYSCORE REV LIMIT 0 1'));
+    const movers = result.data.weekly.cii_movers;
+    assert.equal(movers.window_days, 30);
+    assert.equal(movers.methodology_version, CII_FORMULA_VERSION);
+    assert.equal(movers.risers[0].countryCode, 'IR');
+    assert.equal(movers.risers[0].delta, 20);
+    assert.equal(movers.fallers[0].countryCode, 'US');
+    assert.ok(!result.data.unavailable.includes('cii_history'));
+    historyFails = true;
+    const failed = await tool._execute({ view: 'weekly', movers_days: 30 }, '', {}, {});
+    assert.equal(failed.stale, true);
+    assert.ok(failed.data.unavailable.includes('cii_history'));
+    assert.equal(failed.data.weekly.cii_movers.insufficient_history.length, 31);
+    assert.ok(failed.failed_inputs.includes('risk:scores:history:IR'));
   });
 
   it('marks a partial HTTP failure stale and names the failed input', async () => {
@@ -1174,7 +1233,17 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
         payloads['military:surges:v1'].sourceVersion = sourceVersion;
         const fetchedAt = Date.now() - MIN;
         payloads['seed-meta:intelligence:risk-scores'] = { fetchedAt, recordCount: 3 };
+        if (view === 'weekly') payloads['seed-meta:intelligence:risk-scores-history'] = { fetchedAt, recordCount: 31 };
         installUpstashStub(payloads);
+        if (view === 'weekly') {
+          const redisFetch = globalThis.fetch;
+          globalThis.fetch = async (input, init) => {
+            const commands = JSON.parse(String(init?.body ?? '[]'));
+            if (commands[0]?.[0] !== 'ZRANGE') return redisFetch(input, init);
+            const point = JSON.stringify({ d: new Date(fetchedAt).toISOString().slice(0, 10), v: CII_FORMULA_VERSION, s: 20, u: 1, c: 2, m: 3, n: 4, t: fetchedAt });
+            return Response.json(commands.map((_, index) => ({ result: index % 2 === 0 ? [point] : [] })));
+          };
+        }
 
         const result = await findTool('get_alert_digest')._execute({ view }, '', {}, {});
         const allowed = sourceVersion === 'wingbits';
@@ -1234,5 +1303,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.ok(result.data.unavailable.includes('military_history'));
     assert.equal(result.data.weekly.history_available, false);
     assert.deepEqual(result.data.weekly.trends, []);
+    assert.ok(result.data.unavailable.includes('cii_history'));
+    assert.deepEqual(result.data.weekly.cii_movers.risers, []);
   });
 });

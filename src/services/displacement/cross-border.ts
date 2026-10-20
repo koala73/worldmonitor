@@ -3,7 +3,7 @@
 // can load it directly. The payload shape is written by
 // scripts/seed-cross-border-arrivals.mjs.
 
-export type CrossBorderFlowKind = 'outflow' | 'return' | 'arrival' | 'death';
+export type CrossBorderFlowKind = 'outflow' | 'return' | 'arrival' | 'death' | 'encounter';
 
 interface Coordinates { latitude: number; longitude: number }
 
@@ -43,6 +43,13 @@ interface RawSituation {
 }
 
 export interface CrossBorderSituation {
+  source?: string;
+  last7Days?: number;
+  last30Days?: number;
+  changePct?: number;
+  measure?: string;
+  kind?: string;
+  stale?: boolean;
   id: string;
   name: string;
   sourceUrl: string;
@@ -66,6 +73,12 @@ export interface CrossBorderSituation {
 
 /** One receiving country in one flow, for the map. */
 export interface CrossBorderPoint {
+  source?: string;
+  sourceUrl?: string;
+  changePct?: number;
+  last30Days?: number;
+  measure?: string;
+  period?: string;
   situation: string;
   label: string;
   kind: CrossBorderFlowKind;
@@ -81,6 +94,8 @@ export interface CrossBorderPoint {
 }
 
 export interface CrossBorderData {
+  deaths?: CrossBorderPoint[];
+  sources?: import('@/generated/client/worldmonitor/displacement/v1/service_client').CrossBorderSourceStatus[];
   situations: CrossBorderSituation[];
   points: CrossBorderPoint[];
 }
@@ -163,4 +178,52 @@ export function toCrossBorderData(payload: unknown): CrossBorderData {
     situations,
     points: [...byCountryKind.values()].sort((a, b) => b.individuals - a.individuals),
   };
+}
+
+export function toMovementData(payload: import('@/generated/client/worldmonitor/displacement/v1/service_client').GetCrossBorderMovementsResponse, now = Date.now()): CrossBorderData {
+  const situations: CrossBorderSituation[] = [];
+  const points: CrossBorderPoint[] = [];
+  const deaths: CrossBorderPoint[] = [];
+  const sources = payload.sources.map(source => ({
+    ...source,
+    status: source.status !== 'unavailable' && (now - source.fetchedAt > 48 * 3600000
+      || now - source.contentAt > source.maxContentAgeMin * 60000) ? 'stale' : source.status,
+  }));
+  const bySource = new Map(sources.map(source => [source.name, source]));
+  for (const movement of payload.movements) {
+    const { location } = movement;
+    const source = bySource.get(movement.source);
+    const reportAt = Date.parse(movement.asOf);
+    const stale = movement.stale || !source || ['stale', 'unavailable'].includes(source.status)
+      || !Number.isFinite(reportAt) || now - reportAt > source.maxContentAgeMin * 60000;
+    const surge = movement.surge && !stale;
+    const item: CrossBorderSituation = {
+      id: movement.id, name: movement.name, sourceUrl: movement.sourceUrl, source: movement.source,
+      asOf: movement.asOf, accelerating: surge, outflow: movement.kind === 'outflow' ? movement.count : 0,
+      total: movement.count, lastMonth: movement.measure === 'monthly' ? { month: movement.period, individuals: movement.count } : null,
+      latestChange: movement.stockChange !== undefined ? { delta: movement.stockChange, days: movement.stockChangeSince ? Math.round((Date.parse(movement.asOf) - Date.parse(movement.stockChangeSince)) / 86400000) : null } : null, topCountries: [], countryCodes: [movement.countryCode, movement.originCode].filter(Boolean),
+      lat: location?.latitude, lon: location?.longitude, last7Days: movement.last7Days, last30Days: movement.last30Days,
+      changePct: movement.changePct, measure: movement.measure, kind: movement.kind, stale,
+    };
+    situations.push(item);
+    if (!location || stale || movement.count === 0 && !(movement.last30Days! > 0)) continue;
+    const point: CrossBorderPoint = {
+      situation: movement.route, label: movement.name, country: movement.countryCode, kind: movement.kind as CrossBorderFlowKind,
+      individuals: movement.last30Days ?? movement.count, date: movement.asOf, change: movement.stockChange ?? null, changeSince: movement.stockChangeSince,
+      lastMonth: movement.measure === 'monthly' ? movement.count : null, accelerating: surge,
+      lat: location.latitude, lon: location.longitude, source: movement.source, sourceUrl: movement.sourceUrl,
+      changePct: movement.changePct, last30Days: movement.last30Days, measure: movement.measure, period: movement.period,
+    };
+    if (movement.kind === 'death') deaths.push(point);
+    else points.push(point);
+  }
+  const stockPoints = new Map<string, CrossBorderPoint>();
+  const routePoints = points.filter(point => {
+    if (point.measure !== 'stock') return true;
+    const key = `${point.country}:${point.kind}`;
+    const previous = stockPoints.get(key);
+    if (!previous || point.individuals > previous.individuals) stockPoints.set(key, point);
+    return false;
+  });
+  return { situations, points: [...routePoints, ...stockPoints.values()], deaths, sources };
 }

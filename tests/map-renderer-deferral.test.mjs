@@ -513,8 +513,8 @@ describe('map renderer deferral boundary', () => {
 
     assert.match(
       methodBodyText(globe, 'settleViewportMovement'),
-      /this\.onStateChangeCb\?\.\(this\.getState\(\)\)[\s\S]*resolve\?\.\(completed\)/,
-      'globe settlement should publish visible state before resolving tool callers',
+      /this\.resolveViewportSettled\s*=\s*null[\s\S]*resolve\?\.\(completed\)[\s\S]*this\.viewportAutoRotateBeforeMove\s*=\s*null[\s\S]*this\.onStateChangeCb\?\.\(this\.getState\(\)\)/,
+      'globe settlement should clear movement ownership before a reentrant state subscriber runs',
     );
     assert.match(
       methodBodyText(globe, 'markViewportMoving'),

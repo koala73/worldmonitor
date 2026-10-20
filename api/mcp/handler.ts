@@ -44,6 +44,7 @@ import {
 } from './skill-extension/index';
 import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from './ui/registry';
 import { emitTelemetry, principalIdForLog } from './telemetry';
+import { classifyAgentClientHints, sanitizeClientName } from '../../shared/agent-client-source';
 import { hashKeySync } from '../../server/_shared/usage-identity';
 import { createMcpUsage, emitMcpRequestEvent, setUsageContext, setUsageRpc, type McpUsage } from './usage';
 import { safeJsonRpcId, utf8ByteLength } from './utils';
@@ -1053,6 +1054,7 @@ async function mcpHandlerInner(
   let budget: McpBudget | undefined;
   let burstPerMinute: number | undefined;
   let freeAccountAllowance = false;
+  let planKey: string | undefined;
   if (PUBLIC_MCP_METHODS.has(method) || isAnonResourceRead || isFreeTierToolCall) {
     if (hasCredentials(req)) {
       // Credentials presented on a public method are still validated so a
@@ -1124,6 +1126,7 @@ async function mcpHandlerInner(
     budget = preCheck.budget;
     burstPerMinute = preCheck.burstPerMinute;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
+    planKey = preCheck.planKey;
     const limited = method === 'tools/call' ? null : await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute, id);
     if (limited) {
       usage.phase = 'limit';
@@ -1150,12 +1153,18 @@ async function mcpHandlerInner(
       // full JSON-RPC envelope (jsonrpc/id/protocolVersion/capabilities add
       // fixed overhead). UA is sliced to 256 chars: a pathological 32 KB
       // custom UA would otherwise inflate every emitted line for that session.
+      const clientUserAgent = (req.headers.get('User-Agent') ?? '').slice(0, 256);
+      const clientName = sanitizeClientName(
+        (body.params as { clientInfo?: { name?: unknown } } | null | undefined)?.clientInfo?.name,
+      );
       emitTelemetry('mcp.tools_list_emitted', {
         auth_kind: context?.kind ?? 'anon',
         user_id: context ? principalIdForLog(context) : 'anon',
         tools_array_bytes: TOOL_LIST_BYTES,
         tool_count: TOOL_LIST_RESPONSE.length,
-        client_user_agent: (req.headers.get('User-Agent') ?? '').slice(0, 256),
+        client_user_agent: clientUserAgent,
+        client_name: clientName,
+        client_source: classifyAgentClientHints([clientName, clientUserAgent]),
       });
       return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, {
         protocolVersion: negotiatedVersion,
@@ -1215,6 +1224,8 @@ async function mcpHandlerInner(
         freeAccountAllowance,
         resourceMetadataUrl,
         burstPerMinute ?? MCP_DEFAULT_BURST_PER_MINUTE,
+        planKey,
+        usage,
       );
       classifyDispatchedUsage(usage, dispatched);
       return maybeStreamJsonRpcResponse(req, sseOwner, dispatched);
@@ -1332,6 +1343,8 @@ async function mcpHandlerInner(
           budget,
           freeAccountAllowance,
           resourceMetadataUrl,
+          planKey,
+          usage,
         );
         classifyDispatchedUsage(usage, resourceRes);
         return maybeStreamJsonRpcResponse(req, sseOwner, resourceRes);

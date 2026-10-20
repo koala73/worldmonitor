@@ -258,7 +258,12 @@ import {
   resetEntitlementState,
   resetEntitlementVerification,
 } from '@/services/entitlements';
-import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
+import { watchDesktopCloudAccess } from '@/services/desktop-cloud-auth';
+import { initSubscriptionWatch, destroySubscriptionWatch, openBillingPortal } from '@/services/billing';
+import {
+  captureBillingPortalIntentFromUrl,
+  resumePendingBillingPortal,
+} from '@/services/billing-portal-intent';
 import {
   FREE_TIER_FOLLOW_LIMIT,
   WM_FOLLOWED_COUNTRIES_CAP_DROP,
@@ -302,6 +307,15 @@ export type { CountryBriefSignals } from '@/app/app-context';
 
 export class App {
   private state: AppContext;
+  private resumeBillingPortal(capturedThisLoad = false): Promise<boolean> {
+    return resumePendingBillingPortal({
+      getUserId: () => getAuthState().user?.id,
+      openAuth: () => this.state.authModal?.open(),
+      openPortal: () => openBillingPortal(),
+      notify: (message) => showToast(message),
+    }, capturedThisLoad);
+  }
+
   private pendingDeepLinkCountry: string | null = null;
   private pendingDeepLinkExpanded = false;
   private pendingDeepLinkStoryCode: string | null = null;
@@ -336,6 +350,7 @@ export class App {
   private unsubAiFlow: (() => void) | null = null;
   private unsubFreeTier: (() => void) | null = null;
   private unsubEntitlementPremiumLoaders: (() => void) | null = null;
+  private unsubDesktopCloudAccess: (() => void) | null = null;
   /**
    * Boot epoch for optional local-AI continuations (#7779). destroy() bumps
    * it first so a stale detached continuation from a torn-down App can never
@@ -2688,6 +2703,11 @@ export class App {
       _prevHadPremium = nowPremium;
     };
     this.unsubEntitlementPremiumLoaders = onEntitlementChange(() => firePremiumLoaders());
+    if (isDesktopRuntime()) {
+      // Desktop cloud data rides the Pro credential (#9396). Requests sent
+      // before it existed got 401s and tripped panel breakers, so start clean.
+      this.unsubDesktopCloudAccess = watchDesktopCloudAccess(() => window.location.reload());
+    }
     this.unsubFreeTier = subscribeAuthState((session) => {
       const userId = session.user?.id ?? null;
       const accountTransition = (
@@ -2845,6 +2865,7 @@ export class App {
         void resumePendingCheckout({
           openAuth: () => this.state.authModal?.open(),
         });
+        void this.resumeBillingPortal();
       } else if (userId === null && _prevUserId !== null) {
         // Clerk's mounted UserButton signs out through the SDK directly, so
         // this observed transition is the authoritative place to invalidate
@@ -2974,6 +2995,11 @@ export class App {
         openAuth: () => this.state.authModal?.open(),
       });
     }
+    // Payment-email fallback (/dashboard?billing=portal): open the portal
+    // now if signed in, else after the sign-in the auth listener observes.
+    if (captureBillingPortalIntentFromUrl()) {
+      void this.resumeBillingPortal(true);
+    }
 
     // Phase 4: MapLayerHandlers, CountryIntel. SearchManager is lazy-loaded
     // on first CMD+K/search-button open so its modal catalog stays off startup.
@@ -2991,6 +3017,9 @@ export class App {
     this.pendingDeepLinkExpanded = initState.expanded === true;
     this.pendingDeepLinkChokepoint = initState.chokepoint ?? null;
     const earlyParams = new URLSearchParams(window.location.search);
+    if (earlyParams.get('settings') === 'notifications') {
+      void this.state.unifiedSettings?.open('notifications');
+    }
     this.pendingDeepLinkStoryCode = earlyParams.get('c') ?? null;
     this.pendingDeepLinkSearchQuery = readDashboardSearchQuery(window.location.search);
     this.eventHandlers.setupUrlStateSync();
@@ -3620,6 +3649,7 @@ export class App {
       this.unsubAiFlow?.();
       this.unsubFreeTier?.();
       this.unsubEntitlementPremiumLoaders?.();
+      this.unsubDesktopCloudAccess?.();
       this.freeTierGate.cancelFallback();
       mlWorker.terminate();
       this.state.findingsBadge?.destroy();
@@ -4058,12 +4088,12 @@ export class App {
     // PRO-gated: the isNearViewport check is a visibility gate, not an entitlement gate,
     // so without hasPremiumAccess() here we'd still hit the 6 WTO RPCs every poll for
     // free users once the panel scrolled into view.
-    if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity' || SITE_VARIANT === 'energy') {
-      this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => hasPremiumAccess() && this.isPanelNearViewport('trade-policy'));
-      this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), REFRESH_INTERVALS.supplyChain, () => this.isPanelNearViewport('supply-chain'));
-      this.refreshScheduler.scheduleRefresh('chinaCorridors', () => this.dataLoader.loadChinaCorridors(), REFRESH_INTERVALS.chinaCorridors, () => this.isPanelNearViewport('china-corridors'));
-      this.refreshScheduler.scheduleRefresh('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast(), REFRESH_INTERVALS.chinaActivityNowcast, () => this.isPanelNearViewport('china-activity-nowcast'));
-    }
+    // Not variant-gated: a user can add these panels to any variant, and each
+    // condition already requires the panel on screen (#9396).
+    this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => hasPremiumAccess() && this.isPanelNearViewport('trade-policy'));
+    this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), REFRESH_INTERVALS.supplyChain, () => this.isPanelNearViewport('supply-chain'));
+    this.refreshScheduler.scheduleRefresh('chinaCorridors', () => this.dataLoader.loadChinaCorridors(), REFRESH_INTERVALS.chinaCorridors, () => this.isPanelNearViewport('china-corridors'));
+    this.refreshScheduler.scheduleRefresh('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast(), REFRESH_INTERVALS.chinaActivityNowcast, () => this.isPanelNearViewport('china-activity-nowcast'));
 
     this.refreshScheduler.scheduleRefresh(
       'cross-source-signals',

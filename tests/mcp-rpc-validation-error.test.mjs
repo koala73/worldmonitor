@@ -4,7 +4,7 @@
 // generic -32603 "Internal error: data fetch failed".
 import { afterEach, describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { dispatchToolsCall } from '../api/mcp/dispatch.ts';
@@ -165,6 +165,31 @@ describe('MCP RPC ValidationError preservation', () => {
     assert.equal(body.result, undefined);
   });
 
+  it('get_country_brief maps an unassigned country_code 400 to -32602 with data.violations', async () => {
+    const violation = {
+      field: 'country_code',
+      description: 'country_code must be an assigned ISO 3166-1 alpha-2 code, e.g. "IQ".',
+    };
+    let briefCalls = 0;
+    const res = await callTool(
+      'get_country_brief',
+      { country_code: 'ZZ' },
+      async (input) => {
+        const url = String(typeof input === 'string' ? input : input.url);
+        if (!url.includes('/api/intelligence/v1/get-country-intel-brief')) {
+          return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        briefCalls += 1;
+        return json400([violation]);
+      },
+    );
+    assert.equal(briefCalls, 1);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32602);
+    assert.deepEqual(body.error?.data, { violations: [violation] });
+    assert.equal(body.result, undefined);
+  });
+
   it('POST analyze_situation 400 returns JSON-RPC -32602 with data.violations', async () => {
     const res = await callTool(
       'analyze_situation',
@@ -224,7 +249,7 @@ describe('MCP RPC ValidationError preservation', () => {
     try {
       await callTool(
         'get_food_stocks',
-        {},
+        { country_code: 'EG' },
         async () => json400([{ field: 'countryCode', description: 'countryCode is required' }]),
       );
     } finally {
@@ -277,7 +302,7 @@ describe('get_intel_timeline local scope guard (WORLDMONITOR-10Y)', () => {
     assert.equal(body.error?.data?.violations?.length, 2);
   });
 
-  it('telemetry classifies the local scope guard as client_4xx', async () => {
+  it('unscoped calls are rejected before tool execution telemetry', async () => {
     process.env.MCP_TELEMETRY = 'true';
     const captured = [];
     const originalLog = console.log;
@@ -290,9 +315,7 @@ describe('get_intel_timeline local scope guard (WORLDMONITOR-10Y)', () => {
       console.log = originalLog;
     }
     const event = captured.find((line) => line && line.tag === 'mcp.toolcall');
-    assert.equal(event?.ok, false);
-    assert.equal(event?.error_kind, 'client_4xx');
-    assert.equal(event?.tool, 'get_intel_timeline');
+    assert.equal(event, undefined);
   });
 });
 
@@ -542,5 +565,20 @@ describe('MCP RPC ValidationError preservation on the observed-downstream path',
     assert.equal(downstreamEvent?.response_marker, 'json_error');
     assert.equal(downstreamEvent?.downstream_operation, 'search-intel-history');
     assert.ok(!JSON.stringify(downstreamEvent).includes('country is invalid'));
+  });
+});
+
+describe('handler input rejections', () => {
+  // A message-only ApiError(400) carries no violations, so MCP reports it as
+  // -32603 and agents retry instead of fixing the argument. The batch guard
+  // rejects a forwarded header, not a caller argument.
+  const ALLOWED = new Set(['server/worldmonitor/batch/v1/execute-batch.ts']);
+
+  it('name the rejected field with ValidationError instead of ApiError(400)', () => {
+    const offenders = readdirSync('server', { recursive: true })
+      .map((entry) => `server/${entry}`)
+      .filter((path) => path.endsWith('.ts') && !ALLOWED.has(path))
+      .filter((path) => /new ApiError\(\s*400\b/.test(readFileSync(path, 'utf8')));
+    assert.deepEqual(offenders, []);
   });
 });

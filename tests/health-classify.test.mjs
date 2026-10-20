@@ -39,6 +39,47 @@ const {
 const NOW = 1_700_000_000_000;
 const ONE_MIN_MS = 60_000;
 
+test('daily CII history monitors its string index and requires a build within 30 minutes', () => {
+  const key = STANDALONE_KEYS.riskScoresHistory;
+  assert.equal(key, 'risk:scores:history:index');
+  assert.equal(SEED_META.riskScoresHistory.key, 'seed-meta:intelligence:risk-scores-history');
+  assert.equal(SEED_META.riskScoresHistory.maxStaleMin, 30);
+  assert.equal(SEED_META.riskScoresHistory.minRecordCount, 31);
+  for (const [age, count, status] of [[0, 31, 'OK'], [31, 31, 'STALE_SEED'], [0, 30, 'COVERAGE_PARTIAL']]) {
+    const result = classifyKey('riskScoresHistory', key, { allowOnDemand: false }, makeCtx({
+      strens: { [key]: 256 },
+      metaValues: { [SEED_META.riskScoresHistory.key]: seedMeta({ fetchedAt: NOW - age * ONE_MIN_MS, recordCount: count }) },
+    }));
+    assert.equal(result.status, status);
+  }
+});
+
+test('country archive health activates once and detects a stopped daily cron', () => {
+  const name = 'countryHistory', key = STANDALONE_KEYS[name];
+  assert.equal(__testing__.ACTIVATION_MARKERS[name], 'seed-activated:history:country');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({ activationStates: { [name]: false } })).status, 'EMPTY_ON_DEMAND');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({ activationStates: { [name]: true } })).status, 'EMPTY');
+  for (const [age, status] of [[0, 'OK'], [2161, 'STALE_SEED']]) {
+    assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({
+      activationStates: { [name]: true }, strens: { [key]: 256 },
+      metaValues: { [SEED_META[name].key]: seedMeta({ fetchedAt: NOW - age * ONE_MIN_MS, recordCount: 196 }) },
+    })).status, status);
+  }
+});
+
+test('daily CII health is pending only before its first confirmed publication', () => {
+  const name = 'riskScoresHistory';
+  const key = STANDALONE_KEYS[name];
+  assert.equal(__testing__.ACTIVATION_MARKERS[name], SEED_META[name].activationKey);
+  assert.equal(SEED_META[name].cutover.issue, 9354);
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({ activationStates: { [name]: false } })).status, 'EMPTY_ON_DEMAND');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({ activationStates: { [name]: true } })).status, 'EMPTY');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({
+    activationStates: { [name]: true }, strens: { [key]: 256 },
+    metaValues: { [SEED_META[name].key]: seedMeta({ fetchedAt: NOW - 31 * ONE_MIN_MS, recordCount: 31 }) },
+  })).status, 'STALE_SEED');
+});
+
 test('transit coverage alerts below five measured canonical waterways despite a fresh payload', () => {
   const key = STANDALONE_KEYS.chokepointTransits;
   for (const [recordCount, status] of [[0, 'EMPTY_DATA'], [3, 'COVERAGE_PARTIAL'], [4, 'COVERAGE_PARTIAL'], [5, 'OK'], [13, 'OK']]) {
@@ -2857,6 +2898,19 @@ test('dyad health is pending before activation and strict afterward', () => {
   const name = 'gdeltDyadTension';
   const key = STANDALONE_KEYS[name];
   assert.equal(__testing__.ACTIVATION_MARKERS[name], 'seed-activated:gdelt:bulk:dyad-tension');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true },
+    makeCtx({ activationStates: { [name]: false } })).status, 'EMPTY_ON_DEMAND');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true },
+    makeCtx({ activationStates: { [name]: true } })).status, 'EMPTY');
+});
+
+
+test('GDELT country-events health is pending before activation and strict afterward', () => {
+  const name = 'gdeltCountryEvents';
+  const key = STANDALONE_KEYS[name];
+  assert.equal(key, 'gdelt:bulk:country-events:v1');
+  assert.ok(ON_DEMAND_KEYS.has(name));
+  assert.equal(__testing__.ACTIVATION_MARKERS[name], SEED_META[name].activationKey);
   assert.equal(classifyKey(name, key, { allowOnDemand: true },
     makeCtx({ activationStates: { [name]: false } })).status, 'EMPTY_ON_DEMAND');
   assert.equal(classifyKey(name, key, { allowOnDemand: true },

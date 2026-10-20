@@ -379,4 +379,4 @@ VOID 占比的目标是低于已结算已发布预测的 15%（`GO_FORWARD_VOID_
 ## API 参考
 
 - [Forecast service](https://github.com/koala73/worldmonitor/blob/main/docs/api/ForecastService.openapi.yaml) — 涵盖 `get-forecasts`、`get-forecast-scorecard`、`get-simulation-outcome`、`get-simulation-package` 和 `trigger-simulation`。
-- 关于**程序化预测生成**（在缓存的 cron 输出之外生成新概率），请参见 [MCP `generate_forecasts` 工具](/zh/mcp-overview#ai-情报)。
+- 智能体通过 [MCP `get_forecast_predictions` 工具](/zh/mcp-overview#ai-情报)读取已发布的预测。预测列表由流水线按自身计划生成；任何 MCP 工具都不会启动新的预测运行。上文的 `trigger-simulation` 端点会排队一次战区模拟，这与预测列表是分开的。

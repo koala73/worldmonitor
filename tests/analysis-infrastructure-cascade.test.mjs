@@ -206,7 +206,7 @@ describe('infrastructure cascade core — cascade simulation', () => {
     const result = calculateCascade(buildFixtureGraph(), 'cable:atlantic-1', 1.0);
 
     assert.deepEqual(result.redundancies, [
-      { id: 'atlantic-2', name: 'Atlantic Backup', capacityShare: 0.2 },
+      { id: 'atlantic-2', name: 'Atlantic Backup', capacityShare: 0.2, avoidsCutZone: true },
     ]);
   });
 

@@ -179,6 +179,16 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'HaitiLibre English': 'mainstream', 'AyiboPost': 'mainstream',
   'Amu TV': 'mainstream', 'Pajhwok Afghan News': 'wire',
   'Naharnet Lebanon': 'mainstream', "L'Orient Today": 'mainstream', 'Annahar': 'mainstream',
+  // Major publishers added after the 2026-10-16 Google News World audit. The
+  // Economist, Times of Israel and Middle East Eye are typed by the social
+  // overlays spread below, which own those names.
+  'New York Times World': 'mainstream', 'Washington Post World': 'mainstream',
+  'The Independent': 'mainstream', 'Sky News': 'mainstream', 'Japan Times': 'mainstream',
+  // The BBC's UK desks, added after the 2026-10-17 audit.
+  'BBC UK': 'mainstream', 'BBC Northern Ireland': 'mainstream',
+  // Science panel sources (2026-10-17 audit).
+  'Reuters Science': 'wire', 'Nature News': 'mainstream', 'BBC Science': 'mainstream',
+  'Guardian Science': 'mainstream', 'ScienceDaily': 'other',
   'Studio Tamani': 'mainstream', 'leFaso.net': 'mainstream',
   'ActuNiger': 'mainstream', 'Aïr Info': 'mainstream',
   'Caracas Chronicles': 'mainstream', 'Efecto Cocuyo': 'mainstream',
@@ -378,6 +388,19 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'Naharnet Lebanon': { risk: 'low', note: 'Independent Lebanese digital outlet' },
   "L'Orient Today": { risk: 'low', note: 'Independent English-language Lebanese newsroom' },
   'Annahar': { risk: 'low', note: 'Independent Lebanese Arabic-language political newspaper' },
+  'New York Times World': { risk: 'low', note: 'US national daily newspaper (New York Times Company)' },
+  'Washington Post World': { risk: 'low', note: 'US national daily newspaper' },
+  // The Economist, Times of Israel and Middle East Eye: risk notes come from the social overlays below.
+  'The Independent': { risk: 'low', note: 'British national online newspaper' },
+  'Sky News': { risk: 'low', note: 'British commercial news broadcaster (Comcast)' },
+  'Japan Times': { risk: 'low', note: 'Japanese English-language daily newspaper' },
+  'BBC UK': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
+  'BBC Northern Ireland': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
+  'Reuters Science': { risk: 'low', note: 'Wire service, strict editorial standards' },
+  'Nature News': { risk: 'low', note: 'News desk of the scientific journal Nature (Springer Nature)' },
+  'BBC Science': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
+  'Guardian Science': { risk: 'low', note: 'Scott Trust ownership, no shareholders' },
+  'ScienceDaily': { risk: 'low', note: 'Aggregator of university and institute press releases' },
   'PAP': { risk: 'medium', stateAffiliated: 'Poland', note: 'Polish national news agency (Polska Agencja Prasowa); state-owned wire' },
   'Gazeta Wyborcza': { risk: 'low', note: 'Independent Polish daily newspaper published by Agora' },
   'Polityka': { risk: 'low', note: 'Independent Polish weekly news magazine' },

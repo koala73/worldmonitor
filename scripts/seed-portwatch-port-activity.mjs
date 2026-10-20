@@ -996,6 +996,7 @@ export function finalisePortsForCountry(portAccumMap, refMap) {
       lat: coords.lat,
       lon: coords.lon,
       tankerCalls30d: a.last30_calls,
+      prevTankerCalls30d: a.prev30_calls,
       trendDelta,
       importTankerDwt30d: a.last30_import,
       exportTankerDwt30d: a.last30_export,

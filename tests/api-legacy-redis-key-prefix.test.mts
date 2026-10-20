@@ -239,10 +239,17 @@ describe('isAppOwnedRedisKey (#7674)', () => {
   it('names the route-owned exceptions and leaves the seeder fleet raw', () => {
     assert.equal(isAppOwnedRedisKey('temporal:anomalies:v1'), true);
     assert.equal(isAppOwnedRedisKey('seed-meta:temporal:anomalies'), true);
-    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:v8'), true);
-    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:stale:v8'), true);
-    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:rejected:v8'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:v13'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:stale:v13'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:rejected:v13'), true);
     assert.equal(isAppOwnedRedisKey('seed-meta:intelligence:risk-scores'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:history:IR'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:history:US'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:history:index'), true);
+    assert.equal(isAppOwnedRedisKey('seed-meta:intelligence:risk-scores-history'), true);
+    assert.equal(isAppOwnedRedisKey('seed-activated:intelligence:risk-scores-history'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:history:IR:extra'), false);
+    assert.equal(isAppOwnedRedisKey('risk:scores:history:ir'), false);
     assert.equal(isAppOwnedRedisKey('supply_chain:chokepoints:v4'), true);
     assert.equal(isAppOwnedRedisKey('seed-meta:supply_chain:chokepoints'), true);
     assert.equal(isAppOwnedRedisKey('cable-health-v1'), true);

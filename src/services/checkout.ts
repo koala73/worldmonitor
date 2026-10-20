@@ -11,6 +11,7 @@
  * UI code calls startCheckout(productId) -- everything else is internal.
  */
 
+import type { DodoProductId } from '@/config/products';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { openBillingPortal, prereserveBillingPortalTab } from './billing';
 import { getCurrentClerkUser, getClerkToken, openSignIn } from './clerk';
@@ -177,6 +178,7 @@ interface PendingCheckoutIntent {
 const PENDING_INTENT_TTL_MS = 15 * 60 * 1000;
 
 let _watchersInitialized = false;
+let _pendingCheckoutRevision = 0;
 
 function loadPendingCheckoutIntent(): PendingCheckoutIntent | null {
   try {
@@ -201,6 +203,7 @@ function loadPendingCheckoutIntent(): PendingCheckoutIntent | null {
 }
 
 function savePendingCheckoutIntent(intent: PendingCheckoutIntent): void {
+  _pendingCheckoutRevision++;
   try {
     // Stamp savedAt at write time so the TTL gate in the loader has
     // something to check. Caller's own savedAt (if any) is preserved
@@ -215,7 +218,13 @@ function savePendingCheckoutIntent(intent: PendingCheckoutIntent): void {
   }
 }
 
+async function parseStoredDodoProductId(value: string): Promise<DodoProductId | null> {
+  const { parseDodoProductId } = await import('@/config/products');
+  return parseDodoProductId(value);
+}
+
 function clearPendingCheckoutIntent(): void {
+  _pendingCheckoutRevision++;
   try {
     sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
   } catch {
@@ -369,9 +378,31 @@ export async function resumePendingCheckout(options?: {
     return false;
   }
 
-  console.log(`[checkout] resumePendingCheckout: starting checkout for ${intent.productId}`);
+  const revision = _pendingCheckoutRevision;
+  const isCurrentIntent = () => (
+    revision === _pendingCheckoutRevision && getCurrentClerkUser()?.id === clerkUser.id
+  );
+  let productId: DodoProductId | null;
+  try {
+    productId = await parseStoredDodoProductId(intent.productId);
+  } catch (err) {
+    if (isCurrentIntent()) {
+      const error = classifyThrownCheckoutError(err);
+      reportCheckoutError(error, { productId: intent.productId, action: 'exception' }, err);
+      renderCheckoutErrorSurface(error, false, intent.checkoutContext);
+    }
+    return false;
+  }
+  if (!isCurrentIntent()) return false;
+  if (!productId) {
+    clearPendingCheckoutIntent();
+    renderCheckoutErrorSurface(classifySyntheticCheckoutError('invalid_product'), false, intent.checkoutContext);
+    return false;
+  }
+
+  console.log(`[checkout] resumePendingCheckout: starting checkout for ${productId}`);
   const success = await startCheckout(
-    intent.productId,
+    productId,
     {
       referralCode: intent.referralCode,
       discountCode: intent.discountCode,
@@ -433,7 +464,7 @@ async function isProBusinessCheckoutTarget(productId: string): Promise<boolean> 
  * Falls back to /pro page on any failure.
  */
 export async function startCheckout(
-  productId: string,
+  productId: DodoProductId,
   options?: {
     discountCode?: string;
     referralCode?: string;

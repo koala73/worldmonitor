@@ -10,7 +10,7 @@ const originalStringify = JSON.stringify;
 const originalEnv = { ...process.env };
 const context = { kind: 'pro', userId: 'user_pro_xyz', mcpTokenId: 'k57mcptokenid' };
 const budget = { allowance: 'mcp', limit: 50 };
-const sourceKeys = ['conflict:ucdp-events:v1', 'unrest:events:v1', 'risk:scores:sebuf:stale:v8', 'seed-meta:conflict:ucdp-events', 'seed-meta:unrest:events'];
+const sourceKeys = ['conflict:ucdp-events:v1', 'unrest:events:v1', 'risk:scores:sebuf:stale:v13', 'seed-meta:conflict:ucdp-events', 'seed-meta:unrest:events'];
 const iran = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
 const readCount = iran ? 6 : 5;
 
@@ -27,7 +27,7 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
       { id: 'de1', country: 'Germany', deathsBest: 5 },
     ] },
     'unrest:events:v1': { events: [{ country: 'France', fatalities: 3 }, { country: 'Germany' }] },
-    'risk:scores:sebuf:stale:v8': { ciiScores: [{ region: 'FR', score: 12 }, { region: 'DE', score: 7 }] },
+    'risk:scores:sebuf:stale:v13': { ciiScores: [{ region: 'FR', score: 12 }, { region: 'DE', score: 7 }] },
     'conflict:iran-events:v1': { events: [{ id: 'iran1', country: 'Iran' }] },
   });
   const invoke = async (deps, args = {}, name = 'get_conflict_events') => {
@@ -61,6 +61,23 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
     JSON.stringify = originalStringify;
     for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
     Object.assign(process.env, originalEnv);
+  });
+
+  it('applies area and age filters on a dedicated panel connection', async () => {
+    const now = Date.now();
+    sources['conflict:ucdp-events:v1'].events = [
+      { id: 'paris', country: 'France', deathsBest: 1, location: { latitude: 48.86, longitude: 2.35 }, dateStart: now - 86_400_000 },
+      { id: 'lyon', country: 'France', deathsBest: 1, location: { latitude: 45.76, longitude: 4.84 }, dateStart: now - 86_400_000 },
+      { id: 'old-paris', country: 'France', deathsBest: 1, location: { latitude: 48.85, longitude: 2.34 }, dateStart: now - 30 * 86_400_000 },
+    ];
+    const { deps } = makeProDeps();
+    const result = await invoke(deps, { lat: 48.86, lon: 2.35, radius_km: 50, since_days: 7 });
+    assert.equal(result.body.error, undefined, JSON.stringify(result.body));
+    const data = envelope(result).data;
+    assert.deepEqual(data['ucdp-events'].events.map(event => event.id), ['paris']);
+    assert.equal(data.geo_filter.area.kind, 'radius');
+    const invalid = await invoke(deps, { lat: 48.86, radius_km: 50 });
+    assert.equal(invalid.body.error?.code, -32602, JSON.stringify(invalid.body));
   });
 
   it('expires replay at the source deadline and recovers under the same daily admission', async () => {
@@ -258,7 +275,7 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
   for (const [label, mutate] of [
     ['missing original unrest bucket', () => { sources['unrest:events:v1'] = null; }],
     ['malformed original excluded row', () => { sources['conflict:ucdp-events:v1'].events.push(null); }],
-    ['malformed original scores', () => { sources['risk:scores:sebuf:stale:v8'].ciiScores = {}; }],
+    ['malformed original scores', () => { sources['risk:scores:sebuf:stale:v13'].ciiScores = {}; }],
     ['malformed source completeness', () => { sources['conflict:ucdp-events:v1'].candidateComplete = 'true'; }],
     ['malformed source failed-pages', () => { sources['conflict:ucdp-events:v1'].annualFailedPages = '0'; }],
     ['malformed original unrest row', () => { sources['unrest:events:v1'].events.push(false); }],
@@ -289,9 +306,9 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
     });
   }
   for (const [label, mutate] of [
-    ['degraded scores', () => { sources['risk:scores:sebuf:stale:v8'].degraded = true; }],
+    ['degraded scores', () => { sources['risk:scores:sebuf:stale:v13'].degraded = true; }],
     ['missing unrest', () => { sources['unrest:events:v1'] = null; }],
-    ['malformed unrelated scores row', () => { sources['risk:scores:sebuf:stale:v8'].ciiScores.push(null); }],
+    ['malformed unrelated scores row', () => { sources['risk:scores:sebuf:stale:v13'].ciiScores.push(null); }],
   ]) {
     it(`still narrows usable events when ${label} makes the original noncacheable`, async () => {
       const { deps, pipe } = makeProDeps();
@@ -400,7 +417,12 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
       { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86400000 },
     ]) {
       const { deps, pipe } = makeProDeps({ getEntitlements: async () => entitlement });
-      const first = await invoke(deps, { country: 'France', min_fatalities: '1', limit: 1.9, extra: true });
+      const fetchCount = fetched.length;
+      const invalid = await invoke(deps, { country: 'France', min_fatalities: '1', limit: 1.9, extra: true });
+      assert.equal(invalid.body.error?.code, -32602);
+      assert.equal(pipe.count, 0);
+      assert.equal(fetched.length, fetchCount);
+      const first = await invoke(deps, { country: 'France', min_fatalities: 1, limit: 1.9, extra: true });
       assert.equal(first.body.error, undefined);
       assert.equal(envelope(first).panelRequest, undefined);
       assert.equal(envelope(first).data['ucdp-events'].events.length, 1);

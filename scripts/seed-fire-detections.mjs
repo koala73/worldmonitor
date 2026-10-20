@@ -7,7 +7,7 @@
 //   - startCommand: node seed-fire-detections.mjs
 //   - Cron schedule: "*/10 * * * *" (every 10min UTC)
 
-import { loadEnvFile, readSeedSnapshot, runSeed, writeExtraKey, MAX_PAYLOAD_BYTES } from './_seed-utils.mjs';
+import { loadEnvFile, readSeedSnapshot, runSeed, withRetry, writeExtraKey, MAX_PAYLOAD_BYTES } from './_seed-utils.mjs';
 import { buildEnvelope } from './_seed-envelope-source.mjs';
 import { compactWildfireDashboardPayload, WILDFIRE_CANONICAL_DETECTION_LIMIT } from './_wildfire-dashboard.mjs';
 import {
@@ -94,9 +94,13 @@ async function fetchMergedWildfires() {
       fetchFn: globalThis.fetch, cache,
       previousSnapshot: await readSeedSnapshot(CWFIS_SNAPSHOT_KEY),
     }),
+    // The strict read fails closed, so a transient Upstash glitch (an HTTP-200
+    // body that is not JSON, a 5xx, a timeout) would otherwise exit 1 with no
+    // BC snapshot to persist. A read that keeps failing still exits 1 after
+    // the retries, so last-good BC state is never overwritten from a bad read.
     fetchBcWildfire: async () => fetchBcFirePoints({
       fetchFn: globalThis.fetch, cache,
-      previousSnapshot: await readSeedSnapshot(BC_SNAPSHOT_KEY, { strict: true }),
+      previousSnapshot: await withRetry(() => readSeedSnapshot(BC_SNAPSHOT_KEY, { strict: true }), 2, 500),
     }),
   });
   if (data.fireDetections.length === 0) {

@@ -9,6 +9,8 @@ import { normalizeCountryToIso2 } from '../../../_shared/country-normalize';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 const REDIS_CACHE_KEY = 'conflict:acled:v1';
+/** The seeded snapshot (seed-conflict-intel.mjs): ACLED rows, or GDELT fallback rows when ACLED has no credentials. */
+export const ACLED_SEED_KEY = `${REDIS_CACHE_KEY}:all:0:0`;
 export const ACLED_DEFAULT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 interface AcledEventWindow {
@@ -26,7 +28,7 @@ export function resolveAcledEventWindow(
   };
 }
 
-function acledCountryCode(country: string): string | null {
+export function acledCountryCode(country: string): string | null {
   // ACLED omits "the" in the DRC name used by the shared gazetteer.
   return normalizeCountryToIso2(country)
     ?? (country.trim().toLowerCase() === 'democratic republic of congo' ? 'CD' : null);
@@ -38,7 +40,7 @@ export async function listAcledEvents(
   req: ListAcledEventsRequest,
 ): Promise<ListAcledEventsResponse> {
   try {
-    const seeded = await getCachedJson(`${REDIS_CACHE_KEY}:all:0:0`, true) as ListAcledEventsResponse | null;
+    const seeded = await getCachedJson(ACLED_SEED_KEY, true) as ListAcledEventsResponse | null;
     if (seeded) {
       // GDELT fallback rows in this seed have no coordinates and cannot be mapped by this RPC.
       let events = seeded.events.filter(event => event.location

@@ -1,6 +1,6 @@
 ---
 title: "Country Instability Index"
-description: "Real-time CII v8 stability scoring for 31 Tier-1 countries — combines baseline risk with unrest, conflict, security, and information signals."
+description: "Real-time CII v13 stability scoring for 31 Tier-1 countries — combines baseline risk with unrest, conflict, security, and information signals."
 ---
 The Country Instability Index (CII) maintains a high-frequency instability
 score for the 31 Tier-1 countries tracked by the Strategic Risk API. Rather
@@ -12,7 +12,7 @@ event pressure and publishes the result through the server-side
   Compare current scores, bands, and approximate 24-hour movement for all 31 Tier-1 countries.
 </Card>
 
-For the full v8 formula, coefficient table, and change history, see
+For the full v13 formula, coefficient table, and change history, see
 [CII Risk Scoring Methodology](/methodology/cii-risk-scores). This page is
 the operator-facing overview.
 
@@ -57,7 +57,7 @@ bounded to 0-100.
 | Component | What It Measures | Main Inputs |
 |-----------|------------------|-------------|
 | **Unrest** | Civil disorder pressure before or below open conflict | ACLED protests and riots, protest fatalities, high-severity unrest, internet/power outages |
-| **Conflict** | Kinetic violence and strike activity | ACLED battles, explosions, violence against civilians, fatalities, Iran-region strike intensity, OREF alerts for Israel |
+| **Conflict** | Kinetic violence | ACLED battles, explosions, violence against civilians, fatalities, OREF alerts for Israel; GDELT conflict coverage while ACLED returns no events |
 | **Security** | Hard-security tempo near the country | Military flights, military vessels, aviation closures/delays, GPS/GNSS jamming |
 | **Information** | Information-environment pressure | Classified news headlines and country-attributed threat summaries |
 
@@ -78,9 +78,10 @@ arrive outside the base event components:
 | Earthquakes | 25 | Significant, major, or severe earthquakes |
 | Sanctions | 14 | Sanctions entry volume and new-entry activity |
 | AIS disruptions | 10 | Maritime disruption buckets |
+| Strike pressure | 10 | Strikes on the country (Middle East strike feed, GDELT worldwide), decayed with a three-day half-life |
 
-The score floor is the larger of UCDP conflict floors and State Department
-advisory floors. When live advisory data is absent, the scorer applies the
+The score floor is the larger of UCDP conflict floors, State Department
+advisory floors and the strike floor. When live advisory data is absent, the scorer applies the
 curated fallback levels published in the
 [methodology](/methodology/cii-risk-scores#advisory-fallback-table) before
 calculating the advisory boost and floor.
@@ -91,6 +92,7 @@ calculating the advisory boost and floor.
 | UCDP minor conflict | 50 |
 | Do-not-travel advisory | 60 |
 | Reconsider-travel advisory | 50 |
+| Strike pressure (from pressure 5, rising 8 per doubling) | 40-70 |
 
 UCDP conflict floors are derived from the **latest available** UCDP GED release
 (the seeder selects the newest version that returns events, not merely the first
@@ -133,7 +135,7 @@ Gaza text-attribution caveat, and per-country `baselineRisk` /
 
 CII scores are computed server-side by `GET /api/intelligence/v1/get-risk-scores`
 and cached in Redis. The live cache is versioned by the current
-`methodology_version` (`v8`), with a stale-cache key used as a fallback during
+`methodology_version` (`v13`), with a stale-cache key used as a fallback during
 upstream outages.
 
 The Railway relay process also runs an active CII warm-ping loop every 8

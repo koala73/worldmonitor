@@ -4,7 +4,15 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseSupportedLanguages } from '../scripts/docs-stats.mjs';
-import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
+import {
+  INDEXABLE_LANDING_LOCALES,
+  landingHreflangCluster,
+} from '../shared/indexable-landing-locales.ts';
+import {
+  guardProBuiltOutput,
+  landingBuiltOutputPath,
+  shouldSkipProBuiltOutput,
+} from './_lib/pro-built-output.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
@@ -14,6 +22,7 @@ interface ParsedDocument {
   description: string;
   hreflang: Map<string, string>;
   hreflangEntries: Array<[string, string]>;
+  htmlDir: string;
   htmlLang: string;
   indexable: boolean;
   structuredLanguages: string[];
@@ -26,19 +35,23 @@ interface StaticResponse {
   status: number;
 }
 
-const DEPLOYED_ROUTES = new Map<string, string>([
-  ['/', 'public/pro/welcome.html'],
+const APPLICATION_ROUTES = new Map<string, string>([
   ['/dashboard', 'index.html'],
   ['/pro', 'public/pro/index.html'],
 ]);
 
-const SOURCE_DOCUMENTS = [
+const DEPLOYED_ROUTES = new Map<string, string>([
+  ...INDEXABLE_LANDING_LOCALES.map((locale): [string, string] => [locale.canonicalPath, landingBuiltOutputPath(locale)]),
+  ...APPLICATION_ROUTES,
+]);
+
+const ENGLISH_ONLY_DOCUMENTS = [
   { path: 'index.html', canonical: 'https://www.worldmonitor.app/dashboard' },
-  { path: 'pro-test/welcome.html', canonical: 'https://www.worldmonitor.app/' },
   { path: 'pro-test/index.html', canonical: 'https://www.worldmonitor.app/pro' },
-  { path: 'public/pro/welcome.html', canonical: 'https://www.worldmonitor.app/' },
   { path: 'public/pro/index.html', canonical: 'https://www.worldmonitor.app/pro' },
 ];
+
+const clusterEntries = () => landingHreflangCluster().map(({ hreflang, href }): [string, string] => [hreflang, href]);
 
 function tagText(html: string, tag: string): string {
   const match = html.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
@@ -70,6 +83,7 @@ function parseDocument(html: string): ParsedDocument {
     description: attribute(descriptionTag, 'content'),
     hreflang,
     hreflangEntries,
+    htmlDir: attribute(htmlTag, 'dir'),
     htmlLang: attribute(htmlTag, 'lang'),
     indexable: !/\bnoindex\b/i.test(attribute(robotsTag, 'content')),
     structuredLanguages,
@@ -176,8 +190,8 @@ async function validateHreflangCluster(
 describe('international SEO application-locale mode (#5666)', { skip: shouldSkipProBuiltOutput() }, () => {
   guardProBuiltOutput();
 
-  it('publishes only x-default and English at each self-canonical application URL', () => {
-    for (const { path, canonical } of SOURCE_DOCUMENTS) {
+  it('publishes only x-default and English at each self-canonical application URL that is not a landing', () => {
+      for (const { path, canonical } of ENGLISH_ONLY_DOCUMENTS) {
       const document = parseDocument(read(path));
       assert.equal(document.htmlLang, 'en', `${path}: raw document language`);
       assert.equal(document.canonical, canonical, `${path}: canonical`);
@@ -191,10 +205,56 @@ describe('international SEO application-locale mode (#5666)', { skip: shouldSkip
     }
   });
 
+  it('publishes the reciprocal landing cluster on every prerendered homepage locale', () => {
+    for (const locale of INDEXABLE_LANDING_LOCALES) {
+      const path = landingBuiltOutputPath(locale);
+      const document = parseDocument(read(path));
+      assert.equal(document.htmlLang, locale.htmlLang, `${path}: html lang`);
+      assert.equal(document.canonical, locale.canonicalUrl, `${path}: self-canonical`);
+      assert.deepEqual(document.hreflangEntries, clusterEntries(), `${path}: landing hreflang cluster`);
+      assert.equal(document.indexable, true, `${path}: remains indexable`);
+      assert.ok(document.title, `${path}: title`);
+      assert.ok(document.description, `${path}: description`);
+      assert.ok(document.visibleHeading, `${path}: visible heading`);
+      if (!locale.isDefault) {
+        const english = parseDocument(read('public/pro/welcome.html'));
+        assert.notEqual(
+          discoverySignature(document),
+          discoverySignature(english),
+          `${path}: visible content and metadata must differ from English`,
+        );
+        const body = read(path).slice(read(path).search(/<body\b/i));
+        assert.doesNotMatch(
+          body,
+          /<noscript\b/i,
+          `${path}: the English noscript body must not ship on a localized landing`,
+        );
+      }
+    }
+  });
+
+  it('keeps the English homepage head metadata identical to its template apart from the cluster', () => {
+    const template = read('pro-test/welcome.html');
+    const built = read('public/pro/welcome.html');
+    const metaContent = (html: string, selector: string) =>
+      html.match(new RegExp(`<meta ${selector} content="([^"]*)"`, 'i'))?.[1] ?? '';
+    for (const selector of [
+      'name="description"',
+      'property="og:title"',
+      'property="og:description"',
+      'name="twitter:title"',
+      'name="twitter:description"',
+    ]) {
+      assert.equal(metaContent(built, selector), metaContent(template, selector), `welcome.html ${selector}`);
+    }
+    assert.equal(tagText(built, 'title'), tagText(template, 'title'), 'welcome.html <title>');
+  });
+
   it('serves LTR, RTL, and every supported ?lang request as 200 application state on the base canonical', async () => {
     const locales = supportedLanguages();
     assert.ok(locales.includes('fr'), 'LTR representative locale must stay registered');
     assert.ok(locales.includes('ar'), 'RTL representative locale must stay registered');
+    const indexableIds = new Set(INDEXABLE_LANDING_LOCALES.map((locale) => locale.id));
 
     for (const locale of locales) {
       for (const [route] of DEPLOYED_ROUTES) {
@@ -204,13 +264,28 @@ describe('international SEO application-locale mode (#5666)', { skip: shouldSkip
         assert.equal(response.status, 200, `${request.href}: HTTP status`);
         const document = parseDocument(response.body);
         assert.equal(document.canonical, new URL(route, 'https://www.worldmonitor.app').href, `${request.href}: base canonical`);
-        assert.ok(!document.hreflang.has(locale) || locale === 'en', `${request.href}: locale must not be advertised as an indexable alternate`);
+        for (const href of document.hreflang.values()) {
+          assert.equal(new URL(href).search, '', `${request.href}: hreflang must not use query-string targets`);
+        }
+        if (!indexableIds.has(locale) && locale !== 'en') {
+          assert.ok(
+            !document.hreflang.has(locale),
+            `${request.href}: non-indexable locale must not be advertised as an alternate`,
+          );
+        }
       }
     }
   });
 
-  it('accepts the deployed English hreflang clusters', async () => {
-    for (const [route] of DEPLOYED_ROUTES) {
+  it('accepts the deployed landing hreflang clusters', async () => {
+    for (const locale of INDEXABLE_LANDING_LOCALES) {
+      assert.deepEqual(
+        await validateHreflangCluster(locale.canonicalUrl, fetchStaticRoute),
+        [],
+        locale.canonicalUrl,
+      );
+    }
+    for (const route of ['/dashboard', '/pro']) {
       const url = new URL(route, 'https://www.worldmonitor.app').href;
       assert.deepEqual(await validateHreflangCluster(url, fetchStaticRoute), [], url);
     }

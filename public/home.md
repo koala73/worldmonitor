@@ -1,14 +1,18 @@
 ---
 title: "World Monitor"
-description: "Live global intelligence, API access, authentication, and agent capabilities."
+description: "World Monitor: real-time geopolitical intelligence dashboard. A free live map of conflicts, shipping, flights, markets and cyber, with an API and MCP server."
 canonical: "https://www.worldmonitor.app/home.md"
 ---
 
-# World Monitor — By the time it's news, you already knew.
+# World Monitor: real-time geopolitical intelligence dashboard
 
-As of 2026-10-12.
+By the time it's news, you already knew.
+
+As of 2026-10-19.
 
 World Monitor is a free real-time global intelligence dashboard. It brings ships, aircraft, conflict events, alerts, infrastructure, markets, weather, cyber signals, and curated news onto one live map. Its analysis layer helps users see when separate signals begin to converge into one event that matters.
+
+Best for analysts, journalists, traders and builders who need live geopolitical signals.
 
 The core dashboard is open source under AGPL-3.0 and needs no signup. It runs in the browser, as an installable PWA, and as a desktop app for macOS, Windows, and Linux. World Monitor has also been [featured in WIRED](https://www.wired.com/story/world-monitor-elie-habib/).
 
@@ -38,7 +42,7 @@ Users can compare these parts on one map and then open the underlying panels for
 
 - A global map with a shared catalog of conflict, military, infrastructure, environment, transport, and market layers
 - Curated news and OSINT feeds grouped by topic and product variant
-- CII v8 for 31 Tier-1 countries, resilience scores for the 196-country public rankable universe, and global live conflict tracking
+- CII v13 for 31 Tier-1 countries, resilience scores for the 196-country public rankable universe, and global live conflict tracking
 - Market quotes, sector heatmaps, macro indicators, and commodity context
 - Shipping chokepoints, ports, and vessel-transit intelligence
 - Aircraft, satellites, GPS interference, submarine cables, energy assets, and datacenters

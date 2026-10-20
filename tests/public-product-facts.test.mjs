@@ -674,6 +674,33 @@ describe('public product facts generation contract', () => {
     assert.match(result.stderr, /public\/\.well-known\/mcp\/server-card\.json is stale/);
   });
 
+  it('flags the About page stale when a registry count it restates changes', () => {
+    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `
+      import { CHOKEPOINT_REGISTRY } from './src/config/chokepoint-registry.ts';
+      CHOKEPOINT_REGISTRY.push({ ...CHOKEPOINT_REGISTRY[0], id: 'about-drift-probe' });
+      process.argv.push('--check');
+      await import('./scripts/generate-public-product-facts.mjs');
+    `], { cwd: ROOT, encoding: 'utf8' });
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stderr, /docs\/about\.mdx is stale/);
+  });
+
+  it('fails generation when an About page fact phrase loses its wording', () => {
+    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `
+      import fs from 'node:fs';
+      const readFileSync = fs.readFileSync;
+      fs.readFileSync = (path, ...rest) => {
+        const text = readFileSync(path, ...rest);
+        return String(path).endsWith('docs/about.mdx') ? String(text).replace(/subsea cables/, 'undersea links') : text;
+      };
+      (await import('node:module')).syncBuiltinESMExports();
+      process.argv.push('--check');
+      await import('./scripts/generate-public-product-facts.mjs');
+    `], { cwd: ROOT, encoding: 'utf8' });
+    assert.notEqual(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stderr, /docs\/about\.mdx: expected 1 match\(es\) of .*subsea cables/);
+  });
+
   it('fails discovery generation when the natural-disasters tool is absent', () => {
     const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `
       import { TOOL_REGISTRY } from './api/mcp/registry/index.ts';
@@ -718,7 +745,7 @@ describe('public product facts generation contract', () => {
     const { INTEL_HOTSPOTS } = await import('../shared/geo-data.ts');
     const { PIPELINES } = await import('../shared/pipelines-data.ts');
     const { lngFacilityCount } = await import('../scripts/_storage-facility-registry.mjs');
-    const { publishedRankedCountries } = await import('../scripts/build-ai-search.mjs');
+    const { publishedRankedCountries } = await import('../scripts/build-crawlable-corpus.mjs');
     const { commandPaletteCommandCount } = await import('../scripts/lib/command-palette-count.mjs');
     const facts = readJson('shared/product-facts.generated.json');
     const depth = facts.depthProofStats;

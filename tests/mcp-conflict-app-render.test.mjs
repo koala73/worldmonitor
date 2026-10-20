@@ -1,9 +1,13 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { geoEquirectangular, geoPath } from 'd3';
+import { feature } from 'topojson-client';
 import { Window } from 'happy-dom';
 import { Ratelimit } from '@upstash/ratelimit';
 import { makeProDeps, proReq, callBody, HMAC_SECRET } from './helpers/mcp-pro-deps.mjs';
 import { CONFLICT_EVENTS_APP_HTML } from '../api/mcp/ui/conflict-events-app.ts';
+import { CONFLICT_MAP_BASE } from '../api/mcp/ui/_conflict-map-base.ts';
 
 const originalFetch = globalThis.fetch;
 const originalLimiter = Ratelimit.slidingWindow;
@@ -20,6 +24,8 @@ const events = Array.from({ length: 8 }, (_, i) => ({
   deathsBest: i === 0 ? undefined : i === 1 ? 0 : i * 10,
   dateStart: i === 0 ? 'unknown' : '2026-10-02T12:00:00Z',
   sourceOriginal,
+  ...(i === 2 ? { location: { latitude: 15.905545, longitude: 48.672436 } }
+    : i === 3 ? { location: { latitude: 0, longitude: 0 } } : {}),
 }));
 const twentyEvents = Array.from({ length: 20 }, (_, eventIndex) => ({ ...events[2], id: 'twenty-' + eventIndex, sideA: 'Twenty event ' + eventIndex }));
 const largeEvents = Array.from({ length: 160 }, (_, i) => ({
@@ -57,7 +63,7 @@ globalThis.fetch = async (url, opts) => {
   let value = null;
   if (key === 'conflict:ucdp-events:v1') value = missingUcdp ? null : { events: activeEvents, fetchedAt, version: 'controlled', candidateVersion: 'controlled+partial', candidateComplete: false, ...(payloadAnnualFailedPages === undefined ? {} : { annualFailedPages: payloadAnnualFailedPages }) };
   else if (key === 'unrest:events:v1') value = { events: [] };
-  else if (key === 'risk:scores:sebuf:stale:v8') value = { ciiScores: [] };
+  else if (key === 'risk:scores:sebuf:stale:v13') value = { ciiScores: [] };
   else if (key === 'conflict:iran-events:v1') value = { events: [] };
   else if (key === 'seed-meta:conflict:ucdp-events') value = missingUcdpMeta ? null : { fetchedAt, recordCount: activeEvents.length, candidateVersion: 'controlled+partial', candidateComplete: false, annualFailedPages: 2 };
   else if (key === 'seed-meta:unrest:events') value = { fetchedAt, recordCount: activeEvents.length };
@@ -103,13 +109,29 @@ async function mount(wire, check) {
       await win.happyDOM.waitUntilComplete();
     };
     await send(wire);
-    await check(win.document, send);
+    await check(win.document, send, messages);
     assert.equal(reads, 0);
     assert.equal(messages.filter(m => ['tools/call', 'ui/call-tool'].includes(m?.method)).length, 0);
   } finally { await win.happyDOM.close(); }
 }
 
 describe('Conflict Events actual-handler supported envelopes', () => {
+  it('selects the supplied Yemen replay row and its same-event marker, detail and viewport', async () => {
+    await mount(await result(), doc => {
+      const row = doc.querySelectorAll('.evt')[2];
+      assert.equal(row.getAttribute('role'), 'button');
+      assert.equal(row.tabIndex, 0);
+      const map = doc.getElementById('conflict-map');
+      const world = map.getAttribute('viewBox');
+      row.click();
+      assert.equal(row.getAttribute('aria-pressed'), 'true');
+      assert.equal(doc.querySelectorAll('.conflict-marker[aria-pressed="true"]').length, 1);
+      assert.notEqual(map.getAttribute('viewBox'), world);
+      assert.match(doc.getElementById('conflict-selection').textContent,
+        /Controlled side A 3.*State-based.*2026-10-02.*20 deaths.*15\.905545, 48\.672436/);
+      assert.match(doc.getElementById('conflict-locations').textContent, /Locations for 2 of 8 displayed events/);
+    });
+  });
   for (const [name, args, count] of [
     ['full', {}, 8], ['summary', { summary: true }, 3],
     ['whole-envelope projection', { jmespath: '@' }, 8],
@@ -164,6 +186,241 @@ describe('Conflict Events actual-handler supported envelopes', () => {
       assert.equal(doc.querySelectorAll('.evt').length, 0);
       assert.match(doc.getElementById('list').textContent, /temporarily unavailable/);
       assert.doesNotMatch(doc.getElementById('list').textContent, /No conflict events available/);
+    });
+  });
+});
+
+describe('Conflict Events geographic selection', () => {
+  it('keeps the checked world outline and projection equal to the existing topology', () => {
+    const world = JSON.parse(readFileSync(new URL('../public/data/countries-110m.json', import.meta.url), 'utf8'));
+    const width = 720;
+    const height = 384;
+    const scale = (width - 64) / (2 * Math.PI);
+    const translate = [width / 2, height / 2];
+    const projection = geoEquirectangular().scale(scale).translate(translate);
+    assert.deepEqual(CONFLICT_MAP_BASE, {
+      width, height, scale, translate,
+      path: geoPath(projection).digits(0)(feature(world, world.objects.countries)),
+    });
+  });
+  it('keeps every visible nearby dot above expanded hit targets and selects either event', async () => {
+    const wire = await result();
+    wire.structuredContent.data['ucdp-events'].events = [45, 55].map((longitude, i) => ({
+      ...events[2], sideA: 'Nearby event ' + i, location: { latitude: 15, longitude },
+    }));
+    await mount(wire, doc => {
+      const dots = [...doc.querySelectorAll('.conflict-dot')];
+      const hits = [...doc.querySelectorAll('#conflict-map circle[r="24"]')];
+      const markers = doc.querySelectorAll('.conflict-marker');
+      const xs = [...markers].map(marker => Number(marker.getAttribute('transform').match(/[-\d.]+/g)[0]));
+      assert.ok(Math.abs(xs[1] - xs[0]) < 24, 'the later expanded target covers the earlier dot location');
+      assert.equal(dots.length, 2);
+      assert.equal(hits.length, 2);
+      for (const dot of dots) {
+        for (const hit of hits) {
+          assert.ok(hit.compareDocumentPosition(dot) & doc.defaultView.Node.DOCUMENT_POSITION_FOLLOWING,
+            'visible dots must paint above every expanded hit target');
+        }
+      }
+      assert.equal(doc.querySelectorAll('#conflict-map [tabindex="0"]').length, 2);
+      for (let i = 0; i < 2; i++) {
+        for (const target of [dots[i], hits[i]]) {
+          target.dispatchEvent(new doc.defaultView.MouseEvent('click', { bubbles: true }));
+          assert.equal(doc.querySelectorAll('.evt')[i].getAttribute('aria-pressed'), 'true');
+          assert.match(doc.getElementById('conflict-selection').textContent, new RegExp('Nearby event ' + i));
+        }
+      }
+    });
+  });
+  it('reports final root height after chooser, member, row selection and World view reset', async () => {
+    const wire = await result();
+    wire.structuredContent.data['ucdp-events'].events = [
+      { ...events[2], sideA: 'Coincident first' },
+      { ...events[2], sideA: 'Coincident second' },
+      { ...events[3], sideA: 'Separate location' },
+    ];
+    await mount(wire, (doc, _send, messages) => {
+      const chooser = doc.getElementById('conflict-chooser');
+      const selection = doc.getElementById('conflict-selection');
+      const height = () => 200.25 + chooser.children.length * 40 + selection.textContent.length;
+      doc.getElementById('root').getBoundingClientRect = () => ({ height: height() });
+      const expectSize = action => {
+        const before = messages.length;
+        action();
+        const sent = messages.slice(before);
+        assert.deepEqual(sent.map(message => message.method), ['ui/notifications/size-changed']);
+        assert.equal(sent[0].params.height, Math.ceil(height()) + 8);
+      };
+      expectSize(() => doc.querySelector('.conflict-marker').dispatchEvent(new doc.defaultView.MouseEvent('click')));
+      assert.equal(chooser.children.length, 2);
+      expectSize(() => chooser.children[1].click());
+      assert.match(selection.textContent, /Coincident second/);
+      expectSize(() => doc.querySelectorAll('.evt')[2].click());
+      assert.equal(chooser.children.length, 0);
+      assert.match(selection.textContent, /Separate location/);
+      expectSize(() => doc.getElementById('conflict-world').click());
+      assert.equal(selection.textContent, '');
+      assert.equal(chooser.children.length, 0);
+    });
+  });
+  it('serves the unchanged resource URI within the existing SSE replay response budget', async () => {
+    const { deps } = makeProDeps();
+    const response = await handler(proReq('POST', {
+      jsonrpc: '2.0', id: 99, method: 'resources/read', params: { uri: 'ui://worldmonitor/conflict-events-v2.html' },
+    }), deps);
+    const text = await response.text();
+    assert.equal(response.status, 200);
+    const body = JSON.parse(text);
+    assert.equal(body.result.contents[0].text, CONFLICT_EVENTS_APP_HTML);
+    assert.ok(Buffer.byteLength(text) < 128 * 1024);
+  });
+  it('selects the same event from its marker and Enter/Space row or marker activation, then resets', async () => {
+    await mount(await result(), doc => {
+      const rows = doc.querySelectorAll('.evt');
+      const map = doc.getElementById('conflict-map');
+      const world = map.getAttribute('viewBox');
+      const markers = doc.querySelectorAll('.conflict-marker');
+      markers[1].dispatchEvent(new doc.defaultView.KeyboardEvent('keydown', { key: 'Enter' }));
+      assert.equal(rows[3].getAttribute('aria-pressed'), 'true');
+      assert.match(doc.getElementById('conflict-selection').textContent, /Controlled side A 4.*30 deaths.*Coordinates: 0, 0/);
+      rows[2].dispatchEvent(new doc.defaultView.KeyboardEvent('keydown', { key: ' ' }));
+      assert.equal(rows[3].getAttribute('aria-pressed'), 'false');
+      assert.equal(rows[2].getAttribute('aria-pressed'), 'true');
+      assert.equal(markers[0].getAttribute('aria-pressed'), 'true');
+      markers[1].dispatchEvent(new doc.defaultView.MouseEvent('click'));
+      assert.equal(rows[3].getAttribute('aria-pressed'), 'true');
+      doc.getElementById('conflict-world').click();
+      assert.equal(map.getAttribute('viewBox'), world);
+      assert.equal(doc.querySelectorAll('[aria-pressed="true"]').length, 0);
+      assert.equal(doc.getElementById('conflict-selection').textContent, '');
+      assert.equal(doc.getElementById('conflict-chooser').children.length, 0);
+    });
+  });
+  it('rejects invalid coordinates without coercion and preserves a supplied zero/zero location', async () => {
+    const invalid = [null, {}, { latitude: null, longitude: 0 }, { latitude: '0', longitude: 0 },
+      { latitude: true, longitude: 0 }, { latitude: 0, longitude: false }, { latitude: 0, longitude: '0' },
+      { latitude: 0, longitude: Infinity }, { latitude: NaN, longitude: 0 },
+      { latitude: -91, longitude: 0 }, { latitude: 91, longitude: 0 },
+      { latitude: 0, longitude: -181 }, { latitude: 0, longitude: 181 }];
+    const wire = await result();
+    wire.structuredContent.data['ucdp-events'].events = [...invalid, { latitude: 0, longitude: 0 }]
+      .map((location, i) => ({ ...events[2], sideA: 'Coordinate case ' + i, location }));
+    await mount(wire, doc => {
+      assert.equal(doc.querySelectorAll('.evt').length, 14);
+      assert.equal(doc.querySelectorAll('.evt[role="button"]').length, 1);
+      assert.equal(doc.querySelectorAll('.conflict-marker').length, 1);
+      assert.match(doc.getElementById('list').textContent, /Location unavailable/);
+      assert.match(doc.getElementById('conflict-locations').textContent, /Locations for 1 of 14 displayed events/);
+      doc.querySelectorAll('.evt')[13].click();
+      assert.match(doc.getElementById('conflict-selection').textContent, /Coordinate case 13.*Coordinates: 0, 0/);
+    });
+  });
+  it('retains both dateline/polar endpoints inside the world and focused viewport', async () => {
+    const wire = await result();
+    wire.structuredContent.data['ucdp-events'].events = [
+      { ...events[2], location: { latitude: 90, longitude: 180 } },
+      { ...events[3], location: { latitude: -90, longitude: -180 } },
+    ];
+    await mount(wire, doc => {
+      const map = doc.getElementById('conflict-map');
+      const [, , width, height] = map.getAttribute('viewBox').split(' ').map(Number);
+      for (const marker of doc.querySelectorAll('.conflict-marker')) {
+        const [x, y] = marker.getAttribute('transform').match(/[-\d.]+/g).map(Number);
+        assert.ok(x >= 24 && x <= width - 24 && y >= 24 && y <= height - 24);
+        marker.dispatchEvent(new doc.defaultView.MouseEvent('click'));
+        const [left, top, w, h] = map.getAttribute('viewBox').split(' ').map(Number);
+        assert.ok(left <= x && x <= left + w && top <= y && y <= top + h);
+      }
+      assert.match(doc.getElementById('conflict-selection').textContent, /Coordinates: -90, -180/);
+    });
+  });
+  it('keeps coincident events independently selectable despite duplicate or absent source IDs', async () => {
+    const wire = await result();
+    wire.structuredContent.data['ucdp-events'].events = [
+      { ...events[2], id: 'duplicate', sideA: 'Coincident first' },
+      { ...events[2], id: 'duplicate', sideA: 'Coincident second' },
+      { ...events[3], id: undefined, sideA: 'Missing ID' },
+    ];
+    await mount(wire, doc => {
+      const rows = doc.querySelectorAll('.evt');
+      const markers = doc.querySelectorAll('.conflict-marker');
+      assert.equal(markers.length, 2);
+      assert.equal(markers[0].querySelector('text').textContent, '2');
+      for (let i = 0; i < 2; i++) {
+        markers[0].dispatchEvent(new doc.defaultView.MouseEvent('click'));
+        const choices = doc.querySelectorAll('#conflict-chooser button');
+        assert.equal(choices.length, 2);
+        choices[i].focus();
+        choices[i].click();
+        assert.equal(doc.activeElement, choices[i]);
+        assert.equal(rows[i].getAttribute('aria-pressed'), 'true');
+        assert.equal(rows[1 - i].getAttribute('aria-pressed'), 'false');
+        assert.match(doc.getElementById('conflict-selection').textContent, new RegExp(i ? 'Coincident second' : 'Coincident first'));
+      }
+      rows[2].click();
+      assert.equal(rows[2].getAttribute('aria-pressed'), 'true');
+      assert.equal(markers[1].getAttribute('aria-pressed'), 'true');
+    });
+  });
+  it('maps only the displayed full or summary window and retains the original count scopes', async () => {
+    for (const [args, count] of [[{ limit: 0 }, 14], [{ limit: 0, summary: true }, 3]]) {
+      await mount(await result(args, 'twenty'), doc => {
+        assert.equal(doc.querySelectorAll('.evt').length, count);
+        assert.match(doc.getElementById('conflict-locations').textContent, new RegExp('Locations for ' + count + ' of ' + count + ' displayed events'));
+        assert.equal(doc.querySelector('.conflict-marker text').textContent, String(count));
+        assert.match(doc.getElementById('foot').textContent, new RegExp(count + ' of 20'));
+      });
+    }
+  });
+  it('clears selection, markers, chooser and obsolete handlers on result replacement', async () => {
+    const wire = await result();
+    await mount(wire, async (doc, send) => {
+      const oldRow = doc.querySelectorAll('.evt')[2];
+      const oldMarker = doc.querySelector('.conflict-marker');
+      const world = doc.getElementById('conflict-map').getAttribute('viewBox');
+      oldRow.click();
+      await send(await result({}, 'twenty'));
+      doc.querySelector('.conflict-marker').dispatchEvent(new doc.defaultView.MouseEvent('click'));
+      assert.equal(doc.querySelectorAll('#conflict-chooser button').length, 14);
+      await send(wire);
+      assert.equal(doc.querySelectorAll('.conflict-marker').length, 2);
+      assert.equal(doc.getElementById('conflict-selection').textContent, '');
+      assert.equal(doc.getElementById('conflict-chooser').textContent, '');
+      assert.equal(doc.getElementById('conflict-map').getAttribute('viewBox'), world);
+      oldRow.click(); oldMarker.dispatchEvent(new doc.defaultView.MouseEvent('click'));
+      assert.equal(doc.getElementById('conflict-selection').textContent, '');
+      assert.equal(doc.querySelectorAll('[aria-pressed="true"]').length, 0);
+    });
+  });
+  it('distinguishes unavailable geography from empty or missing feeds and removes prior points', async () => {
+    await mount(await result(), async (doc, send) => {
+      const noLocations = await result();
+      noLocations.structuredContent.data['ucdp-events'].events.forEach(event => { delete event.location; });
+      await send(noLocations);
+      assert.equal(doc.querySelectorAll('.evt').length, 8);
+      assert.match(doc.getElementById('conflict-locations').textContent, /Locations unavailable/);
+      assert.equal(doc.getElementById('conflict-map').style.display, 'none');
+      assert.equal(doc.querySelectorAll('.conflict-marker').length, 0);
+      for (const state of ['empty', 'missing']) {
+        await send(await result({}, state));
+        assert.equal(doc.getElementById('conflict-geography').hidden, true);
+        assert.equal(doc.querySelectorAll('.evt').length, 0);
+      }
+    });
+  });
+  it('keeps malicious event content inert during marker, chooser and detail actions', async () => {
+    const wire = await result();
+    wire.structuredContent.data['ucdp-events'].events = [
+      { ...events[2], sideA: '<img src=x onerror=alert(1)>', country: '<script>alert(1)</script>' },
+      { ...events[2], sideA: '<svg onload=alert(1)>' },
+    ];
+    await mount(wire, doc => {
+      doc.querySelector('.conflict-marker').dispatchEvent(new doc.defaultView.MouseEvent('click'));
+      doc.querySelector('#conflict-chooser button').click();
+      assert.match(doc.getElementById('conflict-selection').textContent, /<img src=x onerror=alert\(1\)>/);
+      assert.equal(doc.querySelector('#conflict-selection img'), null);
+      assert.equal(doc.querySelector('#list script'), null);
+      assert.equal(doc.querySelector('#conflict-chooser svg'), null);
     });
   });
 });

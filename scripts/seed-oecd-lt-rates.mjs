@@ -8,10 +8,10 @@
 // staggered per the repo's FRED-pacing convention.
 
 import { CHROME_UA, sleep } from './_seed-utils.mjs';
-import { DAY_MIN, tokensToContentMeta } from './_content-age-helpers.mjs';
+import { DAY_MIN } from './_content-age-helpers.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { loadEnvFile, runSeed } from './_seed-utils.mjs';
-import { OECD_LT_MARKETS, parseFredCsv, buildOecdLtPayload, declareOecdRecords } from './lib/yield-curves/oecd-lt.mjs';
+import { OECD_LT_MARKETS, OECD_LT_MAX_CONTENT_AGE_MIN, parseFredCsv, buildOecdLtPayload, declareOecdRecords, oecdLatestContentMeta, oecdContentFreshness } from './lib/yield-curves/oecd-lt.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -23,7 +23,6 @@ export const OECD_LT_LATEST_KEY = 'economic:yield-curve:oecd-lt:v1:latest';
 // data makes staleness content-age-driven, not TTL-driven.
 const TTL_SECONDS = 21 * 24 * 60 * 60;
 const MAX_STALE_MIN = 60 * 24 * 14; // monthly source; 14d = 2x monthly interval
-const MAX_CONTENT_AGE_MIN = 60 * 24 * 80; // monthly prints; 80d ≈ 2.5 months of observed lag
 const FRED_CSV_BASE = 'https://fred.stlouisfed.org/graph/fredgraph.csv?id=';
 const STAGGER_MS = 150;
 
@@ -55,13 +54,6 @@ function validate(data) {
   return Object.values(countries).every((entry) => entry?.curves?.length > 0);
 }
 
-function contentMeta(data) {
-  const dates = Object.values(data?.countries ?? {})
-    .flatMap((entry) => [entry?.curves?.[0]?.date, entry?.curves?.at(-1)?.date])
-    .filter(Boolean);
-  return tokensToContentMeta(dates.slice(0, 2).concat(dates.at(-1)));
-}
-
 export function latestTransform(data) {
   const latest = {};
   for (const [market, entry] of Object.entries(data?.countries ?? {})) {
@@ -72,14 +64,14 @@ export function latestTransform(data) {
 }
 
 if (process.argv[1]?.endsWith('seed-oecd-lt-rates.mjs')) {
-  const markActivated = async () => {
+  const markActivated = async (data) => {
     try {
       const creds = getOptionalUpstashCreds();
-      if (!creds) return;
-      await upstashCommand(creds, ['SET', OECD_LT_ACTIVATION_KEY, '1']);
+      if (creds) await upstashCommand(creds, ['SET', OECD_LT_ACTIVATION_KEY, '1']);
     } catch (err) {
       console.warn(`  WARN: OECD LT activation marker write failed: ${err?.message || err}`);
     }
+    return { freshnessMetaPatch: { contentFreshness: oecdContentFreshness(data) } };
   };
 
   runSeed('economic', 'oecd-lt-rates', OECD_LT_CANONICAL_KEY, fetchOecdLtRates, {
@@ -92,8 +84,8 @@ if (process.argv[1]?.endsWith('seed-oecd-lt-rates.mjs')) {
     maxStaleMin: MAX_STALE_MIN,
     recordCount: declareOecdRecords,
     declareRecords: declareOecdRecords,
-    contentMeta,
-    maxContentAgeMin: MAX_CONTENT_AGE_MIN,
+    contentMeta: oecdLatestContentMeta,
+    maxContentAgeMin: OECD_LT_MAX_CONTENT_AGE_MIN,
     extraKeys: [
       { key: OECD_LT_LATEST_KEY, transform: latestTransform, declareRecords: declareOecdRecords },
     ],

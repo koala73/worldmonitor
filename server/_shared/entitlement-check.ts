@@ -1,4 +1,4 @@
-import { hasCurrentEntitlementCoverage } from './entitlement-coverage';
+import { hasCurrentEntitlementCoverage } from './entitlement-coverage.js';
 /**
  * Entitlement enforcement middleware for the Vercel API gateway.
  *
@@ -28,7 +28,7 @@ import { hasCurrentEntitlementCoverage } from './entitlement-coverage';
  * a backend outage costs one lookup per user per window, not one per request.
  */
 
-import { getCachedJson, setCachedJson } from './redis';
+import { getCachedJson, setCachedJson } from './redis.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,6 +46,7 @@ export interface CachedEntitlements {
   planKey: string;
   features: {
     tier: number;
+    historyDays?: number;
     apiAccess: boolean;
     apiRateLimit: number;
     maxDashboards: number;
@@ -178,7 +179,6 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/market/v1/backtest-stock': 1,
   '/api/market/v1/list-stored-stock-backtests': 1,
   '/api/economic/v1/list-global-tenders': 1,
-  '/api/sanctions/v1/list-sanctions-pressure': 1,
   '/api/scenario/v1/run-scenario': 1,
   '/api/scenario/v1/get-scenario-status': 1,
   '/api/supply-chain/v1/get-country-chokepoint-index': 1,
@@ -594,10 +594,12 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
       // `{allowance: 'mcp'}` — same counter and same ceiling as the correct
       // `{allowance: 'api', counter: 'mcp'}`, but one unit per call instead of
       // the per-tool weight, so those callers under-pay until the entry ages
-      // out. No paid plan legitimately pairs `apiAccess` with a NUMERIC
-      // mcpCallsPerDay (the API tiers carry the marker, enterprise carries
-      // `null`), so that pairing identifies a pre-marker entry exactly.
+      // out. Below Enterprise, no plan pairs `apiAccess` with a NUMERIC
+      // mcpCallsPerDay (the API tiers carry the marker), so that pairing
+      // identifies a pre-marker entry exactly. Enterprise (tier 3) carries a
+      // numeric fair-use ceiling and must stay cacheable.
       const legacySharedBudgetShape = ent.features.apiAccess === true
+        && ent.features.tier < 3
         && typeof ent.features.planLimits?.mcpCallsPerDay === 'number';
       if (
         ent.validUntil >= Date.now() &&

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { performance } from 'node:perf_hooks';
 import { describe, it } from 'node:test';
 
 import { TRUSTED_RETURN_URL_ORIGINS } from '../convex/payments/returnUrlOrigin.ts';
@@ -10,6 +11,7 @@ import {
   isDisallowedOrigin as isDisallowedOriginJs,
 } from '../api/_cors.js';
 import {
+  default as corsWorker,
   buildCorsHeaders as buildCorsHeadersWorker,
   isAllowedOrigin as isAllowedOriginWorker,
 } from '../workers/api-cors-preflight/src/index.js';
@@ -222,6 +224,23 @@ describe('RFC 9745 / RFC 8594 lifecycle headers are readable cross-origin', () =
   }
 });
 
+/**
+ * The per-header suites above only guard the headers someone remembered to
+ * list. #9140 added X-Wm-Upstream-Timeout to api/_cors.js and server/cors.ts
+ * but not to the Worker, which overwrites Expose-Headers on every
+ * api.worldmonitor.app response. Browsers could not read the marker, so
+ * premium-fetch kept reporting relayed MCP timeouts (Sentry WORLDMONITOR-17A).
+ * Every surface must expose exactly the set api/_cors.js does.
+ */
+describe('every CORS surface exposes the same header set', () => {
+  const canonical = [...new Set(exposedHeaders(getCorsHeadersJs(corsRequest())))].sort();
+  for (const [label, build] of CORS_SURFACES) {
+    it(`${label} matches api/_cors.js getCorsHeaders`, () => {
+      assert.deepEqual([...new Set(exposedHeaders(build()))].sort(), canonical);
+    });
+  }
+});
+
 describe('IETF RateLimit headers are readable across every CORS surface', () => {
   const IETF_RATE_LIMIT_HEADERS = [
     'RateLimit',
@@ -271,11 +290,85 @@ describe('CORS triplet parity — Google Translate + trailing-dot helpers stay i
         `${rel} must share the trailing-dot normalizer name`,
       );
       assert.ok(
-        source.includes('hostname.replace(/\\.+$/, \'\')'),
-        `${rel} must strip trailing DNS dots on the hostname`,
+        !source.includes('replace(/\\.+$/'),
+        `${rel} must avoid backtracking when stripping trailing DNS dots`,
       );
     });
   }
+});
+
+describe('bounded CORS Origin validation (#9315)', () => {
+  const surfaces = [
+    ['API', (origin: string) => !isDisallowedOriginJs(new Request('https://api.worldmonitor.app/x', { headers: { Origin: origin } }))],
+    ['gateway', isAllowedOrigin],
+    ['Worker', isAllowedOriginWorker],
+  ] as const;
+
+  for (const [surface, allows] of surfaces) {
+    it(`${surface} accepts 300 bytes and rejects 301 bytes before normalization`, () => {
+      for (const base of ['https://worldmonitor.app', 'https://worldmonitor-app.translate.goog']) {
+        const atLimit = base + '.'.repeat(300 - base.length);
+        assert.equal(allows(atLimit), true);
+        assert.equal(allows(`${atLimit}.`), false);
+      }
+    });
+
+    it(`${surface} limits UTF-8 bytes rather than only code units`, () => {
+      const origin = 'https://worldmonitor.app' + '\u00ad'.repeat(140) + '.';
+      assert.ok(origin.length < 300);
+      assert.ok(new TextEncoder().encode(origin).byteLength > 300);
+      assert.equal(allows(origin), false);
+    });
+
+    it(`${surface} preserves raw trailing-dot origins and rejects internal empty labels`, () => {
+      for (const origin of ['https://worldmonitor.app...', 'https://tech-worldmonitor-app.translate.goog...']) {
+        assert.equal(allows(origin), true);
+        const req = new Request('https://api.worldmonitor.app/x', { headers: { Origin: origin } });
+        for (const headers of [getCorsHeaders(req), getCorsHeadersJs(req), buildCorsHeadersWorker(origin)]) {
+          assert.equal(headers['Access-Control-Allow-Origin'], origin);
+        }
+      }
+      assert.equal(allows(`https://a${'.'.repeat(280)}a`), false);
+    });
+
+    it(`${surface} rejects 60000 internal dots within a generous CPU budget`, () => {
+      const origin = `https://a${'.'.repeat(60_000)}a`;
+      const start = performance.now();
+      assert.equal(allows(origin), false);
+      const elapsed = performance.now() - start;
+      assert.ok(elapsed < 250, `${surface} validation took ${elapsed.toFixed(1)}ms`);
+    });
+  }
+
+  it('rejects oversized origins before URL parsing in all three implementations', () => {
+    const origin = 'https://worldmonitor.app' + '.'.repeat(300);
+    const req = new Request('https://api.worldmonitor.app/x', { headers: { Origin: origin } });
+    const OriginalURL = globalThis.URL;
+    let parses = 0;
+    globalThis.URL = class extends OriginalURL {
+      constructor(input: string | URL, base?: string | URL) {
+        parses++;
+        super(input, base);
+      }
+    };
+    try {
+      assert.equal(isDisallowedOriginJs(req), true);
+      assert.equal(isAllowedOrigin(origin), false);
+      assert.equal(isAllowedOriginWorker(origin), false);
+      assert.equal(parses, 0);
+    } finally {
+      globalThis.URL = OriginalURL;
+    }
+  });
+
+  it('Worker keeps oversized preflight denials readable without granting successful responses', async () => {
+    const origin = 'https://worldmonitor.app' + '.'.repeat(300);
+    const req = new Request('https://api.worldmonitor.app/api/test', { method: 'OPTIONS', headers: { Origin: origin } });
+    const response = await corsWorker.fetch(req, {}, {});
+    assert.equal(response.status, 204);
+    assert.equal(response.headers.get('Access-Control-Allow-Origin'), origin);
+    assert.equal(buildCorsHeadersWorker(origin)['Access-Control-Allow-Origin'], 'https://worldmonitor.app');
+  });
 });
 
 describe('CORS triplet parity — eliewm preview pattern stays tight in all three twins', () => {

@@ -28,6 +28,14 @@ Creates a Dodo customer-portal session for an existing subscriber (update card, 
 - **Response**: `{ "portalUrl": "..." }`
 - **Idempotency**: optional `Idempotency-Key` supported. Retrying the same key replays the original portal response instead of creating another portal attempt.
 
+### `GET /api/customer-portal`
+
+The link target for payment-failure emails. Each request mints a fresh Dodo customer-portal session and redirects the browser to it.
+
+- **Auth**: `?t=` portal token from a payment-failure email, or a Clerk bearer. The token expires 8 days after the email is sent. It mints a session only while the account still has a subscription on hold.
+- **Response**: `302` to the Dodo portal session. Any failure, including an expired token or a rate limit, redirects to `https://www.worldmonitor.app/dashboard?billing=portal`, which opens the billing portal once the user is signed in. The route ignores `next` and `redirect` query parameters.
+- **Rate limit**: per IP, plus a separate cap per portal token.
+
 ## Product catalog
 
 ### `GET /api/product-catalog`

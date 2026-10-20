@@ -246,7 +246,7 @@
     "connectorsRow": "Conectores",
     "deployment": "Deployment",
     "securityRow": "Segurança",
-    "f5_15min": "5-15 min",
+    "f5_15min": "5-15 minutos",
     "fLt60s": "<60 segundos",
     "fPerRequest": "Por pedido",
     "fLiveEdge": "Live-edge",
@@ -451,10 +451,10 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Painel Gratuito de Inteligência Global em Tempo Real",
-      "description": "Quando vira notícia, você já sabia. Conflitos, pontos críticos, voos militares, mercados, cibernética: um mapa ao vivo gratuito com análise de IA. Sem cadastro.",
-      "ogTitle": "World Monitor — Quando vira notícia, você já sabia.",
-      "ogDescription": "Os sinais brutos do mundo — navios, jatos, sirenes, cabos, mercados — em um mapa de inteligência ao vivo gratuito, com IA que sinaliza quando convergem. Grátis, sem cadastro."
+      "title": "World Monitor: Painel gratuito de inteligência geopolítica",
+      "description": "World Monitor: painel de inteligência geopolítica em tempo real. Mapa gratuito ao vivo de conflitos, navios, voos, mercados e ciber, com API e servidor MCP.",
+      "ogTitle": "World Monitor: Painel gratuito de inteligência geopolítica",
+      "ogDescription": "World Monitor: painel de inteligência geopolítica em tempo real. Mapa gratuito ao vivo de conflitos, navios, voos, mercados e ciber, com API e servidor MCP."
     },
     "nav": {
       "useCases": "Correlações",
@@ -471,9 +471,9 @@
     },
     "hero": {
       "eyebrow": "Painel de inteligência global gratuito · agora ao vivo",
-      "headline1": "Quando vira notícia,",
-      "headline2": "você já sabia.",
-      "sub": "Manchetes são o atraso. World Monitor transmite os sinais brutos do mundo — navios, jatos, sirenes, cabos, mercados — para um mapa ao vivo, com IA que sinaliza quando convergem em algo que importa.",
+      "headline1": "Painel de inteligência geopolítica",
+      "headline2": "em tempo real",
+      "sub": "Quando vira notícia, você já sabia.",
       "ctaPrimary": "Abrir o painel",
       "ctaFree": "Grátis · Sem cadastro · Carrega em segundos",
       "ctaSecondary": "Veja como as pessoas usam ↓",
@@ -485,7 +485,8 @@
       "positioningLink": "WorldMonitor não é um Palantir de código aberto",
       "asOf": "Em {{date}}",
       "whatIsTitle": "O que é World Monitor?",
-      "whatIsBody": "World Monitor é um dashboard gratuito ($0), open-source (AGPL-3.0) usado por 2M+ pessoas. Ele transmite {{feeds}} feeds de notícias e OSINT de {{providers}} provedores atribuídos em um único mapa-múndi ao vivo com {{mapLayers}} tipos de camada de mapa, abrangendo geopolítica, mercados, navegação marítima, aviação e cibersegurança. Ele correlaciona-os para que eventos convergentes apareçam antes dos destaques. Cada dado é rastreado e cada método documentado."
+      "whatIsBody": "World Monitor é um dashboard gratuito ($0), open-source (AGPL-3.0) usado por 2M+ pessoas. Ele transmite {{feeds}} feeds de notícias e OSINT de {{providers}} provedores atribuídos em um único mapa-múndi ao vivo com {{mapLayers}} tipos de camada de mapa, abrangendo geopolítica, mercados, navegação marítima, aviação e cibersegurança. Ele correlaciona-os para que eventos convergentes apareçam antes dos destaques. Cada dado é rastreado e cada método documentado.",
+      "whatIsBestFor": "Ideal para analistas, jornalistas, traders e desenvolvedores que precisam de sinais geopolíticos ao vivo."
     },
     "live": {
       "eyebrow": "Ao vivo agora",
@@ -688,8 +689,8 @@
       "a9": "Sim — open source sob AGPL-3.0 no GitHub: leia o código, auto-hospede ou construa sobre ele. Aplicativos de desktop nativos para Windows, macOS e Linux estão disponíveis também, além de um aplicativo Android TV para exibições em parede.",
       "q10": "Por que o World Monitor não é Palantir?",
       "a10": "Palantir torna os dados próprios de uma instituição operacionais dentro dessa instituição. World Monitor começa do outro lado: reúne, normaliza, correlaciona e monitora dados do mundo público, depois publica essa camada de inteligência por meio de um painel gratuito e código aberto. Trabalho diferente, produto diferente.",
-      "q11": "Which World Monitor license do I need?",
-      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms.",
+      "q11": "Qual licença do World Monitor preciso?",
+      "a11": "Escolha de acordo com quem vai usar o resultado. A licença pessoal do Pro é para uma pessoa que usa o World Monitor para a própria pesquisa e as próprias decisões. Pro Business permite que um usuário licenciado o use para trabalho de empresa ou de cliente, ferramentas internas e relatórios. API Starter cobre o uso da API dentro de uma organização, sem redistribuição aos clientes. API Business permite que essa organização incorpore dados do World Monitor em produtos e serviços para os seus clientes. Enterprise cobre lugares personalizados, White-label e deployments. Estas licenças de assinatura são separadas das licenças de código-fonte AGPL/MIT. Termos completos: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} respostas diretas sobre preço, dados, alertas e acesso a IA. Em resumo: o dashboard custa $0, não requer conta, e o código é open source sob AGPL-3.0.",
       "q12": "Qual é o melhor software para acompanhar crises e disrupções globais no noticiário?",
       "a12": "World Monitor é uma opção gratuita e de código aberto: transmite {{feeds}} feeds de notícias e OSINT de {{providers}} provedores identificados em um único mapa-múndi ao vivo com {{mapLayers}} tipos de camada de mapa, abrangendo geopolítica, mercados, transporte marítimo, aviação e cibersegurança. Ele os correlaciona para que disrupções simultâneas apareçam antes de chegarem às manchetes. Para compará-lo com outras ferramentas, consulte worldmonitor.app/compare/best-geopolitical-risk-dashboards."

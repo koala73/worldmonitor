@@ -6,6 +6,64 @@ All notable changes to World Monitor are documented here.
 
 ### Changed
 
+- **Internal displacement surges in cross-source signals** (#9014): IDMC Internal Displacement Updates now emit `CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE` for up to five countries whose last 30 days reach 5,000 people and three times their monthly average of the previous five months. `detectedAt` is the latest displacement date, because IDMC publishes a median of three weeks late. The CII formula is unchanged.
+- **Cross-border movements and CII formula `v13`**: add separately dated UK daily arrivals and CBP monthly encounters beside UNHCR ODP reports, with source health, country/route API filters, an opt-in MCP movement view, and distinct death markers. Fresh source-confirmed arrival surges add five CII points once per explicitly named country. Stock, encounters, deaths, and stale reports do not trigger this boost. `combinedScore` can rise by five points. The risk-score cache key family moves to `risk:scores:sebuf:v13` and emitted `methodology_version` moves to `v13`. Additional route sources remain blocked by permission or access, so global coverage acceptance is incomplete.
+- **CII formula `v12`: a country under attack keeps rising, and recovers once the strikes stop, worldwide** (2026-10-19).
+  v11 counted strikes only through a 72h term inside Conflict, which carries 18%
+  of the composite, so Saudi Arabia scored 54 on Oct 19 under repeated missile
+  and drone strikes. Each country now carries a daily strike intensity: the
+  larger of confirmed strikes from the Middle East strike feed (critical 4, high
+  2, elevated 1, moderate 0.5; the relay keeps a 30-day per-country tally in
+  `conflict:strike-pressure:v1`) and, worldwide while ACLED is dark, GDELT
+  coverage of air, drone, missile and artillery strikes aimed at the country as
+  a share of its coverage (a fourth counter in `gdelt:bulk:country-events:v1`;
+  days stored before it are rebuilt from the archive). Strike pressure decays
+  that with a three-day half-life and enters the composite as a floor (40 at
+  pressure 5, rising 8 per doubling, to 70) and a boost of up to 10. The 72h
+  strikeBoost leaves Conflict. Replayed on Oct 19: Saudi Arabia 53 -> 63, Yemen
+  85 -> 89, Iran 71 -> 73, Russia 76 -> 79, Ukraine 70 -> 71, Israel 56 -> 57;
+  calm countries are unchanged on every replayed date, and a country returns to
+  its v11 level 10-14 days after its last strike. `combinedScore` values move up
+  for struck countries and down slightly where only the old 72h term had
+  counted; the risk-score cache key family moved to `risk:scores:sebuf:v12` and
+  emitted `methodology_version` is now `v12`, so clients should re-baseline.
+- **CII formula `v11`: a sustained crisis scores, and geo events follow real borders, worldwide** (2026-10-19).
+  v10 scored GDELT conflict and protest coverage only against each country's own
+  28-day median, so a month-long campaign raised its own norm and read as calm
+  (Saudi Arabia's Conflict term was 0 on Oct 19). Each GDELT term is now the
+  larger of that escalation and a sustained level, the conflict- or
+  protest-coded share of the country's articles over the last seven complete
+  days, which is 0 at the noise floor every country carries (14% conflict, 2%
+  protest) and needs at least 200 articles. The shared GDELT cap rises from 50
+  to 70. Replayed to Oct 19: Yemen Conflict 68, Saudi Arabia 41, Israel 25; the
+  US, GB and China stay at 0. Separately, fires, GPS jamming, earthquakes,
+  climate anomalies, strikes and military flights and vessels are now placed by
+  point-in-polygon against Natural Earth 1:50m borders instead of overlapping
+  bounding boxes, which had put Jizan in Yemen, Bahrain in Saudi Arabia, Kuwait
+  City in Iraq and Baltic GPS jamming in Russia and had dropped Hawaii and
+  Alaska. Strike events carry their `countryCode`. `combinedScore` values move
+  both ways; the risk-score cache key family moved to `risk:scores:sebuf:v11`
+  and emitted `methodology_version` is now `v11`, so clients should re-baseline.
+- **CII formula `v10`: GDELT escalation stands in for ACLED in Conflict and Unrest** (2026-10-19).
+  Without ACLED access the ACLED event terms were 0 for every country, so the
+  October 2026 Riyadh strikes and France's nationwide riots never reached the
+  index. While the ACLED API returns no events, Conflict and Unrest each add a
+  term of up to 50 points scored from GDELT material-conflict and protest
+  coverage against each country's own 28-day median, so heavily covered
+  countries such as the US and GB do not score on ordinary news days. New
+  standalone health dataset `gdeltCountryEvents` (`gdelt:bulk:country-events:v1`).
+  `combinedScore` values rise for countries in an escalation; the risk-score
+  cache key family moved to `risk:scores:sebuf:v10` and emitted
+  `methodology_version` is now `v10`, so clients should re-baseline.
+- **CII formula `v9`: news counts for every country a headline names** (2026-10-19).
+  Top stories in `news:insights:v1` now carry `countryCodes`, and the CII
+  information component credits each tracked country in it instead of only the
+  first country named, so "Iran-backed Houthis warn of long conflict after Riyadh
+  airport attack" now counts for Saudi Arabia and Yemen as well as Iran. The relay
+  threat summary credits every named country when no attack target is found.
+  `get_news_intelligence` returns `countryCodes` and its `country` filter matches
+  any of them. The risk-score cache key family moved to `risk:scores:sebuf:v9`
+  and emitted `methodology_version` is now `v9`, so clients should re-baseline.
 - **Forecast `projections` no longer returned** (2026-10-07; #8967).
   `GET /api/forecast/v1/get-forecasts`, the `forecast:predictions:v2` payload, and
   the `get_forecast_predictions` and `get_forecast_case` MCP tools no longer

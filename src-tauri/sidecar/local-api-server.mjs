@@ -22,6 +22,8 @@ const DESKTOP_AUTH_SECRET_ENV = 'WM_DESKTOP_SHARED_SECRET';
 const DESKTOP_AUTH_TIMESTAMP_HEADER = 'X-WorldMonitor-Desktop-Timestamp';
 const DESKTOP_AUTH_SIGNATURE_HEADER = 'X-WorldMonitor-Desktop-Signature';
 const LOCAL_API_TRANSPORT_HEADER = 'x-worldmonitor-local-token';
+const MAX_REGISTRATION_BODY_BYTES = 16 * 1024;
+const MAX_REGISTRATION_EMAIL_LENGTH = 254;
 
 // Monkey-patch globalThis.fetch to force IPv4 for HTTPS requests.
 // Node.js built-in fetch (undici) tries IPv6 first via Happy Eyeballs.
@@ -225,7 +227,15 @@ function registerSidecarAllowedPrivateFetchOrigins(port, extraOrigins = []) {
 }
 
 function isAllowedPrivateSidecarFetch(url) {
-  return sidecarAllowedPrivateFetchOrigins.has(url.origin);
+  if (sidecarAllowedPrivateFetchOrigins.has(url.origin)) return true;
+  // Desktop users can change Ollama settings without restarting the sidecar.
+  // Trust only the current configured origin, never an address from a request.
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar' && process.env.OLLAMA_API_URL) {
+    try {
+      return url.origin === new URL(process.env.OLLAMA_API_URL).origin;
+    } catch { /* invalid configuration grants no private-network access */ }
+  }
+  return false;
 }
 
 async function assertSafeSidecarFetchUrl(url) {
@@ -683,6 +693,8 @@ async function buildRouteTable(root) {
 }
 
 const REQUEST_BODY_CACHE = Symbol('requestBodyCache');
+// Leave time for local fallback within the frontend's 5s request budgets.
+const CLOUD_PROXY_TIMEOUT_MS = 3000;
 
 async function readBody(req) {
   if (Object.prototype.hasOwnProperty.call(req, REQUEST_BODY_CACHE)) {
@@ -714,13 +726,79 @@ function toHeaders(nodeHeaders, options = {}) {
   return headers;
 }
 
-async function proxyToCloud(requestUrl, req, remoteBase) {
-  const target = `${remoteBase}${requestUrl.pathname}${requestUrl.search}`;
+// The renderer forwards a signed-in Pro user's Clerk bearer under its own
+// header: `Authorization` on the renderer → sidecar hop carries the sidecar
+// token, so the user credential cannot share it (#9396).
+const CLOUD_USER_AUTHORIZATION_HEADER = 'x-worldmonitor-user-authorization';
+const CLOUD_BEARER_SHAPE = /^Bearer [A-Za-z0-9._~+/-]+=*$/;
+const CLOUD_SESSION_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+const CLOUD_SESSION_RETRY_MS = 30 * 1000;
+
+// The cloud edge 403s missing, short, and library user agents. The renderer's
+// hop arrives through Rust with none, and a WebView UA would misreport the caller.
+function cloudUserAgent() {
+  return `WorldMonitor-Desktop/${process.env.LOCAL_API_APP_VERSION || 'unknown'} (sidecar)`;
+}
+
+function cloudUrl(remoteBase, pathname) {
+  const target = new URL(remoteBase);
+  target.pathname = `${target.pathname.replace(/\/$/, '')}${pathname}`;
+  return target;
+}
+
+// The gateway authenticates a Pro browser by an anonymous wms_ session plus
+// the Clerk bearer; the bearer alone is ignored on routes that are not
+// tier-gated. Mint the session the way a browser does and reuse it until
+// close to expiry. A failed mint is retried after a pause, not per request.
+async function mintCloudSession(remoteBase) {
+  try {
+    const response = await fetch(cloudUrl(remoteBase, '/api/wm-session'), {
+      method: 'POST',
+      headers: { Origin: 'https://worldmonitor.app', 'User-Agent': cloudUserAgent() },
+      signal: AbortSignal.timeout(CLOUD_PROXY_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    if (typeof payload?.token !== 'string' || !payload.token.startsWith('wms_') || !Number.isFinite(payload.exp)) {
+      return null;
+    }
+    return { token: payload.token, exp: payload.exp };
+  } catch {
+    return null;
+  }
+}
+
+// A failed refresh keeps the current session until it actually expires.
+async function getCloudSessionToken(context) {
+  const now = Date.now();
+  const cached = context.cloudSession;
+  const usable = cached?.token && cached.exp > now ? cached.token : null;
+  if (usable && cached.exp - now > CLOUD_SESSION_REFRESH_MARGIN_MS) return usable;
+  if (cached?.retryAt > now) return usable;
+  context.cloudSessionMint ??= mintCloudSession(context.remoteBase).then((session) => {
+    context.cloudSession = session ?? { ...cached, token: usable, retryAt: Date.now() + CLOUD_SESSION_RETRY_MS };
+    return session?.token ?? usable;
+  }).finally(() => {
+    context.cloudSessionMint = null;
+  });
+  return context.cloudSessionMint;
+}
+
+async function proxyToCloud(requestUrl, req, context) {
+  // One budget covers session minting and the fetch, so a cold session cannot
+  // stretch a request past the renderer's fallback timeout.
+  const deadline = AbortSignal.timeout(CLOUD_PROXY_TIMEOUT_MS);
+  const target = cloudUrl(context.remoteBase, requestUrl.pathname);
+  target.search = requestUrl.search;
   const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
   const headers = toHeaders(req.headers, { stripOrigin: true });
   headers.delete(LOCAL_API_TRANSPORT_HEADER);
   // Strip sidecar auth token — meaningless to cloud API.
   headers.delete('Authorization');
+  const userAuthorization = headers.get(CLOUD_USER_AUTHORIZATION_HEADER) ?? '';
+  headers.delete(CLOUD_USER_AUTHORIZATION_HEADER);
+  const userBearer = CLOUD_BEARER_SHAPE.test(userAuthorization) ? userAuthorization : '';
+  headers.set('User-Agent', cloudUserAgent());
   // Strip conditional headers so cloud always returns fresh 200, not 304.
   // The browser may have stale ETags from previous sessions with empty data.
   headers.delete('If-None-Match');
@@ -737,11 +815,35 @@ async function proxyToCloud(requestUrl, req, remoteBase) {
     const wmKey = process.env.WORLDMONITOR_API_KEY;
     if (wmKey) headers.set('X-WorldMonitor-Key', wmKey);
   }
-  return fetch(target, {
-    method: req.method,
-    headers,
-    body,
-  });
+  // Only a signed-in Pro desktop forwards a bearer.
+  if (userBearer) headers.set('Authorization', userBearer);
+  // Without a key the gateway answers 401, so every desktop presents the
+  // anonymous session a browser holds (#7548). The gateway rejects that session
+  // on tier-gated routes, so it unlocks nothing beyond the public web app.
+  if (!headers.has('X-WorldMonitor-Key')) {
+    const session = await Promise.race([
+      getCloudSessionToken(context),
+      new Promise((resolve) => {
+        if (deadline.aborted) resolve(null);
+        else deadline.addEventListener('abort', () => resolve(null), { once: true });
+      }),
+    ]);
+    if (session) headers.set('X-WorldMonitor-Key', session);
+  }
+  const clientAbort = new AbortController();
+  const onClientClose = () => clientAbort.abort();
+  req.socket.once('close', onClientClose);
+  if (req.socket.destroyed) clientAbort.abort();
+  try {
+    return await fetch(target, {
+      method: req.method,
+      headers,
+      body,
+      signal: AbortSignal.any([clientAbort.signal, deadline]),
+    });
+  } finally {
+    req.socket.off('close', onClientClose);
+  }
 }
 
 async function proxyRegisterInterestToCloud(requestUrl, req, context) {
@@ -763,6 +865,7 @@ async function proxyRegisterInterestToCloud(requestUrl, req, context) {
   const body = JSON.stringify(normalizedPayload);
   const headers = toHeaders(req.headers, { stripOrigin: true });
   headers.delete(LOCAL_API_TRANSPORT_HEADER);
+  headers.delete(CLOUD_USER_AUTHORIZATION_HEADER);
   headers.delete('Authorization');
   headers.delete('If-None-Match');
   headers.delete('If-Modified-Since');
@@ -828,21 +931,173 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
 // These routes read seed-owned Redis snapshots that the local sidecar does not
 // hold. They must stay cloud-preferred even when a desktop configures WS relay;
 // relay availability does not provide Upstash credentials to local handlers.
+// Seed-only RPC routes in families that also have live handlers (#5906); the
+// whole-family cases are in cloudPreferredSeedOnlyPrefixes below.
+// tests/sidecar-cloud-preferred-seed-only.test.mjs derives this set from the
+// generated route tables and fails when an entry is not a real RPC path, when
+// its handler reaches an upstream itself, or when a seed-only route is missing.
 const cloudPreferredExact = new Set([
-  '/api/intelligence/v1/list-wsb-tickers',
-  '/api/displacement/v1/get-displacement-summary',
   '/api/bootstrap',
+  '/api/aviation/v1/get-airport-ops-summary',
+  '/api/displacement/v1/get-displacement-summary',
+  '/api/displacement/v1/get-internal-displacement',
+  '/api/displacement/v1/get-cross-border-movements',
+  '/api/economic/v1/get-bis-credit',
+  '/api/economic/v1/get-bis-exchange-rates',
+  '/api/economic/v1/get-bis-policy-rates',
+  '/api/economic/v1/get-bls-series',
+  '/api/economic/v1/get-capital-flows',
+  '/api/economic/v1/get-china-macro-snapshot',
+  '/api/economic/v1/get-crude-inventories',
+  '/api/economic/v1/get-ecb-fx-rates',
+  '/api/economic/v1/get-economic-calendar',
+  '/api/economic/v1/get-economic-stress',
+  '/api/economic/v1/get-energy-capacity',
+  '/api/economic/v1/get-energy-crisis-policies',
+  '/api/economic/v1/get-energy-prices',
+  '/api/economic/v1/get-eu-fsi',
+  '/api/economic/v1/get-eu-gas-storage',
+  '/api/economic/v1/get-eu-yield-curve',
+  '/api/economic/v1/get-eurostat-country-data',
+  '/api/economic/v1/get-fao-food-price-index',
+  '/api/economic/v1/get-fred-series',
+  '/api/economic/v1/get-fred-series-batch',
+  '/api/economic/v1/get-government-yield-curve',
+  '/api/economic/v1/get-macro-signals',
+  '/api/economic/v1/get-nat-gas-storage',
+  '/api/economic/v1/get-national-debt',
+  '/api/economic/v1/get-oil-inventories',
+  '/api/economic/v1/get-oil-stocks-analysis',
+  '/api/economic/v1/get-us-cpi-monthly',
+  '/api/economic/v1/get-us-interest-rates',
+  '/api/economic/v1/get-us-treasury-par-yield-curve',
+  '/api/economic/v1/get-world-cpi-monthly',
+  '/api/economic/v1/list-bigmac-prices',
+  '/api/economic/v1/list-fuel-prices',
+  '/api/economic/v1/list-global-tenders',
+  '/api/economic/v1/list-grocery-basket-prices',
+  '/api/forecast/v1/get-forecasts',
+  '/api/forecast/v1/get-simulation-outcome',
+  '/api/forecast/v1/get-simulation-package',
+  '/api/infrastructure/v1/get-bootstrap-data',
+  '/api/infrastructure/v1/get-temporal-baseline',
+  '/api/infrastructure/v1/list-internet-ddos-attacks',
+  '/api/infrastructure/v1/list-internet-outages',
+  '/api/infrastructure/v1/list-internet-traffic-anomalies',
+  '/api/infrastructure/v1/list-temporal-anomalies',
+  '/api/intelligence/v1/compute-energy-shock',
+  '/api/intelligence/v1/get-china-decision-signals',
+  '/api/intelligence/v1/get-country-energy-profile',
+  '/api/intelligence/v1/get-country-history',
+  '/api/intelligence/v1/get-country-port-activity',
+  '/api/intelligence/v1/get-country-risk',
+  '/api/intelligence/v1/get-gdelt-topic-timeline',
+  '/api/intelligence/v1/get-pizzint-status',
+  '/api/intelligence/v1/get-regional-brief',
+  '/api/intelligence/v1/get-regional-snapshot',
+  '/api/intelligence/v1/get-social-velocity',
+  '/api/intelligence/v1/list-cross-source-signals',
+  '/api/intelligence/v1/list-gps-interference',
+  '/api/intelligence/v1/list-market-implications',
+  '/api/intelligence/v1/list-material-events',
+  '/api/intelligence/v1/list-satellites',
+  '/api/intelligence/v1/list-security-advisories',
+  '/api/intelligence/v1/list-wsb-tickers',
+  '/api/market/v1/get-cot-positioning',
+  '/api/market/v1/get-fear-greed-index',
+  '/api/market/v1/get-gold-intelligence',
+  '/api/market/v1/get-hyperliquid-flow',
+  '/api/market/v1/get-market-breadth-history',
+  '/api/market/v1/get-physical-divergence-index',
+  '/api/market/v1/get-physical-premiums',
+  '/api/market/v1/get-sector-summary',
+  '/api/market/v1/list-ai-tokens',
+  '/api/market/v1/list-commodity-quotes',
+  '/api/market/v1/list-crypto-sectors',
+  '/api/market/v1/list-defi-tokens',
+  '/api/market/v1/list-earnings-calendar',
+  '/api/market/v1/list-etf-flows',
+  '/api/market/v1/list-gulf-quotes',
+  '/api/market/v1/list-other-tokens',
   '/api/military/v1/get-defense-industrial-base',
-  '/api/supply-chain/v1/get-country-vulnerabilities',
+  '/api/military/v1/get-theater-posture',
+  '/api/military/v1/get-usni-fleet-report',
+  '/api/military/v1/list-defense-patents',
+  '/api/news/v1/summarize-article-cache',
+  '/api/research/v1/list-arxiv-papers',
+  '/api/research/v1/list-hackernews-items',
+  '/api/research/v1/list-trending-repos',
+  '/api/resilience/v1/get-demographics-capability',
+  '/api/resilience/v1/get-food-stocks',
+  '/api/resilience/v1/get-runtime-manifest',
+  '/api/scenario/v1/get-scenario-status',
+  '/api/supply-chain/v1/get-bypass-options',
   '/api/supply-chain/v1/get-chokepoint-dependencies',
+  '/api/supply-chain/v1/get-chokepoint-history',
+  '/api/supply-chain/v1/get-country-vulnerabilities',
+  '/api/supply-chain/v1/get-fuel-shortage-detail',
+  '/api/supply-chain/v1/get-mineral-production',
+  '/api/supply-chain/v1/get-multi-sector-cost-shock',
+  '/api/supply-chain/v1/get-pipeline-detail',
+  '/api/supply-chain/v1/get-shipping-rates',
+  '/api/supply-chain/v1/get-shipping-stress',
+  '/api/supply-chain/v1/get-storage-facility-detail',
+  '/api/supply-chain/v1/list-energy-disruptions',
+  '/api/supply-chain/v1/list-fuel-shortages',
+  '/api/supply-chain/v1/list-pipelines',
+  '/api/supply-chain/v1/list-storage-facilities',
   '/api/supply-chain/v1/list-vulnerability-rankings',
+  '/api/trade/v1/get-customs-revenue',
+  '/api/trade/v1/get-tariff-trends',
+  '/api/trade/v1/get-trade-barriers',
+  '/api/trade/v1/get-trade-flows',
+  '/api/trade/v1/get-trade-restrictions',
+  '/api/trade/v1/list-comtrade-flows',
+  '/api/v2/shipping/route-intelligence',
+  '/api/webcam/v1/list-webcams',
 ]);
+// Route families whose EVERY handler only reads seed-owned Redis (#5906). The
+// sidecar never holds Upstash credentials (UPSTASH_* is not in
+// ALLOWED_ENV_KEYS), a Redis miss degrades to an empty 200, and an empty 200
+// never trips the `!response.ok` cloud fallback — so served locally these
+// families render blank panels with no error anywhere. Always cloud,
+// WS_RELAY_URL or not. A family that gains a live handler moves to exact
+// entries; the contract test above enforces that.
+const cloudPreferredSeedOnlyPrefixes = [
+  '/api/climate/v1/',
+  '/api/conflict/v1/',
+  '/api/consumer-prices/v1/',
+  '/api/cyber/v1/',
+  '/api/health/v1/',
+  '/api/natural/v1/',
+  '/api/positive-events/v1/',
+  '/api/prediction/v1/',
+  '/api/radiation/v1/',
+  '/api/safety/v1/',
+  '/api/sanctions/v1/',
+  '/api/seismology/v1/',
+  '/api/thermal/v1/',
+  '/api/unrest/v1/',
+  '/api/wildfire/v1/',
+];
 const cloudPreferredAlwaysPrefixes = ['/api/scorecard/v1/'];
+
+// Versioned route families (api/v{N}/{domain}) the desktop deliberately never
+// bundles — scripts/build-sidecar-handlers.mjs refuses to build an undeclared
+// one, and its CLOUD_ONLY_ROUTE_FAMILIES must list exactly these (#5907).
+// Routed to the cloud on purpose, WS_RELAY_URL or not: route-intelligence reads
+// seed-owned Redis (empty 200 locally, so `!ok` fallback never fires) and the
+// webhook family is Pro-gated + server-persisted, so the gate lives upstream.
+// Before this list the family reached the cloud only via the 404 "handler
+// missing" fallback — undeclared, and invisible when cloudFallback is off.
+const cloudOnlyRouteFamilyPrefixes = ['/api/v2/shipping/'];
 
 function isCloudPreferred(pathname) {
   if (cloudPreferred.has(pathname)) return true;
   if (cloudPreferredExact.has(pathname)) return true;
   return cloudPreferredAlwaysPrefixes.some(p => pathname.startsWith(p))
+    || cloudPreferredSeedOnlyPrefixes.some(p => pathname.startsWith(p))
+    || cloudOnlyRouteFamilyPrefixes.some(p => pathname.startsWith(p))
     || cloudPreferredPrefixes.some(p => pathname.startsWith(p));
 }
 
@@ -994,7 +1249,7 @@ async function tryCloudFallback(requestUrl, req, context, reason) {
     }
   }
   try {
-    const resp = await proxyToCloud(requestUrl, req, context.remoteBase);
+    const resp = await proxyToCloud(requestUrl, req, context);
     if (!resp.ok) {
       context.logger.warn(`[local-api] cloud returned ${resp.status} for ${requestUrl.pathname}`);
     }
@@ -1636,14 +1891,35 @@ async function dispatch(requestUrl, req, routes, context) {
     }
     try {
       const body = await new Promise((resolve, reject) => {
+        if (Number(req.headers['content-length']) > MAX_REGISTRATION_BODY_BYTES) {
+          req.resume();
+          resolve(null);
+          return;
+        }
         const chunks = [];
-        req.on('data', c => chunks.push(c));
+        let bytes = 0;
+        const onData = (chunk) => {
+          bytes += chunk.length;
+          if (bytes > MAX_REGISTRATION_BODY_BYTES) {
+            chunks.length = 0;
+            req.off('data', onData);
+            req.resume();
+            resolve(null);
+            return;
+          }
+          chunks.push(chunk);
+        };
+        req.on('data', onData);
         req.on('end', () => resolve(Buffer.concat(chunks).toString()));
         req.on('error', reject);
       });
+      if (body === null) {
+        return json({ error: 'Request body too large' }, 413, { Connection: 'close' });
+      }
       const parsed = JSON.parse(body);
-      const email = parsed.email;
-      if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      const email = parsed?.email;
+      if (typeof email !== 'string' || email.length > MAX_REGISTRATION_EMAIL_LENGTH
+        || !/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(email)) {
         return json({ error: 'Invalid email address' }, 400);
       }
       const sharedSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
@@ -1817,14 +2093,16 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  if (context.cloudFallback && isCloudPreferred(requestUrl.pathname)) {
+  const cloudPreferredAttempted = context.cloudFallback && isCloudPreferred(requestUrl.pathname);
+  if (cloudPreferredAttempted) {
     const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'cloud-preferred');
     if (cloudResponse) return cloudResponse;
   }
+  const allowCloudFallback = context.cloudFallback && !cloudPreferredAttempted;
 
   const modulePath = pickModule(requestUrl.pathname, routes);
   if (!modulePath || !existsSync(modulePath)) {
-    if (context.cloudFallback) {
+    if (allowCloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler missing');
       if (cloudResponse) return cloudResponse;
     }
@@ -1836,7 +2114,7 @@ async function dispatch(requestUrl, req, routes, context) {
     const mod = await importHandler(modulePath);
     if (typeof mod.default !== 'function') {
       logOnce(context.logger, requestUrl.pathname, 'invalid handler module');
-      if (context.cloudFallback) {
+      if (allowCloudFallback) {
         const cloudResponse = await tryCloudFallback(requestUrl, req, context, `invalid handler module`);
         if (cloudResponse) return cloudResponse;
       }
@@ -1858,6 +2136,7 @@ async function dispatch(requestUrl, req, routes, context) {
     // not expose it to route handlers, where Authorization is caller identity
     // (OAuth bearer) and X-WorldMonitor-Key is the caller's API key.
     hdrs.delete(LOCAL_API_TRANSPORT_HEADER);
+    hdrs.delete(CLOUD_USER_AUTHORIZATION_HEADER);
     if (hdrs.get('Authorization') === `Bearer ${expectedToken}`) {
       hdrs.delete('Authorization');
     }
@@ -1870,14 +2149,14 @@ async function dispatch(requestUrl, req, routes, context) {
     const response = await mod.default(request);
     if (!(response instanceof Response)) {
       logOnce(context.logger, requestUrl.pathname, 'handler returned non-Response');
-      if (context.cloudFallback) {
+      if (allowCloudFallback) {
         const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler returned non-Response');
         if (cloudResponse) return cloudResponse;
       }
       return json({ error: 'Handler returned invalid response', endpoint: requestUrl.pathname }, 500);
     }
 
-    if (!response.ok && context.cloudFallback) {
+    if (!response.ok && allowCloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, `local status ${response.status}`);
       if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
     }
@@ -1886,7 +2165,7 @@ async function dispatch(requestUrl, req, routes, context) {
   } catch (error) {
     const reason = error.code === 'ERR_MODULE_NOT_FOUND' ? 'missing dependency' : error.message;
     logOnce(context.logger, requestUrl.pathname, reason);
-    if (context.cloudFallback) {
+    if (allowCloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, error);
       if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
     }

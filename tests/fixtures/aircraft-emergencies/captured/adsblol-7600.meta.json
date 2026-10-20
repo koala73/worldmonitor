@@ -1,0 +1,14 @@
+{
+  "url": "https://api.adsb.lol/v2/sqk/7600",
+  "startedAt": "2026-10-15T17:44:58.663276+00:00",
+  "receivedAt": "2026-10-15T17:44:59.216599+00:00",
+  "status": 200,
+  "sha256": "60324dcf9fe74c0e99452b87182573fec070dcc89ac1365cdc41b0d34ad8493a",
+  "headers": {
+    "Date": "Thu, 15 Oct 2026 17:44:59 GMT",
+    "Content-Type": "application/json",
+    "Content-Length": "101",
+    "Connection": "close",
+    "Cache-Control": "no-store"
+  }
+}

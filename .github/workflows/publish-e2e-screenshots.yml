@@ -12,8 +12,10 @@ permissions:
 jobs:
   publish:
     if: >-
+      github.event.workflow_run.head_repository.full_name == github.repository &&
       github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.event != 'pull_request' &&
+      github.event.workflow_run.path == '.github/workflows/e2e-visual.yml' &&
+      contains(fromJSON('["push","schedule","workflow_dispatch"]'), github.event.workflow_run.event) &&
       github.event.workflow_run.conclusion != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -25,7 +27,7 @@ jobs:
       - name: Download chrome gallery artifact
         id: download-gallery
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: playwright-gallery-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
           path: gallery
@@ -33,7 +35,7 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
       # secrets.* cannot appear in step `if:` (GitHub context restriction). Gate on
       # the public var here; fail closed on a missing access key inside the script.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: ${{ vars.E2E_SCREENSHOT_BUCKET != '' }}
         with:
           node-version: '24'
@@ -50,6 +52,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          PLAYWRIGHT_RUN_ID: ${{ github.event.workflow_run.id }}
+          PLAYWRIGHT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          PLAYWRIGHT_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          PLAYWRIGHT_RUN_URL: ${{ github.event.workflow_run.html_url }}
+          PLAYWRIGHT_SHA: ${{ github.event.workflow_run.head_sha }}
+          PLAYWRIGHT_EVENT: ${{ github.event.workflow_run.event }}
+          PLAYWRIGHT_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           set -euo pipefail
           if [ -z "${AWS_ACCESS_KEY_ID:-}" ]; then
@@ -88,10 +97,13 @@ jobs:
             exit 0
           fi
 
-          aws s3 cp "s3://${S3_BUCKET}/playwright/history.json" gallery/previous-history.json \
+          publish_dir="$(mktemp -d)"
+          PLAYWRIGHT_RESULT="$chrome_conclusion" node scripts/playwright-screenshot-gallery.mjs \
+            gallery/screenshots/images "$publish_dir"
+          aws s3 cp "s3://${S3_BUCKET}/playwright/history.json" previous-history.json \
             --endpoint-url "$S3_ENDPOINT" || true
-          node scripts/playwright-screenshot-gallery.mjs --merge-history gallery/previous-history.json gallery
-          aws s3 sync gallery/ "s3://${S3_BUCKET}/playwright/" --endpoint-url "$S3_ENDPOINT"
+          node scripts/playwright-screenshot-gallery.mjs --merge-history previous-history.json "$publish_dir"
+          aws s3 sync "$publish_dir/" "s3://${S3_BUCKET}/playwright/" --endpoint-url "$S3_ENDPOINT"
           echo "Published screenshot gallery to s3://${S3_BUCKET}/playwright/"
       - name: Note when object storage is not configured
         if: ${{ vars.E2E_SCREENSHOT_BUCKET == '' }}

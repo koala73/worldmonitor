@@ -31,6 +31,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Best for: Public situational awareness, OSINT research, market/geopolitical context, news monitoring
 - Includes: all registered map layers except the Pro-only Resilience layer, curated feeds backed by observed upstream hosts, country briefs, hotspots, instability scores, chokepoints, cables, cascade analysis, breaking alert pipeline and watchlists
 - Limits: 3 dashboard tabs; free dashboard refresh cadence is typically 5-15 minutes; advanced analyst, digest, API and team workflows require paid plans
+- MCP: 5 cached-data MCP calls/day with a free account; other MCP tools require a paid plan
 
 ## Pro
 
@@ -116,7 +117,8 @@ These subscription licenses cover the hosted Service and its outputs. They are s
         "chokepoints",
         "instability scores",
         "watchlists",
-        "3 dashboard tabs"
+        "3 dashboard tabs",
+        "5 cached-data MCP calls/day with a free account"
       ]
     },
     {

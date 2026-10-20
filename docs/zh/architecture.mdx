@@ -248,7 +248,7 @@ Page Load → parallel fetch ─┬─ /api/bootstrap?tier=fast  (s-maxage=1200)
 | `seed-gulf-quotes` | Yahoo Finance（Tadawul、DFM、ADX） | 10 分钟 | `market:gulf-quotes:v1` |
 | `seed-unrest-events` | ACLED 抗议 + GDELT | 45 分钟 | `unrest:events:v1` |
 | `seed-ucdp-events` | UCDP GED API | 6 小时 | `conflict:ucdp-events:v1` |
-| `seed-iran-events` | LiveUAMap 地理编码事件 | 10 分钟 | `conflict:iran-events:v1` |
+| `ais-relay`（中东打击循环） | Telegram 频道 + GDELT 事件导出 | 10 分钟 | `conflict:iran-events:v1`、`conflict:strike-pressure:v1`（供 CII 使用的 30 天按国家计数） |
 | `seed-displacement-summary` | UNHCR / IOM | 30 分钟 | N/A |
 | `seed-military-bases` | 经审核的军事基地注册表 | 每日 | N/A |
 | `seed-wb-indicators` | World Bank 技术准备度 | 每日 | `economic:worldbank-techreadiness:v1` |

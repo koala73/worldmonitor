@@ -1,6 +1,6 @@
 [package]
 name = "world-monitor"
-version = "2.10.0"
+version = "2.11.2"
 description = "World Monitor desktop application"
 authors = ["World Monitor"]
 edition = "2021"
@@ -16,6 +16,8 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "linux-
 reqwest = { version = "0.12", default-features = false, features = ["native-tls", "json"] }
 getrandom = "0.2"
 opener = "0.8"
+sha2 = "0.10"
+base64 = "0.22"
 
 [profile.release]
 lto = "fat"

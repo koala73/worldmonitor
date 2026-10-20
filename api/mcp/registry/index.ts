@@ -1,3 +1,4 @@
+import { loadToolAliases } from '../alias';
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../constants';
 import { JMESPATH_SCHEMA } from '../jmespath';
 import { advertisedOutputSchema } from '../structured-content';
@@ -5,7 +6,7 @@ import type { McpAccessClass, PublicToolShape, ToolDef } from '../types';
 import { compressDescription, utf8ByteLength } from '../utils';
 import { CACHE_TOOLS } from './cache-tools';
 import { NLP_TOOLS } from './nlp-tools';
-import { RPC_TOOLS } from './rpc-tools';
+import { RETIRED_RPC_TOOLS, RPC_TOOLS } from './rpc-tools';
 import { COUNTRY_VIEW_TOOLS } from './country-view';
 import { NEWS_DASHBOARD_TOOLS } from './news-dashboard';
 import { SOURCE_TOOLS } from './source-tools';
@@ -22,13 +23,19 @@ import { TARIFF_TOOLS } from './tariff-tools';
 // last so extracting it from rpc-tools.ts left every other tool's position
 // unchanged. SOURCE_TOOLS is appended after it for the same reason.
 export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS, ...NEWS_DASHBOARD_TOOLS, ...MACRO_TOOLS, ...STOCK_TOOLS, ...COST_SHOCK_TOOLS, ...PUBLIC_DOMAIN_TOOLS, ...COUNTRY_VIEW_TOOLS, ...TARIFF_TOOLS];
+export const RETIRED_TOOLS: ToolDef[] = [...RETIRED_RPC_TOOLS];
+
 export const FREE_TIER_TOOL_NAMES: ReadonlySet<string> = new Set(
   TOOL_REGISTRY.filter((tool) => tool._freeTier === true).map((tool) => tool.name),
 );
 
-/** Metadata reads stay authenticated but never spend an allowance or quota slot. */
+/**
+ * Account tools stay authenticated but never spend an allowance or quota slot:
+ * the metadata reads, and `start_upgrade` (#9144), which an agent most needs
+ * exactly when the allowance is spent.
+ */
 export function isQuotaExemptMetadataTool(tool: ToolDef): boolean {
-  return tool.name === 'describe_tool' || tool.name === 'get_mcp_allowance';
+  return tool.name === 'describe_tool' || tool.name === 'get_mcp_allowance' || tool.name === 'start_upgrade';
 }
 
 /**
@@ -64,6 +71,8 @@ export function toolAccess(tool: ToolDef): McpAccessClass {
   if (isQuotaExemptMetadataTool(tool)) return 'free-account';
   return tool._execute === undefined ? 'free-account' : 'subscription';
 }
+
+export const TOOL_ALIASES = loadToolAliases(TOOL_REGISTRY, RETIRED_TOOLS, toolAccess);
 
 // Public shape for tools/list — strips internal _-prefixed fields, adds MCP
 // annotations, and injects the universal `summary` flag (issue #3678) into
@@ -105,8 +114,12 @@ for (const tool of TOOL_REGISTRY) {
 // the public-shape fields (name, description, inputSchema, annotations).
 //
 // `opts.compressDescriptions` — when true (the tools/list call path),
-// the tool's top-level `description` is run through compressDescription.
-// When false (the describe_tool call path), full text is preserved.
+// the tool's top-level `description` is capped at TOOL_DESCRIPTION_MAX_BYTES
+// through compressDescription. Every registered description already fits
+// (tests/mcp-tools-list-description-budget.test.mjs), so on a passing build
+// both paths emit the same text; the cap is a runtime backstop, not a
+// second shape. When false (the describe_tool call path), text is passed
+// through untouched.
 export function buildPublicTool(
   tool: ToolDef,
   opts: { compressDescriptions: boolean },
@@ -142,7 +155,7 @@ export function buildPublicTool(
 
   const publicTool: PublicToolShape = {
     name: tool.name,
-    ...(tool.title ? { title: tool.title } : {}),
+    title: tool.title,
     description,
     inputSchema: {
       type: tool.inputSchema.type,
@@ -155,11 +168,15 @@ export function buildPublicTool(
     // Advertised as `anyOf [documented shape, projection / soft-envelope
     // shapes]` so the `structuredContent` every call returns validates in a
     // strict client whatever the response kind (api/mcp/structured-content.ts).
-    outputSchema: advertisedOutputSchema(structuredClone(tool.outputSchema)),
+    outputSchema: advertisedOutputSchema(structuredClone(tool.outputSchema), {
+      permitDeprecation: TOOL_ALIASES.targetNames().has(tool.name),
+    }),
     // Per-tool annotations declared on each registry entry (v1.7.0).
     // Deep-cloned so a mutating client can't poison the registry literal —
     // matches the inputSchema.properties + outputSchema treatment above.
-    annotations: structuredClone(tool.annotations),
+    // The spec's annotations.title repeats the top-level title: some hosts,
+    // including the Claude Connectors Directory, read only this one.
+    annotations: { title: tool.title, ...structuredClone(tool.annotations) },
     _meta: {
       'worldmonitor/access': toolAccess(tool),
       'worldmonitor/weight': toolWeight(tool),

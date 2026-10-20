@@ -307,7 +307,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Статус оцінки та заповнення пропусків не надано"
     },
     "fiveFactorScorecard": {
       "title": "П'ятифакторна шкала стійкості",
@@ -484,6 +485,7 @@
     "goldIntelligence": "Gold Intelligence",
     "gov": "Government",
     "thinktanks": "Think Tanks",
+    "science": "Наука",
     "polymarket": "Predictions",
     "commodities": "Metals & Materials",
     "economic": "Macro Stress",
@@ -785,10 +787,9 @@
       "alertTitle": {
         "configured": "Desktop settings configured",
         "needsKeys": "Configure API keys to unlock features",
-        "some": "Some features need API keys"
+        "some": "Some features need API keys",
+        "pro": "World Monitor Pro активний"
       },
-      "reserveEarlyAccess": "Reserve Your Early Access",
-      "skipSetup": "Skip the setup — a single World Monitor license unlocks everything. Join the waitlist for early access.",
       "summary": {
         "desktop": "Desktop mode",
         "web": "Web mode (read-only, server-managed credentials)",
@@ -816,7 +817,10 @@
         "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
-      }
+      },
+      "proCloud": "Функції без локального ключа API використовують хмарні дані World Monitor.",
+      "skipSetupPro": "Пропустити налаштування: увійдіть за допомогою World Monitor Pro, щоб використовувати хмарні дані замість своїх ключів API.",
+      "getPro": "Отримати World Monitor Pro"
     },
     "settingsWindow": {
       "shellTitle": "World Monitor Settings",
@@ -1437,7 +1441,7 @@
         "commodityHubs": "Commodity Hubs",
         "gulfInvestments": "Інвестиції Ради співпраці країн Перської затоки",
         "tradeRoutes": "Trade Routes",
-        "iranAttacks": "Iran Attacks",
+        "iranAttacks": "Удари на Близькому Сході",
         "gpsJamming": "Перешкода навігації",
         "ciiChoropleth": "Нестабільність країни",
         "dayNight": "Day/Night",
@@ -1479,7 +1483,9 @@
         "sourceIomDtm": "Джерело: IOM DTM",
         "sinceDate": "з {{date}}",
         "lastMonth": "минулого місяця",
-        "sourceUnhcrOdp": "Джерело: портал оперативних даних УВКБ ООН"
+        "sourceUnhcrOdp": "Джерело: портал оперативних даних УВКБ ООН",
+        "displaced": "переміщені особи",
+        "sourceIdmc": "Джерело: IDMC"
       },
       "layerHelp": {
         "title": "Map Layers Guide",
@@ -1697,6 +1703,8 @@
       "capacityPercent": "{{percent}}% capacity",
       "noCountryImpacts": "No country impacts detected",
       "alternativeRoutes": "Alternative Routes",
+      "sharesCutZone": "та сама протока",
+      "estimateNote": "Оцінка: пропускна здатність і резервування кабелів наближені, а не виміряні.",
       "countriesAffected": "Countries Affected ({{count}})",
       "links": "links",
       "selectInfrastructureHint": "Select infrastructure to analyze cascade impact",
@@ -1914,7 +1922,21 @@
       "latestChange": "Остання зміна",
       "accelerating": "Пришвидшується",
       "inDays": "за {{days}} дн.",
-      "crossBorderNote": "Портал операційних даних Агентства ООН у справах біженців: люди, які перетнули кордони в кожній кризі, з останніх звітів країни. Ситуації перекриваються, тому вони не додаються разом."
+      "crossBorderNote": "Портал операційних даних Агентства ООН у справах біженців: люди, які перетнули кордони в кожній кризі, з останніх звітів країни. Ситуації перекриваються, тому вони не додаються разом.",
+      "last7And30": "Останні 7 / 30 днів",
+      "staleReport": "Застарілий звіт",
+      "reported": "Кількість",
+      "period": "Період",
+      "movementNote": "Кожен рядок зберігає своє джерело, дату звіту й показник. Чисельність населення, прибуття та події прикордонного контролю є різними показниками. Дані джерел можуть перетинатися; не підсумовуйте їхні значення. WorldMonitor формує це подання з указаних джерел; це не означає схвалення з боку постачальників.",
+      "recent": "Нещодавно",
+      "last30Days": "За останні 30 днів",
+      "newThisWeek": "Нове цього тижня",
+      "conflict": "Конфлікт",
+      "disaster": "Стихійне лихо",
+      "surge": "Сплеск",
+      "recentNote": "IDMC: люди, переміщені всередину своєї країни протягом останніх 30 днів. IDMC публікує дані медіаною три тижні після переміщення, тому нещодавні тижні заповнюються із затримкою. «Нове цього тижня» підраховує дані, опубліковані протягом останніх 7 днів. Сплеск: щонайменше 5000 осіб і втричі більше від середньомісячного показника попередніх п'яти місяців.",
+      "recentAsOf": "Дані станом на {{date}}.",
+      "recentMissing": "Немає даних цього разу від {{countries}}; їхні файли не завантажилися, що не означає нульового переміщення."
     },
     "climate": {
       "noAnomalies": "No significant anomalies detected",
@@ -1941,7 +1963,8 @@
       "sourceCoverageHint": "Showing {{covered}} of {{total}} enabled sources — this panel rotates through its sources on each refresh",
       "sortBy": "Sort by",
       "sortNewest": "Newest",
-      "sortRelevance": "Relevance"
+      "sortRelevance": "Relevance",
+      "translationUnavailable": "Переклад недоступний. Перевірте налаштування постачальника ШІ та спробуйте ще раз."
     },
     "mobileNav": {
       "panelCategories": "Panel categories"
@@ -3046,6 +3069,7 @@
       "tier4OnlyHint": "Усі видавці, які повідомляють про це, є джерелами рівня 4 (агрегатори та блоги). Це описує охоплення, а не точність.",
       "rosterListed": "({{listed}} у списку)",
       "rosterFeeds": "Переглянуті стрічки: {{labels}}",
+      "rosterSameCopy": "Той самий текст, враховано один раз",
       "rosterLegend": "Рівні ранжують джерела; вони не оцінюють це твердження.",
       "tierDocsLink": "Як призначаються рівні",
       "tierChip": "Р{{tier}}",
@@ -3848,5 +3872,27 @@
       "label": "Middle East Flashpoints",
       "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
     }
+  },
+  "countryHistory": {
+    "title": "Щоденна історія країни",
+    "loading": "Завантаження щоденної історії…",
+    "window": "Період",
+    "days": "{{days}} днів",
+    "observed": "{{count}} знімків за {{days}} днів",
+    "legend": "CII (бурштиновий): вище означає більше нестабільності. Стійкість (зелений): вище означає більший потенціал. Точки позначають дні з вибраними заголовками.",
+    "chart": "Щоденні оцінки CII та стійкості. Прогалини та зміни формули переривають лінії.",
+    "selectDate": "{{date}}, {{count}} вибраних заголовків",
+    "empty": "За цей період немає щоденних знімків. Історія накопичується після активації.",
+    "unavailable": "Історія тимчасово недоступна. Спробуйте знову.",
+    "retry": "Повторити",
+    "stale": "Останній успішний щоденний запис зроблено понад 36 годин тому.",
+    "break": "Зміна формули або прогалина спостережень. Порівнюйте лише оцінки з однаковою формулою.",
+    "partial": "На момент запису охоплення новин було неповним.",
+    "resilience": "Стійкість",
+    "ciiMissing": "CII недоступний",
+    "resilienceMissing": "Стійкість недоступна",
+    "noEvents": "Для цієї дати вибрані заголовки не записані. Це не доводить відсутності подій.",
+    "unlock90": "Відкрийте 90 днів із Pro",
+    "unlock365": "Відкрийте 365 днів із тарифом API"
   }
 }

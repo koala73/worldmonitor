@@ -1,0 +1,21 @@
+{
+  "weoVintage": "October 2026",
+  "sourceUrl": "https://www.imf.org/-/media/files/publications/weo/2026/october/english/statsappendix.pdf#page=13",
+  "coverage": "Verified government-finance periods only. Countries without a verified year-label convention retain the calendar-year fallback. Table F month ranges alone do not establish the year label.",
+  "countries": {
+    "EGY": {
+      "endMonth": 6,
+      "endDay": 30,
+      "yearLabel": "end",
+      "labelSourceUrl": "https://www.imf.org/en/news/articles/2026/07/08/tr070826-weo-press-briefing-transcript-july-8-2026",
+      "labelEvidence": "The July WEO briefing identifies Egypt's 2026 as fiscal year 2025/26. October Table F reports July to June for government finance."
+    },
+    "IND": {
+      "endMonth": 3,
+      "endDay": 31,
+      "yearLabel": "start",
+      "labelSourceUrl": "https://www.imf.org/-/media/files/publications/weo/2026/october/english/text.pdf#page=26",
+      "labelEvidence": "Table 1.1 footnote 4 places FY2025/26, starting April 2025, in the 2025 column. October Table F reports April to March for government finance."
+    }
+  }
+}

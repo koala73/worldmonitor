@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { readFileSync as originalReadFileSync } from 'node:fs';
 function readFileSync(path: any, options?: any): any {
   const content = originalReadFileSync(path, options);
@@ -18,6 +19,32 @@ import {
   CII_CONFLICT_ACTIVITY_CAP,
   CII_CONFLICT_ACTIVITY_PIVOT,
   CII_FORMULA_VERSION,
+  CII_GDELT_ESCALATION_CAP,
+  CII_GDELT_ESCALATION_DEADBAND,
+  CII_GDELT_ESCALATION_MAX_AGE_MS,
+  CII_GDELT_ESCALATION_SATURATION,
+  CII_GDELT_ESCALATION_SMOOTHING,
+  CII_GDELT_LEVEL_CONFLICT_FLOOR,
+  CII_GDELT_LEVEL_CONFLICT_SATURATION,
+  CII_GDELT_LEVEL_MIN_ARTICLES,
+  CII_GDELT_LEVEL_PROTEST_FLOOR,
+  CII_GDELT_LEVEL_PROTEST_SATURATION,
+  CII_STRIKE_BOOST_CAP,
+  CII_STRIKE_BOOST_PER_DOUBLING,
+  CII_STRIKE_BOOST_PIVOT,
+  CII_STRIKE_CONFIRMED_MAX_AGE_MS,
+  CII_STRIKE_FLOOR_BASE,
+  CII_STRIKE_FLOOR_CAP,
+  CII_STRIKE_FLOOR_MIN_PRESSURE,
+  CII_STRIKE_FLOOR_PER_DOUBLING,
+  CII_STRIKE_GDELT_MIN_MEASURED_DAYS,
+  CII_STRIKE_GDELT_NOISE_FLOOR,
+  CII_STRIKE_GDELT_SCALE,
+  CII_STRIKE_GDELT_SMOOTHING,
+  CII_STRIKE_GDELT_SUSTAINED_DAYS,
+  CII_STRIKE_HALF_LIFE_DAYS,
+  CII_STRIKE_SEVERITY_WEIGHTS,
+  CII_STRIKE_WINDOW_DAYS,
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_SCALE_FACTOR,
   STRATEGIC_RISK_SCALE_FLOOR,
@@ -34,6 +61,7 @@ import {
   EVENT_MULTIPLIER,
   countCiiRealtimeSignalDensityCoverage,
   computeCIIScores,
+  strikePressureFloor,
   computeStrategicRisks,
   filterRiskScoresResponse,
   geoToCountry,
@@ -75,10 +103,29 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // input snapshot, including `deriveUcdpIntensityByRegion` literals. Live scores
   // now shift upward for UCDP conflict countries (e.g. UA/PK/MX gain a war floor).
   v8: '87fcd775ca953f849c686b8c229c7b1a662056c9751d5c902b811257a1735b5e',
+  // v9 credits every country a news headline names (countryCodes) in the
+  // information component instead of only the first-named country.
+  v9: '46b7a6dfa494fcec09fb3b941d047c79680266cee2f949e1cd5975a28cfc9bc3',
+  // v10 adds the GDELT escalation terms to Conflict and Unrest while ACLED is
+  // dark; the snapshot now guards their curve constants too.
+  v10: '1f5bd9fab6b5e2a33395bad5d2a7e7e56f3bb71f8393dc0bf9f083ba6e3d956c',
+  // v11 adds the sustained GDELT level (and raises the shared GDELT cap to 70)
+  // and places coordinates by real borders; the snapshot now guards the level
+  // constants and the generated border file, so regenerating borders bumps the version.
+  v11: '06b0cefc7bb0ac2233e91d23159f14a9f6a26115ec905165e066b80b8e4c4853',
+  // v12 adds strike pressure (confirmed feed and GDELT strikes, decayed, into a
+  // floor and a boost) and drops the 72h strikeBoost from Conflict; the snapshot
+  // now guards the strike constants and the strike helpers' literals.
+  v12: '65bce5e1570edb82984c26b2161fab83656009baecbd45efe713b7cf28b01e0b',
+  // v13 retains strike pressure and adds the fresh arrival surge boost.
+  v13: '973a91e2a1064f5b409aabe3f96f847681d759f1fe689c833356a412b32c7967',
 };
 
 const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT', 'UCDP_CLASSIFICATION_WINDOW_MS'];
-const GUARDED_SCORE_FUNCTION_NAMES = ['climateSeverityScore', 'deriveUcdpIntensityByRegion', 'computeCIIScores'];
+const GUARDED_SCORE_FUNCTION_NAMES = [
+  'climateSeverityScore', 'deriveUcdpIntensityByRegion', 'computeCIIScores',
+  'gdeltStrikeDays', 'strikePressure', 'strikePressureFloor', 'strikePressureBoost',
+];
 
 function readRepoFile(path: string): string {
   return readFileSync(resolve(REPO_ROOT, path), 'utf8');
@@ -533,7 +580,8 @@ function emptyAux() {
     orefData: null as { activeAlertCount: number; historyCount24h: number } | null,
     advisories: null as { byCountry: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> } | null,
     displacedByIso3: {} as Record<string, number>,
-    newsTopStories: [] as Array<{ countryCode: string | null; threatLevel: string; primaryTitle: string }>,
+    crossBorderSurgeCountries: [] as string[],
+    newsTopStories: [] as Array<{ countryCode: string | null; countryCodes?: string[]; threatLevel: string; primaryTitle: string }>,
     threatSummaryByCountry: null as Record<string, { critical: number; high: number; medium: number; low: number; info: number }> | null,
     aviationAlerts: [] as any[],
     earthquakes: [] as any[],
@@ -642,7 +690,7 @@ describe('CII signal wiring', () => {
       'bare Korean remains ambiguous and must not resolve to KR/KP');
   });
 
-  it('geoToCountry disambiguates known overlapping bboxes with deterministic border heuristics', () => {
+  it('geoToCountry places border-region cities by real borders (1:50m map)', () => {
     assert.equal(geoToCountry(33.5138, 36.2765), 'SY', 'Damascus must resolve to Syria, not Lebanon');
     assert.equal(geoToCountry(29.7604, -95.3698), 'US', 'southern US coordinates must resolve to US, not Mexico');
     assert.equal(geoToCountry(33.5904, 130.4017), 'JP', 'Fukuoka must resolve to Japan, not South Korea');
@@ -655,9 +703,11 @@ describe('CII signal wiring', () => {
 
     assert.equal(geoToCountry(32.7157, -117.1611), 'US', 'San Diego remains US');
     assert.equal(geoToCountry(32.5149, -117.0382), 'MX', 'Tijuana remains Mexico');
-    assert.equal(geoToCountry(31.7619, -106.4850), 'US', 'El Paso remains US');
+    // The 1:50m Rio Grande runs ~1-2 km north of the river through downtown El Paso
+    // and Brownsville, so these probes sit a few km inland.
+    assert.equal(geoToCountry(31.8600, -106.4400), 'US', 'northeast El Paso remains US');
     assert.equal(geoToCountry(31.6904, -106.4245), 'MX', 'Ciudad Juarez remains Mexico');
-    assert.equal(geoToCountry(25.9017, -97.4975), 'US', 'Brownsville remains US');
+    assert.equal(geoToCountry(25.9500, -97.5000), 'US', 'north Brownsville remains US');
     assert.equal(geoToCountry(27.4763, -99.5164), 'MX', 'Nuevo Laredo must resolve to Mexico, not Texas');
     assert.equal(geoToCountry(28.6916, -100.5409), 'MX', 'Piedras Negras must resolve to Mexico, not Texas');
     assert.equal(geoToCountry(29.3232, -100.9522), 'MX', 'Ciudad Acuna must resolve to Mexico, not Texas');
@@ -690,12 +740,13 @@ describe('CII signal wiring', () => {
     assert.equal(geoToCountry(52.9721, 122.5386), 'CN', 'Mohe must resolve to China, not Russia');
     assert.equal(geoToCountry(45.8038, 126.5350), 'CN', 'Harbin remains China');
     assert.equal(geoToCountry(46.9591, 142.7380), 'RU', 'Yuzhno-Sakhalinsk must resolve to Russia, not Japan');
-    assert.equal(geoToCountry(45.4500, 142.0500), 'RU', 'southern Sakhalin inside the JP bbox must resolve to Russia');
+    assert.equal(geoToCountry(46.6300, 142.7800), 'RU', 'Korsakov, southern Sakhalin, must resolve to Russia');
     assert.equal(geoToCountry(44.3500, 142.4600), 'JP', 'north Hokkaido must resolve to Japan, not Russia');
     assert.equal(geoToCountry(45.4150, 141.6730), 'JP', 'Wakkanai remains Japan');
     assert.equal(geoToCountry(43.0618, 141.3545), 'JP', 'Sapporo remains Japan');
-    assert.equal(geoToCountry(31.8560, 35.4590), 'IL', 'Jordan fail-closed gap must not mask tighter IL bbox attribution');
-    assert.equal(geoToCountry(32.4500, 36.1000), 'SY', 'Jordan fail-closed gap must not mask Syria bbox attribution');
+    assert.equal(geoToCountry(31.8560, 35.4590), 'IL', 'Jericho (West Bank) counts toward the Israel row');
+    assert.equal(geoToCountry(32.6200, 36.1000), 'SY', 'Daraa remains Syria next to the Jordan border');
+    assert.equal(geoToCountry(32.4500, 36.1000), null, 'northern Jordan is not a Tier-1 CII country');
     assert.equal(geoToCountry(31.9539, 35.9106), null, 'Amman must fail closed because Jordan is not a Tier-1 CII country');
   });
 
@@ -815,6 +866,57 @@ describe('CII signal wiring', () => {
     assert.ok(withAux, 'computeCIIScores handles the aux sources without throwing');
     assert.ok(withAux!.combinedScore > base!.combinedScore,
       'earthquake + sanctions feed earthquakeBoost + sanctionsBoost in the blend');
+  });
+
+  it('an offshore earthquake scores to the country USGS names in its place', () => {
+    // 150 km off Honshu: beyond the 12-nautical-mile coastal waters, so no
+    // border reaches it, but USGS names the country after the last comma.
+    const nowMs = Date.UTC(2026, 9, 19);
+    const base = scoreFor(computeCIIScores([], emptyAux(), { nowMs }), 'JP')!;
+    const offshore = emptyAux();
+    offshore.earthquakes = [{
+      magnitude: 7.1, occurredAt: nowMs - 3_600_000, place: '151 km E of Namie, Japan',
+      location: { latitude: 37.5, longitude: 142.9 },
+    }];
+    assert.ok(scoreFor(computeCIIScores([], offshore, { nowMs }), 'JP')!.combinedScore > base.combinedScore);
+    // A region with no country, and a country named only mid-string, score nowhere.
+    const remote = emptyAux();
+    remote.earthquakes = [
+      { magnitude: 7.1, occurredAt: nowMs - 3_600_000, place: 'South Sandwich Islands region', location: { latitude: -58, longitude: -26 } },
+      { magnitude: 7.1, occurredAt: nowMs - 3_600_000, place: 'off the coast of Japan trench, Pacific Ocean', location: { latitude: 30, longitude: 160 } },
+    ];
+    const remoteScores = computeCIIScores([], remote, { nowMs });
+    const baseScores = computeCIIScores([], emptyAux(), { nowMs });
+    for (const s of remoteScores) assert.equal(s.combinedScore, scoreFor(baseScores, s.region)!.combinedScore, s.region);
+  });
+
+  it('never reads an ocean or region name, or a quake on non-Tier-1 land, as a Tier-1 country', () => {
+    // Review on #9421: 'Southern Indian Ocean' matched India's 'indian'; a comma-free
+    // 'Off coast of Central America' matched 'america'; and a Tajik epicentre that
+    // USGS describes from the nearest Afghan town is on non-Tier-1 land, which
+    // counts for no Tier-1 country.
+    const nowMs = Date.UTC(2026, 9, 19);
+    const quake = (place: string, latitude: number, longitude: number) => ({
+      magnitude: 7.5, occurredAt: nowMs - 3_600_000, place, location: { latitude, longitude },
+    });
+    const baseScores = computeCIIScores([], emptyAux(), { nowMs });
+    for (const eq of [
+      quake('Southern Indian Ocean', -40, 70),
+      quake('Off coast of Central America', 10, -95),
+      quake('412 km S of Port Blair, Indian Ocean', 8, 92.5),
+      quake('61 km NE of Jurm, Afghanistan', 37.49, 71.55),
+      // Review on #9421: a news keyword is not a country name. USGS writes US
+      // states after the comma, and 'washington' is a US news keyword.
+      quake('180 km W of Neah Bay, Washington', 48.2, -127.2),
+      quake('300 km E of Hachijo-jima, Tokyo', 33.0, 143.0),
+    ]) {
+      const aux = emptyAux();
+      aux.earthquakes = [eq];
+      const scores = computeCIIScores([], aux, { nowMs });
+      for (const s of scores) {
+        assert.equal(s.combinedScore, scoreFor(baseScores, s.region)!.combinedScore, `${eq.place}: ${s.region}`);
+      }
+    }
   });
 
   it('earthquake lookback honors injected CII scorer clock', () => {
@@ -1142,15 +1244,73 @@ describe('CII scoring', () => {
     );
   });
 
-  it('iran high severity strikes boost conflict', () => {
+  // v12: strikes enter the composite through strike pressure (floor and boost),
+  // not the Conflict component; tests/cii-strike-pressure.test.mts covers the curve.
+  // Eight critical strikes in the last hours (pressure 32) clear every advisory floor.
+  const strikesAt = (base: Record<string, unknown>, n = 8) => Array.from({ length: n }, (_, i) => ({
+    severity: 'critical', ...base, id: `strike-${i}`, timestamp: Date.now() - (i + 1) * 3_600_000,
+  }));
+
+  it('a critical strike raises the composite more than a moderate one', () => {
     const aux1 = emptyAux();
-    aux1.iranEvents = [{ lat: 33.0, lon: 35.0, severity: 'high' }];
+    aux1.iranEvents = strikesAt({ countryCode: 'IL', severity: 'critical' });
     const aux2 = emptyAux();
-    aux2.iranEvents = [{ lat: 33.0, lon: 35.0, severity: 'low' }];
+    aux2.iranEvents = strikesAt({ countryCode: 'IL', severity: 'moderate' });
     const highSev = scoreFor(computeCIIScores([], aux1), 'IL')!;
     const lowSev = scoreFor(computeCIIScores([], aux2), 'IL')!;
-    assert.ok(highSev.combinedScore >= lowSev.combinedScore,
-      `High severity strike (${highSev.combinedScore}) should be >= low (${lowSev.combinedScore})`);
+    assert.ok(highSev.combinedScore > lowSev.combinedScore,
+      `High severity strikes (${highSev.combinedScore}) should exceed moderate (${lowSev.combinedScore})`);
+  });
+
+  it('a Saudi strike from the Middle East strike feed raises SA, not Iran', () => {
+    const require = createRequire(import.meta.url);
+    const strikes = require('../scripts/lib/middle-east-strikes.cjs');
+    const now = Date.now();
+    const post = { id: 'saudidcd:7001', channel: 'saudidcd', url: 'https://t.me/SaudiDCD/7001', ts: new Date(now - 600_000).toISOString(), text: 'Projectile debris fell in Riyadh' };
+    const candidate = strikes.buildTelegramCandidate(post, { isStrike: true, kind: 'strike', place: 'Riyadh', countryIso2: 'SA', severity: 'critical' }, now);
+    const events = strikes.deriveStrikeEvents([candidate], now);
+    assert.equal(events.length, 1);
+    const withStrike = emptyAux();
+    withStrike.iranEvents = events;
+    const baseline = computeCIIScores([], emptyAux());
+    const scored = computeCIIScores([], withStrike);
+    assert.ok(scoreFor(scored, 'SA')!.combinedScore > scoreFor(baseline, 'SA')!.combinedScore,
+      `SA ${scoreFor(scored, 'SA')!.combinedScore} must exceed ${scoreFor(baseline, 'SA')!.combinedScore}`);
+    assert.equal(scoreFor(scored, 'IR')!.combinedScore, scoreFor(baseline, 'IR')!.combinedScore, 'the strike must not land on Iran');
+  });
+
+  it('a strike event scores to the country it carries, even at sea', () => {
+    const require = createRequire(import.meta.url);
+    const strikes = require('../scripts/lib/middle-east-strikes.cjs');
+    const now = Date.now();
+    const post = { id: 'saudidcd:7002', channel: 'saudidcd', url: 'https://t.me/SaudiDCD/7002', ts: new Date(now - 600_000).toISOString(), text: 'Tanker struck in the Strait of Hormuz' };
+    const candidate = strikes.buildTelegramCandidate(post, { isStrike: true, kind: 'strike', place: 'Strait of Hormuz', countryIso2: 'IR', severity: 'high' }, now);
+    const [event] = strikes.deriveStrikeEvents([candidate], now);
+    assert.equal(event.countryCode, 'IR');
+    const withStrike = emptyAux();
+    withStrike.iranEvents = strikesAt({ ...event, severity: 'critical' });
+    const baseline = computeCIIScores([], emptyAux());
+    const scored = computeCIIScores([], withStrike);
+    assert.ok(scoreFor(scored, 'IR')!.combinedScore > scoreFor(baseline, 'IR')!.combinedScore,
+      'open water in the strait is in no country polygon; the event\'s countryCode must carry it to Iran');
+  });
+
+  it('a strike event\'s country wins over its coordinates, and a non-Tier-1 country scores nowhere', () => {
+    const baseline = computeCIIScores([], emptyAux());
+    const scoreOf = (scores: ReturnType<typeof computeCIIScores>, code: string) => scoreFor(scores, code)!.combinedScore;
+    // Gaza's coordinates and its PS code both count toward the Israel row.
+    const gaza = emptyAux();
+    gaza.iranEvents = strikesAt({ latitude: 31.5, longitude: 34.47, countryCode: 'PS', title: 'Strike in Gaza City' });
+    assert.ok(scoreOf(computeCIIScores([], gaza), 'IL') > scoreOf(baseline, 'IL'));
+    // Kuwait is not Tier-1: neither Iraq nor Iran (the old bounding-box answers) may absorb it.
+    const kuwait = emptyAux();
+    kuwait.iranEvents = strikesAt({ latitude: 29.3759, longitude: 47.9774, countryCode: 'KW', title: 'Drone strike near Kuwait City, Iraq border' });
+    const kuwaitScores = computeCIIScores([], kuwait);
+    for (const code of ['IQ', 'IR', 'SA']) assert.equal(scoreOf(kuwaitScores, code), scoreOf(baseline, code), code);
+    // An explicit Tier-1 code beats the coordinates (a centroid fallback, a geocoding slip).
+    const coded = emptyAux();
+    coded.iranEvents = strikesAt({ latitude: 26.2235, longitude: 50.5876, countryCode: 'SA' });
+    assert.ok(scoreOf(computeCIIScores([], coded), 'SA') > scoreOf(baseline, 'SA'));
   });
 
   it('IL scores higher than MX with active conflict signals', () => {
@@ -1417,6 +1577,26 @@ describe('CII scoring', () => {
       `RU with critical news (${withNews.combinedScore}) should exceed baseline (${withoutNews.combinedScore})`);
   });
 
+  it('newsTopStories credits every country a headline names, not only the first', () => {
+    const aux = emptyAux();
+    aux.newsTopStories = [{
+      countryCode: 'IR',
+      countryCodes: ['IR', 'YE', 'SA'],
+      threatLevel: 'critical',
+      primaryTitle: 'Iran-backed Houthis warn of long conflict after Riyadh airport attack',
+    }];
+    const scores = computeCIIScores([], aux);
+    for (const code of ['IR', 'YE', 'SA']) {
+      assert.ok(scoreFor(scores, code)!.components!.newsActivity > 0, `${code} newsActivity should be > 0`);
+    }
+  });
+
+  it('newsTopStories from snapshots without countryCodes still credit countryCode', () => {
+    const aux = emptyAux();
+    aux.newsTopStories = [{ countryCode: 'SA', threatLevel: 'high', primaryTitle: 'Riyadh airport closed' }];
+    assert.ok(scoreFor(computeCIIScores([], aux), 'SA')!.components!.newsActivity > 0);
+  });
+
   it('threatSummaryByCountry boosts newsActivity for target country', () => {
     const aux = emptyAux();
     aux.threatSummaryByCountry = { RU: { critical: 3, high: 2, medium: 1, low: 1, info: 0 } };
@@ -1650,6 +1830,32 @@ describe('CII scoring', () => {
       riskConfig: {
         CII_CONFLICT_ACTIVITY_CAP,
         CII_CONFLICT_ACTIVITY_PIVOT,
+        CII_GDELT_ESCALATION_CAP,
+        CII_GDELT_ESCALATION_DEADBAND,
+        CII_GDELT_ESCALATION_MAX_AGE_MS,
+        CII_GDELT_ESCALATION_SATURATION,
+        CII_GDELT_ESCALATION_SMOOTHING,
+        CII_GDELT_LEVEL_CONFLICT_FLOOR,
+        CII_GDELT_LEVEL_CONFLICT_SATURATION,
+        CII_GDELT_LEVEL_MIN_ARTICLES,
+        CII_GDELT_LEVEL_PROTEST_FLOOR,
+        CII_GDELT_LEVEL_PROTEST_SATURATION,
+        CII_STRIKE_BOOST_CAP,
+        CII_STRIKE_BOOST_PER_DOUBLING,
+        CII_STRIKE_BOOST_PIVOT,
+        CII_STRIKE_CONFIRMED_MAX_AGE_MS,
+        CII_STRIKE_FLOOR_BASE,
+        CII_STRIKE_FLOOR_CAP,
+        CII_STRIKE_FLOOR_MIN_PRESSURE,
+        CII_STRIKE_FLOOR_PER_DOUBLING,
+        CII_STRIKE_GDELT_MIN_MEASURED_DAYS,
+        CII_STRIKE_GDELT_NOISE_FLOOR,
+        CII_STRIKE_GDELT_SCALE,
+        CII_STRIKE_GDELT_SMOOTHING,
+        CII_STRIKE_GDELT_SUSTAINED_DAYS,
+        CII_STRIKE_HALF_LIFE_DAYS,
+        CII_STRIKE_SEVERITY_WEIGHTS,
+        CII_STRIKE_WINDOW_DAYS,
         STRATEGIC_RISK_POSITIONAL_DECAY,
         STRATEGIC_RISK_SCALE_FACTOR,
         STRATEGIC_RISK_SCALE_FLOOR,
@@ -1658,6 +1864,8 @@ describe('CII scoring', () => {
       scoreFormulaLiterals,
       scoreHelperInputs,
       scoreLevelCutoffs: extractScoreLevelCutoffs(cachedRiskSource, 'getScoreLevel'),
+      // Coordinate attribution: which Tier-1 country a fire, jamming hex, quake or strike scores to.
+      countryBordersSha256: createHash('sha256').update(readRepoFile('scripts/shared/cii-country-borders.data.mjs')).digest('hex'),
     };
 
     assert.equal(
@@ -1690,7 +1898,20 @@ describe('CII scoring', () => {
       export function computeCIIScores(): number {
         return 1;
       }
+      export function gdeltStrikeDays(): number {
+        return 7;
+      }
+      export function strikePressure(): number {
+        return 0.5;
+      }
+      export function strikePressureFloor(): number {
+        return 0;
+      }
+      export function strikePressureBoost(): number {
+        return 0;
+      }
     `);
+    assertFormulaLiteralCovered(literals, 'gdeltStrikeDays', 7, 'return 7');
 
     assertFormulaLiteralCovered(literals, 'UCDP_CLASSIFICATION_WINDOW_MS', 2, '2 * 365');
     assertFormulaLiteralCovered(literals, 'NEWS_THREAT_WEIGHT', 4, 'critical: 4');
@@ -2052,7 +2273,7 @@ describe('CII scoring', () => {
   });
 
   it('proto and OpenAPI CiiComponents descriptions match the server scoring sources', () => {
-    const expectedGeo = 'Armed-conflict contribution from ACLED events, fatalities, civilian violence, strikes, and OREF alerts (0-100).';
+    const expectedGeo = 'Armed-conflict contribution from ACLED events, fatalities, civilian violence, GDELT conflict coverage, and OREF alerts (0-100).';
     const expectedMilitary = 'Security-mobility contribution from military flights, military vessels, aviation disruption, and GPS interference (0-100).';
     const staleSourcePattern = /ACLED\/UCDP|AIS disruption/;
 
@@ -2229,11 +2450,24 @@ describe('CII scoring', () => {
       /`gaza`[\s\S]{0,120}IL/i,
       'methodology doc must disclose that Gaza text fallback routes to IL.',
     );
-    assert.match(
-      methodologyDoc,
-      /min\(50, iranStrikes \* 3 \+ highSeverityStrikes \* 5\)/,
-      'methodology doc must disclose the Iran-region strike boost formula.',
-    );
+    // v12 strike pressure: decay, both mappings, the GDELT intensity and the
+    // replaced 72h term must all be published with their constants.
+    const literal = (text: string) => new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+'));
+    const w = CII_STRIKE_SEVERITY_WEIGHTS;
+    for (const [pattern, what] of [
+      [literal(`P = sum of x_d * 0.5^(age_d / ${CII_STRIKE_HALF_LIFE_DAYS})`), 'the strike-pressure decay'],
+      [literal(`min(${CII_STRIKE_FLOOR_CAP}, ${CII_STRIKE_FLOOR_BASE} + ${CII_STRIKE_FLOOR_PER_DOUBLING} * log2(P / ${CII_STRIKE_FLOOR_MIN_PRESSURE}))`), 'the strike floor'],
+      [literal(`strikeBoost = min(${CII_STRIKE_BOOST_CAP}, ${CII_STRIKE_BOOST_PER_DOUBLING} * log2(1 + P / ${CII_STRIKE_BOOST_PIVOT}))`), 'the strike boost'],
+      [literal(`${CII_STRIKE_GDELT_SCALE} * max(0, strikes / (articles + ${CII_STRIKE_GDELT_SMOOTHING}) - ${CII_STRIKE_GDELT_NOISE_FLOOR})`), 'the GDELT strike intensity'],
+      [literal(`\`critical ${w.critical}\`, \`high ${w.high}\`, \`elevated ${w.elevated}\`, \`moderate ${w.moderate}\``), 'the severity weights'],
+      [literal(`(at least ${CII_STRIKE_GDELT_MIN_MEASURED_DAYS}), coverage is over the floor on at least ${CII_STRIKE_GDELT_SUSTAINED_DAYS} in 7`), 'the GDELT campaign rule'],
+      [literal(`(\`P\` = 20), about ${Math.round(strikePressureFloor(20))}`), 'the strike-floor worked example'],
+      [literal(`cap of ${CII_STRIKE_FLOOR_CAP} is reached at \`P\` of about ${Math.round(CII_STRIKE_FLOOR_MIN_PRESSURE * 2 ** ((CII_STRIKE_FLOOR_CAP - CII_STRIKE_FLOOR_BASE) / CII_STRIKE_FLOOR_PER_DOUBLING))}`), 'the strike-floor cap'],
+      [literal(`over the last ${CII_STRIKE_WINDOW_DAYS} days`), 'the strike window'],
+      [/min\(50, iranStrikes \* 3 \+ highSeverityStrikes \* 5\)` term that sat inside\s+Conflict through v11/, 'the replaced 72h term'],
+    ] as const) {
+      assert.match(methodologyDoc, pattern, `methodology doc must disclose ${what}.`);
+    }
     assert.match(
       overviewDoc,
       /Tier-1 membership is curated rather than algorithmic/i,
@@ -2513,6 +2747,8 @@ describe('CII scoring', () => {
       { relPath: 'scripts/regional-snapshot/trigger-evaluator.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
       { relPath: 'api/mcp/registry/analysis-tools.ts', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.live'] },
       { relPath: 'tests/regional-snapshot.test.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'scripts/shipping-webhook-worker.mjs', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.live', 'CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'shared/event-triggers.json', expectedKeys: [expectedLiveKey, expectedStaleKey] },
     ];
 
     const violations: string[] = [];
@@ -2536,4 +2772,27 @@ describe('CII scoring', () => {
     );
   });
 
+});
+
+
+it('fresh arrival surge gives one bounded boost to a named country', () => {
+  const base = computeCIIScores([], emptyAux());
+  const aux = emptyAux();
+  aux.crossBorderSurgeCountries = ['GB', 'GB'];
+  const result = computeCIIScores([], aux);
+  assert.equal(scoreFor(result, 'GB')!.combinedScore, scoreFor(base, 'GB')!.combinedScore + 5);
+  assert.equal(scoreFor(result, 'US')!.combinedScore, scoreFor(base, 'US')!.combinedScore);
+});
+
+it('arrival surge preserves strike pressure in the combined formula', () => {
+  const nowMs = Date.parse('2026-10-20T12:00:00Z');
+  const calm = computeCIIScores([], emptyAux(), { nowMs });
+  const aux = { ...emptyAux(), confirmedStrikes: { GB: { '2026-10-20': 1 } } };
+  const strikes = computeCIIScores([], aux, { nowMs });
+  aux.crossBorderSurgeCountries = ['GB', 'GB'];
+  const combined = computeCIIScores([], aux, { nowMs });
+  assert.ok(scoreFor(strikes, 'GB')!.combinedScore > scoreFor(calm, 'GB')!.combinedScore);
+  assert.equal(scoreFor(combined, 'GB')!.combinedScore, scoreFor(strikes, 'GB')!.combinedScore + 5);
+  assert.equal(scoreFor(combined, 'US')!.combinedScore, scoreFor(strikes, 'US')!.combinedScore);
+  assert.equal(scoreFor(combined, 'GB')!.methodologyVersion, CII_FORMULA_VERSION);
 });

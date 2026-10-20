@@ -41,7 +41,7 @@ For the projection grammar itself, see the [JMESPath guide](/mcp-jmespath). For 
 - **HTTP status** is the transport-layer answer. Most JSON-RPC replies — successes AND errors — come back as **HTTP 200**, per the JSON-RPC 2.0 convention. The handler only escalates the status when the failure is something a generic HTTP client must react to (auth, daily cap, service unavailable) and benefits from a `Retry-After` / `WWW-Authenticate` header.
 - **JSON-RPC `error.code`** is the application-layer answer. Ten codes are in use: `-32000`, `-32001`, `-32002`, `-32003`, `-32004`, `-32029`, `-32600`, `-32601`, `-32602`, `-32603`. `-32000` is a documented migration code for retired alias-host transport (HTTP 410 / `canonical_endpoint_required`), not a protocol bug. Any other code is a wire bug — file an issue.
 - **Soft-behavior envelopes** are the high-volume failure mode. `tools/call` succeeds at the JSON-RPC layer (HTTP 200, no `error` field), but the JSON sitting inside `result.content[0].text` carries a `_budget_exceeded` or `_jmespath_error` discriminator. Clients that only inspect the JSON-RPC envelope will silently treat these as successes — parse `result.content[0].text` and check for a leading `_` key before consuming the payload as data.
-- **Executed calls stay charged.** `_budget_exceeded`, `_jmespath_error`, and tool-execution errors (`-32603`) all happen after the tool has run, so they consume the Pro daily-quota slot. Only pre-dispatch failures such as daily-cap rejection or quota-reservation service failure avoid charging the slot.
+- **Executed calls stay charged.** `_budget_exceeded`, `_jmespath_error`, upstream failures, empty results, stored-contract errors and tool-execution errors (`-32603`) consume the daily allowance once execution starts. Before reserving free-account, Pro or API allowance, `tools/call` checks the tool's input schema and synchronous caller-input hooks, including country resolution, required scopes, option combinations and cursor syntax. Rejected arguments return `-32602` without spending allowance or opening a paid panel. Defaults remain optional; arguments are not coerced. Downstream validation discovered after execution starts remains charged.
 - **Every 401 sets `WWW-Authenticate`** with `realm="worldmonitor"` and a `resource_metadata` pointer at the protected-resource document for the route you called: `/.well-known/oauth-protected-resource/mcp` for `/mcp`, `/.well-known/oauth-protected-resource/api/mcp` for `/api/mcp`. RFC 9728-aware clients (Claude Desktop, MCP Inspector) bounce through the OAuth flow on this header without further intervention.
 
 ## JSON-RPC error codes
@@ -178,15 +178,26 @@ Content-Type: application/json
     "data": {
       "reason": "upgrade-required",
       "nextStep": "The free allowance covers cached-data tools only. Call one of those, or subscribe to Pro at the upgrade URL for the full tool set.",
-      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel"
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel",
+      "recommendedPlan": "pro_monthly",
+      "checkoutTool": "start_upgrade"
     }
   }
 }
 ```
 
+**Checkout hint.** `upgrade-required` from `api/mcp/dispatch.ts`, `allowance-exhausted` and `quota-exceeded` (both under `-32029` below) gain `recommendedPlan` and `checkoutTool` when the caller holds a user-bound credential and a self-serve plan sits one step up. `recommendedPlan` maps free → `pro_monthly`, Pro → `pro_business_monthly` and API Starter → `api_business`. `checkoutTool` is `"start_upgrade"` and appears only for a free account, because only that caller can buy the plan through a new checkout: Pro → Pro Business needs Pro cancelled first, and API Starter → API Business is a prorated change in the billing portal, so a paid caller gets `recommendedPlan` alone. Pro Business, API Business, Enterprise, operator keys and anonymous callers get neither field. `message` and `upgradeUrl` are unchanged, so clients that cannot call tools keep the static link. The `upgrade-required` from the auth pre-check carries no hint, because that caller cannot reach any tool.
+
+**`start_upgrade` refusals.** The tool creates no checkout session in these cases. All are `-32002` inside **HTTP 200** with `data.reason` and `data.nextStep`:
+
+- `reason: "already-subscribed"` — the account already holds a plan in the same family. `data.subscription` gives `{planKey, displayName, status, currentPeriodEnd}`. Pro to Pro Business means cancelling Pro in the billing portal first; API Starter to API Business is a prorated change in the billing portal.
+- `reason: "payment-in-progress"` — a payment for the same tier group is still pending. Finish it in the browser, or call again later: this one clears on its own.
+
+An operator key calling `start_upgrade` also gets `-32002` at HTTP 200, with message `Starting an upgrade requires a user-bound credential.` and no `data`.
+
 One `-32002` emission is different: `resources/read` of `worldmonitor://account/mcp-allowance` with a credential that is not user-bound returns `-32002` with message `Account allowance status requires a user-bound credential.` inside **HTTP 200** and with no `data` payload — it is a plain JSON-RPC error, not an entitlement denial.
 
-**What to do.** Do not retry and do not re-run OAuth — both will reproduce the same denial. Surface the state to the user: the subscription must be renewed (worldmonitor.app → Pricing) before MCP access resumes. Renewal takes effect within seconds of the provider webhook; no re-authentication is needed afterwards. While the same subscription is still being *verified* (provider re-check in flight), the server instead returns a retryable `-32603` at HTTP 503 with `X-Billing-Verification: renewal_verification_pending|renewal_verification_failed` and a dynamic `Retry-After` — see `-32603` below.
+**What to do.** For an entitlement denial (HTTP 403, or the HTTP 200 forms with `reason: "upgrade-required"` or `"lapsed-subscription"`), do not retry and do not re-run OAuth — both will reproduce the same denial. The `start_upgrade` refusals above are the exception: `payment-in-progress` clears once the pending payment completes or lapses, so a later call can succeed. Surface the state to the user: the subscription must be renewed (worldmonitor.app → Pricing) before MCP access resumes. Renewal takes effect within seconds of the provider webhook; no re-authentication is needed afterwards. While the same subscription is still being *verified* (provider re-check in flight), the server instead returns a retryable `-32603` at HTTP 503 with `X-Billing-Verification: renewal_verification_pending|renewal_verification_failed` and a dynamic `Retry-After` — see `-32603` below.
 
 ### `-32003` — Required data inputs unavailable
 
@@ -258,7 +269,7 @@ Two further per-minute limiters surface the same code: pre-auth `wm_…`-key **v
 
 **Downstream endpoint limits — HTTP 429.** `search_flight_prices_by_date` preserves downstream HTTP 429 as `-32029` with message `Too many requests` and the original `Retry-After` header when present. This includes the Google Dates limit of 10 calls per minute. The MCP daily reservation remains charged.
 
-**Daily cap — HTTP 429 + `Retry-After`.** A hard daily cap is enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` of a data-bearing **URI-template instantiation** (the auth-symmetric resources path) count. The cap is plan-resolved and identical on both the OAuth and `wm_…` doors: **Pro 50/day** and **Pro Business 250/day** on a dedicated counter at one unit per call, while **API Starter and API Business** spend the same allowance as their REST requests (1,000 and 10,000 units/day) at [a per-tool weight](/usage-rate-limits#mcp-calls-against-an-api-plan) of 1, 2, or 3. Enterprise can be unlimited. The message quotes the budget that actually rejected, so it will not always read 50. Legacy deployment-allowlisted operator keys are the only authenticated class outside the daily reservation path. **Exempt from the daily cap:** `describe_tool`, `get_sources`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `initialize`, `notifications/initialized`, `ping`, `resources/read` of a **public** resource such as `worldmonitor://seed-meta/freshness`, and the authenticated status read `worldmonitor://account/mcp-allowance`. (These methods still count toward the authenticated per-minute limit, except anonymous `get_sources`, which uses its separate 10/minute/IP fail-closed limit.)
+**Daily cap — HTTP 429 + `Retry-After`.** A hard daily cap is enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` of a data-bearing **URI-template instantiation** (the auth-symmetric resources path) count. The cap is plan-resolved and identical on both the OAuth and `wm_…` doors: **Pro 50/day** and **Pro Business 250/day** on a dedicated counter at one unit per call, while **API Starter and API Business** spend the same allowance as their REST requests (1,000 and 10,000 units/day) at [a per-tool weight](/usage-rate-limits#mcp-calls-against-an-api-plan) of 1, 2, or 3. Enterprise carries a fair-use ceiling of 25,000 units/day. The message quotes the budget that actually rejected, so it will not always read 50. Legacy deployment-allowlisted operator keys reserve on their own per-key counter with a ceiling of 10,000 units/day. **Exempt from the daily cap:** `describe_tool`, `get_sources`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `initialize`, `notifications/initialized`, `ping`, `resources/read` of a **public** resource such as `worldmonitor://seed-meta/freshness`, and the authenticated status read `worldmonitor://account/mcp-allowance`. (These methods still count toward the authenticated per-minute limit, except anonymous `get_sources`, which uses its separate 10/minute/IP fail-closed limit.)
 
 ```json
 {
@@ -272,7 +283,8 @@ Two further per-minute limiters surface the same code: pre-auth `wm_…`-key **v
       "nextStep": "Wait for the next UTC day, or upgrade at the upgrade URL for a higher daily limit.",
       "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel",
       "limit": 50,
-      "sharedWithRestApi": false
+      "sharedWithRestApi": false,
+      "recommendedPlan": "pro_business_monthly"
     }
   }
 }
@@ -292,11 +304,17 @@ Two further per-minute limiters surface the same code: pre-auth `wm_…`-key **v
     "data": {
       "reason": "allowance-exhausted",
       "nextStep": "Wait until the next UTC day for another free allowance window, or upgrade to Pro for a higher daily limit.",
-      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel"
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel",
+      "recommendedPlan": "pro_monthly",
+      "checkoutTool": "start_upgrade"
     }
   }
 }
 ```
+
+`recommendedPlan` and `checkoutTool` follow the checkout hint rules under `-32002` above. `start_upgrade` spends no allowance, so it still works after this denial.
+
+**`start_upgrade` checkout limit — HTTP 429 + `Retry-After`.** The tool shares the per-account checkout limit with the pricing page. When it trips, the response is `-32029` with message `Checkout is temporarily rate limited. Retry shortly.` and `data: { reason: "checkout-rate-limited", retryAfterSeconds }`. Honour `Retry-After`.
 
 This is deliberately **not** `-32001` / 401. An exhausted quota is not an authentication failure, and answering it with the re-authenticate envelope sends RFC 9728-aware clients into a loop: OAuth succeeds, the retry 401s again, forever. Honour `Retry-After` or upgrade.
 
@@ -348,6 +366,7 @@ The most common error code, shared across `tools/call`, `prompts/get`, `resource
 |--------------------------------------------------------|-----------------------------------|----------------------------------------------------------------------------|
 | `tools/call` with no/non-string `name`                 | `api/mcp/dispatch.ts` `dispatchToolsCall` param guard | `Invalid params: missing tool name`                         |
 | `tools/call` with `name` that isn't in the registry    | `api/mcp/dispatch.ts` `dispatchToolsCall` registry lookup | `Unknown tool: get_foo`                                  |
+| `tools/call` arguments fail the input schema or caller-input hook | `api/mcp/_validate-args.ts`, before allowance reservation | `Invalid params` — with `error.data.violations[]`, an array of `{field, description}` pairs |
 | `prompts/get` with no/non-string `name`                | `api/mcp/handler.ts` `prompts/get` switch branch       | `Invalid params: missing prompt name`                        |
 | `prompts/get` with unknown name or missing required arg | `api/mcp/prompts/index.ts` `buildPromptResponse`       | `Unknown prompt: …` / `Missing required argument "iso2" for prompt "country-briefing"` |
 | `resources/read` with no/unknown/malformed `uri`       | `api/mcp/resources/index.ts` (`buildPublicResourceResponse` / `buildResourceResponse`) | `Invalid params: missing resource uri` / `Unknown resource uri "..."` |
@@ -520,7 +539,7 @@ The JMESPath expression itself exceeds **1024 UTF-8 bytes** (`JMESPATH_MAX_EXPR_
 
 #### `invalid_expression`
 
-The expression parsed by the JMESPath engine threw — bad syntax, unclosed bracket, unknown function. The `details` after the kind token is the parser's error message verbatim.
+The JMESPath parser, evaluation guard, or evaluator rejected the expression. Causes include bad syntax, an unclosed bracket, an unknown function, or an unsafe expression. Details beginning with `Unsafe JMESPath:` identify an evaluation restriction. The guard runs before search and rejects `to_string()`, equality without a scalar literal operand, `join()` without a literal string separator, indirect expression references in `map()` / `sort_by()` / `min_by()` / `max_by()`, and expressions above the [complexity limits](/mcp-jmespath#quick-orientation). Use explicit `&expression` references for those functions.
 
 ```json
 {

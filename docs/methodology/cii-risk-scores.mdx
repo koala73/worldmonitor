@@ -47,7 +47,7 @@ flowchart TD
   I["Information<br/>weighted critical news"] --> E
   B["Baseline risk<br/>how volatile this country<br/>is in normal times"] --> M["Composite<br/>baseline 40% + events 60%"]
   E --> M
-  M --> X["Situational boosts<br/>climate, cyber, fire, earthquake,<br/>advisory, sanctions, displacement"]
+  M --> X["Situational boosts<br/>climate, cyber, fire, earthquake,<br/>advisory, sanctions, displacement,<br/>strike pressure"]
   X --> R["combinedScore 0-100"]
 ```
 
@@ -90,7 +90,7 @@ CRI covers the broader 196-country universe.
 `GET /api/intelligence/v1/get-risk-scores` (proto
 `worldmonitor.intelligence.v1.GetRiskScoresResponse`). The on-the-wire
 `methodology_version` field on every `CiiScore` records which revision of this
-document was active when the score was computed. The current version is **v8** —
+document was active when the score was computed. The current version is **v13** —
 see [Version history](#version-history).
 </Note>
 
@@ -103,8 +103,8 @@ exposed on the wire as `CiiComponents`:
 
 | Wire field | Editorial meaning |
 |---|---|
-| `cii_contribution` (**U**nrest) | Civil disorder pressure: ACLED protests + riots, fatalities from those events, confirmed internet/power outages, and a high-severity unrest boost. Reflects pre-violent friction. |
-| `geo_convergence` (**C**onflict) | Kinetic activity: ACLED battles, explosions/remote violence, and violence-against-civilians events, plus Iran-region strike intensity and Israel OREF alert pressure. Event activity is log-scaled before the component cap so moderate and extreme event volumes remain ordered; square-root fatality scaling prevents single-event saturation. |
+| `cii_contribution` (**U**nrest) | Civil disorder pressure: ACLED protests + riots, fatalities from those events, confirmed internet/power outages, and a high-severity unrest boost. While ACLED returns no events, a GDELT protest term (escalation or sustained level, below) stands in for the ACLED event terms. Reflects pre-violent friction. |
+| `geo_convergence` (**C**onflict) | Kinetic activity: ACLED battles, explosions/remote violence, and violence-against-civilians events, plus Israel OREF alert pressure. Strikes on the country count through strike pressure (below), on the composite, not in this component. Event activity is log-scaled before the component cap so moderate and extreme event volumes remain ordered; square-root fatality scaling prevents single-event saturation. While ACLED returns no events, a GDELT conflict term (escalation or sustained level, below) stands in for the ACLED event terms. |
 | `military_activity` (**S**ecurity) | Hard-security tempo near the country: military flight activity, military vessel activity, aviation disruptions (closures/delays), and GPS-jamming hex density. Foreign military presence is weighted ×2. |
 | `news_activity` (**I**nformation) | Information-environment pressure: weighted count of classified critical/high/medium news headlines geo-attributed to the country. |
 
@@ -121,10 +121,12 @@ composite = baseline * 0.4
           + advisoryBoost     (≤ 15)
           + orefBlendBoost    (IL only, ≤ 25)
           + displacementBoost (≤ 20)
+          + crossBorderArrivalSurgeBoost (0 or 5)
           + newsUrgencyBoost  (≤  5)
           + earthquakeBoost   (≤ 25)
           + sanctionsBoost    (≤ 14)
           + aisBoost          (≤ 10, AIS disruptions)
+          + strikeBoost       (≤ 10, strike pressure)
 ```
 
 Component details that are easy to miss:
@@ -135,13 +137,112 @@ Component details that are easy to miss:
 - **Conflict civilian boost**: violence-against-civilians events add
   `min(10, civilianViolence * 3)` after the log-scaled conflict activity and
   fatality terms.
-- **Iran-region strike boost**: geocoded Iran-event strikes, or title/location
-  fallback matches from the same feed, add
-  `min(50, iranStrikes * 3 + highSeverityStrikes * 5)` inside the Conflict
-  component. High and critical severity strikes therefore count twice: once in
-  the per-strike term and once in the high-severity term. This feed is a
-  theatre-intensity input, not a full armed-conflict casualty source; ACLED and
-  UCDP remain the general conflict anchors.
+- **Strike pressure (v12)**: a country being struck rises, keeps rising while
+  the strikes continue, and drifts back once they stop. Each country gets a
+  daily strike intensity `x_d`, the larger (never the sum: one strike, two
+  reporters) of:
+  - **confirmed strikes** from the Middle East strike feed, each incident
+    weighted by severity (`critical 4`, `high 2`, `elevated 1`,
+    `moderate 0.5`). The relay keeps 30 days of per-country counts by the UTC
+    day each incident happened (`conflict:strike-pressure:v1`); the 72h
+    window it is built from (`conflict:iran-events:v1`) is read too, and the
+    larger per day wins.
+  - **GDELT strikes**, worldwide, while the ACLED API returns no events:
+    articles reporting CAMEO 194 (artillery, tanks) or 195 (aerial weapons:
+    air, drone and missile strikes) located in the country **and** aimed at it
+    (the event's target, Actor2, is that country), as a share of the country's
+    articles that day: `300 * max(0, strikes / (articles + 50) - 0.005)`. The
+    target test and the share are both needed. GDELT geocodes many war stories
+    to their dateline, so on raw counts the US files more strike articles a day
+    than Ukraine (12.9 against 11.1, Oct 5-18 2026) and Moscow collects
+    Russia's strikes on Ukraine; with the target test the US keeps 1.5 a day,
+    0.03% of its coverage, against Ukraine's 1.2% and Saudi Arabia's 5.5%.
+    CAMEO 190 (conventional force) and 193 (small arms) stay out: they carry
+    the US crime and policing noise. GDELT alone counts only for a campaign: a
+    day counts when, among the measured days of the seven ending on it (at least
+    3), coverage is over the floor on at least 4 in 7. A one-day missile-test
+    spike (North Korea, Oct 12: 8 of 51 articles) is not a strike on the
+    country, and a campaign keeps decaying after it ends. The scale `300` puts both sources on one scale: Saudi
+    Arabia's Oct 16-18 coverage (3% a day) matches its confirmed tally (5-10 a
+    day).
+
+  Strike pressure is then `P = sum of x_d * 0.5^(age_d / 3)` over the last 21
+  days, with `age_d` measured from the middle of day `d`. A country hit at a
+  steady rate `r` converges on `P = 4.85 r`; once the strikes stop, `P` halves
+  every three days and is under 4% of its peak after two weeks. `P` enters the
+  score twice: a **strike floor** (below) and
+  `strikeBoost = min(10, 2.5 * log2(1 + P / 5))` on the composite, so a country
+  already above every floor still rises when it is hit harder. It replaces the
+  72h `min(50, iranStrikes * 3 + highSeverityStrikes * 5)` term that sat inside
+  Conflict through v11: that term read the same feed, forgot every strike after
+  three days, and moved the composite only through Conflict's 18% weight.
+  Inputs are gated like the other live terms. The confirmed tally's days are
+  dated and decay on every read, so a stale tally can only miss new strikes:
+  it is used for 72 hours after its last write (health alarms after 45
+  minutes) and ignored after that, when GDELT carries every country. The GDELT
+  summary is ignored when it is more than 6 hours old, and a GDELT day not yet
+  measured for strikes (stored before v12, until the materializer rebuilds it
+  from the archive) is unknown, not quiet. The relay keeps, per country and
+  day, the largest severity count any published window has shown for that
+  day, so an incident whose id changes between cycles is never counted
+  twice.
+- **GDELT escalation terms (Conflict and Unrest)**: WorldMonitor has no ACLED
+  access, so the ACLED terms above are 0 in production. While the ACLED API
+  returns no events, each component instead adds a GDELT term read from
+  `gdelt:bulk:country-events:v1`, which the bulk materializer builds from the
+  15-minute GDELT event exports for every country. Conflict counts distinct
+  articles reporting CAMEO 18/19/20 material-conflict events located in the
+  country; Unrest counts CAMEO 14 protest events. Each signal compares the last
+  24 hours (`current`) with the median day of the 28 complete days before
+  yesterday (`baselineMedian`):
+  `r = (current + 20) / (baselineMedian + 20)`, escalation
+  `= 0` when `r <= 1.25`, else `min(70, log(r / 1.25) / log(3 / 1.25) * 70)`.
+  Scoring against each country's own norm is deliberate: GDELT volume is mostly
+  media volume, and the US files about 800 conflict-coded articles on an
+  ordinary weekday against Ukraine's 55, so a shared absolute scale would rank
+  the US above a war. The `+20` smoothing damps small countries and the `1.25`
+  deadband absorbs the weekday news cycle. `eventMultiplier` is not applied.
+  Escalation alone reads a crisis that lasts weeks as calm, because the crisis
+  raises its own median, so each term also has a **sustained level**: the share
+  of the country's distinct articles over the seven complete days through
+  yesterday (`week`) that is conflict-coded (Conflict) or protest-coded
+  (Unrest). As a share, media volume cancels out. Conflict level
+  `= min(70, max(0, (share - 0.14) / (0.40 - 0.14)) * 70)`; Unrest level
+  `= min(70, max(0, (share - 0.02) / (0.08 - 0.02)) * 70)`; both are 0 when the
+  week holds fewer than 200 articles. The floors sit at the share every country
+  carries (GDELT codes US crime and policing as conflict, 11-13.5% every week of
+  the Sep-Oct 2026 replay; protest coding runs about 1% almost everywhere); the
+  saturation points are a country at war (Yemen, 28-43%) and a nationwide
+  protest movement (France, 7.9%). Each term is
+  `max(escalation, level)`, never their sum. The cap of 70 matches the ACLED
+  activity term the GDELT terms stand in for; a capped term moves
+  `combinedScore` by at most 12.6 (Conflict) or 10.5 (Unrest). Both readings
+  are 0 when the snapshot is more than 6 hours old. Escalation is also 0 until
+  21 complete baseline days exist (the materializer backfills them from the
+  GDELT archive, two days per 15-minute tick) and when the current 24-hour
+  window is missing cohorts (after a materializer outage, until the
+  materializer rebuilds the gap from the archive): a partial window is unknown,
+  not calm. The level reads complete days only, so it needs neither: it is 0
+  only until five of the seven days through yesterday are complete, and it
+  scores from the first days after deploy while the baseline backfills. Once the
+  ACLED path returns events, both terms are 0, so a credentialed deployment
+  never counts the same activity twice.
+- **Coordinate attribution**: fires, GPS-jamming hexes, earthquakes, climate
+  anomalies, strike events, and military flights and vessels are placed in a
+  Tier-1 country by point-in-polygon against real borders
+  (`scripts/shared/cii-country-borders.data.mjs`, generated from the Natural Earth
+  1:50m map the dashboard ships). A point on any other country's land counts
+  for no Tier-1 country; a point at sea counts for the nearest coast within 12
+  nautical miles, and for no country farther out. Crimea counts as Ukraine and
+  Gaza and the West Bank toward the Israel row; France is metropolitan France
+  and Corsica. Strike events that carry a `countryCode` score to that country
+  (so a tanker hit in open water still counts), and an offshore earthquake
+  beyond coastal waters takes the country USGS names after the last comma of
+  its place ("151 km E of Namie, Japan") when that text is exactly a country
+  name, never an ocean or region; a quake on non-Tier-1 land counts for no
+  Tier-1 country, whatever town USGS names. Accuracy is
+  the 1:50m map's: within about 2 km of a land border, twin cities such as El
+  Paso and Ciudad Juárez can land on the wrong side.
 - **Conflict OREF boost**: for Israel only, active OREF rocket-alert pressure
   adds `25 + min(25, activeAlertCount * 5)` inside the Conflict component, so
   the component-level OREF contribution is capped at `+50`. This is separate
@@ -160,6 +261,12 @@ Component details that are easy to miss:
   conflict-level event is active, else 0.
 - **State Department advisory floor**: 60 for "do not travel", 50 for
   "reconsider travel", else 0.
+- **Strike floor** (v12): `min(70, 40 + 8 * log2(P / 5))` once strike pressure
+  `P` reaches 5, else 0. One high strike a day for a week (`P` about 8) puts
+  a floor of about 45 under the score; five critical strikes in one day
+  (`P` = 20), about 56; a campaign of 8 a day for a week (`P` about 31), about
+  61; the cap of 70 is reached at `P` of about 67. The floor falls as `P`
+  decays.
 
 Advisory levels can also add `advisoryBoost` before the floor is applied:
 `+15` for "do not travel", `+10` for "reconsider travel", and `+5` for
@@ -414,6 +521,98 @@ refactors that preserve server/API scores do not bump the wire version. Tests in
 in `CURATED_COUNTRIES`.
 
 ## Version history
+
+> **v13 (2026-10-20).** A fresh source-confirmed cross-border arrival surge adds
+> five points once to each explicitly named receiving or origin country. The
+> reader checks both the original fetch clock (48 hours) and each report clock
+> (3 days for UK daily arrivals, 45 days for UNHCR ODP). Annual stocks, returns,
+> deaths, border encounters, unavailable feeds and stale reports do not qualify.
+> Overlapping routes never multiply this boost. UK daily surge detection compares
+> the last complete seven-day total with prior complete weekly windows over 90 days
+> (at least three), requires either more than 10,000 arrivals or at least 1,000 arrivals and twice the median. ODP uses
+> its existing source-confirmed monthly arrival acceleration. These are editorial
+> alert rules, not a claim of unique people or a statistical forecast. The cache
+> family and emitted `methodology_version` move to `v13`.
+>
+> **v12 (2026-10-19).** Strike pressure, worldwide. A country being struck now
+> rises, keeps rising while it is attacked, and decays back over one to two
+> weeks once the strikes stop. v11 counted strikes only through a 72h term
+> inside Conflict (18% of the composite): on Oct 19, 2026, under repeated
+> missile and drone strikes on Riyadh, Prince Sultan Air Base and Najran, Saudi
+> Arabia scored 54 in production (53 in the replay below). Each country now carries a daily strike intensity, the
+> larger of confirmed strikes from the Middle East strike feed (severity
+> weighted, tallied per day for 30 days in `conflict:strike-pressure:v1`) and,
+> worldwide, GDELT coverage of strikes aimed at the country as a share of its
+> coverage (a fourth counter in `gdelt:bulk:country-events:v1`). Strike pressure
+> decays it with a three-day half-life and enters the composite as a floor (40
+> at pressure 5, rising 8 per doubling to 70) and a boost of up to 10; the 72h
+> strikeBoost leaves Conflict, so the Conflict component no longer moves with
+> the strike feed. Replayed on Oct 19, 2026: Saudi Arabia 53 -> 63 (65 with the
+> feed's Oct 16-19 dry-run tally), Yemen 85 -> 89, Iran 71 -> 73, Russia
+> 76 -> 79, Ukraine 70 -> 71, Israel 56 -> 57, Lebanon 60 (on its advisory
+> floor until the feed has a few days of its strikes); the US, GB, France,
+> Germany, Japan, Brazil, India, China, Korea, Taiwan, Mexico, Cuba, Venezuela,
+> Poland and Turkey are unchanged on every replayed date from Oct 1 to Oct 19.
+> The risk-score cache key family moved to `risk:scores:sebuf:v12` and emitted
+> `methodology_version` is now `v12`, so clients pinned on
+> `methodology_version` should re-baseline.
+
+> **v11 (2026-10-19).** Two changes, both worldwide. First, a long-running crisis
+> now scores, not only a spike. v10's GDELT terms compared each country with its
+> own 28-day median, so a month of strikes on Saudi Arabia raised its own norm
+> and left its Conflict term at 0. Each GDELT term is now the larger of that
+> escalation and a sustained level: the conflict- or protest-coded share of the
+> country's articles over the seven complete days through yesterday, 0 at the
+> noise floor every country carries (14% conflict, 2% protest) and saturating at
+> a country at war (40%) or a nationwide protest movement (8%), with at least
+> 200 articles required. The shared cap rises from 50 to 70, the ACLED activity
+> cap these terms stand in for. Replayed to Oct 19, 2026: Yemen Conflict 0 -> 68,
+> Saudi Arabia 0 -> 41, Israel 0 -> 25, while the US, GB and China stay at 0 on
+> both terms and score the same under either cap. Second, coordinates are placed
+> by real borders instead of overlapping bounding boxes, which had put Jizan in
+> Yemen, Bahrain and Al Udeid in Saudi Arabia, Kuwait City in Iraq, western
+> Jordan in Israel, Nogales (Arizona) in Mexico, Baltic and Finnish GPS jamming
+> in Russia and fires in western Iran in Iraq, and had dropped Hawaii and Alaska
+> (see Component details). Strike events carry their country. The military
+> seeder uses the same border module as the scorer. `combinedScore` values move
+> in both directions: up where a crisis is sustained, down where a neighbour's
+> fires, flights or jamming had been attributed to the country. The risk-score
+> cache key family moved to `risk:scores:sebuf:v11` and emitted
+> `methodology_version` is now `v11`, so clients pinned on `methodology_version`
+> should re-baseline.
+
+> **v10 (2026-10-19).** Conflict and Unrest get a live input again. WorldMonitor
+> has no ACLED access, so the ACLED event terms in both components were 0 for
+> every country: the October 2026 Houthi strikes on Riyadh and France's
+> nationwide riots left Saudi Conflict and French Unrest at 0. While the ACLED
+> API returns no events, each component now adds a GDELT escalation term read
+> from `gdelt:bulk:country-events:v1`, which the GDELT bulk materializer builds
+> for every country: the last 24 hours of material-conflict (CAMEO 18/19/20) or
+> protest (CAMEO 14) articles against the country's own 28-day median, 0 up to
+> a 1.25x ratio and capped at 50 (see Component details). Replayed
+> September-October 2026 exports put the Riyadh strike day at Conflict 44 and
+> France's riots at Unrest 50, while the US and GB stay at 0. A war or protest
+> movement at its usual tempo scores 0 on these terms. They stay 0 until the
+> materializer has backfilled 21 baseline days from the GDELT archive (about
+> three hours after deploy) and switch off when the ACLED path returns events.
+> The health conflict family also counts a live GDELT baseline. `combinedScore`
+> values rise for countries in an escalation; the risk-score cache key family
+> moved to `risk:scores:sebuf:v10` and emitted `methodology_version` is now
+> `v10`, so clients pinned on `methodology_version` should re-baseline.
+
+> **v9 (2026-10-19).** News attribution credits every country a headline names.
+> `news:insights:v1` top stories now carry `countryCodes` (every country named,
+> primary `countryCode` first, with Gulf, Yemeni and Levantine city aliases such as
+> Riyadh, Jeddah, Dammam, Doha, Dubai and Beirut), and the information component
+> adds each story's threat weight to every tracked country in that list. Before
+> this, a story counted only for the first country named, so "Iran-backed Houthis
+> warn of long conflict after Riyadh airport attack" scored Iran and never Saudi
+> Arabia. The relay's per-country threat summary keeps its affected-country rule
+> and, when that rule finds no target, now credits every country named instead of
+> none. `information` rises for countries that are the object of news led by
+> another country (Saudi Arabia, Yemen, Lebanon, Gulf states); the risk-score cache
+> key family moved to `risk:scores:sebuf:v9` and emitted `methodology_version` is
+> now `v9`, so clients pinned on `methodology_version` should re-baseline.
 
 > **v8 (2026-06-06).** Fixed dead UCDP conflict-floor attribution. The server
 > scorer read non-existent `intensity_level` / `type_of_violence` fields from the

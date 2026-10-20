@@ -18,6 +18,7 @@ permissions:
 
 jobs:
   changes:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     # Distinct check-run name — see the note in typecheck.yml (#5822). The job
     # id stays `changes` so `needs: changes` below keeps resolving.
     name: lint-changes
@@ -86,11 +87,11 @@ jobs:
 
   biome:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (needs.changes.outputs.code == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -101,6 +102,7 @@ jobs:
       - run: npm run lint:api-contract
       - run: npm run sync:bootstrap-tier-keys:check
       - run: npm run sync:live-video-channels:check
+      - run: npm run sync:tui-catalog:check
       - run: npm run lint:rate-limit-policies
       - run: npm run lint:premium-fetch
       - run: npm run lint:safe-local-storage
@@ -116,12 +118,12 @@ jobs:
   # counts skipped as passing) and blocks merge through `gate` when it runs.
   markdown:
     needs: changes
-    if: needs.changes.outputs.markdown == 'true'
+    if: ${{ (needs.changes.outputs.markdown == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -129,19 +131,21 @@ jobs:
       - run: npm run lint:md
 
   public-docs:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
       - run: npm run lint:public-docs
 
   mintlify-slugs:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
       - run: node scripts/enforce-mintlify-reserved-slugs.mjs
@@ -150,11 +154,11 @@ jobs:
     # Why this gate exists, and how Mintlify slugs a heading, is documented
     # once in scripts/check-doc-anchors.mjs. Keep it there, not in both.
     needs: changes
-    if: needs.changes.outputs.docs == 'true'
+    if: ${{ (needs.changes.outputs.docs == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
       - name: Export rendered docs

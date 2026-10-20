@@ -126,9 +126,9 @@ test('projection keeps the license, credit and transformation notice', async () 
 
 test('annual displacement default contract stays annual', () => {
   const annual = CACHE_TOOLS.find(t => t.name === 'get_displacement_data');
-  assert.deepEqual(Object.keys(annual.inputSchema.properties), ['countries', 'limit']);
-  assert.deepEqual(annual._cacheKeys, [`displacement:summary:v1:${new Date().getUTCFullYear()}`]);
-  assert.deepEqual(annual._freshnessChecks, [{ key: 'seed-meta:displacement:summary', maxStaleMin: 3600 }]);
+  assert.deepEqual(Object.keys(annual.inputSchema.properties), ['view', 'route', 'countries', 'limit']);
+  assert.deepEqual(annual._cacheKeys.filter(key => key.startsWith('displacement:summary:')), [`displacement:summary:v1:${new Date().getUTCFullYear()}`]);
+  assert.deepEqual(annual._freshnessChecks.filter(check => check.key === 'seed-meta:displacement:summary'), [{ key: 'seed-meta:displacement:summary', maxStaleMin: 3600 }]);
 });
 
 test('summaries keep attribution and source URLs with and without projection', async () => {
@@ -157,4 +157,69 @@ test('summaries keep attribution and source URLs with and without projection', a
       assert.ok(ajv.validate(tool.outputSchema, value.projection), ajv.errorsText());
     }
   }
+});
+
+
+test('movement view reads source envelopes independently and preserves explicit zero with country and route filters', async () => {
+  const annual = CACHE_TOOLS.find(t => t.name === 'get_displacement_data');
+  const stamp = Date.now() - 60000;
+  const asOf = new Date(stamp).toISOString().slice(0, 10);
+  installRedis({
+    'displacement:border-uk:v1': { _seed: { fetchedAt: stamp }, data: { routes: [{ id: 'english-channel', name: 'Channel', countryCode: 'GB', kind: 'arrival', measure: 'daily', asOf, latestCount: 0, last7Days: 0, last30Days: 3, period: 'day', surge: false }] } },
+    'seed-meta:displacement:border-uk': { fetchedAt: stamp, recordCount: 1 },
+  });
+  const result = await executeTool(annual, { view: 'movements', countries: ['United Kingdom'], route: 'english-channel', limit: 0 });
+  const data = result.data.crossBorderMovements;
+  assert.equal(data.movements.length, 1);
+  assert.equal(data.movements[0].count, 0);
+  assert.equal(data.movements[0].last7Days, 0);
+  assert.equal(data.sources.find(s => s.id === 'odp').status, 'unavailable');
+  assert.equal(data.movements[0].license, 'Open Government Licence v3.0');
+  assert.equal((await executeTool(annual, { view: 'movements', countries: ['US'] })).data.crossBorderMovements.movements.length, 0);
+  assert.equal((await executeTool(annual, { view: 'movements', route: 'unknown' })).data.crossBorderMovements.movements.length, 0);
+  assert.ok(ajv.validate(annual.outputSchema, result), ajv.errorsText());
+});
+
+test('movement route filters preserve the exact source ID case while trimming input', () => {
+  const tool = CACHE_TOOLS.find(t => t.name === 'get_displacement_data');
+  const stamp = Date.now() - 60000;
+  const data = { uk: { _seed: { fetchedAt: stamp }, data: { routes: [{
+    id: 'Channel-ID', countryCode: 'GB', kind: 'arrival', measure: 'daily',
+    asOf: new Date(stamp).toISOString().slice(0, 10), latestCount: 0,
+  }] } } };
+  const filter = route => tool._postFilter(data, { view: 'movements', route });
+  assert.equal(filter(' Channel-ID ').crossBorderMovements.movements.length, 1);
+  assert.equal(filter('channel-id').crossBorderMovements.movements.length, 0);
+});
+
+test('movement freshness excludes proven inactive sources but retains activated and unreadable failures', async () => {
+  const annual = CACHE_TOOLS.find(t => t.name === 'get_displacement_data');
+  const stamp = Date.now() - 60000;
+  const fixtures = {
+    [KEY]: { _seed: { fetchedAt: stamp }, data: { situations: [snapshot.situations[0]] } },
+    [META]: { fetchedAt: stamp },
+    'displacement:border-uk:v1': { _seed: { fetchedAt: stamp }, data: { routes: [{ id: 'english-channel', countryCode: 'GB', kind: 'arrival', measure: 'daily', asOf: new Date(stamp).toISOString().slice(0, 10), latestCount: 0 }] } },
+    'seed-meta:displacement:border-uk': { fetchedAt: stamp },
+  };
+  installRedis(fixtures);
+  const fresh = await executeTool(annual, { view: 'movements' });
+  assert.equal(fresh.stale, false);
+  assert.equal(fresh.cached_at, new Date(stamp).toISOString());
+  assert.equal(fresh.data.crossBorderMovements.sources.find(s => s.id === 'panama').status, 'unavailable');
+  installRedis({ ...fixtures, 'seed-activated:displacement:border-panama': 1 });
+  const missingActive = await executeTool(annual, { view: 'movements' });
+  assert.equal(missingActive.stale, true);
+  assert.equal(missingActive.cached_at, null);
+  assert.ok(missingActive.data.crossBorderMovements.movements.some(m => m.route === 'english-channel'));
+  installRedis({ ...fixtures, 'seed-meta:displacement:border-panama': { fetchedAt: stamp, status: 'error' } });
+  assert.equal((await executeTool(annual, { view: 'movements' })).stale, true);
+  const redis = installRedis(fixtures);
+  globalThis.fetch = async (input, init) => {
+    const commands = JSON.parse(init?.body ?? '[]');
+    if (Array.isArray(commands[0]) && commands.some(c => c[0] === 'EXISTS')) return new Response('unavailable', { status: 500 });
+    return redis.fetchImpl(input, init);
+  };
+  const unknown = await executeTool(annual, { view: 'movements' });
+  assert.equal(unknown.stale, true);
+  assert.equal(unknown.activationUnknown, true);
 });

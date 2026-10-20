@@ -15,9 +15,11 @@
     "convex": "^1",
     "exceljs": "^4.4.0",
     "fast-xml-parser": "^5.8.0",
-    "jszip": "^3.10.1",
+    "fflate": "0.8.3",
     "h3-js": "^4.2.1",
+    "jszip": "^3.10.1",
     "papaparse": "^5.5.3",
+    "pdfjs-dist": "6.2.108",
     "resend": "^4",
     "sax": "^1.6.0",
     "telegram": "^2.22.2",
@@ -36,6 +38,6 @@
     "brace-expansion@2": "^2.1.7"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13.0"
   }
 }

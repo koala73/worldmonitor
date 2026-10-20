@@ -227,9 +227,9 @@ Strategic Risk 与国家不稳定指数（CII）评分在服务端预计算，�
 
 `GetRiskScores` RPC 处理器（`get-risk-scores.ts`）：
 
-1. 从 ACLED 拉取近期的抗议/骚乱/战斗/爆炸/针对平民的暴力数据。
+1. 从 ACLED 拉取近期的抗议/骚乱/战斗/爆炸/针对平民的暴力数据。当 ACLED 不返回事件时（WorldMonitor 没有 ACLED 访问权限），冲突与动荡改为读取 `gdelt:bulk:country-events:v1` 中的 GDELT 项（升级或持续水平）。
 2. 从 Redis 拉取辅助数据源，包括 UCDP 冲突、中断、气候、网络威胁、火灾、GPS 干扰、伊朗事件、OREF 警报、警示、流离失所、机密新闻摘要、航空警报、地震、制裁以及军事/AIS CII 聚合数据。
-3. 使用 [CII Risk Scoring Methodology](/zh/methodology/cii-risk-scores) 中记录的共享系数表为 31 个 Tier-1 国家计算 CII v8 评分。
+3. 使用 [CII Risk Scoring Methodology](/zh/methodology/cii-risk-scores) 中记录的共享系数表为 31 个 Tier-1 国家计算 CII v13 评分。
 4. 从按权重排名前 5 的 CII 评分推导 Strategic Risk。
 5. 将结果缓存到 Redis，使用与当前 CII 公式版本绑定的带版本号的 live 与 stale 键。
 
@@ -243,8 +243,8 @@ Strategic Risk 与国家不稳定指数（CII）评分在服务端预计算，�
 
 | 子组成 | 权重 | 评分依据 |
 |---------------|--------|---------|
-| Unrest | 25% | ACLED 抗议/骚乱、抗议致死人数、高严重度动乱与中断严重度 |
-| Conflict | 30% | 按权重加权的 ACLED 战斗/爆炸/针对平民的暴力、致死人数、伊朗打击严重度与 OREF 警报压力 |
+| Unrest | 25% | ACLED 抗议/骚乱、抗议致死人数、高严重度动乱与中断严重度；ACLED 不返回事件时加入 GDELT 抗议升级或持续水平项 |
+| Conflict | 30% | 按权重加权的 ACLED 战斗/爆炸/针对平民的暴力、致死人数与 OREF 警报压力；ACLED 不返回事件时加入 GDELT 冲突升级或持续水平项。打击通过综合分上的打击压力计入（v12），不在此处 |
 | Security | 20% | 军用航班、军用舰船、航空关闭/延误与 GPS/GNSS 干扰 |
 | Information | 25% | 机密新闻头条与按国家归因的威胁摘要 |
 
@@ -256,8 +256,9 @@ Strategic Risk 与国家不稳定指数（CII）评分在服务端预计算，�
 | UCDP 轻度冲突 | >= 50 | 2 年窗口内 Tier-1 UCDP 事件数 > 10 但未达战争阈值 |
 | 警示切勿旅行 | >= 60 | 可用时使用实时警示源；否则使用内嵌的国务院兜底表 |
 | 警示重新考虑 | >= 50 | 可用时使用实时警示源；否则使用内嵌的国务院兜底表 |
+| 打击压力（v12） | 40-70 | 衰减后的打击压力 `P >= 5`：`min(70, 40 + 8 * log2(P / 5))` |
 
-**补充加成**：警示加成（+15/+10/+5）、IL 的 OREF 混合加成（+15 活跃 + 历史分层）、气候（上限 +15）、网络（上限 +12）、火灾（上限 +8）、流离失所（上限 +20）、新闻紧迫度（上限 +5）、地震（上限 +25）、制裁（上限 +14）与 AIS 中断（上限 +10）。
+**补充加成**：警示加成（+15/+10/+5）、IL 的 OREF 混合加成（+15 活跃 + 历史分层）、气候（上限 +15）、网络（上限 +12）、火灾（上限 +8）、流离失所（上限 +20）、新闻紧迫度（上限 +5）、地震（上限 +25）、制裁（上限 +14）、AIS 中断（上限 +10）与打击压力（上限 +10）。
 
 警示输出在每个 `CiiScore` 上同时暴露 `advisoryLevel` 和
 `advisoryProvenance`。当评分使用了已播种的警示源时，
@@ -294,6 +295,7 @@ Strategic Risk = (Σ CII[i] × weight[i]) / 3.5 × 0.7 + 15
 | 来源 | Redis 键 | 用途 |
 |--------|-----------|----------|
 | ACLED | 通过 API 实时拉取 | 抗议、骚乱、战斗、爆炸、针对平民的暴力、致死人数 |
+| GDELT 国家事件 | `gdelt:bulk:country-events:v1` | 相对各国 28 天中位数的冲突与动荡升级，以及过去七天的持续占比，仅在 ACLED 不返回事件时使用 |
 | UCDP | `conflict:ucdp-events:v1` | 战争/轻度冲突下限 |
 | 中断 | `infra:outages:v1` | Unrest 中断加成 |
 | 气候 | `climate:anomalies:v2` | 气候严重度加成 |
@@ -302,7 +304,8 @@ Strategic Risk = (Σ CII[i] × weight[i]) / 3.5 × 0.7 + 15
 | GPS 干扰 | `intelligence:gpsjam:v2` | Security 评分 |
 | 军事 CII | 中继/已播种的军事聚合 | Security 评分与 AIS 中断加成 |
 | 航空警报 | 已播种的航空中断数据 | Security 评分 |
-| 伊朗事件 | `conflict:iran-events:v1` | 按严重度加权的打击加成 |
+| 中东打击 | `conflict:iran-events:v1`（72 小时）与 `conflict:strike-pressure:v1`（30 天计数） | 打击压力：按严重度加权的每日打击，经衰减后形成下限与加成 |
+| GDELT 打击 | `gdelt:bulk:country-events:v1`（打击计数） | ACLED 不返回事件时的全球打击压力 |
 | OREF 警报 | `relay:oref:history:v1` | IL 冲突加成与混合加成 |
 | 新闻威胁 | 机密头条摘要 | Information 评分与新闻紧迫度加成 |
 | 流离失所 | 人道主义流离失所聚合 | 流离失所加成 |
@@ -319,4 +322,4 @@ Strategic Risk = (Σ CII[i] × weight[i]) / 3.5 × 0.7 + 15
 
 RPC 在 `GetRiskScoresResponse` 上暴露兜底状态：过期缓存响应会设置 `degraded=true` 与 `stale=true`；仅冷启动基线响应会设置 `degraded=true` 与 `stale=false`。新鲜/缓存命中响应将两个标志都设为 `false`。
 
-中继的 CII warm-ping 循环在 `scripts/ais-relay.cjs` 中处于活跃状态：它每 8 分钟调用一次 `/api/intelligence/v1/get-risk-scores`，由 RPC 处理器刷新实时/过期缓存状态，并在返回评分时写入 `seed-meta:intelligence:risk-scores` 以供健康监测。该 seed-meta 的 `recordCount` 反映的是实时信号密度覆盖率，而非原始 feed 可用性：它统计 CII 刷新中出现的、与评分相关的 Tier-1 冲突（ACLED 或 UCDP）、新闻与网络信号族。因此，安静但新鲜的实时 feed 可能产生 `COVERAGE_PARTIAL`；按来源的新鲜度仍以 feed 心跳视图为准。
+中继的 CII warm-ping 循环在 `scripts/ais-relay.cjs` 中处于活跃状态：它每 8 分钟调用一次 `/api/intelligence/v1/get-risk-scores`，由 RPC 处理器刷新实时/过期缓存状态，并在返回评分时写入 `seed-meta:intelligence:risk-scores` 以供健康监测。该 seed-meta 的 `recordCount` 反映的是实时信号密度覆盖率，而非原始 feed 可用性：它统计 CII 刷新中出现的、与评分相关的 Tier-1 冲突（ACLED、UCDP，或 ACLED 不返回事件时的实时 GDELT 基线）、新闻与网络信号族。因此，安静但新鲜的实时 feed 可能产生 `COVERAGE_PARTIAL`；按来源的新鲜度仍以 feed 心跳视图为准。

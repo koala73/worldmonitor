@@ -104,6 +104,12 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
     reason: 'The BGS OGC API supplies the observations and the BGS statistics page supplies the required public attribution link.',
     reviewReference: 'Issue #6449 commodity-vulnerability provenance review',
   }),
+  'al-jazeera': Object.freeze({
+    provider: 'Al Jazeera',
+    memberHosts: Object.freeze(['aljazeera.com', 'www.aljazeera.com']),
+    reason: 'The Al Jazeera feed host and its Google News site: search name one publisher.',
+    reviewReference: 'PR #9237 follow-up: 2026-10-17 /verify audit, Al Jazeera claim-pool depth',
+  }),
   bbc: Object.freeze({
     provider: 'BBC',
     memberHosts: Object.freeze(['feeds.bbci.co.uk', 'www.bbc.com']),
@@ -210,7 +216,7 @@ const PROVIDER_OVERRIDES = {
   'mausam.imd.gov.in': {
     provider: 'India Meteorological Department',
     identityGroup: 'imd',
-    license: 'Official IMD visualization pages cited for attribution and source links, not scraped.',
+    license: 'Public IMD sea-area and coastal bulletin pages, parsed without an account or key. The RTI IMETD/R/E/25/00381 non-commercial-only terms recorded for the IMD API apply to these pages too. World Monitor public-display and redistribution rights are validated.',
     attribution: 'Data source: India Meteorological Department. Link the official marine/coastal bulletin page.',
     status: 'reviewed',
   },
@@ -309,6 +315,18 @@ const PROVIDER_OVERRIDES = {
   'madamasr.com': publisherMetadataFeed('Mada Masr'),
   'thedailystar.net': publisherMetadataFeed('The Daily Star'),
   'dhakatribune.com': publisherMetadataFeed('Dhaka Tribune'),
+  // Major publishers after the 2026-10-16 Google News World audit; Google News site: feeds.
+  'nytimes.com': publisherMetadataFeed('The New York Times'),
+  // Al Jazeera's claim-pool depth search (2026-10-17 /verify audit).
+  'aljazeera.com': { ...publisherMetadataFeed('Al Jazeera'), identityGroup: 'al-jazeera' },
+  'www.aljazeera.com': { provider: 'Al Jazeera', identityGroup: 'al-jazeera' },
+  'washingtonpost.com': publisherMetadataFeed('The Washington Post'),
+  'economist.com': publisherMetadataFeed('The Economist'),
+  'independent.co.uk': publisherMetadataFeed('The Independent'),
+  'news.sky.com': publisherMetadataFeed('Sky News'),
+  'timesofisrael.com': publisherMetadataFeed('Times of Israel'),
+  'middleeasteye.net': publisherMetadataFeed('Middle East Eye'),
+  'japantimes.co.jp': publisherMetadataFeed('Japan Times'),
   'nation.africa': publisherMetadataFeed('Daily Nation'),
   'theguardianpostcameroon.com': publisherMetadataFeed('The Guardian Post'),
   'tchadinfos.com': publisherMetadataFeed('Tchadinfos'),
@@ -655,6 +673,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Global Affairs Canada, Consolidated Canadian Autonomous Sanctions List; link to https://www.international.gc.ca/world-monde/international_relations-relations_internationales/sanctions/consolidated-consolide.aspx?lang=eng',
     status: 'terms-review',
   },
+  'data.trade.gov': {
+    provider: 'International Trade Administration (US Consolidated Screening List)',
+    license: 'US government work. The ITA Data API terms of service (developer.trade.gov/terms-of-service) require the notice: This product uses the International Trade Administration\'s Data API but is not endorsed or certified by the International Trade Administration.',
+    attribution: 'This product uses the International Trade Administration\'s Data API but is not endorsed or certified by the International Trade Administration. Verify listings against the Federal Register and the issuing agency.',
+    status: 'terms-review',
+  },
   'earth-search.aws.element84.com': {
     provider: 'Element84 Earth Search STAC',
     license: 'AWS Open Data and dataset-specific collection licenses',
@@ -952,13 +976,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'd58673bf0ffb24d710c66510e833bca13df9fc4c98bfb2839606506dd0f95317',
-  reason: 'Preserve reviewed provider identities, register the two official NASA FIRMS Area API hosts as one provider identity, name TradingView as the provider behind the S&P 500 breadth screener scan that replaced the WAF-blocked Barchart quote pages, exclude the Sentry error-tracking host that the resolve-pin audit reads, and group the JODI publication catalog with its existing data host.',
+  sha256: 'd98354f04ec04824262cd243290b38c4b657c6c4da33097239c9cedfc8e9d9b0',
+  reason: 'Preserve reviewed provider identities, register the two official NASA FIRMS Area API hosts as one provider identity, name TradingView as the provider behind the S&P 500 breadth screener scan that replaced the WAF-blocked Barchart quote pages, exclude the Sentry error-tracking host that the resolve-pin audit reads, group the JODI publication catalog with its existing data host, and name the eight major publishers carried as Google News site: feeds after the 2026-10-16 Google News World audit, group the Al Jazeera feed host with the host of its Google News site: search as one Al Jazeera provider, and name the International Trade Administration behind the Consolidated Screening List bulk download with the notice its Data API terms require.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage.',
+  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage; plus the 2026-10-17 /verify audit that added the Al Jazeera claim-pool depth search; plus Issue #9352 part C, the US Consolidated Screening List export-control lists.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {
@@ -995,6 +1019,8 @@ const DYNAMIC_HOSTS = [
 ];
 
 const EXCLUDED_HOSTS = new Set([
+  'creativecommons.org',
+  'www.nationalarchives.gov.uk',
   'test',
   'test.dodopayments.com',
   'live.dodopayments.com',
@@ -1026,6 +1052,11 @@ const EXCLUDED_HOSTS = new Set([
   // None of them is an ingested upstream dataset, so they belong with the
   // other webmaster-console hosts above rather than in the provider count.
   'oauth2.googleapis.com',
+  // MCP OAuth clients' published Client ID Metadata Documents
+  // (api/oauth/_client-metadata.js). Fetched to authorize a connection, never
+  // ingested as data.
+  'claude.ai',
+  'chatgpt.com',
   'searchconsole.googleapis.com',
   'www.googleapis.com',
   'yandex.com',
@@ -1057,6 +1088,15 @@ const EXCLUDED_HOSTS = new Set([
   // Provider landing-page link in MapPopup; the ingested Wingbits endpoints
   // are tracked as customer-api.wingbits.com and ecs-api.wingbits.com.
   'wingbits.com',
+  // Vendor pricing, marketplace, and procurement pages cited as price sources
+  // in /compare/ copy. Nothing fetches them.
+  'aws.amazon.com',
+  'liveuamap.com',
+  'me.liveuamap.com',
+  'offnadir-delta.com',
+  'www.applytosupply.digitalmarketplace.service.gov.uk',
+  'www.factal.com',
+  'www.vendr.com',
 ]);
 
 function read(rootDir, path) {
@@ -1209,7 +1249,8 @@ export function scanUpstreamHosts(rootDir = ROOT) {
       for (const match of source.matchAll(/\bgn(?:Locale)?\(\s*(["'`])([\s\S]*?)\1/g)) {
         const lineStart = source.lastIndexOf('\n', match.index ?? 0) + 1;
         const beforeMatch = source.slice(lineStart, match.index ?? 0);
-        if (beforeMatch.includes('//')) continue;
+        // A `//` after a colon is a URL scheme earlier on the line, not a comment.
+        if (/(?:^|[^:])\/\//.test(beforeMatch)) continue;
         for (const publisherHost of googleNewsPublisherHosts(match[2])) {
           recordHost(publisherHost, 'feed', relativePath);
         }

@@ -1,4 +1,5 @@
 import docsConfigJson from '../../docs/docs.json';
+import { stripTrailingSlashes } from '../../shared/strip-trailing-slashes.js';
 import { WEB_APP_ORIGIN } from './web-origin';
 
 const docsOrigin = new URL(WEB_APP_ORIGIN);
@@ -26,7 +27,7 @@ const VERCEL_OWNED_DOC_PATHS = new Set([
 
 function normalizePath(path: string): string {
   const withLeadingSlash = path.startsWith('/') ? path : `/${path}`;
-  return withLeadingSlash.length > 1 ? withLeadingSlash.replace(/\/+$/, '') : withLeadingSlash;
+  return stripTrailingSlashes(withLeadingSlash);
 }
 
 function addNavigationPages(node: unknown, routes: Map<string, string>): void {

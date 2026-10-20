@@ -1824,6 +1824,36 @@ export function buildPublicReceipts(ledger, nowMs, { limit = PUBLIC_RECEIPT_LIMI
     .slice(0, limit);
 }
 
+function publicReceiptEntries(ledger, nowMs) {
+  const minResolvedAt = nowMs - DEFAULT_ROLLING_WINDOW_DAYS * DAY_MS;
+  return normalizeLedger(ledger).filter(entry => entry?.status === 'resolved'
+    && !isHorizonEntry(entry) && !isDuplicateWindow(entry) && !isWithheldEntry(entry)
+    && !isPlaceholderBet(entry) && isPublishedOriginEntry(entry)
+    && Number(entry.resolvedAt) >= minResolvedAt && Number(entry.resolvedAt) <= nowMs);
+}
+
+export function buildPublicForecastArchive(ledger, nowMs) {
+  const rows = publicReceiptEntries(ledger, nowMs).flatMap(entry => {
+    const receipt = publicReceipt(entry);
+    if (!receipt) return [];
+    return [{ ...receipt,
+      forecastId: publicText(entry.id, 160), domain: publicText(entry.domain, 80), region: publicText(entry.region, 160),
+      lane: entry.spec?.kind === 'hard' ? 'hard' : 'judged',
+      deadline: Number.isFinite(entry.deadline) ? entry.deadline : null,
+      firstSeenAt: Number.isFinite(entry.firstSeenAt) ? entry.firstSeenAt : null,
+      lastSeenAt: Number.isFinite(entry.lastSeenAt) ? entry.lastSeenAt : null,
+      ...(entry.spec?.kind === 'judged' && Number.isInteger(entry.evidence?.selectionVersion)
+        ? { evidence: { selectionVersion: entry.evidence.selectionVersion } } : {}),
+      ...(Array.isArray(entry.trajectory) ? { trajectory: entry.trajectory.slice(0, 30).filter(point => Array.isArray(point)
+        && point.length === 2 && typeof point[0] === 'string' && Number.isFinite(Date.parse(point[0]))
+        && Number.isFinite(point[1]) && point[1] >= 0 && point[1] <= 1).map(([at, p]) => [at, p]) } : {}),
+    }];
+  }).sort((a, b) => b.resolvedAt - a.resolvedAt || a.forecastId.localeCompare(b.forecastId) || a.question.localeCompare(b.question));
+  const archive = { generatedAt: nowMs, rollingWindowDays: DEFAULT_ROLLING_WINDOW_DAYS, rows };
+  if (Buffer.byteLength(JSON.stringify(archive)) > 512 * 1024 - 1024) throw new Error('Forecast archive exceeds 512 KB');
+  return archive;
+}
+
 function mean(values) {
   if (!values.length) return NaN;
   return values.reduce((sum, value) => sum + value, 0) / values.length;

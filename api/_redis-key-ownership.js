@@ -33,10 +33,13 @@ const APP_OWNED_KEYS = Object.freeze([
   // seed-meta:intelligence:risk-scores").
   'temporal:anomalies:v1', // infrastructure/v1/list-temporal-anomalies
   'seed-meta:temporal:anomalies',
-  'risk:scores:sebuf:v8', // intelligence/v1/get-risk-scores (live + stale fallback + meta)
-  'risk:scores:sebuf:stale:v8',
-  'risk:scores:sebuf:rejected:v8',
+  'risk:scores:sebuf:v13', // intelligence/v1/get-risk-scores (live + stale fallback + meta)
+  'risk:scores:sebuf:stale:v13',
+  'risk:scores:sebuf:rejected:v13',
   'seed-meta:intelligence:risk-scores',
+  'risk:scores:history:index',
+  'seed-meta:intelligence:risk-scores-history',
+  'seed-activated:intelligence:risk-scores-history',
   'supply_chain:chokepoints:v4', // supply-chain/v1/get-chokepoint-status (+ meta)
   'seed-meta:supply_chain:chokepoints',
   'cable-health-v1', // infrastructure/v1/get-cable-health (+ meta)
@@ -51,5 +54,5 @@ const APP_OWNED_KEY_SET = new Set(APP_OWNED_KEYS);
  * registry surface is seeder-owned and must be read raw.
  */
 export function isAppOwnedRedisKey(key) {
-  return typeof key === 'string' && APP_OWNED_KEY_SET.has(key);
+  return typeof key === 'string' && (APP_OWNED_KEY_SET.has(key) || /^risk:scores:history:[A-Z]{2}$/.test(key));
 }

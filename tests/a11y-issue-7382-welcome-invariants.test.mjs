@@ -29,7 +29,7 @@ describe('welcome a11y invariants (#7382)', () => {
     assert.doesNotMatch(footer, /opacity-40/);
     assert.doesNotMatch(footer, /opacity-60/);
     assert.match(footer, /text-wm-muted/);
-    assert.match(footer, /text-\[10px\] text-wm-muted/);
+    assert.match(footer, /text-xs text-wm-muted/);
   });
 
   it('keeps the press-row label at solid muted contrast (no opacity fade)', () => {

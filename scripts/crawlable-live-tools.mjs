@@ -528,8 +528,8 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
     congestion: coverageMetrics.congestion,
     navigationalWarnings: coverageMetrics.navigationalWarnings,
     aisDisruptions: coverageMetrics.aisDisruptions,
-    // null, never a placeholder sentence — see publishableDescription in
-    // scripts/freeze-crawlable-live-pulse.mjs (#7530).
+    // null, never a placeholder sentence — see publishableChokepointDescription in
+    // scripts/crawlable-chokepoint-live.mjs (#7530).
     description: String(row.description || '').trim() || null,
     todayTransits: coverageMetrics.todayTransits,
     todayCountsAvailable: coverageMetrics.todayCountsAvailable,
@@ -803,6 +803,78 @@ export function militaryFlightsViewModel(payload, now = Date.now()) {
     interesting: formatNumber(flights.filter((flight) => flight.interesting).length, 0),
     latestSeenAt: flights[0].lastSeenAt,
     flights: flights.slice(0, MAX_RENDERED_ROWS),
+  };
+}
+
+// The relay stores the seed for 45 minutes (PIZZINT_SEED_TTL in ais-relay.cjs);
+// the margin covers edge caching. Older than this is not the current level.
+const MAX_PIZZINT_AGE_MS = 60 * 60 * 1_000;
+
+// English activity labels as the dashboard header shows them
+// (components.pizzint.defconLabels in src/locales/en.json).
+const PIZZINT_LEVEL_LABELS = {
+  1: 'Maximum Activity',
+  2: 'High Activity',
+  3: 'Elevated Activity',
+  4: 'Above Normal',
+  5: 'Normal Activity',
+};
+
+// Mirrors PizzIntIndicator.getStatusLabel and the toLocation baseline rule in
+// src/services/pizzint.ts, in sentence case for a reading page.
+// A fresh, open venue with a live signal, as the relay's hasLiveSignal reads it.
+function isLivePizzIntVenue(location) {
+  return location?.dataFreshness === 'DATA_FRESHNESS_FRESH'
+    && location.isClosedNow !== true
+    && location.noLiveSignal !== true;
+}
+
+function pizzIntVenueStatus(location) {
+  // A stale row can ride along in a fresh poll; its stored busyness is not current.
+  if (location.dataFreshness !== 'DATA_FRESHNESS_FRESH') return 'No data';
+  if (location.isClosedNow === true) return 'Closed';
+  if (location.noLiveSignal === true) return 'No data';
+  const percentage = location.hasBaseline === true
+    ? finiteNumber(location.percentageOfUsual)
+    : finiteNumber(location.percentageOfUsual) || null;
+  if (percentage === null) return 'No baseline';
+  const deviation = Math.round(percentage - 100);
+  if (location.isSpike === true) return `Spike +${deviation}%`;
+  if (Math.abs(deviation) <= 10) return 'Normal';
+  return `${deviation > 0 ? '+' : '−'}${Math.abs(deviation)}% vs usual`;
+}
+
+export function pizzIntViewModel(payload, now = Date.now()) {
+  const status = payload?.pizzint;
+  const unavailable = { available: false, level: '—', label: 'No current reading', updatedAt: null, venues: [] };
+  // The relay publishes nothing without a live reading, so an expired seed is
+  // the normal "no venue is reporting" answer, not a failure.
+  if (status === undefined || status === null) return unavailable;
+  if (typeof status !== 'object') throw new Error('Pizza Index status is malformed');
+  const level = status.defconLevel;
+  if (!Number.isInteger(level) || !PIZZINT_LEVEL_LABELS[level]) {
+    throw new Error('Pizza Index level is outside 1-5');
+  }
+  const updatedAt = validTimestamp(status.updatedAt, now, MAX_PIZZINT_AGE_MS);
+  const locations = Array.isArray(status.locations) ? status.locations : [];
+  if (
+    updatedAt === null
+    || status.dataFreshness !== 'DATA_FRESHNESS_FRESH'
+    || !(status.locationsMonitored > 0)
+    // The relay also publishes closed-only polls; those are not a live reading.
+    || !locations.some(isLivePizzIntVenue)
+  ) {
+    return unavailable;
+  }
+  return {
+    available: true,
+    level: String(level),
+    label: PIZZINT_LEVEL_LABELS[level],
+    updatedAt,
+    venues: locations.map((location) => ({
+      name: String(location?.name || 'Unnamed venue'),
+      status: pizzIntVenueStatus(location ?? {}),
+    })),
   };
 }
 
@@ -1397,6 +1469,97 @@ export async function loadChokepoint(tool) {
   }
 }
 
+// The level numeral is hidden without a reading; the label carries the state.
+function setPizzIntLevel(tool, level, label) {
+  const numeral = tool.querySelector('[data-pizzint-level]');
+  if (numeral) {
+    numeral.textContent = level;
+    numeral.hidden = level === '—';
+  }
+  setText(tool, '[data-pizzint-label]', label);
+}
+
+function renderPizzIntView(tool, view, checkedAt) {
+  setPizzIntLevel(tool, view.level, view.label);
+  renderList(
+    tool,
+    '[data-pizzint-venues]',
+    view.venues,
+    (venue) => `${venue.name} · ${venue.status}`,
+    'No venue is reporting live busyness right now. The level returns with the next live reading.',
+  );
+  if (view.updatedAt === null) setTime(tool, '[data-live-updated]', checkedAt, 'Checked');
+  else setTime(tool, '[data-live-updated]', view.updatedAt, 'Updated');
+}
+
+// The relay polls every 15 minutes. An open page reloads on that cadence, and
+// sooner when the shown reading would otherwise outlive MAX_PIZZINT_AGE_MS.
+const PIZZINT_REFRESH_MS = 15 * 60 * 1_000;
+const MIN_PIZZINT_REFRESH_MS = 60 * 1_000;
+const pizzIntRefreshes = new WeakMap();
+
+export function pizzIntRefreshDelay(view, now = Date.now()) {
+  if (!view?.available || view.updatedAt === null) return PIZZINT_REFRESH_MS;
+  const untilExpiry = view.updatedAt + MAX_PIZZINT_AGE_MS - now;
+  // Reload at expiry, however close; the floor only guards an already-expired input.
+  if (untilExpiry <= 0) return MIN_PIZZINT_REFRESH_MS;
+  return Math.min(PIZZINT_REFRESH_MS, untilExpiry);
+}
+
+export function cancelPizzIntRefresh(tool) {
+  const pending = pizzIntRefreshes.get(tool);
+  if (pending) clearTimeout(pending.timer);
+  pizzIntRefreshes.delete(tool);
+}
+
+function schedulePizzIntRefresh(tool, view) {
+  cancelPizzIntRefresh(tool);
+  const delay = pizzIntRefreshDelay(view);
+  const timer = setTimeout(() => {
+    pizzIntRefreshes.delete(tool);
+    void loadPizzInt(tool);
+  }, delay);
+  // Node test runs must not wait 15 minutes on this timer; browsers lack unref.
+  timer?.unref?.();
+  pizzIntRefreshes.set(tool, { timer, dueAt: Date.now() + delay });
+}
+
+// Hidden tabs throttle timers, so a returning reader could see an expired
+// level. Reload at once when the scheduled refresh is already overdue.
+export function resumePizzIntRefresh(tool, now = Date.now()) {
+  const pending = pizzIntRefreshes.get(tool);
+  if (!pending || pending.dueAt > now) return;
+  cancelPizzIntRefresh(tool);
+  void loadPizzInt(tool);
+}
+
+export async function loadPizzInt(tool) {
+  cancelPizzIntRefresh(tool);
+  setToolState(tool, 'loading', 'Connecting…');
+  try {
+    await runLatestToolRequest(
+      tool,
+      async (signal) => pizzIntViewModel(await requestLiveJson('/api/intelligence/v1/get-pizzint-status', {
+        signal,
+        preflightSession: true,
+      })),
+      (view) => {
+        renderPizzIntView(tool, view, Date.now());
+        if (view.available) setToolState(tool, 'ready', 'Live reading');
+        else setToolState(tool, 'empty', 'Live feed checked');
+        schedulePizzIntRefresh(tool, view);
+      },
+    );
+  } catch {
+    setPizzIntLevel(tool, '—', 'Unavailable');
+    tool.querySelector('[data-pizzint-venues]')?.replaceChildren();
+    setTime(tool, '[data-live-updated]', null, 'Updated');
+    setText(tool, '[data-live-updated]', '');
+    setToolState(tool, 'error', 'Temporarily unavailable');
+    schedulePizzIntRefresh(tool, null);
+  }
+}
+
 export async function loadCrisis(tool) {
   const state = beginToolRequest(tool);
   const countries = [...tool.querySelectorAll('[data-crisis-country]')].map((row) => ({
@@ -1630,6 +1793,18 @@ export function initLiveTools(root = document) {
   for (const tool of root.querySelectorAll('[data-live-crisis]')) {
     tool.querySelector('[data-live-refresh]')?.addEventListener('click', () => loadCrisis(tool));
     void loadCrisis(tool);
+  }
+  const pizzIntTools = [...root.querySelectorAll('[data-live-pizzint]')];
+  for (const tool of pizzIntTools) {
+    tool.querySelector('[data-live-refresh]')?.addEventListener('click', () => loadPizzInt(tool));
+    void loadPizzInt(tool);
+  }
+  if (pizzIntTools.length > 0) {
+    const documentRoot = root.ownerDocument || root;
+    documentRoot.addEventListener?.('visibilitychange', () => {
+      if (documentRoot.visibilityState !== 'visible') return;
+      for (const tool of pizzIntTools) resumePizzIntRefresh(tool);
+    });
   }
   for (const tool of root.querySelectorAll('[data-natural-hazard-tool]')) {
     applyInitialCountrySelection(tool);

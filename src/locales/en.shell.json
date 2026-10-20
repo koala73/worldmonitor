@@ -115,6 +115,7 @@
     "goldIntelligence": "Gold Intelligence",
     "gov": "Government",
     "thinktanks": "Think Tanks",
+    "science": "Science",
     "polymarket": "Predictions",
     "commodities": "Metals & Materials",
     "economic": "Macro Stress",
@@ -821,8 +822,9 @@
         "setSecret": "Set secret",
         "staged": "Staged (save with OK)"
       },
-      "reserveEarlyAccess": "Reserve Your Early Access",
-      "skipSetup": "Skip the setup — a single World Monitor license unlocks everything. Join the waitlist for early access.",
+      "proCloud": "Features without a local API key use World Monitor cloud data.",
+      "skipSetupPro": "Skip the setup: sign in with World Monitor Pro to use cloud data instead of your own API keys.",
+      "getPro": "Get World Monitor Pro",
       "status": {
         "invalid": "Invalid",
         "looksInvalid": "Looks invalid",
@@ -924,8 +926,6 @@
     "deleteTabAria": "Delete tab {{name}}",
     "tabNameAria": "Tab name"
   },
-  "preferences": {
-    "panelFontScale": "Text size",
-    "followGlobalFontScale": "Use global"
-  }
+  "preferences":{"panelFontScale":"Text size","followGlobalFontScale":"Use global"},
+  "countryHistory":{"title":"Daily country history"}
 }

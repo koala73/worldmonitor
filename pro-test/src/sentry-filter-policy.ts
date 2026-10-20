@@ -459,6 +459,10 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // ever match Clerk. A user's flaky connection to Clerk is not actionable here;
   // Clerk's UI already tells them to retry.
   /^(?:Error: )?ClerkJS: Network error\b/,
+  // Android WebView autofill injects `xbrowser` and `swbrowser`, then reads
+  // them before the host defines them.
+  /^ReferenceError: xbrowser is not defined$/,
+  /^ReferenceError: swbrowser is not defined$/,
 ];
 
 /** Sentry's own hashed SDK chunk — infrastructure, never evidence of our code. */

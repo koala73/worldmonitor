@@ -236,7 +236,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "No se ha indicado el estado de estimación e imputación"
     },
     "fiveFactorScorecard": {
       "title": "Tabla de puntuación de resiliencia de cinco factores",
@@ -407,6 +408,7 @@
     "energy": "Energía y Recursos",
     "gov": "Gobierno",
     "thinktanks": "Centros de Estudio",
+    "science": "Ciencia",
     "polymarket": "Predicciones",
     "commodities": "Materias primas",
     "economic": "Indicadores económicos",
@@ -713,9 +715,9 @@
       "alertTitle": {
         "configured": "Configuraciones de escritorio configuradas",
         "needsKeys": "Configurar claves API para desbloquear funciones",
-        "some": "Algunas funciones necesitan claves API"
+        "some": "Algunas funciones necesitan claves API",
+        "pro": "World Monitor Pro está activo"
       },
-      "skipSetup": "Omita la configuración — una sola licencia de World Monitor lo desbloquea todo. Únase a la lista de espera para acceso anticipado.",
       "summary": {
         "desktop": "Modo escritorio",
         "web": "Modo web (credenciales administradas por el servidor de solo lectura)",
@@ -744,7 +746,9 @@
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "reserveEarlyAccess": "Reserva tu acceso anticipado"
+      "proCloud": "Las funciones sin una clave API local utilizan datos en la nube de World Monitor.",
+      "skipSetupPro": "Omite la configuración: inicia sesión con World Monitor Pro para usar datos en la nube en lugar de tus propias claves API.",
+      "getPro": "Obtén World Monitor Pro"
     },
     "countryIntel": {
       "identifying": "Identificando el país...",
@@ -1130,7 +1134,7 @@
         "commodityHubs": "Centros de productos básicos",
         "gulfInvestments": "Inversiones del Consejo de Cooperación del Golfo",
         "tradeRoutes": "Rutas Comerciales",
-        "iranAttacks": "Ataques de Irán",
+        "iranAttacks": "Ataques en Oriente Medio",
         "gpsJamming": "Interferencia de navegación",
         "dayNight": "Día/Noche",
         "ciiChoropleth": "Inestabilidad de país",
@@ -1181,7 +1185,9 @@
         "sourceIomDtm": "Fuente: IOM DTM",
         "sinceDate": "desde {{date}}",
         "lastMonth": "el mes pasado",
-        "sourceUnhcrOdp": "Fuente: Portal de Datos Operacionales de ACNUR"
+        "sourceUnhcrOdp": "Fuente: Portal de Datos Operacionales de ACNUR",
+        "displaced": "desplazados",
+        "sourceIdmc": "Fuente: IDMC"
       },
       "layerHelp": {
         "title": "Guía de capas de mapas",
@@ -1294,7 +1300,8 @@
       "sourceCoverageHint": "Mostrando {{covered}} de {{total}} fuentes activas — este panel va rotando sus fuentes en cada actualización",
       "sortBy": "Ordenar por",
       "sortNewest": "Más reciente",
-      "sortRelevance": "Relevancia"
+      "sortRelevance": "Relevancia",
+      "translationUnavailable": "Traducción no disponible. Revisa la configuración de tu proveedor de IA e inténtalo de nuevo."
     },
     "countryBrief": {
       "shareStory": "Compartir historia",
@@ -1491,6 +1498,8 @@
       "capacityPercent": "{{percent}}% capacidad",
       "noCountryImpacts": "No se detectaron impactos en el país",
       "alternativeRoutes": "Rutas alternativas",
+      "sharesCutZone": "mismo estrecho",
+      "estimateNote": "Estimación: la capacidad y la redundancia de los cables son aproximadas, no medidas.",
       "countriesAffected": "Países afectados ({{count}})",
       "links": "campo de golf",
       "selectInfrastructureHint": "Seleccionar infraestructura para analizar el impacto en cascada",
@@ -1626,7 +1635,21 @@
       "latestChange": "Último cambio",
       "accelerating": "Acelerando",
       "inDays": "en {{days}} días",
-      "crossBorderNote": "Portal de Datos Operacionales de la Agencia de la ONU para los Refugiados: personas que cruzaron fronteras en cada crisis, de los últimos reportes de países. Las situaciones se superponen, por lo que no se suman."
+      "crossBorderNote": "Portal de Datos Operacionales de la Agencia de la ONU para los Refugiados: personas que cruzaron fronteras en cada crisis, de los últimos reportes de países. Las situaciones se superponen, por lo que no se suman.",
+      "last7And30": "Últimos 7 / 30 días",
+      "staleReport": "Informe desactualizado",
+      "reported": "Cantidad",
+      "period": "Período",
+      "movementNote": "Cada fila conserva su fuente, fecha de informe y medida. Las poblaciones, las llegadas y los encuentros fronterizos son medidas distintas. Las fuentes pueden solaparse; no sume sus cifras. WorldMonitor elabora esta vista a partir de las fuentes enlazadas; esto no implica el respaldo de los proveedores.",
+      "recent": "Reciente",
+      "last30Days": "Últimos 30 días",
+      "newThisWeek": "Nuevos esta semana",
+      "conflict": "Conflicto",
+      "disaster": "Desastre",
+      "surge": "Pico",
+      "recentNote": "IDMC: personas desplazadas dentro de su país en los últimos 30 días. IDMC publica una cifra con una mediana de tres semanas después del desplazamiento, por lo que las semanas recientes se completan más tarde. Nuevos esta semana cuenta las cifras publicadas en los últimos 7 días. Pico: al menos 5.000 personas y tres veces el promedio mensual de los cinco meses anteriores.",
+      "recentAsOf": "Datos al {{date}}.",
+      "recentMissing": "Sin datos en esta ocasión de {{countries}}; sus archivos no se cargaron, lo que no significa desplazamiento cero."
     },
     "populationExposure": {
       "totalAffected": "Total de afectados",
@@ -2958,6 +2981,7 @@
       "tier4OnlyHint": "Todo medio que reporta esto es una fuente de nivel 4 (agregadores y blogs). Esto describe la cobertura, no la precisión.",
       "rosterListed": "({{listed}} listados)",
       "rosterFeeds": "Feeds observados: {{labels}}",
+      "rosterSameCopy": "Mismo texto, contado una vez",
       "rosterLegend": "Los niveles clasifican las fuentes; no juzgan esta afirmación.",
       "tierDocsLink": "Cómo se asignan los niveles",
       "tierChip": "N{{tier}}",
@@ -3828,5 +3852,27 @@
       "description": "Activar fuentes de Irán, Israel, el Golfo y las regiones kurdas"
     },
     "unavailable": "El paquete {{preset}} no está disponible con tus paneles actuales"
+  },
+  "countryHistory": {
+    "title": "Historial diario del país",
+    "loading": "Cargando historial diario…",
+    "window": "Período",
+    "days": "{{days}} días",
+    "observed": "{{count}} capturas en {{days}} días",
+    "legend": "CII (ámbar): los valores altos indican mayor inestabilidad. Resiliencia (verde): los valores altos indican mayor capacidad. Los puntos marcan días con titulares seleccionados.",
+    "chart": "Puntuaciones diarias de CII y resiliencia. Las lagunas y los cambios de fórmula interrumpen las líneas.",
+    "selectDate": "{{date}}, {{count}} titulares seleccionados",
+    "empty": "No hay capturas diarias en este período. El historial se acumula tras la activación.",
+    "unavailable": "El historial no está disponible temporalmente. Inténtalo de nuevo.",
+    "retry": "Reintentar",
+    "stale": "La última captura diaria correcta tiene más de 36 horas.",
+    "break": "Cambio de fórmula o laguna de observación. Compara solo puntuaciones calculadas con la misma fórmula.",
+    "partial": "La cobertura de noticias era parcial en el momento de la captura.",
+    "resilience": "Resiliencia",
+    "ciiMissing": "CII no disponible",
+    "resilienceMissing": "Resiliencia no disponible",
+    "noEvents": "No se capturaron titulares seleccionados para esta fecha. Esto no demuestra que no ocurrieran eventos.",
+    "unlock90": "Desbloquea 90 días con Pro",
+    "unlock365": "Desbloquea 365 días con un plan API"
   }
 }

@@ -96,7 +96,7 @@ export interface UnifiedSettingsConfig {
    *
    * Sources apply to `ctx.disabledSources` on click (no draft/Save step like
    * panels), but nothing subscribed to that write, so the change only reached
-   * the dashboard at the next `REFRESH_INTERVALS.feeds` tick — 20 minutes
+   * the dashboard at the next `REFRESH_INTERVALS.feeds` tick
    * (#6380). This is the subscription.
    *
    * Fired on teardown rather than per click on purpose: the overlay covers the
@@ -175,7 +175,7 @@ export class UnifiedSettings {
   private mcpClients: McpClientInfo[] = [];
   private mcpClientsLoading = false;
   private mcpClientsError = '';
-  private mcpQuota: McpQuota | null = null;
+  private mcpQuota: McpQuota | 'unavailable' | null = null;
   /** setInterval handle for quota auto-refresh; cleared on close()/destroy()/tab-switch. */
   private mcpQuotaTimer: ReturnType<typeof setInterval> | null = null;
   private accountUserId: string | null = getAuthState().user?.id ?? null;
@@ -2417,6 +2417,9 @@ export class UnifiedSettings {
 
   private renderMcpQuotaText(): string {
     const q = this.mcpQuota;
+    if (q === 'unavailable') {
+      return `<span class="mcp-clients-quota-loading">Quota unavailable</span>`;
+    }
     if (!q) {
       return `<span class="mcp-clients-quota-loading">Loading quota...</span>`;
     }
@@ -2477,8 +2480,7 @@ export class UnifiedSettings {
       this.mcpQuota = quota;
     } catch {
       if (!this.isAccountRequestCurrent(request)) return;
-      // fetchMcpQuota already returns sane fallbacks, but defensive catch.
-      this.mcpQuota = null;
+      this.mcpQuota = 'unavailable';
     }
     if (this.isAccountRequestCurrent(request)) this.renderMcpQuotaInPlace();
   }

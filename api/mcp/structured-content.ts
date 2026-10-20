@@ -37,9 +37,75 @@ const NON_DOCUMENTED_BRANCHES: readonly object[] = [
   { required: ['_jmespath_error'] },
 ];
 
+export const DEPRECATION_NOTICE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['alias', 'replacement', 'message'],
+  properties: {
+    alias: { type: 'string' },
+    replacement: { type: 'string' },
+    message: { type: 'string' },
+    limit: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['requested', 'servedAsYears', 'mismatch'],
+      properties: {
+        requested: { type: ['number', 'null'] },
+        servedAsYears: { type: 'integer', minimum: 1, maximum: 30 },
+        mismatch: {
+          type: 'string',
+          enum: ['omitted-was-newest-30', 'non-positive-was-full-history', 'row-cap-as-years', 'capped-at-30'],
+        },
+      },
+    },
+    moved: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['dataset', 'tool'],
+      properties: {
+        dataset: { type: 'string', enum: ['tariffs'] },
+        tool: { type: 'string' },
+      },
+    },
+  },
+} as const;
+
 /** The `outputSchema` to advertise for a tool whose documented shape is `documented`. */
-export function advertisedOutputSchema(documented: object): object {
-  return { type: 'object', anyOf: [documented, ...structuredClone(NON_DOCUMENTED_BRANCHES)] };
+export function advertisedOutputSchema(
+  documented: object,
+  opts?: { permitDeprecation?: boolean },
+): object {
+  const branches: object[] = [documented, ...structuredClone(NON_DOCUMENTED_BRANCHES)];
+  const anyOf = opts?.permitDeprecation === true ? branches.map((branch) => permitDeprecationRoot(branch)) : branches;
+  return { type: 'object', anyOf };
+}
+
+export function permitDeprecationRoot(branch: object): object {
+  const record = isPlainObject(branch) ? branch : {};
+  const properties = isPlainObject(record.properties) ? record.properties : {};
+  return { ...record, properties: { ...properties, deprecation: DEPRECATION_NOTICE_SCHEMA } };
+}
+
+export function schemaAdmitsNotice(advertised: object): boolean {
+  if (!isPlainObject(advertised) || !Array.isArray(advertised.anyOf) || advertised.anyOf.length === 0) return false;
+  for (const branch of advertised.anyOf) {
+    if (!isPlainObject(branch) || !isPlainObject(branch.properties)) return false;
+    if (branch.properties.deprecation !== DEPRECATION_NOTICE_SCHEMA) return false;
+    if (hasNestedDeprecationProperty(branch)) return false;
+  }
+  return true;
+}
+
+function hasNestedDeprecationProperty(root: Record<string, unknown>): boolean {
+  const visit = (node: unknown, atRoot: boolean): boolean => {
+    if (Array.isArray(node)) return node.some((item) => visit(item, false));
+    if (!isPlainObject(node)) return false;
+    if (!atRoot && isPlainObject(node.properties) && Object.prototype.hasOwnProperty.call(node.properties, 'deprecation')) {
+      return true;
+    }
+    return Object.values(node).some((value) => visit(value, false));
+  };
+  return visit(root, true);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -62,4 +128,32 @@ export function buildStructuredContent(
   if (opts.rider !== null) return { data: value ?? null, _attribution: opts.rider };
   if (!opts.reshaped && isPlainObject(value)) return value;
   return { projection: value ?? null };
+}
+
+export function applyDeprecationNotice(
+  structured: Record<string, unknown>,
+  text: string,
+  notice: {
+    readonly alias: string;
+    readonly replacement: string;
+    readonly message: string;
+    readonly limit?: {
+      readonly requested: number | null;
+      readonly servedAsYears: number;
+      readonly mismatch: string;
+    };
+    readonly moved?: { readonly dataset: string; readonly tool: string };
+  },
+): { structuredContent: Record<string, unknown>; text: string } {
+  const structuredContent = { ...structured, deprecation: notice };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = undefined;
+  }
+  // A scalar or array projection keeps its raw text, as a direct call returns
+  // it; the notice still reaches the client through structuredContent.
+  const nextText = isPlainObject(parsed) ? JSON.stringify({ ...parsed, deprecation: notice }) : text;
+  return { structuredContent, text: nextText };
 }

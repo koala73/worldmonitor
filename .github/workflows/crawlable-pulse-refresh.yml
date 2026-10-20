@@ -37,6 +37,7 @@ concurrency:
 
 jobs:
   refresh:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     # The freeze fetches five digest variants, tops every under-filled country
     # up from the per-country GDELT index (~190 requests, ~50 minutes if every
@@ -86,7 +87,7 @@ jobs:
             exit 0
           fi
           echo "skip=false" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.reconcile.outputs.skip != 'true'
         with:
           node-version: '24'
@@ -203,7 +204,7 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "chore(corpus): align pulse sitemap dates ${snapshot_date}"
           fi
-          node scripts/build-sitemap.mjs --check
+          node --import tsx scripts/build-sitemap.mjs --check
           git push --set-upstream origin "$BRANCH_NAME"
           body="Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus, root sitemap, llms-full forecast-accuracy section, and the homepage welcome-teaser strip (#7608, #8070)."
           draft=()

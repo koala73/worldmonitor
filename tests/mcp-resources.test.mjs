@@ -110,6 +110,12 @@ function mountWidgetHtml(html) {
       this.childNodes.push(child);
       return child;
     }
+    contains(node) {
+      return node === this || this.childNodes.some((child) => child.contains(node));
+    }
+    focus() {
+      document.activeElement = this;
+    }
     set textContent(value) {
       this._text = value == null ? '' : String(value);
       this.childNodes = [];
@@ -155,6 +161,7 @@ function mountWidgetHtml(html) {
   const documentElement = new TestElement('html');
   const document = {
     documentElement,
+    activeElement: new TestElement('body'),
     getElementById: (id) => byId.get(id) ?? null,
     createTextNode: (text) => {
       const node = new TestElement('#text');
@@ -166,6 +173,18 @@ function mountWidgetHtml(html) {
       created.push(node);
       return node;
     },
+  };
+  document.createElementNS = (namespaceURI, tag) => {
+    const node = document.createElement(tag);
+    node.namespaceURI = namespaceURI;
+    node.tagName = String(tag);
+    return node;
+  };
+  const animationFrames = [];
+  let animationFrameId = 0;
+  const flushAnimationFrame = () => {
+    const callbacks = animationFrames.splice(0);
+    callbacks.forEach((callback) => callback(0));
   };
   const listeners = new Map();
   const posted = [];
@@ -190,16 +209,22 @@ function mountWidgetHtml(html) {
     isFinite,
     isNaN,
     getComputedStyle: () => ({ getPropertyValue: () => '' }),
+    requestAnimationFrame: (callback) => {
+      animationFrames.push(callback);
+      return ++animationFrameId;
+    },
   };
   const script = html.match(/<script>([\s\S]*)<\/script>/i)?.[1];
   assert.ok(script, 'served widget HTML must contain an executable script');
   vm.runInNewContext(script, context, { timeout: 1_000 });
+  flushAnimationFrame();
   assert.equal(typeof listeners.get('message'), 'function', 'widget must register its host message listener');
 
   return {
     posted,
     sendMessage(msg, fromParent = true) {
       listeners.get('message')({ source: fromParent ? parent : {}, data: { jsonrpc: '2.0', ...msg } });
+      flushAnimationFrame();
     },
     sendToolResult(structuredContent) {
       listeners.get('message')({
@@ -210,6 +235,7 @@ function mountWidgetHtml(html) {
           params: { result: { structuredContent } },
         },
       });
+      flushAnimationFrame();
     },
     text(id) {
       return byId.get(id)?.textContent ?? '';
@@ -1717,15 +1743,17 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     }
   });
 
-  it('env-key resources/read on countries/de/risk does NOT touch the Pro quota path (env-key tier is its own quota)', async () => {
-    // env-key auth path uses X-WorldMonitor-Key. The dispatcher's INCR
-    // reservation only fires for context.kind === 'pro'. This test asserts
-    // the response succeeds AND no Pro pipeline activity was attempted.
+  it('env-key resources/read on countries/de/risk charges the operator key ceiling, never the Pro quota path', async () => {
+    // env-key auth path uses X-WorldMonitor-Key. Its daily reservation lands on
+    // the per-key `env_key:<hash>` counter, not on any Pro user's counter.
     const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 0 } });
     const res = await mcpHandler(envKeyReq(readBody('worldmonitor://countries/de/risk')), deps);
     const body = await res.json();
     assert.equal(body.error, undefined, `env-key resources/read should succeed, got error: ${JSON.stringify(body.error)}`);
-    assert.equal(pipe.count, 0, 'env-key auth must NOT touch the Pro daily-quota counter');
+    assert.equal(pipe.count, 1, 'env-key auth charges one unit of its own daily ceiling');
+    const reservations = pipe.ops.flat().filter(cmd => cmd[0] === 'EVAL');
+    assert.equal(reservations.length, 1);
+    assert.match(String(reservations[0][3]), /mcp:pro-usage:env_key:/, 'env-key auth must NOT touch the Pro daily-quota counter');
   });
 
   it('resources/list does NOT increment the Pro quota counter (metadata-class, mirrors prompts/list)', async () => {

@@ -303,7 +303,8 @@
       "trainedIndustrialWorkforce": "Combined industrial workforce",
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "retained": "{{stage}} data retained from the last successful refresh.",
+      "statusNotSupplied": "Hali ya makadirio na ujazaji wa thamani zinazokosekana haijatolewa"
     },
     "fiveFactorScorecard": {
       "title": "Kadi ya Alama za Ustahimilivu ya Vipengele Vitano",
@@ -480,6 +481,7 @@
     "goldIntelligence": "Gold Intelligence",
     "gov": "Serikali",
     "thinktanks": "Fikiria Mizinga",
+    "science": "Sayansi",
     "polymarket": "Utabiri",
     "commodities": "Vyuma na Nyenzo",
     "economic": "Mkazo wa Macro",
@@ -779,10 +781,9 @@
       "alertTitle": {
         "configured": "Mipangilio ya Eneo-kazi imesanidiwa",
         "needsKeys": "Sanidi vitufe vya API ili kufungua vipengele",
-        "some": "Baadhi ya vipengele vinahitaji funguo za API"
+        "some": "Baadhi ya vipengele vinahitaji funguo za API",
+        "pro": "World Monitor Pro inatumika"
       },
-      "reserveEarlyAccess": "Hifadhi Ufikiaji Wako wa Mapema",
-      "skipSetup": "Ruka usanidi - leseni moja ya World Monitor itafungua kila kitu. Jiunge na orodha ya wanaosubiri ili upate ufikiaji wa mapema.",
       "summary": {
         "desktop": "Hali ya eneo-kazi",
         "web": "Hali ya wavuti (kusoma pekee, vitambulisho vinavyodhibitiwa na seva)",
@@ -810,7 +811,10 @@
         "NASA_FIRMS_API_KEY": "Taarifa za Moto kwa Mfumo wa Usimamizi wa Rasilimali.",
         "OLLAMA_API_URL": "k.m. http://127.0.0.1:11434 (Ollama) au http://127.0.0.1:1234/v1 (LM Studio) - Mwisho unaoendana na OpenAI.",
         "OLLAMA_MODEL": "k.m. llama3.1:8b - lebo ya mfano ya kutumia kwa muhtasari."
-      }
+      },
+      "proCloud": "Vipengele bila ufunguo wa API wa ndani hutumia data ya wingu la World Monitor.",
+      "skipSetupPro": "Ruka usanidi: ingia kwa World Monitor Pro ili kutumia data ya wingu badala ya ufunguo wako wa API.",
+      "getPro": "Pata World Monitor Pro"
     },
     "settingsWindow": {
       "shellTitle": "Mipangilio ya Ufuatiliaji Ulimwenguni",
@@ -1429,7 +1433,7 @@
         "commodityHubs": "Vituo vya Bidhaa",
         "gulfInvestments": "Uwekezaji wa Baraza la Ushirikiano la Ghuba",
         "tradeRoutes": "Njia za Biashara",
-        "iranAttacks": "Mashambulizi ya Iran",
+        "iranAttacks": "Mashambulizi ya Mashariki ya Kati",
         "gpsJamming": "Mgogoliko wa usambazaji",
         "ciiChoropleth": "Kulegeza kwa nchi",
         "dayNight": "Mchana/Usiku",
@@ -1471,7 +1475,9 @@
         "sourceIomDtm": "Chanzo: IOM DTM",
         "sinceDate": "tangu {{date}}",
         "lastMonth": "mwezi uliopita",
-        "sourceUnhcrOdp": "Chanzo: Tovuti ya Data za Kiutendaji ya UNHCR"
+        "sourceUnhcrOdp": "Chanzo: Tovuti ya Data za Kiutendaji ya UNHCR",
+        "displaced": "waliokimbia makazi",
+        "sourceIdmc": "Chanzo: IDMC"
       },
       "layerHelp": {
         "title": "Mwongozo wa Tabaka za Ramani",
@@ -1687,6 +1693,8 @@
       "capacityPercent": "Uwezo wa {{percent}}%.",
       "noCountryImpacts": "Hakuna athari za nchi zilizogunduliwa",
       "alternativeRoutes": "Njia Mbadala",
+      "sharesCutZone": "mlango-bahari uleule",
+      "estimateNote": "Makadirio: uwezo wa nyaya na njia mbadala ni wa kukadiria, si wa kupimwa.",
       "countriesAffected": "Nchi Zilizoathirika ({{count}})",
       "links": "viungo",
       "selectInfrastructureHint": "Chagua miundombinu ya kuchanganua athari ya mteremko",
@@ -1904,7 +1912,21 @@
       "latestChange": "Mabadiliko ya hivi karibuni",
       "accelerating": "Inaongezeka kwa kasi",
       "inDays": "ndani ya siku {{days}}",
-      "crossBorderNote": "Kituo cha Data cha UN Refugee Agency: watu waliokutana na mpaka katika azma kila moja, kutokana na ripoti za nchi za karibuni. Matatizo yanaingiliana, kwa hivyo hayajumlishwa pamoja."
+      "crossBorderNote": "Kituo cha Data cha UN Refugee Agency: watu waliokutana na mpaka katika azma kila moja, kutokana na ripoti za nchi za karibuni. Matatizo yanaingiliana, kwa hivyo hayajumlishwa pamoja.",
+      "last7And30": "Siku 7 / 30 zilizopita",
+      "staleReport": "Ripoti iliyopitwa na wakati",
+      "reported": "Idadi",
+      "period": "Kipindi",
+      "movementNote": "Kila safu huhifadhi chanzo chake, tarehe ya ripoti na kipimo. Idadi ya watu waliopo, waliowasili na matukio ya udhibiti wa mipaka ni vipimo tofauti. Vyanzo vinaweza kuhesabu watu wale wale; usijumlishe idadi zao. WorldMonitor huunda mwonekano huu kutoka vyanzo vilivyounganishwa; hii haimaanishi uidhinishaji na watoa data.",
+      "recent": "Hivi karibuni",
+      "last30Days": "Siku 30 za mwisho",
+      "newThisWeek": "Mpya wiki hii",
+      "conflict": "Mgogoro",
+      "disaster": "Janga",
+      "surge": "Mlipuko",
+      "recentNote": "IDMC: watu waliohama ndani ya nchi yao katika siku 30 za mwisho. IDMC hutoa takwimu wastani wa wiki tatu baada ya uhamiaji, hivyo wiki za hivi karibuni zijaza na chelewa. Mpya wiki hii inakokotoa takwimu zilizochapishwa katika siku 7 za mwisho. Mlipuko: angalau watu 5,000 na mara tatu ya wastani wa kila mwezi wa miezi mitano iliyopita.",
+      "recentAsOf": "Data hadi {{date}}.",
+      "recentMissing": "Hakuna data wakati huu kutoka {{countries}}; faili zao hazikupakiwa. Hii haimaanishi kuwa hakuna watu waliokimbia makazi."
     },
     "climate": {
       "noAnomalies": "Hakuna hitilafu muhimu zilizogunduliwa",
@@ -1931,7 +1953,8 @@
       "sortNewest": "Mpya zaidi",
       "sortRelevance": "Umuhimu",
       "sourceCoverage": "{{covered}}/{{total}} sources",
-      "sourceCoverageHint": "Showing {{covered}} of {{total}} enabled sources — this panel rotates through its sources on each refresh"
+      "sourceCoverageHint": "Showing {{covered}} of {{total}} enabled sources — this panel rotates through its sources on each refresh",
+      "translationUnavailable": "Tafsiri haipatikani. Kagua mipangilio ya mtoa huduma wako wa AI na ujaribu tena."
     },
     "mobileNav": {
       "panelCategories": "Makundi ya paneli"
@@ -3008,6 +3031,7 @@
       "tier4OnlyHint": "Kila chombo cha habari kinachoripoti hili ni chanzo cha kiwango cha 4 (tovuti za kukusanya habari na blogu). Hii inaeleza kiwango cha uripoti, si usahihi.",
       "rosterListed": "({{listed}} wameorodheshwa)",
       "rosterFeeds": "Milisho iliyoonekana: {{labels}}",
+      "rosterSameCopy": "Maandishi yaleyale, yamehesabiwa mara moja",
       "rosterLegend": "Viwango vinapanga vyanzo; havihukumu dai hili.",
       "tierDocsLink": "Jinsi viwango vinavyogawanywa",
       "tierChip": "T{{tier}}",
@@ -3808,5 +3832,27 @@
       "label": "Middle East Flashpoints",
       "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
     }
+  },
+  "countryHistory": {
+    "title": "Historia ya kila siku ya nchi",
+    "loading": "Inapakia historia ya kila siku…",
+    "window": "Kipindi",
+    "days": "Siku {{days}}",
+    "observed": "Picha {{count}} katika siku {{days}}",
+    "legend": "CII (kahawia ya kaharabu): thamani kubwa inaonyesha kutokuwa na utulivu zaidi. Ustahimilivu (kijani): thamani kubwa inaonyesha uwezo zaidi. Nukta zinaonyesha siku zenye vichwa vya habari vilivyochaguliwa.",
+    "chart": "Alama za kila siku za CII na ustahimilivu. Mapengo na mabadiliko ya fomula hukatiza mistari.",
+    "selectDate": "{{date}}, vichwa vya habari {{count}} vilivyochaguliwa",
+    "empty": "Hakuna picha za kila siku katika kipindi hiki. Historia hukusanywa baada ya kuwezeshwa.",
+    "unavailable": "Historia haipatikani kwa muda. Jaribu tena.",
+    "retry": "Jaribu tena",
+    "stale": "Rekodi ya mwisho ya kila siku iliyofanikiwa ina zaidi ya saa 36.",
+    "break": "Mabadiliko ya fomula au pengo la uchunguzi. Linganisha alama zinazotumia fomula sawa pekee.",
+    "partial": "Habari hazikufunikwa kikamilifu wakati wa kurekodi.",
+    "resilience": "Ustahimilivu",
+    "ciiMissing": "CII haipatikani",
+    "resilienceMissing": "Ustahimilivu haupatikani",
+    "noEvents": "Hakuna vichwa vya habari vilivyochaguliwa vilivyorekodiwa kwa tarehe hii. Hii haithibitishi kwamba hakuna matukio yaliyotokea.",
+    "unlock90": "Fungua siku 90 kwa Pro",
+    "unlock365": "Fungua siku 365 kwa mpango wa API"
   }
 }

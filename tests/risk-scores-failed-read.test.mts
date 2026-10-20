@@ -69,6 +69,9 @@ function stubRedis({ failing = [], stored = {} }: RedisStub = {}): void {
     const commands: unknown[][] = Array.isArray(body[0]) ? body : [body];
     for (const command of commands) {
       if (command[0] === 'SET') writes.push({ key: String(command[1]), value: String(command[2]) });
+      if (command[0] === 'EVAL' && String(command[1]).includes('cii_history_wrong_type')) {
+        writes.push({ key: 'risk:scores:history:IR', value: String(command[1]) });
+      }
     }
     return Response.json(Array.isArray(body[0]) ? commands.map(() => ({ result: 'OK' })) : { result: 'OK' });
   }) as typeof fetch;
@@ -83,7 +86,7 @@ const stalePayload = {
 
 const writtenKeys = () => writes.map((write) => write.key);
 const published = () => writtenKeys().filter((key) => (
-  (key.startsWith('risk:scores:sebuf') && key !== REJECTED_KEY) || key === SEED_META_KEY
+  (key.startsWith('risk:scores:') && key !== REJECTED_KEY) || key === SEED_META_KEY
 ));
 const rejectionRecord = () => writes.filter((write) => write.key === REJECTED_KEY);
 
@@ -103,6 +106,34 @@ after(() => {
 });
 
 describe('risk-scores build with failed Redis reads', () => {
+  for (const key of ['displacement:cross-border:v1', 'displacement:border-uk:v1', 'displacement:border-cbp:v1', 'displacement:border-frontex:v1', 'displacement:border-panama:v1']) {
+    it(`retains the last good scores when ${key} cannot be read`, async () => {
+      stubRedis({ failing: [key], stored: { [STALE_KEY]: JSON.stringify(stalePayload) } });
+      const response = await getRiskScores({} as never, {} as never);
+      assert.equal(response.stale, true);
+      assert.equal(response.degraded, true);
+      assert.equal(response.ciiScores[0]?.score, 77);
+      assert.deepEqual(published(), []);
+      assert.ok(rejectionRecord().some(record => record.value.includes(key)));
+    });
+  }
+
+  it('uses the original envelope clock when applying an arrival surge', async () => {
+    stubRedis();
+    const base = await getRiskScores({} as never, {} as never);
+    const baseScore = base.ciiScores.find(score => score.region === 'GB')!.combinedScore;
+    const now = Date.now() - 60_000;
+    for (const [age, boost] of [[0, 5], [3 * 86400000, 0]]) {
+      stubRedis({ stored: { 'displacement:border-uk:v1': JSON.stringify({
+        _seed: { fetchedAt: now - age },
+        data: { routes: [{ id: 'english-channel', name: 'English Channel', countryCode: 'GB', kind: 'arrival', measure: 'daily',
+          asOf: new Date(now - 86400000).toISOString().slice(0, 10), period: 'day', latestCount: 2000, last7Days: 14000, surge: true }] },
+      }) } });
+      const result = await getRiskScores({} as never, {} as never);
+      assert.equal(result.ciiScores.find(score => score.region === 'GB')!.combinedScore, baseScore + boost);
+    }
+  });
+
   it('publishes nothing when the signal-family reads error', async () => {
     stubRedis({ failing: SIGNAL_FAMILY_KEYS });
     await getRiskScores({} as never, {} as never);
@@ -113,6 +144,7 @@ describe('risk-scores build with failed Redis reads', () => {
     stubRedis();
     await getRiskScores({} as never, {} as never);
     assert.ok(published().includes(SEED_META_KEY), 'a real empty build still stamps seed-meta');
+    assert.ok(published().includes('risk:scores:history:IR'), 'the real fresh leader build also publishes daily history');
   });
 
   it('publishes nothing when a single non-count source read errors', async () => {

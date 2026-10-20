@@ -148,9 +148,13 @@ Content-Type: application/json
 }
 ```
 
+**结账提示。** 由 `api/mcp/dispatch.ts` 发出的 `upgrade-required`，以及 `-32029` 下的 `allowance-exhausted` 和 `quota-exceeded`，在调用方持有绑定用户的凭据且存在高一级的自助套餐时，会额外带上 `recommendedPlan`。`recommendedPlan` 的对应关系为：免费 → `pro_monthly`，Pro → `pro_business_monthly`，API Starter → `api_business`。`checkoutTool: "start_upgrade"` 只出现在免费账户上，因为只有它能通过新结账购买该套餐：Pro → Pro Business 需要先取消 Pro，API Starter → API Business 是在账单门户中按比例变更套餐，所以付费调用方只收到 `recommendedPlan`。Pro Business、API Business、Enterprise、运营方密钥和匿名调用方不带这两个字段。`message` 与 `upgradeUrl` 保持不变。
+
+**`start_upgrade` 拒绝。** 以下情况不会创建结账会话，均为 **HTTP 200** 内的 `-32002`，带 `data.reason` 和 `data.nextStep`：账户已持有同一系列套餐时为 `already-subscribed`（附 `data.subscription`）；存在待处理付款时为 `payment-in-progress`，待付款完成或失效后会自行解除，稍后可再次调用。触发结账限流时返回 HTTP 429 的 `-32029`，`data.reason` 为 `checkout-rate-limited`，并带 `Retry-After`。
+
 一个例外是：使用非用户绑定凭证读取 `worldmonitor://account/mcp-allowance` 时，`-32002` 位于 **HTTP 200** 的普通 JSON-RPC 错误中，不带 `data` 负载。
 
-**如何处理。** 对于已发出的 `-32002`，不要重试，也不要重新运行 OAuth，两者都会重现同一拒绝。向用户显示权益状态：执行中失效的操作需要恢复订阅后再发起，`upgrade-required` 需要改用 `free-account` 工具或订阅 Pro。后续预检查若已确认覆盖期结束，会改走受限免费账户路径，客户端可继续使用 `free-account` 工具。如果订阅仍在服务方复核中，服务器会改为返回可重试的 `-32603` / HTTP 503，并附带 `Retry-After`。
+**如何处理。** 对于已发出的权益拒绝 `-32002`（上面的 `start_upgrade` 拒绝除外），不要重试，也不要重新运行 OAuth，两者都会重现同一拒绝。向用户显示权益状态：执行中失效的操作需要恢复订阅后再发起，`upgrade-required` 需要改用 `free-account` 工具或订阅 Pro。后续预检查若已确认覆盖期结束，会改走受限免费账户路径，客户端可继续使用 `free-account` 工具。如果订阅仍在服务方复核中，服务器会改为返回可重试的 `-32603` / HTTP 503，并附带 `Retry-After`。
 
 ### `-32003` —— 必需数据输入不可用
 

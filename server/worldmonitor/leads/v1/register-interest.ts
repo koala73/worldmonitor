@@ -172,6 +172,8 @@ async function sendConfirmationEmail(email: string, referralCode: string): Promi
       body: JSON.stringify({
         from: 'World Monitor <noreply@worldmonitor.app>',
         to: [email],
+        // noreply@ is unattended; route replies to a human inbox.
+        reply_to: 'support@worldmonitor.app',
         subject: "You\u2019re on the World Monitor Pro waitlist",
         html: `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">

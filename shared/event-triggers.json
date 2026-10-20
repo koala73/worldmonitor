@@ -1,0 +1,567 @@
+{
+  "schemaVersion": 1,
+  "description": "Surface-neutral registry of the push event triggers WorldMonitor delivers to API-key webhook subscribers (POST /api/v2/shipping/webhooks). Zapier triggers, the OpenAPI webhooks block and the delivery worker read this file; the MCP Events extension (#9268) will too. Mirrored byte-for-byte at scripts/shared/event-triggers.json (Railway rootDirectory=scripts) and integrations/zapier/event-triggers.json (Zapier bundles only its own folder).",
+  "subscription": {
+    "register": { "method": "POST", "path": "/api/v2/shipping/webhooks" },
+    "list": { "method": "GET", "path": "/api/v2/shipping/webhooks" },
+    "status": { "method": "GET", "path": "/api/v2/shipping/webhooks/{subscriberId}" },
+    "unsubscribe": { "method": "DELETE", "path": "/api/v2/shipping/webhooks/{subscriberId}" },
+    "auth": "X-WorldMonitor-Key with an API plan key (apiAccess entitlement)",
+    "ttlSeconds": 2592000,
+    "scopeField": "scope",
+    "signature": {
+      "header": "X-WM-Signature",
+      "algorithm": "sha256=hex(HMAC-SHA256(key=secret, message=rawBody))",
+      "eventHeader": "X-WM-Event",
+      "deliveryIdHeader": "X-WM-Delivery-Id",
+      "v2Header": "X-WM-Signature-V2",
+      "timestampHeader": "X-WM-Timestamp",
+      "v2Algorithm": "sha256=hex(HMAC-SHA256(key=secret, message=timestamp + '.' + deliveryId + '.' + event + '.' + rawBody))",
+      "toleranceSeconds": 300,
+      "note": "Every event, threshold or occurrence, goes through one sender (scripts/lib/shipping-webhook-delivery.mjs, mirrored by deliver-webhook.ts), so all of them carry the same headers. X-WM-Signature is the legacy body-only HMAC; X-WM-Signature-V2 also binds the X-WM-Timestamp send time, the delivery id and the event, so a captured delivery cannot be replayed under another id or outside the tolerance. Receivers require V2 and never fall back to the legacy header, which a captured delivery can be replayed under with a new id or with V2 stripped; the Zapier app (1.2.0) rejects any delivery without a valid V2."
+    },
+    "evaluationSeconds": 300,
+    "failureCeiling": 5,
+    "kinds": {
+      "threshold": "The worker re-evaluates a condition against a feed every tick and keeps the delivery pending while the condition holds; one crossing is one delivery id.",
+      "occurrence": "A fire-once event: a subscription gets one delivery id per eventId, from the first copy that matches its scope (delivery stays at-least-once, so a retry can repeat it). A failed delivery is retried every tick under the same delivery id until retry.pendingTtlSeconds, then dropped for good. Per-subscription volume caps count the events POSTed per UTC hour and day, retries included; a retry over the cap waits, new events over it are dropped and counted. Scope fields travel in the `scope` object of the registration body."
+    }
+  },
+  "events": {
+    "chokepoint.disruption": {
+      "key": "chokepoint.disruption",
+      "kind": "threshold",
+      "label": "Chokepoint Disruption",
+      "noun": "Chokepoint Alert",
+      "description": "Triggers when a monitored maritime chokepoint's disruption score reaches the alert threshold while live signals (navigational warnings, AIS disruption, transit drop) sit at least minLiveSignal points above its standing threat level.",
+      "source": {
+        "redisKey": "supply_chain:chokepoints:v4",
+        "rpc": "/api/supply-chain/v1/get-chokepoint-status",
+        "refreshSeconds": 360
+      },
+      "entity": { "field": "chokepointId", "listRpc": "/api/supply-chain/v1/get-chokepoint-status", "listField": "chokepoints" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "chokepointIds": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": [],
+            "description": "Chokepoint ids to watch. Empty subscribes to every registered chokepoint."
+          },
+          "alertThreshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 50,
+            "description": "Fire when disruptionScore >= alertThreshold. 50 is the red band. Standing threat levels: war zone 70 (Hormuz, Kerch), critical 40 (Bab el-Mandeb), high 30 (Suez), elevated 15 (Taiwan, Bosphorus), normal 0."
+          },
+          "minLiveSignal": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 40,
+            "default": 0,
+            "recommended": 15,
+            "description": "Also require disruptionScore minus the standing threat level to be at least this many points, so a chokepoint that sits permanently above the threshold does not fire once and go silent. 15 matches the in-app chokepoint_disruption alert rule; 0 keeps the legacy score-only behaviour."
+          }
+        }
+      },
+      "threshold": {
+        "field": "disruptionScore",
+        "operator": ">=",
+        "default": 50,
+        "liveSignalField": "disruptionScore - standingThreatLevel(warRiskTier)",
+        "liveSignalDefault": 0,
+        "liveSignalRecommended": 15
+      },
+      "cooldown": {
+        "type": "hysteresis",
+        "rearm": "disruptionScore < alertThreshold, after compensating for score inputs that were present at delivery and are missing now",
+        "minimumSeconds": 0,
+        "withLiveSignal": {
+          "rearm": "disruptionScore < alertThreshold - rearmScoreMargin or liveSignal < min(rearmLiveBelow, minLiveSignal), with the same compensation; the in-app chokepoint_disruption rule's hysteresis",
+          "rearmScoreMargin": 10,
+          "rearmLiveBelow": 5,
+          "minimumSeconds": 43200
+        }
+      },
+      "id": {
+        "field": "deliveryId",
+        "header": "X-WM-Delivery-Id",
+        "construction": "whd_ + 32 lowercase hex, minted once per upward crossing and kept across retries, so one disruption is one id"
+      },
+      "payloadSchema": {
+        "type": "object",
+        "required": ["subscriberId", "chokepointId", "score", "alertThreshold", "triggeredAt", "reason"],
+        "properties": {
+          "subscriberId": { "type": "string" },
+          "chokepointId": { "type": "string" },
+          "score": { "type": "number" },
+          "alertThreshold": { "type": "number" },
+          "triggeredAt": { "type": "string", "format": "date-time" },
+          "reason": { "type": "string", "enum": ["ais_congestion_spike", "navigational_warning", "transit_drop", "score_threshold"] },
+          "details": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "status": { "type": ["string", "null"] },
+              "activeWarnings": { "type": "integer" },
+              "aisDisruptions": { "type": "integer" },
+              "congestionLevel": { "type": ["string", "null"] },
+              "warRiskTier": { "type": ["string", "null"] },
+              "wowChangePct": { "type": ["number", "null"] },
+              "previousScore": { "type": ["number", "null"] },
+              "scoresFetchedAt": { "type": ["string", "null"] }
+            }
+          }
+        }
+      },
+      "sample": {
+        "subscriberId": "wh_041fef6d0657b56b75fb62cb",
+        "chokepointId": "suez",
+        "score": 35,
+        "alertThreshold": 0,
+        "triggeredAt": "2026-10-17T12:02:07.248Z",
+        "reason": "navigational_warning",
+        "details": {
+          "name": "Suez Canal",
+          "status": "yellow",
+          "activeWarnings": 1,
+          "aisDisruptions": 0,
+          "congestionLevel": "normal",
+          "warRiskTier": "WAR_RISK_TIER_HIGH",
+          "wowChangePct": null,
+          "previousScore": null,
+          "scoresFetchedAt": "2026-10-17T12:00:06.018Z"
+        }
+      }
+    },
+    "country.risk_surge": {
+      "key": "country.risk_surge",
+      "kind": "threshold",
+      "label": "Country Risk Surge",
+      "noun": "Risk Surge",
+      "description": "Triggers when a monitored country's Country Instability Index rises by at least riseThreshold points within 24 hours into the high band (70 or more), once per surge with a 24-hour cooldown per country.",
+      "source": {
+        "redisKey": "risk:scores:sebuf:v13",
+        "staleRedisKey": "risk:scores:sebuf:stale:v13",
+        "rpc": "/api/intelligence/v1/get-risk-scores",
+        "refreshSeconds": 480
+      },
+      "entity": { "field": "countryCode", "listRpc": "/api/intelligence/v1/get-risk-scores", "listField": "ciiScores" },
+      "countries": {
+        "US": "United States", "RU": "Russia", "CN": "China", "UA": "Ukraine", "IR": "Iran",
+        "IL": "Israel", "TW": "Taiwan", "KP": "North Korea", "SA": "Saudi Arabia", "TR": "Turkey",
+        "PL": "Poland", "DE": "Germany", "FR": "France", "GB": "United Kingdom", "IN": "India",
+        "PK": "Pakistan", "SY": "Syria", "YE": "Yemen", "MM": "Myanmar", "VE": "Venezuela",
+        "CU": "Cuba", "MX": "Mexico", "BR": "Brazil", "AE": "United Arab Emirates",
+        "KR": "South Korea", "IQ": "Iraq", "AF": "Afghanistan", "LB": "Lebanon",
+        "EG": "Egypt", "JP": "Japan", "QA": "Qatar"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[A-Z]{2}$" },
+            "default": [],
+            "description": "ISO 3166-1 alpha-2 codes among the monitored countries. Empty subscribes to all of them."
+          }
+        }
+      },
+      "threshold": {
+        "field": "dynamicScore",
+        "operator": ">=",
+        "riseThreshold": 15,
+        "floorField": "combinedScore",
+        "floor": 70,
+        "baselineGuard": "a reading whose staticBaseline differs from the previous evaluation is a methodology or baseline edit, not an event: it disarms the country until the 24-hour movement falls under rearmBelow",
+        "why": "Backtest on 90 days of 6-hourly archive readings (24 countries, 11,054 steps): a 10-point rise fires 2.9 times a day and tracks news-volume blips; 15 points fires 0.9 a day (median 1, p95 3). Checking all 48 fires at rise 15 and floor 50 against wire reports gave 17 true positives, 17 minor incidents and 14 false positives, every true positive in a country whose index sits in the high band; raising the floor to 70 keeps 15 of the 17 true positives and drops 5 false positives, and the baseline guard removes the static re-levellings (Brazil, Mexico 50 to 70) that produced 4 more non-events."
+      },
+      "cooldown": {
+        "type": "hysteresis",
+        "rearm": "dynamicScore < rearmBelow",
+        "rearmBelow": 5,
+        "minimumSeconds": 86400
+      },
+      "id": {
+        "field": "deliveryId",
+        "header": "X-WM-Delivery-Id",
+        "construction": "whd_ + 32 lowercase hex, minted once per surge per country and kept across retries"
+      },
+      "payloadSchema": {
+        "type": "object",
+        "required": ["subscriberId", "countryCode", "score", "delta24h", "triggeredAt", "reason"],
+        "properties": {
+          "subscriberId": { "type": "string" },
+          "countryCode": { "type": "string" },
+          "countryName": { "type": "string" },
+          "score": { "type": "number", "description": "Current combined Country Instability Index, 0-100." },
+          "previousScore": { "type": ["number", "null"], "description": "Score about 24 hours earlier (score minus delta24h)." },
+          "delta24h": { "type": "number", "description": "24-hour movement, the dynamicScore of get-risk-scores." },
+          "trend": { "type": "string" },
+          "advisoryLevel": { "type": ["string", "null"] },
+          "triggeredAt": { "type": "string", "format": "date-time" },
+          "reason": { "type": "string", "enum": ["risk_surge"] },
+          "details": {
+            "type": "object",
+            "properties": {
+              "riseThreshold": { "type": "number" },
+              "floor": { "type": "number" },
+              "staticBaseline": { "type": "number" },
+              "components": { "type": "object" },
+              "methodologyVersion": { "type": "string" },
+              "computedAt": { "type": ["number", "null"] },
+              "scoresFetchedAt": { "type": ["string", "null"] }
+            }
+          }
+        }
+      },
+      "sample": {
+        "subscriberId": "wh_041fef6d0657b56b75fb62cb",
+        "countryCode": "IR",
+        "countryName": "Iran",
+        "score": 84,
+        "previousScore": 60,
+        "delta24h": 24,
+        "trend": "TREND_DIRECTION_RISING",
+        "advisoryLevel": "do-not-travel",
+        "triggeredAt": "2026-10-01T04:49:00.000Z",
+        "reason": "risk_surge",
+        "details": {
+          "riseThreshold": 15,
+          "floor": 70,
+          "staticBaseline": 50,
+          "components": { "newsActivity": 24, "ciiContribution": 0, "geoConvergence": 10, "militaryActivity": 50 },
+          "methodologyVersion": "v12",
+          "computedAt": 1790830140000,
+          "scoresFetchedAt": "2026-10-01T04:49:00.000Z"
+        }
+      }
+    },
+    "news.breaking": {
+      "key": "news.breaking",
+      "kind": "occurrence",
+      "label": "Breaking News Alert",
+      "noun": "Breaking News Alert",
+      "description": "Triggers when WorldMonitor's news relay classifies a headline as critical or high and it clears the subscription's importance floor, severity floor, keywords, categories and countries, once per story link.",
+      "source": {
+        "channel": "wm:events:api:v1",
+        "producer": "scripts/ais-relay.cjs publishNotificationEvent (tee of the rss_alert queue message)",
+        "relayEventType": "rss_alert"
+      },
+      "categories": [
+        "conflict", "protest", "disaster", "diplomatic", "economic",
+        "terrorism", "cyber", "health", "environmental", "military",
+        "crime", "infrastructure", "tech", "general"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keywords": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 2, "maxLength": 64 },
+            "maxItems": 20,
+            "default": [],
+            "description": "Case-insensitive whole-word terms matched against the headline; a headline matches when it contains any of them. Empty applies no keyword filter."
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "conflict", "protest", "disaster", "diplomatic", "economic",
+                "terrorism", "cyber", "health", "environmental", "military",
+                "crime", "infrastructure", "tech", "general"
+              ]
+            },
+            "default": [],
+            "description": "Classifier categories to accept. Empty accepts every category."
+          },
+          "countries": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[A-Z]{2}$" },
+            "maxItems": 50,
+            "default": [],
+            "description": "ISO 3166-1 alpha-2 codes. A headline matches when the relay attributed it to one of them; a headline with no country attribution never matches a country scope. Empty applies no country filter."
+          },
+          "importanceFloor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 69,
+            "description": "Deliver when importanceScore >= importanceFloor. 69 is the watchlist-story floor; the critical band starts at 82."
+          },
+          "severityFloor": {
+            "type": "string",
+            "enum": ["critical", "high"],
+            "default": "high",
+            "description": "critical delivers critical headlines only; high delivers critical and high, which is every headline the relay queues."
+          }
+        }
+      },
+      "volume": {
+        "maxDeliveriesPerHour": 20,
+        "maxDeliveriesPerDay": 100,
+        "overflow": "dropped and counted per subscription, never batched",
+        "measured": "2026-10-18, 20.6 h of relay logs: 141 queued rss_alert messages a day, 135 distinct headlines (16 critical, 119 high), at most 10 in an hour"
+      },
+      "retry": { "pendingTtlSeconds": 7200 },
+      "dedupe": { "seenWindowSeconds": 86400 },
+      "id": {
+        "field": "deliveryId",
+        "header": "X-WM-Delivery-Id",
+        "construction": "whd_ + 32 lowercase hex, minted once per (subscription, eventId) and kept across retries",
+        "eventIdField": "eventId",
+        "eventIdConstruction": "rss_ + first 32 hex of sha256(canonical link: lowercase host + path, no query, fragment or trailing slash); when the headline carries no link, the same over the normalized title (lowercased, attribution suffix after ' - ' or ' | ' stripped, punctuation and whitespace collapsed). The relay publishes one copy per site variant; they share the id."
+      },
+      "payloadSchema": {
+        "type": "object",
+        "required": ["subscriberId", "eventId", "title", "source", "link", "publishedAt", "severity", "importanceScore", "corroborationCount", "category", "countryCodes", "variant", "matchedKeywords", "triggeredAt", "reason"],
+        "properties": {
+          "subscriberId": { "type": "string" },
+          "eventId": { "type": "string", "pattern": "^rss_[0-9a-f]{32}$" },
+          "title": { "type": "string" },
+          "source": { "type": "string" },
+          "link": { "type": ["string", "null"] },
+          "publishedAt": { "type": "string", "format": "date-time" },
+          "severity": { "type": "string", "enum": ["critical", "high"] },
+          "importanceScore": { "type": "number", "description": "Relay importance score, 0-100, recomputed from the classifier level." },
+          "corroborationCount": { "type": "integer", "description": "Publishers the relay merged into this story; 1 when unknown." },
+          "category": { "type": ["string", "null"], "description": "Classifier category, null for alert paths that carry none (Saudi Civil Defense posts)." },
+          "countryCodes": { "type": "array", "items": { "type": "string" }, "description": "ISO2 codes the relay attributed to the headline; empty when unattributed." },
+          "variant": { "type": ["string", "null"], "description": "Site variant whose feed set carried the headline (full, tech, finance, commodity, happy), null for non-variant paths." },
+          "matchedKeywords": { "type": "array", "items": { "type": "string" }, "description": "Subscription keywords found in the headline; empty when the subscription has no keywords." },
+          "triggeredAt": { "type": "string", "format": "date-time" },
+          "reason": { "type": "string", "enum": ["breaking_news"] }
+        }
+      },
+      "sample": {
+        "subscriberId": "wh_041fef6d0657b56b75fb62cb",
+        "eventId": "rss_17e006d328288631614def2e44e5a1c7",
+        "title": "Iran’s Guards Say Two Tankers Hit Mines In Strait Of Hormuz",
+        "source": "RFE/RL",
+        "link": "https://www.rferl.org/a/iran-guards-tankers-mines-hormuz/33560001.html",
+        "publishedAt": "2026-10-17T18:31:00.000Z",
+        "severity": "critical",
+        "importanceScore": 88,
+        "corroborationCount": 3,
+        "category": "conflict",
+        "countryCodes": ["IR"],
+        "variant": "full",
+        "matchedKeywords": ["hormuz"],
+        "triggeredAt": "2026-10-17T18:45:16.000Z",
+        "reason": "breaking_news"
+      }
+    },
+    "market.move": {
+      "key": "market.move",
+      "kind": "occurrence",
+      "label": "Large Market Move",
+      "noun": "Market Move",
+      "description": "Triggers when a tracked equity, commodity or crypto quote moves at least minAbsPct percent on the day; the relay publishes moves of 5 percent or more (10 for crypto), and a sustained move is delivered once per symbol, direction and severity band per UTC day.",
+      "source": {
+        "channel": "wm:events:api:v1",
+        "producer": "scripts/ais-relay.cjs publishNotificationEvent (tee of the market_alert queue message)",
+        "relayEventType": "market_alert"
+      },
+      "assetClasses": ["equity", "commodity", "crypto"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "assetClasses": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["equity", "commodity", "crypto"] },
+            "default": [],
+            "description": "Asset classes to accept. Empty accepts all three."
+          },
+          "symbols": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1, "maxLength": 24 },
+            "maxItems": 50,
+            "default": [],
+            "description": "Quote symbols as WorldMonitor lists them (upper-cased on registration). Empty accepts every tracked symbol."
+          },
+          "minAbsPct": {
+            "type": "number",
+            "minimum": 5,
+            "maximum": 100,
+            "default": 10,
+            "description": "Deliver when |changePct| >= minAbsPct. The relay only publishes moves of 5 percent or more (10 for crypto), so lower values change nothing; 10 is the relay's critical band for equities and commodities."
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["up", "down", "any"],
+            "default": "any",
+            "description": "Accept rises, falls, or both."
+          }
+        }
+      },
+      "volume": {
+        "maxDeliveriesPerHour": 20,
+        "maxDeliveriesPerDay": 100,
+        "overflow": "dropped and counted per subscription, never batched",
+        "measured": "2026-10-18, 20.6 h of relay logs: 41 queued market_alert messages, 2 distinct moves republished hourly (Newcastle Coal +8 percent, VIX +21 percent)"
+      },
+      "retry": { "pendingTtlSeconds": 7200 },
+      "dedupe": { "seenWindowSeconds": 86400 },
+      "id": {
+        "field": "deliveryId",
+        "header": "X-WM-Delivery-Id",
+        "construction": "whd_ + 32 lowercase hex, minted once per (subscription, eventId) and kept across retries",
+        "eventIdField": "eventId",
+        "eventIdConstruction": "mkt_ + first 32 hex of sha256(coalesceKey + '|' + UTC date of publication), where coalesceKey = market:<assetClass>:<symbol lowercased>:<surge|decline>:<severity> is the relay's hourly dedup key; a move that holds all day is one event, a move that escalates into the critical band is a second one."
+      },
+      "payloadSchema": {
+        "type": "object",
+        "required": ["subscriberId", "eventId", "assetClass", "symbol", "name", "price", "changePct", "direction", "severity", "source", "publishedAt", "triggeredAt", "reason"],
+        "properties": {
+          "subscriberId": { "type": "string" },
+          "eventId": { "type": "string", "pattern": "^mkt_[0-9a-f]{32}$" },
+          "assetClass": { "type": "string", "enum": ["equity", "commodity", "crypto"] },
+          "symbol": { "type": "string" },
+          "name": { "type": "string" },
+          "price": { "type": ["number", "null"], "description": "Last price in the quote's own unit; null when the feed carried none." },
+          "changePct": { "type": "number", "description": "Day change in percent, unrounded (8.4 means 8.4 percent)." },
+          "direction": { "type": "string", "enum": ["up", "down"] },
+          "severity": { "type": "string", "enum": ["critical", "high"], "description": "critical at 10 percent or more (20 for crypto), otherwise high." },
+          "source": { "type": "string", "description": "Equity Market, Commodity Market or Crypto Market." },
+          "publishedAt": { "type": "string", "format": "date-time", "description": "When the relay published the move." },
+          "triggeredAt": { "type": "string", "format": "date-time" },
+          "reason": { "type": "string", "enum": ["large_move"] }
+        }
+      },
+      "sample": {
+        "subscriberId": "wh_041fef6d0657b56b75fb62cb",
+        "eventId": "mkt_a8ba149319c17693b70869797fdaa17f",
+        "assetClass": "equity",
+        "symbol": "VIX",
+        "name": "CBOE Volatility Index",
+        "price": 28.41,
+        "changePct": 21.3,
+        "direction": "up",
+        "severity": "critical",
+        "source": "Equity Market",
+        "publishedAt": "2026-10-17T17:46:47.000Z",
+        "triggeredAt": "2026-10-17T17:50:02.000Z",
+        "reason": "large_move"
+      }
+    },
+    "natural.hazard": {
+      "key": "natural.hazard",
+      "kind": "occurrence",
+      "label": "Natural Hazard",
+      "noun": "Natural Hazard",
+      "description": "Triggers when WorldMonitor first sees a natural hazard that clears the subscription's hazard types, earthquake magnitude, GDACS alert level and countries: an earthquake from USGS or Earthquakes Canada, or a storm, wildfire, flood, volcano or other event from NASA EONET, GDACS, the National Hurricane Center or the western-Pacific cyclone feed.",
+      "source": {
+        "redisKeys": ["seismology:earthquakes:v1", "natural:events:v1"],
+        "rpcs": ["/api/seismology/v1/list-earthquakes", "/api/natural/v1/list-natural-events"],
+        "refreshSeconds": 300,
+        "detection": "Each tick the worker reads both seeded keys and diffs their ids against the seen set webhook:seen:natural.hazard:v1 (scored by when each id was last in a feed, pruned after dedupe.seenWindowSeconds). An unseen id is new when its event time is within dedupe.newWithinSeconds and it is not closed; older or closed unseen ids are marked seen without delivering. GDACS events are new whenever first seen at Orange or Red, since their date is when GDACS opened the event, often while it was Green and not stored. Hong Kong Observatory warning signals are skipped: their id names the signal, not the storm. EONET wildfires titled as prescribed burns (Prescribed Fire … RX) are skipped: a planned burn is not a wildfire alert. The first tick that finds no seen id for a feed marks every current id of that feed seen and delivers nothing (bootstrap); the feed is then recorded in webhook:seen:natural.hazard:init:v1 (no TTL) and never bootstraps again, so a quiet feed whose seen ids were all pruned does not swallow its next event; if the seen set itself is lost, hazards still inside their new window are delivered once more rather than suppressed. Earthquake rows of natural:events:v1 (GDACS) are skipped, since the earthquake feed carries the same quakes."
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hazardTypes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "earthquakes", "severeStorms", "floods", "volcanoes", "wildfires",
+                "drought", "landslides", "dustHaze", "snow", "tempExtremes",
+                "seaLakeIce", "waterColor", "manmade"
+              ]
+            },
+            "default": [],
+            "description": "Hazard types to accept (the natural-events categories; earthquakes come from the earthquake feed). Empty accepts every type."
+          },
+          "minMagnitude": {
+            "type": "number",
+            "minimum": 4.5,
+            "maximum": 9.5,
+            "default": 5.5,
+            "description": "Earthquakes only: deliver when magnitude >= minMagnitude. The feed starts at 4.5; 5.5 delivered about 1 quake a day in October 2026 (4.5 about 21). A quake revised across the floor after it was first seen is not delivered."
+          },
+          "minAlertLevel": {
+            "type": "string",
+            "enum": ["Orange", "Red"],
+            "default": "Orange",
+            "description": "GDACS events only: Orange delivers every GDACS event WorldMonitor stores (it drops Green), Red delivers Red only. An escalation from Orange to Red is a second event (eventId suffix :red), so a Red scope hears of it; a fall back to Orange is not new. Western-Pacific cyclones carry no alert level and pass Orange only. Events from other sources ignore this field."
+          },
+          "countries": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[A-Z]{2}$" },
+            "maxItems": 50,
+            "default": [],
+            "description": "ISO 3166-1 alpha-2 codes. A hazard matches when countryCodes names one of them; a hazard placed in no country (open ocean) never matches a country scope. Empty applies no country filter."
+          }
+        }
+      },
+      "volume": {
+        "maxDeliveriesPerHour": 30,
+        "maxDeliveriesPerDay": 150,
+        "overflow": "dropped and counted per subscription, never batched",
+        "measured": "2026-10-18, public upstream feeds over 30 days at the default floors: 1.07 earthquakes a day at M5.5+ (at most 2 in an hour, 5 in a day), 1.37 new EONET events a day (32 wildfires, 18 of them prescribed burns; 8 storms; 1 iceberg), 3 GDACS Orange or Red cyclones, and no Orange or Red GDACS floods, fires, droughts or volcanoes started in the window"
+      },
+      "retry": { "pendingTtlSeconds": 86400 },
+      "dedupe": {
+        "seenWindowSeconds": 2592000,
+        "newWithinSeconds": { "earthquakes": 86400, "other": 259200 },
+        "crossSource": "An unseen earthquake within 120 seconds, 150 km and 0.6 magnitude of a seen one is the same quake under another id when the seen one came from the other agency or has left the feed (an Earthquakes Canada row replaced by USGS, or a USGS preferred-id change); two quakes the feed still lists side by side are separate events. An unseen storm whose name (classification and season suffix stripped) matches a seen storm is the same storm from another agency (NHC, EONET from JTWC or NOAA, GDACS)."
+      },
+      "id": {
+        "field": "deliveryId",
+        "header": "X-WM-Delivery-Id",
+        "construction": "whd_ + 32 lowercase hex, minted once per (subscription, eventId) and kept across retries",
+        "eventIdField": "eventId",
+        "eventIdConstruction": "eq: + the earthquake feed id (a USGS event id, or nrcan: plus the Earthquakes Canada id); nat: + the natural-events id (EONET_<n>, gdacs-<type>-<eventid>, cyclone:wp:<season>:<agency>:<id>), with :red appended to a GDACS event at Red; National Hurricane Center rows, whose id embeds the advisory number (nhc-AL09-12): those are keyed on basin and storm number (nat:nhc-AL09) so a new advisory is not a new storm."
+      },
+      "payloadSchema": {
+        "type": "object",
+        "required": ["subscriberId", "eventId", "hazardType", "title", "source", "sourceUrl", "lat", "lon", "countryCodes", "occurredAt", "magnitude", "depthKm", "nearTestSite", "alertLevel", "stormName", "stormCategory", "windKt", "triggeredAt", "reason"],
+        "properties": {
+          "subscriberId": { "type": "string" },
+          "eventId": { "type": "string", "pattern": "^(eq|nat):.+$" },
+          "hazardType": { "type": "string", "description": "earthquakes, or the natural-events category (severeStorms, wildfires, floods, volcanoes, drought, seaLakeIce, ...)." },
+          "title": { "type": "string", "description": "M<magnitude> - <place> for earthquakes; the agency's title otherwise, without the GDACS alert emoji." },
+          "source": { "type": "string", "description": "usgs, nrcan, eonet, gdacs or nhc; a western-Pacific cyclone names the agency it was built from." },
+          "sourceUrl": { "type": ["string", "null"] },
+          "lat": { "type": "number" },
+          "lon": { "type": "number" },
+          "countryCodes": { "type": "array", "items": { "type": "string" }, "description": "The ISO2 country the agency's text names, else the smallest country bounding box containing the point; empty in open ocean." },
+          "occurredAt": { "type": "string", "format": "date-time", "description": "Earthquake origin time; for other hazards the agency's event or latest-observation time." },
+          "magnitude": { "type": ["number", "null"], "description": "Earthquake magnitude; null for other hazards." },
+          "depthKm": { "type": ["number", "null"], "description": "Earthquake depth; null for other hazards." },
+          "nearTestSite": { "type": ["boolean", "null"], "description": "Earthquakes: true within the radius of a monitored nuclear test site. Null for other hazards." },
+          "alertLevel": { "type": ["string", "null"], "enum": ["Orange", "Red", null], "description": "GDACS alert level; null for other sources." },
+          "stormName": { "type": ["string", "null"] },
+          "stormCategory": { "type": ["integer", "null"], "description": "Saffir-Simpson category where the agency reports one." },
+          "windKt": { "type": ["number", "null"], "description": "Maximum sustained wind in knots for storms." },
+          "triggeredAt": { "type": "string", "format": "date-time" },
+          "reason": { "type": "string", "enum": ["new_hazard"] }
+        }
+      },
+      "sample": {
+        "subscriberId": "wh_041fef6d0657b56b75fb62cb",
+        "eventId": "eq:us6000u2mq",
+        "hazardType": "earthquakes",
+        "title": "M6.9 - 76 km NE of Ozernovskiy, Russia",
+        "source": "usgs",
+        "sourceUrl": "https://earthquake.usgs.gov/earthquakes/eventpage/us6000u2mq",
+        "lat": 51.98,
+        "lon": 157.27,
+        "countryCodes": ["RU"],
+        "occurredAt": "2026-10-16T03:35:31.925Z",
+        "magnitude": 6.9,
+        "depthKm": 135,
+        "nearTestSite": false,
+        "alertLevel": null,
+        "stormName": null,
+        "stormCategory": null,
+        "windKt": null,
+        "triggeredAt": "2026-10-16T03:40:02.000Z",
+        "reason": "new_hazard"
+      }
+    }
+  }
+}
