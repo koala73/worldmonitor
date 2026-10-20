@@ -83,7 +83,11 @@ describe('direct country paid original reuse', () => {
     for (const framework of [prefix + 'A', prefix + 'B', ' Custom ', 42]) await invoke(bundle, 'get_country_brief', { country_code: 'US', framework });
     for (const allow_stale of [false, 'true', true, true]) await invoke(bundle, 'get_country_brief', { country_code: 'US', allow_stale });
     const posts = calls.filter(x => x.method === 'POST');
-    assert.equal(bundle.pipe.count, 1); assert.deepEqual(posts.map(x => x.body.framework), [prefix, ' Custom ', '42', '', '']);
+    assert.equal(bundle.pipe.count, 1); assert.deepEqual(posts.map(x => x.body.framework), [prefix, ' Custom ', '', '']);
+    for (const args of [{ framework: 42 }, { allow_stale: 'true' }]) {
+      assert.equal((await invoke(bundle, 'get_country_brief', { country_code: 'US', ...args })).body.error?.code, -32602);
+    }
+    assert.equal(bundle.pipe.count, 1);
     assert.ok(posts.every(x => !('force' in x.body) && !('refresh' in x.body)));
   });
   it('reuses country risk only for the same history depth and never drops requested history', async () => {
@@ -237,13 +241,14 @@ describe('direct country paid original reuse', () => {
         const result = await invoke(bundle, name, args, request);
         if (plan === 'operator') {
           assert.equal(result.response.status, 200);
-          assert.equal(result.body.result.isError, undefined);
+          if (typeof args.framework === 'number' && name === 'get_country_brief') assert.equal(result.body.error?.code, -32602);
+          else assert.equal(result.body.result.isError, undefined);
           // Operator keys pay one unit of their own daily ceiling per call and never a panel admission.
           assert.ok(bundle.pipe.ops.flat().filter(cmd => cmd[0] === 'EVAL').every(cmd => String(cmd[3]).includes('mcp:pro-usage:env_key:')));
         }
         rows.push({ plan, name, args, status: result.response.status, body: result.body, count: bundle.pipe.count });
       }
     }
-    assert.equal(JSON.stringify(rows), readFileSync(new URL('./fixtures/mcp-country-direct-api-free-parent.json', import.meta.url), 'utf8'));
+    assert.deepEqual(rows, JSON.parse(readFileSync(new URL('./fixtures/mcp-country-direct-api-free-parent.json', import.meta.url), 'utf8')));
   });
 });

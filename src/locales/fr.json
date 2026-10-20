@@ -3836,5 +3836,27 @@
       "description": "Activer les sources sur l'Iran, Israël, le Golfe et les régions kurdes"
     },
     "unavailable": "Le pack {{preset}} n'est pas disponible avec vos panneaux actuels"
+  },
+  "countryHistory": {
+    "title": "Historique quotidien du pays",
+    "loading": "Chargement de l’historique…",
+    "window": "Période",
+    "days": "{{days}} jours",
+    "observed": "{{count}} instantanés sur {{days}} jours",
+    "legend": "CII (ambre) : une valeur élevée indique plus d’instabilité. Résilience (vert) : une valeur élevée indique plus de capacité. Les points indiquent les jours avec des titres sélectionnés.",
+    "chart": "Scores quotidiens de CII et de résilience. Les lacunes et les changements de formule interrompent les lignes.",
+    "selectDate": "{{date}}, {{count}} titres sélectionnés",
+    "empty": "Aucun instantané quotidien sur cette période. L’historique s’accumule après l’activation.",
+    "unavailable": "L’historique est temporairement indisponible. Réessayez.",
+    "retry": "Réessayer",
+    "stale": "La dernière capture quotidienne réussie date de plus de 36 heures.",
+    "break": "Changement de formule ou lacune d’observation. Comparez uniquement les scores calculés avec la même formule.",
+    "partial": "La couverture des actualités était partielle au moment de la capture.",
+    "resilience": "Résilience",
+    "ciiMissing": "CII indisponible",
+    "resilienceMissing": "Résilience indisponible",
+    "noEvents": "Aucun titre sélectionné n’a été capturé à cette date. Cela ne prouve pas l’absence d’événements.",
+    "unlock90": "Débloquez 90 jours avec Pro",
+    "unlock365": "Débloquez 365 jours avec une offre API"
   }
 }

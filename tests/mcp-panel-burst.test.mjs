@@ -447,6 +447,29 @@ describe('bounded panel reads with an enabled minute limiter', () => {
     assert.equal(denied.body.error?.code, -32029);
     assert.equal(fetched.length, 0);
   });
+  for (const kind of ['pro', 'user_key']) {
+    for (const withPanel of [false, true]) {
+      it(`limits schema-invalid ${kind} calls ${withPanel ? 'with' : 'without'} panel_request before quota or panel reservation`, async () => {
+        const { deps, pipe } = makeProDeps({
+          resolveBearerToContext: async () => ({ kind, userId: PRO_USER_ID, ...(kind === 'pro' ? { mcpTokenId: 'k57mcptokenid' } : {}) }),
+          pipelineOpts: { initialCount: 2 },
+        });
+        const args = { asset_class: ['invalid'], ...(withPanel ? { panel_request: 'forged' } : {}) };
+        counts.set(userBucket, 59);
+        const invalid = await invoke(deps, 'get_market_data', args);
+        assert.equal(invalid.body.error?.code, -32602);
+        const denied = await invoke(deps, 'get_market_data', args);
+        assert.equal(denied.body.error?.code, -32029);
+        assert.equal(denied.response.headers.get('X-RateLimit-Limit'), '60');
+        assert.equal(counts.get(userBucket), 61);
+        assert.equal(calls.length, 2);
+        assert.ok(calls.every(call => call.key === userBucket && call.tokens === 60));
+        assert.equal(pipe.count, 2);
+        assert.deepEqual(pipe.ops, []);
+        assert.equal(fetched.length, 0);
+      });
+    }
+  }
   it('retains revocation checks before replaying paid data', async () => {
     let revoked = false;
     const { deps } = makeProDeps({ getEntitlements: async () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: !revoked }, validUntil: Date.now() + 86400000 }) });

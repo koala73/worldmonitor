@@ -74,7 +74,7 @@ describe('get_procurement_opportunities MCP tool', () => {
     const { response, body } = await callTool({
       country: 'US', countries: ['CA', 'GB'], source: 'sam', query: 'cloud security', buyer: 'Example agency',
       deadline_from: '2026-07-15', deadline_to: '2026-08-31', sort: 'relevance', min_automation_score: 101,
-      page_size: 100, cursor: '10',
+      page_size: 25, cursor: '10',
     });
 
     assert.equal(response.status, 200);
@@ -111,15 +111,16 @@ describe('get_procurement_opportunities MCP tool', () => {
     assert.equal('submissionUrls' in result.opportunities[0], false);
   });
 
-  it('defaults to ten records, caps at 25, and ignores malformed relevance thresholds', async () => {
-    await callTool({ min_automation_score: 30.5, page_size: -1 });
-    let requestUrl = new URL(requests[0].url);
-    assert.equal(requestUrl.searchParams.get('page_size'), '10');
-    assert.equal(requestUrl.searchParams.has('min_automation_score'), false);
+  it('rejects invalid bounds and retains defaults and valid thresholds', async () => {
+    const invalid = await callTool({ min_automation_score: 30.5, page_size: -1 });
+    assert.equal(invalid.body.error?.code, -32602);
+    assert.equal(requests.length, 0);
+    await callTool({});
+    assert.equal(new URL(requests[0].url).searchParams.get('page_size'), '10');
 
     requests = [];
     await callTool({ min_automation_score: 1, page_size: 25 });
-    requestUrl = new URL(requests[0].url);
+    const requestUrl = new URL(requests[0].url);
     assert.equal(requestUrl.searchParams.get('page_size'), '25');
     assert.equal(requestUrl.searchParams.get('min_automation_score'), '1');
   });

@@ -6,6 +6,7 @@ import { unwrapEnvelope } from '../_seed-envelope.js';
 import { chokepointCacheIdentity, chokepointSourcePolicy, type ChokepointPanelRead } from './_chokepoint-snapshot';
 import { newsIntelligenceFreshness, newsIntelligenceReuseUntil, type NewsIntelligencePanelRead } from './_news-intelligence-snapshot';
 import { resolveCountryFilter } from './_country-args';
+import { validateToolArgs } from './_validate-args';
 import { filterNaturalDisastersPanelData, naturalDisastersReuseUntil, type NaturalDisastersPanelRead } from './_natural-disasters-reuse';
 import { isAppOwnedRedisKey } from '../_redis-key-ownership.js';
 // @ts-expect-error — JS module, no declaration file
@@ -553,6 +554,21 @@ export async function dispatchToolsCall(
   // agent needs most while deciding what it may call.
   if (freeAccountAllowance && toolAccess(tool) === 'subscription') {
     return mcpDenialResponse({ reason: 'upgrade-required', upgradeFrom }, -32002, 403, id, corsHeaders);
+  }
+
+  // Panel allocation can also spend quota, so reject caller-input errors
+  // before entering either the panel or standalone reservation path.
+  try {
+    // Aliases retain legacy argument shapes and validate their translated values.
+    if (aliasArguments) tool._validateArgs?.(aliasArguments);
+    else validateToolArgs(tool, p.arguments === undefined ? {} : p.arguments);
+  } catch (error) {
+    if (!(error instanceof RpcValidationError)) throw error;
+    if (deferredBurst) {
+      const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
+      if (limited) return limited;
+    }
+    return rpcError(id, -32602, 'Invalid params', corsHeaders, { violations: error.violations });
   }
 
   let panelRequest: PaidPanelAdmission | undefined;

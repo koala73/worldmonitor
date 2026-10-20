@@ -744,7 +744,35 @@ const CII_DAILY_HISTORY_WRITE_SCRIPT = [
   "",
 ].join('\n');
 
+// Pinned to scripts/lib/intel-history-cost.mjs; this image bundles only this file.
+const HISTORY_COST_UPDATE_SCRIPT = [
+  '',
+  'local increments = cjson.decode(ARGV[1])',
+  'local totals = {}',
+  "local first = tonumber(redis.call('HGET', KEYS[1], 'firstObservedAt') or ARGV[2])",
+  "local last = tonumber(redis.call('HGET', KEYS[1], 'lastObservedAt') or ARGV[2])",
+  'if not first or not last then',
+  "  return redis.error_reply('invalid history cost timestamp')",
+  'end',
+  'for field, increment in pairs(increments) do',
+  "  local current = tonumber(redis.call('HGET', KEYS[1], field) or '0')",
+  '  if not current or current < 0 then',
+  "    return redis.error_reply('invalid history cost counter ' .. field)",
+  '  end',
+  '  totals[field] = current + increment',
+  'end',
+  'for field, total in pairs(totals) do',
+  "  redis.call('HSET', KEYS[1], field, string.format('%.17g', total))",
+  'end',
+  "redis.call('HSET', KEYS[1], 'firstObservedAt', math.min(first, tonumber(ARGV[2])),",
+  "  'lastObservedAt', math.max(last, tonumber(ARGV[2])))",
+  "redis.call('EXPIREAT', KEYS[1], ARGV[3])",
+  "return 'OK'",
+  '',
+].join('\n');
+
 const ALLOWED_EVAL_SCRIPTS = new Set([
+  HISTORY_COST_UPDATE_SCRIPT,
   CII_DAILY_HISTORY_WRITE_SCRIPT,
   PANEL_REQUEST_RESERVE_SCRIPT,
   PANEL_REQUEST_READ_SCRIPT,

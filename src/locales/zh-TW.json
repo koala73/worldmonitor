@@ -3796,5 +3796,27 @@
       "description": "啟用伊朗、以色列、海灣和庫爾德地區來源"
     },
     "unavailable": "當前面板無法使用{{preset}}預設"
+  },
+  "countryHistory": {
+    "title": "國家每日歷史",
+    "loading": "正在載入每日歷史…",
+    "window": "時間範圍",
+    "days": "{{days}} 天",
+    "observed": "{{days}} 天內有 {{count}} 條快照",
+    "legend": "CII（琥珀色）：數值越高，越不穩定。韌性（綠色）：數值越高，應對能力越強。圓點標記包含精選新聞標題的日期。",
+    "chart": "每日 CII 和韌性評分。觀測缺口和公式變化會使曲線中斷。",
+    "selectDate": "{{date}}，{{count}} 條精選標題",
+    "empty": "此時間範圍內沒有每日快照。歷史記錄在啟用後逐日積累。",
+    "unavailable": "歷史記錄暫時不可用，請重試。",
+    "retry": "重試",
+    "stale": "距離上次成功的每日採集已超過 36 小時。",
+    "break": "存在公式變化或觀測缺口。請僅比較使用相同公式的評分。",
+    "partial": "採集時新聞覆蓋不完整。",
+    "resilience": "韌性",
+    "ciiMissing": "CII 不可用",
+    "resilienceMissing": "韌性不可用",
+    "noEvents": "此日期未採集到精選新聞標題。這不代表沒有事件發生。",
+    "unlock90": "使用 Pro 解鎖 90 天歷史",
+    "unlock365": "使用 API 套餐解鎖 365 天歷史"
   }
 }

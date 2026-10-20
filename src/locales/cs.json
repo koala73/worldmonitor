@@ -3856,5 +3856,27 @@
       "description": "Povolit zdroje z Íránu, Izraele, oblasti Perského zálivu a kurdských regionů"
     },
     "unavailable": "Balíček {{preset}} není s aktuálními panely dostupný"
+  },
+  "countryHistory": {
+    "title": "Denní historie země",
+    "loading": "Načítání denní historie…",
+    "window": "Období",
+    "days": "{{days}} dní",
+    "observed": "{{count}} snímků za {{days}} dní",
+    "legend": "CII (jantarová): vyšší hodnota znamená větší nestabilitu. Odolnost (zelená): vyšší hodnota znamená větší kapacitu. Body označují dny s vybranými titulky.",
+    "chart": "Denní skóre CII a odolnosti. Mezery a změny vzorce přerušují čáry.",
+    "selectDate": "{{date}}, {{count}} vybraných titulků",
+    "empty": "V tomto období nejsou denní snímky. Historie se hromadí po aktivaci.",
+    "unavailable": "Historie je dočasně nedostupná. Zkuste to znovu.",
+    "retry": "Zkusit znovu",
+    "stale": "Poslední úspěšný denní záznam je starší než 36 hodin.",
+    "break": "Změna vzorce nebo mezera v pozorování. Porovnávejte pouze skóre se stejným vzorcem.",
+    "partial": "Zpravodajské pokrytí bylo při záznamu neúplné.",
+    "resilience": "Odolnost",
+    "ciiMissing": "CII není k dispozici",
+    "resilienceMissing": "Odolnost není k dispozici",
+    "noEvents": "Pro toto datum nebyly zaznamenány vybrané titulky. To nedokazuje, že se nic nestalo.",
+    "unlock90": "Odemkněte 90 dní s Pro",
+    "unlock365": "Odemkněte 365 dní s tarifem API"
   }
 }

@@ -3796,5 +3796,27 @@
       "description": "Bật các nguồn về Iran, Israel, Vùng Vịnh và các khu vực người Kurd"
     },
     "unavailable": "Gói {{preset}} không khả dụng với các bảng hiện tại"
+  },
+  "countryHistory": {
+    "title": "Lịch sử hằng ngày của quốc gia",
+    "loading": "Đang tải lịch sử hằng ngày…",
+    "window": "Khoảng thời gian",
+    "days": "{{days}} ngày",
+    "observed": "{{count}} ảnh chụp trong {{days}} ngày",
+    "legend": "CII (hổ phách): cao hơn nghĩa là bất ổn hơn. Khả năng chống chịu (xanh lá): cao hơn nghĩa là năng lực lớn hơn. Các chấm đánh dấu ngày có tiêu đề được chọn.",
+    "chart": "Điểm CII và khả năng chống chịu hằng ngày. Khoảng trống và thay đổi công thức làm ngắt đường biểu diễn.",
+    "selectDate": "{{date}}, {{count}} tiêu đề được chọn",
+    "empty": "Không có ảnh chụp hằng ngày trong khoảng này. Lịch sử được tích lũy sau khi kích hoạt.",
+    "unavailable": "Lịch sử tạm thời không khả dụng. Vui lòng thử lại.",
+    "retry": "Thử lại",
+    "stale": "Lần ghi nhận hằng ngày thành công gần nhất đã hơn 36 giờ.",
+    "break": "Có thay đổi công thức hoặc khoảng trống quan sát. Chỉ so sánh điểm dùng cùng công thức.",
+    "partial": "Phạm vi tin tức chưa đầy đủ tại thời điểm ghi nhận.",
+    "resilience": "Khả năng chống chịu",
+    "ciiMissing": "CII không khả dụng",
+    "resilienceMissing": "Khả năng chống chịu không khả dụng",
+    "noEvents": "Không có tiêu đề được chọn nào được ghi nhận cho ngày này. Điều này không chứng minh rằng không có sự kiện xảy ra.",
+    "unlock90": "Mở khóa 90 ngày với Pro",
+    "unlock365": "Mở khóa 365 ngày với gói API"
   }
 }

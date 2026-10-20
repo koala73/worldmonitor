@@ -73,6 +73,8 @@ export interface McpToolExecutionContext {
 // Tool registry types
 // ---------------------------------------------------------------------------
 export interface BaseToolDef {
+  // Pure caller-input checks that must run before any allowance reservation.
+  _validateArgs?: (params: Record<string, unknown>) => void;
   name: string;
   title: string;
   description: string;

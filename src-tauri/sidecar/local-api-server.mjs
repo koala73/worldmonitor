@@ -815,20 +815,20 @@ async function proxyToCloud(requestUrl, req, context) {
     const wmKey = process.env.WORLDMONITOR_API_KEY;
     if (wmKey) headers.set('X-WorldMonitor-Key', wmKey);
   }
-  // Only a signed-in Pro desktop forwards a bearer, so a signed-out desktop
-  // keeps today's keyless behaviour and never mints a session.
-  if (userBearer) {
-    headers.set('Authorization', userBearer);
-    if (!headers.has('X-WorldMonitor-Key')) {
-      const session = await Promise.race([
-        getCloudSessionToken(context),
-        new Promise((resolve) => {
-          if (deadline.aborted) resolve(null);
-          else deadline.addEventListener('abort', () => resolve(null), { once: true });
-        }),
-      ]);
-      if (session) headers.set('X-WorldMonitor-Key', session);
-    }
+  // Only a signed-in Pro desktop forwards a bearer.
+  if (userBearer) headers.set('Authorization', userBearer);
+  // Without a key the gateway answers 401, so every desktop presents the
+  // anonymous session a browser holds (#7548). The gateway rejects that session
+  // on tier-gated routes, so it unlocks nothing beyond the public web app.
+  if (!headers.has('X-WorldMonitor-Key')) {
+    const session = await Promise.race([
+      getCloudSessionToken(context),
+      new Promise((resolve) => {
+        if (deadline.aborted) resolve(null);
+        else deadline.addEventListener('abort', () => resolve(null), { once: true });
+      }),
+    ]);
+    if (session) headers.set('X-WorldMonitor-Key', session);
   }
   const clientAbort = new AbortController();
   const onClientClose = () => clientAbort.abort();
@@ -987,6 +987,7 @@ const cloudPreferredExact = new Set([
   '/api/intelligence/v1/compute-energy-shock',
   '/api/intelligence/v1/get-china-decision-signals',
   '/api/intelligence/v1/get-country-energy-profile',
+  '/api/intelligence/v1/get-country-history',
   '/api/intelligence/v1/get-country-port-activity',
   '/api/intelligence/v1/get-country-risk',
   '/api/intelligence/v1/get-gdelt-topic-timeline',

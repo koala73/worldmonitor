@@ -504,6 +504,7 @@ const STANDALONE_KEYS = {
   theaterPostureBackup:  'theater-posture:sebuf:backup:v1',
   riskScoresLive:        CII_RISK_SCORE_CACHE_KEYS.live,
   riskScoresHistory:     CII_RISK_SCORE_CACHE_KEYS.dailyHistoryIndex,
+  countryHistory:        'history:country:index',
   usniFleet:             'usni-fleet:sebuf:v1',
   usniFleetStale:        'usni-fleet:sebuf:stale:v1',
   faaDelays:             'aviation:delays:faa:v1',
@@ -1016,6 +1017,11 @@ const SEED_META = {
     key: 'seed-meta:intelligence:risk-scores-history', maxStaleMin: 30, minRecordCount: 31,
     activationKey: CII_RISK_SCORE_CACHE_KEYS.dailyHistoryActivation,
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9354, activationKey: CII_RISK_SCORE_CACHE_KEYS.dailyHistoryActivation },
+  },
+  countryHistory: {
+    key: 'seed-meta:history:country', maxStaleMin: 2160, minRecordCount: 196,
+    activationKey: 'seed-activated:history:country',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 4276, activationKey: 'seed-activated:history:country' },
   },
   iranEvents:       { key: 'seed-meta:conflict:iran-events',      maxStaleMin: 45 }, // ais-relay Middle East strike loop (Telegram + GDELT) every 10min; 45 = 4 missed ticks. The relay withholds seed-meta when the Telegram poll is stale or the classifier fails, so either outage turns STALE_SEED rather than reading a frozen feed as fresh.
   ucdpEvents:       { key: 'seed-meta:conflict:ucdp-events',      maxStaleMin: 420 },
@@ -2246,6 +2252,7 @@ const ON_DEMAND_KEYS = new Set([
   // never covers a key that has data behind it (see classifyKey).
   'pizzintHistory',
   'riskScoresHistory', // first fresh leader build atomically activates daily history
+  'countryHistory',
   // #6070 retired six expired deployment-order bridges after live producer
   // verification. Future temporary softening needs an activation marker or an
   // enforced wall-clock expiry; a prose-only removal reminder is not a control.
@@ -2281,6 +2288,7 @@ const ACTIVATION_MARKERS = {
   // Written by the PizzINT archive's Lua (scripts/shared/pizzint-history.cjs).
   pizzintHistory: SEED_META.pizzintHistory.activationKey,
   riskScoresHistory: SEED_META.riskScoresHistory.activationKey,
+  countryHistory: SEED_META.countryHistory.activationKey,
   companyMonitoringWorker: 'seed-activated:company-monitoring:worker',
   shippingWebhookWorker: SEED_META.shippingWebhookWorker.activationKey,
   sanctionsChanges: SEED_META.sanctionsChanges.activationKey,

@@ -15312,6 +15312,150 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/intelligence/v1/get-country-history:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetCountryHistory
+            description: Daily country snapshots with source versions, gaps and tier-limited depth.
+            operationId: GetCountryHistory
+            security:
+                - {}
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: country
+                  in: query
+                  description: Assigned ISO alpha-2 country code.
+                  required: true
+                  example: "US"
+                  schema:
+                    type: string
+                    pattern: '^[A-Z]{2}$'
+                - name: days
+                  in: query
+                  description: |-
+                    UTC days including today; 0 defaults to 7.
+                     Verified limits: free 7, Pro 90, API/Enterprise 365.
+                  required: false
+                  example: 7
+                  schema:
+                    type: integer
+                    format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "allowedDays": 7
+                                "country": "US"
+                                "effectiveDays": 7
+                                "fetchedAt": 1717200000000
+                                "points":
+                                    - "capturedAt": 1717200000000
+                                      "cii":
+                                          "observedAt": 1717200000000
+                                          "score": 42.5
+                                          "version": "example"
+                                      "ciiVersionBreak": true
+                                      "date": "2026-01-15"
+                                      "keySignals":
+                                          - "example"
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_intelligence_v1_GetCountryHistoryResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Invalid supplied credentials. Omit credentials for seven-day access.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/get-country-risk:
         get:
             tags:
@@ -48182,6 +48326,103 @@ components:
                         type: string
                         description: Related entities identified.
             description: EventClassification represents an AI-generated classification of a real-world event.
+        worldmonitor_intelligence_v1_GetCountryHistoryRequest:
+            type: object
+            properties:
+                country:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                    description: Assigned ISO alpha-2 country code.
+                days:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: |-
+                        UTC days including today; 0 defaults to 7.
+                         Verified limits: free 7, Pro 90, API/Enterprise 365.
+            required:
+                - country
+        worldmonitor_intelligence_v1_GetCountryHistoryResponse:
+            type: object
+            properties:
+                country:
+                    type: string
+                requestedDays:
+                    type: integer
+                    format: int32
+                allowedDays:
+                    type: integer
+                    format: int32
+                effectiveDays:
+                    type: integer
+                    format: int32
+                returnedDays:
+                    type: integer
+                    format: int32
+                points:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_intelligence_v1_CountryHistoryPoint'
+                upstreamUnavailable:
+                    type: boolean
+                    description: True on failed reads or before activation.
+                stale:
+                    type: boolean
+                    description: True if unavailable or over 36 hours since publication.
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        worldmonitor_intelligence_v1_CountryHistoryPoint:
+            type: object
+            properties:
+                date:
+                    type: string
+                capturedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                cii:
+                    $ref: '#/components/schemas/worldmonitor_intelligence_v1_CountryHistoryScore'
+                resilience:
+                    $ref: '#/components/schemas/worldmonitor_intelligence_v1_CountryHistoryScore'
+                topEvents:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_intelligence_v1_CountryHistoryEvent'
+                keySignals:
+                    type: array
+                    items:
+                        type: string
+                ciiVersionBreak:
+                    type: boolean
+                    description: Do not join trends across missing dates, absent scores or formula changes.
+                resilienceVersionBreak:
+                    type: boolean
+        worldmonitor_intelligence_v1_CountryHistoryScore:
+            type: object
+            properties:
+                score:
+                    type: number
+                    format: double
+                version:
+                    type: string
+                    description: Source formula/cache identity.
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        worldmonitor_intelligence_v1_CountryHistoryEvent:
+            type: object
+            properties:
+                title:
+                    type: string
+                link:
+                    type: string
+                source:
+                    type: string
+                category:
+                    type: string
         worldmonitor_intelligence_v1_GetCountryRiskRequest:
             type: object
             properties:

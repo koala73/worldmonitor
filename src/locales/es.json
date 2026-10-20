@@ -3836,5 +3836,27 @@
       "description": "Activar fuentes de Irán, Israel, el Golfo y las regiones kurdas"
     },
     "unavailable": "El paquete {{preset}} no está disponible con tus paneles actuales"
+  },
+  "countryHistory": {
+    "title": "Historial diario del país",
+    "loading": "Cargando historial diario…",
+    "window": "Período",
+    "days": "{{days}} días",
+    "observed": "{{count}} capturas en {{days}} días",
+    "legend": "CII (ámbar): los valores altos indican mayor inestabilidad. Resiliencia (verde): los valores altos indican mayor capacidad. Los puntos marcan días con titulares seleccionados.",
+    "chart": "Puntuaciones diarias de CII y resiliencia. Las lagunas y los cambios de fórmula interrumpen las líneas.",
+    "selectDate": "{{date}}, {{count}} titulares seleccionados",
+    "empty": "No hay capturas diarias en este período. El historial se acumula tras la activación.",
+    "unavailable": "El historial no está disponible temporalmente. Inténtalo de nuevo.",
+    "retry": "Reintentar",
+    "stale": "La última captura diaria correcta tiene más de 36 horas.",
+    "break": "Cambio de fórmula o laguna de observación. Compara solo puntuaciones calculadas con la misma fórmula.",
+    "partial": "La cobertura de noticias era parcial en el momento de la captura.",
+    "resilience": "Resiliencia",
+    "ciiMissing": "CII no disponible",
+    "resilienceMissing": "Resiliencia no disponible",
+    "noEvents": "No se capturaron titulares seleccionados para esta fecha. Esto no demuestra que no ocurrieran eventos.",
+    "unlock90": "Desbloquea 90 días con Pro",
+    "unlock365": "Desbloquea 365 días con un plan API"
   }
 }

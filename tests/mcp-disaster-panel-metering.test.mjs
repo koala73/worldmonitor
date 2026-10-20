@@ -295,10 +295,12 @@ describe('Natural Disasters paid admission and original source deadlines', () =>
       { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: now + 86400000 },
     ]) {
       const bundle = fixture({ getEntitlements: async () => entitlement });
-      const first = await invoke(bundle.deps, { dataset: 'WILDFIRES', limit: '1', active_only: 'true', extra: true });
+      const invalid = await invoke(bundle.deps, { dataset: 'WILDFIRES', limit: '1', active_only: 'true', extra: true });
+      assert.equal(invalid.body.error?.code, -32602); assert.equal(bundle.pipe.count, 0);
+      const first = await invoke(bundle.deps, { dataset: ['wildfires'], limit: 1, active_only: true, extra: true });
       assert.equal(first.body.error, undefined); assert.equal(envelope(first).panelRequest, undefined);
       assert.equal(envelope(first).data.fires.fireDetections.length, 1);
-      await invoke(bundle.deps, { dataset: 'WILDFIRES', limit: '1', active_only: 'true' }); assert.equal(bundle.pipe.count, 2);
+      await invoke(bundle.deps, { dataset: ['wildfires'], limit: 1, active_only: true }); assert.equal(bundle.pipe.count, 2);
       for (const args of [{ refresh: false }, { request_id: crypto.randomUUID() }, { panel_request: 'forged' }]) assert.equal((await invoke(bundle.deps, args)).body.error?.code, -32602);
       assert.equal(bundle.pipe.count, 2);
     }

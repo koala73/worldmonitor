@@ -267,6 +267,17 @@ describe('premiumFetch', () => {
     assert.equal(sentHeaders(1).get('Authorization'), 'Bearer insider-clerk-token');
   });
 
+  it('country history attaches paid credentials while retaining anonymous session recovery', async () => {
+    const target = 'https://api.worldmonitor.app/api/intelligence/v1/get-country-history?country=US&days=90';
+    setup({ clerkToken: 'history-clerk-token' });
+    await proFreshRpcFetch(target);
+    assert.equal(sentHeaders().get('Authorization'), 'Bearer history-clerk-token');
+    setup();
+    await proFreshRpcFetch(target);
+    assert.equal(sentHeaders().get('Authorization'), null);
+    assert.equal(hasPremiumIntent(fetchMock.mock.calls[0].arguments[1] as RequestInit), false);
+  });
+
   it('non-premium path: tester key still attached (works on any path)', async () => {
     setup({ testerKey: 'valid-key', clerkToken: 'clerk-token' });
     await premiumFetch(PUBLIC_TARGET);

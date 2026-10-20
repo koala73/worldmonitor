@@ -35,6 +35,14 @@ describe('entitlement crosswalk route classifier', () => {
 });
 
 describe('entitlement crosswalk classifier', () => {
+  it('maps country history retention without claiming other predicates', () => {
+    assert.equal(classify(site('server/_shared/country-history-access.ts', 'tier'))?.cap, 'intel.country_history');
+    assert.equal(classify(site('server/_shared/country-history-access.ts', 'apiAccess')), null);
+    for (const plan of ['FREE', 'PRO', 'PRO_BUSINESS', 'API_STARTER', 'API_BUSINESS', 'ENTERPRISE']) {
+      assert.equal(classify({ source: 'catalog', rule: `catalog:${plan}.historyDays` })?.cap, 'intel.country_history');
+    }
+  });
+
   it('maps Telegram desktop gates without claiming other predicate kinds', () => {
     assert.equal(classify(site('src/components/TelegramIntelPanel.ts', 'hasPremiumAccess'))?.cap, 'intel.telegram');
     assert.equal(classify(site('src/components/TelegramIntelPanel.ts', 'apiAccess')), null);

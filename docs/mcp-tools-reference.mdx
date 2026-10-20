@@ -1362,6 +1362,23 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_country_history`
+
+Daily country snapshots with optional CII and resilience scores, their source versions and observation times, and up to five linked headlines per date. The archive starts at activation without backfill. Missing dates and scores remain absent; formula changes and observation gaps break chart continuity. No headline does not prove that no event occurred.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | **yes** | Assigned ISO alpha-2 country code, such as `US` or `FR` |
+| `days` | integer | no | 1–365 UTC days including today; defaults to 7 and is clamped to the verified account limit |
+
+- **API endpoints:** `GET /api/intelligence/v1/get-country-history`
+- **Access:** `subscription` — Pro 90 days, API and Enterprise 365 days. Anonymous/free REST callers can read seven days; the MCP subscription requirement still applies.
+- **Kind:** RPC tool with an 8-second downstream timeout. Use `jmespath` to trim output; no `summary` argument.
+
+Read `upstreamUnavailable` before interpreting an empty response. `stale` means the archive is unavailable or the last successful daily capture is over 36 hours old. `allowedDays`, `effectiveDays` and `returnedDays` distinguish the account limit, the requested window after clamping, and actual observations. Large outputs retain score dates and reduce selected headlines first, marked `events_reduced_for_output_budget`.
+
 ### `get_country_coverage`
 
 The country panel's own coverage timeline: recent country-relevant headlines plus the clustered incident timeline the WorldMonitor UI renders for that country. Reprints of one incident are collapsed into a single entry, and a first-party record (protest, earthquake, conflict, military flight) takes precedence over the news article describing it, so the timeline does not double-count. Reach for this instead of rebuilding country coverage from the news tools — those return raw articles and leave the country matching, expiry and de-duplication to you.

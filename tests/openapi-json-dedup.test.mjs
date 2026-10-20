@@ -490,7 +490,7 @@ describe('dedupeSharedSubtreeComponents (fixture)', () => {
 
   const expandSharedSubtrees = (spec) => {
     const names = Object.keys(spec.components.schemas)
-      .filter((name) => name.startsWith('WMShared'));
+      .filter((name) => name.startsWith(SHARED_SUBTREE_COMPONENT_PREFIX));
     expandLocalRefs(
       spec,
       new Map(names.map((name) => [`#/components/schemas/${name}`, spec.components.schemas[name]])),
@@ -507,7 +507,7 @@ describe('dedupeSharedSubtreeComponents (fixture)', () => {
 
     assert.equal(stats.groups, 1);
     assert.equal(stats.replacedRefs, 3, 'every site including the first becomes a ref');
-    const name = Object.keys(transformed.components.schemas).find((n) => n.startsWith('WMShared'));
+    const name = Object.keys(transformed.components.schemas).find((n) => n.startsWith(SHARED_SUBTREE_COMPONENT_PREFIX));
     assert.ok(name, 'the hoisted subtree lands in components.schemas');
     assert.deepEqual(
       transformed.components.schemas[name],
@@ -1000,7 +1000,7 @@ describe('public OpenAPI dedupe (real bundle)', () => {
     // #9093 adds two POST operations to the YAML bundle; only submit carries
     // the 2 idempotency headers (review is exempt from replay).
     assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 41 });
-    assert.equal(int64Stats.replacedRefs, 41);
+    assert.equal(int64Stats.replacedRefs, 44);
     // Described int64 fields (own comment + generated warning) keep their
     // comment beside the shared $ref; a regression to zero would silently give
     // back ~4 KB of the scanner budget.

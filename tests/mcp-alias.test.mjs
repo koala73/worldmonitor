@@ -397,7 +397,7 @@ describe('MCP tool aliases', { concurrency: false }, () => {
 
     seedPriceBundle();
     const list = await call('get_tariff_trends', { dataset: 'bigmac', jmespath: 'data.bigmac.countries[].code' });
-    const direct = await call('get_price_and_debt_indicators', { dataset: 'bigmac', jmespath: 'data.bigmac.countries[].code' });
+    const direct = await call('get_price_and_debt_indicators', { dataset: ['bigmac'], jmespath: 'data.bigmac.countries[].code' });
     assert.equal(list.body.result.content[0].text, direct.body.result.content[0].text);
     assert.deepEqual(JSON.parse(list.body.result.content[0].text), ['US', 'DE']);
     assert.equal(list.body.result.structuredContent.deprecation.replacement, 'get_price_and_debt_indicators');
@@ -423,9 +423,9 @@ describe('MCP tool aliases', { concurrency: false }, () => {
     seedPriceBundle();
     const direct = await call('get_price_and_debt_indicators', { dataset: ['tariffs'] });
     assert.equal(direct.body.error.code, -32602);
-    assert.equal(direct.body.error.data.violations[0].field, 'dataset');
-    assert.match(direct.body.error.data.violations[0].description, /moved/);
-    assert.match(direct.body.error.data.violations[0].description, /get_tariff_averages/);
+    assert.equal(direct.body.error.data.violations[0].field, 'dataset.0');
+    assert.match(direct.body.error.data.violations[0].description, /bigmac, fao-ffpi, national-debt/);
+    assert.equal(direct.pipe.count, 0);
     assert.equal(calls.length, 0);
   });
 

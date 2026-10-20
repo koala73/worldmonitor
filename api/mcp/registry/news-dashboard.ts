@@ -8,6 +8,12 @@ import type { ToolDef } from '../types';
 
 import { NEWS_DASHBOARD_UI_URI } from '../ui/news-dashboard-app';
 
+function newsDashboardView(params: Record<string, unknown>) {
+  const parsedView = parseNewsDashboardRequest(params);
+  if (!parsedView.success) throw new RpcValidationError('open_news_dashboard', [{ field: 'view', description: 'Invalid news view arguments; map center requires both latitude and longitude.' }]);
+  return parsedView.data.view;
+}
+
 export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
   name: 'open_news_dashboard',
   title: 'WorldMonitor news and maps',
@@ -30,10 +36,9 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
     required: ['categories'],
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  _validateArgs: newsDashboardView,
   _execute: async (params, base, context, execution) => {
-    const parsedView = parseNewsDashboardRequest(params);
-    if (!parsedView.success) throw new RpcValidationError('open_news_dashboard', [{ field: 'view', description: 'Invalid news view arguments; map center requires both latitude and longitude.' }]);
-    const requestedView = parsedView.data.view;
+    const requestedView = newsDashboardView(params);
     const url = `${base}/api/news/v1/list-feed-digest?variant=full&lang=en`;
     const headers = await buildAuthHeaders(context, 'GET', url, null);
     const response = await fetchMcpDownstream(url, {

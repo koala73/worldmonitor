@@ -3796,5 +3796,27 @@
       "description": "启用伊朗、以色列、海湾和库尔德地区来源"
     },
     "unavailable": "当前面板无法使用{{preset}}预设"
+  },
+  "countryHistory": {
+    "title": "国家每日历史",
+    "loading": "正在加载每日历史…",
+    "window": "时间范围",
+    "days": "{{days}} 天",
+    "observed": "{{days}} 天内有 {{count}} 条快照",
+    "legend": "CII（琥珀色）：数值越高，越不稳定。韧性（绿色）：数值越高，应对能力越强。圆点标记包含精选新闻标题的日期。",
+    "chart": "每日 CII 和韧性评分。观测缺口和公式变化会使曲线中断。",
+    "selectDate": "{{date}}，{{count}} 条精选标题",
+    "empty": "此时间范围内没有每日快照。历史记录在启用后逐日积累。",
+    "unavailable": "历史记录暂时不可用，请重试。",
+    "retry": "重试",
+    "stale": "距离上次成功的每日采集已超过 36 小时。",
+    "break": "存在公式变化或观测缺口。请仅比较使用相同公式的评分。",
+    "partial": "采集时新闻覆盖不完整。",
+    "resilience": "韧性",
+    "ciiMissing": "CII 不可用",
+    "resilienceMissing": "韧性不可用",
+    "noEvents": "此日期未采集到精选新闻标题。这不代表没有事件发生。",
+    "unlock90": "使用 Pro 解锁 90 天历史",
+    "unlock365": "使用 API 套餐解锁 365 天历史"
   }
 }

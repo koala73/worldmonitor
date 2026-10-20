@@ -664,6 +664,7 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/intelligence/v1/search-intel-history': { limit: 30, window: '60 s' },
   '/api/intelligence/v1/get-similar-events': { limit: 30, window: '60 s' },
   '/api/intelligence/v1/get-intel-timeline': { limit: 120, window: '60 s' },
+  '/api/intelligence/v1/get-country-history': { limit: 60, window: '60 s' },
   // Batch humanitarian-summary fans out to the external HAPI (humdata) provider
   // on cache miss — up to 25 countries per request, 5 concurrent upstream
   // fetches. Batch aircraft-details fans out to the external Wingbits provider —

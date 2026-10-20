@@ -596,13 +596,13 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
         'projected response must be smaller than unprojected');
     });
 
-    it('jmespath="" and jmespath=null behave as if absent (byte-identical baseline)', async () => {
+    it('empty jmespath preserves the baseline and null rejects before execution', async () => {
       mockMarketDataCache();
       const { body: a } = await callTool('get_market_data', {}, 1);
       const { body: b } = await callTool('get_market_data', { jmespath: '' }, 2);
       const { body: c } = await callTool('get_market_data', { jmespath: null }, 3);
       assert.equal(a.result.content[0].text, b.result.content[0].text);
-      assert.equal(a.result.content[0].text, c.result.content[0].text);
+      assert.equal(c.error?.code, -32602);
     });
 
     it('invalid jmespath returns soft _jmespath_error envelope (HTTP 200, no JSON-RPC error)', async () => {

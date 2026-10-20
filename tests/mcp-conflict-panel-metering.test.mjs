@@ -400,7 +400,12 @@ describe('signed Conflict Events panel through the protected MCP handler', () =>
       { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86400000 },
     ]) {
       const { deps, pipe } = makeProDeps({ getEntitlements: async () => entitlement });
-      const first = await invoke(deps, { country: 'France', min_fatalities: '1', limit: 1.9, extra: true });
+      const fetchCount = fetched.length;
+      const invalid = await invoke(deps, { country: 'France', min_fatalities: '1', limit: 1.9, extra: true });
+      assert.equal(invalid.body.error?.code, -32602);
+      assert.equal(pipe.count, 0);
+      assert.equal(fetched.length, fetchCount);
+      const first = await invoke(deps, { country: 'France', min_fatalities: 1, limit: 1.9, extra: true });
       assert.equal(first.body.error, undefined);
       assert.equal(envelope(first).panelRequest, undefined);
       assert.equal(envelope(first).data['ucdp-events'].events.length, 1);

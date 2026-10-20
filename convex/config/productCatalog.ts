@@ -96,6 +96,7 @@ export type PlanLimitDimension =
 
 export type PlanFeatures = {
   tier: number;
+  historyDays: number;
   maxDashboards: number;
   apiAccess: boolean;
   apiRateLimit: number;
@@ -206,6 +207,7 @@ export interface CatalogEntry {
 
 const FREE_FEATURES: PlanFeatures = {
   tier: 0,
+  historyDays: 7,
   maxDashboards: 3,
   apiAccess: false,
   apiRateLimit: 0,
@@ -234,6 +236,7 @@ const FREE_FEATURES: PlanFeatures = {
 
 const PRO_FEATURES: PlanFeatures = {
   tier: 1,
+  historyDays: 90,
   maxDashboards: 10,
   apiAccess: false,
   apiRateLimit: 0,
@@ -265,6 +268,7 @@ const PRO_FEATURES: PlanFeatures = {
  */
 const PRO_BUSINESS_FEATURES: PlanFeatures = {
   tier: 1,
+  historyDays: 90,
   maxDashboards: 25,
   apiAccess: false,
   apiRateLimit: 0,
@@ -285,6 +289,7 @@ const PRO_BUSINESS_FEATURES: PlanFeatures = {
 
 const API_STARTER_FEATURES: PlanFeatures = {
   tier: 2,
+  historyDays: 365,
   maxDashboards: 25,
   apiAccess: true,
   apiRateLimit: 60,
@@ -305,6 +310,7 @@ const API_STARTER_FEATURES: PlanFeatures = {
 
 const API_BUSINESS_FEATURES: PlanFeatures = {
   tier: 2,
+  historyDays: 365,
   maxDashboards: 100,
   apiAccess: true,
   apiRateLimit: 300,
@@ -333,6 +339,7 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
 // sales contract. Pinned by tests/high-usage-alarm.test.mts.
 const ENTERPRISE_FEATURES: PlanFeatures = {
   tier: 3,
+  historyDays: 365,
   maxDashboards: -1,
   apiAccess: true,
   apiRateLimit: 1000,

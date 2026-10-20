@@ -650,6 +650,7 @@
       "scripts/lib/brief-dedup-consts.mjs",
       "scripts/lib/brief-dedup-jaccard.mjs",
       "scripts/lib/brief-embedding.mjs",
+      "scripts/lib/intel-history-cost.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/physical-divergence.mjs",
       "scripts/lib/story-track-batch-reader.mjs",
@@ -1495,6 +1496,7 @@
       "scripts/lib/brief-dedup-consts.mjs",
       "scripts/lib/brief-dedup-jaccard.mjs",
       "scripts/lib/brief-embedding.mjs",
+      "scripts/lib/intel-history-cost.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
@@ -1865,6 +1867,13 @@
     "lifecycle": "planned",
     "service": "seed-market-quotes",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
+    "entry": "scripts/seed-country-history.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "lifecycle": "planned",
+    "service": "seed-country-history",
+    "documentedAt": "docs/country-history-operations.md"
   },
   {
     "entry": "scripts/seed-military-cii.mjs",

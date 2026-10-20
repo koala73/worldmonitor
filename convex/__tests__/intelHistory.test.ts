@@ -274,6 +274,41 @@ describe("intelHistory.append", () => {
 });
 
 describe("intelHistory.timeline", () => {
+  test("passes an opaque cursor unchanged to pagination", async () => {
+    const t = convexTest(schema, modules);
+    const cursor = "opaque-v2:next-page";
+    const paginate = vi.fn().mockResolvedValue({ page: [], isDone: true, continueCursor: "" });
+    await t.run((ctx) => {
+      const query = ctx.db.query("intelHistory").order("desc");
+      vi.spyOn(Object.getPrototypeOf(query), "paginate").mockImplementation(paginate);
+    });
+    try {
+      expect(await t.query(internal.intelHistory.timeline, { country: "UA", cursor })).toEqual({
+        records: [], partial: false, nextCursor: "",
+      });
+      expect(paginate).toHaveBeenCalledWith(expect.objectContaining({ cursor }));
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  test.each([
+    new SyntaxError("Unexpected end of JSON input"),
+    new Error("Unexpected token < in JSON at position 0"),
+  ])("propagates unrelated pagination failures: %s", async (error) => {
+    const t = convexTest(schema, modules);
+    await t.run((ctx) => {
+      const query = ctx.db.query("intelHistory").order("desc");
+      vi.spyOn(Object.getPrototypeOf(query), "paginate").mockRejectedValue(error);
+    });
+    try {
+      await expect(t.query(internal.intelHistory.timeline, { country: "UA", cursor: "[]" }))
+        .rejects.toThrow(error.message);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
   test("continues through equal event times without repeating or losing records", async () => {
     const t = convexTest(schema, modules);
     await seed(t, Array.from({ length: 5 }, (_, i) => ({
@@ -899,18 +934,76 @@ describe("internal intel read routes", () => {
   });
 
   test.each([
+    "not-a-cursor", `07${"ab".repeat(24)}`,
+  ])("a cursor rejected by production pagination is INVALID_CURSOR: %s", async (cursor) => {
+    const t = convexTest(schema, modules);
+    // convex-test parses JSON cursors; production reports an explicit Convex error.
+    const paginate = vi.fn().mockRejectedValue(new Error("Failed to parse cursor"));
+    await t.run((ctx) => {
+      const query = ctx.db.query("intelHistory").order("desc");
+      vi.spyOn(Object.getPrototypeOf(query), "paginate").mockImplementation(paginate);
+    });
+    try {
+      expect(await t.query(internal.intelHistory.timeline, { country: "UA", cursor })).toEqual({
+        records: [], partial: false, nextCursor: "", error: "INVALID_CURSOR",
+      });
+      const res = await t.fetch("/api/internal-intel-timeline", post({ country: "UA", cursor }));
+      expect({ status: res.status, body: await res.json() }).toEqual({
+        status: 400, body: { error: "INVALID_CURSOR" },
+      });
+      expect(paginate).toHaveBeenCalledWith(expect.objectContaining({ cursor }));
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  test("the HTTP route passes opaque cursors to the store", async () => {
+    const cursor = "opaque-v2:next-page";
+    const result = { records: [], partial: true, nextCursor: "opaque-v2:following-page" };
+    const runQuery = vi.fn().mockResolvedValue(result);
+    const route = http.lookup("/api/internal-intel-timeline", "POST")![0];
+    const response = await (route as unknown as {
+      _handler: (ctx: unknown, request: Request) => Promise<Response>;
+    })._handler({ runQuery }, new Request(
+      "https://convex.test/api/internal-intel-timeline", post({ country: "UA", cursor }),
+    ));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(result);
+    expect(runQuery).toHaveBeenCalledWith(internal.intelHistory.timeline, { country: "UA", cursor });
+  });
+
+  test.each([
+    new SyntaxError("Unexpected end of JSON input"),
+    new Error("Unexpected token < in JSON at position 0"),
+  ])("a store parse failure without a cursor remains HTTP 500: %s", async (error) => {
+    const route = http.lookup("/api/internal-intel-timeline", "POST")![0];
+    const response = await (route as unknown as {
+      _handler: (ctx: unknown, request: Request) => Promise<Response>;
+    })._handler({ runQuery: async () => { throw error; } }, new Request(
+      "https://convex.test/api/internal-intel-timeline", post({ country: "UA" }),
+    ));
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: error.message });
+  });
+
+  test.each([
     [new Error("InvalidCursor: cursor does not match this query"), 400],
+    [new Error("Failed to parse cursor"), 400],
+    [new Error("Uncaught Error: Failed to parse cursor"), 400],
     [new ConvexError({ paginationError: "InvalidCursor" }), 400],
+    [new ConvexError({ isConvexSystemError: true, paginationError: "InvalidCursor" }), 400],
     [new Error("database unavailable"), 500],
+    [new SyntaxError("Unexpected end of JSON input"), 500],
+    [new Error("Unexpected token < in JSON at position 0"), 500],
   ] as const)("distinguishes rejected cursors from store failures: %s", async (error, status) => {
     const route = http.lookup("/api/internal-intel-timeline", "POST")![0];
     const response = await (route as unknown as {
       _handler: (ctx: unknown, request: Request) => Promise<Response>;
     })._handler({ runQuery: async () => { throw error; } }, new Request(
-      "https://convex.test/api/internal-intel-timeline", post({ country: "UA", cursor: "rejected" }),
+      "https://convex.test/api/internal-intel-timeline", post({ country: "UA", cursor: "[]" }),
     ));
     expect(response.status).toBe(status);
-    expect(await response.json()).toEqual({ error: status === 400 ? "INVALID_CURSOR" : "database unavailable" });
+    expect(await response.json()).toEqual({ error: status === 400 ? "INVALID_CURSOR" : error.message });
   });
 
   test.each([

@@ -30,7 +30,7 @@ const add = (source, id, detail) => rules.push({ rule: `${source}:${id}`, source
 // 1. productCatalog — every (plan × gating field) pair
 {
   const s = R('convex/config/productCatalog.ts');
-  const FIELDS = ['tier','maxDashboards','apiRateLimit','prioritySupport','mcpAccess','dataExport','apiAccess','embedAccess','apiRequestsPerDay','apiBurstRequestsPerMinute','mcpCallsPerDay','mcpBurstRequestsPerMinute','apiDailyAllowance','exportFormats'];
+  const FIELDS = ['tier','maxDashboards','apiRateLimit','prioritySupport','mcpAccess','dataExport','apiAccess','embedAccess','apiRequestsPerDay','apiBurstRequestsPerMinute','mcpCallsPerDay','mcpBurstRequestsPerMinute','apiDailyAllowance','exportFormats','historyDays'];
   for (const m of s.matchAll(/const (FREE|PRO|PRO_BUSINESS|API_STARTER|API_BUSINESS|ENTERPRISE)_FEATURES[^=]*=\s*\{([\s\S]*?)\n\};/g)) {
     const [, plan, body] = m;
     for (const f of FIELDS) {
@@ -106,6 +106,7 @@ for (const ln of out.split('\n')) {
 const MAP = [
   // ---- catalog: the tier axis itself is not a capability
   [/^catalog:\w+\.tier$/,                    { exclude: 'tier axis, not a capability' }],
+  [/^catalog:\w+\.historyDays$/,             { cap: 'intel.country_history', note: 'daily archive retention window' }],
   [/^catalog:\w+\.exportFormats$/,           { cap: 'export.data', note: 'format allowlist' }],
   [/^catalog:\w+\.dataExport$/,              { cap: 'export.data' }],
   [/^catalog:\w+\.apiAccess$/,               { cap: 'api.keys' }],
@@ -206,6 +207,7 @@ const MAP = [
 ];
 
 const SITE_MAP = [
+  [/^server\/_shared\/country-history-access\.ts$/, { cap: 'intel.country_history', note: 'verified 7/90/365-day retention ceiling', preds: ['tier'] }],
   [/^src\/components\/TelegramIntelPanel\.ts$/, { cap: 'intel.telegram', note: 'desktop access lifecycle; free web feed remains available', preds: ['hasPremiumAccess'] }],
   // --- capabilities the hand-built ledger never found ---
   [/convex\/companyMonitoring\//,             { cap: 'monitoring.company', note: 'requires planKey!==free && tier>0' , preds: ['tier'] }],
@@ -332,6 +334,7 @@ const SITE_BASELINE = {
   "convex/mcpProTokens.ts::tier": 1,
   "convex/notificationChannels.ts::tier": 1,
   "convex/payments/billing.ts::tier": 1,
+  "server/_shared/country-history-access.ts::tier": 1,
   "server/_shared/direct-llm-quota.ts::tier": 1,
   "server/_shared/embed-entitlement.ts::embedAccess": 2,
   "server/_shared/embed-session.ts::embedAccess": 2,
