@@ -1284,6 +1284,7 @@
       "infoTooltip": "<strong>Klimanomalie-Monitor</strong> Temperatur- und Niederschlagsabweichungen von der 30-Tage-Basislinie. Daten von Open-Meteo (ERA5-Reanalyse).<ul><li><strong>Extrem</strong>: >5°C oder >80mm/Tag Abweichung</li><li><strong>Moderat</strong>: >3°C oder >40mm/Tag Abweichung</li></ul>Überwacht 15 konflikt-/katastrophengefährdete Zonen."
     },
     "newsPanel": {
+      "translationUnavailable": "Übersetzung nicht verfügbar. Prüfen Sie Ihre KI-Anbietereinstellungen und versuchen Sie es erneut.",
       "close": "Schließen",
       "summarize": "Dieses Panel zusammenfassen",
       "generatingSummary": "Zusammenfassung wird erstellt...",

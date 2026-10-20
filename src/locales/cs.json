@@ -1785,7 +1785,8 @@
       "sourceCoverageHint": "Zobrazeno {{covered}} z {{total}} zapnutých zdrojů — tento panel své zdroje při každé aktualizaci střídá",
       "sortBy": "Seřadit podle",
       "sortNewest": "Nejnovější",
-      "sortRelevance": "Relevance"
+      "sortRelevance": "Relevance",
+      "translationUnavailable": "Překlad není k dispozici. Zkontrolujte nastavení poskytovatele AI a zkuste to znovu."
     },
     "breakingNews": {
       "critical": "KRITICKÉ",

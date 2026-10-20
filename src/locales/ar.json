@@ -1677,7 +1677,8 @@
       "sourceCoverageHint": "يعرض {{covered}} من أصل {{total}} مصدرًا مفعّلًا — تتناوب هذه اللوحة على مصادرها مع كل تحديث",
       "sortBy": "ترتيب حسب",
       "sortNewest": "الأحدث",
-      "sortRelevance": "الصلة"
+      "sortRelevance": "الصلة",
+      "translationUnavailable": "الترجمة غير متاحة. تحقق من إعدادات مزود الذكاء الاصطناعي وحاول مرة أخرى."
     },
     "intelligenceFindings": {
       "badgeTitle": "نتائج استخباراتية",

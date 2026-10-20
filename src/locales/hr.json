@@ -1949,7 +1949,8 @@
       "sourceCoverageHint": "Prikazano {{covered}} od {{total}} uključenih izvora — ova ploča izmjenjuje svoje izvore pri svakom osvježavanju",
       "sortBy": "Sortiraj po",
       "sortNewest": "Najnovije",
-      "sortRelevance": "Relevantnost"
+      "sortRelevance": "Relevantnost",
+      "translationUnavailable": "Prijevod nije dostupan. Provjerite postavke pružatelja AI usluge i pokušajte ponovno."
     },
     "export": {},
     "runtimeConfig": {},

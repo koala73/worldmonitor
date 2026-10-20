@@ -1950,7 +1950,8 @@
       "sourceCoverageHint": "Showing {{covered}} of {{total}} enabled sources — this panel rotates through its sources on each refresh",
       "sortBy": "Sort by",
       "sortNewest": "Newest",
-      "sortRelevance": "Relevance"
+      "sortRelevance": "Relevance",
+      "translationUnavailable": "Переклад недоступний. Перевірте налаштування постачальника ШІ та спробуйте ще раз."
     },
     "mobileNav": {
       "panelCategories": "Panel categories"

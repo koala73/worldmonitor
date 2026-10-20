@@ -1674,7 +1674,8 @@
       "sourceCoverageHint": "Affiche {{covered}} des {{total}} sources activées — ce panneau alterne entre ses sources à chaque actualisation",
       "sortBy": "Trier par",
       "sortNewest": "Plus récent",
-      "sortRelevance": "Pertinence"
+      "sortRelevance": "Pertinence",
+      "translationUnavailable": "Traduction indisponible. Vérifiez les paramètres de votre fournisseur d’IA et réessayez."
     },
     "etfFlows": {
       "unavailable": "données de fonds négociés en bourse temporairement indisponibles",

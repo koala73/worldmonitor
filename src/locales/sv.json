@@ -755,7 +755,8 @@
       "sourceCoverageHint": "Visar {{covered}} av {{total}} aktiverade källor — den här panelen växlar mellan sina källor vid varje uppdatering",
       "sortBy": "Sortera efter",
       "sortNewest": "Senaste",
-      "sortRelevance": "Relevans"
+      "sortRelevance": "Relevans",
+      "translationUnavailable": "Översättning är inte tillgänglig. Kontrollera inställningarna för din AI-leverantör och försök igen."
     },
     "countryBrief": {
       "shareStory": "Dela berättelse",

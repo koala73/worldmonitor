@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, imfSdmxFetchIndicator } from './_seed-utils.mjs';
+import weoFiscalPeriods from './shared/weo-fiscal-periods.json' with { type: 'json' };
 
 loadEnvFile(import.meta.url);
 
@@ -86,11 +87,16 @@ export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCount
 
     const gdpUsd = gdpLatest;
     let debtUsd = (effectiveDebtPct / 100) * gdpUsd;
-    // WEO gross debt is the stock at the END of the data year and already
-    // includes that year's deficit, so anchor it at year end. Before then the
-    // ticker interpolates up to it (negative elapsed time) instead of adding
-    // the year's deficit a second time.
-    let baselineTs = Date.UTC(latestDebtYear + 1, 0, 1);
+    // Debt already includes the period's deficit. Anchor at the UTC boundary
+    // after its last day, just as calendar-year stocks use January 1.
+    const fiscalPeriod = weoFiscalPeriods.countries[iso3];
+    let baselineTs = fiscalPeriod
+      ? Date.UTC(
+        latestDebtYear + (fiscalPeriod.yearLabel === 'start' ? 1 : 0),
+        fiscalPeriod.endMonth - 1,
+        fiscalPeriod.endDay + 1,
+      )
+      : Date.UTC(latestDebtYear + 1, 0, 1);
 
     // Override USA with live Treasury data when available. That total is
     // already current as of its record date, so the ticker accrues from there.

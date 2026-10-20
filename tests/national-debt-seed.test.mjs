@@ -326,6 +326,67 @@ describe('current-year selection (IMF DataMapper parity)', () => {
   });
 });
 
+describe('WEO fiscal-period anchors', () => {
+  const NOW = new Date('2026-10-19T00:00:00Z');
+  function entryFor(iso3, year = 2026, treasury = null) {
+    return computeEntries(
+      { [iso3]: { [year - 1]: 75, [year]: 80 } },
+      { [iso3]: { [year]: 1e12 } },
+      { [iso3]: { [year]: -5 } },
+      treasury, NOW,
+    )[0];
+  }
+
+  it('reaches Egypt\'s WEO stock at the close of June in the labelled year', () => {
+    const entry = entryFor('EGY');
+    const periodEnd = Date.UTC(2026, 6, 1);
+    assert.equal(entry.baselineTs, periodEnd);
+    assert.equal(debtAt(entry, periodEnd), 800e9);
+    assert.ok(debtAt(entry, periodEnd - 86400_000) < entry.debtUsd);
+    assert.ok(debtAt(entry, periodEnd + 86400_000) > entry.debtUsd);
+  });
+
+  it('reaches India\'s WEO stock at the close of March in the following year', () => {
+    const entry = entryFor('IND');
+    const periodEnd = Date.UTC(2027, 3, 1);
+    assert.equal(entry.baselineTs, periodEnd);
+    assert.equal(debtAt(entry, periodEnd), 800e9);
+    assert.ok(debtAt(entry, Date.UTC(2027, 0, 1)) < entry.debtUsd);
+  });
+
+  it('uses the selected data year for a country with no current-year observation', () => {
+    const entry = entryFor('EGY', 2025);
+    assert.equal(entry.baselineTs, Date.UTC(2025, 6, 1));
+    assert.equal(entry.source, 'IMF WEO 2025');
+  });
+
+  it('keeps calendar-year and unmapped country anchors at the close of December', () => {
+    for (const iso3 of ['DEU', 'USA', 'ZZZ']) {
+      const entry = entryFor(iso3);
+      assert.equal(entry.baselineTs, Date.UTC(2027, 0, 1), iso3);
+      assert.equal(debtAt(entry, entry.baselineTs), entry.debtUsd);
+    }
+  });
+
+  it('changes only the baseline, preserving the debt figures and rates', () => {
+    const calendarEntry = entryFor('DEU');
+    for (const iso3 of ['EGY', 'IND']) {
+      const entry = entryFor(iso3);
+      assert.notEqual(entry.baselineTs, calendarEntry.baselineTs);
+      assert.deepEqual(
+        { ...entry, iso3: calendarEntry.iso3, baselineTs: calendarEntry.baselineTs },
+        calendarEntry,
+      );
+    }
+  });
+
+  it('keeps a valid Treasury record date ahead of the WEO period anchor', () => {
+    const entry = entryFor('USA', 2026, { debtUsd: 900e9, date: '2026-10-16' });
+    assert.equal(entry.baselineTs, Date.UTC(2026, 9, 16));
+    assert.equal(debtAt(entry, entry.baselineTs), 900e9);
+  });
+});
+
 describe('rolling WEO year window', () => {
   it('includes current year and spans prev 2 and next 1', () => {
     const now = new Date(Date.UTC(2026, 5, 1));

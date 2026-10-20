@@ -285,6 +285,15 @@ describe('live topic readings never publish a missing value as a fact', () => {
 });
 
 describe('live topic sections', () => {
+  it('explains the verified fiscal periods and the calendar-year fallback for debt', () => {
+    const explainer = page('national-debt-clock').explainer;
+    assert.match(explainer, /Egypt[^<]*June 30[^<]*labelled year/);
+    assert.match(explainer, /India[^<]*March 31[^<]*following year/);
+    assert.match(explainer, /midnight UTC immediately after/);
+    assert.match(explainer, /Other countries[^<]*December 31[^<]*fallback/);
+    assert.doesNotMatch(explainer, /reaching the IMF figure on December 31/);
+  });
+
   it('states the reading with its date and carries matching FAQ markup that cannot close its script tag', () => {
     const topic = page('prediction-markets');
     const section = topic.renderSection(liveTopicReading(topic, marketsPayload(), NOW), { live: true });

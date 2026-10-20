@@ -1940,7 +1940,8 @@
       "sourceCoverageHint": "نمایش {{covered}} از {{total}} منبع فعال — این پنل در هر بازخوانی منابع خود را به نوبت می‌خواند",
       "sortBy": "Sort by",
       "sortNewest": "Newest",
-      "sortRelevance": "Relevance"
+      "sortRelevance": "Relevance",
+      "translationUnavailable": "ترجمه در دسترس نیست. تنظیمات ارائه‌دهنده هوش مصنوعی را بررسی کنید و دوباره تلاش کنید."
     },
     "mobileNav": {
       "panelCategories": "دسته‌بندی پنل‌ها"

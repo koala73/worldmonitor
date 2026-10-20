@@ -1794,7 +1794,8 @@
       "sourceCoverageHint": "已顯示 {{total}} 個已啟用來源中的 {{covered}} 個 — 該面板每次重新整理會輪換抓取不同來源",
       "sortBy": "排序方式",
       "sortNewest": "最新",
-      "sortRelevance": "相關性"
+      "sortRelevance": "相關性",
+      "translationUnavailable": "翻譯不可用。請檢查 AI 提供商設定並重試。"
     },
     "breakingNews": {
       "critical": "緊急",

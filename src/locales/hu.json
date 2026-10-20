@@ -1940,7 +1940,8 @@
       "sourceCoverageHint": "{{total}} engedélyezett forrásból {{covered}} látszik — ez a panel minden frissítéskor váltogatja a forrásait",
       "sortBy": "Rendezés:",
       "sortNewest": "Legújabb",
-      "sortRelevance": "Relevancia"
+      "sortRelevance": "Relevancia",
+      "translationUnavailable": "A fordítás nem érhető el. Ellenőrizze az AI-szolgáltató beállításait, és próbálja újra."
     },
     "breakingNews": {
       "critical": "KRITIKUS",

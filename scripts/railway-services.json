@@ -650,6 +650,7 @@
       "scripts/lib/brief-dedup-consts.mjs",
       "scripts/lib/brief-dedup-jaccard.mjs",
       "scripts/lib/brief-embedding.mjs",
+      "scripts/lib/intel-history-cost.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/physical-divergence.mjs",
       "scripts/lib/story-track-batch-reader.mjs",
@@ -906,6 +907,7 @@
       "scripts/shared/physical-divergence-contract.js",
       "scripts/shared/physical-divergence-staleness.js",
       "scripts/shared/sovereign-status.json",
+      "scripts/shared/weo-fiscal-periods.json",
       "shared/iso2-to-iso3.json",
       "shared/iso3-to-iso2.json"
     ],
@@ -1498,6 +1500,7 @@
       "scripts/lib/brief-dedup-consts.mjs",
       "scripts/lib/brief-dedup-jaccard.mjs",
       "scripts/lib/brief-embedding.mjs",
+      "scripts/lib/intel-history-cost.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",

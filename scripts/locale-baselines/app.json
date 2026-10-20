@@ -1128,6 +1128,7 @@
   "components.newsPanel.summarize": "Summarize this panel",
   "components.newsPanel.summaryError": "Could not generate summary",
   "components.newsPanel.summaryFailed": "Summary failed",
+  "components.newsPanel.translationUnavailable": "Translation unavailable. Check your AI provider settings and try again.",
   "components.oilInventories.infoTooltip": "<strong>Oil inventories</strong> US commercial crude and strategic reserves, natural gas stocks, European gas storage, and oil stock cover. Sources include the US Energy Information Administration and International Energy Agency.",
   "components.orefSirens.activeSirens": "{{count}} active siren(s)",
   "components.orefSirens.checking": "Checking siren alerts...",
