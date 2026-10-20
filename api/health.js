@@ -540,6 +540,7 @@ const STANDALONE_KEYS = {
   displacement:          `displacement:summary:v1:${new Date().getUTCFullYear()}`,
   displacementPrev:      `displacement:summary:v1:${new Date().getUTCFullYear() - 1}`,
   dtmDisplacement:       'displacement:dtm:v1',
+  idmcIduDisplacement:   'displacement:idmc-idu:v1',
   acledIntel:            'conflict:acled:v1:all:0:0',
   satellites:            'intelligence:satellites:tle:v1',
   portwatch:             'supply_chain:portwatch:v1',
@@ -1610,6 +1611,20 @@ const SEED_META = {
       activationKey: 'seed-activated:displacement:dtm',
     },
   },
+  // IDMC Internal Displacement Updates from HDX (seed-idmc-idu-displacement.mjs,
+  // daily health bundle, #9014). 48h = two missed ticks.
+  idmcIduDisplacement: {
+    key: 'seed-meta:displacement:idmc-idu',
+    maxStaleMin: 2880,
+    minRecordCount: 500,
+    activationKey: 'seed-activated:displacement:idmc-idu',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 9014,
+      activationKey: 'seed-activated:displacement:idmc-idu',
+    },
+  },
   bocValet:          {
     key: 'seed-meta:economic:boc-valet',
     maxStaleMin: 4320,
@@ -2161,6 +2176,8 @@ const ON_DEMAND_KEYS = new Set([
   // daily tick publishes. seed-dtm-displacement.mjs SETs the marker after its
   // first successful publish.
   'dtmDisplacement',
+  // Same bridge for the IDMC IDU events (seed-idmc-idu-displacement.mjs).
+  'idmcIduDisplacement',
   // Same bridge for the oil trade series: the reader ships before the energy
   // bundle's first tick publishes. seed-oil-trade-series.mjs SETs the marker.
   'oilTradeSeries',
@@ -2318,6 +2335,8 @@ const ACTIVATION_MARKERS = {
   cbrRates: 'seed-activated:economic:cbr-rates',
   // Written by scripts/seed-dtm-displacement.mjs in runSeed's afterPublish hook.
   dtmDisplacement: SEED_META.dtmDisplacement.activationKey,
+  // Written by scripts/seed-idmc-idu-displacement.mjs in runSeed's afterPublish hook.
+  idmcIduDisplacement: SEED_META.idmcIduDisplacement.activationKey,
   // Written by scripts/seed-oil-trade-series.mjs in runSeed's afterPublish hook.
   oilTradeSeries: SEED_META.oilTradeSeries.activationKey,
   // Written by scripts/seed-cross-border-arrivals.mjs in runSeed's afterPublish hook.

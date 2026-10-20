@@ -9,4 +9,5 @@ await runBundle('health', [
   { label: 'Displacement', script: 'seed-displacement-summary.mjs', seedMetaKey: 'displacement:summary', intervalMs: DAY, timeoutMs: 300_000 },
   { label: 'Cross-Border-Arrivals', script: 'seed-cross-border-arrivals.mjs', seedMetaKey: 'displacement:cross-border', canonicalKey: 'displacement:cross-border:v1', completionMetaKey: 'seed-completion:displacement:cross-border', intervalMs: DAY, timeoutMs: 300_000 },
   { label: 'DTM-Displacement', script: 'seed-dtm-displacement.mjs', seedMetaKey: 'displacement:dtm', canonicalKey: 'displacement:dtm:v1', completionMetaKey: 'seed-completion:displacement:dtm', intervalMs: DAY, timeoutMs: 180_000 },
+  { label: 'IDMC-IDU-Displacement', script: 'seed-idmc-idu-displacement.mjs', seedMetaKey: 'displacement:idmc-idu', canonicalKey: 'displacement:idmc-idu:v1', completionMetaKey: 'seed-completion:displacement:idmc-idu', intervalMs: DAY, timeoutMs: 300_000 },
 ]);
