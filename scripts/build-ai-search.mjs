@@ -117,7 +117,7 @@ export function buildCoverageBullets({ stats, resilience }) {
     `- ${count(stats.panelClasses)} concrete panel implementations across ${count(stats.variantCount)} product variants`,
     `- ${count(stats.mcpToolCount)} MCP tools; use \`tools/list\` for the live inventory`,
     `- ${count(stats.locales)} supported interface languages`,
-    `- ${count(stats.tier1Countries)} countries scored by the Country Instability Index (CII v11)`,
+    `- ${count(stats.tier1Countries)} countries scored by the Country Instability Index (CII v12)`,
     `- ${count(stats.rankableUniverseCountries)}-country rankable universe for the Country Resilience Index, of which ${count(resilience.ranked)} are ranked in the published snapshot captured ${resilience.capturedAt}`,
     `- ${count(CHOKEPOINT_REGISTRY.length)} maritime chokepoints with AIS-based transit intelligence`,
     `- ${count(UNDERSEA_CABLES.length)} submarine cable routes`,

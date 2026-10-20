@@ -7585,7 +7585,7 @@ components:
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: Armed-conflict contribution from ACLED events, fatalities, civilian violence, strikes, and OREF alerts (0-100).
+                    description: Armed-conflict contribution from ACLED events, fatalities, civilian violence, GDELT conflict coverage, and OREF alerts (0-100).
                 militaryActivity:
                     type: number
                     maximum: 100

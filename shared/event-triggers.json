@@ -143,8 +143,8 @@
       "noun": "Risk Surge",
       "description": "Triggers when a monitored country's Country Instability Index rises by at least riseThreshold points within 24 hours into the high band (70 or more), once per surge with a 24-hour cooldown per country.",
       "source": {
-        "redisKey": "risk:scores:sebuf:v11",
-        "staleRedisKey": "risk:scores:sebuf:stale:v11",
+        "redisKey": "risk:scores:sebuf:v12",
+        "staleRedisKey": "risk:scores:sebuf:stale:v12",
         "rpc": "/api/intelligence/v1/get-risk-scores",
         "refreshSeconds": 480
       },
@@ -233,7 +233,7 @@
           "floor": 70,
           "staticBaseline": 50,
           "components": { "newsActivity": 24, "ciiContribution": 0, "geoConvergence": 10, "militaryActivity": 50 },
-          "methodologyVersion": "v11",
+          "methodologyVersion": "v12",
           "computedAt": 1790830140000,
           "scoresFetchedAt": "2026-10-01T04:49:00.000Z"
         }

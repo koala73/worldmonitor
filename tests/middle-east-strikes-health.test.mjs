@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 
 process.env.IRAN_EVENTS_ENABLED = 'true';
 const { __testing__ } = await import('../api/health.js');
-const { classifyKey, BOOTSTRAP_KEYS, SEED_META } = __testing__;
+const { classifyKey, BOOTSTRAP_KEYS, SEED_META, ACTIVATION_MARKERS } = __testing__;
 
 const NOW = 1_700_000_000_000;
 const MIN = 60_000;
@@ -72,4 +72,53 @@ test('seed-health marks the feed stale on the same budget', async () => {
   const src = readFileSync(new URL('../api/seed-health.js', import.meta.url), 'utf8');
   const interval = Number(/'conflict:iran-events':\s*\{[^}]*intervalMin:\s*(\d+)/.exec(src)?.[1]);
   assert.ok(interval * 2 <= SEED_META.iranEvents.maxStaleMin && interval * 2 >= 30, `intervalMin ${interval}`);
+});
+
+// CII v12: the relay also keeps a 30-day per-country strike tally
+// (conflict:strike-pressure:v1), read only by the CII strike pressure.
+const PRESSURE_KEY = 'conflict:strike-pressure:v1';
+function pressureCtx({ present = true, metaAgeMin = 1, recordCount = 0, activated = true } = {}) {
+  return {
+    containmentEvidenceByName: new Map(),
+    keyStrens: new Map(present ? [[PRESSURE_KEY, 120]] : []),
+    keyErrors: new Map(),
+    keyMetaValues: new Map(metaAgeMin == null ? [] : [[SEED_META.strikePressure.key, JSON.stringify({
+      fetchedAt: NOW - metaAgeMin * MIN, recordCount, sourceVersion: 'strike-pressure-v1',
+    })]]),
+    keyMetaErrors: new Map(),
+    activationStates: new Map([['strikePressure', activated]]),
+    now: NOW,
+  };
+}
+const classifyPressure = (opts) => classifyKey('strikePressure', PRESSURE_KEY, { allowOnDemand: true }, pressureCtx(opts)).status;
+
+test('the strike-pressure tally is monitored on the relay cadence behind its activation marker', () => {
+  assert.equal(SEED_META.strikePressure.key, 'seed-meta:conflict:strike-pressure');
+  assert.equal(SEED_META.strikePressure.maxStaleMin, 45);
+  assert.equal(ACTIVATION_MARKERS.strikePressure, SEED_META.strikePressure.activationKey);
+  const relay = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+  const lib = readFileSync(new URL('../scripts/lib/middle-east-strikes.cjs', import.meta.url), 'utf8');
+  assert.match(lib, new RegExp(`PRESSURE_KEY = '${PRESSURE_KEY}'`));
+  assert.match(lib, new RegExp(`PRESSURE_SEED_META_KEY = '${SEED_META.strikePressure.key}'`));
+  assert.match(lib, new RegExp(`PRESSURE_ACTIVATION_KEY = '${SEED_META.strikePressure.activationKey}'`));
+  assert.match(relay, /writePressureMeta: async \(meta\) => \{/);
+});
+
+test('the tally is pending before its first healthy publish and strict afterwards', () => {
+  assert.equal(classifyPressure({ present: false, metaAgeMin: null, activated: false }), 'EMPTY_ON_DEMAND');
+  assert.notEqual(classifyPressure({ present: false, metaAgeMin: null, activated: true }), 'OK');
+  assert.equal(classifyPressure({ metaAgeMin: 5, recordCount: 0 }), 'OK', 'thirty quiet days are a valid empty tally');
+  assert.equal(classifyPressure({ metaAgeMin: 46, recordCount: 40 }), 'STALE_SEED');
+});
+
+test('the tally data outlives its 30-day window and its health budget', () => {
+  const relay = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+  const ttlDays = Number(/MIDDLE_EAST_STRIKE_PRESSURE_TTL_S = (\d+) \* 24 \* 3600/.exec(relay)?.[1]);
+  assert.ok(ttlDays > 30, `TTL ${ttlDays} days`);
+});
+
+test('seed-health keeps the tally pending until its first healthy publish, like /api/health', () => {
+  const src = readFileSync(new URL('../api/seed-health.js', import.meta.url), 'utf8');
+  const entry = /'conflict:strike-pressure':\s*\{([^}]*)\}/.exec(src)?.[1] ?? '';
+  assert.match(entry, new RegExp(`activationKey: '${SEED_META.strikePressure.activationKey}'`));
 });

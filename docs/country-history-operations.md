@@ -16,7 +16,7 @@ The repository registers `seed-country-history` as planned. Creating or deployin
 7. Verify `seed-meta:history:country`, `history:country:index` and the permanent activation marker belong to that publication.
 8. Read anonymous, Pro and API windows. Check the `effectiveDays`, `allowedDays`, source versions and no-store headers.
 
-The worker reads `risk:scores:sebuf:stale:v11`, `resilience:ranking:v29` and `news:digest:v1:full:en`.
+The worker reads `risk:scores:sebuf:stale:v12`, `resilience:ranking:v29` and `news:digest:v1:full:en`.
 Update these source keys when their publishers change namespace. Fixture tests verify the current source-key wiring.
 It accepts CII and news at most 30 minutes old, and resilience ranking at most 12 hours old.
 Unavailable inputs fail the run without advancing the archive heartbeat.

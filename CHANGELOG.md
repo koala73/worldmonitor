@@ -6,6 +6,25 @@ All notable changes to World Monitor are documented here.
 
 ### Changed
 
+- **CII formula `v12`: a country under attack keeps rising, and recovers once the strikes stop, worldwide** (2026-10-19).
+  v11 counted strikes only through a 72h term inside Conflict, which carries 18%
+  of the composite, so Saudi Arabia scored 54 on Oct 19 under repeated missile
+  and drone strikes. Each country now carries a daily strike intensity: the
+  larger of confirmed strikes from the Middle East strike feed (critical 4, high
+  2, elevated 1, moderate 0.5; the relay keeps a 30-day per-country tally in
+  `conflict:strike-pressure:v1`) and, worldwide while ACLED is dark, GDELT
+  coverage of air, drone, missile and artillery strikes aimed at the country as
+  a share of its coverage (a fourth counter in `gdelt:bulk:country-events:v1`;
+  days stored before it are rebuilt from the archive). Strike pressure decays
+  that with a three-day half-life and enters the composite as a floor (40 at
+  pressure 5, rising 8 per doubling, to 70) and a boost of up to 10. The 72h
+  strikeBoost leaves Conflict. Replayed on Oct 19: Saudi Arabia 53 -> 63, Yemen
+  85 -> 89, Iran 71 -> 73, Russia 76 -> 79, Ukraine 70 -> 71, Israel 56 -> 57;
+  calm countries are unchanged on every replayed date, and a country returns to
+  its v11 level 10-14 days after its last strike. `combinedScore` values move up
+  for struck countries and down slightly where only the old 72h term had
+  counted; the risk-score cache key family moved to `risk:scores:sebuf:v12` and
+  emitted `methodology_version` is now `v12`, so clients should re-baseline.
 - **CII formula `v11`: a sustained crisis scores, and geo events follow real borders, worldwide** (2026-10-19).
   v10 scored GDELT conflict and protest coverage only against each country's own
   28-day median, so a month-long campaign raised its own norm and read as calm

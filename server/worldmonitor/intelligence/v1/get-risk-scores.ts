@@ -29,6 +29,22 @@ import {
   CII_GDELT_LEVEL_MIN_ARTICLES,
   CII_GDELT_LEVEL_PROTEST_FLOOR,
   CII_GDELT_LEVEL_PROTEST_SATURATION,
+  CII_STRIKE_BOOST_CAP,
+  CII_STRIKE_BOOST_PER_DOUBLING,
+  CII_STRIKE_BOOST_PIVOT,
+  CII_STRIKE_CONFIRMED_MAX_AGE_MS,
+  CII_STRIKE_FLOOR_BASE,
+  CII_STRIKE_FLOOR_CAP,
+  CII_STRIKE_FLOOR_MIN_PRESSURE,
+  CII_STRIKE_FLOOR_PER_DOUBLING,
+  CII_STRIKE_GDELT_MIN_MEASURED_DAYS,
+  CII_STRIKE_GDELT_NOISE_FLOOR,
+  CII_STRIKE_GDELT_SCALE,
+  CII_STRIKE_GDELT_SMOOTHING,
+  CII_STRIKE_GDELT_SUSTAINED_DAYS,
+  CII_STRIKE_HALF_LIFE_DAYS,
+  CII_STRIKE_SEVERITY_WEIGHTS,
+  CII_STRIKE_WINDOW_DAYS,
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_SCALE_FACTOR,
   STRATEGIC_RISK_SCALE_FLOOR,
@@ -414,8 +430,8 @@ interface CountrySignals {
   fireHighCount: number;
   gpsHighCount: number;
   gpsMediumCount: number;
-  iranStrikes: number;
-  highSeverityStrikes: number;
+  /** Decayed strike pressure P (v12), 0 when the country has not been struck. */
+  strikePressure: number;
   orefAlertCount: number;
   orefHistoryCount24h: number;
   advisoryLevel: AdvisoryLevel | null;
@@ -460,7 +476,7 @@ function emptySignals(): CountrySignals {
     cyberCriticalCount: 0, cyberHighCount: 0, cyberMediumCount: 0,
     fireCount: 0, fireHighCount: 0,
     gpsHighCount: 0, gpsMediumCount: 0,
-    iranStrikes: 0, highSeverityStrikes: 0,
+    strikePressure: 0,
     orefAlertCount: 0, orefHistoryCount24h: 0,
     advisoryLevel: null,
     advisoryProvenance: 'absent',
@@ -553,15 +569,26 @@ export interface GdeltCountryWeek {
   protest: number;
 }
 
+/** { 'YYYY-MM-DD': [strikeArticles, articles] } for a country's measured strike days. */
+export type GdeltStrikeCounts = Record<string, [number, number]>;
+
 export interface GdeltCountryEventsRow {
   conflict: GdeltEscalationSignal | null;
   protest: GdeltEscalationSignal | null;
   week: GdeltCountryWeek | null;
+  strikes?: GdeltStrikeCounts | null;
 }
 
 export interface GdeltCountryEvents {
   byCountry: Record<string, GdeltCountryEventsRow>;
+  /** Days measured for strikes and their cohorts; null when the summary predates v12. */
+  strikeDays?: Record<string, number> | null;
 }
+
+/** Strike intensity per UTC day ('YYYY-MM-DD' -> weighted strikes or their GDELT equivalent). */
+export type StrikeDays = Record<string, number>;
+
+const STRIKE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function parseGdeltEscalationSignal(raw: unknown): GdeltEscalationSignal | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -584,24 +611,49 @@ function parseGdeltCountryWeek(raw: unknown): GdeltCountryWeek | null {
   return { articles, conflict, protest };
 }
 
+function parseGdeltStrikeDays(raw: unknown): Record<string, number> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out: Record<string, number> = {};
+  for (const [date, cohorts] of Object.entries(raw as Record<string, unknown>)) {
+    if (STRIKE_DATE_RE.test(date) && typeof cohorts === 'number' && Number.isInteger(cohorts) && cohorts > 0) out[date] = cohorts;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+function parseGdeltStrikeCounts(raw: unknown, measured: Record<string, number>): GdeltStrikeCounts | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out: GdeltStrikeCounts = {};
+  for (const [date, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Object.prototype.hasOwnProperty.call(measured, date) || !Array.isArray(value) || value.length !== 2) continue;
+    const [strikes, articles] = value;
+    if (typeof strikes !== 'number' || typeof articles !== 'number') continue;
+    if (!Number.isFinite(strikes) || !Number.isFinite(articles) || strikes < 0 || strikes > articles) continue;
+    out[date] = [strikes, articles];
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 /**
  * The per-country GDELT summary (scripts/_gdelt-country-events.mjs), or null
  * when it is missing, malformed, older than CII_GDELT_ESCALATION_MAX_AGE_MS
  * (a stopped materializer must not freeze a spike), or has nothing scoreable.
- * The two readings are gated separately:
+ * The three readings are gated separately:
  * - escalation (conflict/protest) needs the 21-day baseline and a complete
  *   current window; without them they are null.
  * - the sustained level (week) needs only weekReady: it reads complete days,
  *   so it scores from deploy day, before the baseline has backfilled.
+ * - strikes (v12) read only the days the summary lists as measured
+ *   (strikeDays); a day missing there is unknown, not quiet.
  */
 export function gdeltCountryEventsFromSeed(raw: unknown, nowMs: number): GdeltCountryEvents | null {
   if (!raw || typeof raw !== 'object') return null;
-  const { byCountry, baselineReady, currentComplete, weekReady, updatedAt } = raw as Record<string, unknown>;
+  const { byCountry, baselineReady, currentComplete, weekReady, updatedAt, strikeDays: rawStrikeDays } = raw as Record<string, unknown>;
   if (!byCountry || typeof byCountry !== 'object' || Array.isArray(byCountry)) return null;
   // A current window missing cohorts (materializer outage) is unknown, not calm.
   const escalationReady = baselineReady === true && currentComplete === true;
   const levelReady = weekReady === true;
-  if (!escalationReady && !levelReady) return null;
+  const strikeDays = parseGdeltStrikeDays(rawStrikeDays);
+  if (!escalationReady && !levelReady && !strikeDays) return null;
   const age = nowMs - safeNum(updatedAt);
   if (!(age <= CII_GDELT_ESCALATION_MAX_AGE_MS)) return null;
   const rows: Record<string, GdeltCountryEventsRow> = {};
@@ -610,9 +662,10 @@ export function gdeltCountryEventsFromSeed(raw: unknown, nowMs: number): GdeltCo
     const conflict = escalationReady ? parseGdeltEscalationSignal((row as Record<string, unknown>).conflict) : null;
     const protest = escalationReady ? parseGdeltEscalationSignal((row as Record<string, unknown>).protest) : null;
     const week = levelReady ? parseGdeltCountryWeek((row as Record<string, unknown>).week) : null;
-    if (conflict || protest || week) rows[code] = { conflict, protest, week };
+    const strikes = strikeDays ? parseGdeltStrikeCounts((row as Record<string, unknown>).strikes, strikeDays) : null;
+    if (conflict || protest || week || strikes) rows[code] = { conflict, protest, week, strikes };
   }
-  return { byCountry: rows };
+  return { byCountry: rows, strikeDays };
 }
 
 /** 0..CII_GDELT_ESCALATION_CAP; see the constant's note for the curve and its calibration. */
@@ -637,6 +690,140 @@ export function gdeltLevelScore(week: GdeltCountryWeek | undefined | null, field
   const scaled = (week[field] / week.articles - floor) / (saturation - floor);
   if (!(scaled > 0)) return 0;
   return Math.round(Math.min(CII_GDELT_ESCALATION_CAP, scaled * CII_GDELT_ESCALATION_CAP));
+}
+
+// --- Strike pressure (v12); constants and calibration in ./_risk-config.ts ---
+
+function strikeUtcDay(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function addStrikeDay(target: Record<string, StrikeDays>, code: string, date: string, weight: number): void {
+  if (!(weight > 0)) return;
+  const days = (target[code] ??= {});
+  days[date] = (days[date] ?? 0) + weight;
+}
+
+/** [critical, high, elevated, moderate] -> weighted strikes, or null when malformed. */
+function strikeTallyWeight(tally: unknown): number | null {
+  if (!Array.isArray(tally) || tally.length !== 4) return null;
+  if (!tally.every((n) => typeof n === 'number' && Number.isInteger(n) && n >= 0)) return null;
+  const w = CII_STRIKE_SEVERITY_WEIGHTS;
+  return tally[0] * w.critical + tally[1] * w.high + tally[2] * w.elevated + tally[3] * w.moderate;
+}
+
+/**
+ * Weighted confirmed strikes per Tier-1 country and day from the relay's
+ * 30-day tally (conflict:strike-pressure:v1), or null when it is missing,
+ * malformed or older than CII_STRIKE_CONFIRMED_MAX_AGE_MS (GDELT then carries
+ * every country alone). Countries map like every strike input
+ * (Gaza to Israel); a non-Tier-1 country scores nowhere.
+ */
+export function confirmedStrikeDaysFromSeed(raw: unknown, nowMs: number): Record<string, StrikeDays> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { days, updatedAt } = raw as Record<string, unknown>;
+  if (!days || typeof days !== 'object' || Array.isArray(days)) return null;
+  const age = nowMs - safeNum(updatedAt);
+  if (!(safeNum(updatedAt) > 0 && age <= CII_STRIKE_CONFIRMED_MAX_AGE_MS)) return null;
+  const out: Record<string, StrikeDays> = {};
+  for (const [date, byCountry] of Object.entries(days as Record<string, unknown>)) {
+    if (!STRIKE_DATE_RE.test(date) || !byCountry || typeof byCountry !== 'object') continue;
+    for (const [iso2, tally] of Object.entries(byCountry as Record<string, unknown>)) {
+      const code = ciiCountryForIso2(iso2);
+      const weight = strikeTallyWeight(tally);
+      if (code && weight !== null) addStrikeDay(out, code, date, weight);
+    }
+  }
+  return out;
+}
+
+/**
+ * The same weights read straight from the 72h strike window
+ * (conflict:iran-events:v1). The 30-day tally is built from these events, so
+ * the scorer takes the larger of the two per day: the window covers the tally's
+ * first cycles after a deploy, or a relay whose tally write failed.
+ */
+export function confirmedStrikeDaysFromEvents(events: unknown[], nowMs: number): Record<string, StrikeDays> {
+  const out: Record<string, StrikeDays> = {};
+  for (const event of Array.isArray(events) ? events : []) {
+    const severity = String((event as any)?.severity ?? '').toLowerCase();
+    if (!Object.prototype.hasOwnProperty.call(CII_STRIKE_SEVERITY_WEIGHTS, severity)) continue;
+    const ts = (event as any)?.timestamp;
+    if (typeof ts !== 'number' || !Number.isFinite(ts) || ts > nowMs + DAY_MS) continue;
+    const code = strikeEventCountry(event);
+    if (code) addStrikeDay(out, code, strikeUtcDay(ts), CII_STRIKE_SEVERITY_WEIGHTS[severity as keyof typeof CII_STRIKE_SEVERITY_WEIGHTS]);
+  }
+  return out;
+}
+
+/**
+ * One country's GDELT strike intensity per measured day: the share of its
+ * coverage reporting strikes on it, over the noise floor, on the confirmed
+ * scale. A day counts only inside a campaign: among the measured days of the
+ * seven ending on it, at least CII_STRIKE_GDELT_MIN_MEASURED_DAYS, and over
+ * the floor on CII_STRIKE_GDELT_SUSTAINED_DAYS in seven of them (4 of 7 when
+ * all are measured). Judged per day, so a campaign keeps decaying after it
+ * ends, and unmeasured days neither count for nor against it.
+ */
+export function gdeltStrikeDays(
+  counts: GdeltStrikeCounts | null | undefined,
+  strikeDays: Record<string, number> | null | undefined,
+  nowMs: number,
+): StrikeDays {
+  if (!counts || !strikeDays) return {};
+  const hits: StrikeDays = {};
+  for (const [date, [strikes, articles]] of Object.entries(counts)) {
+    if (!Object.prototype.hasOwnProperty.call(strikeDays, date)) continue;
+    const share = strikes / (articles + CII_STRIKE_GDELT_SMOOTHING);
+    const intensity = CII_STRIKE_GDELT_SCALE * (share - CII_STRIKE_GDELT_NOISE_FLOOR);
+    if (intensity > 0) hits[date] = intensity;
+  }
+  const out: StrikeDays = {};
+  for (const [date, intensity] of Object.entries(hits)) {
+    const end = Date.parse(`${date}T00:00:00Z`);
+    if (!Number.isFinite(end) || end > nowMs) continue;
+    const week = Array.from({ length: 7 }, (_, i) => strikeUtcDay(end - i * DAY_MS));
+    const measured = week.filter((d) => Object.prototype.hasOwnProperty.call(strikeDays, d)).length;
+    const struck = week.filter((d) => Object.prototype.hasOwnProperty.call(hits, d)).length;
+    if (measured >= CII_STRIKE_GDELT_MIN_MEASURED_DAYS && struck * 7 >= CII_STRIKE_GDELT_SUSTAINED_DAYS * measured) {
+      out[date] = intensity;
+    }
+  }
+  return out;
+}
+
+/** Per-day maximum of two sources reporting the same strikes. */
+function maxStrikeDays(a: StrikeDays | undefined, b: StrikeDays | undefined): StrikeDays {
+  const out: StrikeDays = { ...(a ?? {}) };
+  for (const [date, value] of Object.entries(b ?? {})) out[date] = Math.max(out[date] ?? 0, value);
+  return out;
+}
+
+/** P = sum of x_d * 0.5^(age_d / half-life) over the window; age from each day's midpoint. */
+export function strikePressure(days: StrikeDays | null | undefined, nowMs: number): number {
+  let pressure = 0;
+  for (const [date, value] of Object.entries(days ?? {})) {
+    if (!STRIKE_DATE_RE.test(date) || !(typeof value === 'number' && value > 0)) continue;
+    const start = Date.parse(`${date}T00:00:00Z`);
+    if (!Number.isFinite(start) || start > nowMs) continue;
+    const ageDays = Math.max(0, (nowMs - (start + DAY_MS / 2)) / DAY_MS);
+    if (ageDays >= CII_STRIKE_WINDOW_DAYS) continue;
+    pressure += value * 0.5 ** (ageDays / CII_STRIKE_HALF_LIFE_DAYS);
+  }
+  return pressure;
+}
+
+export function strikePressureFloor(pressure: number): number {
+  if (!(pressure >= CII_STRIKE_FLOOR_MIN_PRESSURE)) return 0;
+  return Math.min(
+    CII_STRIKE_FLOOR_CAP,
+    CII_STRIKE_FLOOR_BASE + CII_STRIKE_FLOOR_PER_DOUBLING * Math.log2(pressure / CII_STRIKE_FLOOR_MIN_PRESSURE),
+  );
+}
+
+export function strikePressureBoost(pressure: number): number {
+  if (!(pressure > 0)) return 0;
+  return Math.min(CII_STRIKE_BOOST_CAP, CII_STRIKE_BOOST_PER_DOUBLING * Math.log2(1 + pressure / CII_STRIKE_BOOST_PIVOT));
 }
 
 interface AuxiliarySources {
@@ -666,6 +853,9 @@ interface AuxiliarySources {
   // Per-country GDELT conflict and protest volume against each country's own baseline;
   // scored only while ACLED is dark.
   gdeltCountryEvents: GdeltCountryEvents | null;
+  // Weighted confirmed strikes per country and day from the relay's 30-day tally
+  // (conflict:strike-pressure:v1); null when missing or stale.
+  confirmedStrikes?: Record<string, StrikeDays> | null;
 }
 
 type NewsTopStory = { countryCode: string | null; countryCodes?: string[]; threatLevel: string; primaryTitle: string };
@@ -711,6 +901,7 @@ function emptyAuxiliarySources(): AuxiliarySources {
     temporalAnomalies: [],
     militaryCii: null,
     gdeltCountryEvents: null,
+    confirmedStrikes: null,
   };
 }
 
@@ -767,7 +958,7 @@ async function readRiskInputs(inputs: ReadonlyArray<RiskInput | null>): Promise<
 
 async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const currentYear = new Date().getFullYear();
-  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementCurrentRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw, countryEventsRaw] = await readRiskInputs([
+  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementCurrentRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw, countryEventsRaw, strikePressureRaw] = await readRiskInputs([
     { key: 'conflict:ucdp-events:v1', raw: true },
     { key: 'infra:outages:v1', raw: true },
     { key: CLIMATE_ANOMALIES_KEY, raw: true },
@@ -796,6 +987,8 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     { key: 'intelligence:military-cii:v1', raw: true },
     // Per-country GDELT conflict/protest counts and baselines (seed-gdelt-bulk-materializer.mjs).
     { key: 'gdelt:bulk:country-events:v1', raw: true },
+    // 30-day per-country strike tally built by the relay from the strike feed (v12).
+    IRAN_EVENTS_ENABLED ? { key: 'conflict:strike-pressure:v1', raw: true } : null,
   ]);
   // The previous year covers a year not yet seeded. An errored current-year
   // read has already thrown above, so it never masquerades as that.
@@ -879,6 +1072,7 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
       ? (militaryCiiRaw as any).byCountry
       : null,
     gdeltCountryEvents: gdeltCountryEventsFromSeed(countryEventsRaw, Date.now()),
+    confirmedStrikes: confirmedStrikeDaysFromSeed(strikePressureRaw, Date.now()),
   };
 }
 
@@ -1096,13 +1290,18 @@ export function computeCIIScores(
     d.aisDisruptionLowCount = safeNonNegativeNum((m as any).aisDisruptionLow);
   }
 
-  // --- Iran strikes with severity ---
-  for (const s of aux.iranEvents) {
-    const code = strikeEventCountry(s);
-    if (!code || !data[code]) continue;
-    data[code].iranStrikes++;
-    const sev = String(s.severity || '').toLowerCase();
-    if (sev === 'high' || sev === 'critical') data[code].highSeverityStrikes++;
+  // --- Strike pressure (v12): confirmed feed and GDELT, per day the larger, decayed ---
+  // The 72h window and the 30-day tally carry the same events (max per day);
+  // GDELT strikes stand in only while ACLED is dark, like the other GDELT terms.
+  const confirmedStrikes = Object.entries(confirmedStrikeDaysFromEvents(aux.iranEvents, computedAt))
+    .reduce<Record<string, StrikeDays>>((out, [code, days]) => {
+      out[code] = maxStrikeDays(out[code], days);
+      return out;
+    }, { ...(aux.confirmedStrikes ?? {}) });
+  const gdeltStrikes = acled.length === 0 ? aux.gdeltCountryEvents : null;
+  for (const code of Object.keys(data)) {
+    const gdelt = gdeltStrikeDays(gdeltStrikes?.byCountry?.[code]?.strikes, gdeltStrikes?.strikeDays, computedAt);
+    data[code]!.strikePressure = strikePressure(maxStrikeDays(confirmedStrikes[code], gdelt), computedAt);
   }
 
   // --- OREF (IL only) ---
@@ -1167,13 +1366,12 @@ export function computeCIIScores(
     ));
     const fatalityScore = Math.min(40, Math.round(Math.sqrt(d.conflictFatalities) * 5 * multiplier));
     const civilianBoost = Math.min(10, d.civilianViolence * 3);
-    const strikeBoost = Math.min(50, d.iranStrikes * 3 + d.highSeverityStrikes * 5);
     const orefBoost = (code === 'IL' && d.orefAlertCount > 0)
       ? 25 + Math.min(25, d.orefAlertCount * 5)
       : 0;
     const conflict = Math.min(
       100,
-      acledScore + fatalityScore + civilianBoost + strikeBoost + orefBoost + d.gdeltConflictEscalation,
+      acledScore + fatalityScore + civilianBoost + orefBoost + d.gdeltConflictEscalation,
     );
 
     // --- Security score (Phase 3b / decision C3 — full 4-input calcSecurityScore) ---
@@ -1266,13 +1464,16 @@ export function computeCIIScores(
       + newsUrgencyBoost
       + earthquakeBoost
       + sanctionsBoost
-      + aisBoost;
+      + aisBoost
+      // Strike pressure (v12), capped; replaces the 72h strikeBoost inside Conflict.
+      + strikePressureBoost(d.strikePressure);
 
     // --- Floors ---
     const ucdpFloor = d.ucdpWar ? 70 : (d.ucdpMinor ? 50 : 0);
     const advisoryFloor = d.advisoryLevel === 'do-not-travel' ? 60
       : d.advisoryLevel === 'reconsider' ? 50 : 0;
-    const floor = Math.max(ucdpFloor, advisoryFloor);
+    const strikeFloor = Math.round(strikePressureFloor(d.strikePressure));
+    const floor = Math.max(ucdpFloor, advisoryFloor, strikeFloor);
 
     const composite = Math.min(100, Math.max(floor, Math.round(blended)));
     const { dynamicScore, trend } = deriveCiiTrendDelta(composite, priorByRegion.get(code), computedAt);

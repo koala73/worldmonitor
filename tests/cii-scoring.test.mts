@@ -29,6 +29,22 @@ import {
   CII_GDELT_LEVEL_MIN_ARTICLES,
   CII_GDELT_LEVEL_PROTEST_FLOOR,
   CII_GDELT_LEVEL_PROTEST_SATURATION,
+  CII_STRIKE_BOOST_CAP,
+  CII_STRIKE_BOOST_PER_DOUBLING,
+  CII_STRIKE_BOOST_PIVOT,
+  CII_STRIKE_CONFIRMED_MAX_AGE_MS,
+  CII_STRIKE_FLOOR_BASE,
+  CII_STRIKE_FLOOR_CAP,
+  CII_STRIKE_FLOOR_MIN_PRESSURE,
+  CII_STRIKE_FLOOR_PER_DOUBLING,
+  CII_STRIKE_GDELT_MIN_MEASURED_DAYS,
+  CII_STRIKE_GDELT_NOISE_FLOOR,
+  CII_STRIKE_GDELT_SCALE,
+  CII_STRIKE_GDELT_SMOOTHING,
+  CII_STRIKE_GDELT_SUSTAINED_DAYS,
+  CII_STRIKE_HALF_LIFE_DAYS,
+  CII_STRIKE_SEVERITY_WEIGHTS,
+  CII_STRIKE_WINDOW_DAYS,
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_SCALE_FACTOR,
   STRATEGIC_RISK_SCALE_FLOOR,
@@ -45,6 +61,7 @@ import {
   EVENT_MULTIPLIER,
   countCiiRealtimeSignalDensityCoverage,
   computeCIIScores,
+  strikePressureFloor,
   computeStrategicRisks,
   filterRiskScoresResponse,
   geoToCountry,
@@ -96,10 +113,17 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // and places coordinates by real borders; the snapshot now guards the level
   // constants and the generated border file, so regenerating borders bumps the version.
   v11: '06b0cefc7bb0ac2233e91d23159f14a9f6a26115ec905165e066b80b8e4c4853',
+  // v12 adds strike pressure (confirmed feed and GDELT strikes, decayed, into a
+  // floor and a boost) and drops the 72h strikeBoost from Conflict; the snapshot
+  // now guards the strike constants and the strike helpers' literals.
+  v12: '65bce5e1570edb82984c26b2161fab83656009baecbd45efe713b7cf28b01e0b',
 };
 
 const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT', 'UCDP_CLASSIFICATION_WINDOW_MS'];
-const GUARDED_SCORE_FUNCTION_NAMES = ['climateSeverityScore', 'deriveUcdpIntensityByRegion', 'computeCIIScores'];
+const GUARDED_SCORE_FUNCTION_NAMES = [
+  'climateSeverityScore', 'deriveUcdpIntensityByRegion', 'computeCIIScores',
+  'gdeltStrikeDays', 'strikePressure', 'strikePressureFloor', 'strikePressureBoost',
+];
 
 function readRepoFile(path: string): string {
   return readFileSync(resolve(REPO_ROOT, path), 'utf8');
@@ -1217,15 +1241,22 @@ describe('CII scoring', () => {
     );
   });
 
-  it('iran high severity strikes boost conflict', () => {
+  // v12: strikes enter the composite through strike pressure (floor and boost),
+  // not the Conflict component; tests/cii-strike-pressure.test.mts covers the curve.
+  // Eight critical strikes in the last hours (pressure 32) clear every advisory floor.
+  const strikesAt = (base: Record<string, unknown>, n = 8) => Array.from({ length: n }, (_, i) => ({
+    severity: 'critical', ...base, id: `strike-${i}`, timestamp: Date.now() - (i + 1) * 3_600_000,
+  }));
+
+  it('a critical strike raises the composite more than a moderate one', () => {
     const aux1 = emptyAux();
-    aux1.iranEvents = [{ lat: 33.0, lon: 35.0, severity: 'high' }];
+    aux1.iranEvents = strikesAt({ countryCode: 'IL', severity: 'critical' });
     const aux2 = emptyAux();
-    aux2.iranEvents = [{ lat: 33.0, lon: 35.0, severity: 'low' }];
+    aux2.iranEvents = strikesAt({ countryCode: 'IL', severity: 'moderate' });
     const highSev = scoreFor(computeCIIScores([], aux1), 'IL')!;
     const lowSev = scoreFor(computeCIIScores([], aux2), 'IL')!;
-    assert.ok(highSev.combinedScore >= lowSev.combinedScore,
-      `High severity strike (${highSev.combinedScore}) should be >= low (${lowSev.combinedScore})`);
+    assert.ok(highSev.combinedScore > lowSev.combinedScore,
+      `High severity strikes (${highSev.combinedScore}) should exceed moderate (${lowSev.combinedScore})`);
   });
 
   it('a Saudi strike from the Middle East strike feed raises SA, not Iran', () => {
@@ -1233,7 +1264,7 @@ describe('CII scoring', () => {
     const strikes = require('../scripts/lib/middle-east-strikes.cjs');
     const now = Date.now();
     const post = { id: 'saudidcd:7001', channel: 'saudidcd', url: 'https://t.me/SaudiDCD/7001', ts: new Date(now - 600_000).toISOString(), text: 'Projectile debris fell in Riyadh' };
-    const candidate = strikes.buildTelegramCandidate(post, { isStrike: true, kind: 'strike', place: 'Riyadh', countryIso2: 'SA', severity: 'high' }, now);
+    const candidate = strikes.buildTelegramCandidate(post, { isStrike: true, kind: 'strike', place: 'Riyadh', countryIso2: 'SA', severity: 'critical' }, now);
     const events = strikes.deriveStrikeEvents([candidate], now);
     assert.equal(events.length, 1);
     const withStrike = emptyAux();
@@ -1254,29 +1285,29 @@ describe('CII scoring', () => {
     const [event] = strikes.deriveStrikeEvents([candidate], now);
     assert.equal(event.countryCode, 'IR');
     const withStrike = emptyAux();
-    withStrike.iranEvents = [event];
+    withStrike.iranEvents = strikesAt({ ...event, severity: 'critical' });
     const baseline = computeCIIScores([], emptyAux());
     const scored = computeCIIScores([], withStrike);
-    assert.ok(scoreFor(scored, 'IR')!.components!.geoConvergence > scoreFor(baseline, 'IR')!.components!.geoConvergence,
+    assert.ok(scoreFor(scored, 'IR')!.combinedScore > scoreFor(baseline, 'IR')!.combinedScore,
       'open water in the strait is in no country polygon; the event\'s countryCode must carry it to Iran');
   });
 
   it('a strike event\'s country wins over its coordinates, and a non-Tier-1 country scores nowhere', () => {
     const baseline = computeCIIScores([], emptyAux());
-    const conflictOf = (scores: ReturnType<typeof computeCIIScores>, code: string) => scoreFor(scores, code)!.components!.geoConvergence;
+    const scoreOf = (scores: ReturnType<typeof computeCIIScores>, code: string) => scoreFor(scores, code)!.combinedScore;
     // Gaza's coordinates and its PS code both count toward the Israel row.
     const gaza = emptyAux();
-    gaza.iranEvents = [{ latitude: 31.5, longitude: 34.47, countryCode: 'PS', severity: 'high', title: 'Strike in Gaza City' }];
-    assert.ok(conflictOf(computeCIIScores([], gaza), 'IL') > conflictOf(baseline, 'IL'));
+    gaza.iranEvents = strikesAt({ latitude: 31.5, longitude: 34.47, countryCode: 'PS', title: 'Strike in Gaza City' });
+    assert.ok(scoreOf(computeCIIScores([], gaza), 'IL') > scoreOf(baseline, 'IL'));
     // Kuwait is not Tier-1: neither Iraq nor Iran (the old bounding-box answers) may absorb it.
     const kuwait = emptyAux();
-    kuwait.iranEvents = [{ latitude: 29.3759, longitude: 47.9774, countryCode: 'KW', severity: 'high', title: 'Drone strike near Kuwait City, Iraq border' }];
+    kuwait.iranEvents = strikesAt({ latitude: 29.3759, longitude: 47.9774, countryCode: 'KW', title: 'Drone strike near Kuwait City, Iraq border' });
     const kuwaitScores = computeCIIScores([], kuwait);
-    for (const code of ['IQ', 'IR', 'SA']) assert.equal(conflictOf(kuwaitScores, code), conflictOf(baseline, code), code);
+    for (const code of ['IQ', 'IR', 'SA']) assert.equal(scoreOf(kuwaitScores, code), scoreOf(baseline, code), code);
     // An explicit Tier-1 code beats the coordinates (a centroid fallback, a geocoding slip).
     const coded = emptyAux();
-    coded.iranEvents = [{ latitude: 26.2235, longitude: 50.5876, countryCode: 'SA', severity: 'high' }];
-    assert.ok(conflictOf(computeCIIScores([], coded), 'SA') > conflictOf(baseline, 'SA'));
+    coded.iranEvents = strikesAt({ latitude: 26.2235, longitude: 50.5876, countryCode: 'SA' });
+    assert.ok(scoreOf(computeCIIScores([], coded), 'SA') > scoreOf(baseline, 'SA'));
   });
 
   it('IL scores higher than MX with active conflict signals', () => {
@@ -1806,6 +1837,22 @@ describe('CII scoring', () => {
         CII_GDELT_LEVEL_MIN_ARTICLES,
         CII_GDELT_LEVEL_PROTEST_FLOOR,
         CII_GDELT_LEVEL_PROTEST_SATURATION,
+        CII_STRIKE_BOOST_CAP,
+        CII_STRIKE_BOOST_PER_DOUBLING,
+        CII_STRIKE_BOOST_PIVOT,
+        CII_STRIKE_CONFIRMED_MAX_AGE_MS,
+        CII_STRIKE_FLOOR_BASE,
+        CII_STRIKE_FLOOR_CAP,
+        CII_STRIKE_FLOOR_MIN_PRESSURE,
+        CII_STRIKE_FLOOR_PER_DOUBLING,
+        CII_STRIKE_GDELT_MIN_MEASURED_DAYS,
+        CII_STRIKE_GDELT_NOISE_FLOOR,
+        CII_STRIKE_GDELT_SCALE,
+        CII_STRIKE_GDELT_SMOOTHING,
+        CII_STRIKE_GDELT_SUSTAINED_DAYS,
+        CII_STRIKE_HALF_LIFE_DAYS,
+        CII_STRIKE_SEVERITY_WEIGHTS,
+        CII_STRIKE_WINDOW_DAYS,
         STRATEGIC_RISK_POSITIONAL_DECAY,
         STRATEGIC_RISK_SCALE_FACTOR,
         STRATEGIC_RISK_SCALE_FLOOR,
@@ -1848,7 +1895,20 @@ describe('CII scoring', () => {
       export function computeCIIScores(): number {
         return 1;
       }
+      export function gdeltStrikeDays(): number {
+        return 7;
+      }
+      export function strikePressure(): number {
+        return 0.5;
+      }
+      export function strikePressureFloor(): number {
+        return 0;
+      }
+      export function strikePressureBoost(): number {
+        return 0;
+      }
     `);
+    assertFormulaLiteralCovered(literals, 'gdeltStrikeDays', 7, 'return 7');
 
     assertFormulaLiteralCovered(literals, 'UCDP_CLASSIFICATION_WINDOW_MS', 2, '2 * 365');
     assertFormulaLiteralCovered(literals, 'NEWS_THREAT_WEIGHT', 4, 'critical: 4');
@@ -2210,7 +2270,7 @@ describe('CII scoring', () => {
   });
 
   it('proto and OpenAPI CiiComponents descriptions match the server scoring sources', () => {
-    const expectedGeo = 'Armed-conflict contribution from ACLED events, fatalities, civilian violence, strikes, and OREF alerts (0-100).';
+    const expectedGeo = 'Armed-conflict contribution from ACLED events, fatalities, civilian violence, GDELT conflict coverage, and OREF alerts (0-100).';
     const expectedMilitary = 'Security-mobility contribution from military flights, military vessels, aviation disruption, and GPS interference (0-100).';
     const staleSourcePattern = /ACLED\/UCDP|AIS disruption/;
 
@@ -2387,11 +2447,24 @@ describe('CII scoring', () => {
       /`gaza`[\s\S]{0,120}IL/i,
       'methodology doc must disclose that Gaza text fallback routes to IL.',
     );
-    assert.match(
-      methodologyDoc,
-      /min\(50, iranStrikes \* 3 \+ highSeverityStrikes \* 5\)/,
-      'methodology doc must disclose the Iran-region strike boost formula.',
-    );
+    // v12 strike pressure: decay, both mappings, the GDELT intensity and the
+    // replaced 72h term must all be published with their constants.
+    const literal = (text: string) => new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+'));
+    const w = CII_STRIKE_SEVERITY_WEIGHTS;
+    for (const [pattern, what] of [
+      [literal(`P = sum of x_d * 0.5^(age_d / ${CII_STRIKE_HALF_LIFE_DAYS})`), 'the strike-pressure decay'],
+      [literal(`min(${CII_STRIKE_FLOOR_CAP}, ${CII_STRIKE_FLOOR_BASE} + ${CII_STRIKE_FLOOR_PER_DOUBLING} * log2(P / ${CII_STRIKE_FLOOR_MIN_PRESSURE}))`), 'the strike floor'],
+      [literal(`strikeBoost = min(${CII_STRIKE_BOOST_CAP}, ${CII_STRIKE_BOOST_PER_DOUBLING} * log2(1 + P / ${CII_STRIKE_BOOST_PIVOT}))`), 'the strike boost'],
+      [literal(`${CII_STRIKE_GDELT_SCALE} * max(0, strikes / (articles + ${CII_STRIKE_GDELT_SMOOTHING}) - ${CII_STRIKE_GDELT_NOISE_FLOOR})`), 'the GDELT strike intensity'],
+      [literal(`\`critical ${w.critical}\`, \`high ${w.high}\`, \`elevated ${w.elevated}\`, \`moderate ${w.moderate}\``), 'the severity weights'],
+      [literal(`(at least ${CII_STRIKE_GDELT_MIN_MEASURED_DAYS}), coverage is over the floor on at least ${CII_STRIKE_GDELT_SUSTAINED_DAYS} in 7`), 'the GDELT campaign rule'],
+      [literal(`(\`P\` = 20), about ${Math.round(strikePressureFloor(20))}`), 'the strike-floor worked example'],
+      [literal(`cap of ${CII_STRIKE_FLOOR_CAP} is reached at \`P\` of about ${Math.round(CII_STRIKE_FLOOR_MIN_PRESSURE * 2 ** ((CII_STRIKE_FLOOR_CAP - CII_STRIKE_FLOOR_BASE) / CII_STRIKE_FLOOR_PER_DOUBLING))}`), 'the strike-floor cap'],
+      [literal(`over the last ${CII_STRIKE_WINDOW_DAYS} days`), 'the strike window'],
+      [/min\(50, iranStrikes \* 3 \+ highSeverityStrikes \* 5\)` term that sat inside\s+Conflict through v11/, 'the replaced 72h term'],
+    ] as const) {
+      assert.match(methodologyDoc, pattern, `methodology doc must disclose ${what}.`);
+    }
     assert.match(
       overviewDoc,
       /Tier-1 membership is curated rather than algorithmic/i,

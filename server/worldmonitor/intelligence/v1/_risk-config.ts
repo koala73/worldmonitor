@@ -17,7 +17,9 @@
 //      public-facing section so downstream users of the proto API see why score
 //      values or movement semantics may shift between deploys.
 //
-// Last reviewed: 2026-10-19 (v11 — real country borders replace bounding boxes for geo
+// Last reviewed: 2026-10-19 (v12 — strike pressure: strikes on a country, from the
+// strike feed and GDELT worldwide, decay over days into a floor and a boost on the
+// composite, replacing the 72h strikeBoost in Conflict; v11 — real country borders replace bounding boxes for geo
 // events, and a sustained GDELT level joins escalation (cap 50 -> 70); v10 — GDELT
 // escalation stands in for ACLED in Conflict
 // and Unrest while ACLED is dark; v9 — news credits every country a headline names;
@@ -33,7 +35,7 @@
  * Bump on coefficient or scoring-contract changes so API clients can detect
  * score or movement-semantics drift.
  */
-export const CII_FORMULA_VERSION = 'v11';
+export const CII_FORMULA_VERSION = 'v12';
 
 /**
  * Conflict event activity log curve used before fatality/civilian/strike boosts.
@@ -110,6 +112,70 @@ export const CII_GDELT_LEVEL_CONFLICT_FLOOR = 0.14;
 export const CII_GDELT_LEVEL_CONFLICT_SATURATION = 0.40;
 export const CII_GDELT_LEVEL_PROTEST_FLOOR = 0.02;
 export const CII_GDELT_LEVEL_PROTEST_SATURATION = 0.08;
+
+/**
+ * Strike pressure (v12). Owner decision, 2026-10-19: a country being struck
+ * should rise, keep rising while the attacks continue, and decay once they
+ * stop, worldwide. Each country gets a daily strike intensity x_d, and
+ *
+ *   P = sum over the last WINDOW_DAYS of x_d * 0.5^(age_d / HALF_LIFE_DAYS)
+ *
+ * with age_d measured from the middle of day d (today's strikes weigh in full).
+ * A country hit at a steady rate r converges on P = r / (1 - 0.5^(1/3)) ~ 4.85 r;
+ * once the strikes stop P halves every three days and is under 4% of its peak
+ * after two weeks.
+ *
+ * x_d = max(confirmed_d, gdelt_d), never the sum (one strike, two reporters):
+ *  - confirmed_d, from the Middle East strike feed (conflict:strike-pressure:v1,
+ *    and the 72h conflict:iran-events:v1 window it is built from), is each
+ *    incident weighted by severity (SEVERITY_WEIGHTS).
+ *  - gdelt_d, worldwide (gdelt:bulk:country-events:v1, only while ACLED is
+ *    dark), is CAMEO 194/195 coverage of strikes on the country as a share of
+ *    its coverage that day: GDELT_SCALE * max(0, s / (a + GDELT_SMOOTHING) -
+ *    GDELT_NOISE_FLOOR). Absolute counts are media-volume biased (Oct 5-18
+ *    2026: the US 12.9 strike-coded articles a day, Ukraine 11.1); the share
+ *    is not (US 0.03%, Ukraine 1.2%, Saudi Arabia 5.5%). GDELT alone counts
+ *    only for a campaign: a day counts when, of the measured days among the
+ *    seven ending on it (at least GDELT_MIN_MEASURED_DAYS), the share over the
+ *    floor is at least GDELT_SUSTAINED_DAYS in 7. A one-day missile-test spike
+ *    (North Korea, Oct 12: 8 of 51 articles) is not a strike on the country,
+ *    and a campaign keeps decaying after it ends. GDELT_SCALE
+ *    puts both sources on one scale: Saudi Arabia's Oct 16-18 coverage (3.0%
+ *    on average) matches its confirmed Oct 16-18 tally (5-10 a day).
+ *
+ * P enters the composite twice, calibrated on replayed Sep 18 - Oct 19 2026
+ * exports and the live feed (docs/methodology/cii-risk-scores.mdx):
+ *  - a floor, like the advisory and UCDP floors:
+ *      P < FLOOR_MIN_PRESSURE ? 0 : min(FLOOR_CAP, FLOOR_BASE + FLOOR_PER_DOUBLING * log2(P / FLOOR_MIN_PRESSURE))
+ *  - a boost on the blended score, so a country already above every floor
+ *    (Yemen) still rises when it is hit harder:
+ *      min(BOOST_CAP, BOOST_PER_DOUBLING * log2(1 + P / BOOST_PIVOT))
+ * It replaces the 72h strikeBoost that sat inside Conflict (v4-v11): the same
+ * feed counted there with no memory, and only through Conflict's 18% weight.
+ */
+export const CII_STRIKE_HALF_LIFE_DAYS = 3;
+export const CII_STRIKE_WINDOW_DAYS = 21;
+export const CII_STRIKE_SEVERITY_WEIGHTS = { critical: 4, high: 2, elevated: 1, moderate: 0.5 } as const;
+/**
+ * The confirmed tally's days are dated and decay on every read, so a stale
+ * tally can only miss new strikes, never hold old pressure up: a relay outage
+ * of a few hours must not drop three weeks of history (that would read unknown
+ * as calm). Past this age (a relay dead for days; health alarms after 45
+ * minutes) the tally is ignored and GDELT alone carries every country.
+ */
+export const CII_STRIKE_CONFIRMED_MAX_AGE_MS = 72 * 60 * 60 * 1000;
+export const CII_STRIKE_GDELT_SMOOTHING = 50;
+export const CII_STRIKE_GDELT_NOISE_FLOOR = 0.005;
+export const CII_STRIKE_GDELT_SCALE = 300;
+export const CII_STRIKE_GDELT_SUSTAINED_DAYS = 4;
+export const CII_STRIKE_GDELT_MIN_MEASURED_DAYS = 3;
+export const CII_STRIKE_FLOOR_MIN_PRESSURE = 5;
+export const CII_STRIKE_FLOOR_BASE = 40;
+export const CII_STRIKE_FLOOR_PER_DOUBLING = 8;
+export const CII_STRIKE_FLOOR_CAP = 70;
+export const CII_STRIKE_BOOST_PIVOT = 5;
+export const CII_STRIKE_BOOST_PER_DOUBLING = 2.5;
+export const CII_STRIKE_BOOST_CAP = 10;
 
 /**
  * Strategic-risk top-N positional decay step. Weight for position `i` (0-based)

@@ -1459,7 +1459,7 @@ describe('dyad history repair', async () => {
       _repairCountryEventsHistory: async ({ snapshot, signal, deadlineAt }) => {
         seen = { cursor: snapshot.cursor, signal, deadlineAt };
         return {
-          days: { '2026-07-29': { cohorts: 96, countries: { SA: [40, 12, 3] } } },
+          days: { '2026-07-29': { cohorts: 96, strikeCohorts: 96, countries: { SA: [40, 12, 3, 5] } } },
           outcomes: { repaired: 1 },
           failures: {},
         };
@@ -1487,10 +1487,11 @@ describe('dyad history repair', async () => {
   it('repairs a country-events day from the 96 source exports', async () => {
     const source = repairSource(['2026-09-27']);
     // Today already holds every cohort through the cursor, so the past day is next.
-    const snapshot = { cursor: live.cursor, days: { '2026-09-28': { cohorts: 70, countries: {} } } };
+    const snapshot = { cursor: live.cursor, days: { '2026-09-28': { cohorts: 70, strikeCohorts: 70, countries: {} } } };
     const result = await repairCountryEventsHistory({ snapshot, nowMs: repairNow, fetchImpl: source.fetchImpl, maxDays: 1 });
     assert.deepEqual(Object.keys(result.days), ['2026-09-27']);
     assert.equal(result.days['2026-09-27'].cohorts, 96);
+    assert.equal(result.days['2026-09-27'].strikeCohorts, 96, 'a rebuilt day carries the strike counter');
     assert.deepEqual(result.outcomes, { repaired: 1 });
   });
 

@@ -239,9 +239,9 @@ describe('isAppOwnedRedisKey (#7674)', () => {
   it('names the route-owned exceptions and leaves the seeder fleet raw', () => {
     assert.equal(isAppOwnedRedisKey('temporal:anomalies:v1'), true);
     assert.equal(isAppOwnedRedisKey('seed-meta:temporal:anomalies'), true);
-    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:v11'), true);
-    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:stale:v11'), true);
-    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:rejected:v11'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:v12'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:stale:v12'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:rejected:v12'), true);
     assert.equal(isAppOwnedRedisKey('seed-meta:intelligence:risk-scores'), true);
     assert.equal(isAppOwnedRedisKey('risk:scores:history:IR'), true);
     assert.equal(isAppOwnedRedisKey('risk:scores:history:US'), true);

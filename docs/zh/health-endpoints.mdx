@@ -111,7 +111,7 @@ consumer-prices-core 服务会将每个市场的抓取覆盖率快照写入 `con
 
 `riskScores` 有意比原始订阅源心跳更严格。其
 `recordCount` 是实时信号密度覆盖：CII 刷新期间存在的与评分相关的 Tier-1 冲突、新闻和网络信号系列的数量。
-冲突系列可由 ACLED 路径、UCDP 事件订阅源满足；当 ACLED 路径不返回事件时，Tier-1 国家在 `gdelt:bulk:country-events:v1` 中的实时 GDELT 快照（新鲜，且基线与当前窗口完整，或七天窗口就绪）也可满足，与 CII v11 评分器匹配。即使其升级与水平分数为 0，GDELT 快照也计入。当这些订阅源可达但安静时，`riskScores` 仍可报告
+冲突系列可由 ACLED 路径、UCDP 事件订阅源满足；当 ACLED 路径不返回事件时，Tier-1 国家在 `gdelt:bulk:country-events:v1` 中的实时 GDELT 快照（新鲜，且基线与当前窗口完整，或七天窗口就绪）也可满足，与 CII v12 评分器匹配。即使其升级与水平分数为 0，GDELT 快照也计入。当这些订阅源可达但安静时，`riskScores` 仍可报告
 `COVERAGE_PARTIAL`；底层订阅源的新鲜度由订阅源特定健康条目跟踪，这些订阅源在这些条目中发布种子元数据。
 
 `portwatchPortActivity` 也使用 `minRecordCount`。低于 174 个国家的新鲜

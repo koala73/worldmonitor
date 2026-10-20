@@ -210,7 +210,7 @@ function analysisPayloads() {
         },
       ],
     },
-    'risk:scores:sebuf:v11': {
+    'risk:scores:sebuf:v12': {
       ciiScores: [
         { region: 'IR', combinedScore: 88 },
         { region: 'TW', combinedScore: 61 },
@@ -669,7 +669,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     {
       tool: 'get_focal_points',
       params: {},
-      keys: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v11'],
+      keys: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v12'],
     },
     {
       tool: 'get_military_surge',
@@ -685,7 +685,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
       tool: 'get_alert_digest',
       params: {},
       keys: [
-        'risk:scores:sebuf:v11',
+        'risk:scores:sebuf:v12',
         'military:surges:v1',
         'cable-health-v1',
         'infra:outages:v1',
@@ -699,7 +699,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
       params: {},
       keys: [
         'news:insights:v1',
-        'risk:scores:sebuf:v11',
+        'risk:scores:sebuf:v12',
         'military:flights:v1',
         'unrest:events:v1',
         'seismology:earthquakes:v1',

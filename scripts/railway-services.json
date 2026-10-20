@@ -1759,6 +1759,7 @@
       "scripts/_gdelt-country-events.mjs",
       "scripts/_gdelt-dyad-tension.mjs",
       "scripts/shared/gdelt-tension-pairs.json",
+      "scripts/shared/iso3-to-iso2.json",
       "scripts/_html-entities.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
