@@ -3515,7 +3515,29 @@ describe('agent readiness: api-catalog + openapi build', () => {
       !JSON.stringify({ url: card.url, serverUrl: card.serverUrl }).includes('mintlify.dev'),
       'docs card endpoint fields must not point at the dead mintlify.dev host'
     );
-    assert.ok(Array.isArray(card.tools) && card.tools.length >= 1, 'docs card must list at least one tool');
+    assert.deepEqual(card.remotes, [{ type: 'streamable-http', url: WORKING }], 'docs card remotes[].url must name the facade');
+    // Under the v1 $schema the live tools/list is authoritative; the docs
+    // server is anonymous, so a copied tools[] only goes stale.
+    assert.equal(card.tools, undefined, 'docs card must not carry tools[]');
+  });
+
+  it('publishes the docs server card where card-following scanners look', () => {
+    // orank resolves a card per MCP server from ai-catalog.json entries or
+    // <server URL>/server-card, matched on remotes[].url. The Link header
+    // alone left the docs server without a card.
+    const catalog = JSON.parse(readFileSync(resolve(__dirname, '../public/.well-known/ai-catalog.json'), 'utf-8'));
+    const docsEntry = catalog.entries.find((e) => e.url === 'https://www.worldmonitor.app/.well-known/mcp/docs-server-card.json');
+    assert.ok(docsEntry, 'ai-catalog must list the docs MCP server card');
+    assert.equal(docsEntry.type, 'application/mcp-server-card+json');
+
+    const rewrites = vercelConfig.rewrites;
+    const cardIdx = rewrites.findIndex((r) => r.source === '/docs/mcp/server-card');
+    const mintlifyIdx = rewrites.findIndex((r) => r.source === '/docs/:match*');
+    assert.ok(cardIdx >= 0, 'missing /docs/mcp/server-card rewrite');
+    assert.equal(rewrites[cardIdx].destination, '/.well-known/mcp/docs-server-card.json');
+    assert.ok(cardIdx < mintlifyIdx, '/docs/mcp/server-card must precede the Mintlify /docs proxy');
+    assert.equal(getHeaderValueForSource('/docs/mcp/server-card', 'Content-Type'), 'application/json; charset=utf-8');
+    assert.equal(getHeaderValueForSource('/docs/mcp/server-card', 'Access-Control-Allow-Origin'), '*');
   });
 
   it('the api host root has its own context object', () => {
@@ -3880,10 +3902,12 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
       // WorkOS auth.md agent_auth discovery block (only `anonymous` is honest —
       // WM has no ID-JAG identity endpoint, so identity_assertion is not advertised).
       assert.ok(json.agent_auth, `agent_auth block present for ${host}`);
-      // The apex is the one host that does not serve /auth.md: Cloudflare
-      // 301s it to www (ARCHITECTURE.md §2), so the apex advertises www.
-      const skillHost = host === 'worldmonitor.app' ? 'www.worldmonitor.app' : host;
-      assert.equal(json.agent_auth.skill, `https://${skillHost}/auth.md`, `skill names a host that serves /auth.md for ${host}`);
+      // Scanners require skill == <issuer>/auth.md. The apex serves it because
+      // /auth.md is exempt from the Cloudflare apex→www 301 (ARCHITECTURE.md §2).
+      assert.equal(json.agent_auth.skill, `https://${host}/auth.md`, `skill is the issuer's /auth.md for ${host}`);
+      // auth.md v0.2 names the registration endpoint identity_endpoint; the
+      // pre-v0.2 register_uri alias stays for older readers.
+      assert.equal(json.agent_auth.identity_endpoint, `https://${host}/oauth/register`);
       assert.equal(json.agent_auth.register_uri, `https://${host}/oauth/register`);
       assert.deepEqual(json.agent_auth.identity_types_supported, ['anonymous']);
       // Only `access_token` — an api_key is user-minted (carries a user
@@ -3931,6 +3955,7 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
       assert.equal(asJson.issuer, 'https://worldmonitor.app', `AS must not reflect spoofed host ${host}`);
       assert.equal(asJson.token_endpoint, 'https://worldmonitor.app/oauth/token', `AS token_endpoint must not carry spoofed host ${host}`);
       assert.equal(asJson.agent_auth.register_uri, 'https://worldmonitor.app/oauth/register');
+      assert.equal(asJson.agent_auth.identity_endpoint, 'https://worldmonitor.app/oauth/register');
       assert.equal(asJson.agent_auth.claim_uri, 'https://worldmonitor.app/oauth/authorize', `AS claim_uri must not carry spoofed host ${host}`);
       assert.equal(asJson.agent_auth.anonymous.claim_uri, 'https://worldmonitor.app/oauth/authorize');
     }

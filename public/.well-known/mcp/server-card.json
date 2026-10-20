@@ -62,6 +62,9 @@
       "name": "get_market_data",
       "description": "Return the seeded market snapshot: equity, commodity, crypto and Gulf-market quotes, SGE physical-vs-COMEX premiums, physical-divergence regimes, sector performance with explicit valuation coverage, ETF flows and the Fear & Greed index. Quotes are flagged stale after 30 minutes. Covers the curated symbol universe only: symbols filters that snapshot and cannot look up arbitrary tickers. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. asset_class selects classes, limit caps each per-class list (default 30, 0 for no cap). Dedicated paid plans open or reuse one market panel allocation across filters; refresh with request_id starts a new one. API plans retain per-tool billing.",
       "_meta": {
+        "ui": {
+          "resourceUri": "ui://worldmonitor/market-radar-v3.html"
+        },
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "markets-economy"
       }
@@ -70,6 +73,9 @@
       "name": "get_conflict_events",
       "description": "Return the seeded conflict snapshot: active armed-conflict events (UCDP and Iran tracker) and unrest events with coordinates, fatalities and dates, plus country risk scores. UCDP data is flagged stale after 30 minutes, unrest after 2 hours. Event-level records; no narrative or forecasts. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country matches event country names and the alpha-2 code on risk scores; min_fatalities drops events below a count; limit caps each list (default 30, 0 for no cap). Dedicated paid connections reuse one panel allocation across openings and filters; refresh with request_id starts a new one; authorized panel_request reads report current usage when confirmed. API and free allowances retain per-tool billing and reject paid controls. bbox or lat/lon/radius_km limit the area, since_days the last N days; geo_filter counts rows lacking coordinates or dates.",
       "_meta": {
+        "ui": {
+          "resourceUri": "ui://worldmonitor/conflict-events-v2.html"
+        },
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "geopolitical-security"
       }
@@ -86,6 +92,9 @@
       "name": "get_news_intelligence",
       "description": "Return the seeded threat-news feed as individual items, not a written brief: AI-classified top stories, GDELT intelligence signals by topic, cross-source signals (including physical-premium regime transitions) and government security advisories. Flagged stale after 30 minutes; live window only, not a historical index. Each top story carries corroboration metadata: uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, clustered headlines, credibilityScore (0-100 source reliability, distinct from importance), corroboration, and the publishers roster; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. topic, category, country, alerts_only, query and min_importance narrow the lists; limit caps each (default 30, 0 = no cap). Paid News Intelligence panels charge one opening allocation; repeat opens and filters reuse it.",
       "_meta": {
+        "ui": {
+          "resourceUri": "ui://worldmonitor/news-intelligence-v3.html"
+        },
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "geopolitical-security"
       }
@@ -94,6 +103,9 @@
       "name": "get_natural_disasters",
       "description": "Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Pro panels charge one allocation per opening; repeated views reuse the admission. Snapshot reuse is bounded by source clocks and known health, not complete provider coverage. An oversized response simplifies or omits storm geometry and regional detail, with explicit transportCoverage counts; a jmespath projection that fits returns the original detail. bbox or lat/lon/radius_km limit the area, since_days the last N days; geo_filter counts rows lacking coordinates or dates.",
       "_meta": {
+        "ui": {
+          "resourceUri": "ui://worldmonitor/natural-disasters-v3.html"
+        },
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "environment-science"
       }
@@ -158,6 +170,9 @@
       "name": "get_prediction_markets",
       "description": "Return seeded prediction-market contracts from multiple venues with current probabilities, grouped into three buckets: geopolitical (including elections), tech (AI, crypto, science) and finance (economics, plus the untagged fallback for non-geopolitical records). Flagged stale when the seed is older than 90 minutes. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. query matches titles case-insensitively; limit caps each bucket (default 30, 0 for no cap). Dedicated paid connections reuse one panel allocation across openings and filters; refresh with a request_id starts a new one and the same ID retries it. API allowances retain per-tool billing. change24h/change7d are percentage-point moves (7d: Polymarket only); sort=move_24h|move_7d ranks by absolute move.",
       "_meta": {
+        "ui": {
+          "resourceUri": "ui://worldmonitor/prediction-markets-v3.html"
+        },
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "markets-economy"
       }
@@ -262,6 +277,9 @@
       "name": "get_chokepoint_status",
       "description": "Return the seeded maritime chokepoint snapshot: per-chokepoint vessel transit counts at 10-minute cadence, rolling transit summaries, a port-country coverage index, oil and gas flow aggregates, baselines and the canonical 13-chokepoint registry (Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama and others). Transit data is flagged stale after 30 minutes. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. chokepoint narrows transit-summaries, chokepoint_transits, chokepoint-baselines and chokepoint-flows by case-insensitive substring (\"hormuz\"), leaving ref and _countries unfiltered; dataset selects sub-datasets; limit caps the baselines list and _countries index (default 30, 0 for no cap) while keyed maps are not capped. Paid openings use one chokepoint panel allocation; repeat views reuse it, refresh with a request_id UUID spends a new one and the same UUID retries it. API and free accounts retain per-tool accounting.",
       "_meta": {
+        "ui": {
+          "resourceUri": "ui://worldmonitor/chokepoint-monitor-v2.html"
+        },
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "geopolitical-security"
       }
@@ -294,6 +312,9 @@
       "name": "get_forecast_predictions",
       "description": "Return the current published forecast list from the seeded cache (paid panel openings also attach per-domain reliability and recent familyOutcomes, not the full accuracy scorecard): each forecast with id, domain, region, probability, scenario text and, for API readers, its case file. Flagged stale after 90 minutes; AI assessments, not guarantees. Rows include firstSeenAt, firstSeenProbability, change24h and change7d. include_history adds up to 30 days of probability points and caps the list at 10. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. domain filters exactly (conflict, market, supply_chain, political, military, cyber, infrastructure), region by case-insensitive substring, limit caps the list (default 30, 0 for no cap). Paid interactive openings return the compact list with case files stripped (hasCaseFile marks them) plus a signed panelRequest; repeat openings reuse the five-minute admission and refresh needs a fresh request_id.",
       "_meta": {
+        "ui": {
+          "resourceUri": "ui://worldmonitor/forecasts-v4.html"
+        },
         "worldmonitor/access": "free-account",
         "worldmonitor/category": "ai-intelligence"
       }
@@ -374,6 +395,9 @@
       "name": "get_world_brief",
       "description": "Return one written world brief, the hourly AI summary of top headlines rather than a story feed, from the precomputed news:insights:v1 snapshot. The insights seeder applies corroboration, citation and hallucination gates before publishing; this reads that accepted result with no request-time LLM call, so the same snapshot is returned until the seeder republishes. Each headline pairs with an index-aligned topStories entry carrying its corroboration evidence (uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, outlet names, the publishers roster); corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. Past the 60-minute freshness window the last-known-good snapshot is served with stale:true and ageMinutes, capped at 3 h old; older, absent or broken snapshots are reported unavailable. Requires a paid plan; one downstream read, weight 2 on API plans. Paid MCP openings consume one request allocation that loaded reuse shares.",
       "_meta": {
+        "ui": {
+          "resourceUri": "ui://worldmonitor/world-brief-v2.html"
+        },
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "ai-intelligence"
       }
@@ -382,6 +406,9 @@
       "name": "get_country_brief",
       "description": "Return a text-only AI assessment of one country with sources, groundingStories and digestCoverage. The default shares the server-accepted assessment, citations and original generation time with the website. Explicit framework or allow_stale requests can use personalized digest context. groundingStories and digestCoverage describe the separately read English digest, not the identity of the accepted assessment. Each story carries corroborationCount, corroboration.state (single-publisher, tier4-only, corroborated, unknown; coverage, not accuracy), mentionCount and storyPhase. Stale local digest context is withheld unless allow_stale=true. No per-section datasets or interactive view. Requires a paid plan; two downstream fetches (digest and brief), weight 3 on API plans, 5-25 s. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one but does not force AI generation. Read-only.",
       "_meta": {
+        "ui": {
+          "resourceUri": "ui://worldmonitor/country-brief-v3.html"
+        },
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"
       }
@@ -390,6 +417,9 @@
       "name": "get_country_risk",
       "description": "Return the structured risk snapshot for one country: the Composite Instability Index at cii.combinedScore (0-100) with its four components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive and sanctionsCount. Index scores, advisory and sanctions fields only, read from the seeded risk cache in under a second: no narrative, no LLM, and no per-indicator resilience breakdown. upstreamUnavailable=true means a required upstream read failed and the whole response was withheld: zeroed fields are unknown, not calm. Requires a paid plan; one downstream fetch, weight 2 on API plans. On a dedicated Pro allowance a call shares the same-country panel allocation; refresh with request_id starts a new one. Read-only; idempotent within a cache window. history_days (1-90) adds ciiHistory: one UTC daily close per day, the change over the span, and methodology breaks.",
       "_meta": {
+        "ui": {
+          "resourceUri": "ui://worldmonitor/country-risk-v3.html"
+        },
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"
       }
@@ -702,6 +732,9 @@
       "name": "open_news_dashboard",
       "description": "Open the embedded WorldMonitor news and map dashboard and return the full feed digest (categories with items, publication dates, source provenance, coordinates, feedStatuses, coverage) plus requestedView. The view arguments (query, source, category, country, time_range, renderer, map_layers, map center and zoom) configure the rendered instance; requestedView echoes what was requested, not an already-open map's applied state, and empty arguments open the default dashboard. Requires a paid plan; weight 2 on API plans. On dedicated paid plans one dashboard request covers the news load and bounded map snapshot loads, repeat opens reuse it for at least five minutes, and refresh with request_id starts one new request. Read-only; up to 1 MB of digest.",
       "_meta": {
+        "ui": {
+          "resourceUri": "ui://worldmonitor/news-dashboard-v3.html"
+        },
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "meta"
       }
@@ -758,6 +791,9 @@
       "name": "open_country_brief",
       "description": "Open the interactive WorldMonitor country brief for one country and return {countryCode, topic, panelRequest}; the host renders the embedded view, which then loads its assessment, source evidence, resilience, security, economy, resources and society sections progressively over the authenticated connection. The tool itself returns only the resolved country and topic: no assessment text, scores or section data reach the caller. topic (default overview) selects which section group the view opens on. Requires a paid plan; weight 2 on API plans. On dedicated paid plans one country request covers the view's internal section loads, same-country opens reuse it for five minutes, and refresh with request_id starts a new request. Read-only.",
       "_meta": {
+        "ui": {
+          "resourceUri": "ui://worldmonitor/country-view-v3.html"
+        },
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"
       }

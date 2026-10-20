@@ -969,6 +969,7 @@ const APEX_SERVED_PATHS = [
   /^\/\.well-known\//,
   /^\/robots\.txt$/,
   /^\/security\.txt$/,
+  /^\/auth\.md$/,
 ];
 
 function safePushClickUrl(raw, userId) {

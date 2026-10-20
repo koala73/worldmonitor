@@ -533,6 +533,26 @@ async function walkHost(host) {
     fail(host, 'oauth metadata', `not served: ${formatSafeError(err)}`);
     return;
   }
+  // agent_auth.skill must equal <issuer>/auth.md and be served there without
+  // a redirect. On the apex that depends on the /auth.md exemption in the
+  // Cloudflare apex→www rule, which no in-process test can see.
+  checks += 1;
+  const skill = meta.agent_auth?.skill;
+  if (skill !== `${meta.issuer}/auth.md`) {
+    fail(host, 'agent_auth skill', `expected ${meta.issuer}/auth.md, got ${safeUrlLabel(skill)}`);
+  } else {
+    try {
+      const { res } = await timedFetch(skill, { headers: { Accept: 'text/markdown' } }, { group: 'canonical' });
+      if (res.status !== 200 || !/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
+        fail(host, 'agent_auth skill', `expected 200 markdown, got ${res.status} ${res.headers.get('content-type')} → ${safeUrlLabel(res.headers.get('location'))}`);
+      } else {
+        ok(host, 'agent_auth skill', '200 markdown on the issuer origin');
+      }
+    } catch (err) {
+      throwIfRunBudgetExhausted(err);
+      fail(host, 'agent_auth skill', `HANG/transport error: ${formatSafeError(err)}`);
+    }
+  }
   for (const key of ['registration_endpoint', 'token_endpoint']) {
     checks += 1;
     const endpoint = meta[key];
