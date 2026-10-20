@@ -13,4 +13,5 @@ await runBundle('health', [
   { label: 'Border-Frontex', script: 'seed-border-frontex.mjs', seedMetaKey: 'displacement:border-frontex', canonicalKey: 'displacement:border-frontex:v1', completionMetaKey: 'seed-completion:displacement:border-frontex', intervalMs: DAY, timeoutMs: 180_000 },
   { label: 'Border-Panama', script: 'seed-border-panama.mjs', seedMetaKey: 'displacement:border-panama', canonicalKey: 'displacement:border-panama:v1', completionMetaKey: 'seed-completion:displacement:border-panama', intervalMs: DAY, timeoutMs: 180_000 },
   { label: 'DTM-Displacement', script: 'seed-dtm-displacement.mjs', seedMetaKey: 'displacement:dtm', canonicalKey: 'displacement:dtm:v1', completionMetaKey: 'seed-completion:displacement:dtm', intervalMs: DAY, timeoutMs: 180_000 },
+  { label: 'IDMC-IDU-Displacement', script: 'seed-idmc-idu-displacement.mjs', seedMetaKey: 'displacement:idmc-idu', canonicalKey: 'displacement:idmc-idu:v1', completionMetaKey: 'seed-completion:displacement:idmc-idu', intervalMs: DAY, timeoutMs: 300_000 },
 ]);

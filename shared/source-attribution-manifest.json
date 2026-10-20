@@ -2999,6 +2999,9 @@
           "path": "scripts/benchmark-resilience-external.mjs"
         },
         {
+          "path": "scripts/seed-idmc-idu-displacement.mjs"
+        },
+        {
           "path": "scripts/seed-resilience-static.mjs"
         }
       ]
