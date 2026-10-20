@@ -2,7 +2,7 @@
 
 > Machine-readable entry point for the World Monitor developer surface — the MCP server, REST API, CLI, SDKs, and agent skills that expose the platform's real-time global-intelligence tools as structured JSON.
 
-World Monitor's data is available to agents and applications through interchangeable surfaces that share one auth model and one tool inventory: an MCP server (Streamable HTTP), a versioned REST API, a zero-dependency CLI, official SDKs (Python, Ruby, Go, JavaScript), and published agent skills. Every surface returns source-attributed structured JSON and supports server-side JMESPath projection to cut response size 80–95%.
+World Monitor's data is available to agents and applications through interchangeable surfaces that share one auth model and one tool inventory: an MCP server (Streamable HTTP), a versioned REST API, a zero-dependency CLI, official SDKs (Python, Ruby, Go, JavaScript, Rust), and published agent skills. Every surface returns source-attributed structured JSON and supports server-side JMESPath projection to cut response size 80–95%.
 
 This is the API-section companion to the site-wide briefing at https://www.worldmonitor.app/llms.txt and the human documentation at https://www.worldmonitor.app/docs/llms.txt.
 
@@ -13,7 +13,7 @@ This is the API-section companion to the site-wide briefing at https://www.world
 - **REST API.** Base `https://api.worldmonitor.app`. API key required. Send the `X-WorldMonitor-Key` header. OpenAPI 3.1 spec: https://www.worldmonitor.app/openapi.yaml. JSON: https://www.worldmonitor.app/openapi.json. Machine-readable API catalog (RFC 9727): https://worldmonitor.app/.well-known/api-catalog
 - **REST versioning and deprecation policy:** https://www.worldmonitor.app/api-versioning.md — compatibility guarantees, minimum notice periods, and `Deprecation` / `Sunset` / `Link rel="deprecation"` semantics (HTML: https://www.worldmonitor.app/docs/api-versioning)
 - **CLI:** `npx worldmonitor tools` lists every tool with no key; `npm install -g worldmonitor` installs the `worldmonitor` command — a zero-dependency, MCP-first client for the tools and REST API above. https://www.npmjs.com/package/worldmonitor
-- **SDKs:** official zero-dependency client libraries mirroring the CLI — Python `pip install worldmonitor-sdk` (https://pypi.org/project/worldmonitor-sdk/), Ruby `gem install worldmonitor` (https://rubygems.org/gems/worldmonitor), Go `go get github.com/koala73/worldmonitor/sdk/go` (https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go), JavaScript (npm `worldmonitor`). Guide: https://www.worldmonitor.app/docs/sdks
+- **SDKs:** official client libraries using the same MCP tools as the CLI — Python `pip install worldmonitor-sdk` (https://pypi.org/project/worldmonitor-sdk/), Ruby `gem install worldmonitor` (https://rubygems.org/gems/worldmonitor), Go `go get github.com/koala73/worldmonitor/sdk/go` (https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go), JavaScript (npm `worldmonitor`), Rust `cargo add worldmonitor` (https://crates.io/crates/worldmonitor; API docs https://docs.rs/worldmonitor/0.1.0/worldmonitor/). The Rust client uses `reqwest` and `serde_json`. Guide: https://www.worldmonitor.app/docs/sdks
 - **Agent Skills:** discovery manifest at https://worldmonitor.app/.well-known/agent-skills/index.json
 - **Agent Plugin metadata.** https://www.worldmonitor.app/plugin.json describes the Agent Plugins 1.0.0 repository package.
 - **Sandbox:** https://www.worldmonitor.app/sandbox/index.json — deterministic sample responses for representative REST operations; no auth, no quota. Guide: https://www.worldmonitor.app/docs/sandbox
@@ -53,7 +53,7 @@ This is the API-section companion to the site-wide briefing at https://www.world
 - [World Monitor Developer Portal](https://www.worldmonitor.app/developers.md): Hub linking every developer resource by name
 - [World Monitor MCP Server](https://www.worldmonitor.app/mcp-server.md): MCP server endpoint, tools, and auth
 - [World Monitor OpenAPI Specification](https://www.worldmonitor.app/openapi.md): REST API OpenAPI 3.1 contract (openapi.yaml / openapi.json)
-- [World Monitor SDKs](https://www.worldmonitor.app/sdks.md): Official Python, Ruby, Go, and JavaScript client libraries
+- [World Monitor SDKs](https://www.worldmonitor.app/sdks.md): Official Python, Ruby, Go, JavaScript, and Rust client libraries
 
 ## Optional
 

@@ -79,7 +79,7 @@ describe('Go SDK module (sdk/go → pkg.go.dev)', () => {
   });
 });
 
-describe('Rust SDK package (sdk/rust, prepared for crates.io)', () => {
+describe('Rust SDK package (sdk/rust → crates.io worldmonitor)', () => {
   const manifest = read('sdk/rust/Cargo.toml');
   const source = read('sdk/rust/src/lib.rs');
 
@@ -95,9 +95,13 @@ describe('Rust SDK package (sdk/rust, prepared for crates.io)', () => {
     assert.match(source, /worldmonitor-rust\//);
   });
 
-  it('keeps unpublished status explicit on SDK discovery pages', () => {
-    for (const path of ['sdk/rust/README.md', 'docs/sdks.mdx', 'public/sdks.md']) {
-      assert.match(read(path), /not yet published/i, path);
+  it('links the published Rust crate and API docs from SDK discovery pages', () => {
+    for (const path of ['docs/sdks.mdx', 'public/sdks.md', 'public/llms.txt', 'public/api/llms.txt']) {
+      const content = read(path);
+      assert.match(content, /https:\/\/crates\.io\/crates\/worldmonitor/, path);
+      assert.match(content, /https:\/\/docs\.rs\/worldmonitor\/0\.1\.0\/worldmonitor\//, path);
+      assert.match(content, /cargo add worldmonitor/, path);
+      assert.doesNotMatch(content, /not yet published|Rust SDK preparation/i, path);
     }
   });
 
