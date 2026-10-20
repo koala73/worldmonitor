@@ -10,6 +10,9 @@ set -eu
 
 RUNTIME=/opt/worldmonitor-runtime
 
+# Leave the copy before deleting it; node cannot start in a removed directory.
+cd /
+
 rm -rf "$RUNTIME"
 mkdir -p "$RUNTIME"
 tar -C /src --exclude=./.git --exclude='*/node_modules' --exclude=./node_modules \

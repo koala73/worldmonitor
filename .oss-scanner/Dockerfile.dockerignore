@@ -6,10 +6,13 @@
 **/node_modules
 dist
 src-tauri/target
-src-tauri/sidecar/node
+src-tauri/sidecar/node/*
+!src-tauri/sidecar/node/.gitkeep
 .worktrees
 **/.env*
 !**/.env.example
+# Tracked; public build-time values that build:pro reads.
+!pro-test/.env.production
 **/*.key
 **/*.pem
 **/secrets

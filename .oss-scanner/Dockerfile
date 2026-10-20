@@ -11,7 +11,13 @@
 # Layout:       see .oss-scanner/threat_model.md ("How to exercise it").
 # =============================================================================
 
-# node:24-bookworm (multi-arch index), pinned per tests/ci-workflow-coverage.test.mts.
+# Base images are pinned to multi-arch index digests, as
+# tests/ci-workflow-coverage.test.mts requires.
+# rust:1-bookworm (Rust 1.99.1) supplies the toolchain, so no installer script
+# is fetched and run unverified.
+FROM rust:1-bookworm@sha256:e12566d5abc17a0da741628782cdb504b68b8961f5bfcf677936bf3e8b32de29 AS rust
+
+# node:24-bookworm
 FROM node:24-bookworm@sha256:14078204b6bb268c107ceff6d3c43f45a888105e5c2b18b14c32b3409d93a1b0
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -29,8 +35,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libdbus-1-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable \
-    && rustc --version
+COPY --from=rust /usr/local/cargo /usr/local/cargo
+COPY --from=rust /usr/local/rustup /usr/local/rustup
+RUN rustc --version && cargo --version
 
 COPY . /src
 WORKDIR /src

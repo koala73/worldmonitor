@@ -110,7 +110,8 @@ Redis, Convex and upstream fetches.
 - Convex functions (auth, billing, API keys) under `convex-test`:
   `npm run test:convex`.
 - DOM-level rendering tests: `npm run test:dom`.
-- Run the API locally. The server rejects every request unless
+- Run the API locally. Apart from the unauthenticated liveness route
+  `/api/sidecar-health`, the server rejects every request unless
   `LOCAL_API_TOKEN` is set and sent back in `x-worldmonitor-local-token`:
 
   ```sh
@@ -119,11 +120,14 @@ Redis, Convex and upstream fetches.
     LOCAL_API_RESOURCE_DIR=/opt/worldmonitor-runtime \
     node src-tauri/sidecar/local-api-server.mjs &
   curl -H "x-worldmonitor-local-token: $LOCAL_API_TOKEN" \
-    'http://127.0.0.1:46123/api/rss-proxy?url=https://feeds.bbci.co.uk/news/world/rss.xml'
+    http://127.0.0.1:46123/api/local-status
   ```
 
-  Handlers that need Redis or upstream data return degraded responses
-  offline; auth, validation, CORS and routing logic still run. The runtime
+  Without the header, the server answers 401. Handlers that need Redis or
+  upstream data return degraded responses offline. Auth, validation, CORS and
+  routing logic still run. With no DNS, the SSRF guard rejects every outbound
+  feed URL with 403 `Could not resolve hostname`. Exercise fetch paths through
+  the tests, which stub `fetch` and DNS. The runtime
   copy holds bundles, which inline the helpers they import. After patching
   `/src`, run `sh /src/.oss-scanner/build-runtime.sh` to recreate the copy
   from source, then restart the server.
