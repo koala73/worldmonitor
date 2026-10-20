@@ -65,6 +65,30 @@ describe('demographics capability country UI registration (#6437)', () => {
     }
   });
 
+  it('does not report a failure from a read that an access re-sync superseded', async () => {
+    // syncCountryPremiumSectionsAccess starts a new read without aborting the
+    // old one. The new read owns the section; the old one failing afterwards
+    // is not a load failure to log or send to Sentry.
+    const harness = await createCountryDeepDivePanelHarness({ premiumAccess: true, demographicsMode: 'deferred' });
+    try {
+      const panel = harness.createPanel();
+      panel.show('Germany', 'DE', null, {});
+      await waitFor(() => harness.getPendingDemographics().length === 1);
+      panel.syncCountryPremiumSectionsAccess(true);
+      await waitFor(() => harness.getPendingDemographics().length === 2);
+
+      harness.rejectDemographics(0);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      assert.equal(harness.getSentryExceptions().length, 0);
+
+      harness.rejectDemographics(1);
+      await waitFor(() => harness.getSentryExceptions().length === 1);
+      panel.close();
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it('ships every demographics label in every supported locale', () => {
     const required = [
       'title', 'help', 'loading', 'unavailable', 'proLocked', 'notAvailable',

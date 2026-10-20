@@ -3600,9 +3600,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         t,
       ));
     } catch (error) {
-      console.warn('[CountryDeepDivePanel] demographics capability load failed', error);
-      const aborted = (error as { name?: string })?.name === 'AbortError' || signal.aborted;
+      const aborted = (error as { name?: string })?.name === 'AbortError' || signal.aborted || !stillCurrent();
       if (!aborted) {
+        console.warn('[CountryDeepDivePanel] demographics capability load failed', error);
         this.captureCountryDeepDiveLoadFailure(error, code, {
           message: 'Demographics capability load failed',
           widget: 'demographics-capability',
@@ -3668,9 +3668,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       if (!stillCurrent() || !this.canRequestPremium()) return;
       body.replaceChildren(renderFiveFactorScorecardSection(response, t));
     } catch (error) {
-      console.warn('[CountryDeepDivePanel] five-factor scorecard load failed', error);
       const cancelled = signal.aborted || accessSignal.aborted || !stillCurrent();
       if (!cancelled) {
+        console.warn('[CountryDeepDivePanel] five-factor scorecard load failed', error);
         this.captureCountryDeepDiveLoadFailure(error, code, {
           message: 'Five-factor scorecard load failed',
           widget: 'five-factor-scorecard',

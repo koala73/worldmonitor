@@ -8,7 +8,7 @@ canonical: "https://www.worldmonitor.app/sdks.md"
 
 Last updated: October 20, 2026
 
-World Monitor ships official client libraries in four language ecosystems so you can script country briefs, risk scores, market data, and every registered [MCP tool](https://www.worldmonitor.app/mcp-server.md) without writing an HTTP integration. All of them are **zero-dependency**, MCP-first mirrors of the [`worldmonitor` npm CLI](https://www.worldmonitor.app/docs/cli), with a small REST escape hatch for host-relative and self-hosted use.
+World Monitor ships official client libraries in five language ecosystems so you can script country briefs, risk scores, market data, and every registered [MCP tool](https://www.worldmonitor.app/mcp-server.md) without writing an HTTP integration. The clients use MCP like the [`worldmonitor` npm CLI](https://www.worldmonitor.app/docs/cli), with a small REST escape hatch for host-relative and self-hosted use.
 
 ## Official SDKs
 
@@ -18,10 +18,11 @@ World Monitor ships official client libraries in four language ecosystems so you
 | Ruby | [`worldmonitor` on RubyGems](https://rubygems.org/gems/worldmonitor) | `gem install worldmonitor` | [`sdk/ruby/`](https://github.com/koala73/worldmonitor/tree/main/sdk/ruby) |
 | Go | [`github.com/koala73/worldmonitor/sdk/go` on pkg.go.dev](https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go) | `go get github.com/koala73/worldmonitor/sdk/go` | [`sdk/go/`](https://github.com/koala73/worldmonitor/tree/main/sdk/go) |
 | JavaScript / CLI | [`worldmonitor` on npm](https://www.npmjs.com/package/worldmonitor) | `npm install worldmonitor` | [`cli/`](https://github.com/koala73/worldmonitor/tree/main/cli) |
+| Rust | [`worldmonitor` on crates.io](https://crates.io/crates/worldmonitor) | `cargo add worldmonitor` | [`sdk/rust/`](https://github.com/koala73/worldmonitor/tree/main/sdk/rust) |
 
 ## Find and verify the official packages
 
-Use the exact package names in the table. npm, PyPI, and RubyGems link to `worldmonitor.app` in their project metadata; compare those links with the source repositories listed here. The Python package is `worldmonitor-sdk`. The PyPI package named `worldmonitor` is an unrelated project.
+Use the exact package names in the table. npm, PyPI, RubyGems, and crates.io link to `worldmonitor.app` in their project metadata; compare those links with the source repositories listed here. The Python package is `worldmonitor-sdk`. The PyPI package named `worldmonitor` is an unrelated project.
 
 The Go SDK is the module `github.com/koala73/worldmonitor/sdk/go`, with package name `worldmonitor`. Go modules have no registry homepage field. Verify its module path against the official repository linked above and its product links on pkg.go.dev.
 
@@ -31,18 +32,31 @@ The Go SDK is the module `github.com/koala73/worldmonitor/sdk/go`, with package 
 
 Go publishes versions through repository tags (`sdk/go/vX.Y.Z`) and the module proxy. A successful proxy lookup confirms release availability; pkg.go.dev search confirms search visibility. See [how pkg.go.dev adds packages](https://pkg.go.dev/about#adding-a-package).
 
-## Rust SDK preparation
+## Rust
 
-The Rust SDK in [`sdk/rust/`](https://github.com/koala73/worldmonitor/tree/main/sdk/rust) is prepared for its first crates.io release. It is not yet published. The intended crate name is `worldmonitor`. Use a local path dependency until registry installation is verified.
+The [`worldmonitor` crate](https://crates.io/crates/worldmonitor) is published on crates.io. Install it with `cargo add worldmonitor`. Read the [Rust API documentation](https://docs.rs/worldmonitor/0.1.0/worldmonitor/) for version 0.1.0.
 
-This blocking client supports public MCP listings, any MCP tool through `call_tool`, country risk, and host-relative REST requests. It uses `reqwest` with Rustls and `serde_json`. The [Rust README](https://github.com/koala73/worldmonitor/blob/main/sdk/rust/README.md) includes examples. The [release runbook](https://github.com/koala73/worldmonitor/blob/main/sdk/rust/RELEASING.md) covers account setup, the first publish, trusted publishing, and discovery checks.
+The blocking client supports public MCP listings, any MCP tool through `call_tool`, a `country_risk` helper, and host-relative REST requests. It uses `reqwest` with Rustls and `serde_json`. The Python, Ruby, Go, and JavaScript clients have no runtime dependencies.
+
+```rust
+use worldmonitor::{Client, Config};
+
+fn main() -> Result<(), worldmonitor::Error> {
+    let client = Client::new(Config::default())?;
+    let tools = client.list_tools()?;
+    println!("{tools}");
+    Ok(())
+}
+```
+
+See the [Rust README](https://github.com/koala73/worldmonitor/blob/main/sdk/rust/README.md) for tool-call examples and the [release runbook](https://github.com/koala73/worldmonitor/blob/main/sdk/rust/RELEASING.md) for maintainer instructions.
 
 ## Shared design
 
-All four clients expose the same surface with language-native naming:
+The clients share the MCP protocol and use language-native APIs:
 
 - **Any MCP tool** via `call_tool` / `CallTool` with named arguments; the result is the unwrapped JSON-RPC `result`.
-- **Curated helpers** for the highest-traffic tools: world brief, country brief/risk, markets, conflicts, cyber, news, disasters, sanctions, forecasts, maritime.
+- **Curated helpers** vary by SDK. Rust includes `country_risk`; use `call_tool` for other tools and optional arguments.
 - **Public listings** — `list_tools`, `list_prompts`, `list_resources` — need no key.
 - **Free source inventory** — `get_sources` is the sole credential-free, daily-quota-free data tool. Its anonymous path has a separate fail-closed ceiling of 10 calls/minute/IP; all other data tools are subscription-gated.
 - **REST escape hatch** — `get("/api/…")` and `health()` against `https://api.worldmonitor.app`.
@@ -60,7 +74,7 @@ client.country_risk("IR")
 client.call_tool("get_market_data", asset_class="crypto")
 ```
 
-Get an API key at https://www.worldmonitor.app/pro. The full per-language guide — Ruby, Go, and JavaScript examples included — is at https://www.worldmonitor.app/docs/sdks.
+Get an API key at https://www.worldmonitor.app/pro. The full per-language guide — Ruby, Go, JavaScript, and Rust examples included — is at https://www.worldmonitor.app/docs/sdks.
 
 ## Learn more
 
@@ -69,7 +83,8 @@ Get an API key at https://www.worldmonitor.app/pro. The full per-language guide 
 ## Important query matches
 
 - World Monitor SDK
-- World Monitor Python / Ruby / Go / JavaScript SDK
+- World Monitor Python / Ruby / Go / JavaScript / Rust SDK
 - World Monitor client library
 - pip install worldmonitor-sdk
+- cargo add worldmonitor
 - Official World Monitor API client libraries
