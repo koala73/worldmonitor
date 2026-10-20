@@ -35,6 +35,9 @@ export default class SlowConsoleReporter {
 }
 `);
 
+/**
+ * A child process isolates the deliberately failing Vitest probes from this node:test run.
+ */
 function runProbe(source) {
   writeFileSync(join(fixture, 'probe.test.mts'), source);
   const result = spawnSync(process.execPath, [
