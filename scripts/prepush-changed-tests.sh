@@ -60,12 +60,12 @@ case "$TEST_CONCURRENCY" in
     exit 2
     ;;
 esac
-case "$DOM_TEST_TIMEOUT" in
-  0 | *[!0-9]*)
-    echo "ERROR: WM_PREPUSH_DOM_TEST_TIMEOUT must be a positive integer (seconds)." >&2
-    exit 2
-    ;;
-esac
+# At least one nonzero digit: `timeout 00` is a zero duration, which GNU
+# timeout reads as no deadline at all.
+if ! [[ "$DOM_TEST_TIMEOUT" =~ ^[0-9]*[1-9][0-9]*$ ]]; then
+  echo "ERROR: WM_PREPUSH_DOM_TEST_TIMEOUT must be a positive integer (seconds)." >&2
+  exit 2
+fi
 
 mode="${1:-}"
 case "$mode" in

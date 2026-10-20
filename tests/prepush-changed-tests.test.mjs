@@ -380,6 +380,21 @@ describe('runner dispatch', () => {
     assert.equal(invocations, '');
   });
 
+  test('an all-zero DOM budget fails loudly, since `timeout 00` means no deadline', () => {
+    for (const value of ['0', '00', '000']) {
+      const { status, invocations } = runDispatch('run-dom', ['tests/dom/gate-action.test.mts'], {
+        env: { WM_PREPUSH_DOM_TEST_TIMEOUT: value },
+      });
+      assert.equal(status, 2, `WM_PREPUSH_DOM_TEST_TIMEOUT=${value}`);
+      assert.equal(invocations, '');
+    }
+    const padded = runDispatch('run-dom', ['tests/dom/gate-action.test.mts'], {
+      env: { WM_PREPUSH_DOM_TEST_TIMEOUT: '0600' },
+    });
+    assert.equal(padded.status, 0);
+    assert.equal(padded.budget, '0600');
+  });
+
   test('a changed DOM test runs the vitest project', () => {
     const { status, invocations } = runDispatch('run-dom', ['tests/dom/gate-action.test.mts']);
     assert.equal(status, 0);
