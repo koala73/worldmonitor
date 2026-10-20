@@ -8,7 +8,9 @@ import { CABLE_REGIONS } from './seed-submarine-cables.mjs';
 const BASE = 'https://www.submarinecablemap.com/api/v3';
 const args = process.argv.slice(2);
 const outPath = args.includes('--out') ? args[args.indexOf('--out') + 1] : null;
+if (args.includes('--out') && (!outPath || outPath.startsWith('--'))) throw new Error('--out requires a path');
 const minCountries = args.includes('--min-countries') ? Number(args[args.indexOf('--min-countries') + 1]) : 2;
+if (!Number.isInteger(minCountries) || minCountries < 1) throw new Error('--min-countries must be a positive integer');
 const UA = { 'User-Agent': 'Mozilla/5.0 (worldmonitor cable gap check)' };
 
 const curated = new Set(CABLE_REGIONS.flatMap((r) => r.ids));

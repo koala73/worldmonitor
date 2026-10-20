@@ -22,7 +22,7 @@ const CABLE_KEYWORDS = [
 ];
 
 /** Explicit subsea-cable work wording. */
-const CABLE_WORK_RE = /CABLE\s+(?:OPERATIONS?|LAYING|LAY|REPAIRS?|INSTALLATION|BURIAL|WORKS?)|(?:SUBMARINE|UNDERSEA|TELECOMMUNICATIONS?|FIBER\s+OPTIC)\s+CABLE|CABLE\s*SHIP/i;
+const CABLE_WORK_RE = /CABLE\s+(?:OPERATIONS?|LAYING|LAY|REPAIRS?|INSTALLATION|BURIAL|WORKS?)|(?:SUBMARINE|UNDERSEA|TELECOMMUNICATIONS?|FIBER\s+OPTIC)\s+CABLE|FIBER\s+OPTIC\s+REPAIRS?\b|CABLE\s*SHIP/i;
 
 /** Seismic survey vessels towing streamer "cables" (not subsea-cable work). */
 const SEISMIC_STREAMER_RE = /TOWING\b[^.]*?\bCABLES?\b/i;
@@ -54,15 +54,15 @@ export function extractCableShipName(text: string): string | null {
     : DEDICATED_SHIP_PATTERNS;
   for (const pattern of patterns) {
     const match = text.match(pattern);
-    const name = match?.[1]?.split(/\n|,/)[0]?.trim().replace(/\s+/g, ' ');
+    const name = match?.[1]?.split(/\n|,|\b(?:ON\s+STATION|REPAIRING|LAYING|WORKING|COMMENCED)\b/i)[0]?.trim().replace(/\s+/g, ' ');
     if (name && name.length > 2 && !/^(THE|AND|FOR|WITH)$/i.test(name)) return name;
   }
   return null;
 }
 
-/** True when a notice issued at `issuedAtMs` is recent enough to describe current activity. Undated notices are stale. */
+/** True when a notice is recent enough for current activity, allowing five minutes of clock skew. Undated notices are stale. */
 export function isFreshNotice(issuedAtMs: number, nowMs: number = Date.now(), maxAgeDays: number = NGA_CABLE_NOTICE_MAX_AGE_DAYS): boolean {
   if (!Number.isFinite(issuedAtMs) || issuedAtMs <= 0) return false;
   const ageMs = nowMs - issuedAtMs;
-  return ageMs <= maxAgeDays * 86_400_000;
+  return ageMs >= -5 * 60_000 && ageMs <= maxAgeDays * 86_400_000;
 }
