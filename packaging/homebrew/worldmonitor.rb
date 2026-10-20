@@ -7,36 +7,20 @@ class Worldmonitor < Formula
 
   depends_on "node"
 
+  allow_network_access! :test
+
   def install
     system "npm", "install", *std_npm_args
     bin.install_symlink libexec.glob("bin/*")
   end
 
   test do
-    require "socket"
-
     assert_match version.to_s, shell_output("#{bin}/worldmonitor --version")
     assert_match version.to_s, shell_output("#{bin}/wm --version")
 
-    server = TCPServer.new("127.0.0.1", 0)
-    port = server.addr[1]
-    worker = Thread.new do
-      socket = server.accept
-      path = socket.gets.split[1]
-      socket.each_line do |line|
-        break if line == "\r\n"
-      end
-      body = JSON.generate({ "path" => path })
-      headers = ["HTTP/1.1 200 OK", "Content-Type: application/json",
-                 "Content-Length: #{body.bytesize}", "Connection: close", "", ""].join("\r\n")
-      socket.write headers + body
-      socket.close
-    end
-
-    output = shell_output("#{bin}/worldmonitor get /api/example --limit 3 --base-url http://127.0.0.1:#{port}")
-    assert_equal "/api/example?limit=3", JSON.parse(output).fetch("path")
-  ensure
-    worker&.kill
-    server&.close
+    output = shell_output("#{bin}/worldmonitor call get_sources --view summary --timeout 15000")
+    result = JSON.parse(output).fetch("structuredContent")
+    assert_equal "summary", result.fetch("view")
+    assert_operator result.fetch("summary").fetch("providerCount"), :>, 0
   end
 end
