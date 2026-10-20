@@ -65,7 +65,7 @@ import type { CountryClickPayload } from './DeckGLMap';
 import type { WeatherAlert } from '@/services/weather';
 import { type IranEvent, getIranEventHexColor } from '@/services/conflict';
 import type { CrossBorderData, CrossBorderPoint, DisplacementFlow } from '@/services/displacement';
-import { createCrossBorderMarker, renderCrossBorderDetails } from './cross-border-marker';
+import { createCrossBorderMarker, crossBorderMarkerOffsets, renderCrossBorderDetails } from './cross-border-marker';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { SatellitePosition } from '@/services/satellites';
@@ -235,6 +235,7 @@ interface DisplacementMarker extends BaseMarker {
 interface CrossBorderMarker extends BaseMarker {
   _kind: 'crossBorder';
   point: CrossBorderPoint;
+  offset: [number, number];
 }
 interface ClimateMarker extends BaseMarker {
   _kind: 'climate';
@@ -1220,6 +1221,7 @@ export class GlobeMap {
         </div>`), "legacy direct innerHTML migration"));
       el.title = `${d.sideA} vs ${d.sideB}`;
     } else if (d._kind === 'crossBorder') {
+      el.style.translate = `${d.offset[0]}px ${d.offset[1]}px`;
       el.appendChild(createCrossBorderMarker(d.point));
     } else if (d._kind === 'displacement') {
       setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:#88bbff;text-shadow:0 0 4px #88bbff88;">👥</div>`), "legacy direct innerHTML migration"));
@@ -3710,8 +3712,10 @@ export class GlobeMap {
     this.flushMarkers();
   }
   public setCrossBorderArrivals(data: CrossBorderData): void {
-    this.crossBorderMarkers = [...data.points, ...(data.deaths ?? [])].map(point => ({
-      _kind: 'crossBorder', _lat: point.lat, _lng: point.lon, point,
+    const points = [...data.points, ...(data.deaths ?? [])];
+    const offsets = crossBorderMarkerOffsets(points);
+    this.crossBorderMarkers = points.map(point => ({
+      _kind: 'crossBorder', _lat: point.lat, _lng: point.lon, point, offset: offsets.get(point)!,
     }));
     this.flushMarkers();
   }

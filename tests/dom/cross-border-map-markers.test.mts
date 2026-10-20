@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { GlobeMap } from '@/components/GlobeMap';
 import { MapContainer } from '@/components/MapContainer';
 import { MapPopup } from '@/components/MapPopup';
-import { createCrossBorderMarker, renderCrossBorderDetails } from '@/components/cross-border-marker';
+import { createCrossBorderMarker, crossBorderMarkerOffsets, renderCrossBorderDetails } from '@/components/cross-border-marker';
 import type { CrossBorderData, CrossBorderPoint } from '@/services/displacement';
 import { initTestI18n } from './helpers/i18n.mts';
 
@@ -20,6 +20,21 @@ const data: CrossBorderData = { situations: [], points: [arrival], deaths: [deat
 afterEach(() => { document.body.replaceChildren(); });
 
 describe('cross-border map markers', () => {
+  it('separates coincident hit areas while leaving other report positions unchanged', () => {
+    const third = { ...arrival, label: 'Another coincident report' };
+    const separate = { ...arrival, lat: 35 };
+    const points = [arrival, death, third];
+    const offsets = crossBorderMarkerOffsets([...points, separate]);
+    expect(offsets.get(separate)).toEqual([0, 0]);
+    for (let i = 0; i < points.length; i++) {
+      for (let j = i + 1; j < points.length; j++) {
+        const a = offsets.get(points[i]!)!;
+        const b = offsets.get(points[j]!)!;
+        expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeGreaterThanOrEqual(51.99);
+      }
+    }
+  });
+
   it('gives arrivals and deaths distinct accessible markers with count-dependent size', () => {
     const arrivals = createCrossBorderMarker(arrival);
     const deaths = createCrossBorderMarker(death);
@@ -99,11 +114,17 @@ describe('cross-border map markers', () => {
   it('replaces globe markers on recovery and clears them on an empty update', () => {
     const globe = Object.create(GlobeMap.prototype);
     globe.flushMarkers = vi.fn();
+    globe.handleMarkerClick = vi.fn();
     globe.setCrossBorderArrivals(data);
-    expect(globe.crossBorderMarkers).toEqual([
+    expect(globe.crossBorderMarkers).toMatchObject([
       { _kind: 'crossBorder', _lat: 40, _lng: -4, point: arrival },
       { _kind: 'crossBorder', _lat: 40, _lng: -4, point: death },
     ]);
+    const elements: HTMLElement[] = globe.crossBorderMarkers.map((marker: unknown) => globe.buildMarkerElement(marker));
+    expect(elements[0]!.style.translate).not.toBe(elements[1]!.style.translate);
+    elements.forEach(element => element.querySelector('button')!.click());
+    expect(globe.handleMarkerClick).toHaveBeenNthCalledWith(1, globe.crossBorderMarkers[0], elements[0]);
+    expect(globe.handleMarkerClick).toHaveBeenNthCalledWith(2, globe.crossBorderMarkers[1], elements[1]);
     globe.setCrossBorderArrivals({ ...data, points: [], deaths: [] });
     expect(globe.crossBorderMarkers).toEqual([]);
     expect(globe.flushMarkers).toHaveBeenCalledTimes(2);

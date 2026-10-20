@@ -3,6 +3,26 @@ import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { renderPopupSourceLinks } from './map-popup-source-links';
 
+export function crossBorderMarkerOffsets(points: CrossBorderPoint[]): Map<CrossBorderPoint, [number, number]> {
+  const groups = new Map<string, CrossBorderPoint[]>();
+  for (const point of points) {
+    const key = `${point.lat},${point.lon}`;
+    const group = groups.get(key) ?? [];
+    group.push(point);
+    groups.set(key, group);
+  }
+  const offsets = new Map<CrossBorderPoint, [number, number]>();
+  for (const group of groups.values()) {
+    // Keep at least 52 px between coincident markers, including their borders.
+    const radius = group.length > 1 ? 26 / Math.sin(Math.PI / group.length) : 0;
+    group.forEach((point, index) => {
+      const angle = 2 * Math.PI * index / group.length;
+      offsets.set(point, [radius * Math.cos(angle), radius * Math.sin(angle)]);
+    });
+  }
+  return offsets;
+}
+
 export function createCrossBorderMarker(point: CrossBorderPoint): HTMLButtonElement {
   const death = point.kind === 'death';
   let color = '#b482ff';

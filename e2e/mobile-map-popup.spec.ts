@@ -66,12 +66,17 @@ for (const deviceConfig of MOBILE_DEVICE_MATRIX) {
           source: 'Controlled publisher', sourceUrl: 'https://example.com/report',
         };
         (window as HarnessWindow).__mobileMapIntegrationHarness!.setCrossBorderArrivals({
-          situations: [], points: [point], deaths: [{ ...point, kind: 'death', label: 'Controlled deaths', individuals: 17, accelerating: false, lat: 35, lon: 18 }],
+          situations: [], points: [point], deaths: [{ ...point, kind: 'death', label: 'Controlled deaths', individuals: 17, accelerating: false }],
         });
         document.body.classList.add('live-news-fullscreen-active');
         document.getElementById('app')!.classList.add('live-news-fullscreen');
       });
       const popup = page.locator('.map-popup.map-popup-sheet');
+      const arrivalBox = await page.locator('.cross-border-point').boundingBox();
+      const deathBox = await page.locator('.cross-border-death').boundingBox();
+      expect(arrivalBox).not.toBeNull();
+      expect(deathBox).not.toBeNull();
+      expect(deathBox!.x + deathBox!.width).toBeLessThanOrEqual(arrivalBox!.x);
       await page.locator('.cross-border-point').tap();
       await expect(popup).toContainText('2,500');
       await expect(popup).toContainText('2026-10-19');

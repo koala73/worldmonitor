@@ -44,7 +44,7 @@ import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor
 import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { MapPopup } from './MapPopup';
 import type { CrossBorderData, CrossBorderPoint } from '@/services/displacement';
-import { createCrossBorderMarker } from './cross-border-marker';
+import { createCrossBorderMarker, crossBorderMarkerOffsets } from './cross-border-marker';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { AcledConflictEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import {
@@ -2197,14 +2197,16 @@ export class MapComponent {
 
     try {
     if (this.state.layers.displacement) {
+      const offsets = crossBorderMarkerOffsets(this.crossBorderPoints);
       for (const point of this.crossBorderPoints) {
         if (this.isOverlayMarkerCut(point)) continue;
         const pos = projection([point.lon, point.lat]);
         if (!pos) continue;
         const marker = createCrossBorderMarker(point);
+        const [offsetX, offsetY] = offsets.get(point)!;
         marker.style.position = 'absolute';
-        marker.style.left = `${pos[0]}px`;
-        marker.style.top = `${pos[1]}px`;
+        marker.style.left = `${pos[0] + offsetX}px`;
+        marker.style.top = `${pos[1] + offsetY}px`;
         marker.style.transform = 'translate(-50%, -50%) scale(var(--marker-scale, 1))';
         marker.addEventListener('click', (event) => {
           event.stopPropagation();
