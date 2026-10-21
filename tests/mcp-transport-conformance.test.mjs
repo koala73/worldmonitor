@@ -922,6 +922,8 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
       'a cacheable 200 negotiated on Accept MUST Vary on Accept, or a shared cache serves it to an SSE GET');
     assert.match(vary, /\bLast-Event-ID\b/i,
       'the same URL branches on Last-Event-ID into authenticated replay — that must be part of the cache key too');
+    assert.match(vary, /\bOrigin\b/i, 'a cached success must not bypass Origin rejection');
+    assert.match(vary, /\bMCP-Protocol-Version\b/i, 'a cached success must not bypass version rejection');
   });
 
   it('the /mcp transport URL never emits a cacheable 200 body', async () => {

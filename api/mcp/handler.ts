@@ -656,7 +656,7 @@ function mcpAliasRpcError(id: unknown, corsHeaders: Record<string, string>): Res
 // the same URL, handing an SDK client a 200 JSON body where the transport
 // contract requires 405. Never emit a cacheable discovery 200 on these paths
 // without this Vary.
-const DISCOVERY_VARY = 'Accept, Last-Event-ID';
+const DISCOVERY_VARY = 'Accept, Last-Event-ID, Origin, MCP-Protocol-Version';
 const STATIC_ASSET_FETCH_TIMEOUT_MS = 5_000;
 const STATIC_ASSET_USER_AGENT = 'WorldMonitor-MCP/1.0 (+https://worldmonitor.app)';
 
