@@ -16,7 +16,7 @@
 
 import { createHash } from 'node:crypto';
 
-import { CHROME_UA, getRedisCredentials, loadEnvFile, redisCommand, runSeed } from './_seed-utils.mjs';
+import { CHROME_UA, MAX_SEEDED_VALUE_BYTES, getRedisCredentials, loadEnvFile, redisCommand, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { PROBABILITY_TRAIL_KEY, stampResolutionTrajectories } from './_forecast-probability-trail.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, serializeR2JsonBody, sha256Hex } from './_r2-storage.mjs';
@@ -3430,6 +3430,7 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     maxStaleMin: 2160,
     lockTtlMs: 180_000,
     fetchPhaseTimeoutMs: 150_000,
+    maxPayloadBytes: MAX_SEEDED_VALUE_BYTES,
     extraKeys: [{
       key: FORECAST_ARCHIVE_KEY,
       ttl: SCORECARD_TTL_SECONDS,

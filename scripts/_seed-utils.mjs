@@ -24,6 +24,7 @@ async function exitAfterTelemetryFlush(code) {
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
+const MAX_REDIS_REQUEST_BYTES = 10_000_000;
 export const SEED_REDIS_COMMAND_TIMEOUT_MS = 15_000;
 export const SEED_REDIS_RETRY_ATTEMPTS = 3;
 export const SEED_REDIS_RETRY_BASE_MS = 1_000;
@@ -597,8 +598,12 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
     : data;
   const payload = JSON.stringify(payloadValue);
   const payloadBytes = Buffer.byteLength(payload, 'utf8');
-  if (payloadBytes > MAX_PAYLOAD_BYTES) {
-    throw new Error(`Payload too large: ${(payloadBytes / 1024 / 1024).toFixed(1)}MB > 5MB limit`);
+  const maxPayloadBytes = options.maxPayloadBytes ?? MAX_PAYLOAD_BYTES;
+  if (!Number.isSafeInteger(maxPayloadBytes) || maxPayloadBytes < 1 || maxPayloadBytes > MAX_SEEDED_VALUE_BYTES) {
+    throw new Error(`Invalid maxPayloadBytes: expected an integer from 1 to ${MAX_SEEDED_VALUE_BYTES}`);
+  }
+  if (payloadBytes > maxPayloadBytes) {
+    throw new Error(`Payload too large: ${(payloadBytes / 1024 / 1024).toFixed(1)}MB > ${maxPayloadBytes / 1024 / 1024}MB limit`);
   }
 
   // Retry the entire 3-call publish unit on transient Upstash failures.
@@ -628,16 +633,26 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
 
       const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const stagingKey = `${canonicalKey}:staging:${runId}`;
+      const canonicalCommand = ttlSeconds
+        ? ['SET', canonicalKey, payload, 'EX', ttlSeconds]
+        : ['SET', canonicalKey, payload];
+      if (maxPayloadBytes > MAX_PAYLOAD_BYTES) {
+        const requestBytes = Math.max(
+          Buffer.byteLength(JSON.stringify(canonicalCommand), 'utf8'),
+          Buffer.byteLength(JSON.stringify(['SET', stagingKey, payload, 'EX', 300]), 'utf8'),
+        );
+        if (requestBytes > MAX_REDIS_REQUEST_BYTES) {
+          const error = new Error(`Redis publish request too large: ${requestBytes} bytes > ${MAX_REDIS_REQUEST_BYTES}-byte limit`);
+          error.nonRetryable = true;
+          throw error;
+        }
+      }
 
       // Write to staging key
       await redisSet(url, token, stagingKey, payloadValue, 300); // 5 min staging TTL
 
       // Overwrite canonical key
-      if (ttlSeconds) {
-        await redisCommand(url, token, ['SET', canonicalKey, payload, 'EX', ttlSeconds]);
-      } else {
-        await redisCommand(url, token, ['SET', canonicalKey, payload]);
-      }
+      await redisCommand(url, token, canonicalCommand);
 
       // Cleanup staging
       await redisDel(url, token, stagingKey).catch(() => {});
@@ -2517,6 +2532,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   const {
     validateFn,
     ttlSeconds,
+    maxPayloadBytes,
     lockTtlMs = 120_000,
     lockAcquireRetries = 2,
     extraKeys,
@@ -2985,6 +3001,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     try {
       publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds, {
         envelopeMeta,
+        maxPayloadBytes,
         beforePublish: beforePublish
           ? () => beforePublish(data, { canonicalKey, ttlSeconds, runId })
           : undefined,
