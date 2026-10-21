@@ -338,6 +338,11 @@ function normalizeDodoStatus(status: string): SubscriptionStatus | null {
       // (a local-active row would otherwise keep full entitlement forever via
       // `isCoveringAt`).
       return "expired";
+    case "paused":
+      // Dodo revokes access on pause and sends no webhook, so reconciliation
+      // is the only place a paused row stops covering. Not yet in the SDK's
+      // `SubscriptionStatus` union.
+      return "expired";
     default:
       // `pending` and any unknown status → caller skips + escalates. `pending`
       // is a real SDK status (initial payment in flight) but not a state we act

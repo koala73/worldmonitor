@@ -3541,7 +3541,7 @@ describe("payments billing missed renewal reconciliation", () => {
   test("skips an unsupported remote status, escalates, and backs the row off", async () => {
     const t = convexTest(schema, modules);
     const stalePeriodEnd = NOW - DAY_MS;
-    await seedStaleActiveForReconcile(t, { suffix: "paused", currentPeriodEnd: stalePeriodEnd });
+    await seedStaleActiveForReconcile(t, { suffix: "unknown", currentPeriodEnd: stalePeriodEnd });
 
     const summary = await t.action(
       internal.payments.billing.reconcileMissedDodoRenewals,
@@ -3549,9 +3549,9 @@ describe("payments billing missed renewal reconciliation", () => {
         now: NOW,
         remoteSubscriptionsForTest: [
           {
-            subscription_id: "sub_paused",
+            subscription_id: "sub_unknown",
             product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
-            status: "paused",
+            status: "not_a_dodo_status",
             previous_billing_date: new Date(NOW - 31 * DAY_MS).toISOString(),
             next_billing_date: new Date(stalePeriodEnd).toISOString(),
           },
@@ -3561,7 +3561,7 @@ describe("payments billing missed renewal reconciliation", () => {
 
     expect(summary).toMatchObject({ inspected: 1, reconciled: 0, skipped: 1, failed: 0 });
 
-    const sub = await readSub(t, "paused");
+    const sub = await readSub(t, "unknown");
     expect(sub?.status).toBe("active");
     expect(sub?.currentPeriodEnd).toBe(stalePeriodEnd);
     expect(sub?.reconcileFailureCount).toBe(1);
