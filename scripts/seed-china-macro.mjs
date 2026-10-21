@@ -597,6 +597,15 @@ export async function recordChinaMacroTransportFreshness(
     'china-macro-required-official-sources-v2',
     CHINA_MACRO_TTL_SECONDS,
     transportAt,
+    // A snapshot that is not launch-ready is rejected at publish, so its null
+    // content age makes /api/health report STALE_CONTENT instead of OK while
+    // the canonical key stays frozen behind reachable sources.
+    {
+      newestItemAt: null,
+      oldestItemAt: null,
+      ...chinaMacroContentMeta(snapshot),
+      maxContentAgeMin: CHINA_MACRO_MAX_CONTENT_AGE_MIN,
+    },
   );
 }
 
@@ -618,24 +627,25 @@ export async function recordChinaMacroCompletedRun(
   );
 }
 
+export const CHINA_MACRO_SEED_OPTIONS = Object.freeze({
+  ttlSeconds: CHINA_MACRO_TTL_SECONDS,
+  lockTtlMs: 210_000,
+  fetchPhaseTimeoutMs: 150_000,
+  validateFn: validateChinaMacroSnapshot,
+  declareRecords: (data) => data.observations.filter((item) => Number.isFinite(item?.value)).length,
+  sourceVersion: 'china-macro-official-nbs-safe-pboc-gacc-v2',
+  schemaVersion: CHINA_MACRO_SCHEMA_VERSION,
+  maxStaleMin: CHINA_MACRO_MAX_TRANSPORT_AGE_MIN,
+  contentMeta: chinaMacroContentMeta,
+  maxContentAgeMin: CHINA_MACRO_MAX_CONTENT_AGE_MIN,
+  afterPublish: async (data) => recordChinaMacroCompletedRun(data),
+});
+
 if (process.argv[1]?.endsWith('seed-china-macro.mjs')) {
   const fetchAndRecordTransport = async () => {
     const snapshot = await fetchChinaMacroSnapshot();
     await recordChinaMacroTransportFreshness(snapshot);
     return snapshot;
   };
-  runSeed('economic', 'china-macro', CHINA_MACRO_KEY, fetchAndRecordTransport, {
-    ttlSeconds: CHINA_MACRO_TTL_SECONDS,
-    lockTtlMs: 210_000,
-    fetchPhaseTimeoutMs: 150_000,
-    validateFn: validateChinaMacroSnapshot,
-    declareRecords: (data) => data.observations.filter((item) => Number.isFinite(item?.value)).length,
-    sourceVersion: 'china-macro-official-nbs-safe-pboc-gacc-v2',
-    schemaVersion: CHINA_MACRO_SCHEMA_VERSION,
-    maxStaleMin: CHINA_MACRO_MAX_TRANSPORT_AGE_MIN,
-    contentMeta: chinaMacroContentMeta,
-    maxContentAgeMin: CHINA_MACRO_MAX_CONTENT_AGE_MIN,
-    afterPublish: async (data) => recordChinaMacroCompletedRun(data),
-    afterPreservedValidationSkip: async (data) => recordChinaMacroCompletedRun(data),
-  });
+  runSeed('economic', 'china-macro', CHINA_MACRO_KEY, fetchAndRecordTransport, CHINA_MACRO_SEED_OPTIONS);
 }

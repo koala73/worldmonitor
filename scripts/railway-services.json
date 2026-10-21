@@ -1635,7 +1635,10 @@
       "scripts/wildfire/bc-fire-points.mjs",
       "scripts/wildfire/cwfis-wfs.mjs",
       "scripts/wildfire/firms-area.mjs",
-      "scripts/shared/compare-and-delete-script.cjs"
+      "scripts/shared/cii-country-borders.data.mjs",
+      "scripts/shared/cii-country-borders.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/wildfire-fires-summary.mjs"
     ],
     "cronSchedule": "*/10 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"

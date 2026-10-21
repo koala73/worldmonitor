@@ -24,8 +24,9 @@ await runBundle('yield-curves', [
   { label: 'Yield-Curve-NO', script: 'seed-yield-curve-no.mjs', seedMetaKey: 'economic:yield-curve-no', canonicalKey: 'economic:yield-curve:no:v1', completionMetaKey: 'seed-completion:economic:yield-curve-no', intervalMs: DAY, timeoutMs: 180_000 },
   // 4 series × 8 windows of sequential JSON requests.
   { label: 'Yield-Curve-SE', script: 'seed-yield-curve-se.mjs', seedMetaKey: 'economic:yield-curve-se', canonicalKey: 'economic:yield-curve:se:v1', completionMetaKey: 'seed-completion:economic:yield-curve-se', intervalMs: DAY, timeoutMs: 300_000 },
-  // 27 FRED series staggered at 150ms.
-  { label: 'OECD-LT-Rates', script: 'seed-oecd-lt-rates.mjs', seedMetaKey: 'economic:oecd-lt-rates', canonicalKey: 'economic:yield-curve:oecd-lt:v1', completionMetaKey: 'seed-completion:economic:oecd-lt-rates', intervalMs: 7 * DAY, timeoutMs: 240_000 },
+  // One ECB IRS CSV (~0.5 MB) plus 27 FRED series staggered at 150ms. Daily so
+  // a monthly print reaches readers the day a publisher releases it.
+  { label: 'OECD-LT-Rates', script: 'seed-oecd-lt-rates.mjs', seedMetaKey: 'economic:oecd-lt-rates', canonicalKey: 'economic:yield-curve:oecd-lt:v1', completionMetaKey: 'seed-completion:economic:oecd-lt-rates', intervalMs: DAY, timeoutMs: 240_000 },
 ], {
   // Railway kills cron containers at 10 minutes. The GB cold start (420s) plus
   // any two mid-size sections cannot fit after it, so deferral sheds them to

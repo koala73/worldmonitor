@@ -528,6 +528,11 @@ const STANDALONE_KEYS = {
   // verifies existence + freshness via the matching SEED_META entry. Same
   // shape as militaryFlights above.
   militaryCii:           'intelligence:military-cii:v1',
+  // Derived by seed-fire-detections from the canonical wildfires key (#9509):
+  // per-country intensity rows plus the FIRMS clock, read by the CII and
+  // temporal-anomaly rebuilds instead of the 2-5 MB canonical payload. Same
+  // single-payload shape as militaryCii; health checks existence + freshness.
+  wildfiresSummary:      'wildfire:fires-summary:v1',
   globalTendersSam:             'economic:global-tenders:v1:source:sam',
   globalTendersTed:             'economic:global-tenders:v1:source:ted',
   globalTendersContractsFinder: 'economic:global-tenders:v1:source:contracts-finder',
@@ -796,6 +801,21 @@ const SEED_META = {
     ],
   }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
   wildfiresBootstrap: { key: 'seed-meta:wildfire:fires-bootstrap', maxStaleMin: 360 }, // Compact CDN payload is a distinct publish target; monitor it so canonical fallback cannot hide transform/write failures.
+  // Derived summary the CII and temporal-anomaly rebuilds read (#9509). Same
+  // seeder run and 2h TTL as the canonical key; monitored on its own so the
+  // readers' canonical fallback cannot hide a broken summary write. Softened
+  // until seed-fire-detections writes the durable marker on its first publish.
+  wildfiresSummary: {
+    key: 'seed-meta:wildfire:fires-summary',
+    maxStaleMin: 360,
+    activationKey: 'seed-activated:wildfire:fires-summary',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 9509,
+      activationKey: 'seed-activated:wildfire:fires-summary',
+    },
+  },
   outages:          { key: 'seed-meta:infra:outages',           maxStaleMin: 30 },
   // seed-live-video-resolved cron `0 */6 * * *` (#8545); 1080 = 3× cadence per
   // project convention. The PR registers the probe before the Railway service
@@ -1837,8 +1857,11 @@ const SEED_META = {
   },
   oecdLtRates: {
     key: 'seed-meta:economic:oecd-lt-rates',
-    requireContentFreshness: { countries: ['DE', 'JP', 'GB', 'CA', 'AU', 'CH', 'NO', 'SE', 'IT', 'ES', 'KR', 'MX', 'ZA', 'PL', 'NL', 'BE', 'AT', 'PT', 'IE', 'FI', 'DK', 'GR', 'CZ', 'HU', 'CL', 'FR', 'US'], budgetMinutes: 80 * 24 * 60 },
-    maxStaleMin: 60 * 24 * 21, // weekly section; 21d = 3x interval, matches monthly data cadence
+    // budgetMinutes is the widest entry of OECD_LT_SOURCE_BUDGET_MIN in
+    // scripts/lib/yield-curves/oecd-lt.mjs (FRED/OECD route, 120d); the producer
+    // judges ECB-sourced markets at the tighter 114d budget before publishing.
+    requireContentFreshness: { countries: ['DE', 'JP', 'GB', 'CA', 'AU', 'CH', 'NO', 'SE', 'IT', 'ES', 'KR', 'MX', 'ZA', 'PL', 'NL', 'BE', 'AT', 'PT', 'IE', 'FI', 'DK', 'GR', 'CZ', 'HU', 'CL', 'FR', 'US'], budgetMinutes: 120 * 24 * 60 },
+    maxStaleMin: 4320, // daily bundle section; 72h = 3x interval. Per-market content age is separate.
     activationKey: 'seed-activated:economic:oecd-lt-rates',
     cutover: {
       mode: 'activation-marker',
@@ -2169,6 +2192,10 @@ const ON_DEMAND_KEYS = new Set([
   // activation marker after its first successful publish; after that, a
   // missing/stale summary is strict forever.
   'chinaCoverage',
+  // Deployment-order bridge (#9509): Vercel can ship the summary readers before
+  // seed-fire-detections' next 10-minute tick writes the key. The seeder SETs
+  // the durable marker on every successful publish; strict from then on.
+  'wildfiresSummary',
   // Deployment-order bridge. The worker writes a permanent activation marker
   // on its first healthy loop report; absence becomes strict immediately after.
   'companyMonitoringWorker',
@@ -2361,6 +2388,9 @@ const ACTIVATION_MARKERS = {
   statcanWds: 'seed-activated:economic:statcan-wds',
   // Written by scripts/seed-live-video-resolved.mjs in runSeed's afterPublish hook.
   liveVideoResolved: SEED_META.liveVideoResolved.activationKey,
+  // Written by scripts/seed-fire-detections.mjs in runSeed's afterFreshness hook,
+  // after the summary extra key and the canonical seed-meta (#9509).
+  wildfiresSummary: SEED_META.wildfiresSummary.activationKey,
   usCpiMonthly: SEED_META.usCpiMonthly.activationKey,
   usTreasuryParYield: SEED_META.usTreasuryParYield.activationKey,
   usInterestRates: SEED_META.usInterestRates.activationKey,

@@ -147,6 +147,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred: per-country monthly humanitarian conflict-event/fatality aggregates (HDX HAPI) seeded by scripts/seed-conflict-intel.mjs. Different shape from get_conflict_events (event lists with geo-coordinates, not per-country monthly counts) — not a trivial _coverageKeys addition. No dedicated humanitarian/aid MCP tool exists yet; file a follow-up issue if/when one is planned rather than reusing #5554 (the bug fix this key\'s health-monitoring wiring shipped with).'],
   ['wildfire:fires-bootstrap:v1',
     'cascade-mirror: pre-compacted dashboard/RPC variant of wildfire:fires:v1 (covered by get_natural_events). It preserves the same top-500 response while avoiding canonical-payload Redis egress.'],
+  ['wildfire:fires-summary:v1',
+    'intermediate: per-country intensity rows and the FIRMS clock derived from wildfire:fires:v1 by seed-fire-detections (#9509), consumed server-side by the risk-scores and temporal-anomalies rebuilds instead of the 2-5 MB canonical key. Agents read the detections through get_natural_disasters and the scores through get_country_risk; the projection itself is not a tool surface.'],
   ['thermal:escalation-bootstrap:v1',
     'cascade-mirror: pre-compacted dashboard view of thermal:escalation:v1 (the canonical key remains the tool/RPC source). Capped to the top-24 ranked clusters the dashboard renders — agents should read the canonical key, which carries the full cluster set (#5300).'],
   ['forecast:predictions-bootstrap:v1',
