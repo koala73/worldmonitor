@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, imfSdmxFetchIndicator } from './_seed-utils.mjs';
-import weoFiscalPeriods from './shared/weo-fiscal-periods.json' with { type: 'json' };
+import weoFiscalPeriods from './shared/weo-fiscal-periods.mjs';
 
 loadEnvFile(import.meta.url);
 
