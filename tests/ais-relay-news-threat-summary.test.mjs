@@ -40,9 +40,11 @@ function get(port, pathname) {
   });
 }
 
-// Upstash REST stand-in. Every classify-cache lookup is a hit labelled `high`,
-// so the cycle never needs the LLM. `failSetKeys` answers a SET with an error.
-async function startUpstash(t, { failSetKeys = [] } = {}) {
+// Upstash REST stand-in. By default every classify-cache lookup is a hit
+// labelled `high`, so the cycle never needs the LLM; `cachedLabel` overrides
+// that (null = cache miss, `_skip` = an earlier cycle the LLM could not label).
+// `failSetKeys` answers a SET with an error.
+async function startUpstash(t, { failSetKeys = [], cachedLabel = 'high' } = {}) {
   const commands = [];
   const server = http.createServer((req, res) => {
     const chunks = [];
@@ -54,7 +56,7 @@ async function startUpstash(t, { failSetKeys = [] } = {}) {
       if (req.url === '/pipeline') {
         const rows = Array.isArray(command) ? command : [];
         return res.end(JSON.stringify(rows.map(([, key]) => ({
-          result: String(key).startsWith('classify:') ? JSON.stringify({ level: 'high', category: 'conflict' }) : null,
+          result: String(key).startsWith('classify:') && cachedLabel ? JSON.stringify({ level: cachedLabel, category: 'conflict' }) : null,
         }))));
       }
       if (!Array.isArray(command)) return res.end(JSON.stringify({ result: null }));
@@ -78,12 +80,15 @@ async function startUpstash(t, { failSetKeys = [] } = {}) {
 // list-feed-digest stand-in. `busy` serves one country-naming headline per
 // variant, `quiet` serves an empty digest, `stale` serves that headline as a
 // stale replay (coverage.servedStale), `down` answers 500 (not retried).
-async function startDigestApi(t, mode) {
+// An object maps a variant to its mode, with `default` for the rest.
+async function startDigestApi(t, modes) {
   const server = http.createServer((req, res) => {
     if (!req.url.startsWith('/api/news/v1/list-feed-digest')) {
       res.writeHead(404);
       return res.end();
     }
+    const variant = new URL(req.url, 'http://digest.test').searchParams.get('variant');
+    const mode = typeof modes === 'string' ? modes : (modes[variant] ?? modes.default);
     if (mode === 'down') {
       res.writeHead(500);
       return res.end();
@@ -98,11 +103,11 @@ async function startDigestApi(t, mode) {
   return `http://127.0.0.1:${port}`;
 }
 
-async function runClassifyCycle(t, { digest, failSetKeys } = {}) {
-  const upstash = await startUpstash(t, { failSetKeys });
+async function runClassifyCycle(t, { digest, failSetKeys, cachedLabel } = {}) {
+  const upstash = await startUpstash(t, { failSetKeys, cachedLabel });
   const apiBase = await startDigestApi(t, digest);
-  // Any configured provider satisfies the loop's provider guard; every title is
-  // a cache hit, so this port is never called.
+  // Any configured provider satisfies the loop's provider guard. It is only
+  // called on a cache miss, and it is down.
   const llm = http.createServer((_req, res) => { res.writeHead(503); res.end(); });
   const llmPort = await listen(llm);
   t.after(() => new Promise((resolve) => llm.close(resolve)));
@@ -198,6 +203,21 @@ test('an empty result from stale digest replays keeps the last summary instead o
   assert.equal(upstash.sets(SUMMARY_KEY).length, 0, 'no summary from a degraded cycle');
   assert.equal(upstash.sets(SUMMARY_META_KEY).length, 0, 'seed-meta ages so health shows STALE_SEED');
 });
+
+// An empty result counts as quiet only when every headline was fetched and
+// labelled. Otherwise the countries it would have named are unknown, and
+// `byCountry: {}` would zero their scores behind a healthy-looking quiet input.
+for (const [name, cycle] of [
+  ['a digest fetch failed', { digest: { full: 'down', default: 'quiet' } }],
+  ['the LLM could not label fresh headlines', { digest: 'busy', cachedLabel: null }],
+  ['the headlines carry an earlier unlabelled verdict', { digest: 'busy', cachedLabel: '_skip' }],
+]) {
+  test(`an empty result keeps the last summary when ${name}`, async (t) => {
+    const { upstash, output } = await runClassifyCycle(t, cycle);
+    assert.equal(upstash.sets(SUMMARY_KEY).length, 0, `no summary from a degraded cycle\n${output()}`);
+    assert.equal(upstash.sets(SUMMARY_META_KEY).length, 0, 'seed-meta ages so health shows STALE_SEED');
+  });
+}
 
 test('a rejected summary write leaves the seed-meta untouched so health ages it', async (t) => {
   const { upstash } = await runClassifyCycle(t, { digest: 'busy', failSetKeys: [SUMMARY_KEY] });

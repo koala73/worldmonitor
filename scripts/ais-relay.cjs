@@ -5270,6 +5270,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // byCountry accumulates threat counts while title+level are in scope
   const byCountry = {};
   const emptyLevel = () => ({ critical: 0, high: 0, medium: 0, low: 0, info: 0 });
+  // Titles with no usable label (a cached `_skip` or an unreadable entry), so
+  // an empty byCountry cannot be read as a quiet cycle.
+  let unlabelled = 0;
 
   for (let i = 0; i < titleArr.length; i++) {
     const hit = cached[i];
@@ -5279,9 +5282,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
     }
     // Attribute cached hits while we still have the title
     let parsed = hit;
-    if (typeof hit === 'string') { try { parsed = JSON.parse(hit); } catch { continue; } }
+    if (typeof hit === 'string') { try { parsed = JSON.parse(hit); } catch { unlabelled++; continue; } }
     const level = parsed?.level;
-    if (!CLASSIFY_VALID_LEVELS.includes(level)) continue;
+    if (!CLASSIFY_VALID_LEVELS.includes(level)) { unlabelled++; continue; }
     if (seenTitles.has(titleArr[i])) continue;
     seenTitles.add(titleArr[i]);
     for (const code of threatSummaryCountries(titleArr[i])) {
@@ -5290,7 +5293,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     }
   }
 
-  if (misses.length === 0) return { total: titleArr.length, classified: 0, skipped: 0, byCountry, staleReplay };
+  if (misses.length === 0) return { total: titleArr.length, classified: 0, skipped: 0, byCountry, staleReplay, unlabelled };
 
   let classified = 0;
   let skipped = 0;
@@ -5406,7 +5409,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
   if (shadow.asked > 0) {
     console.log(`[Classify] Jev shadow ${variant}: asked ${shadow.asked}, answered ${shadow.answered}, agreed ${shadow.agreed}, alert flips ${shadow.alertFlips}`);
   }
-  return { total: titleArr.length, classified, skipped, byCountry, staleReplay };
+  return { total: titleArr.length, classified, skipped, byCountry, staleReplay, unlabelled: unlabelled + skipped };
 }
 
 async function seedClassify() {
@@ -5446,6 +5449,7 @@ async function seedClassify() {
     let fetchOk = 0;
     let fetchFailed = 0;
     let staleReplays = 0;
+    let unlabelled = 0;
     const mergedByCountry = {};
     const seenTitles = new Set();
     for (let v = 0; v < CLASSIFY_VARIANTS.length; v++) {
@@ -5455,6 +5459,7 @@ async function seedClassify() {
         if (stats.fetchFailed) fetchFailed += 1;
         else fetchOk += 1;
         if (stats.staleReplay) staleReplays += 1;
+        unlabelled += stats.unlabelled || 0;
         totalClassified += stats.classified;
         totalSkipped += stats.skipped;
         console.log(`[Classify] ${CLASSIFY_VARIANTS[v]}: ${stats.total} titles, ${stats.classified} classified, ${stats.skipped} skipped`);
@@ -5476,20 +5481,21 @@ async function seedClassify() {
 
     // Written on every cycle that reached a digest, including one where no
     // headline named a country (`byCountry: {}`): the CII reads an empty summary
-    // as a quiet input and a missing one as a dead input. The exception is an
-    // empty result while a digest was a stale replay, whose headlines were
-    // skipped above: that is a degraded pipeline, not a quiet world, so the
-    // last summary stays and its seed-meta ages. seed-meta advances only after
-    // the payload lands, so health never vouches for a missing key.
+    // as a quiet input and a missing one as a dead input. An empty result is
+    // quiet only when every headline was fetched fresh and labelled: after a
+    // failed digest fetch, a stale replay (headlines skipped above) or titles
+    // the LLM could not label, the countries it would have named are unknown,
+    // so the last summary stays and its seed-meta ages. seed-meta advances only
+    // after the payload lands, so health never vouches for a missing key.
     const threatCountryCount = Object.keys(mergedByCountry).length;
     const threatSummaryAt = Date.now();
-    const threatSummaryDegraded = threatCountryCount === 0 && staleReplays > 0;
+    const threatSummaryDegraded = threatCountryCount === 0 && (fetchFailed > 0 || staleReplays > 0 || unlabelled > 0);
     const threatSummaryWritten = !threatSummaryDegraded && await envelopeWrite(NEWS_THREAT_SUMMARY_KEY, { byCountry: mergedByCountry, generatedAt: threatSummaryAt }, NEWS_THREAT_SUMMARY_TTL, { fetchedAt: threatSummaryAt, recordCount: threatCountryCount, zeroOk: true, sourceVersion: 'news-threat-summary' });
     if (threatSummaryWritten) {
       await upstashSet('seed-meta:news:threat-summary', { fetchedAt: threatSummaryAt, recordCount: threatCountryCount }, 604800);
       console.log(`[Classify] Threat summary written for ${threatCountryCount} countries`);
     } else if (threatSummaryDegraded) {
-      console.warn(`[Classify] No country matches while ${staleReplays} digest(s) were stale replays — keeping the last threat summary`);
+      console.warn(`[Classify] No country matches from a degraded cycle (${fetchFailed} digest fetch failure(s), ${staleReplays} stale replay(s), ${unlabelled} unlabelled title(s)) — keeping the last threat summary`);
     } else {
       console.warn('[Classify] Threat summary write failed — seed-meta:news:threat-summary not advanced');
     }
