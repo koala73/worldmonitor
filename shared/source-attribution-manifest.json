@@ -10763,6 +10763,9 @@
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
+          "path": "scripts/ais-relay.cjs"
+        },
+        {
           "path": "server/worldmonitor/trade/v1/_tradestats-tariff.ts"
         },
         {
