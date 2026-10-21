@@ -230,21 +230,11 @@ function generatedRoutes(outDir) {
 }
 
 /**
- * Published documentation routes. Mintlify serves `/docs/<page>` only when the
- * page is BOTH a file on disk and listed in docs.json navigation, so the
- * intersection is the route set — a nav entry with no file 404s, and this repo
- * currently has three of those.
+ * Mintlify publishes page files outside navigation too. .mintignore excludes
+ * files even when docs.json lists them. Its current rules are exact paths and
+ * directory prefixes; unsupported patterns must fail rather than weaken this gate.
  */
 function docsRoutes() {
-  const config = JSON.parse(readRepo('docs/docs.json'));
-  const navPages = [];
-  const walk = (node) => {
-    if (typeof node === 'string') navPages.push(node);
-    else if (Array.isArray(node)) node.forEach(walk);
-    else if (node && typeof node === 'object') Object.values(node).forEach(walk);
-  };
-  walk(config.navigation);
-  assert.ok(navPages.length > 100, `docs.json navigation extraction found ${navPages.length} pages`);
   const files = new Set();
   const visit = (relative) => {
     for (const entry of readdirSync(join(repoRoot, 'docs', relative), { withFileTypes: true })) {
@@ -257,7 +247,14 @@ function docsRoutes() {
     }
   };
   visit('.');
-  return new Set(navPages.filter((page) => files.has(page)).map((page) => `/docs/${page}`));
+  const ignorePatterns = readRepo('docs/.mintignore').split('\n').map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'));
+  assert.ok(ignorePatterns.every((p) => !/[*?[\]!]/.test(p)), 'docs/.mintignore gained a glob; teach docsRoutes to match it');
+  const ignored = (file) => ignorePatterns.some((p) => (p.endsWith('/')
+    ? file.startsWith(p)
+    : [`${file}.md`, `${file}.mdx`].includes(p)));
+  assert.ok(files.size > 100, `docs page extraction found ${files.size} files`);
+  return new Set([...files].filter((file) => !ignored(file)).map((page) => `/docs/${page}`));
 }
 
 /** Astro blog routes: the index pages plus one route per post, author and glossary term. */
@@ -747,6 +744,8 @@ describe('internal links never redirect or 404 (#8603)', () => {
       ['/countries/norway', /slashless form of a slash-normalised corpus route/],
       ['/countries/not-a-country/', /resolves to no published route \(404\)/],
       ['/docs/not-a-page', /resolves to no published route \(404\)/],
+      ['/docs/roadmap-pro', /resolves to no published route \(404\)/],
+      ['/docs/architecture/pizzint-history', /resolves to no published route \(404\)/],
     ];
     for (const [href, expected] of cases) {
       const reasons = reasonFor(href);
@@ -768,6 +767,8 @@ describe('internal links never redirect or 404 (#8603)', () => {
       'https://tech.worldmonitor.app/?mode=agent',
       '/countries/norway/',
       '/docs/algorithms',
+      '/docs/cross-border-movements',
+      '/docs/architecture',
       '/docs/corrections',
       '/docs/api-reference/supplychainservice/listfuelshortages',
       '/blog/glossary/suez-canal/',

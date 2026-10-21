@@ -391,7 +391,7 @@ Runs before every `git push`:
 |----------|---------|--------|
 | `typecheck.yml` | PR, push to main | `tsc --noEmit` for src and API tsconfigs |
 | `lint-code.yml` | PR, push to main | Biome lint + sebuf API-contract enforcement; markdownlint-cli2 in a `markdown` job that runs on every push to main and, on PRs, only when markdown, its config, or package.json changes |
-| `test.yml` | PR, push to main | Unit/integration suite, docs-stats guardrail, plus conditional digest-image and resilience-validation smoke gates |
+| `test.yml` | PR, push to main | Unit/integration suite, always-on docs-stats and published-link guardrails (including docs-only changes), plus conditional digest-image and resilience-validation smoke gates |
 | `e2e-visual.yml` | Path-filtered PR, push to main (chrome only), nightly cron, manual | Deterministic map goldens (`test:e2e:visual`) plus named harness chrome captures; evidence only — not a deploy-gate required check |
 | `publish-e2e-screenshots.yml` | After `E2E Visual` completes on main (not PRs) | Optional S3 sync of the chrome gallery when `E2E_SCREENSHOT_*` is configured; otherwise the Actions artifact is the durable copy |
 | `proto-check.yml` | PR (proto changes) | Generated code matches committed output |

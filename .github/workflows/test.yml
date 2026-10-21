@@ -295,6 +295,8 @@ jobs:
         # Docs-only PRs skip the unit shards, so without this step a missing
         # docs/zh mirror surfaces only as a red main after merge (#8968).
         run: node --test tests/docs-i18n-parity.test.mjs
+      - name: Published internal links resolve without redirects
+        run: node --import tsx --test tests/internal-link-redirects.test.mjs
       - name: Source attribution inventory is current
         run: node scripts/source-attribution.mjs --check
       - name: Homepage teaser strip matches the committed pulse snapshot
