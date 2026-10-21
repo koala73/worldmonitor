@@ -15,7 +15,11 @@
 // 2. The export fetches every route from a local Next server and, on a failed
 //    page, only reports "N page(s) could not be generated": the per-route lines
 //    go to an ink log that is cleared before exit. Logging non-OK local fetches
-//    to stderr names the route next to the server's own stack trace.
+//    to stderr names the route next to the server's own stack trace. That is
+//    how an intermittent YAMLException (the other 7 failures) was traced to a
+//    generated API-reference page
+//    (/api-reference/supplychainservice/getchinacorridorcontroltowers on
+//    renderer 0.0.3913); the job now skips those pages with --disable-openapi.
 
 import { register } from 'node:module';
 
