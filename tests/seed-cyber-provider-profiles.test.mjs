@@ -269,6 +269,33 @@ test('AbuseIPDB keeps its 24h cache when the blacklist call fails, so the feed s
   }
 });
 
+test('a retained AbuseIPDB list alone never publishes a fresh snapshot', async testContext => {
+  // The retained list keeps the feed populated beside fresh sources, but a run in which
+  // nothing was freshly observed must fail so seed-meta ages and /api/health goes stale.
+  const cached = { id: 'abuseipdb:192.0.2.62', indicator: '192.0.2.62', indicatorType: 'ip',
+    source: 'abuseipdb', type: 'malware_host', tags: [], firstSeen: 0, lastSeen: NOW - DAY,
+    lat: 51.5, lon: -0.1, country: 'GB', severity: 'critical', malwareFamily: '' };
+  const cache = ['cache:abuseipdb:threats', JSON.stringify([cached])];
+  for (const [label, rate, extra] of [
+    ['failed blacklist call', NOW - 3 * 60 * 60 * 1000, { abuseStatus: 429 }],
+    ['rate-window cache', NOW - 60_000, {}],
+  ]) {
+    await testContext.test(`${label} with every other source down`, async child => {
+      const { seed, writes } = await producerHarness(child, { keys: ['ABUSEIPDB_API_KEY'], failure: true, ...extra,
+        cached: [['rate:abuseipdb:last-call', JSON.stringify({ calledAt: rate })], cache] });
+      await assert.rejects(seed.fetchAllThreats(), /All 5 IOC sources failed/);
+      assert.equal(writes.some(w => JSON.stringify(w).includes('cyber:threats')), false);
+    });
+    await testContext.test(`${label} beside a fresh source is published`, async child => {
+      const { seed } = await producerHarness(child, { keys: ['ABUSEIPDB_API_KEY'], rows: [foreign], csv, ...extra,
+        geo: { country: 'FR', loc: '46.2,2.2' },
+        cached: [['rate:abuseipdb:last-call', JSON.stringify({ calledAt: rate })], cache] });
+      const snapshot = await seed.fetchAllThreats();
+      assert.ok(snapshot.threats.some(t => t.indicator === '192.0.2.62'), 'retained rows stay in the feed');
+    });
+  }
+});
+
 test('invalid envelopes, native dates and decoded bounds cannot count as observations', async testContext => {
   for (const [source, body] of [
     ['feodo', { data: [], error: 'maintenance' }],

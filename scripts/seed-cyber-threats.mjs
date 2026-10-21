@@ -818,8 +818,10 @@ async function fetchAllThreats() {
     });
   }
 
-  const anyOk = feodo.ok || urlhaus.ok || c2intel.ok || otx.ok || abuseipdb.ok;
-  if (!anyOk) throw new Error('All 5 IOC sources failed');
+  // A retained AbuseIPDB list (rate window or failed call) keeps the feed populated but is
+  // not a fresh observation: a run where nothing was observed must fail, so seed-meta ages.
+  const anyObserved = [feodo, urlhaus, c2intel, otx, abuseipdb].some((p) => p.ok && p.outcome === 'observed');
+  if (!anyObserved) throw new Error('All 5 IOC sources failed');
 
   const combined = dedupeThreats([
     ...feodo.threats, ...urlhaus.threats, ...c2intel.threats, ...otx.threats, ...abuseipdb.threats,
