@@ -24,7 +24,7 @@ const EXTENSIONS = ['mjs', 'mts', 'cjs', 'js', 'ts', 'tsx'];
 // `-g "matches golden…"` is not mistaken for a path.
 const FILE_TOKEN = new RegExp(`^[\\w@./*[\\]{},-]+\\.(?:${EXTENSIONS.join('|')})$`);
 const GLOB = /[*[\]{}]/;
-const SUITE_ROOTS = ['api', 'src-tauri', 'scripts'];
+const SUITE_ROOTS = ['api', 'src-tauri', 'scripts', 'workers/api-cors-preflight'];
 // The scripts test.yml runs on every code PR (unit-shards, unit-built-output and sidecar). A
 // suite owned only by a script no workflow invokes still runs nowhere.
 const CI_OWNERS = ['test:data', 'test:sidecar'];
@@ -98,7 +98,7 @@ test('test.yml classifies every guarded src-tauri suite extension as code', () =
   assert.deepEqual(carveOut[1].split('|').sort(), [...EXTENSIONS].sort());
 });
 
-test('every api/, src-tauri/ and scripts/ suite is run by a script CI invokes', () => {
+test('every guarded suite is run by a script CI invokes', () => {
   for (const owner of CI_OWNERS) {
     assert.match(
       testWorkflow,

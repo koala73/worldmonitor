@@ -16,7 +16,8 @@ const durations = JSON.parse(readFileSync(join(root, 'scripts/shared/data-test-d
 const workflow = parse(readFileSync(join(root, '.github/workflows/test.yml'), 'utf8'));
 const ciShards = workflow.jobs['unit-shards'].strategy.matrix.shard;
 const ciShardCount = ciShards.length;
-const patterns = ['tests/*.test.mjs', 'tests/*.test.mts', 'cli/test/*.test.mjs', 'api/security/report.test.mjs'];
+const [, , ...patterns] = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+  .scripts['test:data'].trim().split(/\s+/);
 const inventory = globSync(patterns, { cwd: root });
 const childEnv = { ...process.env };
 delete childEnv.NODE_TEST_CONTEXT;
