@@ -902,6 +902,14 @@ describe('deploy gate commit-status description', () => {
     assert.equal(result.statusReads, 1);
   });
 
+  it('blocks a failed Zapier check and accepts an unrelated skipped Zapier check', () => {
+    for (const [conclusion, state] of [['failure', 'failure'], ['skipped', 'success']]) {
+      const result = runGate({ ...conclusionsFor('success'), zapier: conclusion });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted[0].state, state);
+    }
+  });
+
   it('posts a failure status when every required check failed', () => {
     // The arm that matters most: crashing here left NO gate status, and every
     // consumer reads a missing status as undecided rather than failed.
