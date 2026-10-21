@@ -41,6 +41,9 @@ const ALLOWED_REDIRECT_URIS = new Set([
   'https://glama.ai/mcp/inspector/oauth/callback',
   // Microsoft 365 Copilot MCP plugins (MicrosoftDocs/m365copilot-docs build-mcp-plugins.md)
   'https://teams.microsoft.com/api/platform/v1.0/oAuthRedirect',
+  // Meta Muse custom connectors (sent as agent.meta.ai, which 302s to the
+  // Meta-owned muse.ai; issue #9527)
+  'https://agent.meta.ai/api/hatch/oauth/callback',
   // The clients below publish CIMD documents (the cited URL) and prefer CIMD,
   // which api/oauth/_client-metadata.js accepts. These entries remain for
   // clients that still register through DCR.
