@@ -168,7 +168,7 @@ const CONFLICT_EVENT_LOCATED_LISTS: EventList[] = [
   { label: 'events', list: 'events', locator: locator(locationPoint, 'occurredAt') },
 ];
 const CONFLICT_EVENTS_FRESHNESS_CHECKS: [FreshnessCheck, ...FreshnessCheck[]] = [
-  { key: 'seed-meta:conflict:ucdp-events', maxStaleMin: 30 },
+  { key: 'seed-meta:conflict:ucdp-events', maxStaleMin: 420, honorContentAge: true },
   { key: 'seed-meta:unrest:events', maxStaleMin: 120 },
 ];
 const CONFLICT_PANEL_COLLECTIONS: [string, string][] = [['ucdp-events', 'events'], ['events', 'events'], ['scores', 'ciiScores'], ...(IRAN_EVENTS_ENABLED ? [['iran-events', 'events'] as [string, string]] : [])];
@@ -1336,7 +1336,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     title: 'Armed conflict and unrest events',
     _uiResourceUri: CONFLICT_EVENTS_UI_URI,
     _outputBudgetBytes: CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES,
-    description: 'Return the seeded conflict snapshot: active armed-conflict events (UCDP and Iran tracker) and unrest events with coordinates, fatalities and dates, plus country risk scores. UCDP data is flagged stale after 30 minutes, unrest after 2 hours. Event-level records; no narrative or forecasts. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country matches event country names and the alpha-2 code on risk scores; min_fatalities drops events below a count; limit caps each list (default 30, 0 for no cap). Dedicated paid connections reuse one panel allocation across openings and filters; refresh with request_id starts a new one; authorized panel_request reads report current usage when confirmed. API and free allowances retain per-tool billing and reject paid controls. bbox or lat/lon/radius_km limit the area, since_days the last N days; geo_filter counts rows lacking coordinates or dates.',
+    description: 'Return the seeded conflict snapshot: active armed-conflict events (UCDP and Iran tracker) and unrest events with coordinates, fatalities and dates, plus country risk scores. UCDP fetches expire after 7 hours, event content after 90 days; unrest after 2 hours. Event-level records; no narrative or forecasts. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country matches event country names and the alpha-2 code on risk scores; min_fatalities drops events below a count; limit caps each list (default 30, 0 for no cap). Dedicated paid connections reuse one panel allocation across openings and filters; refresh with request_id starts a new one; authorized panel_request reads report current usage when confirmed. API and free allowances retain per-tool billing and reject paid controls. bbox or lat/lon/radius_km limit the area, since_days the last N days; geo_filter counts rows lacking coordinates or dates.',
     inputSchema: {
       type: 'object',
       properties: {
