@@ -16,6 +16,7 @@ import { CII_DAY_MS, parseCiiDailyPoints } from '../../../../shared/cii-daily-hi
 import { ciiCountryAt, ciiCountryForIso2, ciiIsLand } from '../../../../scripts/shared/cii-country-borders.mjs';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
+import { isAcledConfigured } from '../../../_shared/acled-auth';
 import {
   CII_CONFLICT_ACTIVITY_CAP,
   CII_CONFLICT_ACTIVITY_PIVOT,
@@ -858,6 +859,8 @@ interface AuxiliarySources {
   // Weighted confirmed strikes per country and day from the relay's 30-day tally
   // (conflict:strike-pressure:v1); null when missing or stale.
   confirmedStrikes?: Record<string, StrikeDays> | null;
+  // What each Redis-backed input's read returned, for health only; never scored.
+  inputReads?: Partial<Record<CiiInputId, CiiInputRead>>;
 }
 
 type NewsTopStory = { countryCode: string | null; countryCodes?: string[]; threatLevel: string; primaryTitle: string };
@@ -1000,6 +1003,29 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const displacementRaw = displacementCurrentRaw
     ?? (await readRiskInputs([{ key: `displacement:summary:v1:${currentYear - 1}`, raw: true }]))[0];
   const borderSnapshots = await readRiskInputs(CROSS_BORDER_SOURCES.map(source => ({ key: source.key, raw: true, envelope: true })));
+  const read = (raw: unknown): CiiInputRead => (raw == null ? 'missing' : 'present');
+  const inputReads: Partial<Record<CiiInputId, CiiInputRead>> = {
+    ucdp: read(ucdpRaw),
+    outages: read(outagesRaw),
+    climate: read(climateRaw),
+    cyber: read(cyberRaw),
+    fires: read(firesRaw),
+    gpsjam: read(gpsRaw),
+    iranEvents: IRAN_EVENTS_ENABLED ? read(iranRaw) : 'not_configured',
+    oref: read(orefRaw),
+    advisories: read(advisoriesRaw),
+    displacement: read(displacementRaw),
+    crossBorder: borderSnapshots.some(snapshot => snapshot != null) ? 'present' : 'missing',
+    newsInsights: read(insightsRaw),
+    threatSummary: read(threatSummaryRaw),
+    aviation: read(aviationRaw),
+    earthquakes: read(earthquakesRaw),
+    sanctionsPressure: read(sanctionsRaw),
+    sanctionsCounts: read(sanctionsCountsRaw),
+    militaryCii: read(militaryCiiRaw),
+    gdeltCountryEvents: read(countryEventsRaw),
+    strikePressure: IRAN_EVENTS_ENABLED ? read(strikePressureRaw) : 'not_configured',
+  };
   const borderMovements = projectCrossBorderSnapshots(Object.fromEntries(CROSS_BORDER_SOURCES.map((source, i) => [source.id, borderSnapshots[i]]))).movements;
   const arr = (v: any, field?: string, maxLen = 10000) => {
     let a: any[];
@@ -1083,7 +1109,116 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
       : null,
     gdeltCountryEvents: gdeltCountryEventsFromSeed(countryEventsRaw, Date.now()),
     confirmedStrikes: confirmedStrikeDaysFromSeed(strikePressureRaw, Date.now()),
+    inputReads,
   };
+}
+
+// ========================================================================
+// Input availability (health)
+// ------------------------------------------------------------------------
+// ACLED credentials went missing around 2026-07 (#5134) and Unrest and
+// Conflict read 0 everywhere for months without any health signal. Each build
+// therefore reports every scored input's availability on its seed-meta;
+// api/_cii-input-health.js owns the verdict and must list the same ids.
+// temporal:anomalies:v1 is read but not scored (its producer emits only
+// region 'global'), so it is not reported.
+// ========================================================================
+
+export const CII_HEALTH_INPUT_IDS = [
+  'acled', 'ucdp', 'gdeltCountryEvents', 'iranEvents', 'strikePressure', 'oref',
+  'outages', 'climate', 'cyber', 'fires', 'gpsjam', 'advisories', 'displacement',
+  'crossBorder', 'newsInsights', 'threatSummary', 'aviation', 'earthquakes',
+  'sanctionsPressure', 'sanctionsCounts', 'militaryCii',
+] as const;
+export type CiiInputId = typeof CII_HEALTH_INPUT_IDS[number];
+type CiiInputRead = 'present' | 'missing' | 'not_configured';
+export type CiiInputState = 'live' | 'quiet' | 'missing' | 'unusable' | 'not_configured';
+export interface CiiInputReport { state: CiiInputState; quietSince?: number }
+
+const CII_INPUT_AUX_FIELD: Record<Exclude<CiiInputId, 'acled'>, keyof AuxiliarySources> = {
+  ucdp: 'ucdpEvents',
+  gdeltCountryEvents: 'gdeltCountryEvents',
+  iranEvents: 'iranEvents',
+  strikePressure: 'confirmedStrikes',
+  oref: 'orefData',
+  outages: 'outages',
+  climate: 'climate',
+  cyber: 'cyber',
+  fires: 'fires',
+  gpsjam: 'gpsHexes',
+  advisories: 'advisories',
+  displacement: 'displacedByIso3',
+  crossBorder: 'crossBorderSurgeCountries',
+  newsInsights: 'newsTopStories',
+  threatSummary: 'threatSummaryByCountry',
+  aviation: 'aviationAlerts',
+  earthquakes: 'earthquakes',
+  sanctionsPressure: 'sanctionsCountries',
+  sanctionsCounts: 'sanctionsCountryCounts',
+  militaryCii: 'militaryCii',
+};
+
+// Parsers that return null when they reject a present payload: past their own
+// age gate (GDELT 6h, strike tally 72h) or without the field they score.
+const CII_INPUT_REJECTED_AS_NULL = new Set<CiiInputId>([
+  'gdeltCountryEvents', 'strikePressure', 'oref', 'advisories', 'threatSummary', 'militaryCii',
+]);
+
+/**
+ * Classifies each scored input for health. An input is `live` when it moves
+ * at least one Tier-1 score on its own: the scorer runs once per input against
+ * an otherwise empty build and the result is compared with the all-empty
+ * build. This reuses computeCIIScores as-is, so it follows any formula change
+ * and measures exactly "zero across all Tier-1 countries". A standby input
+ * (GDELT while ACLED is live) is still graded on what it would contribute.
+ * An input whose whole effect lands under a score floor (UCDP, advisory)
+ * reads quiet; the quiet budgets in api/_cii-input-health.js are set only for
+ * feeds that move unfloored countries every day.
+ */
+export function assessCiiInputAvailability(
+  acled: Array<{ country: string; event_type: string; fatalities: number; daysAgo?: number }>,
+  aux: AuxiliarySources,
+  nowMs: number,
+  acledConfigured = isAcledConfigured(),
+): Record<CiiInputId, CiiInputState> {
+  const fingerprint = (rows: typeof acled, sources: AuxiliarySources) => JSON.stringify(computeCIIScores(rows, sources, { nowMs }));
+  const baseline = fingerprint([], emptyAuxiliarySources());
+  const states = {
+    acled: !acledConfigured ? 'not_configured' : fingerprint(acled, emptyAuxiliarySources()) !== baseline ? 'live' : 'quiet',
+  } as Record<CiiInputId, CiiInputState>;
+  for (const [id, field] of Object.entries(CII_INPUT_AUX_FIELD) as Array<[Exclude<CiiInputId, 'acled'>, keyof AuxiliarySources]>) {
+    const read = aux.inputReads?.[id] ?? 'missing';
+    if (read !== 'present') {
+      states[id] = read;
+    } else if (aux[field] == null && CII_INPUT_REJECTED_AS_NULL.has(id)) {
+      states[id] = 'unusable';
+    } else {
+      states[id] = fingerprint([], { ...emptyAuxiliarySources(), [field]: aux[field] }) !== baseline ? 'live' : 'quiet';
+    }
+  }
+  return states;
+}
+
+/** Attaches `quietSince`, carried from the previous report while the input stays quiet. */
+export function withCiiInputQuietClocks(
+  states: Record<CiiInputId, CiiInputState>,
+  previousInputs: unknown,
+  nowMs: number,
+): Record<CiiInputId, CiiInputReport> {
+  const previous = previousInputs && typeof previousInputs === 'object'
+    ? previousInputs as Record<string, Partial<CiiInputReport> | undefined>
+    : {};
+  const reports = {} as Record<CiiInputId, CiiInputReport>;
+  for (const id of CII_HEALTH_INPUT_IDS) {
+    const state = states[id];
+    if (state !== 'quiet') {
+      reports[id] = { state };
+      continue;
+    }
+    const since = previous[id]?.state === 'quiet' ? Number(previous[id]?.quietSince) : NaN;
+    reports[id] = { state, quietSince: Number.isFinite(since) && since > 0 && since <= nowMs ? since : nowMs };
+  }
+  return reports;
 }
 
 export function computeCIIScores(
@@ -1884,6 +2019,7 @@ async function recordRejectedRiskScoresBuild(err: RiskInputsUnavailableError): P
 async function buildRiskScoresPayload(): Promise<{
   response: GetRiskScoresResponse;
   realtimeSignalDensityCoverageCount: number;
+  ciiInputs: Record<CiiInputId, CiiInputState>;
 }> {
   const nowMs = Date.now();
   const [acled, aux, priorCiiScores] = await Promise.all([
@@ -1901,21 +2037,32 @@ async function buildRiskScoresPayload(): Promise<{
   return {
     response: { ciiScores, strategicRisks, degraded: false, stale: false },
     realtimeSignalDensityCoverageCount,
+    ciiInputs: assessCiiInputAvailability(acled, aux, nowMs),
   };
 }
+
+const RISK_SEED_META_KEY = 'seed-meta:intelligence:risk-scores';
 
 async function persistFreshRiskScorePayload(
   freshResult: GetRiskScoresResponse,
   realtimeSignalDensityCoverageCount: number,
+  ciiInputs: Record<CiiInputId, CiiInputState> | null,
   options: { liveCache?: boolean } = {},
 ): Promise<void> {
+  const fetchedAt = Date.now();
+  // The previous report carries each quiet input's clock. An unreadable one
+  // restarts the clocks, which can only delay a quiet-too-long verdict.
+  const previousMeta = ciiInputs ? await getCachedJson(RISK_SEED_META_KEY).catch(() => null) : null;
+  const inputs = ciiInputs
+    ? withCiiInputQuietClocks(ciiInputs, (previousMeta as { inputs?: unknown } | null)?.inputs, fetchedAt)
+    : undefined;
   const writes: Array<Promise<unknown>> = [
     setCachedJson(RISK_STALE_CACHE_KEY, freshResult, RISK_STALE_TTL),
     persistCiiTrendSnapshot(freshResult),
     persistCiiDailyHistory(freshResult),
     setCachedJson(
-      'seed-meta:intelligence:risk-scores',
-      { fetchedAt: Date.now(), recordCount: realtimeSignalDensityCoverageCount },
+      RISK_SEED_META_KEY,
+      { fetchedAt, recordCount: realtimeSignalDensityCoverageCount, ...(inputs ? { inputs } : {}) },
       604800,
     ),
   ];
@@ -1934,12 +2081,14 @@ export async function getRiskScores(
 ): Promise<GetRiskScoresResponse> {
   try {
     let realtimeSignalDensityCoverageCount = 0;
+    let ciiInputs: Record<CiiInputId, CiiInputState> | null = null;
     const { data: result, source, leader } = await cachedFetchJsonWithMeta<GetRiskScoresResponse>(
       RISK_CACHE_KEY,
       RISK_CACHE_TTL,
       async () => {
         const built = await buildRiskScoresPayload();
         realtimeSignalDensityCoverageCount = built.realtimeSignalDensityCoverageCount;
+        ciiInputs = built.ciiInputs;
         return built.response;
       },
       undefined,
@@ -1954,6 +2103,7 @@ export async function getRiskScores(
         try {
           const built = await buildRiskScoresPayload();
           realtimeSignalDensityCoverageCount = built.realtimeSignalDensityCoverageCount;
+          ciiInputs = built.ciiInputs;
           freshResult = withRiskScoreRuntimeState(built.response, { degraded: false, stale: false });
           liveCacheBackfill = true;
         } catch {
@@ -1988,7 +2138,7 @@ export async function getRiskScores(
       // 7-day TTL matches the warm-ping write so health.maxStaleMin (30min)
       // logic is unchanged.
       if ((source === 'fresh' && leader) || liveCacheBackfill) {
-        await persistFreshRiskScorePayload(freshResult, realtimeSignalDensityCoverageCount, {
+        await persistFreshRiskScorePayload(freshResult, realtimeSignalDensityCoverageCount, ciiInputs, {
           liveCache: liveCacheBackfill,
         });
       }

@@ -1,4 +1,4 @@
-import { decodeHealthPipeline } from './helpers/health-pipeline-fixture.mjs';
+import { CII_RISK_SCORES_META_KEY, decodeHealthPipeline, healthyCiiInputs } from './helpers/health-pipeline-fixture.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -189,6 +189,7 @@ function installHealthPipelineMock(recordCount, {
       recordCount: Math.max(10_000, ...configs.map((config) => config.minRecordCount ?? 0)),
     };
     if (key === SEED_META.globalTendersContractsFinder.key) meta.sourceState = 'ok';
+    if (key === CII_RISK_SCORES_META_KEY) meta.inputs = healthyCiiInputs();
     for (const config of configs) {
       if (config.requiredRedistributionPolicyVersion != null) {
         meta.redistributionPolicyVersion = config.requiredRedistributionPolicyVersion;

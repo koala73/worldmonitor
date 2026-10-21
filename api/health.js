@@ -13,6 +13,7 @@ import {
   parseEducationPayloadRankableRecordCount,
   parseRankableRecordCount,
 } from './_rankable-coverage.js';
+import { assessCiiInputs, CII_INPUT_POLICY } from './_cii-input-health.js';
 // Seed-envelope helper. PR 1 imports it here so PR 2 can wire envelope-aware
 // reads at specific call sites without further plumbing. It's a no-op on
 // legacy-shape seed-meta values (they have no `_seed` wrapper and pass through
@@ -1023,7 +1024,7 @@ const SEED_META = {
   sharedFxRates:    { key: 'seed-meta:shared:fx-rates',           maxStaleMin: 3600 }, // daily seed; 60h tolerance covers a missed 25h cache refresh
   gpsjam:           { key: 'seed-meta:intelligence:gpsjam',       maxStaleMin: 1440 }, // Wingbits API (scripts/fetch-gpsjam.mjs); 1440min = 24h tolerance gives operator headroom to handle upstream outages and monthly quota exhaustion (HTTP 402 observed 2026-04-29) without dashboard noise. Seeder catch-block extends TTL on fail without refreshing fetchedAt, so STALE_SEED via age is the only alarm path.
   positiveGeoEvents:{ key: 'seed-meta:positive-events:geo',       maxStaleMin: 60 },
-  riskScores:       { key: 'seed-meta:intelligence:risk-scores',  maxStaleMin: 30, minRecordCount: 3 }, // CII warm-ping every 8min; recordCount is realtime signal-density coverage for score-relevant conflict (ACLED or UCDP), news, and cyber families, not raw feed availability; quiet-but-fresh feeds may warn COVERAGE_PARTIAL.
+  riskScores:       { key: 'seed-meta:intelligence:risk-scores',  maxStaleMin: 30, minRecordCount: 3 }, // CII warm-ping every 8min; recordCount is realtime signal-density coverage for score-relevant conflict (ACLED or UCDP), news, and cyber families, not raw feed availability; quiet-but-fresh feeds may warn COVERAGE_PARTIAL. Per-input availability (seed-meta `inputs`) is graded by composeRiskScoresInputHealth.
   riskScoresHistory: {
     key: 'seed-meta:intelligence:risk-scores-history', maxStaleMin: 30, minRecordCount: 31,
     activationKey: CII_RISK_SCORE_CACHE_KEYS.dailyHistoryActivation,
@@ -4288,6 +4289,31 @@ function composeChinaDecisionSignalsStatus(entry, _chinaCoverageEntry, now) {
   return entry;
 }
 
+// The CII reads ~20 inputs, and the riskScores seed-meta count (realtime
+// signal density) stayed OK for months while ACLED fed nothing, because the
+// annual UCDP floor kept the conflict family "covered". This grades the
+// producer's per-input report (api/_cii-input-health.js) against the sibling
+// checks that own each input's staleness budget. It only raises an OK or
+// COVERAGE_PARTIAL verdict; a stale or missing seed-meta keeps its own status,
+// with the input detail attached for diagnosis. A dead input is never
+// contained: containment means the served payload is merely old, while scores
+// built without a signal are wrong.
+function composeRiskScoresInputHealth(entry, rawMeta, checks, now, containmentEvidenceByName) {
+  if (!entry) return entry;
+  const meta = unwrapEnvelope(parseRedisValue(rawMeta)).data;
+  const sourceStatuses = {};
+  for (const [id, cfg] of Object.entries(CII_INPUT_POLICY.inputs)) {
+    if (cfg.sourceCheck && checks?.[cfg.sourceCheck]) sourceStatuses[id] = checks[cfg.sourceCheck].status;
+  }
+  const ciiInputs = assessCiiInputs(meta, now, sourceStatuses);
+  const unfed = !ciiInputs.valid || ciiInputs.unfedFamilies.length > 0;
+  if ((entry.status !== 'OK' && entry.status !== 'COVERAGE_PARTIAL') || (!unfed && ciiInputs.dead.length === 0)) {
+    return { ...entry, ciiInputs };
+  }
+  containmentEvidenceByName?.delete('riskScores');
+  return { ...entry, status: unfed ? 'COVERAGE_DEGRADED' : 'COVERAGE_PARTIAL', ciiInputs };
+}
+
 function composeScorecardReadModelStatus(entry, raw, readError = false) {
   if (!entry) return entry;
   if (readError) {
@@ -5629,6 +5655,13 @@ export async function handleHealth(req, ctx, options = {}) {
     checks.chinaCoverage,
     evaluationNow,
   );
+  checks.riskScores = composeRiskScoresInputHealth(
+    checks.riskScores,
+    keyMetaValues.get(SEED_META.riskScores.key),
+    checks,
+    evaluationNow,
+    containmentEvidenceByName,
+  );
 
   // Now that every key has a status, claim (or read back) the one durable
   // deadline per STALE_CONTENT source and publish it. Only the claim half is
@@ -5855,6 +5888,7 @@ export default async function handler(req, ctx) {
 // 2026-05-04 health-readiness plan, Sprint 1 test plan (Codex round 2 P1).
 export const __testing__ = {
   composeContractsFinderHealth,
+  composeRiskScoresInputHealth,
   readSeedMeta,
   classifyKey,
   healthResponseBody,
