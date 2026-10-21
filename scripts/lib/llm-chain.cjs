@@ -49,8 +49,13 @@ async function callAnthropic({ apiKey, model, systemPrompt, userPrompt, maxToken
       .map((block) => block.text)
       .join('')
       .trim();
-  const prompt = response.usage?.input_tokens ?? 0;
-  const completion = response.usage?.output_tokens ?? 0;
+  // With server-side fallback every billed attempt is in usage.iterations;
+  // the top-level counters cover only the attempt that answered.
+  const usageParts = Array.isArray(response.usage?.iterations) && response.usage.iterations.length > 0
+    ? response.usage.iterations
+    : [response.usage ?? {}];
+  const prompt = usageParts.reduce((sum, part) => sum + (part?.input_tokens ?? 0), 0);
+  const completion = usageParts.reduce((sum, part) => sum + (part?.output_tokens ?? 0), 0);
   return {
     text,
     finishReason: response.stop_reason ?? null,

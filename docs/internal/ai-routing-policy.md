@@ -48,6 +48,15 @@ gateway marks their responses private and the CDN never stores them.
   shared country brief, feed classification, the public digest, and per-story
   "why it matters" and descriptions inside a digest). It contains no customer
   input and is the same for everyone.
+- **The dashboard's summary-cache shortcut.** Before summarizing, the browser
+  reads `summarize-article-cache` with an anonymous credential for a
+  brief-mode summary of the public feed (no framework, no profile), so the
+  server cannot tell a restricted user apart there and serves the shared
+  summary. It sends nothing anywhere; a miss goes to `summarize-article`,
+  which is identified and policy-bound. API and MCP callers carry their
+  identity on that read and get their own namespace.
+- **Stock-analysis history.** The per-symbol history and backtest ledger are
+  one shared store. Restricted callers' analyses are not written to it.
 - **Operator keys** (`WORLDMONITOR_VALID_KEYS`) carry no user id and are never
   restricted. Provision a restricted customer with account-bound access:
   `wm_` user keys, MCP OAuth, or dashboard sign-in.

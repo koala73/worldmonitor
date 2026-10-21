@@ -4,6 +4,7 @@ import { sanitizeForPrompt } from './llm-sanitize.js';
 import { buildLlmCallEvent, deliverUsageEvents, type LlmCallEvent } from './usage';
 import {
   ANTHROPIC_MESSAGES_URL,
+  AnthropicIncompleteError,
   AnthropicRefusalError,
   anthropicComplete,
   anthropicStream,
@@ -57,6 +58,16 @@ const PROVIDER_CHAIN = [
 const OPT_IN_PROVIDERS = ['anthropic'] as const;
 
 export type LlmProviderName = typeof PROVIDER_CHAIN[number] | typeof OPT_IN_PROVIDERS[number];
+
+/**
+ * True only for a provider on the default chain. A surface that takes a
+ * provider name from request input must not honour an opt-in name: those
+ * providers exist for customer AI routing policies, and reaching one on a
+ * caller's say-so would spend the platform's key outside any policy.
+ */
+export function isDefaultChainProvider(provider: string): boolean {
+  return (PROVIDER_CHAIN as readonly string[]).includes(provider);
+}
 
 /**
  * A customer's AI routing restriction. When present, `allowedProviders` IS
@@ -640,6 +651,8 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
             record(false, `http_${apiError.status}`);
           } else if (err instanceof AnthropicRefusalError) {
             record(false, 'refusal');
+          } else if (err instanceof AnthropicIncompleteError) {
+            record(false, 'length');
           } else {
             record(false, name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'fetch_error');
           }

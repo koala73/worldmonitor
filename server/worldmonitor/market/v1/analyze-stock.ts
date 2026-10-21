@@ -2083,7 +2083,10 @@ export async function analyzeStock(
       extended: extendedQuote ?? undefined,
       earnings,
     });
-    await storeStockAnalysisSnapshot(response, includeNews);
+    // The analysis history and backtest ledger are one shared store per
+    // symbol. A restricted caller's analysis stays in its own cache namespace
+    // and out of that store, so the store keeps a single provenance.
+    if (aiRouting.kind === 'default') await storeStockAnalysisSnapshot(response, includeNews);
     return response;
   };
 

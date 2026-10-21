@@ -38,6 +38,8 @@ function stubUpstreams(opts: {
   policies?: Record<string, PolicyAnswer>;
   completionText?: string;
   anthropicStatus?: number;
+  anthropicUsage?: Record<string, unknown>;
+  streamStopReason?: string;
 } = {}) {
   const sent: Sent[] = [];
   const redisKeysRead: string[] = [];
@@ -73,7 +75,7 @@ function stubUpstreams(opts: {
           ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello ' } }],
           ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'analyst' } }],
           ['content_block_stop', { type: 'content_block_stop', index: 0 }],
-          ['message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 2 } }],
+          ['message_delta', { type: 'message_delta', delta: { stop_reason: opts.streamStopReason ?? 'end_turn', stop_sequence: null }, usage: { output_tokens: 2 } }],
           ['message_stop', { type: 'message_stop' }],
         ];
         const sse = events.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('');
@@ -83,7 +85,7 @@ function stubUpstreams(opts: {
         id: 'msg_1', type: 'message', role: 'assistant', model: body?.model,
         content: [{ type: 'thinking', thinking: '', signature: 'sig' }, { type: 'text', text }],
         stop_reason: 'end_turn', stop_sequence: null,
-        usage: { input_tokens: 20, output_tokens: 8 },
+        usage: opts.anthropicUsage ?? { input_tokens: 20, output_tokens: 8 },
       }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
     return new Response(JSON.stringify({
@@ -235,6 +237,35 @@ describe('AI routing policy', () => {
       assert.deepEqual(hosts(sent), ['api.anthropic.com', 'openrouter.ai']);
     });
 
+    it('counts every billed attempt when the refusal fallback ran', async () => {
+      stubUpstreams({
+        completionText: 'An answer',
+        anthropicUsage: {
+          input_tokens: 20, output_tokens: 8,
+          iterations: [
+            { type: 'message', input_tokens: 20, output_tokens: 3 },
+            { type: 'fallback_message', input_tokens: 20, output_tokens: 8 },
+          ],
+        },
+      });
+      const result = await callLlm({
+        messages: [{ role: 'user', content: 'q' }],
+        routingPolicy: { allowedProviders: ['anthropic'] },
+      });
+      assert.equal(result?.tokens, 51);
+    });
+
+    it('does not report a token-limited stream as done', async () => {
+      stubUpstreams({ streamStopReason: 'max_tokens' });
+      const stream = callLlmReasoningStream({
+        messages: [{ role: 'user', content: 'hi' }],
+        routingPolicy: { allowedProviders: ['anthropic'] },
+      });
+      const text = await new Response(stream).text();
+      assert.match(text, /"delta":"Hello "/);
+      assert.doesNotMatch(text, /"done":true/);
+    });
+
     it('streams only from Anthropic under the policy', async () => {
       process.env.LLM_REASONING_PROVIDER = 'openrouter';
       const { sent } = stubUpstreams();
@@ -305,6 +336,31 @@ describe('AI routing policy', () => {
       assert.equal(res.provider, 'anthropic');
       assert.equal(res.status, 'SUMMARIZE_STATUS_SUCCESS');
       assert.deepEqual(hosts(sent), ['api.anthropic.com']);
+    });
+
+    it('summarize_article: an unrestricted caller cannot name the opt-in anthropic provider', async () => {
+      const { sent } = stubUpstreams();
+      const res = await summarizeArticle(ctxFor('/api/news/v1/summarize-article'), {
+        provider: 'anthropic', headlines: ['Senate passes sanctions package'], mode: 'translate',
+        geoContext: '', variant: 'fr', lang: 'en', systemAppend: '', bodies: [],
+      } as never);
+      assert.equal(res.status, 'SUMMARIZE_STATUS_SKIPPED');
+      assert.deepEqual(sent, []);
+    });
+
+    it('summarize_article: a restricted caller falls back along the policy chain', async () => {
+      const { sent } = stubUpstreams({
+        policies: { [RESTRICTED_USER]: { status: 200, policy: { allowedProviders: ['anthropic', 'openrouter'] } } },
+        anthropicStatus: 529,
+        completionText: 'Les sanctions ont été adoptées par le Sénat.',
+      });
+      const res = await summarizeArticle(ctxFor('/api/news/v1/summarize-article', RESTRICTED_USER), {
+        provider: 'ollama', headlines: ['Senate passes sanctions package'], mode: 'translate',
+        geoContext: '', variant: 'fr', lang: 'en', systemAppend: '', bodies: [],
+      } as never);
+      assert.equal(res.status, 'SUMMARIZE_STATUS_SUCCESS');
+      assert.equal(res.provider, 'openrouter');
+      assert.deepEqual(hosts(sent), ['api.anthropic.com', 'openrouter.ai']);
     });
 
     it('search_intel_history: refuses instead of sending the query to OpenRouter embeddings', async () => {

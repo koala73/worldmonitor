@@ -97,6 +97,26 @@ function textOf(content: Array<{ type: string; text?: string }>): string {
     .trim();
 }
 
+/**
+ * Billed tokens for a response. With server-side fallback, every attempt
+ * (the declined one included) is in `usage.iterations` and the top-level
+ * counters cover only the attempt that answered — the same rule the relay
+ * widget agent applies (scripts/ais-relay.cjs addUsage).
+ */
+export function anthropicBilledTokens(usage: unknown): { promptTokens: number; completionTokens: number } {
+  const u = (usage ?? {}) as { input_tokens?: number; output_tokens?: number; iterations?: unknown };
+  const parts = Array.isArray(u.iterations) && u.iterations.length > 0
+    ? u.iterations as Array<{ input_tokens?: number; output_tokens?: number }>
+    : [u];
+  let promptTokens = 0;
+  let completionTokens = 0;
+  for (const part of parts) {
+    promptTokens += part?.input_tokens ?? 0;
+    completionTokens += part?.output_tokens ?? 0;
+  }
+  return { promptTokens, completionTokens };
+}
+
 export async function anthropicComplete(opts: {
   apiKey: string;
   model: string;
@@ -116,8 +136,7 @@ export async function anthropicComplete(opts: {
   return {
     content: stopReason === 'refusal' ? '' : textOf(response.content as Array<{ type: string; text?: string }>),
     finishReason: stopReason,
-    promptTokens: response.usage?.input_tokens ?? 0,
-    completionTokens: response.usage?.output_tokens ?? 0,
+    ...anthropicBilledTokens(response.usage),
   };
 }
 
@@ -148,6 +167,11 @@ export async function* anthropicStream(opts: {
     if (event.type === 'message_delta' && event.delta.stop_reason === 'refusal') {
       throw new AnthropicRefusalError();
     }
+    // A token-limited answer is unfinished: throwing sends it down the
+    // caller's truncated-stream path instead of a `done` event.
+    if (event.type === 'message_delta' && event.delta.stop_reason === 'max_tokens') {
+      throw new AnthropicIncompleteError();
+    }
   }
 }
 
@@ -157,6 +181,13 @@ export function getAnthropicErrorStatus(err: unknown): { status: number; body: s
     return { status: err.status, body: String(err.message ?? '').slice(0, 300) };
   }
   return null;
+}
+
+export class AnthropicIncompleteError extends Error {
+  constructor() {
+    super('Anthropic stopped at the token limit');
+    this.name = 'AnthropicIncompleteError';
+  }
 }
 
 export class AnthropicRefusalError extends Error {

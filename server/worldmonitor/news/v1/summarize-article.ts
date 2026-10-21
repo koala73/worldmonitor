@@ -25,7 +25,7 @@ import {
   markUnservedLlmResponse,
   setResponseHeader,
 } from '../../../_shared/response-headers';
-import { callLlm, resolveProviderChain, stripThinkingTags } from '../../../_shared/llm';
+import { callLlm, isDefaultChainProvider, resolveProviderChain, stripThinkingTags } from '../../../_shared/llm';
 import { aiRoutingCacheSuffix, resolveAiRouting, toLlmRoutingPolicy } from '../../../_shared/ai-routing-policy';
 import { buildLlmCallEvent, deliverUsageEvents } from '../../../_shared/usage';
 import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
@@ -86,14 +86,17 @@ export async function summarizeArticle(
   const premiumIdentity = await resolvePremiumCallerIdentity(ctx.request);
   const isPremium = premiumIdentity.isPremium;
   const { provider: requestedProvider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
-  // A restricted caller's request is served by their first allowed provider,
+  // A restricted caller is served by their whole policy chain, in order,
   // whatever provider the client fallback chain named; the default chain is
-  // never reached (ai-routing-policy.ts).
+  // never reached (ai-routing-policy.ts). An unrestricted caller may name only
+  // a default-chain provider: opt-in providers (anthropic) are reachable
+  // through a policy, never on a request's say-so.
   const aiRouting = await resolveAiRouting(ctx.request);
   const routingPolicy = toLlmRoutingPolicy(aiRouting);
-  const provider = routingPolicy
-    ? (resolveProviderChain({ forcedProvider: requestedProvider, routingPolicy })[0] ?? '')
-    : requestedProvider;
+  const policyChain = routingPolicy ? resolveProviderChain({ routingPolicy }) : null;
+  const provider = policyChain
+    ? (policyChain.find((name) => getProviderCredentials(name) !== null) ?? policyChain[0] ?? '')
+    : (isDefaultChainProvider(requestedProvider) ? requestedProvider : '');
   const systemAppend = isPremium && typeof req.systemAppend === 'string' ? req.systemAppend : '';
   const requiresPremium = mode !== 'translate';
   // Every empty-summary envelope below (denied, skipped, rejected, failed)
@@ -197,7 +200,7 @@ export async function summarizeArticle(
     ollama: 'OLLAMA_API_URL not configured',
     openrouter: 'OPENROUTER_API_KEY not configured',
     anthropic: 'ANTHROPIC_API_KEY not configured',
-    '': 'No AI provider is available under this account\'s AI routing policy',
+    '': 'No AI provider is available for this request',
   };
 
   const credentials = getProviderCredentials(provider);
@@ -237,11 +240,12 @@ export async function summarizeArticle(
 
     // Single atomic call — source tracking happens inside cachedFetchJsonWithMeta,
     // eliminating the TOCTOU race between a separate getCachedJson and cachedFetchJson.
-    const { data: result, source } = await cachedFetchJsonWithMeta<{ summary: string; model: string; tokens: number }>(
+    const { data: result, source } = await cachedFetchJsonWithMeta<{ summary: string; model: string; tokens: number; provider?: string }>(
       cacheKey,
       CACHE_TTL_SECONDS,
       async () => {
-        if (!(await isProviderAvailable(apiUrl))) return null;
+        // callLlm runs its own reachability and model-health gates per provider.
+        if (!routingPolicy && !(await isProviderAvailable(apiUrl))) return null;
         // Full injection sanitization applied at prompt-build time only.
         // Headlines are re-sanitized here (not at cache-key time) so that
         // the cache key stays aligned with the browser while the actual
@@ -318,9 +322,10 @@ export async function summarizeArticle(
         const rejectsSummary = (text: string): boolean => ['brief', 'analysis'].includes(mode)
           && (text.length < 20 || hasReasoningPreamble(text));
 
-        if (provider === 'anthropic') {
-          // The OpenAI-format fetch below does not speak the Messages API;
-          // callLlm owns the Anthropic adapter, its telemetry and model health.
+        if (routingPolicy) {
+          // callLlm walks the policy chain with fallback, speaks the Anthropic
+          // Messages API, and owns telemetry and model health; the
+          // OpenAI-format fetch below serves unrestricted callers only.
           const result = await callLlm({
             messages: [
               { role: 'system', content: effectiveSystemPrompt },
@@ -328,12 +333,13 @@ export async function summarizeArticle(
             ],
             maxTokens: 100,
             timeoutMs: 25_000,
-            provider,
             routingPolicy,
             stage: 'summarize-article',
             validate: (text) => !rejectsSummary(text),
           });
-          return result ? { summary: result.content, model: result.model, tokens: result.tokens } : null;
+          return result
+            ? { summary: result.content, model: result.model, tokens: result.tokens, provider: result.provider }
+            : null;
         }
 
         const llmStartMs = Date.now();
@@ -395,7 +401,7 @@ export async function summarizeArticle(
         // This cache key is intentionally provider-independent so a successful
         // summary can be reused across the client fallback chain. Provider-
         // local failures and in-flight work must not suppress another provider.
-        shouldFetch: () => isModelUsable(apiUrl, model),
+        shouldFetch: () => routingPolicy !== null || isModelUsable(apiUrl, model),
         cacheFailures: false,
         inflightKey: `${cacheKey}:${provider}:${model}`,
       },
@@ -406,7 +412,7 @@ export async function summarizeArticle(
       return {
         summary: result.summary,
         model: result.model || model,
-        provider: isCached ? 'cache' : provider,
+        provider: isCached ? 'cache' : (result.provider || provider),
         tokens: isCached ? 0 : (result.tokens || 0),
         fallback: false,
         error: '',
