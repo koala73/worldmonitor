@@ -18,9 +18,48 @@ This page is the practical reference: a quick orientation, then twelve worked ex
   - Evaluation is checked before search. Expressions allow at most 128 AST nodes, 32 levels of AST nesting, eight pipe stages, and eight multiselects. The product of all multiselect widths and literal container widths must not exceed 64, including independent branches. An array's width is its length; an object's width is its number of keys. Empty containers count as one. These limits also cover repeated evaluation in maps and projections. `to_string()` is unavailable. Equality and inequality require at least one scalar literal operand, such as `country == 'Iraq'`. `join()` requires a literal string separator, such as `join(', ', names)`. `map()`, `sort_by()`, `min_by()`, and `max_by()` require explicit `&expression` references, such as `map(&name, rows)`; data objects and computed references are rejected.
 
   Failures return `{ _jmespath_error, original_keys, ... }` inside the normal result envelope — the tool call still succeeds at the JSON-RPC layer (no `isError: true`), and `original_keys` echoes the top-level keys of the unprojected response so the model can self-correct on the next call.
-- **A projection appears in two places.** `result.content[0].text` holds the projected value exactly as the examples below show it. `result.structuredContent` holds the same value as `{ "projection": <value> }`, because that field must be a JSON object and a projection can be a number, a string, an array or `null`.
+- **A projection appears in two places.** `result.content[0].text` normally holds the raw projected JSON. `result.structuredContent` carries it under `projection`. Attribution, coverage, and deprecation metadata can change these envelopes. See [MCP result channels](#mcp-result-channels).
 
 The three response shapes used below are the captured fixtures under `tests/fixtures/jmespath-samples/` (re-captured periodically against the prod MCP endpoint). They were picked deliberately — fat (~100 KB with `limit: 0`), medium (~30 KB), and thin (~10 KB) — to span the size tiers you'll actually project against.
+
+## MCP result channels
+
+WorldMonitor preserves raw projection text for existing clients. `structuredContent` must be a JSON object, so it wraps every successful projection, including object projections. The channels carry the same projected value but do not always have the same shape. Validate `structuredContent` against the tool's advertised `outputSchema`, not against the parsed text.
+
+For example, call `get_sources` with `{"view":"summary","jmespath":"summary.providerCount"}`. If the provider count is `3`, the result contains:
+
+```json
+{
+	"content": [{ "type": "text", "text": "3" }],
+	"structuredContent": { "projection": 3 }
+}
+```
+
+The count above is an example, not a fixed catalog size. These channel mappings apply after tool filters and cache summaries:
+
+| Response case | Parsed `content[0].text` | `structuredContent` |
+| --- | --- | --- |
+| Scalar projection | `3`, `0`, `false`, or `"name"` | `{ "projection": <value> }` |
+| Array projection | `["a", "b"]` | `{ "projection": ["a", "b"] }` |
+| Object projection | `{ "providerCount": 3 }` | `{ "projection": { "providerCount": 3 } }` |
+| No matching field | `null` | `{ "projection": null }` |
+| Cache tool with `summary: true` | The summary object | `{ "projection": <summary> }` |
+| Invalid expression, without attribution | `{ "_jmespath_error": "...", "original_keys": [...] }` | The same envelope |
+| Projection with an attribution rider | `{ "data": <value>, "_attribution": <rider> }` | The same envelope |
+| Projection of fitted output, without attribution | `{ "projection": <value>, "transportCoverage": <coverage> }` | The same envelope |
+| Output budget exceeded | `{ "_budget_exceeded": true, ... }` | The same envelope |
+
+A no-match `null` is a successful projection. It does not establish that the source has zero records or that the source failed. An invalid expression returns `_jmespath_error` instead.
+
+Attribution comes from the payload before projection. When source attribution is present, the server attaches `_attribution` outside the selected `data` value. This also applies to invalid expressions, whose error envelope becomes `data`. If the payload contains no source attribution values, no rider is added. Keep the rider with any values you redistribute.
+
+Some tools fit large responses to their output budget. If a projection selects fitted data, `transportCoverage` remains outside the projection in both channels. With an attribution rider, both channels use `{ "data": <value>, "_attribution": <rider>, "transportCoverage": <coverage> }`. Preserve this coverage record so omitted records remain visible. If the final text still exceeds the budget, the budget envelope replaces the data in both channels. The budget measures text after attribution, coverage, and deprecation metadata have been added.
+
+Deprecated tool aliases add a root `deprecation` notice to `structuredContent`. If parsed text is an object, the server also adds the notice at that object's root. Scalar, array, and `null` text remain raw, so their notice is available only in `structuredContent`. For an object projection, the structured value stays under `projection`, with the notice beside it. Budget and invalid-expression envelopes also retain the notice.
+
+For new clients, prefer `structuredContent` and retain its metadata. Check for `_budget_exceeded` at the root. Check for `_jmespath_error` at the root or inside attribution `data` before you use a projected value. A legacy text client must handle the envelopes above as well as raw JSON values. Do not assume that `JSON.parse(content[0].text)` equals `structuredContent`, or unwrap an ordinary tool payload merely because it has a field named `data`.
+
+The [MCP structured-content specification](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#structured-content) recommends serialized structured JSON in a text block at SHOULD level. WorldMonitor keeps its existing raw-text contract for compatibility. The wrapper difference is not an output-schema failure. This guide does not introduce a new response mode or change existing response bytes.
 
 ## REST API (`?jmespath=`)
 
