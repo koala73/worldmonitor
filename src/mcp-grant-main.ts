@@ -6,8 +6,10 @@
  * a "Sign in with WorldMonitor Pro" CTA on `api/oauth/authorize.js`).
  *
  * Flow on this page:
- *   1. Boot Clerk; if signed-out, openSignIn(). On sign-in, the modal
- *      closes and we re-enter via subscribeClerk().
+ *   1. Boot Clerk; if signed-out, show the sign-in view and open the modal.
+ *      On sign-in, the modal closes and we re-enter via subscribeClerk(). A
+ *      modal dismissed without a session leaves the sign-in view up with a
+ *      "Sign in" button (watchSignInDismissal).
  *   2. Read `?nonce=<n>` from the query string.
  *   3. GET /api/internal/mcp-grant-context?nonce=<n> with Bearer JWT to
  *      load the REAL `client_name` + `redirect_host`.
@@ -18,7 +20,14 @@
  *      apex page never controls the host).
  */
 
-import { initClerk, getClerkToken, getCurrentClerkUser, openSignIn, subscribeClerk } from '@/services/clerk';
+import {
+  initClerk,
+  getClerkToken,
+  getCurrentClerkUser,
+  isClerkSignInOpen,
+  openSignIn,
+  subscribeClerk,
+} from '@/services/clerk';
 import {
   classifyGrantDenial,
   describeGrantDelay,
@@ -29,6 +38,7 @@ import {
   type GrantClientContext,
   type GrantMintPhase,
 } from '@/services/mcp-grant-denial';
+import { watchSignInDismissal, type SignInDismissalWatch } from '@/services/sign-in-dismissal';
 
 // Apply user's saved theme preference. Inlined here (not the index.html head)
 // because the page's global CSP is hash-allowlisted and adding per-page
@@ -75,8 +85,10 @@ function hide(id: string): void { $(id).hidden = true; }
  */
 function showErrorView(message: string, title: string): void {
   resetMintPhase();
+  stopSignInWatch();
   hide('loading');
   hide('consent');
+  hide('signInView');
   hide('retryContextBtn');
   setText('errorTitle', title);
   setText('errorBody', message);
@@ -85,8 +97,10 @@ function showErrorView(message: string, title: string): void {
 
 function showRetryableContextView(message: string): void {
   resetMintPhase();
+  stopSignInWatch();
   hide('loading');
   hide('consent');
+  hide('signInView');
   setText('errorTitle', 'Authorization temporarily unavailable');
   setText('errorBody', message);
   show('retryContextBtn');
@@ -96,8 +110,54 @@ function showRetryableContextView(message: string): void {
 function showContextLoading(): void {
   hide('errorView');
   hide('consent');
+  hide('signInView');
   setText('loadingBody', 'Loading authorization request…');
   show('loading');
+}
+
+const SIGN_IN_CANCELLED_MESSAGE = 'Sign-in was cancelled. Try again or use your email code.';
+const SIGN_IN_NOT_OPENED_MESSAGE = 'The sign-in window did not open. Try again.';
+
+let signInWatch: SignInDismissalWatch | null = null;
+
+function stopSignInWatch(): void {
+  signInWatch?.cancel();
+  signInWatch = null;
+}
+
+function showSignInView(message: string | null): void {
+  resetMintPhase();
+  hide('loading');
+  hide('consent');
+  hide('errorView');
+  setText('signInMessage', message ?? '');
+  if (message) show('signInMessage');
+  else hide('signInMessage');
+  show('signInView');
+}
+
+/**
+ * Open the Clerk modal over an actionable page. The sign-in view sits behind
+ * the modal rather than the spinner, so a dismissal (2026-10-19: an interrupted
+ * passkey prompt closed the modal at `needs_first_factor` with no session)
+ * returns the user to a "Sign in" button. Clerk has no close callback, so the
+ * watcher notices the modal leaving; a completed sign-in moves the page off this
+ * view through `reactToAuth` first, which is what tells the two apart.
+ */
+function promptSignIn(): void {
+  stopSignInWatch();
+  showSignInView(null);
+  const watch = watchSignInDismissal({
+    isOpen: isClerkSignInOpen,
+    onDismissed: (reason) => {
+      if (signInWatch !== watch) return;
+      signInWatch = null;
+      if ($('signInView').hidden) return;
+      showSignInView(reason === 'closed' ? SIGN_IN_CANCELLED_MESSAGE : SIGN_IN_NOT_OPENED_MESSAGE);
+    },
+  });
+  signInWatch = watch;
+  openSignIn();
 }
 
 function getNonceFromQuery(): string | null {
@@ -171,7 +231,7 @@ async function loadContextAttempt(
     switch (action) {
       case 'sign_in':
         // Token went stale between page load and fetch — re-prompt.
-        openSignIn();
+        promptSignIn();
         return;
       case 'preserve_consent':
         return;
@@ -230,6 +290,7 @@ async function loadContextAttempt(
   const u = getCurrentClerkUser();
   setText('userEmail', u?.email ?? 'your account');
   hide('loading');
+  hide('signInView');
   show('consent');
 }
 
@@ -348,12 +409,24 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
+  // Clerk emits on every client change, including the in-progress sign-in
+  // attempt a dismissed modal leaves behind. Re-opening the modal on each
+  // signed-out emission would trap the user in it, so only the first signed-out
+  // pass opens it; after that the "Sign in" button is the way back in.
+  let autoPrompted = false;
   const reactToAuth = async (): Promise<void> => {
     if (!getCurrentClerkUser()) {
-      // Open sign-in modal; on success subscribeClerk() fires reactToAuth again.
-      openSignIn();
+      if (!autoPrompted) {
+        autoPrompted = true;
+        // On success subscribeClerk() fires reactToAuth again with a user.
+        promptSignIn();
+        return;
+      }
+      if ($('signInView').hidden) showSignInView(null);
       return;
     }
+    stopSignInWatch();
+    if (!$('signInView').hidden) showContextLoading();
     await loadContext(nonce);
   };
 
@@ -369,6 +442,10 @@ async function bootstrap(): Promise<void> {
     void loadContext(nonce);
   });
   $('authorizeBtn').addEventListener('click', () => { void onAuthorizeClick(nonce); });
+  $('signInBtn').addEventListener('click', () => {
+    autoPrompted = true;
+    promptSignIn();
+  });
 
   subscribeClerk(() => { void reactToAuth(); });
   await reactToAuth();
