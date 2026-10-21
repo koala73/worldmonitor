@@ -82,7 +82,7 @@ jobs:
           # a code-only PR skips it. LINT_MD_INPUTS in .husky/pre-push plus the lockfile.
           MARKDOWN=$(printf '%s\n' "$FILES" | grep -cE '\.md$|^\.markdownlint|^package(-lock)?\.json$' || true)
           echo "markdown=$( [ "$MARKDOWN" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
-          DOCS=$(printf '%s\n' "$FILES" | grep -cE '^docs/|^scripts/check-doc-anchors\.mjs$|^scripts/_html-entities\.mjs$|^\.github/workflows/lint-code\.yml$' || true)
+          DOCS=$(printf '%s\n' "$FILES" | grep -cE '^docs/|^scripts/check-doc-anchors\.mjs$|^scripts/_html-entities\.mjs$|^scripts/mint-export-preload\.mjs$|^\.github/workflows/lint-code\.yml$' || true)
           echo "docs=$( [ "$DOCS" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
 
   biome:
