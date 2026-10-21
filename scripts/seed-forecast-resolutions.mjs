@@ -3425,7 +3425,8 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     // Persistent working ledger: no ttlSeconds by design (#5007 R11).
     // 180 days of resolved entries keep their full evidence, because a
     // corrected receipt is rebuilt from the hot entry. The JSON passed 5MB on
-    // 2026-10-21; gzip stores it at about a quarter of that.
+    // 2026-10-21 and grows ~330KB a week, so the 8MiB budget below runs out
+    // within months on its own; gzip stores it at about a quarter of that.
     compressPayload: true,
     validateFn: (ledger) => ledger && typeof ledger === 'object' && !Array.isArray(ledger),
     declareRecords,
