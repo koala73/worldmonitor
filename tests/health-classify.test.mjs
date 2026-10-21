@@ -2869,12 +2869,12 @@ test('classifyKey: an UNREADABLE activation marker earns nothing (fails closed)'
 });
 
 test('classifyKey: a key with no activation marker is untouched by the change', () => {
-  // newsThreatSummary is in both sets too, but configures no marker — so it is
+  // recoveryFiscalSpace is in both sets too, but configures no marker — so it is
   // permanently `unknown` and MUST keep EMPTY_DATA_OK_KEYS' behaviour. This is
   // what stops the reorder from silencing producers that run and then stop.
   const entry = classifyKey(
-    'newsThreatSummary',
-    STANDALONE_KEYS.newsThreatSummary,
+    'recoveryFiscalSpace',
+    STANDALONE_KEYS.recoveryFiscalSpace,
     { allowOnDemand: true },
     makeCtx({ activationStates: IMD_MARKER_ABSENT }),
   );

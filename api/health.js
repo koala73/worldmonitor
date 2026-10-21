@@ -1848,7 +1848,7 @@ const SEED_META = {
     },
   },
   euFsi:             { key: 'seed-meta:economic:fsi-eu',               maxStaleMin: 5760 }, // daily seed (weekdays + holidays); 5760min = 96h = covers Wed→Mon Easter gap. Data freshness is tracked separately via content-age (STALE_CONTENT) — see seed-fsi-eu.mjs.
-  newsThreatSummary: { key: 'seed-meta:news:threat-summary',          maxStaleMin: 60 }, // relay classify every ~20min; 60min = 3x interval
+  newsThreatSummary: { key: 'seed-meta:news:threat-summary',          maxStaleMin: 60 }, // relay classify writes every 15min (27-48min across restarts); 60min budget sits under the 2h payload TTL so this goes stale before the key vanishes
   shippingStress:    { key: 'seed-meta:supply_chain:shipping_stress',  maxStaleMin: 45 }, // relay loop every 15min; 45 = 3x interval (was 30 = 2×, too tight on relay hiccup)
   diseaseOutbreaks:  { key: 'seed-meta:health:disease-outbreaks',      maxStaleMin: 2880 }, // daily seed; 2880 = 48h = 2x interval
   healthAirQuality:  { key: 'seed-meta:health:air-quality',            maxStaleMin: 180 }, // hourly cron; 180 = 3x interval for shared health/climate seed
@@ -2281,7 +2281,6 @@ const ON_DEMAND_KEYS = new Set([
   'marketAlertLedger',
   'marketAlertScorecard',
   'newsRecallBenchmark',
-  'newsThreatSummary', // relay classify loop — only written when mergedByCountry has entries; absent on quiet news periods
   'resilienceRanking', // on-demand RPC cache populated after ranking requests; missing before first Pro use is expected
   'recoveryFiscalSpace', 'recoveryReserveAdequacy', 'recoveryExternalDebt',
   // NOTE (2026-04-24, plan 2026-04-24-001): the PR 1 v2 energy seeds
@@ -2682,7 +2681,7 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'notamClosures', 'faaDelays', 'intlDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts', 'imdCycloneMarine', 'canadaRoads', 'albertaRoads', 'manitobaRoads', 'torontoRoads', 'bcOpen511', 'canadaAlerts', 'canadaAlertsAbSource', 'canadaAlertsBcSource', 'canadaAlertsSkSource',
   'earningsCalendar', 'econCalendar', 'cotPositioning',
   'usniFleet', // usniFleetStale covers the fallback; relay outages → WARN not CRIT
-  'newsThreatSummary', // only written when classify produces country matches; quiet news periods = 0 countries, no write
+  'newsThreatSummary', // a quiet classify cycle writes `byCountry: {}` (0 records); MISSING_DATA_IS_FAILURE_KEYS keeps a vanished payload critical
   'recoveryFiscalSpace',
   'ddosAttacks', 'trafficAnomalies', // zero events during quiet periods is valid, not critical
   'resilienceStaticFao', // empty aggregate = no IPC Phase 3+ countries this year (possible in theory); the key must exist but count=0 is fine
@@ -2746,6 +2745,11 @@ const MISSING_DATA_IS_FAILURE_KEYS = new Set([
   'canadaAlertsAbSource',
   'canadaAlertsBcSource',
   'canadaAlertsSkSource',
+  // The relay classify loop writes the summary on every cycle that reached a
+  // digest (`byCountry: {}` when quiet) and advances seed-meta only after that
+  // write lands, so fresh metadata beside a missing payload is an expiry or a
+  // lost write. That gap zeroes every country's CII news score.
+  'newsThreatSummary',
 ]);
 
 // Keys where a present payload with meta recordCount=0 is valid, but the data

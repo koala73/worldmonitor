@@ -180,6 +180,24 @@ describe('CII input health, producer to verdict', () => {
     assert.equal(live.inputs.newsInsights.quietSince, undefined, 'a live input resets the clock');
   });
 
+  it('reads the relay threat summary envelope: empty is quiet, populated is live, absent is missing', async () => {
+    // The exact shape scripts/ais-relay.cjs seedClassify writes. A quiet cycle
+    // publishes `byCountry: {}`; only a vanished key is a dead input.
+    const envelope = (byCountry: Record<string, unknown>) => JSON.stringify({
+      _seed: { fetchedAt: NOW, recordCount: Object.keys(byCountry).length, sourceVersion: 'news-threat-summary', schemaVersion: 1, state: Object.keys(byCountry).length ? 'OK' : 'OK_ZERO' },
+      data: { byCountry, generatedAt: NOW },
+    });
+    const quiet = await buildSeedMeta({ ...liveFeedsWithoutRealtimeConflict(), 'news:threat:summary:v1': envelope({}) });
+    assert.equal(quiet.inputs.threatSummary.state, 'quiet');
+    const live = await buildSeedMeta({
+      ...liveFeedsWithoutRealtimeConflict(),
+      'news:threat:summary:v1': envelope({ UA: { critical: 3, high: 2, medium: 0, low: 0, info: 0 } }),
+    });
+    assert.equal(live.inputs.threatSummary.state, 'live');
+    const missing = await buildSeedMeta(liveFeedsWithoutRealtimeConflict());
+    assert.equal(missing.inputs.threatSummary.state, 'missing');
+  });
+
   it('does not read or grade the cyber feed removed from CII v14', async () => {
     const meta = await buildSeedMeta(liveFeedsWithoutRealtimeConflict());
     assert.equal(reads.includes('cyber:threats-bootstrap:v2'), false);
