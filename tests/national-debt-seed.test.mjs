@@ -406,6 +406,51 @@ describe('WEO fiscal-period anchors', () => {
     }
   });
 
+  describe('after a fiscal period closes', () => {
+    // NOW is 2026-10-19: Bangladesh's FY2025/26 (WEO 2026) closed on June 30,
+    // so the clock is running through FY2026/27 (WEO 2027).
+    function bangladesh(deficit2027) {
+      return computeEntries(
+        { BGD: { 2025: 38, 2026: 40, 2027: 42 } },
+        { BGD: { 2026: 500e9, 2027: 550e9 } },
+        { BGD: { 2026: -5, 2027: deficit2027 } },
+        null, NOW,
+      )[0];
+    }
+
+    it('accrues at the next period\'s projected deficit and GDP', () => {
+      const entry = bangladesh(-8);
+      assert.equal(entry.baselineTs, Date.UTC(2026, 6, 1));
+      assert.equal(entry.debtToGdp, 40, 'the closed period\'s stock still anchors the clock');
+      assert.ok(Math.abs(entry.perDayRate - 0.08 * 550e9 / 365.25) < 1e-6);
+    });
+
+    it('stops ticking when the next period is projected in surplus', () => {
+      const entry = bangladesh(1);
+      assert.equal(entry.perSecondRate, 0);
+      assert.equal(entry.perDayRate, 0);
+    });
+
+    it('keeps the closed period\'s rate when the next period has no deficit or GDP', () => {
+      const entry = computeEntries(
+        { BGD: { 2026: 40 } }, { BGD: { 2026: 500e9 } }, { BGD: { 2026: -5 } }, null, NOW,
+      )[0];
+      assert.ok(Math.abs(entry.perDayRate - 0.05 * 500e9 / 365.25) < 1e-6);
+    });
+
+    it('leaves periods still in progress on their own year\'s deficit', () => {
+      for (const iso3 of ['IND', 'DEU']) { // India ends March 2027; calendar 2026 ends January 2027
+        const entry = computeEntries(
+          { [iso3]: { 2026: 80, 2027: 82 } },
+          { [iso3]: { 2026: 1e12, 2027: 1.1e12 } },
+          { [iso3]: { 2026: -5, 2027: -9 } },
+          null, NOW,
+        )[0];
+        assert.ok(Math.abs(entry.perDayRate - 0.05 * 1e12 / 365.25) < 1e-6, iso3);
+      }
+    });
+  });
+
   it('keeps Singapore on the calendar fallback: WEO blends its fiscal years into calendar years', () => {
     assert.equal(entryFor('SGP').baselineTs, Date.UTC(2027, 0, 1));
   });
