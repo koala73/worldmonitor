@@ -11560,7 +11560,9 @@ async function handleWitsRequest(req, res) {
   }
 
   try {
-    const upstream = await fetch(`https://wits.worldbank.org${upstreamPath}`, {
+    const upstreamUrl = new URL('https://wits.worldbank.org');
+    upstreamUrl.pathname = upstreamPath;
+    const upstream = await fetch(upstreamUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         Accept: 'application/xml,text/xml;q=0.9,*/*;q=0.1',

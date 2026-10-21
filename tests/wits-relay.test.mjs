@@ -93,7 +93,8 @@ test('only the four TRN operations reach a fixed WITS origin without relay crede
     assert.equal(result.headers['cache-control'], 'no-store');
     assert.equal(result.headers['cdn-cache-control'], 'no-store');
     const call = h.calls.at(-1);
-    assert.equal(call.url, `https://wits.worldbank.org${path}`);
+    assert.equal(call.url.href, `https://wits.worldbank.org${path}`);
+    assert.equal(call.url.origin, 'https://wits.worldbank.org');
     assert.equal(call.init.redirect, 'error');
     const headers = new Headers(call.init.headers);
     assert.deepEqual([...headers.keys()].sort(), ['accept', 'user-agent']);
