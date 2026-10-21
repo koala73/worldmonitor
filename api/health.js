@@ -1837,8 +1837,11 @@ const SEED_META = {
   },
   oecdLtRates: {
     key: 'seed-meta:economic:oecd-lt-rates',
-    requireContentFreshness: { countries: ['DE', 'JP', 'GB', 'CA', 'AU', 'CH', 'NO', 'SE', 'IT', 'ES', 'KR', 'MX', 'ZA', 'PL', 'NL', 'BE', 'AT', 'PT', 'IE', 'FI', 'DK', 'GR', 'CZ', 'HU', 'CL', 'FR', 'US'], budgetMinutes: 80 * 24 * 60 },
-    maxStaleMin: 60 * 24 * 21, // weekly section; 21d = 3x interval, matches monthly data cadence
+    // budgetMinutes is the widest entry of OECD_LT_SOURCE_BUDGET_MIN in
+    // scripts/lib/yield-curves/oecd-lt.mjs (FRED/OECD route, 120d); the producer
+    // judges ECB-sourced markets at the tighter 114d budget before publishing.
+    requireContentFreshness: { countries: ['DE', 'JP', 'GB', 'CA', 'AU', 'CH', 'NO', 'SE', 'IT', 'ES', 'KR', 'MX', 'ZA', 'PL', 'NL', 'BE', 'AT', 'PT', 'IE', 'FI', 'DK', 'GR', 'CZ', 'HU', 'CL', 'FR', 'US'], budgetMinutes: 120 * 24 * 60 },
+    maxStaleMin: 4320, // daily bundle section; 72h = 3x interval. Per-market content age is separate.
     activationKey: 'seed-activated:economic:oecd-lt-rates',
     cutover: {
       mode: 'activation-marker',
