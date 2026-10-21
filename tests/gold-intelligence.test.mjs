@@ -91,14 +91,14 @@ function reservesFixture(indicator) {
 }
 
 describe('gold reserve quantities through HTTP and MCP', () => {
-  it('omits unknown USD-fallback tonnes while retaining percentages, source units and prices', async () => {
+  it('marks legacy USD-fallback zeroes as unmeasured while retaining percentages, source units and prices', async () => {
     seedQuotes([quote('GC=F', 3200)]);
     cacheStore.set(GOLD_CB_RESERVES_KEY, reservesFixture('IRFCLDT1_IRFCL56_USD'));
     const result = await callTool();
     assert.equal(result.unavailable, false);
     assert.equal(result.goldPrice, 3200);
-    assert.ok(!Object.hasOwn(result.cbReserves, 'totalTonnes'), 'USD fallback must not report a measured total');
-    assert.ok(result.cbReserves.topHolders.every(holder => !Object.hasOwn(holder, 'tonnes')));
+    assert.equal(result.cbReserves.totalTonnes, 0);
+    assert.ok(result.cbReserves.topHolders.every(holder => holder.tonnes === 0));
     assert.ok(result.cbReserves.topHolders.every(holder => holder.pctOfReserves === 50));
     assert.equal(result.cbReserves.indicator, 'IRFCLDT1_IRFCL56_USD');
     assert.equal(result.cbReserves.valueIsOunces, false);
@@ -124,6 +124,7 @@ describe('gold reserve quantities through HTTP and MCP', () => {
     payload.totalTonnes = 0;
     payload.topHolders.forEach(holder => { holder.tonnes = 0; });
     const zero = await callTool();
+    assert.equal(zero.cbReserves.valueIsOunces, true, 'a measured zero remains distinct from a fallback placeholder');
     assert.equal(zero.cbReserves.totalTonnes, 0);
     assert.ok(zero.cbReserves.topHolders.every(holder => holder.tonnes === 0));
   });
@@ -136,9 +137,10 @@ describe('gold reserve quantities through HTTP and MCP', () => {
     assert.deepEqual((await callTool()).cbReserves.topBuyers12m, []);
     delete payload.valueIsOunces;
     const { cbReserves } = await callTool();
-    assert.ok(!Object.hasOwn(cbReserves, 'totalTonnes'));
+    assert.equal(cbReserves.totalTonnes, 0);
     assert.ok(!Object.hasOwn(cbReserves, 'valueIsOunces'));
-    assert.ok(cbReserves.topHolders.every(holder => !Object.hasOwn(holder, 'tonnes')));
+    assert.ok(cbReserves.topHolders.every(holder => holder.tonnes === 0));
+    assert.deepEqual(cbReserves.topBuyers12m, []);
   });
 
   it('keeps a missing reserves snapshot absent without making valid quotes unavailable', async () => {

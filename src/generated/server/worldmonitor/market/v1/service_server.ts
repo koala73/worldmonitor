@@ -767,7 +767,7 @@ export interface GoldEtfFlows {
 
 export interface GoldCbReserves {
   asOfMonth: string;
-  totalTonnes?: number;
+  totalTonnes: number;
   topHolders: GoldCbHolder[];
   topBuyers12m: GoldCbMover[];
   topSellers12m: GoldCbMover[];
@@ -778,7 +778,7 @@ export interface GoldCbReserves {
 export interface GoldCbHolder {
   iso3: string;
   name: string;
-  tonnes?: number;
+  tonnes: number;
   pctOfReserves: number;
 }
 
