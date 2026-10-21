@@ -73,16 +73,17 @@ async function tryAcquireLock(): Promise<boolean> {
  * writes it right after the canonical key in the same run, so a miss means the
  * reader deployed before the seeder's next tick or that extra-key write failed:
  * recompute the projection from the canonical key then, and only then. A
- * present-but-unusable summary keeps its own verdict, and a read error on
- * either key stays an error.
+ * present-but-unusable summary keeps its own verdict, a read error on either
+ * key stays an error, and a canonical payload that cannot be summarized is
+ * handed over as read so the parser rejects it: present and undatable, which
+ * fails the content clock closed, never "absent".
  */
 async function readFiresSummary(summaryKey: string): Promise<CacheReadResult> {
   const summary = await readCachedJson(summaryKey, true);
   if (summary.status !== 'miss') return summary;
   const canonical = await readCachedJson('wildfire:fires:v1', true);
   if (canonical.status !== 'hit') return canonical;
-  const derived = summarizeWildfireDetections(canonical.value);
-  return derived ? { status: 'hit', value: derived } : { status: 'miss' };
+  return { status: 'hit', value: summarizeWildfireDetections(canonical.value) ?? canonical.value };
 }
 
 /**

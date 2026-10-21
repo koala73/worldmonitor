@@ -437,6 +437,19 @@ describe('temporal anomalies cache freshness', () => {
     assert.equal(fires?.currentCount, 42, 'the fallback counts the pre-cap total');
   });
 
+  it('treats a canonical payload that cannot be summarized as undatable, not absent', async () => {
+    const now = Date.now();
+    const { calls } = await runWithRedisStub({
+      'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
+      'news:insights:v1': liveNews(now),
+      'wildfire:fires:v1': { fires: [] },
+      ...altSourcesLiveRedis(now),
+    });
+    const stamp = seedMetaStamp(calls);
+    assert.equal(stamp?.recordCount, Object.keys(COUNT_SOURCE_KEYS).length, 'the unusable source is still a read source, not a miss');
+    assert.equal((stamp?.value as { newestItemAt?: number | null }).newestItemAt, null, 'an unusable canonical payload fails the content clock closed');
+  });
+
   it('treats a malformed summary as undatable instead of masking it with the canonical fallback', async () => {
     const now = Date.now();
     const { calls } = await runWithRedisStub({

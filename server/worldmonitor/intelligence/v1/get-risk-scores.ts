@@ -1013,9 +1013,14 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   // it. A miss therefore means the reader deployed before the seeder's next
   // tick or that extra-key write failed; recompute the projection from the
   // canonical key then, and only then, so a present-but-unusable summary still
-  // surfaces in health instead of hiding behind the fallback.
+  // surfaces in health instead of hiding behind the fallback. A canonical
+  // payload that cannot be summarized is passed through so the parser below
+  // reports it unusable rather than missing.
+  const firesCanonicalRaw = firesSummaryRaw == null
+    ? (await readRiskInputs([{ key: 'wildfire:fires:v1', raw: true }]))[0]
+    : null;
   const firesRaw = firesSummaryRaw
-    ?? summarizeWildfireDetections((await readRiskInputs([{ key: 'wildfire:fires:v1', raw: true }]))[0]);
+    ?? (firesCanonicalRaw == null ? null : summarizeWildfireDetections(firesCanonicalRaw) ?? firesCanonicalRaw);
   const borderSnapshots = await readRiskInputs(CROSS_BORDER_SOURCES.map(source => ({ key: source.key, raw: true, envelope: true })));
   const read = (raw: unknown): CiiInputRead => (raw == null ? 'missing' : 'present');
   const inputReads: Partial<Record<CiiInputId, CiiInputRead>> = {

@@ -127,6 +127,12 @@ describe('CII fires input from the summary key', () => {
     assert.ok(!gets.includes(CANONICAL_KEY));
   });
 
+  it('reports a canonical payload that cannot be summarized as unusable, not missing', async () => {
+    stubRedis({ stored: { [CANONICAL_KEY]: envelope({ fires: [] }) } });
+    await usScore();
+    assert.equal(firesInput().state, 'unusable');
+  });
+
   it('rejects the build when the summary read itself fails', async () => {
     stubRedis({ failing: [WILDFIRE_FIRES_SUMMARY_KEY] });
     await getRiskScores({} as never, {} as never);

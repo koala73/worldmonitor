@@ -112,15 +112,21 @@ export function summarizeWildfireDetections(payload, { nowMs = Date.now() } = {}
   };
 }
 
+function isCount(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
 /**
  * Boundary parser for a summary read back from Redis. Rejects anything a
- * reader cannot score (missing counts, non-object byCountry, non-object
- * firms block); drops malformed intensity rows row by row.
+ * reader cannot score or date: missing counts, a non-object byCountry, and a
+ * firms block without its row count or partial flag, because the content
+ * clock reads `rows: 0` as "agency-only, skip" and `partial: false` as
+ * "complete coverage". Malformed intensity rows are dropped row by row.
  */
 export function parseWildfireFiresSummary(value) {
   if (!isPlainObject(value) || !isPlainObject(value.byCountry) || !isPlainObject(value.firms)) return null;
-  const totalCount = Number(value.totalCount);
-  if (!Number.isFinite(totalCount) || totalCount < 0) return null;
+  const { totalCount, firms } = value;
+  if (!isCount(totalCount) || !isCount(firms.rows) || typeof firms.partial !== 'boolean') return null;
   const byCountry = {};
   for (const [code, rows] of Object.entries(value.byCountry)) {
     if (!Array.isArray(rows)) continue;
@@ -128,15 +134,14 @@ export function parseWildfireFiresSummary(value) {
       .filter(isPlainObject)
       .map((row) => ({ brightness: finiteOrZero(row.brightness), frp: finiteOrZero(row.frp) }));
   }
-  const firms = value.firms;
   return {
     schemaVersion: finiteOrNull(value.schemaVersion) ?? WILDFIRE_FIRES_SUMMARY_SCHEMA_VERSION,
     totalCount,
     firms: {
       state: typeof firms.state === 'string' ? firms.state : null,
-      partial: firms.partial === true,
+      partial: firms.partial,
       count: finiteOrNull(firms.count),
-      rows: finiteOrZero(firms.rows),
+      rows: firms.rows,
       newestDetectedAt: finiteOrNull(firms.newestDetectedAt),
       oldestDetectedAt: finiteOrNull(firms.oldestDetectedAt),
     },

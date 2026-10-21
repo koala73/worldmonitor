@@ -140,6 +140,22 @@ describe('parseWildfireFiresSummary', () => {
     assert.equal(parseWildfireFiresSummary({ ...summary, firms: null }), null);
   });
 
+  it('rejects a firms block without the fields the content clock branches on', () => {
+    // `rows: 0` means "agency-only, skip the clock" and `partial: false` means
+    // "complete coverage", so a missing field must not default into either.
+    const summary = summarizeWildfireDetections({ fireDetections: [firms(39, -98)], _firmsState: 'ok', _firmsCount: 1 }, { nowMs: NOW })!;
+    const { rows: _rows, ...withoutRows } = summary.firms;
+    assert.equal(parseWildfireFiresSummary({ ...summary, firms: withoutRows }), null);
+    assert.equal(parseWildfireFiresSummary({ ...summary, firms: { ...summary.firms, rows: 'one' } }), null);
+    assert.equal(parseWildfireFiresSummary({ ...summary, firms: { ...summary.firms, rows: -1 } }), null);
+    const { partial: _partial, ...withoutPartial } = summary.firms;
+    assert.equal(parseWildfireFiresSummary({ ...summary, firms: withoutPartial }), null);
+    assert.equal(parseWildfireFiresSummary({ ...summary, firms: { ...summary.firms, partial: 'no' } }), null);
+    assert.deepEqual(parseWildfireFiresSummary({ ...summary, firms: { ...summary.firms, count: undefined, state: undefined } })?.firms, {
+      ...summary.firms, count: null, state: null,
+    });
+  });
+
   it('drops malformed intensity rows instead of rejecting the whole summary', () => {
     const parsed = parseWildfireFiresSummary({
       schemaVersion: 1,
