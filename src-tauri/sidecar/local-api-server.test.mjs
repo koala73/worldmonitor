@@ -14,7 +14,9 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
-import { createLocalApiServer, __testing__ } from './local-api-server.mjs';
+
+delete process.env.WS_RELAY_URL;
+const { createLocalApiServer, __testing__ } = await import('./local-api-server.mjs');
 
 test('bundles the shared LLM health provider registry with the sidecar (#7126)', () => {
   const config = JSON.parse(readFileSync(new URL('../tauri.conf.json', import.meta.url), 'utf8'));
