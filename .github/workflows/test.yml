@@ -32,6 +32,7 @@ jobs:
       consumer_prices: ${{ steps.diff.outputs.consumer_prices }}
       desktop_config: ${{ steps.diff.outputs.desktop_config }}
       desktop_rust: ${{ steps.diff.outputs.desktop_rust }}
+      zapier: ${{ steps.diff.outputs.zapier }}
     steps:
       - id: diff
         shell: bash
@@ -53,6 +54,7 @@ jobs:
             echo "consumer_prices=true" >> "$GITHUB_OUTPUT"
             echo "desktop_config=true" >> "$GITHUB_OUTPUT"
             echo "desktop_rust=true" >> "$GITHUB_OUTPUT"
+            echo "zapier=true" >> "$GITHUB_OUTPUT"
           }
           ZERO=0000000000000000000000000000000000000000
           if [ "${{ github.event_name }}" = "push" ]; then
@@ -161,6 +163,15 @@ jobs:
             END { print count + 0 }
           ')
           echo "code=$( [ "$CODE" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          ZAPIER=$(printf '%s\n' "$FILES" | awk '
+            /^integrations\/zapier\// { count++; next }
+            /^shared\/event-triggers\.json$/ { count++; next }
+            /^tests\/package-test-command-paths\.test\.mjs$/ { count++; next }
+            /^\.github\/workflows\/test\.yml$/ { count++; next }
+            /^\.github\/scripts\/deploy-gate\.sh$/ { count++; next }
+            END { print count + 0 }
+          ')
+          echo "zapier=$( [ "$ZAPIER" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
           # Only proven non-browser inputs may skip this job. New paths run it
           # until their owner can establish that they cannot affect the smoke.
           BROWSER=$(printf '%s\n' "$FILES" | awk '
@@ -262,6 +273,26 @@ jobs:
             END { print count + 0 }
           ')
           echo "desktop_rust=$( [ "$DESKTOP_RUST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+
+  zapier:
+    needs: changes
+    if: needs.changes.outputs.zapier == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: integrations/zapier
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: integrations/zapier/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test
 
   docs-stats:
     # Always-on: derives build-owned inventory facts and validates fixed or

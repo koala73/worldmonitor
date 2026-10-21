@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, globSync, readFileSync, statSync } from 'node:fs';
-import { matchesGlob, resolve } from 'node:path';
+import { resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 import { parse } from 'yaml';
 
@@ -148,24 +149,33 @@ test('test:data owns every resilience-validation-smoke suite', () => {
 });
 
 test('Zapier suites have a CI owner on integration and shared registry changes', () => {
-  const workflowPath = '.github/workflows/zapier-tests.yml';
-  assert.ok(existsSync(resolve(root, workflowPath)), 'Zapier suites need a CI workflow owner');
-  const workflow = parse(readFileSync(resolve(root, workflowPath), 'utf8'));
+  const workflowPath = '.github/workflows/test.yml';
+  const workflow = parse(testWorkflow);
+  const job = workflow.jobs.zapier;
+  assert.ok(job, 'Test workflow needs a Zapier CI owner');
   const integrationFiles = globSync('integrations/zapier/**', {
     cwd: root, exclude: ['**/node_modules/**'],
   }).filter((path) => statSync(resolve(root, path)).isFile());
   assert.ok(integrationFiles.filter((path) => path.endsWith('.test.js')).length >= 15);
   const inputs = [...integrationFiles, 'shared/event-triggers.json', workflowPath,
-    'tests/package-test-command-paths.test.mjs'];
+    'tests/package-test-command-paths.test.mjs', '.github/scripts/deploy-gate.sh'];
   for (const event of ['pull_request', 'push']) {
     const trigger = workflow.on[event];
-    assert.ok(trigger, `Zapier CI must run on ${event}`);
-    assert.deepEqual(inputs.filter((path) => !trigger.paths.some((pattern) => matchesGlob(path, pattern))), [],
-      `${event} must cover the integration, shared registry and ownership guard`);
+    assert.ok(Object.hasOwn(workflow.on, event), `Zapier CI must run on ${event}`);
+    assert.equal(trigger?.paths, undefined, 'the required check must publish even on unrelated changes');
   }
   assert.ok(workflow.on.push.branches.includes('main'));
-  const job = workflow.jobs.zapier;
-  assert.equal(job.if, undefined, 'the owner must not conditionally skip its suites');
+  assert.equal(job.needs, 'changes');
+  assert.equal(job.if, "needs.changes.outputs.zapier == 'true'");
+  assert.equal(workflow.jobs.changes.outputs.zapier, '${{ steps.diff.outputs.zapier }}');
+  const filter = testWorkflow.match(/ZAPIER=\$\(printf[^\n]*\| awk '([\s\S]*?)'\)/)?.[1];
+  assert.ok(filter, 'the Zapier path selector must exist');
+  assert.equal(Number(execFileSync('awk', [filter], { input: inputs.join('\n'), encoding: 'utf8' })), inputs.length,
+    'integration, registry and ownership changes must select the Zapier job');
+  assert.equal(Number(execFileSync('awk', [filter], { input: 'docs/about.mdx\nsrc/App.ts\n', encoding: 'utf8' })), 0);
+  const gate = readFileSync(resolve(root, '.github/scripts/deploy-gate.sh'), 'utf8');
+  const required = JSON.parse(gate.match(/\nrequired='([^']+)'/)?.[1] ?? '[]');
+  assert.ok(required.includes('zapier'), 'Zapier failures must block the aggregate gate');
   assert.equal(job.defaults.run['working-directory'], 'integrations/zapier');
   const commands = job.steps.filter((step) => step.run).map((step) => {
     assert.equal(step.if, undefined);
