@@ -21,7 +21,7 @@ const {
   readSeedSnapshot,
   verifySeedKey,
 } = await import('../scripts/_seed-utils.mjs');
-const { GZIP_PAYLOAD_PREFIX, encodeGzipPayload, parseStoredSeedJson } = await import('../scripts/_seed-payload-codec.mjs');
+const { GZIP_PAYLOAD_PREFIX, MAX_DECODED_PAYLOAD_BYTES, encodeGzipPayload, parseStoredSeedJson } = await import('../scripts/_seed-payload-codec.mjs');
 const { readRedisJson: readResolutionsJson } = await import('../scripts/seed-forecast-resolutions.mjs');
 
 const originalFetch = globalThis.fetch;
@@ -117,6 +117,12 @@ describe('compressed seed payloads', () => {
     assert.deepEqual(parseStoredSeedJson(JSON.stringify(value)), value);
     assert.deepEqual(parseStoredSeedJson(encodeGzipPayload(JSON.stringify(value))), value);
     assert.throws(() => parseStoredSeedJson(`${GZIP_PAYLOAD_PREFIX}not-gzip`));
+  });
+
+  it('parseStoredSeedJson refuses to inflate past MAX_DECODED_PAYLOAD_BYTES', () => {
+    const bomb = encodeGzipPayload(JSON.stringify('a'.repeat(MAX_DECODED_PAYLOAD_BYTES + 1)));
+    assert.ok(bomb.length < MAX_PAYLOAD_BYTES, 'fits the publish cap');
+    assert.throws(() => parseStoredSeedJson(bomb), { code: 'ERR_BUFFER_TOO_LARGE' });
   });
 
   it('shared seed readers decode a compressed canonical value', async () => {
