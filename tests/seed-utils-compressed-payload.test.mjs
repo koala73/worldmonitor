@@ -107,6 +107,17 @@ describe('compressed seed payloads', () => {
     assert.equal(commands.length, 0, 'nothing written');
   });
 
+  it('refuses to publish a compressed value its readers could not inflate', async () => {
+    const commands = recordingFetch();
+    const huge = { blob: 'a'.repeat(MAX_DECODED_PAYLOAD_BYTES) };
+    assert.ok(encodeGzipPayload(JSON.stringify(huge)).length < MAX_PAYLOAD_BYTES, 'encoded value fits the publish cap');
+    await assert.rejects(
+      atomicPublish('test:huge:v1', huge, null, undefined, { compressPayload: true }),
+      /Payload too large/,
+    );
+    assert.equal(commands.length, 0, 'nothing written');
+  });
+
   it('stores a value that a JSON-only reader rejects instead of misreading', () => {
     const encoded = encodeGzipPayload(JSON.stringify({ a: 1 }));
     assert.throws(() => JSON.parse(encoded));

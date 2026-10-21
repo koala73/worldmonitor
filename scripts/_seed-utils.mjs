@@ -9,7 +9,7 @@ import { createRequire } from 'node:module';
 import { flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
 
 import { buildEnvelope, unwrapEnvelope } from './_seed-envelope-source.mjs';
-import { encodeGzipPayload, parseStoredSeedJson } from './_seed-payload-codec.mjs';
+import { MAX_DECODED_PAYLOAD_BYTES, encodeGzipPayload, parseStoredSeedJson } from './_seed-payload-codec.mjs';
 import { resolveRecordCount } from './_seed-contract.mjs';
 // scripts/shared mirror, not ../shared: seeders deploy with rootDirectory=scripts.
 import { COMPARE_AND_DELETE_SCRIPT } from './shared/compare-and-delete-script.cjs';
@@ -598,6 +598,10 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
     ? buildEnvelope({ ...options.envelopeMeta, data })
     : data;
   const json = JSON.stringify(payloadValue);
+  // Readers stop inflating at MAX_DECODED_PAYLOAD_BYTES; never publish what they cannot read.
+  if (options.compressPayload && Buffer.byteLength(json, 'utf8') > MAX_DECODED_PAYLOAD_BYTES) {
+    throw new Error(`Payload too large: ${(Buffer.byteLength(json, 'utf8') / 1024 / 1024).toFixed(1)}MB decoded > ${MAX_DECODED_PAYLOAD_BYTES / 1024 / 1024}MB decode limit`);
+  }
   const payload = options.compressPayload ? encodeGzipPayload(json) : json;
   const payloadBytes = Buffer.byteLength(payload, 'utf8');
   const maxPayloadBytes = options.maxPayloadBytes ?? MAX_PAYLOAD_BYTES;
