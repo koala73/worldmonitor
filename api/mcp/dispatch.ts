@@ -128,8 +128,9 @@ async function executeCacheTool(
   const historyMode = params.changes_since_days !== undefined;
   // get_displacement_data reads, and is judged stale on, only the selected view's dataset.
   const displacementView = tool.name === 'get_displacement_data';
-  const selectedView = params.view === 'movements' || params.view === 'events' ? params.view : 'annual';
-  const viewOfKey = (key: string) => key.includes('displacement:summary') ? 'annual' : key.includes('displacement:idmc-idu') ? 'events' : 'movements';
+  const selectedView = params.view === 'movements' || params.view === 'events' || params.view === 'regions' ? params.view : 'annual';
+  const viewOfKey = (key: string) => key.includes('displacement:summary') ? 'annual'
+    : key.includes('displacement:idmc-idu') ? 'events' : key.includes('displacement:dtm') ? 'regions' : 'movements';
   const movementMode = displacementView && selectedView === 'movements';
   const selectedKeys = displacementView ? tool._cacheKeys.filter(key => viewOfKey(key) === selectedView) : tool._cacheKeys;
   const cacheKeys = tool.name === 'get_sanctions_data'
