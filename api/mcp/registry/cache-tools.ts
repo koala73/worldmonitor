@@ -3113,7 +3113,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     _validateArgs: params => { resolveCountryFilter(params.country, 'country'); },
     title: 'Climate anomalies and disasters',
     _outputBudgetBytes: 131072,
-    description: 'Return the seeded climate bundle: temperature and precipitation anomalies against 30-year WMO normals, climate-relevant disaster alerts (ReliefWeb, GDACS, FIRMS), the NOAA Mauna Loa CO2 trend, OpenAQ/WAQI PM2.5 station readings, NSIDC/NOAA Arctic sea-ice extent and ocean-heat indicators, active weather alerts and climate news. Each sub-dataset carries its own seed time and staleness budget (anomalies are flagged stale after 2 h, CO2 and sea ice after 2 days). Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects sub-datasets, country narrows the disaster and air-quality lists, limit caps each list (default 30, 0 for no cap).',
+    description: 'Return the seeded climate bundle: temperature and precipitation anomalies against 30-year WMO normals, climate-relevant disaster alerts (ReliefWeb, GDACS, FIRMS), the NOAA Mauna Loa CO2 trend, OpenAQ/WAQI PM2.5 station readings, NSIDC/NOAA Arctic sea-ice extent and ocean-heat indicators, active weather alerts and climate news. Freshness follows each source seed time and budget (anomalies 9 h, CO2 3 days, sea ice 2 days), plus producer content-age limits for anomalies and news. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects sub-datasets, country narrows the disaster and air-quality lists, limit caps each list (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3163,12 +3163,12 @@ export const CACHE_TOOLS: ToolDef[] = [
     },
     _cacheKeys: ['climate:anomalies:v2', 'climate:disasters:v1', 'climate:co2-monitoring:v1', 'climate:air-quality:v1', 'climate:ocean-ice:v1', 'climate:news-intelligence:v1', 'weather:alerts:v1'],
     _freshnessChecks: [
-      { key: 'seed-meta:climate:anomalies', maxStaleMin: 120 },
+      { key: 'seed-meta:climate:anomalies', maxStaleMin: 540, honorContentAge: true },
       { key: 'seed-meta:climate:disasters', maxStaleMin: 720 },
-      { key: 'seed-meta:climate:co2-monitoring', maxStaleMin: 2880 },
+      { key: 'seed-meta:climate:co2-monitoring', maxStaleMin: 4320 },
       { key: 'seed-meta:health:air-quality', maxStaleMin: 180 },
       { key: 'seed-meta:climate:ocean-ice', maxStaleMin: 2880 },
-      { key: 'seed-meta:climate:news-intelligence', maxStaleMin: 90 },
+      { key: 'seed-meta:climate:news-intelligence', maxStaleMin: 90, honorContentAge: true },
       { key: 'seed-meta:weather:alerts', maxStaleMin: 45 },
     ],
     _apiPaths: [

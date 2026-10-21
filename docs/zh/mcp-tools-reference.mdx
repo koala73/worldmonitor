@@ -2175,7 +2175,7 @@ curl -s https://worldmonitor.app/mcp \
 
 - **API 端点：** `GET /api/climate/v1/get-co2-monitoring`, `GET /api/climate/v1/get-ocean-ice-data`, `GET /api/climate/v1/list-air-quality-data`, `GET /api/climate/v1/list-climate-anomalies`, `GET /api/climate/v1/list-climate-disasters`, `GET /api/climate/v1/list-climate-news`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **2 天**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 各子数据集使用与 `/api/health` 一致的播种时间预算：天气警报 **45 分钟**、气候新闻 **90 分钟**、异常 **9 小时**、灾害 **12 小时**、空气质量 **3 小时**、海洋/海冰 **48 小时**、CO2 监测 **72 小时**。异常和气候新闻还检查生产者的内容时效预算，目前分别为 **14 天**和 **7 天**。任一播种过期、刷新失败、元数据缺失或内容过期都会使整个捆绑包标记为 `stale: true`。`cached_at` 是所有来源中最早的播种时间，并非统一的过期时间。`dataset` 在捆绑包新鲜度检查后筛选返回的数据。
 
 <CodeGroup>
 
