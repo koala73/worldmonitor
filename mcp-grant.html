@@ -66,6 +66,12 @@
         <button type="button" id="authorizeBtn">Authorize</button>
         <p class="error" id="mintError" role="alert" hidden></p>
       </div>
+      <div id="signInView" hidden>
+        <h1 class="client-name">Sign in to continue</h1>
+        <p style="font-size:.8rem;color:#666;line-height:1.5">Connecting an MCP client to WorldMonitor needs your WorldMonitor Pro account.</p>
+        <p class="client-warn" id="signInMessage" role="status" hidden></p>
+        <button type="button" id="signInBtn">Sign in</button>
+      </div>
       <div id="errorView" hidden>
         <h1 class="client-name" id="errorTitle" style="color:#ef4444;font-size:.95rem;font-weight:600;margin-bottom:.5rem">Authorization request expired</h1>
         <p style="font-size:.8rem;color:#666;line-height:1.5" id="errorBody">This authorization request expired or is invalid. Start over from your MCP client (e.g. Claude Desktop).</p>

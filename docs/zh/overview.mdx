@@ -29,7 +29,7 @@ World Monitor 将交互式 3D 地球仪和平面地图、可配置情报面板�
 
 | 能力 | 当前范围 |
 | --- | --- |
-| 国家风险与韧性 | 国家不稳定性指数（CII v13）为 31 个一级国家提供评分和带符号的 24 小时变化。国家韧性指数使用 72 个指标，按 21 个有效维度和 6 个领域对 196 个国家的公开范围进行排名，每 6 小时运行一次。 |
+| 国家风险与韧性 | 国家不稳定性指数（CII v14）为 31 个一级国家提供评分和带符号的 24 小时变化。国家韧性指数使用 72 个指标，按 21 个有效维度和 6 个领域对 196 个国家的公开范围进行排名，每 6 小时运行一次。 |
 | 信号与基础设施分析 | 地理汇聚、时间异常和跨来源关联功能会组合相关事件。基础设施级联功能对包含 350 个节点的基础设施图进行依赖关系建模。 |
 | 决策支持 | 带来源链接的 AI 简报、含机器可检查解决标准和评分卡上下文的概率预测、[路线探索器](/zh/route-explorer)及[情景引擎](/zh/scenario-engine)。 |
 | 公司与采购工作流 | MCP 公司情报工具组合市场上下文、SEC 文件搜索和重大 8-K 事件。[全球采购情报](/zh/global-procurement-intelligence)使用来自支持的政府和多边机构门户的种子化公开机会。可用性仍取决于部署凭据和来源健康状态。 |
@@ -101,10 +101,13 @@ World Monitor 发布了公开且可搜索的[数据源目录（英文）](https:
 |-------|---------|
 | **AI Insights** | LLM 综合世界简报，含焦点检测 |
 | **AI Strategic Posture** | 战区级军事力量聚合，含打击能力评估 |
-| **Country Instability Index** | 31 个一级国家的实时 CII v13 稳定性评分及带符号的 24 小时变动增量 |
+| **Country Instability Index** | 31 个一级国家的实时 CII v14 稳定性评分及带符号的 24 小时变动增量 |
 | **Strategic Risk Overview** | 综合所有情报模块的综合风险评分 |
 | **Infrastructure Cascade** | 电缆、管道和咽喉要道的依赖分析 |
 | **Live Intelligence** | 基于 GDELT 的主题信息流（军事、网络、核、制裁） |
+| **Metals & Materials** | 来自 Yahoo Finance 的金属与原材料报价；有数据时提供实物溢价和欧元汇率标签页。以其他货币计价的黄金标签页仅在大宗商品变体中显示。能源价格改在 Energy Complex 面板中显示 |
+| **Toronto Safety** | 多伦多警察局开放数据：已报告的重大犯罪事件（位置经过近似偏移）以及按分局和社区统计的年度出警次数。非实时调度数据。默认关闭 |
+| **Global Giving** | 来自平台和机构（GoFundMe、GlobalGiving、JustGiving、Candid、OECD）的已发布捐赠基准，附来源期间和核实状态。年化数字为估算值，非实时活动。此处默认关闭；在 Happy 变体中默认开启 |
 
 ### 新闻覆盖
 
@@ -133,6 +136,19 @@ World Monitor 发布了公开且可搜索的[数据源目录（英文）](https:
 | **AI Datacenters** | 来自 Epoch AI 数据集的 313 个 AI 算力集群 |
 | **Undersea Cables** | 对云连接至关重要的海底光缆路由 |
 | **Internet Outages** | 影响科技运营的网络中断 |
+
+### 科技面板
+
+这些面板是新闻源分组。每个面板汇集一组固定的 RSS 和新闻搜索源，每 10 分钟刷新一次。
+
+| 面板 | 描述 |
+|-------|-------------|
+| **Unicorn Tracker** | 新晋独角兽和十角兽，来自包括 CB Insights 在内的独角兽主题新闻源 |
+| **Funding & VC** | 融资轮次、种子轮和前种子轮交易、风投新闻以及 SEC 申报 |
+| **IPO & SPAC** | 科技 IPO 和 SPAC 新闻，包括 Renaissance Capital 的 IPO 报道 |
+| **AI Policy & Regulation** | 来自美国、欧盟、英国、中国和印度的 AI 监管、科技反垄断和数字政策 |
+| **Semiconductors & Hardware** | 来自 Tom's Hardware、SemiAnalysis 和半导体新闻源的芯片与硬件新闻 |
+| **Developer Community** | 来自 Dev.to、Lobsters、Changelog 和 Show HN 的开发者新闻 |
 
 ### 科技新闻分类
 
@@ -185,6 +201,13 @@ World Monitor 发布了公开且可搜索的[数据源目录（英文）](https:
 | **Supply Chain** | 海运咽喉要道中断评分和航运指数 |
 | **WTO Trade Policy** | 活跃贸易限制、关税趋势、双边贸易流向 |
 | **Premium Stock Analysis** | AI 驱动的股票分析，含回测 |
+| **IPOs, Earnings & M&A** | IPO、财报和并购新闻源分组 |
+| **Hedge Funds & PE** | 对冲基金、私募股权和主权财富基金新闻源分组 |
+| **GCC Investments** | 沙特和阿联酋在海外港口、管道、能源、数据中心等资产上的投资登记。可按投资国、行业、实体和状态筛选；选择一行即可将地图飞至该资产 |
+| **SEC Material Events** | 来自 SEC EDGAR 最新申报源的重大 8-K 申报，已剔除财报附件和 Reg FD 通知等常规事项。每行显示公司、事项代码和申报时间，并链接到 sec.gov 上的申报。默认关闭 |
+| **NQ Pulse** | 纳斯达克 100 参考报价：NQ 期货、QQQ、VXN 波动率指数和 10 年期美债收益率，每 5 分钟刷新，并标注 Current / Delayed / Stale。仅供参考，非交易级数据。默认关闭 |
+| **NQ Catalysts** | 未来 7 天的高影响美国宏观数据发布，以及对纳斯达克 100 影响最大的公司未来 14 天的财报。默认关闭 |
+| **NQ News** | 纳斯达克期货、纳斯达克 100 与 QQQ、美联储发布和半导体新闻源分组。默认关闭 |
 
 ### 金融新闻分类
 
@@ -205,7 +228,7 @@ World Monitor 发布了公开且可搜索的[数据源目录（英文）](https:
 
 | 图层 | 描述 |
 |-------|-------------|
-| **Mining Sites** | 全球主要矿区（运营中、规划中、停产） |
+| **Mining Sites** | 全球主要矿区，含矿种、国家、状态（生产中、开发中或勘探中）以及年产量（如有） |
 | **Processing Plants** | 冶炼厂、精炼厂和分离厂 |
 | **Commodity Ports** | 矿物进出口港口和码头 |
 | **Commodity Hubs** | 全球大宗商品交易所 |
@@ -254,3 +277,34 @@ Happy 变体（[happy.worldmonitor.app](https://happy.worldmonitor.app/dashboard
 | **5 Good Things** | 五则正面故事的每日摘要 |
 | **Conservation Wins** | 野生动物和生态系统恢复故事 |
 | **Renewable Energy** | 清洁能源里程碑和部署数据 |
+
+---
+
+## Energy Monitor
+
+能源变体（[energy.worldmonitor.app](https://energy.worldmonitor.app/dashboard)）聚焦油气基础设施、供应中断和能源冲击。
+
+### 能源图层
+
+| 图层 | 描述 |
+|-------|-------------|
+| **Live Tanker Positions** | 霍尔木兹、苏伊士、曼德海峡、马六甲、巴拿马和博斯普鲁斯约 2° 范围内油轮的实时 AIS 位置。琥珀色为锚泊，青色为航行中，灰色为无航速报告。图层开启时每 60 秒轮询一次 |
+| **Pipelines** | 来自有证据支撑的注册表的油气管道，按状态着色（flowing、reduced、offline、disputed）。在平面地图上，选择一条管道会打开 Pipeline Status 抽屉 |
+| **Storage Facilities** | 来自 Storage Atlas 注册表的地下储气库、战略储备、LNG 接收站和原油枢纽 |
+| **Fuel Shortages** | 来自 Fuel Shortage Registry、存在已确认或观察级燃料短缺的国家 |
+| **Commodity Ports** | 矿产进出口港口和码头 |
+
+### 能源面板
+
+这些面板背后的资产注册表整理自运营商披露、监管机构文件和公开数据集。每个状态徽章都由一组证据推导而来，选择一行或平面地图上的一个标记即可打开包含这些证据的抽屉。方法论：[管道](/zh/methodology/pipelines)、[储存](/zh/methodology/storage)、[燃料短缺](/zh/methodology/shortages)、[中断](/zh/methodology/disruptions)。
+
+| 面板 | 描述 |
+|-------|-------------|
+| **Global Energy Risk Overview** | 一排指标卡：霍尔木兹通行状态、欧盟天然气储存充盈率、布伦特价格及日变化、进行中的中断数量、数据新鲜度，以及危机天数计数。每张卡独立加载，来源失败时显示“—” |
+| **Oil & Gas Pipeline Status** | 资产、路线、输量和状态徽章（flowing、reduced、offline 或 disputed）。抽屉显示证据、制裁引用和该资产的中断时间线 |
+| **Strategic Storage Atlas** | 地下储气库、战略石油储备洞穴、LNG 接收站和储罐区，含国家、类型、容量和状态 |
+| **Global Fuel Shortage Registry** | 国家与油品、开始日期、证据，以及严重程度徽章：confirmed（红色）或 watch（琥珀色）。已确认的短缺排在前面 |
+| **Energy Disruptions Log** | 管道和储存设施的停运事件，可按原因（破坏、制裁、机械、维护、战争、天气、商业）筛选，并可只看进行中的事件。选择一个事件会打开受影响资产的抽屉 |
+| **GCC Energy Investments** | 即上文“金融面板”中介绍的海湾投资登记 |
+
+Global Energy Risk Overview 仅在能源变体中默认开启。其余四个能源面板在地缘政治变体中也默认开启。

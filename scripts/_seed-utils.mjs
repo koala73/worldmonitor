@@ -9,6 +9,7 @@ import { createRequire } from 'node:module';
 import { flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
 
 import { buildEnvelope, unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { MAX_DECODED_PAYLOAD_BYTES, encodeGzipPayload, parseStoredSeedJson } from './_seed-payload-codec.mjs';
 import { resolveRecordCount } from './_seed-contract.mjs';
 // scripts/shared mirror, not ../shared: seeders deploy with rootDirectory=scripts.
 import { COMPARE_AND_DELETE_SCRIPT } from './shared/compare-and-delete-script.cjs';
@@ -24,6 +25,7 @@ async function exitAfterTelemetryFlush(code) {
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
+const MAX_REDIS_REQUEST_BYTES = 10_000_000;
 export const SEED_REDIS_COMMAND_TIMEOUT_MS = 15_000;
 export const SEED_REDIS_RETRY_ATTEMPTS = 3;
 export const SEED_REDIS_RETRY_BASE_MS = 1_000;
@@ -505,7 +507,7 @@ async function redisGet(url, token, key, options = {}) {
   // mode, passes through legacy (bare-shape) values unchanged. Fixes WoW/cross-
   // seed reads that were silently getting `{_seed, data}` after PR 2a enveloped
   // the writer side of 91 canonical keys.
-  return unwrapEnvelope(JSON.parse(data.result)).data;
+  return unwrapEnvelope(parseStoredSeedJson(data.result)).data;
 }
 
 async function redisSet(url, token, key, value, ttlSeconds) {
@@ -595,10 +597,19 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
   const payloadValue = options.envelopeMeta && shouldEnvelopeKey(canonicalKey)
     ? buildEnvelope({ ...options.envelopeMeta, data })
     : data;
-  const payload = JSON.stringify(payloadValue);
+  const json = JSON.stringify(payloadValue);
+  // Readers stop inflating at MAX_DECODED_PAYLOAD_BYTES; never publish what they cannot read.
+  if (options.compressPayload && Buffer.byteLength(json, 'utf8') > MAX_DECODED_PAYLOAD_BYTES) {
+    throw new Error(`Payload too large: ${(Buffer.byteLength(json, 'utf8') / 1024 / 1024).toFixed(1)}MB decoded > ${MAX_DECODED_PAYLOAD_BYTES / 1024 / 1024}MB decode limit`);
+  }
+  const payload = options.compressPayload ? encodeGzipPayload(json) : json;
   const payloadBytes = Buffer.byteLength(payload, 'utf8');
-  if (payloadBytes > MAX_PAYLOAD_BYTES) {
-    throw new Error(`Payload too large: ${(payloadBytes / 1024 / 1024).toFixed(1)}MB > 5MB limit`);
+  const maxPayloadBytes = options.maxPayloadBytes ?? MAX_PAYLOAD_BYTES;
+  if (!Number.isSafeInteger(maxPayloadBytes) || maxPayloadBytes < 1 || maxPayloadBytes > MAX_SEEDED_VALUE_BYTES) {
+    throw new Error(`Invalid maxPayloadBytes: expected an integer from 1 to ${MAX_SEEDED_VALUE_BYTES}`);
+  }
+  if (payloadBytes > maxPayloadBytes) {
+    throw new Error(`Payload too large: ${(payloadBytes / 1024 / 1024).toFixed(1)}MB > ${maxPayloadBytes / 1024 / 1024}MB limit`);
   }
 
   // Retry the entire 3-call publish unit on transient Upstash failures.
@@ -628,16 +639,26 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
 
       const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const stagingKey = `${canonicalKey}:staging:${runId}`;
+      const canonicalCommand = ttlSeconds
+        ? ['SET', canonicalKey, payload, 'EX', ttlSeconds]
+        : ['SET', canonicalKey, payload];
+      if (maxPayloadBytes > MAX_PAYLOAD_BYTES) {
+        const requestBytes = Math.max(
+          Buffer.byteLength(JSON.stringify(canonicalCommand), 'utf8'),
+          Buffer.byteLength(JSON.stringify(['SET', stagingKey, payload, 'EX', 300]), 'utf8'),
+        );
+        if (requestBytes > MAX_REDIS_REQUEST_BYTES) {
+          const error = new Error(`Redis publish request too large: ${requestBytes} bytes > ${MAX_REDIS_REQUEST_BYTES}-byte limit`);
+          error.nonRetryable = true;
+          throw error;
+        }
+      }
 
       // Write to staging key
-      await redisSet(url, token, stagingKey, payloadValue, 300); // 5 min staging TTL
+      await redisCommand(url, token, ['SET', stagingKey, payload, 'EX', 300]); // 5 min staging TTL
 
       // Overwrite canonical key
-      if (ttlSeconds) {
-        await redisCommand(url, token, ['SET', canonicalKey, payload, 'EX', ttlSeconds]);
-      } else {
-        await redisCommand(url, token, ['SET', canonicalKey, payload]);
-      }
+      await redisCommand(url, token, canonicalCommand);
 
       // Cleanup staging
       await redisDel(url, token, stagingKey).catch(() => {});
@@ -819,7 +840,7 @@ export async function readCanonicalEnvelopeMeta(canonicalKey) {
     }, 2, 1000);
     if (!data || !data.result) return null;
     let parsed;
-    try { parsed = JSON.parse(data.result); } catch { return null; }
+    try { parsed = parseStoredSeedJson(data.result); } catch { return null; }
     if (!parsed || typeof parsed !== 'object') return null;
     const seed = parsed._seed;
     if (!seed || typeof seed !== 'object') return null;
@@ -2187,7 +2208,7 @@ export async function readSeedSnapshot(
     if (!strict && !result) return null;
     let parsed;
     try {
-      parsed = JSON.parse(result);
+      parsed = parseStoredSeedJson(result);
     } catch (cause) {
       if (strict) {
         throw Object.assign(new Error('Redis snapshot read returned malformed stored JSON'), { cause });
@@ -2517,6 +2538,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   const {
     validateFn,
     ttlSeconds,
+    maxPayloadBytes,
     lockTtlMs = 120_000,
     lockAcquireRetries = 2,
     extraKeys,
@@ -2544,6 +2566,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     allowPreservedFetchFailure = false,
     beforePublish,
     publishAtomically,
+    compressPayload = false, // store gzip+base64 (see _seed-payload-codec.mjs) when JSON outgrows MAX_PAYLOAD_BYTES
     afterPublish,
     afterValidationSkip,
     afterPreservedValidationSkip,
@@ -2985,12 +3008,14 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     try {
       publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds, {
         envelopeMeta,
+        maxPayloadBytes,
         beforePublish: beforePublish
           ? () => beforePublish(data, { canonicalKey, ttlSeconds, runId })
           : undefined,
         publishAtomically: publishAtomically
           ? (publishContext) => publishAtomically(data, { ...publishContext, runId })
           : undefined,
+        compressPayload,
       });
     } catch (error) {
       // An atomic publisher either switches its complete key cohort or leaves

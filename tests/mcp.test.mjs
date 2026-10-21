@@ -349,7 +349,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(body.error?.message, `Method not found: ${method.slice(0, 100)}`);
   });
 
-  it('malformed body returns JSON-RPC -32600', async () => {
+  it('malformed body returns JSON-RPC -32700', async () => {
     const req = new Request(BASE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
@@ -357,7 +357,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     });
     const res = await handler(req);
     const body = await res.json();
-    assert.equal(body.error?.code, -32600);
+    assert.equal(body.error?.code, -32700);
   });
 
   it('rejects an oversized JSON-RPC body before parsing (#7406)', async () => {
@@ -2365,68 +2365,92 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- get_consumer_prices (U4: hybrid _execute, country_code-parameterised) ---
 
-  it('get_consumer_prices returns 5-slice data on cache hit for country_code: "ae"', async () => {
-    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
-    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+  for (const [state, ageMin, stale, cachedAtKnown] of [
+    ['fresh', 60, false, true],
+    ['cadence boundary', 1500, false, true],
+    ['expired', 1501, true, true],
+    ['missing', 60, true, false],
+    ['invalid', 60, true, false],
+    ['error', 60, true, true],
+  ]) {
+    it(`get_consumer_prices preserves the MCP envelope with ${state} publisher spread metadata`, async (t) => {
+      process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+      process.env.VERCEL_ENV = 'preview';
+      process.env.VERCEL_GIT_COMMIT_SHA = 'consumer-freshness-test';
+      const now = Date.parse('2026-10-21T10:07:26.681Z');
+      t.mock.method(Date, 'now', () => now);
 
-    const overviewPayload   = { headlineCpiPct: 3.1, asOf: '2026-05-01' };
-    const categoriesPayload = { categories: [{ name: 'Groceries', changePct: 2.4 }] };
-    const moversPayload     = { items: [{ sku: 'milk-1L', changePct: 8.2 }] };
-    const spreadPayload     = { retailers: [{ slug: 'carrefour_ae', basketUsd: 38.9 }, { slug: 'lulu_ae', basketUsd: 41.2 }] };
-    const freshnessPayload  = { retailers: [{ slug: 'carrefour_ae', minsSinceScan: 18 }] };
-    // All within the shared 1500-min budget — use 60min old.
-    const fetchedAt = Date.now() - 60 * 60_000;
+      const overviewPayload   = { headlineCpiPct: 3.1, asOf: '2026-05-01' };
+      const categoriesPayload = { categories: [{ name: 'Groceries', changePct: 2.4 }] };
+      const moversPayload     = { risers: [], fallers: [], upstreamUnavailable: false };
+      const spreadPayload     = { retailers: [{ slug: 'carrefour_ae', basketUsd: 38.9 }, { slug: 'lulu_ae', basketUsd: 41.2 }] };
+      const freshnessPayload  = {
+        retailers: [
+          { slug: 'carrefour_ae', status: 'partial', parseSuccessRate: 83.33, freshnessMin: 28 },
+          { slug: 'spinneys_ae', status: 'failed', parseSuccessRate: 0, freshnessMin: 10104 },
+        ],
+        stalledCount: 1,
+        upstreamUnavailable: false,
+      };
+      const fetchedAt = now - 65 * 60_000;
+      const spreadFetchedAt = now - ageMin * 60_000;
+      const values = new Map();
+      for (const [key, data] of [
+        ['consumer-prices:overview:ae', overviewPayload],
+        ['consumer-prices:categories:ae:30d', categoriesPayload],
+        ['consumer-prices:movers:ae:30d', moversPayload],
+        ['consumer-prices:retailer-spread:ae:essentials-ae', spreadPayload],
+        ['consumer-prices:freshness:ae', freshnessPayload],
+      ]) {
+        values.set(key, { _seed: { fetchedAt, recordCount: 1, sourceVersion: 'consumer-prices-core-publish-v1', schemaVersion: 1, state: 'OK' }, data });
+        values.set(`seed-meta:${key}`, {
+          fetchedAt,
+          recordCount: 1,
+          coverage: { completedPages: 1, failedPages: 0, completionRatio: 1, rejectedCount: 0 },
+        });
+      }
+      const spreadKey = 'seed-meta:consumer-prices:retailer-spread:ae:essentials-ae';
+      values.get(spreadKey).fetchedAt = spreadFetchedAt;
+      if (state === 'missing') values.delete(spreadKey);
+      if (state === 'invalid') values.get(spreadKey).fetchedAt = 'invalid';
+      if (state === 'error') values.get(spreadKey).status = 'error';
+      const reads = [];
 
-    globalThis.fetch = async (url) => {
-      const u = url.toString();
-      // Data keys
-      if (u.includes(`/get/${encodeURIComponent('consumer-prices:overview:ae')}`)) {
-        return new Response(JSON.stringify({ result: JSON.stringify(overviewPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
-      if (u.includes(`/get/${encodeURIComponent('consumer-prices:categories:ae:30d')}`)) {
-        return new Response(JSON.stringify({ result: JSON.stringify(categoriesPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
-      if (u.includes(`/get/${encodeURIComponent('consumer-prices:movers:ae:30d')}`)) {
-        return new Response(JSON.stringify({ result: JSON.stringify(moversPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
-      if (u.includes(`/get/${encodeURIComponent('consumer-prices:retailer-spread:ae:essentials-ae')}`)) {
-        return new Response(JSON.stringify({ result: JSON.stringify(spreadPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
-      if (u.includes(`/get/${encodeURIComponent('consumer-prices:freshness:ae')}`)) {
-        return new Response(JSON.stringify({ result: JSON.stringify(freshnessPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
-      // Freshness/seed-meta keys — note `spread:ae` (NOT `retailer-spread:ae:essentials-ae`)
-      // matches the producer's actual key shape (see scripts/seed-consumer-prices.mjs:151).
-      if (u.includes(`/get/${encodeURIComponent('seed-meta:consumer-prices:overview:ae')}`)
-        || u.includes(`/get/${encodeURIComponent('seed-meta:consumer-prices:categories:ae:30d')}`)
-        || u.includes(`/get/${encodeURIComponent('seed-meta:consumer-prices:movers:ae:30d')}`)
-        || u.includes(`/get/${encodeURIComponent('seed-meta:consumer-prices:spread:ae')}`)
-        || u.includes(`/get/${encodeURIComponent('seed-meta:consumer-prices:freshness:ae')}`)) {
-        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt, recordCount: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
-      return originalFetch(url);
-    };
+      globalThis.fetch = async (url) => {
+        const path = new URL(url).pathname;
+        if (path.startsWith('/get/')) {
+          const key = decodeURIComponent(path.slice('/get/'.length));
+          reads.push(key);
+          return Response.json({ result: values.has(key) ? JSON.stringify(values.get(key)) : null });
+        }
+        return Response.json({});
+      };
 
-    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
-    const freshHandler = freshMod.default;
+      const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+      const freshHandler = freshMod.default;
 
-    const res = await freshHandler(makeReq('POST', {
-      jsonrpc: '2.0', id: 300, method: 'tools/call',
-      params: { name: 'get_consumer_prices', arguments: { country_code: 'ae' } },
-    }));
-    assert.equal(res.status, 200);
-    const body = await res.json();
-    assert.ok(body.result?.content, 'result.content must be present');
-    const payload = JSON.parse(body.result.content[0].text);
-    assert.equal(payload.country_code, 'ae', 'echoes normalised country_code');
-    assert.equal(payload.stale, false, 'all 5 freshness checks within 1500-min budget → stale=false');
-    assert.equal(payload.cached_at, new Date(fetchedAt).toISOString(), 'cached_at is the oldest valid fetchedAt');
-    assert.deepEqual(payload.data.overview, overviewPayload);
-    assert.deepEqual(payload.data.categories, categoriesPayload);
-    assert.deepEqual(payload.data.movers, moversPayload);
-    assert.deepEqual(payload.data.retailerSpread, spreadPayload);
-    assert.deepEqual(payload.data.freshness, freshnessPayload);
-  });
+      const res = await freshHandler(makeReq('POST', {
+        jsonrpc: '2.0', id: 300, method: 'tools/call',
+        params: { name: 'get_consumer_prices', arguments: { country_code: 'ae' } },
+      }));
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.ok(body.result?.content, 'result.content must be present');
+      const payload = JSON.parse(body.result.content[0].text);
+      assert.equal(payload.country_code, 'ae', 'echoes normalised country_code');
+      assert.equal(payload.stale, stale);
+      assert.equal(payload.cached_at, cachedAtKnown ? new Date(Math.min(fetchedAt, spreadFetchedAt)).toISOString() : null);
+      assert.deepEqual(body.result.structuredContent, payload);
+      assert.ok(reads.includes(spreadKey), 'reads the authoritative publisher metadata');
+      assert.ok(!reads.includes('seed-meta:consumer-prices:spread:ae'), 'does not read the retired manual-seeder alias');
+      assert.deepEqual(payload.data.overview, overviewPayload);
+      assert.deepEqual(payload.data.categories, categoriesPayload);
+      assert.deepEqual(payload.data.movers, moversPayload);
+      assert.deepEqual(payload.data.retailerSpread, spreadPayload);
+      assert.deepEqual(payload.data.freshness, freshnessPayload);
+    });
+  }
 
   it('get_consumer_prices normalises uppercase "AE" to lowercase and succeeds', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';

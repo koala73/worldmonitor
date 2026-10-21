@@ -30,7 +30,6 @@ const SIGNAL_FAMILY_KEYS = [
   'conflict:ucdp-events:v1',
   'news:insights:v1',
   'news:threat:summary:v1',
-  'cyber:threats-bootstrap:v2',
 ];
 const LIVE_KEY = `risk:scores:sebuf:${CII_FORMULA_VERSION}`;
 const STALE_KEY = `risk:scores:sebuf:stale:${CII_FORMULA_VERSION}`;
@@ -175,7 +174,7 @@ describe('risk-scores build with failed Redis reads', () => {
     stubRedis({
       failing: ['news:insights:v1'],
       stored: {
-        'cyber:threats-bootstrap:v2': `{"threats":[${marker}`,
+        'wildfire:fires-summary:v1': `{"byCountry":[${marker}`,
         'conflict:ucdp-events:v1': JSON.stringify({ events: [{ country: 'Ukraine', note: marker }] }),
       },
     });
@@ -186,13 +185,13 @@ describe('risk-scores build with failed Redis reads', () => {
     assert.deepEqual(
       [...record.failedReads].sort((a, b) => a.key.localeCompare(b.key)),
       [
-        { key: 'cyber:threats-bootstrap:v2', failure: 'parse' },
         { key: 'news:insights:v1', failure: 'timeout' },
+        { key: 'wildfire:fires-summary:v1', failure: 'parse' },
       ],
     );
     assert.ok(!rejectionRecord()[0]!.value.includes(marker), 'the record must not carry stored payload bytes');
     assert.equal(errorLogs.length, 1, 'one rejection log line');
-    assert.ok(errorLogs[0]!.includes('news:insights:v1') && errorLogs[0]!.includes('cyber:threats-bootstrap:v2'), 'the log names the failed keys');
+    assert.ok(errorLogs[0]!.includes('news:insights:v1') && errorLogs[0]!.includes('wildfire:fires-summary:v1'), 'the log names the failed keys');
     assert.ok(!errorLogs[0]!.includes(marker), 'the log must not carry stored payload bytes');
   });
 

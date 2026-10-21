@@ -23,7 +23,6 @@ const STRICT_PROJECTIONS = [...MISSING_DATA_IS_FAILURE_KEYS];
 // payload with fresh metadata remains healthy rather than generating a false alarm.
 const QUIET_META_ONLY_KEYS = [
   'weatherAlerts',
-  'newsThreatSummary',
 ];
 
 const AUDITED_PRESENT_PAYLOAD_KEYS = [
@@ -52,6 +51,11 @@ const AUDITED_PRESENT_PAYLOAD_KEYS = [
   'canadaAlertsAbSource',
   'canadaAlertsBcSource',
   'canadaAlertsSkSource',
+  // The relay classify loop writes news:threat:summary:v1 on every cycle that
+  // reached a digest, with `byCountry: {}` when nothing matched, and advances
+  // its seed-meta only after that write lands. A vanished summary beside fresh
+  // seed-meta is the 2026-10-21 expiry that zeroed every CII news score.
+  'newsThreatSummary',
 ];
 
 function classifyMissing(name, meta) {
@@ -196,4 +200,20 @@ test('audited sparse sources require a payload even when zero records is valid',
       `${name}: a present quiet payload remains healthy`,
     );
   }
+});
+
+test('newsThreatSummary: a vanished summary is critical on the live health path, not an excused on-demand gap', () => {
+  const redisKey = STANDALONE_KEYS.newsThreatSummary;
+  const seedCfg = SEED_META.newsThreatSummary;
+  const entry = classifyKey('newsThreatSummary', redisKey, { allowOnDemand: true }, {
+    keyStrens: new Map([[redisKey, 0]]),
+    keyErrors: new Map(),
+    keyMetaValues: new Map([[seedCfg.key, JSON.stringify({ fetchedAt: NOW - 15 * 60_000, recordCount: 27 })]]),
+    keyMetaErrors: new Map(),
+    now: NOW,
+  });
+  assert.equal(entry.status, 'EMPTY');
+  assert.equal(STATUS_COUNTS[entry.status], 'crit');
+  // check-seed-freshness excuses EMPTY on entries flagged onDemand.
+  assert.equal(entry.onDemand, undefined, 'the freshness monitor must not excuse the gap');
 });

@@ -179,6 +179,7 @@ function runGate(conclusions, {
   sweepStatus,
   sweepStatuses,
   drift,
+  associatedPulls = [[]],
 } = {}) {
   const tempDir = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-'));
   const fakeBin = join(tempDir, 'bin');
@@ -359,6 +360,15 @@ function runGate(conclusions, {
         '  exit 0',
         'fi',
         'case "$*" in',
+        '  *"/pulls?per_page=100"*)',
+        '    echo "associated-pulls" >> "$FAKE_CALLS"',
+        '    [ "$FAKE_ASSOCIATED_PULLS" = "unavailable" ] && exit 1',
+        '    case "$*" in',
+        '      *"--paginate --slurp"*) printf \'%s\\n\' "$FAKE_ASSOCIATED_PULLS" ;;',
+        '      *) printf \'%s\\n\' "$FAKE_ASSOCIATED_PULLS" | jq -c \'[.[0]]\' ;;',
+        '    esac',
+        '    exit 0',
+        '    ;;',
         '  *"pullRequests(first:"*)',
         '    paginate=0',
         '    slurp=0',
@@ -565,6 +575,7 @@ function runGate(conclusions, {
         env: {
           ...process.env,
           FAKE_CALLS: callsFile,
+          FAKE_ASSOCIATED_PULLS: typeof associatedPulls === 'string' ? associatedPulls : JSON.stringify(associatedPulls),
           FAKE_CURRENT_STATUSES: currentStatusesFile,
           FAKE_STATUS_READ_FAILURES: statusReadFailuresFile,
           FAKE_MALFORMED_STATUS: malformedStatusResponse ? '1' : '0',
@@ -1318,6 +1329,53 @@ describe('deploy gate commit-status description', () => {
 // predicate belongs here rather than in a one-shot PR job.
 describe('deploy gate stale-base drift', () => {
   const diverged = (extra) => ({ mergeBase: OLD_BASE, ...extra });
+  const mergedPull = { state: 'closed', merged_at: '2026-08-12T12:00:00Z', head: { sha: SHA } };
+  const overlap = diverged({ headFiles: ['api/widget-agent.ts'], mainFiles: ['api/widget-agent.ts'] });
+
+  it('passes a squash-merged exact head when a queued evaluation sees overlapping main changes', () => {
+    const result = runGate(conclusionsFor('success'), {
+      drift: overlap,
+      associatedPulls: [[], [mergedPull]],
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.posted, [{
+      state: 'success', description: stamped('All required PR gates passed'),
+    }]);
+  });
+
+  it('keeps drift blocking for open exact heads, unmerged closures and unrelated merged heads', () => {
+    for (const associatedPulls of [
+      [[mergedPull], [{ state: 'open', merged_at: null, head: { sha: SHA } }]],
+      [[{ ...mergedPull, merged_at: null }]],
+      [[{ ...mergedPull, head: { sha: HEAD_TIP } }]],
+      [[]],
+    ]) {
+      const result = runGate(conclusionsFor('success'), { drift: overlap, associatedPulls });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted[0].state, 'failure');
+      assert.match(result.posted[0].description, /^Stale base:/);
+    }
+  });
+
+  it('leaves overlapping drift pending if the PR lifecycle cannot be verified', () => {
+    for (const associatedPulls of ['unavailable', [{ message: 'incomplete' }], [[{ head: { sha: SHA } }]]]) {
+      const result = runGate(conclusionsFor('success'), { drift: overlap, associatedPulls });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted[0].state, 'pending');
+      assert.match(result.posted[0].description, /could not read associated PRs/);
+    }
+  });
+
+  it('never lets a merged PR hide failed or pending required checks', () => {
+    for (const unit of ['failure', 'pending']) {
+      const result = runGate({ ...conclusionsFor('success'), unit }, {
+        drift: overlap, associatedPulls: [[mergedPull]],
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted[0].state, unit);
+      assert.ok(!result.calls.includes('associated-pulls'));
+    }
+  });
 
   it('blocks a head whose files main changed since its merge base', () => {
     // Two overlaps and a non-overlap on each side: the verdict must name the

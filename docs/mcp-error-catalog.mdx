@@ -10,7 +10,7 @@ description: "Every error shape the World Monitor MCP server emits — JSON-RPC 
 
   - JSON-RPC envelope helpers           api/mcp/rpc.ts (rpcOk, rpcError)
   - Method gate (405 + Allow)           api/mcp/handler.ts (mcpHandler method check)
-  - Top-level dispatch / -32600/-32601  api/mcp/handler.ts (POST body parse and dispatch switch)
+  - Top-level dispatch / -32700/-32600/-32601  api/mcp/handler.ts (POST body parse and dispatch switch)
   - Body-size cap -32600 (HTTP 413)     api/mcp/bounded-body.ts (readBoundedRequestBody) + api/mcp/body-limits.ts (MAX_JSON_RPC_BODY_BYTES)
   - Auth -32001 / -32603 emitters       api/mcp/auth.ts (resolveAuthContext and entitlement checks)
   - Billing -32002 / -32603 denials     api/mcp/auth.ts (getMcpBillingVerificationDenial) + api/mcp/dispatch.ts (BillingDenialError re-emit)
@@ -39,7 +39,7 @@ For the projection grammar itself, see the [JMESPath guide](/mcp-jmespath). For 
 ## Quick orientation
 
 - **HTTP status** is the transport-layer answer. Most JSON-RPC replies — successes AND errors — come back as **HTTP 200**, per the JSON-RPC 2.0 convention. The handler only escalates the status when the failure is something a generic HTTP client must react to (auth, daily cap, service unavailable) and benefits from a `Retry-After` / `WWW-Authenticate` header.
-- **JSON-RPC `error.code`** is the application-layer answer. Ten codes are in use: `-32000`, `-32001`, `-32002`, `-32003`, `-32004`, `-32029`, `-32600`, `-32601`, `-32602`, `-32603`. `-32000` is a documented migration code for retired alias-host transport (HTTP 410 / `canonical_endpoint_required`), not a protocol bug. Any other code is a wire bug — file an issue.
+- **JSON-RPC `error.code`** is the application-layer answer. Eleven codes are in use: `-32000`, `-32001`, `-32002`, `-32003`, `-32004`, `-32029`, `-32700`, `-32600`, `-32601`, `-32602`, `-32603`. `-32000` is a documented migration code for retired alias-host transport (HTTP 410 / `canonical_endpoint_required`).
 - **Soft-behavior envelopes** are the high-volume failure mode. `tools/call` succeeds at the JSON-RPC layer (HTTP 200, no `error` field), but the JSON sitting inside `result.content[0].text` carries a `_budget_exceeded` or `_jmespath_error` discriminator. Clients that only inspect the JSON-RPC envelope will silently treat these as successes — parse `result.content[0].text` and check for a leading `_` key before consuming the payload as data.
 - **Executed calls stay charged.** `_budget_exceeded`, `_jmespath_error`, upstream failures, empty results, stored-contract errors and tool-execution errors (`-32603`) consume the daily allowance once execution starts. Before reserving free-account, Pro or API allowance, `tools/call` checks the tool's input schema and synchronous caller-input hooks, including country resolution, required scopes, option combinations and cursor syntax. Rejected arguments return `-32602` without spending allowance or opening a paid panel. Defaults remain optional; arguments are not coerced. Downstream validation discovered after execution starts remains charged.
 - **Every 401 sets `WWW-Authenticate`** with `realm="worldmonitor"` and a `resource_metadata` pointer at the protected-resource document for the route you called: `/.well-known/oauth-protected-resource/mcp` for `/mcp`, `/.well-known/oauth-protected-resource/api/mcp` for `/api/mcp`. RFC 9728-aware clients (Claude Desktop, MCP Inspector) bounce through the OAuth flow on this header without further intervention.
@@ -54,6 +54,7 @@ For the projection grammar itself, see the [JMESPath guide](/mcp-jmespath). For 
 | `-32003`  | Required data inputs unavailable — the tool's upstream seeds could not be read | **200**            | Retryable; `error.data` names the unavailable/failed inputs           |
 | `-32004`  | SSE replay cursor not found — the resumed stream expired or landed on another instance | **404**    | Re-issue the original POST instead of resuming                        |
 | `-32029`  | Rate-limited — per-minute throttle, plan-resolved daily cap, free-account allowance, OR anonymous free-tier ceiling | **200** (per-min) / **429** (daily, allowance, anon ceiling, downstream) | Honour `Retry-After`; for 200/per-min back off ~1s                    |
+| `-32700`  | Invalid JSON text | **200** | Fix the JSON encoder. The response has `id: null` because parsing failed. |
 | `-32600`  | Malformed JSON-RPC request envelope, OR a request body over the 256 KiB cap | **200** (malformed) / **400** / **406** (SSE replay) / **413** (over cap) | Fix the request encoder for the malformed cases; for **413**, shrink the payload |
 | `-32601`  | Method not found                                                       | **200**                   | Use a method advertised in the initialize result's `capabilities`     |
 | `-32602`  | Invalid params — missing/unknown tool, prompt, or resource URI         | **200**                   | Fix the params; consult `tools/list`, `prompts/list`, or `resources/list` |
@@ -328,11 +329,15 @@ Content-Type: application/json
 
 Paid-plan customers also receive account notices and bounded-cadence email when sustained usage crosses a plan threshold. These notices never imply an automatic upgrade, automatic overage charge, or automatic move into API Business; support or checkout action is explicit.
 
+### `-32700` Parse error
+
+Invalid JSON text returns `-32700` with `id: null`. Valid JSON with an invalid request envelope returns `-32600` instead. This distinction follows the [JSON-RPC specification](https://www.jsonrpc.org/specification#error_object).
+
 ### `-32600` — Invalid request envelope
 
-Fires when the request body isn't valid JSON, isn't a JSON object, lacks a string `method` field, or carries an invalid `id` (a string `id` longer than 256 UTF-8 bytes is rejected with `Invalid request: invalid id`). The SSE-replay preconditions reuse the code at non-200 statuses: a replay `GET` without `Accept: text/event-stream` gets `-32600` at HTTP 406, and one without `Mcp-Session-Id` gets it at HTTP 400.
+Fires when the body cannot be read, isn't a JSON object, lacks `jsonrpc: "2.0"`, lacks a string `method`, or carries an invalid `id`. A string `id` longer than 256 UTF-8 bytes is invalid. The SSE-replay preconditions reuse this code. A replay `GET` without `Accept: text/event-stream` gets HTTP 406. A replay without `Mcp-Session-Id` gets HTTP 400. An invalid or unsupported `MCP-Protocol-Version` header gets HTTP 400 before body parsing, with `id: null`.
 
-The code is also reused at **HTTP 413** for a request body over the 256 KiB cap (`MAX_JSON_RPC_BODY_BYTES`). That case is **not** an encoder bug — a perfectly well-formed client hits it by sending an oversized `tools/call` argument, and because the body is rejected before parsing the server cannot echo your `id` (it is always `null`). Apart from the 413, this is strictly a client encoder bug that well-formed JSON-RPC clients will not see in production.
+The code is also reused at **HTTP 413** for a request body over the 256 KiB cap (`MAX_JSON_RPC_BODY_BYTES`). That case is **not** an encoder bug — a perfectly well-formed client hits it by sending an oversized `tools/call` argument, and because the body is rejected before parsing the server cannot echo your `id` (it is always `null`).
 
 ```json
 {
@@ -342,7 +347,7 @@ The code is also reused at **HTTP 413** for a request body over the 256 KiB cap 
 }
 ```
 
-**What to do.** Check the HTTP status first. On **413**, shrink the request body below 256 KiB — trim the oversized `tools/call` argument, or page the work into smaller calls; do not retry the same payload. On **200/400/406**, audit the request encoder: the body must be a JSON object with a string `method` and (for any method besides `notifications/*`) an `id` field. If you see a non-413 `-32600` from a known-good client library, file an issue against this server — that case should never reach you.
+**What to do.** Check the HTTP status first. On **413**, shrink the request body below 256 KiB — trim the oversized `tools/call` argument, or page the work into smaller calls; do not retry the same payload. On **200/400/406**, audit the request encoder: the body must be a JSON object with `jsonrpc: "2.0"` and a string `method`. Requests have an `id`; notifications omit it. For an unsupported transport version, use the supported version returned by `initialize`. If you see a non-413 `-32600` from a known-good client library, file an issue against this server — that case should never reach you.
 
 ### `-32601` — Method not found
 
@@ -440,12 +445,12 @@ Every status the MCP handler can return. Most JSON-RPC replies — including mos
 
 | Status | Body shape                | JSON-RPC code(s) | Cause                                                                 |
 |--------|---------------------------|------------------|-----------------------------------------------------------------------|
-| **200** | JSON-RPC envelope         | success OR `-32002` (allowance-resource read) / `-32003` / `-32029` / `-32600` / `-32601` / `-32602` / `-32603` | Any successful call, OR an application-layer error that doesn't merit a transport escalation. A plain browser-style `GET`/`HEAD` on canonical `/mcp` also returns 200 — a markdown server guide, not JSON-RPC. Canonical `/.well-known/mcp` and `/.well-known/mcp.json` return the JSON server card the same way. |
+| **200** | JSON-RPC envelope         | success OR `-32002` (allowance-resource read) / `-32003` / `-32029` / `-32700` / `-32600` / `-32601` / `-32602` / `-32603` | Any successful call, OR an application-layer error that doesn't merit a transport escalation. A plain browser-style `GET`/`HEAD` on canonical `/mcp` also returns 200 — a markdown server guide, not JSON-RPC. Canonical `/.well-known/mcp` and `/.well-known/mcp.json` return the JSON server card the same way. |
 | **202** | empty                     | n/a              | `notifications/initialized` — JSON-RPC notifications take no response body, per spec |
 | **204** | empty                     | n/a              | `OPTIONS` preflight on canonical `/mcp`, `/api/mcp`, the well-known aliases, and the listed production alias hosts |
-| **400** | JSON-RPC envelope         | `-32600`         | SSE replay `GET` missing a valid `Mcp-Session-Id` |
+| **400** | JSON-RPC envelope         | `-32600`         | Invalid or unsupported `MCP-Protocol-Version`, or SSE replay `GET` missing a valid `Mcp-Session-Id`. A `HEAD` response has no body. |
 | **401** | JSON-RPC envelope         | `-32001`         | Missing/invalid/expired credentials, or a revoked Pro MCP token, on canonical `/mcp` and `/api/mcp` (and well-known gated methods). `data.reason: "no-account"`; `WWW-Authenticate` header set. Alias-host transport is 410, not 401. |
-| **403** | JSON-RPC envelope         | `-32002`         | Terminal entitlement denial: `data.reason: "lapsed-subscription"` only when a provider-confirmed lapse lands during an in-flight Pro call (also sets `X-Billing-Verification: subscription_lapsed`), or `"upgrade-required"` when the free allowance calls a Pro-only tool or a non-free entitlement is inactive. A lapse already present at the pre-check is admitted onto the restricted free-account path instead. No `WWW-Authenticate` (re-auth cannot fix a denial already emitted). |
+| **403** | JSON-RPC envelope or plain text | `-32002` or n/a         | Invalid Origin returns plain text before auth or dispatch, with an empty body for `HEAD`. Otherwise, terminal entitlement denial: `data.reason: "lapsed-subscription"` only when a provider-confirmed lapse lands during an in-flight Pro call (also sets `X-Billing-Verification: subscription_lapsed`), or `"upgrade-required"` when the free allowance calls a Pro-only tool or a non-free entitlement is inactive. A lapse already present at the pre-check is admitted onto the restricted free-account path instead. No `WWW-Authenticate` (re-auth cannot fix a denial already emitted). |
 | **404** | JSON-RPC envelope         | `-32004`         | SSE replay cursor not found (stream expired or reconnect reached another instance). |
 | **405** | empty                     | n/a              | Request method outside `POST`/`GET`/`HEAD`/`OPTIONS`, or an SSE-flavoured `GET`/`HEAD` with no `Last-Event-ID` (no standalone server→client stream is offered). `Allow: POST, GET, HEAD, OPTIONS` header set. On listed production aliases the 405 also carries `Link: <https://worldmonitor.app/mcp>; rel="canonical"`. |
 | **406** | JSON-RPC envelope         | `-32600`         | SSE replay `GET` without `Accept: text/event-stream`. |
@@ -454,9 +459,15 @@ Every status the MCP handler can return. Most JSON-RPC replies — including mos
 | **429** | JSON-RPC envelope         | `-32029`         | Plan-resolved daily cap, free-account allowance, anonymous free-tier ceiling, downstream endpoint limit, or pre-auth key-validation flood. `Retry-After` set (seconds-until-UTC-midnight for the daily/allowance cases). (Per-minute throttle returns `-32029` inside HTTP 200 — see `-32029` above.) |
 | **503** | JSON-RPC envelope         | `-32603`         | Auth service unavailable, `MCP_INTERNAL_HMAC_SECRET` misconfigured, rate-limit backend fail-closed, or quota-reservation Redis failure (`Retry-After: 5`); OR renewal verification pending/failed (`X-Billing-Verification` set, dynamic `Retry-After` 1-60s). |
 
-One HTTP status appears that isn't a JSON-RPC error:
+Transport denials can precede JSON-RPC parsing:
 
-- **405 with an empty body** comes from method-validation BEFORE JSON-RPC. The handler accepts `POST` (the JSON-RPC path), `GET` (the `Last-Event-ID` SSE replay channel, or — with no SSE `Accept` — the 200 markdown server guide), `HEAD` (same routing as GET: replay ack, guide headers, or a JSON 200 ack on non-`/mcp` pathnames used by uptime probes), and `OPTIONS` (CORS preflight). An SSE-flavoured `GET` with no `Last-Event-ID` returns 405 (no standalone stream is offered). Anything else gets 405 + `Allow: POST, GET, HEAD, OPTIONS`. On listed production aliases that 405 also carries `Link: <https://worldmonitor.app/mcp>; rel="canonical"`, and `OPTIONS` on those aliases is still 204. The endpoint enforces no `Origin` allowlist: it advertises wildcard CORS and authenticates by explicit `Authorization` / `X-WorldMonitor-Key` header, so browser-origin clients (any origin) are accepted.
+- **405 with an empty body** comes from method-validation BEFORE JSON-RPC. The handler accepts `POST` (the JSON-RPC path), `GET` (the `Last-Event-ID` SSE replay channel, or — with no SSE `Accept` — the 200 markdown server guide), `HEAD` (same routing as GET: replay ack, guide headers, or a JSON 200 ack on non-`/mcp` pathnames used by uptime probes), and `OPTIONS` (CORS preflight). An SSE-flavoured `GET` with no `Last-Event-ID` returns 405 (no standalone stream is offered). Anything else gets 405 + `Allow: POST, GET, HEAD, OPTIONS`. On listed production aliases that 405 also carries `Link: <https://worldmonitor.app/mcp>; rel="canonical"`, and valid `OPTIONS` on those aliases is still 204.
+
+Origin validation runs before this routing, including preflight and discovery. The public endpoint accepts a missing Origin, serialized HTTPS origins, and HTTP origins on `localhost`, `127.0.0.1`, or `[::1]` with optional ports. Opaque `null`, malformed values, credentials, paths, queries, fragments, multiple origins, and remote HTTP origins return HTTP 403 with `Cache-Control: no-store`. Clients must send the canonical serialized origin, without a trailing slash or an explicit default port.
+
+The [MCP 2025-06-18 transport specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports) requires Origin validation and HTTP 400 for unsupported transport versions. The header check uses the active supported versions, including the protocol-floor rollback setting. A missing header remains compatible with older clients. The `initialize` payload still negotiates unsupported requested versions to a supported version.
+
+Origin is not an authorization grant. This public HTTPS service accepts custom HTTPS clients without a domain allowlist. It uses explicit bearer tokens or API keys, has wildcard CORS, and does not use cookies for MCP authorization. Anonymous catalog and `get_sources` calls retain their limits; paid calls still require authorization. HTTP loopback origins support MCP Inspector. No-Origin native clients remain supported. This policy does not establish that an arbitrary HTTPS site is trusted, and is not a localhost-server DNS-rebinding policy. A private or locally hosted service needs its own host and origin restrictions.
 
 ## Soft-behavior envelopes
 

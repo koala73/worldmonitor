@@ -190,7 +190,7 @@
     "report:geo-coverage": "node scripts/geo-coverage-report.mjs",
     "pretest:data": "npm run docs:dates",
     "test:railway-registry": "node --import tsx --test --test-timeout=120000 --test-concurrency=2 tests/railway-registry-sync-cli.test.mjs tests/railway-registry-sync-runner.test.mjs tests/railway-registry-sync-workflow.test.mjs tests/railway-watch-path-audit.test.mjs tests/railway-services-registry-coverage.test.mts",
-    "test:data": "node scripts/run-data-tests.mjs tests/*.test.mjs tests/*.test.mts cli/test/*.test.mjs api/security/report.test.mjs",
+    "test:data": "node scripts/run-data-tests.mjs tests/*.test.mjs tests/*.test.mts cli/test/*.test.mjs api/security/report.test.mjs workers/api-cors-preflight/*.test.mjs",
     "test:resilience-validation-smoke": "tsx --test tests/resilience-validation-artifacts-schema.test.mts tests/benchmark-resilience-external.test.mjs tests/backtest-resilience-outcomes.test.mjs tests/resilience-sensitivity-v2.test.mts tests/seed-bundle-resilience-validation.test.mjs tests/resilience-validation-import-graph.test.mjs",
     "dryrun:resilience": "node --import tsx/esm scripts/dry-run-resilience-rebalance.mjs",
     "test:feeds": "node scripts/validate-rss-feeds.mjs",
@@ -263,7 +263,7 @@
     "pdfjs-dist": "6.2.108",
     "tsx": "^4.21.0",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7",
+    "vite": "^6.4.5",
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.1.0",
     "webmcp-types": "^0.1.3"

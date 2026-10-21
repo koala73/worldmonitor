@@ -150,6 +150,128 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     Object.assign(process.env, originalEnv);
   });
 
+  it('rejects unsupported transport versions before reading or dispatching a request', async () => {
+    for (const [method, version] of [
+      ['POST', '2099-99-99'], ['GET', '2099-99-99'], ['HEAD', '2099-99-99'],
+      ['POST', ''], ['POST', '2026-07-28'], ['POST', 'not-a-version'],
+    ]) {
+      const res = await fetch(server.url, {
+        method,
+        headers: { 'MCP-Protocol-Version': version },
+        ...(method === 'POST' ? { body: '{' } : {}),
+      });
+      assert.equal(res.status, 400, method);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+      if (method !== 'HEAD') {
+        assert.equal((await res.json()).error.code, -32600);
+      }
+    }
+  });
+
+  it('uses the active protocol floor for headers as well as initialize negotiation', async () => {
+    process.env.MCP_PROTOCOL_FLOOR_2025_06_18 = 'off';
+    const newer = await fetch(server.url, { method: 'POST',
+      headers: { 'MCP-Protocol-Version': '2025-06-18' }, body: JSON.stringify(rpcBody(1, 'ping')) });
+    assert.equal(newer.status, 400);
+    await newer.text();
+    const legacy = await fetch(server.url, { method: 'POST',
+      headers: { 'MCP-Protocol-Version': '2025-03-26' }, body: JSON.stringify(rpcBody(1, 'ping')) });
+    assert.equal(legacy.status, 200);
+    assert.deepEqual((await legacy.json()).result, {});
+  });
+
+  it('returns Parse error for malformed JSON', async () => {
+    const res = await fetch(server.url, { method: 'POST', body: '{' });
+    const result = await res.json();
+    assert.equal(result.error?.code, -32700);
+    assert.equal(result.id, null);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+  });
+
+  it('rejects invalid JSON-RPC envelopes before notification or method dispatch', async () => {
+    const cases = [
+      [JSON.stringify({ id: 1, method: 'ping' }), -32600],
+      [JSON.stringify({ jsonrpc: '1.0', id: 1, method: 'ping' }), -32600],
+      [JSON.stringify({ jsonrpc: 2, method: 'notifications/initialized' }), -32600],
+      ['null', -32600],
+      ['[]', -32600],
+    ];
+    for (const [body, code] of cases) {
+      const res = await fetch(server.url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+      });
+      const result = await res.json();
+      assert.equal(result.jsonrpc, '2.0');
+      assert.equal(result.error?.code, code, body);
+      assert.equal(result.id, null, body);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+    }
+  });
+
+  it('rejects invalid origins on every HTTP entry before transport or auth', async () => {
+    for (const origin of [
+      'not a valid origin', 'null', '', 'https://client.example/path',
+      'https://client.example?query', 'https://client.example#fragment',
+      'https://user:pass@client.example', 'https://one.example https://two.example',
+      'http://remote.example', 'http://localhost.attacker.example',
+      'http://192.168.1.2:6274', 'file://client.example',
+    ]) {
+      for (const method of ['OPTIONS', 'POST', 'GET', 'HEAD', 'DELETE']) {
+        const res = await fetch(server.url, {
+          method,
+          headers: { Origin: origin, Accept: 'text/event-stream', 'Last-Event-ID': 'untrusted' },
+          ...(method === 'POST' ? { body: '{' } : {}),
+        });
+        assert.equal(res.status, 403, `${method} ${origin}`);
+        assert.equal(res.headers.get('cache-control'), 'no-store');
+      }
+      for (const pathname of ['/mcp', '/.well-known/mcp', '/api/mcp']) {
+        const discovery = await fetch(new URL(pathname, server.url), { headers: { Origin: origin } });
+        assert.equal(discovery.status, 403, `${pathname} ${origin}`);
+        await discovery.text();
+      }
+    }
+  });
+
+  it('preserves public clients, explicit credentials and initialization negotiation', async () => {
+    for (const origin of [undefined, 'https://claude.ai', 'https://chatgpt.com',
+      'https://custom-client.example:8443', 'http://localhost:6274',
+      'http://127.0.0.1:6274', 'http://[::1]:6274']) {
+      const headers = { 'Content-Type': 'application/json', Accept: 'application/json',
+        ...(origin === undefined ? {} : { Origin: origin }) };
+      const preflight = await fetch(server.url, { method: 'OPTIONS', headers });
+      assert.equal(preflight.status, 204, origin);
+      for (const version of ['2025-03-26', '2025-06-18', '2026-07-28']) {
+        const body = initBody(0);
+        body.params.protocolVersion = version;
+        const res = await fetch(server.url, { method: 'POST',
+          headers: { ...headers, Authorization: `Bearer ${PRO_BEARER}` }, body: JSON.stringify(body) });
+        assert.equal(res.status, 200, origin);
+        const result = await res.json();
+        assert.equal(result.id, 0);
+        assert.equal(result.result.protocolVersion, version === '2026-07-28' ? '2025-06-18' : version);
+      }
+      for (const version of ['2025-03-26', '2025-06-18']) {
+        const res = await fetch(server.url, { method: 'POST',
+          headers: { ...headers, 'MCP-Protocol-Version': version },
+          body: JSON.stringify(rpcBody('', 'ping')) });
+        assert.deepEqual(await res.json(), { jsonrpc: '2.0', id: '', result: {} });
+      }
+      const catalog = await fetch(server.url, { method: 'POST', headers,
+        body: JSON.stringify(rpcBody(1, 'tools/list')) });
+      assert.equal(catalog.status, 200, origin);
+      assert.ok((await catalog.json()).result.tools.length > 0, origin);
+      const notification = await fetch(server.url, { method: 'POST', headers,
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) });
+      assert.equal(notification.status, 202, origin);
+      assert.equal(await notification.text(), '');
+      const paid = await fetch(server.url, { method: 'POST', headers,
+        body: JSON.stringify(rpcBody(3, 'tools/call', { name: 'get_market_data', arguments: {} })) });
+      assert.equal(paid.status, 401, origin);
+      assert.equal((await paid.json()).error.code, -32001);
+    }
+  });
+
   it('streams initialize as a single JSON-RPC event and guards the Last-Event-ID replay channel', async () => {
     const initialize = await fetch(server.url, {
       method: 'POST',
@@ -800,6 +922,8 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
       'a cacheable 200 negotiated on Accept MUST Vary on Accept, or a shared cache serves it to an SSE GET');
     assert.match(vary, /\bLast-Event-ID\b/i,
       'the same URL branches on Last-Event-ID into authenticated replay — that must be part of the cache key too');
+    assert.match(vary, /\bOrigin\b/i, 'a cached success must not bypass Origin rejection');
+    assert.match(vary, /\bMCP-Protocol-Version\b/i, 'a cached success must not bypass version rejection');
   });
 
   it('the /mcp transport URL never emits a cacheable 200 body', async () => {
@@ -1004,6 +1128,23 @@ describe('api/mcp.ts — rate-limit denials stay correlatable over the wire (#78
       limiterKeys.some((key) => key.startsWith('rl:mcp:anon:')),
       'the recovered read must still have been metered — otherwise this control proves nothing',
     );
+  });
+
+  it('serves anonymous get_sources across supported browser origins under the free limiter', async () => {
+    for (const origin of [undefined, 'https://chatgpt.com', 'https://custom-client.example', 'http://localhost:6274']) {
+      const res = await fetch(server.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json',
+          ...(origin === undefined ? {} : { Origin: origin }) },
+        body: JSON.stringify(rpcBody(2, 'tools/call', { name: 'get_sources', arguments: {} })),
+      });
+      assert.equal(res.status, 200, origin);
+      const body = await res.json();
+      assert.ok(body.result?.content?.length > 0, JSON.stringify(body));
+      assert.notEqual(body.result.isError, true);
+    }
+    assert.ok(limiterKeys.some((key) => key.startsWith('rl:mcp:free:')),
+      'anonymous sources must still pass the free limiter');
   });
 });
 

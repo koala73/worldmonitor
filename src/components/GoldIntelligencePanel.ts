@@ -22,6 +22,7 @@ interface CbMover { iso3: string; name: string; deltaTonnes12m: number }
 interface CbReserves {
   asOfMonth: string;
   totalTonnes: number;
+  valueIsOunces?: boolean;
   topHolders: CbHolder[];
   topBuyers12m: CbMover[];
   topSellers12m: CbMover[];
@@ -316,7 +317,7 @@ export class GoldIntelligencePanel extends Panel {
 
     const holderRow = (h: CbHolder, rank: number) => `<div style="display:flex;justify-content:space-between;font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:1px 0">
       <span style="color:var(--text-dim)">${rank}. ${escapeHtml(h.name)}</span>
-      <span style="font-weight:600">${h.tonnes > 0 ? `${h.tonnes.toFixed(1)}t` : '—'}</span>
+      <span style="font-weight:600">${cb.valueIsOunces === true && Number.isFinite(h.tonnes) && h.tonnes >= 0 ? `${h.tonnes.toFixed(1)}t` : '—'}</span>
     </div>`;
     const moverRow = (m: CbMover) => {
       const color = m.deltaTonnes12m >= 0 ? '#2ecc71' : '#e74c3c';
@@ -328,8 +329,8 @@ export class GoldIntelligencePanel extends Panel {
     };
 
     const holders = cb.topHolders.slice(0, 10).map((h, i) => holderRow(h, i + 1)).join('');
-    const buyers = cb.topBuyers12m.slice(0, 5).map(moverRow).join('');
-    const sellers = cb.topSellers12m.slice(0, 5).map(moverRow).join('');
+    const buyers = cb.valueIsOunces === true ? cb.topBuyers12m.slice(0, 5).map(moverRow).join('') : '';
+    const sellers = cb.valueIsOunces === true ? cb.topSellers12m.slice(0, 5).map(moverRow).join('') : '';
 
     const moversHtml = (buyers || sellers)
       ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">

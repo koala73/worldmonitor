@@ -34,7 +34,7 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 
 - [MCP server (recommended)](https://worldmonitor.app/mcp): Streamable HTTP; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. See the [server card](https://worldmonitor.app/.well-known/mcp/server-card.json), [official MCP registry](https://registry.modelcontextprotocol.io/), [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp), and [mcp.so](https://mcp.so/server/world-monitor).
 - [Docs MCP server card](https://www.worldmonitor.app/.well-known/mcp/docs-server-card.json): public Streamable HTTP search and retrieval over the documentation. Use it for "how do I…" questions about the platform; use the product MCP above for live data.
-- [REST API guide](https://www.worldmonitor.app/openapi.md): API key required. Send the `X-WorldMonitor-Key` header. The contract is the [OpenAPI specification](https://www.worldmonitor.app/openapi.yaml), which is 3,163,777 bytes. Use the [sandbox index](https://www.worldmonitor.app/sandbox/index.json) for key-free examples. <!-- // pragma: allowlist secret -->
+- [REST API guide](https://www.worldmonitor.app/openapi.md): API key required. Send the `X-WorldMonitor-Key` header. The contract is the [OpenAPI specification](https://www.worldmonitor.app/openapi.yaml), which is 3,163,040 bytes. Use the [sandbox index](https://www.worldmonitor.app/sandbox/index.json) for key-free examples. <!-- // pragma: allowlist secret -->
 - [worldmonitor CLI](https://www.worldmonitor.app/docs/cli): `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the command. `worldmonitor call get_sources` needs no key; pass `--api-key` for every other data tool.
 - [SDK guide](https://www.worldmonitor.app/docs/sdks): official clients for Python ([PyPI](https://pypi.org/project/worldmonitor-sdk/)), Ruby ([RubyGems](https://rubygems.org/gems/worldmonitor)), Go ([pkg.go.dev](https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go)), JavaScript via the npm package, and Rust ([crates.io](https://crates.io/crates/worldmonitor), [API docs](https://docs.rs/worldmonitor/0.1.0/worldmonitor/)). Install Rust with `cargo add worldmonitor`.
 - [Agent Skills discovery manifest](https://worldmonitor.app/.well-known/agent-skills/index.json): install with `npx skills add koala73/worldmonitor`; see the [skills.sh listing](https://skills.sh/koala73/worldmonitor); the [agent setup page](https://www.worldmonitor.app/agent/) shows single-skill and global installs.
@@ -58,7 +58,7 @@ World Monitor covers geopolitics, conflict, military activity, markets, commodit
 
 ### What is the Country Instability Index?
 
-The Country Instability Index (CII) is World Monitor's high-frequency 0-100 stress score for 31 Tier-1 countries. CII v13 combines a 40% editorial baseline with a 60% live event score. The event score weights conflict at 30%, unrest at 25%, information signals at 25%, and security signals at 20%, then applies bounded boosts and authoritative floors. Each country has an instability band and signed movement against a valid snapshot from approximately 24 hours earlier. See the [live CII rankings](https://www.worldmonitor.app/country-instability-index/).
+The Country Instability Index (CII) is World Monitor's high-frequency 0-100 stress score for 31 Tier-1 countries. CII v14 combines a 40% editorial baseline with a 60% live event score. The event score weights conflict at 30%, unrest at 25%, information signals at 25%, and security signals at 20%, then applies bounded boosts and authoritative floors. Each country has an instability band and signed movement against a valid snapshot from approximately 24 hours earlier. See the [live CII rankings](https://www.worldmonitor.app/country-instability-index/).
 
 ### What makes World Monitor different?
 
@@ -97,7 +97,7 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 ## Live Instances
 
 - [World Monitor](https://www.worldmonitor.app): Geopolitics, military, conflicts, infrastructure
-- [Live Country Instability Index rankings](https://www.worldmonitor.app/country-instability-index/): CII v13 scores, bands, and approximate 24-hour movement for 31 Tier-1 countries
+- [Live Country Instability Index rankings](https://www.worldmonitor.app/country-instability-index/): CII v14 scores, bands, and approximate 24-hour movement for 31 Tier-1 countries
 - [Tech Monitor](https://tech.worldmonitor.app/dashboard): Startups, AI/ML, cloud, cybersecurity
 - [Finance Monitor](https://finance.worldmonitor.app/dashboard): Global markets, trading, central banks, Gulf FDI
 - [Commodity Monitor](https://commodity.worldmonitor.app/dashboard): Mining, metals, energy, supply chains, commodity markets
@@ -126,7 +126,7 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 ## Key Features
 
 - Interactive 3D WebGL globe with deck.gl rendering and a shared map-layer catalog (conflicts, military bases, nuclear facilities, undersea cables, pipelines, datacenters, protests, disasters, cyber threats, and more)
-- AI-powered intelligence: source-attributed world briefs, hybrid threat classification, focal point detection, CII v13 instability scores for 31 Tier-1 countries, CRI resilience scores for the 196-country public rankable universe, trending keyword spike detection, and strategic posture assessment
+- AI-powered intelligence: source-attributed world briefs, hybrid threat classification, focal point detection, CII v14 instability scores for 31 Tier-1 countries, CRI resilience scores for the 196-country public rankable universe, trending keyword spike detection, and strategic posture assessment
 - Curated RSS feeds across geopolitics, defense, energy, tech, and finance with a domain-allowlisted proxy
 - Live news video streams (Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNN, Al Arabiya)
 - Live webcams from geopolitical hotspots across regions

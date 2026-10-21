@@ -4713,7 +4713,9 @@ const CLASSIFY_CACHE_TTL = 86400;
 const CLASSIFY_SKIP_TTL = 1800;
 const CLASSIFY_BATCH_SIZE = 50;
 const CLASSIFY_VARIANTS = ['full', 'tech', 'finance', 'happy', 'commodity'];
-const CLASSIFY_VARIANT_STAGGER_MS = 3 * 60 * 1000;
+// Zero under RELAY_TEST_MODE so the /__test/seed-classify seam runs a full
+// five-variant cycle in milliseconds instead of twelve minutes.
+const CLASSIFY_VARIANT_STAGGER_MS = RELAY_TEST_MODE ? 0 : 3 * 60 * 1000;
 
 // Relay gates — active only when RELAY_GATES_READY=1 (see Appendix E of docs/internal/news-alerts-enhancements-from-trendradar.md).
 // When the flag is set the relay becomes the sole authoritative source of rss_alert events and
@@ -4900,7 +4902,14 @@ Focus: geopolitical events, conflicts, disasters, diplomacy.
 Classify by real-world event severity, not headline sentiment.`;
 
 const NEWS_THREAT_SUMMARY_KEY = 'news:threat:summary:v1';
-const NEWS_THREAT_SUMMARY_TTL = 1200; // 20 min — aligns with relay cadence
+// The cycle publishes only at its end, about 12 minutes after it starts (four
+// 3-minute variant staggers), and a restart discards the cycle in flight. So
+// the first write after a restart lands at least 27 minutes after the last
+// one; on 2026-10-21 three deploys in 40 minutes left a 48-minute gap, and the
+// old 20-minute TTL expired the key twice. Two hours outlasts that, and stays
+// above the 60-minute health budget (api/health.js SEED_META.newsThreatSummary)
+// so health reads STALE_SEED before the payload can vanish.
+const NEWS_THREAT_SUMMARY_TTL = 2 * 60 * 60;
 
 // Country name → ISO2 for threat summary geo-attribution (inline to avoid ESM import)
 const THREAT_COUNTRY_NAME_TO_ISO2 = {
@@ -5210,11 +5219,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
         console.warn(formatClassifyDigestFetchFailure(resp.statusCode, RELAY_API_KEY));
         return { total: 0, classified: 0, skipped: 0, fetchFailed: true };
       }
-      const body = await new Promise((resolve) => {
-        let d = '';
-        resp.on('data', (c) => { d += c; });
-        resp.on('end', () => resolve(d));
-      });
+      let body = '';
+      resp.setEncoding('utf8');
+      for await (const chunk of resp) body += chunk;
       digest = JSON.parse(body);
       break;
     } catch (e) {
@@ -5236,8 +5243,11 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // #7084: stale RSS titles already had their alert pass when served fresh.
   // Exclude only those digest-derived candidates; fresh X candidates remain
   // eligible because they are an independent input to the combined pass.
-  if (isStaleDigestReplay(digest)) {
-    console.log(`[Classify] digest is a stale replay (${digest.coverage.staleReason || 'unknown'}, ${digest.coverage.staleAgeSeconds ?? 0}s) — skipping digest-derived candidates for ${variant}`);
+  // The digest API answers 200 with `coverage.state: 'unavailable'` and no
+  // categories when it has no digest to serve; that is no news, not quiet news.
+  const staleReplay = isStaleDigestReplay(digest) || digest?.coverage?.state === 'unavailable';
+  if (staleReplay) {
+    console.log(`[Classify] digest is a stale replay or unavailable (${digest.coverage.staleReason || 'unknown'}, ${digest.coverage.staleAgeSeconds ?? 0}s) — skipping digest-derived candidates for ${variant}`);
   }
 
   // Map of title → item metadata; recency gate: skip articles older than 6h.
@@ -5252,7 +5262,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     RECENCY_GATE_MS,
   );
   const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS);
-  if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0 };
+  if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0, staleReplay };
 
   const titleArr = [...allTitles.keys()];
   const cacheKeys = titleArr.map((t) => classifyCacheKey(t));
@@ -5262,6 +5272,11 @@ async function seedClassifyForVariant(variant, seenTitles) {
   // byCountry accumulates threat counts while title+level are in scope
   const byCountry = {};
   const emptyLevel = () => ({ critical: 0, high: 0, medium: 0, low: 0, info: 0 });
+  // Country-naming titles with no usable label (a cached `_skip`, an unreadable
+  // entry, or one the LLM skipped below), so an empty byCountry cannot be read
+  // as a quiet cycle. A title that names no country cannot change byCountry.
+  let unlabelled = 0;
+  const countUnlabelled = (title) => { if (threatSummaryCountries(title).length > 0) unlabelled++; };
 
   for (let i = 0; i < titleArr.length; i++) {
     const hit = cached[i];
@@ -5271,9 +5286,9 @@ async function seedClassifyForVariant(variant, seenTitles) {
     }
     // Attribute cached hits while we still have the title
     let parsed = hit;
-    if (typeof hit === 'string') { try { parsed = JSON.parse(hit); } catch { continue; } }
+    if (typeof hit === 'string') { try { parsed = JSON.parse(hit); } catch { countUnlabelled(titleArr[i]); continue; } }
     const level = parsed?.level;
-    if (!CLASSIFY_VALID_LEVELS.includes(level)) continue;
+    if (!CLASSIFY_VALID_LEVELS.includes(level)) { countUnlabelled(titleArr[i]); continue; }
     if (seenTitles.has(titleArr[i])) continue;
     seenTitles.add(titleArr[i]);
     for (const code of threatSummaryCountries(titleArr[i])) {
@@ -5282,7 +5297,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     }
   }
 
-  if (misses.length === 0) return { total: titleArr.length, classified: 0, skipped: 0, byCountry };
+  if (misses.length === 0) return { total: titleArr.length, classified: 0, skipped: 0, byCountry, staleReplay, unlabelled };
 
   let classified = 0;
   let skipped = 0;
@@ -5296,6 +5311,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
       for (const title of chunk) {
         await upstashSet(classifyCacheKey(title), { level: '_skip', timestamp: Date.now() }, CLASSIFY_SKIP_TTL);
         skipped++;
+        countUnlabelled(title);
       }
       continue;
     }
@@ -5385,6 +5401,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
       if (!classifiedSet.has(i)) {
         await upstashSet(classifyCacheKey(chunk[i]), { level: '_skip', timestamp: Date.now() }, CLASSIFY_SKIP_TTL);
         skipped++;
+        countUnlabelled(chunk[i]);
       }
     }
 
@@ -5398,7 +5415,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
   if (shadow.asked > 0) {
     console.log(`[Classify] Jev shadow ${variant}: asked ${shadow.asked}, answered ${shadow.answered}, agreed ${shadow.agreed}, alert flips ${shadow.alertFlips}`);
   }
-  return { total: titleArr.length, classified, skipped, byCountry };
+  return { total: titleArr.length, classified, skipped, byCountry, staleReplay, unlabelled };
 }
 
 async function seedClassify() {
@@ -5437,6 +5454,9 @@ async function seedClassify() {
     let totalSkipped = 0;
     let fetchOk = 0;
     let fetchFailed = 0;
+    let staleReplays = 0;
+    let unlabelled = 0;
+    let variantErrors = 0;
     const mergedByCountry = {};
     const seenTitles = new Set();
     for (let v = 0; v < CLASSIFY_VARIANTS.length; v++) {
@@ -5445,6 +5465,8 @@ async function seedClassify() {
         const stats = await seedClassifyForVariant(CLASSIFY_VARIANTS[v], seenTitles);
         if (stats.fetchFailed) fetchFailed += 1;
         else fetchOk += 1;
+        if (stats.staleReplay) staleReplays += 1;
+        unlabelled += stats.unlabelled || 0;
         totalClassified += stats.classified;
         totalSkipped += stats.skipped;
         console.log(`[Classify] ${CLASSIFY_VARIANTS[v]}: ${stats.total} titles, ${stats.classified} classified, ${stats.skipped} skipped`);
@@ -5455,6 +5477,7 @@ async function seedClassify() {
           }
         }
       } catch (e) {
+        variantErrors += 1;
         console.warn(`[Classify] ${CLASSIFY_VARIANTS[v]} error:`, e?.message || e);
       }
     }
@@ -5464,10 +5487,25 @@ async function seedClassify() {
       return;
     }
 
-    await upstashSet('seed-meta:news:threat-summary', { fetchedAt: Date.now(), recordCount: Object.keys(mergedByCountry).length }, 604800);
-    if (Object.keys(mergedByCountry).length > 0) {
-      await envelopeWrite(NEWS_THREAT_SUMMARY_KEY, { byCountry: mergedByCountry, generatedAt: Date.now() }, NEWS_THREAT_SUMMARY_TTL, { recordCount: Object.keys(mergedByCountry).length, sourceVersion: 'news-threat-summary' });
-      console.log(`[Classify] Threat summary written for ${Object.keys(mergedByCountry).length} countries`);
+    // Written on every cycle that reached a digest, including one where no
+    // headline named a country (`byCountry: {}`): the CII reads an empty summary
+    // as a quiet input and a missing one as a dead input. An empty result is
+    // quiet only when every headline was fetched fresh and labelled: after a
+    // failed digest fetch, a variant that threw, a stale or unavailable digest
+    // (headlines skipped above) or country-naming titles the LLM could not
+    // label, the countries it would have named are unknown, so the last summary stays and its seed-meta ages. seed-meta advances only
+    // after the payload lands, so health never vouches for a missing key.
+    const threatCountryCount = Object.keys(mergedByCountry).length;
+    const threatSummaryAt = Date.now();
+    const threatSummaryDegraded = threatCountryCount === 0 && (fetchFailed > 0 || variantErrors > 0 || staleReplays > 0 || unlabelled > 0);
+    const threatSummaryWritten = !threatSummaryDegraded && await envelopeWrite(NEWS_THREAT_SUMMARY_KEY, { byCountry: mergedByCountry, generatedAt: threatSummaryAt }, NEWS_THREAT_SUMMARY_TTL, { fetchedAt: threatSummaryAt, recordCount: threatCountryCount, zeroOk: true, sourceVersion: 'news-threat-summary' });
+    if (threatSummaryWritten) {
+      await upstashSet('seed-meta:news:threat-summary', { fetchedAt: threatSummaryAt, recordCount: threatCountryCount }, 604800);
+      console.log(`[Classify] Threat summary written for ${threatCountryCount} countries`);
+    } else if (threatSummaryDegraded) {
+      console.warn(`[Classify] No country matches from a degraded cycle (${fetchFailed} digest fetch failure(s), ${variantErrors} variant error(s), ${staleReplays} stale replay(s), ${unlabelled} unlabelled title(s)) — keeping the last threat summary`);
+    } else {
+      console.warn('[Classify] Threat summary write failed — seed-meta:news:threat-summary not advanced');
     }
 
     await upstashSet('seed-meta:classify', { fetchedAt: Date.now(), recordCount: totalClassified }, 604800);
@@ -11541,6 +11579,57 @@ async function handleOpenSkyRequest(req, res, PORT) {
   }
 }
 
+async function handleWitsRequest(req, res) {
+  const responseHeaders = {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
+    'CDN-Cache-Control': 'no-store',
+  };
+  if (req.method !== 'GET') {
+    return safeEnd(res, 405, { ...responseHeaders, Allow: 'GET' }, JSON.stringify({ error: 'Method not allowed' }));
+  }
+
+  const params = new URL(req.url, 'http://localhost').searchParams;
+  const upstreamPath = params.get('path') || '';
+  const rows = /^\/API\/V1\/SDMX\/V21\/datasource\/TRN\/reporter\/\d{3}\/partner\/(all|000)\/product\/\d{6}\/year\/(\d{1,4})\/datatype\/(reported|aveestimated)$/.exec(upstreamPath);
+  const validRows = rows && Number(rows[2]) >= 1 && Number(rows[2]) <= 2100
+    && (rows[3] === 'reported' ? rows[1] === 'all' : rows[1] === '000');
+  const validMetadata = /^\/API\/V1\/wits\/datasource\/trn\/(dataavailability\/country\/\d{3}\/year\/all|country\/all)$/.test(upstreamPath);
+  if (params.size !== 1 || (!validRows && !validMetadata)) {
+    return safeEnd(res, 400, responseHeaders, JSON.stringify({ error: 'Invalid WITS path' }));
+  }
+
+  try {
+    const upstreamUrl = new URL('https://wits.worldbank.org');
+    upstreamUrl.pathname = upstreamPath;
+    const upstream = await fetch(upstreamUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        Accept: 'application/xml,text/xml;q=0.9,*/*;q=0.1',
+      },
+      redirect: 'error',
+      signal: AbortSignal.timeout(9000),
+    });
+    const chunks = [];
+    let size = 0;
+    if (upstream.body) {
+      for await (const chunk of upstream.body) {
+        size += chunk.length;
+        if (size > 4 * 1024 * 1024) throw new Error('WITS response too large');
+        chunks.push(chunk);
+      }
+    }
+    return safeEnd(res, upstream.status, {
+      ...responseHeaders,
+      'Content-Type': upstream.headers.get('content-type') || 'application/xml',
+    }, Buffer.concat(chunks));
+  } catch (error) {
+    const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+    return safeEnd(res, timedOut ? 504 : 502, responseHeaders,
+      JSON.stringify({ error: timedOut ? 'WITS request timed out' : 'WITS request failed' }));
+  }
+}
+
 // ── World Bank proxy (World Bank blocks Vercel edge IPs with 403) ──
 const worldbankCache = new Map(); // key: query string → { data, timestamp }
 const WORLDBANK_CACHE_TTL_MS = 30 * 60 * 1000; // 30 min — data rarely changes
@@ -12445,7 +12534,7 @@ const server = http.createServer(async (req, res) => {
   // prevention (rate limiting), not data protection. Cloudflare WAF provides edge-level protection.
   const isPublicRoute = pathname === '/health' || pathname === '/' || isRssRoute || pathname.startsWith('/widget-agent');
   if (!isPublicRoute) {
-    const authorized = pathname === '/status'
+    const authorized = pathname === '/status' || pathname === '/wits'
       ? Boolean(RELAY_SHARED_SECRET) && isAuthorizedRequest(req)
       : isAuthorizedRequest(req);
     if (!authorized) {
@@ -12687,6 +12776,14 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
     }, JSON.stringify(getRelayRollingMetrics()));
+  } else if (pathname === '/__test/seed-classify' && RELAY_TEST_MODE) {
+    // Test-only seam, same contract as /__test/seed-theater-posture: run one
+    // classify cycle on request.
+    await seedClassify();
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    }, JSON.stringify({ ok: true }));
   } else if (pathname === '/__test/seed-theater-posture' && RELAY_TEST_MODE) {
     // Test-only seam: background seed loops are disabled in RELAY_TEST_MODE,
     // so tests trigger a single theater-posture cycle explicitly.
@@ -13365,6 +13462,8 @@ const server = http.createServer(async (req, res) => {
     handleOpenSkyRequest(req, res, PORT);
   } else if (pathname.startsWith('/worldbank')) {
     handleWorldBankRequest(req, res);
+  } else if (pathname === '/wits') {
+    return handleWitsRequest(req, res);
   } else if (pathname.startsWith('/polymarket')) {
     handlePolymarketRequest(req, res);
   } else if (pathname === '/yahoo-chart') {

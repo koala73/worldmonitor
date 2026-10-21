@@ -1,6 +1,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import sovereignStatus from '../scripts/shared/sovereign-status.json' with { type: 'json' };
+import { CII_RISK_SCORES_META_KEY, healthyCiiInputs } from './helpers/health-pipeline-fixture.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = {
@@ -146,6 +147,7 @@ function installSeedHealthPipelineMock(poolCounts, { fetchedAt = Date.now() } = 
         recordCount: 10_000,
         rankableRecordCount: 10_000,
         redistributionPolicyVersion: 1,
+        ...(key === CII_RISK_SCORES_META_KEY ? { inputs: healthyCiiInputs() } : {}),
       }) };
     });
     return new Response(JSON.stringify(results), {

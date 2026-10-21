@@ -39,8 +39,8 @@ description: "World Monitor 提供两个健康检查端点用于持续监控数�
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "summary": {
-    "total": 332,
-    "ok": 332,
+    "total": 333,
+    "ok": 333,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 0,
@@ -110,9 +110,41 @@ consumer-prices-core 服务会将每个市场的抓取覆盖率快照写入 `con
 - **流离失所：** `displacement`（当前 UTC 年）-> `displacementPrev`（上一年，覆盖新年种子运行之前的 1 月 1 日窗口）
 
 `riskScores` 有意比原始订阅源心跳更严格。其
-`recordCount` 是实时信号密度覆盖：CII 刷新期间存在的与评分相关的 Tier-1 冲突、新闻和网络信号系列的数量。
-冲突系列可由 ACLED 路径、UCDP 事件订阅源满足；当 ACLED 路径不返回事件时，Tier-1 国家在 `gdelt:bulk:country-events:v1` 中的实时 GDELT 快照（新鲜，且基线与当前窗口完整，或七天窗口就绪）也可满足，与 CII v13 评分器匹配。即使其升级与水平分数为 0，GDELT 快照也计入。当这些订阅源可达但安静时，`riskScores` 仍可报告
+`recordCount` 是实时信号密度覆盖：CII 刷新期间存在的与评分相关的 Tier-1 冲突与新闻信号系列的数量（网络 IOC 行自 CII v14 起不再计入：它们定位的是攻击者基础设施）。
+冲突系列可由 ACLED 路径、UCDP 事件订阅源满足；当 ACLED 路径不返回事件时，Tier-1 国家在 `gdelt:bulk:country-events:v1` 中的实时 GDELT 快照（新鲜，且基线与当前窗口完整，或七天窗口就绪）也可满足，与 CII v14 评分器匹配。即使其升级与水平分数为 0，GDELT 快照也计入。当这些订阅源可达但安静时，`riskScores` 仍可报告
 `COVERAGE_PARTIAL`；底层订阅源的新鲜度由订阅源特定健康条目跟踪，这些订阅源在这些条目中发布种子元数据。
+
+该计数无法发现失效的输入。ACLED 凭据约在 2026 年 7 月丢失，此后数月内所有国家的动荡与冲突分量均为 0，
+而 `riskScores` 一直为 `OK`，因为 UCDP 下限仍使冲突系列被计入。因此，每次 CII 构建还会在同一 seed-meta 的
+`inputs` 下报告每个参与评分的输入。生产者对每个输入单独运行一次评分器（其余输入为空），并记录以下状态之一：
+
+| 状态 | 含义 |
+| --- | --- |
+| `live` | 该输入至少改变了一个 Tier-1 分数 |
+| `quiet` | 存在且被接受，但未改变任何 Tier-1 分数；`quietSince` 记录开始时间 |
+| `missing` | Redis 键不存在 |
+| `unusable` | 存在，但评分器因过旧或格式错误而拒绝（例如超过 6 小时门限的 GDELT 摘要） |
+| `not_configured` | 按部署设计禁用：没有凭据的 ACLED，或 `IRAN_EVENTS_ENABLED` 关闭时的打击订阅源与打击计数 |
+
+无法读取的输入会使整个构建被拒绝，因此表现为过期的 `riskScores` seed-meta，失败的键记录在
+`risk:scores:sebuf:rejected:<version>` 中。
+
+`/api/health` 使用 `api/_cii-input-health.js` 评估该报告，并将其作为 `ciiInputs`（`states`、`dead`、
+`notConfigured`、`unfedFamilies`）附加到 `riskScores` 条目。输入在以下情况下视为失效：`missing`、
+`unusable`、完全未报告、因其自身健康检查为 `STALE_SEED` 而 `stale`，或 `quiet` 超过其合理时长预算。
+可能无限期安静的订阅源（如地震、网络中断和打击订阅源）没有安静预算，因此安静但新鲜永远不算失效。
+OREF 历史键缺失视为安静，因为中继仅在警报变化时写入。`not_configured` 会显示，但单独不会告警。
+
+| 条件 | 状态 |
+| --- | --- |
+| 某个系列没有 live 或合理安静的输入，或 seed-meta 没有 `inputs` 块 | `COVERAGE_DEGRADED` |
+| 某个输入失效，但所有系列仍有输入 | `COVERAGE_PARTIAL` |
+
+系列包括 `conflict`（ACLED 与 GDELT 国家事件，即动荡与冲突背后的实时订阅源；UCDP 是年度下限，不能替代它们）、
+`information`（新闻洞察与威胁摘要）以及 `security`（军事活动、GPS 干扰与航空）。这些判定只会提升
+`OK` 或 `COVERAGE_PARTIAL` 结果，并且永远不会因已提供的负载而被抑制：负载存在，但其分数缺少一个信号。`ciiInputs` 仅对运营者可见：匿名的 `?compact=1` 响应保留状态并移除该块。
+`/api/seed-health` 对 `intelligence:risk-scores` 评估同一报告，报告 `coverage_partial` 并附带相同的
+`ciiInputs` 块，但不含同级过期检查。
 
 `portwatchPortActivity` 也使用 `minRecordCount`。低于 174 个国家的新鲜
 `seed-meta:supply_chain:portwatch-ports` 记录会报告

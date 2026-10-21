@@ -63,6 +63,10 @@ import { evaluateFreshness } from '../freshness';
 import { McpSourceUnavailableError } from '../source-unavailable';
 import type { FreshnessCheck, ToolDef } from '../types';
 
+// Full CII realtime signal-density coverage (conflict + news families since CII v14),
+// matching api/health.js riskScores minRecordCount.
+const CII_REALTIME_COVERAGE_MIN = 2;
+
 type PayloadValidator = (value: unknown) => boolean;
 
 function hasArrayField(value: unknown, field: string): boolean {
@@ -442,7 +446,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       const checks: FreshnessCheck[] = [
         { key: 'seed-meta:news:insights', maxStaleMin: 30 },
         { key: 'seed-meta:intelligence:cross-source-signals', maxStaleMin: 30 },
-        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: 3 },
+        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: CII_REALTIME_COVERAGE_MIN },
       ];
       const { payloads: [insights, crossSource, riskScores], freshness } = await readCachesWithFreshness(keys, checks);
       requireAnyInput(
@@ -653,7 +657,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         { key: 'seed-meta:military:flights', maxStaleMin: 30 },
         { key: 'seed-meta:theater-posture', maxStaleMin: 60 },
         { key: 'seed-meta:military-surges', maxStaleMin: 30 },
-        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: 3 },
+        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: CII_REALTIME_COVERAGE_MIN },
       ];
       const {
         payloads: [flightsPayload, posturePayload, surgesPayload, historyPayload, riskScores],
@@ -930,7 +934,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       ];
       if (view === 'weekly') keys.push('military:surges:history:v1');
       const checks: FreshnessCheck[] = [
-        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: 3 },
+        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: CII_REALTIME_COVERAGE_MIN },
         { key: 'seed-meta:military-surges', maxStaleMin: 30 },
         { key: 'seed-meta:cable-health', maxStaleMin: 90 },
         { key: 'seed-meta:infra:outages', maxStaleMin: 30 },
@@ -1087,7 +1091,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       const keys = ['news:insights:v1', CII_RISK_SCORE_CACHE_KEYS.live, 'military:flights:v1', 'unrest:events:v1', 'seismology:earthquakes:v1'];
       const checks: FreshnessCheck[] = [
         { key: 'seed-meta:news:insights', maxStaleMin: 30 },
-        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: 3 },
+        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: CII_REALTIME_COVERAGE_MIN },
         { key: 'seed-meta:military:flights', maxStaleMin: 30 },
         { key: 'seed-meta:unrest:events', maxStaleMin: 120 },
         { key: 'seed-meta:seismology:earthquakes', maxStaleMin: 30 },

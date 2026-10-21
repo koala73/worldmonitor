@@ -82,7 +82,7 @@ jobs:
           # a code-only PR skips it. LINT_MD_INPUTS in .husky/pre-push plus the lockfile.
           MARKDOWN=$(printf '%s\n' "$FILES" | grep -cE '\.md$|^\.markdownlint|^package(-lock)?\.json$' || true)
           echo "markdown=$( [ "$MARKDOWN" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
-          DOCS=$(printf '%s\n' "$FILES" | grep -cE '^docs/|^scripts/check-doc-anchors\.mjs$|^scripts/_html-entities\.mjs$|^\.github/workflows/lint-code\.yml$' || true)
+          DOCS=$(printf '%s\n' "$FILES" | grep -cE '^docs/|^scripts/check-doc-anchors\.mjs$|^scripts/_html-entities\.mjs$|^scripts/mint-export-preload\.mjs$|^\.github/workflows/lint-code\.yml$' || true)
           echo "docs=$( [ "$DOCS" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
 
   biome:
@@ -168,14 +168,27 @@ jobs:
         # trusts — so a slugging change can still arrive with no repo change.
         # The version is printed below and the checker carries a canary on a
         # punctuation-sensitive slug, which is the actual protection.
+        # Two renderer faults, not doc content, caused all 28 failures from
+        # 2026-10-18 to 2026-10-21 (main included). The preload stubs mint's
+        # is-online probe, whose timeout path crashed the export before any
+        # page rendered (21), and names each page that fails to render.
+        # The other 7 were an intermittent YAMLException during page render;
+        # the one traced was a generated API-reference page that rendered on
+        # the retry. --disable-openapi skips those ~255 generated pages, which
+        # also halves the export. No authored anchor targets them; their
+        # only fragment links are absolute URLs the checker skips. Mintlify's
+        # PR preview deployment still builds them. The renderer version prints
+        # even when the export fails.
+        env:
+          NODE_OPTIONS: --import=${{ github.workspace }}/scripts/mint-export-preload.mjs
         run: |
           npm i -g mint@4.2.866
-          if ! mint export --output "$RUNNER_TEMP/docs-export.zip"; then
+          trap 'echo "renderer: $(cat ~/.mintlify/previews/shared/mint/mint-version.txt 2>/dev/null || echo unknown)"' EXIT
+          if ! mint export --disable-openapi --output "$RUNNER_TEMP/docs-export.zip"; then
             echo "::warning::Mint export failed once; retrying once."
             rm -f "$RUNNER_TEMP/docs-export.zip"
-            mint export --output "$RUNNER_TEMP/docs-export.zip"
+            mint export --disable-openapi --output "$RUNNER_TEMP/docs-export.zip"
           fi
-          echo "renderer: $(cat ~/.mintlify/previews/shared/mint/mint-version.txt 2>/dev/null || echo unknown)"
       - name: Unpack export
         run: unzip -q "$RUNNER_TEMP/docs-export.zip" -d "$RUNNER_TEMP/docs-export"
       - name: Every doc anchor resolves

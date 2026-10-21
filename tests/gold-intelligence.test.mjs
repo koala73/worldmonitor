@@ -10,10 +10,13 @@
 
 import { describe, it, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { buildReservesPayload } from '../scripts/seed-gold-cb-reserves.mjs';
+import Ajv2020 from 'ajv/dist/2020.js';
 
 const COMMODITY_KEY = 'market:commodities-bootstrap:v1';
 const COT_KEY = 'market:cot:v1';
 const GOLD_EXTENDED_KEY = 'market:gold-extended:v1';
+const GOLD_CB_RESERVES_KEY = 'market:gold-cb-reserves:v1';
 
 const cacheStore = new Map();
 const originalFetch = globalThis.fetch;
@@ -24,6 +27,8 @@ const originalEnv = {
 };
 
 let getGoldIntelligence;
+let goldRoute;
+let goldTool;
 
 function jsonResponse(body) {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -36,6 +41,9 @@ before(async () => {
 
   globalThis.fetch = async (url, init) => {
     const urlStr = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
+    if (new URL(urlStr).pathname === '/api/market/v1/get-gold-intelligence') {
+      return goldRoute.handler(new Request(urlStr, init));
+    }
     const getMatch = urlStr.match(/\/get\/([^/?#]+)$/);
     if (getMatch) {
       const key = decodeURIComponent(getMatch[1]);
@@ -46,6 +54,10 @@ before(async () => {
   };
 
   ({ getGoldIntelligence } = await import('../server/worldmonitor/market/v1/get-gold-intelligence.ts'));
+  const { createMarketServiceRoutes } = await import('../src/generated/server/worldmonitor/market/v1/service_server.ts');
+  goldRoute = createMarketServiceRoutes({ getGoldIntelligence }).find(route => route.path.endsWith('/get-gold-intelligence'));
+  const { PUBLIC_DOMAIN_TOOLS } = await import('../api/mcp/registry/public-domain-tools.ts');
+  goldTool = PUBLIC_DOMAIN_TOOLS.find(tool => tool.name === 'get_gold_intelligence');
 });
 
 after(() => {
@@ -67,6 +79,77 @@ function seedQuotes(quotes) {
 }
 
 const call = () => getGoldIntelligence({}, {});
+const callTool = () => goldTool._execute({}, 'https://worldmonitor.app', { kind: 'env_key', apiKey: 'fixture-key' });
+
+function reservesFixture(indicator) {
+  const raw = Object.fromEntries(['USA', 'DEU', 'ITA', 'FRA', 'CHN'].map((iso3, i) => [iso3, {
+    byMonth: { '2026-09': 32150.7466 * (10 + i), '2025-09': 32150.7466 * 10 },
+  }]));
+  const goldUsd = Object.fromEntries(Object.keys(raw).map(iso3 => [iso3, { byMonth: { '2026-09': 50 } }]));
+  const totalUsd = Object.fromEntries(Object.keys(raw).map(iso3 => [iso3, { byMonth: { '2026-09': 100 } }]));
+  return buildReservesPayload(raw, indicator, goldUsd, totalUsd);
+}
+
+describe('gold reserve quantities through HTTP and MCP', () => {
+  it('marks legacy USD-fallback zeroes as unmeasured while retaining percentages, source units and prices', async () => {
+    seedQuotes([quote('GC=F', 3200)]);
+    cacheStore.set(GOLD_CB_RESERVES_KEY, reservesFixture('IRFCLDT1_IRFCL56_USD'));
+    const result = await callTool();
+    assert.equal(result.unavailable, false);
+    assert.equal(result.goldPrice, 3200);
+    assert.equal(result.cbReserves.totalTonnes, 0);
+    assert.ok(result.cbReserves.topHolders.every(holder => holder.tonnes === 0));
+    assert.ok(result.cbReserves.topHolders.every(holder => holder.pctOfReserves === 50));
+    assert.equal(result.cbReserves.indicator, 'IRFCLDT1_IRFCL56_USD');
+    assert.equal(result.cbReserves.valueIsOunces, false);
+    assert.equal(result.cbReserves.asOfMonth, '2026-09');
+    assert.deepEqual(result.cbReserves.topBuyers12m, []);
+    assert.deepEqual(result.cbReserves.topSellers12m, []);
+    const ajv = new Ajv2020({ strict: false });
+    assert.ok(ajv.validate(goldTool.outputSchema, result), ajv.errorsText());
+    const properties = goldTool.outputSchema.properties.cbReserves.properties;
+    assert.equal(properties.valueIsOunces.type, 'boolean');
+    assert.equal(properties.indicator.type, 'string');
+  });
+
+  it('preserves measured ounce-based quantities, movers and genuine zero quantities', async () => {
+    seedQuotes([quote('GC=F', 3200)]);
+    const payload = reservesFixture('IRFCLDT1_IRFCL56_FTO');
+    cacheStore.set(GOLD_CB_RESERVES_KEY, payload);
+    const { cbReserves } = await callTool();
+    assert.equal(cbReserves.totalTonnes, 60);
+    assert.equal(cbReserves.valueIsOunces, true);
+    assert.deepEqual(cbReserves.topHolders.map(holder => holder.tonnes), [14, 13, 12, 11, 10]);
+    assert.deepEqual(cbReserves.topBuyers12m.map(holder => holder.deltaTonnes12m), [4, 3, 2, 1]);
+    payload.totalTonnes = 0;
+    payload.topHolders.forEach(holder => { holder.tonnes = 0; });
+    const zero = await callTool();
+    assert.equal(zero.cbReserves.valueIsOunces, true, 'a measured zero remains distinct from a fallback placeholder');
+    assert.equal(zero.cbReserves.totalTonnes, 0);
+    assert.ok(zero.cbReserves.topHolders.every(holder => holder.tonnes === 0));
+  });
+
+  it('does not infer quantity availability from missing unit metadata or expose fallback movers', async () => {
+    seedQuotes([quote('GC=F', 3200)]);
+    const payload = reservesFixture('IRFCLDT1_IRFCL56_USD');
+    payload.topBuyers12m = [{ iso3: 'USA', name: 'United States', deltaTonnes12m: 1 }];
+    cacheStore.set(GOLD_CB_RESERVES_KEY, payload);
+    assert.deepEqual((await callTool()).cbReserves.topBuyers12m, []);
+    delete payload.valueIsOunces;
+    const { cbReserves } = await callTool();
+    assert.equal(cbReserves.totalTonnes, 0);
+    assert.ok(!Object.hasOwn(cbReserves, 'valueIsOunces'));
+    assert.ok(cbReserves.topHolders.every(holder => holder.tonnes === 0));
+    assert.deepEqual(cbReserves.topBuyers12m, []);
+  });
+
+  it('keeps a missing reserves snapshot absent without making valid quotes unavailable', async () => {
+    seedQuotes([quote('GC=F', 3200)]);
+    const result = await callTool();
+    assert.equal(result.unavailable, false);
+    assert.ok(!Object.hasOwn(result, 'cbReserves'));
+  });
+});
 
 describe('getGoldIntelligence', () => {
   it('reports unavailable when the commodity snapshot is missing or has no GC=F', async () => {

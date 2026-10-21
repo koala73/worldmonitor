@@ -136,6 +136,19 @@ function validJsonRpcId(id: unknown): id is string | number | null | undefined {
   return safeJsonRpcId(id) !== null;
 }
 
+function isAllowedMcpOrigin(origin: string | null): boolean {
+  if (origin === null) return true;
+  try {
+    const url = new URL(origin);
+    // Origin is a serialized tuple, never a URL with a path or credentials.
+    if (url.origin !== origin) return false;
+    return url.protocol === 'https:' || (url.protocol === 'http:'
+      && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname));
+  } catch {
+    return false;
+  }
+}
+
 // Spec-correct 401 for the fail-closed guards on data methods. These guards are
 // unreachable today (tools/call always runs the gated path, and a data-bearing
 // resources/read reaches its `!context` guard only AFTER the public-read branch
@@ -643,7 +656,7 @@ function mcpAliasRpcError(id: unknown, corsHeaders: Record<string, string>): Res
 // the same URL, handing an SDK client a 200 JSON body where the transport
 // contract requires 405. Never emit a cacheable discovery 200 on these paths
 // without this Vary.
-const DISCOVERY_VARY = 'Accept, Last-Event-ID';
+const DISCOVERY_VARY = 'Accept, Last-Event-ID, Origin, MCP-Protocol-Version';
 const STATIC_ASSET_FETCH_TIMEOUT_MS = 5_000;
 const STATIC_ASSET_USER_AGENT = 'WorldMonitor-MCP/1.0 (+https://worldmonitor.app)';
 
@@ -770,8 +783,23 @@ async function mcpHandlerInner(
   usage: McpUsage,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<Response> {
-  // MCP is a public API endpoint secured by API key — allow all origins (claude.ai, Claude Desktop, custom agents)
   const corsHeaders = getMcpCorsHeaders();
+
+  // This public HTTPS API accepts secure browser origins and local Inspector
+  // clients. Origin never grants access; protected calls require credentials.
+  if (!isAllowedMcpOrigin(req.headers.get('Origin'))) {
+    usage.phase = 'transport';
+    return new Response(req.method === 'HEAD' ? null : 'Forbidden origin', {
+      status: 403, headers: withMcpNoStore(corsHeaders),
+    });
+  }
+
+  const protocolVersion = req.headers.get('MCP-Protocol-Version');
+  if (protocolVersion !== null && negotiateProtocolVersion(protocolVersion) !== protocolVersion) {
+    usage.phase = 'transport';
+    const response = rpcError(null, -32600, 'Unsupported MCP-Protocol-Version', corsHeaders, undefined, 400);
+    return req.method === 'HEAD' ? new Response(null, response) : response;
+  }
 
   if (req.method === 'OPTIONS') {
     usage.skip = true;
@@ -886,13 +914,6 @@ async function mcpHandlerInner(
     }
   }
 
-  // No Origin gate (issue #4802): the endpoint advertises CORS `*`, auth is
-  // API-key/Bearer (no cookies → no CSRF surface), and MCP-spec Origin
-  // validation targets DNS rebinding against localhost servers — not a public
-  // HTTPS endpoint. A claude.ai-only allowlist here 403'd ChatGPT web
-  // connectors, MCP Inspector (localhost origin), and every other
-  // browser-context client AFTER their preflight had already succeeded.
-
   if (req.method !== 'POST' && req.method !== 'GET') {
     usage.phase = 'transport';
     return new Response(null, { status: 405, headers: withMcpNoStore({ Allow: MCP_ALLOW, ...corsHeaders }) });
@@ -956,7 +977,14 @@ async function mcpHandlerInner(
         413,
       );
     }
-    return rpcError(null, -32600, 'Invalid request: malformed JSON', corsHeaders);
+    return err instanceof SyntaxError
+      ? rpcError(null, -32700, 'Parse error', corsHeaders)
+      : rpcError(null, -32600, 'Invalid request: unreadable body', corsHeaders);
+  }
+
+  if (body.jsonrpc !== '2.0') {
+    usage.phase = 'malformed';
+    return rpcError(null, -32600, 'Invalid request: jsonrpc must be "2.0"', corsHeaders);
   }
 
   if (!validJsonRpcId(body.id)) {
