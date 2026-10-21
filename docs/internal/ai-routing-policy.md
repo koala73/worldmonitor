@@ -39,8 +39,15 @@ rather than a rerouted one. Allowing `openrouter` in the policy re-enables it.
 
 Each request-time handler adds `:ai=<providers>` to its Redis cache key for a
 restricted caller, so the caller is never served text another provider wrote.
-Unrestricted callers keep the existing keys. These RPCs are tier-gated, so the
-gateway marks their responses private and the CDN never stores them.
+Unrestricted callers keep the existing keys. Apart from translate mode and
+the summary-cache read, these RPCs are tier-gated, so the gateway marks their
+responses private and the CDN never stores them.
+
+**How the caller is identified.** Handlers read the gateway-set `x-user-id`.
+The gateway sets it for `wm_` user keys on every route, for MCP OAuth (signed
+internal calls), and for Clerk sessions on tier-gated and quota routes.
+`summarize-article` also falls back to the identity it resolves itself, which
+covers a Clerk session in free translate mode.
 
 ## What it does not cover
 
@@ -53,8 +60,9 @@ gateway marks their responses private and the CDN never stores them.
   brief-mode summary of the public feed (no framework, no profile), so the
   server cannot tell a restricted user apart there and serves the shared
   summary. It sends nothing anywhere; a miss goes to `summarize-article`,
-  which is identified and policy-bound. API and MCP callers carry their
-  identity on that read and get their own namespace.
+  which is policy-bound. `wm_` key and MCP callers are identified on that
+  read and get their own namespace; a Clerk session there is not resolved,
+  so it reads the shared row, which holds public-feed text only.
 - **Stock-analysis history.** The per-symbol history and backtest ledger are
   one shared store. Restricted callers' analyses are not written to it.
 - **Operator keys** (`WORLDMONITOR_VALID_KEYS`) carry no user id and are never

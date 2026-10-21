@@ -91,12 +91,17 @@ export async function summarizeArticle(
   // never reached (ai-routing-policy.ts). An unrestricted caller may name only
   // a default-chain provider: opt-in providers (anthropic) are reachable
   // through a policy, never on a request's say-so.
-  const aiRouting = await resolveAiRouting(ctx.request);
+  // Translate mode is free, so the gateway may not have resolved a Clerk
+  // session; the identity this handler resolved covers that case.
+  const aiRouting = await resolveAiRouting(ctx.request, premiumIdentity.userId);
   const routingPolicy = toLlmRoutingPolicy(aiRouting);
   const policyChain = routingPolicy ? resolveProviderChain({ routingPolicy }) : null;
   const provider = policyChain
     ? (policyChain.find((name) => getProviderCredentials(name) !== null) ?? policyChain[0] ?? '')
-    : (isDefaultChainProvider(requestedProvider) ? requestedProvider : '');
+    : requestedProvider;
+  // Only a policy chain or a default-chain name may resolve credentials; any
+  // other client-named provider is reported as unknown (#8885).
+  const providerIsSelectable = policyChain !== null || isDefaultChainProvider(provider);
   const systemAppend = isPremium && typeof req.systemAppend === 'string' ? req.systemAppend : '';
   const requiresPremium = mode !== 'translate';
   // Every empty-summary envelope below (denied, skipped, rejected, failed)
@@ -203,7 +208,7 @@ export async function summarizeArticle(
     '': 'No AI provider is available for this request',
   };
 
-  const credentials = getProviderCredentials(provider);
+  const credentials = providerIsSelectable ? getProviderCredentials(provider) : null;
   if (!credentials) {
     return unserved({
       summary: '',
@@ -214,7 +219,7 @@ export async function summarizeArticle(
       error: '',
       errorType: '',
       status: 'SUMMARIZE_STATUS_SKIPPED',
-      statusDetail: skipReasons[provider] || `Unknown provider: ${provider}`,
+      statusDetail: (providerIsSelectable && skipReasons[provider]) || `Unknown provider: ${provider}`,
     });
   }
 

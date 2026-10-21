@@ -93,12 +93,18 @@ export async function getAiRoutingDecisionForUser(userId: string | null | undefi
 }
 
 /**
- * Decision for a gateway-routed request (reads the gateway-set user id). A
- * call with no request (an internal invocation) carries no caller identity
- * and is unrestricted, like any other caller without a user id.
+ * Decision for a gateway-routed request. The gateway-set user id wins; a
+ * handler that authenticated the caller itself (resolvePremiumCallerIdentity)
+ * passes that user id as the fallback, which covers routes where the gateway
+ * does not resolve a Clerk session (free modes, cache reads). A call with no
+ * identity at all (an internal invocation, an anonymous caller) is
+ * unrestricted, like any other caller without a user id.
  */
-export function resolveAiRouting(request: Request | undefined): Promise<AiRoutingDecision> {
-  return getAiRoutingDecisionForUser(request?.headers?.get(TRUSTED_USER_ID_HEADER));
+export function resolveAiRouting(
+  request: Request | undefined,
+  fallbackUserId?: string | null,
+): Promise<AiRoutingDecision> {
+  return getAiRoutingDecisionForUser(request?.headers?.get(TRUSTED_USER_ID_HEADER) || fallbackUserId || null);
 }
 
 /** The `routingPolicy` to pass to llm.ts. */
