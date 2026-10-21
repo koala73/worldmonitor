@@ -675,6 +675,7 @@ test('classifyKey: consumer-price coverage relays bounded failure reasons and dr
           rejectedCount: 3,
           failureReasons: {
             'missing-price': 2,
+            'source-http-error': 1,
             'validator-rejected': 1,
             'not-a-real-reason': 9,
             'provider-error': -4,
@@ -688,7 +689,7 @@ test('classifyKey: consumer-price coverage relays bounded failure reasons and dr
             failedPages: 2,
             rejectedCount: 1,
             completionRatio: 0,
-            failureReasons: { 'missing-price': 2, 'bogus-code': 1 },
+            failureReasons: { 'source-http-error': 2, 'bogus-code': 1 },
           }],
         },
       }),
@@ -697,9 +698,10 @@ test('classifyKey: consumer-price coverage relays bounded failure reasons and dr
 
   assert.deepEqual(entry.coverage.failureReasons, {
     'missing-price': 2,
+    'source-http-error': 1,
     'validator-rejected': 1,
   });
-  assert.deepEqual(entry.coverage.retailers[0].failureReasons, { 'missing-price': 2 });
+  assert.deepEqual(entry.coverage.retailers[0].failureReasons, { 'source-http-error': 2 });
 });
 
 test('classifyKey: consumer-price coverage without failure reasons reports an empty map', () => {
