@@ -246,7 +246,7 @@ async function witsGet(url: string, timeoutMs: number): Promise<Response> {
   return fetch(target, {
     headers: relayBase ? getRelayHeaders(headers) : headers,
     signal: AbortSignal.timeout(timeoutMs),
-    redirect: 'error',
+    redirect: 'manual',
   });
 }
 

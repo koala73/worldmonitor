@@ -133,7 +133,7 @@ beforeEach(() => {
       if (isRelay) {
         assert.equal(url.pathname, '/wits');
         relayCalls.push({ url: target, headers: new Headers(init?.headers) });
-        assert.equal(init?.redirect, 'error');
+        assert.equal(init?.redirect, 'manual');
         if (relayStatus !== undefined) return new Response('Relay unavailable', { status: relayStatus });
       } else {
         witsCalls.push(href);
