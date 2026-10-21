@@ -114,7 +114,7 @@ Claude Code、Cursor 桌面版、VS Code 桌面版、Codex、Gemini CLI、goose�
 |----------|-----|
 | 授权码 | 10 分钟 |
 | Access token | 1 小时 |
-| Refresh token | 7 天 |
+| Refresh token | 30 天（滑动：每次刷新都会签发拥有完整期限的新 token） |
 | 已注册客户端记录 | 90 天（滑动） |
 
 ## Pro 登录流程
@@ -131,7 +131,7 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 
 2. **在授权页点击 "Sign in with WorldMonitor Pro"**。这是默认 CTA。你会跳转到 `worldmonitor.app/mcp-grant`（受 Clerk 保护 —— 如需登录请先登录），然后回到 `api.worldmonitor.app/oauth/authorize-pro`，最后跳转到你客户端的 redirect。
 
-3. **完成。** 你的机器上不会创建或存储任何 `wm_…` key。客户端会收到一个标准 OAuth 2.1 access token（1 小时 TTL，7 天 refresh）。
+3. **完成。** 你的机器上不会创建或存储任何 `wm_…` key。客户端会收到一个标准 OAuth 2.1 access token（1 小时 TTL，refresh token 在最近一次刷新后 30 天内有效）。
 
 <Note>
 如果登录步骤提示无法校验你的订阅 —— 例如返回 `503` 页面或 `503 TIER_VERIFICATION_UNAVAILABLE` —— 这是可重试的校验状态，并不代表你的订阅已失效。请等待响应中的 `Retry-After`，然后从客户端重新发起连接；授权会话是一次性的，不要只刷新页面。服务方确认已失效且付费覆盖期已结束的订阅会转为免费账户，以受限的 `free-account` 令牌完成 OAuth，并按免费额度计量；它不会因该失效标记收到 `403`。真正的权益不足或已停用套餐仍会收到 `403 INSUFFICIENT_TIER`。参见[错误处理](/zh/usage-errors)。

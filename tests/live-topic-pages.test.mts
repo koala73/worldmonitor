@@ -12,6 +12,7 @@ import {
 } from '../scripts/live-pages/index.mjs';
 import { finiteNumber, liveSectionMarkers, replaceLiveSection } from '../scripts/live-pages/common.mjs';
 import { debtAt } from '../scripts/live-pages/national-debt.mjs';
+import weoFiscalPeriods from '../scripts/shared/weo-fiscal-periods.mjs';
 import { isPublicSharedRpcRequest, LIVE_TOPIC_RPC_PATHS } from '../src/shared/public-rpc-cache.ts';
 import { WORLD_MONITOR_ORG } from '../scripts/build-crawlable-corpus.mjs';
 
@@ -287,11 +288,23 @@ describe('live topic readings never publish a missing value as a fact', () => {
 describe('live topic sections', () => {
   it('explains the verified fiscal periods and the calendar-year fallback for debt', () => {
     const explainer = page('national-debt-clock').explainer;
-    assert.match(explainer, /Egypt[^<]*June 30[^<]*labelled year/);
-    assert.match(explainer, /India[^<]*March 31[^<]*following year/);
+    assert.match(explainer, /<li>June 30 of the WEO-labelled year: [^<]*Egypt/);
+    assert.match(explainer, /<li>March 31 of the following year: [^<]*India/);
     assert.match(explainer, /midnight UTC immediately after/);
     assert.match(explainer, /Other countries[^<]*December 31[^<]*fallback/);
+    assert.match(explainer, /Singapore[^<]*blend/);
     assert.doesNotMatch(explainer, /reaching the IMF figure on December 31/);
+  });
+
+  it('names every economy in the WEO fiscal-period table on the debt explainer', () => {
+    const explainer = page('national-debt-clock').explainer;
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const items = [...explainer.matchAll(/<li>([^:<]+): ([^<]+)<\/li>/g)].map(([, label, names]) => ({ label, names: names.split(', ') }));
+    for (const row of Object.values(weoFiscalPeriods.countries)) {
+      const expected = `${months[row.endMonth - 1]} ${row.endDay} of ${row.yearLabel === 'start' ? 'the following year' : 'the WEO-labelled year'}`;
+      const holders = items.filter((item) => item.names.includes(row.name));
+      assert.deepEqual(holders.map((item) => item.label), [expected], row.name);
+    }
   });
 
   it('states the reading with its date and carries matching FAQ markup that cannot close its script tag', () => {

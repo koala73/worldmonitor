@@ -38,6 +38,7 @@ const OPTIONAL_FIELDS = new Set([
   'extraKeys',
   'afterPublish',
   'publishAtomically',
+  'compressPayload',
   'publishTransform',
   'emptyDataIsFailure',
   'extendTtlOnFailure',

@@ -127,7 +127,7 @@ Validates the `client_secret` against the deployment's operator key allowlist an
 **Token TTLs**:
 
 - Access token: 1 hour
-- Refresh token: 7 days
+- Refresh token: 30 days, renewed on every refresh. Each refresh issues a new refresh token with the full 30 days, so a client that refreshes at least once in 30 days stays signed in.
 
 Access and refresh tokens are opaque UUIDs. All token-endpoint responses include `Cache-Control: no-store, Pragma: no-cache`.
 

@@ -408,6 +408,51 @@ scores are 0. When those feeds are reachable but quiet,
 `COVERAGE_PARTIAL`; underlying feed freshness is tracked by the source-specific
 health entries where those feeds publish seed metadata.
 
+That count cannot see a dead input. ACLED credentials went missing around July
+2026 and Unrest and Conflict read 0 for every country for months while
+`riskScores` stayed `OK`, because the UCDP floor kept the conflict family
+counted. Each CII build therefore also reports every scored input on the same
+seed-meta, under `inputs`. The producer runs the scorer once per input against
+an otherwise empty build and records one of these states:
+
+| State | Meaning |
+| --- | --- |
+| `live` | The input moved at least one Tier-1 score |
+| `quiet` | Present and accepted, but moved no Tier-1 score; `quietSince` records when that started |
+| `missing` | The Redis key was absent |
+| `unusable` | Present, but the scorer rejected it as too old or malformed (for example a GDELT summary past its 6-hour gate) |
+| `not_configured` | Disabled by deployment design: ACLED without credentials, or the strike feed and strike tally with `IRAN_EVENTS_ENABLED` off |
+
+An unreadable input rejects the whole build, so it surfaces as a stale
+`riskScores` seed-meta, with the failed keys in
+`risk:scores:sebuf:rejected:<version>`.
+
+`/api/health` grades that report with `api/_cii-input-health.js` and attaches
+it to the `riskScores` entry as `ciiInputs` (`states`, `dead`,
+`notConfigured`, `unfedFamilies`). An input is dead when it is `missing`,
+`unusable`, not reported at all, `stale` because its own health check reads
+`STALE_SEED`, or `quiet` past its plausibility budget. Feeds that can be quiet
+indefinitely, such as earthquakes, outages and the strike feed, have no quiet
+budget, so quiet but fresh is never dead. An absent OREF history is quiet,
+because the relay writes it only when sirens change. `not_configured` is shown
+but never alarms on its own.
+
+| Condition | Status |
+| --- | --- |
+| A family has no live or plausibly quiet input, or the seed-meta has no `inputs` block | `COVERAGE_DEGRADED` |
+| An input is dead but every family is still fed | `COVERAGE_PARTIAL` |
+
+The families are `conflict` (ACLED and the GDELT country events, the realtime
+feeds behind Unrest and Conflict; UCDP is an annual floor and cannot stand in
+for them), `information` (news insights and the threat summary), and `security`
+(military activity, GPS jamming and aviation). These verdicts
+only raise an `OK` or `COVERAGE_PARTIAL` result, and they are never contained
+behind the served payload: the payload is present, but its scores are missing
+a signal. `ciiInputs` is operator-only: the anonymous `?compact=1` body keeps
+the status and drops the block. `/api/seed-health` grades the same report for
+`intelligence:risk-scores` and reports `coverage_partial` with the same
+`ciiInputs` block, without the sibling staleness checks.
+
 `portwatchPortActivity` also uses `minRecordCount`. A fresh
 `seed-meta:supply_chain:portwatch-ports` record below 174 countries reports
 `COVERAGE_PARTIAL` instead of `OK`; partial runs may still refresh per-country

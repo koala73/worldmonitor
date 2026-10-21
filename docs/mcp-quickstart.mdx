@@ -140,8 +140,8 @@ A call is one request from the assistant to World Monitor. Allowances reset at 0
 ## If something goes wrong
 
 - **The sign-in window never opened.** Remove the connector and add it again, then click **Connect**. Pop-up blockers can stop the window.
-- **Claude says "Connection has expired".** The sign-in lapses after about a week without use. Open **Customize → Connectors → World Monitor** and click **Reconnect**.
-- **The World Monitor window keeps loading after a passkey prompt.** The passkey step was cancelled or timed out. Reload the window and sign in again, or use the email code.
+- **Claude says "Connection has expired".** The sign-in lapses after 30 days without use. Open **Customize → Connectors → World Monitor** and click **Reconnect**.
+- **The World Monitor window says sign-in was cancelled after a passkey prompt.** The passkey step was cancelled, timed out, or was closed by a password manager. Click **Sign in** to try again, or use the email code.
 - **The code email didn't arrive.** Check spam or quarantine. Corporate filters sometimes hold it.
 - **The assistant says it needs a subscription.** Your account is on the free plan. Upgrade, then ask again; there's no need to reconnect. The new plan usually applies within a minute, and at most 15 minutes later.
 - **The assistant doesn't use World Monitor.** Make sure the connector is switched on for that chat, and mention World Monitor in your question.

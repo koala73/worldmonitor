@@ -115,7 +115,7 @@ client_id=<from DCR>
 **令牌 TTL**:
 
 - Access token:1 小时
-- Refresh token:7 天
+- Refresh token:30 天，每次刷新时续期。每次刷新都会签发拥有完整 30 天期限的新 refresh token，因此 30 天内至少刷新一次的客户端会保持登录。
 
 Access 与 refresh 令牌为不透明 UUID。所有令牌端点响应均包含 `Cache-Control: no-store, Pragma: no-cache`。
 

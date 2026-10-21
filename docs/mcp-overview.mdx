@@ -150,7 +150,7 @@ The authorization response carries `iss` ([RFC 9207](https://datatracker.ietf.or
 |----------|-----|
 | Authorization code | 10 min |
 | Access token | 1 hour |
-| Refresh token | 7 days |
+| Refresh token | 30 days (sliding: each refresh issues a new token with the full window) |
 | Registered client record | 90 days (sliding) |
 | Cached client metadata document | Its `Cache-Control` lifetime, at most 1 hour |
 
@@ -168,7 +168,7 @@ Pro subscribers (and API Starter+ users who'd rather not paste a key) can author
 
 2. **Click "Sign in with WorldMonitor Pro"** on the consent page. This is the default CTA. You'll bounce through `worldmonitor.app/mcp-grant` (Clerk-protected — sign in if needed), then back to `api.worldmonitor.app/oauth/authorize-pro`, then to your client's redirect.
 
-3. **Done.** No `wm_…` key is created or stored on your machine. The client receives a standard OAuth 2.1 access token (1 h TTL, 7 d refresh).
+3. **Done.** No `wm_…` key is created or stored on your machine. The client receives a standard OAuth 2.1 access token (1 h TTL, refresh token valid for 30 days after the last refresh).
 
 <Note>
 If the sign-in step reports that your subscription could not be verified — a `503` page, or `503 TIER_VERIFICATION_UNAVAILABLE` from the grant endpoints — that is transient and says nothing about your subscription. Wait the advertised `Retry-After` and start the connection again from your client; the authorization session is single-use, so restart it rather than reloading the page. A confirmed account with an expired or disabled paid entitlement **without** a provider-confirmed lapse gets `403 INSUFFICIENT_TIER` instead. A confirmed free account, including a provider-confirmed lapse reclassified by the shared gate, completes the flow with a restricted, allowance-metered token. See [Error handling](/usage-errors).

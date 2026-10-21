@@ -14,6 +14,7 @@ import {
 } from './_rankable-coverage.js';
 import { unwrapEnvelope } from './_seed-envelope.js';
 import { projectChinaDecisionGroupDiagnostics } from './_china-decision-health.js';
+import { assessCiiInputs } from './_cii-input-health.js';
 import {
   buildContentFreshnessAssessment,
   getActiveContentFreshnessActivationWindow,
@@ -141,7 +142,7 @@ const SEED_DOMAINS = {
   // on exactly the budget above.
   'intelligence:market-implications': { key: 'seed-meta:intelligence:market-implications', intervalMin: 60 },
   'positive-events:geo':      { key: 'seed-meta:positive-events:geo',      intervalMin: 30 },
-  'intelligence:risk-scores': { key: 'seed-meta:intelligence:risk-scores', intervalMin: 15 }, // CII warm-ping every 8min; intervalMin*2 = 30min, aligned with api/health.js riskScores.
+  'intelligence:risk-scores': { key: 'seed-meta:intelligence:risk-scores', intervalMin: 15, ciiInputs: true }, // CII warm-ping every 8min; intervalMin*2 = 30min, aligned with api/health.js riskScores. ciiInputs grades the per-input report with the same policy (api/_cii-input-health.js).
   'conflict:iran-events':     { key: 'seed-meta:conflict:iran-events',     intervalMin: 22 }, // ais-relay Middle East strike loop every 10min; intervalMin*2 = 44min, aligned with api/health.js iranEvents (45).
   'conflict:strike-pressure': { key: 'seed-meta:conflict:strike-pressure', intervalMin: 22, activationKey: 'seed-activated:conflict:strike-pressure' }, // same relay loop adds each healthy window to the 30-day CII strike tally; aligned with api/health.js strikePressure (45).
   'conflict:ucdp-events':     { key: 'seed-meta:conflict:ucdp-events',     intervalMin: 210 },
@@ -723,7 +724,14 @@ export async function handleSeedHealth(req, options = {}) {
     const bilateralPartial = bilateralGaps && (bilateralGaps.preservedCountries.length > 0
       || Object.values(bilateralGaps.countryCoverage).some(c => BILATERAL_FAILURE_STATES.has(c?.state))
       || (bilateralGaps.worldExports != null && bilateralGaps.worldExports.state !== 'observed'));
+    // Same policy as api/health.js riskScores, without the sibling staleness
+    // checks this endpoint does not compute.
+    const ciiInputs = cfg.ciiInputs ? assessCiiInputs(meta, evaluationNow) : null;
+    const ciiInputsPartial = Boolean(ciiInputs && (
+      !ciiInputs.valid || ciiInputs.dead.length > 0 || ciiInputs.unfedFamilies.length > 0
+    ));
     const coveragePartial = Boolean(bilateralPartial) || recordCoveragePartial
+      || ciiInputsPartial
       || rankableCoveragePartial
       || poolCoveragePartial
       || chinaDecisionDiagnosticsInvalid
@@ -842,6 +850,7 @@ export async function handleSeedHealth(req, options = {}) {
       stale,
     };
     if (bilateralGaps) seeds[domain].bilateralCoverage = bilateralGaps;
+    if (ciiInputs) seeds[domain].ciiInputs = ciiInputs;
     if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
     if (cfg.minRankableRecordCount != null) {
       seeds[domain].rankableRecordCount = rankableRecordCount;

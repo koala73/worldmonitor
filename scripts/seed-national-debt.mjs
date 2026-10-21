@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, imfSdmxFetchIndicator } from './_seed-utils.mjs';
-import weoFiscalPeriods from './shared/weo-fiscal-periods.json' with { type: 'json' };
+import weoFiscalPeriods from './shared/weo-fiscal-periods.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -97,6 +97,7 @@ export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCount
         fiscalPeriod.endDay + 1,
       )
       : Date.UTC(latestDebtYear + 1, 0, 1);
+    const periodEndTs = baselineTs;
 
     // Override USA with live Treasury data when available. That total is
     // already current as of its record date, so the ticker accrues from there.
@@ -112,14 +113,24 @@ export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCount
     }
 
     const deficitByYear = deficitPctByCountry[iso3];
-    // Same year as debt and GDP only; no deficit for that year means no accrual.
-    const deficitPct2024 = deficitByYear ? Number(deficitByYear[String(latestDebtYear)]) : NaN;
+    // The clock accrues over the period after the anchored stock's period
+    // end, so once that end has passed it runs on the next period's projected
+    // deficit and GDP. Before then, or without both, it uses the stock's own
+    // year; no deficit for that year means no accrual.
+    const nextYear = String(latestDebtYear + 1);
+    const nextDeficitPct = Number(deficitByYear?.[nextYear]);
+    const nextGdpUsd = Number(gdpByYear[nextYear]);
+    const useNextPeriod = now.getTime() >= periodEndTs && Number.isFinite(nextDeficitPct) && nextGdpUsd > 0;
+    const deficitPct2024 = useNextPeriod
+      ? nextDeficitPct
+      : (deficitByYear ? Number(deficitByYear[String(latestDebtYear)]) : NaN);
+    const accrualGdpUsd = useNextPeriod ? nextGdpUsd : gdpUsd;
     let perSecondRate = 0;
     let perDayRate = 0;
     // Only accrue when running a deficit (GGXCNL_NGDP < 0 = net borrower).
     // Surplus countries (Norway, Kuwait, Singapore, etc.) tick at 0 — not upward.
     if (Number.isFinite(deficitPct2024) && deficitPct2024 < 0) {
-      const deficitAbs = (Math.abs(deficitPct2024) / 100) * gdpUsd;
+      const deficitAbs = (Math.abs(deficitPct2024) / 100) * accrualGdpUsd;
       perSecondRate = deficitAbs / SECONDS_PER_YEAR;
       perDayRate = deficitAbs / 365.25;
     }
