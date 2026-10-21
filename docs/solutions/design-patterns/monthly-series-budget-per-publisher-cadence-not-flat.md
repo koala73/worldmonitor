@@ -54,10 +54,12 @@ Then encode the measurement in the structure rather than in one number
 - Each market records the `source` of its latest print and is judged at that
   source's budget. Health pins the widest budget (the worker exports it as the
   max of the table) and the producer applies the tighter one before publishing.
-- Merge by month with the fresher publisher winning on overlap and the longer
-  history backfilling, so switching publishers neither shortens history (ECB
-  starts in 1986-1993 for markets FRED covers from 1955-1970) nor revises
-  overlapping months when the slower publisher catches up.
+- Merge by month with the primary publisher (ECB) winning on every month both
+  print and the longer history (FRED) backfilling the rest, so switching
+  publishers neither shortens history (ECB starts in 1986-1993 for markets FRED
+  covers from 1955-1970) nor revises overlapping months when the slower
+  publisher catches up. `source` names whichever publisher supplied the latest
+  print, so a FRED month newer than every ECB month is still attributed to FRED.
 - Carry provenance through every projection (`:latest` key, RPC `source`
   field) and default a legacy payload with no `source` to the old publisher so
   the reader never guesses.
@@ -69,8 +71,13 @@ own publisher's cadence explains, which is the signal operators want.
 
 ## Verification
 
-Tests in `tests/oecd-lt-content-freshness.test.mjs` pin the measured lags, the
-derived budgets, the one-skip-is-fresh / two-skips-is-stale boundary, and the
-per-source divergence at 114 vs 120 days. A live dry run of `fetchOecdLtRates()`
+The budget measures the age of a market's latest print, not the lag of the
+print that eventually arrives. One missed release leaves the latest print at
+most 47 + 62 = 109 days old (fresh under 120); a second consecutive miss
+carries it past 120 and health reports STALE_CONTENT, which is also when the
+delayed print's own lag reaches the measured 105-106 days. Tests in
+`tests/oecd-lt-content-freshness.test.mjs` pin the measured lags, the derived
+budgets, that boundary (August markets fresh on 2026-10-21, stale once the
+second release is missed), and the per-source divergence at 114 vs 120 days. A live dry run of `fetchOecdLtRates()`
 with Upstash env stripped returned all 27 markets at 2026-09-01, the 16 EU
 markets from ECB, with FRED history retained back to 1955 (PR #9510).
