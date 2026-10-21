@@ -263,7 +263,7 @@
     "pdfjs-dist": "6.2.108",
     "tsx": "^4.21.0",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7",
+    "vite": "^6.4.5",
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.1.0",
     "webmcp-types": "^0.1.3"
