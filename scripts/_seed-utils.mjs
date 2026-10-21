@@ -9,6 +9,7 @@ import { createRequire } from 'node:module';
 import { flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
 
 import { buildEnvelope, unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { encodeGzipPayload, parseStoredSeedJson } from './_seed-payload-codec.mjs';
 import { resolveRecordCount } from './_seed-contract.mjs';
 // scripts/shared mirror, not ../shared: seeders deploy with rootDirectory=scripts.
 import { COMPARE_AND_DELETE_SCRIPT } from './shared/compare-and-delete-script.cjs';
@@ -506,7 +507,7 @@ async function redisGet(url, token, key, options = {}) {
   // mode, passes through legacy (bare-shape) values unchanged. Fixes WoW/cross-
   // seed reads that were silently getting `{_seed, data}` after PR 2a enveloped
   // the writer side of 91 canonical keys.
-  return unwrapEnvelope(JSON.parse(data.result)).data;
+  return unwrapEnvelope(parseStoredSeedJson(data.result)).data;
 }
 
 async function redisSet(url, token, key, value, ttlSeconds) {
@@ -596,7 +597,8 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
   const payloadValue = options.envelopeMeta && shouldEnvelopeKey(canonicalKey)
     ? buildEnvelope({ ...options.envelopeMeta, data })
     : data;
-  const payload = JSON.stringify(payloadValue);
+  const json = JSON.stringify(payloadValue);
+  const payload = options.compressPayload ? encodeGzipPayload(json) : json;
   const payloadBytes = Buffer.byteLength(payload, 'utf8');
   const maxPayloadBytes = options.maxPayloadBytes ?? MAX_PAYLOAD_BYTES;
   if (!Number.isSafeInteger(maxPayloadBytes) || maxPayloadBytes < 1 || maxPayloadBytes > MAX_SEEDED_VALUE_BYTES) {
@@ -649,7 +651,7 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
       }
 
       // Write to staging key
-      await redisSet(url, token, stagingKey, payloadValue, 300); // 5 min staging TTL
+      await redisCommand(url, token, ['SET', stagingKey, payload, 'EX', 300]); // 5 min staging TTL
 
       // Overwrite canonical key
       await redisCommand(url, token, canonicalCommand);
@@ -834,7 +836,7 @@ export async function readCanonicalEnvelopeMeta(canonicalKey) {
     }, 2, 1000);
     if (!data || !data.result) return null;
     let parsed;
-    try { parsed = JSON.parse(data.result); } catch { return null; }
+    try { parsed = parseStoredSeedJson(data.result); } catch { return null; }
     if (!parsed || typeof parsed !== 'object') return null;
     const seed = parsed._seed;
     if (!seed || typeof seed !== 'object') return null;
@@ -2202,7 +2204,7 @@ export async function readSeedSnapshot(
     if (!strict && !result) return null;
     let parsed;
     try {
-      parsed = JSON.parse(result);
+      parsed = parseStoredSeedJson(result);
     } catch (cause) {
       if (strict) {
         throw Object.assign(new Error('Redis snapshot read returned malformed stored JSON'), { cause });
@@ -2560,6 +2562,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     allowPreservedFetchFailure = false,
     beforePublish,
     publishAtomically,
+    compressPayload = false, // store gzip+base64 (see _seed-payload-codec.mjs) when JSON outgrows MAX_PAYLOAD_BYTES
     afterPublish,
     afterValidationSkip,
     afterPreservedValidationSkip,
@@ -3008,6 +3011,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         publishAtomically: publishAtomically
           ? (publishContext) => publishAtomically(data, { ...publishContext, runId })
           : undefined,
+        compressPayload,
       });
     } catch (error) {
       // An atomic publisher either switches its complete key cohort or leaves
