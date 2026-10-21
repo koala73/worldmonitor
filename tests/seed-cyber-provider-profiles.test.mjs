@@ -246,7 +246,8 @@ test('AbuseIPDB keeps its 24h cache when the blacklist call fails, so the feed s
     source: 'abuseipdb', type: 'malware_host', tags: ['score:100'], firstSeen: 0, lastSeen: NOW - DAY,
     lat: 51.5, lon: -0.1, country: 'GB', severity: 'critical', malwareFamily: '' };
   const lapsed = ['rate:abuseipdb:last-call', JSON.stringify({ calledAt: NOW - 3 * 60 * 60 * 1000 })];
-  for (const [label, failure] of [['HTTP 429', { abuseStatus: 429 }], ['HTTP 503', { abuseStatus: 503 }], ['network error', { abuseThrows: true }]]) {
+  for (const [label, failure] of [['HTTP 429', { abuseStatus: 429 }], ['HTTP 503', { abuseStatus: 503 }], ['network error', { abuseThrows: true }],
+    ['invalid 200 body', { bodies: { abuseipdb: { data: [null] } } }]]) {
     await testContext.test(`${label} with a cache retains the cached rows`, async child => {
       const { seed, calls, values } = await producerHarness(child, { keys, ...failure,
         cached: [lapsed, ['cache:abuseipdb:threats', JSON.stringify([cached])]] });
@@ -254,7 +255,7 @@ test('AbuseIPDB keeps its 24h cache when the blacklist call fails, so the feed s
       assert.equal(calls.some(url => url.includes('api.abuseipdb')), true, 'the lapsed window still calls upstream');
       assert.equal(out.ok, true);
       assert.equal(out.outcome, 'retained');
-      assert.equal(out.reason, 'upstream-error-cache');
+      assert.equal(out.reason, failure.bodies ? 'invalid-payload-cache' : 'upstream-error-cache');
       assert.equal(out.observedAt, null, 'a retained cache never claims a fresh observation');
       assert.deepEqual(out.threats, [cached]);
       assert.equal(values.get('rate:abuseipdb:last-call'), lapsed[1], 'a failed call does not reset the rate window');

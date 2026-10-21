@@ -640,17 +640,17 @@ async function fetchOtx(days) {
   }
 }
 
-// A failed blacklist call (non-OK, e.g. a 429 from the daily cap, or a thrown error) falls back to the
+// A failed blacklist call (non-OK, e.g. a 429 from the daily cap, an invalid body, or a thrown error) falls back to the
 // last good 24h list instead of publishing 0 rows, so the feed does not flap between
 // 500 rows and none. The retained rows carry no fresh observation clock.
-async function retainedAbuseIpDb(label) {
+async function retainedAbuseIpDb(label, reason = 'upstream-error') {
   const cached = await verifySeedKey(ABUSEIPDB_CACHE_KEY).catch(() => null);
   if (Array.isArray(cached) && cached.length > 0) {
     console.warn(`  AbuseIPDB: ${label} — keeping ${cached.length} cached threats`);
-    return { ...providerResult(true, cached), outcome: 'retained', reason: 'upstream-error-cache' };
+    return { ...providerResult(true, cached), outcome: 'retained', reason: `${reason}-cache` };
   }
   console.warn(`  AbuseIPDB: ${label} — no cache`);
-  return providerResult(false);
+  return providerResult(false, [], null, reason);
 }
 
 async function fetchAbuseIpDb() {
@@ -684,7 +684,7 @@ async function fetchAbuseIpDb() {
     });
     if (!resp.ok) return retainedAbuseIpDb(`HTTP ${resp.status}`);
     const records = await providerRows(resp, 'abuseipdb', ['data']);
-    if (records === null) return providerResult(false, [], null, 'invalid-payload');
+    if (records === null) return retainedAbuseIpDb('invalid payload', 'invalid-payload');
     const threats = [];
     for (const r of records) {
       const ip = clean(r?.ipAddress || r?.ip || '', 80).toLowerCase();
