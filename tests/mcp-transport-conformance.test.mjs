@@ -184,12 +184,12 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     for (const [body, code] of cases) {
       const res = await fetch(server.url, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+      });
       const result = await res.json();
       assert.equal(result.jsonrpc, '2.0');
       assert.equal(result.error?.code, code, body);
       assert.equal(result.id, null, body);
       assert.equal(res.headers.get('cache-control'), 'no-store');
-      });
     }
   });
 
