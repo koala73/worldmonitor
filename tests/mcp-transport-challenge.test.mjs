@@ -202,7 +202,7 @@ describe('product MCP host aliases are migration-only', () => {
     });
     assert.equal(res.status, 200);
     const body = await res.json();
-    assert.equal(body.error.code, -32600);
+    assert.equal(body.error.code, -32700);
 
     const invalidId = await post(`https://${'api'}.worldmonitor.app/api/mcp`, { jsonrpc: '2.0', id: {}, method: 'initialize' });
     assert.equal(invalidId.status, 200);

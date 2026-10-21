@@ -151,10 +151,13 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
   });
 
   it('rejects unsupported transport versions before reading or dispatching a request', async () => {
-    for (const method of ['POST', 'GET', 'HEAD']) {
+    for (const [method, version] of [
+      ['POST', '2099-99-99'], ['GET', '2099-99-99'], ['HEAD', '2099-99-99'],
+      ['POST', ''], ['POST', '2026-07-28'], ['POST', 'not-a-version'],
+    ]) {
       const res = await fetch(server.url, {
         method,
-        headers: { 'MCP-Protocol-Version': '2099-99-99' },
+        headers: { 'MCP-Protocol-Version': version },
         ...(method === 'POST' ? { body: '{' } : {}),
       });
       assert.equal(res.status, 400, method);
@@ -163,6 +166,18 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
         assert.equal((await res.json()).error.code, -32600);
       }
     }
+  });
+
+  it('uses the active protocol floor for headers as well as initialize negotiation', async () => {
+    process.env.MCP_PROTOCOL_FLOOR_2025_06_18 = 'off';
+    const newer = await fetch(server.url, { method: 'POST',
+      headers: { 'MCP-Protocol-Version': '2025-06-18' }, body: JSON.stringify(rpcBody(1, 'ping')) });
+    assert.equal(newer.status, 400);
+    await newer.text();
+    const legacy = await fetch(server.url, { method: 'POST',
+      headers: { 'MCP-Protocol-Version': '2025-03-26' }, body: JSON.stringify(rpcBody(1, 'ping')) });
+    assert.equal(legacy.status, 200);
+    assert.deepEqual((await legacy.json()).result, {});
   });
 
   it('returns Parse error for malformed JSON', async () => {
@@ -209,6 +224,11 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
         });
         assert.equal(res.status, 403, `${method} ${origin}`);
         assert.equal(res.headers.get('cache-control'), 'no-store');
+      }
+      for (const pathname of ['/mcp', '/.well-known/mcp', '/api/mcp']) {
+        const discovery = await fetch(new URL(pathname, server.url), { headers: { Origin: origin } });
+        assert.equal(discovery.status, 403, `${pathname} ${origin}`);
+        await discovery.text();
       }
     }
   });
