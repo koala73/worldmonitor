@@ -1166,7 +1166,7 @@ The moment at which the debt clock shows exactly the IMF figure for a country: t
 
 The period is a calendar year by default. For economies that report government finance on a fiscal year, it is the verified fiscal year, and WEO labels it either by the calendar year it ends in or by the one it starts in. Month ranges alone do not decide which label applies, so the label has to come from the IMF's own stated mapping. A blended calendar year, such as Singapore's mix of two fiscal years, has no fiscal anchor and stays on the calendar default.
 
-Before the anchor the clock counts up to the figure. After it, the clock runs on the next period's projected deficit, because the closed period's deficit no longer describes current borrowing. A direct official reading with its own record date, such as US Treasury debt to the penny, replaces both the figure and the anchor. See also: Reference Period, Content-Age Contract.
+Before the anchor the clock counts up to the figure. A country in surplus is the exception: its clock stays flat rather than ticking. After the anchor, the clock runs on the next period's projected deficit, because the closed period's deficit no longer describes current borrowing. That switch needs both the next period's deficit and its GDP; if either is missing, the clock keeps the closed period's rate. A direct official reading with its own record date, such as US Treasury debt to the penny, replaces both the figure and the anchor. See also: Reference Period, Content-Age Contract.
 
 ## Flagged ambiguities
 

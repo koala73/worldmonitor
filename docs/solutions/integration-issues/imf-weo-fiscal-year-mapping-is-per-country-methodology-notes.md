@@ -28,7 +28,7 @@ tags:
 
 ## Problem
 
-IMF World Economic Outlook gross debt (`GGXWDG_NGDP`) for year Y is the stock at the end of that economy's reporting period. For the 32 economies in WEO Online Table F that report government finance on a fiscal year, that period does not end on December 31. WEO also labels those fiscal years two different ways: some by the calendar year the fiscal year ends in, some by the year it starts in. The national debt clock needed both facts for each country. The WEO SDMX feed appeared not to carry them.
+IMF World Economic Outlook gross debt (`GGXWDG_NGDP`) for year Y is the stock at the end of that economy's reporting period. WEO Online Table F lists 32 economies whose government-finance data use a non-calendar reporting period. For 30 of them, WEO's year Y is a single fiscal year that does not end on December 31. The other two are Singapore, whose WEO calendar years blend two fiscal years, and Puerto Rico, a territory the debt seeder excludes. WEO also labels those fiscal years two different ways: some by the calendar year the fiscal year ends in, some by the year it starts in. The national debt clock needed both facts for each country. The WEO SDMX feed appeared not to carry them.
 
 ## Symptoms
 
@@ -62,7 +62,7 @@ The response then includes `METHODOLOGY_NOTES`, `START_END_MONTHS_OF_REPORTING_Y
 
 The notes reproduced both rows #9429 had verified by other means (EGY `end`, IND `start`). Some notes also give exact end days: Afghanistan and Iran March 20, Nepal July 15. Hong Kong SAR and Thailand have no mapping sentence. #9496 matched IMF staff-report figures to WEO columns for them: Country Report 25/15 for Hong Kong (start) and 25/45 for Thailand (end).
 
-#9496 (closes #9425) stores the result in `scripts/shared/weo-fiscal-periods.mjs`. That covers every Table F government-finance economy except Singapore and Puerto Rico, which the seeder already excludes as a territory. Each row carries its IMF citation. The file is a plain ES module, so the middleware bundle and Node both load it without import attributes. `computeEntries` looks rows up at `scripts/seed-national-debt.mjs:92`, and the public explainer list is generated from the same table (`scripts/live-pages/national-debt.mjs:21`).
+#9496 (closes #9425) stores the result in `scripts/shared/weo-fiscal-periods.mjs`. It maps those 30 economies, each row with its IMF citation. Singapore stays on the December 31 fallback because of its blended convention, and Puerto Rico is left out because the seeder excludes territories. The file is a plain ES module, so the middleware bundle and Node both load it without import attributes. `computeEntries` looks rows up at `scripts/seed-national-debt.mjs:92`, and the public explainer list is generated from the same table (`scripts/live-pages/national-debt.mjs:21`).
 
 The same PR also fixed a follow-on bug that Codex review found. When a fiscal period has already closed, for example Bangladesh's FY2025/26 on June 30, the clock runs from the period end. It must accrue at the **next** period's projected deficit and GDP, not the closed year's (`scripts/seed-national-debt.mjs:100`, `:123`). On live October 2026 data this affected 23 economies, and some changed direction: Samoa and Tonga move from surplus to deficit, and Marshall Islands from deficit to surplus.
 
@@ -75,7 +75,7 @@ WEO's SDMX data structure attaches country-specific documentation at the country
 - **Probe SDMX metadata with a single-country key** before concluding an attribute is absent. Repeat the probe for at least two countries whose conventions differ.
 - **Re-verify the table at each WEO vintage.** Conventions have changed before: Fiji moved to August/July in 2016, Myanmar restored April/March from FY2021/22, and Mauritius returned to fiscal-year reporting. The table records `weoVintage`, and its coverage note says to re-check every row.
 - **Tie each row to its own evidence in tests.** `tests/national-debt-seed.test.mjs:485` asserts that `yearLabel` matches the quoted mapping. `:494` asserts that `endMonth` matches the quoted reporting months. Mutating Pakistan's label or end month fails these tests.
-- **Shared data imported anywhere under `middleware.ts` must be a JS module, not JSON.** The import-attribute guard at `tests/live-topic-pages.test.mts:423` enforces this.
+- **Data imported both under `middleware.ts` and by plain Node scripts should be a JS module.** Bundled TypeScript can import JSON without attributes, and `middleware.ts` already imports `agent-request-policy.json` that way. Plain Node ESM requires `with { type: 'json' }`, though, and the middleware bundler rejects import attributes. The guard at `tests/live-topic-pages.test.mts:423` rejects the attributes, not JSON itself.
 - **Once a period-anchored clock passes the period end, switch the accrual rate to the next period.** Test the deficit-to-surplus transition explicitly.
 
 ## Related
