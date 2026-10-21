@@ -63,7 +63,7 @@ globalThis.fetch = async (url, opts) => {
   let value = null;
   if (key === 'conflict:ucdp-events:v1') value = missingUcdp ? null : { events: activeEvents, fetchedAt, version: 'controlled', candidateVersion: 'controlled+partial', candidateComplete: false, ...(payloadAnnualFailedPages === undefined ? {} : { annualFailedPages: payloadAnnualFailedPages }) };
   else if (key === 'unrest:events:v1') value = { events: [] };
-  else if (key === 'risk:scores:sebuf:stale:v13') value = { ciiScores: [] };
+  else if (key === 'risk:scores:sebuf:stale:v14') value = { ciiScores: [] };
   else if (key === 'conflict:iran-events:v1') value = { events: [] };
   else if (key === 'seed-meta:conflict:ucdp-events') value = missingUcdpMeta ? null : { fetchedAt, recordCount: activeEvents.length, candidateVersion: 'controlled+partial', candidateComplete: false, annualFailedPages: 2 };
   else if (key === 'seed-meta:unrest:events') value = { fetchedAt, recordCount: activeEvents.length };

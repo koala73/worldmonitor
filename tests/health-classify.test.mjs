@@ -1485,7 +1485,7 @@ test('classifyKey: riskScores partial realtime family coverage → COVERAGE_PART
 
   assert.equal(entry.status, 'COVERAGE_PARTIAL');
   assert.equal(entry.records, 1);
-  assert.equal(entry.minRecordCount, 3);
+  assert.equal(entry.minRecordCount, 2, 'conflict + news families since CII v14');
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 

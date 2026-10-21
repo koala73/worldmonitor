@@ -210,7 +210,7 @@ function analysisPayloads() {
         },
       ],
     },
-    'risk:scores:sebuf:v13': {
+    'risk:scores:sebuf:v14': {
       ciiScores: [
         { region: 'IR', combinedScore: 88 },
         { region: 'TW', combinedScore: 61 },
@@ -669,7 +669,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     {
       tool: 'get_focal_points',
       params: {},
-      keys: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v13'],
+      keys: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v14'],
     },
     {
       tool: 'get_military_surge',
@@ -685,7 +685,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
       tool: 'get_alert_digest',
       params: {},
       keys: [
-        'risk:scores:sebuf:v13',
+        'risk:scores:sebuf:v14',
         'military:surges:v1',
         'cable-health-v1',
         'infra:outages:v1',
@@ -699,7 +699,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
       params: {},
       keys: [
         'news:insights:v1',
-        'risk:scores:sebuf:v13',
+        'risk:scores:sebuf:v14',
         'military:flights:v1',
         'unrest:events:v1',
         'seismology:earthquakes:v1',
@@ -1100,6 +1100,19 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
 
       assert.equal(result.stale, true);
       assert.ok(!result.failed_inputs.includes('seed-meta:intelligence:risk-scores'));
+    });
+  }
+
+  // CII v14 counts two realtime families (conflict, news), so 2 is full coverage.
+  for (const toolName of ['get_focal_points', 'get_military_surge', 'get_alert_digest', 'get_hotspot_escalation']) {
+    it(`${toolName} treats full v14 CII coverage (2 families) as fresh`, async () => {
+      installUpstashStub({
+        ...analysisPayloads(),
+        'seed-meta:intelligence:risk-scores': { fetchedAt: Date.now(), recordCount: 2, sourceVersion: 'test' },
+      });
+      const result = await findTool(toolName)._execute({}, '', {}, {});
+      assert.ok(!(result.stale_inputs ?? []).includes('seed-meta:intelligence:risk-scores'), JSON.stringify(result.stale_inputs));
+      assert.equal(result.stale, false);
     });
   }
 

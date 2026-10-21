@@ -18,7 +18,7 @@ describe('wave-2a analysis tools registry contract', () => {
     },
     get_focal_points: {
       budget: 65536,
-      coverage: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v13'],
+      coverage: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v14'],
     },
     simulate_infrastructure_cascade: {
       budget: 131072,
@@ -26,7 +26,7 @@ describe('wave-2a analysis tools registry contract', () => {
     },
     get_military_surge: {
       budget: 65536,
-      coverage: ['military:flights:v1', 'theater-posture:sebuf:v1', 'military:surges:v1', 'risk:scores:sebuf:v13'],
+      coverage: ['military:flights:v1', 'theater-posture:sebuf:v1', 'military:surges:v1', 'risk:scores:sebuf:v14'],
     },
   };
 

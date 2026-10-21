@@ -138,7 +138,7 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 ## Live Instances
 
 - [World Monitor](https://www.worldmonitor.app): Geopolitics, military, conflicts, infrastructure — RSS categories, panels, military bases, nuclear facilities, hotspots
-- [Live Country Instability Index rankings](https://www.worldmonitor.app/country-instability-index/): CII v13 scores, bands, and approximate 24-hour movement for 31 Tier-1 countries
+- [Live Country Instability Index rankings](https://www.worldmonitor.app/country-instability-index/): CII v14 scores, bands, and approximate 24-hour movement for 31 Tier-1 countries
 - [Tech Monitor](https://tech.worldmonitor.app/dashboard): Startups, AI/ML, cloud, cybersecurity — RSS categories, panels, tech HQs, cloud regions, startup hubs
 - [Finance Monitor](https://finance.worldmonitor.app/dashboard): Global markets, trading, central banks, Gulf FDI — RSS categories, panels, stock exchanges, central banks, Gulf investments
 - [Commodity Monitor](https://commodity.worldmonitor.app/dashboard): Mining, metals, energy, shipping, chokepoints, supply chains, commodity markets
@@ -220,7 +220,7 @@ World Monitor is a free real-time global intelligence dashboard that correlates 
 <a id="corpus-what-is-the-country-instability-index"></a>
 ### What is the Country Instability Index?
 
-The Country Instability Index (CII) is World Monitor's high-frequency 0-100 stress score for 31 Tier-1 countries. CII v13 combines a 40% editorial baseline with a 60% live event score. The event score weights conflict at 30%, unrest at 25%, information signals at 25%, and security signals at 20%, then applies bounded boosts and authoritative floors. Each country has an instability band and signed movement against a valid snapshot from approximately 24 hours earlier. See the [live CII rankings](https://www.worldmonitor.app/country-instability-index/).
+The Country Instability Index (CII) is World Monitor's high-frequency 0-100 stress score for 31 Tier-1 countries. CII v14 combines a 40% editorial baseline with a 60% live event score. The event score weights conflict at 30%, unrest at 25%, information signals at 25%, and security signals at 20%, then applies bounded boosts and authoritative floors. Each country has an instability band and signed movement against a valid snapshot from approximately 24 hours earlier. See the [live CII rankings](https://www.worldmonitor.app/country-instability-index/).
 
 <a id="corpus-how-does-world-monitor-help-market-analysis"></a>
 ### How does World Monitor help market analysis?
@@ -263,7 +263,7 @@ Unique layers: stock exchanges, financial centers, and central-bank and supranat
 - **World Brief**: LLM-synthesized summary of top global developments via OpenRouter (Ollama when self-hosted), Redis-cached
 - **Hybrid Threat Classification**: Two-stage pipeline — instant keyword classifier (~120 threat keywords by severity tier) with async LLM override (OpenRouter DeepSeek V4.1 Flash at temperature 0, Ollama when self-hosted, 24h Redis cache). LLM overrides keyword result only when confidence is higher
 - **Focal Point Detection**: Correlates entities across news, military activity, protests, outages, and markets to identify convergence. Requires cross-source confirmation before escalating to critical
-- **Country Instability Index (CII v13)**: Server-authoritative 0-100 stress scores for 31 Tier-1 countries. The documented formula blends four event components into `eventScore = unrest * 0.25 + conflict * 0.30 + security * 0.20 + information * 0.25`, then combines `baselineRisk * 0.4 + eventScore * 0.6` with capped climate, cyber, fire, advisory, OREF, displacement, news-urgency, earthquake, sanctions, AIS, and strike-pressure (up to +10) terms, and UCDP, advisory and strike-pressure (40-70) floors. Strike pressure is strikes on the country (Middle East strike feed, GDELT worldwide), decayed with a three-day half-life. Each score emits `methodology_version`, component breakdown, advisory provenance, and signed 24-hour movement delta.
+- **Country Instability Index (CII v14)**: Server-authoritative 0-100 stress scores for 31 Tier-1 countries. The documented formula blends four event components into `eventScore = unrest * 0.25 + conflict * 0.30 + security * 0.20 + information * 0.25`, then combines `baselineRisk * 0.4 + eventScore * 0.6` with capped climate, fire, advisory, OREF, displacement, news-urgency, earthquake, sanctions, AIS, and strike-pressure (up to +10) terms, and UCDP, advisory and strike-pressure (40-70) floors. Strike pressure is strikes on the country (Middle East strike feed, GDELT worldwide), decayed with a three-day half-life. Each score emits `methodology_version`, component breakdown, advisory provenance, and signed 24-hour movement delta.
 - **Country Resilience Index (CRI)**: 0-100 resilience scores for the 196-country public rankable universe built from 72 indicators across 21 active dimensions, 6 domains, and 3 pillars. CRI uses official/authoritative sources, transparent goalposts, coverage tracking, and a four-class imputation taxonomy; the live runtime manifest reports the active formula tag and construct versions.
 - **Trending Keyword Spike Detection**: 2-hour rolling window vs 7-day baseline. Spikes require 5+ mentions, 3x baseline surge, 2+ unique sources, and 30-minute cooldown. Extracts CVE identifiers and APT/FIN designators. Auto-summarized through the summarization chain (5 summaries/hour limit)
 - **Strategic Posture Assessment**: Named operational theaters (Iran/Persian Gulf, Taiwan Strait, Baltic/Kaliningrad, Korean Peninsula, Eastern Mediterranean, Horn of Africa, South China Sea, Arctic, Black Sea) assessed continuously. Posture levels: NORMAL, ELEVATED, CRITICAL based on aircraft count, strike capability, naval presence, and country instability
@@ -277,7 +277,7 @@ Unique layers: stock exchanges, financial centers, and central-bank and supranat
 
 - **AI Strategic Posture**: Theater-level military force aggregation with strike capability assessment across named theaters linked to military bases
 - **Strategic Risk Overview**: Composite risk score combining all intelligence modules with trend detection
-- **Country Instability Index**: CII v13 scores for the Tier-1 country registry with component breakdowns, methodology version, advisory provenance, and signed 24-hour movement deltas
+- **Country Instability Index**: CII v14 scores for the Tier-1 country registry with component breakdowns, methodology version, advisory provenance, and signed 24-hour movement deltas
 - **Country Resilience Index**: CRI scores and rankings for the public rankable universe with pillar, domain, coverage, and imputation detail
 - **Infrastructure Cascade**: Dependency analysis for cables, pipelines, ports, and chokepoints with disruption propagation modeling
 - **Live Intelligence**: GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions)
@@ -399,7 +399,7 @@ Native desktop app built with Tauri (Rust + Node.js sidecar). The sidecar mirror
 
 - Interactive 3D WebGL globe with a shared map-layer catalog and smart clustering
 - AI-synthesized world briefs with hybrid threat classification
-- CII v13 instability scores for the Tier-1 country registry
+- CII v14 instability scores for the Tier-1 country registry
 - CRI resilience scores for the public rankable universe
 - Strategic posture assessment across named theaters
 - Geographic convergence detection and infrastructure cascade modeling

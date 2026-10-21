@@ -15,7 +15,7 @@ const QUALIFIED_HEADLINE_NAMES = {
   TR: ['republic of turkey'],
   GN: ['guinea conakry'],
 };
-const RISK_KEY = 'risk:scores:sebuf:stale:v13';
+const RISK_KEY = 'risk:scores:sebuf:stale:v14';
 const RANKING_KEY = 'resilience:ranking:v29';
 const DIGEST_KEY = 'news:digest:v1:full:en';
 const fresh = (time, now, age) => Number.isFinite(time) && time > 0 && time <= now && now - time <= age;

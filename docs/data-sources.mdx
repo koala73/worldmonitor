@@ -91,7 +91,7 @@ The Displacement panel gives each source its own tab. Each source loads and refr
 - **Internal** — internal displacement by first-level region from IOM's Displacement Tracking Matrix (DTM). Each operation keeps only its latest survey round, and operations that overlap in one country are never summed
 - **Cross-border** — source-dated movements from the UNHCR Operational Data Portal, UK Home Office daily small-boat arrivals, US CBP southwest-border encounters, Frontex monthly detections, and Panama's Darién arrivals. Each figure keeps its source's report date. Encounters and detections count events, not unique people. Route methodology and licences are listed in [Cross-border movements](https://github.com/koala73/worldmonitor/blob/main/docs/cross-border-movements.md)
 
-A surge in IDMC internal displacement for a country is emitted as a cross-source signal. A fresh, source-confirmed cross-border arrival surge adds five points to that country's CII once (formula v13).
+A surge in IDMC internal displacement for a country is emitted as a cross-source signal. A fresh, source-confirmed cross-border arrival surge adds five points to that country's CII once (since formula v13).
 
 Crisis badges flag countries with extreme displacement: > 1 million displaced (red), > 500,000 (orange). Displacement outflow feeds into the CII as a component signal — high displacement is a lagging indicator of instability that persists even when headlines move on.
 

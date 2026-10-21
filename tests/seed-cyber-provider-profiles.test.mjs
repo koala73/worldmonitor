@@ -67,7 +67,11 @@ async function producerHarness(context, options = {}) {
       if (options.otxPages) return Response.json(options.otxPages[parsedUrl.searchParams.get('page') ?? '1'] ?? { results: [null] });
       return Response.json(options.bodies?.otx ?? { results: options.otx ?? [] });
     }
-    if (url.includes('api.abuseipdb')) return Response.json(options.bodies?.abuseipdb ?? { data: options.abuse ?? [] });
+    if (url.includes('api.abuseipdb')) {
+      if (options.abuseThrows) throw new TypeError('fetch failed');
+      if (options.abuseStatus) return new Response('{"errors":[{"detail":"Daily rate limit of 5 requests exceeded"}]}', { status: options.abuseStatus });
+      return Response.json(options.bodies?.abuseipdb ?? { data: options.abuse ?? [] });
+    }
     if (parsedUrl.hostname === 'ipinfo.io' || parsedUrl.hostname === 'freeipapi.com') return Response.json(options.geo ?? {});
     throw new Error(`Unexpected fixture URL: ${url}`);
   });
@@ -233,6 +237,36 @@ test('missing keys are unconfigured and retained cache cannot invent an observat
     assert.deepEqual(out.threats, [cached]);
     assert.equal(retainedCalls.some(url => url.includes('api.abuseipdb')), false);
   });
+});
+
+test('AbuseIPDB keeps its 24h cache when the blacklist call fails, so the feed stops flapping', async testContext => {
+  // Production 2026-10-19T18:10Z: the 2h rate window had lapsed, the blacklist call
+  // failed and the provider published 0 rows; 2026-10-20T09:47Z it published 500.
+  const cached = { id: 'abuseipdb:192.0.2.61', indicator: '192.0.2.61', indicatorType: 'ip',
+    source: 'abuseipdb', type: 'malware_host', tags: ['score:100'], firstSeen: 0, lastSeen: NOW - DAY,
+    lat: 51.5, lon: -0.1, country: 'GB', severity: 'critical', malwareFamily: '' };
+  const lapsed = ['rate:abuseipdb:last-call', JSON.stringify({ calledAt: NOW - 3 * 60 * 60 * 1000 })];
+  for (const [label, failure] of [['HTTP 429', { abuseStatus: 429 }], ['HTTP 503', { abuseStatus: 503 }], ['network error', { abuseThrows: true }]]) {
+    await testContext.test(`${label} with a cache retains the cached rows`, async child => {
+      const { seed, calls, values } = await producerHarness(child, { keys, ...failure,
+        cached: [lapsed, ['cache:abuseipdb:threats', JSON.stringify([cached])]] });
+      const out = await seed.fetchAbuseIpDb();
+      assert.equal(calls.some(url => url.includes('api.abuseipdb')), true, 'the lapsed window still calls upstream');
+      assert.equal(out.ok, true);
+      assert.equal(out.outcome, 'retained');
+      assert.equal(out.reason, 'upstream-error-cache');
+      assert.equal(out.observedAt, null, 'a retained cache never claims a fresh observation');
+      assert.deepEqual(out.threats, [cached]);
+      assert.equal(values.get('rate:abuseipdb:last-call'), lapsed[1], 'a failed call does not reset the rate window');
+    });
+    await testContext.test(`${label} without a cache stays unavailable`, async child => {
+      const { seed } = await producerHarness(child, { keys, ...failure, cached: [lapsed] });
+      const out = await seed.fetchAbuseIpDb();
+      assert.equal(out.ok, false);
+      assert.equal(out.outcome, 'unavailable');
+      assert.deepEqual(out.threats, []);
+    });
+  }
 });
 
 test('invalid envelopes, native dates and decoded bounds cannot count as observations', async testContext => {

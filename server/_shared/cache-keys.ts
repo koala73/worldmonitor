@@ -78,9 +78,9 @@ export const SIMULATION_PACKAGE_LATEST_KEY = 'forecast:simulation-package:latest
  * api/_cii-risk-cache-keys.js and scripts/_cii-risk-cache-keys.mjs aligned.
  */
 export const CII_RISK_SCORE_CACHE_KEYS = {
-  live: 'risk:scores:sebuf:v13',
-  stale: 'risk:scores:sebuf:stale:v13',
-  trendHistoryPrefix: 'risk:scores:sebuf:trend-history:v13',
+  live: 'risk:scores:sebuf:v14',
+  stale: 'risk:scores:sebuf:stale:v14',
+  trendHistoryPrefix: 'risk:scores:sebuf:trend-history:v14',
   dailyHistoryPrefix: 'risk:scores:history:',
   dailyHistoryIndex: 'risk:scores:history:index',
   dailyHistoryMeta: 'seed-meta:intelligence:risk-scores-history',

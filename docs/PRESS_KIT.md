@@ -165,12 +165,12 @@ World Monitor serves several audiences:
 
 ### Country Instability Index (CII)
 
-The Country Instability Index publishes server-authoritative CII v13 stress
+The Country Instability Index publishes server-authoritative CII v14 stress
 scores from 0 to 100 for 31 Tier-1 countries. The score is directional
 situational awareness, not a prediction or a safety rating.
 
 - **Event score**: `unrest * 0.25 + conflict * 0.30 + security * 0.20 + information * 0.25`
-- **Headline score**: `baselineRisk * 0.4 + eventScore * 0.6`, then capped boosts and floors for climate, cyber, wildfires, advisories, OREF, displacement, news urgency, earthquakes, sanctions, AIS disruptions, UCDP conflict class, and State Department advisory level
+- **Headline score**: `baselineRisk * 0.4 + eventScore * 0.6`, then capped boosts and floors for climate, wildfires, advisories, OREF, displacement, news urgency, earthquakes, sanctions, AIS disruptions, UCDP conflict class, and State Department advisory level
 - **Provenance**: every score exposes `methodology_version`, component values, advisory provenance (`live`, `fallback`, or `absent`), and a signed 24-hour movement delta
 
 Scores are classified as: Low (0-30), Normal (31-50), Elevated (51-65),
@@ -280,7 +280,7 @@ A: The web interface can be referenced and linked in reporting. For data integra
 A: Those are enterprise products costing tens to hundreds of thousands of dollars per year, typically sold to governments and large corporations. World Monitor aims to democratize access to situational awareness by aggregating public data and using AI to make it digestible. It is open source, free to use, and designed for individual analysts and small teams, not just large organizations.
 
 **Q: What does "Country Instability Index" mean and how reliable is it?**
-A: The CII is a documented composite stress score (0-100) for 31 Tier-1 countries. CII v13 combines baseline risk with unrest, conflict, security, information, and capped/floored live-signal terms, and emits methodology version plus provenance fields. It is not a predictive model and should not be used as the sole basis for security or investment decisions. It is most useful for identifying countries experiencing unusual activity relative to their baseline.
+A: The CII is a documented composite stress score (0-100) for 31 Tier-1 countries. CII v14 combines baseline risk with unrest, conflict, security, information, and capped/floored live-signal terms, and emits methodology version plus provenance fields. It is not a predictive model and should not be used as the sole basis for security or investment decisions. It is most useful for identifying countries experiencing unusual activity relative to their baseline.
 
 **Q: How many people work on this?**
 A: World Monitor is primarily a solo project by its creator, with occasional open-source contributions from the community.

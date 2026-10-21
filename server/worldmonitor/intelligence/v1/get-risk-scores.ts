@@ -424,9 +424,6 @@ interface CountrySignals {
   outageMajorCount: number;
   outagePartialCount: number;
   climateSeverity: number;
-  cyberCriticalCount: number;
-  cyberHighCount: number;
-  cyberMediumCount: number;
   fireCount: number;
   fireHighCount: number;
   gpsHighCount: number;
@@ -474,7 +471,6 @@ function emptySignals(): CountrySignals {
     ucdpWar: false, ucdpMinor: false,
     outageTotalCount: 0, outageMajorCount: 0, outagePartialCount: 0,
     climateSeverity: 0,
-    cyberCriticalCount: 0, cyberHighCount: 0, cyberMediumCount: 0,
     fireCount: 0, fireHighCount: 0,
     gpsHighCount: 0, gpsMediumCount: 0,
     strikePressure: 0,
@@ -831,7 +827,6 @@ interface AuxiliarySources {
   ucdpEvents: any[];
   outages: any[];
   climate: any[];
-  cyber: any[];
   fires: any[];
   gpsHexes: any[];
   iranEvents: any[];
@@ -880,14 +875,15 @@ const NEWS_THREAT_WEIGHT: Record<string, number> = {
   info: 0,
 };
 
-export const CII_REALTIME_REQUIRED_SIGNAL_FAMILY_COUNT = 3;
+// Conflict and news. Cyber IOC rows were dropped in v14: they place attacker
+// infrastructure, not the country under attack, so they no longer score or count here.
+export const CII_REALTIME_REQUIRED_SIGNAL_FAMILY_COUNT = 2;
 
 function emptyAuxiliarySources(): AuxiliarySources {
   return {
     ucdpEvents: [],
     outages: [],
     climate: [],
-    cyber: [],
     fires: [],
     gpsHexes: [],
     iranEvents: [],
@@ -963,11 +959,10 @@ async function readRiskInputs(inputs: ReadonlyArray<RiskInput | null>): Promise<
 
 async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const currentYear = new Date().getFullYear();
-  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementCurrentRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw, countryEventsRaw, strikePressureRaw] = await readRiskInputs([
+  const [ucdpRaw, outagesRaw, climateRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementCurrentRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw, countryEventsRaw, strikePressureRaw] = await readRiskInputs([
     { key: 'conflict:ucdp-events:v1', raw: true },
     { key: 'infra:outages:v1', raw: true },
     { key: CLIMATE_ANOMALIES_KEY, raw: true },
-    { key: 'cyber:threats-bootstrap:v2', raw: true },
     { key: 'wildfire:fires:v1', raw: true },
     { key: 'intelligence:gpsjam:v2', raw: true },
     IRAN_EVENTS_ENABLED ? { key: 'conflict:iran-events:v1', raw: true } : null,
@@ -1059,7 +1054,6 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     ucdpEvents: arr(ucdpRaw, 'events'),
     outages: arr(outagesRaw, 'outages'),
     climate: arr(climateRaw, 'anomalies'),
-    cyber: arr(cyberRaw, 'threats'),
     fires: arr(firesRaw, 'fireDetections').length ? arr(firesRaw, 'fireDetections') : arr(firesRaw, 'fires'),
     gpsHexes: arr(gpsRaw, 'hexes'),
     iranEvents: arr(iranRaw, 'events'),
@@ -1190,24 +1184,9 @@ export function computeCIIScores(
     }
   }
 
-  // --- Cyber ---
-  for (const t of aux.cyber) {
-    const code = (t.country || '').toUpperCase();
-    if (!data[code]) continue;
-    // Split by the severity the cached cyber threat already carries (Phase 3b / D7).
-    // seed-cyber-threats.mjs emits the proto enum form ('CRITICALITY_LEVEL_CRITICAL' etc.)
-    // — strip the prefix so bare lowercase fixtures and the production enum both bucket.
-    // NOTE: 'low' / 'info' / unknown severities are intentionally dropped. Pre-unification
-    // the server used a flat `cyberCount++` for every threat regardless of severity, but
-    // the only consumer (cyberBoost in the blend below) reads critical/high/medium with
-    // weights 3 / 1.8 / 0.9 — matching the frontend formula at
-    // src/services/country-instability.ts:609. A 'low' would have no coefficient to land
-    // on, so counting it would be a no-op anyway; the drop just makes the contract explicit.
-    const sev = String(t.severity || '').toLowerCase().replace(/^criticality_level_/, '');
-    if (sev === 'critical') data[code].cyberCriticalCount++;
-    else if (sev === 'high') data[code].cyberHighCount++;
-    else if (sev === 'medium') data[code].cyberMediumCount++;
-  }
+  // Cyber IOC feeds (AbuseIPDB, Feodo, URLhaus, C2Intel, OTX) are not read since v14:
+  // each row's country is where the malicious IP or URL is hosted, not the victim, so
+  // they scored datacenter countries (US, GB, DE, FR) instead of countries under attack.
 
   // --- Fires ---
   for (const f of aux.fires) {
@@ -1288,6 +1267,7 @@ export function computeCIIScores(
   }
 
   // --- Military activity (Phase 2) — per-country aggregate from intelligence:military-cii:v1 ---
+  // Own counts are gathered but not scored since v14 (see the Security score below).
   for (const [code, m] of Object.entries(aux.militaryCii ?? {})) {
     const d = data[code];
     if (!d || !m || typeof m !== 'object') continue;
@@ -1385,12 +1365,13 @@ export function computeCIIScores(
     );
 
     // --- Security score (Phase 3b / decision C3 — full 4-input calcSecurityScore) ---
-    // Was GPS-only (issue #3738). Now flights + vessels + aviation + GPS, matching the
-    // frontend. Military counts reconstruct the frontend's array length: foreign presence
-    // is weighted ×2 (the intent of ingestMilitaryForCII's synthetic-{} push), applied
-    // here in the formula instead of as a representation hack.
-    const milFlights = d.militaryOwnFlights + d.militaryForeignFlights * 2;
-    const milVessels = d.militaryOwnVessels + d.militaryForeignVessels * 2;
+    // Flights + vessels + aviation + GPS. Military presence counts only FOREIGN aircraft
+    // and vessels located in the country, weighted ×2 as before. Since v14 a country's own
+    // air force and navy score nothing: own counts follow the operator anywhere in the
+    // world, so routine training (RAF/French sorties took GB 9 → 31, FR 9 → 25 overnight)
+    // and own vessels saturated Security for GB/FR/DE/US every day.
+    const milFlights = d.militaryForeignFlights * 2;
+    const milVessels = d.militaryForeignVessels * 2;
     const flightScore = Math.min(50, milFlights * 3);
     const vesselScore = Math.min(30, milVessels * 5);
     const aviationScore = Math.min(
@@ -1410,10 +1391,7 @@ export function computeCIIScores(
     const eventScore = unrest * 0.25 + conflict * 0.30 + security * 0.20 + information * 0.25;
 
     const climateBoost = Math.min(15, d.climateSeverity * 3);
-    // cyber + fire (Phase 3b / D7, D8) — severity-weighted, ported from the frontend
-    // getSupplementalSignalBoost. Was total-count based; the cached cyber/fire feeds
-    // already carry severity / brightness, so this is a faithful port, not a partial one.
-    const cyberBoost = Math.min(12, d.cyberCriticalCount * 3 + d.cyberHighCount * 1.8 + d.cyberMediumCount * 0.9);
+    // fire (Phase 3b / D8) — severity-weighted. (The cyber boost beside it was removed in v14.)
     const fireBoost = Math.min(8, d.fireHighCount * 1.5 + Math.min(20, d.fireCount) * 0.25);
 
     // --- Advisory boost ---
@@ -1451,9 +1429,9 @@ export function computeCIIScores(
         : d.sanctionsEntryCount >= 101 ? 5 : 3;
       if (d.sanctionsNewEntryCount > 0) sanctionsBoost += 2;
     }
-    // supplementalSignalBoost (D4): the frontend's helper sums AIS + fire + cyber +
-    // temporal. AIS is its own blend term below; cyber + fire are the severity-weighted
-    // terms above. The temporal sub-boost is NOT wired — the temporal:anomalies:v1
+    // supplementalSignalBoost (D4): the frontend's helper summed AIS + fire + cyber +
+    // temporal. AIS is its own blend term below; fire is the severity-weighted
+    // term above; cyber was removed in v14. The temporal sub-boost is NOT wired — the temporal:anomalies:v1
     // producer (list-temporal-anomalies.ts) emits every anomaly with region:'global', so
     // they cannot be country-attributed. `temporalAnomaly*Count` stay gathered-not-scored
     // (Phase 1 intent); re-wire a temporalBoost only if the producer emits country-scoped
@@ -1466,7 +1444,6 @@ export function computeCIIScores(
     const blended = baseline * 0.4
       + eventScore * 0.6
       + climateBoost
-      + cyberBoost
       + fireBoost
       + advisoryBoost
       + orefBlendBoost
@@ -1574,7 +1551,7 @@ export function countCiiRealtimeSignalDensityCoverage(
   // realtime families, not a raw feed heartbeat. Quiet-but-available feeds may
   // produce 0 here; underlying feed freshness is monitored by their own
   // seed-meta/TTL health entries where available.
-  const coveredFamilies = new Set<'conflict' | 'news' | 'cyber'>();
+  const coveredFamilies = new Set<'conflict' | 'news'>();
 
   // Conflict family: satisfied by EITHER the ACLED API path OR the UCDP aux feed.
   // ACLED is only one of two live conflict sources both consumed by computeCIIScores —
@@ -1615,18 +1592,6 @@ export function countCiiRealtimeSignalDensityCoverage(
         coveredFamilies.add('news');
         break;
       }
-    }
-  }
-
-  for (const threat of aux?.cyber ?? []) {
-    const code = String(threat.country || '').trim().toUpperCase();
-    const severity = String(threat.severity || '').toLowerCase().replace(/^criticality_level_/, '');
-    if (
-      isTier1CountryCode(code)
-      && (severity === 'critical' || severity === 'high' || severity === 'medium')
-    ) {
-      coveredFamilies.add('cyber');
-      break;
     }
   }
 

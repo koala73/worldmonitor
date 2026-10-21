@@ -17,6 +17,8 @@
 // "Honest counts": own vs foreign presence are stored as SEPARATE integers — the consumer
 // applies any foreign-presence weighting at scoring time. This deliberately does NOT mirror
 // the frontend's synthetic-`{}`-push ×2 hack (see the plan's Phase 2 notes).
+// Since CII v14 the scorer reads only foreignFlights/foreignVessels: own counts follow the
+// operator anywhere in the world, so routine training measured air-force size, not risk.
 //
 // SCHEDULING: like every other scripts/seed-*.mjs, this is a self-contained job run on a
 // schedule by Railway (the cron/job config lives in the Railway dashboard, not the repo).

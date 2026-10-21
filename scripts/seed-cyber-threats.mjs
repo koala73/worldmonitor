@@ -640,6 +640,19 @@ async function fetchOtx(days) {
   }
 }
 
+// A failed blacklist call (non-OK, e.g. a 429 from the daily cap, or a thrown error) falls back to the
+// last good 24h list instead of publishing 0 rows, so the feed does not flap between
+// 500 rows and none. The retained rows carry no fresh observation clock.
+async function retainedAbuseIpDb(label) {
+  const cached = await verifySeedKey(ABUSEIPDB_CACHE_KEY).catch(() => null);
+  if (Array.isArray(cached) && cached.length > 0) {
+    console.warn(`  AbuseIPDB: ${label} — keeping ${cached.length} cached threats`);
+    return { ...providerResult(true, cached), outcome: 'retained', reason: 'upstream-error-cache' };
+  }
+  console.warn(`  AbuseIPDB: ${label} — no cache`);
+  return providerResult(false);
+}
+
 async function fetchAbuseIpDb() {
   const apiKey = clean(process.env.ABUSEIPDB_API_KEY || '', 200);
   if (!apiKey) { console.log('  AbuseIPDB: skipped (no ABUSEIPDB_API_KEY)'); return { ...providerResult(false, [], null, 'missing-key'), outcome: 'unconfigured' }; }
@@ -669,7 +682,7 @@ async function fetchAbuseIpDb() {
       headers: { Accept: 'application/json', Key: apiKey, 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (!resp.ok) return providerResult(false);
+    if (!resp.ok) return retainedAbuseIpDb(`HTTP ${resp.status}`);
     const records = await providerRows(resp, 'abuseipdb', ['data']);
     if (records === null) return providerResult(false, [], null, 'invalid-payload');
     const threats = [];
@@ -692,8 +705,7 @@ async function fetchAbuseIpDb() {
     await writeExtraKey(ABUSEIPDB_RATE_KEY, { calledAt: Date.now() }, 86400).catch(() => {});
     return providerResult(true, threats, Date.now());
   } catch (e) {
-    console.warn(`  AbuseIPDB: failed — ${e.message}`);
-    return providerResult(false);
+    return retainedAbuseIpDb(`failed — ${e.message}`);
   }
 }
 
