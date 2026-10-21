@@ -25,6 +25,7 @@ import { PLAN_PRECEDENCE, PRODUCT_CATALOG, resolveProductToPlan } from "../confi
 import { proActivationStepIdValidator } from "../constants";
 import {
   billingDeletionForUser,
+  isCancellationScheduled,
   isCoveringAt,
   isNewerEvent,
   recomputeEntitlementFromAllSubs,
@@ -686,6 +687,9 @@ export const getSubscriptionForUser = query({
       displayName: productPlan?.displayName ?? subscription.planKey,
       status: subscription.status,
       currentPeriodEnd: subscription.currentPeriodEnd,
+      // A portal cancel stays `active` until period end; without this the
+      // settings panel shows "Renews" to a user who just cancelled.
+      cancelAtPeriodEnd: isCancellationScheduled(subscription),
       // #4771: request-path renewal verification verdict (#4770), so the
       // frontend can show "verifying your renewal" instead of a generic
       // Upgrade CTA when local paid evidence goes stale. Normalized to null
