@@ -81,12 +81,16 @@ let redisStore: Map<string, string>;
 let witsCalls: string[];
 let witsFaults: Set<string>;
 let relayCalls: { url: string; headers: Headers }[];
+let relayStatus: number | undefined;
+let directHeaders: Headers[];
 
 beforeEach(() => {
   redisStore = new Map();
   witsCalls = [];
   witsFaults = new Set();
   relayCalls = [];
+  relayStatus = undefined;
+  directHeaders = [];
   delete process.env.WS_RELAY_URL;
   delete process.env.RELAY_SHARED_SECRET;
   delete process.env.RELAY_AUTH_HEADER;
@@ -119,8 +123,11 @@ beforeEach(() => {
       if (isRelay) {
         assert.equal(url.pathname, '/wits');
         relayCalls.push({ url: target, headers: new Headers(init?.headers) });
+        assert.equal(init?.redirect, 'error');
+        if (relayStatus !== undefined) return new Response('Relay unavailable', { status: relayStatus });
       } else {
         witsCalls.push(href);
+        directHeaders.push(new Headers(init?.headers));
       }
       if (witsFaults.has(target)) return new Response('Service Unavailable', { status: 503 });
       const route = WITS_ROUTES[target];
@@ -419,21 +426,38 @@ describe('WITS relay transport', () => {
     assert.deepEqual(witsCalls, []);
   });
 
-  test('relay failure stays unavailable without retrying direct WITS', async () => {
-    process.env.WS_RELAY_URL = 'https://relay.test';
-    witsFaults.add(trainsRowsUrl('840', '870323', 2021));
-    const res = await getBilateralTariff(premiumCtx(), request({}));
-    assert.equal(res.upstreamUnavailable, true);
-    assert.equal(res.appliedRate, undefined);
-    assert.deepEqual(witsCalls, []);
-  });
+  for (const status of [401, 403, 404, 502, 504]) {
+    test(`relay HTTP ${status} stays unavailable without retrying direct WITS`, async () => {
+      process.env.WS_RELAY_URL = 'https://relay.test';
+      process.env.RELAY_SHARED_SECRET = 'local-relay-secret';
+      relayStatus = status;
+      const res = await getBilateralTariff(premiumCtx(), request({}));
+      assert.equal(res.upstreamUnavailable, true);
+      assert.equal(res.unavailableReason, R.upstreamUnavailable);
+      assert.equal(res.appliedRate, undefined);
+      assert.deepEqual(witsCalls, []);
+    });
+  }
 
   test('relay NoRecordsFound remains not covered', async () => {
     process.env.WS_RELAY_URL = 'https://relay.test';
+    process.env.RELAY_SHARED_SECRET = 'local-relay-secret';
     const res = await getBilateralTariff(premiumCtx(), request({ hsCode: '999999' }));
     assert.equal(res.unavailableReason, R.notCovered);
     assert.equal(res.upstreamUnavailable, false);
     assert.deepEqual(witsCalls, []);
+  });
+
+  test('without a relay URL direct WITS does not receive relay credentials', async () => {
+    process.env.RELAY_SHARED_SECRET = 'local-relay-secret';
+    const res = await getBilateralTariff(premiumCtx(), request({}));
+    assert.equal(res.upstreamUnavailable, false);
+    assert.ok(witsCalls.length > 0);
+    assert.deepEqual(relayCalls, []);
+    for (const headers of directHeaders) {
+      assert.equal(headers.has('authorization'), false);
+      assert.equal(headers.has('x-relay-key'), false);
+    }
   });
 });
 

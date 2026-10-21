@@ -11539,6 +11539,55 @@ async function handleOpenSkyRequest(req, res, PORT) {
   }
 }
 
+async function handleWitsRequest(req, res) {
+  const responseHeaders = {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
+    'CDN-Cache-Control': 'no-store',
+  };
+  if (req.method !== 'GET') {
+    return safeEnd(res, 405, { ...responseHeaders, Allow: 'GET' }, JSON.stringify({ error: 'Method not allowed' }));
+  }
+
+  const params = new URL(req.url, 'http://localhost').searchParams;
+  const upstreamPath = params.get('path') || '';
+  const rows = /^\/API\/V1\/SDMX\/V21\/datasource\/TRN\/reporter\/\d{3}\/partner\/(all|000)\/product\/\d{6}\/year\/(\d{1,4})\/datatype\/(reported|aveestimated)$/.exec(upstreamPath);
+  const validRows = rows && Number(rows[2]) >= 1 && Number(rows[2]) <= 2100
+    && (rows[3] === 'reported' ? rows[1] === 'all' : rows[1] === '000');
+  const validMetadata = /^\/API\/V1\/wits\/datasource\/trn\/(dataavailability\/country\/\d{3}\/year\/all|country\/all)$/.test(upstreamPath);
+  if (params.size !== 1 || (!validRows && !validMetadata)) {
+    return safeEnd(res, 400, responseHeaders, JSON.stringify({ error: 'Invalid WITS path' }));
+  }
+
+  try {
+    const upstream = await fetch(`https://wits.worldbank.org${upstreamPath}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        Accept: 'application/xml,text/xml;q=0.9,*/*;q=0.1',
+      },
+      redirect: 'error',
+      signal: AbortSignal.timeout(9000),
+    });
+    const chunks = [];
+    let size = 0;
+    if (upstream.body) {
+      for await (const chunk of upstream.body) {
+        size += chunk.length;
+        if (size > 4 * 1024 * 1024) throw new Error('WITS response too large');
+        chunks.push(chunk);
+      }
+    }
+    return safeEnd(res, upstream.status, {
+      ...responseHeaders,
+      'Content-Type': upstream.headers.get('content-type') || 'application/xml',
+    }, Buffer.concat(chunks));
+  } catch (error) {
+    const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+    return safeEnd(res, timedOut ? 504 : 502, responseHeaders,
+      JSON.stringify({ error: timedOut ? 'WITS request timed out' : 'WITS request failed' }));
+  }
+}
+
 // ── World Bank proxy (World Bank blocks Vercel edge IPs with 403) ──
 const worldbankCache = new Map(); // key: query string → { data, timestamp }
 const WORLDBANK_CACHE_TTL_MS = 30 * 60 * 1000; // 30 min — data rarely changes
@@ -12443,7 +12492,7 @@ const server = http.createServer(async (req, res) => {
   // prevention (rate limiting), not data protection. Cloudflare WAF provides edge-level protection.
   const isPublicRoute = pathname === '/health' || pathname === '/' || isRssRoute || pathname.startsWith('/widget-agent');
   if (!isPublicRoute) {
-    const authorized = pathname === '/status'
+    const authorized = pathname === '/status' || pathname === '/wits'
       ? Boolean(RELAY_SHARED_SECRET) && isAuthorizedRequest(req)
       : isAuthorizedRequest(req);
     if (!authorized) {
@@ -13363,6 +13412,8 @@ const server = http.createServer(async (req, res) => {
     handleOpenSkyRequest(req, res, PORT);
   } else if (pathname.startsWith('/worldbank')) {
     handleWorldBankRequest(req, res);
+  } else if (pathname === '/wits') {
+    return handleWitsRequest(req, res);
   } else if (pathname.startsWith('/polymarket')) {
     handlePolymarketRequest(req, res);
   } else if (pathname === '/yahoo-chart') {
