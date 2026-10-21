@@ -2558,7 +2558,7 @@ export const CACHE_TOOLS: ToolDef[] = [
                 },
                 trend: { type: 'object', properties: {
                   measure: { type: 'string', enum: ['stock', 'monthly'] },
-                  points: { type: 'array', items: { type: 'array', minItems: 2, maxItems: 2, prefixItems: [{ type: 'string' }, { type: 'number' }], items: false } },
+                  points: { type: 'array', items: { type: 'array', minItems: 2, maxItems: 2, prefixItems: [{ type: 'string' }, { type: 'number' }], items: { not: {} } } },
                   latestDelta: { type: ['number', 'null'] }, latestDays: { type: ['number', 'null'] }, accelerating: { type: 'boolean' },
                 } },
               },
