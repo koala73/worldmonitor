@@ -2925,8 +2925,8 @@ Use `view: "regions"` for IOM Displacement Tracking Matrix (DTM) data in `dtmReg
 |------|------|-------------|
 | `view` | string: annual / movements / events / regions | Default annual. movements returns source-dated operational movement reports. events returns IDMC internal displacement in iduEvents. regions returns IOM DTM operations in dtmRegions. |
 | `route` | string | Exact route or situation ID in the movements view. |
-| `countries` | `array<string>` | Country names, ISO alpha-2, or alpha-3 codes to keep (e.g. ["Syria","UA","AFG"]). Matches both per-country totals and origin/asylum flows. Omit for all. Unresolved inputs return Invalid params. |
-| `limit` | number | Cap the per-country and top-flow lists to at most this many items (default 30, pass 0 for no cap). |
+| `countries` | `array<string>` | Country names, ISO alpha-2, or alpha-3 codes to keep (e.g. ["Syria","UA","AFG"]). Matches per-country totals, origin/asylum flows, IDMC rows and DTM operations. Omit for all. Unresolved names and alpha-3 codes return Invalid params; an unknown two-letter code matches nothing. |
+| `limit` | number | Cap the per-country, top-flow, IDMC and DTM operation lists to at most this many items (default 30, pass 0 for no cap; IDMC events stay capped at 100). |
 
 - **API endpoints:** `GET /api/displacement/v1/get-displacement-summary`, `GET /api/displacement/v1/get-cross-border-movements`, `GET /api/displacement/v1/get-internal-displacement`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.

@@ -2621,9 +2621,9 @@ export const CACHE_TOOLS: ToolDef[] = [
         countries: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Country names, ISO alpha-2, or alpha-3 codes to keep (e.g. ["Syria","UA","AFG"]). Matches both per-country totals and origin/asylum flows. Omit for all. Unresolved inputs return Invalid params.',
+          description: 'Country names, ISO alpha-2, or alpha-3 codes to keep (e.g. ["Syria","UA","AFG"]). Matches per-country totals, origin/asylum flows, IDMC rows and DTM operations. Omit for all. Unresolved names and alpha-3 codes return Invalid params; an unknown two-letter code matches nothing.',
         },
-        limit: { type: 'number', description: 'Cap the per-country and top-flow lists to at most this many items (default 30, pass 0 for no cap).' },
+        limit: { type: 'number', description: 'Cap the per-country, top-flow, IDMC and DTM operation lists to at most this many items (default 30, pass 0 for no cap; IDMC events stay capped at 100).' },
       },
       required: [],
     },
